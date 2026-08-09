@@ -1,0 +1,738 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Household Financial Picture — 9 August 2026</title>
+<style>
+  :root {
+    color-scheme: light;
+    --surface-1:#fcfcfb; --plane:#f9f9f7;
+    --text-primary:#0b0b0b; --text-secondary:#52514e; --muted:#898781;
+    --grid:#e1e0d9; --axis:#c3c2b7; --border:rgba(11,11,11,0.10);
+    --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a;
+    --good:#0ca30c; --warning:#fab219; --serious:#ec835a; --critical:#d03b3b;
+    --success-text:#006300;
+    --div-pos:#2a78d6; --div-neg:#d03b3b; --div-mid:#f0efec;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --surface-1:#1a1a19; --plane:#0d0d0d;
+      --text-primary:#ffffff; --text-secondary:#c3c2b7; --muted:#898781;
+      --grid:#2c2c2a; --axis:#383835; --border:rgba(255,255,255,0.10);
+      --s1:#3987e5; --s2:#d95926; --s3:#199e70;
+      --success-text:#0ca30c;
+      --div-pos:#3987e5; --div-neg:#d03b3b; --div-mid:#383835;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --surface-1:#1a1a19; --plane:#0d0d0d;
+    --text-primary:#ffffff; --text-secondary:#c3c2b7; --muted:#898781;
+    --grid:#2c2c2a; --axis:#383835; --border:rgba(255,255,255,0.10);
+    --s1:#3987e5; --s2:#d95926; --s3:#199e70;
+    --success-text:#0ca30c;
+    --div-pos:#3987e5; --div-neg:#d03b3b; --div-mid:#383835;
+  }
+
+  * { box-sizing:border-box; }
+  body {
+    margin:0; background:var(--plane); color:var(--text-primary);
+    font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+    line-height:1.5; padding:32px 20px 80px;
+  }
+  .wrap { max-width:1120px; margin:0 auto; }
+  header { margin-bottom:8px; }
+  h1 { font-size:1.65rem; margin:0 0 6px; letter-spacing:-0.01em; }
+  .sub { color:var(--text-secondary); font-size:0.92rem; margin:0 0 4px; }
+  .disc { color:var(--muted); font-size:0.8rem; margin:0 0 28px; }
+  h2 { font-size:1.12rem; margin:40px 0 4px; letter-spacing:-0.01em; }
+  h2 .n { color:var(--muted); font-weight:600; margin-right:8px; }
+  .lede { color:var(--text-secondary); font-size:0.9rem; margin:0 0 16px; max-width:70ch; }
+
+  .card {
+    background:var(--surface-1); border:1px solid var(--border);
+    border-radius:12px; padding:18px 20px; margin-bottom:16px;
+  }
+  .tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:12px; margin-bottom:8px; }
+  .tile { background:var(--surface-1); border:1px solid var(--border); border-radius:12px; padding:16px 18px; }
+  .tile .lab { font-size:0.76rem; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.04em; }
+  .tile .val { font-size:1.7rem; font-weight:650; margin:6px 0 2px; letter-spacing:-0.02em; }
+  .tile .note { font-size:0.78rem; color:var(--muted); }
+  .tile.alert .val { color:var(--critical); }
+  .tile.warn .val { color:var(--serious); }
+  .tile.ok .val { color:var(--success-text); }
+
+  table { width:100%; border-collapse:collapse; font-size:0.87rem; }
+  .scroll { overflow-x:auto; }
+  th { text-align:left; font-weight:600; color:var(--text-secondary); font-size:0.78rem;
+       text-transform:uppercase; letter-spacing:0.03em; padding:8px 10px; border-bottom:1px solid var(--axis); white-space:nowrap; }
+  td { padding:9px 10px; border-bottom:1px solid var(--grid); vertical-align:top; }
+  td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  tr:last-child td { border-bottom:none; }
+  .chip { display:inline-block; font-size:0.7rem; padding:2px 7px; border-radius:999px;
+          border:1px solid var(--border); color:var(--text-secondary); white-space:nowrap; }
+  .chip.v { color:var(--success-text); border-color:currentColor; }
+  .chip.c { color:var(--critical); border-color:currentColor; }
+  .chip.e { color:var(--muted); }
+  .neg { color:var(--critical); }
+  .pos { color:var(--success-text); }
+
+  figure { margin:0; }
+  figcaption { font-size:0.82rem; color:var(--text-secondary); margin-top:10px; }
+  .legend { display:flex; gap:16px; flex-wrap:wrap; font-size:0.8rem; color:var(--text-secondary); margin:2px 0 12px; }
+  .legend span { display:inline-flex; align-items:center; gap:6px; }
+  .sw { width:11px; height:11px; border-radius:3px; display:inline-block; }
+
+  svg { display:block; width:100%; height:auto; overflow:visible; }
+  .tip {
+    position:fixed; pointer-events:none; opacity:0; transition:opacity .09s;
+    background:var(--surface-1); border:1px solid var(--border); border-radius:8px;
+    padding:8px 11px; font-size:0.8rem; color:var(--text-primary);
+    box-shadow:0 6px 22px rgba(0,0,0,0.16); z-index:50; max-width:260px;
+  }
+  .tip b { display:block; margin-bottom:3px; }
+  .tip .m { color:var(--text-secondary); }
+
+  details { background:var(--surface-1); border:1px solid var(--border); border-radius:12px; padding:0 18px; margin-bottom:12px; }
+  details summary { cursor:pointer; padding:14px 0; font-weight:600; font-size:0.95rem; }
+  details[open] summary { border-bottom:1px solid var(--grid); margin-bottom:8px; }
+  details .body { padding-bottom:14px; }
+
+  .q { border-left:3px solid var(--critical); padding:2px 0 2px 14px; margin:0 0 18px; }
+  .q.t2 { border-left-color:var(--serious); }
+  .q.t3 { border-left-color:var(--muted); }
+  .q h3 { font-size:0.95rem; margin:0 0 4px; }
+  .q p { margin:0 0 5px; font-size:0.86rem; color:var(--text-secondary); }
+  .q .chg { color:var(--text-primary); }
+
+  .note-box { border-left:3px solid var(--s2); padding:10px 0 10px 14px; margin:14px 0; font-size:0.88rem; color:var(--text-secondary); }
+  footer { margin-top:48px; padding-top:18px; border-top:1px solid var(--grid); font-size:0.8rem; color:var(--muted); }
+  @media print { body { padding:0; } .card,.tile,details { break-inside:avoid; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>Household Financial Picture</h1>
+  <p class="sub">As at 9 August 2026 · TD accounts + Triangle Mastercard, read-only · 4,222 transactions over 18 months, plus 16 credit-card statements</p>
+  <p class="disc">Financial education and planning support — not professional financial, tax, legal, mortgage, or investment advice. Figures are tagged <span class="chip v">verified</span> <span class="chip">calculated</span> <span class="chip e">estimated</span>.</p>
+</header>
+
+<div class="tiles">
+  <div class="tile alert">
+    <div class="lab">Cash on hand</div>
+    <div class="val">$449.84</div>
+    <div class="note">Across three accounts. One is overdrawn.</div>
+  </div>
+  <div class="tile">
+    <div class="lab">Total known debt</div>
+    <div class="val">$762,910</div>
+    <div class="note">MBNA and BNPL still unknown</div>
+  </div>
+  <div class="tile warn">
+    <div class="lab">Interest cost / year</div>
+    <div class="val">$32,649</div>
+    <div class="note">~$2,721 every month</div>
+  </div>
+  <div class="tile alert">
+    <div class="lab">Credit left, everywhere</div>
+    <div class="val">$1,353</div>
+    <div class="note">Across four facilities combined</div>
+  </div>
+</div>
+
+<h2><span class="n">1</span>The next twelve days</h2>
+<div class="card scroll">
+  <table>
+    <thead><tr><th>Due</th><th>Obligation</th><th class="num">Amount</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>7 Aug</td><td>Triangle Mastercard minimum</td><td class="num">$253.57</td><td class="pos"><strong>Paid $300.00 on 9 Aug</strong> — two days late, watch for a fee</td></tr>
+      <tr><td>14 Aug</td><td>Mortgage (bi-weekly)</td><td class="num">$1,600.00</td><td>Due</td></tr>
+      <tr><td>17 Aug</td><td>TD credit card minimum</td><td class="num">$94.03</td><td>Planned for next week — must <em>post</em> by the 17th</td></tr>
+      <tr><td>21 Aug</td><td>HELOC minimum</td><td class="num">$814.18</td><td>Due</td></tr>
+      <tr><td><strong>Still to fund</strong></td><td></td><td class="num"><strong>$2,508.21</strong></td><td></td></tr>
+    </tbody>
+  </table>
+  <p style="font-size:.85rem;color:var(--text-secondary);margin:12px 0 0">
+    Against roughly <strong>$577 in Chequing A</strong> after the Triangle payment, plus $90.58 in savings, with
+    Chequing B overdrawn and $82.28 of headroom. Payroll at ~$4,469 bi-weekly covers all three comfortably —
+    it is <strong>purely a timing question</strong>. With every revolving facility at its limit there is no buffer
+    to absorb a mismatch, so the next pay date is worth checking against these dates.
+  </p>
+</div>
+
+<div class="note-box">
+  <strong>The shape of it.</strong> Income is strong — about $14,700/month — and mortgage principal is being
+  repaid ahead of schedule, which is real wealth-building. But <strong>every revolving facility is at or near
+  its limit</strong>: the Triangle card is 99.98% used, the home-equity line 99.5%, the TD card 90%, the
+  overdraft 86%. Total borrowing capacity remaining across all four is <strong>$1,353</strong>. The usual
+  shock absorbers are spent.
+</div>
+
+<h2><span class="n">2</span>What the debt actually costs</h2>
+<p class="lede">Balances alone mislead — the mortgage is 300× the credit card but costs only 43× as much
+interest. Annual interest is the measure that compares them fairly.</p>
+<div class="card">
+  <figure>
+    <div id="c-debt"></div>
+    <figcaption>Annual interest by debt. Non-TD debts are omitted because their balances and rates are unknown —
+    they could change this ranking.</figcaption>
+  </figure>
+</div>
+<div class="card scroll">
+  <table>
+    <thead><tr><th>Debt</th><th class="num">Balance</th><th class="num">Rate</th><th>Structure</th><th class="num">Interest / yr</th><th class="num">Next due</th></tr></thead>
+    <tbody>
+      <tr><td>TD credit card</td><td class="num">$1,799.97</td><td class="num neg">24.99%</td><td>Revolving — <strong>penalty rate</strong></td><td class="num">~$450</td><td class="num">17 Aug 2026</td></tr>
+      <tr><td><strong>Triangle Mastercard</strong></td><td class="num">$13,497.00</td><td class="num neg">21.99%</td><td>Revolving — <strong>99.98% used</strong></td><td class="num"><strong>~$2,880</strong></td><td class="num neg"><strong>7 Aug — passed</strong></td></tr>
+      <tr><td>HELOC</td><td class="num">$201,586.16</td><td class="num">4.90%</td><td><strong>Interest-only</strong> — never amortises</td><td class="num">~$9,878</td><td class="num">21 Aug 2026</td></tr>
+      <tr><td>Mortgage</td><td class="num">$546,026.58</td><td class="num pos">3.64%</td><td>Amortising — 52.4% principal</td><td class="num">~$19,441</td><td class="num">14 Aug 2026</td></tr>
+      <tr><td>MBNA MC</td><td class="num">unknown</td><td class="num">unknown</td><td>Revolving — new since Jun 2026</td><td class="num">—</td><td class="num">—</td></tr>
+      <tr><td>Affirm / Flexiti</td><td class="num">unknown</td><td class="num">unknown</td><td>Instalment ~$44.59/mo</td><td class="num">—</td><td class="num">—</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<h2><span class="n">3</span>Every revolving facility is spent</h2>
+<p class="lede">This is the finding that reframes the rest. The usual shock absorbers — a card with room, a
+line of credit, an overdraft — are all at or near their limits. Combined remaining capacity across all four
+is <strong>$1,353</strong>.</p>
+<div class="card">
+  <figure>
+    <div id="c-util"></div>
+    <figcaption>Utilisation of each revolving facility, with the dollars still available. Labels are shown
+    directly because the amounts, not the percentages, are the point.</figcaption>
+  </figure>
+</div>
+
+<h2><span class="n">4</span>The Triangle card: $3,880 paid, $189 of progress</h2>
+<p class="lede">Five statements, March to July 2026. Payments of $3,880 reduced the balance by $189.07 —
+$1,200.13 went to interest and $2,491.04 of new purchases went back on. The issuer's own disclosure says
+it would take <strong>more than 99 years</strong> to clear at minimum payments.</p>
+<div class="card scroll">
+  <table>
+    <thead><tr><th>Statement</th><th class="num">Opening</th><th class="num">Payments</th><th class="num">Purchases</th><th class="num">Interest</th><th class="num">Closing</th><th class="num">Available</th></tr></thead>
+    <tbody>
+      <tr><td>17 Mar 2026</td><td class="num">$13,498.77</td><td class="num">−$1,590.00</td><td class="num">$613.95</td><td class="num">$256.95</td><td class="num">$12,779.43</td><td class="num">$720.57</td></tr>
+      <tr><td>17 Apr 2026</td><td class="num">$12,779.43</td><td class="num">−$600.00</td><td class="num">$101.81</td><td class="num">$237.73</td><td class="num">$12,518.97</td><td class="num">$981.03</td></tr>
+      <tr><td>17 May 2026</td><td class="num">$12,518.97</td><td class="num">−$300.00</td><td class="num">$626.30</td><td class="num">$224.90</td><td class="num">$13,070.17</td><td class="num">$429.83</td></tr>
+      <tr><td>17 Jun 2026</td><td class="num">$13,070.17</td><td class="num">−$1,140.00</td><td class="num">$936.68</td><td class="num">$236.98</td><td class="num">$13,103.83</td><td class="num">$396.17</td></tr>
+      <tr><td>17 Jul 2026</td><td class="num">$13,103.83</td><td class="num">−$250.00</td><td class="num">$212.30</td><td class="num">$243.57</td><td class="num">$13,309.70</td><td class="num">$190.30</td></tr>
+      <tr><td><strong>Totals</strong></td><td class="num">—</td><td class="num"><strong>−$3,880.00</strong></td><td class="num"><strong>$2,491.04</strong></td><td class="num"><strong>$1,200.13</strong></td><td class="num"><strong>−$189.07 net</strong></td><td class="num">—</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<h2><span class="n">5</span>The HELOC is growing, not shrinking</h2>
+<p class="lede">A large bonus-funded paydown each February, then steady refilling. February 2026's $14,298
+paydown has already been more than undone. The minimum payment is exactly the interest charge, so paying it
+reduces the principal by nothing.</p>
+<div class="card">
+  <figure>
+    <div class="legend">
+      <span><span class="sw" style="background:var(--s1)"></span>HELOC balance</span>
+      <span><span class="sw" style="background:var(--critical)"></span>Credit limit $202,654</span>
+    </div>
+    <div id="c-heloc"></div>
+    <figcaption>Month-end balance, Feb 2025 – Aug 2026. Net change over the period: <strong>+$7,536.96</strong>,
+    despite $78,177 of repayments — because $86,514 was advanced and $15,029 of interest was capitalised.</figcaption>
+  </figure>
+</div>
+
+<h2><span class="n">6</span>Monthly cash flow is volatile, not steady</h2>
+<p class="lede">Nine of eighteen complete months were negative. The year balances only because two or three
+large months carry it — bonus pay and strong resale months. That works arithmetically and leaves no cushion
+in the ordinary months, which is what the overdraft and 42 NSF fees reflect.</p>
+<div class="card">
+  <figure>
+    <div id="c-flow"></div>
+    <figcaption>Net cash flow per month (income and other inflows, less spending, debt payments and fees).
+    Excludes payments made directly from the HELOC — roughly $1,960/month — so the real picture is
+    somewhat weaker than shown.</figcaption>
+  </figure>
+</div>
+
+<h2><span class="n">7</span>Where the money goes</h2>
+<p class="lede">Household spending averages about $7,551/month. The PayPal line — previously invisible — is now
+resolved: <strong>~$463/month, of which about 83% is gaming, Apple services, streaming and food delivery</strong>.
+The gaming subscriptions are for the children. It is still the most controllable spending in the picture —
+for scale, the Triangle card minimum is $253.57/month.</p>
+<div class="card scroll">
+  <table>
+    <thead><tr><th>PayPal category</th><th class="num">9-month total</th><th class="num">Per month</th><th class="num">Share</th></tr></thead>
+    <tbody>
+      <tr><td>Gaming — PlayStation, Nintendo, Meta/Quest, Epic <span class="chip">for the kids</span></td><td class="num">$1,306.66</td><td class="num">~$145</td><td class="num">31.3%</td></tr>
+      <tr><td>Apple Services</td><td class="num">$1,138.72</td><td class="num">~$127</td><td class="num">27.3%</td></tr>
+      <tr><td>Streaming &amp; media — Netflix, Spotify, Cineplex, Patreon</td><td class="num">$521.76</td><td class="num">~$58</td><td class="num">12.5%</td></tr>
+      <tr><td>Food delivery — DoorDash, Uber</td><td class="num">$487.46</td><td class="num">~$54</td><td class="num">11.7%</td></tr>
+      <tr><td>Shopping &amp; other — Google, Etsy, Best Buy, UPS</td><td class="num">$431.96</td><td class="num">~$48</td><td class="num">10.4%</td></tr>
+      <tr><td>Creative software — amalgam audio, Boutique Tones, IK Multimedia, Adobe</td><td class="num">$282.33</td><td class="num">~$31</td><td class="num">6.8%</td></tr>
+      <tr><td><strong>Total</strong></td><td class="num"><strong>$4,168.89</strong></td><td class="num"><strong>~$463</strong></td><td class="num">100%</td></tr>
+    </tbody>
+  </table>
+  <p style="font-size:.82rem;color:var(--text-secondary);margin:12px 0 0">Cross-checked: PayPal pulled $4,262.43
+  from Chequing A over the same nine months (~$474/month) to fund these payments. The two figures agree.</p>
+</div>
+<div class="note-box">
+  <strong>Three things PayPal is not.</strong> Not a source of business revenue — all 160 "incoming" entries are
+  PayPal pulling funds from Chequing A to cover payments, not sales. Not the channel behind the unexplained
+  e-transfers — zero person-to-person transactions in nine months. And not a hidden asset or debt — the balance
+  is $0.00 and all Pay-in-4 plans are complete.
+</div>
+<div class="card">
+  <figure>
+    <div id="c-spend"></div>
+    <figcaption>18-month totals by category. Bars in grey are unidentified spending, shown at the same scale
+    so the size of the blind spot is visible rather than hidden.</figcaption>
+  </figure>
+</div>
+
+<h2><span class="n">8</span>Roughly $120,000 of movement has no explanation</h2>
+<p class="lede">These are not rounding errors. Each is a large flow whose purpose cannot be determined from
+banking data alone. Much of it may be ordinary business activity — which is precisely the open question.</p>
+<div class="card">
+  <figure>
+    <div id="c-unex"></div>
+    <figcaption>Unexplained flows over 18 months. Direct labels shown because these bars carry the argument.</figcaption>
+  </figure>
+</div>
+
+<h2><span class="n">9</span>Liquidity</h2>
+<div class="card scroll">
+  <table>
+    <thead><tr><th>Source</th><th class="num">Amount</th><th>Nature</th></tr></thead>
+    <tbody>
+      <tr><td>Cash across three accounts</td><td class="num">$449.84</td><td>Yours</td></tr>
+      <tr><td>Overdraft headroom remaining</td><td class="num">$82.28</td><td>Borrowed</td></tr>
+      <tr><td>Credit available on card</td><td class="num">$200.00</td><td>Borrowed, at 24.99%</td></tr>
+      <tr><td>Credit available on HELOC</td><td class="num">$1,067.84</td><td>Borrowed, at 4.90%</td></tr>
+      <tr><td><strong>Total immediate liquidity</strong></td><td class="num"><strong>~$1,800</strong></td><td><strong>¾ of it borrowed</strong></td></tr>
+      <tr><td>Estimated essential spending</td><td class="num">~$3,054 / mo</td><td>Groceries, fuel, utilities, insurance, property tax, medical, dues</td></tr>
+    </tbody>
+  </table>
+</div>
+<div class="note-box">
+  The RESP ($31,555.85) is education-restricted and should not be counted as emergency cash — withdrawing it
+  outside its rules carries grant repayment and tax consequences. The HELOC, which would normally be the
+  fallback, is 99.5% drawn.
+</div>
+
+<h2><span class="n">10</span>The credit card is on a penalty rate</h2>
+<p class="lede">Two consecutive missed minimums in December 2025 and January 2026 triggered it. The normal
+rate is TD Prime + 12.75% = 17.20%. Restoration needs 12 consecutive on-time minimums — and the count has been
+reset twice more since, most recently by July 2026.</p>
+<div class="card scroll">
+  <table>
+    <thead><tr><th>Statement</th><th class="num">Closing balance</th><th>Minimum received</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>23 Sep 2025</td><td class="num">$1,954.53</td><td>Yes</td><td></td></tr>
+      <tr><td>23 Oct 2025</td><td class="num">$2,336.06</td><td>Yes</td><td><span class="chip c">over limit</span></td></tr>
+      <tr><td>24 Nov 2025</td><td class="num">$2,280.12</td><td>Yes</td><td><span class="chip c">over limit</span></td></tr>
+      <tr><td>23 Dec 2025</td><td class="num">$2,384.27</td><td class="neg"><strong>Not received</strong></td><td><span class="chip c">over limit</span></td></tr>
+      <tr><td>23 Jan 2026</td><td class="num">$2,198.54</td><td class="neg"><strong>Not received</strong></td><td><span class="chip c">over limit</span></td></tr>
+      <tr><td>23 Feb 2026</td><td class="num">$1,940.47</td><td>Yes</td><td><span class="chip c">penalty rate begins</span></td></tr>
+      <tr><td>23 Mar 2026</td><td class="num">$1,953.92</td><td>Yes</td><td></td></tr>
+      <tr><td>23 Apr 2026</td><td class="num">$1,994.97</td><td class="neg"><strong>Not received</strong></td><td><span class="chip c">count reset</span></td></tr>
+      <tr><td>25 May 2026</td><td class="num">$1,885.94</td><td>Yes</td><td></td></tr>
+      <tr><td>23 Jun 2026</td><td class="num">$1,862.46</td><td>Yes</td><td></td></tr>
+      <tr><td>23 Jul 2026</td><td class="num">$1,899.97</td><td class="neg"><strong>Not received</strong></td><td><span class="chip c">count reset</span></td></tr>
+    </tbody>
+  </table>
+</div>
+<div class="note-box">
+  The direct saving from restoration is modest — about <strong>$140/year</strong>, because the balance is small.
+  The real value is the payment history itself and getting $2,000 of emergency credit back. It costs $94.03/month
+  you already owe. Automating it from Chequing A (which holds a balance) rather than Chequing B (which is
+  overdrawn) would remove the failure mode.
+</div>
+
+<h2><span class="n">11</span>The questions that matter most</h2>
+<p class="lede">Ranked by what the answer would change, not by size.</p>
+<div class="card">
+  <div class="q">
+    <h3>1 · Does the business make money?</h3>
+    <p>$54,213 of inbound e-transfers over 18 months, against $23,200 of outbound ones — $13,062 of that drawn
+    directly from the HELOC at 4.90%. Heavy retail purchasing is currently counted as household spending. A CRA
+    balance was paid from the HELOC.</p>
+    <p class="chg"><strong>What it changes:</strong> everything. It determines whether household spending is
+    overstated, whether the HELOC growth is working capital or leakage, and what the tax position is.</p>
+  </div>
+  <div class="q">
+    <h3>2 · Where do the "credit card" transfers go?</h3>
+    <p>$46,657 over 18 months labelled as card payments — $24,818 from chequing, $22,230 from the HELOC. The TD
+    Visa's balance fell only $391 in that time and shows no purchases at all.</p>
+    <p class="chg"><strong>What it changes:</strong> could reveal a credit card with a significant balance that
+    is entirely absent from the debt ranking above.</p>
+  </div>
+  <div class="q">
+    <h3>3 · What is the home worth?</h3>
+    <p>$747,613 of debt is secured against it. Original mortgage $648,000 in May 2022.</p>
+    <p class="chg"><strong>What it changes:</strong> household net worth is unstateable without it, and
+    loan-to-value decides what is possible at the May 2027 renewal.</p>
+  </div>
+  <div class="q t2">
+    <h3>4 · Balances and rates on the non-TD debts</h3>
+    <p>Canadian Tire Mastercard, MBNA, Affirm/Flexiti — visible only as outgoing payments.</p>
+    <p class="chg"><strong>What it changes:</strong> if any carries a rate above 24.99%, it outranks the TD card
+    as the first target.</p>
+  </div>
+  <div class="q t2">
+    <h3>5 · Why did the monthly transfer stop after May 2026?</h3>
+    <p>$1,000/month from March 2025, stepping to $1,100 in November, reliable through May 2026. Absent since.</p>
+    <p class="chg"><strong>What it changes:</strong> ~$1,100/month, and whether the budget needs rebuilding.</p>
+  </div>
+  <div class="q t3">
+    <h3>6 · The two unidentified accounts</h3>
+    <p>One sent $33,598 across 142 transfers; the other received $16,945 across five.</p>
+    <p class="chg"><strong>What it changes:</strong> $59,027 of movement, likely folding into question 1.</p>
+  </div>
+</div>
+
+<h2><span class="n">12</span>Next actions</h2>
+<div class="card scroll">
+  <table>
+    <thead><tr><th class="num">#</th><th>Action</th><th>By when</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td class="num">1</td><td>Pay the card minimum <strong>$94.03</strong> on time</td><td><strong>17 Aug 2026</strong></td><td>Avoids a fifth miss; restarts the 12-month clock cleanly</td></tr>
+      <tr><td class="num">2</td><td>Pay the HELOC minimum <strong>$814.18</strong></td><td><strong>21 Aug 2026</strong></td><td>$1,067.84 of room left and no backstop behind it</td></tr>
+      <tr><td class="num">3</td><td>Automate the card minimum from Chequing A</td><td>30 days</td><td>Manual payment has failed four times in twelve months</td></tr>
+      <tr><td class="num">4</td><td>Stop new HELOC draws where possible</td><td>Ongoing</td><td>99.5% drawn and rising every month since February</td></tr>
+      <tr><td class="num">5</td><td>Separate the business into its own account</td><td>30 days</td><td>Makes margin, tax position and interest deductibility knowable</td></tr>
+      <tr><td class="num">6</td><td>Get a home valuation</td><td>Before renewal talks</td><td>Everything at renewal depends on loan-to-value</td></tr>
+      <tr><td class="num">7</td><td>Gather non-TD debt balances and rates</td><td>30 days</td><td>The payoff ranking is provisional without them</td></tr>
+      <tr><td class="num">8</td><td>Engage an accountant</td><td>30 days</td><td>A CRA balance is being financed on a home-equity line</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<h2><span class="n">13</span>Detail</h2>
+<details>
+  <summary>All accounts</summary>
+  <div class="body scroll">
+  <table>
+    <thead><tr><th>Account</th><th>Type</th><th class="num">Balance</th><th class="num">Available</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>Chequing A</td><td>Chequing</td><td class="num">$876.98</td><td class="num">$876.98</td><td>Receives income, pays fixed costs</td></tr>
+      <tr><td>Chequing B</td><td>Chequing</td><td class="num neg">−$517.72</td><td class="num">$82.28</td><td>Daily spending; overdrawn; $600 limit</td></tr>
+      <tr><td>Savings</td><td>Savings</td><td class="num">$90.58</td><td class="num">$90.58</td><td>$15/month in, periodically drawn down</td></tr>
+      <tr><td>RESP</td><td>Investment</td><td class="num">$31,555.85</td><td class="num">—</td><td>Education-restricted; holdings not retrieved</td></tr>
+      <tr><td>TFSA / US TFSA / 2 mutual funds</td><td>Investment</td><td class="num">$0.00</td><td class="num">—</td><td>Open, dormant or closed — unknown</td></tr>
+      <tr><td>Credit card</td><td>Liability</td><td class="num">$1,799.97</td><td class="num">$200.00</td><td>90% utilisation; penalty rate</td></tr>
+      <tr><td>HELOC</td><td>Liability</td><td class="num">$201,586.16</td><td class="num">$1,067.84</td><td>99.5% drawn; interest-only</td></tr>
+      <tr><td>Mortgage</td><td>Liability</td><td class="num">$546,026.58</td><td class="num">—</td><td>Matures 1 May 2027</td></tr>
+    </tbody>
+  </table>
+  </div>
+</details>
+
+<details>
+  <summary>Mortgage — terms and payment split</summary>
+  <div class="body scroll">
+  <table>
+    <tbody>
+      <tr><td>Rate</td><td class="num">3.64% variable — TD Mortgage Prime − 0.96%</td></tr>
+      <tr><td>Maturity</td><td class="num"><strong>1 May 2027</strong></td></tr>
+      <tr><td>Term</td><td class="num">60 months from 1 May 2022</td></tr>
+      <tr><td>Remaining amortisation</td><td class="num">17 years 9 months (original 30)</td></tr>
+      <tr><td>Payment</td><td class="num">$1,600.00 bi-weekly</td></tr>
+      <tr><td>— interest portion</td><td class="num">$762.27 (47.6%)</td></tr>
+      <tr><td>— principal portion</td><td class="num">$837.73 (52.4%)</td></tr>
+      <tr><td>Voluntary overpayment</td><td class="num">~$235/payment · ~$6,110/year</td></tr>
+      <tr><td>Amortisation removed so far</td><td class="num">~8 years</td></tr>
+      <tr><td>Annual prepayment room</td><td class="num">$97,200 — <strong>none used in 2026</strong></td></tr>
+    </tbody>
+  </table>
+  </div>
+</details>
+
+<details>
+  <summary>Income sources</summary>
+  <div class="body scroll">
+  <table>
+    <thead><tr><th>Source</th><th class="num">18-month total</th><th class="num">Avg / month</th><th>Stability</th></tr></thead>
+    <tbody>
+      <tr><td>Payroll (bi-weekly)</td><td class="num">$186,152.89</td><td class="num">$10,342</td><td>Stable</td></tr>
+      <tr><td>Resale / business e-transfers</td><td class="num">$54,213.00</td><td class="num">$3,012</td><td class="neg">Very irregular — $795 to $15,622</td></tr>
+      <tr><td>Wife's monthly transfer</td><td class="num">$21,700.00</td><td class="num">$1,206</td><td class="neg">Stopped after May 2026</td></tr>
+      <tr><td>Child benefit</td><td class="num">$2,764.63</td><td class="num">$154</td><td>Stable</td></tr>
+      <tr><td>Insurance reimbursement</td><td class="num">$500.04</td><td class="num">—</td><td>One-off</td></tr>
+      <tr><td><strong>Total</strong></td><td class="num"><strong>$265,330.56</strong></td><td class="num"><strong>~$14,740</strong></td><td></td></tr>
+    </tbody>
+  </table>
+  </div>
+</details>
+
+<details>
+  <summary>What is verified, calculated, estimated and unknown</summary>
+  <div class="body">
+    <p style="font-size:.87rem"><strong>Verified from TD:</strong> all balances and rates; mortgage and HELOC terms;
+    12 months of card statements; 4,222 transactions across both chequing accounts, savings and the HELOC.</p>
+    <p style="font-size:.87rem"><strong>Calculated:</strong> payment splits, annual interest, category totals,
+    monthly cash flow, net-worth components. The mortgage amortisation model reproduces TD's own stated remaining
+    term to within a month, which is why the payment splits can be relied on.</p>
+    <p style="font-size:.87rem"><strong>Estimated — treat with caution:</strong> the essential/discretionary split;
+    the position in the card's 12-month count; reading the e-transfers as business activity.</p>
+    <p style="font-size:.87rem"><strong>Not known:</strong> home value; the business accounts and economics; non-TD
+    debt balances and rates; the destination of $46,657 of transfers; the two unidentified accounts; WebBroker
+    holdings (access needs an exchange-agreement acceptance, which is the account holder's decision).</p>
+    <p style="font-size:.87rem"><strong>Coverage limits:</strong> TD caps transaction history at 18 months and card
+    statements at 12. The August 2025 card statement was not retrieved. About 19% of spending could not be categorised.</p>
+  </div>
+</details>
+
+<h2><span class="n">14</span>Coverage — what is captured and what is not</h2>
+<p class="lede">So it is always clear what this picture rests on, and what it is still missing.</p>
+<div class="card scroll">
+  <table>
+    <thead><tr><th>Source</th><th>What was captured</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td><strong>TD — 11 accounts</strong></td><td>Balances, rates, full terms; 4,222 transactions over 18 months across both chequing accounts, savings and the HELOC</td><td><span class="chip v">complete</span></td></tr>
+      <tr><td><strong>TD credit card</strong></td><td>11 statements, Sep 2025 – Jul 2026, decrypted locally</td><td><span class="chip v">complete</span></td></tr>
+      <tr><td><strong>Mortgage &amp; HELOC</strong></td><td>Rates, maturity, payment splits, prepayment room, 208 HELOC transactions</td><td><span class="chip v">complete</span></td></tr>
+      <tr><td><strong>Triangle Mastercard</strong></td><td>Full terms plus 5 statements, Mar – Jul 2026</td><td><span class="chip v">complete</span></td></tr>
+      <tr><td><strong>PayPal</strong></td><td>351 transactions Jul 2025 – Mar 2026, categorised and cross-checked against bank funding</td><td><span class="chip v">complete</span></td></tr>
+      <tr><td>MBNA Mastercard</td><td>Visible only as outgoing payments</td><td><span class="chip c">balance &amp; rate unknown</span></td></tr>
+      <tr><td>Affirm / Flexiti</td><td>~$44.59/month of instalments</td><td><span class="chip c">balance &amp; rate unknown</span></td></tr>
+      <tr><td>Wife's business</td><td>—</td><td><span class="chip c">not started</span></td></tr>
+      <tr><td>Home value</td><td>—</td><td><span class="chip c">not valued</span></td></tr>
+      <tr><td>WebBroker holdings</td><td>RESP balance only ($31,555.85)</td><td><span class="chip c">needs agreement acceptance</span></td></tr>
+      <tr><td>PayPal Apr – Aug 2026</td><td>—</td><td><span class="chip e">gap, low value</span></td></tr>
+      <tr><td>Spending categorisation</td><td>~19% of TD spending could not be reliably categorised</td><td><span class="chip e">TD truncates merchant names</span></td></tr>
+    </tbody>
+  </table>
+</div>
+<div class="note-box">
+  <strong>Four things only the household can answer</strong>, each of which would change how the numbers read:
+  where the <strong>$46,657</strong> of "TFR-TO C/C" transfers go · what the <strong>two unidentified accounts</strong>
+  are ($59,027 of movement) · why the <strong>monthly transfer stopped</strong> after May 2026 · and whether the
+  <strong>business makes money</strong> after cost of goods.
+</div>
+
+<footer>
+  No account numbers, card numbers, reference codes or addresses appear anywhere in this file. Raw exports and
+  statement PDFs remain local. Nothing was uploaded, published or shared. <strong>No changes were made to any
+  account</strong> — no transfer, payment, application, setting change, form submission or agreement acceptance.
+</footer>
+
+</div>
+<div class="tip" id="tip"></div>
+
+<script>
+(() => {
+  const tip = document.getElementById('tip');
+  const money = n => '$' + Math.round(n).toLocaleString('en-CA');
+  const money2 = n => '$' + n.toLocaleString('en-CA',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+  function showTip(e, html) {
+    tip.innerHTML = html; tip.style.opacity = 1;
+    const r = tip.getBoundingClientRect();
+    let x = e.clientX + 14, y = e.clientY - r.height - 10;
+    if (x + r.width > innerWidth - 8) x = e.clientX - r.width - 14;
+    if (y < 8) y = e.clientY + 16;
+    tip.style.left = x + 'px'; tip.style.top = y + 'px';
+  }
+  const hideTip = () => tip.style.opacity = 0;
+
+  const SVG = 'http://www.w3.org/2000/svg';
+  const el = (n, a = {}) => { const e = document.createElementNS(SVG, n); for (const k in a) e.setAttribute(k, a[k]); return e; };
+
+  // ---------- horizontal bar chart -------------------------------------
+  function hbar(mount, data, opts = {}) {
+    const W = 760, rowH = opts.rowH || 40, padL = opts.padL || 168, padR = 96, padT = 8;
+    const H = padT + data.length * rowH + 12;
+    const max = Math.max(...data.map(d => d.v));
+    const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img' });
+    const plotW = W - padL - padR;
+
+    data.forEach((d, i) => {
+      const y = padT + i * rowH;
+      const bh = Math.min(20, rowH - 16);
+      const w = Math.max(3, (d.v / max) * plotW);
+      const colour = d.colour || css('--s1');
+
+      const lab = el('text', { x: padL - 12, y: y + bh / 2 + 5, 'text-anchor': 'end',
+        fill: css('--text-secondary'), 'font-size': '13' });
+      lab.textContent = d.label; svg.appendChild(lab);
+
+      const bar = el('rect', { x: padL, y, width: w, height: bh, rx: 4, fill: colour });
+      bar.style.cursor = 'default';
+      bar.addEventListener('mousemove', e => showTip(e, `<b>${d.label}</b><span class="m">${d.tip || money2(d.v)}</span>`));
+      bar.addEventListener('mouseleave', hideTip);
+      svg.appendChild(bar);
+
+      const val = el('text', { x: padL + w + 10, y: y + bh / 2 + 5,
+        fill: css('--text-primary'), 'font-size': '13', 'font-weight': '600' });
+      val.textContent = d.vlabel || money(d.v); svg.appendChild(val);
+    });
+    mount.innerHTML = ''; mount.appendChild(svg);
+  }
+
+  // ---------- line chart ------------------------------------------------
+  function line(mount, pts, opts = {}) {
+    const W = 760, H = 300, padL = 64, padR = 16, padT = 16, padB = 42;
+    const plotW = W - padL - padR, plotH = H - padT - padB;
+    const vals = pts.map(p => p.v);
+    const limit = opts.limit;
+    const lo = Math.min(...vals) * 0.985, hi = Math.max(limit || 0, ...vals) * 1.004;
+    const x = i => padL + (i / (pts.length - 1)) * plotW;
+    const y = v => padT + plotH - ((v - lo) / (hi - lo)) * plotH;
+    const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img' });
+
+    for (let t = 0; t <= 4; t++) {
+      const v = lo + (hi - lo) * t / 4, yy = y(v);
+      svg.appendChild(el('line', { x1: padL, x2: W - padR, y1: yy, y2: yy, stroke: css('--grid'), 'stroke-width': 1 }));
+      const tx = el('text', { x: padL - 10, y: yy + 4, 'text-anchor': 'end', fill: css('--muted'), 'font-size': '11' });
+      tx.textContent = '$' + Math.round(v / 1000) + 'k'; svg.appendChild(tx);
+    }
+    if (limit) {
+      svg.appendChild(el('line', { x1: padL, x2: W - padR, y1: y(limit), y2: y(limit),
+        stroke: css('--critical'), 'stroke-width': 2, 'stroke-dasharray': '5 4' }));
+      const lt = el('text', { x: W - padR, y: y(limit) - 7, 'text-anchor': 'end', fill: css('--critical'), 'font-size': '11', 'font-weight': '600' });
+      lt.textContent = 'Credit limit'; svg.appendChild(lt);
+    }
+    const d = pts.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.v).toFixed(1)}`).join(' ');
+    svg.appendChild(el('path', { d, fill: 'none', stroke: css('--s1'), 'stroke-width': 2, 'stroke-linejoin': 'round' }));
+
+    pts.forEach((p, i) => {
+      svg.appendChild(el('circle', { cx: x(i), cy: y(p.v), r: 4, fill: css('--s1'),
+        stroke: css('--surface-1'), 'stroke-width': 2 }));
+      const hit = el('circle', { cx: x(i), cy: y(p.v), r: 16, fill: 'transparent' });
+      hit.addEventListener('mousemove', e => showTip(e,
+        `<b>${p.label}</b><span class="m">Balance ${money2(p.v)}${p.note ? '<br>' + p.note : ''}</span>`));
+      hit.addEventListener('mouseleave', hideTip);
+      svg.appendChild(hit);
+      if (i % 3 === 0 || i === pts.length - 1) {
+        const t = el('text', { x: x(i), y: H - 16, 'text-anchor': 'middle', fill: css('--muted'), 'font-size': '11' });
+        t.textContent = p.label; svg.appendChild(t);
+      }
+    });
+    mount.innerHTML = ''; mount.appendChild(svg);
+  }
+
+  // ---------- diverging column chart ------------------------------------
+  function diverge(mount, data) {
+    const W = 760, H = 300, padL = 60, padR = 12, padT = 16, padB = 46;
+    const plotW = W - padL - padR, plotH = H - padT - padB;
+    const max = Math.max(...data.map(d => Math.abs(d.v))) * 1.06;
+    const zero = padT + plotH / 2;
+    const scale = v => (v / max) * (plotH / 2);
+    const bw = Math.min(30, plotW / data.length - 6);
+    const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img' });
+
+    [-max, -max / 2, 0, max / 2, max].forEach(v => {
+      const yy = zero - scale(v);
+      svg.appendChild(el('line', { x1: padL, x2: W - padR, y1: yy, y2: yy,
+        stroke: v === 0 ? css('--axis') : css('--grid'), 'stroke-width': v === 0 ? 1.5 : 1 }));
+      const t = el('text', { x: padL - 10, y: yy + 4, 'text-anchor': 'end', fill: css('--muted'), 'font-size': '11' });
+      t.textContent = (v < 0 ? '−$' : '$') + Math.abs(Math.round(v / 1000)) + 'k'; svg.appendChild(t);
+    });
+
+    data.forEach((d, i) => {
+      const cx = padL + (i + 0.5) * (plotW / data.length);
+      const h = Math.abs(scale(d.v));
+      const y = d.v >= 0 ? zero - h : zero;
+      const colour = d.v >= 0 ? css('--div-pos') : css('--div-neg');
+      const bar = el('rect', { x: cx - bw / 2, y, width: bw, height: Math.max(2, h), rx: 4, fill: colour });
+      bar.addEventListener('mousemove', e => showTip(e,
+        `<b>${d.label}</b><span class="m">${d.v >= 0 ? 'Surplus ' : 'Deficit '}${money2(Math.abs(d.v))}${d.note ? '<br>' + d.note : ''}</span>`));
+      bar.addEventListener('mouseleave', hideTip);
+      svg.appendChild(bar);
+      if (i % 2 === 0) {
+        const t = el('text', { x: cx, y: H - 14, 'text-anchor': 'middle', fill: css('--muted'), 'font-size': '10' });
+        t.textContent = d.label; svg.appendChild(t);
+      }
+    });
+    mount.innerHTML = ''; mount.appendChild(svg);
+  }
+
+  // ---------- data -------------------------------------------------------
+  const draw = () => {
+    hbar(document.getElementById('c-debt'), [
+      { label: 'Mortgage', v: 19441, colour: css('--s1'),
+        tip: '$546,027 at 3.64% · amortising, 52.4% of each payment is principal' },
+      { label: 'HELOC', v: 9878, colour: css('--s2'),
+        tip: '$201,586 at 4.90% · interest-only — this buys no equity at all' },
+      { label: 'Triangle Mastercard', v: 2880, colour: css('--critical'),
+        tip: '$13,497 at 21.99% · 99.98% used, $3.00 left · issuer says 99+ years at minimums' },
+      { label: 'TD credit card', v: 450, colour: css('--critical'),
+        tip: '$1,800 at 24.99% penalty rate · normal rate would be 17.20%' },
+    ], { rowH: 44, padL: 176 });
+
+    hbar(document.getElementById('c-util'), [
+      { label: 'Triangle Mastercard', v: 99.98, colour: css('--critical'),
+        vlabel: '$3 left', tip: '$13,497.00 of a $13,500 limit' },
+      { label: 'HELOC', v: 99.5, colour: css('--critical'),
+        vlabel: '$1,068 left', tip: '$201,586.16 of a $202,654 limit' },
+      { label: 'TD credit card', v: 90.0, colour: css('--serious'),
+        vlabel: '$200 left', tip: '$1,799.97 of a $2,000 limit' },
+      { label: 'Chequing B overdraft', v: 86.3, colour: css('--serious'),
+        vlabel: '$82 left', tip: '$517.72 of a $600 limit' },
+    ], { rowH: 40, padL: 176 });
+
+    line(document.getElementById('c-heloc'), [
+      { label: 'Feb 25', v: 190627.78 }, { label: 'Mar', v: 189375.85 },
+      { label: 'Apr', v: 190381.69 }, { label: 'May', v: 198578.57 },
+      { label: 'Jun', v: 195549.81 }, { label: 'Jul', v: 195684.37 },
+      { label: 'Aug', v: 198366.81 }, { label: 'Sep', v: 197777.65 },
+      { label: 'Oct', v: 197847.57 }, { label: 'Nov', v: 198858.82 },
+      { label: 'Dec', v: 202058.59, note: 'Above the limit' },
+      { label: 'Jan 26', v: 202358.65, note: 'Peak' },
+      { label: 'Feb', v: 188060.61, note: '$16,100 bonus paydown' },
+      { label: 'Mar', v: 190953.11 }, { label: 'Apr', v: 193168.43 },
+      { label: 'May', v: 195659.82 }, { label: 'Jun', v: 196967.31 },
+      { label: 'Jul', v: 201085.16 }, { label: 'Aug 26', v: 201586.16, note: 'Only $1,067.84 left' },
+    ], { limit: 202654 });
+
+    diverge(document.getElementById('c-flow'), [
+      { label: 'Feb 25', v: 832.69 }, { label: 'Mar', v: -2355.99 },
+      { label: 'Apr', v: 1443.63 }, { label: 'May', v: -2260.51 },
+      { label: 'Jun', v: -61.28 }, { label: 'Jul', v: 1597.50 },
+      { label: 'Aug', v: -483.80 }, { label: 'Sep', v: 3491.48 },
+      { label: 'Oct', v: -258.97 }, { label: 'Nov', v: -849.52 },
+      { label: 'Dec', v: -4329.02, note: 'Highest spending month' },
+      { label: 'Jan 26', v: 2314.83 }, { label: 'Feb', v: 287.38, note: 'Bonus, mostly to the HELOC' },
+      { label: 'Mar', v: -1201.79 }, { label: 'Apr', v: -794.14 },
+      { label: 'May', v: 2650.01 }, { label: 'Jun', v: -1071.99 },
+      { label: 'Jul', v: 11675.09, note: 'Bonus plus a strong resale month' },
+    ]);
+
+    const grey = css('--muted');
+    hbar(document.getElementById('c-spend'), [
+      { label: 'Groceries', v: 29142, colour: css('--s1') },
+      { label: 'Shopping', v: 16052, colour: css('--s1') },
+      { label: 'Unidentified', v: 15679, colour: grey, tip: '476 transactions — merchant names truncated by TD' },
+      { label: 'Restaurants & takeaway', v: 13200, colour: css('--s1') },
+      { label: 'Fuel & transport', v: 11322, colour: css('--s1') },
+      { label: 'E-transfers out', v: 10138, colour: grey, tip: 'Recipients unknown — possibly business inventory' },
+      { label: 'PayPal — entertainment', v: 9951, colour: css('--s2'), tip: 'TD-side total over 18 months. PayPal’s own records show ~$463/month settled · 83% gaming, Apple, streaming, food delivery' },
+      { label: 'Household', v: 7015, colour: css('--s1') },
+      { label: 'Utilities', v: 6290, colour: css('--s1') },
+      { label: 'Entertainment', v: 4055, colour: css('--s1') },
+      { label: 'Property tax', v: 3568, colour: css('--s1') },
+    ], { rowH: 34, padL: 176 });
+
+    hbar(document.getElementById('c-unex'), [
+      { label: '"Credit card" transfers', v: 46657, colour: css('--critical'),
+        tip: 'Not arriving at the TD Visa — destination unknown' },
+      { label: 'Unidentified accounts', v: 59027, colour: css('--serious'),
+        tip: 'Two accounts: $33,598 in across 142 transfers; $16,945 out across five' },
+      { label: 'Uncategorised spending', v: 25630, colour: css('--muted'),
+        tip: '19% of all spending — TD truncates merchant names' },
+      { label: 'E-transfers out', v: 23200, colour: css('--serious'),
+        tip: '$13,062 from the HELOC, $10,138 from chequing' },
+      { label: 'Large HELOC advances', v: 18301, colour: css('--serious'),
+        tip: 'Only five transactions, all large' },
+    ], { rowH: 40, padL: 190 });
+  };
+
+  draw();
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', draw);
+  addEventListener('scroll', hideTip, { passive: true });
+})();
+</script>
+</body>
+</html>

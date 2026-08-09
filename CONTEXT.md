@@ -1,23 +1,42 @@
 # Context for a new session
 
-Read this first. The work spans **two folders**, and this repo is only one of them.
+Read this first. Everything lives in **one folder**:
 
-## Where things are
+```
+C:\Users\dnaud\Documents\atlas-financial
+```
 
-| | Path | In git? |
+Open that and you have the whole project — the deployed site, the analysis, the
+source data and the scripts.
+
+## Layout
+
+| Path | What it is | In git? |
 |---|---|---|
-| **This repo — the deployed site** | `C:\Users\dnaud\Documents\finance-site` | Yes → `Atlas-Financial` (private) |
-| **The analysis and source data** | `C:\Users\dnaud\Documents\finance-review-2026-08-09` | **No — deliberately** |
+| `server.js`, `data.json`, `public/` | The deployed site | **Yes** |
+| `docs/` | The analysis and written reports | **Yes** |
+| `scripts/` | Re-runnable analysis scripts | **Yes** |
+| `raw/` | Bank exports and statement PDFs | **NO — never** |
+| `derived/` | Intermediate analysis output | **NO** |
+| `scripts/local-config.json` | Account fragments the scripts need | **NO** |
 
-The split is deliberate. The analysis folder holds `raw/` — bank CSV exports and
-statement PDFs containing full name, home address and partial card numbers. Those
-must never be committed. Keeping them in a separate, non-git folder means they
-cannot be added by accident.
+`raw/` contains full name, home address and partial card numbers. It must never
+be committed, published, or pasted into a conversation.
 
-**If the task involves analysis, open the review folder too.** This repo alone
-has the published figures but none of the working data or reasoning.
+## The pre-commit hook is the safety net
 
-## What is in the review folder
+`.githooks/pre-commit` **refuses any commit** that stages a file under `raw/` or
+`derived/`, a `.pdf`, or — importantly — any file whose *content* contains a
+personal identifier, account number or secret. It catches content-level mistakes
+a `.gitignore` never could.
+
+It is installed via `git config core.hooksPath .githooks`. If a fresh clone ever
+loses that setting, **run that command before committing anything.** Verify it
+works by staging a `raw/` file and confirming the commit is refused.
+
+Never bypass it with `--no-verify`.
+
+## Key documents in `docs/`
 
 | File | What it is |
 |---|---|
@@ -26,9 +45,7 @@ has the published figures but none of the working data or reasoning.
 | `positions.csv` | Data spine — one row per account, fixed schema |
 | `MORTGAGE_HELOC_DEEP_DIVE.md` | Terms, payment splits, the May 2027 renewal |
 | `CREDIT_CARD_DEEP_DIVE.md` | The TD card penalty rate and its 12-month clock |
-| `dashboard.html` | The original local dashboard, superseded by this site |
-| `raw/` | Source exports and statements. **Never commit. Never publish** |
-| `analyze/` | Re-runnable scripts, including two PDF decryptors |
+| `dashboard.html` | The original local dashboard, superseded by the deployed site |
 
 ## State as at 2026-08-09
 

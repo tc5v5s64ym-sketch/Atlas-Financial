@@ -1,0 +1,59 @@
+#!/bin/sh
+# Refuse any commit that would put personal or raw financial data into git.
+#
+# This replaces the protection the old two-folder split provided, and goes
+# further: it inspects staged CONTENT, not just paths, so an identifier pasted
+# into a document is caught too.
+#
+# Install:  git config core.hooksPath .githooks
+# Bypassing this hook (--no-verify) defeats the only thing standing between
+# raw statements and a permanent git history. Don't.
+
+fail=0
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+[ -z "$staged" ] && exit 0
+
+say() { printf '  %s\n' "$1"; }
+
+# ---------------------------------------------------------------- paths
+# PDFs are always suspect here (every one is a statement). CSVs are not blocked
+# by extension — docs/ holds sanitised ones — so the content scan below is what
+# catches a CSV carrying identifiers.
+blocked_paths=$(printf '%s\n' "$staged" | grep -Ei '^(raw|derived)/|\.pdf$|^statements' || true)
+if [ -n "$blocked_paths" ]; then
+  echo ""
+  echo "BLOCKED: raw financial data must never be committed."
+  printf '%s\n' "$blocked_paths" | while read -r f; do say "$f"; done
+  fail=1
+fi
+
+# ---------------------------------------------------------------- content
+# Identifiers and secrets that must never appear in a tracked file.
+#
+# The bare city name is deliberately NOT listed: it appears legitimately in
+# merchant names in the categorisation scripts ("MAPLE RIDGE MOT"), and a city
+# alone identifies nobody. The strong identifiers — surname, street, postal
+# code, email, account and card numbers — are what matter, and they are here.
+patterns='NAUDI|CUTLER PL|V2X8R1|dnaudi@|privaterelay\.appleid|6355425|6012135|6353074|1650429|3225135|9107573|9107595|452005|5446 ?12|14J2W4V|214JL|SITE_PASSWORD *= *["'"'"']|SESSION_SECRET *= *["'"'"']'
+
+for f in $staged; do
+  [ -f "$f" ] || continue
+  case "$f" in .githooks/*) continue ;; esac          # this file lists the patterns
+  hits=$(git show ":$f" 2>/dev/null | grep -Eni "$patterns" | head -5 || true)
+  if [ -n "$hits" ]; then
+    echo ""
+    echo "BLOCKED: $f contains a personal identifier or secret."
+    printf '%s\n' "$hits" | cut -c1-110 | while read -r l; do say "$l"; done
+    fail=1
+  fi
+done
+
+if [ "$fail" -ne 0 ]; then
+  echo ""
+  echo "Nothing was committed. Remove the offending content, or move the file"
+  echo "into raw/ or derived/ where it stays local."
+  echo ""
+  exit 1
+fi
+
+exit 0

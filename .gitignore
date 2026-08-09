@@ -1,20 +1,32 @@
 # ---------------------------------------------------------------------------
-# NEVER COMMIT SECRETS OR RAW FINANCIAL DATA
-# The password and session secret live in Render environment variables only.
+# RAW FINANCIAL DATA — NEVER COMMIT
+#
+# These hold bank exports and statement PDFs containing full name, home
+# address and partial card numbers. They stay on this machine only.
+#
+# The .githooks/pre-commit hook enforces this independently of this file, and
+# also scans staged content for identifiers. Install it with:
+#     git config core.hooksPath .githooks
 # ---------------------------------------------------------------------------
+# Every raw export and statement lives under these two directories, so the
+# directory rules are what does the work. A blanket *.csv rule is deliberately
+# NOT used — it would also exclude the sanitised outputs in docs/ that belong
+# in the repo. The pre-commit hook scans content, which catches a CSV carrying
+# identifiers far more reliably than an extension ever could.
+raw/
+derived/
+*.pdf
+statements/
+statements-*/
+
+# Local machine-specific config (account numbers used by the scripts)
+scripts/local-config.json
+
+# Secrets — these live in Render environment variables and nowhere else
 .env
 .env.*
 *.local
 secrets.json
-
-# Raw financial source data — statements, exports, anything with names,
-# addresses or card numbers. These belong on the home machine only.
-raw/
-derived/
-*.pdf
-*.CSV
-statements/
-statements-*/
 
 # Node
 node_modules/
