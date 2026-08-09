@@ -114,7 +114,7 @@
     { "label": "Entertainment", "total": 4054.58, "confidence": "low" },
     { "label": "Property tax", "total": 3567.91, "confidence": "high" }
   ],
-  "spendingNote": "Household spending averages about $7,551/month over 18 months. Roughly 19% could not be reliably categorised — TD truncates merchant names. This total is still incomplete: $9,930 of Amazon Mastercard purchases and $6,760 on the two TD Visas are captured but not yet folded into any category.",
+  "spendingNote": "These categories are materially incomplete and are being rebuilt. They cover about $7,551/month from the chequing accounts over 18 months, with roughly 19% uncategorised because TD truncates merchant names. Card transactions have now been parsed and reconciled — $54,344.58 of purchases over the twelve months to August 2026, across 635 transactions — and almost none of it appears above, because the chequing exports only ever showed the payments to those cards, never what was bought. About $3,371 of it is PayPal-rail and may already be counted. Adding the rest would raise spending by roughly $4,250/month.",
 
   "paypal": {
     "perMonth": 463,
