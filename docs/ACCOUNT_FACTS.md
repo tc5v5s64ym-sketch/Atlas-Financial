@@ -153,30 +153,51 @@ from the September minimum. **$70.00 was paid on 9 Aug 2026** (owner-confirmed).
 | Next minimum | **$762.36, due 1 Sep 2026** — unaffected by this payment |
 | Interest | **$158.55/month at 26.99%**, unaffected |
 
-### Whether the freeze has lifted is unresolved [CONFIRM]
+### The freeze question — **resolved from the account, 9 Aug 2026**
 
-The August statement conditions further use on one thing:
+**The $69.93 was the minimum payment for the 9 Jun – 7 Jul statement, due
+4 August 2026.** It was missed. That is exactly the "MINIMUM PAYMENT REQUIRED
+FOR LAST MONTH HAS NOT YET BEEN RECEIVED" the August statement referred to.
 
-> "YOUR ACCOUNT IS OVER THE CREDIT LIMIT. NO FURTHER USE IS PERMITTED UNTIL THE
-> 'MINIMUM PAYMENT' IS RECEIVED. YOUR 'MINIMUM PAYMENT' REQUIRED FOR LAST MONTH
-> HAS NOT YET BEEN RECEIVED."
+**The $70.00 paid on 9 August clears it**, and the account now shows
+**Available Credit $70.00** where it previously showed $0.00 — consistent with
+the freeze having lifted.
 
-Everything turns on whether the $69.93 **was** that overdue minimum:
+Verified on the account: balance **$5,612.43**, last payment **$70.00 on
+9 Aug 2026**, minimum **$762.36 due 1 Sep 2026**, credit limit **$5,000.00**,
+Cash Back Dollars **$47.21**, pending **$0.00**.
 
-- **If it was** — and an "amount due immediately", shown separately from the
-  next minimum, is exactly how a past-due minimum presents — then the condition
-  is met and **the freeze should lift**.
-- **If it was not**, and the overdue minimum is a larger separate figure, the
-  card stays frozen and the penalty-rate clock has not restarted.
+**An anomaly worth knowing.** Available credit reads $70.00 while the balance is
+$612.43 *over* a $5,000 limit — the two cannot both be ordinary. It appears TD
+credits the payment as usable headroom without regard to the over-limit
+position. Do not read $70.00 as real room: the account is over its limit, and
+the **$29.00 over-limit fee keeps accruing** until the balance is under $5,000.
 
-The first reading is the more likely one, but neither has been seen on the
-account. **Check the card's status directly before relying on either.** Note
-that lifting the freeze would not make the card usable in any practical sense:
-it is still ~$612 over its limit, so available credit remains $0.00.
+**The `Needs your attention — Due today $69.93` banner was still showing** after
+the payment posted. Treat that banner as lagging, not as a second amount owed.
 
-Two earlier records of this were reconciled on 9 Aug 2026 — one asserting the
-freeze persisted, one asserting it lifted. Neither was established, and the
-amount differed ($69.93 flagged versus $70.00 paid). This entry replaces both.
+*Superseded: an earlier note here said the payment did not clear the overdue
+minimum and the card stayed frozen. That was wrong — the statement-period
+history on the account shows the $69.93 was the July statement's minimum.*
+
+### Statement-period history *(from the account, 9 Aug 2026)*
+
+| Statement period | Statement balance | Minimum | Due |
+|---|---|---|---|
+| 8 Jul – 7 Aug 2026 | $5,682.43 | $762.36 | 1 Sep 2026 |
+| 9 Jun – 7 Jul 2026 | $4,706.31 | **$69.93** | 4 Aug 2026 — **missed** |
+| 8 May – 8 Jun 2026 | $2,685.32 | $100.27 | 3 Jul 2026 |
+| 9 Apr – 7 May 2026 | $5,080.75 | $113.98 | 1 Jun 2026 |
+| 10 Mar – 8 Apr 2026 | $4,890.67 | $118.91 | 4 May 2026 |
+| 10 Feb – 9 Mar 2026 | $4,920.88 | $107.89 | 6 Apr 2026 |
+
+The balance swings hard — $5,080 down to $2,685 and back to $5,682 in three
+months. This is an actively used card, not a static balance.
+
+**The minimum leapt from $69.93 to $762.36** — roughly eleven-fold — because
+going over the limit makes the whole excess immediately due on top of the
+ordinary minimum. That is the mechanism that turned a manageable payment into
+the largest card obligation in the household.
 
 **One figure does not reconcile and is worth asking TD about.** At 26.99% on an
 average balance of roughly $5,200 over a 30-day cycle, interest should be about
@@ -436,11 +457,70 @@ Useful operational knowledge — it saves rediscovering this every time.
 | Source | Method |
 |---|---|
 | **TD EasyWeb** | Custom date filter caps at **18 months**. CSV export per account works. The account switcher is unreliable; navigating from the accounts overview is more dependable |
-| **TD statements** | Encrypted PDFs — standard handler, **RC4-128, revision 3**, empty user password. `scripts/pdfdecrypt.js` reads them |
+| **TD statements** | Encrypted PDFs — standard handler, **RC4-128, revision 3**, empty user password. `scripts/pdfdecrypt.js` reads them. **Retention is ~7 years, not 12 months** — see below |
 | **Canadian Tire / Triangle** | Encrypted PDFs — **AES-128 (AESV2), revision 4**, hex `/O` string. `scripts/pdfdecrypt_aes.js` reads them |
 | **MBNA** | **7 years of PDFs, 13 months of CSV/QFX** — the best retention of any source here. PDFs use the **same RC4-128 R3** scheme as TD, so `scripts/pdfdecrypt.js` reads them unchanged. **The visible Download button fires no network request**; use the endpoints below. `scripts/mbna.js` parses the decrypted text |
 | **PayPal** | Reports page generates activity CSVs, 12 months maximum per report. `Bank Deposit to PP Account` rows are funding pulls, **not income** |
 | **WebBroker** | **Blocked.** Requires accepting OTC Markets and CME/S&P exchange agreements — an owner decision, never an agent's |
+
+### TD statement retention is ~7 years, not 12 months *(corrected 2026-08-09)*
+
+**This project has been working from a wrong assumption.** TD's Statements &
+Documents page offers a year filter reading **2020, 2021, 2022, 2023, 2024,
+2025, 2026** plus "Last 12 Months". Confirmed for the Cash Back Visa: **12
+statements in 2024, 12 in 2025, 8 in 2026** — 32 in total, where the project
+believed 12 was the maximum.
+
+Consequences:
+
+- **Nothing is aging out.** The urgency recorded around card statements was
+  misplaced. The 18-month *transaction* window is real; the statement window is
+  not the constraint.
+- **B26 is probably not lost.** The Personal Visa's August 2025 statement was
+  written off as possibly aged out. It should still be there.
+- Far more history is available than any analysis so far has used.
+
+### How TD's statement download actually works
+
+Statements & Documents → pick account, period and type → the list renders →
+**click a statement row** → a modal opens with the PDF in an
+`embed[src^="blob:"]` → **Download**.
+
+Two traps:
+
+- **The saved file is named with a GUID and a `.tmp` extension**, carrying no
+  date. Rename from the statement date *inside* the file —
+  `scripts/rename-statements.js` does this.
+- **Download issues no network request.** It re-uses the blob already fetched
+  when the modal opened, so there is nothing to replay. Read the blob URL off
+  the `embed` instead.
+
+The underlying JSON API, useful for enumerating what exists:
+
+```
+/waw/api/edelivery/estmt/documentfilter?accountKey=<key>
+/waw/api/edelivery/estmt/documentlist?accountKey=<key>&period=<Last_12_Months|YYYY>&documentType=ESTMT
+/waw/api/edelivery/estmt/documentdetail?documentKey=<documentId>
+```
+
+`documentlist` returns `documentId` (already the full document key) and
+`documentName`, which carries the statement date — e.g.
+`TD_CASH_BACK_VISA*_CARD_0726_Aug_07-2026`. Cash Back Visa `accountKey` is
+`-1425413902`.
+
+> **`documentdetail` returned 400 on every direct call**, including with a key
+> byte-identical to one the page itself had just used successfully. It is
+> evidently bound to something the app supplies that a bare `fetch` does not.
+> **Do not keep retrying it.** Repeated attempts put the whole EasyWeb session
+> into "We're sorry, due to technical issues…" and cost the session. Use the
+> row-click-and-read-the-blob route instead, and pace it.
+
+### Card transactions do not require statements
+
+The **Activity** tab on a credit card lists posted transactions **grouped by
+statement period**, with each period's statement balance, minimum payment and
+due date. This is a direct route to card transaction history and contradicts the
+premise of B3 and B16, which assumed statements were the only way in.
 
 MBNA download endpoints, relative to `https://service.mbna.ca/waw/mbna/`:
 

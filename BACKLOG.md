@@ -94,9 +94,16 @@ accounts. Work it in this order, because the analytical value is very uneven.
 
 ### Tier 1 — the actual blind spot: credit cards
 
-Statements are the **only** route to credit-card transactions. TD's card
-download button produces no file; it was tested and returns nothing. Without
-these, the spending on these cards is invisible in every category total.
+> **Two corrections, 2026-08-09.** Statements are **not** the only route to
+> credit-card transactions — the card's **Activity** tab lists posted
+> transactions grouped by statement period, with each period's balance, minimum
+> and due date. And TD's download does work; the file simply saves with a GUID
+> `.tmp` name carrying no date, which is what `rename-statements.js` is for.
+>
+> **Attempted 9 Aug, not completed.** The statement list for the Cash Back Visa
+> was enumerated — all 12 present, plus 12 more in 2025 and 12 in 2024 — and one
+> statement downloaded, but it proved to be the August one already held. Probing
+> the document API then broke the EasyWeb session. Nothing new was captured.
 
 | Card | Have | Need | Spending currently unseen |
 |---|---|---|---|
@@ -150,9 +157,17 @@ files, which was only caught by decrypting each and checking.
 
 ## Still needed from TD EasyWeb — the complete list
 
-**None of it is time-sensitive.** TD retains statements for 12 months and
-transaction history for 18, so a new session loses nothing beyond a fresh
-sign-in.
+**None of it is time-sensitive, and less so than previously thought.**
+**TD retains statements for about seven years, not twelve months** — the year
+filter offers 2020 through 2026, and the Cash Back Visa alone has 12 statements
+in 2024, 12 in 2025 and 8 in 2026. Only the **18-month transaction window** is a
+real constraint. Corrected 2026-08-09; see `docs/ACCOUNT_FACTS.md`.
+
+> **Pace the statement work.** Calling `documentdetail` directly returns 400
+> even with a valid key, and repeated attempts put the whole EasyWeb session
+> into "We're sorry, due to technical issues…", ending it. Use the UI route —
+> click the statement row, read the `blob:` URL off the `embed`, save it — and
+> do not hammer the API.
 
 ### Coverage as at 2026-08-09
 
@@ -200,9 +215,10 @@ The annual prepayment privilege ($97,200) is known, but not the penalty for
 breaking or moving the mortgage before 1 May 2027. Needed before any renewal or
 refinancing conversation, and a mortgage advisor will ask for it first.
 
-**B26 · Personal Visa — the August 2025 statement** · *small*
+**B26 · Personal Visa — the August 2025 statement** · READY · *small*
 One of twelve downloads returned a duplicate of June 2026, so August 2025 was
-never retrieved. It is the oldest in the window and may now have aged out.
+never retrieved. **It has not aged out** — TD holds roughly seven years, so it
+is still there. Select period 2025 rather than "Last 12 Months".
 
 **B27 · RESP holdings** · BLOCKED · *small*
 Balance $31,555.85 is known; holdings, book value and contribution room are not.

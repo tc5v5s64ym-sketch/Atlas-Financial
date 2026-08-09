@@ -47,17 +47,19 @@ due date, so a late fee may appear on the next statement — worth checking — 
 the account is out of default territory. Payments under 30 days late are not
 normally reported to credit bureaus.
 
-**TD Cash Back Visa — partly addressed.** $69.93 was flagged as due immediately
-on 9 August and **$70.00 was paid** [owner-confirmed; not yet seen on the
-account]. That leaves the balance at about **$5,612.43, still ~$612 over its
-$5,000 limit**, with the **$29.00 over-limit fee still accruing** and the
-**$762.36 minimum due 1 September** unaffected.
+**TD Cash Back Visa — resolved 9 August 2026** [TD, read from the account].
+The **$69.93 was the 9 June – 7 July statement's minimum, due 4 August**, and it
+was missed. **$70.00 was paid on 9 August**, five days late, which clears it —
+available credit moved from $0.00 to $70.00, so the freeze has lifted.
 
-**Whether the card's freeze has lifted is unresolved** [ASK]. The statement
-barred further use until the overdue minimum was received; if the $69.93 *was*
-that minimum — which is how an "amount due immediately" usually presents — the
-freeze should lift. Nobody has checked. Either way available credit stays at
-$0.00 while the account is over its limit, so nothing practical changes.
+Balance is now **$5,612.43, still $612.43 over the $5,000 limit**, with the
+**$29.00 over-limit fee accruing** until it is back under.
+
+**The next minimum is $762.36 on 1 September — eleven times last month's
+$69.93.** That is not a rate change; going over the limit makes the whole excess
+immediately due on top of the ordinary minimum. Bringing the balance under
+$5,000 before the 7 September statement date both stops the fee and returns the
+minimum to roughly $110–120, judging by the months before the breach.
 
 ### What is due between now and 1 September
 
@@ -71,7 +73,7 @@ $0.00 while the account is over its limit, so nothing practical changes.
 | 1 Sep | $762.36 | **TD Cash Back Visa** minimum — the big one |
 | | **$3,445.84** | **Total** |
 
-Against **$2,915.89 of cash across five accounts** [CALC] — a materially better
+Against **$2,845.89 of cash across five accounts** [TD] — a materially better
 position than the $577 figure this section previously showed, because her
 DEBT&PAYMENTS account holds $2,691.85 of it. Chequing B remains overdrawn with
 $82.28 of headroom left.
