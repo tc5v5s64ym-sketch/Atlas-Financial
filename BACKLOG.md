@@ -251,11 +251,40 @@ there. Method and endpoints are in `docs/ACCOUNT_FACTS.md`.
 **B2 · Cash Back Visa — 11 remaining statements** · **DONE 2026-08-09** — 12 of 12
 **B4 · Travel Visa — 11 remaining statements** · **DONE 2026-08-09** — 12 of 12
 
-**B3 · Cash Back Visa transaction history** · READY · *medium*
-**B4b · Travel Visa transaction history** · READY · *medium*
-24 statements are now held and decrypted to `derived/wife-td/`. The transactions
-inside them have not been parsed or categorised yet — that is the remaining work,
-and it is where the $6,760 of unseen card spending lives.
+**B3 · Cash Back Visa transaction history** · **DONE 2026-08-09**
+**B4b · Travel Visa transaction history** · **DONE 2026-08-09**
+**B47 · Fold MBNA transactions in** · **PARSED 2026-08-09**
+
+`scripts/card-transactions.js` parses all 24 TD statements and 8 MBNA CSVs into
+`derived/card-transactions.csv` — **635 transactions**, reconciled by eight
+independent checks that all pass to the cent.
+
+**$54,344.58 of card purchases over twelve months, essentially none of it in any
+category total.** The estimate of "$6,760 of unseen card spending" was low by
+roughly eight times; it was based on card *balances*, and balances say nothing
+about throughput on a card that is paid off and reused.
+
+Two traps found and guarded in the script:
+
+- **MBNA's sign convention is the mirror of TD's** — payments positive, purchases
+  negative. Unnoticed it inverts the card entirely.
+- **`INTEREST REFUND` is an interest adjustment, not a merchant refund.** Netting
+  it in the wrong bucket threw two totals out by exactly $0.18 — small, but it is
+  what stopped the reconciliation passing, and a reconciliation that is "nearly
+  right" is worth nothing.
+
+**B52 · The $10,000 Ivoclar Vivadent charge** · BLOCKED — needs the household · *small*
+5 Dec 2025, `IVOCLAR/VIVADENT, INC-C` Mississauga, a dental-materials
+manufacturer. **The single largest card purchase in the dataset**, verified
+against the statement text. It fits no household pattern, and it cannot have
+cleared the card's present $1,100 limit — so **the limit has since been cut
+hard**, which is usually an issuer risk decision. Both the purchase and the
+reduction need explaining.
+
+**B53 · `Head Canada Inc.` $1,043.37** · BLOCKED — needs the household · *small*
+Racquet-sports equipment, Guelph. Sits alongside RacquetGuys on PayPal and
+Amanda's Tennis BC employment. Possible inventory purchase, which would make it
+the first concrete evidence for the business question.
 
 **B6 · Travel Visa — credit limit** · **DONE 2026-08-09 — $1,100.00**
 Confirmed absent from all 12 statements: the Travel Visa template carries no

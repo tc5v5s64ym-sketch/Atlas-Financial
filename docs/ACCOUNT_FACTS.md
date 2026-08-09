@@ -514,6 +514,68 @@ Travel Visa charges on its US$1,744.
 **Both Wise exports are activity CSVs, not statements.** Wise issues statements
 separately; they have not been captured [BACKLOG].
 
+## Card transactions — parsed and reconciled *(2026-08-09)*
+
+**635 transactions across three cards**, from the 24 TD statements and 8 MBNA
+CSVs. `scripts/card-transactions.js` builds the ledger; output is
+`derived/card-transactions.csv`.
+
+**The parse is verified, not assumed.** Eight independent checks pass to the
+cent: five TD statement periods reconciled against closing balances read
+separately from TD's Activity page, and MBNA's purchases, payments and interest
+against its own statement summary.
+
+| Card | Txns | Purchases | Payments | Interest & fees |
+|---|---|---|---|---|
+| **Travel Visa** | 293 | **$33,643.75** | −$33,696.18 | $373.07 |
+| TD Cash Back Visa | 205 | $10,385.77 | −$11,879.50 | $1,535.34 |
+| Amazon / MBNA | 137 | $9,930.23 net | −$2,970.00 | $894.89 |
+| **Total** | **635** | **$53,959.75** | | **$2,803.30** |
+
+Coverage runs **24 Aug 2025 to 7 Aug 2026** — about twelve months.
+
+### This roughly doubles visible household spending
+
+Card purchases total **$54,344.58 gross** over the year. **Almost none of it was
+in any category total**, because the chequing exports only ever showed the
+*payments* to these cards, never what was bought.
+
+**$3,371.12 of it is PayPal-rail** (`PAYPAL*` merchants) and may already be
+counted in the PayPal figures, so the genuinely new spending is about
+**$50,973.46**. Recorded spending was $135,921.28 over 18 months, roughly
+$7,551/month; this adds on the order of **$4,250/month**. **Do not simply add
+the two** — the windows differ (12 months against 18) and the PayPal overlap has
+to come out first. That is B16.
+
+### The Travel Visa is not a small card
+
+Its balance never exceeds about $1,100, so it read as minor. **It moved
+$33,643.75 of purchases in twelve months** — the largest card spend in the
+household — by being paid off and reused, 293 times.
+
+**Two purchases stand out:**
+
+- **$10,000.00 to `IVOCLAR/VIVADENT, INC-C` Mississauga on 5 Dec 2025** —
+  a dental-materials manufacturer, and the single largest card purchase in the
+  entire dataset. Verified against the statement text directly, because a
+  five-figure charge on a card now limited to $1,100 was implausible enough to
+  need checking.
+- **$1,043.37 to `Head Canada Inc.` Guelph** — racquet-sports equipment.
+
+**The limit must have been far higher then.** A $10,000 purchase cannot clear a
+$1,100 limit, so the limit has since been cut hard. A reduction of that size is
+usually an issuer risk decision rather than a customer request [ASK].
+
+**Both purchases bear on the business question.** Head Canada sits alongside
+RacquetGuys on PayPal and Amanda's Tennis BC employment; Ivoclar Vivadent fits
+none of the household patterns at all. Neither is explained by the current
+picture [ASK].
+
+**In everyday use the card is not a business card.** Its regular merchants are
+Instacart, Costco, Superstore, Save-On-Foods, Walmart, Bell Mobility, hotels and
+a lacrosse club — ordinary household spending on a TD-designated *business*
+card, which compounds the holiday-hotels finding above.
+
 ## The home *(owner estimate, 2026-08-09)*
 
 **Worth $1.1m – $1.4m** [ESTIMATE — the owner's figure, not an appraisal].
