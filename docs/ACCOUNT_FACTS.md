@@ -209,11 +209,19 @@ Descriptors: `TENNIS - BRITIS PAY`, `TENNIS BRITISH AP`, `TENNIS BC EXP`,
 This income was **entirely absent** from the earlier picture, which only saw the
 portion she transferred across to the shared accounts.
 
-## Known non-TD debts, terms not yet obtained
+## Known non-TD debts
 
-- **MBNA Mastercard** — paid $300 at a time from DEBT&PAYMENTS, five times
-- **Flexiti** — $1,354.28 and $1,000.00 single payments, plus $300 instalments
-- **Canadian Tire Mastercard** — also paid from DEBT&PAYMENTS ($300 × 2)
+**Canadian Tire Bank — Triangle Mastercard.** Fully captured; see above.
+
+**MBNA Mastercard.** Terms not yet obtained. Paid $300 at a time from
+DEBT&PAYMENTS, five times across the window. **The last consumer debt with an
+unknown rate** — it could outrank the 26.99% Cash Back Visa and reorder the
+payoff plan.
+
+**Flexiti — PAID OFF AND CLOSED** *(owner-confirmed 2026-08-09)*.
+$2,654.28 was paid across the window: single payments of $1,354.28 and
+$1,000.00, plus $300.00 instalments, all from DEBT&PAYMENTS. No balance, no
+rate, no due date. **Excluded from the debt list and from net worth.**
 
 ---
 

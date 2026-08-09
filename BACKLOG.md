@@ -169,8 +169,19 @@ are in `docs/01_OPEN_QUESTIONS.md`.
 Paid from DEBT&PAYMENTS at $300 a time. No balance, no rate. It is the last
 unknown consumer debt.
 
-**B11 · Flexiti — statements or a summary** · BLOCKED · *small*
-$1,354.28 and $1,000 single payments plus $300 instalments. No balance, no rate.
+**B11 · Flexiti** · **CLOSED 2026-08-09 — paid off and account closed**
+Owner-confirmed. **$2,654.28 was paid across the window** ($1,354.28 and
+$1,000.00 single payments plus $300.00 instalments, all from DEBT&PAYMENTS).
+Remove from the debt list; no balance, no rate and no due date to obtain.
+
+**B35 · Second PayPal account** · BLOCKED · *medium*
+Owner has a second PayPal account, not yet captured. The first held $0.00 with
+all Pay-in-4 plans complete and ~$463/month of settled spending. The second is
+entirely unknown — treat as a new source: balance, any Pay-in-4 balance, linked
+funding accounts, automatic payments, and 12 months of activity.
+
+Worth checking specifically whether it is a **business** account, since that
+would bear directly on the business question.
 
 **B12 · Home valuation** · BLOCKED · *small*
 Blocks household net worth entirely, and blocks any loan-to-value work for the
