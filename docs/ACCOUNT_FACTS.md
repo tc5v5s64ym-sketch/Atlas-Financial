@@ -647,6 +647,76 @@ Two caveats on the categories:
 across 13 categories, which is the B34 library seeded from real data rather than
 guessed at.
 
+### Chequing spending rebuilt — and $25,490 of it was never spending
+
+`scripts/categorise-chequing.js` applies the same library to the five chequing
+and savings accounts. **The first finding is that a quarter of what was counted
+as spending was not spending at all.**
+
+| Bucket | Out, 18 months |
+|---|---|
+| Internal transfers | $259,169.52 |
+| **Spending** | **$116,219.92** |
+| Debt payments | $82,425.36 |
+| **PayPal funding** | **$10,437.78** |
+| **Cheques — payee unknown** | **$8,150.00** |
+| Bank fees & interest | $1,225.21 |
+
+Previously $141,709.80 was treated as spending. Removed from it:
+
+- **PayPal funding pulls** — PayPal drawing from the bank is *funding*. What was
+  bought sits in the PayPal exports, so counting both double-counts every
+  purchase.
+- **Flexiti and credit-card payments** — debt service, not spending.
+- **`TD WATERHOUSE` transfers** — money moving into investments.
+
+**Uncategorised falls to 12.0%, from the 19% the project has carried
+throughout.** Real spending is **$116,219.92 over 18 months, about
+$6,457/month**.
+
+| Category | 18 months | /month |
+|---|---|---|
+| Groceries | $23,919.65 | $1,328.87 |
+| Shopping | $17,670.07 | $981.67 |
+| Restaurants | $14,570.56 | $809.48 |
+| Fuel & transport | $14,080.65 | $782.26 |
+| Uncategorised | $13,903.75 | $772.43 |
+| Household | $8,441.74 | $468.99 |
+| Sport & fitness | $5,345.21 | $296.96 |
+| Entertainment | $4,732.58 | $262.92 |
+| Property tax | $4,300.00 | $238.89 |
+| Travel | $2,614.73 | $145.26 |
+| Health | $2,235.80 | $124.21 |
+| Telecom | $1,641.07 | $91.17 |
+| Subscriptions | $1,112.45 | $61.80 |
+| Tax | $800.00 | $44.44 |
+| Insurance | $474.68 | $26.37 |
+| Pets | $236.57 | $13.14 |
+| School & clubs | $140.41 | $7.80 |
+
+**Patterns must match TD's truncation.** A library written from full card
+merchant names fails silently against chequing: `REAL CDN SUPERS` never contains
+`REALCDNSUPERSTORE`. That single mismatch was hiding $4,946 of groceries. The
+library now carries short prefixes for the chequing side and stands at **273
+patterns**.
+
+### Total household spending is about $10,700/month, not $7,551
+
+| Source | Per month |
+|---|---|
+| Chequing and savings | $6,457 |
+| Cards | $3,695 |
+| PayPal, funded from the bank | $580 |
+| **Total** | **≈ $10,732** |
+
+**That is 42% higher than the published figure**, and it is the number that makes
+the rest of the picture cohere: against $17,042/month of income and $9,075/month
+of debt payments, spending at $7,551 left a surplus that the accounts plainly did
+not have. At $10,732 the HELOC's growth stops being a mystery.
+
+Treat it as a floor. The windows differ — 18 months of chequing against 12 of
+cards — and 12% of chequing plus 4.5% of card spending is still unidentified.
+
 ### It is a personal card with a business label
 
 **Owner-confirmed: "mostly a personal card", a mixed bag.** The transaction
