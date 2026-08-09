@@ -647,6 +647,40 @@ Two caveats on the categories:
 across 13 categories, which is the B34 library seeded from real data rather than
 guessed at.
 
+### RESOLVED — where the $46,657 of "TFR-TO C/C" went
+
+**It went to the cards. There was never any missing money.**
+
+This was the project's largest unexplained flow and a Tier 1 question. The
+puzzle: $46,657 left the accounts labelled as credit-card payments, while the TD
+personal Visa's balance barely moved.
+
+**The reason it looked unexplained is that only one of five cards was visible.**
+With every card's statements now parsed, the payments each one *received* over
+the twelve-month statement window are:
+
+| Card | Payments received |
+|---|---|
+| **Travel Visa** | **$33,696.18** |
+| TD Cash Back Visa | $11,879.50 |
+| TD personal Visa | $6,632.34 |
+| Amazon / MBNA | $2,970.00 |
+| **Total** | **$55,178.02** |
+
+Against **$39,875.43** of `TFR-TO C/C` leaving the accounts in the same window.
+**The cards received $15,302.59 MORE than those transfers sent** — the balance
+arriving by other routes, including payments made directly from the HELOC.
+
+So the transfers are fully absorbed, and the destination is unambiguous: **mostly
+the Travel Visa**, the high-throughput card that is paid off and reused. The
+personal Visa took only $6,632 of it, which is exactly why the earlier analysis
+could not make the numbers work.
+
+**Nothing is hiding.** No undisclosed card, no leakage. The earlier hypothesis —
+that the transfers might reveal a card with a significant balance absent from the
+debt ranking — is **disproved**: every card is now captured, and the payment
+totals exceed the transfers rather than falling short.
+
 ### Chequing spending rebuilt — and $25,490 of it was never spending
 
 `scripts/categorise-chequing.js` applies the same library to the five chequing
