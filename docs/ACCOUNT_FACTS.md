@@ -895,6 +895,52 @@ named individuals.
 either Amanda's inbox or her bookkeeping [B55]. But it does narrow the bound:
 some of the $29,762 of outgoing e-transfers is kids' sport, not coach wages.
 
+### Amanda's mailbox — 37 notifications, only 12 in the window
+
+Captured to `raw/interac/` *(gitignored — it holds third-party names)*. Her
+mailbox only carries Interac notifications from **April 2026 onward**; nothing
+between Feb 2025 and Apr 2026. Combined with Dale's, **23 of ~207 transfers now
+have a counterparty**.
+
+**What it shows about the coaching business.** Client payments are visible and
+they are **small**: Jenny Fei $60, DILPREET KANG $60 ×2, Darian $80, BINDU MOHAN
+$70 — **$330 across five payments in two months**. That matches the Calendly
+booking flow for "**Maple Ridge Private Lessons**" at roughly $60–80 a lesson.
+
+**No coach payments appear anywhere.** Her outgoing transfers are **Fusion West
+Lacrosse** only — $230.00, $227.50, $527.80 — which is the boys' club, not
+payroll. Neither mailbox contains a single payment to an individual that looks
+like a coach's wages. Either she pays them another way, or those notifications
+are not retained. **The coach-payment split is still unresolved [B55].**
+
+### 🔴 One person sent $9,646.25 in half an hour, and it paid down the HELOC
+
+**Lavinio Cavalcante**, 30 June 2026, two transfers thirty minutes apart:
+**$5,962.50** and **$3,683.75**.
+
+The chain is complete and unambiguous:
+
+| | |
+|---|---|
+| 2 Jul, Chequing A | receives **$3,683.75** and **$5,962.50** |
+| 2 Jul, Chequing A → SAVINGS-DONT TOUCH | **−$9,645.00** |
+| 2 Jul, SAVINGS-DONT TOUCH → HELOC | **−$10,000.00** |
+
+**The largest single receipt in the window went straight onto the HELOC the same
+day**, through the staging account. It is also the definitive example of what
+SAVINGS-DONT TOUCH is for.
+
+**This is now the biggest unexplained item in the picture.** It is not a private
+lesson — the lessons are $60–80. A single individual sending **$9,646.25** in one
+evening is a different kind of transaction: a large coaching or academy contract,
+a private sale, a loan, or a repayment [ASK].
+
+**It also undercuts the coaching-revenue assumption.** The $42,395 of large
+incoming e-transfers was reasoned to be coaching revenue. The only large ones with
+a name attached come from **one person**, and the actual coaching clients pay
+$60–80. **The large e-transfers should not be treated as coaching revenue until
+they are identified.**
+
 ### Lacrosse is a real category, and the bank data cannot see most of it
 
 | Source | Identified |
