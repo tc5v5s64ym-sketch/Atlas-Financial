@@ -165,23 +165,56 @@ That list is what turns "$463/month" into a reviewable set of decisions.
 These need someone to obtain or decide something. The corresponding *questions*
 are in `docs/01_OPEN_QUESTIONS.md`.
 
-**B10 · MBNA Mastercard — statements or a summary screenshot** · BLOCKED · *small*
-Paid from DEBT&PAYMENTS at $300 a time. No balance, no rate. It is the last
-unknown consumer debt.
+**B10 · MBNA Mastercard** · **START HERE** · *small*
+The owner has this ready to hand over. Paid from DEBT&PAYMENTS at $300 a time,
+five times across the window. **No balance, no rate, no limit, no due date.**
+
+Capture: balance · interest rate (purchases and cash) · credit limit · available
+credit · minimum payment · payment due date · statement date · and 12 months of
+statements if available.
+
+**Why it goes first:** it is the only remaining debt likely to be *large enough
+and dear enough* to reorder the payoff plan. The current top target is the TD
+Cash Back Visa at 26.99%. MBNA rates commonly run 19.99–25.99%, but promotional
+and penalty rates reach higher. Until it is known, any payoff advice is
+provisional.
 
 **B11 · Flexiti** · **CLOSED 2026-08-09 — paid off and account closed**
 Owner-confirmed. **$2,654.28 was paid across the window** ($1,354.28 and
 $1,000.00 single payments plus $300.00 instalments, all from DEBT&PAYMENTS).
 Remove from the debt list; no balance, no rate and no due date to obtain.
 
-**B35 · Second PayPal account** · BLOCKED · *medium*
-Owner has a second PayPal account, not yet captured. The first held $0.00 with
-all Pay-in-4 plans complete and ~$463/month of settled spending. The second is
-entirely unknown — treat as a new source: balance, any Pay-in-4 balance, linked
-funding accounts, automatic payments, and 12 months of activity.
+**B35 · Second PayPal account** · **DONE 2026-08-09**
+Captured: balance $0.00, six linked cards, eight automatic payments, and 152
+transactions for Mar–Jul 2026. **Not a business account** — no sales revenue;
+all incoming is card funding. Dominant spend is **Instacart at ~$1,140/month**.
+Raw export in `raw/paypal2/`.
 
-Worth checking specifically whether it is a **business** account, since that
-would bear directly on the business question.
+**B36 · Amazon.ca Rewards Mastercard — entirely unknown** · BLOCKED · *small*
+Surfaced only as a card linked to the second PayPal account (••••54). **No
+balance, no rate, no limit, no statements, no due date.** It receives no payments
+from any chequing account captured, so it is either serviced from an account not
+yet seen or carries a balance nobody has mentioned.
+
+**B37 · American Express — entirely unknown** · BLOCKED · *small*
+Same situation (••••07). Amex rates are typically high, so this could
+meaningfully change the payoff ranking.
+
+**B38 · PayPal #2 — reconcile authorisations against settlements** · READY · *small*
+Outgoing sums to $8,424.17 but `General Authorization` rows ($5,246.53) are
+pre-authorisations that settle separately. Settled spend is nearer $2,717 and
+card funding was $2,864.65. The same correction was applied to the first
+account; apply it here so the spending figure is not overstated by a third.
+
+**B39 · PayPal #2 — history before March 2026** · READY · *small*
+Only five months captured. This account offers a maximum of a six-month preset
+with no custom range, so earlier periods need successive reports.
+
+**B40 · Fold Instacart and delivery spending into the spending picture** · QUEUED *(on B38)* · *medium*
+~$1,400/month across Instacart, Uber and Uber Eats on PayPal #2 alone, none of
+it currently in any category total. Large enough to move the household spending
+figure materially, and it overlaps with the groceries category already counted
+from chequing — **check for double-counting before adding**.
 
 **B12 · Home valuation** · BLOCKED · *small*
 Blocks household net worth entirely, and blocks any loan-to-value work for the
