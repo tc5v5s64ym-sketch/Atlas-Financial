@@ -213,7 +213,7 @@ on unpaid interest under TD's 2 July 2026 change. Not resolved [ASK].
 | **Rate** | **19.99% purchases / 22.99% cash** — the lowest card rate in the household |
 | Balance | $1,078.31 · pending $165.13 |
 | Available credit | **$0.00** |
-| Credit limit | Not stated on the statement template used [ASK] |
+| **Credit limit** | **$1,100.00** *(verified 2026-08-09 from the Manage tab)* |
 | Minimum payment | $17.00, due **26 Aug 2026** |
 | Statement cycle | 6th/7th to 5th/6th |
 | TD Rewards points | 57,968 |
@@ -221,6 +221,21 @@ on unpaid interest under TD's 2 July 2026 change. Not resolved [ASK].
 
 TD's own footnote confirms this is excluded from the consolidated card balance
 because it is a **business** card.
+
+**The limit is $1,100.00 — by far the smallest in the household**, and the card
+is at **98.0%** of it with $0.00 available. **The $165.13 of pending charges will
+take it over.** $1,078.31 + $165.13 = **$1,243.44 against a $1,100 limit**, or
+**$143.44 over** [calculated]. On the evidence of the Cash Back Visa, going over
+triggers an over-limit fee and makes the excess immediately due, turning a $17.00
+minimum into something far larger.
+
+The pending charges are **four `AMZN Mktp CA` purchases** dated 6–8 Aug 2026 —
+Amazon spending on the card TD designates as a *business* card. Worth resolving
+under the business question: either it is genuine inventory, or personal
+purchases are landing on the business card.
+
+Other figures verified from the account on 2026-08-09: last statement balance
+**$801.10** (7 Jul – 5 Aug), last payment **$100.00 on 7 Aug 2026**.
 
 **What it is actually used for.** The August statement is almost entirely US
 travel and a business tool:
@@ -237,13 +252,18 @@ travel and a business tool:
 Plus a Lululemon charge in Calgary. All foreign-currency charges attract an FX
 conversion cost on top of the amounts shown.
 
-**This connects to her income.** DEBT&PAYMENTS receives deposits marked
-`TENNIS BC EXP` — expenses, not salary. She appears to travel for Tennis BC,
-pay on this card, and be reimbursed. That means **part of the $63,129 recorded
-as Tennis BC income is expense reimbursement rather than earnings**, and the
-matching cost sits on this card. Amounts marked `EXP` total $1,639.10 across the
-window; `AP` a further $2,846.58 [ASK — confirm which descriptors are pay versus
-reimbursement].
+> **Correction, 2026-08-09.** The US hotels above were read as work travel for
+> Tennis BC, reimbursed through the `TENNIS BC EXP` deposits. **They were not** —
+> all four fall inside the family road trip of 24 July to 4 August, owner-
+> confirmed. They are holiday spending on a business-designated card.
+
+**Her income may still include reimbursement, but this was not the evidence for
+it.** DEBT&PAYMENTS does receive deposits marked `TENNIS BC EXP` — expenses
+rather than salary — totalling $1,639.10 across the window, with `AP` a further
+$2,846.58. So **part of the $63,129 may still be reimbursement rather than
+earnings**, but the matching costs have not been found and are not these hotels
+[ASK — confirm which descriptors are pay versus reimbursement, and test against
+a period with no family travel in it].
 
 ## Her employment income — Tennis British Columbia *(verified 2026-08-09)*
 
@@ -343,6 +363,149 @@ with status Completed. **Run it on any PayPal export before quoting a figure.**
 
 The Pastini charge is an Oregon restaurant, matching the Travel Visa's US hotels
 in Bend and Medford — the same trip, split across two cards.
+
+## Wise — two accounts, the US holiday spending *(captured 2026-08-09)*
+
+Opened **19 July 2026** for a US road trip, 24 July – 3 August. Two profiles,
+each with its own card:
+
+| | Account 1 | Account 2 |
+|---|---|---|
+| Opened | 19 Jul 2026 | 22 Jul 2026 |
+| Rows captured | 95 | 12 |
+| Card spend | **US$2,577.63** over 78 transactions | **US$162.52** over 7, plus C$4.00 |
+| Closing balance | ~US$1.92, C$0.00 | ~C$83.84, ~US$84.90 |
+
+Balances are **[calculated]** by running the ledger forward, not read off Wise —
+confirm against the app before treating them as verified. Combined they are
+worth roughly **C$206**, small enough not to move net worth.
+
+**No credit facility.** Both are prepaid: money in, then spent. No rate, no
+limit, no debt. Wise is an asset here, not a liability.
+
+### The funding is the finding: $3,500 of $4,181 came from the HELOC
+
+Every incoming dollar was traced to its source account and date:
+
+| Source | Amount | Route |
+|---|---|---|
+| **HELOC direct e-transfers** | $1,000 (27 Jul) · $1,000 (30 Jul) · $500 (2 Aug) | HELOC → Wise |
+| **HELOC via Chequing A** | **$1,000** (24 Jul) | HELOC → Chequing A → Wise **the same day** |
+| ATM cash deposit | $430 (24 Jul) | cash → Chequing B → Wise |
+| Chequing A | $107.25 | the $55 account fee, $22.16 card, $30 seeding account 2 |
+| Chequing B | $10 (24 Jul) | |
+| **Third party** | **$134 (31 Jul)** | from an individual, not a household account |
+| **Total in** | **$4,181.16** | |
+
+**$3,500 of it is borrowed against the house at 4.90%** — **84%** of all funding,
+or **97%** of the money that came from a household bank account.
+
+**The 24 July $1,000 is the one to notice.** It left the HELOC, landed in
+Chequing A, and was e-transferred onward the same day. On the chequing statement
+it looks like an ordinary e-transfer; only the HELOC draw beside it shows what it
+was. **This is the pattern that made $46,657 of "credit card" transfers
+untraceable** — an intermediate hop is enough to break the trail.
+
+**The HELOC is interest-only at 99.5% utilisation.** Nothing about a minimum
+payment reduces this $3,500. Unless it is deliberately repaid it is permanent
+debt, and at 4.90% it costs about **$172 a year, indefinitely**.
+
+### The trip cost about C$6,645 *(owner-defined window: 24 Jul – 4 Aug 2026)*
+
+The owner confirms **all USD spending in that window was the road trip**, which
+makes the total computable. `scripts/trip-cost.js` pulls every foreign-currency
+charge from the decrypted statements by *transaction* date.
+
+| Method | Cost | Note |
+|---|---|---|
+| **Wise ×2** | **C$3,853.42** | US$2,740.15 at the 0.7112 effective rate paid |
+| Wise fees | C$117.61 | C$99.32 of it one-off setup |
+| **Travel Visa** | **C$2,505.43** | 4 hotels, US$1,730.57 |
+| MBNA / Amazon | C$134.92 | two Pastini charges, Oregon, via PayPal |
+| TD Cash Back Visa | C$33.28 | Bend Brewing, Kona Ice |
+| **Total** | **≈ C$6,644.66** | |
+
+Card charges converted at a blended **1.4477**. Wise converted at an effective
+**1.4061** (0.7112 inverted) — so the cards cost about **3% more per dollar**
+than Wise did.
+
+**Excluded deliberately:** a Calendly subscription (US$13.44) that billed inside
+the window but would have billed anyway; a C$4.00 charge on 6 August, after the
+window; and any Canadian-dollar trip spending such as fuel before the border,
+which cannot be separated from ordinary domestic spending.
+
+**Counted once, not twice:** the MBNA `PAYPAL*PASTINI` charges (C$134.92) and
+PayPal #2's Pastini entry (US$91.75) are the same two purchases — PayPal is the
+rail, MBNA the funding card. The ratio, 1.4705, is simply the FX.
+
+### The Travel Visa's hotels were the family holiday, not work travel
+
+**This corrects an earlier inference.** The Travel Visa's US hotels were read as
+evidence that she travels for Tennis BC, pays on this card, and is reimbursed —
+and that part of her $63,129 income was therefore expense reimbursement matching
+these costs.
+
+**The dates say otherwise.** Fairfield Inn Bend (25 Jul), Sleep Inn Bend
+(28 Jul), Springhill Suites Milpitas (1 Aug) and Compass Hotel Medford (3 Aug)
+all fall inside the family road trip. **They are holiday, not business travel.**
+
+Two consequences:
+
+- **C$2,505.43 of family holiday sits on a TD-designated *business* card.** That
+  matters if anyone ever treats that card's balance as a business expense —
+  these four charges are not deductible, and a card mixing the two is exactly
+  what an accountant will want separated [ASK].
+- **The reimbursement theory needs re-testing on a different period.** The
+  `TENNIS BC EXP` deposits are still real, but the costs they were matched
+  against were the wrong ones. See B15.
+
+### Where the trip is hiding
+
+Wise is only one of **five** payment methods used on this trip:
+
+| Method | Trip spend | Where recorded |
+|---|---|---|
+| Wise ×2 | **US$2,740.15** + C$4.00 | here |
+| Travel Visa | **US$1,744.01** of hotels — Milpitas CA, Bend OR ×2, Medford OR | its August statement |
+| TD Cash Back Visa | Bend Brewing, Kona Ice of Bend, Santa Cruz | its August statement |
+| MBNA / Amazon | two `PAYPAL*PASTINI OLD M` charges, Oregon | its August statement |
+| PayPal #2 | the Pastini rail, US$91.75 | PayPal export |
+
+**Do not add the MBNA and PayPal Pastini figures together** — PayPal is the rail
+and MBNA the funding card, so they are the same purchase seen twice.
+
+Wise's own categories, **as corrected**: **General $1,059.69 · Travel $925.78 ·
+Entertainment $592.16**. It also splits by cardholder — Dale US$1,404.29,
+Amanda US$1,173.34.
+
+**There is no business spending on these accounts.** Wise tagged one `Home
+Depot` charge of US$5.96 as *Office expenses*; it was a bucket, bought to use as
+a cooler *(owner-confirmed 2026-08-09)*. Recategorised to Travel, and the
+Office expenses line is now zero.
+
+**Treat issuer-assigned categories as a hint, not a fact.** This one would have
+put a fake $5.96 of "business" spending into the business question — trivial in
+size, but the same mechanism at a larger amount is exactly what makes the
+business's true cost base hard to see. Wise also tags plainly-holiday charges
+inconsistently between *General* and *Travel* depending on which card was used.
+
+### Cost of the arrangement
+
+| | |
+|---|---|
+| Converted | **C$3,918.47 → US$2,786.37** at an effective **0.7112** |
+| Conversion fees | C$18.03 |
+| Card FX fee | C$0.26 |
+| Setup — two cards and one set of USD account details | **C$99.32** |
+| **Total fees** | **C$117.61** |
+
+The setup fees are 84% of the total cost and are one-off, so a second trip on the
+same cards would cost about **C$18**. On C$3,918 converted, the ongoing cost is
+roughly **0.46%** — materially cheaper than the foreign-currency conversion the
+Travel Visa charges on its US$1,744.
+
+**Both Wise exports are activity CSVs, not statements.** Wise issues statements
+separately; they have not been captured [BACKLOG].
 
 ## Known non-TD debts
 
@@ -461,6 +624,7 @@ Useful operational knowledge — it saves rediscovering this every time.
 | **Canadian Tire / Triangle** | Encrypted PDFs — **AES-128 (AESV2), revision 4**, hex `/O` string. `scripts/pdfdecrypt_aes.js` reads them |
 | **MBNA** | **7 years of PDFs, 13 months of CSV/QFX** — the best retention of any source here. PDFs use the **same RC4-128 R3** scheme as TD, so `scripts/pdfdecrypt.js` reads them unchanged. **The visible Download button fires no network request**; use the endpoints below. `scripts/mbna.js` parses the decrypted text |
 | **PayPal** | Reports page generates activity CSVs, 12 months maximum per report. `Bank Deposit to PP Account` rows are funding pulls, **not income** |
+| **Wise** | Activity CSV export per profile — **one export per profile**, they do not combine. `scripts/wise.js` parses it. Only `CARD_TRANSACTION` rows are spending; `BALANCE_TRANSACTION` rows are internal CAD→USD conversions and counting them roughly doubles the total. `TRANSFER OUT` may be a move to the household's *other* Wise profile rather than money leaving |
 | **WebBroker** | **Blocked.** Requires accepting OTC Markets and CME/S&P exchange agreements — an owner decision, never an agent's |
 
 ### TD statement retention is ~7 years, not 12 months *(corrected 2026-08-09)*

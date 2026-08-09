@@ -100,17 +100,70 @@ accounts. Work it in this order, because the analytical value is very uneven.
 > and due date. And TD's download does work; the file simply saves with a GUID
 > `.tmp` name carrying no date, which is what `rename-statements.js` is for.
 >
-> **Attempted 9 Aug, not completed.** The statement list for the Cash Back Visa
-> was enumerated — all 12 present, plus 12 more in 2025 and 12 in 2024 — and one
-> statement downloaded, but it proved to be the August one already held. Probing
-> the document API then broke the EasyWeb session. Nothing new was captured.
+> **COMPLETED 2026-08-09.** Both cards now hold **12 of 12**, Sep 2025 – Aug
+> 2026, in `raw/wife-td/statements/`. All 24 filenames were verified against the
+> statement date read from inside each file — every one correct, no duplicates.
+> Backed up: `raw/` is now 68 files, 22.06 MB.
 
-| Card | Have | Need | Spending currently unseen |
+| Card | Have | Need | Status |
 |---|---|---|---|
-| **TD Cash Back Visa** | 1 | **11** | $5,682 |
-| **Travel Visa** | 1 | **11** | $1,078 |
-| TD Personal Visa | 11 | 1 (Aug 2025) | — card is dormant |
-| Triangle Mastercard | 5 | earlier months if held | — 5 months already analysed |
+| **TD Cash Back Visa** | **12** | — | ✅ complete |
+| **Travel Visa** | **12** | — | ✅ complete |
+| TD Personal Visa | 11 | 1 (Aug 2025) | **retrievable** — not aged out (B26) |
+| Triangle Mastercard | 5 | earlier months if held | 5 months already analysed |
+
+**What worked, after two false starts.** Do not call `documentdetail` directly —
+it 400s even with a byte-identical key, and repeated attempts put the whole
+EasyWeb session into an error state that took a cooldown to clear. The reliable
+route is: Statements & Documents → click the row → read the PDF off the
+`embed[src^="blob:"]` → save it under a real name → close the modal → pause.
+Batches of three with ~1s between were comfortable. The account dropdown on that
+page also lists **every** chequing, savings, mortgage and HELOC account, so
+Tier 3 can be worked from the same screen.
+
+**B48 · Wise — two US spending accounts** · **CAPTURED 2026-08-09**
+Opened 19 and 22 July 2026 for the US road trip. Both **prepaid — no credit
+facility, no rate, no debt.** 107 transactions captured, US$2,740.15 of card
+spend, roughly C$206 left. `scripts/wise.js` parses the export.
+
+**The funding is the finding: $3,500 of the $4,181 that went in came from the
+HELOC** at 4.90% — 84% of all funding, 97% of the bank-sourced part. Traced
+transfer by transfer. **$3,500 of the previously unexplained e-transfers is now
+explained**, cutting that item from $23,200 to $19,700.
+
+**One transfer shows why the rest is hard.** On 24 July $1,000 left the HELOC,
+landed in Chequing A, and was e-transferred onward the same day. On the chequing
+statement it is an ordinary e-transfer; only the HELOC draw beside it reveals
+the source. **This is almost certainly the pattern behind the $46,657 of
+"credit card" transfers** — one intermediate hop breaks the trail. Worth
+re-running the transfer-matching (B31) with multi-hop chains in mind.
+
+**B50 · The road trip cost ≈ C$6,645** · **DONE 2026-08-09**
+Owner-confirmed window 24 Jul – 4 Aug 2026, all USD spending in it being the
+trip. `scripts/trip-cost.js` totals it across every card:
+Wise **C$3,853.42** + fees C$117.61 · Travel Visa **C$2,505.43** ·
+MBNA C$134.92 · Cash Back C$33.28.
+
+**Cards cost about 3% more per dollar than Wise** — blended 1.4477 against
+Wise's 1.4061.
+
+**Two corrections came out of it.** The Travel Visa's US hotels were previously
+read as Tennis BC work travel that gets reimbursed; the dates put all four inside
+the family holiday, so **C$2,505.43 of holiday is sitting on a business-
+designated card** and the reimbursement theory needs re-testing against a period
+with no family travel (feeds B15). And the trip was **84% funded by the HELOC**
+(B48) — so roughly C$3,500 of a C$6,645 holiday is now permanent interest-only
+debt at 4.90%.
+
+**B49 · Wise statements** · READY · *small*
+Only activity CSVs were provided. Wise issues statements separately; capture
+them for the archive.
+
+**No business spending on Wise.** Wise tagged a US$5.96 `Home Depot` charge as
+*Office expenses*; it was a bucket used as a cooler (owner-confirmed). Seed it
+into the merchant library (B34) as a worked example: **issuer categories are a
+hint, not a fact**, and an unchecked one would have put phantom business spending
+into the Tier 1 business question.
 
 ### Tier 2 — debts with no statements at all
 
@@ -180,19 +233,43 @@ real constraint. Corrected 2026-08-09; see `docs/ACCOUNT_FACTS.md`.
 | DEBT&PAYMENTS | ✅ | — | ✅ 379 | — |
 | SAVINGS-DONT TOUCH | ✅ | ❌ | ✅ 54 | — |
 | EMERGENCY SAVING | ✅ | ❌ | ✅ 24 | — |
-| Personal Visa | ✅ | ✅ 24.99% | via statements | ⚠️ 11 of 12 |
-| **Cash Back Visa** | ✅ | ✅ 26.99% | ❌ | ⚠️ **1 of 12** |
-| **Travel Visa** | ⚠️ no limit | ✅ 19.99% | ❌ | ⚠️ **1 of 12** |
+| Personal Visa | ✅ | ✅ 24.99% | via statements | ⚠️ 11 of 12 — **retrievable, see below** |
+| **Cash Back Visa** | ✅ | ✅ 26.99% | via statements | ✅ **12 of 12** |
+| **Travel Visa** | ✅ $1,100 limit | ✅ 19.99% | via statements | ✅ **12 of 12** |
 | RESP (WebBroker) | balance only | — | ❌ | blocked |
+
+**TD retains ~7 years of statements, not 12 months.** The year filter offers
+2020–2026. Nothing is aging out, and **B26's "may have aged out" concern was
+unfounded** — the Personal Visa's missing August 2025 statement should still be
+there. Method and endpoints are in `docs/ACCOUNT_FACTS.md`.
 
 ### Outstanding items
 
-**B2 · Cash Back Visa — 11 remaining statements** · *medium*
-**B3 · Cash Back Visa — transaction history** · *medium*
-**B4 · Travel Visa — 11 statements and transaction history** · *medium*
-**B6 · Travel Visa — credit limit** · *small* — absent from the statement
-template used; available credit reads $0.00 so it is at its limit
-**B7 · Reconcile the $158.55 interest charge** · *small*
+**B2 · Cash Back Visa — 11 remaining statements** · **DONE 2026-08-09** — 12 of 12
+**B4 · Travel Visa — 11 remaining statements** · **DONE 2026-08-09** — 12 of 12
+
+**B3 · Cash Back Visa transaction history** · READY · *medium*
+**B4b · Travel Visa transaction history** · READY · *medium*
+24 statements are now held and decrypted to `derived/wife-td/`. The transactions
+inside them have not been parsed or categorised yet — that is the remaining work,
+and it is where the $6,760 of unseen card spending lives.
+
+**B6 · Travel Visa — credit limit** · **DONE 2026-08-09 — $1,100.00**
+Confirmed absent from all 12 statements: the Travel Visa template carries no
+credit limit and no rate table, unlike the Cash Back template. Read instead from
+the card's **Manage** tab.
+
+**It is the smallest limit in the household and the card is about to go over.**
+$1,078.31 of $1,100.00 is 98.0%, with **$165.13 pending** that takes it to
+$1,243.44 — **$143.44 over** [calculated]. On the Cash Back Visa's evidence,
+going over means an over-limit fee and the excess becoming immediately due,
+which turned a $69.93 minimum into $762.36. The Travel Visa minimum is currently
+$17.00.
+
+The pending charges are four `AMZN Mktp CA` purchases dated 6–8 Aug — Amazon
+spending on the card TD designates as *business*. Feeds the business question.
+
+**B7 · Reconcile the $158.55 interest charge** · READY · *small*
 
 **B22 · Savings interest rates** · *small*
 Neither EMERGENCY SAVING nor SAVINGS-DONT TOUCH has a captured rate. The second
