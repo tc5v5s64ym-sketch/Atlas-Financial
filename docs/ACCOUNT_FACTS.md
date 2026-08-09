@@ -252,13 +252,18 @@ travel and a business tool:
 Plus a Lululemon charge in Calgary. All foreign-currency charges attract an FX
 conversion cost on top of the amounts shown.
 
-**This connects to her income.** DEBT&PAYMENTS receives deposits marked
-`TENNIS BC EXP` — expenses, not salary. She appears to travel for Tennis BC,
-pay on this card, and be reimbursed. That means **part of the $63,129 recorded
-as Tennis BC income is expense reimbursement rather than earnings**, and the
-matching cost sits on this card. Amounts marked `EXP` total $1,639.10 across the
-window; `AP` a further $2,846.58 [ASK — confirm which descriptors are pay versus
-reimbursement].
+> **Correction, 2026-08-09.** The US hotels above were read as work travel for
+> Tennis BC, reimbursed through the `TENNIS BC EXP` deposits. **They were not** —
+> all four fall inside the family road trip of 24 July to 4 August, owner-
+> confirmed. They are holiday spending on a business-designated card.
+
+**Her income may still include reimbursement, but this was not the evidence for
+it.** DEBT&PAYMENTS does receive deposits marked `TENNIS BC EXP` — expenses
+rather than salary — totalling $1,639.10 across the window, with `AP` a further
+$2,846.58. So **part of the $63,129 may still be reimbursement rather than
+earnings**, but the matching costs have not been found and are not these hotels
+[ASK — confirm which descriptors are pay versus reimbursement, and test against
+a period with no family travel in it].
 
 ## Her employment income — Tennis British Columbia *(verified 2026-08-09)*
 
@@ -405,7 +410,56 @@ untraceable** — an intermediate hop is enough to break the trail.
 payment reduces this $3,500. Unless it is deliberately repaid it is permanent
 debt, and at 4.90% it costs about **$172 a year, indefinitely**.
 
-### What the trip cost, and where it is hiding
+### The trip cost about C$6,645 *(owner-defined window: 24 Jul – 4 Aug 2026)*
+
+The owner confirms **all USD spending in that window was the road trip**, which
+makes the total computable. `scripts/trip-cost.js` pulls every foreign-currency
+charge from the decrypted statements by *transaction* date.
+
+| Method | Cost | Note |
+|---|---|---|
+| **Wise ×2** | **C$3,853.42** | US$2,740.15 at the 0.7112 effective rate paid |
+| Wise fees | C$117.61 | C$99.32 of it one-off setup |
+| **Travel Visa** | **C$2,505.43** | 4 hotels, US$1,730.57 |
+| MBNA / Amazon | C$134.92 | two Pastini charges, Oregon, via PayPal |
+| TD Cash Back Visa | C$33.28 | Bend Brewing, Kona Ice |
+| **Total** | **≈ C$6,644.66** | |
+
+Card charges converted at a blended **1.4477**. Wise converted at an effective
+**1.4061** (0.7112 inverted) — so the cards cost about **3% more per dollar**
+than Wise did.
+
+**Excluded deliberately:** a Calendly subscription (US$13.44) that billed inside
+the window but would have billed anyway; a C$4.00 charge on 6 August, after the
+window; and any Canadian-dollar trip spending such as fuel before the border,
+which cannot be separated from ordinary domestic spending.
+
+**Counted once, not twice:** the MBNA `PAYPAL*PASTINI` charges (C$134.92) and
+PayPal #2's Pastini entry (US$91.75) are the same two purchases — PayPal is the
+rail, MBNA the funding card. The ratio, 1.4705, is simply the FX.
+
+### The Travel Visa's hotels were the family holiday, not work travel
+
+**This corrects an earlier inference.** The Travel Visa's US hotels were read as
+evidence that she travels for Tennis BC, pays on this card, and is reimbursed —
+and that part of her $63,129 income was therefore expense reimbursement matching
+these costs.
+
+**The dates say otherwise.** Fairfield Inn Bend (25 Jul), Sleep Inn Bend
+(28 Jul), Springhill Suites Milpitas (1 Aug) and Compass Hotel Medford (3 Aug)
+all fall inside the family road trip. **They are holiday, not business travel.**
+
+Two consequences:
+
+- **C$2,505.43 of family holiday sits on a TD-designated *business* card.** That
+  matters if anyone ever treats that card's balance as a business expense —
+  these four charges are not deductible, and a card mixing the two is exactly
+  what an accountant will want separated [ASK].
+- **The reimbursement theory needs re-testing on a different period.** The
+  `TENNIS BC EXP` deposits are still real, but the costs they were matched
+  against were the wrong ones. See B15.
+
+### Where the trip is hiding
 
 Wise is only one of **five** payment methods used on this trip:
 

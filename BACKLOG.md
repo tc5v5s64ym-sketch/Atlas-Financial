@@ -138,6 +138,23 @@ the source. **This is almost certainly the pattern behind the $46,657 of
 "credit card" transfers** — one intermediate hop breaks the trail. Worth
 re-running the transfer-matching (B31) with multi-hop chains in mind.
 
+**B50 · The road trip cost ≈ C$6,645** · **DONE 2026-08-09**
+Owner-confirmed window 24 Jul – 4 Aug 2026, all USD spending in it being the
+trip. `scripts/trip-cost.js` totals it across every card:
+Wise **C$3,853.42** + fees C$117.61 · Travel Visa **C$2,505.43** ·
+MBNA C$134.92 · Cash Back C$33.28.
+
+**Cards cost about 3% more per dollar than Wise** — blended 1.4477 against
+Wise's 1.4061.
+
+**Two corrections came out of it.** The Travel Visa's US hotels were previously
+read as Tennis BC work travel that gets reimbursed; the dates put all four inside
+the family holiday, so **C$2,505.43 of holiday is sitting on a business-
+designated card** and the reimbursement theory needs re-testing against a period
+with no family travel (feeds B15). And the trip was **84% funded by the HELOC**
+(B48) — so roughly C$3,500 of a C$6,645 holiday is now permanent interest-only
+debt at 4.90%.
+
 **B49 · Wise statements** · READY · *small*
 Only activity CSVs were provided. Wise issues statements separately; capture
 them for the archive.
