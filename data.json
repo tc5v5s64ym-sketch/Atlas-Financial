@@ -1,55 +1,67 @@
 {
   "meta": {
     "asOf": "2026-08-09",
-    "coverage": "TD (11 accounts) · Triangle Mastercard · PayPal",
-    "transactions": 4222,
-    "statements": 16,
+    "coverage": "TD (15 accounts) · Triangle Mastercard · MBNA · PayPal ×2",
+    "transactions": 4655,
+    "statements": 26,
     "disclaimer": "Financial education and planning support. Not professional financial, tax, legal, mortgage or investment advice."
   },
 
   "headline": [
-    { "label": "Cash on hand", "value": 449.84, "tone": "alert", "note": "Across three accounts. One is overdrawn." },
-    { "label": "Total known debt", "value": 762909.71, "tone": "plain", "note": "MBNA and BNPL still unknown" },
-    { "label": "Interest cost / year", "value": 32648.72, "tone": "warn", "note": "About $2,721 every month" },
-    { "label": "Credit left, everywhere", "value": 1353.12, "tone": "alert", "note": "Across four facilities combined" }
+    { "label": "Cash on hand", "value": 2915.89, "tone": "alert", "note": "Across five accounts. One is overdrawn." },
+    { "label": "Total known debt", "value": 777525.57, "tone": "plain", "note": "Every consumer debt now captured except an unquantified Amex" },
+    { "label": "Interest cost / year", "value": 36546.11, "tone": "warn", "note": "About $3,046 every month" },
+    { "label": "Credit left, everywhere", "value": 1415.95, "tone": "alert", "note": "Across seven facilities combined" }
   ],
 
   "upcoming": [
     { "due": "2026-08-07", "what": "Triangle Mastercard minimum", "amount": 253.57, "status": "paid", "note": "Paid $300.00 on 9 Aug — two days late, watch for a fee" },
+    { "due": "2026-08-09", "what": "TD Cash Back Visa — amount due immediately", "amount": 69.93, "status": "paid", "note": "Owner-stated, not yet seen on the account. Does not clear the missed minimum, so the card stays frozen" },
     { "due": "2026-08-14", "what": "Mortgage (bi-weekly)", "amount": 1600.00, "status": "due", "note": "" },
     { "due": "2026-08-17", "what": "TD credit card minimum", "amount": 94.03, "status": "due", "note": "Must post by the 17th — a fifth miss restarts the penalty-rate clock" },
-    { "due": "2026-08-21", "what": "HELOC minimum", "amount": 814.18, "status": "due", "note": "Interest-only — reduces principal by nothing" }
+    { "due": "2026-08-21", "what": "HELOC minimum", "amount": 814.18, "status": "due", "note": "Interest-only — reduces principal by nothing" },
+    { "due": "2026-08-26", "what": "Travel Visa minimum", "amount": 17.00, "status": "due", "note": "" },
+    { "due": "2026-08-31", "what": "Amazon.ca Rewards Mastercard minimum", "amount": 158.27, "status": "due", "note": "MBNA. At minimums the issuer estimates 64 years 3 months to clear" },
+    { "due": "2026-09-01", "what": "TD Cash Back Visa minimum", "amount": 762.36, "status": "due", "note": "The card is over its limit and frozen. Under $5,000 before the 7th avoids a second $29 over-limit fee" }
   ],
-  "upcomingNote": "Still to fund: $2,508.21, against roughly $577 in Chequing A after the Triangle payment plus $90.58 in savings. Payroll at ~$4,469 bi-weekly covers it comfortably — it is purely a timing question, and there is no buffer to absorb a mismatch.",
+  "upcomingNote": "Still to fund by 1 September: $3,445.84, against $2,915.89 of cash across five accounts. Payroll at ~$4,469 bi-weekly covers it, but the $762.36 Cash Back minimum on 1 September is more than four times any other card minimum and is the one that needs planning for.",
 
   "debts": [
     { "label": "Mortgage", "balance": 546026.58, "rate": 3.64, "rateBasis": "TD Mortgage Prime − 0.96%", "structure": "Amortising — 52.4% of each payment is principal", "annualInterest": 19441, "payment": 1600, "frequency": "Bi-weekly", "nextDue": "2026-08-14", "limit": null, "available": null, "confidence": "verified" },
     { "label": "HELOC", "balance": 201586.16, "rate": 4.90, "rateBasis": "TD Prime + 0.45%", "structure": "Interest-only revolving — never amortises", "annualInterest": 9877.72, "payment": 814.18, "frequency": "Monthly minimum", "nextDue": "2026-08-21", "limit": 202654, "available": 1067.84, "confidence": "verified" },
     { "label": "Triangle Mastercard", "balance": 13497.00, "rate": 21.99, "rateBasis": "Purchases 21.99% / cash 22.99%", "structure": "Revolving — 99.98% used", "annualInterest": 2880, "payment": 253.57, "frequency": "Monthly minimum", "nextDue": "2026-08-07", "limit": 13500, "available": 3.00, "confidence": "verified" },
+    { "label": "Amazon.ca Rewards Mastercard (MBNA)", "balance": 7855.12, "rate": 21.74, "rateBasis": "Purchases 21.74% / cash and transfers 22.99%", "structure": "Revolving — $0 to $7,855 in eight months", "annualInterest": 1779.24, "payment": 158.27, "frequency": "Monthly minimum", "nextDue": "2026-08-31", "limit": 8000, "available": 62.83, "confidence": "verified" },
+    { "label": "TD Cash Back Visa", "balance": 5682.43, "rate": 26.99, "rateBasis": "Purchases 26.99% / cash 27.99%", "structure": "Revolving — OVER its limit and frozen", "annualInterest": 1902.60, "payment": 762.36, "frequency": "Monthly minimum", "nextDue": "2026-09-01", "limit": 5000, "available": 0, "confidence": "verified" },
     { "label": "TD credit card", "balance": 1799.97, "rate": 24.99, "rateBasis": "Penalty rate — normal would be 17.20%", "structure": "Revolving — dormant balance, no purchases", "annualInterest": 450, "payment": 94.03, "frequency": "Monthly minimum", "nextDue": "2026-08-17", "limit": 2000, "available": 200.00, "confidence": "verified" },
-    { "label": "MBNA Mastercard", "balance": null, "rate": null, "rateBasis": null, "structure": "Revolving — new since June 2026", "annualInterest": null, "payment": null, "frequency": null, "nextDue": null, "limit": null, "available": null, "confidence": "unknown" },
-    { "label": "Affirm / Flexiti", "balance": null, "rate": null, "rateBasis": null, "structure": "Instalment", "annualInterest": null, "payment": 44.59, "frequency": "Monthly", "nextDue": null, "limit": null, "available": null, "confidence": "unknown" }
+    { "label": "Travel Visa (business)", "balance": 1078.31, "rate": 19.99, "rateBasis": "Purchases 19.99% / cash 22.99%", "structure": "Revolving — at its limit", "annualInterest": 215.55, "payment": 17.00, "frequency": "Monthly minimum", "nextDue": "2026-08-26", "limit": null, "available": 0, "confidence": "verified", "note": "Credit limit absent from the statement template — still unknown" }
   ],
+  "debtsNote": "Affirm/Flexiti is gone: owner-confirmed paid off and closed, $2,654.28 across the window. The TD Cash Back balance is shown as at its 6 August statement; the owner reports paying $69.93 on 9 August, which is not yet verified against the account. Its $158.55 monthly interest charge is higher than 26.99% on the observed balance implies — unresolved, and the reason its annual figure is taken from the charge rather than the rate.",
 
   "utilisation": [
+    { "label": "TD Cash Back Visa", "used": 5682.43, "limit": 5000, "available": 0 },
     { "label": "Triangle Mastercard", "used": 13497.00, "limit": 13500, "available": 3.00 },
+    { "label": "Amazon.ca Rewards Mastercard", "used": 7855.12, "limit": 8000, "available": 62.83 },
     { "label": "HELOC", "used": 201586.16, "limit": 202654, "available": 1067.84 },
     { "label": "TD credit card", "used": 1799.97, "limit": 2000, "available": 200.00 },
     { "label": "Chequing B overdraft", "used": 517.72, "limit": 600, "available": 82.28 }
   ],
+  "utilisationNote": "The Cash Back Visa is at 113.6% — $682.43 beyond its limit, frozen to further use, carrying an unpaid minimum. The Travel Visa is also at $0.00 available but its limit is unknown, so it cannot be plotted.",
 
   "assets": [
-    { "label": "Chequing A", "value": 876.98 },
+    { "label": "DEBT&PAYMENTS chequing", "value": 2691.85 },
+    { "label": "Chequing A", "value": 576.98 },
     { "label": "Chequing B", "value": -517.72 },
     { "label": "Savings", "value": 90.58 },
+    { "label": "SAVINGS-DONT TOUCH", "value": 74.20 },
     { "label": "RESP (education-restricted)", "value": 31555.85 },
     { "label": "TFSA, US TFSA, two mutual funds", "value": 0 }
   ],
+  "assetsNote": "Chequing A is shown after the $300 Triangle payment on 9 August. SAVINGS-DONT TOUCH is a staging account rather than savings — money arrives and leaves within days, and it earned $0.11 over 18 months.",
   "netWorth": {
-    "assets": 32005.69,
-    "debts": 762909.71,
-    "financialAccountsOnly": -730904.02,
-    "caveat": "This is not household net worth. It excludes the home — the asset the mortgage and HELOC are secured against — plus vehicles, pensions, the business, and any non-TD accounts. Household net worth cannot be stated until the home is valued and the remaining accounts are added."
+    "assets": 34471.74,
+    "debts": 777525.57,
+    "financialAccountsOnly": -743053.83,
+    "caveat": "This is not household net worth. It excludes the home — the asset the mortgage and HELOC are secured against — plus vehicles, pensions, the business, and the unquantified American Express. Household net worth cannot be stated until the home is valued."
   },
 
   "helocHistory": [
@@ -79,12 +91,13 @@
 
   "income": [
     { "label": "Payroll (bi-weekly)", "total": 186152.89, "perMonth": 10342, "stability": "Stable" },
+    { "label": "Her employment — Tennis BC", "total": 63129.47, "perMonth": 3507, "stability": "Growing — $1,250/month to $6,196/month across the window" },
     { "label": "Resale / business e-transfers", "total": 54213.00, "perMonth": 3012, "stability": "Very irregular — $795 to $15,622" },
-    { "label": "Wife's monthly transfer", "total": 21700.00, "perMonth": 1206, "stability": "Stopped after May 2026" },
     { "label": "Child benefit", "total": 2764.63, "perMonth": 154, "stability": "Stable" },
     { "label": "Insurance reimbursement", "total": 500.04, "perMonth": null, "stability": "One-off" }
   ],
-  "incomeTotal": { "total": 265330.56, "perMonth": 14740 },
+  "incomeTotal": { "total": 306760.03, "perMonth": 17042 },
+  "incomeNote": "Her Tennis BC employment — 43 deposits, $63,129.47 over 18 months into DEBT&PAYMENTS — was absent from the earlier picture entirely, which saw only the $21,700 she transferred across. That transfer has been removed as an income line: it is an internal movement out of this income, and counting both would double it. Two cautions remain: at least $1,639.10 marked EXP is expense reimbursement rather than pay, a further $2,846.58 marked AP is unresolved, and the transfers stopped after May 2026 while the income did not.",
 
   "spending": [
     { "label": "Groceries", "total": 29141.76, "confidence": "high" },
@@ -99,7 +112,7 @@
     { "label": "Entertainment", "total": 4054.58, "confidence": "low" },
     { "label": "Property tax", "total": 3567.91, "confidence": "high" }
   ],
-  "spendingNote": "Household spending averages about $7,551/month over 18 months. Roughly 19% could not be reliably categorised — TD truncates merchant names.",
+  "spendingNote": "Household spending averages about $7,551/month over 18 months. Roughly 19% could not be reliably categorised — TD truncates merchant names. This total is still incomplete: $9,930 of Amazon Mastercard purchases and $6,760 on the two TD Visas are captured but not yet folded into any category.",
 
   "paypal": {
     "perMonth": 463,
@@ -117,7 +130,7 @@
   },
 
   "unexplained": [
-    { "label": "\"Credit card\" transfers", "amount": 46657, "note": "Labelled as card payments but not arriving at the TD Visa. Destination unknown." },
+    { "label": "\"Credit card\" transfers", "amount": 46657, "note": "Labelled as card payments but not arriving at the TD Visa. Destination unknown — and not the Amazon Mastercard, which took only $2,970 across its whole life." },
     { "label": "Unidentified accounts", "amount": 59027, "note": "Two accounts — $33,598 in across 142 transfers, $16,945 out across five." },
     { "label": "Uncategorised spending", "amount": 25630, "note": "19% of all spending — TD truncates merchant names." },
     { "label": "E-transfers out", "amount": 23200, "note": "$13,062 from the HELOC, $10,138 from chequing. Possibly business inventory." },
@@ -128,19 +141,21 @@
     { "tier": 1, "q": "Does the business make money?", "detail": "$54,213 of inbound e-transfers over 18 months against $23,200 outbound, $13,062 of it drawn from the HELOC at 4.90%. Heavy retail purchasing currently counted as household spending. A CRA balance paid from the HELOC.", "changes": "Everything. Whether household spending is overstated, whether HELOC growth is working capital or leakage, and what the tax position is.", "owner": "Both + accountant" },
     { "tier": 1, "q": "Where do the \"credit card\" transfers go?", "detail": "$46,657 over 18 months. The TD Visa's balance fell only $391 in that time and shows no purchases at all.", "changes": "Could reveal a card with a significant balance entirely absent from the debt ranking.", "owner": "Dale" },
     { "tier": 1, "q": "What is the home worth?", "detail": "$747,613 of debt is secured against it. Original mortgage $648,000 in May 2022.", "changes": "Net worth is unstateable without it, and loan-to-value decides what is possible at the May 2027 renewal.", "owner": "Dale" },
-    { "tier": 2, "q": "Balances and rates on the non-TD debts", "detail": "MBNA Mastercard and Affirm/Flexiti — visible only as outgoing payments.", "changes": "If any carries a rate above 21.99% it outranks Triangle as the first target.", "owner": "Both" },
+    { "tier": 2, "q": "What is on the American Express?", "detail": "Card ••••07, linked to the second PayPal account. No balance, no rate, no statements, and it receives payments from no chequing account captured. The last unquantified debt.", "changes": "The other unknown PayPal-linked card turned out to hold $7,855.12. The same reasoning applies here and it was wrong once.", "owner": "Both" },
     { "tier": 2, "q": "Why did the monthly transfer stop after May 2026?", "detail": "$1,000/month from March 2025, stepping to $1,100 in November, reliable through May 2026. Absent since.", "changes": "About $1,100/month, and whether the budget needs rebuilding.", "owner": "Both" },
     { "tier": 3, "q": "What are the two unidentified accounts?", "detail": "One sent $33,598 across 142 transfers; the other received $16,945 across five.", "changes": "$59,027 of movement, likely folding into question 1.", "owner": "Both" }
   ],
 
   "coverage": [
-    { "source": "TD — 11 accounts", "what": "Balances, rates, terms; 4,222 transactions over 18 months", "status": "complete" },
+    { "source": "TD — 15 accounts", "what": "Balances, rates, terms; 4,655 transactions over 18 months", "status": "complete" },
     { "source": "TD credit card", "what": "11 statements, Sep 2025 – Jul 2026", "status": "complete" },
     { "source": "Mortgage & HELOC", "what": "Rates, maturity, payment splits, 208 HELOC transactions", "status": "complete" },
     { "source": "Triangle Mastercard", "what": "Full terms plus 5 statements", "status": "complete" },
-    { "source": "PayPal", "what": "351 transactions, categorised and cross-checked", "status": "complete" },
-    { "source": "MBNA Mastercard", "what": "Visible only as outgoing payments", "status": "missing" },
-    { "source": "Affirm / Flexiti", "what": "~$44.59/month of instalments", "status": "missing" },
+    { "source": "MBNA / Amazon Mastercard", "what": "Full terms plus all 8 statements, PDF and CSV — the account's entire history", "status": "complete" },
+    { "source": "PayPal — two accounts", "what": "503 transactions, categorised and cross-checked", "status": "complete" },
+    { "source": "Affirm / Flexiti", "what": "Paid off and closed — $2,654.28 across the window", "status": "complete" },
+    { "source": "TD Cash Back & Travel Visa", "what": "Terms captured; 1 statement each of 12", "status": "partial" },
+    { "source": "American Express", "what": "Nothing — no balance, rate or statements", "status": "missing" },
     { "source": "Wife's business", "what": "—", "status": "missing" },
     { "source": "Home value", "what": "—", "status": "missing" },
     { "source": "WebBroker holdings", "what": "RESP balance only ($31,555.85)", "status": "blocked" }

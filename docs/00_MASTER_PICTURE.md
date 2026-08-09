@@ -31,6 +31,13 @@ strong income and a structural problem, which is a solvable combination.
 
 ---
 
+> **This document is being rebuilt (B17).** Sections 1 onward were written
+> before the spouse's accounts and the MBNA card were captured, and their
+> headline figures are superseded. **`docs/positions.csv` and `data.json` are
+> current; this narrative is not.** Section 0 below has been brought up to date
+> because it is the actionable part. The debt ranking in section 6 and the
+> action list in section 12 are the ones most affected.
+
 ## 0. Time-sensitive — read first
 
 **Triangle Mastercard — resolved 9 August 2026.** The $253.57 minimum was due
@@ -40,26 +47,36 @@ due date, so a late fee may appear on the next statement — worth checking — 
 the account is out of default territory. Payments under 30 days late are not
 normally reported to credit bureaus.
 
-**Still due:** the **TD credit card minimum $94.03 on 17 August** (a fifth miss
-would restart its 12-month penalty-rate clock again), and the **HELOC minimum
-$814.18 on 21 August**.
+**TD Cash Back Visa — partly addressed.** The $69.93 flagged as due immediately
+on 9 August **was paid** [ASK — owner-stated, not yet seen on the account]. That
+does **not** clear last month's unpaid minimum, so the card remains **frozen and
+$682.43 over its $5,000 limit**. The $762.36 minimum falls due **1 September**,
+and unless the balance is under $5,000 by the 7th a second **$29.00 over-limit
+fee** should be expected.
 
-### The next twelve days are tight
+### What is due between now and 1 September
 
 | Due | Amount | What |
 |---|---|---|
 | 14 Aug | $1,600.00 | Mortgage (bi-weekly) |
-| 17 Aug | $94.03 | TD credit card minimum |
-| 21 Aug | $814.18 | HELOC minimum |
-| | **$2,508.21** | **Total** |
+| 17 Aug | $94.03 | TD credit card minimum — a fifth miss restarts the penalty clock |
+| 21 Aug | $814.18 | HELOC minimum — interest-only |
+| 26 Aug | $17.00 | Travel Visa minimum |
+| 31 Aug | $158.27 | **Amazon.ca Rewards Mastercard (MBNA)** minimum |
+| 1 Sep | $762.36 | **TD Cash Back Visa** minimum — the big one |
+| | **$3,445.84** | **Total** |
 
-Against roughly **$577 in Chequing A** (after the $300 Triangle payment) plus
-$90.58 in savings — with Chequing B already overdrawn and $82.28 of headroom
-left [CALC]. **This needs a pay deposit to land before the 21st.** Payroll runs
-bi-weekly at about $4,469, so one deposit covers all three comfortably — the
-question is purely timing. **Worth confirming the next pay date against these
-three dates**, because there is no buffer to absorb a mismatch and every
-revolving facility is already at its limit.
+Against **$2,915.89 of cash across five accounts** [CALC] — a materially better
+position than the $577 figure this section previously showed, because her
+DEBT&PAYMENTS account holds $2,691.85 of it. Chequing B remains overdrawn with
+$82.28 of headroom left.
+
+**The $762.36 Cash Back minimum on 1 September is the one that needs planning
+for** — it is more than four times any other card minimum. Payroll runs
+bi-weekly at about $4,469 and her Tennis BC income now averages $3,507/month, so
+the money exists; the question is timing. **Worth confirming the next pay dates
+against these six**, because there is no buffer to absorb a mismatch and every
+revolving facility is at or beyond its limit.
 
 ---
 

@@ -52,26 +52,38 @@ address and partial card numbers, and git history is effectively permanent.
 
 ---
 
-## ⚠️ Published figures are stale
+## Published figures are current
 
-**B1 · Update `data.json` and `docs/positions.csv` with everything found on the
-spouse's profile** · READY · *high*
+**B1 · Update `data.json` and `docs/positions.csv`** · **DONE 2026-08-09**
 
-The live site and the data spine still show the pre-9-August picture. They are
-missing two chequing accounts, two credit cards, and her employment income.
-Anyone reading the dashboard right now gets materially wrong numbers.
+Both now carry the spouse's accounts, the MBNA card and her employment income.
+Every total was checked to reconcile against its own components before
+publishing.
 
-Missing from publication:
-
-| | Currently shown | Actual |
+| | Was shown | Now |
 |---|---|---|
 | Household cash | $449.84 | **$2,915.89** |
-| Credit-card debt | $1,799.97 | **$7,482.40** |
-| Known total debt | $762,910 | **$769,670** |
-| Her employment income | absent | **$63,129 over 18 months** |
+| Credit-card debt | $1,799.97 | **$29,912.83** across five cards |
+| Known total debt | $762,910 | **$777,525.57** |
+| Interest per year | $32,649 | **$36,546.11** — about $3,046/month |
+| Her employment income | absent | **$63,129.47 over 18 months** |
+| Weeks of essentials covered | 2.5 | **6.1** |
 
-Do this before any further analysis, so nothing downstream is built on figures
-already known to be wrong.
+Three judgement calls worth recording:
+
+- **The $21,700 spousal transfer was removed as an income line.** It is an
+  internal movement out of her Tennis BC pay; counting both double-counts it.
+  Total income is $306,760.03, not $328,460.
+- **The Cash Back Visa is published at $5,682.43**, its statement balance, with
+  the owner-stated $69.93 payment noted but not netted off — every published
+  figure stays traceable to a statement.
+- **Flexiti is removed** rather than shown at zero, per its closure.
+
+**`docs/00_MASTER_PICTURE.md` is now the stale document.** Its section 0 has been
+brought up to date because it is the actionable part; sections 1 onward still
+describe the pre-9-August picture and are rebuilt under B17.
+
+---
 
 ---
 
