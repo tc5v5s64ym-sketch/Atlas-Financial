@@ -47,12 +47,17 @@ due date, so a late fee may appear on the next statement — worth checking — 
 the account is out of default territory. Payments under 30 days late are not
 normally reported to credit bureaus.
 
-**TD Cash Back Visa — partly addressed.** The $69.93 flagged as due immediately
-on 9 August **was paid** [ASK — owner-stated, not yet seen on the account]. That
-does **not** clear last month's unpaid minimum, so the card remains **frozen and
-$682.43 over its $5,000 limit**. The $762.36 minimum falls due **1 September**,
-and unless the balance is under $5,000 by the 7th a second **$29.00 over-limit
-fee** should be expected.
+**TD Cash Back Visa — partly addressed.** $69.93 was flagged as due immediately
+on 9 August and **$70.00 was paid** [owner-confirmed; not yet seen on the
+account]. That leaves the balance at about **$5,612.43, still ~$612 over its
+$5,000 limit**, with the **$29.00 over-limit fee still accruing** and the
+**$762.36 minimum due 1 September** unaffected.
+
+**Whether the card's freeze has lifted is unresolved** [ASK]. The statement
+barred further use until the overdue minimum was received; if the $69.93 *was*
+that minimum — which is how an "amount due immediately" usually presents — the
+freeze should lift. Nobody has checked. Either way available credit stays at
+$0.00 while the account is over its limit, so nothing practical changes.
 
 ### What is due between now and 1 September
 

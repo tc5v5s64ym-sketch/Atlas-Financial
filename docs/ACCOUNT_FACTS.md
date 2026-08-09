@@ -140,21 +140,43 @@ Interest earned across 18 months: **$0.11.**
 | Cash Back Dollars | $47.21 |
 
 An amount of **$69.93 was flagged as due immediately** on 9 Aug 2026, separate
-from the September minimum. **It was paid** *(owner-stated, 9 Aug 2026 — not yet
-seen on the account)*.
+from the September minimum. **$70.00 was paid on 9 Aug 2026** (owner-confirmed).
 
-**Last month's minimum remains outstanding**, so the $69.93 did not unfreeze the
-card and did not restart the penalty-rate clock. The $762.36 minimum is still due
-**1 Sep 2026**. Balance after the payment is roughly **$5,612.50** [calculated,
-$5,682.43 − $69.93] — still about **$612 over the $5,000 limit**, so a further
-**$29.00 over-limit fee** should be expected on the September statement unless
-the balance is brought under $5,000 before the 7th.
+**Position after that payment:**
 
-**The card is frozen.** The August statement states:
+| | |
+|---|---|
+| Balance | **~$5,612.43** [calculated, $5,682.43 − $70.00] |
+| Credit limit | $5,000.00 |
+| **Still over the limit by** | **~$612.43** |
+| Over-limit fee | **$29.00/month, still accruing** until the balance is under $5,000 |
+| Next minimum | **$762.36, due 1 Sep 2026** — unaffected by this payment |
+| Interest | **$158.55/month at 26.99%**, unaffected |
+
+### Whether the freeze has lifted is unresolved [CONFIRM]
+
+The August statement conditions further use on one thing:
 
 > "YOUR ACCOUNT IS OVER THE CREDIT LIMIT. NO FURTHER USE IS PERMITTED UNTIL THE
 > 'MINIMUM PAYMENT' IS RECEIVED. YOUR 'MINIMUM PAYMENT' REQUIRED FOR LAST MONTH
 > HAS NOT YET BEEN RECEIVED."
+
+Everything turns on whether the $69.93 **was** that overdue minimum:
+
+- **If it was** — and an "amount due immediately", shown separately from the
+  next minimum, is exactly how a past-due minimum presents — then the condition
+  is met and **the freeze should lift**.
+- **If it was not**, and the overdue minimum is a larger separate figure, the
+  card stays frozen and the penalty-rate clock has not restarted.
+
+The first reading is the more likely one, but neither has been seen on the
+account. **Check the card's status directly before relying on either.** Note
+that lifting the freeze would not make the card usable in any practical sense:
+it is still ~$612 over its limit, so available credit remains $0.00.
+
+Two earlier records of this were reconciled on 9 Aug 2026 — one asserting the
+freeze persisted, one asserting it lifted. Neither was established, and the
+amount differed ($69.93 flagged versus $70.00 paid). This entry replaces both.
 
 **One figure does not reconcile and is worth asking TD about.** At 26.99% on an
 average balance of roughly $5,200 over a 30-day cycle, interest should be about

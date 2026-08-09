@@ -16,7 +16,7 @@
 
   "upcoming": [
     { "due": "2026-08-07", "what": "Triangle Mastercard minimum", "amount": 253.57, "status": "paid", "note": "Paid $300.00 on 9 Aug — two days late, watch for a fee" },
-    { "due": "2026-08-09", "what": "TD Cash Back Visa — amount due immediately", "amount": 69.93, "status": "paid", "note": "Owner-stated, not yet seen on the account. Does not clear the missed minimum, so the card stays frozen" },
+    { "due": "2026-08-09", "what": "TD Cash Back Visa — amount due immediately", "amount": 70.00, "status": "paid", "note": "$69.93 was flagged; $70.00 paid. Whether this clears the overdue minimum and lifts the freeze is unconfirmed" },
     { "due": "2026-08-14", "what": "Mortgage (bi-weekly)", "amount": 1600.00, "status": "due", "note": "" },
     { "due": "2026-08-17", "what": "TD credit card minimum", "amount": 94.03, "status": "due", "note": "Must post by the 17th — a fifth miss restarts the penalty-rate clock" },
     { "due": "2026-08-21", "what": "HELOC minimum", "amount": 814.18, "status": "due", "note": "Interest-only — reduces principal by nothing" },
@@ -30,12 +30,12 @@
     { "label": "Mortgage", "balance": 546026.58, "rate": 3.64, "rateBasis": "TD Mortgage Prime − 0.96%", "structure": "Amortising — 52.4% of each payment is principal", "annualInterest": 19441, "payment": 1600, "frequency": "Bi-weekly", "nextDue": "2026-08-14", "limit": null, "available": null, "confidence": "verified" },
     { "label": "HELOC", "balance": 201586.16, "rate": 4.90, "rateBasis": "TD Prime + 0.45%", "structure": "Interest-only revolving — never amortises", "annualInterest": 9877.72, "payment": 814.18, "frequency": "Monthly minimum", "nextDue": "2026-08-21", "limit": 202654, "available": 1067.84, "confidence": "verified" },
     { "label": "Triangle Mastercard", "balance": 13497.00, "rate": 21.99, "rateBasis": "Purchases 21.99% / cash 22.99%", "structure": "Revolving — 99.98% used", "annualInterest": 2880, "payment": 253.57, "frequency": "Monthly minimum", "nextDue": "2026-08-07", "limit": 13500, "available": 3.00, "confidence": "verified" },
-    { "label": "TD Cash Back Visa", "balance": 5682.43, "rate": 26.99, "rateBasis": "Purchases 26.99% / cash 27.99%", "structure": "Revolving — OVER its limit and frozen", "annualInterest": 1902.60, "payment": 762.36, "frequency": "Monthly minimum", "nextDue": "2026-09-01", "limit": 5000, "available": 0, "confidence": "verified" },
+    { "label": "TD Cash Back Visa", "balance": 5682.43, "rate": 26.99, "rateBasis": "Purchases 26.99% / cash 27.99%", "structure": "Revolving — $612 over its limit", "annualInterest": 1902.60, "payment": 762.36, "frequency": "Monthly minimum", "nextDue": "2026-09-01", "limit": 5000, "available": 0, "confidence": "verified" },
     { "label": "Amazon.ca Rewards Mastercard (MBNA)", "balance": 7855.12, "rate": 21.74, "rateBasis": "Purchases 21.74% / cash and transfers 22.99%", "structure": "Revolving — $0 to $7,855 in eight months", "annualInterest": 1779.24, "payment": 158.27, "frequency": "Monthly minimum", "nextDue": "2026-08-31", "limit": 8000, "available": 62.83, "confidence": "verified" },
     { "label": "TD credit card", "balance": 1799.97, "rate": 24.99, "rateBasis": "Penalty rate — normal would be 17.20%", "structure": "Revolving — dormant balance, no purchases", "annualInterest": 450, "payment": 94.03, "frequency": "Monthly minimum", "nextDue": "2026-08-17", "limit": 2000, "available": 200.00, "confidence": "verified" },
     { "label": "Travel Visa (business)", "balance": 1078.31, "rate": 19.99, "rateBasis": "Purchases 19.99% / cash 22.99%", "structure": "Revolving — at its limit", "annualInterest": 215.55, "payment": 17.00, "frequency": "Monthly minimum", "nextDue": "2026-08-26", "limit": null, "available": 0, "confidence": "verified", "note": "Credit limit absent from the statement template — still unknown" }
   ],
-  "debtsNote": "Affirm/Flexiti is gone: owner-confirmed paid off and closed, $2,654.28 across the window. The TD Cash Back balance is shown as at its 6 August statement; the owner reports paying $69.93 on 9 August, which is not yet verified against the account. Its $158.55 monthly interest charge is higher than 26.99% on the observed balance implies — unresolved, and the reason its annual figure is taken from the charge rather than the rate.",
+  "debtsNote": "Affirm/Flexiti is gone: owner-confirmed paid off and closed, $2,654.28 across the window. The TD Cash Back balance is shown as at its 6 August statement; $70.00 was paid on 9 August, taking it to about $5,612.43, but that is not yet verified against the account. Its $158.55 monthly interest charge is higher than 26.99% on the observed balance implies — unresolved, and the reason its annual figure is taken from the charge rather than the rate.",
 
   "utilisation": [
     { "label": "TD Cash Back Visa", "used": 5682.43, "limit": 5000, "available": 0 },
@@ -45,7 +45,7 @@
     { "label": "TD credit card", "used": 1799.97, "limit": 2000, "available": 200.00 },
     { "label": "Chequing B overdraft", "used": 517.72, "limit": 600, "available": 82.28 }
   ],
-  "utilisationNote": "The Cash Back Visa is at 113.6% — $682.43 beyond its limit, frozen to further use, carrying an unpaid minimum. The Travel Visa is also at $0.00 available but its limit is unknown, so it cannot be plotted.",
+  "utilisationNote": "The Cash Back Visa is at 113.6% — $682.43 beyond its limit at its 6 August statement, reduced to about $612 by the $70.00 paid on 9 August. Whether that payment lifted the statement's freeze on further use is unconfirmed; either way available credit stays at $0.00 while it is over the limit. The Travel Visa is also at $0.00 available but its limit is unknown, so it cannot be plotted.",
 
   "assets": [
     { "label": "DEBT&PAYMENTS chequing", "value": 2691.85 },
