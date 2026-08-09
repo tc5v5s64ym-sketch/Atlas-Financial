@@ -36,11 +36,22 @@ works by staging a `raw/` file and confirming the commit is refused.
 
 Never bypass it with `--no-verify`.
 
+## Read `docs/ACCOUNT_FACTS.md` before asking the owner anything
+
+It holds every standing fact — interest rates, credit limits, payment due dates,
+the mortgage renewal date, payment structures, and how each institution's data is
+obtained. **The owner should never have to supply these twice.** If a fact is
+missing there, add it once it is known.
+
+Balances are not in that file; they change constantly and live in `positions.csv`
+and `data.json`.
+
 ## Key documents in `docs/`
 
 | File | What it is |
 |---|---|
-| `00_MASTER_PICTURE.md` | The canonical written summary. Start here |
+| `ACCOUNT_FACTS.md` | **Standing facts — rates, limits, due dates, renewal. Read first** |
+| `00_MASTER_PICTURE.md` | The canonical written summary |
 | `01_OPEN_QUESTIONS.md` | The working agenda, ranked by what an answer would change |
 | `positions.csv` | Data spine — one row per account, fixed schema |
 | `MORTGAGE_HELOC_DEEP_DIVE.md` | Terms, payment splits, the May 2027 renewal |
