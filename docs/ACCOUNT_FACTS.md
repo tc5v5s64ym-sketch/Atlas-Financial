@@ -420,10 +420,20 @@ Wise is only one of **five** payment methods used on this trip:
 **Do not add the MBNA and PayPal Pastini figures together** — PayPal is the rail
 and MBNA the funding card, so they are the same purchase seen twice.
 
-Wise's own categories are worth keeping: **General $1,059.69 · Travel $919.82 ·
-Entertainment $592.16 · Office expenses $5.96**, and it splits by cardholder
-(Dale US$1,404.29, Amanda US$1,173.34). One `Home Depot` charge is tagged
-*Office expenses*, which may be business rather than holiday [ASK].
+Wise's own categories, **as corrected**: **General $1,059.69 · Travel $925.78 ·
+Entertainment $592.16**. It also splits by cardholder — Dale US$1,404.29,
+Amanda US$1,173.34.
+
+**There is no business spending on these accounts.** Wise tagged one `Home
+Depot` charge of US$5.96 as *Office expenses*; it was a bucket, bought to use as
+a cooler *(owner-confirmed 2026-08-09)*. Recategorised to Travel, and the
+Office expenses line is now zero.
+
+**Treat issuer-assigned categories as a hint, not a fact.** This one would have
+put a fake $5.96 of "business" spending into the business question — trivial in
+size, but the same mechanism at a larger amount is exactly what makes the
+business's true cost base hard to see. Wise also tags plainly-holiday charges
+inconsistently between *General* and *Travel* depending on which card was used.
 
 ### Cost of the arrangement
 

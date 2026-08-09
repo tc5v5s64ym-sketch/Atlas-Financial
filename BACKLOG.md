@@ -142,6 +142,12 @@ re-running the transfer-matching (B31) with multi-hop chains in mind.
 Only activity CSVs were provided. Wise issues statements separately; capture
 them for the archive.
 
+**No business spending on Wise.** Wise tagged a US$5.96 `Home Depot` charge as
+*Office expenses*; it was a bucket used as a cooler (owner-confirmed). Seed it
+into the merchant library (B34) as a worked example: **issuer categories are a
+hint, not a fact**, and an unchecked one would have put phantom business spending
+into the Tier 1 business question.
+
 ### Tier 2 — debts with no statements at all
 
 **MBNA / Amazon.ca Rewards Mastercard (B10, B36) — COMPLETE 2026-08-09.** One
