@@ -23,8 +23,15 @@ for (const f of fs.readdirSync(dir).filter(x => x.startsWith(prefix) && x.endsWi
   try {
     const txt = execSync(`node "${decryptor}" "${path.join(dir, f)}" 60000`,
       { maxBuffer: 32 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] }).toString();
-    const m = txt.replace(/\s+/g, '').match(/STATEMENTDATE:([A-Za-z]+)(\d{1,2}),(\d{4})/);
-    if (m) iso = `${m[3]}-${MONTH[m[1]]}-${m[2].padStart(2, '0')}`;
+    const flat = txt.replace(/\s+/g, '');
+    // TD says "STATEMENT DATE: August 6, 2026"; MBNA says
+    // "Statement Closing Date August 06, 2026". Same job, different label.
+    const m = flat.match(/STATEMENTDATE:([A-Za-z]+)(\d{1,2}),(\d{4})/i)
+           || flat.match(/StatementClosingDate([A-Za-z]+)(\d{1,2}),(\d{4})/i);
+    if (m) {
+      const mon = MONTH[m[1].charAt(0).toUpperCase() + m[1].slice(1).toLowerCase()];
+      if (mon) iso = `${m[3]}-${mon}-${m[2].padStart(2, '0')}`;
+    }
   } catch (_) { }
   if (!iso) { plan.push({ from: f, to: null, note: 'could not read statement date' }); continue; }
 

@@ -323,7 +323,23 @@ B10 and B36 were the same debt counted twice.
 | Last statement balance | $7,855.12 |
 | Minimum payment | **$158.27**, due **31 Aug 2026** |
 | Statement closing | **6th of the month** (June 2026 closed on the 8th) |
-| **Interest rate** | **UNKNOWN** — not shown anywhere in online banking; it is in the statement PDF [pending] |
+| **Rate — purchases** | **21.74%** |
+| **Rate — cash advances** | **22.99%** |
+| **Rate — balance transfers / access cheques** | **22.99%** |
+| Fees charged to date | **$0.00** across all 8 statements |
+| Primary cardholder | **the spouse** — this is her card, not a joint one |
+| Grace period | 21 days on new purchases; none on cash advances or transfers |
+| Interest on unpaid interest | **Yes** — "we charge interest on unpaid interest" |
+| Issuer's payoff estimate at minimums | **64 years 3 months** |
+
+Rates verified from the August 2026 statement's interest table, which also shows
+the balance each rate applied to: **$7,797.95 of the balance sits in the
+purchase bucket at 21.74%**, and nothing at all in cash advances or balance
+transfers. So the whole debt is ordinary purchase spending — there is no
+cash-advance component here, unlike the open question on the TD Cash Back Visa.
+
+**21.74% is the second-lowest card rate in the household**, behind only the
+Travel Visa's 19.99%. The problem with this card is not its rate.
 
 **Utilisation is 98.2%**, or **99.2%** once the $82.05 of pending transactions is
 counted. Available credit and pending reconcile exactly against the limit:
@@ -336,20 +352,53 @@ and "You do not have any recent purchases that are eligible" — so no MBNA
 instalment balance sits behind the headline figure. The page covers plans closed
 within the last 6 months; anything older would only appear on statements.
 
-**The account is new.** Statement history offers **8 statements, January to
-August 2026**; selecting 2025 returns **"No Activity"**. So the card was opened
-around December 2025, and there is no earlier history to capture. This is
-consistent with the five $300 payments from DEBT&PAYMENTS, all of which fall
-inside 2026.
+**The account is new, and the whole balance was built in eight months.** The
+January 2026 statement opens at **$0.00**. Every dollar of the $7,855.12 was
+accumulated since. All 8 statements, parsed by `scripts/mbna.js`:
+
+| Statement | Opening | Payments | Purchases | Interest | Closing |
+|---|---|---|---|---|---|
+| 6 Jan 2026 | $0.00 | $0.00 | $3,030.42 | $0.00 | $3,030.42 |
+| 6 Feb 2026 | $3,030.42 | −$550.00 | $2,905.32 | $86.04 | $5,471.78 |
+| 6 Mar 2026 | $5,471.78 | $0.00 | $1,384.74 | $112.27 | $6,968.79 |
+| 6 Apr 2026 | $6,968.79 | −$300.00 | $976.12 | $134.93 | $7,779.84 |
+| 6 May 2026 | $7,779.84 | −$600.00 | $245.82 | $139.36 | $7,565.02 |
+| 8 Jun 2026 | $7,565.02 | −$420.00 | $344.82 | $144.87 | $7,634.71 |
+| 6 Jul 2026 | $7,634.71 | −$500.00 | $686.56 | $129.15 | $7,950.42 |
+| 6 Aug 2026 | $7,950.42 | −$600.00 | $356.43 | $148.27 | $7,855.12 |
+| **Totals** | | **−$2,970.00** | **$9,930.23** | **$894.89** | |
+
+**$9,930.23 of purchases against $2,970.00 of payments.** Purchases ran at
+**$1,241/month** and payments at **$371/month**, so the balance grew about
+**$982/month** from a standing start.
+
+**Two earlier beliefs about this card were wrong.** It was recorded as "$300 at
+a time, five times" ($1,500) and as "NEW since June 2026". Actual payments are
+**$2,970.00 across eight statements** in amounts from $300 to $600, and the
+account was live from **January 2026**. The chequing-side view understated both
+the payments and the age because it only ever saw payments labelled "MBNA".
+
+**The growth has stopped, but only because the card ran out of room.** Purchases
+fell from $3,030 in January to $356 in August as available credit collapsed. It
+is now at $62.83 — the limit is doing the work that a decision would otherwise
+have to.
 
 **MBNA retains 7 years of statement PDFs** — far better than TD's 12 months —
 and 13 billing months in CSV, QFX and Microsoft Money. The CSV is a direct
 transaction export, so this card needs no PDF parsing for its transactions.
 
-**The rate is the one thing still missing**, and it is the thing that decides
-the payoff order. Amazon.ca Rewards Mastercard purchase rates are commonly
-19.99%, but that is a guess about a product, not a fact about this account — it
-must be read off the statement rate table before it is used [unknown].
+**Where it ranks.** At $148.27/month the annual interest run rate is about
+**$1,779** [calculated] — third among the cards, behind Triangle (~$2,880) and
+the TD Cash Back Visa (~$1,903), and rising as the balance does.
+
+**The Oregon trip appears here too.** Two `PAYPAL*PASTINI OLD M` charges in the
+August cycle match the Pastini restaurant already seen on PayPal #2 and the US
+hotels on the Travel Visa. **One trip, split across three cards** — worth
+remembering when the travel spend is totalled, and a reminder that no single
+account shows a complete picture of any event.
+
+A **ChatGPT subscription** (US$22.40) also bills here, which is not in any
+subscription list captured so far.
 
 **Flexiti — PAID OFF AND CLOSED** *(owner-confirmed 2026-08-09)*.
 $2,654.28 was paid across the window: single payments of $1,354.28 and
@@ -367,11 +416,30 @@ Useful operational knowledge — it saves rediscovering this every time.
 | **TD EasyWeb** | Custom date filter caps at **18 months**. CSV export per account works. The account switcher is unreliable; navigating from the accounts overview is more dependable |
 | **TD statements** | Encrypted PDFs — standard handler, **RC4-128, revision 3**, empty user password. `scripts/pdfdecrypt.js` reads them |
 | **Canadian Tire / Triangle** | Encrypted PDFs — **AES-128 (AESV2), revision 4**, hex `/O` string. `scripts/pdfdecrypt_aes.js` reads them |
+| **MBNA** | **7 years of PDFs, 13 months of CSV/QFX** — the best retention of any source here. PDFs use the **same RC4-128 R3** scheme as TD, so `scripts/pdfdecrypt.js` reads them unchanged. **The visible Download button fires no network request**; use the endpoints below. `scripts/mbna.js` parses the decrypted text |
 | **PayPal** | Reports page generates activity CSVs, 12 months maximum per report. `Bank Deposit to PP Account` rows are funding pulls, **not income** |
 | **WebBroker** | **Blocked.** Requires accepting OTC Markets and CME/S&P exchange agreements — an owner decision, never an agent's |
 
+MBNA download endpoints, relative to `https://service.mbna.ca/waw/mbna/`:
+
+```
+PDF  accounts/<acct>/statement-history/open-save/selected-date/<YYYY-MM-DD>?format=PDF&contentDisposition=attachment&folder=&insertDocId=
+CSV  accounts/<acct>/statement/download/selected-date/<YYYY-MM-DD>?format=CSV
+```
+
+`accounts/<acct>/statement-history/<year>` lists the available closing dates.
+
+**Downloads only reach disk while the browser pane is visible.** With it hidden,
+`fetch` still returns 200 with the full body and the save silently never
+happens — a failure mode that looks exactly like success.
+
 No PDF renderer is installed on this machine, so statements are read by
 decrypting and extracting text directly rather than by rendering pages.
+
+**Extract by field, never by line.** MBNA's decrypted text carries no line
+breaks, so a line-oriented search returns an entire page — cardholder name, home
+address and masked card number included. `scripts/mbna.js` captures one labelled
+figure per pattern for exactly this reason.
 
 ---
 

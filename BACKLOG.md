@@ -95,9 +95,9 @@ these, the spending on these cards is invisible in every category total.
 
 ### Tier 2 — debts with no statements at all
 
-**MBNA / Amazon.ca Rewards Mastercard (B10, B36) — captured 2026-08-09.** One
-card, not two. $7,855.12 against an $8,000 limit. 8 statements exist (Jan–Aug
-2026) and are still to be downloaded, along with the rate — see B46.
+**MBNA / Amazon.ca Rewards Mastercard (B10, B36) — COMPLETE 2026-08-09.** One
+card, not two. $7,855.12 against an $8,000 limit at 21.74%. All 8 statements
+captured as PDF and CSV; this account's archive is finished.
 
 **American Express (B37) — still nothing.** No balance, no rate, no statements.
 It could still outrank the 26.99% Cash Back Visa.
@@ -282,9 +282,11 @@ pending $82.05 · minimum **$158.27** due **31 Aug 2026** · statement closing
 **This is the largest card debt in the household** — on its own it slightly
 exceeds the $7,482.40 previously believed to be the *total* across all cards.
 
-**Still outstanding: the interest rate.** It appears nowhere in MBNA's online
-banking; it is only in the statement PDF's rate table. Until it is read, the
-payoff ranking cannot be settled — see B46.
+**Rate captured: 21.74% purchases, 22.99% cash advances and balance transfers.**
+The entire balance sits in the purchase bucket — no cash-advance component.
+21.74% is the *second-lowest* card rate in the household. The problem with this
+card is not its rate; it is that the balance went from **$0.00 to $7,855.12 in
+eight months** on $9,930 of purchases against $2,970 of payments.
 
 Two further findings:
 
@@ -295,22 +297,31 @@ Two further findings:
   a direct transaction export, so this card needs no PDF parsing for
   transactions — unlike TD, whose card download button returns nothing.
 
-**B46 · MBNA rate and statement archive** · READY · *small*
-Download the 8 statements as PDF **and** CSV into `raw/statements-mbna/`, read
-the purchase and cash-advance rates off the rate table, and fold the
-transactions into the spending picture.
+**B46 · MBNA statement archive** · **DONE 2026-08-09**
+All 8 statements captured as **PDF and CSV** into `raw/statements-mbna/`, backed
+up, and parsed. Filenames verified against the closing date inside each file by
+`rename-statements.js` — no correction needed this time, because the dates came
+from MBNA's own statement list rather than a download order.
 
-Download endpoints, found in the app bundle — the visible Download button fires
-no network request at all, so these are the working route:
+The RC4-128 decryptor written for TD read MBNA's PDFs unchanged, which is
+unsurprising — MBNA is a TD Bank Group brand. `scripts/mbna.js` turns the
+decrypted text into `derived/mbna/summary.csv`.
 
-```
-PDF  /waw/mbna/accounts/<acct>/statement-history/open-save/selected-date/<YYYY-MM-DD>?format=PDF&contentDisposition=attachment&folder=&insertDocId=
-CSV  /waw/mbna/accounts/<acct>/statement/download/selected-date/<YYYY-MM-DD>?format=CSV
-```
+Operational notes are in `docs/ACCOUNT_FACTS.md`: the download endpoints, the
+fact that the visible Download button fires no request at all, and that
+**downloads silently never reach disk while the browser pane is hidden** while
+`fetch` still returns 200 with the full body.
 
-**The Browser pane must stay visible** — downloads silently do not reach disk
-while it is hidden, though `fetch` still returns 200 with the full body. That
-cost a full pass; it is the same class of trap as TD's dead download button.
+**B47 · Fold the MBNA transactions into the spending picture** · READY · *medium*
+8 CSVs of transactions are now held and nothing has been done with them. This is
+$9,930 of purchases entirely absent from every category total — larger than the
+$6,760 of unseen TD card spending that Tier 1 is chasing.
+
+Already visible from the August cycle alone: a **ChatGPT subscription**
+(US$22.40) in no subscription list captured so far, and two `PAYPAL*PASTINI` charges
+matching the Oregon trip already seen on the Travel Visa and PayPal #2 — **one
+trip across three cards**. Check for double-counting against PayPal before
+adding, exactly as B40 requires.
 
 **B11 · Flexiti** · **CLOSED 2026-08-09 — paid off and account closed**
 Owner-confirmed. **$2,654.28 was paid across the window** ($1,354.28 and
