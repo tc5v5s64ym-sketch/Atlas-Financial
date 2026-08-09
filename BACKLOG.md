@@ -171,8 +171,11 @@ into the Tier 1 business question.
 card, not two. $7,855.12 against an $8,000 limit at 21.74%. All 8 statements
 captured as PDF and CSV; this account's archive is finished.
 
-**American Express (B37) — still nothing.** No balance, no rate, no statements.
-It could still outrank the 26.99% Cash Back Visa.
+**American Express (B37) — CLOSED 2026-08-09**, owner-confirmed. No balance, no
+debt, nothing to capture.
+
+**Every consumer debt in the household is now captured.** Mortgage, HELOC, five
+credit cards, and two closed accounts (Amex, Flexiti). **Tier 2 is finished.**
 
 ### Tier 3 — chequing and savings statements
 
@@ -442,10 +445,16 @@ Raw export in `raw/paypal2/`.
 **B36 · Amazon.ca Rewards Mastercard** · **CLOSED 2026-08-09 — it is the MBNA
 card.** See B10 above.
 
-**B37 · American Express — entirely unknown** · BLOCKED · *small*
-Still nothing (••••07). It appears in no TD account and receives payments from
-no chequing account analysed. Amex rates are typically high, so this could
-meaningfully change the payoff ranking.
+**B37 · American Express** · **CLOSED 2026-08-09 — owner-confirmed**
+No balance, no rate, no due date, nothing to obtain. Excluded from the debt list
+and from net worth.
+
+The two things that made it look suspicious both have innocent explanations: it
+received payments from no chequing account **because there was nothing to pay**,
+and it stayed on PayPal's linked-card list because a linked card is a stored
+credential rather than evidence of a live account. Worth remembering the next
+time a card surfaces from a payment processor's list — **presence there is not
+evidence the account is open**.
 
 **This gap now looks materially riskier.** The other unknown card linked to
 PayPal — the Amazon Mastercard — turned out to hold **$7,855.12**. The same
@@ -512,9 +521,20 @@ it currently in any category total. Large enough to move the household spending
 figure materially, and it overlaps with the groceries category already counted
 from chequing — **check for double-counting before adding**.
 
-**B12 · Home valuation** · BLOCKED · *small*
-Blocks household net worth entirely, and blocks any loan-to-value work for the
-May 2027 renewal.
+**B12 · Home valuation** · **ANSWERED 2026-08-09 — $1.1m to $1.4m** [ESTIMATE]
+Owner's estimate, not an appraisal. **Household net worth is now estimable at
+roughly $357,000 to $657,000**, and loan-to-value on the $747,612.74 secured
+against the house is **68.0% at the low end, 53.4% at the high** — both under the
+80% that matters at renewal.
+
+**The household is not insolvent and never was.** It holds substantial equity.
+The problem is liquidity and structure: $777,455 of debt against $3,051 of cash,
+every revolving facility at or beyond its limit, $36,546/yr of interest.
+
+**B51 · Narrow the valuation range** · READY · *small*
+A $300,000 spread is wide enough to matter for renewal planning. A realtor's
+opinion or a recent comparable sale would tighten it cheaply. A lender will order
+its own appraisal regardless, so this is for planning rather than for reliance.
 
 **B13 · Business records — revenue and cost of goods** · BLOCKED · *large*
 The Tier 1 question. Banking data cannot separate inventory purchases from

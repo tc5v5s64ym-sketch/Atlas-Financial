@@ -294,7 +294,7 @@ requested; PayPal was still generating it at time of capture [BACKLOG B35].
 | Linked card | Known? |
 |---|---|
 | **Amazon.ca Rewards Mastercard** ••••54 | ✅ **captured 2026-08-09 — it is the MBNA card, …6454. $7,855.12** |
-| **American Express** ••••07 | ❌ **still unknown — no balance, rate or statements** |
+| **American Express** ••••07 | ✅ **CLOSED — owner-confirmed 2026-08-09. No balance, no debt** |
 | TD Cash Back Visa ••••26 | ✅ |
 | TD Emerald Visa ••••70 | ✅ the personal card |
 | TD Business Travel Visa ••••70 | ✅ |
@@ -305,10 +305,17 @@ requested; PayPal was still generating it at time of capture [BACKLOG B35].
 The link was missed because the payments name the issuer and the card names the
 retailer.
 
-**The Amex remains unexplained.** It appears in no TD account and receives
-payments from no chequing account analysed, so it is either paid from an account
-not yet captured or carries a balance nobody has mentioned. Given the Amazon card
-turned out to hold $7,855.12, this gap is no longer a small one [B37].
+**The Amex is CLOSED** *(owner-confirmed 2026-08-09)*. No balance, no rate, no
+statements to obtain. Excluded from the debt list and from net worth.
+
+That also explains what looked suspicious: it received payments from no chequing
+account analysed **because there was nothing to pay**. The card stayed on
+PayPal's linked-card list after closure, which is normal — a linked card is a
+stored credential, not evidence of a live account.
+
+**With this, every consumer debt in the household is now captured.** The debt
+picture is complete: mortgage, HELOC, five credit cards, and two closed accounts
+(Amex, Flexiti).
 
 **Eight automatic payments**, and the mix is telling:
 
@@ -506,6 +513,39 @@ Travel Visa charges on its US$1,744.
 
 **Both Wise exports are activity CSVs, not statements.** Wise issues statements
 separately; they have not been captured [BACKLOG].
+
+## The home *(owner estimate, 2026-08-09)*
+
+**Worth $1.1m – $1.4m** [ESTIMATE — the owner's figure, not an appraisal].
+
+This unblocks household net worth, which the analysis has carried as
+"not calculable" throughout.
+
+| | At $1.1m | At $1.4m |
+|---|---|---|
+| Home | $1,100,000 | $1,400,000 |
+| Financial assets | $34,607.66 | $34,607.66 |
+| All debt | −$777,455.57 | −$777,455.57 |
+| **Household net worth** | **≈ $357,000** | **≈ $657,000** |
+| Equity in the home | $352,387 | $652,387 |
+| **Loan-to-value** | **68.0%** | **53.4%** |
+
+Loan-to-value uses the mortgage and HELOC together — **$747,612.74** — since both
+are secured against the house.
+
+**This reframes the picture rather than changing it.** The household is not
+insolvent and never was: it holds substantial equity. What it has is a
+**liquidity and structure problem** — $777,455 of debt against $3,051 of cash,
+every revolving facility at or beyond its limit, and $36,546 a year of interest.
+Positive net worth and an inability to absorb a $500 surprise are entirely
+compatible, and both are true here.
+
+**For the May 2027 renewal, LTV is the number that matters.** Both ends of the
+range sit under 80%, so the mortgage should renew conventionally on this measure.
+**A lender will order its own appraisal** and will not take an owner's estimate,
+so treat this as planning information rather than a fact to rely on. Narrowing
+the $300,000 spread is worth doing before any renewal or refinancing conversation
+— a realtor's opinion or a recent comparable sale would tighten it cheaply.
 
 ## Known non-TD debts
 

@@ -9,7 +9,7 @@
 
   "headline": [
     { "label": "Cash on hand", "value": 3051.81, "tone": "alert", "note": "Seven accounts: $2,845.89 at TD, matching its own consolidated balance, plus $205.92 left in Wise. One is overdrawn." },
-    { "label": "Total known debt", "value": 777455.57, "tone": "plain", "note": "Every consumer debt now captured except an unquantified Amex" },
+    { "label": "Total debt", "value": 777455.57, "tone": "plain", "note": "Every consumer debt in the household is now captured. Nothing outstanding." },
     { "label": "Interest cost / year", "value": 36546.11, "tone": "warn", "note": "About $3,046 every month" },
     { "label": "Credit left, everywhere", "value": 1415.95, "tone": "alert", "note": "Across seven facilities combined" }
   ],
@@ -63,7 +63,7 @@
     "assets": 34607.66,
     "debts": 777455.57,
     "financialAccountsOnly": -742847.91,
-    "caveat": "This is not household net worth. It excludes the home — the asset the mortgage and HELOC are secured against — plus vehicles, pensions, the business, and the unquantified American Express. Household net worth cannot be stated until the home is valued."
+    "caveat": "Household net worth is now estimable. At the owner's estimate of $1.1m–$1.4m for the home, it is roughly $357,000 to $657,000 [ESTIMATE] — the financial accounts above, plus the home, less all debt. Loan-to-value on the mortgage and HELOC together ($747,612.74) is 68% at the low end and 53% at the high end, both comfortably under the 80% that matters at the May 2027 renewal. This is an owner's estimate, not an appraisal, and a lender will use its own. Vehicles, pensions and the business are still excluded."
   },
 
   "helocHistory": [
@@ -143,7 +143,7 @@
     { "tier": 1, "q": "Does the business make money?", "detail": "$54,213 of inbound e-transfers over 18 months against $23,200 outbound, $13,062 of it drawn from the HELOC at 4.90%. Heavy retail purchasing currently counted as household spending. A CRA balance paid from the HELOC.", "changes": "Everything. Whether household spending is overstated, whether HELOC growth is working capital or leakage, and what the tax position is.", "owner": "Both + accountant" },
     { "tier": 1, "q": "Where do the \"credit card\" transfers go?", "detail": "$46,657 over 18 months. The TD Visa's balance fell only $391 in that time and shows no purchases at all.", "changes": "Could reveal a card with a significant balance entirely absent from the debt ranking.", "owner": "Dale" },
     { "tier": 1, "q": "What is the home worth?", "detail": "$747,613 of debt is secured against it. Original mortgage $648,000 in May 2022.", "changes": "Net worth is unstateable without it, and loan-to-value decides what is possible at the May 2027 renewal.", "owner": "Dale" },
-    { "tier": 2, "q": "What is on the American Express?", "detail": "Card ••••07, linked to the second PayPal account. No balance, no rate, no statements, and it receives payments from no chequing account captured. The last unquantified debt.", "changes": "The other unknown PayPal-linked card turned out to hold $7,855.12. The same reasoning applies here and it was wrong once.", "owner": "Both" },
+    { "tier": 2, "q": "Where does the rest of the $19,700 of e-transfers go?", "detail": "$3,500 is now traced to the Wise holiday accounts. The remainder still leaves the household without a matched destination, $13,062 of it originally drawn from the HELOC.", "changes": "The working theory is business inventory. If so it is a business cost currently counted as household spending, and it is being funded by borrowing against the house.", "owner": "Both" },
     { "tier": 2, "q": "Why did the monthly transfer stop after May 2026?", "detail": "$1,000/month from March 2025, stepping to $1,100 in November, reliable through May 2026. Absent since.", "changes": "About $1,100/month, and whether the budget needs rebuilding.", "owner": "Both" },
     { "tier": 3, "q": "What are the two unidentified accounts?", "detail": "One sent $33,598 across 142 transfers; the other received $16,945 across five.", "changes": "$59,027 of movement, likely folding into question 1.", "owner": "Both" }
   ],
@@ -158,7 +158,7 @@
     { "source": "Affirm / Flexiti", "what": "Paid off and closed — $2,654.28 across the window", "status": "complete" },
     { "source": "TD Cash Back & Travel Visa", "what": "Terms captured plus 12 statements each, Sep 2025 – Aug 2026", "status": "complete" },
     { "source": "Wise — two accounts", "what": "107 transactions, the US holiday; funding traced to source", "status": "complete" },
-    { "source": "American Express", "what": "Nothing — no balance, rate or statements", "status": "missing" },
+    { "source": "American Express", "what": "Closed — owner-confirmed. No balance, no debt", "status": "complete" },
     { "source": "Wife's business", "what": "—", "status": "missing" },
     { "source": "Home value", "what": "—", "status": "missing" },
     { "source": "WebBroker holdings", "what": "RESP balance only ($31,555.85)", "status": "blocked" }
