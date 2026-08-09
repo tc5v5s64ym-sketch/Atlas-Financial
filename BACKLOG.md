@@ -408,6 +408,53 @@ That list is what turns "$463/month" into a reviewable set of decisions.
 
 ---
 
+## 🔴 Income is overstated — the biggest open item
+
+**B55 · Get Amanda's coaching bookkeeping** · BLOCKED — owner offered to obtain · *medium*
+
+**The coaching receipts are revenue, not income.** She pays her coaches out of
+them, so the household keeps only the margin. Every published income figure
+treats the gross as household money.
+
+Coach payments **cannot be separated from personal transfers** in the bank data:
+113 outgoing e-transfers totalling **$29,762.42** over 18 months, with no
+payroll-shaped pattern — the commonest amounts are $100 (×8) and $60 (×7), which
+is family-sized rather than payroll-sized.
+
+**Bounds:** coach payments are between **$0 and $29,762**, so household income is
+overstated by up to **~$1,650/month**. That is now the largest uncertainty in the
+picture — bigger than any remaining unexplained flow, and it undercuts every
+conclusion that rests on income.
+
+Needed: coaching revenue, coach payments, and any other business costs.
+
+**B56 · Separate the two businesses** · BLOCKED · *medium*
+The Tier 1 question has been asking about both at once:
+
+| | Whose | What |
+|---|---|---|
+| **Dental lab** | her parents' | in the garage; paid rent to May 2026; "not going well" |
+| **Coaching** | Amanda's | paid by e-transfer, ~$42,395 of large receipts |
+
+`Head Canada Inc.` $1,043.37 is a **coaching business expense Amanda absorbs
+personally** (owner-confirmed) — so business costs sit on household cards, which
+is exactly what makes profitability unreadable.
+
+**B57 · The garage rent — returning, and what it implies** · BLOCKED · *small*
+$1,000–1,100/month from Mar 2025, stopped May 2026. **$12,600/year gone**, and
+because it was misfiled as an internal transfer its loss never registered as an
+income event. Business use of the home may also affect insurance and creates both
+a possible deduction and a capital-gains exposure — worth an accountant's view
+before the May 2027 renewal.
+
+**B58 · The five cheques — $8,150** · BLOCKED · *small*
+$3,010 (15 Jul 2025) · $2,835 (9 Sep 2025) · $1,295 (19 Nov 2025) · $980
+(18 Feb 2025) · $30 (27 Oct 2025). The owner does not recall them and asked for
+an email search. **There is no email connector available**, and a Drive full-text
+search on the bare amounts returns only noise — numbers that short match
+anything. Options: connect an email tool, search the inbox by amount manually, or
+ask TD for cheque images, which is the definitive route.
+
 ## Blocked on the household
 
 These need someone to obtain or decide something. The corresponding *questions*
