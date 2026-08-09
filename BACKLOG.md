@@ -35,6 +35,33 @@ already known to be wrong.
 
 ---
 
+## Still needed from TD EasyWeb
+
+**None of this is time-sensitive.** TD retains statements for 12 months, so a
+new session loses nothing — it only needs a fresh sign-in. All six are on the
+spouse's profile.
+
+| Item | What |
+|---|---|
+| B2 | TD Cash Back Visa — 11 remaining statements |
+| B3 | TD Cash Back Visa — transaction history |
+| B4 | Travel Visa — 11 statements and transaction history |
+| B6 | Travel Visa — credit limit |
+| B7 | Reconcile the $158.55 interest charge |
+| — | Optionally re-download the shared accounts from her nicknames, though these are already captured from the other profile |
+
+**Route that works** (the account switcher and in-page nav are unreliable):
+accounts overview → click the card → *Manage* tab → "View your statements and
+documents" → click a statement row → wait for the `embed` element's `blob:` URL
+→ download it. Chequing accounts are easier: quick filter → Custom → date range
+→ Apply → Download → CSV.
+
+**A caution learned the hard way:** clicking a page element that triggers
+navigation kills the running script mid-execution. Drive one navigation per
+call and re-read the page between steps rather than chaining them.
+
+---
+
 ## Data capture — nothing blocking
 
 **B2 · TD Cash Back Visa: 11 remaining statements** · READY · *medium*
@@ -52,9 +79,10 @@ The business card. Its transactions are the single most direct evidence for the
 business question. One statement shows US$1,744 of US hotels plus a Calendly
 subscription.
 
-**B5 · Verify the two "personal credit card" entries are one account** · READY · *small*
-Hers shows …5770, his shows …6294, both $1,799.97. Almost certainly one account
-with two cards, but if they are separate that is another $1,800 of debt.
+**B5 · Verify the two "personal credit card" entries are one account** · **DONE 2026-08-09**
+Confirmed: **one account, two cards.** Both show balance $1,799.97, available
+credit $200.00, last statement Jun 24 – Jul 23 at $1,899.97, payment due
+17 Aug 2026, and the same $100.00 payment on 5 Aug. **No additional debt.**
 
 **B6 · Travel Visa credit limit** · READY · *small*
 Not present on the statement template used. Available credit reads $0.00, so it
