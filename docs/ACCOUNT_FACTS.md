@@ -885,19 +885,51 @@ address** rather than this one. **None of the large coaching receipts
 ($3,312–$7,245) are in this inbox**, which is consistent with her being the
 payee.
 
-What the 11 do show: **PRO CALIBER LACROSSE ACADEMY $488.25**, **FUSION WEST
-LACROSSE $1,023.75**, **VENOM CUSTOM STICKS $100** — kids' lacrosse, not coaching
-payroll. Incoming are small personal amounts from named individuals.
+What the 11 do show is **boys' lacrosse** *(owner-confirmed 2026-08-09)*:
+**PRO CALIBER LACROSSE ACADEMY $488.25**, **FUSION WEST LACROSSE $1,023.75**,
+**VENOM CUSTOM STICKS $100** — the last a stick purchase, the first two clubs the
+boys play for. Not coaching payroll. Incoming are small personal amounts from
+named individuals.
 
 **So the coach-payment question is not answerable from this mailbox.** It needs
-either Amanda's inbox or her bookkeeping [B55].
+either Amanda's inbox or her bookkeeping [B55]. But it does narrow the bound:
+some of the $29,762 of outgoing e-transfers is kids' sport, not coach wages.
 
-## 🔴 An unlisted asset: a Coinbase account
+### Lacrosse is a real category, and the bank data cannot see most of it
 
-**Not in the picture at all** — no balance, no holdings, and absent from net
-worth.
+| Source | Identified |
+|---|---|
+| Cards | **$2,546.26** across 18 charges |
+| E-transfers, via Interac emails | **$1,612.00** across 3 |
+| **Chequing, by merchant matching** | **$0.00** |
 
-Evidence it is live and material:
+**That $0.00 is the finding.** Searching the chequing exports for every lacrosse
+pattern — clubs, associations, `LAX`, the lot — returns nothing, because
+**e-transfers carry no payee name**. The money left the account with a
+three-character reference against it.
+
+So a category worth at least **$4,158.26** and probably a good deal more shows up
+as $2,546 on the cards and as anonymous transfers everywhere else. Club fees are
+paid by e-transfer precisely because clubs prefer it — which makes youth sport
+one of the most systematically **understated** categories in any analysis built
+on bank exports alone.
+
+Corroborating context in the mailbox: team-fee notices of **$400 per player**,
+multiple teams (Burrards U13-A2, Fusion West Grade 2/3, RMSC Titans), and a
+Pro Caliber roster travelling to **Texas in June** with its own fee schedule.
+
+## A Coinbase account — no longer used *(owner-stated 2026-08-09)*
+
+**The owner no longer uses it.** Treated as dormant rather than active, and not
+counted as an asset.
+
+**But dormant is not the same as empty, and the account still exists.** Coinbase
+was still issuing **monthly statements as at June 2026**, which it does for open
+accounts. Whatever remains — possibly nothing — is unrecorded. **One look at the
+balance closes this permanently**; until then it is an unknown of unknown size,
+and the only asset class outside TD and Wise.
+
+Evidence of the account and its one visible movement:
 
 - **Monthly statements are still being issued** — "Your May Coinbase statement is
   ready to download", 1 June 2026
@@ -906,10 +938,13 @@ Evidence it is live and material:
   which lands in Chequing A the next day as `E-TRANSFER ***TeT $1,950.50` —
   **an exact match**, and the transaction that was sitting unexplained
 
-**Holdings are unknown and could be anything.** A withdrawal of $1,950 tells us
-nothing about what remains. This is the first asset found outside TD and Wise,
-and until it is quantified **net worth is understated by an unknown amount**
-[B59].
+**A withdrawal of $1,950 says nothing about what remains** — it may well be
+empty, and the June 2025 withdrawal may have been the emptying of it. Recorded as
+dormant, excluded from net worth, and closed as an analysis question.
+
+**It stays open as a security question**, which is the more important one — see
+below. An account nobody uses is the one where unauthorised activity goes
+unnoticed longest.
 
 ## ⚠ Security — a phishing campaign against the Coinbase account
 
@@ -925,10 +960,17 @@ Two emails from **`info@afius.org`** are styled as Coinbase and carry
 which a genuine one-time code never does. These are phishing.
 
 Notably the **8 June 2025 withdrawal falls between the two**. There is no
-evidence the withdrawal was unauthorised — the owner appears to have initiated it
-— but the sequence is worth checking directly with Coinbase, and the account
-should have a strong unique password and app-based two-factor authentication.
-**Never enter a code from an email into a login page reached from that email.**
+evidence the withdrawal was unauthorised — the owner appears to have initiated
+it, and Coinbase's own email confirms it.
+
+**Being unused makes this more of a risk, not less.** The account is still open —
+statements were issued as recently as June 2026 — and nobody is watching it. That
+is exactly the profile phishing targets: an unmonitored account attached to a
+live email address, where an unauthorised login would go unnoticed indefinitely.
+
+**The clean fix is to close it.** Failing that: a unique password and app-based
+two-factor authentication, and never enter a code from an email into a page
+reached from that email.
 
 ## The home *(owner estimate, 2026-08-09)*
 
