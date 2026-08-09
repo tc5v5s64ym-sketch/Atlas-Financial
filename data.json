@@ -3,7 +3,7 @@
     "asOf": "2026-08-09",
     "coverage": "TD (15 accounts) · Triangle Mastercard · MBNA · PayPal ×2",
     "transactions": 4655,
-    "statements": 26,
+    "statements": 48,
     "disclaimer": "Financial education and planning support. Not professional financial, tax, legal, mortgage or investment advice."
   },
 
@@ -154,7 +154,7 @@
     { "source": "MBNA / Amazon Mastercard", "what": "Full terms plus all 8 statements, PDF and CSV — the account's entire history", "status": "complete" },
     { "source": "PayPal — two accounts", "what": "503 transactions, categorised and cross-checked", "status": "complete" },
     { "source": "Affirm / Flexiti", "what": "Paid off and closed — $2,654.28 across the window", "status": "complete" },
-    { "source": "TD Cash Back & Travel Visa", "what": "Terms captured; 1 statement each of 12", "status": "partial" },
+    { "source": "TD Cash Back & Travel Visa", "what": "Terms captured plus 12 statements each, Sep 2025 – Aug 2026", "status": "complete" },
     { "source": "American Express", "what": "Nothing — no balance, rate or statements", "status": "missing" },
     { "source": "Wife's business", "what": "—", "status": "missing" },
     { "source": "Home value", "what": "—", "status": "missing" },

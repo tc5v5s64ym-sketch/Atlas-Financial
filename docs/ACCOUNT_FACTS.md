@@ -213,7 +213,7 @@ on unpaid interest under TD's 2 July 2026 change. Not resolved [ASK].
 | **Rate** | **19.99% purchases / 22.99% cash** — the lowest card rate in the household |
 | Balance | $1,078.31 · pending $165.13 |
 | Available credit | **$0.00** |
-| Credit limit | Not stated on the statement template used [ASK] |
+| Credit limit | **Not on any statement** — all 12 checked [ASK — read it off the Manage tab] |
 | Minimum payment | $17.00, due **26 Aug 2026** |
 | Statement cycle | 6th/7th to 5th/6th |
 | TD Rewards points | 57,968 |

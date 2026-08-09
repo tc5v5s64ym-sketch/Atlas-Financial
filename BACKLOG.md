@@ -100,17 +100,26 @@ accounts. Work it in this order, because the analytical value is very uneven.
 > and due date. And TD's download does work; the file simply saves with a GUID
 > `.tmp` name carrying no date, which is what `rename-statements.js` is for.
 >
-> **Attempted 9 Aug, not completed.** The statement list for the Cash Back Visa
-> was enumerated — all 12 present, plus 12 more in 2025 and 12 in 2024 — and one
-> statement downloaded, but it proved to be the August one already held. Probing
-> the document API then broke the EasyWeb session. Nothing new was captured.
+> **COMPLETED 2026-08-09.** Both cards now hold **12 of 12**, Sep 2025 – Aug
+> 2026, in `raw/wife-td/statements/`. All 24 filenames were verified against the
+> statement date read from inside each file — every one correct, no duplicates.
+> Backed up: `raw/` is now 68 files, 22.06 MB.
 
-| Card | Have | Need | Spending currently unseen |
+| Card | Have | Need | Status |
 |---|---|---|---|
-| **TD Cash Back Visa** | 1 | **11** | $5,682 |
-| **Travel Visa** | 1 | **11** | $1,078 |
-| TD Personal Visa | 11 | 1 (Aug 2025) | — card is dormant |
-| Triangle Mastercard | 5 | earlier months if held | — 5 months already analysed |
+| **TD Cash Back Visa** | **12** | — | ✅ complete |
+| **Travel Visa** | **12** | — | ✅ complete |
+| TD Personal Visa | 11 | 1 (Aug 2025) | **retrievable** — not aged out (B26) |
+| Triangle Mastercard | 5 | earlier months if held | 5 months already analysed |
+
+**What worked, after two false starts.** Do not call `documentdetail` directly —
+it 400s even with a byte-identical key, and repeated attempts put the whole
+EasyWeb session into an error state that took a cooldown to clear. The reliable
+route is: Statements & Documents → click the row → read the PDF off the
+`embed[src^="blob:"]` → save it under a real name → close the modal → pause.
+Batches of three with ~1s between were comfortable. The account dropdown on that
+page also lists **every** chequing, savings, mortgage and HELOC account, so
+Tier 3 can be worked from the same screen.
 
 ### Tier 2 — debts with no statements at all
 
@@ -180,19 +189,35 @@ real constraint. Corrected 2026-08-09; see `docs/ACCOUNT_FACTS.md`.
 | DEBT&PAYMENTS | ✅ | — | ✅ 379 | — |
 | SAVINGS-DONT TOUCH | ✅ | ❌ | ✅ 54 | — |
 | EMERGENCY SAVING | ✅ | ❌ | ✅ 24 | — |
-| Personal Visa | ✅ | ✅ 24.99% | via statements | ⚠️ 11 of 12 |
-| **Cash Back Visa** | ✅ | ✅ 26.99% | ❌ | ⚠️ **1 of 12** |
-| **Travel Visa** | ⚠️ no limit | ✅ 19.99% | ❌ | ⚠️ **1 of 12** |
+| Personal Visa | ✅ | ✅ 24.99% | via statements | ⚠️ 11 of 12 — **retrievable, see below** |
+| **Cash Back Visa** | ✅ | ✅ 26.99% | via statements | ✅ **12 of 12** |
+| **Travel Visa** | ⚠️ no limit | ✅ 19.99% | via statements | ✅ **12 of 12** |
 | RESP (WebBroker) | balance only | — | ❌ | blocked |
+
+**TD retains ~7 years of statements, not 12 months.** The year filter offers
+2020–2026. Nothing is aging out, and **B26's "may have aged out" concern was
+unfounded** — the Personal Visa's missing August 2025 statement should still be
+there. Method and endpoints are in `docs/ACCOUNT_FACTS.md`.
 
 ### Outstanding items
 
-**B2 · Cash Back Visa — 11 remaining statements** · *medium*
-**B3 · Cash Back Visa — transaction history** · *medium*
-**B4 · Travel Visa — 11 statements and transaction history** · *medium*
-**B6 · Travel Visa — credit limit** · *small* — absent from the statement
-template used; available credit reads $0.00 so it is at its limit
-**B7 · Reconcile the $158.55 interest charge** · *small*
+**B2 · Cash Back Visa — 11 remaining statements** · **DONE 2026-08-09** — 12 of 12
+**B4 · Travel Visa — 11 remaining statements** · **DONE 2026-08-09** — 12 of 12
+
+**B3 · Cash Back Visa transaction history** · READY · *medium*
+**B4b · Travel Visa transaction history** · READY · *medium*
+24 statements are now held and decrypted to `derived/wife-td/`. The transactions
+inside them have not been parsed or categorised yet — that is the remaining work,
+and it is where the $6,760 of unseen card spending lives.
+
+**B6 · Travel Visa — credit limit** · READY · *small* — **confirmed absent from
+the statements.** All 12 were checked: the Travel Visa template carries no credit
+limit and no interest-rate table at all, unlike the Cash Back template. Get it
+from the card's **Manage** tab instead, which is where the Cash Back Visa's
+$5,000.00 limit was read. *(Attempted 9 Aug; the desktop app crashed twice on the
+navigation, so it was left rather than retried.)*
+
+**B7 · Reconcile the $158.55 interest charge** · READY · *small*
 
 **B22 · Savings interest rates** · *small*
 Neither EMERGENCY SAVING nor SAVINGS-DONT TOUCH has a captured rate. The second
