@@ -868,6 +868,68 @@ Canada). **Anything that treats this card's balance or throughput as a business
 figure will be wrong**, and an accountant will need it separated line by line
 rather than in total.
 
+## E-transfer counterparties — the bank hides them, Interac's emails do not
+
+**TD's export never names the other side.** Outgoing reads `SEND E-TFR ***GCa`,
+incoming `E-TRANSFER ***hr6` — a three-character reference and nothing more.
+That is why 94 incoming and 113 outgoing e-transfers could not be attributed.
+
+**Interac's confirmation emails do name them**, in the subject line:
+
+> "Your $488.25 transfer to PRO CALIBER LACROSSE ACADEMY LTD. has been
+> successfully deposited."
+
+**But the coverage is poor — about 11 of ~207 in the window.** Auto-deposit
+transfers generate no confirmation, and the rest appear to notify **Amanda's
+address** rather than this one. **None of the large coaching receipts
+($3,312–$7,245) are in this inbox**, which is consistent with her being the
+payee.
+
+What the 11 do show: **PRO CALIBER LACROSSE ACADEMY $488.25**, **FUSION WEST
+LACROSSE $1,023.75**, **VENOM CUSTOM STICKS $100** — kids' lacrosse, not coaching
+payroll. Incoming are small personal amounts from named individuals.
+
+**So the coach-payment question is not answerable from this mailbox.** It needs
+either Amanda's inbox or her bookkeeping [B55].
+
+## 🔴 An unlisted asset: a Coinbase account
+
+**Not in the picture at all** — no balance, no holdings, and absent from net
+worth.
+
+Evidence it is live and material:
+
+- **Monthly statements are still being issued** — "Your May Coinbase statement is
+  ready to download", 1 June 2026
+- **2025 annual performance and annual charges reports** were generated
+- A withdrawal of **CA$1,950.50 (plus a CA$19.70 banking fee)** on 8 June 2025,
+  which lands in Chequing A the next day as `E-TRANSFER ***TeT $1,950.50` —
+  **an exact match**, and the transaction that was sitting unexplained
+
+**Holdings are unknown and could be anything.** A withdrawal of $1,950 tells us
+nothing about what remains. This is the first asset found outside TD and Wise,
+and until it is quantified **net worth is understated by an unknown amount**
+[B59].
+
+## ⚠ Security — a phishing campaign against the Coinbase account
+
+Two emails from **`info@afius.org`** are styled as Coinbase and carry
+"Your Coinbase verification code":
+
+| Date | Code |
+|---|---|
+| 24 May 2025 | 523469 |
+| 11 June 2025 | 523469 |
+
+**`afius.org` is not a Coinbase domain**, and **the same code appears on both**,
+which a genuine one-time code never does. These are phishing.
+
+Notably the **8 June 2025 withdrawal falls between the two**. There is no
+evidence the withdrawal was unauthorised — the owner appears to have initiated it
+— but the sequence is worth checking directly with Coinbase, and the account
+should have a strong unique password and app-based two-factor authentication.
+**Never enter a code from an email into a login page reached from that email.**
+
 ## The home *(owner estimate, 2026-08-09)*
 
 **Worth $1.1m – $1.4m** [ESTIMATE — the owner's figure, not an appraisal].
