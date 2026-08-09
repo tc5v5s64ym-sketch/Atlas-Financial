@@ -453,6 +453,32 @@ none, and the rest appear to notify **Amanda's address**. **None of the large
 coaching receipts are here**, consistent with her being the payee. Attribution
 needs her inbox or her bookkeeping.
 
+## 🔴 Who is Lavinio Cavalcante?
+
+**B63 · The $9,646.25 receipt** · BLOCKED — needs the household · *small*
+
+30 June 2026, two transfers thirty minutes apart — **$5,962.50** and
+**$3,683.75** — from **one named individual**. Traced end to end: into Chequing A
+on 2 July, out to SAVINGS-DONT TOUCH as $9,645.00, and onto the **HELOC** as
+$10,000.00 the same day.
+
+**The largest single receipt in the window, and it went straight to debt.**
+
+**It breaks the coaching-revenue assumption.** The $42,395 of large incoming
+e-transfers was reasoned to be coaching revenue. But the actual coaching clients
+pay **$60–80** a lesson — Jenny Fei $60, DILPREET KANG $60 ×2, Darian $80, BINDU
+MOHAN $70, **$330 across five payments in two months**. A single person sending
+$9,646 in one evening is a different kind of transaction entirely: a large
+contract, a private sale, a loan, or a repayment.
+
+**Until it is identified, the large e-transfers must not be treated as coaching
+revenue** — which means the income picture is uncertain in *both* directions, not
+just overstated by coach wages.
+
+**Also unresolved: no coach payments appear in either mailbox.** Amanda's
+outgoing transfers are Fusion West Lacrosse only. Neither inbox shows a payment
+to an individual resembling wages.
+
 ## 🔴 Income is overstated — the biggest open item
 
 **B55 · Get Amanda's coaching bookkeeping** · BLOCKED — owner offered to obtain · *medium*
