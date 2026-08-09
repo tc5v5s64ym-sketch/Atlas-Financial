@@ -4,6 +4,8 @@ Household,TD,Chequing B,Chequing,Asset,CAD,-517.72,600.00,82.28,,,,Transactional
 Household,TD,Savings,Savings,Asset,CAD,90.58,,90.58,,,,Savings,15.00,Monthly deposit,,,,VERIFIED_TD,2026-08-09,Receives 15/month; drawn down periodically; not accumulating
 Household,TD,DEBT&PAYMENTS,Chequing,Asset,CAD,2691.85,,2691.85,,,,Transactional,,,,,,VERIFIED_TD,2026-08-09,Her profile; no overdraft; 3.95 monthly fee plus withdrawal and cheque-return fees; receives her Tennis BC income and pays MBNA Triangle and Flexiti
 Household,TD,SAVINGS-DONT TOUCH,Savings,Asset,CAD,74.20,,74.20,,,,Staging - not savings,,,,,,VERIFIED_TD,2026-08-09,Her profile; 17745.11 in and 17758.98 out over 18mo netting -13.87; earned 0.11 interest; money leaves within hours or days
+Household,Wise,Wise account 1 (USD spending),Prepaid multi-currency,Asset,USD,1.92,,1.92,,,,Prepaid - no credit facility,,,,,,CALCULATED,2026-08-09,Opened 19 Jul 2026 for the US road trip; 78 card transactions totalling USD 2577.63; CAD bucket now zero; balance run forward from the ledger NOT read from Wise - confirm in app
+Household,Wise,Wise account 2 (USD spending),Prepaid multi-currency,Asset,CAD,83.84,,83.84,,,,Prepaid - no credit facility,,,,,,CALCULATED,2026-08-09,Second profile opened 22 Jul 2026; also holds USD 84.90; 7 card transactions totalling USD 162.52 plus CAD 4.00; funded 430.00 from account 1 and 30.00 from Chequing A
 Household,TD,RESP,RESP investment,Asset,CAD,31555.85,,,,,,Registered - education restricted,,,,,,VERIFIED_TD,2026-08-09,Held in WebBroker; holdings not retrieved; NOT emergency cash
 Household,TD,TFSA,TFSA investment,Asset,CAD,0.00,,,,,,Registered,,,,,,VERIFIED_TD,2026-08-09,Zero balance; open/dormant/closed unknown
 Household,TD,US TFSA,TFSA investment,Asset,USD,0.00,,,,,,Registered,,,,,,VERIFIED_TD,2026-08-09,Zero balance
@@ -23,11 +25,11 @@ Household,Unknown,Unidentified Account 2,Unknown,Unknown,CAD,,,,,,,Unknown,,,,,,
 Household,Unknown,TFR-TO C-C destination,Credit card?,Liability,CAD,,,,,,,Unknown,,,,,,NEEDS_OWNER,2026-08-09,46657.00 over 18mo not arriving at the TD Visa; destination unknown; NOT the Amazon Mastercard which took only 2970.00 across its entire life
 Household,Physical,Home,Real property,Asset,CAD,,,,,,,Owned - secured by mortgage and HELOC,,,,,,NOT_VALUED,2026-08-09,REQUIRED for net worth and for May 2027 renewal loan-to-value
 Business,Unknown,Wife's business,Business,Unknown,CAD,,,,,,,Unknown,,,,,,NOT_REVIEWED,2026-08-09,Queued for review; may explain resale e-transfers and CRA balance
-SUMMARY,,Total visible assets,,Asset,CAD,34401.74,,,,,,,,,,,,CALCULATED,2026-08-09,Cash 2845.89 across five accounts + investments 31555.85; matches TD consolidated banking balance; excludes home vehicles pensions business
+SUMMARY,,Total visible assets,,Asset,CAD,34607.66,,,,,,,,,,,,CALCULATED,2026-08-09,Cash 2845.89 across five TD accounts + investments 31555.85 + Wise 205.92; the TD portion matches TD consolidated banking balance; Wise is 83.84 CAD plus 86.82 USD converted at the 0.7112 effective rate actually paid rather than a spot rate; excludes home vehicles pensions business
 SUMMARY,,Total TD debt,,Liability,CAD,756103.45,,,,,,,,,,,31887.13,CALCULATED,2026-08-09,Card 1799.97 + Cash Back 5612.43 + Travel 1078.31 + HELOC 201586.16 + mortgage 546026.58
 SUMMARY,,Total known debt,,Liability,CAD,777455.57,,,,,,,,,,,36546.11,CALCULATED,2026-08-09,TD 756103.45 + Triangle 13497.00 + MBNA 7855.12; Flexiti closed at zero; Amex still unknown
 SUMMARY,,Total credit-card debt,,Liability,CAD,29842.83,,,,,,,,,,,7227.39,CALCULATED,2026-08-09,Triangle 13497.00 + MBNA 7855.12 + Cash Back 5612.43 + TD card 1799.97 + Travel 1078.31 across five cards
-SUMMARY,,Financial-account net worth,,Net,CAD,-743053.83,,,,,,,,,,,,CALCULATED,2026-08-09,Assets 34401.74 less known debt 777455.57; NOT household net worth
+SUMMARY,,Financial-account net worth,,Net,CAD,-742847.91,,,,,,,,,,,,CALCULATED,2026-08-09,Assets 34607.66 less known debt 777455.57; NOT household net worth
 CREDIT,,Total revolving credit available,,Net,CAD,1415.95,,,,,,,,,,,,CALCULATED,2026-08-09,TD card 200 + HELOC 1067.84 + MBNA 62.83 + overdraft 82.28 + Triangle 3.00 + Cash Back 0 + Travel 0; EVERY facility at or beyond limit
 SUMMARY,,Household net worth,,Net,CAD,,,,,,,,,,,,,NOT_CALCULABLE,2026-08-09,Blocked on home valuation plus the Amex plus the business
 FLOW,,Total income,,Inflow,CAD,306760.03,,,,,,,17042.00,Monthly average,,,,CALCULATED,2026-08-09,18 months; payroll 186152.89 + her Tennis BC employment 63129.47 + resale 54213 + CCB 2764.63 + other 500.04; the 21700 spousal transfer is REMOVED as income - it is an internal movement out of the Tennis BC pay and counting both double-counts
@@ -42,6 +44,7 @@ LIQUIDITY,,Essential spending estimate,,Outflow,CAD,3054.00,,,,,,,3054.00,Monthl
 LIQUIDITY,,Weeks of essentials covered,,Net,,6.1,,,,,,,,,,,,CALCULATED,2026-08-09,Including borrowed capacity; was 2.5 before her accounts were counted
 UNEXPLAINED,,TFR-TO C-C destination,,Outflow,CAD,46657.00,,,,,,,,,,,,NEEDS_OWNER,2026-08-09,Largest single unexplained flow
 UNEXPLAINED,,Unidentified account flows,,Both,CAD,59027.00,,,,,,,,,,,,NEEDS_OWNER,2026-08-09,Two accounts combined
-UNEXPLAINED,,E-transfers out,,Outflow,CAD,23200.00,,,,,,,,,,,,NEEDS_OWNER,2026-08-09,13062 from HELOC + 10138 from chequing; possible inventory purchases
+UNEXPLAINED,,E-transfers out,,Outflow,CAD,23200.00,,,,,,,,,,,,PARTLY_RESOLVED,2026-08-09,13062 from HELOC + 10138 from chequing; 3500.00 of it is now IDENTIFIED as funding the Wise US holiday accounts (2500 direct from HELOC plus 1000 routed HELOC-to-ChequingA-to-Wise on 24 Jul); remainder still unexplained and the inventory theory still stands for it
+RESOLVED,,Wise holiday funding,,Outflow,CAD,4181.16,,,,,,,,,,,,VERIFIED,2026-08-09,Every incoming dollar traced to source account and date; 3500.00 from the HELOC at 4.90% (84% of funding, 97% of bank-sourced funding); 430 from an ATM cash deposit; 134 from a third party; borrowed against the house and interest-only so it does not amortise - about 172/yr indefinitely
 UNEXPLAINED,,Large HELOC advances,,Outflow,CAD,18301.43,,,,,,,,,,,,NEEDS_OWNER,2026-08-09,Only 5 transactions
 UNEXPLAINED,,Uncategorized spending,,Outflow,CAD,25629.69,,,,,,,,,,,,LOW_CONFIDENCE,2026-08-09,19% of spending; TD truncates merchant names; PayPal rail opaque

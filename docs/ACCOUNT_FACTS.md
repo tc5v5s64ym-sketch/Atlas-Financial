@@ -359,6 +359,90 @@ with status Completed. **Run it on any PayPal export before quoting a figure.**
 The Pastini charge is an Oregon restaurant, matching the Travel Visa's US hotels
 in Bend and Medford — the same trip, split across two cards.
 
+## Wise — two accounts, the US holiday spending *(captured 2026-08-09)*
+
+Opened **19 July 2026** for a US road trip, 24 July – 3 August. Two profiles,
+each with its own card:
+
+| | Account 1 | Account 2 |
+|---|---|---|
+| Opened | 19 Jul 2026 | 22 Jul 2026 |
+| Rows captured | 95 | 12 |
+| Card spend | **US$2,577.63** over 78 transactions | **US$162.52** over 7, plus C$4.00 |
+| Closing balance | ~US$1.92, C$0.00 | ~C$83.84, ~US$84.90 |
+
+Balances are **[calculated]** by running the ledger forward, not read off Wise —
+confirm against the app before treating them as verified. Combined they are
+worth roughly **C$206**, small enough not to move net worth.
+
+**No credit facility.** Both are prepaid: money in, then spent. No rate, no
+limit, no debt. Wise is an asset here, not a liability.
+
+### The funding is the finding: $3,500 of $4,181 came from the HELOC
+
+Every incoming dollar was traced to its source account and date:
+
+| Source | Amount | Route |
+|---|---|---|
+| **HELOC direct e-transfers** | $1,000 (27 Jul) · $1,000 (30 Jul) · $500 (2 Aug) | HELOC → Wise |
+| **HELOC via Chequing A** | **$1,000** (24 Jul) | HELOC → Chequing A → Wise **the same day** |
+| ATM cash deposit | $430 (24 Jul) | cash → Chequing B → Wise |
+| Chequing A | $107.25 | the $55 account fee, $22.16 card, $30 seeding account 2 |
+| Chequing B | $10 (24 Jul) | |
+| **Third party** | **$134 (31 Jul)** | from an individual, not a household account |
+| **Total in** | **$4,181.16** | |
+
+**$3,500 of it is borrowed against the house at 4.90%** — **84%** of all funding,
+or **97%** of the money that came from a household bank account.
+
+**The 24 July $1,000 is the one to notice.** It left the HELOC, landed in
+Chequing A, and was e-transferred onward the same day. On the chequing statement
+it looks like an ordinary e-transfer; only the HELOC draw beside it shows what it
+was. **This is the pattern that made $46,657 of "credit card" transfers
+untraceable** — an intermediate hop is enough to break the trail.
+
+**The HELOC is interest-only at 99.5% utilisation.** Nothing about a minimum
+payment reduces this $3,500. Unless it is deliberately repaid it is permanent
+debt, and at 4.90% it costs about **$172 a year, indefinitely**.
+
+### What the trip cost, and where it is hiding
+
+Wise is only one of **five** payment methods used on this trip:
+
+| Method | Trip spend | Where recorded |
+|---|---|---|
+| Wise ×2 | **US$2,740.15** + C$4.00 | here |
+| Travel Visa | **US$1,744.01** of hotels — Milpitas CA, Bend OR ×2, Medford OR | its August statement |
+| TD Cash Back Visa | Bend Brewing, Kona Ice of Bend, Santa Cruz | its August statement |
+| MBNA / Amazon | two `PAYPAL*PASTINI OLD M` charges, Oregon | its August statement |
+| PayPal #2 | the Pastini rail, US$91.75 | PayPal export |
+
+**Do not add the MBNA and PayPal Pastini figures together** — PayPal is the rail
+and MBNA the funding card, so they are the same purchase seen twice.
+
+Wise's own categories are worth keeping: **General $1,059.69 · Travel $919.82 ·
+Entertainment $592.16 · Office expenses $5.96**, and it splits by cardholder
+(Dale US$1,404.29, Amanda US$1,173.34). One `Home Depot` charge is tagged
+*Office expenses*, which may be business rather than holiday [ASK].
+
+### Cost of the arrangement
+
+| | |
+|---|---|
+| Converted | **C$3,918.47 → US$2,786.37** at an effective **0.7112** |
+| Conversion fees | C$18.03 |
+| Card FX fee | C$0.26 |
+| Setup — two cards and one set of USD account details | **C$99.32** |
+| **Total fees** | **C$117.61** |
+
+The setup fees are 84% of the total cost and are one-off, so a second trip on the
+same cards would cost about **C$18**. On C$3,918 converted, the ongoing cost is
+roughly **0.46%** — materially cheaper than the foreign-currency conversion the
+Travel Visa charges on its US$1,744.
+
+**Both Wise exports are activity CSVs, not statements.** Wise issues statements
+separately; they have not been captured [BACKLOG].
+
 ## Known non-TD debts
 
 **Canadian Tire Bank — Triangle Mastercard.** Fully captured; see above.
@@ -476,6 +560,7 @@ Useful operational knowledge — it saves rediscovering this every time.
 | **Canadian Tire / Triangle** | Encrypted PDFs — **AES-128 (AESV2), revision 4**, hex `/O` string. `scripts/pdfdecrypt_aes.js` reads them |
 | **MBNA** | **7 years of PDFs, 13 months of CSV/QFX** — the best retention of any source here. PDFs use the **same RC4-128 R3** scheme as TD, so `scripts/pdfdecrypt.js` reads them unchanged. **The visible Download button fires no network request**; use the endpoints below. `scripts/mbna.js` parses the decrypted text |
 | **PayPal** | Reports page generates activity CSVs, 12 months maximum per report. `Bank Deposit to PP Account` rows are funding pulls, **not income** |
+| **Wise** | Activity CSV export per profile — **one export per profile**, they do not combine. `scripts/wise.js` parses it. Only `CARD_TRANSACTION` rows are spending; `BALANCE_TRANSACTION` rows are internal CAD→USD conversions and counting them roughly doubles the total. `TRANSFER OUT` may be a move to the household's *other* Wise profile rather than money leaving |
 | **WebBroker** | **Blocked.** Requires accepting OTC Markets and CME/S&P exchange agreements — an owner decision, never an agent's |
 
 ### TD statement retention is ~7 years, not 12 months *(corrected 2026-08-09)*

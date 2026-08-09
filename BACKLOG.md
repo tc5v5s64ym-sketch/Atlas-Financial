@@ -121,6 +121,27 @@ Batches of three with ~1s between were comfortable. The account dropdown on that
 page also lists **every** chequing, savings, mortgage and HELOC account, so
 Tier 3 can be worked from the same screen.
 
+**B48 · Wise — two US spending accounts** · **CAPTURED 2026-08-09**
+Opened 19 and 22 July 2026 for the US road trip. Both **prepaid — no credit
+facility, no rate, no debt.** 107 transactions captured, US$2,740.15 of card
+spend, roughly C$206 left. `scripts/wise.js` parses the export.
+
+**The funding is the finding: $3,500 of the $4,181 that went in came from the
+HELOC** at 4.90% — 84% of all funding, 97% of the bank-sourced part. Traced
+transfer by transfer. **$3,500 of the previously unexplained e-transfers is now
+explained**, cutting that item from $23,200 to $19,700.
+
+**One transfer shows why the rest is hard.** On 24 July $1,000 left the HELOC,
+landed in Chequing A, and was e-transferred onward the same day. On the chequing
+statement it is an ordinary e-transfer; only the HELOC draw beside it reveals
+the source. **This is almost certainly the pattern behind the $46,657 of
+"credit card" transfers** — one intermediate hop breaks the trail. Worth
+re-running the transfer-matching (B31) with multi-hop chains in mind.
+
+**B49 · Wise statements** · READY · *small*
+Only activity CSVs were provided. Wise issues statements separately; capture
+them for the archive.
+
 ### Tier 2 — debts with no statements at all
 
 **MBNA / Amazon.ca Rewards Mastercard (B10, B36) — COMPLETE 2026-08-09.** One
