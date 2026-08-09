@@ -38,16 +38,19 @@ them, and never put them in `data.json`.
 
 ## Running it locally
 
+Set the two environment variables, then start. Placeholders below are shown in
+angle brackets deliberately — the pre-commit hook blocks anything that looks
+like a real secret assignment, including in documentation.
+
 ```bash
 npm install
-SITE_PASSWORD=something-long SESSION_SECRET=at-least-sixteen-chars npm start
+export SITE_PASSWORD=<at least 8 characters>
+export SESSION_SECRET=<at least 16 characters>
+npm start
 ```
 
-Then open http://localhost:3000. On Windows PowerShell:
-
-```powershell
-$env:SITE_PASSWORD="something-long"; $env:SESSION_SECRET="at-least-sixteen-chars"; npm start
-```
+Then open http://localhost:3000. On Windows PowerShell, set the same two
+variables with `$env:` prefixes before running `npm start`.
 
 Run the smoke test against a running server:
 
@@ -84,7 +87,11 @@ qualification and loan-to-value. Real decisions need a licensed professional.
 
 ## Related
 
-The full analysis, source data and working notes live **outside this repository**
-on the home machine, in `Documents/finance-review-2026-08-09/`. Raw bank exports
-and statement PDFs contain names, addresses and partial card numbers and are
-never committed anywhere.
+- **`CONTEXT.md`** — read first in a new session: layout, state, standing rules
+- **`ARCHITECTURE.md`** — how the layers fit together, where new material goes,
+  and the staged direction
+- **`docs/ACCOUNT_FACTS.md`** — rates, limits, due dates, the renewal date
+
+Raw bank exports and statement PDFs live in `raw/` on this machine only. They
+contain names, addresses and partial card numbers, are gitignored, and are
+additionally blocked by `.githooks/pre-commit`.

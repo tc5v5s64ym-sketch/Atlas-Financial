@@ -1,6 +1,14 @@
 # Context for a new session
 
-Read this first. Everything lives in **one folder**:
+**Read in this order:**
+
+1. **This file** — layout, current state, standing rules
+2. **`ARCHITECTURE.md`** — the five layers, where new material goes, the direction
+3. **`docs/ACCOUNT_FACTS.md`** — rates, limits, due dates, renewal. Never ask the
+   owner for anything already recorded there
+4. **`docs/01_OPEN_QUESTIONS.md`** — what is actually outstanding
+
+Everything lives in **one folder**:
 
 ```
 C:\Users\dnaud\Documents\atlas-financial
