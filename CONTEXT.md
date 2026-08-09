@@ -6,7 +6,12 @@
 2. **`ARCHITECTURE.md`** — the five layers, where new material goes, the direction
 3. **`docs/ACCOUNT_FACTS.md`** — rates, limits, due dates, renewal. Never ask the
    owner for anything already recorded there
-4. **`docs/01_OPEN_QUESTIONS.md`** — what is actually outstanding
+4. **`BACKLOG.md`** — work that can be done, and what is blocking each item
+5. **`docs/01_OPEN_QUESTIONS.md`** — what only the household can answer
+
+**The distinction between the last two matters.** If an item needs a human to
+*know* something, it is a question. If it needs someone to *do* something, it is
+backlog. They drift into each other unless kept apart deliberately.
 
 Everything lives in **one folder**:
 

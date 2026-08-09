@@ -66,10 +66,16 @@ the same number living in three files and drifting.
 |---|---|---|
 | Rates, limits, due dates, renewal dates | `docs/ACCOUNT_FACTS.md` | anywhere else |
 | Balances, available credit | `docs/positions.csv` and `data.json` | `ACCOUNT_FACTS.md` |
-| Unanswered questions | `docs/01_OPEN_QUESTIONS.md` | scattered in prose |
+| **Work still to do** | **`BACKLOG.md`** | a chat message |
+| **Things only a human can answer** | **`docs/01_OPEN_QUESTIONS.md`** | `BACKLOG.md` |
 | Narrative analysis | `docs/00_MASTER_PICTURE.md` | `data.json` |
 | Per-account depth | `docs/*_DEEP_DIVE.md` | the master picture |
 | What the site displays | `data.json` | hardcoded in `public/` |
+
+**Backlog versus questions.** A backlog item needs someone to *do* something and
+can be closed by doing it. A question needs someone to *know* something and can
+only be closed by an answer. Mixing them produces a list where nothing is
+actionable because everything looks blocked.
 
 **Facts and figures are kept apart deliberately.** A rate is stable; a balance is
 not. Mixing them lets a stale balance masquerade as a standing fact.
