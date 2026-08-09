@@ -191,7 +191,7 @@ real constraint. Corrected 2026-08-09; see `docs/ACCOUNT_FACTS.md`.
 | EMERGENCY SAVING | ✅ | ❌ | ✅ 24 | — |
 | Personal Visa | ✅ | ✅ 24.99% | via statements | ⚠️ 11 of 12 — **retrievable, see below** |
 | **Cash Back Visa** | ✅ | ✅ 26.99% | via statements | ✅ **12 of 12** |
-| **Travel Visa** | ⚠️ no limit | ✅ 19.99% | via statements | ✅ **12 of 12** |
+| **Travel Visa** | ✅ $1,100 limit | ✅ 19.99% | via statements | ✅ **12 of 12** |
 | RESP (WebBroker) | balance only | — | ❌ | blocked |
 
 **TD retains ~7 years of statements, not 12 months.** The year filter offers
@@ -210,12 +210,20 @@ there. Method and endpoints are in `docs/ACCOUNT_FACTS.md`.
 inside them have not been parsed or categorised yet — that is the remaining work,
 and it is where the $6,760 of unseen card spending lives.
 
-**B6 · Travel Visa — credit limit** · READY · *small* — **confirmed absent from
-the statements.** All 12 were checked: the Travel Visa template carries no credit
-limit and no interest-rate table at all, unlike the Cash Back template. Get it
-from the card's **Manage** tab instead, which is where the Cash Back Visa's
-$5,000.00 limit was read. *(Attempted 9 Aug; the desktop app crashed twice on the
-navigation, so it was left rather than retried.)*
+**B6 · Travel Visa — credit limit** · **DONE 2026-08-09 — $1,100.00**
+Confirmed absent from all 12 statements: the Travel Visa template carries no
+credit limit and no rate table, unlike the Cash Back template. Read instead from
+the card's **Manage** tab.
+
+**It is the smallest limit in the household and the card is about to go over.**
+$1,078.31 of $1,100.00 is 98.0%, with **$165.13 pending** that takes it to
+$1,243.44 — **$143.44 over** [calculated]. On the Cash Back Visa's evidence,
+going over means an over-limit fee and the excess becoming immediately due,
+which turned a $69.93 minimum into $762.36. The Travel Visa minimum is currently
+$17.00.
+
+The pending charges are four `AMZN Mktp CA` purchases dated 6–8 Aug — Amazon
+spending on the card TD designates as *business*. Feeds the business question.
 
 **B7 · Reconcile the $158.55 interest charge** · READY · *small*
 

@@ -213,7 +213,7 @@ on unpaid interest under TD's 2 July 2026 change. Not resolved [ASK].
 | **Rate** | **19.99% purchases / 22.99% cash** — the lowest card rate in the household |
 | Balance | $1,078.31 · pending $165.13 |
 | Available credit | **$0.00** |
-| Credit limit | **Not on any statement** — all 12 checked [ASK — read it off the Manage tab] |
+| **Credit limit** | **$1,100.00** *(verified 2026-08-09 from the Manage tab)* |
 | Minimum payment | $17.00, due **26 Aug 2026** |
 | Statement cycle | 6th/7th to 5th/6th |
 | TD Rewards points | 57,968 |
@@ -221,6 +221,21 @@ on unpaid interest under TD's 2 July 2026 change. Not resolved [ASK].
 
 TD's own footnote confirms this is excluded from the consolidated card balance
 because it is a **business** card.
+
+**The limit is $1,100.00 — by far the smallest in the household**, and the card
+is at **98.0%** of it with $0.00 available. **The $165.13 of pending charges will
+take it over.** $1,078.31 + $165.13 = **$1,243.44 against a $1,100 limit**, or
+**$143.44 over** [calculated]. On the evidence of the Cash Back Visa, going over
+triggers an over-limit fee and makes the excess immediately due, turning a $17.00
+minimum into something far larger.
+
+The pending charges are **four `AMZN Mktp CA` purchases** dated 6–8 Aug 2026 —
+Amazon spending on the card TD designates as a *business* card. Worth resolving
+under the business question: either it is genuine inventory, or personal
+purchases are landing on the business card.
+
+Other figures verified from the account on 2026-08-09: last statement balance
+**$801.10** (7 Jul – 5 Aug), last payment **$100.00 on 7 Aug 2026**.
 
 **What it is actually used for.** The August statement is almost entirely US
 travel and a business tool:
