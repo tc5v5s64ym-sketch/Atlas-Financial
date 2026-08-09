@@ -20,8 +20,12 @@ anything older than a few months as needing re-checking, not as fact.
 | **14th & every 14 days** | Mortgage | $1,600.00 | TD |
 | **17th** | TD credit card minimum | ~$94 | TD |
 | **21st** | HELOC minimum (interest only) | ~$814 | TD |
+| **31st / month end** | **Amazon.ca Rewards Mastercard minimum** | **$158.27** | MBNA |
+| **1st** | TD Cash Back Visa minimum | $762.36 | TD |
+| **26th** | Travel Visa minimum | $17.00 | TD |
 
-Statement close dates: **TD card ~23rd** · **Triangle 17th**.
+Statement close dates: **TD card ~23rd** · **Triangle 17th** ·
+**MBNA/Amazon 6th** · **TD Cash Back 7th** · **Travel Visa 5th**.
 
 Income: payroll **bi-weekly** (~$4,469), child benefit **monthly** (~$153.59).
 Bonus or vacation pay has historically landed in **February and July**.
@@ -136,7 +140,15 @@ Interest earned across 18 months: **$0.11.**
 | Cash Back Dollars | $47.21 |
 
 An amount of **$69.93 was flagged as due immediately** on 9 Aug 2026, separate
-from the September minimum.
+from the September minimum. **It was paid** *(owner-stated, 9 Aug 2026 — not yet
+seen on the account)*.
+
+**Last month's minimum remains outstanding**, so the $69.93 did not unfreeze the
+card and did not restart the penalty-rate clock. The $762.36 minimum is still due
+**1 Sep 2026**. Balance after the payment is roughly **$5,612.50** [calculated,
+$5,682.43 − $69.93] — still about **$612 over the $5,000 limit**, so a further
+**$29.00 over-limit fee** should be expected on the September statement unless
+the balance is brought under $5,000 before the 7th.
 
 **The card is frozen.** The August statement states:
 
@@ -218,16 +230,22 @@ requested; PayPal was still generating it at time of capture [BACKLOG B35].
 
 | Linked card | Known? |
 |---|---|
-| **Amazon.ca Rewards Mastercard** ••••54 | ❌ **NEW — no balance, rate or statements** |
-| **American Express** ••••07 | ❌ **NEW — no balance, rate or statements** |
+| **Amazon.ca Rewards Mastercard** ••••54 | ✅ **captured 2026-08-09 — it is the MBNA card, …6454. $7,855.12** |
+| **American Express** ••••07 | ❌ **still unknown — no balance, rate or statements** |
 | TD Cash Back Visa ••••26 | ✅ |
 | TD Emerald Visa ••••70 | ✅ the personal card |
 | TD Business Travel Visa ••••70 | ✅ |
 | Visa Debit ••••75 | ✅ presumed a household chequing card |
 
-**Neither the Amazon Mastercard nor the Amex appears in any TD account, and
-neither receives payments from any chequing account analysed.** They are either
-paid from an account not yet captured, or carry balances nobody has mentioned.
+**The Amazon Mastercard is now identified** — it is the MBNA account, and it
+*does* receive payments from DEBT&PAYMENTS, recorded as "MBNA" $300 at a time.
+The link was missed because the payments name the issuer and the card names the
+retailer.
+
+**The Amex remains unexplained.** It appears in no TD account and receives
+payments from no chequing account analysed, so it is either paid from an account
+not yet captured or carries a balance nobody has mentioned. Given the Amazon card
+turned out to hold $7,855.12, this gap is no longer a small one [B37].
 
 **Eight automatic payments**, and the mix is telling:
 
@@ -287,10 +305,51 @@ in Bend and Medford — the same trip, split across two cards.
 
 **Canadian Tire Bank — Triangle Mastercard.** Fully captured; see above.
 
-**MBNA Mastercard.** Terms not yet obtained. Paid $300 at a time from
-DEBT&PAYMENTS, five times across the window. **The last consumer debt with an
-unknown rate** — it could outrank the 26.99% Cash Back Visa and reorder the
-payoff plan.
+### MBNA — Amazon.ca Rewards Mastercard *(…6454)* *(verified 2026-08-09)*
+
+**The "MBNA Mastercard" and the "Amazon.ca Rewards Mastercard" are one card, not
+two.** The card surfaced from PayPal as `••••54` is this account. Backlog items
+B10 and B36 were the same debt counted twice.
+
+**It is the household's largest credit-card debt by a wide margin.**
+
+| | |
+|---|---|
+| Issuer | MBNA (a TD Bank Group brand) |
+| Current balance | **$7,855.12** |
+| Credit limit | **$8,000.00** |
+| Available credit | **$62.83** |
+| Pending transactions | $82.05 |
+| Last statement balance | $7,855.12 |
+| Minimum payment | **$158.27**, due **31 Aug 2026** |
+| Statement closing | **6th of the month** (June 2026 closed on the 8th) |
+| **Interest rate** | **UNKNOWN** — not shown anywhere in online banking; it is in the statement PDF [pending] |
+
+**Utilisation is 98.2%**, or **99.2%** once the $82.05 of pending transactions is
+counted. Available credit and pending reconcile exactly against the limit:
+$8,000.00 − $7,855.12 − $82.05 = $62.83 [calculated], so pending is already
+netted off the available figure. **A little over $60 of room remains on an
+$8,000 card.**
+
+**No Payment Plans.** The Payment Plans tab reads "No Payment Plans to display"
+and "You do not have any recent purchases that are eligible" — so no MBNA
+instalment balance sits behind the headline figure. The page covers plans closed
+within the last 6 months; anything older would only appear on statements.
+
+**The account is new.** Statement history offers **8 statements, January to
+August 2026**; selecting 2025 returns **"No Activity"**. So the card was opened
+around December 2025, and there is no earlier history to capture. This is
+consistent with the five $300 payments from DEBT&PAYMENTS, all of which fall
+inside 2026.
+
+**MBNA retains 7 years of statement PDFs** — far better than TD's 12 months —
+and 13 billing months in CSV, QFX and Microsoft Money. The CSV is a direct
+transaction export, so this card needs no PDF parsing for its transactions.
+
+**The rate is the one thing still missing**, and it is the thing that decides
+the payoff order. Amazon.ca Rewards Mastercard purchase rates are commonly
+19.99%, but that is a guess about a product, not a fact about this account — it
+must be read off the statement rate table before it is used [unknown].
 
 **Flexiti — PAID OFF AND CLOSED** *(owner-confirmed 2026-08-09)*.
 $2,654.28 was paid across the window: single payments of $1,354.28 and

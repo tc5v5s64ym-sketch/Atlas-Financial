@@ -95,8 +95,12 @@ these, the spending on these cards is invisible in every category total.
 
 ### Tier 2 — debts with no statements at all
 
-MBNA (B10) · Amazon.ca Rewards Mastercard (B36) · American Express (B37).
-Nothing is known about any of them. Any could outrank the 26.99% Cash Back Visa.
+**MBNA / Amazon.ca Rewards Mastercard (B10, B36) — captured 2026-08-09.** One
+card, not two. $7,855.12 against an $8,000 limit. 8 statements exist (Jan–Aug
+2026) and are still to be downloaded, along with the rate — see B46.
+
+**American Express (B37) — still nothing.** No balance, no rate, no statements.
+It could still outrank the 26.99% Cash Back Visa.
 
 ### Tier 3 — chequing and savings statements
 
@@ -262,19 +266,51 @@ That list is what turns "$463/month" into a reviewable set of decisions.
 These need someone to obtain or decide something. The corresponding *questions*
 are in `docs/01_OPEN_QUESTIONS.md`.
 
-**B10 · MBNA Mastercard** · **START HERE** · *small*
-The owner has this ready to hand over. Paid from DEBT&PAYMENTS at $300 a time,
-five times across the window. **No balance, no rate, no limit, no due date.**
+**B10 · MBNA Mastercard** · **MOSTLY DONE 2026-08-09 — rate outstanding**
+**B36 · Amazon.ca Rewards Mastercard** · **CLOSED 2026-08-09 — same card as B10**
 
-Capture: balance · interest rate (purchases and cash) · credit limit · available
-credit · minimum payment · payment due date · statement date · and 12 months of
-statements if available.
+**They were one debt counted twice.** The MBNA account *is* the Amazon.ca
+Rewards Mastercard, …6454, the card that surfaced from PayPal as `••••54`. The
+link was missed because the chequing payments name the issuer ("MBNA") and the
+card names the retailer.
 
-**Why it goes first:** it is the only remaining debt likely to be *large enough
-and dear enough* to reorder the payoff plan. The current top target is the TD
-Cash Back Visa at 26.99%. MBNA rates commonly run 19.99–25.99%, but promotional
-and penalty rates reach higher. Until it is known, any payoff advice is
-provisional.
+Captured: balance **$7,855.12** · limit **$8,000.00** · available **$62.83** ·
+pending $82.05 · minimum **$158.27** due **31 Aug 2026** · statement closing
+**6th**. No Payment Plans, so no instalment balance behind it. Full detail in
+`docs/ACCOUNT_FACTS.md`.
+
+**This is the largest card debt in the household** — on its own it slightly
+exceeds the $7,482.40 previously believed to be the *total* across all cards.
+
+**Still outstanding: the interest rate.** It appears nowhere in MBNA's online
+banking; it is only in the statement PDF's rate table. Until it is read, the
+payoff ranking cannot be settled — see B46.
+
+Two further findings:
+
+- **The account is new.** 8 statements exist, Jan–Aug 2026; 2025 returns
+  "No Activity". There is no earlier history to capture, so this account is
+  complete at 8 rather than 12.
+- **MBNA retains 7 years of PDFs** and 13 billing months of CSV/QFX. The CSV is
+  a direct transaction export, so this card needs no PDF parsing for
+  transactions — unlike TD, whose card download button returns nothing.
+
+**B46 · MBNA rate and statement archive** · READY · *small*
+Download the 8 statements as PDF **and** CSV into `raw/statements-mbna/`, read
+the purchase and cash-advance rates off the rate table, and fold the
+transactions into the spending picture.
+
+Download endpoints, found in the app bundle — the visible Download button fires
+no network request at all, so these are the working route:
+
+```
+PDF  /waw/mbna/accounts/<acct>/statement-history/open-save/selected-date/<YYYY-MM-DD>?format=PDF&contentDisposition=attachment&folder=&insertDocId=
+CSV  /waw/mbna/accounts/<acct>/statement/download/selected-date/<YYYY-MM-DD>?format=CSV
+```
+
+**The Browser pane must stay visible** — downloads silently do not reach disk
+while it is hidden, though `fetch` still returns 200 with the full body. That
+cost a full pass; it is the same class of trap as TD's dead download button.
 
 **B11 · Flexiti** · **CLOSED 2026-08-09 — paid off and account closed**
 Owner-confirmed. **$2,654.28 was paid across the window** ($1,354.28 and
@@ -287,15 +323,17 @@ transactions for Mar–Jul 2026. **Not a business account** — no sales revenue
 all incoming is card funding. Dominant spend is **Instacart at ~$1,140/month**.
 Raw export in `raw/paypal2/`.
 
-**B36 · Amazon.ca Rewards Mastercard — entirely unknown** · BLOCKED · *small*
-Surfaced only as a card linked to the second PayPal account (••••54). **No
-balance, no rate, no limit, no statements, no due date.** It receives no payments
-from any chequing account captured, so it is either serviced from an account not
-yet seen or carries a balance nobody has mentioned.
+**B36 · Amazon.ca Rewards Mastercard** · **CLOSED 2026-08-09 — it is the MBNA
+card.** See B10 above.
 
 **B37 · American Express — entirely unknown** · BLOCKED · *small*
-Same situation (••••07). Amex rates are typically high, so this could
+Still nothing (••••07). It appears in no TD account and receives payments from
+no chequing account analysed. Amex rates are typically high, so this could
 meaningfully change the payoff ranking.
+
+**This gap now looks materially riskier.** The other unknown card linked to
+PayPal — the Amazon Mastercard — turned out to hold **$7,855.12**. The same
+reasoning that made that one look minor applies here, and it was wrong once.
 
 **B41 · PayPal #2 — Pay in 4 status** · **RESOLVED 2026-08-09 — no facility found**
 Checked. **No Pay-in-4 panel and no related link exists on this account**, where
