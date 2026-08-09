@@ -136,7 +136,23 @@ Interest earned across 18 months: **$0.11.**
 | Cash Back Dollars | $47.21 |
 
 An amount of **$69.93 was flagged as due immediately** on 9 Aug 2026, separate
-from the September minimum.
+from the September minimum. **$70.00 was paid on 9 Aug 2026** (owner-confirmed),
+clearing it.
+
+**Position after that payment:**
+
+| | |
+|---|---|
+| Balance | ~$5,612.43 |
+| Credit limit | $5,000.00 |
+| **Still over the limit by** | **~$612.43** |
+| Over-limit fee | **$29.00/month, still accruing** until the balance is under $5,000 |
+| Next minimum | **$762.36, due 1 Sep 2026** — unaffected by this payment |
+| Interest | **$158.55/month at 26.99%**, unaffected |
+
+The payment should lift the freeze, since the statement conditioned further use
+on the minimum being received. **It does not bring the account under its limit
+and does not satisfy the September minimum.** [CONFIRM the freeze has lifted]
 
 **The card is frozen.** The August statement states:
 
