@@ -106,8 +106,21 @@ fee**, plus withdrawal and cheque-return fees — the other chequing accounts do
 not. This is where her employment income lands and where many household debt
 payments originate.
 
-### SAVINGS-DONT TOUCH *(…6478420)*
-Balance $74.20. Receives occasional transfers; the name states the intent.
+### SAVINGS-DONT TOUCH *(…6478420)* — **a staging account, not savings**
+Balance $74.20. Despite the name, nothing is saved here. Money arrives from
+Chequing A and leaves within hours or days, mostly to the HELOC and credit cards.
+
+54 transactions over the window: **$17,745.11 in, $17,758.98 out, net −$13.87.**
+Opening balance $88.07, closing $74.20 — it ends where it started.
+
+The pattern is clearest on **2 July 2026**: $9,645.00 arrived from Chequing A and
+**$10,000.00 left for the HELOC the same day**, taking the balance from $2,713.69
+up to $12,713.69 and back down. That one-day peak is the highest it ever held.
+
+Destinations over the window: transfers to other own accounts $12,120 · credit
+cards $2,818.50 · outgoing e-transfers $2,800 · fees $10.
+
+Interest earned across 18 months: **$0.11.**
 
 ### TD Cash Back Visa *(…0726)* — **the household's second-largest card**
 
@@ -142,16 +155,40 @@ on unpaid interest under TD's 2 July 2026 change. Not resolved [ASK].
 
 | | |
 |---|---|
-| Rate | **Not yet captured** |
+| **Rate** | **19.99% purchases / 22.99% cash** — the lowest card rate in the household |
 | Balance | $1,078.31 · pending $165.13 |
 | Available credit | **$0.00** |
+| Credit limit | Not stated on the statement template used [ASK] |
 | Minimum payment | $17.00, due **26 Aug 2026** |
 | Statement cycle | 6th/7th to 5th/6th |
+| TD Rewards points | 57,968 |
 | Pattern | Small balances, paid down and reused. Went into credit in Jun 2026 |
 
 TD's own footnote confirms this is excluded from the consolidated card balance
-because it is a **business** card. It is the most likely home of the business's
-card spending.
+because it is a **business** card.
+
+**What it is actually used for.** The August statement is almost entirely US
+travel and a business tool:
+
+| Merchant | Amount |
+|---|---|
+| Springhill Suites, Milpitas CA | US$904.65 |
+| Fairfield Inn & Suites, Bend OR | US$540.82 |
+| Sleep Inn, Bend OR | US$273.10 |
+| Calendly (scheduling software) | US$13.44 |
+| Compass Hotel, Medford OR | US$12.00 |
+| **Total foreign currency** | **US$1,744.01** |
+
+Plus a Lululemon charge in Calgary. All foreign-currency charges attract an FX
+conversion cost on top of the amounts shown.
+
+**This connects to her income.** DEBT&PAYMENTS receives deposits marked
+`TENNIS BC EXP` — expenses, not salary. She appears to travel for Tennis BC,
+pay on this card, and be reimbursed. That means **part of the $63,129 recorded
+as Tennis BC income is expense reimbursement rather than earnings**, and the
+matching cost sits on this card. Amounts marked `EXP` total $1,639.10 across the
+window; `AP` a further $2,846.58 [ASK — confirm which descriptors are pay versus
+reimbursement].
 
 ## Her employment income — Tennis British Columbia *(verified 2026-08-09)*
 
