@@ -453,31 +453,42 @@ none, and the rest appear to notify **Amanda's address**. **None of the large
 coaching receipts are here**, consistent with her being the payee. Attribution
 needs her inbox or her bookkeeping.
 
-## 🔴 Who is Lavinio Cavalcante?
+## 🔴 Pass-through money went onto the HELOC
 
-**B63 · The $9,646.25 receipt** · BLOCKED — needs the household · *small*
+**B63 · Where do the coach payments leave from?** · BLOCKED — needs the household · *small*
 
-30 June 2026, two transfers thirty minutes apart — **$5,962.50** and
-**$3,683.75** — from **one named individual**. Traced end to end: into Chequing A
-on 2 July, out to SAVINGS-DONT TOUCH as $9,645.00, and onto the **HELOC** as
-$10,000.00 the same day.
+**Answered:** Lavinio Cavalcante remits Amanda's coaching income and she pays her
+coaches out of it (owner-confirmed). So the large e-transfers are coaching money,
+arriving aggregated from one remitter. **They are pass-through, not household
+income** — a share of each is owed onward.
 
-**The largest single receipt in the window, and it went straight to debt.**
+**The open part:** the 30 June remittance of **$9,646.25** went **onto the HELOC
+the same day**, in full, via SAVINGS-DONT TOUCH. **No coach payments appear in
+either mailbox afterwards.**
 
-**It breaks the coaching-revenue assumption.** The $42,395 of large incoming
-e-transfers was reasoned to be coaching revenue. But the actual coaching clients
-pay **$60–80** a lesson — Jenny Fei $60, DILPREET KANG $60 ×2, Darian $80, BINDU
-MOHAN $70, **$330 across five payments in two months**. A single person sending
-$9,646 in one evening is a different kind of transaction entirely: a large
-contract, a private sale, a loan, or a repayment.
+Three explanations, with very different consequences:
 
-**Until it is identified, the large e-transfers must not be treated as coaching
-revenue** — which means the income picture is uncertain in *both* directions, not
-just overstated by coach wages.
+1. **She pays from an account not yet captured.** Most likely — and there is
+   direct evidence one exists: on 14 July her mailbox shows **$186.16 received
+   under her own full legal name**, i.e. from herself, elsewhere. **This may be
+   one of the two unidentified accounts** [B64].
+2. **Coaches were paid earlier or on a lag**, and this tranche covered a settled
+   period.
+3. **They have not been paid from this money** — in which case there is an
+   **unrecorded liability**, spent on a facility that does not amortise and
+   cannot be drawn back without re-borrowing.
 
-**Also unresolved: no coach payments appear in either mailbox.** Amanda's
-outgoing transfers are Fusion West Lacrosse only. Neither inbox shows a payment
-to an individual resembling wages.
+**Nothing in the data says which.** Worth answering before the next remittance
+lands: using pass-through money for household debt is only safe if the onward
+obligation is already covered.
+
+**B64 · Amanda's other account** · BLOCKED · *small*
+The $186.16 self-transfer on 14 Jul 2026 proves she holds an account outside the
+captured set. Prime candidate for where coach payments leave from, and a prime
+candidate for one of the **two unidentified accounts** ($59,027 combined) — the
+larger of which sent $33,598 across **142** transfers, a frequency that fits
+paying a roster of coaches far better than it fits anything else considered so
+far.
 
 ## 🔴 Income is overstated — the biggest open item
 

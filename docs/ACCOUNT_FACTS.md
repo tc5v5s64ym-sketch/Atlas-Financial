@@ -913,7 +913,51 @@ payroll. Neither mailbox contains a single payment to an individual that looks
 like a coach's wages. Either she pays them another way, or those notifications
 are not retained. **The coach-payment split is still unresolved [B55].**
 
-### 🔴 One person sent $9,646.25 in half an hour, and it paid down the HELOC
+### How the coaching money actually flows *(owner-confirmed 2026-08-09)*
+
+**Lavinio Cavalcante remits Amanda's coaching income; she then pays her coaches
+out of it.** So the large e-transfers *are* coaching money — arriving aggregated
+from one remitter rather than from individual clients. The $60–80 payments are
+separate private-lesson clients booked through Calendly.
+
+**That makes the large receipts pass-through money, not household income.** They
+arrive gross, and a share of each is owed onward to the coaches.
+
+### ⚠ The $9,646.25 did not go to the coaches — it went onto the HELOC
+
+This is the part worth looking at directly. The 30 June remittance was traced end
+to end:
+
+| | |
+|---|---|
+| 2 Jul, Chequing A | receives **$3,683.75** and **$5,962.50** |
+| 2 Jul, → SAVINGS-DONT TOUCH | **−$9,645.00** |
+| 2 Jul, → **HELOC** | **−$10,000.00** |
+
+**Same day, in full, onto household debt.** And **no coach payments appear in
+either mailbox afterwards** — Amanda's outgoing transfers in July and August are
+Fusion West Lacrosse ($230.00) and $150.00 to a person named Amanda. Nothing that
+looks like distributing $9,646 among coaches.
+
+**Three explanations, and they have very different consequences:**
+
+1. **She pays coaches from an account not yet captured.** The most likely one —
+   and there is direct evidence such an account exists: on 14 July her mailbox
+   records **$186.16 received under her own full legal name**, i.e. she
+   transferred money to herself from somewhere else. **This may also be one of
+   the two unidentified accounts** [B64].
+2. **Coaches were paid earlier, or are paid on a lag**, and this tranche covered
+   a period already settled.
+3. **The coaches have not yet been paid for this money.** If so there is an
+   **unrecorded liability** — money owed onward that has been spent on the HELOC,
+   which does not amortise and cannot be drawn back down without re-borrowing.
+
+**Nothing here says which.** But the third possibility is the reason this matters
+more than an accounting nicety: using pass-through money for household debt is
+only safe if the onward obligation is already covered. **That question should be
+answered before the next remittance arrives** [ASK].
+
+### The receipt itself
 
 **Lavinio Cavalcante**, 30 June 2026, two transfers thirty minutes apart:
 **$5,962.50** and **$3,683.75**.
@@ -930,16 +974,12 @@ The chain is complete and unambiguous:
 day**, through the staging account. It is also the definitive example of what
 SAVINGS-DONT TOUCH is for.
 
-**This is now the biggest unexplained item in the picture.** It is not a private
-lesson — the lessons are $60–80. A single individual sending **$9,646.25** in one
-evening is a different kind of transaction: a large coaching or academy contract,
-a private sale, a loan, or a repayment [ASK].
+**Identified**: two transfers thirty minutes apart on 30 June 2026 —
+**$5,962.50** and **$3,683.75** — a single coaching remittance from Lavinio
+Cavalcante, and the largest single receipt in the window.
 
-**It also undercuts the coaching-revenue assumption.** The $42,395 of large
-incoming e-transfers was reasoned to be coaching revenue. The only large ones with
-a name attached come from **one person**, and the actual coaching clients pay
-$60–80. **The large e-transfers should not be treated as coaching revenue until
-they are identified.**
+It is also the definitive example of what SAVINGS-DONT TOUCH is for: money lands,
+is staged, and leaves within hours.
 
 ### Lacrosse is a real category, and the bank data cannot see most of it
 
