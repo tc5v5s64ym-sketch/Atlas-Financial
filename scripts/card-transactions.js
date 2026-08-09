@@ -118,9 +118,13 @@ function parseMbnaCsv(file) {
   }
 }
 
-const tdDir = path.join(derived, 'wife-td');
-if (fs.existsSync(tdDir)) {
-  for (const f of fs.readdirSync(tdDir).filter(f => f.endsWith('.txt'))) parseTd(path.join(tdDir, f));
+for (const dir of ['wife-td', 'personal-visa']) {
+  const d = path.join(derived, dir);
+  if (!fs.existsSync(d)) continue;
+  // A duplicate download would double-count a whole statement.
+  for (const f of fs.readdirSync(d).filter(f => f.endsWith('.txt') && !/dup/i.test(f))) {
+    parseTd(path.join(d, f));
+  }
 }
 if (fs.existsSync(rawMbna)) {
   for (const f of fs.readdirSync(rawMbna).filter(f => f.endsWith('.csv'))) parseMbnaCsv(path.join(rawMbna, f));

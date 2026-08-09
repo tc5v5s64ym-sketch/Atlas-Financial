@@ -599,9 +599,25 @@ Two cards' worth of spending is missing from every category total.
 The ranking already changed once — the Cash Back Visa at 26.99% displaced
 Triangle as the most expensive debt. MBNA and Flexiti could change it again.
 
-**B18 · Re-examine the $46,657 "TFR-TO C/C"** · QUEUED *(on B2)* · *medium*
-The working theory is that these paid the Cash Back Visa rather than the
-personal card. Its statement history should settle it.
+**B18 · The $46,657 "TFR-TO C/C"** · **RESOLVED 2026-08-09 — they paid the cards**
+
+The working theory was the Cash Back Visa. **It was mostly the Travel Visa.**
+
+Over the twelve-month statement window the cards received **$55,178.02** —
+Travel Visa $33,696.18, Cash Back $11,879.50, personal Visa $6,632.34, MBNA
+$2,970.00 — against **$39,875.43** of `TFR-TO C/C` leaving the accounts. The
+cards received **$15,302.59 more** than those transfers sent, the rest arriving
+by other routes including direct HELOC payments.
+
+**Nothing was hiding.** The flow looked unexplained only because one of five
+cards was visible, and it took just $6,632 of it. No undisclosed card, no
+leakage, and the hypothesis that this would expose a debt missing from the
+ranking is disproved.
+
+**The general lesson:** the anomaly was never in the data, it was in the
+coverage. A flow that "goes nowhere" usually means an account nobody has looked
+at yet — worth remembering for the two unidentified accounts, which are now the
+largest unexplained item at $59,027.
 
 **B19 · Refresh the mortgage and HELOC deep dive** · QUEUED *(on B1)* · *small*
 Written before the spouse's accounts were known. The HELOC paydown analysis in

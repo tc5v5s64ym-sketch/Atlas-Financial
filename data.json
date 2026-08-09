@@ -156,8 +156,8 @@
   },
 
   "unexplained": [
-    { "label": "\"Credit card\" transfers", "amount": 46657, "note": "Labelled as card payments but not arriving at the TD Visa. Destination unknown — and not the Amazon Mastercard, which took only $2,970 across its whole life." },
-    { "label": "Unidentified accounts", "amount": 59027, "note": "Two accounts — $33,598 in across 142 transfers, $16,945 out across five." },
+    { "label": "Two unidentified accounts", "amount": 59027, "note": "Two accounts — $33,598 in across 142 transfers, $16,945 out across five. Now the largest unexplained flow." },
+    { "label": "Cheques — payee unknown", "amount": 8150, "note": "Five cheques over 18 months. The export gives an amount and a cheque number, never a payee: $3,010 (15 Jul 2025), $2,835 (9 Sep 2025), $1,295 (19 Nov 2025), $980 (18 Feb 2025), $30 (27 Oct 2025)." },
     { "label": "Uncategorised spending", "amount": 25630, "note": "19% of all spending — TD truncates merchant names." },
     { "label": "E-transfers out", "amount": 19700, "note": "Was $23,200. $3,500 is now identified as funding the Wise US holiday accounts — traced transfer by transfer. The rest is still unexplained." },
     { "label": "Large HELOC advances", "amount": 18301, "note": "Only five transactions, all large." }
@@ -165,7 +165,7 @@
 
   "questions": [
     { "tier": 1, "q": "Does the business make money?", "detail": "$54,213 of inbound e-transfers over 18 months against $23,200 outbound, $13,062 of it drawn from the HELOC at 4.90%. Heavy retail purchasing currently counted as household spending. A CRA balance paid from the HELOC.", "changes": "Everything. Whether household spending is overstated, whether HELOC growth is working capital or leakage, and what the tax position is.", "owner": "Both + accountant" },
-    { "tier": 1, "q": "Where do the \"credit card\" transfers go?", "detail": "$46,657 over 18 months. The TD Visa's balance fell only $391 in that time and shows no purchases at all.", "changes": "Could reveal a card with a significant balance entirely absent from the debt ranking.", "owner": "Dale" },
+    { "tier": 0, "q": "ANSWERED — the \"credit card\" transfers went to the cards", "detail": "It looked unexplained because only one of five cards was visible. Across the twelve-month statement window the cards received $55,178.02 — Travel Visa $33,696.18, Cash Back $11,879.50, personal Visa $6,632.34, MBNA $2,970.00 — against $39,875.43 of TFR-TO C/C leaving the accounts. The cards received $15,302.59 MORE than those transfers sent, the rest arriving by other routes including direct HELOC payments.", "changes": "Nothing is hiding. No undisclosed card, no leakage. The hypothesis that this would reveal a card missing from the debt ranking is disproved.", "owner": "Closed 9 Aug 2026" },
     { "tier": 1, "q": "What is the home worth?", "detail": "$747,613 of debt is secured against it. Original mortgage $648,000 in May 2022.", "changes": "Net worth is unstateable without it, and loan-to-value decides what is possible at the May 2027 renewal.", "owner": "Dale" },
     { "tier": 2, "q": "Where does the rest of the $19,700 of e-transfers go?", "detail": "$3,500 is now traced to the Wise holiday accounts. The remainder still leaves the household without a matched destination, $13,062 of it originally drawn from the HELOC.", "changes": "The working theory is business inventory. If so it is a business cost currently counted as household spending, and it is being funded by borrowing against the house.", "owner": "Both" },
     { "tier": 2, "q": "Why did the monthly transfer stop after May 2026?", "detail": "$1,000/month from March 2025, stepping to $1,100 in November, reliable through May 2026. Absent since.", "changes": "About $1,100/month, and whether the budget needs rebuilding.", "owner": "Both" },
