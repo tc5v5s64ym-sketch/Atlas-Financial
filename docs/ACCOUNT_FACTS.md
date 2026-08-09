@@ -265,6 +265,110 @@ earnings**, but the matching costs have not been found and are not these hotels
 [ASK — confirm which descriptors are pay versus reimbursement, and test against
 a period with no family travel in it].
 
+## The $1,000–1,100 monthly transfer was RENT, not a spousal transfer
+
+*(Owner-confirmed 2026-08-09. This corrects an 18-month misreading.)*
+
+It was **rent paid by Amanda's parents**, because they moved **their lab into the
+garage**. It ran from March 2025, stepped from $1,000 to $1,100 in November, and
+**stopped after May 2026 because the business is not going well**.
+
+**Three things follow, and none of them were visible before.**
+
+**1. It was never household income from her.** The project recorded it as
+"Wife's monthly transfer" and treated it as her contribution to the shared
+accounts. It was a third party paying rent. That is a different thing for tax,
+for budgeting, and for what happens if it never resumes.
+
+**2. It is rental income on the home, and it stopped.** About **$1,050/month —
+$12,600 a year — has gone**, and the household has not replaced it. Because it
+was misfiled as an internal transfer, its loss never registered as an income
+event.
+
+**3. The dental thread now joins up.** "The lab", the **$10,000 Ivoclar
+Vivadent** charge — a *dental-materials* manufacturer — and her father funding
+that machine are all one story: **a dental lab operating out of the garage.**
+The $10,000 was not a household purchase passing oddly through a card; it was
+capital equipment for a business run from this property.
+
+**Two questions this raises, both worth real money [ASK]:**
+
+- **Business use of the home.** A lab in the garage may affect home insurance,
+  and may create both a deduction and a capital-gains exposure on that portion
+  of the property. Worth an accountant's view before the May 2027 renewal.
+- **Is the rent coming back?** "Not going well" is the reason it stopped. If the
+  arrangement is ending, the garage is a room to re-let or reclaim; if it is
+  paused, $12,600/year is a recoverable income line.
+
+## Amanda's coaching business — the large e-transfers
+
+*(Owner-confirmed 2026-08-09.)* She runs a **coaching business** paid by
+e-transfer, **usually over $4,000** a time.
+
+Incoming e-transfers over the window, **$79,047.00 across 94 transfers**:
+
+| Size | Count | Total |
+|---|---|---|
+| **≥ $3,000** | 8 | **$42,395.00** |
+| $1,000–3,000 | 24 | $26,880.50 |
+| $300–1,000 | 11 | $5,421.24 |
+| under $300 | 51 | $4,350.26 |
+
+Nearly all of it lands in **Chequing A** ($77,143). The eight large ones —
+$3,312 to $7,245 — match the description of coaching income.
+
+**This relabels an income line that has been wrong throughout.** The picture
+carried **"Resale / business e-transfers — $54,213"**, described as "very
+irregular" and assumed to be buying and reselling goods. **There is no evidence
+of resale.** It is coaching revenue.
+
+### ⚠ It is REVENUE, not income — and household income is overstated
+
+*(Owner-confirmed 2026-08-09.)* **Amanda pays her coaches out of these
+receipts.** The household keeps only the margin, not the gross.
+
+**This is the single largest error still in the picture.** Every income figure
+the project has published treats the full amount as household money.
+
+The outgoing side, for scale — **113 e-transfers out, $29,762.42** over the
+window:
+
+| Size | Count | Total |
+|---|---|---|
+| ≥ $1,000 | 8 | $9,708.67 |
+| $500–1,000 | 10 | $6,978.40 |
+| $200–500 | 27 | $8,414.80 |
+| under $200 | 68 | $4,660.55 |
+
+**Coach wages cannot be separated from personal transfers here.** There is no
+clean repeating pattern — the most common amounts are $100 (×8) and $60 (×7),
+which is family-sized, not payroll-sized. The bank data alone cannot do it.
+
+**Bounds, pending her books:** coach payments are somewhere between **$0 and
+$29,762** over 18 months, so household income is overstated by up to
+**~$1,650/month**. That is wide enough to matter to every conclusion that rests
+on income, and it should be treated as the largest open uncertainty in the
+picture — larger now than any remaining unexplained flow.
+
+**Amanda's bookkeeping is the fix**, and the owner has offered to get it. What
+is needed: coaching revenue, coach payments, and any other business costs, so
+gross can be separated from net.
+
+**So there are two businesses, not one**, and the project has been conflating
+them:
+
+| | Whose | What |
+|---|---|---|
+| **The dental lab** | her parents' | in the garage, paid rent until May 2026, "not going well" |
+| **The coaching business** | Amanda's | paid by e-transfer, ~$42,395 of large receipts |
+
+The Tier 1 question "does the business make money?" has been asking about both at
+once. **They need separating before it can be answered.**
+
+`Head Canada Inc.` **$1,043.37 is a business expense Amanda absorbs personally**
+*(owner-confirmed)* — so the coaching business has costs carried on household
+cards, which is exactly the mixing that makes its profitability unreadable.
+
 ## Her employment income — Tennis British Columbia *(verified 2026-08-09)*
 
 **43 deposits totalling $63,129.47 over 18 months**, paid into DEBT&PAYMENTS.
