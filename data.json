@@ -1,0 +1,162 @@
+{
+  "meta": {
+    "asOf": "2026-08-09",
+    "coverage": "TD (11 accounts) · Triangle Mastercard · PayPal",
+    "transactions": 4222,
+    "statements": 16,
+    "disclaimer": "Financial education and planning support. Not professional financial, tax, legal, mortgage or investment advice."
+  },
+
+  "headline": [
+    { "label": "Cash on hand", "value": 449.84, "tone": "alert", "note": "Across three accounts. One is overdrawn." },
+    { "label": "Total known debt", "value": 762909.71, "tone": "plain", "note": "MBNA and BNPL still unknown" },
+    { "label": "Interest cost / year", "value": 32648.72, "tone": "warn", "note": "About $2,721 every month" },
+    { "label": "Credit left, everywhere", "value": 1353.12, "tone": "alert", "note": "Across four facilities combined" }
+  ],
+
+  "upcoming": [
+    { "due": "2026-08-07", "what": "Triangle Mastercard minimum", "amount": 253.57, "status": "paid", "note": "Paid $300.00 on 9 Aug — two days late, watch for a fee" },
+    { "due": "2026-08-14", "what": "Mortgage (bi-weekly)", "amount": 1600.00, "status": "due", "note": "" },
+    { "due": "2026-08-17", "what": "TD credit card minimum", "amount": 94.03, "status": "due", "note": "Must post by the 17th — a fifth miss restarts the penalty-rate clock" },
+    { "due": "2026-08-21", "what": "HELOC minimum", "amount": 814.18, "status": "due", "note": "Interest-only — reduces principal by nothing" }
+  ],
+  "upcomingNote": "Still to fund: $2,508.21, against roughly $577 in Chequing A after the Triangle payment plus $90.58 in savings. Payroll at ~$4,469 bi-weekly covers it comfortably — it is purely a timing question, and there is no buffer to absorb a mismatch.",
+
+  "debts": [
+    { "label": "Mortgage", "balance": 546026.58, "rate": 3.64, "rateBasis": "TD Mortgage Prime − 0.96%", "structure": "Amortising — 52.4% of each payment is principal", "annualInterest": 19441, "payment": 1600, "frequency": "Bi-weekly", "nextDue": "2026-08-14", "limit": null, "available": null, "confidence": "verified" },
+    { "label": "HELOC", "balance": 201586.16, "rate": 4.90, "rateBasis": "TD Prime + 0.45%", "structure": "Interest-only revolving — never amortises", "annualInterest": 9877.72, "payment": 814.18, "frequency": "Monthly minimum", "nextDue": "2026-08-21", "limit": 202654, "available": 1067.84, "confidence": "verified" },
+    { "label": "Triangle Mastercard", "balance": 13497.00, "rate": 21.99, "rateBasis": "Purchases 21.99% / cash 22.99%", "structure": "Revolving — 99.98% used", "annualInterest": 2880, "payment": 253.57, "frequency": "Monthly minimum", "nextDue": "2026-08-07", "limit": 13500, "available": 3.00, "confidence": "verified" },
+    { "label": "TD credit card", "balance": 1799.97, "rate": 24.99, "rateBasis": "Penalty rate — normal would be 17.20%", "structure": "Revolving — dormant balance, no purchases", "annualInterest": 450, "payment": 94.03, "frequency": "Monthly minimum", "nextDue": "2026-08-17", "limit": 2000, "available": 200.00, "confidence": "verified" },
+    { "label": "MBNA Mastercard", "balance": null, "rate": null, "rateBasis": null, "structure": "Revolving — new since June 2026", "annualInterest": null, "payment": null, "frequency": null, "nextDue": null, "limit": null, "available": null, "confidence": "unknown" },
+    { "label": "Affirm / Flexiti", "balance": null, "rate": null, "rateBasis": null, "structure": "Instalment", "annualInterest": null, "payment": 44.59, "frequency": "Monthly", "nextDue": null, "limit": null, "available": null, "confidence": "unknown" }
+  ],
+
+  "utilisation": [
+    { "label": "Triangle Mastercard", "used": 13497.00, "limit": 13500, "available": 3.00 },
+    { "label": "HELOC", "used": 201586.16, "limit": 202654, "available": 1067.84 },
+    { "label": "TD credit card", "used": 1799.97, "limit": 2000, "available": 200.00 },
+    { "label": "Chequing B overdraft", "used": 517.72, "limit": 600, "available": 82.28 }
+  ],
+
+  "assets": [
+    { "label": "Chequing A", "value": 876.98 },
+    { "label": "Chequing B", "value": -517.72 },
+    { "label": "Savings", "value": 90.58 },
+    { "label": "RESP (education-restricted)", "value": 31555.85 },
+    { "label": "TFSA, US TFSA, two mutual funds", "value": 0 }
+  ],
+  "netWorth": {
+    "assets": 32005.69,
+    "debts": 762909.71,
+    "financialAccountsOnly": -730904.02,
+    "caveat": "This is not household net worth. It excludes the home — the asset the mortgage and HELOC are secured against — plus vehicles, pensions, the business, and any non-TD accounts. Household net worth cannot be stated until the home is valued and the remaining accounts are added."
+  },
+
+  "helocHistory": [
+    { "m": "Feb 25", "v": 190627.78 }, { "m": "Mar", "v": 189375.85 }, { "m": "Apr", "v": 190381.69 },
+    { "m": "May", "v": 198578.57 }, { "m": "Jun", "v": 195549.81 }, { "m": "Jul", "v": 195684.37 },
+    { "m": "Aug", "v": 198366.81 }, { "m": "Sep", "v": 197777.65 }, { "m": "Oct", "v": 197847.57 },
+    { "m": "Nov", "v": 198858.82 }, { "m": "Dec", "v": 202058.59, "note": "Above the limit" },
+    { "m": "Jan 26", "v": 202358.65, "note": "Peak" },
+    { "m": "Feb", "v": 188060.61, "note": "$16,100 bonus paydown" },
+    { "m": "Mar", "v": 190953.11 }, { "m": "Apr", "v": 193168.43 }, { "m": "May", "v": 195659.82 },
+    { "m": "Jun", "v": 196967.31 }, { "m": "Jul", "v": 201085.16 },
+    { "m": "Aug 26", "v": 201586.16, "note": "Only $1,067.84 left" }
+  ],
+  "helocLimit": 202654,
+  "helocSummary": "Balance grew $7,536.96 over 18 months despite $78,177 of repayments, because $86,514 was advanced and $15,029 of interest was capitalised. Since the February 2026 paydown it has risen every month — +$13,525.55 in six.",
+
+  "cashflow": [
+    { "m": "Feb 25", "v": 832.69 }, { "m": "Mar", "v": -2355.99 }, { "m": "Apr", "v": 1443.63 },
+    { "m": "May", "v": -2260.51 }, { "m": "Jun", "v": -61.28 }, { "m": "Jul", "v": 1597.50 },
+    { "m": "Aug", "v": -483.80 }, { "m": "Sep", "v": 3491.48 }, { "m": "Oct", "v": -258.97 },
+    { "m": "Nov", "v": -849.52 }, { "m": "Dec", "v": -4329.02, "note": "Highest spending month" },
+    { "m": "Jan 26", "v": 2314.83 }, { "m": "Feb", "v": 287.38, "note": "Bonus, mostly to the HELOC" },
+    { "m": "Mar", "v": -1201.79 }, { "m": "Apr", "v": -794.14 }, { "m": "May", "v": 2650.01 },
+    { "m": "Jun", "v": -1071.99 }, { "m": "Jul", "v": 11675.09, "note": "Bonus plus a strong resale month" }
+  ],
+  "cashflowNote": "Nine of eighteen complete months were negative. The year balances only because two or three large months carry it. Excludes payments made directly from the HELOC — roughly $1,960/month — so the real picture is somewhat weaker than shown.",
+
+  "income": [
+    { "label": "Payroll (bi-weekly)", "total": 186152.89, "perMonth": 10342, "stability": "Stable" },
+    { "label": "Resale / business e-transfers", "total": 54213.00, "perMonth": 3012, "stability": "Very irregular — $795 to $15,622" },
+    { "label": "Wife's monthly transfer", "total": 21700.00, "perMonth": 1206, "stability": "Stopped after May 2026" },
+    { "label": "Child benefit", "total": 2764.63, "perMonth": 154, "stability": "Stable" },
+    { "label": "Insurance reimbursement", "total": 500.04, "perMonth": null, "stability": "One-off" }
+  ],
+  "incomeTotal": { "total": 265330.56, "perMonth": 14740 },
+
+  "spending": [
+    { "label": "Groceries", "total": 29141.76, "confidence": "high" },
+    { "label": "Shopping", "total": 16051.67, "confidence": "medium" },
+    { "label": "Uncategorised", "total": 15678.75, "confidence": "low" },
+    { "label": "Restaurants & takeaway", "total": 13199.84, "confidence": "medium" },
+    { "label": "Fuel & transport", "total": 11322.45, "confidence": "high" },
+    { "label": "E-transfers out", "total": 10138.10, "confidence": "unknown" },
+    { "label": "PayPal — entertainment", "total": 9950.94, "confidence": "resolved" },
+    { "label": "Household", "total": 7015.41, "confidence": "medium" },
+    { "label": "Utilities", "total": 6289.75, "confidence": "high" },
+    { "label": "Entertainment", "total": 4054.58, "confidence": "low" },
+    { "label": "Property tax", "total": 3567.91, "confidence": "high" }
+  ],
+  "spendingNote": "Household spending averages about $7,551/month over 18 months. Roughly 19% could not be reliably categorised — TD truncates merchant names.",
+
+  "paypal": {
+    "perMonth": 463,
+    "crossCheck": 474,
+    "months": 9,
+    "categories": [
+      { "label": "Gaming (for the kids)", "total": 1306.66, "perMonth": 145 },
+      { "label": "Apple Services", "total": 1138.72, "perMonth": 127 },
+      { "label": "Streaming & media", "total": 521.76, "perMonth": 58 },
+      { "label": "Food delivery", "total": 487.46, "perMonth": 54 },
+      { "label": "Shopping & other", "total": 431.96, "perMonth": 48 },
+      { "label": "Music & amp plugins (known)", "total": 282.33, "perMonth": 31 }
+    ],
+    "note": "Not a source of business revenue, not the channel for the unexplained e-transfers, and not a hidden asset or debt — balance $0.00, Pay-in-4 complete."
+  },
+
+  "unexplained": [
+    { "label": "\"Credit card\" transfers", "amount": 46657, "note": "Labelled as card payments but not arriving at the TD Visa. Destination unknown." },
+    { "label": "Unidentified accounts", "amount": 59027, "note": "Two accounts — $33,598 in across 142 transfers, $16,945 out across five." },
+    { "label": "Uncategorised spending", "amount": 25630, "note": "19% of all spending — TD truncates merchant names." },
+    { "label": "E-transfers out", "amount": 23200, "note": "$13,062 from the HELOC, $10,138 from chequing. Possibly business inventory." },
+    { "label": "Large HELOC advances", "amount": 18301, "note": "Only five transactions, all large." }
+  ],
+
+  "questions": [
+    { "tier": 1, "q": "Does the business make money?", "detail": "$54,213 of inbound e-transfers over 18 months against $23,200 outbound, $13,062 of it drawn from the HELOC at 4.90%. Heavy retail purchasing currently counted as household spending. A CRA balance paid from the HELOC.", "changes": "Everything. Whether household spending is overstated, whether HELOC growth is working capital or leakage, and what the tax position is.", "owner": "Both + accountant" },
+    { "tier": 1, "q": "Where do the \"credit card\" transfers go?", "detail": "$46,657 over 18 months. The TD Visa's balance fell only $391 in that time and shows no purchases at all.", "changes": "Could reveal a card with a significant balance entirely absent from the debt ranking.", "owner": "Dale" },
+    { "tier": 1, "q": "What is the home worth?", "detail": "$747,613 of debt is secured against it. Original mortgage $648,000 in May 2022.", "changes": "Net worth is unstateable without it, and loan-to-value decides what is possible at the May 2027 renewal.", "owner": "Dale" },
+    { "tier": 2, "q": "Balances and rates on the non-TD debts", "detail": "MBNA Mastercard and Affirm/Flexiti — visible only as outgoing payments.", "changes": "If any carries a rate above 21.99% it outranks Triangle as the first target.", "owner": "Both" },
+    { "tier": 2, "q": "Why did the monthly transfer stop after May 2026?", "detail": "$1,000/month from March 2025, stepping to $1,100 in November, reliable through May 2026. Absent since.", "changes": "About $1,100/month, and whether the budget needs rebuilding.", "owner": "Both" },
+    { "tier": 3, "q": "What are the two unidentified accounts?", "detail": "One sent $33,598 across 142 transfers; the other received $16,945 across five.", "changes": "$59,027 of movement, likely folding into question 1.", "owner": "Both" }
+  ],
+
+  "coverage": [
+    { "source": "TD — 11 accounts", "what": "Balances, rates, terms; 4,222 transactions over 18 months", "status": "complete" },
+    { "source": "TD credit card", "what": "11 statements, Sep 2025 – Jul 2026", "status": "complete" },
+    { "source": "Mortgage & HELOC", "what": "Rates, maturity, payment splits, 208 HELOC transactions", "status": "complete" },
+    { "source": "Triangle Mastercard", "what": "Full terms plus 5 statements", "status": "complete" },
+    { "source": "PayPal", "what": "351 transactions, categorised and cross-checked", "status": "complete" },
+    { "source": "MBNA Mastercard", "what": "Visible only as outgoing payments", "status": "missing" },
+    { "source": "Affirm / Flexiti", "what": "~$44.59/month of instalments", "status": "missing" },
+    { "source": "Wife's business", "what": "—", "status": "missing" },
+    { "source": "Home value", "what": "—", "status": "missing" },
+    { "source": "WebBroker holdings", "what": "RESP balance only ($31,555.85)", "status": "blocked" }
+  ],
+
+  "mortgage": {
+    "balance": 546026.58,
+    "rate": 3.64,
+    "paymentBiweekly": 1600,
+    "interestPortion": 762.27,
+    "principalPortion": 837.73,
+    "requiredPayment": 1365,
+    "remainingYears": 17.75,
+    "maturity": "2027-05-01",
+    "prepaymentRoom": 97200,
+    "prepaymentUsed": 0,
+    "note": "About $6,110/year of voluntary overpayment has removed roughly 8 years of amortisation."
+  }
+}

@@ -1,0 +1,192 @@
+'use strict';
+// Household financial dashboard — password-gated.
+//
+// Design notes:
+//  * Fails closed. Without SITE_PASSWORD and SESSION_SECRET the server refuses
+//    to start, so a misconfigured deploy can never serve the data publicly.
+//  * The financial data is served only to an authenticated session. Nothing
+//    sensitive sits in the static directory.
+//  * Sessions are stateless: an HMAC-signed cookie, so a restart (Render free
+//    tier sleeps) does not force a re-login mid-session.
+
+const express = require('express');
+const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
+
+const PASSWORD = process.env.SITE_PASSWORD;
+const SECRET = process.env.SESSION_SECRET;
+const PORT = process.env.PORT || 3000;
+const SESSION_HOURS = 24 * 14;
+
+if (!PASSWORD || PASSWORD.length < 8) {
+  console.error('FATAL: SITE_PASSWORD is not set, or is shorter than 8 characters.');
+  process.exit(1);
+}
+if (!SECRET || SECRET.length < 16) {
+  console.error('FATAL: SESSION_SECRET is not set, or is shorter than 16 characters.');
+  process.exit(1);
+}
+
+const app = express();
+app.disable('x-powered-by');
+app.set('trust proxy', 1); // Render terminates TLS in front of us
+app.use(express.urlencoded({ extended: false, limit: '8kb' }));
+
+// ---------------------------------------------------------------- security
+app.use((req, res, next) => {
+  res.set({
+    'X-Robots-Tag': 'noindex, nofollow, noarchive, nosnippet',
+    'Cache-Control': 'no-store, max-age=0',
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'Referrer-Policy': 'no-referrer',
+    'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
+    'Content-Security-Policy':
+      "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
+      "img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
+  });
+  next();
+});
+
+app.get('/robots.txt', (_req, res) => res.type('text/plain').send('User-agent: *\nDisallow: /\n'));
+
+// ---------------------------------------------------------------- sessions
+function sign(payload) {
+  const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const mac = crypto.createHmac('sha256', SECRET).update(body).digest('base64url');
+  return `${body}.${mac}`;
+}
+function verify(token) {
+  if (typeof token !== 'string' || !token.includes('.')) return null;
+  const [body, mac] = token.split('.');
+  if (!body || !mac) return null;
+  const expected = crypto.createHmac('sha256', SECRET).update(body).digest('base64url');
+  const a = Buffer.from(mac);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+  try {
+    const payload = JSON.parse(Buffer.from(body, 'base64url').toString());
+    if (!payload.exp || Date.now() > payload.exp) return null;
+    return payload;
+  } catch { return null; }
+}
+function readCookie(req, name) {
+  const raw = req.headers.cookie;
+  if (!raw) return null;
+  for (const part of raw.split(';')) {
+    const i = part.indexOf('=');
+    if (i < 0) continue;
+    if (part.slice(0, i).trim() === name) return decodeURIComponent(part.slice(i + 1).trim());
+  }
+  return null;
+}
+function authed(req) {
+  return verify(readCookie(req, 'hfd_session')) !== null;
+}
+// Secure is mandatory in production (Render is always HTTPS) but must be
+// omitted over plain http, or a local test session can never be sent back.
+function secureFlag(req) {
+  return (req.secure || req.get('x-forwarded-proto') === 'https') ? ' Secure;' : '';
+}
+
+// Simple in-memory throttle. Enough to stop guessing; resets on restart.
+const attempts = new Map();
+function tooManyAttempts(ip) {
+  const rec = attempts.get(ip);
+  if (!rec) return false;
+  if (Date.now() - rec.first > 15 * 60 * 1000) { attempts.delete(ip); return false; }
+  return rec.count >= 8;
+}
+function noteAttempt(ip) {
+  const rec = attempts.get(ip);
+  if (!rec || Date.now() - rec.first > 15 * 60 * 1000) attempts.set(ip, { count: 1, first: Date.now() });
+  else rec.count++;
+}
+
+// ---------------------------------------------------------------- login
+const LOGIN_HTML = (error) => `<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Sign in</title><link rel="stylesheet" href="/styles.css"></head>
+<body class="login-page"><main class="login-card">
+<h1>Household finances</h1>
+<p class="muted">This page is private. Enter the shared password to continue.</p>
+${error ? `<p class="login-error" role="alert">${error}</p>` : ''}
+<form method="POST" action="/login" autocomplete="on">
+  <label for="password">Password</label>
+  <input id="password" name="password" type="password" autocomplete="current-password" required autofocus>
+  <button type="submit">Sign in</button>
+</form>
+</main></body></html>`;
+
+app.get('/login', (req, res) => {
+  if (authed(req)) return res.redirect('/');
+  res.type('html').send(LOGIN_HTML(null));
+});
+
+app.post('/login', (req, res) => {
+  const ip = req.ip || 'unknown';
+  if (tooManyAttempts(ip)) {
+    return res.status(429).type('html').send(LOGIN_HTML('Too many attempts. Wait 15 minutes.'));
+  }
+  const supplied = Buffer.from(String(req.body.password || ''));
+  const actual = Buffer.from(PASSWORD);
+  const ok = supplied.length === actual.length && crypto.timingSafeEqual(supplied, actual);
+  if (!ok) {
+    noteAttempt(ip);
+    return res.status(401).type('html').send(LOGIN_HTML('That password is not right.'));
+  }
+  attempts.delete(ip);
+  const token = sign({ exp: Date.now() + SESSION_HOURS * 3600 * 1000 });
+  res.set('Set-Cookie',
+    `hfd_session=${encodeURIComponent(token)}; HttpOnly;${secureFlag(req)} SameSite=Lax; Path=/; Max-Age=${SESSION_HOURS * 3600}`);
+  res.redirect('/');
+});
+
+app.post('/logout', (req, res) => {
+  res.set('Set-Cookie', `hfd_session=; HttpOnly;${secureFlag(req)} SameSite=Lax; Path=/; Max-Age=0`);
+  res.redirect('/login');
+});
+
+// ---------------------------------------------------------------- gate
+// styles.css is needed by the login page, so it stays public. Everything else
+// requires a session.
+app.use((req, res, next) => {
+  if (req.path === '/login' || req.path === '/styles.css' || req.path === '/robots.txt') return next();
+  if (authed(req)) return next();
+  if (req.path === '/data.json') return res.status(401).json({ error: 'not authenticated' });
+  return res.redirect('/login');
+});
+
+// ---------------------------------------------------------------- data
+let cachedData = null;
+let cachedAt = 0;
+app.get('/data.json', (_req, res) => {
+  const file = path.join(__dirname, 'data.json');
+  try {
+    const stat = fs.statSync(file);
+    if (!cachedData || stat.mtimeMs > cachedAt) {
+      cachedData = JSON.parse(fs.readFileSync(file, 'utf8'));
+      cachedAt = stat.mtimeMs;
+    }
+    res.json(cachedData);
+  } catch (err) {
+    console.error('data.json could not be read:', err.message);
+    res.status(500).json({ error: 'data unavailable' });
+  }
+});
+
+app.get('/healthz', (_req, res) => res.type('text/plain').send('ok'));
+
+app.use(express.static(path.join(__dirname, 'public'), {
+  etag: false, lastModified: false, maxAge: 0,
+  setHeaders: (res) => res.set('Cache-Control', 'no-store'),
+}));
+
+app.use((_req, res) => res.status(404).type('text/plain').send('Not found'));
+
+app.listen(PORT, () => {
+  console.log(`Household finance dashboard listening on ${PORT}`);
+});

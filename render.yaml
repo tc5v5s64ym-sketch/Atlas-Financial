@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: household-finances
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: npm ci --omit=dev
+    startCommand: npm start
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      # Both are required. The server refuses to start without them, so a
+      # misconfigured deploy can never serve the data publicly.
+      - key: SITE_PASSWORD
+        sync: false          # set by hand in the Render dashboard
+      - key: SESSION_SECRET
+        generateValue: true  # Render generates and stores a random value
+      - key: NODE_VERSION
+        value: "20"
