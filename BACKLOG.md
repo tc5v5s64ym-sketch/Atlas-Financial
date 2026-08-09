@@ -431,6 +431,20 @@ The 8 Jun 2025 withdrawal sits between the two. No evidence it was unauthorised,
 but worth confirming with Coinbase directly, and the account wants a unique
 password plus app-based 2FA. **This is the owner's action, not an agent's.**
 
+**B62 · Youth lacrosse is understated** · READY · *medium*
+Owner-confirmed: Pro Caliber Lacrosse Academy and Fusion West are the boys'
+clubs; Venom Custom Sticks was a stick. Identified so far: **$2,546.26 on cards**
+plus **$1,612.00 of e-transfers found via Interac emails**.
+
+**Chequing merchant-matching finds $0.00** — every lacrosse pattern returns
+nothing, because e-transfers carry no payee name. Clubs prefer e-transfer, so
+**youth sport is systematically understated in any analysis built on bank
+exports**. Mailbox context: $400/player team fees, several teams, and a
+Pro Caliber roster travelling to Texas with its own fee schedule.
+
+Worth totalling properly — it is a committed annual cost that budgeting has never
+seen in full.
+
 **B61 · E-transfer counterparties** · PARTIAL · *medium*
 TD's export never names the other side — `SEND E-TFR ***GCa` and nothing more.
 **Interac's confirmation emails do**, in the subject line, but only **~11 of the
