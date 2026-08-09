@@ -273,13 +273,23 @@ Two traps found and guarded in the script:
   what stopped the reconciliation passing, and a reconciliation that is "nearly
   right" is worth nothing.
 
-**B52 · The $10,000 Ivoclar Vivadent charge** · BLOCKED — needs the household · *small*
-5 Dec 2025, `IVOCLAR/VIVADENT, INC-C` Mississauga, a dental-materials
-manufacturer. **The single largest card purchase in the dataset**, verified
-against the statement text. It fits no household pattern, and it cannot have
-cleared the card's present $1,100 limit — so **the limit has since been cut
-hard**, which is usually an issuer risk decision. Both the purchase and the
-reduction need explaining.
+**B52 · The $10,000 Ivoclar Vivadent charge** · **ANSWERED 2026-08-09**
+Amanda's father put the money on the card and a machine for the business was
+bought with it immediately. **Not household money.** The payments confirm it —
+$1,700 on 12 Nov and $3,000 plus $8,000 on 25 Nov, driving the card deep into
+credit before the 5 Dec purchase drew it back.
+
+**Both sides come out of the household figures.** Card purchases fall
+$53,959.75 → **$43,959.75**; Travel Visa $33,643.75 → **$23,643.75**. Which of
+the three payments were his is not separable from the statements — $12,700 in
+against $10,000 out, so roughly $2,700 may be ordinary household payment [ASK].
+
+**A wrong inference is recorded and withdrawn.** This item previously concluded
+the credit limit "must have been cut hard", probably by TD as a risk action.
+Prepaying a card creates room without any limit change, which is what happened.
+There is no evidence of an issuer action, and whether the limit ever differed
+from $1,100 is unknown. **The lesson is general: an implausible transaction is a
+prompt to ask, not a licence to infer a cause.**
 
 **B53 · `Head Canada Inc.` $1,043.37** · BLOCKED — needs the household · *small*
 Racquet-sports equipment, Guelph. Sits alongside RacquetGuys on PayPal and
