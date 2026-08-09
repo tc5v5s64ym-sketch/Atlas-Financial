@@ -257,6 +257,34 @@ yet seen or carries a balance nobody has mentioned.
 Same situation (••••07). Amex rates are typically high, so this could
 meaningfully change the payoff ranking.
 
+**B41 · PayPal #2 — Pay in 4 status** · **RESOLVED 2026-08-09 — no facility found**
+Checked. **No Pay-in-4 panel and no related link exists on this account**, where
+the first account displays one explicitly. Strong evidence the facility is not
+active here, so no hidden instalment debt. Recorded as a negative inference
+rather than a confirmed zero — if a Pay Later hub becomes reachable, confirm.
+
+**B42 · PayPal #2 — per-subscription amounts and next billing dates** · READY · *small*
+**Ten** automatic payments, known by name only — no amounts, no billing dates:
+
+Canva · DoorDash · Instacart · MailChimp · Parking Corporation of Vancouver ·
+RacquetGuys · Sephora USA · Starbucks · **Truly Free Inc** · **Uber Technologies**
+
+The last two only appeared after expanding the list twice, so **always exhaust
+"See more" before treating an autopay list as complete** — the same caution
+applies to the first account, where 16 were recorded and the list may also have
+been truncated.
+
+Clicking a merchant row did not open its detail pane via script; the amounts
+likely need real clicks or a different selector. Same gap as B9.
+
+Note RacquetGuys has not billed once in the five months captured — worth seeing
+when it last did.
+
+**B43 · PayPal #2 — confirm account type** · BLOCKED · *small*
+Inferred as personal from its transactions, but not verified. If it is a
+**business** account, that bears on the business question and on how its
+spending should be classified.
+
 **B38 · PayPal #2 — reconcile authorisations against settlements** · READY · *small*
 Outgoing sums to $8,424.17 but `General Authorization` rows ($5,246.53) are
 pre-authorisations that settle separately. Settled spend is nearer $2,717 and
