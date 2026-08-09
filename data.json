@@ -120,19 +120,25 @@
   "cardSpendingNote": "Twelve months to August 2026, from 484 card purchases totalling $44,344.58 — about $3,695/month. Only 4.5% is uncategorised, against 19% on the chequing side, because card statements carry full merchant names where TD's chequing export truncates them. Discretionary spending is $28,653.44 of it, roughly $2,388/month — the most addressable part of the picture. Travel includes the road trip, so it is not a recurring annual figure, and Business is a floor rather than a measure.",
 
   "spending": [
-    { "label": "Groceries", "total": 29141.76, "confidence": "high" },
-    { "label": "Shopping", "total": 16051.67, "confidence": "medium" },
-    { "label": "Uncategorised", "total": 15678.75, "confidence": "low" },
-    { "label": "Restaurants & takeaway", "total": 13199.84, "confidence": "medium" },
-    { "label": "Fuel & transport", "total": 11322.45, "confidence": "high" },
-    { "label": "E-transfers out", "total": 10138.10, "confidence": "unknown" },
-    { "label": "PayPal — entertainment", "total": 9950.94, "confidence": "resolved" },
-    { "label": "Household", "total": 7015.41, "confidence": "medium" },
-    { "label": "Utilities", "total": 6289.75, "confidence": "high" },
-    { "label": "Entertainment", "total": 4054.58, "confidence": "low" },
-    { "label": "Property tax", "total": 3567.91, "confidence": "high" }
+    { "label": "Groceries", "total": 23919.65, "confidence": "high" },
+    { "label": "Shopping", "total": 17670.07, "confidence": "medium" },
+    { "label": "Restaurants & takeaway", "total": 14570.56, "confidence": "medium" },
+    { "label": "Fuel & transport", "total": 14080.65, "confidence": "high" },
+    { "label": "Uncategorised", "total": 13903.75, "confidence": "low" },
+    { "label": "Household", "total": 8441.74, "confidence": "medium" },
+    { "label": "Sport & fitness", "total": 5345.21, "confidence": "medium" },
+    { "label": "Entertainment", "total": 4732.58, "confidence": "medium" },
+    { "label": "Property tax", "total": 4300.00, "confidence": "high" },
+    { "label": "Travel", "total": 2614.73, "confidence": "medium" },
+    { "label": "Health", "total": 2235.80, "confidence": "medium" },
+    { "label": "Telecom", "total": 1641.07, "confidence": "high" },
+    { "label": "Subscriptions", "total": 1112.45, "confidence": "medium" },
+    { "label": "Tax", "total": 800.00, "confidence": "high" },
+    { "label": "Insurance", "total": 474.68, "confidence": "high" },
+    { "label": "Pets", "total": 236.57, "confidence": "high" },
+    { "label": "School & clubs", "total": 140.41, "confidence": "high" }
   ],
-  "spendingNote": "These categories are materially incomplete and are being rebuilt. They cover about $7,551/month from the chequing accounts over 18 months, with roughly 19% uncategorised because TD truncates merchant names. Card transactions have now been parsed and reconciled — 635 transactions over the twelve months to August 2026 — and almost none of it appears above, because the chequing exports only ever showed the payments to those cards, never what was bought. Household card purchases are $43,959.75, after removing a $10,000 funded pass-through that was a third party's money buying a business machine. A further $3,371 is PayPal-rail that may already be counted. Adding the rest would raise spending by roughly $3,400/month.",
+  "spendingNote": "Chequing and savings spending only - $116,219.92 over 18 months, about $6,457/month, rebuilt against the merchant library. Uncategorised is down to 12.0% from 19%, and that is after removing $25,490 that was never spending at all: PayPal funding pulls, Flexiti and credit-card payments, and transfers to WebBroker, all previously counted as purchases. Card spending is shown separately and adds about $3,695/month. PayPal draws a further $10,437.78 from chequing over the window, roughly $580/month, spent at merchants recorded in the PayPal exports rather than here. Total household spending is therefore around $10,700/month, not the $7,551 previously published.",
 
   "paypal": {
     "perMonth": 463,
