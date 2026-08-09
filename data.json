@@ -114,7 +114,7 @@
     { "label": "Entertainment", "total": 4054.58, "confidence": "low" },
     { "label": "Property tax", "total": 3567.91, "confidence": "high" }
   ],
-  "spendingNote": "These categories are materially incomplete and are being rebuilt. They cover about $7,551/month from the chequing accounts over 18 months, with roughly 19% uncategorised because TD truncates merchant names. Card transactions have now been parsed and reconciled — $54,344.58 of purchases over the twelve months to August 2026, across 635 transactions — and almost none of it appears above, because the chequing exports only ever showed the payments to those cards, never what was bought. About $3,371 of it is PayPal-rail and may already be counted. Adding the rest would raise spending by roughly $4,250/month.",
+  "spendingNote": "These categories are materially incomplete and are being rebuilt. They cover about $7,551/month from the chequing accounts over 18 months, with roughly 19% uncategorised because TD truncates merchant names. Card transactions have now been parsed and reconciled — 635 transactions over the twelve months to August 2026 — and almost none of it appears above, because the chequing exports only ever showed the payments to those cards, never what was bought. Household card purchases are $43,959.75, after removing a $10,000 funded pass-through that was a third party's money buying a business machine. A further $3,371 is PayPal-rail that may already be counted. Adding the rest would raise spending by roughly $3,400/month.",
 
   "paypal": {
     "perMonth": 463,
