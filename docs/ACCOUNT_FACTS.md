@@ -85,10 +85,85 @@ The renewal is the single most consequential date in this file.
 | Savings | Automatic **$15/month** deposit |
 | RESP | Held in WebBroker. **Education-restricted — not emergency cash** |
 
+## Accounts on the spouse's TD profile *(verified 2026-08-09)*
+
+The two profiles show the same household set under different nicknames. These
+five appear on both and are the same accounts:
+
+| Her nickname | Referred to elsewhere as |
+|---|---|
+| EMERGENCY SAVING | Savings |
+| BILLS ACCOUNT | Chequing A |
+| WEEKLY SPENDING | Chequing B |
+| PERSONAL CREDIT CARD (…5770) | TD credit card (…6294) — same balance, second card on the account |
+| MORTGAGE, LINE OF CREDIT | Mortgage, HELOC |
+
+**Four accounts appear only on her profile:**
+
+### DEBT&PAYMENTS chequing *(…6458934)*
+Balance $2,691.85, **no overdraft facility**. Charges a **$3.95 monthly account
+fee**, plus withdrawal and cheque-return fees — the other chequing accounts do
+not. This is where her employment income lands and where many household debt
+payments originate.
+
+### SAVINGS-DONT TOUCH *(…6478420)*
+Balance $74.20. Receives occasional transfers; the name states the intent.
+
+### TD Cash Back Visa *(…0726)* — **the household's second-largest card**
+
+| | |
+|---|---|
+| Rate | **Not yet captured** — needs a statement |
+| Credit limit | **$5,000.00** |
+| Balance | $5,682.43 — **$682.43 OVER the limit** |
+| Available credit | **$0.00** |
+| Minimum payment | **$762.36**, due **1 Sep 2026** |
+| Statement cycle | 8th to 7th |
+| Recent charges | Interest **$158.55/month**, plus a **$29.00 over-limit fee** |
+| Cash Back Dollars | $47.21 |
+
+An amount of **$69.93 was flagged as due immediately** on 9 Aug 2026, separate
+from the September minimum.
+
+### Travel Visa *(…0870)* — **a Business Visa**
+
+| | |
+|---|---|
+| Rate | **Not yet captured** |
+| Balance | $1,078.31 · pending $165.13 |
+| Available credit | **$0.00** |
+| Minimum payment | $17.00, due **26 Aug 2026** |
+| Statement cycle | 6th/7th to 5th/6th |
+| Pattern | Small balances, paid down and reused. Went into credit in Jun 2026 |
+
+TD's own footnote confirms this is excluded from the consolidated card balance
+because it is a **business** card. It is the most likely home of the business's
+card spending.
+
+## Her employment income — Tennis British Columbia *(verified 2026-08-09)*
+
+**43 deposits totalling $63,129.47 over 18 months**, paid into DEBT&PAYMENTS.
+Descriptors: `TENNIS - BRITIS PAY`, `TENNIS BRITISH AP`, `TENNIS BC EXP`,
+`TENNIS BRITIS MSP`.
+
+**It has grown steadily**, roughly doubling over the window:
+
+| | |
+|---|---|
+| Feb–Mar 2025 | $1,250/month |
+| Aug–Sep 2025 | ~$2,368/month |
+| Nov 2025 – Apr 2026 | ~$4,470/month |
+| Jul 2026 | **$6,195.94** |
+| Average across the window | **$3,507/month** |
+
+This income was **entirely absent** from the earlier picture, which only saw the
+portion she transferred across to the shared accounts.
+
 ## Known non-TD debts, terms not yet obtained
 
-- **MBNA Mastercard** — first appeared June 2026
-- **Affirm / Flexiti** — instalments of roughly $44.59/month
+- **MBNA Mastercard** — paid $300 at a time from DEBT&PAYMENTS, five times
+- **Flexiti** — $1,354.28 and $1,000.00 single payments, plus $300 instalments
+- **Canadian Tire Mastercard** — also paid from DEBT&PAYMENTS ($300 × 2)
 
 ---
 
