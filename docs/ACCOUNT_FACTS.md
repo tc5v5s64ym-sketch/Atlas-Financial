@@ -209,6 +209,42 @@ Descriptors: `TENNIS - BRITIS PAY`, `TENNIS BRITISH AP`, `TENNIS BC EXP`,
 This income was **entirely absent** from the earlier picture, which only saw the
 portion she transferred across to the shared accounts.
 
+## Second PayPal account *(captured 2026-08-09)*
+
+Distinct from the first. Balance **$0.00**. Report for 1 Feb – 31 Jul 2026
+requested; PayPal was still generating it at time of capture [BACKLOG B35].
+
+**Six linked cards — two of which appear nowhere else in the picture:**
+
+| Linked card | Known? |
+|---|---|
+| **Amazon.ca Rewards Mastercard** ••••54 | ❌ **NEW — no balance, rate or statements** |
+| **American Express** ••••07 | ❌ **NEW — no balance, rate or statements** |
+| TD Cash Back Visa ••••26 | ✅ |
+| TD Emerald Visa ••••70 | ✅ the personal card |
+| TD Business Travel Visa ••••70 | ✅ |
+| Visa Debit ••••75 | ✅ presumed a household chequing card |
+
+**Neither the Amazon Mastercard nor the Amex appears in any TD account, and
+neither receives payments from any chequing account analysed.** They are either
+paid from an account not yet captured, or carry balances nobody has mentioned.
+
+**Eight automatic payments**, and the mix is telling:
+
+| Merchant | Reads as |
+|---|---|
+| **MailChimp** | email marketing — business |
+| **Canva** | design software — business |
+| **RacquetGuys** | tennis equipment retailer |
+| Parking Corporation of Vancouver | travel/work |
+| DoorDash, Instacart, Starbucks, Sephora | household |
+
+**This looks like the business-side account.** MailChimp and Canva are tools for
+marketing something. RacquetGuys sells tennis equipment, which sits directly
+alongside her Tennis BC employment — and if the resale activity is tennis gear,
+RacquetGuys would be the supplier. That would make this account the clearest
+available evidence on the business question [ASK].
+
 ## Known non-TD debts
 
 **Canadian Tire Bank — Triangle Mastercard.** Fully captured; see above.
