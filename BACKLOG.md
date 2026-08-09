@@ -12,6 +12,32 @@ Last reviewed **2026-08-09**. Phase: **data capture**.
 
 ---
 
+## 🔴 The raw archive has no backup
+
+**B45 · Back up `raw/` somewhere off this disk** · READY · *small* · **highest risk item in the project**
+
+`raw/` holds **30 files, 9.18 MB** — every statement and export captured. It is
+**gitignored by design**, so GitHub is not a backup. It exists in exactly one
+place: this machine's local disk.
+
+Everything else can be rebuilt: the analysis is in `docs/`, the scripts are in
+`scripts/`, both are in git. **`raw/` cannot.** Some of it took real effort to
+obtain — decrypting two different PDF schemes, an 18-month TD window that will
+age out, statements TD only retains for 12 months.
+
+`C:\Users\dnaud\OneDrive` exists on this machine but **`atlas-financial` is not
+inside it**. Options, in order of preference:
+
+1. Copy `raw/` into OneDrive on a schedule — simplest, keeps it under the
+   owner's own account, no third party
+2. An external drive or NAS
+3. An encrypted archive stored anywhere
+
+**Do not solve this by committing `raw/` to git.** It carries full name, home
+address and partial card numbers, and git history is effectively permanent.
+
+---
+
 ## ⚠️ Published figures are stale
 
 **B1 · Update `data.json` and `docs/positions.csv` with everything found on the

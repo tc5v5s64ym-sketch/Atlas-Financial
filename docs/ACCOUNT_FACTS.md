@@ -253,29 +253,32 @@ paid from an account not yet captured, or carry balances nobody has mentioned.
 card to fund payments, exactly as the first account pulls from a bank. **Nothing
 is received from customers.**
 
-**What it is actually for — grocery and ride delivery:**
+**What it is actually for — settled spend, reconciled 2026-08-09:**
 
-| Merchant | Total | Count | Months |
+| Merchant | Settled | Charges | Currency |
 |---|---|---|---|
-| **Instacart** | **$5,699.85** | 46 | 5 |
-| Uber | $984.45 | 24 | 2 |
-| Sport Chek | $418.92 | 4 | 1 |
-| Uber Eats | $304.20 | 4 | 1 |
-| Pastini Old Mill (Oregon restaurant) | $275.25 | 4 | 1 |
-| Starbucks | $150.00 | 6 | 2 |
-| MailChimp | $89.60 | 4 | 4 |
-| Canva | $87.36 | 3 | 3 |
+| **Instacart** | **$1,864.17** | 18 | CAD |
+| Uber | $328.15 | 8 | CAD |
+| Sport Chek | $104.73 | 1 | CAD |
+| Uber Eats | US$101.40 | 2 | USD |
+| Pastini Old Mill (Oregon) | US$91.75 | 2 | USD |
+| MailChimp | US$89.60 | 4 | USD |
+| Canva | $87.36 | 3 | CAD |
+| Starbucks | $50.00 | 2 | CAD |
+| **Total settled** | **$2,717.16** | **40** | |
 
-**Instacart alone is roughly $1,140/month** across five months — more than the
-entire first PayPal account. With Uber and Uber Eats it is about **$1,400/month
-on delivery**.
+**About $543/month**, not the $1,685 a naive total suggests.
 
-**Caution on the total.** Outgoing sums to $8,424.17, but `General Authorization`
-entries ($5,246.53) are pre-authorisations that settle separately and would
-double-count against the settled rows. Settled spend is nearer **$2,717**, and
-card funding pulled in was **$2,864.65**. The true figure sits between; it needs
-the same authorisation-versus-settlement reconciliation applied to the first
-account [BACKLOG].
+> **Correction.** An earlier reading put Instacart at "$5,699.85, roughly
+> $1,140/month" and delivery overall at "$1,400/month". **Both were wrong** —
+> they summed every negative row. PayPal records one purchase as up to four:
+> a pending authorisation, the actual charge, the card-funding leg, and the
+> authorisation clearing. Only the charge is real spend. Settled Instacart is
+> **$1,864.17 over five months, about $373/month**.
+
+The reconciliation is now automated — `scripts/paypal-settled.js` counts only
+`PreApproved Payment`, `Express Checkout`, `Website Payment` and `Other` rows
+with status Completed. **Run it on any PayPal export before quoting a figure.**
 
 The Pastini charge is an Oregon restaurant, matching the Travel Visa's US hotels
 in Bend and Medford — the same trip, split across two cards.
