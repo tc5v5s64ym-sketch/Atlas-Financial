@@ -239,11 +239,46 @@ paid from an account not yet captured, or carry balances nobody has mentioned.
 | Parking Corporation of Vancouver | travel/work |
 | DoorDash, Instacart, Starbucks, Sephora | household |
 
-**This looks like the business-side account.** MailChimp and Canva are tools for
-marketing something. RacquetGuys sells tennis equipment, which sits directly
-alongside her Tennis BC employment — and if the resale activity is tennis gear,
-RacquetGuys would be the supplier. That would make this account the clearest
-available evidence on the business question [ASK].
+### What the transactions actually show — **152 transactions, Mar–Jul 2026**
+
+> **Correction.** On first seeing the merchant list I suggested this was the
+> business-side account, with RacquetGuys as a possible inventory supplier. **The
+> transaction data does not support that.** RacquetGuys is an authorised
+> automatic payment but **has not billed once** in the five months captured, and
+> business-shaped spending totals **$176.96** — MailChimp and Canva only. The
+> hypothesis came from merchant names; the data says otherwise.
+
+**There is no sales revenue in this account.** All 49 incoming entries are
+`General Card Deposit` with no counterparty name — PayPal pulling from a linked
+card to fund payments, exactly as the first account pulls from a bank. **Nothing
+is received from customers.**
+
+**What it is actually for — grocery and ride delivery:**
+
+| Merchant | Total | Count | Months |
+|---|---|---|---|
+| **Instacart** | **$5,699.85** | 46 | 5 |
+| Uber | $984.45 | 24 | 2 |
+| Sport Chek | $418.92 | 4 | 1 |
+| Uber Eats | $304.20 | 4 | 1 |
+| Pastini Old Mill (Oregon restaurant) | $275.25 | 4 | 1 |
+| Starbucks | $150.00 | 6 | 2 |
+| MailChimp | $89.60 | 4 | 4 |
+| Canva | $87.36 | 3 | 3 |
+
+**Instacart alone is roughly $1,140/month** across five months — more than the
+entire first PayPal account. With Uber and Uber Eats it is about **$1,400/month
+on delivery**.
+
+**Caution on the total.** Outgoing sums to $8,424.17, but `General Authorization`
+entries ($5,246.53) are pre-authorisations that settle separately and would
+double-count against the settled rows. Settled spend is nearer **$2,717**, and
+card funding pulled in was **$2,864.65**. The true figure sits between; it needs
+the same authorisation-versus-settlement reconciliation applied to the first
+account [BACKLOG].
+
+The Pastini charge is an Oregon restaurant, matching the Travel Visa's US hotels
+in Bend and Medford — the same trip, split across two cards.
 
 ## Known non-TD debts
 
