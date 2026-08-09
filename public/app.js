@@ -184,13 +184,19 @@ function renderStatic(d) {
       <td>${x.structure}</td>
       <td class="num">${x.annualInterest == null ? '—' : '~' + money(x.annualInterest)}</td>
     </tr>`).join('');
+  if (d.debtsNote) $('debt-note').textContent = d.debtsNote;
 
   hbar($('c-util'), d.utilisation.map(u => ({
     label: u.label, v: (u.used / u.limit) * 100,
     colour: (u.used / u.limit) > 0.95 ? css('--critical') : css('--serious'),
-    vlabel: money(u.available) + ' left',
+    // Over the limit is a different fact from merely near it, so say so rather
+    // than showing "$0 left" and letting the bar imply it.
+    vlabel: u.used > u.limit
+      ? money(u.used - u.limit) + ' OVER'
+      : money(u.available) + ' left',
     tip: `${money2(u.used)} of a ${money2(u.limit)} limit · ${((u.used / u.limit) * 100).toFixed(1)}% used`,
   })), { rowH: 40, padL: 176 });
+  if (d.utilisationNote) $('util-note').textContent = d.utilisationNote;
 
   lineChart($('c-heloc'), d.helocHistory, d.helocLimit);
   $('heloc-note').textContent = d.helocSummary;
