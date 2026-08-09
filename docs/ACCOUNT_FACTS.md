@@ -599,6 +599,54 @@ have been ordinary household payment.
 alongside RacquetGuys on PayPal and Amanda's Tennis BC employment. Still
 unexplained, and still possible inventory [ASK, B53].
 
+### Card spending by category — twelve months to August 2026
+
+`scripts/categorise-cards.js` classifies the ledger. **$44,344.58 across 484
+purchases, $3,695/month**, after excluding the $10,000 pass-through.
+
+| Category | Total | /month | Type |
+|---|---|---|---|
+| **Travel** | **$10,363.01** | $863.58 | discretionary |
+| **Shopping** | **$8,402.13** | $700.18 | discretionary |
+| Groceries | $6,736.37 | $561.36 | essential |
+| Restaurants | $4,469.86 | $372.49 | discretionary |
+| Sport & fitness | $3,692.08 | $307.67 | discretionary |
+| Uncategorised | $1,990.88 | $165.91 | unknown |
+| Telecom | $1,893.86 | $157.82 | essential |
+| Health | $1,880.08 | $156.67 | essential |
+| Fuel & transport | $1,278.66 | $106.56 | essential |
+| Business | $1,043.37 | $86.95 | business |
+| Subscriptions | $1,003.96 | $83.66 | discretionary |
+| Entertainment | $722.40 | $60.20 | discretionary |
+| School & clubs | $582.48 | $48.54 | essential |
+| Household | $285.44 | $23.79 | essential |
+
+**Only 4.5% is uncategorised**, against 19% on the chequing side — because card
+statements carry full merchant names where TD's chequing export truncates them
+to about 15 characters. The residue is a long tail with nothing above $90.
+
+**Discretionary spending dominates.** Travel, Shopping, Restaurants, Sport &
+fitness, Subscriptions and Entertainment total **$28,653.44 — 65% of card
+spending, about $2,388 a month.** Essentials come to $12,656.89.
+
+That matters because of where the money came from: this is the spending that was
+invisible while every revolving facility ran to its limit and the HELOC grew
+$7,537. **It is also the most addressable part of the picture** — a household
+cannot easily cut a mortgage or a telecom bill, but $2,388/month of
+discretionary spending is a set of decisions rather than a fixed cost.
+
+Two caveats on the categories:
+
+- **Travel's $10,363 includes the road trip's hotels**, so it is not a recurring
+  annual figure.
+- **`Business` shows only $1,043.37** — the Head Canada purchase. If genuine
+  business spending is mixed into Shopping or Groceries, as the business question
+  suspects, this understates it. The category is a floor, not a measure.
+
+**The rule table is published as `docs/merchant-library.csv`** — 201 patterns
+across 13 categories, which is the B34 library seeded from real data rather than
+guessed at.
+
 ### It is a personal card with a business label
 
 **Owner-confirmed: "mostly a personal card", a mixed bag.** The transaction

@@ -101,6 +101,24 @@
   "incomeTotal": { "total": 306760.03, "perMonth": 17042 },
   "incomeNote": "Her Tennis BC employment — 43 deposits, $63,129.47 over 18 months into DEBT&PAYMENTS — was absent from the earlier picture entirely, which saw only the $21,700 she transferred across. That transfer has been removed as an income line: it is an internal movement out of this income, and counting both would double it. Two cautions remain: at least $1,639.10 marked EXP is expense reimbursement rather than pay, a further $2,846.58 marked AP is unresolved, and the transfers stopped after May 2026 while the income did not.",
 
+  "cardSpending": [
+    { "label": "Travel", "total": 10363.01, "perMonth": 863.58, "type": "discretionary" },
+    { "label": "Shopping", "total": 8402.13, "perMonth": 700.18, "type": "discretionary" },
+    { "label": "Groceries", "total": 6736.37, "perMonth": 561.36, "type": "essential" },
+    { "label": "Restaurants", "total": 4469.86, "perMonth": 372.49, "type": "discretionary" },
+    { "label": "Sport & fitness", "total": 3692.08, "perMonth": 307.67, "type": "discretionary" },
+    { "label": "Uncategorised", "total": 1990.88, "perMonth": 165.91, "type": "unknown" },
+    { "label": "Telecom", "total": 1893.86, "perMonth": 157.82, "type": "essential" },
+    { "label": "Health", "total": 1880.08, "perMonth": 156.67, "type": "essential" },
+    { "label": "Fuel & transport", "total": 1278.66, "perMonth": 106.56, "type": "essential" },
+    { "label": "Business", "total": 1043.37, "perMonth": 86.95, "type": "business" },
+    { "label": "Subscriptions", "total": 1003.96, "perMonth": 83.66, "type": "discretionary" },
+    { "label": "Entertainment", "total": 722.40, "perMonth": 60.20, "type": "discretionary" },
+    { "label": "School & clubs", "total": 582.48, "perMonth": 48.54, "type": "essential" },
+    { "label": "Household", "total": 285.44, "perMonth": 23.79, "type": "essential" }
+  ],
+  "cardSpendingNote": "Twelve months to August 2026, from 484 card purchases totalling $44,344.58 — about $3,695/month. Only 4.5% is uncategorised, against 19% on the chequing side, because card statements carry full merchant names where TD's chequing export truncates them. Discretionary spending is $28,653.44 of it, roughly $2,388/month — the most addressable part of the picture. Travel includes the road trip, so it is not a recurring annual figure, and Business is a floor rather than a measure.",
+
   "spending": [
     { "label": "Groceries", "total": 29141.76, "confidence": "high" },
     { "label": "Shopping", "total": 16051.67, "confidence": "medium" },

@@ -694,7 +694,30 @@ blocked by the pre-commit hook, which is the right arrangement.
 Convention going forward:
 `raw/statements-<institution>/<YYYY-MM-DD>-<account>.pdf`
 
-**B34 · Transaction library — identify every unknown merchant** · READY · *large*
+**B54 · Card spending categorised** · **DONE 2026-08-09**
+`scripts/categorise-cards.js` → `derived/card-spending.csv`. **$44,344.58 across
+484 purchases, $3,695/month**, with **only 4.5% uncategorised** against 19% on
+the chequing side — card statements carry full merchant names where TD's
+chequing export truncates them to ~15 characters.
+
+**Discretionary is $28,653.44, about $2,388/month — 65% of card spending.**
+Travel $10,363 · Shopping $8,402 · Restaurants $4,470 · Sport & fitness $3,692 ·
+Subscriptions $1,004 · Entertainment $722. This is the spending that was
+invisible while every facility ran to its limit, and it is the most addressable
+part of the picture.
+
+A parsing note worth keeping: **merchant strings must be normalised before
+matching.** TD strips spaces and MBNA keeps them, so one merchant arrives as both
+`BELLMOBILITYVERDUN` and `BELL MOBILITY VERDUN QC`. Matching raw strings splits a
+merchant in two and understates every total it touches. Rules are ordered, so
+`UBEREATS` must be tested before `UBER` or every meal becomes transport.
+
+**B34 · Transaction library** · **SEEDED 2026-08-09** — `docs/merchant-library.csv`,
+**201 patterns across 13 categories**, generated from the rule table rather than
+guessed. Extend it as new merchants appear; the chequing side (19% unknown) is
+where it will pay off next.
+
+**B34 (original scope) · identify every unknown merchant** · READY · *large*
 
 Build a growing dictionary mapping merchant strings to a real identity and
 category, so the same unknown is never investigated twice and categorisation
