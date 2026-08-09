@@ -113,7 +113,7 @@ Balance $74.20. Receives occasional transfers; the name states the intent.
 
 | | |
 |---|---|
-| Rate | **Not yet captured** — needs a statement |
+| **Rate** | **26.99% purchases / 27.99% cash advances** — from the statement rate table |
 | Credit limit | **$5,000.00** |
 | Balance | $5,682.43 — **$682.43 OVER the limit** |
 | Available credit | **$0.00** |
@@ -124,6 +124,19 @@ Balance $74.20. Receives occasional transfers; the name states the intent.
 
 An amount of **$69.93 was flagged as due immediately** on 9 Aug 2026, separate
 from the September minimum.
+
+**The card is frozen.** The August statement states:
+
+> "YOUR ACCOUNT IS OVER THE CREDIT LIMIT. NO FURTHER USE IS PERMITTED UNTIL THE
+> 'MINIMUM PAYMENT' IS RECEIVED. YOUR 'MINIMUM PAYMENT' REQUIRED FOR LAST MONTH
+> HAS NOT YET BEEN RECEIVED."
+
+**One figure does not reconcile and is worth asking TD about.** At 26.99% on an
+average balance of roughly $5,200 over a 30-day cycle, interest should be about
+$115. The charge was **$158.55** — consistent with an average balance nearer
+$7,100, which the account did not carry. Plausible explanations are a
+cash-advance component at 27.99% with no grace period, or interest compounding
+on unpaid interest under TD's 2 July 2026 change. Not resolved [ASK].
 
 ### Travel Visa *(…0870)* — **a Business Visa**
 
