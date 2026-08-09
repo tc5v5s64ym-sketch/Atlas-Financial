@@ -295,6 +295,23 @@ account; apply it here so the spending figure is not overstated by a third.
 Only five months captured. This account offers a maximum of a six-month preset
 with no custom range, so earlier periods need successive reports.
 
+**B44 · PayPal statement archive — use PDF activity reports** · READY · *small*
+**PayPal issues no monthly statements.** The Reports page offers only *Activity
+download* and *Tax documents*. There is no statement section on either account.
+
+For the statement archive, the equivalent is an **activity report generated in
+PDF format** — the Create Report form offers CSV, TAB, **PDF**, Quickbooks and
+Quicken. Generate one PDF per period alongside the CSV already held, so the
+archive has a human-readable record to sit beside the machine-readable one.
+
+Reports are generated server-side and take a minute or two before the Download
+button appears. Both accounts have been captured as CSV only.
+
+**Tax documents: none.** Checked on account #2 — the Form 1099-K section reads
+"Nothing to show here yet!". No tax slips have been issued, which is consistent
+with the finding that no sales revenue passes through the account. Worth
+checking the same section on account #1.
+
 **B40 · Fold Instacart and delivery spending into the spending picture** · QUEUED *(on B38)* · *medium*
 ~$1,400/month across Instacart, Uber and Uber Eats on PayPal #2 alone, none of
 it currently in any category total. Large enough to move the household spending
