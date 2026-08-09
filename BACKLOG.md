@@ -210,6 +210,109 @@ particular now has a second source of funds routed through SAVINGS-DONT TOUCH.
 
 ---
 
+## Requested features
+
+**B29 · Payment and statement calendar, subscribable in iCal** · READY · *medium*
+
+A published `.ics` feed the household can subscribe to, carrying two kinds of
+event: **payment due dates** and **statement-ready dates** (the latter being the
+prompt to send new statements over).
+
+Serve it from the site as `/calendar.ics` behind the same password, so it stays
+private but subscribable. Google Calendar and Apple Calendar both accept a URL
+subscription; a shared Google Calendar would mean putting due dates in a
+third-party account, so the self-hosted feed is preferable.
+
+Known cycles — enough to build most of it today:
+
+| Account | Statement | Payment due |
+|---|---|---|
+| Mortgage | — | **bi-weekly**, next 14 Aug 2026 |
+| HELOC | monthly | **21st** |
+| TD Personal Visa | ~**23rd** | **17th** |
+| TD Cash Back Visa | cycle 8th→**7th** | **1st** |
+| Travel Visa | cycle 6th→**5th** | **26th** |
+| Triangle Mastercard | **17th** | **7th** |
+| MBNA, Flexiti | unknown | unknown — blocked on B10/B11 |
+
+Statement-ready events should fall a day or two **after** each statement date,
+so the document exists when the reminder fires.
+
+**B30 · Fees dashboard on the site** · QUEUED *(on B23, B24)* · *medium*
+
+Every fee, its source, its amount and its frequency — because fees are the most
+avoidable cost in the picture and are currently scattered across accounts.
+
+Already identified: monthly account fees ~$17.67 across two accounts and $3.95
+on DEBT&PAYMENTS · overdraft protection $5.00/month · **42 NSF fees at $5.00** ·
+overdraft interest every month · withdrawal fees · cheque-return $2.00 ·
+e-transfer $1.00 · **over-limit $29.00** on the Cash Back Visa · foreign-exchange
+costs on US$1,744 of Travel Visa charges.
+
+Show avoidable separately from structural, since that is the actionable split.
+
+**B31 · Transfer tracing between accounts** · READY · *medium* · **feasibility proven**
+
+TD stamps each transfer with a five-character reference (e.g. `UT564`) that
+appears on **both** legs. Verified across 4,655 transactions: **1,465 coded
+transfers, 635 fully matched pairs, zero mismatches — a 100% match rate.**
+
+Build a matched-transfer ledger so every internal movement is traced end to end
+rather than inferred, and so no transfer is ever double-counted as income or
+spending.
+
+**176 transfers have only one leg captured** — their counterpart sits in an
+account not yet in the set. Worth listing: it may reveal accounts nobody has
+mentioned.
+
+**B32 · Interest dashboard on the site** · QUEUED *(on B6, B7, B10, B11)* · *medium*
+
+Monthly interest split by debt, with the rate and the charge date for each.
+Roughly **$2,879/month** on known debts today:
+
+| Debt | Rate | ~Monthly interest | Charged |
+|---|---|---|---|
+| Mortgage | 3.64% | ~$1,620 | daily, with each payment |
+| HELOC | 4.90% | ~$823 | month end |
+| Triangle Mastercard | 21.99% | ~$240 | statement date, 17th |
+| TD Cash Back Visa | 26.99% | **$158.55** | statement date, 7th |
+| TD Personal Visa | 24.99% | $37.51 | statement date, ~23rd |
+| Travel Visa | 19.99% | unknown | statement date, ~5th |
+
+Seeing it beside income makes the cost legible in a way a balance never does.
+
+**B33 · Statement archive folder** · **DONE — and it must stay out of git**
+
+It already exists: `raw/`, organised by source (`statements/`,
+`statements-ctfs/`, `wife-td/statements/`, `paypal/`).
+
+**To answer the question directly: yes to the folder, no to committing it.**
+Statements carry full name, home address and partial card numbers. Once in git
+history they are effectively permanent, and a private repo is one settings
+change or one compromised account away from public. `raw/` is gitignored *and*
+blocked by the pre-commit hook, which is the right arrangement.
+
+Convention going forward:
+`raw/statements-<institution>/<YYYY-MM-DD>-<account>.pdf`
+
+**B34 · Transaction library — identify every unknown merchant** · READY · *large*
+
+Build a growing dictionary mapping merchant strings to a real identity and
+category, so the same unknown is never investigated twice and categorisation
+improves month over month rather than starting fresh.
+
+Currently unidentified: **~19% of spending (~$25,630)**, driven by TD truncating
+merchant names to about 15 characters, plus PayPal appearing as a payment rail.
+
+Proposed `docs/merchant-library.csv`: pattern · identity · category ·
+essential/discretionary/business · confidence · first seen · last seen · notes.
+
+Seed it from what is already known, then work the unknowns by size — the top 50
+by dollar value will cover most of the gap. Some will need the household to
+identify them; those become questions rather than backlog.
+
+---
+
 ## Build — after capture stabilises
 
 **B20 · Convert `data.json` to `snapshots/<date>.json` and add trend charts** · QUEUED · *medium*
