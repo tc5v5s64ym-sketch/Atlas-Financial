@@ -408,6 +408,37 @@ That list is what turns "$463/month" into a reviewable set of decisions.
 
 ---
 
+## 🔴 An unlisted asset and a phishing campaign
+
+**B59 · Capture the Coinbase account** · BLOCKED — needs the owner · *small*
+Found via email, 2026-08-09. **Absent from the picture entirely.** Monthly
+statements were still being issued in June 2026, and 2025 annual performance and
+charges reports exist. A **CA$1,950.50** withdrawal on 8 Jun 2025 (plus a
+CA$19.70 fee) matches `E-TRANSFER ***TeT` into Chequing A the next day exactly —
+a transaction that had been sitting unexplained.
+
+**Holdings unknown.** A withdrawal says nothing about the remaining balance.
+This is the first asset outside TD and Wise, so **net worth is understated by an
+unknown amount**. Statements are downloadable from the Coinbase account.
+
+**B60 · Phishing against the Coinbase account** · **owner action** · *small*
+Two emails from **`info@afius.org`** styled as Coinbase, "Your Coinbase
+verification code", on 24 May and 11 Jun 2025 — **both carrying the identical
+code 523469**, which a genuine one-time code never does. `afius.org` is not a
+Coinbase domain.
+
+The 8 Jun 2025 withdrawal sits between the two. No evidence it was unauthorised,
+but worth confirming with Coinbase directly, and the account wants a unique
+password plus app-based 2FA. **This is the owner's action, not an agent's.**
+
+**B61 · E-transfer counterparties** · PARTIAL · *medium*
+TD's export never names the other side — `SEND E-TFR ***GCa` and nothing more.
+**Interac's confirmation emails do**, in the subject line, but only **~11 of the
+~207** transfers in the window have one in this mailbox: auto-deposits generate
+none, and the rest appear to notify **Amanda's address**. **None of the large
+coaching receipts are here**, consistent with her being the payee. Attribution
+needs her inbox or her bookkeeping.
+
 ## 🔴 Income is overstated — the biggest open item
 
 **B55 · Get Amanda's coaching bookkeeping** · BLOCKED — owner offered to obtain · *medium*

@@ -185,6 +185,7 @@
     { "source": "TD Cash Back & Travel Visa", "what": "Terms captured plus 12 statements each, Sep 2025 – Aug 2026", "status": "complete" },
     { "source": "Wise — two accounts", "what": "107 transactions, the US holiday; funding traced to source", "status": "complete" },
     { "source": "American Express", "what": "Closed — owner-confirmed. No balance, no debt", "status": "complete" },
+    { "source": "Coinbase", "what": "Found via email — active, statements still issued, holdings unknown", "status": "missing" },
     { "source": "Wife's business", "what": "—", "status": "missing" },
     { "source": "Home value", "what": "—", "status": "missing" },
     { "source": "WebBroker holdings", "what": "RESP balance only ($31,555.85)", "status": "blocked" }
