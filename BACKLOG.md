@@ -35,6 +35,76 @@ already known to be wrong.
 
 ---
 
+## PRIORITY — clean statement capture across every account
+
+**Owner instruction, 2026-08-09.** Get a complete statement archive for all
+accounts. Work it in this order, because the analytical value is very uneven.
+
+### Tier 1 — the actual blind spot: credit cards
+
+Statements are the **only** route to credit-card transactions. TD's card
+download button produces no file; it was tested and returns nothing. Without
+these, the spending on these cards is invisible in every category total.
+
+| Card | Have | Need | Spending currently unseen |
+|---|---|---|---|
+| **TD Cash Back Visa** | 1 | **11** | $5,682 |
+| **Travel Visa** | 1 | **11** | $1,078 |
+| TD Personal Visa | 11 | 1 (Aug 2025) | — card is dormant |
+| Triangle Mastercard | 5 | earlier months if held | — 5 months already analysed |
+
+### Tier 2 — debts with no statements at all
+
+MBNA (B10) · Amazon.ca Rewards Mastercard (B36) · American Express (B37).
+Nothing is known about any of them. Any could outrank the 26.99% Cash Back Visa.
+
+### Tier 3 — chequing and savings statements
+
+**A correction worth recording, because it changes the priority.** The stated
+reason for wanting these is to see where the majority of spending goes. **That
+is already captured, and more completely than statements would provide.** The
+CSV exports hold every transaction for 18 months, machine-readable:
+
+| Account | Transactions held |
+|---|---|
+| Chequing B / WEEKLY | 2,705 |
+| Chequing A / BILLS | 1,285 |
+| DEBT&PAYMENTS | 379 |
+| HELOC | 208 |
+| SAVINGS-DONT TOUCH | 54 |
+| EMERGENCY SAVING | 24 |
+
+A statement shows the same transactions plus a period summary. **The debit
+spending picture is not a gap — the card spending is.**
+
+What statements *would* add, and why they are still worth collecting eventually:
+
+- **Fee detail** broken out per period, which feeds the fees dashboard (B30) and
+  the account-plan review (B24) — currently fees are inferred from transaction
+  descriptions
+- **Interest paid or earned** summaries, including the overdraft rate that is
+  still unknown (B23)
+- A **canonical record for an accountant**, who will generally want statements
+  rather than exports
+
+So: collect them, but after the cards. Doing debit statements first would spend
+effort re-acquiring data already held while $6,760 of card spending stays dark.
+
+### Definition of done
+
+Statement capture is complete when both TD cards hold 12 months, MBNA is
+captured, the Amazon Mastercard and Amex are captured or confirmed closed, and
+each chequing and savings account holds 12 months for the fee and interest
+detail.
+
+**Naming convention:** `raw/statements-<institution>/<account>_<YYYY-MM-DD>.pdf`,
+where the date is the **statement date read from inside the file**, never the
+one implied by the download order. `scripts/rename-statements.js` verifies and
+corrects this — the TD download loop was off by one and mislabelled all twelve
+files, which was only caught by decrypting each and checking.
+
+---
+
 ## Still needed from TD EasyWeb — the complete list
 
 **None of it is time-sensitive.** TD retains statements for 12 months and
