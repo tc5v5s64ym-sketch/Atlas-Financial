@@ -35,30 +35,87 @@ already known to be wrong.
 
 ---
 
-## Still needed from TD EasyWeb
+## Still needed from TD EasyWeb — the complete list
 
-**None of this is time-sensitive.** TD retains statements for 12 months, so a
-new session loses nothing — it only needs a fresh sign-in. All six are on the
-spouse's profile.
+**None of it is time-sensitive.** TD retains statements for 12 months and
+transaction history for 18, so a new session loses nothing beyond a fresh
+sign-in.
 
-| Item | What |
-|---|---|
-| B2 | TD Cash Back Visa — 11 remaining statements |
-| B3 | TD Cash Back Visa — transaction history |
-| B4 | Travel Visa — 11 statements and transaction history |
-| B6 | Travel Visa — credit limit |
-| B7 | Reconcile the $158.55 interest charge |
-| — | Optionally re-download the shared accounts from her nicknames, though these are already captured from the other profile |
+### Coverage as at 2026-08-09
 
-**Route that works** (the account switcher and in-page nav are unreliable):
-accounts overview → click the card → *Manage* tab → "View your statements and
-documents" → click a statement row → wait for the `embed` element's `blob:` URL
-→ download it. Chequing accounts are easier: quick filter → Custom → date range
-→ Apply → Download → CSV.
+| Account | Terms | Rate | Transactions | Statements |
+|---|---|---|---|---|
+| Mortgage | ✅ | ✅ 3.64% | n/a — terms sufficient | — |
+| HELOC | ✅ | ✅ 4.90% | ✅ 208 | — |
+| Chequing A / BILLS | ✅ | — | ✅ 1,285 | — |
+| Chequing B / WEEKLY | ✅ | — | ✅ 2,705 | — |
+| DEBT&PAYMENTS | ✅ | — | ✅ 379 | — |
+| SAVINGS-DONT TOUCH | ✅ | ❌ | ✅ 54 | — |
+| EMERGENCY SAVING | ✅ | ❌ | ✅ 24 | — |
+| Personal Visa | ✅ | ✅ 24.99% | via statements | ⚠️ 11 of 12 |
+| **Cash Back Visa** | ✅ | ✅ 26.99% | ❌ | ⚠️ **1 of 12** |
+| **Travel Visa** | ⚠️ no limit | ✅ 19.99% | ❌ | ⚠️ **1 of 12** |
+| RESP (WebBroker) | balance only | — | ❌ | blocked |
 
-**A caution learned the hard way:** clicking a page element that triggers
-navigation kills the running script mid-execution. Drive one navigation per
-call and re-read the page between steps rather than chaining them.
+### Outstanding items
+
+**B2 · Cash Back Visa — 11 remaining statements** · *medium*
+**B3 · Cash Back Visa — transaction history** · *medium*
+**B4 · Travel Visa — 11 statements and transaction history** · *medium*
+**B6 · Travel Visa — credit limit** · *small* — absent from the statement
+template used; available credit reads $0.00 so it is at its limit
+**B7 · Reconcile the $158.55 interest charge** · *small*
+
+**B22 · Savings interest rates** · *small*
+Neither EMERGENCY SAVING nor SAVINGS-DONT TOUCH has a captured rate. The second
+earned **$0.11 across 18 months**, so the rate is near zero — worth confirming
+only because it bears on whether either account should hold a cash buffer at all.
+
+**B23 · Chequing B overdraft interest rate and protection terms** · *small*
+The $600 limit is known and the $5.00 monthly protection fee is visible in
+transactions, but not the rate charged on the drawn balance. It has been drawn
+in all 18 months, so this is a real recurring cost that is currently unquantified.
+
+**B24 · Account plans and fee structures on all five chequing/savings accounts** · *small*
+Fees observed: $17.67/month across two accounts, $3.95/month on DEBT&PAYMENTS,
+plus withdrawal, cheque-return and NSF charges. **Some TD plans waive the monthly
+fee at a minimum balance, and some bundle accounts.** Each account's *Manage*
+tab shows its plan. This is one of the few places an immediate saving might exist.
+
+**B25 · Mortgage prepayment penalty formula** · *small*
+The annual prepayment privilege ($97,200) is known, but not the penalty for
+breaking or moving the mortgage before 1 May 2027. Needed before any renewal or
+refinancing conversation, and a mortgage advisor will ask for it first.
+
+**B26 · Personal Visa — the August 2025 statement** · *small*
+One of twelve downloads returned a duplicate of June 2026, so August 2025 was
+never retrieved. It is the oldest in the window and may now have aged out.
+
+**B27 · RESP holdings** · BLOCKED · *small*
+Balance $31,555.85 is known; holdings, book value and contribution room are not.
+Access requires accepting OTC Markets and CME/S&P exchange agreements —
+**an owner decision, never an agent's**.
+
+**B28 · Rewards balances as minor assets** · *small*
+Travel Visa holds **57,968 TD Rewards points**; Cash Back Visa holds **$47.21**
+in Cash Back Dollars. Small, but they are assets and currently absent from net
+worth.
+
+### Routes that work
+
+The account switcher and in-page navigation links are unreliable. These work:
+
+- **Credit cards** — accounts overview → click the card → *Manage* tab →
+  "View your statements and documents" → click a statement row → wait for the
+  `embed` element's `blob:` URL → download from it
+- **Chequing and savings** — open the account → quick filter → *Custom* → set
+  the date range → *Apply filters* → *Download* → CSV
+- **The legacy interface** at `AccountDetailsServlet?selectedAccount=<id>` is a
+  reliable fallback and served the mortgage terms when the modern UI would not
+
+**Caution:** clicking anything that triggers navigation kills a running script
+mid-execution. Drive one navigation per call and re-read the page between steps
+rather than chaining them.
 
 ---
 
