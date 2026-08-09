@@ -60,35 +60,22 @@ Nothing is known about any of them. Any could outrank the 26.99% Cash Back Visa.
 
 ### Tier 3 — chequing and savings statements
 
-**A correction worth recording, because it changes the priority.** The stated
-reason for wanting these is to see where the majority of spending goes. **That
-is already captured, and more completely than statements would provide.** The
-CSV exports hold every transaction for 18 months, machine-readable:
+Wanted as part of a complete archive. Transaction data for these accounts is
+already held as 18-month CSV exports, so this is about the archive rather than
+the spending picture.
 
-| Account | Transactions held |
-|---|---|
-| Chequing B / WEEKLY | 2,705 |
-| Chequing A / BILLS | 1,285 |
-| DEBT&PAYMENTS | 379 |
-| HELOC | 208 |
-| SAVINGS-DONT TOUCH | 54 |
-| EMERGENCY SAVING | 24 |
+What the statements add beyond the exports:
 
-A statement shows the same transactions plus a period summary. **The debit
-spending picture is not a gap — the card spending is.**
-
-What statements *would* add, and why they are still worth collecting eventually:
-
-- **Fee detail** broken out per period, which feeds the fees dashboard (B30) and
-  the account-plan review (B24) — currently fees are inferred from transaction
+- **Fee detail** broken out per period, feeding the fees dashboard (B30) and the
+  account-plan review (B24) — fees are currently inferred from transaction
   descriptions
-- **Interest paid or earned** summaries, including the overdraft rate that is
-  still unknown (B23)
+- **Interest and overdraft rate** summaries, including the Chequing B overdraft
+  rate still unknown (B23)
 - A **canonical record for an accountant**, who will generally want statements
   rather than exports
 
-So: collect them, but after the cards. Doing debit statements first would spend
-effort re-acquiring data already held while $6,760 of card spending stays dark.
+12 months per account: Chequing A, Chequing B, EMERGENCY SAVING, DEBT&PAYMENTS,
+SAVINGS-DONT TOUCH, plus HELOC and mortgage statements.
 
 ### Definition of done
 
