@@ -12,28 +12,42 @@ Last reviewed **2026-08-09**. Phase: **data capture**.
 
 ---
 
-## 🔴 The raw archive has no backup
+## The raw archive is backed up
 
-**B45 · Back up `raw/` somewhere off this disk** · READY · *small* · **highest risk item in the project**
+**B45 · Back up `raw/` somewhere off this disk** · **DONE 2026-08-09**
 
-`raw/` holds **30 files, 9.18 MB** — every statement and export captured. It is
-**gitignored by design**, so GitHub is not a backup. It exists in exactly one
-place: this machine's local disk.
+`scripts/backup-raw.ps1` mirrors `raw/` into
+`C:\Users\dnaud\OneDrive\atlas-financial-backup\raw`, under the owner's own
+OneDrive account. First run verified: **30 files, 9.18 MB**, source and
+destination matching on file count and byte count, with a SHA-256 `MANIFEST.txt`
+written into the backup so a later run can prove the copy is intact rather than
+merely present.
 
-Everything else can be rebuilt: the analysis is in `docs/`, the scripts are in
-`scripts/`, both are in git. **`raw/` cannot.** Some of it took real effort to
-obtain — decrypting two different PDF schemes, an 18-month TD window that will
-age out, statements TD only retains for 12 months.
+It also copies `scripts/local-config.json`, which is gitignored for the same
+reason and was equally unbacked-up.
 
-`C:\Users\dnaud\OneDrive` exists on this machine but **`atlas-financial` is not
-inside it**. Options, in order of preference:
+Run it after every capture session:
 
-1. Copy `raw/` into OneDrive on a schedule — simplest, keeps it under the
-   owner's own account, no third party
-2. An external drive or NAS
-3. An encrypted archive stored anywhere
+```
+powershell -ExecutionPolicy Bypass -File scripts\backup-raw.ps1
+```
 
-**Do not solve this by committing `raw/` to git.** It carries full name, home
+Design notes worth keeping:
+
+- **It is a mirror.** A file deleted from `raw/` is deleted from the backup next
+  run. Two guards sit in front of that: it refuses to run against an empty
+  source, and refuses to mirror deletions if the source has lost more than 20%
+  of its files unless `-Force` is passed.
+- **Read-only against `raw/`.** Nothing in the source is touched.
+- The source path is resolved through `git rev-parse --git-common-dir`, so it
+  backs up the main working tree's `raw/` even when run from a worktree.
+- It exits 0 on success — robocopy's own exit code 1 ("files copied") would
+  otherwise read as a failure to any scheduler.
+
+**Still open:** the run is manual. Registering a Windows scheduled task would
+make it automatic — that is a persistent machine change and is the owner's call.
+
+**Never solve this by committing `raw/` to git.** It carries full name, home
 address and partial card numbers, and git history is effectively permanent.
 
 ---

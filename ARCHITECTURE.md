@@ -31,8 +31,10 @@ statement.
 | Knowledge | `docs/` | Yes | No — human judgement |
 | Publication | `data.json`, `public/` | Yes | Partly |
 
-`raw/` is the only irreplaceable directory. **Back it up separately.** Everything
-else can be rebuilt from it, or is in git.
+`raw/` is the only irreplaceable directory, so it is backed up separately —
+`scripts/backup-raw.ps1` mirrors it into OneDrive, outside git entirely. Run it
+after every capture session. Everything else can be rebuilt from it, or is in
+git.
 
 ---
 

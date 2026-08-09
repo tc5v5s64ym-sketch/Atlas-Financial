@@ -36,6 +36,21 @@ source data and the scripts.
 `raw/` contains full name, home address and partial card numbers. It must never
 be committed, published, or pasted into a conversation.
 
+## `raw/` is backed up to OneDrive — run it after every capture
+
+`raw/` is gitignored by design, so **git is not its backup**. It is mirrored
+instead to `C:\Users\dnaud\OneDrive\atlas-financial-backup\raw`:
+
+```bash
+powershell -ExecutionPolicy Bypass -File scripts\backup-raw.ps1
+```
+
+Verifies file count and byte count after copying, and writes a SHA-256
+`MANIFEST.txt` into the backup. It is a **mirror**, so deletions propagate —
+it refuses to run against an empty source, and refuses to mirror deletions when
+the source has shrunk by more than 20% unless `-Force` is passed. Currently
+**manual**; see B45.
+
 ## The pre-commit hook is the safety net
 
 `.githooks/pre-commit` **refuses any commit** that stages a file under `raw/` or
