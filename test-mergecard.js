@@ -22,6 +22,15 @@
  * YAML and executed against fixtures with a stubbed `core` and `context`. A
  * copy of the implementation would prove only that the copy still works.
  *
+ * The delivery block's cases are a different shape from the rest, because the
+ * block is a different shape: eleven lines in three kinds — five CLOSED
+ * vocabularies read from their opening, three bare INTEGERS with one
+ * subtraction between them, and three PROSE lines checked only for being
+ * answered at all. So the cases below test vocabularies, anchoring and
+ * arithmetic — never whether an explanation is any good. That boundary is the
+ * point of the block, and a case pretending to test the other side of it would
+ * be the arms race CLAUDE.md forbids, dressed as coverage.
+ *
  * The last section mutates that source — reverting each pending-marker
  * protection in turn — and proves the cases above actually catch the
  * reversion. A guard nothing would notice the loss of is not a guard.
@@ -124,20 +133,50 @@ const REVIEW = {
   'Findings and dispositions': 'none',
 };
 
-// Build a body. `over` replaces row/review values; a value of null drops the
-// line entirely, which is how "row missing" differs from "row blank".
-function card({ rows = {}, review = {}, findings = '- None', dropReview = false,
-                dropFindings = false } = {}) {
+// The delivery block: five closed vocabularies, three prose lines, and three
+// integers whose arithmetic has to agree — created (0) − closed (1) = −1.
+const DELIVERY = {
+  'One outcome': 'Pending card charges become authoritative in day-0 headroom',
+  'Non-goals': 'It does not touch the weekly cap, the HELOC model, or the plan page',
+  'Scope status': 'WITHIN — 3 implementation files, about 180 lines',
+  'Atomicity exception': 'NO',
+  'Blocking review rounds': '1',
+  'Scope reassessment': 'N/A',
+  'Proof level': 'MIXED — unit for the arithmetic, integration for the walk',
+  'Open loops closed': '1',
+  'Open loops created': '0',
+  'Net open loops': '-1',
+  'Loops left open': 'none',
+};
+
+// Build a body. `over` replaces row/review/delivery values; a value of null
+// drops the line entirely, which is how "line missing" differs from "line
+// blank".
+function card({ rows = {}, review = {}, delivery = {}, findings = '- None',
+                dropReview = false, dropDelivery = false,
+                dropFindings = false, afterDelivery = null,
+                afterReview = null } = {}) {
   const r = { ...ROWS, ...rows };
   const v = { ...REVIEW, ...review };
+  const dl = { ...DELIVERY, ...delivery };
   const out = ['## 🟦 Atlas Merge Card', '', '| Field | Value |', '|---|---|'];
   for (const [k, val] of Object.entries(r)) if (val !== null) out.push(`| **${k}** | ${val} |`);
   out.push('');
   for (const [h, text] of Object.entries(PROSE)) out.push(`### ${h}`, '', text, '');
+  if (!dropDelivery) {
+    out.push('### Delivery', '');
+    for (const [k, val] of Object.entries(dl)) if (val !== null) out.push(`- **${k}**: ${val}`);
+    out.push('');
+    // Anything placed BETWEEN the delivery block and the review block — used to
+    // put a dropped line back under a later heading and prove the section span
+    // really ends there.
+    if (afterDelivery) out.push(afterDelivery, '');
+  }
   if (!dropReview) {
     out.push('### Atlas Contract / Systems Review', '');
     for (const [k, val] of Object.entries(v)) if (val !== null) out.push(`- **${k}**: ${val}`);
     out.push('');
+    if (afterReview) out.push(afterReview, '');
   }
   if (!dropFindings) out.push('### Additional findings', '', findings, '');
   return out.join('\n');
@@ -153,7 +192,9 @@ function bulletCard({ rows = {} } = {}) {
   for (const [k, val] of Object.entries(r)) out.push(`- **${k}**:${val === '' ? '' : ' ' + val}`);
   out.push('');
   for (const [h, text] of Object.entries(PROSE)) out.push(`### ${h}`, '', text, '');
-  out.push('### Atlas Contract / Systems Review', '');
+  out.push('### Delivery', '');
+  for (const [k, val] of Object.entries(DELIVERY)) out.push(`- **${k}**: ${val}`);
+  out.push('', '### Atlas Contract / Systems Review', '');
   for (const [k, val] of Object.entries(REVIEW)) out.push(`- **${k}**: ${val}`);
   out.push('', '### Additional findings', '', '- None', '');
   return out.join('\n');
@@ -447,15 +488,192 @@ const CASES = [
     'Findings and dispositions': 'two fixed, one non-issue — the outstanding HELOC limit question is unrelated',
   } }), 'green'],
 
+  // --- the delivery block: one PR, one independently provable outcome.
+  //     Every line here is a CLOSED form or an integer, so the cases are about
+  //     structure only. Whether the outcome is genuinely one outcome is the
+  //     required review's read, and nothing below pretends otherwise.
+  ['the delivery block missing entirely', card({ dropDelivery: true }), 'red'],
+  ['a delivery line missing', card({ delivery: { 'Proof level': null } }), 'red'],
+
+  //     The section span ends at EVERY heading level. It used to stop only at
+  //     `##` through `####`, so a required line deleted from the block and
+  //     re-added under a later `#`, `#####` or `######` heading still answered
+  //     the block above it — a live false green, reproduced on 5cc05ce before
+  //     the fix (ChatGPT, P2). `###` already ended the span, which is why every
+  //     earlier case missed it.
+  ...['#', '#####', '######'].map((h) => [
+    `a delivery line moved under a later "${h}" heading`,
+    card({ delivery: { 'Proof level': null },
+           afterDelivery: `${h} Appendix\n\n- **Proof level**: UNIT` }), 'red']),
+  // The helper is shared, so the review block had the same hole. This one has
+  // to sit AFTER the review heading to exercise the span at all — placed
+  // before it, the case goes red merely because the line is missing, and
+  // proves nothing about the boundary it is named for.
+  ['a review line moved under a later top-level heading',
+    card({ review: { 'Reviewer': null },
+           afterReview: '# Notes\n\n- **Reviewer**: ChatGPT' }), 'red'],
+  // ...and an ordinary heading after the block is still perfectly fine.
+  ['a harmless heading after a complete delivery block',
+    card({ afterDelivery: '# Appendix\n\nNothing load-bearing here.' }), 'green'],
+  ['a delivery line blank', card({ delivery: { 'One outcome': '' } }), 'red'],
+  ['the non-goals line blank', card({ delivery: { 'Non-goals': '' } }), 'red'],
+
+  //     Scope status. The tripwire is a prompt to reassess, not a limit, so
+  //     EXCEEDED passes — but only when it says why.
+  ['scope status WITHIN', card(), 'green'],
+  ['scope status EXCEEDED with its reason', card({ delivery: {
+    'Scope status': 'EXCEEDED — 14 files, because the authority move and the removal of the loser cannot land apart',
+  } }), 'green'],
+  ['a bare EXCEEDED with no reason',
+    card({ delivery: { 'Scope status': 'EXCEEDED' } }), 'red'],
+  ['an EXCEEDED whose reason is only an absence word',
+    card({ delivery: { 'Scope status': 'EXCEEDED — none' } }), 'red'],
+  ['a scope status outside the vocabulary',
+    card({ delivery: { 'Scope status': 'LARGE' } }), 'red'],
+  // The anchoring that closed the review block's Required line, applied here:
+  // a sentence mentioning the word is not the field selecting it.
+  ['a scope status that names WITHIN in later prose',
+    card({ delivery: { 'Scope status': 'the diff is WITHIN every tripwire' } }), 'red'],
+
+  //     Atomicity. YES is the answer that permits a larger pull request, so it
+  //     is the one that has to carry what splitting would break.
+  ['atomicity exception NO', card(), 'green'],
+  ['atomicity exception YES with its reason', card({ delivery: {
+    'Atomicity exception': 'YES — splitting would leave two live authorities for day-0 headroom between the two merges',
+  } }), 'green'],
+  ['a bare YES with no reason',
+    card({ delivery: { 'Atomicity exception': 'YES' } }), 'red'],
+  // "NOT APPLICABLE" opens with the letters of NO and means something else.
+  ['an atomicity answer that merely starts with "NO"',
+    card({ delivery: { 'Atomicity exception': 'NOT APPLICABLE' } }), 'red'],
+
+  //     The review-churn circuit breaker. Two blocking rounds mean the
+  //     reassessment happened, so N/A stops being an available answer.
+  ['no blocking rounds, and no reassessment to record', card(), 'green'],
+  ['two rounds with the reassessment still N/A', card({ delivery: {
+    'Blocking review rounds': '2', 'Scope reassessment': 'N/A',
+  } }), 'red'],
+  // A bare N/A is caught by the reason rule as well, so this is the case that
+  // makes the N/A rule itself load-bearing: an EXPLAINED N/A satisfies the
+  // reason rule and is still the one answer two rounds have taken away.
+  ['two rounds with an explained N/A', card({ delivery: {
+    'Blocking review rounds': '2',
+    'Scope reassessment': 'N/A — the two rounds were wording, so no reassessment was needed',
+  } }), 'red'],
+  ['two rounds continued, with the reason', card({ delivery: {
+    'Blocking review rounds': '2',
+    'Scope reassessment': 'CONTINUE — both findings refine the same rounding rule',
+  } }), 'green'],
+  ['two rounds continued, with no reason', card({ delivery: {
+    'Blocking review rounds': '2', 'Scope reassessment': 'CONTINUE',
+  } }), 'red'],
+  // SPLIT is a pull request declaring it has to be divided, and one that says
+  // so may not merge in that state — otherwise the card records an unperformed
+  // split as a decision already carried out (ChatGPT, P1, on 5cc05ce). It fails
+  // at every round count, because it means the same thing whenever it is
+  // written.
+  ['two rounds split, naming what moves out', card({ delivery: {
+    'Blocking review rounds': '2',
+    'Scope reassessment': 'SPLIT — the positions.csv regeneration goes to its own pull request',
+  } }), 'red'],
+  ['a split declared with no rounds behind it',
+    card({ delivery: { 'Scope reassessment': 'SPLIT — two outcomes arrived together' } }), 'red'],
+  // ...and the state a split RESOLVES to: the piece that remains is one root
+  // cause, and says where the other outcome went.
+  ['the pull request that remains after a split', card({ delivery: {
+    'Blocking review rounds': '2',
+    'Scope reassessment': 'CONTINUE — the positions.csv regeneration left for PR #9, what is here is one authority move',
+  } }), 'green'],
+  ['three-plus rounds continued, with the justification', card({ delivery: {
+    'Blocking review rounds': '3+',
+    'Scope reassessment': 'CONTINUE — finishing here is safer than splitting a half-applied authority move',
+  } }), 'green'],
+  ['three-plus rounds continued, with no justification', card({ delivery: {
+    'Blocking review rounds': '3+', 'Scope reassessment': 'CONTINUE',
+  } }), 'red'],
+  // Below two rounds no reassessment was required, so a bare CONTINUE is not
+  // an unanswered question — there was no question.
+  ['one round continued, with no reason', card({ delivery: {
+    'Blocking review rounds': '1', 'Scope reassessment': 'CONTINUE',
+  } }), 'green'],
+  ['a round count outside the vocabulary',
+    card({ delivery: { 'Blocking review rounds': '4' } }), 'red'],
+  ['a round count of ten, which opens with a one',
+    card({ delivery: { 'Blocking review rounds': '10' } }), 'red'],
+  ['a bare 3, where the vocabulary says 3+',
+    card({ delivery: { 'Blocking review rounds': '3' } }), 'red'],
+  ['a reassessment outside the vocabulary',
+    card({ delivery: { 'Scope reassessment': 'MAYBE' } }), 'red'],
+
+  //     Proof level, one closed vocabulary of six.
+  ...['UNIT', 'INTEGRATION', 'BROWSER', 'LIVE', 'OWNER EVIDENCE', 'MIXED'].map(
+    (level) => [`proof level ${level}`, card({ delivery: { 'Proof level': level } }), 'green']),
+  ['a proof level outside the vocabulary',
+    card({ delivery: { 'Proof level': 'SMOKE' } }), 'red'],
+
+  //     Open loops: three integers and one subtraction — the only claim on
+  //     this card the check can VERIFY rather than merely witness.
+  ['open loops that add up', card(), 'green'],
+  // A positive net is allowed and sometimes necessary — and CLAUDE.md says it
+  // is EXPLAINED rather than hidden. Three integers can report one; they
+  // cannot explain one, and `closed 0 / created 2 / net 2` was green while
+  // naming neither loop (ChatGPT, P1, on 5cc05ce). The machine requires an
+  // ANSWER; whether it really names the loops is the reviewer's read.
+  ['a positive net, with the loops it leaves open named', card({ delivery: {
+    'Open loops closed': '0', 'Open loops created': '2', 'Net open loops': '2',
+    'Loops left open': 'the figures baseline and the positions regeneration, both closed by B72',
+  } }), 'green'],
+  ['a positive net, leaving the loops unnamed', card({ delivery: {
+    'Open loops closed': '0', 'Open loops created': '2', 'Net open loops': '2',
+  } }), 'red'],
+  ['a positive net whose loops are named with an absence word', card({ delivery: {
+    'Open loops closed': '0', 'Open loops created': '2', 'Net open loops': '2',
+    'Loops left open': 'none',
+  } }), 'red'],
+  // ...and the same field is NOT interrogated when the net is zero or negative,
+  // because there is nothing the preference asks to be explained.
+  ['a net of zero, with nothing left open', card({ delivery: {
+    'Open loops closed': '2', 'Open loops created': '2', 'Net open loops': '0',
+    'Loops left open': 'none',
+  } }), 'green'],
+  ['the loops-left-open line blank',
+    card({ delivery: { 'Loops left open': '' } }), 'red'],
+  ['a net that does not follow from its own inputs', card({ delivery: {
+    'Open loops closed': '2', 'Open loops created': '0', 'Net open loops': '0',
+  } }), 'red'],
+  ['a loop count that is a word', card({ delivery: {
+    'Open loops closed': 'several', 'Open loops created': '0', 'Net open loops': '-1',
+  } }), 'red'],
+  ['a loop count with prose beside the number', card({ delivery: {
+    'Open loops closed': '1 — both recorded in BACKLOG.md',
+    'Open loops created': '0', 'Net open loops': '-1',
+  } }), 'red'],
+  // A negative `closed` ALWAYS forces a positive net — created minus a
+  // negative is positive — so this case has to satisfy the positive-net rule
+  // to isolate the one it is about. Without that it goes red for the other
+  // reason, and the negative-count mutant flips nothing.
+  ['a negative count of loops closed', card({ delivery: {
+    'Open loops closed': '-1', 'Open loops created': '0', 'Net open loops': '1',
+    'Loops left open': 'the B72 housekeeping item, closed when it lands',
+  } }), 'red'],
+  // `created` needs no such care: a negative one keeps the net negative.
+  ['a negative count of loops created', card({ delivery: {
+    'Open loops closed': '0', 'Open loops created': '-1', 'Net open loops': '-1',
+  } }), 'red'],
+
   // --- finding disposition
   ['the findings block missing entirely', card({ dropFindings: true }), 'red'],
   ['a findings block with no allowed disposition', card({ findings: '- nothing to report' }), 'red'],
-  // The template ships all five choices, so "at least one present" was
+  // The template ships all six choices, so "at least one present" was
   // satisfied by the scaffold — the load-bearing block never had to be edited.
-  ['the untouched five-line scaffold', card({ findings: [
-    '- None', '- FIXED NOW:', '- REJECTED:', '- ADDED TO BACKLOG:',
+  ['the untouched six-line scaffold', card({ findings: [
+    '- None', '- FIXED NOW:', '- NEXT PR:', '- REJECTED:', '- ADDED TO BACKLOG:',
     '- OWNER DECISION REQUIRED:',
   ].join('\n') }), 'red'],
+  // NEXT PR is the disposition for a finding that is real and belongs to the
+  // next outcome. Without it the honest choices were the backlog or letting
+  // this pull request grow, and the second is what the scope rule forbids.
+  ['NEXT PR', card({ findings: '- NEXT PR: the Triangle over-limit window, once headroom lands' }), 'green'],
   ['one filled disposition beside four empty ones', card({ findings: [
     '- FIXED NOW: corrected the epsilon', '- REJECTED:', '- ADDED TO BACKLOG:',
   ].join('\n') }), 'red'],
@@ -593,10 +811,13 @@ const MUTANTS = [
       ".split(/(?:)/)"),
   },
   {
-    name: 'the absence words allowed back as a not-required reason',
+    // One constant, read by every field that has to explain itself — the
+    // not-required branch, an EXCEEDED scope, and an atomicity exception. It
+    // was two copies for one commit, which cost this mutant its target and
+    // proved the duplication rather than the guard.
+    name: 'the absence words allowed back as a reason',
     apply: src => src.replace(
-      /\s*\.replace\(\/\\b\(\?:none\|n\\\/a\|na\|no\|nil\|nothing\|unknown\|tbd\)\\b\/gi, ''\)/,
-      ''),
+      /const ABSENT_REASON = \/.*\/gi;/, 'const ABSENT_REASON = /(?!)/g;'),
   },
   {
     // A false-positive guard is load-bearing in the other direction: removing
@@ -605,6 +826,105 @@ const MUTANTS = [
     apply: src => src.replace(
       /\s*\.replace\(\/\\bno\(\?:ne\|thing\)\?\[ \\t\]\+\(\?:unanswered\|undecided\)\\b\/gi, ''\)/,
       ''),
+  },
+
+  /* ---------------------------------------------------- the delivery block */
+
+  {
+    name: 'the delivery block made optional',
+    apply: src => src.replace(
+      /if \(!deliveryHeading\) \{\n\s*problems\.push\('The PR body is missing the "Delivery" section[^\n]*\n(\s*)\} else \{/,
+      'if (!deliveryHeading) {\n$1} else {'),
+  },
+  {
+    name: 'the delivery blank-line rule dropped',
+    apply: src => src.replace(
+      /\} else if \(!v\) \{\n(\s*)problems\.push\(`Delivery line/,
+      '} else if (false) {\n$1problems.push(`Delivery line'),
+  },
+  {
+    name: 'the closed vocabularies stopped being enforced',
+    apply: src => src.replace(
+      /if \(d\[label\] && !opensWith\(d\[label\], forms\)\) \{/, 'if (false) {'),
+  },
+  {
+    // The anchoring is the whole design. Unanchored, the field is satisfied by
+    // a sentence that MENTIONS one of its words — which is precisely the shape
+    // that beat the card's row reader and the review block's Required line.
+    name: 'the closed-form opening unanchored to an anywhere match',
+    apply: src => src.replace(
+      /`\^\(\?:\$\{forms\.join\('\|'\)\}\)\(\?!\[a-z0-9\]\)`/,
+      "`(?:${forms.join('|')})(?![a-z0-9])`"),
+  },
+  {
+    // Without the trailing boundary a longer word is satisfied by its prefix:
+    // `NOT APPLICABLE` reads as NO, and ten rounds read as one.
+    name: 'the closed-form trailing boundary dropped',
+    apply: src => src.replace(/\(\?!\[a-z0-9\]\)`, 'i'\)/, "`, 'i')"),
+  },
+  {
+    name: 'an EXCEEDED scope no longer has to say why',
+    apply: src => src.replace(
+      /if \(opensWith\(d\['Scope status'\], \['EXCEEDED'\]\)\n\s*&& !hasReason\(d\['Scope status'\], \['EXCEEDED'\]\)\) \{/,
+      'if (false) {'),
+  },
+  {
+    name: 'an atomicity exception no longer has to say what splitting would break',
+    apply: src => src.replace(
+      /if \(opensWith\(d\['Atomicity exception'\], \['YES'\]\)\n\s*&& !hasReason\(d\['Atomicity exception'\], \['YES'\]\)\) \{/,
+      'if (false) {'),
+  },
+  {
+    name: 'the review-churn circuit breaker removed entirely',
+    apply: src => src.replace(
+      /if \(opensWith\(d\['Blocking review rounds'\], \['2', '3\\\\\+'\]\)\) \{/,
+      'if (false) {'),
+  },
+  {
+    // Separate from the breaker above, and it needs the EXPLAINED-N/A case to
+    // fail: a bare N/A is caught by the reason rule either way, so without
+    // that case this mutant could not flip anything and would prove nothing.
+    name: 'N/A allowed back as a reassessment after two rounds',
+    apply: src => src.replace(
+      /if \(opensWith\(d\['Scope reassessment'\], \['N\\\\\/A'\]\)\) \{/, 'if (false) {'),
+  },
+  {
+    name: 'the loop counts no longer have to be integers',
+    apply: src => src.replace(/if \(!INT\.test\(v\)\) \{/, 'if (false) {'),
+  },
+  {
+    name: 'a negative count of loops allowed back',
+    apply: src => src.replace(/if \(counts\[label\] < 0\) \{/, 'if (false) {'),
+  },
+  {
+    // The one claim on this card that is verified rather than witnessed.
+    name: 'the open-loop arithmetic no longer has to agree',
+    apply: src => src.replace(/&& net !== cr - cl\)/, '&& false)'),
+  },
+  {
+    name: 'NEXT PR dropped from the disposition vocabulary',
+    apply: src => src.split('None|FIXED NOW|NEXT PR|REJECTED')
+      .join('None|FIXED NOW|REJECTED'),
+  },
+  {
+    // The shape that shipped: `###` ended a section and `#`, `#####` and
+    // `######` did not, so a required line could step outside its block and
+    // still answer it.
+    name: 'the section span loosened back to ## through ####',
+    apply: src => src.replace(
+      /\.split\(\/\\n\[ \\t\]\*#\{1,6\}\[ \\t\]\+\/\)\[0\];/,
+      '.split(/\\n[ \\t]*#{2,4}[ \\t]+/)[0];'),
+  },
+  {
+    name: 'SPLIT allowed to merge without the split being performed',
+    apply: src => src.replace(
+      /if \(opensWith\(d\['Scope reassessment'\], \['SPLIT'\]\)\) \{/, 'if (false) {'),
+  },
+  {
+    name: 'a positive net no longer has to name what it leaves open',
+    apply: src => src.replace(
+      /if \(Number\.isInteger\(net\) && net > 0\n\s*&& !\/\[a-z\]\{3\}\/i\.test\(d\['Loops left open'\]\.replace\(ABSENT_REASON, ''\)\)\) \{/,
+      'if (false) {'),
   },
 ];
 

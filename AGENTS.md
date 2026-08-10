@@ -40,12 +40,16 @@ supporting models (or `None`), and the dispatch authority. Record the model name
 your surface actually displays. If it withholds it, say so plainly — never guess
 one. `CLAUDE.md` holds the rule.
 
-## Branches
+## Branches and scope
 
-A fresh branch from current `main`, one concern per pull request. Do not
-continue another agent's branch without first checking `main`, the open pull
-requests, and the current-state gate. Two agents never work the same concern at
-once.
+A fresh branch from current `main`, and **one independently provable outcome per
+pull request** — not one topic. `CLAUDE.md` holds the rule, the scope tripwires,
+the atomicity exception and the review-churn reassessment; the card's
+**Delivery** block is where each is recorded.
+
+Do not continue another agent's branch without first checking `main`, the open
+pull requests, and the current-state gate. Two agents never work the same
+outcome at once.
 
 ## Compact launcher
 
@@ -53,8 +57,8 @@ This is the one launcher. Do not write a second one.
 
 > Read `AGENTS.md`, then take the first eligible item in `BACKLOG.md` — or the
 > owner's instruction if there is one. Verify current state before editing.
-> One concern, fresh branch, merge card filled, findings dispositioned. Stop
-> only for an owner-reserved item or the required review.
+> One independently provable outcome, fresh branch, merge card filled, findings
+> dispositioned. Stop only for an owner-reserved item or the required review.
 
 Before implementing, report only: the item, the current-state verdict, whether
 code is actually required, and any owner gate. Then go.

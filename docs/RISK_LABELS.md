@@ -62,6 +62,41 @@ cannot merge while silent about what it moved.
 `none`, `No` and `n/a — <reason>` are real answers and pass. An empty row is
 silence, and silence is what the check exists to fail.
 
+#### The Delivery block — closed forms, and one subtraction
+
+One pull request, one independently provable outcome. `CLAUDE.md` holds that
+rule; the card records it, and this is the part of the record a check can hold:
+
+| Line | What the check enforces |
+|---|---|
+| `One outcome`, `Non-goals` | present and not blank — nothing about the words |
+| `Scope status` | opens `WITHIN` or `EXCEEDED`; `EXCEEDED` carries a reason |
+| `Atomicity exception` | opens `YES` or `NO`; `YES` carries a reason |
+| `Blocking review rounds` | opens `0`, `1`, `2` or `3+` |
+| `Scope reassessment` | opens `N/A`, `CONTINUE` or `SPLIT` — and at two or more rounds, not `N/A`, with a reason. **`SPLIT` fails**: a pull request declaring it must be divided may not merge until it has been |
+| `Proof level` | opens `UNIT`, `INTEGRATION`, `BROWSER`, `LIVE`, `OWNER EVIDENCE` or `MIXED` |
+| `Open loops closed` / `created` | a non-negative integer and nothing else |
+| `Net open loops` | an integer, and equal to created minus closed |
+| `Loops left open` | present; and when the net is **positive**, a real answer rather than an absence word |
+
+**Eleven lines in three kinds: five closed vocabularies, three integers, three
+prose lines checked only for being answered at all.** Not one of them is a rule
+about what a sentence means — deliberately, and as the direct lesson of the
+thirty-one false greens above. A field that opens with its answer cannot be
+beaten by a new wording, and a subtraction cannot be argued with; a prose field
+is asked for presence precisely because nothing more can honestly be asked of it.
+The one line here that is *verified* rather than merely witnessed is the net:
+three numbers that have to agree.
+
+**What it therefore cannot tell**, and does not try to: whether the outcome is
+genuinely one outcome, whether an `EXCEEDED` scope is justified, whether a
+`CONTINUE` after three rounds is safer than splitting, whether an atomicity
+exception is real, or whether the three prose lines say anything. Those are the
+required review's — questions 8 to 12 — and the card is where the judgement is
+recorded. The scope tripwires are review prompts, never thresholds: `EXCEEDED`
+is a legitimate, passing answer that asks for an explanation, because some honest
+work is large.
+
 ### `Published figures review` — advisory
 
 A bot comment listing exactly which published figures differ between the base
@@ -123,8 +158,9 @@ exactly `ChatGPT`, so neither needs a vocabulary of denials that can never be
 finished. Where a field can be closed, it is closed; where it cannot, the limit
 is written down here instead of guessed at.
 
-[`CLAUDE.md`](../CLAUDE.md) holds the trigger list and the seven questions the
-review asks. It is the only home for them; do not restate them here.
+[`CLAUDE.md`](../CLAUDE.md) holds the trigger list and the twelve questions the
+review asks — seven about truth and authority, five about whether the work is
+one pull request at all. It is the only home for them; do not restate them here.
 
 ### Codex review — advisory, but its findings are not
 
@@ -176,10 +212,11 @@ with itself is worse than no plan, because it still looks authoritative.
 real `script:` body out of `merge-card-check.yml` and runs it against completed
 and broken cards — including both false greens the check has actually shipped,
 where a card went green while saying in plain words that the required review had
-not happened. It then reverts each pending-marker protection in the extracted
-source and proves those cases go green again, so a guard cannot be removed
-without a committed test noticing. A copy of the check would prove only that the
-copy still works.
+not happened. It then reverts each guard in the extracted source
+— the pending markers, the closed forms, the delivery vocabularies, the
+open-loop arithmetic — and proves a committed case goes the wrong way, so a
+guard cannot be removed without a test noticing. A copy of the check would prove
+only that the copy still works.
 
 ---
 

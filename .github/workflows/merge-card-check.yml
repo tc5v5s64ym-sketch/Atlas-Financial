@@ -11,6 +11,11 @@ name: Merge card check
 #
 # `none`, `no` and `n/a — <reason>` are real answers and pass. An empty row is
 # silence, and silence is the thing this exists to fail.
+#
+# The Delivery block is where that limit is designed for rather than regretted.
+# Its fields are closed vocabularies, an anchored opening, and three integers
+# whose arithmetic has to agree — claims a check can hold against any future
+# wording. Whether the pull request is genuinely ONE outcome is not one of them.
 
 on:
   pull_request:
@@ -63,6 +68,66 @@ jobs:
 
             const esc = s => s.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
 
+            // Everything from a heading down to the next one. The card's three
+            // blocks — the review lane, delivery, and the findings — are all
+            // read this way, so the span rule has one home rather than three
+            // copies that can drift apart.
+            //
+            // EVERY heading level ends a section. The span used to stop only at
+            // `##` through `####`, so a `#`, `#####` or `######` heading did not
+            // close the block — and a required bullet placed under one of them
+            // still answered the block above it (ChatGPT, P2, on 5cc05ce). That
+            // was a live false green: a Delivery line could be deleted from the
+            // block and re-added under a later `# Appendix`, and the card went
+            // green. Making the helper shared, and making the new Delivery gate
+            // depend on it, is what turned an old span assumption into three
+            // gates resting on the same hole.
+            const sectionAfter = (heading) =>
+              body.slice(heading.index + heading[0].length)
+                .split(/\n[ \t]*#{1,6}[ \t]+/)[0];
+
+            // Read a bullet line out of one of those blocks. The colon is
+            // REQUIRED, for the same reason it is required in the card table:
+            // a card row writes one and a sentence does not, and that is the
+            // whole difference between a row and prose about a row.
+            const bulletReader = (sec) => (label) => {
+              const m = new RegExp(
+                `^[ \\t]*[-*][ \\t]*\\*{0,2}${esc(label)}\\*{0,2}[ \\t]*:(.*)$`, 'im').exec(sec);
+              return m === null
+                ? null
+                : m[1].replace(/<!--[\s\S]*?-->/g, '').replace(/\*/g, '').trim();
+            };
+
+            // A CLOSED field opens with one of its permitted words, and what
+            // follows is the author's. Anchoring is the move that finally
+            // closed the review block's `Required` line and its two identity
+            // fields, after four wordings beat a vocabulary hunted anywhere
+            // inside free prose. An opening cannot be beaten by a new phrasing,
+            // and it needs no list of denials that can never be finished.
+            //
+            // It buys structure, not truth: a `Proof level` opening with UNIT
+            // when the work needed a browser run is a false claim this check
+            // cannot see, and CLAUDE.md puts that squarely with the reviewer.
+            const opensWith = (value, forms) =>
+              new RegExp(`^(?:${forms.join('|')})(?![a-z0-9])`, 'i').test(value);
+
+            // An absence word is not a reason. `not required — none` was green
+            // because any three letters counted (Codex, P2, on f71ef30), so
+            // the absence words come out before the test — in ONE place, read
+            // by every field that has to explain itself. Two copies of this
+            // would be two guards to keep in step, and a mutation of either
+            // would look like it proved something about the other.
+            const ABSENT_REASON = /\b(?:none|n\/a|na|no|nil|nothing|unknown|tbd)\b/gi;
+
+            // A value that switches something off carries its reason — the
+            // same rule as the review block's "not required".
+            const reasonAfter = (value, forms) => value
+              .replace(new RegExp(`^(?:${forms.join('|')})`, 'i'), '')
+              .replace(/^[\s—–:,.-]*/, '')
+              .replace(ABSENT_REASON, '')
+              .trim();
+            const hasReason = (value, forms) => /[a-z]{3}/i.test(reasonAfter(value, forms));
+
             // Strip occurrences of a vocabulary token that a negation reverses,
             // so a match means the card SELECTED the thing rather than merely
             // mentioning it. `B1 is not ALREADY FIXED` and `P1 not fixed` both
@@ -101,10 +166,7 @@ jobs:
             // close that: the match must start a table cell or a bullet, and
             // the search is confined to the card section itself.
             const cardHeading = /^[ \t]*#{1,4}[ \t]*.*Atlas Merge Card.*$/im.exec(body);
-            const cardSection = cardHeading
-              ? body.slice(cardHeading.index + cardHeading[0].length)
-                  .split(/\n[ \t]*#{2,4}[ \t]+/)[0]
-              : '';
+            const cardSection = cardHeading ? sectionAfter(cardHeading) : '';
             const readRow = (label) => {
               const table = new RegExp(
                 `^[ \\t]*\\|[ \\t]*\\*{0,2}${esc(label)}\\*{0,2}[ \\t]*\\|([^\\n|]*)`, 'im').exec(cardSection);
@@ -240,15 +302,7 @@ jobs:
             if (!reviewHeading) {
               problems.push('The PR body is missing the "Atlas Contract / Systems Review" section (Required / Exact reviewed head / Reviewer / Findings and dispositions). When no trigger fired, say "not required" and why.');
             } else {
-              const sec = body.slice(reviewHeading.index + reviewHeading[0].length)
-                .split(/\n[ \t]*#{2,4}[ \t]+/)[0];
-              const read = (label) => {
-                const m = new RegExp(
-                  `^[ \\t]*[-*][ \\t]*\\*{0,2}${esc(label)}\\*{0,2}[ \\t]*:(.*)$`, 'im').exec(sec);
-                return m === null
-                  ? null
-                  : m[1].replace(/<!--[\s\S]*?-->/g, '').replace(/\*/g, '').trim();
-              };
+              const read = bulletReader(sectionAfter(reviewHeading));
               const REVIEW = [
                 ['Required', 'name the trigger that fired, or say why none did'],
                 ['Exact reviewed head', 'the full 40-character commit SHA the reviewer read, or n/a'],
@@ -304,10 +358,7 @@ jobs:
               // enough that "none fired" is a claim, not a default.
               if (notRequired) {
                 const reason = req.replace(/^(?:not[ \t]+required|n\/a)\b[\s—–:,.-]*/i, '')
-                  // An absence word is not a reason. `not required — none` was
-                  // green because any three letters counted (Codex, P2, on
-                  // f71ef30), so the absence words come out before the test.
-                  .replace(/\b(?:none|n\/a|na|no|nil|nothing|unknown|tbd)\b/gi, '')
+                  .replace(ABSENT_REASON, '')
                   .trim();
                 if (!/[a-z]{3}/i.test(reason)) {
                   problems.push('"Required: not required" has to say WHY no trigger fired. The trigger list in CLAUDE.md is deliberately wide, so "none fired" is a claim that must survive reading it — and this is the branch that switches every exact-head and reviewer check off.');
@@ -483,28 +534,193 @@ jobs:
               }
             }
 
+            // ---------------------------------------------------------------
+            // The Delivery block (CLAUDE.md). One pull request, one
+            // independently provable outcome.
+            //
+            // Eleven lines, in three kinds:
+            //
+            //   5 CLOSED VOCABULARIES — Scope status, Atomicity exception,
+            //     Blocking review rounds, Scope reassessment, Proof level.
+            //     Each is classified by its OPENING word alone.
+            //   3 INTEGERS — Open loops closed, created, net. Bare digits, and
+            //     the three have to agree.
+            //   3 PROSE / PRESENCE — One outcome, Non-goals, Loops left open.
+            //     Checked for being answered at all, never for what they say.
+            //     "Loops left open" is the one conditional line: when the net
+            //     is positive it must survive the absence-word strip.
+            //
+            // That split is the whole design. This check earned thirty-one
+            // false greens discovering that a rule which reads English can
+            // always be beaten by more English, so nothing here reads a
+            // sentence: it holds a vocabulary, an integer, and one subtraction.
+            //
+            // What it therefore CANNOT tell: whether the outcome is genuinely
+            // one outcome, whether an EXCEEDED scope is justified, whether a
+            // CONTINUE after three rounds is right, or whether the three prose
+            // lines say anything worth reading. Those are the required
+            // review's, and CLAUDE.md says so in those words.
+            const deliveryHeading =
+              /^[ \t]*#{2,4}[ \t]*Delivery[ \t]*$/im.exec(body);
+            if (!deliveryHeading) {
+              problems.push('The PR body is missing the "Delivery" section (One outcome / Non-goals / Scope status / Atomicity exception / Blocking review rounds / Scope reassessment / Proof level / Open loops closed / Open loops created / Net open loops).');
+            } else {
+              const read = bulletReader(sectionAfter(deliveryHeading));
+              const DELIVERY = [
+                ['One outcome', 'the single thing this pull request makes true'],
+                ['Non-goals', 'what a reader might assume was covered and was not'],
+                ['Scope status', 'WITHIN, or EXCEEDED with the reason'],
+                ['Atomicity exception', 'NO, or YES with what splitting would break'],
+                ['Blocking review rounds', '0, 1, 2 or 3+'],
+                ['Scope reassessment', 'N/A, CONTINUE or SPLIT'],
+                ['Proof level', 'UNIT, INTEGRATION, BROWSER, LIVE, OWNER EVIDENCE or MIXED'],
+                ['Open loops closed', 'an integer'],
+                ['Open loops created', 'an integer'],
+                ['Net open loops', 'created minus closed'],
+                ['Loops left open', 'each loop this leaves open and what closes it, or "none"'],
+              ];
+              const d = {};
+              for (const [label, want] of DELIVERY) {
+                const v = read(label);
+                if (v === null) {
+                  problems.push(`The Delivery block is missing its "${label}" line — ${want}.`);
+                } else if (!v) {
+                  problems.push(`Delivery line "${label}" is blank — ${want}.`);
+                }
+                d[label] = v || '';
+              }
+
+              const SCOPE = ['WITHIN', 'EXCEEDED'];
+              const ATOMIC = ['YES', 'NO'];
+              const ROUNDS = ['0', '1', '2', '3\\+'];
+              const REASSESS = ['N\\/A', 'CONTINUE', 'SPLIT'];
+              const PROOF = ['INTEGRATION', 'OWNER[ \\t]+EVIDENCE', 'BROWSER',
+                             'MIXED', 'UNIT', 'LIVE'];
+              // No member of any set above is a prefix of another, so the
+              // alternation order does not matter. If one is ever added that
+              // is, the longer form has to come first — an alternation returns
+              // its FIRST match, not its longest.
+              //
+              // Each set carries what to SHOW as well, rather than the message
+              // rendering the pattern source: `OWNER[ \t]+EVIDENCE` is the
+              // right rule and the wrong thing to tell somebody to type.
+              const closed = [
+                ['Scope status', SCOPE, 'WITHIN / EXCEEDED'],
+                ['Atomicity exception', ATOMIC, 'YES / NO'],
+                ['Blocking review rounds', ROUNDS, '0 / 1 / 2 / 3+'],
+                ['Scope reassessment', REASSESS, 'N/A / CONTINUE / SPLIT'],
+                ['Proof level', PROOF,
+                 'UNIT / INTEGRATION / BROWSER / LIVE / OWNER EVIDENCE / MIXED'],
+              ];
+              for (const [label, forms, shown] of closed) {
+                if (d[label] && !opensWith(d[label], forms)) {
+                  problems.push(`Delivery line "${label}" must OPEN with one of ${shown}. Only the opening classifies it — anything after it is yours, and later prose never reclassifies the field.`);
+                }
+              }
+
+              // The two answers that switch something off carry their reason,
+              // exactly as "not required" does in the review block.
+              if (opensWith(d['Scope status'], ['EXCEEDED'])
+                  && !hasReason(d['Scope status'], ['EXCEEDED'])) {
+                problems.push('"Scope status: EXCEEDED" has to say why. Exceeding a tripwire is not a failure — some honest work is large — but it is the prompt to reassess, and an unexplained EXCEEDED skips the reassessment it exists to trigger.');
+              }
+              if (opensWith(d['Atomicity exception'], ['YES'])
+                  && !hasReason(d['Atomicity exception'], ['YES'])) {
+                problems.push('"Atomicity exception: YES" has to say what splitting would break, why the pieces share one closure condition, and why this is safer than a sequence. Unexplained, it is a synonym for "these changes are related", which CLAUDE.md says it is not.');
+              }
+
+              // The review-churn circuit breaker, as arithmetic rather than
+              // judgement: at two or more blocking rounds a reassessment
+              // HAPPENED, so N/A is no longer an available answer. Whether
+              // CONTINUE was the right call is the reviewer's read; that the
+              // question was asked at all is something a check can hold.
+              if (opensWith(d['Blocking review rounds'], ['2', '3\\+'])) {
+                if (opensWith(d['Scope reassessment'], ['N\\/A'])) {
+                  problems.push('"Blocking review rounds" is 2 or more, so "Scope reassessment" cannot be N/A. Two blocking exact-head rounds require the question to be asked and answered: CONTINUE — these are refinements of one root cause — or SPLIT.');
+                } else if (d['Scope reassessment']
+                           && !hasReason(d['Scope reassessment'], REASSESS)) {
+                  problems.push('"Scope reassessment" after two or more blocking rounds has to carry its reason — why the findings are refinements of one root cause, or what moves out.');
+                }
+              }
+
+              // SPLIT is a pull request declaring that it must be divided, and
+              // one that says so may not merge in that state — the card would
+              // be recording an unperformed split as though it were a decision
+              // already carried out (ChatGPT, P1, on 5cc05ce). It is a closed
+              // token, so this is a fact a check can hold rather than a
+              // judgement it has to make.
+              //
+              // Unconditional on the round count: SPLIT means the same thing
+              // whenever it is written.
+              if (opensWith(d['Scope reassessment'], ['SPLIT'])) {
+                problems.push('"Scope reassessment: SPLIT" says this pull request has to be divided, so it cannot merge as it stands. Perform the split, then let the pull request that remains reassess its own scope honestly — "CONTINUE — <why what is left is one root cause>", naming where the other outcome went.');
+              }
+
+              // Open loops. Integers and one subtraction: the only claim on
+              // this card a check can verify rather than merely witness.
+              const INT = /^-?\d+$/;
+              const counts = {};
+              for (const label of ['Open loops closed', 'Open loops created', 'Net open loops']) {
+                const v = d[label];
+                if (!v) continue;
+                if (!INT.test(v)) {
+                  problems.push(`Delivery line "${label}" must be an integer and nothing else — the arithmetic between the three is checked, and prose beside a number is how the sum stops meaning anything.`);
+                  continue;
+                }
+                counts[label] = parseInt(v, 10);
+              }
+              for (const label of ['Open loops closed', 'Open loops created']) {
+                if (counts[label] < 0) {
+                  problems.push(`Delivery line "${label}" cannot be negative — it counts loops, and a count does not go below zero. "Net open loops" is the line that may be negative, and a negative net is the preferred result.`);
+                }
+              }
+              const [cl, cr, net] = ['Open loops closed', 'Open loops created', 'Net open loops']
+                .map((l) => counts[l]);
+              if ([cl, cr, net].every((n) => Number.isInteger(n)) && net !== cr - cl) {
+                problems.push(`"Net open loops" reads ${net}, and created minus closed is ${cr - cl}. The three have to agree — the net is the figure the preference is stated against, so a net that does not follow from its own two inputs states nothing.`);
+              }
+              // A positive net is allowed and sometimes necessary. CLAUDE.md
+              // asks that it be EXPLAINED rather than hidden, and three
+              // integers explain nothing — `closed 0 / created 2 / net 2` was
+              // green while naming neither loop (ChatGPT, P1, on 5cc05ce).
+              //
+              // The trigger is arithmetic and the requirement is PRESENCE: the
+              // absence words come out first, exactly as for a not-required
+              // reason, and what is left has to be an answer at all. Whether
+              // that answer really names the loops and how each one closes is
+              // the reviewer's read, and this deliberately does not parse it.
+              if (Number.isInteger(net) && net > 0
+                  && !/[a-z]{3}/i.test(d['Loops left open'].replace(ABSENT_REASON, ''))) {
+                problems.push(`"Net open loops" is ${net}, so "Loops left open" has to name what this pull request leaves open and what closes each one. A positive net is allowed and sometimes necessary — CLAUDE.md asks that it be explained rather than hidden, and "none" cannot be the answer when the count says otherwise.`);
+              }
+            }
+
             // Every finding made along the way takes exactly one disposition, so
             // a real one cannot quietly evaporate between the comment that raised
             // it and the merge.
             const findingsHeading =
               /^[ \t]*#{2,4}[ \t]*Additional findings[ \t]*$/im.exec(body);
             if (!findingsHeading) {
-              problems.push('The PR body is missing the "Additional findings" section (None / FIXED NOW / REJECTED / ADDED TO BACKLOG / OWNER DECISION REQUIRED).');
+              problems.push('The PR body is missing the "Additional findings" section (None / FIXED NOW / NEXT PR / REJECTED / ADDED TO BACKLOG / OWNER DECISION REQUIRED).');
             } else {
-              const sec = body.slice(findingsHeading.index + findingsHeading[0].length)
-                .split(/\n[ \t]*#{2,4}[ \t]+/)[0];
-              // The template ships all five choices, so "at least one present"
+              const sec = sectionAfter(findingsHeading);
+              // The template ships all the choices, so "at least one present"
               // was satisfied by the untouched scaffold — the load-bearing block
               // never had to be edited (Codex, P2, on bc3645f). Two rules fix
               // that: a disposition must carry content, and None cannot stand
               // beside one that does.
+              // NEXT PR is the disposition for a real finding that belongs to
+              // the next outcome rather than this one. Without it the only
+              // honest homes for "real, but not this pull request" were the
+              // backlog and the pull request growing to absorb it, and the
+              // second is what CLAUDE.md's scope rule exists to prevent.
               const listed = [...sec.matchAll(
-                /^[ \t]*[-*][ \t]*(None|FIXED NOW|REJECTED|ADDED TO BACKLOG|OWNER DECISION REQUIRED)\b[ \t]*:?(.*)$/gim)]
+                /^[ \t]*[-*][ \t]*(None|FIXED NOW|NEXT PR|REJECTED|ADDED TO BACKLOG|OWNER DECISION REQUIRED)\b[ \t]*:?(.*)$/gim)]
                 .map((m) => ({ kind: m[1], rest: m[2].replace(/<!--[\s\S]*?-->/g, '').trim() }));
               const empty = listed.filter((f) => f.kind !== 'None' && !f.rest);
               const answered = listed.filter((f) => f.kind !== 'None' && f.rest);
               if (!listed.length) {
-                problems.push('"Additional findings" must record at least one disposition: None, FIXED NOW, REJECTED, ADDED TO BACKLOG, or OWNER DECISION REQUIRED.');
+                problems.push('"Additional findings" must record at least one disposition: None, FIXED NOW, NEXT PR, REJECTED, ADDED TO BACKLOG, or OWNER DECISION REQUIRED.');
               } else if (empty.length) {
                 problems.push(`"Additional findings" still carries the template's empty choices (${empty.map((f) => f.kind).join(', ')}). Delete the lines that do not apply — an unfilled disposition is the scaffold, not an answer.`);
               } else if (listed.some((f) => f.kind === 'None') && answered.length) {
