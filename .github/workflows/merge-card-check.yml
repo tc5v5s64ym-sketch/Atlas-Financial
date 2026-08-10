@@ -90,8 +90,13 @@ jobs:
               const table = new RegExp(
                 `^[ \\t]*\\|[ \\t]*\\*{0,2}${esc(label)}\\*{0,2}[ \\t]*\\|([^\\n|]*)`, 'im').exec(cardSection);
               if (table) return table[1];
+              // The colon is REQUIRED on a bullet row. While it was optional, a
+              // prose list item — `- **Builder surface** is discussed here.` —
+              // matched before the real row and answered it (Codex, P2, on
+              // 0d09754). A card row always writes the colon; a sentence does
+              // not, and that is the whole difference between them.
               const bullet = new RegExp(
-                `^[ \\t]*[-*][ \\t]*\\*{0,2}${esc(label)}\\*{0,2}[ \\t]*:?(.*)$`, 'im').exec(cardSection);
+                `^[ \\t]*[-*][ \\t]*\\*{0,2}${esc(label)}\\*{0,2}[ \\t]*:(.*)$`, 'im').exec(cardSection);
               return bullet ? bullet[1] : null;
             };
             const rowValue = (label) => {
@@ -387,16 +392,18 @@ jobs:
                 // desk)" pass; a sentence does not. Advisory reads have their
                 // own row, so there is nothing else this field needs to say.
                 const ABSENT = /^(?:n\/a|na|none|no|nobody|no[ \t]+one|not[ \t]+required|tbd|unknown)\b/i;
-                // A CLOSED form, not a length budget. Counting characters was
-                // a proxy for "an identity, not a sentence", and it was defeated
-                // twice — once by a long sentence, then by a short one:
-                // `Reviewer: ChatGPT was bypassed` left eleven characters and
-                // passed while saying the lane was bypassed (Codex, P1, on
-                // 04cb826). So the field accepts the lane name, and optionally a
-                // bracketed qualifier, and nothing else. "the ChatGPT desk" no
-                // longer passes either; a name field does not need prose, and
-                // the failure message says exactly what to write.
-                const LANE_ONLY = /^chat[ \t-]?gpt\b[ \t]*(?:\([^)\n]{1,40}\))?[ \t]*[.,]?$/i;
+                // The lane name, and NOTHING else. This field has been defeated
+                // four times, each time in whatever free space was left in it:
+                // a long sentence, then a short one (`ChatGPT was bypassed`), a
+                // denylist that could not name every other agent, and finally
+                // the bracketed qualifier — `ChatGPT (bypassed)` (Codex, P1, on
+                // 0d09754). Every fix closed one degree of freedom, and the next
+                // finding used the one that was left.
+                //
+                // So none is left. A qualifier adds nothing the card needs: a
+                // note about the review belongs in "Findings and dispositions",
+                // and an advisory read belongs in the "Advisory review" row.
+                const LANE_ONLY = /^chat[ \t-]?gpt\b[ \t]*[.]?$/i;
                 const reviewer = seen['Reviewer'];
                 // Skipped when the field has already been flagged as unfinished:
                 // a line reading "not yet performed — ChatGPT" is a placeholder,
@@ -406,7 +413,7 @@ jobs:
                 if (!unfinished.includes('Reviewer') && !LANE_ONLY.test(reviewer)) {
                   problems.push(!reviewer || ABSENT.test(reviewer)
                     ? 'The review is recorded as required, so "Reviewer" must NAME who performed it. "None", "no", "n/a" and "not required" are absence values — on this path they say the gate was never satisfied, not that it was.'
-                    : `"Reviewer" reads ${JSON.stringify(reviewer.slice(0, 60))}. The Atlas Contract / Systems Review is ChatGPT's lane alone, so this field reads exactly "ChatGPT", optionally with a bracketed qualifier such as "ChatGPT (Atlas desk)" — an implementation agent cannot satisfy its own architecture gate, and any advisory read belongs in the card's "Advisory review" row.`);
+                    : `"Reviewer" reads ${JSON.stringify(reviewer.slice(0, 60))}. The Atlas Contract / Systems Review is ChatGPT's lane alone, so this field reads exactly "ChatGPT" and nothing else — a note about the review belongs in "Findings and dispositions", and an advisory read in the "Advisory review" row — an implementation agent cannot satisfy its own architecture gate, and any advisory read belongs in the card's "Advisory review" row.`);
                 }
 
                 // ...and the findings line has to dispose of something. `n/a`

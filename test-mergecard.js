@@ -182,6 +182,10 @@ const CASES = [
       + card({ rows: { 'Current-state verdict': '' } }), 'red'],
   ['harmless bold prose above a complete card',
     'Some ordinary **bold** prose before the card.\n\n' + card(), 'green'],
+  ['a bullet-shaped prose item before the real blank row',
+    bulletCard({ rows: { 'Builder surface': '' } })
+      .replace('- **Builder surface**:',
+        '- **Builder surface** is discussed here.\n- **Builder surface**:'), 'red'],
   ['a blank row in the bullet shape', bulletCard({ rows: { 'Builder surface': '' } }), 'red'],
   ['a blank verdict row in the bullet shape',
     bulletCard({ rows: { 'Current-state verdict': '' } }), 'red'],
@@ -307,8 +311,14 @@ const CASES = [
   ['an unlisted advisory agent credited in prose', card({ review: {
     'Reviewer': 'ChatGPT was bypassed in favor of Gemini',
   } }), 'red'],
-  ['the lane with a short qualifier',
-    card({ review: { 'Reviewer': 'ChatGPT (Atlas desk)' } }), 'green'],
+  // No qualifier at all. The field was defeated four times, each time in the
+  // free space left in it — a long sentence, a short one, an unlistable set of
+  // other agents, and finally the bracket. `ChatGPT (bypassed)` is why.
+  ['a denial hidden inside the bracketed qualifier',
+    card({ review: { 'Reviewer': 'ChatGPT (bypassed)' } }), 'red'],
+  ['a bracketed qualifier at all',
+    card({ review: { 'Reviewer': 'ChatGPT (Atlas desk)' } }), 'red'],
+  ['the lane name with a full stop', card({ review: { 'Reviewer': 'ChatGPT.' } }), 'green'],
 
   //     `n/a` answers a review that was NOT required; on the required path it
   //     leaves the result unstated, and "findings pending" names no disposition
@@ -491,10 +501,17 @@ const MUTANTS = [
     apply: src => src.replace(/const UNANSWERED =\n\s*\/.*\/i;/, 'const UNANSWERED = /(?!)/;'),
   },
   {
-    name: 'the closed lane form relaxed back to a length budget',
+    name: 'the closed lane form reopened to allow a qualifier',
     apply: src => src.replace(
       /const LANE_ONLY = \/.*\/i;/,
-      "const LANE_ONLY = /^chat[ \\t-]?gpt\\b[\\s\\S]{0,20}$/i;"),
+      "const LANE_ONLY = /^chat[ \\t-]?gpt\\b[ \\t]*(?:\\([^)\\n]{1,40}\\))?[ \\t]*[.,]?$/i;"),
+  },
+  {
+    // A plain string swap, because a regex crafted against the escaped source
+    // produced code that did not parse — every case "threw", which proves the
+    // file is broken rather than the guard load-bearing.
+    name: 'the bullet-row colon made optional again',
+    apply: src => src.split(']*:(.*)$').join(']*:?(.*)$'),
   },
   {
     name: 'the exactly-one-verdict rule relaxed to at-least-one',
