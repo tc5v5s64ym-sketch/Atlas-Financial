@@ -169,6 +169,65 @@ Interac notifications matters, and why B64 will not be solved from transfer data
 | Due | 7th, monthly · statement dated 17th |
 | Structure | Revolving. Issuer states 99+ years to repay at minimum payments |
 
+## Insurance *(verified 2026-08-09)*
+
+### Auto — TWO policies running in parallel
+
+| | Amount | Day | Since |
+|---|---|---|---|
+| **ICBC** `ICBC INS` | **$99.91/month** | 15th | **21 Apr 2026** |
+| **BCAA** `BCAA-AdvAutoIns INS` | **$82.96/month** | 15th | all 18 months (was $88.10 to Nov 2025) |
+| **Total** | **$182.87/month** | | |
+
+**These run alongside each other, not as a switch.** Both have been charged every
+month since April 2026. Auto insurance therefore went from $82.96 to $182.87 a
+month — **an extra $99.91/month, about $1,199 a year** — and nothing in the
+record marks it as a decision.
+
+If BCAA is optional coverage on top of ICBC basic Autoplan, that is a normal
+arrangement. If it is a policy that should have ended when the ICBC one began,
+it is a phone call worth making [ASK].
+
+> **Correction, 2026-08-09.** ICBC was missing from this file entirely. It was
+> filtered out of the recurring-bill scan because it only starts in April 2026
+> and so appeared in fewer than six distinct months. A recurrence filter tuned
+> for an 18-month window silently hides anything that started recently — which
+> is exactly the kind of change worth catching.
+
+> **Correction.** `BCAA-AdvAutoIns` was categorised as **Household**, not
+> Insurance, because a duplicate `BCAA,Household` row sat earlier in the
+> merchant library and first match wins. **$1,539.51 of auto insurance was in
+> the wrong category.** Insurance over 18 months is **$2,014.19** ($111.90/month),
+> not $474.68; Household falls to $6,993.18.
+
+### Home — Square One, and it is not in any captured account
+
+| | |
+|---|---|
+| Insurer | **Square One**, policy **#5157890** |
+| Renews | **10 February, automatically** |
+| Premium | **$3,131.76**, paid 10 Feb 2026 — **the whole year in one payment** |
+| History | $2,730.36 (Jan 2024) → $2,675.88 (Jan 2025) → $3,131.76 (Feb 2026), **about +17% in a year** |
+
+**Three things matter here.**
+
+**1. It appears in none of the six accounts or five cards.** February 2026 is
+inside every coverage window and the $3,131.76 is simply absent. Something
+outside the reviewed set pays it — the same shape as the $1,806.00 Fusion
+invoice [B67]. Two unexplained payments of this size are no longer a
+coincidence; see B64.
+
+**2. It has nearly lapsed before.** The January 2025 payment of $2,675.88 failed,
+the resubmission failed, and on 19 Jan 2025 Square One wrote *"your policy is
+about to be cancelled"*. A new policy was taken out on 10 Feb 2025 — which is
+why the renewal date moved from 14 January to 10 February. **A lapse in home
+insurance on a mortgaged property is a serious problem**, and a $3,131.76
+single payment is exactly the kind that fails when an account is short.
+
+**3. The garage.** Her parents' dental lab operated out of it and paid rent
+until May 2026. Business use of a home can affect a residential policy's
+validity. Worth raising at renewal rather than at claim time [ASK, B57].
+
 ## Day-to-day accounts *(verified 2026-08-09)*
 
 | Account | Facts |
@@ -1343,6 +1402,51 @@ Red Improve at 4 players **lost $95**.
 
 **Amanda draws no coach pay** — 0 hours, $0 — so her return is the retained
 margin, not a wage.
+
+### The books count coaches and nothing else
+
+*(Re-read in full 2026-08-09 at the owner's request. Same two files, verified
+byte-identical to the copies already held.)*
+
+**Every cost in these workbooks is coach pay.** Sheet 0's "Total Cost" is simply
+the coach day-rate multiplied by the number of days — 60 × 7 = 420, 95 × 13 =
+1,235, 65 × 7 = 455, and so on for every row. There is **no court time, no
+equipment, no insurance, no admin, no software**.
+
+The "Class Profit Tracker" tab does have a **Court Cost** column, but that tab
+is a broken template rather than data: its only intact row is dated 2006 and
+flagged *"Sample row"*, and every real week below it reads `#REF!`.
+
+**And no court or facility cost appears in the bank data either.** Searching all
+six accounts and five cards for tennis, court, facility and Maple Ridge venue
+merchants returns only small household charges — `SQ *RG FACILITI` at $3.63 to
+$23.00 and `SQ *CITY OF POR` at $5.25 to $24.38, which are parking-sized, not
+$35–$65-a-session court hire.
+
+So either the venue comes with the arrangement, or court time is netted off
+before the remittance reaches her. **Worth establishing which before anyone
+treats the retained margin as profit** [ASK].
+
+### The term dates, decoded
+
+The week-start columns are Excel serials. Converted:
+
+| | Runs |
+|---|---|
+| **Term** | 26 Apr – 21 Jun 2026, 9 weeks |
+| **Summer** | 5 Jul – 3 Aug 2026, 5 weeks |
+
+**Coach payroll settles shortly after a term ends**, which the bank now
+corroborates: the term finished 21 June and **$2,160.00** went to a named
+individual on **6 July**; summer finished 3 August and **$1,064.92** went to
+another on **5 August**. Neither equals the book total exactly — term payroll
+was $5,067.50 and summer $1,330 — so this is a timing pattern, not a
+reconciliation.
+
+**Coach rates are inconsistent and it matters.** The term book has Richard at
+$35/hr with two entries at $60, and Marcus at $30 with one week at $40; the
+summer book has Marcus at both $30 and $35. Whichever is right, it changes what
+is owed [ASK].
 
 ### Treat these as indicative, not audited
 

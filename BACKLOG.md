@@ -170,6 +170,24 @@ A filter on **both** accounts — `from:payments.interac.ca` → apply a label, 
 the inbox, **never delete** — costs nothing and makes every future transfer
 attributable. It cannot recover what has already gone.
 
+**B68 · Two auto-insurance policies at once** · **owner action** · *small*
+**ICBC $99.91/month started 21 April 2026 and BCAA $82.96/month never stopped.**
+Both are charged on the 15th, every month since. Auto insurance went from $82.96
+to **$182.87/month — an extra $1,199 a year** — and nothing marks it as a
+decision. If BCAA is optional coverage on top of ICBC basic Autoplan, fine. If it
+should have ended when the ICBC policy began, one phone call recovers it.
+
+**B69 · Home insurance — $3,131.76 a year, from an unknown account** · *small*
+Square One, policy #5157890, **auto-renews 10 February**, whole year in one
+payment. **It appears in none of the six accounts or five cards**, though
+February 2026 is inside every coverage window.
+
+Two further things: the premium is up **~17% in a year** ($2,730.36 → $3,131.76),
+and the **January 2025 payment failed twice and the policy came within days of
+cancellation**. A lapse on a mortgaged property is serious, and a single $3,131.76
+debit is exactly the kind that fails when an account is short. Also worth asking
+the insurer about the garage — see B57.
+
 **B67 · The $1,806.00 Fusion invoice** · *small*
 Invoice 86995864, 31 Aug 2025, paid by Dale — **and it appears in none of the
 six accounts or five cards**, though it falls inside both coverage windows. The
