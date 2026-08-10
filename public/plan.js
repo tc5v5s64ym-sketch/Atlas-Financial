@@ -405,6 +405,7 @@ function renderPlan(d, periods) {
   // that leaves the chequing account has to arrive on a card.
   const debtProj = Forecast.projectDebts(plan, d.debts, asOf,
     Object.assign({}, advice.simOptions, { weeklyVariable: weekly,
+      extraFacilities: d.revolvingExtra,
       extraDebtTarget: plan.nextDollar && plan.nextDollar.target }));
   const cashOn = date => {
     const p = sim.daily.find(x => x.date === date);
@@ -688,13 +689,16 @@ function renderPlan(d, periods) {
       change: `Its ${money(plan.obligations.find(o => o.id === 'heloc').amount)}/month interest capitalises and
                nothing repays it, so the balance grows on its own.${alt}` });
   }
-  const overLimitLater = day90.debts.filter(x => x.overLimit
-    && !overToday.some(o => o.id === x.id)
-    && !(helocBreach && x.id === 'heloc'));   // already named above
-  if (overLimitLater.length) {
-    risks.push({ what: `${overLimitLater.map(x => x.label).join(' and ')} drifts over its limit inside the window`,
-      change: `The minimum barely exceeds the interest, so the balance sits against the limit and crosses it in the
-               days before each payment — each crossing risks an over-limit fee.` });
+  // From the crossings list, which records the day it actually happens, rather
+  // than from a 30-day snapshot — a facility can cross and be paid back under
+  // between two marks and never appear in either.
+  const crossLater = (debtProj.crossings || []).filter(c =>
+    !c.alreadyOver && c.id !== 'heloc');   // the HELOC is named above
+  for (const c of crossLater) {
+    risks.push({ what: `${c.label} goes over its limit on ${fmtDateLong(c.date)}`,
+      change: `Its minimum barely exceeds its interest, so the balance sits against the limit and crosses it
+               in the days before each payment. Each crossing risks an over-limit fee on top of the interest,
+               which raises the card's effective rate above its headline one.` });
   }
   const telecom = budget && budget.categories.find(c => c.id === 'telecom');
   if (telecom && telecom.planned > 0) {

@@ -519,6 +519,15 @@
   // instruction, and these balances only fall if it is honoured in cash.
   function projectDebts(plan, debts, asOf, opts) {
     opts = opts || {};
+    // Facilities that are not debt records but do carry revolving headroom —
+    // the chequing overdraft. Held CONSTANT across the window on purpose: its
+    // usage tracks the Chequing B balance, which the cash simulation already
+    // governs, so projecting it here would model the same money twice. It is
+    // included so that "revolving credit left" means the same thing in the
+    // Today tile and in the scoreboard; omitting it made those disagree by
+    // $82.28 under one label.
+    const extraAvailable = (opts.extraFacilities || [])
+      .reduce((s, e) => s + Math.max(0, e.limit - (e.used + (e.pending || 0))), 0);
     const days = plan.windowDays || 91;
     const start = asOf;
     const end = addDays(asOf, days - 1);
@@ -572,7 +581,7 @@
       heloc: byId.heloc ? byId.heloc.balance : 0,
       // Revolving headroom across every facility that has a limit.
       headroom: state.filter(s => s.limit != null)
-        .reduce((a, s) => a + Math.max(0, s.limit - s.balance), 0),
+        .reduce((a, s) => a + Math.max(0, s.limit - s.balance), 0) + extraAvailable,
       overLimitCount: state.filter(s => s.limit != null && s.balance > s.limit).length,
       interestToDate: state.reduce((a, s) => a + s.interest, 0),
     });

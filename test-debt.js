@@ -237,6 +237,14 @@ ok(Math.abs(util.totalAvailable - 1415.95) < 0.05,
   'day-0 revolving headroom reconciles with the independently captured $1,415.95',
   money(util.totalAvailable));
 ok(near(util.totalPending, 247.18), 'total pending across the household', money(util.totalPending));
+// The Plan shows "revolving credit left" in the Today tile and again as the
+// day-0 scoreboard row. They came from different functions and disagreed by
+// the $82.28 overdraft, under one label.
+const projWithExtra = F.projectDebts(plan, data.debts, asOf,
+  Object.assign({}, runOpts, { extraFacilities: data.revolvingExtra }));
+ok(near(projWithExtra.marks[0].headroom, util.totalAvailable),
+  'the scoreboard day-0 headroom equals the Today tile figure',
+  `${money(projWithExtra.marks[0].headroom)} = ${money(util.totalAvailable)}`);
 ok(util.overLimitCount === 2, 'two facilities are over their limits today',
   util.rows.filter(r => r.overLimit).map(r => r.label).join(', '));
 

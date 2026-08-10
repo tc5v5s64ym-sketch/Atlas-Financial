@@ -109,6 +109,7 @@ if (budget) {
 /* ---- the debt side ------------------------------------------------------ */
 const proj = F.projectDebts(plan, data.debts, asOf,
   Object.assign({}, advice.simOptions, { weeklyVariable: advice.weekly,
+    extraFacilities: data.revolvingExtra,
     extraDebtTarget: plan.nextDollar && plan.nextDollar.target }));
 for (const m of proj.marks) {
   if (![0, 30, 60, 90].includes(m.day)) continue;
