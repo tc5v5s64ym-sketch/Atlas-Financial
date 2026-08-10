@@ -195,7 +195,11 @@ ok(!!plan.budget.cardCaveat && /card/i.test(plan.budget.cardCaveat),
 for (const c of plan.budget.categories) {
   if (!c.why || c.why.length < 20) ok(false, `category ${c.id} has no stated reason`, c.why || '(none)');
 }
-ok(plan.budget.categories.every(c => c.why && c.why.length >= 20),
+// `.every()` returns true for an empty array, so the length is asserted too —
+// otherwise "every category states why" passes loudest when there are no
+// categories at all.
+ok(plan.budget.categories.length >= 18
+  && plan.budget.categories.every(c => c.why && c.why.length >= 20),
   'every category states why its assumption won',
   `${plan.budget.categories.length} reasons present`);
 

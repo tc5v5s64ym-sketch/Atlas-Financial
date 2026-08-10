@@ -159,8 +159,20 @@ ok(near(expected.ending - extra.ending, 600), 'extra $200/month × 3 mid-month d
 // brute recomputation from the daily balances.
 {
   const s = F.simulate(plan, asOf, { scenario: 'expected', weeklyVariable: 1000, targetBuffer: 500 });
+  // Assert the GENERATED collection, then derive the loop from it. Counting
+  // iterations of a loop bounded by a literal proves only that the literal was
+  // reached — `checked === 12` after `for (i = 0; i < 12; i++)` cannot be false,
+  // which is precisely the shape this guard was added to stamp out. Written
+  // that way first time round, in the commit whose purpose was to remove it.
+  //
+  // The distinction that matters: 12 is not an independent fact, it is
+  // weeks.length − 1. A window that produced 12 weeks instead of 13 would still
+  // compare 12 indexed entries and still report success, while only 11 of them
+  // were interior.
+  ok(s.weeks.length === 13, 'the window generates 13 weeks', `${s.weeks.length} weeks`);
+  const interior = s.weeks.length - 1;
   let allMatch = true, checked = 0;
-  for (let i = 0; i < 12; i++) {
+  for (let i = 0; i < interior; i++) {
     checked++;
     const next = (i + 1) * 7;
     let cum = 0, minCum = Infinity;
@@ -175,13 +187,10 @@ ok(near(expected.ending - extra.ending, 600), 'extra $200/month × 3 mid-month d
       break;
     }
   }
-  // The count is asserted, not assumed. A summary that reports a pass after a
-  // loop will report one just as happily after a loop that never ran, claiming
-  // coverage nothing performed — and this suite has already shipped two tests
-  // that passed for the wrong reason.
   if (allMatch) {
-    ok(checked === 12, 'track matches brute force for all 12 interior weeks',
-      `${checked} weeks compared`);
+    ok(checked === interior && interior === 12,
+      `track matches brute force for all ${interior} interior weeks`,
+      `${checked} of ${s.weeks.length - 1} interior weeks compared`);
   }
 }
 
