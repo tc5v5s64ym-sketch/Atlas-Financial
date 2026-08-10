@@ -152,8 +152,24 @@
     }
     if (opts.extraDebtMonthly > 0) {
       // Applied mid-month, the day after the usual payday pattern.
+      //
+      // A payment can only be as large as the debt left to receive it. Once
+      // every facility in the cascade is at zero there is nothing to pay, and
+      // continuing to take the money out of cash would recreate exactly the
+      // mismatch the cascade removes — the money would leave the account and
+      // reduce nothing. At $80,000/month the third payment had $7,584.05 with
+      // nowhere to go while cash lost all of it.
+      //
+      // `projectDebts` is the authority on what a payment actually absorbed,
+      // and it hands the answer back as `extraAbsorbed`. Applying it HERE,
+      // where the event is created, is what keeps the two sides honest: cash
+      // and debt read the same event, so neither can hold a different idea of
+      // how much was paid. Capping in one and not the other is the whole bug.
+      const absorbed = opts.extraAbsorbed || null;
       for (const date of monthlyDates(15, start, end)) {
-        events.push({ date, amount: -opts.extraDebtMonthly, kind: 'extra', label: 'Extra debt payment', id: 'extra', confidence: 'planned' });
+        const amount = absorbed ? (absorbed[date] || 0) : opts.extraDebtMonthly;
+        if (amount <= 0) continue;      // no debt left — the payment stops
+        events.push({ date, amount: -amount, kind: 'extra', label: 'Extra debt payment', id: 'extra', confidence: 'planned' });
       }
     }
     // Deposits land before payments due the same day — payday-timed bills are
@@ -332,6 +348,27 @@
     const buffer = base.targetBuffer != null ? base.targetBuffer : (plan.defaults.targetBuffer || 0);
     base.targetBuffer = buffer;
 
+    // An extra debt payment cannot be larger than the debt available to receive
+    // it. Ask the debt projection what each one actually absorbs and spend that,
+    // so a payment big enough to clear everything stops instead of draining
+    // cash into nothing.
+    //
+    // The caps must be measured under the SAME assumptions the run they govern
+    // uses. The debt walk does not depend on the weekly figure — weekly spending
+    // is cash-only and touches no balance — so it need not go inside the search.
+    // It does depend on gap funding, because a HELOC draw ADDS debt for later
+    // payments to reach: measuring the caps before the injection was known left
+    // the HELOC $956.81 higher than the household had in fact paid it down to.
+    // So it is measured once per branch, against that branch's own options.
+    // Measured with any earlier caps CLEARED. The recovery options are built by
+    // copying the base ones, so they arrive carrying the base caps; walking with
+    // those already applied measures how much a capped payment absorbs rather
+    // than how much the debt can take, and the answer comes back $956.81 short.
+    const capsFor = o => (o.debts && o.extraDebtMonthly > 0 && o.extraDebtTarget)
+      ? projectDebts(plan, o.debts, asOf,
+        Object.assign({}, o, { extraAbsorbed: null })).extraAbsorbed : null;
+    base.extraAbsorbed = capsFor(base);
+
     const zero = simulate(plan, asOf, Object.assign({}, base, { weeklyVariable: 0 }));
 
     if (atLeast(zero.min.balance, buffer)) {
@@ -417,6 +454,9 @@
       variableFrom: spendFrom,
       measureFrom: gapDate,
     });
+    // Re-measured now the injections are known — they change the debt a later
+    // payment can reach, so caps taken before them would be the wrong caps.
+    recovery.extraAbsorbed = capsFor(recovery);
     const weekly = recommendWeekly(plan, asOf, recovery);
     const result = finish('openingGap', recovery, weekly, spendFrom,
       { amount: gapAmount, date: gapDate, dueOnGapDay, preIncomeOut,
@@ -667,6 +707,9 @@
     // swallowed, because a non-zero value here means cash out and debt down
     // have stopped agreeing and the caller needs to know which way.
     let unabsorbed = 0;
+    // How much of each extra payment found a balance, by date. Handed back so
+    // the cash simulation can spend exactly this and not the amount asked for.
+    const extraAbsorbed = {};
     const snapshot = (day, date) => ({
       day, date,
       debts: state.map(s => ({
@@ -737,7 +780,10 @@
           }
           unabsorbed += payDown(chainFrom(t), principal);
         } else if (e.kind === 'extra' && extraTarget) {
-          unabsorbed += payDown(chainFrom(extraTarget), -e.amount);
+          const left = payDown(chainFrom(extraTarget), -e.amount);
+          unabsorbed += left;
+          // What this payment could actually land, for the cash side to match.
+          extraAbsorbed[e.date] = -e.amount - left;
         }
       }
       for (const s2 of state) {
@@ -750,7 +796,7 @@
     }
 
     return {
-      marks, byId, end, unabsorbed,
+      marks, byId, end, unabsorbed, extraAbsorbed,
       // Every facility that is over its limit at some point, on the day it
       // actually happens rather than at the next 30-day snapshot. A facility
       // already over the limit today is a different problem from one that

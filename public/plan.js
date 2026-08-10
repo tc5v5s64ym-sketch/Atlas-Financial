@@ -16,18 +16,41 @@ const state = {
   weeklyVariable: null,    // null = follow the recommendation
   incomeOverrides: {},     // id -> monthly amount
   disabled: [],            // commitment ids toggled off
+  // The debt records and the policy target, so the engine can size an extra
+  // payment against the debt that exists. Without them it spends whatever is
+  // typed in: at $80,000/month the third payment drained $7,584.05 of cash
+  // against balances already at zero. Held here so every call is governed —
+  // passing them at one call site and not another is how the page ends up
+  // showing two answers to the same question.
+  debts: null,
+  extraDebtTarget: null,
 };
+// ONLY these are persisted or restored. `state` also carries the debt records
+// so the engine can size a payment against real balances, and serialising the
+// whole object would write account balances and credit limits into
+// localStorage — financial data, out from behind the authenticated gate and
+// onto the disk of whatever machine the page was opened on. The list is
+// explicit so adding a field to `state` cannot silently start persisting it.
+const KNOBS = ['scenario', 'targetBuffer', 'extraDebtMonthly', 'weeklyVariable',
+  'incomeOverrides', 'disabled'];
 function loadKnobs(defaults) {
   state.scenario = defaults.scenario;
   state.targetBuffer = defaults.targetBuffer;
   state.extraDebtMonthly = defaults.extraDebtMonthly;
   try {
     const saved = JSON.parse(localStorage.getItem(KNOB_KEY) || 'null');
-    if (saved && typeof saved === 'object') Object.assign(state, saved);
+    // Only the knobs are restored. An older payload — or a tampered one — must
+    // not be able to inject its own `debts` and have the page plan against
+    // balances that never came from data.json.
+    if (saved && typeof saved === 'object') {
+      for (const k of KNOBS) if (saved[k] !== undefined) state[k] = saved[k];
+    }
   } catch { /* storage unavailable */ }
 }
 function saveKnobs() {
-  try { localStorage.setItem(KNOB_KEY, JSON.stringify(state)); } catch { /* ignore */ }
+  const out = {};
+  for (const k of KNOBS) out[k] = state[k];
+  try { localStorage.setItem(KNOB_KEY, JSON.stringify(out)); } catch { /* ignore */ }
 }
 
 function simOpts(extra = {}) {
@@ -37,6 +60,8 @@ function simOpts(extra = {}) {
     extraDebtMonthly: state.extraDebtMonthly,
     incomeOverrides: state.incomeOverrides,
     disabled: state.disabled,
+    debts: state.debts,
+    extraDebtTarget: state.extraDebtTarget,
   }, extra);
 }
 
@@ -1091,6 +1116,11 @@ function renderPlan(d, periods) {
 function wireControls(d) {
   const plan = d.plan;
   loadKnobs(plan.defaults);
+  // Not knobs — canonical facts the engine needs to size a payment against the
+  // debt that exists. Set after loadKnobs so a stale localStorage payload
+  // cannot supply its own idea of what the household owes.
+  state.debts = d.debts;
+  state.extraDebtTarget = plan.nextDollar && plan.nextDollar.target;
 
   // Scenario buttons
   for (const b of document.querySelectorAll('#scenario-bar .preset')) {

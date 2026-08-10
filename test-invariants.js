@@ -447,6 +447,69 @@ ok(/if \(!fundingShort\) \{\s*\n\s*missionParts\.push/.test(planJs2),
     `TD credit card ${money(1799.97)} → ${money(pr.byId.tdcc.balance)}`);
   // The order must stay derived from rate, matching nextDollar rank 7, rather
   // than becoming a second hand-written ranking that can drift from the policy.
+  // A payment cannot be larger than the debt left to receive it. Once the
+  // cascade is exhausted the money must stay in the account — returning an
+  // `unabsorbed` figure nobody reads does not make the projection right.
+  // At $80,000/month the third payment had $7,584.05 with nowhere to go while
+  // cash lost all of it.
+  {
+    const O = { scenario: 'expected', incomeOverrides: {}, disabled: [],
+      extraDebtMonthly: 80000, targetBuffer: plan.defaults.targetBuffer,
+      fundingSources: plan.funding.options, extraDebtTarget: plan.nextDollar.target };
+    const uncapped = F.recommend(plan, asOf, O);
+    const capped = F.recommend(plan, asOf, Object.assign({}, O, { debts: data.debts }));
+    const spent = s => s.sim.events.filter(e => e.kind === 'extra')
+      .reduce((a, e) => a + Math.abs(e.amount), 0);
+    ok(spent(capped) < spent(uncapped),
+      'an extra payment is capped at the debt available to receive it',
+      `${money(spent(uncapped))} asked, ${money(spent(capped))} spent`);
+    ok(capped.sim.ending > uncapped.sim.ending,
+      'so the remainder stays as cash instead of draining away',
+      `${money(capped.sim.ending - uncapped.sim.ending)} kept`);
+    // Capping must change the CASH side only. Measuring the caps before the gap
+    // injection was known made them $956.81 too small, quietly paying the HELOC
+    // down less than the household actually could.
+    const walk = a => F.projectDebts(plan, data.debts, asOf, Object.assign({}, a.simOptions,
+      { weeklyVariable: a.weekly, extraFacilities: data.revolvingExtra,
+        extraDebtTarget: plan.nextDollar.target }));
+    const pu = walk(uncapped), pc = walk(capped);
+    ok(data.debts.every(d => near(pu.byId[d.id].balance, pc.byId[d.id].balance, 0.02)),
+      'and every closing balance is identical with and without the cap',
+      'capping is a cash correction, not a debt one');
+    // What `unabsorbed` reports must be the real gap between cash out and debt
+    // down, or it is just another number nobody can act on.
+    const cashOut = capped.sim.events
+      .filter(e => e.amount < 0 && (e.kind === 'extra' || e.kind === 'obligation'))
+      .reduce((a, e) => a + Math.abs(e.amount), 0);
+    const paidOn = data.debts.reduce((a, d) => a + pc.byId[d.id].paid, 0);
+    ok(near(pc.unabsorbed, cashOut - paidOn),
+      'and the reported unabsorbed figure is exactly the cash that reduced nothing',
+      `${money(pc.unabsorbed)}`);
+    // KNOWN RESIDUAL, stated rather than hidden. Extras are capped; the dated
+    // minimums are not, so once every facility is at zero those keep paying a
+    // debt that no longer exists. It needs an input that clears $777k inside
+    // 91 days, which this household cannot reach, and it is $111.03 when it
+    // happens. Recorded here so the number is a known quantity, not a surprise.
+    ok(pc.unabsorbed < 200,
+      'the only residual is dated minimums outliving the debt they pay',
+      `${money(pc.unabsorbed)} at $80,000/month — extras contribute nothing`);
+  }
+
+  // Passing the debt records through the page's knob state put financial data
+  // one `JSON.stringify(state)` away from localStorage — balances and credit
+  // limits written to the disk of whatever machine the page was opened on,
+  // outside the authenticated gate that protects everything else.
+  ok(!/JSON\.stringify\(state\)/.test(planJs2),
+    'the page never serialises its whole state — that would persist balances',
+    'localStorage sits outside the authenticated financial-data gate');
+  ok(/const KNOBS = \[/.test(planJs2) && /for \(const k of KNOBS\) out\[k\] = state\[k\]/.test(planJs2),
+    'only an explicit list of planning knobs is written to localStorage');
+  ok(!/KNOBS = \[[^\]]*debts/.test(planJs2),
+    'and the debt records are not on that list');
+  ok(/for \(const k of KNOBS\) if \(saved\[k\] !== undefined\)/.test(planJs2),
+    'and only those keys are restored, so a stale or tampered payload cannot '
+    + 'supply its own balances for the plan to be built on');
+
   const forecastSrc = read('public/forecast.js');
   ok(/plan\.nextDollar` rank 7/.test(forecastSrc) && /sort\(\(a, b\) => \(b\.rate \|\| 0\) - \(a\.rate \|\| 0\)\)/.test(forecastSrc),
     'the cascade order is derived from rate and cites the policy that sets it');
