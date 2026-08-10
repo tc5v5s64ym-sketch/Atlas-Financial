@@ -48,6 +48,32 @@ Bonus or vacation pay has historically landed in **February and July**.
 
 The renewal is the single most consequential date in this file.
 
+### The renewal countdown *(researched 2026-08-09)*
+
+TD lets you renew a closed mortgage **120 days before maturity with no
+prepayment charge and no fee**. Its standard rate hold is **120 days,
+extendable to about 150 for existing clients**. TD normally makes contact four
+to five months out and posts the offer letter about a month before maturity.
+
+| Date | Days out | What it is |
+|---|---|---|
+| **2 Nov 2026** | ~180 | Start collecting competing quotes. Nothing can be locked yet, but this is when to be comparing rather than accepting |
+| **2 Dec 2026** | 150 | Ask TD to hold a rate — the existing-client extension. A hold is a floor, not a commitment |
+| **1 Jan 2027** | **120** | **The early-renewal window opens.** Renew with no prepayment charge; also the point at which switching lenders becomes practical, since a switch needs approval, appraisal and discharge |
+| ~1 Apr 2027 | 30 | TD's offer letter should arrive. The posted renewal rate is an opening offer, not a fixed price |
+| **1 May 2027** | 0 | **Maturity.** Unsigned by now and it typically rolls to a short open or posted-rate term, which costs materially more |
+
+**The live decision at renewal is whether to fold the HELOC in.** It is
+$201,586 at 4.90%, interest-only and 99.5% drawn; folding it into the mortgage
+forces principal repayment and lowers the rate, at the cost of a higher monthly
+payment. The site's renewal modeller runs that trade-off. Combined LTV is
+roughly 53–68% depending on the home valuation — under 80% at both ends, so it
+should renew conventionally on that measure, but a lender orders its own
+appraisal and will not take an owner's estimate.
+
+Sources: [TD renewal process](https://www.td.com/ca/en/personal-banking/products/mortgages/renew-refinance/how-to-renew) ·
+[early renewal windows](https://mortgagerenewalhub.ca/early-mortgage-renewal/)
+
 ## HELOC — TD *(verified 2026-08-09)*
 
 | | |
@@ -57,6 +83,69 @@ The renewal is the single most consequential date in this file.
 | Minimum payment | **Equals the monthly interest charge** — roughly $814 |
 | Due | 21st, monthly |
 | Structure | **Interest-only revolving. Paying the minimum reduces principal by nothing** |
+
+### What the HELOC was actually spent on *(2026-08-09)*
+
+`scripts/transfer-chains.js`. **$86,513.51 left the HELOC over 18 months and
+$78,176.55 came back.** This is a facility being used as a chequing account, not
+a loan being repaid.
+
+| Left the HELOC as | n | Amount |
+|---|---|---|
+| Credit card payments | 32 | **$22,230.00** |
+| Into chequing / savings | 54 | $17,466.00 |
+| Interest charged | 18 | $15,029.18 |
+| **Household bills, paid direct** | 5 | **$14,271.63** |
+| E-transfers out, payee unnamed | 26 | $13,061.90 |
+| Cash withdrawal | 1 | $4,429.80 |
+| E-transfer fees | 26 | $25.00 |
+
+**The fourth line is the one to pause on.** Five ordinary bills were paid by
+borrowing against the house:
+
+| Date | What | Amount |
+|---|---|---|
+| 2 Jul 2026 | **Maple Ridge property tax** | **$5,639.67** |
+| 5 Aug 2025 | Triangle Mastercard | $3,778.00 |
+| 20 May 2025 | Triangle Mastercard | $3,663.96 |
+| 13 Jan 2026 | BC Hydro | $790.00 |
+| 20 Jul 2026 | **CRA — tax owed** | $400.00 |
+
+Property tax and income tax are recurring, predictable costs. Paying them from
+an interest-only facility at 99.5% utilisation converts them into permanent
+debt — nothing about a minimum payment removes them.
+
+### Multi-hop chains are real but rare
+
+The 24 July Wise funding showed that one intermediate hop breaks the trail:
+$1,000 left the HELOC, landed in Chequing A, and was e-transferred onward the
+same day. Re-running the tracing to look for **chains** rather than pairs:
+
+- **635** internal transfers pair on TD's five-character reference
+- **33** continue into an onward movement within three days
+- **only 5** of those start at the HELOC, worth **$2,135.00**
+
+**So the laundering-through-chequing pattern is not systematic.** The money that
+cannot be traced did not take a circuitous route — it left the HELOC directly,
+as 26 anonymous e-transfers worth $13,061.90.
+
+### The single-leg transfers do NOT point at unknown accounts
+
+B31 carried the hypothesis that "176 transfers have only one leg captured and
+may point at the unidentified accounts." **Disproved.** Splitting every
+single-leg transfer by its destination token:
+
+| Destination | n | Out |
+|---|---|---|
+| A credit card (lives in the card ledger, not these exports) | 173 | $62,241.93 |
+| A household account whose other leg is simply missing | 22 | $2,450.00 |
+| **An account number not in the captured set** | **0** | **$0.00** |
+
+**Zero unidentified account numbers appear.** TD's internal-transfer mechanism
+only works between accounts on one profile, so money to an outside account
+*must* go by e-transfer. The two unidentified accounts can therefore only ever
+be found in the e-transfer record — which is exactly why recovering the deleted
+Interac notifications matters, and why B64 will not be solved from transfer data.
 
 ## TD credit card *(verified 2026-08-09)*
 
@@ -199,12 +288,38 @@ going over the limit makes the whole excess immediately due on top of the
 ordinary minimum. That is the mechanism that turned a manageable payment into
 the largest card obligation in the household.
 
-**One figure does not reconcile and is worth asking TD about.** At 26.99% on an
-average balance of roughly $5,200 over a 30-day cycle, interest should be about
-$115. The charge was **$158.55** — consistent with an average balance nearer
-$7,100, which the account did not carry. Plausible explanations are a
-cash-advance component at 27.99% with no grace period, or interest compounding
-on unpaid interest under TD's 2 July 2026 change. Not resolved [ASK].
+### The $158.55 interest charge — RESOLVED *(2026-08-09)*
+
+This sat open as the one figure that would not reconcile. It reconciles;
+the check was wrong, not the charge. `scripts/cashback-interest.js` rebuilds
+the daily balance from the transaction ledger and tests every cycle:
+
+| Statement | Avg daily balance | 26.99% implies | Charged | Effective rate |
+|---|---|---|---|---|
+| 8 Apr 2026 | $4,985.10 | $110.59 | $108.91 | 26.58% |
+| 7 May 2026 | $5,118.52 | $109.76 | $103.98 | 25.57% |
+| 8 Jun 2026 | $3,179.37 | $75.23 | $61.27 | **21.98%** |
+| 7 Jul 2026 | $4,263.60 | $91.43 | $59.93 | **17.69%** |
+| 7 Aug 2026 | $5,119.61 | $117.36 | **$158.55** | **36.46%** |
+| **Five cycles** | | **$504.37** | **$492.64** | **26.99%** |
+
+**Two things were wrong with the expected "about $115".**
+
+1. **It applied the rate to the closing balance.** Interest is charged on the
+   **average daily balance**. On a card paid down and run back up those are
+   different numbers — in May the closing balance was $2,685 while the average
+   was $5,119.
+2. **It looked at August alone.** June and July were charged *below* rate,
+   leaving **$45.46 uncollected**; August then ran at 36.46% and collected it.
+
+Across five cycles the model implies $504.37 against $492.64 actually charged —
+a **2.3%** gap, which is the transaction-date-versus-posting-date bias in the
+ledger and nothing more. Nothing is missing; the timing shifted.
+
+**The cash-advance theory is dead on the statements' own evidence.** Every
+interest line on this card, in all twelve statements, is headed
+**RETAIL INTEREST**. There is no cash-advance bucket and never has been, so the
+27.99% rate was never part of it.
 
 ### Travel Visa *(…0870)* — **a Business Visa**
 
@@ -879,11 +994,73 @@ That is why 94 incoming and 113 outgoing e-transfers could not be attributed.
 > "Your $488.25 transfer to PRO CALIBER LACROSSE ACADEMY LTD. has been
 > successfully deposited."
 
-**But the coverage is poor — about 11 of ~207 in the window.** Auto-deposit
-transfers generate no confirmation, and the rest appear to notify **Amanda's
-address** rather than this one. **None of the large coaching receipts
-($3,312–$7,245) are in this inbox**, which is consistent with her being the
-payee.
+**Coverage is poor, and the reason is not the one previously recorded.**
+
+> **Correction, 2026-08-09.** This entry said "auto-deposit transfers generate
+> no confirmation". **That is wrong.** Interac sends the recipient a
+> "You've received $X from NAME and it has been automatically deposited"
+> notification, and four of the transfers named here are exactly that. What
+> auto-deposit removes is the *click-to-deposit* email, not the notification.
+
+**The real reason is that the notifications are being deleted.** A sweep of
+**both** mailboxes on 9 August 2026 found far more than had been captured, and
+**almost every new one was in the bin**:
+
+| Mailbox | Previously captured | Found | New |
+|---|---|---|---|
+| The owner's | 11 | 19 | **8** |
+| The spouse's | 12 | 30 | **18** |
+| | **23** | **49** | **26** |
+
+Gmail purges deleted mail after 30 days, so every recoverable one falls after
+roughly **10 July 2026**. Everything deleted before that is gone permanently.
+
+**So the counterparty record is being destroyed on a rolling 30-day cycle.**
+That is why coverage looked hopeless, and it means the previous conclusion was
+wrong: the notifications were not missing, they were **deleted**. **A Gmail
+filter on both accounts that labels and archives mail from
+`payments.interac.ca` instead of deleting it costs nothing and makes every
+future transfer attributable** — see B66. It cannot recover what has been
+purged.
+
+**Attribution now stands at 49 of 204 (24%) — double the 24 (12%) carried
+before.** Every one of the 26 new attributions matches a bank row on amount and
+date, so this is corroboration rather than guesswork.
+
+**Two large payments to named individuals emerged**, both previously the biggest
+unattributed outgoing transfers in the dataset:
+
+| Date | Amount | Account | Note |
+|---|---|---|---|
+| **6 Jul 2026** | **$2,160.00** | SAVINGS-DONT TOUCH | four days after the coaching remittance — see below |
+| 5 Aug 2026 | $1,064.92 | DEBT&PAYMENTS | a second named individual |
+
+**Amanda's mailbox is where the coaching business is visible.** Her outgoing
+transfers include **Fusion West Lacrosse** ($225.00, 31 Jul — new) and small
+payments to several individuals; her incoming are client lesson fees of
+$60–$140 from five named clients, plus **$114.53 back from the Burrards U13-A2
+team manager** — the same person who sets the $400 team fee, so team money moves
+both ways with her.
+
+*(Names stay in `raw/interac/`, which is gitignored. Only aggregates and roles
+belong in a committed file.)*
+
+**The eight recovered notifications independently confirm the Wise funding
+trace.** Six of them — $10.00 and $430.00 and $1,000.00 on 23–24 July, $1,000.00
+on 27 July, $1,000.00 on 30 July, $500.00 on 2 August — match the reconstructed
+Wise funding table date for date and cent for cent. That table was built by
+matching amounts across statements; it is now corroborated from a second,
+independent source.
+
+**None of the large coaching receipts ($3,312–$7,245) are in this inbox**, which
+is consistent with Amanda being the payee.
+
+**The matcher was also wrong, and has been fixed.** It used `find()`, so a
+single notification named *every* transfer of the same amount within four days —
+six $1,000 Wise fundings would all have inherited one name — and an *incoming*
+notification could name an *outgoing* transfer. It now matches one notification
+to one transfer, nearest date first, with direction enforced. This lowers the
+apparent attribution count and raises its truthfulness.
 
 What the 11 do show is **boys' lacrosse** *(owner-confirmed 2026-08-09)*:
 **PRO CALIBER LACROSSE ACADEMY $488.25**, **FUSION WEST LACROSSE $1,023.75**,
@@ -923,39 +1100,45 @@ separate private-lesson clients booked through Calendly.
 **That makes the large receipts pass-through money, not household income.** They
 arrive gross, and a share of each is owed onward to the coaches.
 
-### ⚠ The $9,646.25 did not go to the coaches — it went onto the HELOC
+### The $9,646.25 — mostly onto the HELOC, but a coach WAS paid
 
-This is the part worth looking at directly. The 30 June remittance was traced end
-to end:
+*(Corrected 2026-08-09, after recovering the deleted Interac notifications.)*
 
-| | |
-|---|---|
-| 2 Jul, Chequing A | receives **$3,683.75** and **$5,962.50** |
-| 2 Jul, → SAVINGS-DONT TOUCH | **−$9,645.00** |
-| 2 Jul, → **HELOC** | **−$10,000.00** |
+The 30 June remittance now traces end to end, and the fourth line is new:
 
-**Same day, in full, onto household debt.** And **no coach payments appear in
-either mailbox afterwards** — Amanda's outgoing transfers in July and August are
-Fusion West Lacrosse ($230.00) and $150.00 to a person named Amanda. Nothing that
-looks like distributing $9,646 among coaches.
+| | | Staging balance |
+|---|---|---|
+| 2 Jul, Chequing A | receives **$3,683.75** and **$5,962.50** | $9,837.28 |
+| 2 Jul, → SAVINGS-DONT TOUCH | **−$9,645.00** | $12,713.69 |
+| 2 Jul, → **HELOC** | **−$10,000.00** | $2,713.69 |
+| **6 Jul, → a named individual** | **−$2,160.00** | **$553.69** |
 
-**Three explanations, and they have very different consequences:**
+> **Correction.** This entry previously read "**The $9,646.25 did not go to the
+> coaches — it went onto the HELOC**", and said no coach payment appeared in
+> either mailbox afterwards. **That was wrong, and it was wrong because the
+> evidence had been deleted.** The Interac notification naming the $2,160.00
+> payee was in the bin. The claim rested on absence in a record that was being
+> emptied on a 30-day cycle.
 
-1. **She pays coaches from an account not yet captured.** The most likely one —
-   and there is direct evidence such an account exists: on 14 July her mailbox
-   records **$186.16 received under her own full legal name**, i.e. she
-   transferred money to herself from somewhere else. **This may also be one of
-   the two unidentified accounts** [B64].
-2. **Coaches were paid earlier, or are paid on a lag**, and this tranche covered
-   a period already settled.
-3. **The coaches have not yet been paid for this money.** If so there is an
-   **unrecorded liability** — money owed onward that has been spent on the HELOC,
-   which does not amortise and cannot be drawn back down without re-borrowing.
+**$2,160.00 is 22.4% of the $9,646.25 received**, against the **27.7%** coach
+share her own tracking sheets imply — the right order of magnitude for one coach
+among several. A second payment of **$1,064.92** went to another named
+individual on 5 August.
 
-**Nothing here says which.** But the third possibility is the reason this matters
-more than an accounting nicety: using pass-through money for household debt is
-only safe if the onward obligation is already covered. **That question should be
-answered before the next remittance arrives** [ASK].
+[INFERRED — the bank record names the payee but not the reason. "Coach" is the
+best-supported reading given the size, the timing and the account it left from,
+not a proven fact.]
+
+**The unrecorded-liability worry is substantially reduced.** Pass-through money
+was not simply absorbed by household debt; a distribution followed within four
+days, out of the same staging account, draining it to $553.69.
+
+**What remains open [B63].** This accounts for one payment out of one
+remittance. The route for the rest of the 2026 coach pay is still unidentified,
+the cheque route that paid one coach stopped in November 2025, and the evidence
+for the account outside the captured set still stands — on 14 July her mailbox
+records **$186.16 received under her own full legal name**, i.e. she transferred
+money to herself from somewhere else [B64].
 
 ### The receipt itself
 
@@ -983,22 +1166,99 @@ is staged, and leaves within hours.
 
 ### Lacrosse is a real category, and the bank data cannot see most of it
 
-| Source | Identified |
+*(Recomputed 2026-08-09 by `scripts/lacrosse.js`, which prints every matched
+charge so the total is auditable rather than asserted.)*
+
+| Source | Identified | n |
+|---|---|---|
+| Cards | **$2,767.14** | 17 |
+| E-transfers, via Interac emails | **$2,822.30** | 7 |
+| Chequing debit | **$140.03** | 3 |
+| **Verified floor** | **$5,729.47** | **27** |
+
+About **$348 a month**, and still a floor.
+
+> **Correction.** This entry recorded the chequing figure as **$0.00** and
+> called that "the finding". It is not zero — it was **$140.03**, hidden by
+> TD's truncation. `US LACROSS 35.00_V`, `SQ *BC SIXES LA` and
+> `SQ *LOADING LAC` are US Lacrosse, BC Sixes and Loading Lacrosse; none
+> contains the string "LACROSSE" once TD has cut the description to fit. The
+> underlying point survives — most of the category still moves by e-transfer and
+> carries no payee — but the flat zero was a matching failure, not evidence.
+
+**A further $400.00 is inferred and deliberately excluded from the total.** The
+Burrards U13-A2 manager emailed "$400 per player, please send etransfer" at
+10:06 on 15 April 2026, and a **$400.00 e-transfer left the HELOC the same
+day**. Strong, but the bank record still names no payee, so it is reported
+separately rather than folded in.
+
+**Excluded as genuinely ambiguous:** 13 chequing charges totalling $68.25 read
+`SQ *RIDGE MEADO`. The same town runs lacrosse *and* soccer through Square, and
+the cards prove the soccer one exists — the truncated string cannot be assigned
+either way.
+
+### The finding is the funding, not the size
+
+| Paid with | Amount |
 |---|---|
-| Cards | **$2,546.26** across 18 charges |
-| E-transfers, via Interac emails | **$1,612.00** across 3 |
-| **Chequing, by merchant matching** | **$0.00** |
+| **HELOC** | **$2,269.80** |
+| Travel Visa | $1,110.20 |
+| Amazon / MBNA | $750.90 |
+| TD personal Visa | $731.78 |
+| Chequing A | $327.50 |
+| DEBT&PAYMENTS | $225.00 |
+| TD Cash Back Visa | $174.26 |
+| Chequing B | $140.03 |
 
-**That $0.00 is the finding.** Searching the chequing exports for every lacrosse
-pattern — clubs, associations, `LAX`, the lot — returns nothing, because
-**e-transfers carry no payee name**. The money left the account with a
-three-character reference against it.
+**40% of identified youth-sport spending, and 80% of the e-transfer half, was
+paid out of the HELOC** — borrowed against the house at 4.90% on an
+interest-only facility at 99.5% utilisation. Nothing about a minimum payment
+reduces it.
 
-So a category worth at least **$4,158.26** and probably a good deal more shows up
-as $2,546 on the cards and as anonymous transfers everywhere else. Club fees are
-paid by e-transfer precisely because clubs prefer it — which makes youth sport
-one of the most systematically **understated** categories in any analysis built
-on bank exports alone.
+**84 outgoing e-transfers worth $18,514.04 still carry no payee at all** (down
+from 95 and $22,487.96), and an unknown share of that is more of this.
+
+### Fusion West invoices — the mailbox record beats the bank record
+
+*(2026-08-09.)* LeagueApps emails a receipt for every Fusion purchase. Both
+mailboxes were searched; **all fourteen in-window receipts arrive at Dale's
+address**, even when Amanda is the payer, because his is the account's
+notification email. Amanda's mailbox holds only the two from 11 February 2026,
+so **the duplication is minimal and Dale's mailbox is the complete record.**
+
+| Date | Invoice | Amount | Paid by | Found in the captured accounts? |
+|---|---|---|---|---|
+| 19 Feb 2025 | 82541373 | $65.52 | Dale | no |
+| 10 Apr 2025 | 83604237 | $89.25 | Dale | no |
+| 12 May 2025 | 84172476 | $340.20 | Dale | no |
+| 12 May 2025 | 84172495 | $340.20 | Dale | no |
+| 26 Jun 2025 | 85240748 | $121.80 | Dale | no |
+| 28 Jun 2025 | 85275335 | $91.88 | Dale | no |
+| 30 Jun 2025 | 85309871 | $74.38 | Dale | no |
+| **31 Aug 2025** | 86995864 | **$1,806.00** | Dale | **no — and this one should be** |
+| 18 Nov 2025 | 88494543 | $312.00 | Amanda | TD personal Visa |
+| 16 Dec 2025 | 88952017 | $81.90 | Amanda | Travel Visa |
+| 20 Dec 2025 | 89008081 | $81.90 | Amanda | Travel Visa |
+| 11 Feb 2026 | 90013908 | $220.73 | Amanda | Travel Visa |
+| 11 Feb 2026 | 90014064 | $215.25 | Amanda | Travel Visa |
+| 6 May 2026 | 91796457 | $61.44 | Amanda | Travel Visa |
+| **Total** | | **$3,902.45** | | **$2,929.23 unaccounted** |
+
+**The split is perfect and it is the finding.** Every invoice **Amanda** paid is
+on a captured card. Every invoice **Dale** paid is in none of the six accounts
+or five cards.
+
+Seven of the eight predate card coverage, which begins 24 August 2025, so they
+were plausibly paid on a card during the uncovered period. **The $1,806.00 of
+31 August 2025 is not explainable that way** — it falls inside both the card
+window and the chequing window and appears in neither [ASK]. Fusion accepts
+e-transfer (its own emails offer an `ETRANSFER` discount code and quote
+`payment@fusionwestlacrosse.com`), and no $1,806.00 e-transfer exists either.
+LeagueApps also supports instalment plans, and a 2024 receipt in the same
+mailbox shows "Payment Plan: 1 out of 3 installments paid" — so the likeliest
+benign explanation is that $1,806.00 is an invoice total settled in instalments
+that are individually too small to spot. **Worth one look at the LeagueApps
+account's payment history to close it.**
 
 Corroborating context in the mailbox: team-fee notices of **$400 per player**,
 multiple teams (Burrards U13-A2, Fusion West Grade 2/3, RMSC Titans), and a

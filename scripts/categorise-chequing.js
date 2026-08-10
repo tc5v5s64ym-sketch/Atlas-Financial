@@ -29,7 +29,10 @@ const FILES = [
 // Not spending: money moving, debt being serviced, income arriving, bank charges.
 const INTERNAL = /TFR-(TO|FR)|SEND E-TFR|E-TRANSFER|E-TFR|ATM DEP|CASH WITHDRA|ATM W\/D|PTS FRM|EMS (FR|TO)|CANCEL|TD WATERHOUSE/i;
 const DEBT     = /TD MORTGAGE|CAN TIRE MC|MBNA M\/C|AFFIRM|FLEXITI|PYT TO|PAYMENT TO|TO:TD C\/C/i;
-const BANKCOST = /MONTHLY ACCOUNT FEE|OVERDRAFT|NSF|E-TFR FEE|INTEREST|SERVICE CHARGE|WITHDRAWAL FEE/i;
+// "O.D.P. FEE" is overdraft protection and "PAYMENT COVERAGE FEE" is the
+// overdraft-cover charge. Neither matches /OVERDRAFT/, so both were being
+// counted as household spending. Match TD's abbreviations explicitly.
+const BANKCOST = /MONTHLY ACCOUNT FEE|OVERDRAFT|O\.?D\.?P\.? FEE|PAYMENT COVERAGE FEE|NSF|E-TFR FEE|INTEREST|SERVICE CHARGE|WITHDRAWAL FEE|FX ATM W\/D FEE/i;
 // PayPal pulling from chequing is FUNDING, not spending. What was actually
 // bought is in the PayPal exports; counting both double-counts every purchase.
 const PAYPAL   = /^PAYPAL/i;
@@ -98,6 +101,72 @@ const EXTRA = [
   ['PANAGO', 'Restaurants', 'discretionary'], ['AW', 'Restaurants', 'discretionary'],
   ['MRLUBE', 'Fuel & transport', 'essential'], ['PETROCANADA', 'Fuel & transport', 'essential'],
   ['LONDONDRUGS', 'Health', 'essential'], ['CMAWLOCAL', 'Union dues', 'essential'],
+
+  // --- second pass, 2026-08-09 -------------------------------------------
+  // Worked down the uncategorised residue by size. Two shapes recur and both
+  // defeat a library written from card statements:
+  //   SQ *NAME     Square terminals -- small clubs, cafes and one-person shops
+  //   NAME 12.34_V a foreign-currency charge, where TD appends the original
+  //                amount and eats the merchant name to fit its 15 characters
+  // Anything genuinely ambiguous is deliberately LEFT OUT. A wrong category is
+  // worse than an honest unknown, because it stops anyone looking again.
+  ['SQPEROGYHUT', 'Restaurants', 'discretionary'], ['FLAVOURJUNCTIO', 'Restaurants', 'discretionary'],
+  ['SHVENDING', 'Restaurants', 'discretionary'], ['CHOP030', 'Restaurants', 'discretionary'],
+  ['TRIPLEO', 'Restaurants', 'discretionary'], ['BIGWAYHOTPOT', 'Restaurants', 'discretionary'],
+  ['PHOSONGVIETNA', 'Restaurants', 'discretionary'], ['MONTANAS', 'Restaurants', 'discretionary'],
+  ['BROWNSSOCIALHO', 'Restaurants', 'discretionary'], ['BROWNSSH', 'Restaurants', 'discretionary'],
+  ['THERUSTICROAS', 'Restaurants', 'discretionary'], ['SQTAPBARRE', 'Restaurants', 'discretionary'],
+  ['OFLANNIGANS', 'Restaurants', 'discretionary'], ['FRESHSLICEPIZZ', 'Restaurants', 'discretionary'],
+  ['WENDYS', 'Restaurants', 'discretionary'], ['POPEYES', 'Restaurants', 'discretionary'],
+  ['LITTLEDEVILSP', 'Restaurants', 'discretionary'], ['SQSTREETDOGS', 'Restaurants', 'discretionary'],
+  ['SQFORKSEASON', 'Restaurants', 'discretionary'], ['BOOSTERJUICE', 'Restaurants', 'discretionary'],
+  ['ERNESTCOF', 'Restaurants', 'discretionary'], ['WAVESCOFFEE', 'Restaurants', 'discretionary'],
+  ['CMARKETCOFFEE', 'Restaurants', 'discretionary'], ['BEANERYCOFFEEH', 'Restaurants', 'discretionary'],
+  ['SQLOCALKITSI', 'Restaurants', 'discretionary'], ['THEJOLLYCOACH', 'Restaurants', 'discretionary'],
+  ['SQSANCTUARYG', 'Restaurants', 'discretionary'], ['SQBLACKSMITH', 'Restaurants', 'discretionary'],
+  ['SQREDBIRDBR', 'Restaurants', 'discretionary'], ['SQPOINTEDCAT', 'Restaurants', 'discretionary'],
+
+  ['SQBRAVEBREWI', 'Entertainment', 'discretionary'], ['ANGRYOTTER', 'Entertainment', 'discretionary'],
+  ['WINEBEYOND', 'Entertainment', 'discretionary'], ['MOONCURSERVIN', 'Entertainment', 'discretionary'],
+  ['FRINDESTATEWI', 'Entertainment', 'discretionary'], ['COYOTECRUISES', 'Entertainment', 'discretionary'],
+  ['HRMACMILLAN', 'Entertainment', 'discretionary'], ['SQLEVY', 'Entertainment', 'discretionary'],
+
+  ['ASKEWSFOODS', 'Groceries', 'essential'], ['FRESHCO', 'Groceries', 'essential'],
+  ['FUJIYAFOODS', 'Groceries', 'essential'], ['REALCDNWHOLE', 'Groceries', 'essential'],
+
+  ['THERAPYCLOTHIN', 'Shopping', 'discretionary'], ['DESIGNERSHOEW', 'Shopping', 'discretionary'],
+  ['THESHOECOMPAN', 'Shopping', 'discretionary'], ['SHOEWAREHOUSE', 'Shopping', 'discretionary'],
+  ['MICHAELS', 'Shopping', 'discretionary'], ['PARTYCIT', 'Shopping', 'discretionary'],
+  ['SCHOLASTICBOOK', 'Shopping', 'discretionary'], ['APPLESTORE', 'Shopping', 'discretionary'],
+  ['SPLAGOONBABY', 'Shopping', 'discretionary'], ['SPGOATUS', 'Shopping', 'discretionary'],
+  ['THECANDYVAULT', 'Shopping', 'discretionary'], ['NEX3D', 'Shopping', 'discretionary'],
+  ['MAPLERIDGEFLO', 'Shopping', 'discretionary'], ['PHOTOFRANCO', 'Shopping', 'discretionary'],
+
+  // Youth sport, and the reason B62's chequing figure was not really zero.
+  ['DICKSSPOR', 'Sport & fitness', 'discretionary'], ['TENFEETSPORTS', 'Sport & fitness', 'discretionary'],
+  ['BRANDEDATHLETI', 'Sport & fitness', 'discretionary'], ['SQTOPSPINTEN', 'Sport & fitness', 'discretionary'],
+  ['SQBCSIXESLA', 'Sport & fitness', 'discretionary'], ['SQLOADINGLAC', 'Sport & fitness', 'discretionary'],
+  ['USLACROSS', 'Sport & fitness', 'discretionary'], ['SQRIDGEMEADO', 'Sport & fitness', 'discretionary'],
+  ['SPPADDLEGEAR', 'Sport & fitness', 'discretionary'], ['SQRGFACILITI', 'Sport & fitness', 'discretionary'],
+  ['2PEAKSNUTRITI', 'Sport & fitness', 'discretionary'], ['PITTMEADOWSCE', 'Sport & fitness', 'discretionary'],
+
+  ['NAMASTEBEAUTY', 'Health', 'discretionary'], ['VNNAILSSPA', 'Health', 'discretionary'],
+  ['TIFFANYNAILBA', 'Health', 'discretionary'], ['GREATCLIPS', 'Health', 'discretionary'],
+  ['SKINDISTRICTI', 'Health', 'discretionary'], ['GOLDENEARSPHA', 'Health', 'essential'],
+
+  ['SQMRPETS', 'Pets', 'essential'], ['BOSLEYSBYPET', 'Pets', 'essential'],
+  ['PETSMART', 'Pets', 'essential'],
+
+  ['MEADOWSLANDSCA', 'Household', 'essential'],
+
+  ['VERCELINC', 'Subscriptions', 'discretionary'], ['ANTHROPIC', 'Subscriptions', 'discretionary'],
+  ['GOOGLETSN', 'Subscriptions', 'discretionary'], ['RINGBASIC', 'Subscriptions', 'discretionary'],
+
+  ['SPIRITBEACHCA', 'Travel', 'discretionary'],
+
+  ['ELKHARTFUELS', 'Fuel & transport', 'essential'], ['WHATCOMROADES', 'Fuel & transport', 'essential'],
+  ['OTTERCOOP', 'Fuel & transport', 'essential'], ['WASHWORLDMAPLE', 'Fuel & transport', 'essential'],
+  ['GEN7OSOYOOS', 'Fuel & transport', 'essential'],
 ];
 for (const [pattern, category, type] of EXTRA) RULES.push({ pattern, category, type });
 
@@ -179,12 +248,28 @@ console.log(`\nUncategorised: ${money(unc ? unc.total : 0)} — ${((unc ? unc.to
 
 // Fold the chequing patterns back into the shared library so both sides of the
 // picture are driven by one file rather than two divergent rule sets.
+//
+// This used to re-append all 72 patterns on EVERY run. It built `existing` by
+// excluding any rule whose pattern appeared in EXTRA -- which excluded the rows
+// it had itself written on the previous run, so nothing ever looked present.
+// The library reached 345 rows for 269 distinct patterns before anyone noticed,
+// and a duplicated rule silently shadows any later rule for the same string.
+// Compare against what is actually IN THE FILE, and rewrite it deduplicated.
 if (fs.existsSync(libPath)) {
-  const existing = new Set(RULES.filter(r => !EXTRA.some(e => e[0] === r.pattern)).map(r => r.pattern));
-  const added = EXTRA.filter(([p]) => !existing.has(p));
-  if (added.length) {
-    fs.appendFileSync(libPath, added.map(([p, c, t]) => `${p},${c},${t},chequing (truncated description)`).join('\n') + '\n');
-    console.log(`\nAdded ${added.length} chequing patterns to ${libPath}`);
+  const lines = fs.readFileSync(libPath, 'utf8').split(/\r?\n/).filter(Boolean);
+  const header = lines.shift();
+  const seen = new Set(), kept = [];
+  for (const l of lines) {
+    const p = l.split(',')[0];
+    if (!p || seen.has(p)) continue;
+    seen.add(p); kept.push(l);
+  }
+  const added = EXTRA.filter(([p]) => !seen.has(p));
+  for (const [p, c, t] of added) kept.push(`${p},${c},${t},chequing (truncated description)`);
+  const removed = lines.length - (kept.length - added.length);
+  if (added.length || removed) {
+    fs.writeFileSync(libPath, [header, ...kept].join('\n') + '\n');
+    console.log(`\nLibrary: ${kept.length} patterns (+${added.length} new, ${removed} duplicate rows dropped)`);
   }
 }
 

@@ -140,6 +140,15 @@
       <div id="c-heloc"></div>
       <figcaption id="heloc-note"></figcaption>
     </figure></div>
+
+    <h3>Where the borrowed money went</h3>
+    <p class="lede">$86,514 out over 18 months and $78,177 back — a facility being used as a chequing
+    account, not a loan being repaid.</p>
+    <div class="card"><figure><div id="c-heloc-use"></div>
+      <figcaption id="heloc-use-note"></figcaption>
+    </figure>
+      <div class="note-box" id="heloc-chains"></div>
+    </div>
   </section>
 
   <section id="flows">
@@ -171,7 +180,9 @@
 
     <div class="card"><figure><div id="c-spend"></div>
       <figcaption id="spend-note"></figcaption>
-    </figure></div>
+    </figure>
+      <p class="lede footnote" id="spending-detail"></p>
+    </div>
 
     <h3>What the debt costs, month to month</h3>
     <p class="lede">Interest actually charged, not modelled. The mortgage is absent because its interest is
@@ -179,6 +190,18 @@
     <div class="card"><figure><div id="c-interest"></div>
       <figcaption id="interest-note"></figcaption>
     </figure></div>
+
+    <h3>Is 26.99% enough to explain it?</h3>
+    <p class="lede">The Cash Back Visa's $158.55 charge sat open as an unexplained figure. It is not
+    unexplained — it was being checked against the wrong balance.</p>
+    <div class="card scroll">
+      <table><thead><tr>
+        <th>Statement</th><th class="num">Avg daily balance</th><th class="num">26.99% implies</th>
+        <th class="num">Charged</th><th class="num">Effective rate</th>
+      </tr></thead><tbody id="interest-check"></tbody></table>
+      <p class="lede footnote" id="interest-check-note"></p>
+      <div class="note-box" id="interest-check-cash"></div>
+    </div>
 
     <h3>Fees</h3>
     <p class="lede">Split by whether they can be avoided. Structural fees come with the account; avoidable ones
@@ -212,6 +235,42 @@
     <div class="card"><figure><div id="c-unex"></div>
       <figcaption>Each is a large flow whose purpose cannot be determined from banking data alone.</figcaption>
     </figure></div>
+
+    <h2>Youth lacrosse — the cost that hides from bank data</h2>
+    <p class="lede">Two boys, several clubs. Clubs prefer e-transfer, and TD's export never names an
+    e-transfer's payee — so this is the category most systematically understated by any analysis built on
+    bank records alone. Everything below is a floor.</p>
+    <div class="card"><figure><div id="c-lacrosse"></div>
+      <figcaption id="lacrosse-note"></figcaption>
+    </figure></div>
+
+    <div class="card"><figure><div id="c-lacrosse-fund"></div>
+      <figcaption>What each payment was made with. The HELOC line is youth sport funded by borrowing against
+      the house, on an interest-only facility at 99.5% drawn.</figcaption>
+    </figure>
+      <div class="note-box" id="lacrosse-inferred"></div>
+      <p class="lede footnote" id="lacrosse-gap"></p>
+    </div>
+
+    <h2>Who is on the other end of an e-transfer</h2>
+    <p class="lede">204 e-transfers moved through these accounts. The bank names none of them.</p>
+    <div class="tiles" id="cp-stat"></div>
+    <div class="card">
+      <p class="lede" id="cp-note" style="margin:0"></p>
+      <div class="note-box" id="cp-finding"></div>
+      <p class="lede footnote" id="cp-action"></p>
+      <p class="lede footnote" id="cp-matching"></p>
+    </div>
+
+    <h3>The June coaching remittance, traced end to end</h3>
+    <p class="lede">The payment this recovered is the one that mattered most.</p>
+    <div class="card scroll">
+      <table><thead><tr><th>When</th><th>What happened</th><th class="num">Staging balance</th></tr></thead>
+        <tbody id="coach-chain"></tbody></table>
+      <p class="lede footnote" id="coach-note"></p>
+      <div class="note-box" id="coach-reading"></div>
+      <p class="lede footnote" id="coach-remaining"></p>
+    </div>
 
     <h2>The questions that matter most</h2>
     <p class="lede">Ranked by what the answer would change, not by size. Green means answered.</p>

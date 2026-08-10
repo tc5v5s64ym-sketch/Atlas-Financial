@@ -287,6 +287,88 @@ function renderStatic(d) {
     tip: u.note,
   })), { rowH: 40, padL: 190 });
 
+  // What the HELOC was actually spent on. Interest is coloured apart from the
+  // rest: it is the price of the facility, not a thing anyone chose to buy.
+  if (d.helocUse) {
+    hbar($('c-heloc-use'), d.helocUse.map(u => ({
+      label: u.label, v: u.amount,
+      colour: /bills, paid direct/i.test(u.label) ? css('--critical')
+            : /Interest charged/i.test(u.label) ? grey : css('--s1'),
+      tip: `${u.n} transaction${u.n === 1 ? '' : 's'} · ${u.note}`,
+    })), { rowH: 40, padL: 210 });
+    $('heloc-use-note').textContent = d.helocUseNote;
+    $('heloc-chains').textContent = d.helocChains;
+  }
+
+  // The Cash Back Visa interest reconciliation. The effective-rate column is
+  // the point: it shows at a glance which months fit 26.99% and which do not.
+  if (d.interestCheck) {
+    const ic = d.interestCheck;
+    $('interest-check').innerHTML = ic.rows.map(r => {
+      const off = Math.abs(r.eff - 26.99) > 4;
+      return `<tr><td>${r.stmt}</td><td class="num">${money2(r.avg)}</td>
+        <td class="num">${money2(r.implied)}</td><td class="num">${money2(r.charged)}</td>
+        <td class="num ${off ? 'neg' : ''}">${r.eff.toFixed(2)}%</td></tr>`;
+    }).join('') + `<tr><td><strong>Five cycles</strong></td><td class="num">—</td>
+      <td class="num"><strong>${money2(ic.rows.reduce((s, r) => s + r.implied, 0))}</strong></td>
+      <td class="num"><strong>${money2(ic.rows.reduce((s, r) => s + r.charged, 0))}</strong></td>
+      <td class="num"><strong>26.99%</strong></td></tr>`;
+    $('interest-check-note').textContent = ic.note;
+    $('interest-check-cash').textContent = ic.cash;
+  }
+
+  // Youth lacrosse. Two charts: what can be seen, and what paid for it.
+  if (d.lacrosse) {
+    const L = d.lacrosse;
+    hbar($('c-lacrosse'), L.sources.map(s => ({
+      label: s.label, v: s.amount,
+      colour: css('--s1'),
+      tip: `${s.n} charge${s.n === 1 ? '' : 's'} · ${s.note}`,
+    })), { rowH: 40, padL: 190 });
+    $('lacrosse-note').textContent =
+      `${money2(L.verified)} verified across ${L.sources.reduce((s, x) => s + x.n, 0)} charges — about ${money(L.perMonth)} a month. ${L.note}`;
+
+    hbar($('c-lacrosse-fund'), L.funding.map(f => ({
+      label: f.label, v: f.amount,
+      colour: /HELOC/i.test(f.label) ? css('--critical') : css('--s2'),
+      tip: f.note || money2(f.amount),
+    })), { rowH: 36, padL: 190 });
+    $('lacrosse-inferred').textContent = L.inferredNote;
+    $('lacrosse-gap').textContent = L.gapNote;
+  }
+
+  // E-transfer counterparties, and why the coverage is what it is.
+  if (d.counterparties) {
+    const c = d.counterparties;
+    const pctOf = n => Math.round((n / c.total) * 100) + '%';
+    $('cp-stat').innerHTML = [
+      { lab: 'Attributed now', val: `${c.attributed} of ${c.total}`, note: pctOf(c.attributed) + ' of all e-transfers', tone: '' },
+      { lab: 'Before this pass', val: `${c.previous} of ${c.total}`, note: pctOf(c.previous) + ' — the rest were in the bin', tone: '' },
+      { lab: 'Still anonymous', val: `${c.total - c.attributed}`, note: 'no payee, and mostly unrecoverable', tone: 'alert' },
+    ].map(t => `
+      <div class="tile ${t.tone}">
+        <div class="lab">${t.lab}</div><div class="val">${t.val}</div><div class="note">${t.note}</div>
+      </div>`).join('');
+    $('cp-note').textContent = c.note;
+    $('cp-finding').textContent = c.finding;
+    $('cp-action').textContent = c.action;
+    $('cp-matching').textContent = c.matching;
+  }
+
+  // The coaching remittance, traced hop by hop. The last row is the point, so
+  // it is marked rather than left for the reader to spot.
+  if (d.coachPayment) {
+    const c = d.coachPayment;
+    $('coach-chain').innerHTML = c.chain.map((h, i) => `
+      <tr><td>${h.when}</td><td${i === c.chain.length - 1 ? ' class="neg"' : ''}>${h.what}</td>
+      <td class="num">${money2(h.balance)}</td></tr>`).join('');
+    $('coach-note').textContent = c.note;
+    $('coach-reading').textContent = c.reading;
+    $('coach-remaining').textContent = c.remaining;
+  }
+
+  if (d.spendingNote) $('spending-detail').textContent = d.spendingNote;
+
   // Tier 0 means answered — green, not the tier-1 red it would otherwise get.
   $('questions').innerHTML = d.questions.map(q => `
     <div class="qcard ${q.tier === 0 ? 'done' : q.tier === 2 ? 't2' : q.tier === 3 ? 't3' : ''}">

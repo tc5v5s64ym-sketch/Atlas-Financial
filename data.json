@@ -50,7 +50,7 @@
     { "label": "TD credit card", "balance": 1799.97, "rate": 24.99, "rateBasis": "Penalty rate — normal would be 17.20%", "structure": "Revolving — dormant balance, no purchases", "annualInterest": 450, "payment": 94.03, "frequency": "Monthly minimum", "nextDue": "2026-08-17", "limit": 2000, "available": 200.00, "confidence": "verified" },
     { "label": "Travel Visa (business)", "balance": 1078.31, "rate": 19.99, "rateBasis": "Purchases 19.99% / cash 22.99%", "structure": "Revolving — pending charges will push it over", "annualInterest": 215.55, "payment": 17.00, "frequency": "Monthly minimum", "nextDue": "2026-08-26", "limit": 1100, "available": 0, "confidence": "verified", "note": "$165.13 pending takes it to $1,243.44 against a $1,100 limit" }
   ],
-  "debtsNote": "Affirm/Flexiti is gone: owner-confirmed paid off and closed, $2,654.28 across the window. Every card balance here was read from the institution on 9 August. The Cash Back Visa's $158.55 monthly interest charge is higher than 26.99% on its balance implies — unresolved, and the reason its annual figure is taken from the charge rather than the rate.",
+  "debtsNote": "Affirm/Flexiti is gone: owner-confirmed paid off and closed, $2,654.28 across the window. Every card balance here was read from the institution on 9 August. The Cash Back Visa's $158.55 interest charge is no longer an open question — it is 26.99% on the average daily balance, not on the closing balance, and the two are far apart on a card that is paid down and run back up. See the reconciliation under Money in and out.",
 
   "utilisation": [
     { "label": "TD Cash Back Visa", "used": 5612.43, "limit": 5000, "available": 0 },
@@ -95,6 +95,18 @@
   "helocLimit": 202654,
   "helocSummary": "Balance grew $7,536.96 over 18 months despite $78,177 of repayments, because $86,514 was advanced and $15,029 of interest was capitalised. Since the February 2026 paydown it has risen every month — +$13,525.55 in six.",
 
+  "helocUse": [
+    { "label": "Credit card payments", "amount": 22230.00, "n": 32, "note": "Card balances moved onto the house. The rate falls from 21–27% to 4.90%, but the debt stops amortising and becomes permanent." },
+    { "label": "Into chequing / savings", "amount": 17466.00, "n": 54, "note": "Borrowed money topping up day-to-day accounts. Where it went next is only traceable for the few cases below." },
+    { "label": "Interest charged", "amount": 15029.18, "n": 18, "note": "The cost of the facility, capitalised onto the balance — about $835/month. Paying the minimum covers this and nothing else." },
+    { "label": "Household bills, paid direct", "amount": 14271.63, "n": 5, "note": "Property tax $5,639.67 · Triangle Mastercard $3,778.00 and $3,663.96 · BC Hydro $790.00 · CRA tax owed $400.00." },
+    { "label": "E-transfers out", "amount": 13061.90, "n": 26, "note": "Sent straight from the HELOC. TD names no payee, so most of this is unattributable — it includes the Wise holiday funding and the lacrosse fees." },
+    { "label": "Cash withdrawal", "amount": 4429.80, "n": 1, "note": "A single withdrawal, 12 February 2025." },
+    { "label": "E-transfer fees", "amount": 25.00, "n": 26, "note": "$1 each, charged to the HELOC and therefore borrowed too." }
+  ],
+  "helocUseNote": "$86,513.51 left the HELOC over 18 months and $78,176.55 came back — this is a facility being used as a chequing account, not a loan being repaid. The line worth pausing on is the fourth: property tax, income tax and a hydro bill were paid by borrowing against the house. Those are ordinary recurring costs, and the HELOC is interest-only at 99.5% drawn, so nothing about a minimum payment ever removes them.",
+  "helocChains": "Tracing was re-run looking for multi-hop chains, because the 24 July Wise funding showed a single intermediate hop is enough to break the trail. Of 635 reference-matched internal transfers, 33 continue into an onward movement within three days and only 5 of those start at the HELOC, worth $2,135.00. So the laundering-through-chequing pattern is real but rare: the money that cannot be traced left the HELOC directly, as 26 anonymous e-transfers worth $13,061.90.",
+
   "cashflow": [
     { "m": "Feb 25", "v": 832.69 }, { "m": "Mar", "v": -2355.99 }, { "m": "Apr", "v": 1443.63 },
     { "m": "May", "v": -2260.51 }, { "m": "Jun", "v": -61.28 }, { "m": "Jul", "v": 1597.50 },
@@ -118,7 +130,22 @@
   "incomeNote": "Her Tennis BC employment — 43 deposits, $63,129.47 over 18 months into DEBT&PAYMENTS — was absent from the earlier picture entirely, which saw only the $21,700 she transferred across. That transfer has been removed as an income line: it is an internal movement out of this income, and counting both would double it. Two cautions remain: at least $1,639.10 marked EXP is expense reimbursement rather than pay, a further $2,846.58 marked AP is unresolved, and the transfers stopped after May 2026 while the income did not.",
 
 
-  "spendingNote": "Chequing and savings spending only - $116,219.92 over 18 months, about $6,457/month, rebuilt against the merchant library. Uncategorised is down to 12.0% from 19%, and that is after removing $25,490 that was never spending at all: PayPal funding pulls, Flexiti and credit-card payments, and transfers to WebBroker, all previously counted as purchases. Card spending is shown separately and adds about $3,695/month. PayPal draws a further $10,437.78 from chequing over the window, roughly $580/month, spent at merchants recorded in the PayPal exports rather than here. Total household spending is therefore around $10,700/month, not the $7,551 previously published.",
+  "interestCheck": {
+    "charge": 158.55,
+    "naive": 115,
+    "modelled": 117.36,
+    "rows": [
+      { "stmt": "8 Apr 2026", "avg": 4985.10, "implied": 110.59, "charged": 108.91, "eff": 26.58 },
+      { "stmt": "7 May 2026", "avg": 5118.52, "implied": 109.76, "charged": 103.98, "eff": 25.57 },
+      { "stmt": "8 Jun 2026", "avg": 3179.37, "implied": 75.23, "charged": 61.27, "eff": 21.98 },
+      { "stmt": "7 Jul 2026", "avg": 4263.60, "implied": 91.43, "charged": 59.93, "eff": 17.69 },
+      { "stmt": "7 Aug 2026", "avg": 5119.61, "implied": 117.36, "charged": 158.55, "eff": 36.46 }
+    ],
+    "note": "The $158.55 is explained, and the question was mis-specified rather than unanswerable. Two things were wrong with the expected \"about $115\". It applied 26.99% to the CLOSING balance, but interest is charged on the average daily balance — on a card paid down and run back up those are different numbers. And it looked at August alone: June and July were charged below rate, at an effective 21.98% and 17.69%, leaving $45.46 uncollected; August then ran at 36.46% and collected it. Across five cycles the model implies $504.37 against $492.64 actually charged — a 2.3% gap, which is the transaction-date-versus-posting-date bias and nothing more.",
+    "cash": "The cash-advance theory is dead on the statements' own evidence: every interest line on this card, in all twelve statements, is headed RETAIL INTEREST. There is no cash-advance bucket, so the 27.99% rate was never part of it."
+  },
+
+  "spendingNote": "Chequing and savings spending only - $116,074.92 over 18 months, about $6,449/month, rebuilt against the merchant library. Uncategorised is down to 4.5% from 12.0% — 88 new patterns, mostly Square terminals and foreign-currency charges — and that is after removing $25,490 that was never spending at all: PayPal funding pulls, Flexiti and credit-card payments, and transfers to WebBroker, all previously counted as purchases. A further $145.00 came out this month: O.D.P. FEE and PAYMENT COVERAGE FEE are bank charges, not purchases, and matched no fee rule because TD abbreviates \"overdraft protection\" to \"O.D.P.\". Card spending is shown separately and adds about $3,695/month. PayPal draws a further $10,437.78 from chequing over the window, roughly $580/month, spent at merchants recorded in the PayPal exports rather than here. Total household spending is therefore around $10,700/month, not the $7,551 previously published.",
 
   "paypal": {
     "perMonth": 463,
@@ -135,9 +162,57 @@
     "note": "Not a source of business revenue, not the channel for the unexplained e-transfers, and not a hidden asset or debt — balance $0.00, Pay-in-4 complete."
   },
 
+  "lacrosse": {
+    "verified": 5729.47,
+    "inferred": 400.00,
+    "perMonth": 348,
+    "sources": [
+      { "label": "Cards", "amount": 2767.14, "n": 17, "note": "Full merchant names, so unambiguous: Ridge Meadows Minor Lacrosse, Fusion West, RMSC Titans, Cityside Lax, MVP Athletic." },
+      { "label": "E-transfers, named", "amount": 2822.30, "n": 7, "note": "Only nameable because an Interac confirmation email survived. Fusion West $2,234.05 across five, Pro Caliber $488.25, Venom Custom Sticks $100.00." },
+      { "label": "Chequing debit", "amount": 140.03, "n": 3, "note": "Was recorded as $0.00. Extending the merchant library found US Lacrosse, BC Sixes and Loading Lacrosse hiding in TD's truncated descriptions." }
+    ],
+    "funding": [
+      { "label": "HELOC", "amount": 2269.80, "note": "Four e-transfers. Borrowed against the house at 4.90%, on an interest-only facility that is 99.5% drawn." },
+      { "label": "Travel Visa", "amount": 1110.20 },
+      { "label": "Amazon / MBNA", "amount": 750.90 },
+      { "label": "TD personal Visa", "amount": 731.78 },
+      { "label": "Chequing A", "amount": 327.50 },
+      { "label": "DEBT&PAYMENTS", "amount": 225.00 },
+      { "label": "TD Cash Back Visa", "amount": 174.26 },
+      { "label": "Chequing B", "amount": 140.03 }
+    ],
+    "note": "The floor rises from $5,143.56, and it is still a floor. The finding is not the size but the funding: $2,269.80 — 40% of the total, and 80% of the e-transfer half — was paid out of the HELOC.",
+    "inferredNote": "A further $400.00 is inferred rather than verified and is kept out of the total. The Burrards U13-A2 manager emailed \"$400 per player, please send etransfer\" at 10:06 on 15 April 2026; a $400.00 e-transfer left the HELOC the same day. Strong, but an inference — the bank record still names no payee.",
+    "gapNote": "84 outgoing e-transfers worth $18,514.04 still carry no payee at all — down from 95 and $22,487.96 before this pass. An unknown share of what remains is more of this."
+  },
+
+  "counterparties": {
+    "attributed": 49,
+    "total": 204,
+    "previous": 24,
+    "note": "TD's export never names the other side of an e-transfer — outgoing reads SEND E-TFR ***GCa and nothing more. Interac's confirmation emails do name them, and sweeping both mailboxes properly took attribution from 24 of 204 to 49 — it has doubled. Every one of the 26 newly recovered transfers matches a bank row on amount and date, so this is corroboration, not guesswork.",
+    "finding": "Almost every newly recovered notification was in the bin. Gmail purges deleted mail after 30 days, so the counterparty record is being destroyed on a rolling 30-day cycle — which is the real reason coverage looked hopeless, and why it will stay poor unless something changes. It also means the previous conclusion was wrong: the notifications were not missing, they were deleted.",
+    "action": "A Gmail filter on both accounts that labels and archives mail from payments.interac.ca instead of deleting it costs nothing and makes every future transfer attributable. It cannot recover what has already been purged — everything deleted before roughly 10 July 2026 is gone.",
+    "matching": "The matcher was also wrong: it named every transfer of the same amount within four days from a single notification, and would let an incoming notification name an outgoing transfer. It now matches one notification to one transfer, nearest date first, direction enforced."
+  },
+
+  "coachPayment": {
+    "amount": 2160.00,
+    "date": "2026-07-06",
+    "note": "The 30 June coaching remittance was traced end to end and a coach was paid out of it. This matters because the previous reading — that the whole $9,646.25 went onto the HELOC with no coach payment visible — raised the possibility of an unrecorded liability, money owed onward and already spent.",
+    "chain": [
+      { "when": "2 Jul", "what": "Chequing A receives $3,683.75 and $5,962.50 from Lavinio Cavalcante", "balance": 9837.28 },
+      { "when": "2 Jul", "what": "$9,645.00 moves to the SAVINGS-DONT TOUCH staging account", "balance": 12713.69 },
+      { "when": "2 Jul", "what": "$10,000.00 leaves for the HELOC the same day", "balance": 2713.69 },
+      { "when": "6 Jul", "what": "$2,160.00 e-transferred to a named individual — the largest unattributed outgoing transfer in the dataset until now", "balance": 553.69 }
+    ],
+    "reading": "$2,160.00 is 22.4% of the $9,646.25 received, against the 27.7% coach share her own tracking sheets imply — the right order of magnitude for one coach among several. A second payment of $1,064.92 went to another named individual on 5 August. [INFERRED: the bank record names the payee but not the reason, so 'coach' is the best-supported reading rather than a proven fact.]",
+    "remaining": "It does not close B63. The route for the rest of the 2026 coach pay is still unidentified, and the cheque route that paid one coach stopped in November 2025."
+  },
+
   "unexplained": [
-    { "label": "Two unidentified accounts", "amount": 59027, "note": "Two accounts — $33,598 in across 142 transfers, $16,945 out across five. Now the largest unexplained flow." },
-    { "label": "Uncategorised spending", "amount": 15895, "note": "12.0% of chequing spending and 4.5% of card spending. Down from 19% — card statements carry full merchant names where TD's chequing export truncates them to about 15 characters." },
+    { "label": "Two unidentified accounts", "amount": 59027, "note": "Two accounts — $33,598 in across 142 transfers, $16,945 out across five. Not reachable through the transfer data: every internal transfer with a missing leg resolves either to a credit card or to a household account, and zero unknown account numbers appear. They exist only in the e-transfer record, which carries no names." },
+    { "label": "Uncategorised spending", "amount": 7205, "note": "Now 4.5% of chequing spending and 4.5% of card spending, down from 12.0% and 19%. 88 patterns were added, mostly Square terminals and foreign-currency charges where TD eats the merchant name to fit 15 characters." },
     { "label": "Coach payments, 2026 route", "amount": 6398, "note": "Her sheets show $6,397.50 of coach pay from April to August 2026, but the cheques that paid a coach stop in November 2025 and no coach payments appear in either mailbox. The 2026 route leaves from an account not yet captured." },
     { "label": "E-transfers out", "amount": 19700, "note": "Was $23,200. $3,500 is now identified as funding the Wise US holiday accounts — traced transfer by transfer. The rest is still unexplained." },
     { "label": "Large HELOC advances", "amount": 18301, "note": "Only five transactions, all large." }
