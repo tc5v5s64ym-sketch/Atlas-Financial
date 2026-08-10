@@ -809,7 +809,17 @@
           // balance. Only the principal has to find somewhere to land.
           const interestShare = t.principalShare != null ? amount - principal : 0;
           if (interestShare) { t.interest += interestShare; t.paid += interestShare; }
-          const left = payDown(chainFrom(t), principal);
+          // Its NAMED balance only — never the cascade. A minimum is a demand
+          // from one lender about one account: when that account is paid off
+          // the bank does not take the payment, and it certainly does not move
+          // it to a different card. Redirecting it here paid $170 to the TD
+          // credit card on 1 November for a Cash Back Visa that had been at
+          // zero since 30 October, which is a decision no one made.
+          //
+          // The cascade is for EXTRA payments, where the household has chosen
+          // to put surplus at debt and `plan.nextDollar` says where it should
+          // go next. The two look alike in the ledger and are not alike at all.
+          const left = payDown([t], principal);
           unabsorbed += left;
           obligationAbsorbed[e.date + ':' + e.id] = amount - left;
         } else if (e.kind === 'extra' && extraTarget) {

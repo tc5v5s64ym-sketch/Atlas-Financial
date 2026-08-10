@@ -414,9 +414,16 @@ ok(/if \(!fundingShort\) \{\s*\n\s*missionParts\.push/.test(planJs2),
 {
   const sizes = [0, 500, 2000, 5000, 12000];
   for (const extra of sizes) {
+    // `debts` passed, because that is how the page calls it and it is what lets
+    // the engine size a payment against the debt that exists. Without it these
+    // once passed for the wrong reason: nothing was discarded only because a
+    // paid-off card's minimum was being cascaded onto another card, which is a
+    // payment nobody makes. Capped properly, an uncapped run SHOULD report a
+    // residual — so testing the uncapped path here was testing the defect.
     const adv = F.recommend(plan, asOf, { scenario: 'expected', incomeOverrides: {},
       disabled: [], extraDebtMonthly: extra, targetBuffer: plan.defaults.targetBuffer,
-      fundingSources: plan.funding.options });
+      fundingSources: plan.funding.options, debts: data.debts,
+      extraDebtTarget: plan.nextDollar.target });
     const pr = F.projectDebts(plan, data.debts, asOf, Object.assign({}, adv.simOptions,
       { weeklyVariable: adv.weekly, extraFacilities: data.revolvingExtra,
         extraDebtTarget: plan.nextDollar.target }));
@@ -519,6 +526,44 @@ ok(/if \(!fundingShort\) \{\s*\n\s*missionParts\.push/.test(planJs2),
       `and nothing is unabsorbed at ${money(extra)}/month`,
       pr.unabsorbed === 0 ? '$0.00 exactly' : `${pr.unabsorbed.toExponential(1)} — float residue`);
   }
+  // A MINIMUM AND AN EXTRA PAYMENT ARE NOT THE SAME KIND OF THING, even though
+  // they look alike in the ledger. A minimum is one lender's demand about one
+  // account: when that account is paid off the bank does not take it, and it
+  // certainly does not move it to a different card. An extra payment is the
+  // household choosing to put surplus at debt, and `plan.nextDollar` says where
+  // it goes next. Cascading the first paid $170 to the TD credit card on
+  // 1 November for a Cash Back Visa at zero since 30 October — a decision
+  // nobody made.
+  {
+    const O = { scenario: 'expected', incomeOverrides: {}, disabled: [],
+      extraDebtMonthly: 2000, targetBuffer: plan.defaults.targetBuffer,
+      fundingSources: plan.funding.options, extraDebtTarget: plan.nextDollar.target,
+      debts: data.debts };
+    const adv = F.recommend(plan, asOf, O);
+    const pr = F.projectDebts(plan, data.debts, asOf, Object.assign({}, adv.simOptions,
+      { weeklyVariable: adv.weekly, extraFacilities: data.revolvingExtra,
+        extraDebtTarget: plan.nextDollar.target }));
+    ok(near(pr.byId.cashback.balance, 0),
+      'at $2,000/month the Cash Back Visa clears inside the window');
+    const cardMinimums = adv.sim.events.filter(e => {
+      const o = (plan.obligations || []).find(x => x.id === e.id);
+      return e.kind === 'obligation' && o && o.debtId === 'cashback';
+    });
+    ok(cardMinimums.every(e => e.date <= '2026-10-01'),
+      'and no minimum is charged to it after it is paid off',
+      cardMinimums.map(e => e.date).join(', ') || 'none');
+    ok(!cardMinimums.some(e => e.date === '2026-11-01'),
+      'specifically, the 1 November $170 is not taken from cash at all');
+    // The paid-off card's minimum must not turn up on another account either.
+    ok(pr.byId.tdcc.balance > 400,
+      'and it is not redirected to the next debt in the policy chain',
+      `TD credit card closes ${money(pr.byId.tdcc.balance)}, not ${money(239.09)}`);
+    // The cascade still applies where it belongs — to explicit extra payments.
+    ok(pr.byId.tdcc.balance < 1799.97,
+      'while an EXTRA payment still cascades once its target is clear',
+      `${money(1799.97)} → ${money(pr.byId.tdcc.balance)}`);
+  }
+
   // A capitalising charge must never be capped — it ADDS to a balance rather
   // than reducing one, so the rule that governs payments does not apply to it.
   {
