@@ -178,6 +178,12 @@ const CASES = [
   } }), 'green'],
   ['STALE / SUPERSEDED written with a slash',
     card({ rows: { 'Current-state verdict': 'B1 · STALE / SUPERSEDED' } }), 'green'],
+  ['a verdict row naming two verdicts', card({ rows: {
+    'Current-state verdict': 'B1 · STILL BROKEN or ALREADY FIXED',
+  } }), 'red'],
+  ['one verdict repeated is still one', card({ rows: {
+    'Current-state verdict': 'B1 · STILL BROKEN — still broken on main at ce9c7fa, STILL BROKEN after the rebase',
+  } }), 'green'],
 
   // --- the required review lane
   ['the review block missing entirely', card({ dropReview: true }), 'red'],
@@ -219,6 +225,16 @@ const CASES = [
     'Required': 'n/a — no trigger fired', 'Exact reviewed head': 'n/a',
     'Reviewer': 'n/a', 'Findings and dispositions': 'n/a',
   } }), 'green'],
+  // "not required" switches every downstream check off, so it is the one answer
+  // that has to carry its reason.
+  ['a bare "not required" with no reason', card({ review: {
+    'Required': 'not required', 'Exact reviewed head': 'n/a',
+    'Reviewer': 'n/a', 'Findings and dispositions': 'n/a',
+  } }), 'red'],
+  ['a bare "n/a" with no reason', card({ review: {
+    'Required': 'n/a', 'Exact reviewed head': 'n/a',
+    'Reviewer': 'n/a', 'Findings and dispositions': 'n/a',
+  } }), 'red'],
 
   // --- a required review needs a NAME and a disposition, not an absence value.
   //     "Reviewer: None" is non-blank and carries no pending marker, so it
@@ -246,9 +262,18 @@ const CASES = [
   ['the required review credited to Codex', card({ review: { 'Reviewer': 'Codex' } }), 'red'],
   ['the required review credited to the builder',
     card({ review: { 'Reviewer': 'Claude Code' } }), 'red'],
-  ['ChatGPT named alongside an advisory read', card({ review: {
+  // Naming an advisory reader here is rejected even beside ChatGPT: the card
+  // has a row for that, and one field carries one meaning. It also removes the
+  // need for a negation list to grow every time someone writes "not" anew.
+  ['an advisory reader named beside ChatGPT', card({ review: {
     'Reviewer': 'ChatGPT, with a Codex advisory read alongside it',
-  } }), 'green'],
+  } }), 'red'],
+  ['the lane negated inside the field', card({ review: {
+    'Reviewer': 'Codex, not ChatGPT',
+  } }), 'red'],
+  ['the lane negated with no other name', card({ review: {
+    'Reviewer': 'not ChatGPT',
+  } }), 'red'],
   ['ChatGPT written as Chat-GPT', card({ review: { 'Reviewer': 'Chat-GPT desk' } }), 'green'],
 
   //     ...and a finding the line itself calls unanswered is not disposed,
@@ -258,6 +283,9 @@ const CASES = [
   } }), 'red'],
   ['findings where one is routed and stays open — a complete answer', card({ review: {
     'Findings and dispositions': 'P1 fixed; P2 routed to B72, which stays open until the owner answers',
+  } }), 'green'],
+  ['findings declaring that none are unanswered', card({ review: {
+    'Findings and dispositions': 'No unanswered findings; P1 fixed',
   } }), 'green'],
 
   // --- pending markers: the two false greens this check has actually shipped
@@ -338,12 +366,36 @@ const MUTANTS = [
     apply: src => src.replace(/const VERDICT = \/.*\/i;/, 'const VERDICT = /(?:)/;'),
   },
   {
-    name: 'the reviewer-is-ChatGPT rule dropped',
-    apply: src => src.replace(/!\/chat\[ \\t-\]\?gpt\/i\.test\(seen\['Reviewer'\]\)/, 'false'),
+    name: 'the reviewer rule dropped entirely',
+    apply: src => src.replace(/if \(!namesLane \|\| DISQUALIFIED\.test\(reviewer\)\) \{/,
+      'if (false) {'),
   },
   {
     name: 'the declared-unanswered rule dropped',
     apply: src => src.replace(/const UNANSWERED =\n\s*\/.*\/i;/, 'const UNANSWERED = /(?!)/;'),
+  },
+  {
+    name: 'the reviewer rule weakened back to an unbounded substring match',
+    apply: src => src.replace(
+      /const namesLane = .*;\n/,
+      'const namesLane = /chat[ \\t-]?gpt/i.test(reviewer);\n')
+      .replace(/const DISQUALIFIED = \/.*\/i;/, 'const DISQUALIFIED = /(?!)/;'),
+  },
+  {
+    name: 'the exactly-one-verdict rule relaxed to at-least-one',
+    apply: src => src.replace(/chosen\.size !== 1/, 'chosen.size === 0'),
+  },
+  {
+    name: 'the reason required after "not required" dropped',
+    apply: src => src.replace(/if \(!\/\[a-z\]\{3\}\/i\.test\(reason\)\) \{/, 'if (false) {'),
+  },
+  {
+    // A false-positive guard is load-bearing in the other direction: removing
+    // it turns an honest card red, which is still a flipped expectation.
+    name: 'the negated-unanswered stripping dropped',
+    apply: src => src.replace(
+      /\s*\.replace\(\/\\bno\(\?:ne\|thing\)\?\[ \\t\]\+\(\?:unanswered\|undecided\)\\b\/gi, ''\)/,
+      ''),
   },
 ];
 

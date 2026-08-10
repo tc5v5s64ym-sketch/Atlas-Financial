@@ -110,8 +110,18 @@ jobs:
             const verdictRow = /\*\*Current-state verdict\*\*\s*\|?([^\n|]*)\|?/i.exec(body);
             const verdictValue = verdictRow
               ? verdictRow[1].replace(/<!--[\s\S]*?-->/g, '').replace(/\*/g, '').trim() : '';
-            if (verdictValue && !VERDICT.test(verdictValue)) {
-              problems.push('Merge card row "Current-state verdict" must carry one of the six documented verdicts — STILL BROKEN, ALREADY FIXED, PARTIALLY FIXED, FIXED BUT UNTESTED, STALE-SUPERSEDED, NEEDS OWNER ANSWER — checked on main before anything changed. Anything else, including "not checked", says the gate was skipped.');
+            // EXACTLY one. Requiring merely that a verdict appear let a row read
+            // "STILL BROKEN or ALREADY FIXED" and leave the gate's actual answer
+            // ambiguous (Codex, P2, on f425ef8). Repeating one verdict is fine —
+            // the set dedupes — and both spellings of STALE-SUPERSEDED normalise
+            // to the same member, so following either document still passes.
+            const chosen = new Set(
+              (verdictValue.match(new RegExp(VERDICT.source, 'gi')) || [])
+                .map((m) => m.toUpperCase().replace(/[ \t]*[-\/][ \t]*/, '-')));
+            if (verdictValue && chosen.size !== 1) {
+              problems.push(chosen.size === 0
+                ? 'Merge card row "Current-state verdict" must carry one of the six documented verdicts — STILL BROKEN, ALREADY FIXED, PARTIALLY FIXED, FIXED BUT UNTESTED, STALE-SUPERSEDED, NEEDS OWNER ANSWER — checked on main before anything changed. Anything else, including "not checked", says the gate was skipped.'
+                : `Merge card row "Current-state verdict" selects ${chosen.size} verdicts (${[...chosen].join(', ')}). The gate produces exactly one; naming several leaves its answer unstated.`);
             }
 
             // The prose sections carry the reasoning, and an empty one is the
@@ -202,6 +212,17 @@ jobs:
               if (req && !notRequired && !/^required\b/i.test(req)) {
                 problems.push('The review block\'s "Required" line must OPEN with "required" or "not required" (or "n/a"). Only its opening decides whether the exact-head checks run, and later prose never reclassifies it — write "required — <the trigger that fired>" or "not required — <why none did>".');
               }
+              // "not required" is the branch that switches every downstream
+              // check off, so it is the one answer that has to carry its reason.
+              // A bare classifier disabled the whole block while explaining
+              // nothing (Codex, P2, on f425ef8), and the trigger list is wide
+              // enough that "none fired" is a claim, not a default.
+              if (notRequired) {
+                const reason = req.replace(/^(?:not[ \t]+required|n\/a)\b[\s—–:,.-]*/i, '').trim();
+                if (!/[a-z]{3}/i.test(reason)) {
+                  problems.push('"Required: not required" has to say WHY no trigger fired. The trigger list in CLAUDE.md is deliberately wide, so "none fired" is a claim that must survive reading it — and this is the branch that switches every exact-head and reviewer check off.');
+                }
+              }
               if (req && !notRequired) {
                 // A field that names a SHA or a reviewer *and* says the review has
                 // not happened is a contradiction, and on a bare pattern match the
@@ -271,11 +292,26 @@ jobs:
                 // lecture about lanes — so it is deliberately not a separate
                 // rejection, and it carries no mutant, because a mutation that
                 // cannot change an outcome would prove nothing.
+                // A substring test for the lane's name was not enough: it
+                // accepted `Reviewer: Codex, not ChatGPT`, where the field
+                // credits the required review to the advisory lane and says so
+                // (Codex, P1, on f425ef8). So the value must name ChatGPT
+                // AFFIRMATIVELY — not negated, and not beside another reviewer.
+                //
+                // Naming an advisory reader here is now rejected too, even
+                // alongside ChatGPT. The card has a row for that, and the
+                // contract puts advisory confidence in it; one field, one
+                // meaning. This also removes the need for a negation list to
+                // grow every time someone finds a new way to write "not".
                 const ABSENT = /^(?:n\/a|na|none|no|nobody|no[ \t]+one|not[ \t]+required|tbd|unknown)\b/i;
-                if (!/chat[ \t-]?gpt/i.test(seen['Reviewer'])) {
-                  problems.push(!seen['Reviewer'] || ABSENT.test(seen['Reviewer'])
+                const NEGATED_LANE = /(?:\bnot|\bnon-?|rather[ \t]than|instead[ \t]of)[ \t-]*chat[ \t-]?gpt\b/i;
+                const DISQUALIFIED = /\b(?:codex|claude|cursor|copilot)\b/i;
+                const reviewer = seen['Reviewer'];
+                const namesLane = /chat[ \t-]?gpt/i.test(reviewer) && !NEGATED_LANE.test(reviewer);
+                if (!namesLane || DISQUALIFIED.test(reviewer)) {
+                  problems.push(!reviewer || ABSENT.test(reviewer)
                     ? 'The review is recorded as required, so "Reviewer" must NAME who performed it. "None", "no", "n/a" and "not required" are absence values — on this path they say the gate was never satisfied, not that it was.'
-                    : `"Reviewer" names ${JSON.stringify(seen['Reviewer'].slice(0, 40))}, and the Atlas Contract / Systems Review is ChatGPT's lane. An implementation agent cannot satisfy its own architecture gate, and independent agent review is advisory — record an advisory read in the card's "Advisory review" row instead.`);
+                    : `"Reviewer" reads ${JSON.stringify(reviewer.slice(0, 60))}, and the Atlas Contract / Systems Review is ChatGPT's lane alone. An implementation agent cannot satisfy its own architecture gate, and independent agent review is advisory — name ChatGPT here, and record any advisory read in the card's "Advisory review" row.`);
                 }
 
                 // ...and the findings line has to dispose of something. `n/a`
@@ -307,7 +343,13 @@ jobs:
                 if (!unfinished.includes('Findings and dispositions')
                     && !DISPOSED.test(seen['Findings and dispositions'])) {
                   problems.push('The review is recorded as required, so "Findings and dispositions" must record what happened to each finding — fixed, non-issue with the reason, or routed — or say "none" when it came back clean. "n/a" answers a review that was not required; on this path it leaves the result unstated.');
-                } else if (UNANSWERED.test(seen['Findings and dispositions'])) {
+                } else if (UNANSWERED.test(
+                    // "No unanswered findings; P1 fixed" is a complete answer
+                    // that happens to contain the word, and it was failing
+                    // (Codex, P2, on f425ef8). Negated forms come out before
+                    // the test rather than being enumerated as exceptions.
+                    seen['Findings and dispositions']
+                      .replace(/\bno(?:ne|thing)?[ \t]+(?:unanswered|undecided)\b/gi, ''))) {
                   problems.push('"Findings and dispositions" calls one of its findings unanswered. Every finding takes exactly one disposition — fixed, non-issue with the reason, or routed — and a disposition naming where it went ("routed to B72") is a complete answer even when the item itself stays open.');
                 }
               }
