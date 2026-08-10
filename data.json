@@ -34,11 +34,17 @@
     "heading": "Big-ticket items already committed",
     "note": "Beyond the dates above. Kept here so they do not arrive as a surprise — sports commitments across August to December total about $4,349, roughly $870/month, against the $348/month youth lacrosse has actually averaged. That is two and a half times the established rate, and the funding record below shows $2,269.80 of past lacrosse cost went onto the HELOC at 4.90%.",
     "items": [
-      { "what": "Warriors Academy", "when": "September 2026", "amount": 800, "confidence": "estimate", "note": "Owner's figure, stated as \"about $800\". Not yet invoiced." },
-      { "what": "Fusion team fees", "when": "September – December 2026", "amount": 2000, "confidence": "conditional", "note": "Only if selected at the 22 August tryouts. Expected as roughly $500/month across four months rather than a lump sum." }
+      { "what": "Warriors Elite Academy", "when": "September 2026", "amount": 800, "confidence": "committed", "note": "Amount is the owner's figure, stated as \"about $800\", and not yet invoiced. The commitment itself is firm." },
+      { "what": "Fusion season fees", "when": "September – December 2026", "amount": 2000, "confidence": "committed", "note": "Tryouts are 22 August and selection is expected (owner-stated 9 Aug). Planned as roughly $500/month across four months rather than a lump sum, so it lands as a recurring cost, not a one-off." }
+    ],
+    "schedule": [
+      { "m": "September", "amount": 1300, "note": "Warriors $800 plus the first Fusion instalment" },
+      { "m": "October", "amount": 500, "note": "Fusion" },
+      { "m": "November", "amount": 500, "note": "Fusion" },
+      { "m": "December", "amount": 500, "note": "Fusion" }
     ],
     "total": 2800,
-    "totalNote": "$800 of this is an estimate and $2,000 is conditional on selection, so treat the total as a planning figure rather than a bill. Excluded from the headline debt and cash figures, which carry verified amounts only."
+    "totalNote": "Both are treated as committed: the Fusion season is written in on the expectation of selection rather than held back as a maybe. September is the heavy month at $1,300, and it arrives alongside the TD Cash Back minimum. Amounts remain owner-stated rather than invoiced, so they are planning figures — and they stay out of the headline cash and debt tiles, which carry institution-verified amounts only."
   },
 
   "debts": [

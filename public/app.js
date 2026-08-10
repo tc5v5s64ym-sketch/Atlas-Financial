@@ -204,6 +204,17 @@ function renderStatic(d) {
         </div>
         <p class="commit-note">${i.note}</p>
       </div>`).join('')
+      + (c.schedule ? `
+        <div class="commit sched">
+          <div class="commit-meta sched-head">When it actually lands</div>
+          ${c.schedule.map(s => `
+            <div class="sched-row">
+              <span>${s.m}</span>
+              <span class="sched-bar"><span style="width:${(s.amount / Math.max(...c.schedule.map(x => x.amount))) * 100}%"></span></span>
+              <span class="sched-amt">${money(s.amount)}</span>
+              <span class="sched-note">${s.note}</span>
+            </div>`).join('')}
+        </div>` : '')
       + `<div class="commit total">
            <div class="commit-top"><span class="commit-what">Total</span><span class="commit-amt">${money(c.total)}</span></div>
          </div>`;
