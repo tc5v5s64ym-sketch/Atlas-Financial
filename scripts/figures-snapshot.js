@@ -15,6 +15,28 @@
  * across revisions. Values are numbers where they are money, strings where
  * they are dates or verdicts. Keys must be STABLE: renaming one shows up as a
  * removal plus an addition, which is noise. Add new keys freely.
+ *
+ * "UNCHANGED" IS MEANINGLESS WITHOUT ITS BASELINE. Say what a snapshot was
+ * compared against, every time, in the same sentence as the claim.
+ *
+ * On the pull request that INTRODUCES this script there is no base snapshot to
+ * diff against, because the script does not exist on the base revision. CI says
+ * so plainly — "no baseline to compare against" — and a local run therefore
+ * compares the head against some EARLIER COMMIT ON THE SAME BRANCH, not against
+ * the base branch.
+ *
+ * That distinction is not pedantry; it was got wrong here. Several commits on
+ * that first PR reported "no published figure moves", which was true of each
+ * commit against the one before it, and it was then summarised as though the
+ * whole branch had moved nothing. The branch in fact moved a dozen published
+ * figures — the weekly allocation split, effective consumer debt, revolving
+ * headroom, the positions and net-worth figures, liquidity and coverage — all
+ * of them intended, all of them listed on the merge card. What did not move was
+ * the $1,250/week household cap, which is a cash constraint and the one number
+ * the correctness work was least able to change.
+ *
+ * So: "unchanged since the previous commit" and "unchanged against main" are
+ * different claims, and only the second one is what a reader assumes.
  */
 
 const path = require('path');
