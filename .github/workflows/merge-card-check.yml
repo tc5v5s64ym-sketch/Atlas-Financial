@@ -84,15 +84,34 @@ jobs:
             // whose permitted scope CLAUDE.md defines exactly, so it is the one a
             // literal check can enforce; every other wrong-but-answered value is
             // the reviewer's job.
+            // Anchored, not whole-value: rejecting only the exact word `None`
+            // left `n/a` naming nobody in all three fields (Codex, P2, on
+            // 5034cbc). Bare `na` is deliberately absent — a model called
+            // "NA-1000" would trip it — and "the surface withholds its model
+            // identity" stays a real answer because it opens with none of these.
+            const ABSENT_ATTRIBUTION =
+              /^(?:none|no|n\/a|nil|nobody|unknown|tbd|not[ \t]applicable)\b/i;
             for (const label of ['Builder surface', 'Primary builder model',
                                  'Architecture / dispatch authority']) {
               const row = new RegExp(
                 `\\*\\*${esc(label)}\\*\\*\\s*\\|?([^\\n|]*)\\|?`, 'i').exec(body);
               const value = row
                 ? row[1].replace(/<!--[\s\S]*?-->/g, '').replace(/\*/g, '').trim() : '';
-              if (/^none\.?$/i.test(value)) {
-                problems.push(`Merge card row "${label}" may not be None — that answer is for supporting models alone. Name the surface, the exact model name the surface displays (or say plainly that it withholds it), and the dispatch authority.`);
+              if (ABSENT_ATTRIBUTION.test(value)) {
+                problems.push(`Merge card row "${label}" is an absence value, and only Supporting / explore models may answer None. Name the surface, the exact model name the surface displays — or say plainly that it withholds it — and the dispatch authority.`);
               }
+            }
+
+            // The verdict is the Current-State Verification Gate's own record,
+            // so "not checked" passing the generic non-blank test let a card say
+            // in plain words that current state was never verified (Codex, P2,
+            // on 5034cbc). One of the six documented verdicts has to appear.
+            const VERDICT = /\b(?:STILL BROKEN|ALREADY FIXED|PARTIALLY FIXED|FIXED BUT UNTESTED|STALE[ \t]*[-\/][ \t]*SUPERSEDED|NEEDS OWNER ANSWER)\b/i;
+            const verdictRow = /\*\*Current-state verdict\*\*\s*\|?([^\n|]*)\|?/i.exec(body);
+            const verdictValue = verdictRow
+              ? verdictRow[1].replace(/<!--[\s\S]*?-->/g, '').replace(/\*/g, '').trim() : '';
+            if (verdictValue && !VERDICT.test(verdictValue)) {
+              problems.push('Merge card row "Current-state verdict" must carry one of the six documented verdicts — STILL BROKEN, ALREADY FIXED, PARTIALLY FIXED, FIXED BUT UNTESTED, STALE-SUPERSEDED, NEEDS OWNER ANSWER — checked on main before anything changed. Anything else, including "not checked", says the gate was skipped.');
             }
 
             // The prose sections carry the reasoning, and an empty one is the
@@ -237,9 +256,26 @@ jobs:
                 // nobody (Codex, P1, on e01a534). Absence values are anchored
                 // like the classifier above: a real reviewer called "Nova" is
                 // safe because the boundary after "no" does not match.
+                // ChatGPT performs this lane; that is an authority boundary, not
+                // a preference. `Reviewer: Codex` — or the active builder naming
+                // itself — records the REQUIRED review as performed by the
+                // advisory lane, and passed while merely being a name (Codex,
+                // P1, on 5034cbc). CLAUDE.md's stated intent was that the card
+                // makes a wrong reviewer VISIBLE; this makes it fail, a step
+                // further that is documented there. A value naming ChatGPT
+                // alongside others still passes.
+                //
+                // ONE condition, because naming the lane subsumes naming
+                // anybody: every absence value fails it too. ABSENT only picks
+                // the wording — "None" deserves "name who performed it", not a
+                // lecture about lanes — so it is deliberately not a separate
+                // rejection, and it carries no mutant, because a mutation that
+                // cannot change an outcome would prove nothing.
                 const ABSENT = /^(?:n\/a|na|none|no|nobody|no[ \t]+one|not[ \t]+required|tbd|unknown)\b/i;
-                if (!seen['Reviewer'] || ABSENT.test(seen['Reviewer'])) {
-                  problems.push('The review is recorded as required, so "Reviewer" must NAME who performed it. "None", "no", "n/a" and "not required" are absence values — on this path they say the gate was never satisfied, not that it was.');
+                if (!/chat[ \t-]?gpt/i.test(seen['Reviewer'])) {
+                  problems.push(!seen['Reviewer'] || ABSENT.test(seen['Reviewer'])
+                    ? 'The review is recorded as required, so "Reviewer" must NAME who performed it. "None", "no", "n/a" and "not required" are absence values — on this path they say the gate was never satisfied, not that it was.'
+                    : `"Reviewer" names ${JSON.stringify(seen['Reviewer'].slice(0, 40))}, and the Atlas Contract / Systems Review is ChatGPT's lane. An implementation agent cannot satisfy its own architecture gate, and independent agent review is advisory — record an advisory read in the card's "Advisory review" row instead.`);
                 }
 
                 // ...and the findings line has to dispose of something. `n/a`
@@ -250,9 +286,29 @@ jobs:
                 // contract's own vocabulary rather than trying to enumerate
                 // every non-answer: fixed, non-issue, routed, or none.
                 const DISPOSED = /\b(?:fixed|non-?[ \t]?issues?|routed|none|nothing)\b/i;
+                // ...and a finding the line itself calls unanswered is not
+                // disposed, however many others are. One vocabulary match used
+                // to carry the whole field, so `P1 fixed; P2 unanswered` passed
+                // (Codex, P1, on 5034cbc).
+                //
+                // This catches a finding DECLARED unanswered. It does not
+                // validate a disposition per listed finding, which was the wider
+                // ask and is refused on purpose: that needs prose parsed into
+                // findings, and every split rule tried here false-fails ordinary
+                // phrasing — "two raised: one fixed, one routed to B72" has a
+                // segment carrying no disposition word and is a complete answer.
+                // Reading a list and deciding each item was answered is the
+                // reviewer's job; CLAUDE.md says the check cannot do it.
+                //
+                // "still open" and "outstanding" are deliberately absent: a
+                // routed finding stays open, and saying so is honest.
+                const UNANSWERED =
+                  /\b(?:unanswered|not[ \t]answered|undecided|no[ \t]disposition|not[ \t]dispositioned)\b/i;
                 if (!unfinished.includes('Findings and dispositions')
                     && !DISPOSED.test(seen['Findings and dispositions'])) {
                   problems.push('The review is recorded as required, so "Findings and dispositions" must record what happened to each finding — fixed, non-issue with the reason, or routed — or say "none" when it came back clean. "n/a" answers a review that was not required; on this path it leaves the result unstated.');
+                } else if (UNANSWERED.test(seen['Findings and dispositions'])) {
+                  problems.push('"Findings and dispositions" calls one of its findings unanswered. Every finding takes exactly one disposition — fixed, non-issue with the reason, or routed — and a disposition naming where it went ("routed to B72") is a complete answer even when the item itself stays open.');
                 }
               }
             }

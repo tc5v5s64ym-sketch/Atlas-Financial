@@ -90,10 +90,17 @@ required check, no reviewer account. It is recorded in the merge card's review
 block — required or not with the trigger, the exact SHA read, who read it, and
 what happened to each finding.
 
-`merge-card-check` verifies those four fields are answered, and that a SHA
-recorded as reviewed **is the current head**, so a verdict cannot outlive the
-code it was about. That is a different thing from verifying a review happened,
-which no check here can do.
+`merge-card-check` verifies those four fields are answered; that a SHA recorded
+as reviewed **is the current head**, so a verdict cannot outlive the code it was
+about; that the reviewer names **this lane** rather than the advisory one; and
+that the findings line disposes of what it lists rather than calling it
+unanswered. That is a different thing from verifying a review happened, which no
+check here can do.
+
+What it deliberately does **not** do is read a list of findings and decide each
+one was answered. Every rule tried for that false-failed ordinary phrasing —
+"two raised: one fixed, one routed to B72" has a clause carrying no disposition
+word and is a complete answer. Judging a list is the reviewer's job.
 
 [`CLAUDE.md`](../CLAUDE.md) holds the trigger list and the seven questions the
 review asks. It is the only home for them; do not restate them here.

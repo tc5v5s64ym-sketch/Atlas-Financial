@@ -107,8 +107,12 @@ same model and the same blind spots, and it will reproduce them confidently. An
 agent's own clean-context read is welcome as **advisory confidence** and belongs
 under advisory findings. It never satisfies this gate.
 
-The merge card records **who** performed the review, so a review that did not
-come from this lane is visible as one.
+The merge card records **who** performed the review, and `merge-card-check`
+rejects a required review credited to anyone but this lane. Recording the
+performer began as a way to make a wrong reviewer *visible*; it now fails,
+because a card naming the advisory lane as the required reviewer is not an
+oversight to notice later — it is the gate being handed to the wrong authority.
+An advisory read belongs in the card's `Advisory review` row.
 
 **It reads the exact head.** A review of an earlier commit does not cover a
 later one. Push after a review and the review must be repeated — this is the

@@ -165,8 +165,19 @@ const CASES = [
   ['an attribution row deleted', card({ rows: { 'Primary builder model': null } }), 'red'],
   ['an attribution row left blank', card({ rows: { 'Builder surface': '' } }), 'red'],
 
-  // --- current-state verdict
+  ['an attribution row of n/a', card({ rows: { 'Builder surface': 'n/a' } }), 'red'],
+  ['a model name that merely starts with "Na"',
+    card({ rows: { 'Primary builder model': 'NA-1000' } }), 'green'],
+
+  // --- current-state verdict: the gate's own record, so it has to name a verdict
   ['the current-state verdict blank', card({ rows: { 'Current-state verdict': '' } }), 'red'],
+  ['a current-state verdict of "not checked"',
+    card({ rows: { 'Current-state verdict': 'not checked' } }), 'red'],
+  ['each documented verdict', card({ rows: {
+    'Current-state verdict': 'B1 · FIXED BUT UNTESTED — proved rather than refactored',
+  } }), 'green'],
+  ['STALE / SUPERSEDED written with a slash',
+    card({ rows: { 'Current-state verdict': 'B1 · STALE / SUPERSEDED' } }), 'green'],
 
   // --- the required review lane
   ['the review block missing entirely', card({ dropReview: true }), 'red'],
@@ -230,6 +241,25 @@ const CASES = [
     'Findings and dispositions': 'two raised: one fixed, one routed to B72',
   } }), 'green'],
 
+  //     ...and the reviewer has to be the lane that owns this gate. `Reviewer:
+  //     Codex` records the REQUIRED review as performed by the advisory lane.
+  ['the required review credited to Codex', card({ review: { 'Reviewer': 'Codex' } }), 'red'],
+  ['the required review credited to the builder',
+    card({ review: { 'Reviewer': 'Claude Code' } }), 'red'],
+  ['ChatGPT named alongside an advisory read', card({ review: {
+    'Reviewer': 'ChatGPT, with a Codex advisory read alongside it',
+  } }), 'green'],
+  ['ChatGPT written as Chat-GPT', card({ review: { 'Reviewer': 'Chat-GPT desk' } }), 'green'],
+
+  //     ...and a finding the line itself calls unanswered is not disposed,
+  //     however many of its neighbours are.
+  ['findings where one is declared unanswered', card({ review: {
+    'Findings and dispositions': 'P1 fixed; P2 unanswered',
+  } }), 'red'],
+  ['findings where one is routed and stays open — a complete answer', card({ review: {
+    'Findings and dispositions': 'P1 fixed; P2 routed to B72, which stays open until the owner answers',
+  } }), 'green'],
+
   // --- pending markers: the two false greens this check has actually shipped
   ['a pending review whose line quotes the head SHA', card({ review: {
     'Exact reviewed head': `not yet performed — record \`${HEAD}\` once it has been read`,
@@ -288,15 +318,32 @@ const MUTANTS = [
       /const notRequired = \/\^\(\?:not\[ \\t\]\+required\|n\\\/a\)\\b\/i\.test\(req\);/,
       'const notRequired = /\\bnot[ \\t]+required\\b/i.test(req) || /^(no|none|n\\/a)\\b/i.test(req);'),
   },
-  {
-    name: 'the reviewer absence set narrowed back to n/a only',
-    apply: src => src.replace(
-      /const ABSENT = \/\^\(\?:.*?\)\\b\/i;/,
-      'const ABSENT = /^n\\/a\\b/i;'),
-  },
+  // No mutant for the reviewer ABSENT set. It selects the wording only — the
+  // reviewer-is-ChatGPT rule below rejects every absence value on its own — so
+  // mutating it cannot flip a case, and a mutant that cannot flip a case must
+  // not be written as if it proved something. The rule that does the work has
+  // its own mutant.
   {
     name: 'the findings disposition vocabulary dropped',
     apply: src => src.replace(/const DISPOSED = \/.*\/i;/, 'const DISPOSED = /(?:)/;'),
+  },
+  {
+    name: 'the attribution absence set narrowed back to the exact word None',
+    apply: src => src.replace(
+      /const ABSENT_ATTRIBUTION =\n\s*\/\^\(\?:.*?\)\\b\/i;/s,
+      'const ABSENT_ATTRIBUTION = /^none\\.?$/i;'),
+  },
+  {
+    name: 'the current-state verdict vocabulary dropped',
+    apply: src => src.replace(/const VERDICT = \/.*\/i;/, 'const VERDICT = /(?:)/;'),
+  },
+  {
+    name: 'the reviewer-is-ChatGPT rule dropped',
+    apply: src => src.replace(/!\/chat\[ \\t-\]\?gpt\/i\.test\(seen\['Reviewer'\]\)/, 'false'),
+  },
+  {
+    name: 'the declared-unanswered rule dropped',
+    apply: src => src.replace(/const UNANSWERED =\n\s*\/.*\/i;/, 'const UNANSWERED = /(?!)/;'),
   },
 ];
 
