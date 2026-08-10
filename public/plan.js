@@ -258,19 +258,46 @@ function renderPlan(d, periods) {
   const weekly = state.weeklyVariable != null ? state.weeklyVariable : recommended;
   const sim = Forecast.simulate(plan, asOf, simOpts({ weeklyVariable: weekly }));
 
-  // When does the plan NEED Amanda's transfer? Re-run with the coaching
-  // stream at zero: the first day that dips below the buffer is the deadline.
-  const coachingMonthly = state.incomeOverrides.coaching != null
-    ? state.incomeOverrides.coaching
-    : (plan.income.find(s => s.id === 'coaching') || { scenarioMonthly: {} }).scenarioMonthly[state.scenario] || 0;
+  // When does the plan NEED Amanda's transfer? Re-run with her transfer at
+  // zero: the first day that dips below the buffer is the deadline.
+  const transferMonthly = state.incomeOverrides.amandaTransfer != null
+    ? state.incomeOverrides.amandaTransfer
+    : (plan.income.find(s => s.id === 'amandaTransfer') || { scenarioMonthly: {} }).scenarioMonthly[state.scenario] || 0;
   let neededBy = null;
-  if (coachingMonthly > 0) {
-    const noCoach = Forecast.simulate(plan, asOf, simOpts({
+  if (transferMonthly > 0) {
+    const noTransfer = Forecast.simulate(plan, asOf, simOpts({
       weeklyVariable: weekly,
-      incomeOverrides: Object.assign({}, state.incomeOverrides, { coaching: 0 }),
+      incomeOverrides: Object.assign({}, state.incomeOverrides, { amandaTransfer: 0 }),
     }));
-    const firstShort = noCoach.daily.find(p => p.balance < noCoach.buffer);
+    const firstShort = noTransfer.daily.find(p => p.balance < noTransfer.buffer);
     if (firstShort) neededBy = firstShort.date;
+  }
+
+  // If even $0/week breaches the buffer the problem is not the budget, it is
+  // an opening gap. Size it, and work out what is sustainable once it is
+  // covered — otherwise the page just says "$0" and offers nothing.
+  const zeroSim = Forecast.simulate(plan, asOf, simOpts({ weeklyVariable: 0 }));
+  const fundingGap = Math.max(0, zeroSim.buffer - zeroSim.min.balance);
+  // Everything that must be paid before the first money arrives.
+  const firstIncome = zeroSim.events.find(e => e.kind === 'income');
+  const preIncomeOut = zeroSim.events
+    .filter(e => e.amount < 0 && (!firstIncome || e.date < firstIncome.date))
+    .reduce((s, e) => s + -e.amount, 0);
+  // Topping up by exactly the gap only restores the buffer, leaving nothing
+  // for week one — so the useful number is what is sustainable from the first
+  // payday, once the squeeze has passed. Re-solve over the remaining window.
+  let postGapWeekly = null, postGapFrom = null;
+  if (recommended === 0 && fundingGap > 0) {
+    const firstPay = zeroSim.events.find(e => e.kind === 'income' && e.amount >= 1000);
+    if (firstPay) {
+      const from = firstPay.date;
+      const balThen = zeroSim.daily.find(p => p.date === from).balance;
+      const shifted = JSON.parse(JSON.stringify(plan));
+      shifted.startingCash.amount = balThen + fundingGap; // gap covered before payday
+      shifted.windowDays = Forecast.diffDays(from, zeroSim.end) + 1;
+      postGapWeekly = Forecast.recommendWeekly(shifted, from, simOpts());
+      postGapFrom = from;
+    }
   }
 
   $('plan-window').textContent =
@@ -281,11 +308,19 @@ function renderPlan(d, periods) {
   if (sim.min.balance < 0) {
     const firstNeg = sim.daily.find(p => p.balance < 0);
     band.className = 'statusband crit';
-    band.innerHTML = `<b>Shortfall expected around ${fmtDateLong(firstNeg.date)}.</b>
-      At this spending level the account goes negative${firstNeg.date !== sim.min.date
-        ? ` and keeps falling, reaching ${money(sim.min.balance)} by ${fmtDateLong(sim.min.date)}`
-        : ` (${money(sim.min.balance)})`}.
-      Cut the weekly budget, move a commitment, or bring income forward.`;
+    // An opening gap is a different problem from an overspending one, and the
+    // fix is different too — so say which this is.
+    band.innerHTML = recommended === 0
+      ? `<b>Short by ${money(fundingGap)} on ${fmtDateLong(zeroSim.min.date)} — before any spending at all.</b>
+         The household accounts hold ${money(plan.startingCash.amount)} today and
+         ${money(preIncomeOut)} of committed payments fall before the next payday.
+         This is a timing gap, not a shortage across the 90 days: cover it and the window
+         finishes with ${money(sim.ending + fundingGap)}.`
+      : `<b>Shortfall expected around ${fmtDateLong(firstNeg.date)}.</b>
+         At this spending level the account goes negative${firstNeg.date !== sim.min.date
+          ? ` and keeps falling, reaching ${money(sim.min.balance)} by ${fmtDateLong(sim.min.date)}`
+          : ` (${money(sim.min.balance)})`}.
+         Cut the weekly budget, move a commitment, or bring income forward.`;
   } else if (sim.min.balance < sim.buffer) {
     band.className = 'statusband warn';
     band.innerHTML = `<b>Tight — projected to dip to ${money(sim.min.balance)} on ${fmtDateLong(sim.min.date)}</b>,
@@ -299,25 +334,30 @@ function renderPlan(d, periods) {
 
   /* ---- the tennis-transfer deadline ---- */
   const tn = $('transfer-note');
-  if (coachingMonthly > 0) {
+  if (transferMonthly > 0) {
     tn.hidden = false;
     tn.innerHTML = neededBy
-      ? `The plan leans on Amanda's transfer of <span class="est">≈ ${money(coachingMonthly)}/month</span>. Without it the balance
-         would slip under the buffer on <b>${fmtDateLong(neededBy)}</b> — that is the date her transfer needs to land by,
-         marked on the calendar below.`
-      : `At this spending level the window stays above the buffer <b>even if Amanda's transfer never arrives</b> —
-         her ≈ ${money(coachingMonthly)}/month is counted late each month, but nothing depends on its timing.`;
+      ? `The plan leans on Amanda moving <span class="est">≈ ${money(transferMonthly)}/month</span> across from her account.
+         Without it the balance slips under the buffer on <b>${fmtDateLong(neededBy)}</b> — that is the date her transfer
+         has to land by, marked on the calendar below.`
+      : `At this spending level the window stays above the buffer <b>even if Amanda transfers nothing</b> —
+         her ≈ ${money(transferMonthly)}/month is counted mid-month, but nothing depends on its timing.`;
   } else {
     tn.hidden = false;
-    tn.innerHTML = `No coaching transfer is counted in this scenario — the plan stands on the confirmed income alone.`;
+    tn.innerHTML = `No transfer from Amanda is counted in this scenario — the plan stands on the confirmed income alone.`;
   }
 
   /* ---- the three numbers that matter, near the top ---- */
   $('hero-tiles').innerHTML = [
     { lab: 'Lowest cash point', val: money(sim.min.balance), note: `on ${fmtDateLong(sim.min.date)}`,
       tone: sim.min.balance < 0 ? 'alert' : sim.min.balance < sim.buffer ? 'warn' : '' },
-    { lab: 'Safe to spend', val: money(weekly) + '/wk', note: state.weeklyVariable != null && state.weeklyVariable !== recommended
-        ? `your setting — the forecast supports ${money(recommended)}/wk` : `≈ ${money(weekly * WEEKS_PER_MONTH)} a month, solved from the forecast`, tone: '' },
+    (recommended === 0 && postGapWeekly
+      ? { lab: 'Safe to spend', val: money(postGapWeekly) + '/wk', tone: 'warn',
+          note: `from ${fmtDateLong(postGapFrom)}, once the ${money(fundingGap)} gap is covered. Until then there is nothing spare.` }
+      : { lab: 'Safe to spend', val: money(weekly) + '/wk', tone: '',
+          note: state.weeklyVariable != null && state.weeklyVariable !== recommended
+            ? `your setting — the forecast supports ${money(recommended)}/wk`
+            : `≈ ${money(weekly * WEEKS_PER_MONTH)} a month, solved from the forecast` }),
     { lab: 'Projected ending cash', val: money(sim.ending), note: `on ${fmtDateLong(sim.end)}, after everything below`,
       tone: sim.ending < sim.buffer ? 'warn' : '' },
   ].map(t => `
@@ -334,7 +374,12 @@ function renderPlan(d, periods) {
   const chipC = ' <span class="chip v">confirmed</span>';
   const chipE = ' <span class="chip w">estimated</span>';
   $('hero-ledger').innerHTML =
-    row('Starting available cash', money2(plan.startingCash.amount), '', chipC) +
+    row('Starting available cash <span class="mutedtext">household accounts only</span>',
+      money2(plan.startingCash.amount), '', chipC) +
+    (plan.startingCash.heldElsewhere
+      ? `<div class="ledger-sub">${plan.startingCash.heldElsewhere.map(h =>
+          `<div class="ledger-row sub"><span>${h.label}</span><span>${money2(h.value)} <span class="mutedtext">not counted</span></span></div>`).join('')}</div>`
+      : '') +
     row('Income — confirmed', '+ ' + money2(T.confirmedIncome), 'in', chipC) +
     row('Income — estimated', est('+ ' + money2(T.estimatedIncome)), 'in', chipE) +
     row('Debt minimums & mortgage', '− ' + money2(T.obligations), 'out') +
@@ -342,6 +387,8 @@ function renderPlan(d, periods) {
     row('Committed expenses', '− ' + money2(T.commitments), 'out') +
     row('Variable-spending budget', '− ' + money2(T.variable), 'out', ' <span class="chip">budget</span>') +
     (T.extra > 0 ? row('Planned extra debt payments', '− ' + money2(T.extra), 'out', ' <span class="chip">planned</span>') : '') +
+    (T.noncash ? row('HELOC interest — capitalised, not paid',
+      money2(T.noncash) + ' <span class="mutedtext">added to the balance</span>', '', ' <span class="chip">non-cash</span>') : '') +
     row('<b>Projected ending cash</b>', `<b>${money2(sim.ending)}</b>`, 'sum') +
     row('Lowest projected balance', `${money2(sim.min.balance)} <span class="mutedtext">on ${fmtDate(sim.min.date)}</span>`,
       sim.min.balance < 0 ? 'neg' : '') +
@@ -429,7 +476,12 @@ function renderPlan(d, periods) {
     row('Optional spending allowance', (recMonthly < essentials ? '<b class="neg">$0</b>' : money(optional) + ' / month')) +
     row('Planned extra debt payment', money(state.extraDebtMonthly) + ' / month') +
     row('Required buffer at the end', money(sim.buffer)) +
-    (recMonthly < essentials
+    (recommended === 0 && postGapWeekly
+      ? `<p class="warnline">$0 is the honest answer for the opening days: the household accounts cannot cover the
+         ${fmtDateLong(zeroSim.min.date)} commitments without money coming across first. From ${fmtDateLong(postGapFrom)},
+         with the ${money(fundingGap)} gap covered, <b>${money(postGapWeekly)}/week</b> — about
+         ${money(postGapWeekly * WEEKS_PER_MONTH)}/month — holds the buffer for the rest of the window.</p>`
+      : recMonthly < essentials
       ? `<p class="warnline">The safe budget is below the ${money(essentials)}/month that essentials alone have been costing.
          At this income the period only works by cutting essentials, moving a commitment, or borrowing — that is the real message of this number.</p>`
       : '');
@@ -476,6 +528,7 @@ function renderPlan(d, periods) {
   }
 
   /* ---- next actions ---- */
+  if (plan.actionsNote) $('actions-note').textContent = 'Five at most, in order. ' + plan.actionsNote;
   $('actions-list').innerHTML = plan.actions.slice(0, 5).map((a, i) => {
     const overdue = a.due && a.due < asOf && a.status !== 'done';
     return `<div class="action ${a.status === 'done' ? 'done' : ''}">

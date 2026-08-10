@@ -92,7 +92,10 @@
     }
     for (const o of plan.obligations) {
       for (const date of occurrences(o, start, end)) {
-        events.push({ date, amount: -o.amount, kind: 'obligation', label: o.label, id: o.id, confidence: o.confidence });
+        // A non-cash charge (HELOC interest capitalising onto the balance) is
+        // shown on the calendar but never deducted from cash.
+        events.push({ date, amount: -o.amount, kind: o.nonCash ? 'noncash' : 'obligation',
+          label: o.label, id: o.id, confidence: o.confidence });
       }
     }
     for (const b of plan.bills || []) {
@@ -147,13 +150,14 @@
         week = {
           n: weeks.length + 1, start: date, end: addDays(date, 6),
           opening: balance, confirmedIncome: 0, estimatedIncome: 0,
-          obligations: 0, bills: 0, commitments: 0, variable: 0, extra: 0,
+          obligations: 0, bills: 0, commitments: 0, variable: 0, extra: 0, noncash: 0,
           closing: balance, events: [], belowBuffer: false, negative: false,
         };
         weeks.push(week);
       }
       const todays = byDate.get(date) || [];
       for (const e of todays) {
+        if (e.kind === 'noncash') { week.noncash += -e.amount; week.events.push(e); continue; }
         balance += e.amount;
         if (e.kind === 'income') {
           if (e.confidence === 'confirmed') week.confirmedIncome += e.amount;
@@ -203,6 +207,7 @@
       estimatedIncome: weeks.reduce((s, w) => s + w.estimatedIncome, 0),
       obligations: weeks.reduce((s, w) => s + w.obligations, 0),
       bills: weeks.reduce((s, w) => s + w.bills, 0),
+      noncash: weeks.reduce((s, w) => s + w.noncash, 0),
       commitments: weeks.reduce((s, w) => s + w.commitments, 0),
       variable: weeks.reduce((s, w) => s + w.variable, 0),
       extra: weeks.reduce((s, w) => s + w.extra, 0),

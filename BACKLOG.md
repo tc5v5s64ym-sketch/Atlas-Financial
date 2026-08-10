@@ -80,6 +80,19 @@ considered.
 
 ## Blocked on the household
 
+**B70 · Agree a standing transfer from Amanda's account** · *small, high value*
+The household spending accounts held **$79.84** on 9 August while **$2,691.85**
+sat in DEBT&PAYMENTS. The transfers across are ad hoc — 127 of them over 18
+months, mostly $100–$350, ranging from $930 to $3,750 in a month. That variance
+is the single largest source of uncertainty in the 90-day plan, and it produced
+a real shortfall: the 12 August Burrard registrations of $623 cannot be paid
+from household cash.
+
+A fixed amount on a fixed day, timed after her 15th and month-end pay, would
+remove the whole class of problem and make the forecast predictable rather than
+a guess about timing. Needs a household decision on the amount — the 12-month
+mean is $2,182/month.
+
 **B13 · Business records — revenue and cost of goods** · *large*
 The Tier 1 question. Now **two** businesses, which must be separated first (B56).
 

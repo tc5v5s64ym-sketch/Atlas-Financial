@@ -88,13 +88,24 @@ const expected = F.simulate(plan, asOf, {
 // Confirmed income: 7 paydays × 4468.69 + 3 child benefits × 153.59.
 ok(near(expected.totals.confirmedIncome, 7 * 4468.69 + 3 * 153.59), '90-day confirmed income',
   expected.totals.confirmedIncome.toFixed(2));
-// Estimated (expected scenario): Tennis BC 7 × (3507×12/26) + coaching 3 × 1700.
-ok(near(expected.totals.estimatedIncome, 7 * (3507 * 12 / 26) + 3 * 1700, 0.05), '90-day estimated income',
+// Estimated (expected scenario): Amanda's transfers, 3 × 2182.
+ok(near(expected.totals.estimatedIncome, 3 * 2182, 0.05), '90-day estimated income',
   expected.totals.estimatedIncome.toFixed(2));
-// Obligations: mortgage 7×1600, HELOC 3×814.18, Triangle 3×253.57, CashBack
-// 762.36 + 2×170, MBNA 3×158.27, TD cc 3×94.03, Travel 3×17.
-const wantObl = 7 * 1600 + 3 * 814.18 + 3 * 253.57 + 762.36 + 2 * 170 + 3 * 158.27 + 3 * 94.03 + 3 * 17;
-ok(near(expected.totals.obligations, wantObl), '90-day obligations', expected.totals.obligations.toFixed(2));
+// Obligations exclude the HELOC — its interest capitalises rather than being
+// paid. Mortgage 7×1600, Triangle 3×253.57, CashBack 762.36 + 2×170,
+// MBNA 3×158.27, TD cc 3×94.03, Travel 3×17.
+const wantObl = 7 * 1600 + 3 * 253.57 + 762.36 + 2 * 170 + 3 * 158.27 + 3 * 94.03 + 3 * 17;
+ok(near(expected.totals.obligations, wantObl), '90-day cash obligations', expected.totals.obligations.toFixed(2));
+ok(near(expected.totals.noncash, 3 * 814.18), 'HELOC interest is tracked but not deducted',
+  expected.totals.noncash.toFixed(2));
+{
+  // The non-cash charge must not move the balance.
+  const withHeloc = expected.ending;
+  const stripped = JSON.parse(JSON.stringify(plan));
+  stripped.obligations = stripped.obligations.filter(o => !o.nonCash);
+  const without = F.simulate(stripped, asOf, { scenario: 'expected', weeklyVariable: 0, targetBuffer: plan.defaults.targetBuffer }).ending;
+  ok(near(withHeloc, without), 'removing the non-cash charge changes nothing', `${withHeloc.toFixed(2)} vs ${without.toFixed(2)}`);
+}
 // Bills: Fortis (day 3 — August's already paid, so Sep/Oct/Nov = 3), Shaw,
 // BCAA, ICBC and fees ×3 each, Fit4Less bi-weekly ×7.
 const wantBills = 3 * 124 + 3 * 78.40 + 3 * 82.96 + 3 * 99.91 + 3 * 35.90 + 7 * 11.54;
@@ -109,10 +120,11 @@ ok(near(expected.ending,
   - expected.totals.bills - expected.totals.commitments),
   'ledger identity holds', expected.ending.toFixed(2));
 
-// The documented tight moment: 12 August, before Friday's payday.
-const aug12 = expected.daily.find(d => d.date === '2026-08-12');
-ok(near(aug12.balance, 2845.89 - 623), '12 August = starting cash less both Burrard fees',
-  aug12.balance.toFixed(2));
+// Starting cash is the household spending accounts only — her account excluded.
+ok(near(plan.startingCash.amount, 506.98 - 517.72 + 90.58), 'starting cash = Chequing A + B + Savings',
+  plan.startingCash.amount.toFixed(2));
+ok(!plan.income.some(s => /tennis bc/i.test(s.label)),
+  'her gross Tennis BC pay is not counted as household income');
 
 // Scenario ordering: conservative ≤ expected ≤ optimistic on every day.
 const cons = F.simulate(plan, asOf, { scenario: 'conservative', weeklyVariable: 0 });
@@ -150,13 +162,22 @@ ok(near(expected.ending - extra.ending, 600), 'extra $200/month × 3 mid-month d
   if (allMatch) ok(true, 'track matches brute force for all 12 interior weeks');
 }
 
-// Recommender: respects buffer under the expected scenario, and more breaches.
+// Recommender. On the corrected model the opening fortnight is infeasible —
+// $79.84 of household cash cannot cover the $623 Burrard fees due two days
+// before payday — so the honest answer is $0 and the engine must say so
+// rather than returning a plausible-looking number.
 const w = F.recommendWeekly(plan, asOf, { scenario: 'expected', targetBuffer: 500 });
-const wSim = F.simulate(plan, asOf, { scenario: 'expected', weeklyVariable: w, targetBuffer: 500 });
-ok(w > 0, 'a positive weekly budget exists under expected', `$${w}/week`);
-ok(wSim.min.balance >= 500, 'recommended weekly respects the $500 buffer', wSim.min.balance.toFixed(2));
-const wOver = F.simulate(plan, asOf, { scenario: 'expected', weeklyVariable: w + 10, targetBuffer: 500 });
-ok(wOver.min.balance < 500, '+$10/week breaches it', wOver.min.balance.toFixed(2));
+const zeroSim = F.simulate(plan, asOf, { scenario: 'expected', weeklyVariable: 0, targetBuffer: 500 });
+ok(w === 0 && zeroSim.min.balance < 500,
+  'returns $0 when even zero spending breaches the buffer', `$${w}/week, floor ${zeroSim.min.balance.toFixed(2)}`);
+ok(near(zeroSim.min.balance, 79.84 - 623), 'the breach is the 12 Aug Burrard fees against opening cash',
+  zeroSim.min.balance.toFixed(2));
+ok(zeroSim.min.date === '2026-08-12', 'and it happens on 12 August', zeroSim.min.date);
+// Once past the opening squeeze the window is comfortable: from the first
+// payday onward a real budget exists.
+const later = F.simulate(plan, addDaysISO(asOf, 7), Object.assign({}, { scenario: 'expected', weeklyVariable: 0, targetBuffer: 500 }));
+ok(later.ending > 0, 'the window is not structurally short — it is a timing squeeze', later.ending.toFixed(2));
+function addDaysISO(iso, n) { return F.addDays(iso, n); }
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
 process.exit(failures === 0 ? 0 : 1);

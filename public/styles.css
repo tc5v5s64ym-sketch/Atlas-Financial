@@ -288,6 +288,9 @@ footer { margin-top:56px; padding-top:18px; border-top:1px solid var(--grid);
 .ledger-row.neg span:last-child { color:var(--critical); }
 .ledger-row .warnline { flex-basis:100%; }
 .mutedtext { color:var(--muted); font-weight:400; font-size:.8em; }
+.ledger-sub { padding-left:16px; border-left:2px solid var(--grid); margin:0 0 0 2px; }
+.ledger-sub .ledger-row { padding:5px 0; font-size:.83rem; }
+.ledger-sub .ledger-row span { color:var(--muted); }
 
 /* Estimated amounts are never dressed as confirmed ones. */
 .est { color:var(--serious); font-style:italic; }

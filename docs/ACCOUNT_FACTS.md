@@ -280,6 +280,43 @@ fee**, plus withdrawal and cheque-return fees — the other chequing accounts do
 not. This is where her employment income lands and where many household debt
 payments originate.
 
+**This balance is not household spendable cash** *(owner-stated 2026-08-09)*.
+Her Tennis BC pay lands here, coaches are paid out of it, and only the remainder
+is moved across. Any cash-flow plan must treat it as a separate pot.
+
+**Her Tennis BC pay is semi-monthly, not bi-weekly** — the **15th and the last
+day of the month**, verified across all 18 months. Recent: $2,168.85 on 15 Jul,
+$2,387.99 on 31 Jul. Gross has grown from $1,250/month (Feb 2025) to about
+**$4,575/month**, and July 2026 reached $6,195.94 including `TENNIS BC EXP`
+reimbursements.
+
+**What actually crosses to the household:** 127 transfers over 18 months
+totalling **$25,445**, every one of them into **Chequing B** — matched 127/127
+on date and amount, so the destination is certain. Mostly $100–$350 at a time,
+ad hoc rather than scheduled.
+
+| Period | Transferred to household |
+|---|---|
+| 12-month mean (Aug 2025 – Jul 2026) | **$2,182/month** |
+| Lowest full month in that year | **$930** (November 2025) |
+| Recent 5-month mean | **$2,400** |
+
+**She also pays household costs directly from this account** — roughly
+$940/month: BC Hydro (it moved here in May 2026), part of the MBNA minimum,
+some card payments, CRA instalments and part of the property tax. So her total
+contribution is larger than the transfers alone.
+
+### HELOC interest is capitalised, not paid *(verified 2026-08-09)*
+
+The monthly interest — $810.09, $787.58, $814.18 for May, June, July — is
+charged **as a debit on the HELOC itself** at month end. **No matching payment
+leaves any chequing account.** Payments into the HELOC are separate, irregular
+lump sums from her account and the staging account.
+
+This matters two ways. For **cash flow**, the ~$814/month is not an outflow and
+must not be modelled as one. For **debt**, it is why the balance rises every
+month with nothing repaying it.
+
 ### SAVINGS-DONT TOUCH *(…6478420)* — **a staging account, not savings**
 Balance $74.20. Despite the name, nothing is saved here. Money arrives from
 Chequing A and leaves within hours or days, mostly to the HELOC and credit cards.
