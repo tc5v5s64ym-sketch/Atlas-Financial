@@ -19,6 +19,42 @@ to be visible, merchant strings needing normalising before matching).
 
 ## 🔴 The two that undercut everything else
 
+**B70 · The HELOC passes its own limit on 30 September, with no new borrowing** · OPEN · *needs a decision, not analysis*
+
+Found while building the coupled cash-and-debt projection. The HELOC sits at
+$201,586.16 against a $202,654 limit — $1,067.84 of headroom — and capitalises
+about **$814 a month with nothing repaying it**. That is 1.3 months of headroom.
+On the observed charge alone it crosses the limit on **30 September 2026**.
+
+Drawing $623 for the 12 August registrations brings that to **31 August**.
+
+This is projected from the last three charges ($810.09, $787.58, $814.18), not
+read off a statement, so the date could move by a week. The direction cannot.
+
+**What it changes:** the funding block used to present the HELOC as the second
+of two viable ways to cover the opening gap. It is now shown as what it is — a
+three-week loan against an over-limit breach on the household's largest
+revolving facility. Amanda's transfer is the only free option. It is also why
+the next-dollar policy ranks "stop new HELOC growth" above "extra card
+repayment".
+
+**Needs from the household:** confirm with TD what happens at the limit on an
+interest-only HELOC — whether the charge is refused, permitted with a fee, or
+the limit is reviewed. That answer decides whether this is an inconvenience or
+the most urgent item on the page.
+
+**B71 · Triangle Mastercard is over its limit between payments, every month** · OPEN · *small*
+
+$13,497.00 against a $13,500 limit — $3.00 of headroom — with roughly $247/month
+of interest and a $253.57 minimum. The interest exceeds the headroom within days
+of each payment, so the balance sits over the limit for most of every month and
+comes back under only when the payment posts on the 7th. The projection shows it
+$227.71 over at day 90.
+
+Worth checking whether an over-limit fee is being charged each cycle; if it is,
+it belongs in the fee series and the card's effective rate is higher than
+21.99%.
+
 **B63 · Where do the coach payments leave from?** · BLOCKED · *small*
 
 Coaching money is **pass-through**: a remitter sends it, coaches are paid out of
