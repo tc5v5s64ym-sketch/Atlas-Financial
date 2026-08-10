@@ -92,7 +92,13 @@ ok(hits === 0, 'no credentials, card numbers or SIN-shaped identifiers in tracke
   `${tracked.length} files scanned`);
 ok(!fs.existsSync(path.join(__dirname, 'raw')), 'no raw/ directory is present in the checkout');
 ok(read('.gitignore').includes('raw/'), 'raw/ is gitignored');
-ok(fs.existsSync(path.join(__dirname, '.githooks/pre-commit')), 'the pre-commit hook is present');
+const hookPath = path.join(__dirname, '.githooks/pre-commit');
+ok(fs.existsSync(hookPath), 'the pre-commit hook is present');
+// A hook without the executable bit is silently ignored by git — it prints a
+// hint and commits anyway. That is a guard that looks present and is not.
+ok(fs.existsSync(hookPath) && (fs.statSync(hookPath).mode & 0o111) !== 0,
+  'and is executable, so git will actually run it',
+  fs.existsSync(hookPath) ? '0' + (fs.statSync(hookPath).mode & 0o777).toString(8) : 'missing');
 
 console.log('\n=== the security gate is intact ===');
 const server = read('server.js');
