@@ -499,9 +499,14 @@ function renderPlan(d, periods) {
   // Never instruct the household to hold a figure the forecast does not
   // support. Only the status band was conditioned on this, so the mission and
   // the Next move went on recommending $1,500/week against a −$809 low.
-  missionParts.push(overrideBreaches
-    ? `cut spending to ${money(recommended)} a week — ${money(weekly)} does not hold`
-    : `hold spending to ${money(weekly)} a week`);
+  // Spending is not a remedy for money that does not exist. When the gap
+  // cannot be funded the floor is below the buffer whatever the weekly figure
+  // is, so the mission must not append a spending instruction at all.
+  if (!fundingShort) {
+    missionParts.push(overrideBreaches
+      ? `cut spending to ${money(recommended)} a week — ${money(weekly)} does not hold`
+      : `hold spending to ${money(weekly)} a week`);
+  }
   if (helocBreach) missionParts.push(`and stop the HELOC growing before it passes its own limit in ${fmtMonth(helocBreach.date)}`);
   else missionParts.push('and put the surplus against the most expensive card');
   $('plan-mission').textContent =
@@ -523,13 +528,17 @@ function renderPlan(d, periods) {
          ${money(fundingGap)} stays unfunded and the balance holds below the ${money(sim.buffer)} buffer.
          This action helps; on its own it is not enough.`
       : gap && !actionCovers
-        // Fundable, but not by this action alone.
+        // Fundable, but not by this action alone. The closing spending figure
+        // has to be the supported one — quoting an unsafe override here made
+        // the override warning unreachable whenever the fixed action fell
+        // short of the gap, which is exactly when a raised buffer puts it there.
         ? `This covers ${money(first.amount)} of the ${money(fundingGap)} needed, leaving
            ${money(actionLeaves)} still to find before the ${money(sim.buffer)} buffer is back.
            ${fundingPlan && fundingPlan.needsCombination
             ? `The full plan is ${fundingPlan.parts.map(p => `${money2(p.amount)} from ${p.short}`).join(' plus ')}.`
-            : ''} With all of it in place the household can spend ${money(weekly)} a week from
-           ${fmtDateLong(advice.effectiveFrom)}.`
+            : ''} With all of it in place the household can spend ${money(recommended)} a week from
+           ${fmtDateLong(advice.effectiveFrom)}${overrideBreaches
+            ? `, not the ${money(weekly)} currently set — that reaches ${money(sim.min.balance)}` : ''}.`
       : gap && overrideBreaches
         ? `The ${money(gap.dueOnGapDay)} clears on ${fmtDateLong(gap.date)} and the buffer is restored — but
            at your ${money(weekly)}/week setting the balance still reaches ${money(sim.min.balance)} by

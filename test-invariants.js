@@ -378,6 +378,31 @@ ok(/No weekly spending\s*\n?\s*figure fixes this/.test(planJs2),
 // The mission and the Next move must not instruct an unsafe override either.
 ok(/cut spending to \$\{money\(recommended\)\} a week/.test(planJs2),
   'the mission stops instructing a weekly figure that breaches');
+ok(/if \(!fundingShort\) \{\s*\n\s*missionParts\.push/.test(planJs2),
+  'and offers no spending instruction at all when the gap cannot be funded — '
+  + 'spending is not a remedy for money that does not exist');
+// Split funding must not be measured half-applied.
+{
+  const O = { scenario: 'expected', incomeOverrides: {}, disabled: [], extraDebtMonthly: 0,
+    targetBuffer: 3000, fundingSources: plan.funding.options };
+  const adv = F.recommend(plan, asOf, O);
+  const onDay = adv.sim.events.filter(e => e.date === adv.gap.date && e.kind === 'injection');
+  ok(onDay.length === 1,
+    'a top-up drawn from two sources is ONE cash event', `${onDay.length} injection event(s)`);
+  ok(onDay[0].parts && onDay[0].parts.length === 2,
+    'while still carrying both origins for debt attribution',
+    onDay[0].parts.map(p => p.debtId || 'cash').join(' + '));
+  ok(adv.holds && adv.weekly === 1250,
+    'so the day closes on the buffer and the cap survives the split',
+    `$${adv.weekly}/week, floor ${money(adv.sim.min.balance)}`);
+  ok(near(adv.sim.min.balance, 3000),
+    'the floor is the day’s close, not a figure from mid-transfer',
+    money(adv.sim.min.balance));
+  const pr = F.projectDebts(plan, data.debts, asOf,
+    Object.assign({}, adv.simOptions, { weeklyVariable: adv.weekly, extraFacilities: data.revolvingExtra }));
+  ok(near(pr.byId.heloc.drawn, 851.31),
+    'and the borrowed portion still lands on the HELOC', money(pr.byId.heloc.drawn));
+}
 ok(/gap && overrideBreaches/.test(planJs2),
   'and the Next move outcome says what the override actually does');
 ok(/still to find before/.test(planJs2),

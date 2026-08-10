@@ -123,16 +123,32 @@
     // Cash arriving from outside the plan — a transfer from Amanda's account or
     // a HELOC draw covering an opening gap. Positive, so it sorts with income
     // and lands before the payments it is there to cover.
+    // Grouped by date, so a top-up drawn from two sources is ONE cash movement.
+    // Emitting them separately let the daily floor be measured half-way through
+    // the transfer: at a $3,000 buffer the first $2,691.85 recorded a $2,771.69
+    // floor before the $851.31 arrived, and the recommender answered $0/week
+    // for a day that actually closes exactly on the buffer. The parts are kept
+    // on the event because the DEBT side still needs to know which facility
+    // each portion came from — one movement of cash, several origins.
+    const byInjectionDate = new Map();
     for (const inj of opts.injections || []) {
-      if (inj.amount > 0 && inj.date >= start && inj.date <= end) {
-        events.push({ date: inj.date, amount: inj.amount, kind: 'injection',
-          label: inj.label || 'Gap funding', id: inj.id || 'gapFunding',
-          // Where the money came FROM. Money released from an account the
-          // household already owns creates no debt; a draw on a credit
-          // facility does, and the debt projection has to see that.
-          debtId: inj.debtId || null,
-          confidence: inj.confidence || 'planned' });
-      }
+      if (!(inj.amount > 0 && inj.date >= start && inj.date <= end)) continue;
+      const g = byInjectionDate.get(inj.date)
+        || { date: inj.date, amount: 0, parts: [], id: inj.id || 'gapFunding' };
+      g.amount += inj.amount;
+      g.parts.push({ amount: inj.amount, debtId: inj.debtId || null,
+        label: inj.label || 'Gap funding' });
+      byInjectionDate.set(inj.date, g);
+    }
+    for (const g of byInjectionDate.values()) {
+      events.push({ date: g.date, amount: g.amount, kind: 'injection', id: g.id,
+        label: g.parts.length === 1 ? g.parts[0].label
+          : `Gap funding — ${g.parts.length} sources`,
+        parts: g.parts,
+        // Only meaningful when the whole movement came from one place; the
+        // debt projection reads `parts` regardless.
+        debtId: g.parts.length === 1 ? g.parts[0].debtId : null,
+        confidence: 'planned' });
     }
     if (opts.extraDebtMonthly > 0) {
       // Applied mid-month, the day after the usual payday pattern.
@@ -645,11 +661,14 @@
       }
       for (const e of byDate.get(date) || []) {
         if (e.kind === 'injection') {
-          // Cash arriving from outside the plan. If it was drawn on a credit
-          // facility it is borrowing, and the balance has to rise by it.
-          if (e.debtId && byId[e.debtId]) {
-            byId[e.debtId].balance += e.amount;
-            byId[e.debtId].drawn += e.amount;
+          // Cash arriving from outside the plan. One movement, but possibly
+          // several origins — each borrowed portion has to land on the facility
+          // it was drawn from.
+          for (const part of e.parts || [{ amount: e.amount, debtId: e.debtId }]) {
+            if (part.debtId && byId[part.debtId]) {
+              byId[part.debtId].balance += part.amount;
+              byId[part.debtId].drawn += part.amount;
+            }
           }
           continue;
         }
