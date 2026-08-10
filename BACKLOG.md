@@ -482,7 +482,41 @@ Three explanations, with very different consequences:
 lands: using pass-through money for household debt is only safe if the onward
 obligation is already covered.
 
-**B64 · Amanda's other account** · BLOCKED · *small*
+**B64 · Amanda's other account — confirmed to exist, institution unknown** · BLOCKED · *small*
+
+**Confirmed by elimination.** The $186.16 arrived in Chequing A on 14 Jul 2026 as
+`E-TRANSFER ***VuR`, and the Interac notification names the receiving side —
+*"TD Canada Trust, account ending in 5425"* — which is Chequing A. **No $186.16
+left any of the six captured accounts between 10 and 18 July.** So it came from
+outside the set.
+
+**The institution cannot be identified from the notification.** Interac names
+only the receiving bank, never the sending one.
+
+**Her mailbox does not reveal it either.** The only other bank appearing at all
+is **CIBC**, and every trace is **2014–2019** — e-statement alerts and one-time
+passcodes, nothing since. So either that CIBC account is still open and
+paperless, or the account is at an institution that sends her nothing.
+
+Remaining routes, in order of cost: **ask her**; or check whether the old CIBC
+account is still open; or look for it on a credit report, which lists every open
+account and is the definitive answer.
+
+*Two side-findings from the same search, both useful elsewhere:*
+
+- **`Payworks` — "Your Pay Statement is Available", 29 Jun 2026.** A payroll
+  provider. Worth establishing whose payroll: if the coaching business runs one,
+  coach payments may leave by payroll rather than e-transfer, which would explain
+  why none appear in either mailbox [B63].
+- **They have an accountant** — two tax threads from April 2026, one on personal
+  tax information and one on the household's taxes. That is the right person for
+  the business-use-of-home question, the two-business split, and the Travel
+  Visa's mixed personal and business charges. Contact details are in her mailbox.
+- **Flexiti statements arrived Feb and Mar 2026**, after which they stop —
+  consistent with the owner's account of it being paid off and closed, and worth
+  noting as corroboration rather than contradiction.
+
+**B64-old · Amanda's other account** · was BLOCKED
 The $186.16 self-transfer on 14 Jul 2026 proves she holds an account outside the
 captured set. Prime candidate for where coach payments leave from, and a prime
 candidate for one of the **two unidentified accounts** ($59,027 combined) — the
