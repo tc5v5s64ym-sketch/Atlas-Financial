@@ -107,6 +107,13 @@
     <figcaption id="heloc-note"></figcaption>
   </figure></div>
 
+  <p class="lede">Where the borrowed money actually went — $86,514 out over 18 months, traced by type.</p>
+  <div class="card"><figure><div id="c-heloc-use"></div>
+    <figcaption id="heloc-use-note"></figcaption>
+  </figure>
+    <div class="note-box" id="heloc-chains"></div>
+  </div>
+
   <h2><span class="n">7</span>Monthly cash flow is volatile, not steady</h2>
   <div class="card"><figure><div id="c-flow"></div>
     <figcaption id="flow-note"></figcaption>
@@ -133,7 +140,9 @@
 
   <div class="card"><figure><div id="c-spend"></div>
     <figcaption id="spend-note"></figcaption>
-  </figure></div>
+  </figure>
+    <p class="lede" id="spending-detail" style="margin:12px 0 0"></p>
+  </div>
 
   <h2><span class="n">10</span>What the debt costs</h2>
   <p class="lede">Interest actually charged, not modelled. The mortgage is absent because its interest is
@@ -141,6 +150,17 @@
   <div class="card"><figure><div id="c-interest"></div>
     <figcaption id="interest-note"></figcaption>
   </figure></div>
+
+  <p class="lede">The Cash Back Visa's $158.55 charge sat open as an unexplained figure. It is not
+  unexplained — it was being checked against the wrong balance.</p>
+  <div class="card scroll">
+    <table><thead><tr>
+      <th>Statement</th><th class="num">Avg daily balance</th><th class="num">26.99% implies</th>
+      <th class="num">Charged</th><th class="num">Effective rate</th>
+    </tr></thead><tbody id="interest-check"></tbody></table>
+    <p class="lede" id="interest-check-note" style="margin:12px 0 0"></p>
+    <div class="note-box" id="interest-check-cash"></div>
+  </div>
 
   <h2><span class="n">11</span>Fees</h2>
   <p class="lede">Split by whether they can be avoided. Structural fees come with the account; avoidable ones
@@ -171,18 +191,54 @@
     <figcaption>Each is a large flow whose purpose cannot be determined from banking data alone.</figcaption>
   </figure></div>
 
-  <h2><span class="n">14</span>The questions that matter most</h2>
+  <h2><span class="n">14</span>Youth lacrosse — the cost that hides from bank data</h2>
+  <p class="lede">Two boys, several clubs. Clubs prefer e-transfer, and TD's export never names an
+  e-transfer's payee — so this is the category most systematically understated by any analysis built on
+  bank records alone. Everything below is a floor.</p>
+  <div class="card"><figure><div id="c-lacrosse"></div>
+    <figcaption id="lacrosse-note"></figcaption>
+  </figure></div>
+
+  <div class="card"><figure><div id="c-lacrosse-fund"></div>
+    <figcaption>What each payment was made with. The HELOC line is youth sport funded by borrowing against
+    the house, on an interest-only facility at 99.5% drawn.</figcaption>
+  </figure>
+    <div class="note-box" id="lacrosse-inferred"></div>
+    <p class="lede" id="lacrosse-gap" style="margin:12px 0 0"></p>
+  </div>
+
+  <h2><span class="n">15</span>Who is on the other end of an e-transfer</h2>
+  <p class="lede">204 e-transfers moved through these accounts. The bank names none of them.</p>
+  <div class="tiles" id="cp-stat"></div>
+  <div class="card">
+    <p class="lede" id="cp-note" style="margin:0"></p>
+    <div class="note-box" id="cp-finding"></div>
+    <p class="lede" id="cp-action" style="margin:14px 0 0"></p>
+    <p class="lede" id="cp-matching" style="margin:14px 0 0"></p>
+  </div>
+
+  <p class="lede" id="cp-coach-lede">The one that mattered most: the June coaching remittance, traced end to
+  end.</p>
+  <div class="card scroll">
+    <table><thead><tr><th>When</th><th>What happened</th><th class="num">Staging balance</th></tr></thead>
+      <tbody id="coach-chain"></tbody></table>
+    <p class="lede" id="coach-note" style="margin:14px 0 0"></p>
+    <div class="note-box" id="coach-reading"></div>
+    <p class="lede" id="coach-remaining" style="margin:14px 0 0"></p>
+  </div>
+
+  <h2><span class="n">16</span>The questions that matter most</h2>
   <p class="lede">Ranked by what the answer would change, not by size.</p>
   <div class="card" id="questions"></div>
 
-  <h2><span class="n">15</span>Balance sheet</h2>
+  <h2><span class="n">17</span>Balance sheet</h2>
   <div class="card scroll">
     <table><thead><tr><th>Item</th><th class="num">Amount</th></tr></thead><tbody id="assets"></tbody></table>
     <p class="lede" id="assets-note" style="margin:12px 0 0"></p>
     <div class="note-box" id="nw-caveat"></div>
   </div>
 
-  <h2><span class="n">16</span>Coverage — what is captured and what is not</h2>
+  <h2><span class="n">18</span>Coverage — what is captured and what is not</h2>
   <div class="card scroll"><table>
     <thead><tr><th>Source</th><th>What was captured</th><th>Status</th></tr></thead>
     <tbody id="coverage"></tbody></table></div>

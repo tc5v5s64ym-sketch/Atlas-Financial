@@ -87,10 +87,24 @@ if (fs.existsSync(nameDir)) {
   }
 }
 // The bank posts a day or two after the transfer; allow a window.
+//
+// Match ONE notification to ONE bank row. The earlier version used find(), so a
+// single notification named every transfer of the same amount within four days
+// -- six $1,000 Wise fundings would all inherit one name, and an INCOMING
+// notification could name an OUTGOING transfer. Both inflate the attribution
+// rate with attributions that are not evidenced.
 const dayDiff = (a, b) => Math.abs((new Date(a) - new Date(b)) / 86400000);
-for (const r of rows) {
-  const hit = named.find(n => Math.abs(n.amt - r.amt) < 0.01 && dayDiff(n.date, r.date) <= 4);
-  if (hit) r.counterparty = hit.counterparty;
+const dirOk = (n, r) => (n.dir === 'OUT' ? r.kind === 'out' : r.kind === 'in' || r.kind === 'in-epay');
+const claimed = new Set();
+for (const n of named.slice().sort((a, b) => a.date.localeCompare(b.date))) {
+  const cands = rows
+    .map((r, i) => ({ r, i }))
+    .filter(({ r, i }) => !claimed.has(i) && dirOk(n, r) &&
+                          Math.abs(n.amt - r.amt) < 0.01 && dayDiff(n.date, r.date) <= 4)
+    .sort((a, b) => dayDiff(n.date, a.r.date) - dayDiff(n.date, b.r.date));
+  if (!cands.length) continue;
+  cands[0].r.counterparty = n.counterparty;
+  claimed.add(cands[0].i);
 }
 
 const sum = k => rows.filter(r => r.kind === k).reduce((s, r) => s + r.amt, 0);
