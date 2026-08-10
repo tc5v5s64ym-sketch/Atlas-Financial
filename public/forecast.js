@@ -95,6 +95,11 @@
         events.push({ date, amount: -o.amount, kind: 'obligation', label: o.label, id: o.id, confidence: o.confidence });
       }
     }
+    for (const b of plan.bills || []) {
+      for (const date of occurrences(b, start, end)) {
+        events.push({ date, amount: -b.amount, kind: 'bill', label: b.label, id: b.id, confidence: b.confidence });
+      }
+    }
     for (const c of plan.commitments) {
       if (disabled.has(c.id)) continue;
       if (c.date >= start && c.date <= end) {
@@ -142,7 +147,7 @@
         week = {
           n: weeks.length + 1, start: date, end: addDays(date, 6),
           opening: balance, confirmedIncome: 0, estimatedIncome: 0,
-          obligations: 0, commitments: 0, variable: 0, extra: 0,
+          obligations: 0, bills: 0, commitments: 0, variable: 0, extra: 0,
           closing: balance, events: [], belowBuffer: false, negative: false,
         };
         weeks.push(week);
@@ -154,6 +159,7 @@
           if (e.confidence === 'confirmed') week.confirmedIncome += e.amount;
           else week.estimatedIncome += e.amount;
         } else if (e.kind === 'obligation') week.obligations += -e.amount;
+        else if (e.kind === 'bill') week.bills += -e.amount;
         else if (e.kind === 'commitment') week.commitments += -e.amount;
         else if (e.kind === 'extra') week.extra += -e.amount;
         week.events.push(e);
@@ -177,10 +183,26 @@
       w.negative = low < 0;
     }
 
+    // The week-by-week track: the closing balance below which the REST of the
+    // window breaches the buffer even with everything going to plan. Backward
+    // pass over daily net changes: requiredClosing = buffer − (the most the
+    // balance ever sits below this week's closing at any later day).
+    const delta = daily.map((p, i) => p.balance - (i ? daily[i - 1].balance : plan.startingCash.amount));
+    const suffixMin = new Array(days).fill(Infinity);
+    for (let i = days - 1; i >= 0; i--) {
+      const later = i + 1 < days ? Math.min(0, suffixMin[i + 1]) : 0;
+      suffixMin[i] = delta[i] + later;
+    }
+    weeks.forEach((w, i) => {
+      const next = (i + 1) * 7;
+      w.requiredClosing = next < days ? buffer - Math.min(0, suffixMin[next]) : buffer;
+    });
+
     const totals = {
       confirmedIncome: weeks.reduce((s, w) => s + w.confirmedIncome, 0),
       estimatedIncome: weeks.reduce((s, w) => s + w.estimatedIncome, 0),
       obligations: weeks.reduce((s, w) => s + w.obligations, 0),
+      bills: weeks.reduce((s, w) => s + w.bills, 0),
       commitments: weeks.reduce((s, w) => s + w.commitments, 0),
       variable: weeks.reduce((s, w) => s + w.variable, 0),
       extra: weeks.reduce((s, w) => s + w.extra, 0),

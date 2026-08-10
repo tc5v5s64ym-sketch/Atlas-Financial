@@ -156,6 +156,99 @@ function forecastChart(mount, sim) {
   mount.appendChild(svg);
 }
 
+/* ----------------------------------------------------------- calendar */
+// Compact labels for calendar cells and agenda rows.
+function shortLabel(label) {
+  return label
+    .replace(/ — .*$/, '')
+    .replace(/Mastercard/i, 'MC').replace(/ minimum/i, ' min')
+    .replace(/ registration/i, '').replace(/ instalment/i, '')
+    .replace(/ membership/i, '').replace(/ \(two accounts\)/i, '')
+    .replace(/Payroll.*/i, 'Payroll').replace(/Tennis BC.*/i, 'Tennis BC')
+    .replace(/Coaching.*/i, 'Tennis transfer');
+}
+
+// Month-grid calendar (desktop) and agenda list (mobile) from the same
+// simulation. Each is a real table/list, so screen readers get both.
+function renderCalendar(sim, neededBy) {
+  const byDate = new Map();
+  for (const e of sim.events) {
+    if (!byDate.has(e.date)) byDate.set(e.date, []);
+    byDate.get(e.date).push(e);
+  }
+  const balance = new Map(sim.daily.map(p => [p.date, p.balance]));
+
+  const evHtml = e => {
+    const est = e.confidence === 'estimated' ? '<span class="est">≈</span>' : '';
+    const cls = e.amount > 0 ? 'in' : e.kind === 'commitment' ? 'commit' : 'out';
+    return `<span class="cal-ev ${cls}" title="${e.label} ${money2(Math.abs(e.amount))}">` +
+      `${e.amount > 0 ? '+' : '−'}${money(Math.abs(e.amount)).slice(1)} ${est}${shortLabel(e.label)}</span>`;
+  };
+
+  // ---- month grids ----
+  const months = [];
+  for (let m = sim.start.slice(0, 7); m <= sim.end.slice(0, 7);) {
+    months.push(m);
+    const [y, mo] = m.split('-').map(Number);
+    m = `${mo === 12 ? y + 1 : y}-${String(mo === 12 ? 1 : mo + 1).padStart(2, '0')}`;
+  }
+  $('cal-months').innerHTML = months.map(m => {
+    const [y, mo] = m.split('-').map(Number);
+    const first = new Date(Date.UTC(y, mo - 1, 1));
+    const daysIn = new Date(Date.UTC(y, mo, 0)).getUTCDate();
+    const lead = first.getUTCDay(); // 0 = Sunday
+    let cells = '<tr>' + '<td class="dim"></td>'.repeat(lead);
+    let col = lead;
+    for (let day = 1; day <= daysIn; day++) {
+      if (col === 7) { cells += '</tr><tr>'; col = 0; }
+      const iso = `${m}-${String(day).padStart(2, '0')}`;
+      const inWin = iso >= sim.start && iso <= sim.end;
+      const evs = inWin ? (byDate.get(iso) || []) : [];
+      const bal = balance.get(iso);
+      const below = inWin && bal < sim.buffer;
+      const cls = [
+        inWin ? '' : 'dim',
+        below ? (bal < 0 ? 'neg-day' : 'low-day') : '',
+        iso === sim.min.date ? 'min-day' : '',
+        iso === sim.start ? 'today' : '',
+        iso === neededBy ? 'need-day' : '',
+      ].filter(Boolean).join(' ');
+      cells += `<td class="${cls}"><div class="cal-n">${day}` +
+        (iso === sim.start ? ' <span class="cal-badge">today</span>' : '') +
+        (iso === sim.min.date ? ' <span class="cal-badge low">low</span>' : '') +
+        (iso === neededBy ? ' <span class="cal-badge need">transfer needed</span>' : '') +
+        `</div>${evs.map(evHtml).join('')}` +
+        (inWin ? `<div class="cal-bal ${bal < 0 ? 'neg' : ''}">${money(bal)}</div>` : '') +
+        '</td>';
+      col++;
+    }
+    cells += '<td class="dim"></td>'.repeat(7 - col) + '</tr>';
+    const monthName = first.toLocaleDateString('en-CA', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+    return `<table class="cal"><caption>${monthName}</caption>
+      <thead><tr>${['S', 'M', 'T', 'W', 'T', 'F', 'S'].map(dn => `<th>${dn}</th>`).join('')}</tr></thead>
+      <tbody>${cells}</tbody></table>`;
+  }).join('');
+
+  // ---- agenda (mobile) ----
+  let agenda = '', lastM = '';
+  for (const p of sim.daily) {
+    const evs = byDate.get(p.date) || [];
+    const special = p.date === sim.min.date || p.date === neededBy;
+    if (!evs.length && !special) continue;
+    const mName = new Date(p.date + 'T00:00:00').toLocaleDateString('en-CA', { month: 'long', year: 'numeric' });
+    if (mName !== lastM) { agenda += `<h4 class="cal-ag-month">${mName}</h4>`; lastM = mName; }
+    const wd = new Date(p.date + 'T00:00:00').toLocaleDateString('en-CA', { weekday: 'short', day: 'numeric' });
+    agenda += `<div class="cal-ag-day ${p.balance < 0 ? 'neg-day' : p.balance < sim.buffer ? 'low-day' : ''}">
+      <div class="cal-ag-head"><span>${wd}</span>
+        ${p.date === sim.min.date ? '<span class="cal-badge low">low point</span>' : ''}
+        ${p.date === neededBy ? '<span class="cal-badge need">transfer needed by now</span>' : ''}
+        <span class="cal-ag-bal ${p.balance < 0 ? 'neg' : ''}">${money(p.balance)}</span></div>
+      <div class="cal-ag-evs">${evs.map(evHtml).join('')}</div>
+    </div>`;
+  }
+  $('cal-agenda').innerHTML = agenda;
+}
+
 /* ----------------------------------------------------------- rendering */
 function renderPlan(d, periods) {
   const plan = d.plan;
@@ -164,6 +257,21 @@ function renderPlan(d, periods) {
   const recommended = Forecast.recommendWeekly(plan, asOf, simOpts());
   const weekly = state.weeklyVariable != null ? state.weeklyVariable : recommended;
   const sim = Forecast.simulate(plan, asOf, simOpts({ weeklyVariable: weekly }));
+
+  // When does the plan NEED Amanda's transfer? Re-run with the coaching
+  // stream at zero: the first day that dips below the buffer is the deadline.
+  const coachingMonthly = state.incomeOverrides.coaching != null
+    ? state.incomeOverrides.coaching
+    : (plan.income.find(s => s.id === 'coaching') || { scenarioMonthly: {} }).scenarioMonthly[state.scenario] || 0;
+  let neededBy = null;
+  if (coachingMonthly > 0) {
+    const noCoach = Forecast.simulate(plan, asOf, simOpts({
+      weeklyVariable: weekly,
+      incomeOverrides: Object.assign({}, state.incomeOverrides, { coaching: 0 }),
+    }));
+    const firstShort = noCoach.daily.find(p => p.balance < noCoach.buffer);
+    if (firstShort) neededBy = firstShort.date;
+  }
 
   $('plan-window').textContent =
     `The 13 weeks from ${fmtDateLong(asOf)} to ${fmtDateLong(sim.end)} — every figure below is derived from this window.`;
@@ -187,6 +295,21 @@ function renderPlan(d, periods) {
     band.innerHTML = `<b>On plan — projected to finish with ${money(sim.ending)}.</b>
       The balance stays above the ${money(sim.buffer)} buffer all the way through, with the low of
       ${money(sim.min.balance)} on ${fmtDateLong(sim.min.date)}.`;
+  }
+
+  /* ---- the tennis-transfer deadline ---- */
+  const tn = $('transfer-note');
+  if (coachingMonthly > 0) {
+    tn.hidden = false;
+    tn.innerHTML = neededBy
+      ? `The plan leans on Amanda's transfer of <span class="est">≈ ${money(coachingMonthly)}/month</span>. Without it the balance
+         would slip under the buffer on <b>${fmtDateLong(neededBy)}</b> — that is the date her transfer needs to land by,
+         marked on the calendar below.`
+      : `At this spending level the window stays above the buffer <b>even if Amanda's transfer never arrives</b> —
+         her ≈ ${money(coachingMonthly)}/month is counted late each month, but nothing depends on its timing.`;
+  } else {
+    tn.hidden = false;
+    tn.innerHTML = `No coaching transfer is counted in this scenario — the plan stands on the confirmed income alone.`;
   }
 
   /* ---- the three numbers that matter, near the top ---- */
@@ -214,7 +337,8 @@ function renderPlan(d, periods) {
     row('Starting available cash', money2(plan.startingCash.amount), '', chipC) +
     row('Income — confirmed', '+ ' + money2(T.confirmedIncome), 'in', chipC) +
     row('Income — estimated', est('+ ' + money2(T.estimatedIncome)), 'in', chipE) +
-    row('Bills & debt minimums', '− ' + money2(T.obligations), 'out') +
+    row('Debt minimums & mortgage', '− ' + money2(T.obligations), 'out') +
+    row('Recurring bills — utilities, insurance, gym', '− ' + money2(T.bills), 'out') +
     row('Committed expenses', '− ' + money2(T.commitments), 'out') +
     row('Variable-spending budget', '− ' + money2(T.variable), 'out', ' <span class="chip">budget</span>') +
     (T.extra > 0 ? row('Planned extra debt payments', '− ' + money2(T.extra), 'out', ' <span class="chip">planned</span>') : '') +
@@ -240,23 +364,30 @@ function renderPlan(d, periods) {
   /* ---- weekly table (desktop) and cards (mobile) ---- */
   const wkRow = w => {
     const cls = w.negative ? 'wk-neg' : w.belowBuffer ? 'wk-low' : '';
+    const fixed = w.obligations + w.bills;
     return `<tr class="${cls}">
       <td>W${w.n}<div class="mutedtext">${fmtRange(w.start, w.end)}</div></td>
       <td class="num">${money(w.opening)}</td>
       <td class="num">${w.confirmedIncome ? '+' + money(w.confirmedIncome).slice(1) : '—'}</td>
       <td class="num">${w.estimatedIncome ? est('+' + money(w.estimatedIncome).slice(1)) : '—'}</td>
-      <td class="num">${w.obligations ? money(w.obligations) : '—'}</td>
+      <td class="num">${fixed ? money(fixed) : '—'}</td>
       <td class="num">${w.commitments ? money(w.commitments) : '—'}</td>
       <td class="num">${money(w.variable)}</td>
       ${w.extra ? `<td class="num">${money(w.extra)}</td>` : (sim.totals.extra > 0 ? '<td class="num">—</td>' : '')}
-      <td class="num ${w.closing < 0 ? 'neg' : ''}"><b>${money(w.closing)}</b>${w.belowBuffer ? `<div class="mutedtext">low ${money(w.low)}</div>` : ''}</td>
+      <td class="num ${w.closing < 0 ? 'neg' : ''}"><b>${money(w.closing)}</b>` +
+      `<div class="mutedtext ${w.closing < w.requiredClosing ? 'neg' : ''}">keep ≥ ${money(w.requiredClosing)}</div>` +
+      `${w.belowBuffer ? `<div class="mutedtext">low ${money(w.low)}</div>` : ''}</td>
     </tr>`;
   };
   const extraCol = sim.totals.extra > 0 ? '<th class="num">Extra debt</th>' : '';
   $('wk-table').innerHTML = `<thead><tr>
       <th>Week</th><th class="num">Opening</th><th class="num">Confirmed in</th><th class="num">Estimated in</th>
-      <th class="num">Fixed &amp; minimums</th><th class="num">Committed</th><th class="num">Budget</th>${extraCol}<th class="num">Closing</th>
+      <th class="num">Bills &amp; minimums</th><th class="num">Committed</th><th class="num">Budget</th>${extraCol}<th class="num">Closing</th>
     </tr></thead><tbody>${sim.weeks.map(wkRow).join('')}</tbody>`;
+
+  /* ---- the calendar ---- */
+  renderCalendar(sim, neededBy);
+  $('cal-note').textContent = plan.billsNote || '';
 
   $('wk-cards').innerHTML = sim.weeks.map(w => {
     const notable = w.events.filter(e => Math.abs(e.amount) >= 250)
@@ -269,17 +400,27 @@ function renderPlan(d, periods) {
       <div class="wk-card-grid">
         <span>Opening ${money(w.opening)}</span>
         <span>In ${money(w.confirmedIncome)}${w.estimatedIncome ? ` <span class="est">+ ≈${money(w.estimatedIncome).slice(1)}</span>` : ''}</span>
-        <span>Out ${money(w.obligations + w.commitments + w.extra)}</span>
+        <span>Out ${money(w.obligations + w.bills + w.commitments + w.extra)}</span>
         <span>Budget ${money(w.variable)}</span>
       </div>
+      <div class="wk-track ${w.closing < w.requiredClosing ? 'neg' : ''}">Keep ≥ ${money(w.requiredClosing)} to stay on plan</div>
       ${w.belowBuffer ? `<div class="wk-flag ${w.negative ? 'neg' : ''}">${w.negative ? 'Goes negative' : 'Dips below the buffer'} — low ${money(w.low)}</div>` : ''}
       ${notable ? `<ul class="wk-events">${notable}</ul>` : ''}
     </div>`;
   }).join('');
 
   /* ---- the budget that gets us there ---- */
+  // Named bills are dated on the calendar now, so the variable budget — and
+  // the essential allowance shown here — exclude them.
+  const billMonthly = b => b.frequency === 'biweekly' ? b.amount * 26 / 12 : b.amount;
+  const billedByGroup = {};
+  let essentialBilled = 0;
+  for (const b of plan.bills || []) {
+    billedByGroup[b.budgetGroup] = (billedByGroup[b.budgetGroup] || 0) + billMonthly(b);
+    if (b.budgetGroup === 'Other essentials') essentialBilled += billMonthly(b);
+  }
   const recMonthly = weekly * WEEKS_PER_MONTH;
-  const essentials = plan.essentialsPerMonth;
+  const essentials = Math.max(0, plan.essentialsPerMonth - essentialBilled);
   const optional = Math.max(0, recMonthly - essentials);
   $('budget-out').innerHTML =
     row('Maximum safe variable spending', `<b>${money(weekly)} / week</b>`) +
@@ -294,7 +435,9 @@ function renderPlan(d, periods) {
       : '');
   $('budget-basis').textContent =
     `Solved from the forecast, not from a category template: the largest weekly spend that keeps every day of the ` +
-    `projection at or above the ${money(sim.buffer)} buffer under the ${state.scenario} income scenario. ${plan.essentialsNote}`;
+    `projection at or above the ${money(sim.buffer)} buffer under the ${state.scenario} income scenario. ` +
+    `The ${money(essentialBilled)}/month of named bills (FortisBC, Shaw, BCAA, ICBC, account fees) sits on the ` +
+    `calendar as dated payments and is excluded from these allowances. ${plan.essentialsNote}`;
 
   /* ---- category breakdown, where the data supports it ---- */
   if (periods && periods.periods && periods.periods.ytd) {
@@ -312,7 +455,8 @@ function renderPlan(d, periods) {
       { label: 'Travel', v: get('Travel'), kind: 'optional' },
       { label: 'PayPal (online & app spend)', v: d.paypal ? d.paypal.perMonth : 0, kind: 'optional' },
       { label: 'Uncategorised', v: get('Uncategorised'), kind: 'unknown' },
-    ].filter(g => g.v > 0);
+    ].map(g => Object.assign(g, { v: Math.max(0, g.v - (billedByGroup[g.label] || 0)) }))
+      .filter(g => g.v > 0);
     const histTotal = groupsSpec.reduce((s, g) => s + g.v, 0);
     const scale = recMonthly / histTotal;
     const max = Math.max(...groupsSpec.map(g => g.v));
@@ -323,11 +467,12 @@ function renderPlan(d, periods) {
         <span class="cat-amt">${est(money(g.v * scale))}</span>
         <span class="cat-hist">has been ${money(g.v)}/mo</span>
       </div>`).join('');
-    $('budget-cats-note').textContent = scale < 0.999
+    $('budget-cats-note').textContent = (scale < 0.999
       ? `The left figure is each category scaled to fit the ${money(recMonthly)}/month safe budget — an even ` +
         `${Math.round((1 - scale) * 100)}% below the ${money(histTotal)}/month these categories have actually averaged. ` +
         `Cutting evenly is rarely right: protect the essential rows and take more from the optional ones.`
-      : `The safe budget covers the historical average of ${money(histTotal)}/month for these categories, with room to spare.`;
+      : `The safe budget covers the historical average of ${money(histTotal)}/month for these categories, with room to spare.`)
+      + ' The named bills on the calendar are already taken out of these figures.';
   }
 
   /* ---- next actions ---- */

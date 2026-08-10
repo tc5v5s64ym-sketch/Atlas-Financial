@@ -35,6 +35,7 @@
     <p class="sub" id="plan-window"></p>
 
     <div class="statusband" id="status-band" role="status">Working out the projection…</div>
+    <p class="lede transfer-note" id="transfer-note" hidden></p>
     <div class="tiles hero-tiles" id="hero-tiles"></div>
 
     <div class="card hero-card">
@@ -66,7 +67,24 @@
     </div>
     <div class="wk-cards" id="wk-cards"></div>
     <p class="lede footnote">Estimated amounts are marked <span class="est">≈</span> throughout and never counted as confirmed.
-      Weeks shaded amber dip below the buffer; red would mean a projected negative balance.</p>
+      Weeks shaded amber dip below the buffer; red would mean a projected negative balance. The
+      <b>keep&nbsp;≥</b> figure under each closing balance is the week-by-week track: finish a week below it and
+      the rest of the window breaches the buffer even with everything going to plan.</p>
+
+    <h2>The 90-day calendar</h2>
+    <p class="lede">Every dated movement, on the day it happens — pay coming in, bills and minimums going out,
+    the sports commitments, and the projected balance at the end of each day.</p>
+    <div class="card">
+      <div class="legend" id="cal-legend">
+        <span><span class="sw" style="background:var(--s1)"></span>Money in</span>
+        <span><span class="sw" style="background:var(--axis)"></span>Bills &amp; minimums</span>
+        <span><span class="sw" style="background:var(--serious)"></span>Commitments</span>
+        <span><span class="est">≈</span>&nbsp;estimated</span>
+      </div>
+      <div id="cal-months" class="cal-months"></div>
+      <div id="cal-agenda" class="cal-agenda"></div>
+      <p class="lede footnote" id="cal-note"></p>
+    </div>
   </section>
 
   <section id="budget">

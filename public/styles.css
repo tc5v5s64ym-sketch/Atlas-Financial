@@ -318,6 +318,53 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
   .wk-cards { display:block; }
 }
 
+/* the 90-day calendar */
+.cal-months { display:flex; flex-direction:column; gap:22px; }
+.cal { table-layout:fixed; border-collapse:collapse; width:100%; }
+.cal caption { text-align:left; font-weight:650; font-size:.95rem; padding:0 0 8px; color:var(--text-primary); }
+.cal th { text-align:center; font-size:.68rem; padding:4px 0; border-bottom:1px solid var(--axis); }
+.cal td { vertical-align:top; height:78px; padding:4px 5px; border:1px solid var(--grid);
+          font-size:.7rem; overflow:hidden; position:relative; }
+.cal td.dim { background:var(--plane); border-color:var(--plane); }
+.cal td.low-day { background:color-mix(in srgb, var(--serious) 8%, transparent); }
+.cal td.neg-day { background:color-mix(in srgb, var(--critical) 10%, transparent); }
+.cal td.today { outline:2px solid var(--s1); outline-offset:-2px; }
+.cal td.need-day { outline:2px dashed var(--serious); outline-offset:-2px; }
+.cal-n { font-weight:600; color:var(--text-secondary); margin-bottom:2px; }
+.cal-badge { font-size:.58rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em;
+             color:var(--s1); }
+.cal-badge.low { color:var(--serious); }
+.cal-badge.need { color:var(--serious); }
+.cal-ev { display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+          line-height:1.45; color:var(--text-secondary); font-variant-numeric:tabular-nums; }
+.cal-ev.in { color:var(--s1); font-weight:600; }
+.cal-ev.commit { color:var(--serious); }
+.cal-bal { position:absolute; right:5px; bottom:3px; color:var(--muted); font-size:.64rem;
+           font-variant-numeric:tabular-nums; }
+.cal-bal.neg { color:var(--critical); }
+
+.cal-agenda { display:none; }
+.cal-ag-month { margin:16px 0 6px; font-size:.9rem; }
+.cal-ag-month:first-child { margin-top:0; }
+.cal-ag-day { padding:8px 10px; border-left:3px solid var(--grid); margin-bottom:6px; font-size:.82rem; }
+.cal-ag-day.low-day { border-left-color:var(--serious);
+                      background:color-mix(in srgb, var(--serious) 6%, transparent); }
+.cal-ag-day.neg-day { border-left-color:var(--critical);
+                      background:color-mix(in srgb, var(--critical) 8%, transparent); }
+.cal-ag-head { display:flex; gap:8px; align-items:baseline; }
+.cal-ag-head > span:first-child { font-weight:600; }
+.cal-ag-bal { margin-left:auto; color:var(--muted); font-variant-numeric:tabular-nums; }
+.cal-ag-evs .cal-ev { white-space:normal; }
+
+@media (max-width:760px) {
+  .cal-months { display:none; }
+  .cal-agenda { display:block; }
+}
+
+.wk-track { margin-top:6px; font-size:.78rem; color:var(--muted); }
+.wk-track.neg { color:var(--critical); font-weight:600; }
+.transfer-note { border-left:3px solid var(--s2); padding-left:12px; }
+
 /* numeric inputs — sliders are for the modellers; the plan uses precise entry */
 .numin {
   width:100%; max-width:220px; padding:9px 11px; border-radius:9px; border:1px solid var(--axis);

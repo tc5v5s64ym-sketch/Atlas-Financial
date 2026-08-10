@@ -27,8 +27,30 @@ anything older than a few months as needing re-checking, not as fact.
 Statement close dates: **TD card ~23rd** · **Triangle 17th** ·
 **MBNA/Amazon 6th** · **TD Cash Back 7th** · **Travel Visa 5th**.
 
+### Recurring bills *(days extracted from the transaction history, 2026-08-09)*
+
+Only bills still active in the last three months. Amounts are the recent
+steady value, not the 18-month median.
+
+| Day of month | What | Amount | Evidence |
+|---|---|---|---|
+| **2nd–4th** | FortisBC gas | $124.00 | 17 charges over 14 months; $124.00 in each of the last four |
+| **14th–15th** | Shaw internet | $78.40 | May–July, chequing and Cash Back |
+| **15th** | BCAA insurance | $82.96 | 18 consecutive months |
+| **15th** | ICBC insurance | $99.91 | 5 consecutive months — newer policy |
+| **every 14 days** (payday cadence) | Fit4Less | $11.54 | 18 months; plus a ~$22 annual fee each July |
+| **month-end** | TD account fees ×2 | $17.95 each | every month captured |
+
+**Two known costs have no current route through chequing:** BC Hydro (last seen
+April 2026 — past bills were paid direct from the HELOC, roughly $250 every two
+months) and Telus (last seen March 2026 — route unknown, possibly her account).
+Netflix does not exist anywhere in the data; the streaming spend is Amazon
+Channels, several small charges on scattered days.
+
 Income: payroll **bi-weekly** (~$4,469), child benefit **monthly** (~$153.59).
-Bonus or vacation pay has historically landed in **February and July**.
+**Amanda's Tennis BC pay is also bi-weekly and lands with the payroll**
+(owner-stated 2026-08-09); the amount varies. Bonus or vacation pay has
+historically landed in **February and July**.
 
 ---
 

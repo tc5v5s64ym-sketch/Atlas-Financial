@@ -38,8 +38,11 @@ function renderRecords(d) {
         s.amount != null ? money2(s.amount)
           : Object.entries(s.scenarioMonthly).map(([k, v]) => `${k[0].toUpperCase()}${k.slice(1)} ${money(v)}`).join(' · '),
         s.amount != null ? freqWord(s) : 'per month, by scenario', s.confidence, s.note)).join('') +
-      '<h3>Bills &amp; debt minimums</h3>' +
+      '<h3>Debt minimums &amp; mortgage</h3>' +
       d.plan.obligations.map(o => li(o.label, money2(o.amount), freqWord(o), o.confidence, o.note)).join('') +
+      '<h3>Recurring bills</h3>' +
+      (d.plan.bills || []).map(b => li(b.label, money2(b.amount), freqWord(b), b.confidence, b.note)).join('') +
+      (d.plan.billsNote ? `<p class="deriv-note">${d.plan.billsNote}</p>` : '') +
       '<h3>Commitments</h3>' +
       d.plan.commitments.map(c => li(`${c.label} — ${fmtDate(c.date)}`, money2(c.amount),
         c.adjustable ? 'optional' : 'one-time', c.confidence, c.note)).join('');

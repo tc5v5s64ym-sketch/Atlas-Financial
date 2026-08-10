@@ -58,6 +58,16 @@ const fixture2 = Object.assign({}, fixture, {
 const sim2 = F.simulate(fixture2, '2026-01-01', { weeklyVariable: 0, targetBuffer: 0 });
 ok(near(sim2.daily[3].balance, 1100), 'same-day: income first, then the bill', sim2.daily[3].balance.toFixed(2));
 
+console.log('\n=== the week-by-week track ===');
+// Fixture: buffer 100. After week 1 (ends Jan 7) the future holds the Jan 6
+// bill of 400 with only variable outflow (10/day) around it. The worst future
+// dip from week 1's closing is −400 − 7×10 = −470 by Jan 13... computed by
+// hand: cum from Jan 8..14 = −10×7 = −70; no bill remains (Jan 6 is inside
+// week 1), so required closing of week 1 = 100 + 70 = 170.
+const simReq = F.simulate(fixture, '2026-01-01', { weeklyVariable: 70, targetBuffer: 100 });
+ok(near(simReq.weeks[0].requiredClosing, 170), 'week 1 must close ≥ buffer + future net outflow', simReq.weeks[0].requiredClosing.toFixed(2));
+ok(near(simReq.weeks[1].requiredClosing, 100), 'final week track equals the buffer', simReq.weeks[1].requiredClosing.toFixed(2));
+
 console.log('\n=== recommender ===');
 const rec = F.recommendWeekly(fixture, '2026-01-01', { targetBuffer: 100 });
 // Two constraints: day 3 (500 − 3W/7 ≥ 100 → W ≤ 933) and the ending
@@ -85,11 +95,18 @@ ok(near(expected.totals.estimatedIncome, 7 * (3507 * 12 / 26) + 3 * 1700, 0.05),
 // 762.36 + 2×170, MBNA 3×158.27, TD cc 3×94.03, Travel 3×17.
 const wantObl = 7 * 1600 + 3 * 814.18 + 3 * 253.57 + 762.36 + 2 * 170 + 3 * 158.27 + 3 * 94.03 + 3 * 17;
 ok(near(expected.totals.obligations, wantObl), '90-day obligations', expected.totals.obligations.toFixed(2));
+// Bills: Fortis (day 3 — August's already paid, so Sep/Oct/Nov = 3), Shaw,
+// BCAA, ICBC and fees ×3 each, Fit4Less bi-weekly ×7.
+const wantBills = 3 * 124 + 3 * 78.40 + 3 * 82.96 + 3 * 99.91 + 3 * 35.90 + 7 * 11.54;
+ok(near(expected.totals.bills, wantBills), '90-day named bills', expected.totals.bills.toFixed(2));
+const fortisDates = expected.events.filter(e => e.id === 'fortis').map(e => e.date).join(',');
+ok(fortisDates === '2026-09-03,2026-10-03,2026-11-03', 'Fortis skips the already-paid August bill', fortisDates);
 // Commitments: 320+303+786+140+800+500×3.
 ok(near(expected.totals.commitments, 3849), '90-day commitments', expected.totals.commitments.toFixed(2));
 ok(expected.weeks.length === 13, '13 weeks');
 ok(near(expected.ending,
-  plan.startingCash.amount + expected.totals.income - expected.totals.obligations - expected.totals.commitments),
+  plan.startingCash.amount + expected.totals.income - expected.totals.obligations
+  - expected.totals.bills - expected.totals.commitments),
   'ledger identity holds', expected.ending.toFixed(2));
 
 // The documented tight moment: 12 August, before Friday's payday.
@@ -110,6 +127,28 @@ ok(near(noWarriors.ending - expected.ending, 800), 'disabling Warriors adds $800
 // Extra debt payments reduce ending cash by the months applied.
 const extra = F.simulate(plan, asOf, { scenario: 'expected', weeklyVariable: 0, extraDebtMonthly: 200 });
 ok(near(expected.ending - extra.ending, 600), 'extra $200/month × 3 mid-month dates', (expected.ending - extra.ending).toFixed(2));
+
+// The week-by-week track on the real plan: verify the backward pass against a
+// brute recomputation from the daily balances.
+{
+  const s = F.simulate(plan, asOf, { scenario: 'expected', weeklyVariable: 1000, targetBuffer: 500 });
+  let allMatch = true;
+  for (let i = 0; i < 12; i++) {
+    const next = (i + 1) * 7;
+    let cum = 0, minCum = Infinity;
+    for (let j = next; j < s.daily.length; j++) {
+      cum += s.daily[j].balance - s.daily[j - 1].balance;
+      if (cum < minCum) minCum = cum;
+    }
+    const brute = 500 - Math.min(0, minCum);
+    if (!near(s.weeks[i].requiredClosing, brute)) {
+      ok(false, `track matches brute force at week ${i + 1}`, `${s.weeks[i].requiredClosing} vs ${brute}`);
+      allMatch = false;
+      break;
+    }
+  }
+  if (allMatch) ok(true, 'track matches brute force for all 12 interior weeks');
+}
 
 // Recommender: respects buffer under the expected scenario, and more breaches.
 const w = F.recommendWeekly(plan, asOf, { scenario: 'expected', targetBuffer: 500 });
