@@ -376,7 +376,13 @@ jobs:
                 const LANE_OPENS = /^(?:the[ \t]+)?chat[ \t-]?gpt\b/i;
                 const reviewer = seen['Reviewer'];
                 const qualifier = reviewer.replace(LANE_OPENS, '').replace(/[^a-z0-9]/gi, '');
-                if (!LANE_OPENS.test(reviewer) || qualifier.length > 16) {
+                // Skipped when the field has already been flagged as unfinished:
+                // a line reading "not yet performed — ChatGPT" is a placeholder,
+                // not a claim that the wrong lane reviewed, and saying both made
+                // the card look as though it had named the wrong reviewer. Same
+                // outcome either way — the card is red — but one reason, not two.
+                if (!unfinished.includes('Reviewer')
+                    && (!LANE_OPENS.test(reviewer) || qualifier.length > 16)) {
                   problems.push(!reviewer || ABSENT.test(reviewer)
                     ? 'The review is recorded as required, so "Reviewer" must NAME who performed it. "None", "no", "n/a" and "not required" are absence values — on this path they say the gate was never satisfied, not that it was.'
                     : `"Reviewer" reads ${JSON.stringify(reviewer.slice(0, 60))}. The Atlas Contract / Systems Review is ChatGPT's lane alone, so this field names ChatGPT and at most a short qualifier — an implementation agent cannot satisfy its own architecture gate, and any advisory read belongs in the card's "Advisory review" row.`);

@@ -466,7 +466,7 @@ const MUTANTS = [
   {
     name: 'the reviewer rule dropped entirely',
     apply: src => src.replace(
-      /if \(!LANE_OPENS\.test\(reviewer\) \|\| qualifier\.length > 16\) \{/,
+      /if \(!unfinished\.includes\('Reviewer'\)\n\s*&& \(!LANE_OPENS\.test\(reviewer\) \|\| qualifier\.length > 16\)\) \{/,
       'if (false) {'),
   },
   {
@@ -476,7 +476,7 @@ const MUTANTS = [
   {
     name: 'the affirmative lane rule weakened back to a substring match',
     apply: src => src.replace(
-      /if \(!LANE_OPENS\.test\(reviewer\) \|\| qualifier\.length > 16\) \{/,
+      /if \(!unfinished\.includes\('Reviewer'\)\n\s*&& \(!LANE_OPENS\.test\(reviewer\) \|\| qualifier\.length > 16\)\) \{/,
       "if (!/chat[ \\t-]?gpt/i.test(reviewer)) {"),
   },
   {
