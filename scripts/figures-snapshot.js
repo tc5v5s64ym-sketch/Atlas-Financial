@@ -16,27 +16,50 @@
  * they are dates or verdicts. Keys must be STABLE: renaming one shows up as a
  * removal plus an addition, which is noise. Add new keys freely.
  *
- * "UNCHANGED" IS MEANINGLESS WITHOUT ITS BASELINE. Say what a snapshot was
- * compared against, every time, in the same sentence as the claim.
+ * THIS SCRIPT DOES NOT COMPARE ANYTHING. Running it emits ONE snapshot: the
+ * figures as of the revision it is run from. It selects no baseline and holds
+ * no opinion about what came before. `node scripts/figures-snapshot.js` answers
+ * "what are the figures here", never "what changed".
  *
- * On the pull request that INTRODUCES this script there is no base snapshot to
- * diff against, because the script does not exist on the base revision. CI says
- * so plainly — "no baseline to compare against" — and a local run therefore
- * compares the head against some EARLIER COMMIT ON THE SAME BRANCH, not against
- * the base branch.
+ * The baseline belongs entirely to whoever does the comparing. CI checks out
+ * the PR base into a worktree and runs THAT revision's own copy of this script,
+ * then diffs the two. Where the base revision has no copy — as on the pull
+ * request that introduces the script — there is nothing to diff against, and CI
+ * says so rather than inventing one.
  *
- * That distinction is not pedantry; it was got wrong here. Several commits on
- * that first PR reported "no published figure moves", which was true of each
- * commit against the one before it, and it was then summarised as though the
- * whole branch had moved nothing. The branch in fact moved a dozen published
- * figures — the weekly allocation split, effective consumer debt, revolving
- * headroom, the positions and net-worth figures, liquidity and coverage — all
- * of them intended, all of them listed on the merge card. What did not move was
- * the $1,250/week household cap, which is a cash constraint and the one number
- * the correctness work was least able to change.
+ * SO ANY "UNCHANGED" CLAIM MUST NAME BOTH REVISIONS. Not because it is tidier,
+ * but because the alternative was got wrong here: comparing this script's
+ * output against a file generated earlier from a mid-branch commit is a real
+ * and useful check, and it is NOT a comparison against the base branch. The two
+ * were conflated. Several commits reported "no published figure moves", each
+ * true against the commit before it, and that was then summarised as though the
+ * whole branch had moved nothing — and once described as confirmed "against
+ * base", which CI had explicitly declined to do.
  *
- * So: "unchanged since the previous commit" and "unchanged against main" are
- * different claims, and only the second one is what a reader assumes.
+ * The branch in fact moved a dozen published figures: the weekly allocation
+ * split, effective consumer debt, revolving headroom, the positions and
+ * net-worth figures, liquidity and coverage. All intended, all listed on the
+ * merge card. What did not move was the $1,250/week household cap — a cash
+ * constraint, and the one number that correctness work was least able to shift.
+ *
+ * If you are writing the claim, write the command that supports it. Each
+ * revision runs its OWN copy of this script, because the engine's shape changes
+ * between revisions and one revision's script against another's data is not a
+ * comparison of anything:
+ *
+ *   git worktree add /tmp/base <revision> && \
+ *     node /tmp/base/scripts/figures-snapshot.js > /tmp/base.json
+ *   node scripts/figures-snapshot.js > /tmp/head.json
+ *   diff /tmp/base.json /tmp/head.json     # unchanged AGAINST <revision>
+ *
+ * Substitute a different revision and the claim changes with it. Name it.
+ *
+ * That recipe needs <revision> to HAVE a copy of this script, which is exactly
+ * what the base branch lacks until this first merges — verified, not assumed:
+ * against `origin/main` today the second line has no file to run. When the base
+ * cannot produce a snapshot the honest answer is that there is no base
+ * comparison, which is what CI reports. It is not a licence to substitute a
+ * mid-branch commit and keep the word "base".
  */
 
 const path = require('path');
