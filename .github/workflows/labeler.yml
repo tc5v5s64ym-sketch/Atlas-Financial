@@ -1,0 +1,31 @@
+name: Auto-label by path
+
+# Applies CATEGORY labels (docs/RISK_LABELS.md) from the paths a PR touches,
+# using .github/labeler.yml. The PRIMARY risk label stays a judgement made on
+# the merge card — no path can tell you whether a change needs the owner.
+#
+# Deliberately tolerant: a label that does not exist yet (before Sync labels
+# has seeded the repo) must never block a pull request. Categories are
+# description, not verdict.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  label:
+    name: Apply category labels
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Label by changed paths
+        continue-on-error: true
+        uses: actions/labeler@v5
+        with:
+          configuration-path: .github/labeler.yml
+          # false: never strip a label a human added deliberately.
+          sync-labels: false

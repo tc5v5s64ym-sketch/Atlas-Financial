@@ -1,0 +1,76 @@
+name: Sync labels
+
+# Creates and updates the risk-classification labels so the names used by
+# docs/RISK_LABELS.md, the auto-labeller and the risk-label gate actually
+# exist on the repository. The set is read from .github/labels.yml, which is
+# the single manifest — this workflow holds no label list of its own.
+#
+# Runs on main, and on any PR touching the manifest or this file, so the
+# labels are seeded the moment this lands and before the labeller needs them.
+# Labels are repo-global, so any one run populates them for every PR.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/labels.yml'
+      - '.github/workflows/labels.yml'
+  pull_request:
+    paths:
+      - '.github/labels.yml'
+      - '.github/workflows/labels.yml'
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  sync:
+    name: Upsert risk labels
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Upsert every label in the manifest
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const text = fs.readFileSync('.github/labels.yml', 'utf8');
+
+            // A deliberately small parser for the one shape this manifest uses:
+            // a flat list of `- name: / color: / description:`. Pulling in a
+            // YAML dependency for three keys would be the larger risk.
+            const labels = [];
+            let cur = null;
+            for (const raw of text.split('\n')) {
+              const line = raw.replace(/\s+#.*$/, '');
+              let m;
+              if ((m = /^-\s*name:\s*(.+?)\s*$/.exec(line))) {
+                cur = { name: m[1].replace(/^["']|["']$/g, '') };
+                labels.push(cur);
+              } else if (cur && (m = /^\s+color:\s*(.+?)\s*$/.exec(line))) {
+                cur.color = m[1].replace(/^["']|["']$/g, '').replace(/^#/, '');
+              } else if (cur && (m = /^\s+description:\s*(.+?)\s*$/.exec(line))) {
+                cur.description = m[1].replace(/^["']|["']$/g, '');
+              }
+            }
+            if (!labels.length) core.setFailed('No labels parsed from .github/labels.yml');
+
+            const { owner, repo } = context.repo;
+            for (const l of labels) {
+              const params = { owner, repo, name: l.name, color: l.color || 'ededed',
+                description: (l.description || '').slice(0, 100) };
+              try {
+                await github.rest.issues.updateLabel(params);
+                core.info(`updated ${l.name}`);
+              } catch (err) {
+                if (err.status !== 404) throw err;
+                await github.rest.issues.createLabel(params);
+                core.info(`created ${l.name}`);
+              }
+            }
+            core.summary.addRaw(`Synced ${labels.length} labels from the manifest.`);
+            await core.summary.write();

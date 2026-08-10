@@ -1,0 +1,47 @@
+# Atlas Financial risk-classification labels — canonical manifest.
+# Documented in docs/RISK_LABELS.md, synced to the repo by
+# .github/workflows/labels.yml. Keep the three in step.
+
+# ---------------------------------------------------------------- PRIMARY
+# Exactly ONE per PR. Enforced by .github/workflows/risk-label-gate.yml.
+# This answers: what does the OWNER have to do about this pull request?
+- name: auto-safe
+  color: "0e8a16"   # green
+  description: "No published figure moves and no authority changes home. Merge on green."
+- name: figures-moved
+  color: "fbca04"   # yellow
+  description: "A number the household reads changes. Owner should see the figures diff before merge."
+- name: owner-decision
+  color: "d93f0b"   # orange-red
+  description: "Rests on a household fact only Dale or Amanda can supply. Blocked on a person, not on code."
+- name: blocked
+  color: "b60205"   # red
+  description: "A gate failed, or a contradiction is open. Not mergeable as it stands."
+
+# --------------------------------------------------------------- CATEGORY
+# Zero or more per PR, applied automatically by path. Never blocking — they
+# describe what was touched, they do not judge it.
+- name: engine
+  color: "5319e7"   # purple
+  description: "public/forecast.js — the cash, debt, budget and recommendation maths."
+- name: published-figures
+  color: "e99695"   # light red
+  description: "data.json or periods.json — the figures the site actually shows."
+- name: plan-page
+  color: "1d76db"   # blue
+  description: "The decision page: what the household is told to do next."
+- name: authority-docs
+  color: "0052cc"   # dark blue
+  description: "ACCOUNT_FACTS, MASTER_PICTURE, OPEN_QUESTIONS — where standing facts live."
+- name: security
+  color: "b60205"   # red
+  description: "server.js, the auth gate, CSP, secret handling, or the pre-commit hook."
+- name: tests
+  color: "c2e0c6"   # pale green
+  description: "The correctness suite."
+- name: infrastructure
+  color: "c5def5"   # light blue
+  description: "CI, workflows, templates, labels, scripts. No published figure changes."
+- name: evidence-only
+  color: "d4c5f9"   # pale purple
+  description: "Deep Dive, Records, Modellers — supporting evidence, not the decision."

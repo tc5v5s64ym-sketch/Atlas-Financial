@@ -1,0 +1,101 @@
+name: Risk label gate
+
+# Enforces "exactly one primary risk label" (docs/RISK_LABELS.md). The
+# auto-labeller applies only CATEGORY labels and is deliberately non-blocking;
+# the PRIMARY label is a judgement about what the OWNER has to do, and nothing
+# derived from paths can make it.
+#
+# The gate publishes a commit status named `risk-label/primary` on the PR HEAD
+# SHA via the API, rather than relying on the job conclusion — under
+# `pull_request_target` the job's own GITHUB_SHA is the default-branch commit,
+# so a job-conclusion check would not attach to the head that branch
+# protection evaluates.
+#
+# FAIL-CLOSED, NEVER-STALE:
+#   · the head is marked `pending` on every trigger, so a prior green cannot
+#     survive into a run that has not yet evaluated it;
+#   · a final `if: always()` step publishes a definitive success or failure to
+#     the exact head, so an API error or a cancelled run leaves red, not green;
+#   · per-PR concurrency serialises runs so a newer label event publishes last.
+#     cancel-in-progress is FALSE on purpose — cancelling would still fire the
+#     always() publisher and could overwrite a newer result.
+#
+# TRUST MODEL: `pull_request_target` runs the workflow definition from the
+# protected default branch, so a PR editing this file cannot make the gate
+# evaluate its own unreviewed logic. It never checks out or executes PR-head
+# code; it reads label names through the API as data. `statuses: write` is the
+# only write scope.
+#
+# To make it binding, add `risk-label/primary` to the required status checks on
+# `main` in branch protection. That is an owner action and is deliberately not
+# automated.
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, labeled, unlabeled]
+
+permissions:
+  statuses: write
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: risk-label-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  primary-risk-label:
+    name: Exactly one primary risk label
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Mark the exact head pending
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.repos.createCommitStatus({
+              ...context.repo,
+              sha: context.payload.pull_request.head.sha,
+              state: 'pending',
+              context: 'risk-label/primary',
+              description: 'Checking for exactly one primary risk label…',
+              target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
+
+      - name: Evaluate and publish
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const PRIMARY = ['auto-safe', 'figures-moved', 'owner-decision', 'blocked'];
+            const pr = context.payload.pull_request;
+            const sha = pr.head.sha;
+            const target_url = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            let state = 'failure';
+            let description = 'Gate errored — treated as failure.';
+            try {
+              // Read labels fresh rather than from the event payload: a labeled
+              // event carries the state at dispatch, which a later event may
+              // already have superseded.
+              const labels = (await github.paginate(github.rest.issues.listLabelsOnIssue,
+                { ...context.repo, issue_number: pr.number, per_page: 100 })).map(l => l.name);
+              const found = PRIMARY.filter(p => labels.includes(p));
+
+              if (found.length === 1) {
+                state = 'success';
+                description = `Primary risk: ${found[0]}`;
+              } else if (found.length === 0) {
+                description = `No primary risk label. Add exactly one of: ${PRIMARY.join(', ')}`;
+              } else {
+                description = `${found.length} primary labels (${found.join(', ')}) — exactly one is allowed`;
+              }
+            } catch (err) {
+              description = `Gate errored (${err.message}) — treated as failure.`.slice(0, 140);
+            }
+
+            await github.rest.repos.createCommitStatus({
+              ...context.repo, sha, state, context: 'risk-label/primary',
+              description: description.slice(0, 140), target_url,
+            });
+            if (state !== 'success') core.setFailed(description);

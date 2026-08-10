@@ -100,6 +100,58 @@ ok(fs.existsSync(hookPath) && (fs.statSync(hookPath).mode & 0o111) !== 0,
   'and is executable, so git will actually run it',
   fs.existsSync(hookPath) ? '0' + (fs.statSync(hookPath).mode & 0o777).toString(8) : 'missing');
 
+console.log('\n=== the review gates agree with each other ===');
+// The gates are three files that have to name the same things. If the template
+// renames a field, the merge-card check fails every PR until someone notices;
+// if the manifest and the gate disagree about the primary labels, the gate is
+// unsatisfiable. Both are silent failures, so they are checked here.
+const template = read('.github/PULL_REQUEST_TEMPLATE.md');
+const mergeCard = read('.github/workflows/merge-card-check.yml');
+const gate = read('.github/workflows/risk-label-gate.yml');
+const manifest = read('.github/labels.yml');
+const labelerCfg = read('.github/labeler.yml');
+
+// Every field the check requires must exist in the template it points people at.
+const required = [...mergeCard.matchAll(/^\s*\['([^']+)',\s*'/gm)].map(m => m[1]);
+ok(required.length >= 8, 'the merge-card check declares its required fields', `${required.length} fields`);
+const missingFromTemplate = required.filter(f => !template.includes(`**${f}**`));
+ok(missingFromTemplate.length === 0,
+  'every field the check requires exists in the PR template',
+  missingFromTemplate.join(', ') || 'all present');
+
+// And every prose heading it requires.
+const headings = [...mergeCard.matchAll(/^\s*for \(const heading of \[([^\]]+)\]/gms)]
+  .flatMap(m => [...m[1].matchAll(/'([^']+)'/g)].map(x => x[1]));
+const missingHeadings = headings.filter(h => !new RegExp(`^#{2,4}\\s*${h.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`, 'm').test(template));
+ok(missingHeadings.length === 0,
+  'every prose section the check requires exists in the template',
+  missingHeadings.join(', ') || `${headings.length} sections`);
+
+// The gate's primary list and the manifest must describe the same four labels.
+const gatePrimary = (/const PRIMARY = \[([^\]]+)\]/.exec(gate) || [, ''])[1]
+  .match(/'([^']+)'/g) || [];
+const gateNames = gatePrimary.map(s => s.replace(/'/g, ''));
+ok(gateNames.length === 4, 'the risk gate names four primary labels', gateNames.join(', '));
+const notInManifest = gateNames.filter(n => !new RegExp(`^- name: ${n}$`, 'm').test(manifest));
+ok(notInManifest.length === 0,
+  'and every one of them exists in the label manifest', notInManifest.join(', ') || 'all present');
+
+// Every category the labeller can apply must exist too, or PRs get labelled
+// with names the repo does not have.
+const labelerNames = [...labelerCfg.matchAll(/^([a-z][a-z-]*):$/gm)].map(m => m[1]);
+const unknown = labelerNames.filter(n => !new RegExp(`^- name: ${n}$`, 'm').test(manifest));
+ok(unknown.length === 0, 'every auto-applied category label is in the manifest',
+  unknown.join(', ') || `${labelerNames.length} categories`);
+ok(labelerNames.every(n => !gateNames.includes(n)),
+  'and no primary label is applied automatically by path',
+  'the primary label is a judgement, not a path');
+
+// The snapshot the figures review diffs must actually run.
+ok(fs.existsSync(path.join(__dirname, 'scripts/figures-snapshot.js')),
+  'the published-figures snapshot script exists');
+ok(/figures-snapshot\.js/.test(read('.github/workflows/figures-review.yml')),
+  'and the figures review runs it');
+
 console.log('\n=== the security gate is intact ===');
 const server = read('server.js');
 ok(/SITE_PASSWORD/.test(server) && /process\.exit|throw/.test(server),
