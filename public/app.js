@@ -157,17 +157,43 @@ function renderStatic(d) {
     <div class="tile ${t.tone === 'plain' ? '' : t.tone}">
       <div class="lab">${t.label}</div>
       <div class="val">${money(t.value)}</div>
+      ${t.sub ? `<div class="subval">${money(t.sub.value)} <span>${t.sub.label}</span></div>` : ''}
       <div class="note">${t.note}</div>
     </div>`).join('');
 
-  $('upcoming').innerHTML = d.upcoming.map(u => `
-    <tr>
-      <td>${new Date(u.due + 'T00:00:00').toLocaleDateString('en-CA', { day: 'numeric', month: 'short' })}</td>
+  // Days between the as-of date and a due date, so urgency can be shown
+  // relative to the data rather than to whenever the page happens to be opened.
+  const asOfDate = new Date(d.meta.asOf + 'T00:00:00');
+  const daysUntil = due => Math.round((new Date(due + 'T00:00:00') - asOfDate) / 86400000);
+  const dueWord = n => n === 0 ? 'today' : n < 0 ? Math.abs(n) + 'd ago' : 'in ' + n + 'd';
+
+  $('upcoming').innerHTML = d.upcoming.map(u => {
+    const n = daysUntil(u.due);
+    const paid = u.status === 'paid';
+    const soon = !paid && n >= 0 && n <= 7;
+    const chip = paid ? '<span class="chip v">paid</span>'
+      : `<span class="chip ${soon ? 'w' : 'e'}">${dueWord(n)}</span>`;
+    return `
+    <tr class="${paid ? 'paid' : soon ? 'soon' : ''}">
+      <td>${new Date(u.due + 'T00:00:00').toLocaleDateString('en-CA', { day: 'numeric', month: 'short' })} ${chip}</td>
       <td>${u.what}</td>
       <td class="num">${money2(u.amount)}</td>
-      <td class="${u.status === 'paid' ? 'pos' : ''}">${u.status === 'paid' ? '<strong>Paid</strong> — ' : ''}${u.note || 'Due'}</td>
-    </tr>`).join('');
+      <td class="${paid ? 'pos' : ''}">${paid ? '<strong>Paid</strong> — ' : ''}${u.note || 'Due'}</td>
+    </tr>`;
+  }).join('');
   $('upcoming-note').textContent = d.upcomingNote;
+
+  const next = d.upcoming
+    .filter(u => u.status !== 'paid' && daysUntil(u.due) >= 0)
+    .sort((a, b) => a.due < b.due ? -1 : 1)[0];
+  const nd = $('next-due');
+  if (nd && next) {
+    const n = daysUntil(next.due);
+    nd.hidden = false;
+    nd.innerHTML = `<span class="nd-lab">Next due</span><b>${next.what}</b>` +
+      `<span>${money2(next.amount)} on ${new Date(next.due + 'T00:00:00').toLocaleDateString('en-CA', { day: 'numeric', month: 'long' })}</span>` +
+      `<span class="chip ${n <= 7 ? 'w' : 'e'}">${dueWord(n)}</span>`;
+  }
 
   const known = d.debts.filter(x => x.annualInterest != null);
   hbar($('c-debt'), known.map((x, i) => ({
@@ -315,8 +341,9 @@ function renderStatic(d) {
 
   if (d.spendingNote) $('spending-detail').textContent = d.spendingNote;
 
+  // Tier 0 means answered — green, not the tier-1 red it would otherwise get.
   $('questions').innerHTML = d.questions.map(q => `
-    <div class="qcard ${q.tier === 2 ? 't2' : q.tier === 3 ? 't3' : ''}">
+    <div class="qcard ${q.tier === 0 ? 'done' : q.tier === 2 ? 't2' : q.tier === 3 ? 't3' : ''}">
       <h3>${q.q}</h3>
       <p>${q.detail}</p>
       <p class="chg"><strong>What it changes:</strong> ${q.changes} <span class="chip">${q.owner}</span></p>
@@ -601,7 +628,73 @@ function setupPeriods(p) {
   renderPeriod();
 }
 
+/* ------------------------------------------------------------------ theme */
+// Three states: auto (follow the OS), dark, light. Persisted so the choice
+// survives the two-week session cookie. Charts read their colours from CSS
+// variables at render time, so a theme change means a re-render.
+const THEME_KEY = 'hfd-theme';
+
+function rerender() {
+  if (DATA) renderStatic(DATA);
+  renderPeriod();
+}
+
+function applyTheme(mode) {
+  if (mode === 'light' || mode === 'dark') {
+    document.documentElement.setAttribute('data-theme', mode);
+  } else {
+    document.documentElement.removeAttribute('data-theme');
+  }
+  const btn = $('theme-btn');
+  if (btn) btn.textContent = 'Theme: ' + (mode === 'light' ? 'Light' : mode === 'dark' ? 'Dark' : 'Auto');
+}
+
+function setupTheme() {
+  let mode = null;
+  try { mode = localStorage.getItem(THEME_KEY); } catch { /* storage unavailable */ }
+  if (mode !== 'light' && mode !== 'dark') mode = 'auto';
+  applyTheme(mode);
+  const btn = $('theme-btn');
+  if (!btn) return;
+  btn.addEventListener('click', () => {
+    mode = mode === 'auto' ? 'dark' : mode === 'dark' ? 'light' : 'auto';
+    try { localStorage.setItem(THEME_KEY, mode); } catch { /* storage unavailable */ }
+    applyTheme(mode);
+    rerender();
+  });
+}
+
+/* ------------------------------------------------------------------ nav */
+// Scrollspy: highlight the section currently in view. A scroll listener with a
+// rAF throttle is enough — the page is one column and sections are large.
+function setupNav() {
+  const links = [...document.querySelectorAll('.sitenav a')];
+  if (!links.length) return;
+  const sections = links
+    .map(a => document.getElementById(a.getAttribute('href').slice(1)))
+    .filter(Boolean);
+  let ticking = false;
+  function update() {
+    ticking = false;
+    const probe = scrollY + 140;
+    let current = sections[0];
+    for (const s of sections) if (s.offsetTop <= probe) current = s;
+    if (scrollY + innerHeight >= document.body.scrollHeight - 4) current = sections[sections.length - 1];
+    for (const a of links) {
+      if (a.getAttribute('href') === '#' + current.id) a.setAttribute('aria-current', 'true');
+      else a.removeAttribute('aria-current');
+    }
+  }
+  addEventListener('scroll', () => {
+    if (!ticking) { ticking = true; requestAnimationFrame(update); }
+  }, { passive: true });
+  update();
+}
+
 /* ------------------------------------------------------------------ boot */
+setupTheme();
+setupNav();
+
 fetch('/periods.json', { credentials: 'same-origin' })
   .then(r => r.ok ? r.json() : null)
   .then(p => { if (p) setupPeriods(p); })
@@ -615,7 +708,7 @@ fetch('/data.json', { credentials: 'same-origin' })
     renderPeriod();   // re-run so the spending caveat from data.json appears
     setupPayoff(d);
     setupRenewal(d);
-    matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { renderStatic(DATA); renderPeriod(); });
+    matchMedia('(prefers-color-scheme: dark)').addEventListener('change', rerender);
   })
   .catch(err => {
     if (err.message === 'auth') return;

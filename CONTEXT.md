@@ -133,6 +133,12 @@ stale while the rest of the page updates:
 node scripts/periods.js . 2026-08-09
 ```
 
+**Run it from the main checkout, not a worktree** — `raw/` and `derived/` are
+local-only, so a worktree root has no source data. From a worktree, pass the
+main checkout's path as the first argument instead of `.`. The script refuses
+to write when it finds zero events (that mistake once shipped a dashboard of
+$0.00s), so getting this wrong now fails at the prompt rather than on the site.
+
 Pass today's date — it decides what "this month", "last month" and "year to
 date" mean. It writes `derived/periods.json` and `public/periods.json`, and both
 are read from the same auth-gated path as `data.json`.
