@@ -168,6 +168,18 @@ for (const r of readCsv(path.join(DER, 'card-transactions.csv'))) {
 }
 
 // --- period definitions -----------------------------------------------------
+// A root without raw/ and derived/ (a fresh clone, or a worktree — they are
+// local-only) yields zero events, and writing that out publishes a page of
+// $0.00s. Refuse instead: this exact mistake shipped an empty dashboard once.
+if (events.length === 0) {
+  console.error(`FATAL: no events found under ${root}`);
+  console.error(`  raw/:     ${fs.existsSync(RAW) ? 'present' : 'MISSING'}`);
+  console.error(`  derived/: ${fs.existsSync(DER) ? 'present' : 'MISSING'}`);
+  console.error('Point the first argument at the checkout that holds the data, e.g.');
+  console.error('  node scripts/periods.js C:\\Users\\dnaud\\Documents\\atlas-financial 2026-08-09');
+  process.exit(1);
+}
+
 const thisMonth = asOf.slice(0, 7);
 const d = new Date(asOf + 'T00:00:00');
 d.setMonth(d.getMonth() - 1);
