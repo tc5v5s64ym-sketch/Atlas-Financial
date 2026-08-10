@@ -39,6 +39,18 @@ name: Codex review freshness
 # by which time it really would be stale, and the banner would be accidentally
 # right for the wrong reason.
 #
+# WHICH DOES NOT WORK YET, AND CANNOT. `issue_comment` runs the workflow file
+# from the DEFAULT BRANCH, not from the pull request that introduces it — the
+# same rule that keeps `risk-label-gate.yml` dormant until merge. So on the PR
+# adding this trigger, the comment wake-up is inert: the banner refreshes on
+# push and on nothing else. The visible consequence is narrow but real, and it
+# is the last thing anyone will see on that PR — Codex passes the head, no push
+# follows, and the banner sits there reading `stale` about a review that is
+# current. The SHA it names is the honest tell: if it names the head, the review
+# it is calling stale is the one that just passed. Reading it right requires
+# knowing this, which is why it is written down rather than left to be noticed.
+# From the first merge onward the wake-up is live and the banner self-corrects.
+#
 # The part that actually holds is none of these: it is the merge card's
 # `Advisory review` row, which has to say what happened to each finding before
 # the card check passes.

@@ -163,6 +163,13 @@ ok(/issues\.listComments/.test(fresh),
   'the freshness gate reads plain issue comments, where a clean verdict lands');
 ok(/issue_comment:/.test(fresh) && /types: \[created\]/.test(fresh),
   'and wakes when one arrives, not only on a push');
+// That wake-up runs the DEFAULT BRANCH copy of the workflow, so it is inert on
+// the PR that introduces it — the same rule that keeps the risk gate dormant.
+// The limitation has to stay written down, because the symptom is a banner
+// reading `stale` about a review that is current.
+ok(/DEFAULT BRANCH/.test(fresh) && /risk-label-gate/.test(fresh),
+  'and says plainly that the wake-up is inert until it reaches the default branch',
+  'otherwise the final banner on this PR reads as a contradiction');
 const reviewedRe = (/const REVIEWED = (\/.*\/i);/.exec(fresh) || [])[1];
 ok(!!reviewedRe, 'it declares a pattern for the reviewed-commit line', reviewedRe);
 {
