@@ -78,13 +78,25 @@ org's Codex settings, not here, and nothing in this repo turns it on or off.
 
 Two things here do surround it:
 
-**`codex-review.yml`** re-requests a review when the head moves. Codex reviews
-on open and on ready-for-review; it does not re-review after a push. On this
-repository's first PR it found two real P1s, both were fixed and pushed, and
-its verdict stayed attached to a revision that no longer existed — which reads
-exactly like a review of the current one. The workflow asks again, once per
-head SHA, and only when the push touched the engine, the published figures or
-a page script. Drafts are skipped.
+**`codex-review.yml`** reports whether the Codex review still describes the
+code that is here. Codex reviews on open and on ready-for-review; it does not
+re-review after a push. On this repository's first PR it found two real P1s,
+both were fixed and pushed, and its verdict stayed attached to a revision that
+no longer existed — which reads exactly like a review of the current one. A
+stale approval is worse than no approval.
+
+The workflow compares the newest commit Codex actually reviewed against the
+head and keeps one comment updated in place: current, stale by N commits, or
+none yet.
+
+It *reports* rather than *requests*, and that is a correction rather than a
+design choice. Posting `@codex review` from CI was tried and does not work —
+Codex answers a mention from `github-actions[bot]` with "create a Codex
+account and connect to github", because the request must come from a linked
+human account. The result was two useless comments on every push. Making it
+work would mean storing a human PAT as a repository secret, and secrets here
+live only in Render. So a human comments `@codex review` when the freshness
+comment says stale.
 
 **The merge card's `Advisory review` row** records what happened to each
 finding: fixed, non-issue with the reason, or deferred to the backlog. This is

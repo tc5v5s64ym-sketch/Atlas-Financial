@@ -1,102 +1,123 @@
-name: Request Codex review
+name: Codex review freshness
 
-# Asks Codex to review again when the head changes in a way that matters.
+# Says whether the Codex review on this PR still describes the code that is
+# actually here.
 #
-# Codex already reviews on open and on ready-for-review — that part is
-# configured outside this repository, in the org's Codex settings, and nothing
-# here controls it. The gap is what happens NEXT. On this repository's first
-# PR, Codex reviewed the opening head, found two real P1s, both were fixed and
-# pushed, and it never looked again: its verdict stayed attached to a revision
-# that no longer existed. A review of superseded code reads exactly like a
-# review of the current one.
+# THE PROBLEM. Codex reviews on open and on ready-for-review, not after a push.
+# On this repository's first PR it reviewed the opening head, found two real
+# P1s, both were fixed and pushed — and it never looked again. Its verdict sat
+# there attached to a revision that no longer existed, which reads exactly like
+# a review of the current one. A stale approval is worse than no approval.
 #
-# So this re-requests a review when the head moves, and only then. Three
-# deliberate limits keep it from becoming noise:
+# WHAT THIS DOES NOT DO, AND WHY. The obvious fix is to post `@codex review`
+# from CI. That was tried here and it does not work: Codex answers a mention
+# from `github-actions[bot]` with "create a Codex account and connect to
+# github", because the requesting identity must be a linked human account. The
+# result was two useless comments on every push — the request and the refusal.
+# Making it work would mean storing a human PAT as a repository secret, and in
+# this repo secrets live only in Render and nowhere else. Not worth it for a
+# convenience.
 #
-#   · DRAFTS ARE SKIPPED. Work in progress does not need a reviewer.
-#   · PATHS ARE FILTERED. A push touching only docs, tests or workflows does
-#     not re-request; a push touching the engine, the published figures or the
-#     Plan page does. What Codex is good at here is the maths and the wiring.
-#   · ONE REQUEST PER HEAD SHA. The marker comment records which SHA was asked
-#     about, so a re-run, a label event or a second synchronize on the same
-#     commit cannot ask twice.
+# So this reports rather than requests. It compares the newest commit Codex
+# actually reviewed against the current head and keeps ONE comment updated in
+# place, never adding a second. When the review is stale, a human comments
+# `@codex review` — which takes a moment and works.
 #
-# HONEST LIMIT: this posts a comment as `github-actions[bot]`. Codex is a
-# GitHub App reacting to webhooks rather than a workflow, so it should see a
-# bot comment — but that is the org's integration behaving as documented, not
-# something this repository can guarantee. If a re-review does not appear,
-# comment `@codex review` by hand; the merge card's advisory-review row still
-# has to be answered either way, which is the part that actually holds.
+# The part that actually holds is neither of these: it is the merge card's
+# `Advisory review` row, which has to say what happened to each finding before
+# the card check passes.
 
 on:
   pull_request:
-    types: [opened, synchronize, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
   contents: read
   pull-requests: write
 
 concurrency:
-  group: codex-review-${{ github.event.pull_request.number }}
-  cancel-in-progress: false
+  group: codex-freshness-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
-  request:
-    name: Ask Codex to look again
+  freshness:
+    name: Is the Codex review current
     if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Decide whether this head is worth a re-review
-        id: decide
-        run: |
-          git fetch --no-tags --depth=0 origin "${{ github.base_ref }}" 2>/dev/null || true
-          CHANGED=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD" || true)
-          echo "changed files:"; echo "$CHANGED" | sed 's/^/  /'
-          # The maths and the wiring. Documentation and workflow changes are
-          # reviewed by a person reading them, not by a code reviewer.
-          if echo "$CHANGED" | grep -qE '^(public/(forecast|plan|app|deepdive|records|modellers)\.js|data\.json|server\.js|scripts/.*\.js|test.*\.js)$'; then
-            echo "worthwhile=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "worthwhile=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Request a review, once per head
-        if: steps.decide.outputs.worthwhile == 'true'
+      - name: Compare the reviewed head with the current one
         uses: actions/github-script@v7
         with:
           script: |
             const { owner, repo } = context.repo;
             const pr = context.payload.pull_request;
-            const sha = pr.head.sha;
-            const MARKER = `<!-- atlas-codex-request ${sha} -->`;
+            const head = pr.head.sha;
+            const MARKER = '<!-- atlas-codex-freshness -->';
+            const isCodex = login => /codex/i.test(login || '');
 
-            const comments = await github.paginate(github.rest.issues.listComments,
+            // Which commit did Codex last actually look at? Reviews carry the
+            // SHA they were submitted against; review comments carry it too.
+            // Take the newest of either.
+            const reviews = await github.paginate(github.rest.pulls.listReviews,
+              { owner, repo, pull_number: pr.number, per_page: 100 });
+            const comments = await github.paginate(github.rest.pulls.listReviewComments,
+              { owner, repo, pull_number: pr.number, per_page: 100 });
+
+            const seen = [
+              ...reviews.filter(r => isCodex(r.user && r.user.login))
+                .map(r => ({ sha: r.commit_id, at: r.submitted_at })),
+              ...comments.filter(c => isCodex(c.user && c.user.login))
+                .map(c => ({ sha: c.original_commit_id || c.commit_id, at: c.created_at })),
+            ].filter(x => x.sha).sort((a, b) => (a.at < b.at ? 1 : -1));
+
+            const commits = await github.paginate(github.rest.pulls.listCommits,
+              { owner, repo, pull_number: pr.number, per_page: 250 });
+            const order = commits.map(c => c.sha);
+            const short = s => (s || '').slice(0, 7);
+
+            let body;
+            if (!seen.length) {
+              body = `${MARKER}\n### 🤖 Codex review — none yet\n\n` +
+                `No Codex review has landed on this PR. It normally reviews on open and on ` +
+                `ready-for-review; if it has not, comment \`@codex review\`.\n\n` +
+                `Either way the merge card's **Advisory review** row still has to be answered — ` +
+                `\`none raised\` is a valid answer once a review has come back clean.`;
+            } else if (seen[0].sha === head) {
+              body = `${MARKER}\n### 🤖 Codex review — current\n\n` +
+                `Codex has reviewed \`${short(head)}\`, which is the current head. Its findings ` +
+                `describe the code that is actually here.\n\n` +
+                `Record what happened to each one in the merge card's **Advisory review** row: ` +
+                `fixed, non-issue with the reason, or deferred to the backlog.`;
+            } else {
+              const i = order.indexOf(seen[0].sha);
+              const behind = i >= 0 ? order.length - 1 - i : null;
+              body = `${MARKER}\n### 🤖 Codex review — **stale**\n\n` +
+                `Codex last reviewed \`${short(seen[0].sha)}\`` +
+                (behind ? `, which is **${behind} commit${behind === 1 ? '' : 's'} behind** the head` : '') +
+                ` — the head is now \`${short(head)}\`.\n\n` +
+                `Its findings, and any clean bill of health, describe code that is no longer here. ` +
+                `**Comment \`@codex review\` to refresh it.** CI cannot do that: Codex requires the ` +
+                `request to come from a linked account, and refuses one from \`github-actions[bot]\`.`;
+            }
+
+            body += `\n\n---\n_Generated by [Claude Code](https://claude.ai/code)_`;
+
+            const all = await github.paginate(github.rest.issues.listComments,
               { owner, repo, issue_number: pr.number, per_page: 100 });
-
-            if (comments.some(c => c.body && c.body.includes(MARKER))) {
-              core.info(`A review has already been requested for ${sha.slice(0, 7)}.`);
-              return;
-            }
-            // On `opened`, Codex reviews of its own accord — asking as well
-            // would produce two reviews of the same commit.
-            if (context.payload.action === 'opened') {
-              core.info('Opened: Codex reviews on its own for this event. Recording the SHA only.');
-              await github.rest.issues.createComment({ owner, repo, issue_number: pr.number,
-                body: `${MARKER}\n<sub>Codex reviews new pull requests automatically — no request sent for \`${sha.slice(0, 7)}\`.</sub>` });
-              return;
+            const existing = all.find(c => c.body && c.body.includes(MARKER));
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number: pr.number, body });
             }
 
-            await github.rest.issues.createComment({
-              owner, repo, issue_number: pr.number,
-              body: `${MARKER}\n@codex review\n\n` +
-                `<sub>The head moved to \`${sha.slice(0, 7)}\` and it touches the engine, the published ` +
-                `figures or a page script — so the previous review now describes code that is no longer ` +
-                `here. Requested automatically; one request per head SHA.</sub>\n\n` +
-                `---\n_Generated by [Claude Code](https://claude.ai/code)_`,
-            });
-            core.info(`Requested a Codex review for ${sha.slice(0, 7)}.`);
+            // Clean up the abandoned auto-request comments from the earlier
+            // approach, so the thread does not keep a record of a mechanism
+            // that was removed for not working.
+            for (const c of all) {
+              if (c.body && c.body.includes('<!-- atlas-codex-request ')) {
+                await github.rest.issues.deleteComment({ owner, repo, comment_id: c.id });
+                core.info(`removed stale auto-request comment ${c.id}`);
+              }
+            }
