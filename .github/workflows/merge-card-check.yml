@@ -68,12 +68,26 @@ jobs:
             // mentioning it. `B1 is not ALREADY FIXED` and `P1 not fixed` both
             // read as answers under a bare match (Codex, on f71ef30).
             //
-            // The window is short on purpose. "STILL BROKEN — not fixed by
-            // PR #1" must stay a valid verdict: the negation there governs
-            // "fixed by PR #1", not the verdict phrase, and no verdict token
-            // follows it within the window.
-            const dropNegated = (text, tokenSource) => text.replace(
-              new RegExp(`\\b(?:not|never|no|isn'?t|wasn'?t|un-)\\b[ \\t]*(?:\\w+[ \\t]+){0,2}?(?:${tokenSource})`, 'gi'), '');
+            // Scoped to the CLAUSE, not to a distance. The first version stripped
+            // a token only within two words of the negation, so `P1 was not in
+            // any way fixed` walked straight through it (Codex, P1, on 225e243).
+            // Widening the window is the wrong fix and would undo an earlier one:
+            // at three words it starts eating the `fixed` in `No unanswered
+            // findings; P1 fixed`, which is an honest card Codex had already
+            // caught this check failing.
+            //
+            // A negation governs its own clause and stops at the punctuation.
+            // That is what separates the two halves of `P1 not fixed here —
+            // routed to B72` and of `STILL BROKEN — not fixed by PR #1`: in both,
+            // the negated clause loses its token and the clause that carries the
+            // real answer keeps it, at any length.
+            const NEGATION_WORD = /\b(?:not|never|no|isn'?t|wasn'?t|un-)\b/i;
+            const dropNegated = (text, tokenSource) => text
+              .split(/([;,.—–])/)
+              .map((clause) => NEGATION_WORD.test(clause)
+                ? clause.replace(new RegExp(tokenSource, 'gi'), '')
+                : clause)
+              .join('');
 
             // Read a card ROW, not a mention of its label. The first version
             // matched the label anywhere in the body, so prose above the card —

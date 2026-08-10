@@ -393,6 +393,16 @@ const CASES = [
   ['a verdict whose sentence negates something else', card({ rows: {
     'Current-state verdict': 'B1 · STILL BROKEN — not fixed by PR #1',
   } }), 'green'],
+  // A negation governs its clause, not a two-word neighbourhood. Widening that
+  // window was not an option: at three words it eats the `fixed` in
+  // "No unanswered findings; P1 fixed", an honest card this check already failed
+  // once.
+  ['a disposition negated at arm\'s length', card({ review: {
+    'Findings and dispositions': 'P1 was not in any way fixed',
+  } }), 'red'],
+  ['a verdict negated at arm\'s length', card({ rows: {
+    'Current-state verdict': 'B1 is not in any way ALREADY FIXED',
+  } }), 'red'],
   ['a disposition that says where a finding went, not that it was fixed', card({ review: {
     'Findings and dispositions': 'P1 not fixed here — routed to B72',
   } }), 'green'],
@@ -549,10 +559,24 @@ const MUTANTS = [
       'const IDENTITY_UNFIT = PENDING;'),
   },
   {
+    // Matched to the end of the expression rather than by counting lines: a
+    // line count is a distance heuristic, and reformatting the function left it
+    // consuming four lines of a six-line expression, which produced code that
+    // did not parse. Every case "threw", which proves a broken file.
     name: 'negated vocabulary counted as a selection again',
     apply: src => src.replace(
-      /const dropNegated = \(text, tokenSource\) => text\.replace\(\n\s*new RegExp\(.*\n/,
-      'const dropNegated = (text) => text;\n'),
+      /const dropNegated = \(text, tokenSource\) => text[\s\S]*?\.join\(''\);/,
+      'const dropNegated = (text) => text;'),
+  },
+  {
+    // Codex's point was that negation handling must not rest on a word-distance
+    // heuristic. Reinstating the old window proves the clause scoping is what
+    // catches the long form — and, on the other side, that widening the window
+    // is not an option, because it fails an honest card.
+    name: 'clause scoping reverted to the two-word window',
+    apply: src => src.replace(
+      /\.split\(\/\(\[;,\.—–\]\)\/\)/,
+      ".split(/(?:)/)"),
   },
   {
     name: 'the absence words allowed back as a not-required reason',
