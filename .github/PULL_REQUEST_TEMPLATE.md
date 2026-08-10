@@ -75,7 +75,11 @@
   check's.
 
   Reasons are required where a value switches something off: EXCEEDED,
-  atomicity YES, and any reassessment after two or more blocking rounds.
+  atomicity YES, any reassessment after two or more blocking rounds, and
+  "Loops left open" whenever the net is positive.
+
+  SPLIT is the one closed value that BLOCKS: a pull request declaring it must
+  be divided may not merge until it has been.
 -->
 
 - **One outcome**: <!-- the single thing this makes true, in one line -->
@@ -83,11 +87,12 @@
 - **Scope status**: <!-- WITHIN, or EXCEEDED — <why>. Tripwires: <=8 implementation files, <=~600 implementation lines, tests/fixtures/generated counted separately -->
 - **Atomicity exception**: <!-- NO, or YES — <what splitting would break, and why one closure condition covers the pieces> -->
 - **Blocking review rounds**: <!-- 0 / 1 / 2 / 3+ — exact-head rounds that blocked -->
-- **Scope reassessment**: <!-- N/A below two rounds; otherwise CONTINUE — <why one root cause> or SPLIT — <what moves out> -->
+- **Scope reassessment**: <!-- N/A below two rounds; otherwise CONTINUE — <why one root cause>. SPLIT says this PR must be divided and BLOCKS the merge until it has been -->
 - **Proof level**: <!-- UNIT / INTEGRATION / BROWSER / LIVE / OWNER EVIDENCE / MIXED -->
-- **Open loops closed**: <!-- integer -->
-- **Open loops created**: <!-- integer -->
+- **Open loops closed**: <!-- integer, nothing else -->
+- **Open loops created**: <!-- integer, nothing else -->
 - **Net open loops**: <!-- created minus closed; the check does the arithmetic. Preference is <= 0 -->
+- **Loops left open**: <!-- each loop this leaves open and what closes it, or "none". Required to be a real answer when the net is positive -->
 
 ### Atlas Contract / Systems Review
 

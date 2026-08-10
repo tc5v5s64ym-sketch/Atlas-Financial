@@ -73,10 +73,11 @@ rule; the card records it, and this is the part of the record a check can hold:
 | `Scope status` | opens `WITHIN` or `EXCEEDED`; `EXCEEDED` carries a reason |
 | `Atomicity exception` | opens `YES` or `NO`; `YES` carries a reason |
 | `Blocking review rounds` | opens `0`, `1`, `2` or `3+` |
-| `Scope reassessment` | opens `N/A`, `CONTINUE` or `SPLIT` — and at two or more rounds, not `N/A`, with a reason |
+| `Scope reassessment` | opens `N/A`, `CONTINUE` or `SPLIT` — and at two or more rounds, not `N/A`, with a reason. **`SPLIT` fails**: a pull request declaring it must be divided may not merge until it has been |
 | `Proof level` | opens `UNIT`, `INTEGRATION`, `BROWSER`, `LIVE`, `OWNER EVIDENCE` or `MIXED` |
 | `Open loops closed` / `created` | a non-negative integer and nothing else |
 | `Net open loops` | an integer, and equal to created minus closed |
+| `Loops left open` | present; and when the net is **positive**, a real answer rather than an absence word |
 
 **Every one of those is a closed form, an anchor, or arithmetic** — deliberately,
 and as the direct lesson of the thirty-one false greens above. A field that opens

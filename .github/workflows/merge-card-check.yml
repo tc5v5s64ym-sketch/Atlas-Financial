@@ -72,9 +72,19 @@ jobs:
             // blocks — the review lane, delivery, and the findings — are all
             // read this way, so the span rule has one home rather than three
             // copies that can drift apart.
+            //
+            // EVERY heading level ends a section. The span used to stop only at
+            // `##` through `####`, so a `#`, `#####` or `######` heading did not
+            // close the block — and a required bullet placed under one of them
+            // still answered the block above it (ChatGPT, P2, on 5cc05ce). That
+            // was a live false green: a Delivery line could be deleted from the
+            // block and re-added under a later `# Appendix`, and the card went
+            // green. Making the helper shared, and making the new Delivery gate
+            // depend on it, is what turned an old span assumption into three
+            // gates resting on the same hole.
             const sectionAfter = (heading) =>
               body.slice(heading.index + heading[0].length)
-                .split(/\n[ \t]*#{2,4}[ \t]+/)[0];
+                .split(/\n[ \t]*#{1,6}[ \t]+/)[0];
 
             // Read a bullet line out of one of those blocks. The colon is
             // REQUIRED, for the same reason it is required in the card table:
@@ -556,6 +566,7 @@ jobs:
                 ['Open loops closed', 'an integer'],
                 ['Open loops created', 'an integer'],
                 ['Net open loops', 'created minus closed'],
+                ['Loops left open', 'each loop this leaves open and what closes it, or "none"'],
               ];
               const d = {};
               for (const [label, want] of DELIVERY) {
@@ -621,6 +632,19 @@ jobs:
                 }
               }
 
+              // SPLIT is a pull request declaring that it must be divided, and
+              // one that says so may not merge in that state — the card would
+              // be recording an unperformed split as though it were a decision
+              // already carried out (ChatGPT, P1, on 5cc05ce). It is a closed
+              // token, so this is a fact a check can hold rather than a
+              // judgement it has to make.
+              //
+              // Unconditional on the round count: SPLIT means the same thing
+              // whenever it is written.
+              if (opensWith(d['Scope reassessment'], ['SPLIT'])) {
+                problems.push('"Scope reassessment: SPLIT" says this pull request has to be divided, so it cannot merge as it stands. Perform the split, then let the pull request that remains reassess its own scope honestly — "CONTINUE — <why what is left is one root cause>", naming where the other outcome went.');
+              }
+
               // Open loops. Integers and one subtraction: the only claim on
               // this card a check can verify rather than merely witness.
               const INT = /^-?\d+$/;
@@ -643,6 +667,20 @@ jobs:
                 .map((l) => counts[l]);
               if ([cl, cr, net].every((n) => Number.isInteger(n)) && net !== cr - cl) {
                 problems.push(`"Net open loops" reads ${net}, and created minus closed is ${cr - cl}. The three have to agree — the net is the figure the preference is stated against, so a net that does not follow from its own two inputs states nothing.`);
+              }
+              // A positive net is allowed and sometimes necessary. CLAUDE.md
+              // asks that it be EXPLAINED rather than hidden, and three
+              // integers explain nothing — `closed 0 / created 2 / net 2` was
+              // green while naming neither loop (ChatGPT, P1, on 5cc05ce).
+              //
+              // The trigger is arithmetic and the requirement is PRESENCE: the
+              // absence words come out first, exactly as for a not-required
+              // reason, and what is left has to be an answer at all. Whether
+              // that answer really names the loops and how each one closes is
+              // the reviewer's read, and this deliberately does not parse it.
+              if (Number.isInteger(net) && net > 0
+                  && !/[a-z]{3}/i.test(d['Loops left open'].replace(ABSENT_REASON, ''))) {
+                problems.push(`"Net open loops" is ${net}, so "Loops left open" has to name what this pull request leaves open and what closes each one. A positive net is allowed and sometimes necessary — CLAUDE.md asks that it be explained rather than hidden, and "none" cannot be the answer when the count says otherwise.`);
               }
             }
 

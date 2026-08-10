@@ -383,6 +383,12 @@ pull request that is secretly several announces itself.
 - **After three**, `CONTINUE` has to say why finishing here is safer than
   splitting.
 
+**`SPLIT` blocks the merge.** It is a pull request saying it has to be divided,
+and one that says so may not merge in that state — otherwise the card records an
+unperformed split as though it were a decision already carried out. Perform the
+split; the pull request that remains reassesses its own scope honestly, which is
+normally `CONTINUE` naming where the other outcome went.
+
 There is no automatic failure at any number. The breaker exists to force the
 question, not to punish review.
 
@@ -419,7 +425,10 @@ step. What it may not do is call itself finished.
 
 Every pull request reports three integers in the card: loops **closed**, loops
 **created**, and the **net**. The preference is net ≤ 0. A positive net is
-allowed and sometimes necessary; it is explained rather than hidden.
+allowed and sometimes necessary; it is explained rather than hidden — so a
+fourth line, **`Loops left open`**, names each one and what closes it, and the
+check requires a real answer there whenever the net is positive. Three integers
+can report a positive net; they cannot explain one.
 
 This creates no new ledger, tracker or backlog system. `BACKLOG.md` and
 `docs/01_OPEN_QUESTIONS.md` already hold work and questions, and an open loop

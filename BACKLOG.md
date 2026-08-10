@@ -248,6 +248,14 @@ spot. One look at the LeagueApps payment history closes it.
 Travel Visa **57,968 TD Rewards points**; Cash Back **$47.21**. Absent from net
 worth.
 
+**B72 · `test-mergecard.js` names a commit that no branch holds** · *housekeeping*
+The `HEAD` fixture is `b85274ce…`, with a comment calling it "a real commit on
+this branch". PR #2's rebase removed that commit from every branch, so the
+comment is false. Harmless to behaviour — the fixture only needs 40 hex
+characters — but a comment asserting something untrue is the class of defect
+this repository treats as real. Fix it in passing, whenever a pull request has
+honest reason to touch that file; it does not justify one of its own.
+
 ---
 
 ## Ready — needs a session at an institution
