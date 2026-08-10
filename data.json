@@ -76,15 +76,16 @@
     { "label": "Savings", "value": 90.58 },
     { "label": "SAVINGS-DONT TOUCH", "value": 74.20 },
     { "label": "Wise (two US spending accounts)", "value": 205.92 },
+    { "label": "Silver — 100 oz [ESTIMATE]", "value": 8847.00 },
     { "label": "RESP (education-restricted)", "value": 31555.85 },
     { "label": "TFSA, US TFSA, two mutual funds", "value": 0 }
   ],
-  "assetsNote": "Read from TD on 9 August, after the $300 Triangle payment and the $70 Cash Back payment both left Chequing A. SAVINGS-DONT TOUCH is a staging account rather than savings — money arrives and leaves within days, and it earned $0.11 over 18 months. The Wise figure is $83.84 CAD plus $86.82 USD, converted at the 0.7112 rate actually paid rather than a spot rate, and is calculated from the transaction ledger rather than read off Wise.",
+  "assetsNote": "Read from TD on 9 August, after the $300 Triangle payment and the $70 Cash Back payment both left Chequing A. SAVINGS-DONT TOUCH is a staging account rather than savings — money arrives and leaves within days, and it earned $0.11 over 18 months. The Wise figure is $83.84 CAD plus $86.82 USD, converted at the 0.7112 rate actually paid rather than a spot rate, and is calculated from the transaction ledger rather than read off Wise. The silver is 100 oz, owner-stated 10 August 2026, valued at the C$88.47/oz spot price that day — a market price, not a quote. Actual proceeds would be lower: dealers buy under spot, and any gain over the original purchase price is a taxable capital gain in Canada. It is the household's largest liquid asset by a wide margin, worth roughly three times the total cash.",
   "netWorth": {
-    "assets": 34607.66,
+    "assets": 43454.66,
     "debts": 777455.57,
-    "financialAccountsOnly": -742847.91,
-    "caveat": "Household net worth is now estimable. At the owner's estimate of $1.1m–$1.4m for the home, it is roughly $357,000 to $657,000 [ESTIMATE] — the financial accounts above, plus the home, less all debt. Loan-to-value on the mortgage and HELOC together ($747,612.74) is 68% at the low end and 53% at the high end, both comfortably under the 80% that matters at the May 2027 renewal. This is an owner's estimate, not an appraisal, and a lender will use its own. Vehicles, pensions and the business are still excluded."
+    "financialAccountsOnly": -734000.91,
+    "caveat": "Household net worth is now estimable. At the owner's estimate of $1.1m–$1.4m for the home, it is roughly $366,000 to $666,000 [ESTIMATE] — the financial accounts above, plus the home, less all debt. The range rose by about $8,800 when the silver was added on 10 August. Loan-to-value on the mortgage and HELOC together ($747,612.74) is 68% at the low end and 53% at the high end, both comfortably under the 80% that matters at the May 2027 renewal. This is an owner's estimate, not an appraisal, and a lender will use its own. Vehicles, pensions and the business are still excluded."
   },
 
   "helocHistory": [
