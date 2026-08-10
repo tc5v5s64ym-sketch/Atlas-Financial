@@ -327,6 +327,27 @@ ok(/capQualifier/.test(planJs2) &&
 // only true when that amount actually reaches the current gap.
 ok(/actionCovers/.test(planJs2),
   'the Next move outcome is judged against the current gap, not merely feasibility');
+// An override that breaches must be reported as a breach, whatever else is
+// true about the opening gap.
+ok(/overrideBreaches/.test(planJs2),
+  'a manual weekly figure that breaches the buffer is reported before gap copy');
+{
+  const O = { scenario: 'expected', incomeOverrides: {}, disabled: [], extraDebtMonthly: 0,
+    targetBuffer: 500, fundingSources: plan.funding.options };
+  const adv = F.recommend(plan, asOf, O);
+  const over = F.simulate(plan, asOf, Object.assign({}, adv.simOptions, { weeklyVariable: 1500 }));
+  ok(over.min.balance < 0,
+    'and $1,500/week really does go negative even with the gap covered',
+    money(over.min.balance));
+}
+// The note named categories that stopped being $0 when sinking funds were split.
+ok(/fullyDatedNames/.test(planJs2),
+  'the fully-dated categories are derived, not named in prose');
+ok(!/Insurance and children's sports show \$0/.test(planJs2),
+  'and the stale sentence claiming sports shows $0 is gone');
+// The ledger has to add up on the page, not just in the engine.
+ok(/T\.injections > 0/.test(planJs2),
+  'gap funding appears as its own ledger row so the rows reconcile');
 ok(/still to find before/.test(planJs2),
   'and says what is left when the action alone is not enough');
 

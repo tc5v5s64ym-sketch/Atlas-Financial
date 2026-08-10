@@ -319,5 +319,23 @@ ok(F.recommendWeekly(exact, '2026-01-01', { targetBuffer: 500 }) === 0 ||
    F.simulate(exact, '2026-01-01', { weeklyVariable: 0, targetBuffer: 500 }).min.balance >= 500 - F.EPSILON,
   'a balance exactly at the buffer is not read as a breach');
 
+// --- 8. the ledger identity survives gap funding ------------------------
+// The displayed rows must add up to the ending balance. With an injection in
+// the arithmetic and not on the page they reconciled to $3,946.04 against an
+// ending of $4,989.20 — an auditable identity that did not audit.
+{
+  const T = gapRec.sim.totals;
+  const rows = plan.startingCash.amount + T.confirmedIncome + T.estimatedIncome + T.injections
+    - T.obligations - T.bills - T.commitments - T.variable - T.extra;
+  ok(near(rows, gapRec.sim.ending),
+    'the ledger rows reconcile to the ending balance once gap funding is one of them',
+    `${rows.toFixed(2)} = ${gapRec.sim.ending.toFixed(2)}`);
+  ok(T.injections > 0, 'and there is an injection to account for', T.injections.toFixed(2));
+  const without = rows - T.injections;
+  ok(Math.abs(without - gapRec.sim.ending) > 1000,
+    'leaving it out breaks the identity by the whole gap',
+    `${without.toFixed(2)} vs ${gapRec.sim.ending.toFixed(2)}`);
+}
+
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
 process.exit(failures === 0 ? 0 : 1);

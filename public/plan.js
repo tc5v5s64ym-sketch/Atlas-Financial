@@ -320,7 +320,25 @@ function renderPlan(d, periods) {
 
   /* ---- status band ---- */
   const band = $('status-band');
-  if (gap && fundingShort) {
+  const overrideBreaches = state.weeklyVariable != null && sim.min.balance < sim.buffer - 0.005;
+  if (gap && overrideBreaches) {
+    // The user has set a weekly figure above what the forecast supports. That
+    // breach is the headline, whatever is also true about the opening gap —
+    // reporting "cover the gap and hold this spending" described a plan that
+    // runs $809 negative.
+    // From the funding date onward, matching how the floor is measured — the
+    // days before it are the acknowledged squeeze, not a consequence of the
+    // spending setting being tested here.
+    const firstBad = sim.daily.find(p =>
+      (!gap || p.date >= gap.date) && p.balance < sim.buffer - 0.005);
+    band.className = 'statusband crit';
+    band.innerHTML =
+      `<b>${money(weekly)}/week does not work${sim.min.balance < 0 ? ' — the account goes negative' : ''}.</b>
+       Even with the ${money(fundingGap)} gap covered, spending at your setting takes the balance to
+       ${money(sim.min.balance)} by ${fmtDateLong(sim.min.date)}${firstBad && firstBad.date !== sim.min.date
+        ? `, first slipping below the buffer on ${fmtDateLong(firstBad.date)}` : ''}.
+       The forecast supports <b>${money(recommended)}/week</b>.`;
+  } else if (gap && fundingShort) {
     // Nothing available reaches the gap. Saying "cover it and the window
     // finishes with $X" would describe a plan that does not exist.
     band.className = 'statusband crit';
@@ -825,6 +843,15 @@ function renderPlan(d, periods) {
       : '') +
     row('Income — confirmed', '+ ' + money2(T.confirmedIncome), 'in', chipC) +
     row('Income — estimated', est('+ ' + money2(T.estimatedIncome)), 'in', chipE) +
+    // Without this row the rows below do not add up to the ending balance —
+    // they reconciled to $3,946.04 against an ending of $4,989.20, the
+    // difference being gap funding that was in the arithmetic and not on the
+    // page. It is not income: it is money moved in to cover the opening gap.
+    (T.injections > 0
+      ? row(`Gap funding <span class="mutedtext">${fundingPlan
+          ? fundingPlan.parts.map(p => p.short).join(' + ') : 'moved in'}</span>`,
+        '+ ' + money2(T.injections), 'in', ' <span class="chip">not income</span>')
+      : '') +
     row('Debt minimums & mortgage', '− ' + money2(T.obligations), 'out') +
     row('Recurring bills — utilities, insurance, gym', '− ' + money2(T.bills), 'out') +
     row('Committed expenses', '− ' + money2(T.commitments), 'out') +
@@ -967,12 +994,24 @@ function renderPlan(d, periods) {
       </div>`).join('');
 
     const inCap = budget.requiredMonthly + budget.discretionaryMonthly;
+    // Derived, not named in prose — the sentence used to say "insurance and
+    // children's sports", and sports stopped being $0 when sinking funds were
+    // separated out.
+    const fullyDatedNames = budget.categories.filter(c => c.fullyDated).map(c => c.label);
     $('budget-cats-note').textContent =
       `The right-hand figure is what each category has averaged; the amount before it is what has to come out of the ` +
       `weekly cap once anything already dated on the calendar is removed. Those add to ${money(inCap)}/month against a ` +
       `cap of ${money(recMonthly)}/month, so ${money(Math.max(0, inCap - recMonthly))}/month has to come off — and it ` +
       `cannot come off the essential rows, which are ${money(budget.requiredMonthly)}/month on their own. ` +
-      `Insurance and children's sports show $0 because they are fully dated on the calendar, not because they are free.`;
+      (fullyDatedNames.length
+        ? `${fullyDatedNames.join(' and ')} show${fullyDatedNames.length === 1 ? 's' : ''} $0 because ` +
+          `${fullyDatedNames.length === 1 ? 'it is' : 'they are'} fully dated on the calendar, not because ` +
+          `${fullyDatedNames.length === 1 ? 'it is' : 'they are'} free.`
+        : '') +
+      (budget.sinkingMonthly > 0
+        ? ` The ${money(budget.sinkingMonthly)}/month of season fees is saved for separately and is not ` +
+          `netted off the ordinary sports line, which still carries its own budget.`
+        : '');
   }
 
   /* ---- next actions ---- */
