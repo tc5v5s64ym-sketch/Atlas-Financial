@@ -77,7 +77,9 @@
 
   It reads the EXACT head. A review of an earlier commit does not cover a later
   one — push after a review and it has to be repeated. That is the same staleness
-  the Codex freshness comment reports, and it is no less serious here.
+  the Codex freshness comment reports, and it is no less serious here, so the
+  card check enforces it: when this block says a review was required, the SHA
+  below has to be this pull request's current head.
 -->
 
 - **Required**: <!-- required (name the trigger that fired) / not required (say why none did) -->

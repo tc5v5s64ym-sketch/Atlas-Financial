@@ -162,8 +162,18 @@ jobs:
               const notRequired = /\bnot[ \t]+required\b/i.test(req)
                 || /^(no|none|n\/a)\b/i.test(req);
               if (req && !notRequired) {
-                if (!/\b[0-9a-f]{40}\b/i.test(seen['Exact reviewed head'])) {
+                const recorded = (/\b[0-9a-f]{40}\b/i.exec(seen['Exact reviewed head']) || [''])[0];
+                const head = ((context.payload.pull_request || {}).head || {}).sha || '';
+                if (!recorded) {
                   problems.push('The review is recorded as required, so "Exact reviewed head" must carry the full 40-character SHA the reviewer actually read. A review of an earlier commit does not cover this head.');
+                } else if (head && recorded.toLowerCase() !== head.toLowerCase()) {
+                  // The mechanical form of the exact-head rule. It is still a
+                  // literal check — two strings — and it proves only which commit
+                  // the card CLAIMS was read. Whether a review happened, and
+                  // whether it was any good, stays a human's judgement. What it
+                  // removes is the one failure a literal check can remove: a
+                  // verdict quietly outliving the code it was about.
+                  problems.push(`The recorded reviewed head \`${recorded.slice(0, 7)}\` is not this pull request's head \`${head.slice(0, 7)}\`. A review of an earlier commit does not cover a later one — repeat the review against the current head and record its SHA.`);
                 }
                 if (!seen['Reviewer'] || /^n\/a\b/i.test(seen['Reviewer'])) {
                   problems.push('The review is recorded as required, so "Reviewer" must name who performed it.');

@@ -88,9 +88,12 @@ It is listed here so the map of review surfaces is complete, but it is not one
 of these gates and must never become one: no workflow, no commit status, no
 required check, no reviewer account. It is recorded in the merge card's review
 block — required or not with the trigger, the exact SHA read, who read it, and
-what happened to each finding — and `merge-card-check` verifies those four
-fields are answered, which is a different thing from verifying a review
-happened.
+what happened to each finding.
+
+`merge-card-check` verifies those four fields are answered, and that a SHA
+recorded as reviewed **is the current head**, so a verdict cannot outlive the
+code it was about. That is a different thing from verifying a review happened,
+which no check here can do.
 
 [`CLAUDE.md`](../CLAUDE.md) holds the trigger list and the seven questions the
 review asks. It is the only home for them; do not restate them here.

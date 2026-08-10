@@ -173,9 +173,15 @@ Four fields, in the card's **Atlas Contract / Systems Review** block:
 - **Findings and dispositions** — every finding, each marked fixed, non-issue
   with the reason, or routed.
 
-`merge-card-check` verifies those four are answered. It is a literal check: it
-can tell a claim from a blank, and nothing more. It cannot tell whether a review
-happened, and passing it is not evidence that one did.
+`merge-card-check` verifies those four are answered, and — when the block says a
+review was required — that the recorded SHA is a real 40-character head **and is
+this pull request's current head**. That is the exact-head rule made mechanical:
+push after a review and the card goes red until the review is repeated.
+
+It remains a literal check. It compares two strings. It cannot tell whether a
+review happened, who really performed it, or whether it was any good, and
+passing it is not evidence of any of those. What it removes is the one failure a
+literal check can remove: a verdict quietly outliving the code it was about.
 
 ### Independent agent review — advisory, but its findings are not
 
