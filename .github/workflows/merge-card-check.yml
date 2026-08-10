@@ -158,9 +158,31 @@ jobs:
               // to catch — a verdict attached to a revision that may no longer be
               // here. Shape only; that the SHA is the real head stays a human's
               // read, and so does whether the named reviewer actually looked.
+              //
+              // ONLY THE OPENING OF THE FIELD CLASSIFIES IT. The first version
+              // matched "not required" anywhere in the line, so a declaration
+              // that began by saying the review WAS required could disable the
+              // entire gate with its own explanatory prose:
+              //
+              //   required — review machinery changed; documentation-only
+              //   pieces are not required
+              //
+              // That read as not-required and skipped the exact-head SHA check,
+              // the reviewer check and the completion checks (ChatGPT, P1, on
+              // 8dac0bc). Later prose never reclassifies the field now.
+              //
+              // The not-required openings are exactly "not required" and "n/a".
+              // Bare "no" and "none" are gone on purpose: "No trigger fired for
+              // the engine, but the review machinery changed, so it is required"
+              // opens with a not-required word and means the opposite, which is
+              // the same ambiguity one mirror over. An opening that is neither is
+              // flagged AND treated as required, so an unrecognised answer fails
+              // closed instead of silently picking a path.
               const req = seen['Required'];
-              const notRequired = /\bnot[ \t]+required\b/i.test(req)
-                || /^(no|none|n\/a)\b/i.test(req);
+              const notRequired = /^(?:not[ \t]+required|n\/a)\b/i.test(req);
+              if (req && !notRequired && !/^required\b/i.test(req)) {
+                problems.push('The review block\'s "Required" line must OPEN with "required" or "not required" (or "n/a"). Only its opening decides whether the exact-head checks run, and later prose never reclassifies it — write "required — <the trigger that fired>" or "not required — <why none did>".');
+              }
               if (req && !notRequired) {
                 // A field that names a SHA or a reviewer *and* says the review has
                 // not happened is a contradiction, and on a bare pattern match the

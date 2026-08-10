@@ -184,6 +184,31 @@ const CASES = [
     'Required': 'not required — no trigger fired', 'Exact reviewed head': OTHER,
   } }), 'green'],
 
+  // --- the required/not-required classifier reads the OPENING of the field
+  //     only. Matching "not required" anywhere let a line that began by
+  //     declaring the review required disable the whole gate with its own
+  //     explanatory prose.
+  ['a required line whose prose later says "not required", with no review', card({ review: {
+    'Required': 'required — review machinery changed; documentation-only pieces are not required',
+    'Exact reviewed head': 'n/a', 'Reviewer': 'n/a', 'Findings and dispositions': 'n/a',
+  } }), 'red'],
+  ['the same required wording, with a stale SHA', card({ review: {
+    'Required': 'required — review machinery changed; documentation-only pieces are not required',
+    'Exact reviewed head': OTHER,
+  } }), 'red'],
+  ['the same required wording, complete on the current head', card({ review: {
+    'Required': 'required — review machinery changed; documentation-only pieces are not required',
+    'Exact reviewed head': HEAD, 'Reviewer': 'ChatGPT', 'Findings and dispositions': 'one P1, fixed',
+  } }), 'green'],
+  ['an opening that is neither, and means required', card({ review: {
+    'Required': 'No trigger fired for the engine, but the review machinery changed, so it is required',
+    'Exact reviewed head': 'n/a', 'Reviewer': 'n/a', 'Findings and dispositions': 'n/a',
+  } }), 'red'],
+  ['"n/a" still opens the not-required path', card({ review: {
+    'Required': 'n/a — no trigger fired', 'Exact reviewed head': 'n/a',
+    'Reviewer': 'n/a', 'Findings and dispositions': 'n/a',
+  } }), 'green'],
+
   // --- pending markers: the two false greens this check has actually shipped
   ['a pending review whose line quotes the head SHA', card({ review: {
     'Exact reviewed head': `not yet performed — record \`${HEAD}\` once it has been read`,
@@ -235,6 +260,12 @@ const MUTANTS = [
     apply: src => src
       .replace(/const PENDING = \/.*\/i;/, 'const PENDING = /(?!)/;')
       .replace(/const DISPOSITIONS_PENDING = \/.*\/i;/, 'const DISPOSITIONS_PENDING = /(?!)/;'),
+  },
+  {
+    name: 'the anchored required/not-required classifier weakened back to an anywhere match',
+    apply: src => src.replace(
+      /const notRequired = \/\^\(\?:not\[ \\t\]\+required\|n\\\/a\)\\b\/i\.test\(req\);/,
+      'const notRequired = /\\bnot[ \\t]+required\\b/i.test(req) || /^(no|none|n\\/a)\\b/i.test(req);'),
   },
 ];
 

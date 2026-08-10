@@ -82,7 +82,7 @@
   below has to be this pull request's current head.
 -->
 
-- **Required**: <!-- required (name the trigger that fired) / not required (say why none did) -->
+- **Required**: <!-- OPEN with "required" (then name the trigger that fired) or "not required" (then say why none did). Only the opening decides whether the exact-head checks run; later prose never reclassifies it. -->
 - **Exact reviewed head**: <!-- the full 40-character commit SHA the reviewer read, or n/a -->
 - **Reviewer**: <!-- who performed the required review, or n/a -->
 - **Findings and dispositions**: <!-- each finding + fixed / non-issue with the reason / routed. "none" if it came back clean; "n/a" if no review was required -->
