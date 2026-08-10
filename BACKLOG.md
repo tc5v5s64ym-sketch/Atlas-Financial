@@ -254,8 +254,21 @@ Architecture tier 2. Worth doing now capture has settled.
 **B21 · Second-month intake run** · *small*
 The real test: next month should be a ten-minute job.
 
-**B29 · Payment calendar as a subscribable `.ics`** · *medium*
-Served from the site behind the same password. Cycles known:
+**B29 · Payment calendar** · **DONE 2026-08-09** — `scripts/calendar-ics.js`
+builds `derived/household-payments.ics`: **24 events** covering the seven debt
+payments, five statement close dates, five fixed household bills, property tax
+and CRA, and a five-stage mortgage-renewal countdown. Reminders are baked in at
+9am three days before and 9am on the day. Imported into a Google calendar
+rather than served from the site — the owner wanted it shareable with Amanda.
+
+**Household bill dates were derived from the data, not from the bills**: BCAA
+$82.96 and the $100 RESP contribution and $25 union dues all on the 15th, 18 of
+18 months; FortisBC ~$124 at month end, 17 of 18. **BC Hydro deliberately is
+not given a fixed date** — it bills bi-monthly and the payment dates wander
+from the 2nd to the 17th, so the event says "date varies" instead of inventing
+a precision the record does not support.
+
+Rerun it after any rate or minimum changes. Cycles, for reference:
 
 | Account | Statement | Due |
 |---|---|---|

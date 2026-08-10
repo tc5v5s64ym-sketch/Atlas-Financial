@@ -48,6 +48,32 @@ Bonus or vacation pay has historically landed in **February and July**.
 
 The renewal is the single most consequential date in this file.
 
+### The renewal countdown *(researched 2026-08-09)*
+
+TD lets you renew a closed mortgage **120 days before maturity with no
+prepayment charge and no fee**. Its standard rate hold is **120 days,
+extendable to about 150 for existing clients**. TD normally makes contact four
+to five months out and posts the offer letter about a month before maturity.
+
+| Date | Days out | What it is |
+|---|---|---|
+| **2 Nov 2026** | ~180 | Start collecting competing quotes. Nothing can be locked yet, but this is when to be comparing rather than accepting |
+| **2 Dec 2026** | 150 | Ask TD to hold a rate — the existing-client extension. A hold is a floor, not a commitment |
+| **1 Jan 2027** | **120** | **The early-renewal window opens.** Renew with no prepayment charge; also the point at which switching lenders becomes practical, since a switch needs approval, appraisal and discharge |
+| ~1 Apr 2027 | 30 | TD's offer letter should arrive. The posted renewal rate is an opening offer, not a fixed price |
+| **1 May 2027** | 0 | **Maturity.** Unsigned by now and it typically rolls to a short open or posted-rate term, which costs materially more |
+
+**The live decision at renewal is whether to fold the HELOC in.** It is
+$201,586 at 4.90%, interest-only and 99.5% drawn; folding it into the mortgage
+forces principal repayment and lowers the rate, at the cost of a higher monthly
+payment. The site's renewal modeller runs that trade-off. Combined LTV is
+roughly 53–68% depending on the home valuation — under 80% at both ends, so it
+should renew conventionally on that measure, but a lender orders its own
+appraisal and will not take an owner's estimate.
+
+Sources: [TD renewal process](https://www.td.com/ca/en/personal-banking/products/mortgages/renew-refinance/how-to-renew) ·
+[early renewal windows](https://mortgagerenewalhub.ca/early-mortgage-renewal/)
+
 ## HELOC — TD *(verified 2026-08-09)*
 
 | | |
