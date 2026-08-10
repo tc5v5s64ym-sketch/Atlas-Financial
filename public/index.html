@@ -8,184 +8,222 @@
 <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
+
+<header class="site-head">
+  <div class="site-head-inner">
+    <div class="site-head-row">
+      <span class="brand">Household finances</span>
+      <span class="chip" id="asof">Loading…</span>
+      <span class="spacer"></span>
+      <button type="button" class="linkbtn" id="theme-btn">Theme: Auto</button>
+      <form method="POST" action="/logout"><button type="submit" class="linkbtn">Sign out</button></form>
+    </div>
+    <nav class="sitenav" id="sitenav" aria-label="Sections">
+      <a href="#now">Right now</a>
+      <a href="#plan">What if</a>
+      <a href="#debts">The debt</a>
+      <a href="#flows">Money in &amp; out</a>
+      <a href="#unknowns">Unknowns</a>
+      <a href="#records">The books</a>
+    </nav>
+  </div>
+</header>
+
 <div class="wrap">
 
-  <div class="topbar">
-    <span class="chip" id="asof">Loading…</span>
-    <form method="POST" action="/logout"><button type="submit" class="linkbtn">Sign out</button></form>
-  </div>
-
-  <header>
-    <h1>Household finances</h1>
+  <section id="now">
+    <div class="kicker">Right now</div>
+    <h1>The whole picture</h1>
     <p class="sub" id="coverage-line"></p>
     <p class="disc" id="disclaimer"></p>
-  </header>
 
-  <div class="tiles" id="tiles"></div>
+    <div class="tiles" id="tiles"></div>
+    <div class="nextdue" id="next-due" hidden></div>
 
-  <h2><span class="n">1</span>What is due between now and 1 September</h2>
-  <div class="card scroll">
-    <table><thead><tr><th>Due</th><th>Obligation</th><th class="num">Amount</th><th>Status</th></tr></thead>
-    <tbody id="upcoming"></tbody></table>
-    <p class="lede" id="upcoming-note" style="margin:12px 0 0"></p>
-  </div>
-
-  <h2><span class="n">2</span>What if we paid more?</h2>
-  <p class="lede">Pick a debt and a monthly payment. The maths assumes the rate holds and no new spending goes
-  on — so treat it as the best case, not a forecast.</p>
-  <div class="card">
-    <div class="model">
-      <div>
-        <div class="control">
-          <label for="debt-select">Debt</label>
-          <select id="debt-select" style="width:100%;padding:9px 11px;border-radius:9px;border:1px solid var(--axis);background:var(--plane);color:var(--text-primary);font-family:inherit;font-size:.92rem"></select>
-        </div>
-        <div class="control">
-          <label for="pay-range">Monthly payment <b id="pay-label">—</b></label>
-          <input type="range" id="pay-range" min="0" max="100" value="20" step="1">
-          <div class="presets" id="pay-presets"></div>
-        </div>
-        <p class="lede" id="model-context" style="margin:0"></p>
-      </div>
-      <div class="outcome" id="payoff-out"></div>
+    <h2>Due between now and 1 September</h2>
+    <div class="card scroll">
+      <table><thead><tr><th>Due</th><th>Obligation</th><th class="num">Amount</th><th>Status</th></tr></thead>
+      <tbody id="upcoming"></tbody></table>
+      <p class="lede footnote" id="upcoming-note"></p>
     </div>
-  </div>
+  </section>
 
-  <h2><span class="n">3</span>The May 2027 renewal</h2>
-  <p class="lede">The mortgage matures 1 May 2027. The live question is whether to fold the interest-only HELOC
-  into it. Move the sliders to see the trade — a lower rate and forced principal repayment, against a higher
-  monthly payment.</p>
-  <div class="card">
-    <div class="model">
-      <div>
-        <div class="control">
-          <label for="consol"><span>Fold the HELOC into the mortgage?</span></label>
-          <div class="presets">
-            <button class="preset" id="consol-no" aria-pressed="true" type="button">Keep separate</button>
-            <button class="preset" id="consol-yes" aria-pressed="false" type="button">Consolidate</button>
+  <section id="plan">
+    <div class="kicker">Decisions</div>
+
+    <h2>What if we paid more?</h2>
+    <p class="lede">Pick a debt and a monthly payment. The maths assumes the rate holds and no new spending goes
+    on — so treat it as the best case, not a forecast.</p>
+    <div class="card">
+      <div class="model">
+        <div>
+          <div class="control">
+            <label for="debt-select">Debt</label>
+            <select id="debt-select" class="select"></select>
           </div>
+          <div class="control">
+            <label for="pay-range">Monthly payment <b id="pay-label">—</b></label>
+            <input type="range" id="pay-range" min="0" max="100" value="20" step="1">
+            <div class="presets" id="pay-presets"></div>
+          </div>
+          <p class="lede tight" id="model-context"></p>
         </div>
-        <div class="control">
-          <label for="rate-range">Renewal rate <b id="rate-label">—</b></label>
-          <input type="range" id="rate-range" min="300" max="750" value="450" step="5">
-        </div>
-        <div class="control">
-          <label for="amort-range">Amortisation <b id="amort-label">—</b></label>
-          <input type="range" id="amort-range" min="10" max="30" value="18" step="1">
-        </div>
-        <p class="lede" id="renewal-context" style="margin:0"></p>
+        <div class="outcome" id="payoff-out"></div>
       </div>
-      <div class="outcome" id="renewal-out"></div>
     </div>
-  </div>
 
-  <h2><span class="n">4</span>What the debt actually costs</h2>
-  <p class="lede">Balances alone mislead. The mortgage is 40× the Triangle card but costs only 7× the interest.</p>
-  <div class="card"><figure><div id="c-debt"></div>
-    <figcaption>Annual interest by debt. Debts with unknown balances are omitted — they could change this ranking.</figcaption>
-  </figure></div>
-  <div class="card scroll"><table>
-    <thead><tr><th>Debt</th><th class="num">Balance</th><th class="num">Rate</th><th>Structure</th><th class="num">Interest / yr</th></tr></thead>
-    <tbody id="debt-table"></tbody></table>
-    <p class="lede" id="debt-note" style="margin:12px 0 0"></p></div>
-
-  <h2><span class="n">5</span>Every revolving facility is spent</h2>
-  <p class="lede">The usual shock absorbers — a card with room, a line of credit, an overdraft — are all at or
-  near their limits.</p>
-  <div class="card"><figure><div id="c-util"></div>
-    <figcaption>Utilisation, with the dollars still available. Labels shown directly because the amounts are the point.</figcaption>
-  </figure>
-    <p class="lede" id="util-note" style="margin:12px 0 0"></p></div>
-
-  <h2><span class="n">6</span>The HELOC is growing, not shrinking</h2>
-  <div class="card"><figure>
-    <div class="legend">
-      <span><span class="sw" style="background:var(--s1)"></span>HELOC balance</span>
-      <span><span class="sw" style="background:var(--critical)"></span>Credit limit</span>
+    <h2>The May 2027 renewal</h2>
+    <p class="lede">The mortgage matures 1 May 2027. The live question is whether to fold the interest-only HELOC
+    into it. Move the sliders to see the trade — a lower rate and forced principal repayment, against a higher
+    monthly payment.</p>
+    <div class="card">
+      <div class="model">
+        <div>
+          <div class="control">
+            <label><span>Fold the HELOC into the mortgage?</span></label>
+            <div class="presets">
+              <button class="preset" id="consol-no" aria-pressed="true" type="button">Keep separate</button>
+              <button class="preset" id="consol-yes" aria-pressed="false" type="button">Consolidate</button>
+            </div>
+          </div>
+          <div class="control">
+            <label for="rate-range">Renewal rate <b id="rate-label">—</b></label>
+            <input type="range" id="rate-range" min="300" max="750" value="450" step="5">
+          </div>
+          <div class="control">
+            <label for="amort-range">Amortisation <b id="amort-label">—</b></label>
+            <input type="range" id="amort-range" min="10" max="30" value="18" step="1">
+          </div>
+          <p class="lede tight" id="renewal-context"></p>
+        </div>
+        <div class="outcome" id="renewal-out"></div>
+      </div>
     </div>
-    <div id="c-heloc"></div>
-    <figcaption id="heloc-note"></figcaption>
-  </figure></div>
+  </section>
 
-  <h2><span class="n">7</span>Monthly cash flow is volatile, not steady</h2>
-  <div class="card"><figure><div id="c-flow"></div>
-    <figcaption id="flow-note"></figcaption>
-  </figure></div>
+  <section id="debts">
+    <div class="kicker">The debt</div>
 
-  <h2><span class="n">8</span>Where the money comes from</h2>
-  <p class="lede">Not all income is the household's to keep — the coaching line is gross revenue.</p>
-  <div class="card"><figure><div id="c-income"></div>
-    <figcaption id="income-note"></figcaption>
-  </figure>
-    <div class="note-box" id="income-warning"></div>
-  </div>
+    <h2>What the debt actually costs</h2>
+    <p class="lede">Balances alone mislead. The mortgage is 40× the Triangle card but costs only 7× the interest.</p>
+    <div class="card"><figure><div id="c-debt"></div>
+      <figcaption>Annual interest by debt. Debts with unknown balances are omitted — they could change this ranking.</figcaption>
+    </figure></div>
+    <div class="card scroll"><table>
+      <thead><tr><th>Debt</th><th class="num">Balance</th><th class="num">Rate</th><th>Structure</th><th class="num">Interest / yr</th></tr></thead>
+      <tbody id="debt-table"></tbody></table>
+      <p class="lede footnote" id="debt-note"></p></div>
 
-  <h2><span class="n">9</span>Spending, interest and fees</h2>
-  <p class="lede">Cards and chequing merged into one ledger. Pick a period — the three charts below all
-  follow it.</p>
-  <div class="card">
-    <div class="control" style="margin:0">
-      <label for="period-bar">Period</label>
-      <div class="presets" id="period-bar"></div>
+    <h2>Every revolving facility is spent</h2>
+    <p class="lede">The usual shock absorbers — a card with room, a line of credit, an overdraft — are all at or
+    near their limits.</p>
+    <div class="card"><figure><div id="c-util"></div>
+      <figcaption>Utilisation, with the dollars still available. Labels shown directly because the amounts are the point.</figcaption>
+    </figure>
+      <p class="lede footnote" id="util-note"></p></div>
+
+    <h2>The HELOC is growing, not shrinking</h2>
+    <div class="card"><figure>
+      <div class="legend">
+        <span><span class="sw" style="background:var(--s1)"></span>HELOC balance</span>
+        <span><span class="sw" style="background:var(--critical)"></span>Credit limit</span>
+      </div>
+      <div id="c-heloc"></div>
+      <figcaption id="heloc-note"></figcaption>
+    </figure></div>
+  </section>
+
+  <section id="flows">
+    <div class="kicker">Money in and out</div>
+
+    <h2>Monthly cash flow is volatile, not steady</h2>
+    <div class="card"><figure><div id="c-flow"></div>
+      <figcaption id="flow-note"></figcaption>
+    </figure></div>
+
+    <h2>Where the money comes from</h2>
+    <p class="lede">Not all income is the household's to keep — the coaching line is gross revenue.</p>
+    <div class="card"><figure><div id="c-income"></div>
+      <figcaption id="income-note"></figcaption>
+    </figure>
+      <div class="note-box" id="income-warning"></div>
     </div>
-    <p class="lede" id="period-summary" style="margin:14px 0 0"></p>
-  </div>
 
-  <div class="card"><figure><div id="c-spend"></div>
-    <figcaption id="spend-note"></figcaption>
-  </figure></div>
-
-  <h2><span class="n">10</span>What the debt costs</h2>
-  <p class="lede">Interest actually charged, not modelled. The mortgage is absent because its interest is
-  inside the payment rather than a separate charge.</p>
-  <div class="card"><figure><div id="c-interest"></div>
-    <figcaption id="interest-note"></figcaption>
-  </figure></div>
-
-  <h2><span class="n">11</span>Fees</h2>
-  <p class="lede">Split by whether they can be avoided. Structural fees come with the account; avoidable ones
-  are the result of something that happened.</p>
-  <div class="card"><figure><div id="c-fees"></div>
-    <figcaption id="fees-note"></figcaption>
-  </figure></div>
-
-  <h2><span class="n">12</span>Month by month</h2>
-  <div class="card"><figure>
-    <div class="legend">
-      <span><span class="sw" style="background:var(--s1)"></span>Spending</span>
-      <span><span class="sw" style="background:var(--serious)"></span>Interest</span>
-      <span><span class="sw" style="background:var(--critical)"></span>Fees</span>
+    <h2>Spending, interest and fees</h2>
+    <p class="lede">Cards and chequing merged into one ledger. Pick a period — the three charts below all
+    follow it.</p>
+    <div class="card">
+      <div class="control tight">
+        <label for="period-bar">Period</label>
+        <div class="presets" id="period-bar"></div>
+      </div>
+      <p class="lede period-summary" id="period-summary"></p>
     </div>
-    <div id="c-trend"></div>
-    <figcaption id="trend-note"></figcaption>
-  </figure></div>
 
-  <div class="card scroll">
-    <table><thead><tr><th>PayPal category</th><th class="num">9-month total</th><th class="num">Per month</th></tr></thead>
-    <tbody id="paypal-table"></tbody></table>
-    <p class="lede" id="paypal-note" style="margin:12px 0 0"></p>
-  </div>
+    <div class="card"><figure><div id="c-spend"></div>
+      <figcaption id="spend-note"></figcaption>
+    </figure></div>
 
-  <h2><span class="n">13</span>Movement with no explanation</h2>
-  <div class="card"><figure><div id="c-unex"></div>
-    <figcaption>Each is a large flow whose purpose cannot be determined from banking data alone.</figcaption>
-  </figure></div>
+    <h3>What the debt costs, month to month</h3>
+    <p class="lede">Interest actually charged, not modelled. The mortgage is absent because its interest is
+    inside the payment rather than a separate charge.</p>
+    <div class="card"><figure><div id="c-interest"></div>
+      <figcaption id="interest-note"></figcaption>
+    </figure></div>
 
-  <h2><span class="n">14</span>The questions that matter most</h2>
-  <p class="lede">Ranked by what the answer would change, not by size.</p>
-  <div class="card" id="questions"></div>
+    <h3>Fees</h3>
+    <p class="lede">Split by whether they can be avoided. Structural fees come with the account; avoidable ones
+    are the result of something that happened.</p>
+    <div class="card"><figure><div id="c-fees"></div>
+      <figcaption id="fees-note"></figcaption>
+    </figure></div>
 
-  <h2><span class="n">15</span>Balance sheet</h2>
-  <div class="card scroll">
-    <table><thead><tr><th>Item</th><th class="num">Amount</th></tr></thead><tbody id="assets"></tbody></table>
-    <p class="lede" id="assets-note" style="margin:12px 0 0"></p>
-    <div class="note-box" id="nw-caveat"></div>
-  </div>
+    <h3>Month by month</h3>
+    <div class="card"><figure>
+      <div class="legend">
+        <span><span class="sw" style="background:var(--s1)"></span>Spending</span>
+        <span><span class="sw" style="background:var(--serious)"></span>Interest</span>
+        <span><span class="sw" style="background:var(--critical)"></span>Fees</span>
+      </div>
+      <div id="c-trend"></div>
+      <figcaption id="trend-note"></figcaption>
+    </figure></div>
 
-  <h2><span class="n">16</span>Coverage — what is captured and what is not</h2>
-  <div class="card scroll"><table>
-    <thead><tr><th>Source</th><th>What was captured</th><th>Status</th></tr></thead>
-    <tbody id="coverage"></tbody></table></div>
+    <div class="card scroll">
+      <table><thead><tr><th>PayPal category</th><th class="num">9-month total</th><th class="num">Per month</th></tr></thead>
+      <tbody id="paypal-table"></tbody></table>
+      <p class="lede footnote" id="paypal-note"></p>
+    </div>
+  </section>
+
+  <section id="unknowns">
+    <div class="kicker">Unknowns</div>
+
+    <h2>Movement with no explanation</h2>
+    <div class="card"><figure><div id="c-unex"></div>
+      <figcaption>Each is a large flow whose purpose cannot be determined from banking data alone.</figcaption>
+    </figure></div>
+
+    <h2>The questions that matter most</h2>
+    <p class="lede">Ranked by what the answer would change, not by size. Green means answered.</p>
+    <div class="card" id="questions"></div>
+  </section>
+
+  <section id="records">
+    <div class="kicker">The books</div>
+
+    <h2>Balance sheet</h2>
+    <div class="card scroll">
+      <table><thead><tr><th>Item</th><th class="num">Amount</th></tr></thead><tbody id="assets"></tbody></table>
+      <p class="lede footnote" id="assets-note"></p>
+      <div class="note-box" id="nw-caveat"></div>
+    </div>
+
+    <h2>Coverage — what is captured and what is not</h2>
+    <div class="card scroll"><table>
+      <thead><tr><th>Source</th><th>What was captured</th><th>Status</th></tr></thead>
+      <tbody id="coverage"></tbody></table></div>
+  </section>
 
   <footer>
     Private. No account numbers, card numbers or addresses appear anywhere in this page. Raw exports and
