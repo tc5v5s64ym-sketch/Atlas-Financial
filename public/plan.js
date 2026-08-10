@@ -271,9 +271,19 @@ function renderPlan(d, periods) {
   // The top-ranked usable option wins by default — Amanda releasing money the
   // household already owns, which creates no debt. A HELOC draw would, and the
   // projection has to see that rather than silently modelling the free path.
-  const fundingSource = ((plan.funding || {}).options || [])
-    .slice().sort((a, b) => a.rank - b.rank)
-    .find(o => !o.unusable) || null;
+  // Two passes, because the gap has to be known before a source can be judged
+  // against it. The size of the gap does not depend on who funds it, so the
+  // first pass is safe to run with no source at all.
+  const sized = Forecast.recommend(plan, asOf, simOpts());
+  const gapNeeded = sized.gap ? sized.gap.amount : 0;
+  const rankedSources = ((plan.funding || {}).options || [])
+    .slice().sort((a, b) => a.rank - b.rank).filter(o => !o.unusable);
+  // Availability matters, not just usability. Raising the buffer knob to
+  // $3,000 pushes the gap to $3,543.16, past Amanda's $2,691.85 — and picking
+  // her anyway credited the whole amount as a debt-free transfer and declared
+  // the plan sound. A source that cannot reach the number is not a source.
+  const fundingSource = rankedSources.find(o => o.available >= gapNeeded) || null;
+  const fundingShort = gapNeeded > 0 && !fundingSource;
   const advice = Forecast.recommend(plan, asOf, simOpts({
     fundingDebtId: fundingSource ? fundingSource.debtId || null : null,
     fundingLabel: fundingSource ? `Gap funding — ${fundingSource.label}` : undefined,
@@ -315,7 +325,18 @@ function renderPlan(d, periods) {
 
   /* ---- status band ---- */
   const band = $('status-band');
-  if (gap) {
+  if (gap && fundingShort) {
+    // No single source can reach the gap. Saying "cover it and the window
+    // finishes with $X" would be describing a plan that does not exist.
+    const best = rankedSources[0];
+    band.className = 'statusband crit';
+    band.innerHTML =
+      `<b>Short by ${money(fundingGap)} on ${fmtDateLong(gap.floorDate)}, and no single source can cover it.</b>
+       The largest available is ${best ? `${best.short} at ${money2(best.available)}` : 'nothing'} against
+       ${money2(fundingGap)} needed. At a ${money(sim.buffer)} buffer this gap cannot be closed from one
+       place — lower the buffer, move a commitment, or combine sources. The weekly figure below assumes
+       the gap IS closed and does not hold until it is.`;
+  } else if (gap) {
     // An opening gap is a different problem from an overspending one, and the
     // fix is different too — so say which this is. The figures come from the
     // unfunded window: this is what happens if nothing is moved.
@@ -839,7 +860,8 @@ function renderPlan(d, periods) {
       `The split below it comes from ${budget.basisLabel.toLowerCase()} of actual spending — ` +
       `${budget.months} months — with the ${money(budget.datedMonthly)}/month of bills and commitments that already sit ` +
       `on the calendar subtracted from their own categories, so nothing is counted twice. ` +
-      `No owner-built budget has been supplied, so every figure here is a historical actual rather than a target.`;
+      `${budget.ownerTargetCount} of these categories use the household's own budget target and the rest are ` +
+      `historical actuals; each row shows which, and the average it is being measured against.`;
   }
 
   /* ---- category breakdown ---- */
@@ -857,14 +879,19 @@ function renderPlan(d, periods) {
       : c.class === 'unknown' ? '<span class="chip e">unknown</span>' : '';
     $('budget-cats').innerHTML = cats.map(c => `
       <div class="cat-row">
-        <span class="cat-lab">${c.label} ${chipFor(c)}${c.fullyDated
-          ? ' <span class="chip v">on the calendar</span>' : ''}</span>
+        <span class="cat-lab">${c.label} ${chipFor(c)}${c.target != null
+          ? ' <span class="chip v">owner budget</span>' : ''}${c.fullyDated
+          ? ' <span class="chip v">on the calendar</span>' : ''}${c.sinking > 0
+          ? ' <span class="chip w">sinking fund</span>' : ''}</span>
         <span class="cat-bar"><span style="width:${(c.historical / max) * 100}%"></span></span>
         <span class="cat-amt">${c.class === 'reserve'
           ? '<span class="mutedtext">reserve</span>'
           : c.planned > 0 ? est(money(c.planned)) : '<span class="mutedtext">$0</span>'}</span>
-        <span class="cat-hist">has been ${money(c.historical)}/mo${c.dated > 0
-          ? ` · ${money(c.dated)} dated` : ''}</span>
+        <span class="cat-hist">${c.target != null
+          ? `budgeted ${money(c.target)}, has been ${money(c.historical)}`
+          : `has been ${money(c.historical)}`}/mo${c.dated > 0
+          ? ` · ${money(c.dated)} dated` : ''}${c.sinking > 0
+          ? ` · ${money(c.sinking)} saved for separately` : ''}</span>
       </div>`).join('');
 
     const inCap = budget.requiredMonthly + budget.discretionaryMonthly;
@@ -899,7 +926,10 @@ function renderPlan(d, periods) {
   }).join('');
 
   /* ---- compact snapshot ---- */
-  const consumer = d.debts.filter(x => !x.secured).reduce((s, x) => s + (x.balance || 0), 0);
+  // The same day-zero figure the tile above shows. Summing raw balances here
+  // reported $29,842.83 under the identical "Consumer debt" label while the
+  // tile said $30,090.01 — the $247.18 of pending charges, twice on one page.
+  const consumer = today.consumer;
   const secured = d.debts.filter(x => x.secured).reduce((s, x) => s + (x.balance || 0), 0);
   const monthlyInterest = d.debts.reduce((s, x) => s + (x.annualInterest || 0), 0) / 12;
   // Pending charges have already spent the credit they are charged against,

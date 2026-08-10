@@ -186,6 +186,46 @@ for (const x of data.debts) {
   ok(!!row, `debt "${x.label}" has a matching position row`, money(x.balance));
 }
 
+console.log('\n=== the page does not contradict itself ===');
+// Three ways it did, all found by exact-head review of a84b7e9.
+const planJs2 = read('public/plan.js');
+
+// 1. A funding source was chosen on `unusable` alone, so raising the buffer
+//    knob past a source's balance still credited the full amount as a
+//    debt-free transfer and declared the plan sound.
+ok(/o\.available >= gapNeeded/.test(planJs2),
+  'a funding source is only chosen when it can actually cover the gap');
+ok(/fundingShort/.test(planJs2),
+  'and the page has a state for "no single source can cover it"');
+{
+  // Prove it at a buffer that outruns the largest source.
+  const big = Object.assign({}, { scenario: 'expected', incomeOverrides: {}, disabled: [],
+    extraDebtMonthly: 0 }, { targetBuffer: 3000 });
+  const sized = F.recommend(plan, asOf, big);
+  const ranked = plan.funding.options.slice().sort((a, b) => a.rank - b.rank).filter(o => !o.unusable);
+  const covers = ranked.filter(o => o.available >= sized.gap.amount);
+  ok(sized.gap.amount > ranked[0].available,
+    'at a $3,000 buffer the gap really does exceed the largest source',
+    `${money(sized.gap.amount)} vs ${money(ranked[0].available)}`);
+  ok(covers.length === 0, 'and no source covers it, so the page must say so');
+}
+
+// 2. Two budget explanations on one page disagreed about provenance: the cap
+//    section said nine owner targets, the detailed section said none.
+ok(!/No owner-built budget has been supplied/.test(planJs2),
+  'the detailed budget no longer claims no owner budget exists');
+ok(!/every figure here is a historical actual/.test(planJs2),
+  'nor that every figure is a historical actual');
+ok(/ownerTargetCount/.test(planJs2),
+  'both budget explanations count the owner targets from the same result');
+
+// 3. Consumer debt appeared twice under one label, $247.18 apart, because the
+//    compact snapshot summed raw balances while the tile used the projection.
+ok(!/const consumer = d\.debts\.filter\(x => !x\.secured\)/.test(planJs2),
+  'the compact snapshot no longer re-sums raw balances for consumer debt');
+ok(/const consumer = today\.consumer/.test(planJs2),
+  'it reuses the projected day-zero figure the tile shows');
+
 console.log('\n=== provenance claims are supported ===');
 const nd = plan.nextDollar;
 ok(nd.provenance === 'derived',
