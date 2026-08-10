@@ -209,6 +209,27 @@ const CASES = [
     'Reviewer': 'n/a', 'Findings and dispositions': 'n/a',
   } }), 'green'],
 
+  // --- a required review needs a NAME and a disposition, not an absence value.
+  //     "Reviewer: None" is non-blank and carries no pending marker, so it
+  //     satisfied a required review while naming nobody.
+  ['the correct SHA, but Reviewer: None', card({ review: { 'Reviewer': 'None' } }), 'red'],
+  ['the correct SHA, but Reviewer: No', card({ review: { 'Reviewer': 'No' } }), 'red'],
+  ['the correct SHA, but Reviewer: nobody', card({ review: { 'Reviewer': 'nobody' } }), 'red'],
+  ['the correct SHA, but Reviewer: not required',
+    card({ review: { 'Reviewer': 'not required' } }), 'red'],
+  ['a reviewer whose name merely starts with "No"',
+    card({ review: { 'Reviewer': 'Nova, on the ChatGPT desk' } }), 'green'],
+
+  //     `n/a` answers a review that was NOT required; on the required path it
+  //     leaves the result unstated, and "findings pending" names no disposition
+  //     at all while slipping past the pending markers.
+  ['required, but findings n/a', card({ review: { 'Findings and dispositions': 'n/a' } }), 'red'],
+  ['required, but findings "findings pending"',
+    card({ review: { 'Findings and dispositions': 'findings pending' } }), 'red'],
+  ['required, with findings that name a disposition', card({ review: {
+    'Findings and dispositions': 'two raised: one fixed, one routed to B72',
+  } }), 'green'],
+
   // --- pending markers: the two false greens this check has actually shipped
   ['a pending review whose line quotes the head SHA', card({ review: {
     'Exact reviewed head': `not yet performed — record \`${HEAD}\` once it has been read`,
@@ -266,6 +287,16 @@ const MUTANTS = [
     apply: src => src.replace(
       /const notRequired = \/\^\(\?:not\[ \\t\]\+required\|n\\\/a\)\\b\/i\.test\(req\);/,
       'const notRequired = /\\bnot[ \\t]+required\\b/i.test(req) || /^(no|none|n\\/a)\\b/i.test(req);'),
+  },
+  {
+    name: 'the reviewer absence set narrowed back to n/a only',
+    apply: src => src.replace(
+      /const ABSENT = \/\^\(\?:.*?\)\\b\/i;/,
+      'const ABSENT = /^n\\/a\\b/i;'),
+  },
+  {
+    name: 'the findings disposition vocabulary dropped',
+    apply: src => src.replace(/const DISPOSED = \/.*\/i;/, 'const DISPOSED = /(?:)/;'),
   },
 ];
 

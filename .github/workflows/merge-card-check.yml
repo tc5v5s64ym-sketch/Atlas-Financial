@@ -231,8 +231,28 @@ jobs:
                   // verdict quietly outliving the code it was about.
                   problems.push(`The recorded reviewed head \`${recorded.slice(0, 7)}\` is not this pull request's head \`${head.slice(0, 7)}\`. A review of an earlier commit does not cover a later one — repeat the review against the current head and record its SHA.`);
                 }
-                if (!seen['Reviewer'] || /^n\/a\b/i.test(seen['Reviewer'])) {
-                  problems.push('The review is recorded as required, so "Reviewer" must name who performed it.');
+                // A required review needs a NAME, and "None" is not one. The
+                // check rejected only "n/a", so `Reviewer: None` — non-blank,
+                // no pending marker — satisfied a required review while naming
+                // nobody (Codex, P1, on e01a534). Absence values are anchored
+                // like the classifier above: a real reviewer called "Nova" is
+                // safe because the boundary after "no" does not match.
+                const ABSENT = /^(?:n\/a|na|none|no|nobody|no[ \t]+one|not[ \t]+required|tbd|unknown)\b/i;
+                if (!seen['Reviewer'] || ABSENT.test(seen['Reviewer'])) {
+                  problems.push('The review is recorded as required, so "Reviewer" must NAME who performed it. "None", "no", "n/a" and "not required" are absence values — on this path they say the gate was never satisfied, not that it was.');
+                }
+
+                // ...and the findings line has to dispose of something. `n/a`
+                // is the answer for a review that was NOT required; on this path
+                // it leaves the result unanswered, and so does "findings
+                // pending", which names no disposition and slipped past the
+                // pending markers (Codex, P1, on e01a534). So this asks for the
+                // contract's own vocabulary rather than trying to enumerate
+                // every non-answer: fixed, non-issue, routed, or none.
+                const DISPOSED = /\b(?:fixed|non-?[ \t]?issues?|routed|none|nothing)\b/i;
+                if (!unfinished.includes('Findings and dispositions')
+                    && !DISPOSED.test(seen['Findings and dispositions'])) {
+                  problems.push('The review is recorded as required, so "Findings and dispositions" must record what happened to each finding — fixed, non-issue with the reason, or routed — or say "none" when it came back clean. "n/a" answers a review that was not required; on this path it leaves the result unstated.');
                 }
               }
             }
