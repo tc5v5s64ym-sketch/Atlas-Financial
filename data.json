@@ -7,6 +7,61 @@
     "disclaimer": "Financial education and planning support. Not professional financial, tax, legal, mortgage or investment advice."
   },
 
+  "plan": {
+    "windowDays": 91,
+    "defaults": { "targetBuffer": 500, "extraDebtMonthly": 0, "scenario": "expected" },
+    "startingCash": {
+      "amount": 2845.89,
+      "note": "TD accounts only, as read on the as-of date. Excludes Wise ($205.92 — US-dollar holiday accounts), the silver (an asset, not cash) and the RESP (education-restricted)."
+    },
+    "income": [
+      { "id": "payroll", "label": "Payroll — Seaspan", "frequency": "biweekly", "anchor": "2026-08-14", "amount": 4468.69, "confidence": "confirmed", "note": "Fifteen consecutive bi-weekly deposits observed at this level; treated as confirmed." },
+      { "id": "childBenefit", "label": "Child benefit", "frequency": "monthly", "day": 20, "amount": 153.59, "confidence": "confirmed", "note": "Eighteen consecutive months observed. The amount is fixed; the day of month is approximate." },
+      { "id": "tennisbc", "label": "Tennis BC — her employment", "frequency": "biweekly", "anchor": "2026-08-14", "scenarioMonthly": { "conservative": 1250, "expected": 3507, "optimistic": 6196 }, "confidence": "estimated", "note": "43 deposits over 18 months, irregular in size. Expected uses the 18-month average ($3,507/mo); conservative the documented low ($1,250/mo); optimistic the documented recent high ($6,196/mo). Modelled as bi-weekly deposits landing on payday, which matches the observed 14 August landing." },
+      { "id": "coaching", "label": "Coaching — retained margin", "frequency": "monthly", "day": 30, "scenarioMonthly": { "conservative": 0, "expected": 1700, "optimistic": 2355 }, "confidence": "estimated", "note": "Gross coaching revenue is NOT household income — about 72% is retained after coach payroll, roughly $1,700/mo on her own tracking sheets. Conservative assumes none arrives inside the window; optimistic uses the gross-derived $2,355/mo. Remittances settle at term ends, so this is modelled late in each month." }
+    ],
+    "obligations": [
+      { "id": "mortgage", "label": "Mortgage", "frequency": "biweekly", "anchor": "2026-08-14", "amount": 1600.00, "confidence": "confirmed" },
+      { "id": "heloc", "label": "HELOC minimum", "frequency": "monthly", "day": 21, "amount": 814.18, "confidence": "confirmed", "note": "Interest-only — reduces principal by nothing. Varies slightly with the balance." },
+      { "id": "triangle", "label": "Triangle Mastercard minimum", "frequency": "monthly", "day": 7, "firstDue": "2026-09-07", "amount": 253.57, "confidence": "estimated", "note": "August is paid. Future statement minimums are estimated at the current level." },
+      { "id": "cashback-sep", "label": "TD Cash Back Visa — September minimum", "frequency": "once", "date": "2026-09-01", "amount": 762.36, "confidence": "confirmed", "note": "The statement minimum, eleven times the usual, because the $612.43 over-limit excess is immediately due." },
+      { "id": "cashback", "label": "TD Cash Back Visa minimum", "frequency": "monthly", "day": 1, "firstDue": "2026-10-01", "amount": 170.00, "confidence": "estimated", "note": "TD's minimum is $10 plus interest and fees; at the recent average balance that is about $170 once the card is back under its limit." },
+      { "id": "mbna", "label": "Amazon.ca Mastercard minimum (MBNA)", "frequency": "monthly", "day": 31, "amount": 158.27, "confidence": "estimated", "note": "Due at month-end; the day clamps to shorter months. Future minimums estimated at the current level." },
+      { "id": "tdcc", "label": "TD credit card minimum", "frequency": "monthly", "day": 17, "amount": 94.03, "confidence": "estimated", "note": "A fifth missed minimum restarts the 24.99% penalty-rate clock for another twelve months." },
+      { "id": "travel", "label": "Travel Visa minimum", "frequency": "monthly", "day": 26, "amount": 17.00, "confidence": "estimated" }
+    ],
+    "commitments": [
+      { "id": "burrard1", "date": "2026-08-12", "label": "Burrard registration — child 1", "amount": 320.00, "confidence": "confirmed" },
+      { "id": "burrard2", "date": "2026-08-12", "label": "Burrard registration — child 2", "amount": 303.00, "confidence": "confirmed" },
+      { "id": "fusioncamp", "date": "2026-08-16", "label": "Fusion camp", "amount": 786.00, "confidence": "estimated", "note": "Stated as \"next week\" — the date is approximate." },
+      { "id": "tryouts", "date": "2026-08-22", "label": "Fusion tryouts", "amount": 140.00, "confidence": "confirmed" },
+      { "id": "warriors", "date": "2026-09-15", "label": "Warriors Elite Academy", "amount": 800.00, "confidence": "estimated", "adjustable": true, "note": "Owner-stated \"about $800\", September, not yet invoiced. Mid-month assumed." },
+      { "id": "fusion-sep", "date": "2026-09-15", "label": "Fusion season — September instalment", "amount": 500.00, "confidence": "estimated", "adjustable": true, "note": "Planned as roughly $500/month across four months; selection expected after the 22 August tryouts." },
+      { "id": "fusion-oct", "date": "2026-10-15", "label": "Fusion season — October instalment", "amount": 500.00, "confidence": "estimated", "adjustable": true },
+      { "id": "fusion-nov", "date": "2026-11-01", "label": "Fusion season — November instalment", "amount": 500.00, "confidence": "estimated", "adjustable": true, "note": "Date unknown; placed on the 1st, the cautious choice inside the window." }
+    ],
+    "essentialsPerMonth": 3054,
+    "essentialsNote": "[ESTIMATE] Groceries, fuel, utilities, insurance, property tax, medical and union dues have averaged about $3,054/month. The essential/discretionary split is the analyst's classification, not the bank's.",
+    "actions": [
+      { "what": "Pay both Burrard registrations", "amount": 623.00, "due": "2026-08-12", "why": "The deadline is two days before payday. Paying both takes cash to roughly $874 — the low point of the whole 90 days — so nothing discretionary should land on 12–13 August.", "status": "open", "owner": "Both" },
+      { "what": "Fund the Fusion camp", "amount": 786.00, "due": "2026-08-16", "why": "The largest single item before month-end, landing two days after payday. The date is approximate — confirm it, because a week earlier would breach the low point.", "status": "open" },
+      { "what": "Pay the TD credit card minimum", "amount": 94.03, "due": "2026-08-17", "why": "A fifth missed minimum restarts the 24.99% penalty-rate clock for another twelve months.", "status": "open" },
+      { "what": "Get the Cash Back Visa back under $5,000", "amount": 762.36, "due": "2026-09-01", "why": "The September minimum includes the $612.43 over-limit excess. Posting it by the 1st — before the statement closes on the 7th — stops the $29 monthly over-limit fee.", "status": "open" },
+      { "what": "Set the Interac e-mail filter on both Gmail accounts", "amount": null, "due": null, "why": "Costs nothing and stops the e-transfer counterparty record being purged every 30 days — the reason $18,514 of transfers cannot be attributed.", "status": "open", "owner": "Both" }
+    ],
+    "assumptions": [
+      "The window is the 13 weeks (91 days) starting on the as-of date. Every date in the projection is derived from that date — nothing is hardcoded to a calendar month.",
+      "Deposits are assumed to land before payments due the same day. Payday-timed bills (the mortgage on the 14th) are arranged on exactly that assumption.",
+      "Every figure is tagged. Confirmed means the institution or a long observed history states it; estimated means it is modelled and shown in amber with a ≈ mark throughout.",
+      "Future card statement minimums are estimates carried at the current level; real minimums move with the balance.",
+      "The variable-spending budget covers everything not listed as an obligation or commitment — groceries, fuel, telecom, insurance, subscriptions, PayPal and the rest. The named small recurrings (FortisBC ~$123, BCAA ~$86, union dues $25, account fees ~$35) are inside it, not double-counted as bills.",
+      "Gross coaching revenue is never counted as income — only the ~72% retained margin, and in the conservative scenario not even that. Internal transfers between household accounts are excluded throughout.",
+      "No bonus is modelled: bonuses have historically landed in February and July, outside this window.",
+      "The recommended weekly budget is solved from the forecast: the largest weekly spend that keeps the projected balance above the target buffer on every single day of the window.",
+      "Room for extra debt repayment is measured at the end of the window — cash projected above the buffer once every obligation and commitment has cleared. Paying it earlier than the low point would breach the buffer."
+    ]
+  },
+
   "headline": [
     { "label": "Cash on hand", "value": 3051.81, "tone": "alert", "note": "Seven accounts: $2,845.89 at TD, matching its own consolidated balance, plus $205.92 left in Wise. One is overdrawn." },
     { "label": "Total debt", "value": 777455.57, "tone": "plain", "note": "Every consumer debt in the household is now captured. Nothing outstanding." },
@@ -28,7 +83,7 @@
     { "due": "2026-08-31", "what": "Amazon.ca Rewards Mastercard minimum", "amount": 158.27, "status": "due", "note": "MBNA. At minimums the issuer estimates 64 years 3 months to clear" },
     { "due": "2026-09-01", "what": "TD Cash Back Visa minimum", "amount": 762.36, "status": "due", "note": "Eleven times last month's $69.93, because going over the limit makes the excess immediately due. Under $5,000 before the 7th stops the $29 over-limit fee" }
   ],
-  "upcomingNote": "Still to fund by 1 September: $4,994.84 — $3,445.84 of debt minimums plus $1,549.00 of sports commitments. Against $2,845.89 of cash today. The month funds itself: about $13,373 arrives before 1 September, and it closes near $4,749. The tight moment is 12 August — Burrard ($623) and the Fusion camp ($786) both fall before Friday's payday, taking cash to roughly $874, or nearer $590 once ordinary spending is counted, and it stays there for two days. There is $1,415.95 of credit left across every facility combined if anything unexpected lands in that gap.",
+  "upcomingNote": "The tight moment is 12 August — Burrard ($623) and the Fusion camp ($786) both fall before Friday's payday, taking cash to roughly $874, or nearer $590 once ordinary spending is counted, and it stays there for two days. There is $1,415.95 of credit left across every facility combined if anything unexpected lands in that gap. The 90-day projection on the Plan page carries this forward week by week.",
 
   "commitments": {
     "heading": "Big-ticket items already committed",
@@ -48,8 +103,8 @@
   },
 
   "debts": [
-    { "label": "Mortgage", "balance": 546026.58, "rate": 3.64, "rateBasis": "TD Mortgage Prime − 0.96%", "structure": "Amortising — 52.4% of each payment is principal", "annualInterest": 19441, "payment": 1600, "frequency": "Bi-weekly", "nextDue": "2026-08-14", "limit": null, "available": null, "confidence": "verified" },
-    { "label": "HELOC", "balance": 201586.16, "rate": 4.90, "rateBasis": "TD Prime + 0.45%", "structure": "Interest-only revolving — never amortises", "annualInterest": 9877.72, "payment": 814.18, "frequency": "Monthly minimum", "nextDue": "2026-08-21", "limit": 202654, "available": 1067.84, "confidence": "verified" },
+    { "label": "Mortgage", "balance": 546026.58, "rate": 3.64, "rateBasis": "TD Mortgage Prime − 0.96%", "structure": "Amortising — 52.4% of each payment is principal", "annualInterest": 19441, "payment": 1600, "frequency": "Bi-weekly", "nextDue": "2026-08-14", "limit": null, "available": null, "confidence": "verified", "secured": true },
+    { "label": "HELOC", "balance": 201586.16, "rate": 4.90, "rateBasis": "TD Prime + 0.45%", "structure": "Interest-only revolving — never amortises", "annualInterest": 9877.72, "payment": 814.18, "frequency": "Monthly minimum", "nextDue": "2026-08-21", "limit": 202654, "available": 1067.84, "confidence": "verified", "secured": true },
     { "label": "Triangle Mastercard", "balance": 13497.00, "rate": 21.99, "rateBasis": "Purchases 21.99% / cash 22.99%", "structure": "Revolving — 99.98% used", "annualInterest": 2880, "payment": 253.57, "frequency": "Monthly minimum", "nextDue": "2026-08-07", "limit": 13500, "available": 3.00, "confidence": "verified" },
     { "label": "TD Cash Back Visa", "balance": 5612.43, "rate": 26.99, "rateBasis": "Purchases 26.99% / cash 27.99%", "structure": "Revolving — $612 over its limit", "annualInterest": 1902.60, "payment": 762.36, "frequency": "Monthly minimum", "nextDue": "2026-09-01", "limit": 5000, "available": 0, "confidence": "verified" },
     { "label": "Amazon.ca Rewards Mastercard (MBNA)", "balance": 7855.12, "rate": 21.74, "rateBasis": "Purchases 21.74% / cash and transfers 22.99%", "structure": "Revolving — $0 to $7,855 in eight months", "annualInterest": 1779.24, "payment": 158.27, "frequency": "Monthly minimum", "nextDue": "2026-08-31", "limit": 8000, "available": 62.83, "confidence": "verified" },

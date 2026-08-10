@@ -1,7 +1,8 @@
 # Household finances — private dashboard
 
-A password-protected view of the household financial position, with interactive
-payoff and mortgage-renewal modelling.
+A password-protected household finance site built around a practical 90-day
+plan, with the historical analysis and interactive payoff and mortgage-renewal
+modelling behind it.
 
 **This repository must stay private.** It contains balances, rates, income and
 debts. It contains no account numbers, card numbers, names or addresses — but it
@@ -14,11 +15,16 @@ is still the whole financial picture of two people.
 | Path | Purpose |
 |---|---|
 | `server.js` | Express app: password gate, security headers, serves the data |
-| `data.json` | **Every figure on the site.** Updating the picture is a data edit |
-| `public/index.html` | Page structure |
-| `public/app.js` | Rendering, charts, and the two modellers |
+| `data.json` | **Every figure on the site**, including the `plan` block the forecast runs on |
+| `public/index.html` + `plan.js` | **Plan** — the homepage: 90-day forecast, budget, next actions |
+| `public/forecast.js` | The 13-week projection engine — pure, DOM-free, node-testable |
+| `public/modellers.html` + `.js` | **Modellers** — payoff and mortgage-renewal tools |
+| `public/deepdive.html` + `.js` | **Deep Dive** — debt, HELOC, flows, lacrosse, questions |
+| `public/records.html` + `.js` | **Records** — balance sheet, coverage, assumptions, privacy |
+| `public/app.js` | Shared core: helpers, charts, theme, navigation, boot |
 | `public/styles.css` | Styling, light and dark |
 | `test-local.js` | Smoke test for the auth gate — run it after any change to `server.js` |
+| `test-forecast.js` | Tests the forecast engine — run it after any change to the `plan` block |
 | `render.yaml` | Render blueprint |
 
 ## Security model

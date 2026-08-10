@@ -52,8 +52,10 @@ Copy-Item $dataFile -Destination $StageDir -Force
 try { Get-Content $dataFile -Raw -Encoding UTF8 | ConvertFrom-Json | Out-Null }
 catch { throw "data.json is not valid JSON: $_" }
 
-& node --check (Join-Path $publicDir 'app.js')
-if ($LASTEXITCODE -ne 0) { throw 'public/app.js has a syntax error' }
+foreach ($js in Get-ChildItem $publicDir -Filter '*.js') {
+    & node --check $js.FullName
+    if ($LASTEXITCODE -ne 0) { throw "public/$($js.Name) has a syntax error" }
+}
 
 Write-Host "Serving $src"
 Write-Host "  staged to $StageDir"

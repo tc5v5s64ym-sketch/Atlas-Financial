@@ -25,6 +25,12 @@ async function main() {
   r = await fetch(`${BASE}/app.js`, { redirect: 'manual' });
   ok(r.status === 302, 'GET /app.js redirects to login', `status ${r.status}`);
 
+  // Every page and script of the multi-page layout sits behind the same gate.
+  for (const p of ['/deepdive.html', '/modellers.html', '/records.html', '/plan.js', '/forecast.js', '/periods.json']) {
+    r = await fetch(`${BASE}${p}`, { redirect: 'manual' });
+    ok(r.status === 302, `GET ${p} redirects to login`, `status ${r.status}`);
+  }
+
   r = await fetch(`${BASE}/styles.css`);
   ok(r.status === 200, 'GET /styles.css is public (login page needs it)', `status ${r.status}`);
 

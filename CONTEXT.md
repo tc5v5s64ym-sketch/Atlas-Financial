@@ -108,15 +108,30 @@ whether the business makes money after cost of goods.
 3. Commit and push to `main`
 4. Render auto-deploys within a couple of minutes
 
-**Adding a figure to `data.json` does not put it on the page.** `public/app.js`
-has to read it and `public/index.html` has to have somewhere to put it. Six keys
-sat in `data.json` unrendered for some time — including the entire income
-section — because that step was skipped.
+**Adding a figure to `data.json` does not put it on the page.** A page script
+has to read it and its HTML has to have somewhere to put it. Six keys once sat
+in `data.json` unrendered — including the entire income section — because that
+step was skipped.
 
-Check for orphans before pushing:
+The site is four pages, each with its own script; `public/app.js` is the
+shared core (helpers, charts, theme, boot) loaded by all of them:
+
+| Page | HTML | Script | What it shows |
+|---|---|---|---|
+| Plan (homepage) | `index.html` | `plan.js` + `forecast.js` | The 90-day forecast, budget, next actions |
+| Modellers | `modellers.html` | `modellers.js` | Payoff and renewal modelling |
+| Deep Dive | `deepdive.html` | `deepdive.js` | Debt, HELOC, flows, lacrosse, questions |
+| Records | `records.html` | `records.js` | Balance sheet, coverage, assumptions |
+
+`public/forecast.js` is the 13-week projection engine. It is pure and
+DOM-free, and `node test-forecast.js` exercises it directly — **run that after
+any change to the `plan` block in `data.json`**, because the tests cross-check
+the expanded schedule against hand-computed totals.
+
+Check for orphans before pushing (scans every page script):
 
 ```bash
-node -e "const d=require('./data.json'),a=require('fs').readFileSync('public/app.js','utf8');for(const k of Object.keys(d))if(!new RegExp('d\\\\.'+k+'\\\\b').test(a))console.log('orphaned:',k)"
+node -e "const d=require('./data.json'),fs=require('fs');const a=['app','forecast','plan','modellers','deepdive','records'].map(f=>fs.readFileSync('public/'+f+'.js','utf8')).join('\n');for(const k of Object.keys(d))if(!new RegExp('\\\\.'+k+'\\\\b').test(a))console.log('orphaned:',k)"
 ```
 
 ### Two data files, and one of them is generated
