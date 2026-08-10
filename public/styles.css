@@ -135,6 +135,8 @@ h3 { font-size:1rem; margin:28px 0 6px; letter-spacing:-0.01em; }
 .tile .val { font-size:1.75rem; font-weight:650; margin:7px 0 3px; letter-spacing:-0.02em; }
 .tile.alert .val { color:var(--critical); }
 .tile.warn .val { color:var(--serious); }
+.tile .subval { font-size:.98rem; font-weight:650; letter-spacing:-0.01em; margin:0 0 3px; font-variant-numeric:tabular-nums; }
+.tile .subval span { color:var(--muted); font-weight:400; font-size:.75rem; letter-spacing:0; }
 .tile .note { font-size:.77rem; color:var(--muted); }
 
 .nextdue {

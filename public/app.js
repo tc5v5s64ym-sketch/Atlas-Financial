@@ -157,6 +157,7 @@ function renderStatic(d) {
     <div class="tile ${t.tone === 'plain' ? '' : t.tone}">
       <div class="lab">${t.label}</div>
       <div class="val">${money(t.value)}</div>
+      ${t.sub ? `<div class="subval">${money(t.sub.value)} <span>${t.sub.label}</span></div>` : ''}
       <div class="note">${t.note}</div>
     </div>`).join('');
 

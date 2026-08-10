@@ -10,7 +10,7 @@
   "headline": [
     { "label": "Cash on hand", "value": 3051.81, "tone": "alert", "note": "Seven accounts: $2,845.89 at TD, matching its own consolidated balance, plus $205.92 left in Wise. One is overdrawn." },
     { "label": "Total debt", "value": 777455.57, "tone": "plain", "note": "Every consumer debt in the household is now captured. Nothing outstanding." },
-    { "label": "Interest cost / year", "value": 36546.11, "tone": "warn", "note": "About $3,046 every month" },
+    { "label": "Interest cost / year", "value": 36546.11, "tone": "warn", "sub": { "value": 17105.11, "label": "excluding the mortgage" }, "note": "About $3,046 every month, of which about $1,425 is not the mortgage" },
     { "label": "Credit left, everywhere", "value": 1415.95, "tone": "alert", "note": "Across seven facilities combined" }
   ],
 
