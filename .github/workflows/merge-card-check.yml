@@ -162,18 +162,42 @@ jobs:
               const notRequired = /\bnot[ \t]+required\b/i.test(req)
                 || /^(no|none|n\/a)\b/i.test(req);
               if (req && !notRequired) {
+                // A field that names a SHA or a reviewer *and* says the review has
+                // not happened is a contradiction, and on a bare pattern match the
+                // SHA wins: the first body written against this check said "record
+                // <sha> here once ChatGPT has read it" and went green. Guarding
+                // only the head line left the same hole one field over — pre-fill
+                // the SHA, leave `Reviewer: ChatGPT, pending`, and the card goes
+                // green while saying the review is unfinished (Codex, P1, on
+                // 06522c0). So the marker is rejected in all three fields that
+                // describe COMPLETION.
+                //
+                // `Required` is deliberately not one of them: it says whether the
+                // gate applies, not whether it ran.
+                //
+                // Two rules, because the fields carry different kinds of prose.
+                // The head and the reviewer are IDENTITY fields — a SHA and a
+                // name — so any marker in them means the review did not happen.
+                // Dispositions are PROSE, and a disposition legitimately
+                // describes downstream waiting: "routed to B72, awaiting the
+                // owner's answer on B70" is a complete disposition of a finding
+                // that is itself unresolved. Failing that would be the check
+                // punishing an honest answer, so only a marker describing the
+                // DISPOSITIONING counts there — a leading one, or the phrase
+                // itself deferred.
+                const PENDING = /\b(pending|not yet|none yet|tbd|awaiting|outstanding|to be (?:done|performed|recorded|obtained))\b/i;
+                const DISPOSITIONS_PENDING = /^(?:pending|none yet|not yet|tbd|to be\b)|\bdispositions?[ \t]+(?:are[ \t]+)?pending\b|\bpending[ \t]+dispositions?\b/i;
+                const unfinished = [
+                  ['Exact reviewed head', PENDING],
+                  ['Reviewer', PENDING],
+                  ['Findings and dispositions', DISPOSITIONS_PENDING],
+                ].filter(([label, re]) => re.test(seen[label])).map(([label]) => label);
                 const headLine = seen['Exact reviewed head'];
-                // A line that names a SHA *and* says the review has not happened
-                // is a contradiction, and the SHA wins on a bare pattern match —
-                // the first body ever written against this check said "record
-                // <sha> here once ChatGPT has read it" and went green. A pending
-                // required review is an honest state; the honest result is red.
-                const pending = /\b(pending|not yet|tbd|awaiting|outstanding)\b/i.test(headLine);
-                const recorded = pending
+                const recorded = unfinished.length
                   ? '' : (/\b[0-9a-f]{40}\b/i.exec(headLine) || [''])[0];
                 const head = ((context.payload.pull_request || {}).head || {}).sha || '';
-                if (pending) {
-                  problems.push('The review is recorded as required and "Exact reviewed head" says it has not happened yet. Red is the correct result: record the SHA once the reviewer has read this exact head. Leave the SHA out of the line until then — naming it alongside "pending" reads as a review that did not occur.');
+                if (unfinished.length) {
+                  problems.push(`The review is recorded as required, and ${unfinished.map((l) => `"${l}"`).join(' / ')} still says it has not happened. Red is the correct result: fill all three once the reviewer has read this exact head, and keep a SHA out of the block until then — a head named beside "pending" reads as a review that did not occur. For a finding handed off rather than resolved, "routed to <item>" says so without the word.`);
                 } else if (!recorded) {
                   problems.push('The review is recorded as required, so "Exact reviewed head" must carry the full 40-character SHA the reviewer actually read. A review of an earlier commit does not cover this head.');
                 } else if (head && recorded.toLowerCase() !== head.toLowerCase()) {
