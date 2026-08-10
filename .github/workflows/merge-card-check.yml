@@ -36,15 +36,21 @@ jobs:
               problems.push('The PR body is missing the "Atlas Merge Card" section. Start from .github/PULL_REQUEST_TEMPLATE.md.');
             }
 
-            // Each field is satisfied when its row exists AND carries something
-            // other than the shipped HTML comment. Matching the row by its bold
-            // label keeps this working whether the body uses the table shape or
-            // a bullet list, and prose that merely mentions the phrase is not a
-            // row — the label has to be delimited.
+            // Each field is satisfied when its ROW exists AND carries something
+            // other than the shipped HTML comment. Both card shapes work — a
+            // table cell or a bullet — because `readRow` below anchors on the
+            // start of either. That anchoring is load-bearing rather than
+            // cosmetic: this comment used to claim prose could not satisfy a
+            // field, and prose could.
             const FIELDS = [
               ['Title', 'a one-line description'],
               ['Primary risk', 'exactly one of auto-safe / owner-decision / figures-moved / blocked'],
               ['Files / categories touched', 'what this touches'],
+              ['Current-state verdict', 'the source, and one of STILL BROKEN / ALREADY FIXED / PARTIALLY FIXED / FIXED BUT UNTESTED / STALE-SUPERSEDED / NEEDS OWNER ANSWER, checked on main before changing anything'],
+              ['Builder surface', 'the tool this work ran on'],
+              ['Primary builder model', 'the exact model name the surface displays, or a plain statement that it withholds it'],
+              ['Supporting / explore models', 'each other model and what it did, or None'],
+              ['Architecture / dispatch authority', 'who dispatched and architecturally owns this work'],
               ['Figures moved', 'which published figures change, or "none"'],
               ['Reproduced / disproved', 'how a claimed defect was reproduced on main before fixing, or "n/a"'],
               ['Authority impact', 'whether any fact changed its home, or "none"'],
@@ -56,20 +62,151 @@ jobs:
             ];
 
             const esc = s => s.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
+
+            // Strip occurrences of a vocabulary token that a negation reverses,
+            // so a match means the card SELECTED the thing rather than merely
+            // mentioning it. `B1 is not ALREADY FIXED` and `P1 not fixed` both
+            // read as answers under a bare match (Codex, on f71ef30).
+            //
+            // Scoped to the CLAUSE, not to a distance. The first version stripped
+            // a token only within two words of the negation, so `P1 was not in
+            // any way fixed` walked straight through it (Codex, P1, on 225e243).
+            // Widening the window is the wrong fix and would undo an earlier one:
+            // at three words it starts eating the `fixed` in `No unanswered
+            // findings; P1 fixed`, which is an honest card Codex had already
+            // caught this check failing.
+            //
+            // A negation governs its own clause and stops at the punctuation.
+            // That is what separates the two halves of `P1 not fixed here —
+            // routed to B72` and of `STILL BROKEN — not fixed by PR #1`: in both,
+            // the negated clause loses its token and the clause that carries the
+            // real answer keeps it, at any length.
+            // `not only` is excluded because it is a fixed idiom that asserts
+            // rather than denies: `P1 was not only fixed but independently
+            // tested` was being failed (Codex, P1, on 9d963c1). It is an
+            // exception for one phrase, not a scope rule — see the limit
+            // recorded below.
+            const NEGATION_WORD = /\b(?:not(?![ \t]+only\b)|never|no|isn'?t|wasn'?t|un-)\b/i;
+            const dropNegated = (text, tokenSource) => text
+              .split(/([;,.—–])/)
+              .map((clause) => NEGATION_WORD.test(clause)
+                ? clause.replace(new RegExp(tokenSource, 'gi'), '')
+                : clause)
+              .join('');
+
+            // Read a card ROW, not a mention of its label. The first version
+            // matched the label anywhere in the body, so prose above the card —
+            // "The **Builder surface** is discussed here." — satisfied a field
+            // whose actual row was blank (Codex, P2, on 04cb826). Two changes
+            // close that: the match must start a table cell or a bullet, and
+            // the search is confined to the card section itself.
+            const cardHeading = /^[ \t]*#{1,4}[ \t]*.*Atlas Merge Card.*$/im.exec(body);
+            const cardSection = cardHeading
+              ? body.slice(cardHeading.index + cardHeading[0].length)
+                  .split(/\n[ \t]*#{2,4}[ \t]+/)[0]
+              : '';
+            const readRow = (label) => {
+              const table = new RegExp(
+                `^[ \\t]*\\|[ \\t]*\\*{0,2}${esc(label)}\\*{0,2}[ \\t]*\\|([^\\n|]*)`, 'im').exec(cardSection);
+              if (table) return table[1];
+              // The colon is REQUIRED on a bullet row. While it was optional, a
+              // prose list item — `- **Builder surface** is discussed here.` —
+              // matched before the real row and answered it (Codex, P2, on
+              // 0d09754). A card row always writes the colon; a sentence does
+              // not, and that is the whole difference between them.
+              const bullet = new RegExp(
+                `^[ \\t]*[-*][ \\t]*\\*{0,2}${esc(label)}\\*{0,2}[ \\t]*:(.*)$`, 'im').exec(cardSection);
+              return bullet ? bullet[1] : null;
+            };
+            const rowValue = (label) => {
+              const raw = readRow(label);
+              // No colon strip: `readRow`'s bullet pattern consumes it as the
+              // syntax it is. It used to be stripped here, and once the reader
+              // was anchored that became dead code whose mutant could not fail.
+              return raw === null ? null
+                : raw.replace(/<!--[\s\S]*?-->/g, '').replace(/\*/g, '').trim();
+            };
             for (const [label, want] of FIELDS) {
-              // Grab the text following the bold label on its own row, up to the
-              // end of the line (table cell or bullet both end at the newline).
-              const row = new RegExp(
-                `\\*\\*${esc(label)}\\*\\*\\s*\\|?([^\\n|]*)\\|?`, 'i').exec(body);
-              if (!row) {
+              const value = rowValue(label);
+              if (value === null) {
                 problems.push(`Merge card row "${label}" is missing — ${want}.`);
                 continue;
               }
-              // Strip the shipped placeholder comment and see what is left.
-              const value = row[1].replace(/<!--[\s\S]*?-->/g, '').trim();
               if (!value) {
                 problems.push(`Merge card row "${label}" is blank — ${want}. "none" or "n/a — <reason>" is a real answer; an empty row is not.`);
               }
+            }
+
+            // Attribution: `None` is a real answer for supporting models and for
+            // nothing else. Without this, `Builder surface: None` would satisfy
+            // the row check above while declaring none of the attribution the row
+            // exists to require — a blank wearing a word. It is the one value
+            // whose permitted scope CLAUDE.md defines exactly, so it is the one a
+            // literal check can enforce; every other wrong-but-answered value is
+            // the reviewer's job.
+            // Anchored, not whole-value: rejecting only the exact word `None`
+            // left `n/a` naming nobody in all three fields (Codex, P2, on
+            // 5034cbc). Bare `na` is deliberately absent — a model called
+            // "NA-1000" would trip it — and "the surface withholds its model
+            // identity" stays a real answer because it opens with none of these.
+            const ABSENT_ATTRIBUTION =
+              /^(?:none|no|n\/a|nil|nobody|unknown|tbd|not[ \t]applicable)\b/i;
+            for (const label of ['Builder surface', 'Primary builder model',
+                                 'Architecture / dispatch authority']) {
+              const value = rowValue(label) || '';
+              // The absence word has to BE the answer, not open one. Anchoring
+              // alone rejected "No model identity is exposed by this surface"
+              // (Codex, P2, on bc3645f) — which is the contract's own permitted
+              // fallback for a surface that withholds its model, so the check
+              // was failing the honest card it exists to allow.
+              //
+              // That exception belongs to the MODEL field alone. Applied to all
+              // three it let "No surface is exposed" and "No authority is known"
+              // through (Codex, P2, on 9f2d2dc): a surface and a dispatch
+              // authority are always knowable to whoever is filling the card in,
+              // and only a model can be genuinely withheld by the tool.
+              const rest = value.replace(ABSENT_ATTRIBUTION, '').replace(/[^a-z0-9]/gi, '');
+              const withheldModel = label === 'Primary builder model' && rest.length >= 3;
+              if (ABSENT_ATTRIBUTION.test(value) && !withheldModel) {
+                problems.push(`Merge card row "${label}" is an absence value, and only Supporting / explore models may answer None. Name the surface, the exact model name the surface displays — or say plainly that it withholds it — and the dispatch authority.`);
+              }
+            }
+
+            // The verdict is the Current-State Verification Gate's own record,
+            // so "not checked" passing the generic non-blank test let a card say
+            // in plain words that current state was never verified (Codex, P2,
+            // on 5034cbc). One of the six documented verdicts has to appear.
+            const VERDICT = /\b(?:STILL BROKEN|ALREADY FIXED|PARTIALLY FIXED|FIXED BUT UNTESTED|STALE[ \t]*[-\/][ \t]*SUPERSEDED|NEEDS OWNER ANSWER)\b/i;
+            const verdictValue = rowValue('Current-state verdict') || '';
+            // EXACTLY one. Requiring merely that a verdict appear let a row read
+            // "STILL BROKEN or ALREADY FIXED" and leave the gate's actual answer
+            // ambiguous (Codex, P2, on f425ef8). Repeating one verdict is fine —
+            // the set dedupes — and both spellings of STALE-SUPERSEDED normalise
+            // to the same member, so following either document still passes.
+            const chosen = new Set(
+              (dropNegated(verdictValue, VERDICT.source).match(new RegExp(VERDICT.source, 'gi')) || [])
+                .map((m) => m.toUpperCase().replace(/[ \t]*[-\/][ \t]*/, '-')));
+            if (verdictValue && chosen.size !== 1) {
+              problems.push(chosen.size === 0
+                ? 'Merge card row "Current-state verdict" must carry one of the six documented verdicts — STILL BROKEN, ALREADY FIXED, PARTIALLY FIXED, FIXED BUT UNTESTED, STALE-SUPERSEDED, NEEDS OWNER ANSWER — checked on main before anything changed. Anything else, including "not checked", says the gate was skipped.'
+                : `Merge card row "Current-state verdict" selects ${chosen.size} verdicts (${[...chosen].join(', ')}). The gate produces exactly one; naming several leaves its answer unstated.`);
+            }
+            // The gate is source + verdict + evidence, and a bare verdict token
+            // records only the middle third (Codex, P2, on bc3645f). A bare
+            // identifier beside it is not much better — `B1 · STILL BROKEN`
+            // names what authorised the work and still says nothing about how
+            // current state was checked (Codex, P2, on 9f2d2dc).
+            //
+            // So this measures whether the row carries PROSE, not whether that
+            // prose is evidence. Validating the source and the evidence as
+            // separate components was asked for and refused: telling "B70" from
+            // "reproduced on main at ce9c7fa" needs the sentence understood, and
+            // any split rule either passes a padded row or fails a terse honest
+            // one. Whether the evidence is real stays the reviewer's read.
+            const verdictRest = verdictValue
+              .replace(new RegExp(VERDICT.source, 'gi'), '').replace(/[^a-z0-9]/gi, '');
+            if (verdictValue && chosen.size === 1 && verdictRest.length < 10) {
+              problems.push('Merge card row "Current-state verdict" carries the verdict and little else. Name the source it came from — the backlog item, question or owner instruction — AND how current state was checked on main before anything changed.');
             }
 
             // The prose sections carry the reasoning, and an empty one is the
@@ -87,6 +224,291 @@ jobs:
               const seg = after.slice(after.indexOf('\n') + 1).split(/^[ \t]*#{2,4}[ \t]/m)[0];
               if (!seg.replace(/<!--[\s\S]*?-->/g, '').replace(/^[-\s*]+$/gm, '').trim()) {
                 problems.push(`Section "${heading}" is empty — it still holds only its template comment.`);
+              }
+            }
+
+            // ---------------------------------------------------------------
+            // The required review lane (CLAUDE.md). ChatGPT performs it; this
+            // check only verifies the RECORD exists. It cannot tell whether a
+            // review happened, and passing it is not evidence that one did.
+            //
+            // Anchored on the heading rather than on a mention of the phrase:
+            // prose discussing the lane earlier in the body would otherwise
+            // capture the wrong span and fail a card that is actually filled.
+            const reviewHeading =
+              /^[ \t]*#{2,4}[ \t]*Atlas Contract \/ Systems Review[ \t]*$/im.exec(body);
+            if (!reviewHeading) {
+              problems.push('The PR body is missing the "Atlas Contract / Systems Review" section (Required / Exact reviewed head / Reviewer / Findings and dispositions). When no trigger fired, say "not required" and why.');
+            } else {
+              const sec = body.slice(reviewHeading.index + reviewHeading[0].length)
+                .split(/\n[ \t]*#{2,4}[ \t]+/)[0];
+              const read = (label) => {
+                const m = new RegExp(
+                  `^[ \\t]*[-*][ \\t]*\\*{0,2}${esc(label)}\\*{0,2}[ \\t]*:(.*)$`, 'im').exec(sec);
+                return m === null
+                  ? null
+                  : m[1].replace(/<!--[\s\S]*?-->/g, '').replace(/\*/g, '').trim();
+              };
+              const REVIEW = [
+                ['Required', 'name the trigger that fired, or say why none did'],
+                ['Exact reviewed head', 'the full 40-character commit SHA the reviewer read, or n/a'],
+                ['Reviewer', 'who performed the required review, or n/a'],
+                ['Findings and dispositions', 'each finding with its disposition, or "none", or "n/a"'],
+              ];
+              const seen = {};
+              for (const [label, want] of REVIEW) {
+                const v = read(label);
+                if (v === null) {
+                  problems.push(`The review block is missing its "${label}" line — ${want}.`);
+                } else if (!v) {
+                  problems.push(`Review block line "${label}" is blank — ${want}.`);
+                }
+                seen[label] = v || '';
+              }
+
+              // Fails CLOSED: the review counts as required unless the line says
+              // otherwise. A record that claims a required review but names no
+              // head is exactly the staleness the Codex freshness reporter exists
+              // to catch — a verdict attached to a revision that may no longer be
+              // here. Shape only; that the SHA is the real head stays a human's
+              // read, and so does whether the named reviewer actually looked.
+              //
+              // ONLY THE OPENING OF THE FIELD CLASSIFIES IT. The first version
+              // matched "not required" anywhere in the line, so a declaration
+              // that began by saying the review WAS required could disable the
+              // entire gate with its own explanatory prose:
+              //
+              //   required — review machinery changed; documentation-only
+              //   pieces are not required
+              //
+              // That read as not-required and skipped the exact-head SHA check,
+              // the reviewer check and the completion checks (ChatGPT, P1, on
+              // 8dac0bc). Later prose never reclassifies the field now.
+              //
+              // The not-required openings are exactly "not required" and "n/a".
+              // Bare "no" and "none" are gone on purpose: "No trigger fired for
+              // the engine, but the review machinery changed, so it is required"
+              // opens with a not-required word and means the opposite, which is
+              // the same ambiguity one mirror over. An opening that is neither is
+              // flagged AND treated as required, so an unrecognised answer fails
+              // closed instead of silently picking a path.
+              const req = seen['Required'];
+              const notRequired = /^(?:not[ \t]+required|n\/a)\b/i.test(req);
+              if (req && !notRequired && !/^required\b/i.test(req)) {
+                problems.push('The review block\'s "Required" line must OPEN with "required" or "not required" (or "n/a"). Only its opening decides whether the exact-head checks run, and later prose never reclassifies it — write "required — <the trigger that fired>" or "not required — <why none did>".');
+              }
+              // "not required" is the branch that switches every downstream
+              // check off, so it is the one answer that has to carry its reason.
+              // A bare classifier disabled the whole block while explaining
+              // nothing (Codex, P2, on f425ef8), and the trigger list is wide
+              // enough that "none fired" is a claim, not a default.
+              if (notRequired) {
+                const reason = req.replace(/^(?:not[ \t]+required|n\/a)\b[\s—–:,.-]*/i, '')
+                  // An absence word is not a reason. `not required — none` was
+                  // green because any three letters counted (Codex, P2, on
+                  // f71ef30), so the absence words come out before the test.
+                  .replace(/\b(?:none|n\/a|na|no|nil|nothing|unknown|tbd)\b/gi, '')
+                  .trim();
+                if (!/[a-z]{3}/i.test(reason)) {
+                  problems.push('"Required: not required" has to say WHY no trigger fired. The trigger list in CLAUDE.md is deliberately wide, so "none fired" is a claim that must survive reading it — and this is the branch that switches every exact-head and reviewer check off.');
+                }
+              }
+              if (req && !notRequired) {
+                // A field that names a SHA or a reviewer *and* says the review has
+                // not happened is a contradiction, and on a bare pattern match the
+                // SHA wins: the first body written against this check said "record
+                // <sha> here once ChatGPT has read it" and went green. Guarding
+                // only the head line left the same hole one field over — pre-fill
+                // the SHA, leave `Reviewer: ChatGPT, pending`, and the card goes
+                // green while saying the review is unfinished (Codex, P1, on
+                // 06522c0). So the marker is rejected in all three fields that
+                // describe COMPLETION.
+                //
+                // `Required` is deliberately not one of them: it says whether the
+                // gate applies, not whether it ran.
+                //
+                // Two rules, because the fields carry different kinds of prose.
+                // The head and the reviewer are IDENTITY fields — a SHA and a
+                // name — so any marker in them means the review did not happen.
+                // Dispositions are PROSE, and a disposition legitimately
+                // describes downstream waiting: "routed to B72, awaiting the
+                // owner's answer on B70" is a complete disposition of a finding
+                // that is itself unresolved. Failing that would be the check
+                // punishing an honest answer, so only a marker describing the
+                // DISPOSITIONING counts there — a leading one, or the phrase
+                // itself deferred.
+                const PENDING = /\b(pending|not yet|none yet|tbd|awaiting|outstanding|to be (?:done|performed|recorded|obtained))\b/i;
+                const DISPOSITIONS_PENDING = /^(?:pending|none yet|not yet|tbd|to be\b)|\bdispositions?[ \t]+(?:are[ \t]+)?pending\b|\bpending[ \t]+dispositions?\b/i;
+                // The two IDENTITY fields hold a commit SHA and a name, and no
+                // negation belongs in either. Enumerating pending markers kept
+                // missing new ways to write the same denial — `not reviewed:
+                // <sha>`, `ChatGPT did not perform this review` (Codex, P1 × 2,
+                // on f71ef30) — so this bans the class instead of the instance.
+                // The prose field is deliberately excluded: a disposition may
+                // legitimately say "not fixed here, routed to B72".
+                const NEGATED = /\b(?:not|no|none|nobody|never|isn'?t|wasn'?t|did[ \t]?n'?t|does[ \t]?n'?t|cannot|can'?t|without|denied|refused)\b/i;
+                const IDENTITY_UNFIT = new RegExp(`${PENDING.source}|${NEGATED.source}`, 'i');
+                const unfinished = [
+                  ['Reviewer', IDENTITY_UNFIT],
+                  ['Findings and dispositions', DISPOSITIONS_PENDING],
+                ].filter(([label, re]) => re.test(seen[label])).map(([label]) => label);
+
+                // The head field is a SHA and NOTHING else — the same closing
+                // move as the reviewer field, and for the same reason. Looking
+                // for a 40-character run inside free prose meant every wording
+                // that denied the review had to be enumerated, and the list kept
+                // missing one: `not reviewed: <sha>`, then `unreviewed: <sha>`
+                // (Codex, P1, on f71ef30 and again on 9d963c1). A closed form
+                // needs no vocabulary at all, and no future wording can beat it.
+                const headField = seen['Exact reviewed head'].replace(/[`\s]/g, '');
+                const head = ((context.payload.pull_request || {}).head || {}).sha || '';
+                if (unfinished.length) {
+                  problems.push(`The review is recorded as required, and ${unfinished.map((l) => `"${l}"`).join(' / ')} says the review has not happened. Red is the correct result: fill all three once the reviewer has read this exact head. For a finding handed off rather than resolved, "routed to <item>" says so without the word.`);
+                }
+                if (!/^[0-9a-f]{40}$/i.test(headField)) {
+                  problems.push('"Exact reviewed head" must be the 40-character commit SHA the reviewer read, and nothing else. Prose around it is how a card says the review did not happen while carrying a SHA that says it did.');
+                } else if (head && headField.toLowerCase() !== head.toLowerCase()) {
+                  // The mechanical form of the exact-head rule. It is still a
+                  // literal check — two strings — and it proves only which commit
+                  // the card CLAIMS was read. Whether a review happened, and
+                  // whether it was any good, stays a human's judgement. What it
+                  // removes is the one failure a literal check can remove: a
+                  // verdict quietly outliving the code it was about.
+                  problems.push(`The recorded reviewed head \`${headField.slice(0, 7)}\` is not this pull request's head \`${head.slice(0, 7)}\`. A review of an earlier commit does not cover a later one — repeat the review against the current head and record its SHA.`);
+                }
+                // A required review needs a NAME, and "None" is not one. The
+                // check rejected only "n/a", so `Reviewer: None` — non-blank,
+                // no pending marker — satisfied a required review while naming
+                // nobody (Codex, P1, on e01a534). Absence values are anchored
+                // like the classifier above: a real reviewer called "Nova" is
+                // safe because the boundary after "no" does not match.
+                // ChatGPT performs this lane; that is an authority boundary, not
+                // a preference. `Reviewer: Codex` — or the active builder naming
+                // itself — records the REQUIRED review as performed by the
+                // advisory lane, and passed while merely being a name (Codex,
+                // P1, on 5034cbc). CLAUDE.md's stated intent was that the card
+                // makes a wrong reviewer VISIBLE; this makes it fail, a step
+                // further that is documented there. A value naming ChatGPT
+                // alongside others still passes.
+                //
+                // ONE condition, because naming the lane subsumes naming
+                // anybody: every absence value fails it too. ABSENT only picks
+                // the wording — "None" deserves "name who performed it", not a
+                // lecture about lanes — so it is deliberately not a separate
+                // rejection, and it carries no mutant, because a mutation that
+                // cannot change an outcome would prove nothing.
+                // A substring test for the lane's name was not enough: it
+                // accepted `Reviewer: Codex, not ChatGPT`, where the field
+                // credits the required review to the advisory lane and says so
+                // (Codex, P1, on f425ef8). So the value must name ChatGPT
+                // AFFIRMATIVELY — not negated, and not beside another reviewer.
+                //
+                // Naming an advisory reader here is now rejected too, even
+                // alongside ChatGPT. The card has a row for that, and the
+                // contract puts advisory confidence in it; one field, one
+                // meaning. This also removes the need for a negation list to
+                // grow every time someone finds a new way to write "not".
+                // AFFIRMATIVE, not a denylist. Naming four products left every
+                // other agent creditable — `ChatGPT was bypassed in favor of
+                // Gemini` passed while saying so (Codex, P1, on 805101d), and a
+                // denylist of agent names can never be finished. So the field
+                // must OPEN with the lane and carry nothing beyond a short
+                // qualifier: "ChatGPT", "the ChatGPT desk", "ChatGPT (Atlas
+                // desk)" pass; a sentence does not. Advisory reads have their
+                // own row, so there is nothing else this field needs to say.
+                const ABSENT = /^(?:n\/a|na|none|no|nobody|no[ \t]+one|not[ \t]+required|tbd|unknown)\b/i;
+                // The lane name, and NOTHING else. This field has been defeated
+                // four times, each time in whatever free space was left in it:
+                // a long sentence, then a short one (`ChatGPT was bypassed`), a
+                // denylist that could not name every other agent, and finally
+                // the bracketed qualifier — `ChatGPT (bypassed)` (Codex, P1, on
+                // 0d09754). Every fix closed one degree of freedom, and the next
+                // finding used the one that was left.
+                //
+                // So none is left. A qualifier adds nothing the card needs: a
+                // note about the review belongs in "Findings and dispositions",
+                // and an advisory read belongs in the "Advisory review" row.
+                const LANE_ONLY = /^chat[ \t-]?gpt\b[ \t]*[.]?$/i;
+                const reviewer = seen['Reviewer'];
+                // Skipped when the field has already been flagged as unfinished:
+                // a line reading "not yet performed — ChatGPT" is a placeholder,
+                // not a claim that the wrong lane reviewed, and saying both made
+                // the card look as though it had named the wrong reviewer. Same
+                // outcome either way — the card is red — but one reason, not two.
+                if (!unfinished.includes('Reviewer') && !LANE_ONLY.test(reviewer)) {
+                  problems.push(!reviewer || ABSENT.test(reviewer)
+                    ? 'The review is recorded as required, so "Reviewer" must NAME who performed it. "None", "no", "n/a" and "not required" are absence values — on this path they say the gate was never satisfied, not that it was.'
+                    : `"Reviewer" reads ${JSON.stringify(reviewer.slice(0, 60))}. The Atlas Contract / Systems Review is ChatGPT's lane alone, so this field reads exactly "ChatGPT" and nothing else — a note about the review belongs in "Findings and dispositions", and an advisory read in the "Advisory review" row — an implementation agent cannot satisfy its own architecture gate, and any advisory read belongs in the card's "Advisory review" row.`);
+                }
+
+                // ...and the findings line has to dispose of something. `n/a`
+                // is the answer for a review that was NOT required; on this path
+                // it leaves the result unanswered, and so does "findings
+                // pending", which names no disposition and slipped past the
+                // pending markers (Codex, P1, on e01a534). So this asks for the
+                // contract's own vocabulary rather than trying to enumerate
+                // every non-answer: fixed, non-issue, routed, or none.
+                const DISPOSED = /\b(?:fixed|non-?[ \t]?issues?|routed|none|nothing)\b/i;
+                // ...and a finding the line itself calls unanswered is not
+                // disposed, however many others are. One vocabulary match used
+                // to carry the whole field, so `P1 fixed; P2 unanswered` passed
+                // (Codex, P1, on 5034cbc).
+                //
+                // This catches a finding DECLARED unanswered. It does not
+                // validate a disposition per listed finding, which was the wider
+                // ask and is refused on purpose: that needs prose parsed into
+                // findings, and every split rule tried here false-fails ordinary
+                // phrasing — "two raised: one fixed, one routed to B72" has a
+                // segment carrying no disposition word and is a complete answer.
+                // Reading a list and deciding each item was answered is the
+                // reviewer's job; CLAUDE.md says the check cannot do it.
+                //
+                // "still open" and "outstanding" are deliberately absent: a
+                // routed finding stays open, and saying so is honest.
+                const UNANSWERED =
+                  /\b(?:unanswered|not[ \t]answered|undecided|no[ \t]disposition|not[ \t]dispositioned)\b/i;
+                if (!unfinished.includes('Findings and dispositions')
+                    && !DISPOSED.test(
+                      dropNegated(seen['Findings and dispositions'], DISPOSED.source))) {
+                  problems.push('The review is recorded as required, so "Findings and dispositions" must record what happened to each finding — fixed, non-issue with the reason, or routed — or say "none" when it came back clean. "n/a" answers a review that was not required; on this path it leaves the result unstated.');
+                } else if (UNANSWERED.test(
+                    // "No unanswered findings; P1 fixed" is a complete answer
+                    // that happens to contain the word, and it was failing
+                    // (Codex, P2, on f425ef8). Negated forms come out before
+                    // the test rather than being enumerated as exceptions.
+                    seen['Findings and dispositions']
+                      .replace(/\bno(?:ne|thing)?[ \t]+(?:unanswered|undecided)\b/gi, ''))) {
+                  problems.push('"Findings and dispositions" calls one of its findings unanswered. Every finding takes exactly one disposition — fixed, non-issue with the reason, or routed — and a disposition naming where it went ("routed to B72") is a complete answer even when the item itself stays open.');
+                }
+              }
+            }
+
+            // Every finding made along the way takes exactly one disposition, so
+            // a real one cannot quietly evaporate between the comment that raised
+            // it and the merge.
+            const findingsHeading =
+              /^[ \t]*#{2,4}[ \t]*Additional findings[ \t]*$/im.exec(body);
+            if (!findingsHeading) {
+              problems.push('The PR body is missing the "Additional findings" section (None / FIXED NOW / REJECTED / ADDED TO BACKLOG / OWNER DECISION REQUIRED).');
+            } else {
+              const sec = body.slice(findingsHeading.index + findingsHeading[0].length)
+                .split(/\n[ \t]*#{2,4}[ \t]+/)[0];
+              // The template ships all five choices, so "at least one present"
+              // was satisfied by the untouched scaffold — the load-bearing block
+              // never had to be edited (Codex, P2, on bc3645f). Two rules fix
+              // that: a disposition must carry content, and None cannot stand
+              // beside one that does.
+              const listed = [...sec.matchAll(
+                /^[ \t]*[-*][ \t]*(None|FIXED NOW|REJECTED|ADDED TO BACKLOG|OWNER DECISION REQUIRED)\b[ \t]*:?(.*)$/gim)]
+                .map((m) => ({ kind: m[1], rest: m[2].replace(/<!--[\s\S]*?-->/g, '').trim() }));
+              const empty = listed.filter((f) => f.kind !== 'None' && !f.rest);
+              const answered = listed.filter((f) => f.kind !== 'None' && f.rest);
+              if (!listed.length) {
+                problems.push('"Additional findings" must record at least one disposition: None, FIXED NOW, REJECTED, ADDED TO BACKLOG, or OWNER DECISION REQUIRED.');
+              } else if (empty.length) {
+                problems.push(`"Additional findings" still carries the template's empty choices (${empty.map((f) => f.kind).join(', ')}). Delete the lines that do not apply — an unfilled disposition is the scaffold, not an answer.`);
+              } else if (listed.some((f) => f.kind === 'None') && answered.length) {
+                problems.push('"Additional findings" says None and also records a disposition. A pull request cannot both have found nothing and have dispositioned something — keep only the lines that apply.');
               }
             }
 

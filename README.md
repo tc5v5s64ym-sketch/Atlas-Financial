@@ -93,10 +93,14 @@ qualification and loan-to-value. Real decisions need a licensed professional.
 
 ## Related
 
+- **`AGENTS.md`** / **`CLAUDE.md`** — how work gets done here: who decides, who
+  reviews, and what a pull request has to carry before it merges
 - **`CONTEXT.md`** — read first in a new session: layout, state, standing rules
 - **`ARCHITECTURE.md`** — how the layers fit together, where new material goes,
   and the staged direction
 - **`docs/ACCOUNT_FACTS.md`** — rates, limits, due dates, the renewal date
+- **`docs/RISK_LABELS.md`** — the CI gates, and the defect each one exists to
+  catch
 
 Raw bank exports and statement PDFs live in `raw/` on this machine only. They
 contain names, addresses and partial card numbers, are gitignored, and are

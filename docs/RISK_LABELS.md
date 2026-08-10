@@ -77,6 +77,55 @@ a figure moving *unnoticed*. If the comment lists something the merge card does
 not mention, one of the two is wrong — either the card is incomplete, or the
 change had an effect nobody intended. Resolve it before merging.
 
+### Atlas Contract / Systems Review — required, and deliberately not a check
+
+The one **required** review lane. ChatGPT performs it; an implementation agent
+cannot satisfy it by re-reading its own work in a clean context, because that is
+the same agent with the same blind spots. It reads the **exact head** — a review
+of an earlier commit does not cover a later one.
+
+It is listed here so the map of review surfaces is complete, but it is not one
+of these gates and must never become one: no workflow, no commit status, no
+required check, no reviewer account. It is recorded in the merge card's review
+block — required or not with the trigger, the exact SHA read, who read it, and
+what happened to each finding.
+
+`merge-card-check` verifies those four fields are answered; that a SHA recorded
+as reviewed **is the current head**, so a verdict cannot outlive the code it was
+about; that the reviewer names **this lane** rather than the advisory one; and
+that the findings line disposes of what it lists rather than calling it
+unanswered. That is a different thing from verifying a review happened, which no
+check here can do.
+
+What it deliberately does **not** do is read a list of findings and decide each
+one was answered. Every rule tried for that false-failed ordinary phrasing —
+"two raised: one fixed, one routed to B72" has a clause carrying no disposition
+word and is a complete answer. Judging a list is the reviewer's job.
+
+**A known limit, stated rather than approximated again.** The check treats a
+disposition word as negated when a negation sits in the same clause. That
+catches the plain denials and it is deliberately not a fourth attempt at
+grammatical scope. Two sentences show why no rule of this kind can be right:
+
+> `P1 was not, in any way, fixed` — a denial the check does not catch.
+> `P1 was not only fixed but independently tested` — an assertion it must not fail.
+
+They differ only in grammar, so any mechanical rule that catches the first
+fails the second. A word window was tried and defeated, a clause rule is what
+stands, and `not only` is excluded as a fixed idiom. **Whether a sentence
+asserts or denies its own disposition is a reviewer's read, and the card is
+where that judgement is recorded.** The check's job is that the field is not
+blank and names a disposition at all.
+
+The same closing move solved the two identity fields where it *was* available:
+`Exact reviewed head` must be a bare 40-character SHA and `Reviewer` must read
+exactly `ChatGPT`, so neither needs a vocabulary of denials that can never be
+finished. Where a field can be closed, it is closed; where it cannot, the limit
+is written down here instead of guessed at.
+
+[`CLAUDE.md`](../CLAUDE.md) holds the trigger list and the seven questions the
+review asks. It is the only home for them; do not restate them here.
+
 ### Codex review — advisory, but its findings are not
 
 Codex reviews pull requests on this repository. That is configured in the
@@ -115,12 +164,22 @@ is what makes it a decision rather than an omission.
 
 ### `tests` — blocking
 
-`npm test`. Five suites: static sanity, the forecast engine and its
+`npm test`. Six suites: static sanity, the forecast engine and its
 opening-gap regression, household-budget reconciliation, the coupled
-cash-and-debt model, and the authority invariants.
+cash-and-debt model, the authority invariants, and the merge-card check's own
+behaviour.
 
 **An invariant failure is a failure, not a warning.** A plan that disagrees
 with itself is worse than no plan, because it still looks authoritative.
+
+**The merge-card suite guards the gate above.** `test-mergecard.js` extracts the
+real `script:` body out of `merge-card-check.yml` and runs it against completed
+and broken cards — including both false greens the check has actually shipped,
+where a card went green while saying in plain words that the required review had
+not happened. It then reverts each pending-marker protection in the extracted
+source and proves those cases go green again, so a guard cannot be removed
+without a committed test noticing. A copy of the check would prove only that the
+copy still works.
 
 ---
 
