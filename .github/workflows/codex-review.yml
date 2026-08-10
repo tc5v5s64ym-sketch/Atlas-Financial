@@ -46,9 +46,30 @@ name: Codex review freshness
 # push and on nothing else. The visible consequence is narrow but real, and it
 # is the last thing anyone will see on that PR — Codex passes the head, no push
 # follows, and the banner sits there reading `stale` about a review that is
-# current. The SHA it names is the honest tell: if it names the head, the review
-# it is calling stale is the one that just passed. Reading it right requires
-# knowing this, which is why it is written down rather than left to be noticed.
+# current.
+#
+# HOW TO TELL, precisely, because the obvious phrasing is wrong. Inert means the
+# banner is not regenerated AT ALL, so it never names the head as the commit it
+# reviewed — it keeps the text from the last push, naming an OLDER commit as
+# reviewed and the current head separately. Comparing the two SHAs inside the
+# banner therefore proves nothing.
+#
+#   The tell is OUTSIDE the banner: take the newest Codex `Reviewed commit:`
+#   SHA from the thread and compare it to the SHA the banner calls the head.
+#   If they are the same commit, the review being called stale is current.
+#
+# Worked example, from the pull request that added this trigger:
+#
+#   14:39  push e7f0e25 → banner: last reviewed `1cfc1f5`, head is now `e7f0e25`
+#   14:43  Codex passes `e7f0e25` clean → banner does not move
+#   read:  newest reviewed SHA e7f0e25 == banner's head e7f0e25 → false stale
+#
+# The first version of this note said to look for the banner naming the head as
+# last reviewed. That state never occurs while the trigger is inert, so it was
+# an unusable instruction for recognising the very case it described — written
+# by reasoning about the mechanism instead of reading what the thread actually
+# showed, which was sitting there in full at the time.
+#
 # From the first merge onward the wake-up is live and the banner self-corrects.
 #
 # The part that actually holds is none of these: it is the merge card's

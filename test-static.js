@@ -170,6 +170,17 @@ ok(/issue_comment:/.test(fresh) && /types: \[created\]/.test(fresh),
 ok(/DEFAULT BRANCH/.test(fresh) && /risk-label-gate/.test(fresh),
   'and says plainly that the wake-up is inert until it reaches the default branch',
   'otherwise the final banner on this PR reads as a contradiction');
+// The tell for that state has to be usable. Inert means the banner is not
+// regenerated, so it NEVER names the head as the commit it reviewed — the
+// first version of the note told the reader to look for exactly that, which
+// cannot happen. The comparison has to reach outside the banner.
+ok(/newest Codex `Reviewed commit:`\s*\n#\s*SHA .*compare it to the SHA the banner calls the head/s.test(fresh)
+  || /compare it to the SHA the banner calls the head/.test(fresh),
+  'and the false-stale tell compares the newest reviewed SHA against the banner\'s head',
+  'not two SHAs inside a banner that never regenerated');
+ok(!/if it names the head, the review\s*\n?#?\s*it is calling stale/.test(fresh),
+  'the unusable "banner names the head" tell is gone',
+  'that state cannot occur while the trigger is inert');
 const reviewedRe = (/const REVIEWED = (\/.*\/i);/.exec(fresh) || [])[1];
 ok(!!reviewedRe, 'it declares a pattern for the reviewed-commit line', reviewedRe);
 {
