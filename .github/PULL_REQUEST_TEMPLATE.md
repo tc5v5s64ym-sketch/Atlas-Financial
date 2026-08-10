@@ -92,7 +92,13 @@
 <!--
   Everything noticed while doing this work takes exactly ONE disposition, so a
   real finding cannot quietly evaporate and cannot silently expand this pull
-  request. Keep only the lines that apply.
+  request.
+
+  DELETE the lines that do not apply. An unfilled disposition is this scaffold
+  rather than an answer, and the check fails it — otherwise the one block that
+  is meant to be load-bearing would never have to be edited. "None" cannot
+  stand beside a disposition that carries content, because a pull request
+  cannot both have found nothing and have dispositioned something.
 
   A thing a human has to KNOW is a question (docs/01_OPEN_QUESTIONS.md). A thing
   someone has to DO is backlog (BACKLOG.md). The row above records the decision

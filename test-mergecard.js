@@ -168,6 +168,12 @@ const CASES = [
   ['an attribution row of n/a', card({ rows: { 'Builder surface': 'n/a' } }), 'red'],
   ['a model name that merely starts with "Na"',
     card({ rows: { 'Primary builder model': 'NA-1000' } }), 'green'],
+  // The absence word has to BE the answer, not open one. This is the contract's
+  // permitted fallback for a surface that withholds its model, and the check
+  // was failing the honest card it exists to allow.
+  ['a withheld-identity sentence that opens with "No"', card({ rows: {
+    'Primary builder model': 'No model identity is exposed by this surface',
+  } }), 'green'],
 
   // --- current-state verdict: the gate's own record, so it has to name a verdict
   ['the current-state verdict blank', card({ rows: { 'Current-state verdict': '' } }), 'red'],
@@ -181,6 +187,12 @@ const CASES = [
   ['a verdict row naming two verdicts', card({ rows: {
     'Current-state verdict': 'B1 · STILL BROKEN or ALREADY FIXED',
   } }), 'red'],
+  // The gate is source + verdict + evidence; a bare token records the middle
+  // third and calls it the answer.
+  ['a verdict and nothing else',
+    card({ rows: { 'Current-state verdict': 'STILL BROKEN' } }), 'red'],
+  ['a verdict with its source named',
+    card({ rows: { 'Current-state verdict': 'B1 · STILL BROKEN' } }), 'green'],
   ['one verdict repeated is still one', card({ rows: {
     'Current-state verdict': 'B1 · STILL BROKEN — still broken on main at ce9c7fa, STILL BROKEN after the rebase',
   } }), 'green'],
@@ -345,6 +357,22 @@ const CASES = [
   // --- finding disposition
   ['the findings block missing entirely', card({ dropFindings: true }), 'red'],
   ['a findings block with no allowed disposition', card({ findings: '- nothing to report' }), 'red'],
+  // The template ships all five choices, so "at least one present" was
+  // satisfied by the scaffold — the load-bearing block never had to be edited.
+  ['the untouched five-line scaffold', card({ findings: [
+    '- None', '- FIXED NOW:', '- REJECTED:', '- ADDED TO BACKLOG:',
+    '- OWNER DECISION REQUIRED:',
+  ].join('\n') }), 'red'],
+  ['one filled disposition beside four empty ones', card({ findings: [
+    '- FIXED NOW: corrected the epsilon', '- REJECTED:', '- ADDED TO BACKLOG:',
+  ].join('\n') }), 'red'],
+  ['None standing beside a real disposition',
+    card({ findings: '- None\n- FIXED NOW: corrected the epsilon' }), 'red'],
+  ['several real dispositions together', card({ findings: [
+    '- FIXED NOW: corrected the epsilon',
+    '- REJECTED: speculative, no evidence',
+    '- OWNER DECISION REQUIRED: what TD does at the limit',
+  ].join('\n') }), 'green'],
   ['FIXED NOW', card({ findings: '- FIXED NOW: the epsilon on the buffer comparison' }), 'green'],
   ['REJECTED', card({ findings: '- REJECTED: speculative, no evidence' }), 'green'],
   ['ADDED TO BACKLOG', card({ findings: '- ADDED TO BACKLOG: B72, the Triangle over-limit window' }), 'green'],
@@ -417,6 +445,24 @@ const MUTANTS = [
   {
     name: 'the reason required after "not required" dropped',
     apply: src => src.replace(/if \(!\/\[a-z\]\{3\}\/i\.test\(reason\)\) \{/, 'if (false) {'),
+  },
+  {
+    name: 'the attribution absence rule reverted to anchored-only',
+    apply: src => src.replace(
+      /if \(ABSENT_ATTRIBUTION\.test\(value\) && rest\.length < 3\) \{/,
+      'if (ABSENT_ATTRIBUTION.test(value)) {'),
+  },
+  {
+    name: 'the source-and-evidence requirement dropped from the verdict row',
+    apply: src => src.replace(
+      /if \(verdictValue && chosen\.size === 1 && verdictRest\.length < 2\) \{/,
+      'if (false) {'),
+  },
+  {
+    name: 'the findings block back to "at least one disposition present"',
+    apply: src => src.replace(/\} else if \(empty\.length\) \{/, '} else if (false) {')
+      .replace(/\} else if \(listed\.some\(\(f\) => f\.kind === 'None'\) && answered\.length\) \{/,
+        '} else if (false) {'),
   },
   {
     name: 'the negation ban lifted from the identity fields',
