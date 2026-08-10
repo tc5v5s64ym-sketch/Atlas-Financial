@@ -174,6 +174,12 @@ const CASES = [
   ['a withheld-identity sentence that opens with "No"', card({ rows: {
     'Primary builder model': 'No model identity is exposed by this surface',
   } }), 'green'],
+  // ...and that exception is the model's alone. A surface and an authority are
+  // always knowable to whoever fills the card in; only a model can be withheld.
+  ['the same sentence shape in the surface row',
+    card({ rows: { 'Builder surface': 'No surface is exposed' } }), 'red'],
+  ['the same sentence shape in the authority row',
+    card({ rows: { 'Architecture / dispatch authority': 'No authority is known' } }), 'red'],
 
   // --- current-state verdict: the gate's own record, so it has to name a verdict
   ['the current-state verdict blank', card({ rows: { 'Current-state verdict': '' } }), 'red'],
@@ -182,8 +188,9 @@ const CASES = [
   ['each documented verdict', card({ rows: {
     'Current-state verdict': 'B1 · FIXED BUT UNTESTED — proved rather than refactored',
   } }), 'green'],
-  ['STALE / SUPERSEDED written with a slash',
-    card({ rows: { 'Current-state verdict': 'B1 · STALE / SUPERSEDED' } }), 'green'],
+  ['STALE / SUPERSEDED written with a slash', card({ rows: {
+    'Current-state verdict': 'B1 · STALE / SUPERSEDED — the figure it names moved in PR #1',
+  } }), 'green'],
   ['a verdict row naming two verdicts', card({ rows: {
     'Current-state verdict': 'B1 · STILL BROKEN or ALREADY FIXED',
   } }), 'red'],
@@ -191,8 +198,13 @@ const CASES = [
   // third and calls it the answer.
   ['a verdict and nothing else',
     card({ rows: { 'Current-state verdict': 'STILL BROKEN' } }), 'red'],
-  ['a verdict with its source named',
-    card({ rows: { 'Current-state verdict': 'B1 · STILL BROKEN' } }), 'green'],
+  // A source alone is not the gate either: `B1 · STILL BROKEN` names what
+  // authorised the work and still says nothing about how state was checked.
+  ['a verdict and a bare source identifier',
+    card({ rows: { 'Current-state verdict': 'B1 · STILL BROKEN' } }), 'red'],
+  ['a verdict with its source and how it was checked', card({ rows: {
+    'Current-state verdict': 'B1 · STILL BROKEN — reproduced on main at ce9c7fa',
+  } }), 'green'],
   ['one verdict repeated is still one', card({ rows: {
     'Current-state verdict': 'B1 · STILL BROKEN — still broken on main at ce9c7fa, STILL BROKEN after the rebase',
   } }), 'green'],
@@ -447,15 +459,15 @@ const MUTANTS = [
     apply: src => src.replace(/if \(!\/\[a-z\]\{3\}\/i\.test\(reason\)\) \{/, 'if (false) {'),
   },
   {
-    name: 'the attribution absence rule reverted to anchored-only',
+    name: 'the withheld-identity exception widened to every attribution field',
     apply: src => src.replace(
-      /if \(ABSENT_ATTRIBUTION\.test\(value\) && rest\.length < 3\) \{/,
-      'if (ABSENT_ATTRIBUTION.test(value)) {'),
+      /const withheldModel = label === 'Primary builder model' && rest\.length >= 3;/,
+      'const withheldModel = rest.length >= 3;'),
   },
   {
     name: 'the source-and-evidence requirement dropped from the verdict row',
     apply: src => src.replace(
-      /if \(verdictValue && chosen\.size === 1 && verdictRest\.length < 2\) \{/,
+      /if \(verdictValue && chosen\.size === 1 && verdictRest\.length < 10\) \{/,
       'if (false) {'),
   },
   {

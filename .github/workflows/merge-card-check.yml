@@ -114,8 +114,15 @@ jobs:
               // (Codex, P2, on bc3645f) — which is the contract's own permitted
               // fallback for a surface that withholds its model, so the check
               // was failing the honest card it exists to allow.
+              //
+              // That exception belongs to the MODEL field alone. Applied to all
+              // three it let "No surface is exposed" and "No authority is known"
+              // through (Codex, P2, on 9f2d2dc): a surface and a dispatch
+              // authority are always knowable to whoever is filling the card in,
+              // and only a model can be genuinely withheld by the tool.
               const rest = value.replace(ABSENT_ATTRIBUTION, '').replace(/[^a-z0-9]/gi, '');
-              if (ABSENT_ATTRIBUTION.test(value) && rest.length < 3) {
+              const withheldModel = label === 'Primary builder model' && rest.length >= 3;
+              if (ABSENT_ATTRIBUTION.test(value) && !withheldModel) {
                 problems.push(`Merge card row "${label}" is an absence value, and only Supporting / explore models may answer None. Name the surface, the exact model name the surface displays — or say plainly that it withholds it — and the dispatch authority.`);
               }
             }
@@ -142,13 +149,21 @@ jobs:
                 : `Merge card row "Current-state verdict" selects ${chosen.size} verdicts (${[...chosen].join(', ')}). The gate produces exactly one; naming several leaves its answer unstated.`);
             }
             // The gate is source + verdict + evidence, and a bare verdict token
-            // records only the middle third (Codex, P2, on bc3645f). This asks
-            // that the row say something besides the verdict — it cannot tell
-            // whether the source is real, which stays the reviewer's read.
+            // records only the middle third (Codex, P2, on bc3645f). A bare
+            // identifier beside it is not much better — `B1 · STILL BROKEN`
+            // names what authorised the work and still says nothing about how
+            // current state was checked (Codex, P2, on 9f2d2dc).
+            //
+            // So this measures whether the row carries PROSE, not whether that
+            // prose is evidence. Validating the source and the evidence as
+            // separate components was asked for and refused: telling "B70" from
+            // "reproduced on main at ce9c7fa" needs the sentence understood, and
+            // any split rule either passes a padded row or fails a terse honest
+            // one. Whether the evidence is real stays the reviewer's read.
             const verdictRest = verdictValue
               .replace(new RegExp(VERDICT.source, 'gi'), '').replace(/[^a-z0-9]/gi, '');
-            if (verdictValue && chosen.size === 1 && verdictRest.length < 2) {
-              problems.push('Merge card row "Current-state verdict" carries a verdict and nothing else. Name the source it came from — the backlog item, question or owner instruction — and how current state was checked on main before anything changed.');
+            if (verdictValue && chosen.size === 1 && verdictRest.length < 10) {
+              problems.push('Merge card row "Current-state verdict" carries the verdict and little else. Name the source it came from — the backlog item, question or owner instruction — AND how current state was checked on main before anything changed.');
             }
 
             // The prose sections carry the reasoning, and an empty one is the

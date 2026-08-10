@@ -285,7 +285,7 @@ Anything found along the way takes exactly one disposition, recorded in the
 card's **Additional findings** section. It does not silently expand the pull
 request:
 
-1. **FIX NOW** — fixed and proved in this pull request.
+1. **FIXED NOW** — fixed and proved in this pull request.
 2. **REJECTED** — with the reason, in the pull request.
 3. **ADDED TO BACKLOG** — an item in `BACKLOG.md`, named in the card.
 4. **OWNER DECISION REQUIRED** — stop and ask. If it is something a human has to
