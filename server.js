@@ -150,6 +150,13 @@ app.post('/logout', (req, res) => {
   res.redirect('/login');
 });
 
+// The health check has to answer before the gate, not behind it. render.yaml
+// declares /healthz as the health-check path, but sitting below the gate it
+// only ever returned a 302 to the login page — a platform that requires a 2xx
+// would mark the service unhealthy and restart it in a loop. It serves the
+// literal string "ok" and reads nothing, so this widens no data surface.
+app.get('/healthz', (_req, res) => res.type('text/plain').send('ok'));
+
 // ---------------------------------------------------------------- gate
 // styles.css is needed by the login page, so it stays public. Everything else
 // requires a session.
@@ -177,8 +184,6 @@ app.get('/data.json', (_req, res) => {
     res.status(500).json({ error: 'data unavailable' });
   }
 });
-
-app.get('/healthz', (_req, res) => res.type('text/plain').send('ok'));
 
 app.use(express.static(path.join(__dirname, 'public'), {
   etag: false, lastModified: false, maxAge: 0,

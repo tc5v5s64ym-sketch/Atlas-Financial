@@ -29,22 +29,33 @@
 
 <div class="wrap">
 
+  <!-- DECISION FIRST. Everything above the first <details> answers: what do we
+       do next, can we afford it, and where does that leave us. The evidence is
+       preserved below and behind disclosures, not deleted. -->
   <section id="plan90">
     <div class="kicker">The plan</div>
     <h1>The next 90 days</h1>
+    <p class="mission" id="plan-mission"></p>
     <p class="sub" id="plan-window"></p>
 
     <div class="statusband" id="status-band" role="status">Working out the projection…</div>
-    <p class="lede transfer-note" id="transfer-note" hidden></p>
-    <div class="tiles hero-tiles" id="hero-tiles"></div>
+  </section>
 
-    <div class="card hero-card">
-      <div class="ledger" id="hero-ledger"></div>
-      <p class="lede footnote" id="hero-note"></p>
-    </div>
+  <section id="nextmove">
+    <h2>Next move</h2>
+    <div class="nextmove card" id="nextmove-card"></div>
+    <h3 class="h-sub">Then, in order</h3>
+    <div class="card" id="actions-list"></div>
+    <p class="lede footnote" id="actions-note"></p>
+  </section>
+
+  <section id="today">
+    <h2>Today</h2>
+    <div class="tiles hero-tiles" id="hero-tiles"></div>
+    <p class="lede transfer-note" id="transfer-note" hidden></p>
 
     <div id="funding" hidden>
-      <h2 id="funding-head"></h2>
+      <h3 id="funding-head"></h3>
       <p class="lede" id="funding-lede"></p>
       <div class="card">
         <div id="funding-options" class="fund-list"></div>
@@ -53,8 +64,50 @@
     </div>
   </section>
 
+  <section id="cap">
+    <h2>The weekly household cap</h2>
+    <div class="card capcard">
+      <div class="capline" id="cap-headline"></div>
+      <div class="capsplit" id="cap-split"></div>
+      <p class="lede footnote" id="cap-basis"></p>
+    </div>
+  </section>
+
+  <section id="next14">
+    <h2>The next 14 days</h2>
+    <div class="card">
+      <div class="agenda14" id="agenda-14"></div>
+      <p class="lede footnote" id="agenda-14-note"></p>
+    </div>
+  </section>
+
+  <section id="scoreboard">
+    <h2>Where this ends up</h2>
+    <p class="lede">Today, and at 30, 60 and 90 days, if the plan is followed. Projected, not promised —
+    every figure moves with the assumptions below.</p>
+    <div class="card scroll score-table-wrap">
+      <table id="score-table" class="wk-table"></table>
+    </div>
+    <div class="score-cards" id="score-cards"></div>
+    <div class="phases" id="phases"></div>
+    <p class="lede footnote" id="score-note"></p>
+  </section>
+
+  <section id="priorities">
+    <h2>90-day cash available for priorities</h2>
+    <div class="card">
+      <div class="ledger" id="priorities-ledger"></div>
+      <p class="lede footnote" id="priorities-note"></p>
+    </div>
+  </section>
+
+  <section id="risks">
+    <h2>What could break the plan</h2>
+    <div class="card" id="risk-list"></div>
+  </section>
+
   <section id="forecast">
-    <h2>Thirteen weeks, week by week</h2>
+    <h2>The 13-week forecast</h2>
     <div class="card">
       <div class="control tight">
         <label id="scenario-label">Income scenario — only the estimated streams move; confirmed income is the same in all three</label>
@@ -71,6 +124,12 @@
       <figcaption id="forecast-caption"></figcaption>
     </figure></div>
 
+    <details class="disclose">
+      <summary>View 13-week forecast details</summary>
+    <div class="card hero-card">
+      <div class="ledger" id="hero-ledger"></div>
+      <p class="lede footnote" id="hero-note"></p>
+    </div>
     <div class="card scroll wk-table-wrap">
       <table id="wk-table" class="wk-table"></table>
     </div>
@@ -79,8 +138,10 @@
       Weeks shaded amber dip below the buffer; red would mean a projected negative balance. The
       <b>keep&nbsp;≥</b> figure under each closing balance is the week-by-week track: finish a week below it and
       the rest of the window breaches the buffer even with everything going to plan.</p>
+    </details>
 
-    <h2>The 90-day calendar</h2>
+    <details class="disclose">
+      <summary>View full 90-day calendar</summary>
     <p class="lede">Every dated movement, on the day it happens — pay coming in, bills and minimums going out,
     the sports commitments, and the projected balance at the end of each day.</p>
     <div class="card">
@@ -94,10 +155,13 @@
       <div id="cal-agenda" class="cal-agenda"></div>
       <p class="lede footnote" id="cal-note"></p>
     </div>
+    </details>
   </section>
 
   <section id="budget">
-    <h2>The budget that gets us there</h2>
+    <h2>The detailed budget</h2>
+    <details class="disclose">
+      <summary>View detailed budget</summary>
     <p class="lede">Not a category template — this is solved backwards from the forecast above, and it recalculates
     the moment anything below changes.</p>
 
@@ -138,12 +202,14 @@
       <div id="budget-cats" class="cats"></div>
       <p class="lede footnote" id="budget-cats-note"></p>
     </div>
-  </section>
+    </details>
 
-  <section id="actions">
-    <h2>Next actions</h2>
-    <p class="lede" id="actions-note">Five at most, in order. Everything else can wait.</p>
-    <div class="card" id="actions-list"></div>
+    <details class="disclose">
+      <summary>How this plan was calculated</summary>
+      <div class="card">
+        <ul class="assumptions" id="assumption-list"></ul>
+      </div>
+    </details>
   </section>
 
   <section id="snapshot">

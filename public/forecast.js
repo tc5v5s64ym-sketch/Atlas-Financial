@@ -466,8 +466,123 @@
     };
   }
 
+  /* ------------------------------------------------------ debt projection */
+  // Cash and debt are the same story told from two sides, so they are walked
+  // together over one event stream. A payment that leaves the chequing account
+  // must arrive somewhere: every obligation names the debt it moves and what it
+  // does to it, and an "extra debt payment" that only reduced cash would be a
+  // rounding error dressed up as progress.
+  //
+  //   payment     leaves cash, reduces the named balance
+  //   capitalise  moves no cash, INCREASES the named balance (the HELOC)
+  //
+  // Interest: the mortgage and the HELOC already carry theirs as events — the
+  // mortgage inside its payment, the HELOC as the monthly capitalising charge —
+  // so accruing on top would count it twice. The cards do not, so theirs is
+  // accrued daily at the card rate.
+  //
+  // The projection assumes NO new card spending: the weekly cap is a cash
+  // instruction, and these balances only fall if it is honoured in cash.
+  function projectDebts(plan, debts, asOf, opts) {
+    opts = opts || {};
+    const days = plan.windowDays || 91;
+    const start = asOf;
+    const end = addDays(asOf, days - 1);
+    const events = expandEvents(plan, start, end, opts);
+    const byId = {};
+    const state = (debts || []).map(x => {
+      const s = {
+        id: x.id, label: x.label, secured: !!x.secured, rate: x.rate || 0,
+        limit: x.limit, opening: x.balance, balance: x.balance,
+        interestByEvent: !!x.interestByEvent, principalShare: x.principalShare,
+        interest: 0, paid: 0, capitalised: 0,
+      };
+      byId[x.id] = s;
+      return s;
+    });
+
+    const targetFor = id => {
+      const o = (plan.obligations || []).find(x => x.id === id);
+      return o && o.debtId ? byId[o.debtId] : null;
+    };
+    // An extra payment must name its target, or it is not a debt payment.
+    const extraTarget = opts.extraDebtTarget ? byId[opts.extraDebtTarget] : null;
+
+    const marks = [];
+    const snapshot = (day, date) => ({
+      day, date,
+      debts: state.map(s => ({
+        id: s.id, label: s.label, secured: s.secured, balance: s.balance,
+        limit: s.limit,
+        available: s.limit != null ? Math.max(0, s.limit - s.balance) : null,
+        overLimit: s.limit != null && s.balance > s.limit,
+        interest: s.interest, paid: s.paid,
+      })),
+      consumer: state.filter(s => !s.secured).reduce((a, s) => a + s.balance, 0),
+      secured: state.filter(s => s.secured).reduce((a, s) => a + s.balance, 0),
+      heloc: byId.heloc ? byId.heloc.balance : 0,
+      // Revolving headroom across every facility that has a limit.
+      headroom: state.filter(s => s.limit != null)
+        .reduce((a, s) => a + Math.max(0, s.limit - s.balance), 0),
+      overLimitCount: state.filter(s => s.limit != null && s.balance > s.limit).length,
+      interestToDate: state.reduce((a, s) => a + s.interest, 0),
+    });
+    marks.push(snapshot(0, start));
+
+    const byDate = new Map();
+    for (const e of events) {
+      if (!byDate.has(e.date)) byDate.set(e.date, []);
+      byDate.get(e.date).push(e);
+    }
+
+    for (let i = 0; i < days; i++) {
+      const date = addDays(start, i);
+      // Card interest accrues daily; the two secured debts carry theirs as
+      // events and are skipped here so nothing is charged twice.
+      for (const s of state) {
+        if (s.interestByEvent || !s.rate) continue;
+        const daily = s.balance * (s.rate / 100) / 365;
+        s.balance += daily;
+        s.interest += daily;
+      }
+      for (const e of byDate.get(date) || []) {
+        if (e.kind === 'noncash') {
+          const t = targetFor(e.id);
+          // A capitalising charge grows the balance it is charged on.
+          if (t) { t.balance += -e.amount; t.capitalised += -e.amount; t.interest += -e.amount; }
+          continue;
+        }
+        if (e.kind === 'obligation') {
+          const t = targetFor(e.id);
+          if (!t) continue;
+          const amount = -e.amount;
+          // An amortising payment is part interest, part principal; only the
+          // principal share moves the balance.
+          const principal = t.principalShare != null ? amount * t.principalShare : amount;
+          t.balance = Math.max(0, t.balance - principal);
+          t.paid += amount;
+          if (t.principalShare != null) t.interest += amount - principal;
+        } else if (e.kind === 'extra' && extraTarget) {
+          extraTarget.balance = Math.max(0, extraTarget.balance - -e.amount);
+          extraTarget.paid += -e.amount;
+        }
+      }
+      const dayNo = i + 1;
+      if (dayNo === 30 || dayNo === 60 || dayNo === 90 || dayNo === days) {
+        if (!marks.some(m => m.date === date)) marks.push(snapshot(dayNo, date));
+      }
+    }
+
+    return {
+      marks, byId, end,
+      // Everything an extra payment did NOT reach, so an untargeted one is
+      // visible rather than silently vanishing into cash.
+      untargetedExtra: opts.extraDebtMonthly > 0 && !extraTarget,
+    };
+  }
+
   const Forecast = { addDays, diffDays, occurrences, expandEvents, simulate,
-    recommendWeekly, recommend, budgetBreakdown, EPSILON, STEP };
+    recommendWeekly, recommend, budgetBreakdown, projectDebts, EPSILON, STEP };
   if (typeof module !== 'undefined' && module.exports) module.exports = Forecast;
   else root.Forecast = Forecast;
 

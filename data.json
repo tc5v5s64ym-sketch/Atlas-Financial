@@ -6,69 +6,364 @@
     "statements": 48,
     "disclaimer": "Financial education and planning support. Not professional financial, tax, legal, mortgage or investment advice."
   },
-
   "plan": {
     "windowDays": 91,
-    "defaults": { "targetBuffer": 500, "extraDebtMonthly": 0, "scenario": "expected" },
+    "defaults": {
+      "targetBuffer": 500,
+      "extraDebtMonthly": 0,
+      "scenario": "expected"
+    },
     "startingCash": {
       "amount": 79.84,
       "breakdown": [
-        { "label": "Chequing A — payroll and fixed costs", "value": 506.98, "class": "spendable" },
-        { "label": "Chequing B — daily spending", "value": -517.72, "class": "spendable", "note": "Overdrawn; $82.28 of its $600 overdraft still available" },
-        { "label": "Savings", "value": 90.58, "class": "spendable" }
+        {
+          "label": "Chequing A — payroll and fixed costs",
+          "value": 506.98,
+          "class": "spendable"
+        },
+        {
+          "label": "Chequing B — daily spending",
+          "value": -517.72,
+          "class": "spendable",
+          "note": "Overdrawn; $82.28 of its $600 overdraft still available"
+        },
+        {
+          "label": "Savings",
+          "value": 90.58,
+          "class": "spendable"
+        }
       ],
       "heldElsewhere": [
-        { "label": "DEBT&PAYMENTS — Amanda's account", "value": 2691.85, "class": "operational", "note": "Her Tennis BC pay lands here. Coaches are paid out of it first; only what is left is transferred to the household. Not spendable household cash." },
-        { "label": "SAVINGS-DONT TOUCH — staging", "value": 74.20, "class": "staging", "note": "On her profile. Money passes through to the HELOC and cards within days; it has never held a balance." },
-        { "label": "Wise — two US spending accounts", "value": 205.92, "class": "other-liquid", "note": "US-dollar holiday accounts." }
+        {
+          "label": "DEBT&PAYMENTS — Amanda's account",
+          "value": 2691.85,
+          "class": "operational",
+          "note": "Her Tennis BC pay lands here. Coaches are paid out of it first; only what is left is transferred to the household. Not spendable household cash."
+        },
+        {
+          "label": "SAVINGS-DONT TOUCH — staging",
+          "value": 74.2,
+          "class": "staging",
+          "note": "On her profile. Money passes through to the HELOC and cards within days; it has never held a balance."
+        },
+        {
+          "label": "Wise — two US spending accounts",
+          "value": 205.92,
+          "class": "other-liquid",
+          "note": "US-dollar holiday accounts."
+        }
       ],
       "note": "The household spending accounts only — Chequing A, Chequing B and Savings, the three the mortgage, bills and card minimums are actually paid from. Amanda's DEBT&PAYMENTS account is deliberately excluded: her Tennis BC pay lands there and is not household money until she has paid her coaches and moved the remainder across (owner-stated). Wise, the silver and the RESP are excluded too."
     },
     "income": [
-      { "id": "payroll", "label": "Payroll — Seaspan", "frequency": "biweekly", "anchor": "2026-08-14", "amount": 4468.69, "confidence": "confirmed", "note": "Fifteen consecutive bi-weekly deposits observed at this level; treated as confirmed." },
-      { "id": "childBenefit", "label": "Child benefit", "frequency": "monthly", "day": 20, "amount": 153.59, "confidence": "confirmed", "note": "Eighteen consecutive months observed. The amount is fixed; the day of month is approximate." },
-      { "id": "amandaTransfer", "label": "Amanda's transfers to the household", "frequency": "monthly", "day": 20, "scenarioMonthly": { "conservative": 930, "expected": 2182, "optimistic": 2400 }, "confidence": "estimated", "note": "What actually crosses into the household accounts, measured from the transfer record rather than from her gross pay: 127 transfers totalling $25,445 over 18 months, every one of them landing in Chequing B. Her Tennis BC pay (~$4,575/mo gross, semi-monthly on the 15th and month-end) is NOT counted — it lands in her own account, coaches are paid from it first, and only the remainder comes across. Expected is the 12-month mean ($2,182/mo); conservative is the lowest full month in that year ($930, November 2025); optimistic is the recent 5-month mean ($2,400). Modelled mid-month as one figure because the real pattern is many small transfers spread through the month. She also pays some household costs — BC Hydro, part of the MBNA minimum, some card payments — direct from her account, worth roughly $940/month on top of this and NOT counted here." }
+      {
+        "id": "payroll",
+        "label": "Payroll — Seaspan",
+        "frequency": "biweekly",
+        "anchor": "2026-08-14",
+        "amount": 4468.69,
+        "confidence": "confirmed",
+        "note": "Fifteen consecutive bi-weekly deposits observed at this level; treated as confirmed."
+      },
+      {
+        "id": "childBenefit",
+        "label": "Child benefit",
+        "frequency": "monthly",
+        "day": 20,
+        "amount": 153.59,
+        "confidence": "confirmed",
+        "note": "Eighteen consecutive months observed. The amount is fixed; the day of month is approximate."
+      },
+      {
+        "id": "amandaTransfer",
+        "label": "Amanda's transfers to the household",
+        "frequency": "monthly",
+        "day": 20,
+        "scenarioMonthly": {
+          "conservative": 930,
+          "expected": 2182,
+          "optimistic": 2400
+        },
+        "confidence": "estimated",
+        "note": "What actually crosses into the household accounts, measured from the transfer record rather than from her gross pay: 127 transfers totalling $25,445 over 18 months, every one of them landing in Chequing B. Her Tennis BC pay (~$4,575/mo gross, semi-monthly on the 15th and month-end) is NOT counted — it lands in her own account, coaches are paid from it first, and only the remainder comes across. Expected is the 12-month mean ($2,182/mo); conservative is the lowest full month in that year ($930, November 2025); optimistic is the recent 5-month mean ($2,400). Modelled mid-month as one figure because the real pattern is many small transfers spread through the month. She also pays some household costs — BC Hydro, part of the MBNA minimum, some card payments — direct from her account, worth roughly $940/month on top of this and NOT counted here."
+      }
     ],
     "obligations": [
-      { "id": "mortgage", "label": "Mortgage", "frequency": "biweekly", "anchor": "2026-08-14", "amount": 1600.00, "confidence": "confirmed" },
-      { "id": "heloc", "label": "HELOC interest", "frequency": "monthly", "day": 31, "amount": 814.18, "confidence": "confirmed", "nonCash": true, "note": "Charged on the last day of the month and capitalised onto the HELOC balance — it does not leave a chequing account, so it is shown on the calendar but never deducted from cash. The last three charges were $810.09, $787.58 and $814.18, each appearing as a debit on the HELOC itself with no matching chequing payment. The cost is real: the balance grows by this amount every month, which is why the HELOC has risen every month since February." },
-      { "id": "triangle", "label": "Triangle Mastercard minimum", "frequency": "monthly", "day": 7, "firstDue": "2026-09-07", "amount": 253.57, "confidence": "estimated", "note": "August is paid. Future statement minimums are estimated at the current level." },
-      { "id": "cashback-sep", "label": "TD Cash Back Visa — September minimum", "frequency": "once", "date": "2026-09-01", "amount": 762.36, "confidence": "confirmed", "note": "The statement minimum, eleven times the usual, because the $612.43 over-limit excess is immediately due." },
-      { "id": "cashback", "label": "TD Cash Back Visa minimum", "frequency": "monthly", "day": 1, "firstDue": "2026-10-01", "amount": 170.00, "confidence": "estimated", "note": "TD's minimum is $10 plus interest and fees; at the recent average balance that is about $170 once the card is back under its limit." },
-      { "id": "mbna", "label": "Amazon.ca Mastercard minimum (MBNA)", "frequency": "monthly", "day": 31, "amount": 158.27, "confidence": "estimated", "note": "Due at month-end; the day clamps to shorter months. Future minimums estimated at the current level." },
-      { "id": "tdcc", "label": "TD credit card minimum", "frequency": "monthly", "day": 17, "amount": 94.03, "confidence": "estimated", "note": "A fifth missed minimum restarts the 24.99% penalty-rate clock for another twelve months." },
-      { "id": "travel", "label": "Travel Visa minimum", "frequency": "monthly", "day": 26, "amount": 17.00, "confidence": "estimated" }
+      {
+        "id": "mortgage",
+        "debtId": "mortgage",
+        "effect": "payment",
+        "label": "Mortgage",
+        "frequency": "biweekly",
+        "anchor": "2026-08-14",
+        "amount": 1600.0,
+        "confidence": "confirmed"
+      },
+      {
+        "id": "heloc",
+        "debtId": "heloc",
+        "effect": "capitalise",
+        "label": "HELOC interest",
+        "frequency": "monthly",
+        "day": 31,
+        "amount": 814.18,
+        "confidence": "confirmed",
+        "nonCash": true,
+        "note": "Charged on the last day of the month and capitalised onto the HELOC balance — it does not leave a chequing account, so it is shown on the calendar but never deducted from cash. The last three charges were $810.09, $787.58 and $814.18, each appearing as a debit on the HELOC itself with no matching chequing payment. The cost is real: the balance grows by this amount every month, which is why the HELOC has risen every month since February."
+      },
+      {
+        "id": "triangle",
+        "debtId": "triangle",
+        "effect": "payment",
+        "label": "Triangle Mastercard minimum",
+        "frequency": "monthly",
+        "day": 7,
+        "firstDue": "2026-09-07",
+        "amount": 253.57,
+        "confidence": "estimated",
+        "note": "August is paid. Future statement minimums are estimated at the current level."
+      },
+      {
+        "id": "cashback-sep",
+        "debtId": "cashback",
+        "effect": "payment",
+        "label": "TD Cash Back Visa — September minimum",
+        "frequency": "once",
+        "date": "2026-09-01",
+        "amount": 762.36,
+        "confidence": "confirmed",
+        "note": "The statement minimum, eleven times the usual, because the $612.43 over-limit excess is immediately due."
+      },
+      {
+        "id": "cashback",
+        "debtId": "cashback",
+        "effect": "payment",
+        "label": "TD Cash Back Visa minimum",
+        "frequency": "monthly",
+        "day": 1,
+        "firstDue": "2026-10-01",
+        "amount": 170.0,
+        "confidence": "estimated",
+        "note": "TD's minimum is $10 plus interest and fees; at the recent average balance that is about $170 once the card is back under its limit."
+      },
+      {
+        "id": "mbna",
+        "debtId": "mbna",
+        "effect": "payment",
+        "label": "Amazon.ca Mastercard minimum (MBNA)",
+        "frequency": "monthly",
+        "day": 31,
+        "amount": 158.27,
+        "confidence": "estimated",
+        "note": "Due at month-end; the day clamps to shorter months. Future minimums estimated at the current level."
+      },
+      {
+        "id": "tdcc",
+        "debtId": "tdcc",
+        "effect": "payment",
+        "label": "TD credit card minimum",
+        "frequency": "monthly",
+        "day": 17,
+        "amount": 94.03,
+        "confidence": "estimated",
+        "note": "A fifth missed minimum restarts the 24.99% penalty-rate clock for another twelve months."
+      },
+      {
+        "id": "travel",
+        "debtId": "travelvisa",
+        "effect": "payment",
+        "label": "Travel Visa minimum",
+        "frequency": "monthly",
+        "day": 26,
+        "amount": 17.0,
+        "confidence": "estimated"
+      }
     ],
     "bills": [
-      { "id": "fortis", "label": "FortisBC gas", "frequency": "monthly", "day": 3, "amount": 124.00, "confidence": "confirmed", "budgetCategory": "household", "note": "Seventeen charges over fourteen months; $124.00 exactly in each of the last four, landing the 2nd–4th. August is already paid." },
-      { "id": "shaw", "label": "Shaw internet", "frequency": "monthly", "day": 14, "amount": 78.40, "confidence": "confirmed", "budgetCategory": "telecom", "note": "$78.40 on the 14th–15th, May through July." },
-      { "id": "bcaa", "label": "BCAA insurance", "frequency": "monthly", "day": 15, "amount": 82.96, "confidence": "confirmed", "budgetCategory": "insurance", "note": "Eighteen consecutive months on the 15th; $82.96 in each of the last three." },
-      { "id": "icbc", "label": "ICBC insurance", "frequency": "monthly", "day": 15, "amount": 99.91, "confidence": "confirmed", "budgetCategory": "insurance", "note": "$99.91 on the 15th, five consecutive months." },
-      { "id": "fit4less", "label": "Fit4Less membership", "frequency": "biweekly", "anchor": "2026-08-14", "amount": 11.54, "confidence": "confirmed", "budgetCategory": "sport", "note": "$11.54 every two weeks, 18 months running, most recently 31 July — so the next lands on payday. An annual $21.99 fee appears each July." },
-      { "id": "tdfees", "label": "TD account fees (two accounts)", "frequency": "monthly", "day": 30, "amount": 35.90, "confidence": "confirmed", "budgetCategory": null, "note": "Two $17.95 monthly plan fees at month-end, every month captured." }
+      {
+        "id": "fortis",
+        "label": "FortisBC gas",
+        "frequency": "monthly",
+        "day": 3,
+        "amount": 124.0,
+        "confidence": "confirmed",
+        "budgetCategory": "household",
+        "note": "Seventeen charges over fourteen months; $124.00 exactly in each of the last four, landing the 2nd–4th. August is already paid."
+      },
+      {
+        "id": "shaw",
+        "label": "Shaw internet",
+        "frequency": "monthly",
+        "day": 14,
+        "amount": 78.4,
+        "confidence": "confirmed",
+        "budgetCategory": "telecom",
+        "note": "$78.40 on the 14th–15th, May through July."
+      },
+      {
+        "id": "bcaa",
+        "label": "BCAA insurance",
+        "frequency": "monthly",
+        "day": 15,
+        "amount": 82.96,
+        "confidence": "confirmed",
+        "budgetCategory": "insurance",
+        "note": "Eighteen consecutive months on the 15th; $82.96 in each of the last three."
+      },
+      {
+        "id": "icbc",
+        "label": "ICBC insurance",
+        "frequency": "monthly",
+        "day": 15,
+        "amount": 99.91,
+        "confidence": "confirmed",
+        "budgetCategory": "insurance",
+        "note": "$99.91 on the 15th, five consecutive months."
+      },
+      {
+        "id": "fit4less",
+        "label": "Fit4Less membership",
+        "frequency": "biweekly",
+        "anchor": "2026-08-14",
+        "amount": 11.54,
+        "confidence": "confirmed",
+        "budgetCategory": "sport",
+        "note": "$11.54 every two weeks, 18 months running, most recently 31 July — so the next lands on payday. An annual $21.99 fee appears each July."
+      },
+      {
+        "id": "tdfees",
+        "label": "TD account fees (two accounts)",
+        "frequency": "monthly",
+        "day": 30,
+        "amount": 35.9,
+        "confidence": "confirmed",
+        "budgetCategory": null,
+        "note": "Two $17.95 monthly plan fees at month-end, every month captured."
+      }
     ],
     "billsNote": "Extracted from the transaction history, not guessed: only bills still active in the last three months are dated here, and every one of them is paid from Chequing A. BC Hydro is no longer an open gap — it moved to Amanda's account in May 2026 and she has paid it there since ($235, $250, $250), so it is correctly absent from a household-accounts plan. Telus stopped leaving any captured account in March 2026 and its route is still unknown. Streaming is Amazon Channels — several small charges on scattered days, left inside the variable budget. There is no Netflix anywhere in the data.",
     "commitments": [
-      { "id": "burrard1", "date": "2026-08-12", "label": "Burrard registration — child 1", "amount": 320.00, "budgetCategory": "sport", "confidence": "confirmed", "group": "burrard" },
-      { "id": "burrard2", "date": "2026-08-12", "label": "Burrard registration — child 2", "amount": 303.00, "budgetCategory": "sport", "confidence": "confirmed", "group": "burrard" },
-      { "id": "fusioncamp", "date": "2026-08-16", "label": "Fusion camp", "amount": 786.00, "budgetCategory": "sport", "confidence": "estimated", "note": "Stated as \"next week\" — the date is approximate." },
-      { "id": "tryouts", "date": "2026-08-22", "label": "Fusion tryouts", "amount": 140.00, "budgetCategory": "sport", "confidence": "confirmed" },
-      { "id": "warriors", "date": "2026-09-15", "label": "Warriors Elite Academy", "amount": 800.00, "budgetCategory": "sport", "confidence": "estimated", "adjustable": true, "note": "Owner-stated \"about $800\", September, not yet invoiced. Mid-month assumed." },
-      { "id": "fusion-sep", "date": "2026-09-15", "label": "Fusion season — September instalment", "amount": 500.00, "budgetCategory": "sport", "confidence": "estimated", "adjustable": true, "note": "Planned as roughly $500/month across four months; selection expected after the 22 August tryouts." },
-      { "id": "fusion-oct", "date": "2026-10-15", "label": "Fusion season — October instalment", "amount": 500.00, "budgetCategory": "sport", "confidence": "estimated", "adjustable": true },
-      { "id": "fusion-nov", "date": "2026-11-01", "label": "Fusion season — November instalment", "amount": 500.00, "budgetCategory": "sport", "confidence": "estimated", "adjustable": true, "note": "Date unknown; placed on the 1st, the cautious choice inside the window." }
+      {
+        "id": "burrard1",
+        "date": "2026-08-12",
+        "label": "Burrard registration — child 1",
+        "amount": 320.0,
+        "budgetCategory": "sport",
+        "confidence": "confirmed",
+        "group": "burrard"
+      },
+      {
+        "id": "burrard2",
+        "date": "2026-08-12",
+        "label": "Burrard registration — child 2",
+        "amount": 303.0,
+        "budgetCategory": "sport",
+        "confidence": "confirmed",
+        "group": "burrard"
+      },
+      {
+        "id": "fusioncamp",
+        "date": "2026-08-16",
+        "label": "Fusion camp",
+        "amount": 786.0,
+        "budgetCategory": "sport",
+        "confidence": "estimated",
+        "note": "Stated as \"next week\" — the date is approximate."
+      },
+      {
+        "id": "tryouts",
+        "date": "2026-08-22",
+        "label": "Fusion tryouts",
+        "amount": 140.0,
+        "budgetCategory": "sport",
+        "confidence": "confirmed"
+      },
+      {
+        "id": "warriors",
+        "date": "2026-09-15",
+        "label": "Warriors Elite Academy",
+        "amount": 800.0,
+        "budgetCategory": "sport",
+        "confidence": "estimated",
+        "adjustable": true,
+        "note": "Owner-stated \"about $800\", September, not yet invoiced. Mid-month assumed."
+      },
+      {
+        "id": "fusion-sep",
+        "date": "2026-09-15",
+        "label": "Fusion season — September instalment",
+        "amount": 500.0,
+        "budgetCategory": "sport",
+        "confidence": "estimated",
+        "adjustable": true,
+        "note": "Planned as roughly $500/month across four months; selection expected after the 22 August tryouts."
+      },
+      {
+        "id": "fusion-oct",
+        "date": "2026-10-15",
+        "label": "Fusion season — October instalment",
+        "amount": 500.0,
+        "budgetCategory": "sport",
+        "confidence": "estimated",
+        "adjustable": true
+      },
+      {
+        "id": "fusion-nov",
+        "date": "2026-11-01",
+        "label": "Fusion season — November instalment",
+        "amount": 500.0,
+        "budgetCategory": "sport",
+        "confidence": "estimated",
+        "adjustable": true,
+        "note": "Date unknown; placed on the 1st, the cautious choice inside the window."
+      }
     ],
     "groups": [
-      { "id": "burrard", "label": "Burrard registrations", "atomic": true, "note": "Both children are registered on the same day (owner-stated), so this cannot be staggered across the payday two days later — it is the full amount or neither child is registered." }
+      {
+        "id": "burrard",
+        "label": "Burrard registrations",
+        "atomic": true,
+        "note": "Both children are registered on the same day (owner-stated), so this cannot be staggered across the payday two days later — it is the full amount or neither child is registered."
+      }
     ],
     "funding": {
       "heading": "Covering the 12 August gap",
-      "note": "Two sources can cover it, and only two. Cards and the overdraft cannot — even combined they reach $348.11 against $623.00 needed on the day.",
+      "note": "Two sources can cover it, and only two. Cards and the overdraft cannot — even combined they reach $348.11 against $623.00 needed on the day. Of the two, only one is free: the HELOC draw buys three weeks and costs an over-limit breach on a $202,654 facility.",
       "options": [
-        { "id": "amanda", "label": "Amanda releases funds from her tennis account", "available": 2691.85, "rate": null, "rank": 1, "note": "The cheapest route by a wide margin: it is already the household's money, it costs nothing, and it adds no debt. It depends on how much of that balance is owed onward to coaches — she settles them first. A transfer of about $1,050 covers the registrations and restores the $500 buffer." },
-        { "id": "heloc", "label": "Draw on the HELOC", "available": 1067.84, "rate": 4.90, "rank": 2, "note": "Enough, but it is the last of the line: $1,067.84 of a $202,654 limit, 99.5% drawn. At 4.90% interest-only the draw never amortises — and because the interest capitalises rather than being paid, a $623 draw becomes a permanent addition to the balance, not a debt that clears. $2,269.80 of past lacrosse fees already went on it this way. Covering the whole $1,043 gap would leave about $25 of headroom across every facility the household has." },
-        { "id": "overdraft", "label": "Chequing B overdraft", "available": 82.28, "rate": null, "rank": 3, "unusable": true, "note": "$82.28 of a $600 limit. Nowhere near enough on its own, and overdraft interest plus the $5 monthly protection fee already run against this account." },
-        { "id": "cards", "label": "Credit cards", "available": 265.83, "rate": null, "rank": 4, "unusable": true, "note": "$200 on the TD credit card, $62.83 on the MBNA, $3.00 on the Triangle. The Cash Back Visa is $612 over its limit and the Travel Visa is full. Not enough, and a purchase on the TD card at 24.99% would be the most expensive money in the household." }
+        {
+          "id": "amanda",
+          "label": "Amanda releases funds from her tennis account",
+          "available": 2691.85,
+          "rate": null,
+          "rank": 1,
+          "note": "The cheapest route by a wide margin: it is already the household's money, it costs nothing, and it adds no debt. It depends on how much of that balance is owed onward to coaches — she settles them first. A transfer of about $1,050 covers the registrations and restores the $500 buffer."
+        },
+        {
+          "id": "heloc",
+          "label": "Draw on the HELOC",
+          "available": 1067.84,
+          "rate": 4.9,
+          "rank": 2,
+          "note": "Enough today, and worse than it looks. $1,067.84 of a $202,654 limit, 99.5% drawn, at 4.90% interest-only, so the draw never amortises — and because the interest capitalises rather than being paid, a $623 draw becomes a permanent addition to the balance, not a debt that clears. $2,269.80 of past lacrosse fees already went on it this way. The decisive point is the timing: the HELOC capitalises about $814 a month with nothing repaying it, so it passes its own limit on 30 September WITHOUT anyone borrowing another dollar. Drawing $623 for the registrations brings that to 31 August — about three weeks away — and leaves $444.84 of headroom against a monthly charge of $814. This is not a source of funds, it is a source of an over-limit breach on the household's largest revolving facility."
+        },
+        {
+          "id": "overdraft",
+          "label": "Chequing B overdraft",
+          "available": 82.28,
+          "rate": null,
+          "rank": 3,
+          "unusable": true,
+          "note": "$82.28 of a $600 limit. Nowhere near enough on its own, and overdraft interest plus the $5 monthly protection fee already run against this account."
+        },
+        {
+          "id": "cards",
+          "label": "Credit cards",
+          "available": 265.83,
+          "rate": null,
+          "rank": 4,
+          "unusable": true,
+          "note": "$200 on the TD credit card, $62.83 on the MBNA, $3.00 on the Triangle. The Cash Back Visa is $612 over its limit and the Travel Visa is full. Not enough, and a purchase on the TD card at 24.99% would be the most expensive money in the household."
+        }
       ]
     },
     "budget": {
@@ -81,53 +376,275 @@
       },
       "cardCaveat": "The historical averages below are total household spending — chequing, cards and PayPal. The forecast deducts the weekly cap as CASH from the household chequing accounts, but only card MINIMUMS as debt service. Spending at the historical rate on the cards would therefore show a healthy cash line while the card balances grew. The cap is a cash instruction, and it only holds if the spending is actually paid for rather than carried.",
       "categories": [
-        { "id": "groceries", "label": "Groceries", "class": "essential", "from": ["Groceries"], "plannedMonthly": null,
-          "why": "The largest single household cost and entirely undated. Carried at the historical actual — there is no owner target to beat it, and no evidence the household has changed how it shops." },
-        { "id": "fuel", "label": "Fuel & transport", "class": "essential", "from": ["Fuel & transport"], "plannedMonthly": null,
-          "why": "Two commuting vehicles; the monthly figure is stable across the whole capture. Undated, so it must come out of the weekly cap." },
-        { "id": "household", "label": "Household supplies & utilities", "class": "essential", "from": ["Household"], "plannedMonthly": null,
-          "why": "Supplies, waste collection and FortisBC. FortisBC is dated on the calendar at $124 and is subtracted here, leaving the undated remainder. BC Hydro is NOT in this figure going forward — it moved to Amanda's account in May 2026 and she has paid it there since." },
-        { "id": "health", "label": "Medical & health", "class": "essential", "from": ["Health"], "plannedMonthly": null,
-          "why": "Prescriptions, dental and clinic charges. Irregular but persistent across all 18 months, and not deferrable." },
-        { "id": "telecom", "label": "Phones & internet", "class": "essential", "from": ["Telecom"], "plannedMonthly": null,
-          "why": "Shaw is dated at $78.40 and subtracted. The remainder is the Telus phone bills, which stopped leaving any captured account in March 2026 — the route is unknown, so the cost is carried inside the cap rather than dated." },
-        { "id": "insurance", "label": "Insurance", "class": "essential", "from": ["Insurance"], "plannedMonthly": null,
-          "why": "BCAA and ICBC are both dated on the calendar, and together they exceed the historical average because the ICBC policy is only five months old. The dated figures are the better current authority, so nothing extra is carried in the cap." },
-        { "id": "pets", "label": "Pets", "class": "essential", "from": ["Pets"], "plannedMonthly": null,
-          "why": "Small and irregular, but food for an animal is not discretionary." },
-        { "id": "propertytax", "label": "Property tax", "class": "reserve", "from": ["Property tax"], "plannedMonthly": null,
-          "why": "An annual lump, historically paid partly from the HELOC and partly by Amanda. No instalment falls inside this window, so it must NOT be inside the weekly cap — but it is a real cost and is shown as a reserve so a surplus is not mistaken for free money." },
-        { "id": "tax", "label": "CRA & union dues", "class": "reserve", "from": ["Tax"], "plannedMonthly": null,
-          "why": "CRA instalments, some settled from Amanda's account. Same treatment as property tax: real, but not a dated household cash cost inside this window." },
-        { "id": "restaurants", "label": "Dining out & takeaway", "class": "discretionary", "from": ["Restaurants"], "plannedMonthly": null,
-          "why": "The largest reducible category and the first place the cap bites." },
-        { "id": "shopping", "label": "Shopping", "class": "discretionary", "from": ["Shopping"], "plannedMonthly": null,
-          "why": "General retail, and the second-largest reducible category. Runs at roughly the same level as dining out, and unlike groceries it has no floor — the historical average is a description of past behaviour, not a requirement." },
-        { "id": "travel", "label": "Travel", "class": "discretionary", "from": ["Travel"], "plannedMonthly": null,
-          "why": "Episodic rather than monthly — heavily concentrated in May–July 2026 and near zero outside it. No trip is known to fall inside this window, so the historical average almost certainly overstates the next 90 days. It is left at the historical figure rather than zeroed because zeroing it would be a guess; the effect is that the discretionary requirement shown is CONSERVATIVE. Confirming there is no trip would release roughly this much." },
-        { "id": "sport", "label": "Children & sports", "class": "discretionary", "from": ["Sport & fitness"], "plannedMonthly": null,
-          "why": "The eight lacrosse and camp commitments are dated on the calendar and total far more per month than the historical sport average, so this category is fully accounted for by dated events and carries nothing extra in the cap. Fit4Less is dated too." },
-        { "id": "entertainment", "label": "Entertainment", "class": "discretionary", "from": ["Entertainment"], "plannedMonthly": null,
-          "why": "Cinema, events and games outside the PayPal channel. Small against the total, entirely optional, and the easiest row on this table to move to zero for a month if the plan needs it." },
-        { "id": "subscriptions", "label": "Subscriptions", "class": "discretionary", "from": ["Subscriptions"], "plannedMonthly": null,
-          "why": "Amazon Channels and similar, on scattered days — too small and too irregular to date individually. There is no Netflix anywhere in the data." },
-        { "id": "school", "label": "School & clubs", "class": "discretionary", "from": ["School & clubs"], "plannedMonthly": null,
-          "why": "School fees and club dues outside the dated lacrosse commitments." },
-        { "id": "paypal", "label": "PayPal — online & app spend", "class": "discretionary", "from": ["@paypal"], "plannedMonthly": null,
-          "why": "Gaming, Apple services, streaming and food delivery. Drawn from chequing as funding pulls, which the spending series deliberately excludes to avoid counting the same purchase twice — so it is added here from the PayPal exports instead." },
-        { "id": "uncategorised", "label": "Uncategorised", "class": "unknown", "from": ["Uncategorised"], "plannedMonthly": null,
-          "why": "4.5% of spending that no merchant pattern matches. It is real money leaving real accounts, so it is counted as REQUIRED alongside the essentials — treating it as discretionary would quietly assume it can be cut." }
+        {
+          "id": "groceries",
+          "label": "Groceries",
+          "class": "essential",
+          "from": [
+            "Groceries"
+          ],
+          "plannedMonthly": null,
+          "why": "The largest single household cost and entirely undated. Carried at the historical actual — there is no owner target to beat it, and no evidence the household has changed how it shops."
+        },
+        {
+          "id": "fuel",
+          "label": "Fuel & transport",
+          "class": "essential",
+          "from": [
+            "Fuel & transport"
+          ],
+          "plannedMonthly": null,
+          "why": "Two commuting vehicles; the monthly figure is stable across the whole capture. Undated, so it must come out of the weekly cap."
+        },
+        {
+          "id": "household",
+          "label": "Household supplies & utilities",
+          "class": "essential",
+          "from": [
+            "Household"
+          ],
+          "plannedMonthly": null,
+          "why": "Supplies, waste collection and FortisBC. FortisBC is dated on the calendar at $124 and is subtracted here, leaving the undated remainder. BC Hydro is NOT in this figure going forward — it moved to Amanda's account in May 2026 and she has paid it there since."
+        },
+        {
+          "id": "health",
+          "label": "Medical & health",
+          "class": "essential",
+          "from": [
+            "Health"
+          ],
+          "plannedMonthly": null,
+          "why": "Prescriptions, dental and clinic charges. Irregular but persistent across all 18 months, and not deferrable."
+        },
+        {
+          "id": "telecom",
+          "label": "Phones & internet",
+          "class": "essential",
+          "from": [
+            "Telecom"
+          ],
+          "plannedMonthly": null,
+          "why": "Shaw is dated at $78.40 and subtracted. The remainder is the Telus phone bills, which stopped leaving any captured account in March 2026 — the route is unknown, so the cost is carried inside the cap rather than dated."
+        },
+        {
+          "id": "insurance",
+          "label": "Insurance",
+          "class": "essential",
+          "from": [
+            "Insurance"
+          ],
+          "plannedMonthly": null,
+          "why": "BCAA and ICBC are both dated on the calendar, and together they exceed the historical average because the ICBC policy is only five months old. The dated figures are the better current authority, so nothing extra is carried in the cap."
+        },
+        {
+          "id": "pets",
+          "label": "Pets",
+          "class": "essential",
+          "from": [
+            "Pets"
+          ],
+          "plannedMonthly": null,
+          "why": "Small and irregular, but food for an animal is not discretionary."
+        },
+        {
+          "id": "propertytax",
+          "label": "Property tax",
+          "class": "reserve",
+          "from": [
+            "Property tax"
+          ],
+          "plannedMonthly": null,
+          "why": "An annual lump, historically paid partly from the HELOC and partly by Amanda. No instalment falls inside this window, so it must NOT be inside the weekly cap — but it is a real cost and is shown as a reserve so a surplus is not mistaken for free money."
+        },
+        {
+          "id": "tax",
+          "label": "CRA & union dues",
+          "class": "reserve",
+          "from": [
+            "Tax"
+          ],
+          "plannedMonthly": null,
+          "why": "CRA instalments, some settled from Amanda's account. Same treatment as property tax: real, but not a dated household cash cost inside this window."
+        },
+        {
+          "id": "restaurants",
+          "label": "Dining out & takeaway",
+          "class": "discretionary",
+          "from": [
+            "Restaurants"
+          ],
+          "plannedMonthly": null,
+          "why": "The largest reducible category and the first place the cap bites."
+        },
+        {
+          "id": "shopping",
+          "label": "Shopping",
+          "class": "discretionary",
+          "from": [
+            "Shopping"
+          ],
+          "plannedMonthly": null,
+          "why": "General retail, and the second-largest reducible category. Runs at roughly the same level as dining out, and unlike groceries it has no floor — the historical average is a description of past behaviour, not a requirement."
+        },
+        {
+          "id": "travel",
+          "label": "Travel",
+          "class": "discretionary",
+          "from": [
+            "Travel"
+          ],
+          "plannedMonthly": null,
+          "why": "Episodic rather than monthly — heavily concentrated in May–July 2026 and near zero outside it. No trip is known to fall inside this window, so the historical average almost certainly overstates the next 90 days. It is left at the historical figure rather than zeroed because zeroing it would be a guess; the effect is that the discretionary requirement shown is CONSERVATIVE. Confirming there is no trip would release roughly this much."
+        },
+        {
+          "id": "sport",
+          "label": "Children & sports",
+          "class": "discretionary",
+          "from": [
+            "Sport & fitness"
+          ],
+          "plannedMonthly": null,
+          "why": "The eight lacrosse and camp commitments are dated on the calendar and total far more per month than the historical sport average, so this category is fully accounted for by dated events and carries nothing extra in the cap. Fit4Less is dated too."
+        },
+        {
+          "id": "entertainment",
+          "label": "Entertainment",
+          "class": "discretionary",
+          "from": [
+            "Entertainment"
+          ],
+          "plannedMonthly": null,
+          "why": "Cinema, events and games outside the PayPal channel. Small against the total, entirely optional, and the easiest row on this table to move to zero for a month if the plan needs it."
+        },
+        {
+          "id": "subscriptions",
+          "label": "Subscriptions",
+          "class": "discretionary",
+          "from": [
+            "Subscriptions"
+          ],
+          "plannedMonthly": null,
+          "why": "Amazon Channels and similar, on scattered days — too small and too irregular to date individually. There is no Netflix anywhere in the data."
+        },
+        {
+          "id": "school",
+          "label": "School & clubs",
+          "class": "discretionary",
+          "from": [
+            "School & clubs"
+          ],
+          "plannedMonthly": null,
+          "why": "School fees and club dues outside the dated lacrosse commitments."
+        },
+        {
+          "id": "paypal",
+          "label": "PayPal — online & app spend",
+          "class": "discretionary",
+          "from": [
+            "@paypal"
+          ],
+          "plannedMonthly": null,
+          "why": "Gaming, Apple services, streaming and food delivery. Drawn from chequing as funding pulls, which the spending series deliberately excludes to avoid counting the same purchase twice — so it is added here from the PayPal exports instead."
+        },
+        {
+          "id": "uncategorised",
+          "label": "Uncategorised",
+          "class": "unknown",
+          "from": [
+            "Uncategorised"
+          ],
+          "plannedMonthly": null,
+          "why": "4.5% of spending that no merchant pattern matches. It is real money leaving real accounts, so it is counted as REQUIRED alongside the essentials — treating it as discretionary would quietly assume it can be cut."
+        }
       ],
       "excluded": [
-        { "from": "Business", "why": "Amanda's coaching costs. Pass-through spending settled from her own account, not household money — counting it here would charge the household for a cost it does not pay." }
+        {
+          "from": "Business",
+          "why": "Amanda's coaching costs. Pass-through spending settled from her own account, not household money — counting it here would charge the household for a cost it does not pay."
+        }
       ]
     },
+    "nextDollar": {
+      "policy": "protect-then-highest-cost",
+      "target": "cashback",
+      "summary": "The next surplus dollar goes to the TD Cash Back Visa: it is the highest rate the household pays at 26.99%, and it is the only card currently over its limit, so paying it down removes an interest charge and a monthly over-limit fee at the same time.",
+      "order": [
+        {
+          "rank": 1,
+          "rule": "Protect the required payments",
+          "why": "Every dated minimum and the mortgage come first. A missed minimum on the TD credit card is the most expensive event available to this household — a fifth one restarts the 24.99% penalty rate for another twelve months."
+        },
+        {
+          "rank": 2,
+          "rule": "Cover the opening timing gap",
+          "why": "The 12 August registrations cannot clear on $79.84. Nothing else in the plan matters until they can."
+        },
+        {
+          "rank": 3,
+          "rule": "Correct the over-limit conditions",
+          "why": "The TD Cash Back Visa is $612.43 over its $5,000 limit and is charged a $29 monthly over-limit fee on top of 26.99% interest. Getting it back inside the limit is a guaranteed return, not a forecast one."
+        },
+        {
+          "rank": 4,
+          "rule": "Hold the $500 household buffer",
+          "why": "Below that, an ordinary mistimed bill becomes an NSF fee and an overdraft charge, which is how the last twelve months produced $145/month of avoidable bank fees."
+        },
+        {
+          "rank": 5,
+          "rule": "Fund the essential variable spending",
+          "why": "Groceries, fuel, phones and medical. Cutting these to service debt is how a plan gets abandoned in week three."
+        },
+        {
+          "rank": 6,
+          "rule": "Stop new HELOC and revolving growth",
+          "why": "The HELOC capitalises about $814 a month with nothing repaying it, and passes its own limit inside this window on that alone. Any new draw brings that date forward. This ranks above extra repayment because growth compounds against every future month."
+        },
+        {
+          "rank": 7,
+          "rule": "Direct verified surplus to the highest effective-cost consumer debt",
+          "why": "By rate that is the TD Cash Back Visa at 26.99%, then the TD credit card at its 24.99% penalty rate, then Triangle at 21.99%. Effective cost, not headline rate: the Cash Back card also carries the over-limit fee, which makes its real cost higher still."
+        }
+      ],
+      "note": "This is the household's stated policy, encoded so the plan cannot quietly invent a different one. It is evaluated against current facts rather than applied blindly: the ordering puts stopping HELOC growth above extra card repayment specifically because the HELOC breaches its limit inside this window without anyone borrowing another dollar."
+    },
     "actions": [
-      { "what": "Fund the 12 August registrations — Amanda's account, or failing that the HELOC", "amount": 1050.00, "due": "2026-08-11", "why": "Both registrations are paid on the same day and total $623.00; the household accounts hold $79.84. Only two sources can cover it: Amanda releasing about $1,050 from her tennis account, which costs nothing, or a HELOC draw against the $1,067.84 that is left — the last of the household's credit, at 4.90% interest-only on a facility that is 99.5% drawn and never amortises. Cards and the overdraft cannot: combined they reach $348.11. Decide before the 11th so the money is in place on the day.", "status": "open", "owner": "Amanda, then both" },
-      { "what": "Fund the Fusion camp", "amount": 786.00, "due": "2026-08-16", "why": "The largest single item before month-end, landing two days after payday. The date is approximate — confirm it, because a week earlier would breach the low point.", "status": "open" },
-      { "what": "Pay the TD credit card minimum", "amount": 94.03, "due": "2026-08-17", "why": "A fifth missed minimum restarts the 24.99% penalty-rate clock for another twelve months.", "status": "open" },
-      { "what": "Get the Cash Back Visa back under $5,000", "amount": 762.36, "due": "2026-09-01", "why": "The September minimum includes the $612.43 over-limit excess. Posting it by the 1st — before the statement closes on the 7th — stops the $29 monthly over-limit fee.", "status": "open" },
-      { "what": "Agree a standing transfer from Amanda's account", "amount": 1100.00, "due": "2026-08-15", "why": "The household side runs on $79.84 while $2,691.85 sits in her account, and the transfers across are ad hoc — 127 of them, mostly $100 to $350. A fixed amount on a fixed day after her 15th and month-end pay would remove this whole class of problem and make the plan predictable instead of a guess about timing.", "status": "open", "owner": "Both" }
+      {
+        "what": "Fund the 12 August registrations — Amanda's account, or failing that the HELOC",
+        "amount": 1050.0,
+        "due": "2026-08-11",
+        "why": "Both registrations are paid on the same day and total $623.00; the household accounts hold $79.84. Cards and the overdraft cannot cover it — combined they reach $348.11. That leaves two sources, and they are not equal. Amanda releasing about $1,050 from her tennis account costs nothing and adds no debt. The HELOC reaches the amount but should be the last resort, not the fallback: it capitalises about $814 a month with nothing repaying it and passes its own limit on 30 September as it stands, and a $623 draw pulls that forward to 31 August. Decide before the 11th so the money is in place on the day.",
+        "status": "open",
+        "owner": "Amanda, then both"
+      },
+      {
+        "what": "Fund the Fusion camp",
+        "amount": 786.0,
+        "due": "2026-08-16",
+        "why": "The largest single item before month-end, landing two days after payday. The date is approximate — confirm it, because a week earlier would breach the low point.",
+        "status": "open"
+      },
+      {
+        "what": "Pay the TD credit card minimum",
+        "amount": 94.03,
+        "due": "2026-08-17",
+        "why": "A fifth missed minimum restarts the 24.99% penalty-rate clock for another twelve months.",
+        "status": "open"
+      },
+      {
+        "what": "Get the Cash Back Visa back under $5,000",
+        "amount": 762.36,
+        "due": "2026-09-01",
+        "why": "The September minimum includes the $612.43 over-limit excess. Posting it by the 1st — before the statement closes on the 7th — stops the $29 monthly over-limit fee.",
+        "status": "open"
+      },
+      {
+        "what": "Agree a standing transfer from Amanda's account",
+        "amount": 1100.0,
+        "due": "2026-08-15",
+        "why": "The household side runs on $79.84 while $2,691.85 sits in her account, and the transfers across are ad hoc — 127 of them, mostly $100 to $350. A fixed amount on a fixed day after her 15th and month-end pay would remove this whole class of problem and make the plan predictable instead of a guess about timing.",
+        "status": "open",
+        "owner": "Both"
+      }
     ],
     "actionsNote": "The first is new and it is the one that matters: on the household accounts alone there is not enough to pay the 12 August registrations.",
     "assumptions": [
@@ -143,81 +660,376 @@
       "HELOC interest is capitalised, not paid. It is charged as a debit on the HELOC itself at month-end and no matching chequing payment exists, so it is shown on the calendar and excluded from the cash maths. That is not good news — it means the balance grows by about $814 every month with nothing repaying it.",
       "No bonus is modelled: bonuses have historically landed in February and July, outside this window.",
       "The recommended weekly budget is solved from the forecast: the largest weekly spend that keeps the projected balance above the target buffer on every single day of the window.",
-      "Room for extra debt repayment is measured at the end of the window — cash projected above the buffer once every obligation and commitment has cleared. Paying it earlier than the low point would breach the buffer."
+      "Room for extra debt repayment is measured at the end of the window — cash projected above the buffer once every obligation and commitment has cleared. Paying it earlier than the low point would breach the buffer.",
+      "The HELOC passes its own limit inside this window with no new borrowing. It is 99.5% drawn, its interest capitalises onto the balance at about $814 a month, and nothing repays it — so the balance crosses $202,654 on 30 September on that alone. This is projected from the observed charge, not read from a statement, and it is why stopping HELOC growth ranks above extra card repayment in the next-dollar policy."
     ]
   },
-
   "headline": [
-    { "label": "Total debt", "value": 777455.57, "tone": "plain", "note": "Every consumer debt in the household is now captured. Nothing outstanding." },
-    { "label": "Interest cost / year", "value": 36546.11, "tone": "warn", "sub": { "value": 17105.11, "label": "excluding the mortgage" }, "note": "About $3,046 every month, of which about $1,425 is not the mortgage" },
-    { "label": "Credit left, everywhere", "value": 1415.95, "tone": "alert", "note": "Across seven facilities combined" }
+    {
+      "label": "Total debt",
+      "value": 777455.57,
+      "tone": "plain",
+      "note": "Every consumer debt in the household is now captured. Nothing outstanding."
+    },
+    {
+      "label": "Interest cost / year",
+      "value": 36546.11,
+      "tone": "warn",
+      "sub": {
+        "value": 17105.11,
+        "label": "excluding the mortgage"
+      },
+      "note": "About $3,046 every month, of which about $1,425 is not the mortgage"
+    },
+    {
+      "label": "Credit left, everywhere",
+      "value": 1415.95,
+      "tone": "alert",
+      "note": "Across seven facilities combined"
+    }
   ],
-
   "upcoming": [
-    { "due": "2026-08-07", "what": "Triangle Mastercard minimum", "amount": 253.57, "status": "paid", "note": "Paid $300.00 on 9 Aug — two days late, watch for a fee" },
-    { "due": "2026-08-04", "what": "TD Cash Back Visa — July statement minimum", "amount": 69.93, "status": "paid", "note": "Missed on 4 Aug; $70.00 paid on 9 Aug, five days late. Available credit went from $0.00 to $70.00, so the freeze has lifted" },
-    { "due": "2026-08-12", "what": "Burrard registration — child 1", "amount": 320.00, "status": "due", "kind": "commitment", "note": "Lacrosse. Deadline is the 12th, two days before payday" },
-    { "due": "2026-08-12", "what": "Burrard registration — child 2", "amount": 303.00, "status": "due", "kind": "commitment", "note": "Lacrosse. Same deadline as child 1 — $623.00 together" },
-    { "due": "2026-08-14", "what": "Mortgage (bi-weekly)", "amount": 1600.00, "status": "due", "note": "Falls on the Seaspan payday. Amanda's Tennis BC pay does NOT land the same day — it is semi-monthly, on the 15th and month-end." },
-    { "due": "2026-08-16", "what": "Fusion camp", "amount": 786.00, "status": "due", "kind": "commitment", "note": "Stated as \"next week\" — date is approximate. The largest single item before payday" },
-    { "due": "2026-08-17", "what": "TD credit card minimum", "amount": 94.03, "status": "due", "note": "Must post by the 17th — a fifth miss restarts the penalty-rate clock" },
-    { "due": "2026-08-21", "what": "HELOC minimum", "amount": 814.18, "status": "due", "note": "Interest-only — reduces principal by nothing" },
-    { "due": "2026-08-22", "what": "Fusion tryouts", "amount": 140.00, "status": "due", "kind": "commitment", "note": "Lands the day after the HELOC minimum" },
-    { "due": "2026-08-26", "what": "Travel Visa minimum", "amount": 17.00, "status": "due", "note": "" },
-    { "due": "2026-08-31", "what": "Amazon.ca Rewards Mastercard minimum", "amount": 158.27, "status": "due", "note": "MBNA. At minimums the issuer estimates 64 years 3 months to clear" },
-    { "due": "2026-09-01", "what": "TD Cash Back Visa minimum", "amount": 762.36, "status": "due", "note": "Eleven times last month's $69.93, because going over the limit makes the excess immediately due. Under $5,000 before the 7th stops the $29 over-limit fee" }
+    {
+      "due": "2026-08-07",
+      "what": "Triangle Mastercard minimum",
+      "amount": 253.57,
+      "status": "paid",
+      "note": "Paid $300.00 on 9 Aug — two days late, watch for a fee"
+    },
+    {
+      "due": "2026-08-04",
+      "what": "TD Cash Back Visa — July statement minimum",
+      "amount": 69.93,
+      "status": "paid",
+      "note": "Missed on 4 Aug; $70.00 paid on 9 Aug, five days late. Available credit went from $0.00 to $70.00, so the freeze has lifted"
+    },
+    {
+      "due": "2026-08-12",
+      "what": "Burrard registration — child 1",
+      "amount": 320.0,
+      "status": "due",
+      "kind": "commitment",
+      "note": "Lacrosse. Deadline is the 12th, two days before payday"
+    },
+    {
+      "due": "2026-08-12",
+      "what": "Burrard registration — child 2",
+      "amount": 303.0,
+      "status": "due",
+      "kind": "commitment",
+      "note": "Lacrosse. Same deadline as child 1 — $623.00 together"
+    },
+    {
+      "due": "2026-08-14",
+      "what": "Mortgage (bi-weekly)",
+      "amount": 1600.0,
+      "status": "due",
+      "note": "Falls on the Seaspan payday. Amanda's Tennis BC pay does NOT land the same day — it is semi-monthly, on the 15th and month-end."
+    },
+    {
+      "due": "2026-08-16",
+      "what": "Fusion camp",
+      "amount": 786.0,
+      "status": "due",
+      "kind": "commitment",
+      "note": "Stated as \"next week\" — date is approximate. The largest single item before payday"
+    },
+    {
+      "due": "2026-08-17",
+      "what": "TD credit card minimum",
+      "amount": 94.03,
+      "status": "due",
+      "note": "Must post by the 17th — a fifth miss restarts the penalty-rate clock"
+    },
+    {
+      "due": "2026-08-21",
+      "what": "HELOC minimum",
+      "amount": 814.18,
+      "status": "due",
+      "note": "Interest-only — reduces principal by nothing"
+    },
+    {
+      "due": "2026-08-22",
+      "what": "Fusion tryouts",
+      "amount": 140.0,
+      "status": "due",
+      "kind": "commitment",
+      "note": "Lands the day after the HELOC minimum"
+    },
+    {
+      "due": "2026-08-26",
+      "what": "Travel Visa minimum",
+      "amount": 17.0,
+      "status": "due",
+      "note": ""
+    },
+    {
+      "due": "2026-08-31",
+      "what": "Amazon.ca Rewards Mastercard minimum",
+      "amount": 158.27,
+      "status": "due",
+      "note": "MBNA. At minimums the issuer estimates 64 years 3 months to clear"
+    },
+    {
+      "due": "2026-09-01",
+      "what": "TD Cash Back Visa minimum",
+      "amount": 762.36,
+      "status": "due",
+      "note": "Eleven times last month's $69.93, because going over the limit makes the excess immediately due. Under $5,000 before the 7th stops the $29 over-limit fee"
+    }
   ],
   "upcomingNote": "The tight moment is 12 August — Burrard ($623) and the Fusion camp ($786) both fall before Friday's payday, taking cash to roughly $874, or nearer $590 once ordinary spending is counted, and it stays there for two days. There is $1,415.95 of credit left across every facility combined if anything unexpected lands in that gap. The 90-day projection on the Plan page carries this forward week by week.",
-
   "commitments": {
     "heading": "Big-ticket items already committed",
     "note": "Beyond the dates above. Kept here so they do not arrive as a surprise — sports commitments across August to December total about $4,349, roughly $870/month, against the $348/month youth lacrosse has actually averaged. That is two and a half times the established rate, and the funding record below shows $2,269.80 of past lacrosse cost went onto the HELOC at 4.90%.",
     "items": [
-      { "what": "Warriors Elite Academy", "when": "September 2026", "amount": 800, "confidence": "committed", "note": "Amount is the owner's figure, stated as \"about $800\", and not yet invoiced. The commitment itself is firm." },
-      { "what": "Fusion season fees", "when": "September – December 2026", "amount": 2000, "confidence": "committed", "note": "Tryouts are 22 August and selection is expected (owner-stated 9 Aug). Planned as roughly $500/month across four months rather than a lump sum, so it lands as a recurring cost, not a one-off." }
+      {
+        "what": "Warriors Elite Academy",
+        "when": "September 2026",
+        "amount": 800,
+        "confidence": "committed",
+        "note": "Amount is the owner's figure, stated as \"about $800\", and not yet invoiced. The commitment itself is firm."
+      },
+      {
+        "what": "Fusion season fees",
+        "when": "September – December 2026",
+        "amount": 2000,
+        "confidence": "committed",
+        "note": "Tryouts are 22 August and selection is expected (owner-stated 9 Aug). Planned as roughly $500/month across four months rather than a lump sum, so it lands as a recurring cost, not a one-off."
+      }
     ],
     "schedule": [
-      { "m": "September", "amount": 1300, "note": "Warriors $800 plus the first Fusion instalment" },
-      { "m": "October", "amount": 500, "note": "Fusion" },
-      { "m": "November", "amount": 500, "note": "Fusion" },
-      { "m": "December", "amount": 500, "note": "Fusion" }
+      {
+        "m": "September",
+        "amount": 1300,
+        "note": "Warriors $800 plus the first Fusion instalment"
+      },
+      {
+        "m": "October",
+        "amount": 500,
+        "note": "Fusion"
+      },
+      {
+        "m": "November",
+        "amount": 500,
+        "note": "Fusion"
+      },
+      {
+        "m": "December",
+        "amount": 500,
+        "note": "Fusion"
+      }
     ],
     "total": 2800,
     "totalNote": "Both are treated as committed: the Fusion season is written in on the expectation of selection rather than held back as a maybe. September is the heavy month at $1,300, and it arrives alongside the TD Cash Back minimum. Amounts remain owner-stated rather than invoiced, so they are planning figures — and they stay out of the headline cash and debt tiles, which carry institution-verified amounts only."
   },
-
   "debts": [
-    { "label": "Mortgage", "balance": 546026.58, "rate": 3.64, "rateBasis": "TD Mortgage Prime − 0.96%", "structure": "Amortising — 52.4% of each payment is principal", "annualInterest": 19441, "payment": 1600, "frequency": "Bi-weekly", "nextDue": "2026-08-14", "limit": null, "available": null, "confidence": "verified", "secured": true },
-    { "label": "HELOC", "balance": 201586.16, "rate": 4.90, "rateBasis": "TD Prime + 0.45%", "structure": "Interest-only revolving — never amortises", "annualInterest": 9877.72, "payment": 814.18, "frequency": "Monthly minimum", "nextDue": "2026-08-21", "limit": 202654, "available": 1067.84, "confidence": "verified", "secured": true },
-    { "label": "Triangle Mastercard", "secured": false, "balance": 13497.00, "rate": 21.99, "rateBasis": "Purchases 21.99% / cash 22.99%", "structure": "Revolving — 99.98% used", "annualInterest": 2880, "payment": 253.57, "frequency": "Monthly minimum", "nextDue": "2026-08-07", "limit": 13500, "available": 3.00, "confidence": "verified" },
-    { "label": "TD Cash Back Visa", "secured": false, "balance": 5612.43, "rate": 26.99, "rateBasis": "Purchases 26.99% / cash 27.99%", "structure": "Revolving — $612 over its limit", "annualInterest": 1902.60, "payment": 762.36, "frequency": "Monthly minimum", "nextDue": "2026-09-01", "limit": 5000, "available": 0, "confidence": "verified" },
-    { "label": "Amazon.ca Rewards Mastercard (MBNA)", "secured": false, "balance": 7855.12, "rate": 21.74, "rateBasis": "Purchases 21.74% / cash and transfers 22.99%", "structure": "Revolving — $0 to $7,855 in eight months", "annualInterest": 1779.24, "payment": 158.27, "frequency": "Monthly minimum", "nextDue": "2026-08-31", "limit": 8000, "available": 62.83, "confidence": "verified" },
-    { "label": "TD credit card", "secured": false, "balance": 1799.97, "rate": 24.99, "rateBasis": "Penalty rate — normal would be 17.20%", "structure": "Revolving — dormant balance, no purchases", "annualInterest": 450, "payment": 94.03, "frequency": "Monthly minimum", "nextDue": "2026-08-17", "limit": 2000, "available": 200.00, "confidence": "verified" },
-    { "label": "Travel Visa (business)", "secured": false, "balance": 1078.31, "rate": 19.99, "rateBasis": "Purchases 19.99% / cash 22.99%", "structure": "Revolving — pending charges will push it over", "annualInterest": 215.55, "payment": 17.00, "frequency": "Monthly minimum", "nextDue": "2026-08-26", "limit": 1100, "available": 0, "confidence": "verified", "note": "$165.13 pending takes it to $1,243.44 against a $1,100 limit" }
+    {
+      "id": "mortgage",
+      "label": "Mortgage",
+      "interestByEvent": true,
+      "principalShare": 0.524,
+      "balance": 546026.58,
+      "rate": 3.64,
+      "rateBasis": "TD Mortgage Prime − 0.96%",
+      "structure": "Amortising — 52.4% of each payment is principal",
+      "annualInterest": 19441,
+      "payment": 1600,
+      "frequency": "Bi-weekly",
+      "nextDue": "2026-08-14",
+      "limit": null,
+      "available": null,
+      "confidence": "verified",
+      "secured": true
+    },
+    {
+      "id": "heloc",
+      "label": "HELOC",
+      "interestByEvent": true,
+      "balance": 201586.16,
+      "rate": 4.9,
+      "rateBasis": "TD Prime + 0.45%",
+      "structure": "Interest-only revolving — never amortises",
+      "annualInterest": 9877.72,
+      "payment": 814.18,
+      "frequency": "Monthly minimum",
+      "nextDue": "2026-08-21",
+      "limit": 202654,
+      "available": 1067.84,
+      "confidence": "verified",
+      "secured": true
+    },
+    {
+      "id": "triangle",
+      "label": "Triangle Mastercard",
+      "interestByEvent": false,
+      "secured": false,
+      "balance": 13497.0,
+      "rate": 21.99,
+      "rateBasis": "Purchases 21.99% / cash 22.99%",
+      "structure": "Revolving — 99.98% used",
+      "annualInterest": 2880,
+      "payment": 253.57,
+      "frequency": "Monthly minimum",
+      "nextDue": "2026-08-07",
+      "limit": 13500,
+      "available": 3.0,
+      "confidence": "verified"
+    },
+    {
+      "id": "cashback",
+      "label": "TD Cash Back Visa",
+      "interestByEvent": false,
+      "secured": false,
+      "balance": 5612.43,
+      "rate": 26.99,
+      "rateBasis": "Purchases 26.99% / cash 27.99%",
+      "structure": "Revolving — $612 over its limit",
+      "annualInterest": 1902.6,
+      "payment": 762.36,
+      "frequency": "Monthly minimum",
+      "nextDue": "2026-09-01",
+      "limit": 5000,
+      "available": 0,
+      "confidence": "verified"
+    },
+    {
+      "id": "mbna",
+      "label": "Amazon.ca Rewards Mastercard (MBNA)",
+      "interestByEvent": false,
+      "secured": false,
+      "balance": 7855.12,
+      "rate": 21.74,
+      "rateBasis": "Purchases 21.74% / cash and transfers 22.99%",
+      "structure": "Revolving — $0 to $7,855 in eight months",
+      "annualInterest": 1779.24,
+      "payment": 158.27,
+      "frequency": "Monthly minimum",
+      "nextDue": "2026-08-31",
+      "limit": 8000,
+      "available": 62.83,
+      "confidence": "verified"
+    },
+    {
+      "id": "tdcc",
+      "label": "TD credit card",
+      "interestByEvent": false,
+      "secured": false,
+      "balance": 1799.97,
+      "rate": 24.99,
+      "rateBasis": "Penalty rate — normal would be 17.20%",
+      "structure": "Revolving — dormant balance, no purchases",
+      "annualInterest": 450,
+      "payment": 94.03,
+      "frequency": "Monthly minimum",
+      "nextDue": "2026-08-17",
+      "limit": 2000,
+      "available": 200.0,
+      "confidence": "verified"
+    },
+    {
+      "id": "travelvisa",
+      "label": "Travel Visa (business)",
+      "interestByEvent": false,
+      "secured": false,
+      "balance": 1078.31,
+      "rate": 19.99,
+      "rateBasis": "Purchases 19.99% / cash 22.99%",
+      "structure": "Revolving — pending charges will push it over",
+      "annualInterest": 215.55,
+      "payment": 17.0,
+      "frequency": "Monthly minimum",
+      "nextDue": "2026-08-26",
+      "limit": 1100,
+      "available": 0,
+      "confidence": "verified",
+      "note": "$165.13 pending takes it to $1,243.44 against a $1,100 limit"
+    }
   ],
   "debtsNote": "Affirm/Flexiti is gone: owner-confirmed paid off and closed, $2,654.28 across the window. Every card balance here was read from the institution on 9 August. The Cash Back Visa's $158.55 interest charge is no longer an open question — it is 26.99% on the average daily balance, not on the closing balance, and the two are far apart on a card that is paid down and run back up. See the reconciliation under Money in and out.",
-
   "utilisation": [
-    { "label": "TD Cash Back Visa", "used": 5612.43, "limit": 5000, "available": 0 },
-    { "label": "Triangle Mastercard", "used": 13497.00, "limit": 13500, "available": 3.00 },
-    { "label": "Amazon.ca Rewards Mastercard", "used": 7855.12, "limit": 8000, "available": 62.83 },
-    { "label": "HELOC", "used": 201586.16, "limit": 202654, "available": 1067.84 },
-    { "label": "TD credit card", "used": 1799.97, "limit": 2000, "available": 200.00 },
-    { "label": "Travel Visa", "used": 1078.31, "limit": 1100, "available": 0 },
-    { "label": "Chequing B overdraft", "used": 517.72, "limit": 600, "available": 82.28 }
+    {
+      "label": "TD Cash Back Visa",
+      "used": 5612.43,
+      "limit": 5000,
+      "available": 0
+    },
+    {
+      "label": "Triangle Mastercard",
+      "used": 13497.0,
+      "limit": 13500,
+      "available": 3.0
+    },
+    {
+      "label": "Amazon.ca Rewards Mastercard",
+      "used": 7855.12,
+      "limit": 8000,
+      "available": 62.83
+    },
+    {
+      "label": "HELOC",
+      "used": 201586.16,
+      "limit": 202654,
+      "available": 1067.84
+    },
+    {
+      "label": "TD credit card",
+      "used": 1799.97,
+      "limit": 2000,
+      "available": 200.0
+    },
+    {
+      "label": "Travel Visa",
+      "used": 1078.31,
+      "limit": 1100,
+      "available": 0
+    },
+    {
+      "label": "Chequing B overdraft",
+      "used": 517.72,
+      "limit": 600,
+      "available": 82.28
+    }
   ],
   "utilisationNote": "The Cash Back Visa is at 112.2% — $612.43 beyond its $5,000 limit even after the 9 August payment, with the $29.00 over-limit fee accruing until it is back under. TD's own page shows $70.00 available, which is the payment credited as headroom rather than real room. The Travel Visa's limit is now known at $1,100.00 — the smallest in the household — and it sits at 98.0% with $165.13 of pending charges that will take it $143.44 over.",
-
   "assets": [
-    { "label": "DEBT&PAYMENTS chequing", "value": 2691.85 },
-    { "label": "Chequing A", "value": 506.98 },
-    { "label": "Chequing B", "value": -517.72 },
-    { "label": "Savings", "value": 90.58, "class": "spendable" },
-    { "label": "SAVINGS-DONT TOUCH", "value": 74.20 },
-    { "label": "Wise (two US spending accounts)", "value": 205.92 },
-    { "label": "Silver — 100 oz [ESTIMATE]", "value": 8847.00 },
-    { "label": "RESP (education-restricted)", "value": 31555.85 },
-    { "label": "TFSA, US TFSA, two mutual funds", "value": 0 }
+    {
+      "label": "DEBT&PAYMENTS chequing",
+      "value": 2691.85
+    },
+    {
+      "label": "Chequing A",
+      "value": 506.98
+    },
+    {
+      "label": "Chequing B",
+      "value": -517.72
+    },
+    {
+      "label": "Savings",
+      "value": 90.58,
+      "class": "spendable"
+    },
+    {
+      "label": "SAVINGS-DONT TOUCH",
+      "value": 74.2
+    },
+    {
+      "label": "Wise (two US spending accounts)",
+      "value": 205.92
+    },
+    {
+      "label": "Silver — 100 oz [ESTIMATE]",
+      "value": 8847.0
+    },
+    {
+      "label": "RESP (education-restricted)",
+      "value": 31555.85
+    },
+    {
+      "label": "TFSA, US TFSA, two mutual funds",
+      "value": 0
+    }
   ],
   "assetsNote": "Read from TD on 9 August, after the $300 Triangle payment and the $70 Cash Back payment both left Chequing A. SAVINGS-DONT TOUCH is a staging account rather than savings — money arrives and leaves within days, and it earned $0.11 over 18 months. The Wise figure is $83.84 CAD plus $86.82 USD, converted at the 0.7112 rate actually paid rather than a spot rate, and is calculated from the transaction ledger rather than read off Wise. The silver is 100 oz, owner-stated 10 August 2026, valued at the C$88.47/oz spot price that day — a market price, not a quote. Actual proceeds would be lower: dealers buy under spot, and any gain over the original purchase price is a taxable capital gain in Canada. It is the household's largest liquid asset by a wide margin, worth roughly three times the total cash.",
   "netWorth": {
@@ -226,112 +1038,398 @@
     "financialAccountsOnly": -734000.91,
     "caveat": "Household net worth is now estimable. At the owner's estimate of $1.1m–$1.4m for the home, it is roughly $366,000 to $666,000 [ESTIMATE] — the financial accounts above, plus the home, less all debt. The range rose by about $8,800 when the silver was added on 10 August. Loan-to-value on the mortgage and HELOC together ($747,612.74) is 68% at the low end and 53% at the high end, both comfortably under the 80% that matters at the May 2027 renewal. This is an owner's estimate, not an appraisal, and a lender will use its own. Vehicles, pensions and the business are still excluded."
   },
-
   "helocHistory": [
-    { "m": "Feb 25", "v": 190627.78 }, { "m": "Mar", "v": 189375.85 }, { "m": "Apr", "v": 190381.69 },
-    { "m": "May", "v": 198578.57 }, { "m": "Jun", "v": 195549.81 }, { "m": "Jul", "v": 195684.37 },
-    { "m": "Aug", "v": 198366.81 }, { "m": "Sep", "v": 197777.65 }, { "m": "Oct", "v": 197847.57 },
-    { "m": "Nov", "v": 198858.82 }, { "m": "Dec", "v": 202058.59, "note": "Above the limit" },
-    { "m": "Jan 26", "v": 202358.65, "note": "Peak" },
-    { "m": "Feb", "v": 188060.61, "note": "$16,100 bonus paydown" },
-    { "m": "Mar", "v": 190953.11 }, { "m": "Apr", "v": 193168.43 }, { "m": "May", "v": 195659.82 },
-    { "m": "Jun", "v": 196967.31 }, { "m": "Jul", "v": 201085.16 },
-    { "m": "Aug 26", "v": 201586.16, "note": "Only $1,067.84 left" }
+    {
+      "m": "Feb 25",
+      "v": 190627.78
+    },
+    {
+      "m": "Mar",
+      "v": 189375.85
+    },
+    {
+      "m": "Apr",
+      "v": 190381.69
+    },
+    {
+      "m": "May",
+      "v": 198578.57
+    },
+    {
+      "m": "Jun",
+      "v": 195549.81
+    },
+    {
+      "m": "Jul",
+      "v": 195684.37
+    },
+    {
+      "m": "Aug",
+      "v": 198366.81
+    },
+    {
+      "m": "Sep",
+      "v": 197777.65
+    },
+    {
+      "m": "Oct",
+      "v": 197847.57
+    },
+    {
+      "m": "Nov",
+      "v": 198858.82
+    },
+    {
+      "m": "Dec",
+      "v": 202058.59,
+      "note": "Above the limit"
+    },
+    {
+      "m": "Jan 26",
+      "v": 202358.65,
+      "note": "Peak"
+    },
+    {
+      "m": "Feb",
+      "v": 188060.61,
+      "note": "$16,100 bonus paydown"
+    },
+    {
+      "m": "Mar",
+      "v": 190953.11
+    },
+    {
+      "m": "Apr",
+      "v": 193168.43
+    },
+    {
+      "m": "May",
+      "v": 195659.82
+    },
+    {
+      "m": "Jun",
+      "v": 196967.31
+    },
+    {
+      "m": "Jul",
+      "v": 201085.16
+    },
+    {
+      "m": "Aug 26",
+      "v": 201586.16,
+      "note": "Only $1,067.84 left"
+    }
   ],
   "helocLimit": 202654,
   "helocSummary": "Balance grew $7,536.96 over 18 months despite $78,177 of repayments, because $86,514 was advanced and $15,029 of interest was capitalised. Since the February 2026 paydown it has risen every month — +$13,525.55 in six.",
-
   "helocUse": [
-    { "label": "Credit card payments", "amount": 22230.00, "n": 32, "note": "Card balances moved onto the house. The rate falls from 21–27% to 4.90%, but the debt stops amortising and becomes permanent." },
-    { "label": "Into chequing / savings", "amount": 17466.00, "n": 54, "note": "Borrowed money topping up day-to-day accounts. Where it went next is only traceable for the few cases below." },
-    { "label": "Interest charged", "amount": 15029.18, "n": 18, "note": "The cost of the facility, capitalised onto the balance — about $835/month. Paying the minimum covers this and nothing else." },
-    { "label": "Household bills, paid direct", "amount": 14271.63, "n": 5, "note": "Property tax $5,639.67 · Triangle Mastercard $3,778.00 and $3,663.96 · BC Hydro $790.00 · CRA tax owed $400.00." },
-    { "label": "E-transfers out", "amount": 13061.90, "n": 26, "note": "Sent straight from the HELOC. TD names no payee, so most of this is unattributable — it includes the Wise holiday funding and the lacrosse fees." },
-    { "label": "Cash withdrawal", "amount": 4429.80, "n": 1, "note": "A single withdrawal, 12 February 2025." },
-    { "label": "E-transfer fees", "amount": 25.00, "n": 26, "note": "$1 each, charged to the HELOC and therefore borrowed too." }
+    {
+      "label": "Credit card payments",
+      "amount": 22230.0,
+      "n": 32,
+      "note": "Card balances moved onto the house. The rate falls from 21–27% to 4.90%, but the debt stops amortising and becomes permanent."
+    },
+    {
+      "label": "Into chequing / savings",
+      "amount": 17466.0,
+      "n": 54,
+      "note": "Borrowed money topping up day-to-day accounts. Where it went next is only traceable for the few cases below."
+    },
+    {
+      "label": "Interest charged",
+      "amount": 15029.18,
+      "n": 18,
+      "note": "The cost of the facility, capitalised onto the balance — about $835/month. Paying the minimum covers this and nothing else."
+    },
+    {
+      "label": "Household bills, paid direct",
+      "amount": 14271.63,
+      "n": 5,
+      "note": "Property tax $5,639.67 · Triangle Mastercard $3,778.00 and $3,663.96 · BC Hydro $790.00 · CRA tax owed $400.00."
+    },
+    {
+      "label": "E-transfers out",
+      "amount": 13061.9,
+      "n": 26,
+      "note": "Sent straight from the HELOC. TD names no payee, so most of this is unattributable — it includes the Wise holiday funding and the lacrosse fees."
+    },
+    {
+      "label": "Cash withdrawal",
+      "amount": 4429.8,
+      "n": 1,
+      "note": "A single withdrawal, 12 February 2025."
+    },
+    {
+      "label": "E-transfer fees",
+      "amount": 25.0,
+      "n": 26,
+      "note": "$1 each, charged to the HELOC and therefore borrowed too."
+    }
   ],
   "helocUseNote": "$86,513.51 left the HELOC over 18 months and $78,176.55 came back — this is a facility being used as a chequing account, not a loan being repaid. The line worth pausing on is the fourth: property tax, income tax and a hydro bill were paid by borrowing against the house. Those are ordinary recurring costs, and the HELOC is interest-only at 99.5% drawn, so nothing about a minimum payment ever removes them.",
   "helocChains": "Tracing was re-run looking for multi-hop chains, because the 24 July Wise funding showed a single intermediate hop is enough to break the trail. Of 635 reference-matched internal transfers, 33 continue into an onward movement within three days and only 5 of those start at the HELOC, worth $2,135.00. So the laundering-through-chequing pattern is real but rare: the money that cannot be traced left the HELOC directly, as 26 anonymous e-transfers worth $13,061.90.",
-
   "cashflow": [
-    { "m": "Feb 25", "v": 832.69 }, { "m": "Mar", "v": -2355.99 }, { "m": "Apr", "v": 1443.63 },
-    { "m": "May", "v": -2260.51 }, { "m": "Jun", "v": -61.28 }, { "m": "Jul", "v": 1597.50 },
-    { "m": "Aug", "v": -483.80 }, { "m": "Sep", "v": 3491.48 }, { "m": "Oct", "v": -258.97 },
-    { "m": "Nov", "v": -849.52 }, { "m": "Dec", "v": -4329.02, "note": "Highest spending month" },
-    { "m": "Jan 26", "v": 2314.83 }, { "m": "Feb", "v": 287.38, "note": "Bonus, mostly to the HELOC" },
-    { "m": "Mar", "v": -1201.79 }, { "m": "Apr", "v": -794.14 }, { "m": "May", "v": 2650.01 },
-    { "m": "Jun", "v": -1071.99 }, { "m": "Jul", "v": 11675.09, "note": "Bonus plus a strong resale month" }
+    {
+      "m": "Feb 25",
+      "v": 832.69
+    },
+    {
+      "m": "Mar",
+      "v": -2355.99
+    },
+    {
+      "m": "Apr",
+      "v": 1443.63
+    },
+    {
+      "m": "May",
+      "v": -2260.51
+    },
+    {
+      "m": "Jun",
+      "v": -61.28
+    },
+    {
+      "m": "Jul",
+      "v": 1597.5
+    },
+    {
+      "m": "Aug",
+      "v": -483.8
+    },
+    {
+      "m": "Sep",
+      "v": 3491.48
+    },
+    {
+      "m": "Oct",
+      "v": -258.97
+    },
+    {
+      "m": "Nov",
+      "v": -849.52
+    },
+    {
+      "m": "Dec",
+      "v": -4329.02,
+      "note": "Highest spending month"
+    },
+    {
+      "m": "Jan 26",
+      "v": 2314.83
+    },
+    {
+      "m": "Feb",
+      "v": 287.38,
+      "note": "Bonus, mostly to the HELOC"
+    },
+    {
+      "m": "Mar",
+      "v": -1201.79
+    },
+    {
+      "m": "Apr",
+      "v": -794.14
+    },
+    {
+      "m": "May",
+      "v": 2650.01
+    },
+    {
+      "m": "Jun",
+      "v": -1071.99
+    },
+    {
+      "m": "Jul",
+      "v": 11675.09,
+      "note": "Bonus plus a strong resale month"
+    }
   ],
   "cashflowNote": "Nine of eighteen complete months were negative. The year balances only because two or three large months carry it. Excludes payments made directly from the HELOC — roughly $1,960/month — so the real picture is somewhat weaker than shown.",
-
   "income": [
-    { "label": "Payroll (bi-weekly)", "total": 186152.89, "perMonth": 10342, "stability": "Stable" },
-    { "label": "Her employment — Tennis BC", "total": 63129.47, "perMonth": 3507, "stability": "Growing — $1,250/month to $6,196/month across the window" },
-    { "label": "Coaching — gross revenue", "total": 54213.00, "perMonth": 3012, "stability": "REVENUE, not income. Coaches are paid out of this, so only the margin is kept — about 72% on her own figures" },
-    { "label": "Child benefit", "total": 2764.63, "perMonth": 154, "stability": "Stable" },
-    { "label": "Insurance reimbursement", "total": 500.04, "perMonth": null, "stability": "One-off" }
+    {
+      "label": "Payroll (bi-weekly)",
+      "total": 186152.89,
+      "perMonth": 10342,
+      "stability": "Stable"
+    },
+    {
+      "label": "Her employment — Tennis BC",
+      "total": 63129.47,
+      "perMonth": 3507,
+      "stability": "Growing — $1,250/month to $6,196/month across the window"
+    },
+    {
+      "label": "Coaching — gross revenue",
+      "total": 54213.0,
+      "perMonth": 3012,
+      "stability": "REVENUE, not income. Coaches are paid out of this, so only the margin is kept — about 72% on her own figures"
+    },
+    {
+      "label": "Child benefit",
+      "total": 2764.63,
+      "perMonth": 154,
+      "stability": "Stable"
+    },
+    {
+      "label": "Insurance reimbursement",
+      "total": 500.04,
+      "perMonth": null,
+      "stability": "One-off"
+    }
   ],
-  "incomeTotal": { "total": 306760.03, "perMonth": 17042 },
+  "incomeTotal": {
+    "total": 306760.03,
+    "perMonth": 17042
+  },
   "incomeWarning": "The coaching line is gross revenue — coaches are paid out of it. Her tracking sheets now give the split: $23,070 of class revenue against $6,397.50 of coach payroll, so coaches take about 27.7% and roughly 72% is retained. Applied to the $42,395 of large receipts that implies about $11,700 owed onward and $30,700 retained — roughly $1,700/month of real coaching income rather than the $2,355 the gross suggests. So this total is overstated by about $650/month, not the $1,650 previously feared. The sheets cover $23,070 against $42,395 received, so they are a subset of the window and the share is indicative rather than audited.",
   "incomeNote": "Her Tennis BC employment — 43 deposits, $63,129.47 over 18 months into DEBT&PAYMENTS — was absent from the earlier picture entirely, which saw only the $21,700 she transferred across. That transfer has been removed as an income line: it is an internal movement out of this income, and counting both would double it. Two cautions remain: at least $1,639.10 marked EXP is expense reimbursement rather than pay, a further $2,846.58 marked AP is unresolved, and the transfers stopped after May 2026 while the income did not.",
-
-
   "interestCheck": {
     "charge": 158.55,
     "naive": 115,
     "modelled": 117.36,
     "rows": [
-      { "stmt": "8 Apr 2026", "avg": 4985.10, "implied": 110.59, "charged": 108.91, "eff": 26.58 },
-      { "stmt": "7 May 2026", "avg": 5118.52, "implied": 109.76, "charged": 103.98, "eff": 25.57 },
-      { "stmt": "8 Jun 2026", "avg": 3179.37, "implied": 75.23, "charged": 61.27, "eff": 21.98 },
-      { "stmt": "7 Jul 2026", "avg": 4263.60, "implied": 91.43, "charged": 59.93, "eff": 17.69 },
-      { "stmt": "7 Aug 2026", "avg": 5119.61, "implied": 117.36, "charged": 158.55, "eff": 36.46 }
+      {
+        "stmt": "8 Apr 2026",
+        "avg": 4985.1,
+        "implied": 110.59,
+        "charged": 108.91,
+        "eff": 26.58
+      },
+      {
+        "stmt": "7 May 2026",
+        "avg": 5118.52,
+        "implied": 109.76,
+        "charged": 103.98,
+        "eff": 25.57
+      },
+      {
+        "stmt": "8 Jun 2026",
+        "avg": 3179.37,
+        "implied": 75.23,
+        "charged": 61.27,
+        "eff": 21.98
+      },
+      {
+        "stmt": "7 Jul 2026",
+        "avg": 4263.6,
+        "implied": 91.43,
+        "charged": 59.93,
+        "eff": 17.69
+      },
+      {
+        "stmt": "7 Aug 2026",
+        "avg": 5119.61,
+        "implied": 117.36,
+        "charged": 158.55,
+        "eff": 36.46
+      }
     ],
     "note": "The $158.55 is explained, and the question was mis-specified rather than unanswerable. Two things were wrong with the expected \"about $115\". It applied 26.99% to the CLOSING balance, but interest is charged on the average daily balance — on a card paid down and run back up those are different numbers. And it looked at August alone: June and July were charged below rate, at an effective 21.98% and 17.69%, leaving $45.46 uncollected; August then ran at 36.46% and collected it. Across five cycles the model implies $504.37 against $492.64 actually charged — a 2.3% gap, which is the transaction-date-versus-posting-date bias and nothing more.",
     "cash": "The cash-advance theory is dead on the statements' own evidence: every interest line on this card, in all twelve statements, is headed RETAIL INTEREST. There is no cash-advance bucket, so the 27.99% rate was never part of it."
   },
-
   "spendingNote": "Chequing and savings spending only - $116,074.92 over 18 months, about $6,449/month, rebuilt against the merchant library. Uncategorised is down to 4.5% from 12.0% — 88 new patterns, mostly Square terminals and foreign-currency charges — and that is after removing $25,490 that was never spending at all: PayPal funding pulls, Flexiti and credit-card payments, and transfers to WebBroker, all previously counted as purchases. A further $145.00 came out this month: O.D.P. FEE and PAYMENT COVERAGE FEE are bank charges, not purchases, and matched no fee rule because TD abbreviates \"overdraft protection\" to \"O.D.P.\". Card spending is shown separately and adds about $3,695/month. PayPal draws a further $10,437.78 from chequing over the window, roughly $580/month, spent at merchants recorded in the PayPal exports rather than here. Total household spending is therefore around $10,700/month, not the $7,551 previously published.",
-
   "paypal": {
     "perMonth": 463,
     "crossCheck": 474,
     "months": 9,
     "categories": [
-      { "label": "Gaming (for the kids)", "total": 1306.66, "perMonth": 145 },
-      { "label": "Apple Services", "total": 1138.72, "perMonth": 127 },
-      { "label": "Streaming & media", "total": 521.76, "perMonth": 58 },
-      { "label": "Food delivery", "total": 487.46, "perMonth": 54 },
-      { "label": "Shopping & other", "total": 431.96, "perMonth": 48 },
-      { "label": "Music & amp plugins (known)", "total": 282.33, "perMonth": 31 }
+      {
+        "label": "Gaming (for the kids)",
+        "total": 1306.66,
+        "perMonth": 145
+      },
+      {
+        "label": "Apple Services",
+        "total": 1138.72,
+        "perMonth": 127
+      },
+      {
+        "label": "Streaming & media",
+        "total": 521.76,
+        "perMonth": 58
+      },
+      {
+        "label": "Food delivery",
+        "total": 487.46,
+        "perMonth": 54
+      },
+      {
+        "label": "Shopping & other",
+        "total": 431.96,
+        "perMonth": 48
+      },
+      {
+        "label": "Music & amp plugins (known)",
+        "total": 282.33,
+        "perMonth": 31
+      }
     ],
     "note": "Not a source of business revenue, not the channel for the unexplained e-transfers, and not a hidden asset or debt — balance $0.00, Pay-in-4 complete."
   },
-
   "lacrosse": {
     "verified": 5729.47,
-    "inferred": 400.00,
+    "inferred": 400.0,
     "perMonth": 348,
     "sources": [
-      { "label": "Cards", "amount": 2767.14, "n": 17, "note": "Full merchant names, so unambiguous: Ridge Meadows Minor Lacrosse, Fusion West, RMSC Titans, Cityside Lax, MVP Athletic." },
-      { "label": "E-transfers, named", "amount": 2822.30, "n": 7, "note": "Only nameable because an Interac confirmation email survived. Fusion West $2,234.05 across five, Pro Caliber $488.25, Venom Custom Sticks $100.00." },
-      { "label": "Chequing debit", "amount": 140.03, "n": 3, "note": "Was recorded as $0.00. Extending the merchant library found US Lacrosse, BC Sixes and Loading Lacrosse hiding in TD's truncated descriptions." }
+      {
+        "label": "Cards",
+        "amount": 2767.14,
+        "n": 17,
+        "note": "Full merchant names, so unambiguous: Ridge Meadows Minor Lacrosse, Fusion West, RMSC Titans, Cityside Lax, MVP Athletic."
+      },
+      {
+        "label": "E-transfers, named",
+        "amount": 2822.3,
+        "n": 7,
+        "note": "Only nameable because an Interac confirmation email survived. Fusion West $2,234.05 across five, Pro Caliber $488.25, Venom Custom Sticks $100.00."
+      },
+      {
+        "label": "Chequing debit",
+        "amount": 140.03,
+        "n": 3,
+        "note": "Was recorded as $0.00. Extending the merchant library found US Lacrosse, BC Sixes and Loading Lacrosse hiding in TD's truncated descriptions."
+      }
     ],
     "funding": [
-      { "label": "HELOC", "amount": 2269.80, "note": "Four e-transfers. Borrowed against the house at 4.90%, on an interest-only facility that is 99.5% drawn." },
-      { "label": "Travel Visa", "amount": 1110.20 },
-      { "label": "Amazon / MBNA", "amount": 750.90 },
-      { "label": "TD personal Visa", "amount": 731.78 },
-      { "label": "Chequing A", "amount": 327.50 },
-      { "label": "DEBT&PAYMENTS", "amount": 225.00 },
-      { "label": "TD Cash Back Visa", "amount": 174.26 },
-      { "label": "Chequing B", "amount": 140.03 }
+      {
+        "label": "HELOC",
+        "amount": 2269.8,
+        "note": "Four e-transfers. Borrowed against the house at 4.90%, on an interest-only facility that is 99.5% drawn."
+      },
+      {
+        "label": "Travel Visa",
+        "amount": 1110.2
+      },
+      {
+        "label": "Amazon / MBNA",
+        "amount": 750.9
+      },
+      {
+        "label": "TD personal Visa",
+        "amount": 731.78
+      },
+      {
+        "label": "Chequing A",
+        "amount": 327.5
+      },
+      {
+        "label": "DEBT&PAYMENTS",
+        "amount": 225.0
+      },
+      {
+        "label": "TD Cash Back Visa",
+        "amount": 174.26
+      },
+      {
+        "label": "Chequing B",
+        "amount": 140.03
+      }
     ],
     "note": "The floor rises from $5,143.56, and it is still a floor. The finding is not the size but the funding: $2,269.80 — 40% of the total, and 80% of the e-transfer half — was paid out of the HELOC.",
     "inferredNote": "A further $400.00 is inferred rather than verified and is kept out of the total. The Burrards U13-A2 manager emailed \"$400 per player, please send etransfer\" at 10:06 on 15 April 2026; a $400.00 e-transfer left the HELOC the same day. Strong, but an inference — the bank record still names no payee.",
     "gapNote": "84 outgoing e-transfers worth $18,514.04 still carry no payee at all — down from 95 and $22,487.96 before this pass. An unknown share of what remains is more of this."
   },
-
   "counterparties": {
     "attributed": 49,
     "total": 204,
@@ -341,56 +1439,185 @@
     "action": "A Gmail filter on both accounts that labels and archives mail from payments.interac.ca instead of deleting it costs nothing and makes every future transfer attributable. It cannot recover what has already been purged — everything deleted before roughly 10 July 2026 is gone.",
     "matching": "The matcher was also wrong: it named every transfer of the same amount within four days from a single notification, and would let an incoming notification name an outgoing transfer. It now matches one notification to one transfer, nearest date first, direction enforced."
   },
-
   "coachPayment": {
-    "amount": 2160.00,
+    "amount": 2160.0,
     "date": "2026-07-06",
     "note": "The 30 June coaching remittance was traced end to end and a coach was paid out of it. This matters because the previous reading — that the whole $9,646.25 went onto the HELOC with no coach payment visible — raised the possibility of an unrecorded liability, money owed onward and already spent.",
     "chain": [
-      { "when": "2 Jul", "what": "Chequing A receives $3,683.75 and $5,962.50 from Lavinio Cavalcante", "balance": 9837.28 },
-      { "when": "2 Jul", "what": "$9,645.00 moves to the SAVINGS-DONT TOUCH staging account", "balance": 12713.69 },
-      { "when": "2 Jul", "what": "$10,000.00 leaves for the HELOC the same day", "balance": 2713.69 },
-      { "when": "6 Jul", "what": "$2,160.00 e-transferred to a named individual — the largest unattributed outgoing transfer in the dataset until now", "balance": 553.69 }
+      {
+        "when": "2 Jul",
+        "what": "Chequing A receives $3,683.75 and $5,962.50 from Lavinio Cavalcante",
+        "balance": 9837.28
+      },
+      {
+        "when": "2 Jul",
+        "what": "$9,645.00 moves to the SAVINGS-DONT TOUCH staging account",
+        "balance": 12713.69
+      },
+      {
+        "when": "2 Jul",
+        "what": "$10,000.00 leaves for the HELOC the same day",
+        "balance": 2713.69
+      },
+      {
+        "when": "6 Jul",
+        "what": "$2,160.00 e-transferred to a named individual — the largest unattributed outgoing transfer in the dataset until now",
+        "balance": 553.69
+      }
     ],
     "reading": "$2,160.00 is 22.4% of the $9,646.25 received, against the 27.7% coach share her own tracking sheets imply — the right order of magnitude for one coach among several. A second payment of $1,064.92 went to another named individual on 5 August. [INFERRED: the bank record names the payee but not the reason, so 'coach' is the best-supported reading rather than a proven fact.]",
     "remaining": "It does not close B63. The route for the rest of the 2026 coach pay is still unidentified, and the cheque route that paid one coach stopped in November 2025."
   },
-
   "unexplained": [
-    { "label": "Two unidentified accounts", "amount": 59027, "note": "Two accounts — $33,598 in across 142 transfers, $16,945 out across five. Not reachable through the transfer data: every internal transfer with a missing leg resolves either to a credit card or to a household account, and zero unknown account numbers appear. They exist only in the e-transfer record, which carries no names." },
-    { "label": "Uncategorised spending", "amount": 7205, "note": "Now 4.5% of chequing spending and 4.5% of card spending, down from 12.0% and 19%. 88 patterns were added, mostly Square terminals and foreign-currency charges where TD eats the merchant name to fit 15 characters." },
-    { "label": "Coach payments, 2026 route", "amount": 6398, "note": "Her sheets show $6,397.50 of coach pay from April to August 2026, but the cheques that paid a coach stop in November 2025 and no coach payments appear in either mailbox. The 2026 route leaves from an account not yet captured." },
-    { "label": "E-transfers out", "amount": 19700, "note": "Was $23,200. $3,500 is now identified as funding the Wise US holiday accounts — traced transfer by transfer. The rest is still unexplained." },
-    { "label": "Large HELOC advances", "amount": 18301, "note": "Only five transactions, all large." }
+    {
+      "label": "Two unidentified accounts",
+      "amount": 59027,
+      "note": "Two accounts — $33,598 in across 142 transfers, $16,945 out across five. Not reachable through the transfer data: every internal transfer with a missing leg resolves either to a credit card or to a household account, and zero unknown account numbers appear. They exist only in the e-transfer record, which carries no names."
+    },
+    {
+      "label": "Uncategorised spending",
+      "amount": 7205,
+      "note": "Now 4.5% of chequing spending and 4.5% of card spending, down from 12.0% and 19%. 88 patterns were added, mostly Square terminals and foreign-currency charges where TD eats the merchant name to fit 15 characters."
+    },
+    {
+      "label": "Coach payments, 2026 route",
+      "amount": 6398,
+      "note": "Her sheets show $6,397.50 of coach pay from April to August 2026, but the cheques that paid a coach stop in November 2025 and no coach payments appear in either mailbox. The 2026 route leaves from an account not yet captured."
+    },
+    {
+      "label": "E-transfers out",
+      "amount": 19700,
+      "note": "Was $23,200. $3,500 is now identified as funding the Wise US holiday accounts — traced transfer by transfer. The rest is still unexplained."
+    },
+    {
+      "label": "Large HELOC advances",
+      "amount": 18301,
+      "note": "Only five transactions, all large."
+    }
   ],
-
   "questions": [
-    { "tier": 1, "q": "What does the coaching business actually net?", "detail": "There are TWO businesses and the question has been conflating them. Amanda's coaching business takes in large e-transfers — 8 of over $3,000 totalling $42,395 — but she pays her coaches out of that, so it is revenue, not income. Her parents' dental lab is the other, run from the garage, which paid $1,000–1,100/month of rent until it stopped in May 2026. Coach payments cannot be separated from personal transfers in the bank data.", "changes": "Household income is currently overstated by up to $1,650/month. Every conclusion resting on income is provisional until this is split. Amanda's bookkeeping settles it.", "owner": "Amanda + accountant" },
-    { "tier": 1, "q": "Where do the coach payments leave from?", "detail": "One coach is paid by cheque from DEBT&PAYMENTS — five cheques, $8,150, February to November 2025. But they stop in November 2025 while her sheets show $6,397.50 of coach pay between April and August 2026. Meanwhile the 30 June remittance of $9,646.25 went onto the HELOC the same day it arrived.", "changes": "Whether pass-through money owed to coaches was spent on household debt. Also points at the account outside the captured set — the same one that may be one of the two unidentified accounts.", "owner": "Amanda" },
-    { "tier": 2, "q": "Is the garage rent coming back, and what does a lab in the garage mean?", "detail": "Her parents moved their dental lab into the garage and paid $1,000–1,100/month until May 2026, when it stopped because that business is not going well. This was misfiled for 18 months as a spousal transfer rather than rental income on the home.", "changes": "$12,600/year of income that disappeared without registering as an income event. Business use of the home may also affect insurance, and creates both a possible deduction and a capital-gains exposure worth an accountant's view before the May 2027 renewal.", "owner": "Both + accountant" },
-    { "tier": 2, "q": "Where does the rest of the $19,700 of e-transfers go?", "detail": "$3,500 is now traced to the Wise holiday accounts. The remainder still leaves the household without a matched destination, $13,062 of it originally drawn from the HELOC.", "changes": "The working theory is business inventory. If so it is a business cost currently counted as household spending, and it is being funded by borrowing against the house.", "owner": "Both" },
-    { "tier": 3, "q": "What are the two unidentified accounts?", "detail": "One sent $33,598 across 142 transfers; the other received $16,945 across five.", "changes": "$59,027 of movement, likely folding into question 1.", "owner": "Both" },
-    { "tier": 0, "q": "ANSWERED — the \"credit card\" transfers went to the cards", "detail": "It looked unexplained because only one of five cards was visible. Across the twelve-month statement window the cards received $55,178.02 — Travel Visa $33,696.18, Cash Back $11,879.50, personal Visa $6,632.34, MBNA $2,970.00 — against $39,875.43 of TFR-TO C/C leaving the accounts. The cards received $15,302.59 MORE than those transfers sent, the rest arriving by other routes including direct HELOC payments.", "changes": "Nothing is hiding. No undisclosed card, no leakage. The hypothesis that this would reveal a card missing from the debt ranking is disproved.", "owner": "Closed 9 Aug 2026" },
-    { "tier": 0, "q": "ANSWERED — the monthly transfer was rent, and it stopped", "detail": "It was not a spousal transfer. Amanda's parents moved their lab into the garage and paid $1,000–1,100/month in rent from March 2025. It stopped after May 2026 because that business is not going well. The dental thread joins up: the $10,000 Ivoclar Vivadent charge her father funded was capital equipment for that lab.", "changes": "Recorded for 18 months as her contribution to the household. It was a third party paying rent, and its loss never registered as an income event.", "owner": "Answered 9 Aug 2026" }
+    {
+      "tier": 1,
+      "q": "What does the coaching business actually net?",
+      "detail": "There are TWO businesses and the question has been conflating them. Amanda's coaching business takes in large e-transfers — 8 of over $3,000 totalling $42,395 — but she pays her coaches out of that, so it is revenue, not income. Her parents' dental lab is the other, run from the garage, which paid $1,000–1,100/month of rent until it stopped in May 2026. Coach payments cannot be separated from personal transfers in the bank data.",
+      "changes": "Household income is currently overstated by up to $1,650/month. Every conclusion resting on income is provisional until this is split. Amanda's bookkeeping settles it.",
+      "owner": "Amanda + accountant"
+    },
+    {
+      "tier": 1,
+      "q": "Where do the coach payments leave from?",
+      "detail": "One coach is paid by cheque from DEBT&PAYMENTS — five cheques, $8,150, February to November 2025. But they stop in November 2025 while her sheets show $6,397.50 of coach pay between April and August 2026. Meanwhile the 30 June remittance of $9,646.25 went onto the HELOC the same day it arrived.",
+      "changes": "Whether pass-through money owed to coaches was spent on household debt. Also points at the account outside the captured set — the same one that may be one of the two unidentified accounts.",
+      "owner": "Amanda"
+    },
+    {
+      "tier": 2,
+      "q": "Is the garage rent coming back, and what does a lab in the garage mean?",
+      "detail": "Her parents moved their dental lab into the garage and paid $1,000–1,100/month until May 2026, when it stopped because that business is not going well. This was misfiled for 18 months as a spousal transfer rather than rental income on the home.",
+      "changes": "$12,600/year of income that disappeared without registering as an income event. Business use of the home may also affect insurance, and creates both a possible deduction and a capital-gains exposure worth an accountant's view before the May 2027 renewal.",
+      "owner": "Both + accountant"
+    },
+    {
+      "tier": 2,
+      "q": "Where does the rest of the $19,700 of e-transfers go?",
+      "detail": "$3,500 is now traced to the Wise holiday accounts. The remainder still leaves the household without a matched destination, $13,062 of it originally drawn from the HELOC.",
+      "changes": "The working theory is business inventory. If so it is a business cost currently counted as household spending, and it is being funded by borrowing against the house.",
+      "owner": "Both"
+    },
+    {
+      "tier": 3,
+      "q": "What are the two unidentified accounts?",
+      "detail": "One sent $33,598 across 142 transfers; the other received $16,945 across five.",
+      "changes": "$59,027 of movement, likely folding into question 1.",
+      "owner": "Both"
+    },
+    {
+      "tier": 0,
+      "q": "ANSWERED — the \"credit card\" transfers went to the cards",
+      "detail": "It looked unexplained because only one of five cards was visible. Across the twelve-month statement window the cards received $55,178.02 — Travel Visa $33,696.18, Cash Back $11,879.50, personal Visa $6,632.34, MBNA $2,970.00 — against $39,875.43 of TFR-TO C/C leaving the accounts. The cards received $15,302.59 MORE than those transfers sent, the rest arriving by other routes including direct HELOC payments.",
+      "changes": "Nothing is hiding. No undisclosed card, no leakage. The hypothesis that this would reveal a card missing from the debt ranking is disproved.",
+      "owner": "Closed 9 Aug 2026"
+    },
+    {
+      "tier": 0,
+      "q": "ANSWERED — the monthly transfer was rent, and it stopped",
+      "detail": "It was not a spousal transfer. Amanda's parents moved their lab into the garage and paid $1,000–1,100/month in rent from March 2025. It stopped after May 2026 because that business is not going well. The dental thread joins up: the $10,000 Ivoclar Vivadent charge her father funded was capital equipment for that lab.",
+      "changes": "Recorded for 18 months as her contribution to the household. It was a third party paying rent, and its loss never registered as an income event.",
+      "owner": "Answered 9 Aug 2026"
+    }
   ],
-
   "coverage": [
-    { "source": "TD — 15 accounts", "what": "Balances, rates, terms; 4,655 transactions over 18 months", "status": "complete" },
-    { "source": "TD credit card", "what": "11 statements, Sep 2025 – Jul 2026", "status": "complete" },
-    { "source": "Mortgage & HELOC", "what": "Rates, maturity, payment splits, 208 HELOC transactions", "status": "complete" },
-    { "source": "Triangle Mastercard", "what": "Full terms plus 5 statements", "status": "complete" },
-    { "source": "MBNA / Amazon Mastercard", "what": "Full terms plus all 8 statements, PDF and CSV — the account's entire history", "status": "complete" },
-    { "source": "PayPal — two accounts", "what": "503 transactions, categorised and cross-checked", "status": "complete" },
-    { "source": "Affirm / Flexiti", "what": "Paid off and closed — $2,654.28 across the window", "status": "complete" },
-    { "source": "TD Cash Back & Travel Visa", "what": "Terms captured plus 12 statements each, Sep 2025 – Aug 2026", "status": "complete" },
-    { "source": "Wise — two accounts", "what": "107 transactions, the US holiday; funding traced to source", "status": "complete" },
-    { "source": "American Express", "what": "Closed — owner-confirmed. No balance, no debt", "status": "complete" },
-    { "source": "Coinbase", "what": "Found via email — active, statements still issued, holdings unknown", "status": "missing" },
-    { "source": "Wife's business", "what": "—", "status": "missing" },
-    { "source": "Home value", "what": "—", "status": "missing" },
-    { "source": "WebBroker holdings", "what": "RESP balance only ($31,555.85)", "status": "blocked" }
+    {
+      "source": "TD — 15 accounts",
+      "what": "Balances, rates, terms; 4,655 transactions over 18 months",
+      "status": "complete"
+    },
+    {
+      "source": "TD credit card",
+      "what": "11 statements, Sep 2025 – Jul 2026",
+      "status": "complete"
+    },
+    {
+      "source": "Mortgage & HELOC",
+      "what": "Rates, maturity, payment splits, 208 HELOC transactions",
+      "status": "complete"
+    },
+    {
+      "source": "Triangle Mastercard",
+      "what": "Full terms plus 5 statements",
+      "status": "complete"
+    },
+    {
+      "source": "MBNA / Amazon Mastercard",
+      "what": "Full terms plus all 8 statements, PDF and CSV — the account's entire history",
+      "status": "complete"
+    },
+    {
+      "source": "PayPal — two accounts",
+      "what": "503 transactions, categorised and cross-checked",
+      "status": "complete"
+    },
+    {
+      "source": "Affirm / Flexiti",
+      "what": "Paid off and closed — $2,654.28 across the window",
+      "status": "complete"
+    },
+    {
+      "source": "TD Cash Back & Travel Visa",
+      "what": "Terms captured plus 12 statements each, Sep 2025 – Aug 2026",
+      "status": "complete"
+    },
+    {
+      "source": "Wise — two accounts",
+      "what": "107 transactions, the US holiday; funding traced to source",
+      "status": "complete"
+    },
+    {
+      "source": "American Express",
+      "what": "Closed — owner-confirmed. No balance, no debt",
+      "status": "complete"
+    },
+    {
+      "source": "Coinbase",
+      "what": "Found via email — active, statements still issued, holdings unknown",
+      "status": "missing"
+    },
+    {
+      "source": "Wife's business",
+      "what": "—",
+      "status": "missing"
+    },
+    {
+      "source": "Home value",
+      "what": "—",
+      "status": "missing"
+    },
+    {
+      "source": "WebBroker holdings",
+      "what": "RESP balance only ($31,555.85)",
+      "status": "blocked"
+    }
   ],
-
   "mortgage": {
     "balance": 546026.58,
     "rate": 3.64,

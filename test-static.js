@@ -33,7 +33,7 @@ for (const f of scripts) {
   try { new vm.Script(read('public/' + f), { filename: f }); ok(true, `public/${f}`); }
   catch (e) { ok(false, `public/${f}`, e.message); }
 }
-for (const f of ['server.js', 'test-forecast.js', 'test-budget.js', 'test-invariants.js']) {
+for (const f of ['server.js', 'test-forecast.js', 'test-budget.js', 'test-debt.js', 'test-invariants.js']) {
   try { new vm.Script(read(f), { filename: f }); ok(true, f); }
   catch (e) { ok(false, f, e.message); }
 }

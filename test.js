@@ -23,6 +23,7 @@ const suites = [
   ['static sanity', 'test-static.js'],
   ['forecast engine + opening-gap regression', 'test-forecast.js'],
   ['household budget reconciliation', 'test-budget.js'],
+  ['coupled cash and debt', 'test-debt.js'],
   ['authority invariants', 'test-invariants.js'],
 ];
 

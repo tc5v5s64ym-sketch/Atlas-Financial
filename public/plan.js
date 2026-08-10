@@ -42,6 +42,8 @@ function simOpts(extra = {}) {
 
 const WEEKS_PER_MONTH = 365.25 / 12 / 7; // ≈ 4.35
 
+const addDays = (iso, n) => Forecast.addDays(iso, n);
+const fmtMonth = iso => new Date(iso + 'T00:00:00').toLocaleDateString('en-CA', { month: 'long' });
 const est = s => `<span class="est">≈ ${s}</span>`;
 const fmtRange = (a, b) => {
   const s = new Date(a + 'T00:00:00'), e = new Date(b + 'T00:00:00');
@@ -306,7 +308,7 @@ function renderPlan(d, periods) {
     band.className = 'statusband crit';
     band.innerHTML =
       `<b>Short by ${money(fundingGap)} on ${fmtDateLong(gap.floorDate)} — before any spending at all.</b>
-       The household accounts hold ${money(plan.startingCash.amount)} today and
+       The household accounts hold ${money2(plan.startingCash.amount)} today and
        ${money(preIncomeOut)} of committed payments fall before the next payday.
        This is a timing gap, not a shortage across the 90 days: cover it, hold spending to
        ${money(weekly)}/week from ${fmtDateLong(advice.effectiveFrom)}, and the window
@@ -384,31 +386,298 @@ function renderPlan(d, periods) {
     tn.innerHTML = `No transfer from Amanda is counted in this scenario — the plan stands on the confirmed income alone.`;
   }
 
-  /* ---- the three numbers that matter, near the top ---- */
+  /* ---- cash and debt, walked together ---- */
+  // The same event stream that moves the cash moves the balances. A minimum
+  // that leaves the chequing account has to arrive on a card.
+  const debtProj = Forecast.projectDebts(plan, d.debts, asOf,
+    Object.assign({}, advice.simOptions, { weeklyVariable: weekly,
+      extraDebtTarget: plan.nextDollar && plan.nextDollar.target }));
+  const cashOn = date => {
+    const p = sim.daily.find(x => x.date === date);
+    return p ? p.balance : plan.startingCash.amount;
+  };
+  const mark = n => debtProj.marks.find(m => m.day === n) || debtProj.marks[debtProj.marks.length - 1];
+  const today = mark(0), day90 = debtProj.marks[debtProj.marks.length - 1];
+
+  const budget = Forecast.budgetBreakdown(plan, periods, {
+    paypalPerMonth: d.paypal ? d.paypal.perMonth : 0,
+    disabled: state.disabled,
+  });
+  const recMonthly = weekly * WEEKS_PER_MONTH;
+  const perWeek = m => m / WEEKS_PER_MONTH;
+  const required = budget ? budget.requiredMonthly : 0;
+  const optional = Math.max(0, recMonthly - required);
+  const short = required - recMonthly;
+
+  /* ---- the mission, in one sentence, derived ---- */
+  // Assembled from what the numbers actually say, never hardcoded: if it stops
+  // being true, the sentence changes.
+  const overToday = today.debts.filter(x => x.overLimit);
+  const helocNow = debtProj.byId.heloc;
+  const helocBreach = helocNow && helocNow.limit != null
+    ? debtProj.marks.find(m => m.debts.some(x => x.id === 'heloc' && x.overLimit)) : null;
+  const missionParts = [];
+  if (gap) missionParts.push(`cover the ${money(fundingGap)} timing gap by ${fmtDateLong(gap.date)}`);
+  if (overToday.length) missionParts.push(`get the ${overToday.map(x => x.label).join(' and ')} back under its limit`);
+  missionParts.push(`hold spending to ${money(weekly)} a week`);
+  if (helocBreach) missionParts.push(`and stop the HELOC growing before it passes its own limit in ${fmtMonth(helocBreach.date)}`);
+  else missionParts.push('and put the surplus against the most expensive card');
+  $('plan-mission').textContent =
+    missionParts.join(', ').replace(/^./, c => c.toUpperCase()) + '.';
+
+  /* ---- NEXT MOVE — the one thing to do ---- */
+  const first = plan.actions[0];
+  if (first) {
+    const overdue = first.due && first.due < asOf && first.status !== 'done';
+    const after = gap && first.due && first.due <= gap.date
+      ? `The ${money(gap.dueOnGapDay)} clears on ${fmtDateLong(gap.date)}, the buffer is restored, and from
+         ${fmtDateLong(advice.effectiveFrom)} the household can spend ${money(weekly)} a week.`
+      : `The window finishes with ${money(sim.ending)} instead of breaching the ${money(sim.buffer)} buffer.`;
+    $('nextmove-card').innerHTML = `
+      <div class="nm-head">
+        <span class="nm-what">${first.what}</span>
+        <span class="nm-amt">${first.amount != null ? money2(first.amount) : ''}</span>
+      </div>
+      <div class="nm-meta">
+        ${first.due ? `<span class="chip ${overdue ? 'c' : 'w'}">due ${fmtDateLong(first.due)}</span>` : ''}
+        ${first.owner ? `<span class="chip">${first.owner}</span>` : ''}
+        <span class="chip ${first.status === 'done' ? 'v' : 'e'}">${first.status}</span>
+      </div>
+      <div class="nm-why"><b>Why</b><p>${first.why}</p></div>
+      <div class="nm-after"><b>What happens after</b><p>${after}</p></div>`;
+  }
+
+  /* ---- the numbers that matter today ---- */
+  // The next day money leaves, and ALL of it — two registrations on one day are
+  // one payment as far as the account is concerned, and showing the larger of
+  // them understates what has to be there.
+  const outflows = sim.events.filter(e => e.amount < 0 && e.kind !== 'noncash' && e.date >= asOf);
+  const nextOutDate = outflows.length
+    ? outflows.reduce((a, e) => e.date < a ? e.date : a, outflows[0].date) : null;
+  const nextDue = outflows.filter(e => e.date === nextOutDate);
+  const nextCritical = nextDue.length ? {
+    date: nextOutDate,
+    amount: nextDue.reduce((s, e) => s + e.amount, 0),
+    label: nextDue.length === 1 ? nextDue[0].label
+      : `${nextDue.length} payments — ${nextDue[0].label.replace(/ —.*$/, '')} and others`,
+  } : null;
+  const consumerNow = today.consumer;
   $('hero-tiles').innerHTML = [
-    { lab: 'Lowest cash point', val: money(sim.min.balance), note: `on ${fmtDateLong(sim.min.date)}`,
-      tone: sim.min.balance < 0 ? 'alert' : sim.min.balance < sim.buffer ? 'warn' : '' },
+    { lab: 'Spendable household cash', val: money(plan.startingCash.amount), tone: 'alert',
+      note: 'Chequing A, B and Savings. Amanda’s account is a separate pot.' },
+    (nextCritical ? { lab: 'Next payment out', val: money(-nextCritical.amount),
+      note: `${nextCritical.label} on ${fmtDateLong(nextCritical.date)}`,
+      tone: nextCritical.date <= addDays(asOf, 3) ? 'warn' : '' } : null),
     { lab: 'Weekly household cap', val: money(weekly) + '/wk', tone: gap ? 'warn' : '',
       note: state.weeklyVariable != null && state.weeklyVariable !== recommended
         ? `your setting — the forecast supports ${money(recommended)}/wk`
         : gap
           ? `from ${fmtDateLong(advice.effectiveFrom)}, once the ${money(fundingGap)} gap is covered. Food and fuel come out of this first.`
           : `≈ ${money(weekly * WEEKS_PER_MONTH)} a month. Food and fuel come out of this first.` },
-    { lab: 'Projected ending cash', val: money(sim.ending), note: `on ${fmtDateLong(sim.end)}, after everything below`,
-      tone: sim.ending < sim.buffer ? 'warn' : '' },
-  ].map(t => `
+    { lab: 'Essential variable need', val: money(perWeek(required)) + '/wk', tone: '',
+      note: `groceries, fuel, phones and medical — ${money(perWeek(budget ? budget.categories
+        .filter(c => c.id === 'groceries' || c.id === 'fuel')
+        .reduce((a, c) => a + c.planned, 0) : 0))}/wk of it food and fuel` },
+    { lab: 'Consumer debt', val: money(consumerNow), tone: overToday.length ? 'alert' : 'warn',
+      note: `${money(today.headroom)} of credit left everywhere${overToday.length
+        ? ` — ${overToday.length} facility over its limit` : ''}` },
+  ].filter(Boolean).map(t => `
     <div class="tile ${t.tone}">
       <div class="lab">${t.lab}</div>
       <div class="val">${t.val}</div>
       <div class="note">${t.note}</div>
     </div>`).join('');
 
-  /* ---- the ledger ---- */
-  const T = sim.totals;
   const row = (label, val, cls = '', chip = '') =>
     `<div class="ledger-row ${cls}"><span>${label}${chip}</span><span>${val}</span></div>`;
   const chipC = ' <span class="chip v">confirmed</span>';
   const chipE = ' <span class="chip w">estimated</span>';
+
+  /* ---- the weekly household cap, broken into what it is actually for ---- */
+  if (budget) {
+    const food = budget.categories.find(c => c.id === 'groceries');
+    const fuelCat = budget.categories.find(c => c.id === 'fuel');
+    $('cap-headline').innerHTML =
+      `<span class="cap-amt">${money(weekly)}</span><span class="cap-per">/ week</span>
+       <span class="cap-qual">${gap
+        ? `from ${fmtDateLong(advice.effectiveFrom)}, once the ${money(fundingGap)} gap is covered`
+        : 'under the expected scenario'}</span>`;
+    const part = (lab, amount, kind, note) => `
+      <div class="cap-part ${kind}">
+        <div class="cap-part-lab">${lab}</div>
+        <div class="cap-part-amt">${est(money(perWeek(amount)))}<span>/wk</span></div>
+        <div class="cap-part-note">${note}</div>
+      </div>`;
+    $('cap-split').innerHTML =
+      part('Essential variable need', required, 'essential',
+        `Groceries ${money(perWeek(food.historical))}, fuel ${money(perWeek(fuelCat.historical))}, plus phones, ` +
+        `household supplies, medical and the uncategorised remainder. <b>This comes out first.</b>`) +
+      part('Discretionary room', Math.max(0, recMonthly - required), 'optional',
+        short > 0
+          ? `<b class="neg">Nothing.</b> The cap is below what normal life costs.`
+          : `Everything else — dining out, shopping, entertainment, online spending. Those have been running at ` +
+            `${money(perWeek(budget.discretionaryMonthly))}/wk, so this is a real cut.`) +
+      `<div class="cap-part total">
+        <div class="cap-part-lab">Total</div>
+        <div class="cap-part-amt">${money(weekly)}<span>/wk</span></div>
+        <div class="cap-part-note">≈ ${money(recMonthly)} a month</div>
+      </div>`;
+    $('cap-basis').innerHTML =
+      `Solved from the forecast: the largest weekly spend that keeps every day at or above the ${money(sim.buffer)} ` +
+      `buffer. The split is ${budget.months} months of actual spending with everything already dated on the ` +
+      `calendar removed from its own category. <b>Food and fuel come out of this number first</b> — they are not ` +
+      `paid from somewhere else. No owner-built budget has been supplied, so these are historical actuals, not targets.`;
+  }
+
+  /* ---- the next fourteen days ---- */
+  const horizon = addDays(asOf, 13);
+  const near = sim.events
+    .filter(e => e.date >= asOf && e.date <= horizon && Math.abs(e.amount) >= 50)
+    .sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : (b.amount > 0 ? 1 : 0) - (a.amount > 0 ? 1 : 0));
+  $('agenda-14').innerHTML = near.length ? near.map(e => `
+    <div class="ag14 ${e.amount > 0 ? 'in' : 'out'}${e.date === (gap && gap.date) ? ' ag14-key' : ''}">
+      <span class="ag14-date">${fmtDate(e.date)}</span>
+      <span class="ag14-amt ${e.amount > 0 ? 'pos' : 'neg'}">${e.amount > 0 ? '+' : '−'}${money(Math.abs(e.amount)).slice(1)}</span>
+      <span class="ag14-lab">${e.label}</span>
+      <span class="ag14-conf"><span class="chip ${e.confidence === 'confirmed' ? 'v'
+        : e.confidence === 'estimated' ? 'w' : ''}">${e.confidence}</span></span>
+    </div>`).join('') : '<p class="lede">Nothing of $50 or more falls in the next fortnight.</p>';
+  $('agenda-14-note').innerHTML =
+    `Movements of $50 or more only. ${gap ? `The highlighted row is the day the gap has to be covered by. ` : ''}` +
+    `The rest of the window is behind <b>View full 90-day calendar</b> below.`;
+
+  /* ---- the 90-day scoreboard ---- */
+  const scoreCols = debtProj.marks.filter(m => [0, 30, 60, 90].includes(m.day));
+  const scoreRow = (label, get, fmt, tone) => `<tr>
+      <td>${label}</td>${scoreCols.map(m => {
+    const v = get(m);
+    return `<td class="num ${tone ? tone(v, m) : ''}">${fmt(v, m)}</td>`;
+  }).join('')}</tr>`;
+  $('score-table').innerHTML = `<thead><tr>
+      <th>Measure</th>${scoreCols.map(m =>
+    `<th class="num">${m.day === 0 ? 'Today' : 'Day ' + m.day}<div class="mutedtext">${fmtDate(m.date)}</div></th>`).join('')}
+    </tr></thead><tbody>
+    ${scoreRow('Spendable cash', m => cashOn(m.date), v => money(v), v => v < sim.buffer ? 'neg' : '')}
+    ${scoreRow('Consumer card debt', m => m.consumer, v => money(v))}
+    ${scoreRow('HELOC', m => m.heloc, v => money(v))}
+    ${scoreRow('Revolving credit left', m => m.headroom, v => money(v), v => v < 500 ? 'neg' : '')}
+    ${scoreRow('Facilities over limit', m => m.overLimitCount, v => v === 0 ? '—' : String(v), v => v > 0 ? 'neg' : '')}
+    ${scoreRow('Interest incurred', m => m.interestToDate, v => v === 0 ? '—' : money(v))}
+    </tbody>`;
+  // Same figures, stacked, for a screen too narrow to hold four columns.
+  $('score-cards').innerHTML = scoreCols.map(m => {
+    const cash = cashOn(m.date);
+    const line = (lab, val, neg) =>
+      `<div class="score-row ${neg ? 'neg' : ''}"><span>${lab}</span><span>${val}</span></div>`;
+    return `<div class="score-card">
+      <div class="score-card-head">
+        <span class="score-card-when">${m.day === 0 ? 'Today' : 'Day ' + m.day}</span>
+        <span class="score-card-date">${fmtDateLong(m.date)}</span>
+      </div>
+      ${line('Spendable cash', money(cash), cash < sim.buffer)}
+      ${line('Consumer card debt', money(m.consumer))}
+      ${line('HELOC', money(m.heloc))}
+      ${line('Revolving credit left', money(m.headroom), m.headroom < 500)}
+      ${line('Facilities over limit', m.overLimitCount === 0 ? 'none' : String(m.overLimitCount), m.overLimitCount > 0)}
+      ${line('Interest incurred', m.interestToDate === 0 ? '—' : money(m.interestToDate))}
+    </div>`;
+  }).join('');
+
+  $('score-note').innerHTML =
+    `Cash is <b>projected</b> under the ${state.scenario} scenario at ${money(weekly)}/week; debt balances are ` +
+    `projected from today's rates with minimums paid and <b>no new card spending</b> — the cap is a cash instruction, ` +
+    `and these lines only fall if it is honoured in cash. None of these is a target: no aspirational payoff figure ` +
+    `is assumed anywhere. Interest incurred is cumulative across every debt including the mortgage.`;
+
+  /* ---- the three phases, derived from what the numbers do ---- */
+  const d30 = mark(30), d60 = mark(60);
+  const phase = (range, title, body) =>
+    `<div class="phase"><div class="phase-range">${range}</div>
+      <div class="phase-title">${title}</div><p>${body}</p></div>`;
+  $('phases').innerHTML =
+    phase('0–30 days', gap ? 'Cover the gap and stabilise'
+      : 'Hold the buffer',
+      gap ? `Get ${money(fundingGap)} across by ${fmtDateLong(gap.date)}, then hold ${money(weekly)}/week.
+             Cash recovers to ${money(cashOn(d30.date))} by ${fmtDate(d30.date)}.`
+          : `Hold ${money(weekly)}/week. Cash sits at ${money(cashOn(d30.date))} by ${fmtDate(d30.date)}.`) +
+    phase('31–60 days', overToday.length ? 'Get back inside the limits' : 'Relieve revolving pressure',
+      `Consumer debt moves ${money(Math.abs(d60.consumer - today.consumer))}
+       ${d60.consumer < today.consumer ? 'down' : 'up'} to ${money(d60.consumer)}, and credit left across every
+       facility is ${money(d60.headroom)}.${helocBreach && helocBreach.day <= 60
+        ? ` The HELOC passes its own limit in this phase — its interest capitalises with nothing repaying it.` : ''}`) +
+    phase('61–90 days', day90.consumer < today.consumer ? 'Put the surplus against principal' : 'Stop the growth',
+      `Cash finishes at ${money(sim.ending)} against a ${money(sim.buffer)} buffer.
+       ${plan.nextDollar ? plan.nextDollar.summary : ''}`);
+
+  /* ---- what the ending cash is actually for ---- */
+  const reserves = budget ? budget.reserveMonthly * (plan.windowDays / (365.25 / 12)) : 0;
+  const unallocated = sim.ending - sim.buffer - reserves;
+  $('priorities-ledger').innerHTML =
+    row('Projected cash on ' + fmtDateLong(sim.end), money2(sim.ending), 'sum') +
+    row('− Target buffer', '− ' + money2(sim.buffer)) +
+    row('− Reserves accrued but not yet due <span class="mutedtext">property tax, CRA</span>',
+      '− ' + est(money2(reserves)), '', chipE) +
+    row('<b>= Unallocated</b>', `<b class="${unallocated < 0 ? 'neg' : ''}">${money2(unallocated)}</b>`, 'sum');
+  $('priorities-note').innerHTML = unallocated <= 0
+    ? `There is no free cash at the end of this window. What looks like a surplus is the buffer and the money
+       already owed to costs that fall outside the 90 days.`
+    : `<b>This is not spending money.</b> It is what is left after the buffer and the reserves, and it is the only
+       money available to reduce debt. ${plan.nextDollar ? plan.nextDollar.summary : ''}`;
+
+  /* ---- what could break the plan ---- */
+  const risks = [];
+  if (transferMonthly > 0) {
+    risks.push({ what: `Amanda's transfers — ${money(transferMonthly)}/month is an estimate, not a commitment`,
+      change: neededBy
+        ? `The plan needs the first one by ${fmtDateLong(neededBy)}. Without any of them the window ends
+           ${money(transferMonthly * 3)} lower and breaches the buffer.`
+        : `The window holds even without them, but the ending cash falls by about ${money(transferMonthly * 3)}.` });
+  }
+  const estimatedCommitments = plan.commitments.filter(c => c.confidence === 'estimated'
+    && !state.disabled.includes(c.id));
+  if (estimatedCommitments.length) {
+    const total = estimatedCommitments.reduce((s, c) => s + c.amount, 0);
+    risks.push({ what: `${estimatedCommitments.length} sports commitments totalling ${money(total)} are estimates`,
+      change: `${estimatedCommitments.map(c => c.label).join(', ')}. None is invoiced yet. If they land higher, or
+               earlier than assumed, the weekly cap falls.` });
+  }
+  if (helocBreach) {
+    risks.push({ what: `The HELOC passes its own limit around ${fmtDateLong(helocBreach.date)} with no new borrowing`,
+      change: `Its ${money(plan.obligations.find(o => o.id === 'heloc').amount)}/month interest capitalises and
+               nothing repays it, so the balance grows on its own. Drawing on it to cover the opening gap brings
+               that date forward.` });
+  }
+  const overLimitLater = day90.debts.filter(x => x.overLimit
+    && !overToday.some(o => o.id === x.id)
+    && !(helocBreach && x.id === 'heloc'));   // already named above
+  if (overLimitLater.length) {
+    risks.push({ what: `${overLimitLater.map(x => x.label).join(' and ')} drifts over its limit inside the window`,
+      change: `The minimum barely exceeds the interest, so the balance sits against the limit and crosses it in the
+               days before each payment — each crossing risks an over-limit fee.` });
+  }
+  const telecom = budget && budget.categories.find(c => c.id === 'telecom');
+  if (telecom && telecom.planned > 0) {
+    risks.push({ what: `The Telus bills have no known route — ${money(telecom.planned)}/month`,
+      change: `Absent from every captured account since March 2026. They are carried inside the cap, but if they are
+               being paid from somewhere not captured the real household cost is higher than shown.` });
+  }
+  risks.push({ what: 'The cap assumes spending is paid in cash, not put on the cards',
+    change: `The historical averages behind the split include card purchases. Spending at the same rate on the cards
+             would leave the cash line looking healthy while the balances grew — the projection above assumes no new
+             card spending at all.` });
+  $('risk-list').innerHTML = risks.map(r => `
+    <div class="risk">
+      <div class="risk-what">${r.what}</div>
+      <p class="risk-change">${r.change}</p>
+    </div>`).join('');
+
+  /* ---- how this was calculated ---- */
+  if ($('assumption-list')) {
+    $('assumption-list').innerHTML = (plan.assumptions || []).map(a => `<li>${a}</li>`).join('');
+  }
+
+  /* ---- the ledger ---- */
+  const T = sim.totals;
   $('hero-ledger').innerHTML =
     row('Starting available cash <span class="mutedtext">household accounts only</span>',
       money2(plan.startingCash.amount), '', chipC) +
@@ -496,16 +765,6 @@ function renderPlan(d, periods) {
   // The cap is one number, but it is not one kind of money. Food and fuel come
   // out of it before anything optional does, and the page has to say so or the
   // household will read it as spending money.
-  const budget = Forecast.budgetBreakdown(plan, periods, {
-    paypalPerMonth: d.paypal ? d.paypal.perMonth : 0,
-    disabled: state.disabled,
-  });
-  const recMonthly = weekly * WEEKS_PER_MONTH;
-  const perWeek = m => m / WEEKS_PER_MONTH;
-  const required = budget ? budget.requiredMonthly : 0;
-  const optional = Math.max(0, recMonthly - required);
-  const short = required - recMonthly;
-
   if (budget) {
     const food = budget.categories.find(c => c.id === 'groceries');
     const fuel = budget.categories.find(c => c.id === 'fuel');
@@ -573,11 +832,12 @@ function renderPlan(d, periods) {
   }
 
   /* ---- next actions ---- */
-  if (plan.actionsNote) $('actions-note').textContent = 'Five at most, in order. ' + plan.actionsNote;
-  $('actions-list').innerHTML = plan.actions.slice(0, 5).map((a, i) => {
+  // The first action is the next move and is rendered separately, above.
+  if (plan.actionsNote) $('actions-note').textContent = plan.actionsNote;
+  $('actions-list').innerHTML = plan.actions.slice(1, 5).map((a, i) => {
     const overdue = a.due && a.due < asOf && a.status !== 'done';
     return `<div class="action ${a.status === 'done' ? 'done' : ''}">
-      <div class="action-n">${i + 1}</div>
+      <div class="action-n">${i + 2}</div>
       <div class="action-body">
         <div class="action-top">
           <span class="action-what">${a.what}</span>

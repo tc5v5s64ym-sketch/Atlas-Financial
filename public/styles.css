@@ -456,3 +456,168 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
   html { scroll-behavior:auto; }
   .tip { transition:none; }
 }
+
+/* ===================================================================
+   THE DECISION LAYER
+   Plan reads top to bottom as: what to do, what it costs, where it
+   leaves us. These components carry that and nothing else; the
+   forensic material below keeps the styles it already had.
+   =================================================================== */
+
+/* The derived one-line mission, directly under the h1. */
+.mission {
+  font-size: 1.05rem; line-height: 1.45; font-weight: 550;
+  color: var(--text-primary); margin: 2px 0 8px; max-width: 62ch;
+}
+
+/* NEXT MOVE — deliberately the loudest thing on the page. */
+.nextmove {
+  border-left: 4px solid var(--critical);
+  padding: 16px 18px;
+}
+.nm-head {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px 16px;
+  margin-bottom: 8px;
+}
+.nm-what { font-size: 1.15rem; font-weight: 650; line-height: 1.3; flex: 1 1 16ch; }
+.nm-amt {
+  font-size: 1.65rem; font-weight: 700; letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums; color: var(--critical); white-space: nowrap;
+}
+.nm-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.nm-why, .nm-after { margin-top: 10px; }
+.nm-why b, .nm-after b {
+  display: block; font-size: .7rem; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--text-secondary); margin-bottom: 3px;
+}
+.nm-why p, .nm-after p { margin: 0; font-size: .87rem; line-height: 1.5; }
+.nm-after { border-top: 1px solid var(--border); padding-top: 10px; }
+
+/* THE WEEKLY HOUSEHOLD CAP, split so it cannot read as fun money. */
+.capcard { padding: 18px; }
+.capline { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin-bottom: 14px; }
+.cap-amt { font-size: 2.6rem; font-weight: 700; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.cap-per { font-size: 1.05rem; color: var(--text-secondary); font-weight: 550; }
+.cap-qual { font-size: .82rem; color: var(--muted); flex: 1 1 100%; }
+.capsplit { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.cap-part {
+  border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px;
+  background: var(--plane);
+}
+.cap-part.essential { border-left: 3px solid var(--s1); }
+.cap-part.optional { border-left: 3px solid var(--axis); }
+.cap-part.total { border-left: 3px solid var(--text-primary); }
+.cap-part-lab {
+  font-size: .72rem; text-transform: uppercase; letter-spacing: .05em;
+  font-weight: 600; color: var(--text-secondary);
+}
+.cap-part-amt {
+  font-size: 1.5rem; font-weight: 650; letter-spacing: -0.02em;
+  margin: 5px 0 4px; font-variant-numeric: tabular-nums;
+}
+.cap-part-amt span { font-size: .8rem; font-weight: 400; color: var(--muted); }
+.cap-part-note { font-size: .78rem; color: var(--muted); line-height: 1.45; }
+
+/* THE NEXT 14 DAYS */
+.agenda14 { display: flex; flex-direction: column; }
+.ag14 {
+  display: grid; grid-template-columns: 4.5rem 5.5rem 1fr auto;
+  gap: 10px; align-items: baseline;
+  padding: 7px 0; border-bottom: 1px solid var(--border);
+}
+.ag14:last-child { border-bottom: 0; }
+.ag14-key { background: color-mix(in srgb, var(--critical) 8%, transparent); }
+.ag14-date { font-size: .8rem; color: var(--text-secondary); white-space: nowrap; }
+.ag14-amt { font-variant-numeric: tabular-nums; font-weight: 650; text-align: right; }
+.ag14-amt.pos { color: var(--success-text); }
+.ag14-amt.neg { color: var(--text-primary); }
+.ag14-lab { font-size: .87rem; line-height: 1.35; }
+.ag14-conf { text-align: right; }
+
+/* 30 / 60 / 90 PHASES */
+.phases {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px; margin-top: 12px;
+}
+.phase {
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 12px 14px; background: var(--surface-1);
+}
+.phase-range {
+  font-size: .7rem; text-transform: uppercase; letter-spacing: .06em;
+  font-weight: 600; color: var(--muted);
+}
+.phase-title { font-weight: 650; margin: 3px 0 5px; }
+.phase p { margin: 0; font-size: .82rem; line-height: 1.5; color: var(--text-secondary); }
+
+/* WHAT COULD BREAK THE PLAN */
+.risk { padding: 11px 0; border-bottom: 1px solid var(--border); }
+.risk:first-child { padding-top: 0; }
+.risk:last-child { border-bottom: 0; padding-bottom: 0; }
+.risk-what { font-weight: 600; font-size: .92rem; line-height: 1.4; }
+.risk-change {
+  margin: 4px 0 0; font-size: .83rem; line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+/* PROGRESSIVE DISCLOSURE — evidence kept, not deleted. */
+.disclose { margin: 10px 0 18px; }
+.disclose > summary {
+  cursor: pointer; padding: 10px 14px;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface-1); font-weight: 600; font-size: .88rem;
+  list-style: none; display: flex; align-items: center; gap: 8px;
+}
+.disclose > summary::-webkit-details-marker { display: none; }
+.disclose > summary::after { content: "›"; margin-left: auto; font-size: 1.1rem; color: var(--muted); }
+.disclose[open] > summary::after { content: "⌄"; }
+.disclose > summary:hover { border-color: var(--axis); }
+.disclose[open] > summary { margin-bottom: 12px; }
+
+.assumptions { margin: 0; padding-left: 1.1rem; }
+.assumptions li { font-size: .84rem; line-height: 1.55; margin-bottom: 8px; color: var(--text-secondary); }
+
+/* Phones. The decision layer has to survive a 360px screen without any
+   sideways scrolling — a plan you have to pan around is not a plan. */
+@media (max-width: 560px) {
+  .mission { font-size: 1rem; }
+  .nm-amt { font-size: 1.4rem; }
+  .cap-amt { font-size: 2.1rem; }
+  .capsplit { grid-template-columns: 1fr; }
+  .ag14 {
+    grid-template-columns: 4.2rem 1fr auto;
+    grid-template-areas: "date lab lab" "date amt conf";
+    row-gap: 2px;
+  }
+  .ag14-date { grid-area: date; }
+  .ag14-lab  { grid-area: lab; }
+  .ag14-amt  { grid-area: amt; text-align: left; }
+  .ag14-conf { grid-area: conf; }
+}
+
+/* The scoreboard is four checkpoints wide. On a phone that means sideways
+   scrolling on the one table the household most needs to read, so below the
+   breakpoint each checkpoint becomes its own card — the same trade the weekly
+   forecast table already makes. */
+.score-cards { display: none; }
+.score-card {
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 12px 14px; margin-bottom: 10px; background: var(--surface-1);
+}
+.score-card-head {
+  display: flex; justify-content: space-between; align-items: baseline;
+  border-bottom: 1px solid var(--border); padding-bottom: 7px; margin-bottom: 8px;
+}
+.score-card-when { font-weight: 650; }
+.score-card-date { font-size: .78rem; color: var(--muted); }
+.score-row {
+  display: flex; justify-content: space-between; gap: 12px;
+  padding: 3px 0; font-size: .87rem;
+}
+.score-row span:last-child { font-variant-numeric: tabular-nums; font-weight: 600; }
+.score-row.neg span:last-child { color: var(--critical); }
+
+@media (max-width: 720px) {
+  .score-table-wrap { display: none; }
+  .score-cards { display: block; }
+}
