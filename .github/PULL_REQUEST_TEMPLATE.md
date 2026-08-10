@@ -60,6 +60,35 @@
 <!-- What could still be wrong, and what would settle it. Say "none known" only
      if you mean it. -->
 
+### Delivery
+
+<!--
+  One pull request, one INDEPENDENTLY PROVABLE OUTCOME. `CLAUDE.md` holds the
+  rule, the scope tripwires, the atomicity exception, the review-churn
+  reassessment and the closed-loop chain.
+
+  Seven of these lines are CLOSED FORMS: the value OPENS with one of the listed
+  words, and anything after it is yours. That is deliberate — a check can hold a
+  vocabulary and an integer, and nothing more. Whether the outcome is genuinely
+  one outcome, whether an EXCEEDED scope is justified, and whether a CONTINUE
+  after three rounds is right are the required review's to judge, not the
+  check's.
+
+  Reasons are required where a value switches something off: EXCEEDED,
+  atomicity YES, and any reassessment after two or more blocking rounds.
+-->
+
+- **One outcome**: <!-- the single thing this makes true, in one line -->
+- **Non-goals**: <!-- what a reader might assume was covered and was not -->
+- **Scope status**: <!-- WITHIN, or EXCEEDED — <why>. Tripwires: <=8 implementation files, <=~600 implementation lines, tests/fixtures/generated counted separately -->
+- **Atomicity exception**: <!-- NO, or YES — <what splitting would break, and why one closure condition covers the pieces> -->
+- **Blocking review rounds**: <!-- 0 / 1 / 2 / 3+ — exact-head rounds that blocked -->
+- **Scope reassessment**: <!-- N/A below two rounds; otherwise CONTINUE — <why one root cause> or SPLIT — <what moves out> -->
+- **Proof level**: <!-- UNIT / INTEGRATION / BROWSER / LIVE / OWNER EVIDENCE / MIXED -->
+- **Open loops closed**: <!-- integer -->
+- **Open loops created**: <!-- integer -->
+- **Net open loops**: <!-- created minus closed; the check does the arithmetic. Preference is <= 0 -->
+
 ### Atlas Contract / Systems Review
 
 <!--
@@ -73,7 +102,8 @@
   security gate · what counts as evidence · an estimate reaching the decision
   page · direction · genuine ambiguity. The list is wide on purpose; "no trigger
   fired" is a claim that has to survive reading it. `CLAUDE.md` holds the full
-  list and the seven questions the review asks.
+  list and the twelve questions the review asks — seven about truth and
+  authority, five about whether this is one pull request at all.
 
   It reads the EXACT head. A review of an earlier commit does not cover a later
   one — push after a review and it has to be repeated. That is the same staleness
@@ -107,6 +137,7 @@
 
 - None
 - FIXED NOW:
+- NEXT PR:
 - REJECTED:
 - ADDED TO BACKLOG:
 - OWNER DECISION REQUIRED:
