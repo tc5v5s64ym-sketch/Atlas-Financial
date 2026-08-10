@@ -232,11 +232,17 @@ double-counting.
 **B19 · Refresh the mortgage and HELOC deep dive** · *small*
 Written before the spouse's accounts were known.
 
-**B30 · Fees dashboard** *(on B23, B24)* · *medium*
-Show avoidable separately from structural — that is the actionable split.
+**B30 · Fees dashboard** · **DONE 2026-08-09** — site section 11, avoidable in
+red against structural in blue. YTD **$1,122.45**, of which **$828.00 avoidable**.
+B23 and B24 would add the missing plan/rate detail but were not blocking.
 
-**B32 · Interest dashboard** *(on B7)* · *medium*
-Every rate is now known. **$36,546/year, about $3,046/month.**
+**B32 · Interest dashboard** · **DONE 2026-08-09** — site section 10, interest
+actually charged by facility. The mortgage is excluded and the caption says why.
+
+**B65 · Period selector** · **DONE 2026-08-09** — this month / last month / YTD /
+all, driving spending, interest and fees. Built by `scripts/periods.js`.
+**Rebuild it after every capture** or the selector goes stale while the rest of
+the page moves.
 
 **B20 · `snapshots/<date>.json` and trend charts** · *medium*
 Architecture tier 2. Worth doing now capture has settled.
