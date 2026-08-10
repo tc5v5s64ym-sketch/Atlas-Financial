@@ -119,6 +119,24 @@ Check for orphans before pushing:
 node -e "const d=require('./data.json'),a=require('fs').readFileSync('public/app.js','utf8');for(const k of Object.keys(d))if(!new RegExp('d\\\\.'+k+'\\\\b').test(a))console.log('orphaned:',k)"
 ```
 
+### Two data files, and one of them is generated
+
+| File | Edited how | Contains |
+|---|---|---|
+| `data.json` | **by hand** | balances, rates, notes, questions, coverage |
+| `public/periods.json` | **generated** | monthly spending, interest and fees series |
+
+**Rebuild the generated one after any new capture**, or the period selector goes
+stale while the rest of the page updates:
+
+```bash
+node scripts/periods.js . 2026-08-09
+```
+
+Pass today's date — it decides what "this month", "last month" and "year to
+date" mean. It writes `derived/periods.json` and `public/periods.json`, and both
+are read from the same auth-gated path as `data.json`.
+
 ### Preview locally before deploying
 
 ```bash

@@ -102,43 +102,7 @@
   "incomeWarning": "The coaching line is gross revenue — coaches are paid out of it. Her tracking sheets now give the split: $23,070 of class revenue against $6,397.50 of coach payroll, so coaches take about 27.7% and roughly 72% is retained. Applied to the $42,395 of large receipts that implies about $11,700 owed onward and $30,700 retained — roughly $1,700/month of real coaching income rather than the $2,355 the gross suggests. So this total is overstated by about $650/month, not the $1,650 previously feared. The sheets cover $23,070 against $42,395 received, so they are a subset of the window and the share is indicative rather than audited.",
   "incomeNote": "Her Tennis BC employment — 43 deposits, $63,129.47 over 18 months into DEBT&PAYMENTS — was absent from the earlier picture entirely, which saw only the $21,700 she transferred across. That transfer has been removed as an income line: it is an internal movement out of this income, and counting both would double it. Two cautions remain: at least $1,639.10 marked EXP is expense reimbursement rather than pay, a further $2,846.58 marked AP is unresolved, and the transfers stopped after May 2026 while the income did not.",
 
-  "cardSpending": [
-    { "label": "Travel", "total": 10363.01, "perMonth": 863.58, "type": "discretionary" },
-    { "label": "Shopping", "total": 8402.13, "perMonth": 700.18, "type": "discretionary" },
-    { "label": "Groceries", "total": 6736.37, "perMonth": 561.36, "type": "essential" },
-    { "label": "Restaurants", "total": 4469.86, "perMonth": 372.49, "type": "discretionary" },
-    { "label": "Sport & fitness", "total": 3692.08, "perMonth": 307.67, "type": "discretionary" },
-    { "label": "Uncategorised", "total": 1990.88, "perMonth": 165.91, "type": "unknown" },
-    { "label": "Telecom", "total": 1893.86, "perMonth": 157.82, "type": "essential" },
-    { "label": "Health", "total": 1880.08, "perMonth": 156.67, "type": "essential" },
-    { "label": "Fuel & transport", "total": 1278.66, "perMonth": 106.56, "type": "essential" },
-    { "label": "Business", "total": 1043.37, "perMonth": 86.95, "type": "business" },
-    { "label": "Subscriptions", "total": 1003.96, "perMonth": 83.66, "type": "discretionary" },
-    { "label": "Entertainment", "total": 722.40, "perMonth": 60.20, "type": "discretionary" },
-    { "label": "School & clubs", "total": 582.48, "perMonth": 48.54, "type": "essential" },
-    { "label": "Household", "total": 285.44, "perMonth": 23.79, "type": "essential" }
-  ],
-  "cardSpendingNote": "Twelve months to August 2026, from 484 card purchases totalling $44,344.58 — about $3,695/month. Only 4.5% is uncategorised, against 19% on the chequing side, because card statements carry full merchant names where TD's chequing export truncates them. Discretionary spending is $28,653.44 of it, roughly $2,388/month — the most addressable part of the picture. Travel includes the road trip, so it is not a recurring annual figure, and Business is a floor rather than a measure.",
 
-  "spending": [
-    { "label": "Groceries", "total": 23919.65, "confidence": "high" },
-    { "label": "Shopping", "total": 17670.07, "confidence": "medium" },
-    { "label": "Restaurants & takeaway", "total": 14570.56, "confidence": "medium" },
-    { "label": "Fuel & transport", "total": 14080.65, "confidence": "high" },
-    { "label": "Uncategorised", "total": 13903.75, "confidence": "low" },
-    { "label": "Household", "total": 8441.74, "confidence": "medium" },
-    { "label": "Sport & fitness", "total": 5345.21, "confidence": "medium" },
-    { "label": "Entertainment", "total": 4732.58, "confidence": "medium" },
-    { "label": "Property tax", "total": 4300.00, "confidence": "high" },
-    { "label": "Travel", "total": 2614.73, "confidence": "medium" },
-    { "label": "Health", "total": 2235.80, "confidence": "medium" },
-    { "label": "Telecom", "total": 1641.07, "confidence": "high" },
-    { "label": "Subscriptions", "total": 1112.45, "confidence": "medium" },
-    { "label": "Tax", "total": 800.00, "confidence": "high" },
-    { "label": "Insurance", "total": 474.68, "confidence": "high" },
-    { "label": "Pets", "total": 236.57, "confidence": "high" },
-    { "label": "School & clubs", "total": 140.41, "confidence": "high" }
-  ],
   "spendingNote": "Chequing and savings spending only - $116,219.92 over 18 months, about $6,457/month, rebuilt against the merchant library. Uncategorised is down to 12.0% from 19%, and that is after removing $25,490 that was never spending at all: PayPal funding pulls, Flexiti and credit-card payments, and transfers to WebBroker, all previously counted as purchases. Card spending is shown separately and adds about $3,695/month. PayPal draws a further $10,437.78 from chequing over the window, roughly $580/month, spent at merchants recorded in the PayPal exports rather than here. Total household spending is therefore around $10,700/month, not the $7,551 previously published.",
 
   "paypal": {

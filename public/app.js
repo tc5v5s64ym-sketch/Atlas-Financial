@@ -206,6 +206,9 @@ function renderStatic(d) {
 
   const grey = css('--muted');
 
+  // Spending, interest and fees are period-driven and rendered by renderPeriod()
+  // once periods.json arrives. Nothing to do here.
+
   // Income. The coaching line is gross revenue, so it is coloured as a caution
   // rather than as money the household keeps.
   if (d.income) {
@@ -218,26 +221,6 @@ function renderStatic(d) {
       `${money2(d.incomeTotal.total)} over 18 months, about ${money(d.incomeTotal.perMonth)}/month. ${d.incomeNote || ''}`;
     if (d.incomeWarning) $('income-warning').textContent = d.incomeWarning;
   }
-
-  // Card spending, kept separate from chequing: different window, different source.
-  if (d.cardSpending) {
-    hbar($('c-cardspend'), d.cardSpending.map(s => ({
-      label: s.label, v: s.total,
-      colour: s.type === 'essential' ? css('--s1')
-            : s.type === 'business' ? css('--s2')
-            : s.type === 'unknown' ? grey : css('--serious'),
-      vlabel: money(s.perMonth) + '/mo',
-      tip: `${s.type} · ${money2(s.total)} over 12 months`,
-    })), { rowH: 34, padL: 180 });
-    $('cardspend-note').textContent = d.cardSpendingNote;
-  }
-
-  hbar($('c-spend'), d.spending.map(s => ({
-    label: s.label, v: s.total,
-    colour: s.confidence === 'low' || s.confidence === 'unknown' ? grey : (s.confidence === 'resolved' ? css('--s2') : css('--s1')),
-    tip: s.confidence === 'low' || s.confidence === 'unknown' ? 'Low confidence — merchant names truncated' : `18-month total`,
-  })), { rowH: 32, padL: 180 });
-  $('spend-note').textContent = d.spendingNote;
 
   $('paypal-table').innerHTML = d.paypal.categories.map(c => `
     <tr><td>${c.label}</td><td class="num">${money2(c.total)}</td><td class="num">~${money(c.perMonth)}</td></tr>`).join('')
@@ -420,15 +403,137 @@ function setupRenewal(d) {
   update();
 }
 
+/* --------------------------------------------------- periods (interactive) */
+let PERIODS = null;
+let CURRENT = 'lastMonth';   // a complete month reads better on first load than
+                             // a part-finished one
+
+// Grouped bars: spending, interest and fees per month, on one baseline.
+function grouped(mount, rows, series) {
+  if (!mount) return;
+  const W = 760, padL = 52, padR = 12, padT = 10, padB = 34, H = 250;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const max = Math.max(1, ...rows.flatMap(r => series.map(s => r[s.key])));
+  const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img' });
+  const bw = plotW / rows.length;
+  const gw = Math.min(9, (bw - 6) / series.length);
+
+  [0, 0.5, 1].forEach(f => {
+    const y = padT + plotH - f * plotH;
+    svg.appendChild(el('line', { x1: padL, x2: W - padR, y1: y, y2: y, stroke: css('--axis'), 'stroke-width': 1 }));
+    const t = el('text', { x: padL - 8, y: y + 4, 'text-anchor': 'end', fill: css('--text-secondary'), 'font-size': '11' });
+    t.textContent = money(max * f); svg.appendChild(t);
+  });
+
+  rows.forEach((r, i) => {
+    series.forEach((s, j) => {
+      const v = r[s.key] || 0;
+      const h = Math.max(1, (v / max) * plotH);
+      const x = padL + i * bw + (bw - gw * series.length) / 2 + j * gw;
+      const rect = el('rect', { x, y: padT + plotH - h, width: Math.max(2, gw - 1), height: h, fill: s.colour, rx: 1 });
+      rect.addEventListener('mousemove', e => showTip(e,
+        `<b>${r.m}</b><br>${series.map(ss => `${ss.label} ${money2(r[ss.key] || 0)}`).join('<br>')}` +
+        (r.cardsCovered ? '' : '<br><i>cards not yet captured this month</i>')));
+      rect.addEventListener('mouseleave', hideTip);
+      svg.appendChild(rect);
+    });
+    if (i % 3 === 0) {
+      const t = el('text', { x: padL + i * bw + bw / 2, y: H - 12, 'text-anchor': 'middle', fill: css('--text-secondary'), 'font-size': '10' });
+      t.textContent = r.m.slice(2); svg.appendChild(t);
+    }
+  });
+  mount.replaceChildren(svg);
+}
+
+function renderPeriod() {
+  if (!PERIODS) return;
+  const p = PERIODS.periods[CURRENT];
+  const grey = css('--muted');
+
+  [...$('period-bar').children].forEach(b =>
+    b.setAttribute('aria-pressed', String(b.dataset.k === CURRENT)));
+
+  const per = p.months > 1 ? ` · ${money(p.spendingTotal / p.months)}/month across ${p.months} months` : '';
+  $('period-summary').innerHTML =
+    `<b>${money2(p.spendingTotal)}</b> spending · <b>${money2(p.interestTotal)}</b> interest · ` +
+    `<b>${money2(p.feesTotal)}</b> fees${per}`;
+
+  hbar($('c-spend'), p.spending.map(s => ({
+    label: s.label, v: s.total,
+    colour: s.type === 'essential' ? css('--s1')
+          : s.type === 'business' ? css('--s2')
+          : s.type === 'unknown' ? grey : css('--serious'),
+    tip: `${s.type} · ${money2(s.total)}`,
+  })), { rowH: 30, padL: 180 });
+
+  const disc = p.spending.filter(s => s.type === 'discretionary').reduce((a, b) => a + b.total, 0);
+  // DATA may not have arrived yet — the two fetches are independent.
+  const caveat = (typeof DATA !== 'undefined' && DATA && DATA.spendingNote) ? ' ' + DATA.spendingNote : '';
+  $('spend-note').textContent =
+    `${p.label}. Blue is essential, orange discretionary, grey unidentified. ` +
+    `Discretionary is ${money2(disc)} — ${(disc / (p.spendingTotal || 1) * 100).toFixed(0)}% of the total, ` +
+    `and the part that is a decision rather than a fixed cost.` + caveat;
+
+  hbar($('c-interest'), p.interest.map(s => ({
+    label: s.label, v: s.total, colour: css('--serious'), tip: money2(s.total),
+  })), { rowH: 34, padL: 180 });
+  $('interest-note').textContent =
+    `${money2(p.interestTotal)} of interest charged in ${p.label.toLowerCase()}. ` +
+    `The mortgage adds about $1,620/month on top, inside its payment rather than as a charge.`;
+
+  hbar($('c-fees'), p.fees.map(s => ({
+    label: s.label, v: s.total,
+    colour: s.type === 'avoidable' ? css('--critical') : css('--s1'),
+    tip: `${s.type} · ${money2(s.total)}`,
+  })), { rowH: 34, padL: 180 });
+  const avoid = p.fees.filter(s => s.type === 'avoidable').reduce((a, b) => a + b.total, 0);
+  $('fees-note').textContent = p.feesTotal
+    ? `${money2(p.feesTotal)} of fees, of which ${money2(avoid)} was avoidable — red bars. `
+      + `Avoidable means it followed from something that happened, not from holding the account.`
+    : 'No fees in this period.';
+
+  grouped($('c-trend'), PERIODS.monthly, [
+    { key: 'spending', label: 'Spending', colour: css('--s1') },
+    { key: 'interest', label: 'Interest', colour: css('--serious') },
+    { key: 'fees', label: 'Fees', colour: css('--critical') },
+  ]);
+  $('trend-note').textContent =
+    'Every month captured, on one scale — so interest and fees look small beside spending, which is the '
+    + 'honest comparison but hard to read. Hover any month for exact figures. Card spending only begins in '
+    + 'August 2025, so earlier months show chequing alone and are lower for that reason rather than because '
+    + 'less was spent.';
+}
+
+function setupPeriods(p) {
+  PERIODS = p;
+  const bar = $('period-bar');
+  bar.replaceChildren();
+  for (const [k, v] of Object.entries(p.periods)) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'preset'; b.dataset.k = k;
+    b.textContent = v.label.replace(/ \(.*\)/, '');
+    b.title = v.label;
+    b.addEventListener('click', () => { CURRENT = k; renderPeriod(); });
+    bar.appendChild(b);
+  }
+  renderPeriod();
+}
+
 /* ------------------------------------------------------------------ boot */
+fetch('/periods.json', { credentials: 'same-origin' })
+  .then(r => r.ok ? r.json() : null)
+  .then(p => { if (p) setupPeriods(p); })
+  .catch(err => console.error('periods.json:', err));
+
 fetch('/data.json', { credentials: 'same-origin' })
   .then(r => { if (r.status === 401) { location.href = '/login'; throw new Error('auth'); } return r.json(); })
   .then(d => {
     DATA = d;
     renderStatic(d);
+    renderPeriod();   // re-run so the spending caveat from data.json appears
     setupPayoff(d);
     setupRenewal(d);
-    matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => renderStatic(DATA));
+    matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { renderStatic(DATA); renderPeriod(); });
   })
   .catch(err => {
     if (err.message === 'auth') return;
