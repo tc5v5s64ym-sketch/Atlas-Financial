@@ -488,12 +488,25 @@ function renderPlan(d, periods) {
   const first = plan.actions[0];
   if (first) {
     const overdue = first.due && first.due < asOf && first.status !== 'done';
+    // This action's amount is a fixed figure in the data, sized for the default
+    // buffer. Whether completing it restores anything depends on how it
+    // compares with the CURRENT gap, not on whether some plan exists.
+    const actionCovers = gap && first.amount != null && first.amount + 0.005 >= fundingGap;
+    const actionLeaves = gap && first.amount != null ? fundingGap - first.amount : 0;
     const after = gap && fundingShort
       // Only part of the gap can be funded, so promising a restored buffer
       // would be describing an outcome the figures do not produce.
       ? `Even with everything available moved across, ${money(fundingPlan.shortfall)} of the
          ${money(fundingGap)} stays unfunded and the balance holds below the ${money(sim.buffer)} buffer.
          This action helps; on its own it is not enough.`
+      : gap && !actionCovers
+        // Fundable, but not by this action alone.
+        ? `This covers ${money(first.amount)} of the ${money(fundingGap)} needed, leaving
+           ${money(actionLeaves)} still to find before the ${money(sim.buffer)} buffer is back.
+           ${fundingPlan && fundingPlan.needsCombination
+            ? `The full plan is ${fundingPlan.parts.map(p => `${money2(p.amount)} from ${p.short}`).join(' plus ')}.`
+            : ''} With all of it in place the household can spend ${money(weekly)} a week from
+           ${fmtDateLong(advice.effectiveFrom)}.`
       : gap && first.due && first.due <= gap.date
         ? `The ${money(gap.dueOnGapDay)} clears on ${fmtDateLong(gap.date)}, the buffer is restored, and from
            ${fmtDateLong(advice.effectiveFrom)} the household can spend ${money(weekly)} a week.`
@@ -511,6 +524,23 @@ function renderPlan(d, periods) {
       <div class="nm-why"><b>Why</b><p>${first.why}</p></div>
       <div class="nm-after"><b>What happens after</b><p>${after}</p></div>`;
   }
+
+  // The condition attached to the weekly cap, written ONCE. It appeared on
+  // both the Today tile and the cap headline, and fixing the headline alone
+  // left the tile describing a simulation that was not the one it showed.
+  const capIfCovered = (gap && fundingShort)
+    ? Forecast.recommend(plan, asOf, simOpts({
+        fundingSources: [{ id: 'hypothetical', label: 'full coverage', short: 'full coverage',
+          available: Infinity, debtId: null, rank: 0 }],
+      })).weekly
+    : null;
+  const capQualifier = !gap
+    ? 'under the expected scenario'
+    : fundingShort
+      ? `from ${fmtDateLong(advice.effectiveFrom)}, with only `
+        + `${money(fundingGap - fundingPlan.shortfall)} of the ${money(fundingGap)} gap fundable. `
+        + `Cover the whole gap and it becomes ${money(capIfCovered)}/week`
+      : `from ${fmtDateLong(advice.effectiveFrom)}, once the ${money(fundingGap)} gap is covered`;
 
   /* ---- the numbers that matter today ---- */
   // The next day money leaves, and ALL of it — two registrations on one day are
@@ -537,7 +567,7 @@ function renderPlan(d, periods) {
       note: state.weeklyVariable != null && state.weeklyVariable !== recommended
         ? `your setting — the forecast supports ${money(recommended)}/wk`
         : gap
-          ? `from ${fmtDateLong(advice.effectiveFrom)}, once the ${money(fundingGap)} gap is covered. Food and fuel come out of this first.`
+          ? `${capQualifier}. Food and fuel come out of this first.`
           : `≈ ${money(weekly * WEEKS_PER_MONTH)} a month. Food and fuel come out of this first.` },
     { lab: 'Essential variable need', val: money(perWeek(required)) + '/wk', tone: '',
       note: `groceries, fuel, phones and medical — ${money(perWeek(budget ? budget.categories
@@ -566,21 +596,9 @@ function renderPlan(d, periods) {
     // situation — not for a covered gap. Saying "once the gap is covered"
     // beside it attached the condition of one simulation to the answer of
     // another, so the full-coverage figure is computed and shown separately.
-    const ifCovered = fundingShort
-      ? Forecast.recommend(plan, asOf, simOpts({
-          fundingSources: [{ id: 'hypothetical', label: 'full coverage', short: 'full coverage',
-            available: Infinity, debtId: null, rank: 0 }],
-        })).weekly
-      : null;
     $('cap-headline').innerHTML =
       `<span class="cap-amt">${money(weekly)}</span><span class="cap-per">/ week</span>
-       <span class="cap-qual">${!gap
-        ? 'under the expected scenario'
-        : fundingShort
-          ? `from ${fmtDateLong(advice.effectiveFrom)}, with only ${money(fundingGap - fundingPlan.shortfall)}
-             of the ${money(fundingGap)} gap fundable. Cover the whole gap and it becomes
-             ${money(ifCovered)}/week`
-          : `from ${fmtDateLong(advice.effectiveFrom)}, once the ${money(fundingGap)} gap is covered`}</span>`;
+       <span class="cap-qual">${capQualifier}</span>`;
     const part = (lab, amount, kind, note) => `
       <div class="cap-part ${kind}">
         <div class="cap-part-lab">${lab}</div>

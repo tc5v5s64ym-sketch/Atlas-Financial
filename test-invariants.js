@@ -313,8 +313,22 @@ ok(!/'the top-ranked source'/.test(planJs2),
 ok(/helocDrawn > 0/.test(planJs2),
   'the HELOC risk says whether THIS plan draws on it');
 // The cap qualifier attached one simulation's condition to another's answer.
-ok(/ifCovered/.test(planJs2),
+ok(/capIfCovered/.test(planJs2),
   'a partly-funded cap reports what full coverage would allow, separately');
+// Written once. The same sentence on the tile and the headline meant fixing
+// one and leaving the other describing a different simulation.
+ok((planJs2.match(/once the \$\{money\(fundingGap\)\} gap is covered/g) || []).length === 1,
+  'the cap qualifier is composed in exactly one place',
+  `${(planJs2.match(/once the \$\{money\(fundingGap\)\} gap is covered/g) || []).length} occurrence(s)`);
+ok(/capQualifier/.test(planJs2) &&
+   (planJs2.match(/\$\{capQualifier\}/g) || []).length >= 2,
+  'and both the tile and the headline read that one value');
+// The first action carries a fixed amount; claiming it restores the buffer is
+// only true when that amount actually reaches the current gap.
+ok(/actionCovers/.test(planJs2),
+  'the Next move outcome is judged against the current gap, not merely feasibility');
+ok(/still to find before/.test(planJs2),
+  'and says what is left when the action alone is not enough');
 
 console.log('\n=== provenance claims are supported ===');
 const nd = plan.nextDollar;
