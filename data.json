@@ -94,7 +94,7 @@
   "income": [
     { "label": "Payroll (bi-weekly)", "total": 186152.89, "perMonth": 10342, "stability": "Stable" },
     { "label": "Her employment — Tennis BC", "total": 63129.47, "perMonth": 3507, "stability": "Growing — $1,250/month to $6,196/month across the window" },
-    { "label": "Coaching business — REVENUE, not income", "total": 54213.00, "perMonth": 3012, "stability": "Gross. Coaches are paid out of this, so the household keeps only the margin" },
+    { "label": "Coaching — gross revenue", "total": 54213.00, "perMonth": 3012, "stability": "REVENUE, not income. Coaches are paid out of this, so only the margin is kept — about 72% on her own figures" },
     { "label": "Child benefit", "total": 2764.63, "perMonth": 154, "stability": "Stable" },
     { "label": "Insurance reimbursement", "total": 500.04, "perMonth": null, "stability": "One-off" }
   ],

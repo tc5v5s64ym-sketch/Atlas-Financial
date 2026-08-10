@@ -104,8 +104,34 @@ whether the business makes money after cost of goods.
 ## How to update the site
 
 1. Edit `data.json` in this repo — every figure on the site comes from it
-2. Commit and push to `main`
-3. Render auto-deploys within a couple of minutes
+2. **Check it renders** — see below
+3. Commit and push to `main`
+4. Render auto-deploys within a couple of minutes
+
+**Adding a figure to `data.json` does not put it on the page.** `public/app.js`
+has to read it and `public/index.html` has to have somewhere to put it. Six keys
+sat in `data.json` unrendered for some time — including the entire income
+section — because that step was skipped.
+
+Check for orphans before pushing:
+
+```bash
+node -e "const d=require('./data.json'),a=require('fs').readFileSync('public/app.js','utf8');for(const k of Object.keys(d))if(!new RegExp('d\\\\.'+k+'\\\\b').test(a))console.log('orphaned:',k)"
+```
+
+### Preview locally before deploying
+
+```bash
+powershell -ExecutionPolicy Bypass -File scripts\preview.ps1
+```
+
+Stages `public/` and `data.json` into one directory and serves them at
+<http://localhost:8899>. It validates the JSON and syntax-checks `app.js` first,
+so a broken change fails at the prompt rather than as a blank page.
+
+**Rendering check only** — the password gate and security behaviour are not
+exercised. For those, `node test-local.js` with the password, and
+`node verify-live.js` against the deployed site.
 
 Adding an account means an entry in `debts` (and `utilisation` if revolving),
 then updating `headline`, `netWorth` and `coverage` to match. Add any new

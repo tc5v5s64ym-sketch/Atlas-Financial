@@ -205,6 +205,33 @@ function renderStatic(d) {
   $('flow-note').textContent = d.cashflowNote;
 
   const grey = css('--muted');
+
+  // Income. The coaching line is gross revenue, so it is coloured as a caution
+  // rather than as money the household keeps.
+  if (d.income) {
+    hbar($('c-income'), d.income.map(i => ({
+      label: i.label, v: i.total,
+      colour: /REVENUE/i.test(i.stability || '') || /REVENUE/i.test(i.label) ? css('--serious') : css('--s2'),
+      tip: `${i.perMonth ? '~' + money(i.perMonth) + '/month · ' : ''}${i.stability || ''}`,
+    })), { rowH: 40, padL: 190 });
+    $('income-note').textContent =
+      `${money2(d.incomeTotal.total)} over 18 months, about ${money(d.incomeTotal.perMonth)}/month. ${d.incomeNote || ''}`;
+    if (d.incomeWarning) $('income-warning').textContent = d.incomeWarning;
+  }
+
+  // Card spending, kept separate from chequing: different window, different source.
+  if (d.cardSpending) {
+    hbar($('c-cardspend'), d.cardSpending.map(s => ({
+      label: s.label, v: s.total,
+      colour: s.type === 'essential' ? css('--s1')
+            : s.type === 'business' ? css('--s2')
+            : s.type === 'unknown' ? grey : css('--serious'),
+      vlabel: money(s.perMonth) + '/mo',
+      tip: `${s.type} · ${money2(s.total)} over 12 months`,
+    })), { rowH: 34, padL: 180 });
+    $('cardspend-note').textContent = d.cardSpendingNote;
+  }
+
   hbar($('c-spend'), d.spending.map(s => ({
     label: s.label, v: s.total,
     colour: s.confidence === 'low' || s.confidence === 'unknown' ? grey : (s.confidence === 'resolved' ? css('--s2') : css('--s1')),
@@ -235,6 +262,7 @@ function renderStatic(d) {
     + `<tr><td><strong>Total assets</strong></td><td class="num"><strong>${money2(d.netWorth.assets)}</strong></td></tr>`
     + `<tr><td><strong>Total known debt</strong></td><td class="num neg"><strong>${money2(d.netWorth.debts)}</strong></td></tr>`
     + `<tr><td><strong>Financial accounts only</strong></td><td class="num neg"><strong>${money2(d.netWorth.financialAccountsOnly)}</strong></td></tr>`;
+  if (d.assetsNote) $('assets-note').textContent = d.assetsNote;
   $('nw-caveat').textContent = d.netWorth.caveat;
 
   $('coverage').innerHTML = d.coverage.map(c => `
