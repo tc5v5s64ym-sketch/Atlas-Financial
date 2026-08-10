@@ -61,6 +61,18 @@ jobs:
             ];
 
             const esc = s => s.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
+
+            // Strip occurrences of a vocabulary token that a negation reverses,
+            // so a match means the card SELECTED the thing rather than merely
+            // mentioning it. `B1 is not ALREADY FIXED` and `P1 not fixed` both
+            // read as answers under a bare match (Codex, on f71ef30).
+            //
+            // The window is short on purpose. "STILL BROKEN — not fixed by
+            // PR #1" must stay a valid verdict: the negation there governs
+            // "fixed by PR #1", not the verdict phrase, and no verdict token
+            // follows it within the window.
+            const dropNegated = (text, tokenSource) => text.replace(
+              new RegExp(`\\b(?:not|never|no|isn'?t|wasn'?t|un-)\\b[ \\t]*(?:\\w+[ \\t]+){0,2}?(?:${tokenSource})`, 'gi'), '');
             for (const [label, want] of FIELDS) {
               // Grab the text following the bold label on its own row, up to the
               // end of the line (table cell or bullet both end at the newline).
@@ -116,7 +128,7 @@ jobs:
             // the set dedupes — and both spellings of STALE-SUPERSEDED normalise
             // to the same member, so following either document still passes.
             const chosen = new Set(
-              (verdictValue.match(new RegExp(VERDICT.source, 'gi')) || [])
+              (dropNegated(verdictValue, VERDICT.source).match(new RegExp(VERDICT.source, 'gi')) || [])
                 .map((m) => m.toUpperCase().replace(/[ \t]*[-\/][ \t]*/, '-')));
             if (verdictValue && chosen.size !== 1) {
               problems.push(chosen.size === 0
@@ -218,7 +230,12 @@ jobs:
               // nothing (Codex, P2, on f425ef8), and the trigger list is wide
               // enough that "none fired" is a claim, not a default.
               if (notRequired) {
-                const reason = req.replace(/^(?:not[ \t]+required|n\/a)\b[\s—–:,.-]*/i, '').trim();
+                const reason = req.replace(/^(?:not[ \t]+required|n\/a)\b[\s—–:,.-]*/i, '')
+                  // An absence word is not a reason. `not required — none` was
+                  // green because any three letters counted (Codex, P2, on
+                  // f71ef30), so the absence words come out before the test.
+                  .replace(/\b(?:none|n\/a|na|no|nil|nothing|unknown|tbd)\b/gi, '')
+                  .trim();
                 if (!/[a-z]{3}/i.test(reason)) {
                   problems.push('"Required: not required" has to say WHY no trigger fired. The trigger list in CLAUDE.md is deliberately wide, so "none fired" is a claim that must survive reading it — and this is the branch that switches every exact-head and reviewer check off.');
                 }
@@ -249,9 +266,18 @@ jobs:
                 // itself deferred.
                 const PENDING = /\b(pending|not yet|none yet|tbd|awaiting|outstanding|to be (?:done|performed|recorded|obtained))\b/i;
                 const DISPOSITIONS_PENDING = /^(?:pending|none yet|not yet|tbd|to be\b)|\bdispositions?[ \t]+(?:are[ \t]+)?pending\b|\bpending[ \t]+dispositions?\b/i;
+                // The two IDENTITY fields hold a commit SHA and a name, and no
+                // negation belongs in either. Enumerating pending markers kept
+                // missing new ways to write the same denial — `not reviewed:
+                // <sha>`, `ChatGPT did not perform this review` (Codex, P1 × 2,
+                // on f71ef30) — so this bans the class instead of the instance.
+                // The prose field is deliberately excluded: a disposition may
+                // legitimately say "not fixed here, routed to B72".
+                const NEGATED = /\b(?:not|no|none|nobody|never|isn'?t|wasn'?t|did[ \t]?n'?t|does[ \t]?n'?t|cannot|can'?t|without|denied|refused)\b/i;
+                const IDENTITY_UNFIT = new RegExp(`${PENDING.source}|${NEGATED.source}`, 'i');
                 const unfinished = [
-                  ['Exact reviewed head', PENDING],
-                  ['Reviewer', PENDING],
+                  ['Exact reviewed head', IDENTITY_UNFIT],
+                  ['Reviewer', IDENTITY_UNFIT],
                   ['Findings and dispositions', DISPOSITIONS_PENDING],
                 ].filter(([label, re]) => re.test(seen[label])).map(([label]) => label);
                 const headLine = seen['Exact reviewed head'];
@@ -259,7 +285,7 @@ jobs:
                   ? '' : (/\b[0-9a-f]{40}\b/i.exec(headLine) || [''])[0];
                 const head = ((context.payload.pull_request || {}).head || {}).sha || '';
                 if (unfinished.length) {
-                  problems.push(`The review is recorded as required, and ${unfinished.map((l) => `"${l}"`).join(' / ')} still says it has not happened. Red is the correct result: fill all three once the reviewer has read this exact head, and keep a SHA out of the block until then — a head named beside "pending" reads as a review that did not occur. For a finding handed off rather than resolved, "routed to <item>" says so without the word.`);
+                  problems.push(`The review is recorded as required, and ${unfinished.map((l) => `"${l}"`).join(' / ')} says the review has not happened — a pending marker, or a negation in a field that holds only a SHA or a name. Red is the correct result: fill all three once the reviewer has read this exact head, and keep both a SHA and the word "not" out of the block until then. For a finding handed off rather than resolved, "routed to <item>" says so without the word.`);
                 } else if (!recorded) {
                   problems.push('The review is recorded as required, so "Exact reviewed head" must carry the full 40-character SHA the reviewer actually read. A review of an earlier commit does not cover this head.');
                 } else if (head && recorded.toLowerCase() !== head.toLowerCase()) {
@@ -341,7 +367,8 @@ jobs:
                 const UNANSWERED =
                   /\b(?:unanswered|not[ \t]answered|undecided|no[ \t]disposition|not[ \t]dispositioned)\b/i;
                 if (!unfinished.includes('Findings and dispositions')
-                    && !DISPOSED.test(seen['Findings and dispositions'])) {
+                    && !DISPOSED.test(
+                      dropNegated(seen['Findings and dispositions'], DISPOSED.source))) {
                   problems.push('The review is recorded as required, so "Findings and dispositions" must record what happened to each finding — fixed, non-issue with the reason, or routed — or say "none" when it came back clean. "n/a" answers a review that was not required; on this path it leaves the result unstated.');
                 } else if (UNANSWERED.test(
                     // "No unanswered findings; P1 fixed" is a complete answer

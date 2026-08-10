@@ -288,6 +288,35 @@ const CASES = [
     'Findings and dispositions': 'No unanswered findings; P1 fixed',
   } }), 'green'],
 
+  // --- a negation reverses the token it governs. A card that says in plain
+  //     English that the gate was not satisfied must not read as an answer
+  //     because the words it denies are the words the check looks for.
+  ['a disposition that negates its own vocabulary', card({ review: {
+    'Findings and dispositions': 'P1 not fixed',
+  } }), 'red'],
+  ['a head that says it was not reviewed, beside the right SHA', card({ review: {
+    'Exact reviewed head': `not reviewed: ${HEAD}`,
+  } }), 'red'],
+  ['a reviewer denial placed after the lane name', card({ review: {
+    'Reviewer': 'ChatGPT did not perform this review',
+  } }), 'red'],
+  ['a verdict the row rejects rather than selects',
+    card({ rows: { 'Current-state verdict': 'B1 is not ALREADY FIXED' } }), 'red'],
+  ['a not-required reason that is only an absence word', card({ review: {
+    'Required': 'not required — none', 'Exact reviewed head': 'n/a',
+    'Reviewer': 'n/a', 'Findings and dispositions': 'n/a',
+  } }), 'red'],
+
+  //     ...and the honest phrasings that must survive it. The negation here
+  //     governs something other than the token, and the window is short enough
+  //     to tell the difference.
+  ['a verdict whose sentence negates something else', card({ rows: {
+    'Current-state verdict': 'B1 · STILL BROKEN — not fixed by PR #1',
+  } }), 'green'],
+  ['a disposition that says where a finding went, not that it was fixed', card({ review: {
+    'Findings and dispositions': 'P1 not fixed here — routed to B72',
+  } }), 'green'],
+
   // --- pending markers: the two false greens this check has actually shipped
   ['a pending review whose line quotes the head SHA', card({ review: {
     'Exact reviewed head': `not yet performed — record \`${HEAD}\` once it has been read`,
@@ -388,6 +417,24 @@ const MUTANTS = [
   {
     name: 'the reason required after "not required" dropped',
     apply: src => src.replace(/if \(!\/\[a-z\]\{3\}\/i\.test\(reason\)\) \{/, 'if (false) {'),
+  },
+  {
+    name: 'the negation ban lifted from the identity fields',
+    apply: src => src.replace(
+      /const IDENTITY_UNFIT = new RegExp\(`\$\{PENDING\.source\}\|\$\{NEGATED\.source\}`, 'i'\);/,
+      'const IDENTITY_UNFIT = PENDING;'),
+  },
+  {
+    name: 'negated vocabulary counted as a selection again',
+    apply: src => src.replace(
+      /const dropNegated = \(text, tokenSource\) => text\.replace\(\n\s*new RegExp\(.*\n/,
+      'const dropNegated = (text) => text;\n'),
+  },
+  {
+    name: 'the absence words allowed back as a not-required reason',
+    apply: src => src.replace(
+      /\s*\.replace\(\/\\b\(\?:none\|n\\\/a\|na\|no\|nil\|nothing\|unknown\|tbd\)\\b\/gi, ''\)/,
+      ''),
   },
   {
     // A false-positive guard is load-bearing in the other direction: removing
