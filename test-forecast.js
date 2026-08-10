@@ -120,6 +120,21 @@ ok(near(expected.ending,
   - expected.totals.bills - expected.totals.commitments),
   'ledger identity holds', expected.ending.toFixed(2));
 
+// The Burrard pair is atomic: same day, same amount, all or nothing. If a
+// future edit splits them across the payday the gap would vanish on paper.
+{
+  const grp = plan.commitments.filter(c => c.group === 'burrard');
+  ok(grp.length === 2 && grp[0].date === grp[1].date, 'both Burrard registrations fall on one date', grp.map(c => c.date).join(','));
+  ok((plan.groups || []).some(g => g.id === 'burrard' && g.atomic), 'and the pair is flagged atomic');
+  const due = grp.reduce((s, c) => s + c.amount, 0);
+  ok(near(due, 623), 'totalling $623 on the day', due.toFixed(2));
+  // Only Amanda's account and the HELOC can reach it.
+  const can = plan.funding.options.filter(o => !o.unusable && o.available >= due).map(o => o.id).sort();
+  ok(can.join(',') === 'amanda,heloc', 'exactly two sources can cover it', can.join(',') || 'none');
+  const cardsPlusOd = plan.funding.options.filter(o => o.unusable).reduce((s, o) => s + o.available, 0);
+  ok(cardsPlusOd < due, 'cards and overdraft combined fall short', `$${cardsPlusOd.toFixed(2)} vs $${due}`);
+}
+
 // Starting cash is the household spending accounts only — her account excluded.
 ok(near(plan.startingCash.amount, 506.98 - 517.72 + 90.58), 'starting cash = Chequing A + B + Savings',
   plan.startingCash.amount.toFixed(2));

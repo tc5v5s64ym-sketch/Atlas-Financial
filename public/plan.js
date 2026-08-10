@@ -170,7 +170,12 @@ function shortLabel(label) {
 
 // Month-grid calendar (desktop) and agenda list (mobile) from the same
 // simulation. Each is a real table/list, so screen readers get both.
-function renderCalendar(sim, neededBy) {
+function renderCalendar(sim, neededBy, plan) {
+  // Commitments that must be paid together get a same-day marker, so the
+  // calendar cannot suggest splitting them across a payday.
+  const groupOf = {};
+  for (const c of plan.commitments) if (c.group) groupOf[c.id] = c.group;
+  const atomic = new Set((plan.groups || []).filter(g => g.atomic).map(g => g.id));
   const byDate = new Map();
   for (const e of sim.events) {
     if (!byDate.has(e.date)) byDate.set(e.date, []);
@@ -180,9 +185,11 @@ function renderCalendar(sim, neededBy) {
 
   const evHtml = e => {
     const est = e.confidence === 'estimated' ? '<span class="est">≈</span>' : '';
-    const cls = e.amount > 0 ? 'in' : e.kind === 'commitment' ? 'commit' : 'out';
-    return `<span class="cal-ev ${cls}" title="${e.label} ${money2(Math.abs(e.amount))}">` +
-      `${e.amount > 0 ? '+' : '−'}${money(Math.abs(e.amount)).slice(1)} ${est}${shortLabel(e.label)}</span>`;
+    const cls = e.amount > 0 ? 'in' : e.kind === 'commitment' ? 'commit'
+      : e.kind === 'noncash' ? 'noncash' : 'out';
+    const tie = atomic.has(groupOf[e.id]) ? '<span class="tie" title="Must be paid together, same day">⛓</span>' : '';
+    return `<span class="cal-ev ${cls}" title="${e.label} ${money2(Math.abs(e.amount))}${e.kind === 'noncash' ? ' — capitalised, not paid' : ''}">` +
+      `${e.kind === 'noncash' ? '' : e.amount > 0 ? '+' : '−'}${money(Math.abs(e.amount)).slice(1)} ${est}${tie}${shortLabel(e.label)}</span>`;
   };
 
   // ---- month grids ----
@@ -332,6 +339,47 @@ function renderPlan(d, periods) {
       ${money(sim.min.balance)} on ${fmtDateLong(sim.min.date)}.`;
   }
 
+  /* ---- covering the gap ---- */
+  // Only shown when there is one. The point is not "here are your options" but
+  // "here is what can actually cover it" — a source that cannot reach the
+  // amount needed on the day is not an option, and is shown struck out.
+  const fund = $('funding');
+  if (fundingGap > 0 && plan.funding) {
+    // What must be in the account on the worst day, not the gap to the buffer.
+    const shortDate = zeroSim.min.date;
+    const dueThatDay = zeroSim.events
+      .filter(e => e.date === shortDate && e.amount < 0)
+      .reduce((s, e) => s + -e.amount, 0);
+    const group = (plan.groups || []).find(g =>
+      zeroSim.events.some(e => e.date === shortDate && (plan.commitments.find(c => c.id === e.id) || {}).group === g.id));
+
+    fund.hidden = false;
+    $('funding-head').textContent = plan.funding.heading;
+    $('funding-lede').innerHTML =
+      `<b>${money2(dueThatDay)} has to be in the account on ${fmtDateLong(shortDate)}</b>, against the
+       ${money2(plan.startingCash.amount)} the household accounts hold.` +
+      (group && group.atomic ? ` ${group.note}` : '');
+
+    $('funding-options').innerHTML = plan.funding.options
+      .slice().sort((a, b) => a.rank - b.rank)
+      .map(o => {
+        const enough = o.available >= dueThatDay;
+        return `<div class="fund ${o.unusable || !enough ? 'fund-no' : 'fund-yes'}">
+          <div class="fund-top">
+            <span class="fund-lab">${o.label}</span>
+            <span class="fund-amt">${money2(o.available)}${o.rate ? ` <span class="mutedtext">at ${pct(o.rate)}</span>` : ''}</span>
+          </div>
+          <div class="fund-verdict">${enough && !o.unusable
+            ? `<span class="ok">Covers it</span>`
+            : `<span class="no">Not enough — ${money(dueThatDay - o.available)} short of the ${money(dueThatDay)} needed</span>`}</div>
+          <p class="fund-note">${o.note}</p>
+        </div>`;
+      }).join('');
+    $('funding-note').textContent = plan.funding.note;
+  } else {
+    fund.hidden = true;
+  }
+
   /* ---- the tennis-transfer deadline ---- */
   const tn = $('transfer-note');
   if (transferMonthly > 0) {
@@ -433,7 +481,7 @@ function renderPlan(d, periods) {
     </tr></thead><tbody>${sim.weeks.map(wkRow).join('')}</tbody>`;
 
   /* ---- the calendar ---- */
-  renderCalendar(sim, neededBy);
+  renderCalendar(sim, neededBy, plan);
   $('cal-note').textContent = plan.billsNote || '';
 
   $('wk-cards').innerHTML = sim.weeks.map(w => {

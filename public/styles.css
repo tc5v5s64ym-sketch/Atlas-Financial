@@ -364,6 +364,23 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
   .cal-agenda { display:block; }
 }
 
+/* covering the gap */
+.fund-list { display:flex; flex-direction:column; }
+.fund { padding:14px 0; border-bottom:1px solid var(--grid); }
+.fund:first-child { padding-top:2px; }
+.fund:last-child { border-bottom:none; padding-bottom:2px; }
+.fund-top { display:flex; justify-content:space-between; gap:14px; align-items:baseline; }
+.fund-lab { font-weight:600; font-size:.93rem; }
+.fund-amt { font-weight:650; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.fund-verdict { margin-top:3px; font-size:.82rem; font-weight:600; }
+.fund-verdict .ok { color:var(--success-text); }
+.fund-verdict .no { color:var(--muted); }
+.fund-note { margin:6px 0 0; font-size:.83rem; color:var(--text-secondary); max-width:72ch; }
+.fund-no .fund-lab, .fund-no .fund-amt { color:var(--muted); font-weight:600; }
+.fund-yes { border-left:3px solid var(--good); padding-left:12px; }
+.cal-ev.noncash { color:var(--muted); font-style:italic; }
+.tie { color:var(--serious); margin-right:2px; }
+
 .wk-track { margin-top:6px; font-size:.78rem; color:var(--muted); }
 .wk-track.neg { color:var(--critical); font-weight:600; }
 .transfer-note { border-left:3px solid var(--s2); padding-left:12px; }

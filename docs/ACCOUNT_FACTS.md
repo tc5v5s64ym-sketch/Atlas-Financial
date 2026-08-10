@@ -27,6 +27,26 @@ anything older than a few months as needing re-checking, not as fact.
 Statement close dates: **TD card ~23rd** · **Triangle 17th** ·
 **MBNA/Amazon 6th** · **TD Cash Back 7th** · **Travel Visa 5th**.
 
+### The 12 August Burrard registrations are one payment, not two
+
+*(owner-stated 2026-08-09)* Both children are registered on the same day, so the
+**$623.00 cannot be staggered** across the 14 August payday — it is the full
+amount or neither child is registered.
+
+Against **$79.84** in the household spending accounts, only two sources can
+reach it on the day:
+
+| Source | Available | Cost |
+|---|---|---|
+| **Amanda's tennis account** | $2,691.85 | none — already the household's money |
+| **HELOC draw** | $1,067.84 | 4.90%, interest-only, and it capitalises — a draw here never clears |
+| Chequing B overdraft | $82.28 | nowhere near enough |
+| All cards combined | $265.83 | nowhere near enough |
+
+Cards and overdraft together reach **$348.11** against $623.00. This is what
+"every shock absorber is spent" means in practice: a $623 youth-sport bill is
+now a financing decision.
+
 ### Recurring bills *(days extracted from the transaction history, 2026-08-09)*
 
 Only bills still active in the last three months. Amounts are the recent

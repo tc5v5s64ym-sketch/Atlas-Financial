@@ -49,8 +49,8 @@
     ],
     "billsNote": "Extracted from the transaction history, not guessed: only bills still active in the last three months are dated here, and every one of them is paid from Chequing A. BC Hydro is no longer an open gap — it moved to Amanda's account in May 2026 and she has paid it there since ($235, $250, $250), so it is correctly absent from a household-accounts plan. Telus stopped leaving any captured account in March 2026 and its route is still unknown. Streaming is Amazon Channels — several small charges on scattered days, left inside the variable budget. There is no Netflix anywhere in the data.",
     "commitments": [
-      { "id": "burrard1", "date": "2026-08-12", "label": "Burrard registration — child 1", "amount": 320.00, "confidence": "confirmed" },
-      { "id": "burrard2", "date": "2026-08-12", "label": "Burrard registration — child 2", "amount": 303.00, "confidence": "confirmed" },
+      { "id": "burrard1", "date": "2026-08-12", "label": "Burrard registration — child 1", "amount": 320.00, "confidence": "confirmed", "group": "burrard" },
+      { "id": "burrard2", "date": "2026-08-12", "label": "Burrard registration — child 2", "amount": 303.00, "confidence": "confirmed", "group": "burrard" },
       { "id": "fusioncamp", "date": "2026-08-16", "label": "Fusion camp", "amount": 786.00, "confidence": "estimated", "note": "Stated as \"next week\" — the date is approximate." },
       { "id": "tryouts", "date": "2026-08-22", "label": "Fusion tryouts", "amount": 140.00, "confidence": "confirmed" },
       { "id": "warriors", "date": "2026-09-15", "label": "Warriors Elite Academy", "amount": 800.00, "confidence": "estimated", "adjustable": true, "note": "Owner-stated \"about $800\", September, not yet invoiced. Mid-month assumed." },
@@ -58,10 +58,23 @@
       { "id": "fusion-oct", "date": "2026-10-15", "label": "Fusion season — October instalment", "amount": 500.00, "confidence": "estimated", "adjustable": true },
       { "id": "fusion-nov", "date": "2026-11-01", "label": "Fusion season — November instalment", "amount": 500.00, "confidence": "estimated", "adjustable": true, "note": "Date unknown; placed on the 1st, the cautious choice inside the window." }
     ],
+    "groups": [
+      { "id": "burrard", "label": "Burrard registrations", "atomic": true, "note": "Both children are registered on the same day (owner-stated), so this cannot be staggered across the payday two days later — it is the full amount or neither child is registered." }
+    ],
+    "funding": {
+      "heading": "Covering the 12 August gap",
+      "note": "Two sources can cover it, and only two. Cards and the overdraft cannot — even combined they reach $348.11 against $623.00 needed on the day.",
+      "options": [
+        { "id": "amanda", "label": "Amanda releases funds from her tennis account", "available": 2691.85, "rate": null, "rank": 1, "note": "The cheapest route by a wide margin: it is already the household's money, it costs nothing, and it adds no debt. It depends on how much of that balance is owed onward to coaches — she settles them first. A transfer of about $1,050 covers the registrations and restores the $500 buffer." },
+        { "id": "heloc", "label": "Draw on the HELOC", "available": 1067.84, "rate": 4.90, "rank": 2, "note": "Enough, but it is the last of the line: $1,067.84 of a $202,654 limit, 99.5% drawn. At 4.90% interest-only the draw never amortises — and because the interest capitalises rather than being paid, a $623 draw becomes a permanent addition to the balance, not a debt that clears. $2,269.80 of past lacrosse fees already went on it this way. Covering the whole $1,043 gap would leave about $25 of headroom across every facility the household has." },
+        { "id": "overdraft", "label": "Chequing B overdraft", "available": 82.28, "rate": null, "rank": 3, "unusable": true, "note": "$82.28 of a $600 limit. Nowhere near enough on its own, and overdraft interest plus the $5 monthly protection fee already run against this account." },
+        { "id": "cards", "label": "Credit cards", "available": 265.83, "rate": null, "rank": 4, "unusable": true, "note": "$200 on the TD credit card, $62.83 on the MBNA, $3.00 on the Triangle. The Cash Back Visa is $612 over its limit and the Travel Visa is full. Not enough, and a purchase on the TD card at 24.99% would be the most expensive money in the household." }
+      ]
+    },
     "essentialsPerMonth": 3054,
     "essentialsNote": "[ESTIMATE] Groceries, fuel, utilities, insurance, property tax, medical and union dues have averaged about $3,054/month. The essential/discretionary split is the analyst's classification, not the bank's.",
     "actions": [
-      { "what": "Move ~$1,050 across from Amanda's account, then pay both Burrard registrations", "amount": 1050.00, "due": "2026-08-11", "why": "The household accounts hold $79.84. The two registrations of $623 fall on the 12th, two days before payday, and there is no household cash to pay them from — short by about $543 before any spending at all. Her account held $2,691.85 on the 9th. Moving roughly $1,050 covers the fees and restores the $500 buffer. The alternatives are worse: Chequing B has $82.28 of overdraft left, every card is at or over its limit, and this household has already paid $273 in NSF fees.", "status": "open", "owner": "Amanda, then both" },
+      { "what": "Fund the 12 August registrations — Amanda's account, or failing that the HELOC", "amount": 1050.00, "due": "2026-08-11", "why": "Both registrations are paid on the same day and total $623.00; the household accounts hold $79.84. Only two sources can cover it: Amanda releasing about $1,050 from her tennis account, which costs nothing, or a HELOC draw against the $1,067.84 that is left — the last of the household's credit, at 4.90% interest-only on a facility that is 99.5% drawn and never amortises. Cards and the overdraft cannot: combined they reach $348.11. Decide before the 11th so the money is in place on the day.", "status": "open", "owner": "Amanda, then both" },
       { "what": "Fund the Fusion camp", "amount": 786.00, "due": "2026-08-16", "why": "The largest single item before month-end, landing two days after payday. The date is approximate — confirm it, because a week earlier would breach the low point.", "status": "open" },
       { "what": "Pay the TD credit card minimum", "amount": 94.03, "due": "2026-08-17", "why": "A fifth missed minimum restarts the 24.99% penalty-rate clock for another twelve months.", "status": "open" },
       { "what": "Get the Cash Back Visa back under $5,000", "amount": 762.36, "due": "2026-09-01", "why": "The September minimum includes the $612.43 over-limit excess. Posting it by the 1st — before the statement closes on the 7th — stops the $29 monthly over-limit fee.", "status": "open" },
