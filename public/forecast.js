@@ -127,6 +127,10 @@
       if (inj.amount > 0 && inj.date >= start && inj.date <= end) {
         events.push({ date: inj.date, amount: inj.amount, kind: 'injection',
           label: inj.label || 'Gap funding', id: inj.id || 'gapFunding',
+          // Where the money came FROM. Money released from an account the
+          // household already owns creates no debt; a draw on a credit
+          // facility does, and the debt projection has to see that.
+          debtId: inj.debtId || null,
           confidence: inj.confidence || 'planned' });
       }
     }
@@ -348,9 +352,14 @@
     const firstPay = zero.events.find(e => e.kind === 'income' && e.amount >= payFloor);
     const spendFrom = firstPay ? firstPay.date : gapDate;
 
+    // Covering the gap costs nothing if the money is released from an account
+    // the household already owns, and creates debt if it is drawn on a credit
+    // facility. The caller names the source; the debt projection reads it off
+    // the same event, so cash and debt cannot disagree about how it was funded.
     const recovery = Object.assign({}, base, {
       injections: [{ date: gapDate, amount: gapAmount, id: 'gapFunding',
-        label: 'Gap funding — transfer or draw' }],
+        label: base.fundingLabel || 'Gap funding — transfer or draw',
+        debtId: base.fundingDebtId || null }],
       variableFrom: spendFrom,
       measureFrom: gapDate,
     });
@@ -495,7 +504,13 @@
         id: x.id, label: x.label, secured: !!x.secured, rate: x.rate || 0,
         limit: x.limit, opening: x.balance, balance: x.balance,
         interestByEvent: !!x.interestByEvent, principalShare: x.principalShare,
-        interest: 0, paid: 0, capitalised: 0,
+        interest: 0, paid: 0, capitalised: 0, drawn: 0,
+        // The day the balance actually crosses the limit. Tracked on the daily
+        // walk, not read off the 30-day snapshots — the HELOC crosses on
+        // 30 September and the next snapshot is 7 October, so reporting the
+        // snapshot puts the breach in the wrong month and on the wrong side of
+        // the plan's own deadline.
+        firstOver: null,
       };
       byId[x.id] = s;
       return s;
@@ -516,7 +531,7 @@
         limit: s.limit,
         available: s.limit != null ? Math.max(0, s.limit - s.balance) : null,
         overLimit: s.limit != null && s.balance > s.limit,
-        interest: s.interest, paid: s.paid,
+        interest: s.interest, paid: s.paid, drawn: s.drawn, firstOver: s.firstOver,
       })),
       consumer: state.filter(s => !s.secured).reduce((a, s) => a + s.balance, 0),
       secured: state.filter(s => s.secured).reduce((a, s) => a + s.balance, 0),
@@ -546,6 +561,15 @@
         s.interest += daily;
       }
       for (const e of byDate.get(date) || []) {
+        if (e.kind === 'injection') {
+          // Cash arriving from outside the plan. If it was drawn on a credit
+          // facility it is borrowing, and the balance has to rise by it.
+          if (e.debtId && byId[e.debtId]) {
+            byId[e.debtId].balance += e.amount;
+            byId[e.debtId].drawn += e.amount;
+          }
+          continue;
+        }
         if (e.kind === 'noncash') {
           const t = targetFor(e.id);
           // A capitalising charge grows the balance it is charged on.
@@ -567,6 +591,9 @@
           extraTarget.paid += -e.amount;
         }
       }
+      for (const s2 of state) {
+        if (s2.firstOver == null && s2.limit != null && s2.balance > s2.limit) s2.firstOver = date;
+      }
       const dayNo = i + 1;
       if (dayNo === 30 || dayNo === 60 || dayNo === 90 || dayNo === days) {
         if (!marks.some(m => m.date === date)) marks.push(snapshot(dayNo, date));
@@ -575,6 +602,15 @@
 
     return {
       marks, byId, end,
+      // Every facility that is over its limit at some point, on the day it
+      // actually happens rather than at the next 30-day snapshot. A facility
+      // already over the limit today is a different problem from one that
+      // crosses on its own inside the window, so they are marked apart.
+      crossings: state.filter(s => s.firstOver)
+        .map(s => ({ id: s.id, label: s.label, date: s.firstOver, limit: s.limit,
+          day: diffDays(start, s.firstOver),
+          alreadyOver: s.limit != null && s.opening > s.limit }))
+        .sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0),
       // Everything an extra payment did NOT reach, so an untargeted one is
       // visible rather than silently vanishing into cash.
       untargetedExtra: opts.extraDebtMonthly > 0 && !extraTarget,

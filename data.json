@@ -332,7 +332,9 @@
       "options": [
         {
           "id": "amanda",
+          "debtId": null,
           "label": "Amanda releases funds from her tennis account",
+          "short": "Amanda's transfer",
           "available": 2691.85,
           "rate": null,
           "rank": 1,
@@ -340,7 +342,9 @@
         },
         {
           "id": "heloc",
+          "debtId": "heloc",
           "label": "Draw on the HELOC",
+          "short": "a HELOC draw",
           "available": 1067.84,
           "rate": 4.9,
           "rank": 2,
@@ -348,7 +352,9 @@
         },
         {
           "id": "overdraft",
+          "debtId": null,
           "label": "Chequing B overdraft",
+          "short": "the overdraft",
           "available": 82.28,
           "rate": null,
           "rank": 3,
@@ -357,7 +363,9 @@
         },
         {
           "id": "cards",
+          "debtId": null,
           "label": "Credit cards",
+          "short": "the cards",
           "available": 265.83,
           "rate": null,
           "rank": 4,

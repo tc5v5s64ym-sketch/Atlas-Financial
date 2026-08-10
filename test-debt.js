@@ -136,6 +136,72 @@ ok(helocBreach && helocBreach.day <= 90, 'and it happens within the 90 days',
 ok(/HELOC/.test(JSON.stringify(plan.nextDollar)),
   'the next-dollar policy accounts for it');
 
+/* ==================================================================
+   The two things review caught, and neither can come back quietly.
+   ================================================================== */
+console.log('\n=== the crossing date is the day it happens, not the next snapshot ===');
+// The HELOC crosses on 30 September. The 30-day marks are 7 Sep, 7 Oct, 6 Nov,
+// so reading the breach off the marks reported OCTOBER — a different month, and
+// on the wrong side of the plan's own 30 September deadline.
+const cross = proj.crossings.find(c => c.id === 'heloc' && !c.alreadyOver);
+ok(!!cross, 'the HELOC crossing is reported at all');
+ok(cross.date === '2026-09-30', 'and on the exact day the charge posts', cross.date);
+const markDate = proj.marks.find(m => m.debts.some(x => x.id === 'heloc' && x.overLimit)).date;
+ok(markDate === '2026-10-07', 'the 30-day snapshot alone would have said 7 October', markDate);
+ok(cross.date < markDate, 'so the crossing must be read from the daily walk, not the marks',
+  `${cross.date} vs ${markDate}`);
+// The charge that does it, checked against the schedule rather than asserted.
+const helocCharges = F.occurrences(helocObl, asOf, proj.end);
+ok(helocCharges.includes(cross.date), 'the crossing day is a day the charge actually posts',
+  helocCharges.join(', '));
+// A facility already over the limit today is a different problem and is marked.
+const already = proj.crossings.filter(c => c.alreadyOver).map(c => c.label);
+ok(already.includes('TD Cash Back Visa'),
+  'a facility over its limit today is flagged as already-over, not as a future crossing',
+  already.join(', '));
+
+console.log('\n=== how the gap is funded changes the debt, not just the cash ===');
+// A generic positive injection made the cash line right and the debt line
+// wrong: the scoreboard modelled the free source no matter which was chosen.
+const freeAdvice = F.recommend(plan, asOf, Object.assign({}, BASE, { fundingDebtId: null }));
+const freeProj = F.projectDebts(plan, data.debts, asOf,
+  Object.assign({}, freeAdvice.simOptions, { weeklyVariable: freeAdvice.weekly }));
+const drawAdvice = F.recommend(plan, asOf, Object.assign({}, BASE, { fundingDebtId: 'heloc' }));
+const drawProj = F.projectDebts(plan, data.debts, asOf,
+  Object.assign({}, drawAdvice.simOptions, { weeklyVariable: drawAdvice.weekly }));
+
+ok(freeProj.byId.heloc.drawn === 0,
+  'funding from an account the household owns adds nothing to the HELOC');
+ok(near(drawProj.byId.heloc.drawn, freeAdvice.gap.amount),
+  'funding from the HELOC adds exactly the gap to it',
+  money(drawProj.byId.heloc.drawn));
+ok(drawProj.byId.heloc.balance > freeProj.byId.heloc.balance,
+  'so the projected balance is higher',
+  `${money(drawProj.byId.heloc.balance)} vs ${money(freeProj.byId.heloc.balance)}`);
+const drawCross = drawProj.crossings.find(c => c.id === 'heloc' && !c.alreadyOver);
+ok(drawCross.date === '2026-08-31', 'and it crosses its limit a month earlier', drawCross.date);
+ok(drawCross.date < cross.date, 'strictly sooner than the free route',
+  `${drawCross.date} vs ${cross.date}`);
+// The cash side must be identical either way — the gap is the same amount of
+// money arriving on the same day; only its cost differs.
+ok(near(freeAdvice.sim.ending, drawAdvice.sim.ending),
+  'the cash projection is unchanged by the source — only the debt moves',
+  money(freeAdvice.sim.ending));
+ok(freeAdvice.weekly === drawAdvice.weekly,
+  'and so is the weekly cap', `$${freeAdvice.weekly}`);
+
+// Every funding option must declare whether taking it is borrowing.
+for (const o of plan.funding.options) {
+  ok('debtId' in o, `funding option "${o.id}" declares whether it creates debt`,
+    o.debtId === null ? 'no debt' : 'draws on ' + o.debtId);
+  ok(o.debtId === null || data.debts.some(x => x.id === o.debtId),
+    `and "${o.debtId}" is a real debt`);
+}
+const preferred = plan.funding.options.slice().sort((a, b) => a.rank - b.rank)
+  .find(o => !o.unusable);
+ok(preferred && preferred.debtId === null,
+  'the highest-ranked usable source is the one that creates no debt', preferred.label);
+
 console.log('\n=== the next-dollar policy is explicit, not invented ===');
 const nd = plan.nextDollar;
 ok(!!nd && !!nd.policy, 'a policy is declared', nd && nd.policy);

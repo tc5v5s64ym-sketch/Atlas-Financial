@@ -267,7 +267,17 @@ function renderPlan(d, periods) {
   // and the opening-gap analysis all come from the same engine result, so the
   // headline figure and the budget breakdown below cannot disagree — they
   // used to, showing $1,650/wk at the top and $0/wk in the budget block.
-  const advice = Forecast.recommend(plan, asOf, simOpts());
+  // Which source covers the opening gap decides whether it costs anything.
+  // The top-ranked usable option wins by default — Amanda releasing money the
+  // household already owns, which creates no debt. A HELOC draw would, and the
+  // projection has to see that rather than silently modelling the free path.
+  const fundingSource = ((plan.funding || {}).options || [])
+    .slice().sort((a, b) => a.rank - b.rank)
+    .find(o => !o.unusable) || null;
+  const advice = Forecast.recommend(plan, asOf, simOpts({
+    fundingDebtId: fundingSource ? fundingSource.debtId || null : null,
+    fundingLabel: fundingSource ? `Gap funding — ${fundingSource.label}` : undefined,
+  }));
   const recommended = advice.weekly;
   const weekly = state.weeklyVariable != null ? state.weeklyVariable : recommended;
   // The plan being drawn is the recovery path: gap covered, spending from the
@@ -276,6 +286,10 @@ function renderPlan(d, periods) {
   const sim = weekly === recommended ? advice.sim
     : Forecast.simulate(plan, asOf, Object.assign({}, advice.simOptions, { weeklyVariable: weekly }));
   const gap = advice.gap;                 // null when there is no opening gap
+  // Whether the assumed source is borrowed money. If it is, the debt side of
+  // the projection already carries the draw and there is no cheaper path left
+  // to contrast it against.
+  const fundingIsDraw = !!(fundingSource && fundingSource.debtId);
   const zeroSim = advice.zero;            // the unfunded window — the problem
   const fundingGap = gap ? gap.amount : 0;
   const preIncomeOut = gap ? gap.preIncomeOut : 0;
@@ -414,8 +428,11 @@ function renderPlan(d, periods) {
   // being true, the sentence changes.
   const overToday = today.debts.filter(x => x.overLimit);
   const helocNow = debtProj.byId.heloc;
-  const helocBreach = helocNow && helocNow.limit != null
-    ? debtProj.marks.find(m => m.debts.some(x => x.id === 'heloc' && x.overLimit)) : null;
+  // The day it ACTUALLY crosses. Reading this off the 30-day marks reported
+  // 7 October for a crossing that happens on 30 September — a different month,
+  // and on the wrong side of the plan's own deadline.
+  const helocBreach = (debtProj.crossings || [])
+    .find(c => c.id === 'heloc' && !c.alreadyOver) || null;
   const missionParts = [];
   if (gap) missionParts.push(`cover the ${money(fundingGap)} timing gap by ${fmtDateLong(gap.date)}`);
   if (overToday.length) missionParts.push(`get the ${overToday.map(x => x.label).join(' and ')} back under its limit`);
@@ -584,6 +601,9 @@ function renderPlan(d, periods) {
   }).join('');
 
   $('score-note').innerHTML =
+    (gap ? `Assumes the opening gap is covered by <b>${fundingSource ? fundingSource.short
+      : 'the top-ranked source'}</b>${fundingIsDraw ? ', which is borrowed money and is carried on the debt line below'
+      : ', which creates no debt. Funding it from the HELOC instead would show higher balances'}. ` : '') +
     `Cash is <b>projected</b> under the ${state.scenario} scenario at ${money(weekly)}/week; debt balances are ` +
     `projected from today's rates with minimums paid and <b>no new card spending</b> — the cap is a cash instruction, ` +
     `and these lines only fall if it is honoured in cash. None of these is a target: no aspirational payoff figure ` +
@@ -642,10 +662,23 @@ function renderPlan(d, periods) {
                earlier than assumed, the weekly cap falls.` });
   }
   if (helocBreach) {
-    risks.push({ what: `The HELOC passes its own limit around ${fmtDateLong(helocBreach.date)} with no new borrowing`,
+    const drawOption = ((plan.funding || {}).options || []).find(o => o.debtId === 'heloc' && !o.unusable);
+    let alt = '';
+    if (drawOption && gap && !fundingIsDraw) {
+      // What the fallback would actually cost, run through the same engine
+      // rather than asserted — if the numbers move, this sentence moves.
+      const drawn = Forecast.projectDebts(plan, d.debts, asOf, Object.assign({},
+        Forecast.recommend(plan, asOf, simOpts({ fundingDebtId: 'heloc' })).simOptions,
+        { weeklyVariable: weekly }));
+      const drawnCross = (drawn.crossings || []).find(c => c.id === 'heloc' && !c.alreadyOver);
+      if (drawnCross) {
+        alt = ` Covering the opening gap from it instead of ${fundingSource ? fundingSource.short : 'her account'}
+                brings that crossing forward to <b>${fmtDateLong(drawnCross.date)}</b>.`;
+      }
+    }
+    risks.push({ what: `The HELOC passes its own limit on ${fmtDateLong(helocBreach.date)} with no new borrowing`,
       change: `Its ${money(plan.obligations.find(o => o.id === 'heloc').amount)}/month interest capitalises and
-               nothing repays it, so the balance grows on its own. Drawing on it to cover the opening gap brings
-               that date forward.` });
+               nothing repays it, so the balance grows on its own.${alt}` });
   }
   const overLimitLater = day90.debts.filter(x => x.overLimit
     && !overToday.some(o => o.id === x.id)
