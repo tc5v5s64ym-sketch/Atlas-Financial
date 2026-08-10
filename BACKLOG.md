@@ -41,6 +41,19 @@ wrong instrument.
 coach pay between April and August 2026. **The 2026 route is still unidentified**
 — most likely the account in B64.
 
+**Partly answered again, 9 Aug 2026.** Recovering the deleted Interac
+notifications produced a payment that had been invisible: **$2,160.00 on 6 July
+to a named individual**, out of SAVINGS-DONT TOUCH, **four days after the
+$9,646.25 remittance landed there** — 22.4% of it, against the 27.7% coach share
+her sheets imply. A second, **$1,064.92**, went to another named individual on
+5 August. **So the "unrecorded liability" worry is substantially reduced**: the
+pass-through money was not simply absorbed by the HELOC.
+
+What is still open is the rest of the route. This is one payment out of one
+remittance, and the earlier conclusion that no coach payment existed was wrong
+only because the evidence was in the bin — which is a reason to fix **B66**
+before the next remittance rather than after it.
+
 **Second lead:** a **Payworks** pay-statement notice, 29 Jun 2026. If the coaching
 business runs payroll, the rest of the coaches are paid through it.
 
@@ -146,38 +159,23 @@ Inferred personal from its transactions, not verified.
 
 ## Ready — analysis, nothing blocking
 
-**B61 · E-transfer counterparties** · *medium*
-**23 of ~207 attributed (11%).** TD's export never names the other side; Interac
-emails do, but auto-deposits generate none and most notify Amanda. Everything
-found is in `raw/interac/`. More names would improve B62 and B63 directly.
+**B66 · Stop deleting the Interac notifications** · **owner action** · *small*
+**The single cheapest fix in this file.** Interac's confirmation emails are the
+only record of who is on the other end of an e-transfer, and both mailboxes are
+deleting them. Gmail purges the bin after 30 days, so the evidence is being
+destroyed on a rolling cycle — 26 of the 49 attributions recovered on 9 Aug were
+sitting in the bin and would have been gone within weeks.
 
-**B62 · Youth lacrosse — floor established** · *medium*
+A filter on **both** accounts — `from:payments.interac.ca` → apply a label, skip
+the inbox, **never delete** — costs nothing and makes every future transfer
+attributable. It cannot recover what has already gone.
 
-| Source | Identified |
-|---|---|
-| Cards | $2,546.26 across 18 charges |
-| E-transfers via Interac emails | $2,597.30 across 6 |
-| **Floor** | **$5,143.56** — about **$286/month** |
-
-**Half of it moves by e-transfer**, which is why it was invisible. This is a
-floor, not a total — it rises with every counterparty attributed.
-
-**B31 · Transfer tracing, now with multi-hop chains** · *medium*
-TD stamps each internal transfer with a five-character reference appearing on
-both legs — **635 matched pairs, zero mismatches**. But the 24 Jul HELOC →
-Chequing A → Wise chain shows single-pair matching is not enough: **one
-intermediate hop breaks the trail**. Re-run looking for chains. **176 transfers
-have only one leg captured** and may point at the unidentified accounts.
-
-**B34 · Extend the merchant library** · *large*
-`docs/merchant-library.csv` holds **273 patterns**. Chequing is still **12.0%**
-uncategorised and cards **4.5%**. Patterns must match TD's ~15-character
-truncation — a library written from full card names fails silently against
-chequing.
-
-**B7 · Reconcile the $158.55 Cash Back interest charge** · *small*
-26.99% on the observed balance implies about $115. Likely a cash-advance
-component or interest-on-interest under TD's 2 Jul 2026 change.
+**B67 · The $1,806.00 Fusion invoice** · *small*
+Invoice 86995864, 31 Aug 2025, paid by Dale — **and it appears in none of the
+six accounts or five cards**, though it falls inside both coverage windows. The
+other seven Dale-paid invoices predate card coverage and are explainable; this
+one is not. Most likely an invoice total settled in instalments too small to
+spot. One look at the LeagueApps payment history closes it.
 
 **B28 · Rewards balances as minor assets** · *small*
 Travel Visa **57,968 TD Rewards points**; Cash Back **$47.21**. Absent from net
@@ -233,8 +231,14 @@ double-counting.
 Written before the spouse's accounts were known.
 
 **B30 · Fees dashboard** · **DONE 2026-08-09** — site section 11, avoidable in
-red against structural in blue. YTD **$1,122.45**, of which **$828.00 avoidable**.
+red against structural in blue. YTD **$1,160.45**, of which **$831.00 avoidable**.
 B23 and B24 would add the missing plan/rate detail but were not blocking.
+
+*Corrected 2026-08-09:* two fees were missing and were being counted as
+**spending** instead. `O.D.P. FEE` is overdraft protection and never matched a
+rule written as `/OVERDRAFT/`; `FX ATM W/D FEE` matched nothing at all. Together
+**$93.00 over 18 months**. Both dashboards were wrong at once — the lesson is
+that TD abbreviates, and a fee rule written from the full phrase fails silently.
 
 **B32 · Interest dashboard** · **DONE 2026-08-09** — site section 10, interest
 actually charged by facility. The mortgage is excluded and the caption says why.
@@ -267,6 +271,42 @@ Served from the site behind the same password. Cycles known:
 
 ## Done
 
+**The 9 August analysis run — five items, all published to the site.**
+
+- **B61 · E-transfer counterparties** — **24 → 49 of 204 (24%)**, doubled. The
+  new names were in the **Gmail bin** of both mailboxes, not missing. Every one
+  matches a bank row on amount and date. Two large payments to named individuals
+  emerged: **$2,160.00** (6 Jul) and **$1,064.92** (5 Aug). The matcher was also
+  fixed — it had been letting one notification name every same-amount transfer
+  within four days, and letting incoming notifications name outgoing transfers.
+  Follow-up is **B66**.
+- **B31 · Multi-hop chains** — real but **rare**: 33 chains of 635 pairs, only 5
+  from the HELOC ($2,135.00). **The premise was disproved** — splitting
+  single-leg transfers by destination shows **zero** unidentified account
+  numbers; 173 of them are credit-card payments. B64 cannot be solved from
+  transfer data. What the run did find is where borrowed money goes: **$14,271.63
+  of ordinary bills paid straight from the HELOC**, including **$5,639.67 of
+  property tax** and **$400.00 of CRA tax owed**.
+- **B34 · Merchant library** — chequing uncategorised **12.0% → 4.5%**, matching
+  the card side. 88 patterns added, mostly Square terminals and foreign-currency
+  charges. Also fixed a bug that re-appended all 72 chequing patterns on every
+  run: the library had reached 345 rows for 269 distinct patterns.
+- **B7 · The $158.55 interest charge** — **explained.** The question was
+  mis-specified: it applied 26.99% to the *closing* balance, but interest is
+  charged on the *average daily* balance. June and July were charged below rate,
+  leaving $45.46 uncollected; August collected it. Across five cycles the model
+  implies $504.37 against $492.64 charged — 2.3%, which is posting-date bias.
+  Every interest line on the card reads **RETAIL INTEREST**, so the cash-advance
+  theory is dead.
+- **B62 · Youth lacrosse** — floor **$5,143.56 → $5,729.47**, about $348/month,
+  plus $400 inferred. The chequing figure was **not** $0.00 as recorded; it was
+  $140.03 hidden by truncation. **40% of it was paid out of the HELOC.**
+
+**Also, and not on the list:** the 30 June coaching remittance was re-traced and
+**a coach was paid out of it** — $2,160.00 on 6 July, four days after it landed.
+The earlier "it all went onto the HELOC, no coach payment appears" conclusion was
+wrong, and wrong because the evidence had been deleted. See B63.
+
 **Capture — complete.** Every consumer debt in the household is captured.
 
 - **B45** `raw/` backed up to OneDrive, verified, with a SHA-256 manifest
@@ -293,6 +333,13 @@ Served from the site behind the same password. Cycles known:
 ## The three biggest numbers still uncertain
 
 1. **Coach payments** — income overstated by ~$650/month on current estimates,
-   settled by B63
-2. **Two unidentified accounts** — $59,027, likely reachable via B64
+   settled by B63. One payment is now traced ($2,160.00, 6 Jul); the rest of the
+   route is not
+2. **Two unidentified accounts** — $59,027, reachable via B64 and **only** via
+   the e-transfer record: the internal-transfer data contains zero unidentified
+   account numbers, so B31 cannot reach them
 3. **$8,150 of cheques** — payee unknowable without TD's images
+
+**And one that is no longer uncertain:** the $158.55 interest charge. It was
+never a cash advance and never unexplained — the check was against the wrong
+balance. See B7.

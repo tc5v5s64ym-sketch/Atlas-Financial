@@ -81,14 +81,18 @@ function interestKind(desc, acct) {
 }
 
 // Fees, named so the dashboard can split avoidable from structural.
+// TD abbreviates. "O.D.P. FEE" is overdraft protection and never matches a rule
+// written as /OVERDRAFT/, so $90.00 of fees was landing in SPENDING instead --
+// wrong in both dashboards at once. Match the abbreviation explicitly.
 const FEE_RULES = [
   [/NSF/i,                          'NSF fee',                'avoidable'],
-  [/OVERDRAFT/i,                    'Overdraft protection',   'structural'],
+  [/OVERDRAFT|O\.?D\.?P\.? FEE/i,   'Overdraft protection',   'structural'],
   [/MONTHLY ACCOUNT FEE/i,          'Monthly account fee',    'structural'],
   [/CHQ RETURN FEE/i,               'Cheque return fee',      'avoidable'],
   [/SEND E-TFR FEE|E-TFR FEE/i,     'E-transfer fee',         'structural'],
   [/PAYMENT COVERAGE FEE/i,         'Payment coverage fee',   'avoidable'],
   [/WITHDRAWAL FEE|NON-TD ATM/i,    'Out-of-network ATM',     'avoidable'],
+  [/FX ATM W\/D FEE/i,              'Foreign ATM fee',        'avoidable'],
   [/OVERLIMIT/i,                    'Over-limit fee',         'avoidable'],
   [/SERVICE CHARGE/i,               'Service charge',         'structural'],
 ];
