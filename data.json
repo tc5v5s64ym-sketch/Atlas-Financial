@@ -35,7 +35,7 @@
     { "label": "TD credit card", "balance": 1799.97, "rate": 24.99, "rateBasis": "Penalty rate — normal would be 17.20%", "structure": "Revolving — dormant balance, no purchases", "annualInterest": 450, "payment": 94.03, "frequency": "Monthly minimum", "nextDue": "2026-08-17", "limit": 2000, "available": 200.00, "confidence": "verified" },
     { "label": "Travel Visa (business)", "balance": 1078.31, "rate": 19.99, "rateBasis": "Purchases 19.99% / cash 22.99%", "structure": "Revolving — pending charges will push it over", "annualInterest": 215.55, "payment": 17.00, "frequency": "Monthly minimum", "nextDue": "2026-08-26", "limit": 1100, "available": 0, "confidence": "verified", "note": "$165.13 pending takes it to $1,243.44 against a $1,100 limit" }
   ],
-  "debtsNote": "Affirm/Flexiti is gone: owner-confirmed paid off and closed, $2,654.28 across the window. Every card balance here was read from the institution on 9 August. The Cash Back Visa's $158.55 monthly interest charge is higher than 26.99% on its balance implies — unresolved, and the reason its annual figure is taken from the charge rather than the rate.",
+  "debtsNote": "Affirm/Flexiti is gone: owner-confirmed paid off and closed, $2,654.28 across the window. Every card balance here was read from the institution on 9 August. The Cash Back Visa's $158.55 interest charge is no longer an open question — it is 26.99% on the average daily balance, not on the closing balance, and the two are far apart on a card that is paid down and run back up. See the reconciliation under Money in and out.",
 
   "utilisation": [
     { "label": "TD Cash Back Visa", "used": 5612.43, "limit": 5000, "available": 0 },
