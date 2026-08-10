@@ -136,12 +136,22 @@ is what makes it a decision rather than an omission.
 
 ### `tests` — blocking
 
-`npm test`. Five suites: static sanity, the forecast engine and its
+`npm test`. Six suites: static sanity, the forecast engine and its
 opening-gap regression, household-budget reconciliation, the coupled
-cash-and-debt model, and the authority invariants.
+cash-and-debt model, the authority invariants, and the merge-card check's own
+behaviour.
 
 **An invariant failure is a failure, not a warning.** A plan that disagrees
 with itself is worse than no plan, because it still looks authoritative.
+
+**The merge-card suite guards the gate above.** `test-mergecard.js` extracts the
+real `script:` body out of `merge-card-check.yml` and runs it against completed
+and broken cards — including both false greens the check has actually shipped,
+where a card went green while saying in plain words that the required review had
+not happened. It then reverts each pending-marker protection in the extracted
+source and proves those cases go green again, so a guard cannot be removed
+without a committed test noticing. A copy of the check would prove only that the
+copy still works.
 
 ---
 

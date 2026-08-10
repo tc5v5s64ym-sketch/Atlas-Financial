@@ -330,9 +330,13 @@ npm test
 ```
 
 Then whatever the change actually touches: `node test-forecast.js` after any
-change to the `plan` block, `node test-local.js` after `server.js`, and
-`node verify-live.js` against the deployed site for the security behaviour
-visible without a password.
+change to the `plan` block, `node test-local.js` after `server.js`,
+`node test-mergecard.js` after the merge card check or the pull request
+template, and `node verify-live.js` against the deployed site for the security
+behaviour visible without a password.
+
+**The review machinery is code, and it is tested like code.** A change to
+`merge-card-check.yml` that nothing catches is a change to what may merge.
 
 A test should prove the failure cannot recur through the path a household
 actually reads — not only through the helper that was just written.
