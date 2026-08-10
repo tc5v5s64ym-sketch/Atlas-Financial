@@ -172,6 +172,16 @@ const CASES = [
   // The bullet shape, which the check supports and nothing covered until a
   // blank row passed there because the capture kept the bullet's colon.
   ['a completed card in the bullet shape', bulletCard(), 'green'],
+  // Prose is not a row. The label used to be matched anywhere in the body, so a
+  // sentence above the card satisfied a field whose row was blank.
+  ['prose naming a label above a card whose row is blank',
+    'The **Builder surface** is discussed here.\n\n'
+      + card({ rows: { 'Builder surface': '' } }), 'red'],
+  ['prose naming the verdict above a card whose row is blank',
+    'Note the **Current-state verdict** was ALREADY FIXED in an earlier PR.\n\n'
+      + card({ rows: { 'Current-state verdict': '' } }), 'red'],
+  ['harmless bold prose above a complete card',
+    'Some ordinary **bold** prose before the card.\n\n' + card(), 'green'],
   ['a blank row in the bullet shape', bulletCard({ rows: { 'Builder surface': '' } }), 'red'],
   ['a blank verdict row in the bullet shape',
     bulletCard({ rows: { 'Current-state verdict': '' } }), 'red'],
@@ -327,7 +337,14 @@ const CASES = [
   ['the lane negated with no other name', card({ review: {
     'Reviewer': 'not ChatGPT',
   } }), 'red'],
-  ['ChatGPT written as Chat-GPT', card({ review: { 'Reviewer': 'Chat-GPT desk' } }), 'green'],
+  ['ChatGPT written as Chat-GPT', card({ review: { 'Reviewer': 'Chat-GPT' } }), 'green'],
+  // The field takes the lane name and at most a bracketed qualifier. Counting
+  // characters was a proxy and it was defeated twice — by a long sentence, then
+  // by a short one — so the accepted form is closed rather than budgeted.
+  ['a short denial that fits inside a length budget',
+    card({ review: { 'Reviewer': 'ChatGPT was bypassed' } }), 'red'],
+  ['a trailing noun phrase rather than a bracketed qualifier',
+    card({ review: { 'Reviewer': 'the ChatGPT desk' } }), 'red'],
 
   //     ...and a finding the line itself calls unanswered is not disposed,
   //     however many of its neighbours are.
@@ -466,7 +483,7 @@ const MUTANTS = [
   {
     name: 'the reviewer rule dropped entirely',
     apply: src => src.replace(
-      /if \(!unfinished\.includes\('Reviewer'\)\n\s*&& \(!LANE_OPENS\.test\(reviewer\) \|\| qualifier\.length > 16\)\) \{/,
+      /if \(!unfinished\.includes\('Reviewer'\) && !LANE_ONLY\.test\(reviewer\)\) \{/,
       'if (false) {'),
   },
   {
@@ -474,10 +491,10 @@ const MUTANTS = [
     apply: src => src.replace(/const UNANSWERED =\n\s*\/.*\/i;/, 'const UNANSWERED = /(?!)/;'),
   },
   {
-    name: 'the affirmative lane rule weakened back to a substring match',
+    name: 'the closed lane form relaxed back to a length budget',
     apply: src => src.replace(
-      /if \(!unfinished\.includes\('Reviewer'\)\n\s*&& \(!LANE_OPENS\.test\(reviewer\) \|\| qualifier\.length > 16\)\) \{/,
-      "if (!/chat[ \\t-]?gpt/i.test(reviewer)) {"),
+      /const LANE_ONLY = \/.*\/i;/,
+      "const LANE_ONLY = /^chat[ \\t-]?gpt\\b[\\s\\S]{0,20}$/i;"),
   },
   {
     name: 'the exactly-one-verdict rule relaxed to at-least-one',
@@ -487,10 +504,9 @@ const MUTANTS = [
     name: 'the reason required after "not required" dropped',
     apply: src => src.replace(/if \(!\/\[a-z\]\{3\}\/i\.test\(reason\)\) \{/, 'if (false) {'),
   },
-  {
-    name: 'the bullet colon read as an answer again',
-    apply: src => src.replace(/\.replace\(\/\^\[ \\t\]\*:\/, ''\)/g, ''),
-  },
+  // No mutant for the bullet colon: anchoring the row reader made the separate
+  // strip dead code, and it was deleted rather than left with a mutant that
+  // could not fail. The blank-bullet-row case still holds it, via the reader.
   {
     name: 'the withheld-identity exception widened to every attribution field',
     apply: src => src.replace(

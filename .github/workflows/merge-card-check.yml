@@ -36,11 +36,12 @@ jobs:
               problems.push('The PR body is missing the "Atlas Merge Card" section. Start from .github/PULL_REQUEST_TEMPLATE.md.');
             }
 
-            // Each field is satisfied when its row exists AND carries something
-            // other than the shipped HTML comment. Matching the row by its bold
-            // label keeps this working whether the body uses the table shape or
-            // a bullet list, and prose that merely mentions the phrase is not a
-            // row — the label has to be delimited.
+            // Each field is satisfied when its ROW exists AND carries something
+            // other than the shipped HTML comment. Both card shapes work — a
+            // table cell or a bullet — because `readRow` below anchors on the
+            // start of either. That anchoring is load-bearing rather than
+            // cosmetic: this comment used to claim prose could not satisfy a
+            // field, and prose could.
             const FIELDS = [
               ['Title', 'a one-line description'],
               ['Primary risk', 'exactly one of auto-safe / owner-decision / figures-moved / blocked'],
@@ -73,21 +74,40 @@ jobs:
             // follows it within the window.
             const dropNegated = (text, tokenSource) => text.replace(
               new RegExp(`\\b(?:not|never|no|isn'?t|wasn'?t|un-)\\b[ \\t]*(?:\\w+[ \\t]+){0,2}?(?:${tokenSource})`, 'gi'), '');
+
+            // Read a card ROW, not a mention of its label. The first version
+            // matched the label anywhere in the body, so prose above the card —
+            // "The **Builder surface** is discussed here." — satisfied a field
+            // whose actual row was blank (Codex, P2, on 04cb826). Two changes
+            // close that: the match must start a table cell or a bullet, and
+            // the search is confined to the card section itself.
+            const cardHeading = /^[ \t]*#{1,4}[ \t]*.*Atlas Merge Card.*$/im.exec(body);
+            const cardSection = cardHeading
+              ? body.slice(cardHeading.index + cardHeading[0].length)
+                  .split(/\n[ \t]*#{2,4}[ \t]+/)[0]
+              : '';
+            const readRow = (label) => {
+              const table = new RegExp(
+                `^[ \\t]*\\|[ \\t]*\\*{0,2}${esc(label)}\\*{0,2}[ \\t]*\\|([^\\n|]*)`, 'im').exec(cardSection);
+              if (table) return table[1];
+              const bullet = new RegExp(
+                `^[ \\t]*[-*][ \\t]*\\*{0,2}${esc(label)}\\*{0,2}[ \\t]*:?(.*)$`, 'im').exec(cardSection);
+              return bullet ? bullet[1] : null;
+            };
+            const rowValue = (label) => {
+              const raw = readRow(label);
+              // No colon strip: `readRow`'s bullet pattern consumes it as the
+              // syntax it is. It used to be stripped here, and once the reader
+              // was anchored that became dead code whose mutant could not fail.
+              return raw === null ? null
+                : raw.replace(/<!--[\s\S]*?-->/g, '').replace(/\*/g, '').trim();
+            };
             for (const [label, want] of FIELDS) {
-              // Grab the text following the bold label on its own row, up to the
-              // end of the line (table cell or bullet both end at the newline).
-              const row = new RegExp(
-                `\\*\\*${esc(label)}\\*\\*\\s*\\|?([^\\n|]*)\\|?`, 'i').exec(body);
-              if (!row) {
+              const value = rowValue(label);
+              if (value === null) {
                 problems.push(`Merge card row "${label}" is missing — ${want}.`);
                 continue;
               }
-              // Strip the shipped placeholder comment and see what is left. The
-              // leading colon of the bullet form is SYNTAX: `- **Builder
-              // surface**:` captured ":" and read as an answer, so a blank row
-              // passed in a shape the check explicitly supports (Codex, P2, on
-              // 805101d).
-              const value = row[1].replace(/<!--[\s\S]*?-->/g, '').replace(/^[ \t]*:/, '').trim();
               if (!value) {
                 problems.push(`Merge card row "${label}" is blank — ${want}. "none" or "n/a — <reason>" is a real answer; an empty row is not.`);
               }
@@ -109,11 +129,7 @@ jobs:
               /^(?:none|no|n\/a|nil|nobody|unknown|tbd|not[ \t]applicable)\b/i;
             for (const label of ['Builder surface', 'Primary builder model',
                                  'Architecture / dispatch authority']) {
-              const row = new RegExp(
-                `\\*\\*${esc(label)}\\*\\*\\s*\\|?([^\\n|]*)\\|?`, 'i').exec(body);
-              const value = row
-                ? row[1].replace(/<!--[\s\S]*?-->/g, '').replace(/^[ \t]*:/, '')
-                  .replace(/\*/g, '').trim() : '';
+              const value = rowValue(label) || '';
               // The absence word has to BE the answer, not open one. Anchoring
               // alone rejected "No model identity is exposed by this surface"
               // (Codex, P2, on bc3645f) — which is the contract's own permitted
@@ -137,9 +153,7 @@ jobs:
             // in plain words that current state was never verified (Codex, P2,
             // on 5034cbc). One of the six documented verdicts has to appear.
             const VERDICT = /\b(?:STILL BROKEN|ALREADY FIXED|PARTIALLY FIXED|FIXED BUT UNTESTED|STALE[ \t]*[-\/][ \t]*SUPERSEDED|NEEDS OWNER ANSWER)\b/i;
-            const verdictRow = /\*\*Current-state verdict\*\*\s*\|?([^\n|]*)\|?/i.exec(body);
-            const verdictValue = verdictRow
-              ? verdictRow[1].replace(/<!--[\s\S]*?-->/g, '').replace(/\*/g, '').trim() : '';
+            const verdictValue = rowValue('Current-state verdict') || '';
             // EXACTLY one. Requiring merely that a verdict appear let a row read
             // "STILL BROKEN or ALREADY FIXED" and leave the gate's actual answer
             // ambiguous (Codex, P2, on f425ef8). Repeating one verdict is fine —
@@ -373,19 +387,26 @@ jobs:
                 // desk)" pass; a sentence does not. Advisory reads have their
                 // own row, so there is nothing else this field needs to say.
                 const ABSENT = /^(?:n\/a|na|none|no|nobody|no[ \t]+one|not[ \t]+required|tbd|unknown)\b/i;
-                const LANE_OPENS = /^(?:the[ \t]+)?chat[ \t-]?gpt\b/i;
+                // A CLOSED form, not a length budget. Counting characters was
+                // a proxy for "an identity, not a sentence", and it was defeated
+                // twice — once by a long sentence, then by a short one:
+                // `Reviewer: ChatGPT was bypassed` left eleven characters and
+                // passed while saying the lane was bypassed (Codex, P1, on
+                // 04cb826). So the field accepts the lane name, and optionally a
+                // bracketed qualifier, and nothing else. "the ChatGPT desk" no
+                // longer passes either; a name field does not need prose, and
+                // the failure message says exactly what to write.
+                const LANE_ONLY = /^chat[ \t-]?gpt\b[ \t]*(?:\([^)\n]{1,40}\))?[ \t]*[.,]?$/i;
                 const reviewer = seen['Reviewer'];
-                const qualifier = reviewer.replace(LANE_OPENS, '').replace(/[^a-z0-9]/gi, '');
                 // Skipped when the field has already been flagged as unfinished:
                 // a line reading "not yet performed — ChatGPT" is a placeholder,
                 // not a claim that the wrong lane reviewed, and saying both made
                 // the card look as though it had named the wrong reviewer. Same
                 // outcome either way — the card is red — but one reason, not two.
-                if (!unfinished.includes('Reviewer')
-                    && (!LANE_OPENS.test(reviewer) || qualifier.length > 16)) {
+                if (!unfinished.includes('Reviewer') && !LANE_ONLY.test(reviewer)) {
                   problems.push(!reviewer || ABSENT.test(reviewer)
                     ? 'The review is recorded as required, so "Reviewer" must NAME who performed it. "None", "no", "n/a" and "not required" are absence values — on this path they say the gate was never satisfied, not that it was.'
-                    : `"Reviewer" reads ${JSON.stringify(reviewer.slice(0, 60))}. The Atlas Contract / Systems Review is ChatGPT's lane alone, so this field names ChatGPT and at most a short qualifier — an implementation agent cannot satisfy its own architecture gate, and any advisory read belongs in the card's "Advisory review" row.`);
+                    : `"Reviewer" reads ${JSON.stringify(reviewer.slice(0, 60))}. The Atlas Contract / Systems Review is ChatGPT's lane alone, so this field reads exactly "ChatGPT", optionally with a bracketed qualifier such as "ChatGPT (Atlas desk)" — an implementation agent cannot satisfy its own architecture gate, and any advisory read belongs in the card's "Advisory review" row.`);
                 }
 
                 // ...and the findings line has to dispose of something. `n/a`
