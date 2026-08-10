@@ -321,7 +321,18 @@ function renderPlan(d, periods) {
   /* ---- status band ---- */
   const band = $('status-band');
   const overrideBreaches = state.weeklyVariable != null && sim.min.balance < sim.buffer - 0.005;
-  if (gap && overrideBreaches) {
+  if (gap && fundingShort) {
+    // Checked FIRST: when the gap cannot be funded the floor is below the
+    // buffer no matter what the weekly figure is, so blaming spending would
+    // be blaming the wrong thing — even $0/week cannot fix it.
+    band.className = 'statusband crit';
+    band.innerHTML =
+      `<b>Short by ${money(fundingGap)} on ${fmtDateLong(gap.floorDate)}, and there is not enough
+       anywhere to cover it.</b> Every usable source combined reaches
+       ${money2(fundingPlan.parts.reduce((a, p) => a + p.amount, 0))}, leaving
+       <b>${money2(fundingPlan.shortfall)}</b> unfunded at a ${money(sim.buffer)} buffer. No weekly spending
+       figure fixes this — lower the buffer, move a commitment, or find money outside these accounts.`;
+  } else if (gap && overrideBreaches) {
     // The user has set a weekly figure above what the forecast supports. That
     // breach is the headline, whatever is also true about the opening gap —
     // reporting "cover the gap and hold this spending" described a plan that
@@ -338,17 +349,6 @@ function renderPlan(d, periods) {
        ${money(sim.min.balance)} by ${fmtDateLong(sim.min.date)}${firstBad && firstBad.date !== sim.min.date
         ? `, first slipping below the buffer on ${fmtDateLong(firstBad.date)}` : ''}.
        The forecast supports <b>${money(recommended)}/week</b>.`;
-  } else if (gap && fundingShort) {
-    // Nothing available reaches the gap. Saying "cover it and the window
-    // finishes with $X" would describe a plan that does not exist.
-    band.className = 'statusband crit';
-    band.innerHTML =
-      `<b>Short by ${money(fundingGap)} on ${fmtDateLong(gap.floorDate)}, and there is not enough
-       anywhere to cover it.</b> Every usable source combined reaches
-       ${money2(fundingPlan.parts.reduce((a, p) => a + p.amount, 0))}, leaving
-       <b>${money2(fundingPlan.shortfall)}</b> unfunded at a ${money(sim.buffer)} buffer. Lower the buffer,
-       move a commitment, or find money outside these accounts — the figures below model only what can
-       actually be funded.`;
   } else if (gap && fundingPlan && fundingPlan.needsCombination) {
     // Reachable, but not from one place — and part of it is borrowed.
     band.className = 'statusband crit';
@@ -496,7 +496,12 @@ function renderPlan(d, periods) {
     missionParts.push(`cover the ${money(fundingGap)} timing gap by ${fmtDateLong(gap.date)}`);
   }
   if (overToday.length) missionParts.push(`get the ${overToday.map(x => x.label).join(' and ')} back under its limit`);
-  missionParts.push(`hold spending to ${money(weekly)} a week`);
+  // Never instruct the household to hold a figure the forecast does not
+  // support. Only the status band was conditioned on this, so the mission and
+  // the Next move went on recommending $1,500/week against a −$809 low.
+  missionParts.push(overrideBreaches
+    ? `cut spending to ${money(recommended)} a week — ${money(weekly)} does not hold`
+    : `hold spending to ${money(weekly)} a week`);
   if (helocBreach) missionParts.push(`and stop the HELOC growing before it passes its own limit in ${fmtMonth(helocBreach.date)}`);
   else missionParts.push('and put the surplus against the most expensive card');
   $('plan-mission').textContent =
@@ -525,6 +530,10 @@ function renderPlan(d, periods) {
             ? `The full plan is ${fundingPlan.parts.map(p => `${money2(p.amount)} from ${p.short}`).join(' plus ')}.`
             : ''} With all of it in place the household can spend ${money(weekly)} a week from
            ${fmtDateLong(advice.effectiveFrom)}.`
+      : gap && overrideBreaches
+        ? `The ${money(gap.dueOnGapDay)} clears on ${fmtDateLong(gap.date)} and the buffer is restored — but
+           at your ${money(weekly)}/week setting the balance still reaches ${money(sim.min.balance)} by
+           ${fmtDateLong(sim.min.date)}. The forecast supports ${money(recommended)}/week.`
       : gap && first.due && first.due <= gap.date
         ? `The ${money(gap.dueOnGapDay)} clears on ${fmtDateLong(gap.date)}, the buffer is restored, and from
            ${fmtDateLong(advice.effectiveFrom)} the household can spend ${money(weekly)} a week.`
@@ -879,6 +888,7 @@ function renderPlan(d, periods) {
     `Every number is repeated in the table below — nothing here needs a hover.`;
 
   /* ---- weekly table (desktop) and cards (mobile) ---- */
+  const anyInjection = sim.weeks.some(w => w.injections > 0);
   const wkRow = w => {
     const cls = w.negative ? 'wk-neg' : w.belowBuffer ? 'wk-low' : '';
     const fixed = w.obligations + w.bills;
@@ -887,6 +897,8 @@ function renderPlan(d, periods) {
       <td class="num">${money(w.opening)}</td>
       <td class="num">${w.confirmedIncome ? '+' + money(w.confirmedIncome).slice(1) : '—'}</td>
       <td class="num">${w.estimatedIncome ? est('+' + money(w.estimatedIncome).slice(1)) : '—'}</td>
+      ${anyInjection ? `<td class="num">${w.injections
+        ? '+' + money(w.injections).slice(1) : '—'}</td>` : ''}
       <td class="num">${fixed ? money(fixed) : '—'}</td>
       <td class="num">${w.commitments ? money(w.commitments) : '—'}</td>
       <td class="num">${money(w.variable)}</td>
@@ -897,8 +909,12 @@ function renderPlan(d, periods) {
     </tr>`;
   };
   const extraCol = sim.totals.extra > 0 ? '<th class="num">Extra debt</th>' : '';
+  // Without this column week 1 opens at $79.84, its visible rows imply a
+  // $1,695.58 close and it displays $2,738.74 — the same unreconcilable gap
+  // the aggregate ledger had, one level down.
+  const fundCol = anyInjection ? '<th class="num">Gap funding</th>' : '';
   $('wk-table').innerHTML = `<thead><tr>
-      <th>Week</th><th class="num">Opening</th><th class="num">Confirmed in</th><th class="num">Estimated in</th>
+      <th>Week</th><th class="num">Opening</th><th class="num">Confirmed in</th><th class="num">Estimated in</th>${fundCol}
       <th class="num">Bills &amp; minimums</th><th class="num">Committed</th><th class="num">Budget</th>${extraCol}<th class="num">Closing</th>
     </tr></thead><tbody>${sim.weeks.map(wkRow).join('')}</tbody>`;
 
@@ -916,7 +932,7 @@ function renderPlan(d, periods) {
       </div>
       <div class="wk-card-grid">
         <span>Opening ${money(w.opening)}</span>
-        <span>In ${money(w.confirmedIncome)}${w.estimatedIncome ? ` <span class="est">+ ≈${money(w.estimatedIncome).slice(1)}</span>` : ''}</span>
+        <span>In ${money(w.confirmedIncome)}${w.estimatedIncome ? ` <span class="est">+ ≈${money(w.estimatedIncome).slice(1)}</span>` : ''}${w.injections ? ` + ${money(w.injections)} funding` : ''}</span>
         <span>Out ${money(w.obligations + w.bills + w.commitments + w.extra)}</span>
         <span>Budget ${money(w.variable)}</span>
       </div>

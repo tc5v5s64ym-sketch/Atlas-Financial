@@ -348,6 +348,38 @@ ok(!/Insurance and children's sports show \$0/.test(planJs2),
 // The ledger has to add up on the page, not just in the engine.
 ok(/T\.injections > 0/.test(planJs2),
   'gap funding appears as its own ledger row so the rows reconcile');
+// And in the weekly table and the mobile cards, which had the same problem one
+// level down: week 1 opened at $79.84, its visible rows implied $1,695.58 and
+// it displayed $2,738.74.
+ok(/anyInjection/.test(planJs2), 'the weekly table gains a gap-funding column when there is one');
+ok(/w\.injections \? ` \+ \$\{money\(w\.injections\)\} funding`/.test(planJs2),
+  'and the mobile card includes it in the inflow line');
+{
+  const O = { scenario: 'expected', incomeOverrides: {}, disabled: [], extraDebtMonthly: 0,
+    targetBuffer: 500, fundingSources: plan.funding.options };
+  const adv = F.recommend(plan, asOf, O);
+  for (const w of adv.sim.weeks) {
+    const implied = w.opening + w.confirmedIncome + w.estimatedIncome + w.injections
+      - w.obligations - w.bills - w.commitments - w.variable - w.extra;
+    if (!near(implied, w.closing, 0.02)) {
+      ok(false, `week ${w.n} reconciles from its displayed columns`,
+        `${implied.toFixed(2)} vs ${w.closing.toFixed(2)}`);
+    }
+  }
+  ok(true, 'every week reconciles from opening + inflows − outflows to its closing',
+    `${adv.sim.weeks.length} weeks`);
+}
+// An unfunded gap outranks an override breach: at that buffer no weekly figure
+// fixes it, so blaming spending points at the wrong thing.
+ok(planJs2.indexOf('if (gap && fundingShort)') < planJs2.indexOf('} else if (gap && overrideBreaches)'),
+  'the funding shortfall is tested before the override breach');
+ok(/No weekly spending\s*\n?\s*figure fixes this/.test(planJs2),
+  'and says plainly that no spending figure fixes it');
+// The mission and the Next move must not instruct an unsafe override either.
+ok(/cut spending to \$\{money\(recommended\)\} a week/.test(planJs2),
+  'the mission stops instructing a weekly figure that breaches');
+ok(/gap && overrideBreaches/.test(planJs2),
+  'and the Next move outcome says what the override actually does');
 ok(/still to find before/.test(planJs2),
   'and says what is left when the action alone is not enough');
 
