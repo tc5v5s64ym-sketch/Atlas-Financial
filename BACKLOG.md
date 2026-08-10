@@ -32,9 +32,21 @@ full, and **no coach payments appear in either mailbox**. Three readings:
 3. They have not been paid from this money — an **unrecorded liability**, spent
    on a facility that does not amortise
 
-**Strong lead:** a **Payworks** pay-statement notice, 29 Jun 2026. If the
-coaching business runs payroll, coaches are paid through it rather than by
-e-transfer — which would explain their absence from both mailboxes entirely.
+**Partly answered:** **one coach is paid by cheque** from DEBT&PAYMENTS
+(owner-stated) — $8,150 across five cheques, Feb–Nov 2025. So coach payments were
+never going to appear as e-transfers, and the mailbox search was looking for the
+wrong instrument.
+
+**But the cheques stop in November 2025**, while her sheets show $6,397.50 of
+coach pay between April and August 2026. **The 2026 route is still unidentified**
+— most likely the account in B64.
+
+**Second lead:** a **Payworks** pay-statement notice, 29 Jun 2026. If the coaching
+business runs payroll, the rest of the coaches are paid through it.
+
+**The liability worry is softened but not closed.** Coaches are demonstrably paid;
+what is unproven is whether the 30 June remittance was passed on before the
+$9,646.25 went onto the HELOC.
 
 **B64 · Amanda's other account** · BLOCKED · *small*
 
@@ -76,11 +88,33 @@ income event. **Business use of the home** may affect insurance and creates both
 a possible deduction and a capital-gains exposure — an accountant's question, and
 they have one.
 
-**B58 · The five cheques — $8,150** · *small*
-$3,010 (15 Jul 2025) · $2,835 (9 Sep 2025) · $1,295 (19 Nov 2025) · $980
-(18 Feb 2025) · $30 (27 Oct 2025). The export gives an amount and a cheque number
-and **never a payee**. Owner does not recall them. **TD holds the cheque images** —
-that is the definitive route.
+**B58 · The five cheques — $8,150** · **LARGELY ANSWERED 2026-08-09**
+**Amanda pays a coach by cheque** (owner-stated). That fits: **all five were
+written from DEBT&PAYMENTS**, her account, not the joint one.
+
+| Date | Amount |
+|---|---|
+| 18 Feb 2025 | $980.00 |
+| 15 Jul 2025 | **$3,010.00** |
+| 9 Sep 2025 | **$2,835.00** |
+| 27 Oct 2025 | $30.00 |
+| 19 Nov 2025 | $1,295.00 |
+
+The three large ones are term-sized at a $35/hour coach rate — $3,010 is 86
+hours, $2,835 is 81. The $30 is something else.
+
+**But they stop in November 2025.** There is not a single cheque in 2026, while
+her tracking sheets show coaches being paid **$6,397.50 between April and August
+2026**. So the cheque route was replaced — which points hard at **B64**, the
+account outside the captured set.
+
+**Still worth TD's cheque images** to confirm the payee, but the mechanism is no
+longer a mystery.
+
+**Also found: a `CHQ RETURN FEE` of $2.00 every month on DEBT&PAYMENTS**, 18 of
+18 months, including months with no cheque written. **$24/year for a service that
+went unused after November 2025.** Add to the fees dashboard (B30) and to the
+account-plan review (B24).
 
 **B59 · Coinbase** · *small*
 Owner no longer uses it; recorded as dormant and excluded from net worth.
