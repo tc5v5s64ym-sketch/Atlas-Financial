@@ -1058,6 +1058,64 @@ live email address, where an unauthorised login would go unnoticed indefinitely.
 two-factor authentication, and never enter a code from an email into a page
 reached from that email.
 
+## The payoff ranking — settled *(2026-08-09)*
+
+Every rate and balance is now known, so this can finally be stated.
+`scripts/payoff.js` computes it from `data.json`.
+
+| Card | Balance | Rate | Interest/yr |
+|---|---|---|---|
+| TD Cash Back Visa | $5,612.43 | **26.99%** | $1,902.60 |
+| TD personal Visa | $1,799.97 | 24.99% | $450.00 |
+| **Triangle Mastercard** | **$13,497.00** | 21.99% | **$2,880.00** |
+| Amazon / MBNA | $7,855.12 | 21.74% | $1,779.24 |
+| Travel Visa | $1,078.31 | 19.99% | $215.55 |
+| **Total** | **$29,842.83** | | **$7,227.39** |
+
+**$602.28 a month on cards alone.**
+
+### The dearest money is not the dearest rate
+
+**The Cash Back Visa is $612.43 over its $5,000 limit, and that costs $29.00 a
+month — $348 a year — for as long as it stays over.**
+
+Paying **$612.43** stops it. That is a **56.8% annual return** on $612, against a
+dearest *interest* rate of 26.99%. **Nothing else available to this household
+returns anything close**, and it is the cheapest single action in the picture.
+
+It is also time-bound: the fee recurs at each statement, on the **7th**.
+
+### The penalty rate is recoverable, and the cost is punctuality
+
+The TD personal Visa carries **24.99% as a penalty**; the normal rate is
+**17.20%**. Restoration requires **12 consecutive on-time minimums of $94.03** —
+payments already owed. Worth **$140.22/year** on today's balance for no extra
+money at all, only for not missing one.
+
+The count is currently at zero, restarted by the July 2026 miss.
+
+### Rate ranking versus dollar ranking disagree, and dollars win
+
+By **rate**, the Cash Back Visa leads at 26.99%. By **annual dollars**,
+**Triangle leads at $2,880** — 51% more than the Cash Back Visa — because it
+carries 2.4× the balance at a rate only 5 points lower.
+
+But **Triangle's real problem is not its rate.** Five statements show $3,880 paid
+and the balance down $189, because roughly **$498/month of new purchases** offset
+the payments. **Paying it down without stopping the spending on it does almost
+nothing.**
+
+### A sensible order
+
+1. **$612.43 to the Cash Back Visa** — stops the $29/month fee, 56.8% return
+2. **Pay the personal Visa minimum on time, twelve times** — recovers 7.79 points
+3. **Stop new purchases on Triangle**, then direct surplus there — it is the
+   largest interest cost, and the only one where the fix is behavioural
+4. Then MBNA, then the Travel Visa
+
+**Consolidation into the HELOC is not available.** It is 99.5% drawn with
+$1,067.84 left. That option requires repaying something first.
+
 ## The home *(owner estimate, 2026-08-09)*
 
 **Worth $1.1m – $1.4m** [ESTIMATE — the owner's figure, not an appraisal].

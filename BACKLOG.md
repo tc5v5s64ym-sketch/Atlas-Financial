@@ -724,7 +724,29 @@ deposits are expense reimbursement rather than pay. Double-counting is the risk.
 **B16 · Rebuild the spending picture** · QUEUED *(on B3, B4)* · *medium*
 Two cards' worth of spending is missing from every category total.
 
-**B17 · Rebuild net worth and the debt ranking** · QUEUED *(on B1, B10, B11, B12)* · *medium*
+**B17 · Rebuild net worth and the debt ranking** · **DONE 2026-08-09**
+`scripts/payoff.js` computes it from `data.json`. Cards total **$29,842.83** at
+**$7,227.39/yr — $602.28/month**. Net worth stated at **$357k–$657k**.
+
+**The headline finding is a fee, not a rate.** The Cash Back Visa is $612.43 over
+its limit, costing **$29/month = $348/yr**. Paying $612.43 stops it — a **56.8%
+annual return**, against a dearest interest rate of 26.99%. Nothing else
+available returns close, and the fee recurs each statement on the 7th.
+
+Second: the personal Visa's **24.99% is a penalty**; 12 consecutive on-time
+minimums of $94.03 restore **17.20%**, worth $140.22/yr for payments already
+owed. The count is at zero after the July miss.
+
+Third: **rate ranking and dollar ranking disagree.** Cash Back leads on rate;
+**Triangle leads on dollars at $2,880/yr**. But Triangle's problem is behavioural
+— $3,880 paid over five statements moved the balance $189 because ~$498/month of
+new purchases offset it. Paying it down without stopping the spending achieves
+almost nothing.
+
+**Consolidation into the HELOC is unavailable** — 99.5% drawn, $1,067.84 left.
+
+*(Superseded item below kept for its dependency history.)*
+**B17-old · Rebuild net worth and the debt ranking** · was QUEUED *(on B1, B10, B11, B12)*
 The ranking already changed once — the Cash Back Visa at 26.99% displaced
 Triangle as the most expensive debt. MBNA and Flexiti could change it again.
 
