@@ -1,0 +1,103 @@
+name: Merge card check
+
+# Fails when a PR body is missing the Atlas Merge Card, or keeps a field's
+# shipped placeholder instead of answering it.
+#
+# The check is LITERAL, never semantic. It can tell a claim from a blank; it
+# cannot tell a true claim from a false one. That is the reviewer's job, and
+# nothing here should be read as having verified a figure. What it does buy is
+# that a change to a household's published numbers cannot merge while silent
+# about what it moved.
+#
+# `none`, `no` and `n/a — <reason>` are real answers and pass. An empty row is
+# silence, and silence is the thing this exists to fail.
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  pull-requests: read
+
+jobs:
+  check:
+    name: Merge card present and filled
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Validate the merge card
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = (context.payload.pull_request && context.payload.pull_request.body) || '';
+            const problems = [];
+
+            if (!/Atlas Merge Card/i.test(body)) {
+              problems.push('The PR body is missing the "Atlas Merge Card" section. Start from .github/PULL_REQUEST_TEMPLATE.md.');
+            }
+
+            // Each field is satisfied when its row exists AND carries something
+            // other than the shipped HTML comment. Matching the row by its bold
+            // label keeps this working whether the body uses the table shape or
+            // a bullet list, and prose that merely mentions the phrase is not a
+            // row — the label has to be delimited.
+            const FIELDS = [
+              ['Title', 'a one-line description'],
+              ['Primary risk', 'exactly one of auto-safe / owner-decision / figures-moved / blocked'],
+              ['Files / categories touched', 'what this touches'],
+              ['Figures moved', 'which published figures change, or "none"'],
+              ['Reproduced / disproved', 'how a claimed defect was reproduced on main before fixing, or "n/a"'],
+              ['Authority impact', 'whether any fact changed its home, or "none"'],
+              ['Tests', 'the exact command and its result'],
+              ['Security', '"unchanged", or exactly what changed'],
+              ['Advisory review', 'each automated-reviewer finding and its disposition, or "none raised"'],
+              ['Owner decision required', '"No", or the question the household must answer'],
+              ['Estimated inputs added', 'any new estimate, or "none"'],
+            ];
+
+            const esc = s => s.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
+            for (const [label, want] of FIELDS) {
+              // Grab the text following the bold label on its own row, up to the
+              // end of the line (table cell or bullet both end at the newline).
+              const row = new RegExp(
+                `\\*\\*${esc(label)}\\*\\*\\s*\\|?([^\\n|]*)\\|?`, 'i').exec(body);
+              if (!row) {
+                problems.push(`Merge card row "${label}" is missing — ${want}.`);
+                continue;
+              }
+              // Strip the shipped placeholder comment and see what is left.
+              const value = row[1].replace(/<!--[\s\S]*?-->/g, '').trim();
+              if (!value) {
+                problems.push(`Merge card row "${label}" is blank — ${want}. "none" or "n/a — <reason>" is a real answer; an empty row is not.`);
+              }
+            }
+
+            // The prose sections carry the reasoning, and an empty one is the
+            // usual sign a card was filled to satisfy the check rather than to
+            // inform a reader.
+            for (const heading of ['What changed', 'Why the numbers are right',
+                                   'What this does NOT do', 'Known uncertainty']) {
+              const re = new RegExp(`^[ \\t]*#{2,4}[ \\t]*${esc(heading)}[ \\t]*$`, 'im');
+              if (!re.test(body)) {
+                problems.push(`The PR body is missing the "${heading}" section.`);
+                continue;
+              }
+              // Everything between this heading and the next one, minus comments.
+              const after = body.slice(body.search(re));
+              const seg = after.slice(after.indexOf('\n') + 1).split(/^[ \t]*#{2,4}[ \t]/m)[0];
+              if (!seg.replace(/<!--[\s\S]*?-->/g, '').replace(/^[-\s*]+$/gm, '').trim()) {
+                problems.push(`Section "${heading}" is empty — it still holds only its template comment.`);
+              }
+            }
+
+            if (problems.length) {
+              core.summary.addHeading('Merge card incomplete', 3);
+              core.summary.addList(problems);
+              core.summary.addRaw('\nThis check is literal: it verifies each field was answered, not that the answers are correct.');
+              await core.summary.write();
+              core.setFailed(`${problems.length} merge-card problem(s):\n  - ` + problems.join('\n  - '));
+            } else {
+              core.summary.addRaw('✅ Merge card present and every field answered.\n\n' +
+                '_Literal check only — that the fields are filled, not that they are true._');
+              await core.summary.write();
+            }

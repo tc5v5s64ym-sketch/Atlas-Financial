@@ -2,11 +2,46 @@
 /* Deep Dive — the historical and forensic analysis. This is the original
    dashboard's material, moved off the homepage but preserved whole. */
 
+// Cash is not one thing. Money in a household spending account and money in a
+// pass-through account earmarked for someone else are different in kind, and
+// adding them together produces a number that is true of nothing.
+const CASH_CLASS_LABEL = {
+  spendable: 'spendable household cash',
+  operational: 'operational / pass-through',
+  staging: 'staging',
+  'other-liquid': 'other liquid',
+  restricted: 'restricted',
+};
+
 function renderDeepDive(d) {
   $('coverage-line').textContent = `${d.meta.coverage} · ${d.meta.transactions.toLocaleString('en-CA')} transactions, ${d.meta.statements} statements`;
   $('disclaimer').textContent = d.meta.disclaimer;
 
-  $('tiles').innerHTML = d.headline.map(t => `
+  // The cash tile is DERIVED from the plan's cash register, not stored. It used
+  // to be a hardcoded "Cash on hand — $3,051.81" that summed six accounts of
+  // four different kinds: household spending money, Amanda's pass-through
+  // account, a staging account and two US holiday accounts. The Plan page
+  // meanwhile said $79.84. Both were describing the same household.
+  const cash = d.plan.startingCash;
+  const byClass = {};
+  for (const h of cash.heldElsewhere || []) {
+    (byClass[h.class] = byClass[h.class] || { total: 0, labels: [] });
+    byClass[h.class].total += h.value;
+    byClass[h.class].labels.push(h.label.replace(/ —.*$/, ''));
+  }
+  const elsewhere = (cash.heldElsewhere || []).reduce((s, h) => s + h.value, 0);
+  const classLine = Object.entries(byClass)
+    .map(([k, v]) => `${money(v.total)} ${CASH_CLASS_LABEL[k] || k} (${v.labels.join(', ')})`)
+    .join('; ');
+  const cashTile = {
+    label: 'Spendable household cash',
+    value: cash.amount,
+    tone: 'alert',
+    note: `Chequing A, Chequing B and Savings — the accounts the mortgage, bills and card minimums are actually ` +
+      `paid from. A further ${money(elsewhere)} sits elsewhere and is not household spending money: ${classLine}.`,
+  };
+
+  $('tiles').innerHTML = [cashTile].concat(d.headline).map(t => `
     <div class="tile ${t.tone === 'plain' ? '' : t.tone}">
       <div class="lab">${t.label}</div>
       <div class="val">${money(t.value)}</div>
@@ -33,13 +68,20 @@ function renderDeepDive(d) {
       : `<span class="chip ${soon ? 'w' : 'e'}">${dueWord(n)}</span>`;
     // A club fee and a card minimum are both money leaving, but only one of
     // them carries a penalty for being late. Say which is which.
-    const kind = u.kind === 'commitment' ? ' <span class="chip">commitment</span>' : '';
+    const kind = u.kind === 'commitment' ? ' <span class="chip">commitment</span>'
+      : u.kind === 'noncash' ? ' <span class="chip">non-cash</span>' : '';
+    // A capitalising charge is not a payment. Listing it beside real ones with
+    // a "due in 12d" chip made the HELOC interest look like a bill somebody
+    // pays out of chequing, which is exactly what it is not.
+    const noncash = u.kind === 'noncash';
     return `
-    <tr class="${paid ? 'paid' : soon ? 'soon' : ''}">
-      <td>${fmtDate(u.due)} ${chip}</td>
+    <tr class="${paid ? 'paid' : noncash ? '' : soon ? 'soon' : ''}">
+      <td>${fmtDate(u.due)} ${noncash ? '<span class="chip">charged</span>' : chip}</td>
       <td>${u.what}${kind}</td>
-      <td class="num">${money2(u.amount)}</td>
-      <td class="${paid ? 'pos' : ''}">${paid ? '<strong>Paid</strong> — ' : ''}${u.note || 'Due'}</td>
+      <td class="num">${noncash
+        ? `<span class="mutedtext">${money2(u.amount)}</span>` : money2(u.amount)}</td>
+      <td class="${paid ? 'pos' : ''}">${paid ? '<strong>Paid</strong> — ' : ''}${
+        noncash ? '<strong>No cash leaves</strong> — ' : ''}${u.note || 'Due'}</td>
     </tr>`;
   }).join('');
   $('upcoming-note').textContent = d.upcomingNote;
@@ -81,7 +123,7 @@ function renderDeepDive(d) {
   }
 
   const next = d.upcoming
-    .filter(u => u.status !== 'paid' && daysUntil(u.due) >= 0)
+    .filter(u => u.status !== 'paid' && u.kind !== 'noncash' && daysUntil(u.due) >= 0)
     .sort((a, b) => a.due < b.due ? -1 : 1)[0];
   const nd = $('next-due');
   if (nd && next) {
@@ -109,15 +151,18 @@ function renderDeepDive(d) {
     </tr>`).join('');
   if (d.debtsNote) $('debt-note').textContent = d.debtsNote;
 
-  hbar($('c-util'), d.utilisation.map(u => ({
-    label: u.label, v: (u.used / u.limit) * 100,
-    colour: (u.used / u.limit) > 0.95 ? css('--critical') : css('--serious'),
+  // Derived from the debt records, never a second hand-kept list. `used`
+  // already includes known pending charges, because a charge that has been
+  // authorised has spent the credit whether or not it has posted yet.
+  const util = Forecast.utilisation(d.debts, d.revolvingExtra);
+  hbar($('c-util'), util.rows.map(u => ({
+    label: u.label, v: u.pct,
+    colour: u.pct > 95 ? css('--critical') : css('--serious'),
     // Over the limit is a different fact from merely near it, so say so rather
     // than showing "$0 left" and letting the bar imply it.
-    vlabel: u.used > u.limit
-      ? money(u.used - u.limit) + ' OVER'
-      : money(u.available) + ' left',
-    tip: `${money2(u.used)} of a ${money2(u.limit)} limit · ${((u.used / u.limit) * 100).toFixed(1)}% used`,
+    vlabel: u.overLimit ? money(u.overLimitBy) + ' OVER' : money(u.available) + ' left',
+    tip: `${money2(u.used)} of a ${money2(u.limit)} limit · ${u.pct.toFixed(1)}% used`
+      + (u.pending ? ` · includes ${money2(u.pending)} pending, already incurred` : ''),
   })), { rowH: 40, padL: 176 });
   if (d.utilisationNote) $('util-note').textContent = d.utilisationNote;
 

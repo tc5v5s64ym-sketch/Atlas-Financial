@@ -123,10 +123,36 @@ shared core (helpers, charts, theme, boot) loaded by all of them:
 | Deep Dive | `deepdive.html` | `deepdive.js` | Debt, HELOC, flows, lacrosse, questions |
 | Records | `records.html` | `records.js` | Balance sheet, coverage, assumptions |
 
-`public/forecast.js` is the 13-week projection engine. It is pure and
-DOM-free, and `node test-forecast.js` exercises it directly — **run that after
-any change to the `plan` block in `data.json`**, because the tests cross-check
-the expanded schedule against hand-computed totals.
+`public/forecast.js` is the engine — cash projection, debt projection, the
+household-budget split, and the weekly-cap recommendation. It is pure and
+DOM-free, so the node suite exercises exactly what the browser runs.
+
+**Run `npm test` after any change to `data.json` or to a page script.** Five
+suites, in dependency order:
+
+| Suite | What it protects |
+|---|---|
+| `test-static.js` | JSON parses, scripts compile, every id a script writes to exists, no identifier or secret in a tracked file, the security gate is intact |
+| `test-forecast.js` | The schedule against hand-computed totals, and the opening-gap regression |
+| `test-budget.js` | Food and fuel are provably inside the weekly cap, and nothing dated is counted twice |
+| `test-debt.js` | Cash out reconciles to debt down, to the cent |
+| `test-invariants.js` | One fact, one home — contradictions between files fail the build |
+
+**An invariant failure is a failure, not a warning.** A plan that disagrees with
+itself is worse than no plan, because it still looks authoritative.
+
+Two things the suite deliberately cannot cover, because they need something CI
+does not have: `node test-local.js` (needs `TEST_PASSWORD` and a running
+server) and `node verify-live.js` (needs the deployed site).
+
+### The engine owns the answers; the pages render them
+
+`Forecast.recommend()` is the single authority for the weekly household cap.
+Both the headline tile and the budget breakdown read that one result. They used
+to be computed separately, and the page shipped showing `$1,650/week` at the top
+and `$0/week` underneath. **Do not solve a financial question inside a page
+script.** If a page needs a number that does not exist yet, add it to
+`forecast.js` where it can be tested.
 
 Check for orphans before pushing (scans every page script):
 

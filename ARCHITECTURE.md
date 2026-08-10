@@ -23,6 +23,43 @@ Material only ever flows **down**. Nothing edits `raw/`. Nothing hand-writes
 `derived/`. A figure that reaches `data.json` can always be traced back up to a
 statement.
 
+### Inside publication: source facts to a decision
+
+`data.json` is not the last step. Within the published layer there is a second
+one-way flow, and it exists because the alternative — every page working out its
+own answer — produced a homepage that showed `$1,650/week` in one tile and `$0`
+in the block underneath it.
+
+```
+  data.json              SOURCE FACTS      balances, rates, dated obligations
+  public/periods.json    SPENDING HISTORY  generated; the only home for actuals
+    ↓
+  forecast.js  simulate()          cash, day by day
+               projectDebts()      the same events, seen from the debt side
+               budgetBreakdown()   essential vs discretionary vs already dated
+               recommend()         THE weekly household cap
+    ↓
+  plan.js / deepdive.js / records.js / modellers.js   render only
+```
+
+**The engine decides; the pages render.** `forecast.js` is pure and DOM-free, so
+`npm test` exercises exactly what the browser runs. A page that computes a
+financial answer for itself is a bug — that is how the same question came to
+have two answers.
+
+Three rules follow from this, and the test suite enforces all three:
+
+- **One fact, one home.** Historical spending lives in `periods.json` and is
+  *derived* into the budget, never copied into `data.json`. `data.json` carries
+  the classification and any owner override, not the amounts.
+- **Every dated item declares where it would otherwise sit.** A bill or
+  commitment names its `budgetCategory`, and that amount is subtracted from the
+  category's average. Without it, Shaw is paid twice — once on the calendar and
+  once inside a telecom average that already contains it.
+- **Every obligation names the debt it moves.** `debtId` plus `effect`
+  (`payment` or `capitalise`). Cash leaving the chequing account has to arrive
+  somewhere, and the suite reconciles the two sides to the cent.
+
 | Layer | Directory | Committed? | Rebuildable? |
 |---|---|---|---|
 | Source | `raw/` | **Never** | No — irreplaceable if lost |

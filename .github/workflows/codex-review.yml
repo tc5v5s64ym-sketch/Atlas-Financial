@@ -1,0 +1,207 @@
+name: Codex review freshness
+
+# Says whether the Codex review on this PR still describes the code that is
+# actually here.
+#
+# THE PROBLEM. Codex reviews on open and on ready-for-review, not after a push.
+# On this repository's first PR it reviewed the opening head, found two real
+# P1s, both were fixed and pushed — and it never looked again. Its verdict sat
+# there attached to a revision that no longer existed, which reads exactly like
+# a review of the current one. A stale approval is worse than no approval.
+#
+# WHAT THIS DOES NOT DO, AND WHY. The obvious fix is to post `@codex review`
+# from CI. That was tried here and it does not work: Codex answers a mention
+# from `github-actions[bot]` with "create a Codex account and connect to
+# github", because the requesting identity must be a linked human account. The
+# result was two useless comments on every push — the request and the refusal.
+# Making it work would mean storing a human PAT as a repository secret, and in
+# this repo secrets live only in Render and nowhere else. Not worth it for a
+# convenience.
+#
+# So this reports rather than requests. It compares the newest commit Codex
+# actually reviewed against the current head and keeps ONE comment updated in
+# place, never adding a second. When the review is stale, a human comments
+# `@codex review` — which takes a moment and works.
+#
+# WHERE CODEX PUTS THE ANSWER, which is three places and not one. A review WITH
+# findings arrives as a pull-request review (and its inline comments), both
+# carrying the SHA. A review with NOTHING to say arrives as a plain issue
+# comment — "Didn't find any major issues" — which carries no SHA field at all,
+# only a `Reviewed commit:` line in its prose. Reading the first two and not the
+# third is how this workflow spent its first clean review reporting `stale`
+# against a head Codex had just passed: the banner said the review described
+# code that was no longer here, when it described exactly the code that was.
+# A gate that cries stale at a current review is the failure it exists to
+# prevent, wearing the other face. So: parse all three, and take the newest.
+#
+# It also has to WAKE UP when that comment lands. `pull_request` alone fires on
+# pushes only, so the clean verdict would sit unnoticed until the next commit —
+# by which time it really would be stale, and the banner would be accidentally
+# right for the wrong reason.
+#
+# WHICH DOES NOT WORK YET, AND CANNOT. `issue_comment` runs the workflow file
+# from the DEFAULT BRANCH, not from the pull request that introduces it — the
+# same rule that keeps `risk-label-gate.yml` dormant until merge. So on the PR
+# adding this trigger, the comment wake-up is inert: the banner refreshes on
+# push and on nothing else. The visible consequence is narrow but real, and it
+# is the last thing anyone will see on that PR — Codex passes the head, no push
+# follows, and the banner sits there reading `stale` about a review that is
+# current.
+#
+# HOW TO TELL, precisely, because the obvious phrasing is wrong. Inert means the
+# banner is not regenerated AT ALL, so it never names the head as the commit it
+# reviewed — it keeps the text from the last push, naming an OLDER commit as
+# reviewed and the current head separately. Comparing the two SHAs inside the
+# banner therefore proves nothing.
+#
+#   The tell is OUTSIDE the banner: take the newest Codex `Reviewed commit:`
+#   SHA from the thread and compare it to the SHA the banner calls the head.
+#   If they are the same commit, the review being called stale is current.
+#
+# Worked example, from the pull request that added this trigger:
+#
+#   14:39  push e7f0e25 → banner: last reviewed `1cfc1f5`, head is now `e7f0e25`
+#   14:43  Codex passes `e7f0e25` clean → banner does not move
+#   read:  newest reviewed SHA e7f0e25 == banner's head e7f0e25 → false stale
+#
+# The first version of this note said to look for the banner naming the head as
+# last reviewed. That state never occurs while the trigger is inert, so it was
+# an unusable instruction for recognising the very case it described — written
+# by reasoning about the mechanism instead of reading what the thread actually
+# showed, which was sitting there in full at the time.
+#
+# From the first merge onward the wake-up is live and the banner self-corrects.
+#
+# The part that actually holds is none of these: it is the merge card's
+# `Advisory review` row, which has to say what happened to each finding before
+# the card check passes.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: codex-freshness-${{ github.event.pull_request.number || github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  freshness:
+    name: Is the Codex review current
+    # On comment events, only for pull requests — issue_comment fires for plain
+    # issues too, which have no head to be stale against.
+    if: >-
+      (github.event_name == 'pull_request' && github.event.pull_request.draft == false)
+      || (github.event_name == 'issue_comment' && github.event.issue.pull_request)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Compare the reviewed head with the current one
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            // A comment event carries an `issue`, not a `pull_request`, so the
+            // head has to be fetched rather than read off the payload.
+            const number = context.payload.pull_request
+              ? context.payload.pull_request.number
+              : context.payload.issue.number;
+            const { data: pr } = await github.rest.pulls.get(
+              { owner, repo, pull_number: number });
+            if (pr.draft) { core.info('draft — nothing to report'); return; }
+            const head = pr.head.sha;
+            const MARKER = '<!-- atlas-codex-freshness -->';
+            const isCodex = login => /codex/i.test(login || '');
+
+            const all = await github.paginate(github.rest.issues.listComments,
+              { owner, repo, issue_number: number, per_page: 100 });
+
+            // Which commit did Codex last actually look at? Reviews and review
+            // comments carry the SHA as a field. A clean verdict carries it
+            // only as prose, so it is read out of the body.
+            const reviews = await github.paginate(github.rest.pulls.listReviews,
+              { owner, repo, pull_number: number, per_page: 100 });
+            const comments = await github.paginate(github.rest.pulls.listReviewComments,
+              { owner, repo, pull_number: number, per_page: 100 });
+            // `**Reviewed commit:** \`1cfc1f50ab\`` — the bold markers sit
+            // between the colon and the SHA, so they have to be allowed for.
+            const REVIEWED = /reviewed commit:\**\s*`?([0-9a-f]{7,40})`?/i;
+
+            const seen = [
+              ...reviews.filter(r => isCodex(r.user && r.user.login))
+                .map(r => ({ sha: r.commit_id, at: r.submitted_at, clean: false })),
+              ...comments.filter(c => isCodex(c.user && c.user.login))
+                .map(c => ({ sha: c.original_commit_id || c.commit_id, at: c.created_at, clean: false })),
+              ...all.filter(c => isCodex(c.user && c.user.login))
+                .map(c => {
+                  const m = REVIEWED.exec(c.body || '');
+                  return m && { sha: m[1], at: c.created_at,
+                    clean: /didn.t find any major issues/i.test(c.body || '') };
+                }),
+            ].filter(x => x && x.sha).sort((a, b) => (a.at < b.at ? 1 : -1));
+
+            const commits = await github.paginate(github.rest.pulls.listCommits,
+              { owner, repo, pull_number: number, per_page: 250 });
+            const order = commits.map(c => c.sha);
+            const short = s => (s || '').slice(0, 7);
+            // The prose form is abbreviated, so a reviewed SHA matches the head
+            // by prefix rather than by equality.
+            const same = (a, b) => !!a && !!b && (a.startsWith(b) || b.startsWith(a));
+
+            let body;
+            if (!seen.length) {
+              body = `${MARKER}\n### 🤖 Codex review — none yet\n\n` +
+                `No Codex review has landed on this PR. It normally reviews on open and on ` +
+                `ready-for-review; if it has not, comment \`@codex review\`.\n\n` +
+                `Either way the merge card's **Advisory review** row still has to be answered — ` +
+                `\`none raised\` is a valid answer once a review has come back clean.`;
+            } else if (same(seen[0].sha, head)) {
+              body = `${MARKER}\n### 🤖 Codex review — current\n\n` +
+                (seen[0].clean
+                  ? `Codex reviewed \`${short(head)}\`, which is the current head, and raised ` +
+                    `**nothing**. That verdict describes the code that is actually here.\n\n` +
+                    `\`none raised\` is now a truthful answer for the merge card's ` +
+                    `**Advisory review** row — for this head, and only until the next push.`
+                  : `Codex has reviewed \`${short(head)}\`, which is the current head. Its findings ` +
+                    `describe the code that is actually here.\n\n` +
+                    `Record what happened to each one in the merge card's **Advisory review** row: ` +
+                    `fixed, non-issue with the reason, or deferred to the backlog.`);
+            } else {
+              const i = order.findIndex(s => same(s, seen[0].sha));
+              const behind = i >= 0 ? order.length - 1 - i : null;
+              body = `${MARKER}\n### 🤖 Codex review — **stale**\n\n` +
+                `Codex last reviewed \`${short(seen[0].sha)}\`` +
+                (behind ? `, which is **${behind} commit${behind === 1 ? '' : 's'} behind** the head` : '') +
+                ` — the head is now \`${short(head)}\`.\n\n` +
+                `Its findings, and any clean bill of health, describe code that is no longer here. ` +
+                `**Comment \`@codex review\` to refresh it.** CI cannot do that: Codex requires the ` +
+                `request to come from a linked account, and refuses one from \`github-actions[bot]\`.`;
+            }
+
+            body += `\n\n---\n_Generated by [Claude Code](https://claude.ai/code)_`;
+
+            // Clean up the abandoned auto-request comments from the earlier
+            // approach, so the thread does not keep a record of a mechanism
+            // that was removed for not working.
+            for (const c of all) {
+              if (c.body && c.body.includes('<!-- atlas-codex-request ')) {
+                await github.rest.issues.deleteComment({ owner, repo, comment_id: c.id });
+                core.info(`removed stale auto-request comment ${c.id}`);
+              }
+            }
+
+            // Now that every comment on the PR wakes this workflow, rewriting an
+            // identical banner would put an edit on the thread for each one.
+            const existing = all.find(c => c.body && c.body.includes(MARKER));
+            if (!existing) {
+              await github.rest.issues.createComment({ owner, repo, issue_number: number, body });
+            } else if (existing.body !== body) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              core.info('verdict unchanged — banner left alone');
+            }

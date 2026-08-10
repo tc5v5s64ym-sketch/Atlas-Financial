@@ -143,9 +143,11 @@ events.push(
     alarms: 'day-of',
     description: 'Lands between the 30th and the 4th. Was $105 through winter, $124 since May 2026.' + src },
 
-  { summary: 'BC Hydro — ~$250 (date varies)', start: '2026-09-08', rrule: MONTHLY(8),
-    alarms: 'day-of',
-    description: 'DATE IS APPROXIMATE. Hydro bills bi-monthly and the payment dates wander across the month — the record shows the 2nd through the 17th, roughly every four to eight weeks, from $148 to $700. Treat this as a prompt to check, not a due date.\n\nOne was paid from the HELOC in January 2026.' + src },
+  // BC Hydro deliberately has no event. It moved to Amanda's DEBT&PAYMENTS
+  // account in May 2026 and she has paid it there since — $235, $250, $250.
+  // A household reminder for a bill the household no longer pays would be a
+  // second authority contradicting ACCOUNT_FACTS, and would invite paying it
+  // twice. If it ever returns to a household account, add it back here.
 );
 
 // --- tax --------------------------------------------------------------------

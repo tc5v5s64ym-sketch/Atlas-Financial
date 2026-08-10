@@ -61,16 +61,23 @@ steady value, not the 18-month median.
 | **every 14 days** (payday cadence) | Fit4Less | $11.54 | 18 months; plus a ~$22 annual fee each July |
 | **month-end** | TD account fees ×2 | $17.95 each | every month captured |
 
-**Two known costs have no current route through chequing:** BC Hydro (last seen
-April 2026 — past bills were paid direct from the HELOC, roughly $250 every two
-months) and Telus (last seen March 2026 — route unknown, possibly her account).
-Netflix does not exist anywhere in the data; the streaming spend is Amazon
-Channels, several small charges on scattered days.
+**One known cost has no current route through chequing:** Telus (last seen
+March 2026 — route unknown, possibly her account). Netflix does not exist
+anywhere in the data; the streaming spend is Amazon Channels, several small
+charges on scattered days.
+
+**BC Hydro is not one of them.** It moved to Amanda's DEBT&PAYMENTS account in
+May 2026 and she has paid it there since — $235, $250, $250. It is therefore
+correctly absent from a household-accounts plan, and must not be carried inside
+the household variable budget either. See "What she pays directly" below, which
+is the single authority for that list.
 
 Income: payroll **bi-weekly** (~$4,469), child benefit **monthly** (~$153.59).
-**Amanda's Tennis BC pay is also bi-weekly and lands with the payroll**
-(owner-stated 2026-08-09); the amount varies. Bonus or vacation pay has
-historically landed in **February and July**.
+Bonus or vacation pay has historically landed in **February and July**.
+**Amanda's Tennis BC pay is semi-monthly — the 15th and month-end — not
+bi-weekly**, and it does not land with the payroll. The detail and the evidence
+are under "Her Tennis BC pay" below, which is the single authority for her
+cadence.
 
 ---
 
