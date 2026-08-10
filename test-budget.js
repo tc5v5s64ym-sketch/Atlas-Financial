@@ -59,8 +59,18 @@ ok(groceries.planned > 0 && fuel.planned > 0,
   'both carry a positive requirement into the cap',
   `${money(groceries.planned)} + ${money(fuel.planned)}`);
 const foodFuel = groceries.planned + fuel.planned;
-ok(near(foodFuel, 2828.79), 'groceries + fuel = $2,828.79/month', money(foodFuel));
-ok(near(foodFuel / WEEKS_PER_MONTH, 650.4, 0.5), 'which is about $650/week', money(foodFuel / WEEKS_PER_MONTH));
+ok(near(foodFuel, 3100), 'groceries + fuel = $3,100.00/month — both owner targets', money(foodFuel));
+ok(near(foodFuel / WEEKS_PER_MONTH, 712.94, 0.5), 'which is about $713/week', money(foodFuel / WEEKS_PER_MONTH));
+ok(groceries.target === 1800 && fuel.target === 1300,
+  'and both are the household\'s own figures, not averages',
+  `groceries ${money(groceries.target)}, fuel ${money(fuel.target)}`);
+// The direction differs per category, which is the point of using a target.
+ok(groceries.target < groceries.historical,
+  'the grocery target is BELOW what has been spent — a planned reduction',
+  `${money(groceries.target)} vs ${money(groceries.historical)}`);
+ok(fuel.target > fuel.historical,
+  'the fuel target is ABOVE it — the household budgets more than it recently used',
+  `${money(fuel.target)} vs ${money(fuel.historical)}`);
 
 console.log('\n=== nothing is counted twice ===');
 // Every dated bill and commitment must either point at a budget category (and
@@ -86,10 +96,16 @@ ok(near(insurance.dated, 182.87), 'BCAA + ICBC are subtracted from insurance', m
 ok(insurance.planned === 0 && insurance.fullyDated,
   'insurance is fully dated — it contributes nothing to the cap');
 const sport = budget.categories.find(c => c.id === 'sport');
-ok(sport.dated > sport.historical,
-  'the dated lacrosse commitments exceed the historical sport average', money(sport.dated));
-ok(sport.planned === 0 && sport.fullyDated,
-  'so children’s sport contributes nothing extra to the cap — it is all on the calendar');
+// The structural correction. Netting the season fees off the recurring line
+// concluded that ordinary sports spending was $0, which is not what the
+// household budgeted — it budgets $250/month AND saves for the seasons.
+ok(sport.target === 250, 'the recurring sports line carries the owner target', money(sport.target));
+ok(near(sport.dated, 25), 'only the recurring dated cost (Fit4Less) is subtracted', money(sport.dated));
+ok(near(sport.planned, 225), 'so $225/month of ordinary sports stays inside the cap', money(sport.planned));
+ok(!sport.fullyDated, 'and the category is NOT written off as fully dated');
+ok(sport.sinking > 0, 'the season fees are tracked as a sinking fund instead', money(sport.sinking));
+ok(near(sport.sinking, budget.sinkingMonthly),
+  'and they are the whole of it', money(budget.sinkingMonthly));
 
 // The bug this replaced: account fees were subtracted from a SPENDING average,
 // but bank fees are not in the spending series at all — they are their own lens.
@@ -131,13 +147,42 @@ ok(discretionaryRoom < budget.discretionaryMonthly,
   'but far less than discretionary spending has actually been running at — the plan requires a real cut',
   `${money(discretionaryRoom)} allowed vs ${money(budget.discretionaryMonthly)} historical`);
 
-console.log('\n=== owner budget provenance is stated, not faked ===');
-ok(plan.budget.ownerTargets.status === 'missing',
-  'the absence of an owner-built budget is recorded explicitly');
-ok(budget.categories.every(c => c.source === 'historical-actual'),
-  'every category is honestly labelled a historical actual, not an owner target');
+console.log('\n=== owner targets are present, and honestly sourced ===');
+ok(plan.budget.ownerTargets.status === 'partial',
+  'the budget records that owner targets are incorporated but incomplete',
+  plan.budget.ownerTargets.status);
+ok(budget.ownerTargetCount === 9, 'nine categories carry an owner target', String(budget.ownerTargetCount));
+for (const c of budget.categories) {
+  const expected = c.target != null ? 'owner-target' : 'historical-actual';
+  if (c.source !== expected) ok(false, `category ${c.id} is mislabelled`, `${c.source} but target=${c.target}`);
+}
+ok(true, 'every category is labelled owner-target or historical-actual to match what it holds');
+ok(budget.categories.filter(c => c.source === 'historical-actual').length === 9,
+  'and the nine without a target are still honestly historical');
+// A target must never be silently invented from an average.
+for (const c of plan.budget.categories) {
+  if (c.plannedMonthly != null) {
+    ok(!!c.targetSource && !!c.ownerLine,
+      `owner target for "${c.id}" names its source and the owner's own line`,
+      `${c.targetSource} · "${c.ownerLine}"`);
+  }
+}
+// Historical actuals stay visible beside the targets, so the difference can be seen.
+ok(budget.categories.every(c => typeof c.historical === 'number'),
+  'the historical actual remains inspectable for every category, target or not');
+const differing = budget.categories.filter(c => c.target != null && Math.abs(c.target - c.historical) > 1);
+ok(differing.length >= 5, 'and it differs from the target often enough to matter',
+  `${differing.length} of ${budget.ownerTargetCount} differ`);
+ok(/not workbook-verified|NOT workbook-verified/i.test(plan.budget.ownerTargets.note),
+  'the targets are recorded as owner-stated but not workbook-verified');
 ok(/monthly_budget_tracker_template|HOME BUDGET/.test(plan.budget.ownerTargets.note),
-  'the named workbooks are recorded as the missing source');
+  'and the workbooks are still named as the outstanding source');
+ok(Array.isArray(plan.budget.ownerTargets.sinkingFundsNamed)
+  && plan.budget.ownerTargets.sinkingFundsNamed.length > 0,
+  'the sinking funds the owner named are recorded',
+  plan.budget.ownerTargets.sinkingFundsNamed.join(', '));
+ok(/NOT quantified|not quantified/.test(plan.budget.ownerTargets.sinkingFundsNote),
+  'and recorded as unquantified rather than guessed at');
 ok(!!plan.budget.cardCaveat && /card/i.test(plan.budget.cardCaveat),
   'the cash-versus-card caveat on the historical averages is stated');
 for (const c of plan.budget.categories) {

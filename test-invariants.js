@@ -106,6 +106,109 @@ ok(/capitalis/i.test(read('docs/ACCOUNT_FACTS.md')),
 ok(/capitalis/i.test(JSON.stringify(plan.assumptions)),
   'and the plan assumptions say so too');
 
+// One canonical HELOC fact, and no page may contradict it.
+const helocDebt = data.debts.find(x => x.id === 'heloc');
+ok(helocDebt.interestTreatment === 'capitalised',
+  'the debt record is the canonical home for how HELOC interest is treated',
+  helocDebt.interestTreatment);
+ok(helocDebt.cashPayment === 0,
+  'and it says $0.00 of household cash leaves for it', money(helocDebt.cashPayment));
+ok(helocDebt.monthlyInterest > 0,
+  'while the economic cost is stated separately', money(helocDebt.monthlyInterest));
+ok(heloc.nonCash === true && near(heloc.amount, helocDebt.monthlyInterest),
+  'the plan obligation agrees with it on both counts', money(heloc.amount));
+
+// The Modeller added the $814.18 to the mortgage and called the total "today",
+// which invented a household bill that nobody pays.
+const modellers = read('public/modellers.js');
+ok(/cashPayment/.test(modellers),
+  'the Modeller reads the cash figure, not the interest charge');
+ok(!/const helocNow = heloc\.payment/.test(modellers),
+  'and no longer treats the capitalised charge as a monthly payment');
+ok(/interestTreatment === 'capitalised'/.test(modellers),
+  'it branches on the canonical fact rather than assuming');
+ok(/economic/i.test(modellers),
+  'and labels the economic cost separately from household cash');
+
+// Deep Dive listed it among ordinary dated payments.
+const helocUpcoming = data.upcoming.filter(u => /HELOC/i.test(u.what));
+ok(helocUpcoming.length > 0, 'the HELOC charge still appears on the dated list');
+ok(helocUpcoming.every(u => u.kind === 'noncash'),
+  'but marked non-cash, not as a payment falling due',
+  helocUpcoming.map(u => u.kind).join(', '));
+ok(helocUpcoming.every(u => !/minimum/i.test(u.what)),
+  'and no longer called a "minimum"', helocUpcoming.map(u => u.what).join(', '));
+ok(/noncash/.test(read('public/deepdive.js')),
+  'Deep Dive renders a non-cash row differently from a payment');
+
+// The stale cash figures in the note predated the $79.84 household-cash model.
+ok(!/roughly \$874|nearer \$590/.test(data.upcomingNote),
+  'the upcoming note no longer quotes cash figures from the pre-classification model');
+ok(/79\.84|\$79/.test(data.upcomingNote),
+  'and states the spendable household position instead');
+
+console.log('\n=== positions.csv cannot disagree with canonical state ===');
+// It is DERIVED reporting output for its computed rows. Running the generator
+// in --check mode is the invariant: if data.json has moved and the CSV has not,
+// this fails rather than quietly publishing two balance sheets.
+const posGen = require('child_process').spawnSync(process.execPath,
+  ['scripts/positions-summary.js', '--check'], { cwd: __dirname, encoding: 'utf8' });
+ok(posGen.status === 0, 'positions.csv computed rows reconcile with data.json',
+  posGen.status === 0 ? 'in step' : (posGen.stderr || '').split('\n').slice(0, 3).join(' | '));
+
+// And the detail rows, which are a captured record rather than generated.
+const csv = read('docs/positions.csv').split(/\r?\n/).map(r => {
+  const out = []; let cur = '', q = false;
+  for (let i = 0; i < r.length; i++) {
+    const c = r[i];
+    if (c === '"') { if (q && r[i + 1] === '"') { cur += '"'; i++; } else q = !q; continue; }
+    if (c === ',' && !q) { out.push(cur); cur = ''; continue; }
+    cur += c;
+  }
+  out.push(cur); return out;
+});
+const csvVal = label => {
+  const row = csv.find(c => c[2] === label);
+  return row ? Number(row[6]) : null;
+};
+ok(near(csvVal('Total visible assets'), assetTotal),
+  'the CSV asset total equals data.json', money(csvVal('Total visible assets')));
+ok(near(csvVal('Total known debt'), debtTotal),
+  'and the debt total', money(csvVal('Total known debt')));
+ok(near(csvVal('Financial-account net worth'), assetTotal - debtTotal),
+  'and financial-account net worth', money(csvVal('Financial-account net worth')));
+ok(csvVal('Silver bullion') != null,
+  'the silver has a position row — its absence was the drift',
+  money(csvVal('Silver bullion') || 0));
+// Every debt in data.json must have a matching CSV row at the same balance.
+for (const x of data.debts) {
+  const row = csv.find(c => c[4] === 'Liability' && Math.abs(Number(c[6]) - x.balance) < 0.01);
+  ok(!!row, `debt "${x.label}" has a matching position row`, money(x.balance));
+}
+
+console.log('\n=== provenance claims are supported ===');
+const nd = plan.nextDollar;
+ok(nd.provenance === 'derived',
+  'the next-dollar ordering is labelled derived, not owner-stated', nd.provenance);
+ok(!/household's stated policy|owner-stated/i.test(nd.note),
+  'and the note no longer claims the household stated it');
+ok(/DERIVED PLAN POLICY|not an owner instruction/i.test(nd.provenanceNote),
+  'the provenance note says plainly that no owner approved it');
+// The policy must not CLAIM owner authority. Explaining what would change if
+// the owner did approve it is not a claim, so the check looks for the claim
+// shapes rather than for any mention of the phrase.
+const CLAIMS_OWNER = /(is|the household's|as an?) owner[- ]stated|household's stated policy|owner[- ]approved/i;
+ok(!CLAIMS_OWNER.test(JSON.stringify(nd)),
+  'the next-dollar policy makes no claim of owner authority');
+ok(/would change this field to owner-stated/i.test(nd.provenanceNote),
+  'and says what evidence would be needed to earn one');
+// Where owner-stated IS used, it carries a date or a named source.
+const budgetTargets = plan.budget.categories.filter(c => c.targetSource);
+ok(budgetTargets.length > 0, 'the owner budget targets declare a source',
+  `${budgetTargets.length} categories`);
+ok(budgetTargets.every(c => /owner-stated-20\d\d-\d\d-\d\d/.test(c.targetSource)),
+  'and each source is dated', budgetTargets[0].targetSource);
+
 console.log('\n=== one authority per contested fact ===');
 const accountFacts = read('docs/ACCOUNT_FACTS.md');
 const master = read('docs/00_MASTER_PICTURE.md');

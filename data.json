@@ -250,7 +250,8 @@
         "amount": 320.0,
         "budgetCategory": "sport",
         "confidence": "confirmed",
-        "group": "burrard"
+        "group": "burrard",
+        "sinkingFund": true
       },
       {
         "id": "burrard2",
@@ -259,7 +260,8 @@
         "amount": 303.0,
         "budgetCategory": "sport",
         "confidence": "confirmed",
-        "group": "burrard"
+        "group": "burrard",
+        "sinkingFund": true
       },
       {
         "id": "fusioncamp",
@@ -268,7 +270,8 @@
         "amount": 786.0,
         "budgetCategory": "sport",
         "confidence": "estimated",
-        "note": "Stated as \"next week\" — the date is approximate."
+        "note": "Stated as \"next week\" — the date is approximate.",
+        "sinkingFund": true
       },
       {
         "id": "tryouts",
@@ -276,7 +279,8 @@
         "label": "Fusion tryouts",
         "amount": 140.0,
         "budgetCategory": "sport",
-        "confidence": "confirmed"
+        "confidence": "confirmed",
+        "sinkingFund": true
       },
       {
         "id": "warriors",
@@ -286,7 +290,8 @@
         "budgetCategory": "sport",
         "confidence": "estimated",
         "adjustable": true,
-        "note": "Owner-stated \"about $800\", September, not yet invoiced. Mid-month assumed."
+        "note": "Owner-stated \"about $800\", September, not yet invoiced. Mid-month assumed.",
+        "sinkingFund": true
       },
       {
         "id": "fusion-sep",
@@ -296,7 +301,8 @@
         "budgetCategory": "sport",
         "confidence": "estimated",
         "adjustable": true,
-        "note": "Planned as roughly $500/month across four months; selection expected after the 22 August tryouts."
+        "note": "Planned as roughly $500/month across four months; selection expected after the 22 August tryouts.",
+        "sinkingFund": true
       },
       {
         "id": "fusion-oct",
@@ -305,7 +311,8 @@
         "amount": 500.0,
         "budgetCategory": "sport",
         "confidence": "estimated",
-        "adjustable": true
+        "adjustable": true,
+        "sinkingFund": true
       },
       {
         "id": "fusion-nov",
@@ -315,7 +322,8 @@
         "budgetCategory": "sport",
         "confidence": "estimated",
         "adjustable": true,
-        "note": "Date unknown; placed on the 1st, the cautious choice inside the window."
+        "note": "Date unknown; placed on the 1st, the cautious choice inside the window.",
+        "sinkingFund": true
       }
     ],
     "groups": [
@@ -379,8 +387,20 @@
       "note": "What the weekly household cap has to cover, category by category. Amounts are NOT stored here — they are derived at render time from public/periods.json, the generated spending history, so there is one home for every historical figure. This block carries only the classification (essential, discretionary, reserve, unknown), which dated bills and commitments belong to each category, and any owner target that should beat the historical average.",
       "classNote": "ESSENTIAL is normal life with no reliable date — groceries, fuel, phones. It comes out of the weekly cap first. DISCRETIONARY is reducible. RESERVE is a real cost that does not fall inside this 90-day window and must be saved for rather than spent. DATED bills and commitments are already on the calendar as events and are subtracted from their category so nothing is paid twice.",
       "ownerTargets": {
-        "status": "missing",
-        "note": "No owner-built household budget has been supplied to this repository. Two workbooks were named — monthly_budget_tracker_template.xlsx and HOME BUDGET.xlsx — but neither their values nor any figure derived from them appears anywhere in the repo or its history, and the files are not present in the working tree. Every figure below is therefore a HISTORICAL ACTUAL from the transaction record, not an owner target. Where the two would differ, the owner target should win: the `plannedMonthly` field on each category is the slot it goes in, and setting it flips that row's source to owner-target. This is an OWNER DECISION REQUIRED item, tracked in docs/01_OPEN_QUESTIONS.md."
+        "status": "partial",
+        "source": "owner-stated-2026-08-10",
+        "note": "Nine owner budget targets are now incorporated, supplied directly by the owner on 2026-08-10 and recorded here with that provenance. They are NOT workbook-verified: monthly_budget_tracker_template.xlsx and HOME BUDGET.xlsx are still absent from this repository and from the machine this ran on, so three things remain unconfirmed - (1) that these nine are current and complete rather than a subset, (2) the AMOUNTS of the sinking funds, which were named but not quantified, and (3) whether the owner's 'Personal' line maps to the transaction record's Shopping category. Every category without a target below is still a historical actual and is labelled as one.",
+        "sinkingFundsNamed": [
+          "property tax",
+          "home insurance",
+          "Fusion",
+          "Burrards",
+          "travel",
+          "Christmas",
+          "annual bills",
+          "emergency/buffer"
+        ],
+        "sinkingFundsNote": "Named by the owner but NOT quantified, so no amount is modelled for them. Property tax and CRA are carried as reserves from the historical record; the Fusion and Burrard commitments are dated on the calendar with owner-stated amounts. Home insurance, Christmas, travel, annual bills and the emergency top-up have no figure and are OWNER DECISION REQUIRED - the workbook would supply them."
       },
       "cardCaveat": "The historical averages below are total household spending — chequing, cards and PayPal. The forecast deducts the weekly cap as CASH from the household chequing accounts, but only card MINIMUMS as debt service. Spending at the historical rate on the cards would therefore show a healthy cash line while the card balances grew. The cap is a cash instruction, and it only holds if the spending is actually paid for rather than carried.",
       "categories": [
@@ -391,8 +411,10 @@
           "from": [
             "Groceries"
           ],
-          "plannedMonthly": null,
-          "why": "The largest single household cost and entirely undated. Carried at the historical actual — there is no owner target to beat it, and no evidence the household has changed how it shops."
+          "plannedMonthly": 1800,
+          "ownerLine": "Groceries",
+          "targetSource": "owner-stated-2026-08-10",
+          "why": "OWNER TARGET WINS. $1,800 against an $1,839.66 historical average — the household has set a figure a little under what it has been spending, which is a decision about the next 90 days rather than a description of the last eighteen months."
         },
         {
           "id": "fuel",
@@ -401,8 +423,10 @@
           "from": [
             "Fuel & transport"
           ],
-          "plannedMonthly": null,
-          "why": "Two commuting vehicles; the monthly figure is stable across the whole capture. Undated, so it must come out of the weekly cap."
+          "plannedMonthly": 1300,
+          "ownerLine": "Transportation / Gas",
+          "targetSource": "owner-stated-2026-08-10",
+          "why": "OWNER TARGET WINS. $1,300 against $989.13 historical. The target is HIGHER than the average, so this is the household budgeting for more fuel than it has recently used, not less. Carried as stated."
         },
         {
           "id": "household",
@@ -411,8 +435,10 @@
           "from": [
             "Household"
           ],
-          "plannedMonthly": null,
-          "why": "Supplies, waste collection and FortisBC. FortisBC is dated on the calendar at $124 and is subtracted here, leaving the undated remainder. BC Hydro is NOT in this figure going forward — it moved to Amanda's account in May 2026 and she has paid it there since."
+          "plannedMonthly": 150,
+          "ownerLine": "Household",
+          "targetSource": "owner-stated-2026-08-10",
+          "why": "OWNER TARGET WINS. $150 against $366.19 historical, which includes the $124 FortisBC bill now dated on the calendar. The target covers supplies only, so FortisBC is subtracted from it."
         },
         {
           "id": "health",
@@ -421,8 +447,10 @@
           "from": [
             "Health"
           ],
-          "plannedMonthly": null,
-          "why": "Prescriptions, dental and clinic charges. Irregular but persistent across all 18 months, and not deferrable."
+          "plannedMonthly": 100,
+          "ownerLine": "Medical",
+          "targetSource": "owner-stated-2026-08-10",
+          "why": "OWNER TARGET WINS. $100 against $347.23 historical. A large planned reduction on an irregular category — worth watching, because medical costs are not very compressible and the historical figure may reassert itself."
         },
         {
           "id": "telecom",
@@ -451,8 +479,10 @@
           "from": [
             "Pets"
           ],
-          "plannedMonthly": null,
-          "why": "Small and irregular, but food for an animal is not discretionary."
+          "plannedMonthly": 110,
+          "ownerLine": "Dog food",
+          "targetSource": "owner-stated-2026-08-10",
+          "why": "OWNER TARGET WINS DECISIVELY. $110 for dog food against $11.01 historical — the record is plainly not capturing pet spending, most likely because it is bought inside grocery shops and categorised as Groceries. The owner figure is the better fact."
         },
         {
           "id": "propertytax",
@@ -481,8 +511,10 @@
           "from": [
             "Restaurants"
           ],
-          "plannedMonthly": null,
-          "why": "The largest reducible category and the first place the cap bites."
+          "plannedMonthly": 800,
+          "ownerLine": "Restaurants / Takeout",
+          "targetSource": "owner-stated-2026-08-10",
+          "why": "OWNER TARGET WINS. $800 against $1,384.70 historical — the single largest planned reduction in the budget, and the main reason the discretionary line is affordable."
         },
         {
           "id": "shopping",
@@ -491,8 +523,10 @@
           "from": [
             "Shopping"
           ],
-          "plannedMonthly": null,
-          "why": "General retail, and the second-largest reducible category. Runs at roughly the same level as dining out, and unlike groceries it has no floor — the historical average is a description of past behaviour, not a requirement."
+          "plannedMonthly": 600,
+          "ownerLine": "Personal",
+          "targetSource": "owner-stated-2026-08-10",
+          "why": "OWNER TARGET WINS, MAPPING NEEDS CONFIRMATION. The owner line is called 'Personal' at $600; the nearest thing in the transaction record is Shopping at $1,156.33. They may not be the same concept — 'Personal' often means per-adult spending money. Applied because ignoring an explicit target is worse than an imperfect mapping, but flagged for the owner to confirm."
         },
         {
           "id": "travel",
@@ -511,8 +545,10 @@
           "from": [
             "Sport & fitness"
           ],
-          "plannedMonthly": null,
-          "why": "The eight lacrosse and camp commitments are dated on the calendar and total far more per month than the historical sport average, so this category is fully accounted for by dated events and carries nothing extra in the cap. Fit4Less is dated too."
+          "plannedMonthly": 250,
+          "ownerLine": "Sports / Activities",
+          "targetSource": "owner-stated-2026-08-10",
+          "why": "OWNER TARGET WINS, AND IS KEPT SEPARATE FROM THE SEASON FEES. $250/month of ordinary sports and activities. The Fusion and Burrard commitments are dated sinking-fund items on the calendar and are NOT netted off this line — doing so previously drove recurring sports to $0, which is not what the household budgeted. Fit4Less at $25/month IS dated and recurring, so it is subtracted, leaving $225."
         },
         {
           "id": "entertainment",
@@ -531,8 +567,10 @@
           "from": [
             "Subscriptions"
           ],
-          "plannedMonthly": null,
-          "why": "Amazon Channels and similar, on scattered days — too small and too irregular to date individually. There is no Netflix anywhere in the data."
+          "plannedMonthly": 300,
+          "ownerLine": "Subscriptions",
+          "targetSource": "owner-stated-2026-08-10",
+          "why": "OWNER TARGET WINS. $300 against $158.86 historical. Higher than the average, which suggests the budget anticipates subscriptions the record has not yet caught. Carried as stated."
         },
         {
           "id": "school",
@@ -574,6 +612,8 @@
     },
     "nextDollar": {
       "policy": "protect-then-highest-cost",
+      "provenance": "derived",
+      "provenanceNote": "DERIVED PLAN POLICY, not an owner instruction. Neither Dale nor Amanda has stated or approved this ordering; it was derived by the implementation from the current financial facts — the penalty-rate clock on the TD credit card, the over-limit fee on the Cash Back Visa, and the HELOC crossing its own limit inside the window. It was previously presented as a household decision, which no owner statement supported. The ordering is offered as a recommendation and remains open to the owner overriding it; if they adopt it, this would change this field to owner-stated with a dated reference.",
       "target": "cashback",
       "summary": "The next surplus dollar goes to the TD Cash Back Visa: it is the highest rate the household pays at 26.99%, and it is the only card currently over its limit, so paying it down removes an interest charge and a monthly over-limit fee at the same time.",
       "order": [
@@ -613,7 +653,7 @@
           "why": "By rate that is the TD Cash Back Visa at 26.99%, then the TD credit card at its 24.99% penalty rate, then Triangle at 21.99%. Effective cost, not headline rate: the Cash Back card also carries the over-limit fee, which makes its real cost higher still."
         }
       ],
-      "note": "This is the household's stated policy, encoded so the plan cannot quietly invent a different one. It is evaluated against current facts rather than applied blindly: the ordering puts stopping HELOC growth above extra card repayment specifically because the HELOC breaches its limit inside this window without anyone borrowing another dollar."
+      "note": "Encoded explicitly so the plan cannot quietly apply a different one, and evaluated against current facts rather than applied blindly: the ordering puts stopping HELOC growth above extra card repayment specifically because the HELOC breaches its limit inside this window without anyone borrowing another dollar. See provenanceNote — this is Atlas's recommendation, not a household decision."
     },
     "actions": [
       {
@@ -751,10 +791,11 @@
     },
     {
       "due": "2026-08-21",
-      "what": "HELOC minimum",
+      "what": "HELOC interest charged",
       "amount": 814.18,
-      "status": "due",
-      "note": "Interest-only — reduces principal by nothing"
+      "status": "scheduled",
+      "note": "Capitalised onto the HELOC balance — no cash leaves any chequing account. It is a real cost: the balance grows by this much and nothing repays it.",
+      "kind": "noncash"
     },
     {
       "due": "2026-08-22",
@@ -786,7 +827,7 @@
       "note": "Eleven times last month's $69.93, because going over the limit makes the excess immediately due. Under $5,000 before the 7th stops the $29 over-limit fee"
     }
   ],
-  "upcomingNote": "The tight moment is 12 August — Burrard ($623) and the Fusion camp ($786) both fall before Friday's payday, taking cash to roughly $874, or nearer $590 once ordinary spending is counted, and it stays there for two days. There is $1,415.95 of credit left across every facility combined if anything unexpected lands in that gap. The 90-day projection on the Plan page carries this forward week by week.",
+  "upcomingNote": "The tight moment is 12 August. Burrard ($623.00) falls two days before payday against $79.84 of spendable household cash — Chequing A, Chequing B and Savings — so on the household accounts alone it does not clear; the Plan page sizes the gap at $1,043.16 including the $500 buffer and shows what can cover it. The Fusion camp ($786.00) follows on the 16th, after payday. There is $1,415.98 of credit left across every facility combined, and $247.18 of that is already spoken for by pending charges. The HELOC row below is an interest charge capitalised onto the balance, not a payment: no cash leaves any account for it.",
   "commitments": {
     "heading": "Big-ticket items already committed",
     "note": "Beyond the dates above. Kept here so they do not arrive as a surprise — sports commitments across August to December total about $4,349, roughly $870/month, against the $348/month youth lacrosse has actually averaged. That is two and a half times the established rate, and the funding record below shows $2,269.80 of past lacrosse cost went onto the HELOC at 4.90%.",
@@ -835,171 +876,159 @@
     {
       "id": "mortgage",
       "label": "Mortgage",
+      "institution": "TD",
       "interestByEvent": true,
       "principalShare": 0.524,
+      "postedBalance": 546026.58,
+      "pending": 0,
       "balance": 546026.58,
       "rate": 3.64,
       "rateBasis": "TD Mortgage Prime − 0.96%",
       "structure": "Amortising — 52.4% of each payment is principal",
       "annualInterest": 19441,
       "payment": 1600,
+      "interestTreatment": "paid-in-payment",
+      "cashPayment": 1600,
       "frequency": "Bi-weekly",
       "nextDue": "2026-08-14",
       "limit": null,
-      "available": null,
       "confidence": "verified",
       "secured": true
     },
     {
       "id": "heloc",
       "label": "HELOC",
+      "institution": "TD",
       "interestByEvent": true,
+      "postedBalance": 201586.16,
+      "pending": 0,
       "balance": 201586.16,
       "rate": 4.9,
       "rateBasis": "TD Prime + 0.45%",
       "structure": "Interest-only revolving — never amortises",
       "annualInterest": 9877.72,
       "payment": 814.18,
-      "frequency": "Monthly minimum",
+      "interestTreatment": "capitalised",
+      "cashPayment": 0,
+      "monthlyInterest": 814.18,
+      "frequency": "Monthly interest charge — not a payment",
       "nextDue": "2026-08-21",
       "limit": 202654,
-      "available": 1067.84,
       "confidence": "verified",
-      "secured": true
+      "secured": true,
+      "note": "Interest is CAPITALISED onto this balance at month end, not paid from any chequing account. $814.18/month is therefore an economic cost and a balance increase, and $0.00 of household cash. The last three charges were $810.09, $787.58 and $814.18, each a debit on the HELOC itself with no matching chequing payment. cashPayment and monthlyInterest are the canonical split; every page derives its wording from interestTreatment and must not present this as a bill that gets paid."
     },
     {
       "id": "triangle",
       "label": "Triangle Mastercard",
+      "institution": "Canadian Tire",
       "interestByEvent": false,
       "secured": false,
+      "postedBalance": 13497.0,
+      "pending": 0,
       "balance": 13497.0,
       "rate": 21.99,
       "rateBasis": "Purchases 21.99% / cash 22.99%",
       "structure": "Revolving — 99.98% used",
       "annualInterest": 2880,
       "payment": 253.57,
+      "interestTreatment": "paid",
+      "cashPayment": 253.57,
       "frequency": "Monthly minimum",
       "nextDue": "2026-08-07",
       "limit": 13500,
-      "available": 3.0,
       "confidence": "verified"
     },
     {
       "id": "cashback",
       "label": "TD Cash Back Visa",
+      "institution": "TD",
       "interestByEvent": false,
       "secured": false,
+      "postedBalance": 5612.43,
+      "pending": 0,
       "balance": 5612.43,
       "rate": 26.99,
       "rateBasis": "Purchases 26.99% / cash 27.99%",
       "structure": "Revolving — $612 over its limit",
       "annualInterest": 1902.6,
       "payment": 762.36,
+      "interestTreatment": "paid",
+      "cashPayment": 762.36,
       "frequency": "Monthly minimum",
       "nextDue": "2026-09-01",
       "limit": 5000,
-      "available": 0,
       "confidence": "verified"
     },
     {
       "id": "mbna",
       "label": "Amazon.ca Rewards Mastercard (MBNA)",
+      "institution": "MBNA",
       "interestByEvent": false,
       "secured": false,
+      "postedBalance": 7855.12,
+      "pending": 82.05,
       "balance": 7855.12,
       "rate": 21.74,
       "rateBasis": "Purchases 21.74% / cash and transfers 22.99%",
-      "structure": "Revolving — $0 to $7,855 in eight months",
+      "structure": "Revolving — $0 to $7,855 in eight months; 99.2% used once pending is counted",
       "annualInterest": 1779.24,
       "payment": 158.27,
+      "interestTreatment": "paid",
+      "cashPayment": 158.27,
       "frequency": "Monthly minimum",
       "nextDue": "2026-08-31",
       "limit": 8000,
-      "available": 62.83,
-      "confidence": "verified"
+      "confidence": "verified",
+      "pendingNote": "Read from the MBNA card page on 2026-08-09 and reconciled against the limit there: $8,000.00 - $7,855.12 - $82.05 = $62.83 available. Already incurred."
     },
     {
       "id": "tdcc",
       "label": "TD credit card",
+      "institution": "TD",
       "interestByEvent": false,
       "secured": false,
+      "postedBalance": 1799.97,
+      "pending": 0,
       "balance": 1799.97,
       "rate": 24.99,
       "rateBasis": "Penalty rate — normal would be 17.20%",
       "structure": "Revolving — dormant balance, no purchases",
       "annualInterest": 450,
       "payment": 94.03,
+      "interestTreatment": "paid",
+      "cashPayment": 94.03,
       "frequency": "Monthly minimum",
       "nextDue": "2026-08-17",
       "limit": 2000,
-      "available": 200.0,
       "confidence": "verified"
     },
     {
       "id": "travelvisa",
       "label": "Travel Visa (business)",
+      "institution": "TD",
       "interestByEvent": false,
       "secured": false,
+      "postedBalance": 1078.31,
+      "pending": 165.13,
+      "pendingNote": "Four AMZN Mktp CA purchases dated 6-8 Aug 2026, read from the TD card page on 2026-08-09. Already incurred - not a forecast of future spending.",
       "balance": 1078.31,
       "rate": 19.99,
       "rateBasis": "Purchases 19.99% / cash 22.99%",
-      "structure": "Revolving — pending charges will push it over",
+      "structure": "Revolving — over its limit once pending settles",
       "annualInterest": 215.55,
       "payment": 17.0,
+      "interestTreatment": "paid",
+      "cashPayment": 17.0,
       "frequency": "Monthly minimum",
       "nextDue": "2026-08-26",
       "limit": 1100,
-      "available": 0,
       "confidence": "verified",
-      "note": "$165.13 pending takes it to $1,243.44 against a $1,100 limit"
+      "note": "$165.13 of pending charges takes the effective balance to $1,243.44 against a $1,100 limit — $143.44 over. The posted balance alone still reads under the limit, which is why the pending figure is modelled rather than left in prose."
     }
   ],
   "debtsNote": "Affirm/Flexiti is gone: owner-confirmed paid off and closed, $2,654.28 across the window. Every card balance here was read from the institution on 9 August. The Cash Back Visa's $158.55 interest charge is no longer an open question — it is 26.99% on the average daily balance, not on the closing balance, and the two are far apart on a card that is paid down and run back up. See the reconciliation under Money in and out.",
-  "utilisation": [
-    {
-      "label": "TD Cash Back Visa",
-      "used": 5612.43,
-      "limit": 5000,
-      "available": 0
-    },
-    {
-      "label": "Triangle Mastercard",
-      "used": 13497.0,
-      "limit": 13500,
-      "available": 3.0
-    },
-    {
-      "label": "Amazon.ca Rewards Mastercard",
-      "used": 7855.12,
-      "limit": 8000,
-      "available": 62.83
-    },
-    {
-      "label": "HELOC",
-      "used": 201586.16,
-      "limit": 202654,
-      "available": 1067.84
-    },
-    {
-      "label": "TD credit card",
-      "used": 1799.97,
-      "limit": 2000,
-      "available": 200.0
-    },
-    {
-      "label": "Travel Visa",
-      "used": 1078.31,
-      "limit": 1100,
-      "available": 0
-    },
-    {
-      "label": "Chequing B overdraft",
-      "used": 517.72,
-      "limit": 600,
-      "available": 82.28
-    }
-  ],
-  "utilisationNote": "The Cash Back Visa is at 112.2% — $612.43 beyond its $5,000 limit even after the 9 August payment, with the $29.00 over-limit fee accruing until it is back under. TD's own page shows $70.00 available, which is the payment credited as headroom rather than real room. The Travel Visa's limit is now known at $1,100.00 — the smallest in the household — and it sits at 98.0% with $165.13 of pending charges that will take it $143.44 over.",
+  "utilisationNote": "Derived from the debt records plus the Chequing B overdraft — there is no second list of balances to drift. The Cash Back Visa is at 112.2%, $612.43 beyond its $5,000 limit even after the 9 August payment, with the $29.00 over-limit fee accruing until it is back under; TD's own page shows $70.00 available, which is the payment credited as headroom rather than real room. The Travel Visa is the smallest facility in the household at $1,100.00 and $165.13 of pending charges take it $143.44 over, so its real available credit is nil.",
   "assets": [
     {
       "label": "DEBT&PAYMENTS chequing",
@@ -1638,5 +1667,15 @@
     "prepaymentRoom": 97200,
     "prepaymentUsed": 0,
     "note": "About $6,110/year of voluntary overpayment has removed roughly 8 years of amortisation."
-  }
+  },
+  "revolvingExtra": [
+    {
+      "id": "overdraft",
+      "label": "Chequing B overdraft",
+      "used": 517.72,
+      "limit": 600,
+      "pending": 0,
+      "note": "Not a debt record: an overdraft facility on Chequing B. Counted in revolving headroom."
+    }
+  ]
 }

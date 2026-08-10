@@ -435,21 +435,41 @@
       datedByCategory[cat].items.push({ label, amount, kind });
     };
     for (const b of plan.bills || []) addDated(b.budgetCategory, billMonthly(b), b.label, 'bill');
+    // A dated commitment is NOT automatically a draw against the recurring
+    // budget for its category. The household budgets ~$250/month of ordinary
+    // sports and activities AND saves separately for the Fusion and Burrard
+    // fees; netting the season fees off the recurring line concluded that
+    // normal sports spending was $0, which is not what the household budgeted.
+    // Sinking-fund commitments are therefore tracked apart, not subtracted.
+    const sinking = { total: 0, items: [] };
     for (const c of plan.commitments || []) {
       if ((opts.disabled || []).indexOf(c.id) >= 0) continue;
-      addDated(c.budgetCategory, c.amount / monthsInWindow, c.label, 'commitment');
+      const perMonth = c.amount / monthsInWindow;
+      if (c.sinkingFund) {
+        sinking.total += perMonth;
+        sinking.items.push({ label: c.label, amount: perMonth, category: c.budgetCategory });
+        continue;
+      }
+      addDated(c.budgetCategory, perMonth, c.label, 'commitment');
     }
 
     const categories = (budget.categories || []).map(c => {
       const historical = (c.from || []).reduce((s, label) =>
         s + (label === '@paypal' ? (opts.paypalPerMonth || 0) : perMonth(label)), 0);
       const dated = datedByCategory[c.id] || { total: 0, items: [] };
-      // An owner target, when one exists, beats the historical average.
+      // An owner target, when one exists, beats the historical average. The
+      // household deciding what it intends to spend is better evidence about
+      // the next 90 days than a description of the last eighteen months.
       const target = c.plannedMonthly != null ? c.plannedMonthly : null;
       const gross = target != null ? target : historical;
       const planned = Math.max(0, gross - dated.total);
+      const sinkingHere = sinking.items.filter(s => s.category === c.id)
+        .reduce((a, s) => a + s.amount, 0);
       return Object.assign({}, c, {
         historical, dated: dated.total, datedItems: dated.items, target, planned,
+        // Dated commitments saved for separately. Reported, never netted off
+        // the recurring line for the same category.
+        sinking: sinkingHere,
         // A category whose dated items already exceed its historical average is
         // fully accounted for on the calendar — the dated figure is the better
         // current authority and nothing extra belongs in the weekly cap.
@@ -470,6 +490,11 @@
       reserveMonthly: sum(isClass('reserve')),
       datedMonthly: categories.reduce((s, c) => s + c.dated, 0),
       historicalMonthly: categories.reduce((s, c) => s + c.historical, 0),
+      // Major dated commitments the household saves for rather than absorbing
+      // into a monthly line — the lacrosse season, camps, registrations.
+      sinkingMonthly: sinking.total,
+      sinkingItems: sinking.items,
+      ownerTargetCount: categories.filter(c => c.target != null).length,
       // What the cap must cover before anything optional happens.
       requiredMonthly: sum(c => c.class === 'essential' || c.class === 'unknown'),
     };
@@ -500,9 +525,17 @@
     const events = expandEvents(plan, start, end, opts);
     const byId = {};
     const state = (debts || []).map(x => {
+      // Pending charges are ALREADY INCURRED. A card whose posted balance is
+      // under its limit but whose pending charges take it over is over its
+      // limit — the settlement is bookkeeping, not a decision. Carrying them
+      // from the opening balance is what makes headroom, over-limit state and
+      // interest all agree with what the institution would say today.
+      const pending = x.pending || 0;
+      const opening = x.balance + pending;
       const s = {
         id: x.id, label: x.label, secured: !!x.secured, rate: x.rate || 0,
-        limit: x.limit, opening: x.balance, balance: x.balance,
+        limit: x.limit, opening, balance: opening,
+        postedBalance: x.balance, pending,
         interestByEvent: !!x.interestByEvent, principalShare: x.principalShare,
         interest: 0, paid: 0, capitalised: 0, drawn: 0,
         // The day the balance actually crosses the limit. Tracked on the daily
@@ -528,9 +561,10 @@
       day, date,
       debts: state.map(s => ({
         id: s.id, label: s.label, secured: s.secured, balance: s.balance,
-        limit: s.limit,
+        limit: s.limit, postedBalance: s.postedBalance, pending: s.pending,
         available: s.limit != null ? Math.max(0, s.limit - s.balance) : null,
         overLimit: s.limit != null && s.balance > s.limit,
+        overLimitBy: s.limit != null ? Math.max(0, s.balance - s.limit) : 0,
         interest: s.interest, paid: s.paid, drawn: s.drawn, firstOver: s.firstOver,
       })),
       consumer: state.filter(s => !s.secured).reduce((a, s) => a + s.balance, 0),
@@ -617,8 +651,49 @@
     };
   }
 
+  /* ------------------------------------------------ revolving utilisation */
+  // Every facility with a limit, and what is really left on it TODAY.
+  //
+  // This used to be a second hand-maintained list beside `debts`, and the two
+  // had already disagreed: the Travel Visa row said $0 available while the
+  // same numbers elsewhere derived $21.69, because one of them knew about the
+  // $165.13 of pending charges and the other did not. Derived from the debt
+  // records plus the facilities that are not debts (the chequing overdraft),
+  // so there is nothing left to drift.
+  function utilisation(debts, extra) {
+    const rows = (debts || []).filter(x => x.limit != null).map(x => {
+      const pending = x.pending || 0;
+      const used = x.balance + pending;
+      return {
+        id: x.id, label: x.label, posted: x.balance, pending, used, limit: x.limit,
+        available: Math.max(0, x.limit - used),
+        overLimit: used > x.limit, overLimitBy: Math.max(0, used - x.limit),
+        pct: x.limit ? (used / x.limit) * 100 : null,
+      };
+    });
+    for (const e of extra || []) {
+      const pending = e.pending || 0;
+      const used = e.used + pending;
+      rows.push({
+        id: e.id, label: e.label, posted: e.used, pending, used, limit: e.limit,
+        available: Math.max(0, e.limit - used),
+        overLimit: used > e.limit, overLimitBy: Math.max(0, used - e.limit),
+        pct: e.limit ? (used / e.limit) * 100 : null, note: e.note,
+      });
+    }
+    return {
+      rows,
+      // The headline the Plan quotes. Pending is already inside `used`, so a
+      // card that is economically full contributes nothing here.
+      totalAvailable: rows.reduce((s, r) => s + r.available, 0),
+      totalPending: rows.reduce((s, r) => s + r.pending, 0),
+      overLimitCount: rows.filter(r => r.overLimit).length,
+    };
+  }
+
   const Forecast = { addDays, diffDays, occurrences, expandEvents, simulate,
-    recommendWeekly, recommend, budgetBreakdown, projectDebts, EPSILON, STEP };
+    recommendWeekly, recommend, budgetBreakdown, projectDebts, utilisation,
+    EPSILON, STEP };
   if (typeof module !== 'undefined' && module.exports) module.exports = Forecast;
   else root.Forecast = Forecast;
 

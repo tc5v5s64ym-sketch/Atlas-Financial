@@ -527,23 +527,31 @@ function renderPlan(d, periods) {
       </div>`;
     $('cap-split').innerHTML =
       part('Essential variable need', required, 'essential',
-        `Groceries ${money(perWeek(food.historical))}, fuel ${money(perWeek(fuelCat.historical))}, plus phones, ` +
+        `Groceries ${money(perWeek(food.planned))}, fuel ${money(perWeek(fuelCat.planned))}` +
+        `${food.target != null ? ' <span class="chip v">owner budget</span>' : ''}, plus phones, ` +
         `household supplies, medical and the uncategorised remainder. <b>This comes out first.</b>`) +
       part('Discretionary room', Math.max(0, recMonthly - required), 'optional',
         short > 0
           ? `<b class="neg">Nothing.</b> The cap is below what normal life costs.`
-          : `Everything else — dining out, shopping, entertainment, online spending. Those have been running at ` +
-            `${money(perWeek(budget.discretionaryMonthly))}/wk, so this is a real cut.`) +
+          : `Everything else — dining out, personal, subscriptions, sports and online spending. The household's ` +
+            `own budget for those comes to ${money(perWeek(budget.discretionaryMonthly))}/wk, so the plan is ` +
+            `${money(perWeek(budget.discretionaryMonthly) - perWeek(Math.max(0, recMonthly - required)))}/wk ` +
+            `short of it and something has to give.`) +
       `<div class="cap-part total">
         <div class="cap-part-lab">Total</div>
         <div class="cap-part-amt">${money(weekly)}<span>/wk</span></div>
         <div class="cap-part-note">≈ ${money(recMonthly)} a month</div>
       </div>`;
+    const owned = budget.ownerTargetCount;
     $('cap-basis').innerHTML =
       `Solved from the forecast: the largest weekly spend that keeps every day at or above the ${money(sim.buffer)} ` +
-      `buffer. The split is ${budget.months} months of actual spending with everything already dated on the ` +
-      `calendar removed from its own category. <b>Food and fuel come out of this number first</b> — they are not ` +
-      `paid from somewhere else. No owner-built budget has been supplied, so these are historical actuals, not targets.`;
+      `buffer. The split below it uses the <b>household's own budget targets</b> for ${owned} categories — ` +
+      `groceries, fuel, dining, personal, subscriptions, dog food, sports, household and medical — and ` +
+      `${budget.months} months of actual spending for the rest, with anything already dated on the calendar ` +
+      `removed from its own category. <b>Food and fuel come out of this number first</b>: the household budgets ` +
+      `${money(food.target || food.historical)} and ${money(fuelCat.target || fuelCat.historical)} a month for them. ` +
+      `The ${money(budget.sinkingMonthly)}/month of lacrosse fees is dated on the calendar and saved for separately, ` +
+      `so it is not inside this cap and does not reduce the ordinary sports line.`;
   }
 
   /* ---- the next fourteen days ---- */
@@ -890,7 +898,10 @@ function renderPlan(d, periods) {
   const consumer = d.debts.filter(x => !x.secured).reduce((s, x) => s + (x.balance || 0), 0);
   const secured = d.debts.filter(x => x.secured).reduce((s, x) => s + (x.balance || 0), 0);
   const monthlyInterest = d.debts.reduce((s, x) => s + (x.annualInterest || 0), 0) / 12;
-  const revolving = d.utilisation.reduce((s, u) => s + (u.available || 0), 0);
+  // Pending charges have already spent the credit they are charged against,
+  // so headroom is derived with them included rather than from posted
+  // balances alone — the Travel Visa reads $21.69 of room the other way.
+  const revolving = Forecast.utilisation(d.debts, d.revolvingExtra).totalAvailable;
   const hh = d.helocHistory;
   const helocDelta = hh.length >= 2 ? hh[hh.length - 1].v - hh[hh.length - 2].v : null;
   $('snapshot-tiles').innerHTML = [

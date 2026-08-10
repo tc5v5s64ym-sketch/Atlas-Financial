@@ -109,8 +109,16 @@ function setupRenewal(d) {
     $('amort-label').textContent = years + ' years';
 
     const mortgageNow = m.paymentBiweekly * 26 / 12;
-    const helocNow = heloc.payment;
-    const baselineMonthly = mortgageNow + helocNow;
+    // The HELOC's $814.18 is an interest charge CAPITALISED onto the balance,
+    // not a payment. Adding it to the mortgage produced a "today" figure that
+    // overstated household cash outflow by $814 a month and implied a bill
+    // that nobody pays. The two are kept apart: what leaves the chequing
+    // account, and what the debt costs.
+    const helocCash = heloc.cashPayment != null ? heloc.cashPayment : heloc.payment;
+    const helocEconomic = heloc.monthlyInterest != null ? heloc.monthlyInterest : heloc.payment;
+    const helocCapitalised = heloc.interestTreatment === 'capitalised';
+    const baselineCash = mortgageNow + helocCash;
+    const baselineMonthly = baselineCash;
 
     let payment, totalInterest, principal, note;
     if (consolidate) {
@@ -120,21 +128,27 @@ function setupRenewal(d) {
       note = 'Both debts amortise. The HELOC principal actually gets repaid.';
     } else {
       principal = m.balance;
-      payment = amortisedPayment(principal, r, years) + helocNow;
-      const mortgageInterest = (payment - helocNow) * years * 12 - principal;
+      payment = amortisedPayment(principal, r, years) + helocCash;
+      const mortgageInterest = (payment - helocCash) * years * 12 - principal;
       const helocInterest = heloc.balance * (heloc.rate / 100) * years;
       totalInterest = mortgageInterest + helocInterest;
       note = `The HELOC stays interest-only, so after ${years} years its ${money(heloc.balance)} is still owed in full.`;
     }
 
     const delta = payment - baselineMonthly;
-    $('renewal-context').textContent =
-      `Today: mortgage ${money(mortgageNow)}/month equivalent plus the HELOC minimum ${money(helocNow)} — `
-      + `${money(baselineMonthly)} a month in total, of which the HELOC portion buys no equity at all.`;
+    $('renewal-context').innerHTML = helocCapitalised
+      ? `<b>Today, household cash:</b> the mortgage only — ${money(mortgageNow)}/month equivalent. `
+        + `Nothing leaves any chequing account for the HELOC.<br>`
+        + `<b>Today, HELOC economic cost:</b> ${money(helocEconomic)}/month of interest `
+        + `<b>capitalised onto the balance</b>, so the debt grows by that much every month with nothing `
+        + `repaying it. It is a real cost and it buys no equity — it is simply not a bill that gets paid.`
+      : `Today: mortgage ${money(mortgageNow)}/month equivalent plus the HELOC payment ${money(helocCash)} — `
+        + `${money(baselineCash)} a month of household cash.`;
 
     $('renewal-out').innerHTML = `
       <div class="big">${money(payment)} <span style="font-size:.95rem;font-weight:500;color:var(--text-secondary)">/ month</span></div>
-      <div class="row"><span>Versus today</span><span class="${delta > 0 ? 'neg' : 'pos'}">${delta > 0 ? '+' : ''}${money2(delta)}</span></div>
+      <div class="row"><span>Versus today's household cash</span><span class="${delta > 0 ? 'neg' : 'pos'}">${delta > 0 ? '+' : ''}${money2(delta)}</span></div>
+      ${helocCapitalised ? `<div class="row"><span>HELOC interest no longer capitalising</span><span class="pos">${money2(helocEconomic)} / month</span></div>` : ''}
       <div class="row"><span>Principal financed</span><span>${money2(principal)}</span></div>
       <div class="row"><span>Total interest over ${years} years</span><span>${money(totalInterest)}</span></div>
       <div class="row"><span>Still owed after ${years} years</span><span>${consolidate ? '$0' : money(heloc.balance)}</span></div>
