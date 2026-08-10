@@ -261,9 +261,22 @@ function renderPlan(d, periods) {
   const plan = d.plan;
   const asOf = d.meta.asOf;
 
-  const recommended = Forecast.recommendWeekly(plan, asOf, simOpts());
+  // ONE call, ONE answer. The weekly household cap, the simulation behind it
+  // and the opening-gap analysis all come from the same engine result, so the
+  // headline figure and the budget breakdown below cannot disagree — they
+  // used to, showing $1,650/wk at the top and $0/wk in the budget block.
+  const advice = Forecast.recommend(plan, asOf, simOpts());
+  const recommended = advice.weekly;
   const weekly = state.weeklyVariable != null ? state.weeklyVariable : recommended;
-  const sim = Forecast.simulate(plan, asOf, simOpts({ weeklyVariable: weekly }));
+  // The plan being drawn is the recovery path: gap covered, spending from the
+  // first payday. Overriding the weekly figure re-simulates on those same
+  // assumptions rather than inventing a second set.
+  const sim = weekly === recommended ? advice.sim
+    : Forecast.simulate(plan, asOf, Object.assign({}, advice.simOptions, { weeklyVariable: weekly }));
+  const gap = advice.gap;                 // null when there is no opening gap
+  const zeroSim = advice.zero;            // the unfunded window — the problem
+  const fundingGap = gap ? gap.amount : 0;
+  const preIncomeOut = gap ? gap.preIncomeOut : 0;
 
   // When does the plan NEED Amanda's transfer? Re-run with her transfer at
   // zero: the first day that dips below the buffer is the deadline.
@@ -272,39 +285,13 @@ function renderPlan(d, periods) {
     : (plan.income.find(s => s.id === 'amandaTransfer') || { scenarioMonthly: {} }).scenarioMonthly[state.scenario] || 0;
   let neededBy = null;
   if (transferMonthly > 0) {
-    const noTransfer = Forecast.simulate(plan, asOf, simOpts({
+    const noTransfer = Forecast.simulate(plan, asOf, Object.assign({}, advice.simOptions, {
       weeklyVariable: weekly,
       incomeOverrides: Object.assign({}, state.incomeOverrides, { amandaTransfer: 0 }),
     }));
-    const firstShort = noTransfer.daily.find(p => p.balance < noTransfer.buffer);
+    const firstShort = noTransfer.daily.find(p =>
+      p.balance < noTransfer.buffer && (!gap || p.date >= gap.date));
     if (firstShort) neededBy = firstShort.date;
-  }
-
-  // If even $0/week breaches the buffer the problem is not the budget, it is
-  // an opening gap. Size it, and work out what is sustainable once it is
-  // covered — otherwise the page just says "$0" and offers nothing.
-  const zeroSim = Forecast.simulate(plan, asOf, simOpts({ weeklyVariable: 0 }));
-  const fundingGap = Math.max(0, zeroSim.buffer - zeroSim.min.balance);
-  // Everything that must be paid before the first money arrives.
-  const firstIncome = zeroSim.events.find(e => e.kind === 'income');
-  const preIncomeOut = zeroSim.events
-    .filter(e => e.amount < 0 && (!firstIncome || e.date < firstIncome.date))
-    .reduce((s, e) => s + -e.amount, 0);
-  // Topping up by exactly the gap only restores the buffer, leaving nothing
-  // for week one — so the useful number is what is sustainable from the first
-  // payday, once the squeeze has passed. Re-solve over the remaining window.
-  let postGapWeekly = null, postGapFrom = null;
-  if (recommended === 0 && fundingGap > 0) {
-    const firstPay = zeroSim.events.find(e => e.kind === 'income' && e.amount >= 1000);
-    if (firstPay) {
-      const from = firstPay.date;
-      const balThen = zeroSim.daily.find(p => p.date === from).balance;
-      const shifted = JSON.parse(JSON.stringify(plan));
-      shifted.startingCash.amount = balThen + fundingGap; // gap covered before payday
-      shifted.windowDays = Forecast.diffDays(from, zeroSim.end) + 1;
-      postGapWeekly = Forecast.recommendWeekly(shifted, from, simOpts());
-      postGapFrom = from;
-    }
   }
 
   $('plan-window').textContent =
@@ -312,21 +299,25 @@ function renderPlan(d, periods) {
 
   /* ---- status band ---- */
   const band = $('status-band');
-  if (sim.min.balance < 0) {
+  if (gap) {
+    // An opening gap is a different problem from an overspending one, and the
+    // fix is different too — so say which this is. The figures come from the
+    // unfunded window: this is what happens if nothing is moved.
+    band.className = 'statusband crit';
+    band.innerHTML =
+      `<b>Short by ${money(fundingGap)} on ${fmtDateLong(gap.floorDate)} — before any spending at all.</b>
+       The household accounts hold ${money(plan.startingCash.amount)} today and
+       ${money(preIncomeOut)} of committed payments fall before the next payday.
+       This is a timing gap, not a shortage across the 90 days: cover it, hold spending to
+       ${money(weekly)}/week from ${fmtDateLong(advice.effectiveFrom)}, and the window
+       finishes with ${money(sim.ending)}.`;
+  } else if (sim.min.balance < 0) {
     const firstNeg = sim.daily.find(p => p.balance < 0);
     band.className = 'statusband crit';
-    // An opening gap is a different problem from an overspending one, and the
-    // fix is different too — so say which this is.
-    band.innerHTML = recommended === 0
-      ? `<b>Short by ${money(fundingGap)} on ${fmtDateLong(zeroSim.min.date)} — before any spending at all.</b>
-         The household accounts hold ${money(plan.startingCash.amount)} today and
-         ${money(preIncomeOut)} of committed payments fall before the next payday.
-         This is a timing gap, not a shortage across the 90 days: cover it and the window
-         finishes with ${money(sim.ending + fundingGap)}.`
-      : `<b>Shortfall expected around ${fmtDateLong(firstNeg.date)}.</b>
+    band.innerHTML = `<b>Shortfall expected around ${fmtDateLong(firstNeg.date)}.</b>
          At this spending level the account goes negative${firstNeg.date !== sim.min.date
-          ? ` and keeps falling, reaching ${money(sim.min.balance)} by ${fmtDateLong(sim.min.date)}`
-          : ` (${money(sim.min.balance)})`}.
+      ? ` and keeps falling, reaching ${money(sim.min.balance)} by ${fmtDateLong(sim.min.date)}`
+      : ` (${money(sim.min.balance)})`}.
          Cut the weekly budget, move a commitment, or bring income forward.`;
   } else if (sim.min.balance < sim.buffer) {
     band.className = 'statusband warn';
@@ -344,12 +335,10 @@ function renderPlan(d, periods) {
   // "here is what can actually cover it" — a source that cannot reach the
   // amount needed on the day is not an option, and is shown struck out.
   const fund = $('funding');
-  if (fundingGap > 0 && plan.funding) {
+  if (gap && plan.funding) {
     // What must be in the account on the worst day, not the gap to the buffer.
-    const shortDate = zeroSim.min.date;
-    const dueThatDay = zeroSim.events
-      .filter(e => e.date === shortDate && e.amount < 0)
-      .reduce((s, e) => s + -e.amount, 0);
+    const shortDate = gap.date;
+    const dueThatDay = gap.dueOnGapDay;
     const group = (plan.groups || []).find(g =>
       zeroSim.events.some(e => e.date === shortDate && (plan.commitments.find(c => c.id === e.id) || {}).group === g.id));
 
@@ -399,13 +388,12 @@ function renderPlan(d, periods) {
   $('hero-tiles').innerHTML = [
     { lab: 'Lowest cash point', val: money(sim.min.balance), note: `on ${fmtDateLong(sim.min.date)}`,
       tone: sim.min.balance < 0 ? 'alert' : sim.min.balance < sim.buffer ? 'warn' : '' },
-    (recommended === 0 && postGapWeekly
-      ? { lab: 'Safe to spend', val: money(postGapWeekly) + '/wk', tone: 'warn',
-          note: `from ${fmtDateLong(postGapFrom)}, once the ${money(fundingGap)} gap is covered. Until then there is nothing spare.` }
-      : { lab: 'Safe to spend', val: money(weekly) + '/wk', tone: '',
-          note: state.weeklyVariable != null && state.weeklyVariable !== recommended
-            ? `your setting — the forecast supports ${money(recommended)}/wk`
-            : `≈ ${money(weekly * WEEKS_PER_MONTH)} a month, solved from the forecast` }),
+    { lab: 'Weekly household cap', val: money(weekly) + '/wk', tone: gap ? 'warn' : '',
+      note: state.weeklyVariable != null && state.weeklyVariable !== recommended
+        ? `your setting — the forecast supports ${money(recommended)}/wk`
+        : gap
+          ? `from ${fmtDateLong(advice.effectiveFrom)}, once the ${money(fundingGap)} gap is covered. Food and fuel come out of this first.`
+          : `≈ ${money(weekly * WEEKS_PER_MONTH)} a month. Food and fuel come out of this first.` },
     { lab: 'Projected ending cash', val: money(sim.ending), note: `on ${fmtDateLong(sim.end)}, after everything below`,
       tone: sim.ending < sim.buffer ? 'warn' : '' },
   ].map(t => `
@@ -504,75 +492,84 @@ function renderPlan(d, periods) {
     </div>`;
   }).join('');
 
-  /* ---- the budget that gets us there ---- */
-  // Named bills are dated on the calendar now, so the variable budget — and
-  // the essential allowance shown here — exclude them.
-  const billMonthly = b => b.frequency === 'biweekly' ? b.amount * 26 / 12 : b.amount;
-  const billedByGroup = {};
-  let essentialBilled = 0;
-  for (const b of plan.bills || []) {
-    billedByGroup[b.budgetGroup] = (billedByGroup[b.budgetGroup] || 0) + billMonthly(b);
-    if (b.budgetGroup === 'Other essentials') essentialBilled += billMonthly(b);
-  }
+  /* ---- what the cap has to cover ---- */
+  // The cap is one number, but it is not one kind of money. Food and fuel come
+  // out of it before anything optional does, and the page has to say so or the
+  // household will read it as spending money.
+  const budget = Forecast.budgetBreakdown(plan, periods, {
+    paypalPerMonth: d.paypal ? d.paypal.perMonth : 0,
+    disabled: state.disabled,
+  });
   const recMonthly = weekly * WEEKS_PER_MONTH;
-  const essentials = Math.max(0, plan.essentialsPerMonth - essentialBilled);
-  const optional = Math.max(0, recMonthly - essentials);
-  $('budget-out').innerHTML =
-    row('Maximum safe variable spending', `<b>${money(weekly)} / week</b>`) +
-    row('&nbsp;&nbsp;— as a monthly figure', `<b>${money(recMonthly)} / month</b>`) +
-    row('Essential spending allowance', est(money(essentials) + ' / month'), '', chipE) +
-    row('Optional spending allowance', (recMonthly < essentials ? '<b class="neg">$0</b>' : money(optional) + ' / month')) +
-    row('Planned extra debt payment', money(state.extraDebtMonthly) + ' / month') +
-    row('Required buffer at the end', money(sim.buffer)) +
-    (recommended === 0 && postGapWeekly
-      ? `<p class="warnline">$0 is the honest answer for the opening days: the household accounts cannot cover the
-         ${fmtDateLong(zeroSim.min.date)} commitments without money coming across first. From ${fmtDateLong(postGapFrom)},
-         with the ${money(fundingGap)} gap covered, <b>${money(postGapWeekly)}/week</b> — about
-         ${money(postGapWeekly * WEEKS_PER_MONTH)}/month — holds the buffer for the rest of the window.</p>`
-      : recMonthly < essentials
-      ? `<p class="warnline">The safe budget is below the ${money(essentials)}/month that essentials alone have been costing.
-         At this income the period only works by cutting essentials, moving a commitment, or borrowing — that is the real message of this number.</p>`
-      : '');
-  $('budget-basis').textContent =
-    `Solved from the forecast, not from a category template: the largest weekly spend that keeps every day of the ` +
-    `projection at or above the ${money(sim.buffer)} buffer under the ${state.scenario} income scenario. ` +
-    `The ${money(essentialBilled)}/month of named bills (FortisBC, Shaw, BCAA, ICBC, account fees) sits on the ` +
-    `calendar as dated payments and is excluded from these allowances. ${plan.essentialsNote}`;
+  const perWeek = m => m / WEEKS_PER_MONTH;
+  const required = budget ? budget.requiredMonthly : 0;
+  const optional = Math.max(0, recMonthly - required);
+  const short = required - recMonthly;
 
-  /* ---- category breakdown, where the data supports it ---- */
-  if (periods && periods.periods && periods.periods.ytd) {
-    const ytd = periods.periods.ytd;
-    const per = t => t / ytd.months;
-    const get = lab => { const r = ytd.spending.find(s => s.label === lab); return r ? per(r.total) : 0; };
-    const groupsSpec = [
-      { label: 'Groceries', v: get('Groceries'), kind: 'essential' },
-      { label: 'Fuel & transport', v: get('Fuel & transport'), kind: 'essential' },
-      { label: 'Other essentials', v: ['Household', 'Health', 'Telecom', 'Insurance', 'Property tax', 'Tax', 'Pets', 'School & clubs'].reduce((s, l) => s + get(l), 0), kind: 'essential' },
-      { label: 'Children & sports', v: get('Sport & fitness'), kind: 'optional' },
-      { label: 'Dining out', v: get('Restaurants'), kind: 'optional' },
-      { label: 'Shopping & entertainment', v: get('Shopping') + get('Entertainment'), kind: 'optional' },
-      { label: 'Subscriptions', v: get('Subscriptions'), kind: 'optional' },
-      { label: 'Travel', v: get('Travel'), kind: 'optional' },
-      { label: 'PayPal (online & app spend)', v: d.paypal ? d.paypal.perMonth : 0, kind: 'optional' },
-      { label: 'Uncategorised', v: get('Uncategorised'), kind: 'unknown' },
-    ].map(g => Object.assign(g, { v: Math.max(0, g.v - (billedByGroup[g.label] || 0)) }))
-      .filter(g => g.v > 0);
-    const histTotal = groupsSpec.reduce((s, g) => s + g.v, 0);
-    const scale = recMonthly / histTotal;
-    const max = Math.max(...groupsSpec.map(g => g.v));
-    $('budget-cats').innerHTML = groupsSpec.map(g => `
+  if (budget) {
+    const food = budget.categories.find(c => c.id === 'groceries');
+    const fuel = budget.categories.find(c => c.id === 'fuel');
+    $('budget-out').innerHTML =
+      row('<b>Weekly household cap</b>', `<b>${money(weekly)} / week</b>`) +
+      row('&nbsp;&nbsp;— as a monthly figure', `${money(recMonthly)} / month`) +
+      row('Essential variable need <span class="mutedtext">groceries, fuel, phones, medical</span>',
+        est(money(perWeek(required)) + ' / week'), 'out', chipE) +
+      row(short > 0 ? '<b class="neg">Discretionary room</b>' : 'Discretionary room',
+        short > 0 ? '<b class="neg">nothing left</b>' : money(perWeek(optional)) + ' / week') +
+      row('&nbsp;&nbsp;— of which groceries and fuel',
+        est(money(perWeek(food.planned + fuel.planned)) + ' / week'), '', chipE) +
+      row('Planned extra debt payment', money(state.extraDebtMonthly) + ' / month') +
+      row('Required buffer at the end', money(sim.buffer)) +
+      (short > 0
+        ? `<p class="warnline">The cap is ${money(perWeek(short))}/week <b>below</b> what normal life has been costing.
+           Groceries and fuel alone have run ${money(perWeek(food.historical + fuel.historical))}/week. At this income the
+           window only works by cutting essentials, moving a commitment, or borrowing — that is the real message of this number.</p>`
+        : `<p class="warnline">Read this as: <b>${money(perWeek(required))}/week is spoken for</b> before anything optional —
+           ${money(perWeek(food.planned + fuel.planned))} of it groceries and fuel. The remaining
+           ${money(perWeek(optional))}/week is the whole of dining out, shopping, entertainment and online spending, against the
+           ${money(perWeek(budget.discretionaryMonthly))}/week those have actually been running at.</p>`);
+
+    $('budget-basis').textContent =
+      `Solved from the forecast, not from a category template: the largest weekly spend that keeps every day of the ` +
+      `projection at or above the ${money(sim.buffer)} buffer under the ${state.scenario} income scenario. ` +
+      `The split below it comes from ${budget.basisLabel.toLowerCase()} of actual spending — ` +
+      `${budget.months} months — with the ${money(budget.datedMonthly)}/month of bills and commitments that already sit ` +
+      `on the calendar subtracted from their own categories, so nothing is counted twice. ` +
+      `No owner-built budget has been supplied, so every figure here is a historical actual rather than a target.`;
+  }
+
+  /* ---- category breakdown ---- */
+  // Every category, in one table, showing the three things that matter:
+  // what it has actually cost, what is already dated on the calendar, and what
+  // therefore has to come out of the weekly cap. An even percentage cut across
+  // everything is the wrong instruction, so the essential rows are marked and
+  // the discretionary ones carry the reduction.
+  if (budget) {
+    const cats = budget.categories.filter(c => c.historical > 0 || c.dated > 0);
+    const max = Math.max(...cats.map(c => c.historical));
+    const chipFor = c =>
+      c.class === 'essential' ? '<span class="chip">essential</span>'
+      : c.class === 'reserve' ? '<span class="chip w">reserve</span>'
+      : c.class === 'unknown' ? '<span class="chip e">unknown</span>' : '';
+    $('budget-cats').innerHTML = cats.map(c => `
       <div class="cat-row">
-        <span class="cat-lab">${g.label} ${g.kind === 'essential' ? '<span class="chip">essential</span>' : g.kind === 'unknown' ? '<span class="chip e">unknown</span>' : ''}</span>
-        <span class="cat-bar"><span style="width:${(g.v / max) * 100}%"></span></span>
-        <span class="cat-amt">${est(money(g.v * scale))}</span>
-        <span class="cat-hist">has been ${money(g.v)}/mo</span>
+        <span class="cat-lab">${c.label} ${chipFor(c)}${c.fullyDated
+          ? ' <span class="chip v">on the calendar</span>' : ''}</span>
+        <span class="cat-bar"><span style="width:${(c.historical / max) * 100}%"></span></span>
+        <span class="cat-amt">${c.class === 'reserve'
+          ? '<span class="mutedtext">reserve</span>'
+          : c.planned > 0 ? est(money(c.planned)) : '<span class="mutedtext">$0</span>'}</span>
+        <span class="cat-hist">has been ${money(c.historical)}/mo${c.dated > 0
+          ? ` · ${money(c.dated)} dated` : ''}</span>
       </div>`).join('');
-    $('budget-cats-note').textContent = (scale < 0.999
-      ? `The left figure is each category scaled to fit the ${money(recMonthly)}/month safe budget — an even ` +
-        `${Math.round((1 - scale) * 100)}% below the ${money(histTotal)}/month these categories have actually averaged. ` +
-        `Cutting evenly is rarely right: protect the essential rows and take more from the optional ones.`
-      : `The safe budget covers the historical average of ${money(histTotal)}/month for these categories, with room to spare.`)
-      + ' The named bills on the calendar are already taken out of these figures.';
+
+    const inCap = budget.requiredMonthly + budget.discretionaryMonthly;
+    $('budget-cats-note').textContent =
+      `The right-hand figure is what each category has averaged; the amount before it is what has to come out of the ` +
+      `weekly cap once anything already dated on the calendar is removed. Those add to ${money(inCap)}/month against a ` +
+      `cap of ${money(recMonthly)}/month, so ${money(Math.max(0, inCap - recMonthly))}/month has to come off — and it ` +
+      `cannot come off the essential rows, which are ${money(budget.requiredMonthly)}/month on their own. ` +
+      `Insurance and children's sports show $0 because they are fully dated on the calendar, not because they are free.`;
   }
 
   /* ---- next actions ---- */

@@ -2,11 +2,46 @@
 /* Deep Dive — the historical and forensic analysis. This is the original
    dashboard's material, moved off the homepage but preserved whole. */
 
+// Cash is not one thing. Money in a household spending account and money in a
+// pass-through account earmarked for someone else are different in kind, and
+// adding them together produces a number that is true of nothing.
+const CASH_CLASS_LABEL = {
+  spendable: 'spendable household cash',
+  operational: 'operational / pass-through',
+  staging: 'staging',
+  'other-liquid': 'other liquid',
+  restricted: 'restricted',
+};
+
 function renderDeepDive(d) {
   $('coverage-line').textContent = `${d.meta.coverage} · ${d.meta.transactions.toLocaleString('en-CA')} transactions, ${d.meta.statements} statements`;
   $('disclaimer').textContent = d.meta.disclaimer;
 
-  $('tiles').innerHTML = d.headline.map(t => `
+  // The cash tile is DERIVED from the plan's cash register, not stored. It used
+  // to be a hardcoded "Cash on hand — $3,051.81" that summed six accounts of
+  // four different kinds: household spending money, Amanda's pass-through
+  // account, a staging account and two US holiday accounts. The Plan page
+  // meanwhile said $79.84. Both were describing the same household.
+  const cash = d.plan.startingCash;
+  const byClass = {};
+  for (const h of cash.heldElsewhere || []) {
+    (byClass[h.class] = byClass[h.class] || { total: 0, labels: [] });
+    byClass[h.class].total += h.value;
+    byClass[h.class].labels.push(h.label.replace(/ —.*$/, ''));
+  }
+  const elsewhere = (cash.heldElsewhere || []).reduce((s, h) => s + h.value, 0);
+  const classLine = Object.entries(byClass)
+    .map(([k, v]) => `${money(v.total)} ${CASH_CLASS_LABEL[k] || k} (${v.labels.join(', ')})`)
+    .join('; ');
+  const cashTile = {
+    label: 'Spendable household cash',
+    value: cash.amount,
+    tone: 'alert',
+    note: `Chequing A, Chequing B and Savings — the accounts the mortgage, bills and card minimums are actually ` +
+      `paid from. A further ${money(elsewhere)} sits elsewhere and is not household spending money: ${classLine}.`,
+  };
+
+  $('tiles').innerHTML = [cashTile].concat(d.headline).map(t => `
     <div class="tile ${t.tone === 'plain' ? '' : t.tone}">
       <div class="lab">${t.label}</div>
       <div class="val">${money(t.value)}</div>

@@ -80,10 +80,16 @@ $82.28 of headroom left.
 
 **The $762.36 Cash Back minimum on 1 September is the one that needs planning
 for** — it is more than four times any other card minimum. Payroll runs
-bi-weekly at about $4,469 and her Tennis BC income now averages $3,507/month, so
-the money exists; the question is timing. **Worth confirming the next pay dates
-against these six**, because there is no buffer to absorb a mismatch and every
-revolving facility is at or beyond its limit.
+bi-weekly at about $4,469, and her Tennis BC pay is semi-monthly — the 15th and
+month-end — at about $4,575/month gross. That gross is **not** household money:
+coaches are paid from it first and only the remainder crosses over, which has
+averaged $2,182/month. See `ACCOUNT_FACTS.md` → "Her Tennis BC pay" for the
+cadence and "What crosses to the household" for the transfer record; both are
+the authority, and this paragraph must not restate their figures.
+
+So the money exists; the question is timing. **Worth confirming the next pay
+dates**, because there is no buffer to absorb a mismatch and every revolving
+facility is at or beyond its limit.
 
 ---
 

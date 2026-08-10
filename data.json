@@ -13,14 +13,14 @@
     "startingCash": {
       "amount": 79.84,
       "breakdown": [
-        { "label": "Chequing A — payroll and fixed costs", "value": 506.98 },
-        { "label": "Chequing B — daily spending", "value": -517.72, "note": "Overdrawn; $82.28 of its $600 overdraft still available" },
-        { "label": "Savings", "value": 90.58 }
+        { "label": "Chequing A — payroll and fixed costs", "value": 506.98, "class": "spendable" },
+        { "label": "Chequing B — daily spending", "value": -517.72, "class": "spendable", "note": "Overdrawn; $82.28 of its $600 overdraft still available" },
+        { "label": "Savings", "value": 90.58, "class": "spendable" }
       ],
       "heldElsewhere": [
-        { "label": "DEBT&PAYMENTS — Amanda's account", "value": 2691.85, "note": "Her Tennis BC pay lands here. Coaches are paid out of it first; only what is left is transferred to the household. Not spendable household cash." },
-        { "label": "SAVINGS-DONT TOUCH — staging", "value": 74.20, "note": "On her profile. Money passes through to the HELOC and cards within days; it has never held a balance." },
-        { "label": "Wise — two US spending accounts", "value": 205.92, "note": "US-dollar holiday accounts." }
+        { "label": "DEBT&PAYMENTS — Amanda's account", "value": 2691.85, "class": "operational", "note": "Her Tennis BC pay lands here. Coaches are paid out of it first; only what is left is transferred to the household. Not spendable household cash." },
+        { "label": "SAVINGS-DONT TOUCH — staging", "value": 74.20, "class": "staging", "note": "On her profile. Money passes through to the HELOC and cards within days; it has never held a balance." },
+        { "label": "Wise — two US spending accounts", "value": 205.92, "class": "other-liquid", "note": "US-dollar holiday accounts." }
       ],
       "note": "The household spending accounts only — Chequing A, Chequing B and Savings, the three the mortgage, bills and card minimums are actually paid from. Amanda's DEBT&PAYMENTS account is deliberately excluded: her Tennis BC pay lands there and is not household money until she has paid her coaches and moved the remainder across (owner-stated). Wise, the silver and the RESP are excluded too."
     },
@@ -40,23 +40,23 @@
       { "id": "travel", "label": "Travel Visa minimum", "frequency": "monthly", "day": 26, "amount": 17.00, "confidence": "estimated" }
     ],
     "bills": [
-      { "id": "fortis", "label": "FortisBC gas", "frequency": "monthly", "day": 3, "amount": 124.00, "confidence": "confirmed", "budgetGroup": "Other essentials", "note": "Seventeen charges over fourteen months; $124.00 exactly in each of the last four, landing the 2nd–4th. August is already paid." },
-      { "id": "shaw", "label": "Shaw internet", "frequency": "monthly", "day": 14, "amount": 78.40, "confidence": "confirmed", "budgetGroup": "Other essentials", "note": "$78.40 on the 14th–15th, May through July." },
-      { "id": "bcaa", "label": "BCAA insurance", "frequency": "monthly", "day": 15, "amount": 82.96, "confidence": "confirmed", "budgetGroup": "Other essentials", "note": "Eighteen consecutive months on the 15th; $82.96 in each of the last three." },
-      { "id": "icbc", "label": "ICBC insurance", "frequency": "monthly", "day": 15, "amount": 99.91, "confidence": "confirmed", "budgetGroup": "Other essentials", "note": "$99.91 on the 15th, five consecutive months." },
-      { "id": "fit4less", "label": "Fit4Less membership", "frequency": "biweekly", "anchor": "2026-08-14", "amount": 11.54, "confidence": "confirmed", "budgetGroup": "Children & sports", "note": "$11.54 every two weeks, 18 months running, most recently 31 July — so the next lands on payday. An annual $21.99 fee appears each July." },
-      { "id": "tdfees", "label": "TD account fees (two accounts)", "frequency": "monthly", "day": 30, "amount": 35.90, "confidence": "confirmed", "budgetGroup": "Other essentials", "note": "Two $17.95 monthly plan fees at month-end, every month captured." }
+      { "id": "fortis", "label": "FortisBC gas", "frequency": "monthly", "day": 3, "amount": 124.00, "confidence": "confirmed", "budgetCategory": "household", "note": "Seventeen charges over fourteen months; $124.00 exactly in each of the last four, landing the 2nd–4th. August is already paid." },
+      { "id": "shaw", "label": "Shaw internet", "frequency": "monthly", "day": 14, "amount": 78.40, "confidence": "confirmed", "budgetCategory": "telecom", "note": "$78.40 on the 14th–15th, May through July." },
+      { "id": "bcaa", "label": "BCAA insurance", "frequency": "monthly", "day": 15, "amount": 82.96, "confidence": "confirmed", "budgetCategory": "insurance", "note": "Eighteen consecutive months on the 15th; $82.96 in each of the last three." },
+      { "id": "icbc", "label": "ICBC insurance", "frequency": "monthly", "day": 15, "amount": 99.91, "confidence": "confirmed", "budgetCategory": "insurance", "note": "$99.91 on the 15th, five consecutive months." },
+      { "id": "fit4less", "label": "Fit4Less membership", "frequency": "biweekly", "anchor": "2026-08-14", "amount": 11.54, "confidence": "confirmed", "budgetCategory": "sport", "note": "$11.54 every two weeks, 18 months running, most recently 31 July — so the next lands on payday. An annual $21.99 fee appears each July." },
+      { "id": "tdfees", "label": "TD account fees (two accounts)", "frequency": "monthly", "day": 30, "amount": 35.90, "confidence": "confirmed", "budgetCategory": null, "note": "Two $17.95 monthly plan fees at month-end, every month captured." }
     ],
     "billsNote": "Extracted from the transaction history, not guessed: only bills still active in the last three months are dated here, and every one of them is paid from Chequing A. BC Hydro is no longer an open gap — it moved to Amanda's account in May 2026 and she has paid it there since ($235, $250, $250), so it is correctly absent from a household-accounts plan. Telus stopped leaving any captured account in March 2026 and its route is still unknown. Streaming is Amazon Channels — several small charges on scattered days, left inside the variable budget. There is no Netflix anywhere in the data.",
     "commitments": [
-      { "id": "burrard1", "date": "2026-08-12", "label": "Burrard registration — child 1", "amount": 320.00, "confidence": "confirmed", "group": "burrard" },
-      { "id": "burrard2", "date": "2026-08-12", "label": "Burrard registration — child 2", "amount": 303.00, "confidence": "confirmed", "group": "burrard" },
-      { "id": "fusioncamp", "date": "2026-08-16", "label": "Fusion camp", "amount": 786.00, "confidence": "estimated", "note": "Stated as \"next week\" — the date is approximate." },
-      { "id": "tryouts", "date": "2026-08-22", "label": "Fusion tryouts", "amount": 140.00, "confidence": "confirmed" },
-      { "id": "warriors", "date": "2026-09-15", "label": "Warriors Elite Academy", "amount": 800.00, "confidence": "estimated", "adjustable": true, "note": "Owner-stated \"about $800\", September, not yet invoiced. Mid-month assumed." },
-      { "id": "fusion-sep", "date": "2026-09-15", "label": "Fusion season — September instalment", "amount": 500.00, "confidence": "estimated", "adjustable": true, "note": "Planned as roughly $500/month across four months; selection expected after the 22 August tryouts." },
-      { "id": "fusion-oct", "date": "2026-10-15", "label": "Fusion season — October instalment", "amount": 500.00, "confidence": "estimated", "adjustable": true },
-      { "id": "fusion-nov", "date": "2026-11-01", "label": "Fusion season — November instalment", "amount": 500.00, "confidence": "estimated", "adjustable": true, "note": "Date unknown; placed on the 1st, the cautious choice inside the window." }
+      { "id": "burrard1", "date": "2026-08-12", "label": "Burrard registration — child 1", "amount": 320.00, "budgetCategory": "sport", "confidence": "confirmed", "group": "burrard" },
+      { "id": "burrard2", "date": "2026-08-12", "label": "Burrard registration — child 2", "amount": 303.00, "budgetCategory": "sport", "confidence": "confirmed", "group": "burrard" },
+      { "id": "fusioncamp", "date": "2026-08-16", "label": "Fusion camp", "amount": 786.00, "budgetCategory": "sport", "confidence": "estimated", "note": "Stated as \"next week\" — the date is approximate." },
+      { "id": "tryouts", "date": "2026-08-22", "label": "Fusion tryouts", "amount": 140.00, "budgetCategory": "sport", "confidence": "confirmed" },
+      { "id": "warriors", "date": "2026-09-15", "label": "Warriors Elite Academy", "amount": 800.00, "budgetCategory": "sport", "confidence": "estimated", "adjustable": true, "note": "Owner-stated \"about $800\", September, not yet invoiced. Mid-month assumed." },
+      { "id": "fusion-sep", "date": "2026-09-15", "label": "Fusion season — September instalment", "amount": 500.00, "budgetCategory": "sport", "confidence": "estimated", "adjustable": true, "note": "Planned as roughly $500/month across four months; selection expected after the 22 August tryouts." },
+      { "id": "fusion-oct", "date": "2026-10-15", "label": "Fusion season — October instalment", "amount": 500.00, "budgetCategory": "sport", "confidence": "estimated", "adjustable": true },
+      { "id": "fusion-nov", "date": "2026-11-01", "label": "Fusion season — November instalment", "amount": 500.00, "budgetCategory": "sport", "confidence": "estimated", "adjustable": true, "note": "Date unknown; placed on the 1st, the cautious choice inside the window." }
     ],
     "groups": [
       { "id": "burrard", "label": "Burrard registrations", "atomic": true, "note": "Both children are registered on the same day (owner-stated), so this cannot be staggered across the payday two days later — it is the full amount or neither child is registered." }
@@ -71,8 +71,57 @@
         { "id": "cards", "label": "Credit cards", "available": 265.83, "rate": null, "rank": 4, "unusable": true, "note": "$200 on the TD credit card, $62.83 on the MBNA, $3.00 on the Triangle. The Cash Back Visa is $612 over its limit and the Travel Visa is full. Not enough, and a purchase on the TD card at 24.99% would be the most expensive money in the household." }
       ]
     },
-    "essentialsPerMonth": 3054,
-    "essentialsNote": "[ESTIMATE] Groceries, fuel, utilities, insurance, property tax, medical and union dues have averaged about $3,054/month. The essential/discretionary split is the analyst's classification, not the bank's.",
+    "budget": {
+      "basis": "ytd",
+      "note": "What the weekly household cap has to cover, category by category. Amounts are NOT stored here — they are derived at render time from public/periods.json, the generated spending history, so there is one home for every historical figure. This block carries only the classification (essential, discretionary, reserve, unknown), which dated bills and commitments belong to each category, and any owner target that should beat the historical average.",
+      "classNote": "ESSENTIAL is normal life with no reliable date — groceries, fuel, phones. It comes out of the weekly cap first. DISCRETIONARY is reducible. RESERVE is a real cost that does not fall inside this 90-day window and must be saved for rather than spent. DATED bills and commitments are already on the calendar as events and are subtracted from their category so nothing is paid twice.",
+      "ownerTargets": {
+        "status": "missing",
+        "note": "No owner-built household budget has been supplied to this repository. Two workbooks were named — monthly_budget_tracker_template.xlsx and HOME BUDGET.xlsx — but neither their values nor any figure derived from them appears anywhere in the repo or its history, and the files are not present in the working tree. Every figure below is therefore a HISTORICAL ACTUAL from the transaction record, not an owner target. Where the two would differ, the owner target should win: the `plannedMonthly` field on each category is the slot it goes in, and setting it flips that row's source to owner-target. This is an OWNER DECISION REQUIRED item, tracked in docs/01_OPEN_QUESTIONS.md."
+      },
+      "cardCaveat": "The historical averages below are total household spending — chequing, cards and PayPal. The forecast deducts the weekly cap as CASH from the household chequing accounts, but only card MINIMUMS as debt service. Spending at the historical rate on the cards would therefore show a healthy cash line while the card balances grew. The cap is a cash instruction, and it only holds if the spending is actually paid for rather than carried.",
+      "categories": [
+        { "id": "groceries", "label": "Groceries", "class": "essential", "from": ["Groceries"], "plannedMonthly": null,
+          "why": "The largest single household cost and entirely undated. Carried at the historical actual — there is no owner target to beat it, and no evidence the household has changed how it shops." },
+        { "id": "fuel", "label": "Fuel & transport", "class": "essential", "from": ["Fuel & transport"], "plannedMonthly": null,
+          "why": "Two commuting vehicles; the monthly figure is stable across the whole capture. Undated, so it must come out of the weekly cap." },
+        { "id": "household", "label": "Household supplies & utilities", "class": "essential", "from": ["Household"], "plannedMonthly": null,
+          "why": "Supplies, waste collection and FortisBC. FortisBC is dated on the calendar at $124 and is subtracted here, leaving the undated remainder. BC Hydro is NOT in this figure going forward — it moved to Amanda's account in May 2026 and she has paid it there since." },
+        { "id": "health", "label": "Medical & health", "class": "essential", "from": ["Health"], "plannedMonthly": null,
+          "why": "Prescriptions, dental and clinic charges. Irregular but persistent across all 18 months, and not deferrable." },
+        { "id": "telecom", "label": "Phones & internet", "class": "essential", "from": ["Telecom"], "plannedMonthly": null,
+          "why": "Shaw is dated at $78.40 and subtracted. The remainder is the Telus phone bills, which stopped leaving any captured account in March 2026 — the route is unknown, so the cost is carried inside the cap rather than dated." },
+        { "id": "insurance", "label": "Insurance", "class": "essential", "from": ["Insurance"], "plannedMonthly": null,
+          "why": "BCAA and ICBC are both dated on the calendar, and together they exceed the historical average because the ICBC policy is only five months old. The dated figures are the better current authority, so nothing extra is carried in the cap." },
+        { "id": "pets", "label": "Pets", "class": "essential", "from": ["Pets"], "plannedMonthly": null,
+          "why": "Small and irregular, but food for an animal is not discretionary." },
+        { "id": "propertytax", "label": "Property tax", "class": "reserve", "from": ["Property tax"], "plannedMonthly": null,
+          "why": "An annual lump, historically paid partly from the HELOC and partly by Amanda. No instalment falls inside this window, so it must NOT be inside the weekly cap — but it is a real cost and is shown as a reserve so a surplus is not mistaken for free money." },
+        { "id": "tax", "label": "CRA & union dues", "class": "reserve", "from": ["Tax"], "plannedMonthly": null,
+          "why": "CRA instalments, some settled from Amanda's account. Same treatment as property tax: real, but not a dated household cash cost inside this window." },
+        { "id": "restaurants", "label": "Dining out & takeaway", "class": "discretionary", "from": ["Restaurants"], "plannedMonthly": null,
+          "why": "The largest reducible category and the first place the cap bites." },
+        { "id": "shopping", "label": "Shopping", "class": "discretionary", "from": ["Shopping"], "plannedMonthly": null,
+          "why": "General retail, and the second-largest reducible category. Runs at roughly the same level as dining out, and unlike groceries it has no floor — the historical average is a description of past behaviour, not a requirement." },
+        { "id": "travel", "label": "Travel", "class": "discretionary", "from": ["Travel"], "plannedMonthly": null,
+          "why": "Episodic rather than monthly — heavily concentrated in May–July 2026 and near zero outside it. No trip is known to fall inside this window, so the historical average almost certainly overstates the next 90 days. It is left at the historical figure rather than zeroed because zeroing it would be a guess; the effect is that the discretionary requirement shown is CONSERVATIVE. Confirming there is no trip would release roughly this much." },
+        { "id": "sport", "label": "Children & sports", "class": "discretionary", "from": ["Sport & fitness"], "plannedMonthly": null,
+          "why": "The eight lacrosse and camp commitments are dated on the calendar and total far more per month than the historical sport average, so this category is fully accounted for by dated events and carries nothing extra in the cap. Fit4Less is dated too." },
+        { "id": "entertainment", "label": "Entertainment", "class": "discretionary", "from": ["Entertainment"], "plannedMonthly": null,
+          "why": "Cinema, events and games outside the PayPal channel. Small against the total, entirely optional, and the easiest row on this table to move to zero for a month if the plan needs it." },
+        { "id": "subscriptions", "label": "Subscriptions", "class": "discretionary", "from": ["Subscriptions"], "plannedMonthly": null,
+          "why": "Amazon Channels and similar, on scattered days — too small and too irregular to date individually. There is no Netflix anywhere in the data." },
+        { "id": "school", "label": "School & clubs", "class": "discretionary", "from": ["School & clubs"], "plannedMonthly": null,
+          "why": "School fees and club dues outside the dated lacrosse commitments." },
+        { "id": "paypal", "label": "PayPal — online & app spend", "class": "discretionary", "from": ["@paypal"], "plannedMonthly": null,
+          "why": "Gaming, Apple services, streaming and food delivery. Drawn from chequing as funding pulls, which the spending series deliberately excludes to avoid counting the same purchase twice — so it is added here from the PayPal exports instead." },
+        { "id": "uncategorised", "label": "Uncategorised", "class": "unknown", "from": ["Uncategorised"], "plannedMonthly": null,
+          "why": "4.5% of spending that no merchant pattern matches. It is real money leaving real accounts, so it is counted as REQUIRED alongside the essentials — treating it as discretionary would quietly assume it can be cut." }
+      ],
+      "excluded": [
+        { "from": "Business", "why": "Amanda's coaching costs. Pass-through spending settled from her own account, not household money — counting it here would charge the household for a cost it does not pay." }
+      ]
+    },
     "actions": [
       { "what": "Fund the 12 August registrations — Amanda's account, or failing that the HELOC", "amount": 1050.00, "due": "2026-08-11", "why": "Both registrations are paid on the same day and total $623.00; the household accounts hold $79.84. Only two sources can cover it: Amanda releasing about $1,050 from her tennis account, which costs nothing, or a HELOC draw against the $1,067.84 that is left — the last of the household's credit, at 4.90% interest-only on a facility that is 99.5% drawn and never amortises. Cards and the overdraft cannot: combined they reach $348.11. Decide before the 11th so the money is in place on the day.", "status": "open", "owner": "Amanda, then both" },
       { "what": "Fund the Fusion camp", "amount": 786.00, "due": "2026-08-16", "why": "The largest single item before month-end, landing two days after payday. The date is approximate — confirm it, because a week earlier would breach the low point.", "status": "open" },
@@ -87,7 +136,7 @@
       "Every figure is tagged. Confirmed means the institution or a long observed history states it; estimated means it is modelled and shown in amber with a ≈ mark throughout.",
       "Future card statement minimums are estimates carried at the current level; real minimums move with the balance.",
       "Named recurring bills — FortisBC, Shaw, BCAA, ICBC, Fit4Less, the TD account fees — are dated on the calendar with days extracted from the transaction history, and are excluded from the variable budget so nothing is counted twice. The variable budget covers everything else: groceries, fuel, phones, streaming, PayPal and the rest.",
-      "Two known costs have no reliable date and are NOT on the calendar: BC Hydro (absent from chequing since April 2026 — historically paid from the HELOC, roughly $250 every two months) and the Telus phone bills (absent since March 2026). They ride inside the variable budget's averages instead.",
+      "One known cost has no reliable date and is NOT on the calendar: the Telus phone bills, absent from every captured account since March 2026, route unknown. It rides inside the household budget's telecom average instead. BC Hydro is NOT in that position — it moved to Amanda's account in May 2026 and she has paid it there since, so it is neither dated here nor carried in the household averages. Counting it in both places was the error this replaces.",
       "Each week's 'keep above' figure is the closing balance below which the rest of the window would breach the buffer even with everything going to plan — it is the week-by-week track to stay on, computed backwards from the end of the window.",
       "The plan is the HOUSEHOLD SPENDING ACCOUNTS ONLY — Chequing A, Chequing B and Savings. Amanda's DEBT&PAYMENTS account is a separate pot: her Tennis BC pay lands there, coaches are paid from it, and only the remainder crosses over. Neither its balance nor her gross pay is counted as household money; only her actual transfers are, measured from the transfer record. Internal transfers between household accounts are excluded throughout.",
       "Because her account is excluded, so is what it pays. She settles BC Hydro, part of the MBNA minimum and some card payments direct from it — roughly $940/month that never appears in this plan. Every card minimum is nonetheless charged to the household here, which is the cautious reading: if she keeps paying a share, the household finishes better than shown.",
@@ -99,7 +148,6 @@
   },
 
   "headline": [
-    { "label": "Cash on hand", "value": 3051.81, "tone": "alert", "note": "Seven accounts: $2,845.89 at TD, matching its own consolidated balance, plus $205.92 left in Wise. One is overdrawn." },
     { "label": "Total debt", "value": 777455.57, "tone": "plain", "note": "Every consumer debt in the household is now captured. Nothing outstanding." },
     { "label": "Interest cost / year", "value": 36546.11, "tone": "warn", "sub": { "value": 17105.11, "label": "excluding the mortgage" }, "note": "About $3,046 every month, of which about $1,425 is not the mortgage" },
     { "label": "Credit left, everywhere", "value": 1415.95, "tone": "alert", "note": "Across seven facilities combined" }
@@ -110,7 +158,7 @@
     { "due": "2026-08-04", "what": "TD Cash Back Visa — July statement minimum", "amount": 69.93, "status": "paid", "note": "Missed on 4 Aug; $70.00 paid on 9 Aug, five days late. Available credit went from $0.00 to $70.00, so the freeze has lifted" },
     { "due": "2026-08-12", "what": "Burrard registration — child 1", "amount": 320.00, "status": "due", "kind": "commitment", "note": "Lacrosse. Deadline is the 12th, two days before payday" },
     { "due": "2026-08-12", "what": "Burrard registration — child 2", "amount": 303.00, "status": "due", "kind": "commitment", "note": "Lacrosse. Same deadline as child 1 — $623.00 together" },
-    { "due": "2026-08-14", "what": "Mortgage (bi-weekly)", "amount": 1600.00, "status": "due", "note": "Falls on payday — Seaspan and Tennis BC both land the same day" },
+    { "due": "2026-08-14", "what": "Mortgage (bi-weekly)", "amount": 1600.00, "status": "due", "note": "Falls on the Seaspan payday. Amanda's Tennis BC pay does NOT land the same day — it is semi-monthly, on the 15th and month-end." },
     { "due": "2026-08-16", "what": "Fusion camp", "amount": 786.00, "status": "due", "kind": "commitment", "note": "Stated as \"next week\" — date is approximate. The largest single item before payday" },
     { "due": "2026-08-17", "what": "TD credit card minimum", "amount": 94.03, "status": "due", "note": "Must post by the 17th — a fifth miss restarts the penalty-rate clock" },
     { "due": "2026-08-21", "what": "HELOC minimum", "amount": 814.18, "status": "due", "note": "Interest-only — reduces principal by nothing" },
@@ -141,11 +189,11 @@
   "debts": [
     { "label": "Mortgage", "balance": 546026.58, "rate": 3.64, "rateBasis": "TD Mortgage Prime − 0.96%", "structure": "Amortising — 52.4% of each payment is principal", "annualInterest": 19441, "payment": 1600, "frequency": "Bi-weekly", "nextDue": "2026-08-14", "limit": null, "available": null, "confidence": "verified", "secured": true },
     { "label": "HELOC", "balance": 201586.16, "rate": 4.90, "rateBasis": "TD Prime + 0.45%", "structure": "Interest-only revolving — never amortises", "annualInterest": 9877.72, "payment": 814.18, "frequency": "Monthly minimum", "nextDue": "2026-08-21", "limit": 202654, "available": 1067.84, "confidence": "verified", "secured": true },
-    { "label": "Triangle Mastercard", "balance": 13497.00, "rate": 21.99, "rateBasis": "Purchases 21.99% / cash 22.99%", "structure": "Revolving — 99.98% used", "annualInterest": 2880, "payment": 253.57, "frequency": "Monthly minimum", "nextDue": "2026-08-07", "limit": 13500, "available": 3.00, "confidence": "verified" },
-    { "label": "TD Cash Back Visa", "balance": 5612.43, "rate": 26.99, "rateBasis": "Purchases 26.99% / cash 27.99%", "structure": "Revolving — $612 over its limit", "annualInterest": 1902.60, "payment": 762.36, "frequency": "Monthly minimum", "nextDue": "2026-09-01", "limit": 5000, "available": 0, "confidence": "verified" },
-    { "label": "Amazon.ca Rewards Mastercard (MBNA)", "balance": 7855.12, "rate": 21.74, "rateBasis": "Purchases 21.74% / cash and transfers 22.99%", "structure": "Revolving — $0 to $7,855 in eight months", "annualInterest": 1779.24, "payment": 158.27, "frequency": "Monthly minimum", "nextDue": "2026-08-31", "limit": 8000, "available": 62.83, "confidence": "verified" },
-    { "label": "TD credit card", "balance": 1799.97, "rate": 24.99, "rateBasis": "Penalty rate — normal would be 17.20%", "structure": "Revolving — dormant balance, no purchases", "annualInterest": 450, "payment": 94.03, "frequency": "Monthly minimum", "nextDue": "2026-08-17", "limit": 2000, "available": 200.00, "confidence": "verified" },
-    { "label": "Travel Visa (business)", "balance": 1078.31, "rate": 19.99, "rateBasis": "Purchases 19.99% / cash 22.99%", "structure": "Revolving — pending charges will push it over", "annualInterest": 215.55, "payment": 17.00, "frequency": "Monthly minimum", "nextDue": "2026-08-26", "limit": 1100, "available": 0, "confidence": "verified", "note": "$165.13 pending takes it to $1,243.44 against a $1,100 limit" }
+    { "label": "Triangle Mastercard", "secured": false, "balance": 13497.00, "rate": 21.99, "rateBasis": "Purchases 21.99% / cash 22.99%", "structure": "Revolving — 99.98% used", "annualInterest": 2880, "payment": 253.57, "frequency": "Monthly minimum", "nextDue": "2026-08-07", "limit": 13500, "available": 3.00, "confidence": "verified" },
+    { "label": "TD Cash Back Visa", "secured": false, "balance": 5612.43, "rate": 26.99, "rateBasis": "Purchases 26.99% / cash 27.99%", "structure": "Revolving — $612 over its limit", "annualInterest": 1902.60, "payment": 762.36, "frequency": "Monthly minimum", "nextDue": "2026-09-01", "limit": 5000, "available": 0, "confidence": "verified" },
+    { "label": "Amazon.ca Rewards Mastercard (MBNA)", "secured": false, "balance": 7855.12, "rate": 21.74, "rateBasis": "Purchases 21.74% / cash and transfers 22.99%", "structure": "Revolving — $0 to $7,855 in eight months", "annualInterest": 1779.24, "payment": 158.27, "frequency": "Monthly minimum", "nextDue": "2026-08-31", "limit": 8000, "available": 62.83, "confidence": "verified" },
+    { "label": "TD credit card", "secured": false, "balance": 1799.97, "rate": 24.99, "rateBasis": "Penalty rate — normal would be 17.20%", "structure": "Revolving — dormant balance, no purchases", "annualInterest": 450, "payment": 94.03, "frequency": "Monthly minimum", "nextDue": "2026-08-17", "limit": 2000, "available": 200.00, "confidence": "verified" },
+    { "label": "Travel Visa (business)", "secured": false, "balance": 1078.31, "rate": 19.99, "rateBasis": "Purchases 19.99% / cash 22.99%", "structure": "Revolving — pending charges will push it over", "annualInterest": 215.55, "payment": 17.00, "frequency": "Monthly minimum", "nextDue": "2026-08-26", "limit": 1100, "available": 0, "confidence": "verified", "note": "$165.13 pending takes it to $1,243.44 against a $1,100 limit" }
   ],
   "debtsNote": "Affirm/Flexiti is gone: owner-confirmed paid off and closed, $2,654.28 across the window. Every card balance here was read from the institution on 9 August. The Cash Back Visa's $158.55 interest charge is no longer an open question — it is 26.99% on the average daily balance, not on the closing balance, and the two are far apart on a card that is paid down and run back up. See the reconciliation under Money in and out.",
 
@@ -164,7 +212,7 @@
     { "label": "DEBT&PAYMENTS chequing", "value": 2691.85 },
     { "label": "Chequing A", "value": 506.98 },
     { "label": "Chequing B", "value": -517.72 },
-    { "label": "Savings", "value": 90.58 },
+    { "label": "Savings", "value": 90.58, "class": "spendable" },
     { "label": "SAVINGS-DONT TOUCH", "value": 74.20 },
     { "label": "Wise (two US spending accounts)", "value": 205.92 },
     { "label": "Silver — 100 oz [ESTIMATE]", "value": 8847.00 },
