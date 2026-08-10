@@ -492,7 +492,41 @@ far.
 
 ## 🔴 Income is overstated — the biggest open item
 
-**B55 · Get Amanda's coaching bookkeeping** · BLOCKED — owner offered to obtain · *medium*
+**B55 · Amanda's coaching bookkeeping** · **RECEIVED AND PARSED 2026-08-09**
+
+Two workbooks supplied. `scripts/xlsx.js` reads them (a minimal ZIP+XML reader —
+no Python on this machine and Node has no unzip, so the same
+build-a-small-reader approach as the PDF decryptors).
+
+| | Term | Summer | Combined |
+|---|---|---|---|
+| Revenue | $11,970.00 | $11,100.00 | **$23,070.00** |
+| **Coach payroll** | **$5,067.50** | **$1,330.00** | **$6,397.50** |
+| Retained | | | **$16,672.50** |
+
+**Coaches take ~27.7%; ~72% is retained.** Applying that to the $42,395 of large
+receipts implies about **$11,700 owed onward, $30,700 retained** — roughly
+**$1,700/month** of real coaching income against the $2,355 the gross implied.
+
+**Income was overstated by about $650/month, not the $1,650 upper bound.** The
+correction is real but much smaller than the uncertainty was.
+
+Coaches are paid a **day rate** ($30–$95), not a share, so margin scales with
+class size — Orange Try at 10 players made $980; Red Improve at 4 players **lost
+$95**. **Amanda draws no coach pay**, so her return is the retained margin.
+
+*Caveats recorded in `ACCOUNT_FACTS.md`: both Dashboards show `#REF!` and a stale
+$5,580 revenue figure; the summer class sheet has six of ten classes with no
+coach cost entered, overstating its $9,822.50 "profit"; one row has shifted
+columns. And the workbooks total $23,070 against $42,395 of large bank receipts,
+so they are a subset of the window.*
+
+**B55b · Reconcile the sheets against the bank** · READY · *small*
+$23,070 tracked versus $42,395 received. Either earlier terms are missing or
+revenue arrives that the sheets do not track. Worth resolving before the 27.7%
+share is treated as settled.
+
+**B55-old · Get Amanda's coaching bookkeeping** · was BLOCKED
 
 **The coaching receipts are revenue, not income.** She pays her coaches out of
 them, so the household keeps only the margin. Every published income figure

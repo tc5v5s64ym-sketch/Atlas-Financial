@@ -1058,6 +1058,60 @@ live email address, where an unauthorised login would go unnoticed indefinitely.
 two-factor authentication, and never enter a code from an email into a page
 reached from that email.
 
+## The coaching business — actual figures *(from her tracking sheets, 2026-08-09)*
+
+Two workbooks, `MRTC_TRACKING.xlsx` (term) and `MRTC_TRACKING_summer.xlsx`,
+supplied by Amanda. Source in `raw/mrtc/`, parsed to `derived/mrtc/` by
+`scripts/xlsx.js`. **This is the bookkeeping B55 was blocked on.**
+
+| | Term | Summer | Combined |
+|---|---|---|---|
+| Class revenue | $11,970.00 | $11,100.00 | **$23,070.00** |
+| **Coach payroll** | **$5,067.50** | **$1,330.00** | **$6,397.50** |
+| Coach hours | 156.5 | 41.0 | 197.5 |
+| **Retained** | | | **$16,672.50** |
+
+**Coaches take about 27.7% of revenue; roughly 72% is retained.** That is the
+split the bank data could not produce, and it is far narrower than the
+"$0–$29,762" bound carried until now.
+
+The term sheet also prices each class properly — revenue $11,970 against costs
+$5,720 for **$6,250 of profit**, a **52.2% class-level margin**. Coaches are paid
+a **day rate** ($30–$95 depending on class) rather than a share, so margin rises
+with class size: Orange Try at 10 players returned $980 on $420 of cost, while
+Red Improve at 4 players **lost $95**.
+
+**Amanda draws no coach pay** — 0 hours, $0 — so her return is the retained
+margin, not a wage.
+
+### Treat these as indicative, not audited
+
+Three defects, all visible in the sheets:
+
+- **Both Dashboards show `#REF!`** for Total Costs and Total Profit — the
+  formulas are broken. Their "Total Revenue $5,580" also contradicts the class
+  sheet's $11,970, and is identical in both files, so the Dashboard tab is
+  stale in both.
+- **The summer class sheet is incomplete** — six of ten classes carry $0 coach
+  cost with a blank total, so its stated **$9,822.50 profit is overstated**. Its
+  Coach Summary ($1,330) is the trustworthy figure.
+- One summer row has **shifted columns**, producing a nonsense profit-per-player.
+
+**Coverage does not match the bank window.** The two workbooks total $23,070 of
+revenue; the bank shows **$42,395** in large incoming e-transfers over 18 months.
+So these sheets are a subset — either fewer terms, or revenue arriving that they
+do not track [ASK].
+
+### What this means for household income
+
+Applying the 27.7% coach share to the $42,395 of large receipts implies roughly
+**$11,700 owed onward and $30,700 retained** over the window — about
+**$1,700/month** of genuine household income from coaching, not the $2,355/month
+the gross implied.
+
+**Income was overstated by roughly $650/month**, not the $1,650 upper bound
+feared. The correction is real but far smaller than the uncertainty was.
+
 ## The payoff ranking — settled *(2026-08-09)*
 
 Every rate and balance is now known, so this can finally be stated.
