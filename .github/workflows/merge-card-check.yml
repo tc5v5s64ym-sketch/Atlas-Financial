@@ -45,6 +45,11 @@ jobs:
               ['Title', 'a one-line description'],
               ['Primary risk', 'exactly one of auto-safe / owner-decision / figures-moved / blocked'],
               ['Files / categories touched', 'what this touches'],
+              ['Current-state verdict', 'the source, and one of STILL BROKEN / ALREADY FIXED / PARTIALLY FIXED / FIXED BUT UNTESTED / STALE-SUPERSEDED / NEEDS OWNER ANSWER, checked on main before changing anything'],
+              ['Builder surface', 'the tool this work ran on'],
+              ['Primary builder model', 'the exact model name the surface displays, or a plain statement that it withholds it'],
+              ['Supporting / explore models', 'each other model and what it did, or None'],
+              ['Architecture / dispatch authority', 'who dispatched and architecturally owns this work'],
               ['Figures moved', 'which published figures change, or "none"'],
               ['Reproduced / disproved', 'how a claimed defect was reproduced on main before fixing, or "n/a"'],
               ['Authority impact', 'whether any fact changed its home, or "none"'],
@@ -72,6 +77,24 @@ jobs:
               }
             }
 
+            // Attribution: `None` is a real answer for supporting models and for
+            // nothing else. Without this, `Builder surface: None` would satisfy
+            // the row check above while declaring none of the attribution the row
+            // exists to require — a blank wearing a word. It is the one value
+            // whose permitted scope CLAUDE.md defines exactly, so it is the one a
+            // literal check can enforce; every other wrong-but-answered value is
+            // the reviewer's job.
+            for (const label of ['Builder surface', 'Primary builder model',
+                                 'Architecture / dispatch authority']) {
+              const row = new RegExp(
+                `\\*\\*${esc(label)}\\*\\*\\s*\\|?([^\\n|]*)\\|?`, 'i').exec(body);
+              const value = row
+                ? row[1].replace(/<!--[\s\S]*?-->/g, '').replace(/\*/g, '').trim() : '';
+              if (/^none\.?$/i.test(value)) {
+                problems.push(`Merge card row "${label}" may not be None — that answer is for supporting models alone. Name the surface, the exact model name the surface displays (or say plainly that it withholds it), and the dispatch authority.`);
+              }
+            }
+
             // The prose sections carry the reasoning, and an empty one is the
             // usual sign a card was filled to satisfy the check rather than to
             // inform a reader.
@@ -87,6 +110,79 @@ jobs:
               const seg = after.slice(after.indexOf('\n') + 1).split(/^[ \t]*#{2,4}[ \t]/m)[0];
               if (!seg.replace(/<!--[\s\S]*?-->/g, '').replace(/^[-\s*]+$/gm, '').trim()) {
                 problems.push(`Section "${heading}" is empty — it still holds only its template comment.`);
+              }
+            }
+
+            // ---------------------------------------------------------------
+            // The required review lane (CLAUDE.md). ChatGPT performs it; this
+            // check only verifies the RECORD exists. It cannot tell whether a
+            // review happened, and passing it is not evidence that one did.
+            //
+            // Anchored on the heading rather than on a mention of the phrase:
+            // prose discussing the lane earlier in the body would otherwise
+            // capture the wrong span and fail a card that is actually filled.
+            const reviewHeading =
+              /^[ \t]*#{2,4}[ \t]*Atlas Contract \/ Systems Review[ \t]*$/im.exec(body);
+            if (!reviewHeading) {
+              problems.push('The PR body is missing the "Atlas Contract / Systems Review" section (Required / Exact reviewed head / Reviewer / Findings and dispositions). When no trigger fired, say "not required" and why.');
+            } else {
+              const sec = body.slice(reviewHeading.index + reviewHeading[0].length)
+                .split(/\n[ \t]*#{2,4}[ \t]+/)[0];
+              const read = (label) => {
+                const m = new RegExp(
+                  `^[ \\t]*[-*][ \\t]*\\*{0,2}${esc(label)}\\*{0,2}[ \\t]*:(.*)$`, 'im').exec(sec);
+                return m === null
+                  ? null
+                  : m[1].replace(/<!--[\s\S]*?-->/g, '').replace(/\*/g, '').trim();
+              };
+              const REVIEW = [
+                ['Required', 'name the trigger that fired, or say why none did'],
+                ['Exact reviewed head', 'the full 40-character commit SHA the reviewer read, or n/a'],
+                ['Reviewer', 'who performed the required review, or n/a'],
+                ['Findings and dispositions', 'each finding with its disposition, or "none", or "n/a"'],
+              ];
+              const seen = {};
+              for (const [label, want] of REVIEW) {
+                const v = read(label);
+                if (v === null) {
+                  problems.push(`The review block is missing its "${label}" line — ${want}.`);
+                } else if (!v) {
+                  problems.push(`Review block line "${label}" is blank — ${want}.`);
+                }
+                seen[label] = v || '';
+              }
+
+              // Fails CLOSED: the review counts as required unless the line says
+              // otherwise. A record that claims a required review but names no
+              // head is exactly the staleness the Codex freshness reporter exists
+              // to catch — a verdict attached to a revision that may no longer be
+              // here. Shape only; that the SHA is the real head stays a human's
+              // read, and so does whether the named reviewer actually looked.
+              const req = seen['Required'];
+              const notRequired = /\bnot[ \t]+required\b/i.test(req)
+                || /^(no|none|n\/a)\b/i.test(req);
+              if (req && !notRequired) {
+                if (!/\b[0-9a-f]{40}\b/i.test(seen['Exact reviewed head'])) {
+                  problems.push('The review is recorded as required, so "Exact reviewed head" must carry the full 40-character SHA the reviewer actually read. A review of an earlier commit does not cover this head.');
+                }
+                if (!seen['Reviewer'] || /^n\/a\b/i.test(seen['Reviewer'])) {
+                  problems.push('The review is recorded as required, so "Reviewer" must name who performed it.');
+                }
+              }
+            }
+
+            // Every finding made along the way takes exactly one disposition, so
+            // a real one cannot quietly evaporate between the comment that raised
+            // it and the merge.
+            const findingsHeading =
+              /^[ \t]*#{2,4}[ \t]*Additional findings[ \t]*$/im.exec(body);
+            if (!findingsHeading) {
+              problems.push('The PR body is missing the "Additional findings" section (None / FIXED NOW / REJECTED / ADDED TO BACKLOG / OWNER DECISION REQUIRED).');
+            } else {
+              const sec = body.slice(findingsHeading.index + findingsHeading[0].length)
+                .split(/\n[ \t]*#{2,4}[ \t]+/)[0];
+              if (!/^[ \t]*[-*][ \t]*(None|FIXED NOW|REJECTED|ADDED TO BACKLOG|OWNER DECISION REQUIRED)\b/im.test(sec)) {
+                problems.push('"Additional findings" must record at least one disposition: None, FIXED NOW, REJECTED, ADDED TO BACKLOG, or OWNER DECISION REQUIRED.');
               }
             }
 

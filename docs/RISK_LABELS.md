@@ -77,6 +77,24 @@ a figure moving *unnoticed*. If the comment lists something the merge card does
 not mention, one of the two is wrong — either the card is incomplete, or the
 change had an effect nobody intended. Resolve it before merging.
 
+### Atlas Contract / Systems Review — required, and deliberately not a check
+
+The one **required** review lane. ChatGPT performs it; an implementation agent
+cannot satisfy it by re-reading its own work in a clean context, because that is
+the same agent with the same blind spots. It reads the **exact head** — a review
+of an earlier commit does not cover a later one.
+
+It is listed here so the map of review surfaces is complete, but it is not one
+of these gates and must never become one: no workflow, no commit status, no
+required check, no reviewer account. It is recorded in the merge card's review
+block — required or not with the trigger, the exact SHA read, who read it, and
+what happened to each finding — and `merge-card-check` verifies those four
+fields are answered, which is a different thing from verifying a review
+happened.
+
+[`CLAUDE.md`](../CLAUDE.md) holds the trigger list and the seven questions the
+review asks. It is the only home for them; do not restate them here.
+
 ### Codex review — advisory, but its findings are not
 
 Codex reviews pull requests on this repository. That is configured in the

@@ -2,12 +2,15 @@
 
 **Read in this order:**
 
-1. **This file** — layout, current state, standing rules
-2. **`ARCHITECTURE.md`** — the five layers, where new material goes, the direction
-3. **`docs/ACCOUNT_FACTS.md`** — rates, limits, due dates, renewal. Never ask the
+1. **`AGENTS.md`, then `CLAUDE.md`** — who decides, who reviews, when to stop
+   for a person, and what a pull request has to carry. Governance only; it
+   repeats nothing below
+2. **This file** — layout, current state, standing rules
+3. **`ARCHITECTURE.md`** — the five layers, where new material goes, the direction
+4. **`docs/ACCOUNT_FACTS.md`** — rates, limits, due dates, renewal. Never ask the
    owner for anything already recorded there
-4. **`BACKLOG.md`** — work that can be done, and what is blocking each item
-5. **`docs/01_OPEN_QUESTIONS.md`** — what only the household can answer
+5. **`BACKLOG.md`** — work that can be done, and what is blocking each item
+6. **`docs/01_OPEN_QUESTIONS.md`** — what only the household can answer
 
 **The distinction between the last two matters.** If an item needs a human to
 *know* something, it is a question. If it needs someone to *do* something, it is
