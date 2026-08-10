@@ -82,8 +82,12 @@ jobs:
                 problems.push(`Merge card row "${label}" is missing — ${want}.`);
                 continue;
               }
-              // Strip the shipped placeholder comment and see what is left.
-              const value = row[1].replace(/<!--[\s\S]*?-->/g, '').trim();
+              // Strip the shipped placeholder comment and see what is left. The
+              // leading colon of the bullet form is SYNTAX: `- **Builder
+              // surface**:` captured ":" and read as an answer, so a blank row
+              // passed in a shape the check explicitly supports (Codex, P2, on
+              // 805101d).
+              const value = row[1].replace(/<!--[\s\S]*?-->/g, '').replace(/^[ \t]*:/, '').trim();
               if (!value) {
                 problems.push(`Merge card row "${label}" is blank — ${want}. "none" or "n/a — <reason>" is a real answer; an empty row is not.`);
               }
@@ -108,7 +112,8 @@ jobs:
               const row = new RegExp(
                 `\\*\\*${esc(label)}\\*\\*\\s*\\|?([^\\n|]*)\\|?`, 'i').exec(body);
               const value = row
-                ? row[1].replace(/<!--[\s\S]*?-->/g, '').replace(/\*/g, '').trim() : '';
+                ? row[1].replace(/<!--[\s\S]*?-->/g, '').replace(/^[ \t]*:/, '')
+                  .replace(/\*/g, '').trim() : '';
               // The absence word has to BE the answer, not open one. Anchoring
               // alone rejected "No model identity is exposed by this surface"
               // (Codex, P2, on bc3645f) — which is the contract's own permitted
@@ -359,15 +364,22 @@ jobs:
                 // contract puts advisory confidence in it; one field, one
                 // meaning. This also removes the need for a negation list to
                 // grow every time someone finds a new way to write "not".
+                // AFFIRMATIVE, not a denylist. Naming four products left every
+                // other agent creditable — `ChatGPT was bypassed in favor of
+                // Gemini` passed while saying so (Codex, P1, on 805101d), and a
+                // denylist of agent names can never be finished. So the field
+                // must OPEN with the lane and carry nothing beyond a short
+                // qualifier: "ChatGPT", "the ChatGPT desk", "ChatGPT (Atlas
+                // desk)" pass; a sentence does not. Advisory reads have their
+                // own row, so there is nothing else this field needs to say.
                 const ABSENT = /^(?:n\/a|na|none|no|nobody|no[ \t]+one|not[ \t]+required|tbd|unknown)\b/i;
-                const NEGATED_LANE = /(?:\bnot|\bnon-?|rather[ \t]than|instead[ \t]of)[ \t-]*chat[ \t-]?gpt\b/i;
-                const DISQUALIFIED = /\b(?:codex|claude|cursor|copilot)\b/i;
+                const LANE_OPENS = /^(?:the[ \t]+)?chat[ \t-]?gpt\b/i;
                 const reviewer = seen['Reviewer'];
-                const namesLane = /chat[ \t-]?gpt/i.test(reviewer) && !NEGATED_LANE.test(reviewer);
-                if (!namesLane || DISQUALIFIED.test(reviewer)) {
+                const qualifier = reviewer.replace(LANE_OPENS, '').replace(/[^a-z0-9]/gi, '');
+                if (!LANE_OPENS.test(reviewer) || qualifier.length > 16) {
                   problems.push(!reviewer || ABSENT.test(reviewer)
                     ? 'The review is recorded as required, so "Reviewer" must NAME who performed it. "None", "no", "n/a" and "not required" are absence values — on this path they say the gate was never satisfied, not that it was.'
-                    : `"Reviewer" reads ${JSON.stringify(reviewer.slice(0, 60))}, and the Atlas Contract / Systems Review is ChatGPT's lane alone. An implementation agent cannot satisfy its own architecture gate, and independent agent review is advisory — name ChatGPT here, and record any advisory read in the card's "Advisory review" row.`);
+                    : `"Reviewer" reads ${JSON.stringify(reviewer.slice(0, 60))}. The Atlas Contract / Systems Review is ChatGPT's lane alone, so this field names ChatGPT and at most a short qualifier — an implementation agent cannot satisfy its own architecture gate, and any advisory read belongs in the card's "Advisory review" row.`);
                 }
 
                 // ...and the findings line has to dispose of something. `n/a`

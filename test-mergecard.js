@@ -143,6 +143,22 @@ function card({ rows = {}, review = {}, findings = '- None', dropReview = false,
   return out.join('\n');
 }
 
+// The same card in the BULLET shape, which the check explicitly supports and
+// which nothing exercised until a blank row passed there (Codex, P2, on
+// 805101d): the capture kept the bullet's colon and read it as an answer. A
+// shape the check claims to support and no case covers is a gap by definition.
+function bulletCard({ rows = {} } = {}) {
+  const r = { ...ROWS, ...rows };
+  const out = ['## 🟦 Atlas Merge Card', ''];
+  for (const [k, val] of Object.entries(r)) out.push(`- **${k}**:${val === '' ? '' : ' ' + val}`);
+  out.push('');
+  for (const [h, text] of Object.entries(PROSE)) out.push(`### ${h}`, '', text, '');
+  out.push('### Atlas Contract / Systems Review', '');
+  for (const [k, val] of Object.entries(REVIEW)) out.push(`- **${k}**: ${val}`);
+  out.push('', '### Additional findings', '', '- None', '');
+  return out.join('\n');
+}
+
 /* ------------------------------------------------------------------- cases */
 
 // Named exactly as the contract states them, because these names are what a
@@ -153,6 +169,12 @@ const CASES = [
   ['a fully completed card', card(), 'green'],
   ['a prose section left as its template comment',
     card().replace('The recovery path no longer replays the first payday.', '<!-- todo -->'), 'red'],
+  // The bullet shape, which the check supports and nothing covered until a
+  // blank row passed there because the capture kept the bullet's colon.
+  ['a completed card in the bullet shape', bulletCard(), 'green'],
+  ['a blank row in the bullet shape', bulletCard({ rows: { 'Builder surface': '' } }), 'red'],
+  ['a blank verdict row in the bullet shape',
+    bulletCard({ rows: { 'Current-state verdict': '' } }), 'red'],
 
   // --- attribution (CLAUDE.md: None is for supporting models alone)
   ['Builder surface: None', card({ rows: { 'Builder surface': 'None' } }), 'red'],
@@ -168,6 +190,8 @@ const CASES = [
   ['an attribution row of n/a', card({ rows: { 'Builder surface': 'n/a' } }), 'red'],
   ['a model name that merely starts with "Na"',
     card({ rows: { 'Primary builder model': 'NA-1000' } }), 'green'],
+  ['a surface whose name merely starts with "No"',
+    card({ rows: { 'Builder surface': 'Nova' } }), 'green'],
   // The absence word has to BE the answer, not open one. This is the contract's
   // permitted fallback for a surface that withholds its model, and the check
   // was failing the honest card it exists to allow.
@@ -268,8 +292,13 @@ const CASES = [
   ['the correct SHA, but Reviewer: nobody', card({ review: { 'Reviewer': 'nobody' } }), 'red'],
   ['the correct SHA, but Reviewer: not required',
     card({ review: { 'Reviewer': 'not required' } }), 'red'],
-  ['a reviewer whose name merely starts with "No"',
-    card({ review: { 'Reviewer': 'Nova, on the ChatGPT desk' } }), 'green'],
+  ['a reviewer named beside the lane rather than being it',
+    card({ review: { 'Reviewer': 'Nova, on the ChatGPT desk' } }), 'red'],
+  ['an unlisted advisory agent credited in prose', card({ review: {
+    'Reviewer': 'ChatGPT was bypassed in favor of Gemini',
+  } }), 'red'],
+  ['the lane with a short qualifier',
+    card({ review: { 'Reviewer': 'ChatGPT (Atlas desk)' } }), 'green'],
 
   //     `n/a` answers a review that was NOT required; on the required path it
   //     leaves the result unstated, and "findings pending" names no disposition
@@ -436,7 +465,8 @@ const MUTANTS = [
   },
   {
     name: 'the reviewer rule dropped entirely',
-    apply: src => src.replace(/if \(!namesLane \|\| DISQUALIFIED\.test\(reviewer\)\) \{/,
+    apply: src => src.replace(
+      /if \(!LANE_OPENS\.test\(reviewer\) \|\| qualifier\.length > 16\) \{/,
       'if (false) {'),
   },
   {
@@ -444,11 +474,10 @@ const MUTANTS = [
     apply: src => src.replace(/const UNANSWERED =\n\s*\/.*\/i;/, 'const UNANSWERED = /(?!)/;'),
   },
   {
-    name: 'the reviewer rule weakened back to an unbounded substring match',
+    name: 'the affirmative lane rule weakened back to a substring match',
     apply: src => src.replace(
-      /const namesLane = .*;\n/,
-      'const namesLane = /chat[ \\t-]?gpt/i.test(reviewer);\n')
-      .replace(/const DISQUALIFIED = \/.*\/i;/, 'const DISQUALIFIED = /(?!)/;'),
+      /if \(!LANE_OPENS\.test\(reviewer\) \|\| qualifier\.length > 16\) \{/,
+      "if (!/chat[ \\t-]?gpt/i.test(reviewer)) {"),
   },
   {
     name: 'the exactly-one-verdict rule relaxed to at-least-one',
@@ -457,6 +486,10 @@ const MUTANTS = [
   {
     name: 'the reason required after "not required" dropped',
     apply: src => src.replace(/if \(!\/\[a-z\]\{3\}\/i\.test\(reason\)\) \{/, 'if (false) {'),
+  },
+  {
+    name: 'the bullet colon read as an answer again',
+    apply: src => src.replace(/\.replace\(\/\^\[ \\t\]\*:\/, ''\)/g, ''),
   },
   {
     name: 'the withheld-identity exception widened to every attribution field',
