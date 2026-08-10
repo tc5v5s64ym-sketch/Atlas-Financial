@@ -67,12 +67,16 @@
   rule, the scope tripwires, the atomicity exception, the review-churn
   reassessment and the closed-loop chain.
 
-  Seven of these lines are CLOSED FORMS: the value OPENS with one of the listed
-  words, and anything after it is yours. That is deliberate — a check can hold a
-  vocabulary and an integer, and nothing more. Whether the outcome is genuinely
-  one outcome, whether an EXCEEDED scope is justified, and whether a CONTINUE
-  after three rounds is right are the required review's to judge, not the
-  check's.
+  Eleven lines, in three kinds. FIVE are CLOSED FORMS — scope status, atomicity
+  exception, blocking review rounds, scope reassessment, proof level — where the
+  value OPENS with one of the listed words and anything after it is yours. THREE
+  are bare INTEGERS whose arithmetic has to agree. THREE are PROSE, checked only
+  for being answered at all.
+
+  That is deliberate: a check can hold a vocabulary, an integer and a
+  subtraction, and nothing more. Whether the outcome is genuinely one outcome,
+  whether an EXCEEDED scope is justified, and whether a CONTINUE after three
+  rounds is right are the required review's to judge, not the check's.
 
   Reasons are required where a value switches something off: EXCEEDED,
   atomicity YES, any reassessment after two or more blocking rounds, and

@@ -79,16 +79,19 @@ rule; the card records it, and this is the part of the record a check can hold:
 | `Net open loops` | an integer, and equal to created minus closed |
 | `Loops left open` | present; and when the net is **positive**, a real answer rather than an absence word |
 
-**Every one of those is a closed form, an anchor, or arithmetic** — deliberately,
-and as the direct lesson of the thirty-one false greens above. A field that opens
-with its answer cannot be beaten by a new wording, and a subtraction cannot be
-argued with. The one line here that is *verified* rather than merely witnessed is
-the net: three numbers that have to agree.
+**Eleven lines in three kinds: five closed vocabularies, three integers, three
+prose lines checked only for being answered at all.** Not one of them is a rule
+about what a sentence means — deliberately, and as the direct lesson of the
+thirty-one false greens above. A field that opens with its answer cannot be
+beaten by a new wording, and a subtraction cannot be argued with; a prose field
+is asked for presence precisely because nothing more can honestly be asked of it.
+The one line here that is *verified* rather than merely witnessed is the net:
+three numbers that have to agree.
 
 **What it therefore cannot tell**, and does not try to: whether the outcome is
 genuinely one outcome, whether an `EXCEEDED` scope is justified, whether a
 `CONTINUE` after three rounds is safer than splitting, whether an atomicity
-exception is real, or whether the two prose lines say anything. Those are the
+exception is real, or whether the three prose lines say anything. Those are the
 required review's — questions 8 to 12 — and the card is where the judgement is
 recorded. The scope tripwires are review prompts, never thresholds: `EXCEEDED`
 is a legitimate, passing answer that asks for an explanation, because some honest

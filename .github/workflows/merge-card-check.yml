@@ -538,15 +538,26 @@ jobs:
             // The Delivery block (CLAUDE.md). One pull request, one
             // independently provable outcome.
             //
-            // Seven of these ten lines are CLOSED FORMS and one is arithmetic,
-            // which is the whole design. This check earned thirty-one false
-            // greens discovering that a rule which reads English can always be
-            // beaten by more English, so nothing here reads a sentence: it
-            // holds a vocabulary, an integer, and one subtraction.
+            // Eleven lines, in three kinds:
+            //
+            //   5 CLOSED VOCABULARIES — Scope status, Atomicity exception,
+            //     Blocking review rounds, Scope reassessment, Proof level.
+            //     Each is classified by its OPENING word alone.
+            //   3 INTEGERS — Open loops closed, created, net. Bare digits, and
+            //     the three have to agree.
+            //   3 PROSE / PRESENCE — One outcome, Non-goals, Loops left open.
+            //     Checked for being answered at all, never for what they say.
+            //     "Loops left open" is the one conditional line: when the net
+            //     is positive it must survive the absence-word strip.
+            //
+            // That split is the whole design. This check earned thirty-one
+            // false greens discovering that a rule which reads English can
+            // always be beaten by more English, so nothing here reads a
+            // sentence: it holds a vocabulary, an integer, and one subtraction.
             //
             // What it therefore CANNOT tell: whether the outcome is genuinely
             // one outcome, whether an EXCEEDED scope is justified, whether a
-            // CONTINUE after three rounds is right, or whether the two prose
+            // CONTINUE after three rounds is right, or whether the three prose
             // lines say anything worth reading. Those are the required
             // review's, and CLAUDE.md says so in those words.
             const deliveryHeading =

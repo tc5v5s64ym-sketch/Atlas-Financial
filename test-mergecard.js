@@ -23,9 +23,10 @@
  * copy of the implementation would prove only that the copy still works.
  *
  * The delivery block's cases are a different shape from the rest, because the
- * block is a different shape: seven CLOSED forms, two prose lines whose
- * presence is all that is checked, and three integers with one subtraction
- * between them. So the cases below test vocabularies, anchoring and
+ * block is a different shape: eleven lines in three kinds — five CLOSED
+ * vocabularies read from their opening, three bare INTEGERS with one
+ * subtraction between them, and three PROSE lines checked only for being
+ * answered at all. So the cases below test vocabularies, anchoring and
  * arithmetic — never whether an explanation is any good. That boundary is the
  * point of the block, and a case pretending to test the other side of it would
  * be the arms race CLAUDE.md forbids, dressed as coverage.
@@ -132,8 +133,8 @@ const REVIEW = {
   'Findings and dispositions': 'none',
 };
 
-// The delivery block. Seven closed forms, two prose lines, and three integers
-// whose arithmetic has to agree: created (0) − closed (1) = −1.
+// The delivery block: five closed vocabularies, three prose lines, and three
+// integers whose arithmetic has to agree — created (0) − closed (1) = −1.
 const DELIVERY = {
   'One outcome': 'Pending card charges become authoritative in day-0 headroom',
   'Non-goals': 'It does not touch the weekly cap, the HELOC model, or the plan page',
