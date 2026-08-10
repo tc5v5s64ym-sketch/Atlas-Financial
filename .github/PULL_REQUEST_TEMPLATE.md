@@ -23,6 +23,7 @@
 | **Authority impact** | <!-- did any fact change its home? name the winner and what was deleted. "none" if no authority moved. --> |
 | **Tests** | <!-- exact command and result, e.g. `npm test` — 5 suites, 289 checks, all passing --> |
 | **Security** | <!-- auth gate / CSP / secret handling / pre-commit hook: unchanged, or exactly what changed and why --> |
+| **Advisory review** | <!-- Codex and any other automated reviewer: what each finding was, and its disposition — fixed / non-issue with reason / deferred to backlog. "none raised" if the review came back clean. A finding left unanswered blocks the merge, not the review. --> |
 | **Owner decision required** | <!-- No, or the exact question the household has to answer --> |
 | **Estimated inputs added** | <!-- any new estimate, and what would confirm it. "none" if all figures are derived or verified. --> |
 

@@ -50,6 +50,7 @@ jobs:
               ['Authority impact', 'whether any fact changed its home, or "none"'],
               ['Tests', 'the exact command and its result'],
               ['Security', '"unchanged", or exactly what changed'],
+              ['Advisory review', 'each automated-reviewer finding and its disposition, or "none raised"'],
               ['Owner decision required', '"No", or the question the household must answer'],
               ['Estimated inputs added', 'any new estimate, or "none"'],
             ];

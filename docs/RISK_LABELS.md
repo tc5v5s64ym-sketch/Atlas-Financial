@@ -71,6 +71,30 @@ a figure moving *unnoticed*. If the comment lists something the merge card does
 not mention, one of the two is wrong — either the card is incomplete, or the
 change had an effect nobody intended. Resolve it before merging.
 
+### Codex review — advisory, but its findings are not
+
+Codex reviews pull requests on this repository. That is configured in the
+org's Codex settings, not here, and nothing in this repo turns it on or off.
+
+Two things here do surround it:
+
+**`codex-review.yml`** re-requests a review when the head moves. Codex reviews
+on open and on ready-for-review; it does not re-review after a push. On this
+repository's first PR it found two real P1s, both were fixed and pushed, and
+its verdict stayed attached to a revision that no longer existed — which reads
+exactly like a review of the current one. The workflow asks again, once per
+head SHA, and only when the push touched the engine, the published figures or
+a page script. Drafts are skipped.
+
+**The merge card's `Advisory review` row** records what happened to each
+finding: fixed, non-issue with the reason, or deferred to the backlog. This is
+the part that actually holds — a review nobody dispositions is decoration, and
+"the bot commented" is not a disposition. `none raised` is a real answer when
+the review came back clean.
+
+Disagreeing with a finding is fine and often correct. Saying why, in the card,
+is what makes it a decision rather than an omission.
+
 ### `tests` — blocking
 
 `npm test`. Five suites: static sanity, the forecast engine and its
