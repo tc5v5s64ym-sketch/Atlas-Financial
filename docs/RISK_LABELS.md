@@ -27,6 +27,12 @@ Enforced by `risk-label-gate.yml`, which publishes the `risk-label/primary`
 commit status. It is not automatic and cannot be: no path or diff tells you
 whether a change needs the owner's judgement. That is the point of asking.
 
+**It runs from `main`, not from the branch.** The gate uses
+`pull_request_target`, which loads its definition from the default branch, so
+it does not run on the pull request that introduces it — and cannot be
+subverted by a pull request that edits it. That is the trust property, and the
+cost is that the gate is inert until it has landed on `main` once.
+
 **`figures-moved` is not a warning.** Most substantive work here moves figures
 — that is what the work is for. It means *look at the diff before merging*,
 nothing more.
