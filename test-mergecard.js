@@ -377,6 +377,15 @@ const CASES = [
   ['a head that says it was not reviewed, beside the right SHA', card({ review: {
     'Exact reviewed head': `not reviewed: ${HEAD}`,
   } }), 'red'],
+  // The head field is a SHA and nothing else. Hunting a 40-character run inside
+  // prose meant every denial wording had to be enumerated, and the list kept
+  // missing one — `not reviewed:`, then `unreviewed:`.
+  ['a head prefixed with a word outside the denial vocabulary', card({ review: {
+    'Exact reviewed head': `unreviewed: ${HEAD}`,
+  } }), 'red'],
+  ['a head wrapped in backticks', card({ review: {
+    'Exact reviewed head': `\`${HEAD}\``,
+  } }), 'green'],
   ['a reviewer denial placed after the lane name', card({ review: {
     'Reviewer': 'ChatGPT did not perform this review',
   } }), 'red'],
@@ -400,6 +409,12 @@ const CASES = [
   ['a disposition negated at arm\'s length', card({ review: {
     'Findings and dispositions': 'P1 was not in any way fixed',
   } }), 'red'],
+  // "not only X but Y" asserts; it does not deny. This is an exception for one
+  // fixed idiom, not a scope rule — the general problem is recorded as a known
+  // limit in docs/RISK_LABELS.md rather than approximated a fourth time.
+  ['the "not only … but" idiom, which asserts rather than denies', card({ review: {
+    'Findings and dispositions': 'P1 was not only fixed but independently tested',
+  } }), 'green'],
   ['a verdict negated at arm\'s length', card({ rows: {
     'Current-state verdict': 'B1 is not in any way ALREADY FIXED',
   } }), 'red'],
@@ -552,12 +567,11 @@ const MUTANTS = [
       .replace(/\} else if \(listed\.some\(\(f\) => f\.kind === 'None'\) && answered\.length\) \{/,
         '} else if (false) {'),
   },
-  {
-    name: 'the negation ban lifted from the identity fields',
-    apply: src => src.replace(
-      /const IDENTITY_UNFIT = new RegExp\(`\$\{PENDING\.source\}\|\$\{NEGATED\.source\}`, 'i'\);/,
-      'const IDENTITY_UNFIT = PENDING;'),
-  },
+  // No mutant for the identity-field negation ban. Both closed forms — the head
+  // must be a bare SHA, the reviewer must read exactly the lane name — now
+  // reject every shape it used to catch, so lifting it cannot flip a case. It
+  // stays because it selects the message: a placeholder card should be told the
+  // review has not happened, not that it named the wrong reviewer.
   {
     // Matched to the end of the expression rather than by counting lines: a
     // line count is a distance heuristic, and reformatting the function left it

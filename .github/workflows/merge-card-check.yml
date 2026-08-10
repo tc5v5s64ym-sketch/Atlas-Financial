@@ -81,7 +81,12 @@ jobs:
             // routed to B72` and of `STILL BROKEN — not fixed by PR #1`: in both,
             // the negated clause loses its token and the clause that carries the
             // real answer keeps it, at any length.
-            const NEGATION_WORD = /\b(?:not|never|no|isn'?t|wasn'?t|un-)\b/i;
+            // `not only` is excluded because it is a fixed idiom that asserts
+            // rather than denies: `P1 was not only fixed but independently
+            // tested` was being failed (Codex, P1, on 9d963c1). It is an
+            // exception for one phrase, not a scope rule — see the limit
+            // recorded below.
+            const NEGATION_WORD = /\b(?:not(?![ \t]+only\b)|never|no|isn'?t|wasn'?t|un-)\b/i;
             const dropNegated = (text, tokenSource) => text
               .split(/([;,.—–])/)
               .map((clause) => NEGATION_WORD.test(clause)
@@ -344,26 +349,32 @@ jobs:
                 const NEGATED = /\b(?:not|no|none|nobody|never|isn'?t|wasn'?t|did[ \t]?n'?t|does[ \t]?n'?t|cannot|can'?t|without|denied|refused)\b/i;
                 const IDENTITY_UNFIT = new RegExp(`${PENDING.source}|${NEGATED.source}`, 'i');
                 const unfinished = [
-                  ['Exact reviewed head', IDENTITY_UNFIT],
                   ['Reviewer', IDENTITY_UNFIT],
                   ['Findings and dispositions', DISPOSITIONS_PENDING],
                 ].filter(([label, re]) => re.test(seen[label])).map(([label]) => label);
-                const headLine = seen['Exact reviewed head'];
-                const recorded = unfinished.length
-                  ? '' : (/\b[0-9a-f]{40}\b/i.exec(headLine) || [''])[0];
+
+                // The head field is a SHA and NOTHING else — the same closing
+                // move as the reviewer field, and for the same reason. Looking
+                // for a 40-character run inside free prose meant every wording
+                // that denied the review had to be enumerated, and the list kept
+                // missing one: `not reviewed: <sha>`, then `unreviewed: <sha>`
+                // (Codex, P1, on f71ef30 and again on 9d963c1). A closed form
+                // needs no vocabulary at all, and no future wording can beat it.
+                const headField = seen['Exact reviewed head'].replace(/[`\s]/g, '');
                 const head = ((context.payload.pull_request || {}).head || {}).sha || '';
                 if (unfinished.length) {
-                  problems.push(`The review is recorded as required, and ${unfinished.map((l) => `"${l}"`).join(' / ')} says the review has not happened — a pending marker, or a negation in a field that holds only a SHA or a name. Red is the correct result: fill all three once the reviewer has read this exact head, and keep both a SHA and the word "not" out of the block until then. For a finding handed off rather than resolved, "routed to <item>" says so without the word.`);
-                } else if (!recorded) {
-                  problems.push('The review is recorded as required, so "Exact reviewed head" must carry the full 40-character SHA the reviewer actually read. A review of an earlier commit does not cover this head.');
-                } else if (head && recorded.toLowerCase() !== head.toLowerCase()) {
+                  problems.push(`The review is recorded as required, and ${unfinished.map((l) => `"${l}"`).join(' / ')} says the review has not happened. Red is the correct result: fill all three once the reviewer has read this exact head. For a finding handed off rather than resolved, "routed to <item>" says so without the word.`);
+                }
+                if (!/^[0-9a-f]{40}$/i.test(headField)) {
+                  problems.push('"Exact reviewed head" must be the 40-character commit SHA the reviewer read, and nothing else. Prose around it is how a card says the review did not happen while carrying a SHA that says it did.');
+                } else if (head && headField.toLowerCase() !== head.toLowerCase()) {
                   // The mechanical form of the exact-head rule. It is still a
                   // literal check — two strings — and it proves only which commit
                   // the card CLAIMS was read. Whether a review happened, and
                   // whether it was any good, stays a human's judgement. What it
                   // removes is the one failure a literal check can remove: a
                   // verdict quietly outliving the code it was about.
-                  problems.push(`The recorded reviewed head \`${recorded.slice(0, 7)}\` is not this pull request's head \`${head.slice(0, 7)}\`. A review of an earlier commit does not cover a later one — repeat the review against the current head and record its SHA.`);
+                  problems.push(`The recorded reviewed head \`${headField.slice(0, 7)}\` is not this pull request's head \`${head.slice(0, 7)}\`. A review of an earlier commit does not cover a later one — repeat the review against the current head and record its SHA.`);
                 }
                 // A required review needs a NAME, and "None" is not one. The
                 // check rejected only "n/a", so `Reviewer: None` — non-blank,

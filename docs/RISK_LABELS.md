@@ -102,6 +102,27 @@ one was answered. Every rule tried for that false-failed ordinary phrasing —
 "two raised: one fixed, one routed to B72" has a clause carrying no disposition
 word and is a complete answer. Judging a list is the reviewer's job.
 
+**A known limit, stated rather than approximated again.** The check treats a
+disposition word as negated when a negation sits in the same clause. That
+catches the plain denials and it is deliberately not a fourth attempt at
+grammatical scope. Two sentences show why no rule of this kind can be right:
+
+> `P1 was not, in any way, fixed` — a denial the check does not catch.
+> `P1 was not only fixed but independently tested` — an assertion it must not fail.
+
+They differ only in grammar, so any mechanical rule that catches the first
+fails the second. A word window was tried and defeated, a clause rule is what
+stands, and `not only` is excluded as a fixed idiom. **Whether a sentence
+asserts or denies its own disposition is a reviewer's read, and the card is
+where that judgement is recorded.** The check's job is that the field is not
+blank and names a disposition at all.
+
+The same closing move solved the two identity fields where it *was* available:
+`Exact reviewed head` must be a bare 40-character SHA and `Reviewer` must read
+exactly `ChatGPT`, so neither needs a vocabulary of denials that can never be
+finished. Where a field can be closed, it is closed; where it cannot, the limit
+is written down here instead of guessed at.
+
 [`CLAUDE.md`](../CLAUDE.md) holds the trigger list and the seven questions the
 review asks. It is the only home for them; do not restate them here.
 
