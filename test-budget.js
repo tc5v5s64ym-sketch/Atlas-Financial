@@ -42,7 +42,12 @@ for (const c of plan.budget.categories) {
     ok(false, `category ${c.id} carries a hardcoded amount`, declared.slice(0, 120));
   }
 }
-ok(true, 'no category hardcodes a historical amount — all derived from periods.json');
+// The count is asserted so an empty category list cannot report a clean sweep
+// over nothing. A summary after a loop passes just as readily after a loop that
+// never ran.
+ok(plan.budget.categories.length >= 18,
+  'no category hardcodes a historical amount — all derived from periods.json',
+  `${plan.budget.categories.length} categories scanned`);
 // And prove the derivation really reads periods.json.
 const groceriesFromSource = periods.periods.ytd.spending.find(s => s.label === 'Groceries').total / 8;
 const groceries = budget.categories.find(c => c.id === 'groceries');
@@ -156,7 +161,9 @@ for (const c of budget.categories) {
   const expected = c.target != null ? 'owner-target' : 'historical-actual';
   if (c.source !== expected) ok(false, `category ${c.id} is mislabelled`, `${c.source} but target=${c.target}`);
 }
-ok(true, 'every category is labelled owner-target or historical-actual to match what it holds');
+ok(budget.categories.length >= 18,
+  'every category is labelled owner-target or historical-actual to match what it holds',
+  `${budget.categories.length} categories checked`);
 ok(budget.categories.filter(c => c.source === 'historical-actual').length === 9,
   'and the nine without a target are still honestly historical');
 // A target must never be silently invented from an average.
@@ -188,7 +195,9 @@ ok(!!plan.budget.cardCaveat && /card/i.test(plan.budget.cardCaveat),
 for (const c of plan.budget.categories) {
   if (!c.why || c.why.length < 20) ok(false, `category ${c.id} has no stated reason`, c.why || '(none)');
 }
-ok(true, 'every category states why its assumption won');
+ok(plan.budget.categories.every(c => c.why && c.why.length >= 20),
+  'every category states why its assumption won',
+  `${plan.budget.categories.length} reasons present`);
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
 process.exit(failures === 0 ? 0 : 1);

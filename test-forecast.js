@@ -159,8 +159,9 @@ ok(near(expected.ending - extra.ending, 600), 'extra $200/month × 3 mid-month d
 // brute recomputation from the daily balances.
 {
   const s = F.simulate(plan, asOf, { scenario: 'expected', weeklyVariable: 1000, targetBuffer: 500 });
-  let allMatch = true;
+  let allMatch = true, checked = 0;
   for (let i = 0; i < 12; i++) {
+    checked++;
     const next = (i + 1) * 7;
     let cum = 0, minCum = Infinity;
     for (let j = next; j < s.daily.length; j++) {
@@ -174,7 +175,14 @@ ok(near(expected.ending - extra.ending, 600), 'extra $200/month × 3 mid-month d
       break;
     }
   }
-  if (allMatch) ok(true, 'track matches brute force for all 12 interior weeks');
+  // The count is asserted, not assumed. A summary that reports a pass after a
+  // loop will report one just as happily after a loop that never ran, claiming
+  // coverage nothing performed — and this suite has already shipped two tests
+  // that passed for the wrong reason.
+  if (allMatch) {
+    ok(checked === 12, 'track matches brute force for all 12 interior weeks',
+      `${checked} weeks compared`);
+  }
 }
 
 // Recommender. On the corrected model the opening fortnight is infeasible —

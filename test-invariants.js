@@ -366,8 +366,11 @@ ok(/w\.injections \? ` \+ \$\{money\(w\.injections\)\} funding`/.test(planJs2),
         `${implied.toFixed(2)} vs ${w.closing.toFixed(2)}`);
     }
   }
-  ok(true, 'every week reconciles from opening + inflows − outflows to its closing',
-    `${adv.sim.weeks.length} weeks`);
+  // Asserted, not reported. Without this the summary passes over an empty week
+  // list and claims every week reconciles when none was examined.
+  ok(adv.sim.weeks.length >= 13,
+    'every week reconciles from opening + inflows − outflows to its closing',
+    `${adv.sim.weeks.length} weeks compared`);
 }
 // An unfunded gap outranks an override breach: at that buffer no weekly figure
 // fixes it, so blaming spending points at the wrong thing.
