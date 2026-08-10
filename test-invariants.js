@@ -403,6 +403,58 @@ ok(/if \(!fundingShort\) \{\s*\n\s*missionParts\.push/.test(planJs2),
   ok(near(pr.byId.heloc.drawn, 851.31),
     'and the borrowed portion still lands on the HELOC', money(pr.byId.heloc.drawn));
 }
+
+// Money paid toward debt has to arrive somewhere. simulate() takes the whole
+// payment out of cash before projectDebts() sees it, so clamping a balance at
+// zero deletes the overshoot rather than saving it: at $2,000/month, $6,340.00
+// left the account against $5,737.68 of Cash Back Visa and interest, and
+// $602.32 reduced nothing at all. The identity below is the real guarantee —
+// it is checked at payment sizes either side of clearing the target, and at
+// one large enough to clear several cards.
+{
+  const sizes = [0, 500, 2000, 5000, 12000];
+  for (const extra of sizes) {
+    const adv = F.recommend(plan, asOf, { scenario: 'expected', incomeOverrides: {},
+      disabled: [], extraDebtMonthly: extra, targetBuffer: plan.defaults.targetBuffer,
+      fundingSources: plan.funding.options });
+    const pr = F.projectDebts(plan, data.debts, asOf, Object.assign({}, adv.simOptions,
+      { weeklyVariable: adv.weekly, extraFacilities: data.revolvingExtra,
+        extraDebtTarget: plan.nextDollar.target }));
+    let open = 0, close = 0, interest = 0, paid = 0, drawn = 0;
+    for (const d of data.debts) {
+      const s = pr.byId[d.id];
+      open += d.balance + (d.pending || 0);
+      close += s.balance; interest += s.interest; paid += s.paid; drawn += s.drawn;
+    }
+    ok(near(close, open + interest + drawn - paid),
+      `at ${money(extra)}/month extra, every dollar paid reduces a balance`,
+      `closing ${money(close)} vs opening+interest+drawn−paid ${money(open + interest + drawn - paid)}`);
+    ok(pr.unabsorbed === 0,
+      `and nothing is discarded at ${money(extra)}/month`, money(pr.unabsorbed));
+  }
+  // The specific case Codex reported, and the cascade that now catches it.
+  const adv = F.recommend(plan, asOf, { scenario: 'expected', incomeOverrides: {},
+    disabled: [], extraDebtMonthly: 2000, targetBuffer: plan.defaults.targetBuffer,
+    fundingSources: plan.funding.options });
+  const pr = F.projectDebts(plan, data.debts, asOf, Object.assign({}, adv.simOptions,
+    { weeklyVariable: adv.weekly, extraFacilities: data.revolvingExtra,
+      extraDebtTarget: plan.nextDollar.target }));
+  ok(near(pr.byId.cashback.balance, 0),
+    'at $2,000/month the target card is cleared inside the window',
+    money(pr.byId.cashback.balance));
+  ok(pr.byId.tdcc.balance < 1799.97 - 500,
+    'and the overshoot moves to the next highest-rate consumer debt, not nowhere',
+    `TD credit card ${money(1799.97)} → ${money(pr.byId.tdcc.balance)}`);
+  // The order must stay derived from rate, matching nextDollar rank 7, rather
+  // than becoming a second hand-written ranking that can drift from the policy.
+  const forecastSrc = read('public/forecast.js');
+  ok(/plan\.nextDollar` rank 7/.test(forecastSrc) && /sort\(\(a, b\) => \(b\.rate \|\| 0\) - \(a\.rate \|\| 0\)\)/.test(forecastSrc),
+    'the cascade order is derived from rate and cites the policy that sets it');
+  const unsecured = data.debts.filter(d => !d.secured).sort((a, b) => b.rate - a.rate);
+  ok(unsecured[0].id === plan.nextDollar.target,
+    'and the policy target really is the highest-rate consumer debt',
+    `${unsecured[0].id} at ${unsecured[0].rate}%`);
+}
 ok(/gap && overrideBreaches/.test(planJs2),
   'and the Next move outcome says what the override actually does');
 ok(/still to find before/.test(planJs2),

@@ -621,7 +621,52 @@
     // An extra payment must name its target, or it is not a debt payment.
     const extraTarget = opts.extraDebtTarget ? byId[opts.extraDebtTarget] : null;
 
+    // Where a payment goes once the debt it names is gone.
+    //
+    // `simulate` has ALREADY taken the full amount out of cash by the time this
+    // runs, so clamping a balance at zero here does not save the money — it
+    // deletes it. At $2,000/month against the Cash Back Visa, $6,340.00 left
+    // the account and only $5,737.68 of card and interest existed to receive
+    // it; the remaining $602.32 reduced nothing, and the forecast reported both
+    // a lower cap and a lower ending balance for a household that had in fact
+    // cleared the card early. Cash out and debt down are the same money seen
+    // from two sides, which is the coupling this engine exists to hold.
+    //
+    // The order is not invented here. `plan.nextDollar` rank 7 is "direct
+    // verified surplus to the highest effective-cost consumer debt", so the
+    // chain is the unsecured facilities by rate, the named target first. If
+    // every consumer debt is cleared the remainder falls to the HELOC — the
+    // only other revolving facility, and rank 6 is "stop new HELOC and
+    // revolving growth". Nothing is ever discarded, so the identity holds
+    // however large the payment is.
+    const chainFrom = head => {
+      const rest = state
+        .filter(s => !s.secured && s !== head)
+        .sort((a, b) => (b.rate || 0) - (a.rate || 0));
+      return [head, ...rest, byId.heloc].filter(Boolean);
+    };
+    // Pays `amount` down `chain`, absorbing what each balance can take and
+    // passing the rest on. Returns whatever no facility could absorb, which is
+    // only ever non-zero when the household has no debt left at all.
+    const payDown = (chain, amount) => {
+      let left = amount;
+      for (const s of chain) {
+        if (left <= 0) break;
+        const take = Math.min(left, s.balance);
+        if (take <= 0) continue;
+        s.balance -= take;
+        s.paid += take;
+        left -= take;
+      }
+      return left;
+    };
+
     const marks = [];
+    // Cash that left the account for debt and found no balance to reduce —
+    // only possible once every facility is at zero. Reported rather than
+    // swallowed, because a non-zero value here means cash out and debt down
+    // have stopped agreeing and the caller needs to know which way.
+    let unabsorbed = 0;
     const snapshot = (day, date) => ({
       day, date,
       debts: state.map(s => ({
@@ -683,14 +728,16 @@
           if (!t) continue;
           const amount = -e.amount;
           // An amortising payment is part interest, part principal; only the
-          // principal share moves the balance.
+          // principal share moves the balance. The interest share is a real
+          // cost, so it is not carried on to another debt.
           const principal = t.principalShare != null ? amount * t.principalShare : amount;
-          t.balance = Math.max(0, t.balance - principal);
-          t.paid += amount;
-          if (t.principalShare != null) t.interest += amount - principal;
+          if (t.principalShare != null) {
+            t.interest += amount - principal;
+            t.paid += amount - principal;
+          }
+          unabsorbed += payDown(chainFrom(t), principal);
         } else if (e.kind === 'extra' && extraTarget) {
-          extraTarget.balance = Math.max(0, extraTarget.balance - -e.amount);
-          extraTarget.paid += -e.amount;
+          unabsorbed += payDown(chainFrom(extraTarget), -e.amount);
         }
       }
       for (const s2 of state) {
@@ -703,7 +750,7 @@
     }
 
     return {
-      marks, byId, end,
+      marks, byId, end, unabsorbed,
       // Every facility that is over its limit at some point, on the day it
       // actually happens rather than at the next 30-day snapshot. A facility
       // already over the limit today is a different problem from one that
