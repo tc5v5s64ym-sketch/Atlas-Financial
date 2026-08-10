@@ -55,15 +55,15 @@ const opts = {
 };
 // The funding source decides whether covering an opening gap costs anything,
 // so the snapshot uses the same default the page does.
-const fundingSource = ((plan.funding || {}).options || [])
-  .slice().sort((a, b) => a.rank - b.rank).find(o => !o.unusable) || null;
-if (fundingSource) {
-  opts.fundingDebtId = fundingSource.debtId || null;
-  put('plan.fundingSource', fundingSource.id);
-}
+opts.fundingSources = (plan.funding || {}).options;
 
 const advice = F.recommend(plan, asOf, opts);
 put('plan.mode', advice.mode);
+if (advice.funding) {
+  put('plan.fundingSource', advice.funding.parts.map(p => p.id).join('+'));
+  put('plan.fundingBorrowed', advice.funding.borrowed);
+  put('plan.fundingShortfall', advice.funding.shortfall);
+}
 put('plan.weeklyCap', advice.weekly);
 put('plan.weeklyCapMonthly', advice.weekly * WEEKS_PER_MONTH);
 put('plan.effectiveFrom', advice.effectiveFrom);
@@ -130,8 +130,16 @@ for (const c of proj.crossings || []) {
 /* ---- the balance sheet -------------------------------------------------- */
 put('balance.assets', data.netWorth.assets);
 put('balance.debts', data.netWorth.debts);
-put('balance.consumerDebt',
+// POSTED only, and named so. The scoreboard's consumer-debt figure is posted
+// PLUS known pending, because a pending charge is money already spent; these
+// two sat in one report as `balance.consumerDebt` $29,842.83 against
+// `scoreboard.today.consumerDebt` $30,090.01 with nothing saying why.
+put('balance.consumerDebtPosted',
   data.debts.filter(x => !x.secured).reduce((s, x) => s + x.balance, 0));
+put('balance.consumerDebtPending',
+  data.debts.filter(x => !x.secured).reduce((s, x) => s + (x.pending || 0), 0));
+put('balance.consumerDebtEffective',
+  data.debts.filter(x => !x.secured).reduce((s, x) => s + x.balance + (x.pending || 0), 0));
 put('balance.securedDebt',
   data.debts.filter(x => x.secured).reduce((s, x) => s + x.balance, 0));
 

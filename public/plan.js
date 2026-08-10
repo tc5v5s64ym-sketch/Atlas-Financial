@@ -274,20 +274,15 @@ function renderPlan(d, periods) {
   // Two passes, because the gap has to be known before a source can be judged
   // against it. The size of the gap does not depend on who funds it, so the
   // first pass is safe to run with no source at all.
-  const sized = Forecast.recommend(plan, asOf, simOpts());
-  const gapNeeded = sized.gap ? sized.gap.amount : 0;
+  // The engine allocates the gap across the ranked sources and tells us what
+  // that costs. Choosing a single source here and passing only its debtId
+  // modelled the whole gap as debt-free even when no source could reach it.
   const rankedSources = ((plan.funding || {}).options || [])
     .slice().sort((a, b) => a.rank - b.rank).filter(o => !o.unusable);
-  // Availability matters, not just usability. Raising the buffer knob to
-  // $3,000 pushes the gap to $3,543.16, past Amanda's $2,691.85 — and picking
-  // her anyway credited the whole amount as a debt-free transfer and declared
-  // the plan sound. A source that cannot reach the number is not a source.
-  const fundingSource = rankedSources.find(o => o.available >= gapNeeded) || null;
-  const fundingShort = gapNeeded > 0 && !fundingSource;
-  const advice = Forecast.recommend(plan, asOf, simOpts({
-    fundingDebtId: fundingSource ? fundingSource.debtId || null : null,
-    fundingLabel: fundingSource ? `Gap funding — ${fundingSource.label}` : undefined,
-  }));
+  const advice = Forecast.recommend(plan, asOf, simOpts({ fundingSources: plan.funding && plan.funding.options }));
+  const fundingPlan = advice.funding || null;
+  const fundingShort = !!(fundingPlan && !fundingPlan.feasible);
+  const fundingSource = fundingPlan && fundingPlan.parts.length === 1 ? fundingPlan.parts[0] : null;
   const recommended = advice.weekly;
   const weekly = state.weeklyVariable != null ? state.weeklyVariable : recommended;
   // The plan being drawn is the recovery path: gap covered, spending from the
@@ -326,16 +321,27 @@ function renderPlan(d, periods) {
   /* ---- status band ---- */
   const band = $('status-band');
   if (gap && fundingShort) {
-    // No single source can reach the gap. Saying "cover it and the window
-    // finishes with $X" would be describing a plan that does not exist.
-    const best = rankedSources[0];
+    // Nothing available reaches the gap. Saying "cover it and the window
+    // finishes with $X" would describe a plan that does not exist.
     band.className = 'statusband crit';
     band.innerHTML =
-      `<b>Short by ${money(fundingGap)} on ${fmtDateLong(gap.floorDate)}, and no single source can cover it.</b>
-       The largest available is ${best ? `${best.short} at ${money2(best.available)}` : 'nothing'} against
-       ${money2(fundingGap)} needed. At a ${money(sim.buffer)} buffer this gap cannot be closed from one
-       place — lower the buffer, move a commitment, or combine sources. The weekly figure below assumes
-       the gap IS closed and does not hold until it is.`;
+      `<b>Short by ${money(fundingGap)} on ${fmtDateLong(gap.floorDate)}, and there is not enough
+       anywhere to cover it.</b> Every usable source combined reaches
+       ${money2(fundingPlan.parts.reduce((a, p) => a + p.amount, 0))}, leaving
+       <b>${money2(fundingPlan.shortfall)}</b> unfunded at a ${money(sim.buffer)} buffer. Lower the buffer,
+       move a commitment, or find money outside these accounts — the figures below model only what can
+       actually be funded.`;
+  } else if (gap && fundingPlan && fundingPlan.needsCombination) {
+    // Reachable, but not from one place — and part of it is borrowed.
+    band.className = 'statusband crit';
+    band.innerHTML =
+      `<b>Short by ${money(fundingGap)} on ${fmtDateLong(gap.floorDate)}, and no single source covers it.</b>
+       It takes ${fundingPlan.parts.map(p => `${money2(p.amount)} from ${p.short}`).join(' plus ')}.
+       ${fundingPlan.borrowed > 0
+        ? `<b>${money2(fundingPlan.borrowed)} of that is borrowed</b>, and the debt figures below carry it.`
+        : 'None of it is borrowed.'}
+       Hold spending to ${money(weekly)}/week from ${fmtDateLong(advice.effectiveFrom)} and the window
+       finishes with ${money(sim.ending)}.`;
   } else if (gap) {
     // An opening gap is a different problem from an overspending one, and the
     // fix is different too — so say which this is. The figures come from the
@@ -376,6 +382,11 @@ function renderPlan(d, periods) {
     // What must be in the account on the worst day, not the gap to the buffer.
     const shortDate = gap.date;
     const dueThatDay = gap.dueOnGapDay;
+    // Judge each source against the GAP, not against the day's payment. The
+    // gap includes restoring the buffer, so at a raised buffer a source can
+    // clear the $623 due and still not close the hole — which is how these
+    // cards came to read "Covers it" beside a band saying nothing could.
+    const needed = fundingGap;
     const group = (plan.groups || []).find(g =>
       zeroSim.events.some(e => e.date === shortDate && (plan.commitments.find(c => c.id === e.id) || {}).group === g.id));
 
@@ -383,21 +394,26 @@ function renderPlan(d, periods) {
     $('funding-head').textContent = plan.funding.heading;
     $('funding-lede').innerHTML =
       `<b>${money2(dueThatDay)} has to be in the account on ${fmtDateLong(shortDate)}</b>, against the
-       ${money2(plan.startingCash.amount)} the household accounts hold.` +
+       ${money2(plan.startingCash.amount)} the household accounts hold. Restoring the
+       ${money(sim.buffer)} buffer as well makes the amount to find <b>${money2(needed)}</b>, and that is
+       what each source below is measured against.` +
       (group && group.atomic ? ` ${group.note}` : '');
 
     $('funding-options').innerHTML = plan.funding.options
       .slice().sort((a, b) => a.rank - b.rank)
       .map(o => {
-        const enough = o.available >= dueThatDay;
+        const enough = o.available >= needed;
+        const part = fundingPlan && fundingPlan.parts.find(p => p.id === o.id);
         return `<div class="fund ${o.unusable || !enough ? 'fund-no' : 'fund-yes'}">
           <div class="fund-top">
             <span class="fund-lab">${o.label}</span>
             <span class="fund-amt">${money2(o.available)}${o.rate ? ` <span class="mutedtext">at ${pct(o.rate)}</span>` : ''}</span>
           </div>
           <div class="fund-verdict">${enough && !o.unusable
-            ? `<span class="ok">Covers it</span>`
-            : `<span class="no">Not enough — ${money(dueThatDay - o.available)} short of the ${money(dueThatDay)} needed</span>`}</div>
+            ? `<span class="ok">Covers the whole ${money(needed)}</span>`
+            : part
+              ? `<span class="ok">Covers ${money2(part.amount)} of the ${money(needed)}</span> <span class="mutedtext">— used in the plan, with the rest from elsewhere</span>`
+              : `<span class="no">Not enough — ${money(Math.max(0, needed - o.available))} short of the ${money(needed)} needed</span>`}</div>
           <p class="fund-note">${o.note}</p>
         </div>`;
       }).join('');

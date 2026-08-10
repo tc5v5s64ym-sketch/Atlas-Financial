@@ -352,21 +352,61 @@
     const firstPay = zero.events.find(e => e.kind === 'income' && e.amount >= payFloor);
     const spendFrom = firstPay ? firstPay.date : gapDate;
 
-    // Covering the gap costs nothing if the money is released from an account
-    // the household already owns, and creates debt if it is drawn on a credit
-    // facility. The caller names the source; the debt projection reads it off
-    // the same event, so cash and debt cannot disagree about how it was funded.
+    // WHO covers the gap decides what it costs. Money released from an account
+    // the household already owns creates no debt; a draw on a credit facility
+    // does. The allocation lives here rather than in the page because it is
+    // arithmetic against the gap, and the gap is only known at this point.
+    //
+    // Sources are filled in rank order until the gap is met. One source is the
+    // common case, but it is not the only one: raise the buffer and the gap can
+    // outrun the largest single source while still being reachable by two.
+    // Modelling it as one debt-free injection then records a transfer that
+    // cannot happen and a HELOC draw that does — and the scoreboard shows the
+    // crossing a month later than it would really be.
+    const sources = (base.fundingSources || []).slice()
+      .sort((a, b) => (a.rank || 0) - (b.rank || 0))
+      .filter(x => !x.unusable && x.available > 0);
+    const parts = [];
+    let unmet = gapAmount;
+    for (const src of sources) {
+      if (atLeast(0, unmet)) break;               // unmet <= 0 within epsilon
+      const take = Math.min(src.available, unmet);
+      if (take <= EPSILON) continue;
+      parts.push({ id: src.id, label: src.label, short: src.short || src.label,
+        amount: take, debtId: src.debtId || null });
+      unmet -= take;
+    }
+    // No sources declared at all: fall back to one unattributed injection, which
+    // is what a caller that has not told us anything is implicitly asking for.
+    if (!sources.length) {
+      parts.push({ id: 'gapFunding', label: base.fundingLabel || 'Gap funding — transfer or draw',
+        short: 'gap funding', amount: gapAmount, debtId: base.fundingDebtId || null });
+      unmet = 0;
+    }
+    const shortfall = Math.max(0, unmet);
+    const funding = {
+      parts, shortfall,
+      feasible: shortfall <= EPSILON,
+      // A single source was enough, or it took a combination.
+      needsCombination: parts.length > 1,
+      borrowed: parts.filter(p => p.debtId).reduce((s, p) => s + p.amount, 0),
+      free: parts.filter(p => !p.debtId).reduce((s, p) => s + p.amount, 0),
+    };
+
     const recovery = Object.assign({}, base, {
-      injections: [{ date: gapDate, amount: gapAmount, id: 'gapFunding',
-        label: base.fundingLabel || 'Gap funding — transfer or draw',
-        debtId: base.fundingDebtId || null }],
+      injections: parts.map((p, i) => ({
+        date: gapDate, amount: p.amount, id: 'gapFunding' + (i ? '-' + p.id : ''),
+        label: `Gap funding — ${p.short}`, debtId: p.debtId,
+      })),
       variableFrom: spendFrom,
       measureFrom: gapDate,
     });
     const weekly = recommendWeekly(plan, asOf, recovery);
-    return finish('openingGap', recovery, weekly, spendFrom,
+    const result = finish('openingGap', recovery, weekly, spendFrom,
       { amount: gapAmount, date: gapDate, dueOnGapDay, preIncomeOut,
         floor: zero.min.balance, floorDate: zero.min.date }, zero);
+    result.funding = funding;
+    return result;
 
     // Build the result, and prove the answer is actually binding: one step up
     // must breach the buffer, and where it breaches is the constraint to name.

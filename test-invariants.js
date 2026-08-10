@@ -193,22 +193,58 @@ const planJs2 = read('public/plan.js');
 // 1. A funding source was chosen on `unusable` alone, so raising the buffer
 //    knob past a source's balance still credited the full amount as a
 //    debt-free transfer and declared the plan sound.
-ok(/o\.available >= gapNeeded/.test(planJs2),
-  'a funding source is only chosen when it can actually cover the gap');
-ok(/fundingShort/.test(planJs2),
-  'and the page has a state for "no single source can cover it"');
+ok(/fundingSources/.test(planJs2),
+  'the page hands the ranked sources to the engine rather than choosing one itself');
+ok(/advice\.funding/.test(planJs2), 'and reads the allocation back');
 {
-  // Prove it at a buffer that outruns the largest source.
-  const big = Object.assign({}, { scenario: 'expected', incomeOverrides: {}, disabled: [],
-    extraDebtMonthly: 0 }, { targetBuffer: 3000 });
-  const sized = F.recommend(plan, asOf, big);
+  const SRC = { scenario: 'expected', incomeOverrides: {}, disabled: [], extraDebtMonthly: 0,
+    fundingSources: plan.funding.options };
   const ranked = plan.funding.options.slice().sort((a, b) => a.rank - b.rank).filter(o => !o.unusable);
-  const covers = ranked.filter(o => o.available >= sized.gap.amount);
-  ok(sized.gap.amount > ranked[0].available,
-    'at a $3,000 buffer the gap really does exceed the largest source',
-    `${money(sized.gap.amount)} vs ${money(ranked[0].available)}`);
-  ok(covers.length === 0, 'and no source covers it, so the page must say so');
+
+  // Default buffer: one source, nothing borrowed.
+  const base = F.recommend(plan, asOf, Object.assign({}, SRC, { targetBuffer: 500 }));
+  ok(base.funding.feasible && base.funding.parts.length === 1 && base.funding.borrowed === 0,
+    'at the $500 buffer one debt-free source covers the gap',
+    base.funding.parts.map(p => p.short).join(' + '));
+
+  // Raised buffer: the gap outruns the largest source but a COMBINATION works,
+  // and the borrowed part must land on the facility it is drawn from.
+  const big = F.recommend(plan, asOf, Object.assign({}, SRC, { targetBuffer: 3000 }));
+  ok(big.gap.amount > ranked[0].available,
+    'at a $3,000 buffer the gap exceeds the largest single source',
+    `${money(big.gap.amount)} vs ${money(ranked[0].available)}`);
+  ok(big.funding.feasible && big.funding.needsCombination,
+    'but a combination reaches it, so the plan is feasible',
+    big.funding.parts.map(p => `${p.short} ${money(p.amount)}`).join(' + '));
+  ok(near(big.funding.borrowed, 851.31),
+    'and the shortfall against the free source is borrowed', money(big.funding.borrowed));
+  const bigProj = F.projectDebts(plan, data.debts, asOf,
+    Object.assign({}, big.simOptions, { weeklyVariable: big.weekly, extraFacilities: data.revolvingExtra }));
+  ok(near(bigProj.byId.heloc.drawn, big.funding.borrowed),
+    'the debt projection records that draw against the HELOC', money(bigProj.byId.heloc.drawn));
+  const cross = bigProj.crossings.find(c => c.id === 'heloc' && !c.alreadyOver);
+  ok(cross && cross.date === '2026-08-31',
+    'so the HELOC crossing moves to 31 August, not the 30 September of a debt-free injection',
+    cross ? cross.date : 'none');
+
+  // Beyond every source combined: infeasible, and modelled as such.
+  const huge = F.recommend(plan, asOf, Object.assign({}, SRC, { targetBuffer: 8000 }));
+  ok(!huge.funding.feasible && huge.funding.shortfall > 0,
+    'a gap beyond every source combined is reported unfunded, not silently filled',
+    money(huge.funding.shortfall));
+  const injected = huge.funding.parts.reduce((a, p) => a + p.amount, 0);
+  ok(injected < huge.gap.amount,
+    'and only what can actually be funded is injected',
+    `${money(injected)} of ${money(huge.gap.amount)}`);
 }
+ok(/fundingShort/.test(planJs2), 'the page has a state for an unfundable gap');
+ok(/needsCombination/.test(planJs2), 'and one for a gap that takes more than one source');
+// The funding cards judged sources against the day's payment while the band
+// judged them against the gap, so they disagreed on screen.
+ok(/const needed = fundingGap/.test(planJs2),
+  'the funding cards are judged against the gap, not the day\'s payment');
+ok(!/const enough = o\.available >= dueThatDay/.test(planJs2),
+  'the old dueThatDay verdict is gone');
 
 // 2. Two budget explanations on one page disagreed about provenance: the cap
 //    section said nine owner targets, the detailed section said none.
