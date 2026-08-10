@@ -173,15 +173,43 @@ function renderStatic(d) {
     const soon = !paid && n >= 0 && n <= 7;
     const chip = paid ? '<span class="chip v">paid</span>'
       : `<span class="chip ${soon ? 'w' : 'e'}">${dueWord(n)}</span>`;
+    // A club fee and a card minimum are both money leaving, but only one of
+    // them carries a penalty for being late. Say which is which.
+    const kind = u.kind === 'commitment' ? ' <span class="chip">commitment</span>' : '';
     return `
     <tr class="${paid ? 'paid' : soon ? 'soon' : ''}">
       <td>${new Date(u.due + 'T00:00:00').toLocaleDateString('en-CA', { day: 'numeric', month: 'short' })} ${chip}</td>
-      <td>${u.what}</td>
+      <td>${u.what}${kind}</td>
       <td class="num">${money2(u.amount)}</td>
       <td class="${paid ? 'pos' : ''}">${paid ? '<strong>Paid</strong> — ' : ''}${u.note || 'Due'}</td>
     </tr>`;
   }).join('');
   $('upcoming-note').textContent = d.upcomingNote;
+
+  // Committed, but beyond the dated window above — the things that arrive as a
+  // surprise precisely because they have no due date yet.
+  if (d.commitments) {
+    const c = d.commitments;
+    $('commit-head').textContent = c.heading;
+    $('commit-note').textContent = c.note;
+    $('commit-list').innerHTML = c.items.map(i => `
+      <div class="commit">
+        <div class="commit-top">
+          <span class="commit-what">${i.what}</span>
+          <span class="commit-amt">${money(i.amount)}</span>
+        </div>
+        <div class="commit-meta">
+          <span>${i.when}</span>
+          <span class="chip ${i.confidence === 'conditional' ? 'w' : 'e'}">${i.confidence}</span>
+        </div>
+        <p class="commit-note">${i.note}</p>
+      </div>`).join('')
+      + `<div class="commit total">
+           <div class="commit-top"><span class="commit-what">Total</span><span class="commit-amt">${money(c.total)}</span></div>
+         </div>`;
+    $('commit-total-note').textContent = c.totalNote;
+    $('commitments').hidden = false;
+  }
 
   const next = d.upcoming
     .filter(u => u.status !== 'paid' && daysUntil(u.due) >= 0)

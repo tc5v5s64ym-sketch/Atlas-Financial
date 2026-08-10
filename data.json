@@ -17,14 +17,29 @@
   "upcoming": [
     { "due": "2026-08-07", "what": "Triangle Mastercard minimum", "amount": 253.57, "status": "paid", "note": "Paid $300.00 on 9 Aug — two days late, watch for a fee" },
     { "due": "2026-08-04", "what": "TD Cash Back Visa — July statement minimum", "amount": 69.93, "status": "paid", "note": "Missed on 4 Aug; $70.00 paid on 9 Aug, five days late. Available credit went from $0.00 to $70.00, so the freeze has lifted" },
-    { "due": "2026-08-14", "what": "Mortgage (bi-weekly)", "amount": 1600.00, "status": "due", "note": "" },
+    { "due": "2026-08-12", "what": "Burrard registration — child 1", "amount": 320.00, "status": "due", "kind": "commitment", "note": "Lacrosse. Deadline is the 12th, two days before payday" },
+    { "due": "2026-08-12", "what": "Burrard registration — child 2", "amount": 303.00, "status": "due", "kind": "commitment", "note": "Lacrosse. Same deadline as child 1 — $623.00 together" },
+    { "due": "2026-08-14", "what": "Mortgage (bi-weekly)", "amount": 1600.00, "status": "due", "note": "Falls on payday — Seaspan and Tennis BC both land the same day" },
+    { "due": "2026-08-16", "what": "Fusion camp", "amount": 786.00, "status": "due", "kind": "commitment", "note": "Stated as \"next week\" — date is approximate. The largest single item before payday" },
     { "due": "2026-08-17", "what": "TD credit card minimum", "amount": 94.03, "status": "due", "note": "Must post by the 17th — a fifth miss restarts the penalty-rate clock" },
     { "due": "2026-08-21", "what": "HELOC minimum", "amount": 814.18, "status": "due", "note": "Interest-only — reduces principal by nothing" },
+    { "due": "2026-08-22", "what": "Fusion tryouts", "amount": 140.00, "status": "due", "kind": "commitment", "note": "Lands the day after the HELOC minimum" },
     { "due": "2026-08-26", "what": "Travel Visa minimum", "amount": 17.00, "status": "due", "note": "" },
     { "due": "2026-08-31", "what": "Amazon.ca Rewards Mastercard minimum", "amount": 158.27, "status": "due", "note": "MBNA. At minimums the issuer estimates 64 years 3 months to clear" },
     { "due": "2026-09-01", "what": "TD Cash Back Visa minimum", "amount": 762.36, "status": "due", "note": "Eleven times last month's $69.93, because going over the limit makes the excess immediately due. Under $5,000 before the 7th stops the $29 over-limit fee" }
   ],
-  "upcomingNote": "Still to fund by 1 September: $3,445.84, against $2,845.89 of cash across five accounts. Payroll at ~$4,469 bi-weekly covers it, but the $762.36 Cash Back minimum on 1 September is more than four times any other card minimum and is the one that needs planning for.",
+  "upcomingNote": "Still to fund by 1 September: $4,994.84 — $3,445.84 of debt minimums plus $1,549.00 of sports commitments. Against $2,845.89 of cash today. The month funds itself: about $13,373 arrives before 1 September, and it closes near $4,749. The tight moment is 12 August — Burrard ($623) and the Fusion camp ($786) both fall before Friday's payday, taking cash to roughly $874, or nearer $590 once ordinary spending is counted, and it stays there for two days. There is $1,415.95 of credit left across every facility combined if anything unexpected lands in that gap.",
+
+  "commitments": {
+    "heading": "Big-ticket items already committed",
+    "note": "Beyond the dates above. Kept here so they do not arrive as a surprise — the sports total across August to December is about $4,349, roughly $870/month, against the $286/month that youth lacrosse has averaged historically.",
+    "items": [
+      { "what": "Warriors Academy", "when": "September 2026", "amount": 800, "confidence": "estimate", "note": "Owner's figure, stated as \"about $800\". Not yet invoiced." },
+      { "what": "Fusion team fees", "when": "September – December 2026", "amount": 2000, "confidence": "conditional", "note": "Only if selected at the 22 August tryouts. Expected as roughly $500/month across four months rather than a lump sum." }
+    ],
+    "total": 2800,
+    "totalNote": "$800 of this is an estimate and $2,000 is conditional on selection, so treat the total as a planning figure rather than a bill. Excluded from the headline debt and cash figures, which carry verified amounts only."
+  },
 
   "debts": [
     { "label": "Mortgage", "balance": 546026.58, "rate": 3.64, "rateBasis": "TD Mortgage Prime − 0.96%", "structure": "Amortising — 52.4% of each payment is principal", "annualInterest": 19441, "payment": 1600, "frequency": "Bi-weekly", "nextDue": "2026-08-14", "limit": null, "available": null, "confidence": "verified" },

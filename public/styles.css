@@ -146,6 +146,18 @@ h3 { font-size:1rem; margin:28px 0 6px; letter-spacing:-0.01em; }
 }
 .nextdue .nd-lab { font-size:.72rem; font-weight:700; letter-spacing:.07em; text-transform:uppercase; color:var(--s1); }
 
+/* ---------------------------------------------------------------- commitments */
+.commit { padding:14px 0; border-bottom:1px solid var(--grid); }
+.commit:first-child { padding-top:2px; }
+.commit-top { display:flex; justify-content:space-between; align-items:baseline; gap:14px; }
+.commit-what { font-weight:600; font-size:.95rem; }
+.commit-amt { font-weight:650; font-size:1.1rem; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.commit-meta { display:flex; align-items:center; gap:9px; flex-wrap:wrap;
+               font-size:.8rem; color:var(--text-secondary); margin-top:4px; }
+.commit-note { margin:7px 0 0; font-size:.83rem; color:var(--muted); max-width:70ch; }
+.commit.total { border-bottom:none; border-top:1px solid var(--axis); padding-bottom:2px; }
+.commit.total .commit-what, .commit.total .commit-amt { color:var(--serious); }
+
 /* ---------------------------------------------------------------- tables */
 table { width:100%; border-collapse:collapse; font-size:.86rem; }
 .scroll { overflow-x:auto; -webkit-overflow-scrolling:touch; }
