@@ -120,7 +120,7 @@ function setupRenewal(d) {
     const baselineCash = mortgageNow + helocCash;
     const baselineMonthly = baselineCash;
 
-    let payment, totalInterest, principal, note;
+    let payment, totalInterest, principal, note, helocOwed = 0;
     if (consolidate) {
       principal = m.balance + heloc.balance;
       payment = amortisedPayment(principal, r, years);
@@ -130,9 +130,22 @@ function setupRenewal(d) {
       principal = m.balance;
       payment = amortisedPayment(principal, r, years) + helocCash;
       const mortgageInterest = (payment - helocCash) * years * 12 - principal;
-      const helocInterest = heloc.balance * (heloc.rate / 100) * years;
+      // Capitalised interest COMPOUNDS. Charging simple interest and then
+      // reporting the opening balance as the amount still owed understated it
+      // by $275,305 at the default 18 years — the page establishes two lines
+      // above that nothing repays this, so the balance cannot stand still.
+      const helocRate = heloc.rate / 100;
+      helocOwed = helocCapitalised
+        ? heloc.balance * Math.pow(1 + helocRate, years)
+        : heloc.balance;
+      const helocInterest = helocCapitalised
+        ? helocOwed - heloc.balance
+        : heloc.balance * helocRate * years;
       totalInterest = mortgageInterest + helocInterest;
-      note = `The HELOC stays interest-only, so after ${years} years its ${money(heloc.balance)} is still owed in full.`;
+      note = helocCapitalised
+        ? `The HELOC stays interest-only AND its interest capitalises, so nothing repays it and it compounds:
+           ${money(heloc.balance)} today becomes <b>${money(helocOwed)}</b> after ${years} years.`
+        : `The HELOC stays interest-only, so after ${years} years its ${money(heloc.balance)} is still owed in full.`;
     }
 
     const delta = payment - baselineMonthly;
@@ -151,7 +164,7 @@ function setupRenewal(d) {
       ${helocCapitalised ? `<div class="row"><span>HELOC interest no longer capitalising</span><span class="pos">${money2(helocEconomic)} / month</span></div>` : ''}
       <div class="row"><span>Principal financed</span><span>${money2(principal)}</span></div>
       <div class="row"><span>Total interest over ${years} years</span><span>${money(totalInterest)}</span></div>
-      <div class="row"><span>Still owed after ${years} years</span><span>${consolidate ? '$0' : money(heloc.balance)}</span></div>
+      <div class="row"><span>HELOC still owed after ${years} years</span><span class="${consolidate ? 'pos' : 'neg'}">${consolidate ? '$0' : money(helocOwed)}</span></div>
       <p class="${consolidate ? 'goodline' : 'warnline'}">${note}</p>
       <p class="lede" style="margin:10px 0 0;font-size:.8rem">Illustrative only. Ignores fees, penalties, qualification
       and the loan-to-value test — which needs a home valuation. A licensed mortgage professional should run the real numbers.</p>`;

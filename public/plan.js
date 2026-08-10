@@ -294,7 +294,7 @@ function renderPlan(d, periods) {
   // Whether the assumed source is borrowed money. If it is, the debt side of
   // the projection already carries the draw and there is no cheaper path left
   // to contrast it against.
-  const fundingIsDraw = !!(fundingSource && fundingSource.debtId);
+  const fundingIsDraw = !!(fundingPlan && fundingPlan.borrowed > 0);
   const zeroSim = advice.zero;            // the unfunded window — the problem
   const fundingGap = gap ? gap.amount : 0;
   const preIncomeOut = gap ? gap.preIncomeOut : 0;
@@ -472,7 +472,11 @@ function renderPlan(d, periods) {
   const helocBreach = (debtProj.crossings || [])
     .find(c => c.id === 'heloc' && !c.alreadyOver) || null;
   const missionParts = [];
-  if (gap) missionParts.push(`cover the ${money(fundingGap)} timing gap by ${fmtDateLong(gap.date)}`);
+  if (gap && fundingShort) {
+    missionParts.push(`find ${money(fundingPlan.shortfall)} beyond every account available, or lower the buffer`);
+  } else if (gap) {
+    missionParts.push(`cover the ${money(fundingGap)} timing gap by ${fmtDateLong(gap.date)}`);
+  }
   if (overToday.length) missionParts.push(`get the ${overToday.map(x => x.label).join(' and ')} back under its limit`);
   missionParts.push(`hold spending to ${money(weekly)} a week`);
   if (helocBreach) missionParts.push(`and stop the HELOC growing before it passes its own limit in ${fmtMonth(helocBreach.date)}`);
@@ -484,10 +488,16 @@ function renderPlan(d, periods) {
   const first = plan.actions[0];
   if (first) {
     const overdue = first.due && first.due < asOf && first.status !== 'done';
-    const after = gap && first.due && first.due <= gap.date
-      ? `The ${money(gap.dueOnGapDay)} clears on ${fmtDateLong(gap.date)}, the buffer is restored, and from
-         ${fmtDateLong(advice.effectiveFrom)} the household can spend ${money(weekly)} a week.`
-      : `The window finishes with ${money(sim.ending)} instead of breaching the ${money(sim.buffer)} buffer.`;
+    const after = gap && fundingShort
+      // Only part of the gap can be funded, so promising a restored buffer
+      // would be describing an outcome the figures do not produce.
+      ? `Even with everything available moved across, ${money(fundingPlan.shortfall)} of the
+         ${money(fundingGap)} stays unfunded and the balance holds below the ${money(sim.buffer)} buffer.
+         This action helps; on its own it is not enough.`
+      : gap && first.due && first.due <= gap.date
+        ? `The ${money(gap.dueOnGapDay)} clears on ${fmtDateLong(gap.date)}, the buffer is restored, and from
+           ${fmtDateLong(advice.effectiveFrom)} the household can spend ${money(weekly)} a week.`
+        : `The window finishes with ${money(sim.ending)} instead of breaching the ${money(sim.buffer)} buffer.`;
     $('nextmove-card').innerHTML = `
       <div class="nm-head">
         <span class="nm-what">${first.what}</span>
@@ -663,7 +673,10 @@ function renderPlan(d, periods) {
   $('phases').innerHTML =
     phase('0–30 days', gap ? 'Cover the gap and stabilise'
       : 'Hold the buffer',
-      gap ? `Get ${money(fundingGap)} across by ${fmtDateLong(gap.date)}, then hold ${money(weekly)}/week.
+      gap && fundingShort
+        ? `Every usable source combined leaves ${money(fundingPlan.shortfall)} of the ${money(fundingGap)}
+           unfunded. Lower the buffer, move a commitment, or find money outside these accounts.`
+      : gap ? `Get ${money(fundingGap)} across by ${fmtDateLong(gap.date)}, then hold ${money(weekly)}/week.
              Cash recovers to ${money(cashOn(d30.date))} by ${fmtDate(d30.date)}.`
           : `Hold ${money(weekly)}/week. Cash sits at ${money(cashOn(d30.date))} by ${fmtDate(d30.date)}.`) +
     phase('31–60 days', overToday.length ? 'Get back inside the limits' : 'Relieve revolving pressure',

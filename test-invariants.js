@@ -262,6 +262,35 @@ ok(!/const consumer = d\.debts\.filter\(x => !x\.secured\)/.test(planJs2),
 ok(/const consumer = today\.consumer/.test(planJs2),
   'it reuses the projected day-zero figure the tile shows');
 
+// 4. Borrowing status was read from the single-source case, so a two-part
+//    allocation containing an $851.31 HELOC draw reported "creates no debt".
+ok(/fundingPlan && fundingPlan\.borrowed > 0/.test(planJs2),
+  'borrowing status comes from the whole allocation, not just a lone source');
+ok(!/fundingIsDraw = !!\(fundingSource && fundingSource\.debtId\)/.test(planJs2),
+  'the single-source-only test is gone');
+
+// 5. The Next move card promised a restored buffer even when the gap cannot be
+//    fully funded and the window stays below it.
+ok(/gap && fundingShort/.test(planJs2),
+  'the success copy is gated on the gap actually being fundable');
+
+// 6. The Modeller charged SIMPLE interest on a balance the same page says
+//    capitalises, then reported the opening balance as still owed.
+ok(/Math\.pow\(1 \+ helocRate, years\)/.test(modellers),
+  'the Modeller compounds capitalised HELOC interest');
+ok(!/heloc\.balance \* \(heloc\.rate \/ 100\) \* years/.test(modellers),
+  'and the simple-interest calculation is gone');
+ok(!/money\(heloc\.balance\)}<\/span>\s*<\/div>[\s\S]{0,40}Illustrative/.test(modellers),
+  'the amount still owed is the compounded figure, not the opening balance');
+{
+  // At the default horizon the difference is not a rounding matter.
+  const h = data.debts.find(x => x.id === 'heloc');
+  const owed18 = h.balance * Math.pow(1 + h.rate / 100, 18);
+  ok(owed18 > h.balance * 2,
+    'over 18 years a capitalising HELOC more than doubles',
+    `${money(h.balance)} → ${money(owed18)}`);
+}
+
 console.log('\n=== provenance claims are supported ===');
 const nd = plan.nextDollar;
 ok(nd.provenance === 'derived',
