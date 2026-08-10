@@ -1159,6 +1159,18 @@ separate private-lesson clients booked through Calendly.
 **That makes the large receipts pass-through money, not household income.** They
 arrive gross, and a share of each is owed onward to the coaches.
 
+**The money is not household-spendable when it lands** *(owner-stated
+2026-08-09)*. It sits in Amanda's tennis account until she has paid her coaches;
+only then does she move what is left over to the household spending accounts.
+So the household sees the coaching income as a **transfer of the retained
+margin, after coach payroll, at a time of her choosing** — not as the remittance
+itself, and not on the remittance date. Any cash-flow plan should count only
+that transferred remainder, and should not treat a remittance sighted in her
+account as money the household can spend that week. (Which account "Amanda's
+tennis account" is remains open — it is likely the un-captured account the 2026
+coach payments leave from [B63], and possibly one of the two unidentified
+accounts.)
+
 ### The $9,646.25 — mostly onto the HELOC, but a coach WAS paid
 
 *(Corrected 2026-08-09, after recovering the deleted Interac notifications.)*
