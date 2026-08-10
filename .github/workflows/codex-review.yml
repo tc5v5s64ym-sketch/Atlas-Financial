@@ -23,26 +23,48 @@ name: Codex review freshness
 # place, never adding a second. When the review is stale, a human comments
 # `@codex review` — which takes a moment and works.
 #
-# The part that actually holds is neither of these: it is the merge card's
+# WHERE CODEX PUTS THE ANSWER, which is three places and not one. A review WITH
+# findings arrives as a pull-request review (and its inline comments), both
+# carrying the SHA. A review with NOTHING to say arrives as a plain issue
+# comment — "Didn't find any major issues" — which carries no SHA field at all,
+# only a `Reviewed commit:` line in its prose. Reading the first two and not the
+# third is how this workflow spent its first clean review reporting `stale`
+# against a head Codex had just passed: the banner said the review described
+# code that was no longer here, when it described exactly the code that was.
+# A gate that cries stale at a current review is the failure it exists to
+# prevent, wearing the other face. So: parse all three, and take the newest.
+#
+# It also has to WAKE UP when that comment lands. `pull_request` alone fires on
+# pushes only, so the clean verdict would sit unnoticed until the next commit —
+# by which time it really would be stale, and the banner would be accidentally
+# right for the wrong reason.
+#
+# The part that actually holds is none of these: it is the merge card's
 # `Advisory review` row, which has to say what happened to each finding before
 # the card check passes.
 
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
+  issue_comment:
+    types: [created]
 
 permissions:
   contents: read
   pull-requests: write
 
 concurrency:
-  group: codex-freshness-${{ github.event.pull_request.number }}
+  group: codex-freshness-${{ github.event.pull_request.number || github.event.issue.number }}
   cancel-in-progress: true
 
 jobs:
   freshness:
     name: Is the Codex review current
-    if: github.event.pull_request.draft == false
+    # On comment events, only for pull requests — issue_comment fires for plain
+    # issues too, which have no head to be stale against.
+    if: >-
+      (github.event_name == 'pull_request' && github.event.pull_request.draft == false)
+      || (github.event_name == 'issue_comment' && github.event.issue.pull_request)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -51,30 +73,52 @@ jobs:
         with:
           script: |
             const { owner, repo } = context.repo;
-            const pr = context.payload.pull_request;
+            // A comment event carries an `issue`, not a `pull_request`, so the
+            // head has to be fetched rather than read off the payload.
+            const number = context.payload.pull_request
+              ? context.payload.pull_request.number
+              : context.payload.issue.number;
+            const { data: pr } = await github.rest.pulls.get(
+              { owner, repo, pull_number: number });
+            if (pr.draft) { core.info('draft — nothing to report'); return; }
             const head = pr.head.sha;
             const MARKER = '<!-- atlas-codex-freshness -->';
             const isCodex = login => /codex/i.test(login || '');
 
-            // Which commit did Codex last actually look at? Reviews carry the
-            // SHA they were submitted against; review comments carry it too.
-            // Take the newest of either.
+            const all = await github.paginate(github.rest.issues.listComments,
+              { owner, repo, issue_number: number, per_page: 100 });
+
+            // Which commit did Codex last actually look at? Reviews and review
+            // comments carry the SHA as a field. A clean verdict carries it
+            // only as prose, so it is read out of the body.
             const reviews = await github.paginate(github.rest.pulls.listReviews,
-              { owner, repo, pull_number: pr.number, per_page: 100 });
+              { owner, repo, pull_number: number, per_page: 100 });
             const comments = await github.paginate(github.rest.pulls.listReviewComments,
-              { owner, repo, pull_number: pr.number, per_page: 100 });
+              { owner, repo, pull_number: number, per_page: 100 });
+            // `**Reviewed commit:** \`1cfc1f50ab\`` — the bold markers sit
+            // between the colon and the SHA, so they have to be allowed for.
+            const REVIEWED = /reviewed commit:\**\s*`?([0-9a-f]{7,40})`?/i;
 
             const seen = [
               ...reviews.filter(r => isCodex(r.user && r.user.login))
-                .map(r => ({ sha: r.commit_id, at: r.submitted_at })),
+                .map(r => ({ sha: r.commit_id, at: r.submitted_at, clean: false })),
               ...comments.filter(c => isCodex(c.user && c.user.login))
-                .map(c => ({ sha: c.original_commit_id || c.commit_id, at: c.created_at })),
-            ].filter(x => x.sha).sort((a, b) => (a.at < b.at ? 1 : -1));
+                .map(c => ({ sha: c.original_commit_id || c.commit_id, at: c.created_at, clean: false })),
+              ...all.filter(c => isCodex(c.user && c.user.login))
+                .map(c => {
+                  const m = REVIEWED.exec(c.body || '');
+                  return m && { sha: m[1], at: c.created_at,
+                    clean: /didn.t find any major issues/i.test(c.body || '') };
+                }),
+            ].filter(x => x && x.sha).sort((a, b) => (a.at < b.at ? 1 : -1));
 
             const commits = await github.paginate(github.rest.pulls.listCommits,
-              { owner, repo, pull_number: pr.number, per_page: 250 });
+              { owner, repo, pull_number: number, per_page: 250 });
             const order = commits.map(c => c.sha);
             const short = s => (s || '').slice(0, 7);
+            // The prose form is abbreviated, so a reviewed SHA matches the head
+            // by prefix rather than by equality.
+            const same = (a, b) => !!a && !!b && (a.startsWith(b) || b.startsWith(a));
 
             let body;
             if (!seen.length) {
@@ -83,14 +127,19 @@ jobs:
                 `ready-for-review; if it has not, comment \`@codex review\`.\n\n` +
                 `Either way the merge card's **Advisory review** row still has to be answered — ` +
                 `\`none raised\` is a valid answer once a review has come back clean.`;
-            } else if (seen[0].sha === head) {
+            } else if (same(seen[0].sha, head)) {
               body = `${MARKER}\n### 🤖 Codex review — current\n\n` +
-                `Codex has reviewed \`${short(head)}\`, which is the current head. Its findings ` +
-                `describe the code that is actually here.\n\n` +
-                `Record what happened to each one in the merge card's **Advisory review** row: ` +
-                `fixed, non-issue with the reason, or deferred to the backlog.`;
+                (seen[0].clean
+                  ? `Codex reviewed \`${short(head)}\`, which is the current head, and raised ` +
+                    `**nothing**. That verdict describes the code that is actually here.\n\n` +
+                    `\`none raised\` is now a truthful answer for the merge card's ` +
+                    `**Advisory review** row — for this head, and only until the next push.`
+                  : `Codex has reviewed \`${short(head)}\`, which is the current head. Its findings ` +
+                    `describe the code that is actually here.\n\n` +
+                    `Record what happened to each one in the merge card's **Advisory review** row: ` +
+                    `fixed, non-issue with the reason, or deferred to the backlog.`);
             } else {
-              const i = order.indexOf(seen[0].sha);
+              const i = order.findIndex(s => same(s, seen[0].sha));
               const behind = i >= 0 ? order.length - 1 - i : null;
               body = `${MARKER}\n### 🤖 Codex review — **stale**\n\n` +
                 `Codex last reviewed \`${short(seen[0].sha)}\`` +
@@ -103,15 +152,6 @@ jobs:
 
             body += `\n\n---\n_Generated by [Claude Code](https://claude.ai/code)_`;
 
-            const all = await github.paginate(github.rest.issues.listComments,
-              { owner, repo, issue_number: pr.number, per_page: 100 });
-            const existing = all.find(c => c.body && c.body.includes(MARKER));
-            if (existing) {
-              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
-            } else {
-              await github.rest.issues.createComment({ owner, repo, issue_number: pr.number, body });
-            }
-
             // Clean up the abandoned auto-request comments from the earlier
             // approach, so the thread does not keep a record of a mechanism
             // that was removed for not working.
@@ -120,4 +160,15 @@ jobs:
                 await github.rest.issues.deleteComment({ owner, repo, comment_id: c.id });
                 core.info(`removed stale auto-request comment ${c.id}`);
               }
+            }
+
+            // Now that every comment on the PR wakes this workflow, rewriting an
+            // identical banner would put an edit on the thread for each one.
+            const existing = all.find(c => c.body && c.body.includes(MARKER));
+            if (!existing) {
+              await github.rest.issues.createComment({ owner, repo, issue_number: number, body });
+            } else if (existing.body !== body) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              core.info('verdict unchanged — banner left alone');
             }

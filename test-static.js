@@ -152,6 +152,35 @@ ok(fs.existsSync(path.join(__dirname, 'scripts/figures-snapshot.js')),
 ok(/figures-snapshot\.js/.test(read('.github/workflows/figures-review.yml')),
   'and the figures review runs it');
 
+// The freshness gate has to be able to see a CLEAN review. Codex reports
+// findings as a pull-request review carrying a SHA field, but reports "nothing
+// found" as a plain issue comment whose only SHA is prose. Reading the first
+// and not the second made the gate report `stale` against a head Codex had
+// just passed — the exact lie it exists to prevent, inverted. These assert the
+// parse against the real published wording rather than the shape of the code.
+const fresh = read('.github/workflows/codex-review.yml');
+ok(/issues\.listComments/.test(fresh),
+  'the freshness gate reads plain issue comments, where a clean verdict lands');
+ok(/issue_comment:/.test(fresh) && /types: \[created\]/.test(fresh),
+  'and wakes when one arrives, not only on a push');
+const reviewedRe = (/const REVIEWED = (\/.*\/i);/.exec(fresh) || [])[1];
+ok(!!reviewedRe, 'it declares a pattern for the reviewed-commit line', reviewedRe);
+{
+  // Verbatim from comment 5241719472 on PR #1 — the first clean verdict.
+  const body = "Codex Review: Didn't find any major issues. Chef's kiss.\n\n"
+    + '**Reviewed commit:** `1cfc1f50ab`';
+  const re = new RegExp(reviewedRe.slice(1, -2), 'i');
+  const m = re.exec(body);
+  ok(!!m && m[1] === '1cfc1f50ab',
+    'and it extracts the SHA from the real clean-verdict wording',
+    m ? m[1] : 'NO MATCH — the bold markers sit between the colon and the SHA');
+  // Abbreviated in prose, so equality would never match a 40-char head.
+  ok(/const same = \(a, b\) =>[\s\S]*startsWith/.test(fresh),
+    'the head is compared by prefix, since the prose SHA is abbreviated');
+  ok(!re.test('@codex review\n\nAll three are fixed in `1cfc1f5`.'),
+    'a request for a review is not mistaken for a review');
+}
+
 console.log('\n=== the security gate is intact ===');
 const server = read('server.js');
 ok(/SITE_PASSWORD/.test(server) && /process\.exit|throw/.test(server),
