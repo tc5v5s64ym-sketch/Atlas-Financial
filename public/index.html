@@ -120,38 +120,69 @@
     <div class="note-box" id="income-warning"></div>
   </div>
 
-  <h2><span class="n">9</span>Where the money goes</h2>
-  <p class="lede">Two separate pictures. The chequing accounts show 18 months; the cards show the twelve
-  months to August 2026, and were invisible until the statements were parsed.</p>
+  <h2><span class="n">9</span>Spending, interest and fees</h2>
+  <p class="lede">Cards and chequing merged into one ledger. Pick a period — the three charts below all
+  follow it.</p>
+  <div class="card">
+    <div class="control" style="margin:0">
+      <label for="period-bar">Period</label>
+      <div class="presets" id="period-bar"></div>
+    </div>
+    <p class="lede" id="period-summary" style="margin:14px 0 0"></p>
+  </div>
+
   <div class="card"><figure><div id="c-spend"></div>
     <figcaption id="spend-note"></figcaption>
   </figure></div>
-  <div class="card"><figure><div id="c-cardspend"></div>
-    <figcaption id="cardspend-note"></figcaption>
+
+  <h2><span class="n">10</span>What the debt costs</h2>
+  <p class="lede">Interest actually charged, not modelled. The mortgage is absent because its interest is
+  inside the payment rather than a separate charge.</p>
+  <div class="card"><figure><div id="c-interest"></div>
+    <figcaption id="interest-note"></figcaption>
   </figure></div>
+
+  <h2><span class="n">11</span>Fees</h2>
+  <p class="lede">Split by whether they can be avoided. Structural fees come with the account; avoidable ones
+  are the result of something that happened.</p>
+  <div class="card"><figure><div id="c-fees"></div>
+    <figcaption id="fees-note"></figcaption>
+  </figure></div>
+
+  <h2><span class="n">12</span>Month by month</h2>
+  <div class="card"><figure>
+    <div class="legend">
+      <span><span class="sw" style="background:var(--s1)"></span>Spending</span>
+      <span><span class="sw" style="background:var(--serious)"></span>Interest</span>
+      <span><span class="sw" style="background:var(--critical)"></span>Fees</span>
+    </div>
+    <div id="c-trend"></div>
+    <figcaption id="trend-note"></figcaption>
+  </figure></div>
+
   <div class="card scroll">
     <table><thead><tr><th>PayPal category</th><th class="num">9-month total</th><th class="num">Per month</th></tr></thead>
     <tbody id="paypal-table"></tbody></table>
     <p class="lede" id="paypal-note" style="margin:12px 0 0"></p>
   </div>
 
-  <h2><span class="n">10</span>Movement with no explanation</h2>
+  <h2><span class="n">13</span>Movement with no explanation</h2>
   <div class="card"><figure><div id="c-unex"></div>
     <figcaption>Each is a large flow whose purpose cannot be determined from banking data alone.</figcaption>
   </figure></div>
 
-  <h2><span class="n">11</span>The questions that matter most</h2>
+  <h2><span class="n">14</span>The questions that matter most</h2>
   <p class="lede">Ranked by what the answer would change, not by size.</p>
   <div class="card" id="questions"></div>
 
-  <h2><span class="n">12</span>Balance sheet</h2>
+  <h2><span class="n">15</span>Balance sheet</h2>
   <div class="card scroll">
     <table><thead><tr><th>Item</th><th class="num">Amount</th></tr></thead><tbody id="assets"></tbody></table>
     <p class="lede" id="assets-note" style="margin:12px 0 0"></p>
     <div class="note-box" id="nw-caveat"></div>
   </div>
 
-  <h2><span class="n">13</span>Coverage — what is captured and what is not</h2>
+  <h2><span class="n">16</span>Coverage — what is captured and what is not</h2>
   <div class="card scroll"><table>
     <thead><tr><th>Source</th><th>What was captured</th><th>Status</th></tr></thead>
     <tbody id="coverage"></tbody></table></div>
