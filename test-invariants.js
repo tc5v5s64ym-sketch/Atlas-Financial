@@ -429,7 +429,7 @@ ok(/if \(!fundingShort\) \{\s*\n\s*missionParts\.push/.test(planJs2),
     ok(near(close, open + interest + drawn - paid),
       `at ${money(extra)}/month extra, every dollar paid reduces a balance`,
       `closing ${money(close)} vs opening+interest+drawn−paid ${money(open + interest + drawn - paid)}`);
-    ok(pr.unabsorbed === 0,
+    ok(Math.abs(pr.unabsorbed) < 0.005,
       `and nothing is discarded at ${money(extra)}/month`, money(pr.unabsorbed));
   }
   // The specific case Codex reported, and the cascade that now catches it.
@@ -485,14 +485,53 @@ ok(/if \(!fundingShort\) \{\s*\n\s*missionParts\.push/.test(planJs2),
     ok(near(pc.unabsorbed, cashOut - paidOn),
       'and the reported unabsorbed figure is exactly the cash that reduced nothing',
       `${money(pc.unabsorbed)}`);
-    // KNOWN RESIDUAL, stated rather than hidden. Extras are capped; the dated
-    // minimums are not, so once every facility is at zero those keep paying a
-    // debt that no longer exists. It needs an input that clears $777k inside
-    // 91 days, which this household cannot reach, and it is $111.03 when it
-    // happens. Recorded here so the number is a known quantity, not a surprise.
-    ok(pc.unabsorbed < 200,
-      'the only residual is dated minimums outliving the debt they pay',
-      `${money(pc.unabsorbed)} at $80,000/month — extras contribute nothing`);
+    ok(Math.abs(pc.unabsorbed) < 0.005,
+      'nothing at all is left unabsorbed', money(pc.unabsorbed));
+  }
+
+  // The same rule has to hold for DATED MINIMUMS, not just extras. Capping one
+  // and not the other left $693.11 leaving cash against balances already at
+  // zero — the two projections still disagreeing, just by less. "A scheduled
+  // minimum is contractual" was the wrong reason to leave it: the obligation is
+  // to a BALANCE, and a bank does not take a minimum on a card that is paid off.
+  // Checked at an input far past anything reachable, because that is where the
+  // rule is tested rather than merely satisfied.
+  for (const extra of [80000, 500000]) {
+    const O = { scenario: 'expected', incomeOverrides: {}, disabled: [],
+      extraDebtMonthly: extra, targetBuffer: plan.defaults.targetBuffer,
+      fundingSources: plan.funding.options, extraDebtTarget: plan.nextDollar.target,
+      debts: data.debts };
+    const adv = F.recommend(plan, asOf, O);
+    const pr = F.projectDebts(plan, data.debts, asOf, Object.assign({}, adv.simOptions,
+      { weeklyVariable: adv.weekly, extraFacilities: data.revolvingExtra,
+        extraDebtTarget: plan.nextDollar.target }));
+    const cashOut = adv.sim.events
+      .filter(e => e.amount < 0 && (e.kind === 'extra' || e.kind === 'obligation'))
+      .reduce((a, e) => a + Math.abs(e.amount), 0);
+    const landed = data.debts.reduce((a, d) => a + pr.byId[d.id].paid, 0);
+    ok(near(cashOut, landed),
+      `at ${money(extra)}/month, every dollar leaving cash for debt lands on one`,
+      `${money(cashOut)} out, ${money(landed)} landed`);
+    // Sub-cent, not exactly zero: subtracting a quarter-million dollars in
+    // pieces leaves float residue (8.4e-11 here), which is arithmetic noise
+    // rather than money. A cent is the smallest amount that could be one.
+    ok(Math.abs(pr.unabsorbed) < 0.005,
+      `and nothing is unabsorbed at ${money(extra)}/month`,
+      pr.unabsorbed === 0 ? '$0.00 exactly' : `${pr.unabsorbed.toExponential(1)} — float residue`);
+  }
+  // A capitalising charge must never be capped — it ADDS to a balance rather
+  // than reducing one, so the rule that governs payments does not apply to it.
+  {
+    const O = { scenario: 'expected', incomeOverrides: {}, disabled: [],
+      extraDebtMonthly: 500000, targetBuffer: plan.defaults.targetBuffer,
+      fundingSources: plan.funding.options, extraDebtTarget: plan.nextDollar.target,
+      debts: data.debts };
+    const adv = F.recommend(plan, asOf, O);
+    const charges = adv.sim.events.filter(e => e.kind === 'noncash');
+    const declared = (plan.obligations || []).filter(o => o.nonCash);
+    ok(charges.length > 0 && declared.length > 0,
+      'the capitalising HELOC charge still appears when every debt is cleared',
+      `${charges.length} charge(s)`);
   }
 
   // Passing the debt records through the page's knob state put financial data

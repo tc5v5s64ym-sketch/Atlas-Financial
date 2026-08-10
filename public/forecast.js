@@ -103,9 +103,28 @@
     }
     for (const o of plan.obligations) {
       for (const date of occurrences(o, start, end)) {
+        // A minimum on a card that has been paid off is not a payment anybody
+        // makes — the bank does not take it, because there is nothing to take
+        // it against. Capping extras but not these left the two projections
+        // still disagreeing by $693.11 at a large enough entered payment, and
+        // "a scheduled minimum is contractual" was the wrong reason to leave
+        // it: the obligation is to a BALANCE, and the balance is gone.
+        //
+        // Same authority and same application point as the extra payments, so
+        // there is one rule for "a payment cannot exceed the debt it pays"
+        // rather than two that can drift apart.
+        const cap = opts.obligationAbsorbed;
+        const amount = cap ? (cap[date + ':' + o.id] || 0) : o.amount;
         // A non-cash charge (HELOC interest capitalising onto the balance) is
-        // shown on the calendar but never deducted from cash.
-        events.push({ date, amount: -o.amount, kind: o.nonCash ? 'noncash' : 'obligation',
+        // shown on the calendar but never deducted from cash. Capping never
+        // applies to it — it adds to a balance rather than reducing one.
+        if (o.nonCash) {
+          events.push({ date, amount: -o.amount, kind: 'noncash',
+            label: o.label, id: o.id, confidence: o.confidence });
+          continue;
+        }
+        if (amount <= 0) continue;      // nothing left for this payment to pay
+        events.push({ date, amount: -amount, kind: 'obligation',
           label: o.label, id: o.id, confidence: o.confidence });
       }
     }
@@ -364,10 +383,18 @@
     // copying the base ones, so they arrive carrying the base caps; walking with
     // those already applied measures how much a capped payment absorbs rather
     // than how much the debt can take, and the answer comes back $956.81 short.
-    const capsFor = o => (o.debts && o.extraDebtMonthly > 0 && o.extraDebtTarget)
-      ? projectDebts(plan, o.debts, asOf,
-        Object.assign({}, o, { extraAbsorbed: null })).extraAbsorbed : null;
-    base.extraAbsorbed = capsFor(base);
+    const capsFor = o => {
+      if (!o.debts) return null;
+      const walked = projectDebts(plan, o.debts, asOf,
+        Object.assign({}, o, { extraAbsorbed: null, obligationAbsorbed: null }));
+      return { extraAbsorbed: walked.extraAbsorbed, obligationAbsorbed: walked.obligationAbsorbed };
+    };
+    const applyCaps = (o, caps) => {
+      if (!caps) return;
+      o.extraAbsorbed = caps.extraAbsorbed;
+      o.obligationAbsorbed = caps.obligationAbsorbed;
+    };
+    applyCaps(base, capsFor(base));
 
     const zero = simulate(plan, asOf, Object.assign({}, base, { weeklyVariable: 0 }));
 
@@ -456,7 +483,7 @@
     });
     // Re-measured now the injections are known — they change the debt a later
     // payment can reach, so caps taken before them would be the wrong caps.
-    recovery.extraAbsorbed = capsFor(recovery);
+    applyCaps(recovery, capsFor(recovery));
     const weekly = recommendWeekly(plan, asOf, recovery);
     const result = finish('openingGap', recovery, weekly, spendFrom,
       { amount: gapAmount, date: gapDate, dueOnGapDay, preIncomeOut,
@@ -710,6 +737,9 @@
     // How much of each extra payment found a balance, by date. Handed back so
     // the cash simulation can spend exactly this and not the amount asked for.
     const extraAbsorbed = {};
+    // The same, for dated minimums, keyed by date and obligation id — one
+    // obligation can fall several times in a window.
+    const obligationAbsorbed = {};
     const snapshot = (day, date) => ({
       day, date,
       debts: state.map(s => ({
@@ -774,11 +804,14 @@
           // principal share moves the balance. The interest share is a real
           // cost, so it is not carried on to another debt.
           const principal = t.principalShare != null ? amount * t.principalShare : amount;
-          if (t.principalShare != null) {
-            t.interest += amount - principal;
-            t.paid += amount - principal;
-          }
-          unabsorbed += payDown(chainFrom(t), principal);
+          // The interest share of an amortising payment is a real cost and is
+          // genuinely paid, so it counts as absorbed even though it moves no
+          // balance. Only the principal has to find somewhere to land.
+          const interestShare = t.principalShare != null ? amount - principal : 0;
+          if (interestShare) { t.interest += interestShare; t.paid += interestShare; }
+          const left = payDown(chainFrom(t), principal);
+          unabsorbed += left;
+          obligationAbsorbed[e.date + ':' + e.id] = amount - left;
         } else if (e.kind === 'extra' && extraTarget) {
           const left = payDown(chainFrom(extraTarget), -e.amount);
           unabsorbed += left;
@@ -796,7 +829,7 @@
     }
 
     return {
-      marks, byId, end, unabsorbed, extraAbsorbed,
+      marks, byId, end, unabsorbed, extraAbsorbed, obligationAbsorbed,
       // Every facility that is over its limit at some point, on the day it
       // actually happens rather than at the next 30-day snapshot. A facility
       // already over the limit today is a different problem from one that
