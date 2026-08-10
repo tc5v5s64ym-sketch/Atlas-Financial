@@ -135,8 +135,12 @@ function setupRenewal(d) {
       // by $275,305 at the default 18 years — the page establishes two lines
       // above that nothing repays this, so the balance cannot stand still.
       const helocRate = heloc.rate / 100;
+      // Capitalised MONTHLY — that is the cadence data.json records and the
+      // charge the statements show. Compounding annually instead understated
+      // the balance by $9,212 over the default 18 years.
+      const perYear = 12;
       helocOwed = helocCapitalised
-        ? heloc.balance * Math.pow(1 + helocRate, years)
+        ? heloc.balance * Math.pow(1 + helocRate / perYear, perYear * years)
         : heloc.balance;
       const helocInterest = helocCapitalised
         ? helocOwed - heloc.balance
@@ -161,7 +165,11 @@ function setupRenewal(d) {
     $('renewal-out').innerHTML = `
       <div class="big">${money(payment)} <span style="font-size:.95rem;font-weight:500;color:var(--text-secondary)">/ month</span></div>
       <div class="row"><span>Versus today's household cash</span><span class="${delta > 0 ? 'neg' : 'pos'}">${delta > 0 ? '+' : ''}${money2(delta)}</span></div>
-      ${helocCapitalised ? `<div class="row"><span>HELOC interest no longer capitalising</span><span class="pos">${money2(helocEconomic)} / month</span></div>` : ''}
+      ${helocCapitalised && consolidate
+        ? `<div class="row"><span>HELOC interest no longer capitalising</span><span class="pos">${money2(helocEconomic)} / month</span></div>`
+        : helocCapitalised
+          ? `<div class="row"><span>HELOC interest still capitalising</span><span class="neg">${money2(helocEconomic)} / month, compounding</span></div>`
+          : ''}
       <div class="row"><span>Principal financed</span><span>${money2(principal)}</span></div>
       <div class="row"><span>Total interest over ${years} years</span><span>${money(totalInterest)}</span></div>
       <div class="row"><span>HELOC still owed after ${years} years</span><span class="${consolidate ? 'pos' : 'neg'}">${consolidate ? '$0' : money(helocOwed)}</span></div>

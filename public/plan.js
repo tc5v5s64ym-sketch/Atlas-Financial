@@ -562,11 +562,25 @@ function renderPlan(d, periods) {
   if (budget) {
     const food = budget.categories.find(c => c.id === 'groceries');
     const fuelCat = budget.categories.find(c => c.id === 'fuel');
+    // When the gap can only be partly funded, this figure is the cap for THAT
+    // situation — not for a covered gap. Saying "once the gap is covered"
+    // beside it attached the condition of one simulation to the answer of
+    // another, so the full-coverage figure is computed and shown separately.
+    const ifCovered = fundingShort
+      ? Forecast.recommend(plan, asOf, simOpts({
+          fundingSources: [{ id: 'hypothetical', label: 'full coverage', short: 'full coverage',
+            available: Infinity, debtId: null, rank: 0 }],
+        })).weekly
+      : null;
     $('cap-headline').innerHTML =
       `<span class="cap-amt">${money(weekly)}</span><span class="cap-per">/ week</span>
-       <span class="cap-qual">${gap
-        ? `from ${fmtDateLong(advice.effectiveFrom)}, once the ${money(fundingGap)} gap is covered`
-        : 'under the expected scenario'}</span>`;
+       <span class="cap-qual">${!gap
+        ? 'under the expected scenario'
+        : fundingShort
+          ? `from ${fmtDateLong(advice.effectiveFrom)}, with only ${money(fundingGap - fundingPlan.shortfall)}
+             of the ${money(fundingGap)} gap fundable. Cover the whole gap and it becomes
+             ${money(ifCovered)}/week`
+          : `from ${fmtDateLong(advice.effectiveFrom)}, once the ${money(fundingGap)} gap is covered`}</span>`;
     const part = (lab, amount, kind, note) => `
       <div class="cap-part ${kind}">
         <div class="cap-part-lab">${lab}</div>
@@ -657,9 +671,14 @@ function renderPlan(d, periods) {
   }).join('');
 
   $('score-note').innerHTML =
-    (gap ? `Assumes the opening gap is covered by <b>${fundingSource ? fundingSource.short
-      : 'the top-ranked source'}</b>${fundingIsDraw ? ', which is borrowed money and is carried on the debt line below'
-      : ', which creates no debt. Funding it from the HELOC instead would show higher balances'}. ` : '') +
+    (gap && fundingPlan ? `Assumes the opening gap is covered by ` +
+      `<b>${fundingPlan.parts.map(p => `${money2(p.amount)} from ${p.short}`).join(' plus ')}</b>` +
+      (fundingPlan.borrowed > 0
+        ? `, of which <b>${money2(fundingPlan.borrowed)} is borrowed</b> and is carried on the debt lines below`
+        : `, none of which is borrowed`) +
+      (fundingPlan.shortfall > 0
+        ? `. ${money2(fundingPlan.shortfall)} of it could not be funded at all, so these figures are the best
+           case available rather than a plan that holds` : '') + `. ` : '') +
     `Cash is <b>projected</b> under the ${state.scenario} scenario at ${money(weekly)}/week; debt balances are ` +
     `projected from today's rates with minimums paid and <b>no new card spending</b> — the cap is a cash instruction, ` +
     `and these lines only fall if it is honoured in cash. None of these is a target: no aspirational payoff figure ` +
@@ -735,9 +754,15 @@ function renderPlan(d, periods) {
                 brings that crossing forward to <b>${fmtDateLong(drawnCross.date)}</b>.`;
       }
     }
-    risks.push({ what: `The HELOC passes its own limit on ${fmtDateLong(helocBreach.date)} with no new borrowing`,
+    const helocDrawn = fundingPlan
+      ? fundingPlan.parts.filter(p => p.debtId === 'heloc').reduce((a, p) => a + p.amount, 0) : 0;
+    risks.push({ what: helocDrawn > 0
+      ? `The HELOC passes its own limit on ${fmtDateLong(helocBreach.date)}, and this plan draws ${money(helocDrawn)} on it`
+      : `The HELOC passes its own limit on ${fmtDateLong(helocBreach.date)} with no new borrowing`,
       change: `Its ${money(plan.obligations.find(o => o.id === 'heloc').amount)}/month interest capitalises and
-               nothing repays it, so the balance grows on its own.${alt}` });
+               nothing repays it, so the balance grows on its own.${helocDrawn > 0
+        ? ` The ${money(helocDrawn)} this plan draws to cover the opening gap brings that date forward, and the
+            crossing date shown already includes it.` : alt}` });
   }
   // From the crossings list, which records the day it actually happens, rather
   // than from a 30-day snapshot — a facility can cross and be paid back under

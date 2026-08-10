@@ -276,20 +276,45 @@ ok(/gap && fundingShort/.test(planJs2),
 
 // 6. The Modeller charged SIMPLE interest on a balance the same page says
 //    capitalises, then reported the opening balance as still owed.
-ok(/Math\.pow\(1 \+ helocRate, years\)/.test(modellers),
-  'the Modeller compounds capitalised HELOC interest');
+ok(/Math\.pow\(1 \+ helocRate \/ perYear, perYear \* years\)/.test(modellers),
+  'the Modeller compounds capitalised HELOC interest at the monthly charge cadence');
 ok(!/heloc\.balance \* \(heloc\.rate \/ 100\) \* years/.test(modellers),
   'and the simple-interest calculation is gone');
-ok(!/money\(heloc\.balance\)}<\/span>\s*<\/div>[\s\S]{0,40}Illustrative/.test(modellers),
-  'the amount still owed is the compounded figure, not the opening balance');
+// The benefit of stopping capitalisation only exists after consolidating; the
+// row was shown in keep-separate mode, contradicting the note beneath it.
+ok(/helocCapitalised && consolidate/.test(modellers),
+  'the stopped-capitalisation row is gated on actually consolidating');
+ok(/still capitalising/.test(modellers),
+  'and the keep-separate case says the opposite, as it should');
 {
-  // At the default horizon the difference is not a rounding matter.
+  // At the default horizon the difference is not a rounding matter, and the
+  // cadence matters too: monthly against annual is another $9,212.
   const h = data.debts.find(x => x.id === 'heloc');
-  const owed18 = h.balance * Math.pow(1 + h.rate / 100, 18);
-  ok(owed18 > h.balance * 2,
+  const r = h.rate / 100;
+  const annual = h.balance * Math.pow(1 + r, 18);
+  const monthly = h.balance * Math.pow(1 + r / 12, 12 * 18);
+  ok(monthly > h.balance * 2,
     'over 18 years a capitalising HELOC more than doubles',
-    `${money(h.balance)} → ${money(owed18)}`);
+    `${money(h.balance)} → ${money(monthly)}`);
+  ok(monthly - annual > 9000,
+    'and compounding monthly rather than annually is worth another $9,212',
+    money(monthly - annual));
+  // The charge really is monthly — the cadence is not an assumption.
+  const helocObl = plan.obligations.find(o => o.id === 'heloc');
+  ok(helocObl.frequency === 'monthly',
+    'the plan records the charge as monthly, which is the cadence used',
+    helocObl.frequency);
 }
+// A boolean cannot describe a mixed funding plan.
+ok(/fundingPlan\.parts\.map/.test(planJs2),
+  'the scoreboard renders the allocated parts rather than a single source');
+ok(!/'the top-ranked source'/.test(planJs2),
+  'and no longer calls a two-part plan "the top-ranked source"');
+ok(/helocDrawn > 0/.test(planJs2),
+  'the HELOC risk says whether THIS plan draws on it');
+// The cap qualifier attached one simulation's condition to another's answer.
+ok(/ifCovered/.test(planJs2),
+  'a partly-funded cap reports what full coverage would allow, separately');
 
 console.log('\n=== provenance claims are supported ===');
 const nd = plan.nextDollar;
