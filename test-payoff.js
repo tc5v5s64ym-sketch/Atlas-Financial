@@ -385,6 +385,58 @@ ok(near(byId.cashback.minimum, 170) && byId.cashback.unmodelled.join() === 'cash
   'the Cash Back Visa minimum is its recurring level, with the September spike named',
   `${money(byId.cashback.minimum)} + [${byId.cashback.unmodelled}]`);
 
+/* And how well that minimum is KNOWN travels with it. Most of these are a
+ * future statement amount held at today's level, and every payoff figure on the
+ * page is measured against one — an estimate reaching a decision surface
+ * untagged is the defect `CLAUDE.md` names outright. Raised by the advisory
+ * review on this head; it shares this outcome's authority boundary, because the
+ * minimum is a thing this move made the payoff authority own. */
+ok(debt({ balance: 10000, rate: 12 },
+  [{ id: 'o', debtId: 'x', frequency: 'monthly', amount: 250, confidence: 'confirmed' }])
+  .minimumConfidence === 'confirmed',
+'a minimum from a confirmed obligation is confirmed');
+ok(debt({ balance: 10000, rate: 12 },
+  [{ id: 'o', debtId: 'x', frequency: 'monthly', amount: 250, confidence: 'estimated' }])
+  .minimumConfidence === 'estimated',
+'and one from an estimated obligation is estimated');
+// Weakest wins: one estimated component makes the whole figure estimated.
+ok(debt({ balance: 10000, rate: 12 }, [
+  { id: 'a', debtId: 'x', frequency: 'monthly', amount: 250, confidence: 'confirmed' },
+  { id: 'b', debtId: 'x', frequency: 'monthly', amount: 50, confidence: 'estimated' },
+]).minimumConfidence === 'estimated',
+'a minimum built from both is estimated — the weaker input decides');
+// Fail-safe. An unrecognised or missing confidence is NOT a settled fact.
+for (const [label, value] of [['a missing', undefined], ['an unrecognised', 'planned']]) {
+  ok(debt({ balance: 10000, rate: 12 },
+    [{ id: 'o', debtId: 'x', frequency: 'monthly', amount: 250, confidence: value }])
+    .minimumConfidence === 'estimated',
+  `${label} confidence reads as estimated rather than confirmed`);
+}
+// Only what actually contributed tags the figure, and nothing tags no figure.
+ok(ONE_OFF.minimumConfidence === 'estimated'
+  && debt({ balance: 10000, rate: 12 }, [
+    { id: 'monthly-min', debtId: 'x', frequency: 'monthly', amount: 250, confidence: 'confirmed' },
+    { id: 'spike', debtId: 'x', frequency: 'once', date: '2026-09-01', amount: 900, confidence: 'estimated' },
+  ]).minimumConfidence === 'confirmed',
+'an obligation that contributed nothing to the figure does not tag it');
+ok(NONCASH_MIN.minimumConfidence === null && byId.heloc.minimumConfidence === null,
+  'and where nothing contributed there is no figure to tag');
+// The real debt list, against `data.json`'s own declarations.
+ok(byId.mortgage.minimumConfidence === 'confirmed'
+  && ['triangle', 'cashback', 'mbna', 'tdcc', 'travelvisa']
+    .every(id => byId[id].minimumConfidence === 'estimated'),
+'five of the seven published minimums are estimated, and say so',
+REAL.map(d => `${d.id}=${d.minimumConfidence}`).join(' '));
+// Each one agrees with the obligation it came from, rather than with a guess.
+for (const d of REAL) {
+  const counted = data.plan.obligations.filter(o => o.debtId === d.id && !o.nonCash
+    && (o.frequency === 'monthly' || o.frequency === 'biweekly'));
+  ok(d.minimumConfidence === (counted.length
+    ? (counted.every(o => o.confidence === 'confirmed') ? 'confirmed' : 'estimated')
+    : null),
+  `  ${d.id}'s tag is the one its own obligations declare`);
+}
+
 /* And the comparison the household reads off that minimum. */
 const VS = debt({ balance: 10000, rate: 12 },
   [{ id: 'o', debtId: 'x', frequency: 'monthly', amount: 250 }]);
@@ -498,6 +550,21 @@ const MUTATIONS = [
     to: `      versusMinimum: atMinimum
         && !(atMinimum.totalInterest - here.totalInterest <= EPSILON)`,
     differs: m => m.payoffModel(realById(m).travelvisa, 200).versusMinimum !== null },
+
+  { label: 'dropping the minimum\'s confidence publishes an estimate as a settled fact',
+    from: `    const confidence = counted.length
+      ? (counted.every(o => o.confidence === 'confirmed') ? 'confirmed' : 'estimated')
+      : null;`,
+    to: '    const confidence = counted.length ? \'confirmed\' : null;',
+    differs: m => realById(m).triangle.minimumConfidence !== 'estimated' },
+
+  { label: 'tagging confidence by exception lets an unrecognised value read as confirmed',
+    from: '      ? (counted.every(o => o.confidence === \'confirmed\') ? \'confirmed\' : \'estimated\')',
+    to: '      ? (counted.some(o => o.confidence === \'estimated\') ? \'estimated\' : \'confirmed\')',
+    differs: m => m.payoffDebts(
+      { obligations: [{ id: 'o', debtId: 'x', frequency: 'monthly', amount: 250 }] },
+      [{ id: 'x', label: 'x', balance: 10000, rate: 12, rateConvention: 'card' }],
+    )[0].minimumConfidence !== 'estimated' },
 
   { label: 'defaulting an undeclared convention prices the debt on a guess',
     from: '        const convention = x.rateConvention;',
@@ -696,12 +763,34 @@ const grab = (src, re, what) => {
 const MAPS = [
   grab(modellersSrc, /^const PAYOFF_PRESET_LABEL = \{[\s\S]*?^\};$/m, 'the preset label map'),
   grab(modellersSrc, /^const PAYOFF_CONVENTION_NOTE = \{[\s\S]*?^\};$/m, 'the convention note map'),
+  grab(modellersSrc, /^const PAYOFF_MINIMUM_CONFIDENCE = \{[\s\S]*?^\};$/m, 'the minimum confidence map'),
+  grab(modellersSrc, /^const PAYOFF_VERSUS_MINIMUM = .*$/m, 'the versus-minimum wording'),
   grab(modellersSrc, /^const PAYOFF_MINIMUM_NOTE = \{[\s\S]*?^\};$/m, 'the minimum note map'),
 ].join('\n');
 const wording = {};
 vm.runInNewContext(MAPS + '\nout.preset = PAYOFF_PRESET_LABEL;'
-  + 'out.convention = PAYOFF_CONVENTION_NOTE; out.minimum = PAYOFF_MINIMUM_NOTE;',
+  + 'out.convention = PAYOFF_CONVENTION_NOTE; out.minimum = PAYOFF_MINIMUM_NOTE;'
+  + 'out.confidence = PAYOFF_MINIMUM_CONFIDENCE; out.versus = PAYOFF_VERSUS_MINIMUM;',
 { out: wording, money2: n => String(n) });
+
+/* The confidence wording is reached only where there IS a figure to tag, so
+ * `null` must never get there — it would render `undefined` mid-sentence. The
+ * engine's own guarantee is that a cash minimum and a confidence arrive
+ * together, and that is asserted rather than assumed. */
+ok(REAL.every(d => (d.minimumId === 'cash') === (d.minimumConfidence !== null)),
+  'a debt has a cash minimum exactly when it has a confidence for it',
+  REAL.map(d => `${d.id}:${d.minimumId}/${d.minimumConfidence}`).join(' '));
+const confidenceIds = [...new Set(REAL.map(d => d.minimumConfidence).filter(Boolean))];
+ok(confidenceIds.every(id => typeof wording.confidence[id] === 'string')
+  && confidenceIds.every(id => typeof wording.versus[id] === 'string'),
+'every confidence the engine can publish has wording on both lines that carry it',
+confidenceIds.join(', '));
+ok(Object.keys(wording.confidence).sort().join() === 'confirmed,estimated'
+  && Object.keys(wording.versus).sort().join() === 'confirmed,estimated',
+'and neither map carries wording the engine cannot reach');
+ok(/estimated/.test(wording.confidence.estimated) && wording.confidence.confirmed === ''
+  && /estimated/.test(wording.versus.estimated) && !/estimated/.test(wording.versus.confirmed),
+'an estimated minimum is marked as one, and a confirmed one is not marked at all');
 
 const presetIds = new Set(['minimum', 'clear-60', 'clear-36', 'clear-12']);
 const conventionIds = new Set(REAL.map(d => d.convention));
@@ -815,6 +904,19 @@ setTimeout(() => {
     label.textContent);
   ok(/daily rate/.test(context.textContent) && context.textContent.includes('21.99%'),
     'and the context names the convention the rate is charged under, not just the rate');
+  // The Triangle minimum is one of the five estimated ones, and every figure in
+  // the panel beside it is measured against that number.
+  ok(/estimated/.test(context.textContent) && /\$253\.57/.test(context.textContent),
+    'the estimated minimum is marked as estimated where it is stated',
+    context.textContent.slice(context.textContent.indexOf('The minimum')));
+  const generous = F.payoffModel(opened, opened.bounds.max);
+  range.value = String(opened.bounds.max);
+  range.fire('input');
+  ok(!!generous.versusMinimum
+    && /versus paying the estimated minimum/.test(page.get('payoff-out').innerHTML),
+  'and the saving is stated against the estimated minimum, not against a settled one');
+  range.value = String(opened.bounds.start);
+  range.fire('input');
 
   // The preset buttons are the engine's solve, rendered.
   ok(page.get('pay-presets').children.length === opened.presets.length

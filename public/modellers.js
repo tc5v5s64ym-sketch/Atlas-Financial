@@ -28,11 +28,22 @@ const PAYOFF_CONVENTION_NOTE = {
   variable: 'a prime-linked rate, quoted compounded monthly',
 };
 
+// How well the minimum is known. Most of them are a future statement amount
+// held at today's level rather than a confirmed bill, and every payoff figure
+// on this page is measured against that number — so it is tagged where it is
+// stated, and again on the line that compares against it.
+const PAYOFF_MINIMUM_CONFIDENCE = {
+  confirmed: '',
+  estimated: ' — estimated, because the plan carries it as a future statement minimum '
+    + 'rather than a confirmed amount',
+};
+const PAYOFF_VERSUS_MINIMUM = { confirmed: 'the minimum', estimated: 'the estimated minimum' };
+
 // Whether there is a monthly cash minimum to measure a larger payment against.
 // A facility whose only charge is capitalised has none, and saying so is the
 // difference between "$0.00 a month" and "$814.18 a month that nobody pays".
 const PAYOFF_MINIMUM_NOTE = {
-  cash: x => `The minimum is ${money2(x.minimum)} a month.`,
+  cash: x => `The minimum is ${money2(x.minimum)} a month${PAYOFF_MINIMUM_CONFIDENCE[x.minimumConfidence]}.`,
   none: () => 'No household cash leaves an account for it, so it has no minimum '
     + 'to compare against — at $0 a month the balance simply grows by the interest.',
 };
@@ -188,7 +199,7 @@ function setupPayoff(d) {
       <div class="row"><span>Of which interest, month 1</span><span>${money2(r.interestOnly)}</span></div>
       <div class="row"><span>Total interest paid</span><span>${money2(r.totalInterest)}</span></div>
       <div class="row"><span>Total paid</span><span>${money2(r.totalPaid)}</span></div>
-      ${r.versusMinimum ? `<p class="goodline">Saves ${money2(r.versusMinimum.interestSaved)} in interest versus paying the minimum — and clears it ${fmtMonths(r.versusMinimum.monthsSooner)} sooner.</p>` : ''}`;
+      ${r.versusMinimum ? `<p class="goodline">Saves ${money2(r.versusMinimum.interestSaved)} in interest versus paying ${PAYOFF_VERSUS_MINIMUM[x.minimumConfidence]} — and clears it ${fmtMonths(r.versusMinimum.monthsSooner)} sooner.</p>` : ''}`;
   }
 
   sel.addEventListener('change', () => { syncRange(); update(); });

@@ -114,16 +114,34 @@
   // measured against. It was the renewal's alone until the payoff modeller
   // needed the same answer, and a second copy is how the two would have come to
   // disagree about what the household already pays.
+  //
+  // The result carries its own CONFIDENCE, because most of these obligations are
+  // `estimated` — a future statement minimum held at today's level, not a
+  // confirmed amount. `expandEvents` already carries the confidence every event
+  // arrived with, and dropping it here would put an estimate on a decision
+  // surface untagged, which `CLAUDE.md` forbids outright.
+  //
+  // Weakest wins, and it fails SAFE: `confirmed` only where every contributing
+  // obligation says so, so a missing or unrecognised value reads as estimated
+  // rather than as a settled fact. Only obligations that actually contributed
+  // count — one this table cannot annualise adds nothing to the figure, so it
+  // has no business tagging it. `null` where nothing contributed, because there
+  // is then no figure to tag.
   function monthlyCashFor(plan, debtId) {
     const unmodelled = [];
+    const counted = [];
     const monthly = ((plan || {}).obligations || [])
       .filter(o => o.debtId === debtId && !o.nonCash)
       .reduce((sum, o) => {
         const perYear = PAYMENTS_PER_YEAR[o.frequency];
         if (!perYear) { unmodelled.push(o.id); return sum; }
+        counted.push(o);
         return sum + o.amount * perYear / 12;
       }, 0);
-    return { monthly, unmodelled };
+    const confidence = counted.length
+      ? (counted.every(o => o.confidence === 'confirmed') ? 'confirmed' : 'estimated')
+      : null;
+    return { monthly, unmodelled, confidence };
   }
 
   /* --------------------------------------------------------------- events */
@@ -1456,8 +1474,12 @@
           // The first period's interest, which is also the threshold a payment
           // has to beat for anything at all to be repaid.
           interestOnly: balance * monthlyRate,
-          // Monthly-equivalent CASH the household already pays against it.
+          // Monthly-equivalent CASH the household already pays against it, and
+          // how well that is known. Most of these minimums are a future
+          // statement amount held at today's level, and the page has to say so
+          // — every payoff figure below is measured against this one.
           minimum: cash.monthly,
+          minimumConfidence: cash.confidence,
           // Why there is, or is not, one — so the page states the reason rather
           // than rendering a silent blank. A facility whose only charge is
           // capitalised has no cash minimum, and saying so is the difference
