@@ -76,6 +76,25 @@
   const atLeast = (value, floor) => value >= floor - EPSILON;
   const below = (value, floor) => value < floor - EPSILON;
 
+  // What a facility owes TODAY. Pending charges are ALREADY INCURRED, so they
+  // belong to the opening balance: a card whose posted balance is under its
+  // limit but whose pending charges take it over is over its limit, and the
+  // settlement is bookkeeping rather than a decision.
+  //
+  // One rule, three consumers — the debt walk opens on it, headroom is measured
+  // against it, and the renewal compounds from it. It is a function rather than
+  // three copies of one expression because two copies had already disagreed
+  // once: the Travel Visa published $0 available beside a derived $21.69,
+  // because one of them knew about $165.13 of pending charges and the other
+  // did not.
+  const openingBalance = debt => debt.balance + (debt.pending || 0);
+
+  // Payments a year, by declared cadence. `streamAmount` states the same
+  // convention from the other side — a monthly figure paid bi-weekly arrives as
+  // 26ths of a year's worth — and this is the inverse, used to put a bi-weekly
+  // obligation and a monthly one on one comparable footing.
+  const PAYMENTS_PER_YEAR = { biweekly: 26, monthly: 12 };
+
   /* --------------------------------------------------------------- events */
   // opts: { scenario, incomeOverrides: {id: monthlyAmount}, disabled: [ids],
   //         injections: [{date, amount}] — one-off cash arriving from outside
@@ -698,13 +717,11 @@
     const events = expandEvents(plan, start, end, opts);
     const byId = {};
     const state = (debts || []).map(x => {
-      // Pending charges are ALREADY INCURRED. A card whose posted balance is
-      // under its limit but whose pending charges take it over is over its
-      // limit — the settlement is bookkeeping, not a decision. Carrying them
-      // from the opening balance is what makes headroom, over-limit state and
-      // interest all agree with what the institution would say today.
+      // Carrying pending charges from the opening balance is what makes
+      // headroom, over-limit state and interest all agree with what the
+      // institution would say today. The rule itself is `openingBalance`.
       const pending = x.pending || 0;
-      const opening = x.balance + pending;
+      const opening = openingBalance(x);
       const s = {
         id: x.id, label: x.label, secured: !!x.secured, rate: x.rate || 0,
         limit: x.limit, opening, balance: opening,
@@ -1043,7 +1060,7 @@
   function utilisation(debts, extra) {
     const rows = (debts || []).filter(x => x.limit != null).map(x => {
       const pending = x.pending || 0;
-      const used = x.balance + pending;
+      const used = openingBalance(x);
       return {
         id: x.id, label: x.label, posted: x.balance, pending, used, limit: x.limit,
         available: Math.max(0, x.limit - used),
@@ -1071,9 +1088,228 @@
     };
   }
 
+  /* ------------------------------------------------- the May 2027 renewal */
+  // Canada's two mortgage rate conventions, and the MONTHLY periodic rate each
+  // one implies. A rate quoted under one convention may not be priced under the
+  // other, and which applies is a property of the product, not a detail.
+  //
+  //   FIXED     Canadian fixed mortgage rates are quoted "calculated
+  //             half-yearly, not in advance" — the Interest Act convention TD
+  //             states in its own terms. The monthly rate is the sixth root of
+  //             half a year's growth, defined by (1 + i)^12 = (1 + annual/2)^2.
+  //   VARIABLE  TD expresses variable mortgage rates as compounded monthly, so
+  //             the monthly rate is simply a twelfth. It is also the HELOC's
+  //             convention, and the household's own mortgage is variable today
+  //             — TD Mortgage Prime − 0.96%, per `docs/ACCOUNT_FACTS.md`.
+  //
+  // Pricing a FIXED quote on the variable convention OVERSTATES it. TD's own
+  // published example, $300,000 at 3.00%, is $2,069.07 a month over 15 years
+  // and $1,419.74 over 25; the monthly convention answers $2,071.74 and
+  // $1,422.63. On this household's balance at 3.65% over 18 years the gap is
+  // $7.61 a month and $1,644.70 over the term. Small per payment, and a real
+  // number to put under a renewal decision — which is why the convention is
+  // now chosen rather than assumed. The renewal modeller assumed monthly for
+  // every rate the slider could reach, including the fixed quotes TD will
+  // actually offer in April 2027.
+  const RATE_BASIS = {
+    fixed: annualPct => Math.pow(1 + annualPct / 100 / 2, 1 / 6) - 1,
+    variable: annualPct => annualPct / 100 / 12,
+  };
+
+  // The level payment that repays `principal` over `years` at a given MONTHLY
+  // periodic rate. The rate arrives already converted, so this function holds
+  // no opinion about which convention produced it.
+  //
+  // This lived in `public/app.js` — the shared PAGE core — where it decided a
+  // household-facing figure outside anything the node suite could reach.
+  // `renewal` is its only consumer, so it is internal here rather than a second
+  // exported authority; leaving a copy behind in `app.js` would have been the
+  // duplicated formula this move exists to remove.
+  function amortisedPayment(principal, monthlyRate, years) {
+    const n = years * 12;
+    if (monthlyRate === 0) return principal / n;
+    return principal * monthlyRate / (1 - Math.pow(1 + monthlyRate, -n));
+  }
+
+  // What the mortgage renewal costs at a given rate and amortisation, and what
+  // folding the interest-only HELOC into it changes.
+  //
+  // `public/modellers.js` used to work this out itself — the HELOC's compounded
+  // balance, both interest totals, and the comparison against today's household
+  // cash were all page arithmetic. The May 2027 decision is weighed on those
+  // figures, and they sat where no test could reach them. That is `B73`.
+  //
+  // The modelled trade is unchanged by the move. What changed is where the
+  // inputs come from, because a renewal model carrying its own copy of the debt
+  // picture is precisely the failure this engine exists to prevent:
+  //
+  //   BALANCES come from the debt records the walk in `projectDebts` opens on,
+  //     through the same `openingBalance` rule. `data.json` `mortgage` keeps the
+  //     renewal's standing facts — maturity, remaining years, prepayment room —
+  //     and is no longer a second home for the balance the arithmetic runs on.
+  //   TODAY'S HOUSEHOLD CASH comes from `plan.obligations`, the authority for
+  //     what is due and how often. That is what makes the HELOC's $0.00 derived
+  //     rather than asserted: its obligation is `nonCash`, so it contributes
+  //     nothing to cash by construction rather than by a field that has to be
+  //     remembered. It also means changing the mortgage payment moves the
+  //     comparison the household reads.
+  //   HOW THE HELOC BEHAVES comes from the debt record, which
+  //     `test-invariants.js` already names the canonical home for its interest
+  //     treatment and for the split between economic cost and household cash.
+  //
+  // The old page code fell back to `heloc.payment` whenever `cashPayment` or
+  // `monthlyInterest` was missing. That fallback is not carried over: treating
+  // the capitalised charge as a payment is the exact bug — a $814/month bill
+  // nobody pays — that the split was introduced to end, and an invariant now
+  // holds the split in place, so there is nothing left for it to protect.
+  //
+  // `opts.basis` is REQUIRED and names the rate convention — `fixed` or
+  // `variable`, per `RATE_BASIS` above. There is deliberately no default: a
+  // renewal rate with no stated convention is the defect this argument exists
+  // to end, and silently picking one would only move the assumption rather than
+  // remove it. An unknown basis throws, so a caller that forgets shows a broken
+  // tile rather than a plausible wrong figure.
+  //
+  // Every figure returned is a number and every decision is an id. Money,
+  // dates, colour and wording are presentation and stay on the page.
+  function renewal(plan, debts, opts) {
+    opts = opts || {};
+    plan = plan || {};
+    const rate = Number(opts.rate);
+    const years = Number(opts.years);
+    const consolidate = !!opts.consolidate;
+    const basis = opts.basis;
+    if (!Object.prototype.hasOwnProperty.call(RATE_BASIS, basis)) {
+      throw new Error(`Forecast.renewal needs a rate basis (${Object.keys(RATE_BASIS).join(' or ')}), got ${JSON.stringify(basis)}`);
+    }
+    // The renewal rate, converted once, under the convention the household
+    // chose. Everything priced at the renewal rate goes through this.
+    const rateMonthly = RATE_BASIS[basis](rate);
+
+    const record = id => (debts || []).find(x => x.id === id) || null;
+    const mortgage = record('mortgage');
+    const heloc = record('heloc');
+
+    // Monthly-equivalent household cash for one debt: its recurring CASH
+    // obligations, and nothing else. A capitalising charge is a real economic
+    // cost and is reported separately, but no cash leaves an account for it.
+    const unmodelled = [];
+    const monthlyCash = debtId => (plan.obligations || [])
+      .filter(o => o.debtId === debtId && !o.nonCash)
+      .reduce((sum, o) => {
+        const perYear = PAYMENTS_PER_YEAR[o.frequency];
+        // A cadence with no annual equivalent — a one-off, or one this table
+        // does not know — is REPORTED rather than dropped. Silently omitting a
+        // real cash obligation would understate today's baseline and overstate
+        // what the renewal costs against it, in the same direction and for the
+        // same reason as the $814 bill that nobody paid.
+        if (!perYear) { unmodelled.push(o.id); return sum; }
+        return sum + o.amount * perYear / 12;
+      }, 0);
+
+    const mortgageCash = monthlyCash('mortgage');
+    const helocCash = monthlyCash('heloc');
+    const householdCash = mortgageCash + helocCash;
+
+    const capitalised = !!heloc && heloc.interestTreatment === 'capitalised';
+    const helocEconomic = heloc && heloc.monthlyInterest != null ? heloc.monthlyInterest : 0;
+    const helocOpening = heloc ? openingBalance(heloc) : 0;
+    const helocRate = heloc && heloc.rate ? heloc.rate / 100 : 0;
+    const mortgageOpening = mortgage ? openingBalance(mortgage) : 0;
+
+    let principal, payment, amortisingInterest, helocInterest, helocOwed;
+    if (consolidate) {
+      // Both debts amortise, so the HELOC principal is genuinely repaid and
+      // nothing is left owing on it at the horizon. The folded-in balance is
+      // priced at the renewal rate, under the renewal's convention, because it
+      // has become mortgage.
+      principal = mortgageOpening + helocOpening;
+      payment = amortisedPayment(principal, rateMonthly, years);
+      amortisingInterest = payment * years * 12 - principal;
+      helocInterest = 0;
+      helocOwed = 0;
+    } else {
+      principal = mortgageOpening;
+      const mortgagePayment = amortisedPayment(principal, rateMonthly, years);
+      // The HELOC is not refinanced, so whatever cash it costs today keeps
+      // leaving the account alongside the new mortgage payment.
+      payment = mortgagePayment + helocCash;
+      amortisingInterest = mortgagePayment * years * 12 - principal;
+      // Capitalised interest COMPOUNDS, and at the MONTHLY cadence the charge
+      // is actually raised on. Charging simple interest and then reporting the
+      // opening balance as the amount still owed understated it by $275,305 at
+      // the default 18 years; compounding annually instead of monthly
+      // understated it by a further $9,212.
+      //
+      // The HELOC keeps its OWN convention. It is prime-linked and variable
+      // whatever the mortgage renews into, so choosing a fixed renewal must not
+      // silently reprice the facility that stays outside it.
+      helocOwed = capitalised
+        ? helocOpening * Math.pow(1 + RATE_BASIS.variable(heloc ? heloc.rate : 0),
+          PAYMENTS_PER_YEAR.monthly * years)
+        : helocOpening;
+      // Where the interest is PAID rather than capitalised the balance stands
+      // still, so the cost is simple interest on it for the whole horizon.
+      helocInterest = capitalised
+        ? helocOwed - helocOpening
+        : helocOpening * helocRate * years;
+    }
+
+    const totalInterest = amortisingInterest + helocInterest;
+    const delta = payment - householdCash;
+
+    return {
+      rate, years, consolidate,
+      // The convention this answer was priced under, and the monthly rate it
+      // produced. Returned so the page can say which one the household is
+      // looking at — a figure that does not name its convention is the defect,
+      // not the arithmetic.
+      basis, rateMonthly,
+      today: {
+        // Which picture of "today" applies: a HELOC whose interest capitalises
+        // is not a bill, and saying so is the difference between a $3,466.67
+        // baseline and a $4,280.85 one that nobody pays.
+        id: capitalised ? 'capitalised' : 'paid',
+        mortgageCash, helocCash, householdCash, helocEconomic, capitalised,
+        // Cash obligations against these debts that have no monthly
+        // equivalent. Non-empty means the baseline below is incomplete.
+        unmodelled,
+      },
+      heloc: heloc
+        ? { id: heloc.id, label: heloc.label, opening: helocOpening,
+          rate: heloc.rate, limit: heloc.limit }
+        : null,
+      principal, payment, delta,
+      // The comparison itself, so the page colours a decision rather than
+      // making one. EPSILON keeps a float landing on 0.0000000001 from being
+      // reported as a real increase.
+      //
+      // `unknown` withholds it. A baseline missing a real cash obligation
+      // cannot be compared against, and `delta` would understate what the
+      // household already pays — making the renewal look dearer than it is.
+      // Reporting the gap in `today.unmodelled` and then publishing the
+      // difference anyway is the same failure as the $814 bill: a figure that
+      // looks settled and is not. The number is still returned, because it is
+      // still the arithmetic difference; this field is the authority on
+      // whether it may be shown.
+      direction: unmodelled.length ? 'unknown'
+        : delta > EPSILON ? 'more' : delta < -EPSILON ? 'less' : 'same',
+      interest: { amortising: amortisingInterest, heloc: helocInterest, total: totalInterest },
+      helocOwed,
+      // Whether the capitalising charge stops. Only consolidating stops it —
+      // the "no longer capitalising" row once showed in keep-separate mode,
+      // contradicting the note directly beneath it.
+      capitalisation: capitalised
+        ? { id: consolidate ? 'stopped' : 'continues', amount: helocEconomic }
+        : null,
+      outcome: consolidate ? 'consolidated'
+        : capitalised ? 'interestOnlyCapitalising' : 'interestOnlyFlat',
+    };
+  }
+
   const Forecast = { addDays, diffDays, occurrences, expandEvents, simulate,
     recommendWeekly, recommend, incomeDeadline, budgetBreakdown, projectDebts,
-    nextDue, mission, utilisation, EPSILON, STEP };
+    nextDue, mission, utilisation, renewal, EPSILON, STEP };
   if (typeof module !== 'undefined' && module.exports) module.exports = Forecast;
   else root.Forecast = Forecast;
 

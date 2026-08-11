@@ -1,6 +1,87 @@
 'use strict';
 /* The two interactive modellers — payoff and the May 2027 renewal.
-   Unchanged mathematics; only the page around them moved. */
+
+   The renewal comparison is `Forecast.renewal`'s. This file reads the sliders,
+   hands them over, and formats what comes back: it compounds nothing, charges
+   no interest, and decides nothing about which side of the trade is better.
+   Everything below the renewal section is wording, colour and layout. */
+
+/* --------------------------------------------------------------- wording */
+/* One entry per result the engine can return. These choose none of it — a
+   missing entry is a rendering failure, which is why test-renewal.js checks
+   that the two sides still name the same set. */
+
+// Which rate convention the household is looking at. Canada quotes fixed and
+// variable mortgage rates on different compounding, so the same slider position
+// is a different payment — saying which one this is, is part of the answer.
+const RATE_BASIS_LABEL = { fixed: 'fixed', variable: 'variable' };
+const RATE_BASIS_NOTE = {
+  fixed: 'Fixed rates are quoted <b>compounded semi-annually</b> — the convention TD and every '
+    + 'Canadian lender price a fixed mortgage on. This is the one to use for a quoted renewal offer.',
+  variable: 'Variable rates are quoted <b>compounded monthly</b>. This is the convention the current '
+    + 'mortgage is on (TD Mortgage Prime − 0.96%) and the one the HELOC accrues at.',
+};
+
+// The paragraph beside the sliders: what today actually costs.
+const RENEWAL_CONTEXT = {
+  capitalised: r =>
+    `<b>Today, household cash:</b> the mortgage only — ${money(r.today.mortgageCash)}/month equivalent. `
+    + `Nothing leaves any chequing account for the HELOC.<br>`
+    + `<b>Today, HELOC economic cost:</b> ${money(r.today.helocEconomic)}/month of interest `
+    + `<b>capitalised onto the balance</b>, so the debt grows by that much every month with nothing `
+    + `repaying it. It is a real cost and it buys no equity — it is simply not a bill that gets paid.`,
+  paid: r =>
+    `Today: mortgage ${money(r.today.mortgageCash)}/month equivalent plus the HELOC payment `
+    + `${money(r.today.helocCash)} — ${money(r.today.householdCash)} a month of household cash.`,
+};
+
+// The closing note under the figures.
+const RENEWAL_NOTE = {
+  consolidated: () => 'Both debts amortise. The HELOC principal actually gets repaid.',
+  interestOnlyCapitalising: r =>
+    `The HELOC stays interest-only AND its interest capitalises, so nothing repays it and it compounds:
+           ${money(r.heloc.opening)} today becomes <b>${money(r.helocOwed)}</b> after ${r.years} years.`,
+  interestOnlyFlat: r =>
+    `The HELOC stays interest-only, so after ${r.years} years its ${money(r.heloc.opening)} is still owed in full.`,
+};
+const RENEWAL_TONE = {
+  consolidated: 'goodline',
+  interestOnlyCapitalising: 'warnline',
+  interestOnlyFlat: 'warnline',
+};
+// Whether anything is left owing on the HELOC at the horizon.
+const RENEWAL_OWED_TONE = {
+  consolidated: 'pos',
+  interestOnlyCapitalising: 'neg',
+  interestOnlyFlat: 'neg',
+};
+
+// The capitalisation row, when there is one to show.
+const CAPITALISATION_ROW = {
+  stopped: c =>
+    `<div class="row"><span>HELOC interest no longer capitalising</span><span class="pos">${money2(c.amount)} / month</span></div>`,
+  continues: c =>
+    `<div class="row"><span>HELOC interest still capitalising</span><span class="neg">${money2(c.amount)} / month, compounding</span></div>`,
+};
+
+// Costs more, costs less, the same — or not comparable, because the engine
+// found a scheduled cash payment it could not put on a monthly footing and
+// today's baseline is therefore short. The engine ran the comparison and
+// decided whether it may be shown; showing an understated difference would
+// make the renewal look cheaper against today than it is.
+const DELTA_CLASS = { more: 'neg', less: 'pos', same: 'pos', unknown: 'neg' };
+const DELTA_TEXT = {
+  more: r => '+' + money2(r.delta),
+  less: r => money2(r.delta),
+  same: r => money2(r.delta),
+  unknown: () => 'not comparable',
+};
+// Named, so the household can see which payment is missing rather than only
+// that something is.
+const BASELINE_GAP = r =>
+  `<br><b>This comparison is withheld:</b> ${r.today.unmodelled.length === 1 ? 'a scheduled payment' : 'scheduled payments'} `
+  + `against these debts (${r.today.unmodelled.join(', ')}) ${r.today.unmodelled.length === 1 ? 'has' : 'have'} no monthly `
+  + `equivalent, so the figure for today is short by that much and the difference below would flatter the renewal.`;
 
 function setupPayoff(d) {
   const debts = d.debts.filter(x => x.balance != null && x.rate != null && x.balance > 0);
@@ -86,12 +167,19 @@ function setupPayoff(d) {
 }
 
 function setupRenewal(d) {
+  // The mortgage block supplies the CONTROL's starting position only — the
+  // renewal's standing facts. Every balance the arithmetic runs on comes from
+  // the debt records, inside the engine.
   const m = d.mortgage;
-  const heloc = d.debts.find(x => /HELOC/i.test(x.label));
   let consolidate = false;
+  // Opens on variable because that is what this household's mortgage is today
+  // — TD Mortgage Prime − 0.96%. Neither convention is a safe default for a
+  // quoted offer, which is why the control is on the page rather than implied.
+  let basis = 'variable';
 
   const rate = $('rate-range'), amort = $('amort-range');
   const btnNo = $('consol-no'), btnYes = $('consol-yes');
+  const btnVariable = $('basis-variable'), btnFixed = $('basis-fixed');
 
   function setMode(v) {
     consolidate = v;
@@ -102,79 +190,40 @@ function setupRenewal(d) {
   btnNo.addEventListener('click', () => setMode(false));
   btnYes.addEventListener('click', () => setMode(true));
 
+  function setBasis(v) {
+    basis = v;
+    btnVariable.setAttribute('aria-pressed', String(v === 'variable'));
+    btnFixed.setAttribute('aria-pressed', String(v === 'fixed'));
+    update();
+  }
+  btnVariable.addEventListener('click', () => setBasis('variable'));
+  btnFixed.addEventListener('click', () => setBasis('fixed'));
+
   function update() {
-    const r = Number(rate.value) / 100;
+    // The slider carries hundredths of a percent so it can step in 0.05s.
+    const annualPct = Number(rate.value) / 100;
     const years = Number(amort.value);
-    $('rate-label').textContent = r.toFixed(2) + '%';
     $('amort-label').textContent = years + ' years';
 
-    const mortgageNow = m.paymentBiweekly * 26 / 12;
-    // The HELOC's $814.18 is an interest charge CAPITALISED onto the balance,
-    // not a payment. Adding it to the mortgage produced a "today" figure that
-    // overstated household cash outflow by $814 a month and implied a bill
-    // that nobody pays. The two are kept apart: what leaves the chequing
-    // account, and what the debt costs.
-    const helocCash = heloc.cashPayment != null ? heloc.cashPayment : heloc.payment;
-    const helocEconomic = heloc.monthlyInterest != null ? heloc.monthlyInterest : heloc.payment;
-    const helocCapitalised = heloc.interestTreatment === 'capitalised';
-    const baselineCash = mortgageNow + helocCash;
-    const baselineMonthly = baselineCash;
+    const r = Forecast.renewal(d.plan, d.debts, { rate: annualPct, years, consolidate, basis });
 
-    let payment, totalInterest, principal, note, helocOwed = 0;
-    if (consolidate) {
-      principal = m.balance + heloc.balance;
-      payment = amortisedPayment(principal, r, years);
-      totalInterest = payment * years * 12 - principal;
-      note = 'Both debts amortise. The HELOC principal actually gets repaid.';
-    } else {
-      principal = m.balance;
-      payment = amortisedPayment(principal, r, years) + helocCash;
-      const mortgageInterest = (payment - helocCash) * years * 12 - principal;
-      // Capitalised interest COMPOUNDS. Charging simple interest and then
-      // reporting the opening balance as the amount still owed understated it
-      // by $275,305 at the default 18 years — the page establishes two lines
-      // above that nothing repays this, so the balance cannot stand still.
-      const helocRate = heloc.rate / 100;
-      // Capitalised MONTHLY — that is the cadence data.json records and the
-      // charge the statements show. Compounding annually instead understated
-      // the balance by $9,212 over the default 18 years.
-      const perYear = 12;
-      helocOwed = helocCapitalised
-        ? heloc.balance * Math.pow(1 + helocRate / perYear, perYear * years)
-        : heloc.balance;
-      const helocInterest = helocCapitalised
-        ? helocOwed - heloc.balance
-        : heloc.balance * helocRate * years;
-      totalInterest = mortgageInterest + helocInterest;
-      note = helocCapitalised
-        ? `The HELOC stays interest-only AND its interest capitalises, so nothing repays it and it compounds:
-           ${money(heloc.balance)} today becomes <b>${money(helocOwed)}</b> after ${years} years.`
-        : `The HELOC stays interest-only, so after ${years} years its ${money(heloc.balance)} is still owed in full.`;
-    }
+    // The rate never appears without the convention it is quoted under.
+    $('rate-label').textContent = `${annualPct.toFixed(2)}% ${RATE_BASIS_LABEL[r.basis]}`;
+    $('basis-note').innerHTML = RATE_BASIS_NOTE[r.basis];
 
-    const delta = payment - baselineMonthly;
-    $('renewal-context').innerHTML = helocCapitalised
-      ? `<b>Today, household cash:</b> the mortgage only — ${money(mortgageNow)}/month equivalent. `
-        + `Nothing leaves any chequing account for the HELOC.<br>`
-        + `<b>Today, HELOC economic cost:</b> ${money(helocEconomic)}/month of interest `
-        + `<b>capitalised onto the balance</b>, so the debt grows by that much every month with nothing `
-        + `repaying it. It is a real cost and it buys no equity — it is simply not a bill that gets paid.`
-      : `Today: mortgage ${money(mortgageNow)}/month equivalent plus the HELOC payment ${money(helocCash)} — `
-        + `${money(baselineCash)} a month of household cash.`;
+    $('renewal-context').innerHTML = RENEWAL_CONTEXT[r.today.id](r)
+      + (r.today.unmodelled.length ? BASELINE_GAP(r) : '');
 
     $('renewal-out').innerHTML = `
-      <div class="big">${money(payment)} <span style="font-size:.95rem;font-weight:500;color:var(--text-secondary)">/ month</span></div>
-      <div class="row"><span>Versus today's household cash</span><span class="${delta > 0 ? 'neg' : 'pos'}">${delta > 0 ? '+' : ''}${money2(delta)}</span></div>
-      ${helocCapitalised && consolidate
-        ? `<div class="row"><span>HELOC interest no longer capitalising</span><span class="pos">${money2(helocEconomic)} / month</span></div>`
-        : helocCapitalised
-          ? `<div class="row"><span>HELOC interest still capitalising</span><span class="neg">${money2(helocEconomic)} / month, compounding</span></div>`
-          : ''}
-      <div class="row"><span>Principal financed</span><span>${money2(principal)}</span></div>
-      <div class="row"><span>Total interest over ${years} years</span><span>${money(totalInterest)}</span></div>
-      <div class="row"><span>HELOC still owed after ${years} years</span><span class="${consolidate ? 'pos' : 'neg'}">${consolidate ? '$0' : money(helocOwed)}</span></div>
-      <p class="${consolidate ? 'goodline' : 'warnline'}">${note}</p>
-      <p class="lede" style="margin:10px 0 0;font-size:.8rem">Illustrative only. Ignores fees, penalties, qualification
+      <div class="big">${money(r.payment)} <span style="font-size:.95rem;font-weight:500;color:var(--text-secondary)">/ month</span></div>
+      <div class="row"><span>Versus today's household cash</span><span class="${DELTA_CLASS[r.direction]}">${DELTA_TEXT[r.direction](r)}</span></div>
+      ${r.capitalisation ? CAPITALISATION_ROW[r.capitalisation.id](r.capitalisation) : ''}
+      <div class="row"><span>Principal financed</span><span>${money2(r.principal)}</span></div>
+      <div class="row"><span>Total interest over ${years} years</span><span>${money(r.interest.total)}</span></div>
+      <div class="row"><span>HELOC still owed after ${years} years</span><span class="${RENEWAL_OWED_TONE[r.outcome]}">${money(r.helocOwed)}</span></div>
+      <p class="${RENEWAL_TONE[r.outcome]}">${RENEWAL_NOTE[r.outcome](r)}</p>
+      <p class="lede" style="margin:10px 0 0;font-size:.8rem">Priced as a <b>${RATE_BASIS_LABEL[r.basis]}</b> rate.
+      Illustrative only. Ignores fees, penalties, qualification
       and the loan-to-value test — which needs a home valuation. A licensed mortgage professional should run the real numbers.</p>`;
   }
 

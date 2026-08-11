@@ -173,11 +173,11 @@ function payoff(balance, annualPct, monthlyPayment) {
   return { clears: true, months: n, totalPaid, totalInterest: totalPaid - balance, interestOnly };
 }
 
-function amortisedPayment(principal, annualPct, years) {
-  const i = annualPct / 100 / 12, n = years * 12;
-  if (i === 0) return principal / n;
-  return principal * i / (1 - Math.pow(1 + i, -n));
-}
+// The renewal's amortised payment used to be computed here. It decided the
+// May 2027 figures from the shared page core, where no node suite could reach
+// it, and it now lives inside `Forecast.renewal` with the rest of that
+// arithmetic. `payoff` above still belongs to the payoff modeller, which is a
+// separate B73 instance and has not moved.
 
 const fmtMonths = m => {
   if (!isFinite(m)) return 'never';

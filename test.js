@@ -25,6 +25,7 @@ const suites = [
   ['income dependency deadline', 'test-income-deadline.js'],
   ['next due obligation', 'test-next-due.js'],
   ['homepage mission', 'test-mission.js'],
+  ['May 2027 renewal', 'test-renewal.js'],
   ['household budget reconciliation', 'test-budget.js'],
   ['coupled cash and debt', 'test-debt.js'],
   ['authority invariants', 'test-invariants.js'],

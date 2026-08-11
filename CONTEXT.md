@@ -125,7 +125,7 @@ shared core (helpers, charts, theme, boot) loaded by all of them:
 | Page | HTML | Script | What it shows |
 |---|---|---|---|
 | Plan (homepage) | `index.html` | `plan.js` + `forecast.js` | The 90-day forecast, budget, next actions |
-| Modellers | `modellers.html` | `modellers.js` | Payoff and renewal modelling |
+| Modellers | `modellers.html` | `modellers.js` + `forecast.js` | Payoff and renewal modelling |
 | Deep Dive | `deepdive.html` | `deepdive.js` | Debt, HELOC, flows, lacrosse, questions |
 | Records | `records.html` | `records.js` | Balance sheet, coverage, assumptions |
 

@@ -113,13 +113,19 @@ for (const key of ['actions', 'nextDollar', 'budget']) {
 }
 
 console.log('\n=== public/app.js calculator coverage ===');
+// `amortisedPayment()` was here until the renewal moved into `Forecast.renewal`;
+// it is covered by the Forecast export loop's table requirement now. `payoff()`
+// is still the payoff modeller's, and still a page-layer calculator — the
+// remaining B73 instance on that page.
 const appSource = read('public/app.js');
-for (const fn of ['payoff', 'amortisedPayment']) {
+for (const fn of ['payoff']) {
   ok(new RegExp(`function\\s+${fn}\\s*\\(`).test(appSource),
     `${fn}() exists in public/app.js`);
   ok(new RegExp(`${fn}\\(\\)`).test(incumbentTable),
     `${fn}() is named in the incumbent authority table`);
 }
+ok(!/function\s+amortisedPayment\s*\(/.test(appSource),
+  'the renewal amortisation is no longer a page-core calculator');
 
 console.log('\n=== artifact-writer coverage ===');
 for (const script of ['scripts/periods.js', 'scripts/calendar-ics.js']) {
