@@ -284,15 +284,26 @@ already, so treat it as open:
   first below-buffer day. `public/plan.js` renders the returned amount/date and no
   longer runs its own no-transfer simulation or selects `neededBy`. The focused
   test includes a hand-computed case and migration equivalence on the real plan.
-- **`public/plan.js:517-538`** assembles the homepage **mission** — cover the
-  timing gap by a date, get a named card back under its limit, hold or cut
-  spending to a weekly figure, stop the HELOC growing before it passes its limit,
-  or put the surplus against the most expensive card — and writes it to
-  `plan-mission`, shown at `index.html:38`. It selects *which* instructions apply
-  and composes the sentence, so it is the most prominent thing the household is
-  told to do and no engine owns it. Note the comment already sitting in that
-  block: the mission once recommended `$1,500/week` against a −$809 low, because
-  only the status band had been conditioned on whether the gap could be funded.
+- **RESOLVED 2026-08-11 — the homepage mission.** `Forecast.mission` now owns
+  which instructions the household is given at the top of the Plan page and in
+  what order: the opening timing gap or the shortfall no source can reach, a
+  facility over its limit today, a weekly spending figure *only where spending
+  is a remedy*, and then the HELOC crossing or the surplus. It returns the
+  instructions and the figures behind each one; `public/plan.js` keeps the
+  wording and formatting and chooses nothing. The focused test hand-computes
+  every mission state from literal fixture facts, breaks each decision branch
+  in the inputs *and* in the engine source to prove it is load-bearing, and
+  reconciles the move against the real published plan at three settings — the
+  live default, an unsupported `$1,500/week` override and a buffer no
+  combination of sources can reach — through the page's own wording map, so the
+  sentence the household reads is unchanged character for character. The
+  `$1,500/week` against a −$809 low is now a test rather than a comment.
+
+  One presentation defect is left recorded rather than fixed, because this was
+  an authority move and the wording was deliberately preserved: with two
+  facilities over their limits the sentence still reads "back under **its**
+  limit". It is grammar in `MISSION_PART`, not a decision, and no figure is
+  wrong.
 
 Move **each remaining** recorded decision into a testable engine function and
 reconcile against a hand-computed case — and check for others before calling this
