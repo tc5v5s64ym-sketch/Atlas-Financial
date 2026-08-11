@@ -89,6 +89,48 @@ five conditions; it does not open the gate.
 
 ---
 
+## Owner-approved planning posture — 2026-08-11
+
+The household does **not** need a forensic reconstruction of every historical
+purchase before Atlas can plan. The captured history is already sufficient to
+establish useful spending norms and build the current picture, subject to the
+confidence rules below.
+
+- **Historical unknowns stay in the money.** An unresolved transaction still
+  counts in total spending and cash movement. Uncertainty changes category
+  precision and confidence; it does not make the dollars disappear and does not
+  block the budget or forecast by itself.
+- **Material omissions are different.** A whole account, meaningful income
+  stream, recurring obligation or other source gap that could materially change
+  the plan is a correctness issue and may interrupt the sequence. Twenty old
+  merchant labels are not the same thing as a missing credit card.
+- **From now forward, clean the ledger as it arrives.** Every fresh intake should
+  surface new unknown or ambiguous transactions for household clarification.
+  Before live connectivity exists this happens at intake; same-day automatic
+  notification waits for the connectivity gate rather than being faked by a
+  polling architecture that is not yet authorised.
+- **Household interviews are evidence, not silent policy.** Amanda's attributed
+  interview can inform candidate assumptions, questions and scenarios. Nothing
+  in it becomes a verified household fact or shared target merely because an
+  agent can read it; promotion still needs the owner decision described in
+  `ARCHITECTURE.md`.
+- **The near-term product is the operating picture.** The current build should
+  get to one trustworthy 13-week story, a week-by-week safe-to-spend view, one
+  financial calendar, and the cash/debt consequence of known large commitments
+  or owner-supplied planned purchases **before ingestion infrastructure becomes
+  the centre of the work**.
+- **Raw-source completeness is verification, not a standing gate.** `raw/`
+  remains the immutable source and privacy boundary. A targeted local source
+  audit is appropriate when reconciliation exposes a material gap; proving that
+  every old file was consumed exactly once is not a prerequisite to using the
+  captured history for planning.
+
+These are planning assumptions, not permission to invent money. The existing
+financial-correctness, provenance, security, one-authority and owner-reserved
+boundaries remain unchanged.
+
+---
+
 ## When an urgent finding may interrupt the order
 
 `ARCHITECTURE.md` gives this file the order of planned capability work, and
@@ -103,7 +145,10 @@ A finding pre-empts the current phase when **any** of these is true:
    a credential, a secret, or the auth gate;
 3. **a gate's evidence has been falsified** — something this file or
    `ARCHITECTURE.md` relies on turns out not to hold, so the sequence is built on
-   a false premise.
+   a false premise;
+4. **a material source gap is demonstrated** — an omitted account, meaningful
+   income stream or recurring obligation is likely to change the household plan.
+   Ordinary historical categorisation uncertainty does not qualify.
 
 Everything else — including work that is genuinely valuable and obviously next —
 goes to `BACKLOG.md` and waits for its phase. "This is quick" and "we are already
@@ -174,13 +219,42 @@ built *on* that picture, the picture needs owners that a test can reach.
   `Forecast.expandEvents` or stays independent, and prove the answer. Note it
   covers statement closes and renewal reminders the projection does not model.*
 
+### Phase 1 product exit — useful before infrastructure
+
+Before Phase 2 starts, the current authorities must add up to a household-facing
+operating picture rather than merely a collection of correct components. This is
+a sequencing checkpoint, not a new engine and not a licence to duplicate any
+financial answer.
+
+The existing product must be able to show, from the same authorities:
+
+- **one 13-week story** — current cash position, expected income, obligations,
+  known commitments, the lowest projected point and the major pressure dates;
+- **one week-by-week operating budget** — the `Forecast.recommend` safe-to-spend
+  figure, what each week has to absorb, and whether a week is below the buffer;
+- **one calendar/look-ahead** — next due, Amanda income dependency where relevant,
+  paydays and known large events all reconciled to the schedule authority;
+- **the consequence of a known large commitment or owner-supplied planned
+  purchase** — amount and date enter the existing plan/commitment path, and Atlas
+  can show whether cash covers it, what has to be saved or moved, and what debt
+  is created if borrowing is required; and
+- **honest confidence** — historical unknowns remain included in total spending
+  and are not allowed to masquerade as zero merely because their category is
+  unresolved.
+
+If the existing authorities cannot answer one of those without page-local maths
+or a second planner, record the smallest missing product capability in
+`BACKLOG.md` and finish it before AF-HIST-01. Do not solve the gap by standing up
+another forecast, another calendar or another budget.
+
 ---
 
 ## Phase 2 — cadence and trend · to T2
 
 Spending, interest and fees already have history through `public/periods.json`.
 **Account balances do not.** That is the gap, and it is what `ARCHITECTURE.md`
-Tier 2 describes.
+Tier 2 describes. This phase begins only after the Phase 1 product exit above is
+true, so infrastructure cannot outrun the operating picture the household needs.
 
 ### AF-HIST-01 · Balance snapshots and trend
 
@@ -191,7 +265,7 @@ Tier 2 describes.
   spending series, which this does **not** duplicate. `NEW`, consumer named: the
   Plan and Deep Dive pages.
 - **Tier** — M3. **Backlog** — `B20`.
-- **Entry gate** — **T1**.
+- **Entry gate** — **T1 plus the Phase 1 product exit above**.
 - **Acceptance** — **each snapshot's identity and contents reconcile
   independently** against the contemporaneous `data.json`, the `positions.csv`
   row, or institution evidence — right account, right date, right balance. That is
@@ -213,9 +287,12 @@ Tier 2 describes.
 - **Entry gate** — AF-HIST-01, so a snapshot exists to compare against.
 - **Acceptance** — the run is reproducible from the documented steps alone; every
   manual intervention is written down, because those are the evidence T3 needs.
+  New unknown or ambiguous transactions from this intake are surfaced as a
+  **forward clarification queue** for the household; the run does not reopen an
+  18-month forensic categorisation project merely because old unknowns exist.
 - **Prompt** — *Run the documented intake for a second month. Change nothing to
-  make it work — record what needed a human. That record is the input to
-  AF-INGEST-01.*
+  make it work — record what needed a human and surface the new unknowns that need
+  household clarification. That record is the input to AF-INGEST-01.*
 
 ---
 
@@ -313,13 +390,22 @@ be scheduled as though it did.
 - **Anything behind a closed gate.** A canonical store and automated connectivity
   are wanted and not permitted; `ARCHITECTURE.md` holds both gates and this file
   schedules toward them without opening either.
+- **A forensic cleanup of the historical ledger.** Old unknown transactions stay
+  in total spending and may stay categorically unresolved unless they are large
+  enough to materially change the plan. The forward ledger gets cleaner as fresh
+  data arrives.
+- **A standing 100% raw-source coverage campaign.** `raw/` remains the bedrock and
+  must remain private and immutable, but source-coverage work is targeted when a
+  material reconciliation gap appears; it is not a prerequisite to planning from
+  the captured history.
 - **Household questions.** `docs/01_OPEN_QUESTIONS.md` holds what only Dale or
   Amanda can answer. Several phases would move faster with answers, and none of
   them can be unblocked by an agent.
 - **Owner actions.** Items marked *owner action* in `BACKLOG.md` are the owner's
   and are not sequenced here.
-- **Reconciling one household member's stated preferences against another's.**
-  That needs both people on the record and an owner decision about whose statement
-  wins where they differ — it is not something an agent settles.
+- **Silently reconciling one household member's stated preferences against
+  another's.** Attributed interview evidence may inform a candidate scenario or a
+  question, but a shared target needs the promotion/owner decision described in
+  `ARCHITECTURE.md`; an agent does not decide whose statement wins.
 - **Everything in `BACKLOG.md` this file has not named.** Those items stay
   eligible. This document is a sequence, not a gate on the backlog.
