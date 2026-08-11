@@ -324,21 +324,17 @@ function renderPlan(d, periods) {
   const fundingGap = gap ? gap.amount : 0;
   const preIncomeOut = gap ? gap.preIncomeOut : 0;
 
-  // When does the plan NEED Amanda's transfer? Re-run with her transfer at
-  // zero: the first day that dips below the buffer is the deadline.
-  const transferMonthly = state.incomeOverrides.amandaTransfer != null
-    ? state.incomeOverrides.amandaTransfer
-    : (plan.income.find(s => s.id === 'amandaTransfer') || { scenarioMonthly: {} }).scenarioMonthly[state.scenario] || 0;
-  let neededBy = null;
-  if (transferMonthly > 0) {
-    const noTransfer = Forecast.simulate(plan, asOf, Object.assign({}, advice.simOptions, {
+  // The engine owns the counterfactual deadline. The page only renders the
+  // amount and date it is given; it no longer runs a second simulation or
+  // decides which short day becomes a household deadline.
+  const transferDependency = Forecast.incomeDeadline(plan, asOf, 'amandaTransfer',
+    Object.assign({}, advice.simOptions, {
       weeklyVariable: weekly,
-      incomeOverrides: Object.assign({}, state.incomeOverrides, { amandaTransfer: 0 }),
+      incomeOverrides: state.incomeOverrides,
+      notBefore: gap ? gap.date : asOf,
     }));
-    const firstShort = noTransfer.daily.find(p =>
-      p.balance < noTransfer.buffer && (!gap || p.date >= gap.date));
-    if (firstShort) neededBy = firstShort.date;
-  }
+  const transferMonthly = transferDependency.amount;
+  const neededBy = transferDependency.neededBy;
 
   $('plan-window').textContent =
     `The 13 weeks from ${fmtDateLong(asOf)} to ${fmtDateLong(sim.end)} — every figure below is derived from this window.`;
