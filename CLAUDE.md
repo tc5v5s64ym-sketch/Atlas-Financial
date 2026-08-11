@@ -160,8 +160,11 @@ The review block records five fields:
 - **Review outcome** — `PASS` before merge when required, else `N/A`; and
 - **Findings and fix verification** — the blocker record or `N/A`.
 
-`merge-card-check` enforces only those closed forms and the exact-head equality.
-It does not interpret the findings prose or claim that a review was good.
+`merge-card-check` enforces those closed forms, exact-head equality, and a
+small closed list of file paths that always touch a high-risk surface. A pull
+request touching one of those paths cannot claim `NOT REQUIRED`. Paths outside
+that list still use the trigger decision above. The check does not interpret
+findings prose or claim that a review was good.
 
 ### Independent improvement audit — optional and bounded
 
@@ -429,10 +432,11 @@ the current head, an arithmetic identity, or another deterministic fact. CI may
 not infer meaning from prose, negation, severity wording, scope arguments,
 finding dispositions, or review-round narratives.
 
-`merge-card-check` therefore checks only required rows, the current-state
-opening, and the closed required-review record. Small-PR discipline,
-closed-loop delivery, advisory dispositions, and cleanup explanations remain
-reviewer guidance.
+`merge-card-check` therefore checks required rows, the current-state opening,
+the closed required-review record, and whether a mechanically high-risk file
+path was incorrectly marked `NOT REQUIRED`. File paths are facts, not prose.
+Small-PR discipline, closed-loop delivery, advisory dispositions, and cleanup
+explanations remain reviewer guidance.
 
 ## Governance-control lifecycle
 
