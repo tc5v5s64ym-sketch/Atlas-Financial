@@ -70,7 +70,8 @@ at the same time.
 The agent selects the work, verifies current state before editing, implements
 one concern on a fresh branch, proves the numbers independently, opens the pull
 request with the merge card filled, obtains the required review when a trigger
-fires, dispositions every advisory finding, and merges the exact passing head.
+fires, addresses any real high-severity advisory defect, and merges the exact
+passing head.
 
 ### Independent agent review — Codex, and anything like it
 
@@ -87,132 +88,93 @@ errored, timed out, cancelled or failed **is a failure**, not an absence of one.
 
 ## The two review lanes
 
-|  | Atlas Contract / Systems Review | Independent agent review |
+|  | Atlas Contract / Systems Review | Independent improvement audit |
 |---|---|---|
-| Performed by | ChatGPT | Codex, or any agent that is not the active builder |
-| Status | **Required when a trigger fires** | Advisory, always |
-| Reads | The exact head | Whatever head it reviewed — check freshness |
-| Recorded in | The merge card's review block | The merge card's `Advisory review` row |
-| Is it a GitHub check? | **No. Never.** | No |
+| Performed by | ChatGPT | An agent that is not the active builder |
+| Status | **Required only when a high-risk trigger fires** | Optional |
+| Question | Is this exact head unsafe or architecturally wrong to merge? | What could be improved? |
+| Result | `PASS` or `BLOCKING` | Findings with dispositions |
+| Is it a GitHub check? | No | No |
 
-Neither lane is a GitHub status, a required check, a reviewer account, or an
-approval click. Both are recorded in the merge card, which is where this
-repository keeps its review truth.
+The lanes are separate. An improvement does not become a blocker because a
+reviewer noticed it. A real product, financial, security, authority, or trust
+defect remains a blocker because the defect is real.
 
-### The Atlas Contract / Systems Review — required when a trigger fires
+### Atlas Contract / Systems Review — blocking architecture review
 
-**ChatGPT performs this review.** That is an authority boundary, not a
-preference. The implementation agent may not satisfy its own architecture gate:
-a clean context is not an independent authority — it is the same agent with the
-same model and the same blind spots, and it will reproduce them confidently. An
-agent's own clean-context read is welcome as **advisory confidence** and belongs
-under advisory findings. It never satisfies this gate.
+**ChatGPT performs this review.** The active implementation agent cannot satisfy
+its own architecture gate. The review never authorizes a household fact, raw
+data release, secret, schema, production write, or promotion from estimated to
+verified. Those remain owner-reserved.
 
-The merge card records **who** performed the review, and `merge-card-check`
-rejects a required review credited to anyone but this lane. Recording the
-performer began as a way to make a wrong reviewer *visible*; it now fails,
-because a card naming the advisory lane as the required reviewer is not an
-oversight to notice later — it is the gate being handed to the wrong authority.
-An advisory read belongs in the card's `Advisory review` row.
+#### High-risk triggers
 
-**It reads the exact head.** A review of an earlier commit does not cover a
-later one. Push after a review and the review must be repeated — this is the
-same failure the Codex freshness reporter exists to catch, and it is not less
-serious because the reviewer is ChatGPT.
+The review is required only when a pull request changes one of these:
 
-**It never authorizes anything about the household's real money or data.** It
-does not release a raw file, approve a secret, or turn an estimate into a
-verified figure. Those are owner-reserved.
+- runtime logic that computes or publishes a figure the household acts on, or
+  the independent numerical/invariant proof that permits that logic to merge;
+- the sole authority for a fact, figure, engine decision, security boundary, or
+  store, including a cutover, compatibility bridge, or bridge sunset;
+- authentication, sessions, cookies, CSP, secret handling, raw-data boundaries,
+  a schema, a production write path, or a destructive operation;
+- the verified / calculated / estimated / unknown trust contract, an estimate
+  reaching a decision surface, or a claim being promoted to verified;
+- an owner-reserved gate, product direction, or the product trust contract;
+- a deterministic hard gate whose pass/fail result protects one of the items
+  above; or
+- unresolved ambiguity about one of the items above.
 
-#### When it is required
+Ordinary documentation or status precision does not trigger the review when it
+records current state without moving an authority or trust claim. Neither do
+routine tests, refactors, templates, or comments that leave runtime and hard-gate
+semantics unchanged.
 
-A pull request that touches any of these:
+#### Bounded review protocol
 
-- **the engine, or any derived figure the household acts on** — the forecast,
-  the recommendation, the budget split, the cash or debt walk;
-- **a fact changing home** — an authority move, or the deletion of a competing
-  claim;
-- **the review machinery itself** — the merge card check, the figures review,
-  the risk-label gate, the labels manifest, the Codex freshness reporter, or a
-  test suite standing in for a gate;
-- **the security gate** — the auth gate, session and cookie handling, CSP,
-  secret handling, `.gitignore`, or the pre-commit hook;
-- **what counts as evidence** — the verified / calculated / estimated / unknown
-  discipline, or how coverage is stated;
-- **an estimate reaching the decision page**, or an estimate being promoted to
-  verified;
-- **direction** — a change to the tiers in `ARCHITECTURE.md`, the scope of the
-  site, or the trust contract; and
-- **genuine ambiguity**, whenever the right answer is arguable.
+The blocking question is one sentence:
 
-The list is deliberately wide, and most substantive work here touches it.
-"No trigger fired" is a claim that has to survive reading the list — it is not
-the default.
+> Is this exact head unsafe or architecturally wrong to merge?
 
-#### What the review asks
+The initial review reports only merge blockers. It checks one-authority
+ownership, false-green proof, numerical/trust invariants, security and owner
+boundaries, and bridge cleanup. Correct-but-improvable work receives `PASS`; any
+improvement notes go to the optional audit.
 
-1. Does this hold in the next legitimate state of the repository, not only
-   against today's data? *(Next month's statements, a new account, a rebuilt
-   period file.)*
-2. Can missing, no-op, defaulted, circular or hardcoded evidence produce a false
-   green? *(A test that asserts whatever the code computes. A figure reconciled
-   against itself.)*
-3. Does the proof establish identity, content, order and authority — not
-   cardinality alone? *(Right account, right amount, right date, right source —
-   not "twelve rows changed".)*
-4. Does it stay correct when historical records coexist with current state?
-   *(Superseded statements, an older snapshot, a carried estimate.)*
-5. What authority wins, what loses, what bridge remains, and when is the bridge
-   removed?
-6. Could this falsely advance a claim — of coverage, of verification, or of a
-   figure's tag?
-7. What temporary machinery must be deleted?
+A blocking result names the exact defect and the proof needed to close it. The
+follow-up review reads the new exact head, verifies those named fixes, and checks
+the high-risk surface changed by the fixes. It does **not** reopen the untouched
+artifact for an unlimited new review. A new blocker is in scope only when the
+fix introduced a new high-severity defect, changed another high-risk surface, or
+made the original blocker impossible to verify without that adjacent fact.
 
-And five about **delivery** — whether this is one pull request at all:
+There is no target number of rounds and no "run until clean" rule. The terminal
+result is `PASS` when no unsafe or architecturally wrong condition remains.
 
-8. Is this genuinely one independently provable outcome, or several that merely
-   arrived in the same session?
-9. Did it absorb an adjacent finding that belongs in another pull request?
-10. Has review churn stopped refining one root cause and started revealing
-    separate ones?
-11. Could this have been split safely — and if it could not, is the atomicity
-    exception genuine rather than a synonym for "these changes are related"?
-12. What loops does it close, what does it open, and what closes those?
+#### Merge-card record
 
-There is deliberately no question here about a concept gaining a second
-authority: that is question 5, which already asks what wins, what loses and when
-the bridge goes. Nor about cleanup, which is question 7. One question, one home.
+The review block records five fields:
 
-#### What the merge card records
+- **Required** — opens `REQUIRED` or `NOT REQUIRED`;
+- **Exact reviewed head** — the current full SHA when required, else `N/A`;
+- **Reviewer** — `ChatGPT` when required, else `N/A`;
+- **Review outcome** — `PASS` before merge when required, else `N/A`; and
+- **Findings and fix verification** — the blocker record or `N/A`.
 
-Four fields, in the card's **Atlas Contract / Systems Review** block:
+`merge-card-check` enforces only those closed forms and the exact-head equality.
+It does not interpret the findings prose or claim that a review was good.
 
-- **Required** — with the trigger that fired, or the reason none did;
-- **Exact reviewed head** — the full commit SHA the reviewer read;
-- **Reviewer** — who performed it;
-- **Findings and dispositions** — every finding, each marked fixed, non-issue
-  with the reason, or routed.
+### Independent improvement audit — optional and bounded
 
-`merge-card-check` verifies those four are answered, and — when the block says a
-review was required — that the recorded SHA is a real 40-character head **and is
-this pull request's current head**. That is the exact-head rule made mechanical:
-push after a review and the card goes red until the review is repeated.
+Default to at most **one advisory pass** on a coherent head. Do not request a
+second pass because ordinary fixes made the first pass stale. A second pass is
+justified only when the first found a high-severity or systemic defect, or the
+response materially changed a high-risk runtime, security, schema, authority,
+cutover, or product-trust surface.
 
-It remains a literal check. It compares two strings. It cannot tell whether a
-review happened, who really performed it, or whether it was any good, and
-passing it is not evidence of any of those. What it removes is the one failure a
-literal check can remove: a verdict quietly outliving the code it was about.
-
-### Independent agent review — advisory, but its findings are not
-
-Codex reviews pull requests here. `docs/RISK_LABELS.md` covers how the freshness
-reporter works and why it reports rather than requests.
-
-What matters for authority: a finding is advisory in the sense that no bot
-blocks a merge, and binding in the sense that **an unanswered finding does**.
-Every one gets fixed, rejected with a reason, or routed — in the card's
-`Advisory review` row. Disagreeing with a finding is fine and often correct.
-Saying why is what makes it a decision rather than an omission.
+Lower-severity improvements may be accepted, rejected with a short reason, or
+routed. They do not require another audit. `not run` is a valid merge-card
+answer. An unresolved high-severity product/trust defect still blocks, but the
+blocker is the defect, not the existence or freshness of an advisory review.
 
 ---
 
@@ -224,9 +186,10 @@ The active implementation agent merges when all of these hold:
 - the merge card is complete, including attribution and the review block;
 - exactly one primary risk label, and it is honest about what the owner has to
   do (`docs/RISK_LABELS.md`);
-- the required review is recorded and read the exact merged head, when a trigger
-  fired;
-- every advisory finding is dispositioned;
+- the required review records `PASS` on the exact merged head when a high-risk
+  trigger fired;
+- no real financial, security, authority, invariant, or product-trust blocker
+  remains;
 - one independently provable outcome, clean branch, no unrelated drift, no
   secret or raw data; and
 - no owner-reserved item is outstanding.
@@ -340,9 +303,9 @@ Review tripwires, not rejection thresholds:
   separately;
 - **one high-risk financial authority per pull request**, by preference.
 
-Under them, the card says `WITHIN`. Over any of them, it says `EXCEEDED` and
-says why — which is a prompt to reassess, not a failure. Some honest work is
-large.
+Under or over them, a reviewer asks whether the pull request still has one
+independently provable outcome. The tripwires are guidance, not merge-card
+fields and not CI thresholds. Some honest work is large.
 
 The numbers are gameable and the gaming is the thing to watch for: unrelated
 code moved into one file, implementation hidden inside generated output, real
@@ -370,28 +333,13 @@ share one closure condition, and why this is safer than a sequence.
 
 It is an exception. It is not a synonym for "these changes are related".
 
-### Review churn — reassess at two rounds
+### Scope stays a reviewer judgement
 
-Repeated review is not failure; some genuinely atomic work needs it, and this
-repository's first two pull requests both did. But repeated review is also how a
-pull request that is secretly several announces itself.
-
-- **After two blocking exact-head rounds**, reassess and record the answer.
-  Are the findings refinements of one root cause — or are they now surfacing
-  independent outcomes, authorities, subsystems, migrations, proof systems or
-  product decisions? One root cause: `CONTINUE`, with the reason. Independent:
-  `SPLIT`.
-- **After three**, `CONTINUE` has to say why finishing here is safer than
-  splitting.
-
-**`SPLIT` blocks the merge.** It is a pull request saying it has to be divided,
-and one that says so may not merge in that state — otherwise the card records an
-unperformed split as though it were a decision already carried out. Perform the
-split; the pull request that remains reassesses its own scope honestly, which is
-normally `CONTINUE` naming where the other outcome went.
-
-There is no automatic failure at any number. The breaker exists to force the
-question, not to punish review.
+Reviewers may ask for a split when a pull request contains independent outcomes.
+They do not count review rounds or require a machine-readable reassessment. If a
+fix reveals a separate outcome, route it. If splitting would create two live
+authorities or an unsafe intermediate state, keep the atomic change together and
+state why in ordinary prose.
 
 ## The Closed-Loop Delivery Contract
 
@@ -400,10 +348,9 @@ Every implementation pull request should be explainable as one chain:
 **purpose → authority → implementation → integration → proof → cleanup →
 closure.**
 
-Work is finished when a loop is closed, not when code lands. The card's
-**Delivery** block is where the chain is recorded — the outcome and its
-non-goals, scope status, atomicity exception, review rounds and reassessment,
-proof level, and the open-loop count.
+Work is finished when a loop is closed, not when code lands. Use the merge-card
+reviewer-guidance section to state the outcome, non-goals, authority, consumer,
+proof, and cleanup in concise prose. CI does not score or count them.
 
 For every new production building block — a module, a derived figure, a script,
 a workflow, a bridge — name:
@@ -421,19 +368,6 @@ a workflow, a bridge — name:
 purposes. A foundation pull request is legitimate — it says
 **FOUNDATION — NOT COMPLETION** and names the next consumer and the closure
 step. What it may not do is call itself finished.
-
-### Open-loop accounting
-
-Every pull request reports three integers in the card: loops **closed**, loops
-**created**, and the **net**. The preference is net ≤ 0. A positive net is
-allowed and sometimes necessary; it is explained rather than hidden — so a
-fourth line, **`Loops left open`**, names each one and what closes it, and the
-check requires a real answer there whenever the net is positive. Three integers
-can report a positive net; they cannot explain one.
-
-This creates no new ledger, tracker or backlog system. `BACKLOG.md` and
-`docs/01_OPEN_QUESTIONS.md` already hold work and questions, and an open loop
-recorded here is normally one of those.
 
 ### Defect classification
 
@@ -490,23 +424,36 @@ proved and reviewed on one head, so there is little left to ask about.
 
 ## Machines enforce structure; reviewers judge meaning
 
-This is a rule about what may be automated, and it was bought expensively: the
-merge card check shipped thirty-one false greens learning it.
+CI may enforce a fixed vocabulary, a field's presence, a SHA shape, equality to
+the current head, an arithmetic identity, or another deterministic fact. CI may
+not infer meaning from prose, negation, severity wording, scope arguments,
+finding dispositions, or review-round narratives.
 
-- **A check may enforce a closed form.** A field drawn from a fixed vocabulary,
-  a 40-character SHA, an integer, an arithmetic identity, the presence of an
-  answer at all. These cannot be argued with, and no future wording defeats
-  them.
-- **A check may not judge prose.** Whether an explanation is honest, whether an
-  outcome is genuinely one outcome, whether an `EXCEEDED` scope is justified,
-  whether a `FIX NOW` really shares a root cause, whether a `CONTINUE` after
-  three rounds is right — all of that is the required review's, and the card is
-  where the judgement is recorded.
+`merge-card-check` therefore checks only required rows, the current-state
+opening, and the closed required-review record. Small-PR discipline,
+closed-loop delivery, advisory dispositions, and cleanup explanations remain
+reviewer guidance.
 
-Do not add cleverer natural-language interpretation to the merge card check. The
-recorded limit in [`docs/RISK_LABELS.md`](docs/RISK_LABELS.md) explains why a
-rule of that kind cannot be finished. Where a field can be closed, close it;
-where it cannot, write the limit down.
+## Governance-control lifecycle
+
+Governance controls are retained, changed, or retired on evidence. They are not
+grow-only.
+
+A new hard control needs all four:
+
+1. a demonstrated product or trust failure it would have caught;
+2. a deterministic predicate with no prose interpretation;
+3. a focused test that proves the predicate fails on the mechanical defect; and
+4. a named retirement condition or reason it is permanent.
+
+Review an existing control when it repeatedly blocks safe work, duplicates
+another guard, or its original failure path disappears. Retire or narrow it when
+another surviving control covers the demonstrated failure at least as directly,
+or when the protected path no longer exists and a regression test proves that.
+The governance PR states what is removed, what replaces its protection, and the
+evidence. A change to a product/trust hard gate still triggers the Atlas Contract
+/ Systems Review. Owner-reserved production, schema, security, data, and
+verification gates cannot be retired without the owner's explicit decision.
 
 ## Owner-reserved stops
 

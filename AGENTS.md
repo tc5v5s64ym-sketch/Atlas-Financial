@@ -23,15 +23,17 @@ Read in this order:
 
 ## The three things agents get wrong here
 
-**The review lanes are not interchangeable.** ChatGPT performs the required
-Atlas Contract / Systems Review when a trigger fires. Codex — or any agent that
-is not the active builder — is advisory. An agent's own clean-context re-read of
-its own work is advisory confidence and never satisfies the required lane.
-`CLAUDE.md` holds the trigger list, the questions, and the four fields the merge
-card records.
+**The review lanes are not interchangeable.** ChatGPT performs the blocking
+Atlas Contract / Systems Review when a high-risk trigger fires. It asks only
+whether the exact head is unsafe or architecturally wrong to merge. Independent
+agent review is an optional improvement audit: default one pass, with a second
+only for a high-severity/systemic issue or a materially changed high-risk
+surface. `CLAUDE.md` holds the trigger list and bounded follow-up protocol.
 
-**Advisory does not mean ignorable.** No bot blocks a merge; an unanswered
-finding does. Fix it, reject it with a reason, or route it — in the card.
+**A real defect still blocks.** The blocker is the financial, security,
+authority, invariant, or trust defect itself — not an advisory review's status
+or freshness. Route lower-severity improvements without running review until
+clean.
 
 **The proof has to be independent.** A test that exercises the same function
 that computes a figure proves consistency, not correctness. Reconcile against
