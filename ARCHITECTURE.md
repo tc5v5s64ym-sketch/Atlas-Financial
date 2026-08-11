@@ -282,13 +282,19 @@ So the rule, not the enumeration, is what binds:
 - **A page script renders; it does not decide.** `renderCalendar()` and
   `renderPlan()` format what they are given.
 
-**Two page scripts break that third rule today — and they are defects, not a
-fourth category.** `public/modellers.js` computes the renewal's HELOC interest
-inline, and `public/deepdive.js:125` filters and sorts `upcoming` against today's
-date to choose the household's "Next due" — a selection policy no engine owns and
-no test can reach. Both are recorded in `B73`. A page script that decides is an
-*unnamed authority*, so finding another one is something to route, not somewhere
-to file it.
+**Page scripts break that third rule in at least three places today — and they
+are defects, not a fourth category.** `public/modellers.js` computes the
+renewal's HELOC interest inline; `public/deepdive.js:125` filters and sorts
+`upcoming` to choose the household's "Next due"; and `public/plan.js:327-340`
+re-runs the simulation with Amanda's transfer zeroed and takes the first
+below-buffer day as **the deadline by which she has to move money** — presented as
+a date at `:472` and `:808` and badged on the calendar, with no test referencing
+it. All three are recorded in `B73`.
+
+"At least three" is deliberate. That sentence said *two* until a review found the
+third, in the same file as one of the renderers it praises. A page script that
+decides is an **unnamed authority**, so finding another is something to route —
+not somewhere to file it, and not evidence the list is now closed.
 
 Anything not named above belongs to one of those three rules, or is that defect.
 If it is genuinely unclear which, that is a question for the required review —

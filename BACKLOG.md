@@ -270,6 +270,13 @@ something the household acts on:
   date and takes the first, deciding which obligation is the household's **"Next
   due"**. That is a selection policy, not formatting: no engine owns it, nothing
   tests it, and a second answer could appear elsewhere with nothing to notice.
+- **`public/plan.js:327-340`** re-runs `Forecast.simulate` with Amanda's transfer
+  set to zero and takes the first day that dips below the buffer as `neededBy` —
+  **the deadline by which she has to move money**. It is shown as a date at `:472`
+  and `:808` and badged on the calendar at `:248`, `:253` and `:278`. `grep`
+  confirms no test references `neededBy` at all. This is the sharpest of the
+  three: it is a real financial deadline the household acts on, derived by a
+  second simulation run that lives in a page.
 
 Move both into testable engine functions and reconcile against hand-computed
 cases. `payoff()` and `amortisedPayment()` in `public/app.js` are already shared
@@ -296,13 +303,35 @@ that inspection had missed — `payoff()`/`amortisedPayment()`,
 `scripts/calendar-ics.js`, `plan.actions`, `plan.nextDollar` and
 `Forecast.expandEvents` — and named one row that was wrong outright. The table now
 binds by rule rather than enumeration, which stops the failure being silent, but
-nothing mechanical would notice a new `Forecast` export or a new `data.json`
-`plan.*` policy key going unnamed. A check that enumerates both and asserts each
-appears in the table is closed-form — the kind `CLAUDE.md` permits a machine to
-enforce — and this is the case that repository's rule describes: add a gate when
-something goes wrong that it would have caught, and this went wrong three times in
-one pull request. Not done there because it is a workflow and test change with its
-own proof, and that pull request had `0` implementation files by design.
+nothing mechanical would notice a new authority going unnamed.
+
+**The check has to enumerate every surface an authority can come from, and the
+first draft of this item did not.** It proposed `Forecast` exports and `data.json`
+`plan.*` keys — and two of the five omissions listed above,
+`payoff()`/`amortisedPayment()` in `public/app.js` and `scripts/calendar-ics.js`,
+are neither. That check would have gone **green** while those were missing, which
+is the false green it exists to prevent, proposed in the same paragraph that lists
+the counterexamples. Advisory review caught it. The surfaces are at least:
+
+- `Forecast`'s exported functions;
+- `data.json`'s `plan.*` policy keys — `actions`, `nextDollar`, `budget`;
+- exported calculators in `public/app.js`, such as `payoff()` and
+  `amortisedPayment()`;
+- `scripts/*.js` that write an artifact the household reads, such as
+  `calendar-ics.js` and `periods.js`;
+- page scripts that decide rather than render — the `B73` class, which has no
+  clean signature and may only be reachable by review.
+
+Even that list is a judgement about where an authority can live, so the check
+proves *coverage of named surfaces*, not completeness, and should say so rather
+than implying more. A check claiming more than it establishes is the defect this
+item is about.
+
+Closed-form per surface — the kind `CLAUDE.md` permits a machine to enforce — and
+this is the case that rule describes: add a gate when something goes wrong that it
+would have caught, and this went wrong repeatedly in one pull request. Not done
+there because it is a workflow and test change with its own proof, and that pull
+request had `0` implementation files by design.
 
 ---
 
