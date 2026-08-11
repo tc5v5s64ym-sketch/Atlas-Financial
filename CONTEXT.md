@@ -233,7 +233,9 @@ is visible without a password.
   secrets that exist are supplied as Render environment secrets in production and
   as environment variables in your own shell when running locally.
   `SITE_PASSWORD` and `SESSION_SECRET` are never in this repo, never in
-  `data.json`, never client-side, never in a log, and never in any conversation.
+  `data.json`, never in a log, never in any conversation, and never delivered to
+  or persisted in the browser. Typing the shared password into the sign-in form is
+  the secret being *used*, not stored, and is not an exception to that.
 
 ## Live
 

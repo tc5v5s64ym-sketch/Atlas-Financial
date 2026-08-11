@@ -282,9 +282,17 @@ So the rule, not the enumeration, is what binds:
 - **A page script renders; it does not decide.** `renderCalendar()` and
   `renderPlan()` format what they are given.
 
-Anything not named above is one of those three. If it is genuinely unclear which,
-that is a question for the required review — never a licence to stand up a fourth
-answer.
+**Two page scripts break that third rule today — and they are defects, not a
+fourth category.** `public/modellers.js` computes the renewal's HELOC interest
+inline, and `public/deepdive.js:125` filters and sorts `upcoming` against today's
+date to choose the household's "Next due" — a selection policy no engine owns and
+no test can reach. Both are recorded in `B73`. A page script that decides is an
+*unnamed authority*, so finding another one is something to route, not somewhere
+to file it.
+
+Anything not named above belongs to one of those three rules, or is that defect.
+If it is genuinely unclear which, that is a question for the required review —
+never a licence to stand up a fourth answer.
 
 Four of those rows carry a trap, and each is recorded rather than smoothed over.
 
@@ -421,5 +429,14 @@ A secret Atlas legitimately holds lives in exactly one of:
   an environment variable cannot do. This exists so OAuth refresh rotation would
   not require inventing a second rule later. Not authorised today.
 
-And **never**, in any context: in source control, in `data.json`, in a pull
-request, client-side in any form the browser can read, or in a log.
+And **never**: in source control, in `data.json`, in a pull request, in a log, or
+**delivered to or persisted in client code or browser storage** — not in
+JavaScript, not in `localStorage` or a cookie the page can read, not in a file the
+browser fetches, not embedded in markup.
+
+That last clause is about where a secret **lives**, and it deliberately does not
+reach the sign-in form. The household typing the shared password into
+`server.js`'s login page is the secret being *used*, over HTTPS, and the server
+never sends it back. An earlier draft read "client-side in any form the browser
+can read", which declared Atlas's own deployed login path forbidden — and a rule
+that outlaws the thing it exists to protect gets ignored rather than followed.

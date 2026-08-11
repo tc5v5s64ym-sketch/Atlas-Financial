@@ -538,8 +538,9 @@ request is ready to merge.
 - **A secret Atlas legitimately holds** — `SITE_PASSWORD`, `SESSION_SECRET`, and
   one day possibly an approved read-only provider token — lives only where
   [`ARCHITECTURE.md`](ARCHITECTURE.md) permits, and never in the repository, in
-  `data.json`, in a pull request body, client-side, or in a log. That file is the
-  one home for the rule; do not restate a narrower version here.
+  `data.json`, in a pull request body, in a log, or delivered to or persisted in
+  the browser. That file is the one home for the rule; do not restate a narrower
+  version here.
 - **Tag every figure** verified / calculated / estimated / unknown. An estimate
   is never presented as a verified fact.
 - A contradiction between two published figures is a stop, not a footnote.

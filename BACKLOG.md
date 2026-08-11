@@ -256,17 +256,26 @@ characters — but a comment asserting something untrue is the class of defect
 this repository treats as real. Fix it in passing, whenever a pull request has
 honest reason to touch that file; it does not justify one of its own.
 
-**B73 · The renewal comparison is solved inside a page script** · *small, real*
-`public/modellers.js` computes the HELOC's compounded balance and the renewal
-interest totals inline — `heloc.balance * Math.pow(1 + helocRate / perYear, …)`
-and the mortgage-interest arithmetic beside it. `CONTEXT.md` states the opposite
-rule: the engine owns the answers, the pages render them, because a figure
-computed in a page script cannot be tested by the node suite that guards every
-other figure. These numbers reach the household — they are what the May 2027
-renewal decision is weighed on. Move them into a testable engine function and
-reconcile against a hand-computed case. `payoff()` and `amortisedPayment()` in
-`public/app.js` are already shared helpers and are not the problem; the inline
-HELOC compounding in `modellers.js` is.
+**B73 · Financial decisions made inside page scripts** · *small, real*
+`CONTEXT.md` states the rule: the engine owns the answers, the pages render them
+— because anything computed in a page script cannot be reached by the node suite
+that guards every other figure. Two places break it today, and both produce
+something the household acts on:
+
+- **`public/modellers.js`** computes the HELOC's compounded balance and the
+  renewal interest totals inline — `heloc.balance * Math.pow(1 + helocRate /
+  perYear, …)` and the mortgage-interest arithmetic beside it. These are what the
+  May 2027 renewal decision is weighed on.
+- **`public/deepdive.js:125`** filters `upcoming` for unpaid cash items, sorts by
+  date and takes the first, deciding which obligation is the household's **"Next
+  due"**. That is a selection policy, not formatting: no engine owns it, nothing
+  tests it, and a second answer could appear elsewhere with nothing to notice.
+
+Move both into testable engine functions and reconcile against hand-computed
+cases. `payoff()` and `amortisedPayment()` in `public/app.js` are already shared
+helpers and are not the problem — the inline arithmetic and the inline selection
+are. Found while building the authority table in PR A, which records both as
+unnamed authorities rather than pretending the rule already holds.
 
 **B74 · Two calendars, and nothing notices when they disagree** · *needs a decision first*
 `renderCalendar()` in `public/plan.js` draws the on-page grid from the forecast

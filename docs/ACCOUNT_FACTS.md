@@ -1875,9 +1875,11 @@ figure per pattern for exactly this reason.
   PINs, security codes and 2FA are the owner's alone. On any doubt, stop.
 - **Raw statements and exports stay in `raw/`** and never leave this machine.
 - **Tag every figure** verified / calculated / estimated / unknown.
-- The application's own secrets live only where `ARCHITECTURE.md` permits —
-  Render environment secrets in production, an environment variable in the
-  developer's shell locally — never in git, client-side, or in a log.
+- The application's own secrets live only where `ARCHITECTURE.md` permits, and
+  that file is the one home for the rule — do not restate a narrower version here.
+  Today that means Render environment secrets in production and an environment
+  variable in the developer's shell locally; never in git, never in a log, and
+  never delivered to or persisted in the browser.
 
 ## What only the household can answer
 
