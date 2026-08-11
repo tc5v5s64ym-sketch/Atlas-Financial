@@ -205,9 +205,16 @@ this one already had.
 
 ### Tier 2 — cadence and trend *(the obvious next step)*
 
-Today the site shows a **single point in time**. The questions that matter over
-the next year are trend questions: is the HELOC actually falling, is Triangle
-moving, did the changes stick.
+**Spending, interest and fees already have history** — `public/periods.json`
+feeds a monthly trend on the Deep Dive, and `B65` records the period selector as
+done. What has no history is **account balances**: the site shows those at a
+single point in time, so the questions that matter over the next year cannot be
+answered — is the HELOC actually falling, is Triangle moving, did the changes
+stick.
+
+The distinction matters because the loose version of this sentence said the whole
+site was a single point in time, which would send later work to rebuild a trend
+capability that already ships.
 
 The intended mechanism is `snapshots/<YYYY-MM-DD>.json` — one file per reading,
 same shape as `data.json`, with the site drawing trend lines across them. This
@@ -246,18 +253,38 @@ the same question — and it still carries one, noted under the table.
 
 | Concept | Incumbent authority |
 |---|---|
+| The schedule — what is due, when, how often | `Forecast.expandEvents`, via `simulate`, from the `plan` inputs |
 | Cash projection over the window | `Forecast.simulate` |
 | Weekly household cap | `Forecast.recommend` — **and only it** |
-| The next move the household is told to make | `plan.actions` in `data.json`, rendered by `renderPlan()` in `public/plan.js` |
 | Coupled cash-and-debt walk | `Forecast.projectDebts` |
 | Revolving headroom, limits, pending | `Forecast.utilisation` |
 | Budget — owner targets against actuals | `Forecast.budgetBreakdown`, with classification and targets in `data.json` `plan.budget` |
+| The next move the household is told to make | `plan.actions` in `data.json`, rendered from `plan.actions[0]` by `public/plan.js` |
+| Where the next surplus dollar goes | `plan.nextDollar` in `data.json`; its `target` feeds `Forecast.projectDebts` |
+| Payoff and renewal modelling | `payoff()` and `amortisedPayment()` in `public/app.js`, driven by `public/modellers.js` |
 | Historical spending series | generated `public/periods.json`, from `scripts/periods.js` |
 | Published figures | `data.json` |
-| Payoff and renewal modelling | `payoff()` and `amortisedPayment()` in `public/app.js`, driven by `public/modellers.js` |
-| Calendar — the on-page month grid and agenda | `renderCalendar()` in `public/plan.js`, from the same projection |
+| Calendar — the on-page month grid and agenda | `renderCalendar()` in `public/plan.js` — **presentation of `sim.events` only** |
 | Calendar — the exported `.ics` | `scripts/calendar-ics.js`, from `docs/ACCOUNT_FACTS.md` and observed recurrence |
 | Authority and reconciliation guards | the `npm test` suites |
+
+**The table is not a closed list, and reading it as one is how work goes wrong.**
+Three rounds of advisory review added five rows to it that inspection had missed.
+So the rule, not the enumeration, is what binds:
+
+- **`data.json` `plan` is the authority for what the engine is told** — the
+  obligations, bills, commitments, groups, funding, budget targets, `nextDollar`
+  policy and written actions. Changing what the household is *told to do* means
+  changing `data.json`, not adding logic that decides it elsewhere.
+- **`Forecast` is the authority for what follows from that** — the schedule, the
+  projection, the cap, the debt walk, headroom and the budget split. Changing what
+  *follows* means changing the engine, where the node suite can prove it.
+- **A page script renders; it does not decide.** `renderCalendar()` and
+  `renderPlan()` format what they are given.
+
+Anything not named above is one of those three. If it is genuinely unclear which,
+that is a question for the required review — never a licence to stand up a fourth
+answer.
 
 Four of those rows carry a trap, and each is recorded rather than smoothed over.
 
@@ -283,12 +310,22 @@ contradicts the rule `CONTEXT.md` states — the engine owns the answers, the
 pages render them. Recorded as `B73`; not fixed here, because fixing it moves an
 authority and needs its own proof.
 
-**There are already two calendars.** The on-page grid derives from the
-projection; the exported `.ics` derives independently from standing facts and
-observed recurrence, and `B29` records it as imported into Google Calendar. They
-can drift, and nothing today would notice. That is a pre-existing overlap this
-file *records* rather than creates — recorded as `B74`. Until it is resolved,
-neither is a licence to add a third.
+**There are already two calendars, and neither of them is `renderCalendar()`.**
+The schedule — dates, amounts, recurrence — is `Forecast.expandEvents`'s, and
+`renderCalendar()` only formats the `sim.events` it is handed; later calendar work
+belongs in the engine, where it can be tested, not in the renderer. The two
+*schedules* are that one and the exported `.ics`, which derives independently from
+standing facts and observed recurrence and which `B29` records as imported into
+Google Calendar. They can drift, and nothing today would notice. That is a
+pre-existing overlap this file *records* rather than creates — recorded as `B74`.
+Until it is resolved, neither is a licence to add a third.
+
+**`plan.nextDollar` is derived, not instructed.** Its own provenance note says so:
+neither Dale nor Amanda has stated or approved the `protect-then-highest-cost`
+ordering — the implementation derived it from the penalty-rate clock and the
+current facts. It is the incumbent because it is what the site acts on today, not
+because anyone signed it off. Promoting it to an owner instruction is an
+owner-reserved decision, not a documentation edit.
 
 ---
 
