@@ -46,22 +46,33 @@ required outcomes fail.
 
 ### `tests`
 
-`npm test` runs six suites:
+`npm test` runs seven suites:
 
 1. static and security sanity;
 2. forecast engine and opening-gap regression;
 3. household-budget reconciliation;
 4. coupled cash-and-debt reconciliation;
-5. one-authority invariants; and
-6. merge-card mechanical behavior.
+5. one-authority invariants;
+6. named authority-surface coverage; and
+7. merge-card mechanical behavior.
 
 These stay blocking because they protect demonstrated failures:
 
 - the weekly cap double-counted a payday;
 - one page published `$1,650/week` and `$0/week` for the same concept;
-- standing facts contradicted each other in separate locations; and
+- standing facts contradicted each other in separate locations;
+- the incumbent authority table repeatedly omitted real financial authorities;
+- a new authority surface could otherwise be added without being registered; and
 - the raw-data pre-commit safety hook silently stopped running after its
   executable bit was lost.
+
+The authority-surface guard deliberately claims coverage only of the named,
+mechanically enumerable surfaces recorded by `B75`: Forecast exports, the named
+`data.json plan.*` policy keys, the payoff/renewal calculators, and the named
+artifact-writing scripts. It proves that removing a known row or adding a new
+Forecast export without classification fails. Page scripts that decide rather
+than render remain a review-detectable class because no honest closed mechanical
+signature exists for them.
 
 The numerical suites use independent totals or identities where correctness is
 at stake. A test of the same function that computes the answer is not an
