@@ -76,6 +76,25 @@
   const atLeast = (value, floor) => value >= floor - EPSILON;
   const below = (value, floor) => value < floor - EPSILON;
 
+  // What a facility owes TODAY. Pending charges are ALREADY INCURRED, so they
+  // belong to the opening balance: a card whose posted balance is under its
+  // limit but whose pending charges take it over is over its limit, and the
+  // settlement is bookkeeping rather than a decision.
+  //
+  // One rule, three consumers — the debt walk opens on it, headroom is measured
+  // against it, and the renewal compounds from it. It is a function rather than
+  // three copies of one expression because two copies had already disagreed
+  // once: the Travel Visa published $0 available beside a derived $21.69,
+  // because one of them knew about $165.13 of pending charges and the other
+  // did not.
+  const openingBalance = debt => debt.balance + (debt.pending || 0);
+
+  // Payments a year, by declared cadence. `streamAmount` states the same
+  // convention from the other side — a monthly figure paid bi-weekly arrives as
+  // 26ths of a year's worth — and this is the inverse, used to put a bi-weekly
+  // obligation and a monthly one on one comparable footing.
+  const PAYMENTS_PER_YEAR = { biweekly: 26, monthly: 12 };
+
   /* --------------------------------------------------------------- events */
   // opts: { scenario, incomeOverrides: {id: monthlyAmount}, disabled: [ids],
   //         injections: [{date, amount}] — one-off cash arriving from outside
@@ -698,13 +717,11 @@
     const events = expandEvents(plan, start, end, opts);
     const byId = {};
     const state = (debts || []).map(x => {
-      // Pending charges are ALREADY INCURRED. A card whose posted balance is
-      // under its limit but whose pending charges take it over is over its
-      // limit — the settlement is bookkeeping, not a decision. Carrying them
-      // from the opening balance is what makes headroom, over-limit state and
-      // interest all agree with what the institution would say today.
+      // Carrying pending charges from the opening balance is what makes
+      // headroom, over-limit state and interest all agree with what the
+      // institution would say today. The rule itself is `openingBalance`.
       const pending = x.pending || 0;
-      const opening = x.balance + pending;
+      const opening = openingBalance(x);
       const s = {
         id: x.id, label: x.label, secured: !!x.secured, rate: x.rate || 0,
         limit: x.limit, opening, balance: opening,
@@ -1043,7 +1060,7 @@
   function utilisation(debts, extra) {
     const rows = (debts || []).filter(x => x.limit != null).map(x => {
       const pending = x.pending || 0;
-      const used = x.balance + pending;
+      const used = openingBalance(x);
       return {
         id: x.id, label: x.label, posted: x.balance, pending, used, limit: x.limit,
         available: Math.max(0, x.limit - used),
@@ -1071,9 +1088,165 @@
     };
   }
 
+  /* ------------------------------------------------- the May 2027 renewal */
+  // The level payment that repays `principal` over `years` at `annualPct`,
+  // compounded monthly.
+  //
+  // This lived in `public/app.js` — the shared PAGE core — where it decided a
+  // household-facing figure outside anything the node suite could reach.
+  // `renewal` is its only consumer, so it is internal here rather than a second
+  // exported authority; leaving a copy behind in `app.js` would have been the
+  // duplicated formula this move exists to remove.
+  function amortisedPayment(principal, annualPct, years) {
+    const i = annualPct / 100 / 12, n = years * 12;
+    if (i === 0) return principal / n;
+    return principal * i / (1 - Math.pow(1 + i, -n));
+  }
+
+  // What the mortgage renewal costs at a given rate and amortisation, and what
+  // folding the interest-only HELOC into it changes.
+  //
+  // `public/modellers.js` used to work this out itself — the HELOC's compounded
+  // balance, both interest totals, and the comparison against today's household
+  // cash were all page arithmetic. The May 2027 decision is weighed on those
+  // figures, and they sat where no test could reach them. That is `B73`.
+  //
+  // The modelled trade is unchanged by the move. What changed is where the
+  // inputs come from, because a renewal model carrying its own copy of the debt
+  // picture is precisely the failure this engine exists to prevent:
+  //
+  //   BALANCES come from the debt records the walk in `projectDebts` opens on,
+  //     through the same `openingBalance` rule. `data.json` `mortgage` keeps the
+  //     renewal's standing facts — maturity, remaining years, prepayment room —
+  //     and is no longer a second home for the balance the arithmetic runs on.
+  //   TODAY'S HOUSEHOLD CASH comes from `plan.obligations`, the authority for
+  //     what is due and how often. That is what makes the HELOC's $0.00 derived
+  //     rather than asserted: its obligation is `nonCash`, so it contributes
+  //     nothing to cash by construction rather than by a field that has to be
+  //     remembered. It also means changing the mortgage payment moves the
+  //     comparison the household reads.
+  //   HOW THE HELOC BEHAVES comes from the debt record, which
+  //     `test-invariants.js` already names the canonical home for its interest
+  //     treatment and for the split between economic cost and household cash.
+  //
+  // The old page code fell back to `heloc.payment` whenever `cashPayment` or
+  // `monthlyInterest` was missing. That fallback is not carried over: treating
+  // the capitalised charge as a payment is the exact bug — a $814/month bill
+  // nobody pays — that the split was introduced to end, and an invariant now
+  // holds the split in place, so there is nothing left for it to protect.
+  //
+  // Every figure returned is a number and every decision is an id. Money,
+  // dates, colour and wording are presentation and stay on the page.
+  function renewal(plan, debts, opts) {
+    opts = opts || {};
+    plan = plan || {};
+    const rate = Number(opts.rate);
+    const years = Number(opts.years);
+    const consolidate = !!opts.consolidate;
+
+    const record = id => (debts || []).find(x => x.id === id) || null;
+    const mortgage = record('mortgage');
+    const heloc = record('heloc');
+
+    // Monthly-equivalent household cash for one debt: its recurring CASH
+    // obligations, and nothing else. A capitalising charge is a real economic
+    // cost and is reported separately, but no cash leaves an account for it.
+    const unmodelled = [];
+    const monthlyCash = debtId => (plan.obligations || [])
+      .filter(o => o.debtId === debtId && !o.nonCash)
+      .reduce((sum, o) => {
+        const perYear = PAYMENTS_PER_YEAR[o.frequency];
+        // A cadence with no annual equivalent — a one-off, or one this table
+        // does not know — is REPORTED rather than dropped. Silently omitting a
+        // real cash obligation would understate today's baseline and overstate
+        // what the renewal costs against it, in the same direction and for the
+        // same reason as the $814 bill that nobody paid.
+        if (!perYear) { unmodelled.push(o.id); return sum; }
+        return sum + o.amount * perYear / 12;
+      }, 0);
+
+    const mortgageCash = monthlyCash('mortgage');
+    const helocCash = monthlyCash('heloc');
+    const householdCash = mortgageCash + helocCash;
+
+    const capitalised = !!heloc && heloc.interestTreatment === 'capitalised';
+    const helocEconomic = heloc && heloc.monthlyInterest != null ? heloc.monthlyInterest : 0;
+    const helocOpening = heloc ? openingBalance(heloc) : 0;
+    const helocRate = heloc && heloc.rate ? heloc.rate / 100 : 0;
+    const mortgageOpening = mortgage ? openingBalance(mortgage) : 0;
+
+    let principal, payment, amortisingInterest, helocInterest, helocOwed;
+    if (consolidate) {
+      // Both debts amortise, so the HELOC principal is genuinely repaid and
+      // nothing is left owing on it at the horizon.
+      principal = mortgageOpening + helocOpening;
+      payment = amortisedPayment(principal, rate, years);
+      amortisingInterest = payment * years * 12 - principal;
+      helocInterest = 0;
+      helocOwed = 0;
+    } else {
+      principal = mortgageOpening;
+      const mortgagePayment = amortisedPayment(principal, rate, years);
+      // The HELOC is not refinanced, so whatever cash it costs today keeps
+      // leaving the account alongside the new mortgage payment.
+      payment = mortgagePayment + helocCash;
+      amortisingInterest = mortgagePayment * years * 12 - principal;
+      // Capitalised interest COMPOUNDS, and at the MONTHLY cadence the charge
+      // is actually raised on. Charging simple interest and then reporting the
+      // opening balance as the amount still owed understated it by $275,305 at
+      // the default 18 years; compounding annually instead of monthly
+      // understated it by a further $9,212.
+      helocOwed = capitalised
+        ? helocOpening * Math.pow(1 + helocRate / PAYMENTS_PER_YEAR.monthly,
+          PAYMENTS_PER_YEAR.monthly * years)
+        : helocOpening;
+      // Where the interest is PAID rather than capitalised the balance stands
+      // still, so the cost is simple interest on it for the whole horizon.
+      helocInterest = capitalised
+        ? helocOwed - helocOpening
+        : helocOpening * helocRate * years;
+    }
+
+    const totalInterest = amortisingInterest + helocInterest;
+    const delta = payment - householdCash;
+
+    return {
+      rate, years, consolidate,
+      today: {
+        // Which picture of "today" applies: a HELOC whose interest capitalises
+        // is not a bill, and saying so is the difference between a $3,466.67
+        // baseline and a $4,280.85 one that nobody pays.
+        id: capitalised ? 'capitalised' : 'paid',
+        mortgageCash, helocCash, householdCash, helocEconomic, capitalised,
+        // Cash obligations against these debts that have no monthly
+        // equivalent. Non-empty means the baseline below is incomplete.
+        unmodelled,
+      },
+      heloc: heloc
+        ? { id: heloc.id, label: heloc.label, opening: helocOpening,
+          rate: heloc.rate, limit: heloc.limit }
+        : null,
+      principal, payment, delta,
+      // The comparison itself, so the page colours a decision rather than
+      // making one. EPSILON keeps a float landing on 0.0000000001 from being
+      // reported as a real increase.
+      direction: delta > EPSILON ? 'more' : delta < -EPSILON ? 'less' : 'same',
+      interest: { amortising: amortisingInterest, heloc: helocInterest, total: totalInterest },
+      helocOwed,
+      // Whether the capitalising charge stops. Only consolidating stops it —
+      // the "no longer capitalising" row once showed in keep-separate mode,
+      // contradicting the note directly beneath it.
+      capitalisation: capitalised
+        ? { id: consolidate ? 'stopped' : 'continues', amount: helocEconomic }
+        : null,
+      outcome: consolidate ? 'consolidated'
+        : capitalised ? 'interestOnlyCapitalising' : 'interestOnlyFlat',
+    };
+  }
+
   const Forecast = { addDays, diffDays, occurrences, expandEvents, simulate,
     recommendWeekly, recommend, incomeDeadline, budgetBreakdown, projectDebts,
-    nextDue, mission, utilisation, EPSILON, STEP };
+    nextDue, mission, utilisation, renewal, EPSILON, STEP };
   if (typeof module !== 'undefined' && module.exports) module.exports = Forecast;
   else root.Forecast = Forecast;
 
