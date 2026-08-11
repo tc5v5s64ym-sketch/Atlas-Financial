@@ -275,7 +275,9 @@ the same question — and it still carries one, noted under the table.
 | Mortgage rate conventions — what a quoted rate means | `RATE_BASIS` in `public/forecast.js`: fixed compounds semi-annually, variable monthly. `Forecast.renewal` requires the basis and has no default |
 | The next move the household is told to make | `plan.actions` in `data.json`, rendered from `plan.actions[0]` by `public/plan.js` |
 | Where the next surplus dollar goes | `plan.nextDollar` in `data.json`; its `target` feeds `Forecast.projectDebts` |
-| Payoff modelling | `payoff()` in `public/app.js`, driven by `public/modellers.js` |
+| Payoff modelling — which debts may be modelled, what a payment does to one, and what clears it | `Forecast.payoffDebts`, `Forecast.payoffModel` and `Forecast.paymentForMonths`, from the debt records and `plan.obligations`; `public/modellers.js` holds the wording only |
+| Debt rate conventions — what a debt's quoted rate means per period | `PAYOFF_RATE_BASIS` in `public/forecast.js`, from each debt record's `rateConvention`: a card is a daily rate over the days in its billing cycle, a prime-linked facility is compounded monthly. An undeclared convention throws |
+| What one debt costs the household in cash each month | `monthlyCashFor` in `public/forecast.js`, from `plan.obligations`; read by both `Forecast.renewal` and the payoff modeller |
 | Historical spending series | generated `public/periods.json`, from `scripts/periods.js` |
 | Published figures | `data.json` |
 | Calendar — the on-page month grid and agenda | `renderCalendar()` in `public/plan.js` — **presentation of `sim.events` only** |
@@ -296,12 +298,13 @@ So the rule, not the enumeration, is what binds:
 - **A page script renders; it does not decide.** `renderCalendar()` and
   `renderPlan()` format what they are given.
 
-**Page scripts still break that third rule in at least one place today — and it
-is a defect, not a fourth category.** `public/modellers.js` solves its own
-payoff arithmetic in `solveFor`, on top of `payoff()` in the shared page core,
-and that remains recorded in `B73`.
+**No page script is known to break that third rule today — and that is a
+statement about what has been found, not a clean bill of health.** Every
+instance recorded in `B73` has now moved into the engine. `B73` stays open
+because nothing has audited the page scripts for instances beyond the ones the
+item already lists, and that scan is its own outcome.
 
-Four instances have been moved into the engine rather than argued away. The
+Five instances have been moved into the engine rather than argued away. The
 Amanda-transfer deadline: `public/plan.js` re-ran the simulation with her
 transfer zeroed and selected the first below-buffer day itself, and
 `Forecast.incomeDeadline` now owns that counterfactual. The "Next due" tile:
@@ -314,18 +317,23 @@ The May 2027 renewal: `public/modellers.js` compounded the HELOC, totalled both
 sides' interest and compared the result against today's household cash, and
 `Forecast.renewal` now owns all of it — including the amortised payment, which
 had been sitting in `public/app.js`, the shared page core, where it decided a
-household-facing figure outside the suite's reach. In each case the page renders
-the returned result and a focused test reconciles the move against a
-hand-computed case.
+household-facing figure outside the suite's reach. The payoff modeller:
+`public/modellers.js` solved the annuity behind its "clear in 5 / 3 / 1 years"
+presets and picked its own slider floor, on top of `payoff()` in that same page
+core, and `Forecast.payoffDebts` / `Forecast.payoffModel` now own which debts may
+be modelled, what each owes today, the rate convention each is charged under, the
+minimum a larger payment is measured against, and the projection itself. In each
+case the page renders the returned result and a focused test reconciles the move
+against a hand-computed case.
 
-"At least" is doing the work in that sentence, and the number moves in both
-directions. It said *two* until a review found a third, in the same file as one
-of the renderers it praises; it says one now only because four were moved, not
-because anything audited what is left. The one it names is on the same page as
-the renewal that just moved, which is the point: moving an authority out of a
-file does not clear the file. A page script that decides is an **unnamed
-authority**, so finding another is something to route — not somewhere to file it,
-and not evidence the list is now closed.
+**"No page script is known to break it" is a weaker claim than it reads as, and
+the weakness is the point.** The count said *two* until a review found a third,
+in the same file as one of the renderers this section praises; it reached zero
+because five were moved, not because anything audited what is left. Moving an
+authority out of a file does not clear the file — the payoff modeller was still
+deciding in `public/modellers.js` after the renewal moved out of it. A page
+script that decides is an **unnamed authority**, so finding another is something
+to route, and the absence of a known instance is not evidence that none exists.
 
 Anything not named above belongs to one of those three rules, or is that defect.
 If it is genuinely unclear which, that is a question for the required review —

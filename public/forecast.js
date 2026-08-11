@@ -95,6 +95,37 @@
   // obligation and a monthly one on one comparable footing.
   const PAYMENTS_PER_YEAR = { biweekly: 26, monthly: 12 };
 
+  // What ONE debt costs the household in CASH, per month, at today's cadence.
+  //
+  // Its recurring cash obligations and nothing else. A capitalising charge is a
+  // real economic cost and is reported separately, but no cash leaves an
+  // account for it, so it is not part of what the household pays. That is what
+  // makes the HELOC's $0.00 derived rather than asserted: its obligation is
+  // `nonCash`, so it contributes nothing by construction rather than by a field
+  // somebody has to remember.
+  //
+  // A cadence with no annual equivalent — a one-off, or one `PAYMENTS_PER_YEAR`
+  // does not know — is REPORTED in `unmodelled` rather than dropped. Silently
+  // omitting a real cash obligation understates the figure, in the same
+  // direction and for the same reason as the $814 bill that nobody paid.
+  //
+  // One rule, two consumers — the renewal compares its new payment against it,
+  // and the payoff modeller uses it as the minimum every larger payment is
+  // measured against. It was the renewal's alone until the payoff modeller
+  // needed the same answer, and a second copy is how the two would have come to
+  // disagree about what the household already pays.
+  function monthlyCashFor(plan, debtId) {
+    const unmodelled = [];
+    const monthly = ((plan || {}).obligations || [])
+      .filter(o => o.debtId === debtId && !o.nonCash)
+      .reduce((sum, o) => {
+        const perYear = PAYMENTS_PER_YEAR[o.frequency];
+        if (!perYear) { unmodelled.push(o.id); return sum; }
+        return sum + o.amount * perYear / 12;
+      }, 0);
+    return { monthly, unmodelled };
+  }
+
   /* --------------------------------------------------------------- events */
   // opts: { scenario, incomeOverrides: {id: monthlyAmount}, disabled: [ids],
   //         injections: [{date, amount}] — one-off cash arriving from outside
@@ -1190,22 +1221,15 @@
     const mortgage = record('mortgage');
     const heloc = record('heloc');
 
-    // Monthly-equivalent household cash for one debt: its recurring CASH
-    // obligations, and nothing else. A capitalising charge is a real economic
-    // cost and is reported separately, but no cash leaves an account for it.
+    // Monthly-equivalent household cash for one debt. `monthlyCashFor` is the
+    // rule; this collects what it could not annualise across both debts, in the
+    // order they are asked for, so an incomplete baseline stays visible.
     const unmodelled = [];
-    const monthlyCash = debtId => (plan.obligations || [])
-      .filter(o => o.debtId === debtId && !o.nonCash)
-      .reduce((sum, o) => {
-        const perYear = PAYMENTS_PER_YEAR[o.frequency];
-        // A cadence with no annual equivalent — a one-off, or one this table
-        // does not know — is REPORTED rather than dropped. Silently omitting a
-        // real cash obligation would understate today's baseline and overstate
-        // what the renewal costs against it, in the same direction and for the
-        // same reason as the $814 bill that nobody paid.
-        if (!perYear) { unmodelled.push(o.id); return sum; }
-        return sum + o.amount * perYear / 12;
-      }, 0);
+    const monthlyCash = debtId => {
+      const cash = monthlyCashFor(plan, debtId);
+      for (const id of cash.unmodelled) unmodelled.push(id);
+      return cash.monthly;
+    };
 
     const mortgageCash = monthlyCash('mortgage');
     const helocCash = monthlyCash('heloc');
@@ -1307,9 +1331,192 @@
     };
   }
 
+  /* ------------------------------------------------------ payoff modelling */
+  // What a monthly payment does to one debt: whether it clears it at all, when,
+  // and what it costs on the way.
+  //
+  // `public/modellers.js` and `public/app.js` used to answer all of that
+  // themselves — `payoff()` in the shared PAGE core ran the projection,
+  // `solveFor()` ran the annuity that priced the "clear in 5 / 3 / 1 years"
+  // presets, and `bounds()` picked the slider floor from an interest charge it
+  // computed itself. The household reads those presets and acts on them, and no
+  // node suite could reach any of it. That is `B73`, and this is the last of it
+  // on that page.
+  //
+  // THE MOVE FOUND THREE THINGS THAT WERE WRONG, and they are corrected here
+  // rather than carried across for the sake of a clean migration diff.
+  //
+  //   1. ONE CONVENTION WAS APPLIED TO EVERY DEBT, and it was nobody's. The page
+  //      priced every balance at `annual × 30 / 365`, which charges twelve
+  //      30-day months — 360 days — for every 365 that pass. See
+  //      `PAYOFF_RATE_BASIS` below for what each debt actually carries.
+  //   2. THE BALANCE IGNORED PENDING CHARGES, so the modeller answered for a
+  //      smaller debt than the household owes. `openingBalance` is the rule the
+  //      debt walk opens on, headroom is measured against and the renewal
+  //      compounds from; it is now this too.
+  //   3. "THE MINIMUM" WAS `debt.payment`, WHICH IS NOT ALWAYS A PAYMENT. On the
+  //      HELOC that field is the capitalised interest charge, so the modeller
+  //      published a $814.18/month bill nobody pays and a payoff horizon for a
+  //      facility that nothing repays. On the mortgage it is a BI-WEEKLY amount,
+  //      read as monthly, so the modeller reported that a mortgage TD itself
+  //      says has 17 years 9 months left would never clear. The minimum is now
+  //      `monthlyCashFor` — the same annualised cash obligation the renewal
+  //      compares against.
+
+  // The MONTHLY periodic rate each supported kind of debt actually carries.
+  // A rate means nothing without the convention it is charged under, and the
+  // conventions here are not the same fact arriving twice — they are two
+  // different products that happen to meet at the same number.
+  //
+  //   CARD      A card quotes a DAILY rate, `annual / 365`. It is charged on the
+  //             average daily balance for every day of the billing cycle and
+  //             added to the balance at the cycle's end — TD's 2 July 2026
+  //             amendment says so explicitly, which is why it compounds monthly
+  //             rather than daily. Consecutive cycles TILE the calendar: the
+  //             five reconciled in `docs/ACCOUNT_FACTS.md` run 30, 29, 32, 29
+  //             and 31 days and cover 10 March to 7 August without a gap or an
+  //             overlap. So a year is 365 charged days, not 360, and the
+  //             average cycle is `365 / 12` of them.
+  //   VARIABLE  A prime-linked facility — the mortgage on TD Mortgage Prime
+  //             − 0.96%, the HELOC on TD Prime + 0.45% — is quoted compounded
+  //             monthly. This is `RATE_BASIS.variable`, deliberately reused
+  //             rather than restated: the renewal already prices a variable
+  //             quote and compounds the HELOC on it, and two copies of one
+  //             convention is how they would come to differ.
+  //
+  // `RATE_BASIS` is NOT extended with a card entry. It is the renewal's table of
+  // the two conventions a QUOTED MORTGAGE can arrive under, and `renewal`
+  // accepts any key in it as a legal basis; adding one would make "price this
+  // renewal as a credit card" a valid request.
+  const DAYS_IN_YEAR = 365;
+  const CARD_CYCLE_DAYS = DAYS_IN_YEAR / PAYMENTS_PER_YEAR.monthly;
+  const PAYOFF_RATE_BASIS = {
+    card: annualPct => (annualPct / 100 / DAYS_IN_YEAR) * CARD_CYCLE_DAYS,
+    variable: annualPct => RATE_BASIS.variable(annualPct),
+  };
+
+  // The level payment that clears `debt` in exactly `months`. The page ran this
+  // as `solveFor` to price its presets.
+  function paymentForMonths(debt, months) {
+    const n = Number(months);
+    if (!(n > 0)) return null;
+    const i = debt.monthlyRate;
+    // A zero rate is not a special case of the annuity — it is a division by
+    // zero in it. Nothing accrues, so the payment is the balance spread evenly.
+    if (i === 0) return debt.balance / n;
+    return debt.balance * i / (1 - Math.pow(1 + i, -n));
+  }
+
+  // The financially meaningful range for the payment control.
+  //
+  // The floor is HALF the first period's interest, so the slider's own bottom
+  // end is somewhere the household can see the balance growing — a control that
+  // could only show good outcomes would be answering a different question. The
+  // ceiling clears the debt inside a year, or reaches six times the floor,
+  // whichever is further out.
+  function payoffBounds(debt) {
+    const min = Math.ceil(debt.interestOnly * 0.5);
+    const max = Math.max(Math.ceil(debt.balance / 12), min * 6);
+    // Open on what the household already pays where that is a real payment
+    // inside the range; otherwise a third of the way up, which is far enough
+    // above the floor to show a payoff rather than a warning.
+    const opening = debt.minimum > min ? debt.minimum : Math.round((min + max) / 3);
+    return { min, max, start: Math.min(max, Math.max(min, Math.round(opening))) };
+  }
+
+  // Every debt the payoff modeller may answer for, with the canonical inputs it
+  // has to answer on. The page picks one and renders it; it reads no debt field
+  // for arithmetic of its own.
+  //
+  // An undeclared rate convention THROWS rather than defaulting, exactly as
+  // `renewal` does with its basis. Silently picking one would only move the
+  // assumption instead of removing it, and a broken tile is safer than a
+  // plausible wrong figure. `test-invariants.js` holds every debt record to
+  // declaring one, so this is unreachable on the published data.
+  function payoffDebts(plan, debts) {
+    return (debts || [])
+      .filter(x => x.balance != null && x.rate != null && openingBalance(x) > 0)
+      .map(x => {
+        const convention = x.rateConvention;
+        if (!Object.prototype.hasOwnProperty.call(PAYOFF_RATE_BASIS, convention)) {
+          throw new Error(`Forecast.payoffDebts: debt ${JSON.stringify(x.id)} declares no known rate `
+            + `convention (${Object.keys(PAYOFF_RATE_BASIS).join(' or ')}), got ${JSON.stringify(convention)}`);
+        }
+        const balance = openingBalance(x);
+        const monthlyRate = PAYOFF_RATE_BASIS[convention](x.rate);
+        const cash = monthlyCashFor(plan, x.id);
+        const debt = {
+          id: x.id, label: x.label, structure: x.structure || '',
+          // What is owed today, and the two parts of it. A card whose posted
+          // balance is under its limit but whose pending charges take it over
+          // owes the larger figure, and a payoff answered on the smaller one is
+          // answered for a debt the household does not have.
+          balance, posted: x.balance, pending: x.pending || 0,
+          rate: x.rate, convention, monthlyRate,
+          // The first period's interest, which is also the threshold a payment
+          // has to beat for anything at all to be repaid.
+          interestOnly: balance * monthlyRate,
+          // Monthly-equivalent CASH the household already pays against it.
+          minimum: cash.monthly,
+          // Why there is, or is not, one — so the page states the reason rather
+          // than rendering a silent blank. A facility whose only charge is
+          // capitalised has no cash minimum, and saying so is the difference
+          // between "$0.00" and "$814.18 that nobody pays".
+          minimumId: cash.monthly > 0 ? 'cash' : 'none',
+          unmodelled: cash.unmodelled,
+        };
+        debt.bounds = payoffBounds(debt);
+        debt.presets = [
+          { id: 'minimum', months: null, amount: debt.minimum },
+          { id: 'clear-60', months: 60, amount: paymentForMonths(debt, 60) },
+          { id: 'clear-36', months: 36, amount: paymentForMonths(debt, 36) },
+          { id: 'clear-12', months: 12, amount: paymentForMonths(debt, 12) },
+        ].filter(p => p.amount > 0 && isFinite(p.amount));
+        return debt;
+      });
+  }
+
+  // What `monthlyPayment` does to `debt`, and what it buys against the minimum.
+  //
+  // `debt` is one entry from `payoffDebts` — the balance, the rate convention
+  // and the minimum have already been settled there, so this cannot be run on a
+  // debt picture nothing agreed to.
+  function payoffModel(debt, monthlyPayment) {
+    const i = debt.monthlyRate, balance = debt.balance;
+    const interestOnly = debt.interestOnly;
+    const project = P => {
+      // At or below the interest charge nothing is repaid and the balance
+      // grows. `<=` and not `<`: a payment exactly equal to the interest holds
+      // the balance still forever, which is not a payoff.
+      if (!(P > interestOnly)) return { clears: false, interestOnly, shortfall: interestOnly - P };
+      const months = i === 0 ? balance / P
+        : -Math.log(1 - (balance * i) / P) / Math.log(1 + i);
+      const totalPaid = months * P;
+      return { clears: true, interestOnly, shortfall: 0, months, totalPaid,
+        totalInterest: totalPaid - balance };
+    };
+    const here = project(Number(monthlyPayment));
+    const atMinimum = debt.minimum > 0 ? project(debt.minimum) : null;
+    return {
+      payment: Number(monthlyPayment),
+      ...here,
+      // What paying more than the minimum actually buys. Withheld unless there
+      // IS a cash minimum, it clears, this payment clears, and the saving is
+      // real — "saves $0.00 and clears it 0 months sooner" is not a finding,
+      // and a saving measured against a minimum that never clears is measured
+      // against infinity.
+      versusMinimum: atMinimum && atMinimum.clears && here.clears
+        && atMinimum.totalInterest - here.totalInterest > EPSILON
+        ? { interestSaved: atMinimum.totalInterest - here.totalInterest,
+          monthsSooner: atMinimum.months - here.months }
+        : null,
+    };
+  }
+
   const Forecast = { addDays, diffDays, occurrences, expandEvents, simulate,
     recommendWeekly, recommend, incomeDeadline, budgetBreakdown, projectDebts,
-    nextDue, mission, utilisation, renewal, EPSILON, STEP };
+    nextDue, mission, utilisation, renewal, payoffDebts, payoffModel,
+    paymentForMonths, EPSILON, STEP };
   if (typeof module !== 'undefined' && module.exports) module.exports = Forecast;
   else root.Forecast = Forecast;
 

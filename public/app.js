@@ -158,26 +158,19 @@ function grouped(mount, rows, series) {
 }
 
 /* ------------------------------------------------------------------ maths */
-// Card issuers quote a daily rate and bill on 30-day months, so that is the
-// convention used here rather than a plain annual/12.
-const monthlyRate = annualPct => (annualPct / 100) * 30 / 365;
-
-function payoff(balance, annualPct, monthlyPayment) {
-  const i = monthlyRate(annualPct);
-  const interestOnly = balance * i;
-  if (monthlyPayment <= interestOnly) {
-    return { clears: false, interestOnly, shortfall: interestOnly - monthlyPayment };
-  }
-  const n = -Math.log(1 - (balance * i) / monthlyPayment) / Math.log(1 + i);
-  const totalPaid = n * monthlyPayment;
-  return { clears: true, months: n, totalPaid, totalInterest: totalPaid - balance, interestOnly };
-}
-
-// The renewal's amortised payment used to be computed here. It decided the
-// May 2027 figures from the shared page core, where no node suite could reach
-// it, and it now lives inside `Forecast.renewal` with the rest of that
-// arithmetic. `payoff` above still belongs to the payoff modeller, which is a
-// separate B73 instance and has not moved.
+// Nothing financial is decided here any more, and nothing new should be.
+//
+// This file is loaded by every page, which made it the most expensive place in
+// the repository to hide a calculation: a figure computed here reaches the
+// household from four pages at once and no node suite can reach it from any of
+// them. Two lived here. `amortisedPayment` decided the May 2027 renewal and now
+// lives inside `Forecast.renewal`; `payoff` and its `monthlyRate` decided the
+// payoff modeller — which debt clears, when, and at what cost — and now live in
+// `Forecast.payoffDebts` / `Forecast.payoffModel`, where the rate convention is
+// chosen per debt instead of assumed for all of them.
+//
+// What is left below is formatting: it turns a number the engine decided into
+// words, and decides nothing.
 
 const fmtMonths = m => {
   if (!isFinite(m)) return 'never';

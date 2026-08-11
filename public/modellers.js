@@ -1,12 +1,50 @@
 'use strict';
 /* The two interactive modellers — payoff and the May 2027 renewal.
 
-   The renewal comparison is `Forecast.renewal`'s. This file reads the sliders,
-   hands them over, and formats what comes back: it compounds nothing, charges
-   no interest, and decides nothing about which side of the trade is better.
-   Everything below the renewal section is wording, colour and layout. */
+   Both answers are the engine's. The payoff figures are
+   `Forecast.payoffDebts` / `Forecast.payoffModel`'s and the renewal comparison
+   is `Forecast.renewal`'s. This file reads the controls, hands them over, and
+   formats what comes back: it compounds nothing, charges no interest, solves
+   for no payment, and decides neither which debt may be modelled nor which side
+   of the renewal trade is better. Everything here is wording, colour and
+   layout. */
 
 /* --------------------------------------------------------------- wording */
+/* ------------------------------------------------------------ the payoff */
+
+// The preset buttons. The engine decides what each one costs and drops any it
+// cannot price; this decides only what they are called.
+const PAYOFF_PRESET_LABEL = {
+  minimum: 'Minimum',
+  'clear-60': 'Clear in 5 yrs',
+  'clear-36': 'Clear in 3 yrs',
+  'clear-12': 'Clear in 1 yr',
+};
+
+// A rate means nothing without the convention it is charged under, so the
+// modeller says which one this debt carries rather than leaving it implied.
+const PAYOFF_CONVENTION_NOTE = {
+  card: 'charged as a daily rate over every day of each billing cycle',
+  variable: 'a prime-linked rate, quoted compounded monthly',
+};
+
+// Whether there is a monthly cash minimum to measure a larger payment against.
+// A facility whose only charge is capitalised has none, and saying so is the
+// difference between "$0.00 a month" and "$814.18 a month that nobody pays".
+const PAYOFF_MINIMUM_NOTE = {
+  cash: x => `The minimum is ${money2(x.minimum)} a month.`,
+  none: () => 'No household cash leaves an account for it, so it has no minimum '
+    + 'to compare against — at $0 a month the balance simply grows by the interest.',
+};
+
+// Named, so the household can see which obligation is missing rather than only
+// that the minimum above is short by something.
+const PAYOFF_MINIMUM_GAP = x =>
+  ` ${x.unmodelled.length === 1 ? 'One further payment' : 'Further payments'} against it `
+  + `(${x.unmodelled.join(', ')}) ${x.unmodelled.length === 1 ? 'has' : 'have'} no monthly `
+  + `equivalent, so ${x.unmodelled.length === 1 ? 'it is' : 'they are'} not in that minimum.`;
+
+/* ----------------------------------------------------------- the renewal */
 /* One entry per result the engine can return. These choose none of it — a
    missing entry is a rendering failure, which is why test-renewal.js checks
    that the two sides still name the same set. */
@@ -84,9 +122,14 @@ const BASELINE_GAP = r =>
   + `equivalent, so the figure for today is short by that much and the difference below would flatter the renewal.`;
 
 function setupPayoff(d) {
-  const debts = d.debts.filter(x => x.balance != null && x.rate != null && x.balance > 0);
+  // `Forecast.payoffDebts` decides which debts may be modelled, what each one
+  // owes today, the rate convention it is charged under, and the minimum a
+  // larger payment is measured against. Nothing below reads a debt record.
+  const debts = Forecast.payoffDebts(d.plan, d.debts);
   const sel = $('debt-select');
   sel.innerHTML = debts.map((x, i) => `<option value="${i}">${x.label} — ${money(x.balance)} at ${pct(x.rate)}</option>`).join('');
+  // Which debt the control OPENS on — a starting view, not an answer. The
+  // household's dearest actively-used card is the useful place to land.
   const defaultIdx = debts.findIndex(x => /Triangle/i.test(x.label));
   sel.value = String(defaultIdx >= 0 ? defaultIdx : 0);
 
@@ -94,71 +137,58 @@ function setupPayoff(d) {
 
   function currentDebt() { return debts[Number(sel.value)]; }
 
-  function bounds(x) {
-    const min = Math.ceil(x.balance * monthlyRate(x.rate) * 0.5);
-    const max = Math.max(Math.ceil(x.balance / 12), min * 6);
-    return { min, max };
-  }
-
   function syncRange() {
-    const x = currentDebt(), b = bounds(x);
+    const x = currentDebt(), b = x.bounds;
     range.min = b.min; range.max = b.max; range.step = 5;
-    const start = x.payment && x.payment > b.min ? x.payment : Math.round((b.min + b.max) / 3);
-    range.value = Math.min(b.max, Math.max(b.min, Math.round(start)));
+    range.value = b.start;
     presets.innerHTML = '';
-    const opts = [
-      { l: 'Minimum', v: x.payment },
-      { l: 'Clear in 5 yrs', v: solveFor(x, 60) },
-      { l: 'Clear in 3 yrs', v: solveFor(x, 36) },
-      { l: 'Clear in 1 yr', v: solveFor(x, 12) },
-    ].filter(o => o.v && isFinite(o.v));
-    for (const o of opts) {
-      const b2 = document.createElement('button');
-      b2.type = 'button'; b2.className = 'preset';
-      b2.textContent = `${o.l} · ${money(o.v)}`;
-      b2.addEventListener('click', () => {
-        range.min = Math.min(range.min, Math.floor(o.v));
-        range.max = Math.max(range.max, Math.ceil(o.v));
-        range.value = Math.round(o.v); update();
+    for (const p of x.presets) {
+      const btn = document.createElement('button');
+      btn.type = 'button'; btn.className = 'preset';
+      btn.textContent = `${PAYOFF_PRESET_LABEL[p.id]} · ${money(p.amount)}`;
+      btn.addEventListener('click', () => {
+        // A preset outside the slider's own range widens it rather than being
+        // clamped to something the household did not ask for.
+        range.min = Math.min(range.min, Math.floor(p.amount));
+        range.max = Math.max(range.max, Math.ceil(p.amount));
+        range.value = Math.round(p.amount); update();
       });
-      presets.appendChild(b2);
+      presets.appendChild(btn);
     }
-  }
-
-  function solveFor(x, months) {
-    const i = monthlyRate(x.rate);
-    return x.balance * i / (1 - Math.pow(1 + i, -months));
   }
 
   function update() {
     const x = currentDebt();
     const P = Number(range.value);
     $('pay-label').textContent = money(P) + ' / month';
-    const r = payoff(x.balance, x.rate, P);
+    const r = Forecast.payoffModel(x, P);
     const out = $('payoff-out');
 
+    // Plain text, not markup: none of the wording below carries a tag, and the
+    // label and structure come from the debt record, so `textContent` keeps a
+    // data edit from being able to reach the DOM as HTML.
     $('model-context').textContent =
-      `${x.label}: ${money2(x.balance)} at ${pct(x.rate)}. Interest alone runs about ${money(r.interestOnly)} a month, `
-      + `so anything below that makes the balance grow. ${x.structure}`;
+      `${x.label}: ${money2(x.balance)} at ${pct(x.rate)}, ${PAYOFF_CONVENTION_NOTE[x.convention]}. `
+      + `Interest alone runs about ${money(r.interestOnly)} a month, so anything below that makes the balance grow. `
+      + `${x.structure}. ${PAYOFF_MINIMUM_NOTE[x.minimumId](x)}`
+      + (x.unmodelled.length ? PAYOFF_MINIMUM_GAP(x) : '');
 
     if (!r.clears) {
       out.innerHTML = `
         <div class="big neg">Never clears</div>
         <div class="row"><span>Monthly interest</span><span>${money2(r.interestOnly)}</span></div>
-        <div class="row"><span>Your payment</span><span>${money2(P)}</span></div>
+        <div class="row"><span>Your payment</span><span>${money2(r.payment)}</span></div>
         <div class="row"><span>Balance grows by</span><span class="neg">${money2(r.shortfall)}/month</span></div>
         <p class="warnline">This payment is below the interest charge, so the balance rises every month.</p>`;
       return;
     }
-    const min = x.payment ? payoff(x.balance, x.rate, x.payment) : null;
-    const saved = min && min.clears ? min.totalInterest - r.totalInterest : null;
     out.innerHTML = `
       <div class="big">${fmtMonths(r.months)}</div>
-      <div class="row"><span>Monthly payment</span><span>${money2(P)}</span></div>
+      <div class="row"><span>Monthly payment</span><span>${money2(r.payment)}</span></div>
       <div class="row"><span>Of which interest, month 1</span><span>${money2(r.interestOnly)}</span></div>
       <div class="row"><span>Total interest paid</span><span>${money2(r.totalInterest)}</span></div>
       <div class="row"><span>Total paid</span><span>${money2(r.totalPaid)}</span></div>
-      ${saved && saved > 0 ? `<p class="goodline">Saves ${money2(saved)} in interest versus paying the minimum${min && !min.clears ? '' : ` — and clears it ${fmtMonths(min.months - r.months)} sooner`}.</p>` : ''}`;
+      ${r.versusMinimum ? `<p class="goodline">Saves ${money2(r.versusMinimum.interestSaved)} in interest versus paying the minimum — and clears it ${fmtMonths(r.versusMinimum.monthsSooner)} sooner.</p>` : ''}`;
   }
 
   sel.addEventListener('change', () => { syncRange(); update(); });

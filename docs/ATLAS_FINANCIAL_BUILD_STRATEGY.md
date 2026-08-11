@@ -191,8 +191,8 @@ built *on* that picture, the picture needs owners that a test can reach.
 - **Incumbent** — `Forecast`, which gains the functions; `public/modellers.js`,
   `public/deepdive.js` and `public/plan.js`, which lose the arithmetic. `EVOLVE`.
 - **Tier** — **M3**. These figures reach the household: the renewal comparison,
-  the "Next due", the date Amanda's transfer is required by, and the homepage
-  mission.
+  the "Next due", the date Amanda's transfer is required by, the homepage
+  mission, and the payoff modeller.
 - **Backlog** — `B73`.
 - **Entry gate** — AF-AUTH-01, so a new engine function cannot land unnamed.
 - **Acceptance** — each moved decision reconciles against a **hand-computed case**
@@ -201,7 +201,10 @@ built *on* that picture, the picture needs owners that a test can reach.
   recorded.
 - **Prompt** — *Take one decision from `B73`. Move it into `public/forecast.js`,
   reconcile the result against a hand-computed case, and leave the page rendering
-  only. One decision per pull request — four decisions is four outcomes.*
+  only. One decision per pull request — five decisions is five outcomes.*
+- **State** — all five recorded decisions have moved. What remains is the scan
+  for instances the list never named, which is its own outcome and the last thing
+  standing between `B73` and closed.
 
 ### AF-CAL-01 · Give the schedule one owner
 

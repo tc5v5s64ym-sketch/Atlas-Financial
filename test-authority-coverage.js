@@ -9,7 +9,8 @@
  *   1. Forecast exports — every export must be either an explicitly classified
  *      non-authority helper or named in ARCHITECTURE.md's incumbent table.
  *   2. data.json plan policy keys — actions, nextDollar and budget.
- *   3. the two payoff/renewal calculators in public/app.js.
+ *   3. the calculators that used to live in public/app.js, the shared page core:
+ *      each must be defined in the engine and absent from the page.
  *   4. the two artifact-writing scripts already named as financial authorities:
  *      periods.js and calendar-ics.js.
  *
@@ -104,6 +105,19 @@ ok(newExportProblems.includes('newFinancialAuthority'),
   'adding a new Forecast export without an authority row makes the guard fail',
   newExportProblems.join(', '));
 
+// The page-core check has to bite on a REINSTATED calculator, not only on the
+// absence of one — an assertion that nothing is there passes trivially while it
+// is looking in the wrong place.
+const pageCalculatorReturns = src => {
+  const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  return /function\s+payoff\s*\(/.test(code) || /(const|let|var)\s+monthlyRate\s*=/.test(code);
+};
+ok(pageCalculatorReturns(read('public/app.js')
+  + '\nconst monthlyRate = annualPct => (annualPct / 100) * 30 / 365;\n'),
+'putting a payoff rate back into the page core makes the guard fail');
+ok(!pageCalculatorReturns(read('public/app.js')),
+  'and the real page core does not trip it');
+
 console.log('\n=== data.json plan policy coverage ===');
 for (const key of ['actions', 'nextDollar', 'budget']) {
   ok(Object.prototype.hasOwnProperty.call(data.plan || {}, key),
@@ -113,19 +127,30 @@ for (const key of ['actions', 'nextDollar', 'budget']) {
 }
 
 console.log('\n=== public/app.js calculator coverage ===');
-// `amortisedPayment()` was here until the renewal moved into `Forecast.renewal`;
-// it is covered by the Forecast export loop's table requirement now. `payoff()`
-// is still the payoff modeller's, and still a page-layer calculator — the
-// remaining B73 instance on that page.
+// Both calculators that lived in the shared page core have moved into the
+// engine, where the Forecast export loop above holds them to an authority row:
+// `amortisedPayment()` into `Forecast.renewal`, and `payoff()` / `monthlyRate()`
+// into `Forecast.payoffDebts` and `Forecast.payoffModel`.
+//
+// This checks they did not come BACK. `public/app.js` is loaded by all four
+// pages, so a calculation reinstated here reaches the household from every one
+// of them at once and no suite can reach it from any of them. The names are
+// checked as definitions, not mentions, so the comment explaining why they left
+// does not read as their return.
 const appSource = read('public/app.js');
-for (const fn of ['payoff']) {
-  ok(new RegExp(`function\\s+${fn}\\s*\\(`).test(appSource),
-    `${fn}() exists in public/app.js`);
-  ok(new RegExp(`${fn}\\(\\)`).test(incumbentTable),
-    `${fn}() is named in the incumbent authority table`);
+const appCode = appSource.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+for (const fn of ['payoff', 'monthlyRate', 'amortisedPayment']) {
+  ok(!new RegExp(`function\\s+${fn}\\s*\\(`).test(appCode)
+    && !new RegExp(`(const|let|var)\\s+${fn}\\s*=`).test(appCode),
+  `${fn}() is not a page-core calculator`);
 }
-ok(!/function\s+amortisedPayment\s*\(/.test(appSource),
-  'the renewal amortisation is no longer a page-core calculator');
+// The engine side of the same fact: each moved calculator has a live home the
+// export loop can hold to an authority row.
+const forecastCode = forecastSource.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+for (const fn of ['amortisedPayment', 'paymentForMonths', 'payoffModel', 'payoffDebts']) {
+  ok(new RegExp(`function\\s+${fn}\\s*\\(`).test(forecastCode),
+    `${fn}() is defined in public/forecast.js`);
+}
 
 console.log('\n=== artifact-writer coverage ===');
 for (const script of ['scripts/periods.js', 'scripts/calendar-ics.js']) {

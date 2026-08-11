@@ -88,6 +88,27 @@ ok(near(secured + consumer, debtTotal),
 ok(data.debts.every(x => typeof x.secured === 'boolean'),
   'every debt declares whether it is secured');
 
+// Every debt also declares the CONVENTION its quoted rate is charged under, and
+// it has to, because the payoff modeller prices it. `Forecast.payoffDebts`
+// throws on an undeclared one rather than guessing — a broken tile beats a
+// plausible wrong figure — and this is what keeps that throw unreachable on the
+// published data instead of a surprise the household finds first.
+const PAYOFF_CONVENTIONS = ['card', 'variable'];
+ok(data.debts.every(x => PAYOFF_CONVENTIONS.includes(x.rateConvention)),
+  'every debt declares a rate convention the payoff modeller knows',
+  data.debts.map(x => `${x.id}=${x.rateConvention}`).join(' '));
+// Two homes for the same fact, so they are checked against each other. A
+// facility priced off a Prime spread is a variable one; a card is not.
+for (const x of data.debts) {
+  ok(/prime/i.test(x.rateBasis || '') === (x.rateConvention === 'variable'),
+    `${x.id}'s stated rate basis and its declared convention agree`,
+    `${x.rateBasis} / ${x.rateConvention}`);
+}
+// And the modeller can actually run on all of it.
+ok(F.payoffDebts(plan, data.debts).length
+  === data.debts.filter(x => x.balance + (x.pending || 0) > 0).length,
+'the payoff modeller can model every debt that owes something today');
+
 console.log('\n=== HELOC semantics agree everywhere ===');
 const heloc = plan.obligations.find(o => o.id === 'heloc');
 ok(heloc && heloc.nonCash === true,
