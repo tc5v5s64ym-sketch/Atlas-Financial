@@ -12,6 +12,7 @@ nothing else, because the rest already has a home:
 | What the CI gates check and why each exists | [`docs/RISK_LABELS.md`](docs/RISK_LABELS.md) |
 | Work that can be done | [`BACKLOG.md`](BACKLOG.md) |
 | What only the household can answer | [`docs/01_OPEN_QUESTIONS.md`](docs/01_OPEN_QUESTIONS.md) |
+| What to build next, and in what order | `docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md` — **once it exists**; it does not yet |
 
 One fact, one home. Where this file and one of those appear to disagree about a
 mechanism, that file is right about the mechanism and this one is right about
@@ -529,12 +530,17 @@ request is ready to merge.
 
 - **Read-only against every institution.** No transfers, payments,
   applications, setting changes, form submissions or agreement acceptances.
-- **Never ask for or handle credentials.** Passwords, PINs, security codes and
-  2FA are the owner's alone.
+- **Never ask for or handle an institution login credential.** A bank username or
+  password, a PIN, a security answer, a one-time or 2FA code — anything that logs
+  in as the household — is the owner's alone. On doubt, stop.
 - `raw/` and `derived/` never enter git, a pull request, a comment, or a
   conversation. Only sanitised aggregates leave `raw/`.
-- Secrets live in Render and nowhere else — not in the repository, not in
-  `data.json`, not in a pull request body.
+- **A secret Atlas legitimately holds** — `SITE_PASSWORD`, `SESSION_SECRET`, and
+  one day possibly an approved read-only provider token — lives only where
+  [`ARCHITECTURE.md`](ARCHITECTURE.md) permits, and never in the repository, in
+  `data.json`, in a pull request body, in a log, or delivered to or persisted in
+  the browser. That file is the one home for the rule; do not restate a narrower
+  version here.
 - **Tag every figure** verified / calculated / estimated / unknown. An estimate
   is never presented as a verified fact.
 - A contradiction between two published figures is a stop, not a footnote.
@@ -559,8 +565,29 @@ actually reads — not only through the helper that was just written.
 
 ## What not to build
 
-Unless Dale says otherwise: no database, no bank or aggregator integration, no
-stored credentials, no automation acting against an account, no second dashboard
-or roadmap, and no governance system beyond the one in this file. The gates that
-exist are the ones that caught something real. Add a gate when something goes
-wrong that it would have caught, and not before.
+**Two absolutes, no gate, no exception:** never hold an **institution login
+credential** — a bank username or password, a PIN, a security answer, a one-time
+or 2FA code, or anything else meant for logging in as the household — and never
+automate an action against an account. Atlas reads what it is given and publishes
+a private view. It does not move money, submit a form, or accept an agreement.
+
+**On any doubt about a credential, stop.** If it could authenticate Atlas *as the
+household* through an institution's ordinary login path, it is prohibited.
+[`ARCHITECTURE.md`](ARCHITECTURE.md) states that fail-closed rule and is the one
+home for it.
+
+**Two gated capabilities:** a canonical store, and automated financial-data
+connectivity. Both are wanted and neither is authorised yet.
+[`ARCHITECTURE.md`](ARCHITECTURE.md) holds the exact gate for each. A capability
+is started when its gate is met and Dale says so, not when a plan reaches that
+line. Owner-reserved stop 5 is unchanged.
+
+**Still nothing here:** no second dashboard, and no governance system beyond this
+file. The gates that exist are the ones that caught something real. Add a gate
+when something goes wrong that it would have caught, and not before.
+
+**One roadmap, in three parts that do not overlap.**
+[`ARCHITECTURE.md`](ARCHITECTURE.md) owns *direction, authority and the gates*; a
+build strategy will own *sequencing within what direction permits*, once one
+exists; [`BACKLOG.md`](BACKLOG.md) owns *work and findings*. A second one of any
+of those is the thing to refuse.

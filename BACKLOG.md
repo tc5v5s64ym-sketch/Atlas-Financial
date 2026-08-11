@@ -256,6 +256,96 @@ characters — but a comment asserting something untrue is the class of defect
 this repository treats as real. Fix it in passing, whenever a pull request has
 honest reason to touch that file; it does not justify one of its own.
 
+**B73 · Financial decisions made inside page scripts** · *small, real*
+`CONTEXT.md` states the rule: the engine owns the answers, the pages render them
+— because anything computed in a page script cannot be reached by the node suite
+that guards every other figure. Page scripts break it in the places recorded
+below, each producing something the household acts on. **The list is what has
+been found, not a count of what exists** — it has grown twice under review
+already, so treat it as open:
+
+- **`public/modellers.js`** computes the HELOC's compounded balance and the
+  renewal interest totals inline — `heloc.balance * Math.pow(1 + helocRate /
+  perYear, …)` and the mortgage-interest arithmetic beside it. These are what the
+  May 2027 renewal decision is weighed on.
+- **`public/deepdive.js:125`** filters `upcoming` for unpaid cash items, sorts by
+  date and takes the first, deciding which obligation is the household's **"Next
+  due"**. That is a selection policy, not formatting: no engine owns it, nothing
+  tests it, and a second answer could appear elsewhere with nothing to notice.
+- **`public/plan.js:327-340`** re-runs `Forecast.simulate` with Amanda's transfer
+  set to zero and takes the first day that dips below the buffer as `neededBy` —
+  **the deadline by which she has to move money**. It is shown as a date at `:472`
+  and `:808` and badged on the calendar at `:248`, `:253` and `:278`. `grep`
+  confirms no test references `neededBy` at all. This is the sharpest of them: a
+  real financial deadline the household acts on, derived by a second simulation
+  run that lives in a page.
+- **`public/plan.js:517-538`** assembles the homepage **mission** — cover the
+  timing gap by a date, get a named card back under its limit, hold or cut
+  spending to a weekly figure, stop the HELOC growing before it passes its limit,
+  or put the surplus against the most expensive card — and writes it to
+  `plan-mission`, shown at `index.html:38`. It selects *which* instructions apply
+  and composes the sentence, so it is the most prominent thing the household is
+  told to do and no engine owns it. Note the comment already sitting in that
+  block: the mission once recommended `$1,500/week` against a −$809 low, because
+  only the status band had been conditioned on whether the gap could be funded.
+
+Move **each** recorded decision into a testable engine function and reconcile
+against a hand-computed case — and check for others before calling this closed,
+rather than closing it once the entries above are done. `payoff()` and
+`amortisedPayment()` in `public/app.js` are already shared helpers and are not the
+problem; the inline arithmetic and the inline selections are. Found while building
+the authority table in PR A, which records them as unnamed authorities rather than
+pretending the rule already holds.
+
+**B74 · Two calendars, and nothing notices when they disagree** · *needs a decision first*
+`renderCalendar()` in `public/plan.js` draws the on-page grid from the forecast
+projection. `scripts/calendar-ics.js` builds `derived/household-payments.ics`
+independently, from `docs/ACCOUNT_FACTS.md` and the recurrence observed in
+chequing data — and B29 records that file as imported into Google Calendar, so
+it is a calendar the household actually reads. Two schedules, two sources, no
+reconciliation: a due date or amount corrected in one can sit stale in the other
+indefinitely. Decide which is authoritative and derive the other from it, or
+state why each legitimately answers a different question. Deriving the `.ics`
+from the projection is the obvious candidate but is not free — the `.ics` covers
+statement closes and renewal reminders the projection does not model.
+
+**B75 · Nothing checks that the authority table is complete** · *small, and earned*
+`ARCHITECTURE.md`'s incumbent-authority table is maintained by hand and by
+inspection. Three rounds of advisory review on one pull request added five rows
+that inspection had missed — `payoff()`/`amortisedPayment()`,
+`scripts/calendar-ics.js`, `plan.actions`, `plan.nextDollar` and
+`Forecast.expandEvents` — and named one row that was wrong outright. The table now
+binds by rule rather than enumeration, which stops the failure being silent, but
+nothing mechanical would notice a new authority going unnamed.
+
+**The check has to enumerate every surface an authority can come from, and the
+first draft of this item did not.** It proposed `Forecast` exports and `data.json`
+`plan.*` keys — and two of the five omissions listed above,
+`payoff()`/`amortisedPayment()` in `public/app.js` and `scripts/calendar-ics.js`,
+are neither. That check would have gone **green** while those were missing, which
+is the false green it exists to prevent, proposed in the same paragraph that lists
+the counterexamples. Advisory review caught it. The surfaces are at least:
+
+- `Forecast`'s exported functions;
+- `data.json`'s `plan.*` policy keys — `actions`, `nextDollar`, `budget`;
+- exported calculators in `public/app.js`, such as `payoff()` and
+  `amortisedPayment()`;
+- `scripts/*.js` that write an artifact the household reads, such as
+  `calendar-ics.js` and `periods.js`;
+- page scripts that decide rather than render — the `B73` class, which has no
+  clean signature and may only be reachable by review.
+
+Even that list is a judgement about where an authority can live, so the check
+proves *coverage of named surfaces*, not completeness, and should say so rather
+than implying more. A check claiming more than it establishes is the defect this
+item is about.
+
+Closed-form per surface — the kind `CLAUDE.md` permits a machine to enforce — and
+this is the case that rule describes: add a gate when something goes wrong that it
+would have caught, and this went wrong repeatedly in one pull request. Not done
+there because it is a workflow and test change with its own proof, and that pull
+request had `0` implementation files by design.
+
 ---
 
 ## Ready — needs a session at an institution

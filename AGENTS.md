@@ -15,6 +15,11 @@ Read in this order:
 5. [`BACKLOG.md`](BACKLOG.md) — work that can be done, and what blocks each item.
 6. [`docs/01_OPEN_QUESTIONS.md`](docs/01_OPEN_QUESTIONS.md) — what only the
    household can answer.
+7. `docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md` — the ordered build sequence, **once
+   it exists**. It does not yet, so today planned work comes from `BACKLOG.md`.
+   When it does exist, **it owns the order of planned capability work** — read it
+   before starting any; `ARCHITECTURE.md` still owns direction, authority and the
+   gates, and the strategy sequences only what those permit.
 
 ## The three things agents get wrong here
 
@@ -55,8 +60,12 @@ outcome at once.
 
 This is the one launcher. Do not write a second one.
 
-> Read `AGENTS.md`, then take the first eligible item in `BACKLOG.md` — or the
-> owner's instruction if there is one. Verify current state before editing.
+> Read `AGENTS.md`, then take the owner's instruction if there is one — else the
+> first eligible item in `BACKLOG.md`. **Once a build strategy exists, it
+> sequences planned capability work**: `BACKLOG.md` stays the record of work and
+> findings and feeds the strategy, rather than independently overriding its order.
+> How an urgent finding interleaves with that order is the strategy's to define.
+> Verify current state before editing.
 > One independently provable outcome, fresh branch, merge card filled, findings
 > dispositioned. Stop only for an owner-reserved item or the required review.
 

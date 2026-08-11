@@ -11,6 +11,9 @@
    owner for anything already recorded there
 5. **`BACKLOG.md`** — work that can be done, and what is blocking each item
 6. **`docs/01_OPEN_QUESTIONS.md`** — what only the household can answer
+7. **`docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`** — the ordered build sequence,
+   **once it exists**. It does not yet; when it does, read it before starting
+   planned capability work
 
 **The distinction between the last two matters.** If an item needs a human to
 *know* something, it is a question. If it needs someone to *do* something, it is
@@ -219,13 +222,20 @@ is visible without a password.
 
 - **Read-only against financial institutions.** No transfers, payments,
   applications, setting changes, form submissions or agreement acceptances.
-- **Never ask for or enter credentials.** Passwords, PINs, security codes — the
-  owner handles all of these.
+- **Never ask for or enter an institution login credential.** Bank passwords,
+  PINs, security codes, 2FA — the owner handles all of these. On any doubt about
+  whether a credential logs in as the household, stop.
 - **Raw financial files stay local.** Only sanitised aggregates leave `raw/`.
 - **Tag every figure** verified / calculated / estimated / unknown. An estimate
   is never presented as a verified fact.
-- **Secrets live only in Render.** `SITE_PASSWORD` and `SESSION_SECRET` are not
-  in this repo, not in `data.json`, and not in any conversation.
+- **Secrets live only where `ARCHITECTURE.md` permits**, and that file is the one
+  home for the rule — do not restate a narrower version of it here. Today the two
+  secrets that exist are supplied as Render environment secrets in production and
+  as environment variables in your own shell when running locally.
+  `SITE_PASSWORD` and `SESSION_SECRET` are never in this repo, never in
+  `data.json`, never in a log, never in any conversation, and never delivered to
+  or persisted in the browser. Typing the shared password into the sign-in form is
+  the secret being *used*, not stored, and is not an exception to that.
 
 ## Live
 

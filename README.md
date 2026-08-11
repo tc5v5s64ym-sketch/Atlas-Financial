@@ -39,8 +39,12 @@ is still the whole financial picture of two people.
 - `noindex` headers plus a `robots.txt` that disallows everything.
 - A strict Content-Security-Policy; no inline scripts, no third-party requests.
 
-**Secrets live in Render environment variables and nowhere else.** Never commit
-them, and never put them in `data.json`.
+**`SITE_PASSWORD` and `SESSION_SECRET` live in Render environment variables in
+production, and in your own shell's environment variables when running locally.**
+Never commit them, never put them in `data.json`, never send them to the browser,
+and never write them to a log. [`ARCHITECTURE.md`](ARCHITECTURE.md) holds the
+rule for every secret Atlas may legitimately hold, and is the one home for it —
+this is what it permits for these two, not a narrower rule of its own.
 
 ## Running it locally
 

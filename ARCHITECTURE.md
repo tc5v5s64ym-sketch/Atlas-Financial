@@ -153,46 +153,319 @@ Readers should see the current position, not a history of the reasoning.
 not be categorised. `docs/00_MASTER_PICTURE.md` carries a coverage section for
 exactly this reason.
 
-**Read-only against institutions. Never handle credentials.** No transfers,
-payments, applications, setting changes, form submissions or agreement
-acceptances. Passwords, PINs, security codes and 2FA are the owner's alone.
+**Read-only against institutions. Never handle an institution login credential.**
+No transfers, payments, applications, setting changes, form submissions or
+agreement acceptances. Passwords, PINs, security codes and 2FA are the owner's
+alone. *(The application's own server-side secrets are a different thing — see
+**The secret boundary** below, which is the one home for that line.)*
 
 ---
 
 ## Direction
 
-Deliberately staged. **Nothing below tier 1 is decided.**
+**This file is the one home for direction.** It owns what Atlas is for, what is
+in bounds, which authority owns which concept, and the gate each future
+capability has to pass. Where any other document disagrees with this one about
+direction, this file wins and the other is wrong.
+
+*Sequencing* — the order work is done in, and the prompt for each piece — is a
+different question and does not live here. When a build strategy exists at
+`docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md` it will own that, and it may schedule
+only what this file already permits. It does not exist yet, and nothing here
+depends on it.
+
+### The destination — owner-approved
+
+Atlas is being built toward a **household financial operating system**: deeply
+understood spending, unknown transactions burned down, Dale's and Amanda's input
+reconciled, realistic budgets, a weekly safe-to-spend figure, upcoming
+obligations and a financial calendar, planned purchases, deterministic horizons
+and scenarios, debt and cash guidance, fresh data when it is earned, and an
+assistant-neutral way to ask about all of it.
+
+That destination is approved. **None of it authorises a technology.** Each gated
+capability below still has to pass its own gate, and a gate is passed by
+evidence and an owner decision — never by a plan reaching that line.
+
+The tiers below describe **the stage each capability is at**, not a ceiling — and
+not a record of current progress, which is `BACKLOG.md`'s.
 
 ### Tier 1 — complete the picture *(in progress)*
 
-The analysis is only as good as its coverage, and four gaps currently limit it:
+The analysis is only as good as its coverage. **Which gaps are still open is
+`BACKLOG.md`'s to say**, and `docs/01_OPEN_QUESTIONS.md`'s for anything only the
+household can answer. This file names the tier; it does not carry its contents.
 
-- **MBNA Mastercard** and **Affirm/Flexiti** — the last debts with unknown terms
-- **The business** — roughly 29% of household income, with invisible costs
-- **A home valuation** — without it, net worth is unstateable and the May 2027
-  renewal cannot be modelled properly
+That is not tidying. The list that stood here called MBNA and Affirm/Flexiti the
+last debts with unknown terms and said net worth was unstateable without a home
+valuation — while `BACKLOG.md` recorded capture as complete, Flexiti closed, the
+home valued at $1.1m–$1.4m and net worth at $357k–$657k. It also promised four
+gaps and listed three. A second copy of another document's work state drifts, and
+this one already had.
 
 ### Tier 2 — cadence and trend *(the obvious next step)*
 
-Today the site shows a **single point in time**. The questions that matter over
-the next year are trend questions: is the HELOC actually falling, is Triangle
-moving, did the changes stick.
+**Spending, interest and fees already have history** — `public/periods.json`
+feeds a monthly trend on the Deep Dive, and `B65` records the period selector as
+done. What has no history is **account balances**: the site shows those at a
+single point in time, so the questions that matter over the next year cannot be
+answered — is the HELOC actually falling, is Triangle moving, did the changes
+stick.
+
+The distinction matters because the loose version of this sentence said the whole
+site was a single point in time, which would send later work to rebuild a trend
+capability that already ships.
 
 The intended mechanism is `snapshots/<YYYY-MM-DD>.json` — one file per reading,
 same shape as `data.json`, with the site drawing trend lines across them. This
 needs no database: files in git give history, diffs and versioning for free.
 
-### Tier 3 — an interaction layer *(undecided, and gated)*
+### Tier 3 — an interaction layer *(gated, not yet earned)*
 
 If the site should ever be something the household **writes to** — ticking off
-questions, logging a payment, leaving notes — that is the point at which a
-database earns its place, and Render Postgres would be the choice.
+questions, logging a payment, leaving notes — that is one of the two things that
+can earn a store. **That trigger has not been reached.**
 
-**That trigger has not been reached.** Until the site needs to accept input,
-files are the right tool and a database would only add failure modes.
+---
 
-### Explicitly not planned
+## Authority — what owns what
 
-Connecting directly to bank APIs or aggregators; storing credentials of any
-kind; automating any action against an account. This system reads what the
-owner gives it and publishes a private view. That boundary is the design.
+**Every concept has one owner.** A new piece of work either consumes an existing
+owner or explicitly replaces it; it never quietly becomes a second one.
+
+| Concept | Owner today |
+|---|---|
+| Direction, boundaries, capability gates, the secret boundary | **this file** |
+| Who decides, who reviews, what a pull request carries | [`CLAUDE.md`](CLAUDE.md) |
+| Work and findings | [`BACKLOG.md`](BACKLOG.md) |
+| What only the household can answer | [`docs/01_OPEN_QUESTIONS.md`](docs/01_OPEN_QUESTIONS.md) |
+| Standing facts — rates, limits, due dates | [`docs/ACCOUNT_FACTS.md`](docs/ACCOUNT_FACTS.md) |
+| Sequencing of planned capability work | a build strategy, **once one exists** |
+
+### Atlas is not greenfield
+
+The financial authorities below are **incumbent**. Later work evolves, derives
+from, replaces or deletes one of them — and says which. It does not stand up a
+second engine, a second weekly figure, a second budget or a second calendar
+beside them. This repository has already shipped that failure, publishing
+`$1,650/wk` in one tile and `$0/wk` below, because two pieces of code answered
+the same question — and it still carries one, noted under the table.
+
+| Concept | Incumbent authority |
+|---|---|
+| The schedule — what is due, when, how often | `Forecast.expandEvents`, via `simulate`, from the `plan` inputs |
+| Cash projection over the window | `Forecast.simulate` |
+| Weekly household cap | `Forecast.recommend` — **and only it** |
+| Coupled cash-and-debt walk | `Forecast.projectDebts` |
+| Revolving headroom, limits, pending | `Forecast.utilisation` |
+| Budget — owner targets against actuals | `Forecast.budgetBreakdown`, with classification and targets in `data.json` `plan.budget` |
+| The next move the household is told to make | `plan.actions` in `data.json`, rendered from `plan.actions[0]` by `public/plan.js` |
+| Where the next surplus dollar goes | `plan.nextDollar` in `data.json`; its `target` feeds `Forecast.projectDebts` |
+| Payoff and renewal modelling | `payoff()` and `amortisedPayment()` in `public/app.js`, driven by `public/modellers.js` |
+| Historical spending series | generated `public/periods.json`, from `scripts/periods.js` |
+| Published figures | `data.json` |
+| Calendar — the on-page month grid and agenda | `renderCalendar()` in `public/plan.js` — **presentation of `sim.events` only** |
+| Calendar — the exported `.ics` | `scripts/calendar-ics.js`, from `docs/ACCOUNT_FACTS.md` and observed recurrence |
+| Authority and reconciliation guards | the `npm test` suites |
+
+**The table is not a closed list, and reading it as one is how work goes wrong.**
+Three rounds of advisory review added five rows to it that inspection had missed.
+So the rule, not the enumeration, is what binds:
+
+- **`data.json` `plan` is the authority for what the engine is told** — the
+  obligations, bills, commitments, groups, funding, budget targets, `nextDollar`
+  policy and written actions. Changing what the household is *told to do* means
+  changing `data.json`, not adding logic that decides it elsewhere.
+- **`Forecast` is the authority for what follows from that** — the schedule, the
+  projection, the cap, the debt walk, headroom and the budget split. Changing what
+  *follows* means changing the engine, where the node suite can prove it.
+- **A page script renders; it does not decide.** `renderCalendar()` and
+  `renderPlan()` format what they are given.
+
+**Page scripts break that third rule in at least three places today — and they
+are defects, not a fourth category.** `public/modellers.js` computes the
+renewal's HELOC interest inline; `public/deepdive.js:125` filters and sorts
+`upcoming` to choose the household's "Next due"; and `public/plan.js:327-340`
+re-runs the simulation with Amanda's transfer zeroed and takes the first
+below-buffer day as **the deadline by which she has to move money** — presented as
+a date at `:472` and `:808` and badged on the calendar, with no test referencing
+it. All three are recorded in `B73`.
+
+"At least three" is deliberate. That sentence said *two* until a review found the
+third, in the same file as one of the renderers it praises. A page script that
+decides is an **unnamed authority**, so finding another is something to route —
+not somewhere to file it, and not evidence the list is now closed.
+
+Anything not named above belongs to one of those three rules, or is that defect.
+If it is genuinely unclear which, that is a question for the required review —
+never a licence to stand up a fourth answer.
+
+Four of those rows carry a trap, and each is recorded rather than smoothed over.
+
+**The cap and the next move are two authorities, not one.** `recommend` computes
+the cap, the gap and the funding result; the instruction the household actually
+reads is authored by hand in `data.json` `plan.actions` and rendered from
+`plan.actions[0]`. They were one row here until an advisory review split them —
+which matters, because a later change to the recommender that leaves the written
+action untouched would move the figures under an instruction that no longer
+matches them, and nothing would notice.
+
+**`Forecast.recommendWeekly` is not a co-owner of the weekly cap.** It is the
+solver `recommend` calls, and on an opening-gap plan it returns `0` while
+`recommend` funds the gap and re-solves for the cap the household can actually
+afford. `forecast.js` calls `recommend` *the* single authority in its own words.
+A page reading the solver directly is precisely how `$1,650/wk` and `$0/wk`
+shipped on the same screen — so later work consumes `recommend`, never the
+solver beneath it.
+
+**The renewal comparison is computed in a page script.** `modellers.js` does its
+own HELOC compounding inline rather than asking a testable engine, which
+contradicts the rule `CONTEXT.md` states — the engine owns the answers, the
+pages render them. Recorded as `B73`; not fixed here, because fixing it moves an
+authority and needs its own proof.
+
+**There are already two calendars, and neither of them is `renderCalendar()`.**
+The schedule — dates, amounts, recurrence — is `Forecast.expandEvents`'s, and
+`renderCalendar()` only formats the `sim.events` it is handed; later calendar work
+belongs in the engine, where it can be tested, not in the renderer. The two
+*schedules* are that one and the exported `.ics`, which derives independently from
+standing facts and observed recurrence and which `B29` records as imported into
+Google Calendar. They can drift, and nothing today would notice. That is a
+pre-existing overlap this file *records* rather than creates — recorded as `B74`.
+Until it is resolved, neither is a licence to add a third.
+
+**`plan.nextDollar` is derived, not instructed.** Its own provenance note says so:
+neither Dale nor Amanda has stated or approved the `protect-then-highest-cost`
+ordering — the implementation derived it from the penalty-rate clock and the
+current facts. It is the incumbent because it is what the site acts on today, not
+because anyone signed it off. Promoting it to an owner instruction is an
+owner-reserved decision, not a documentation edit.
+
+---
+
+## The gated capabilities
+
+Each is **wanted** and **not yet permitted**. The gate is the whole rule: until
+it is met, the capability is not started, and a plan that schedules it earlier is
+wrong rather than persuasive. **Passing a gate is an owner decision, recorded** —
+never an agent's judgement that the moment has come.
+
+### A canonical transaction and history store
+
+**Gate.** A store may be introduced when the current batch-derived foundation —
+`data.json`, generated `public/periods.json`, and git as the history — can no
+longer provide the **invariant, identity or idempotency** guarantees the work
+needs, and that failure is **demonstrated on real household data rather than
+predicted**.
+
+**Candidate if the gate is met.** SQLite, as the smallest thing giving identity,
+foreign keys, uniqueness and idempotent import without an operated service. It is
+**not mandatory and not pre-authorised** — it is the current preferred minimal
+answer *if* a store is earned at all. Postgres needs its own evidence.
+
+**Not a reason to open it:** that a plan says so, that relational modelling would
+be tidier, or that a later capability assumes it. Until the gate is met, **files
+remain the right tool** — they give history, diffs and versioning for free, and a
+store would only add failure modes.
+
+### Automated financial-data connectivity
+
+Reading account data automatically, rather than from files the owner exports, is
+an **owner-approved desired capability**. It is gated on all five of:
+
+1. **proven need** — the manual capture path is demonstrably the binding limit;
+2. **current Canadian availability** — a provider that actually serves these
+   institutions, verified when the work starts, not assumed;
+3. **security review** — owner-reserved, and unchanged by anything here;
+4. **provider semantics** — how it identifies accounts, transactions, pending
+   state and corrections, and what its failure modes cost;
+5. **a working canonical ingestion foundation** — idempotent import and identity
+   proven **before anything live is pointed at it**.
+
+Condition 5 is about pointing something live, not about building the foundation:
+the foundation may be built first, without a provider, and doing so satisfies one
+condition rather than opening the gate.
+
+---
+
+## The secret boundary
+
+The line is between a secret that lets something **log in as the household** and
+a secret that lets a server **read data it has been granted**. "No credentials"
+is the wrong rule and was never true here — the server refuses to start without
+`SITE_PASSWORD` and `SESSION_SECRET`.
+
+### Absolute — no gate, not a tier
+
+- a bank or institution **username or password**;
+- a **PIN**, a security answer, or a one-time / 2FA code;
+- any credential intended for **direct interactive login** to an institution;
+- any **automated action against an account** — a transfer, a bill payment, an
+  application, a setting change, a form submission, an agreement acceptance or
+  an approval.
+
+Atlas reads and publishes. Nothing below opens this list.
+
+**Fail closed on ambiguity.** If a credential could authenticate Atlas *as the
+household* through an institution's ordinary consumer-login path, treat it as
+prohibited and **stop** — do not weigh it, do not proceed on the reading that
+permits it. An enumeration fails open on the category nobody thought of; this
+rule does not, and it is deliberately the catch-all rather than the list above.
+
+### Gated — may be permitted later, not permitted now
+
+Provider or API **service credentials**, and OAuth access or refresh tokens, for
+**read-only** data access. Permitted only after the connectivity gate is met
+**and** the owner approves — and never for anything on the absolute list.
+
+### Where a secret may live — the canonical rule
+
+**This is the one home for this rule.** Other documents defer to it and must not
+restate a narrower or wider version.
+
+**Two kinds of secret, and the rule differs.** A **configured secret** is one
+Atlas is given and holds: `SITE_PASSWORD`, `SESSION_SECRET`, and — only if the
+connectivity gate is ever passed — a provider, API or OAuth credential. A
+**session credential** is one the server *issues* to a browser after a successful
+sign-in: today the signed, expiring `hfd_session` token. Everything below about
+where a secret may live governs **configured secrets**; the session credential is
+covered separately at the end, and the two must not be conflated.
+
+A configured secret lives in exactly one of:
+
+- **production** — the deployment platform's environment secrets, which is Render
+  today; the platform's mechanism matters, not the provider's name;
+- **local development** — an environment variable in the developer's own shell,
+  which is how `SITE_PASSWORD` and `SESSION_SECRET` are supplied when running
+  locally, exactly as `README.md` documents;
+- **an encrypted server-side store**, if — and only if — a future approved
+  provider needs a secret **persisted and rotated** rather than set once, which
+  an environment variable cannot do. This exists so OAuth refresh rotation would
+  not require inventing a second rule later. Not authorised today.
+
+And a configured secret goes **never**: into source control, into `data.json`,
+into a pull request, into a log, or into the browser in any form — not in
+JavaScript, not in `localStorage` or any cookie, not in a file the page fetches,
+not embedded in markup. **No configured secret is ever stored client-side**, and
+nothing below relaxes that.
+
+#### The session credential
+
+`server.js` issues `hfd_session` after a correct password: a token signed with
+`SESSION_SECRET` and carrying its own expiry. It is **permitted in the browser**,
+and in exactly one form — an **`HttpOnly` cookie that page JavaScript cannot
+read**, `SameSite=Lax`, and `Secure` whenever the request is HTTPS. Not in
+`localStorage`, not in a readable cookie, not in a URL, not in markup.
+
+That is the deployed gate, and this paragraph aligns the rule with it rather than
+authorising anything new. **It grants nothing else**: no provider, API or OAuth
+credential may be stored client-side under it, and it does not touch the absolute
+prohibitions above on institution login credentials or automated account actions.
+
+Two earlier drafts of the prohibition were wrong in the same direction, and review
+caught both. The first read "client-side in any form the browser can read" and
+outlawed Atlas's own sign-in page — the household typing the shared password is
+the secret being *used*, over HTTPS, and the server never sends it back. The
+second banned "browser storage" outright and outlawed the session cookie that same
+page sets. The defect each time was writing a prohibition before saying which kind
+of secret it governs, which is why the distinction now comes first.
