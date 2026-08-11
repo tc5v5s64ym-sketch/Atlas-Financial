@@ -39,8 +39,14 @@ to reach it.
 ### The boundary that does not move
 
 Atlas **reads and publishes**. It never moves money, never submits a form, never
-accepts an agreement, and never stores a credential. No gate opens those; they
-are not tiers.
+accepts an agreement, and never holds an **institution login credential** — a
+bank username or password, a PIN, a security answer, a one-time or 2FA code. No
+gate opens those; they are not tiers.
+
+The application's own server-side secrets are a different thing and already
+exist. A **read-only** provider token would also be a different thing, is **not
+authorised today**, and could only ever live inside the secret boundary in
+[`ARCHITECTURE.md`](../ARCHITECTURE.md), which is the one home for that line.
 
 ### Atlas and assistants
 
@@ -573,7 +579,10 @@ nothing automates capture today.
 **Tier.** FRONTIER. **Entry gate.** `AF-LIVE-01` and the full connectivity gate,
 including a current availability check — **provider choice is not made in this
 file and must be verified when the work starts, not assumed from it.**
-**Acceptance.** Read-only; no credential stored by Atlas; a manual path still
+**Acceptance.** Read-only. No institution login credential is ever held. Any
+provider token stays inside the `ARCHITECTURE.md` secret boundary — server-side,
+in the platform's secret mechanism, never in git, never in the browser, never in
+a log — and exists at all only if the owner has approved it. A manual path still
 works if the connector fails.
 
 ### `AF-LIVE-03` — Scheduled refresh and resilience

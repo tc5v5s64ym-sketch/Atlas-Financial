@@ -560,10 +560,18 @@ actually reads — not only through the helper that was just written.
 
 ## What not to build
 
-**Two absolutes, no gate, no exception:** never store credentials of any kind,
-and never automate an action against an account. Atlas reads what it is given and
-publishes a private view. It does not move money, submit a form, or accept an
-agreement.
+**Two absolutes, no gate, no exception:** never hold an **institution login
+credential** — a bank username or password, a PIN, a security answer, a one-time
+or 2FA code, or anything else meant for logging in as the household — and never
+automate an action against an account. Atlas reads what it is given and publishes
+a private view. It does not move money, submit a form, or accept an agreement.
+
+That is narrower than "no secrets", and deliberately: the server already refuses
+to start without `SITE_PASSWORD` and `SESSION_SECRET`. A **read-only** provider
+or API token would be the same kind of thing and is **not authorised today** —
+[`ARCHITECTURE.md`](ARCHITECTURE.md) holds the one secret boundary, including
+where such a token could ever live: server-side only, in the deployment
+platform's secret mechanism, never in git, never in the browser, never in a log.
 
 **Two gated capabilities:** a canonical store, and automated financial-data
 connectivity. Both are wanted and neither is authorised yet.

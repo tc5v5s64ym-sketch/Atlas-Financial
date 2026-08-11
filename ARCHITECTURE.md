@@ -153,9 +153,12 @@ Readers should see the current position, not a history of the reasoning.
 not be categorised. `docs/00_MASTER_PICTURE.md` carries a coverage section for
 exactly this reason.
 
-**Read-only against institutions. Never handle credentials.** No transfers,
-payments, applications, setting changes, form submissions or agreement
-acceptances. Passwords, PINs, security codes and 2FA are the owner's alone.
+**Read-only against institutions. Never handle an institution login credential.**
+No transfers, payments, applications, setting changes, form submissions or
+agreement acceptances. Passwords, PINs, security codes and 2FA are the owner's
+alone. *(The application's own server-side secrets — `SITE_PASSWORD`,
+`SESSION_SECRET` — are a different thing, and the secret boundary under
+**Direction** draws the line.)*
 
 ---
 
@@ -250,10 +253,44 @@ Reading account data automatically rather than from files the owner exports is a
 5. **a working canonical ingestion foundation** — idempotent import and identity
    proven before anything live is pointed at it.
 
-**Still absolutely out of bounds, gate or no gate:** storing credentials of any
-kind, and automating any *action* against an account. Atlas reads and publishes.
-It never moves money, never submits a form, never accepts an agreement. That
-boundary is not a tier and does not have a gate — it is the design.
+### The secret boundary
+
+"No credentials" was too blunt, and it was already untrue: the server refuses to
+start without `SITE_PASSWORD` and `SESSION_SECRET`. The real line is between
+**secrets that let something log in as the household** and **secrets that let a
+server read data it has been granted**.
+
+**Absolute — never stored, never automated, no gate, not a tier:**
+
+- a bank or institution **username or password**;
+- a **PIN**, a security answer, or a one-time / 2FA code;
+- any credential intended for **direct interactive login** to an institution;
+- any **automated action against an account** — a transfer, a bill payment, an
+  application, a setting change, a form submission, an agreement acceptance or an
+  approval.
+
+Those are the household's alone, and Atlas never holds or uses them. It reads and
+publishes. Nothing below opens this list.
+
+**Gated — may be permitted later, and is not permitted now:**
+
+- provider or API **service credentials**, and OAuth access or refresh tokens,
+  for **read-only** data access.
+
+If the connectivity gate above is ever passed and the owner approves, such a
+token may exist only inside this boundary:
+
+- **server-side only** — never reaching the browser;
+- held in the deployment platform's secret mechanism, or an encrypted
+  server-side store — the same place `SITE_PASSWORD` and `SESSION_SECRET` live
+  today, which is Render and nowhere else;
+- **never in git**, never in `data.json`, never in a pull request;
+- **never in browser JavaScript, `localStorage`, or any client-side store**;
+- **never written to a log**.
+
+**Read-only tokens are not authorised today.** Nothing in this repository stores
+one, and this section grants no provider, no implementation and no schedule — it
+states the shape a future approval would have to take.
 
 ### What passing a gate looks like
 
