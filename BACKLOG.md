@@ -264,10 +264,33 @@ below, each producing something the household acts on. **The list is what has
 been found, not a count of what exists** — it has grown twice under review
 already, so treat it as open:
 
-- **`public/modellers.js`** computes the HELOC's compounded balance and the
-  renewal interest totals inline — `heloc.balance * Math.pow(1 + helocRate /
-  perYear, …)` and the mortgage-interest arithmetic beside it. These are what the
-  May 2027 renewal decision is weighed on.
+- **`public/modellers.js`** still solves its own payoff arithmetic. `solveFor`
+  runs the annuity formula to answer "clear it in 5 / 3 / 1 years", and
+  `bounds` sets the slider's floor from a monthly interest charge it computes
+  itself, on top of `payoff()` in `public/app.js`. The presets are figures the
+  household reads and acts on, and none of them is reachable from the node
+  suite. **This is the remaining instance on that page, and it is a separate
+  outcome from the renewal below.**
+- **RESOLVED 2026-08-11 — the May 2027 renewal.** `Forecast.renewal` now owns
+  what the renewal costs and what folding the HELOC into it changes: the
+  compounded HELOC balance, both interest totals, today's household cash and the
+  comparison against it. `public/modellers.js` reads the sliders, renders the
+  result and holds the wording; `amortisedPayment()` moved out of
+  `public/app.js` — the shared *page* core — rather than being copied, so no
+  formula exists in both places. The renewal is coupled rather than parallel:
+  balances come from the debt records through the same `openingBalance` rule the
+  debt walk opens on and headroom is measured against, and today's household
+  cash is annualised from `plan.obligations`, so the HELOC's $0.00 of cash is
+  derived from its charge being non-cash rather than asserted. `test-renewal.js`
+  proves every figure twice — once against a literal, once by a method the
+  engine does not use, walking the amortisation to zero and growing the HELOC by
+  216 successive monthly charges — breaks ten formulas and branches in the
+  engine source to show each is load-bearing, and reconciles the move against the
+  real published inputs at all 3,822 slider positions the page can reach and
+  through the page's own template, character for character. It also added the
+  invariant that `data.json` `mortgage`, the mortgage debt record and the plan
+  obligation state one balance, one rate and one payment; nothing had checked
+  that, and the renewal now depends on two of them.
 - **RESOLVED 2026-08-11 — "Next due".** `Forecast.nextDue` now owns which
   published calendar obligation the household owes soonest: paid, non-cash and
   past-due items are excluded there, the earliest eligible date wins, and the
@@ -308,10 +331,22 @@ already, so treat it as open:
 Move **each remaining** recorded decision into a testable engine function and
 reconcile against a hand-computed case — and check for others before calling this
 closed, rather than closing it once the entries above are done.
-`payoff()` and `amortisedPayment()` in `public/app.js` are already shared helpers
-and are not the problem; the inline arithmetic and the inline selections are.
-Found while building the authority table in PR A, which records them as unnamed
-authorities rather than pretending the rule already holds.
+
+Two things this item said until the renewal moved, both now corrected by having
+done the work. It said `payoff()` and `amortisedPayment()` in `public/app.js`
+"are already shared helpers and are not the problem". `amortisedPayment()` was
+the problem: it decided the renewal's monthly figure from the shared *page*
+core, and being shared is what made that easy to overlook. `payoff()` is in the
+same position today, and being a helper is not what excuses it — nothing yet
+proves what it computes. And the wording "the inline arithmetic and the inline
+selections are" reads as though a formula becomes acceptable once it is given a
+name; what matters is whether a test can reach the figure the household acts on.
+
+**The repository-wide scan is the remaining work, and it is the next outcome.**
+Four instances have been moved and a fifth is recorded above; none of that was
+found by searching, so the count is still what has been looked at rather than
+what exists. Found while building the authority table in PR A, which records
+them as unnamed authorities rather than pretending the rule already holds.
 
 **B74 · Two calendars, and nothing notices when they disagree** · *needs a decision first*
 `renderCalendar()` in `public/plan.js` draws the on-page grid from the forecast
@@ -339,7 +374,8 @@ meant to read, and that is this item's, not a defect to patch inside either tile
 PR #10 added `test-authority-coverage.js` to the blocking `npm test` suite. It
 mechanically enumerates the named, closed surfaces earned by this finding:
 Forecast exports; `data.json` policy keys `actions`, `nextDollar` and `budget`;
-`payoff()` / `amortisedPayment()`; and the named artifact writers
+the page-core calculators — `payoff()`, and `amortisedPayment()` until it moved
+into `Forecast.renewal`; and the named artifact writers
 `periods.js` / `calendar-ics.js`. It proves the guard bites when a known Forecast
 authority row is removed or an unclassified export is added, and it explicitly
 does **not** claim a clean mechanical signature for the B73 page-script class.
@@ -407,6 +443,20 @@ cheapest honest fix is wording: say what was compared and stop. Anything more �
 extending the snapshot to the other three pages — is a real scope decision about
 what counts as a published figure, and belongs to the owner, not to a wording
 fix.
+
+**B83 · `CONTEXT.md`'s suite table names five of eleven suites** · *housekeeping*
+It says "Five suites, in dependency order" and lists `test-static`,
+`test-forecast`, `test-budget`, `test-debt` and `test-invariants`. There are
+eleven, and the six missing ones — `test-income-deadline`, `test-next-due`,
+`test-mission`, `test-renewal`, `test-authority-coverage` and `test-mergecard` —
+are the ones that guard the authorities moved out of page scripts. Nothing is
+wrong in the repository and `test.js` is the real list; the defect is that a
+reader orienting from `CONTEXT.md` would not know those guards exist, which is
+the failure mode that document is for. Reconciling the table against `test.js`
+is a documentation outcome of its own, and it is worth doing once rather than
+one row at a time — this entry was added while the renewal suite made it six.
+Found on the renewal authority move; the table was already stale by five before
+that PR touched it.
 
 
 **B78 · Idempotent import with stable identity** · `QUEUED` · *medium*

@@ -39,6 +39,7 @@ in the block underneath it.
                budgetBreakdown()   essential vs discretionary vs already dated
                recommend()         THE weekly household cap
                incomeDeadline()    when a modelled income becomes required
+               renewal()           the May 2027 renewal, from the same debts
     ↓
   plan.js / deepdive.js / records.js / modellers.js   render only
 ```
@@ -270,9 +271,10 @@ the same question — and it still carries one, noted under the table.
 | Revolving headroom, limits, pending | `Forecast.utilisation` |
 | Budget — owner targets against actuals | `Forecast.budgetBreakdown`, with classification and targets in `data.json` `plan.budget` |
 | The mission — which instructions the homepage gives, and in what order | `Forecast.mission`, from the `recommend` and `projectDebts` results; `public/plan.js` holds the wording only |
+| The May 2027 renewal — what it costs, what folding the HELOC in changes | `Forecast.renewal`, from the debt records and `plan.obligations`; `public/modellers.js` holds the wording only |
 | The next move the household is told to make | `plan.actions` in `data.json`, rendered from `plan.actions[0]` by `public/plan.js` |
 | Where the next surplus dollar goes | `plan.nextDollar` in `data.json`; its `target` feeds `Forecast.projectDebts` |
-| Payoff and renewal modelling | `payoff()` and `amortisedPayment()` in `public/app.js`, driven by `public/modellers.js` |
+| Payoff modelling | `payoff()` in `public/app.js`, driven by `public/modellers.js` |
 | Historical spending series | generated `public/periods.json`, from `scripts/periods.js` |
 | Published figures | `data.json` |
 | Calendar — the on-page month grid and agenda | `renderCalendar()` in `public/plan.js` — **presentation of `sim.events` only** |
@@ -294,10 +296,11 @@ So the rule, not the enumeration, is what binds:
   `renderPlan()` format what they are given.
 
 **Page scripts still break that third rule in at least one place today — and it
-is a defect, not a fourth category.** `public/modellers.js` computes the
-renewal's HELOC interest inline, and that remains recorded in `B73`.
+is a defect, not a fourth category.** `public/modellers.js` solves its own
+payoff arithmetic in `solveFor`, on top of `payoff()` in the shared page core,
+and that remains recorded in `B73`.
 
-Three instances have been moved into the engine rather than argued away. The
+Four instances have been moved into the engine rather than argued away. The
 Amanda-transfer deadline: `public/plan.js` re-ran the simulation with her
 transfer zeroed and selected the first below-buffer day itself, and
 `Forecast.incomeDeadline` now owns that counterfactual. The "Next due" tile:
@@ -306,13 +309,20 @@ took the first, and `Forecast.nextDue` now owns that selection. The homepage
 mission: `public/plan.js` chose which instructions the household was given and
 composed the sentence, and `Forecast.mission` now owns that selection, returning
 the instructions and the figures behind them while the page keeps the wording.
-In each case the page renders the returned result and a focused test reconciles
-the move against a hand-computed case.
+The May 2027 renewal: `public/modellers.js` compounded the HELOC, totalled both
+sides' interest and compared the result against today's household cash, and
+`Forecast.renewal` now owns all of it — including the amortised payment, which
+had been sitting in `public/app.js`, the shared page core, where it decided a
+household-facing figure outside the suite's reach. In each case the page renders
+the returned result and a focused test reconciles the move against a
+hand-computed case.
 
 "At least" is doing the work in that sentence, and the number moves in both
 directions. It said *two* until a review found a third, in the same file as one
-of the renderers it praises; it says one now only because three were moved, not
-because anything audited what is left. A page script that decides is an **unnamed
+of the renderers it praises; it says one now only because four were moved, not
+because anything audited what is left. The one it names is on the same page as
+the renewal that just moved, which is the point: moving an authority out of a
+file does not clear the file. A page script that decides is an **unnamed
 authority**, so finding another is something to route — not somewhere to file it,
 and not evidence the list is now closed.
 
@@ -338,11 +348,16 @@ A page reading the solver directly is precisely how `$1,650/wk` and `$0/wk`
 shipped on the same screen — so later work consumes `recommend`, never the
 solver beneath it.
 
-**The renewal comparison is computed in a page script.** `modellers.js` does its
-own HELOC compounding inline rather than asking a testable engine, which
-contradicts the rule `CONTEXT.md` states — the engine owns the answers, the
-pages render them. Recorded as `B73`; not fixed here, because fixing it moves an
-authority and needs its own proof.
+**The renewal comparison is `Forecast.renewal`'s, and it opens on the same debt
+state as everything else.** It reads balances through the shared
+`openingBalance` rule — posted plus pending, the rule the debt walk opens on and
+headroom is measured against — and takes today's household cash from
+`plan.obligations`, so the HELOC's $0.00 of cash is derived from its `nonCash`
+charge rather than asserted, and a change to the mortgage payment moves the
+comparison the household reads. `data.json` `mortgage` keeps the renewal's
+standing facts (maturity, remaining years, prepayment room) and is no longer a
+second home for the balance the arithmetic runs on. What is left in the page is
+wording, colour and layout.
 
 **There are already two calendars, and neither of them is `renderCalendar()`.**
 The schedule — dates, amounts, recurrence — is `Forecast.expandEvents`'s, and
