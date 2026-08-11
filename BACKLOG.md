@@ -259,8 +259,10 @@ honest reason to touch that file; it does not justify one of its own.
 **B73 · Financial decisions made inside page scripts** · *small, real*
 `CONTEXT.md` states the rule: the engine owns the answers, the pages render them
 — because anything computed in a page script cannot be reached by the node suite
-that guards every other figure. Two places break it today, and both produce
-something the household acts on:
+that guards every other figure. Page scripts break it in the places recorded
+below, each producing something the household acts on. **The list is what has
+been found, not a count of what exists** — it has grown twice under review
+already, so treat it as open:
 
 - **`public/modellers.js`** computes the HELOC's compounded balance and the
   renewal interest totals inline — `heloc.balance * Math.pow(1 + helocRate /
@@ -274,15 +276,17 @@ something the household acts on:
   set to zero and takes the first day that dips below the buffer as `neededBy` —
   **the deadline by which she has to move money**. It is shown as a date at `:472`
   and `:808` and badged on the calendar at `:248`, `:253` and `:278`. `grep`
-  confirms no test references `neededBy` at all. This is the sharpest of the
-  three: it is a real financial deadline the household acts on, derived by a
-  second simulation run that lives in a page.
+  confirms no test references `neededBy` at all. This is the sharpest of them: a
+  real financial deadline the household acts on, derived by a second simulation
+  run that lives in a page.
 
-Move both into testable engine functions and reconcile against hand-computed
-cases. `payoff()` and `amortisedPayment()` in `public/app.js` are already shared
-helpers and are not the problem — the inline arithmetic and the inline selection
-are. Found while building the authority table in PR A, which records both as
-unnamed authorities rather than pretending the rule already holds.
+Move **each** recorded decision into a testable engine function and reconcile
+against a hand-computed case — and check for others before calling this closed,
+rather than closing it once the entries above are done. `payoff()` and
+`amortisedPayment()` in `public/app.js` are already shared helpers and are not the
+problem; the inline arithmetic and the inline selections are. Found while building
+the authority table in PR A, which records them as unnamed authorities rather than
+pretending the rule already holds.
 
 **B74 · Two calendars, and nothing notices when they disagree** · *needs a decision first*
 `renderCalendar()` in `public/plan.js` draws the on-page grid from the forecast
