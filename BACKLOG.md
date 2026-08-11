@@ -280,6 +280,21 @@ state why each legitimately answers a different question. Deriving the `.ics`
 from the projection is the obvious candidate but is not free — the `.ics` covers
 statement closes and renewal reminders the projection does not model.
 
+**B75 · Nothing checks that the authority table is complete** · *small, and earned*
+`ARCHITECTURE.md`'s incumbent-authority table is maintained by hand and by
+inspection. Three rounds of advisory review on one pull request added five rows
+that inspection had missed — `payoff()`/`amortisedPayment()`,
+`scripts/calendar-ics.js`, `plan.actions`, `plan.nextDollar` and
+`Forecast.expandEvents` — and named one row that was wrong outright. The table now
+binds by rule rather than enumeration, which stops the failure being silent, but
+nothing mechanical would notice a new `Forecast` export or a new `data.json`
+`plan.*` policy key going unnamed. A check that enumerates both and asserts each
+appears in the table is closed-form — the kind `CLAUDE.md` permits a machine to
+enforce — and this is the case that repository's rule describes: add a gate when
+something goes wrong that it would have caught, and this went wrong three times in
+one pull request. Not done there because it is a workflow and test change with its
+own proof, and that pull request had `0` implementation files by design.
+
 ---
 
 ## Ready — needs a session at an institution
