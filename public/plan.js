@@ -76,6 +76,25 @@ const fmtRange = (a, b) => {
   return sm === em ? `${s.getDate()}–${e.getDate()} ${em}` : `${s.getDate()} ${sm} – ${e.getDate()} ${em}`;
 };
 
+/* --------------------------------------------------- the mission, in words */
+// `Forecast.mission` decides WHICH instructions the household is given and in
+// what order. This map is all that is left here: how each one reads. Every
+// entry is handed the part the engine produced and returns one clause, and
+// nothing in it may choose whether a clause applies — that is the engine's.
+//
+// Adding an instruction to the engine without adding its wording here is a
+// rendering failure, so `test-mission.js` checks that the two sides still name
+// the same set of instructions.
+const MISSION_PART = {
+  fundingShortfall: p => `find ${money(p.shortfall)} beyond every account available, or lower the buffer`,
+  coverGap: p => `cover the ${money(p.amount)} timing gap by ${fmtDateLong(p.by)}`,
+  overLimit: p => `get the ${p.debts.map(x => x.label).join(' and ')} back under its limit`,
+  cutSpending: p => `cut spending to ${money(p.supported)} a week — ${money(p.unsupported)} does not hold`,
+  holdSpending: p => `hold spending to ${money(p.weekly)} a week`,
+  helocLimit: p => `and stop the HELOC growing before it passes its own limit in ${fmtMonth(p.date)}`,
+  surplusToCard: () => 'and put the surplus against the most expensive card',
+};
+
 /* ----------------------------------------------------------- the chart */
 // Daily projected balance. Everything important is annotated on the chart
 // itself — the lowest point, the buffer, paydays, large payments — because
@@ -500,38 +519,23 @@ function renderPlan(d, periods) {
   const optional = Math.max(0, recMonthly - required);
   const short = required - recMonthly;
 
-  /* ---- the mission, in one sentence, derived ---- */
-  // Assembled from what the numbers actually say, never hardcoded: if it stops
-  // being true, the sentence changes.
+  // Facilities over their limit today, and the day the HELOC crosses its own —
+  // read here for the debt tile, the phases and the HELOC card below. The
+  // mission no longer selects from either: the engine decides that, from this
+  // same debt walk, so the two cannot disagree.
   const overToday = today.debts.filter(x => x.overLimit);
-  const helocNow = debtProj.byId.heloc;
-  // The day it ACTUALLY crosses. Reading this off the 30-day marks reported
-  // 7 October for a crossing that happens on 30 September — a different month,
-  // and on the wrong side of the plan's own deadline.
   const helocBreach = (debtProj.crossings || [])
     .find(c => c.id === 'heloc' && !c.alreadyOver) || null;
-  const missionParts = [];
-  if (gap && fundingShort) {
-    missionParts.push(`find ${money(fundingPlan.shortfall)} beyond every account available, or lower the buffer`);
-  } else if (gap) {
-    missionParts.push(`cover the ${money(fundingGap)} timing gap by ${fmtDateLong(gap.date)}`);
-  }
-  if (overToday.length) missionParts.push(`get the ${overToday.map(x => x.label).join(' and ')} back under its limit`);
-  // Never instruct the household to hold a figure the forecast does not
-  // support. Only the status band was conditioned on this, so the mission and
-  // the Next move went on recommending $1,500/week against a −$809 low.
-  // Spending is not a remedy for money that does not exist. When the gap
-  // cannot be funded the floor is below the buffer whatever the weekly figure
-  // is, so the mission must not append a spending instruction at all.
-  if (!fundingShort) {
-    missionParts.push(overrideBreaches
-      ? `cut spending to ${money(recommended)} a week — ${money(weekly)} does not hold`
-      : `hold spending to ${money(weekly)} a week`);
-  }
-  if (helocBreach) missionParts.push(`and stop the HELOC growing before it passes its own limit in ${fmtMonth(helocBreach.date)}`);
-  else missionParts.push('and put the surplus against the most expensive card');
-  $('plan-mission').textContent =
-    missionParts.join(', ').replace(/^./, c => c.toUpperCase()) + '.';
+
+  /* ---- the mission, in one sentence ---- */
+  // WHICH instructions apply, and in what order, is a financial decision and
+  // belongs to Forecast.mission — where the node suite can reach it. This page
+  // renders the parts it is given, in the order it is given them.
+  const missionResult = Forecast.mission(advice, debtProj,
+    { weeklyOverride: state.weeklyVariable, sim });
+  $('plan-mission').textContent = missionResult.parts
+    .map(p => MISSION_PART[p.id](p)).join(', ')
+    .replace(/^./, c => c.toUpperCase()) + '.';
 
   /* ---- NEXT MOVE — the one thing to do ---- */
   const first = plan.actions[0];
