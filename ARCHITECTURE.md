@@ -277,16 +277,39 @@ publishes. Nothing below opens this list.
 - provider or API **service credentials**, and OAuth access or refresh tokens,
   for **read-only** data access.
 
-If the connectivity gate above is ever passed and the owner approves, such a
-token may exist only inside this boundary:
+### Where a secret may live — the canonical rule
 
-- **server-side only** — never reaching the browser;
-- held in the deployment platform's secret mechanism, or an encrypted
-  server-side store — the same place `SITE_PASSWORD` and `SESSION_SECRET` live
-  today, which is Render and nowhere else;
-- **never in git**, never in `data.json`, never in a pull request;
-- **never in browser JavaScript, `localStorage`, or any client-side store**;
-- **never written to a log**.
+**This is the one home for this rule.** `CLAUDE.md`, the build strategy and every
+other document derive from it and must not state a narrower or wider version.
+
+A secret Atlas legitimately holds lives in exactly one of:
+
+- **production** — the deployment platform's environment secrets. That is Render
+  today, and it is the platform's mechanism rather than the name Render that
+  matters;
+- **local development** — an environment variable in the developer's own shell,
+  which is how `SITE_PASSWORD` and `SESSION_SECRET` are supplied when running
+  locally, exactly as `README.md` documents;
+- **an encrypted server-side store**, if — and only if — a future approved
+  provider needs a secret that must be **persisted and rotated** rather than set
+  once, which an environment variable cannot do. This exists to make OAuth
+  refresh-token rotation possible without inventing a second rule later; it is
+  not authorised today and needs the owner's approval like everything else behind
+  the gate.
+
+And **never**, in any context:
+
+- **in source control** — not in git, not in `data.json`, not in a pull request;
+- **client-side** — not in browser JavaScript, `localStorage`, or anything the
+  browser can read;
+- **in a log**.
+
+"Secrets live in Render and nowhere else" was the older phrasing and it is not
+true: local development sets the same two variables in a shell. The rule is
+about the *kind* of place, not one provider's name.
+
+If the connectivity gate is ever passed and the owner approves a read-only
+provider token, it lives inside this rule and nowhere else.
 
 **Read-only tokens are not authorised today.** Nothing in this repository stores
 one, and this section grants no provider, no implementation and no schedule — it

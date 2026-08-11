@@ -39,8 +39,12 @@ is still the whole financial picture of two people.
 - `noindex` headers plus a `robots.txt` that disallows everything.
 - A strict Content-Security-Policy; no inline scripts, no third-party requests.
 
-**Secrets live in Render environment variables and nowhere else.** Never commit
-them, and never put them in `data.json`.
+**Secrets live in Render environment variables in production, and in your own
+shell's environment variables when running locally — and nowhere else.** Never
+commit them, never put them in `data.json`, never send them to the browser, and
+never write them to a log. [`ARCHITECTURE.md`](ARCHITECTURE.md) holds the full
+rule, including what would have to be true before any other kind of secret could
+exist.
 
 ## Running it locally
 

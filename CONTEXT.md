@@ -223,13 +223,17 @@ is visible without a password.
 
 - **Read-only against financial institutions.** No transfers, payments,
   applications, setting changes, form submissions or agreement acceptances.
-- **Never ask for or enter credentials.** Passwords, PINs, security codes — the
-  owner handles all of these.
+- **Never ask for or enter an institution login credential.** Bank passwords,
+  PINs, security codes, 2FA — the owner handles all of these. *(The application's
+  own secrets are a different thing; see below.)*
 - **Raw financial files stay local.** Only sanitised aggregates leave `raw/`.
 - **Tag every figure** verified / calculated / estimated / unknown. An estimate
   is never presented as a verified fact.
-- **Secrets live only in Render.** `SITE_PASSWORD` and `SESSION_SECRET` are not
-  in this repo, not in `data.json`, and not in any conversation.
+- **Secrets live only where `ARCHITECTURE.md` permits** — the deployment
+  platform's environment secrets in production (Render), a local environment
+  variable when running locally, and nowhere else. `SITE_PASSWORD` and
+  `SESSION_SECRET` are not in this repo, not in `data.json`, not client-side,
+  not in a log, and not in any conversation.
 
 ## Live
 

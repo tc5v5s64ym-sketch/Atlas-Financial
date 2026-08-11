@@ -420,6 +420,33 @@ Golden Household truths still hold.
 
 ---
 
+### `AF-TREND-01` — Snapshots and trend
+
+**Outcome.** The site stops showing a single point in time: one file per reading,
+same shape as `data.json`, with trend lines drawn across them — is the HELOC
+actually falling, is Triangle moving, did the changes stick.
+**Why, and why it is here.** `ARCHITECTURE.md` Tier 2 calls this *"the obvious
+next step"*, and `BACKLOG.md` **B20** has owned it since before this strategy
+existed. It is planned capability work that predates this file, and leaving it
+out orphaned it — an agent following the launcher would have skipped the one
+capability the architecture already named as next. **`BACKLOG.md` B20 remains the
+work record; this item is only its place in the sequence.**
+**Incumbent.** `data.json` as the single published reading, plus
+`scripts/figures-snapshot.js`, which already emits one snapshot of the revision
+it runs from · **`EVOLVE`** — a series of the existing shape, not a second
+publication format.
+**Tier.** ECONOMY, escalating to FRONTIER if a trend line would restate a
+published figure rather than replay it.
+**Escalate if.** Trend work starts to want a store. It does not: `ARCHITECTURE.md`
+Tier 2 says files in git already give history, diffs and versioning, and this
+item is the evidence for whether that stays true.
+**Entry gate.** `AF-PROOF-01` if it changes any derived figure; otherwise none.
+**Acceptance.** A second reading exists as its own file; the site draws a trend
+across readings without recomputing any figure; no published figure moves as a
+result of adding history.
+
+---
+
 ### `AF-DATA-02` — Transfer and double-count truth
 
 **Outcome.** Money moving between household accounts, card payments and HELOC
@@ -566,8 +593,16 @@ correct action is to record the evidence and stop.
 **Outcome.** Import is idempotent and provider-shaped data is normalised at the
 edge, so no provider's semantics leak into Atlas truth.
 **Incumbent.** `scripts/periods.js` and the capture scripts · `EVOLVE`.
-**Tier.** FRONTIER. **Entry gate.** T4, and the connectivity gate.
-**Acceptance.** The same file imported twice changes nothing.
+**Tier.** FRONTIER.
+**Entry gate.** T4 **and an owner decision — not the full connectivity gate.**
+That gate's fifth prerequisite *is* a working canonical ingestion foundation,
+which is what this item builds, so requiring it here would deadlock Phase 4
+before its foundation could exist. **The full gate applies to `AF-LIVE-02`**,
+which is the first item that points anything live at a provider; this one
+touches no provider and needs no token.
+**Acceptance.** The same file imported twice changes nothing. Nothing here
+contacts a provider, and this item passing does **not** open the connectivity
+gate — it satisfies one of that gate's five conditions and no more.
 
 ### `AF-LIVE-02` — First automated connector
 
@@ -580,10 +615,10 @@ nothing automates capture today.
 including a current availability check — **provider choice is not made in this
 file and must be verified when the work starts, not assumed from it.**
 **Acceptance.** Read-only. No institution login credential is ever held. Any
-provider token stays inside the `ARCHITECTURE.md` secret boundary — server-side,
-in the platform's secret mechanism, never in git, never in the browser, never in
-a log — and exists at all only if the owner has approved it. A manual path still
-works if the connector fails.
+provider token lives only where [`ARCHITECTURE.md`](../ARCHITECTURE.md) permits —
+that file is the one home for the rule, and this line does not restate it — and
+exists at all only if the owner has approved it. A manual path still works if the
+connector fails.
 
 ### `AF-LIVE-03` — Scheduled refresh and resilience
 
@@ -624,12 +659,16 @@ subject to the same review.
 
 ### `AF-OPT-01` — Debt and cash guidance
 
+**Outcome.** The household is told where the next dollar should go, and why, in
+terms it can act on — which debt, which order, what it saves.
 **Incumbent.** `data.json plan.nextDollar` and the funding options, already
 derived and already tested · **`EVOLVE`.**
 **Tier.** FRONTIER. **Entry gate.** T2 passed, `AF-PROOF-01`.
 
 ### `AF-OPT-02` — Daily briefing and opportunities
 
+**Outcome.** A short daily read: what changed, what is due, and the one thing
+worth doing today.
 **Incumbent.** the Plan page's Today and Next Move · `EVOLVE`.
 **Tier.** ECONOMY. **Entry gate.** `AF-OPT-01`.
 

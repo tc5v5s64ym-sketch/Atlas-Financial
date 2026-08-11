@@ -60,8 +60,10 @@ outcome at once.
 This is the one launcher. Do not write a second one.
 
 > Read `AGENTS.md`, then take the owner's instruction if there is one — else the
-> next item in `docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md` for planned capability
-> work, or the first eligible item in `BACKLOG.md` for a fix or a finding.
+> next item in `docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`, or the first eligible
+> item in `BACKLOG.md`. Both stay eligible: the strategy sequences planned
+> capability work, the backlog holds work and findings, and a backlog item is
+> never ineligible merely because the strategy has not named it.
 > Verify current state before editing.
 > One independently provable outcome, fresh branch, merge card filled, findings
 > dispositioned. Stop only for an owner-reserved item or the required review.

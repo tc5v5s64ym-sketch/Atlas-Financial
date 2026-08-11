@@ -530,12 +530,20 @@ request is ready to merge.
 
 - **Read-only against every institution.** No transfers, payments,
   applications, setting changes, form submissions or agreement acceptances.
-- **Never ask for or handle credentials.** Passwords, PINs, security codes and
-  2FA are the owner's alone.
+- **Never ask for or handle an institution login credential.** A bank username or
+  password, a PIN, a security answer, a one-time or 2FA code — anything that
+  logs in as the household — is the owner's alone. *(The application's own
+  secrets are a different thing; see below.)*
 - `raw/` and `derived/` never enter git, a pull request, a comment, or a
   conversation. Only sanitised aggregates leave `raw/`.
-- Secrets live in Render and nowhere else — not in the repository, not in
-  `data.json`, not in a pull request body.
+- **A secret Atlas legitimately holds** — `SITE_PASSWORD`, `SESSION_SECRET`, and
+  one day possibly an approved read-only provider token — lives only where
+  [`ARCHITECTURE.md`](ARCHITECTURE.md) permits: the deployment platform's
+  environment secrets in production, a local environment variable in
+  development, or an encrypted server-side store if a future approved provider
+  needs rotation. **Never** in the repository, in `data.json`, in a pull request
+  body, client-side, or in a log. That file is the one home for the rule; do not
+  restate a narrower version here.
 - **Tag every figure** verified / calculated / estimated / unknown. An estimate
   is never presented as a verified fact.
 - A contradiction between two published figures is a stop, not a footnote.
@@ -569,9 +577,9 @@ a private view. It does not move money, submit a form, or accept an agreement.
 That is narrower than "no secrets", and deliberately: the server already refuses
 to start without `SITE_PASSWORD` and `SESSION_SECRET`. A **read-only** provider
 or API token would be the same kind of thing and is **not authorised today** —
-[`ARCHITECTURE.md`](ARCHITECTURE.md) holds the one secret boundary, including
-where such a token could ever live: server-side only, in the deployment
-platform's secret mechanism, never in git, never in the browser, never in a log.
+[`ARCHITECTURE.md`](ARCHITECTURE.md) holds the one secret boundary and the one
+rule for where any such secret may live, in production and in local development
+alike. Read it there rather than trusting a summary here.
 
 **Two gated capabilities:** a canonical store, and automated financial-data
 connectivity. Both are wanted and neither is authorised yet.
