@@ -1230,7 +1230,17 @@
       // The comparison itself, so the page colours a decision rather than
       // making one. EPSILON keeps a float landing on 0.0000000001 from being
       // reported as a real increase.
-      direction: delta > EPSILON ? 'more' : delta < -EPSILON ? 'less' : 'same',
+      //
+      // `unknown` withholds it. A baseline missing a real cash obligation
+      // cannot be compared against, and `delta` would understate what the
+      // household already pays — making the renewal look dearer than it is.
+      // Reporting the gap in `today.unmodelled` and then publishing the
+      // difference anyway is the same failure as the $814 bill: a figure that
+      // looks settled and is not. The number is still returned, because it is
+      // still the arithmetic difference; this field is the authority on
+      // whether it may be shown.
+      direction: unmodelled.length ? 'unknown'
+        : delta > EPSILON ? 'more' : delta < -EPSILON ? 'less' : 'same',
       interest: { amortising: amortisingInterest, heloc: helocInterest, total: totalInterest },
       helocOwed,
       // Whether the capitalising charge stops. Only consolidating stops it —

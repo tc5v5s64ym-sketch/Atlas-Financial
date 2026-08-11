@@ -349,6 +349,17 @@ console.log('\n=== payment assumptions propagate ===');
   ok(near(oneOff.today.householdCash, base.today.householdCash),
     'and does not quietly inflate the monthly baseline',
     money(oneOff.today.householdCash));
+  // Naming it is not enough. A baseline short of a real cash obligation
+  // understates what the household already pays, so a difference measured
+  // against it flatters the renewal — the comparison is withheld, not shown
+  // with a caveat somewhere else on the page.
+  ok(oneOff.direction === 'unknown',
+    'and the comparison against that baseline is withheld', oneOff.direction);
+  ok(base.direction !== 'unknown',
+    'while a complete baseline still reports a direction', base.direction);
+  ok(oneOff.delta === base.delta,
+    'the arithmetic difference is still returned; direction is what gates it',
+    money(oneOff.delta));
 }
 
 console.log('\n=== the comparison itself ===');
@@ -448,6 +459,14 @@ const MUTATIONS = [
     differs: m => m.renewal(PLAN, DEBTS, { rate: 6, years: 10, consolidate: false })
       .capitalisation.id !== 'continues' },
 
+  { label: 'publishing a comparison against an incomplete baseline flatters the renewal',
+    from: `      direction: unmodelled.length ? 'unknown'
+        : delta > EPSILON ? 'more' : delta < -EPSILON ? 'less' : 'same',`,
+    to: `      direction: delta > EPSILON ? 'more' : delta < -EPSILON ? 'less' : 'same',`,
+    differs: m => m.renewal(planWith({ extra: [{ id: 'mortgage-lump', debtId: 'mortgage',
+      effect: 'payment', frequency: 'once', date: '2026-09-01', amount: 5000 }] }), DEBTS,
+    { rate: 6, years: 10, consolidate: false }).direction !== 'unknown' },
+
   { label: 'comparing the renewal against nothing loses the comparison',
     from: '    const delta = payment - householdCash;',
     to: '    const delta = payment;',
@@ -519,11 +538,12 @@ const MAP_SRC = [
   grab(modellersSrc, /^const RENEWAL_OWED_TONE = \{[\s\S]*?^\};$/m, 'the owed tone map'),
   grab(modellersSrc, /^const CAPITALISATION_ROW = \{[\s\S]*?^\};$/m, 'the capitalisation row map'),
   grab(modellersSrc, /^const DELTA_CLASS = .*$/m, 'the delta class map'),
-  grab(modellersSrc, /^const DELTA_SIGN = .*$/m, 'the delta sign map'),
+  grab(modellersSrc, /^const DELTA_TEXT = \{[\s\S]*?^\};$/m, 'the delta text map'),
+  grab(modellersSrc, /^const BASELINE_GAP = [\s\S]*?;$/m, 'the withheld-comparison wording'),
 ].join('\n');
-const [CONTEXT_MAP, NOTE_MAP, TONE_MAP, OWED_MAP, CAP_MAP, CLASS_MAP, SIGN_MAP] =
+const [CONTEXT_MAP, NOTE_MAP, TONE_MAP, OWED_MAP, CAP_MAP, CLASS_MAP, TEXT_MAP, GAP_TEXT] =
   vm.runInNewContext(`${FORMATTERS}\n${MAP_SRC}\n[RENEWAL_CONTEXT, RENEWAL_NOTE, `
-    + 'RENEWAL_TONE, RENEWAL_OWED_TONE, CAPITALISATION_ROW, DELTA_CLASS, DELTA_SIGN];');
+    + 'RENEWAL_TONE, RENEWAL_OWED_TONE, CAPITALISATION_ROW, DELTA_CLASS, DELTA_TEXT, BASELINE_GAP];');
 // The page's own formatters, so the legacy markup below is built with the same
 // two functions the browser uses rather than with a lookalike.
 const [appMoney, appMoney2] = vm.runInNewContext(`${FORMATTERS}\n[money, money2];`);
@@ -550,9 +570,10 @@ ok(sameSet(Object.keys(CONTEXT_MAP).sort(), ['capitalised', 'paid']),
   'and wording for both pictures of today', Object.keys(CONTEXT_MAP).join(', '));
 ok(sameSet(Object.keys(CAP_MAP).sort(), ['continues', 'stopped']),
   'and both capitalisation states', Object.keys(CAP_MAP).join(', '));
-ok(sameSet(Object.keys(CLASS_MAP).sort(), ['less', 'more', 'same'])
-  && sameSet(Object.keys(SIGN_MAP).sort(), ['less', 'more', 'same']),
-  'and all three directions the comparison can report');
+ok(sameSet(Object.keys(CLASS_MAP).sort(), ['less', 'more', 'same', 'unknown'])
+  && sameSet(Object.keys(TEXT_MAP).sort(), ['less', 'more', 'same', 'unknown']),
+  'and all four directions the comparison can report, including the withheld one',
+  Object.keys(TEXT_MAP).join(', '));
 // The engine cannot emit an id the page has never heard of, in any of the four
 // places it returns one. A fifth id would render as `undefined` on the page.
 ok(sameSet(emitted('outcome'), OUTCOMES),
@@ -561,8 +582,26 @@ ok(sameSet(emitted('today'), ['capitalised', 'paid']),
   'no picture of today beyond those two', emitted('today').join(', '));
 ok(sameSet(emitted('capitalisation'), ['continues', 'stopped']),
   'no capitalisation state beyond those two', emitted('capitalisation').join(', '));
-ok(sameSet(emitted('direction'), ['less', 'more', 'same']),
-  'and no direction beyond those three', emitted('direction').join(', '));
+ok(sameSet(emitted('direction'), ['less', 'more', 'same', 'unknown']),
+  'and no direction beyond those four', emitted('direction').join(', '));
+
+/* The withheld state, rendered. An incomplete baseline must not reach the
+ * household as a confident figure, and the missing payment has to be named. */
+{
+  const withheld = F.renewal(planWith({ extra: [{ id: 'mortgage-lump', debtId: 'mortgage',
+    effect: 'payment', frequency: 'once', date: '2026-09-01', amount: 5000 }] }), DEBTS,
+  { rate: 6, years: 10, consolidate: false });
+  ok(TEXT_MAP[withheld.direction](withheld) === 'not comparable',
+    'the delta row says the comparison is not comparable, and shows no figure',
+    TEXT_MAP[withheld.direction](withheld));
+  ok(!/\d/.test(TEXT_MAP[withheld.direction](withheld)),
+    'so no understated number reaches the household');
+  ok(/mortgage-lump/.test(GAP_TEXT(withheld)) && /withheld/i.test(GAP_TEXT(withheld)),
+    'and the context names the payment that is missing',
+    GAP_TEXT(withheld).replace(/<[^>]+>/g, '').trim().slice(0, 80));
+  ok(/r\.today\.unmodelled\.length \? BASELINE_GAP\(r\)/.test(pageSrc),
+    'the page actually renders that wording — the engine\'s report has a consumer');
+}
 
 console.log('\n=== migration equivalence on the real published inputs ===');
 /* The figures the household reads today, both ways, at every slider position
@@ -614,7 +653,9 @@ function legacy(r, years, consolidate) {
   const delta = payment - baselineMonthly;
   return { payment, totalInterest, principal, helocOwed, delta, mortgageNow,
     helocCash, helocEconomic, baselineCash,
-    deltaClass: delta > 0 ? 'neg' : 'pos', deltaSign: delta > 0 ? '+' : '' };
+    deltaClass: delta > 0 ? 'neg' : 'pos',
+    // What the row read before the move: the sign and the formatted figure.
+    deltaText: (delta > 0 ? '+' : '') + appMoney2(delta) };
 }
 {
   let cases = 0;
@@ -638,7 +679,7 @@ function legacy(r, years, consolidate) {
         if (!exact(was.helocEconomic, now.today.helocEconomic)) bad.push('HELOC economic');
         if (!exact(was.baselineCash, now.today.householdCash)) bad.push('household cash');
         if (was.deltaClass !== CLASS_MAP[now.direction]) bad.push('delta colour');
-        if (was.deltaSign !== SIGN_MAP[now.direction]) bad.push('delta sign');
+        if (was.deltaText !== TEXT_MAP[now.direction](now)) bad.push('delta text');
         if (bad.length) drift.push(`${rate}% / ${years}y / ${consolidate ? 'fold' : 'keep'}: ${bad.join(', ')}`);
       }
     }
@@ -660,7 +701,8 @@ const liveOut = vm.runInNewContext(
     .replace(/^\$\('renewal-out'\)\.innerHTML = /, '').replace(/;$/, '')}; })`);
 const liveContext = vm.runInNewContext(
   `${FORMATTERS}\n${MAP_SRC}\n(function (r) { return ${grab(pageSrc,
-    /RENEWAL_CONTEXT\[r\.today\.id\]\(r\)/, 'the renewal-context call')}; })`);
+    /\$\('renewal-context'\)\.innerHTML = [\s\S]*?;\n/, 'the renewal-context expression')
+    .replace(/^\$\('renewal-context'\)\.innerHTML = /, '').replace(/;\n$/, '')}; })`);
 
 function legacyMarkup(r, years, consolidate) {
   // Copied from public/modellers.js as it stood at

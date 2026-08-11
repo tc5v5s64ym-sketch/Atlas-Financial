@@ -53,9 +53,24 @@ const CAPITALISATION_ROW = {
     `<div class="row"><span>HELOC interest still capitalising</span><span class="neg">${money2(c.amount)} / month, compounding</span></div>`,
 };
 
-// Costs more, costs less, or the same. The engine ran the comparison.
-const DELTA_CLASS = { more: 'neg', less: 'pos', same: 'pos' };
-const DELTA_SIGN = { more: '+', less: '', same: '' };
+// Costs more, costs less, the same — or not comparable, because the engine
+// found a scheduled cash payment it could not put on a monthly footing and
+// today's baseline is therefore short. The engine ran the comparison and
+// decided whether it may be shown; showing an understated difference would
+// make the renewal look cheaper against today than it is.
+const DELTA_CLASS = { more: 'neg', less: 'pos', same: 'pos', unknown: 'neg' };
+const DELTA_TEXT = {
+  more: r => '+' + money2(r.delta),
+  less: r => money2(r.delta),
+  same: r => money2(r.delta),
+  unknown: () => 'not comparable',
+};
+// Named, so the household can see which payment is missing rather than only
+// that something is.
+const BASELINE_GAP = r =>
+  `<br><b>This comparison is withheld:</b> ${r.today.unmodelled.length === 1 ? 'a scheduled payment' : 'scheduled payments'} `
+  + `against these debts (${r.today.unmodelled.join(', ')}) ${r.today.unmodelled.length === 1 ? 'has' : 'have'} no monthly `
+  + `equivalent, so the figure for today is short by that much and the difference below would flatter the renewal.`;
 
 function setupPayoff(d) {
   const debts = d.debts.filter(x => x.balance != null && x.rate != null && x.balance > 0);
@@ -168,11 +183,12 @@ function setupRenewal(d) {
 
     const r = Forecast.renewal(d.plan, d.debts, { rate: annualPct, years, consolidate });
 
-    $('renewal-context').innerHTML = RENEWAL_CONTEXT[r.today.id](r);
+    $('renewal-context').innerHTML = RENEWAL_CONTEXT[r.today.id](r)
+      + (r.today.unmodelled.length ? BASELINE_GAP(r) : '');
 
     $('renewal-out').innerHTML = `
       <div class="big">${money(r.payment)} <span style="font-size:.95rem;font-weight:500;color:var(--text-secondary)">/ month</span></div>
-      <div class="row"><span>Versus today's household cash</span><span class="${DELTA_CLASS[r.direction]}">${DELTA_SIGN[r.direction]}${money2(r.delta)}</span></div>
+      <div class="row"><span>Versus today's household cash</span><span class="${DELTA_CLASS[r.direction]}">${DELTA_TEXT[r.direction](r)}</span></div>
       ${r.capitalisation ? CAPITALISATION_ROW[r.capitalisation.id](r.capitalisation) : ''}
       <div class="row"><span>Principal financed</span><span>${money2(r.principal)}</span></div>
       <div class="row"><span>Total interest over ${years} years</span><span>${money(r.interest.total)}</span></div>
