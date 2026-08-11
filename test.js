@@ -25,6 +25,7 @@ const suites = [
   ['household budget reconciliation', 'test-budget.js'],
   ['coupled cash and debt', 'test-debt.js'],
   ['authority invariants', 'test-invariants.js'],
+  ['authority surface coverage', 'test-authority-coverage.js'],
   ['merge-card check behaviour', 'test-mergecard.js'],
 ];
 
