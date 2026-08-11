@@ -109,6 +109,7 @@ the same number living in three files and drifting.
 | **Things only a human can answer** | **`docs/01_OPEN_QUESTIONS.md`** | `BACKLOG.md` |
 | Narrative analysis | `docs/00_MASTER_PICTURE.md` | `data.json` |
 | Per-account depth | `docs/*_DEEP_DIVE.md` | the master picture |
+| **What one person said, attributed and dated** | **`docs/household_interviews/`** | `data.json`, a budget target, or joint policy |
 | What the site displays | `data.json` | hardcoded in `public/` |
 
 **Backlog versus questions.** A backlog item needs someone to *do* something and
@@ -118,6 +119,13 @@ actionable because everything looks blocked.
 
 **Facts and figures are kept apart deliberately.** A rate is stable; a balance is
 not. Mixing them lets a stale balance masquerade as a standing fact.
+
+**An interview is one person's evidence, not the household's decision.** It keeps
+the estimate, target, conditional and unresolved labels the speaker gave it, and
+promoting any of them to a verified figure or a shared target is a separate step —
+owner-reserved, because it changes how a figure is tagged.
+`docs/household_interviews/README.md` holds the rules for that folder; this file
+records only that the folder is where such evidence lives.
 
 ### Adding a new account
 
