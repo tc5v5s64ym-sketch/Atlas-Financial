@@ -8,7 +8,9 @@ capability must pass. This one owns *sequencing within what direction already
 permits*. Where the two disagree, `ARCHITECTURE.md` wins and this file is wrong.
 
 It also does not own work or findings. [`BACKLOG.md`](../BACKLOG.md) does, and
-every item here names its backlog entry rather than restating it. A question only
+every item here names its backlog entry rather than restating it — including the
+later-phase items, which are recorded there as `QUEUED` so the work record can
+show them and their blockers rather than leaving them visible only here. A question only
 the household can answer lives in
 [`docs/01_OPEN_QUESTIONS.md`](01_OPEN_QUESTIONS.md).
 
@@ -59,6 +61,13 @@ same number.
 
 **A tier is a floor, not a ceiling.** An item may be raised when the work turns
 out to touch more than expected; it is never quietly lowered to move faster.
+
+**A tier says what capability the work needs. It does not say whether the
+blocking review applies** — that is decided separately by `CLAUDE.md`'s
+high-risk trigger list, against what the pull request actually touches. **An M1 or
+M2 item can trigger the review and several here do**, most obviously any item
+that changes a deterministic hard gate protecting an authority. Reading the tier
+as the review answer is how an item skips a gate it should have met.
 
 ---
 
@@ -120,7 +129,7 @@ built *on* that picture, the picture needs owners that a test can reach.
 - **Outcome** — a check enumerates every named authority-producing surface and
   fails when one is absent from `ARCHITECTURE.md`'s incumbent table.
 - **Incumbent** — the table itself, and the `npm test` suites. `EVOLVE`.
-- **Tier** — M2. **Backlog** — `B75`.
+- **Tier** — M2, and it **triggers the blocking review**: it creates a deterministic hard gate whose pass/fail protects the authority record, which is on `CLAUDE.md`'s trigger list. Low complexity, high consequence. **Backlog** — `B75`.
 - **Entry gate** — none; this is the first item.
 - **Acceptance** — removing a row from the table fails the suite; adding a new
   `Forecast` export without a row fails the suite; the check states which
@@ -183,9 +192,14 @@ Tier 2 describes.
   Plan and Deep Dive pages.
 - **Tier** — M3. **Backlog** — `B20`.
 - **Entry gate** — **T1**.
-- **Acceptance** — a snapshot is written without hand-editing; two snapshots
-  produce a trend the page renders; re-running produces no duplicate; the spending
-  series stays `public/periods.json`'s and is not re-derived here.
+- **Acceptance** — **each snapshot's identity and contents reconcile
+  independently** against the contemporaneous `data.json`, the `positions.csv`
+  row, or institution evidence — right account, right date, right balance. That is
+  the acceptance that matters: a check that two files render a trend and that
+  re-running adds no duplicate proves storage and rendering, not that the history
+  the household reads is true. Also: a snapshot is written without hand-editing;
+  re-running produces no duplicate; and the spending series stays
+  `public/periods.json`'s and is not re-derived here.
 - **Prompt** — *Implement `snapshots/<YYYY-MM-DD>.json` per `B20`. Files, not a
   store — `ARCHITECTURE.md` says git gives history, diffs and versioning free, and
   the store gate is closed. Do not touch the spending series.*
@@ -215,8 +229,7 @@ that exists, without a provider and without a store.
 - **Outcome** — importing the same statement twice changes nothing; a corrected
   record updates rather than duplicates; every imported row traces to its source.
 - **Incumbent** — `scripts/` extraction and `derived/`. `EVOLVE`.
-- **Tier** — M3. **Backlog** — to be recorded when this phase is entered; it does
-  not exist yet and this file does not create it.
+- **Tier** — M3. **Backlog** — `B78`.
 - **Entry gate** — **T2**, plus AF-INTAKE-01's record of manual steps.
 - **Acceptance** — demonstrated **on real household data, not fixtures**:
   re-import is a no-op, a corrected amount updates in place, and identity survives
@@ -232,7 +245,7 @@ that exists, without a provider and without a store.
 - **Incumbent** — `data.json`, generated `public/periods.json`, and git as the
   history. `CONSUME` unless the gate is met.
 - **Tier** — **M4** — `ARCHITECTURE.md` says passing the gate is an owner
-  decision, recorded.
+  decision, recorded. **Backlog** — `B79`.
 - **Entry gate** — AF-INGEST-01 complete, so the answer rests on a foundation that
   was actually pushed.
 - **Acceptance** — the answer cites what **failed on real data**. "Relational
@@ -254,7 +267,7 @@ shape, and neither may start before the gate.
 - **Outcome** — a written evaluation of what actually serves these institutions
   in Canada, verified when the work starts, and what each provider's failure modes
   cost.
-- **Tier** — M4. **Entry gate** — T3 **and** an owner decision to evaluate.
+- **Tier** — M4. **Backlog** — `B80`. **Entry gate** — T3 **and** an owner decision to evaluate.
 - **Acceptance** — no provider chosen, no credential obtained, no connection
   attempted. Evaluation is reading and writing.
 - **Prompt** — *Evaluate current Canadian availability and provider semantics per
@@ -263,7 +276,7 @@ shape, and neither may start before the gate.
 ### AF-LIVE-02 · Point something live
 
 - **Outcome** — one read-only connection, after the full gate.
-- **Tier** — M4. **Entry gate** — **all five conditions**, owner-passed.
+- **Tier** — M4. **Backlog** — `B81`. **Entry gate** — **all five conditions**, owner-passed.
 - **Acceptance** — read-only; no institution login credential, ever, under
   `ARCHITECTURE.md`'s absolute; any provider token handled under the secret
   boundary's configured-secret rule.

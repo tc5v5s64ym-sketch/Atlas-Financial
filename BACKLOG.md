@@ -387,6 +387,36 @@ caught, give it a deterministic predicate, prove that predicate fails on the
 mechanical defect, and state its retirement condition. This is governance, not
 product truth: it changes no figure and gates no product work.
 
+
+**B78 · Idempotent import with stable identity** · `QUEUED` · *medium*
+Build-strategy item `AF-INGEST-01`, and the evidence trajectory gate T3 is made
+of. Importing the same statement twice must change nothing; a corrected record
+must update rather than duplicate; every imported row must trace to its source.
+**On the file foundation — no store, no provider.** Waits on `B20` and `B21`, and
+on the record of manual interventions the second intake run produces. Proof is a
+real re-import on real household data that changes nothing, not a fixture.
+
+**B79 · The store question, answered by evidence** · `QUEUED` · *needs the owner*
+Build-strategy item `AF-STORE-01`. A written answer to whether the file
+foundation can still give the invariant, identity and idempotency guarantees the
+work needs, citing what **failed on real data**. `ARCHITECTURE.md` names the gate
+and says passing it is an owner decision, recorded — and names "relational
+modelling would be tidier" and "a later capability assumes it" as things that are
+not reasons. Waits on `B78`. Do not introduce a store to answer this.
+
+**B80 · Evaluate connectivity providers, point nothing live** · `QUEUED` · *needs the owner*
+Build-strategy item `AF-LIVE-01`. A written evaluation of what actually serves
+these institutions in Canada, verified when the work starts rather than assumed,
+and what each provider's failure modes cost — `ARCHITECTURE.md`'s connectivity
+conditions 2 and 4. **Choose nothing, obtain no credential, attempt no
+connection.** Waits on T3 and an owner decision to evaluate at all.
+
+**B81 · Point something live** · `QUEUED` · *gated, owner-reserved*
+Build-strategy item `AF-LIVE-02`. One read-only connection, after
+`ARCHITECTURE.md`'s connectivity gate is met **in full** and the owner has passed
+it. Read-only; never an institution login credential; any provider token handled
+under the secret boundary's configured-secret rule. Recorded so the work record
+shows it exists and is blocked — **not** so it can be started.
 ---
 
 ## Ready — needs a session at an institution
