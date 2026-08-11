@@ -122,16 +122,16 @@ function renderDeepDive(d) {
     $('commitments').hidden = false;
   }
 
-  const next = d.upcoming
-    .filter(u => u.status !== 'paid' && u.kind !== 'noncash' && daysUntil(u.due) >= 0)
-    .sort((a, b) => a.due < b.due ? -1 : 1)[0];
+  // Which obligation is next is a selection, not formatting: it decides what
+  // the household is told it owes soonest. The engine owns it, where the node
+  // suite can prove which item wins and why. This block renders the answer.
+  const next = Forecast.nextDue(d.upcoming, d.meta.asOf);
   const nd = $('next-due');
   if (nd && next) {
-    const n = daysUntil(next.due);
     nd.hidden = false;
     nd.innerHTML = `<span class="nd-lab">Next due</span><b>${next.what}</b>` +
       `<span>${money2(next.amount)} on ${fmtDateLong(next.due)}</span>` +
-      `<span class="chip ${n <= 7 ? 'w' : 'e'}">${dueWord(n)}</span>`;
+      `<span class="chip ${next.daysUntil <= 7 ? 'w' : 'e'}">${dueWord(next.daysUntil)}</span>`;
   }
 
   const known = d.debts.filter(x => x.annualInterest != null);

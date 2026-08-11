@@ -896,6 +896,48 @@
     };
   }
 
+  /* ------------------------------------------------ next due obligation */
+  // Which item on the published payment calendar the household owes next.
+  //
+  // The Deep Dive page used to answer this itself: it filtered `upcoming`,
+  // sorted it and took the first. That made a household-facing selection an
+  // untested page-script authority — and the ordering was not even stated,
+  // because the comparator never returned 0, so two obligations falling on one
+  // day were ranked by whatever the sort implementation happened to do.
+  //
+  // Eligibility, unchanged from what the page already meant:
+  //
+  //   PAID      settled already, so nothing is owed.
+  //   NONCASH   capitalised interest. It is a real cost and the calendar shows
+  //             it, but no cash leaves an account, so it is not a payment due.
+  //   PAST DUE  before the as-of date. The tile answers "what is next", not
+  //             "what is outstanding"; the calendar below still lists a missed
+  //             item with its own "Nd ago" chip.
+  //
+  // Earliest eligible date wins. Where two share that date the calendar's own
+  // order decides, stated here rather than left to a sort — the forward scan
+  // keeps the first and a later equal date never displaces it.
+  //
+  // This names ONE obligation. What the whole day costs is a different
+  // question, and the Plan page's "next payment out" answers it by summing the
+  // events on that date; reconciling the two calendars is B74.
+  function nextDue(upcoming, asOf) {
+    let best = null;
+    for (const item of upcoming || []) {
+      if (item.status === 'paid' || item.kind === 'noncash') continue;
+      const days = diffDays(asOf, item.due);
+      if (days < 0) continue;
+      if (!best || item.due < best.item.due) best = { item, days };
+    }
+    if (!best) return null;
+    return {
+      due: best.item.due,
+      what: best.item.what,
+      amount: best.item.amount,
+      daysUntil: best.days,
+    };
+  }
+
   /* ------------------------------------------------ revolving utilisation */
   // Every facility with a limit, and what is really left on it TODAY.
   //
@@ -937,8 +979,8 @@
   }
 
   const Forecast = { addDays, diffDays, occurrences, expandEvents, simulate,
-    recommendWeekly, recommend, incomeDeadline, budgetBreakdown, projectDebts, utilisation,
-    EPSILON, STEP };
+    recommendWeekly, recommend, incomeDeadline, budgetBreakdown, projectDebts,
+    nextDue, utilisation, EPSILON, STEP };
   if (typeof module !== 'undefined' && module.exports) module.exports = Forecast;
   else root.Forecast = Forecast;
 
