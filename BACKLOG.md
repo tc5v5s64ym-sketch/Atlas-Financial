@@ -346,6 +346,47 @@ would have caught, and this went wrong repeatedly in one pull request. Not done
 there because it is a workflow and test change with its own proof, and that pull
 request had `0` implementation files by design.
 
+**B76 · The scope tripwire counts implementation only** · *needs a decision, not a fix*
+`CLAUDE.md`'s scope budget counts **implementation** files and **implementation**
+lines — source, workflows, templates — and counts documentation separately. For a
+documentation-only pull request the tripwire therefore contributes nothing: there
+is no numeric prompt at all, whether the change is eight lines or nine hundred.
+The superseded PR #4 ran to over nine hundred documentation lines and PR A to
+458; both were honest, and neither tripped anything.
+
+**This finding is smaller than when it was first recorded, and the framing is
+updated rather than carried across.** Scope is now explicitly a reviewer
+judgement — the tripwires are "guidance, not merge-card fields and not CI
+thresholds", and a reviewer asks whether the pull request is still one
+independently provable outcome whether it is under or over them. So the gap is no
+longer a gate that passes silently; it is a prompt that never fires for prose.
+
+What remains worth deciding: a long document can carry an unreviewable amount of
+authority-changing prose exactly as a long diff can carry code, and nothing draws
+a reviewer's eye to that. Any answer should go through the governance-control
+lifecycle rather than straight to a number — a new hard control needs a
+demonstrated failure it would have caught, a deterministic predicate, a test that
+proves the predicate fails on the defect, and a retirement condition. A
+documentation line limit chosen without those is the gaming `CLAUDE.md` warns
+about, with extra steps. Carried forward from PR #4, which recorded it under an
+identifier since reused.
+
+**B77 · The GitHub connector bypasses the pre-commit hook** · *governance, small*
+`.githooks/pre-commit` is described in `CONTEXT.md` as the safety net that catches
+content-level mistakes a `.gitignore` never could, and as something never
+bypassed. Commits authored through the ChatGPT GitHub connector are made through
+the GitHub API, so no local hook runs on them — the net simply does not see that
+path. Found when PR #5's two interview files, 466 lines of household detail
+committed through the connector, were run through the hook after the fact. **They
+passed**, so nothing is wrong in the repository today; the gap is structural and
+recurs on every connector-authored branch. Options include a CI job running the
+same content checks on every push, or a rule that connector-authored branches are
+verified locally before review. Either is a new hard control, so it goes through
+the governance-control lifecycle: name the demonstrated failure it would have
+caught, give it a deterministic predicate, prove that predicate fails on the
+mechanical defect, and state its retirement condition. This is governance, not
+product truth: it changes no figure and gates no product work.
+
 ---
 
 ## Ready — needs a session at an institution
