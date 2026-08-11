@@ -272,6 +272,7 @@ the same question — and it still carries one, noted under the table.
 | Budget — owner targets against actuals | `Forecast.budgetBreakdown`, with classification and targets in `data.json` `plan.budget` |
 | The mission — which instructions the homepage gives, and in what order | `Forecast.mission`, from the `recommend` and `projectDebts` results; `public/plan.js` holds the wording only |
 | The May 2027 renewal — what it costs, what folding the HELOC in changes | `Forecast.renewal`, from the debt records and `plan.obligations`; `public/modellers.js` holds the wording only |
+| Mortgage rate conventions — what a quoted rate means | `RATE_BASIS` in `public/forecast.js`: fixed compounds semi-annually, variable monthly. `Forecast.renewal` requires the basis and has no default |
 | The next move the household is told to make | `plan.actions` in `data.json`, rendered from `plan.actions[0]` by `public/plan.js` |
 | Where the next surplus dollar goes | `plan.nextDollar` in `data.json`; its `target` feeds `Forecast.projectDebts` |
 | Payoff modelling | `payoff()` in `public/app.js`, driven by `public/modellers.js` |
@@ -358,6 +359,21 @@ comparison the household reads. `data.json` `mortgage` keeps the renewal's
 standing facts (maturity, remaining years, prepayment room) and is no longer a
 second home for the balance the arithmetic runs on. What is left in the page is
 wording, colour and layout.
+
+**A quoted rate is not a number on its own, and the renewal used to treat it as
+one.** Canada prices the two mortgage products on different compounding: a fixed
+rate is quoted "calculated half-yearly, not in advance", a variable rate
+compounded monthly. The modeller applied the monthly convention to every rate its
+slider could reach, including the fixed quotes TD's April 2027 offer letter will
+carry. On TD's own published example — $300,000 at 3.00% — that is $2,071.74 a
+month against a true $2,069.07 over 15 years; on this household's balance at
+3.64% over 18 years it overstated the payment by $7.57 a month and $1,634.99 over
+the term. `RATE_BASIS` now holds both conventions and `Forecast.renewal` **requires**
+the caller to name one: there is deliberately no default, because a default is
+the assumption again with better manners. The page makes it a household choice
+and never prints a rate without its convention. The HELOC keeps its own — it is
+prime-linked whatever the mortgage renews into, so choosing fixed must not
+reprice the facility sitting beside it.
 
 **There are already two calendars, and neither of them is `renderCalendar()`.**
 The schedule — dates, amounts, recurrence — is `Forecast.expandEvents`'s, and

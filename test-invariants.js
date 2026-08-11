@@ -306,8 +306,12 @@ ok(/gap && fundingShort/.test(planJs2),
 // 6. The Modeller charged SIMPLE interest on a balance the same page says
 //    capitalises, then reported the opening balance as still owed. The fix
 //    moved with the arithmetic into the engine.
-ok(/Math\.pow\(1 \+ helocRate \/ PAYMENTS_PER_YEAR\.monthly,/.test(forecastCode),
+ok(/Math\.pow\(1 \+ RATE_BASIS\.variable\([^)]*\),\s*PAYMENTS_PER_YEAR\.monthly \* years\)/.test(forecastCode),
   'the engine compounds capitalised HELOC interest at the monthly charge cadence');
+// The HELOC is prime-linked whatever the mortgage renews into. Pricing it on a
+// fixed renewal convention would invent a rate the facility does not carry.
+ok(/RATE_BASIS\.variable\(heloc \? heloc\.rate : 0\)/.test(forecastCode),
+  'and on the HELOC\'s own variable convention, not the renewal\'s');
 ok(!/Math\.pow\(/.test(/\nfunction setupRenewal\(d\) \{[\s\S]*?\n\}\n/.exec(modellersCode)[0]),
   'and the Modeller compounds nothing of its own');
 // The benefit of stopping capitalisation only exists after consolidating; the

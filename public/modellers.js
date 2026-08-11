@@ -11,6 +11,17 @@
    missing entry is a rendering failure, which is why test-renewal.js checks
    that the two sides still name the same set. */
 
+// Which rate convention the household is looking at. Canada quotes fixed and
+// variable mortgage rates on different compounding, so the same slider position
+// is a different payment — saying which one this is, is part of the answer.
+const RATE_BASIS_LABEL = { fixed: 'fixed', variable: 'variable' };
+const RATE_BASIS_NOTE = {
+  fixed: 'Fixed rates are quoted <b>compounded semi-annually</b> — the convention TD and every '
+    + 'Canadian lender price a fixed mortgage on. This is the one to use for a quoted renewal offer.',
+  variable: 'Variable rates are quoted <b>compounded monthly</b>. This is the convention the current '
+    + 'mortgage is on (TD Mortgage Prime − 0.96%) and the one the HELOC accrues at.',
+};
+
 // The paragraph beside the sliders: what today actually costs.
 const RENEWAL_CONTEXT = {
   capitalised: r =>
@@ -161,9 +172,14 @@ function setupRenewal(d) {
   // the debt records, inside the engine.
   const m = d.mortgage;
   let consolidate = false;
+  // Opens on variable because that is what this household's mortgage is today
+  // — TD Mortgage Prime − 0.96%. Neither convention is a safe default for a
+  // quoted offer, which is why the control is on the page rather than implied.
+  let basis = 'variable';
 
   const rate = $('rate-range'), amort = $('amort-range');
   const btnNo = $('consol-no'), btnYes = $('consol-yes');
+  const btnVariable = $('basis-variable'), btnFixed = $('basis-fixed');
 
   function setMode(v) {
     consolidate = v;
@@ -174,14 +190,26 @@ function setupRenewal(d) {
   btnNo.addEventListener('click', () => setMode(false));
   btnYes.addEventListener('click', () => setMode(true));
 
+  function setBasis(v) {
+    basis = v;
+    btnVariable.setAttribute('aria-pressed', String(v === 'variable'));
+    btnFixed.setAttribute('aria-pressed', String(v === 'fixed'));
+    update();
+  }
+  btnVariable.addEventListener('click', () => setBasis('variable'));
+  btnFixed.addEventListener('click', () => setBasis('fixed'));
+
   function update() {
     // The slider carries hundredths of a percent so it can step in 0.05s.
     const annualPct = Number(rate.value) / 100;
     const years = Number(amort.value);
-    $('rate-label').textContent = annualPct.toFixed(2) + '%';
     $('amort-label').textContent = years + ' years';
 
-    const r = Forecast.renewal(d.plan, d.debts, { rate: annualPct, years, consolidate });
+    const r = Forecast.renewal(d.plan, d.debts, { rate: annualPct, years, consolidate, basis });
+
+    // The rate never appears without the convention it is quoted under.
+    $('rate-label').textContent = `${annualPct.toFixed(2)}% ${RATE_BASIS_LABEL[r.basis]}`;
+    $('basis-note').innerHTML = RATE_BASIS_NOTE[r.basis];
 
     $('renewal-context').innerHTML = RENEWAL_CONTEXT[r.today.id](r)
       + (r.today.unmodelled.length ? BASELINE_GAP(r) : '');
@@ -194,7 +222,8 @@ function setupRenewal(d) {
       <div class="row"><span>Total interest over ${years} years</span><span>${money(r.interest.total)}</span></div>
       <div class="row"><span>HELOC still owed after ${years} years</span><span class="${RENEWAL_OWED_TONE[r.outcome]}">${money(r.helocOwed)}</span></div>
       <p class="${RENEWAL_TONE[r.outcome]}">${RENEWAL_NOTE[r.outcome](r)}</p>
-      <p class="lede" style="margin:10px 0 0;font-size:.8rem">Illustrative only. Ignores fees, penalties, qualification
+      <p class="lede" style="margin:10px 0 0;font-size:.8rem">Priced as a <b>${RATE_BASIS_LABEL[r.basis]}</b> rate.
+      Illustrative only. Ignores fees, penalties, qualification
       and the loan-to-value test — which needs a home valuation. A licensed mortgage professional should run the real numbers.</p>`;
   }
 

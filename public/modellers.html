@@ -59,7 +59,8 @@
     <h2>The May 2027 renewal</h2>
     <p class="lede">The mortgage matures 1 May 2027. The live question is whether to fold the interest-only HELOC
     into it. Move the sliders to see the trade — a lower rate and forced principal repayment, against a higher
-    monthly payment.</p>
+    monthly payment. Say whether the renewal rate is fixed or variable first: Canada quotes the two on different
+    compounding conventions, so the same number means a different payment.</p>
     <div class="card">
       <div class="model">
         <div>
@@ -69,6 +70,14 @@
               <button class="preset" id="consol-no" aria-pressed="true" type="button">Keep separate</button>
               <button class="preset" id="consol-yes" aria-pressed="false" type="button">Consolidate</button>
             </div>
+          </div>
+          <div class="control">
+            <label><span>Fixed or variable?</span></label>
+            <div class="presets">
+              <button class="preset" id="basis-variable" aria-pressed="true" type="button">Variable</button>
+              <button class="preset" id="basis-fixed" aria-pressed="false" type="button">Fixed</button>
+            </div>
+            <p class="lede tight" id="basis-note"></p>
           </div>
           <div class="control">
             <label for="rate-range">Renewal rate <b id="rate-label">—</b></label>

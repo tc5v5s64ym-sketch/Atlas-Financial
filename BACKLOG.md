@@ -291,6 +291,27 @@ already, so treat it as open:
   invariant that `data.json` `mortgage`, the mortgage debt record and the plan
   obligation state one balance, one rate and one payment; nothing had checked
   that, and the renewal now depends on two of them.
+
+  **The move also found a real financial-correctness defect, and it is fixed
+  here rather than carried forward.** The modeller priced every rate its slider
+  could reach as if it compounded monthly. That is right for a variable rate and
+  wrong for a fixed one, which Canada quotes "calculated half-yearly, not in
+  advance" — and a fixed quote is exactly what TD's April 2027 offer letter will
+  carry. On TD's own published example, $300,000 at 3.00%, the true payment is
+  $2,069.07 a month over 15 years and $1,419.74 over 25; the modeller answered
+  $2,071.74 and $1,422.63. On this household's balance at the opening 3.64% it
+  overstated a fixed renewal by $7.57 a month and $1,634.99 over 18 years.
+  `RATE_BASIS` now holds both conventions, `Forecast.renewal` requires the caller
+  to name one and has no default, the page makes it a household choice and never
+  prints a rate without its convention, and the HELOC keeps its own prime-linked
+  monthly compounding whatever the mortgage renews into. Proved against
+  published benchmarks outside this repository — TD's example and the standard
+  Canadian $100,000-at-6.00% figure, $639.81 against $644.30 — and against the
+  defining identity that twelve months of fixed growth equal two half-years of
+  it. Found by the blocking Atlas Contract / Systems Review on PR #15, which
+  overruled this builder's own decision to record it as out of scope; the
+  convention shares the renewal's exact calculation authority, so migration
+  equivalence to the old page was not a sufficient answer.
 - **RESOLVED 2026-08-11 — "Next due".** `Forecast.nextDue` now owns which
   published calendar obligation the household owes soonest: paid, non-cash and
   past-due items are excluded there, the earliest eligible date wins, and the

@@ -1089,18 +1089,46 @@
   }
 
   /* ------------------------------------------------- the May 2027 renewal */
-  // The level payment that repays `principal` over `years` at `annualPct`,
-  // compounded monthly.
+  // Canada's two mortgage rate conventions, and the MONTHLY periodic rate each
+  // one implies. A rate quoted under one convention may not be priced under the
+  // other, and which applies is a property of the product, not a detail.
+  //
+  //   FIXED     Canadian fixed mortgage rates are quoted "calculated
+  //             half-yearly, not in advance" — the Interest Act convention TD
+  //             states in its own terms. The monthly rate is the sixth root of
+  //             half a year's growth, defined by (1 + i)^12 = (1 + annual/2)^2.
+  //   VARIABLE  TD expresses variable mortgage rates as compounded monthly, so
+  //             the monthly rate is simply a twelfth. It is also the HELOC's
+  //             convention, and the household's own mortgage is variable today
+  //             — TD Mortgage Prime − 0.96%, per `docs/ACCOUNT_FACTS.md`.
+  //
+  // Pricing a FIXED quote on the variable convention OVERSTATES it. TD's own
+  // published example, $300,000 at 3.00%, is $2,069.07 a month over 15 years
+  // and $1,419.74 over 25; the monthly convention answers $2,071.74 and
+  // $1,422.63. On this household's balance at 3.65% over 18 years the gap is
+  // $7.61 a month and $1,644.70 over the term. Small per payment, and a real
+  // number to put under a renewal decision — which is why the convention is
+  // now chosen rather than assumed. The renewal modeller assumed monthly for
+  // every rate the slider could reach, including the fixed quotes TD will
+  // actually offer in April 2027.
+  const RATE_BASIS = {
+    fixed: annualPct => Math.pow(1 + annualPct / 100 / 2, 1 / 6) - 1,
+    variable: annualPct => annualPct / 100 / 12,
+  };
+
+  // The level payment that repays `principal` over `years` at a given MONTHLY
+  // periodic rate. The rate arrives already converted, so this function holds
+  // no opinion about which convention produced it.
   //
   // This lived in `public/app.js` — the shared PAGE core — where it decided a
   // household-facing figure outside anything the node suite could reach.
   // `renewal` is its only consumer, so it is internal here rather than a second
   // exported authority; leaving a copy behind in `app.js` would have been the
   // duplicated formula this move exists to remove.
-  function amortisedPayment(principal, annualPct, years) {
-    const i = annualPct / 100 / 12, n = years * 12;
-    if (i === 0) return principal / n;
-    return principal * i / (1 - Math.pow(1 + i, -n));
+  function amortisedPayment(principal, monthlyRate, years) {
+    const n = years * 12;
+    if (monthlyRate === 0) return principal / n;
+    return principal * monthlyRate / (1 - Math.pow(1 + monthlyRate, -n));
   }
 
   // What the mortgage renewal costs at a given rate and amortisation, and what
@@ -1135,6 +1163,13 @@
   // nobody pays — that the split was introduced to end, and an invariant now
   // holds the split in place, so there is nothing left for it to protect.
   //
+  // `opts.basis` is REQUIRED and names the rate convention — `fixed` or
+  // `variable`, per `RATE_BASIS` above. There is deliberately no default: a
+  // renewal rate with no stated convention is the defect this argument exists
+  // to end, and silently picking one would only move the assumption rather than
+  // remove it. An unknown basis throws, so a caller that forgets shows a broken
+  // tile rather than a plausible wrong figure.
+  //
   // Every figure returned is a number and every decision is an id. Money,
   // dates, colour and wording are presentation and stay on the page.
   function renewal(plan, debts, opts) {
@@ -1143,6 +1178,13 @@
     const rate = Number(opts.rate);
     const years = Number(opts.years);
     const consolidate = !!opts.consolidate;
+    const basis = opts.basis;
+    if (!Object.prototype.hasOwnProperty.call(RATE_BASIS, basis)) {
+      throw new Error(`Forecast.renewal needs a rate basis (${Object.keys(RATE_BASIS).join(' or ')}), got ${JSON.stringify(basis)}`);
+    }
+    // The renewal rate, converted once, under the convention the household
+    // chose. Everything priced at the renewal rate goes through this.
+    const rateMonthly = RATE_BASIS[basis](rate);
 
     const record = id => (debts || []).find(x => x.id === id) || null;
     const mortgage = record('mortgage');
@@ -1178,15 +1220,17 @@
     let principal, payment, amortisingInterest, helocInterest, helocOwed;
     if (consolidate) {
       // Both debts amortise, so the HELOC principal is genuinely repaid and
-      // nothing is left owing on it at the horizon.
+      // nothing is left owing on it at the horizon. The folded-in balance is
+      // priced at the renewal rate, under the renewal's convention, because it
+      // has become mortgage.
       principal = mortgageOpening + helocOpening;
-      payment = amortisedPayment(principal, rate, years);
+      payment = amortisedPayment(principal, rateMonthly, years);
       amortisingInterest = payment * years * 12 - principal;
       helocInterest = 0;
       helocOwed = 0;
     } else {
       principal = mortgageOpening;
-      const mortgagePayment = amortisedPayment(principal, rate, years);
+      const mortgagePayment = amortisedPayment(principal, rateMonthly, years);
       // The HELOC is not refinanced, so whatever cash it costs today keeps
       // leaving the account alongside the new mortgage payment.
       payment = mortgagePayment + helocCash;
@@ -1196,8 +1240,12 @@
       // opening balance as the amount still owed understated it by $275,305 at
       // the default 18 years; compounding annually instead of monthly
       // understated it by a further $9,212.
+      //
+      // The HELOC keeps its OWN convention. It is prime-linked and variable
+      // whatever the mortgage renews into, so choosing a fixed renewal must not
+      // silently reprice the facility that stays outside it.
       helocOwed = capitalised
-        ? helocOpening * Math.pow(1 + helocRate / PAYMENTS_PER_YEAR.monthly,
+        ? helocOpening * Math.pow(1 + RATE_BASIS.variable(heloc ? heloc.rate : 0),
           PAYMENTS_PER_YEAR.monthly * years)
         : helocOpening;
       // Where the interest is PAID rather than capitalised the balance stands
@@ -1212,6 +1260,11 @@
 
     return {
       rate, years, consolidate,
+      // The convention this answer was priced under, and the monthly rate it
+      // produced. Returned so the page can say which one the household is
+      // looking at — a figure that does not name its convention is the defect,
+      // not the arithmetic.
+      basis, rateMonthly,
       today: {
         // Which picture of "today" applies: a HELOC whose interest capitalises
         // is not a bill, and saying so is the difference between a $3,466.67

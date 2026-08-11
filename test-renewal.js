@@ -8,8 +8,16 @@
  * the difference against it — so the arithmetic behind that decision sat where
  * the node suite could not reach it. That is `B73`.
  *
- * Four kinds of check, and they prove different things:
+ * Five kinds of check, and they prove different things:
  *
+ *   0. PUBLISHED BENCHMARKS. Canada quotes fixed and variable mortgage rates on
+ *      different compounding, and the modeller used to price every rate as if
+ *      it were variable — including the fixed quotes TD will offer in April
+ *      2027. The two conventions are checked against figures published outside
+ *      this repository: TD's own $300,000-at-3.00% example ($2,069.07 over 15
+ *      years, $1,419.74 over 25) and the standard Canadian $100,000-at-6.00%
+ *      figure ($639.81, against $644.30 compounded monthly). A benchmark
+ *      derived from the code it checks would prove nothing.
  *   1. INDEPENDENT DERIVATION. Every expected figure is a literal in this file,
  *      and every literal is confirmed a second time by a method the engine does
  *      not use: the loan is walked month by month and has to land on zero, and
@@ -23,10 +31,11 @@
  *   3. MUTATION. Each material formula and branch is broken on purpose in the
  *      engine source, and the answer has to change. A formula that cannot be
  *      broken was not being tested.
- *   4. MIGRATION EQUIVALENCE. The exact expression `public/modellers.js` ran
- *      before this move, against the real published inputs, at every one of the
- *      3,822 slider positions the page can reach. The authority moves; the
- *      household reads the same figures.
+ *   4. MIGRATION EQUIVALENCE, for the variable scenario. The exact expression
+ *      `public/modellers.js` ran before this move, against the real published
+ *      inputs, at every one of the 3,822 slider positions the page can reach.
+ *      Variable must match to the cent and fixed must not — a fixed option that
+ *      produced the same numbers would be a label with no arithmetic behind it.
  */
 
 const fs = require('fs');
@@ -55,16 +64,22 @@ const near = (a, b, tol = CENT) => Math.abs(a - b) <= tol;
  * balance lands and what interest was actually charged on the way. A level
  * payment is correct exactly when that walk ends at zero. `growMonthly` grows a
  * balance by repeated multiplication instead of by an exponent. */
-function walkLoan(principal, annualPct, months, payment) {
-  const i = annualPct / 100 / 12;
+function walkLoan(principal, monthlyRate, months, payment) {
   let balance = principal, interest = 0;
   for (let k = 0; k < months; k++) {
-    const charge = balance * i;
+    const charge = balance * monthlyRate;
     interest += charge;
     balance = balance + charge - payment;
   }
   return { balance, interest };
 }
+/* The two Canadian conventions, written here from their DEFINITIONS rather than
+ * imported from the engine — a test that borrows the engine's table proves only
+ * that the table equals itself. Fixed rates are quoted "calculated half-yearly,
+ * not in advance", so twelve months of growth must equal two half-years of it;
+ * variable rates are quoted compounded monthly. */
+const monthlyFixed = annualPct => Math.pow(1 + annualPct / 100 / 2, 1 / 6) - 1;
+const monthlyVariable = annualPct => annualPct / 100 / 12;
 function growMonthly(balance, annualPct, months) {
   const i = annualPct / 100 / 12;
   let b = balance;
@@ -95,7 +110,10 @@ const planWith = over => ({
   ].concat((over || {}).extra || []),
 });
 const PLAN = planWith();
-const run = (opts, debts, plan) => F.renewal(plan || PLAN, debts || DEBTS, opts);
+// Every fixture below was hand-computed under MONTHLY compounding, which is
+// now the explicit 'variable' basis. Cases that mean 'fixed' say so.
+const run = (opts, debts, plan) =>
+  F.renewal(plan || PLAN, debts || DEBTS, Object.assign({ basis: 'variable' }, opts));
 
 console.log('\n=== today, from the schedule rather than from a second copy ===');
 /* $1,000 bi-weekly is 26 payments a year, so 26,000 / 12 = $2,166.67 a month.
@@ -104,7 +122,7 @@ console.log('\n=== today, from the schedule rather than from a second copy ===')
  * to keep at zero. Adding the $500 charge here is the $814-a-month bill that
  * nobody pays, which is the defect the cash/economic split was introduced for. */
 {
-  const r = run({ rate: 6, years: 10, consolidate: false });
+  const r = run({ rate: 6, years: 10, consolidate: false, basis: 'variable' });
   ok(near(r.today.mortgageCash, 26000 / 12),
     'a $1,000 bi-weekly mortgage is $2,166.67 a month', money(r.today.mortgageCash));
   ok(r.today.helocCash === 0,
@@ -124,10 +142,10 @@ console.log('\n=== the amortised payment, proved by walking the loan ===');
  * amortisation schedule run at that payment has to finish at zero, and the
  * interest it charges on the way has to be the interest reported. */
 {
-  const r = run({ rate: 6, years: 10, consolidate: false });
+  const r = run({ rate: 6, years: 10, consolidate: false, basis: 'variable' });
   ok(near(r.payment, 3330.6150582495 + 0, 1e-6),
     'the level payment is $3,330.62 a month', r.payment.toFixed(10));
-  const walk = walkLoan(300000, 6, 120, r.payment);
+  const walk = walkLoan(300000, monthlyVariable(6), 120, r.payment);
   ok(Math.abs(walk.balance) < 0.000001,
     'walking 120 months at that payment clears the loan exactly',
     walk.balance.toExponential(3));
@@ -136,11 +154,114 @@ console.log('\n=== the amortised payment, proved by walking the loan ===');
   ok(near(walk.interest, r.interest.amortising, 0.0001),
     'which is what the walk independently accrued', money(walk.interest));
   // A payment even a cent short cannot clear the loan; a cent over overshoots.
-  ok(walkLoan(300000, 6, 120, r.payment - 0.01).balance > 1,
+  ok(walkLoan(300000, monthlyVariable(6), 120, r.payment - 0.01).balance > 1,
     'a cent less does not clear it',
-    walkLoan(300000, 6, 120, r.payment - 0.01).balance.toFixed(2));
-  ok(walkLoan(300000, 6, 120, r.payment + 0.01).balance < -1,
+    walkLoan(300000, monthlyVariable(6), 120, r.payment - 0.01).balance.toFixed(2));
+  ok(walkLoan(300000, monthlyVariable(6), 120, r.payment + 0.01).balance < -1,
     'and a cent more overshoots');
+}
+
+console.log('\n=== the rate convention, against published benchmarks ===');
+/* Canada quotes fixed and variable mortgage rates on different compounding, and
+ * the renewal used to price every rate the slider could reach as if it were
+ * variable — including the fixed quotes TD will actually offer in April 2027.
+ *
+ * The benchmarks here are EXTERNAL and published, not derived from this engine:
+ * TD's own fixed-rate example, and the standard Canadian textbook figure. A
+ * benchmark computed from the code it is checking proves nothing. */
+{
+  const cents = n => n.toFixed(2);
+  // TD's published fixed-rate example: a $300,000 mortgage at 3.00%.
+  const td15 = run({ rate: 3, years: 15, consolidate: false, basis: 'fixed' });
+  const td25 = run({ rate: 3, years: 25, consolidate: false, basis: 'fixed' });
+  ok(cents(td15.payment) === '2069.07',
+    'TD\'s $300,000 at 3.00% over 15 years is $2,069.07 — matched to the cent', cents(td15.payment));
+  ok(cents(td25.payment) === '1419.74',
+    'and over 25 years is $1,419.74 — matched to the cent', cents(td25.payment));
+  // The same inputs on the convention the engine used to apply to everything.
+  const v15 = run({ rate: 3, years: 15, consolidate: false, basis: 'variable' });
+  const v25 = run({ rate: 3, years: 25, consolidate: false, basis: 'variable' });
+  ok(cents(v15.payment) === '2071.74' && cents(v25.payment) === '1422.63',
+    'pricing that same fixed quote as variable answers $2,071.74 and $1,422.63 — the defect',
+    `${cents(v15.payment)} / ${cents(v25.payment)}`);
+  ok(v15.payment > td15.payment && v25.payment > td25.payment,
+    'and it does so in the OVERSTATING direction, on every one of them',
+    `+${cents(v15.payment - td15.payment)} / +${cents(v25.payment - td25.payment)}`);
+
+  // The independent textbook benchmark: $100,000 at 6.00% over 25 years is
+  // $639.81 in Canada and $644.30 under monthly compounding.
+  const cdn = run({ rate: 6, years: 25, consolidate: false, basis: 'fixed' },
+    debtsWith({ balance: 0 }).map(x => x.id === 'mortgage' ? Object.assign({}, x, { balance: 100000 }) : x));
+  const usa = run({ rate: 6, years: 25, consolidate: false, basis: 'variable' },
+    debtsWith({ balance: 0 }).map(x => x.id === 'mortgage' ? Object.assign({}, x, { balance: 100000 }) : x));
+  ok(cents(cdn.payment) === '639.81',
+    '$100,000 at 6.00% over 25 years is $639.81 on the Canadian fixed convention', cents(cdn.payment));
+  ok(cents(usa.payment) === '644.30',
+    'and $644.30 compounded monthly — a second, independent pair', cents(usa.payment));
+
+  // The DEFINITION of the fixed convention: twelve months of growth must equal
+  // two half-years of it. This is the identity the whole thing rests on, and it
+  // is checked against the engine's own monthly rate, not against a copy.
+  for (const rate of [0, 3, 3.65, 6, 7.5]) {
+    const f = run({ rate, years: 18, consolidate: false, basis: 'fixed' });
+    ok(near(Math.pow(1 + f.rateMonthly, 12), Math.pow(1 + rate / 100 / 2, 2), 1e-12),
+      `at ${rate}% fixed, (1 + monthly)^12 equals (1 + annual/2)^2`,
+      Math.pow(1 + f.rateMonthly, 12).toFixed(12));
+    ok(near(f.rateMonthly, monthlyFixed(rate), 1e-15),
+      `and the monthly rate is the sixth root, independently derived`, f.rateMonthly.toFixed(12));
+    const v = run({ rate, years: 18, consolidate: false, basis: 'variable' });
+    ok(near(v.rateMonthly, monthlyVariable(rate), 1e-15),
+      `at ${rate}% variable it is a plain twelfth`, v.rateMonthly.toFixed(12));
+  }
+  // And the payment those rates imply still clears a real amortisation walk.
+  ok(Math.abs(walkLoan(300000, monthlyFixed(3), 180, td15.payment).balance) < 0.000001,
+    'walking 180 months at the fixed periodic rate clears TD\'s example exactly',
+    walkLoan(300000, monthlyFixed(3), 180, td15.payment).balance.toExponential(3));
+}
+
+console.log('\n=== the convention is chosen, never assumed ===');
+/* A renewal rate with no stated convention is the defect. The engine has no
+ * default: a caller that forgets gets an exception, not a plausible figure. */
+{
+  const threw = fn => { try { fn(); return null; } catch (e) { return e.message; } };
+  ok(/needs a rate basis/.test(threw(() => F.renewal(PLAN, DEBTS, { rate: 3, years: 10 })) || ''),
+    'omitting the basis throws rather than picking one');
+  ok(/needs a rate basis/.test(threw(() => F.renewal(PLAN, DEBTS, { rate: 3, years: 10, basis: 'teaser' })) || ''),
+    'and an unknown basis throws rather than falling back');
+  ok(threw(() => F.renewal(PLAN, DEBTS, { rate: 3, years: 10, basis: 'fixed' })) === null
+    && threw(() => F.renewal(PLAN, DEBTS, { rate: 3, years: 10, basis: 'variable' })) === null,
+  'while both real conventions are accepted');
+  ok(run({ rate: 3, years: 10, consolidate: false, basis: 'fixed' }).basis === 'fixed'
+    && run({ rate: 3, years: 10, consolidate: false, basis: 'variable' }).basis === 'variable',
+  'and the answer carries the convention it was priced under');
+}
+
+console.log('\n=== the convention reaches every downstream figure ===');
+/* Payment, interest, consolidation and the comparison all move with it — and
+ * the HELOC, which is prime-linked whatever the mortgage renews into, does not. */
+{
+  const f = run({ rate: 3, years: 10, consolidate: false, basis: 'fixed' });
+  const v = run({ rate: 3, years: 10, consolidate: false, basis: 'variable' });
+  ok(f.payment < v.payment, 'the monthly payment moves', `${money(f.payment)} < ${money(v.payment)}`);
+  ok(f.interest.amortising < v.interest.amortising,
+    'the mortgage interest moves', `${money(f.interest.amortising)} < ${money(v.interest.amortising)}`);
+  ok(f.interest.total < v.interest.total, 'so the total moves');
+  ok(f.delta < v.delta, 'and so does the comparison against today',
+    `${money(f.delta)} < ${money(v.delta)}`);
+  const cf = run({ rate: 3, years: 10, consolidate: true, basis: 'fixed' });
+  const cv = run({ rate: 3, years: 10, consolidate: true, basis: 'variable' });
+  ok(cf.payment < cv.payment && cf.interest.total < cv.interest.total,
+    'consolidating prices the folded-in HELOC on the renewal convention too',
+    `${money(cf.payment)} < ${money(cv.payment)}`);
+  ok(cf.principal === cv.principal,
+    'while the principal financed is a balance, not a rate, and does not move');
+
+  // The facility that stays OUTSIDE the mortgage keeps its own convention.
+  ok(f.helocOwed === v.helocOwed && f.interest.heloc === v.interest.heloc,
+    'choosing a fixed renewal does not reprice the variable HELOC beside it',
+    money(f.helocOwed));
+  ok(near(f.helocOwed, growMonthly(100000, 6, 120), 1e-6),
+    'which still compounds monthly at its own prime-linked rate', money(f.helocOwed));
 }
 
 console.log('\n=== HELOC compounding over the renewal horizon ===');
@@ -149,7 +270,7 @@ console.log('\n=== HELOC compounding over the renewal horizon ===');
  * an exponent that is $181,939.6734032290 — the balance has grown 81.9% and the
  * interest is the difference, not a simple-interest figure. */
 {
-  const r = run({ rate: 6, years: 10, consolidate: false });
+  const r = run({ rate: 6, years: 10, consolidate: false, basis: 'variable' });
   ok(near(r.helocOwed, 181939.6734032290, 1e-6),
     'a $100,000 capitalising HELOC at 6.00% becomes $181,939.67 in ten years',
     money(r.helocOwed));
@@ -178,7 +299,7 @@ console.log('\n=== consolidating, and what it removes ===');
   ok(r.principal === 400000, 'both balances are financed', money(r.principal));
   ok(near(r.payment, 4440.8200776660, 1e-6),
     'the payment is $4,440.82 a month', r.payment.toFixed(10));
-  ok(Math.abs(walkLoan(400000, 6, 120, r.payment).balance) < 0.000001,
+  ok(Math.abs(walkLoan(400000, monthlyVariable(6), 120, r.payment).balance) < 0.000001,
     'walking 120 months at that payment clears the combined loan exactly');
   ok(r.helocOwed === 0 && r.interest.heloc === 0,
     'nothing is left owing on the HELOC and it charges no capitalised interest');
@@ -186,7 +307,7 @@ console.log('\n=== consolidating, and what it removes ===');
     'total interest is $132,898.41', money(r.interest.total));
   // The whole trade, in one line: consolidating costs $1,110.20 a month more
   // and saves $48,715.07 of interest on this fixture.
-  const keep = run({ rate: 6, years: 10, consolidate: false });
+  const keep = run({ rate: 6, years: 10, consolidate: false, basis: 'variable' });
   ok(near(r.payment - keep.payment, 1110.2050194165, 1e-6),
     'it costs $1,110.21 a month more than keeping them apart',
     money(r.payment - keep.payment));
@@ -262,7 +383,7 @@ console.log('\n=== the opening HELOC balance propagates ===');
  * on and headroom is measured against — posted plus pending, because a pending
  * charge is already incurred. */
 {
-  const base = run({ rate: 6, years: 10, consolidate: false });
+  const base = run({ rate: 6, years: 10, consolidate: false, basis: 'variable' });
   const bigger = run({ rate: 6, years: 10, consolidate: false }, debtsWith({ balance: 200000 }));
   ok(near(bigger.helocOwed, base.helocOwed * 2, 1e-6),
     'doubling the opening balance doubles what is owed at the horizon',
@@ -302,7 +423,7 @@ console.log('\n=== payment assumptions propagate ===');
 /* Today's household cash comes from the schedule, so changing what the
  * household actually pays moves the comparison it reads. */
 {
-  const base = run({ rate: 6, years: 10, consolidate: false });
+  const base = run({ rate: 6, years: 10, consolidate: false, basis: 'variable' });
   const dearer = run({ rate: 6, years: 10, consolidate: false }, DEBTS,
     planWith({ mortgage: { amount: 1200 } }));
   ok(near(dearer.today.householdCash, 1200 * 26 / 12) && near(dearer.today.householdCash, 2600),
@@ -374,7 +495,7 @@ console.log('\n=== the comparison itself ===');
   const flat = F.renewal({ obligations: [] }, [
     { id: 'mortgage', balance: 0, pending: 0, rate: 0 },
     { id: 'heloc', balance: 0, pending: 0, rate: 0, interestTreatment: 'capitalised', monthlyInterest: 0 },
-  ], { rate: 6, years: 10, consolidate: false });
+  ], { rate: 6, years: 10, consolidate: false, basis: 'variable' });
   ok(flat.direction === 'same' && flat.delta === 0,
     'and no change at all is neither', flat.direction);
 }
@@ -398,15 +519,32 @@ const PAID_DEBTS = debtsWith({ interestTreatment: 'paid-in-payment', cashPayment
 const PAID_PLAN = planWith({ heloc: { nonCash: false } });
 
 const MUTATIONS = [
-  { label: 'compounding the HELOC annually instead of monthly changes the horizon',
+  { label: 'pricing a fixed rate on the variable convention breaks TD\'s published example',
+    from: '    fixed: annualPct => Math.pow(1 + annualPct / 100 / 2, 1 / 6) - 1,',
+    to: '    fixed: annualPct => annualPct / 100 / 12,',
+    differs: m => m.renewal(PLAN, DEBTS, { rate: 3, years: 15, consolidate: false, basis: 'fixed' })
+      .payment.toFixed(2) !== '2069.07' },
+
+  { label: 'letting the renewal convention reprice the HELOC beside it moves its horizon',
     from: `      helocOwed = capitalised
-        ? helocOpening * Math.pow(1 + helocRate / PAYMENTS_PER_YEAR.monthly,
+        ? helocOpening * Math.pow(1 + RATE_BASIS.variable(heloc ? heloc.rate : 0),
           PAYMENTS_PER_YEAR.monthly * years)
         : helocOpening;`,
     to: `      helocOwed = capitalised
-        ? helocOpening * Math.pow(1 + helocRate, years)
+        ? helocOpening * Math.pow(1 + rateMonthly, PAYMENTS_PER_YEAR.monthly * years)
         : helocOpening;`,
-    differs: m => !near(m.renewal(PLAN, DEBTS, { rate: 6, years: 10, consolidate: false }).helocOwed,
+    differs: m => m.renewal(PLAN, DEBTS, { rate: 3, years: 10, consolidate: false, basis: 'fixed' })
+      .helocOwed !== run({ rate: 3, years: 10, consolidate: false, basis: 'fixed' }).helocOwed },
+
+  { label: 'compounding the HELOC annually instead of monthly changes the horizon',
+    from: `      helocOwed = capitalised
+        ? helocOpening * Math.pow(1 + RATE_BASIS.variable(heloc ? heloc.rate : 0),
+          PAYMENTS_PER_YEAR.monthly * years)
+        : helocOpening;`,
+    to: `      helocOwed = capitalised
+        ? helocOpening * Math.pow(1 + (heloc ? heloc.rate : 0) / 100, years)
+        : helocOpening;`,
+    differs: m => !near(m.renewal(PLAN, DEBTS, { rate: 6, years: 10, consolidate: false, basis: 'variable' }).helocOwed,
       181939.6734032290, 1) },
 
   { label: 'charging simple interest instead understates what is owed',
@@ -414,49 +552,49 @@ const MUTATIONS = [
         ? helocOwed - helocOpening
         : helocOpening * helocRate * years;`,
     to: '      helocInterest = helocOpening * helocRate * years;',
-    differs: m => !near(m.renewal(PLAN, DEBTS, { rate: 6, years: 10, consolidate: false }).interest.total,
+    differs: m => !near(m.renewal(PLAN, DEBTS, { rate: 6, years: 10, consolidate: false, basis: 'variable' }).interest.total,
       181613.4803931733, 1) },
 
   { label: 'dropping pending charges moves the opening balance the renewal runs on',
     from: 'const openingBalance = debt => debt.balance + (debt.pending || 0);',
     to: 'const openingBalance = debt => debt.balance;',
-    differs: m => m.renewal(PLAN, PENDING_DEBTS, { rate: 6, years: 10, consolidate: false })
+    differs: m => m.renewal(PLAN, PENDING_DEBTS, { rate: 6, years: 10, consolidate: false, basis: 'variable' })
       .heloc.opening !== 105000 },
 
   { label: 'counting the capitalised charge as cash invents a bill nobody pays',
     from: '      .filter(o => o.debtId === debtId && !o.nonCash)',
     to: '      .filter(o => o.debtId === debtId)',
-    differs: m => !near(m.renewal(PLAN, DEBTS, { rate: 6, years: 10, consolidate: false })
+    differs: m => !near(m.renewal(PLAN, DEBTS, { rate: 6, years: 10, consolidate: false, basis: 'variable' })
       .today.householdCash, 2166.6666666667, 1) },
 
   { label: 'annualising a bi-weekly payment as monthly understates today',
     from: '  const PAYMENTS_PER_YEAR = { biweekly: 26, monthly: 12 };',
     to: '  const PAYMENTS_PER_YEAR = { biweekly: 12, monthly: 12 };',
-    differs: m => !near(m.renewal(PLAN, DEBTS, { rate: 6, years: 10, consolidate: false })
+    differs: m => !near(m.renewal(PLAN, DEBTS, { rate: 6, years: 10, consolidate: false, basis: 'variable' })
       .today.householdCash, 2166.6666666667, 1) },
 
   { label: 'dropping the HELOC cash from the renewal payment understates it',
     from: '      payment = mortgagePayment + helocCash;',
     to: '      payment = mortgagePayment;',
-    differs: m => !near(m.renewal(PAID_PLAN, PAID_DEBTS, { rate: 6, years: 10, consolidate: false })
+    differs: m => !near(m.renewal(PAID_PLAN, PAID_DEBTS, { rate: 6, years: 10, consolidate: false, basis: 'variable' })
       .payment, 3830.6150582495, 1) },
 
   { label: 'consolidating without the HELOC principal finances the wrong loan',
     from: '      principal = mortgageOpening + helocOpening;',
     to: '      principal = mortgageOpening;',
-    differs: m => m.renewal(PLAN, DEBTS, { rate: 6, years: 10, consolidate: true }).principal !== 400000 },
+    differs: m => m.renewal(PLAN, DEBTS, { rate: 6, years: 10, consolidate: true, basis: 'variable' }).principal !== 400000 },
 
   { label: 'swallowing an un-annualisable obligation hides an incomplete baseline',
     from: '        if (!perYear) { unmodelled.push(o.id); return sum; }',
     to: '        if (!perYear) { return sum; }',
     differs: m => m.renewal(planWith({ extra: [{ id: 'mortgage-lump', debtId: 'mortgage',
       frequency: 'once', date: '2026-09-01', amount: 5000 }] }), DEBTS,
-    { rate: 6, years: 10, consolidate: false }).today.unmodelled.length !== 1 },
+    { rate: 6, years: 10, consolidate: false, basis: 'variable' }).today.unmodelled.length !== 1 },
 
   { label: 'showing the stopped-capitalisation row without consolidating contradicts the note',
     from: '        ? { id: consolidate ? \'stopped\' : \'continues\', amount: helocEconomic }',
     to: '        ? { id: \'stopped\', amount: helocEconomic }',
-    differs: m => m.renewal(PLAN, DEBTS, { rate: 6, years: 10, consolidate: false })
+    differs: m => m.renewal(PLAN, DEBTS, { rate: 6, years: 10, consolidate: false, basis: 'variable' })
       .capitalisation.id !== 'continues' },
 
   { label: 'publishing a comparison against an incomplete baseline flatters the renewal',
@@ -465,12 +603,12 @@ const MUTATIONS = [
     to: `      direction: delta > EPSILON ? 'more' : delta < -EPSILON ? 'less' : 'same',`,
     differs: m => m.renewal(planWith({ extra: [{ id: 'mortgage-lump', debtId: 'mortgage',
       effect: 'payment', frequency: 'once', date: '2026-09-01', amount: 5000 }] }), DEBTS,
-    { rate: 6, years: 10, consolidate: false }).direction !== 'unknown' },
+    { rate: 6, years: 10, consolidate: false, basis: 'variable' }).direction !== 'unknown' },
 
   { label: 'comparing the renewal against nothing loses the comparison',
     from: '    const delta = payment - householdCash;',
     to: '    const delta = payment;',
-    differs: m => !near(m.renewal(PLAN, DEBTS, { rate: 1, years: 30, consolidate: false }).delta,
+    differs: m => !near(m.renewal(PLAN, DEBTS, { rate: 1, years: 30, consolidate: false, basis: 'variable' }).delta,
       run({ rate: 1, years: 30, consolidate: false }).delta, 1) },
 ];
 for (const m of MUTATIONS) {
@@ -532,6 +670,8 @@ const FORMATTERS = [
   grab(appSrc, /^const money2 = .*$/m, 'money2()'),
 ].join('\n');
 const MAP_SRC = [
+  grab(modellersSrc, /^const RATE_BASIS_LABEL = .*$/m, 'the rate-basis label map'),
+  grab(modellersSrc, /^const RATE_BASIS_NOTE = \{[\s\S]*?^\};$/m, 'the rate-basis note map'),
   grab(modellersSrc, /^const RENEWAL_CONTEXT = \{[\s\S]*?^\};$/m, 'the context map'),
   grab(modellersSrc, /^const RENEWAL_NOTE = \{[\s\S]*?^\};$/m, 'the note map'),
   grab(modellersSrc, /^const RENEWAL_TONE = \{[\s\S]*?^\};$/m, 'the note tone map'),
@@ -541,9 +681,11 @@ const MAP_SRC = [
   grab(modellersSrc, /^const DELTA_TEXT = \{[\s\S]*?^\};$/m, 'the delta text map'),
   grab(modellersSrc, /^const BASELINE_GAP = [\s\S]*?;$/m, 'the withheld-comparison wording'),
 ].join('\n');
-const [CONTEXT_MAP, NOTE_MAP, TONE_MAP, OWED_MAP, CAP_MAP, CLASS_MAP, TEXT_MAP, GAP_TEXT] =
+const [CONTEXT_MAP, NOTE_MAP, TONE_MAP, OWED_MAP, CAP_MAP, CLASS_MAP, TEXT_MAP, GAP_TEXT,
+  BASIS_LABEL, BASIS_NOTE] =
   vm.runInNewContext(`${FORMATTERS}\n${MAP_SRC}\n[RENEWAL_CONTEXT, RENEWAL_NOTE, `
-    + 'RENEWAL_TONE, RENEWAL_OWED_TONE, CAPITALISATION_ROW, DELTA_CLASS, DELTA_TEXT, BASELINE_GAP];');
+    + 'RENEWAL_TONE, RENEWAL_OWED_TONE, CAPITALISATION_ROW, DELTA_CLASS, DELTA_TEXT, BASELINE_GAP, '
+    + 'RATE_BASIS_LABEL, RATE_BASIS_NOTE];');
 // The page's own formatters, so the legacy markup below is built with the same
 // two functions the browser uses rather than with a lookalike.
 const [appMoney, appMoney2] = vm.runInNewContext(`${FORMATTERS}\n[money, money2];`);
@@ -585,12 +727,47 @@ ok(sameSet(emitted('capitalisation'), ['continues', 'stopped']),
 ok(sameSet(emitted('direction'), ['less', 'more', 'same', 'unknown']),
   'and no direction beyond those four', emitted('direction').join(', '));
 
+/* The convention has to be visible to the household, not just correct in the
+ * engine. A right number under an unnamed convention is the defect restated. */
+{
+  const BASES = ['fixed', 'variable'];
+  ok(sameSet(Object.keys(BASIS_LABEL).sort(), BASES)
+    && sameSet(Object.keys(BASIS_NOTE).sort(), BASES),
+  'the page has a label and an explanation for both conventions',
+  Object.keys(BASIS_NOTE).join(', '));
+  const engineBases = [...new Set([...(/const RATE_BASIS = \{[\s\S]*?\n  \};/.exec(FORECAST_SRC) || [''])[0]
+    .matchAll(/^\s{4}([a-z]+):/gm)].map(m => m[1]))].sort();
+  ok(sameSet(engineBases, BASES),
+    'and the engine offers exactly those two, no more', engineBases.join(', '));
+  ok(/fixed/i.test(BASIS_NOTE.fixed) && /semi-annual/i.test(BASIS_NOTE.fixed),
+    'the fixed note names its semi-annual convention');
+  ok(/monthly/i.test(BASIS_NOTE.variable),
+    'and the variable note names its monthly one');
+  // The control exists, the rate never appears unlabelled, and the outcome says
+  // which convention produced it.
+  ok(/id="basis-fixed"/.test(modellersHtml) && /id="basis-variable"/.test(modellersHtml),
+    'the household can choose the convention on the page');
+  ok(/aria-pressed="true"[^>]*>Variable</.test(modellersHtml.replace(/\s+/g, ' '))
+    || /id="basis-variable" aria-pressed="true"/.test(modellersHtml),
+  'and it opens on variable, which is what this mortgage is today');
+  ok(/RATE_BASIS_LABEL\[r\.basis\]/.test(pageSrc)
+    && /\$\('rate-label'\)\.textContent = `\$\{annualPct\.toFixed\(2\)\}% \$\{RATE_BASIS_LABEL\[r\.basis\]\}`/.test(pageSrc),
+  'the rate label never shows a percentage without its convention');
+  ok(/Priced as a <b>\$\{RATE_BASIS_LABEL\[r\.basis\]\}<\/b> rate/.test(pageSrc),
+    'and the figures carry the convention they were priced under');
+  ok(/fixed or variable/i.test(modellersHtml),
+    'the section itself tells the household the choice matters');
+  // The page must not decide the convention for the household.
+  ok(!/Math\.pow\(1 \+ [^)]*\/ 2/.test(pageSrc),
+    'while the page still converts no rate of its own');
+}
+
 /* The withheld state, rendered. An incomplete baseline must not reach the
  * household as a confident figure, and the missing payment has to be named. */
 {
   const withheld = F.renewal(planWith({ extra: [{ id: 'mortgage-lump', debtId: 'mortgage',
     effect: 'payment', frequency: 'once', date: '2026-09-01', amount: 5000 }] }), DEBTS,
-  { rate: 6, years: 10, consolidate: false });
+  { rate: 6, years: 10, consolidate: false, basis: 'variable' });
   ok(TEXT_MAP[withheld.direction](withheld) === 'not comparable',
     'the delta row says the comparison is not comparable, and shows no figure',
     TEXT_MAP[withheld.direction](withheld));
@@ -607,7 +784,14 @@ console.log('\n=== migration equivalence on the real published inputs ===');
 /* The figures the household reads today, both ways, at every slider position
  * the page can reach: 91 renewal rates × 21 amortisations × both modes.
  * `legacy` is the expression public/modellers.js ran before this move, copied
- * character for character from 7119401751178272a9277355fe2f297ea2f696d2. */
+ * character for character from 7119401751178272a9277355fe2f297ea2f696d2.
+ *
+ * Equivalence is claimed for the VARIABLE scenario only, and that is the whole
+ * point of the blocking finding: the old page applied monthly compounding to
+ * every rate the slider could reach, which is right for a variable renewal and
+ * wrong for a fixed one. So the variable side must match to the cent, and the
+ * fixed side must NOT — a fixed option that produced the same numbers would be
+ * a label with no arithmetic behind it. */
 const m0 = data.mortgage;
 const heloc0 = data.debts.find(x => /HELOC/i.test(x.label));
 // The page picked the HELOC by matching its LABEL; the engine picks it by the
@@ -666,7 +850,7 @@ function legacy(r, years, consolidate) {
       for (const consolidate of [false, true]) {
         const rate = slider / 100;
         const was = legacy(rate, years, consolidate);
-        const now = F.renewal(data.plan, data.debts, { rate, years, consolidate });
+        const now = F.renewal(data.plan, data.debts, { rate, years, consolidate, basis: 'variable' });
         cases++;
         const bad = [];
         if (!exact(was.payment, now.payment)) bad.push('payment');
@@ -742,21 +926,42 @@ function legacyMarkup(r, years, consolidate) {
       and the loan-to-value test — which needs a home valuation. A licensed mortgage professional should run the real numbers.</p>`;
   return { out, context };
 }
+/* ONE difference is intended and is the fix: the figures now say which
+ * convention priced them. It is stated here as an exact, named transformation
+ * of the old markup, so it cannot hide a second change — anything else that
+ * moved still fails. */
+const statesItsBasis = (legacyOut, basis) => legacyOut.replace(
+  'font-size:.8rem">Illustrative only.',
+  `font-size:.8rem">Priced as a <b>${basis}</b> rate.\n      Illustrative only.`);
 {
   let compared = 0;
   const diffs = [];
+  ok(statesItsBasis('x', 'variable') === 'x',
+    'the allowance is exact — it changes nothing it does not match');
   for (const [rate, years] of [[3.64, 18], [3.65, 18], [4.5, 25], [3, 10], [7.5, 30]]) {
     for (const consolidate of [false, true]) {
       const was = legacyMarkup(legacy(rate, years, consolidate), years, consolidate);
-      const now = F.renewal(data.plan, data.debts, { rate, years, consolidate });
+      const now = F.renewal(data.plan, data.debts, { rate, years, consolidate, basis: 'variable' });
       compared++;
-      if (liveOut(now, years) !== was.out) diffs.push(`${rate}%/${years}y/${consolidate}: figures block`);
+      if (liveOut(now, years) !== statesItsBasis(was.out, 'variable')) {
+        diffs.push(`${rate}%/${years}y/${consolidate}: figures block`);
+      }
       if (liveContext(now) !== was.context) diffs.push(`${rate}%/${years}y/${consolidate}: context`);
     }
   }
   ok(compared === 10, 'ten settings rendered both ways', `${compared} renders`);
-  ok(diffs.length === 0, 'and the markup is identical, character for character',
-    diffs.slice(0, 2).join(' | ') || 'no difference');
+  ok(diffs.length === 0,
+    'and the markup is identical, character for character, apart from naming the convention',
+    diffs.slice(0, 2).join(' | ') || 'no other difference');
+  // The fixed side must genuinely differ, or the choice is decoration.
+  const fixedOut = liveOut(F.renewal(data.plan, data.debts,
+    { rate: 3.65, years: 18, consolidate: false, basis: 'fixed' }), 18);
+  const variableOut = liveOut(F.renewal(data.plan, data.debts,
+    { rate: 3.65, years: 18, consolidate: false, basis: 'variable' }), 18);
+  ok(fixedOut !== variableOut,
+    'and choosing fixed renders different figures, not just a different word');
+  ok(/Priced as a <b>fixed<\/b> rate/.test(fixedOut),
+    'which say they are fixed');
 }
 
 console.log('\n=== the published renewal, at the settings the page opens on ===');
@@ -768,8 +973,8 @@ console.log('\n=== the published renewal, at the settings the page opens on ==='
   ok(rate === 3.64 && years === 18,
     'the sliders open at the mortgage\'s own rate and remaining amortisation',
     `${rate}% / ${years} years`);
-  const keep = F.renewal(data.plan, data.debts, { rate, years, consolidate: false });
-  const fold = F.renewal(data.plan, data.debts, { rate, years, consolidate: true });
+  const keep = F.renewal(data.plan, data.debts, { rate, years, consolidate: false, basis: 'variable' });
+  const fold = F.renewal(data.plan, data.debts, { rate, years, consolidate: true, basis: 'variable' });
   ok(near(keep.today.householdCash, 3466.67, 0.005),
     'today is the mortgage alone, $3,466.67 a month', money(keep.today.householdCash));
   ok(near(keep.payment, 3449.53, 0.005) && keep.direction === 'less',
@@ -779,7 +984,7 @@ console.log('\n=== the published renewal, at the settings the page opens on ==='
   ok(near(growMonthly(data.debts.find(x => x.id === 'heloc').balance, 4.9, 216),
     keep.helocOwed, 0.005),
   'which is what 216 successive monthly charges independently produce');
-  ok(Math.abs(walkLoan(keep.principal, rate, years * 12, keep.payment).balance) < 0.000001,
+  ok(Math.abs(walkLoan(keep.principal, monthlyVariable(rate), years * 12, keep.payment).balance) < 0.000001,
     'the mortgage walk clears at that payment');
   ok(near(fold.payment, 4723.06, 0.005) && fold.direction === 'more',
     'folding the HELOC in costs $4,723.06, $1,256.39 more', money(fold.payment));
@@ -787,6 +992,27 @@ console.log('\n=== the published renewal, at the settings the page opens on ==='
     'and saves $211,022.10 of interest over the 18 years',
     money(keep.interest.total - fold.interest.total));
   ok(fold.helocOwed === 0, 'with nothing left owing on the HELOC');
+
+  /* The same real balance priced as a FIXED renewal — the quote TD's April 2027
+   * offer letter will actually carry. This is the figure the household could
+   * not previously get, and the size of the error it was reading instead. */
+  const keepFixed = F.renewal(data.plan, data.debts,
+    { rate, years, consolidate: false, basis: 'fixed' });
+  ok(Math.abs(walkLoan(keepFixed.principal, monthlyFixed(rate), years * 12,
+    keepFixed.payment).balance) < 0.000001,
+  'a fixed renewal on the real balance clears its own amortisation walk');
+  ok(keepFixed.payment < keep.payment,
+    'and costs less each month than the variable pricing the page used to apply',
+    `${money(keepFixed.payment)} vs ${money(keep.payment)}`);
+  ok(near(keep.payment - keepFixed.payment, 7.57, 0.01),
+    'by $7.57 a month at the opening 3.64%',
+    money(keep.payment - keepFixed.payment));
+  ok(near((keep.payment - keepFixed.payment) * years * 12, 1634.99, 0.005),
+    'which is $1,634.99 over the 18 years — the overstatement being corrected',
+    money((keep.payment - keepFixed.payment) * years * 12));
+  ok(keepFixed.helocOwed === keep.helocOwed,
+    'while the HELOC beside it is untouched by the mortgage\'s convention',
+    money(keepFixed.helocOwed));
 }
 
 console.log('\n' + '═'.repeat(60));
