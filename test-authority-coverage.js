@@ -91,17 +91,12 @@ ok((forecastExports || []).length > 0,
   (forecastExports || []).join(', '));
 
 console.log('\n=== guard bite proof ===');
-// Mutation 1: remove an incumbent token from the authority table. The guard must
-// notice the already-exported financial authority is now unnamed.
 const withoutRecommend = incumbentTable.replace(/Forecast\.recommend\b/, 'Forecast.REMOVED_recommend');
 const missingRowProblems = forecastCoverageProblems(forecastSource, withoutRecommend);
 ok(missingRowProblems.includes('recommend'),
   'removing an incumbent Forecast row makes the guard fail',
   missingRowProblems.join(', '));
 
-// Mutation 2: add a new Forecast export without classifying it. The guard must
-// fail closed until the new export is either registered as an authority or
-// explicitly classified as a helper.
 const withNewExport = forecastSource.replace(/const Forecast\s*=\s*\{/,
   'const Forecast = { newFinancialAuthority,');
 const newExportProblems = forecastCoverageProblems(withNewExport, incumbentTable);
@@ -133,6 +128,11 @@ for (const script of ['scripts/periods.js', 'scripts/calendar-ics.js']) {
   ok(incumbentTable.includes(script) || incumbentTable.includes(short),
     `${script} is named in the incumbent authority table`);
 }
+
+console.log('\n=== hard-gate protection ===');
+const mergeCard = read('.github/workflows/merge-card-check.yml');
+ok(/authority-coverage/.test(mergeCard),
+  'changing this guard is mechanically high-risk and cannot claim NOT REQUIRED');
 
 console.log('\n=== declared coverage boundary ===');
 ok(/Page scripts that decide rather than render remain the B73 review class/.test(
