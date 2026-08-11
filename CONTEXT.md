@@ -11,6 +11,10 @@
    owner for anything already recorded there
 5. **`BACKLOG.md`** — work that can be done, and what is blocking each item
 6. **`docs/01_OPEN_QUESTIONS.md`** — what only the household can answer
+7. **`docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`** — what gets built next and in
+   what order. **Required before starting any planned capability work**, and it
+   is the only place the sequence lives. Skip it only for a fix, a proof or a
+   question that the backlog or a household answer already fully describes
 
 **The distinction between the last two matters.** If an item needs a human to
 *know* something, it is a question. If it needs someone to *do* something, it is

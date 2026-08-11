@@ -1,1802 +1,647 @@
 # Atlas Financial — Build Strategy
 
-**Repository:** `tc5v5s64ym-sketch/Atlas-Financial`  
-**Status:** living execution strategy  
-**Owner:** Dale  
-**Architecture / dispatch authority:** ChatGPT  
-**Implementation surface:** owner-approved agent (Claude Code, Codex, Cursor, or equivalent)  
-**Primary rule:** current repository state beats this plan.
+**What gets built next, and in what order.**
+
+This file sequences work toward the destination that
+[`ARCHITECTURE.md`](../ARCHITECTURE.md) approves. It owns **order**, and nothing
+else:
+
+| Owns | File |
+|---|---|
+| Who decides, who reviews, when to stop for a person | [`CLAUDE.md`](../CLAUDE.md) |
+| Direction, architectural boundaries, and the gate on each future capability | [`ARCHITECTURE.md`](../ARCHITECTURE.md) |
+| **Sequencing within what direction permits** | **this file** |
+| Work and findings | [`BACKLOG.md`](../BACKLOG.md) |
+| What only the household can answer | [`docs/01_OPEN_QUESTIONS.md`](01_OPEN_QUESTIONS.md) |
+
+**Where this file and `ARCHITECTURE.md` disagree, `ARCHITECTURE.md` wins and this
+file is wrong.** It may schedule only what direction already permits, and a gated
+capability is scheduled *behind its gate*, never in place of it.
+
+**Current repository state beats this plan.** A strategy item is permission to
+verify current state, never permission to manufacture work.
 
 ---
 
-## 1. Purpose
+## 1. The destination
 
-Atlas Financial is being built as a **household financial operating system**.
+Deeply understood household spending; unknown transactions burned down; Dale's
+and Amanda's input reconciled; realistic budgets; a weekly safe-to-spend figure;
+upcoming obligations and a financial calendar; planned purchases and trips;
+deterministic horizons and scenarios; debt and cash guidance; fresh data once it
+is earned; assistant-neutral conversation about all of it; recommendations a
+person can actually understand; a forecast that grades itself; and an interface
+that is simple and enjoyable to use.
 
-Its job is not to become a generic finance dashboard or to recreate ChatGPT inside the app. It should know the household's financial state extremely well, calculate financial truth deterministically, make the near and long horizon obvious, and give Dale and Amanda enough warning to make small corrections before money problems become large ones.
+`ARCHITECTURE.md` approves that destination. It does not approve any technology
+to reach it.
 
-The product should ultimately answer, in plain language:
+### The boundary that does not move
 
-1. Where are we right now?
-2. Where is our money actually going?
-3. What can we safely spend?
-4. What is coming, and can we afford it?
-5. What should we change?
-6. What happens if we choose something different?
+Atlas **reads and publishes**. It never moves money, never submits a form, never
+accepts an agreement, and never stores a credential. No gate opens those; they
+are not tiers.
 
-The intended product relationship is closer to **checking the weather** than doing accounting.
+### Atlas and assistants
 
-Example:
+Atlas owns canonical facts, provenance, identity, classification, balances,
+obligations, policy, budgets, safe-to-spend, deterministic forecasts, scenarios,
+reconciliation and publication state.
 
-> **Good week.**  
-> $816 safe through Sunday.  
-> Mortgage Wednesday; payday Friday.  
-> Sports registration Monday.  
-> Nothing needs attention.
-
-Or:
-
-> **Tight week.**  
-> Household spending is already 72% through target.  
-> $2,100 of sports fees is due Monday.  
-> Keep discretionary spending below $140 through Friday and the plan stays intact.
-
-Atlas must be **ruthless about truth and flexible about life**.
-
-It should not optimize for minimum possible spending. It should optimize for a financially sustainable version of the life the household actually values.
+A conversational assistant owns conversation, explanation, interpretation,
+outside research, recommendation, and turning intent into a **proposed**
+structured change. An assistant never becomes the ledger, the calculator, or a
+mutation authority.
 
 ---
 
-## 2. Product boundary
+## 2. What exists now
 
-### Atlas owns
+**Verified on `main` at `8ccd0e1` before this strategy was written.** Every
+future item names its incumbent from this table, and a new item that overlaps one
+of these rows must say `EVOLVE`, `REPLACE`, `DERIVE` or `DELETE` — never invent a
+second owner in silence.
 
-- canonical financial facts;
-- provenance;
-- account and transaction identity;
-- household/business boundaries;
-- classifications and household overrides;
-- balances, debt and limits;
-- recurring obligations;
-- planned commitments;
-- goals;
-- household policy;
-- deterministic budgets;
-- safe-to-spend;
-- deterministic forecasts and scenarios;
-- reconciliation and data health;
-- calendar/publication state.
+| Concept | Live authority today | Where |
+|---|---|---|
+| 90-day cash projection | `Forecast.simulate` | `public/forecast.js` |
+| Weekly household cap · next move | `Forecast.recommend`, `Forecast.recommendWeekly` | `public/forecast.js` |
+| Coupled cash-and-debt walk | `Forecast.projectDebts` | `public/forecast.js` |
+| Revolving headroom, limits, pending | `Forecast.utilisation` | `public/forecast.js` |
+| Budget: owner targets vs historical actuals | `Forecast.budgetBreakdown` | `public/forecast.js` |
+| Budget **classification** (essential / discretionary / reserve / unknown) and owner targets | `plan.budget` | `data.json` |
+| Historical spending series | generated `public/periods.json` | `scripts/periods.js` |
+| Published household figures | `data.json` | + `scripts/figures-snapshot.js` |
+| 90-day calendar — month grid and agenda | `renderCalendar()` | `public/plan.js` |
+| Standing facts: rates, limits, due dates | `docs/ACCOUNT_FACTS.md` | |
+| Authority and reconciliation guards | `test-invariants.js`, `test-forecast.js`, `test-budget.js`, `test-debt.js`, `test-static.js` | |
+| Merge-card gate and its own proof | `.github/workflows/merge-card-check.yml`, `test-mergecard.js` | |
 
-### Conversational assistants own
+**Amounts are not duplicated.** `data.json` records the classification and the
+owner target; the historical figure is derived at render time from
+`public/periods.json`. One home per figure, already.
 
-- conversation;
-- explanation;
-- interpretation;
-- current outside research;
-- recommendation;
-- translating natural-language intent into **proposed** structured changes.
+### What this means for planning
 
-An assistant never becomes the ledger, calculator, or canonical mutation authority.
-
-Do **not** build another "Soul" layer. Preserve durable conclusions, not a bespoke imitation of a good chat session.
-
----
-
-## 3. Permanent engineering thesis
-
-> More agent autonomy comes from a smaller box.
-
-> One PR = one independently provable outcome.
-
-> One financial concept = one canonical owner + one canonical representation + one mutation path.
-
-> Source evidence is preserved.
-
-> Derived state is rebuildable.
-
-> Views consume truth; they do not define it.
-
-> Machines validate closed structure. Reviewers validate meaning.
-
-Every future PR must answer:
-
-1. What household capability becomes true because this merges?
-2. Which financial authority does it own or consume?
-3. Did it create another place that decides something already owned elsewhere?
-4. What proves the full source → truth → calculation → consumer path works?
-5. What happens with missing, stale, duplicated or contradictory evidence?
-6. Could a plausible-but-wrong number still go green?
-7. If this is foundation work, which named next consumer closes the loop?
+Atlas is **not greenfield**. There is one tested deterministic engine, one weekly
+cap, one budget path, one calendar, one debt walk. The work below is mostly
+**evolution of those**, and an item that reads like a fresh build of something in
+the table above is a defect in this file.
 
 ---
 
-## 4. Model-selection gate
+## 3. Disposition vocabulary
 
-Model choice is an **execution-cost decision**, not an authority decision. Model identity grants no extra merge or product authority.
+Every strategy item declares what it does to the incumbent:
 
-Model names change quickly. Record the exact model name displayed by the implementation surface; never guess.
+| | |
+|---|---|
+| `PRESERVE` | keep as-is; the item consumes it |
+| `EVOLVE` | same authority, extended semantics or inputs |
+| `REPLACE` | new owner takes over; the old one is deleted in the same outcome |
+| `DERIVE` | the old surface remains but is computed from the new owner |
+| `DELETE` | the concept goes away |
+| `NEW` | genuinely nothing owns this today |
 
-### ECONOMY tier — default
+**Current-state verdicts use the repository's vocabulary, not a second one.**
+When an item is picked up, its current-state gate answers exactly one of
+`STILL BROKEN` · `ALREADY FIXED` · `PARTIALLY FIXED` · `FIXED BUT UNTESTED` ·
+`STALE / SUPERSEDED` · `NEEDS OWNER ANSWER`, as `CLAUDE.md` defines and
+`merge-card-check` enforces. This file does not define its own.
 
-Use the current owner-approved lower-cost capable coding model. At strategy creation, **Claude Sonnet 5** is the preferred Claude Code economy model.
-
-Default ECONOMY work:
-
-- documentation-only changes;
-- small deterministic tests;
-- fixtures;
-- straightforward schema additions after authority is already settled;
-- simple adapters against an already-defined contract;
-- UI rendering that consumes an existing deterministic API;
-- housekeeping and mechanical migrations with complete proof.
-
-### FRONTIER tier — escalate when judgment is the risk
-
-Use the owner-approved strongest available model when one or more escalation triggers fires. Record the exact displayed model name rather than guessing or hardcoding a marketing name that the implementation surface does not expose.
-
-FRONTIER triggers:
-
-- a canonical financial authority is being created, moved, deleted, or reconciled;
-- money semantics are ambiguous;
-- a migration/cutover can create two live truths;
-- security/credentials/authentication boundaries change;
-- provider synchronization semantics are uncertain;
-- safe-to-spend, forecast, debt strategy, or another household-acted-on figure changes authority;
-- multiple legitimate designs survive current-state audit;
-- a model has failed to close the same root cause after two implementation/review rounds;
-- the implementation agent proposes an atomicity exception;
-- the PR has substantial cross-layer coupling;
-- a failed acceptance campaign reveals an authority defect rather than a local bug.
-
-### Model-switch rule
-
-Start with the recommended model listed for the PR.
-
-The agent may move **ECONOMY → FRONTIER** without owner interruption when a FRONTIER trigger is hit, but must record:
-
-- trigger;
-- model switched from;
-- model switched to;
-- why the cheaper model was no longer appropriate.
-
-Do not downgrade FRONTIER → ECONOMY mid-PR merely to save tokens after architecture has become ambiguous. Finish the independently provable outcome with the model tier that can safely close it.
-
-At every trajectory review, reassess whether the current model tiers still make sense.
+`ALREADY FIXED` means **stop and skip the item**, and say so.
 
 ---
 
-## 5. Strategy flexibility — controlled, not rigid
+## 4. Identifiers
 
-This file is a **living execution strategy**, not scripture.
+Items carry a **stable ID**. GitHub PR numbers are assigned when work begins and
+are recorded then — never predicted.
 
-A future PR prompt is permission to inspect current state, **not permission to manufacture work**.
+That is not a style preference. The first version of this file predicted `PR #5`
+for the authority contract; the real PR #5 turned out to be Amanda's household
+interview evidence, which made every downstream sequencing statement false.
 
-Before every PR:
-
-1. refresh exact current `main`;
-2. record starting SHA;
-3. confirm clean worktree;
-4. run `npm test`;
-5. read `AGENTS.md`, `CLAUDE.md`, this strategy, relevant authority docs, current code, `BACKLOG.md`, and `docs/01_OPEN_QUESTIONS.md`;
-6. classify the planned PR outcome as:
-   - STILL NEEDED;
-   - ALREADY SATISFIED;
-   - PARTIALLY SATISFIED;
-   - STALE / SUPERSEDED;
-   - NEEDS OWNER ANSWER.
-7. If already satisfied, **stop and skip it**.
-8. If the intended outcome is wrong for current state, stop and route to a trajectory review rather than implementing the stale prompt.
-
-### Strategy-change threshold
-
-Do not rewrite this strategy for every small discovery.
-
-A dedicated strategy-update PR is justified when:
-
-- a phase goal changes;
-- more than two future PRs need reordering or replacement;
-- an assumed technology is no longer appropriate;
-- a newly discovered authority changes the architecture;
-- a phase acceptance gate shows the planned next phase is not the highest-value next move;
-- a model-tier policy materially changes.
-
-Small implementation discoveries belong in backlog/finding dispositions, not a roadmap rewrite.
+`AF-GOV` governance · `AF-KNOW` knowledge reconciliation · `AF-PROOF` acceptance
+harness · `AF-DATA` canonical data and identity · `AF-HOUSE` household input ·
+`AF-BUDGET` budget · `AF-SPEND` safe-to-spend · `AF-FORECAST` forecast and
+scenarios · `AF-CAL` calendar and obligations · `AF-LIVE` live connectivity ·
+`AF-ASSIST` assistant interface · `AF-OPT` optimisation.
 
 ---
 
-## 6. Trajectory review gates
+## 5. Model tiers
 
-At each named gate, STOP implementation and review:
+Model choice is an **execution-cost decision**. It grants no merge or product
+authority, and no model name is architectural truth.
 
-- exact current `main`;
-- this strategy;
-- `BACKLOG.md`;
-- `docs/01_OPEN_QUESTIONS.md`;
-- household actions / urgent real-world financial findings;
-- completed phase acceptance evidence;
-- what the phase taught us;
-- whether the next phase is still the highest-value next move.
+- **ECONOMY** — mechanical, well-specified, low-ambiguity work.
+- **FRONTIER** — authority moves, financial correctness, migrations, security,
+  anything where being confidently wrong is expensive.
 
-Classify future planned PRs:
+**Escalate on risk, not prestige:** an authority boundary is in play, money-domain
+correctness is at stake, the current-state verdict is ambiguous, two rounds of
+review have not converged, or the item touches the gated capabilities.
 
-- KEEP;
-- REWRITE;
-- MOVE;
-- MERGE;
-- SPLIT;
-- SKIP — ALREADY SATISFIED;
-- DELETE;
-- ADD.
-
-A trajectory review may change future PR numbering/content through a dedicated strategy-update PR.
-
-### Gate T0 — after authority/governance foundation
-After PR #6.
-
-### Gate T1 — after "Know Us"
-After PR #15 acceptance.
-
-### Gate T2 — first product-complete release
-After Safe-to-Spend shadow acceptance following PR #19.
-
-**This is the strongest gate in the plan.**  
-Phases 3–6 must re-earn their priority here.
-
-### Gate T3 — after Horizon / Calendar
-After PR #24 acceptance.
-
-### Gate T4 — after Live Daily Data
-After PR #28 acceptance.
-
-### Gate T5 — after Conversational Interface
-After PR #32 acceptance.
+Exact available model names change. **The implementing surface verifies what it
+is actually running at execution time** and records it in the merge card; this
+file never asserts a model name as a fact.
 
 ---
 
-## 7. Golden Household
+## 6. The financial urgency clock
 
-Atlas will maintain one synthetic **Golden Household** dataset containing the ugly financial cases this system must survive without exposing real household data in Git or CI.
+**Software sequence does not delay real-world financial action.**
 
-Minimum corpus:
+A live household financial problem — a facility approaching its limit, a payment
+at risk, an insurance or credit deadline — operates on the household's clock, not
+this file's. It may produce an immediate owner action while software work
+continues separately, and it never waits behind a strategy item.
 
-- multiple chequing/savings accounts;
-- credit card;
-- HELOC/debt;
-- recurring salary/income;
-- internal transfers;
-- credit-card payments;
-- business/pass-through money;
-- refunds;
-- fees and interest;
-- two legitimate identical merchant/date/amount purchases;
-- duplicate file import;
-- partial import then retry;
-- pending → posted amount/date/ID change;
-- disappearing pending transaction;
-- user classification override followed by re-import;
-- annual irregular expense;
-- sports commitment;
-- unknown transaction;
-- planned vacation;
-- low-cash week;
-- provider/account external-ID change;
-- stale source;
-- reconciliation mismatch;
-- malicious transaction memo treated as inert data.
+**The canonical record of those findings is [`BACKLOG.md`](../BACKLOG.md)**, with
+household questions in [`docs/01_OPEN_QUESTIONS.md`](01_OPEN_QUESTIONS.md). This
+file deliberately does not restate any financial finding or quote a figure: a
+copy here would be a second home for a number that already has one, and would go
+stale exactly when it mattered.
 
-Every money-touching PR must prove that its intended change does not silently corrupt unrelated Golden Household truths.
-
-Real household data:
-
-- may be processed through explicitly approved private/local paths;
-- never enters Git;
-- never becomes CI fixture data;
-- never appears in PR bodies, issues, logs, or synthetic test corpora;
-- never becomes the only proof of a financial invariant.
+At every trajectory gate, read the backlog's urgent items **first**, before any
+question about sequencing.
 
 ---
 
-# PHASE 0 — TRUST THE BUILD
+## 7. Phases and acceptance
 
-## PR #4 — Install this Build Strategy
+A phase is complete when the **household** can do the thing, not when the code
+merges.
 
-**Recommended model:** ECONOMY / Sonnet 5  
-**Escalate if:** current governance says a second strategy authority would conflict with `ARCHITECTURE.md` or `CLAUDE.md`.
+| Phase | Complete when |
+|---|---|
+| **0 — Trust and truth** | Direction has one home; the strategy is discoverable; a synthetic acceptance corpus exists and guards money-domain change; planning knowledge matches current evidence |
+| **1 — Know us** | The household can see where money actually goes, unknown charges are burned down to a stated threshold, and Dale's and Amanda's input is reconciled with attribution preserved |
+| **2 — Run our money** | Realistic budgets, a weekly safe-to-spend figure the household trusts, obligations and a calendar they actually use. **Product-complete v1, and the strongest re-justification gate in this file** |
+| **3 — Horizon** | Deterministic scenarios and a forecast that grades its own past predictions |
+| **4 — Live** | Data refreshes without manual capture — **only if the `ARCHITECTURE.md` connectivity gate has been met** |
+| **5 — Assistant** | The household can ask questions conversationally against Atlas truth, with proposals never mutating anything directly |
+| **6 — Optimisation** | Debt and cash guidance, opportunities, long-horizon planning |
 
-### Why
+---
 
-Capture the product destination, ordered execution sequence, model gates, trajectory reviews, Golden Household requirement, and every future PR prompt inside the repo so the build does not depend on chat history.
+## 8. Trajectory gates
 
-### Acceptance
+At each gate, **stop implementing** and review: exact current `main`; current
+authorities; `BACKLOG.md` urgent items first; open household questions; how the
+household is actually using the site; completed acceptance evidence; and the
+remaining strategy.
 
-One authoritative strategy exists, current governance points to it where necessary, and it does not duplicate `BACKLOG.md`, architecture authority, or owner-question authority.
+Every remaining item is then `KEEP` · `REWRITE` · `MOVE` · `MERGE` · `SPLIT` ·
+`SKIP` · `DELETE` · `ADD`.
 
-### Prompt
+| Gate | After |
+|---|---|
+| **T0** | Phase 0 complete |
+| **T1** | Household understanding proven (Phase 1) |
+| **T2** | Product-complete v1 (Phase 2) — the strongest gate |
+| **T3** | Horizon proven (Phase 3) |
+| **T4** | Before any live connectivity work, and re-decide whether a store was ever needed |
+| **T5** | Before assistant work |
+
+Gates are named by ID, never by PR number.
+
+### When to rewrite this file
+
+A dedicated strategy-update PR is justified when a phase goal changes, more than
+two items need reordering or replacing, an assumed technology stops being
+appropriate, a newly discovered authority changes the shape, a gate shows the
+planned next move is not the highest-value one, or the model-tier policy changes.
+
+Small implementation discoveries go to finding dispositions and `BACKLOG.md` —
+not a roadmap rewrite.
+
+---
+
+## 9. Household evidence from more than one person
+
+Dale and Amanda may each provide household evidence independently. The product
+requirement, ahead of any mechanism:
+
+- **attribution and provenance are preserved** — who said it, and when;
+- **one person's statement is not automatically joint household policy**;
+- **reconciliation is an explicit step** that can produce a joint decision, and
+  disagreement is a household question, not a merge conflict;
+- **the storage mechanism is subject to its own authority review.** Wherever
+  interview evidence currently lands is *current practice*, not blessed
+  architecture, and `AF-HOUSE-01` decides its permanent home.
+
+---
+
+# The items
+
+Each carries: stable ID · outcome · why · incumbent · disposition · model tier ·
+escalation · entry gate · acceptance · prompt.
+
+Every item's prompt inherits the standing preamble:
+
+> Start from fresh current `main`. Record the starting SHA, confirm a clean
+> worktree, run `npm test`. Read `AGENTS.md`, `CLAUDE.md`, `ARCHITECTURE.md`,
+> `CONTEXT.md`, this strategy, `BACKLOG.md`, `docs/01_OPEN_QUESTIONS.md`,
+> `docs/ACCOUNT_FACTS.md`, and the current code and tests for the authority you
+> are about to touch. Answer the current-state gate with one of the six verdicts.
+> If `ALREADY FIXED`, stop and say so. One independently provable outcome, merge
+> card filled, findings dispositioned. Stop review-ready.
+
+---
+
+## Phase 0 — Trust and truth
+
+### `AF-GOV-01` — Install this build strategy
+
+**Outcome.** One coherent build direction: `ARCHITECTURE.md` owns direction and
+gates, this file owns sequencing, and an implementation agent following the
+documented read path cannot miss it.
+**Why.** The build should not depend on chat history.
+**Incumbent.** `ARCHITECTURE.md` direction · `EVOLVE` — the staged tiers become
+current state plus explicit gates, in the same home.
+**Tier.** FRONTIER — it moves direction authority.
+**Entry gate.** None; this is the first item.
+**Acceptance.** No contradiction between `CLAUDE.md`, `ARCHITECTURE.md` and this
+file; the read path reaches this file; references resolve; `npm test` green.
+**Status.** In progress — this PR.
+
+---
+
+### `AF-KNOW-01` — Reconcile planning knowledge with current evidence
+
+**Outcome.** The planning surfaces a future agent reads as input — `CONTEXT.md`
+state, `docs/01_OPEN_QUESTIONS.md`, `BACKLOG.md` identifiers — agree with what
+`data.json`, `public/periods.json` and `docs/ACCOUNT_FACTS.md` now show.
+**Why.** Roadmap inputs that are quietly stale produce confidently wrong work.
+Three instances are verified on `main` at `8ccd0e1`:
+
+- `CONTEXT.md` still lists **MBNA Mastercard** under *Outstanding*, while
+  `data.json` carries it in `meta.coverage`, as `debts[4]`, and as an obligation
+  with a minimum;
+- `docs/01_OPEN_QUESTIONS.md` **Q2** still asks where the `TFR-TO C/C` transfers
+  go, which later card-payment evidence appears to answer;
+- `BACKLOG.md` uses the identifier **`B70` twice**, for two unrelated items — the
+  HELOC limit item and a standing-transfer item.
+
+**Incumbent.** `CONTEXT.md`, `01_OPEN_QUESTIONS.md`, `BACKLOG.md` · `EVOLVE`.
+**Tier.** ECONOMY, escalating to FRONTIER if a question turns out to be
+financially load-bearing rather than stale.
+**Escalate if.** Resolving a question changes a published figure, or the answer
+is genuinely a household fact rather than a stale note.
+**Entry gate.** `AF-GOV-01` merged.
+**Acceptance.** Each of the three is verified against current evidence and either
+corrected or explicitly kept with the reason; no duplicate backlog identifier
+remains; no published figure moves.
+**Prompt.**
 
 ```text
-You are implementing Atlas Financial PR #4: install the repo-owned Build Strategy.
+Implement AF-KNOW-01: reconcile stale planning knowledge with current evidence.
 
-Repository: tc5v5s64ym-sketch/Atlas-Financial
+Verify each item against current repository state BEFORE changing it — the three
+below are observations from 8ccd0e1, not established conclusions:
 
-HARD GATE:
-Start from fresh current main. Record SHA, clean worktree, npm test.
-Read AGENTS.md, CLAUDE.md, ARCHITECTURE.md, BACKLOG.md, docs/01_OPEN_QUESTIONS.md and current planning/governance docs.
+1. CONTEXT.md lists MBNA as Outstanding; check data.json coverage/debts/obligations.
+2. 01_OPEN_QUESTIONS.md Q2 (TFR-TO C/C); check whether later card-payment evidence
+   resolves it. If it does, close it with the evidence. If it does not, say so and
+   leave it open.
+3. BACKLOG.md has two items numbered B70. Renumber ONE of them, keeping the
+   identifier of whichever is referenced elsewhere, and check for inbound references.
 
-ONE OUTCOME:
-Install one authoritative Atlas Financial Build Strategy containing:
-- product destination;
-- permanent authority principles;
-- model-selection/escalation gate;
-- Golden Household requirement;
-- trajectory-review gates;
-- ordered future PRs with copy/paste prompts;
-- phase acceptance campaigns.
+NON-GOALS: no engine change, no published figure moves, no backlog re-prioritisation,
+no rewriting questions that are genuinely still open.
 
-Do not create a second backlog, second architecture authority, or second governance system.
-If an equivalent build-strategy home already exists, extend/replace it instead of duplicating it.
-
-NON-GOALS:
-No product code.
-No financial figure change.
-No database.
-No UI.
-No backlog cleanup except references needed to make the strategy truthful.
-
-PROOF:
-References resolve; npm test green; docs do not claim conflicting homes.
-
-This changes product direction and requires exact-head Atlas Contract / Systems Review.
-Stop review-ready. Do not start PR #5.
+PROOF: figures review reports no moved figures; npm test green; every claim you
+changed cites the evidence that changed it.
 ```
 
 ---
 
-## PR #5 — Financial Cohesion & Authority Contract
+### `AF-PROOF-01` — Golden Household acceptance corpus
 
-**Recommended model:** FRONTIER  
-**Why model:** this decides the semantics future agents must obey.
+**Outcome.** One synthetic household — accounts, balances, limits, a transaction
+history, obligations — with its expected deterministic truths recorded, wired
+into `npm test`, so any future money-domain change is regression-tested against
+answers that were fixed in advance.
 
-### Why
+**Why, and why here.** Every later money-domain item is required to preserve
+Golden Household truth. **That is impossible unless the corpus exists first**, so
+it is built before the first item that must satisfy it, not alongside one.
 
-Atlas already has facts in statements, derived files, `data.json`, `periods.json`, docs, forecast code and pages. Future transaction ingestion, goals, calendar and assistants will multiply those surfaces. This PR defines which layer is allowed to decide what.
+**This is the ordering rule.** Items in Phase 1 and later that change money-domain
+behaviour name `AF-PROOF-01` as an entry gate. **Governance and documentation
+work is exempt** — `AF-GOV-01` and `AF-KNOW-01` change no financial behaviour, so
+they neither need nor can wait for the corpus.
 
-### Backlog connection
-
-Current backlog has repeated examples of plausible-but-wrong interpretation:
-- transfer/card-payment confusion;
-- PayPal conversion double counting;
-- business/pass-through ambiguity;
-- fee abbreviations;
-- missing accounts;
-- historical averages vs owner budget targets.
-
-### Acceptance
-
-A reviewer can identify CURRENT owner, INTENDED owner, consumers and conflicts for every important household-acted-on concept.
-
-### Prompt
+**Incumbent.** The five existing suites · `PRESERVE` and extend. The corpus is a
+new fixture consumed by existing test infrastructure, **not** a second test
+system.
+**Tier.** FRONTIER — the expected truths are the thing everything later is
+measured against, and a wrong one is a false green forever.
+**Escalate if.** The corpus would need to encode a real household figure. It must
+be synthetic; no real balance, limit or identifier belongs in it.
+**Entry gate.** `AF-GOV-01`.
+**Acceptance.** A synthetic household runs through the existing engine; expected
+truths are asserted independently of the code that computes them; the suite fails
+if an engine answer moves; no real household data is in the fixture.
+**Prompt.**
 
 ```text
-You are implementing PR #5: Financial Cohesion & Authority Contract.
+Implement AF-PROOF-01: the Golden Household acceptance corpus.
 
-ENTRY:
-PR #4 merged. Fresh current main; record SHA; clean tree; npm test.
-Read the Build Strategy and all authority/governance docs.
+Build ONE synthetic household fixture and its expected deterministic truths, and
+wire it into npm test alongside the existing suites.
 
-ONE OUTCOME:
-Install one canonical financial-truth contract:
-SOURCE EVIDENCE → OBSERVATION → CANONICAL FACT → RULE/COMMITMENT → DETERMINISTIC PROJECTION → VIEW.
+The expected truths must be derived INDEPENDENTLY of public/forecast.js — hand-
+computed or brute-forced by a second method. A fixture whose expectations come
+from running the engine proves consistency, not correctness, and CLAUDE.md
+forbids exactly that for anything financial.
 
-Define:
-ONE FINANCIAL CONCEPT = ONE OWNER + ONE REPRESENTATION + ONE MUTATION PATH.
+Cover at minimum: cash projection over the window, the weekly cap, the coupled
+cash/debt identity, revolving headroom with pending, and the budget split.
 
-Audit actual current owners for:
-cash, balances, debt effective balances, limits/headroom, HELOC interest,
-historical spending, budget targets, transfers, recurring obligations,
-weekly cap, 30/60/90 forecast, net worth/positions and page consumption.
+NON-GOALS: no change to public/forecast.js behaviour; no real household figures;
+no second test runner.
 
-Record CURRENT / INTENDED / CONSUMERS / CONFLICTS.
-Do not refactor product code in this PR.
-
-Must define actual/pending/committed/planned/statistical distinctions,
-household vs account cash flow, provenance, user override authority,
-provider IDs as aliases, derived-state rebuildability, view-only rendering,
-AI explanation without ledger authority, and replace/derive/delete preference.
-
-Machine tests may verify structure/references only; do not pretend regex understands finance prose.
-
-Run npm test.
-Required exact-head ChatGPT systems review.
-Stop review-ready; do not start PR #6.
+PROOF: the new suite fails when an engine answer is perturbed — demonstrate one
+mutation and show the case that catches it.
 ```
 
 ---
 
-## PR #6 — Executable Authority Registry & Boundary Guard
+## Phase 1 — Know us
 
-**Recommended model:** ECONOMY initially  
-**Escalate to FRONTIER if:** enforcement requires a new interpretation of financial ownership rather than mechanically encoding PR #5.
+### `AF-HOUSE-01` — Household evidence, attribution and reconciliation
 
-### Why
+**Outcome.** Dale's and Amanda's separately-given evidence has one recorded home,
+with attribution preserved, and a defined step that turns two individual
+statements into one household decision or one household question.
+**Why.** Interview evidence already exists in the repository from more than one
+person; without an attribution rule, one person's answer silently becomes policy.
+**Incumbent.** Owner targets in `data.json plan.budget`; existing interview
+material · `EVOLVE`. **Whatever path interview evidence currently sits in is
+current practice, not blessed architecture** — this item decides the permanent
+home.
+**Tier.** FRONTIER — provenance and whose-statement-counts is an authority rule.
+**Escalate if.** Reconciliation would overwrite an owner-stated target.
+**Entry gate.** `AF-PROOF-01` if it changes any derived figure; otherwise
+`AF-KNOW-01`.
+**Acceptance.** Every household statement carries who and when; no single
+person's statement becomes joint policy without a recorded reconciliation;
+disagreements land in `01_OPEN_QUESTIONS.md`.
 
-Documentation alone is too easy for the next agent to violate. Encode the smallest closed-form parts of the authority contract.
+---
 
-### Acceptance
+### `AF-DATA-01` — Transaction identity and the unknown-charge burn-down
 
-At least one real authority-drift class reliably turns red, with mutation proof.
+**Outcome.** Every transaction the analysis relies on has stable identity, and
+the population of unclassified or unexplained charges is measured and driven down
+to a stated threshold.
+**Why.** "Deeply understand household spending" is unachievable while a
+meaningful share of transactions is unattributed. This is the item that makes
+Phase 1 real.
+**Incumbent.** `scripts/periods.js` → `public/periods.json`; the classification
+in `data.json plan.budget`; `data.json unexplained` · `EVOLVE`.
+**Tier.** FRONTIER.
+**Escalate if.** Identity work starts to need guarantees the file-based
+foundation cannot give — that is the `ARCHITECTURE.md` **store gate**, and it is
+an owner decision, not a convenience. Record the evidence and stop.
+**Entry gate.** `AF-PROOF-01`.
+**Acceptance.** Unknown-charge share is stated before and after; no transaction
+is counted twice; transfers between household accounts are not consumption; the
+Golden Household truths still hold.
 
-### Prompt
+---
+
+### `AF-DATA-02` — Transfer and double-count truth
+
+**Outcome.** Money moving between household accounts, card payments and HELOC
+movements never appear as household consumption.
+**Why.** It is the most common way a spending picture becomes quietly wrong.
+**Incumbent.** `Forecast.projectDebts`, the cash/debt identity in `test-debt.js`
+· `EVOLVE` — extend the identity to the historical series, do not build a second
+walk.
+**Tier.** FRONTIER.
+**Entry gate.** `AF-PROOF-01`, `AF-DATA-01`.
+**Acceptance.** An independent reconciliation shows each dollar counted once
+across cash, card and HELOC movement.
+
+---
+
+## Phase 2 — Run our money *(product-complete v1)*
+
+### `AF-BUDGET-01` — Evidence-based budget targets
+
+**Outcome.** Budget targets are reconciled against what the household actually
+spends, with provenance for every target, and the gap between target and actual
+stated rather than smoothed.
+**Incumbent.** `Forecast.budgetBreakdown` + the nine owner targets and their
+classification in `data.json plan.budget`, proven by `test-budget.js` ·
+**`EVOLVE`. Do not build a second budget authority.**
+**Tier.** FRONTIER.
+**Entry gate.** `AF-PROOF-01`, `AF-HOUSE-01`.
+**Acceptance.** Every target names its source and date; target-vs-history
+provenance still passes; no category is double-counted against a dated
+commitment.
+
+---
+
+### `AF-SPEND-01` — Resolve safe-to-spend against the incumbent weekly cap
+
+**Outcome.** A decision, made before any implementation: is "safe-to-spend" the
+**evolved name and semantics of `Forecast.recommend`**, or is it genuinely a
+distinct concept?
+
+**This item's first deliverable is that answer, in writing.**
+
+- If **evolved** → `EVOLVE` `Forecast.recommend` / `recommendWeekly`. One
+  authority, better semantics, same home.
+- If **distinct** → the item must state precisely what question each one answers,
+  why the household needs both, and how a reader knows which to act on.
+
+**Two live weekly numbers is the failure mode**, and this repository has already
+shipped it once — a page showing `$1,650/wk` in one tile and `$0/wk` below,
+because two pieces of code answered the same question.
+**Incumbent.** `Forecast.recommend`, `Forecast.recommendWeekly`.
+**Tier.** FRONTIER.
+**Entry gate.** `AF-PROOF-01`, `AF-BUDGET-01`.
+**Acceptance.** Exactly one weekly household figure is published; if a second
+concept exists it has a different name, a different question, and a test proving
+they cannot be confused.
+**Prompt.**
 
 ```text
-Implement PR #6: Executable Authority Registry & Boundary Guard.
+Implement AF-SPEND-01: resolve safe-to-spend against the incumbent weekly cap.
 
-ENTRY:
-PR #5 merged. Fresh current main; baseline tests green.
+FIRST, before any code: read public/forecast.js recommend()/recommendWeekly(),
+public/plan.js where the weekly cap is published, and test-forecast.js. Then state
+in the merge card whether safe-to-spend is (A) the evolved semantics of the existing
+weekly-cap authority, or (B) a genuinely distinct concept — with the reasoning.
 
-ONE OUTCOME:
-Mechanically enforce the smallest truthful subset of the Financial Cohesion & Authority Contract.
+If (A): evolve the existing authority. Do not add a parallel one.
+If (B): you must justify two published weekly numbers and prove a reader cannot
+confuse them. Default to (A); (B) needs the stronger argument.
 
-Create a machine-readable registry/equivalent describing:
-- concept;
-- canonical owner;
-- allowed consumer/projection;
-- provenance class where useful;
-- CURRENT / DERIVED / LEGACY status.
+NON-GOALS: no second forecast engine; no second weekly figure without (B) proven.
 
-Add deterministic guard(s) that catch real structural drift without parsing English.
-At minimum prove:
-- a second canonical owner turns red;
-- removing/duplicating a registered owner turns red;
-- one high-risk known boundary cannot quietly move into a page/duplicate store.
-
-Do not build a fake general static analyzer.
-No financial behavior change.
-
-Mutation proof required.
-npm test green.
-Exact-head systems review because authority enforcement changes.
-Stop. Run trajectory Gate T0 before PR #7.
+PROOF: an invariant test asserting exactly one published weekly household figure.
 ```
 
 ---
 
-# PHASE 1 — KNOW US
+### `AF-CAL-01` — Obligations and calendar usability
 
-## PR #7 — SQLite Canonical Store Foundation
-
-**Recommended model:** FRONTIER  
-**Why model:** choosing the first durable canonical record store is an authority move.
-
-### Why
-
-Use a zero-maintenance relational store early enough to enforce identity, foreign keys, uniqueness and idempotency without operating Postgres. SQLite is allowed to be the long-term answer.
-
-### Acceptance
-
-Fresh DB can be created/migrated deterministically; current published Atlas behavior remains unchanged.
-
-### Prompt
-
-```text
-Implement PR #7: SQLite Canonical Store Foundation.
-
-ENTRY:
-Gate T0 completed and strategy still says this is next.
-Fresh main, tests green, read authority docs.
-
-CURRENT-STATE GATE:
-If the repo already has an equivalent canonical relational store with migrations, STOP and route to strategy review.
-
-ONE OUTCOME:
-Add a local SQLite canonical-store foundation for future household finance records.
-
-Requirements:
-- migration mechanism with immutable applied migrations;
-- foreign keys enabled;
-- application access layer appropriate to current runtime;
-- exact local path/config pattern that never commits real household DB data;
-- synthetic disposable DB for tests;
-- no production/current data cutover;
-- no page behavior change.
-
-Document expand/backfill/switch/contract discipline for future breaking changes.
-No Postgres unless current state proves SQLite cannot satisfy this outcome.
-
-TEST:
-empty DB → latest schema;
-repeated test DB creation;
-migration failure red;
-real household DB path ignored from git.
-
-This is FOUNDATION — NOT COMPLETION.
-Named consumer: PR #8.
-Stop review-ready.
-```
+**Outcome.** The household can see what is due, when, and what it has to land by
+— in a form they actually use.
+**Incumbent.** `renderCalendar()` in `public/plan.js`, month grid plus mobile
+agenda, derived from the same `sim` as everything else; `data.json upcoming` and
+`commitments`; `scripts/calendar-ics.js` · **`EVOLVE` — usability, hierarchy and
+interaction. Do not compute dates a second time.**
+**Tier.** ECONOMY, escalating if it changes what a date means.
+**Entry gate.** `AF-PROOF-01`.
+**Acceptance.** The calendar still derives from one projection; no date or amount
+is computed in the view.
 
 ---
 
-## PR #8 — Canonical Money & Account Identity
+### `AF-SPEND-02` — Safe-to-spend shadow graduation
 
-**Recommended model:** FRONTIER
-
-### Why
-
-Exact money and stable account identity must exist before transaction truth. External/provider IDs are aliases; amounts carry currency; binary float must not become canonical money.
-
-### Backlog connection
-
-The household has many accounts, unidentified accounts, card/debt facilities, Wise/PayPal and possible future provider reconnections.
-
-### Prompt
-
-```text
-Implement PR #8: Canonical Money & Account Identity.
-
-ENTRY:
-PR #7 merged; fresh main; tests green.
-
-ONE OUTCOME:
-Create load-bearing canonical Money and Account identity contracts in SQLite/domain code.
-
-Money:
-- exact minor units or equally exact justified representation;
-- explicit currency;
-- explicit sign convention;
-- reject silent cross-currency arithmetic.
-
-Account:
-- immutable Atlas internal ID;
-- household/entity ownership boundary;
-- type/currency/status;
-- external/source identifiers stored as aliases/history, not primary identity;
-- ambiguous account mapping must remain unresolved rather than auto-merge.
-
-Record household-originated provenance actor fields from day one where applicable.
-
-PROPERTY/DB TESTS:
-exact arithmetic;
-currency mismatch;
-DB round trip;
-external ID changes without new Atlas account;
-ambiguous matching does not collapse.
-
-No transactions yet.
-No provider API.
-Stop review-ready.
-```
+**Outcome.** Before any changed weekly figure is published, it runs in shadow
+against the incumbent for a stated period, and graduates only on recorded
+agreement or an explained divergence.
+**Why.** A weekly number the household acts on should not change silently.
+**Incumbent.** whatever `AF-SPEND-01` decides · `PRESERVE` during shadow.
+**Tier.** FRONTIER.
+**Entry gate.** `AF-SPEND-01`.
+**Acceptance.** Shadow and published figures are both recorded; graduation is an
+owner-visible step.
 
 ---
 
-## PR #9 — Golden Household Acceptance Corpus
+## Phase 3 — Horizon
 
-**Recommended model:** ECONOMY  
-**Escalate if:** expected financial truths reveal unresolved semantics rather than fixture construction.
+### `AF-FORECAST-01` — Scenarios on the existing engine
 
-### Why
-
-Install the finance equivalent of a Golden Session before transaction work spreads.
-
-### Prompt
-
-```text
-Implement PR #9: Golden Household Acceptance Corpus.
-
-ENTRY:
-PR #8 merged; fresh main; tests green.
-
-ONE OUTCOME:
-Create one synthetic 18-month Golden Household dataset and an acceptance harness that later money-touching PRs must preserve.
-
-Include the minimum cases named in the Build Strategy:
-multiple accounts/debts, transfers, card payments, refunds, identical purchases,
-duplicate imports, pending/posted lifecycle, classification override,
-annual irregular cost, sports, planned travel, stale source, mismatch, malicious memo.
-
-Define expected canonical truths independently of the implementation under test.
-Do not derive expected answers by calling the same production function being tested.
-
-No real household data.
-No product behavior change.
-
-Prove at least one deliberate mutant/fixture corruption turns acceptance red.
-Stop review-ready.
-```
+**Outcome.** The household can ask "what if" — a changed income, a large
+purchase, a different payment — and get a deterministic answer.
+**Incumbent.** `Forecast.simulate` and the existing scenario controls on the Plan
+page · **`EVOLVE`. There is one forecast engine and it stays one.**
+**Tier.** FRONTIER.
+**Entry gate.** `AF-PROOF-01`.
+**Acceptance.** Scenarios run through the same simulate path; the Golden
+Household truths hold for the base case.
 
 ---
 
-## PR #10 — Canonical Transaction & Observation Model
+### `AF-FORECAST-02` — Forecast self-grading
 
-**Recommended model:** FRONTIER
-
-### Why
-
-Atlas needs one answer to “what financially happened?” while preserving “what the source said” separately.
-
-### Prompt
-
-```text
-Implement PR #10: Canonical Transaction & Observation Model.
-
-ENTRY:
-PR #9 merged; fresh main; Golden Household green.
-
-ONE OUTCOME:
-Create one canonical Transaction representation linked to immutable source observations.
-
-Transaction:
-- immutable Atlas ID;
-- canonical account;
-- exact Money;
-- authorized/posted dates as distinct where known;
-- canonical merchant/description with provenance;
-- lifecycle/status representation;
-- household/business/economic-role fields only where authority contract permits.
-
-Observation:
-- source evidence reference;
-- source/provider transaction alias;
-- observed status/date/amount/description;
-- observed timestamp;
-- source relationship fields.
-
-Provider/source IDs are aliases, never Atlas primary identity.
-Every canonical transaction must have observation provenance or explicit household-created source class.
-
-Prove two legitimate same-merchant/date/amount purchases remain distinct.
-Do not implement transfer pairing or classifications yet.
-Stop review-ready.
-```
+**Outcome.** Atlas records what it predicted and later scores itself against what
+happened, so confidence is earned rather than asserted.
+**Incumbent.** none for grading · `NEW`, consuming `Forecast.simulate`.
+**Tier.** FRONTIER.
+**Entry gate.** `AF-FORECAST-01`, and enough elapsed history to grade.
+**Acceptance.** A recorded prediction, a recorded outcome, and a stated error —
+with no retroactive editing of what was predicted.
 
 ---
 
-## PR #11 — Idempotent Historical Import Pipeline
+## Phase 4 — Live *(gated — not authorised)*
 
-**Recommended model:** FRONTIER initially
+**Everything in this phase sits behind the `ARCHITECTURE.md` connectivity gate:
+proven need, current Canadian availability, security review, provider semantics,
+and a working canonical ingestion foundation. All five, plus an owner decision.**
 
-### Why
+Reaching this line in the file authorises nothing. If the gate is not met, the
+correct action is to record the evidence and stop.
 
-The revised plan explicitly names the missing bridge from existing 12–18 month exports into canonical state.
+### `AF-LIVE-01` — Provider-neutral ingestion foundation
 
-### Backlog connection
+**Outcome.** Import is idempotent and provider-shaped data is normalised at the
+edge, so no provider's semantics leak into Atlas truth.
+**Incumbent.** `scripts/periods.js` and the capture scripts · `EVOLVE`.
+**Tier.** FRONTIER. **Entry gate.** T4, and the connectivity gate.
+**Acceptance.** The same file imported twice changes nothing.
 
-B16, PayPal/CSV gaps, second-month intake, existing statement/export workflows.
+### `AF-LIVE-02` — First automated connector
 
-### Prompt
+**Outcome.** One institution's data arrives without manual export.
+**Incumbent.** The manual capture scripts and their routes in
+`docs/ACCOUNT_FACTS.md` · **`PRESERVE`** — the connector is an additional source,
+and the manual path stays working as the fallback. It is `NEW` only in that
+nothing automates capture today.
+**Tier.** FRONTIER. **Entry gate.** `AF-LIVE-01` and the full connectivity gate,
+including a current availability check — **provider choice is not made in this
+file and must be verified when the work starts, not assumed from it.**
+**Acceptance.** Read-only; no credential stored by Atlas; a manual path still
+works if the connector fails.
 
-```text
-Implement PR #11: Idempotent Historical Import Pipeline.
+### `AF-LIVE-03` — Scheduled refresh and resilience
 
-ENTRY:
-PR #10 merged; fresh main; Golden Household green.
-
-ONE OUTCOME:
-Import the household's realistically available machine-readable historical formats into immutable observations/canonical records idempotently.
-
-Start from actual supported formats in the repo, prioritizing CSV; add OFX/QFX only if real available source shapes justify them.
-
-Pipeline:
-file fingerprint → ingest run → immutable source evidence → deterministic parse →
-account mapping → transaction observations/materialization → reconciliation summary → success.
-
-Same artefact N times = same canonical state.
-Crash halfway + retry = same final state.
-Never dedupe solely by merchant/date/amount.
-Malformed rows are explicit, not silently dropped.
-
-Synthetic fixtures in tests only.
-Real files remain local/private.
-Stop review-ready.
-```
-
----
-
-## PR #12 — Transfer & Double-Count Truth
-
-**Recommended model:** FRONTIER
-
-### Why
-
-Money moving between household accounts is not household consumption. Card payments and HELOC movements must not create fake spending.
-
-### Backlog connection
-
-Resolved $46,657 card payments, Amanda/joint transfers, PayPal funding, B31 chains, B63/B64 business/pass-through routing.
-
-### Prompt
-
-```text
-Implement PR #12: Transfer & Double-Count Truth.
-
-ENTRY:
-PR #11 merged; fresh main; Golden Household green.
-
-ONE OUTCOME:
-Represent internal transfer relationships so account cash flow remains real while household income/spending nets correctly.
-
-Required semantics:
-- chequing → savings: account flows ±, household spend/income 0;
-- credit-card payment: cash/debt movement, not second household purchase;
-- household-boundary crossing is explicit;
-- one missing side remains unresolved;
-- fuzzy matches produce candidates, not destructive auto-pairing;
-- user-confirmed pairing has authority.
-
-Golden Household must prove:
-same-amount unrelated transactions do not pair;
-card payment does not double count;
-account forecast still sees liquidity movement.
-
-Stop review-ready.
-```
+**Outcome.** Data refreshes on a schedule without a person starting it.
+**Incumbent.** none — nothing schedules anything today · `NEW`, consuming
+`AF-LIVE-02`.
+**Tier.** FRONTIER — a partial picture published as complete is the failure mode
+this repository exists to prevent.
+**Entry gate.** `AF-LIVE-02` proven over a stated period.
+**Acceptance.** A failed sync degrades to the last good state and says so; it
+never publishes a partial picture as complete.
 
 ---
 
-## PR #13 — Classification Authority & Household Override
+## Phase 5 — Assistant
 
-**Recommended model:** FRONTIER for authority implementation; ECONOMY acceptable if PR #5 already fully specifies precedence and work is mechanical.
+### `AF-ASSIST-01` — Assistant-neutral read interface
 
-### Why
+**Outcome.** Any assistant can ask Atlas for truth through one documented surface
+that returns facts and their provenance.
+**Incumbent.** `data.json` as the published surface · `EVOLVE`.
+**Tier.** FRONTIER — it is a trust boundary. **Entry gate.** T5.
+**Acceptance.** Read-only; provenance travels with every figure.
 
-The daily cleanup ritual is useless if imports/models can overwrite household decisions.
+### `AF-ASSIST-02` — Proposed-change interface
 
-### Prompt
-
-```text
-Implement PR #13: Classification Authority & Household Override.
-
-ENTRY:
-PR #12 merged; fresh main; Golden Household green.
-
-ONE OUTCOME:
-Give classification one write authority with provenance/history and durable household override precedence.
-
-Use exact precedence from current authority docs. Expected shape:
-HOUSEHOLD/USER > explicit household rule > model/automation > source/provider.
-
-Do not overwrite source evidence.
-A household override survives re-import and classifier-version changes until explicitly reset.
-Record actor/provenance for household decisions.
-
-Merchant text is untrusted data, never agent instruction.
-
-TEST:
-override + reimport;
-rule/model changes;
-explicit reset;
-history inspectable;
-malicious memo inert.
-
-Stop review-ready.
-```
+**Outcome.** An assistant can propose a structured change; a person approves it;
+Atlas applies it.
+**Incumbent.** none — every change today is a commit by the active agent ·
+`NEW`. It does not replace that path; a proposal becomes an ordinary change
+subject to the same review.
+**Tier.** FRONTIER. **Entry gate.** `AF-ASSIST-01`.
+**Acceptance.** No proposal path mutates anything without recorded approval.
 
 ---
 
-## PR #14 — Unknown-Charge Cleanup Workflow
+## Phase 6 — Optimisation
 
-**Recommended model:** ECONOMY
+### `AF-OPT-01` — Debt and cash guidance
 
-### Why
+**Incumbent.** `data.json plan.nextDollar` and the funding options, already
+derived and already tested · **`EVOLVE`.**
+**Tier.** FRONTIER. **Entry gate.** T2 passed, `AF-PROOF-01`.
 
-Turn canonical classifications into a short repeatable household habit and data-quality loop.
+### `AF-OPT-02` — Daily briefing and opportunities
 
-### Backlog connection
+**Incumbent.** the Plan page's Today and Next Move · `EVOLVE`.
+**Tier.** ECONOMY. **Entry gate.** `AF-OPT-01`.
 
-uncategorized spending, unknown transfers, business inventory uncertainty, missing merchant meaning.
+### `AF-OPT-03` — Long-horizon household planning
 
-### Prompt
-
-```text
-Implement PR #14: Unknown-Charge Cleanup Workflow.
-
-ENTRY:
-PR #13 merged; fresh main; tests + Golden Household green.
-
-ONE OUTCOME:
-Provide a simple Needs Review / Unknown workflow backed by canonical classification/relationship writes.
-
-User should be able to review a small transaction queue and:
-confirm suggestion, choose category, mark transfer/business, or leave unknown.
-
-Show:
-- unknown transaction count;
-- unknown dollars;
-- classification coverage.
-
-A decision must flow into canonical history and downstream aggregates; this is not a UI-only tag.
-
-Keep UI extremely simple.
-No AI chat.
-No budget redesign.
-Browser/integration proof for the actual write path.
-Stop review-ready.
-```
+**Outcome.** The household can reason past the 90-day window — the mortgage
+renewal, the debt path, the years rather than the quarter.
+**Incumbent.** `Forecast.simulate` over `plan.windowDays`, and the HELOC/mortgage
+modellers in `public/modellers.js` · **`EVOLVE`** — a longer horizon is a longer
+run of one engine, not a second one.
+**Tier.** FRONTIER. **Entry gate.** T2, `AF-FORECAST-02` — long horizons without
+self-grading are guesses with a chart.
 
 ---
 
-## PR #15 — 18-Month Household Spending Baseline
-
-**Recommended model:** FRONTIER
-
-### Why
-
-Build the real-life baseline that future budgets will tighten from instead of guessing.
-
-### Backlog connection
-
-B16, B34, B40, B54, B62, PayPal correction, fees/interest, business/household separation, Q0.
-
-### Prompt
-
-```text
-Implement PR #15: 18-Month Household Spending Baseline.
-
-ENTRY:
-PR #14 merged; fresh main; Golden Household green.
-
-ONE OUTCOME:
-Produce one canonical, reproducible household spending baseline from canonical transactions.
-
-For meaningful categories calculate:
-monthly average, median, recent 3/6/12 month views, seasonal range,
-high/low months, recurring merchants, unusual spikes, confidence/coverage.
-
-Exclude/internalize transfers correctly.
-Keep business/pass-through money distinct.
-Historical actuals are NOT owner budget targets.
-
-Every aggregate must drill to canonical transactions and reconcile to the source window.
-
-No budget recommendation yet.
-No calendar redesign.
-
-PHASE ACCEPTANCE:
-Atlas must truthfully answer “Where did our money go?”
-Run Gate T1 after merge/acceptance before Phase 2.
-```
-
----
-
-# PHASE 2 — RUN OUR MONEY
-
-## PR #16 — Household Financial Policy & Attribution
-
-**Recommended model:** FRONTIER
-
-### Why
-
-Math cannot know which lifestyle priorities the household chooses to protect.
-
-### Prompt
-
-```text
-Implement PR #16: Household Financial Policy & Attribution.
-
-ENTRY:
-Gate T1 says Phase 2 remains next. Fresh main.
-
-ONE OUTCOME:
-Create structured durable household financial policy with attribution.
-
-Support:
-protected/flexible priorities;
-cash-buffer philosophy;
-debt objective;
-retirement/lifestyle priorities;
-risk/austerity tolerance;
-individual preference vs joint decision.
-
-Every household-originated policy records actor/source:
-Dale / Amanda / Joint (or canonical person IDs if current model requires).
-
-This is NOT an AI personality/soul system.
-Do not infer policy from spending alone.
-Unknown policy stays unknown.
-
-No budget math change except minimal read integration proof.
-Stop review-ready.
-```
-
----
-
-## PR #17 — Evidence-Based Budget Targets
-
-**Recommended model:** FRONTIER
-
-### Why
-
-A target must be informed by actual behavior but remain distinct from historical average.
-
-### Backlog connection
-
-Q0 owner budget workbooks, current historical-derived weekly cap, sports/travel realities.
-
-### Prompt
-
-```text
-Implement PR #17: Evidence-Based Budget Targets.
-
-ENTRY:
-PR #16 merged; fresh main; baseline still reconciles.
-
-ONE OUTCOME:
-Create canonical household budget targets that clearly distinguish:
-historical actual / current recent rate / owner target / Atlas recommendation.
-
-Recommendations must be deterministic and explain required reduction from observed behavior.
-Protected household priorities must not be treated as generic waste.
-
-A category target must not mutate historical actuals.
-Owner-stated target outranks recommendation.
-Do not silently fill unknown targets.
-
-Expose enough UI to compare Historical / Current / Recommended / Owner Target.
-No safe-to-spend yet.
-Stop review-ready.
-```
-
----
-
-## PR #18 — Obligations, Schedules & Planned Commitments
-
-**Recommended model:** FRONTIER
-
-### Why
-
-Budget averages and dated cash obligations are different concepts. Atlas needs to know Christmas, sports fees, mortgage and annual insurance before they arrive.
-
-### Backlog connection
-
-B29 payment calendar, B69 home insurance, B67 Fusion invoice, property tax, debt due dates.
-
-### Prompt
-
-```text
-Implement PR #18: Obligations, Schedules & Planned Commitments.
-
-ENTRY:
-PR #17 merged; fresh main.
-
-ONE OUTCOME:
-Represent separately:
-1. budget target;
-2. scheduled/committed occurrence;
-3. planned/sinking commitment;
-4. actual/pending transaction.
-
-Migrate current known household schedule semantics from existing authoritative sources without duplicating owners.
-A future $5,000 purchase is never an actual transaction.
-A monthly budget target is never a scheduled bank withdrawal.
-
-Preserve provenance and uncertainty.
-Reuse/derive from existing payment-calendar work rather than create a second schedule truth.
-
-Tests must prove dated items are not double counted inside category budget averages.
-Stop review-ready.
-```
-
----
-
-## PR #19 — Safe-to-Spend v1 — SHADOW ONLY
-
-**Recommended model:** FRONTIER
-
-### Why
-
-Safe-to-spend is likely the most important day-to-day number and therefore must earn trust before becoming behavioral authority.
-
-### Prompt
-
-```text
-Implement PR #19: Safe-to-Spend v1 in SHADOW mode.
-
-ENTRY:
-PR #18 merged; fresh main; baseline/budget/obligation tests green.
-
-ONE OUTCOME:
-Create one deterministic weekly Safe-to-Spend calculation consuming canonical:
-cash, income timing, obligations, debt minimums, budget targets,
-protected buffer and known commitments.
-
-It must NOT become the household's authoritative spending instruction yet.
-
-Publish/log it clearly as SHADOW with:
-calculation date;
-horizon;
-inputs/version;
-uncertainties;
-predicted low cash point;
-reason codes.
-
-No AI arithmetic.
-No duplicate page-owned calculation.
-
-Create a real-world shadow evaluation procedure comparing weekly prediction against what actually happens.
-
-After merge, run the shadow campaign for enough real weeks to evaluate usefulness.
-Defects get separate PRs.
-
-PHASE ACCEPTANCE / GATE T2:
-Only graduate when household evidence supports it.
-Gate T2 must re-justify every later phase.
-```
-
----
-
-# PHASE 3 — SEE THE HORIZON
-# Only proceed after Gate T2 explicitly keeps this phase.
-
-## PR #20 — Goals & Planned Spending
-
-**Recommended model:** ECONOMY if authority already clear; FRONTIER if goal lifecycle conflicts with commitments.
-
-### Prompt
-
-```text
-Implement PR #20: Goals & Planned Spending.
-
-ENTRY:
-Gate T2 explicitly keeps Phase 3. Fresh main.
-
-ONE OUTCOME:
-Create canonical future goals/planned-spend lifecycle:
-idea → considering → planned → committed → actual.
-
-Store amount/range, target date/window, priority/status, actor/provenance and uncertainty.
-A goal affects scenarios/funding only according to its status; it never becomes an actual transaction by existing.
-
-Provide a simple way to enter an item such as:
-Palm Springs / Jan 2027 / ~$6,000 / considering.
-
-No scenario engine yet.
-Stop review-ready.
-```
-
----
-
-## PR #21 — Deterministic Horizon Forecast
-
-**Recommended model:** FRONTIER
-
-### Prompt
-
-```text
-Implement PR #21: Deterministic Horizon Forecast.
-
-ENTRY:
-PR #20 merged; fresh main.
-
-ONE OUTCOME:
-Evolve the current forecast authority to deterministic 30/60/90-day and 12-month horizons consuming canonical state.
-
-Inputs:
-opening cash/debt, income timing, scheduled obligations,
-budget/variable-spend assumptions, enabled planned commitments, explicit assumptions.
-
-Every run records:
-input snapshot/reference;
-run timestamp;
-algorithm version;
-scenario label;
-assumptions;
-outputs/confidence.
-
-Daily timing and same-day ordering must be deterministic.
-Transfers affect account liquidity but not household consumption.
-Stale/unreconciled data lowers confidence rather than disappearing.
-
-Do not create a second forecast engine.
-Stop review-ready.
-```
-
----
-
-## PR #22 — Forecast Self-Grading / Backtesting
-
-**Recommended model:** ECONOMY for instrumentation; FRONTIER if scoring reveals forecast semantic changes are required.
-
-### Prompt
-
-```text
-Implement PR #22: Forecast Self-Grading / Backtesting.
-
-ENTRY:
-PR #21 merged; fresh main.
-
-ONE OUTCOME:
-Make forecasts accountable against later actuals without rewriting historical forecasts.
-
-Persist/version enough original inputs/outputs to score:
-7d / 30d / 90d balance error;
-low-balance date/value error;
-meaningful category/variable-spend error where valid.
-
-Scores are deterministic data-health outputs.
-A poorly performing forecast becomes visibly lower-confidence; do not let prose hide it.
-
-No new forecasting algorithm unless required to make scoring truthful.
-Stop review-ready.
-```
-
----
-
-## PR #23 — Scenario Engine
-
-**Recommended model:** FRONTIER
-
-### Prompt
-
-```text
-Implement PR #23: Scenario Engine.
-
-ENTRY:
-PR #22 merged; fresh main.
-
-ONE OUTCOME:
-Run deterministic what-if scenarios without mutating base household truth.
-
-At minimum support:
-enable/disable a planned goal;
-change a budget target;
-change an expected transfer/income assumption;
-change debt-payment allocation.
-
-Scenario outputs use the same forecast authority as base.
-Scenario state is never actual state.
-
-Prove Palm Springs-style scenario reports impact on:
-cash path, debt path, buffer, funding gap and displaced/competing commitments.
-
-Stop review-ready.
-```
-
----
-
-## PR #24 — Financial Calendar & Horizon Experience
-
-**Recommended model:** ECONOMY for rendering if APIs are settled; FRONTIER if UX requires new financial semantics.
-
-### Why
-
-This is the primary human interface: understandable month/week horizon, not accountant software.
-
-### Prompt
-
-```text
-Implement PR #24: Financial Calendar & Horizon Experience.
-
-ENTRY:
-PR #23 merged; fresh main.
-
-ONE OUTCOME:
-Create the primary calendar/horizon UI consuming existing deterministic outputs only.
-
-Month/week should show:
-paydays/inflows;
-bills/obligations;
-planned purchases/goals;
-weekly Safe-to-Spend status;
-Comfortable / Watch / Tight / Shortfall states.
-
-Tap day/week to explain the deterministic drivers in plain language.
-
-The calendar may render and explain.
-It may NOT calculate its own financial truth.
-
-Make the UI polished, phone-friendly and obvious to a non-finance user.
-Use browser/e2e acceptance for source → engine → calendar.
-
-PHASE ACCEPTANCE:
-Enter a meaningful goal and prove Atlas answers:
-Can we afford it? When? What changes? What happens to cash/debt/buffer?
-Run Gate T3.
-```
-
----
-
-# PHASE 4 — MAKE IT LIVE
-# Only proceed if Gate T3 keeps it.
-
-## PR #25 — Provider-Neutral Live Ingestion & Transaction Lifecycle
-
-**Recommended model:** FRONTIER
-
-### Prompt
-
-```text
-Implement PR #25: Provider-Neutral Live Ingestion & Transaction Lifecycle.
-
-ENTRY:
-Gate T3 keeps Phase 4. Fresh main.
-
-ONE OUTCOME:
-Define one live-source ingestion port feeding the SAME evidence/observation/canonical pipeline as historical files, and close pending/posted/revision/removal semantics needed for live data.
-
-Required lifecycle cases:
-pending amount/date/ID changes;
-pending disappears;
-posted revised;
-source removes record;
-source supplies no pending data.
-
-Source/provider models may not leak downstream.
-Checkpoint/cursor semantics belong to source ingestion, not finance domain truth.
-
-No real provider yet beyond synthetic adapter proof.
-Golden Household lifecycle cases must pass.
-Stop review-ready.
-```
-
----
-
-## PR #26 — Reconciliation & Data Health
-
-**Recommended model:** FRONTIER
-
-### Prompt
-
-```text
-Implement PR #26: Reconciliation & Data Health.
-
-ENTRY:
-PR #25 merged; fresh main.
-
-ONE OUTCOME:
-Make “Can Atlas trust this data?” a canonical machine-readable output.
-
-Track:
-source freshness;
-records received/added/modified/removed;
-duplicate artefacts;
-pending/posted matches;
-unresolved account mappings/transfers;
-statement opening/closing residual where available;
-soft live-balance reconciliation;
-orphan observations;
-projection/forecast freshness.
-
-Hard and soft reconciliation must be distinguished.
-Never silently discard unexplained residual.
-
-Expose a simple data-health consumer for UI/forecast confidence.
-Stop review-ready.
-```
-
----
-
-## PR #27 — First Automated Canadian Financial-Data Connector
-
-**Recommended model:** FRONTIER
-
-### Prompt
-
-```text
-Implement PR #27: First Automated Canadian Financial-Data Connector.
-
-ENTRY:
-PR #26 merged; fresh main.
-
-CURRENT-MARKET GATE:
-Research CURRENT official/primary documentation for viable Canadian providers.
-Do not select Wealthica, Plaid, Flinks, direct screen automation, or future open-banking access from memory.
-Compare coverage for the household's actual institutions, consent/auth flow,
-transactions/balances, sync semantics, sandbox/testing, cost and commercial/private-use feasibility.
-
-ONE OUTCOME:
-Add ONE selected provider behind the provider-neutral port.
-
-Requirements:
-checkpoint advances only after durable canonical success;
-pagination/retry idempotent;
-reauth/disconnect preserves Atlas account identity/history;
-provider IDs/categories remain aliases;
-server-side secrets only;
-no raw token logs.
-
-Manual file import remains fallback.
-
-Use official sandbox/test environment where possible.
-Required security/systems review.
-Stop review-ready.
-```
-
----
-
-## PR #28 — Scheduled Daily Sync & Resilience
-
-**Recommended model:** FRONTIER
-
-### Prompt
-
-```text
-Implement PR #28: Scheduled Daily Sync & Resilience.
-
-ENTRY:
-PR #27 merged; fresh main.
-
-ONE OUTCOME:
-Turn the first provider into a reliable daily freshness loop without creating a second source of truth.
-
-Daily:
-provider → evidence/observation → canonical state → reconciliation →
-classification queue → budget/safe-to-spend → forecast/calendar freshness.
-
-Use the smallest reliable scheduler/background mechanism compatible with the current stack.
-Do not add Redis/Temporal/etc without observed need.
-
-Prove:
-duplicate delivery harmless;
-worker crash/retry converges;
-checkpoint cannot outrun durable commit;
-stale/dead sync visible;
-manual fallback still works.
-
-PHASE ACCEPTANCE:
-Run unattended and observe a new purchase flow through to the user-facing plan without hand-editing canonical figures.
-Run Gate T4.
-
-At Gate T4 explicitly decide whether SQLite is still enough.
-Postgres migration is NOT pre-authorized; add it only if current evidence earns it.
-```
-
----
-
-# PHASE 5 — CONVERSATIONAL ASSISTANT INTERFACE
-# Only proceed if Gate T4 keeps it.
-
-## PR #29 — Assistant-Neutral Read Interface
-
-**Recommended model:** FRONTIER for security boundary; ECONOMY for mechanical tool definitions after boundary is approved.
-
-### Prompt
-
-```text
-Implement PR #29: Assistant-Neutral Read Interface.
-
-ENTRY:
-Gate T4 keeps Phase 5. Fresh main.
-
-ONE OUTCOME:
-Expose a bounded read interface that lets an owner-approved conversational assistant understand current Atlas state without direct database access.
-
-Reads may include:
-household status;
-spending/budget;
-transactions/evidence;
-debt;
-calendar/goals;
-forecast/scenarios;
-policy;
-data health.
-
-The interface is assistant-neutral. ChatGPT is the first expected client, not a domain dependency.
-
-Do not expose raw bank credentials/provider tokens.
-Do not create mutation tools.
-Security review required.
-Stop review-ready.
-```
-
----
-
-## PR #30 — Proposed Change Interface
-
-**Recommended model:** FRONTIER
-
-### Prompt
-
-```text
-Implement PR #30: Proposed Change Interface.
-
-ENTRY:
-PR #29 merged; fresh main.
-
-ONE OUTCOME:
-Allow assistants to translate natural-language household intent into structured PROPOSALS that Atlas validates through canonical mutation paths.
-
-Examples:
-goal proposal;
-classification proposal;
-planned commitment;
-household policy proposal.
-
-Assistant cannot directly overwrite balances, reconciliation, source evidence or deterministic outputs.
-
-Every proposal records:
-actor;
-source assistant/session metadata where appropriate;
-proposed change;
-validation result;
-accept/reject state;
-resulting canonical record if accepted.
-
-No autonomous financial actions.
-Stop review-ready.
-```
-
----
-
-## PR #31 — Multi-Person Household Attribution & Approval Semantics
-
-**Recommended model:** FRONTIER
-
-### Prompt
-
-```text
-Implement PR #31: Multi-Person Household Attribution & Approval Semantics.
-
-ENTRY:
-PR #30 merged; fresh main.
-
-ONE OUTCOME:
-Support Dale and Amanda as distinct household actors without turning one person's preference into joint household policy.
-
-Define which update classes may be:
-individual observations/preferences;
-individually authoritative classifications;
-joint commitments/policies requiring explicit household agreement.
-
-Preserve attribution/history.
-Do not build surveillance features or spouse scoring.
-Do not force all input through Dale.
-
-Test conflicting proposals and joint acceptance path.
-Stop review-ready.
-```
-
----
-
-## PR #32 — Daily Financial Briefing
-
-**Recommended model:** ECONOMY for presentation; FRONTIER only if new recommendation authority is introduced.
-
-### Prompt
-
-```text
-Implement PR #32: Daily Financial Briefing.
-
-ENTRY:
-PR #31 merged; fresh main.
-
-ONE OUTCOME:
-Produce a concise household briefing from existing canonical/deterministic outputs.
-
-Target feel: checking the weather.
-
-Include only meaningful items such as:
-safe-to-spend;
-weekly category pressure;
-next major obligation/payday;
-cash-buffer warning;
-goal status;
-data-health caveat;
-small unknown-transaction queue.
-
-No new finance calculations in the briefing layer.
-No guilt/scolding language.
-Sometimes the correct message must be: “You're fine; no action needed.”
-
-Provide an assistant-readable and human-readable representation.
-Run Gate T5 after acceptance.
-```
-
----
-
-# PHASE 6 — OPTIMIZE OUR LIFE
-# Optional. Only proceed if Gate T5 says these are now the highest-value problems.
-
-## PR #33 — Opportunity Engine
-
-**Recommended model:** FRONTIER for financial opportunity semantics; current market research handled by assistant at use time.
-
-### Prompt
-
-```text
-Implement PR #33: Opportunity Engine.
-
-ENTRY:
-Gate T5 keeps Phase 6. Fresh main.
-
-ONE OUTCOME:
-Detect evidence-backed household conditions worth investigating without hardcoding current market products.
-
-Examples:
-avoidable account fees;
-expensive revolving credit;
-duplicate/overlapping recurring service;
-insurance increase;
-idle cash;
-interest leakage;
-subscription creep;
-rewards opportunity where debt economics do not overwhelm it.
-
-Atlas identifies the CONDITION and evidence.
-Conversational assistant researches current products/options when requested.
-
-No autonomous applications/account changes.
-Stop review-ready.
-```
-
----
-
-## PR #34 — Debt & Cash Strategy
-
-**Recommended model:** FRONTIER
-
-### Prompt
-
-```text
-Implement PR #34: Debt & Cash Strategy.
-
-ENTRY:
-PR #33 merged; fresh main.
-
-ONE OUTCOME:
-Create one deterministic next-dollar strategy comparing eligible destinations for surplus cash.
-
-Consider:
-interest cost;
-minimums;
-utilization/headroom risk;
-cash-buffer policy;
-liquidity;
-known commitments;
-household policy.
-
-Do not optimize reward points while ignoring materially higher revolving interest.
-Do not let separate pages own competing payoff rules.
-
-Backtest/sensitivity-test the strategy against Golden Household and current canonical semantics.
-Stop review-ready.
-```
-
----
-
-## PR #35 — Long-Horizon Household Planning
-
-**Recommended model:** FRONTIER
-
-### Prompt
-
-```text
-Implement PR #35: Long-Horizon Household Planning.
-
-ENTRY:
-PR #34 merged; fresh main.
-
-ONE OUTCOME:
-Extend Atlas from near-horizon operations to evidence-backed 1/3/5/10-year household planning.
-
-Candidate domains only where current data supports them:
-retirement;
-pension;
-mortgage renewal;
-RESP;
-home/moving;
-long-term debt;
-savings/net-worth trajectory.
-
-Do not manufacture precision from missing facts.
-Owner questions are explicit gates.
-Current tax/product/rate research stays outside canonical math unless captured with date/provenance assumptions.
-
-The key user question is trade-off visibility:
-“If we move / spend / save differently, what happens to the other goals?”
-
-Required systems review.
-Stop review-ready.
-```
-
----
-
-# 8. Phase acceptance campaigns
-
-## Phase 0 — Trust acceptance
-
-PASS only if:
-- governance/strategy/authority each have one home;
-- a second owner for a registered concept turns red;
-- future agents can locate build strategy and current truth.
-
-## Phase 1 — Know Us acceptance
-
-PASS only if:
-- canonical transaction provenance exists;
-- historical import is idempotent;
-- transfers/card payments do not double count;
-- household overrides survive re-import;
-- spending baseline reconciles to transaction evidence;
-- Atlas can drill household → category → merchant → transactions;
-- stale backlog/open-question claims discovered by the phase are dispositioned.
-
-Verdict:
-`PASS — Atlas can truthfully explain where the household's money went`
-or
-`NOT YET — failed acceptance IDs + dispositions`.
-
-## Phase 2 — Run Our Money / product-complete v1
-
-Safe-to-Spend must run in SHADOW before household authority.
-
-Evaluate over real weeks:
-- predicted cash low vs actual;
-- missed obligations;
-- whether uncertainty was disclosed;
-- too-strict / too-loose behavior;
-- whether the number would have caused a harmful decision;
-- whether household budget targets are actually livable.
-
-Graduate only when evidence supports:
-`PASS — household can run its week from Atlas without a parallel budget`.
-
-Then **Gate T2** re-justifies every later phase.
-
-## Phase 3 — Horizon acceptance
-
-Enter a meaningful planned goal.
-
-PASS only if one canonical chain answers:
-- Can we afford it?
-- When?
-- What must change?
-- What happens to cash?
-- What happens to debt?
-- What happens to buffer?
-- Which competing goal is displaced?
-- Why is a calendar week marked tight?
-
-Calendar may not calculate independently.
-
-## Phase 4 — Live acceptance
-
-PASS only if:
-- automated source produces canonical observations;
-- duplicates/retries are harmless;
-- account identity survives provider changes;
-- reconciliation/freshness is visible;
-- new purchase updates budget/safe-to-spend/forecast/calendar without hand-editing figures;
-- provider can be removed without changing domain contracts.
-
-## Phase 5 — Assistant acceptance
-
-PASS only if:
-- a new assistant session can read current Atlas context;
-- assistant numbers match deterministic Atlas evidence;
-- natural-language intent becomes a proposal, not a silent mutation;
-- Dale/Amanda attribution survives;
-- malicious imported merchant/memo text cannot invoke a tool;
-- removing the assistant changes no canonical financial result.
-
-## Phase 6 — Optimization acceptance
-
-PASS only if:
-- opportunities cite Atlas evidence;
-- current market advice is researched at use time;
-- next-dollar strategy has one owner;
-- long-horizon outputs expose uncertainty and household trade-offs;
-- no automated movement/application/account action exists.
-
----
-
-# 9. Backlog and household urgency
-
-The execution plan decides **what software is intentionally built next**.
-
-`BACKLOG.md` is discovered work, not permission to build.
-
-`docs/01_OPEN_QUESTIONS.md` is what only the household can answer.
-
-Real-world urgent financial actions operate on a different clock than software work. A critical HELOC/credit/insurance/payment issue must not wait behind PR #17 because the roadmap says so.
-
-At each trajectory review, backlog items should be classified:
-
-- KEEP;
-- PROMOTE TO EXECUTION PLAN;
-- MOVE TO OPEN QUESTION;
-- MOVE TO HOUSEHOLD ACTION;
-- MERGE;
-- ALREADY SATISFIED;
-- STALE / SUPERSEDED;
-- DELETE.
-
-Backlog age does not create priority.
-
-Duplicate identifiers, stale questions and superseded financial claims are authority defects in planning state and should be corrected when a trajectory-review PR has that outcome.
-
----
-
-# 10. Technology decisions are earned
-
-### SQLite
-
-Chosen as the first canonical relational store because it gives constraints, transactions and idempotent structure without operating a server.
-
-It is not a disposable prototype by definition.
-
-### PostgreSQL
-
-Not on the scheduled roadmap.
-
-At Gate T4, or earlier only if current evidence demands it, ask whether SQLite has become the limiting factor.
-
-Valid reasons could include:
-- hosted concurrent multi-user writes;
-- remote assistant/service access;
-- background-worker locking/throughput;
-- deployment architecture making local SQLite unsafe;
-- measured operational requirements.
-
-“Postgres is more professional” is not a reason.
-
-### Bank/provider API
-
-The strategy intentionally does not lock a provider now.
-
-At PR #27, research the current Canadian market and the household's actual institutions from official sources.
-
-### AI model/provider
-
-The assistant interface is provider-neutral.
-
-ChatGPT is expected to be the primary household interface, but Atlas does not encode ChatGPT as financial authority.
-
----
-
-# 11. Strategy stop conditions
-
-Stop the roadmap and request owner/decision-desk input if:
-
-- a household fact is required and cannot be derived;
-- a figure would be promoted from estimate to verified;
-- raw statements/credentials/secrets handling changes;
-- an institution write/action is proposed;
-- product scope changes from household read/advice to autonomous financial action;
-- the strategy and current authority contract genuinely conflict;
-- two future paths remain equally legitimate after current-state audit.
-
-Otherwise, the active implementation agent should continue autonomously within the current PR's box.
-
----
-
-# 12. End-state test
-
-The intended Atlas should eventually support a moment like this:
-
-> **Wednesday**  
-> You're okay.  
-> $612 is safe for the rest of this week.  
-> Groceries are normal; restaurant spending is already 82% through target.  
-> $2,100 of sports fees is due Monday. Payday is Friday.  
-> Projected cash bottoms at $3,480 next Tuesday, above the agreed $3,000 floor.  
-> Palm Springs remains fundable.  
-> Keep restaurant/takeout under $75 until Friday.  
-> Two transactions still need categorization.
-
-Then Dale can ask an assistant:
-
-> What if we spend $120 on takeout tonight?
-
-The assistant should call/read deterministic Atlas scenario outputs and explain the consequence.
-
-Or:
-
-> Amanda found a house she loves. What does moving do to us?
-
-Atlas supplies household truth. The assistant can research current outside conditions. The result should explain the trade against debt, retirement, sports, travel and cash buffer without either spouse needing to understand the underlying finance machinery.
-
-That is the destination.
-
----
-
-## Immediate order from current main
-
-At strategy creation, PR #3 has merged.
-
-The next intended order is:
-
-1. PR #4 — install this strategy;
-2. PR #5 — Financial Cohesion & Authority Contract;
-3. PR #6 — Executable Authority Registry & Boundary Guard;
-4. STOP — Gate T0;
-5. continue only from exact current state.
-
-**Current state wins over this list.**
+## Immediate order
+
+1. `AF-GOV-01` — this PR;
+2. `AF-KNOW-01`;
+3. `AF-PROOF-01`;
+4. **STOP — gate T0**, then continue only from exact current state.
+
+**Current state wins over this list.** Anything below T0 is a plan, not a
+commitment, and the gate exists to change it.

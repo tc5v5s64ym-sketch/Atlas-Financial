@@ -161,7 +161,27 @@ acceptances. Passwords, PINs, security codes and 2FA are the owner's alone.
 
 ## Direction
 
-Deliberately staged. **Nothing below tier 1 is decided.**
+**This file is the one home for direction.** It owns what Atlas is for, what is
+in bounds, and the gate each future capability has to pass. Sequencing toward it
+— the order of work, the prompts, the acceptance campaigns — lives in
+[`docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`](docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md),
+which may schedule only what this file permits. Where the two disagree, this
+file wins and the strategy is wrong.
+
+### The destination — owner-approved
+
+Atlas is being built toward a **household financial operating system**: deeply
+understood spending, unknown transactions burned down, Dale's and Amanda's input
+reconciled, realistic budgets, a weekly safe-to-spend figure, upcoming
+obligations and a financial calendar, planned purchases, deterministic horizons
+and scenarios, debt and cash guidance, fresh data when it is earned, and an
+assistant-neutral way to ask about all of it.
+
+That destination is approved. **None of it authorises a technology.** Each
+capability below still has to pass its own gate, and a gate is passed by
+evidence, not by the strategy naming a date.
+
+The tiers below describe **where the work stands**, not a ceiling.
 
 ### Tier 1 — complete the picture *(in progress)*
 
@@ -182,17 +202,63 @@ The intended mechanism is `snapshots/<YYYY-MM-DD>.json` — one file per reading
 same shape as `data.json`, with the site drawing trend lines across them. This
 needs no database: files in git give history, diffs and versioning for free.
 
-### Tier 3 — an interaction layer *(undecided, and gated)*
+### Tier 3 — an interaction layer *(gated, not yet earned)*
 
 If the site should ever be something the household **writes to** — ticking off
-questions, logging a payment, leaving notes — that is the point at which a
-database earns its place, and Render Postgres would be the choice.
+questions, logging a payment, leaving notes — that is one of the two things that
+can earn a store. **That trigger has not been reached.**
 
-**That trigger has not been reached.** Until the site needs to accept input,
-files are the right tool and a database would only add failure modes.
+---
 
-### Explicitly not planned
+## The gated capabilities
 
-Connecting directly to bank APIs or aggregators; storing credentials of any
-kind; automating any action against an account. This system reads what the
-owner gives it and publishes a private view. That boundary is the design.
+Each of these is **wanted** and **not yet permitted**. The gate is the whole
+rule: until it is met, the capability is not started, and a strategy that
+schedules it earlier is wrong rather than persuasive.
+
+### A canonical transaction and history store
+
+**Gate.** A store may be introduced when the current batch-derived foundation —
+`data.json`, generated `public/periods.json`, and git as the history — can no
+longer provide the **invariant, identity or idempotency** guarantees the work
+needs, and that failure is demonstrated on real household data rather than
+predicted.
+
+**Candidate if the gate is met.** SQLite, as the smallest thing that gives
+identity, foreign keys, uniqueness and idempotent import without an operated
+service. **SQLite is not mandatory and not pre-authorised** — it is the current
+preferred minimal answer *if* a store is earned at all. Postgres is not
+pre-authorised and needs its own evidence.
+
+**Not a reason to open it:** that a roadmap says so, that relational modelling
+would be tidier, or that a later capability assumes it.
+
+Until the gate is met, **files remain the right tool**: they give history, diffs
+and versioning for free, and a store would only add failure modes.
+
+### Automated financial-data connectivity
+
+Reading account data automatically rather than from files the owner exports is an
+**owner-approved desired capability**. It is gated on all five of:
+
+1. **proven need** — the manual capture path is demonstrably the binding limit;
+2. **current Canadian availability** — a provider that actually serves these
+   institutions, verified at the time, not assumed;
+3. **security review** — owner-reserved, and unchanged by anything here;
+4. **provider semantics** — how the provider identifies accounts, transactions,
+   pending state and corrections, and what its failure modes cost; and
+5. **a working canonical ingestion foundation** — idempotent import and identity
+   proven before anything live is pointed at it.
+
+**Still absolutely out of bounds, gate or no gate:** storing credentials of any
+kind, and automating any *action* against an account. Atlas reads and publishes.
+It never moves money, never submits a form, never accepts an agreement. That
+boundary is not a tier and does not have a gate — it is the design.
+
+### What passing a gate looks like
+
+An owner decision, recorded — not an agent's judgement that the moment has come.
+`CLAUDE.md` reserves direction, databases, bank integrations and aggregators for
+Dale, and this section does not loosen that. What it changes is that the answer
+is now *"when the gate is met"* rather than *"no"*, so the strategy has something
+to sequence toward and no reason to contradict this file.

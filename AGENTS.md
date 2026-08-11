@@ -15,6 +15,10 @@ Read in this order:
 5. [`BACKLOG.md`](BACKLOG.md) — work that can be done, and what blocks each item.
 6. [`docs/01_OPEN_QUESTIONS.md`](docs/01_OPEN_QUESTIONS.md) — what only the
    household can answer.
+7. [`docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`](docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md)
+   — the ordered build sequence and the prompt for each item. **Read it before
+   starting planned capability work**; `ARCHITECTURE.md` still owns direction and
+   the gates, and this sequences only what those permit.
 
 ## The three things agents get wrong here
 
@@ -55,8 +59,10 @@ outcome at once.
 
 This is the one launcher. Do not write a second one.
 
-> Read `AGENTS.md`, then take the first eligible item in `BACKLOG.md` — or the
-> owner's instruction if there is one. Verify current state before editing.
+> Read `AGENTS.md`, then take the owner's instruction if there is one — else the
+> next item in `docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md` for planned capability
+> work, or the first eligible item in `BACKLOG.md` for a fix or a finding.
+> Verify current state before editing.
 > One independently provable outcome, fresh branch, merge card filled, findings
 > dispositioned. Stop only for an owner-reserved item or the required review.
 

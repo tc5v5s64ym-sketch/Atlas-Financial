@@ -12,6 +12,7 @@ nothing else, because the rest already has a home:
 | What the CI gates check and why each exists | [`docs/RISK_LABELS.md`](docs/RISK_LABELS.md) |
 | Work that can be done | [`BACKLOG.md`](BACKLOG.md) |
 | What only the household can answer | [`docs/01_OPEN_QUESTIONS.md`](docs/01_OPEN_QUESTIONS.md) |
+| **What to build next, and in what order** | [`docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`](docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md) |
 
 One fact, one home. Where this file and one of those appear to disagree about a
 mechanism, that file is right about the mechanism and this one is right about
@@ -559,8 +560,23 @@ actually reads — not only through the helper that was just written.
 
 ## What not to build
 
-Unless Dale says otherwise: no database, no bank or aggregator integration, no
-stored credentials, no automation acting against an account, no second dashboard
-or roadmap, and no governance system beyond the one in this file. The gates that
-exist are the ones that caught something real. Add a gate when something goes
-wrong that it would have caught, and not before.
+**Two absolutes, no gate, no exception:** never store credentials of any kind,
+and never automate an action against an account. Atlas reads what it is given and
+publishes a private view. It does not move money, submit a form, or accept an
+agreement.
+
+**Two gated capabilities:** a canonical store, and automated financial-data
+connectivity. Both are wanted and neither is authorised yet.
+[`ARCHITECTURE.md`](ARCHITECTURE.md) holds the exact gate for each, and is the
+only home for them — a capability is started when its gate is met and Dale says
+so, not when a plan reaches that line. Owner-reserved stop 5 is unchanged.
+
+**Still nothing here:** no second dashboard, and no governance system beyond this
+file. The gates that exist are the ones that caught something real. Add a gate
+when something goes wrong that it would have caught, and not before.
+
+**One roadmap, in three parts that do not overlap.**
+[`ARCHITECTURE.md`](ARCHITECTURE.md) owns *direction and the gates*;
+[`docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`](docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md)
+owns *sequencing within what direction permits*; [`BACKLOG.md`](BACKLOG.md) owns
+*work and findings*. A second one of any of those is the thing to refuse.
