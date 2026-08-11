@@ -39,29 +39,6 @@ const incumbentTable = tableStart >= 0 && tableEnd > tableStart
 ok(!!incumbentTable,
   'ARCHITECTURE.md contains the incumbent financial-authority table');
 
-console.log('\n=== Forecast export coverage ===');
-const forecastSource = read('public/forecast.js');
-const exportBlock = /const Forecast\s*=\s*\{([\s\S]*?)\};\s*if \(typeof module/.exec(forecastSource);
-ok(!!exportBlock, 'Forecast export object is mechanically readable');
-
-const forecastExports = exportBlock
-  ? exportBlock[1]
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .replace(/\/\/.*$/gm, '')
-      .split(',')
-      .map(x => x.trim())
-      .filter(Boolean)
-      .map(x => {
-        const m = /^([A-Za-z_$][A-Za-z0-9_$]*)/.exec(x);
-        return m ? m[1] : null;
-      })
-      .filter(Boolean)
-  : [];
-
-// These exports support the authorities but do not independently answer a
-// household financial question. Keeping the list closed means a NEW Forecast
-// export fails until it is either named as an authority or explicitly classified
-// here as a helper.
 const FORECAST_NON_AUTHORITY = new Set([
   'addDays',
   'diffDays',
@@ -71,7 +48,36 @@ const FORECAST_NON_AUTHORITY = new Set([
   'STEP',
 ]);
 
-for (const name of forecastExports) {
+function forecastExportsFrom(source) {
+  const block = /const Forecast\s*=\s*\{([\s\S]*?)\};\s*if \(typeof module/.exec(source);
+  if (!block) return null;
+  return block[1]
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/.*$/gm, '')
+    .split(',')
+    .map(x => x.trim())
+    .filter(Boolean)
+    .map(x => {
+      const m = /^([A-Za-z_$][A-Za-z0-9_$]*)/.exec(x);
+      return m ? m[1] : null;
+    })
+    .filter(Boolean);
+}
+
+function forecastCoverageProblems(source, table) {
+  const exports = forecastExportsFrom(source);
+  if (!exports) return ['<unreadable-export-object>'];
+  return exports.filter(name =>
+    !FORECAST_NON_AUTHORITY.has(name)
+    && !new RegExp(`Forecast\\.${name}\\b`).test(table));
+}
+
+console.log('\n=== Forecast export coverage ===');
+const forecastSource = read('public/forecast.js');
+const forecastExports = forecastExportsFrom(forecastSource);
+ok(!!forecastExports, 'Forecast export object is mechanically readable');
+
+for (const name of forecastExports || []) {
   if (FORECAST_NON_AUTHORITY.has(name)) {
     ok(true, `Forecast.${name} is explicitly classified as a non-authority helper`);
     continue;
@@ -80,9 +86,28 @@ for (const name of forecastExports) {
     `Forecast.${name} is named in the incumbent authority table`);
 }
 
-ok(forecastExports.length > 0,
+ok((forecastExports || []).length > 0,
   'Forecast export enumeration found at least one export',
-  forecastExports.join(', '));
+  (forecastExports || []).join(', '));
+
+console.log('\n=== guard bite proof ===');
+// Mutation 1: remove an incumbent token from the authority table. The guard must
+// notice the already-exported financial authority is now unnamed.
+const withoutRecommend = incumbentTable.replace(/Forecast\.recommend\b/, 'Forecast.REMOVED_recommend');
+const missingRowProblems = forecastCoverageProblems(forecastSource, withoutRecommend);
+ok(missingRowProblems.includes('recommend'),
+  'removing an incumbent Forecast row makes the guard fail',
+  missingRowProblems.join(', '));
+
+// Mutation 2: add a new Forecast export without classifying it. The guard must
+// fail closed until the new export is either registered as an authority or
+// explicitly classified as a helper.
+const withNewExport = forecastSource.replace(/const Forecast\s*=\s*\{/,
+  'const Forecast = { newFinancialAuthority,');
+const newExportProblems = forecastCoverageProblems(withNewExport, incumbentTable);
+ok(newExportProblems.includes('newFinancialAuthority'),
+  'adding a new Forecast export without an authority row makes the guard fail',
+  newExportProblems.join(', '));
 
 console.log('\n=== data.json plan policy coverage ===');
 for (const key of ['actions', 'nextDollar', 'budget']) {
