@@ -187,16 +187,21 @@ That destination is approved. **None of it authorises a technology.** Each gated
 capability below still has to pass its own gate, and a gate is passed by
 evidence and an owner decision — never by a plan reaching that line.
 
-The tiers below describe **where the work stands**, not a ceiling.
+The tiers below describe **the stage each capability is at**, not a ceiling — and
+not a record of current progress, which is `BACKLOG.md`'s.
 
 ### Tier 1 — complete the picture *(in progress)*
 
-The analysis is only as good as its coverage, and four gaps currently limit it:
+The analysis is only as good as its coverage. **Which gaps are still open is
+`BACKLOG.md`'s to say**, and `docs/01_OPEN_QUESTIONS.md`'s for anything only the
+household can answer. This file names the tier; it does not carry its contents.
 
-- **MBNA Mastercard** and **Affirm/Flexiti** — the last debts with unknown terms
-- **The business** — roughly 29% of household income, with invisible costs
-- **A home valuation** — without it, net worth is unstateable and the May 2027
-  renewal cannot be modelled properly
+That is not tidying. The list that stood here called MBNA and Affirm/Flexiti the
+last debts with unknown terms and said net worth was unstateable without a home
+valuation — while `BACKLOG.md` recorded capture as complete, Flexiti closed, the
+home valued at $1.1m–$1.4m and net worth at $357k–$657k. It also promised four
+gaps and listed three. A second copy of another document's work state drifts, and
+this one already had.
 
 ### Tier 2 — cadence and trend *(the obvious next step)*
 
@@ -242,7 +247,8 @@ the same question — and it still carries one, noted under the table.
 | Concept | Incumbent authority |
 |---|---|
 | Cash projection over the window | `Forecast.simulate` |
-| Weekly household cap, next move | `Forecast.recommend` — **and only it** |
+| Weekly household cap | `Forecast.recommend` — **and only it** |
+| The next move the household is told to make | `plan.actions` in `data.json`, rendered by `renderPlan()` in `public/plan.js` |
 | Coupled cash-and-debt walk | `Forecast.projectDebts` |
 | Revolving headroom, limits, pending | `Forecast.utilisation` |
 | Budget — owner targets against actuals | `Forecast.budgetBreakdown`, with classification and targets in `data.json` `plan.budget` |
@@ -253,8 +259,15 @@ the same question — and it still carries one, noted under the table.
 | Calendar — the exported `.ics` | `scripts/calendar-ics.js`, from `docs/ACCOUNT_FACTS.md` and observed recurrence |
 | Authority and reconciliation guards | the `npm test` suites |
 
-Three of those rows carry a trap, and each is recorded rather than smoothed
-over.
+Four of those rows carry a trap, and each is recorded rather than smoothed over.
+
+**The cap and the next move are two authorities, not one.** `recommend` computes
+the cap, the gap and the funding result; the instruction the household actually
+reads is authored by hand in `data.json` `plan.actions` and rendered from
+`plan.actions[0]`. They were one row here until an advisory review split them —
+which matters, because a later change to the recommender that leaves the written
+action untouched would move the figures under an instruction that no longer
+matches them, and nothing would notice.
 
 **`Forecast.recommendWeekly` is not a co-owner of the weekly cap.** It is the
 solver `recommend` calls, and on an opening-gap plan it returns `0` while
