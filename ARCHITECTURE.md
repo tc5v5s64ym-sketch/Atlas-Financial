@@ -265,6 +265,7 @@ the same question — and it still carries one, noted under the table.
 | Cash projection over the window | `Forecast.simulate` |
 | Weekly household cap | `Forecast.recommend` — **and only it** |
 | Income dependency deadline — when a modelled income becomes required to preserve the buffer | `Forecast.incomeDeadline` |
+| Next due — which published calendar obligation the household owes soonest | `Forecast.nextDue`, from `data.json` `upcoming` |
 | Coupled cash-and-debt walk | `Forecast.projectDebts` |
 | Revolving headroom, limits, pending | `Forecast.utilisation` |
 | Budget — owner targets against actuals | `Forecast.budgetBreakdown`, with classification and targets in `data.json` `plan.budget` |
@@ -291,23 +292,26 @@ So the rule, not the enumeration, is what binds:
 - **A page script renders; it does not decide.** `renderCalendar()` and
   `renderPlan()` format what they are given.
 
-**Page scripts still break that third rule in at least three places today — and
+**Page scripts still break that third rule in at least two places today — and
 they are defects, not a fourth category.** `public/modellers.js` computes the
-renewal's HELOC interest inline; `public/deepdive.js:125` filters and sorts
-`upcoming` to choose the household's "Next due"; and `public/plan.js:517-538`
-assembles the homepage mission from the current forecast. All remain recorded in
-`B73`.
+renewal's HELOC interest inline, and `public/plan.js:517-538` assembles the
+homepage mission from the current forecast. Both remain recorded in `B73`.
 
-The Amanda-transfer deadline used to be a fourth instance: `public/plan.js`
-re-ran the simulation with her transfer zeroed and selected the first
-below-buffer day itself. `Forecast.incomeDeadline` now owns that counterfactual;
-the Plan page renders its amount and date and the focused test reconciles the
-move against a hand-computed case.
+Two instances have been moved into the engine rather than argued away. The
+Amanda-transfer deadline: `public/plan.js` re-ran the simulation with her
+transfer zeroed and selected the first below-buffer day itself, and
+`Forecast.incomeDeadline` now owns that counterfactual. The "Next due" tile:
+`public/deepdive.js` filtered `upcoming` for unpaid cash items, sorted them and
+took the first, and `Forecast.nextDue` now owns that selection. In both cases the
+page renders the returned result and a focused test reconciles the move against a
+hand-computed case.
 
-"At least three" is deliberate. That sentence said *two* until a review found the
-third, in the same file as one of the renderers it praises. A page script that
-decides is an **unnamed authority**, so finding another is something to route —
-not somewhere to file it, and not evidence the list is now closed.
+"At least" is doing the work in that sentence, and the number moves in both
+directions. It said *two* until a review found a third, in the same file as one
+of the renderers it praises; it says two again only because two were moved, not
+because anything audited what is left. A page script that decides is an **unnamed
+authority**, so finding another is something to route — not somewhere to file it,
+and not evidence the list is now closed.
 
 Anything not named above belongs to one of those three rules, or is that defect.
 If it is genuinely unclear which, that is a question for the required review —
@@ -346,6 +350,15 @@ standing facts and observed recurrence and which `B29` records as imported into
 Google Calendar. They can drift, and nothing today would notice. That is a
 pre-existing overlap this file *records* rather than creates — recorded as `B74`.
 Until it is resolved, neither is a licence to add a third.
+
+**A third list of dated obligations already existed, and saying "two" was
+generous.** `data.json` `upcoming` is the hand-kept payment calendar the Deep
+Dive page has always published, maintained beside the `plan` block the projection
+runs on. `Forecast.nextDue` *selects* from that list; it does not build a
+schedule, and no new list was created to give it something to read. But an
+authority that reads a hand-kept list inherits that list's staleness, so the
+reconciliation is now B74's to settle across all three, and B74 records what each
+currently answers.
 
 **`plan.nextDollar` is derived, not instructed.** Its own provenance note says so:
 neither Dale nor Amanda has stated or approved the `protect-then-highest-cost`
