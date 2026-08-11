@@ -279,6 +279,15 @@ already, so treat it as open:
   confirms no test references `neededBy` at all. This is the sharpest of them: a
   real financial deadline the household acts on, derived by a second simulation
   run that lives in a page.
+- **`public/plan.js:517-538`** assembles the homepage **mission** — cover the
+  timing gap by a date, get a named card back under its limit, hold or cut
+  spending to a weekly figure, stop the HELOC growing before it passes its limit,
+  or put the surplus against the most expensive card — and writes it to
+  `plan-mission`, shown at `index.html:38`. It selects *which* instructions apply
+  and composes the sentence, so it is the most prominent thing the household is
+  told to do and no engine owns it. Note the comment already sitting in that
+  block: the mission once recommended `$1,500/week` against a −$809 low, because
+  only the status band had been conditioned on whether the gap could be funded.
 
 Move **each** recorded decision into a testable engine function and reconcile
 against a hand-computed case — and check for others before calling this closed,

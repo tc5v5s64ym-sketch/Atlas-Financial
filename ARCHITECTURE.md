@@ -423,7 +423,15 @@ Provider or API **service credentials**, and OAuth access or refresh tokens, for
 **This is the one home for this rule.** Other documents defer to it and must not
 restate a narrower or wider version.
 
-A secret Atlas legitimately holds lives in exactly one of:
+**Two kinds of secret, and the rule differs.** A **configured secret** is one
+Atlas is given and holds: `SITE_PASSWORD`, `SESSION_SECRET`, and — only if the
+connectivity gate is ever passed — a provider, API or OAuth credential. A
+**session credential** is one the server *issues* to a browser after a successful
+sign-in: today the signed, expiring `hfd_session` token. Everything below about
+where a secret may live governs **configured secrets**; the session credential is
+covered separately at the end, and the two must not be conflated.
+
+A configured secret lives in exactly one of:
 
 - **production** — the deployment platform's environment secrets, which is Render
   today; the platform's mechanism matters, not the provider's name;
@@ -435,14 +443,29 @@ A secret Atlas legitimately holds lives in exactly one of:
   an environment variable cannot do. This exists so OAuth refresh rotation would
   not require inventing a second rule later. Not authorised today.
 
-And **never**: in source control, in `data.json`, in a pull request, in a log, or
-**delivered to or persisted in client code or browser storage** — not in
-JavaScript, not in `localStorage` or a cookie the page can read, not in a file the
-browser fetches, not embedded in markup.
+And a configured secret goes **never**: into source control, into `data.json`,
+into a pull request, into a log, or into the browser in any form — not in
+JavaScript, not in `localStorage` or any cookie, not in a file the page fetches,
+not embedded in markup. **No configured secret is ever stored client-side**, and
+nothing below relaxes that.
 
-That last clause is about where a secret **lives**, and it deliberately does not
-reach the sign-in form. The household typing the shared password into
-`server.js`'s login page is the secret being *used*, over HTTPS, and the server
-never sends it back. An earlier draft read "client-side in any form the browser
-can read", which declared Atlas's own deployed login path forbidden — and a rule
-that outlaws the thing it exists to protect gets ignored rather than followed.
+#### The session credential
+
+`server.js` issues `hfd_session` after a correct password: a token signed with
+`SESSION_SECRET` and carrying its own expiry. It is **permitted in the browser**,
+and in exactly one form — an **`HttpOnly` cookie that page JavaScript cannot
+read**, `SameSite=Lax`, and `Secure` whenever the request is HTTPS. Not in
+`localStorage`, not in a readable cookie, not in a URL, not in markup.
+
+That is the deployed gate, and this paragraph aligns the rule with it rather than
+authorising anything new. **It grants nothing else**: no provider, API or OAuth
+credential may be stored client-side under it, and it does not touch the absolute
+prohibitions above on institution login credentials or automated account actions.
+
+Two earlier drafts of the prohibition were wrong in the same direction, and review
+caught both. The first read "client-side in any form the browser can read" and
+outlawed Atlas's own sign-in page — the household typing the shared password is
+the secret being *used*, over HTTPS, and the server never sends it back. The
+second banned "browser storage" outright and outlawed the session cookie that same
+page sets. The defect each time was writing a prohibition before saying which kind
+of secret it governs, which is why the distinction now comes first.
