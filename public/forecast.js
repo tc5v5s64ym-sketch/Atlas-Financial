@@ -938,6 +938,99 @@
     };
   }
 
+  /* ------------------------------------------------------------ the mission */
+  // The sentence at the top of the Plan page: what the household is being told
+  // to do about the next 13 weeks, and in what order.
+  //
+  // `public/plan.js` used to decide this. It read the recommendation, the debt
+  // walk and the household's own weekly setting, chose which instructions
+  // applied and composed the sentence — which made the most prominent financial
+  // instruction on the site the one decision the node suite could not reach.
+  // The selection lives here now, and the page formats what it is handed.
+  //
+  // The order is part of the decision, not a layout choice:
+  //
+  //   1. THE MONEY THAT IS NOT THERE. An opening timing gap comes first,
+  //      because nothing later in the window matters until the payments in
+  //      front of it can clear. When every usable source combined cannot reach
+  //      it, the instruction is to find money beyond them or lower the buffer,
+  //      rather than to cover a gap that cannot be covered.
+  //   2. A FACILITY ALREADY OVER ITS LIMIT. That is charged for today, not
+  //      forecast, so it is named before anything the window predicts.
+  //   3. SPENDING — and only where spending is a remedy. When the gap cannot
+  //      be funded the floor sits below the buffer whatever the household
+  //      spends, so NO weekly figure is instructed at all: the mission once
+  //      recommended $1,500/week against a −$809 low, because only the status
+  //      band had been conditioned on whether the gap could be funded.
+  //      Where the household has set its own weekly figure and the projection
+  //      breaches the buffer at it, the instruction is to cut to the supported
+  //      figure, and it names the figure that does not hold.
+  //   4. WHAT THE SURPLUS IS FOR. A HELOC crossing its own limit inside the
+  //      window outranks paying down a card, because that crossing happens on
+  //      capitalised interest alone — no one has to borrow another dollar for
+  //      it. Absent that, the surplus goes at the most expensive card.
+  //
+  // Inputs are results this engine has already produced: `advice` from
+  // `recommend` and `debtProj` from `projectDebts`. `opts.weeklyOverride` is
+  // the household's own weekly setting or null, and `opts.sim` is the
+  // simulation being shown at that setting — the recommended one by default.
+  //
+  // The result is structured. Each part carries the figures it was decided
+  // from and nothing else; money and date formatting are presentation and stay
+  // on the page. A part the page has no wording for is a rendering failure,
+  // which is why `test-mission.js` checks the two sides still agree.
+  function mission(advice, debtProj, opts) {
+    opts = opts || {};
+    advice = advice || {};
+    debtProj = debtProj || {};
+
+    const recommended = advice.weekly;
+    const override = opts.weeklyOverride != null ? opts.weeklyOverride : null;
+    const weekly = override != null ? override : recommended;
+    const sim = opts.sim || advice.sim || null;
+
+    const gap = advice.gap || null;
+    const funding = advice.funding || null;
+    // Reachable at all: every usable source combined against the gap.
+    const fundingShort = !!(funding && !funding.feasible);
+    // A weekly figure the household chose, which the projection does not
+    // support. Measured on the simulation actually being shown, so the figure
+    // judged is the figure displayed.
+    const overrideBreaches = override != null && !!sim && below(sim.min.balance, sim.buffer);
+
+    // Over the limit TODAY — the opening mark of the debt walk, not a later
+    // snapshot, and not a crossing the window predicts.
+    const opening = (debtProj.marks || []).find(m => m.day === 0);
+    const overLimitToday = (opening ? opening.debts : []).filter(x => x.overLimit);
+    // The day the HELOC actually crosses. Reading this off the 30-day marks
+    // reported 7 October for a crossing that happens on 30 September — a
+    // different month, and on the wrong side of the plan's own deadline. A
+    // facility already over its limit at the start is instruction 2, not this.
+    const helocCrossing = (debtProj.crossings || [])
+      .find(c => c.id === 'heloc' && !c.alreadyOver) || null;
+
+    const parts = [];
+    if (gap && fundingShort) {
+      parts.push({ id: 'fundingShortfall', shortfall: funding.shortfall });
+    } else if (gap) {
+      parts.push({ id: 'coverGap', amount: gap.amount, by: gap.date });
+    }
+    if (overLimitToday.length) {
+      parts.push({ id: 'overLimit',
+        debts: overLimitToday.map(x => ({ id: x.id, label: x.label })) });
+    }
+    if (!fundingShort) {
+      parts.push(overrideBreaches
+        ? { id: 'cutSpending', supported: recommended, unsupported: weekly }
+        : { id: 'holdSpending', weekly });
+    }
+    parts.push(helocCrossing
+      ? { id: 'helocLimit', date: helocCrossing.date }
+      : { id: 'surplusToCard' });
+
+    return { parts };
+  }
+
   /* ------------------------------------------------ revolving utilisation */
   // Every facility with a limit, and what is really left on it TODAY.
   //
@@ -980,7 +1073,7 @@
 
   const Forecast = { addDays, diffDays, occurrences, expandEvents, simulate,
     recommendWeekly, recommend, incomeDeadline, budgetBreakdown, projectDebts,
-    nextDue, utilisation, EPSILON, STEP };
+    nextDue, mission, utilisation, EPSILON, STEP };
   if (typeof module !== 'undefined' && module.exports) module.exports = Forecast;
   else root.Forecast = Forecast;
 
