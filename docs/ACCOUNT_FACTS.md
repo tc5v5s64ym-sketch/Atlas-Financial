@@ -1871,11 +1871,13 @@ figure per pattern for exactly this reason.
 
 - **Read-only against every institution.** No transfers, payments, applications,
   setting changes, form submissions or agreement acceptances.
-- **Never ask for or enter a credential.** Passwords, PINs, security codes and
-  2FA are the owner's alone.
+- **Never ask for or enter an institution login credential.** Bank passwords,
+  PINs, security codes and 2FA are the owner's alone. On any doubt, stop.
 - **Raw statements and exports stay in `raw/`** and never leave this machine.
 - **Tag every figure** verified / calculated / estimated / unknown.
-- Secrets live only in Render environment variables.
+- The application's own secrets live only where `ARCHITECTURE.md` permits —
+  Render environment secrets in production, an environment variable in the
+  developer's shell locally — never in git, client-side, or in a log.
 
 ## What only the household can answer
 
