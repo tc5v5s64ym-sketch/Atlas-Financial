@@ -268,10 +268,17 @@ already, so treat it as open:
   renewal interest totals inline — `heloc.balance * Math.pow(1 + helocRate /
   perYear, …)` and the mortgage-interest arithmetic beside it. These are what the
   May 2027 renewal decision is weighed on.
-- **`public/deepdive.js:125`** filters `upcoming` for unpaid cash items, sorts by
-  date and takes the first, deciding which obligation is the household's **"Next
-  due"**. That is a selection policy, not formatting: no engine owns it, nothing
-  tests it, and a second answer could appear elsewhere with nothing to notice.
+- **RESOLVED 2026-08-11 — "Next due".** `Forecast.nextDue` now owns which
+  published calendar obligation the household owes soonest: paid, non-cash and
+  past-due items are excluded there, the earliest eligible date wins, and the
+  calendar's own order settles a tie. `public/deepdive.js` renders the returned
+  item and no longer filters, sorts or selects. The focused test hand-computes
+  the winner, proves each exclusion by removing it and watching that item win,
+  and reconciles the move against the published calendar. The old page
+  comparator never returned `0`, so same-day ordering had rested on the sort
+  implementation; the rule is now stated and tested. Two obligations do share
+  12 August today, and the tile still names one of them rather than the day's
+  total — see the note under `B74`.
 - **RESOLVED 2026-08-11 — Amanda transfer deadline.** `Forecast.incomeDeadline`
   now owns the counterfactual that removes `amandaTransfer` and identifies the
   first below-buffer day. `public/plan.js` renders the returned amount/date and no
@@ -306,6 +313,16 @@ indefinitely. Decide which is authoritative and derive the other from it, or
 state why each legitimately answers a different question. Deriving the `.ics`
 from the projection is the obvious candidate but is not free — the `.ics` covers
 statement closes and renewal reminders the projection does not model.
+
+**A third look-ahead belongs in the same decision**, found while moving "Next
+due" into the engine. `Forecast.nextDue` names the next single obligation from
+`data.json` `upcoming`; the Plan page's "next payment out" tile sums every
+forecast event on the next outflow date, from the `plan` block. Same-sounding
+question, two sources, two answers — both land on 12 August, but one says
+`$320.00` for Burrard child 1 and the other `$623.00` for the day. Neither is
+wrong for the question it answers, and each sits beside the detail on its own
+page. What is missing is the decision about which look-ahead the household is
+meant to read, and that is this item's, not a defect to patch inside either tile.
 
 **B75 · Nothing checks that the authority table is complete** · **DONE 2026-08-11**
 PR #10 added `test-authority-coverage.js` to the blocking `npm test` suite. It
