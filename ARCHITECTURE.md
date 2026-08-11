@@ -38,6 +38,7 @@ in the block underneath it.
                projectDebts()      the same events, seen from the debt side
                budgetBreakdown()   essential vs discretionary vs already dated
                recommend()         THE weekly household cap
+               incomeDeadline()    when a modelled income becomes required
     ↓
   plan.js / deepdive.js / records.js / modellers.js   render only
 ```
@@ -177,10 +178,9 @@ capability has to pass. Where any other document disagrees with this one about
 direction, this file wins and the other is wrong.
 
 *Sequencing* — the order work is done in, and the prompt for each piece — is a
-different question and does not live here. When a build strategy exists at
-`docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md` it will own that, and it may schedule
-only what this file already permits. It does not exist yet, and nothing here
-depends on it.
+different question and does not live here. `docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`
+now owns that sequencing, and it may schedule only what this file already permits.
+Nothing in the strategy can pass a gate or override direction recorded here.
 
 ### The destination — owner-approved
 
@@ -192,8 +192,8 @@ and scenarios, debt and cash guidance, fresh data when it is earned, and an
 assistant-neutral way to ask about all of it.
 
 That destination is approved. **None of it authorises a technology.** Each gated
-capability below still has to pass its own gate, and a gate is passed by
-evidence and an owner decision — never by a plan reaching that line.
+capability below still has to pass its own gate, and a gate is passed by evidence
+and an owner decision — never by a plan reaching that line.
 
 The tiers below describe **the stage each capability is at**, not a ceiling — and
 not a record of current progress, which is `BACKLOG.md`'s.
@@ -248,7 +248,7 @@ owner or explicitly replaces it; it never quietly becomes a second one.
 | Work and findings | [`BACKLOG.md`](BACKLOG.md) |
 | What only the household can answer | [`docs/01_OPEN_QUESTIONS.md`](docs/01_OPEN_QUESTIONS.md) |
 | Standing facts — rates, limits, due dates | [`docs/ACCOUNT_FACTS.md`](docs/ACCOUNT_FACTS.md) |
-| Sequencing of planned capability work | a build strategy, **once one exists** |
+| Sequencing of planned capability work | [`docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`](docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md) |
 
 ### Atlas is not greenfield
 
@@ -264,6 +264,7 @@ the same question — and it still carries one, noted under the table.
 | The schedule — what is due, when, how often | `Forecast.expandEvents`, via `simulate`, from the `plan` inputs |
 | Cash projection over the window | `Forecast.simulate` |
 | Weekly household cap | `Forecast.recommend` — **and only it** |
+| Income dependency deadline — when a modelled income becomes required to preserve the buffer | `Forecast.incomeDeadline` |
 | Coupled cash-and-debt walk | `Forecast.projectDebts` |
 | Revolving headroom, limits, pending | `Forecast.utilisation` |
 | Budget — owner targets against actuals | `Forecast.budgetBreakdown`, with classification and targets in `data.json` `plan.budget` |
@@ -290,14 +291,18 @@ So the rule, not the enumeration, is what binds:
 - **A page script renders; it does not decide.** `renderCalendar()` and
   `renderPlan()` format what they are given.
 
-**Page scripts break that third rule in at least three places today — and they
-are defects, not a fourth category.** `public/modellers.js` computes the
+**Page scripts still break that third rule in at least three places today — and
+they are defects, not a fourth category.** `public/modellers.js` computes the
 renewal's HELOC interest inline; `public/deepdive.js:125` filters and sorts
-`upcoming` to choose the household's "Next due"; and `public/plan.js:327-340`
-re-runs the simulation with Amanda's transfer zeroed and takes the first
-below-buffer day as **the deadline by which she has to move money** — presented as
-a date at `:472` and `:808` and badged on the calendar, with no test referencing
-it. All three are recorded in `B73`.
+`upcoming` to choose the household's "Next due"; and `public/plan.js:517-538`
+assembles the homepage mission from the current forecast. All remain recorded in
+`B73`.
+
+The Amanda-transfer deadline used to be a fourth instance: `public/plan.js`
+re-ran the simulation with her transfer zeroed and selected the first
+below-buffer day itself. `Forecast.incomeDeadline` now owns that counterfactual;
+the Plan page renders its amount and date and the focused test reconciles the
+move against a hand-computed case.
 
 "At least three" is deliberate. That sentence said *two* until a review found the
 third, in the same file as one of the renderers it praises. A page script that

@@ -511,6 +511,47 @@
     }
   }
 
+  /* ---------------------------------------------- income dependency date */
+  // The latest useful date question for an expected income stream: if that
+  // stream never arrives, when does the plan first fall below its cash buffer?
+  //
+  // The page used to answer this for Amanda by running its own second simulation
+  // and selecting the first short day itself. That made a real household
+  // deadline an untested page-script authority. Keep the counterfactual here,
+  // next to the simulation it depends on, and let pages render the result.
+  function incomeDeadline(plan, asOf, incomeId, opts) {
+    const base = Object.assign({}, opts || {});
+    const stream = (plan.income || []).find(s => s.id === incomeId);
+    const buffer = base.targetBuffer != null
+      ? base.targetBuffer : (plan.defaults.targetBuffer || 0);
+    if (!stream) {
+      return { incomeId, amount: 0, neededBy: null, buffer,
+        breachesWithout: false, endingWithout: null };
+    }
+
+    const amount = streamAmount(stream, base) || 0;
+    if (!(amount > 0)) {
+      return { incomeId, amount: 0, neededBy: null, buffer,
+        breachesWithout: false, endingWithout: null };
+    }
+
+    const noIncome = simulate(plan, asOf, Object.assign({}, base, {
+      incomeOverrides: Object.assign({}, base.incomeOverrides || {}, { [incomeId]: 0 }),
+    }));
+    const notBefore = base.notBefore || asOf;
+    const firstShort = noIncome.daily.find(p =>
+      p.date >= notBefore && below(p.balance, noIncome.buffer));
+
+    return {
+      incomeId,
+      amount,
+      neededBy: firstShort ? firstShort.date : null,
+      buffer: noIncome.buffer,
+      breachesWithout: !!firstShort,
+      endingWithout: noIncome.ending,
+    };
+  }
+
   /* ------------------------------------------------- household budget */
   // What the weekly household cap actually has to cover.
   //
@@ -896,7 +937,7 @@
   }
 
   const Forecast = { addDays, diffDays, occurrences, expandEvents, simulate,
-    recommendWeekly, recommend, budgetBreakdown, projectDebts, utilisation,
+    recommendWeekly, recommend, incomeDeadline, budgetBreakdown, projectDebts, utilisation,
     EPSILON, STEP };
   if (typeof module !== 'undefined' && module.exports) module.exports = Forecast;
   else root.Forecast = Forecast;

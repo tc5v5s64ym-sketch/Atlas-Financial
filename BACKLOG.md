@@ -272,13 +272,11 @@ already, so treat it as open:
   date and takes the first, deciding which obligation is the household's **"Next
   due"**. That is a selection policy, not formatting: no engine owns it, nothing
   tests it, and a second answer could appear elsewhere with nothing to notice.
-- **`public/plan.js:327-340`** re-runs `Forecast.simulate` with Amanda's transfer
-  set to zero and takes the first day that dips below the buffer as `neededBy` —
-  **the deadline by which she has to move money**. It is shown as a date at `:472`
-  and `:808` and badged on the calendar at `:248`, `:253` and `:278`. `grep`
-  confirms no test references `neededBy` at all. This is the sharpest of them: a
-  real financial deadline the household acts on, derived by a second simulation
-  run that lives in a page.
+- **RESOLVED 2026-08-11 — Amanda transfer deadline.** `Forecast.incomeDeadline`
+  now owns the counterfactual that removes `amandaTransfer` and identifies the
+  first below-buffer day. `public/plan.js` renders the returned amount/date and no
+  longer runs its own no-transfer simulation or selects `neededBy`. The focused
+  test includes a hand-computed case and migration equivalence on the real plan.
 - **`public/plan.js:517-538`** assembles the homepage **mission** — cover the
   timing gap by a date, get a named card back under its limit, hold or cut
   spending to a weekly figure, stop the HELOC growing before it passes its limit,
@@ -289,13 +287,13 @@ already, so treat it as open:
   block: the mission once recommended `$1,500/week` against a −$809 low, because
   only the status band had been conditioned on whether the gap could be funded.
 
-Move **each** recorded decision into a testable engine function and reconcile
-against a hand-computed case — and check for others before calling this closed,
-rather than closing it once the entries above are done. `payoff()` and
-`amortisedPayment()` in `public/app.js` are already shared helpers and are not the
-problem; the inline arithmetic and the inline selections are. Found while building
-the authority table in PR A, which records them as unnamed authorities rather than
-pretending the rule already holds.
+Move **each remaining** recorded decision into a testable engine function and
+reconcile against a hand-computed case — and check for others before calling this
+closed, rather than closing it once the entries above are done.
+`payoff()` and `amortisedPayment()` in `public/app.js` are already shared helpers
+and are not the problem; the inline arithmetic and the inline selections are.
+Found while building the authority table in PR A, which records them as unnamed
+authorities rather than pretending the rule already holds.
 
 **B74 · Two calendars, and nothing notices when they disagree** · *needs a decision first*
 `renderCalendar()` in `public/plan.js` draws the on-page grid from the forecast
@@ -309,42 +307,16 @@ state why each legitimately answers a different question. Deriving the `.ics`
 from the projection is the obvious candidate but is not free — the `.ics` covers
 statement closes and renewal reminders the projection does not model.
 
-**B75 · Nothing checks that the authority table is complete** · *small, and earned*
-`ARCHITECTURE.md`'s incumbent-authority table is maintained by hand and by
-inspection. Three rounds of advisory review on one pull request added five rows
-that inspection had missed — `payoff()`/`amortisedPayment()`,
-`scripts/calendar-ics.js`, `plan.actions`, `plan.nextDollar` and
-`Forecast.expandEvents` — and named one row that was wrong outright. The table now
-binds by rule rather than enumeration, which stops the failure being silent, but
-nothing mechanical would notice a new authority going unnamed.
-
-**The check has to enumerate every surface an authority can come from, and the
-first draft of this item did not.** It proposed `Forecast` exports and `data.json`
-`plan.*` keys — and two of the five omissions listed above,
-`payoff()`/`amortisedPayment()` in `public/app.js` and `scripts/calendar-ics.js`,
-are neither. That check would have gone **green** while those were missing, which
-is the false green it exists to prevent, proposed in the same paragraph that lists
-the counterexamples. Advisory review caught it. The surfaces are at least:
-
-- `Forecast`'s exported functions;
-- `data.json`'s `plan.*` policy keys — `actions`, `nextDollar`, `budget`;
-- exported calculators in `public/app.js`, such as `payoff()` and
-  `amortisedPayment()`;
-- `scripts/*.js` that write an artifact the household reads, such as
-  `calendar-ics.js` and `periods.js`;
-- page scripts that decide rather than render — the `B73` class, which has no
-  clean signature and may only be reachable by review.
-
-Even that list is a judgement about where an authority can live, so the check
-proves *coverage of named surfaces*, not completeness, and should say so rather
-than implying more. A check claiming more than it establishes is the defect this
-item is about.
-
-Closed-form per surface — the kind `CLAUDE.md` permits a machine to enforce — and
-this is the case that rule describes: add a gate when something goes wrong that it
-would have caught, and this went wrong repeatedly in one pull request. Not done
-there because it is a workflow and test change with its own proof, and that pull
-request had `0` implementation files by design.
+**B75 · Nothing checks that the authority table is complete** · **DONE 2026-08-11**
+PR #10 added `test-authority-coverage.js` to the blocking `npm test` suite. It
+mechanically enumerates the named, closed surfaces earned by this finding:
+Forecast exports; `data.json` policy keys `actions`, `nextDollar` and `budget`;
+`payoff()` / `amortisedPayment()`; and the named artifact writers
+`periods.js` / `calendar-ics.js`. It proves the guard bites when a known Forecast
+authority row is removed or an unclassified export is added, and it explicitly
+does **not** claim a clean mechanical signature for the B73 page-script class.
+The guard itself is on the closed high-risk path list, so it cannot later claim
+`NOT REQUIRED` while weakening its own protection.
 
 **B76 · The scope tripwire counts implementation only** · *needs a decision, not a fix*
 `CLAUDE.md`'s scope budget counts **implementation** files and **implementation**
