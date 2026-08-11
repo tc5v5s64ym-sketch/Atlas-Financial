@@ -379,11 +379,38 @@ ok(planJs2.indexOf('if (gap && fundingShort)') < planJs2.indexOf('} else if (gap
 ok(/No weekly spending\s*\n?\s*figure fixes this/.test(planJs2),
   'and says plainly that no spending figure fixes it');
 // The mission and the Next move must not instruct an unsafe override either.
-ok(/cut spending to \$\{money\(recommended\)\} a week/.test(planJs2),
-  'the mission stops instructing a weekly figure that breaches');
-ok(/if \(!fundingShort\) \{\s*\n\s*missionParts\.push/.test(planJs2),
-  'and offers no spending instruction at all when the gap cannot be funded — '
-  + 'spending is not a remedy for money that does not exist');
+// The mission is decided in the engine now, so this is asserted on what it
+// returns rather than on the page's wording: a regex over plan.js could only
+// ever prove a sentence exists somewhere in the file.
+{
+  const O = { scenario: 'expected', incomeOverrides: {}, disabled: [], extraDebtMonthly: 0,
+    targetBuffer: 500, fundingSources: plan.funding.options, debts: data.debts,
+    extraDebtTarget: plan.nextDollar.target };
+  const adv = F.recommend(plan, asOf, O);
+  const walk = (o, weekly) => F.projectDebts(plan, data.debts, asOf,
+    Object.assign({}, o.simOptions, { weeklyVariable: weekly,
+      extraFacilities: data.revolvingExtra, extraDebtTarget: plan.nextDollar.target }));
+  const over = F.simulate(plan, asOf, Object.assign({}, adv.simOptions, { weeklyVariable: 1500 }));
+  const breached = F.mission(adv, walk(adv, 1500), { weeklyOverride: 1500, sim: over });
+  const cut = breached.parts.find(p => p.id === 'cutSpending');
+  ok(!!cut && cut.supported === adv.weekly && cut.unsupported === 1500,
+    'the mission stops instructing a weekly figure that breaches',
+    cut ? `cut to $${cut.supported}, $${cut.unsupported} named as failing`
+      : breached.parts.map(p => p.id).join(' → '));
+
+  // A buffer no combination of sources can reach. Spending is not a remedy for
+  // money that does not exist: at any weekly figure the floor stays under the
+  // buffer, so no weekly figure may be instructed at all.
+  const unreachable = F.recommend(plan, asOf, Object.assign({}, O, { targetBuffer: 5000 }));
+  const unfunded = F.mission(unreachable, walk(unreachable, unreachable.weekly),
+    { weeklyOverride: null, sim: unreachable.sim });
+  ok(unreachable.funding && !unreachable.funding.feasible,
+    'and a $5,000 buffer really does outrun every usable source',
+    unreachable.funding ? money(unreachable.funding.shortfall) + ' unfunded' : 'no funding result');
+  ok(!unfunded.parts.some(p => p.id === 'holdSpending' || p.id === 'cutSpending'),
+    'so the mission offers no spending instruction at all when the gap cannot be funded',
+    unfunded.parts.map(p => p.id).join(' → '));
+}
 // Split funding must not be measured half-applied.
 {
   const O = { scenario: 'expected', incomeOverrides: {}, disabled: [], extraDebtMonthly: 0,
