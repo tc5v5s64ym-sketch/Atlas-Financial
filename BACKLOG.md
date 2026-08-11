@@ -248,6 +248,16 @@ spot. One look at the LeagueApps payment history closes it.
 Travel Visa **57,968 TD Rewards points**; Cash Back **$47.21**. Absent from net
 worth.
 
+**B73 · The scope tripwire cannot see a large document** · *governance, small*
+`CLAUDE.md`'s scope budget counts implementation files and lines, with docs and
+tests stated separately. A 1,800-line strategy document therefore reported
+`WITHIN` while being the largest artifact ever added to this repository. That is
+the tripwire working as written, not a defect in any pull request — but it means
+the one number a reader might trust for "how big is this" is silent about the
+kind of change that has now happened twice. Decide at a trajectory gate whether
+docs deserve their own tripwire, or whether stating them separately is enough.
+Do not change the contract without that decision.
+
 **B72 · `test-mergecard.js` names a commit that no branch holds** · *housekeeping*
 The `HEAD` fixture is `b85274ce…`, with a comment calling it "a real commit on
 this branch". PR #2's rebase removed that commit from every branch, so the
