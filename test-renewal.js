@@ -1,0 +1,755 @@
+'use strict';
+/* Focused proof for Forecast.renewal(). `node test-renewal.js`
+ *
+ * The May 2027 renewal is the largest decision the site models: whether to fold
+ * a $201,586 interest-only HELOC into a $546,027 mortgage at maturity. Until
+ * this move `public/modellers.js` computed the whole comparison itself — the
+ * HELOC's compounded balance, both interest totals, today's household cash and
+ * the difference against it — so the arithmetic behind that decision sat where
+ * the node suite could not reach it. That is `B73`.
+ *
+ * Four kinds of check, and they prove different things:
+ *
+ *   1. INDEPENDENT DERIVATION. Every expected figure is a literal in this file,
+ *      and every literal is confirmed a second time by a method the engine does
+ *      not use: the loan is walked month by month and has to land on zero, and
+ *      the HELOC balance is grown by repeated multiplication rather than by
+ *      `Math.pow`. Nothing here re-runs the production expression to find out
+ *      what the answer should be.
+ *   2. PROPAGATION. This is one coupled model, not a renewal calculator with a
+ *      private copy of the debt picture. Move the authoritative opening HELOC
+ *      balance, its pending charges, or the mortgage payment in the plan, and
+ *      the renewal the household reads has to move with it.
+ *   3. MUTATION. Each material formula and branch is broken on purpose in the
+ *      engine source, and the answer has to change. A formula that cannot be
+ *      broken was not being tested.
+ *   4. MIGRATION EQUIVALENCE. The exact expression `public/modellers.js` ran
+ *      before this move, against the real published inputs, at every one of the
+ *      3,822 slider positions the page can reach. The authority moves; the
+ *      household reads the same figures.
+ */
+
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+const F = require('./public/forecast.js');
+const data = require('./data.json');
+
+let failures = 0;
+const ok = (cond, label, detail = '') => {
+  if (!cond) failures++;
+  console.log(`  ${cond ? 'PASS' : 'FAIL'}  ${label}${detail ? '  — ' + detail : ''}`);
+};
+const read = p => fs.readFileSync(path.join(__dirname, p), 'utf8');
+const money = n => (n < 0 ? '−$' : '$') + Math.abs(n).toLocaleString('en-CA',
+  { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// A cent is the unit a household reads. Two derivations of the same figure by
+// different methods do not agree bit for bit, and requiring that they did would
+// be testing float representation rather than money.
+const CENT = 0.005;
+const near = (a, b, tol = CENT) => Math.abs(a - b) <= tol;
+
+/* ------------------------------------------------------- independent maths */
+/* Neither of these is the engine's method. `walkLoan` steps a real amortisation
+ * schedule — charge interest, take the payment, repeat — and reports where the
+ * balance lands and what interest was actually charged on the way. A level
+ * payment is correct exactly when that walk ends at zero. `growMonthly` grows a
+ * balance by repeated multiplication instead of by an exponent. */
+function walkLoan(principal, annualPct, months, payment) {
+  const i = annualPct / 100 / 12;
+  let balance = principal, interest = 0;
+  for (let k = 0; k < months; k++) {
+    const charge = balance * i;
+    interest += charge;
+    balance = balance + charge - payment;
+  }
+  return { balance, interest };
+}
+function growMonthly(balance, annualPct, months) {
+  const i = annualPct / 100 / 12;
+  let b = balance;
+  for (let k = 0; k < months; k++) b *= (1 + i);
+  return b;
+}
+
+/* ---------------------------------------------------------------- fixtures */
+/* Round literal facts, so the expected figures below can be reasoned about
+ * rather than looked up. A $300,000 mortgage paid $1,000 bi-weekly, and a
+ * $100,000 HELOC at 6.00% whose interest capitalises and costs no cash. */
+const debtsWith = over => [
+  { id: 'mortgage', label: 'Mortgage', secured: true, balance: 300000, pending: 0,
+    rate: 6, interestTreatment: 'paid-in-payment' },
+  Object.assign({
+    id: 'heloc', label: 'HELOC', secured: true, balance: 100000, pending: 0,
+    rate: 6, limit: 120000, interestTreatment: 'capitalised',
+    cashPayment: 0, monthlyInterest: 500,
+  }, over || {}),
+];
+const DEBTS = debtsWith();
+const planWith = over => ({
+  obligations: [
+    Object.assign({ id: 'mortgage', debtId: 'mortgage', effect: 'payment',
+      frequency: 'biweekly', anchor: '2026-08-14', amount: 1000 }, (over || {}).mortgage || {}),
+    Object.assign({ id: 'heloc', debtId: 'heloc', effect: 'capitalise',
+      frequency: 'monthly', day: 31, amount: 500, nonCash: true }, (over || {}).heloc || {}),
+  ].concat((over || {}).extra || []),
+});
+const PLAN = planWith();
+const run = (opts, debts, plan) => F.renewal(plan || PLAN, debts || DEBTS, opts);
+
+console.log('\n=== today, from the schedule rather than from a second copy ===');
+/* $1,000 bi-weekly is 26 payments a year, so 26,000 / 12 = $2,166.67 a month.
+ * The HELOC's obligation is non-cash, so it contributes nothing — that $0.00 is
+ * DERIVED from the schedule, not asserted by a field somebody has to remember
+ * to keep at zero. Adding the $500 charge here is the $814-a-month bill that
+ * nobody pays, which is the defect the cash/economic split was introduced for. */
+{
+  const r = run({ rate: 6, years: 10, consolidate: false });
+  ok(near(r.today.mortgageCash, 26000 / 12),
+    'a $1,000 bi-weekly mortgage is $2,166.67 a month', money(r.today.mortgageCash));
+  ok(r.today.helocCash === 0,
+    'the capitalising HELOC costs no household cash', money(r.today.helocCash));
+  ok(near(r.today.householdCash, 2166.6666666667),
+    'so today\'s household cash is the mortgage alone', money(r.today.householdCash));
+  ok(r.today.helocEconomic === 500,
+    'while its economic cost is reported separately', money(r.today.helocEconomic));
+  ok(r.today.id === 'capitalised' && r.today.capitalised === true,
+    'and the picture is labelled as a capitalising one, not a bill', r.today.id);
+  ok(r.today.unmodelled.length === 0,
+    'every cash obligation on these debts has a monthly equivalent');
+}
+
+console.log('\n=== the amortised payment, proved by walking the loan ===');
+/* $300,000 at 6.00% over 120 months. The engine says $3,330.6150582495; a real
+ * amortisation schedule run at that payment has to finish at zero, and the
+ * interest it charges on the way has to be the interest reported. */
+{
+  const r = run({ rate: 6, years: 10, consolidate: false });
+  ok(near(r.payment, 3330.6150582495 + 0, 1e-6),
+    'the level payment is $3,330.62 a month', r.payment.toFixed(10));
+  const walk = walkLoan(300000, 6, 120, r.payment);
+  ok(Math.abs(walk.balance) < 0.000001,
+    'walking 120 months at that payment clears the loan exactly',
+    walk.balance.toExponential(3));
+  ok(near(r.interest.amortising, 99673.80699, 0.001),
+    'and charges $99,673.81 of interest', money(r.interest.amortising));
+  ok(near(walk.interest, r.interest.amortising, 0.0001),
+    'which is what the walk independently accrued', money(walk.interest));
+  // A payment even a cent short cannot clear the loan; a cent over overshoots.
+  ok(walkLoan(300000, 6, 120, r.payment - 0.01).balance > 1,
+    'a cent less does not clear it',
+    walkLoan(300000, 6, 120, r.payment - 0.01).balance.toFixed(2));
+  ok(walkLoan(300000, 6, 120, r.payment + 0.01).balance < -1,
+    'and a cent more overshoots');
+}
+
+console.log('\n=== HELOC compounding over the renewal horizon ===');
+/* Nothing repays the HELOC and its interest capitalises MONTHLY, so $100,000 at
+ * 6.00% is 100,000 × 1.005^120. Grown by repeated multiplication instead of by
+ * an exponent that is $181,939.6734032290 — the balance has grown 81.9% and the
+ * interest is the difference, not a simple-interest figure. */
+{
+  const r = run({ rate: 6, years: 10, consolidate: false });
+  ok(near(r.helocOwed, 181939.6734032290, 1e-6),
+    'a $100,000 capitalising HELOC at 6.00% becomes $181,939.67 in ten years',
+    money(r.helocOwed));
+  ok(near(growMonthly(100000, 6, 120), r.helocOwed, 1e-6),
+    'which is what 120 successive monthly charges independently produce',
+    money(growMonthly(100000, 6, 120)));
+  ok(near(r.interest.heloc, 81939.6734032290, 1e-6),
+    'and the interest is the growth, $81,939.67', money(r.interest.heloc));
+  // Simple interest is the defect this replaced: 100,000 × 0.06 × 10 = $60,000,
+  // which understates the cost by $21,939.67 and leaves $100,000 "still owed".
+  ok(r.interest.heloc - 60000 > 21939,
+    'compounding is $21,939.67 more than the simple-interest answer it replaced',
+    money(r.interest.heloc - 60000));
+  ok(near(r.interest.total, r.interest.amortising + r.interest.heloc),
+    'the total is the two costs and nothing else', money(r.interest.total));
+  ok(near(r.interest.total, 181613.4803931733, 0.001),
+    'so $181,613.48 over ten years', money(r.interest.total));
+}
+
+console.log('\n=== consolidating, and what it removes ===');
+/* $300,000 + $100,000 amortised together at 6.00% over 120 months. The HELOC
+ * principal is genuinely repaid, so nothing is owed at the horizon and no
+ * capitalised interest is charged at all. */
+{
+  const r = run({ rate: 6, years: 10, consolidate: true });
+  ok(r.principal === 400000, 'both balances are financed', money(r.principal));
+  ok(near(r.payment, 4440.8200776660, 1e-6),
+    'the payment is $4,440.82 a month', r.payment.toFixed(10));
+  ok(Math.abs(walkLoan(400000, 6, 120, r.payment).balance) < 0.000001,
+    'walking 120 months at that payment clears the combined loan exactly');
+  ok(r.helocOwed === 0 && r.interest.heloc === 0,
+    'nothing is left owing on the HELOC and it charges no capitalised interest');
+  ok(near(r.interest.total, 132898.4093199258, 0.001),
+    'total interest is $132,898.41', money(r.interest.total));
+  // The whole trade, in one line: consolidating costs $1,110.20 a month more
+  // and saves $48,715.07 of interest on this fixture.
+  const keep = run({ rate: 6, years: 10, consolidate: false });
+  ok(near(r.payment - keep.payment, 1110.2050194165, 1e-6),
+    'it costs $1,110.21 a month more than keeping them apart',
+    money(r.payment - keep.payment));
+  ok(near(keep.interest.total - r.interest.total, 48715.0710732475, 0.001),
+    'and saves $48,715.07 of interest', money(keep.interest.total - r.interest.total));
+  ok(r.outcome === 'consolidated' && r.capitalisation.id === 'stopped',
+    'the capitalising charge is reported as stopped, and only here', r.capitalisation.id);
+  ok(keep.outcome === 'interestOnlyCapitalising' && keep.capitalisation.id === 'continues',
+    'while keeping them apart says it continues', keep.capitalisation.id);
+}
+
+console.log('\n=== the zero-rate boundary ===');
+/* At 0.00% the annuity formula divides by zero, so the payment is the principal
+ * spread evenly and no interest is charged. Both figures are exact by hand. */
+{
+  const keep = run({ rate: 0, years: 10, consolidate: false });
+  ok(keep.payment === 300000 / 120 && keep.payment === 2500,
+    'at 0.00% a $300,000 loan over ten years is exactly $2,500 a month',
+    money(keep.payment));
+  ok(keep.interest.amortising === 0, 'and charges no mortgage interest at all');
+  ok(near(keep.helocOwed, 181939.6734032290, 1e-6),
+    'the HELOC still compounds at its own rate, untouched by the renewal rate',
+    money(keep.helocOwed));
+  const both = run({ rate: 0, years: 10, consolidate: true });
+  ok(near(both.payment, 400000 / 120, 1e-9) && both.interest.total === 0,
+    'and consolidating at 0.00% is $3,333.33 a month with no interest anywhere',
+    money(both.payment));
+  // A zero-rate HELOC is the other boundary: nothing compounds, nothing accrues.
+  const flat = run({ rate: 6, years: 10, consolidate: false },
+    debtsWith({ rate: 0 }));
+  ok(flat.helocOwed === 100000 && flat.interest.heloc === 0,
+    'a 0.00% HELOC still owes exactly its opening balance and no more',
+    money(flat.helocOwed));
+}
+
+console.log('\n=== a materially different HELOC rate reorders the answer ===');
+/* The renewal rate prices the mortgage; the HELOC rate prices what is left
+ * outside it. Only the keep-separate side can move, and it has to move in one
+ * direction — a dearer HELOC is never cheaper. */
+{
+  const at = pctRate => run({ rate: 6, years: 10, consolidate: false }, debtsWith({ rate: pctRate }));
+  const cheap = at(2), mid = at(6), dear = at(12);
+  ok(cheap.helocOwed < mid.helocOwed && mid.helocOwed < dear.helocOwed,
+    'a dearer HELOC owes strictly more at the horizon',
+    [cheap, mid, dear].map(x => money(x.helocOwed)).join(' < '));
+  ok(cheap.interest.total < mid.interest.total && mid.interest.total < dear.interest.total,
+    'and costs strictly more in total interest',
+    [cheap, mid, dear].map(x => money(x.interest.total)).join(' < '));
+  ok(cheap.payment === mid.payment && mid.payment === dear.payment,
+    'while the monthly cash is unchanged — the HELOC is not a bill in any of them',
+    money(mid.payment));
+  // 12% doubles roughly every six years, so ten years is more than triple.
+  ok(near(dear.helocOwed, growMonthly(100000, 12, 120), 1e-6) && dear.helocOwed > 300000,
+    'at 12.00% the balance more than triples in ten years', money(dear.helocOwed));
+  // Consolidating removes the HELOC rate from the answer entirely, because
+  // there is no longer a HELOC to charge it on.
+  const both = pctRate => run({ rate: 6, years: 10, consolidate: true }, debtsWith({ rate: pctRate }));
+  ok(both(2).interest.total === both(12).interest.total,
+    'once folded in, the HELOC rate cannot affect the total at all',
+    money(both(12).interest.total));
+  // Which side wins on total interest is a real reordering, not a fixed answer:
+  // against a 2.00% HELOC, keeping them apart is the cheaper total.
+  ok(cheap.interest.total < both(2).interest.total,
+    'against a 2.00% HELOC, keeping them apart costs less total interest',
+    `${money(cheap.interest.total)} vs ${money(both(2).interest.total)}`);
+  ok(mid.interest.total > both(6).interest.total,
+    'and against a 6.00% one, folding it in does',
+    `${money(mid.interest.total)} vs ${money(both(6).interest.total)}`);
+}
+
+console.log('\n=== the opening HELOC balance propagates ===');
+/* One coupled model. The renewal opens on the same balance the debt walk opens
+ * on and headroom is measured against — posted plus pending, because a pending
+ * charge is already incurred. */
+{
+  const base = run({ rate: 6, years: 10, consolidate: false });
+  const bigger = run({ rate: 6, years: 10, consolidate: false }, debtsWith({ balance: 200000 }));
+  ok(near(bigger.helocOwed, base.helocOwed * 2, 1e-6),
+    'doubling the opening balance doubles what is owed at the horizon',
+    money(bigger.helocOwed));
+  ok(near(bigger.interest.heloc, base.interest.heloc * 2, 1e-6),
+    'and doubles the interest', money(bigger.interest.heloc));
+
+  const pending = debtsWith({ pending: 5000 });
+  const withPending = run({ rate: 6, years: 10, consolidate: false }, pending);
+  ok(withPending.heloc.opening === 105000,
+    'a $5,000 pending charge is part of what the HELOC owes today',
+    money(withPending.heloc.opening));
+  ok(near(withPending.helocOwed, growMonthly(105000, 6, 120), 1e-6),
+    'and compounds from that opening, not from the posted balance',
+    money(withPending.helocOwed));
+  ok(withPending.helocOwed > base.helocOwed,
+    'so ignoring it would understate the horizon by $9,096.98',
+    money(withPending.helocOwed - base.helocOwed));
+  ok(run({ rate: 6, years: 10, consolidate: true }, pending).principal === 405000,
+    'and consolidating has to finance it too', money(405000));
+
+  // The coupling proof: the three consumers of the opening-balance rule agree
+  // on the same record. They were three inline copies of one expression, and
+  // two copies of this rule have already disagreed once in this repository.
+  const util = F.utilisation(pending).rows.find(x => x.id === 'heloc');
+  const walk = F.projectDebts(
+    { windowDays: 1, income: [], obligations: [], bills: [], commitments: [] },
+    pending, '2026-08-09', {});
+  const dayZero = walk.marks.find(m => m.day === 0).debts.find(x => x.id === 'heloc');
+  ok(util.used === withPending.heloc.opening,
+    'the renewal opens on the balance headroom is measured against', money(util.used));
+  ok(dayZero.balance === withPending.heloc.opening,
+    'and on the balance the coupled debt walk opens on', money(dayZero.balance));
+}
+
+console.log('\n=== payment assumptions propagate ===');
+/* Today's household cash comes from the schedule, so changing what the
+ * household actually pays moves the comparison it reads. */
+{
+  const base = run({ rate: 6, years: 10, consolidate: false });
+  const dearer = run({ rate: 6, years: 10, consolidate: false }, DEBTS,
+    planWith({ mortgage: { amount: 1200 } }));
+  ok(near(dearer.today.householdCash, 1200 * 26 / 12) && near(dearer.today.householdCash, 2600),
+    'raising the bi-weekly mortgage payment to $1,200 raises today to $2,600',
+    money(dearer.today.householdCash));
+  ok(near(base.delta - dearer.delta, 2600 - 26000 / 12, 1e-9),
+    'and moves the comparison by exactly that much, in the right direction',
+    `${money(base.delta)} → ${money(dearer.delta)}`);
+  ok(dearer.payment === base.payment,
+    'without touching what the renewal itself costs', money(dearer.payment));
+
+  const monthly = run({ rate: 6, years: 10, consolidate: false }, DEBTS,
+    planWith({ mortgage: { frequency: 'monthly', day: 1 } }));
+  ok(monthly.today.householdCash === 1000,
+    'the same $1,000 paid monthly is $1,000 a month, not $2,166.67',
+    money(monthly.today.householdCash));
+
+  // A HELOC that is genuinely paid rather than capitalised raises BOTH sides:
+  // it is $500 of cash today and $500 that still leaves after the renewal, so
+  // the difference the household reads is unchanged.
+  const paid = run({ rate: 6, years: 10, consolidate: false },
+    debtsWith({ interestTreatment: 'paid-in-payment', cashPayment: 500 }),
+    planWith({ heloc: { nonCash: false } }));
+  ok(paid.today.helocCash === 500 && near(paid.today.householdCash, 2666.6666666667),
+    'a paid HELOC charge is household cash', money(paid.today.householdCash));
+  ok(near(paid.payment, base.payment + 500, 1e-9),
+    'and keeps leaving the account after the renewal too', money(paid.payment));
+  ok(near(paid.delta, base.delta, 1e-9),
+    'so the comparison is unchanged by it', money(paid.delta));
+  ok(paid.today.id === 'paid' && paid.capitalisation === null
+    && paid.outcome === 'interestOnlyFlat',
+    'and the picture is a paid one, with no capitalisation row', paid.outcome);
+  ok(paid.helocOwed === 100000 && paid.interest.heloc === 100000 * 0.06 * 10,
+    'a paid interest-only balance stands still and costs simple interest',
+    money(paid.interest.heloc));
+
+  // A cash obligation with no monthly equivalent is REPORTED, never dropped.
+  const oneOff = run({ rate: 6, years: 10, consolidate: false }, DEBTS,
+    planWith({ extra: [{ id: 'mortgage-lump', debtId: 'mortgage', effect: 'payment',
+      frequency: 'once', date: '2026-09-01', amount: 5000 }] }));
+  ok(oneOff.today.unmodelled.join(',') === 'mortgage-lump',
+    'a one-off cash obligation is named rather than silently omitted',
+    oneOff.today.unmodelled.join(',') || 'none');
+  ok(near(oneOff.today.householdCash, base.today.householdCash),
+    'and does not quietly inflate the monthly baseline',
+    money(oneOff.today.householdCash));
+}
+
+console.log('\n=== the comparison itself ===');
+{
+  const cheapRenewal = run({ rate: 1, years: 30, consolidate: false });
+  ok(cheapRenewal.direction === 'less' && cheapRenewal.delta < 0,
+    'a renewal that costs less than today is reported as less',
+    money(cheapRenewal.delta));
+  ok(run({ rate: 6, years: 10, consolidate: true }).direction === 'more',
+    'and one that costs more, as more');
+  // Half a cent either way is not a change in what the household pays.
+  const flat = F.renewal({ obligations: [] }, [
+    { id: 'mortgage', balance: 0, pending: 0, rate: 0 },
+    { id: 'heloc', balance: 0, pending: 0, rate: 0, interestTreatment: 'capitalised', monthlyInterest: 0 },
+  ], { rate: 6, years: 10, consolidate: false });
+  ok(flat.direction === 'same' && flat.delta === 0,
+    'and no change at all is neither', flat.direction);
+}
+
+console.log('\n=== mutation: breaking the engine breaks the answer ===');
+/* Mutate the engine source, load the mutant, and require it to disagree with
+ * the real engine on a case above. A formula that still produces the right
+ * answer when it is removed was not producing it. */
+const FORECAST_SRC = read('public/forecast.js');
+function mutant(from, to) {
+  const count = FORECAST_SRC.split(from).length - 1;
+  if (count !== 1) return { error: `target appears ${count} time(s)` };
+  const sandbox = { module: { exports: {} } };
+  try {
+    vm.runInNewContext(FORECAST_SRC.replace(from, to), sandbox, { filename: 'forecast-mutant.js' });
+  } catch (e) { return { error: e.message }; }
+  return { engine: sandbox.module.exports };
+}
+const PENDING_DEBTS = debtsWith({ pending: 5000 });
+const PAID_DEBTS = debtsWith({ interestTreatment: 'paid-in-payment', cashPayment: 500 });
+const PAID_PLAN = planWith({ heloc: { nonCash: false } });
+
+const MUTATIONS = [
+  { label: 'compounding the HELOC annually instead of monthly changes the horizon',
+    from: `      helocOwed = capitalised
+        ? helocOpening * Math.pow(1 + helocRate / PAYMENTS_PER_YEAR.monthly,
+          PAYMENTS_PER_YEAR.monthly * years)
+        : helocOpening;`,
+    to: `      helocOwed = capitalised
+        ? helocOpening * Math.pow(1 + helocRate, years)
+        : helocOpening;`,
+    differs: m => !near(m.renewal(PLAN, DEBTS, { rate: 6, years: 10, consolidate: false }).helocOwed,
+      181939.6734032290, 1) },
+
+  { label: 'charging simple interest instead understates what is owed',
+    from: `      helocInterest = capitalised
+        ? helocOwed - helocOpening
+        : helocOpening * helocRate * years;`,
+    to: '      helocInterest = helocOpening * helocRate * years;',
+    differs: m => !near(m.renewal(PLAN, DEBTS, { rate: 6, years: 10, consolidate: false }).interest.total,
+      181613.4803931733, 1) },
+
+  { label: 'dropping pending charges moves the opening balance the renewal runs on',
+    from: 'const openingBalance = debt => debt.balance + (debt.pending || 0);',
+    to: 'const openingBalance = debt => debt.balance;',
+    differs: m => m.renewal(PLAN, PENDING_DEBTS, { rate: 6, years: 10, consolidate: false })
+      .heloc.opening !== 105000 },
+
+  { label: 'counting the capitalised charge as cash invents a bill nobody pays',
+    from: '      .filter(o => o.debtId === debtId && !o.nonCash)',
+    to: '      .filter(o => o.debtId === debtId)',
+    differs: m => !near(m.renewal(PLAN, DEBTS, { rate: 6, years: 10, consolidate: false })
+      .today.householdCash, 2166.6666666667, 1) },
+
+  { label: 'annualising a bi-weekly payment as monthly understates today',
+    from: '  const PAYMENTS_PER_YEAR = { biweekly: 26, monthly: 12 };',
+    to: '  const PAYMENTS_PER_YEAR = { biweekly: 12, monthly: 12 };',
+    differs: m => !near(m.renewal(PLAN, DEBTS, { rate: 6, years: 10, consolidate: false })
+      .today.householdCash, 2166.6666666667, 1) },
+
+  { label: 'dropping the HELOC cash from the renewal payment understates it',
+    from: '      payment = mortgagePayment + helocCash;',
+    to: '      payment = mortgagePayment;',
+    differs: m => !near(m.renewal(PAID_PLAN, PAID_DEBTS, { rate: 6, years: 10, consolidate: false })
+      .payment, 3830.6150582495, 1) },
+
+  { label: 'consolidating without the HELOC principal finances the wrong loan',
+    from: '      principal = mortgageOpening + helocOpening;',
+    to: '      principal = mortgageOpening;',
+    differs: m => m.renewal(PLAN, DEBTS, { rate: 6, years: 10, consolidate: true }).principal !== 400000 },
+
+  { label: 'swallowing an un-annualisable obligation hides an incomplete baseline',
+    from: '        if (!perYear) { unmodelled.push(o.id); return sum; }',
+    to: '        if (!perYear) { return sum; }',
+    differs: m => m.renewal(planWith({ extra: [{ id: 'mortgage-lump', debtId: 'mortgage',
+      frequency: 'once', date: '2026-09-01', amount: 5000 }] }), DEBTS,
+    { rate: 6, years: 10, consolidate: false }).today.unmodelled.length !== 1 },
+
+  { label: 'showing the stopped-capitalisation row without consolidating contradicts the note',
+    from: '        ? { id: consolidate ? \'stopped\' : \'continues\', amount: helocEconomic }',
+    to: '        ? { id: \'stopped\', amount: helocEconomic }',
+    differs: m => m.renewal(PLAN, DEBTS, { rate: 6, years: 10, consolidate: false })
+      .capitalisation.id !== 'continues' },
+
+  { label: 'comparing the renewal against nothing loses the comparison',
+    from: '    const delta = payment - householdCash;',
+    to: '    const delta = payment;',
+    differs: m => !near(m.renewal(PLAN, DEBTS, { rate: 1, years: 30, consolidate: false }).delta,
+      run({ rate: 1, years: 30, consolidate: false }).delta, 1) },
+];
+for (const m of MUTATIONS) {
+  const built = mutant(m.from, m.to);
+  if (built.error) { ok(false, m.label, built.error); continue; }
+  ok(m.differs(built.engine), m.label);
+}
+
+console.log('\n=== the page renders, and decides nothing ===');
+const modellersSrc = read('public/modellers.js');
+const appSrc = read('public/app.js');
+const modellersHtml = read('public/modellers.html');
+
+/* The renewal section only. The payoff modeller above it still solves its own
+ * arithmetic — a SEPARATE B73 instance which this outcome does not move, and
+ * saying "no page script calculates any more" would be false while it stands. */
+const renewalPage = /\nfunction setupRenewal\(d\) \{[\s\S]*?\n\}\n/.exec(modellersSrc);
+ok(!!renewalPage, 'the renewal section is readable from modellers.js');
+const pageSrc = renewalPage ? renewalPage[0] : '';
+
+ok(/<script src="\/forecast\.js"><\/script>/.test(modellersHtml)
+  && modellersHtml.indexOf('/forecast.js') < modellersHtml.indexOf('/modellers.js'),
+  'modellers.html loads the engine, before the page that calls it');
+ok(/Forecast\.renewal\(/.test(pageSrc), 'the page reads the renewal from Forecast');
+ok(!/Math\.pow\(/.test(pageSrc), 'and compounds nothing itself');
+ok(!/amortisedPayment\s*\(/.test(modellersSrc) && !/amortisedPayment\s*\(/.test(appSrc),
+  'the renewal amortisation is defined and called nowhere in a page script');
+ok(/function amortisedPayment/.test(FORECAST_SRC), 'the engine defines it');
+// The exact expressions the page used before this move.
+ok(!/interestTreatment === 'capitalised'/.test(pageSrc),
+  'the page no longer classifies how HELOC interest behaves');
+ok(!/paymentBiweekly \* 26 \/ 12/.test(modellersSrc),
+  'it no longer annualises the mortgage payment');
+ok(!/heloc\.balance/.test(pageSrc) && !/m\.balance/.test(pageSrc),
+  'it reads no balance for arithmetic of its own');
+ok(!/delta > 0/.test(pageSrc),
+  'and does not run the comparison to pick a colour');
+ok(!/debts\.find/.test(pageSrc),
+  'nor picks the HELOC record out of the debt list itself');
+// Stated rather than smoothed over: the OTHER modeller on this page still
+// computes its own payoff arithmetic, and B73 stays open because of it.
+ok(/function solveFor\(x, months\)/.test(modellersSrc)
+  && /Math\.pow\(1 \+ i, -months\)/.test(modellersSrc),
+  'the payoff modeller still solves its own arithmetic — B73 is not closed here');
+
+/* Every result the engine can return has wording, and every wording is
+ * reachable. A missing entry throws on the page; a stale one is dead prose that
+ * looks maintained. Lifted from the production source, not copied — a copy
+ * would prove the copy. */
+const renewalSrc = /\n  function renewal\(plan, debts, opts\) \{[\s\S]*?\n  \}\n/.exec(FORECAST_SRC);
+ok(!!renewalSrc, 'the renewal function is readable from forecast.js');
+const grab = (src, re, what) => {
+  const m = re.exec(src);
+  ok(!!m, `${what} is readable from its source`);
+  return m ? m[0] : '';
+};
+const FORMATTERS = [
+  grab(appSrc, /^const money = .*$/m, 'money()'),
+  grab(appSrc, /^const money2 = .*$/m, 'money2()'),
+].join('\n');
+const MAP_SRC = [
+  grab(modellersSrc, /^const RENEWAL_CONTEXT = \{[\s\S]*?^\};$/m, 'the context map'),
+  grab(modellersSrc, /^const RENEWAL_NOTE = \{[\s\S]*?^\};$/m, 'the note map'),
+  grab(modellersSrc, /^const RENEWAL_TONE = \{[\s\S]*?^\};$/m, 'the note tone map'),
+  grab(modellersSrc, /^const RENEWAL_OWED_TONE = \{[\s\S]*?^\};$/m, 'the owed tone map'),
+  grab(modellersSrc, /^const CAPITALISATION_ROW = \{[\s\S]*?^\};$/m, 'the capitalisation row map'),
+  grab(modellersSrc, /^const DELTA_CLASS = .*$/m, 'the delta class map'),
+  grab(modellersSrc, /^const DELTA_SIGN = .*$/m, 'the delta sign map'),
+].join('\n');
+const [CONTEXT_MAP, NOTE_MAP, TONE_MAP, OWED_MAP, CAP_MAP, CLASS_MAP, SIGN_MAP] =
+  vm.runInNewContext(`${FORMATTERS}\n${MAP_SRC}\n[RENEWAL_CONTEXT, RENEWAL_NOTE, `
+    + 'RENEWAL_TONE, RENEWAL_OWED_TONE, CAPITALISATION_ROW, DELTA_CLASS, DELTA_SIGN];');
+// The page's own formatters, so the legacy markup below is built with the same
+// two functions the browser uses rather than with a lookalike.
+const [appMoney, appMoney2] = vm.runInNewContext(`${FORMATTERS}\n[money, money2];`);
+
+/* Every id the returned object can carry, read out of the field that produces
+ * it: slice from the field to the next field at the same indent, drop the
+ * comments, and collect the string literals that are left. */
+function emitted(field) {
+  const at = renewalSrc[0].indexOf(`\n      ${field}:`);
+  if (at < 0) return [];
+  const rest = renewalSrc[0].slice(at + 1);
+  const end = rest.search(/\n      [A-Za-z]+[:,]|\n    \};/);
+  const expr = (end >= 0 ? rest.slice(0, end) : rest).replace(/\/\/.*$/gm, '');
+  return [...new Set([...expr.matchAll(/'([A-Za-z]+)'/g)].map(m => m[1]))].sort();
+}
+const sameSet = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
+const OUTCOMES = ['consolidated', 'interestOnlyCapitalising', 'interestOnlyFlat'];
+ok(sameSet(Object.keys(NOTE_MAP).sort(), OUTCOMES),
+  'the page has wording for every outcome the engine can return', Object.keys(NOTE_MAP).join(', '));
+ok(sameSet(Object.keys(TONE_MAP).sort(), OUTCOMES)
+  && sameSet(Object.keys(OWED_MAP).sort(), OUTCOMES),
+  'and a tone for each');
+ok(sameSet(Object.keys(CONTEXT_MAP).sort(), ['capitalised', 'paid']),
+  'and wording for both pictures of today', Object.keys(CONTEXT_MAP).join(', '));
+ok(sameSet(Object.keys(CAP_MAP).sort(), ['continues', 'stopped']),
+  'and both capitalisation states', Object.keys(CAP_MAP).join(', '));
+ok(sameSet(Object.keys(CLASS_MAP).sort(), ['less', 'more', 'same'])
+  && sameSet(Object.keys(SIGN_MAP).sort(), ['less', 'more', 'same']),
+  'and all three directions the comparison can report');
+// The engine cannot emit an id the page has never heard of, in any of the four
+// places it returns one. A fifth id would render as `undefined` on the page.
+ok(sameSet(emitted('outcome'), OUTCOMES),
+  'and the engine emits no outcome beyond those three', emitted('outcome').join(', '));
+ok(sameSet(emitted('today'), ['capitalised', 'paid']),
+  'no picture of today beyond those two', emitted('today').join(', '));
+ok(sameSet(emitted('capitalisation'), ['continues', 'stopped']),
+  'no capitalisation state beyond those two', emitted('capitalisation').join(', '));
+ok(sameSet(emitted('direction'), ['less', 'more', 'same']),
+  'and no direction beyond those three', emitted('direction').join(', '));
+
+console.log('\n=== migration equivalence on the real published inputs ===');
+/* The figures the household reads today, both ways, at every slider position
+ * the page can reach: 91 renewal rates × 21 amortisations × both modes.
+ * `legacy` is the expression public/modellers.js ran before this move, copied
+ * character for character from 7119401751178272a9277355fe2f297ea2f696d2. */
+const m0 = data.mortgage;
+const heloc0 = data.debts.find(x => /HELOC/i.test(x.label));
+// The page picked the HELOC by matching its LABEL; the engine picks it by the
+// `heloc` id, which is the key `projectDebts` and `plan.obligations` already
+// use. On the published data those are the same record, and this is the check
+// that says so rather than leaving it to be assumed.
+ok(heloc0 === data.debts.find(x => x.id === 'heloc'),
+  'the label the page matched and the id the engine uses name one record',
+  heloc0.label);
+ok(data.plan.obligations.filter(o => o.debtId === 'heloc').length === 1,
+  'and the plan schedules exactly one charge against it');
+function legacyAmortisedPayment(principal, annualPct, years) {
+  const i = annualPct / 100 / 12, n = years * 12;
+  if (i === 0) return principal / n;
+  return principal * i / (1 - Math.pow(1 + i, -n));
+}
+function legacy(r, years, consolidate) {
+  const mortgageNow = m0.paymentBiweekly * 26 / 12;
+  const helocCash = heloc0.cashPayment != null ? heloc0.cashPayment : heloc0.payment;
+  const helocEconomic = heloc0.monthlyInterest != null ? heloc0.monthlyInterest : heloc0.payment;
+  const helocCapitalised = heloc0.interestTreatment === 'capitalised';
+  const baselineCash = mortgageNow + helocCash;
+  const baselineMonthly = baselineCash;
+  let payment, totalInterest, principal, helocOwed = 0;
+  if (consolidate) {
+    principal = m0.balance + heloc0.balance;
+    payment = legacyAmortisedPayment(principal, r, years);
+    totalInterest = payment * years * 12 - principal;
+  } else {
+    principal = m0.balance;
+    payment = legacyAmortisedPayment(principal, r, years) + helocCash;
+    const mortgageInterest = (payment - helocCash) * years * 12 - principal;
+    const helocRate = heloc0.rate / 100;
+    const perYear = 12;
+    helocOwed = helocCapitalised
+      ? heloc0.balance * Math.pow(1 + helocRate / perYear, perYear * years)
+      : heloc0.balance;
+    const helocInterest = helocCapitalised
+      ? helocOwed - heloc0.balance
+      : heloc0.balance * helocRate * years;
+    totalInterest = mortgageInterest + helocInterest;
+  }
+  const delta = payment - baselineMonthly;
+  return { payment, totalInterest, principal, helocOwed, delta, mortgageNow,
+    helocCash, helocEconomic, baselineCash,
+    deltaClass: delta > 0 ? 'neg' : 'pos', deltaSign: delta > 0 ? '+' : '' };
+}
+{
+  let cases = 0;
+  const drift = [];
+  const exact = (a, b) => Math.abs(a - b) < 1e-9;
+  for (let slider = 300; slider <= 750; slider += 5) {
+    for (let years = 10; years <= 30; years++) {
+      for (const consolidate of [false, true]) {
+        const rate = slider / 100;
+        const was = legacy(rate, years, consolidate);
+        const now = F.renewal(data.plan, data.debts, { rate, years, consolidate });
+        cases++;
+        const bad = [];
+        if (!exact(was.payment, now.payment)) bad.push('payment');
+        if (!exact(was.totalInterest, now.interest.total)) bad.push('total interest');
+        if (!exact(was.principal, now.principal)) bad.push('principal');
+        if (!exact(was.helocOwed, now.helocOwed)) bad.push('HELOC owed');
+        if (!exact(was.delta, now.delta)) bad.push('delta');
+        if (!exact(was.mortgageNow, now.today.mortgageCash)) bad.push('mortgage today');
+        if (!exact(was.helocCash, now.today.helocCash)) bad.push('HELOC cash');
+        if (!exact(was.helocEconomic, now.today.helocEconomic)) bad.push('HELOC economic');
+        if (!exact(was.baselineCash, now.today.householdCash)) bad.push('household cash');
+        if (was.deltaClass !== CLASS_MAP[now.direction]) bad.push('delta colour');
+        if (was.deltaSign !== SIGN_MAP[now.direction]) bad.push('delta sign');
+        if (bad.length) drift.push(`${rate}% / ${years}y / ${consolidate ? 'fold' : 'keep'}: ${bad.join(', ')}`);
+      }
+    }
+  }
+  ok(cases === 3822, 'every slider position the page can reach is covered', `${cases} cases`);
+  ok(drift.length === 0, 'and not one published figure moved',
+    drift.slice(0, 3).join(' | ') || 'exact to 1e-9 throughout');
+}
+
+console.log('\n=== the markup the household reads, character for character ===');
+/* Figures agreeing is not the same as the page agreeing. Both templates in
+ * `setupRenewal` are lifted from the production source and run against the
+ * engine's result; the legacy markup is the page as it stood before the move.
+ * Anything that differs — a class, a sign, a space inside a note — shows up as
+ * a string mismatch, because that is what the household would see. */
+const liveOut = vm.runInNewContext(
+  `${FORMATTERS}\n${MAP_SRC}\n(function (r, years) { return ${grab(pageSrc,
+    /\$\('renewal-out'\)\.innerHTML = `[\s\S]*?`;/, 'the renewal-out template')
+    .replace(/^\$\('renewal-out'\)\.innerHTML = /, '').replace(/;$/, '')}; })`);
+const liveContext = vm.runInNewContext(
+  `${FORMATTERS}\n${MAP_SRC}\n(function (r) { return ${grab(pageSrc,
+    /RENEWAL_CONTEXT\[r\.today\.id\]\(r\)/, 'the renewal-context call')}; })`);
+
+function legacyMarkup(r, years, consolidate) {
+  // Copied from public/modellers.js as it stood at
+  // 7119401751178272a9277355fe2f297ea2f696d2, unchanged apart from the two
+  // formatters being named explicitly.
+  const money = appMoney, money2 = appMoney2;
+  const { payment, totalInterest, principal, helocOwed, delta,
+    mortgageNow, helocCash, helocEconomic, baselineCash } = r;
+  const helocCapitalised = heloc0.interestTreatment === 'capitalised';
+  const note = consolidate
+    ? 'Both debts amortise. The HELOC principal actually gets repaid.'
+    : helocCapitalised
+      ? `The HELOC stays interest-only AND its interest capitalises, so nothing repays it and it compounds:
+           ${money(heloc0.balance)} today becomes <b>${money(helocOwed)}</b> after ${years} years.`
+      : `The HELOC stays interest-only, so after ${years} years its ${money(heloc0.balance)} is still owed in full.`;
+  const context = helocCapitalised
+    ? `<b>Today, household cash:</b> the mortgage only — ${money(mortgageNow)}/month equivalent. `
+      + `Nothing leaves any chequing account for the HELOC.<br>`
+      + `<b>Today, HELOC economic cost:</b> ${money(helocEconomic)}/month of interest `
+      + `<b>capitalised onto the balance</b>, so the debt grows by that much every month with nothing `
+      + `repaying it. It is a real cost and it buys no equity — it is simply not a bill that gets paid.`
+    : `Today: mortgage ${money(mortgageNow)}/month equivalent plus the HELOC payment ${money(helocCash)} — `
+      + `${money(baselineCash)} a month of household cash.`;
+  const out = `
+      <div class="big">${money(payment)} <span style="font-size:.95rem;font-weight:500;color:var(--text-secondary)">/ month</span></div>
+      <div class="row"><span>Versus today's household cash</span><span class="${delta > 0 ? 'neg' : 'pos'}">${delta > 0 ? '+' : ''}${money2(delta)}</span></div>
+      ${helocCapitalised && consolidate
+    ? `<div class="row"><span>HELOC interest no longer capitalising</span><span class="pos">${money2(helocEconomic)} / month</span></div>`
+    : helocCapitalised
+      ? `<div class="row"><span>HELOC interest still capitalising</span><span class="neg">${money2(helocEconomic)} / month, compounding</span></div>`
+      : ''}
+      <div class="row"><span>Principal financed</span><span>${money2(principal)}</span></div>
+      <div class="row"><span>Total interest over ${years} years</span><span>${money(totalInterest)}</span></div>
+      <div class="row"><span>HELOC still owed after ${years} years</span><span class="${consolidate ? 'pos' : 'neg'}">${consolidate ? '$0' : money(helocOwed)}</span></div>
+      <p class="${consolidate ? 'goodline' : 'warnline'}">${note}</p>
+      <p class="lede" style="margin:10px 0 0;font-size:.8rem">Illustrative only. Ignores fees, penalties, qualification
+      and the loan-to-value test — which needs a home valuation. A licensed mortgage professional should run the real numbers.</p>`;
+  return { out, context };
+}
+{
+  let compared = 0;
+  const diffs = [];
+  for (const [rate, years] of [[3.64, 18], [3.65, 18], [4.5, 25], [3, 10], [7.5, 30]]) {
+    for (const consolidate of [false, true]) {
+      const was = legacyMarkup(legacy(rate, years, consolidate), years, consolidate);
+      const now = F.renewal(data.plan, data.debts, { rate, years, consolidate });
+      compared++;
+      if (liveOut(now, years) !== was.out) diffs.push(`${rate}%/${years}y/${consolidate}: figures block`);
+      if (liveContext(now) !== was.context) diffs.push(`${rate}%/${years}y/${consolidate}: context`);
+    }
+  }
+  ok(compared === 10, 'ten settings rendered both ways', `${compared} renders`);
+  ok(diffs.length === 0, 'and the markup is identical, character for character',
+    diffs.slice(0, 2).join(' | ') || 'no difference');
+}
+
+console.log('\n=== the published renewal, at the settings the page opens on ===');
+/* The two answers the household actually sees first. Independently confirmed:
+ * the mortgage walk clears, and the HELOC growth is 213 successive charges. */
+{
+  const rate = Math.round(data.mortgage.rate * 100) / 100;
+  const years = Math.round(data.mortgage.remainingYears);
+  ok(rate === 3.64 && years === 18,
+    'the sliders open at the mortgage\'s own rate and remaining amortisation',
+    `${rate}% / ${years} years`);
+  const keep = F.renewal(data.plan, data.debts, { rate, years, consolidate: false });
+  const fold = F.renewal(data.plan, data.debts, { rate, years, consolidate: true });
+  ok(near(keep.today.householdCash, 3466.67, 0.005),
+    'today is the mortgage alone, $3,466.67 a month', money(keep.today.householdCash));
+  ok(near(keep.payment, 3449.53, 0.005) && keep.direction === 'less',
+    'keeping them apart renews at $3,449.53, $17.14 less than today', money(keep.payment));
+  ok(near(keep.helocOwed, 486103.24, 0.005),
+    'and leaves $486,103.24 owing on the HELOC after 18 years', money(keep.helocOwed));
+  ok(near(growMonthly(data.debts.find(x => x.id === 'heloc').balance, 4.9, 216),
+    keep.helocOwed, 0.005),
+  'which is what 216 successive monthly charges independently produce');
+  ok(Math.abs(walkLoan(keep.principal, rate, years * 12, keep.payment).balance) < 0.000001,
+    'the mortgage walk clears at that payment');
+  ok(near(fold.payment, 4723.06, 0.005) && fold.direction === 'more',
+    'folding the HELOC in costs $4,723.06, $1,256.39 more', money(fold.payment));
+  ok(near(keep.interest.total - fold.interest.total, 211022.10, 0.01),
+    'and saves $211,022.10 of interest over the 18 years',
+    money(keep.interest.total - fold.interest.total));
+  ok(fold.helocOwed === 0, 'with nothing left owing on the HELOC');
+}
+
+console.log('\n' + '═'.repeat(60));
+if (failures) {
+  console.log(`FAILED — ${failures} renewal check(s)`);
+  process.exit(1);
+}
+console.log('THE RENEWAL AUTHORITY IS THE ENGINE\'S, AND IT RECONCILES');

@@ -118,17 +118,46 @@ ok(helocDebt.monthlyInterest > 0,
 ok(heloc.nonCash === true && near(heloc.amount, helocDebt.monthlyInterest),
   'the plan obligation agrees with it on both counts', money(heloc.amount));
 
+// The mortgage is stated in three places, and every one of them is read. The
+// `mortgage` block opens the renewal sliders, the debt record is the balance
+// `Forecast.renewal` and `Forecast.projectDebts` both run on, and the plan
+// obligation is what the renewal annualises into today's household cash. They
+// agree today; nothing checked that they did, and the renewal now depends on
+// two of them at once.
+const mortgageDebt = data.debts.find(x => x.id === 'mortgage');
+const mortgageObligation = plan.obligations.find(o => o.debtId === 'mortgage');
+ok(near(data.mortgage.balance, mortgageDebt.balance),
+  'the mortgage block and the debt record state one balance',
+  money(mortgageDebt.balance));
+ok(near(data.mortgage.rate, mortgageDebt.rate),
+  'and one rate', `${mortgageDebt.rate}%`);
+ok(near(data.mortgage.paymentBiweekly, mortgageObligation.amount)
+  && mortgageObligation.frequency === 'biweekly',
+'and the plan schedules exactly that payment, at that cadence',
+`${money(mortgageObligation.amount)} ${mortgageObligation.frequency}`);
+ok(near(mortgageDebt.cashPayment, mortgageObligation.amount),
+  'and the debt record agrees it is cash that leaves an account',
+  money(mortgageDebt.cashPayment));
+
 // The Modeller added the $814.18 to the mortgage and called the total "today",
-// which invented a household bill that nobody pays.
+// which invented a household bill that nobody pays. The renewal arithmetic is
+// `Forecast.renewal`'s now, so this is where the split has to hold — and the
+// engine derives the $0.00 from the obligation being non-cash rather than
+// reading a field, which `test-renewal.js` proves by making it cash.
 const modellers = read('public/modellers.js');
-ok(/cashPayment/.test(modellers),
-  'the Modeller reads the cash figure, not the interest charge');
-ok(!/const helocNow = heloc\.payment/.test(modellers),
-  'and no longer treats the capitalised charge as a monthly payment');
-ok(/interestTreatment === 'capitalised'/.test(modellers),
+const forecast = read('public/forecast.js');
+// Code, not prose. A comment explaining a defect must not read as the defect,
+// and a comment naming a rule must not stand in for the rule.
+const codeOnly = src => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+const forecastCode = codeOnly(forecast), modellersCode = codeOnly(modellers);
+ok(/\.filter\(o => o\.debtId === debtId && !o\.nonCash\)/.test(forecastCode),
+  'the engine counts only cash obligations as household cash');
+ok(!/heloc\.payment/.test(forecastCode) && !/heloc\.payment/.test(modellersCode),
+  'and neither it nor the Modeller treats the capitalised charge as a payment');
+ok(/interestTreatment === 'capitalised'/.test(forecastCode),
   'it branches on the canonical fact rather than assuming');
-ok(/economic/i.test(modellers),
-  'and labels the economic cost separately from household cash');
+ok(/economic/i.test(modellers) && /helocEconomic/.test(forecastCode),
+  'and the economic cost is labelled separately from household cash');
 
 // Deep Dive listed it among ordinary dated payments.
 const helocUpcoming = data.upcoming.filter(u => /HELOC/i.test(u.what));
@@ -275,14 +304,15 @@ ok(/gap && fundingShort/.test(planJs2),
   'the success copy is gated on the gap actually being fundable');
 
 // 6. The Modeller charged SIMPLE interest on a balance the same page says
-//    capitalises, then reported the opening balance as still owed.
-ok(/Math\.pow\(1 \+ helocRate \/ perYear, perYear \* years\)/.test(modellers),
-  'the Modeller compounds capitalised HELOC interest at the monthly charge cadence');
-ok(!/heloc\.balance \* \(heloc\.rate \/ 100\) \* years/.test(modellers),
-  'and the simple-interest calculation is gone');
+//    capitalises, then reported the opening balance as still owed. The fix
+//    moved with the arithmetic into the engine.
+ok(/Math\.pow\(1 \+ helocRate \/ PAYMENTS_PER_YEAR\.monthly,/.test(forecastCode),
+  'the engine compounds capitalised HELOC interest at the monthly charge cadence');
+ok(!/Math\.pow\(/.test(/\nfunction setupRenewal\(d\) \{[\s\S]*?\n\}\n/.exec(modellersCode)[0]),
+  'and the Modeller compounds nothing of its own');
 // The benefit of stopping capitalisation only exists after consolidating; the
 // row was shown in keep-separate mode, contradicting the note beneath it.
-ok(/helocCapitalised && consolidate/.test(modellers),
+ok(/id: consolidate \? 'stopped' : 'continues'/.test(forecastCode),
   'the stopped-capitalisation row is gated on actually consolidating');
 ok(/still capitalising/.test(modellers),
   'and the keep-separate case says the opposite, as it should');
