@@ -235,21 +235,47 @@ owner or explicitly replaces it; it never quietly becomes a second one.
 The financial authorities below are **incumbent**. Later work evolves, derives
 from, replaces or deletes one of them — and says which. It does not stand up a
 second engine, a second weekly figure, a second budget or a second calendar
-beside them. This repository has already shipped that failure once, publishing
+beside them. This repository has already shipped that failure, publishing
 `$1,650/wk` in one tile and `$0/wk` below, because two pieces of code answered
-the same question.
+the same question — and it still carries one, noted under the table.
 
 | Concept | Incumbent authority |
 |---|---|
 | Cash projection over the window | `Forecast.simulate` |
-| Weekly household cap, next move | `Forecast.recommend`, `Forecast.recommendWeekly` |
+| Weekly household cap, next move | `Forecast.recommend` — **and only it** |
 | Coupled cash-and-debt walk | `Forecast.projectDebts` |
 | Revolving headroom, limits, pending | `Forecast.utilisation` |
 | Budget — owner targets against actuals | `Forecast.budgetBreakdown`, with classification and targets in `data.json` `plan.budget` |
 | Historical spending series | generated `public/periods.json`, from `scripts/periods.js` |
 | Published figures | `data.json` |
-| Calendar — month grid and agenda | `renderCalendar()` in `public/plan.js`, from the same projection |
+| Payoff and renewal modelling | `payoff()` and `amortisedPayment()` in `public/app.js`, driven by `public/modellers.js` |
+| Calendar — the on-page month grid and agenda | `renderCalendar()` in `public/plan.js`, from the same projection |
+| Calendar — the exported `.ics` | `scripts/calendar-ics.js`, from `docs/ACCOUNT_FACTS.md` and observed recurrence |
 | Authority and reconciliation guards | the `npm test` suites |
+
+Three of those rows carry a trap, and each is recorded rather than smoothed
+over.
+
+**`Forecast.recommendWeekly` is not a co-owner of the weekly cap.** It is the
+solver `recommend` calls, and on an opening-gap plan it returns `0` while
+`recommend` funds the gap and re-solves for the cap the household can actually
+afford. `forecast.js` calls `recommend` *the* single authority in its own words.
+A page reading the solver directly is precisely how `$1,650/wk` and `$0/wk`
+shipped on the same screen — so later work consumes `recommend`, never the
+solver beneath it.
+
+**The renewal comparison is computed in a page script.** `modellers.js` does its
+own HELOC compounding inline rather than asking a testable engine, which
+contradicts the rule `CONTEXT.md` states — the engine owns the answers, the
+pages render them. Recorded as `B73`; not fixed here, because fixing it moves an
+authority and needs its own proof.
+
+**There are already two calendars.** The on-page grid derives from the
+projection; the exported `.ics` derives independently from standing facts and
+observed recurrence, and `B29` records it as imported into Google Calendar. They
+can drift, and nothing today would notice. That is a pre-existing overlap this
+file *records* rather than creates — recorded as `B74`. Until it is resolved,
+neither is a licence to add a third.
 
 ---
 

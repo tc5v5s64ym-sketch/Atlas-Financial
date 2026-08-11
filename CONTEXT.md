@@ -228,11 +228,12 @@ is visible without a password.
 - **Raw financial files stay local.** Only sanitised aggregates leave `raw/`.
 - **Tag every figure** verified / calculated / estimated / unknown. An estimate
   is never presented as a verified fact.
-- **Secrets live only where `ARCHITECTURE.md` permits** — Render environment
-  secrets in production, an environment variable in your own shell when running
-  locally, and nowhere else. `SITE_PASSWORD` and `SESSION_SECRET` are not in this
-  repo, not in `data.json`, not client-side, not in a log, and not in any
-  conversation.
+- **Secrets live only where `ARCHITECTURE.md` permits**, and that file is the one
+  home for the rule — do not restate a narrower version of it here. Today the two
+  secrets that exist are supplied as Render environment secrets in production and
+  as environment variables in your own shell when running locally.
+  `SITE_PASSWORD` and `SESSION_SECRET` are never in this repo, never in
+  `data.json`, never client-side, never in a log, and never in any conversation.
 
 ## Live
 

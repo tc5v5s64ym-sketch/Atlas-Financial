@@ -256,6 +256,30 @@ characters — but a comment asserting something untrue is the class of defect
 this repository treats as real. Fix it in passing, whenever a pull request has
 honest reason to touch that file; it does not justify one of its own.
 
+**B73 · The renewal comparison is solved inside a page script** · *small, real*
+`public/modellers.js` computes the HELOC's compounded balance and the renewal
+interest totals inline — `heloc.balance * Math.pow(1 + helocRate / perYear, …)`
+and the mortgage-interest arithmetic beside it. `CONTEXT.md` states the opposite
+rule: the engine owns the answers, the pages render them, because a figure
+computed in a page script cannot be tested by the node suite that guards every
+other figure. These numbers reach the household — they are what the May 2027
+renewal decision is weighed on. Move them into a testable engine function and
+reconcile against a hand-computed case. `payoff()` and `amortisedPayment()` in
+`public/app.js` are already shared helpers and are not the problem; the inline
+HELOC compounding in `modellers.js` is.
+
+**B74 · Two calendars, and nothing notices when they disagree** · *needs a decision first*
+`renderCalendar()` in `public/plan.js` draws the on-page grid from the forecast
+projection. `scripts/calendar-ics.js` builds `derived/household-payments.ics`
+independently, from `docs/ACCOUNT_FACTS.md` and the recurrence observed in
+chequing data — and B29 records that file as imported into Google Calendar, so
+it is a calendar the household actually reads. Two schedules, two sources, no
+reconciliation: a due date or amount corrected in one can sit stale in the other
+indefinitely. Decide which is authoritative and derive the other from it, or
+state why each legitimately answers a different question. Deriving the `.ics`
+from the projection is the obvious candidate but is not free — the `.ics` covers
+statement closes and renewal reminders the projection does not model.
+
 ---
 
 ## Ready — needs a session at an institution
