@@ -269,6 +269,7 @@ the same question — and it still carries one, noted under the table.
 | Coupled cash-and-debt walk | `Forecast.projectDebts` |
 | Revolving headroom, limits, pending | `Forecast.utilisation` |
 | Budget — owner targets against actuals | `Forecast.budgetBreakdown`, with classification and targets in `data.json` `plan.budget` |
+| The mission — which instructions the homepage gives, and in what order | `Forecast.mission`, from the `recommend` and `projectDebts` results; `public/plan.js` holds the wording only |
 | The next move the household is told to make | `plan.actions` in `data.json`, rendered from `plan.actions[0]` by `public/plan.js` |
 | Where the next surplus dollar goes | `plan.nextDollar` in `data.json`; its `target` feeds `Forecast.projectDebts` |
 | Payoff and renewal modelling | `payoff()` and `amortisedPayment()` in `public/app.js`, driven by `public/modellers.js` |
@@ -292,23 +293,25 @@ So the rule, not the enumeration, is what binds:
 - **A page script renders; it does not decide.** `renderCalendar()` and
   `renderPlan()` format what they are given.
 
-**Page scripts still break that third rule in at least two places today — and
-they are defects, not a fourth category.** `public/modellers.js` computes the
-renewal's HELOC interest inline, and `public/plan.js:517-538` assembles the
-homepage mission from the current forecast. Both remain recorded in `B73`.
+**Page scripts still break that third rule in at least one place today — and it
+is a defect, not a fourth category.** `public/modellers.js` computes the
+renewal's HELOC interest inline, and that remains recorded in `B73`.
 
-Two instances have been moved into the engine rather than argued away. The
+Three instances have been moved into the engine rather than argued away. The
 Amanda-transfer deadline: `public/plan.js` re-ran the simulation with her
 transfer zeroed and selected the first below-buffer day itself, and
 `Forecast.incomeDeadline` now owns that counterfactual. The "Next due" tile:
 `public/deepdive.js` filtered `upcoming` for unpaid cash items, sorted them and
-took the first, and `Forecast.nextDue` now owns that selection. In both cases the
-page renders the returned result and a focused test reconciles the move against a
-hand-computed case.
+took the first, and `Forecast.nextDue` now owns that selection. The homepage
+mission: `public/plan.js` chose which instructions the household was given and
+composed the sentence, and `Forecast.mission` now owns that selection, returning
+the instructions and the figures behind them while the page keeps the wording.
+In each case the page renders the returned result and a focused test reconciles
+the move against a hand-computed case.
 
 "At least" is doing the work in that sentence, and the number moves in both
 directions. It said *two* until a review found a third, in the same file as one
-of the renderers it praises; it says two again only because two were moved, not
+of the renderers it praises; it says one now only because three were moved, not
 because anything audited what is left. A page script that decides is an **unnamed
 authority**, so finding another is something to route — not somewhere to file it,
 and not evidence the list is now closed.
