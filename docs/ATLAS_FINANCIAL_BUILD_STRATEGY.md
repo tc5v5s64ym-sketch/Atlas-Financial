@@ -225,7 +225,16 @@ built *on* that picture, the picture needs owners that a test can reach.
   the same pull request, replaced by engine mutation tests rather than kept
   beside them.
 
-  **Six remain**, and one decision per pull request still holds for them.
+  **The third has moved on its own.** The weekly↔monthly conversion and the
+  discretionary-room verdict are `Forecast.budgetBreakdown`'s, in a `cap` block
+  measured against the weekly figure the page is actually showing.
+  `WEEKS_PER_MONTH` is the engine's and is deliberately not exported, so the
+  suites re-derive it from the calendar rather than importing the answer. The
+  move found a **third** copy of that constant — `scripts/figures-snapshot.js`,
+  the file that proves published figures did not move — and retired it along
+  with the page's.
+
+  **Five remain**, and one decision per pull request still holds for them.
   AF-CAL-01's entry gate names this item, so that work is not open yet either.
 
 ### AF-CAL-01 · Give the schedule one owner

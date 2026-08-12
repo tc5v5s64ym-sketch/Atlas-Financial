@@ -748,10 +748,14 @@
       .reduce((s, c) => s + c[field || 'planned'], 0);
     const isClass = k => c => c.class === k;
 
+    const discretionaryMonthly = sum(isClass('discretionary'));
+    // What the cap must cover before anything optional happens.
+    const requiredMonthly = sum(c => c.class === 'essential' || c.class === 'unknown');
+
     return {
       basis, basisLabel: window.label, months: window.months, categories,
       essentialMonthly: sum(isClass('essential')),
-      discretionaryMonthly: sum(isClass('discretionary')),
+      discretionaryMonthly,
       unknownMonthly: sum(isClass('unknown')),
       reserveMonthly: sum(isClass('reserve')),
       datedMonthly: categories.reduce((s, c) => s + c.dated, 0),
@@ -761,8 +765,98 @@
       sinkingMonthly: sinking.total,
       sinkingItems: sinking.items,
       ownerTargetCount: categories.filter(c => c.target != null).length,
-      // What the cap must cover before anything optional happens.
-      requiredMonthly: sum(c => c.class === 'essential' || c.class === 'unknown'),
+      requiredMonthly,
+      // The weekly cap measured against all of that, when a caller says which
+      // cap is on screen. Null when none was given — a caller that has not
+      // named a cap is asking about the categories, not for a verdict on one.
+      cap: againstCap(categories, requiredMonthly, discretionaryMonthly, opts),
+    };
+  }
+
+  /* ------------------------------- the cap in weeks and months, and the room */
+  // The household reads a WEEKLY figure; the budget is derived in MONTHS. One
+  // conversion sits between them, and it decides a published verdict:
+  // "Discretionary room — nothing left. The cap is below what normal life
+  // costs."
+  //
+  // `public/plan.js` owned all of it — its own `WEEKS_PER_MONTH`, `perWeek()`,
+  // `recMonthly`, `optional` and `short` — so no test could reach any of it. The
+  // constant could be changed from 4.35 to 4.00, moving every budget-derived
+  // /wk figure the page publishes by about 8%, and `npm test` stayed green.
+  //
+  // A month is a year divided by twelve and a week is seven days, so the only
+  // honest conversion is the calendar's own: 365.25 / 12 / 7 ≈ 4.3482 weeks a
+  // month, Gregorian leap years included.
+  //
+  // The constant is deliberately NOT exported. A test importing it would prove
+  // the engine agrees with itself; the suites re-derive it from the calendar,
+  // which is what makes them able to disagree.
+  const WEEKS_PER_MONTH = 365.25 / 12 / 7;
+
+  // A weekly cap said in months. Separate from the block below because it needs
+  // no budget: `budgetBreakdown` returns null when the spending history has not
+  // loaded, and both the Plan page's cap tile and the published-figures
+  // snapshot state the monthly equivalent whether or not that history is there.
+  // Without this they would each need the constant back.
+  function monthlyFromWeekly(weekly) { return weekly * WEEKS_PER_MONTH; }
+
+  function againstCap(categories, requiredMonthly, discretionaryMonthly, opts) {
+    const weekly = opts.weeklyCap;
+    if (weekly == null) return null;
+    const perWeek = m => m / WEEKS_PER_MONTH;
+    const monthly = monthlyFromWeekly(weekly);
+
+    const cat = id => categories.find(c => c.id === id) || { planned: 0, historical: 0 };
+    const groceries = cat('groceries'), fuel = cat('fuel');
+    const foodFuelPlannedMonthly = groceries.planned + fuel.planned;
+    const foodFuelHistoricalMonthly = groceries.historical + fuel.historical;
+
+    // Whether the cap leaves anything once the essentials are paid. Measured
+    // with the engine's own epsilon rather than the page's bare comparison of
+    // two unrounded monthly sums: a cap a hundredth of a cent under the
+    // essential need published "nothing left — the cap is below what normal
+    // life costs" beside a shortfall of $0/week. Half a cent is finer than any
+    // of these figures is published to, so within it the cap MEETS the need.
+    const hasDiscretionaryRoom = atLeast(monthly, requiredMonthly);
+    const discretionaryRoomMonthly = Math.max(0, monthly - requiredMonthly);
+    const essentialShortfallMonthly = Math.max(0, requiredMonthly - monthly);
+    const householdDiscretionaryWeekly = perWeek(discretionaryMonthly);
+    const inCapMonthly = requiredMonthly + discretionaryMonthly;
+
+    return {
+      // The figure on screen, and the one the recommender solved for. They
+      // differ whenever the household has set its own weekly figure, and the
+      // budget must be measured against what is being SHOWN — comparing the
+      // essentials against a recommendation the page is not displaying
+      // describes a plan nobody is looking at.
+      weekly,
+      recommendedWeekly: opts.recommendedWeekly != null ? opts.recommendedWeekly : null,
+      isOverride: opts.recommendedWeekly != null && weekly !== opts.recommendedWeekly,
+      monthly,
+
+      essentialMonthly: requiredMonthly,
+      essentialWeekly: perWeek(requiredMonthly),
+
+      hasDiscretionaryRoom,
+      discretionaryRoomMonthly,
+      discretionaryRoomWeekly: perWeek(discretionaryRoomMonthly),
+      essentialShortfallMonthly,
+      essentialShortfallWeekly: perWeek(essentialShortfallMonthly),
+
+      groceriesPlannedWeekly: perWeek(groceries.planned),
+      fuelPlannedWeekly: perWeek(fuel.planned),
+      foodFuelPlannedMonthly, foodFuelPlannedWeekly: perWeek(foodFuelPlannedMonthly),
+      foodFuelHistoricalMonthly,
+      foodFuelHistoricalWeekly: perWeek(foodFuelHistoricalMonthly),
+
+      // What the household's own discretionary budget asks for, and how far
+      // short of it the cap leaves them. Only meaningful where there is room.
+      householdDiscretionaryWeekly,
+      roomVersusHouseholdWeekly:
+        householdDiscretionaryWeekly - perWeek(discretionaryRoomMonthly),
+
+      inCapMonthly,
+      overCapMonthly: Math.max(0, inCapMonthly - monthly),
     };
   }
 
@@ -1750,7 +1844,8 @@
   }
 
   const Forecast = { addDays, diffDays, occurrences, expandEvents, simulate,
-    recommendWeekly, recommend, incomeDeadline, budgetBreakdown, projectDebts,
+    recommendWeekly, recommend, incomeDeadline, budgetBreakdown, monthlyFromWeekly,
+    projectDebts,
     nextDue, planStatus, mission, utilisation, renewal, payoffDebts, payoffModel,
     paymentForMonths, EPSILON, STEP };
   if (typeof module !== 'undefined' && module.exports) module.exports = Forecast;

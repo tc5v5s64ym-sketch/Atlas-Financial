@@ -152,6 +152,25 @@ ok(discretionaryRoom < budget.discretionaryMonthly,
   'but far less than discretionary spending has actually been running at — the plan requires a real cut',
   `${money(discretionaryRoom)} allowed vs ${money(budget.discretionaryMonthly)} historical`);
 
+// This file has always converted weeks to months with its own copy of the
+// calendar identity above — which proved the engine agreed with the TEST while
+// `public/plan.js` kept a third copy nobody compared with either. Now that
+// `budgetBreakdown` owns the conversion, this file's independent copy becomes a
+// real cross-check: the engine has to land on the figures worked out here.
+const engineCap = F.budgetBreakdown(plan, periods, {
+  paypalPerMonth: data.paypal.perMonth, weeklyCap: advice.weekly,
+}).cap;
+ok(near(engineCap.monthly, capMonthly, 0.005),
+  'the engine converts the cap to the same month this file computed independently',
+  `${money(engineCap.monthly)} vs ${money(capMonthly)}`);
+ok(near(engineCap.discretionaryRoomMonthly, discretionaryRoom, 0.005),
+  'and reaches the same discretionary room',
+  `${money(engineCap.discretionaryRoomMonthly)} vs ${money(discretionaryRoom)}`);
+ok(near(engineCap.essentialWeekly, budget.requiredMonthly / WEEKS_PER_MONTH, 0.005),
+  'and the same weekly essential need', money(engineCap.essentialWeekly));
+ok(engineCap.hasDiscretionaryRoom === (discretionaryRoom > 0),
+  'and the same verdict about whether there is any room at all');
+
 console.log('\n=== owner targets are present, and honestly sourced ===');
 ok(plan.budget.ownerTargets.status === 'partial',
   'the budget records that owner targets are incorporated but incomplete',
