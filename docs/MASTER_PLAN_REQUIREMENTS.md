@@ -213,7 +213,7 @@ The owner describes a recurring annual take-home pattern that Atlas should suppo
 
 1. **January:** CPP/EI deductions restart, reducing take-home pay versus late in the prior year.
 2. **Late February:** annual bonus normally arrives around this period.
-3. **March/April:** annual raise takes effect; recent raises have typically been roughly 4–5%, but the exact amount and effective pay must be verified each year.
+3. **March 1:** the annual salary raise becomes effective every year. **Owner-confirmed 2026-08-12**, and independently consistent with the supplied 2025 rewards statement showing the $151,283 salary effective 1 March 2025. The raise amount varies; recent raises have typically been roughly 4–5%, but the actual percentage must be recorded each year rather than assumed.
 4. **Later in the year:** CPP/EI annual maximums are reached, causing another increase in net pay. The owner recalls this occurring around June, but Atlas should calculate/observe the actual crossover rather than hard-code June.
 5. The owner has been using one of these take-home increases to raise voluntary pension saving by **another 1 percentage point**. The intended policy is to repeat that annually until the employee contribution reaches **12%**.
 
@@ -227,13 +227,13 @@ This payroll calendar matters because a nine-month plan crosses several differen
 
 The next payroll/benefit evidence should resolve these without reopening old transaction forensics:
 
-1. **Current annual base salary** and its effective date.
+1. **Current annual base salary.** The annual raise effective date is known: **March 1**. The current post-raise salary amount still needs the payroll portal/current compensation source.
 2. **Current payroll cadence.** The 2022 agreement says semi-monthly; current bank-deposit analysis in `ACCOUNT_FACTS.md` has described Dale's payroll as bi-weekly. A current pay stub/payroll portal should settle which is now true.
 3. **Current employee pension contribution percentage.** Owner states an extra +1 percentage point was added this year, but the total is not known.
 4. **Current optional-pension rules and maximum.** Owner states a 12% employee ceiling; obtain current plan/payroll evidence before modelling the ceiling as verified.
 5. **Current employer pension formula/CRA cap mechanics.** Historical evidence says 6% up to CRA limits and the 2025 rewards statement is consistent with 6%; current plan evidence still wins.
 6. **2026/current IBP target and maximum percentage**, plus the actual annual payout when known. Do not copy the 2020 grade table forward.
-7. **Current raise effective pay/date** and actual raise percentage.
+7. **Current annual raise percentage/resulting salary.** The effective date itself is no longer unknown: it is March 1 each year.
 8. **Year-to-date CPP, CPP2, EI, tax and other payroll deductions**, so the model can reproduce the actual net-pay step changes and annual maximum dates.
 9. **Current pension balance, holdings, contribution history and fees** from Sun Life.
 10. **Current vacation policy** only if Atlas is going to model vacation payout as an available optional cash event.
