@@ -265,7 +265,7 @@ been found, not a count of what exists** — it grew twice under review already,
 so treat it as open:
 
 **Every instance recorded below has moved into the engine, and so have the first
-two the closing scan found. The item stays OPEN** — six of that scan's eight
+four the closing scan found. The item stays OPEN** — four of that scan's eight
 outcomes are still to move. See **the closing scan** at the end of this entry
 for what was inspected, what each candidate was classified as, and the ordered
 outcomes that remain.
@@ -440,10 +440,10 @@ baked in as literals.
 
 **The answer to the question this scan asked is no.** *Engine decides, pages
 render* is not true across the browser layer today. The scan found eight concrete
-financial authorities living in page scripts. **Items 1, 2 and 3 have since moved** —
-1 and 2 together, as one authority boundary, because both interpreted the same
-opening gap and the same funding result; 3 on its own. **Five remain**, and they
-are still the list below.
+financial authorities living in page scripts. **Items 1, 2, 3 and 4 have since
+moved** — 1 and 2 together, as one authority boundary, because both interpreted
+the same opening gap and the same funding result; 3 and 4 on their own.
+**Four remain**, and they are still the list below.
 
 **The first pass of this scan found seven and missed one**, and the record says
 so rather than presenting eight as though they arrived together. The blocking
@@ -621,15 +621,75 @@ somewhere a test can reach it.
    a $600/wk override that trips the "nothing left" branch — and is identical
    to `0ed3bae`. All 75 snapshot figures are identical. The page is booted
    against a stub DOM and the household-facing strings read back.
-4. **Counterfactuals composed on the page** — `public/plan.js` 592–604 and
-   824–834. `capIfCovered` invents a funding source with `available: Infinity`
-   and re-runs `Forecast.recommend` to publish "cover the whole gap and it
-   becomes $X/week". The HELOC risk re-runs `recommend` with
-   `fundingDebtId: 'heloc'` and then `projectDebts`, to publish the date the
-   crossing moves to. Both call the engine, so the arithmetic is the engine's —
-   but *which* counterfactual the household is shown, and the scenario it is run
-   under, is decided in the page. This is the class `Forecast.incomeDeadline` was
-   created to end.
+4. **RESOLVED 2026-08-12 — counterfactuals composed on the page.**
+   `Forecast.counterfactuals` now owns both alternative-reality answers the Plan
+   page publishes: what the household could spend if the whole opening gap were
+   covered, and what funding that gap from a credit facility instead would do to
+   the facility's limit-crossing date. It decides which alternative applies,
+   constructs the assumption, runs it through `Forecast.recommend` and
+   `Forecast.projectDebts`, and returns structured facts. `public/plan.js` keeps
+   the wording and formatting: it lost `capIfCovered`, the `available: Infinity`
+   funding source, the `fundingDebtId: 'heloc'` selection, its second
+   `recommend` and second `projectDebts`, the `fundingIsDraw` and
+   `fundingSource` consts that only existed to gate them, its
+   `fundingGap - fundingPlan.shortfall` subtraction, and the `'her account'`
+   fallback label. It now calls `recommend` once and `projectDebts` once, both
+   for the plan on screen, and a test asserts that.
+
+   **Propagation is by construction rather than by discipline.** `recommend`
+   records the assumptions it was called under as `planOptions` — scenario,
+   target buffer, income overrides, disabled commitments, debt records,
+   extra-debt settings — and each counterfactual copies that record and replaces
+   exactly one key, `fundingSources`. The page passes no scenario to the
+   alternative because it passes none at all, so the two sides cannot drift.
+   `simOptions` is deliberately not what is copied: it is the recovery run and
+   carries the gap injections, so feeding it back would fund the gap twice.
+
+   **Neither assumption is infinite money.** Full coverage is exactly the
+   shortfall the declared sources leave, supplied as found money rather than
+   borrowing and ranked *behind* every real source — so the real allocation, and
+   the borrowing inside it, are untouched, and `addsBorrowing` is zero by
+   construction. The old `available: Infinity` source was ranked *first*, which
+   silently replaced the real plan with a fully external one and dropped the
+   HELOC draw the actual plan makes. Which facilities can be offered as
+   alternative funders is derived from the canonical funding options — a usable
+   option naming a debt record — so no page and no engine line hard-codes
+   `'heloc'`.
+
+   `test-counterfactuals.js` proves every figure on a fixture whose arithmetic
+   is hand-checkable ($100 in the account, $700 out before any income, so the
+   gap is the buffer plus $600), reconciles each returned answer against
+   `recommend` and `projectDebts` run directly, proves the alternative's draw
+   reaches the debt walk exactly once on the gap day, names a reason for each of
+   the five states that have no honest answer, breaks nine engine decisions to
+   show each is load-bearing, and boots the real page against a stub DOM at
+   three buffer settings to read back the two sentences the household is shown.
+   All 75 snapshot figures are identical to `a7fe97b`.
+
+   **One real financial contradiction was found in the move and is fixed here
+   rather than carried across.** The page passed `fundingDebtId` with no
+   `fundingSources`, which took the engine's unattributed-injection fallback and
+   drew the **whole gap** on the HELOC however little it declared. At a $1,500
+   target buffer — reachable by typing into a box with `min="0"` and no
+   maximum — the funding card read "Not enough — $975 short of the $2,043
+   needed" while the risk block a few lines below priced a $2,043.16 draw on
+   that same facility and published a crossing date of **12 August**, the as-of
+   date itself, manufactured entirely by the overdraw. A facility now funds the
+   gap through its own declared headroom, and an alternative it cannot supply
+   returns `sourceCannotCoverGap` with no date. On the published data nothing
+   moves: the gap is $1,043.16 against $1,067.84 of HELOC headroom, so the
+   sentence still reads "brings that crossing forward to **August 31**".
+
+   **Two source-regex invariants were re-pointed rather than deleted.**
+   `test-invariants.js` asserted the page held `fundingPlan.borrowed > 0` and
+   `capIfCovered`; both expressions moved. The demonstrated failures they
+   guarded — borrowing status read from the single-source case, and a cap
+   qualifier attaching one simulation's condition to another's answer — are now
+   guarded at their new home, the second by a per-facility test that is stricter
+   than the boolean it replaces. A third assertion, that the page no longer
+   builds `available: Infinity`, needed the page source with comments stripped:
+   this repository records what moved in a comment naming the thing it removed,
+   and a bare regex cannot tell that record apart from the code it replaced.
 5. **What the next move achieves** — `public/plan.js` 543–574. `actionCovers`
    compares `plan.actions[0].amount` against the current gap and `actionLeaves`
    computes the remainder; between them they select which of five outcome
