@@ -271,6 +271,8 @@ the same question — and it still carries one, noted under the table.
 | Revolving headroom, limits, pending | `Forecast.utilisation` |
 | Budget — owner targets against actuals | `Forecast.budgetBreakdown`, with classification and targets in `data.json` `plan.budget` |
 | The mission — which instructions the homepage gives, and in what order | `Forecast.mission`, from the `recommend` and `projectDebts` results; `public/plan.js` holds the wording only |
+| The status band — which of seven verdicts the Plan page publishes about the window, and the dates inside it | `Forecast.planStatus`, from the `recommend` result and the simulation on screen; `public/plan.js` holds the wording, the tone class and the HTML only |
+| Whether a funding source covers the opening gap, contributes to it, or cannot reach it | `Forecast.recommend`'s funding result — `funding.sources`, the same allocation seen per source; `public/plan.js` holds the wording only |
 | The May 2027 renewal — what it costs, what folding the HELOC in changes | `Forecast.renewal`, from the debt records and `plan.obligations`; `public/modellers.js` holds the wording only |
 | Mortgage rate conventions — what a quoted rate means | `RATE_BASIS` in `public/forecast.js`: fixed compounds semi-annually, variable monthly. `Forecast.renewal` requires the basis and has no default |
 | The next move the household is told to make | `plan.actions` in `data.json`, rendered from `plan.actions[0]` by `public/plan.js` |
@@ -306,11 +308,15 @@ which selects which of seven verdicts the household reads and picks two of the
 dates inside them. Seven of the eight were found by reading; the eighth, the
 funding-source cards a few lines below that same band, was found by the required
 review after the scan had called itself complete. `B73` records each one with the mutation evidence that no test
-reaches it, and each is its own outcome to move. **None of them is a row in the
+reaches it, and each is its own outcome to move. **Those first two have now
+moved**, together, because they interpreted the same `gap` and the same funding
+result; six remain. **None of them is a row in the
 table above, and none should become one**: a page script that decides is an
-unnamed authority, which is a defect to close, not an incumbent to register.
+unnamed authority, which is a defect to close, not an incumbent to register. The
+two rows the move added name `Forecast.planStatus` and the funding result, which
+are engine authorities — not the page-side defect they replaced.
 
-Five instances have been moved into the engine rather than argued away. The
+Seven instances have been moved into the engine rather than argued away. The
 Amanda-transfer deadline: `public/plan.js` re-ran the simulation with her
 transfer zeroed and selected the first below-buffer day itself, and
 `Forecast.incomeDeadline` now owns that counterfactual. The "Next due" tile:
@@ -328,7 +334,16 @@ household-facing figure outside the suite's reach. The payoff modeller:
 presets and picked its own slider floor, on top of `payoff()` in that same page
 core, and `Forecast.payoffDebts` / `Forecast.payoffModel` now own which debts may
 be modelled, what each owes today, the rate convention each is charged under, the
-minimum a larger payment is measured against, and the projection itself. In each
+minimum a larger payment is measured against, and the projection itself. The
+status band and the funding-source cards, which moved together because they read
+one result: `public/plan.js` re-derived `fundingShort`, hand-copied the engine's
+buffer comparison and its EPSILON as `sim.min.balance < sim.buffer - 0.005`,
+selected which of seven verdicts the household read, walked the daily balances
+for the first breach and the first negative day, totalled the funding parts, and
+a few lines below asked `o.available >= needed` about each source in its own
+arithmetic. `Forecast.planStatus` now owns the verdict and both dates, and
+`Forecast.recommend`'s funding result owns the per-source coverage — so the two
+cannot disagree, which they had. In each
 case the page renders the returned result and a focused test reconciles the move
 against a hand-computed case.
 
@@ -338,9 +353,10 @@ the same file as one of the renderers this section praises; it reached zero
 because five were moved, not because anything had audited what was left. Moving
 an authority out of a file does not clear the file — the payoff modeller was
 still deciding in `public/modellers.js` after the renewal moved out of it, and
-`public/plan.js` holds seven of the eight instances the scan found, having
+`public/plan.js` held seven of the eight instances the scan found, having
 already had two moved out of it — and one of those seven was missed by the scan
-itself and caught by the review. The absence of a known instance was never evidence that
+itself and caught by the review. It holds five now. The absence of a known
+instance was never evidence that
 none existed, and searching is what settled it.
 
 Anything not named above belongs to one of those three rules, or is that defect.

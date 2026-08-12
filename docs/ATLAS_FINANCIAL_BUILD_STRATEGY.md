@@ -210,11 +210,23 @@ built *on* that picture, the picture needs owners that a test can reach.
   came from the scan and the eighth from the blocking review that read it, which
   is recorded in `B73` rather than smoothed over. This item
   is therefore not complete, and it keeps its own rule — one decision per pull
-  request, reconciled against a hand-computed case. `B73` states the order; the
-  status band at the top of the Plan page goes first, because it is the most
-  prominent verdict the household reads and it re-derives predicates
-  `Forecast.mission` already owns. AF-CAL-01's entry gate names this item, so
-  that work is not open yet either.
+  request, reconciled against a hand-computed case. `B73` states the order.
+
+  **The first two of the eight have moved, together.** The status band went
+  first, as this item said it should; the funding-source cards went with it
+  rather than after it, because both interpreted the same `gap` and the same
+  funding result and splitting them would have left the page judging coverage
+  beside an engine that had just taken the verdict — two live answers to one
+  question, which is the defect this item exists to end. That is the atomicity
+  exception `CLAUDE.md` names, not a widened outcome: one authority boundary,
+  one closure condition. `Forecast.planStatus` owns the verdict and the two
+  dates inside it; `Forecast.recommend`'s funding result owns the per-source
+  coverage. The band's source-order regex in `test-invariants.js` is retired in
+  the same pull request, replaced by engine mutation tests rather than kept
+  beside them.
+
+  **Six remain**, and one decision per pull request still holds for them.
+  AF-CAL-01's entry gate names this item, so that work is not open yet either.
 
 ### AF-CAL-01 · Give the schedule one owner
 

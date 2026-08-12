@@ -320,8 +320,10 @@ ok(!/fundingIsDraw = !!\(fundingSource && fundingSource\.debtId\)/.test(planJs2)
   'the single-source-only test is gone');
 
 // 5. The Next move card promised a restored buffer even when the gap cannot be
-//    fully funded and the window stays below it.
-ok(/gap && fundingShort/.test(planJs2),
+//    fully funded and the window stays below it. The condition it is gated on
+//    is now Forecast.planStatus's `unfunded` verdict rather than the page's own
+//    `fundingShort`, so the gate is asserted where it now lives.
+ok(/status\.id === 'unfunded'/.test(planJs2),
   'the success copy is gated on the gap actually being fundable');
 
 // 6. The Modeller charged SIMPLE interest on a balance the same page says
@@ -383,8 +385,10 @@ ok(/capQualifier/.test(planJs2) &&
 ok(/actionCovers/.test(planJs2),
   'the Next move outcome is judged against the current gap, not merely feasibility');
 // An override that breaches must be reported as a breach, whatever else is
-// true about the opening gap.
-ok(/overrideBreaches/.test(planJs2),
+// true about the opening gap. The engine decides that now — the page reads the
+// verdict, and `test-status-band.js` proves the selection and its ordering by
+// running the engine rather than by reading the page.
+ok(/status\.id === 'overrideBreach'/.test(planJs2),
   'a manual weekly figure that breaches the buffer is reported before gap copy');
 {
   const O = { scenario: 'expected', incomeOverrides: {}, disabled: [], extraDebtMonthly: 0,
@@ -429,8 +433,16 @@ ok(/w\.injections \? ` \+ \$\{money\(w\.injections\)\} funding`/.test(planJs2),
 }
 // An unfunded gap outranks an override breach: at that buffer no weekly figure
 // fixes it, so blaming spending points at the wrong thing.
-ok(planJs2.indexOf('if (gap && fundingShort)') < planJs2.indexOf('} else if (gap && overrideBreaches)'),
-  'the funding shortfall is tested before the override breach');
+//
+// This was a source-order regex over public/plan.js, asserting that the string
+// `if (gap && fundingShort)` appeared before `} else if (gap &&
+// overrideBreaches)`. It is retired here rather than kept beside its
+// replacement, because it protected the ordering of two strings and nothing
+// about what either branch concluded — B73 recorded both band mutations passing
+// under it. The ordering now lives in `Forecast.planStatus`, and
+// `test-status-band.js` proves it by reordering the engine's own branches and
+// requiring an unfundable gap under a breaching override to stop reading
+// `unfunded`. The sentence itself is still asserted, on the page's wording map.
 ok(/No weekly spending\s*\n?\s*figure fixes this/.test(planJs2),
   'and says plainly that no spending figure fixes it');
 // The mission and the Next move must not instruct an unsafe override either.
@@ -687,7 +699,7 @@ ok(/No weekly spending\s*\n?\s*figure fixes this/.test(planJs2),
     'and the policy target really is the highest-rate consumer debt',
     `${unsecured[0].id} at ${unsecured[0].rate}%`);
 }
-ok(/gap && overrideBreaches/.test(planJs2),
+ok(/status\.id === 'overrideBreach'\s*\n?\s*\?\s*`The \$\{money\(gap\.dueOnGapDay\)\}/.test(planJs2),
   'and the Next move outcome says what the override actually does');
 ok(/still to find before/.test(planJs2),
   'and says what is left when the action alone is not enough');

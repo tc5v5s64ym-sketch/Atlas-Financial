@@ -264,10 +264,11 @@ below, each producing something the household acts on. **The list is what has
 been found, not a count of what exists** — it grew twice under review already,
 so treat it as open:
 
-**Every instance recorded below has moved into the engine. The scan for the ones
-nobody had named has now been run, and it found more. The item stays OPEN** —
-see **the closing scan** at the end of this entry for what was inspected, what
-each candidate was classified as, and the ordered outcomes that remain.
+**Every instance recorded below has moved into the engine, and so have the first
+two the closing scan found. The item stays OPEN** — six of that scan's eight
+outcomes are still to move. See **the closing scan** at the end of this entry
+for what was inspected, what each candidate was classified as, and the ordered
+outcomes that remain.
 
 - **RESOLVED 2026-08-11 — the payoff modeller.** `Forecast.payoffDebts` and
   `Forecast.payoffModel` now own which debts may be modelled, what each owes
@@ -438,9 +439,11 @@ it reaches no browser, and its one script block holds chart geometry over figure
 baked in as literals.
 
 **The answer to the question this scan asked is no.** *Engine decides, pages
-render* is not true across the browser layer today. Eight concrete financial
-authorities still live in page scripts, and one of them is the most prominent
-sentence on the homepage.
+render* is not true across the browser layer today. The scan found eight concrete
+financial authorities living in page scripts. **Items 1 and 2 have since moved**
+— they went together, as one authority boundary, because both interpreted the
+same opening gap and the same funding result. **Six remain**, and they are still
+the list below.
 
 **The first pass of this scan found seven and missed one**, and the record says
 so rather than presenting eight as though they arrived together. The blocking
@@ -457,16 +460,22 @@ that is still not the same as what exists.
 time to the page-side decisions below, and `npm test` passed on every one — the
 suite cannot see any of them. The same harness run against one engine line
 (`budgetBreakdown`'s `requiredMonthly`) fails immediately, so the suite is
-capable of biting and these figures are simply outside what it can reach:
+capable of biting and these figures are simply outside what it can reach.
+
+**Five of the ten no longer apply**, struck through below: the page expressions
+they mutated do not exist any more, and the decisions they stood for now fail
+the suite when broken in the engine. That is the shape a resolved row takes
+here — not a mutation that stopped mattering, but one whose target moved
+somewhere a test can reach it.
 
 | Mutation | Suite |
 |---|---|
 | `plan.js` `WEEKS_PER_MONTH` 4.35 → 4.00 | passes |
-| `plan.js` status band: dip threshold `sim.buffer` → `sim.buffer / 2` | passes |
-| `plan.js` status band: `firstNeg` `balance < 0` → `< 500` | passes |
-| `plan.js` `overrideBreaches` epsilon `0.005` → `500` | passes |
-| `plan.js` funding card: `enough = available >= needed` → `>= needed / 2` | passes |
-| `plan.js` funding card: per-source shortfall `needed - available` reversed | passes |
+| ~~`plan.js` status band: dip threshold `sim.buffer` → `sim.buffer / 2`~~ | **moved — now fails** |
+| ~~`plan.js` status band: `firstNeg` `balance < 0` → `< 500`~~ | **moved — now fails** |
+| ~~`plan.js` `overrideBreaches` epsilon `0.005` → `500`~~ | **moved — now fails** |
+| ~~`plan.js` funding card: `enough = available >= needed` → `>= needed / 2`~~ | **moved — now fails** |
+| ~~`plan.js` funding card: per-source shortfall `needed - available` reversed~~ | **moved — now fails** |
 | `plan.js` `actionCovers`: `>= fundingGap` → `>= fundingGap / 2` | passes |
 | `plan.js` "next payment out": sum of the day → single largest | passes |
 | `plan.js` snapshot interest `/ 12` → `/ 6` | passes |
@@ -477,40 +486,81 @@ capable of biting and these figures are simply outside what it can reach:
 
 #### What remains, in the order it should be moved
 
-1. **The status band** — `public/plan.js` 361–432. The verdict at the top of the
-   homepage. It re-derives `Forecast.mission`'s own predicates rather than
-   consuming them (`fundingShort`, and `overrideBreaches` written out as
-   `sim.min.balance < sim.buffer - 0.005` — a hand-copy of the engine's `below()`
-   and of `EPSILON`, which `Forecast` already exports), then selects which of
-   seven household-facing conclusions is published. Two of those conclusions
-   carry a date the page selects itself: `firstBad`, the first day from the
-   funding date onward that sits below the buffer, and `firstNeg`, the first day
-   the account goes negative. It also totals the funding plan's parts into "every
-   usable source combined reaches $X". Intended owner: the engine, beside
-   `mission`, which already decides the same conditions from the same inputs.
-   **The two have disagreed before** — the mission recommended $1,500/week
-   against a −$809 low precisely because only the band had been conditioned on
-   whether the gap could be funded. What guards the band today is a source-order
-   regex in `test-invariants.js` asserting that `if (gap && fundingShort)`
-   appears before `} else if (gap && overrideBreaches)`; that regex still passed
-   under both band mutations above, so it protects the ordering of two strings
-   and nothing about what either branch concludes. Moving the band retires it.
-2. **The funding-source cards** — `public/plan.js` 460–477. Under *covering the
-   gap*, each source is judged against the gap **in the page**: `enough =
-   o.available >= needed` decides whether the card reads "Covers the whole $X" or
-   "Not enough — $Y short of the $X needed", and `Math.max(0, needed -
-   o.available)` computes that per-source shortfall. The engine has already
-   allocated across the ranked sources — `funding.parts`, `shortfall`, `feasible`
-   and `needsCombination` — so this is a **second coverage judgement standing
-   beside the engine's**, differently shaped: the engine asks what combination
-   meets the gap, the page asks whether each source meets it alone. The card only
-   consults the engine's answer in its middle branch, where a source appears in
-   `parts`. The code's own comment records the drift this class produces — these
-   cards once read "Covers it" beside a band saying nothing could. Intended
-   owner: the engine returns the per-source verdict alongside the allocation it
-   already computes. **This one and item 1 read the same `fundingPlan` and should
-   probably move together**, and whichever moves first should say why it did not
-   take the other.
+1. **RESOLVED 2026-08-12 — the status band.** `Forecast.planStatus` now owns
+   which of the seven verdicts the household reads at the top of the Plan page
+   and every figure and date inside it. The page re-derived `fundingShort`,
+   hand-copied the engine's `below()` and its `EPSILON` as `sim.min.balance <
+   sim.buffer - 0.005`, selected the verdict, walked `sim.daily` for `firstBad`
+   and `firstNeg`, and totalled `fundingPlan.parts` into "every usable source
+   combined reaches $X". All of it moved. `public/plan.js` holds `STATUS_BAND`,
+   a map from the engine's verdict id to a tone class and one sentence, and
+   chooses nothing; the one comparison left in it is between two dates the
+   engine already selected, and it only stops the sentence naming the same day
+   twice.
+2. **RESOLVED 2026-08-12 — the funding-source cards.** They moved **with** item
+   1, in one pull request, because they read the same `gap` and the same
+   `fundingPlan`: two verdicts about one result, which is one authority
+   boundary. `Forecast.recommend`'s funding result now returns
+   `funding.sources` — per source, in rank order, whether it covers the gap
+   alone, contributes through the selected allocation, or cannot reach it, what
+   it contributes, and how far short it falls. The page's `enough = o.available
+   >= needed` and `Math.max(0, needed - o.available)` are gone, and so is its
+   own rank sort. The engine's coverage test is `atLeast`, the epsilon its own
+   allocation stops on, so a source half a cent short can no longer fund the gap
+   and be reported as failing to in the same breath.
+
+   **What guarded the band is retired with it.** `test-invariants.js` asserted
+   that `if (gap && fundingShort)` appeared before `} else if (gap &&
+   overrideBreaches)` in the page source. That regex passed under both band
+   mutations recorded above, because it protected the ordering of two strings
+   and nothing about what either branch concluded. `test-status-band.js`
+   replaces it by reordering the engine's own branches and requiring an
+   unfundable gap under a breaching override to stop reading `unfunded`. One
+   mechanism, not two.
+
+   **One real defect was found in the move and is fixed rather than carried
+   across.** The band used two boundary conventions in one block: the override
+   breach against `sim.buffer - 0.005`, and the dip against a bare
+   `sim.min.balance < sim.buffer`. The bare one is wrong at the boundary — a
+   float landing a ten-thousandth of a cent under the buffer published "Tight —
+   projected to dip to $500 … below the $500 target buffer", a sentence
+   contradicting itself inside its own clause, while `recommend` reported the
+   same run as holding and the mission instructed the household to hold
+   spending. Both comparisons are now `below()`, and going negative stays a bare
+   `< 0` because that is the convention `recommend` opens the gap on. Proved
+   both ways in `test-status-band.js`: a ten-thousandth of a cent under is on
+   plan, a genuine cent under is still a dip.
+
+   **A second defect was found by the blocking review, inside the move
+   itself.** `funding.needsCombination` says the ranked allocation used more
+   than one source; the band read it as proof that no single source could cover
+   the gap. They are not the same. Rank 1 holding $500 and rank 2 holding
+   $1,500 against a $1,000 gap fills $500 + $500 — a two-part allocation, while
+   rank 2 covers the whole gap alone — so the band read "no single source
+   covers it" directly above a card reading "Covers the whole $1,000". That is
+   the cross-surface contradiction this move exists to end, reappearing inside
+   the engine that was supposed to end it, and it was live on `main` too: the
+   page's own `o.available >= needed` reached the same verdict. The status
+   verdict now consumes the per-source coverage it already computes and states
+   only what the allocation proves. Proved on a fixture built through the real
+   engine, asserting the two rendered sentences cannot assert opposite things,
+   and the wording is unchanged wherever no single source does cover the gap —
+   which is the published case.
+
+   Nothing else the household reads changed. The band and the cards were
+   rendered at ten settings of the published plan — every branch the real data
+   can reach — through the page's own wording maps, and compared against the
+   expressions `public/plan.js` ran at `fb9ced8`: identical, class and sentence.
+   The three verdicts the published data cannot reach are proved on
+   hand-computed fixtures instead.
+
+   One piece of odd copy is **preserved deliberately** and now locked by a test:
+   an unusable source holding more than the gap reads "Not enough — $0 short of
+   the $X needed", because `unusable` excludes it from coverage while its
+   shortfall computes to zero. It is unreachable on the published data, it is
+   wording rather than a decision, and this was an authority move — but it is
+   now a figure a test can reach, so correcting it later is a deliberate change
+   rather than an unnoticed one.
 3. **The weekly cap in monthly terms, and whether there is discretionary room** —
    `public/plan.js` 68, 516–520, and every figure derived from them (632,
    666–695, 987–1004, 1046–1054). `WEEKS_PER_MONTH = 365.25 / 12 / 7` is the

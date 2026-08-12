@@ -95,6 +95,91 @@ const MISSION_PART = {
   surplusToCard: () => 'and put the surplus against the most expensive card',
 };
 
+/* ------------------------------------------------- the status band, in words */
+// `Forecast.planStatus` decides WHICH of the seven verdicts the household reads
+// at the top of this page, and picks every figure and date inside it. This map
+// is all that is left here: the tone class and how each one reads.
+//
+// Nothing in it may test a figure against a threshold, compare two balances or
+// select a date — those are the decisions that moved. The one comparison left
+// is between two dates the engine already chose, and it only stops the sentence
+// naming the same day twice.
+//
+// A verdict the engine can emit without wording here is a rendering failure, so
+// `test-status-band.js` checks that the two sides still name the same set.
+//
+// Each entry is handed the engine's verdict and the `plan` block, the second
+// only so the opening-gap sentence can print `startingCash` — a published fact
+// straight from data.json, exactly as the funding lede below prints it.
+const STATUS_BAND = {
+  unfunded: { tone: 'crit', text: s =>
+    `<b>Short by ${money(s.gapAmount)} on ${fmtDateLong(s.floorDate)}, and there is not enough
+       anywhere to cover it.</b> Every usable source combined reaches
+       ${money2(s.allocated)}, leaving
+       <b>${money2(s.shortfall)}</b> unfunded at a ${money(s.buffer)} buffer. No weekly spending
+       figure fixes this — lower the buffer, move a commitment, or find money outside these accounts.` },
+
+  overrideBreach: { tone: 'crit', text: s =>
+    `<b>${money(s.weekly)}/week does not work${s.goesNegative ? ' — the account goes negative' : ''}.</b>
+       Even with the ${money(s.gapAmount)} gap covered, spending at your setting takes the balance to
+       ${money(s.low)} by ${fmtDateLong(s.lowDate)}${s.firstBelowBuffer && s.firstBelowBuffer !== s.lowDate
+      ? `, first slipping below the buffer on ${fmtDateLong(s.firstBelowBuffer)}` : ''}.
+       The forecast supports <b>${money(s.recommended)}/week</b>.` },
+
+  // Two openings, and the engine decides which is true — the allocation taking
+  // two sources does not prove that none could have covered the gap alone.
+  // Claiming the stronger one put this band in contradiction with the source
+  // card below it, which reads its verdict from the same funding result.
+  combination: { tone: 'crit', text: s =>
+    `<b>Short by ${money(s.gapAmount)} on ${fmtDateLong(s.floorDate)}, and ${s.noSingleSourceCovers
+      ? 'no single source covers it' : 'the plan draws on more than one source'}.</b>
+       It takes ${s.parts.map(p => `${money2(p.amount)} from ${p.short}`).join(' plus ')}.
+       ${s.borrowed > 0
+      ? `<b>${money2(s.borrowed)} of that is borrowed</b>, and the debt figures below carry it.`
+      : 'None of it is borrowed.'}
+       Hold spending to ${money(s.weekly)}/week from ${fmtDateLong(s.effectiveFrom)} and the window
+       finishes with ${money(s.ending)}.` },
+
+  gap: { tone: 'crit', text: (s, plan) =>
+    `<b>Short by ${money(s.gapAmount)} on ${fmtDateLong(s.floorDate)} — before any spending at all.</b>
+       The household accounts hold ${money2(plan.startingCash.amount)} today and
+       ${money(s.preIncomeOut)} of committed payments fall before the next payday.
+       This is a timing gap, not a shortage across the 90 days: cover it, hold spending to
+       ${money(s.weekly)}/week from ${fmtDateLong(s.effectiveFrom)}, and the window
+       finishes with ${money(s.ending)}.` },
+
+  negative: { tone: 'crit', text: s =>
+    `<b>Shortfall expected around ${fmtDateLong(s.firstNegative)}.</b>
+         At this spending level the account goes negative${s.firstNegative !== s.lowDate
+      ? ` and keeps falling, reaching ${money(s.low)} by ${fmtDateLong(s.lowDate)}`
+      : ` (${money(s.low)})`}.
+         Cut the weekly budget, move a commitment, or bring income forward.` },
+
+  belowBuffer: { tone: 'warn', text: s =>
+    `<b>Tight — projected to dip to ${money(s.low)} on ${fmtDateLong(s.lowDate)}</b>,
+      below the ${money(s.buffer)} target buffer, then recover to ${money(s.ending)} by ${fmtDate(s.end)}.` },
+
+  onPlan: { tone: 'good', text: s =>
+    `<b>On plan — projected to finish with ${money(s.ending)}.</b>
+      The balance stays above the ${money(s.buffer)} buffer all the way through, with the low of
+      ${money(s.low)} on ${fmtDateLong(s.lowDate)}.` },
+};
+
+/* --------------------------------------- the funding-source cards, in words */
+// Whether a source covers the gap, contributes part of it, or cannot reach it
+// is `Forecast.recommend`'s — it is the same allocation the plan is built on,
+// seen per source. The page had its own `o.available >= needed` beside it, and
+// the two disagreed on screen: these cards once read "Covers it" under a band
+// saying nothing could. What is left here is the sentence and the class.
+const FUND_VERDICT = {
+  covers: { cls: 'fund-yes',
+    text: (s, needed) => `<span class="ok">Covers the whole ${money(needed)}</span>` },
+  contributes: { cls: 'fund-no',
+    text: (s, needed) => `<span class="ok">Covers ${money2(s.contributes)} of the ${money(needed)}</span> <span class="mutedtext">— used in the plan, with the rest from elsewhere</span>` },
+  insufficient: { cls: 'fund-no',
+    text: (s, needed) => `<span class="no">Not enough — ${money(s.shortBy)} short of the ${money(needed)} needed</span>` },
+};
+
 /* ----------------------------------------------------------- the chart */
 // Daily projected balance. Everything important is annotated on the chart
 // itself — the lowest point, the buffer, paydays, large payments — because
@@ -321,11 +406,8 @@ function renderPlan(d, periods) {
   // The engine allocates the gap across the ranked sources and tells us what
   // that costs. Choosing a single source here and passing only its debtId
   // modelled the whole gap as debt-free even when no source could reach it.
-  const rankedSources = ((plan.funding || {}).options || [])
-    .slice().sort((a, b) => a.rank - b.rank).filter(o => !o.unusable);
   const advice = Forecast.recommend(plan, asOf, simOpts({ fundingSources: plan.funding && plan.funding.options }));
   const fundingPlan = advice.funding || null;
-  const fundingShort = !!(fundingPlan && !fundingPlan.feasible);
   const fundingSource = fundingPlan && fundingPlan.parts.length === 1 ? fundingPlan.parts[0] : null;
   const recommended = advice.weekly;
   const weekly = state.weeklyVariable != null ? state.weeklyVariable : recommended;
@@ -341,7 +423,6 @@ function renderPlan(d, periods) {
   const fundingIsDraw = !!(fundingPlan && fundingPlan.borrowed > 0);
   const zeroSim = advice.zero;            // the unfunded window — the problem
   const fundingGap = gap ? gap.amount : 0;
-  const preIncomeOut = gap ? gap.preIncomeOut : 0;
 
   // The engine owns the counterfactual deadline. The page only renders the
   // amount and date it is given; it no longer runs a second simulation or
@@ -359,77 +440,17 @@ function renderPlan(d, periods) {
     `The 13 weeks from ${fmtDateLong(asOf)} to ${fmtDateLong(sim.end)} — every figure below is derived from this window.`;
 
   /* ---- status band ---- */
+  // WHICH of the seven verdicts the household reads, and every figure and date
+  // inside it, is a financial decision and belongs to Forecast.planStatus —
+  // where the node suite can reach it. This page looks the wording up and
+  // renders it. It no longer re-derives `fundingShort`, hand-copies the
+  // engine's buffer comparison and epsilon, walks the daily balances for a
+  // first-breach or first-negative date, or totals the funding parts.
+  const status = Forecast.planStatus(advice,
+    { weeklyOverride: state.weeklyVariable, sim });
   const band = $('status-band');
-  const overrideBreaches = state.weeklyVariable != null && sim.min.balance < sim.buffer - 0.005;
-  if (gap && fundingShort) {
-    // Checked FIRST: when the gap cannot be funded the floor is below the
-    // buffer no matter what the weekly figure is, so blaming spending would
-    // be blaming the wrong thing — even $0/week cannot fix it.
-    band.className = 'statusband crit';
-    band.innerHTML =
-      `<b>Short by ${money(fundingGap)} on ${fmtDateLong(gap.floorDate)}, and there is not enough
-       anywhere to cover it.</b> Every usable source combined reaches
-       ${money2(fundingPlan.parts.reduce((a, p) => a + p.amount, 0))}, leaving
-       <b>${money2(fundingPlan.shortfall)}</b> unfunded at a ${money(sim.buffer)} buffer. No weekly spending
-       figure fixes this — lower the buffer, move a commitment, or find money outside these accounts.`;
-  } else if (gap && overrideBreaches) {
-    // The user has set a weekly figure above what the forecast supports. That
-    // breach is the headline, whatever is also true about the opening gap —
-    // reporting "cover the gap and hold this spending" described a plan that
-    // runs $809 negative.
-    // From the funding date onward, matching how the floor is measured — the
-    // days before it are the acknowledged squeeze, not a consequence of the
-    // spending setting being tested here.
-    const firstBad = sim.daily.find(p =>
-      (!gap || p.date >= gap.date) && p.balance < sim.buffer - 0.005);
-    band.className = 'statusband crit';
-    band.innerHTML =
-      `<b>${money(weekly)}/week does not work${sim.min.balance < 0 ? ' — the account goes negative' : ''}.</b>
-       Even with the ${money(fundingGap)} gap covered, spending at your setting takes the balance to
-       ${money(sim.min.balance)} by ${fmtDateLong(sim.min.date)}${firstBad && firstBad.date !== sim.min.date
-        ? `, first slipping below the buffer on ${fmtDateLong(firstBad.date)}` : ''}.
-       The forecast supports <b>${money(recommended)}/week</b>.`;
-  } else if (gap && fundingPlan && fundingPlan.needsCombination) {
-    // Reachable, but not from one place — and part of it is borrowed.
-    band.className = 'statusband crit';
-    band.innerHTML =
-      `<b>Short by ${money(fundingGap)} on ${fmtDateLong(gap.floorDate)}, and no single source covers it.</b>
-       It takes ${fundingPlan.parts.map(p => `${money2(p.amount)} from ${p.short}`).join(' plus ')}.
-       ${fundingPlan.borrowed > 0
-        ? `<b>${money2(fundingPlan.borrowed)} of that is borrowed</b>, and the debt figures below carry it.`
-        : 'None of it is borrowed.'}
-       Hold spending to ${money(weekly)}/week from ${fmtDateLong(advice.effectiveFrom)} and the window
-       finishes with ${money(sim.ending)}.`;
-  } else if (gap) {
-    // An opening gap is a different problem from an overspending one, and the
-    // fix is different too — so say which this is. The figures come from the
-    // unfunded window: this is what happens if nothing is moved.
-    band.className = 'statusband crit';
-    band.innerHTML =
-      `<b>Short by ${money(fundingGap)} on ${fmtDateLong(gap.floorDate)} — before any spending at all.</b>
-       The household accounts hold ${money2(plan.startingCash.amount)} today and
-       ${money(preIncomeOut)} of committed payments fall before the next payday.
-       This is a timing gap, not a shortage across the 90 days: cover it, hold spending to
-       ${money(weekly)}/week from ${fmtDateLong(advice.effectiveFrom)}, and the window
-       finishes with ${money(sim.ending)}.`;
-  } else if (sim.min.balance < 0) {
-    const firstNeg = sim.daily.find(p => p.balance < 0);
-    band.className = 'statusband crit';
-    band.innerHTML = `<b>Shortfall expected around ${fmtDateLong(firstNeg.date)}.</b>
-         At this spending level the account goes negative${firstNeg.date !== sim.min.date
-      ? ` and keeps falling, reaching ${money(sim.min.balance)} by ${fmtDateLong(sim.min.date)}`
-      : ` (${money(sim.min.balance)})`}.
-         Cut the weekly budget, move a commitment, or bring income forward.`;
-  } else if (sim.min.balance < sim.buffer) {
-    band.className = 'statusband warn';
-    band.innerHTML = `<b>Tight — projected to dip to ${money(sim.min.balance)} on ${fmtDateLong(sim.min.date)}</b>,
-      below the ${money(sim.buffer)} target buffer, then recover to ${money(sim.ending)} by ${fmtDate(sim.end)}.`;
-  } else {
-    band.className = 'statusband good';
-    band.innerHTML = `<b>On plan — projected to finish with ${money(sim.ending)}.</b>
-      The balance stays above the ${money(sim.buffer)} buffer all the way through, with the low of
-      ${money(sim.min.balance)} on ${fmtDateLong(sim.min.date)}.`;
-  }
+  band.className = 'statusband ' + STATUS_BAND[status.id].tone;
+  band.innerHTML = STATUS_BAND[status.id].text(status, plan);
 
   /* ---- covering the gap ---- */
   // Only shown when there is one. The point is not "here are your options" but
@@ -457,21 +478,22 @@ function renderPlan(d, periods) {
        what each source below is measured against.` +
       (group && group.atomic ? ` ${group.note}` : '');
 
-    $('funding-options').innerHTML = plan.funding.options
-      .slice().sort((a, b) => a.rank - b.rank)
-      .map(o => {
-        const enough = o.available >= needed;
-        const part = fundingPlan && fundingPlan.parts.find(p => p.id === o.id);
-        return `<div class="fund ${o.unusable || !enough ? 'fund-no' : 'fund-yes'}">
+    // The engine ranked the sources and judged each one against the gap, as
+    // part of the same allocation the plan is built on. The page joins each
+    // verdict back to its own label, rate and note — copy that lives in
+    // data.json — and renders. It decides nothing: no comparison against the
+    // amount needed, no per-source shortfall arithmetic, no second sort.
+    const copyFor = new Map(plan.funding.options.map(o => [o.id, o]));
+    $('funding-options').innerHTML = fundingPlan.sources
+      .map(s => {
+        const o = copyFor.get(s.id);
+        const verdict = FUND_VERDICT[s.verdict];
+        return `<div class="fund ${verdict.cls}">
           <div class="fund-top">
             <span class="fund-lab">${o.label}</span>
-            <span class="fund-amt">${money2(o.available)}${o.rate ? ` <span class="mutedtext">at ${pct(o.rate)}</span>` : ''}</span>
+            <span class="fund-amt">${money2(s.available)}${o.rate ? ` <span class="mutedtext">at ${pct(o.rate)}</span>` : ''}</span>
           </div>
-          <div class="fund-verdict">${enough && !o.unusable
-            ? `<span class="ok">Covers the whole ${money(needed)}</span>`
-            : part
-              ? `<span class="ok">Covers ${money2(part.amount)} of the ${money(needed)}</span> <span class="mutedtext">— used in the plan, with the rest from elsewhere</span>`
-              : `<span class="no">Not enough — ${money(Math.max(0, needed - o.available))} short of the ${money(needed)} needed</span>`}</div>
+          <div class="fund-verdict">${verdict.text(s, needed)}</div>
           <p class="fund-note">${o.note}</p>
         </div>`;
       }).join('');
@@ -546,7 +568,14 @@ function renderPlan(d, periods) {
     // compares with the CURRENT gap, not on whether some plan exists.
     const actionCovers = gap && first.amount != null && first.amount + 0.005 >= fundingGap;
     const actionLeaves = gap && first.amount != null ? fundingGap - first.amount : 0;
-    const after = gap && fundingShort
+    // `status.id` is read where this card used to read the page's own
+    // `fundingShort` and `overrideBreaches`. Those two consts are gone with the
+    // band, and the engine's verdict answers exactly the same question: an
+    // unfundable gap IS the `unfunded` verdict, and a breaching override under
+    // a fundable gap IS the `overrideBreach` verdict. What this card decides —
+    // whether the action reaches the gap, and what it leaves — is unchanged and
+    // still belongs to B73 item 5.
+    const after = status.id === 'unfunded'
       // Only part of the gap can be funded, so promising a restored buffer
       // would be describing an outcome the figures do not produce.
       ? `Even with everything available moved across, ${money(fundingPlan.shortfall)} of the
@@ -562,9 +591,9 @@ function renderPlan(d, periods) {
            ${fundingPlan && fundingPlan.needsCombination
             ? `The full plan is ${fundingPlan.parts.map(p => `${money2(p.amount)} from ${p.short}`).join(' plus ')}.`
             : ''} With all of it in place the household can spend ${money(recommended)} a week from
-           ${fmtDateLong(advice.effectiveFrom)}${overrideBreaches
+           ${fmtDateLong(advice.effectiveFrom)}${status.id === 'overrideBreach'
             ? `, not the ${money(weekly)} currently set — that reaches ${money(sim.min.balance)}` : ''}.`
-      : gap && overrideBreaches
+      : status.id === 'overrideBreach'
         ? `The ${money(gap.dueOnGapDay)} clears on ${fmtDateLong(gap.date)} and the buffer is restored — but
            at your ${money(weekly)}/week setting the balance still reaches ${money(sim.min.balance)} by
            ${fmtDateLong(sim.min.date)}. The forecast supports ${money(recommended)}/week.`
@@ -589,7 +618,7 @@ function renderPlan(d, periods) {
   // The condition attached to the weekly cap, written ONCE. It appeared on
   // both the Today tile and the cap headline, and fixing the headline alone
   // left the tile describing a simulation that was not the one it showed.
-  const capIfCovered = (gap && fundingShort)
+  const capIfCovered = status.id === 'unfunded'
     ? Forecast.recommend(plan, asOf, simOpts({
         fundingSources: [{ id: 'hypothetical', label: 'full coverage', short: 'full coverage',
           available: Infinity, debtId: null, rank: 0 }],
@@ -597,7 +626,7 @@ function renderPlan(d, periods) {
     : null;
   const capQualifier = !gap
     ? 'under the expected scenario'
-    : fundingShort
+    : status.id === 'unfunded'
       ? `from ${fmtDateLong(advice.effectiveFrom)}, with only `
         + `${money(fundingGap - fundingPlan.shortfall)} of the ${money(fundingGap)} gap fundable. `
         + `Cover the whole gap and it becomes ${money(capIfCovered)}/week`
@@ -771,7 +800,7 @@ function renderPlan(d, periods) {
   $('phases').innerHTML =
     phase('0–30 days', gap ? 'Cover the gap and stabilise'
       : 'Hold the buffer',
-      gap && fundingShort
+      status.id === 'unfunded'
         ? `Every usable source combined leaves ${money(fundingPlan.shortfall)} of the ${money(fundingGap)}
            unfunded. Lower the buffer, move a commitment, or find money outside these accounts.`
       : gap ? `Get ${money(fundingGap)} across by ${fmtDateLong(gap.date)}, then hold ${money(weekly)}/week.
