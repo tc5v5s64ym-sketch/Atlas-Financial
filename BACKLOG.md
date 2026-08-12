@@ -602,6 +602,21 @@ somewhere a test can reach it.
    published figure moves; the real plan sits $1,442.54/month clear of that
    boundary.
 
+   **A second defect was found by the blocking review, and it was live on
+   `main` too.** The room the cap leaves was compared with the household's own
+   discretionary budget as a **signed** difference, and the page rendered it
+   unconditionally as "so the plan is $Y/wk short of it and something has to
+   give". When the cap leaves *more* room than the household budgets, that
+   number goes negative and the sentence reads "the plan is −$28/wk short of it
+   and something has to give". Reachable by typing into the weekly box, which
+   has no upper bound: on the published plan any setting above $1,771.72/week
+   gets there. The comparison is now a verdict — `short` / `meets` / `exceeds` —
+   with a magnitude that is never negative, and the page words each one. The
+   first version of this move's own test asserted the negative value as though
+   it were correct and never rendered it, which is what let it through; the
+   proof now renders all three through the page's clause map and boots the real
+   page at a stored $1,800/wk override.
+
    Every affected figure and sentence was rendered at ten settings — including
    a $600/wk override that trips the "nothing left" branch — and is identical
    to `0ed3bae`. All 75 snapshot figures are identical. The page is booted

@@ -821,6 +821,27 @@
     const discretionaryRoomMonthly = Math.max(0, monthly - requiredMonthly);
     const essentialShortfallMonthly = Math.max(0, requiredMonthly - monthly);
     const householdDiscretionaryWeekly = perWeek(discretionaryMonthly);
+
+    // The room the cap leaves, against what the household budgets for those
+    // categories. This was a SIGNED difference, and that was the wrong shape:
+    // the page rendered it unconditionally as "the plan is $Y/wk short of it
+    // and something has to give", so a cap leaving MORE room than the budget
+    // published "the plan is −$28/wk short of it". Not theoretical — the
+    // weekly box has no upper bound, and on the published plan any setting
+    // above about $1,771/week reaches it.
+    //
+    // So: a magnitude that is never negative, and a verdict naming which side
+    // it falls on. The page cannot pick the wrong sentence because it is not
+    // handed a number whose sign it has to interpret. `meets` is the
+    // half-cent band, compared in the unit this sentence publishes.
+    const roomWeekly = perWeek(discretionaryRoomMonthly);
+    const roomVersusHousehold = {
+      verdict: below(roomWeekly, householdDiscretionaryWeekly) ? 'short'
+        : below(householdDiscretionaryWeekly, roomWeekly) ? 'exceeds'
+          : 'meets',
+      weekly: Math.abs(householdDiscretionaryWeekly - roomWeekly),
+    };
+
     const inCapMonthly = requiredMonthly + discretionaryMonthly;
 
     return {
@@ -849,11 +870,10 @@
       foodFuelHistoricalMonthly,
       foodFuelHistoricalWeekly: perWeek(foodFuelHistoricalMonthly),
 
-      // What the household's own discretionary budget asks for, and how far
-      // short of it the cap leaves them. Only meaningful where there is room.
+      // What the household's own discretionary budget asks for, and how the
+      // room the cap leaves compares with it.
       householdDiscretionaryWeekly,
-      roomVersusHouseholdWeekly:
-        householdDiscretionaryWeekly - perWeek(discretionaryRoomMonthly),
+      roomVersusHousehold,
 
       inCapMonthly,
       overCapMonthly: Math.max(0, inCapMonthly - monthly),

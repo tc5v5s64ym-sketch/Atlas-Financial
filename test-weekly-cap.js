@@ -112,7 +112,7 @@ console.log('\n=== 2. hand-computed: a cap well above the essential need ===');
  *   food+fuel planned  2000/month, 459.9589…/week (all of the essentials here)
  *   food+fuel historic 1100 + 600 = 1700/month, 390.9651…/week
  *   household discretionary  400/month → 91.9918…/week
- *   room vs household  91.9918… − 140.0411… = −48.0493…  (room EXCEEDS it)
+ *   room vs household  budget 91.9918… vs room 140.0411… → EXCEEDS by 48.0493…
  *   inCap              2000 + 400 = 2400;  overCap = 0 (cap is larger)
  */
 {
@@ -147,10 +147,16 @@ console.log('\n=== 2. hand-computed: a cap well above the essential need ===');
   ok(near(c.householdDiscretionaryWeekly, 400 / WEEKS),
     'the household\'s own discretionary budget is converted the same way',
     String(c.householdDiscretionaryWeekly));
-  ok(near(c.roomVersusHouseholdWeekly, c.householdDiscretionaryWeekly - c.discretionaryRoomWeekly)
-    && c.roomVersusHouseholdWeekly < 0,
-  'and here the room EXCEEDS it, so the comparison is negative',
-  String(c.roomVersusHouseholdWeekly));
+  ok(c.roomVersusHousehold.verdict === 'exceeds',
+    'and here the room EXCEEDS that budget, which is named rather than signed',
+    c.roomVersusHousehold.verdict);
+  // 400/W = 91.9917864… budgeted; 600 − 2000/W = 140.0410677… left. The gap is
+  // 48.0492813…, and it is reported as that rather than as −48.0492813….
+  ok(near(c.roomVersusHousehold.weekly, Math.abs(400 / WEEKS - (600 - 2000 / WEEKS)))
+    && near(c.roomVersusHousehold.weekly, 48.04928131416837)
+    && c.roomVersusHousehold.weekly > 0,
+  'by $48.0492813…/wk — a magnitude, never a negative number',
+  String(c.roomVersusHousehold.weekly));
   ok(near(c.inCapMonthly, 2400) && c.overCapMonthly === 0,
     'the categories total $2,400 against a larger cap, so nothing has to come off',
     `${c.inCapMonthly} / ${c.overCapMonthly}`);
@@ -360,14 +366,30 @@ const MUTATIONS = [
     check: m => mBudget(m, 400, { recommendedWeekly: 600 }).hasDiscretionaryRoom === true,
     real: () => budgetAt(400, { recommendedWeekly: 600 }).cap.hasDiscretionaryRoom === false },
 
-  { label: 'comparing the room against the wrong side flips the household-budget sentence',
-    from: `      roomVersusHouseholdWeekly:
-        householdDiscretionaryWeekly - perWeek(discretionaryRoomMonthly),`,
-    to: `      roomVersusHouseholdWeekly:
-        perWeek(discretionaryRoomMonthly) - householdDiscretionaryWeekly,`,
-    check: m => near(mBudget(m, 600).roomVersusHouseholdWeekly,
-      -budgetAt(600).cap.roomVersusHouseholdWeekly, 1e-9),
-    real: () => budgetAt(600).cap.roomVersusHouseholdWeekly < 0 },
+  { label: 'a signed difference lets the page publish a negative shortfall again',
+    from: `      weekly: Math.abs(householdDiscretionaryWeekly - roomWeekly),`,
+    to: `      weekly: householdDiscretionaryWeekly - roomWeekly,`,
+    check: m => mBudget(m, 600).roomVersusHousehold.weekly < 0,
+    real: () => budgetAt(600).cap.roomVersusHousehold.weekly > 0 },
+
+  { label: 'calling every case a shortfall mislabels a cap that leaves more than the budget',
+    from: `      verdict: below(roomWeekly, householdDiscretionaryWeekly) ? 'short'
+        : below(householdDiscretionaryWeekly, roomWeekly) ? 'exceeds'
+          : 'meets',`,
+    to: `      verdict: 'short',`,
+    check: m => mBudget(m, 600).roomVersusHousehold.verdict === 'short',
+    real: () => budgetAt(600).cap.roomVersusHousehold.verdict === 'exceeds' },
+
+  { label: 'swapping the two sides of the comparison inverts the verdict',
+    from: `      verdict: below(roomWeekly, householdDiscretionaryWeekly) ? 'short'
+        : below(householdDiscretionaryWeekly, roomWeekly) ? 'exceeds'
+          : 'meets',`,
+    to: `      verdict: below(householdDiscretionaryWeekly, roomWeekly) ? 'short'
+        : below(roomWeekly, householdDiscretionaryWeekly) ? 'exceeds'
+          : 'meets',`,
+    check: m => mBudget(m, 600).roomVersusHousehold.verdict === 'short'
+      && mBudget(m, 400).roomVersusHousehold.verdict === 'exceeds',
+    real: () => budgetAt(600).cap.roomVersusHousehold.verdict === 'exceeds' },
 ];
 for (const m of MUTATIONS) {
   const built = mutant(m.from, m.to);
@@ -397,13 +419,82 @@ console.log('\n=== 9. the page and the snapshot divide nothing ===');
     'the discretionary-room verdict is read, not decided');
 }
 
-console.log('\n=== 10. the real page, booted ===');
-/* Everything above proves the engine and reads the page as text. This runs the
- * page — `public/app.js`, `public/forecast.js`, `public/plan.js` in the order
- * `index.html` loads them, against a stub DOM, through `App.boot()` on the real
- * `data.json` — and reads back the figures the household is shown. A proof that
- * stops at the engine cannot see a template that lost a field. */
+console.log('\n=== 9b. the room-versus-budget sentence, rendered on all three sides ===');
+/* The blocking review's finding, and the gap in the proof that let it through:
+ * section 2 asserted the negative comparison and never rendered it. The page's
+ * clause map is lifted from source here — not copied — and every verdict is put
+ * through it. A rendered financial sentence may never contain a negative
+ * amount: "the plan is −$48/wk short of it and something has to give" is what
+ * the signed field published. */
 {
+  const planSrc = read('public/plan.js');
+  const appSrc = read('public/app.js');
+  const grab = (src, re, what) => {
+    const m = re.exec(src);
+    ok(!!m, `${what} is readable from its source`);
+    return m ? m[0] : '';
+  };
+  const moneySrc = grab(appSrc, /^const money = .*$/m, 'money()');
+  const MAP_SRC = grab(planSrc, /^const ROOM_VERSUS_HOUSEHOLD = \{[\s\S]*?^\};$/m,
+    'the room-versus-budget clause map');
+  const ROOM = vm.runInNewContext(`${moneySrc}\n${MAP_SRC}\nROOM_VERSUS_HOUSEHOLD;`);
+
+  const engineVerdicts = ['short', 'meets', 'exceeds'];
+  ok(Object.keys(ROOM).sort().join(',') === engineVerdicts.slice().sort().join(','),
+    'the page words exactly the three verdicts the engine can emit',
+    Object.keys(ROOM).join(','));
+
+  // One fixture per verdict, each built through the real engine.
+  //   $600/wk → room $140.04 vs budget $91.99  → exceeds
+  //   $400/wk → no room at all                 → short (by the whole budget)
+  //   the meeting point                        → meets
+  const meetsAt = budgetAt(600).cap.essentialWeekly + budgetAt(600).cap.householdDiscretionaryWeekly;
+  const CASES = [
+    { what: 'exceeds', weekly: 600 },
+    { what: 'short', weekly: 460 },
+    { what: 'meets', weekly: meetsAt },
+  ];
+  for (const k of CASES) {
+    const c = budgetAt(k.weekly).cap;
+    const r = c.roomVersusHousehold;
+    ok(r.verdict === k.what, `a $${k.weekly.toFixed(2)}/wk cap is "${k.what}"`, r.verdict);
+    const sentence = `own budget for those comes to ${vm.runInNewContext(`${moneySrc}\nmoney`)(c.householdDiscretionaryWeekly)}/wk, `
+      + ROOM[r.verdict](r);
+    ok(!/−\$/.test(sentence),
+      `and its rendered sentence carries no negative amount — ${k.what}`, sentence);
+    ok(!/undefined|NaN/.test(sentence), `nor undefined or NaN — ${k.what}`);
+    if (k.what === 'short') {
+      ok(/so the plan is \$\d[\d,]*\/wk short of it and something has to give\.$/.test(sentence),
+        'the short sentence is the wording the household reads today', sentence);
+    }
+    if (k.what === 'exceeds') {
+      ok(/and the plan leaves \$48\/wk more than that\.$/.test(sentence),
+        'and the exceeds sentence says what is actually true', sentence);
+    }
+    if (k.what === 'meets') {
+      ok(/which is what the plan leaves\.$/.test(sentence),
+        'and the meets sentence claims neither', sentence);
+    }
+  }
+
+  // The old shape, rendered, to show exactly what was being published.
+  const money = vm.runInNewContext(`${moneySrc}\nmoney`);
+  const c600 = budgetAt(600).cap;
+  const signed = c600.householdDiscretionaryWeekly - c600.discretionaryRoomWeekly;
+  ok(signed < 0 && /^−\$/.test(money(signed)),
+    'the field this replaced rendered as a negative dollar amount',
+    `so the plan is ${money(signed)}/wk short of it and something has to give.`);
+}
+
+console.log('\n=== 10. the real page, booted, on both sides of the sentence ===');
+/* Everything above proves the engine and renders through its clause map. This
+ * runs the page — `public/app.js`, `public/forecast.js`, `public/plan.js` in
+ * the order `index.html` loads them, against a stub DOM, through `App.boot()`
+ * on the real `data.json` — and reads back what the household is shown. It is
+ * booted TWICE: once at the recommendation, and once with a stored $1,800/week
+ * override, which is what a household can type into the weekly box and is the
+ * setting the blocking review found publishing a negative shortfall. */
+function bootPage(storedKnobs) {
   const els = new Map();
   const makeEl = id => {
     const el = {
@@ -430,6 +521,11 @@ console.log('\n=== 10. the real page, booted ===');
       querySelector: () => null, querySelectorAll: () => [],
       documentElement: makeEl('html'), body: { scrollHeight: 0 },
     },
+    // The knob store the page really reads its weekly override from.
+    localStorage: {
+      getItem: () => (storedKnobs ? JSON.stringify(storedKnobs) : null),
+      setItem() {}, removeItem() {},
+    },
     addEventListener() {}, matchMedia: () => ({ addEventListener() {} }),
     getComputedStyle: () => ({ getPropertyValue: () => '' }),
     requestAnimationFrame() {}, innerWidth: 1200, innerHeight: 800, scrollY: 0, console,
@@ -441,42 +537,59 @@ console.log('\n=== 10. the real page, booted ===');
   for (const file of ['public/app.js', 'public/forecast.js', 'public/plan.js']) {
     vm.runInContext(read(file), sandbox, { filename: file });
   }
-
-  setTimeout(() => {
-    const flat = s => s.replace(/\s+/g, ' ').trim();
-    const capSplit = flat(get('cap-split').innerHTML);
-    const budgetOut = flat(get('budget-out').innerHTML);
-    const tiles = flat(get('hero-tiles').innerHTML);
-    const catsNote = get('budget-cats-note').textContent;
-
-    // The published figures, as the household reads them. These are the values
-    // pristine `main` rendered — checked here through the real page, not
-    // through a copy of its templates.
-    ok(/\$918<\/span>?\s*<span>\/wk<\/span>|\$918/.test(capSplit),
-      'the booted page shows the $918/wk essential need', capSplit.slice(0, 90));
-    ok(/\$332/.test(capSplit), 'and $332/wk of discretionary room');
-    ok(/Groceries \$414, fuel \$299/.test(capSplit),
-      'with groceries and fuel split per week');
-    ok(/≈ \$5,435 a month/.test(capSplit),
-      'and the cap said in months');
-    ok(/\$5,435 \/ month/.test(budgetOut), 'the ledger says the same monthly cap');
-    ok(/\$332 \/ week/.test(budgetOut) && !/nothing left/.test(budgetOut),
-      'and reports real discretionary room rather than "nothing left"');
-    ok(/\$853\/week those have actually been running at/.test(budgetOut),
-      'against the household\'s own discretionary budget');
-    ok(/\$918\/wk/.test(tiles) && /\$713\/wk of it food and fuel/.test(tiles),
-      'the tiles carry the weekly need and its food-and-fuel share', tiles.slice(0, 120));
-    ok(/\$7,704\/month against a cap of \$5,435\/month/.test(catsNote)
-      && /\$2,269\/month has to come off/.test(catsNote),
-    'and the category note reconciles against the monthly cap');
-
-    for (const [name, html] of [['cap-split', capSplit], ['budget-out', budgetOut],
-      ['hero-tiles', tiles], ['budget-cats-note', catsNote]]) {
-      ok(!/undefined|NaN|\[object/.test(html),
-        `${name} contains no undefined, NaN or [object Object]`);
-    }
-
-    console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
-    process.exit(failures === 0 ? 0 : 1);
-  }, 0);
+  return { get };
 }
+const flat = s => s.replace(/\s+/g, ' ').trim();
+const settle = () => new Promise(r => setTimeout(r, 0));
+
+(async () => {
+  /* --- at the recommendation: the published state, unchanged --- */
+  const def = bootPage(null);
+  await settle();
+  const capSplit = flat(def.get('cap-split').innerHTML);
+  const budgetOut = flat(def.get('budget-out').innerHTML);
+  const tiles = flat(def.get('hero-tiles').innerHTML);
+  const catsNote = def.get('budget-cats-note').textContent;
+
+  ok(/\$918/.test(capSplit), 'the booted page shows the $918/wk essential need');
+  ok(/\$332/.test(capSplit), 'and $332/wk of discretionary room');
+  ok(/Groceries \$414, fuel \$299/.test(capSplit), 'with groceries and fuel split per week');
+  ok(/≈ \$5,435 a month/.test(capSplit), 'and the cap said in months');
+  const roomNote = h => (/own budget for those comes to [^<]*/.exec(h) || ['(not found)'])[0];
+  ok(/so the plan is \$522\/wk short of it and something has to give\./.test(capSplit),
+    'and the household-budget sentence reads exactly as it does today', roomNote(capSplit));
+  ok(/\$5,435 \/ month/.test(budgetOut), 'the ledger says the same monthly cap');
+  ok(/\$332 \/ week/.test(budgetOut) && !/nothing left/.test(budgetOut),
+    'and reports real discretionary room rather than "nothing left"');
+  ok(/\$853\/week those have actually been running at/.test(budgetOut),
+    'against the household\'s own discretionary budget');
+  ok(/\$918\/wk/.test(tiles) && /\$713\/wk of it food and fuel/.test(tiles),
+    'the tiles carry the weekly need and its food-and-fuel share');
+  ok(/\$7,704\/month against a cap of \$5,435\/month/.test(catsNote)
+    && /\$2,269\/month has to come off/.test(catsNote),
+  'and the category note reconciles against the monthly cap');
+
+  /* --- at a $1,800/week override: the state the review found --- */
+  const over = bootPage({ weeklyVariable: 1800 });
+  await settle();
+  const overSplit = flat(over.get('cap-split').innerHTML);
+
+  ok(/\$882/.test(overSplit),
+    'at a stored $1,800/wk override the page shows $882/wk of room', roomNote(overSplit));
+  ok(/and the plan leaves \$28\/wk more than that\./.test(overSplit),
+    'and says the plan leaves MORE than the household budgets — the truthful sentence',
+    roomNote(overSplit));
+  ok(!/short of it and something has to give/.test(overSplit),
+    'not that it is short of it');
+  ok(!/−\$/.test(overSplit),
+    'and no negative dollar amount reaches the household', roomNote(overSplit));
+
+  for (const [name, html] of [['cap-split', capSplit], ['budget-out', budgetOut],
+    ['hero-tiles', tiles], ['budget-cats-note', catsNote], ['cap-split @1800', overSplit]]) {
+    ok(!/undefined|NaN|\[object/.test(html),
+      `${name} contains no undefined, NaN or [object Object]`);
+  }
+
+  console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
+  process.exit(failures === 0 ? 0 : 1);
+})();

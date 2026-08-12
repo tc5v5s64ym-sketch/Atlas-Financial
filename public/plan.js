@@ -163,6 +163,18 @@ const STATUS_BAND = {
       ${money(s.low)} on ${fmtDateLong(s.lowDate)}.` },
 };
 
+/* ------------------------- the room against the household's own budget, said */
+// Three outcomes, and `Forecast.budgetBreakdown` says which. The engine used to
+// hand over a signed difference and this page rendered it as "short of it"
+// whatever its sign, so a cap leaving MORE room than the household budgets
+// published "the plan is −$28/wk short of it and something has to give".
+// A magnitude and a verdict cannot be read the wrong way round.
+const ROOM_VERSUS_HOUSEHOLD = {
+  short: r => `so the plan is ${money(r.weekly)}/wk short of it and something has to give.`,
+  meets: () => `which is what the plan leaves.`,
+  exceeds: r => `and the plan leaves ${money(r.weekly)}/wk more than that.`,
+};
+
 /* --------------------------------------- the funding-source cards, in words */
 // Whether a source covers the gap, contributes part of it, or cannot reach it
 // is `Forecast.recommend`'s — it is the same allocation the plan is built on,
@@ -709,9 +721,8 @@ function renderPlan(d, periods) {
         !cap.hasDiscretionaryRoom
           ? `<b class="neg">Nothing.</b> The cap is below what normal life costs.`
           : `Everything else — dining out, personal, subscriptions, sports and online spending. The household's ` +
-            `own budget for those comes to ${money(cap.householdDiscretionaryWeekly)}/wk, so the plan is ` +
-            `${money(cap.roomVersusHouseholdWeekly)}/wk ` +
-            `short of it and something has to give.`) +
+            `own budget for those comes to ${money(cap.householdDiscretionaryWeekly)}/wk, ` +
+            ROOM_VERSUS_HOUSEHOLD[cap.roomVersusHousehold.verdict](cap.roomVersusHousehold)) +
       `<div class="cap-part total">
         <div class="cap-part-lab">Total</div>
         <div class="cap-part-amt">${money(weekly)}<span>/wk</span></div>
