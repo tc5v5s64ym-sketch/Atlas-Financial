@@ -212,30 +212,11 @@ built *on* that picture, the picture needs owners that a test can reach.
   is therefore not complete, and it keeps its own rule — one decision per pull
   request, reconciled against a hand-computed case. `B73` states the order.
 
-  **The first two of the eight have moved, together.** The status band went
-  first, as this item said it should; the funding-source cards went with it
-  rather than after it, because both interpreted the same `gap` and the same
-  funding result and splitting them would have left the page judging coverage
-  beside an engine that had just taken the verdict — two live answers to one
-  question, which is the defect this item exists to end. That is the atomicity
-  exception `CLAUDE.md` names, not a widened outcome: one authority boundary,
-  one closure condition. `Forecast.planStatus` owns the verdict and the two
-  dates inside it; `Forecast.recommend`'s funding result owns the per-source
-  coverage. The band's source-order regex in `test-invariants.js` is retired in
-  the same pull request, replaced by engine mutation tests rather than kept
-  beside them.
-
-  **The third has moved on its own.** The weekly↔monthly conversion and the
-  discretionary-room verdict are `Forecast.budgetBreakdown`'s, in a `cap` block
-  measured against the weekly figure the page is actually showing.
-  `WEEKS_PER_MONTH` is the engine's and is deliberately not exported, so the
-  suites re-derive it from the calendar rather than importing the answer. The
-  move found a **third** copy of that constant — `scripts/figures-snapshot.js`,
-  the file that proves published figures did not move — and retired it along
-  with the page's.
-
-  **Five remain**, and one decision per pull request still holds for them.
-  AF-CAL-01's entry gate names this item, so that work is not open yet either.
+  **Which of the eight have moved, which remain, and what each move settled is
+  `B73`'s** — live work state, and this file is a sequence rather than a work
+  record. A count kept in two places drifts the moment one of them moves: this
+  entry said five remained while `B73` recorded four. AF-CAL-01's entry gate
+  names this item, so that work is not open yet either.
 
 ### AF-CAL-01 · Give the schedule one owner
 

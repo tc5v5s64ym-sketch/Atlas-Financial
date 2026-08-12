@@ -867,21 +867,22 @@ extending the snapshot to the other three pages — is a real scope decision abo
 what counts as a published figure, and belongs to the owner, not to a wording
 fix.
 
-**B83 · `CONTEXT.md`'s suite table names five of twelve suites** · *housekeeping*
-It says "Five suites, in dependency order" and lists `test-static`,
-`test-forecast`, `test-budget`, `test-debt` and `test-invariants`. There are
-twelve, and the seven missing ones — `test-income-deadline`, `test-next-due`,
-`test-mission`, `test-renewal`, `test-payoff`, `test-authority-coverage` and
-`test-mergecard` — are the ones that guard the authorities moved out of page
-scripts. `docs/RISK_LABELS.md` has the same drift under its `tests` hard gate,
-where "`npm test` runs seven suites" lists the same five plus two. Nothing is
-wrong in the repository and `test.js` is the real list; the defect is that a
-reader orienting from either document would not know those guards exist, which
-is the failure mode `CONTEXT.md` is for. Reconciling both tables against
-`test.js` is a documentation outcome of its own, and it is worth doing once
-rather than one row at a time — this entry was added while the renewal suite
-made it six and the payoff suite has since made it seven. Found on the renewal
-authority move; the table was already stale by five before that PR touched it.
+**B83 · `CONTEXT.md`'s suite table names five of twelve suites** · **DONE 2026-08-12**
+Both inventories are **removed** rather than reconciled, which is the fix this
+entry asked for done one step further. It recorded twelve suites; `CONTEXT.md`
+said "Five suites, in dependency order"; `docs/RISK_LABELS.md` said "`npm test`
+runs seven suites"; `test.js` registered fifteen by the time it closed. Four
+numbers for one fact, and every one of them wrong at some point — which is the
+argument against keeping any of them rather than for synchronising them again.
+
+Both documents now name `test.js` as the suite registry and state no count.
+`CONTEXT.md` keeps what the suites protect **in kind rather than by name**, so
+the reader still learns the guards exist without a list that drifts the next
+time one is added — the failure mode this entry was really about.
+`docs/RISK_LABELS.md` keeps why each suite blocks, against the demonstrated
+failure that earned it, which is what that file is for. Closed by the same pull
+request that removed the tables, because leaving this entry open would have left
+`BACKLOG.md` describing two tables that no longer exist.
 
 
 **B78 · Idempotent import with stable identity** · `QUEUED` · *medium*
