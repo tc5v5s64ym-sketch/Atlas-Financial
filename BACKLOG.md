@@ -264,10 +264,10 @@ below, each producing something the household acts on. **The list is what has
 been found, not a count of what exists** — it grew twice under review already,
 so treat it as open:
 
-**Every instance recorded below has now moved into the engine. The item stays
-OPEN**, because nothing has yet swept the page scripts for instances the list
-never named. That scan is the next outcome, not a footnote to this one, and an
-empty list of *found* instances is not a finding of none.
+**Every instance recorded below has moved into the engine. The scan for the ones
+nobody had named has now been run, and it found more. The item stays OPEN** —
+see **the closing scan** at the end of this entry for what was inspected, what
+each candidate was classified as, and the ordered outcomes that remain.
 
 - **RESOLVED 2026-08-11 — the payoff modeller.** `Forecast.payoffDebts` and
   `Forecast.payoffModel` now own which debts may be modelled, what each owes
@@ -416,25 +416,209 @@ empty list of *found* instances is not a finding of none.
   limit". It is grammar in `MISSION_PART`, not a decision, and no figure is
   wrong.
 
-Move **each remaining** recorded decision into a testable engine function and
-reconcile against a hand-computed case — and check for others before calling this
-closed, rather than closing it once the entries above are done.
+Two things this item said until the renewal moved, both corrected by having done
+the work. It said `payoff()` and `amortisedPayment()` in `public/app.js` "are
+already shared helpers and are not the problem". `amortisedPayment()` was the
+problem: it decided the renewal's monthly figure from the shared *page* core, and
+being shared is what made that easy to overlook. `payoff()` was in the same
+position until it moved with the payoff modeller, and being a helper was never
+what excused it. And the wording "the inline arithmetic and the inline selections
+are" reads as though a formula becomes acceptable once it is given a name; what
+matters is whether a test can reach the figure the household acts on.
 
-Two things this item said until the renewal moved, both now corrected by having
-done the work. It said `payoff()` and `amortisedPayment()` in `public/app.js`
-"are already shared helpers and are not the problem". `amortisedPayment()` was
-the problem: it decided the renewal's monthly figure from the shared *page*
-core, and being shared is what made that easy to overlook. `payoff()` is in the
-same position today, and being a helper is not what excuses it — nothing yet
-proves what it computes. And the wording "the inline arithmetic and the inline
-selections are" reads as though a formula becomes acceptable once it is given a
-name; what matters is whether a test can reach the figure the household acts on.
+### The closing scan · 2026-08-12 · B73 stays OPEN
 
-**The repository-wide scan is the remaining work, and it is the next outcome.**
-Four instances have been moved and a fifth is recorded above; none of that was
-found by searching, so the count is still what has been looked at rather than
-what exists. Found while building the authority table in PR A, which records
-them as unnamed authorities rather than pretending the rule already holds.
+**Every browser file was read, not only the ones this item had named.** Five page
+scripts — `public/app.js`, `public/plan.js`, `public/deepdive.js`,
+`public/modellers.js`, `public/records.js`, 2,214 lines — plus the four page
+templates, which carry no inline script. `public/forecast.js` is the engine and
+is what the scan measures against. `docs/dashboard.html` is excluded and the
+reason is recorded rather than left silent: `server.js` serves `public/` only, so
+it reaches no browser, and its one script block holds chart geometry over figures
+baked in as literals.
+
+**The answer to the question this scan asked is no.** *Engine decides, pages
+render* is not true across the browser layer today. Eight concrete financial
+authorities still live in page scripts, and one of them is the most prominent
+sentence on the homepage.
+
+**The first pass of this scan found seven and missed one**, and the record says
+so rather than presenting eight as though they arrived together. The blocking
+Atlas Contract / Systems Review found the funding-source cards — item 2 below —
+in the same file and the same block as item 1, and it also caught this record
+overstating which `/wk` figures pass through the page's own conversion. An audit
+that claims to have read every browser file and then misses a verdict in the
+most-read one has demonstrated the exact thing the item is about: page-side
+decisions read as formatting until someone reads what the expression concludes.
+Both corrections are folded in below. The count is what searching has found, and
+that is still not the same as what exists.
+
+**The evidence is mutation, not reading.** Ten mutations were applied one at a
+time to the page-side decisions below, and `npm test` passed on every one — the
+suite cannot see any of them. The same harness run against one engine line
+(`budgetBreakdown`'s `requiredMonthly`) fails immediately, so the suite is
+capable of biting and these figures are simply outside what it can reach:
+
+| Mutation | Suite |
+|---|---|
+| `plan.js` `WEEKS_PER_MONTH` 4.35 → 4.00 | passes |
+| `plan.js` status band: dip threshold `sim.buffer` → `sim.buffer / 2` | passes |
+| `plan.js` status band: `firstNeg` `balance < 0` → `< 500` | passes |
+| `plan.js` `overrideBreaches` epsilon `0.005` → `500` | passes |
+| `plan.js` funding card: `enough = available >= needed` → `>= needed / 2` | passes |
+| `plan.js` funding card: per-source shortfall `needed - available` reversed | passes |
+| `plan.js` `actionCovers`: `>= fundingGap` → `>= fundingGap / 2` | passes |
+| `plan.js` "next payment out": sum of the day → single largest | passes |
+| `plan.js` snapshot interest `/ 12` → `/ 6` | passes |
+| `plan.js` reserves window conversion halved | passes |
+| `deepdive.js` interest-check tolerance `4` → `40` | passes |
+| `deepdive.js` discretionary total: classification filter dropped | passes |
+| **control** — `forecast.js` `requiredMonthly` drops the `unknown` class | **fails** |
+
+#### What remains, in the order it should be moved
+
+1. **The status band** — `public/plan.js` 361–432. The verdict at the top of the
+   homepage. It re-derives `Forecast.mission`'s own predicates rather than
+   consuming them (`fundingShort`, and `overrideBreaches` written out as
+   `sim.min.balance < sim.buffer - 0.005` — a hand-copy of the engine's `below()`
+   and of `EPSILON`, which `Forecast` already exports), then selects which of
+   seven household-facing conclusions is published. Two of those conclusions
+   carry a date the page selects itself: `firstBad`, the first day from the
+   funding date onward that sits below the buffer, and `firstNeg`, the first day
+   the account goes negative. It also totals the funding plan's parts into "every
+   usable source combined reaches $X". Intended owner: the engine, beside
+   `mission`, which already decides the same conditions from the same inputs.
+   **The two have disagreed before** — the mission recommended $1,500/week
+   against a −$809 low precisely because only the band had been conditioned on
+   whether the gap could be funded. What guards the band today is a source-order
+   regex in `test-invariants.js` asserting that `if (gap && fundingShort)`
+   appears before `} else if (gap && overrideBreaches)`; that regex still passed
+   under both band mutations above, so it protects the ordering of two strings
+   and nothing about what either branch concludes. Moving the band retires it.
+2. **The funding-source cards** — `public/plan.js` 460–477. Under *covering the
+   gap*, each source is judged against the gap **in the page**: `enough =
+   o.available >= needed` decides whether the card reads "Covers the whole $X" or
+   "Not enough — $Y short of the $X needed", and `Math.max(0, needed -
+   o.available)` computes that per-source shortfall. The engine has already
+   allocated across the ranked sources — `funding.parts`, `shortfall`, `feasible`
+   and `needsCombination` — so this is a **second coverage judgement standing
+   beside the engine's**, differently shaped: the engine asks what combination
+   meets the gap, the page asks whether each source meets it alone. The card only
+   consults the engine's answer in its middle branch, where a source appears in
+   `parts`. The code's own comment records the drift this class produces — these
+   cards once read "Covers it" beside a band saying nothing could. Intended
+   owner: the engine returns the per-source verdict alongside the allocation it
+   already computes. **This one and item 1 read the same `fundingPlan` and should
+   probably move together**, and whichever moves first should say why it did not
+   take the other.
+3. **The weekly cap in monthly terms, and whether there is discretionary room** —
+   `public/plan.js` 68, 516–520, and every figure derived from them (632,
+   666–695, 987–1004, 1046–1054). `WEEKS_PER_MONTH = 365.25 / 12 / 7` is the
+   page's own constant; the engine has no weekly↔monthly conversion at all.
+   `recMonthly`, `perWeek()`, `optional` and `short` turn `recommend`'s weekly
+   answer and `budgetBreakdown`'s monthly answer into one comparison, and that
+   comparison decides the published conclusion "Discretionary room — **nothing
+   left**. The cap is below what normal life costs." **Which `/wk` figures this
+   governs is worth stating exactly, because the first draft of this record
+   overstated it.** The cap itself is *not* divided: the headline (683), the
+   "Weekly household cap" tile (627) and the supported figure beside it (629)
+   print `recommend`'s weekly answer as it arrives. What `perWeek()` produces is
+   every figure derived from `budgetBreakdown`'s **monthly** outputs — the
+   essential need, the discretionary room, groceries and fuel — and the
+   comparison between the two. `test-budget.js` declares its own copy of the
+   constant at line 23, so it proves the engine agrees with the test rather than
+   with the page, which is why the 4.35 → 4.00 mutation is invisible. Intended
+   owner: the engine returns the weekly figures and the cap-versus-need result;
+   the page divides nothing.
+4. **Counterfactuals composed on the page** — `public/plan.js` 592–604 and
+   824–834. `capIfCovered` invents a funding source with `available: Infinity`
+   and re-runs `Forecast.recommend` to publish "cover the whole gap and it
+   becomes $X/week". The HELOC risk re-runs `recommend` with
+   `fundingDebtId: 'heloc'` and then `projectDebts`, to publish the date the
+   crossing moves to. Both call the engine, so the arithmetic is the engine's —
+   but *which* counterfactual the household is shown, and the scenario it is run
+   under, is decided in the page. This is the class `Forecast.incomeDeadline` was
+   created to end.
+5. **What the next move achieves** — `public/plan.js` 543–574. `actionCovers`
+   compares `plan.actions[0].amount` against the current gap and `actionLeaves`
+   computes the remainder; between them they select which of five outcome
+   sentences the household reads under **What happens after**, and supply the
+   figures inside it. The action's amount is a fixed figure sized for the default
+   buffer, so this comparison is exactly what stops it being quoted as a fix at a
+   buffer where it is not one — a real decision, made where nothing can test it.
+6. **Derived household totals on the Plan page** — "next payment out" (610–619)
+   selects the next outflow date and sums every event on it; `unallocated`
+   (790–802) converts `reserveMonthly` over the window and subtracts buffer and
+   reserves from the ending cash, then chooses between "there is no free cash"
+   and "this is not spending money"; the compact snapshot (1093–1108) sums
+   secured debt, divides annual interest by twelve, and reads a HELOC month-on-
+   month delta into "still growing" / "coming down"; food-and-fuel sub-totals are
+   summed at 634–636, 671, 994 and 999. Each is a household-facing figure with no
+   owner. **The reconciliation between "next payment out" and `Forecast.nextDue`
+   is `B74`'s, not this item's** — what belongs here is only that the tile
+   decides its answer in the page.
+7. **Phase titles and the risk list** — `public/plan.js` 766–787 and 805–871. The
+   phase headings are chosen by comparing debt marks (`day90.consumer <
+   today.consumer` picks "Put the surplus against principal" or "Stop the
+   growth"), and the risk list decides which risks the household is shown and
+   computes the figures in them (`transferMonthly * 3`, the estimated-commitment
+   total, `helocDrawn`).
+8. **The Deep Dive's derived totals and its interest reconciliation** —
+   `public/deepdive.js`. The cash tile sums and groups `heldElsewhere` (25–42);
+   the period block totals discretionary spending and its share of the whole
+   (317–322), totals avoidable fees (336–339) and averages a spending total over
+   its months (304). The Cash Back Visa reconciliation (216–229) decides which
+   statement cycles are flagged as not fitting the card's rate, using a tolerance
+   of ±4 percentage points and a `26.99` literal, both chosen in the page; the
+   five-cycle footer sums the implied and charged columns, and asserts `26.99%`
+   as the effective rate rather than deriving it. Line 329 hardcodes "the
+   mortgage adds about $1,620/month" — a published figure whose home is
+   `data.json`.
+
+#### What the scan cleared, so the next pass does not re-litigate it
+
+`public/app.js` is clean: nothing financial is decided in the shared page core,
+and `payoff()`, `monthlyRate()` and `amortisedPayment()` are confirmed gone.
+`public/records.js` is clean — every figure is read from `data.json` and every
+chip class comes from a status already decided there. `public/modellers.js` is
+clean: both modellers consume `Forecast.payoffDebts` / `payoffModel` / `renewal`,
+and the wording maps are keyed by engine ids. `renderCalendar()` is what
+`ARCHITECTURE.md` says it is — presentation of `sim.events`, with cell classes
+compared against the engine's own buffer. The knob wiring, the `KNOBS`
+persistence allow-list, `MISSION_PART`, the weekly table and cards, the aggregate
+ledger and `forecastChart` all render values the engine decided. Inside the
+funding block, the lede at 453–458 is presentation — it prints `gap.dueOnGapDay`,
+the gap and the buffer as they arrive; what item 2 names is the per-source
+verdict below it, and that is where the boundary sits.
+
+**This list is a reading, and one reading already missed something.** It is
+recorded so the next pass starts somewhere rather than from nothing, not as a
+guarantee. Item 2 came out of a block a few lines below one this scan did catch,
+which is the argument for treating "cleared" as *inspected and argued*, never as
+*proved*.
+
+**Presentational thresholds were not counted as authorities, and that is a
+judgement worth stating.** The page chooses numbers for colour and inclusion — a
+7-day "soon" chip, a 3-day tile tone, `>= $50` in the fortnight agenda, `>= $250`
+on a week card, `>= $1,000` for a payday dot, `<= −$500` for a payment triangle,
+`> 95%` utilisation, `>= 20%` / `< 5%` on a rate, `< $500` of revolving credit
+left, `> $40,000` unexplained. None changes a published figure; each only decides
+how an already-decided one looks. They are listed here so a later reader can see
+they were inspected and ruled on rather than missed. Two are worth a second look
+whenever item 8 is done: the `>= 20%` / `< 5%` rate colouring is the closest any
+of them comes to interpreting money into a verdict, and `deepdive.js` computes
+its own days-until for the upcoming table while `Forecast.nextDue` computes
+`daysUntil` for the tile beside it — one question, two implementations, agreeing
+today.
+
+**No new hard gate came out of this scan, deliberately.** The failure it found is
+not mechanically signable: a page script that decides looks exactly like a page
+script that formats until a human reads what the expression concludes. A regex
+denylist over `public/*.js` would pass on every one of the ten mutations above
+while claiming the class was covered. `B75` already records that the authority
+guard does not claim this class, and `docs/RISK_LABELS.md` says the same. The
+protection each item above needs is the engine function it names, with a test
+that reaches the figure — not a guard standing over the defect.
 
 **B74 · Two calendars, and nothing notices when they disagree** · *needs a decision first*
 `renderCalendar()` in `public/plan.js` draws the on-page grid from the forecast
