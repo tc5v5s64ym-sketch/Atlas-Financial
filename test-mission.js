@@ -299,9 +299,12 @@ const MUTATIONS = [
     },
     real: () => !part(alreadyOver, 'helocLimit') },
 
+  // The predicate now lives in `planContext`, which the mission and the status
+  // band both consume — so this mutation breaks one line and both verdicts,
+  // which is exactly why there is one line.
   { label: 'dropping the override-breach test instructs the figure that does not hold',
-    from: '    const overrideBreaches = override != null && !!sim && below(sim.min.balance, sim.buffer);',
-    to: '    const overrideBreaches = false;',
+    from: '      overrideBreaches: override != null && !!sim && below(sim.min.balance, sim.buffer),',
+    to: '      overrideBreaches: false,',
     check: m => {
       const out = m.mission(
         advice({ weekly: 1250, sim: { min: { date: '2026-05-01', balance: -809.12 }, buffer: 500 } }),

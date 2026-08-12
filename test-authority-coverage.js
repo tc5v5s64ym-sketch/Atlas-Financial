@@ -92,7 +92,13 @@ ok((forecastExports || []).length > 0,
   (forecastExports || []).join(', '));
 
 console.log('\n=== guard bite proof ===');
-const withoutRecommend = incumbentTable.replace(/Forecast\.recommend\b/, 'Forecast.REMOVED_recommend');
+// EVERY mention, not just the first. The guard's predicate is "is this export
+// named in the table at all", so removing one of two mentions does not model
+// the violation — and `Forecast.recommend` is now named twice, once for the
+// weekly cap and once for the funding result the per-source verdicts come from.
+// Replacing only the first left a surviving mention and the guard, correctly,
+// did not fire.
+const withoutRecommend = incumbentTable.replace(/Forecast\.recommend\b/g, 'Forecast.REMOVED_recommend');
 const missingRowProblems = forecastCoverageProblems(forecastSource, withoutRecommend);
 ok(missingRowProblems.includes('recommend'),
   'removing an incumbent Forecast row makes the guard fail',

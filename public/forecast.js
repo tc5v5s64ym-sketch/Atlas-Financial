@@ -532,8 +532,42 @@
       unmet = 0;
     }
     const shortfall = Math.max(0, unmet);
+    // Every usable source combined, which is what the allocation actually
+    // reaches. Equal to the gap when it can be funded, and to the sum of every
+    // usable source when it cannot: `allocated + shortfall === gapAmount` holds
+    // either way, by construction. The page used to total `parts` itself to
+    // publish "every usable source combined reaches $X".
+    const allocated = parts.reduce((s, p) => s + p.amount, 0);
+    // Each declared source judged against the gap, in rank order — the card the
+    // page renders under "covering the gap". This is the same allocation seen
+    // per source rather than a second answer beside it: `contributes` is the
+    // part this source was actually given above, and `covers` is measured with
+    // `atLeast`, the same epsilon the allocation itself stops on. The page used
+    // to ask `o.available >= needed` in its own arithmetic, so a source could
+    // read "Covers it" beside a band saying nothing could — and at a source
+    // half a cent short the allocator called the gap funded while the card
+    // called the source insufficient by $0.00.
+    //
+    // An unusable source never covers the gap however large its balance: it is
+    // excluded from the allocation, so claiming coverage would offer money the
+    // plan cannot spend.
+    const sourceVerdicts = (base.fundingSources || []).slice()
+      .sort((a, b) => (a.rank || 0) - (b.rank || 0))
+      .map(src => {
+        const covers = !src.unusable && atLeast(src.available, gapAmount);
+        const part = parts.find(p => p.id === src.id) || null;
+        return {
+          id: src.id, available: src.available, unusable: !!src.unusable,
+          // What the household is told about this source, and nothing else
+          // decides it: it covers the gap alone, it is one leg of the selected
+          // combination, or it cannot reach the gap and is not used.
+          verdict: covers ? 'covers' : part ? 'contributes' : 'insufficient',
+          contributes: part ? part.amount : 0,
+          shortBy: Math.max(0, gapAmount - src.available),
+        };
+      });
     const funding = {
-      parts, shortfall,
+      parts, shortfall, allocated, sources: sourceVerdicts,
       feasible: shortfall <= EPSILON,
       // A single source was enough, or it took a combination.
       needsCombination: parts.length > 1,
@@ -1004,6 +1038,131 @@
     };
   }
 
+  /* ------------------------------- what the plan is, read one way, once ---- */
+  // The two household-facing verdicts at the top of the Plan page — the status
+  // band and the mission sentence — are decided from the same four facts: the
+  // opening gap, whether it can be funded, the weekly figure in force, and the
+  // simulation being shown at it. They are computed HERE, once, and both
+  // verdicts consume the result.
+  //
+  // That is the whole point of this function. `public/plan.js` used to work
+  // `fundingShort` and `overrideBreaches` out for itself, hand-copying `below()`
+  // and EPSILON as `sim.min.balance < sim.buffer - 0.005`, while the mission
+  // computed the same two predicates in here from the same inputs. Two copies
+  // of one judgement is not a style problem: the mission recommended
+  // $1,500/week against a −$809 low precisely because only one of the two had
+  // been conditioned on whether the gap could be funded. A copy cannot be kept
+  // in step by care, so there is no longer a copy.
+  function planContext(advice, opts) {
+    opts = opts || {};
+    advice = advice || {};
+    const recommended = advice.weekly;
+    const override = opts.weeklyOverride != null ? opts.weeklyOverride : null;
+    const weekly = override != null ? override : recommended;
+    // The simulation actually on screen: the household's own weekly setting
+    // when it has one, the recommended run otherwise.
+    const sim = opts.sim || advice.sim || null;
+    const gap = advice.gap || null;
+    const funding = advice.funding || null;
+    return {
+      recommended, override, weekly, sim, gap, funding,
+      // Reachable at all: every usable source combined against the gap.
+      fundingShort: !!(funding && !funding.feasible),
+      // A weekly figure the household chose, which the projection does not
+      // support. Measured on the simulation actually being shown, so the figure
+      // judged is the figure displayed.
+      overrideBreaches: override != null && !!sim && below(sim.min.balance, sim.buffer),
+    };
+  }
+
+  /* -------------------------------------------------------- the status band */
+  // The verdict at the top of the Plan page: which of seven conclusions the
+  // household reads about the next 13 weeks, and the figures inside it.
+  //
+  // `public/plan.js` used to decide this, and it was the most prominent
+  // financial judgement on the site that no test could reach — a mutation
+  // moving the dip threshold to `sim.buffer / 2`, or the negative test to
+  // `balance < 500`, left `npm test` green.
+  //
+  // The order is the decision, and each step earns its place:
+  //
+  //   1. A GAP NO SOURCE CAN REACH outranks everything. At that buffer the
+  //      floor sits below it whatever the household spends, so naming a weekly
+  //      figure would blame spending for something spending cannot fix.
+  //   2. A WEEKLY FIGURE THE HOUSEHOLD SET that breaches the buffer is the
+  //      headline next, whatever else is true about the gap. Reporting "cover
+  //      the gap and hold this spending" described a plan running $809
+  //      negative.
+  //   3. A GAP NO SINGLE SOURCE COVERS, because "move money across" is a
+  //      different instruction when it takes two accounts and part of it is
+  //      borrowed.
+  //   4. AN ORDINARY OPENING GAP — a timing problem, not a shortage across the
+  //      window, and it is worth saying which.
+  //   5. GOING NEGATIVE, then 6. DIPPING BELOW THE BUFFER, then 7. ON PLAN.
+  //
+  // Buffer comparisons use `below`, the engine's own convention, and so does
+  // the first-breach date. Going negative is a bare `< 0`, which is the
+  // convention `recommend` itself opens the gap on — a cent overdrawn is
+  // overdrawn. The page's copy mixed the two: it compared the dip against a
+  // bare `sim.min.balance < sim.buffer` while testing the override breach
+  // against `sim.buffer - 0.005`, so a float landing a ten-thousandth of a cent
+  // under the buffer published "Tight — projected to dip to $500 … below the
+  // $500 target buffer" — a sentence contradicting itself in its own clause,
+  // beside a mission saying the plan held. `test-status-band.js` proves that
+  // case directly.
+  //
+  // The result is structured: an `id` naming the verdict, and only the figures
+  // that verdict was decided from. Money, dates, wording, colour and HTML are
+  // presentation and stay on the page, exactly as they do for `mission`.
+  function planStatus(advice, opts) {
+    const { gap, funding, fundingShort, overrideBreaches, weekly, recommended, sim }
+      = planContext(advice, opts);
+    // Every verdict reads the buffer, the low or the ending off the simulation
+    // being shown. Without one the unfunded verdict would still render — and
+    // publish "unfunded at a $0 buffer", a wrong figure rather than a failure.
+    // Throw instead, the same way `renewal` refuses to assume a rate basis.
+    if (!sim) throw new Error('planStatus requires the simulation being shown');
+    const buffer = sim.buffer;
+    const gapAmount = gap ? gap.amount : 0;
+    const daily = sim.daily || [];
+
+    if (gap && fundingShort) {
+      return { id: 'unfunded', gapAmount, floorDate: gap.floorDate,
+        allocated: funding.allocated, shortfall: funding.shortfall, buffer };
+    }
+    if (gap && overrideBreaches) {
+      // From the funding date onward, matching how the floor is measured — the
+      // days before it are the acknowledged squeeze, not a consequence of the
+      // spending setting being tested here.
+      const firstBad = daily.find(p => p.date >= gap.date && below(p.balance, buffer));
+      return { id: 'overrideBreach', weekly, recommended, gapAmount,
+        goesNegative: sim.min.balance < 0,
+        low: sim.min.balance, lowDate: sim.min.date,
+        firstBelowBuffer: firstBad ? firstBad.date : null };
+    }
+    if (gap && funding && funding.needsCombination) {
+      return { id: 'combination', gapAmount, floorDate: gap.floorDate,
+        parts: funding.parts, borrowed: funding.borrowed,
+        weekly, effectiveFrom: advice.effectiveFrom, ending: sim.ending };
+    }
+    if (gap) {
+      return { id: 'gap', gapAmount, floorDate: gap.floorDate,
+        preIncomeOut: gap.preIncomeOut,
+        weekly, effectiveFrom: advice.effectiveFrom, ending: sim.ending };
+    }
+    if (sim.min.balance < 0) {
+      const firstNeg = daily.find(p => p.balance < 0);
+      return { id: 'negative', firstNegative: firstNeg ? firstNeg.date : null,
+        low: sim.min.balance, lowDate: sim.min.date };
+    }
+    if (below(sim.min.balance, buffer)) {
+      return { id: 'belowBuffer', low: sim.min.balance, lowDate: sim.min.date,
+        buffer, ending: sim.ending, end: sim.end };
+    }
+    return { id: 'onPlan', ending: sim.ending, buffer,
+      low: sim.min.balance, lowDate: sim.min.date };
+  }
+
   /* ------------------------------------------------------------ the mission */
   // The sentence at the top of the Plan page: what the household is being told
   // to do about the next 13 weeks, and in what order.
@@ -1046,23 +1205,9 @@
   // on the page. A part the page has no wording for is a rendering failure,
   // which is why `test-mission.js` checks the two sides still agree.
   function mission(advice, debtProj, opts) {
-    opts = opts || {};
-    advice = advice || {};
     debtProj = debtProj || {};
-
-    const recommended = advice.weekly;
-    const override = opts.weeklyOverride != null ? opts.weeklyOverride : null;
-    const weekly = override != null ? override : recommended;
-    const sim = opts.sim || advice.sim || null;
-
-    const gap = advice.gap || null;
-    const funding = advice.funding || null;
-    // Reachable at all: every usable source combined against the gap.
-    const fundingShort = !!(funding && !funding.feasible);
-    // A weekly figure the household chose, which the projection does not
-    // support. Measured on the simulation actually being shown, so the figure
-    // judged is the figure displayed.
-    const overrideBreaches = override != null && !!sim && below(sim.min.balance, sim.buffer);
+    const { recommended, weekly, sim, gap, funding, fundingShort, overrideBreaches }
+      = planContext(advice, opts);
 
     // Over the limit TODAY — the opening mark of the debt walk, not a later
     // snapshot, and not a crossing the window predicts.
@@ -1592,7 +1737,7 @@
 
   const Forecast = { addDays, diffDays, occurrences, expandEvents, simulate,
     recommendWeekly, recommend, incomeDeadline, budgetBreakdown, projectDebts,
-    nextDue, mission, utilisation, renewal, payoffDebts, payoffModel,
+    nextDue, planStatus, mission, utilisation, renewal, payoffDebts, payoffModel,
     paymentForMonths, EPSILON, STEP };
   if (typeof module !== 'undefined' && module.exports) module.exports = Forecast;
   else root.Forecast = Forecast;
