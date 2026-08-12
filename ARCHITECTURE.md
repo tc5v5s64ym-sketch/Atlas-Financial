@@ -301,9 +301,11 @@ So the rule, not the enumeration, is what binds:
 **Page scripts do break that third rule today, and the repository now knows
 where.** Every instance `B73` had recorded moved into the engine, and the scan
 for the ones nobody had named ran on 2026-08-12. It read every browser file and
-found seven more — the largest being the status band at the top of the Plan page,
+found eight more — the largest being the status band at the top of the Plan page,
 which selects which of seven verdicts the household reads and picks two of the
-dates inside them. `B73` records each one with the mutation evidence that no test
+dates inside them. Seven of the eight were found by reading; the eighth, the
+funding-source cards a few lines below that same band, was found by the required
+review after the scan had called itself complete. `B73` records each one with the mutation evidence that no test
 reaches it, and each is its own outcome to move. **None of them is a row in the
 table above, and none should become one**: a page script that decides is an
 unnamed authority, which is a defect to close, not an incumbent to register.
@@ -336,8 +338,9 @@ the same file as one of the renderers this section praises; it reached zero
 because five were moved, not because anything had audited what was left. Moving
 an authority out of a file does not clear the file — the payoff modeller was
 still deciding in `public/modellers.js` after the renewal moved out of it, and
-`public/plan.js` holds six of the seven instances the scan found, having already
-had two moved out of it. The absence of a known instance was never evidence that
+`public/plan.js` holds seven of the eight instances the scan found, having
+already had two moved out of it — and one of those seven was missed by the scan
+itself and caught by the review. The absence of a known instance was never evidence that
 none existed, and searching is what settled it.
 
 Anything not named above belongs to one of those three rules, or is that defect.

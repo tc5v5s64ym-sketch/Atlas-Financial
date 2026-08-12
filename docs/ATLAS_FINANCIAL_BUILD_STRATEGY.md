@@ -204,9 +204,11 @@ built *on* that picture, the picture needs owners that a test can reach.
   only. One decision per pull request — five decisions is five outcomes.*
 - **State** — all five recorded decisions have moved, and the scan for the ones
   the list never named ran on 2026-08-12. It is no longer the last thing standing
-  between `B73` and closed: it read every browser file and found **seven further
-  page-side authorities**, six of them in `public/plan.js`, each recorded in
-  `B73` with the mutation evidence that the node suite cannot reach it. This item
+  between `B73` and closed: it read every browser file and found **eight further
+  page-side authorities**, seven of them in `public/plan.js`, each recorded in
+  `B73` with the mutation evidence that the node suite cannot reach it. Seven
+  came from the scan and the eighth from the blocking review that read it, which
+  is recorded in `B73` rather than smoothed over. This item
   is therefore not complete, and it keeps its own rule — one decision per pull
   request, reconciled against a hand-computed case. `B73` states the order; the
   status band at the top of the Plan page goes first, because it is the most

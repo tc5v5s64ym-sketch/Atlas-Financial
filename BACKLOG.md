@@ -438,9 +438,20 @@ it reaches no browser, and its one script block holds chart geometry over figure
 baked in as literals.
 
 **The answer to the question this scan asked is no.** *Engine decides, pages
-render* is not true across the browser layer today. Seven concrete financial
+render* is not true across the browser layer today. Eight concrete financial
 authorities still live in page scripts, and one of them is the most prominent
 sentence on the homepage.
+
+**The first pass of this scan found seven and missed one**, and the record says
+so rather than presenting eight as though they arrived together. The blocking
+Atlas Contract / Systems Review found the funding-source cards — item 2 below —
+in the same file and the same block as item 1, and it also caught this record
+overstating which `/wk` figures pass through the page's own conversion. An audit
+that claims to have read every browser file and then misses a verdict in the
+most-read one has demonstrated the exact thing the item is about: page-side
+decisions read as formatting until someone reads what the expression concludes.
+Both corrections are folded in below. The count is what searching has found, and
+that is still not the same as what exists.
 
 **The evidence is mutation, not reading.** Ten mutations were applied one at a
 time to the page-side decisions below, and `npm test` passed on every one — the
@@ -454,6 +465,8 @@ capable of biting and these figures are simply outside what it can reach:
 | `plan.js` status band: dip threshold `sim.buffer` → `sim.buffer / 2` | passes |
 | `plan.js` status band: `firstNeg` `balance < 0` → `< 500` | passes |
 | `plan.js` `overrideBreaches` epsilon `0.005` → `500` | passes |
+| `plan.js` funding card: `enough = available >= needed` → `>= needed / 2` | passes |
+| `plan.js` funding card: per-source shortfall `needed - available` reversed | passes |
 | `plan.js` `actionCovers`: `>= fundingGap` → `>= fundingGap / 2` | passes |
 | `plan.js` "next payment out": sum of the day → single largest | passes |
 | `plan.js` snapshot interest `/ 12` → `/ 6` | passes |
@@ -482,20 +495,42 @@ capable of biting and these figures are simply outside what it can reach:
    appears before `} else if (gap && overrideBreaches)`; that regex still passed
    under both band mutations above, so it protects the ordering of two strings
    and nothing about what either branch concludes. Moving the band retires it.
-2. **The weekly cap in monthly terms, and whether there is discretionary room** —
+2. **The funding-source cards** — `public/plan.js` 460–477. Under *covering the
+   gap*, each source is judged against the gap **in the page**: `enough =
+   o.available >= needed` decides whether the card reads "Covers the whole $X" or
+   "Not enough — $Y short of the $X needed", and `Math.max(0, needed -
+   o.available)` computes that per-source shortfall. The engine has already
+   allocated across the ranked sources — `funding.parts`, `shortfall`, `feasible`
+   and `needsCombination` — so this is a **second coverage judgement standing
+   beside the engine's**, differently shaped: the engine asks what combination
+   meets the gap, the page asks whether each source meets it alone. The card only
+   consults the engine's answer in its middle branch, where a source appears in
+   `parts`. The code's own comment records the drift this class produces — these
+   cards once read "Covers it" beside a band saying nothing could. Intended
+   owner: the engine returns the per-source verdict alongside the allocation it
+   already computes. **This one and item 1 read the same `fundingPlan` and should
+   probably move together**, and whichever moves first should say why it did not
+   take the other.
+3. **The weekly cap in monthly terms, and whether there is discretionary room** —
    `public/plan.js` 68, 516–520, and every figure derived from them (632,
    666–695, 987–1004, 1046–1054). `WEEKS_PER_MONTH = 365.25 / 12 / 7` is the
    page's own constant; the engine has no weekly↔monthly conversion at all.
    `recMonthly`, `perWeek()`, `optional` and `short` turn `recommend`'s weekly
    answer and `budgetBreakdown`'s monthly answer into one comparison, and that
    comparison decides the published conclusion "Discretionary room — **nothing
-   left**. The cap is below what normal life costs." Every `/wk` figure on the
-   page is this division. `test-budget.js` declares its own copy of the constant
-   at line 23, so it proves the engine agrees with the test rather than with the
-   page — which is why the 4.35 → 4.00 mutation is invisible. Intended owner: the
-   engine returns the weekly figures and the cap-versus-need result; the page
-   divides nothing.
-3. **Counterfactuals composed on the page** — `public/plan.js` 592–604 and
+   left**. The cap is below what normal life costs." **Which `/wk` figures this
+   governs is worth stating exactly, because the first draft of this record
+   overstated it.** The cap itself is *not* divided: the headline (683), the
+   "Weekly household cap" tile (627) and the supported figure beside it (629)
+   print `recommend`'s weekly answer as it arrives. What `perWeek()` produces is
+   every figure derived from `budgetBreakdown`'s **monthly** outputs — the
+   essential need, the discretionary room, groceries and fuel — and the
+   comparison between the two. `test-budget.js` declares its own copy of the
+   constant at line 23, so it proves the engine agrees with the test rather than
+   with the page, which is why the 4.35 → 4.00 mutation is invisible. Intended
+   owner: the engine returns the weekly figures and the cap-versus-need result;
+   the page divides nothing.
+4. **Counterfactuals composed on the page** — `public/plan.js` 592–604 and
    824–834. `capIfCovered` invents a funding source with `available: Infinity`
    and re-runs `Forecast.recommend` to publish "cover the whole gap and it
    becomes $X/week". The HELOC risk re-runs `recommend` with
@@ -504,14 +539,14 @@ capable of biting and these figures are simply outside what it can reach:
    but *which* counterfactual the household is shown, and the scenario it is run
    under, is decided in the page. This is the class `Forecast.incomeDeadline` was
    created to end.
-4. **What the next move achieves** — `public/plan.js` 543–574. `actionCovers`
+5. **What the next move achieves** — `public/plan.js` 543–574. `actionCovers`
    compares `plan.actions[0].amount` against the current gap and `actionLeaves`
    computes the remainder; between them they select which of five outcome
    sentences the household reads under **What happens after**, and supply the
    figures inside it. The action's amount is a fixed figure sized for the default
    buffer, so this comparison is exactly what stops it being quoted as a fix at a
    buffer where it is not one — a real decision, made where nothing can test it.
-5. **Derived household totals on the Plan page** — "next payment out" (610–619)
+6. **Derived household totals on the Plan page** — "next payment out" (610–619)
    selects the next outflow date and sums every event on it; `unallocated`
    (790–802) converts `reserveMonthly` over the window and subtracts buffer and
    reserves from the ending cash, then chooses between "there is no free cash"
@@ -522,13 +557,13 @@ capable of biting and these figures are simply outside what it can reach:
    owner. **The reconciliation between "next payment out" and `Forecast.nextDue`
    is `B74`'s, not this item's** — what belongs here is only that the tile
    decides its answer in the page.
-6. **Phase titles and the risk list** — `public/plan.js` 766–787 and 805–871. The
+7. **Phase titles and the risk list** — `public/plan.js` 766–787 and 805–871. The
    phase headings are chosen by comparing debt marks (`day90.consumer <
    today.consumer` picks "Put the surplus against principal" or "Stop the
    growth"), and the risk list decides which risks the household is shown and
    computes the figures in them (`transferMonthly * 3`, the estimated-commitment
    total, `helocDrawn`).
-7. **The Deep Dive's derived totals and its interest reconciliation** —
+8. **The Deep Dive's derived totals and its interest reconciliation** —
    `public/deepdive.js`. The cash tile sums and groups `heldElsewhere` (25–42);
    the period block totals discretionary spending and its share of the whole
    (317–322), totals avoidable fees (336–339) and averages a spending total over
@@ -551,7 +586,16 @@ and the wording maps are keyed by engine ids. `renderCalendar()` is what
 `ARCHITECTURE.md` says it is — presentation of `sim.events`, with cell classes
 compared against the engine's own buffer. The knob wiring, the `KNOBS`
 persistence allow-list, `MISSION_PART`, the weekly table and cards, the aggregate
-ledger and `forecastChart` all render values the engine decided.
+ledger and `forecastChart` all render values the engine decided. Inside the
+funding block, the lede at 453–458 is presentation — it prints `gap.dueOnGapDay`,
+the gap and the buffer as they arrive; what item 2 names is the per-source
+verdict below it, and that is where the boundary sits.
+
+**This list is a reading, and one reading already missed something.** It is
+recorded so the next pass starts somewhere rather than from nothing, not as a
+guarantee. Item 2 came out of a block a few lines below one this scan did catch,
+which is the argument for treating "cleared" as *inspected and argued*, never as
+*proved*.
 
 **Presentational thresholds were not counted as authorities, and that is a
 judgement worth stating.** The page chooses numbers for colour and inclusion — a
@@ -561,7 +605,7 @@ on a week card, `>= $1,000` for a payday dot, `<= −$500` for a payment triangl
 left, `> $40,000` unexplained. None changes a published figure; each only decides
 how an already-decided one looks. They are listed here so a later reader can see
 they were inspected and ruled on rather than missed. Two are worth a second look
-whenever item 7 is done: the `>= 20%` / `< 5%` rate colouring is the closest any
+whenever item 8 is done: the `>= 20%` / `< 5%` rate colouring is the closest any
 of them comes to interpreting money into a verdict, and `deepdive.js` computes
 its own days-until for the upcoming table while `Forecast.nextDue` computes
 `daysUntil` for the tile beside it — one question, two implementations, agreeing
