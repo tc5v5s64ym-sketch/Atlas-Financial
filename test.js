@@ -26,6 +26,7 @@ const suites = [
   ['next due obligation', 'test-next-due.js'],
   ['homepage mission', 'test-mission.js'],
   ['May 2027 renewal', 'test-renewal.js'],
+  ['payoff modeller', 'test-payoff.js'],
   ['household budget reconciliation', 'test-budget.js'],
   ['coupled cash and debt', 'test-debt.js'],
   ['authority invariants', 'test-invariants.js'],

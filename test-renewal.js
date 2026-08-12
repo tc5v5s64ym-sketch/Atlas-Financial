@@ -622,9 +622,10 @@ const modellersSrc = read('public/modellers.js');
 const appSrc = read('public/app.js');
 const modellersHtml = read('public/modellers.html');
 
-/* The renewal section only. The payoff modeller above it still solves its own
- * arithmetic — a SEPARATE B73 instance which this outcome does not move, and
- * saying "no page script calculates any more" would be false while it stands. */
+/* The renewal section only. The payoff modeller above it on the same page has
+ * since moved into `Forecast.payoffDebts` / `Forecast.payoffModel` and is proved
+ * by `test-payoff.js`; this suite still scopes itself to `setupRenewal` so that
+ * a failure here names the renewal rather than whatever else the file holds. */
 const renewalPage = /\nfunction setupRenewal\(d\) \{[\s\S]*?\n\}\n/.exec(modellersSrc);
 ok(!!renewalPage, 'the renewal section is readable from modellers.js');
 const pageSrc = renewalPage ? renewalPage[0] : '';
@@ -648,11 +649,12 @@ ok(!/delta > 0/.test(pageSrc),
   'and does not run the comparison to pick a colour');
 ok(!/debts\.find/.test(pageSrc),
   'nor picks the HELOC record out of the debt list itself');
-// Stated rather than smoothed over: the OTHER modeller on this page still
-// computes its own payoff arithmetic, and B73 stays open because of it.
-ok(/function solveFor\(x, months\)/.test(modellersSrc)
-  && /Math\.pow\(1 \+ i, -months\)/.test(modellersSrc),
-  'the payoff modeller still solves its own arithmetic — B73 is not closed here');
+// The payoff modeller's own annuity is gone from this file too. `test-payoff.js`
+// owns proving what replaced it; this only records that the renewal is no longer
+// sharing the page with a calculator.
+ok(!/function solveFor\(/.test(modellersSrc)
+  && !/Math\.pow\(1 \+ i, -months\)/.test(modellersSrc),
+'the payoff modeller no longer solves its own annuity beside the renewal');
 
 /* Every result the engine can return has wording, and every wording is
  * reachable. A missing entry throws on the page; a stale one is dead prose that

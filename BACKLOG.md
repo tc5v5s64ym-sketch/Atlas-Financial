@@ -259,18 +259,85 @@ honest reason to touch that file; it does not justify one of its own.
 **B73 · Financial decisions made inside page scripts** · *small, real*
 `CONTEXT.md` states the rule: the engine owns the answers, the pages render them
 — because anything computed in a page script cannot be reached by the node suite
-that guards every other figure. Page scripts break it in the places recorded
+that guards every other figure. Page scripts broke it in the places recorded
 below, each producing something the household acts on. **The list is what has
-been found, not a count of what exists** — it has grown twice under review
-already, so treat it as open:
+been found, not a count of what exists** — it grew twice under review already,
+so treat it as open:
 
-- **`public/modellers.js`** still solves its own payoff arithmetic. `solveFor`
-  runs the annuity formula to answer "clear it in 5 / 3 / 1 years", and
-  `bounds` sets the slider's floor from a monthly interest charge it computes
-  itself, on top of `payoff()` in `public/app.js`. The presets are figures the
-  household reads and acts on, and none of them is reachable from the node
-  suite. **This is the remaining instance on that page, and it is a separate
-  outcome from the renewal below.**
+**Every instance recorded below has now moved into the engine. The item stays
+OPEN**, because nothing has yet swept the page scripts for instances the list
+never named. That scan is the next outcome, not a footnote to this one, and an
+empty list of *found* instances is not a finding of none.
+
+- **RESOLVED 2026-08-11 — the payoff modeller.** `Forecast.payoffDebts` and
+  `Forecast.payoffModel` now own which debts may be modelled, what each owes
+  today, the convention its rate is charged under, the minimum a larger payment
+  is measured against, the projection, and the financially meaningful slider
+  floor. `Forecast.paymentForMonths` owns the "clear it in 5 / 3 / 1 years"
+  solve that was `solveFor`. `public/modellers.js` reads the controls and holds
+  the wording; `payoff()` and `monthlyRate()` moved out of `public/app.js` — the
+  shared *page* core — rather than being copied, so no payoff formula exists in
+  both places, and nothing financial is left in that file at all. The modeller
+  is coupled rather than parallel: balances come from the debt records through
+  the same `openingBalance` rule the debt walk opens on, and the minimum is
+  `monthlyCashFor`, the rule `Forecast.renewal` already compared against, now
+  extracted so both read one answer. `test-payoff.js` proves every figure by a
+  method the engine does not use — a month-by-month balance walk that has to
+  land on zero, and the annuity's present-value identity — breaks twelve
+  formulas and branches to show each is load-bearing, reconciles the move
+  against the old page expressions at all 12,661 slider positions the page can
+  reach, and boots the real page against a stub DOM to read what the household
+  is actually shown.
+
+  **The move found three real financial defects sharing that authority, and
+  fixes them here rather than preserving them for a clean migration diff.**
+
+  1. **One interest convention was applied to every debt, and it was nobody's.**
+     The page priced every balance at `annual × 30 / 365` — twelve 30-day months,
+     so 360 charged days for every 365 that pass, understating every year by
+     1.37% and compounding that over a 17-year horizon. A prime-linked facility
+     is quoted compounded monthly, which is `RATE_BASIS.variable`, reused rather
+     than restated. A card is not: it charges a daily rate over the days in each
+     statement cycle, and cycles vary with the calendar. Because twelve
+     consecutive cycles **tile** the year — each opens the day after the last
+     closes — a year's charge is the full annual rate however the days fall, so
+     the model prices the average cycle at `annual / 12`. Each debt record now
+     declares its `rateConvention`; an undeclared one throws rather than being
+     guessed, and an invariant keeps that throw unreachable.
+
+     **That average is labelled as one rather than presented as the convention**
+     — the first draft claimed it *was* the per-cycle convention, and the
+     required review blocked it for exactly that. `PAYOFF_BASIS_PRECISION` marks
+     a card `monthly-equivalent` and a prime-linked facility `exact`; the page
+     publishes the first-period charge with the band a 28-to-32-day cycle
+     actually allows ($227.68–$260.21 on the Triangle, against $247.33) and says
+     the month-1 row prices an average cycle. Against the published TD/MBNA
+     30-day form the monthly figure runs +1.39%, and from +8.63% to −4.95%
+     across the band. The multi-period figures inherit far less of that, because
+     tiling redistributes interest between periods rather than accumulating it:
+     walking a real varying-cycle schedule from all twelve possible starting
+     months bounds the worst case at 1.81 months and 1.20% of total interest.
+  2. **The balance ignored pending charges.** MBNA and the Travel Visa were
+     modelled $82.05 and $165.13 lighter than the household owes.
+  3. **"The minimum" was `debt.payment`, which is not always a payment.** On the
+     HELOC that field is the capitalised interest charge, so the modeller
+     published a payoff horizon for a facility nothing repays, at an $814.18
+     monthly bill nobody pays — the exact defect the renewal work ended, still
+     standing one modeller above it. On the mortgage it is a **bi-weekly**
+     amount read as monthly, so the modeller reported that a mortgage TD itself
+     says has 17 years 9 months left would **never clear**. On the canonical
+     obligation it now clears in 17 years 10 months, within two months of TD's
+     own figure.
+
+  **Published figures that changed**, all in the same direction — the debts are
+  worse than the page said: the mortgage from "never clears" to 17 y 10 m and
+  $197,559.96 of interest; the HELOC from "over 100 years" at a $814.18 minimum
+  to no cash minimum and a balance growing $823.14 a month; the Triangle
+  Mastercard at its minimum from 15 y 3 m and $32,810.22 of interest to 17 y 0 m
+  and $38,239.71; MBNA from 10 y 3 m and $11,616.35 to 11 y 1 m and $13,147.41;
+  the Travel Visa's monthly growth at its $17.00 minimum from $0.72 to $3.71; and
+  the Cash Back Visa's minimum from the $762.36 September statement spike to its
+  $170.00 recurring level, with the spike named on the page rather than dropped.
 - **RESOLVED 2026-08-11 — the May 2027 renewal.** `Forecast.renewal` now owns
   what the renewal costs and what folding the HELOC into it changes: the
   compounded HELOC balance, both interest totals, today's household cash and the
@@ -465,19 +532,21 @@ extending the snapshot to the other three pages — is a real scope decision abo
 what counts as a published figure, and belongs to the owner, not to a wording
 fix.
 
-**B83 · `CONTEXT.md`'s suite table names five of eleven suites** · *housekeeping*
+**B83 · `CONTEXT.md`'s suite table names five of twelve suites** · *housekeeping*
 It says "Five suites, in dependency order" and lists `test-static`,
 `test-forecast`, `test-budget`, `test-debt` and `test-invariants`. There are
-eleven, and the six missing ones — `test-income-deadline`, `test-next-due`,
-`test-mission`, `test-renewal`, `test-authority-coverage` and `test-mergecard` —
-are the ones that guard the authorities moved out of page scripts. Nothing is
+twelve, and the seven missing ones — `test-income-deadline`, `test-next-due`,
+`test-mission`, `test-renewal`, `test-payoff`, `test-authority-coverage` and
+`test-mergecard` — are the ones that guard the authorities moved out of page
+scripts. `docs/RISK_LABELS.md` has the same drift under its `tests` hard gate,
+where "`npm test` runs seven suites" lists the same five plus two. Nothing is
 wrong in the repository and `test.js` is the real list; the defect is that a
-reader orienting from `CONTEXT.md` would not know those guards exist, which is
-the failure mode that document is for. Reconciling the table against `test.js`
-is a documentation outcome of its own, and it is worth doing once rather than
-one row at a time — this entry was added while the renewal suite made it six.
-Found on the renewal authority move; the table was already stale by five before
-that PR touched it.
+reader orienting from either document would not know those guards exist, which
+is the failure mode `CONTEXT.md` is for. Reconciling both tables against
+`test.js` is a documentation outcome of its own, and it is worth doing once
+rather than one row at a time — this entry was added while the renewal suite
+made it six and the payoff suite has since made it seven. Found on the renewal
+authority move; the table was already stale by five before that PR touched it.
 
 
 **B78 · Idempotent import with stable identity** · `QUEUED` · *medium*
