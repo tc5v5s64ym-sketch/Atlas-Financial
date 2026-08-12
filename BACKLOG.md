@@ -440,10 +440,10 @@ baked in as literals.
 
 **The answer to the question this scan asked is no.** *Engine decides, pages
 render* is not true across the browser layer today. The scan found eight concrete
-financial authorities living in page scripts. **Items 1 and 2 have since moved**
-— they went together, as one authority boundary, because both interpreted the
-same opening gap and the same funding result. **Six remain**, and they are still
-the list below.
+financial authorities living in page scripts. **Items 1, 2 and 3 have since moved** —
+1 and 2 together, as one authority boundary, because both interpreted the same
+opening gap and the same funding result; 3 on its own. **Five remain**, and they
+are still the list below.
 
 **The first pass of this scan found seven and missed one**, and the record says
 so rather than presenting eight as though they arrived together. The blocking
@@ -462,7 +462,7 @@ suite cannot see any of them. The same harness run against one engine line
 (`budgetBreakdown`'s `requiredMonthly`) fails immediately, so the suite is
 capable of biting and these figures are simply outside what it can reach.
 
-**Five of the ten no longer apply**, struck through below: the page expressions
+**Six of the ten no longer apply**, struck through below: the page expressions
 they mutated do not exist any more, and the decisions they stood for now fail
 the suite when broken in the engine. That is the shape a resolved row takes
 here — not a mutation that stopped mattering, but one whose target moved
@@ -470,7 +470,7 @@ somewhere a test can reach it.
 
 | Mutation | Suite |
 |---|---|
-| `plan.js` `WEEKS_PER_MONTH` 4.35 → 4.00 | passes |
+| ~~`plan.js` `WEEKS_PER_MONTH` 4.35 → 4.00~~ | **moved — now fails** |
 | ~~`plan.js` status band: dip threshold `sim.buffer` → `sim.buffer / 2`~~ | **moved — now fails** |
 | ~~`plan.js` status band: `firstNeg` `balance < 0` → `< 500`~~ | **moved — now fails** |
 | ~~`plan.js` `overrideBreaches` epsilon `0.005` → `500`~~ | **moved — now fails** |
@@ -561,25 +561,66 @@ somewhere a test can reach it.
    wording rather than a decision, and this was an authority move — but it is
    now a figure a test can reach, so correcting it later is a deliberate change
    rather than an unnoticed one.
-3. **The weekly cap in monthly terms, and whether there is discretionary room** —
-   `public/plan.js` 68, 516–520, and every figure derived from them (632,
-   666–695, 987–1004, 1046–1054). `WEEKS_PER_MONTH = 365.25 / 12 / 7` is the
-   page's own constant; the engine has no weekly↔monthly conversion at all.
-   `recMonthly`, `perWeek()`, `optional` and `short` turn `recommend`'s weekly
-   answer and `budgetBreakdown`'s monthly answer into one comparison, and that
-   comparison decides the published conclusion "Discretionary room — **nothing
-   left**. The cap is below what normal life costs." **Which `/wk` figures this
-   governs is worth stating exactly, because the first draft of this record
-   overstated it.** The cap itself is *not* divided: the headline (683), the
-   "Weekly household cap" tile (627) and the supported figure beside it (629)
-   print `recommend`'s weekly answer as it arrives. What `perWeek()` produces is
-   every figure derived from `budgetBreakdown`'s **monthly** outputs — the
-   essential need, the discretionary room, groceries and fuel — and the
-   comparison between the two. `test-budget.js` declares its own copy of the
-   constant at line 23, so it proves the engine agrees with the test rather than
-   with the page, which is why the 4.35 → 4.00 mutation is invisible. Intended
-   owner: the engine returns the weekly figures and the cap-versus-need result;
-   the page divides nothing.
+3. **RESOLVED 2026-08-12 — the weekly cap in monthly terms, and whether there
+   is discretionary room.** `Forecast.budgetBreakdown` now returns a `cap` block
+   holding every weekly↔monthly conversion and the cap-versus-need verdict, and
+   `Forecast.monthlyFromWeekly` says a weekly cap in months for the two callers
+   that need it without a budget. `WEEKS_PER_MONTH` lives in the engine and is
+   **deliberately not exported**: a test importing it would prove the engine
+   agrees with itself, so the suites re-derive `365.25 / 12 / 7` from the
+   calendar instead.
+
+   **There were three copies of that constant, not two.** The page's,
+   `test-budget.js`'s at line 23 — and `scripts/figures-snapshot.js`'s at line
+   75, in the one file whose whole job is to prove published figures did not
+   move. The snapshot script converted `budgetBreakdown`'s monthly outputs
+   itself, so it could not have seen the page's conversion drift. It reads the
+   engine now. `test-budget.js` keeps its own, which is what a test should
+   do — and it is now a real cross-check, asserted against the engine's answer
+   rather than only against itself.
+
+   `public/plan.js` lost `WEEKS_PER_MONTH`, `perWeek()`, `recMonthly`,
+   `optional`, `short`, the `inCap` total and every page-side division; it
+   holds money formatting, the `/wk` and `/month` labels, and sentence
+   templates keyed off `cap.hasDiscretionaryRoom`. The weekly cap itself is
+   still `Forecast.recommend`'s and is still printed as it arrives.
+
+   **The cap measured is the cap being shown.** The engine is told which weekly
+   figure is on screen — the household's own setting when there is one — and
+   the recommendation travels beside it rather than in place of it. Measuring
+   the recommendation while the page displays an override would publish
+   discretionary room the displayed plan does not leave; a mutation proves that
+   branch is load-bearing.
+
+   **One boundary defect corrected.** The page compared two unrounded monthly
+   sums with a bare `>`, so a cap a fraction of a cent under the essential need
+   published "Discretionary room — **nothing left**. The cap is below what
+   normal life costs" beside a shortfall that rounds to $0/week. The verdict is
+   `atLeast` now — the engine's own half-cent epsilon, finer than any of these
+   figures is published to — and both sides are proved: exactly at the need
+   leaves room of $0.00, two cents under is a real shortfall of two cents. No
+   published figure moves; the real plan sits $1,442.54/month clear of that
+   boundary.
+
+   **A second defect was found by the blocking review, and it was live on
+   `main` too.** The room the cap leaves was compared with the household's own
+   discretionary budget as a **signed** difference, and the page rendered it
+   unconditionally as "so the plan is $Y/wk short of it and something has to
+   give". When the cap leaves *more* room than the household budgets, that
+   number goes negative and the sentence reads "the plan is −$28/wk short of it
+   and something has to give". Reachable by typing into the weekly box, which
+   has no upper bound: on the published plan any setting above $1,771.72/week
+   gets there. The comparison is now a verdict — `short` / `meets` / `exceeds` —
+   with a magnitude that is never negative, and the page words each one. The
+   first version of this move's own test asserted the negative value as though
+   it were correct and never rendered it, which is what let it through; the
+   proof now renders all three through the page's clause map and boots the real
+   page at a stored $1,800/wk override.
+
+   Every affected figure and sentence was rendered at ten settings — including
+   a $600/wk override that trips the "nothing left" branch — and is identical
+   to `0ed3bae`. All 75 snapshot figures are identical. The page is booted
+   against a stub DOM and the household-facing strings read back.
 4. **Counterfactuals composed on the page** — `public/plan.js` 592–604 and
    824–834. `capIfCovered` invents a funding source with `available: Infinity`
    and re-runs `Forecast.recommend` to publish "cover the whole gap and it

@@ -72,7 +72,6 @@ try { periods = require(path.join(ROOT, 'public', 'periods.json')); } catch { /*
 
 const plan = data.plan;
 const asOf = data.meta.asOf;
-const WEEKS_PER_MONTH = 365.25 / 12 / 7;
 const round = n => Math.round(n * 100) / 100;
 
 const out = {};
@@ -110,7 +109,7 @@ if (advice.funding) {
   put('plan.fundingShortfall', advice.funding.shortfall);
 }
 put('plan.weeklyCap', advice.weekly);
-put('plan.weeklyCapMonthly', advice.weekly * WEEKS_PER_MONTH);
+put('plan.weeklyCapMonthly', F.monthlyFromWeekly(advice.weekly));
 put('plan.effectiveFrom', advice.effectiveFrom);
 put('plan.bindingDate', advice.binding.date);
 put('plan.bindingBalance', advice.binding.balance);
@@ -132,22 +131,27 @@ put('totals.commitments', T.commitments);
 put('totals.nonCashInterest', T.noncash);
 
 /* ---- what the cap has to cover ----------------------------------------- */
+// The weekly figures below are the engine's, not this script's. It kept its
+// own copy of the weeks-per-month constant until the conversion moved into
+// Forecast — a third copy, beside the page's and the suite's, in the one file
+// whose whole job is to prove published figures did not move.
 const budget = periods ? F.budgetBreakdown(plan, periods, {
   paypalPerMonth: data.paypal ? data.paypal.perMonth : 0,
+  weeklyCap: advice.weekly,
 }) : null;
 if (budget) {
   put('budget.basis', budget.basis);
   put('budget.essentialPerMonth', budget.essentialMonthly);
   put('budget.requiredPerMonth', budget.requiredMonthly);
-  put('budget.requiredPerWeek', budget.requiredMonthly / WEEKS_PER_MONTH);
+  put('budget.requiredPerWeek', budget.cap.essentialWeekly);
   put('budget.discretionaryPerMonth', budget.discretionaryMonthly);
   put('budget.reservePerMonth', budget.reserveMonthly);
   put('budget.datedPerMonth', budget.datedMonthly);
   const food = budget.categories.find(c => c.id === 'groceries');
   const fuel = budget.categories.find(c => c.id === 'fuel');
   if (food && fuel) {
-    put('budget.foodAndFuelPerMonth', food.planned + fuel.planned);
-    put('budget.foodAndFuelPerWeek', (food.planned + fuel.planned) / WEEKS_PER_MONTH);
+    put('budget.foodAndFuelPerMonth', budget.cap.foodFuelPlannedMonthly);
+    put('budget.foodAndFuelPerWeek', budget.cap.foodFuelPlannedWeekly);
   }
 }
 

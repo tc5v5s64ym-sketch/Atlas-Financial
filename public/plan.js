@@ -65,8 +65,6 @@ function simOpts(extra = {}) {
   }, extra);
 }
 
-const WEEKS_PER_MONTH = 365.25 / 12 / 7; // ≈ 4.35
-
 const addDays = (iso, n) => Forecast.addDays(iso, n);
 const fmtMonth = iso => new Date(iso + 'T00:00:00').toLocaleDateString('en-CA', { month: 'long' });
 const est = s => `<span class="est">≈ ${s}</span>`;
@@ -163,6 +161,18 @@ const STATUS_BAND = {
     `<b>On plan — projected to finish with ${money(s.ending)}.</b>
       The balance stays above the ${money(s.buffer)} buffer all the way through, with the low of
       ${money(s.low)} on ${fmtDateLong(s.lowDate)}.` },
+};
+
+/* ------------------------- the room against the household's own budget, said */
+// Three outcomes, and `Forecast.budgetBreakdown` says which. The engine used to
+// hand over a signed difference and this page rendered it as "short of it"
+// whatever its sign, so a cap leaving MORE room than the household budgets
+// published "the plan is −$28/wk short of it and something has to give".
+// A magnitude and a verdict cannot be read the wrong way round.
+const ROOM_VERSUS_HOUSEHOLD = {
+  short: r => `so the plan is ${money(r.weekly)}/wk short of it and something has to give.`,
+  meets: () => `which is what the plan leaves.`,
+  exceeds: r => `and the plan leaves ${money(r.weekly)}/wk more than that.`,
 };
 
 /* --------------------------------------- the funding-source cards, in words */
@@ -531,15 +541,19 @@ function renderPlan(d, periods) {
   const mark = n => debtProj.marks.find(m => m.day === n) || debtProj.marks[debtProj.marks.length - 1];
   const today = mark(0), day90 = debtProj.marks[debtProj.marks.length - 1];
 
+  // The engine owns every weekly↔monthly conversion and the cap-versus-need
+  // conclusion. It is told which weekly figure is actually on screen — the
+  // household's own setting when there is one, the recommendation otherwise —
+  // because measuring the budget against a figure the page is not showing
+  // describes a plan nobody is looking at. This page divides nothing.
   const budget = Forecast.budgetBreakdown(plan, periods, {
     paypalPerMonth: d.paypal ? d.paypal.perMonth : 0,
     disabled: state.disabled,
+    weeklyCap: weekly,
+    recommendedWeekly: recommended,
   });
-  const recMonthly = weekly * WEEKS_PER_MONTH;
-  const perWeek = m => m / WEEKS_PER_MONTH;
-  const required = budget ? budget.requiredMonthly : 0;
-  const optional = Math.max(0, recMonthly - required);
-  const short = required - recMonthly;
+  const cap = budget ? budget.cap : null;
+  const capMonthly = Forecast.monthlyFromWeekly(weekly);
 
   // Facilities over their limit today, and the day the HELOC crosses its own —
   // read here for the debt tile, the phases and the HELOC card below. The
@@ -658,11 +672,10 @@ function renderPlan(d, periods) {
         ? `your setting — the forecast supports ${money(recommended)}/wk`
         : gap
           ? `${capQualifier}. Food and fuel come out of this first.`
-          : `≈ ${money(weekly * WEEKS_PER_MONTH)} a month. Food and fuel come out of this first.` },
-    { lab: 'Essential variable need', val: money(perWeek(required)) + '/wk', tone: '',
-      note: `groceries, fuel, phones and medical — ${money(perWeek(budget ? budget.categories
-        .filter(c => c.id === 'groceries' || c.id === 'fuel')
-        .reduce((a, c) => a + c.planned, 0) : 0))}/wk of it food and fuel` },
+          : `≈ ${money(capMonthly)} a month. Food and fuel come out of this first.` },
+    { lab: 'Essential variable need', val: money(budget ? budget.cap.essentialWeekly : 0) + '/wk', tone: '',
+      note: `groceries, fuel, phones and medical — ${money(budget
+        ? budget.cap.foodFuelPlannedWeekly : 0)}/wk of it food and fuel` },
     { lab: 'Consumer debt', val: money(consumerNow), tone: overToday.length ? 'alert' : 'warn',
       note: `${money(today.headroom)} of credit left everywhere${overToday.length
         ? ` — ${overToday.length} facility over its limit` : ''}` },
@@ -680,6 +693,8 @@ function renderPlan(d, periods) {
 
   /* ---- the weekly household cap, broken into what it is actually for ---- */
   if (budget) {
+    // Both are read for their MONTHLY targets, printed as they arrive. The
+    // per-week figures beside them come from the engine.
     const food = budget.categories.find(c => c.id === 'groceries');
     const fuelCat = budget.categories.find(c => c.id === 'fuel');
     // When the gap can only be partly funded, this figure is the cap for THAT
@@ -689,28 +704,29 @@ function renderPlan(d, periods) {
     $('cap-headline').innerHTML =
       `<span class="cap-amt">${money(weekly)}</span><span class="cap-per">/ week</span>
        <span class="cap-qual">${capQualifier}</span>`;
-    const part = (lab, amount, kind, note) => `
+    // Every amount here arrives per week from the engine. The page adds the
+    // dollar sign and the /wk label and divides nothing.
+    const part = (lab, weeklyAmount, kind, note) => `
       <div class="cap-part ${kind}">
         <div class="cap-part-lab">${lab}</div>
-        <div class="cap-part-amt">${est(money(perWeek(amount)))}<span>/wk</span></div>
+        <div class="cap-part-amt">${est(money(weeklyAmount))}<span>/wk</span></div>
         <div class="cap-part-note">${note}</div>
       </div>`;
     $('cap-split').innerHTML =
-      part('Essential variable need', required, 'essential',
-        `Groceries ${money(perWeek(food.planned))}, fuel ${money(perWeek(fuelCat.planned))}` +
+      part('Essential variable need', cap.essentialWeekly, 'essential',
+        `Groceries ${money(cap.groceriesPlannedWeekly)}, fuel ${money(cap.fuelPlannedWeekly)}` +
         `${food.target != null ? ' <span class="chip v">owner budget</span>' : ''}, plus phones, ` +
         `household supplies, medical and the uncategorised remainder. <b>This comes out first.</b>`) +
-      part('Discretionary room', Math.max(0, recMonthly - required), 'optional',
-        short > 0
+      part('Discretionary room', cap.discretionaryRoomWeekly, 'optional',
+        !cap.hasDiscretionaryRoom
           ? `<b class="neg">Nothing.</b> The cap is below what normal life costs.`
           : `Everything else — dining out, personal, subscriptions, sports and online spending. The household's ` +
-            `own budget for those comes to ${money(perWeek(budget.discretionaryMonthly))}/wk, so the plan is ` +
-            `${money(perWeek(budget.discretionaryMonthly) - perWeek(Math.max(0, recMonthly - required)))}/wk ` +
-            `short of it and something has to give.`) +
+            `own budget for those comes to ${money(cap.householdDiscretionaryWeekly)}/wk, ` +
+            ROOM_VERSUS_HOUSEHOLD[cap.roomVersusHousehold.verdict](cap.roomVersusHousehold)) +
       `<div class="cap-part total">
         <div class="cap-part-lab">Total</div>
         <div class="cap-part-amt">${money(weekly)}<span>/wk</span></div>
-        <div class="cap-part-note">≈ ${money(recMonthly)} a month</div>
+        <div class="cap-part-note">≈ ${money(cap.monthly)} a month</div>
       </div>`;
     const owned = budget.ownerTargetCount;
     $('cap-basis').innerHTML =
@@ -1010,27 +1026,27 @@ function renderPlan(d, periods) {
   // out of it before anything optional does, and the page has to say so or the
   // household will read it as spending money.
   if (budget) {
-    const food = budget.categories.find(c => c.id === 'groceries');
-    const fuel = budget.categories.find(c => c.id === 'fuel');
     $('budget-out').innerHTML =
       row('<b>Weekly household cap</b>', `<b>${money(weekly)} / week</b>`) +
-      row('&nbsp;&nbsp;— as a monthly figure', `${money(recMonthly)} / month`) +
+      row('&nbsp;&nbsp;— as a monthly figure', `${money(cap.monthly)} / month`) +
       row('Essential variable need <span class="mutedtext">groceries, fuel, phones, medical</span>',
-        est(money(perWeek(required)) + ' / week'), 'out', chipE) +
-      row(short > 0 ? '<b class="neg">Discretionary room</b>' : 'Discretionary room',
-        short > 0 ? '<b class="neg">nothing left</b>' : money(perWeek(optional)) + ' / week') +
+        est(money(cap.essentialWeekly) + ' / week'), 'out', chipE) +
+      row(cap.hasDiscretionaryRoom ? 'Discretionary room' : '<b class="neg">Discretionary room</b>',
+        cap.hasDiscretionaryRoom
+          ? money(cap.discretionaryRoomWeekly) + ' / week'
+          : '<b class="neg">nothing left</b>') +
       row('&nbsp;&nbsp;— of which groceries and fuel',
-        est(money(perWeek(food.planned + fuel.planned)) + ' / week'), '', chipE) +
+        est(money(cap.foodFuelPlannedWeekly) + ' / week'), '', chipE) +
       row('Planned extra debt payment', money(state.extraDebtMonthly) + ' / month') +
       row('Required buffer at the end', money(sim.buffer)) +
-      (short > 0
-        ? `<p class="warnline">The cap is ${money(perWeek(short))}/week <b>below</b> what normal life has been costing.
-           Groceries and fuel alone have run ${money(perWeek(food.historical + fuel.historical))}/week. At this income the
+      (!cap.hasDiscretionaryRoom
+        ? `<p class="warnline">The cap is ${money(cap.essentialShortfallWeekly)}/week <b>below</b> what normal life has been costing.
+           Groceries and fuel alone have run ${money(cap.foodFuelHistoricalWeekly)}/week. At this income the
            window only works by cutting essentials, moving a commitment, or borrowing — that is the real message of this number.</p>`
-        : `<p class="warnline">Read this as: <b>${money(perWeek(required))}/week is spoken for</b> before anything optional —
-           ${money(perWeek(food.planned + fuel.planned))} of it groceries and fuel. The remaining
-           ${money(perWeek(optional))}/week is the whole of dining out, shopping, entertainment and online spending, against the
-           ${money(perWeek(budget.discretionaryMonthly))}/week those have actually been running at.</p>`);
+        : `<p class="warnline">Read this as: <b>${money(cap.essentialWeekly)}/week is spoken for</b> before anything optional —
+           ${money(cap.foodFuelPlannedWeekly)} of it groceries and fuel. The remaining
+           ${money(cap.discretionaryRoomWeekly)}/week is the whole of dining out, shopping, entertainment and online spending, against the
+           ${money(cap.householdDiscretionaryWeekly)}/week those have actually been running at.</p>`);
 
     $('budget-basis').textContent =
       `Solved from the forecast, not from a category template: the largest weekly spend that keeps every day of the ` +
@@ -1072,15 +1088,14 @@ function renderPlan(d, periods) {
           ? ` · ${money(c.sinking)} saved for separately` : ''}</span>
       </div>`).join('');
 
-    const inCap = budget.requiredMonthly + budget.discretionaryMonthly;
     // Derived, not named in prose — the sentence used to say "insurance and
     // children's sports", and sports stopped being $0 when sinking funds were
     // separated out.
     const fullyDatedNames = budget.categories.filter(c => c.fullyDated).map(c => c.label);
     $('budget-cats-note').textContent =
       `The right-hand figure is what each category has averaged; the amount before it is what has to come out of the ` +
-      `weekly cap once anything already dated on the calendar is removed. Those add to ${money(inCap)}/month against a ` +
-      `cap of ${money(recMonthly)}/month, so ${money(Math.max(0, inCap - recMonthly))}/month has to come off — and it ` +
+      `weekly cap once anything already dated on the calendar is removed. Those add to ${money(cap.inCapMonthly)}/month against a ` +
+      `cap of ${money(cap.monthly)}/month, so ${money(cap.overCapMonthly)}/month has to come off — and it ` +
       `cannot come off the essential rows, which are ${money(budget.requiredMonthly)}/month on their own. ` +
       (fullyDatedNames.length
         ? `${fullyDatedNames.join(' and ')} show${fullyDatedNames.length === 1 ? 's' : ''} $0 because ` +

@@ -270,6 +270,8 @@ the same question — and it still carries one, noted under the table.
 | Coupled cash-and-debt walk | `Forecast.projectDebts` |
 | Revolving headroom, limits, pending | `Forecast.utilisation` |
 | Budget — owner targets against actuals | `Forecast.budgetBreakdown`, with classification and targets in `data.json` `plan.budget` |
+| Weeks in a month, and every figure converted between the two | `WEEKS_PER_MONTH` in `public/forecast.js` — the calendar's own `365.25 / 12 / 7`, deliberately **not** exported. `Forecast.monthlyFromWeekly` says a weekly cap in months; `Forecast.budgetBreakdown`'s `cap` block owns every other conversion |
+| Whether the weekly cap leaves any discretionary room, and the shortfall when it does not | `Forecast.budgetBreakdown`'s `cap` block, measured against the weekly figure the page is **showing**; `public/plan.js` holds the wording only |
 | The mission — which instructions the homepage gives, and in what order | `Forecast.mission`, from the `recommend` and `projectDebts` results; `public/plan.js` holds the wording only |
 | The status band — which of seven verdicts the Plan page publishes about the window, and the dates inside it | `Forecast.planStatus`, from the `recommend` result and the simulation on screen; `public/plan.js` holds the wording, the tone class and the HTML only |
 | Whether a funding source covers the opening gap, contributes to it, or cannot reach it | `Forecast.recommend`'s funding result — `funding.sources`, the same allocation seen per source; `public/plan.js` holds the wording only |
