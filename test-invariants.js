@@ -294,8 +294,18 @@ ok(/advice\.funding/.test(planJs2), 'and reads the allocation back');
     'and only what can actually be funded is injected',
     `${money(injected)} of ${money(huge.gap.amount)}`);
 }
-ok(/fundingShort/.test(planJs2), 'the page has a state for an unfundable gap');
-ok(/needsCombination/.test(planJs2), 'and one for a gap that takes more than one source');
+// These two asserted the page held its own `fundingShort` and
+// `needsCombination` expressions. Both moved: `Forecast.planStatus` decides the
+// unfundable verdict, `Forecast.nextMove` the unfundable outcome, and the
+// combination is `recommend`'s funding result. Re-pointed rather than deleted —
+// the demonstrated failure is the page having NO state for either, publishing
+// success copy over a gap nothing can fund. `fundingShort` in fact still matched
+// here, inside the comment recording that it moved, which is exactly the regex
+// this repository already knows cannot tell a record from the code it replaced.
+ok(/^  unfunded: \{/m.test(planJs2Code) && /^  unfunded: s =>/m.test(planJs2Code),
+  'the page words an unfundable gap, in both the band and the next move');
+ok(/^  combination: \{/m.test(planJs2Code) && /^  partial: s =>/m.test(planJs2Code),
+  'and a gap that takes more than one source, in both');
 // The funding cards judged sources against the day's payment while the band
 // judged them against the gap, so they disagreed on screen.
 ok(/const needed = fundingGap/.test(planJs2),
@@ -398,15 +408,30 @@ ok(/capQualifier/.test(planJs2) &&
    (planJs2.match(/\$\{capQualifier\}/g) || []).length >= 2,
   'and both the tile and the headline read that one value');
 // The first action carries a fixed amount; claiming it restores the buffer is
-// only true when that amount actually reaches the current gap.
-ok(/actionCovers/.test(planJs2),
-  'the Next move outcome is judged against the current gap, not merely feasibility');
+// only true when that amount actually reaches the current gap. This asserted
+// the page still held `actionCovers`, and that expression has moved into
+// `Forecast.nextMove`. Re-pointed rather than deleted: the demonstrated failure
+// it guarded — the outcome decided on feasibility rather than on the current
+// gap — is now guarded at its new home, where `test-nextmove.js` proves it on
+// the published plan at three buffers and breaks the comparison three ways to
+// show it is load-bearing. What is left here is that the page asks rather than
+// decides.
+ok(/Forecast\.nextMove\(/.test(planJs2),
+  'the Next move outcome comes from the engine, judged against the current gap');
+ok(!/actionCovers/.test(planJs2Code) && !/actionLeaves/.test(planJs2Code),
+  'and the page no longer compares the action amount with the gap, or subtracts them');
 // An override that breaches must be reported as a breach, whatever else is
 // true about the opening gap. The engine decides that now — the page reads the
 // verdict, and `test-status-band.js` proves the selection and its ordering by
-// running the engine rather than by reading the page.
-ok(/status\.id === 'overrideBreach'/.test(planJs2),
-  'a manual weekly figure that breaches the buffer is reported before gap copy');
+// running the engine rather than by reading the page. This asserted the
+// next-move card re-read `status.id` to choose between its own five outcomes;
+// that selection moved too, so what is asserted here is that the card no longer
+// re-reads the verdict, and that the breach survives the move at every buffer
+// the household can set — which is where it used to be lost.
+ok(!/status\.id === 'overrideBreach'/.test(planJs2Code),
+  'the next-move card no longer re-reads the status verdict to pick its own outcome');
+ok(/NEXT_MOVE\[move\.id\]\(move\)/.test(planJs2Code),
+  'it renders the one outcome the engine selected');
 {
   const O = { scenario: 'expected', incomeOverrides: {}, disabled: [], extraDebtMonthly: 0,
     targetBuffer: 500, fundingSources: plan.funding.options };
@@ -415,6 +440,17 @@ ok(/status\.id === 'overrideBreach'/.test(planJs2),
   ok(over.min.balance < 0,
     'and $1,500/week really does go negative even with the gap covered',
     money(over.min.balance));
+  // A raised buffer puts the fixed action short of the gap, which is exactly
+  // when the outcome stops being the override one — so the breach has to be
+  // carried inside the shortfall sentence instead of dropped.
+  for (const targetBuffer of [0, 500, 1000, 1500, 2000, 3000]) {
+    const a = F.recommend(plan, asOf, Object.assign({}, O, { targetBuffer }));
+    const s = F.simulate(plan, asOf, Object.assign({}, a.simOptions, { weeklyVariable: 1500 }));
+    const m = F.nextMove(plan, a, { weeklyOverride: 1500, sim: s });
+    ok(m.id === 'overrideBreach' || (m.id === 'partial' && m.overrideUnsupported === true),
+      `a breaching $1,500/week is still said at a $${targetBuffer} buffer`,
+      `${m.id}${m.id === 'partial' ? ` + override warning` : ''}`);
+  }
 }
 // The note named categories that stopped being $0 when sinking funds were split.
 ok(/fullyDatedNames/.test(planJs2),
@@ -716,8 +752,13 @@ ok(/No weekly spending\s*\n?\s*figure fixes this/.test(planJs2),
     'and the policy target really is the highest-rate consumer debt',
     `${unsecured[0].id} at ${unsecured[0].rate}%`);
 }
-ok(/status\.id === 'overrideBreach'\s*\n?\s*\?\s*`The \$\{money\(gap\.dueOnGapDay\)\}/.test(planJs2),
-  'and the Next move outcome says what the override actually does');
+// This matched the page's own ternary selecting the override sentence. The
+// selection is `Forecast.nextMove`'s now, so what is asserted is that the
+// wording still exists and still names the setting and where it takes the
+// balance — the sentence, not the choice to use it.
+ok(/^  overrideBreach: s =>[\s\S]*?\$\{money\(s\.dueOnGapDay\)\}[\s\S]*?\$\{money\(s\.weekly\)\}\/week setting[\s\S]*?\$\{money\(s\.low\)\}/m
+  .test(planJs2Code),
+'and the Next move outcome says what the override actually does');
 ok(/still to find before/.test(planJs2),
   'and says what is left when the action alone is not enough');
 

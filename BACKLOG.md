@@ -265,7 +265,7 @@ been found, not a count of what exists** — it grew twice under review already,
 so treat it as open:
 
 **Every instance recorded below has moved into the engine, and so have the first
-four the closing scan found. The item stays OPEN** — four of that scan's eight
+five the closing scan found. The item stays OPEN** — three of that scan's eight
 outcomes are still to move. See **the closing scan** at the end of this entry
 for what was inspected, what each candidate was classified as, and the ordered
 outcomes that remain.
@@ -440,10 +440,10 @@ baked in as literals.
 
 **The answer to the question this scan asked is no.** *Engine decides, pages
 render* is not true across the browser layer today. The scan found eight concrete
-financial authorities living in page scripts. **Items 1, 2, 3 and 4 have since
+financial authorities living in page scripts. **Items 1, 2, 3, 4 and 5 have since
 moved** — 1 and 2 together, as one authority boundary, because both interpreted
-the same opening gap and the same funding result; 3 and 4 on their own.
-**Four remain**, and they are still the list below.
+the same opening gap and the same funding result; 3, 4 and 5 on their own.
+**Three remain**, and they are still the list below.
 
 **The first pass of this scan found seven and missed one**, and the record says
 so rather than presenting eight as though they arrived together. The blocking
@@ -462,11 +462,14 @@ suite cannot see any of them. The same harness run against one engine line
 (`budgetBreakdown`'s `requiredMonthly`) fails immediately, so the suite is
 capable of biting and these figures are simply outside what it can reach.
 
-**Six of the ten no longer apply**, struck through below: the page expressions
+**Seven of the ten no longer apply**, struck through below: the page expressions
 they mutated do not exist any more, and the decisions they stood for now fail
 the suite when broken in the engine. That is the shape a resolved row takes
 here — not a mutation that stopped mattering, but one whose target moved
-somewhere a test can reach it.
+somewhere a test can reach it. The `actionCovers` row was reproduced on the
+branch that moved it before anything was edited — the page mutated,
+`npm test` run, **ALL 15 SUITES PASSED** — and the equivalent mutation in
+`Forecast.nextMove` now fails.
 
 | Mutation | Suite |
 |---|---|
@@ -476,7 +479,7 @@ somewhere a test can reach it.
 | ~~`plan.js` `overrideBreaches` epsilon `0.005` → `500`~~ | **moved — now fails** |
 | ~~`plan.js` funding card: `enough = available >= needed` → `>= needed / 2`~~ | **moved — now fails** |
 | ~~`plan.js` funding card: per-source shortfall `needed - available` reversed~~ | **moved — now fails** |
-| `plan.js` `actionCovers`: `>= fundingGap` → `>= fundingGap / 2` | passes |
+| ~~`plan.js` `actionCovers`: `>= fundingGap` → `>= fundingGap / 2`~~ | **moved — now fails** |
 | `plan.js` "next payment out": sum of the day → single largest | passes |
 | `plan.js` snapshot interest `/ 12` → `/ 6` | passes |
 | `plan.js` reserves window conversion halved | passes |
@@ -690,13 +693,69 @@ somewhere a test can reach it.
    builds `available: Infinity`, needed the page source with comments stripped:
    this repository records what moved in a comment naming the thing it removed,
    and a bare regex cannot tell that record apart from the code it replaced.
-5. **What the next move achieves** — `public/plan.js` 543–574. `actionCovers`
-   compares `plan.actions[0].amount` against the current gap and `actionLeaves`
-   computes the remainder; between them they select which of five outcome
-   sentences the household reads under **What happens after**, and supply the
-   figures inside it. The action's amount is a fixed figure sized for the default
-   buffer, so this comparison is exactly what stops it being quoted as a fix at a
-   buffer where it is not one — a real decision, made where nothing can test it.
+5. **RESOLVED 2026-08-12 — what the next move achieves.** `Forecast.nextMove`
+   now owns which of the five outcomes the household reads under **What happens
+   after**, and every figure inside it. The page's `actionCovers` — which
+   carried its own copy of the engine's half-cent as `first.amount + 0.005 >=
+   fundingGap` — and its `actionLeaves` subtraction are gone, and so is the
+   five-branch ternary that chose between the sentences from the status verdict,
+   the funding plan and the action's due date. `public/plan.js` holds
+   `NEXT_MOVE`, a map from the engine's outcome id to one sentence, and decides
+   nothing: a test asserts the map contains no comparison operator at all and
+   does no arithmetic on the figures it is handed. The page reads the action
+   record off the engine result too, so the card head and the outcome below it
+   cannot describe different actions.
+
+   **The comparison is the authority, and the gap is what it is measured
+   against.** The action's amount is a fixed $1,050 authored in `data.json` and
+   sized for the default $500 buffer; the gap moves with the buffer. The opening
+   floor is hand-checkable from the data — $79.84 of household cash against the
+   $320.00 and $303.00 registrations both falling on 12 August, so −$543.16 —
+   which makes the gap the floor plus the buffer. `test-nextmove.js` proves the
+   crossing on the published plan: $1,043.16 at a $500 buffer is covered,
+   $1,543.16 at $1,000 leaves $493.16, $2,043.16 at $1,500 leaves $993.16. Three
+   mutations show the comparison is load-bearing — halving it, pinning the gap
+   to the default buffer's $1,043.16, and reading coverage off the existence of
+   a feasible funding plan each make a short action publish "the buffer is
+   restored", and each fails.
+
+   Both sides of the money boundary are proved on literal figures rather than
+   from the engine's constant: exactly equal covers, $0.004 short covers,
+   a full cent short does not, and an action a cent under the gap does not. Ten
+   mutations in all, including the outcome ordering — reporting the override
+   before the shortfall hides what is still to find — and the due-date test,
+   whose removal restores the buffer with money that arrives eight days after
+   the payments have to clear. Every one of the five outcomes is rendered
+   through the page's own wording map at twelve settings of the published plan
+   and compared against the expressions `public/plan.js` ran at `098f90b`:
+   identical, sentence for sentence. The real page is then booted against a stub
+   DOM at five stored knob settings — the default, a $1,500/week override, a
+   $1,500 buffer, a $5,000 buffer, and the registrations unticked at a $0 buffer
+   — which is every outcome, read back out of the card the household sees. All
+   75 snapshot figures are identical to `098f90b`.
+
+   **One real defect was found in the move and is fixed rather than carried
+   across.** `data.json` allows an action with no `amount` — the card head
+   already renders that case, printing no figure — and the page's remainder was
+   `gap && first.amount != null ? fundingGap - first.amount : 0`. So an unpriced
+   action published "This covers $0 of the $1,600 needed, leaving $0.00 still to
+   find", two published figures contradicting each other inside one sentence,
+   one saying the gap is closed while the other says it is not. An action with
+   no amount covers nothing of the gap, so the whole gap remains. Unreachable on
+   the published data, which prices every action, and it moves no published
+   figure; a mutation restoring the old expression now fails.
+
+   **Three source-regex invariants were re-pointed rather than deleted.**
+   `test-invariants.js` asserted that `public/plan.js` still held `actionCovers`,
+   that it re-read `status.id === 'overrideBreach'` to pick its own outcome, and
+   that it had states named `fundingShort` and `needsCombination`. All four
+   expressions moved. The demonstrated failures they guarded — an outcome judged
+   on feasibility rather than on the current gap, a breaching weekly setting
+   going unsaid, and success copy over a gap nothing can fund — are guarded at
+   their new home, the second one now across six buffer settings rather than by
+   the presence of a string. `fundingShort` had in fact still matched, inside
+   the comment recording that it moved: the regex this repository already knows
+   cannot tell a record apart from the code it replaced.
 6. **Derived household totals on the Plan page** — "next payment out" (610–619)
    selects the next outflow date and sums every event on it; `unallocated`
    (790–802) converts `reserveMonthly` over the window and subtracts buffer and
@@ -866,6 +925,29 @@ cheapest honest fix is wording: say what was compared and stop. Anything more �
 extending the snapshot to the other three pages — is a real scope decision about
 what counts as a published figure, and belongs to the owner, not to a wording
 fix.
+
+**B84 · `ARCHITECTURE.md` keeps its own running count of B73's progress** · *documentation truth, small*
+Three counts of one fact live outside the file that owns it. The section
+below the incumbent table says the scan's page-side instances are the ones
+`B73` records "and each is its own outcome to move. **Those first two have now
+moved** … **six remain**"; the next paragraph opens "Seven instances have been
+moved into the engine rather than argued away" and enumerates them; and the one
+after says `public/plan.js` "holds five now". `BACKLOG.md` owns work and
+findings — `CLAUDE.md` says so — and each of those three numbers was already
+wrong before this finding was written: items 3 and 4 had moved without any of
+them changing, so the true figures were four remaining, nine moved and three in
+`plan.js`. Item 5 moving makes them three, ten and two.
+
+This is the same shape as `B83`, and it wants the same fix: **remove the second
+home, do not synchronise it.** The prose is worth keeping — the enumeration
+explains what each move actually was, which no count does — so what should go is
+the arithmetic, replaced by a pointer to `B73`. Found while adding the
+`Forecast.nextMove` row to the incumbent table on the item 5 move, and
+deliberately **not** fixed there: that pull request's authority boundary is the
+engine against `public/plan.js`, and rewriting three paragraphs of migration
+narrative is its own outcome with its own acceptance condition — no count of
+`B73`'s progress survives outside `BACKLOG.md`, provable by grep. It changes no
+figure and gates nothing.
 
 **B83 · `CONTEXT.md`'s suite table names five of twelve suites** · **DONE 2026-08-12**
 Both inventories are **removed** rather than reconciled, which is the fix this

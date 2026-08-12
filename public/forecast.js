@@ -1575,6 +1575,112 @@
     return { parts };
   }
 
+  /* ------------------------------------------ what the next move achieves */
+  // The line under **What happens after** on the Plan page: what completing the
+  // first written action does to the window the household is looking at.
+  //
+  // `public/plan.js` used to decide this, and it is the decision B73 recorded
+  // as item 5. The page compared `plan.actions[0].amount` against the current
+  // gap with its own hand-copied half-cent (`first.amount + 0.005 >=
+  // fundingGap`), subtracted the two to get the uncovered remainder, and then
+  // chose between five household-facing outcomes from that comparison, the
+  // status verdict, the due date and the funding plan. Mutating the comparison
+  // to `>= fundingGap / 2` left `npm test` green — the mutation B73's table
+  // records, reproduced on this branch before the move.
+  //
+  // WHY THE COMPARISON IS THE POINT. The action's amount is a FIXED figure
+  // authored by hand in `data.json`, sized for the default buffer. The gap is
+  // dynamic: raise the target buffer and the same $1,050 action that covers a
+  // $1,043.16 gap does not come close to a $2,043.16 one. So the outcome is
+  // judged against THE CURRENT GAP — never against the default buffer, a cached
+  // gap, the existence of an action, or the amount the action was sized for.
+  // Judging it any other way publishes "the buffer is restored" over figures
+  // that do not restore it.
+  //
+  // The order is the decision:
+  //
+  //   1. A GAP NO SOURCE CAN REACH. The action cannot restore a buffer that
+  //      nothing available restores, so it is honest about helping without
+  //      being enough, and quotes the shortfall rather than a recovery.
+  //   2. FUNDABLE, BUT NOT BY THIS ACTION ALONE. What it covers, what is left,
+  //      and the supported weekly figure once the rest is found. This outranks
+  //      the override verdict deliberately: quoting the unsafe weekly setting
+  //      here made the override warning unreachable whenever the fixed action
+  //      fell short of the gap, which is exactly when a raised buffer puts it
+  //      there. The override is named inside this outcome instead.
+  //   3. THE ACTION RESTORES THE GAP, BUT THE HOUSEHOLD'S OWN WEEKLY SETTING
+  //      STILL BREACHES. The gap clearing does not make an unsupported spending
+  //      level supported.
+  //   4. THE ACTION RESTORES THE GAP IN TIME, and the plan on screen continues.
+  //      "In time" is the action's due date against the gap's date — an action
+  //      landing after the money is needed does not clear that day's payments.
+  //   5. NO APPLICABLE OPENING-GAP OUTCOME — no gap, or an action that covers
+  //      one but is not due in time — so the window's own ending is what there
+  //      is to say.
+  //
+  // `planStatus` is called here rather than accepted as an argument. Both
+  // verdicts are rendered in the same card stack from the same `advice`, and a
+  // caller free to pass a different status could publish "the buffer is
+  // restored" beside a band saying the gap cannot be funded. Computing it from
+  // the same inputs makes that disagreement impossible rather than unlikely.
+  //
+  // The result is structured: an `id` naming the outcome, the action record it
+  // was decided about, and only the figures that outcome was decided from.
+  // Money, dates and sentences are presentation and stay on the page, exactly
+  // as they do for `mission` and `planStatus`.
+  function nextMove(plan, advice, opts) {
+    const action = ((plan && plan.actions) || [])[0] || null;
+    if (!action) return null;
+    const { gap, funding, weekly, recommended, sim } = planContext(advice, opts);
+    // Every outcome reads the buffer, the low or the ending off the simulation
+    // being shown. Without one this would still render, and publish a recovery
+    // against a $0 buffer — a wrong figure rather than a failure. Throw, the
+    // same way `planStatus` does.
+    if (!sim) throw new Error('nextMove requires the simulation being shown');
+    const status = planStatus(advice, opts);
+    const buffer = sim.buffer;
+    const gapAmount = gap ? gap.amount : 0;
+    const amount = action.amount != null ? action.amount : null;
+    // `atLeast` is the engine's own half-cent convention — the same one the
+    // per-source funding verdicts stop on — not a new boundary. The page's
+    // `+ 0.005` was a copy of it, and a copy cannot be kept in step by care.
+    const covers = !!gap && amount != null && atLeast(amount, gapAmount);
+
+    if (status.id === 'unfunded') {
+      // `planStatus` only reaches this verdict on a gap no source can fund, so
+      // the gap and the funding result are both present here by construction.
+      return { id: 'unfunded', action,
+        gapAmount, shortfall: funding.shortfall, buffer };
+    }
+    if (gap && !covers) {
+      // An action with NO amount covers nothing of the gap, so the whole gap
+      // remains. The page returned 0 here — "leaving $0.00 still to find"
+      // inside the same sentence as "of the $1,043.16 needed", two published
+      // figures contradicting each other. An unpriced action is a shape
+      // `data.json` allows and the card head already renders.
+      return { id: 'partial', action, actionAmount: amount,
+        gapAmount, remainder: gapAmount - (amount || 0), buffer,
+        // Named only when the allocation actually takes more than one source.
+        parts: funding && funding.needsCombination ? funding.parts : null,
+        recommended, effectiveFrom: advice.effectiveFrom,
+        // The weekly setting is unsupported, and the household is told so here
+        // because outcome 3 is unreachable while the action falls short.
+        overrideUnsupported: status.id === 'overrideBreach',
+        weekly, low: sim.min.balance };
+    }
+    if (status.id === 'overrideBreach') {
+      return { id: 'overrideBreach', action,
+        dueOnGapDay: gap.dueOnGapDay, gapDate: gap.date,
+        weekly, low: sim.min.balance, lowDate: sim.min.date, recommended };
+    }
+    if (gap && action.due && action.due <= gap.date) {
+      return { id: 'restored', action,
+        dueOnGapDay: gap.dueOnGapDay, gapDate: gap.date,
+        effectiveFrom: advice.effectiveFrom, weekly };
+    }
+    return { id: 'windowEnding', action, ending: sim.ending, buffer };
+  }
+
   /* ------------------------------------------------ revolving utilisation */
   // Every facility with a limit, and what is really left on it TODAY.
   //
@@ -2072,7 +2178,8 @@
     recommendWeekly, recommend, incomeDeadline, counterfactuals,
     budgetBreakdown, monthlyFromWeekly,
     projectDebts,
-    nextDue, planStatus, mission, utilisation, renewal, payoffDebts, payoffModel,
+    nextDue, planStatus, mission, nextMove, utilisation, renewal,
+    payoffDebts, payoffModel,
     paymentForMonths, EPSILON, STEP };
   if (typeof module !== 'undefined' && module.exports) module.exports = Forecast;
   else root.Forecast = Forecast;
