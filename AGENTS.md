@@ -1,25 +1,37 @@
 # Atlas Financial — agent entrypoint
 
 Every agent starts here, on every surface — Claude Code, Codex, Cursor, or
-whatever else Dale approves. This file routes; it defines nothing of its own.
+whatever else Dale approves. This file is the universal router; it does not
+create a second product, safety, review, merge, or sequencing authority.
 
 Read in this order:
 
-1. [`CLAUDE.md`](CLAUDE.md) — who decides, who reviews, when to stop for a
-   person, and what a pull request has to carry. It keeps its filename for
-   continuity and binds every surface equally.
-2. [`CONTEXT.md`](CONTEXT.md) — layout, current state, standing rules.
-3. [`ARCHITECTURE.md`](ARCHITECTURE.md) — the five layers and the direction.
-4. [`docs/ACCOUNT_FACTS.md`](docs/ACCOUNT_FACTS.md) — standing facts. Never ask
+1. [`CLAUDE.md`](CLAUDE.md) — canonical operating and safety brief: who decides,
+   who reviews, when to stop for a person, and what a pull request must carry.
+   The filename is retained for historical continuity and binds every surface
+   equally.
+2. [`docs/BUILDER_PORTABILITY.md`](docs/BUILDER_PORTABILITY.md) — repository-state
+   handoff, surface-neutral branch rules, legacy wording, and the fresh-agent
+   cold-start acceptance trial.
+3. [`CONTEXT.md`](CONTEXT.md) — layout, current state, standing rules.
+4. [`ARCHITECTURE.md`](ARCHITECTURE.md) — the five layers, sole-authority
+   direction, and capability gates.
+5. [`docs/ACCOUNT_FACTS.md`](docs/ACCOUNT_FACTS.md) — standing facts. Never ask
    the owner for anything already recorded there.
-5. [`BACKLOG.md`](BACKLOG.md) — work that can be done, and what blocks each item.
-6. [`docs/01_OPEN_QUESTIONS.md`](docs/01_OPEN_QUESTIONS.md) — what only the
+6. [`docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`](docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md)
+   — **current planned-capability sequencing authority**, subordinate to
+   `ARCHITECTURE.md`. Read it before selecting work. It decides what is
+   eligible, in what order, and what may interrupt that order; this file states
+   no selection rule of its own.
+7. [`BACKLOG.md`](BACKLOG.md) — the record of work and findings. It feeds the
+   strategy; it does not silently override the strategy's order.
+8. [`docs/01_OPEN_QUESTIONS.md`](docs/01_OPEN_QUESTIONS.md) — what only the
    household can answer.
-7. `docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md` — the ordered build sequence, **once
-   it exists**. It does not yet, so today planned work comes from `BACKLOG.md`.
-   When it does exist, **it owns the order of planned capability work** — read it
-   before starting any; `ARCHITECTURE.md` still owns direction, authority and the
-   gates, and the strategy sequences only what those permit.
+
+An explicit owner instruction may be the source of a pull request. Record it in
+the Current-State Verification Gate. It does not erase the financial,
+security, authority, trust, or owner-reserved boundaries in `CLAUDE.md` and
+`ARCHITECTURE.md`.
 
 ## The three things agents get wrong here
 
@@ -47,29 +59,38 @@ supporting models (or `None`), and the dispatch authority. Record the model name
 your surface actually displays. If it withholds it, say so plainly — never guess
 one. `CLAUDE.md` holds the rule.
 
-## Branches and scope
+## Branches, handoff, and scope
 
-A fresh branch from current `main`, and **one independently provable outcome per
-pull request** — not one topic. `CLAUDE.md` holds the rule, the scope tripwires,
-the atomicity exception and the review-churn reassessment; the card's
-**Delivery** block is where each is recorded.
+New work starts from current `main` on `agent/<outcome>`, regardless of surface.
+Existing `claude/*` branches remain valid historical branches; do not rename or
+reinterpret them as current work.
 
-Do not continue another agent's branch without first checking `main`, the open
-pull requests, and the current-state gate. Two agents never work the same
-outcome at once.
+Use **one independently provable outcome per pull request** — not one topic.
+`CLAUDE.md` owns the outcome rule, scope tripwires, atomicity exception and
+review-churn reassessment; the merge card records the evidence.
+
+Do not continue another agent's branch without first checking `main`, open pull
+requests, and the Current-State Verification Gate. Two agents never implement
+the same outcome at once. If a handoff must happen mid-PR, follow
+`docs/BUILDER_PORTABILITY.md`; repository state, not chat memory, is the handoff.
 
 ## Compact launcher
 
 This is the one launcher. Do not write a second one.
 
-> Read `AGENTS.md`, then take the owner's instruction if there is one — else the
-> first eligible item in `BACKLOG.md`. **Once a build strategy exists, it
-> sequences planned capability work**: `BACKLOG.md` stays the record of work and
-> findings and feeds the strategy, rather than independently overriding its order.
-> How an urgent finding interleaves with that order is the strategy's to define.
-> Verify current state before editing.
-> One independently provable outcome, fresh branch, merge card filled, findings
+> Read `AGENTS.md`, then take the owner's explicit instruction if there is one;
+> otherwise select work as `docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md` directs — it
+> owns eligibility, order and interruption, and this launcher restates none of
+> it. Verify current repository state
+> before editing. Use a fresh `agent/<outcome>` branch from current `main`.
+> One independently provable outcome, merge card filled, findings
 > dispositioned. Stop only for an owner-reserved item or the required review.
 
-Before implementing, report only: the item, the current-state verdict, whether
-code is actually required, and any owner gate. Then go.
+Before implementing, report only: the source/item, the current-state verdict,
+whether code is actually required, and any owner gate. Then go.
+
+## Cold-start acceptance trial
+
+A fresh agent with no prior chat history can prove repository portability using
+the read-only trial in [`docs/BUILDER_PORTABILITY.md`](docs/BUILDER_PORTABILITY.md).
+Do not simulate or claim that trial from an already-contextualized session.
