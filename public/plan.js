@@ -418,7 +418,6 @@ function renderPlan(d, periods) {
   // modelled the whole gap as debt-free even when no source could reach it.
   const advice = Forecast.recommend(plan, asOf, simOpts({ fundingSources: plan.funding && plan.funding.options }));
   const fundingPlan = advice.funding || null;
-  const fundingSource = fundingPlan && fundingPlan.parts.length === 1 ? fundingPlan.parts[0] : null;
   const recommended = advice.weekly;
   const weekly = state.weeklyVariable != null ? state.weeklyVariable : recommended;
   // The plan being drawn is the recovery path: gap covered, spending from the
@@ -427,10 +426,6 @@ function renderPlan(d, periods) {
   const sim = weekly === recommended ? advice.sim
     : Forecast.simulate(plan, asOf, Object.assign({}, advice.simOptions, { weeklyVariable: weekly }));
   const gap = advice.gap;                 // null when there is no opening gap
-  // Whether the assumed source is borrowed money. If it is, the debt side of
-  // the projection already carries the draw and there is no cheaper path left
-  // to contrast it against.
-  const fundingIsDraw = !!(fundingPlan && fundingPlan.borrowed > 0);
   const zeroSim = advice.zero;            // the unfunded window — the problem
   const fundingGap = gap ? gap.amount : 0;
 
@@ -534,6 +529,17 @@ function renderPlan(d, periods) {
     Object.assign({}, advice.simOptions, { weeklyVariable: weekly,
       extraFacilities: d.revolvingExtra,
       extraDebtTarget: plan.nextDollar && plan.nextDollar.target }));
+
+  // The alternative assumptions, decided and evaluated by the engine. This page
+  // used to build both: a funding source holding `available: Infinity` for "if
+  // the gap were covered", and `fundingDebtId: 'heloc'` plus its own second
+  // `recommend` and `projectDebts` for the HELOC fallback. It now asks once and
+  // renders what comes back. It does not choose a source, name a facility,
+  // restate the scenario, or decide whether either answer is worth showing.
+  const alternatives = Forecast.counterfactuals(plan, asOf, advice, debtProj, {
+    debts: d.debts, extraFacilities: d.revolvingExtra, weekly });
+  const ifCovered = alternatives.fullGapCoverage;
+
   const cashOn = date => {
     const p = sim.daily.find(x => x.date === date);
     return p ? p.balance : plan.startingCash.amount;
@@ -632,18 +638,12 @@ function renderPlan(d, periods) {
   // The condition attached to the weekly cap, written ONCE. It appeared on
   // both the Today tile and the cap headline, and fixing the headline alone
   // left the tile describing a simulation that was not the one it showed.
-  const capIfCovered = status.id === 'unfunded'
-    ? Forecast.recommend(plan, asOf, simOpts({
-        fundingSources: [{ id: 'hypothetical', label: 'full coverage', short: 'full coverage',
-          available: Infinity, debtId: null, rank: 0 }],
-      })).weekly
-    : null;
   const capQualifier = !gap
     ? 'under the expected scenario'
-    : status.id === 'unfunded'
+    : ifCovered.applies
       ? `from ${fmtDateLong(advice.effectiveFrom)}, with only `
-        + `${money(fundingGap - fundingPlan.shortfall)} of the ${money(fundingGap)} gap fundable. `
-        + `Cover the whole gap and it becomes ${money(capIfCovered)}/week`
+        + `${money(ifCovered.fundable)} of the ${money(ifCovered.gapAmount)} gap fundable. `
+        + `Cover the whole gap and it becomes ${money(ifCovered.weekly)}/week`
       : `from ${fmtDateLong(advice.effectiveFrom)}, once the ${money(fundingGap)} gap is covered`;
 
   /* ---- the numbers that matter today ---- */
@@ -864,20 +864,18 @@ function renderPlan(d, periods) {
                earlier than assumed, the weekly cap falls.` });
   }
   if (helocBreach) {
-    const drawOption = ((plan.funding || {}).options || []).find(o => o.debtId === 'heloc' && !o.unusable);
-    let alt = '';
-    if (drawOption && gap && !fundingIsDraw) {
-      // What the fallback would actually cost, run through the same engine
-      // rather than asserted — if the numbers move, this sentence moves.
-      const drawn = Forecast.projectDebts(plan, d.debts, asOf, Object.assign({},
-        Forecast.recommend(plan, asOf, simOpts({ fundingDebtId: 'heloc' })).simOptions,
-        { weeklyVariable: weekly }));
-      const drawnCross = (drawn.crossings || []).find(c => c.id === 'heloc' && !c.alreadyOver);
-      if (drawnCross) {
-        alt = ` Covering the opening gap from it instead of ${fundingSource ? fundingSource.short : 'her account'}
-                brings that crossing forward to <b>${fmtDateLong(drawnCross.date)}</b>.`;
-      }
-    }
+    // The engine decided whether funding the gap from this facility instead is
+    // a real alternative and what it would cost. This page looks up the answer
+    // for the facility it is already talking about — by the id the engine gave
+    // it — and puts the result into words. It selects no source, runs no second
+    // scenario, and judges nothing: when the alternative does not apply there
+    // is simply no sentence, whatever the reason was.
+    const drawAlt = alternatives.gapFundingAlternatives
+      .find(a => a.debtId === helocBreach.id) || null;
+    const alt = drawAlt && drawAlt.applies
+      ? ` Covering the opening gap from it instead of ${drawAlt.displaces.join(' and ')}
+          brings that crossing forward to <b>${fmtDateLong(drawAlt.alternateCrossing.date)}</b>.`
+      : '';
     const helocDrawn = fundingPlan
       ? fundingPlan.parts.filter(p => p.debtId === 'heloc').reduce((a, p) => a + p.amount, 0) : 0;
     risks.push({ what: helocDrawn > 0

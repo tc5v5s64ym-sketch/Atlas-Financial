@@ -435,6 +435,20 @@
     const buffer = base.targetBuffer != null ? base.targetBuffer : (plan.defaults.targetBuffer || 0);
     base.targetBuffer = buffer;
 
+    // The planning assumptions this answer was reached under — scenario, target
+    // buffer, income overrides, disabled commitments, debt records, extra-debt
+    // settings, declared funding sources — recorded before anything derived is
+    // added to them. `simOptions` is the RECOVERY run: it carries the gap
+    // injections, `variableFrom`, `measureFrom` and the absorption caps, so
+    // feeding it back into `recommend` would fund the gap twice.
+    //
+    // A counterfactual asks "what if ONE of these were different". Copying this
+    // record and replacing one key is what makes the other assumptions
+    // propagate by construction rather than by a caller remembering to pass
+    // them — which is exactly what a page cannot be trusted to do, and what
+    // `Forecast.counterfactuals` reads.
+    const planOptions = Object.assign({}, base);
+
     // An extra debt payment cannot be larger than the debt available to receive
     // it. Ask the debt projection what each one actually absorbs and spend that,
     // so a payment big enough to clear everything stops instead of draining
@@ -604,6 +618,9 @@
         // The options behind `sim`, so a caller overriding the weekly figure
         // re-simulates under the same assumptions instead of inventing its own.
         simOptions: simOptions,
+        // The assumptions the household actually set, without the recovery the
+        // engine derived from them. See where it is built, above.
+        planOptions: planOptions,
         // Where the plan is tightest at the recommended level — the day that
         // stops the number being any larger.
         binding: next.min,
@@ -651,6 +668,194 @@
       buffer: noIncome.buffer,
       breachesWithout: !!firstShort,
       endingWithout: noIncome.ending,
+    };
+  }
+
+  /* --------------------------------------------- alternative gap assumptions */
+  // "What if the gap were covered differently?" — asked and answered here.
+  //
+  // `public/plan.js` used to compose both of these itself. It invented a
+  // funding source holding `available: Infinity` and re-ran `recommend` to
+  // publish "cover the whole gap and it becomes $X/week"; and inside the risk
+  // list it chose `fundingDebtId: 'heloc'`, re-ran `recommend` and
+  // `projectDebts`, found the resulting crossing and published the date. The
+  // arithmetic was always the engine's. What lived in the page was the part
+  // that decides: WHICH alternative is worth running, WHAT assumption stands
+  // for it, under WHICH scenario, and WHETHER the answer means anything.
+  //
+  // Two rules make this a coordinator rather than a second scenario engine:
+  //
+  //   ONE AUTHORITY   every figure comes back through `recommend` and
+  //                   `projectDebts`. Nothing is re-derived here.
+  //   ONE VARIABLE    each alternative copies `advice.planOptions` verbatim and
+  //                   replaces exactly one key, `fundingSources`. The scenario,
+  //                   target buffer, income overrides, disabled commitments,
+  //                   debt records and extra-debt settings cannot drift from
+  //                   the plan on screen, because they are never restated.
+  //
+  // The assumptions are finite and sourced. Infinite money is not a financial
+  // model: it silently replaced the real allocation with an external one, so
+  // the "if it were covered" answer quietly dropped the HELOC draw the actual
+  // plan makes. Full coverage is instead exactly the shortfall, from outside
+  // the declared sources, added to the allocation that already exists.
+  function counterfactuals(plan, asOf, advice, debtProj, opts) {
+    opts = opts || {};
+    // Both alternatives are measured against a real answer and a real debt
+    // walk. Assuming either would publish a comparison against nothing.
+    if (!advice || !advice.planOptions) {
+      throw new Error('counterfactuals requires a recommend() result');
+    }
+    if (!debtProj) {
+      throw new Error('counterfactuals requires the debt projection being shown');
+    }
+
+    const base = advice.planOptions;
+    const gap = advice.gap || null;
+    const funding = advice.funding || null;
+    const debts = opts.debts != null ? opts.debts : base.debts;
+    // The weekly figure actually on screen, so the alternative debt walk is
+    // comparable with the one beside it rather than with the recommendation.
+    const weekly = opts.weekly != null ? opts.weekly : advice.weekly;
+    const declared = (base.fundingSources || []).slice();
+
+    // The one variable. Everything else is inherited.
+    const withFunding = sources =>
+      recommend(plan, asOf, Object.assign({}, base, { fundingSources: sources }));
+
+    /* ---- if the whole opening gap were covered ---- */
+    function fullGapCoverage() {
+      const out = { id: 'fullGapCoverage' };
+      // Nothing to cover. Publishing "if it were covered" against no gap
+      // describes a problem the household does not have.
+      if (!gap || !funding) return Object.assign(out, { applies: false, reason: 'noOpeningGap' });
+      // The declared sources already reach it, so the alternative and the plan
+      // are the same plan. This is the condition the page expressed as the
+      // `unfunded` status verdict; it is the funding result either way.
+      if (funding.feasible) {
+        return Object.assign(out, { applies: false, reason: 'gapAlreadyFundable' });
+      }
+
+      // Exactly the part no declared source can reach, found outside them, as
+      // money rather than as borrowing — the assumption is that the household
+      // is given or releases the missing amount, not that it takes on more
+      // debt. Ranked last, so it receives only what the real allocation leaves
+      // and every real source keeps the part it was already given.
+      const topUp = funding.shortfall;
+      const lastRank = declared.reduce((r, o) => Math.max(r, o.rank || 0), 0);
+      const alt = withFunding(declared.concat([{
+        id: 'externalCoverage',
+        label: 'Money found outside the declared sources',
+        short: 'money found outside these accounts',
+        available: topUp, debtId: null, rank: lastRank + 1,
+      }]));
+      const altFunding = alt.funding || { borrowed: 0, allocated: 0, feasible: true };
+
+      return Object.assign(out, {
+        applies: true,
+        gapAmount: gap.amount,
+        // What the declared sources do reach, which is the allocation itself
+        // rather than a subtraction done somewhere else.
+        fundable: funding.allocated,
+        shortfall: topUp,
+        // What the assumption supplies, stated so it can be checked against
+        // the shortfall rather than taken on trust.
+        externalTopUp: topUp,
+        weekly: alt.weekly,
+        effectiveFrom: alt.effectiveFrom,
+        // The alternative's borrowing, and the borrowing the ASSUMPTION adds.
+        // The second is zero by construction: external coverage carries no
+        // debt id and cannot displace a source ranked above it.
+        borrowed: altFunding.borrowed,
+        addsBorrowing: altFunding.borrowed - funding.borrowed,
+      });
+    }
+
+    /* ---- if a credit facility funded the gap instead ---- */
+    // WHICH facilities can be asked this is derived from the canonical funding
+    // options: a usable option that names a debt record is a facility the
+    // household could draw the gap from. No id is chosen here, and none is
+    // chosen in a page.
+    function gapFundingAlternatives() {
+      return declared
+        .filter(o => !o.unusable && o.debtId && o.available > 0)
+        .sort((a, b) => (a.rank || 0) - (b.rank || 0))
+        .map(alternativeFor);
+    }
+
+    function alternativeFor(option) {
+      const out = { id: 'gapFunding:' + option.id, sourceId: option.id,
+        debtId: option.debtId, short: option.short || option.label };
+      const no = (reason, extra) =>
+        Object.assign(out, { applies: false, reason }, extra || {});
+
+      if (!gap || !funding) return no('noOpeningGap');
+      // The plan already draws on this facility to cover the gap, so the debt
+      // lines on screen already carry the draw and there is no cheaper path
+      // left to contrast it against. Measured per facility rather than as "any
+      // borrowing at all", because another facility's draw says nothing about
+      // this one.
+      if (funding.parts.some(p => p.debtId === option.debtId)) return no('alreadyFunded');
+
+      const current = (debtProj.crossings || [])
+        .find(c => c.id === option.debtId && !c.alreadyOver) || null;
+      // No limit crossing to move. The alternative may still be worse, but
+      // "brings the crossing forward" is not a thing that can be said about it.
+      if (!current) return no('noCurrentCrossing');
+      const currentCrossing = { date: current.date, day: current.day };
+
+      // The facility funds the gap through its own declared headroom, so an
+      // alternative it cannot actually supply is reported as one, not priced.
+      // The page used to pass `fundingDebtId` with no sources at all, which
+      // took the engine's unattributed-injection fallback and drew the WHOLE
+      // gap on the facility however little it held: at a $1,500 buffer the
+      // funding card read "Not enough — $975.32 short of the $2,043.16 needed"
+      // directly above a risk line pricing a $2,043.16 draw on that same
+      // facility, and the crossing date it published was manufactured by the
+      // overdraw.
+      const alt = withFunding([option]);
+      const altFunding = alt.funding || null;
+      if (!altFunding || !altFunding.feasible) {
+        return no('sourceCannotCoverGap', {
+          currentCrossing, gapAmount: gap.amount, available: option.available,
+          shortBy: Math.max(0, gap.amount - option.available),
+        });
+      }
+
+      const draw = altFunding.parts
+        .filter(p => p.debtId === option.debtId).reduce((s, p) => s + p.amount, 0);
+      // The same debt walk the page shows, under the same weekly figure and the
+      // same facilities — only the funding assumption differs. Walked once, so
+      // the draw appears in the projection exactly where the injection put it.
+      const moved = projectDebts(plan, debts, asOf, Object.assign({}, alt.simOptions, {
+        weeklyVariable: weekly,
+        extraFacilities: opts.extraFacilities,
+        extraDebtTarget: base.extraDebtTarget,
+      }));
+      const crossing = (moved.crossings || [])
+        .find(c => c.id === option.debtId && !c.alreadyOver) || null;
+      // Borrowing on a facility can only bring its own crossing nearer or leave
+      // it where it is. If it does not move it, there is no alternative date to
+      // publish, and naming the same day as though it were news would be one.
+      if (!crossing || !(crossing.date < current.date)) {
+        return no('noEarlierCrossing', { currentCrossing, draw });
+      }
+
+      return Object.assign(out, {
+        applies: true,
+        draw,
+        currentCrossing,
+        alternateCrossing: { date: crossing.date, day: crossing.day },
+        daysEarlier: diffDays(crossing.date, current.date),
+        // What this alternative would be used INSTEAD of — the sources the real
+        // allocation uses today. The page named "her account" in a fallback
+        // string; which source is displaced is a fact about the allocation.
+        displaces: funding.parts.map(p => p.short),
+      });
+    }
+
+    return {
+      fullGapCoverage: fullGapCoverage(),
+      gapFundingAlternatives: gapFundingAlternatives(),
     };
   }
 
@@ -1864,7 +2069,8 @@
   }
 
   const Forecast = { addDays, diffDays, occurrences, expandEvents, simulate,
-    recommendWeekly, recommend, incomeDeadline, budgetBreakdown, monthlyFromWeekly,
+    recommendWeekly, recommend, incomeDeadline, counterfactuals,
+    budgetBreakdown, monthlyFromWeekly,
     projectDebts,
     nextDue, planStatus, mission, utilisation, renewal, payoffDebts, payoffModel,
     paymentForMonths, EPSILON, STEP };

@@ -239,6 +239,13 @@ for (const x of data.debts) {
 console.log('\n=== the page does not contradict itself ===');
 // Three ways it did, all found by exact-head review of a84b7e9.
 const planJs2 = read('public/plan.js');
+// The same source with comments removed, for the assertions that prove an
+// expression is GONE. A comment naming the defect it describes is the normal
+// way this repository records what moved and why — and a bare regex cannot tell
+// that record apart from the code it replaced, so it reports the page as still
+// doing the thing the comment says it stopped doing. The page carries no `//`
+// inside a string or template literal, which is what makes this safe.
+const planJs2Code = planJs2.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
 
 // 1. A funding source was chosen on `unusable` alone, so raising the buffer
 //    knob past a source's balance still credited the full amount as a
@@ -314,10 +321,16 @@ ok(/const consumer = today\.consumer/.test(planJs2),
 
 // 4. Borrowing status was read from the single-source case, so a two-part
 //    allocation containing an $851.31 HELOC draw reported "creates no debt".
-ok(/fundingPlan && fundingPlan\.borrowed > 0/.test(planJs2),
+//    The only thing that judgement still gated was whether to offer a facility
+//    as an alternative funder, and that moved into `Forecast.counterfactuals`
+//    with the alternative itself. It is now asked per facility against the
+//    whole allocation — a stricter reading of the same rule, since another
+//    facility's draw says nothing about this one. `test-counterfactuals.js`
+//    proves it bites; this only holds the page out of the decision.
+ok(/funding\.parts\.some\(p => p\.debtId === option\.debtId\)/.test(forecastCode),
   'borrowing status comes from the whole allocation, not just a lone source');
-ok(!/fundingIsDraw = !!\(fundingSource && fundingSource\.debtId\)/.test(planJs2),
-  'the single-source-only test is gone');
+ok(!/fundingIsDraw/.test(planJs2Code),
+  'and the page no longer decides it at all');
 
 // 5. The Next move card promised a restored buffer even when the gap cannot be
 //    fully funded and the window stays below it. The condition it is gated on
@@ -370,8 +383,12 @@ ok(!/'the top-ranked source'/.test(planJs2),
 ok(/helocDrawn > 0/.test(planJs2),
   'the HELOC risk says whether THIS plan draws on it');
 // The cap qualifier attached one simulation's condition to another's answer.
-ok(/capIfCovered/.test(planJs2),
+// The separate full-coverage evaluation belongs to `Forecast.counterfactuals`
+// now; the page reads its result and composes no second scenario.
+ok(/ifCovered\.applies/.test(planJs2) && /ifCovered\.weekly/.test(planJs2),
   'a partly-funded cap reports what full coverage would allow, separately');
+ok(!/available: Infinity/.test(planJs2Code),
+  'and no longer invents an infinite funding source to get it');
 // Written once. The same sentence on the tile and the headline meant fixing
 // one and leaving the other describing a different simulation.
 ok((planJs2.match(/once the \$\{money\(fundingGap\)\} gap is covered/g) || []).length === 1,
