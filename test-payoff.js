@@ -15,10 +15,17 @@
  *   0. THE CONVENTION, per debt type, against evidence from outside this code.
  *      A rate is meaningless without the convention it is charged under, and the
  *      page applied ONE to every debt: `annual × 30 / 365`, which charges twelve
- *      30-day months — 360 days — for every 365 that pass. The card convention
- *      is re-derived here from the five statement cycles reconciled in
- *      `docs/ACCOUNT_FACTS.md`, and the prime-linked one against TD's own stated
- *      remaining amortisation on this household's mortgage.
+ *      30-day months — 360 days — for every 365 that pass. The prime-linked
+ *      convention is checked against TD's own stated remaining amortisation on
+ *      this household's mortgage.
+ *   0a. AND HOW CLOSELY IT IS MODELLED, which is a separate question the first
+ *      draft of this file ran together with the first. A card charges a daily
+ *      rate over the days in each statement cycle; a monthly model prices the
+ *      AVERAGE cycle. That is exact over a year, because consecutive cycles tile
+ *      the calendar by construction, and approximate for any single period. It
+ *      is benchmarked against the published TD/MBNA 30-day form, bounded across
+ *      28-to-32-day cycles, and the multi-period effect is measured by walking a
+ *      real varying-cycle schedule from every possible starting month.
  *   1. HAND-COMPUTED CASES. Balances small enough to walk on paper, with the
  *      expected figures written as literals.
  *   2. INDEPENDENT DERIVATION. Every projection is confirmed a second time by
@@ -127,29 +134,122 @@ const tiled = CYCLES.reduce((s, c) => s + c.days, 0);
 ok(tiled === asDay(CYCLES[4].close) - asDay(CYCLES[0].opens) + 1 && tiled === 151,
   'so five cycles cover 151 days with no gap and no overlap', String(tiled));
 
-/* Which settles the year. Cycles tile it, so twelve of them are 365 charged
- * days, the year's interest is the whole annual rate, and the AVERAGE cycle is
- * 365/12 = 30.44 days — not 30. */
+/* Which settles the YEAR, and only the year. Cycles tile it, so twelve of them
+ * are 365 charged days and the year's interest is the whole annual rate.
+ *
+ * The tiling is STRUCTURAL, not an average of the five above: a cycle opens the
+ * day after the last one closes, so consecutive cycles span the calendar
+ * whatever the individual lengths are. The five reconciled cycles demonstrate
+ * the property; they do not establish it, and an earlier draft of this file
+ * leaned on them as though they did. Cycles close on a fixed day of the month,
+ * so their lengths are the calendar's. */
+const MONTH_DAYS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+ok(MONTH_DAYS.reduce((s, d) => s + d, 0) === 365,
+  'twelve consecutive cycles span 365 days because they tile the calendar',
+  String(MONTH_DAYS.reduce((s, d) => s + d, 0)));
+
 const CARD = F.payoffDebts({ obligations: [] },
   [{ id: 'c', label: 'c', balance: 10000, rate: 26.99, rateConvention: 'card' }])[0];
 ok(near(CARD.monthlyRate * 12, 0.2699, 1e-12),
-  'twelve card periods charge the full annual rate, not 360/365 of it',
+  'so twelve card periods charge the full annual rate, not 360/365 of it',
   (CARD.monthlyRate * 12 * 100).toFixed(4) + '%');
 ok(near(CARD.monthlyRate, 0.2699 / 365 * (365 / 12), 1e-15),
-  'because one period is the daily rate over the days an average cycle runs');
+  'because one period is the daily rate over the days an AVERAGE cycle runs');
 const OLD_CARD_RATE = 0.2699 * 30 / 365;
 ok(OLD_CARD_RATE < CARD.monthlyRate
   && near(OLD_CARD_RATE / CARD.monthlyRate, 360 / 365, 1e-12),
 'the page charged 360 days a year, which is 98.63% of what the card charges',
 `${(OLD_CARD_RATE / CARD.monthlyRate * 100).toFixed(2)}%`);
 
+// The real debt list, read once and shared from here down.
+const REAL = F.payoffDebts(data.plan, data.debts);
+const byId = Object.fromEntries(REAL.map(d => [d.id, d]));
+
+console.log('\n=== 0a. the card rate is an AVERAGE, and says so ===');
+
+/* Raised as a blocking finding by the required review on `6707f7e`, and it was
+ * right: a monthly period is not a card's charging period, and an earlier draft
+ * of this engine claimed it was. A card charges `annual/365 x the days in THIS
+ * cycle`, and this model does not know which cycle is next. It prices the
+ * average one — exact over a year, approximate for any single period — and the
+ * page now publishes the band rather than the point alone.
+ *
+ * The benchmark is the reviewer's own, and it is the published TD/MBNA form:
+ * the daily rate over an actual 30-day cycle. Written as a literal. */
+ok(near(1000 * 0.2199 * 30 / 365, 18.0740, 0.0001),
+  'a 30-day cycle on $1,000 at 21.99% charges $18.07 — the published daily-rate form',
+  (1000 * 0.2199 * 30 / 365).toFixed(4));
+ok(near(1000 * 0.2199 / 12, 18.3250, 0.0001),
+  'and the monthly-equivalent this model uses charges $18.33 for that same period',
+  (1000 * 0.2199 / 12).toFixed(4));
+ok(near((0.2199 / 12) / (0.2199 * 30 / 365), 1.0139, 0.0001),
+  'so against a 30-day cycle it runs 1.39% high — an approximation, not the convention',
+  (((0.2199 / 12) / (0.2199 * 30 / 365) - 1) * 100).toFixed(2) + '%');
+
+/* The full single-period band, at the extremes a real cycle reaches. Literals,
+ * and the engine has to publish the same two numbers. */
+const BAND_CASES = [[28, 16.8690, 8.63], [29, 17.4715, 4.89], [30, 18.0740, 1.39],
+  [31, 18.6764, -1.88], [32, 19.2789, -4.95]];
+for (const [days, exact, offPct] of BAND_CASES) {
+  ok(near(1000 * 0.2199 * days / 365, exact, 0.0001)
+    && near(((0.2199 / 12) / (0.2199 * days / 365) - 1) * 100, offPct, 0.01),
+  `  a ${days}-day cycle charges ${money(exact)}, and the monthly figure is ${offPct > 0 ? '+' : ''}${offPct}% against it`);
+}
+const banded = byId.triangle;
+ok(banded.precision === 'monthly-equivalent' && !!banded.interestOnlyBand,
+  'a card debt declares its rate an approximation and carries a band');
+ok(byId.mortgage.precision === 'exact' && byId.mortgage.interestOnlyBand === null
+  && byId.heloc.precision === 'exact' && byId.heloc.interestOnlyBand === null,
+'a prime-linked facility is charged monthly for real, so it carries none');
+ok(near(banded.interestOnlyBand.low, 13497 * 0.2199 * 28 / 365)
+  && near(banded.interestOnlyBand.high, 13497 * 0.2199 * 32 / 365),
+'the published band is the daily rate over the shortest and longest real cycle',
+`${money(banded.interestOnlyBand.low)} – ${money(banded.interestOnlyBand.high)}`);
+ok(banded.interestOnlyBand.low < banded.interestOnly
+  && banded.interestOnly < banded.interestOnlyBand.high,
+'and the figure the page leads with sits inside its own band');
+
+/* What that uncertainty does to the MULTI-period figures, which is the reviewer's
+ * other question and a different answer. Cycle length redistributes interest
+ * between periods rather than accumulating, because the cycles tile the year —
+ * so this walks a REAL varying-cycle schedule (charge `annual/365 x this
+ * month's days`, take the payment, repeat) against the level-monthly model,
+ * from every one of the twelve possible starting months, and bounds the worst
+ * case. Nothing here uses the engine's method. */
+function walkVaryingCycles(balance, annualPct, payment, startMonth) {
+  let b = balance, interest = 0, periods = 0, k = startMonth;
+  while (b > 0) {
+    const charge = b * (annualPct / 100) / 365 * MONTH_DAYS[k % 12];
+    if (payment <= charge) return { months: Infinity, interest: Infinity };
+    interest += charge; b += charge;
+    if (b <= payment) { periods += b / payment; b = 0; break; }
+    b -= payment; periods += 1; k += 1;
+    if (periods > 6000) return { months: Infinity, interest: Infinity };
+  }
+  return { months: periods, interest };
+}
+let worstMonths = 0, worstInterestPct = 0;
+for (const payment of [253.57, 300, 400, 600, 1000]) {
+  const level = F.payoffModel(byId.triangle, payment);
+  for (let start = 0; start < 12; start++) {
+    const varied = walkVaryingCycles(13497, 21.99, payment, start);
+    worstMonths = Math.max(worstMonths, Math.abs(varied.months - level.months));
+    worstInterestPct = Math.max(worstInterestPct,
+      Math.abs(varied.interest - level.totalInterest) / level.totalInterest * 100);
+  }
+}
+ok(worstMonths < 1.9 && worstInterestPct < 1.3,
+  'across every starting month and five payments, varying cycles move the payoff by under 1.9 months and 1.3% of interest',
+  `${worstMonths.toFixed(2)} months, ${worstInterestPct.toFixed(2)}%`);
+ok(worstMonths > 0.001,
+  'and it is a real deviation, not zero — the approximation is bounded, not absent',
+  worstMonths.toFixed(3) + ' months');
+
 /* PRIME-LINKED FACILITIES. The mortgage and the HELOC are quoted compounded
  * monthly, which is `RATE_BASIS.variable` — the same table the renewal prices a
  * variable quote on. Reused rather than restated, so a correction to one is a
  * correction to both; the check is that they are the same function, and the
  * benchmark is TD's own figure for this household's mortgage. */
-const REAL = F.payoffDebts(data.plan, data.debts);
-const byId = Object.fromEntries(REAL.map(d => [d.id, d]));
 ok(near(byId.mortgage.monthlyRate, 0.0364 / 12, 1e-15)
   && near(byId.heloc.monthlyRate, 0.049 / 12, 1e-15),
 'a prime-linked facility is priced compounded monthly');
@@ -551,6 +651,18 @@ const MUTATIONS = [
         && !(atMinimum.totalInterest - here.totalInterest <= EPSILON)`,
     differs: m => m.payoffModel(realById(m).travelvisa, 200).versusMinimum !== null },
 
+  { label: 'claiming the card rate IS the convention hides that it is an average',
+    from: '  const PAYOFF_BASIS_PRECISION = { card: \'monthly-equivalent\', variable: \'exact\' };',
+    to: '  const PAYOFF_BASIS_PRECISION = { card: \'exact\', variable: \'exact\' };',
+    differs: m => realById(m).triangle.interestOnlyBand === null
+      || realById(m).triangle.precision !== 'monthly-equivalent' },
+
+  { label: 'collapsing the cycle range to a point publishes a certainty the model does not have',
+    from: '  const CARD_CYCLE_DAYS_RANGE = { min: 28, max: 32 };',
+    to: '  const CARD_CYCLE_DAYS_RANGE = { min: 30, max: 30 };',
+    differs: m => realById(m).triangle.interestOnlyBand.low
+      === realById(m).triangle.interestOnlyBand.high },
+
   { label: 'dropping the minimum\'s confidence publishes an estimate as a settled fact',
     from: `    const confidence = counted.length
       ? (counted.every(o => o.confidence === 'confirmed') ? 'confirmed' : 'estimated')
@@ -763,6 +875,8 @@ const grab = (src, re, what) => {
 const MAPS = [
   grab(modellersSrc, /^const PAYOFF_PRESET_LABEL = \{[\s\S]*?^\};$/m, 'the preset label map'),
   grab(modellersSrc, /^const PAYOFF_CONVENTION_NOTE = \{[\s\S]*?^\};$/m, 'the convention note map'),
+  grab(modellersSrc, /^const PAYOFF_PRECISION_NOTE = \{[\s\S]*?^\};$/m, 'the precision note map'),
+  grab(modellersSrc, /^const PAYOFF_MONTH1_LABEL = \{[\s\S]*?^\};$/m, 'the month-1 label map'),
   grab(modellersSrc, /^const PAYOFF_MINIMUM_CONFIDENCE = \{[\s\S]*?^\};$/m, 'the minimum confidence map'),
   grab(modellersSrc, /^const PAYOFF_VERSUS_MINIMUM = .*$/m, 'the versus-minimum wording'),
   grab(modellersSrc, /^const PAYOFF_MINIMUM_NOTE = \{[\s\S]*?^\};$/m, 'the minimum note map'),
@@ -770,8 +884,26 @@ const MAPS = [
 const wording = {};
 vm.runInNewContext(MAPS + '\nout.preset = PAYOFF_PRESET_LABEL;'
   + 'out.convention = PAYOFF_CONVENTION_NOTE; out.minimum = PAYOFF_MINIMUM_NOTE;'
-  + 'out.confidence = PAYOFF_MINIMUM_CONFIDENCE; out.versus = PAYOFF_VERSUS_MINIMUM;',
+  + 'out.confidence = PAYOFF_MINIMUM_CONFIDENCE; out.versus = PAYOFF_VERSUS_MINIMUM;'
+  + 'out.precision = PAYOFF_PRECISION_NOTE; out.month1 = PAYOFF_MONTH1_LABEL;',
 { out: wording, money2: n => String(n) });
+
+/* The precision wording, which is what stops an averaged figure reading as an
+ * exact one. Both ids the engine can return need it, and neither may be stale. */
+const precisionIds = [...new Set(REAL.map(d => d.precision))].sort();
+ok(precisionIds.join() === 'exact,monthly-equivalent',
+  'the engine publishes exactly two precisions', precisionIds.join(', '));
+ok(precisionIds.every(id => typeof wording.precision[id] === 'function'
+  && typeof wording.month1[id] === 'string'),
+'both have wording on the context line and on the month-1 row');
+ok(Object.keys(wording.precision).sort().join() === 'exact,monthly-equivalent'
+  && Object.keys(wording.month1).sort().join() === 'exact,monthly-equivalent',
+'and neither map carries wording the engine cannot reach');
+ok(wording.precision.exact(byId.mortgage) === ''
+  && /average/i.test(wording.precision['monthly-equivalent'](byId.triangle))
+  && /average cycle/i.test(wording.month1['monthly-equivalent'])
+  && !/average/i.test(wording.month1.exact),
+'an averaged figure is marked as averaged, and an exact one is not marked at all');
 
 /* The confidence wording is reached only where there IS a figure to tag, so
  * `null` must never get there — it would render `undefined` mid-sentence. The
@@ -871,6 +1003,12 @@ function renderPage() {
   return { els, get, sandbox };
 }
 
+/* The page's OWN money formatter, lifted from `public/app.js` rather than
+ * reimplemented, so a check on what the household reads is built with the same
+ * function the browser uses. A lookalike would prove the lookalike. */
+const money2Page = vm.runInNewContext(
+  `${/^const money2 = .*$/m.exec(read('public/app.js'))[0]}\nmoney2;`);
+
 const page = renderPage();
 // `App.boot()` renders from a promise chain, so the assertions wait for the
 // microtask queue to drain the way the browser's first paint does.
@@ -909,6 +1047,15 @@ setTimeout(() => {
   ok(/estimated/.test(context.textContent) && /\$253\.57/.test(context.textContent),
     'the estimated minimum is marked as estimated where it is stated',
     context.textContent.slice(context.textContent.indexOf('The minimum')));
+  // The averaged first-period figure reaches the household with its band, and
+  // the row that carries it says which cycle it prices.
+  ok(context.textContent.includes(money2Page(opened.interestOnlyBand.low))
+    && context.textContent.includes(money2Page(opened.interestOnlyBand.high))
+    && /average statement cycle/.test(context.textContent),
+  'the first-period figure is published with the cycle band, not as a point',
+  `${money(opened.interestOnlyBand.low)} – ${money(opened.interestOnlyBand.high)}`);
+  ok(/average cycle/.test(out.innerHTML),
+    'and the month-1 row says it prices an average cycle');
   const generous = F.payoffModel(opened, opened.bounds.max);
   range.value = String(opened.bounds.max);
   range.fire('input');

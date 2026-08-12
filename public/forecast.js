@@ -1381,26 +1381,60 @@
   //      `monthlyCashFor` — the same annualised cash obligation the renewal
   //      compares against.
 
-  // The MONTHLY periodic rate each supported kind of debt actually carries.
-  // A rate means nothing without the convention it is charged under, and the
-  // conventions here are not the same fact arriving twice — they are two
-  // different products that happen to meet at the same number.
+  // The MONTHLY periodic rate each supported kind of debt carries — and, just as
+  // importantly, whether that rate is the convention EXACTLY or an average of
+  // it. A rate means nothing without the convention it is charged under, and a
+  // convention means nothing without saying how closely it is being modelled.
   //
-  //   CARD      A card quotes a DAILY rate, `annual / 365`. It is charged on the
-  //             average daily balance for every day of the billing cycle and
-  //             added to the balance at the cycle's end — TD's 2 July 2026
-  //             amendment says so explicitly, which is why it compounds monthly
-  //             rather than daily. Consecutive cycles TILE the calendar: the
-  //             five reconciled in `docs/ACCOUNT_FACTS.md` run 30, 29, 32, 29
-  //             and 31 days and cover 10 March to 7 August without a gap or an
-  //             overlap. So a year is 365 charged days, not 360, and the
-  //             average cycle is `365 / 12` of them.
-  //   VARIABLE  A prime-linked facility — the mortgage on TD Mortgage Prime
-  //             − 0.96%, the HELOC on TD Prime + 0.45% — is quoted compounded
-  //             monthly. This is `RATE_BASIS.variable`, deliberately reused
-  //             rather than restated: the renewal already prices a variable
-  //             quote and compounds the HELOC on it, and two copies of one
-  //             convention is how they would come to differ.
+  //   VARIABLE  EXACT. A prime-linked facility — the mortgage on TD Mortgage
+  //             Prime − 0.96%, the HELOC on TD Prime + 0.45% — is quoted
+  //             compounded monthly, so a monthly period IS the period the
+  //             lender charges on. This is `RATE_BASIS.variable`, deliberately
+  //             reused rather than restated: the renewal already prices a
+  //             variable quote and compounds the HELOC on it, and two copies of
+  //             one convention is how they would come to differ.
+  //
+  //   CARD      A MONTHLY-EQUIVALENT APPROXIMATION, and it is labelled as one
+  //             rather than dressed up as the real thing.
+  //
+  //             A card does not charge monthly. It quotes a DAILY rate,
+  //             `annual / 365`, charges it on the average daily balance for
+  //             every day of the statement cycle, and adds the result to the
+  //             balance at the cycle's end (TD's 2 July 2026 amendment says so
+  //             explicitly, which is why it compounds monthly rather than
+  //             daily). Cycles close on a fixed day of the month, so their
+  //             LENGTH follows the calendar — the five reconciled in
+  //             `docs/ACCOUNT_FACTS.md` run 30, 29, 32, 29 and 31 days, and
+  //             MBNA states outright that statement periods vary.
+  //
+  //             This model runs LEVEL MONTHLY periods, so it cannot price a
+  //             cycle it does not know the length of. It prices the AVERAGE
+  //             cycle, `365 / 12` days, which has two consequences that must
+  //             not be confused:
+  //
+  //               OVER A YEAR it is exact, because twelve consecutive cycles
+  //                 TILE the calendar — each opens the day after the last
+  //                 closes — so they span 365 days however the days fall, and
+  //                 a year's charge is the full annual rate. That is a property
+  //                 of how cycles are defined, not an average of observed ones.
+  //               FOR ANY SINGLE PERIOD it is approximate, by as much as
+  //                 `CARD_CYCLE_DAYS_RANGE` allows: +8.6% against a 28-day cycle
+  //                 and −5.0% against a 32-day one. The first-period interest
+  //                 this page publishes is exactly such a figure, so it is
+  //                 published with that band beside it rather than alone.
+  //
+  //             The multi-period figures inherit far less of that, because the
+  //             tiling means cycle-length variation redistributes interest
+  //             between periods instead of accumulating: `test-payoff.js` walks
+  //             a real varying-cycle schedule against this model from all twelve
+  //             possible starting months and bounds the worst case at 1.9 months
+  //             and 1.3% of total interest.
+  //
+  //             The alternative was `annual × 30 / 365`, which the page used
+  //             before this: that charges twelve 30-day months — 360 days — for
+  //             every 365 that pass, so it is not a different approximation but
+  //             a biased one, understating every year by 1.37% and compounding
+  //             that over a 17-year horizon.
   //
   // `RATE_BASIS` is NOT extended with a card entry. It is the renewal's table of
   // the two conventions a QUOTED MORTGAGE can arrive under, and `renewal`
@@ -1408,10 +1442,18 @@
   // renewal as a credit card" a valid request.
   const DAYS_IN_YEAR = 365;
   const CARD_CYCLE_DAYS = DAYS_IN_YEAR / PAYMENTS_PER_YEAR.monthly;
+  // The realistic envelope for one cycle: calendar months run 28 to 31 days, and
+  // an observed cycle in `docs/ACCOUNT_FACTS.md` ran 32. Used only to state how
+  // wide the first-period figure's uncertainty is — never to price anything.
+  const CARD_CYCLE_DAYS_RANGE = { min: 28, max: 32 };
   const PAYOFF_RATE_BASIS = {
     card: annualPct => (annualPct / 100 / DAYS_IN_YEAR) * CARD_CYCLE_DAYS,
     variable: annualPct => RATE_BASIS.variable(annualPct),
   };
+  // Whether the monthly rate above IS the charging convention, or an average of
+  // one. A figure priced under an approximation and presented as exact is the
+  // defect this field exists to prevent.
+  const PAYOFF_BASIS_PRECISION = { card: 'monthly-equivalent', variable: 'exact' };
 
   // The level payment that clears `debt` in exactly `months`. The page ran this
   // as `solveFor` to price its presets.
@@ -1471,9 +1513,22 @@
           // answered for a debt the household does not have.
           balance, posted: x.balance, pending: x.pending || 0,
           rate: x.rate, convention, monthlyRate,
+          // Whether `monthlyRate` is the convention or an average of it. The
+          // page has to say which; see `PAYOFF_BASIS_PRECISION`.
+          precision: PAYOFF_BASIS_PRECISION[convention],
           // The first period's interest, which is also the threshold a payment
           // has to beat for anything at all to be repaid.
           interestOnly: balance * monthlyRate,
+          // How wide that first-period figure really is. A card's next cycle is
+          // 28 to 32 days and this model does not know which, so the single
+          // charge it publishes carries a band; a facility that genuinely
+          // charges monthly has no band, and says so with `null` rather than a
+          // token one that would imply uncertainty it does not have.
+          interestOnlyBand: PAYOFF_BASIS_PRECISION[convention] === 'exact' ? null : {
+            low: balance * (x.rate / 100 / DAYS_IN_YEAR) * CARD_CYCLE_DAYS_RANGE.min,
+            high: balance * (x.rate / 100 / DAYS_IN_YEAR) * CARD_CYCLE_DAYS_RANGE.max,
+            minDays: CARD_CYCLE_DAYS_RANGE.min, maxDays: CARD_CYCLE_DAYS_RANGE.max,
+          },
           // Monthly-equivalent CASH the household already pays against it, and
           // how well that is known. Most of these minimums are a future
           // statement amount held at today's level, and the page has to say so

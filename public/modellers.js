@@ -24,8 +24,27 @@ const PAYOFF_PRESET_LABEL = {
 // A rate means nothing without the convention it is charged under, so the
 // modeller says which one this debt carries rather than leaving it implied.
 const PAYOFF_CONVENTION_NOTE = {
-  card: 'charged as a daily rate over every day of each billing cycle',
+  card: 'charged as a daily rate over the days in each statement cycle',
   variable: 'a prime-linked rate, quoted compounded monthly',
+};
+
+// ...and a convention means nothing without saying how closely it is modelled.
+// A card does not charge monthly, so a monthly model prices its AVERAGE cycle:
+// right over a year, approximate for any one month. Publishing that single
+// month's figure as though it were the real charge is the thing this refuses
+// to do — so it is published with the band the cycle length actually allows.
+const PAYOFF_PRECISION_NOTE = {
+  exact: () => '',
+  'monthly-equivalent': x => ` That monthly figure prices an average statement cycle: a real one runs `
+    + `${x.interestOnlyBand.minDays}–${x.interestOnlyBand.maxDays} days, which puts the first charge between `
+    + `${money2(x.interestOnlyBand.low)} and ${money2(x.interestOnlyBand.high)}. Over a full year the cycles `
+    + `add up either way, so the payoff time below moves far less than that band suggests.`,
+};
+// The month-1 row carries the same caveat where it applies, because that row is
+// the single-period figure the band is about.
+const PAYOFF_MONTH1_LABEL = {
+  exact: 'Of which interest, month 1',
+  'monthly-equivalent': 'Of which interest, month 1 (average cycle)',
 };
 
 // How well the minimum is known. Most of them are a future statement amount
@@ -180,7 +199,8 @@ function setupPayoff(d) {
     // data edit from being able to reach the DOM as HTML.
     $('model-context').textContent =
       `${x.label}: ${money2(x.balance)} at ${pct(x.rate)}, ${PAYOFF_CONVENTION_NOTE[x.convention]}. `
-      + `Interest alone runs about ${money(r.interestOnly)} a month, so anything below that makes the balance grow. `
+      + `Interest alone runs about ${money(r.interestOnly)} a month, so anything below that makes the balance grow.`
+      + `${PAYOFF_PRECISION_NOTE[x.precision](x)} `
       + `${x.structure}. ${PAYOFF_MINIMUM_NOTE[x.minimumId](x)}`
       + (x.unmodelled.length ? PAYOFF_MINIMUM_GAP(x) : '');
 
@@ -196,7 +216,7 @@ function setupPayoff(d) {
     out.innerHTML = `
       <div class="big">${fmtMonths(r.months)}</div>
       <div class="row"><span>Monthly payment</span><span>${money2(r.payment)}</span></div>
-      <div class="row"><span>Of which interest, month 1</span><span>${money2(r.interestOnly)}</span></div>
+      <div class="row"><span>${PAYOFF_MONTH1_LABEL[x.precision]}</span><span>${money2(r.interestOnly)}</span></div>
       <div class="row"><span>Total interest paid</span><span>${money2(r.totalInterest)}</span></div>
       <div class="row"><span>Total paid</span><span>${money2(r.totalPaid)}</span></div>
       ${r.versusMinimum ? `<p class="goodline">Saves ${money2(r.versusMinimum.interestSaved)} in interest versus paying ${PAYOFF_VERSUS_MINIMUM[x.minimumConfidence]} — and clears it ${fmtMonths(r.versusMinimum.monthsSooner)} sooner.</p>` : ''}`;

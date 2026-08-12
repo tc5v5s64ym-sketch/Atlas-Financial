@@ -276,7 +276,7 @@ the same question — and it still carries one, noted under the table.
 | The next move the household is told to make | `plan.actions` in `data.json`, rendered from `plan.actions[0]` by `public/plan.js` |
 | Where the next surplus dollar goes | `plan.nextDollar` in `data.json`; its `target` feeds `Forecast.projectDebts` |
 | Payoff modelling — which debts may be modelled, what a payment does to one, and what clears it | `Forecast.payoffDebts`, `Forecast.payoffModel` and `Forecast.paymentForMonths`, from the debt records and `plan.obligations`; `public/modellers.js` holds the wording only |
-| Debt rate conventions — what a debt's quoted rate means per period | `PAYOFF_RATE_BASIS` in `public/forecast.js`, from each debt record's `rateConvention`: a card is a daily rate over the days in its billing cycle, a prime-linked facility is compounded monthly. An undeclared convention throws |
+| Debt rate conventions — what a debt's quoted rate means per period, and how closely a monthly model reproduces it | `PAYOFF_RATE_BASIS` and `PAYOFF_BASIS_PRECISION` in `public/forecast.js`, from each debt record's `rateConvention`. A prime-linked facility is compounded monthly, so a monthly period is **exact**. A card charges a daily rate over the days in each statement cycle, so a monthly period is a **monthly-equivalent** average: exact over a year, and published with the cycle band for any single period. An undeclared convention throws |
 | What one debt costs the household in cash each month | `monthlyCashFor` in `public/forecast.js`, from `plan.obligations`; read by both `Forecast.renewal` and the payoff modeller |
 | Historical spending series | generated `public/periods.json`, from `scripts/periods.js` |
 | Published figures | `data.json` |

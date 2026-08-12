@@ -294,15 +294,29 @@ empty list of *found* instances is not a finding of none.
 
   1. **One interest convention was applied to every debt, and it was nobody's.**
      The page priced every balance at `annual × 30 / 365` — twelve 30-day months,
-     so 360 charged days for every 365 that pass. The card convention is
-     re-derived from the five statement cycles already reconciled in
-     `docs/ACCOUNT_FACTS.md`: they run 30, 29, 32, 29 and 31 days and tile
-     10 March to 7 August with no gap, so a year is 365 charged days and a
-     period is `annual / 12`. The page charged 98.63% of that. A prime-linked
-     facility is quoted compounded monthly, which is `RATE_BASIS.variable`,
-     reused rather than restated. Each debt record now declares its
-     `rateConvention`; an undeclared one throws rather than being guessed, and an
-     invariant keeps that throw unreachable on the published data.
+     so 360 charged days for every 365 that pass, understating every year by
+     1.37% and compounding that over a 17-year horizon. A prime-linked facility
+     is quoted compounded monthly, which is `RATE_BASIS.variable`, reused rather
+     than restated. A card is not: it charges a daily rate over the days in each
+     statement cycle, and cycles vary with the calendar. Because twelve
+     consecutive cycles **tile** the year — each opens the day after the last
+     closes — a year's charge is the full annual rate however the days fall, so
+     the model prices the average cycle at `annual / 12`. Each debt record now
+     declares its `rateConvention`; an undeclared one throws rather than being
+     guessed, and an invariant keeps that throw unreachable.
+
+     **That average is labelled as one rather than presented as the convention**
+     — the first draft claimed it *was* the per-cycle convention, and the
+     required review blocked it for exactly that. `PAYOFF_BASIS_PRECISION` marks
+     a card `monthly-equivalent` and a prime-linked facility `exact`; the page
+     publishes the first-period charge with the band a 28-to-32-day cycle
+     actually allows ($227.68–$260.21 on the Triangle, against $247.33) and says
+     the month-1 row prices an average cycle. Against the published TD/MBNA
+     30-day form the monthly figure runs +1.39%, and from +8.63% to −4.95%
+     across the band. The multi-period figures inherit far less of that, because
+     tiling redistributes interest between periods rather than accumulating it:
+     walking a real varying-cycle schedule from all twelve possible starting
+     months bounds the worst case at 1.81 months and 1.20% of total interest.
   2. **The balance ignored pending charges.** MBNA and the Travel Visa were
      modelled $82.05 and $165.13 lighter than the household owes.
   3. **"The minimum" was `debt.payment`, which is not always a payment.** On the
