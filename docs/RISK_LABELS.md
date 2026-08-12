@@ -46,17 +46,14 @@ required outcomes fail.
 
 ### `tests`
 
-`npm test` runs seven suites:
+`npm test` runs the suites registered in [`test.js`](../test.js), which is the
+registry. This file keeps no copy of that list: a second inventory drifts as
+soon as a suite is added, and a gate document that misstates what the gate runs
+is worse than one that does not enumerate it. One lived here until 2026-08-12
+claiming seven suites against a registry that held fifteen.
 
-1. static and security sanity;
-2. forecast engine and opening-gap regression;
-3. household-budget reconciliation;
-4. coupled cash-and-debt reconciliation;
-5. one-authority invariants;
-6. named authority-surface coverage; and
-7. merge-card mechanical behavior.
-
-These stay blocking because they protect demonstrated failures:
+What the suites are is `test.js`'s. **Why they block** is this file's, and each
+one earns it against a demonstrated failure:
 
 - the weekly cap double-counted a payday;
 - one page published `$1,650/week` and `$0/week` for the same concept;

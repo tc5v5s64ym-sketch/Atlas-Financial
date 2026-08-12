@@ -1,23 +1,14 @@
 # Context for a new session
 
-**Read in this order:**
+**Start at [`AGENTS.md`](AGENTS.md).** It is the universal router and owns the
+read order; this file is one entry in it.
 
-1. **`AGENTS.md`, then `CLAUDE.md`** — who decides, who reviews, when to stop
-   for a person, and what a pull request has to carry. Governance only; it
-   repeats nothing below
-2. **This file** — layout, current state, standing rules
-3. **`ARCHITECTURE.md`** — the five layers, where new material goes, the direction
-4. **`docs/ACCOUNT_FACTS.md`** — rates, limits, due dates, renewal. Never ask the
-   owner for anything already recorded there
-5. **`BACKLOG.md`** — work that can be done, and what is blocking each item
-6. **`docs/01_OPEN_QUESTIONS.md`** — what only the household can answer
-7. **`docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`** — the ordered build sequence,
-   **once it exists**. It does not yet; when it does, read it before starting
-   planned capability work
-
-**The distinction between the last two matters.** If an item needs a human to
-*know* something, it is a question. If it needs someone to *do* something, it is
-backlog. They drift into each other unless kept apart deliberately.
+Everything below is context and current state — the layout, what has been
+captured, how the site is changed, and the standing rules for working on it.
+It routes nothing and states no reading order of its own. A second order lived
+here until 2026-08-12 and had already drifted: it omitted two documents the
+router lists and still announced the build strategy as something that did not
+exist yet, months after it did.
 
 Everything lives in **one folder**:
 
@@ -133,16 +124,21 @@ shared core (helpers, charts, theme, boot) loaded by all of them:
 household-budget split, and the weekly-cap recommendation. It is pure and
 DOM-free, so the node suite exercises exactly what the browser runs.
 
-**Run `npm test` after any change to `data.json` or to a page script.** Five
-suites, in dependency order:
+**Run `npm test` after any change to `data.json` or to a page script.**
+[`test.js`](test.js) is the suite registry: it names every suite and the
+dependency order they run in, and running it is the only honest way to know what
+the suite currently is. This file keeps no copy of that list — a hand-maintained
+inventory drifts the first time a suite is added, and then confidently describes
+a test run nobody has performed. One lived here until 2026-08-12 claiming five
+suites against a registry that held fifteen.
 
-| Suite | What it protects |
-|---|---|
-| `test-static.js` | JSON parses, scripts compile, every id a script writes to exists, no identifier or secret in a tracked file, the security gate is intact |
-| `test-forecast.js` | The schedule against hand-computed totals, and the opening-gap regression |
-| `test-budget.js` | Food and fuel are provably inside the weekly cap, and nothing dated is counted twice |
-| `test-debt.js` | Cash out reconciles to debt down, to the cent |
-| `test-invariants.js` | One fact, one home — contradictions between files fail the build |
+What they protect, in kind rather than by name: that the JSON parses and every
+script compiles, that every id a script writes to exists, that no identifier or
+secret reaches a tracked file and the security gate is intact, that the schedule
+and the opening-gap recovery match hand-computed totals, that food and fuel are
+provably inside the weekly cap with nothing dated counted twice, that cash out
+reconciles to debt down to the cent, and that one fact keeps one home — a
+contradiction between two files fails the build.
 
 **An invariant failure is a failure, not a warning.** A plan that disagrees with
 itself is worse than no plan, because it still looks authoritative.
