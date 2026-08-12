@@ -94,10 +94,13 @@ not permission to guess.
 Work selection does not depend on which model just arrived.
 
 1. An explicit owner instruction may be the source of work; record it.
-2. Otherwise, planned capability work follows
-   `docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`.
+2. Otherwise, `docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md` decides what is selected
+   and in what order. Read the rule there rather than here — that file is a
+   sequence, not a gate on the backlog, so an item it has not scheduled is
+   **not** ineligible merely because no phase names it.
 3. `BACKLOG.md` records work and findings but does not silently jump the planned
-   sequence.
+   sequence. Unscheduled is not the same as ineligible; which of the two applies
+   is the strategy's call, not this document's and not the arriving agent's.
 4. The strategy's interruption rules decide when a newly found defect may
    pre-empt the current planned phase.
 5. Owner-reserved questions remain owner-reserved on every surface.
@@ -138,7 +141,9 @@ The fresh agent reports all ten items:
 2. whether any open pull request overlaps the next outcome;
 3. the current source of work — explicit owner instruction if supplied,
    otherwise the build strategy;
-4. the first eligible action, or the exact blocker;
+4. the first eligible action, or the exact blocker — eligibility as the build
+   strategy defines it, which does not exclude an item merely because no phase
+   names it;
 5. every owner-reserved stop relevant to that action;
 6. the required new-branch form (`agent/<outcome>`);
 7. the applicable deterministic test commands named by current repository

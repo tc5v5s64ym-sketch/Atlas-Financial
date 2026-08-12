@@ -20,7 +20,9 @@ Read in this order:
    the owner for anything already recorded there.
 6. [`docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`](docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md)
    — **current planned-capability sequencing authority**, subordinate to
-   `ARCHITECTURE.md`. Read it before selecting planned capability work.
+   `ARCHITECTURE.md`. Read it before selecting work. It decides what is
+   eligible, in what order, and what may interrupt that order; this file states
+   no selection rule of its own.
 7. [`BACKLOG.md`](BACKLOG.md) — the record of work and findings. It feeds the
    strategy; it does not silently override the strategy's order.
 8. [`docs/01_OPEN_QUESTIONS.md`](docs/01_OPEN_QUESTIONS.md) — what only the
@@ -77,8 +79,9 @@ the same outcome at once. If a handoff must happen mid-PR, follow
 This is the one launcher. Do not write a second one.
 
 > Read `AGENTS.md`, then take the owner's explicit instruction if there is one;
-> otherwise execute the first eligible planned capability item in
-> `docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`. Verify current repository state
+> otherwise select work as `docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md` directs — it
+> owns eligibility, order and interruption, and this launcher restates none of
+> it. Verify current repository state
 > before editing. Use a fresh `agent/<outcome>` branch from current `main`.
 > One independently provable outcome, merge card filled, findings
 > dispositioned. Stop only for an owner-reserved item or the required review.
