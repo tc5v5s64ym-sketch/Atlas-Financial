@@ -2,17 +2,20 @@
 
 **Who decides, who reviews, and when something stops for a person.**
 
-This file holds the operating, review and merge rules. It deliberately holds
-nothing else, because the rest already has a home:
+This file holds the operating, review and merge rules. Its filename is retained
+for historical continuity; it binds every approved implementation surface and
+model equally. It deliberately holds nothing else, because the rest already has
+a home:
 
 | For | Read |
 |---|---|
 | Orientation in a new session | [`CONTEXT.md`](CONTEXT.md) |
+| Builder portability and repository-state handoff | [`docs/BUILDER_PORTABILITY.md`](docs/BUILDER_PORTABILITY.md) |
 | How the layers fit together, and the direction | [`ARCHITECTURE.md`](ARCHITECTURE.md) |
 | What the CI gates check and why each exists | [`docs/RISK_LABELS.md`](docs/RISK_LABELS.md) |
 | Work that can be done | [`BACKLOG.md`](BACKLOG.md) |
 | What only the household can answer | [`docs/01_OPEN_QUESTIONS.md`](docs/01_OPEN_QUESTIONS.md) |
-| What to build next, and in what order | `docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md` — **once it exists**; it does not yet |
+| What to build next, and in what order | [`docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`](docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md) |
 
 One fact, one home. Where this file and one of those appear to disagree about a
 mechanism, that file is right about the mechanism and this one is right about
@@ -63,17 +66,18 @@ role, not a product name: Claude Code, Codex, Cursor or another owner-approved
 surface may hold it, running whichever model that surface runs.
 
 The surface and the model change nothing — not the branch rules, the
-one-concern rule, the verification gate, the review lane, the owner-reserved
-stops, or merge authority. Two agents never hold the role for the same concern
+one-outcome rule, the verification gate, the review lane, the owner-reserved
+stops, or merge authority. Two agents never hold the role for the same outcome
 at the same time.
 
 The agent selects the work, verifies current state before editing, implements
-one concern on a fresh branch, proves the numbers independently, opens the pull
-request with the merge card filled, obtains the required review when a trigger
-fires, addresses any real high-severity advisory defect, and merges the exact
-passing head.
+one independently provable outcome on a fresh `agent/<outcome>` branch from
+current `main`, proves the numbers independently, opens the pull request with
+the merge card filled, obtains the required review when a trigger fires,
+addresses any real high-severity advisory defect, and merges the exact passing
+head.
 
-### Independent agent review — Codex, and anything like it
+### Independent agent review — any agent that is not the active builder
 
 Advisory, always. Fix the real findings, say why for the ones you reject, and
 record both in the merge card. Never manufacture a review status out of a bot's
@@ -283,7 +287,11 @@ Then, unchanged in substance:
 - The pre-commit hook is the safety net and it is never bypassed. If a fresh
   clone lost `core.hooksPath`, restore it before committing anything.
 
-### Fresh `main`, and the stacking exception
+### Fresh `main`, surface-neutral branches, and the stacking exception
+
+New implementation work uses `agent/<outcome>` on every surface. Existing
+`claude/*` branches remain valid historical branches; do not rename them or use
+them as evidence that new work is Claude-specific.
 
 Every implementation pull request starts from current `main`. Later work is not
 stacked on an open branch, and a merged branch is finished — follow-up work
@@ -538,7 +546,7 @@ file. The gates that exist are the ones that caught something real. Add a gate
 when something goes wrong that it would have caught, and not before.
 
 **One roadmap, in three parts that do not overlap.**
-[`ARCHITECTURE.md`](ARCHITECTURE.md) owns *direction, authority and the gates*; a
-build strategy will own *sequencing within what direction permits*, once one
-exists; [`BACKLOG.md`](BACKLOG.md) owns *work and findings*. A second one of any
-of those is the thing to refuse.
+[`ARCHITECTURE.md`](ARCHITECTURE.md) owns *direction, authority and the gates*;
+[`docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`](docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md)
+owns *sequencing within what direction permits*; [`BACKLOG.md`](BACKLOG.md) owns
+*work and findings*. A second one of any of those is the thing to refuse.
