@@ -72,6 +72,43 @@ The budget must use transaction history as evidence of what normal life actually
 
 Atlas should learn from actual-vs-plan variance. A repeated real cost should not remain hidden behind an unrealistic target without being surfaced for an owner decision.
 
+### Bills: the source document matters, not just the transaction
+
+A bank/card transaction proves that an amount moved. **It is not a substitute for the bill itself.** Atlas should ingest the actual invoice/statement for material recurring household bills wherever the owner can obtain it.
+
+The bill can establish facts a transaction often cannot:
+
+- provider and service/account type;
+- billing period and consumption/service period;
+- statement date and due date;
+- amount currently due versus total/previous balance;
+- fixed charges versus usage charges;
+- taxes, fees, credits, rebates and late charges;
+- equal-payment/budget-billing arrangements and true-ups;
+- rate/plan changes;
+- contract or promotional expiry;
+- arrears or carried balances;
+- seasonal usage patterns;
+- whether a charge is recurring, annual, irregular or one-off.
+
+Atlas should reconcile the bill to the payment transaction where possible, so the plan knows both **what was owed** and **what was actually paid**.
+
+The owner specifically wants bill-level source intake for the household's recurring obligations. Known examples to collect include:
+
+- **FortisBC** — natural gas;
+- **BC Hydro** — electricity;
+- **Rogers** — owner states this is the household internet bill;
+- **garbage / waste pickup** — provider, cadence, amount and due-date pattern still to be supplied;
+- other utilities/telecom bills as they are identified;
+- insurance bills/policies and renewals;
+- property tax and other annual municipal charges;
+- debt statements, not only debt-payment transactions;
+- subscriptions/memberships or other material recurring invoices where the source document adds useful terms or renewal information.
+
+**Do not silently reconcile provider-name conflicts.** Current `ACCOUNT_FACTS.md` contains a recent transaction-derived **Shaw internet** entry ($78.40 in May–July 2026), while the owner now states the internet bill is **Rogers**. Until a current bill or account evidence resolves it, treat this as an open identity/current-provider question: Rogers may have replaced Shaw, be separate, or the transaction description may represent something else.
+
+Raw bills can contain account numbers, addresses and other private source detail. They should follow the repository's existing raw-source/privacy handling rather than being casually committed to Git. The durable model should retain the verified financial facts, provenance and dates needed to reproduce the plan without exposing unnecessary raw identifiers.
+
 ### Planned purchases and sinking funds
 
 Vacations, tournaments, Christmas, insurance, property tax, registrations, repairs, vehicles and other known large costs should enter the plan **before** their payment date. Atlas should show the amount that must effectively be reserved over time rather than discovering the full cost on the due date.
@@ -201,8 +238,12 @@ The next payroll/benefit evidence should resolve these without reopening old tra
 9. **Current pension balance, holdings, contribution history and fees** from Sun Life.
 10. **Current vacation policy** only if Atlas is going to model vacation payout as an available optional cash event.
 11. Equivalent compensation/payroll/pension facts for Amanda wherever they materially affect the household master plan.
+12. **Current bill-source pack:** actual recent bills/statements for FortisBC, BC Hydro, Rogers/internet and garbage/waste pickup first, followed by the rest of the household's material recurring bills. The goal is to reconcile bill terms/due dates/service periods to transaction evidence rather than infer the whole obligation from merchant charges.
+13. **Internet provider identity:** current owner statement says Rogers; recent transaction-derived repo fact says Shaw. Resolve from a current bill/account source before modelling either as the sole current provider.
 
-Preferred evidence is a current payroll portal/pay stub and current Sun Life plan/account information. One early-year pay stub, one post-raise stub and one after CPP/EI maximums are reached would be especially useful for gross-to-net reconciliation.
+Preferred payroll evidence is a current payroll portal/pay stub and current Sun Life plan/account information. One early-year pay stub, one post-raise stub and one after CPP/EI maximums are reached would be especially useful for gross-to-net reconciliation.
+
+Preferred bill evidence is the actual provider PDF/statement or a complete account-page capture that shows the billing period, amount due, due date and plan/rate details. A transaction screenshot alone is weaker evidence.
 
 ---
 
