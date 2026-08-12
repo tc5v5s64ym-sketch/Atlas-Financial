@@ -531,6 +531,22 @@ somewhere a test can reach it.
    both ways in `test-status-band.js`: a ten-thousandth of a cent under is on
    plan, a genuine cent under is still a dip.
 
+   **A second defect was found by the blocking review, inside the move
+   itself.** `funding.needsCombination` says the ranked allocation used more
+   than one source; the band read it as proof that no single source could cover
+   the gap. They are not the same. Rank 1 holding $500 and rank 2 holding
+   $1,500 against a $1,000 gap fills $500 + $500 — a two-part allocation, while
+   rank 2 covers the whole gap alone — so the band read "no single source
+   covers it" directly above a card reading "Covers the whole $1,000". That is
+   the cross-surface contradiction this move exists to end, reappearing inside
+   the engine that was supposed to end it, and it was live on `main` too: the
+   page's own `o.available >= needed` reached the same verdict. The status
+   verdict now consumes the per-source coverage it already computes and states
+   only what the allocation proves. Proved on a fixture built through the real
+   engine, asserting the two rendered sentences cannot assert opposite things,
+   and the wording is unchanged wherever no single source does cover the gap —
+   which is the published case.
+
    Nothing else the household reads changed. The band and the cards were
    rendered at ten settings of the published plan — every branch the real data
    can reach — through the page's own wording maps, and compared against the

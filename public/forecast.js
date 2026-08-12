@@ -1141,8 +1141,22 @@
         firstBelowBuffer: firstBad ? firstBad.date : null };
     }
     if (gap && funding && funding.needsCombination) {
+      // `needsCombination` says the RANKED ALLOCATION used more than one
+      // source. It does not say no single source could have covered the gap,
+      // and the two are not the same: rank 1 holding $500 and rank 2 holding
+      // $1,500 against a $1,000 gap fills $500 + $500, so the allocation takes
+      // two while the second source covers the whole thing alone.
+      //
+      // The band claimed the stronger fact. Beside a source card reading
+      // "Covers the whole $1,000" — decided from this same funding result —
+      // that is the cross-surface contradiction this whole move exists to end,
+      // reappearing inside the engine that was supposed to end it. So the
+      // verdict consumes the per-source coverage it already computes, and says
+      // only what the allocation proves.
+      const noSingleSourceCovers = !(funding.sources || [])
+        .some(s => s.verdict === 'covers');
       return { id: 'combination', gapAmount, floorDate: gap.floorDate,
-        parts: funding.parts, borrowed: funding.borrowed,
+        parts: funding.parts, borrowed: funding.borrowed, noSingleSourceCovers,
         weekly, effectiveFrom: advice.effectiveFrom, ending: sim.ending };
     }
     if (gap) {

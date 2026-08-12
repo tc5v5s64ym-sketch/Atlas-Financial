@@ -189,6 +189,56 @@ ok(combo.parts.length === 2 && same(combo.borrowed, 851.31),
     'and the allocation + shortfall reconciles to the gap');
 }
 
+/* The allocation taking two sources does NOT prove that no single source could
+ * have covered the gap. Rank order fills the cheapest source first, so a small
+ * rank-1 source and a large rank-2 source produce a two-part allocation while
+ * rank 2 covers the whole gap on its own.
+ *
+ * The band claimed the stronger fact, and the source card below it — reading
+ * the same funding result — said the opposite. Blocking review found it on
+ * `b5770df`. It is the cross-surface contradiction this move exists to end,
+ * so the verdict now states only what the allocation proves.
+ *
+ * Built through the REAL engine on the REAL plan, not a hand-made funding
+ * object: the point is that `recommend` genuinely produces this pair. */
+const RANK_TRAP = [
+  { id: 'small', label: 'Small', short: 'the small one', available: 500, rank: 1, debtId: null },
+  { id: 'big', label: 'Big', short: 'the big one', available: 1500, rank: 2, debtId: null },
+];
+const rankTrap = F.recommend(data.plan, data.meta.asOf, {
+  scenario: data.plan.defaults.scenario, targetBuffer: 500, extraDebtMonthly: 0,
+  incomeOverrides: {}, disabled: [], debts: data.debts,
+  extraDebtTarget: data.plan.nextDollar.target, fundingSources: RANK_TRAP,
+});
+const rankTrapStatus = F.planStatus(rankTrap, { weeklyOverride: null });
+{
+  const f = rankTrap.funding;
+  ok(f.needsCombination && f.parts.length === 2,
+    'rank order really does allocate across two sources here',
+    f.parts.map(p => `${p.id} ${p.amount.toFixed(2)}`).join(' + '));
+  ok(f.sources.find(s => s.id === 'big').verdict === 'covers',
+    'while the rank-2 source alone covers the whole gap',
+    `big available 1500 vs gap ${rankTrap.gap.amount.toFixed(2)}`);
+  ok(rankTrapStatus.id === 'combination',
+    'the verdict is still the combination one — the allocation is what it is',
+    rankTrapStatus.id);
+  ok(rankTrapStatus.noSingleSourceCovers === false,
+    'but it no longer claims no single source covers the gap',
+    String(rankTrapStatus.noSingleSourceCovers));
+}
+// And the published combination case is unchanged: neither real source reaches
+// the gap alone, so the stronger sentence is still the true one.
+{
+  const adv = F.recommend(data.plan, data.meta.asOf, Object.assign({
+    scenario: data.plan.defaults.scenario, targetBuffer: 3000, extraDebtMonthly: 0,
+    incomeOverrides: {}, disabled: [], debts: data.debts,
+    extraDebtTarget: data.plan.nextDollar.target,
+  }, { fundingSources: data.plan.funding.options }));
+  const s = F.planStatus(adv, { weeklyOverride: null });
+  ok(s.id === 'combination' && s.noSingleSourceCovers === true,
+    'on the published plan no single source does cover it, and the verdict still says so');
+}
+
 console.log('\n=== 4. an ordinary opening gap ===');
 /* Hand-computed. $1,043.16 short at the floor, covered by one source, no
  * override: a timing problem, and the verdict says so. */
@@ -439,6 +489,17 @@ const MUTATIONS = [
     to: '    if (false) {',
     check: m => m.planStatus(COMBINATION, { weeklyOverride: null }).id === 'gap',
     real: () => realStatus.combo.id === 'combination' },
+
+  { label: 'reading the combination opening off the allocation alone recreates the contradiction',
+    from: `      const noSingleSourceCovers = !(funding.sources || [])
+        .some(s => s.verdict === 'covers');`,
+    to: '      const noSingleSourceCovers = true;',
+    check: m => m.planStatus(m.recommend(data.plan, data.meta.asOf, {
+      scenario: data.plan.defaults.scenario, targetBuffer: 500, extraDebtMonthly: 0,
+      incomeOverrides: {}, disabled: [], debts: data.debts,
+      extraDebtTarget: data.plan.nextDollar.target, fundingSources: RANK_TRAP,
+    }), { weeklyOverride: null }).noSingleSourceCovers === true,
+    real: () => rankTrapStatus.noSingleSourceCovers === false },
 
   { label: 'halving the coverage comparison makes a source that cannot cover the gap claim it can',
     from: '        const covers = !src.unusable && atLeast(src.available, gapAmount);',
@@ -714,6 +775,41 @@ ok(['gap', 'overrideBreach', 'combination', 'unfunded'].every(id => seen.has(id)
   [...seen].join(', '));
 ok(!seen.has('negative') && !seen.has('belowBuffer') && !seen.has('onPlan'),
   'and the other three are unreachable on it, so they are proved on fixtures above');
+
+console.log('\n=== 12b. the band and the source card cannot contradict each other ===');
+/* The blocking review's counterexample, rendered. Both surfaces read one
+ * funding result, so the test is not "each is individually right" — it is that
+ * the two sentences on screen together cannot assert opposite things. */
+{
+  const needed = rankTrap.gap.amount;
+  const [, bandHtml] = movedBand({ adv: rankTrap, sim: rankTrap.sim, weeklyVariable: null });
+  const cards = rankTrap.funding.sources
+    .map(s => ({ id: s.id, html: FUND_VERDICT[s.verdict].text(s, needed) }));
+
+  const bandSaysNoneCover = /no single source covers it/.test(bandHtml);
+  const covering = cards.find(c => /Covers the whole/.test(c.html)) || null;
+  const aCardSaysItCovers = !!covering;
+
+  ok(aCardSaysItCovers,
+    'the rank-2 card does say it covers the whole gap',
+    covering ? `${covering.id}: ${flat(covering.html)}` : 'no card claims coverage');
+  ok(!bandSaysNoneCover,
+    'so the band above it must not say no single source covers it',
+    flat(bandHtml).slice(0, 90));
+  ok(!(bandSaysNoneCover && aCardSaysItCovers),
+    'the two surfaces cannot contradict each other on one funding result');
+  ok(/the plan draws on more than one source/.test(bandHtml),
+    'and the band states what the allocation actually proves',
+    flat(bandHtml).slice(0, 100));
+
+  // The published combination case keeps the stronger sentence, and there is no
+  // card claiming coverage beside it — so preserving the wording is honest.
+  const real = published({ targetBuffer: 3000, weeklyVariable: null });
+  const [, realBand] = movedBand(real);
+  ok(/no single source covers it/.test(realBand)
+    && !/Covers the whole/.test(movedCards(real)),
+  'the published $3,000 case keeps the stronger sentence, with no card contradicting it');
+}
 
 console.log('\n=== 13. the real page, booted ===');
 /* Everything above proves the engine and inspects the page as text. This runs

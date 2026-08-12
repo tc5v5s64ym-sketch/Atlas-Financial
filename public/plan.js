@@ -126,8 +126,13 @@ const STATUS_BAND = {
       ? `, first slipping below the buffer on ${fmtDateLong(s.firstBelowBuffer)}` : ''}.
        The forecast supports <b>${money(s.recommended)}/week</b>.` },
 
+  // Two openings, and the engine decides which is true — the allocation taking
+  // two sources does not prove that none could have covered the gap alone.
+  // Claiming the stronger one put this band in contradiction with the source
+  // card below it, which reads its verdict from the same funding result.
   combination: { tone: 'crit', text: s =>
-    `<b>Short by ${money(s.gapAmount)} on ${fmtDateLong(s.floorDate)}, and no single source covers it.</b>
+    `<b>Short by ${money(s.gapAmount)} on ${fmtDateLong(s.floorDate)}, and ${s.noSingleSourceCovers
+      ? 'no single source covers it' : 'the plan draws on more than one source'}.</b>
        It takes ${s.parts.map(p => `${money2(p.amount)} from ${p.short}`).join(' plus ')}.
        ${s.borrowed > 0
       ? `<b>${money2(s.borrowed)} of that is borrowed</b>, and the debt figures below carry it.`
