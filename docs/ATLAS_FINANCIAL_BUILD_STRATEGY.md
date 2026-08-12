@@ -202,9 +202,17 @@ built *on* that picture, the picture needs owners that a test can reach.
 - **Prompt** — *Take one decision from `B73`. Move it into `public/forecast.js`,
   reconcile the result against a hand-computed case, and leave the page rendering
   only. One decision per pull request — five decisions is five outcomes.*
-- **State** — all five recorded decisions have moved. What remains is the scan
-  for instances the list never named, which is its own outcome and the last thing
-  standing between `B73` and closed.
+- **State** — all five recorded decisions have moved, and the scan for the ones
+  the list never named ran on 2026-08-12. It is no longer the last thing standing
+  between `B73` and closed: it read every browser file and found **seven further
+  page-side authorities**, six of them in `public/plan.js`, each recorded in
+  `B73` with the mutation evidence that the node suite cannot reach it. This item
+  is therefore not complete, and it keeps its own rule — one decision per pull
+  request, reconciled against a hand-computed case. `B73` states the order; the
+  status band at the top of the Plan page goes first, because it is the most
+  prominent verdict the household reads and it re-derives predicates
+  `Forecast.mission` already owns. AF-CAL-01's entry gate names this item, so
+  that work is not open yet either.
 
 ### AF-CAL-01 · Give the schedule one owner
 

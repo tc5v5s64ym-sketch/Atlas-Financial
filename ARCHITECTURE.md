@@ -298,11 +298,15 @@ So the rule, not the enumeration, is what binds:
 - **A page script renders; it does not decide.** `renderCalendar()` and
   `renderPlan()` format what they are given.
 
-**No page script is known to break that third rule today — and that is a
-statement about what has been found, not a clean bill of health.** Every
-instance recorded in `B73` has now moved into the engine. `B73` stays open
-because nothing has audited the page scripts for instances beyond the ones the
-item already lists, and that scan is its own outcome.
+**Page scripts do break that third rule today, and the repository now knows
+where.** Every instance `B73` had recorded moved into the engine, and the scan
+for the ones nobody had named ran on 2026-08-12. It read every browser file and
+found seven more — the largest being the status band at the top of the Plan page,
+which selects which of seven verdicts the household reads and picks two of the
+dates inside them. `B73` records each one with the mutation evidence that no test
+reaches it, and each is its own outcome to move. **None of them is a row in the
+table above, and none should become one**: a page script that decides is an
+unnamed authority, which is a defect to close, not an incumbent to register.
 
 Five instances have been moved into the engine rather than argued away. The
 Amanda-transfer deadline: `public/plan.js` re-ran the simulation with her
@@ -326,14 +330,15 @@ minimum a larger payment is measured against, and the projection itself. In each
 case the page renders the returned result and a focused test reconciles the move
 against a hand-computed case.
 
-**"No page script is known to break it" is a weaker claim than it reads as, and
-the weakness is the point.** The count said *two* until a review found a third,
-in the same file as one of the renderers this section praises; it reached zero
-because five were moved, not because anything audited what is left. Moving an
-authority out of a file does not clear the file — the payoff modeller was still
-deciding in `public/modellers.js` after the renewal moved out of it. A page
-script that decides is an **unnamed authority**, so finding another is something
-to route, and the absence of a known instance is not evidence that none exists.
+**This section used to say "no page script is known to break it", and the scan is
+why it no longer does.** The count said *two* until a review found a third, in
+the same file as one of the renderers this section praises; it reached zero
+because five were moved, not because anything had audited what was left. Moving
+an authority out of a file does not clear the file — the payoff modeller was
+still deciding in `public/modellers.js` after the renewal moved out of it, and
+`public/plan.js` holds six of the seven instances the scan found, having already
+had two moved out of it. The absence of a known instance was never evidence that
+none existed, and searching is what settled it.
 
 Anything not named above belongs to one of those three rules, or is that defect.
 If it is genuinely unclear which, that is a question for the required review —
