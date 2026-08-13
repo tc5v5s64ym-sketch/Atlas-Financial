@@ -2,27 +2,41 @@
 
 **Owner evidence recorded 2026-08-12.**
 
-This file is a **source-intake and owner-evidence record**: what the master plan
-still needs from real documents, what the owner has supplied so far, and what is
+This file is a **source-intake record**: what the master plan still needs from
+real documents, what the owner's supplied documents establish, and what is
 deliberately still unknown. It holds no product direction, no financial
 authority and no sequencing.
 
 | For | Read |
 |---|---|
 | What Atlas is for, and the one-plan-many-windows product direction | [`../ARCHITECTURE.md`](../ARCHITECTURE.md) |
+| **What one person said, attributed and dated** | [`household_interviews/`](household_interviews/) |
 | Work eligibility, order and interruption | [`ATLAS_FINANCIAL_BUILD_STRATEGY.md`](ATLAS_FINANCIAL_BUILD_STRATEGY.md) |
 | Work and findings | [`../BACKLOG.md`](../BACKLOG.md) |
 | Standing facts, once verified | [`ACCOUNT_FACTS.md`](ACCOUNT_FACTS.md) |
 | Balances and published figures | [`positions.csv`](positions.csv), [`../data.json`](../data.json) |
 
-The product contract this evidence serves — one grand plan, every horizon a
-window onto it, two interfaces and one answer — is stated **once**, in
-`ARCHITECTURE.md` under **Direction**. It is not restated here. An earlier draft
-of this file carried its own copy of it, which is how a second home for direction
-starts.
+**Two boundaries this file has already crossed once each, and does not cross
+now.**
 
-**Nothing below promotes an old employment document into a current payroll
-fact.** Where current evidence is missing, it stays missing.
+The product contract this intake serves — one grand plan, every horizon a window
+onto it, two interfaces and one answer — is stated **once**, in `ARCHITECTURE.md`
+under **Direction**. An earlier draft carried its own copy, which is how a second
+home for direction starts.
+
+**A statement whose authority is "Dale said this" is interview evidence**, and
+`ARCHITECTURE.md` already gives that one home:
+[`household_interviews/`](household_interviews/), where the speaker, date,
+status, uncertainty and unresolved items are preserved. A later draft of this
+file called itself an owner-evidence record and stored Dale's payroll calendar,
+his pension policy intent and his internet-provider statement directly — a second
+home for attributed household evidence. Those statements now live in
+[`household_interviews/DALE_2026-08-12.md`](household_interviews/DALE_2026-08-12.md)
+and are **referenced** here, not repeated.
+
+What remains here is what a **document** establishes, and what evidence is still
+missing. **Nothing below promotes an old employment document into a current
+payroll fact.** Where current evidence is missing, it stays missing.
 
 ---
 
@@ -52,12 +66,12 @@ both **what was owed** and **what was actually paid**.
 
 ### The first bill-source pack
 
-The owner wants bill-level intake for the household's recurring obligations,
-starting with:
+Bill-level intake is wanted for the household's recurring obligations, starting
+with:
 
 - **FortisBC** — natural gas;
 - **BC Hydro** — electricity;
-- **Rogers** — owner states this is the household internet bill;
+- **internet** — provider identity unresolved, see below;
 - **garbage / waste pickup** — provider, cadence, amount and due-date pattern
   still to be supplied;
 
@@ -67,14 +81,16 @@ charges, debt statements rather than only debt-payment transactions, and any
 subscription or membership whose source document adds real terms or renewal
 information.
 
-### The Rogers-versus-Shaw discrepancy is unresolved, deliberately
+### The internet provider is an unresolved source gap
 
 `ACCOUNT_FACTS.md` carries a transaction-derived **Shaw internet** entry —
-$78.40 in May–July 2026 — while the owner now states the internet bill is
-**Rogers**. Until a current bill or account source settles it, this stays an open
-identity question: Rogers may have replaced Shaw, may be separate, or the
+$78.40 in May–July 2026 — which does not agree with Dale's current statement,
+recorded in
+[`household_interviews/DALE_2026-08-12.md`](household_interviews/DALE_2026-08-12.md).
+Until a current bill or account source settles it, this stays an open identity
+question: one provider may have replaced the other, they may be separate, or the
 transaction description may represent something else. **Do not silently pick one
-from chat or merchant text.**
+from chat or merchant text.** A current provider bill or account page closes it.
 
 ### Raw bills follow the raw-source rules
 
@@ -85,11 +101,15 @@ to reproduce the plan without carrying unnecessary identifiers.
 
 ---
 
-## 2. Dale employment and compensation — evidence captured 2026-08-12
+## 2. Dale employment and compensation — document evidence captured 2026-08-12
 
-The source documents below were supplied by the owner in conversation and are
-**not committed to this repository**. The facts are recorded so the model can be
-updated without treating old documents as current policy where they are not.
+The source documents below were supplied by the owner and are **not committed to
+this repository**. Everything in this section is read **from a document**; what
+Dale said about his own current pay and pension is interview evidence and lives
+in
+[`household_interviews/DALE_2026-08-12.md`](household_interviews/DALE_2026-08-12.md)
+instead. The facts are recorded so the model can be updated without treating old
+documents as current policy where they are not.
 
 ### Strong documentary facts
 
@@ -171,33 +191,22 @@ updated without treating old documents as current policy where they are not.
 
 ---
 
-## 3. Owner-stated payroll pattern, pending current verification
+## 3. Why the payroll calendar needs its own evidence
 
-The owner describes a recurring annual take-home pattern the plan should support
-explicitly, rather than reducing salary to annual salary ÷ 12:
+Take-home pay is not annual salary ÷ 12. Across a year it steps — statutory
+deductions restart, an annual raise lands, a bonus lands, statutory maximums are
+reached — so **a nine-month plan crosses several different take-home regimes
+even when annual salary is unchanged.** The plan needs dated payroll effects, not
+a flat monthly percentage.
 
-1. **January:** CPP/EI deductions restart, reducing take-home pay versus late in
-   the prior year.
-2. **Late February:** the annual bonus normally arrives around this period.
-3. **March 1:** the annual salary raise becomes effective every year.
-   **Owner-confirmed 2026-08-12**, and independently consistent with the supplied
-   2025 rewards statement showing the $151,283 salary effective 1 March 2025. The
-   raise amount varies; recent raises have typically been roughly 4–5%, but the
-   actual percentage must be recorded each year rather than assumed.
-4. **Later in the year:** CPP/EI annual maximums are reached, raising net pay
-   again. The owner recalls this occurring around June, but the crossover should
-   be calculated or observed rather than hard-coded to June.
-5. The owner has been using one of these take-home increases to raise voluntary
-   pension saving by **another 1 percentage point**, intending to repeat that
-   annually until the employee contribution reaches **12%**.
-
-The owner does **not** currently know the exact total employee pension percentage
-or the exact current plan rule permitting and limiting the optional contribution.
-Record the policy intent; do not infer a current total from the historical 5%
-minimum.
-
-This calendar matters because a nine-month plan crosses several different
-take-home regimes even when annual salary is unchanged.
+The pattern Dale describes, with each item's confidence and what is still
+unknown, is attributed interview evidence and is recorded in
+[`household_interviews/DALE_2026-08-12.md`](household_interviews/DALE_2026-08-12.md).
+It is **not** repeated here. What belongs here is the consequence: that pattern
+is owner-stated and partly approximate, so the evidence listed in §4 is what
+turns it into something the plan can rely on — and one item of it, the CPP/EI
+crossover, should be **calculated or observed** from year-to-date deduction
+evidence rather than taken from recollection at all.
 
 ---
 
@@ -206,25 +215,29 @@ take-home regimes even when annual salary is unchanged.
 The next payroll, pension and bill evidence should resolve these without
 reopening old transaction forensics:
 
-1. **Current annual base salary.** The raise's effective date is known —
-   **1 March** — but the current post-raise amount needs the payroll portal or a
-   current compensation source.
+1. **Current annual base salary.** The raise's effective date is owner-confirmed
+   in `household_interviews/DALE_2026-08-12.md`; the current post-raise **amount**
+   needs the payroll portal or a current compensation source.
 2. **Current payroll cadence.** The 2022 agreement says semi-monthly; current
    bank-deposit analysis in `ACCOUNT_FACTS.md` describes Dale's payroll as
    bi-weekly. A current pay stub or payroll portal should settle which is now
    true.
-3. **Current employee pension contribution percentage.** The owner states an
-   extra +1 percentage point was added this year; the total is not known.
-4. **Current optional-pension rules and maximum.** The owner states a 12%
-   employee ceiling; obtain current plan or payroll evidence before modelling
-   that ceiling as verified.
+3. **Current employee pension contribution percentage.** Owner-stated pension
+   policy intent is recorded in `household_interviews/DALE_2026-08-12.md`; the
+   current total percentage is not known and must not be inferred from the
+   historical 5% minimum in §2.
+4. **Current optional-pension rules and maximum.** The owner's intended target is
+   in the same interview record; obtain current plan or payroll evidence before
+   modelling any ceiling as verified.
 5. **Current employer pension formula and CRA cap mechanics.** Historical
    evidence says 6% up to CRA limits and the 2025 rewards statement is consistent
    with 6%; current plan evidence still wins.
 6. **2026 IBP target and maximum percentage**, plus the actual annual payout when
    known. Do not copy the 2020 grade table forward.
 7. **Current annual raise percentage and the resulting salary.** The effective
-   date is no longer unknown: it is 1 March each year.
+   date is owner-confirmed and is not in question; the percentage is, and the
+   recalled 4–5% range in the interview record is history rather than a
+   forecast.
 8. **Year-to-date CPP, CPP2, EI, tax and other payroll deductions**, so the model
    can reproduce the actual net-pay step changes and the annual maximum dates.
 9. **Current pension balance, holdings, contribution history and fees** from Sun
@@ -234,13 +247,14 @@ reopening old transaction forensics:
 11. Equivalent compensation, payroll and pension facts for Amanda wherever they
     materially affect the household plan.
 12. **Current bill-source pack:** recent bills or statements for FortisBC, BC
-    Hydro, Rogers/internet and garbage/waste pickup first, then the rest of the
+    Hydro, internet and garbage/waste pickup first, then the rest of the
     material recurring bills, so bill terms, due dates and service periods can be
     reconciled to transaction evidence rather than inferred from merchant
     charges.
-13. **Internet provider identity:** owner states Rogers; the transaction-derived
-    repository fact says Shaw. Resolve from a current bill or account source
-    before modelling either as the sole current provider.
+13. **Internet provider identity:** the transaction-derived repository fact and
+    the owner's current statement do not agree — see §1 and
+    `household_interviews/DALE_2026-08-12.md`. Resolve from a current bill or
+    account source before modelling either as the sole current provider.
 
 ---
 

@@ -245,7 +245,9 @@ estimated / unknown, under **Principles** above — which stays owner-reserved.
 The evidence behind this — which bills and payroll documents to collect, what is
 currently unknown, and what would close each gap — is source intake rather than
 direction, and lives in [`docs/MASTER_PLAN_REQUIREMENTS.md`](docs/MASTER_PLAN_REQUIREMENTS.md).
-That file records evidence and states no direction of its own.
+That file records what a document establishes and states no direction of its own;
+what a person *said* stays attributed and dated in `docs/household_interviews/`,
+per the table above.
 
 ### Tier 1 — complete the picture *(in progress)*
 
