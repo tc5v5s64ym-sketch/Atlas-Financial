@@ -35,6 +35,7 @@ const suites = [
   ['coupled cash and debt', 'test-debt.js'],
   ['authority invariants', 'test-invariants.js'],
   ['authority surface coverage', 'test-authority-coverage.js'],
+  ['evidence-use register routing', 'test-evidence-use-register.js'],
   ['merge-card check behaviour', 'test-mergecard.js'],
 ];
 

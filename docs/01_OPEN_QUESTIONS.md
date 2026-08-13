@@ -168,6 +168,77 @@ Q1 — separating the business would resolve much of it prospectively.
 
 ---
 
+## Parked from the August 13 evidence pack — unanswered, not absorbed
+
+These questions exist so the Evidence-Use Register can point `UNRESOLVED` rows
+at a real incumbent. They do not answer the household facts. They do not change
+`data.json`.
+
+### Q15. When are pension withdrawals expected to start, and does that change Granite 2045 versus 2050?
+**Status:** OPEN · **Owner:** Dale
+**What we know:** Sun Life evidence is preserved in source intake. Live Atlas
+has no retirement modeller. Fund choice depends on when withdrawals begin.
+**What the answer changes:** Whether a later retirement scenario should even
+consider a fund change. No change is authorised until this is answered.
+
+### Q16. How should the Sun Life spouse/beneficiary record be corrected?
+**Status:** OPEN · **Owner:** Dale
+**What we know:** Source intake records a profile inconsistency (spouse field
+versus beneficiary). Correction is with Sun Life, never automated.
+**What the answer changes:** An owner action only. Atlas must not attempt it.
+
+### Q17. Has the BC Hydro amount shown due of $451.24 been paid, and is the account current?
+**Status:** OPEN · **Owner:** Dale or Amanda
+**What we know:** August 2026 Hydro evidence showed a carried balance, a late
+fee, and $451.24 due. Hydro is paid from Amanda’s account, not the
+household-account forecast.
+**What the answer changes:** Whether an arrears/late-fee obligation exists
+outside the household-account plan.
+
+### Q18. What are the current Bell Mobility, Telus, and garbage/waste amounts, cadences, and payment routes?
+**Status:** OPEN · **Owner:** Dale + Amanda
+**What we know:** Bell is an Amanda-stated estimate around $150/month. Telus
+amount/route and garbage provider/cadence/amount were not supplied with
+sufficient current evidence.
+**What the answer changes:** Whether the household bill set is complete.
+
+### Q19. Was the $814.18 HELOC minimum due 21 August 2026 paid, from which account, or genuinely capitalised with no separate cash movement?
+**Status:** OPEN · **Owner:** Dale
+**What we know:** The July statement posted $814.18 interest to the HELOC and
+displayed a separate $814.18 minimum due 21 August. Live `plan.obligations`
+treats the charge as non-cash on day 31. ACCOUNT_FACTS and the ICS calendar
+already list a 21st minimum. This question does not choose among those
+treatments.
+**What the answer changes:** Whether the 91-day cash plan must reserve $814.18
+on 21 August. A later figure PR would consume the answer; this PR does not.
+
+### Q20. What emergency-reserve target, Amanda retirement/RESP intent, and Dale policy view should apply?
+**Status:** OPEN · **Owner:** Dale + Amanda
+**What we know:** The August interviews did not capture these sufficiently.
+**What the answer changes:** Household policy. Nothing is promoted from silence.
+
+### Q21. Should the disputed $527.80 Fusion/Burrards payment be counted once, twice, or not as a sports cost?
+**Status:** OPEN · **Owner:** Dale + Amanda
+**What we know:** Transaction-derived sports history includes a disputed
+amount. It must not be double-counted.
+**What the answer changes:** Historical sports norms only, after evidence.
+
+### Q22. Are there one or two additional tournaments beyond Seattle, Tacoma, and Indio, and if so with what dates and costs?
+**Status:** OPEN · **Owner:** Dale + Amanda
+**What we know:** Named as unknown/optional. No amount or date exists.
+**What the answer changes:** Scenario placeholders only until evidence exists.
+Do not fabricate dates or costs.
+
+### Q23. Is the $786 Fusion camp already paid, and how do the three live-plan $500 Fusion instalments relate to the travel-team or season fee?
+**Status:** OPEN · **Owner:** Dale + Amanda
+**What we know:** Amanda states the camp is paid; live `plan.commitments` still
+dates $786 as upcoming. Three $500 instalments sit in the live plan; their
+relationship to a conditional travel-team fee is unresolved.
+**What the answer changes:** The 16 August cash need and later Fusion cash
+dates. This PR does not change those live rows.
+
+---
+
 ## Queued for the next round of accounts
 
 - Other credit cards — balances, rates, limits, minimums, due dates, statement history

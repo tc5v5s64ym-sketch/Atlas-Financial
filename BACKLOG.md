@@ -956,6 +956,15 @@ extending the snapshot to the other three pages — is a real scope decision abo
 what counts as a published figure, and belongs to the owner, not to a wording
 fix.
 
+**B85 · Evidence-Use Register** · this PR · *architecture, one outcome*
+
+Explicitly identified August 13 evidence IDs now have a live CI-checked
+disposition in `docs/evidence_use/register.json`. The register owns routing
+and parking only. It does not prove financial correctness and does not absorb
+payroll, HELOC 21st-vs-31st cash treatment, Fusion camp status, Amanda’s $600
+restaurant target, sports/travel priority, pension-in-net-worth, or the
+optional contribution ramp.
+
 **B84 · `ARCHITECTURE.md` keeps its own running count of B73's progress** · *documentation truth, small*
 Three counts of one fact live outside the file that owns it. The section
 below the incumbent table says the scan's page-side instances are the ones

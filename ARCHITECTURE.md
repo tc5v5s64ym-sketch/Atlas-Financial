@@ -300,6 +300,25 @@ owner or explicitly replaces it; it never quietly becomes a second one.
 | What only the household can answer | [`docs/01_OPEN_QUESTIONS.md`](docs/01_OPEN_QUESTIONS.md) |
 | Standing facts — rates, limits, due dates | [`docs/ACCOUNT_FACTS.md`](docs/ACCOUNT_FACTS.md) |
 | Sequencing of planned capability work | [`docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`](docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md) |
+| Whether an explicitly identified supplied evidence item has been routed or parked | [`docs/evidence_use/register.json`](docs/evidence_use/register.json) |
+
+### Evidence-Use Register
+
+The register owns **routing and parking**, not financial values. It is an index
+over existing authorities, not a sixth architectural layer and not a second
+roadmap.
+
+For each explicitly identified evidence ID it records exactly one of:
+`CONSUMED`, `PROPOSED`, `UNRESOLVED`, `SUPERSEDED`, or `EXCLUDED`.
+
+**`CONSUMED` means the item is routed to a named incumbent that exists.** It
+does not mean the incumbent figure is financially correct, current,
+independently verified, or correctly trust-labelled. Pointer existence is not
+a green financial proof. Correctness stays with the incumbent, independent
+evidence, and the normal figure / review gates.
+
+CI covers **declared IDs only**. It cannot read Markdown and decide what is
+material. An unidentified sentence is outside this gate.
 
 ### Atlas is not greenfield
 
