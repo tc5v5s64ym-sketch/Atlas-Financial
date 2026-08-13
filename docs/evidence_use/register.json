@@ -1,0 +1,666 @@
+{
+  "schema": "atlas-evidence-use-register/v1",
+  "owns": "Whether an explicitly identified supplied evidence item has been routed to a named incumbent or deliberately parked.",
+  "does_not_own": "Financial values, trust labels, Forecast results, household policy, or financial correctness. A CONSUMED pointer proves routing only, not financial correctness.",
+  "coverage": "Explicitly identified evidence IDs declared in evidence-ids fences. CI does not claim semantic completeness over arbitrary Markdown.",
+  "items": [
+    {
+      "id": "EMP-001",
+      "source": "docs/source_intake/EMPLOYMENT_PENSION_FACTS_2026-08-13.md",
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "Observed in source intake; not routed into a live incumbent by this PR. A later one-outcome figure or docs PR may consume it. CONSUMED is not used merely because a related number already exists elsewhere.",
+      "review_date": "2026-11-13"
+    },
+    {
+      "id": "EMP-002",
+      "source": "docs/source_intake/EMPLOYMENT_PENSION_FACTS_2026-08-13.md",
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "Base-salary history is preserved in source intake and has not been routed into ACCOUNT_FACTS or plan.income. This PR must not absorb the live payroll figure.",
+      "review_date": "2026-11-13"
+    },
+    {
+      "id": "EMP-003",
+      "source": "docs/source_intake/EMPLOYMENT_PENSION_FACTS_2026-08-13.md",
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "Observed in source intake; not routed into a live incumbent by this PR. A later one-outcome figure or docs PR may consume it. CONSUMED is not used merely because a related number already exists elsewhere.",
+      "review_date": "2026-11-13"
+    },
+    {
+      "id": "EMP-004",
+      "source": "docs/source_intake/EMPLOYMENT_PENSION_FACTS_2026-08-13.md",
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "Observed net range is preserved and is not routed into plan.income. This PR must not replace the live payroll/net-pay figure.",
+      "review_date": "2026-11-13"
+    },
+    {
+      "id": "EMP-005",
+      "source": "docs/source_intake/EMPLOYMENT_PENSION_FACTS_2026-08-13.md",
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "Observed in source intake; not routed into a live incumbent by this PR. A later one-outcome figure or docs PR may consume it. CONSUMED is not used merely because a related number already exists elsewhere.",
+      "review_date": "2026-11-13"
+    },
+    {
+      "id": "EMP-006",
+      "source": "docs/source_intake/EMPLOYMENT_PENSION_FACTS_2026-08-13.md",
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "No live Forecast consumer exists for this item. Exclusion is intentional until a named incumbent is earned. This is not a claim about the observation’s quality.",
+      "no_review_reason": "No statutory payroll engine is authorised. Exclusion holds until a named consumer exists; not a junk-drawer parking of an unknown."
+    },
+    {
+      "id": "EMP-007",
+      "source": "docs/source_intake/EMPLOYMENT_PENSION_FACTS_2026-08-13.md",
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "T4 totals must not overwrite base salary and have no Records incumbent row. Preserved, not routed.",
+      "review_date": "2026-11-13"
+    },
+    {
+      "id": "EMP-008",
+      "source": "docs/household_interviews/DALE_2026-08-12.md",
+      "disposition": "CONSUMED",
+      "routed_to": {
+        "path": "docs/household_interviews/DALE_2026-08-12.md",
+        "heading": "Recent raise amounts"
+      }
+    },
+    {
+      "id": "PEN-001",
+      "source": "docs/source_intake/EMPLOYMENT_PENSION_FACTS_2026-08-13.md",
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "Observed in source intake; not routed into a live incumbent by this PR. A later one-outcome figure or docs PR may consume it. CONSUMED is not used merely because a related number already exists elsewhere.",
+      "review_date": "2026-11-13"
+    },
+    {
+      "id": "PEN-002",
+      "source": "docs/source_intake/EMPLOYMENT_PENSION_FACTS_2026-08-13.md",
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "Pension balance is preserved and is not routed into published net worth. This PR must not include pensions in net worth.",
+      "no_review_reason": "Live publication currently excludes pensions by stated caveat. Inclusion is an owner decision, not a register correction."
+    },
+    {
+      "id": "PEN-003",
+      "source": "docs/source_intake/EMPLOYMENT_PENSION_FACTS_2026-08-13.md",
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "Observed in source intake; not routed into a live incumbent by this PR. A later one-outcome figure or docs PR may consume it. CONSUMED is not used merely because a related number already exists elsewhere.",
+      "review_date": "2026-11-13"
+    },
+    {
+      "id": "PEN-004",
+      "source": "docs/source_intake/EMPLOYMENT_PENSION_FACTS_2026-08-13.md",
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "Observed in source intake; not routed into a live incumbent by this PR. A later one-outcome figure or docs PR may consume it. CONSUMED is not used merely because a related number already exists elsewhere.",
+      "review_date": "2026-11-13"
+    },
+    {
+      "id": "PEN-005",
+      "source": "docs/source_intake/EMPLOYMENT_PENSION_FACTS_2026-08-13.md",
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "No live Forecast consumer exists for this item. Exclusion is intentional until a named incumbent is earned. This is not a claim about the observation’s quality.",
+      "no_review_reason": "No structured pension-history consumer exists. Exclusion is intentional, not an unstated absorb."
+    },
+    {
+      "id": "PEN-006",
+      "source": "docs/source_intake/EMPLOYMENT_PENSION_FACTS_2026-08-13.md",
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "Historical returns must not become Forecast assumptions.",
+      "no_review_reason": "Durable prohibition: performance observations are not forecast inputs."
+    },
+    {
+      "id": "PEN-007",
+      "source": "docs/household_interviews/DALE_2026-08-12.md",
+      "disposition": "PROPOSED",
+      "evidence_home": "docs/household_interviews/DALE_2026-08-12.md",
+      "owner_gate": "Dale owner decision required before promotion into live plan, net worth, or contribution policy."
+    },
+    {
+      "id": "PEN-008",
+      "source": "docs/source_intake/EMPLOYMENT_PENSION_FACTS_2026-08-13.md",
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "No live Forecast consumer exists for this item. Exclusion is intentional until a named incumbent is earned. This is not a claim about the observation’s quality.",
+      "no_review_reason": "No retirement modeller is authorised. Scenario rows stay excluded from Forecast."
+    },
+    {
+      "id": "PEN-009",
+      "source": "docs/source_intake/EMPLOYMENT_PENSION_FACTS_2026-08-13.md",
+      "disposition": "UNRESOLVED",
+      "question_path": "docs/01_OPEN_QUESTIONS.md",
+      "question_marker": "Q15."
+    },
+    {
+      "id": "PEN-010",
+      "source": "docs/source_intake/EMPLOYMENT_PENSION_FACTS_2026-08-13.md",
+      "disposition": "UNRESOLVED",
+      "question_path": "docs/01_OPEN_QUESTIONS.md",
+      "question_marker": "Q16."
+    },
+    {
+      "id": "PEN-011",
+      "source": "docs/source_intake/EMPLOYMENT_PENSION_FACTS_2026-08-13.md",
+      "disposition": "SUPERSEDED",
+      "successor_id": "PEN-004"
+    },
+    {
+      "id": "BILL-HYD-001",
+      "source": "docs/source_intake/HOUSEHOLD_BILL_FACTS_2026-08-13.md",
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "Hydro equal-payment cash leaves Amanda’s account, not the household-account plan. ACCOUNT_FACTS already records that payer split from earlier work; this schedule was not routed into plan.bills.",
+      "no_review_reason": "Intentional payer-scope exclusion from the household-account forecast, not a missing bill."
+    },
+    {
+      "id": "BILL-HYD-002",
+      "source": "docs/source_intake/HOUSEHOLD_BILL_FACTS_2026-08-13.md",
+      "disposition": "UNRESOLVED",
+      "question_path": "docs/01_OPEN_QUESTIONS.md",
+      "question_marker": "Q17."
+    },
+    {
+      "id": "BILL-HYD-003",
+      "source": "docs/source_intake/HOUSEHOLD_BILL_FACTS_2026-08-13.md",
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "Consumption history must stay distinct from the equal-payment cash schedule and has no live consumer.",
+      "no_review_reason": "Durable: history is not the monthly cash bill."
+    },
+    {
+      "id": "BILL-HYD-004",
+      "source": "docs/source_intake/HOUSEHOLD_BILL_FACTS_2026-08-13.md",
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "The 2025 catch-up is a non-recurring reconciliation event, not the monthly norm.",
+      "no_review_reason": "Durable: must not be treated as recurring Hydro."
+    },
+    {
+      "id": "BILL-FOR-001",
+      "source": "docs/source_intake/HOUSEHOLD_BILL_FACTS_2026-08-13.md",
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "Live plan.bills already carries a transaction-derived Fortis amount. This statement was not the routing source. This PR does not mark CONSUMED for a coincidental match.",
+      "review_date": "2026-11-13"
+    },
+    {
+      "id": "BILL-FOR-002",
+      "source": "docs/source_intake/HOUSEHOLD_BILL_FACTS_2026-08-13.md",
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "Actual consumption cost is not the equal-payment cash schedule.",
+      "no_review_reason": "Durable distinction between invoice actuals and EPP cash."
+    },
+    {
+      "id": "BILL-FOR-003",
+      "source": "docs/source_intake/HOUSEHOLD_BILL_FACTS_2026-08-13.md",
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "September 2026 equal-payment review result is unknown until a later statement.",
+      "review_date": "2026-10-15"
+    },
+    {
+      "id": "BILL-ROG-001",
+      "source": "docs/source_intake/HOUSEHOLD_BILL_FACTS_2026-08-13.md",
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "Live Shaw $78.40 is transaction-derived. This invoice was not routed into plan.bills by this PR.",
+      "review_date": "2026-11-13"
+    },
+    {
+      "id": "BILL-ROG-002",
+      "source": "docs/source_intake/HOUSEHOLD_BILL_FACTS_2026-08-13.md",
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "ValuePlan expiry has no 91-day Forecast consumer. Parking it on expandEvents would misstate the window. B74 owns calendar unification, not this register.",
+      "no_review_reason": "No reminder incumbent exists that is not already a B74 overlap. Exclusion is intentional until that owner is settled."
+    },
+    {
+      "id": "BILL-ROG-003",
+      "source": "docs/source_intake/HOUSEHOLD_BILL_FACTS_2026-08-13.md",
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "2027 review dates are outside the live 91-day window and have no reminder incumbent distinct from B74.",
+      "no_review_reason": "Same as BILL-ROG-002: no fourth calendar."
+    },
+    {
+      "id": "BILL-ROG-004",
+      "source": "docs/source_intake/HOUSEHOLD_BILL_FACTS_2026-08-13.md",
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "Post-promotion ~$168 is a conditional estimate, not a confirmed future bill.",
+      "no_review_reason": "Durable: scenario/estimate must not be published as a verified bill."
+    },
+    {
+      "id": "BILL-ROG-005",
+      "source": "docs/source_intake/HOUSEHOLD_BILL_FACTS_2026-08-13.md",
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "Historical Shaw merchant text must not be rewritten. Current Rogers-together-with-Shaw identity lives in source intake, not as a silent ACCOUNT_FACTS relabel in this PR.",
+      "no_review_reason": "Durable: keep historical merchant evidence historical."
+    },
+    {
+      "id": "BILL-OTH-001",
+      "source": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "disposition": "UNRESOLVED",
+      "question_path": "docs/01_OPEN_QUESTIONS.md",
+      "question_marker": "Q18."
+    },
+    {
+      "id": "BILL-OTH-002",
+      "source": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "disposition": "UNRESOLVED",
+      "question_path": "docs/01_OPEN_QUESTIONS.md",
+      "question_marker": "Q18."
+    },
+    {
+      "id": "BILL-OTH-003",
+      "source": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "disposition": "UNRESOLVED",
+      "question_path": "docs/ACCOUNT_FACTS.md",
+      "question_marker": "If BCAA is optional coverage"
+    },
+    {
+      "id": "BILL-SUB-001",
+      "source": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "disposition": "PROPOSED",
+      "evidence_home": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "owner_gate": "Joint household decision required before promotion into data.json plan or Forecast inputs. Attributed speech is not automatically joint policy."
+    },
+    {
+      "id": "MTG-001",
+      "source": "docs/source_intake/MORTGAGE_HELOC_FACTS_2026-08-13.md",
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "Dated 2025-12-31 mortgage balance must not overwrite the later current observation. No structured history consumer yet.",
+      "no_review_reason": "Durable: historical position is not the current mortgage balance incumbent."
+    },
+    {
+      "id": "MTG-002",
+      "source": "docs/source_intake/MORTGAGE_HELOC_FACTS_2026-08-13.md",
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "Observed in source intake; not routed into a live incumbent by this PR. A later one-outcome figure or docs PR may consume it. CONSUMED is not used merely because a related number already exists elsewhere.",
+      "review_date": "2026-11-13"
+    },
+    {
+      "id": "MTG-003",
+      "source": "docs/source_intake/MORTGAGE_HELOC_FACTS_2026-08-13.md",
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "No live Forecast consumer exists for this item. Exclusion is intentional until a named incumbent is earned. This is not a claim about the observation’s quality.",
+      "no_review_reason": "No structured mortgage principal/interest history consumer exists."
+    },
+    {
+      "id": "MTG-004",
+      "source": "docs/source_intake/MORTGAGE_HELOC_FACTS_2026-08-13.md",
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "Prepayment privilege is preserved; this PR does not route it into the renewal modeller inputs.",
+      "review_date": "2026-11-13"
+    },
+    {
+      "id": "HELOC-001",
+      "source": "docs/source_intake/MORTGAGE_HELOC_FACTS_2026-08-13.md",
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "July statement position is history. The later Atlas balance remains the current observation. This PR does not overwrite it.",
+      "no_review_reason": "Durable: statement history must not replace the current HELOC balance."
+    },
+    {
+      "id": "HELOC-002",
+      "source": "docs/source_intake/MORTGAGE_HELOC_FACTS_2026-08-13.md",
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "Rate, limit, and July interest already have live plan/debt rows from earlier work. This statement is not treated as the routing source. This PR must not change HELOC cash treatment.",
+      "review_date": "2026-11-13"
+    },
+    {
+      "id": "HELOC-003",
+      "source": "docs/source_intake/MORTGAGE_HELOC_FACTS_2026-08-13.md",
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "July advances and counterparties stay in the local private store. Aggregates already exist independently.",
+      "no_review_reason": "Durable privacy: private counterparties remain local-only."
+    },
+    {
+      "id": "HELOC-004",
+      "source": "docs/source_intake/MORTGAGE_HELOC_FACTS_2026-08-13.md",
+      "disposition": "UNRESOLVED",
+      "question_path": "docs/01_OPEN_QUESTIONS.md",
+      "question_marker": "Q19."
+    },
+    {
+      "id": "TAX-001",
+      "source": "docs/source_intake/MORTGAGE_HELOC_FACTS_2026-08-13.md",
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "Property-tax draw classification already exists from earlier work. This statement is corroboration, not the routing source.",
+      "review_date": "2026-11-13"
+    },
+    {
+      "id": "MTG-005",
+      "source": "docs/source_intake/MORTGAGE_HELOC_FACTS_2026-08-13.md",
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "May 2027 renewal already has Forecast.renewal as a prior consumer. This statement did not create that routing.",
+      "review_date": "2026-11-13"
+    },
+    {
+      "id": "HH-001",
+      "source": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "disposition": "PROPOSED",
+      "evidence_home": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "owner_gate": "Joint household decision required before promotion into data.json plan or Forecast inputs. Attributed speech is not automatically joint policy."
+    },
+    {
+      "id": "HH-002",
+      "source": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "disposition": "PROPOSED",
+      "evidence_home": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "owner_gate": "Joint household decision required before promotion into data.json plan or Forecast inputs. Attributed speech is not automatically joint policy."
+    },
+    {
+      "id": "HH-003",
+      "source": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "disposition": "PROPOSED",
+      "evidence_home": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "owner_gate": "Joint household decision required before promotion into data.json plan or Forecast inputs. Attributed speech is not automatically joint policy."
+    },
+    {
+      "id": "HH-004",
+      "source": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "disposition": "PROPOSED",
+      "evidence_home": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "owner_gate": "Joint household decision required before promotion into data.json plan or Forecast inputs. Attributed speech is not automatically joint policy."
+    },
+    {
+      "id": "HH-005",
+      "source": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "disposition": "PROPOSED",
+      "evidence_home": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "owner_gate": "Joint household decision required before promotion into data.json plan or Forecast inputs. Attributed speech is not automatically joint policy."
+    },
+    {
+      "id": "HH-006",
+      "source": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "disposition": "PROPOSED",
+      "evidence_home": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "owner_gate": "Joint household decision required before promotion into data.json plan or Forecast inputs. Attributed speech is not automatically joint policy."
+    },
+    {
+      "id": "HH-007",
+      "source": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "disposition": "CONSUMED",
+      "routed_to": {
+        "path": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+        "heading": "Garage / dental-lab rent income"
+      }
+    },
+    {
+      "id": "HH-008",
+      "source": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "disposition": "CONSUMED",
+      "routed_to": {
+        "path": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+        "heading": "Coaching-business revenue"
+      }
+    },
+    {
+      "id": "HH-009",
+      "source": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "disposition": "CONSUMED",
+      "routed_to": {
+        "path": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+        "heading": "No additional Amanda bank account"
+      }
+    },
+    {
+      "id": "HH-010",
+      "source": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "disposition": "UNRESOLVED",
+      "question_path": "docs/01_OPEN_QUESTIONS.md",
+      "question_marker": "Q20."
+    },
+    {
+      "id": "HH-011",
+      "source": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "disposition": "PROPOSED",
+      "evidence_home": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "owner_gate": "Joint household decision required before promotion into data.json plan or Forecast inputs. Attributed speech is not automatically joint policy."
+    },
+    {
+      "id": "HH-012",
+      "source": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "disposition": "PROPOSED",
+      "evidence_home": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "owner_gate": "Joint household decision required before promotion into data.json plan or Forecast inputs. Attributed speech is not automatically joint policy."
+    },
+    {
+      "id": "HH-013",
+      "source": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "disposition": "PROPOSED",
+      "evidence_home": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "owner_gate": "Joint household decision required before promotion into data.json plan or Forecast inputs. Attributed speech is not automatically joint policy."
+    },
+    {
+      "id": "HH-014",
+      "source": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "disposition": "PROPOSED",
+      "evidence_home": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "owner_gate": "Joint household decision required before promotion into data.json plan or Forecast inputs. Attributed speech is not automatically joint policy."
+    },
+    {
+      "id": "HH-015",
+      "source": "docs/household_interviews/AMANDA_2026-08-10_PARTIAL.md",
+      "disposition": "PROPOSED",
+      "evidence_home": "docs/household_interviews/AMANDA_2026-08-10_PARTIAL.md",
+      "owner_gate": "Joint household decision required before promotion into data.json plan or Forecast inputs. Attributed speech is not automatically joint policy."
+    },
+    {
+      "id": "HH-016",
+      "source": "docs/household_interviews/AMANDA_2026-08-10_PARTIAL.md",
+      "disposition": "PROPOSED",
+      "evidence_home": "docs/household_interviews/AMANDA_2026-08-10_PARTIAL.md",
+      "owner_gate": "Joint household decision required before promotion into data.json plan or Forecast inputs. Attributed speech is not automatically joint policy."
+    },
+    {
+      "id": "HH-017",
+      "source": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "disposition": "PROPOSED",
+      "evidence_home": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "owner_gate": "Joint household decision required before promotion into data.json plan or Forecast inputs. Attributed speech is not automatically joint policy."
+    },
+    {
+      "id": "HH-018",
+      "source": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "disposition": "PROPOSED",
+      "evidence_home": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "owner_gate": "Joint household decision required before promotion into data.json plan or Forecast inputs. Attributed speech is not automatically joint policy."
+    },
+    {
+      "id": "HH-019",
+      "source": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "disposition": "PROPOSED",
+      "evidence_home": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "owner_gate": "Joint household decision required before promotion into data.json plan or Forecast inputs. Attributed speech is not automatically joint policy."
+    },
+    {
+      "id": "HH-020",
+      "source": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "Owner-stated rounded insurance recollection must not overwrite the verified premium already in ACCOUNT_FACTS.",
+      "no_review_reason": "Durable: verified current amount remains the financial authority."
+    },
+    {
+      "id": "HH-021",
+      "source": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "disposition": "PROPOSED",
+      "evidence_home": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "owner_gate": "Joint household decision required before promotion into data.json plan or Forecast inputs. Attributed speech is not automatically joint policy."
+    },
+    {
+      "id": "HH-022",
+      "source": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "disposition": "PROPOSED",
+      "evidence_home": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "owner_gate": "Joint household decision required before promotion into data.json plan or Forecast inputs. Attributed speech is not automatically joint policy."
+    },
+    {
+      "id": "HH-023",
+      "source": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "disposition": "PROPOSED",
+      "evidence_home": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "owner_gate": "Joint household decision required before promotion into data.json plan or Forecast inputs. Attributed speech is not automatically joint policy."
+    },
+    {
+      "id": "HH-024",
+      "source": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "disposition": "PROPOSED",
+      "evidence_home": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "owner_gate": "Joint household decision required before promotion into data.json plan or Forecast inputs. Attributed speech is not automatically joint policy."
+    },
+    {
+      "id": "HH-025",
+      "source": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "disposition": "PROPOSED",
+      "evidence_home": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "owner_gate": "Joint household decision required before promotion into data.json plan or Forecast inputs. Attributed speech is not automatically joint policy."
+    },
+    {
+      "id": "SPORT-001",
+      "source": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "disposition": "UNRESOLVED",
+      "question_path": "docs/01_OPEN_QUESTIONS.md",
+      "question_marker": "Q21."
+    },
+    {
+      "id": "TRAVEL-001",
+      "source": "docs/household_interviews/AMANDA_2026-08-10_PARTIAL.md",
+      "disposition": "PROPOSED",
+      "evidence_home": "docs/household_interviews/AMANDA_2026-08-10_PARTIAL.md",
+      "owner_gate": "Joint household decision required before promotion into data.json plan or Forecast inputs. Attributed speech is not automatically joint policy."
+    },
+    {
+      "id": "TRAVEL-002",
+      "source": "docs/household_interviews/AMANDA_2026-08-10_PARTIAL.md",
+      "disposition": "PROPOSED",
+      "evidence_home": "docs/household_interviews/AMANDA_2026-08-10_PARTIAL.md",
+      "owner_gate": "Joint household decision required before promotion into data.json plan or Forecast inputs. Attributed speech is not automatically joint policy."
+    },
+    {
+      "id": "TRAVEL-003",
+      "source": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "disposition": "UNRESOLVED",
+      "question_path": "docs/01_OPEN_QUESTIONS.md",
+      "question_marker": "Q22."
+    },
+    {
+      "id": "COMMIT-001",
+      "source": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "disposition": "UNRESOLVED",
+      "question_path": "docs/01_OPEN_QUESTIONS.md",
+      "question_marker": "Q23."
+    },
+    {
+      "id": "COMMIT-002",
+      "source": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "disposition": "PROPOSED",
+      "evidence_home": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "owner_gate": "Joint household decision required before promotion into data.json plan or Forecast inputs. Attributed speech is not automatically joint policy."
+    },
+    {
+      "id": "COMMIT-003",
+      "source": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "disposition": "PROPOSED",
+      "evidence_home": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "owner_gate": "Joint household decision required before promotion into data.json plan or Forecast inputs. Attributed speech is not automatically joint policy."
+    },
+    {
+      "id": "COMMIT-004",
+      "source": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "disposition": "UNRESOLVED",
+      "question_path": "docs/01_OPEN_QUESTIONS.md",
+      "question_marker": "Q23."
+    },
+    {
+      "id": "TXN-001",
+      "source": "docs/source_intake/EVIDENCE_USE_LEDGER_2026-08-13.md",
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "Coverage counts already sit in publication metadata from earlier work. This ledger row is not treated as the routing source.",
+      "review_date": "2026-11-13"
+    },
+    {
+      "id": "TXN-002",
+      "source": "docs/source_intake/EVIDENCE_USE_LEDGER_2026-08-13.md",
+      "disposition": "PROPOSED",
+      "evidence_home": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
+      "owner_gate": "Household/owner confirmation required before candidate merchants become budget identity. Candidate evidence is not canonical spend."
+    },
+    {
+      "id": "TXN-003",
+      "source": "docs/source_intake/EVIDENCE_USE_LEDGER_2026-08-13.md",
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "Private counterparties and unresolved movements stay local or in existing backlog/questions. This PR does not publish them.",
+      "no_review_reason": "Durable privacy plus existing question/backlog homes; not a new fact store."
+    },
+    {
+      "id": "TXN-004",
+      "source": "docs/source_intake/EVIDENCE_USE_LEDGER_2026-08-13.md",
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "No live Forecast consumer exists for this item. Exclusion is intentional until a named incumbent is earned. This is not a claim about the observation’s quality.",
+      "no_review_reason": "AF-INGEST-01 / B78 remains queued. Exclusion is the closed ingestion gate, not an absorb."
+    },
+    {
+      "id": "TXN-005",
+      "source": "docs/source_intake/EVIDENCE_USE_LEDGER_2026-08-13.md",
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "Original PDFs, payroll files, and exports must never enter git.",
+      "no_review_reason": "Durable absolute: raw/ is local-only."
+    },
+    {
+      "id": "ARC-001",
+      "source": "docs/source_intake/CONVERSATION_CAPTURE_2026-08-13.md",
+      "disposition": "CONSUMED",
+      "routed_to": {
+        "path": "ARCHITECTURE.md",
+        "heading": "Evidence-Use Register"
+      }
+    },
+    {
+      "id": "ARC-002",
+      "source": "ARCHITECTURE.md",
+      "disposition": "CONSUMED",
+      "routed_to": {
+        "path": "ARCHITECTURE.md",
+        "heading": "One plan, many windows"
+      }
+    },
+    {
+      "id": "ARC-003",
+      "source": "docs/advisory/COPILOT_ARCHITECTURE_GAME_PLAN_2026-08-13.md",
+      "disposition": "CONSUMED",
+      "routed_to": {
+        "path": "docs/advisory/COPILOT_ARCHITECTURE_GAME_PLAN_2026-08-13.md"
+      }
+    },
+    {
+      "id": "ARC-004",
+      "source": "docs/advisory/ENGINE_LINEAGE_AUDIT_2026-08-13.md",
+      "disposition": "CONSUMED",
+      "routed_to": {
+        "path": "docs/advisory/ENGINE_LINEAGE_AUDIT_2026-08-13.md"
+      }
+    },
+    {
+      "id": "ARC-005",
+      "source": "docs/source_intake/CONVERSATION_CAPTURE_2026-08-13.md",
+      "disposition": "CONSUMED",
+      "routed_to": {
+        "path": "docs/source_intake/CONVERSATION_CAPTURE_2026-08-13.md",
+        "heading": "Architecture reviews received"
+      }
+    },
+    {
+      "id": "ARC-006",
+      "source": "docs/source_intake/CONVERSATION_CAPTURE_2026-08-13.md",
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "Confidence-vocabulary mapping is owner-reserved and is not performed by this register.",
+      "no_review_reason": "Durable: published trust labels stay owner-reserved; the register is not a trust system."
+    },
+    {
+      "id": "ARC-007",
+      "source": "docs/source_intake/CONVERSATION_CAPTURE_2026-08-13.md",
+      "disposition": "SUPERSEDED",
+      "successor_id": "ARC-001"
+    },
+    {
+      "id": "ARC-008",
+      "source": "docs/advisory/COPILOT_ARCHITECTURE_GAME_PLAN_2026-08-13.md",
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "Generated data.json is not authorised until facts and policy are separated and a parity proof exists.",
+      "no_review_reason": "Durable closed cutover: publication stays hand-authored."
+    },
+    {
+      "id": "ARC-009",
+      "source": "docs/advisory/COPILOT_ARCHITECTURE_GAME_PLAN_2026-08-13.md",
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "A live copilot API is security-relevant and owner-gated. Not started.",
+      "no_review_reason": "Durable closed gate: no live API in this outcome."
+    }
+  ]
+}

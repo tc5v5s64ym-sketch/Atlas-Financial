@@ -1,8 +1,113 @@
 # Atlas Financial — Evidence-Use Ledger
 
-**Status:** Preservation and disposition index; not a canonical fact store or engine authority  
+**Status:** Dated preservation prototype. **Superseded** as the live disposition
+index by [`docs/evidence_use/register.json`](../evidence_use/register.json).
+This file remains historical evidence: it is how the August 13 IDs were first
+named. It is not a second fact store, not an engine authority, and not the
+live routing record.
+
 **As of:** August 13, 2026  
 **Purpose:** Prove that every material item gathered in this work has a destination, consumer, question, action, scenario, or explicit parking state.
+
+The `evidence-ids` fence below is the explicit-ID declaration for this pack.
+CI covers these IDs only. It does not claim that every sentence in this file
+has been identified.
+
+```evidence-ids
+EMP-001
+EMP-002
+EMP-003
+EMP-004
+EMP-005
+EMP-006
+EMP-007
+EMP-008
+PEN-001
+PEN-002
+PEN-003
+PEN-004
+PEN-005
+PEN-006
+PEN-007
+PEN-008
+PEN-009
+PEN-010
+PEN-011
+BILL-HYD-001
+BILL-HYD-002
+BILL-HYD-003
+BILL-HYD-004
+BILL-FOR-001
+BILL-FOR-002
+BILL-FOR-003
+BILL-ROG-001
+BILL-ROG-002
+BILL-ROG-003
+BILL-ROG-004
+BILL-ROG-005
+BILL-OTH-001
+BILL-OTH-002
+BILL-OTH-003
+BILL-SUB-001
+MTG-001
+MTG-002
+MTG-003
+MTG-004
+HELOC-001
+HELOC-002
+HELOC-003
+HELOC-004
+TAX-001
+MTG-005
+HH-001
+HH-002
+HH-003
+HH-004
+HH-005
+HH-006
+HH-007
+HH-008
+HH-009
+HH-010
+HH-011
+HH-012
+HH-013
+HH-014
+HH-015
+HH-016
+HH-017
+HH-018
+HH-019
+HH-020
+HH-021
+HH-022
+HH-023
+HH-024
+HH-025
+SPORT-001
+TRAVEL-001
+TRAVEL-002
+TRAVEL-003
+COMMIT-001
+COMMIT-002
+COMMIT-003
+COMMIT-004
+TXN-001
+TXN-002
+TXN-003
+TXN-004
+TXN-005
+ARC-001
+ARC-002
+ARC-003
+ARC-004
+ARC-005
+ARC-006
+ARC-007
+ARC-008
+ARC-009
+```
+
 
 This ledger deliberately uses descriptive source statuses rather than inventing a new confidence enum. The repository's verified/calculated/estimated/unknown vocabulary and existing source-method labels still require an owner-approved mapping.
 

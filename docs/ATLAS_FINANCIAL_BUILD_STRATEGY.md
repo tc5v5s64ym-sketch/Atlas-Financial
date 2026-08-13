@@ -164,6 +164,29 @@ that the findings are unlucky.
 
 ---
 
+## AF-EVID-01 · Evidence-Use Register — Phase 1 interruption
+
+Adopted from the August 13 recommendation after PR #27. This item interrupts
+Phase 1 because captured evidence could sit unused with CI still green. It does
+not cancel remaining B73/B74 work; those resume after the register exists.
+
+- **Outcome** — every explicitly identified evidence ID has exactly one
+  CI-checked disposition against an existing incumbent. `CONSUMED` proves
+  routing, not financial correctness.
+- **Incumbent** — `NEW`. Consumes `docs/01_OPEN_QUESTIONS.md`, household
+  interviews, `ARCHITECTURE.md`, and advisory records as destinations. Does
+  **not** replace `Forecast`, `data.json` `plan`, ACCOUNT_FACTS, or published
+  trust labels.
+- **Tier** — **M3**. New architectural authority plus a deterministic hard
+  gate. **Backlog** — `B85`.
+- **Acceptance** — a governed ID with no disposition fails `npm test`; a
+  `CONSUMED` pointer at a missing path fails; the suite does not compare
+  amounts and does not claim semantic completeness of prose.
+- **Non-goals** — payroll/HELOC/Fusion/budget figure fixes; B73/B74; a fact
+  schema; generated `data.json`; a store; a copilot API.
+
+---
+
 ## Phase 1 — make the current picture provable · to T1
 
 The site already publishes figures the household acts on. Before anything is
