@@ -62,8 +62,8 @@
         "frequency": "biweekly",
         "anchor": "2026-08-14",
         "amount": 4264,
-        "confidence": "confirmed",
-        "note": "Observed average of current recurring net deposits after 2026 CPP, CPP2 and EI completion and the current 1% optional pension deduction. Typical deposits $4,247.92–$4,274.98 from the August 2026 payroll-statement synthesis (EMP-004). Not a single repeating cheque and not a statutory-engine output. Every payday in this 91-day window falls after those 2026 completion dates."
+        "confidence": "estimated",
+        "note": "Expected recurring net: observed average of current-regime deposits after 2026 CPP, CPP2 and EI completion and the current 1% optional pension deduction. Typical deposits $4,247.92–$4,274.98 from the August 2026 payroll-statement synthesis (EMP-004). Tagged estimated because future cheques are not individually confirmed at exactly $4,264. Not a statutory-engine output. Every payday in this 91-day window falls after those 2026 completion dates."
       },
       {
         "id": "childBenefit",

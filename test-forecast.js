@@ -84,19 +84,22 @@ const asOf = data.meta.asOf;
 const payroll = plan.income.find(s => s.id === 'payroll');
 ok(payroll === plan.income[0], 'payroll is plan.income[0], the EMP-004 routing target');
 ok(payroll.amount === 4264, 'live payroll is the EMP-004 observed-average net', String(payroll.amount));
+ok(payroll.confidence === 'estimated',
+  'tagged estimated — observed average, not a repeating exact cheque', payroll.confidence);
 ok(payroll.amount >= 4247.92 && payroll.amount <= 4274.98,
   'and sits inside the observed current-net range $4,247.92–$4,274.98');
 const expected = F.simulate(plan, asOf, {
   scenario: 'expected', weeklyVariable: 0, targetBuffer: plan.defaults.targetBuffer,
 });
 
-// Confirmed income: independently counted paydays × 4264 + 3 child benefits × 153.59.
+// Confirmed income: child benefit only. Payroll is the expected-regime average, not a confirmed repeating cheque.
 const paydays = F.occurrences(payroll, asOf, F.addDays(asOf, plan.windowDays - 1));
 ok(paydays.length === 7, 'the 91-day window contains 7 payroll dates', paydays.join(', '));
-ok(near(expected.totals.confirmedIncome, paydays.length * 4264 + 3 * 153.59), '90-day confirmed income',
+ok(near(expected.totals.confirmedIncome, 3 * 153.59), '90-day confirmed income is child benefit only',
   expected.totals.confirmedIncome.toFixed(2));
-// Estimated (expected scenario): Amanda's transfers, 3 × 2182.
-ok(near(expected.totals.estimatedIncome, 3 * 2182, 0.05), '90-day estimated income',
+// Estimated (expected scenario): 7 payrolls × 4264 + Amanda's transfers, 3 × 2182.
+ok(near(expected.totals.estimatedIncome, paydays.length * 4264 + 3 * 2182, 0.05),
+  '90-day estimated income includes payroll plus Amanda transfers',
   expected.totals.estimatedIncome.toFixed(2));
 // Obligations exclude the HELOC — its interest capitalises rather than being
 // paid. Mortgage 7×1600, Triangle 3×253.57, CashBack 762.36 + 2×170,
@@ -289,6 +292,9 @@ ok(near(gapRec.zero.ending, noGap.ending),
 ok(near(gapRec.sim.totals.confirmedIncome, noGap.totals.confirmedIncome),
   'confirmed income is identical with and without the recovery model',
   gapRec.sim.totals.confirmedIncome.toFixed(2));
+ok(near(gapRec.sim.totals.estimatedIncome, noGap.totals.estimatedIncome),
+  'estimated income is identical with and without the recovery model',
+  gapRec.sim.totals.estimatedIncome.toFixed(2));
 
 // --- 4. reconciles to an independent full-ledger calculation -------------
 // Rebuilt from scratch below — its own day loop, not simulate() — so agreement

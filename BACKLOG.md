@@ -972,9 +972,10 @@ Live `plan.income` `payroll` was **$4,468.69**, labelled as fifteen consecutive
 deposits. August 2026 payroll-statement synthesis (`EMP-004`) shows the current
 recurring net after CPP/CPP2/EI completion and the current 1% optional pension
 is **$4,247.92–$4,274.98**, observed average **$4,264**. This interruption
-replaces the incumbent 91-day cash input with that average, routes `EMP-004` to
-`data.json` `/plan/income/0`, and leaves salary history, bonus, statutory
-engines, and pension forecasting unbuilt.
+replaces the incumbent 91-day cash input with that average, tagged
+**estimated** because future cheques are not individually confirmed at exactly
+$4,264, routes `EMP-004` to `data.json` `/plan/income/0`, and leaves salary
+history, bonus, statutory engines, and pension forecasting unbuilt.
 
 **B84 · `ARCHITECTURE.md` keeps its own running count of B73's progress** · *documentation truth, small*
 Three counts of one fact live outside the file that owns it. The section
