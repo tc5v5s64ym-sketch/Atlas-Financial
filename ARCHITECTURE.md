@@ -199,6 +199,56 @@ and an owner decision — never by a plan reaching that line.
 The tiers below describe **the stage each capability is at**, not a ceiling — and
 not a record of current progress, which is `BACKLOG.md`'s.
 
+### One plan, many windows — owner-approved 2026-08-12
+
+Atlas maintains **one grand household financial plan**, and every horizon is a
+window onto it. A one-, two- or three-week view and a two-, three-, nine- or
+twelve-month view are not separate forecasts; they are different spans of the
+same dated projection, from the same starting facts. Changing an input
+recalculates every affected horizon from that one plan, so a short-horizon
+answer cannot quietly contradict a long-horizon one.
+
+**The deterministic engine stays where financial decisions are made.** That is
+the rule at the top of this file applied to the destination, not replaced by it.
+
+**Two interfaces, one answer.**
+
+| Surface | What it is for |
+|---|---|
+| The website | visual presentation and inspection of the plan |
+| ChatGPT | conversational query, explanation and scenario interface |
+
+Neither may create a second financial answer, and neither is an authority.
+Both consume the same ones. A surface that works a figure out for itself is the
+defect `B73` exists to close, arriving through a new door.
+
+**What the plan is expected to cover, as each capability is earned:** material
+income and compensation, debts, bills, spending and budget, known dated
+commitments, sinking funds, planned purchases and travel, and assets, pension
+and investments — together with the scenario inputs that vary them. Naming them
+here authorises none of them; each still passes its own gate below.
+
+**Safe-to-spend is constrained by the future, not by today's balance.** It has to
+hold back what known commitments, required debt payments and the buffer policy
+will need across the horizon being asked about.
+
+**A scenario changes an input to this plan.** It is not a disconnected
+calculator, and its answer is compared against the same baseline the plan
+publishes.
+
+**Provenance survives into the plan.** Whether an input or a result is verified,
+calculated, owner-stated, estimated or unknown travels with it, so a polished
+surface cannot make a provisional assumption look settled. This does not touch
+the four-label contract for a **published** figure — verified / calculated /
+estimated / unknown, under **Principles** above — which stays owner-reserved.
+
+The evidence behind this — which bills and payroll documents to collect, what is
+currently unknown, and what would close each gap — is source intake rather than
+direction, and lives in [`docs/MASTER_PLAN_REQUIREMENTS.md`](docs/MASTER_PLAN_REQUIREMENTS.md).
+That file records what a document establishes and states no direction of its own;
+what a person *said* stays attributed and dated in `docs/household_interviews/`,
+per the table above.
+
 ### Tier 1 — complete the picture *(in progress)*
 
 The analysis is only as good as its coverage. **Which gaps are still open is
