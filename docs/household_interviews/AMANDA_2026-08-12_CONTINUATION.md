@@ -3,10 +3,12 @@
 **Interview date:** 2026-08-12  
 **Source actor:** Amanda  
 **Evidence class:** owner-stated household interview  
-**Status:** CONTINUATION / COMPLETION of [`AMANDA_2026-08-10_PARTIAL.md`](AMANDA_2026-08-10_PARTIAL.md)  
+**Status:** CONTINUATION of [`AMANDA_2026-08-10_PARTIAL.md`](AMANDA_2026-08-10_PARTIAL.md) — **the interview is still partial**  
 **Authority note:** This file preserves source evidence. It is **not** the approved household budget, joint household policy, or canonical financial calculation. Estimates, targets, conditional items, unresolved items and owner-stated facts retain the labels supplied in the interview until later reconciliation/promotion through the appropriate authority path.
 
-**Covers what the 10 August partial left open:** subscriptions, financial priorities, non-negotiables, cuts and tradeoffs, debt-strategy preferences, income and account rules, the bill list, the spending watchlist, category refinements, sinking-fund targets, and what success looks like.
+**Covers, of what the 10 August partial left open:** subscriptions, financial priorities, non-negotiables, cuts and tradeoffs, debt-strategy preferences, category edge cases, and what success looks like — plus income and account rules, the bill list, the spending watchlist and sinking-fund targets, which that record had not reached.
+
+**Still not covered, and therefore still open:** **emergency savings**, **retirement / RESP**, and **Dale's assumptions**. The 10 August record named these among its gaps and this session did not reach them. They are listed again under **Open questions** below so that nothing about this file's status implies they are settled.
 
 **Relationship to the 10 August record.** That file is **not** edited, replaced or corrected by this one. It remains recoverable exactly as the partial interview was given. Where a statement here changes an earlier one, the earlier statement stays where it is and the change is recorded below under **Supersessions and refinements**, with both figures visible.
 
@@ -20,7 +22,15 @@ from different places.
 | Question | Answered by |
 |---|---|
 | **What is / was the amount?** | the strongest available evidence — a current statement, policy, invoice or paystub first; then a verified repository fact; then reconciled transaction history |
-| **What should the plan do?** | **Amanda** — priorities, non-negotiables, targets, caps, willingness to cut, sinking-fund intent, purchase preferences, debt-strategy preference, what counts as success |
+| **What does Amanda want the plan to do?** | **Amanda** — priorities, non-negotiables, targets, caps, willingness to cut, sinking-fund intent, purchase preferences, debt-strategy preference, what counts as success |
+| **What will the plan actually do?** | **not this file.** One person's stated preference becomes a shared target only through the owner decision `ARCHITECTURE.md` describes |
+
+**The second row is not a licence to let one person's preference decide the
+plan.** Amanda is the authority on *what she wants*, which is the thing no
+statement or invoice can establish; she is not, on her own, the authority on
+what the household adopts. Dale's corresponding view on most of these topics is
+not yet captured. Every target below is therefore **Amanda's requested plan**,
+and the labels say so.
 
 So a rounded figure from Amanda is **not** a competing financial truth when the
 repository already holds a stronger, current, sourced value for the same item.
@@ -168,7 +178,7 @@ most likely to be got wrong.
 
 ### Sports and activities — approximately $10,000/year
 
-**OWNER-ACCEPTED PLANNING TARGET.**
+**AMANDA-ACCEPTED PLANNING TARGET** — her requested plan, not yet a household decision.
 
 - Preferred cadence: approximately **$385 from each of Dale's 26 biweekly pays**
   (26 × $385 = $10,010, consistent with the annual figure).
@@ -183,7 +193,7 @@ most likely to be got wrong.
 
 ### Travel — $15,000/year
 
-**OWNER-APPROVED PLANNING TARGET.**
+**AMANDA-APPROVED PLANNING TARGET** — her requested plan, not yet a household decision.
 
 - Covers tournament and lacrosse travel, with room for **1–2 additional
   tournaments**.
@@ -498,6 +508,22 @@ Kept open **only** where stronger evidence does not already settle them.
 9. **Exact Fusion travel-team fee, if selected.**
 10. **Any additional tournament dates and costs**, for the 1–2 extra tournaments
     the travel target leaves room for.
+
+### Still not interviewed — carried forward from 10 August
+
+These were named as gaps in the 10 August record and this session did not reach
+them. They are **not** closed, and the continuation status above must not be
+read as covering them:
+
+11. **Emergency savings** — target, current position and priority relative to
+    debt repayment and the protected sports and travel categories.
+12. **Retirement and RESP** — contribution intent and how retirement assets
+    should be treated in the plan. Dale's pension evidence is separate and sits
+    in [`DALE_2026-08-12.md`](DALE_2026-08-12.md); Amanda's view on household
+    retirement and education saving is not captured.
+13. **Dale's assumptions** — his corresponding view on the priorities, targets,
+    caps and debt strategy recorded here. Without it, everything above is one
+    person's requested plan rather than a household position.
 
 **Deliberately not left open:** home insurance and property tax. Amanda gave
 rounded figures for both and the repository already holds a stronger, sourced
