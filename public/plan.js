@@ -175,6 +175,59 @@ const ROOM_VERSUS_HOUSEHOLD = {
   exceeds: r => `and the plan leaves ${money(r.weekly)}/wk more than that.`,
 };
 
+/* ------------------------------- what the next move achieves, in words */
+// `Forecast.nextMove` decides WHICH of the five outcomes the household reads
+// under **What happens after**, and picks every figure inside it. This map is
+// all that is left here: how each one reads.
+//
+// Nothing in it may compare the action's amount with the gap, subtract the two,
+// or decide that a different outcome applies. Those are the decisions that
+// moved — the page's `actionCovers` and `actionLeaves`, which carried their own
+// copy of the engine's half-cent and chose between these five sentences where
+// no test could reach them.
+//
+// An outcome the engine can emit without wording here is a rendering failure,
+// so `test-nextmove.js` checks that the two sides still name the same set.
+const NEXT_MOVE = {
+  unfunded: s =>
+    `Even with everything available moved across, ${money(s.shortfall)} of the
+     ${money(s.gapAmount)} stays unfunded and the balance holds below the ${money(s.buffer)} buffer.
+     This action helps; on its own it is not enough.`,
+
+  partial: s =>
+    `This covers ${money(s.actionAmount)} of the ${money(s.gapAmount)} needed, leaving
+     ${money(s.remainder)} still to find before the ${money(s.buffer)} buffer is back.
+     ${s.parts
+    ? `The full plan is ${s.parts.map(p => `${money2(p.amount)} from ${p.short}`).join(' plus ')}.`
+    : ''} With all of it in place the household can spend ${money(s.recommended)} a week from
+     ${fmtDateLong(s.effectiveFrom)}${s.overrideUnsupported
+      ? `, not the ${money(s.weekly)} currently set — that reaches ${money(s.low)}` : ''}.`,
+
+  overrideBreach: s =>
+    `The ${money(s.dueOnGapDay)} clears on ${fmtDateLong(s.gapDate)} and the buffer is restored — but
+     at your ${money(s.weekly)}/week setting the balance still reaches ${money(s.low)} by
+     ${fmtDateLong(s.lowDate)}. The forecast supports ${money(s.recommended)}/week.`,
+
+  restored: s =>
+    `The ${money(s.dueOnGapDay)} clears on ${fmtDateLong(s.gapDate)}, the buffer is restored, and from
+     ${fmtDateLong(s.effectiveFrom)} the household can spend ${money(s.weekly)} a week.`,
+
+  // Three clauses, and the engine decides which apply. The first said only
+  // "instead of breaching the buffer", unconditionally, which is false of any
+  // run that does breach — and a covering action that arrives too late now
+  // lands here, so it has to say why the gap is not restored as well.
+  windowEnding: s =>
+    `${s.coversButLate
+      ? `The ${money(s.actionAmount)} reaches the ${money(s.gapAmount)} needed, but it is not due until
+         ${fmtDateLong(s.actionDue)} — after the ${money(s.dueOnGapDay)} has to clear on
+         ${fmtDateLong(s.gapDate)}, so it does not restore the buffer in time. ` : ''
+}The window finishes with ${money(s.ending)} ${s.breaches
+    ? `after dipping to ${money(s.low)} on ${fmtDateLong(s.lowDate)}, below the ${money(s.buffer)} buffer`
+    : `instead of breaching the ${money(s.buffer)} buffer`}.${s.overrideUnsupported
+    ? ` That is at your ${money(s.weekly)}/week setting; the forecast supports ${money(s.recommended)}/week.`
+    : ''}`,
+};
+
 /* --------------------------------------- the funding-source cards, in words */
 // Whether a source covers the gap, contributes part of it, or cannot reach it
 // is `Forecast.recommend`'s — it is the same allocation the plan is built on,
@@ -580,47 +633,23 @@ function renderPlan(d, periods) {
     .replace(/^./, c => c.toUpperCase()) + '.';
 
   /* ---- NEXT MOVE — the one thing to do ---- */
-  const first = plan.actions[0];
-  if (first) {
+  // WHICH of the five outcomes the household reads under "What happens after",
+  // and every figure inside it, is a financial decision and belongs to
+  // Forecast.nextMove — where the node suite can reach it. This page looks the
+  // wording up and renders it. It no longer compares the action's fixed amount
+  // against the current gap with its own copy of the engine's half-cent,
+  // subtracts the two for the uncovered remainder, or selects a different
+  // outcome from the status verdict, the due date or the funding plan.
+  const move = Forecast.nextMove(plan, advice,
+    { weeklyOverride: state.weeklyVariable, sim });
+  if (move) {
+    // The action the engine measured, so the head and the outcome below it
+    // cannot describe different actions.
+    const first = move.action;
+    // Presentation: which of two chip colours the due date wears. It moves no
+    // figure and selects no sentence.
     const overdue = first.due && first.due < asOf && first.status !== 'done';
-    // This action's amount is a fixed figure in the data, sized for the default
-    // buffer. Whether completing it restores anything depends on how it
-    // compares with the CURRENT gap, not on whether some plan exists.
-    const actionCovers = gap && first.amount != null && first.amount + 0.005 >= fundingGap;
-    const actionLeaves = gap && first.amount != null ? fundingGap - first.amount : 0;
-    // `status.id` is read where this card used to read the page's own
-    // `fundingShort` and `overrideBreaches`. Those two consts are gone with the
-    // band, and the engine's verdict answers exactly the same question: an
-    // unfundable gap IS the `unfunded` verdict, and a breaching override under
-    // a fundable gap IS the `overrideBreach` verdict. What this card decides —
-    // whether the action reaches the gap, and what it leaves — is unchanged and
-    // still belongs to B73 item 5.
-    const after = status.id === 'unfunded'
-      // Only part of the gap can be funded, so promising a restored buffer
-      // would be describing an outcome the figures do not produce.
-      ? `Even with everything available moved across, ${money(fundingPlan.shortfall)} of the
-         ${money(fundingGap)} stays unfunded and the balance holds below the ${money(sim.buffer)} buffer.
-         This action helps; on its own it is not enough.`
-      : gap && !actionCovers
-        // Fundable, but not by this action alone. The closing spending figure
-        // has to be the supported one — quoting an unsafe override here made
-        // the override warning unreachable whenever the fixed action fell
-        // short of the gap, which is exactly when a raised buffer puts it there.
-        ? `This covers ${money(first.amount)} of the ${money(fundingGap)} needed, leaving
-           ${money(actionLeaves)} still to find before the ${money(sim.buffer)} buffer is back.
-           ${fundingPlan && fundingPlan.needsCombination
-            ? `The full plan is ${fundingPlan.parts.map(p => `${money2(p.amount)} from ${p.short}`).join(' plus ')}.`
-            : ''} With all of it in place the household can spend ${money(recommended)} a week from
-           ${fmtDateLong(advice.effectiveFrom)}${status.id === 'overrideBreach'
-            ? `, not the ${money(weekly)} currently set — that reaches ${money(sim.min.balance)}` : ''}.`
-      : status.id === 'overrideBreach'
-        ? `The ${money(gap.dueOnGapDay)} clears on ${fmtDateLong(gap.date)} and the buffer is restored — but
-           at your ${money(weekly)}/week setting the balance still reaches ${money(sim.min.balance)} by
-           ${fmtDateLong(sim.min.date)}. The forecast supports ${money(recommended)}/week.`
-      : gap && first.due && first.due <= gap.date
-        ? `The ${money(gap.dueOnGapDay)} clears on ${fmtDateLong(gap.date)}, the buffer is restored, and from
-           ${fmtDateLong(advice.effectiveFrom)} the household can spend ${money(weekly)} a week.`
-        : `The window finishes with ${money(sim.ending)} instead of breaching the ${money(sim.buffer)} buffer.`;
+    const after = NEXT_MOVE[move.id](move);
     $('nextmove-card').innerHTML = `
       <div class="nm-head">
         <span class="nm-what">${first.what}</span>

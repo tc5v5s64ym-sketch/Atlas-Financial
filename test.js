@@ -26,6 +26,7 @@ const suites = [
   ['next due obligation', 'test-next-due.js'],
   ['homepage mission', 'test-mission.js'],
   ['plan status band + funding verdicts', 'test-status-band.js'],
+  ['what the next move achieves', 'test-nextmove.js'],
   ['gap counterfactuals', 'test-counterfactuals.js'],
   ['May 2027 renewal', 'test-renewal.js'],
   ['payoff modeller', 'test-payoff.js'],
