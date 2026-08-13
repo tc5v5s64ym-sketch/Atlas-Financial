@@ -15,22 +15,24 @@
       "id": "EMP-002",
       "source": "docs/source_intake/EMPLOYMENT_PENSION_FACTS_2026-08-13.md",
       "disposition": "EXCLUDED",
-      "exclusion_reason": "Base-salary history is preserved in source intake and has not been routed into ACCOUNT_FACTS or plan.income. This PR must not absorb the live payroll figure.",
+      "exclusion_reason": "Base-salary history remains in source intake and is not routed into ACCOUNT_FACTS. The 91-day forecast consumes observed net (EMP-004), not base salary.",
       "review_date": "2026-11-13"
     },
     {
       "id": "EMP-003",
       "source": "docs/source_intake/EMPLOYMENT_PENSION_FACTS_2026-08-13.md",
       "disposition": "EXCLUDED",
-      "exclusion_reason": "Observed in source intake; not routed into a live incumbent by this PR. A later one-outcome figure or docs PR may consume it. CONSUMED is not used merely because a related number already exists elsewhere.",
+      "exclusion_reason": "Biweekly cadence is already the live plan frequency from the prior bank-deposit analysis. This figure PR consumes current net (EMP-004), not a cadence cutover.",
       "review_date": "2026-11-13"
     },
     {
       "id": "EMP-004",
       "source": "docs/source_intake/EMPLOYMENT_PENSION_FACTS_2026-08-13.md",
-      "disposition": "EXCLUDED",
-      "exclusion_reason": "Observed net range is preserved and is not routed into plan.income. This PR must not replace the live payroll/net-pay figure.",
-      "review_date": "2026-11-13"
+      "disposition": "CONSUMED",
+      "routed_to": {
+        "path": "data.json",
+        "json_pointer": "/plan/income/0"
+      }
     },
     {
       "id": "EMP-005",

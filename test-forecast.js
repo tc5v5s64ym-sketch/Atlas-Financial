@@ -81,12 +81,19 @@ ok(simOver.min.balance < 100, 'and $10 more breaches it', simOver.min.balance.to
 console.log('\n=== the real plan block ===');
 const plan = data.plan;
 const asOf = data.meta.asOf;
+const payroll = plan.income.find(s => s.id === 'payroll');
+ok(payroll === plan.income[0], 'payroll is plan.income[0], the EMP-004 routing target');
+ok(payroll.amount === 4264, 'live payroll is the EMP-004 observed-average net', String(payroll.amount));
+ok(payroll.amount >= 4247.92 && payroll.amount <= 4274.98,
+  'and sits inside the observed current-net range $4,247.92–$4,274.98');
 const expected = F.simulate(plan, asOf, {
   scenario: 'expected', weeklyVariable: 0, targetBuffer: plan.defaults.targetBuffer,
 });
 
-// Confirmed income: 7 paydays × 4468.69 + 3 child benefits × 153.59.
-ok(near(expected.totals.confirmedIncome, 7 * 4468.69 + 3 * 153.59), '90-day confirmed income',
+// Confirmed income: independently counted paydays × 4264 + 3 child benefits × 153.59.
+const paydays = F.occurrences(payroll, asOf, F.addDays(asOf, plan.windowDays - 1));
+ok(paydays.length === 7, 'the 91-day window contains 7 payroll dates', paydays.join(', '));
+ok(near(expected.totals.confirmedIncome, paydays.length * 4264 + 3 * 153.59), '90-day confirmed income',
   expected.totals.confirmedIncome.toFixed(2));
 // Estimated (expected scenario): Amanda's transfers, 3 × 2182.
 ok(near(expected.totals.estimatedIncome, 3 * 2182, 0.05), '90-day estimated income',

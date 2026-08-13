@@ -61,9 +61,9 @@
         "label": "Payroll — Seaspan",
         "frequency": "biweekly",
         "anchor": "2026-08-14",
-        "amount": 4468.69,
+        "amount": 4264,
         "confidence": "confirmed",
-        "note": "Fifteen consecutive bi-weekly deposits observed at this level; treated as confirmed."
+        "note": "Observed average of current recurring net deposits after 2026 CPP, CPP2 and EI completion and the current 1% optional pension deduction. Typical deposits $4,247.92–$4,274.98 from the August 2026 payroll-statement synthesis (EMP-004). Not a single repeating cheque and not a statutory-engine output. Every payday in this 91-day window falls after those 2026 completion dates."
       },
       {
         "id": "childBenefit",

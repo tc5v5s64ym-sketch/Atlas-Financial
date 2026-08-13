@@ -72,7 +72,7 @@ correctly absent from a household-accounts plan, and must not be carried inside
 the household variable budget either. See "What she pays directly" below, which
 is the single authority for that list.
 
-Income: payroll **bi-weekly** (~$4,469), child benefit **monthly** (~$153.59).
+Income: payroll **bi-weekly** (~$4,264 current recurring net after 2026 CPP/CPP2/EI completion), child benefit **monthly** (~$153.59).
 Bonus or vacation pay has historically landed in **February and July**.
 **Amanda's Tennis BC pay is semi-monthly — the 15th and month-end — not
 bi-weekly**, and it does not land with the payroll. The detail and the evidence

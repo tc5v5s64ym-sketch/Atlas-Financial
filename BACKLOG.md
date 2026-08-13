@@ -956,14 +956,25 @@ extending the snapshot to the other three pages — is a real scope decision abo
 what counts as a published figure, and belongs to the owner, not to a wording
 fix.
 
-**B85 · Evidence-Use Register** · this PR · *architecture, one outcome*
+**B85 · Evidence-Use Register** · **DONE 2026-08-13** · *architecture, one outcome*
 
 Explicitly identified August 13 evidence IDs now have a live CI-checked
-disposition in `docs/evidence_use/register.json`. The register owns routing
-and parking only. It does not prove financial correctness and does not absorb
-payroll, HELOC 21st-vs-31st cash treatment, Fusion camp status, Amanda’s $600
-restaurant target, sports/travel priority, pension-in-net-worth, or the
-optional contribution ramp.
+disposition in `docs/evidence_use/register.json` (PR #28). The register owns
+routing and parking only. It does not prove financial correctness. After PR #28
+it still parked payroll, HELOC 21st-vs-31st cash treatment, Fusion camp status,
+Amanda’s $600 restaurant target, sports/travel priority, pension-in-net-worth,
+and the optional contribution ramp. The current recurring payroll *net* was
+later consumed by **B86**; those other parked items remain.
+
+**B86 · Stale biweekly payroll net in the 91-day forecast** · **DONE 2026-08-13** · *figures, one outcome*
+
+Live `plan.income` `payroll` was **$4,468.69**, labelled as fifteen consecutive
+deposits. August 2026 payroll-statement synthesis (`EMP-004`) shows the current
+recurring net after CPP/CPP2/EI completion and the current 1% optional pension
+is **$4,247.92–$4,274.98**, observed average **$4,264**. This interruption
+replaces the incumbent 91-day cash input with that average, routes `EMP-004` to
+`data.json` `/plan/income/0`, and leaves salary history, bonus, statutory
+engines, and pension forecasting unbuilt.
 
 **B84 · `ARCHITECTURE.md` keeps its own running count of B73's progress** · *documentation truth, small*
 Three counts of one fact live outside the file that owns it. The section
