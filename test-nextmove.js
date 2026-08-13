@@ -33,9 +33,10 @@
  *      the gap; the unfunded shortfall has to be the funding result's own. An
  *      identity is checked, not a re-implementation.
  *   4. MUTATION. The coverage comparison, the remainder, the outcome ordering,
- *      the due-date test and the unfunded guard are each broken on purpose in
- *      the engine source, and the answer has to change. The B73 mutation is the
- *      first of them, at its new home.
+ *      the due-date test, the timing-and-coverage conjunction and the unfunded
+ *      guard are each broken on purpose in the engine source, and the answer
+ *      has to change. The B73 mutation is the first of them, at its new home;
+ *      the blocking review's own defect is another.
  *   5. MIGRATION EQUIVALENCE, then the real page. The exact expression
  *      `public/plan.js` ran at 098f90b, against the real published plan at
  *      twelve settings, must still produce the same sentence — through the
@@ -101,6 +102,34 @@ const planWith = (amount, due) => ({ actions: actionsOf(amount, due) });
 
 const IN_TIME = '2026-08-11';   // one day before the gap
 const TOO_LATE = '2026-08-20';  // eight days after it
+
+/* The page's wording map and the real formatters it uses, lifted from the
+ * production sources rather than copied — a copy would prove the copy. Loaded
+ * here rather than beside the page checks below, because several of the
+ * engine cases assert what the household actually reads, not only what the
+ * engine returns: an outcome that stops claiming something has to be read in
+ * the sentence, not in a field name. */
+const planSrc = read('public/plan.js');
+const appSrc = read('public/app.js');
+// This repository records what moved in a comment naming the thing it removed,
+// and a bare regex cannot tell that record apart from the code it replaced.
+const planCode = planSrc.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+const grab = (src, re, what) => {
+  const m = re.exec(src);
+  ok(!!m, `${what} is readable from its source`);
+  return m ? m[0] : '';
+};
+const FORMATTERS = [
+  grab(appSrc, /^const money = .*$/m, 'money()'),
+  grab(appSrc, /^const money2 = .*$/m, 'money2()'),
+  grab(appSrc, /^const fmtDateLong = .*$/m, 'fmtDateLong()'),
+].join('\n');
+const MOVE_SRC = grab(planSrc, /^const NEXT_MOVE = \{[\s\S]*?^\};$/m, 'the outcome wording map');
+const [NEXT_MOVE] = vm.runInNewContext(`${FORMATTERS}\n${MOVE_SRC}\n[NEXT_MOVE];`);
+const [money, money2, fmtDateLong] = vm.runInNewContext(
+  `${FORMATTERS}\n[money, money2, fmtDateLong];`);
+// What the household reads for an outcome, through the page's own map.
+const worded = m => NEXT_MOVE[m.id](m);
 
 console.log('=== 1. a gap no source can reach ===');
 /* Hand-computed. At a $3,500 buffer the household is $4,000.00 short at the
@@ -256,6 +285,70 @@ ok(tooLate.id === 'windowEnding',
 ok(restored.id === 'restored' && tooLate.id === 'windowEnding',
   'the SAME amount against the SAME gap differs only by its due date',
   `${IN_TIME} → ${restored.id}, ${TOO_LATE} → ${tooLate.id}`);
+ok(tooLate.coversButLate === true && tooLate.breaches === false,
+  'and it says why: the amount reaches the gap, the date does not',
+  `coversButLate ${tooLate.coversButLate}, breaches ${tooLate.breaches}`);
+
+console.log('\n=== 5b. covering, late, AND an unsupported weekly setting ===');
+/* THE BLOCKING REVIEW'S CASE, on the exact head that carried it. Three facts at
+ * once, and each one is independently true of the published shape of this data:
+ *
+ *   the action's $1,000.00 COVERS the $900.00 gap;
+ *   it is due 20 August, EIGHT DAYS AFTER the 12 August the money is needed;
+ *   the household has set $1,500/week, which runs to −$809.12.
+ *
+ * Coverage was tested in one place and timing in another, so this combination
+ * selected the override outcome — whose sentence opens "The $623.00 clears on
+ * 12 August and the buffer is restored". Money arriving on the 20th clears
+ * nothing on the 12th. Two independently proved outcomes, and the state where
+ * both apply was the one neither of them checked.
+ *
+ * What must be true now: nothing claims the gap was restored, and the weekly
+ * setting is not silently dropped on the way. */
+{
+  const late = F.nextMove(planWith(1000, TOO_LATE), FUNDABLE_900,
+    { weeklyOverride: 1500, sim: BREACHING_SIM });
+  ok(late.id !== 'overrideBreach' && late.id !== 'restored',
+    'a covering action that arrives late selects neither restoring outcome', late.id);
+  ok(late.id === 'windowEnding', 'it falls to the window outcome', late.id);
+  ok(late.coversButLate === true,
+    'which states that the amount reached the gap and the date did not');
+  ok(late.actionDue === TOO_LATE && late.gapDate === GAP_DATE,
+    'naming both dates', `due ${late.actionDue} vs gap ${late.gapDate}`);
+
+  // (1) No wording claims the action restored the gap in time.
+  const html = worded(late);
+  ok(!/buffer is restored/.test(html),
+    'and no sentence the household reads claims the buffer is restored',
+    flat(html).slice(0, 110));
+  ok(/does not restore the buffer in time/.test(html),
+    'it says the opposite, in the household\'s own words');
+
+  // (2) The unsupported weekly setting survives the reroute.
+  ok(late.overrideUnsupported === true && same(late.weekly, 1500) && same(late.recommended, 1250),
+    'the unsupported weekly setting is not dropped on the way',
+    `${late.weekly}/wk, supported ${late.recommended}/wk`);
+  ok(/at your \$1,500\/week setting; the forecast supports \$1,250\/week/.test(html),
+    'and the household is still told what the forecast supports');
+
+  // The run really does breach, so the old unconditional "instead of breaching
+  // the buffer" would have been false here too.
+  ok(late.breaches === true && !/instead of breaching/.test(html),
+    'a breaching run never reads "instead of breaching the buffer"',
+    `breaches ${late.breaches}`);
+  ok(/after dipping to −\$809 on September 10, below the \$500 buffer/.test(html),
+    'it reports which side of the buffer the window lands on',
+    flat(html).slice(-90));
+
+  // The same three facts minus the override: still no restoration claim, and no
+  // weekly sentence invented for a household that set nothing.
+  const lateNoOverride = F.nextMove(planWith(1000, TOO_LATE), FUNDABLE_900,
+    { weeklyOverride: null });
+  const plainHtml = worded(lateNoOverride);
+  ok(!/buffer is restored/.test(plainHtml) && !/currently set|your \$/.test(plainHtml),
+    'without an override it says neither a restoration nor a weekly setting',
+    flat(plainHtml).slice(0, 100));
+}
 
 console.log('\n=== 6. the money boundary, both sides ===');
 /* The convention is half a cent — $0.005 — which is what every buffer
@@ -440,8 +533,50 @@ const MUTATIONS = [
     from: '    if (gap && !covers) {',
     to: '    if (gap && !covers && status.id !== \'overrideBreach\') {',
     check: m => m.nextMove(planWith(1000, IN_TIME), FUNDABLE_1600,
-      { weeklyOverride: 1500, sim: BREACHING_SIM }).id === 'overrideBreach',
+      { weeklyOverride: 1500, sim: BREACHING_SIM }).id !== 'partial',
     real: () => partialOver.id === 'partial' },
+
+  // The blocking review's defect, as a mutation. Coverage without timing is
+  // what let a late action publish a restored buffer.
+  { label: 'calling coverage alone a restoration lets a late action claim the buffer is back',
+    from: '    const restoresGap = covers && inTime;',
+    to: '    const restoresGap = covers;',
+    check: m => m.nextMove(planWith(1000, TOO_LATE), FUNDABLE_900,
+      { weeklyOverride: 1500, sim: BREACHING_SIM }).id === 'overrideBreach',
+    real: () => F.nextMove(planWith(1000, TOO_LATE), FUNDABLE_900,
+      { weeklyOverride: 1500, sim: BREACHING_SIM }).id === 'windowEnding' },
+
+  { label: 'reversing the timing test calls money that arrives in time too late',
+    from: '    const inTime = !!(gap && action.due && action.due <= gap.date);',
+    to: '    const inTime = !!(gap && action.due && action.due >= gap.date);',
+    check: m => m.nextMove(planWith(1000, IN_TIME), FUNDABLE_900,
+      { weeklyOverride: null }).id === 'windowEnding',
+    real: () => restored.id === 'restored' },
+
+  { label: 'pinning the breach flag publishes "instead of breaching" over a breach',
+    from: '      breaches: below(sim.min.balance, buffer),',
+    to: '      breaches: false,',
+    check: m => /instead of breaching/.test(worded(m.nextMove(planWith(1000, TOO_LATE),
+      FUNDABLE_900, { weeklyOverride: 1500, sim: BREACHING_SIM }))),
+    real: () => !/instead of breaching/.test(worded(F.nextMove(planWith(1000, TOO_LATE),
+      FUNDABLE_900, { weeklyOverride: 1500, sim: BREACHING_SIM }))) },
+
+  { label: 'dropping the override flag here loses the weekly warning on the reroute',
+    from: '      overrideUnsupported: overrideBreaches, weekly, recommended };',
+    to: '      overrideUnsupported: false, weekly, recommended };',
+    check: m => !/the forecast supports/.test(worded(m.nextMove(planWith(1000, TOO_LATE),
+      FUNDABLE_900, { weeklyOverride: 1500, sim: BREACHING_SIM }))),
+    real: () => /the forecast supports \$1,250\/week/.test(worded(F.nextMove(
+      planWith(1000, TOO_LATE), FUNDABLE_900,
+      { weeklyOverride: 1500, sim: BREACHING_SIM }))) },
+
+  { label: 'dropping the late reason leaves the household no explanation for the gap',
+    from: '      coversButLate: covers && !inTime,',
+    to: '      coversButLate: false,',
+    check: m => !/does not restore the buffer in time/.test(worded(
+      m.nextMove(planWith(1000, TOO_LATE), FUNDABLE_900, { weeklyOverride: null }))),
+    real: () => /does not restore the buffer in time/.test(worded(
+      F.nextMove(planWith(1000, TOO_LATE), FUNDABLE_900, { weeklyOverride: null }))) },
 
   { label: 'dropping the unfunded guard promises a recovery nothing available produces',
     from: '    if (status.id === \'unfunded\') {',
@@ -451,8 +586,8 @@ const MUTATIONS = [
     real: () => unfunded.id === 'unfunded' },
 
   { label: 'dropping the due-date test restores the buffer with money that arrives too late',
-    from: '    if (gap && action.due && action.due <= gap.date) {',
-    to: '    if (gap) {',
+    from: '    const inTime = !!(gap && action.due && action.due <= gap.date);',
+    to: '    const inTime = !!gap;',
     check: m => m.nextMove(planWith(1000, TOO_LATE), FUNDABLE_900, { weeklyOverride: null })
       .id === 'restored',
     real: () => tooLate.id === 'windowEnding' },
@@ -478,28 +613,6 @@ for (const m of MUTATIONS) {
 }
 
 console.log('\n=== 11. the page words every outcome, and decides none of them ===');
-/* The page's wording map and the real formatters it uses, lifted from the
- * production sources rather than copied — a copy would prove the copy. */
-const planSrc = read('public/plan.js');
-const appSrc = read('public/app.js');
-// This repository records what moved in a comment naming the thing it removed,
-// and a bare regex cannot tell that record apart from the code it replaced.
-const planCode = planSrc.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
-const grab = (src, re, what) => {
-  const m = re.exec(src);
-  ok(!!m, `${what} is readable from its source`);
-  return m ? m[0] : '';
-};
-const FORMATTERS = [
-  grab(appSrc, /^const money = .*$/m, 'money()'),
-  grab(appSrc, /^const money2 = .*$/m, 'money2()'),
-  grab(appSrc, /^const fmtDateLong = .*$/m, 'fmtDateLong()'),
-].join('\n');
-const MOVE_SRC = grab(planSrc, /^const NEXT_MOVE = \{[\s\S]*?^\};$/m, 'the outcome wording map');
-const [NEXT_MOVE] = vm.runInNewContext(`${FORMATTERS}\n${MOVE_SRC}\n[NEXT_MOVE];`);
-const [money, money2, fmtDateLong] = vm.runInNewContext(
-  `${FORMATTERS}\n[money, money2, fmtDateLong];`);
-
 const moveSrc = /\n  function nextMove\(plan, advice, opts\) \{[\s\S]*?\n  \}\n/.exec(FORECAST_SRC);
 ok(!!moveSrc, 'the nextMove function is readable from forecast.js');
 const engineIds = [...new Set([...(moveSrc ? moveSrc[0] : '')
@@ -631,6 +744,21 @@ ok(['restored', 'overrideBreach', 'partial', 'unfunded', 'windowEnding']
 'the published plan reaches all five outcomes through the page\'s own wording',
 [...seen].join(', '));
 
+/* WHY THE EQUIVALENCE SURVIVES THE TIMING FIX. Gating the two restoring
+ * outcomes on the due date as well as the amount is a deliberate divergence
+ * from the expression `public/plan.js` ran at 098f90b — and every setting above
+ * still matches it, because `data.json` dates the first action 11 August and
+ * the gap always falls on 12 August. The states the fix changes are exactly the
+ * ones the published data cannot reach, which is why they are proved on
+ * hand-computed fixtures in section 5b instead. */
+for (const s of SETTINGS) {
+  const { adv } = published(s);
+  if (!adv.gap) continue;
+  ok(plan.actions[0].due <= adv.gap.date,
+    `the published action is due in time — ${s.what}`,
+    `${plan.actions[0].due} <= ${adv.gap.date}`);
+}
+
 console.log('\n=== 13. the card and the band cannot contradict each other ===');
 /* Both surfaces are rendered in the same column from the same `advice`, so the
  * test is not "each is individually right" — it is that the two sentences on
@@ -652,6 +780,31 @@ for (const s of SETTINGS) {
   ok(!(status.id === 'overrideBreach' && /the household can spend \$[\d,]+ a week\.$/.test(flat(html))),
     `a breaching override is never closed with an unqualified spending figure — ${s.what}`,
     `${status.id} / ${id}`);
+}
+
+/* The blocking review's invariant, stated once and checked everywhere it could
+ * fail: the sentence may only claim a restored buffer when the engine says the
+ * action both reaches the gap and arrives in time. Run across every
+ * combination of the three facts that produced the contradiction. */
+for (const amount of [1000, 800]) {
+  for (const due of [IN_TIME, TOO_LATE]) {
+    for (const override of [null, 1500]) {
+      const opts = override == null
+        ? { weeklyOverride: null } : { weeklyOverride: 1500, sim: BREACHING_SIM };
+      const m = F.nextMove(planWith(amount, due), FUNDABLE_900, opts);
+      const html = worded(m);
+      const claimsRestored = /buffer is restored/.test(html);
+      // Hand-computed: the gap is $900, so $1,000 reaches it and $800 does not;
+      // 11 August is in time and 20 August is not. Both must hold.
+      const trulyRestores = amount === 1000 && due === IN_TIME;
+      ok(claimsRestored === trulyRestores,
+        `"the buffer is restored" iff it is — $${amount} due ${due}, override ${override}`,
+        `${m.id}: claims ${claimsRestored}, true ${trulyRestores}`);
+      ok(!(override === 1500 && !/forecast supports|currently set/.test(html)),
+        `and the unsupported setting is never dropped — $${amount} due ${due}, override ${override}`,
+        m.id);
+    }
+  }
 }
 
 console.log('\n=== 14. the real page, booted ===');

@@ -1631,7 +1631,8 @@
   function nextMove(plan, advice, opts) {
     const action = ((plan && plan.actions) || [])[0] || null;
     if (!action) return null;
-    const { gap, funding, weekly, recommended, sim } = planContext(advice, opts);
+    const { gap, funding, weekly, recommended, sim, overrideBreaches }
+      = planContext(advice, opts);
     // Every outcome reads the buffer, the low or the ending off the simulation
     // being shown. Without one this would still render, and publish a recovery
     // against a $0 buffer — a wrong figure rather than a failure. Throw, the
@@ -1645,6 +1646,20 @@
     // per-source funding verdicts stop on — not a new boundary. The page's
     // `+ 0.005` was a copy of it, and a copy cannot be kept in step by care.
     const covers = !!gap && amount != null && atLeast(amount, gapAmount);
+    // COVERAGE IS NOT RESTORATION. Money that arrives after the day it is
+    // needed does not clear that day's payments, so restoring the gap takes
+    // both: an amount that reaches it, and a due date on or before it.
+    //
+    // The two used to be tested in different places — `restored` checked the
+    // date, the override outcome did not — so an action that covered the gap,
+    // fell due after it, and sat under a weekly setting the forecast does not
+    // support published "the $623.00 clears on 12 August and the buffer is
+    // restored" over money that arrives eight days late. The required review
+    // found it on this head. The legacy page had the same ordering, and it is
+    // corrected here rather than carried across: this is the move that makes
+    // this decision an authority, and an authority may not publish that.
+    const inTime = !!(gap && action.due && action.due <= gap.date);
+    const restoresGap = covers && inTime;
 
     if (status.id === 'unfunded') {
       // `planStatus` only reaches this verdict on a gap no source can fund, so
@@ -1668,17 +1683,41 @@
         overrideUnsupported: status.id === 'overrideBreach',
         weekly, low: sim.min.balance };
     }
-    if (status.id === 'overrideBreach') {
+    // Both of the next two outcomes open by saying the buffer is restored, so
+    // both are gated on the action actually restoring it.
+    if (restoresGap && status.id === 'overrideBreach') {
       return { id: 'overrideBreach', action,
         dueOnGapDay: gap.dueOnGapDay, gapDate: gap.date,
         weekly, low: sim.min.balance, lowDate: sim.min.date, recommended };
     }
-    if (gap && action.due && action.due <= gap.date) {
+    if (restoresGap) {
       return { id: 'restored', action,
         dueOnGapDay: gap.dueOnGapDay, gapDate: gap.date,
         effectiveFrom: advice.effectiveFrom, weekly };
     }
-    return { id: 'windowEnding', action, ending: sim.ending, buffer };
+    // Nothing about the opening gap can be claimed, so what is left to report
+    // is the projected window against the buffer — and it has to say which side
+    // of it the window lands on. "Finishes with $X instead of breaching the
+    // buffer" was unconditional, which is false of any run that does breach:
+    // reachable before this change with no gap and an unsupported weekly
+    // setting, and reachable by this change's own routing, since a covering
+    // action that arrives late now lands here.
+    //
+    // `overrideBreaches` rather than the status verdict: `planStatus` only
+    // reaches `overrideBreach` when there IS a gap, and this outcome is the one
+    // that also serves plans without one. A weekly figure the household set and
+    // the projection does not support is said either way.
+    return { id: 'windowEnding', action, ending: sim.ending, buffer,
+      breaches: below(sim.min.balance, buffer),
+      low: sim.min.balance, lowDate: sim.min.date,
+      // Why there is no opening-gap outcome, when the reason is the timing
+      // rather than the amount. The household is looking at an action large
+      // enough to close the gap; leaving that unexplained here reads as though
+      // the gap were not the point.
+      coversButLate: covers && !inTime,
+      actionAmount: amount, gapAmount, actionDue: action.due || null,
+      gapDate: gap ? gap.date : null, dueOnGapDay: gap ? gap.dueOnGapDay : 0,
+      overrideUnsupported: overrideBreaches, weekly, recommended };
   }
 
   /* ------------------------------------------------ revolving utilisation */

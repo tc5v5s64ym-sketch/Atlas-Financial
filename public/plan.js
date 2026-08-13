@@ -212,8 +212,20 @@ const NEXT_MOVE = {
     `The ${money(s.dueOnGapDay)} clears on ${fmtDateLong(s.gapDate)}, the buffer is restored, and from
      ${fmtDateLong(s.effectiveFrom)} the household can spend ${money(s.weekly)} a week.`,
 
+  // Three clauses, and the engine decides which apply. The first said only
+  // "instead of breaching the buffer", unconditionally, which is false of any
+  // run that does breach — and a covering action that arrives too late now
+  // lands here, so it has to say why the gap is not restored as well.
   windowEnding: s =>
-    `The window finishes with ${money(s.ending)} instead of breaching the ${money(s.buffer)} buffer.`,
+    `${s.coversButLate
+      ? `The ${money(s.actionAmount)} reaches the ${money(s.gapAmount)} needed, but it is not due until
+         ${fmtDateLong(s.actionDue)} — after the ${money(s.dueOnGapDay)} has to clear on
+         ${fmtDateLong(s.gapDate)}, so it does not restore the buffer in time. ` : ''
+}The window finishes with ${money(s.ending)} ${s.breaches
+    ? `after dipping to ${money(s.low)} on ${fmtDateLong(s.lowDate)}, below the ${money(s.buffer)} buffer`
+    : `instead of breaching the ${money(s.buffer)} buffer`}.${s.overrideUnsupported
+    ? ` That is at your ${money(s.weekly)}/week setting; the forecast supports ${money(s.recommended)}/week.`
+    : ''}`,
 };
 
 /* --------------------------------------- the funding-source cards, in words */

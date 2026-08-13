@@ -721,11 +721,12 @@ branch that moved it before anything was edited — the page mutated,
 
    Both sides of the money boundary are proved on literal figures rather than
    from the engine's constant: exactly equal covers, $0.004 short covers,
-   a full cent short does not, and an action a cent under the gap does not. Ten
-   mutations in all, including the outcome ordering — reporting the override
-   before the shortfall hides what is still to find — and the due-date test,
-   whose removal restores the buffer with money that arrives eight days after
-   the payments have to clear. Every one of the five outcomes is rendered
+   a full cent short does not, and an action a cent under the gap does not.
+   Fifteen mutations in all, including the outcome ordering — reporting the
+   override before the shortfall hides what is still to find — the due-date
+   test, whose removal restores the buffer with money that arrives eight days
+   after the payments have to clear, and calling coverage alone a restoration,
+   which is the blocking review's own defect as a mutation. Every one of the five outcomes is rendered
    through the page's own wording map at twelve settings of the published plan
    and compared against the expressions `public/plan.js` ran at `098f90b`:
    identical, sentence for sentence. The real page is then booted against a stub
@@ -734,8 +735,37 @@ branch that moved it before anything was edited — the page mutated,
    — which is every outcome, read back out of the card the household sees. All
    75 snapshot figures are identical to `098f90b`.
 
-   **One real defect was found in the move and is fixed rather than carried
-   across.** `data.json` allows an action with no `amount` — the card head
+   **A real defect was found by the blocking review, inside the move itself,
+   and it was live on `main` too.** Coverage and timing were tested in two
+   different places: the `restored` outcome checked the due date, the override
+   outcome did not. So an action that *covered* the gap, fell due *after* it,
+   and sat under a weekly setting the forecast does not support published "The
+   $623.00 clears on 12 August and the buffer is restored" over money arriving
+   eight days late. Two outcomes were each proved on their own and the state
+   where both applied was the one neither checked — the same shape as item 2's
+   `needsCombination` finding, and the argument for combining the facts a
+   fixture varies rather than testing them one at a time. Restoring the gap now
+   takes both, one predicate, and it gates both restoring outcomes.
+
+   **Correcting it moved the household into a sentence that was also wrong**,
+   so that is corrected here as well rather than left as the fix's own
+   contribution. The window outcome closed with "instead of breaching the
+   $500 buffer" unconditionally, which is false of any run that does breach —
+   reachable on `main` today with no gap and an unsupported weekly setting, and
+   reachable by this correction's own routing. It now reports which side of the
+   buffer the window lands on, says why the gap is not restored when the reason
+   is the date rather than the amount, and carries the unsupported weekly
+   figure so the reroute cannot drop it. Proved across every combination of the
+   three facts — amount reaching the gap or not, due in time or not, override
+   set or not — asserting that the words "the buffer is restored" appear if and
+   only if the action both reaches the gap and arrives in time. **No published
+   figure moves and no published sentence changes**: `data.json` dates the
+   first action 11 August against a gap that always falls on 12 August, so
+   every one of the twelve migration-equivalence settings still matches
+   `098f90b` exactly, and a test asserts that is *why* rather than assuming it.
+
+   **One further real defect was found in the move and is fixed rather than
+   carried across.** `data.json` allows an action with no `amount` — the card head
    already renders that case, printing no figure — and the page's remainder was
    `gap && first.amount != null ? fundingGap - first.amount : 0`. So an unpriced
    action published "This covers $0 of the $1,600 needed, leaving $0.00 still to
