@@ -225,7 +225,10 @@ function addDaysISO(iso, n) { return F.addDays(iso, n); }
    there by re-slicing the plan to start on the first payday, seeding it with
    that payday's own END-OF-DAY balance, and then simulating from that same
    date — so the payroll, the mortgage, Shaw and Fit4Less were all applied a
-   second time. The first payday's net +$2,778.75 was counted twice.
+   second time. The first payday's net was counted twice. At the stale
+   $4,468.69 payroll that net was +$2,778.75; at the current $4,264 net it is
+   +$2,574.06. The shipped page's $1,650/week answer was the double-count at
+   the old payroll. The same method now yields $1,525.
 
    These checks fail against that implementation.
    ================================================================== */
@@ -249,14 +252,14 @@ const oldSliced = JSON.parse(JSON.stringify(plan));
 oldSliced.startingCash.amount = zeroForGap.daily.find(p => p.date === payday.date).balance + gapRec.gap.amount;
 oldSliced.windowDays = F.diffDays(payday.date, zeroForGap.end) + 1;
 const oldAnswer = F.recommendWeekly(oldSliced, payday.date, RECOPTS);
-ok(oldAnswer === 1650, 'the old re-slicing method still reproduces its $1,650', `$${oldAnswer}/week`);
+ok(oldAnswer === 1525, 'the old re-slicing method still overstates the cap', `$${oldAnswer}/week`);
 ok(gapRec.weekly < oldAnswer, 'the corrected engine is materially lower', `$${gapRec.weekly} vs $${oldAnswer}`);
-ok(gapRec.weekly === 1250, 'and the corrected weekly household cap is $1,250', `$${gapRec.weekly}/week`);
+ok(gapRec.weekly === 1135, 'and the corrected weekly household cap is $1,135', `$${gapRec.weekly}/week`);
 
 // The size of the error is the payday it counted twice.
 const paydayNet = zeroForGap.events.filter(e => e.date === payday.date && e.kind !== 'noncash')
   .reduce((s, e) => s + e.amount, 0);
-ok(near(paydayNet, 2778.75), 'the duplicated day was worth $2,778.75 net', paydayNet.toFixed(2));
+ok(near(paydayNet, 2574.06), 'the duplicated day was worth $2,574.06 net', paydayNet.toFixed(2));
 
 // --- 2. no event appears twice -------------------------------------------
 // Every event in the recovery simulation must be unique on (id, date). The old
