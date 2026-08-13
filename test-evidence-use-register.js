@@ -2,8 +2,8 @@
 /* Evidence-Use Register — routing/disposition integrity only.
  *
  * This suite proves that every explicitly identified governed evidence ID has
- * exactly one closed disposition, and that disposition-specific pointers can
- * be resolved as paths/headings/questions.
+ * exactly one declaration identity, exactly one closed disposition, and that
+ * disposition-specific pointers can be resolved as paths/headings/questions.
  *
  * It does NOT prove:
  *   - that a CONSUMED incumbent value is financially correct;
@@ -40,22 +40,61 @@ function walkMarkdown(dir, out = []) {
   return out;
 }
 
-function declaredIdsFrom(root) {
-  const ids = new Set();
-  const docs = path.join(root, 'docs');
-  for (const file of walkMarkdown(docs)) {
-    const text = fs.readFileSync(file, 'utf8');
-    FENCE_RE.lastIndex = 0;
-    let m;
-    while ((m = FENCE_RE.exec(text))) {
-      for (const line of m[1].split(/\r?\n/)) {
-        const id = line.trim();
-        if (!id || id.startsWith('#')) continue;
-        ids.add(id);
-      }
+function parseEvidenceIdFences(relPath, text) {
+  const occurrences = [];
+  const fenceRe = new RegExp(FENCE_RE.source, 'gm');
+  let fenceIndex = 0;
+  let match;
+  while ((match = fenceRe.exec(text))) {
+    fenceIndex += 1;
+    const lines = match[1].split(/\r?\n/);
+    for (let offset = 0; offset < lines.length; offset += 1) {
+      const id = lines[offset].trim();
+      if (!id || id.startsWith('#')) continue;
+      occurrences.push({
+        id,
+        file: relPath,
+        fence: fenceIndex,
+        line: offset + 1,
+      });
     }
   }
-  return ids;
+  return occurrences;
+}
+
+function uniquenessProblems(occurrences) {
+  const byId = new Map();
+  for (const occ of occurrences) {
+    if (!byId.has(occ.id)) byId.set(occ.id, []);
+    byId.get(occ.id).push(occ);
+  }
+  const problems = [];
+  for (const [id, locs] of byId) {
+    if (locs.length < 2) continue;
+    const where = locs
+      .map((loc) => `${loc.file} fence ${loc.fence} line ${loc.line}`)
+      .join('; ');
+    problems.push(`${id}: declared ${locs.length} times — ${where}`);
+  }
+  return problems;
+}
+
+function uniqueDeclaredIds(occurrences) {
+  return new Set(occurrences.map((occ) => occ.id));
+}
+
+function collectDeclarations(root) {
+  const docs = path.join(root, 'docs');
+  const occurrences = [];
+  for (const file of walkMarkdown(docs)) {
+    const rel = path.relative(root, file).split(path.sep).join('/');
+    occurrences.push(...parseEvidenceIdFences(rel, fs.readFileSync(file, 'utf8')));
+  }
+  return {
+    occurrences,
+    duplicateProblems: uniquenessProblems(occurrences),
+    uniqueIds: uniqueDeclaredIds(occurrences),
+  };
 }
 
 function hasHeading(text, heading) {
@@ -225,9 +264,15 @@ ok(/routing only|not financial correctness|owns no financial/i.test(
 ok(/explicitly identified/i.test(register.coverage || ''),
   'register states coverage is explicit IDs only');
 
-const declared = declaredIdsFrom(ROOT);
-ok(declared.size > 0, 'at least one evidence-ids fence exists', `${declared.size} declared IDs`);
+const liveDeclarations = collectDeclarations(ROOT);
+ok(liveDeclarations.uniqueIds.size > 0,
+  'at least one evidence-ids fence exists',
+  `${liveDeclarations.uniqueIds.size} declared IDs`);
+ok(liveDeclarations.duplicateProblems.length === 0,
+  'each governed evidence ID is declared exactly once',
+  liveDeclarations.duplicateProblems.slice(0, 4).join('; '));
 
+const declared = liveDeclarations.uniqueIds;
 const liveProblems = routingProblems(register, fsCtx(ROOT, declared));
 ok(liveProblems.length === 0,
   'live register has closed routing/disposition integrity',
@@ -296,6 +341,46 @@ const missingDeclared = new Set(declared);
 missingDeclared.add('MISSING-001');
 ok(routingProblems(register, fsCtx(ROOT, missingDeclared)).some((p) => /MISSING-001 is declared but missing/.test(p)),
   'declared governed ID missing from the register fails');
+
+console.log('\n=== mutation bite: duplicate governed declaration ===');
+ok(uniquenessProblems(liveDeclarations.occurrences).length === 0,
+  'baseline live declarations pass uniqueness');
+
+const duplicatedAcrossFiles = liveDeclarations.occurrences.concat([{
+  id: 'HELOC-004',
+  file: 'docs/fixture-duplicate-declaration.md',
+  fence: 1,
+  line: 1,
+}]);
+const acrossFileProblems = uniquenessProblems(duplicatedAcrossFiles);
+ok(
+  acrossFileProblems.some((p) => /HELOC-004: declared 2 times/.test(p)
+    && p.includes('docs/source_intake/EVIDENCE_USE_LEDGER_2026-08-13.md')
+    && p.includes('docs/fixture-duplicate-declaration.md')),
+  'adding a second declaration of an already governed ID fails',
+  acrossFileProblems.join('; '),
+);
+
+ok(uniquenessProblems(liveDeclarations.occurrences).length === 0,
+  'removing that duplicate restores PASS');
+
+const twiceInOneFence = parseEvidenceIdFences(
+  'docs/fixture-same-fence.md',
+  '```evidence-ids\nABC-001\nABC-001\n```\n',
+);
+ok(uniquenessProblems(twiceInOneFence).some((p) => /ABC-001: declared 2 times/.test(p)
+  && /fence 1 line 1/.test(p)
+  && /fence 1 line 2/.test(p)),
+  'the same ID declared twice in one evidence-ids fence fails');
+
+const twoFencesOneFile = parseEvidenceIdFences(
+  'docs/fixture-two-fences.md',
+  '```evidence-ids\nABC-001\n```\n\n```evidence-ids\nABC-001\n```\n',
+);
+ok(uniquenessProblems(twoFencesOneFile).some((p) => /ABC-001: declared 2 times/.test(p)
+  && /fence 1 /.test(p)
+  && /fence 2 /.test(p)),
+  'the same ID declared in two fences in one file fails');
 
 console.log('\n=== this suite does not prove financial correctness ===');
 ok(true, 'no amount comparison is performed against data.json or Forecast');
