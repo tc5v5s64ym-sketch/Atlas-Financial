@@ -4,7 +4,7 @@
  * Two alternative-reality questions the Plan page publishes answers to:
  *
  *   FULL GAP COVERAGE   "with only $3,759.69 of the $5,543.16 gap fundable.
- *                        Cover the whole gap and it becomes $1,250/week."
+ *                        Cover the whole gap and it becomes $1,135/week."
  *   GAP FUNDED BY DRAW  "Covering the opening gap from it instead of Amanda's
  *                        transfer brings that crossing forward to 31 August."
  *
@@ -512,9 +512,9 @@ function published(o = {}) {
   const c = at('conservative'), e = at('expected'), o = at('optimistic');
   ok(c.applies && e.applies && o.applies,
     'a $5,000 buffer reaches the full-coverage case on the published data');
-  ok(cents(c.weekly) === cents(1015) && cents(e.weekly) === cents(1250)
-    && cents(o.weekly) === cents(1290),
-    'and publishes $1,015 / $1,250 / $1,290 per week by scenario',
+  ok(cents(c.weekly) === cents(895) && cents(e.weekly) === cents(1135)
+    && cents(o.weekly) === cents(1175),
+    'and publishes $895 / $1,135 / $1,175 per week by scenario',
     [c, e, o].map(x => money(x.weekly)).join(' / '));
   ok(same(e.shortfall, 1783.47) && same(e.fundable, 3759.69) && same(e.gapAmount, 5543.16),
     'against $3,759.69 fundable of a $5,543.16 gap, $1,783.47 short',
@@ -539,19 +539,20 @@ function published(o = {}) {
     'publishing no crossing date rather than one produced by an overdraw');
 }
 
-console.log('\n=== 11. published figures do not move ===');
+console.log('\n=== 11. published figures do not move except with the plan input ===');
 /* The alternative crossing date and the full-coverage weekly figure, compared
  * against the values `public/plan.js` produced at a7fe97b through the exact
- * expressions it ran. Written as literals: reading them back off the engine
- * would prove only that the engine agrees with itself. */
+ * expressions it ran, then retargeted when the 91-day payroll cash input
+ * moved from $4,468.69 to $4,264. Written as literals: reading them back off
+ * the engine would prove only that the engine agrees with itself. */
 {
   const cases = [
     { label: 'default', o: {}, cross: '2026-08-31', cap: null },
     { label: '$600/wk override', o: { weeklyVariable: 600 }, cross: '2026-08-31', cap: null },
     { label: 'buffer $0', o: { targetBuffer: 0 }, cross: '2026-08-31', cap: null },
-    { label: 'buffer $4,000', o: { targetBuffer: 4000 }, cross: null, cap: 1250 },
-    { label: 'buffer $5,000', o: { targetBuffer: 5000 }, cross: null, cap: 1250 },
-    { label: 'buffer $3,800', o: { targetBuffer: 3800 }, cross: null, cap: 1250 },
+    { label: 'buffer $4,000', o: { targetBuffer: 4000 }, cross: null, cap: 1135 },
+    { label: 'buffer $5,000', o: { targetBuffer: 5000 }, cross: null, cap: 1135 },
+    { label: 'buffer $3,800', o: { targetBuffer: 3800 }, cross: null, cap: 1135 },
   ];
   for (const c of cases) {
     const { cf } = published(c.o);
@@ -833,7 +834,7 @@ const flat = s => String(s).replace(/\s+/g, ' ').trim();
       // household reads — $3,759.69 and $5,543.16 rounded, not re-derived.
       ok(/with only \$3,760 of the \$5,543 gap fundable/.test(t),
         'at a $5,000 buffer the booted page publishes the fundable split');
-      ok(/Cover the whole gap and it becomes \$1,250\/week/.test(t),
+      ok(/Cover the whole gap and it becomes \$1,135\/week/.test(t),
         'and the full-coverage weekly figure the engine returned');
       ok(!/undefined|NaN|Infinity|\[object/.test(t),
         'with no undefined, NaN, Infinity or [object Object] in it');

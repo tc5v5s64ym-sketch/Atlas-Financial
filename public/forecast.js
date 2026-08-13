@@ -153,7 +153,7 @@
     let monthly = null;
     if (override != null && isFinite(override)) monthly = Number(override);
     else if (stream.scenarioMonthly) monthly = stream.scenarioMonthly[opts.scenario || 'expected'];
-    if (monthly == null) return stream.amount; // fixed, confirmed amount
+    if (monthly == null) return stream.amount; // fixed amount (no scenarioMonthly / override)
     // A monthly figure paid bi-weekly arrives as 26ths of a year's worth.
     return stream.frequency === 'biweekly' ? monthly * 12 / 26 : monthly;
   }

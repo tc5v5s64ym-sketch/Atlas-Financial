@@ -81,15 +81,25 @@ ok(simOver.min.balance < 100, 'and $10 more breaches it', simOver.min.balance.to
 console.log('\n=== the real plan block ===');
 const plan = data.plan;
 const asOf = data.meta.asOf;
+const payroll = plan.income.find(s => s.id === 'payroll');
+ok(payroll === plan.income[0], 'payroll is plan.income[0], the EMP-004 routing target');
+ok(payroll.amount === 4264, 'live payroll is the EMP-004 observed-average net', String(payroll.amount));
+ok(payroll.confidence === 'estimated',
+  'tagged estimated — observed average, not a repeating exact cheque', payroll.confidence);
+ok(payroll.amount >= 4247.92 && payroll.amount <= 4274.98,
+  'and sits inside the observed current-net range $4,247.92–$4,274.98');
 const expected = F.simulate(plan, asOf, {
   scenario: 'expected', weeklyVariable: 0, targetBuffer: plan.defaults.targetBuffer,
 });
 
-// Confirmed income: 7 paydays × 4468.69 + 3 child benefits × 153.59.
-ok(near(expected.totals.confirmedIncome, 7 * 4468.69 + 3 * 153.59), '90-day confirmed income',
+// Confirmed income: child benefit only. Payroll is the expected-regime average, not a confirmed repeating cheque.
+const paydays = F.occurrences(payroll, asOf, F.addDays(asOf, plan.windowDays - 1));
+ok(paydays.length === 7, 'the 91-day window contains 7 payroll dates', paydays.join(', '));
+ok(near(expected.totals.confirmedIncome, 3 * 153.59), '90-day confirmed income is child benefit only',
   expected.totals.confirmedIncome.toFixed(2));
-// Estimated (expected scenario): Amanda's transfers, 3 × 2182.
-ok(near(expected.totals.estimatedIncome, 3 * 2182, 0.05), '90-day estimated income',
+// Estimated (expected scenario): 7 payrolls × 4264 + Amanda's transfers, 3 × 2182.
+ok(near(expected.totals.estimatedIncome, paydays.length * 4264 + 3 * 2182, 0.05),
+  '90-day estimated income includes payroll plus Amanda transfers',
   expected.totals.estimatedIncome.toFixed(2));
 // Obligations exclude the HELOC — its interest capitalises rather than being
 // paid. Mortgage 7×1600, Triangle 3×253.57, CashBack 762.36 + 2×170,
@@ -218,7 +228,10 @@ function addDaysISO(iso, n) { return F.addDays(iso, n); }
    there by re-slicing the plan to start on the first payday, seeding it with
    that payday's own END-OF-DAY balance, and then simulating from that same
    date — so the payroll, the mortgage, Shaw and Fit4Less were all applied a
-   second time. The first payday's net +$2,778.75 was counted twice.
+   second time. The first payday's net was counted twice. At the stale
+   $4,468.69 payroll that net was +$2,778.75; at the current $4,264 net it is
+   +$2,574.06. The shipped page's $1,650/week answer was the double-count at
+   the old payroll. The same method now yields $1,525.
 
    These checks fail against that implementation.
    ================================================================== */
@@ -242,14 +255,14 @@ const oldSliced = JSON.parse(JSON.stringify(plan));
 oldSliced.startingCash.amount = zeroForGap.daily.find(p => p.date === payday.date).balance + gapRec.gap.amount;
 oldSliced.windowDays = F.diffDays(payday.date, zeroForGap.end) + 1;
 const oldAnswer = F.recommendWeekly(oldSliced, payday.date, RECOPTS);
-ok(oldAnswer === 1650, 'the old re-slicing method still reproduces its $1,650', `$${oldAnswer}/week`);
+ok(oldAnswer === 1525, 'the old re-slicing method still overstates the cap', `$${oldAnswer}/week`);
 ok(gapRec.weekly < oldAnswer, 'the corrected engine is materially lower', `$${gapRec.weekly} vs $${oldAnswer}`);
-ok(gapRec.weekly === 1250, 'and the corrected weekly household cap is $1,250', `$${gapRec.weekly}/week`);
+ok(gapRec.weekly === 1135, 'and the corrected weekly household cap is $1,135', `$${gapRec.weekly}/week`);
 
 // The size of the error is the payday it counted twice.
 const paydayNet = zeroForGap.events.filter(e => e.date === payday.date && e.kind !== 'noncash')
   .reduce((s, e) => s + e.amount, 0);
-ok(near(paydayNet, 2778.75), 'the duplicated day was worth $2,778.75 net', paydayNet.toFixed(2));
+ok(near(paydayNet, 2574.06), 'the duplicated day was worth $2,574.06 net', paydayNet.toFixed(2));
 
 // --- 2. no event appears twice -------------------------------------------
 // Every event in the recovery simulation must be unique on (id, date). The old
@@ -279,6 +292,9 @@ ok(near(gapRec.zero.ending, noGap.ending),
 ok(near(gapRec.sim.totals.confirmedIncome, noGap.totals.confirmedIncome),
   'confirmed income is identical with and without the recovery model',
   gapRec.sim.totals.confirmedIncome.toFixed(2));
+ok(near(gapRec.sim.totals.estimatedIncome, noGap.totals.estimatedIncome),
+  'estimated income is identical with and without the recovery model',
+  gapRec.sim.totals.estimatedIncome.toFixed(2));
 
 // --- 4. reconciles to an independent full-ledger calculation -------------
 // Rebuilt from scratch below — its own day loop, not simulate() — so agreement

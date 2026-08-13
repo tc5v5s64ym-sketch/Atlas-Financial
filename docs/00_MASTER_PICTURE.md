@@ -80,7 +80,7 @@ $82.28 of headroom left.
 
 **The $762.36 Cash Back minimum on 1 September is the one that needs planning
 for** — it is more than four times any other card minimum. Payroll runs
-bi-weekly at about $4,469, and her Tennis BC pay is semi-monthly — the 15th and
+bi-weekly at about $4,264, and her Tennis BC pay is semi-monthly — the 15th and
 month-end — at about $4,575/month gross. That gross is **not** household money:
 coaches are paid from it first and only the remainder crosses over, which has
 averaged $2,182/month. See `ACCOUNT_FACTS.md` → "Her Tennis BC pay" for the

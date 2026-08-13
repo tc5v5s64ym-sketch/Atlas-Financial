@@ -542,7 +542,7 @@ ok(/No weekly spending\s*\n?\s*figure fixes this/.test(planJs2),
   ok(onDay[0].parts && onDay[0].parts.length === 2,
     'while still carrying both origins for debt attribution',
     onDay[0].parts.map(p => p.debtId || 'cash').join(' + '));
-  ok(adv.holds && adv.weekly === 1250,
+  ok(adv.holds && adv.weekly === 1135,
     'so the day closes on the buffer and the cap survives the split',
     `$${adv.weekly}/week, floor ${money(adv.sim.min.balance)}`);
   ok(near(adv.sim.min.balance, 3000),
