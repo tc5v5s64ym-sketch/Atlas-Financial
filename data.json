@@ -740,30 +740,6 @@
       "The HELOC passes its own limit inside this window with no new borrowing. It is 99.5% drawn, its interest capitalises onto the balance at about $814 a month, and nothing repays it — so the balance crosses $202,654 on 30 September on that alone. This is projected from the observed charge, not read from a statement, and it is why stopping HELOC growth ranks above extra card repayment in the next-dollar policy."
     ]
   },
-  "headline": [
-    {
-      "label": "Total debt",
-      "value": 777455.57,
-      "tone": "plain",
-      "note": "Every consumer debt in the household is now captured. Nothing outstanding."
-    },
-    {
-      "label": "Interest cost / year",
-      "value": 36546.11,
-      "tone": "warn",
-      "sub": {
-        "value": 17105.11,
-        "label": "excluding the mortgage"
-      },
-      "note": "About $3,046 every month, of which about $1,425 is not the mortgage"
-    },
-    {
-      "label": "Credit left, everywhere",
-      "value": 1415.95,
-      "tone": "alert",
-      "note": "Across seven facilities combined"
-    }
-  ],
   "settled": [
     {
       "date": "2026-08-07",
@@ -820,7 +796,6 @@
         "note": "Fusion"
       }
     ],
-    "total": 2800,
     "totalNote": "Both are treated as committed: the Fusion season is written in on the expectation of selection rather than held back as a maybe. September is the heavy month at $1,300, and it arrives alongside the TD Cash Back minimum. Amounts remain owner-stated rather than invoiced, so they are planning figures — and they stay out of the headline cash and debt tiles, which carry institution-verified amounts only."
   },
   "debts": [
@@ -1028,9 +1003,6 @@
   ],
   "assetsNote": "Read from TD on 9 August, after the $300 Triangle payment and the $70 Cash Back payment both left Chequing A. SAVINGS-DONT TOUCH is a staging account rather than savings — money arrives and leaves within days, and it earned $0.11 over 18 months. The Wise figure is $83.84 CAD plus $86.82 USD, converted at the 0.7112 rate actually paid rather than a spot rate, and is calculated from the transaction ledger rather than read off Wise. The silver is 100 oz, owner-stated 10 August 2026, valued at the C$88.47/oz spot price that day — a market price, not a quote. Actual proceeds would be lower: dealers buy under spot, and any gain over the original purchase price is a taxable capital gain in Canada. It is the household's largest liquid asset by a wide margin, worth roughly three times the total cash.",
   "netWorth": {
-    "assets": 43454.66,
-    "debts": 777455.57,
-    "financialAccountsOnly": -734000.91,
     "caveat": "Household net worth is now estimable. At the owner's estimate of $1.1m–$1.4m for the home, it is roughly $366,000 to $666,000 [ESTIMATE] — the financial accounts above, plus the home, less all debt. The range rose by about $8,800 when the silver was added on 10 August. Loan-to-value on the mortgage and HELOC together ($747,612.74) is 68% at the low end and 53% at the high end, both comfortably under the 80% that matters at the May 2027 renewal. This is an owner's estimate, not an appraisal, and a lender will use its own. Vehicles, pensions and the business are still excluded."
   },
   "helocHistory": [
@@ -1115,7 +1087,6 @@
       "note": "Only $1,067.84 left"
     }
   ],
-  "helocLimit": 202654,
   "helocSummary": "Balance grew $7,536.96 over 18 months despite $78,177 of repayments, because $86,514 was advanced and $15,029 of interest was capitalised. Since the February 2026 paydown it has risen every month — +$13,525.55 in six.",
   "helocUse": [
     {
@@ -1273,10 +1244,7 @@
       "stability": "One-off"
     }
   ],
-  "incomeTotal": {
-    "total": 306760.03,
-    "perMonth": 17042
-  },
+  "incomeCaptureMonths": 18,
   "incomeWarning": "The coaching line is gross revenue — coaches are paid out of it. Her tracking sheets now give the split: $23,070 of class revenue against $6,397.50 of coach payroll, so coaches take about 27.7% and roughly 72% is retained. Applied to the $42,395 of large receipts that implies about $11,700 owed onward and $30,700 retained — roughly $1,700/month of real coaching income rather than the $2,355 the gross suggests. So this total is overstated by about $650/month, not the $1,650 previously feared. The sheets cover $23,070 against $42,395 received, so they are a subset of the window and the share is indicative rather than audited.",
   "incomeNote": "Her Tennis BC employment — 43 deposits, $63,129.47 over 18 months into DEBT&PAYMENTS — was absent from the earlier picture entirely, which saw only the $21,700 she transferred across. That transfer has been removed as an income line: it is an internal movement out of this income, and counting both would double it. Two cautions remain: at least $1,639.10 marked EXP is expense reimbursement rather than pay, a further $2,846.58 marked AP is unresolved, and the transfers stopped after May 2026 while the income did not.",
   "interestCheck": {
@@ -1363,7 +1331,6 @@
     "note": "Not a source of business revenue, not the channel for the unexplained e-transfers, and not a hidden asset or debt — balance $0.00, Pay-in-4 complete."
   },
   "lacrosse": {
-    "verified": 5729.47,
     "inferred": 400.0,
     "perMonth": 348,
     "sources": [
@@ -1616,9 +1583,6 @@
     }
   ],
   "mortgage": {
-    "balance": 546026.58,
-    "rate": 3.64,
-    "paymentBiweekly": 1600,
     "interestPortion": 762.27,
     "principalPortion": 837.73,
     "requiredPayment": 1365,

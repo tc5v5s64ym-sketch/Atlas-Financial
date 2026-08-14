@@ -23,6 +23,7 @@ function renderDeepDive(d) {
   // page prints the returned spendable amount and elsewhere total, and looks
   // the class labels up. It no longer sums or groups.
   const dive = Forecast.deepDive(d);
+  const pub = Forecast.publicationTotals(d);
   const classLine = (dive.classes || [])
     .map(v => `${money(v.total)} ${CASH_CLASS_LABEL[v.class] || v.class} (${
       v.labels.map(lab => lab.replace(/ —.*$/, '')).join(', ')})`)
@@ -34,8 +35,35 @@ function renderDeepDive(d) {
     note: `Chequing A, Chequing B and Savings — the accounts the mortgage, bills and card minimums are actually ` +
       `paid from. A further ${money(dive.elsewhere)} sits elsewhere and is not household spending money: ${classLine}.`,
   };
+  // Total debt, annual interest and revolving headroom used to be stored in
+  // `data.json` `headline`. They are Forecast.publicationTotals now — the
+  // same sums and the same utilisation figure the Plan already publishes —
+  // so a balance change cannot leave a stale tile behind. This page prints
+  // the returned numbers and holds the wording.
+  const headlineTiles = [
+    {
+      label: 'Total debt',
+      value: pub.totalDebt,
+      tone: 'plain',
+      note: 'Every consumer debt in the household is now captured. Nothing outstanding.',
+    },
+    {
+      label: 'Interest cost / year',
+      value: pub.annualInterest,
+      tone: 'warn',
+      sub: { value: pub.annualInterestExMortgage, label: 'excluding the mortgage' },
+      note: `About ${money(pub.monthlyInterest)} every month, of which about ` +
+        `${money(pub.monthlyInterestExMortgage)} is not the mortgage`,
+    },
+    {
+      label: 'Credit left, everywhere',
+      value: pub.creditLeft,
+      tone: 'alert',
+      note: `Across ${pub.revolvingFacilityCount} facilities combined`,
+    },
+  ];
 
-  $('tiles').innerHTML = [cashTile].concat(d.headline).map(t => `
+  $('tiles').innerHTML = [cashTile].concat(headlineTiles).map(t => `
     <div class="tile ${t.tone === 'plain' ? '' : t.tone}">
       <div class="lab">${t.label}</div>
       <div class="val">${money(t.value)}</div>
@@ -129,7 +157,7 @@ function renderDeepDive(d) {
             </div>`).join('')}
         </div>` : '')
       + `<div class="commit total">
-           <div class="commit-top"><span class="commit-what">Total</span><span class="commit-amt">${money(c.total)}</span></div>
+           <div class="commit-top"><span class="commit-what">Total</span><span class="commit-amt">${money(pub.commitmentsTotal)}</span></div>
          </div>`;
     $('commit-total-note').textContent = c.totalNote;
     $('commitments').hidden = false;
@@ -181,7 +209,7 @@ function renderDeepDive(d) {
   })), { rowH: 40, padL: 176 });
   if (d.utilisationNote) $('util-note').textContent = d.utilisationNote;
 
-  lineChart($('c-heloc'), d.helocHistory, d.helocLimit);
+  lineChart($('c-heloc'), d.helocHistory, pub.helocLimit);
   $('heloc-note').textContent = d.helocSummary;
 
   diverge($('c-flow'), d.cashflow);
@@ -198,7 +226,7 @@ function renderDeepDive(d) {
       tip: `${i.perMonth ? '~' + money(i.perMonth) + '/month · ' : ''}${i.stability || ''}`,
     })), { rowH: 40, padL: 190 });
     $('income-note').textContent =
-      `${money2(d.incomeTotal.total)} over 18 months, about ${money(d.incomeTotal.perMonth)}/month. ${d.incomeNote || ''}`;
+      `${money2(pub.incomeTotal)} over ${pub.incomeMonths} months, about ${money(pub.incomePerMonth)}/month. ${d.incomeNote || ''}`;
     if (d.incomeWarning) $('income-warning').textContent = d.incomeWarning;
   }
 
@@ -254,7 +282,7 @@ function renderDeepDive(d) {
       tip: `${s.n} charge${s.n === 1 ? '' : 's'} · ${s.note}`,
     })), { rowH: 40, padL: 190 });
     $('lacrosse-note').textContent =
-      `${money2(L.verified)} verified across ${L.sources.reduce((s, x) => s + x.n, 0)} charges — about ${money(L.perMonth)} a month. ${L.note}`;
+      `${money2(pub.lacrosseVerified)} verified across ${L.sources.reduce((s, x) => s + x.n, 0)} charges — about ${money(L.perMonth)} a month. ${L.note}`;
 
     hbar($('c-lacrosse-fund'), L.funding.map(f => ({
       label: f.label, v: f.amount,

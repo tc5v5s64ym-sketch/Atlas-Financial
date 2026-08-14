@@ -66,22 +66,28 @@ ok(cashAccounts.length === assetCashLabels.length,
   `${cashAccounts.length} accounts`);
 
 // The defect this replaced: a headline tile that added all six together.
-ok(!data.headline.some(h => /cash on hand/i.test(h.label)),
-  'the undifferentiated "Cash on hand" headline is gone',
-  'it summed spendable, pass-through, staging and US holiday money as one figure');
+ok(!data.headline,
+  'stored headline totals are gone — Deep Dive derives them via Forecast.publicationTotals',
+  'the undifferentiated "Cash on hand" tile summed spendable, pass-through, staging and US holiday money as one figure');
 ok(/Forecast\.deepDive/.test(read('public/deepdive.js'))
   && /dive\.cashAmount/.test(read('public/deepdive.js')),
   'the Deep Dive cash tile derives from the plan cash register via Forecast.deepDive');
+ok(/Forecast\.publicationTotals/.test(read('public/deepdive.js')),
+  'and the remaining Deep Dive tiles derive from Forecast.publicationTotals');
 
 console.log('\n=== assets and debts reconcile ===');
 const assetTotal = data.assets.reduce((s, a) => s + a.value, 0);
-ok(near(assetTotal, data.netWorth.assets),
-  'assets sum to the published net-worth asset figure',
-  `${money(assetTotal)} vs ${money(data.netWorth.assets)}`);
 const debtTotal = data.debts.reduce((s, x) => s + (x.balance || 0), 0);
-ok(near(debtTotal, data.netWorth.debts),
-  'debts sum to the published net-worth debt figure',
-  `${money(debtTotal)} vs ${money(data.netWorth.debts)}`);
+const published = F.publicationTotals(data);
+ok(near(assetTotal, published.assets),
+  'assets sum to the published net-worth asset figure',
+  `${money(assetTotal)} vs ${money(published.assets)}`);
+ok(near(debtTotal, published.totalDebt),
+  'debts sum to the published total-debt figure',
+  `${money(debtTotal)} vs ${money(published.totalDebt)}`);
+ok(!Object.prototype.hasOwnProperty.call(data.netWorth || {}, 'assets')
+  && !Object.prototype.hasOwnProperty.call(data.netWorth || {}, 'debts'),
+  'those totals are no longer stored beside the rows they sum');
 const secured = data.debts.filter(x => x.secured).reduce((s, x) => s + x.balance, 0);
 const consumer = data.debts.filter(x => !x.secured).reduce((s, x) => s + x.balance, 0);
 ok(near(secured + consumer, debtTotal),
@@ -141,20 +147,21 @@ ok(helocDebt.monthlyInterest > 0,
 ok(heloc.nonCash === true && near(heloc.amount, helocDebt.monthlyInterest),
   'the plan obligation agrees with it on both counts', money(heloc.amount));
 
-// The mortgage is stated in three places, and every one of them is read. The
-// `mortgage` block opens the renewal sliders, the debt record is the balance
-// `Forecast.renewal` and `Forecast.projectDebts` both run on, and the plan
-// obligation is what the renewal annualises into today's household cash. They
-// agree today; nothing checked that they did, and the renewal now depends on
-// two of them at once.
+// The mortgage is stated in two live places, and both are read. The debt
+// record is the balance `Forecast.renewal` and `Forecast.projectDebts` both
+// run on, and the plan obligation is what the renewal annualises into today's
+// household cash. The `mortgage` block keeps remaining amortisation, maturity
+// and prepayment room — standing facts — and is no longer a second home for
+// the balance, rate, or bi-weekly payment.
 const mortgageDebt = data.debts.find(x => x.id === 'mortgage');
 const mortgageObligation = plan.obligations.find(o => o.debtId === 'mortgage');
-ok(near(data.mortgage.balance, mortgageDebt.balance),
-  'the mortgage block and the debt record state one balance',
-  money(mortgageDebt.balance));
-ok(near(data.mortgage.rate, mortgageDebt.rate),
-  'and one rate', `${mortgageDebt.rate}%`);
-ok(near(data.mortgage.paymentBiweekly, mortgageObligation.amount)
+ok(data.mortgage.balance == null && data.mortgage.rate == null
+  && data.mortgage.paymentBiweekly == null,
+  'the mortgage block no longer republishes the debt record\'s balance, rate, or payment');
+ok(near(mortgageDebt.rate, 3.64),
+  'the debt record is the live rate the renewal slider opens on',
+  `${mortgageDebt.rate}%`);
+ok(near(mortgageDebt.payment, mortgageObligation.amount)
   && mortgageObligation.frequency === 'biweekly',
 'and the plan schedules exactly that payment, at that cadence',
 `${money(mortgageObligation.amount)} ${mortgageObligation.frequency}`);

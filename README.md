@@ -85,8 +85,9 @@ thirty seconds to wake. For a couple of check-ins a week that is fine.
 Edit `data.json`, commit, push. Render redeploys and the site reflects the new
 figures. No HTML or JavaScript changes needed for a routine update.
 
-When adding an account, add an entry to `debts` (and `utilisation` if it is
-revolving), then update `headline`, `netWorth` and `coverage` to match.
+When adding an account, add an entry to `debts` (and `revolvingExtra` if it is
+an overdraft rather than a debt). Headline, net-worth and income totals are
+derived from those rows — do not store a matching copy.
 
 ## What this is not
 

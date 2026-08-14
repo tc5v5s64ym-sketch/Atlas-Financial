@@ -1513,6 +1513,71 @@
     return { secured, monthlyInterest, heloc };
   }
 
+  /* ------------------------------------------ publication totals */
+  // Deep Dive tiles, Records net-worth lines, the income footer, the
+  // commitments total and the lacrosse verified total used to be stored
+  // independently in `data.json` even though every input they need is
+  // already a canonical row: debt balances and annual-interest figures,
+  // asset values, income line totals, commitment item amounts, lacrosse
+  // source amounts, and `Forecast.utilisation` for revolving headroom.
+  // Those copies had already drifted. The stored "Credit left, everywhere"
+  // tile was $1,415.95 against utilisation's $1,415.98 — three cents, and
+  // the same disagreement the upcoming note and positions.csv had already
+  // resolved by reading utilisation.
+  //
+  // This function is addition plus a call to utilisation. It does not
+  // price a debt, project cash, or invent a second headroom rule. The
+  // historical income footer monthly figure is total / capture window,
+  // rounded to a dollar. That window is an evidence fact —
+  // `data.incomeCaptureMonths`, beside the historical `income` rows, the
+  // same shape `paypal.months` already uses. It is not derived from
+  // `periods.json` `all.months` (19 calendar buckets labelled "18 months"):
+  // those are spending buckets, including a partial current month, and are
+  // not the income-observation denominator. Pages format the returned
+  // numbers. data.json keeps the rows being summed.
+  function publicationTotals(data) {
+    data = data || {};
+    const debts = data.debts || [];
+    const assets = data.assets || [];
+    let totalDebt = 0;
+    let annualInterest = 0;
+    let annualInterestExMortgage = 0;
+    let helocLimit = null;
+    for (const debt of debts) {
+      totalDebt += debt.balance || 0;
+      const annual = debt.annualInterest || 0;
+      annualInterest += annual;
+      if (debt.id !== 'mortgage') annualInterestExMortgage += annual;
+      if (debt.id === 'heloc' && debt.limit != null) helocLimit = debt.limit;
+    }
+    const assetTotal = assets.reduce((s, a) => s + (a.value || 0), 0);
+    const incomeTotal = (data.income || []).reduce((s, row) => s + (row.total || 0), 0);
+    const incomeMonths = Number(data.incomeCaptureMonths);
+    const incomeWindow = incomeMonths > 0 && isFinite(incomeMonths) ? incomeMonths : null;
+    const commitmentsTotal = ((data.commitments && data.commitments.items) || [])
+      .reduce((s, item) => s + (item.amount || 0), 0);
+    const lacrosseVerified = ((data.lacrosse && data.lacrosse.sources) || [])
+      .reduce((s, row) => s + (row.amount || 0), 0);
+    const revolving = utilisation(debts, data.revolvingExtra);
+    return {
+      totalDebt,
+      annualInterest,
+      annualInterestExMortgage,
+      monthlyInterest: monthOfAnnual(annualInterest),
+      monthlyInterestExMortgage: monthOfAnnual(annualInterestExMortgage),
+      creditLeft: revolving.totalAvailable,
+      revolvingFacilityCount: revolving.rows.length,
+      assets: assetTotal,
+      financialAccountsOnly: assetTotal - totalDebt,
+      incomeTotal,
+      incomePerMonth: incomeWindow ? Math.round(incomeTotal / incomeWindow) : null,
+      incomeMonths: incomeWindow,
+      commitmentsTotal,
+      lacrosseVerified,
+      helocLimit,
+    };
+  }
+
   /* ------------------------------------------ Deep Dive derived totals */
   // The Deep Dive page used to decide the remaining household-facing
   // figures B73 recorded as item 8: grouping and totalling `heldElsewhere`,
@@ -2233,7 +2298,8 @@
   //   BALANCES come from the debt records the walk in `projectDebts` opens on,
   //     through the same `openingBalance` rule. `data.json` `mortgage` keeps the
   //     renewal's standing facts — maturity, remaining years, prepayment room —
-  //     and is no longer a second home for the balance the arithmetic runs on.
+  //     and is no longer a second home for the balance, rate, or bi-weekly
+  //     payment the arithmetic and the slider open on.
   //   TODAY'S HOUSEHOLD CASH comes from `plan.obligations`, the authority for
   //     what is due and how often. That is what makes the HELOC's $0.00 derived
   //     rather than asserted: its obligation is `nonCash`, so it contributes
@@ -2632,7 +2698,7 @@
     recommendWeekly, recommend, incomeDeadline, counterfactuals,
     budgetBreakdown, monthlyFromWeekly,
     projectDebts,
-    nextDue, nextPaymentOut, unallocatedCash, compactSnapshot, deepDive, planStatus, mission, planPhases, nextMove, utilisation, renewal,
+    nextDue, nextPaymentOut, unallocatedCash, compactSnapshot, publicationTotals, deepDive, planStatus, mission, planPhases, nextMove, utilisation, renewal,
     payoffDebts, payoffModel,
     paymentForMonths, EPSILON, STEP };
   if (typeof module !== 'undefined' && module.exports) module.exports = Forecast;

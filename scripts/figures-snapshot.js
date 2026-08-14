@@ -177,8 +177,10 @@ for (const c of proj.crossings || []) {
 }
 
 /* ---- the balance sheet -------------------------------------------------- */
-put('balance.assets', data.netWorth.assets);
-put('balance.debts', data.netWorth.debts);
+put('balance.assets',
+  data.assets.reduce((s, a) => s + a.value, 0));
+put('balance.debts',
+  data.debts.reduce((s, x) => s + (x.balance || 0), 0));
 // POSTED only, and named so. The scoreboard's consumer-debt figure is posted
 // PLUS known pending, because a pending charge is money already spent; these
 // two sat in one report as `balance.consumerDebt` $29,842.83 against
