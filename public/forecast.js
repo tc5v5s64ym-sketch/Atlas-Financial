@@ -937,7 +937,11 @@
       const sinkingHere = sinking.items.filter(s => s.category === c.id)
         .reduce((a, s) => a + s.amount, 0);
       return Object.assign({}, c, {
-        historical, dated: dated.total, datedItems: dated.items, target, planned,
+        historical, dated: dated.total, datedItems: dated.items, target,
+        // gross is the pre-dated monthly amount — owner target if one exists,
+        // otherwise the historical average. planned is that amount after dated
+        // items are netted off, and is what the weekly cap consumes.
+        gross, planned,
         // Dated commitments saved for separately. Reported, never netted off
         // the recurring line for the same category.
         sinking: sinkingHere,
@@ -1011,10 +1015,18 @@
     const perWeek = m => m / WEEKS_PER_MONTH;
     const monthly = monthlyFromWeekly(weekly);
 
-    const cat = id => categories.find(c => c.id === id) || { planned: 0, historical: 0 };
+    const cat = id => categories.find(c => c.id === id)
+      || { planned: 0, historical: 0, gross: 0, source: 'historical-actual' };
     const groceries = cat('groceries'), fuel = cat('fuel');
     const foodFuelPlannedMonthly = groceries.planned + fuel.planned;
     const foodFuelHistoricalMonthly = groceries.historical + fuel.historical;
+    // Pre-dated monthly amounts and owner-target state are already decided
+    // on each category. This block publishes the grocery/fuel pair; it does
+    // not choose target vs historical again. planned stays the post-dated
+    // amount the weekly cap uses.
+    const groceriesMonthly = groceries.gross;
+    const fuelMonthly = fuel.gross;
+    const groceriesHasOwnerTarget = groceries.source === 'owner-target';
 
     // Whether the cap leaves anything once the essentials are paid. Measured
     // with the engine's own epsilon rather than the page's bare comparison of
@@ -1074,6 +1086,7 @@
       foodFuelPlannedMonthly, foodFuelPlannedWeekly: perWeek(foodFuelPlannedMonthly),
       foodFuelHistoricalMonthly,
       foodFuelHistoricalWeekly: perWeek(foodFuelHistoricalMonthly),
+      groceriesMonthly, fuelMonthly, groceriesHasOwnerTarget,
 
       // What the household's own discretionary budget asks for, and how the
       // room the cap leaves compares with it.

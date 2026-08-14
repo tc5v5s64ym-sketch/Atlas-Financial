@@ -266,10 +266,10 @@ so treat it as open:
 
 **Every instance recorded below has moved into the engine, and so have the first
 five the closing scan found plus the Plan page's "next payment out" tile,
-its unallocated / free-cash remainder, and the compact snapshot. The item
-stays OPEN** — food-and-fuel totals, the phase/risk list, and the Deep Dive
-totals are still to move. See **the closing scan** at the end of this entry for
-what was inspected, what each candidate was classified as, and the ordered
+its unallocated / free-cash remainder, the compact snapshot, and the
+food-and-fuel totals. The item stays OPEN** — the phase/risk list and the Deep
+Dive totals are still to move. See **the closing scan** at the end of this entry
+for what was inspected, what each candidate was classified as, and the ordered
 outcomes that remain.
 
 - **RESOLVED 2026-08-11 — the payoff modeller.** `Forecast.payoffDebts` and
@@ -446,8 +446,8 @@ financial authorities living in page scripts. **Items 1, 2, 3, 4 and 5 have sinc
 moved** — 1 and 2 together, as one authority boundary, because both interpreted
 the same opening gap and the same funding result; 3, 4 and 5 on their own.
 **"Next payment out" has since moved from item 6**, and so have the
-unallocated / free-cash remainder and the compact snapshot. Food-and-fuel
-subtotals remain in item 6, plus items 7 and 8, and they are still the list
+unallocated / free-cash remainder, the compact snapshot, and the food-and-fuel
+totals. Item 6 is closed. Items 7 and 8 remain, and they are still the list
 below.
 
 **The first pass of this scan found seven and missed one**, and the record says
@@ -833,9 +833,34 @@ the branch that moved it before anything was edited — the page mutated,
    wording is a real defect found in the move, unreachable on the live
    history.
 
-   **Still in this group, not moved:** food-and-fuel sub-totals are summed at
-   634–636, 671, 994 and 999. That is still a household-facing figure with no
-   owner.
+   **RESOLVED 2026-08-14 — food and fuel.** The weekly food-and-fuel pair the
+   scan recorded — `filter` groceries+fuel then `reduce` planned, convert
+   `/wk`; `food.planned + fuel.planned`; `food.historical + fuel.historical` —
+   already moved with the weekly-cap work into `Forecast.budgetBreakdown`'s
+   `cap` block (`foodFuelPlannedWeekly`, `foodFuelHistoricalWeekly`,
+   `groceriesPlannedWeekly`, `fuelPlannedWeekly`). Those line numbers (634–636,
+   671, 994, 999) were already stale against that move; they are not
+   re-implemented here.
+
+   What still decided on the page was the monthly sentence and the owner-budget
+   chip: `categories.find` for groceries and fuel, then
+   `target || historical` for each. Each category already decided that
+   fallback as `gross` (pre-dated) and `source`; `planned` remains the
+   post-dated amount the weekly cap uses. The `cap` block now publishes
+   `groceriesMonthly` / `fuelMonthly` from `gross` and
+   `groceriesHasOwnerTarget` from `source` — it does not choose target vs
+   historical again. `public/plan.js` prints those returned fields.
+   `test-food-fuel.js` hand-computes `$1,200` vs `$1,100` historical on a
+   fixture, proves a missing target, a $0 target, and a dated grocery that
+   leaves `gross` at the target while `planned` falls, reconciles the live
+   `$1,800` / `$1,300` against the `data.json` `plannedMonthly` literals
+   (not the ytd averages `$1,839.66` / `$989.13`), and mutates the
+   incumbent `gross = target != null ? target : historical` line so the
+   choice now fails. Before the move, replacing
+   `food.target || food.historical` with `food.historical` left `npm test`
+   green (ALL 20 SUITES PASSED). Live published figures are unchanged.
+
+   **Item 6 is closed.** Items 7 and 8 remain.
 7. **Phase titles and the risk list** — `public/plan.js` 766–787 and 805–871. The
    phase headings are chosen by comparing debt marks (`day90.consumer <
    today.consumer` picks "Put the surplus against principal" or "Stop the

@@ -35,6 +35,7 @@ const suites = [
   ['payoff modeller', 'test-payoff.js'],
   ['household budget reconciliation', 'test-budget.js'],
   ['weekly cap conversion + discretionary room', 'test-weekly-cap.js'],
+  ['food and fuel monthly figures', 'test-food-fuel.js'],
   ['coupled cash and debt', 'test-debt.js'],
   ['authority invariants', 'test-invariants.js'],
   ['authority surface coverage', 'test-authority-coverage.js'],

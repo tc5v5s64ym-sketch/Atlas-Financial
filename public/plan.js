@@ -738,10 +738,9 @@ function renderPlan(d, periods) {
 
   /* ---- the weekly household cap, broken into what it is actually for ---- */
   if (budget) {
-    // Both are read for their MONTHLY targets, printed as they arrive. The
-    // per-week figures beside them come from the engine.
-    const food = budget.categories.find(c => c.id === 'groceries');
-    const fuelCat = budget.categories.find(c => c.id === 'fuel');
+    // Monthly grocery and fuel figures, and whether the grocery line is an
+    // owner target, are Forecast.budgetBreakdown's cap block. This page prints
+    // them. The per-week split beside them already came from that block.
     // When the gap can only be partly funded, this figure is the cap for THAT
     // situation — not for a covered gap. Saying "once the gap is covered"
     // beside it attached the condition of one simulation to the answer of
@@ -760,7 +759,7 @@ function renderPlan(d, periods) {
     $('cap-split').innerHTML =
       part('Essential variable need', cap.essentialWeekly, 'essential',
         `Groceries ${money(cap.groceriesPlannedWeekly)}, fuel ${money(cap.fuelPlannedWeekly)}` +
-        `${food.target != null ? ' <span class="chip v">owner budget</span>' : ''}, plus phones, ` +
+        `${cap.groceriesHasOwnerTarget ? ' <span class="chip v">owner budget</span>' : ''}, plus phones, ` +
         `household supplies, medical and the uncategorised remainder. <b>This comes out first.</b>`) +
       part('Discretionary room', cap.discretionaryRoomWeekly, 'optional',
         !cap.hasDiscretionaryRoom
@@ -780,7 +779,7 @@ function renderPlan(d, periods) {
       `groceries, fuel, dining, personal, subscriptions, dog food, sports, household and medical — and ` +
       `${budget.months} months of actual spending for the rest, with anything already dated on the calendar ` +
       `removed from its own category. <b>Food and fuel come out of this number first</b>: the household budgets ` +
-      `${money(food.target || food.historical)} and ${money(fuelCat.target || fuelCat.historical)} a month for them. ` +
+      `${money(cap.groceriesMonthly)} and ${money(cap.fuelMonthly)} a month for them. ` +
       `The ${money(budget.sinkingMonthly)}/month of lacrosse fees is dated on the calendar and saved for separately, ` +
       `so it is not inside this cap and does not reduce the ordinary sports line.`;
   }
