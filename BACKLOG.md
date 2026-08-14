@@ -8,7 +8,12 @@ belongs here.
 Status: `READY` — nothing blocking · `BLOCKED` — waiting on the household ·
 `QUEUED` — waiting on earlier work
 
-Last reviewed **2026-08-09**. Phase: **analysis** — capture is essentially done.
+Last reviewed **2026-08-14**. Phase: **analysis** — capture is essentially done.
+
+**Post-B74 implementation order** is owned by
+[`docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`](docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md),
+not by this file. Items `B87`–`B91`, then reused `B20` / `B21`, follow that
+order. Next outcome: **`B87` question-status authority**.
 
 **Operational knowledge lives in `docs/ACCOUNT_FACTS.md`**, not here: how each
 institution's data is obtained, the download endpoints, and the traps that cost
@@ -958,8 +963,8 @@ guard does not claim this class, and `docs/RISK_LABELS.md` says the same. The
 protection each item above needs is the engine function it names, with a test
 that reaches the figure — not a guard standing over the defect.
 
-**B74 · Two calendars, and nothing notices when they disagree** · **IN REVIEW 2026-08-14**
-Owner chose Option A: one authoritative household cash schedule. Canonical flow
+**B74 · Two calendars, and nothing notices when they disagree** · **DONE 2026-08-14**
+Merged as PR #37. Owner chose Option A: one authoritative household cash schedule. Canonical flow
 is `data.json` `plan` → `Forecast.expandEvents`. That stream now feeds the Plan
 calendar, Next cash-out total, Deep Dive Next named payment due, and ICS payment
 VEVENTs. Standing ICS reminders (statement closes, tax deadlines, mortgage
@@ -975,6 +980,67 @@ The two look-aheads are kept and labelled apart: Next named payment due is one
 obligation; Next cash-out total is the day's sum. Both read the same event
 stream, so two Burrard payments on 12 August correctly produce $320 and $623
 without two calendars.
+
+Do not reopen the closed schedule-authority list. Remaining post-B74 work is
+`B87`–`B91`, then `B20` / `B21`, per the build strategy.
+
+**B87 · One authority for question OPEN / ANSWERED status** · `READY` · *small, high value*
+Post-B74 next implementation outcome. `docs/01_OPEN_QUESTIONS.md` is the declared
+question authority, but household-facing `data.json` `questions` (Deep Dive) and
+other docs can independently claim the same question is answered. Live split:
+Q2 (TFR-TO C/C) is OPEN in `01_OPEN_QUESTIONS.md`, ANSWERED on Deep Dive, and
+RESOLVED in `ACCOUNT_FACTS.md`; Q5 has the same shape. Build-strategy item
+`AF-QSTAT-01`.
+
+**Outcome:** one authority decides OPEN / ANSWERED, and household-facing surfaces
+cannot independently contradict it. Prove with a test on Q2 and Q5. Do not invent
+household answers. Do not build a question-registry product.
+
+**B88 · Tests must not depend on checkout line endings** · `QUEUED` · *housekeeping*
+After `B87`. Some source-scraping tests use LF-only function-boundary regexes
+and fail on CRLF while Linux CI stays green. No `.gitattributes`. Build-strategy
+item `AF-LINE-01`.
+
+**Outcome:** the invariants those tests protect still fail on a real defect and
+no longer fail because the checkout used CRLF. Prefer newline-tolerant regexes
+and/or `eol=lf`. Do not weaken the architecture assertions.
+
+**B89 · Stop storing derived publication totals** · `QUEUED` · *small*
+After `B88`. `data.json` still independently stores some values the engine
+already has canonical inputs to calculate: headline total debt, net-worth
+totals, income total, duplicated mortgage publication/model values.
+Build-strategy item `AF-PUB-01`.
+
+**Outcome:** each named copy is derived from its canonical parent or deleted
+because a consumer already computes it. A mutation of the parent must move the
+published total. **Do not redesign `data.json`.** Do not split forensic/archive
+material in the same pull request.
+
+**B90 · Guard overlapping essential / discretionary classification** · `QUEUED` · *small*
+After `B89`. Forward Plan cap uses `plan.budget.categories[].class`; Deep Dive
+historical mix uses `periods.json` `type` from `docs/merchant-library.csv`.
+Overlapping labels can silently tell two stories. Build-strategy item
+`AF-CLASS-01`.
+
+**Outcome:** the same household spending category cannot disagree on
+essential/discretionary without a failing test. Preserve genuinely distinct
+semantics (`business`, `reserve`). Prefer a small explicit guard over a new
+classification system.
+
+**B91 · Evidence refresh / reconciliation loop** · `QUEUED` · *architecture, one outcome*
+After `B90`. Next major product milestone. Capture and extraction exist;
+canonical household state still changes mainly by hand. The Evidence-Use
+Register (`B85`) proves routing of declared IDs, not that a routed number is
+current. Build-strategy item `AF-RECON-01`.
+
+**Outcome:** a small reconciliation report over existing extractors: evidence
+value/date, current Atlas value, difference/conflict, unresolved item. Owner-
+approved edits still land in `data.json`. First version covers a closed set
+(not every field). Record what review ceremony the run actually needed.
+
+**Do not build:** a database; a second canonical store; a generic fact schema;
+a staging platform; a large provenance framework; another extraction
+architecture; another forecast or recurrence engine.
 
 **B75 · Nothing checks that the authority table is complete** · **DONE 2026-08-11**
 PR #10 added `test-authority-coverage.js` to the blocking `npm test` suite. It
@@ -1117,8 +1183,9 @@ Build-strategy item `AF-INGEST-01`, and the evidence trajectory gate T3 is made
 of. Importing the same statement twice must change nothing; a corrected record
 must update rather than duplicate; every imported row must trace to its source.
 **On the file foundation — no store, no provider.** Waits on `B20` and `B21`, and
-on the record of manual interventions the second intake run produces. Proof is a
-real re-import on real household data that changes nothing, not a fixture.
+on the record of manual interventions the second intake run produces. `B20` and
+`B21` themselves wait on `B91`. Proof is a real re-import on real household data
+that changes nothing, not a fixture.
 
 **B79 · The store question, answered by evidence** · `QUEUED` · *needs the owner*
 Build-strategy item `AF-STORE-01`. A written answer to whether the file
@@ -1208,32 +1275,34 @@ all, driving spending, interest and fees. Built by `scripts/periods.js`.
 **Rebuild it after every capture** or the selector goes stale while the rest of
 the page moves.
 
-**B20 · `snapshots/<date>.json` and trend charts** · *medium*
-Architecture tier 2. Worth doing now capture has settled.
+**B20 · `snapshots/<date>.json` and trend charts** · `QUEUED` · *medium*
+Build-strategy item `AF-HIST-01`. **Waits on `B91`.** History should be a
+by-product of successful refreshes, not an independent system built first. Do
+not start this because an older strategy revision put it at the front of
+Phase 2. Files, not a store.
 
-**B21 · Second-month intake run** · *small*
-The real test: next month should be a ten-minute job.
+**B21 · Second-month intake run** · `QUEUED` · *small*
+Build-strategy item `AF-INTAKE-01`. **Waits on `B91`**, so the intake writes
+against a reconciliation report rather than only a snapshot file. The real
+test: next month should exercise the refresh loop; record every manual step.
 
-**B29 · Payment calendar** · **DONE 2026-08-09** — `scripts/calendar-ics.js`
-builds `derived/household-payments.ics`: **24 events** covering the seven debt
-payments, five statement close dates, five fixed household bills, property tax
-and CRA, and a five-stage mortgage-renewal countdown. Reminders are baked in at
-9am three days before and 9am on the day. Imported into a Google calendar
-rather than served from the site — the owner wanted it shareable with Amanda.
+**B29 · Payment calendar** · **DONE 2026-08-09**, **authority closed by B74 / PR #37 on 2026-08-14**
+`scripts/calendar-ics.js` writes `derived/household-payments.ics` for Google
+Calendar (shareable with Amanda; not served from the site). **Cash-payment
+VEVENTs are derived from the Plan** via `Forecast.expandEvents` — the same
+expander as the Plan calendar, `nextDue`, and `nextPaymentOut`. Standing
+reminders (statement closes, tax, mortgage renewal, HELOC 21st look-point)
+are a thin non-cash overlay and must not masquerade as chequing outflows.
+Recurrence expansion walks until the requested end (ICS horizon through
+mortgage maturity), not a fixed five-month cap.
 
-**Household bill dates were derived from the data, not from the bills**: BCAA
-$82.96 and the $100 RESP contribution and $25 union dues all on the 15th, 18 of
-18 months; FortisBC ~$124 at month end, 17 of 18. **BC Hydro deliberately is
-not given a fixed date** — it bills bi-monthly and the payment dates wander
-from the 2nd to the 17th, so the event says "date varies" instead of inventing
-a precision the record does not support.
-
-Rerun it after any rate or minimum changes. Cycles, for reference:
+Rerun after Plan rate or minimum changes. Statement-close / due look-points,
+for reference — these are institutional facts, not a second cash schedule:
 
 | Account | Statement | Due |
 |---|---|---|
 | Mortgage | — | bi-weekly |
-| HELOC | monthly | 21st |
+| HELOC | monthly | 21st contractual look-point; cash model is month-end capitalisation (Q19 open) |
 | TD Personal Visa | ~23rd | 17th |
 | TD Cash Back Visa | 7th | 1st |
 | Travel Visa | 5th | 26th |

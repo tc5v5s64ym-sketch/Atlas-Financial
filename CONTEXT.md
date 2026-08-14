@@ -10,6 +10,14 @@ here until 2026-08-12 and had already drifted: it omitted two documents the
 router lists and still announced the build strategy as something that did not
 exist yet, months after it did.
 
+**Post-B74.** PR #37 gave the household cash schedule one Plan owner
+(`Forecast.expandEvents`). The remaining work order lives in
+[`docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`](docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md)
+under **Post-B74 architecture disposition**. Next implementation outcome:
+**question-status authority** (`B87`) — `docs/01_OPEN_QUESTIONS.md` decides
+OPEN / ANSWERED, and household-facing surfaces cannot independently contradict
+it. Do not copy that sequence here.
+
 Everything lives in **one folder**:
 
 ```
@@ -76,6 +84,7 @@ and `data.json`.
 | File | What it is |
 |---|---|
 | `ACCOUNT_FACTS.md` | **Standing facts — rates, limits, due dates, renewal. Read first** |
+| `ATLAS_FINANCIAL_BUILD_STRATEGY.md` | **Sequencing** — what to build next, subordinate to `ARCHITECTURE.md` |
 | `00_MASTER_PICTURE.md` | The canonical written summary |
 | `01_OPEN_QUESTIONS.md` | The working agenda, ranked by what an answer would change |
 | `evidence_use/register.json` | **Evidence-Use Register — routed or parked, for declared IDs only. Owns no financial value** |
