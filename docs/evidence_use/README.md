@@ -4,7 +4,9 @@
 routed to an incumbent authority or deliberately parked.
 
 **Not the owner of:** financial values, trust labels, engine results, household
-policy, or whether a routed figure is correct.
+policy, value freshness, or whether a routed figure is correct. After
+`AF-RECON-01` exists, fold or derive the useful routing protection into that
+loop. Do not delete this register until that replacement is proven.
 
 The live register is [`register.json`](register.json).
 

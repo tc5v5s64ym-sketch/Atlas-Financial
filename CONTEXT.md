@@ -15,8 +15,8 @@ exist yet, months after it did.
 [`docs/01_OPEN_QUESTIONS.md`](docs/01_OPEN_QUESTIONS.md); Deep Dive cannot
 close a question on its own. The remaining work order lives in
 [`docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`](docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md)
-under **Post-B74 architecture disposition**. Next implementation outcome:
-**evidence refresh / reconciliation** (`B91`). Do not copy that sequence here.
+under **Post-B74 architecture disposition** (Post-B90 remaining order). Do not
+copy that sequence here.
 
 Everything lives in **one folder**:
 

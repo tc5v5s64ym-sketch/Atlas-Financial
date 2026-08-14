@@ -1,6 +1,10 @@
 # Atlas Financial Engine-Feeding Audit
 
-**Status:** Dated advisory audit; not a fact, architecture, sequencing, or backlog authority  
+**Status:** Dated advisory audit; not a fact, architecture, sequencing, or backlog authority.
+**Post-B90:** remaining order is
+[`docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`](../ATLAS_FINANCIAL_BUILD_STRATEGY.md).
+A `source` object on every numeric `data.json` leaf is rejected as
+over-architecture.  
 **Audit date:** 2026-08-13  
 **Audited branch:** `main` at `957ed62fb6bd5e058505ecde60c78aaf3a7491f6`  
 **Repository:** `tc5v5s64ym-sketch/Atlas-Financial`  

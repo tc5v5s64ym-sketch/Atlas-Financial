@@ -24,11 +24,11 @@ Capabilities that are wanted but not yet in Phases 1–4 are recorded in
 **Later capabilities — status and reopen trigger**. That table is memory and
 trigger, not a second order of work.
 
-**Current sequencing (14 August 2026).** B74, B87, B88, B89 and B90 are closed. The remaining
-implementation order is the **Post-B74 architecture disposition** below. Next
-implementation outcome, and next major product milestone: evidence refresh /
-reconciliation (`B91`). History (`B20`) follows that loop; it is not the next
-infrastructure item.
+**Current sequencing (14 August 2026, post-B90).** B74, B87, B88, B89 and B90
+are closed. The remaining implementation order is the **Post-B90 remaining
+order** in the disposition below — two small prerequisites, then strengthened
+`B91`, then history as a by-product. Next implementation outcome: refresh-safe
+tests (`B92`). Do not start `B91` or `B20` first.
 
 ---
 
@@ -176,17 +176,22 @@ that the findings are unlucky.
 
 ## Post-B74 architecture disposition — 14 August 2026
 
-Accepted sequencing after PR #37 merged. This is not a second roadmap: it
-**reorders work this file already owns**. `ARCHITECTURE.md` still owns
-direction and gates. `BACKLOG.md` still owns the work items named below.
+Accepted sequencing after PR #37 merged, then updated the same day after
+PR #42, three Claude architecture reviews, and the Aug. 14 payday test.
+This is not a second roadmap: it **reorders work this file already owns**.
+`ARCHITECTURE.md` still owns direction and gates. `BACKLOG.md` still owns
+the work items named below. Dated advisory files remain evidence, not a
+competing sequence.
 
-Governing principle: **finish connecting what exists; delete duplicate
-authorities; build the refresh loop.** Do not create another architecture
-layer.
+Governing principle: **finish connecting what exists; make ordinary refresh
+cheap; delete duplicate live facts; then build the refresh loop.** Do not
+create another architecture layer. Do not add reconciliation on top of
+state-pinned tests and duplicate canonical homes.
 
-The conversation audit that produced this disposition was not preserved as a
-repository advisory file. This section is the accepted decision; it does not
-depend on that transcript remaining the runtime roadmap.
+The conversation audits that produced the earlier Post-B74 order were not
+preserved as repository advisory files. The Aug. 14 payday corpus is
+[`docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md`](source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md).
+This section is the accepted decision.
 
 ### What B74 closed — do not reopen
 
@@ -223,21 +228,30 @@ stays reminder-only.
 
 ### Remaining order
 
-Immediate correctness / cleanup, then the next major product milestone, then
-history as a by-product of refresh. This **replaces** the earlier Phase 2
-opening that put `AF-HIST-01` / `B20` immediately after the Phase 1 product
-exit.
+Immediate correctness / cleanup is complete through `B90`. Two small
+prerequisites now precede the next major product milestone, because a
+reconciliation layer added onto live-number-pinned tests and duplicate
+canonical homes would make refresh more expensive rather than cheaper.
+History remains a by-product of successful refresh. This **replaces** both
+the earlier Phase 2 opening that put `AF-HIST-01` / `B20` immediately after
+the Phase 1 product exit, and the post-B74 remaining order that put `B91`
+immediately after `B90`.
 
 ```
-B87  question-status authority
+B87  question-status authority              ← complete
   ↓
-B88  CRLF / Windows test reliability
+B88  CRLF / Windows test reliability        ← complete
   ↓
-B89  derive remaining duplicate publication values
+B89  derive remaining duplicate publication values  ← complete
   ↓
-B90  spending-classification reconciliation  ← complete
+B90  spending-classification reconciliation ← complete
   ↓
-B91  evidence refresh / reconciliation     ← next implementation outcome
+B92  refresh-safe tests                     ← next implementation outcome
+  ↓
+B93  derive/delete proven duplicate live facts
+  ↓
+B91  evidence refresh / reconciliation + current-state cutover
+     (Aug. 14 payday acceptance)
   ↓
 B20  history from successful refresh
   ↓
@@ -261,25 +275,64 @@ rules above.
   silently tell contradictory essential/discretionary stories. Prefer a
   small guard. Preserve `business` and `reserve`. **Complete.**
 
+### Next implementation outcomes — cheap refresh, then reconciliation
+
+Do not start `B91` while behaviour tests are pinned to live household numbers
+and proven duplicate live facts still have two homes. Those two outcomes are
+prerequisites, not a new architecture layer.
+
+**`AF-TEST-01` / `B92`.** Make ordinary evidence refresh cheap. Measured in
+throwaway clones: changing Chequing A broke about 8 suites / ~40 assertions;
+changing MBNA broke 6 / 17; marking Fusion camp paid broke 7 / 18; changing
+payroll + Shaw broke 7 / 28. Unpin behaviour tests from live `data.json`
+values so a legitimate canonical edit is not a suite rewrite.
+
+**`AF-DEDUP-01` / `B93`.** Derive or delete proven duplicate live facts
+before reconciliation is asked to keep them synchronised. Verified still
+present on current `main` after PR #42: cash repeated between
+`plan.startingCash` and `assets[]`; `revolvingExtra[].used` matching
+Chequing B; `debts[].postedBalance` duplicating `debts[].balance`;
+`income[].perMonth` matching `total / incomeCaptureMonths`. Prefer
+derive/delete. Do not invent a permanent sync layer. Do not treat
+`docs/positions.csv` as a universal fact database.
+
 ### Next major product milestone — evidence refresh / reconciliation
 
-**`AF-RECON-01` / `B91`.** Atlas captures and extracts well; canonical
-household state still changes mainly by hand. Connect existing extractors to
-existing canonical state with a small reconciliation report:
+**`AF-RECON-01` / `B91`.** After `B92` and `B93`. The dominant remaining gap
+is **fresh evidence → canonical household state**, not another calculation
+engine. Forecast stays the deterministic financial engine. Connect existing
+observation/extract records to existing canonical state with a small
+non-writing reconciliation report:
 
 ```
-raw evidence → existing extractors → derived evidence
-    → reconciliation report (evidence value/date, Atlas value, difference, unresolved)
-    → owner-approved change → canonical household state → Forecast → product interfaces
+existing observation record
+    → one canonical pointer into data.json
+    → comparison (MATCH / STALE / CHANGE / CONFLICT / MISSING)
+    → owner-approved canonical edit
+    → Forecast
+    → payday-plan output
 ```
 
-First version intentionally small. Owner approval remains required before
-evidence changes canonical household financial policy or state where
-appropriate.
+Owner approval remains required before evidence changes canonical household
+financial policy or state where appropriate. First version covers a closed
+set, not every field in `data.json`. Freshness belongs to the evidence
+class (live balances, contractual recurring facts, household policy,
+derived engine results), not merely one typed `meta.asOf`.
+
+The Aug. 14 payday session is the closed acceptance corpus:
+[`docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md`](source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md).
 
 **Do not build** a database; a second canonical store; a generic fact schema;
-a staging/approval platform; a large provenance framework; another extraction
-architecture; or another forecast or recurrence engine.
+a workflow engine; event sourcing; a classification registry; a provenance
+graph; a staging/approval platform; generated `data.json`; `plan.proposals[]`;
+leaf-level `source` objects on every numeric field; another extraction
+architecture; another forecast, recurrence, payday, or budgeting engine;
+or a permanent manual synchronisation between duplicate facts. Do not lock
+the loop to `docs/positions.csv` as a universal fact database. Preserve the
+pointer-and-compare principle, not that exact file. The Evidence-Use
+Register stays until this loop exists; do not delete it as the freshness
+proof it is not. ChatGPT and Google Sheet consume Forecast output; they
+are not authorities.
 
 ### After the refresh loop
 
@@ -311,7 +364,9 @@ necessary. Do not carve that lane in advance.
 Adopted from the August 13 recommendation after PR #27. This item interrupts
 Phase 1 because captured evidence could sit unused with CI still green. B73
 and B74 have since closed. The register remains routing-only: `CONSUMED` is
-not a financial green, and `AF-RECON-01` is the remaining absorption gap.
+not a financial green, and does not prove value freshness. A later fold into
+`AF-RECON-01` is the intended retirement path once that loop exists; do not
+delete the register until then.
 
 - **Outcome** — every explicitly identified evidence ID has exactly one
   CI-checked disposition against an existing incumbent. `CONSUMED` proves
@@ -493,7 +548,8 @@ built *on* that picture, the picture needs owners that a test can reach.
   first-event order. Published Plan cash figures and historical discretionary
   dollar totals are unchanged; Health leaves the historical essential class
   because that class was the collapsed first-event story. Phase 1 product
-  exit was assessed as ready to start `AF-RECON-01` / `B91` (no blocking gap).
+  exit has no blocking product gap. Next implementation outcome is
+  `AF-TEST-01` / `B92`, not `B91`.
 
 ### Phase 1 product exit — useful before infrastructure
 
@@ -520,43 +576,109 @@ The existing product must be able to show, from the same authorities:
 
 If the existing authorities cannot answer one of those without page-local maths
 or a second planner, record the smallest missing product capability in
-`BACKLOG.md` and finish it before `AF-RECON-01`. Do not solve the gap by standing
+`BACKLOG.md` and finish it before `AF-TEST-01`. Do not solve the gap by standing
 up another forecast, another calendar or another budget. Do not skip the
-post-B74 cleanup (`B87`–`B90`) to start snapshots.
+post-B74 cleanup (`B87`–`B90`) or the post-B90 prerequisites (`B92`, `B93`) to
+start snapshots or reconciliation.
 
-**Assessed after `AF-CLASS-01` / `B90` (2026-08-14).** No blocking gap. The
-incumbent Plan schedule, weekly cap, calendar, commitment path, and unknown-
-spend inclusion already answer those five questions from one authority chain.
-Remaining gaps are evidence freshness (the `B91` job) and owner policy such as
-Q24, not missing product machinery. `AF-RECON-01` is therefore the next
-implementation outcome.
+**Assessed after `AF-CLASS-01` / `B90` (2026-08-14).** No blocking *product*
+gap. The incumbent Plan schedule, weekly cap, calendar, commitment path, and
+unknown-spend inclusion already answer those five questions from one
+authority chain. Remaining gaps are evidence freshness (`B91`) and owner
+policy such as Q24, not missing product machinery. The Aug. 14 reviews and
+payday test then showed that `B91` is **not** the next implementation
+outcome: refresh-safe tests (`B92`) and derive/delete of proven duplicate
+live facts (`B93`) must precede it.
+
+### AF-TEST-01 · Make ordinary evidence refresh cheap
+
+- **Outcome** — behaviour tests that currently pin to live household numbers
+  no longer fail solely because a legitimate canonical value changed. A
+  refresh of Chequing A, MBNA, Fusion paid status, or payroll must not
+  require rewriting unrelated suites.
+- **Incumbent** — the `npm test` suites. `EVOLVE`. Live `data.json` remains
+  the canonical household state; tests stop treating its current cents as
+  the only fixture.
+- **Tier** — M2. **Backlog** — `B92`.
+- **Entry gate** — `AF-CLASS-01` (`B90`) complete.
+- **Acceptance** — changing a live cash, card, commitment-paid, or payroll
+  figure in a throwaway clone does not fail suites that are not asserting
+  that figure; invariants that should fail on a real contradiction still
+  fail. Prefer fixtures or derived expectations over copied live cents.
+- **Non-goals** — reconciliation; changing household figures; weakening
+  financial invariants.
+- **State** — **next implementation outcome.**
+
+### AF-DEDUP-01 · Derive or delete proven duplicate live facts
+
+- **Outcome** — live facts that already have two canonical homes are
+  derived or deleted so `B91` is not asked to keep them synchronised.
+  Known still-present copies after PR #42: `plan.startingCash` vs matching
+  `assets[]` cash rows; `revolvingExtra[].used` vs Chequing B;
+  `debts[].postedBalance` vs `debts[].balance`; `income[].perMonth` vs
+  `total / incomeCaptureMonths`. Re-verify at implementation time.
+- **Incumbent** — `data.json` live rows. `EVOLVE` in place: derive or
+  delete the loser. `Forecast` stays the engine. Do not add a sync job.
+- **Tier** — M3 if a household-facing figure is now derived rather than
+  stored. **Backlog** — `B93`.
+- **Entry gate** — after `AF-TEST-01`, so the deletions are cheap to prove.
+- **Acceptance** — each named copy is derived, deleted, or shown not to
+  be a duplicate on current `main`; a mutation of the parent moves the
+  derived copy; no permanent dual-write; `docs/positions.csv` is not
+  promoted into a universal fact database.
+- **Non-goals** — leaf-level provenance; a fact schema; reconciliation
+  itself; changing the Aug. 9 balances to Aug. 14 values.
 
 ### AF-RECON-01 · Evidence refresh / reconciliation loop
 
-The next major product milestone after the cleanup above. Not a new layer:
-connect the extractors and canonical state that already exist.
+The next major product milestone after the two prerequisites above. Not a
+new layer: connect the observation records and canonical state that already
+exist.
 
-- **Outcome** — a small, repeatable reconciliation report compares extracted
-  evidence to current Atlas canonical values (value, date, difference,
-  unresolved). Owner-approved changes then update canonical household state.
-  First version covers a closed set, not every field in `data.json`.
+- **Outcome** — a small, repeatable, **non-writing** reconciliation report
+  compares extracted evidence to current Atlas canonical values (value,
+  date, difference, MATCH / STALE / CHANGE / CONFLICT / MISSING).
+  Owner-approved changes then update canonical household state. First
+  version covers a closed set, not every field in `data.json`. A live
+  opening observation carries cutover / as-of semantics so events already
+  inside that observation are not replayed by `Forecast.expandEvents`.
+  After reconciling the Aug. 14 payday corpus, existing Forecast must be
+  able to produce the household payday plan without ChatGPT constructing
+  a second budgeting model. Do not assert $600/week as the expected
+  output.
 - **Incumbent** — existing `scripts/` extractors, `derived/`, `data.json`,
-  `public/periods.json`. `NEW` report, `CONSUME` extractors, `EVOLVE` the
-  handoff into `data.json`. Does **not** replace `Forecast`, the Evidence-Use
-  Register, or `01_OPEN_QUESTIONS.md`.
+  `public/periods.json`, and existing observation/position records.
+  `NEW` report, `CONSUME` extractors, `EVOLVE` the handoff into
+  `data.json`. Does **not** replace `Forecast`, the Evidence-Use Register,
+  or `01_OPEN_QUESTIONS.md`. Does not make `docs/positions.csv` a universal
+  fact database.
 - **Tier** — M3. **Backlog** — `B91`.
-- **Entry gate** — Phase 1 product exit plus `AF-CLASS-01` (`B90`), both
-  complete. Cleanup first so the loop is not reconciling duplicate
-  authorities.
-- **Acceptance** — an unexplained drift on the closed set fails; a matching
-  pair passes; the report does not write canonical state by itself; no new
-  store, schema, staging platform, provenance graph, extractor architecture,
-  or forecast engine.
-- **Prompt** — *Connect one existing extractor to one canonical figure with a
-  reconciliation report the suite can fail. Owner-approved edits still land in
-  `data.json`. Do not generate `data.json`. Record what review ceremony the
-  run actually needed — that is evidence for the open governance question,
-  not a new gate.*
+- **Entry gate** — `AF-TEST-01` (`B92`) and `AF-DEDUP-01` (`B93`), plus
+  Phase 1 product exit and `AF-CLASS-01` (`B90`), all complete.
+- **Acceptance** — the Aug. 14 payday corpus in
+  `docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md` is the closed case:
+  same-day income is not double-counted; schedule ≠ posted; paid Fusion
+  camp and tryouts no longer reserve cash; Hydro schedules dated amounts
+  due ($213.79 now, $237.45 on 1 Sep) rather than the $451.24 account
+  total; household obligation stays distinct from paying account; card
+  posted/pending/limit/available are distinct where evidence exists;
+  Amanda's mixed-purpose balance is not auto-spendable; Amanda salary,
+  coaching, and transfers do not share one income authority; Q19 HELOC
+  cash impact stays unresolved rather than claimed zero; near-boundary
+  obligations remain visible from existing Forecast; the report does not
+  write canonical state by itself. Mathematical maximum vs operational
+  target is re-tested after this loop; $600/week is not encoded as policy.
+- **Non-goals** — a database, second store, generic fact schema, workflow
+  engine, event sourcing, classification registry, provenance graph,
+  staging platform, generated `data.json`, `plan.proposals[]`, leaf-level
+  source objects, a second payday or budgeting engine, Google Sheet or
+  ChatGPT as authority, resolving Q19, implementing operational margin.
+- **Prompt** — *After B92 and B93, connect existing observation records to
+  one canonical pointer with a non-writing reconciliation report the suite
+  can fail. Use the Aug. 14 payday corpus as the acceptance case. Owner-
+  approved edits still land in `data.json`. Do not generate `data.json`.
+  Record what review ceremony the run actually needed — that is evidence
+  for the open governance question, not a new gate.*
 
 ---
 
@@ -710,10 +832,14 @@ be scheduled as though it did.
 
 ## What this file deliberately does not schedule
 
-- **A database, second canonical store, generic fact schema, staging/approval
-  platform, large provenance framework, second extraction architecture, or
-  second forecast/recurrence engine.** Post-B74: connect what exists. None of
-  those is authorised by reaching `AF-RECON-01`.
+- **A database, second canonical store, generic fact schema, workflow
+  engine, event sourcing, classification registry, provenance graph,
+  staging/approval platform, generated canonical state, leaf-level source
+  object on every numeric field, `plan.proposals[]`, second extraction
+  architecture, or second forecast / recurrence / payday / budgeting
+  engine.** Post-B90: connect what exists. None of those is authorised by
+  reaching `AF-RECON-01`. Permanent manual synchronisation between duplicate
+  facts is the defect, not a fix. Google Sheet is not an authority.
 - **Anything behind a closed gate.** A canonical store and automated connectivity
   are wanted and not permitted; `ARCHITECTURE.md` holds both gates and this file
   schedules toward them without opening either.
@@ -766,7 +892,9 @@ resurrect it.
 
 | Capability | Status | Home today | Reopen trigger |
 |---|---|---|---|
-| Evidence refresh / reconciliation | **ACTIVE** | `AF-RECON-01` / `B91`. Next major product milestone after `B87`–`B90`. | Already sequenced. Do not replace with a store, schema, or copilot absorption stack. |
+| Evidence refresh / reconciliation | **ACTIVE** | `AF-RECON-01` / `B91`, after `B92` and `B93`. Major product milestone; not the next implementation outcome. | Already sequenced. Do not replace with a store, schema, leaf-level provenance, or copilot absorption stack. Do not start before refresh-safe tests and duplicate-live-fact cleanup. |
+| Refresh-safe tests | **ACTIVE** | `AF-TEST-01` / `B92`. **Next implementation outcome.** | Already sequenced. Unpin behaviour tests from live household numbers. |
+| Derive/delete duplicate live facts | **ACTIVE** | `AF-DEDUP-01` / `B93`. After `B92`, before `B91`. | Already sequenced. Derive or delete proven copies; do not add a sync layer. |
 | Balance history / snapshots | **ACTIVE** | Phase 2 `AF-HIST-01` / `B20`. **After** `AF-RECON-01`, as a by-product of refresh. | Already sequenced. Do not start because an older revision put it first in Phase 2. |
 | Longer operating forecast horizon | **PARKED** | 91-day `windowDays`; expander already walks further (B74 / ICS to 2027-05-01). `Forecast.renewal` remains a separate question. | A concrete household question the 91-day operating picture cannot answer. Reuse `expandEvents`. Never a second recurrence or forecast engine. |
 | Improved ingestion | **ACTIVE** | Phase 3 `AF-INGEST-01` / `B78`, to T3. Files still; no provider and no store. | Already sequenced. Entry is T2 plus `AF-INTAKE-01`'s record of manual steps. |
@@ -774,7 +902,8 @@ resurrect it.
 | Richer payroll / bonus / pension-contribution modelling | **PARKED** | The 91-day plan consumes estimated net pay. A statutory payroll engine (`EMP-006`) is excluded. Optional pension cash is already inside that net. No bonus cash event is on the live plan. | A named consumer that current net cannot serve — a window that includes a CPP/EI reset, or an owner-supplied bonus or pension cash event, or an owner-supplied horizon that needs statutory seasonality. Do not build a payroll engine in order to absorb a net `Forecast` already consumes. |
 | Retirement planning | **PARKED** | `ARCHITECTURE.md` destination names pension and investments. Live published net worth excludes pensions. There is no `Forecast` retirement function. The advisory copilot "retirement engine" is not adopted. | An owner decision to include pensions in a published window, or to earn a retirement span on the one plan. Not a second planner. |
 | Goals and sinking funds | **PARKED** | `ARCHITECTURE.md` destination names sinking funds. Dated commitments already have a plan path. Interview sports/travel amounts remain proposed, not shared policy. The advisory "goals engine" is not adopted. | Owner-promoted shared targets, or a product-exit gap that the existing plan/commitment path cannot answer. Do not stand up a goals engine beside `Forecast`. |
-| ChatGPT / copilot interface | **PARKED** | `ARCHITECTURE.md` already names ChatGPT as a conversational consumer, not an authority. A live copilot API is owner-reserved. The dated copilot game plan is advisory and not adopted. | The owner asks for a repository-state or generated-export interface after one-plan authorities are stable. Never a second financial answer, never the advisory copilot stack, and never a live API without an owner security decision. |
+| ChatGPT / copilot interface | **PARKED** | `ARCHITECTURE.md` names ChatGPT as a conversational consumer, not an authority. Google Sheet tracks execution the same way. A live copilot API is owner-reserved. The dated copilot game plan is advisory and not adopted. | The owner asks for a repository-state or generated-export interface after one-plan authorities are stable. Never a second financial answer, never the advisory copilot stack, never a live API without an owner security decision, and never a Sheet as authority. |
+| Operational spend target vs mathematical maximum | **PARKED** | `Forecast.recommend` is the mathematical variable-spend maximum subject to the protected floor. The Aug. 14 payday session chose a lower operating amount. No household policy encodes $600/week. | Re-test after `B91` whether payday output should also show an owner-supplied operational target and remaining margin. Do not build that feature in order to record the question. |
 
 A row here does not make an unlisted `BACKLOG.md` item ineligible. Canonical
 store remains **GATED** where Phase 3 already records it (`AF-STORE-01` /

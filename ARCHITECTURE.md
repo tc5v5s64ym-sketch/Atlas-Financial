@@ -106,7 +106,7 @@ the same number living in three files and drifting.
 | Kind of thing | Home | Not |
 |---|---|---|
 | Rates, limits, due dates, renewal dates | `docs/ACCOUNT_FACTS.md` | anywhere else |
-| Balances, available credit | `docs/positions.csv` and `data.json` | `ACCOUNT_FACTS.md` |
+| Balances, available credit | `docs/positions.csv` and `data.json` | `ACCOUNT_FACTS.md`. `positions.csv` is the account-row snapshot, **not** a universal fact database |
 | **Work still to do** | **`BACKLOG.md`** | a chat message |
 | **Things only a human can answer** | **`docs/01_OPEN_QUESTIONS.md`** | `BACKLOG.md` |
 | Narrative analysis | `docs/00_MASTER_PICTURE.md` | `data.json` |
@@ -211,16 +211,21 @@ answer cannot quietly contradict a long-horizon one.
 **The deterministic engine stays where financial decisions are made.** That is
 the rule at the top of this file applied to the destination, not replaced by it.
 
-**Two interfaces, one answer.**
+**Two consumers plus one execution tracker, one answer.**
 
 | Surface | What it is for |
 |---|---|
 | The website | visual presentation and inspection of the plan |
 | ChatGPT | conversational query, explanation and scenario interface |
+| Google Sheet | execution tracking of a plan Forecast already produced |
 
-Neither may create a second financial answer, and neither is an authority.
-Both consume the same ones. A surface that works a figure out for itself is the
-defect `B73` exists to close, arriving through a new door.
+None of them may create a second financial answer, and none is an authority.
+They consume the same ones. A surface that works a figure out for itself is the
+defect `B73` exists to close, arriving through a new door. The intended
+refresh chain, once `B91` exists, is fresh evidence → reconciliation →
+canonical Atlas state → Forecast → payday-plan output, then those three
+surfaces. Sequencing of that work lives in
+[`docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`](docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md).
 
 **What the plan is expected to cover, as each capability is earned:** material
 income and compensation, debts, bills, spending and budget, known dated
@@ -315,7 +320,10 @@ For each explicitly identified evidence ID it records exactly one of:
 does not mean the incumbent figure is financially correct, current,
 independently verified, or correctly trust-labelled. Pointer existence is not
 a green financial proof. Correctness stays with the incumbent, independent
-evidence, and the normal figure / review gates.
+evidence, and the normal figure / review gates. The register does not prove
+value freshness: changing a routed payroll amount can still leave CI green.
+After `B91` exists, fold or derive the useful routing protection into that
+loop; do not delete the register until that replacement is proven.
 
 CI covers **declared IDs only**. It cannot read Markdown and decide what is
 material. An unidentified sentence is outside this gate.
@@ -509,11 +517,49 @@ what is due.
 plan still models HELOC interest as a month-end `nonCash` capitalisation,
 because the observed posting is a debit on the HELOC itself with no matching
 chequing payment. TD also states a contractual minimum due on the 21st. The
-exported calendar keeps that 21st as a reminder-only look-point, not a
-chequing outflow, and derives the month-end capitalisation reminder from the
-Plan. `docs/01_OPEN_QUESTIONS.md` Q19 owns that remaining household-facing
-question. This file does not pick 21st or month-end to make the calendar
-cleaner.
+Aug. 14 payday session added contradictory household evidence (~$1,000
+historical payments; owner belief that payment/interest came from chequing;
+autodebit mechanics unverified). The exported calendar keeps that 21st as a
+reminder-only look-point, not a chequing outflow, and derives the month-end
+capitalisation reminder from the Plan. `docs/01_OPEN_QUESTIONS.md` Q19 owns
+that remaining household-facing question. This file does not pick 21st or
+month-end to make the calendar cleaner. Refresh work must not claim confident
+zero household cash impact while those mechanics remain unresolved.
+
+**Current-state refresh is the remaining gap, not a second engine.** Forecast
+is the deterministic financial engine and stays that. The household now needs
+a path from fresh evidence to canonical `data.json` so Forecast is fed current
+facts. Direction, not a schema:
+
+- freshness belongs to the evidence class (live balances, contractual
+  recurring facts, household policy, derived engine results), not merely one
+  typed `meta.asOf`;
+- a live opening observation needs cutover / as-of semantics so events
+  already represented in that observation are not replayed;
+- Forecast schedule is authority for what *should* happen; settlement
+  evidence is authority for what *has* happened;
+- account/statement balance, past-due amount, current amount due, and due
+  date are distinct;
+- “is this a household obligation?” and “which account pays it?” are
+  distinct;
+- posted balance, pending, limit, and available credit are distinct, and
+  available credit is never cash;
+- an account balance is not automatically spendable household cash;
+- reliable salary, coaching net economics, and transfers must not share one
+  income authority;
+- `Forecast.recommend` is the mathematical maximum under the protected
+  floor, not an operational household target unless owner policy exists.
+
+Do **not** satisfy this gap with a database, second canonical store, generic
+fact schema, workflow engine, event sourcing, classification registry,
+provenance graph, staging platform, generated `data.json`, `plan.proposals[]`,
+a `source` object on every numeric leaf, a second payday or budgeting engine,
+or leaf-level provenance. Existing interviews, open questions, and dated
+owner policy remain enough for household intent. Preferred shape, when built:
+existing observation record → one canonical pointer into `data.json` →
+comparison → owner-approved canonical edit → Forecast. Sequencing and the
+Aug. 14 payday acceptance corpus live in the build strategy and
+[`docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md`](docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md).
 
 **`plan.nextDollar` is derived, not instructed.** Its own provenance note says so:
 neither Dale nor Amanda has stated or approved the `protect-then-highest-cost`

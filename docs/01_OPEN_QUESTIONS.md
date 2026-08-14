@@ -20,10 +20,12 @@ developed with the owner — `monthly_budget_tracker_template.xlsx` and
 `HOME BUDGET.xlsx`. Neither has ever reached this repository. There is no trace
 of them or of any figure derived from them in the working tree or anywhere in
 git history, and `scripts/xlsx.js` — the only spreadsheet reader here — was
-written for Amanda's *coaching* workbooks, not these. The plan's household
-budget is therefore built entirely from the transaction record: 18 months of
-categorised spending, classified essential / discretionary / reserve, with
-everything already dated on the calendar subtracted from its own category.
+written for Amanda's *coaching* workbooks, not these. The Aug. 14 payday
+session located `HOME BUDGET.xlsx` in Gmail; it is still not absorbed into
+Atlas. The plan's household budget is therefore built entirely from the
+transaction record: 18 months of categorised spending, classified essential /
+discretionary / reserve, with everything already dated on the calendar
+subtracted from its own category.
 **What the answer changes:** The weekly household cap is $1,250, of which
 $940/week is the essential requirement and $310/week is everything optional.
 Those essentials are *descriptions of past behaviour*, not targets the household
@@ -205,13 +207,17 @@ consider a fund change. No change is authorised until this is answered.
 versus beneficiary). Correction is with Sun Life, never automated.
 **What the answer changes:** An owner action only. Atlas must not attempt it.
 
-### Q17. Has the BC Hydro amount shown due of $451.24 been paid, and is the account current?
+### Q17. What is currently due on BC Hydro, as distinct from the account balance, and has the past-due amount been paid?
 **Status:** OPEN · **Owner:** Dale or Amanda
-**What we know:** August 2026 Hydro evidence showed a carried balance, a late
-fee, and $451.24 due. Hydro is paid from Amanda’s account, not the
-household-account forecast.
-**What the answer changes:** Whether an arrears/late-fee obligation exists
-outside the household-account plan.
+**What we know:** Earlier August evidence showed a carried balance, a late
+fee, and $451.24 as the amount shown due. The Aug. 14 payday session split
+that: $213.79 due now, $237.45 new charges due 1 September, $451.24 total
+account balance. Hydro is paid from Amanda’s account, not the
+household-account cash pool, but it remains a household obligation (paying
+account and obligation are separate facts). Atlas should schedule dated cash
+requirements, not the whole account balance by default.
+**What the answer changes:** Which dated Hydro cash amounts belong on the
+household plan, and whether an arrears obligation still exists.
 
 ### Q18. What are the current Bell Mobility, Telus, and garbage/waste amounts, cadences, and payment routes?
 **Status:** OPEN · **Owner:** Dale + Amanda
@@ -220,22 +226,35 @@ amount/route and garbage provider/cadence/amount were not supplied with
 sufficient current evidence.
 **What the answer changes:** Whether the household bill set is complete.
 
-### Q19. Was the $814.18 HELOC minimum due 21 August 2026 paid, from which account, or genuinely capitalised with no separate cash movement?
+### Q19. What are the exact HELOC payment mechanics, and does the household cash plan need to reserve a payment?
 **Status:** OPEN · **Owner:** Dale
 **What we know:** The July statement posted $814.18 interest to the HELOC and
 displayed a separate $814.18 minimum due 21 August. Live `plan.obligations`
 treats the charge as non-cash on day 31. ACCOUNT_FACTS still records the
 TD-stated 21st contractual due date. B74 removed the ICS 21st *payment* (it was
 masquerading as a chequing outflow), keeps the 21st as a reminder-only look-point,
-and derives a month-end non-cash reminder from the Plan. This question does not
-choose among those treatments and is not closed by B74.
-**What the answer changes:** Whether the 91-day cash plan must reserve $814.18
-on 21 August. A later figure PR would consume the answer; B74 does not.
+and derives a month-end non-cash reminder from the Plan. The Aug. 14 payday
+session left the mechanics unresolved and added contradictory household
+evidence: the model treats about $814.18 as capitalised; the household has
+historically made ~$1,000 HELOC payments; the owner believed payment/interest
+came from chequing; contractual minimum, due date, last ~$1,000 payment,
+whether a separate auto-debit occurs, and how a payment satisfies the minimum
+remain unverified. This question does not choose among treatments and is not
+closed by B74 or by B91 planning. B91 must not claim confident zero household
+cash impact while these mechanics remain unresolved.
+**What the answer changes:** Whether the 91-day cash plan must reserve a HELOC
+payment, on which date, and from which account. A later figure PR would consume
+the answer; architecture disposition does not.
 
-### Q20. What emergency-reserve target, Amanda retirement/RESP intent, and Dale policy view should apply?
+### Q20. What emergency-reserve target, Amanda retirement/RESP intent, and Dale policy view should apply? How should true surplus be used?
 **Status:** OPEN · **Owner:** Dale + Amanda
 **What we know:** The August interviews did not capture these sufficiently.
-**What the answer changes:** Household policy. Nothing is promoted from silence.
+The Aug. 14 payday session asked the longer-term surplus question again:
+high-interest debt vs sports/travel reserves vs emergency reserve. No
+session choice is household policy. `plan.nextDollar` remains derived, not
+owner-instructed.
+**What the answer changes:** Household policy. Nothing is promoted from silence
+or from one payday session.
 
 ### Q21. Should the disputed $527.80 Fusion/Burrards payment be counted once, twice, or not as a sports cost?
 **Status:** OPEN · **Owner:** Dale + Amanda
@@ -249,13 +268,35 @@ amount. It must not be double-counted.
 **What the answer changes:** Scenario placeholders only until evidence exists.
 Do not fabricate dates or costs.
 
-### Q23. Is the $786 Fusion camp already paid, and how do the three live-plan $500 Fusion instalments relate to the travel-team or season fee?
+### Q23. How do the three live-plan $500 Fusion instalments relate to the travel-team or season fee, now that camp and tryouts are paid?
 **Status:** OPEN · **Owner:** Dale + Amanda
-**What we know:** Amanda states the camp is paid; live `plan.commitments` still
-dates $786 as upcoming. Three $500 instalments sit in the live plan; their
-relationship to a conditional travel-team fee is unresolved.
-**What the answer changes:** The 16 August cash need and later Fusion cash
-dates. This PR does not change those live rows.
+**What we know:** The Aug. 14 payday session confirmed Fusion camp (~$786) and
+Fusion tryouts ($140) already paid. Live `plan.commitments` had still dated
+those as upcoming; once B91 reconciles payment, they must no longer reserve
+cash. Three $500 instalments remain on the live plan; their relationship to a
+conditional travel-team fee is unresolved.
+**What the answer changes:** Later Fusion cash dates. This PR does not change
+those live rows. Camp and tryouts paid-status is B91 acceptance evidence, not
+a closed instalment answer.
+
+### Q25. How much of Amanda’s DEBT&PAYMENTS balance is genuinely household-available after coaching, business, and pass-through obligations?
+**Status:** OPEN · **Owner:** Dale + Amanda
+**What we know:** The account is already excluded from spendable
+`plan.startingCash` because Tennis BC pay lands there and coaches are paid
+first. The Aug. 14 payday session observed $798.37 in that account and
+reiterated that some may belong to coaching/business/pass-through
+obligations. A fresh balance is not automatically spendable starting cash.
+**What the answer changes:** How much, if any, of that balance can enter
+household available cash after a refresh. B91 must preserve held/pass-through
+semantics rather than guessing.
+
+### Q26. What are the current pending amounts on Cash Back Visa and Travel Visa when exact action is needed?
+**Status:** OPEN · **Owner:** Dale
+**What we know:** The Aug. 14 payday session found both cards over limit, with
+posted balances known and pending unknown. Posted, pending, limit, available
+credit, and confirmed payment are distinct; available credit is never cash.
+**What the answer changes:** Exact card action only when a refresh needs it.
+Unknown pending is allowed until then; it must not be treated as zero.
 
 ---
 

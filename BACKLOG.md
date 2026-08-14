@@ -12,8 +12,8 @@ Last reviewed **2026-08-14**. Phase: **analysis** — capture is essentially don
 
 **Post-B74 implementation order** is owned by
 [`docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`](docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md),
-not by this file. Items `B87`–`B91`, then reused `B20` / `B21`, follow that
-order. Next outcome: **`B91` evidence refresh / reconciliation**.
+not by this file. Remaining order after `B90`: `B92` → `B93` → `B91` → `B20` /
+`B21`. Next outcome: **`B92` refresh-safe tests**. Do not start `B91` first.
 
 **Operational knowledge lives in `docs/ACCOUNT_FACTS.md`**, not here: how each
 institution's data is obtained, the download endpoints, and the traps that cost
@@ -981,8 +981,8 @@ obligation; Next cash-out total is the day's sum. Both read the same event
 stream, so two Burrard payments on 12 August correctly produce $320 and $623
 without two calendars.
 
-Do not reopen the closed schedule-authority list. Remaining post-B74 work is
-`B90`–`B91`, then `B20` / `B21`, per the build strategy.
+Do not reopen the closed schedule-authority list. Remaining post-B90 work is
+`B92` → `B93` → `B91`, then `B20` / `B21`, per the build strategy.
 
 **B87 · One authority for question OPEN / ANSWERED status** · **DONE 2026-08-14**
 `docs/01_OPEN_QUESTIONS.md` is the sole OPEN / ASKED / ANSWERED / BLOCKED
@@ -1037,19 +1037,54 @@ semantics (`business`, `reserve`). Prefer a small explicit guard over a new
 classification system.
 
 **B91 · Evidence refresh / reconciliation loop** · `QUEUED` · *architecture, one outcome*
-After `B90`. Next major product milestone. Capture and extraction exist;
-canonical household state still changes mainly by hand. The Evidence-Use
-Register (`B85`) proves routing of declared IDs, not that a routed number is
-current. Build-strategy item `AF-RECON-01`.
+After `B92` and `B93`. Next major product milestone, **not** the next
+implementation outcome. Capture and extraction exist; canonical household
+state still changes mainly by hand. The Evidence-Use Register (`B85`) proves
+routing of declared IDs, not that a routed number is current or fresh.
+Build-strategy item `AF-RECON-01`. Payday acceptance corpus:
+[`docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md`](docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md).
 
-**Outcome:** a small reconciliation report over existing extractors: evidence
-value/date, current Atlas value, difference/conflict, unresolved item. Owner-
-approved edits still land in `data.json`. First version covers a closed set
-(not every field). Record what review ceremony the run actually needed.
+**Outcome:** a small **non-writing** reconciliation report over existing
+observation records: evidence value/date, current Atlas value, MATCH / STALE /
+CHANGE / CONFLICT / MISSING, unresolved item. One canonical pointer into
+`data.json`. Owner-approved edits still land there. A live opening
+observation carries cutover / as-of semantics so same-day income already
+inside that observation is not replayed. After reconciling the Aug. 14
+payday corpus, existing Forecast must produce the household payday plan
+without ChatGPT or a Sheet constructing a second model. Do not assert
+$600/week as expected output.
 
-**Do not build:** a database; a second canonical store; a generic fact schema;
-a staging platform; a large provenance framework; another extraction
-architecture; another forecast or recurrence engine.
+**B91 must also consume these payday distinctions:** schedule ≠ posted;
+paid commitments stop reserving cash; account balance ≠ amount currently
+due; household obligation ≠ paying account; posted vs pending vs limit vs
+available credit; account balance ≠ spendable cash; Amanda salary, coaching,
+and transfers as separate authorities; near-boundary obligations visible
+from existing Forecast. Q19 HELOC cash impact stays unresolved — do not
+claim confident zero household cash impact.
+
+**Do not build:** a database; a second canonical store; a generic fact
+schema; a workflow engine; event sourcing; a classification registry; a
+provenance graph; a staging platform; generated `data.json`;
+`plan.proposals[]`; leaf-level source objects; another extraction
+architecture; another forecast, payday, or budgeting engine; a universal
+`positions.csv` fact database; Google Sheet or ChatGPT as authority.
+
+**B92 · Make ordinary evidence refresh cheap** · `READY` · *tests, one outcome*
+After `B90`. **Next implementation outcome.** Behaviour tests are pinned to
+live household numbers, so a legitimate refresh is a suite rewrite. Measured
+in throwaway clones: Chequing A ~8 suites / ~40 assertions; MBNA 6 / 17;
+Fusion camp paid 7 / 18; payroll + Shaw 7 / 28. Build-strategy item
+`AF-TEST-01`. Unpin behaviour tests from live cents; keep invariants that
+should fail on a real contradiction. Do not start `B91` first.
+
+**B93 · Derive or delete proven duplicate live facts** · `QUEUED` · *architecture, one outcome*
+After `B92`, before `B91`. Verified still present after PR #42: cash
+repeated between `plan.startingCash` and `assets[]`; `revolvingExtra[].used`
+matching Chequing B; `debts[].postedBalance` duplicating `debts[].balance`;
+`income[].perMonth` matching `total / incomeCaptureMonths`. Re-verify at
+implementation. Prefer derive/delete. Do not add a sync layer. Do not treat
+`docs/positions.csv` as a universal fact database. Build-strategy item
+`AF-DEDUP-01`.
 
 **B75 · Nothing checks that the authority table is complete** · **DONE 2026-08-11**
 PR #10 added `test-authority-coverage.js` to the blocking `npm test` suite. It
@@ -1285,13 +1320,14 @@ all, driving spending, interest and fees. Built by `scripts/periods.js`.
 the page moves.
 
 **B20 · `snapshots/<date>.json` and trend charts** · `QUEUED` · *medium*
-Build-strategy item `AF-HIST-01`. **Waits on `B91`.** History should be a
-by-product of successful refreshes, not an independent system built first. Do
-not start this because an older strategy revision put it at the front of
-Phase 2. Files, not a store.
+Build-strategy item `AF-HIST-01`. **Waits on `B91`**, which itself waits on
+`B92` and `B93`. History should be a by-product of successful refreshes, not
+an independent system built first. Do not start this because an older
+strategy revision put it at the front of Phase 2, and do not start it
+because `B91` used to be next after `B90`. Files, not a store.
 
 **B21 · Second-month intake run** · `QUEUED` · *small*
-Build-strategy item `AF-INTAKE-01`. **Waits on `B91`**, so the intake writes
+Build-strategy item `AF-INTAKE-01`. **Waits on `B91`** (after `B92` / `B93`), so the intake writes
 against a reconciliation report rather than only a snapshot file. The real
 test: next month should exercise the refresh loop; record every manual step.
 

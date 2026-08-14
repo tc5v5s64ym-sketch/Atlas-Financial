@@ -2,6 +2,9 @@
 
 **Status:** Dated advisory recommendation; not adopted architecture, not a
 sequencing authority, not a fact store, and not an engine input.
+**Post-B90:** remaining implementation order is owned by
+[`docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`](../ATLAS_FINANCIAL_BUILD_STRATEGY.md).
+Do not read this file as “B91 next after B90”.
 **Prepared:** 2026-08-13
 **Builder surface:** Cursor (cloud agent)
 **Primary builder model:** Grok 4.6
