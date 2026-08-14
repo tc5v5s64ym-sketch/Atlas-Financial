@@ -265,11 +265,12 @@ been found, not a count of what exists** — it grew twice under review already,
 so treat it as open:
 
 **Every instance recorded below has moved into the engine, and so have the first
-five the closing scan found plus the Plan page's "next payment out" tile. The
-item stays OPEN** — the rest of the derived-totals group, the phase/risk list,
-and the Deep Dive totals are still to move. See **the closing scan** at the end
-of this entry for what was inspected, what each candidate was classified as,
-and the ordered outcomes that remain.
+five the closing scan found plus the Plan page's "next payment out" tile and
+its unallocated / free-cash remainder. The item stays OPEN** — the compact
+snapshot, food-and-fuel totals, the phase/risk list, and the Deep Dive totals
+are still to move. See **the closing scan** at the end of this entry for what
+was inspected, what each candidate was classified as, and the ordered
+outcomes that remain.
 
 - **RESOLVED 2026-08-11 — the payoff modeller.** `Forecast.payoffDebts` and
   `Forecast.payoffModel` now own which debts may be modelled, what each owes
@@ -444,8 +445,9 @@ render* is not true across the browser layer today. The scan found eight concret
 financial authorities living in page scripts. **Items 1, 2, 3, 4 and 5 have since
 moved** — 1 and 2 together, as one authority boundary, because both interpreted
 the same opening gap and the same funding result; 3, 4 and 5 on their own.
-**"Next payment out" has since moved from item 6.** The rest of item 6, plus
-items 7 and 8, remain, and they are still the list below.
+**"Next payment out" has since moved from item 6**, and so has the
+unallocated / free-cash remainder. The rest of item 6, plus items 7 and 8,
+remain, and they are still the list below.
 
 **The first pass of this scan found seven and missed one**, and the record says
 so rather than presenting eight as though they arrived together. The blocking
@@ -464,7 +466,7 @@ suite cannot see any of them. The same harness run against one engine line
 (`budgetBreakdown`'s `requiredMonthly`) fails immediately, so the suite is
 capable of biting and these figures are simply outside what it can reach.
 
-**Eight of the ten no longer apply**, struck through below: the page expressions
+**Nine of the ten no longer apply**, struck through below: the page expressions
 they mutated do not exist any more, and the decisions they stood for now fail
 the suite when broken in the engine. That is the shape a resolved row takes
 here — not a mutation that stopped mattering, but one whose target moved
@@ -484,7 +486,7 @@ branch that moved it before anything was edited — the page mutated,
 | ~~`plan.js` `actionCovers`: `>= fundingGap` → `>= fundingGap / 2`~~ | **moved — now fails** |
 | ~~`plan.js` "next payment out": sum of the day → single largest~~ | **moved — now fails** |
 | `plan.js` snapshot interest `/ 12` → `/ 6` | passes |
-| `plan.js` reserves window conversion halved | passes |
+| ~~`plan.js` reserves window conversion halved~~ | **moved — now fails** |
 | `deepdive.js` interest-check tolerance `4` → `40` | passes |
 | `deepdive.js` discretionary total: classification filter dropped | passes |
 | **control** — `forecast.js` `requiredMonthly` drops the `unknown` class | **fails** |
@@ -801,10 +803,20 @@ branch that moved it before anything was edited — the page mutated,
    the B73 mutation now fails. No published figure or wording moved. **The
    reconciliation between this tile and `Forecast.nextDue` remains `B74`'s.**
 
-   **Still in this group, not moved:** `unallocated` (790–802) converts
-   `reserveMonthly` over the window and subtracts buffer and reserves from the
-   ending cash, then chooses between "there is no free cash" and "this is not
-   spending money"; the compact snapshot (1093–1108) sums secured debt, divides
+   **RESOLVED 2026-08-14 — unallocated / free cash.** `Forecast.unallocatedCash`
+   now owns the windowed reserve, the remainder after buffer and reserves, and
+   whether that remainder is free cash: monthly reserve × `windowDays /
+   (365.25 / 12)`, then `ending − buffer − reserves`, with the leftover
+   verdict taken on the published cent so a sub-cent remainder cannot read
+   "not spending money" beside `$0.00`. `public/plan.js` prints the ledger
+   and looks the sentence up; it no longer converts, subtracts, or selects.
+   `test-unallocated-cash.js` hand-computes `$5,000 − $500 − $200 × 91 /
+   (365.25 / 12)`, proves the zero-cent boundary on both sides, reconciles
+   the live remainder against that same identity on the published `$200`
+   reserve, and halves the window conversion so the B73 mutation now fails.
+   No published figure or wording moved on the live plan.
+
+   **Still in this group, not moved:** the compact snapshot (1093–1108) sums secured debt, divides
    annual interest by twelve, and reads a HELOC month-on-month delta into
    "still growing" / "coming down"; food-and-fuel sub-totals are summed at
    634–636, 671, 994 and 999. Each is still a household-facing figure with no

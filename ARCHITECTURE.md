@@ -337,6 +337,7 @@ the same question — and it still carries one, noted under the table.
 | Income dependency deadline — when a modelled income becomes required to preserve the buffer | `Forecast.incomeDeadline` |
 | Next due — which published calendar obligation the household owes soonest | `Forecast.nextDue`, from `data.json` `upcoming` |
 | Next payment out — cash leaving on the next outflow date of the projection | `Forecast.nextPaymentOut`, from `sim.events`. Names the day and sums every cash outflow on it; two registrations on one day are one payment as far as the account is concerned. Distinct from `Forecast.nextDue`, which names one `upcoming` obligation. Reconciling those two look-aheads is `B74`. `public/plan.js` holds the wording and the 3-day tile tone only |
+| Unallocated ending cash — the remainder after the target buffer and windowed reserves, and whether that is free cash | `Forecast.unallocatedCash`, from `sim.ending`, `sim.buffer`, `budget.reserveMonthly` and `plan.windowDays`. Converts the monthly reserve over the window with the calendar month `365.25 / 12`, subtracts buffer and reserves, and decides the leftover verdict on the published cent. `public/plan.js` holds the wording only |
 | Coupled cash-and-debt walk | `Forecast.projectDebts` |
 | Revolving headroom, limits, pending | `Forecast.utilisation` |
 | Budget — owner targets against actuals | `Forecast.budgetBreakdown`, with classification and targets in `data.json` `plan.budget` |

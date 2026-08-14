@@ -228,6 +228,20 @@ const NEXT_MOVE = {
     : ''}`,
 };
 
+/* ------------------------------------------- unallocated, in words */
+// Forecast.unallocatedCash decides whether the ending cash leaves free cash
+// or does not. This map is how each verdict reads. The leftover sentence is
+// handed the next-dollar summary, which is plan.nextDollar's, not this
+// authority's.
+const UNALLOCATED_NOTE = {
+  none: () =>
+    `There is no free cash at the end of this window. What looks like a surplus is the buffer and the money
+       already owed to costs that fall outside the 90 days.`,
+  leftover: summary =>
+    `<b>This is not spending money.</b> It is what is left after the buffer and the reserves, and it is the only
+       money available to reduce debt. ${summary || ''}`,
+};
+
 /* --------------------------------------- the funding-source cards, in words */
 // Whether a source covers the gap, contributes part of it, or cannot reach it
 // is `Forecast.recommend`'s — it is the same allocation the plan is built on,
@@ -854,19 +868,21 @@ function renderPlan(d, periods) {
        ${plan.nextDollar ? plan.nextDollar.summary : ''}`);
 
   /* ---- what the ending cash is actually for ---- */
-  const reserves = budget ? budget.reserveMonthly * (plan.windowDays / (365.25 / 12)) : 0;
-  const unallocated = sim.ending - sim.buffer - reserves;
+  // HOW MUCH of the ending cash is unallocated, and whether that is free cash
+  // or is not spending money, is a financial decision and belongs to
+  // Forecast.unallocatedCash — where the node suite can reach it. This page
+  // prints the ledger lines and looks the sentence up. It no longer converts
+  // the monthly reserve over the window, subtracts buffer and reserves, or
+  // picks the verdict from the unrounded remainder.
+  const free = Forecast.unallocatedCash(sim, budget, plan);
   $('priorities-ledger').innerHTML =
-    row('Projected cash on ' + fmtDateLong(sim.end), money2(sim.ending), 'sum') +
-    row('− Target buffer', '− ' + money2(sim.buffer)) +
+    row('Projected cash on ' + fmtDateLong(sim.end), money2(free.ending), 'sum') +
+    row('− Target buffer', '− ' + money2(free.buffer)) +
     row('− Reserves accrued but not yet due <span class="mutedtext">property tax, CRA</span>',
-      '− ' + est(money2(reserves)), '', chipE) +
-    row('<b>= Unallocated</b>', `<b class="${unallocated < 0 ? 'neg' : ''}">${money2(unallocated)}</b>`, 'sum');
-  $('priorities-note').innerHTML = unallocated <= 0
-    ? `There is no free cash at the end of this window. What looks like a surplus is the buffer and the money
-       already owed to costs that fall outside the 90 days.`
-    : `<b>This is not spending money.</b> It is what is left after the buffer and the reserves, and it is the only
-       money available to reduce debt. ${plan.nextDollar ? plan.nextDollar.summary : ''}`;
+      '− ' + est(money2(free.reserves)), '', chipE) +
+    row('<b>= Unallocated</b>', `<b class="${free.negative ? 'neg' : ''}">${money2(free.amount)}</b>`, 'sum');
+  $('priorities-note').innerHTML = UNALLOCATED_NOTE[free.id](
+    plan.nextDollar ? plan.nextDollar.summary : '');
 
   /* ---- what could break the plan ---- */
   const risks = [];

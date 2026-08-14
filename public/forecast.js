@@ -1407,6 +1407,48 @@
     };
   }
 
+  /* ------------------------------------------ unallocated / free cash */
+  // The Plan page ledger under "what the ending cash is actually for": convert
+  // the monthly reserve into the forecast window, subtract the target buffer
+  // and those reserves from ending cash, and say whether anything left is free
+  // cash or is not spending money.
+  //
+  // `public/plan.js` used to decide this: `reserveMonthly * (windowDays /
+  // (365.25 / 12))`, then `ending - buffer - reserves`, then `unallocated <= 0`
+  // for the sentence. Halving that window conversion left `npm test` green —
+  // the mutation B73 recorded, because no test could reach the page.
+  //
+  // The conversion is the calendar's own month: 365.25 / 12 days. A 91-day
+  // window is 91 / (365.25 / 12) months of reserve, not a rounded 3. The
+  // constant is written here rather than imported from WEEKS_PER_MONTH so a
+  // test can re-derive 365.25 / 12 from the calendar and disagree.
+  //
+  // The leftover verdict is on the PUBLISHED cent, not on a bare float.
+  // money2 formats the absolute value to two decimals; a leftover of four
+  // tenths of a cent therefore prints $0.00. The old `unallocated > 0` still
+  // called that "not spending money" — a sentence that claims leftover cash
+  // beside a figure that says there is none. Half a cent of the engine's
+  // EPSILON would miss the other side: 0.005 prints $0.01. So: round the
+  // absolute value the way the page prints it, then restore the sign.
+  function unallocatedCash(sim, budget, plan) {
+    sim = sim || {};
+    plan = plan || {};
+    const ending = sim.ending;
+    const buffer = sim.buffer;
+    const windowDays = plan.windowDays;
+    const reserveMonthly = budget && budget.reserveMonthly != null ? budget.reserveMonthly : 0;
+    const monthsInWindow = windowDays / (365.25 / 12);
+    const reserves = reserveMonthly * monthsInWindow;
+    const amount = ending - buffer - reserves;
+    const absCents = Math.round(Math.abs(Number(amount)) * 100);
+    const hasFreeCash = amount > 0 && absCents > 0;
+    return {
+      ending, buffer, reserves, amount,
+      id: hasFreeCash ? 'leftover' : 'none',
+      negative: amount < 0 && absCents > 0,
+    };
+  }
+
   /* ------------------------------- what the plan is, read one way, once ---- */
   // The two household-facing verdicts at the top of the Plan page — the status
   // band and the mission sentence — are decided from the same four facts: the
@@ -2267,7 +2309,7 @@
     recommendWeekly, recommend, incomeDeadline, counterfactuals,
     budgetBreakdown, monthlyFromWeekly,
     projectDebts,
-    nextDue, nextPaymentOut, planStatus, mission, nextMove, utilisation, renewal,
+    nextDue, nextPaymentOut, unallocatedCash, planStatus, mission, nextMove, utilisation, renewal,
     payoffDebts, payoffModel,
     paymentForMonths, EPSILON, STEP };
   if (typeof module !== 'undefined' && module.exports) module.exports = Forecast;
