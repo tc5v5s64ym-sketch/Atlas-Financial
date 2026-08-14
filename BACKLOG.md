@@ -265,10 +265,11 @@ been found, not a count of what exists** — it grew twice under review already,
 so treat it as open:
 
 **Every instance recorded below has moved into the engine, and so have the first
-five the closing scan found. The item stays OPEN** — three of that scan's eight
-outcomes are still to move. See **the closing scan** at the end of this entry
-for what was inspected, what each candidate was classified as, and the ordered
-outcomes that remain.
+five the closing scan found plus the Plan page's "next payment out" tile. The
+item stays OPEN** — the rest of the derived-totals group, the phase/risk list,
+and the Deep Dive totals are still to move. See **the closing scan** at the end
+of this entry for what was inspected, what each candidate was classified as,
+and the ordered outcomes that remain.
 
 - **RESOLVED 2026-08-11 — the payoff modeller.** `Forecast.payoffDebts` and
   `Forecast.payoffModel` now own which debts may be modelled, what each owes
@@ -443,7 +444,8 @@ render* is not true across the browser layer today. The scan found eight concret
 financial authorities living in page scripts. **Items 1, 2, 3, 4 and 5 have since
 moved** — 1 and 2 together, as one authority boundary, because both interpreted
 the same opening gap and the same funding result; 3, 4 and 5 on their own.
-**Three remain**, and they are still the list below.
+**"Next payment out" has since moved from item 6.** The rest of item 6, plus
+items 7 and 8, remain, and they are still the list below.
 
 **The first pass of this scan found seven and missed one**, and the record says
 so rather than presenting eight as though they arrived together. The blocking
@@ -462,7 +464,7 @@ suite cannot see any of them. The same harness run against one engine line
 (`budgetBreakdown`'s `requiredMonthly`) fails immediately, so the suite is
 capable of biting and these figures are simply outside what it can reach.
 
-**Seven of the ten no longer apply**, struck through below: the page expressions
+**Eight of the ten no longer apply**, struck through below: the page expressions
 they mutated do not exist any more, and the decisions they stood for now fail
 the suite when broken in the engine. That is the shape a resolved row takes
 here — not a mutation that stopped mattering, but one whose target moved
@@ -480,7 +482,7 @@ branch that moved it before anything was edited — the page mutated,
 | ~~`plan.js` funding card: `enough = available >= needed` → `>= needed / 2`~~ | **moved — now fails** |
 | ~~`plan.js` funding card: per-source shortfall `needed - available` reversed~~ | **moved — now fails** |
 | ~~`plan.js` `actionCovers`: `>= fundingGap` → `>= fundingGap / 2`~~ | **moved — now fails** |
-| `plan.js` "next payment out": sum of the day → single largest | passes |
+| ~~`plan.js` "next payment out": sum of the day → single largest~~ | **moved — now fails** |
 | `plan.js` snapshot interest `/ 12` → `/ 6` | passes |
 | `plan.js` reserves window conversion halved | passes |
 | `deepdive.js` interest-check tolerance `4` → `40` | passes |
@@ -786,17 +788,27 @@ branch that moved it before anything was edited — the page mutated,
    the presence of a string. `fundingShort` had in fact still matched, inside
    the comment recording that it moved: the regex this repository already knows
    cannot tell a record apart from the code it replaced.
-6. **Derived household totals on the Plan page** — "next payment out" (610–619)
-   selects the next outflow date and sums every event on it; `unallocated`
-   (790–802) converts `reserveMonthly` over the window and subtracts buffer and
-   reserves from the ending cash, then chooses between "there is no free cash"
-   and "this is not spending money"; the compact snapshot (1093–1108) sums
-   secured debt, divides annual interest by twelve, and reads a HELOC month-on-
-   month delta into "still growing" / "coming down"; food-and-fuel sub-totals are
-   summed at 634–636, 671, 994 and 999. Each is a household-facing figure with no
-   owner. **The reconciliation between "next payment out" and `Forecast.nextDue`
-   is `B74`'s, not this item's** — what belongs here is only that the tile
-   decides its answer in the page.
+6. **Derived household totals on the Plan page.**
+   **RESOLVED 2026-08-14 — "next payment out".** `Forecast.nextPaymentOut` now
+   owns the next day cash leaves the projection and the total that has to be
+   there: inflows, non-cash charges and dates before as-of are excluded, the
+   earliest remaining date wins, and every eligible event on that date is
+   summed. `public/plan.js` prints the returned date, amount and label; the
+   3-day tile tone is presentation. `test-next-payment-out.js` hand-computes
+   $320 + $303 = $623 on a fixture, proves each exclusion by removing it,
+   reconciles the published tile against those two Burrard commitment literals
+   in `data.json`, and breaks the day-sum into the single largest outflow so
+   the B73 mutation now fails. No published figure or wording moved. **The
+   reconciliation between this tile and `Forecast.nextDue` remains `B74`'s.**
+
+   **Still in this group, not moved:** `unallocated` (790–802) converts
+   `reserveMonthly` over the window and subtracts buffer and reserves from the
+   ending cash, then chooses between "there is no free cash" and "this is not
+   spending money"; the compact snapshot (1093–1108) sums secured debt, divides
+   annual interest by twelve, and reads a HELOC month-on-month delta into
+   "still growing" / "coming down"; food-and-fuel sub-totals are summed at
+   634–636, 671, 994 and 999. Each is still a household-facing figure with no
+   owner.
 7. **Phase titles and the risk list** — `public/plan.js` 766–787 and 805–871. The
    phase headings are chosen by comparing debt marks (`day90.consumer <
    today.consumer` picks "Put the surplus against principal" or "Stop the

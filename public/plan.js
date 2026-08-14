@@ -676,26 +676,19 @@ function renderPlan(d, periods) {
       : `from ${fmtDateLong(advice.effectiveFrom)}, once the ${money(fundingGap)} gap is covered`;
 
   /* ---- the numbers that matter today ---- */
-  // The next day money leaves, and ALL of it — two registrations on one day are
-  // one payment as far as the account is concerned, and showing the larger of
-  // them understates what has to be there.
-  const outflows = sim.events.filter(e => e.amount < 0 && e.kind !== 'noncash' && e.date >= asOf);
-  const nextOutDate = outflows.length
-    ? outflows.reduce((a, e) => e.date < a ? e.date : a, outflows[0].date) : null;
-  const nextDue = outflows.filter(e => e.date === nextOutDate);
-  const nextCritical = nextDue.length ? {
-    date: nextOutDate,
-    amount: nextDue.reduce((s, e) => s + e.amount, 0),
-    label: nextDue.length === 1 ? nextDue[0].label
-      : `${nextDue.length} payments — ${nextDue[0].label.replace(/ —.*$/, '')} and others`,
-  } : null;
+  // WHICH day cash leaves next, and the total that has to be there, is a
+  // financial decision and belongs to Forecast.nextPaymentOut — where the
+  // node suite can reach it. This page prints the date, the amount and the
+  // label it is given. The 3-day chip is presentation: it moves no figure
+  // and selects no day.
+  const nextOut = Forecast.nextPaymentOut(sim.events, asOf);
   const consumerNow = today.consumer;
   $('hero-tiles').innerHTML = [
     { lab: 'Spendable household cash', val: money(plan.startingCash.amount), tone: 'alert',
       note: 'Chequing A, B and Savings. Amanda’s account is a separate pot.' },
-    (nextCritical ? { lab: 'Next payment out', val: money(-nextCritical.amount),
-      note: `${nextCritical.label} on ${fmtDateLong(nextCritical.date)}`,
-      tone: nextCritical.date <= addDays(asOf, 3) ? 'warn' : '' } : null),
+    (nextOut ? { lab: 'Next payment out', val: money(nextOut.amount),
+      note: `${nextOut.label} on ${fmtDateLong(nextOut.date)}`,
+      tone: nextOut.date <= addDays(asOf, 3) ? 'warn' : '' } : null),
     { lab: 'Weekly household cap', val: money(weekly) + '/wk', tone: gap ? 'warn' : '',
       note: state.weeklyVariable != null && state.weeklyVariable !== recommended
         ? `your setting — the forecast supports ${money(recommended)}/wk`
