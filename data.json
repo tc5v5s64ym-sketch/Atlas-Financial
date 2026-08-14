@@ -221,6 +221,26 @@
         "note": "$99.91 on the 15th, five consecutive months."
       },
       {
+        "id": "resp",
+        "label": "RESP contribution",
+        "frequency": "monthly",
+        "day": 15,
+        "amount": 100.0,
+        "confidence": "confirmed",
+        "budgetCategory": null,
+        "note": "Children's RESP contribution, $100 on the 15th. Owner-stated hard recurring household bill. Classified as an internal transfer in the transaction history, so it is dated here and not subtracted from a spending category."
+      },
+      {
+        "id": "uniondues",
+        "label": "CMAW Local 1995 union dues",
+        "frequency": "monthly",
+        "day": 15,
+        "amount": 25.0,
+        "confidence": "confirmed",
+        "budgetCategory": null,
+        "note": "Still active on the RBC chequing statement ($25 on the 15th). Owner intends to cancel (open action: Cancel CMAW Local 1995 dues). Reserved as a cash outflow until cancellation is actually confirmed. Not in budget.categories, so it is not subtracted from the CRA instalment reserve. Retire this bill when evidence closes the cancel action; do not guess an effective end date."
+      },
+      {
         "id": "fit4less",
         "label": "Fit4Less membership",
         "frequency": "biweekly",
@@ -241,7 +261,7 @@
         "note": "Two $17.95 monthly plan fees at month-end, every month captured."
       }
     ],
-    "billsNote": "Extracted from the transaction history, not guessed: only bills still active in the last three months are dated here, and every one of them is paid from Chequing A. BC Hydro is no longer an open gap — it moved to Amanda's account in May 2026 and she has paid it there since ($235, $250, $250), so it is correctly absent from a household-accounts plan. Telus stopped leaving any captured account in March 2026 and its route is still unknown. Streaming is Amazon Channels — several small charges on scattered days, left inside the variable budget. There is no Netflix anywhere in the data.",
+    "billsNote": "Extracted from the transaction history, not guessed: only bills still active in the last three months are dated here, and every one of them is paid from Chequing A. The children's RESP contribution is included as a hard $100 monthly bill on the 15th (owner-stated). CMAW Local 1995 union dues ($25 on the 15th) remain dated here because they are still on the statement; the owner intends to cancel them, but cancellation is not yet confirmed, so the $25 stays reserved until evidence closes that action. They are not a spending category and are not inside the CRA instalment reserve. BC Hydro is no longer an open gap — it moved to Amanda's account in May 2026 and she has paid it there since ($235, $250, $250), so it is correctly absent from a household-accounts plan. Telus stopped leaving any captured account in March 2026 and its route is still unknown. Streaming is Amazon Channels — several small charges on scattered days, left inside the variable budget. There is no Netflix anywhere in the data.",
     "commitments": [
       {
         "id": "burrard1",
@@ -496,13 +516,13 @@
         },
         {
           "id": "tax",
-          "label": "CRA & union dues",
+          "label": "CRA instalments",
           "class": "reserve",
           "from": [
             "Tax"
           ],
           "plannedMonthly": null,
-          "why": "CRA instalments, some settled from Amanda's account. Same treatment as property tax: real, but not a dated household cash cost inside this window."
+          "why": "CRA instalments, some settled from Amanda's account. Same treatment as property tax: real, but not a dated household cash cost inside this window. Union dues are not in this reserve: the historical Tax series is CRA, and the $25/month CMAW Local 1995 charge is a dated Plan bill (id uniondues) until cancellation is confirmed."
         },
         {
           "id": "restaurants",
@@ -692,6 +712,14 @@
         "why": "The household side runs on $79.84 while $2,691.85 sits in her account, and the transfers across are ad hoc — 127 of them, mostly $100 to $350. A fixed amount on a fixed day after her 15th and month-end pay would remove this whole class of problem and make the plan predictable instead of a guess about timing.",
         "status": "open",
         "owner": "Both"
+      },
+      {
+        "what": "Cancel CMAW Local 1995 dues",
+        "amount": 25.0,
+        "due": null,
+        "why": "Still coming out of chequing at $25/month. The Plan reserves that $25 until cancellation is actually confirmed. This action stays open until then. Do not guess an effective end date, and do not treat the bill as permanent forever-policy — retire it when evidence closes this action.",
+        "status": "open",
+        "owner": "Dale"
       }
     ],
     "actionsNote": "The first is new and it is the one that matters: on the household accounts alone there is not enough to pay the 12 August registrations.",
@@ -700,7 +728,7 @@
       "Deposits are assumed to land before payments due the same day. Payday-timed bills (the mortgage on the 14th) are arranged on exactly that assumption.",
       "Every figure is tagged. Confirmed means the institution or a long observed history states it; estimated means it is modelled and shown in amber with a ≈ mark throughout.",
       "Future card statement minimums are estimates carried at the current level; real minimums move with the balance.",
-      "Named recurring bills — FortisBC, Shaw, BCAA, ICBC, Fit4Less, the TD account fees — are dated on the calendar with days extracted from the transaction history, and are excluded from the variable budget so nothing is counted twice. The variable budget covers everything else: groceries, fuel, phones, streaming, PayPal and the rest.",
+      "Named recurring bills — FortisBC, Shaw, BCAA, ICBC, the children's RESP contribution, CMAW Local 1995 union dues, Fit4Less, the TD account fees — are dated on the calendar with days extracted from the transaction history or, for the RESP, from the owner-stated hard bill, and are excluded from the variable budget so nothing is counted twice. The RESP is an internal transfer, not a spending category. Union dues remain dated until cancellation is actually confirmed; the cancel action stays open and the bill is retired when evidence closes it. The variable budget covers everything else: groceries, fuel, phones, streaming, PayPal and the rest.",
       "One known cost has no reliable date and is NOT on the calendar: the Telus phone bills, absent from every captured account since March 2026, route unknown. It rides inside the household budget's telecom average instead. BC Hydro is NOT in that position — it moved to Amanda's account in May 2026 and she has paid it there since, so it is neither dated here nor carried in the household averages. Counting it in both places was the error this replaces.",
       "Each week's 'keep above' figure is the closing balance below which the rest of the window would breach the buffer even with everything going to plan — it is the week-by-week track to stay on, computed backwards from the end of the window.",
       "The plan is the HOUSEHOLD SPENDING ACCOUNTS ONLY — Chequing A, Chequing B and Savings. Amanda's DEBT&PAYMENTS account is a separate pot: her Tennis BC pay lands there, coaches are paid from it, and only the remainder crosses over. Neither its balance nor her gross pay is counted as household money; only her actual transfers are, measured from the transfer record. Internal transfers between household accounts are excluded throughout.",
@@ -736,98 +764,21 @@
       "note": "Across seven facilities combined"
     }
   ],
-  "upcoming": [
+  "settled": [
     {
-      "due": "2026-08-07",
+      "date": "2026-08-07",
       "what": "Triangle Mastercard minimum",
       "amount": 253.57,
-      "status": "paid",
       "note": "Paid $300.00 on 9 Aug — two days late, watch for a fee"
     },
     {
-      "due": "2026-08-04",
+      "date": "2026-08-04",
       "what": "TD Cash Back Visa — July statement minimum",
       "amount": 69.93,
-      "status": "paid",
       "note": "Missed on 4 Aug; $70.00 paid on 9 Aug, five days late. Available credit went from $0.00 to $70.00, so the freeze has lifted"
-    },
-    {
-      "due": "2026-08-12",
-      "what": "Burrard registration — child 1",
-      "amount": 320.0,
-      "status": "due",
-      "kind": "commitment",
-      "note": "Lacrosse. Deadline is the 12th, two days before payday"
-    },
-    {
-      "due": "2026-08-12",
-      "what": "Burrard registration — child 2",
-      "amount": 303.0,
-      "status": "due",
-      "kind": "commitment",
-      "note": "Lacrosse. Same deadline as child 1 — $623.00 together"
-    },
-    {
-      "due": "2026-08-14",
-      "what": "Mortgage (bi-weekly)",
-      "amount": 1600.0,
-      "status": "due",
-      "note": "Falls on the Seaspan payday. Amanda's Tennis BC pay does NOT land the same day — it is semi-monthly, on the 15th and month-end."
-    },
-    {
-      "due": "2026-08-16",
-      "what": "Fusion camp",
-      "amount": 786.0,
-      "status": "due",
-      "kind": "commitment",
-      "note": "Stated as \"next week\" — date is approximate. The largest single item before payday"
-    },
-    {
-      "due": "2026-08-17",
-      "what": "TD credit card minimum",
-      "amount": 94.03,
-      "status": "due",
-      "note": "Must post by the 17th — a fifth miss restarts the penalty-rate clock"
-    },
-    {
-      "due": "2026-08-21",
-      "what": "HELOC interest charged",
-      "amount": 814.18,
-      "status": "scheduled",
-      "note": "Capitalised onto the HELOC balance — no cash leaves any chequing account. It is a real cost: the balance grows by this much and nothing repays it.",
-      "kind": "noncash"
-    },
-    {
-      "due": "2026-08-22",
-      "what": "Fusion tryouts",
-      "amount": 140.0,
-      "status": "due",
-      "kind": "commitment",
-      "note": "Lands the day after the HELOC minimum"
-    },
-    {
-      "due": "2026-08-26",
-      "what": "Travel Visa minimum",
-      "amount": 17.0,
-      "status": "due",
-      "note": ""
-    },
-    {
-      "due": "2026-08-31",
-      "what": "Amazon.ca Rewards Mastercard minimum",
-      "amount": 158.27,
-      "status": "due",
-      "note": "MBNA. At minimums the issuer estimates 64 years 3 months to clear"
-    },
-    {
-      "due": "2026-09-01",
-      "what": "TD Cash Back Visa minimum",
-      "amount": 762.36,
-      "status": "due",
-      "note": "Eleven times last month's $69.93, because going over the limit makes the excess immediately due. Under $5,000 before the 7th stops the $29 over-limit fee"
     }
   ],
-  "upcomingNote": "The tight moment is 12 August. Burrard ($623.00) falls two days before payday against $79.84 of spendable household cash — Chequing A, Chequing B and Savings — so on the household accounts alone it does not clear; the Plan page sizes the gap at $1,043.16 including the $500 buffer and shows what can cover it. The Fusion camp ($786.00) follows on the 16th, after payday. There is $1,415.98 of credit left across every facility combined, and $247.18 of that is already spoken for by pending charges. The HELOC row below is an interest charge capitalised onto the balance, not a payment: no cash leaves any account for it.",
+  "upcomingNote": "The tight moment is 12 August. Burrard ($623.00) falls two days before payday against $79.84 of spendable household cash — Chequing A, Chequing B and Savings — so on the household accounts alone it does not clear; the Plan page sizes the gap at $1,043.16 including the $500 buffer and shows what can cover it. The Fusion camp ($786.00) follows on the 16th, after payday. There is $1,415.98 of credit left across every facility combined, and $247.18 of that is already spoken for by pending charges. HELOC interest is capitalised onto the balance at month-end: no cash leaves any account for it. Dated payments below are derived from the Plan; the two paid rows are a forensic overlay, not a second schedule.",
   "commitments": {
     "heading": "Big-ticket items already committed",
     "note": "Beyond the dates above. Kept here so they do not arrive as a surprise — sports commitments across August to December total about $4,349, roughly $870/month, against the $348/month youth lacrosse has actually averaged. That is two and a half times the established rate, and the funding record below shows $2,269.80 of past lacrosse cost went onto the HELOC at 4.90%.",

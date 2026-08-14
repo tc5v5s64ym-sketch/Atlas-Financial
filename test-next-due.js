@@ -1,12 +1,12 @@
 'use strict';
 /* Focused proof for Forecast.nextDue(). The correctness cases are hand
- * computed against a fixture calendar, not against the function that now
- * produces the answer; the real-plan check only proves this authority move
- * preserves what the Deep Dive page already showed.
+ * computed against a fixture event stream, not against the function that now
+ * produces the answer. Live-plan selection is reconciled against the Plan
+ * commitments themselves, not against a second hand-kept calendar.
  *
- * Every exclusion is proved twice: once by the winner it does not displace,
- * and once by removing the disqualifier and watching that item win. A filter
- * that excluded nothing would pass the first check and fail the second.
+ * B74: nextDue reads the same expandEvents stream as the Plan calendar and
+ * nextPaymentOut. It names ONE obligation; the day's cash-out total is a
+ * different question.
  */
 const fs = require('fs');
 const F = require('./public/forecast.js');
@@ -19,34 +19,31 @@ const ok = (cond, label, detail = '') => {
 };
 const clone = x => JSON.parse(JSON.stringify(x));
 
-/* A calendar built so that EVERY excluded item is dated before the winner.
- * If any exclusion rule failed to bite, that item would win instead, so the
- * single assertion on the winner is load-bearing for all three rules.
+/* A stream built so that EVERY excluded event is dated before the winner.
+ * If any exclusion rule failed to bite, that item would win instead.
  *
- *   due          what                     amount   why it does or does not win
- *   2026-02-06   Hydro — missed           140.00   4 days past due  → excluded
- *   2026-02-11   HELOC interest charged   800.00   non-cash         → excluded
- *   2026-02-12   Phone bill                65.00   already paid     → excluded
- *   2026-02-13   Car insurance            210.00   WINNER
- *   2026-02-13   Dentist                  275.00   same day, listed second
- *   2026-02-20   Mortgage               1,600.00   a week later
+ *   date         label                    amount   why it does or does not win
+ *   2026-02-06   Hydro — missed           -140.00  4 days past due  → excluded
+ *   2026-02-11   HELOC interest charged   -800.00  non-cash         → excluded
+ *   2026-02-13   Car insurance            -210.00  WINNER
+ *   2026-02-13   Dentist                  -275.00  same day, listed second
+ *   2026-02-20   Mortgage                -1600.00  a week later
  *
- * As of 2026-02-10, three items are eligible. The earliest eligible date is
- * 13 February, three days away. Two obligations share that date, and the
- * calendar lists Car insurance first, so Car insurance at $210.00 is next due.
+ * As of 2026-02-10, the earliest eligible date is 13 February. Two obligations
+ * share that date; Car insurance is first in stream order, so it is next due
+ * at $210.00. $485.00 is what 13 February costs in total — nextPaymentOut.
  */
 const AS_OF = '2026-02-10';
-const CALENDAR = [
-  { due: '2026-02-06', what: 'Hydro — missed', amount: 140, status: 'due' },
-  { due: '2026-02-11', what: 'HELOC interest charged', amount: 800, status: 'scheduled', kind: 'noncash' },
-  { due: '2026-02-12', what: 'Phone bill', amount: 65, status: 'paid' },
-  { due: '2026-02-13', what: 'Car insurance', amount: 210, status: 'due' },
-  { due: '2026-02-13', what: 'Dentist', amount: 275, status: 'due', kind: 'commitment' },
-  { due: '2026-02-20', what: 'Mortgage', amount: 1600, status: 'due' },
+const EVENTS = [
+  { date: '2026-02-06', label: 'Hydro — missed', amount: -140, kind: 'bill' },
+  { date: '2026-02-11', label: 'HELOC interest charged', amount: -800, kind: 'noncash' },
+  { date: '2026-02-13', label: 'Car insurance', amount: -210, kind: 'bill' },
+  { date: '2026-02-13', label: 'Dentist', amount: -275, kind: 'commitment' },
+  { date: '2026-02-20', label: 'Mortgage', amount: -1600, kind: 'obligation' },
 ];
 
 console.log('=== hand-computed winner ===');
-const next = F.nextDue(CALENDAR, AS_OF);
+const next = F.nextDue(EVENTS, AS_OF);
 ok(!!next, 'an eligible obligation is found');
 ok(next && next.what === 'Car insurance',
   'Car insurance wins — the earliest eligible date, first on that date',
@@ -54,90 +51,97 @@ ok(next && next.what === 'Car insurance',
 ok(next && next.due === '2026-02-13', 'it is dated 13 February', next ? next.due : 'none');
 ok(next && next.amount === 210, 'its own amount is reported', next ? String(next.amount) : 'none');
 ok(next && next.daysUntil === 3, '10 Feb to 13 Feb is three days', next ? String(next.daysUntil) : 'none');
-// One obligation, named. $485.00 is what 13 February costs in total, which is a
-// different question and belongs to Forecast.nextPaymentOut (B74 reconciles
-// the two look-aheads).
 ok(next && next.amount !== 485,
   'the winner is one obligation, not the day total');
 
 console.log('\n=== each exclusion is what kept the item out ===');
-// Past due: nothing about Hydro changes except the day the household is standing
-// on. As of 5 February it is one day away, and it is the earliest eligible item.
-const beforeHydro = F.nextDue(CALENDAR, '2026-02-05');
+const beforeHydro = F.nextDue(EVENTS, '2026-02-05');
 ok(beforeHydro && beforeHydro.what === 'Hydro — missed' && beforeHydro.daysUntil === 1,
   'Hydro lost only because it was already past due',
   beforeHydro ? `${beforeHydro.what} in ${beforeHydro.daysUntil}d` : 'none');
 
-// Paid: the same phone bill, unpaid, is dated before the winner and takes it.
-const unpaid = clone(CALENDAR);
-unpaid[2].status = 'due';
-const withUnpaid = F.nextDue(unpaid, AS_OF);
-ok(withUnpaid && withUnpaid.what === 'Phone bill',
-  'the phone bill lost only because it was paid',
-  withUnpaid ? withUnpaid.what : 'none');
+// Settled items are absent from the stream (firstDue / already paid). Putting
+// the phone bill back in, dated before the winner, takes it.
+const withSettled = [
+  { date: '2026-02-12', label: 'Phone bill', amount: -65, kind: 'bill' },
+  ...EVENTS,
+];
+const withPhone = F.nextDue(withSettled, AS_OF);
+ok(withPhone && withPhone.what === 'Phone bill',
+  'a settled bill is next due only when it is put back in the stream',
+  withPhone ? withPhone.what : 'none');
+ok(next && next.what !== 'Phone bill',
+  'and the published stream does not include it');
 
-// Non-cash: capitalised interest is a real cost but no cash leaves an account.
-// Called cash, the same row would be next due.
-const asCash = clone(CALENDAR);
-delete asCash[1].kind;
+const asCash = clone(EVENTS);
+asCash[1].kind = 'obligation';
 const withCash = F.nextDue(asCash, AS_OF);
 ok(withCash && withCash.what === 'HELOC interest charged',
   'the HELOC charge lost only because it is non-cash',
   withCash ? withCash.what : 'none');
 
 console.log('\n=== same-day ordering is stated, not incidental ===');
-// Dentist is the LARGER of the two 13 February obligations and still loses, so
-// the rule is the calendar's own order rather than size. Reversing the two
-// entries reverses the answer, and nothing else does.
-const swapped = clone(CALENDAR);
-[swapped[3], swapped[4]] = [swapped[4], swapped[3]];
+const swapped = clone(EVENTS);
+[swapped[2], swapped[3]] = [swapped[3], swapped[2]];
 const afterSwap = F.nextDue(swapped, AS_OF);
 ok(afterSwap && afterSwap.what === 'Dentist' && afterSwap.amount === 275,
   'listing Dentist first makes Dentist the answer',
   afterSwap ? afterSwap.what : 'none');
 ok(next && next.amount < 275,
   'the larger same-day obligation does not win on size alone');
-// Determinism: the same input always gives the same answer, whatever the sort
-// implementation underneath. The old page comparator never returned 0, so this
-// was not a property the previous code could claim.
-const repeated = new Set(Array.from({ length: 50 }, () => JSON.stringify(F.nextDue(CALENDAR, AS_OF))));
+const repeated = new Set(Array.from({ length: 50 }, () => JSON.stringify(F.nextDue(EVENTS, AS_OF))));
 ok(repeated.size === 1, 'repeated calls give one answer', `${repeated.size} distinct`);
 
+console.log('\n=== both look-aheads share this stream ===');
+const dayTotal = F.nextPaymentOut(EVENTS, AS_OF);
+ok(dayTotal && dayTotal.date === next.due,
+  'nextPaymentOut names the same date nextDue won',
+  dayTotal ? dayTotal.date : 'none');
+ok(dayTotal && dayTotal.amount === 485,
+  'and sums both 13 February cash outflows to $485.00',
+  dayTotal ? String(dayTotal.amount) : 'none');
+ok(next && dayTotal && next.amount !== dayTotal.amount,
+  'the two aggregations are different numbers from the same events');
+
 console.log('\n=== boundaries ===');
-// Due today is still due. The exclusion is "before today", not "not after".
-const today = F.nextDue(CALENDAR, '2026-02-13');
+const today = F.nextDue(EVENTS, '2026-02-13');
 ok(today && today.what === 'Car insurance' && today.daysUntil === 0,
   'an obligation due today is next due, at zero days',
   today ? `${today.what} in ${today.daysUntil}d` : 'none');
 
-// Everything settled, non-cash or behind: there is no next payment to name, and
-// the tile stays hidden rather than showing an invented one.
-const nothingLeft = F.nextDue(CALENDAR.slice(0, 3), AS_OF);
+const nothingLeft = F.nextDue(EVENTS.slice(0, 2), AS_OF);
 ok(nothingLeft === null, 'no eligible item returns null', String(nothingLeft));
-ok(F.nextDue([], AS_OF) === null, 'an empty calendar returns null');
-ok(F.nextDue(undefined, AS_OF) === null, 'a missing calendar returns null');
+ok(F.nextDue([], AS_OF) === null, 'an empty stream returns null');
+ok(F.nextDue(undefined, AS_OF) === null, 'a missing stream returns null');
 
-console.log('\n=== real-calendar migration equivalence ===');
-// The exact expression public/deepdive.js used before this move, run against
-// the published calendar, must still name the same obligation.
-const asOfDate = new Date(data.meta.asOf + 'T00:00:00');
-const daysUntil = due => Math.round((new Date(due + 'T00:00:00') - asOfDate) / 86400000);
-const legacy = data.upcoming
-  .filter(u => u.status !== 'paid' && u.kind !== 'noncash' && daysUntil(u.due) >= 0)
-  .sort((a, b) => a.due < b.due ? -1 : 1)[0];
-const moved = F.nextDue(data.upcoming, data.meta.asOf);
-ok(!!legacy && !!moved, 'both the old expression and the engine find an answer');
-ok(moved && legacy && moved.what === legacy.what && moved.due === legacy.due
-  && moved.amount === legacy.amount && moved.daysUntil === daysUntil(legacy.due),
-  'the engine-owned selection preserves the published answer',
-  moved ? `${moved.what} ${moved.due} $${moved.amount} in ${moved.daysUntil}d` : 'none');
+console.log('\n=== live plan, from the Plan commitments, not a second calendar ===');
+const asOf = data.meta.asOf;
+const end = F.addDays(asOf, (data.plan.windowDays || 91) - 1);
+const liveEvents = F.expandEvents(data.plan, asOf, end);
+const live = F.nextDue(liveEvents, asOf);
+const burrard = data.plan.commitments.filter(c => c.group === 'burrard');
+ok(burrard.length === 2 && burrard[0].date === burrard[1].date,
+  'both Burrard registrations share a date');
+ok(live && live.what === burrard[0].label && live.amount === burrard[0].amount
+  && live.due === burrard[0].date,
+  'nextDue names the first Burrard commitment, from the Plan',
+  live ? `${live.what} ${live.due} $${live.amount}` : 'none');
+const liveOut = F.nextPaymentOut(liveEvents, asOf);
+ok(liveOut && liveOut.date === burrard[0].date
+  && liveOut.amount === burrard[0].amount + burrard[1].amount,
+  'nextPaymentOut on the same stream is the $623 day total',
+  liveOut ? `${liveOut.date} $${liveOut.amount}` : 'none');
 
 console.log('\n=== page is a renderer ===');
 const page = fs.readFileSync('public/deepdive.js', 'utf8');
 ok(/Forecast\.nextDue\(/.test(page), 'Deep Dive reads the winner from Forecast.nextDue');
+ok(/Forecast\.expandEvents\(/.test(page), 'Deep Dive derives the dated list from expandEvents');
+ok(!/d\.upcoming\b/.test(page), 'Deep Dive no longer reads data.upcoming as a schedule');
 ok(!/status\s*!==\s*'paid'/.test(page), 'Deep Dive no longer applies the paid rule itself');
 ok(!/kind\s*!==\s*'noncash'/.test(page), 'Deep Dive no longer applies the non-cash rule itself');
 ok(!/a\.due\s*<\s*b\.due/.test(page), 'Deep Dive no longer orders the obligations itself');
+ok(/Next named payment due/.test(page),
+  'the tile says this is one named obligation, not the day total');
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
 process.exit(failures === 0 ? 0 : 1);

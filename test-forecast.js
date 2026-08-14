@@ -28,6 +28,12 @@ ok(monthEnd.join(',') === '2026-08-31,2026-09-30,2026-10-31', 'day-31 clamps to 
 const firstDue = F.occurrences({ frequency: 'monthly', day: 7, firstDue: '2026-09-07' }, win.start, win.end);
 ok(firstDue.join(',') === '2026-09-07,2026-10-07,2026-11-07', 'firstDue skips the paid August 7th', firstDue.join(','));
 
+const longHorizon = F.occurrences({ frequency: 'monthly', day: 15 }, '2026-08-09', '2027-05-01');
+ok(longHorizon.includes('2027-01-15') && longHorizon.includes('2027-04-15'),
+  'monthly expansion covers an ICS-length horizon, not a fixed 5 months',
+  longHorizon.filter(d => d.startsWith('2027')).join(', '));
+ok(longHorizon.every(d => d <= '2027-05-01'), 'and stops at the requested end');
+
 const anchorBefore = F.occurrences({ frequency: 'biweekly', anchor: '2026-08-14' }, '2026-08-20', '2026-09-30');
 ok(anchorBefore.join(',') === '2026-08-28,2026-09-11,2026-09-25', 'anchor before window start still expands', anchorBefore.join(','));
 
@@ -117,8 +123,8 @@ ok(near(expected.totals.noncash, 3 * 814.18), 'HELOC interest is tracked but not
   ok(near(withHeloc, without), 'removing the non-cash charge changes nothing', `${withHeloc.toFixed(2)} vs ${without.toFixed(2)}`);
 }
 // Bills: Fortis (day 3 — August's already paid, so Sep/Oct/Nov = 3), Shaw,
-// BCAA, ICBC and fees ×3 each, Fit4Less bi-weekly ×7.
-const wantBills = 3 * 124 + 3 * 78.40 + 3 * 82.96 + 3 * 99.91 + 3 * 35.90 + 7 * 11.54;
+// BCAA, ICBC, RESP, union dues and fees ×3 each, Fit4Less bi-weekly ×7.
+const wantBills = 3 * 124 + 3 * 78.40 + 3 * 82.96 + 3 * 99.91 + 3 * 100 + 3 * 25 + 3 * 35.90 + 7 * 11.54;
 ok(near(expected.totals.bills, wantBills), '90-day named bills', expected.totals.bills.toFixed(2));
 const fortisDates = expected.events.filter(e => e.id === 'fortis').map(e => e.date).join(',');
 ok(fortisDates === '2026-09-03,2026-10-03,2026-11-03', 'Fortis skips the already-paid August bill', fortisDates);
@@ -255,9 +261,9 @@ const oldSliced = JSON.parse(JSON.stringify(plan));
 oldSliced.startingCash.amount = zeroForGap.daily.find(p => p.date === payday.date).balance + gapRec.gap.amount;
 oldSliced.windowDays = F.diffDays(payday.date, zeroForGap.end) + 1;
 const oldAnswer = F.recommendWeekly(oldSliced, payday.date, RECOPTS);
-ok(oldAnswer === 1525, 'the old re-slicing method still overstates the cap', `$${oldAnswer}/week`);
+ok(oldAnswer === 1485, 'the old re-slicing method still overstates the cap', `$${oldAnswer}/week`);
 ok(gapRec.weekly < oldAnswer, 'the corrected engine is materially lower', `$${gapRec.weekly} vs $${oldAnswer}`);
-ok(gapRec.weekly === 1135, 'and the corrected weekly household cap is $1,135', `$${gapRec.weekly}/week`);
+ok(gapRec.weekly === 1085, 'and the corrected weekly household cap is $1,085', `$${gapRec.weekly}/week`);
 
 // The size of the error is the payday it counted twice.
 const paydayNet = zeroForGap.events.filter(e => e.date === payday.date && e.kind !== 'noncash')

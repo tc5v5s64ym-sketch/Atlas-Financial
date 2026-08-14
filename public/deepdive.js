@@ -49,35 +49,54 @@ function renderDeepDive(d) {
   const daysUntil = due => Math.round((new Date(due + 'T00:00:00') - asOfDate) / 86400000);
   const dueWord = n => n === 0 ? 'today' : n < 0 ? Math.abs(n) + 'd ago' : 'in ' + n + 'd';
 
-  // Heading derived from the data, not hardcoded to a month.
-  const dues = d.upcoming.map(u => u.due).sort();
-  $('upcoming-head').textContent =
-    `Dated payments, ${fmtDate(dues[0])} – ${fmtDate(dues[dues.length - 1])}`;
+  const asOf = d.meta.asOf;
+  const windowEnd = Forecast.addDays(asOf, (d.plan.windowDays || 91) - 1);
+  const schedule = Forecast.expandEvents(d.plan, asOf, windowEnd);
+  const dated = schedule.filter(e => e.amount < 0 || e.kind === 'noncash');
+  const settled = d.settled || [];
+  const noteFor = id => {
+    for (const list of [d.plan.obligations, d.plan.bills, d.plan.commitments]) {
+      const hit = (list || []).find(x => x.id === id);
+      if (hit && hit.note) return hit.note;
+    }
+    return '';
+  };
 
-  $('upcoming').innerHTML = d.upcoming.map(u => {
-    const n = daysUntil(u.due);
-    const paid = u.status === 'paid';
-    const soon = !paid && n >= 0 && n <= 7;
-    const chip = paid ? '<span class="chip v">paid</span>'
-      : `<span class="chip ${soon ? 'w' : 'e'}">${dueWord(n)}</span>`;
-    // A club fee and a card minimum are both money leaving, but only one of
-    // them carries a penalty for being late. Say which is which.
-    const kind = u.kind === 'commitment' ? ' <span class="chip">commitment</span>'
-      : u.kind === 'noncash' ? ' <span class="chip">non-cash</span>' : '';
-    // A capitalising charge is not a payment. Listing it beside real ones with
-    // a "due in 12d" chip made the HELOC interest look like a bill somebody
-    // pays out of chequing, which is exactly what it is not.
-    const noncash = u.kind === 'noncash';
+  const rangeDates = settled.map(s => s.date).concat(dated.map(e => e.date)).sort();
+  $('upcoming-head').textContent = rangeDates.length
+    ? `Dated payments, ${fmtDate(rangeDates[0])} – ${fmtDate(rangeDates[rangeDates.length - 1])}`
+    : 'Dated payments';
+
+  const settledRows = settled.map(u => {
+    const n = daysUntil(u.date);
     return `
-    <tr class="${paid ? 'paid' : noncash ? '' : soon ? 'soon' : ''}">
-      <td>${fmtDate(u.due)} ${noncash ? '<span class="chip">charged</span>' : chip}</td>
-      <td>${u.what}${kind}</td>
-      <td class="num">${noncash
-        ? `<span class="mutedtext">${money2(u.amount)}</span>` : money2(u.amount)}</td>
-      <td class="${paid ? 'pos' : ''}">${paid ? '<strong>Paid</strong> — ' : ''}${
-        noncash ? '<strong>No cash leaves</strong> — ' : ''}${u.note || 'Due'}</td>
+    <tr class="paid">
+      <td>${fmtDate(u.date)} <span class="chip v">paid</span></td>
+      <td>${u.what}</td>
+      <td class="num">${money2(u.amount)}</td>
+      <td class="pos"><strong>Paid</strong> — ${u.note || 'Settled'}</td>
     </tr>`;
-  }).join('');
+  });
+  const datedRows = dated.map(e => {
+    const n = daysUntil(e.date);
+    const noncash = e.kind === 'noncash';
+    const soon = !noncash && n >= 0 && n <= 7;
+    const chip = noncash ? '<span class="chip">charged</span>'
+      : `<span class="chip ${soon ? 'w' : 'e'}">${dueWord(n)}</span>`;
+    const kind = e.kind === 'commitment' ? ' <span class="chip">commitment</span>'
+      : noncash ? ' <span class="chip">non-cash</span>' : '';
+    const amount = noncash ? Math.abs(e.amount) : -e.amount;
+    const note = noteFor(e.id) || (noncash ? 'No cash leaves' : 'Due');
+    return `
+    <tr class="${noncash ? '' : soon ? 'soon' : ''}">
+      <td>${fmtDate(e.date)} ${chip}</td>
+      <td>${e.label}${kind}</td>
+      <td class="num">${noncash
+        ? `<span class="mutedtext">${money2(amount)}</span>` : money2(amount)}</td>
+      <td>${noncash ? '<strong>No cash leaves</strong> — ' : ''}${note}</td>
+    </tr>`;
+  });
+  $('upcoming').innerHTML = settledRows.concat(datedRows).join('');
   $('upcoming-note').textContent = d.upcomingNote;
 
   // Committed, but beyond the dated window above — the things that arrive as a
@@ -119,12 +138,14 @@ function renderDeepDive(d) {
   // Which obligation is next is a selection, not formatting: it decides what
   // the household is told it owes soonest. The engine owns it, where the node
   // suite can prove which item wins and why. This block renders the answer.
-  const next = Forecast.nextDue(d.upcoming, d.meta.asOf);
+  // The stream is the Plan's expandEvents output — the same authority as the
+  // Plan calendar and nextPaymentOut — not a hand-kept upcoming list.
+  const next = Forecast.nextDue(schedule, asOf);
   const nd = $('next-due');
   if (nd && next) {
     nd.hidden = false;
-    nd.innerHTML = `<span class="nd-lab">Next due</span><b>${next.what}</b>` +
-      `<span>${money2(next.amount)} on ${fmtDateLong(next.due)}</span>` +
+    nd.innerHTML = `<span class="nd-lab">Next named payment due</span><b>${next.what}</b>` +
+      `<span>${money2(next.amount)} on ${fmtDateLong(next.due)} — this one obligation, not the day's cash-out total</span>` +
       `<span class="chip ${next.daysUntil <= 7 ? 'w' : 'e'}">${dueWord(next.daysUntil)}</span>`;
   }
 
