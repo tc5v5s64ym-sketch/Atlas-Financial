@@ -133,8 +133,8 @@ records only that the folder is where such evidence lives.
 
 1. Row in `docs/positions.csv` — set `entity` to Household or Business
 2. Section in `docs/ACCOUNT_FACTS.md` with a **verified** date
-3. Entry in `data.json` under `debts`, plus `utilisation` if revolving
-4. Update `headline`, `netWorth` and `coverage` in `data.json` to match
+3. Entry in `data.json` under `debts`, plus `revolvingExtra` if it is an overdraft rather than a debt
+4. Derived publication totals follow from those rows via `Forecast.publicationTotals` — do not store a matching headline, net-worth total, or second HELOC limit
 5. Any new questions into `docs/01_OPEN_QUESTIONS.md`
 
 ---
@@ -340,6 +340,7 @@ closed: `Forecast.expandEvents` is the one cash calendar.
 | Next payment out — cash leaving on the next outflow date of the projection | `Forecast.nextPaymentOut`, from the same `expandEvents` stream (`sim.events` on the Plan page). Names the day and sums every cash outflow on it; two registrations on one day are one payment as far as the account is concerned. Distinct from `Forecast.nextDue`, which names one obligation from that stream. `public/plan.js` holds the wording and the 3-day tile tone only |
 | Unallocated ending cash — the remainder after the target buffer and windowed reserves, and whether that is free cash | `Forecast.unallocatedCash`, from `sim.ending`, `sim.buffer`, `budget.reserveMonthly` and `plan.windowDays`. Converts the monthly reserve over the window with the calendar month `365.25 / 12`, subtracts buffer and reserves, and decides the leftover verdict on the published cent. `public/plan.js` holds the wording only |
 | Compact snapshot — secured debt total, monthly interest across every facility, and HELOC month-on-month direction | `Forecast.compactSnapshot`, from the debt records' posted `balance` / `annualInterest` / `secured` and `helocHistory`. A month of interest is a twelfth of the recorded annual figure. The HELOC verdict follows the published whole-dollar delta, so a move that prints `$0` is unchanged rather than growth. `public/plan.js` holds the wording and the sign only |
+| Publication totals — Deep Dive headline total debt, annual interest and credit left; Records net-worth lines; the income footer; the commitments total; the lacrosse verified total; and the HELOC limit the history chart draws | `Forecast.publicationTotals`, from posted `debts` balances and `annualInterest`, `assets` values, `income` line totals over the captured 18-month window, `commitments.items`, `lacrosse.sources`, the HELOC debt `limit`, and `Forecast.utilisation` for headroom. The same twelfth `compactSnapshot` uses. Pages hold the wording only |
 | Deep Dive derived totals — held-elsewhere grouping, period spending average, discretionary share, avoidable fees, Cash Back Visa cycle fit, and the mortgage's monthly interest | `Forecast.deepDive`, from `plan.startingCash.heldElsewhere`, the selected `periods` entry, `interestCheck` rows, and the `cashback` / `mortgage` debt records. The card rate is the Cash Back Visa `rate`; a cycle is off when `|eff − rate| > 4` percentage points, the incumbent band. Mortgage monthly interest is `monthOfAnnual` on that debt's `annualInterest` — the same twelfth `compactSnapshot` uses. `public/deepdive.js` holds the wording only |
 | Plan phase titles and the risk list — which heading each 30-day block gets, which risks appear, and the figures inside them | `Forecast.planPhases`, from the `recommend` and `projectDebts` results plus the already-run `incomeDeadline`, `counterfactuals` and `budgetBreakdown`. Over-limit-today and the HELOC crossing are the same helpers `Forecast.mission` uses. The Amanda window impact is the incumbent `amount × 3`. The HELOC draw is `drawnOn(funding, 'heloc')`, the same sum the HELOC alternative prices. `public/plan.js` holds the wording only |
 | Coupled cash-and-debt walk | `Forecast.projectDebts` |
@@ -360,7 +361,8 @@ closed: `Forecast.expandEvents` is the one cash calendar.
 | Debt rate conventions — what a debt's quoted rate means per period, and how closely a monthly model reproduces it | `PAYOFF_RATE_BASIS` and `PAYOFF_BASIS_PRECISION` in `public/forecast.js`, from each debt record's `rateConvention`. A prime-linked facility is compounded monthly, so a monthly period is **exact**. A card charges a daily rate over the days in each statement cycle, so a monthly period is a **monthly-equivalent** average: exact over a year, and published with the cycle band for any single period. An undeclared convention throws |
 | What one debt costs the household in cash each month | `monthlyCashFor` in `public/forecast.js`, from `plan.obligations`; read by both `Forecast.renewal` and the payoff modeller |
 | Historical spending series | generated `public/periods.json`, from `scripts/periods.js` |
-| Published figures | `data.json` |
+| Published facts and owner policy | `data.json` |
+| Derived publication aggregates of those facts | `Forecast.publicationTotals` |
 | Calendar — the on-page month grid and agenda | `renderCalendar()` in `public/plan.js` — **presentation of `sim.events` only** |
 | Calendar — the exported `.ics` | `scripts/calendar-ics.js`: cash-payment VEVENTs **derived** from `Forecast.expandEvents` over a longer horizon; standing reminder VEVENTs (statement closes, tax deadlines, mortgage renewal) remain a thin non-cash overlay |
 | Authority and reconciliation guards | the `npm test` suites |
@@ -473,7 +475,8 @@ headroom is measured against — and takes today's household cash from
 charge rather than asserted, and a change to the mortgage payment moves the
 comparison the household reads. `data.json` `mortgage` keeps the renewal's
 standing facts (maturity, remaining years, prepayment room) and is no longer a
-second home for the balance the arithmetic runs on. What is left in the page is
+second home for the balance, rate, or bi-weekly payment the arithmetic and the
+slider open on. What is left in the page is
 wording, colour and layout.
 
 **A quoted rate is not a number on its own, and the renewal used to treat it as

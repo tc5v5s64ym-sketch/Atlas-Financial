@@ -5,11 +5,12 @@ function renderRecords(d) {
   $('coverage-line').textContent = `${d.meta.coverage} · ${d.meta.transactions.toLocaleString('en-CA')} transactions, ${d.meta.statements} statements`;
   $('disclaimer').textContent = d.meta.disclaimer;
 
+  const pub = Forecast.publicationTotals(d);
   $('assets').innerHTML = d.assets.map(a => `
     <tr><td>${a.label}</td><td class="num ${a.value < 0 ? 'neg' : ''}">${money2(a.value)}</td></tr>`).join('')
-    + `<tr><td><strong>Total assets</strong></td><td class="num"><strong>${money2(d.netWorth.assets)}</strong></td></tr>`
-    + `<tr><td><strong>Total known debt</strong></td><td class="num neg"><strong>${money2(d.netWorth.debts)}</strong></td></tr>`
-    + `<tr><td><strong>Financial accounts only</strong></td><td class="num neg"><strong>${money2(d.netWorth.financialAccountsOnly)}</strong></td></tr>`;
+    + `<tr><td><strong>Total assets</strong></td><td class="num"><strong>${money2(pub.assets)}</strong></td></tr>`
+    + `<tr><td><strong>Total known debt</strong></td><td class="num neg"><strong>${money2(pub.totalDebt)}</strong></td></tr>`
+    + `<tr><td><strong>Financial accounts only</strong></td><td class="num neg"><strong>${money2(pub.financialAccountsOnly)}</strong></td></tr>`;
   if (d.assetsNote) $('assets-note').textContent = d.assetsNote;
   $('nw-caveat').textContent = d.netWorth.caveat;
 

@@ -16,7 +16,7 @@ exist yet, months after it did.
 close a question on its own. The remaining work order lives in
 [`docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`](docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md)
 under **Post-B74 architecture disposition**. Next implementation outcome:
-**derive remaining duplicate publication values** (`B89`). Do not copy that sequence here.
+**spending-classification reconciliation** (`B90`). Do not copy that sequence here.
 
 Everything lives in **one folder**:
 
@@ -210,9 +210,10 @@ so a broken change fails at the prompt rather than as a blank page.
 exercised. For those, `node test-local.js` with the password, and
 `node verify-live.js` against the deployed site.
 
-Adding an account means an entry in `debts` (and `utilisation` if revolving),
-then updating `headline`, `netWorth` and `coverage` to match. Add any new
-questions to `01_OPEN_QUESTIONS.md` in the review folder, and a row to
+Adding an account means an entry in `debts` (and `revolvingExtra` if it is an
+overdraft rather than a debt). Headline, net-worth and income totals are
+derived by `Forecast.publicationTotals` from those rows — do not store a
+matching copy. Add any new questions to `01_OPEN_QUESTIONS.md`, and a row to
 `positions.csv`.
 
 After changing `server.js`, run the smoke test:

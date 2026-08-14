@@ -24,9 +24,9 @@ Capabilities that are wanted but not yet in Phases 1–4 are recorded in
 **Later capabilities — status and reopen trigger**. That table is memory and
 trigger, not a second order of work.
 
-**Current sequencing (14 August 2026).** B74, B87 and B88 are closed. The remaining
+**Current sequencing (14 August 2026).** B74, B87, B88 and B89 are closed. The remaining
 implementation order is the **Post-B74 architecture disposition** below. Next
-implementation outcome: derive remaining duplicate publication values (`B89`). Next major product
+implementation outcome: spending-classification reconciliation (`B90`). Next major product
 milestone: evidence refresh / reconciliation (`B91`). History (`B20`) follows
 that loop; it is not the next infrastructure item.
 
@@ -256,10 +256,10 @@ rules above.
   line endings. **Complete.**
 - **`AF-PUB-01` / `B89`** — where Atlas already has canonical inputs and
   deterministic derivation, do not store the result independently. Narrow;
-  do not redesign `data.json`. **Next implementation outcome.**
+  do not redesign `data.json`. **Complete.**
 - **`AF-CLASS-01` / `B90`** — the same household spending category cannot
   silently tell contradictory essential/discretionary stories. Prefer a
-  small guard. Preserve `business` and `reserve`.
+  small guard. Preserve `business` and `reserve`. **Next implementation outcome.**
 
 ### Next major product milestone — evidence refresh / reconciliation
 
@@ -456,6 +456,16 @@ built *on* that picture, the picture needs owners that a test can reach.
   it; a mutation of the parent moves the published total; no schema redesign.
 - **Non-goals** — splitting forensic/archive material out of `data.json`; a
   generic DTO layer.
+- **State** — **complete.** `Forecast.publicationTotals` derives Deep Dive
+  headline total debt, annual interest and credit left, Records net-worth
+  lines, the income footer, the commitments total, the lacrosse verified
+  total, and the HELOC chart limit from the canonical rows. `data.json`
+  `headline`, `netWorth` numeric totals, `incomeTotal`, `helocLimit`,
+  `commitments.total`, `lacrosse.verified`, and the mortgage block's
+  balance / rate / bi-weekly payment are deleted. Credit left moves from
+  the stale stored $1,415.95 to `Forecast.utilisation`'s $1,415.98, which
+  the Plan tile, upcoming note and positions.csv already published.
+  Proved by `test-publication-totals.js`.
 
 ### AF-CLASS-01 · Guard overlapping spending classifications
 

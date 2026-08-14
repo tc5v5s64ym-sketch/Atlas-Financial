@@ -798,6 +798,7 @@ console.log('\n=== migration equivalence on the real published inputs ===');
  * fixed side must NOT — a fixed option that produced the same numbers would be
  * a label with no arithmetic behind it. */
 const m0 = data.mortgage;
+const mort0 = data.debts.find(x => x.id === 'mortgage');
 const heloc0 = data.debts.find(x => /HELOC/i.test(x.label));
 // The page picked the HELOC by matching its LABEL; the engine picks it by the
 // `heloc` id, which is the key `projectDebts` and `plan.obligations` already
@@ -814,7 +815,7 @@ function legacyAmortisedPayment(principal, annualPct, years) {
   return principal * i / (1 - Math.pow(1 + i, -n));
 }
 function legacy(r, years, consolidate) {
-  const mortgageNow = m0.paymentBiweekly * 26 / 12;
+  const mortgageNow = mort0.payment * 26 / 12;
   const helocCash = heloc0.cashPayment != null ? heloc0.cashPayment : heloc0.payment;
   const helocEconomic = heloc0.monthlyInterest != null ? heloc0.monthlyInterest : heloc0.payment;
   const helocCapitalised = heloc0.interestTreatment === 'capitalised';
@@ -822,11 +823,11 @@ function legacy(r, years, consolidate) {
   const baselineMonthly = baselineCash;
   let payment, totalInterest, principal, helocOwed = 0;
   if (consolidate) {
-    principal = m0.balance + heloc0.balance;
+    principal = mort0.balance + heloc0.balance;
     payment = legacyAmortisedPayment(principal, r, years);
     totalInterest = payment * years * 12 - principal;
   } else {
-    principal = m0.balance;
+    principal = mort0.balance;
     payment = legacyAmortisedPayment(principal, r, years) + helocCash;
     const mortgageInterest = (payment - helocCash) * years * 12 - principal;
     const helocRate = heloc0.rate / 100;
@@ -973,8 +974,8 @@ console.log('\n=== the published renewal, at the settings the page opens on ==='
 /* The two answers the household actually sees first. Independently confirmed:
  * the mortgage walk clears, and the HELOC growth is 213 successive charges. */
 {
-  const rate = Math.round(data.mortgage.rate * 100) / 100;
-  const years = Math.round(data.mortgage.remainingYears);
+  const rate = Math.round(mort0.rate * 100) / 100;
+  const years = Math.round(m0.remainingYears);
   ok(rate === 3.64 && years === 18,
     'the sliders open at the mortgage\'s own rate and remaining amortisation',
     `${rate}% / ${years} years`);

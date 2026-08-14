@@ -228,10 +228,12 @@ function setupPayoff(d) {
 }
 
 function setupRenewal(d) {
-  // The mortgage block supplies the CONTROL's starting position only — the
-  // renewal's standing facts. Every balance the arithmetic runs on comes from
-  // the debt records, inside the engine.
+  // The mortgage block supplies remaining amortisation for the slider only —
+  // a standing fact. The opening rate is the debt record's rate, the same
+  // figure `Forecast.renewal` prices. Every balance the arithmetic runs on
+  // already comes from the debt records, inside the engine.
   const m = d.mortgage;
+  const mortgageDebt = (d.debts || []).find(x => x.id === 'mortgage');
   let consolidate = false;
   // Opens on variable because that is what this household's mortgage is today
   // — TD Mortgage Prime − 0.96%. Neither convention is a safe default for a
@@ -290,7 +292,7 @@ function setupRenewal(d) {
 
   rate.addEventListener('input', update);
   amort.addEventListener('input', update);
-  rate.value = String(Math.round(m.rate * 100));
+  rate.value = String(Math.round(mortgageDebt.rate * 100));
   amort.value = String(Math.round(m.remainingYears));
   update();
 }

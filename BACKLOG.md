@@ -13,7 +13,7 @@ Last reviewed **2026-08-14**. Phase: **analysis** — capture is essentially don
 **Post-B74 implementation order** is owned by
 [`docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`](docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md),
 not by this file. Items `B87`–`B91`, then reused `B20` / `B21`, follow that
-order. Next outcome: **`B89` derive remaining duplicate publication values**.
+order. Next outcome: **`B90` spending-classification reconciliation**.
 
 **Operational knowledge lives in `docs/ACCOUNT_FACTS.md`**, not here: how each
 institution's data is obtained, the download endpoints, and the traps that cost
@@ -982,7 +982,7 @@ stream, so two Burrard payments on 12 August correctly produce $320 and $623
 without two calendars.
 
 Do not reopen the closed schedule-authority list. Remaining post-B74 work is
-`B89`–`B91`, then `B20` / `B21`, per the build strategy.
+`B90`–`B91`, then `B20` / `B21`, per the build strategy.
 
 **B87 · One authority for question OPEN / ANSWERED status** · **DONE 2026-08-14**
 `docs/01_OPEN_QUESTIONS.md` is the sole OPEN / ASKED / ANSWERED / BLOCKED
@@ -997,16 +997,19 @@ identity is normalized at the test input boundary (`test-source-text.js`); the
 invariants those tests protect still fail on a real defect. Proved by
 `test-line-endings.js`. No `.gitattributes`. Build-strategy item `AF-LINE-01`.
 
-**B89 · Stop storing derived publication totals** · `QUEUED` · *small*
-After `B88`. `data.json` still independently stores some values the engine
-already has canonical inputs to calculate: headline total debt, net-worth
-totals, income total, duplicated mortgage publication/model values.
-Build-strategy item `AF-PUB-01`.
-
-**Outcome:** each named copy is derived from its canonical parent or deleted
-because a consumer already computes it. A mutation of the parent must move the
-published total. **Do not redesign `data.json`.** Do not split forensic/archive
-material in the same pull request.
+**B89 · Stop storing derived publication totals** · **DONE 2026-08-14** · *small*
+`Forecast.publicationTotals` derives the Deep Dive headline totals, Records
+net-worth lines, the income footer, the commitments total, the lacrosse
+verified total, and the HELOC chart limit from canonical `debts` / `assets`
+/ `income` / `commitments.items` / `lacrosse.sources` rows and
+`Forecast.utilisation`. Deleted stored copies: `headline`, `netWorth.assets`
+/ `debts` / `financialAccountsOnly`, `incomeTotal`, `helocLimit`,
+`commitments.total`, `lacrosse.verified`, and `mortgage.balance` / `rate` /
+`paymentBiweekly`. The Deep Dive "Credit left" scalar moves from the stale
+stored $1,415.95 to utilisation's $1,415.98 (the Plan tile, upcoming note
+and positions.csv already used $1,415.98; the whole-dollar tile still prints
+$1,416). Proved by `test-publication-totals.js`. Build-strategy item
+`AF-PUB-01`.
 
 **B90 · Guard overlapping essential / discretionary classification** · `QUEUED` · *small*
 After `B89`. Forward Plan cap uses `plan.budget.categories[].class`; Deep Dive

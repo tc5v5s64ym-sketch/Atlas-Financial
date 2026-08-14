@@ -30,6 +30,7 @@ const suites = [
   ['question status authority', 'test-question-status.js'],
   ['unallocated / free cash', 'test-unallocated-cash.js'],
   ['compact snapshot', 'test-compact-snapshot.js'],
+  ['publication totals', 'test-publication-totals.js'],
   ['homepage mission', 'test-mission.js'],
   ['plan status band + funding verdicts', 'test-status-band.js'],
   ['what the next move achieves', 'test-nextmove.js'],
