@@ -229,21 +229,12 @@ built *on* that picture, the picture needs owners that a test can reach.
 - **Prompt** — *Take one decision from `B73`. Move it into `public/forecast.js`,
   reconcile the result against a hand-computed case, and leave the page rendering
   only. One decision per pull request — five decisions is five outcomes.*
-- **State** — all five recorded decisions have moved, and the scan for the ones
-  the list never named ran on 2026-08-12. It is no longer the last thing standing
-  between `B73` and closed: it read every browser file and found **eight further
-  page-side authorities**, seven of them in `public/plan.js`, each recorded in
-  `B73` with the mutation evidence that the node suite cannot reach it. Seven
-  came from the scan and the eighth from the blocking review that read it, which
-  is recorded in `B73` rather than smoothed over. This item
-  is therefore not complete, and it keeps its own rule — one decision per pull
-  request, reconciled against a hand-computed case. `B73` states the order.
-
-  **Which of the eight have moved, which remain, and what each move settled is
-  `B73`'s** — live work state, and this file is a sequence rather than a work
-  record. A count kept in two places drifts the moment one of them moves: this
-  entry said five remained while `B73` recorded four. AF-CAL-01's entry gate
-  names this item, so that work is not open yet either.
+- **State** — **complete.** Every decision recorded in `B73` has moved,
+  including the eight the 2026-08-12 scan found. Item 8 — Deep Dive derived
+  totals and Cash Back Visa fit — was the last of them and closed `B73` on
+  2026-08-14. What each move settled is `B73`'s; this file does not keep a
+  second running count. AF-CAL-01's entry gate is now met. This item does not
+  start `B74`.
 
 ### AF-CAL-01 · Give the schedule one owner
 

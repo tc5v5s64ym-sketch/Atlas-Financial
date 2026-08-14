@@ -256,21 +256,22 @@ characters — but a comment asserting something untrue is the class of defect
 this repository treats as real. Fix it in passing, whenever a pull request has
 honest reason to touch that file; it does not justify one of its own.
 
-**B73 · Financial decisions made inside page scripts** · *small, real*
+**B73 · Financial decisions made inside page scripts** · **DONE 2026-08-14**
 `CONTEXT.md` states the rule: the engine owns the answers, the pages render them
 — because anything computed in a page script cannot be reached by the node suite
 that guards every other figure. Page scripts broke it in the places recorded
 below, each producing something the household acts on. **The list is what has
-been found, not a count of what exists** — it grew twice under review already,
-so treat it as open:
+been found, not a count of what exists** — it grew twice under review already.
 
-**Every instance recorded below has moved into the engine, and so have the first
-five the closing scan found plus the Plan page's "next payment out" tile,
-its unallocated / free-cash remainder, the compact snapshot, the
-food-and-fuel totals, and the phase titles / risk list. The item stays OPEN**
-— the Deep Dive totals are still to move. See **the closing scan** at the end
-of this entry for what was inspected, what each candidate was classified as,
-and the ordered outcomes that remain.
+**Every instance recorded below has moved into the engine, including the eight
+the closing scan found.** Item 8 — the last of those eight — moved on
+2026-08-14. The item is **closed** on that recorded set rather than left
+artificially open: a new page-side decision, if one appears, is a new finding.
+See **the closing scan** at the end of this entry for what was inspected, what
+each candidate was classified as, and that the ordered outcomes are done. The
+two presentational leftovers the scan flagged for a second look at item 8
+(`>= 20%` / `< 5%` rate colouring, and Deep Dive `daysUntil` beside
+`Forecast.nextDue`) remain classified as presentation, not authorities.
 
 - **RESOLVED 2026-08-11 — the payoff modeller.** `Forecast.payoffDebts` and
   `Forecast.payoffModel` now own which debts may be modelled, what each owes
@@ -429,7 +430,7 @@ what excused it. And the wording "the inline arithmetic and the inline selection
 are" reads as though a formula becomes acceptable once it is given a name; what
 matters is whether a test can reach the figure the household acts on.
 
-### The closing scan · 2026-08-12 · B73 stays OPEN
+### The closing scan · 2026-08-12 · recorded instances now moved; B73 closed 2026-08-14
 
 **Every browser file was read, not only the ones this item had named.** Five page
 scripts — `public/app.js`, `public/plan.js`, `public/deepdive.js`,
@@ -440,15 +441,13 @@ reason is recorded rather than left silent: `server.js` serves `public/` only, s
 it reaches no browser, and its one script block holds chart geometry over figures
 baked in as literals.
 
-**The answer to the question this scan asked is no.** *Engine decides, pages
-render* is not true across the browser layer today. The scan found eight concrete
-financial authorities living in page scripts. **Items 1, 2, 3, 4 and 5 have since
-moved** — 1 and 2 together, as one authority boundary, because both interpreted
-the same opening gap and the same funding result; 3, 4 and 5 on their own.
-**"Next payment out" has since moved from item 6**, and so have the
-unallocated / free-cash remainder, the compact snapshot, and the food-and-fuel
-totals. Item 6 is closed. Items 7 and 8 remain, and they are still the list
-below.
+**The answer to the question this scan asked was no, on the day it ran.**
+*Engine decides, pages render* was not true across the browser layer then. The
+scan found eight concrete financial authorities living in page scripts.
+**Items 1–8 have since all moved** — 1 and 2 together, as one authority
+boundary, because both interpreted the same opening gap and the same funding
+result; 3 through 8 each on their own. Item 8, the last of them, closed on
+2026-08-14. The list below is the record of what those eight were.
 
 **The first pass of this scan found seven and missed one**, and the record says
 so rather than presenting eight as though they arrived together. The blocking
@@ -474,7 +473,9 @@ row takes here — not a mutation that stopped mattering, but one whose target
 moved somewhere a test can reach it. The `actionCovers` row was reproduced on
 the branch that moved it before anything was edited — the page mutated,
 `npm test` run, **ALL 15 SUITES PASSED** — and the equivalent mutation in
-`Forecast.nextMove` now fails. The two `deepdive.js` rows still pass.
+`Forecast.nextMove` now fails. The two `deepdive.js` rows have since moved
+with item 8 — widening the fit band or dropping the discretionary filter now
+fails in `Forecast.deepDive`.
 
 | Mutation | Suite |
 |---|---|
@@ -488,8 +489,8 @@ the branch that moved it before anything was edited — the page mutated,
 | ~~`plan.js` "next payment out": sum of the day → single largest~~ | **moved — now fails** |
 | ~~`plan.js` snapshot interest `/ 12` → `/ 6`~~ | **moved — now fails** |
 | ~~`plan.js` reserves window conversion halved~~ | **moved — now fails** |
-| `deepdive.js` interest-check tolerance `4` → `40` | passes |
-| `deepdive.js` discretionary total: classification filter dropped | passes |
+| ~~`deepdive.js` interest-check tolerance `4` → `40`~~ | **moved — now fails** |
+| ~~`deepdive.js` discretionary total: classification filter dropped~~ | **moved — now fails** |
 | **control** — `forecast.js` `requiredMonthly` drops the `unknown` class | **fails** |
 
 #### What remains, in the order it should be moved
@@ -881,18 +882,32 @@ the branch that moved it before anything was edited — the page mutated,
    now fails. Before the move, those two mutations left `npm test` green
    (ALL 21 SUITES PASSED). Live published conclusions are unchanged.
 
-   **Item 7 is closed.** Item 8 remains.
+   **Item 7 is closed.**
 8. **The Deep Dive's derived totals and its interest reconciliation** —
-   `public/deepdive.js`. The cash tile sums and groups `heldElsewhere` (25–42);
-   the period block totals discretionary spending and its share of the whole
-   (317–322), totals avoidable fees (336–339) and averages a spending total over
-   its months (304). The Cash Back Visa reconciliation (216–229) decides which
-   statement cycles are flagged as not fitting the card's rate, using a tolerance
-   of ±4 percentage points and a `26.99` literal, both chosen in the page; the
-   five-cycle footer sums the implied and charged columns, and asserts `26.99%`
-   as the effective rate rather than deriving it. Line 329 hardcodes "the
-   mortgage adds about $1,620/month" — a published figure whose home is
-   `data.json`.
+   `public/deepdive.js`.
+   **RESOLVED 2026-08-14.** `Forecast.deepDive` now owns held-elsewhere
+   grouping and totalling, a period's spending monthly average, discretionary
+   total and share, avoidable-fee total, which Cash Back Visa cycles sit
+   outside the incumbent ±4 percentage-point band, the implied and charged
+   five-cycle totals, the published card rate, and the mortgage's monthly
+   interest. The card rate is the Cash Back Visa `debts` record, not a page
+   `26.99` literal. Mortgage monthly interest is `monthOfAnnual` on that
+   debt's `annualInterest` — the same twelfth `compactSnapshot` uses — not a
+   hardcoded `~$1,620/month`. The ±4pp `>` band is kept. `public/deepdive.js`
+   prints the returned figures and looks class labels up.
+   `test-deepdive.js` hand-computes `$100+$50+$20 = $170`, `$250+$200 = $450`
+   at 45% of $1,000, $20 avoidable, both sides of ±4pp with equality on 4,
+   `$12,000 / 12 = $1,000`, and live cents `$2,691.85+$74.20+$205.92 =
+   $2,971.97`, implied `$504.37` / charged `$492.64`, last-month
+   discretionary `$6,518.25` = 59% of `$10,961.14`, ytd average
+   `$74,595.09 / 8`. Mutation of the ±4pp band to 40, the elsewhere add
+   halved, the monthly average halved, the discretionary filter dropped, and
+   the shared twelfth `/ 12` → `/ 6` now fails. Before the move, widening
+   the band to 40, swapping the footer rate, halving elsewhere, doubling the
+   monthly average, and replacing `$1,620` with `$1,000` left `npm test`
+   green (ALL 22 SUITES PASSED). Live published figures are unchanged.
+
+   **Item 8 is closed.** The recorded B73 set is complete.
 
 #### What the scan cleared, so the next pass does not re-litigate it
 
@@ -923,12 +938,15 @@ on a week card, `>= $1,000` for a payday dot, `<= −$500` for a payment triangl
 `> 95%` utilisation, `>= 20%` / `< 5%` on a rate, `< $500` of revolving credit
 left, `> $40,000` unexplained. None changes a published figure; each only decides
 how an already-decided one looks. They are listed here so a later reader can see
-they were inspected and ruled on rather than missed. Two are worth a second look
-whenever item 8 is done: the `>= 20%` / `< 5%` rate colouring is the closest any
+they were inspected and ruled on rather than missed. Two were worth a second look
+when item 8 closed: the `>= 20%` / `< 5%` rate colouring is the closest any
 of them comes to interpreting money into a verdict, and `deepdive.js` computes
 its own days-until for the upcoming table while `Forecast.nextDue` computes
 `daysUntil` for the tile beside it — one question, two implementations, agreeing
-today.
+today. **Second look on 2026-08-14:** both still colour or label an
+already-decided figure; neither was moved. A later finding that either one
+changes a published number would be a new item, not a reason to reopen this
+one.
 
 **No new hard gate came out of this scan, deliberately.** The failure it found is
 not mechanically signable: a page script that decides looks exactly like a page

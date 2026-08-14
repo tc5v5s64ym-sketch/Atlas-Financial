@@ -17,28 +17,22 @@ function renderDeepDive(d) {
   $('coverage-line').textContent = `${d.meta.coverage} · ${d.meta.transactions.toLocaleString('en-CA')} transactions, ${d.meta.statements} statements`;
   $('disclaimer').textContent = d.meta.disclaimer;
 
-  // The cash tile is DERIVED from the plan's cash register, not stored. It used
-  // to be a hardcoded "Cash on hand — $3,051.81" that summed six accounts of
-  // four different kinds: household spending money, Amanda's pass-through
-  // account, a staging account and two US holiday accounts. The Plan page
-  // meanwhile said $79.84. Both were describing the same household.
-  const cash = d.plan.startingCash;
-  const byClass = {};
-  for (const h of cash.heldElsewhere || []) {
-    (byClass[h.class] = byClass[h.class] || { total: 0, labels: [] });
-    byClass[h.class].total += h.value;
-    byClass[h.class].labels.push(h.label.replace(/ —.*$/, ''));
-  }
-  const elsewhere = (cash.heldElsewhere || []).reduce((s, h) => s + h.value, 0);
-  const classLine = Object.entries(byClass)
-    .map(([k, v]) => `${money(v.total)} ${CASH_CLASS_LABEL[k] || k} (${v.labels.join(', ')})`)
+  // The cash tile is DERIVED from the plan's cash register, not stored. HOW
+  // the held-elsewhere balances group and total is a financial decision and
+  // belongs to Forecast.deepDive — where the node suite can reach it. This
+  // page prints the returned spendable amount and elsewhere total, and looks
+  // the class labels up. It no longer sums or groups.
+  const dive = Forecast.deepDive(d);
+  const classLine = (dive.classes || [])
+    .map(v => `${money(v.total)} ${CASH_CLASS_LABEL[v.class] || v.class} (${
+      v.labels.map(lab => lab.replace(/ —.*$/, '')).join(', ')})`)
     .join('; ');
   const cashTile = {
     label: 'Spendable household cash',
-    value: cash.amount,
+    value: dive.cashAmount,
     tone: 'alert',
     note: `Chequing A, Chequing B and Savings — the accounts the mortgage, bills and card minimums are actually ` +
-      `paid from. A further ${money(elsewhere)} sits elsewhere and is not household spending money: ${classLine}.`,
+      `paid from. A further ${money(dive.elsewhere)} sits elsewhere and is not household spending money: ${classLine}.`,
   };
 
   $('tiles').innerHTML = [cashTile].concat(d.headline).map(t => `
@@ -211,19 +205,21 @@ function renderDeepDive(d) {
     $('heloc-chains').textContent = d.helocChains;
   }
 
-  // The Cash Back Visa interest reconciliation. The effective-rate column is
-  // the point: it shows at a glance which months fit 26.99% and which do not.
-  if (d.interestCheck) {
+  // The Cash Back Visa interest reconciliation. WHICH cycles do not fit the
+  // card's rate, the implied and charged totals, and the rate itself, are
+  // Forecast.deepDive — the rate is the Cash Back Visa record, the ±4pp
+  // band is the incumbent rule, and the page no longer carries a 26.99
+  // literal. This block renders the returned rows.
+  if (dive.interest) {
     const ic = d.interestCheck;
-    $('interest-check').innerHTML = ic.rows.map(r => {
-      const off = Math.abs(r.eff - 26.99) > 4;
+    $('interest-check').innerHTML = dive.interest.rows.map(r => {
       return `<tr><td>${r.stmt}</td><td class="num">${money2(r.avg)}</td>
         <td class="num">${money2(r.implied)}</td><td class="num">${money2(r.charged)}</td>
-        <td class="num ${off ? 'neg' : ''}">${r.eff.toFixed(2)}%</td></tr>`;
+        <td class="num ${r.off ? 'neg' : ''}">${r.eff.toFixed(2)}%</td></tr>`;
     }).join('') + `<tr><td><strong>Five cycles</strong></td><td class="num">—</td>
-      <td class="num"><strong>${money2(ic.rows.reduce((s, r) => s + r.implied, 0))}</strong></td>
-      <td class="num"><strong>${money2(ic.rows.reduce((s, r) => s + r.charged, 0))}</strong></td>
-      <td class="num"><strong>26.99%</strong></td></tr>`;
+      <td class="num"><strong>${money2(dive.interest.impliedTotal)}</strong></td>
+      <td class="num"><strong>${money2(dive.interest.chargedTotal)}</strong></td>
+      <td class="num"><strong>${dive.interest.rate.toFixed(2)}%</strong></td></tr>`;
     $('interest-check-note').textContent = ic.note;
     $('interest-check-cash').textContent = ic.cash;
   }
@@ -297,11 +293,14 @@ function renderPeriod(d, periods) {
   if (!periods) return;
   const p = periods.periods[CURRENT];
   const grey = css('--muted');
+  const dive = Forecast.deepDive(d, p);
+  const snap = dive.period;
 
   [...$('period-bar').children].forEach(b =>
     b.setAttribute('aria-pressed', String(b.dataset.k === CURRENT)));
 
-  const per = p.months > 1 ? ` · ${money(p.spendingTotal / p.months)}/month across ${p.months} months` : '';
+  const per = snap.spendingMonthly != null
+    ? ` · ${money(snap.spendingMonthly)}/month across ${snap.months} months` : '';
   $('period-summary').innerHTML =
     `<b>${money2(p.spendingTotal)}</b> spending · <b>${money2(p.interestTotal)}</b> interest · ` +
     `<b>${money2(p.feesTotal)}</b> fees${per}`;
@@ -314,11 +313,10 @@ function renderPeriod(d, periods) {
     tip: `${s.type} · ${money2(s.total)}`,
   })), { rowH: 30, padL: 180 });
 
-  const disc = p.spending.filter(s => s.type === 'discretionary').reduce((a, b) => a + b.total, 0);
   const caveat = (d && d.spendingNote) ? ' ' + d.spendingNote : '';
   $('spend-note').textContent =
     `${p.label}. Blue is essential, orange discretionary, grey unidentified. ` +
-    `Discretionary is ${money2(disc)} — ${(disc / (p.spendingTotal || 1) * 100).toFixed(0)}% of the total, ` +
+    `Discretionary is ${money2(snap.discretionary)} — ${snap.discretionaryShare.toFixed(0)}% of the total, ` +
     `and the part that is a decision rather than a fixed cost.` + caveat;
 
   hbar($('c-interest'), p.interest.map(s => ({
@@ -326,16 +324,15 @@ function renderPeriod(d, periods) {
   })), { rowH: 34, padL: 180 });
   $('interest-note').textContent =
     `${money2(p.interestTotal)} of interest charged in ${p.label.toLowerCase()}. ` +
-    `The mortgage adds about $1,620/month on top, inside its payment rather than as a charge.`;
+    `The mortgage adds about ${money(dive.mortgageMonthly)}/month on top, inside its payment rather than as a charge.`;
 
   hbar($('c-fees'), p.fees.map(s => ({
     label: s.label, v: s.total,
     colour: s.type === 'avoidable' ? css('--critical') : css('--s1'),
     tip: `${s.type} · ${money2(s.total)}`,
   })), { rowH: 34, padL: 180 });
-  const avoid = p.fees.filter(s => s.type === 'avoidable').reduce((a, b) => a + b.total, 0);
   $('fees-note').textContent = p.feesTotal
-    ? `${money2(p.feesTotal)} of fees, of which ${money2(avoid)} was avoidable — red bars. `
+    ? `${money2(p.feesTotal)} of fees, of which ${money2(snap.avoidable)} was avoidable — red bars. `
       + `Avoidable means it followed from something that happened, not from holding the account.`
     : 'No fees in this period.';
 

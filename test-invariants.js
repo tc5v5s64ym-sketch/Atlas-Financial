@@ -68,8 +68,9 @@ ok(cashAccounts.length === assetCashLabels.length,
 ok(!data.headline.some(h => /cash on hand/i.test(h.label)),
   'the undifferentiated "Cash on hand" headline is gone',
   'it summed spendable, pass-through, staging and US holiday money as one figure');
-ok(/startingCash/.test(read('public/deepdive.js')),
-  'the Deep Dive cash tile derives from the plan cash register instead');
+ok(/Forecast\.deepDive/.test(read('public/deepdive.js'))
+  && /dive\.cashAmount/.test(read('public/deepdive.js')),
+  'the Deep Dive cash tile derives from the plan cash register via Forecast.deepDive');
 
 console.log('\n=== assets and debts reconcile ===');
 const assetTotal = data.assets.reduce((s, a) => s + a.value, 0);
