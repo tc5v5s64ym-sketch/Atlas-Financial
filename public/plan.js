@@ -242,6 +242,15 @@ const UNALLOCATED_NOTE = {
        money available to reduce debt. ${summary || ''}`,
 };
 
+/* ------------------------------------------- HELOC month-on-month, in words */
+// Forecast.compactSnapshot decides the direction. This map is how each
+// verdict reads, and which sign the delta wears.
+const HELOC_TREND = {
+  growing: { note: 'still growing', sign: '+' },
+  falling: { note: 'coming down', sign: '−' },
+  unchanged: { note: 'no change from last month', sign: '+' },
+};
+
 /* --------------------------------------- the funding-source cards, in words */
 // Whether a source covers the gap, contributes part of it, or cannot reach it
 // is `Forecast.recommend`'s — it is the same allocation the plan is built on,
@@ -1170,22 +1179,24 @@ function renderPlan(d, periods) {
   // The same day-zero figure the tile above shows. Summing raw balances here
   // reported $29,842.83 under the identical "Consumer debt" label while the
   // tile said $30,090.01 — the $247.18 of pending charges, twice on one page.
+  // Secured debt, monthly interest and the HELOC month-on-month direction are
+  // Forecast.compactSnapshot's — this page prints the tiles. Revolving
+  // headroom already belongs to Forecast.utilisation.
   const consumer = today.consumer;
-  const secured = d.debts.filter(x => x.secured).reduce((s, x) => s + (x.balance || 0), 0);
-  const monthlyInterest = d.debts.reduce((s, x) => s + (x.annualInterest || 0), 0) / 12;
+  const snap = Forecast.compactSnapshot(d.debts, d.helocHistory);
   // Pending charges have already spent the credit they are charged against,
   // so headroom is derived with them included rather than from posted
   // balances alone — the Travel Visa reads $21.69 of room the other way.
   const revolving = Forecast.utilisation(d.debts, d.revolvingExtra).totalAvailable;
-  const hh = d.helocHistory;
-  const helocDelta = hh.length >= 2 ? hh[hh.length - 1].v - hh[hh.length - 2].v : null;
+  const helocTrend = snap.heloc ? HELOC_TREND[snap.heloc.id] : null;
   $('snapshot-tiles').innerHTML = [
     { lab: 'Consumer debt', val: money(consumer), note: 'cards and revolving, excluding the house' },
-    { lab: 'Mortgage + HELOC', val: money(secured), note: 'secured on the home' },
-    { lab: 'Interest cost / month', val: money(monthlyInterest), note: 'across every debt, at current rates' },
+    { lab: 'Mortgage + HELOC', val: money(snap.secured), note: 'secured on the home' },
+    { lab: 'Interest cost / month', val: money(snap.monthlyInterest), note: 'across every debt, at current rates' },
     { lab: 'Credit left, everywhere', val: money(revolving), note: 'across all revolving facilities combined' },
-    ...(helocDelta != null ? [{ lab: 'HELOC vs last month', val: (helocDelta >= 0 ? '+' : '−') + money(Math.abs(helocDelta)).slice(1),
-      note: helocDelta >= 0 ? 'still growing' : 'coming down' }] : []),
+    ...(helocTrend ? [{ lab: 'HELOC vs last month',
+      val: helocTrend.sign + money(Math.abs(snap.heloc.delta)).slice(1),
+      note: helocTrend.note }] : []),
   ].map(t => `
     <div class="tile small">
       <div class="lab">${t.lab}</div><div class="val">${t.val}</div><div class="note">${t.note}</div>

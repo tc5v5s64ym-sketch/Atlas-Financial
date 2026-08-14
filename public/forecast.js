@@ -1449,6 +1449,46 @@
     };
   }
 
+  /* ------------------------------------------ compact snapshot */
+  // The Plan page's small tiles: secured debt, monthly interest across every
+  // facility, and whether the HELOC is still growing. `public/plan.js` used
+  // to decide all three — sum secured balances, divide annual interest by
+  // 12, subtract the last two HELOC history points and take `>= 0` as
+  // "still growing". Changing `/ 12` to `/ 6` left `npm test` green — the
+  // mutation B73 recorded, because no test could reach the page.
+  //
+  // Consumer debt on the same strip already reads the projected day-zero
+  // figure (`today.consumer`); this function does not re-sum it. Revolving
+  // headroom already belongs to `utilisation`.
+  //
+  // A month of interest is a twelfth of the annual figure the debt records
+  // already carry. The HELOC trend is last month minus the month before.
+  // The published tile rounds that delta to whole dollars (`money()`), so
+  // the verdict follows that dollar: a $0.40 move prints $0, and calling
+  // that "still growing" is the same contradiction the unallocated remainder
+  // had at four tenths of a cent. Exact zero, and any delta that rounds to
+  // zero, is unchanged — not growth.
+  function compactSnapshot(debts, helocHistory) {
+    let secured = 0;
+    let annualInterest = 0;
+    for (const debt of debts || []) {
+      if (debt.secured) secured += debt.balance || 0;
+      annualInterest += debt.annualInterest || 0;
+    }
+    const monthlyInterest = annualInterest / 12;
+    const history = helocHistory || [];
+    let heloc = null;
+    if (history.length >= 2) {
+      const delta = history[history.length - 1].v - history[history.length - 2].v;
+      const dollars = Math.round(Math.abs(Number(delta)));
+      heloc = {
+        delta,
+        id: dollars === 0 ? 'unchanged' : (delta > 0 ? 'growing' : 'falling'),
+      };
+    }
+    return { secured, monthlyInterest, heloc };
+  }
+
   /* ------------------------------- what the plan is, read one way, once ---- */
   // The two household-facing verdicts at the top of the Plan page — the status
   // band and the mission sentence — are decided from the same four facts: the
@@ -2309,7 +2349,7 @@
     recommendWeekly, recommend, incomeDeadline, counterfactuals,
     budgetBreakdown, monthlyFromWeekly,
     projectDebts,
-    nextDue, nextPaymentOut, unallocatedCash, planStatus, mission, nextMove, utilisation, renewal,
+    nextDue, nextPaymentOut, unallocatedCash, compactSnapshot, planStatus, mission, nextMove, utilisation, renewal,
     payoffDebts, payoffModel,
     paymentForMonths, EPSILON, STEP };
   if (typeof module !== 'undefined' && module.exports) module.exports = Forecast;
