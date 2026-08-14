@@ -45,6 +45,8 @@ const FORECAST_NON_AUTHORITY = new Set([
   'diffDays',
   'occurrences',
   'recommendWeekly',
+  'publishedSpendType',
+  'rollupSpending',
   'EPSILON',
   'STEP',
 ]);

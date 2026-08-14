@@ -18,9 +18,10 @@
    Named non-comparable semantics: business, reserve, unknown.
 
    Mixed source types inside one mapped category are not a comparable story.
-   `scripts/periods.js` keeps the first event's type and then accumulates later
-   events, so a mixed Health bucket can publish essential or discretionary
-   depending on encounter order. That collapse is not classification truth.
+   `Forecast.rollupSpending` publishes that mix as `unknown` (existing unresolved
+   semantic) rather than the first event's class, so Health cannot be consumed
+   as a clean essential or discretionary answer merely because one source event
+   happened first. Totals stay conserved.
 */
 
 const fs = require('fs');
@@ -142,24 +143,27 @@ function classificationProblems({
       const histTypes = periodTypes(periods, label);
       const mixed = libTypes.size > 1;
       const listedAmbiguous = sourceAmbiguous.has(label);
-
+      const libType = one(libTypes);
+      const published = one(histTypes);
       if (mixed && !listedAmbiguous) {
         problems.push(`library-mixed:${label}:${[...libTypes].sort().join(',')}`);
       }
       if (!mixed && listedAmbiguous) {
         problems.push(`stale-source-ambiguous:${label}`);
       }
-      if (histTypes.size > 1) {
+      if (histTypes.size > 1 && !(mixed || listedAmbiguous)) {
         problems.push(`periods-mixed:${label}:${[...histTypes].sort().join(',')}`);
       }
-
-      const libType = one(libTypes);
-      const published = one(histTypes);
+      const publishedOnlyComparable = histTypes.size > 0
+        && [...histTypes].every(t => COMPARABLE.has(t));
+      if ((mixed || listedAmbiguous) && publishedOnlyComparable) {
+        problems.push(`collapsed-mixed:${label}:published=${[...histTypes].sort().join(',')}`);
+      }
       if (libType && published && libType !== published) {
         problems.push(`stale-periods:${label}:library=${libType}:periods=${published}`);
       }
 
-      /* Mixed source types cannot be compared via the first-event published type. */
+      /* Mixed source types cannot be compared via a collapsed published class. */
       if (mixed || listedAmbiguous) continue;
 
       const historical = published || libType;
@@ -204,6 +208,7 @@ function classificationProblems({
   return problems;
 }
 
+const F = require('./public/forecast.js');
 const data = loadJson('data.json');
 const periods = loadJson('public/periods.json');
 const libraryText = read('docs/merchant-library.csv');
@@ -307,8 +312,8 @@ ok(healthLib.size === 2 && healthLib.has('essential') && healthLib.has('discreti
   [...healthLib].sort().join(','));
 ok(health && health.disposition === 'SOURCE-SEMANTIC AMBIGUITY',
   'Health mixed source types are surfaced as source-semantic ambiguity, not AGREE');
-ok(one(periodTypes(periods, 'Health')) === 'essential',
-  'published periods.json Health type is currently essential (first-event collapse)',
+ok(one(periodTypes(periods, 'Health')) === 'unknown',
+  'published periods.json Health type is unknown, not a collapsed essential class',
   one(periodTypes(periods, 'Health')));
 ok(health && health.forward === 'essential' && health.disposition !== 'AGREE',
   'forward Medical & health being essential does not make mixed Health a clean agreement');
@@ -333,6 +338,83 @@ coerceHealthEssential.library = clone(library).map(r =>
 ok(classificationProblems(coerceHealthEssential).some(p => p === 'stale-source-ambiguous:Health'),
   'making Health unanimous essential while it remains listed as source-ambiguous fails',
   classificationProblems(coerceHealthEssential).filter(p => p.includes('Health')).join('; '));
+
+console.log('\n=== mutation: Health consumer result is independent of first-event order ===');
+const medicalEvt = { category: 'Health', type: 'essential', amount: 40 };
+const salonEvt = { category: 'Health', type: 'discretionary', amount: 25 };
+const groceriesEvt = { category: 'Groceries', type: 'essential', amount: 100 };
+const diningEvt = { category: 'Restaurants', type: 'discretionary', amount: 35 };
+const caseA = [medicalEvt, salonEvt, groceriesEvt, diningEvt];
+const caseB = [salonEvt, medicalEvt, groceriesEvt, diningEvt];
+
+function collapseFirstEvent(events) {
+  const byCat = {};
+  for (const e of events) {
+    byCat[e.category] = byCat[e.category] || { total: 0, type: e.type };
+    byCat[e.category].total += e.amount;
+  }
+  return Object.keys(byCat).map(label => ({
+    label,
+    total: Math.round(byCat[label].total * 100) / 100,
+    type: byCat[label].type,
+  }));
+}
+
+function periodFrom(rows) {
+  const spendingTotal = Math.round(rows.reduce((s, r) => s + r.total, 0) * 100) / 100;
+  return { months: 1, spendingTotal, spending: rows, fees: [] };
+}
+
+const honestA = F.rollupSpending(caseA);
+const honestB = F.rollupSpending(caseB);
+const collapseA = collapseFirstEvent(caseA);
+const collapseB = collapseFirstEvent(caseB);
+const healthHonestA = honestA.find(r => r.label === 'Health');
+const healthHonestB = honestB.find(r => r.label === 'Health');
+const healthCollapseA = collapseA.find(r => r.label === 'Health');
+const healthCollapseB = collapseB.find(r => r.label === 'Health');
+
+ok(healthHonestA.total === 65 && healthHonestB.total === 65
+  && healthHonestA.total === healthCollapseA.total
+  && healthHonestB.total === healthCollapseB.total,
+  'total Health spending is $40+$25 = $65 in both orderings and both aggregators');
+ok(periodFrom(honestA).spendingTotal === 200 && periodFrom(honestB).spendingTotal === 200
+  && periodFrom(collapseA).spendingTotal === 200 && periodFrom(collapseB).spendingTotal === 200,
+  'total historical spending is $200 in both orderings and both aggregators');
+
+ok(healthCollapseA.type === 'essential' && healthCollapseB.type === 'discretionary',
+  'incumbent first-event collapse publishes opposite Health classes',
+  `${healthCollapseA.type} vs ${healthCollapseB.type}`);
+ok(healthHonestA.type === 'unknown' && healthHonestB.type === 'unknown'
+  && healthHonestA.type === healthHonestB.type,
+  'honest rollup publishes unknown Health in both orderings');
+ok(JSON.stringify(healthHonestA.types) === JSON.stringify(['discretionary', 'essential'])
+  && JSON.stringify(healthHonestB.types) === JSON.stringify(['discretionary', 'essential']),
+  'both orderings preserve the same mixed source types');
+
+const diveHonestA = F.deepDive({ plan: { startingCash: { amount: 0 } } }, periodFrom(honestA));
+const diveHonestB = F.deepDive({ plan: { startingCash: { amount: 0 } } }, periodFrom(honestB));
+const diveCollapseA = F.deepDive({ plan: { startingCash: { amount: 0 } } }, periodFrom(collapseA));
+const diveCollapseB = F.deepDive({ plan: { startingCash: { amount: 0 } } }, periodFrom(collapseB));
+
+ok(diveHonestA.period.discretionary === 35 && diveHonestB.period.discretionary === 35,
+  'historical discretionary is $35 (Restaurants only) in both honest orderings',
+  `${diveHonestA.period.discretionary} / ${diveHonestB.period.discretionary}`);
+ok(diveCollapseA.period.discretionary === 35 && diveCollapseB.period.discretionary === 100,
+  'first-event collapse makes Deep Dive discretionary $35 vs $100 — the live defect',
+  `${diveCollapseA.period.discretionary} vs ${diveCollapseB.period.discretionary}`);
+ok(diveHonestA.period.discretionary === diveHonestB.period.discretionary
+  && diveCollapseA.period.discretionary !== diveCollapseB.period.discretionary,
+  'honest discretionary is order-independent; collapsed discretionary is not');
+ok(F.publishedSpendType(healthHonestA.types || [healthHonestA.type]) === 'unknown'
+  && F.publishedSpendType(healthHonestB.types || [healthHonestB.type]) === 'unknown',
+  'household-facing Health class is unknown in both honest orderings');
+ok(F.publishedSpendType([healthCollapseA.type]) === 'essential'
+  && F.publishedSpendType([healthCollapseB.type]) === 'discretionary',
+  'collapsed Health is consumed as a clean essential or discretionary class depending on order');
+ok(healthHonestA.type !== 'essential' && healthHonestA.type !== 'discretionary'
+  && healthHonestB.type !== 'essential' && healthHonestB.type !== 'discretionary',
+  'neither honest ordering is consumed as a clean essential or discretionary Health category');
 
 console.log('\n=== mutation: Health first-event ordering is not classification truth ===');
 const medical = { category: 'Health', type: 'essential' };
@@ -383,12 +465,37 @@ ok(essentialFirst.withoutList.some(p => p.startsWith('library-mixed:Health:'))
 ok(!essentialFirst.withoutList.some(p => p.startsWith('contradiction:Health:'))
   && !discretionaryFirst.withoutList.some(p => p.startsWith('contradiction:Health:')),
   'mixed Health is not compared as a clean essential/discretionary contradiction via the collapsed type');
-ok(essentialFirst.withList.length === 0 && discretionaryFirst.withList.length === 0,
-  'listing Health as source-ambiguous makes both orderings explicit rather than failing live');
+ok(essentialFirst.withList.some(p => p === 'collapsed-mixed:Health:published=essential')
+  && discretionaryFirst.withList.some(p => p === 'collapsed-mixed:Health:published=discretionary'),
+  'SOURCE_AMBIGUOUS does not excuse a collapsed essential/discretionary published type');
 ok(essentialFirst.published !== discretionaryFirst.published
   && essentialFirst.withoutList.filter(p => p.startsWith('library-mixed:Health:'))[0]
     === discretionaryFirst.withoutList.filter(p => p.startsWith('library-mixed:Health:'))[0],
-  'classification correctness is independent of which Health event is encountered first');
+  'source-mix detection is independent of which Health event is encountered first');
+
+const honestPublished = {
+  categories: [{ id: 'health', class: 'essential', from: ['Health'] }],
+  excluded: [{ from: 'Business' }],
+  library: [
+    { pattern: 'H0', category: 'Health', type: 'discretionary' },
+    { pattern: 'H1', category: 'Health', type: 'essential' },
+  ],
+  periods: { periods: { ytd: { spending: [{
+    label: 'Health', total: 65, type: 'unknown', types: ['discretionary', 'essential'],
+  }] } } },
+  unresolved: new Set(),
+};
+ok(classificationProblems(Object.assign({}, honestPublished, {
+  sourceAmbiguous: new Set(['Health']),
+})).length === 0,
+  'SOURCE_AMBIGUOUS plus unknown published type is an honest product state');
+ok(classificationProblems(Object.assign({}, honestPublished, {
+  sourceAmbiguous: new Set(),
+})).some(p => p.startsWith('library-mixed:Health:'))
+  && !classificationProblems(Object.assign({}, honestPublished, {
+    sourceAmbiguous: new Set(),
+  })).some(p => p.startsWith('collapsed-mixed:')),
+  'unknown publication is not a collapsed clean class; the library mix still needs naming');
 
 console.log('\n=== mutation: agreeing comparable category, essential ↔ discretionary ===');
 const groceries = live.categories.find(c => c.id === 'groceries');
@@ -489,6 +596,10 @@ for (const label of mappedLabels) {
 ok(stale === 0,
   'unambiguous overlapping merchant-library types match public/periods.json',
   `${mappedLabels.size} mapped labels`);
+ok(/Forecast\.rollupSpending/.test(read('scripts/periods.js')),
+  'periods generation rollup uses Forecast.rollupSpending, not first-event type');
+ok(/Forecast\.publishedSpendType/.test(read('public/deepdive.js')),
+  'Deep Dive classifies historical bars via publishedSpendType, not the raw first-event type');
 
 const staleLib = clone(live);
 staleLib.library = clone(library).map(r =>

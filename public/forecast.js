@@ -1601,6 +1601,45 @@
   // period block is omitted; `renderPeriod` passes the period on screen.
   const INTEREST_FIT_PP = 4;
 
+  // Mixed essential+discretionary source types cannot publish as either class.
+  // `scripts/periods.js` used to keep the first event's type and then add later
+  // events into that row, so Health could read as essential only because a
+  // medical merchant happened to be encountered first. The existing `unknown`
+  // type already means "no clean essential/discretionary story" to Deep Dive.
+  function publishedSpendType(types) {
+    const unique = [];
+    (types || []).forEach(t => {
+      if (t && unique.indexOf(t) < 0) unique.push(t);
+    });
+    if (unique.length === 0) return null;
+    if (unique.length === 1) return unique[0];
+    return 'unknown';
+  }
+
+  function rollupSpending(events) {
+    const byCat = {};
+    (events || []).forEach(e => {
+      const label = e.category || e.label;
+      if (!label) return;
+      const amount = e.amount != null ? Number(e.amount) : Number(e.total);
+      if (!byCat[label]) byCat[label] = { total: 0, types: [] };
+      byCat[label].total += amount || 0;
+      if (e.type && byCat[label].types.indexOf(e.type) < 0) {
+        byCat[label].types.push(e.type);
+      }
+    });
+    return Object.keys(byCat).map(label => {
+      const v = byCat[label];
+      const row = {
+        label,
+        total: Math.round(v.total * 100) / 100,
+        type: publishedSpendType(v.types),
+      };
+      if (v.types.length > 1) row.types = v.types.slice().sort();
+      return row;
+    }).sort((a, b) => b.total - a.total);
+  }
+
   function deepDive(data, period) {
     data = data || {};
     const cash = (data.plan && data.plan.startingCash) || {};
@@ -1652,7 +1691,7 @@
       const spendingTotal = period.spendingTotal || 0;
       const months = period.months || 0;
       const discretionary = (period.spending || [])
-        .filter(s => s.type === 'discretionary')
+        .filter(s => publishedSpendType(s.types || [s.type]) === 'discretionary')
         .reduce((a, b) => a + b.total, 0);
       const avoidable = (period.fees || [])
         .filter(s => s.type === 'avoidable')
@@ -2698,7 +2737,7 @@
     recommendWeekly, recommend, incomeDeadline, counterfactuals,
     budgetBreakdown, monthlyFromWeekly,
     projectDebts,
-    nextDue, nextPaymentOut, unallocatedCash, compactSnapshot, publicationTotals, deepDive, planStatus, mission, planPhases, nextMove, utilisation, renewal,
+    nextDue, nextPaymentOut, unallocatedCash, compactSnapshot, publicationTotals, deepDive, publishedSpendType, rollupSpending, planStatus, mission, planPhases, nextMove, utilisation, renewal,
     payoffDebts, payoffModel,
     paymentForMonths, EPSILON, STEP };
   if (typeof module !== 'undefined' && module.exports) module.exports = Forecast;

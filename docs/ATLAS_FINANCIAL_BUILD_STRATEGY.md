@@ -487,10 +487,13 @@ built *on* that picture, the picture needs owners that a test can reach.
   `reserve`, and `unknown` stay named non-comparable semantics; School & clubs
   is the one live comparable disagreement and is recorded as Q24 rather than
   guessed. Health source rows remain mixed essential/discretionary (medical
-  vs personal care); that mix is a closed source-semantic ambiguity, not a
-  clean essential agreement and not an owner guess. Published household cash
-  figures are unchanged. Phase 1 product exit was assessed as ready to start
-  `AF-RECON-01` / `B91` (no blocking gap).
+  vs personal care); that mix is a closed source-semantic ambiguity, not an
+  owner guess. `Forecast.rollupSpending` publishes the mix as `unknown` so
+  Deep Dive cannot consume it as a clean essential/discretionary class from
+  first-event order. Published Plan cash figures and historical discretionary
+  dollar totals are unchanged; Health leaves the historical essential class
+  because that class was the collapsed first-event story. Phase 1 product
+  exit was assessed as ready to start `AF-RECON-01` / `B91` (no blocking gap).
 
 ### Phase 1 product exit — useful before infrastructure
 

@@ -220,6 +220,10 @@ const page = read('public/deepdive.js');
 const pageCode = page.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
 ok(/Forecast\.deepDive\(/.test(page),
   'the Deep Dive page reads totals from Forecast.deepDive');
+ok(/Forecast\.publishedSpendType/.test(page),
+  'historical bar class uses publishedSpendType so mixed source types cannot masquerade as one clean class');
+ok(/unidentified or mixed/.test(page),
+  'the spending legend names mixed alongside unidentified');
 ok(/dive\.cashAmount/.test(pageCode),
   'spendable cash is the returned register amount');
 ok(!/26\.99/.test(pageCode),
@@ -252,7 +256,7 @@ const FROM_MONTH = '        spendingMonthly: months > 1 ? spendingTotal / months
 const TO_MONTH = '        spendingMonthly: months > 1 ? spendingTotal / months / 2 : null,';
 const FROM_ELSE = '      elsewhere += h.value;';
 const TO_ELSE = '      elsewhere += h.value / 2;';
-const FROM_DISC = '        .filter(s => s.type === \'discretionary\')\n';
+const FROM_DISC = '        .filter(s => publishedSpendType(s.types || [s.type]) === \'discretionary\')\n';
 const TO_DISC = '';
 ok(FORECAST_SRC.split(FROM_FIT).length - 1 === 1, 'the ±4pp band appears once');
 ok(FORECAST_SRC.split(FROM_MONTH).length - 1 === 1, 'the monthly average appears once');

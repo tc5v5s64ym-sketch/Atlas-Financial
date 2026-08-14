@@ -1024,10 +1024,12 @@ overlaps must agree, be a named non-comparable semantic (`business`,
 source-semantic ambiguity. School & clubs is the live comparable disagreement
 (forward discretionary, historical essential) and is Q24 — not guessed. Health
 merchant-library types remain mixed (`essential` medical rows and
-`discretionary` personal-care rows); the published `periods.json` Health type
-is first-event collapse and is not treated as a clean essential agreement.
-Personal-care merchants were not reclassified as essential. Build-strategy
-item `AF-CLASS-01`.
+`discretionary` personal-care rows). Mixed comparable source types publish as
+`unknown` with the source `types` retained — the existing unresolved semantic —
+so Deep Dive cannot consume Health as a clean essential or discretionary class
+because one event happened first. Totals stay conserved. Personal-care
+merchants were not reclassified as essential. Build-strategy item
+`AF-CLASS-01`.
 
 **Outcome:** the same household spending category cannot disagree on
 essential/discretionary without a failing test. Preserve genuinely distinct
