@@ -13,6 +13,7 @@
  */
 const fs = require('fs');
 const vm = require('vm');
+const { sourceText } = require('./test-source-text');
 const F = require('./public/forecast.js');
 const data = require('./data.json');
 const periods = require('./public/periods.json');
@@ -23,7 +24,7 @@ const ok = (cond, label, detail = '') => {
   console.log(`  ${cond ? 'PASS' : 'FAIL'}  ${label}${detail ? '  — ' + detail : ''}`);
 };
 const same = (a, b) => a === b;
-const read = p => fs.readFileSync(p, 'utf8');
+const read = p => sourceText(fs.readFileSync(p, 'utf8'));
 const titles = outlook => (outlook.phases || []).map(p => p.titleId).join(' → ');
 const riskIds = outlook => (outlook.risks || []).map(r => r.id).join(', ');
 const risk = (outlook, id) => (outlook.risks || []).find(r => r.id === id) || null;

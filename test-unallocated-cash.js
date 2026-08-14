@@ -10,6 +10,7 @@
  */
 const fs = require('fs');
 const vm = require('vm');
+const { sourceText } = require('./test-source-text');
 const F = require('./public/forecast.js');
 const data = require('./data.json');
 const periods = require('./public/periods.json');
@@ -21,7 +22,7 @@ const ok = (cond, label, detail = '') => {
 };
 const cents = n => Math.round(n * 100);
 const same = (a, b) => cents(a) === cents(b);
-const read = p => fs.readFileSync(p, 'utf8');
+const read = p => sourceText(fs.readFileSync(p, 'utf8'));
 const money2 = n => (n < 0 ? '−$' : '$') + Math.abs(Number(n)).toLocaleString('en-CA', {
   minimumFractionDigits: 2, maximumFractionDigits: 2,
 });

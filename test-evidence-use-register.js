@@ -17,6 +17,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { sourceText } = require('./test-source-text');
 
 const ROOT = path.join(__dirname);
 const REGISTER_PATH = path.join(ROOT, 'docs/evidence_use/register.json');
@@ -41,6 +42,7 @@ function walkMarkdown(dir, out = []) {
 }
 
 function parseEvidenceIdFences(relPath, text) {
+  text = sourceText(text);
   const occurrences = [];
   const fenceRe = new RegExp(FENCE_RE.source, 'gm');
   let fenceIndex = 0;
