@@ -1527,18 +1527,20 @@
       "owner": "Both"
     },
     {
-      "tier": 0,
-      "q": "ANSWERED — the \"credit card\" transfers went to the cards",
-      "detail": "It looked unexplained because only one of five cards was visible. Across the twelve-month statement window the cards received $55,178.02 — Travel Visa $33,696.18, Cash Back $11,879.50, personal Visa $6,632.34, MBNA $2,970.00 — against $39,875.43 of TFR-TO C/C leaving the accounts. The cards received $15,302.59 MORE than those transfers sent, the rest arriving by other routes including direct HELOC payments.",
-      "changes": "Nothing is hiding. No undisclosed card, no leakage. The hypothesis that this would reveal a card missing from the debt ranking is disproved.",
-      "owner": "Closed 9 Aug 2026"
+      "id": "Q2",
+      "tier": 1,
+      "q": "Where do the \"TFR-TO C/C\" transfers go?",
+      "detail": "$46,657 over 18 months labelled as credit-card payments. Payment-matching analysis of the captured cards exists in standing facts; it is evidence about destinations, not a closed household answer.",
+      "changes": "Could reveal a credit card with a significant balance absent from the debt ranking. At ~$2,600/month of servicing, a debt of real size is plausible.",
+      "owner": "Dale"
     },
     {
-      "tier": 0,
-      "q": "ANSWERED — the monthly transfer was rent, and it stopped",
-      "detail": "It was not a spousal transfer. Amanda's parents moved their lab into the garage and paid $1,000–1,100/month in rent from March 2025. It stopped after May 2026 because that business is not going well. The dental thread joins up: the $10,000 Ivoclar Vivadent charge her father funded was capital equipment for that lab.",
-      "changes": "Recorded for 18 months as her contribution to the household. It was a third party paying rent, and its loss never registered as an income event.",
-      "owner": "Answered 9 Aug 2026"
+      "id": "Q5",
+      "tier": 2,
+      "q": "Why did the wife's monthly transfer stop after May 2026?",
+      "detail": "$1,000/month from March 2025, stepping to $1,100 in November 2025, reliable through May 2026, then absent. Standing facts record an analysis that this was garage rent; that is evidence, not a closed household answer.",
+      "changes": "~$1,100/month. If the payment method changed, the money may still be arriving elsewhere. If the income changed, the household budget needs rebuilding around it.",
+      "owner": "Dale + wife"
     }
   ],
   "coverage": [

@@ -545,7 +545,9 @@ a period with no family travel in it].
 
 ## The $1,000–1,100 monthly transfer was RENT, not a spousal transfer
 
-*(Owner-confirmed 2026-08-09. This corrects an 18-month misreading.)*
+*(Owner-confirmed 2026-08-09 as standing-fact evidence. This corrects an
+18-month misreading. It does not close Q5. Q5 remains OPEN in
+`docs/01_OPEN_QUESTIONS.md` until that file records it as ANSWERED.)*
 
 It was **rent paid by Amanda's parents**, because they moved **their lab into the
 garage**. It ran from March 2025, stepped from $1,000 to $1,100 in November, and
@@ -1029,9 +1031,13 @@ Two caveats on the categories:
 across 13 categories, which is the B34 library seeded from real data rather than
 guessed at.
 
-### RESOLVED — where the $46,657 of "TFR-TO C/C" went
+### Analytical evidence — where the $46,657 of "TFR-TO C/C" went
 
-**It went to the cards. There was never any missing money.**
+This section records payment-matching analysis. It is not the household
+question-status authority. Q2 remains OPEN in `docs/01_OPEN_QUESTIONS.md`
+until that file records it as ANSWERED.
+
+**The captured cards received more than those transfers sent.**
 
 This was the project's largest unexplained flow and a Tier 1 question. The
 puzzle: $46,657 left the accounts labelled as credit-card payments, while the TD
@@ -1058,10 +1064,9 @@ the Travel Visa**, the high-throughput card that is paid off and reused. The
 personal Visa took only $6,632 of it, which is exactly why the earlier analysis
 could not make the numbers work.
 
-**Nothing is hiding.** No undisclosed card, no leakage. The earlier hypothesis —
-that the transfers might reveal a card with a significant balance absent from the
-debt ranking — is **disproved**: every card is now captured, and the payment
-totals exceed the transfers rather than falling short.
+On this matching, the captured cards absorb the labelled transfers rather than
+falling short of them. That is evidence against a missing-card leak; it is not
+an owner confirmation that Q2 is ANSWERED.
 
 ### Chequing spending rebuilt — and $25,490 of it was never spending
 
