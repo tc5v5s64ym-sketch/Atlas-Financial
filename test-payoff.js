@@ -48,6 +48,7 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const { sourceText } = require('./test-source-text');
 const F = require('./public/forecast.js');
 const data = require('./data.json');
 
@@ -56,7 +57,7 @@ const ok = (cond, label, detail = '') => {
   if (!cond) failures++;
   console.log(`  ${cond ? 'PASS' : 'FAIL'}  ${label}${detail ? '  — ' + detail : ''}`);
 };
-const read = p => fs.readFileSync(path.join(__dirname, p), 'utf8');
+const read = p => sourceText(fs.readFileSync(path.join(__dirname, p), 'utf8'));
 const money = n => (n < 0 ? '−$' : '$') + Math.abs(n).toLocaleString('en-CA',
   { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 // A cent is the unit a household reads. Two derivations of one figure by
@@ -577,6 +578,8 @@ console.log('\n=== 8. mutation: breaking the engine breaks the answer ===');
  * answer when it is removed was not producing it. */
 const FORECAST_SRC = read('public/forecast.js');
 function mutant(from, to) {
+  from = sourceText(from);
+  to = sourceText(to);
   const count = FORECAST_SRC.split(from).length - 1;
   if (count !== 1) return { error: `target appears ${count} time(s)` };
   const sandbox = { module: { exports: {} } };

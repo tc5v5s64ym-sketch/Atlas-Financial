@@ -179,7 +179,9 @@ if (!sawSilver && SILVER) {
 }
 
 const next = out.join('\n');
-const current = fs.readFileSync(CSV, 'utf8');
+// Staleness is about computed values, not checkout line endings. A CRLF
+// working tree is the same CSV as the LF original.
+const current = fs.readFileSync(CSV, 'utf8').replace(/\r\n?/g, '\n');
 if (check) {
   if (next !== current) {
     console.error('positions.csv is STALE — its computed rows do not match canonical state.\n' +

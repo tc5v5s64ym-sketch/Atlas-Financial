@@ -24,9 +24,9 @@ Capabilities that are wanted but not yet in Phases 1–4 are recorded in
 **Later capabilities — status and reopen trigger**. That table is memory and
 trigger, not a second order of work.
 
-**Current sequencing (14 August 2026).** B74 and B87 are closed. The remaining
+**Current sequencing (14 August 2026).** B74, B87 and B88 are closed. The remaining
 implementation order is the **Post-B74 architecture disposition** below. Next
-implementation outcome: CRLF / Windows test reliability (`B88`). Next major product
+implementation outcome: derive remaining duplicate publication values (`B89`). Next major product
 milestone: evidence refresh / reconciliation (`B91`). History (`B20`) follows
 that loop; it is not the next infrastructure item.
 
@@ -253,10 +253,10 @@ rules above.
 
 - **`AF-QSTAT-01` / `B87`** — one authority for OPEN / ANSWERED. **Complete.**
 - **`AF-LINE-01` / `B88`** — tests must not spuriously depend on checkout
-  line endings. **Next implementation outcome.** After `B87` because it is cheap and isolated.
+  line endings. **Complete.**
 - **`AF-PUB-01` / `B89`** — where Atlas already has canonical inputs and
   deterministic derivation, do not store the result independently. Narrow;
-  do not redesign `data.json`.
+  do not redesign `data.json`. **Next implementation outcome.**
 - **`AF-CLASS-01` / `B90`** — the same household spending category cannot
   silently tell contradictory essential/discretionary stories. Prefer a
   small guard. Preserve `business` and `reserve`.
@@ -433,6 +433,11 @@ built *on* that picture, the picture needs owners that a test can reach.
   invariants the regexes were protecting.
 - **Non-goals** — Windows product support as a feature; changing financial
   tests' numerical meaning.
+- **State** — **complete.** Source-inspection tests normalize checkout newlines
+  at the test input boundary (`test-source-text.js`). LF and CRLF of the same
+  logical source extract the same blocks; the old LF-only `\n}\n` boundary still
+  misses CRLF; malformed source still fails. Proved by `test-line-endings.js`.
+  No `.gitattributes`; product bytes and financial answers are unchanged.
 
 ### AF-PUB-01 · Stop storing derived publication totals
 

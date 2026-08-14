@@ -11,6 +11,7 @@
 const fs = require('fs');
 const path = require('path');
 const F = require('./public/forecast.js');
+const { sourceText } = require('./test-source-text');
 const data = require('./data.json');
 const periods = require('./public/periods.json');
 
@@ -21,7 +22,7 @@ const ok = (cond, label, detail = '') => {
 };
 const near = (a, b, eps = 0.01) => Math.abs(a - b) <= eps;
 const money = n => '$' + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-const read = p => fs.readFileSync(path.join(__dirname, p), 'utf8');
+const read = p => sourceText(fs.readFileSync(path.join(__dirname, p), 'utf8'));
 
 const plan = data.plan;
 const asOf = data.meta.asOf;

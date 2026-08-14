@@ -12,6 +12,7 @@
  */
 const fs = require('fs');
 const path = require('path');
+const { sourceText } = require('./test-source-text');
 const data = require('./data.json');
 
 let failures = 0;
@@ -20,7 +21,7 @@ const ok = (cond, label, detail = '') => {
   console.log(`  ${cond ? 'PASS' : 'FAIL'}  ${label}${detail ? '  — ' + detail : ''}`);
 };
 
-const read = rel => fs.readFileSync(path.join(__dirname, rel), 'utf8');
+const read = rel => sourceText(fs.readFileSync(path.join(__dirname, rel), 'utf8'));
 const clone = x => JSON.parse(JSON.stringify(x));
 
 const CANONICAL_STATUSES = ['OPEN', 'ASKED', 'ANSWERED', 'BLOCKED'];
@@ -34,6 +35,7 @@ function normalize(text) {
 }
 
 function parseCanonicalQuestions(markdown) {
+  markdown = sourceText(markdown);
   const questions = [];
   const seen = new Set();
   const headingRe = /^###\s+(Q\d+[a-zA-Z]?)\.\s+(.+?)\s*$/gm;

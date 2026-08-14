@@ -11,6 +11,7 @@
  */
 const fs = require('fs');
 const vm = require('vm');
+const { sourceText } = require('./test-source-text');
 const F = require('./public/forecast.js');
 const data = require('./data.json');
 
@@ -22,7 +23,7 @@ const ok = (cond, label, detail = '') => {
 const clone = x => JSON.parse(JSON.stringify(x));
 const cents = n => Math.round(n * 100);
 const same = (a, b) => cents(a) === cents(b);
-const read = p => fs.readFileSync(p, 'utf8');
+const read = p => sourceText(fs.readFileSync(p, 'utf8'));
 
 /* A stream built so that EVERY excluded event sits on or before the winner's
  * date. If any exclusion failed to bite, that event would change the day or

@@ -33,6 +33,7 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const { sourceText } = require('./test-source-text');
 const F = require('./public/forecast.js');
 const data = require('./data.json');
 
@@ -41,7 +42,7 @@ const ok = (cond, label, detail = '') => {
   if (!cond) failures++;
   console.log(`  ${cond ? 'PASS' : 'FAIL'}  ${label}${detail ? '  — ' + detail : ''}`);
 };
-const read = p => fs.readFileSync(path.join(__dirname, p), 'utf8');
+const read = p => sourceText(fs.readFileSync(path.join(__dirname, p), 'utf8'));
 // Money compared at the cent, which is the unit every one of these figures is
 // published in. A float landing on 3543.1600000000003 is the same $3,543.16.
 const cents = n => Math.round(n * 100);
@@ -432,6 +433,8 @@ console.log('\n=== 10. mutation: breaking the engine breaks the answer ===');
  * while they lived in the page. */
 const FORECAST_SRC = read('public/forecast.js');
 function mutant(from, to) {
+  from = sourceText(from);
+  to = sourceText(to);
   const occurrences = FORECAST_SRC.split(from).length - 1;
   if (occurrences !== 1) return { error: `target appears ${occurrences} time(s)` };
   const sandbox = { module: { exports: {} } };

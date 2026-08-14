@@ -16,7 +16,7 @@ exist yet, months after it did.
 close a question on its own. The remaining work order lives in
 [`docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`](docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md)
 under **Post-B74 architecture disposition**. Next implementation outcome:
-**CRLF / Windows test reliability** (`B88`). Do not copy that sequence here.
+**derive remaining duplicate publication values** (`B89`). Do not copy that sequence here.
 
 Everything lives in **one folder**:
 

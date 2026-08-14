@@ -9,6 +9,7 @@
  */
 const fs = require('fs');
 const vm = require('vm');
+const { sourceText } = require('./test-source-text');
 const F = require('./public/forecast.js');
 const data = require('./data.json');
 
@@ -18,7 +19,7 @@ const ok = (cond, label, detail = '') => {
   console.log(`  ${cond ? 'PASS' : 'FAIL'}  ${label}${detail ? '  — ' + detail : ''}`);
 };
 const same = (a, b) => a === b;
-const read = p => fs.readFileSync(p, 'utf8');
+const read = p => sourceText(fs.readFileSync(p, 'utf8'));
 const money = n => (n < 0 ? '−$' : '$') + Math.round(Math.abs(n)).toLocaleString('en-CA');
 
 /* Independent fixture. Amex is unsecured, so it is in the interest total and

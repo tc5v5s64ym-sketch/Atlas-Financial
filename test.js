@@ -21,6 +21,7 @@ const path = require('path');
 
 const suites = [
   ['static sanity', 'test-static.js'],
+  ['source line-ending independence', 'test-line-endings.js'],
   ['forecast engine + opening-gap regression', 'test-forecast.js'],
   ['income dependency deadline', 'test-income-deadline.js'],
   ['next due obligation', 'test-next-due.js'],

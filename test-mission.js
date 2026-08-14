@@ -26,6 +26,7 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const { sourceText } = require('./test-source-text');
 const F = require('./public/forecast.js');
 const data = require('./data.json');
 
@@ -34,7 +35,7 @@ const ok = (cond, label, detail = '') => {
   if (!cond) failures++;
   console.log(`  ${cond ? 'PASS' : 'FAIL'}  ${label}${detail ? '  — ' + detail : ''}`);
 };
-const read = p => fs.readFileSync(path.join(__dirname, p), 'utf8');
+const read = p => sourceText(fs.readFileSync(path.join(__dirname, p), 'utf8'));
 const ids = result => result.parts.map(p => p.id).join(' → ');
 const part = (result, id) => result.parts.find(p => p.id === id) || null;
 
@@ -266,6 +267,8 @@ console.log('\n=== mutation: breaking the engine breaks the answer ===');
  * still passes when the code it guards is removed is not a guard. */
 const FORECAST_SRC = read('public/forecast.js');
 function mutant(from, to) {
+  from = sourceText(from);
+  to = sourceText(to);
   const occurrences = FORECAST_SRC.split(from).length - 1;
   if (occurrences !== 1) return { error: `target appears ${occurrences} time(s)` };
   const sandbox = { module: { exports: {} } };

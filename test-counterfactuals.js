@@ -46,6 +46,7 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const { sourceText } = require('./test-source-text');
 const F = require('./public/forecast.js');
 const data = require('./data.json');
 
@@ -54,7 +55,7 @@ const ok = (cond, label, detail = '') => {
   if (!cond) failures++;
   console.log(`  ${cond ? 'PASS' : 'FAIL'}  ${label}${detail ? '  — ' + detail : ''}`);
 };
-const read = p => fs.readFileSync(path.join(__dirname, p), 'utf8');
+const read = p => sourceText(fs.readFileSync(path.join(__dirname, p), 'utf8'));
 const cents = n => Math.round(n * 100);
 const same = (a, b) => cents(a) === cents(b);
 const money = n => '$' + Number(n).toFixed(2);
@@ -575,6 +576,8 @@ console.log('\n=== 12. mutation: breaking the engine breaks the answer ===');
  * being broken was not being tested. */
 const FORECAST_SRC = read('public/forecast.js');
 function mutant(from, to) {
+  from = sourceText(from);
+  to = sourceText(to);
   const occurrences = FORECAST_SRC.split(from).length - 1;
   if (occurrences !== 1) return { error: `target appears ${occurrences} time(s)` };
   const sandbox = { module: { exports: {} } };

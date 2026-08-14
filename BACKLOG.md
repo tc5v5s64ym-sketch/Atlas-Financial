@@ -13,7 +13,7 @@ Last reviewed **2026-08-14**. Phase: **analysis** — capture is essentially don
 **Post-B74 implementation order** is owned by
 [`docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`](docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md),
 not by this file. Items `B87`–`B91`, then reused `B20` / `B21`, follow that
-order. Next outcome: **`B88` CRLF / Windows test reliability**.
+order. Next outcome: **`B89` derive remaining duplicate publication values**.
 
 **Operational knowledge lives in `docs/ACCOUNT_FACTS.md`**, not here: how each
 institution's data is obtained, the download endpoints, and the traps that cost
@@ -982,7 +982,7 @@ stream, so two Burrard payments on 12 August correctly produce $320 and $623
 without two calendars.
 
 Do not reopen the closed schedule-authority list. Remaining post-B74 work is
-`B87`–`B91`, then `B20` / `B21`, per the build strategy.
+`B89`–`B91`, then `B20` / `B21`, per the build strategy.
 
 **B87 · One authority for question OPEN / ANSWERED status** · **DONE 2026-08-14**
 `docs/01_OPEN_QUESTIONS.md` is the sole OPEN / ASKED / ANSWERED / BLOCKED
@@ -991,14 +991,11 @@ authority. Deep Dive `data.json` `questions` no longer uses `tier === 0` or
 matching and rent analysis stay evidence, not household answers. Proved by
 `test-question-status.js`. Build-strategy item `AF-QSTAT-01`.
 
-**B88 · Tests must not depend on checkout line endings** · `QUEUED` · *housekeeping*
-After `B87`. Some source-scraping tests use LF-only function-boundary regexes
-and fail on CRLF while Linux CI stays green. No `.gitattributes`. Build-strategy
-item `AF-LINE-01`.
-
-**Outcome:** the invariants those tests protect still fail on a real defect and
-no longer fail because the checkout used CRLF. Prefer newline-tolerant regexes
-and/or `eol=lf`. Do not weaken the architecture assertions.
+**B88 · Tests must not depend on checkout line endings** · **DONE 2026-08-14** · *housekeeping*
+Source-inspection tests no longer fail because a checkout used CRLF. Newline
+identity is normalized at the test input boundary (`test-source-text.js`); the
+invariants those tests protect still fail on a real defect. Proved by
+`test-line-endings.js`. No `.gitattributes`. Build-strategy item `AF-LINE-01`.
 
 **B89 · Stop storing derived publication totals** · `QUEUED` · *small*
 After `B88`. `data.json` still independently stores some values the engine
