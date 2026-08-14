@@ -141,7 +141,7 @@ const advice = F.recommend(plan, asOf, {
   targetBuffer: plan.defaults.targetBuffer,
 });
 const capMonthly = advice.weekly * WEEKS_PER_MONTH;
-ok(near(capMonthly, 4761.29, 0.5), 'the cap is about $4,761/month', money(capMonthly));
+ok(near(capMonthly, 4717.81, 0.5), 'the cap is about $4,718/month', money(capMonthly));
 ok(budget.requiredMonthly < capMonthly,
   'the cap covers the essential requirement, so a plan exists',
   `${money(budget.requiredMonthly)} required vs ${money(capMonthly)} cap`);

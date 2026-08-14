@@ -252,7 +252,8 @@ built *on* that picture, the picture needs owners that a test can reach.
   from `Forecast.expandEvents`; standing reminders stay independent and tagged
   as non-cash. `data.json` `upcoming` is deleted as a schedule authority.
   Acceptance is proved by `test-schedule-authority.js`. HELOC 21st vs month-end
-  cash treatment remains Q19 and is not closed by this item.
+  cash treatment remains Q19 and is not closed by this item; the 21st stays on
+  the calendar as a reminder-only look-point, not a cash payment.
 
 ### Phase 1 product exit — useful before infrastructure
 

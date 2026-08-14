@@ -130,6 +130,12 @@ function standingReminders(asOf) {
   }
 
   events.push(
+    { uid: 'atlas-reminder-heloc-due-21@household',
+      summary: 'Reminder — HELOC contractual due date (TD-stated 21st; not a chequing outflow)',
+      start: '2026-08-21', rrule: MONTHLY(21),
+      kind: 'reminder',
+      sourceId: 'heloc-contractual-due',
+      description: 'TD Home Equity FlexLine contractual due date. Observed posting is month-end capitalisation into the HELOC balance (~$814), not a cash payment from chequing. This reminder is a look-point only. Q19 remains open on whether cash must still be reserved on the 21st.' + src },
     { uid: 'atlas-reminder-property-tax@household',
       summary: 'Reminder — Maple Ridge property tax due', start: '2027-07-02', rrule: 'FREQ=YEARLY',
       kind: 'reminder',

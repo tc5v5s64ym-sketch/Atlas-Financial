@@ -495,8 +495,9 @@ reprice the facility sitting beside it.
 `Forecast.expandEvents`'s, from the `plan` inputs. `renderCalendar()` only
 formats the `sim.events` it is handed. The exported `.ics` derives its
 cash-payment VEVENTs from that same expander over a longer horizon; statement
-closes, tax deadlines and the mortgage-renewal countdown remain reminder-only
-look-points and are tagged so they cannot be read as chequing outflows. A
+closes, tax deadlines, the mortgage-renewal countdown and the HELOC contractual
+21st remain reminder-only look-points and are tagged so they cannot be read as
+chequing outflows. A
 hand-kept `upcoming` list used to be a third schedule; it is deleted. Paid
 forensic notes live in `data.json` `settled` as an overlay and do not decide
 what is due.
@@ -504,9 +505,12 @@ what is due.
 **HELOC 21st vs month-end is not settled by this architecture.** The live cash
 plan still models HELOC interest as a month-end `nonCash` capitalisation,
 because the observed posting is a debit on the HELOC itself with no matching
-chequing payment. TD also states a contractual minimum due on the 21st.
-`docs/01_OPEN_QUESTIONS.md` Q19 owns that remaining household-facing question.
-This file does not pick 21st or month-end to make the calendar cleaner.
+chequing payment. TD also states a contractual minimum due on the 21st. The
+exported calendar keeps that 21st as a reminder-only look-point, not a
+chequing outflow, and derives the month-end capitalisation reminder from the
+Plan. `docs/01_OPEN_QUESTIONS.md` Q19 owns that remaining household-facing
+question. This file does not pick 21st or month-end to make the calendar
+cleaner.
 
 **`plan.nextDollar` is derived, not instructed.** Its own provenance note says so:
 neither Dale nor Amanda has stated or approved the `protect-then-highest-cost`

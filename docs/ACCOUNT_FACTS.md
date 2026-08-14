@@ -31,7 +31,9 @@ Statement close dates: **TD card ~23rd** · **Triangle 17th** ·
 equal to the monthly interest charge. The live cash plan does **not** reserve
 chequing cash for that day: observed posting is a month-end debit on the HELOC
 itself with no matching chequing payment, modelled as `nonCash` / `capitalise`
-on day 31. Whether the 21st must also be a household cash outflow is
+on day 31. The household calendar keeps the 21st as a reminder-only look-point
+(not a chequing outflow) and derives the month-end capitalisation reminder from
+the Plan. Whether the 21st must also be a household cash outflow is
 `docs/01_OPEN_QUESTIONS.md` Q19. This file records both facts; it does not pick
 one to make a calendar cleaner.
 
@@ -75,10 +77,12 @@ March 2026 — route unknown, possibly her account). Netflix does not exist
 anywhere in the data; the streaming spend is Amazon Channels, several small
 charges on scattered days.
 
-**CMAW Local 1995 union dues ($25/month on the 15th) are not a standing
-household bill.** They appear in the chequing history, but the owner intends to
-cancel them. Cancellation is not yet confirmed. They are recorded as an open
-action, not as a canonical `plan.bills` row and not as a future ICS payment.
+**CMAW Local 1995 union dues ($25/month on the 15th) remain a standing Plan
+bill until cancellation is actually confirmed.** They still appear in the
+chequing history. The owner intends to cancel them, and that intent is an open
+action, but the $25 stays reserved as household cash until evidence closes the
+action. Do not guess an effective end date. They are not inside the CRA
+instalment reserve.
 
 **BC Hydro is not one of them.** It moved to Amanda's DEBT&PAYMENTS account in
 May 2026 and she has paid it there since — $235, $250, $250. It is therefore

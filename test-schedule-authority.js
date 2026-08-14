@@ -148,28 +148,40 @@ console.log('\n=== RESP joins the real cash path exactly once ===');
     'the ICS script no longer hardcodes an RESP payment literal');
 }
 
-console.log('\n=== union dues are not permanent future cash authority ===');
+console.log('\n=== union dues stay reserved until cancellation is confirmed ===');
 {
-  ok(!(plan.bills || []).some(b => /union|cmaw/i.test(b.id + b.label)),
-    'union dues were not promoted into plan.bills');
+  const dues = (plan.bills || []).find(b => b.id === 'uniondues');
+  ok(!!dues && same(dues.amount, 25) && dues.day === 15
+    && dues.frequency === 'monthly' && dues.budgetCategory === null,
+    'union dues are a canonical $25 monthly bill on the 15th, not a spending category');
   ok(!(plan.obligations || []).some(o => /union|cmaw/i.test(o.id + o.label)),
-    'and not into plan.obligations');
-  const stream = F.expandEvents(plan, asOf, icsEnd);
-  ok(!stream.some(e => /union|cmaw/i.test(e.label + e.id)),
-    'expandEvents does not emit union-dues cash events');
+    'and they are a bill, not a second obligation');
+  const windowStream = F.expandEvents(plan, asOf, windowEnd);
+  const duesEvents = windowStream.filter(e => e.id === 'uniondues');
+  ok(duesEvents.map(e => e.date).join(',') === '2026-08-15,2026-09-15,2026-10-15',
+    'three dues occurrences in the 91-day window',
+    duesEvents.map(e => e.date).join(','));
+  ok(duesEvents.every(e => same(-e.amount, 25) && e.kind === 'bill'),
+    'each is a $25 bill, so the forecast still reserves the cash');
   const built = icsMod.buildHouseholdCalendar(plan, asOf, icsEnd);
-  ok(!built.payments.some(p => /union|cmaw/i.test(p.summary + (p.sourceId || ''))),
-    'ICS does not generate a union-dues payment');
+  const icsDues = built.payments.filter(p => p.sourceId === 'uniondues');
+  ok(icsDues.length > 0 && icsDues.every(p => same(p.amount, 25) && p.start.endsWith('-15')),
+    'ICS payment VEVENTs for dues come from the Plan, not a second literal',
+    `${icsDues.length} occurrences`);
   ok(!/Union dues \(CMAW Local 1995\)/.test(read('scripts/calendar-ics.js')),
     'the ICS script no longer hardcodes the $25 dues literal');
   const cancel = (plan.actions || []).find(a => /CMAW Local 1995/i.test(a.what));
   ok(!!cancel && cancel.status === 'open' && same(cancel.amount, 25),
-    'owner intent is recorded as an open action, not a bill',
+    'the cancel-dues action stays open until cancellation is confirmed',
     cancel ? cancel.what : 'missing');
+  ok(/until cancellation is actually confirmed/i.test(cancel.why),
+    'and the action still says the $25 is reserved until then');
   const tax = plan.budget.categories.find(c => c.id === 'tax');
   ok(tax && !/union dues/i.test(tax.label),
-    'the CRA reserve is no longer labelled as if it included union dues',
+    'the CRA reserve is not labelled as if it included union dues',
     tax ? tax.label : 'missing');
+  ok(/id uniondues/i.test(tax.why),
+    'and the reserve note points at the dated bill rather than absorbing it');
 }
 
 console.log('\n=== next due / next payment out, same stream ===');
@@ -232,7 +244,11 @@ console.log('\n=== HELOC: only evidenced cash semantics are encoded ===');
   ok(!built.payments.some(p => /HELOC/i.test(p.summary) || p.sourceId === 'heloc'),
     'ICS has no HELOC cash-payment VEVENT');
   ok(built.reminders.some(r => r.sourceId === 'heloc' && /no cash leaves/i.test(r.summary)),
-    'ICS carries HELOC only as a derived non-cash reminder');
+    'ICS carries month-end capitalisation as a derived non-cash reminder');
+  const due21 = built.reminders.find(r => r.sourceId === 'heloc-contractual-due');
+  ok(!!due21 && due21.kind === 'reminder' && due21.start === '2026-08-21'
+    && /BYMONTHDAY=21/.test(due21.rrule || '') && /not a chequing outflow/i.test(due21.summary),
+    'ICS keeps the 21st as a reminder-only contractual due date');
   ok(!built.payments.some(p => p.start.endsWith('-21') && /HELOC/i.test(p.summary)),
     'the 21st is not encoded as a chequing outflow — Q19 remains open');
 }

@@ -965,10 +965,11 @@ calendar, Next cash-out total, Deep Dive Next named payment due, and ICS payment
 VEVENTs. Standing ICS reminders (statement closes, tax deadlines, mortgage
 renewal) remain a thin non-cash overlay. `data.json` `upcoming` is deleted as a
 schedule; paid forensic notes remain in `settled`. The children's RESP $100 on
-the 15th is a canonical `plan.bills` row. CMAW Local 1995 dues were not promoted
-into a permanent bill; owner intent to cancel is a `plan.actions` row. HELOC
-cash treatment is unchanged (month-end `nonCash`); the 21st contractual due date
-stays in Q19 rather than being guessed into a chequing outflow.
+the 15th is a canonical `plan.bills` row. CMAW Local 1995 dues remain a Plan
+bill until cancellation is actually confirmed; the cancel action stays open and
+the bill is retired when evidence closes it. HELOC cash treatment is unchanged
+(month-end `nonCash`); the 21st is a reminder-only look-point, not a chequing
+outflow. Whether cash must be reserved on the 21st stays in Q19.
 
 The two look-aheads are kept and labelled apart: Next named payment due is one
 obligation; Next cash-out total is the day's sum. Both read the same event

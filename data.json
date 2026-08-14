@@ -231,6 +231,16 @@
         "note": "Children's RESP contribution, $100 on the 15th. Owner-stated hard recurring household bill. Classified as an internal transfer in the transaction history, so it is dated here and not subtracted from a spending category."
       },
       {
+        "id": "uniondues",
+        "label": "CMAW Local 1995 union dues",
+        "frequency": "monthly",
+        "day": 15,
+        "amount": 25.0,
+        "confidence": "confirmed",
+        "budgetCategory": null,
+        "note": "Still active on the RBC chequing statement ($25 on the 15th). Owner intends to cancel (open action: Cancel CMAW Local 1995 dues). Reserved as a cash outflow until cancellation is actually confirmed. Not in budget.categories, so it is not subtracted from the CRA instalment reserve. Retire this bill when evidence closes the cancel action; do not guess an effective end date."
+      },
+      {
         "id": "fit4less",
         "label": "Fit4Less membership",
         "frequency": "biweekly",
@@ -251,7 +261,7 @@
         "note": "Two $17.95 monthly plan fees at month-end, every month captured."
       }
     ],
-    "billsNote": "Extracted from the transaction history, not guessed: only bills still active in the last three months are dated here, and every one of them is paid from Chequing A. The children's RESP contribution is included as a hard $100 monthly bill on the 15th (owner-stated). CMAW Local 1995 union dues are NOT dated here — the owner intends to cancel that $25/month charge; cancellation is not yet confirmed in the transaction record, and promoting it to a permanent bill would invent a future commitment. BC Hydro is no longer an open gap — it moved to Amanda's account in May 2026 and she has paid it there since ($235, $250, $250), so it is correctly absent from a household-accounts plan. Telus stopped leaving any captured account in March 2026 and its route is still unknown. Streaming is Amazon Channels — several small charges on scattered days, left inside the variable budget. There is no Netflix anywhere in the data.",
+    "billsNote": "Extracted from the transaction history, not guessed: only bills still active in the last three months are dated here, and every one of them is paid from Chequing A. The children's RESP contribution is included as a hard $100 monthly bill on the 15th (owner-stated). CMAW Local 1995 union dues ($25 on the 15th) remain dated here because they are still on the statement; the owner intends to cancel them, but cancellation is not yet confirmed, so the $25 stays reserved until evidence closes that action. They are not a spending category and are not inside the CRA instalment reserve. BC Hydro is no longer an open gap — it moved to Amanda's account in May 2026 and she has paid it there since ($235, $250, $250), so it is correctly absent from a household-accounts plan. Telus stopped leaving any captured account in March 2026 and its route is still unknown. Streaming is Amazon Channels — several small charges on scattered days, left inside the variable budget. There is no Netflix anywhere in the data.",
     "commitments": [
       {
         "id": "burrard1",
@@ -512,7 +522,7 @@
             "Tax"
           ],
           "plannedMonthly": null,
-          "why": "CRA instalments, some settled from Amanda's account. Same treatment as property tax: real, but not a dated household cash cost inside this window. Union dues are not in this reserve: the historical Tax series is CRA, and the $25/month CMAW Local 1995 charge is intended for cancellation rather than carried as planned spending."
+          "why": "CRA instalments, some settled from Amanda's account. Same treatment as property tax: real, but not a dated household cash cost inside this window. Union dues are not in this reserve: the historical Tax series is CRA, and the $25/month CMAW Local 1995 charge is a dated Plan bill (id uniondues) until cancellation is confirmed."
         },
         {
           "id": "restaurants",
@@ -707,7 +717,7 @@
         "what": "Cancel CMAW Local 1995 dues",
         "amount": 25.0,
         "due": null,
-        "why": "Owner intends to cancel this $25/month charge. It has been paid from chequing historically and must not be promoted into a permanent Plan bill or a future ICS payment. Cancellation is not yet confirmed in the transaction record, so this action records the intent rather than pretending the expense has already stopped.",
+        "why": "Still coming out of chequing at $25/month. The Plan reserves that $25 until cancellation is actually confirmed. This action stays open until then. Do not guess an effective end date, and do not treat the bill as permanent forever-policy — retire it when evidence closes this action.",
         "status": "open",
         "owner": "Dale"
       }
@@ -718,7 +728,7 @@
       "Deposits are assumed to land before payments due the same day. Payday-timed bills (the mortgage on the 14th) are arranged on exactly that assumption.",
       "Every figure is tagged. Confirmed means the institution or a long observed history states it; estimated means it is modelled and shown in amber with a ≈ mark throughout.",
       "Future card statement minimums are estimates carried at the current level; real minimums move with the balance.",
-      "Named recurring bills — FortisBC, Shaw, BCAA, ICBC, the children's RESP contribution, Fit4Less, the TD account fees — are dated on the calendar with days extracted from the transaction history or, for the RESP, from the owner-stated hard bill, and are excluded from the variable budget so nothing is counted twice. The RESP is an internal transfer, not a spending category. The variable budget covers everything else: groceries, fuel, phones, streaming, PayPal and the rest. CMAW Local 1995 dues are not dated here; they are an intended cancellation, not a standing commitment.",
+      "Named recurring bills — FortisBC, Shaw, BCAA, ICBC, the children's RESP contribution, CMAW Local 1995 union dues, Fit4Less, the TD account fees — are dated on the calendar with days extracted from the transaction history or, for the RESP, from the owner-stated hard bill, and are excluded from the variable budget so nothing is counted twice. The RESP is an internal transfer, not a spending category. Union dues remain dated until cancellation is actually confirmed; the cancel action stays open and the bill is retired when evidence closes it. The variable budget covers everything else: groceries, fuel, phones, streaming, PayPal and the rest.",
       "One known cost has no reliable date and is NOT on the calendar: the Telus phone bills, absent from every captured account since March 2026, route unknown. It rides inside the household budget's telecom average instead. BC Hydro is NOT in that position — it moved to Amanda's account in May 2026 and she has paid it there since, so it is neither dated here nor carried in the household averages. Counting it in both places was the error this replaces.",
       "Each week's 'keep above' figure is the closing balance below which the rest of the window would breach the buffer even with everything going to plan — it is the week-by-week track to stay on, computed backwards from the end of the window.",
       "The plan is the HOUSEHOLD SPENDING ACCOUNTS ONLY — Chequing A, Chequing B and Savings. Amanda's DEBT&PAYMENTS account is a separate pot: her Tennis BC pay lands there, coaches are paid from it, and only the remainder crosses over. Neither its balance nor her gross pay is counted as household money; only her actual transfers are, measured from the transfer record. Internal transfers between household accounts are excluded throughout.",

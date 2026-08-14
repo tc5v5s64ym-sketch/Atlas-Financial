@@ -552,21 +552,21 @@ const settle = () => new Promise(r => setTimeout(r, 0));
   const catsNote = def.get('budget-cats-note').textContent;
 
   ok(/\$918/.test(capSplit), 'the booted page shows the $918/wk essential need');
-  ok(/\$177/.test(capSplit), 'and $177/wk of discretionary room');
+  ok(/\$167/.test(capSplit), 'and $167/wk of discretionary room');
   ok(/Groceries \$414, fuel \$299/.test(capSplit), 'with groceries and fuel split per week');
-  ok(/≈ \$4,761 a month/.test(capSplit), 'and the cap said in months');
+  ok(/≈ \$4,718 a month/.test(capSplit), 'and the cap said in months');
   const roomNote = h => (/own budget for those comes to [^<]*/.exec(h) || ['(not found)'])[0];
-  ok(/so the plan is \$677\/wk short of it and something has to give\./.test(capSplit),
+  ok(/so the plan is \$687\/wk short of it and something has to give\./.test(capSplit),
     'and the household-budget sentence reads exactly as it does today', roomNote(capSplit));
-  ok(/\$4,761 \/ month/.test(budgetOut), 'the ledger says the same monthly cap');
-  ok(/\$177 \/ week/.test(budgetOut) && !/nothing left/.test(budgetOut),
+  ok(/\$4,718 \/ month/.test(budgetOut), 'the ledger says the same monthly cap');
+  ok(/\$167 \/ week/.test(budgetOut) && !/nothing left/.test(budgetOut),
     'and reports real discretionary room rather than "nothing left"');
   ok(/\$853\/week those have actually been running at/.test(budgetOut),
     'against the household\'s own discretionary budget');
   ok(/\$918\/wk/.test(tiles) && /\$713\/wk of it food and fuel/.test(tiles),
     'the tiles carry the weekly need and its food-and-fuel share');
-  ok(/\$7,704\/month against a cap of \$4,761\/month/.test(catsNote)
-    && /\$2,943\/month has to come off/.test(catsNote),
+  ok(/\$7,704\/month against a cap of \$4,718\/month/.test(catsNote)
+    && /\$2,986\/month has to come off/.test(catsNote),
   'and the category note reconciles against the monthly cap');
 
   /* --- at a $1,800/week override: the state the review found --- */

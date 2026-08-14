@@ -208,9 +208,9 @@ sufficient current evidence.
 displayed a separate $814.18 minimum due 21 August. Live `plan.obligations`
 treats the charge as non-cash on day 31. ACCOUNT_FACTS still records the
 TD-stated 21st contractual due date. B74 removed the ICS 21st *payment* (it was
-masquerading as a chequing outflow) and derives a month-end non-cash reminder
-from the Plan instead. This question does not choose among those treatments and
-is not closed by B74.
+masquerading as a chequing outflow), keeps the 21st as a reminder-only look-point,
+and derives a month-end non-cash reminder from the Plan. This question does not
+choose among those treatments and is not closed by B74.
 **What the answer changes:** Whether the 91-day cash plan must reserve $814.18
 on 21 August. A later figure PR would consume the answer; B74 does not.
 
