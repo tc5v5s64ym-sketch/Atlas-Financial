@@ -20,6 +20,10 @@ scheduled, and a backlog item is not ineligible merely because no phase names it
 Scheduling here authorises nothing that `ARCHITECTURE.md` has not already
 permitted — reaching a line in this file passes no gate.
 
+Capabilities that are wanted but not yet in Phases 1–4 are recorded in
+**Later capabilities — status and reopen trigger**. That table is memory and
+trigger, not a second order of work.
+
 ---
 
 ## Atlas is not greenfield
@@ -447,3 +451,44 @@ be scheduled as though it did.
   `ARCHITECTURE.md`; an agent does not decide whose statement wins.
 - **Everything in `BACKLOG.md` this file has not named.** Those items stay
   eligible. This document is a sequence, not a gate on the backlog.
+
+The named later capabilities, and the trigger that would reopen each, live in
+the section that follows. That is how they stay findable without being
+scheduled.
+
+---
+
+## Later capabilities — status and reopen trigger
+
+This is not a second roadmap. It does not invent pull-request numbers, dates,
+engines, schemas, APIs, or infrastructure. It is the memory of worthwhile
+capabilities that [`ARCHITECTURE.md`](../ARCHITECTURE.md) names as destination,
+that dated advisory notes preserve, or that the household has discussed, so they
+cannot disappear merely because they are not in Phases 1–4.
+
+Advisory origins are evidence, not adopted architecture. In particular
+[`docs/advisory/COPILOT_ARCHITECTURE_GAME_PLAN_2026-08-13.md`](advisory/COPILOT_ARCHITECTURE_GAME_PLAN_2026-08-13.md)
+is a dated design proposal and is **not** a sequence;
+[`docs/advisory/EVIDENCE_ABSORPTION_RECOMMENDATION_2026-08-13.md`](advisory/EVIDENCE_ABSORPTION_RECOMMENDATION_2026-08-13.md)
+explicitly declined to adopt that 13-PR copilot stack. This table does not
+resurrect it.
+
+| Status | Means |
+|---|---|
+| **ACTIVE** | Already sequenced in this file. The phase item is the work; do not invent a parallel programme. |
+| **GATED** | `ARCHITECTURE.md` holds a capability gate. This file sequences toward it without opening it. Reopening is the owner passing that gate, not a plan line. |
+| **PARKED** | Worthwhile and not forgotten. Wait for the named trigger. No date, no engine, no schema, no API. |
+
+| Capability | Status | Home today | Reopen trigger |
+|---|---|---|---|
+| Improved ingestion | **ACTIVE** | Phase 3 `AF-INGEST-01` / `B78`, to T3. Files still; no provider and no store. | Already sequenced. Entry is T2 plus `AF-INTAKE-01`'s record of manual steps. |
+| Automated financial-data connectivity / transaction feeds | **GATED** | `ARCHITECTURE.md` connectivity gate. Phase 4 `AF-LIVE-01` / `B80` and `AF-LIVE-02` / `B81`, not scheduled until T4. | The owner passes the five-condition gate. Evaluation may start only after T3 and an owner decision to evaluate. Choose nothing and obtain no credential until then. |
+| Richer payroll / bonus / pension-contribution modelling | **PARKED** | The 91-day plan consumes estimated net pay. A statutory payroll engine (`EMP-006`) is excluded. Optional pension cash is already inside that net. No bonus cash event is on the live plan. | A named consumer that current net cannot serve — a window that includes a CPP/EI reset, or an owner-supplied bonus or pension cash event, or an owner-supplied horizon that needs statutory seasonality. Do not build a payroll engine in order to absorb a net `Forecast` already consumes. |
+| Retirement planning | **PARKED** | `ARCHITECTURE.md` destination names pension and investments. Live published net worth excludes pensions. There is no `Forecast` retirement function. The advisory copilot "retirement engine" is not adopted. | An owner decision to include pensions in a published window, or to earn a retirement span on the one plan. Not a second planner. |
+| Goals and sinking funds | **PARKED** | `ARCHITECTURE.md` destination names sinking funds. Dated commitments already have a plan path. Interview sports/travel amounts remain proposed, not shared policy. The advisory "goals engine" is not adopted. | Owner-promoted shared targets, or a product-exit gap that the existing plan/commitment path cannot answer. Do not stand up a goals engine beside `Forecast`. |
+| ChatGPT / copilot interface | **PARKED** | `ARCHITECTURE.md` already names ChatGPT as a conversational consumer, not an authority. A live copilot API is owner-reserved. The dated copilot game plan is advisory and not adopted. | The owner asks for a repository-state or generated-export interface after one-plan authorities are stable. Never a second financial answer, never the advisory copilot stack, and never a live API without an owner security decision. |
+
+A row here does not make an unlisted `BACKLOG.md` item ineligible. Canonical
+store remains **GATED** where Phase 3 already records it (`AF-STORE-01` /
+`B79`): a demonstrated file-foundation failure on real data, then an owner
+decision — not because a later capability would like a database.
