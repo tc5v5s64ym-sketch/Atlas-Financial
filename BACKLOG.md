@@ -13,7 +13,7 @@ Last reviewed **2026-08-14**. Phase: **analysis** — capture is essentially don
 **Post-B74 implementation order** is owned by
 [`docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`](docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md),
 not by this file. Items `B87`–`B91`, then reused `B20` / `B21`, follow that
-order. Next outcome: **`B87` question-status authority**.
+order. Next outcome: **`B88` CRLF / Windows test reliability**.
 
 **Operational knowledge lives in `docs/ACCOUNT_FACTS.md`**, not here: how each
 institution's data is obtained, the download endpoints, and the traps that cost
@@ -984,17 +984,12 @@ without two calendars.
 Do not reopen the closed schedule-authority list. Remaining post-B74 work is
 `B87`–`B91`, then `B20` / `B21`, per the build strategy.
 
-**B87 · One authority for question OPEN / ANSWERED status** · `READY` · *small, high value*
-Post-B74 next implementation outcome. `docs/01_OPEN_QUESTIONS.md` is the declared
-question authority, but household-facing `data.json` `questions` (Deep Dive) and
-other docs can independently claim the same question is answered. Live split:
-Q2 (TFR-TO C/C) is OPEN in `01_OPEN_QUESTIONS.md`, ANSWERED on Deep Dive, and
-RESOLVED in `ACCOUNT_FACTS.md`; Q5 has the same shape. Build-strategy item
-`AF-QSTAT-01`.
-
-**Outcome:** one authority decides OPEN / ANSWERED, and household-facing surfaces
-cannot independently contradict it. Prove with a test on Q2 and Q5. Do not invent
-household answers. Do not build a question-registry product.
+**B87 · One authority for question OPEN / ANSWERED status** · **DONE 2026-08-14**
+`docs/01_OPEN_QUESTIONS.md` is the sole OPEN / ASKED / ANSWERED / BLOCKED
+authority. Deep Dive `data.json` `questions` no longer uses `tier === 0` or
+`ANSWERED —` records as a second status bit. Q2 and Q5 remain OPEN; payment-
+matching and rent analysis stay evidence, not household answers. Proved by
+`test-question-status.js`. Build-strategy item `AF-QSTAT-01`.
 
 **B88 · Tests must not depend on checkout line endings** · `QUEUED` · *housekeeping*
 After `B87`. Some source-scraping tests use LF-only function-boundary regexes

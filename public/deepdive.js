@@ -297,9 +297,10 @@ function renderDeepDive(d) {
 
   if (d.spendingNote) $('spending-detail').textContent = d.spendingNote;
 
-  // Tier 0 means answered — green, not the tier-1 red it would otherwise get.
+  // Tiers are priority (1/2/3), not status. OPEN / ANSWERED is owned by
+  // docs/01_OPEN_QUESTIONS.md; this page must not independently close a question.
   $('questions').innerHTML = d.questions.map(q => `
-    <div class="qcard ${q.tier === 0 ? 'done' : q.tier === 2 ? 't2' : q.tier === 3 ? 't3' : ''}">
+    <div class="qcard ${q.tier === 2 ? 't2' : q.tier === 3 ? 't3' : ''}">
       <h3>${q.q}</h3>
       <p>${q.detail}</p>
       <p class="chg"><strong>What it changes:</strong> ${q.changes} <span class="chip">${q.owner}</span></p>

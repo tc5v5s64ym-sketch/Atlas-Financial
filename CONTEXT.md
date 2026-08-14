@@ -11,12 +11,12 @@ router lists and still announced the build strategy as something that did not
 exist yet, months after it did.
 
 **Post-B74.** PR #37 gave the household cash schedule one Plan owner
-(`Forecast.expandEvents`). The remaining work order lives in
+(`Forecast.expandEvents`). Question OPEN / ANSWERED status is owned by
+[`docs/01_OPEN_QUESTIONS.md`](docs/01_OPEN_QUESTIONS.md); Deep Dive cannot
+close a question on its own. The remaining work order lives in
 [`docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`](docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md)
 under **Post-B74 architecture disposition**. Next implementation outcome:
-**question-status authority** (`B87`) — `docs/01_OPEN_QUESTIONS.md` decides
-OPEN / ANSWERED, and household-facing surfaces cannot independently contradict
-it. Do not copy that sequence here.
+**CRLF / Windows test reliability** (`B88`). Do not copy that sequence here.
 
 Everything lives in **one folder**:
 

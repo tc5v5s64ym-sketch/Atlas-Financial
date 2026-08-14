@@ -6,6 +6,9 @@ answered ones to the bottom with the answer recorded.
 
 Status: `OPEN` · `ASKED` · `ANSWERED` · `BLOCKED`
 
+This file is the sole authority for those four statuses. Other documents and
+the site may hold evidence about a question. They do not close it.
+
 ---
 
 ## Tier 1 — Changes what the numbers mean

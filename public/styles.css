@@ -236,8 +236,6 @@ input[type=range] { width:100%; accent-color:var(--s1); height:26px; }
 .qcard { border-left:3px solid var(--critical); padding:2px 0 2px 14px; margin:0 0 18px; }
 .qcard.t2 { border-left-color:var(--serious); }
 .qcard.t3 { border-left-color:var(--muted); }
-.qcard.done { border-left-color:var(--good); }
-.qcard.done h3 { color:var(--success-text); }
 .qcard h3 { font-size:.94rem; margin:0 0 4px; }
 .qcard p { margin:0 0 5px; font-size:.85rem; color:var(--text-secondary); }
 .qcard .chg { color:var(--text-primary); }

@@ -24,9 +24,9 @@ Capabilities that are wanted but not yet in Phases 1–4 are recorded in
 **Later capabilities — status and reopen trigger**. That table is memory and
 trigger, not a second order of work.
 
-**Current sequencing (14 August 2026).** B74 is closed. The remaining
+**Current sequencing (14 August 2026).** B74 and B87 are closed. The remaining
 implementation order is the **Post-B74 architecture disposition** below. Next
-implementation outcome: question-status authority (`B87`). Next major product
+implementation outcome: CRLF / Windows test reliability (`B88`). Next major product
 milestone: evidence refresh / reconciliation (`B91`). History (`B20`) follows
 that loop; it is not the next infrastructure item.
 
@@ -251,10 +251,9 @@ rules above.
 
 ### Immediate cleanup — not the major milestone
 
-- **`AF-QSTAT-01` / `B87`** — one authority for OPEN / ANSWERED. Next
-  implementation outcome.
+- **`AF-QSTAT-01` / `B87`** — one authority for OPEN / ANSWERED. **Complete.**
 - **`AF-LINE-01` / `B88`** — tests must not spuriously depend on checkout
-  line endings. After `B87` because it is cheap and isolated.
+  line endings. **Next implementation outcome.** After `B87` because it is cheap and isolated.
 - **`AF-PUB-01` / `B89`** — where Atlas already has canonical inputs and
   deterministic derivation, do not store the result independently. Narrow;
   do not redesign `data.json`.
@@ -408,14 +407,17 @@ built *on* that picture, the picture needs owners that a test can reach.
   Dive status bit.
 - **Tier** — M2, and it **may trigger the blocking review** if the PR changes
   `data.json` or a page the household reads. **Backlog** — `B87`.
-- **Entry gate** — AF-CAL-01 complete. **This is the next implementation
-  outcome.**
+- **Entry gate** — AF-CAL-01 complete.
 - **Acceptance** — a test fails when a household-facing surface claims a
   question is answered while `01_OPEN_QUESTIONS.md` still has it OPEN, or the
   reverse; Q2 and Q5 are the proving cases. The PR does not invent household
   answers.
 - **Non-goals** — answering Q2/Q5 as a household fact; a question registry
   product; moving financial figures.
+- **State** — **complete.** `docs/01_OPEN_QUESTIONS.md` remains the sole
+  status authority. `data.json` `questions` no longer encodes answered via
+  `tier === 0` or `ANSWERED —` records. Deep Dive renders priority tiers only.
+  Q2 and Q5 stay OPEN. Acceptance is proved by `test-question-status.js`.
 
 ### AF-LINE-01 · Tests must not depend on checkout line endings
 
