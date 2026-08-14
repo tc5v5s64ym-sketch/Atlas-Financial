@@ -844,16 +844,19 @@ the branch that moved it before anything was edited — the page mutated,
 
    What still decided on the page was the monthly sentence and the owner-budget
    chip: `categories.find` for groceries and fuel, then
-   `target || historical` for each. `Forecast.budgetBreakdown`'s `cap` block
-   now owns those monthly figures (owner target if present, else historical,
-   using the incumbent null-check so a $0 target is not treated as missing)
-   and whether the grocery line is an owner target. `public/plan.js` prints
-   `cap.groceriesMonthly`, `cap.fuelMonthly` and `cap.groceriesHasOwnerTarget`.
+   `target || historical` for each. Each category already decided that
+   fallback as `gross` (pre-dated) and `source`; `planned` remains the
+   post-dated amount the weekly cap uses. The `cap` block now publishes
+   `groceriesMonthly` / `fuelMonthly` from `gross` and
+   `groceriesHasOwnerTarget` from `source` — it does not choose target vs
+   historical again. `public/plan.js` prints those returned fields.
    `test-food-fuel.js` hand-computes `$1,200` vs `$1,100` historical on a
-   fixture, proves a missing target and a $0 target, reconciles the live
+   fixture, proves a missing target, a $0 target, and a dated grocery that
+   leaves `gross` at the target while `planned` falls, reconciles the live
    `$1,800` / `$1,300` against the `data.json` `plannedMonthly` literals
-   (not the ytd averages `$1,839.66` / `$989.13`), and drops the grocery
-   owner target so the mutation now fails. Before the move, replacing
+   (not the ytd averages `$1,839.66` / `$989.13`), and mutates the
+   incumbent `gross = target != null ? target : historical` line so the
+   choice now fails. Before the move, replacing
    `food.target || food.historical` with `food.historical` left `npm test`
    green (ALL 20 SUITES PASSED). Live published figures are unchanged.
 

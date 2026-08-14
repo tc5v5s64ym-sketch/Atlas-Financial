@@ -1,9 +1,10 @@
 'use strict';
 /* Focused proof for the Plan page's remaining food-and-fuel monthly figures.
- * Forecast.budgetBreakdown's cap block already owned the weekly pair
- * (planned/historical groceries+fuel). The page still found the two
- * categories and printed `target || historical` for each. That fallback
- * is a financial choice, and until this move no test could reach it.
+ * Forecast.budgetBreakdown already decides target vs historical as each
+ * category's `gross` (pre-dated). The cap block publishes the grocery/fuel
+ * pair from that field; `planned` stays the post-dated amount the weekly
+ * cap uses. Until this move the page found the two categories and printed
+ * `target || historical`.
  *
  * Before the move, replacing `food.target || food.historical` with
  * `food.historical` left npm test green — ALL 20 SUITES PASSED.
@@ -27,8 +28,9 @@ const read = p => fs.readFileSync(p, 'utf8');
  *   Groceries  plannedMonthly $1,200   historical $11,000 / 10 = $1,100
  *   Fuel       plannedMonthly   $800   historical  $6,000 / 10 =   $600
  *
- *   published monthly groceries = $1,200  (target, not $1,100)
- *   published monthly fuel      =   $800  (target, not $600)
+ *   gross (pre-dated) groceries = $1,200  (target, not $1,100)
+ *   gross (pre-dated) fuel      =   $800  (target, not $600)
+ *   planned, with nothing dated, equals gross
  */
 const FIXTURE_PLAN = {
   windowDays: 91,
@@ -58,8 +60,8 @@ const HAND_FUEL_HIST = 6000 / 10;
 const HAND_GROCERIES_MONTHLY = 1200;
 const HAND_FUEL_MONTHLY = 800;
 
-const capOf = (plan, extra) => F.budgetBreakdown(plan, FIXTURE_PERIODS,
-  Object.assign({ weeklyCap: 600 }, extra || {})).cap;
+const breakdownOf = (plan, extra) => F.budgetBreakdown(plan, FIXTURE_PERIODS,
+  Object.assign({ weeklyCap: 600 }, extra || {}));
 
 console.log('=== hand-computed monthly grocery and fuel figures ===');
 ok(HAND_GROCERIES_HIST === 1100 && HAND_FUEL_HIST === 600,
@@ -68,16 +70,23 @@ ok(HAND_GROCERIES_MONTHLY !== HAND_GROCERIES_HIST
   && HAND_FUEL_MONTHLY !== HAND_FUEL_HIST,
   'the owner targets are not the historical averages — the fallback is load-bearing');
 
-const cap = capOf(FIXTURE_PLAN);
-ok(!!cap, 'a cap result is returned');
-ok(cap && same(cap.groceriesMonthly, HAND_GROCERIES_MONTHLY),
-  'groceries monthly is the $1,200 owner target, not $1,100 historical',
-  cap ? String(cap.groceriesMonthly) : 'none');
-ok(cap && same(cap.fuelMonthly, HAND_FUEL_MONTHLY),
-  'fuel monthly is the $800 owner target, not $600 historical',
-  cap ? String(cap.fuelMonthly) : 'none');
-ok(cap && cap.groceriesHasOwnerTarget === true,
-  'and the grocery line is flagged as an owner target');
+const breakdown = breakdownOf(FIXTURE_PLAN);
+const cap = breakdown.cap;
+const groceries = breakdown.categories.find(c => c.id === 'groceries');
+const fuel = breakdown.categories.find(c => c.id === 'fuel');
+ok(!!cap && !!groceries && !!fuel, 'a cap result and both categories are returned');
+ok(groceries && same(groceries.gross, HAND_GROCERIES_MONTHLY)
+  && same(groceries.planned, HAND_GROCERIES_MONTHLY)
+  && groceries.source === 'owner-target',
+  'category gross is the $1,200 owner target; planned matches with nothing dated');
+ok(fuel && same(fuel.gross, HAND_FUEL_MONTHLY) && fuel.source === 'owner-target',
+  'fuel gross is the $800 owner target');
+ok(cap && same(cap.groceriesMonthly, groceries.gross)
+  && same(cap.fuelMonthly, fuel.gross),
+  'the cap publishes those gross amounts, not a second target-vs-historical choice');
+ok(cap && cap.groceriesHasOwnerTarget === true
+  && cap.groceriesHasOwnerTarget === (groceries.source === 'owner-target'),
+  'the owner-target chip follows category source');
 
 console.log('\n=== fallback: no owner target uses the historical average ===');
 const noTargetPlan = {
@@ -90,10 +99,12 @@ const noTargetPlan = {
     ],
   },
 };
-const none = capOf(noTargetPlan);
-ok(none && same(none.groceriesMonthly, HAND_GROCERIES_HIST)
-  && same(none.fuelMonthly, HAND_FUEL_HIST)
-  && none.groceriesHasOwnerTarget === false,
+const none = breakdownOf(noTargetPlan);
+ok(none && same(none.categories.find(c => c.id === 'groceries').gross, HAND_GROCERIES_HIST)
+  && none.categories.find(c => c.id === 'groceries').source === 'historical-actual'
+  && same(none.cap.groceriesMonthly, HAND_GROCERIES_HIST)
+  && same(none.cap.fuelMonthly, HAND_FUEL_HIST)
+  && none.cap.groceriesHasOwnerTarget === false,
   'missing targets print $1,100 and $600 historical, with no owner-target chip');
 
 console.log('\n=== a $0 owner target is a figure, not a missing one ===');
@@ -109,12 +120,32 @@ const zeroPlan = {
     ],
   },
 };
-const zero = capOf(zeroPlan);
-ok(zero && same(zero.groceriesMonthly, 0) && zero.groceriesHasOwnerTarget === true,
+const zero = breakdownOf(zeroPlan);
+const zeroG = zero.categories.find(c => c.id === 'groceries');
+ok(zeroG && same(zeroG.gross, 0) && zeroG.source === 'owner-target'
+  && same(zero.cap.groceriesMonthly, 0) && zero.cap.groceriesHasOwnerTarget === true,
   'a $0 grocery target publishes $0, not the $1,100 historical',
-  zero ? String(zero.groceriesMonthly) : 'none');
+  zeroG ? String(zeroG.gross) : 'none');
 ok((0 || HAND_GROCERIES_HIST) === HAND_GROCERIES_HIST,
   'confirming `||` would have fallen through to historical');
+
+console.log('\n=== dated items reduce planned, not the published monthly gross ===');
+/* A $100 dated grocery bill. gross stays the $1,200 target; planned is
+ * $1,100. The Plan sentence is the household budget, not the cap remainder. */
+const datedPlan = {
+  windowDays: 91,
+  bills: [{ label: 'dated grocery', amount: 100, frequency: 'monthly', budgetCategory: 'groceries' }],
+  budget: FIXTURE_PLAN.budget,
+};
+const dated = breakdownOf(datedPlan);
+const datedG = dated.categories.find(c => c.id === 'groceries');
+ok(datedG && same(datedG.gross, HAND_GROCERIES_MONTHLY)
+  && same(datedG.planned, HAND_GROCERIES_MONTHLY - 100)
+  && same(datedG.dated, 100),
+  'dated $100 leaves gross at $1,200 and planned at $1,100');
+ok(dated.cap && same(dated.cap.groceriesMonthly, datedG.gross)
+  && same(dated.cap.foodFuelPlannedMonthly, datedG.planned + HAND_FUEL_MONTHLY),
+  'the sentence still prints gross; the weekly pair uses planned');
 
 console.log('\n=== live plan: owner-target literals, not the averages ===');
 const LIVE_GROCERIES = 1800;
@@ -137,20 +168,26 @@ const liveAdv = F.recommend(data.plan, data.meta.asOf, {
   extraDebtMonthly: 0, incomeOverrides: {}, disabled: [], debts: data.debts,
   extraDebtTarget: data.plan.nextDollar.target, fundingSources: data.plan.funding.options,
 });
-const live = F.budgetBreakdown(data.plan, periods, {
+const liveB = F.budgetBreakdown(data.plan, periods, {
   paypalPerMonth: data.paypal.perMonth, disabled: [],
   weeklyCap: liveAdv.weekly, recommendedWeekly: liveAdv.weekly,
-}).cap;
-ok(live && same(live.groceriesMonthly, LIVE_GROCERIES)
-  && same(live.fuelMonthly, LIVE_FUEL)
-  && live.groceriesHasOwnerTarget === true,
+});
+const liveG = liveB.categories.find(c => c.id === 'groceries');
+const liveF = liveB.categories.find(c => c.id === 'fuel');
+ok(liveG && liveF && same(liveG.gross, LIVE_GROCERIES) && same(liveF.gross, LIVE_FUEL)
+  && liveG.dated === 0 && liveF.dated === 0
+  && same(liveG.planned, LIVE_GROCERIES) && same(liveF.planned, LIVE_FUEL),
+  'live grocery/fuel gross are the $1,800 / $1,300 targets; nothing dated');
+ok(liveB.cap && same(liveB.cap.groceriesMonthly, liveG.gross)
+  && same(liveB.cap.fuelMonthly, liveF.gross)
+  && liveB.cap.groceriesHasOwnerTarget === true,
   'live Plan sentence is $1,800 groceries and $1,300 fuel, both owner targets',
-  live ? `${live.groceriesMonthly} / ${live.fuelMonthly}` : 'none');
-ok(live && same(live.foodFuelPlannedMonthly, LIVE_GROCERIES + LIVE_FUEL),
+  liveB.cap ? `${liveB.cap.groceriesMonthly} / ${liveB.cap.fuelMonthly}` : 'none');
+ok(liveB.cap && same(liveB.cap.foodFuelPlannedMonthly, LIVE_GROCERIES + LIVE_FUEL),
   'and the already-owned weekly pair still sums those same two planned months',
-  live ? String(live.foodFuelPlannedMonthly) : 'none');
+  liveB.cap ? String(liveB.cap.foodFuelPlannedMonthly) : 'none');
 
-console.log('\n=== page is a renderer ===');
+console.log('\n=== page is a renderer; againstCap does not re-decide ===');
 const page = read('public/plan.js');
 const pageCode = page.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
 ok(/cap\.groceriesMonthly/.test(page) && /cap\.fuelMonthly/.test(page),
@@ -162,12 +199,25 @@ ok(!/id === 'groceries'/.test(pageCode) && !/id === 'fuel'/.test(pageCode),
 ok(!/target\s*\|\|\s*\w*\.?historical/.test(pageCode),
   'the page no longer chooses target || historical');
 
-console.log('\n=== mutation: dropping the grocery owner target now fails ===');
 const FORECAST_SRC = read('public/forecast.js');
-const FROM = '    const groceriesMonthly = groceries.target != null ? groceries.target : groceries.historical;';
-const TO = '    const groceriesMonthly = groceries.historical;';
+const againstStart = FORECAST_SRC.indexOf('function againstCap(');
+const againstEnd = FORECAST_SRC.indexOf('function projectDebts', againstStart);
+const againstSrc = againstStart >= 0 && againstEnd > againstStart
+  ? FORECAST_SRC.slice(againstStart, againstEnd) : '';
+ok(!!againstSrc, 'againstCap is readable from engine source');
+ok(/groceriesMonthly = groceries\.gross/.test(againstSrc)
+  && /fuelMonthly = fuel\.gross/.test(againstSrc),
+  'againstCap reads category gross for the grocery/fuel monthly figures');
+ok(/groceriesHasOwnerTarget = groceries\.source === 'owner-target'/.test(againstSrc),
+  'and owner-target state from category source');
+ok(!/target\s*!=\s*null\s*\?/.test(againstSrc),
+  'againstCap does not re-implement target vs historical');
+
+console.log('\n=== mutation: the incumbent gross choice now fails ===');
+const FROM = '      const gross = target != null ? target : historical;';
+const TO = '      const gross = historical;';
 ok(FORECAST_SRC.split(FROM).length - 1 === 1,
-  'the grocery monthly choice appears once in the engine, so the mutation is aimed');
+  'the target-vs-historical choice appears once in the engine, so the mutation is aimed');
 const sandbox = { module: { exports: {} } };
 try {
   vm.runInNewContext(FORECAST_SRC.replace(FROM, TO), sandbox, { filename: 'forecast-mutant.js' });
@@ -175,12 +225,15 @@ try {
   ok(false, 'mutant engine loads', e.message);
 }
 const mutant = sandbox.module.exports;
-const broken = mutant && mutant.budgetBreakdown(FIXTURE_PLAN, FIXTURE_PERIODS, { weeklyCap: 600 }).cap;
-ok(mutant && broken && same(broken.groceriesMonthly, HAND_GROCERIES_HIST)
-  && !same(broken.groceriesMonthly, HAND_GROCERIES_MONTHLY),
+const brokenB = mutant && mutant.budgetBreakdown(FIXTURE_PLAN, FIXTURE_PERIODS, { weeklyCap: 600 });
+const brokenG = brokenB && brokenB.categories.find(c => c.id === 'groceries');
+ok(mutant && brokenG && same(brokenG.gross, HAND_GROCERIES_HIST)
+  && same(brokenB.cap.groceriesMonthly, HAND_GROCERIES_HIST)
+  && !same(brokenB.cap.groceriesMonthly, HAND_GROCERIES_MONTHLY),
   'dropping the owner target publishes $1,100 historical instead of $1,200',
-  broken ? String(broken.groceriesMonthly) : 'mutant missing');
-ok(cap && same(cap.groceriesMonthly, HAND_GROCERIES_MONTHLY),
+  brokenB ? String(brokenB.cap.groceriesMonthly) : 'mutant missing');
+ok(cap && same(cap.groceriesMonthly, HAND_GROCERIES_MONTHLY)
+  && same(groceries.gross, HAND_GROCERIES_MONTHLY),
   'the real engine still answers the hand-computed $1,200 on the same fixture');
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
