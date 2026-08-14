@@ -24,6 +24,12 @@ Capabilities that are wanted but not yet in Phases 1–4 are recorded in
 **Later capabilities — status and reopen trigger**. That table is memory and
 trigger, not a second order of work.
 
+**Current sequencing (14 August 2026).** B74 is closed. The remaining
+implementation order is the **Post-B74 architecture disposition** below. Next
+implementation outcome: question-status authority (`B87`). Next major product
+milestone: evidence refresh / reconciliation (`B91`). History (`B20`) follows
+that loop; it is not the next infrastructure item.
+
 ---
 
 ## Atlas is not greenfield
@@ -168,11 +174,145 @@ that the findings are unlucky.
 
 ---
 
+## Post-B74 architecture disposition — 14 August 2026
+
+Accepted sequencing after PR #37 merged. This is not a second roadmap: it
+**reorders work this file already owns**. `ARCHITECTURE.md` still owns
+direction and gates. `BACKLOG.md` still owns the work items named below.
+
+Governing principle: **finish connecting what exists; delete duplicate
+authorities; build the refresh loop.** Do not create another architecture
+layer.
+
+The conversation audit that produced this disposition was not preserved as a
+repository advisory file. This section is the accepted decision; it does not
+depend on that transcript remaining the runtime roadmap.
+
+### What B74 closed — do not reopen
+
+PR #37 gave the household cash schedule one Plan owner:
+
+```
+data.json plan
+    ↓ Forecast.expandEvents
+household cash schedule
+    ├── Plan calendar
+    ├── nextDue
+    ├── nextPaymentOut
+    └── ICS cash-payment VEVENTs
+
+standing institutional facts
+    ↓
+reminder-only VEVENTs
+```
+
+Closed, and not to be reopened because an older audit described the pre-B74
+state:
+
+- multiple household cash-schedule authorities;
+- `data.json upcoming` as a future schedule;
+- hardcoded ICS cash-payment definitions;
+- separate Plan / nextDue / nextPaymentOut cash calendars;
+- RESP missing from the Plan cash path;
+- union dues disappearing before confirmed cancellation;
+- HELOC 21st represented as a chequing cash payment;
+- fixed-five-month recurrence expansion.
+
+Q19 remains intentionally open for HELOC household cash semantics. The 21st
+stays reminder-only.
+
+### Remaining order
+
+Immediate correctness / cleanup, then the next major product milestone, then
+history as a by-product of refresh. This **replaces** the earlier Phase 2
+opening that put `AF-HIST-01` / `B20` immediately after the Phase 1 product
+exit.
+
+```
+B87  question-status authority
+  ↓
+B88  CRLF / Windows test reliability
+  ↓
+B89  derive remaining duplicate publication values
+  ↓
+B90  spending-classification reconciliation
+  ↓
+B91  evidence refresh / reconciliation     ← next major product milestone
+  ↓
+B20  history from successful refresh
+  ↓
+longer forecast horizon when a household question requires it
+```
+
+Later items are not mechanically blocked by every earlier one. Agents must
+still be able to tell the intended sequence. A published-figure, data-safety,
+falsified-gate, or material-source-gap finding may still interrupt, per the
+rules above.
+
+### Immediate cleanup — not the major milestone
+
+- **`AF-QSTAT-01` / `B87`** — one authority for OPEN / ANSWERED. Next
+  implementation outcome.
+- **`AF-LINE-01` / `B88`** — tests must not spuriously depend on checkout
+  line endings. After `B87` because it is cheap and isolated.
+- **`AF-PUB-01` / `B89`** — where Atlas already has canonical inputs and
+  deterministic derivation, do not store the result independently. Narrow;
+  do not redesign `data.json`.
+- **`AF-CLASS-01` / `B90`** — the same household spending category cannot
+  silently tell contradictory essential/discretionary stories. Prefer a
+  small guard. Preserve `business` and `reserve`.
+
+### Next major product milestone — evidence refresh / reconciliation
+
+**`AF-RECON-01` / `B91`.** Atlas captures and extracts well; canonical
+household state still changes mainly by hand. Connect existing extractors to
+existing canonical state with a small reconciliation report:
+
+```
+raw evidence → existing extractors → derived evidence
+    → reconciliation report (evidence value/date, Atlas value, difference, unresolved)
+    → owner-approved change → canonical household state → Forecast → product interfaces
+```
+
+First version intentionally small. Owner approval remains required before
+evidence changes canonical household financial policy or state where
+appropriate.
+
+**Do not build** a database; a second canonical store; a generic fact schema;
+a staging/approval platform; a large provenance framework; another extraction
+architecture; or another forecast or recurrence engine.
+
+### After the refresh loop
+
+- **`AF-HIST-01` / `B20`** — balance history should be a **by-product of
+  successful refreshes**, not an independent system built first. Do not pull
+  it ahead of `AF-RECON-01` because an earlier revision of this file did.
+- **Longer operating horizons** — later. B74 proved recurrence expansion can
+  already run beyond the 91-day display. Extend the operating picture only
+  when a concrete household question requires it. Do not add a second engine.
+- **`AF-INTAKE-01` / `B21`** — a second-month intake run remains the proof
+  that the refresh path works on new evidence. It waits on `AF-RECON-01`,
+  not on snapshots existing first.
+
+### Open governance question — do not solve here
+
+Hard boundaries stay: financial and product correctness, security/privacy,
+data integrity, production writes, destructive/schema changes, explicit owner
+authority. Do not add governance machinery.
+
+Accepted open question: **routine evidence / financial-state refresh may
+eventually need a cheaper review lane than an engine authority change.**
+`AF-RECON-01` should produce evidence about what ceremony is actually
+necessary. Do not carve that lane in advance.
+
+---
+
 ## AF-EVID-01 · Evidence-Use Register — Phase 1 interruption
 
 Adopted from the August 13 recommendation after PR #27. This item interrupts
-Phase 1 because captured evidence could sit unused with CI still green. It does
-not cancel remaining B73/B74 work; those resume after the register exists.
+Phase 1 because captured evidence could sit unused with CI still green. B73
+and B74 have since closed. The register remains routing-only: `CONSUMED` is
+not a financial green, and `AF-RECON-01` is the remaining absorption gap.
 
 - **Outcome** — every explicitly identified evidence ID has exactly one
   CI-checked disposition against an existing incumbent. `CONSUMED` proves
@@ -248,12 +388,82 @@ built *on* that picture, the picture needs owners that a test can reach.
 - **Acceptance** — a due date or amount corrected in one place cannot sit stale in
   the other, and a test demonstrates that; or the document records why the two
   legitimately differ, and what stops them drifting.
-- **State** — **in review.** Owner chose Option A: ICS cash payments `DERIVE`
-  from `Forecast.expandEvents`; standing reminders stay independent and tagged
-  as non-cash. `data.json` `upcoming` is deleted as a schedule authority.
-  Acceptance is proved by `test-schedule-authority.js`. HELOC 21st vs month-end
-  cash treatment remains Q19 and is not closed by this item; the 21st stays on
-  the calendar as a reminder-only look-point, not a cash payment.
+- **State** — **complete.** Merged as PR #37 on 2026-08-14. Owner chose
+  Option A: ICS cash payments `DERIVE` from `Forecast.expandEvents`; standing
+  reminders stay independent and tagged as non-cash. `data.json` `upcoming` is
+  deleted as a schedule authority. Acceptance is proved by
+  `test-schedule-authority.js`. HELOC 21st vs month-end cash treatment remains
+  Q19 and is not closed by this item; the 21st stays on the calendar as a
+  reminder-only look-point, not a cash payment. Do not reopen the closed
+  schedule-authority list in the post-B74 disposition.
+
+### AF-QSTAT-01 · One authority for question status
+
+- **Outcome** — `docs/01_OPEN_QUESTIONS.md` decides OPEN / ANSWERED; household-
+  facing surfaces cannot independently contradict it. Demonstrated live split:
+  Q2 and Q5.
+- **Incumbent** — `docs/01_OPEN_QUESTIONS.md`. `EVOLVE` the publication copy
+  (`data.json` `questions` and any docs that restate status) so it derives or
+  is guarded, not a second status authority. `REPLACE` the independent Deep
+  Dive status bit.
+- **Tier** — M2, and it **may trigger the blocking review** if the PR changes
+  `data.json` or a page the household reads. **Backlog** — `B87`.
+- **Entry gate** — AF-CAL-01 complete. **This is the next implementation
+  outcome.**
+- **Acceptance** — a test fails when a household-facing surface claims a
+  question is answered while `01_OPEN_QUESTIONS.md` still has it OPEN, or the
+  reverse; Q2 and Q5 are the proving cases. The PR does not invent household
+  answers.
+- **Non-goals** — answering Q2/Q5 as a household fact; a question registry
+  product; moving financial figures.
+
+### AF-LINE-01 · Tests must not depend on checkout line endings
+
+- **Outcome** — source-scraping tests express code/architecture invariants
+  without spuriously failing on CRLF.
+- **Incumbent** — the `npm test` suites. `EVOLVE`.
+- **Tier** — M1. **Backlog** — `B88`.
+- **Entry gate** — after `AF-QSTAT-01`, because this is cheap and isolated,
+  not because question status depends on it.
+- **Acceptance** — the function-boundary extractors that currently match LF
+  and miss CRLF no longer fail a CRLF checkout; Linux CI remains green. Prefer
+  newline-tolerant regexes and/or `.gitattributes` `eol=lf`. Do not weaken the
+  invariants the regexes were protecting.
+- **Non-goals** — Windows product support as a feature; changing financial
+  tests' numerical meaning.
+
+### AF-PUB-01 · Stop storing derived publication totals
+
+- **Outcome** — where Atlas already has canonical inputs and deterministic
+  derivation, the published result is not maintained independently. Known
+  copies: headline total debt, net-worth totals, income total, duplicated
+  mortgage publication/model values.
+- **Incumbent** — `data.json` `debts` / `assets` / `income` / `plan` as
+  inputs; the stored totals `DERIVE` or are deleted. `EVOLVE` in place.
+  **Do not redesign `data.json`.**
+- **Tier** — M3 if a household-facing figure is now derived rather than
+  stored. **Backlog** — `B89`.
+- **Entry gate** — after `AF-LINE-01`.
+- **Acceptance** — each named copy is either derived from its canonical
+  parent at render/test time, or deleted because a consumer already computes
+  it; a mutation of the parent moves the published total; no schema redesign.
+- **Non-goals** — splitting forensic/archive material out of `data.json`; a
+  generic DTO layer.
+
+### AF-CLASS-01 · Guard overlapping spending classifications
+
+- **Outcome** — the same household spending category cannot silently tell
+  contradictory essential/discretionary stories. Genuinely distinct semantics
+  (`business`, `reserve`) stay distinct.
+- **Incumbent** — `plan.budget.categories[].class` for the forward cap;
+  `docs/merchant-library.csv` `type` → `periods.json` for historical mix.
+  `EVOLVE` with a guard, not a new classifier.
+- **Tier** — M2. **Backlog** — `B90`.
+- **Entry gate** — after `AF-PUB-01`.
+- **Acceptance** — overlapping category labels cannot disagree on
+  essential/discretionary without a failing test; `business` and `reserve`
+  are named exceptions, not silently coerced.
+- **Non-goals** — a unified classification ontology; recategorising history.
 
 ### Phase 1 product exit — useful before infrastructure
 
@@ -280,28 +490,59 @@ The existing product must be able to show, from the same authorities:
 
 If the existing authorities cannot answer one of those without page-local maths
 or a second planner, record the smallest missing product capability in
-`BACKLOG.md` and finish it before AF-HIST-01. Do not solve the gap by standing up
-another forecast, another calendar or another budget.
+`BACKLOG.md` and finish it before `AF-RECON-01`. Do not solve the gap by standing
+up another forecast, another calendar or another budget. Do not skip the
+post-B74 cleanup (`B87`–`B90`) to start snapshots.
+
+### AF-RECON-01 · Evidence refresh / reconciliation loop
+
+The next major product milestone after the cleanup above. Not a new layer:
+connect the extractors and canonical state that already exist.
+
+- **Outcome** — a small, repeatable reconciliation report compares extracted
+  evidence to current Atlas canonical values (value, date, difference,
+  unresolved). Owner-approved changes then update canonical household state.
+  First version covers a closed set, not every field in `data.json`.
+- **Incumbent** — existing `scripts/` extractors, `derived/`, `data.json`,
+  `public/periods.json`. `NEW` report, `CONSUME` extractors, `EVOLVE` the
+  handoff into `data.json`. Does **not** replace `Forecast`, the Evidence-Use
+  Register, or `01_OPEN_QUESTIONS.md`.
+- **Tier** — M3. **Backlog** — `B91`.
+- **Entry gate** — Phase 1 product exit plus `AF-CLASS-01` (`B90`). Cleanup
+  first so the loop is not reconciling duplicate authorities.
+- **Acceptance** — an unexplained drift on the closed set fails; a matching
+  pair passes; the report does not write canonical state by itself; no new
+  store, schema, staging platform, provenance graph, extractor architecture,
+  or forecast engine.
+- **Prompt** — *Connect one existing extractor to one canonical figure with a
+  reconciliation report the suite can fail. Owner-approved edits still land in
+  `data.json`. Do not generate `data.json`. Record what review ceremony the
+  run actually needed — that is evidence for the open governance question,
+  not a new gate.*
 
 ---
 
 ## Phase 2 — cadence and trend · to T2
 
 Spending, interest and fees already have history through `public/periods.json`.
-**Account balances do not.** That is the gap, and it is what `ARCHITECTURE.md`
-Tier 2 describes. This phase begins only after the Phase 1 product exit above is
-true, so infrastructure cannot outrun the operating picture the household needs.
+**Account balances do not.** That remains the T2 gap. **This phase no longer
+starts with snapshots.** Post-B74, `AF-RECON-01` is the milestone after Phase 1;
+history is a by-product of successful refresh, not the next item after the
+product exit.
 
 ### AF-HIST-01 · Balance snapshots and trend
 
 - **Outcome** — one file per reading, same shape as `data.json`, with the site
   drawing trend lines across them, so "is the HELOC actually falling" is
-  answerable from the repository.
+  answerable from the repository. Prefer producing the snapshot from a
+  successful refresh rather than a separate capture ritual.
 - **Incumbent** — `data.json` for current figures; `public/periods.json` for the
   spending series, which this does **not** duplicate. `NEW`, consumer named: the
   Plan and Deep Dive pages.
 - **Tier** — M3. **Backlog** — `B20`.
-- **Entry gate** — **T1 plus the Phase 1 product exit above**.
+- **Entry gate** — **`AF-RECON-01` complete**, plus T1 and the Phase 1 product
+  exit. Do not start this item because an earlier revision of this file put it
+  first in Phase 2.
 - **Acceptance** — **each snapshot's identity and contents reconcile
   independently** against the contemporaneous `data.json`, the `positions.csv`
   row, or institution evidence — right account, right date, right balance. That is
@@ -310,9 +551,10 @@ true, so infrastructure cannot outrun the operating picture the household needs.
   the household reads is true. Also: a snapshot is written without hand-editing;
   re-running produces no duplicate; and the spending series stays
   `public/periods.json`'s and is not re-derived here.
-- **Prompt** — *Implement `snapshots/<YYYY-MM-DD>.json` per `B20`. Files, not a
-  store — `ARCHITECTURE.md` says git gives history, diffs and versioning free, and
-  the store gate is closed. Do not touch the spending series.*
+- **Prompt** — *Implement `snapshots/<YYYY-MM-DD>.json` per `B20` as a by-product
+  of the refresh loop. Files, not a store — `ARCHITECTURE.md` says git gives
+  history, diffs and versioning free, and the store gate is closed. Do not touch
+  the spending series.*
 
 ### AF-INTAKE-01 · Prove the intake path on a second month
 
@@ -320,15 +562,18 @@ true, so infrastructure cannot outrun the operating picture the household needs.
   publication, and what broke is recorded.
 - **Incumbent** — `scripts/` and the flow in `ARCHITECTURE.md`. `CONSUME`.
 - **Tier** — M2. **Backlog** — `B21`.
-- **Entry gate** — AF-HIST-01, so a snapshot exists to compare against.
+- **Entry gate** — `AF-RECON-01`, so the intake writes against a reconciliation
+  report rather than only a snapshot file. Snapshots (`AF-HIST-01`) should come
+  out of this run when they can, not block it.
 - **Acceptance** — the run is reproducible from the documented steps alone; every
   manual intervention is written down, because those are the evidence T3 needs.
   New unknown or ambiguous transactions from this intake are surfaced as a
   **forward clarification queue** for the household; the run does not reopen an
   18-month forensic categorisation project merely because old unknowns exist.
-- **Prompt** — *Run the documented intake for a second month. Change nothing to
-  make it work — record what needed a human and surface the new unknowns that need
-  household clarification. That record is the input to AF-INGEST-01.*
+- **Prompt** — *Run the documented intake for a second month through the
+  reconciliation loop. Change nothing to make it work — record what needed a
+  human and surface the new unknowns that need household clarification. That
+  record is the input to AF-INGEST-01.*
 
 ---
 
@@ -413,6 +658,10 @@ would lose them.
 - **`B77` — the connector bypasses the pre-commit hook.** Commits authored through
   the GitHub connector are made through the API, so no local hook runs on them.
   Nothing is wrong in the repository today; the gap is structural.
+- **Cheaper review lane for routine refresh.** Recorded, not solved. Hard
+  boundaries stay. `AF-RECON-01` / `B91` should produce evidence about whether
+  a figures-only evidence update needs the same architecture review as an
+  engine-authority change. Do not add a gate to get there.
 
 `BACKLOG.md` holds what each actually says, including the evidence and the
 options — this file names them so the sequence does not lose them, and does not
@@ -423,6 +672,10 @@ be scheduled as though it did.
 
 ## What this file deliberately does not schedule
 
+- **A database, second canonical store, generic fact schema, staging/approval
+  platform, large provenance framework, second extraction architecture, or
+  second forecast/recurrence engine.** Post-B74: connect what exists. None of
+  those is authorised by reaching `AF-RECON-01`.
 - **Anything behind a closed gate.** A canonical store and automated connectivity
   are wanted and not permitted; `ARCHITECTURE.md` holds both gates and this file
   schedules toward them without opening either.
@@ -475,6 +728,9 @@ resurrect it.
 
 | Capability | Status | Home today | Reopen trigger |
 |---|---|---|---|
+| Evidence refresh / reconciliation | **ACTIVE** | `AF-RECON-01` / `B91`. Next major product milestone after `B87`–`B90`. | Already sequenced. Do not replace with a store, schema, or copilot absorption stack. |
+| Balance history / snapshots | **ACTIVE** | Phase 2 `AF-HIST-01` / `B20`. **After** `AF-RECON-01`, as a by-product of refresh. | Already sequenced. Do not start because an older revision put it first in Phase 2. |
+| Longer operating forecast horizon | **PARKED** | 91-day `windowDays`; expander already walks further (B74 / ICS to 2027-05-01). `Forecast.renewal` remains a separate question. | A concrete household question the 91-day operating picture cannot answer. Reuse `expandEvents`. Never a second recurrence or forecast engine. |
 | Improved ingestion | **ACTIVE** | Phase 3 `AF-INGEST-01` / `B78`, to T3. Files still; no provider and no store. | Already sequenced. Entry is T2 plus `AF-INTAKE-01`'s record of manual steps. |
 | Automated financial-data connectivity / transaction feeds | **GATED** | `ARCHITECTURE.md` connectivity gate. Phase 4 `AF-LIVE-01` / `B80` and `AF-LIVE-02` / `B81`, not scheduled until T4. | The owner passes the five-condition gate. Evaluation may start only after T3 and an owner decision to evaluate. Choose nothing and obtain no credential until then. |
 | Richer payroll / bonus / pension-contribution modelling | **PARKED** | The 91-day plan consumes estimated net pay. A statutory payroll engine (`EMP-006`) is excluded. Optional pension cash is already inside that net. No bonus cash event is on the live plan. | A named consumer that current net cannot serve — a window that includes a CPP/EI reset, or an owner-supplied bonus or pension cash event, or an owner-supplied horizon that needs statutory seasonality. Do not build a payroll engine in order to absorb a net `Forecast` already consumes. |
