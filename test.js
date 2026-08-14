@@ -25,6 +25,7 @@ const suites = [
   ['income dependency deadline', 'test-income-deadline.js'],
   ['next due obligation', 'test-next-due.js'],
   ['next payment out', 'test-next-payment-out.js'],
+  ['unallocated / free cash', 'test-unallocated-cash.js'],
   ['homepage mission', 'test-mission.js'],
   ['plan status band + funding verdicts', 'test-status-band.js'],
   ['what the next move achieves', 'test-nextmove.js'],
