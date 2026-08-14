@@ -1338,8 +1338,8 @@
   // keeps the first and a later equal date never displaces it.
   //
   // This names ONE obligation. What the whole day costs is a different
-  // question, and the Plan page's "next payment out" answers it by summing the
-  // events on that date; reconciling the two calendars is B74.
+  // question, and Forecast.nextPaymentOut answers it by summing the cash
+  // events on that date; reconciling the two look-aheads is B74.
   function nextDue(upcoming, asOf) {
     let best = null;
     for (const item of upcoming || []) {
@@ -1354,6 +1354,56 @@
       what: best.item.what,
       amount: best.item.amount,
       daysUntil: best.days,
+    };
+  }
+
+  /* ------------------------------------------ next payment out */
+  // The Plan page tile: the next day cash leaves the household accounts, and
+  // ALL of it. Two registrations on one day are one payment as far as the
+  // account is concerned; showing the larger of them understates what has to
+  // be there.
+  //
+  // `public/plan.js` used to decide this from `sim.events`: it filtered cash
+  // outflows on or after as-of, took the earliest date, and summed every event
+  // on that date. Mutating the sum to the single largest outflow left
+  // `npm test` green — the mutation B73 recorded, because no test could reach
+  // the page expression.
+  //
+  // Eligibility, unchanged from what the page already meant:
+  //
+  //   INFLOW     amount >= 0. Money arriving is not a payment out.
+  //   NONCASH    capitalised interest. A real cost, but no cash leaves.
+  //   BEFORE     date < as-of. The tile answers what is next, not what already
+  //              left.
+  //
+  // Earliest eligible date wins. The day's cash-out is the sum of every
+  // eligible event on that date, as a positive amount. One event keeps its
+  // own label; several share a count-and-stem label taken from the first
+  // event in stream order. Distinct from `nextDue`, which names one
+  // `upcoming` obligation rather than a projection day-total.
+  function nextPaymentOut(events, asOf) {
+    let date = null;
+    const sameDay = [];
+    for (const event of events || []) {
+      if (!(event.amount < 0) || event.kind === 'noncash' || event.date < asOf) continue;
+      if (date == null || event.date < date) {
+        date = event.date;
+        sameDay.length = 0;
+        sameDay.push(event);
+      } else if (event.date === date) {
+        sameDay.push(event);
+      }
+    }
+    if (!date) return null;
+    const dayTotal = sameDay.reduce((cash, event) => cash + event.amount, 0);
+    return {
+      date,
+      amount: -dayTotal,
+      count: sameDay.length,
+      label: sameDay.length === 1
+        ? sameDay[0].label
+        : `${sameDay.length} payments — ${sameDay[0].label.replace(/ —.*$/, '')} and others`,
+      daysUntil: diffDays(asOf, date),
     };
   }
 
@@ -2217,7 +2267,7 @@
     recommendWeekly, recommend, incomeDeadline, counterfactuals,
     budgetBreakdown, monthlyFromWeekly,
     projectDebts,
-    nextDue, planStatus, mission, nextMove, utilisation, renewal,
+    nextDue, nextPaymentOut, planStatus, mission, nextMove, utilisation, renewal,
     payoffDebts, payoffModel,
     paymentForMonths, EPSILON, STEP };
   if (typeof module !== 'undefined' && module.exports) module.exports = Forecast;

@@ -55,7 +55,8 @@ ok(next && next.due === '2026-02-13', 'it is dated 13 February', next ? next.due
 ok(next && next.amount === 210, 'its own amount is reported', next ? String(next.amount) : 'none');
 ok(next && next.daysUntil === 3, '10 Feb to 13 Feb is three days', next ? String(next.daysUntil) : 'none');
 // One obligation, named. $485.00 is what 13 February costs in total, which is a
-// different question and belongs to the Plan page's "next payment out" (B74).
+// different question and belongs to Forecast.nextPaymentOut (B74 reconciles
+// the two look-aheads).
 ok(next && next.amount !== 485,
   'the winner is one obligation, not the day total');
 
