@@ -24,11 +24,12 @@ Capabilities that are wanted but not yet in Phases 1–4 are recorded in
 **Later capabilities — status and reopen trigger**. That table is memory and
 trigger, not a second order of work.
 
-**Current sequencing (14 August 2026, post-B90).** B74, B87, B88, B89 and B90
-are closed. The remaining implementation order is the **Post-B90 remaining
-order** in the disposition below — two small prerequisites, then strengthened
-`B91`, then history as a by-product. Next implementation outcome: refresh-safe
-tests (`B92`). Do not start `B91` or `B20` first.
+**Current sequencing (14 August 2026, post-B92).** B74, B87, B88, B89, B90 and
+B92 are closed. The remaining implementation order is the **Post-B90 remaining
+order** in the disposition below — duplicate-live-fact cleanup, then
+strengthened `B91`, then history as a by-product. Next implementation outcome:
+derive/delete proven duplicate live facts (`B93`). Do not start `B91` or `B20`
+first.
 
 ---
 
@@ -246,9 +247,9 @@ B89  derive remaining duplicate publication values  ← complete
   ↓
 B90  spending-classification reconciliation ← complete
   ↓
-B92  refresh-safe tests                     ← next implementation outcome
+B92  refresh-safe tests                     ← complete
   ↓
-B93  derive/delete proven duplicate live facts
+B93  derive/delete proven duplicate live facts  ← next implementation outcome
   ↓
 B91  evidence refresh / reconciliation + current-state cutover
      (Aug. 14 payday acceptance)
@@ -277,15 +278,15 @@ rules above.
 
 ### Next implementation outcomes — cheap refresh, then reconciliation
 
-Do not start `B91` while behaviour tests are pinned to live household numbers
-and proven duplicate live facts still have two homes. Those two outcomes are
-prerequisites, not a new architecture layer.
+Do not start `B91` while proven duplicate live facts still have two homes.
+`B92` is closed; `B93` remains the last prerequisite, not a new architecture
+layer.
 
-**`AF-TEST-01` / `B92`.** Make ordinary evidence refresh cheap. Measured in
-throwaway clones: changing Chequing A broke about 8 suites / ~40 assertions;
-changing MBNA broke 6 / 17; marking Fusion camp paid broke 7 / 18; changing
-payroll + Shaw broke 7 / 28. Unpin behaviour tests from live `data.json`
-values so a legitimate canonical edit is not a suite rewrite.
+**`AF-TEST-01` / `B92`.** Make ordinary evidence refresh cheap. **Complete.**
+Measured before the unpin, on throwaway clones: changing Chequing A broke 8
+suites / 61 assertions; changing MBNA broke 5 / 19; removing Fusion camp
+broke 6 / 18; changing payroll + Shaw broke 5 / 27. Behaviour tests no
+longer pin live `data.json` cents.
 
 **`AF-DEDUP-01` / `B93`.** Derive or delete proven duplicate live facts
 before reconciliation is asked to keep them synchronised. Verified still
@@ -548,8 +549,8 @@ built *on* that picture, the picture needs owners that a test can reach.
   first-event order. Published Plan cash figures and historical discretionary
   dollar totals are unchanged; Health leaves the historical essential class
   because that class was the collapsed first-event story. Phase 1 product
-  exit has no blocking product gap. Next implementation outcome is
-  `AF-TEST-01` / `B92`, not `B91`.
+  exit has no blocking product gap. `AF-TEST-01` / `B92` is complete. Next
+  implementation outcome is `AF-DEDUP-01` / `B93`, not `B91`.
 
 ### Phase 1 product exit — useful before infrastructure
 
@@ -587,15 +588,14 @@ unknown-spend inclusion already answer those five questions from one
 authority chain. Remaining gaps are evidence freshness (`B91`) and owner
 policy such as Q24, not missing product machinery. The Aug. 14 reviews and
 payday test then showed that `B91` is **not** the next implementation
-outcome: refresh-safe tests (`B92`) and derive/delete of proven duplicate
-live facts (`B93`) must precede it.
+outcome: refresh-safe tests (`B92`) are complete; derive/delete of proven
+duplicate live facts (`B93`) remains before `B91`.
 
 ### AF-TEST-01 · Make ordinary evidence refresh cheap
 
-- **Outcome** — behaviour tests that currently pin to live household numbers
-  no longer fail solely because a legitimate canonical value changed. A
-  refresh of Chequing A, MBNA, Fusion paid status, or payroll must not
-  require rewriting unrelated suites.
+- **Outcome** — behaviour tests no longer fail solely because a legitimate
+  canonical household value changed. A refresh of Chequing A, MBNA, Fusion
+  paid status, or payroll does not require rewriting unrelated suites.
 - **Incumbent** — the `npm test` suites. `EVOLVE`. Live `data.json` remains
   the canonical household state; tests stop treating its current cents as
   the only fixture.
@@ -607,7 +607,7 @@ live facts (`B93`) must precede it.
   fail. Prefer fixtures or derived expectations over copied live cents.
 - **Non-goals** — reconciliation; changing household figures; weakening
   financial invariants.
-- **State** — **next implementation outcome.**
+- **State** — **complete.**
 
 ### AF-DEDUP-01 · Derive or delete proven duplicate live facts
 
@@ -628,6 +628,7 @@ live facts (`B93`) must precede it.
   promoted into a universal fact database.
 - **Non-goals** — leaf-level provenance; a fact schema; reconciliation
   itself; changing the Aug. 9 balances to Aug. 14 values.
+- **State** — **next implementation outcome.** Not started.
 
 ### AF-RECON-01 · Evidence refresh / reconciliation loop
 
@@ -893,8 +894,8 @@ resurrect it.
 | Capability | Status | Home today | Reopen trigger |
 |---|---|---|---|
 | Evidence refresh / reconciliation | **ACTIVE** | `AF-RECON-01` / `B91`, after `B92` and `B93`. Major product milestone; not the next implementation outcome. | Already sequenced. Do not replace with a store, schema, leaf-level provenance, or copilot absorption stack. Do not start before refresh-safe tests and duplicate-live-fact cleanup. |
-| Refresh-safe tests | **ACTIVE** | `AF-TEST-01` / `B92`. **Next implementation outcome.** | Already sequenced. Unpin behaviour tests from live household numbers. |
-| Derive/delete duplicate live facts | **ACTIVE** | `AF-DEDUP-01` / `B93`. After `B92`, before `B91`. | Already sequenced. Derive or delete proven copies; do not add a sync layer. |
+| Refresh-safe tests | **ACTIVE** | `AF-TEST-01` / `B92`. **Complete.** | Already sequenced. Unpin behaviour tests from live household numbers. |
+| Derive/delete duplicate live facts | **ACTIVE** | `AF-DEDUP-01` / `B93`. **Next implementation outcome.** After `B92`, before `B91`. | Already sequenced. Derive or delete proven copies; do not add a sync layer. |
 | Balance history / snapshots | **ACTIVE** | Phase 2 `AF-HIST-01` / `B20`. **After** `AF-RECON-01`, as a by-product of refresh. | Already sequenced. Do not start because an older revision put it first in Phase 2. |
 | Longer operating forecast horizon | **PARKED** | 91-day `windowDays`; expander already walks further (B74 / ICS to 2027-05-01). `Forecast.renewal` remains a separate question. | A concrete household question the 91-day operating picture cannot answer. Reuse `expandEvents`. Never a second recurrence or forecast engine. |
 | Improved ingestion | **ACTIVE** | Phase 3 `AF-INGEST-01` / `B78`, to T3. Files still; no provider and no store. | Already sequenced. Entry is T2 plus `AF-INTAKE-01`'s record of manual steps. |

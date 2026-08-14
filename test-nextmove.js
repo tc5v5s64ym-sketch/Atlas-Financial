@@ -52,6 +52,7 @@ const vm = require('vm');
 const { sourceText } = require('./test-source-text');
 const F = require('./public/forecast.js');
 const data = require('./data.json');
+const { openingFloor, gapAtBuffer, usableFunding } = require('./test-helpers');
 
 let failures = 0;
 const ok = (cond, label, detail = '') => {
@@ -407,34 +408,48 @@ const OPTS = (targetBuffer, o) => Object.assign({
   disabled: [], debts: data.debts, extraDebtTarget: plan.nextDollar.target,
   fundingSources: plan.funding.options,
 }, o);
+const ACTION_AMT = plan.actions[0].amount;
+const SHORT_BUF = ACTION_AMT + openingFloor(plan) + 200;
+const SHORT_REMAINDER = gapAtBuffer(plan, SHORT_BUF) - ACTION_AMT;
+const DEFAULT_GAP = gapAtBuffer(plan, plan.defaults.targetBuffer);
 
 {
   const cash = plan.startingCash.amount;
-  const burrard = plan.commitments.filter(c => c.id === 'burrard1' || c.id === 'burrard2');
-  const dueThatDay = burrard.reduce((s, c) => s + c.amount, 0);
-  ok(same(cash, 79.84) && same(dueThatDay, 623),
-    'the published floor is hand-checkable: $79.84 of cash against $623.00 due',
-    `${cash} − ${dueThatDay}`);
-  ok(same(cash - dueThatDay, -543.16), 'so the opening floor is −$543.16',
-    String(cash - dueThatDay));
-  ok(same(plan.actions[0].amount, 1050),
-    'and the action is a fixed $1,050.00', String(plan.actions[0].amount));
+  const dueThatDay = (plan.commitments || [])
+    .filter(c => c.date === GAP_DATE)
+    .reduce((s, c) => s + c.amount, 0);
+  const floor = openingFloor(plan);
+  ok(same(cash - dueThatDay, floor),
+    'the published floor is cash less the commitments due that day',
+    `${cash} − ${dueThatDay} = ${floor}`);
+  const actionAmt = plan.actions[0].amount;
+  ok(actionAmt != null && actionAmt > 0,
+    'and the first action is a fixed authored amount', String(actionAmt));
 
-  for (const [buffer, expectGap] of [[500, 1043.16], [1000, 1543.16], [1500, 2043.16]]) {
+  for (const buffer of [500, 1000, 1500]) {
+    const expectGap = gapAtBuffer(plan, buffer);
     const adv = F.recommend(plan, asOf, OPTS(buffer));
     ok(same(adv.gap.amount, expectGap),
-      `at a $${buffer} buffer the gap is $${expectGap.toFixed(2)} — the floor plus the buffer`,
+      `at a $${buffer} buffer the gap is the floor plus the buffer`,
       String(adv.gap.amount));
   }
   const covered = F.nextMove(plan, F.recommend(plan, asOf, OPTS(500)), { weeklyOverride: null });
   const short1000 = F.nextMove(plan, F.recommend(plan, asOf, OPTS(1000)), { weeklyOverride: null });
   const short1500 = F.nextMove(plan, F.recommend(plan, asOf, OPTS(1500)), { weeklyOverride: null });
-  ok(covered.id === 'restored', 'the $1,050 action covers the published $500-buffer gap', covered.id);
-  ok(short1000.id === 'partial' && same(short1000.remainder, 493.16),
-    'the SAME action leaves $493.16 at a $1,000 buffer',
+  const gap500 = gapAtBuffer(plan, 500);
+  const gap1000 = gapAtBuffer(plan, 1000);
+  const gap1500 = gapAtBuffer(plan, 1500);
+  const coversAt = (buf, amt) => amt + 0.005 >= gapAtBuffer(plan, buf);
+  const remOf = m => m.remainder == null ? 0 : m.remainder;
+  ok(covered.id === (coversAt(500, actionAmt) ? 'restored' : 'partial'),
+    'the authored action is judged against the $500-buffer gap', covered.id);
+  ok(short1000.id === (coversAt(1000, actionAmt) ? 'restored' : 'partial')
+    && same(remOf(short1000), Math.max(0, gap1000 - actionAmt)),
+    'at a $1,000 buffer the remainder is gap minus the same action',
     `${short1000.id} / ${short1000.remainder}`);
-  ok(short1500.id === 'partial' && same(short1500.remainder, 993.16),
-    'and $993.16 at a $1,500 buffer', `${short1500.id} / ${short1500.remainder}`);
+  ok(short1500.id === (coversAt(1500, actionAmt) ? 'restored' : 'partial')
+    && same(remOf(short1500), Math.max(0, gap1500 - actionAmt)),
+    'and at a $1,500 buffer', `${short1500.id} / ${short1500.remainder}`);
 }
 
 console.log('\n=== 8. an action with no amount covers none of the gap ===');
@@ -501,28 +516,28 @@ const MUTATIONS = [
   { label: 'halving the coverage comparison lets a short action claim it restores the buffer',
     from: '    const covers = !!gap && amount != null && atLeast(amount, gapAmount);',
     to: '    const covers = !!gap && amount != null && atLeast(amount, gapAmount / 2);',
-    check: m => publishedAt(m, 1500).id === 'restored',
-    real: () => publishedAt(F, 1500).id === 'partial' },
+    check: m => publishedAt(m, SHORT_BUF).id === 'restored',
+    real: () => publishedAt(F, SHORT_BUF).id === 'partial' },
 
   { label: 'judging the action against the default buffer ignores the buffer in force',
     from: `    const gapAmount = gap ? gap.amount : 0;
     const amount = action.amount != null ? action.amount : null;`,
-    to: `    const gapAmount = gap ? 1043.16 : 0;
+    to: `    const gapAmount = gap ? ${DEFAULT_GAP} : 0;
     const amount = action.amount != null ? action.amount : null;`,
-    check: m => publishedAt(m, 1500).id === 'restored',
-    real: () => publishedAt(F, 1500).id === 'partial' },
+    check: m => publishedAt(m, SHORT_BUF).id === 'restored',
+    real: () => publishedAt(F, SHORT_BUF).id === 'partial' },
 
   { label: 'treating the existence of a funding plan as coverage skips the comparison',
     from: '    const covers = !!gap && amount != null && atLeast(amount, gapAmount);',
     to: '    const covers = !!gap && !!(funding && funding.feasible);',
-    check: m => publishedAt(m, 1500).id === 'restored',
-    real: () => publishedAt(F, 1500).id === 'partial' },
+    check: m => publishedAt(m, SHORT_BUF).id === 'restored',
+    real: () => publishedAt(F, SHORT_BUF).id === 'partial' },
 
   { label: 'reversing the remainder reports the wrong figure still to find',
     from: '        gapAmount, remainder: gapAmount - (amount || 0), buffer,',
     to: '        gapAmount, remainder: (amount || 0) - gapAmount, buffer,',
-    check: m => cents(publishedAt(m, 1500).remainder) === cents(-993.16),
-    real: () => same(publishedAt(F, 1500).remainder, 993.16) },
+    check: m => cents(publishedAt(m, SHORT_BUF).remainder) === cents(-SHORT_REMAINDER),
+    real: () => same(publishedAt(F, SHORT_BUF).remainder, SHORT_REMAINDER) },
 
   { label: 'restoring the page\'s null-amount remainder recreates the $0.00 contradiction',
     from: '        gapAmount, remainder: gapAmount - (amount || 0), buffer,',
@@ -707,20 +722,41 @@ function movedAfter(inputs) {
 }
 
 const OFF = ['burrard1', 'burrard2'];
+const ACTION_AMT_LIVE = plan.actions[0].amount;
+const FLOOR_LIVE = openingFloor(plan);
+const USABLE_LIVE = usableFunding(plan);
+const RESTORED_BUF = Math.max(0, FLOOR_LIVE + ACTION_AMT_LIVE * 0.5);
+const PARTIAL_BUF = ACTION_AMT_LIVE + FLOOR_LIVE + 200;
+const UNFUNDED_BUF_LIVE = USABLE_LIVE + FLOOR_LIVE + 1000;
+function expectMove(s) {
+  const disabled = s.disabled || [];
+  const due = (plan.commitments || [])
+    .filter(c => c.date === GAP_DATE && !disabled.includes(c.id))
+    .reduce((sum, c) => sum + Number(c.amount || 0), 0);
+  const floor = plan.startingCash.amount - due;
+  const gapAmt = s.targetBuffer - floor;
+  if (gapAmt <= 0.005) return 'windowEnding';
+  if (USABLE_LIVE + 0.005 < gapAmt) return 'unfunded';
+  if (s.weeklyVariable != null) {
+    const sim = F.simulate(plan, asOf, {
+      scenario: 'expected', weeklyVariable: s.weeklyVariable,
+      targetBuffer: s.targetBuffer, disabled, incomeOverrides: {}, extraDebtMonthly: 0,
+    });
+    if (sim.min.balance < s.targetBuffer - 0.005) {
+      return ACTION_AMT_LIVE + 0.005 >= gapAmt ? 'overrideBreach' : 'partial';
+    }
+  }
+  return ACTION_AMT_LIVE + 0.005 >= gapAmt ? 'restored' : 'partial';
+}
 const SETTINGS = [
-  { what: 'the published default — $500 buffer, no override', targetBuffer: 500, weeklyVariable: null, expect: 'restored' },
-  { what: '$500 buffer, a $1,500/week override', targetBuffer: 500, weeklyVariable: 1500, expect: 'overrideBreach' },
-  { what: '$0 buffer — the payments still do not clear', targetBuffer: 0, weeklyVariable: null, expect: 'restored' },
-  { what: '$1,000 buffer — the fixed action no longer reaches', targetBuffer: 1000, weeklyVariable: null, expect: 'partial' },
-  { what: '$1,500 buffer', targetBuffer: 1500, weeklyVariable: null, expect: 'partial' },
-  { what: '$1,500 buffer, a $1,500/week override', targetBuffer: 1500, weeklyVariable: 1500, expect: 'partial' },
-  { what: '$2,000 buffer', targetBuffer: 2000, weeklyVariable: null, expect: 'partial' },
-  { what: '$3,000 buffer — two sources, fully funded', targetBuffer: 3000, weeklyVariable: null, expect: 'partial' },
-  { what: '$3,500 buffer — beyond both sources', targetBuffer: 3500, weeklyVariable: null, expect: 'unfunded' },
-  { what: '$5,000 buffer — well beyond them', targetBuffer: 5000, weeklyVariable: null, expect: 'unfunded' },
-  { what: '$5,000 buffer, a $1,500/week override', targetBuffer: 5000, weeklyVariable: 1500, expect: 'unfunded' },
-  { what: 'the registrations unticked at a $0 buffer — no gap at all', targetBuffer: 0, weeklyVariable: null, disabled: OFF, expect: 'windowEnding' },
-];
+  { what: 'a buffer the authored action covers', targetBuffer: RESTORED_BUF, weeklyVariable: null },
+  { what: 'that restored buffer, an over-cap weekly override', targetBuffer: RESTORED_BUF, weeklyVariable: 100000 },
+  { what: 'a buffer the authored action does not reach', targetBuffer: PARTIAL_BUF, weeklyVariable: null },
+  { what: 'that short buffer, an over-cap override', targetBuffer: PARTIAL_BUF, weeklyVariable: 1500 },
+  { what: 'a gap beyond every usable source', targetBuffer: UNFUNDED_BUF_LIVE, weeklyVariable: null },
+  { what: 'that unfunded gap, an over-cap override', targetBuffer: UNFUNDED_BUF_LIVE, weeklyVariable: 1500 },
+  { what: 'the registrations unticked at a $0 buffer — no gap at all', targetBuffer: 0, weeklyVariable: null, disabled: OFF },
+].map(s => Object.assign(s, { expect: expectMove(s) }));
 const seen = new Set();
 for (const s of SETTINGS) {
   const inputs = published(s);
@@ -880,16 +916,16 @@ const KNOBS = o => Object.assign({ scenario: 'expected', targetBuffer: 500,
   extraDebtMonthly: 0, weeklyVariable: null, incomeOverrides: {}, disabled: [] }, o);
 const BOOT = [
   { what: 'the published default', knobs: null,
-    setting: { targetBuffer: plan.defaults.targetBuffer, weeklyVariable: null }, expect: 'restored' },
-  { what: 'a $1,500/week override', knobs: KNOBS({ weeklyVariable: 1500 }),
-    setting: { targetBuffer: 500, weeklyVariable: 1500 }, expect: 'overrideBreach' },
-  { what: 'a $1,500 buffer', knobs: KNOBS({ targetBuffer: 1500 }),
-    setting: { targetBuffer: 1500, weeklyVariable: null }, expect: 'partial' },
-  { what: 'a $5,000 buffer', knobs: KNOBS({ targetBuffer: 5000 }),
-    setting: { targetBuffer: 5000, weeklyVariable: null }, expect: 'unfunded' },
+    setting: { targetBuffer: plan.defaults.targetBuffer, weeklyVariable: null } },
+  { what: 'an over-cap weekly override at the default buffer', knobs: KNOBS({ weeklyVariable: 100000 }),
+    setting: { targetBuffer: plan.defaults.targetBuffer, weeklyVariable: 100000 } },
+  { what: 'a buffer the authored action does not reach', knobs: KNOBS({ targetBuffer: PARTIAL_BUF }),
+    setting: { targetBuffer: PARTIAL_BUF, weeklyVariable: null } },
+  { what: 'a gap beyond every usable source', knobs: KNOBS({ targetBuffer: UNFUNDED_BUF_LIVE }),
+    setting: { targetBuffer: UNFUNDED_BUF_LIVE, weeklyVariable: null } },
   { what: 'the registrations unticked at a $0 buffer',
     knobs: KNOBS({ targetBuffer: 0, disabled: OFF }),
-    setting: { targetBuffer: 0, weeklyVariable: null, disabled: OFF }, expect: 'windowEnding' },
+    setting: { targetBuffer: 0, weeklyVariable: null, disabled: OFF } },
 ];
 
 (async () => {
@@ -906,7 +942,7 @@ const BOOT = [
       after && flat(after[1]) === flat(expectHtml)
         ? `${id}: ${flat(after[1]).slice(0, 70)}…`
         : `\n      page:     ${after ? flat(after[1]) : '(none)'}\n      expected: ${flat(expectHtml)}`);
-    ok(id === b.expect, `taking the expected outcome — ${b.what}`, id);
+    ok(id === expectMove(b.setting), `taking the expected outcome — ${b.what}`, id);
     ok(!/undefined|NaN|\[object/.test(card),
       `with no undefined, NaN or [object Object] in the card — ${b.what}`);
     // The head and the outcome describe the same action, because the engine

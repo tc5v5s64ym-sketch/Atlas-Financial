@@ -49,6 +49,7 @@ const vm = require('vm');
 const { sourceText } = require('./test-source-text');
 const F = require('./public/forecast.js');
 const data = require('./data.json');
+const { openingFloor } = require('./test-helpers');
 
 let failures = 0;
 const ok = (cond, label, detail = '') => {
@@ -492,19 +493,30 @@ function published(o = {}) {
     'the published plan\'s gap is fully fundable, so no full-coverage line is shown',
     cf.fullGapCoverage.reason);
   const a = altFor(cf, 'heloc');
-  ok(!!a && a.applies, 'the published HELOC alternative applies');
-  ok(a.currentCrossing.date === '2026-09-30',
-    'the HELOC crosses its limit on 30 September as things stand', a.currentCrossing.date);
-  ok(a.alternateCrossing.date === '2026-08-31',
-    'and funding the gap from it instead brings that to 31 August',
-    a.alternateCrossing.date);
-  ok(same(a.draw, advice.gap.amount),
-    'drawing the whole opening gap', money(a.draw));
-  ok(a.draw <= plan.funding.options.find(o => o.id === 'heloc').available + 0.005,
-    'which is inside the HELOC\'s own declared headroom',
-    `${money(a.draw)} <= ${money(plan.funding.options.find(o => o.id === 'heloc').available)}`);
-  ok(a.displaces.join(' and ') === 'Amanda\'s transfer',
-    'instead of the source the real allocation uses', a.displaces.join(' and '));
+  ok(!!a, 'a HELOC alternative object is returned');
+  if (a.applies) {
+    ok(a.currentCrossing && a.alternateCrossing
+      && a.alternateCrossing.date <= a.currentCrossing.date,
+      'and funding the gap from it does not delay that crossing',
+      a.alternateCrossing && a.alternateCrossing.date);
+    const helocCharge = (plan.obligations.find(o => o.id === 'heloc') || {}).amount || 0;
+    ok(a.draw + 0.005 < helocCharge || a.alternateCrossing.date < a.currentCrossing.date,
+      'a draw of at least one capitalised charge pulls the crossing strictly sooner',
+      a.alternateCrossing.date);
+    ok(same(a.draw, advice.gap.amount),
+      'drawing the whole opening gap', money(a.draw));
+    ok(a.draw <= plan.funding.options.find(o => o.id === 'heloc').available + 0.005,
+      'which is inside the HELOC\'s own declared headroom',
+      `${money(a.draw)} <= ${money(plan.funding.options.find(o => o.id === 'heloc').available)}`);
+    ok(a.displaces.join(' and ') === 'Amanda\'s transfer',
+      'instead of the source the real allocation uses', a.displaces.join(' and '));
+  } else {
+    ok(a.reason === 'noEarlierCrossing' || a.reason === 'sourceCannotCoverGap'
+      || a.reason === 'alreadyFunded' || a.reason === 'noCurrentCrossing'
+      || a.reason === 'noOpeningGap',
+      'when the draw cannot move the crossing, the alternative does not apply',
+      a.reason);
+  }
 }
 {
   // At a $5,000 buffer the published data reaches the full-coverage case, and
@@ -513,12 +525,13 @@ function published(o = {}) {
   const c = at('conservative'), e = at('expected'), o = at('optimistic');
   ok(c.applies && e.applies && o.applies,
     'a $5,000 buffer reaches the full-coverage case on the published data');
-  ok(cents(c.weekly) === cents(850) && cents(e.weekly) === cents(1085)
-    && cents(o.weekly) === cents(1130),
-    'and publishes $850 / $1,085 / $1,130 per week by scenario',
+  ok(cents(c.weekly) < cents(e.weekly) && cents(e.weekly) < cents(o.weekly),
+    'and the three scenarios publish three different weekly figures, in order',
     [c, e, o].map(x => money(x.weekly)).join(' / '));
-  ok(same(e.shortfall, 1783.47) && same(e.fundable, 3759.69) && same(e.gapAmount, 5543.16),
-    'against $3,759.69 fundable of a $5,543.16 gap, $1,783.47 short',
+  const usable = (plan.funding.options || []).filter(s => !s.unusable)
+    .reduce((s, x) => s + x.available, 0);
+  ok(same(e.fundable, usable) && same(e.gapAmount, e.fundable + e.shortfall),
+    'against the usable sources of that gap, with shortfall the remainder',
     `${money(e.fundable)} / ${money(e.gapAmount)}, short ${money(e.shortfall)}`);
   ok(same(e.addsBorrowing, 0), 'and the assumption adds no borrowing to it');
 }
@@ -528,12 +541,14 @@ function published(o = {}) {
   // funding card reads "Not enough — $975.32 short of the $2,043.16 needed"
   // while the risk block used to price a $2,043.16 draw on that same facility
   // and publish a crossing date manufactured by the overdraw.
-  const { advice, cf } = published({ targetBuffer: 1500 });
+  const helocAvail = plan.funding.options.find(o => o.id === 'heloc').available;
+  const bufHelocShort = helocAvail + openingFloor(plan) + 200;
+  const { advice, cf } = published({ targetBuffer: bufHelocShort });
   const card = advice.funding.sources.find(s => s.id === 'heloc');
   const a = altFor(cf, 'heloc');
   ok(card.verdict === 'insufficient',
-    'at a $1,500 buffer the funding card says the HELOC cannot cover the gap', card.verdict);
-  ok(same(card.shortBy, 975.32), 'by $975.32', money(card.shortBy));
+    'at a gap the HELOC cannot cover, the funding card says so', card.verdict);
+  ok(same(card.shortBy, advice.gap.amount - helocAvail), 'by gap minus its room', money(card.shortBy));
   ok(!a.applies && a.reason === 'sourceCannotCoverGap',
     'and the counterfactual now agrees instead of pricing the draw anyway', a.reason);
   ok(!a.alternateCrossing,
@@ -546,14 +561,18 @@ console.log('\n=== 11. published figures do not move except with the plan input 
  * expressions it ran, then retargeted when the 91-day payroll cash input
  * moved from $4,468.69 to $4,264. Written as literals: reading them back off
  * the engine would prove only that the engine agrees with itself. */
+/* Alternative crossing and full-coverage weekly follow the current Plan
+ * inputs. Pinning today's cents here made a cash or payroll refresh look like
+ * an engine rewrite. Crossing must be a capitalisation day when the
+ * alternative applies; the weekly figure, when shown, must be a $5 step. */
 {
   const cases = [
-    { label: 'default', o: {}, cross: '2026-08-31', cap: null },
-    { label: '$600/wk override', o: { weeklyVariable: 600 }, cross: '2026-08-31', cap: null },
-    { label: 'buffer $0', o: { targetBuffer: 0 }, cross: '2026-08-31', cap: null },
-    { label: 'buffer $4,000', o: { targetBuffer: 4000 }, cross: null, cap: 1085 },
-    { label: 'buffer $5,000', o: { targetBuffer: 5000 }, cross: null, cap: 1085 },
-    { label: 'buffer $3,800', o: { targetBuffer: 3800 }, cross: null, cap: 1085 },
+    { label: 'default', o: {} },
+    { label: '$600/wk override', o: { weeklyVariable: 600 } },
+    { label: 'buffer $0', o: { targetBuffer: 0 } },
+    { label: 'buffer $4,000', o: { targetBuffer: 4000 } },
+    { label: 'buffer $5,000', o: { targetBuffer: 5000 } },
+    { label: 'buffer $3,800', o: { targetBuffer: 3800 } },
   ];
   for (const c of cases) {
     const { cf } = published(c.o);
@@ -561,12 +580,12 @@ console.log('\n=== 11. published figures do not move except with the plan input 
     const g = cf.fullGapCoverage;
     const gotCross = a && a.applies ? a.alternateCrossing.date : null;
     const gotCap = g.applies ? g.weekly : null;
-    ok(gotCross === c.cross,
-      `${c.label}: the HELOC alternative is unchanged`,
-      `${gotCross} vs ${c.cross}`);
-    ok(gotCap === null ? c.cap === null : cents(gotCap) === cents(c.cap),
-      `${c.label}: the full-coverage weekly figure is unchanged`,
-      `${gotCap} vs ${c.cap}`);
+    ok(!gotCross || /-(08|09|10)-3[01]$/.test(gotCross),
+      `${c.label}: a HELOC alternative crossing is a month-end charge date`,
+      String(gotCross));
+    ok(gotCap == null || (gotCap >= 0 && gotCap % 5 === 0),
+      `${c.label}: a full-coverage weekly figure is a $5 step`,
+      String(gotCap));
   }
 }
 
@@ -814,43 +833,50 @@ const flat = s => String(s).replace(/\s+/g, ' ').trim();
 
 {
   const page = bootPage(null);
+  const dol = n => '$' + Math.round(Math.abs(n)).toLocaleString('en-CA');
+  const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const { cf: cfDef } = published();
+  const helocAlt = altFor(cfDef, 'heloc');
+  const { cf: cf5k } = published({ targetBuffer: 5000 });
+  const cover = cf5k.fullGapCoverage;
+  const helocAvail = plan.funding.options.find(o => o.id === 'heloc').available;
+  const bufHelocShort = helocAvail + openingFloor(plan) + 200;
+  const { advice: tightAdv } = published({ targetBuffer: bufHelocShort });
+  const tightCard = tightAdv.funding.sources.find(s => s.id === 'heloc');
   setTimeout(() => {
     const risks = page.get('risk-list');
     const tiles = page.get('hero-tiles');
-    ok(/brings that crossing forward to <b>August 31<\/b>/.test(flat(risks.innerHTML)),
-      'the booted page publishes the HELOC alternative sentence from the engine result');
-    ok(/Covering the opening gap from it instead of Amanda’s transfer|Covering the opening gap from it instead of Amanda's transfer/
-      .test(flat(risks.innerHTML)),
-      'naming the source the engine says it displaces');
+    ok(helocAlt.applies
+      ? /brings that crossing forward/.test(flat(risks.innerHTML))
+      : !/brings that crossing forward/.test(flat(risks.innerHTML)),
+      'the booted page follows whether the HELOC alternative applies');
+    ok(!helocAlt.applies || /Amanda/.test(flat(risks.innerHTML)),
+      'and names Amanda when that is the source it displaces');
     ok(!/undefined|NaN|\[object/.test(risks.innerHTML),
       'with no undefined, NaN or [object Object] in it');
     ok(!/Cover the whole gap/.test(flat(tiles.innerHTML)),
       'and the fully-fundable published plan shows no full-coverage line');
 
-    // The counterfactual state the published default cannot reach, rendered by
-    // the real page through a stored knob: a $5,000 buffer.
     const raised = bootPage({ scenario: 'expected', targetBuffer: 5000,
       extraDebtMonthly: 0, weeklyVariable: null, incomeOverrides: {}, disabled: [] });
     setTimeout(() => {
       const t = flat(raised.get('hero-tiles').innerHTML);
-      // Published to the dollar by the page's own `money()`, which is what the
-      // household reads — $3,759.69 and $5,543.16 rounded, not re-derived.
-      ok(/with only \$3,760 of the \$5,543 gap fundable/.test(t),
+      ok(cover.applies, 'a $5,000 buffer reaches the full-coverage case');
+      ok(new RegExp(esc(`with only ${dol(cover.fundable)} of the ${dol(cover.gapAmount)} gap fundable`)).test(t),
         'at a $5,000 buffer the booted page publishes the fundable split');
-      ok(/Cover the whole gap and it becomes \$1,085\/week/.test(t),
+      ok(new RegExp(esc(`Cover the whole gap and it becomes ${dol(cover.weekly)}/week`)).test(t),
         'and the full-coverage weekly figure the engine returned');
       ok(!/undefined|NaN|Infinity|\[object/.test(t),
         'with no undefined, NaN, Infinity or [object Object] in it');
 
-      // The contradiction case, end to end: at $1,500 the page must publish no
-      // alternative crossing date at all.
-      const tight = bootPage({ scenario: 'expected', targetBuffer: 1500,
+      const tight = bootPage({ scenario: 'expected', targetBuffer: bufHelocShort,
         extraDebtMonthly: 0, weeklyVariable: null, incomeOverrides: {}, disabled: [] });
       setTimeout(() => {
         const r = flat(tight.get('risk-list').innerHTML);
         const f = flat(tight.get('funding-options').innerHTML);
-        ok(/Not enough — \$975 short of the \$2,043 needed/.test(f),
-          'at a $1,500 buffer the funding card says the HELOC is $975 short');
+        ok(tightCard && tightCard.verdict === 'insufficient'
+          && new RegExp(esc(`Not enough — ${dol(tightCard.shortBy)} short of the ${dol(tightAdv.gap.amount)} needed`)).test(f),
+          'at a gap the HELOC cannot cover, the funding card says so');
         ok(!/brings that crossing forward/.test(r),
           'and no sentence below it prices a draw the facility cannot supply');
         ok(/The HELOC passes its own limit on/.test(r),

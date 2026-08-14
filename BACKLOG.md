@@ -12,8 +12,8 @@ Last reviewed **2026-08-14**. Phase: **analysis** — capture is essentially don
 
 **Post-B74 implementation order** is owned by
 [`docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`](docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md),
-not by this file. Remaining order after `B90`: `B92` → `B93` → `B91` → `B20` /
-`B21`. Next outcome: **`B92` refresh-safe tests**. Do not start `B91` first.
+not by this file. Remaining order after `B92`: `B93` → `B91` → `B20` /
+`B21`. Next outcome: **`B93` / AF-DEDUP-01**. Do not start `B91` first.
 
 **Operational knowledge lives in `docs/ACCOUNT_FACTS.md`**, not here: how each
 institution's data is obtained, the download endpoints, and the traps that cost
@@ -981,8 +981,8 @@ obligation; Next cash-out total is the day's sum. Both read the same event
 stream, so two Burrard payments on 12 August correctly produce $320 and $623
 without two calendars.
 
-Do not reopen the closed schedule-authority list. Remaining post-B90 work is
-`B92` → `B93` → `B91`, then `B20` / `B21`, per the build strategy.
+Do not reopen the closed schedule-authority list. Remaining post-B92 work is
+`B93` → `B91`, then `B20` / `B21`, per the build strategy.
 
 **B87 · One authority for question OPEN / ANSWERED status** · **DONE 2026-08-14**
 `docs/01_OPEN_QUESTIONS.md` is the sole OPEN / ASKED / ANSWERED / BLOCKED
@@ -1069,16 +1069,18 @@ provenance graph; a staging platform; generated `data.json`;
 architecture; another forecast, payday, or budgeting engine; a universal
 `positions.csv` fact database; Google Sheet or ChatGPT as authority.
 
-**B92 · Make ordinary evidence refresh cheap** · `READY` · *tests, one outcome*
-After `B90`. **Next implementation outcome.** Behaviour tests are pinned to
-live household numbers, so a legitimate refresh is a suite rewrite. Measured
-in throwaway clones: Chequing A ~8 suites / ~40 assertions; MBNA 6 / 17;
-Fusion camp paid 7 / 18; payroll + Shaw 7 / 28. Build-strategy item
-`AF-TEST-01`. Unpin behaviour tests from live cents; keep invariants that
-should fail on a real contradiction. Do not start `B91` first.
+**B92 · Make ordinary evidence refresh cheap** · **DONE 2026-08-14** · *tests, one outcome*
+After `B90`. Behaviour tests were pinned to live household numbers, so a
+legitimate refresh was a suite rewrite. Measured on `main` before the unpin:
+Chequing A 8 suites / 61 assertions; MBNA 5 / 19; Fusion camp removed 6 / 18;
+payroll + Shaw 5 / 27. Build-strategy item `AF-TEST-01`. Behaviour suites now
+use synthetic fixtures, derived input arithmetic, or parent mutation; live
+cents remain only in deliberately live reconciliation (`test-live-household.js`,
+`positions.csv --check`). `node test-refresh-isolation.js` proves the four
+refresh classes. Do not start `B91` first.
 
-**B93 · Derive or delete proven duplicate live facts** · `QUEUED` · *architecture, one outcome*
-After `B92`, before `B91`. Verified still present after PR #42: cash
+**B93 · Derive or delete proven duplicate live facts** · `READY` · *architecture, one outcome*
+After `B92`, before `B91`. **Next implementation outcome.** Verified still present after PR #42: cash
 repeated between `plan.startingCash` and `assets[]`; `revolvingExtra[].used`
 matching Chequing B; `debts[].postedBalance` duplicating `debts[].balance`;
 `income[].perMonth` matching `total / incomeCaptureMonths`. Re-verify at

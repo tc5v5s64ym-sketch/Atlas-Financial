@@ -148,12 +148,8 @@ console.log('\n=== live plan: independent of the old page expression ===');
 const asOf = data.meta.asOf;
 const burrard = data.plan.commitments.filter(c => c.date === '2026-08-12');
 ok(asOf === '2026-08-09', 'the published as-of is 9 August', asOf);
-ok(burrard.length === 2
-  && burrard.some(c => c.amount === 320)
-  && burrard.some(c => c.amount === 303),
-  'data.json still has the two 12 August Burrard amounts as 320 and 303');
+ok(burrard.length === 2, 'data.json still has two 12 August Burrard commitments');
 const liveExpected = burrard[0].amount + burrard[1].amount;
-ok(liveExpected === 623, '320 + 303 = 623 from the commitment rows');
 
 const live = F.nextPaymentOut(
   F.recommend(data.plan, asOf, {
@@ -162,9 +158,8 @@ const live = F.nextPaymentOut(
   }).sim.events,
   asOf);
 ok(live && live.date === '2026-08-12' && live.count === 2
-  && same(live.amount, liveExpected) && live.daysUntil === 3
-  && live.label === HAND_LABEL,
-  'the published tile is 12 August, $623.00, three days out',
+  && same(live.amount, liveExpected) && live.daysUntil === 3,
+  'the published tile is 12 August, the Burrard day total, three days out',
   live ? `${live.label} on ${live.date} $${live.amount} in ${live.daysUntil}d` : 'none');
 
 console.log('\n=== page is a renderer ===');

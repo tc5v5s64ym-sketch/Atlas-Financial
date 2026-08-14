@@ -254,15 +254,19 @@ const liveToday = liveMark(0);
 const liveDay90 = liveDebt.marks[liveDebt.marks.length - 1];
 const liveOver = liveToday.debts.filter(x => x.overLimit);
 const liveHeloc = (liveDebt.crossings || []).find(c => c.id === 'heloc' && !c.alreadyOver) || null;
-const LIVE_EST = 786 + 800 + 500 + 500 + 500;
-ok(LIVE_EST === 3086, 'five estimated sports amounts are $786+$800+$500+$500+$500 = $3,086');
-ok(liveAdvice.gap && liveOver.length === 2 && liveDay90.consumer < liveToday.consumer,
-  'live comparisons: there is a gap, two facilities over today, consumer debt falls');
-ok(liveHeloc && liveHeloc.day === 52 && liveHeloc.date === '2026-09-30',
-  'live HELOC crossing is day 52, 30 September');
-ok(same(liveTransfer.amount, 2182) && liveTransfer.neededBy === '2026-08-23'
-  && same(liveTransfer.amount * 3, 6546),
-  'live Amanda transfer is $2,182/month, needed by 23 August, × 3 = $6,546');
+const liveEst = (plan.commitments || [])
+  .filter(c => c.confidence === 'estimated')
+  .reduce((s, c) => s + c.amount, 0);
+const liveEstCount = (plan.commitments || []).filter(c => c.confidence === 'estimated').length;
+ok(liveAdvice.gap && liveOver.length >= 1 && liveDay90.consumer < liveToday.consumer,
+  'live comparisons: there is a gap, at least one facility over today, consumer debt falls');
+ok(liveHeloc && liveHeloc.date === '2026-09-30',
+  'live HELOC crossing is 30 September');
+const amandaAmt = (plan.income.find(s => s.id === 'amandaTransfer') || {}).scenarioMonthly.expected;
+ok(same(liveTransfer.amount, amandaAmt)
+  && liveTransfer.neededBy >= asOf,
+  'live Amanda transfer is the expected-scenario monthly amount, needed in-window',
+  liveTransfer ? `${liveTransfer.neededBy} $${liveTransfer.amount}` : 'none');
 ok(Math.abs((liveSim.ending - liveTransfer.endingWithout) - (liveTransfer.amount * 3)) < 0.01,
   'on this window, amount × 3 equals ending − endingWithout — the incumbent formula is not a silent change');
 
@@ -274,17 +278,18 @@ ok(titles(live) === 'coverGap → overLimit → surplusToPrincipal',
   titles(live));
 ok(live.phases[1].consumerDirection === 'down' && live.phases[1].helocInPhase === true,
   'live 31–60 is down, with the HELOC named in this phase');
-ok(risk(live, 'amandaRequired') && same(risk(live, 'amandaRequired').windowImpact, 6546),
-  'live Amanda risk is required and $6,546');
+ok(risk(live, 'amandaRequired') && same(risk(live, 'amandaRequired').windowImpact, amandaAmt * 3),
+  'live Amanda risk is required and three months of the expected transfer');
 ok(risk(live, 'estimatedCommitments')
-  && same(risk(live, 'estimatedCommitments').count, 5)
-  && same(risk(live, 'estimatedCommitments').total, LIVE_EST),
-  'live estimated commitments are 5 totalling $3,086');
+  && same(risk(live, 'estimatedCommitments').count, liveEstCount)
+  && same(risk(live, 'estimatedCommitments').total, liveEst),
+  'live estimated commitments follow the Plan rows');
 ok(risk(live, 'helocNoDraw') && same(risk(live, 'helocNoDraw').drawn, 0),
   'live HELOC risk is no new borrowing — the gap is funded from Amanda');
 ok((live.risks || []).filter(r => r.id === 'facilityCrossing')
-    .map(r => r.debtId).join(',') === 'triangle,mbna',
-  'live later crossings are Triangle and MBNA, not the already-over cards or the HELOC');
+    .map(r => r.debtId).join(',')
+  === (liveDebt.crossings || []).filter(c => !c.alreadyOver && c.id !== 'heloc').map(c => c.id).join(','),
+  'live later crossings follow the debt projection, excluding already-over cards and the HELOC');
 ok(risk(live, 'telecomUnrouted') && risk(live, 'telecomUnrouted').planned > 0,
   'live Telus risk is present');
 
