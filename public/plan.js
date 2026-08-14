@@ -242,6 +242,85 @@ const UNALLOCATED_NOTE = {
        money available to reduce debt. ${summary || ''}`,
 };
 
+/* ------------------------------------------- the three phases, in words */
+// Forecast.planPhases decides which heading each 30-day block gets, which
+// body the opening block uses, which way consumer debt moved, and whether
+// the HELOC sentence belongs in 31–60. This map is how each one reads.
+const PHASE_RANGE = {
+  '0-30': '0–30 days',
+  '31-60': '31–60 days',
+  '61-90': '61–90 days',
+};
+const PHASE_TITLE = {
+  coverGap: 'Cover the gap and stabilise',
+  holdBuffer: 'Hold the buffer',
+  overLimit: 'Get back inside the limits',
+  relievePressure: 'Relieve revolving pressure',
+  surplusToPrincipal: 'Put the surplus against principal',
+  stopGrowth: 'Stop the growth',
+};
+const PHASE_BODY = {
+  '0-30': p => {
+    if (p.id === 'unfunded') {
+      return `Every usable source combined leaves ${money(p.shortfall)} of the ${money(p.gapAmount)}
+           unfunded. Lower the buffer, move a commitment, or find money outside these accounts.`;
+    }
+    if (p.id === 'coverGap') {
+      return `Get ${money(p.gapAmount)} across by ${fmtDateLong(p.gapDate)}, then hold ${money(p.weekly)}/week.
+             Cash recovers to ${money(p.cashAt30)} by ${fmtDate(p.date30)}.`;
+    }
+    return `Hold ${money(p.weekly)}/week. Cash sits at ${money(p.cashAt30)} by ${fmtDate(p.date30)}.`;
+  },
+  '31-60': p =>
+    `Consumer debt moves ${money(p.consumerMove)}
+       ${p.consumerDirection} to ${money(p.consumer60)}, and credit left across every
+       facility is ${money(p.headroom60)}.${p.helocInPhase
+      ? ` The HELOC passes its own limit in this phase — its interest capitalises with nothing repaying it.` : ''}`,
+  '61-90': p =>
+    `Cash finishes at ${money(p.ending)} against a ${money(p.buffer)} buffer.
+       ${p.nextDollarSummary || ''}`,
+};
+
+/* ------------------------------------------- the risk list, in words */
+// Forecast.planPhases decides which risks appear and the figures inside
+// them. This map is how each one reads. The cash-not-cards line is always
+// shown: it is copy, not a comparison.
+const RISK_WHAT = {
+  amandaRequired: r => `Amanda's transfers — ${money(r.amount)}/month is an estimate, not a commitment`,
+  amandaOptional: r => `Amanda's transfers — ${money(r.amount)}/month is an estimate, not a commitment`,
+  estimatedCommitments: r => `${r.count} sports commitments totalling ${money(r.total)} are estimates`,
+  helocDrawn: r => `The HELOC passes its own limit on ${fmtDateLong(r.date)}, and this plan draws ${money(r.drawn)} on it`,
+  helocNoDraw: r => `The HELOC passes its own limit on ${fmtDateLong(r.date)} with no new borrowing`,
+  facilityCrossing: r => `${r.label} goes over its limit on ${fmtDateLong(r.date)}`,
+  telecomUnrouted: r => `The Telus bills have no known route — ${money(r.planned)}/month`,
+};
+const RISK_CHANGE = {
+  amandaRequired: r =>
+    `The plan needs the first one by ${fmtDateLong(r.neededBy)}. Without any of them the window ends
+           ${money(r.windowImpact)} lower and breaches the buffer.`,
+  amandaOptional: r =>
+    `The window holds even without them, but the ending cash falls by about ${money(r.windowImpact)}.`,
+  estimatedCommitments: r =>
+    `${r.labels.join(', ')}. None is invoiced yet. If they land higher, or
+               earlier than assumed, the weekly cap falls.`,
+  helocDrawn: r =>
+    `Its ${money(r.monthlyInterest)}/month interest capitalises and
+               nothing repays it, so the balance grows on its own. The ${money(r.drawn)} this plan draws to cover the opening gap brings that date forward, and the
+            crossing date shown already includes it.`,
+  helocNoDraw: r =>
+    `Its ${money(r.monthlyInterest)}/month interest capitalises and
+               nothing repays it, so the balance grows on its own.${r.alternative
+      ? ` Covering the opening gap from it instead of ${r.alternative.displaces.join(' and ')}
+          brings that crossing forward to <b>${fmtDateLong(r.alternative.alternateDate)}</b>.` : ''}`,
+  facilityCrossing: () =>
+    `Its minimum barely exceeds its interest, so the balance sits against the limit and crosses it
+               in the days before each payment. Each crossing risks an over-limit fee on top of the interest,
+               which raises the card's effective rate above its headline one.`,
+  telecomUnrouted: () =>
+    `Absent from every captured account since March 2026. They are carried inside the cap, but if they are
+               being paid from somewhere not captured the real household cost is higher than shown.`,
+};
+
 /* ------------------------------------------- HELOC month-on-month, in words */
 // Forecast.compactSnapshot decides the direction. This map is how each
 // verdict reads, and which sign the delta wears.
@@ -621,7 +700,7 @@ function renderPlan(d, periods) {
     return p ? p.balance : plan.startingCash.amount;
   };
   const mark = n => debtProj.marks.find(m => m.day === n) || debtProj.marks[debtProj.marks.length - 1];
-  const today = mark(0), day90 = debtProj.marks[debtProj.marks.length - 1];
+  const today = mark(0);
 
   // The engine owns every weekly↔monthly conversion and the cap-versus-need
   // conclusion. It is told which weekly figure is actually on screen — the
@@ -637,13 +716,10 @@ function renderPlan(d, periods) {
   const cap = budget ? budget.cap : null;
   const capMonthly = Forecast.monthlyFromWeekly(weekly);
 
-  // Facilities over their limit today, and the day the HELOC crosses its own —
-  // read here for the debt tile, the phases and the HELOC card below. The
-  // mission no longer selects from either: the engine decides that, from this
-  // same debt walk, so the two cannot disagree.
+  // Facilities over their limit today — read here for the debt-tile tone
+  // and count. Phase titles and the HELOC risk no longer select from this
+  // list: Forecast.planPhases uses the same helper as Forecast.mission.
   const overToday = today.debts.filter(x => x.overLimit);
-  const helocBreach = (debtProj.crossings || [])
-    .find(c => c.id === 'heloc' && !c.alreadyOver) || null;
 
   /* ---- the mission, in one sentence ---- */
   // WHICH instructions apply, and in what order, is a financial decision and
@@ -853,27 +929,27 @@ function renderPlan(d, periods) {
     `is assumed anywhere. Interest incurred is cumulative across every debt including the mortgage.`;
 
   /* ---- the three phases, derived from what the numbers do ---- */
-  const d30 = mark(30), d60 = mark(60);
+  // WHICH heading each block gets, which opening body applies, which way
+  // consumer debt moved, and whether the HELOC sentence belongs in 31–60,
+  // is a financial decision and belongs to Forecast.planPhases — where the
+  // node suite can reach it. This page looks the wording up. It no longer
+  // compares debt marks, tests the gap, or selects a risk state.
+  const outlook = Forecast.planPhases(plan, advice, debtProj, {
+    weeklyOverride: state.weeklyVariable, sim,
+    budget, transfer: transferDependency, alternatives,
+    disabled: state.disabled,
+  });
   const phase = (range, title, body) =>
     `<div class="phase"><div class="phase-range">${range}</div>
       <div class="phase-title">${title}</div><p>${body}</p></div>`;
-  $('phases').innerHTML =
-    phase('0–30 days', gap ? 'Cover the gap and stabilise'
-      : 'Hold the buffer',
-      status.id === 'unfunded'
-        ? `Every usable source combined leaves ${money(fundingPlan.shortfall)} of the ${money(fundingGap)}
-           unfunded. Lower the buffer, move a commitment, or find money outside these accounts.`
-      : gap ? `Get ${money(fundingGap)} across by ${fmtDateLong(gap.date)}, then hold ${money(weekly)}/week.
-             Cash recovers to ${money(cashOn(d30.date))} by ${fmtDate(d30.date)}.`
-          : `Hold ${money(weekly)}/week. Cash sits at ${money(cashOn(d30.date))} by ${fmtDate(d30.date)}.`) +
-    phase('31–60 days', overToday.length ? 'Get back inside the limits' : 'Relieve revolving pressure',
-      `Consumer debt moves ${money(Math.abs(d60.consumer - today.consumer))}
-       ${d60.consumer < today.consumer ? 'down' : 'up'} to ${money(d60.consumer)}, and credit left across every
-       facility is ${money(d60.headroom)}.${helocBreach && helocBreach.day <= 60
-        ? ` The HELOC passes its own limit in this phase — its interest capitalises with nothing repaying it.` : ''}`) +
-    phase('61–90 days', day90.consumer < today.consumer ? 'Put the surplus against principal' : 'Stop the growth',
-      `Cash finishes at ${money(sim.ending)} against a ${money(sim.buffer)} buffer.
-       ${plan.nextDollar ? plan.nextDollar.summary : ''}`);
+  $('phases').innerHTML = outlook.phases.map(p => {
+    const body = p.rangeId === '61-90'
+      ? PHASE_BODY[p.rangeId](Object.assign({}, p, {
+          nextDollarSummary: plan.nextDollar ? plan.nextDollar.summary : '',
+        }))
+      : PHASE_BODY[p.rangeId](p);
+    return phase(PHASE_RANGE[p.rangeId], PHASE_TITLE[p.titleId], body);
+  }).join('');
 
   /* ---- what the ending cash is actually for ---- */
   // HOW MUCH of the ending cash is unallocated, and whether that is free cash
@@ -893,62 +969,12 @@ function renderPlan(d, periods) {
     plan.nextDollar ? plan.nextDollar.summary : '');
 
   /* ---- what could break the plan ---- */
-  const risks = [];
-  if (transferMonthly > 0) {
-    risks.push({ what: `Amanda's transfers — ${money(transferMonthly)}/month is an estimate, not a commitment`,
-      change: neededBy
-        ? `The plan needs the first one by ${fmtDateLong(neededBy)}. Without any of them the window ends
-           ${money(transferMonthly * 3)} lower and breaches the buffer.`
-        : `The window holds even without them, but the ending cash falls by about ${money(transferMonthly * 3)}.` });
-  }
-  const estimatedCommitments = plan.commitments.filter(c => c.confidence === 'estimated'
-    && !state.disabled.includes(c.id));
-  if (estimatedCommitments.length) {
-    const total = estimatedCommitments.reduce((s, c) => s + c.amount, 0);
-    risks.push({ what: `${estimatedCommitments.length} sports commitments totalling ${money(total)} are estimates`,
-      change: `${estimatedCommitments.map(c => c.label).join(', ')}. None is invoiced yet. If they land higher, or
-               earlier than assumed, the weekly cap falls.` });
-  }
-  if (helocBreach) {
-    // The engine decided whether funding the gap from this facility instead is
-    // a real alternative and what it would cost. This page looks up the answer
-    // for the facility it is already talking about — by the id the engine gave
-    // it — and puts the result into words. It selects no source, runs no second
-    // scenario, and judges nothing: when the alternative does not apply there
-    // is simply no sentence, whatever the reason was.
-    const drawAlt = alternatives.gapFundingAlternatives
-      .find(a => a.debtId === helocBreach.id) || null;
-    const alt = drawAlt && drawAlt.applies
-      ? ` Covering the opening gap from it instead of ${drawAlt.displaces.join(' and ')}
-          brings that crossing forward to <b>${fmtDateLong(drawAlt.alternateCrossing.date)}</b>.`
-      : '';
-    const helocDrawn = fundingPlan
-      ? fundingPlan.parts.filter(p => p.debtId === 'heloc').reduce((a, p) => a + p.amount, 0) : 0;
-    risks.push({ what: helocDrawn > 0
-      ? `The HELOC passes its own limit on ${fmtDateLong(helocBreach.date)}, and this plan draws ${money(helocDrawn)} on it`
-      : `The HELOC passes its own limit on ${fmtDateLong(helocBreach.date)} with no new borrowing`,
-      change: `Its ${money(plan.obligations.find(o => o.id === 'heloc').amount)}/month interest capitalises and
-               nothing repays it, so the balance grows on its own.${helocDrawn > 0
-        ? ` The ${money(helocDrawn)} this plan draws to cover the opening gap brings that date forward, and the
-            crossing date shown already includes it.` : alt}` });
-  }
-  // From the crossings list, which records the day it actually happens, rather
-  // than from a 30-day snapshot — a facility can cross and be paid back under
-  // between two marks and never appear in either.
-  const crossLater = (debtProj.crossings || []).filter(c =>
-    !c.alreadyOver && c.id !== 'heloc');   // the HELOC is named above
-  for (const c of crossLater) {
-    risks.push({ what: `${c.label} goes over its limit on ${fmtDateLong(c.date)}`,
-      change: `Its minimum barely exceeds its interest, so the balance sits against the limit and crosses it
-               in the days before each payment. Each crossing risks an over-limit fee on top of the interest,
-               which raises the card's effective rate above its headline one.` });
-  }
-  const telecom = budget && budget.categories.find(c => c.id === 'telecom');
-  if (telecom && telecom.planned > 0) {
-    risks.push({ what: `The Telus bills have no known route — ${money(telecom.planned)}/month`,
-      change: `Absent from every captured account since March 2026. They are carried inside the cap, but if they are
-               being paid from somewhere not captured the real household cost is higher than shown.` });
-  }
+  // WHICH risks appear, and the figures inside them, is Forecast.planPhases.
+  // The cash-not-cards line is always shown — it is copy, not a comparison.
+  const risks = outlook.risks.map(r => ({
+    what: RISK_WHAT[r.id](r),
+    change: RISK_CHANGE[r.id](r),
+  }));
   risks.push({ what: 'The cap assumes spending is paid in cash, not put on the cards',
     change: `The historical averages behind the split include card purchases. Spending at the same rate on the cards
              would leave the cash line looking healthy while the balances grew — the projection above assumes no new

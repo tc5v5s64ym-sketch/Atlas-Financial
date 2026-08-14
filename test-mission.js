@@ -316,8 +316,8 @@ const MUTATIONS = [
     real: () => !!part(breaching, 'cutSpending') },
 
   { label: 'reading a later mark loses an over-limit facility that is over today',
-    from: '    const opening = (debtProj.marks || []).find(m => m.day === 0);',
-    to: '    const opening = (debtProj.marks || []).find(m => m.day === 90);',
+    from: '    const opening = ((debtProj && debtProj.marks) || []).find(m => m.day === 0);',
+    to: '    const opening = ((debtProj && debtProj.marks) || []).find(m => m.day === 90);',
     check: m => {
       const out = m.mission(advice({ weekly: 900 }),
         walk({ marks: [opening(CASHBACK_OVER),
