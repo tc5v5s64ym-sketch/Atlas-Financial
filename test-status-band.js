@@ -591,7 +591,8 @@ const FORMATTERS = [
 const BAND_SRC = grab(planSrc, /^const STATUS_BAND = \{[\s\S]*?^\};$/m, 'the band wording map');
 const FUND_SRC = grab(planSrc, /^const FUND_VERDICT = \{[\s\S]*?^\};$/m, 'the funding wording map');
 const [STATUS_BAND, FUND_VERDICT] = vm.runInNewContext(
-  `${FORMATTERS}\n${BAND_SRC}\n${FUND_SRC}\n[STATUS_BAND, FUND_VERDICT];`);
+  `${FORMATTERS}\n${BAND_SRC}\n${FUND_SRC}\n[STATUS_BAND, FUND_VERDICT];`,
+  { Forecast: F });
 
 const statusSrc = /\n  function planStatus\(advice, opts\) \{[\s\S]*?\n  \}\n/.exec(FORECAST_SRC);
 ok(!!statusSrc, 'the planStatus function is readable from forecast.js');
@@ -699,7 +700,7 @@ function legacyBand({ adv, sim, weekly, recommended, weeklyVariable }) {
   } else if (gap) {
     return ['statusband crit',
       `<b>Short by ${money(fundingGap)} on ${fmtDateLong(gap.floorDate)} — before any spending at all.</b>
-       The household accounts hold ${money2(plan.startingCash.amount)} today and
+       The household accounts hold ${money2(F.startingCashAmount(plan))} today and
        ${money(preIncomeOut)} of committed payments fall before the next payday.
        This is a timing gap, not a shortage across the 90 days: cover it, hold spending to
        ${money(weekly)}/week from ${fmtDateLong(adv.effectiveFrom)}, and the window

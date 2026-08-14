@@ -24,12 +24,11 @@ Capabilities that are wanted but not yet in Phases 1–4 are recorded in
 **Later capabilities — status and reopen trigger**. That table is memory and
 trigger, not a second order of work.
 
-**Current sequencing (14 August 2026, post-B92).** B74, B87, B88, B89, B90 and
-B92 are closed. The remaining implementation order is the **Post-B90 remaining
-order** in the disposition below — duplicate-live-fact cleanup, then
-strengthened `B91`, then history as a by-product. Next implementation outcome:
-derive/delete proven duplicate live facts (`B93`). Do not start `B91` or `B20`
-first.
+**Current sequencing (14 August 2026, post-B93).** B74, B87, B88, B89, B90, B92
+and B93 are closed. The remaining implementation order is the **Post-B90
+remaining order** in the disposition below — strengthened `B91`, then history
+as a by-product. Next implementation outcome: evidence refresh / reconciliation
+(`B91`). Do not start `B20` first.
 
 ---
 
@@ -249,9 +248,10 @@ B90  spending-classification reconciliation ← complete
   ↓
 B92  refresh-safe tests                     ← complete
   ↓
-B93  derive/delete proven duplicate live facts  ← next implementation outcome
+B93  derive/delete proven duplicate live facts  ← complete
   ↓
 B91  evidence refresh / reconciliation + current-state cutover
+     ← next implementation outcome
      (Aug. 14 payday acceptance)
   ↓
 B20  history from successful refresh
@@ -278,9 +278,8 @@ rules above.
 
 ### Next implementation outcomes — cheap refresh, then reconciliation
 
-Do not start `B91` while proven duplicate live facts still have two homes.
-`B92` is closed; `B93` remains the last prerequisite, not a new architecture
-layer.
+`B92` and `B93` are closed. `B91` is the next implementation outcome, not a
+new architecture layer.
 
 **`AF-TEST-01` / `B92`.** Make ordinary evidence refresh cheap. **Complete.**
 Measured before the unpin, on throwaway clones: changing Chequing A broke 8
@@ -289,12 +288,13 @@ broke 6 / 18; changing payroll + Shaw broke 5 / 27. Behaviour tests no
 longer pin live `data.json` cents.
 
 **`AF-DEDUP-01` / `B93`.** Derive or delete proven duplicate live facts
-before reconciliation is asked to keep them synchronised. Verified still
-present on current `main` after PR #42: cash repeated between
-`plan.startingCash` and `assets[]`; `revolvingExtra[].used` matching
-Chequing B; `debts[].postedBalance` duplicating `debts[].balance`;
-`income[].perMonth` matching `total / incomeCaptureMonths`. Prefer
-derive/delete. Do not invent a permanent sync layer. Do not treat
+before reconciliation is asked to keep them synchronised. **Complete.**
+Cash balances live on `plan.startingCash` account rows; matching `assets[]`
+rows keep label/order and a `cash` id. Overdraft `used` is
+`max(0, −chequing-b)`. `debts[].balance` is the posted opening;
+`postedBalance` is gone. Recurring historical `perMonth` is
+`round(total / incomeCaptureMonths)`; the insurance one-off keeps
+`perMonth: null`. Do not invent a permanent sync layer. Do not treat
 `docs/positions.csv` as a universal fact database.
 
 ### Next major product milestone — evidence refresh / reconciliation
@@ -549,8 +549,8 @@ built *on* that picture, the picture needs owners that a test can reach.
   first-event order. Published Plan cash figures and historical discretionary
   dollar totals are unchanged; Health leaves the historical essential class
   because that class was the collapsed first-event story. Phase 1 product
-  exit has no blocking product gap. `AF-TEST-01` / `B92` is complete. Next
-  implementation outcome is `AF-DEDUP-01` / `B93`, not `B91`.
+  exit has no blocking product gap. `AF-TEST-01` / `B92` and `AF-DEDUP-01` /
+  `B93` are complete. Next implementation outcome is `AF-RECON-01` / `B91`.
 
 ### Phase 1 product exit — useful before infrastructure
 
@@ -587,9 +587,9 @@ gap. The incumbent Plan schedule, weekly cap, calendar, commitment path, and
 unknown-spend inclusion already answer those five questions from one
 authority chain. Remaining gaps are evidence freshness (`B91`) and owner
 policy such as Q24, not missing product machinery. The Aug. 14 reviews and
-payday test then showed that `B91` is **not** the next implementation
-outcome: refresh-safe tests (`B92`) are complete; derive/delete of proven
-duplicate live facts (`B93`) remains before `B91`.
+payday test then showed the prerequisites: refresh-safe tests (`B92`) and
+derive/delete of proven duplicate live facts (`B93`). Both are complete.
+`B91` is next.
 
 ### AF-TEST-01 · Make ordinary evidence refresh cheap
 
@@ -613,10 +613,8 @@ duplicate live facts (`B93`) remains before `B91`.
 
 - **Outcome** — live facts that already have two canonical homes are
   derived or deleted so `B91` is not asked to keep them synchronised.
-  Known still-present copies after PR #42: `plan.startingCash` vs matching
-  `assets[]` cash rows; `revolvingExtra[].used` vs Chequing B;
-  `debts[].postedBalance` vs `debts[].balance`; `income[].perMonth` vs
-  `total / incomeCaptureMonths`. Re-verify at implementation time.
+  The four named copies were re-verified on current `main` and then
+  derived or deleted.
 - **Incumbent** — `data.json` live rows. `EVOLVE` in place: derive or
   delete the loser. `Forecast` stays the engine. Do not add a sync job.
 - **Tier** — M3 if a household-facing figure is now derived rather than
@@ -628,7 +626,12 @@ duplicate live facts (`B93`) remains before `B91`.
   promoted into a universal fact database.
 - **Non-goals** — leaf-level provenance; a fact schema; reconciliation
   itself; changing the Aug. 9 balances to Aug. 14 values.
-- **State** — **next implementation outcome.** Not started.
+- **State** — **complete.** Cash balances live on `plan.startingCash`
+  account rows; matching `assets[]` rows keep label/order and a `cash` id.
+  Overdraft `used` is `max(0, −chequing-b)`. `debts[].balance` is the posted
+  opening. Recurring historical `perMonth` is `round(total / window)`; the
+  insurance one-off keeps `perMonth: null`. Proved by `test-dedup-facts.js`.
+  Published Plan figures unchanged 75/75 vs starting main.
 
 ### AF-RECON-01 · Evidence refresh / reconciliation loop
 
@@ -893,9 +896,9 @@ resurrect it.
 
 | Capability | Status | Home today | Reopen trigger |
 |---|---|---|---|
-| Evidence refresh / reconciliation | **ACTIVE** | `AF-RECON-01` / `B91`, after `B92` and `B93`. Major product milestone; not the next implementation outcome. | Already sequenced. Do not replace with a store, schema, leaf-level provenance, or copilot absorption stack. Do not start before refresh-safe tests and duplicate-live-fact cleanup. |
+| Evidence refresh / reconciliation | **ACTIVE** | `AF-RECON-01` / `B91`, after `B92` and `B93`. **Next implementation outcome.** Major product milestone. | Already sequenced. Do not replace with a store, schema, leaf-level provenance, or copilot absorption stack. |
 | Refresh-safe tests | **ACTIVE** | `AF-TEST-01` / `B92`. **Complete.** | Already sequenced. Unpin behaviour tests from live household numbers. |
-| Derive/delete duplicate live facts | **ACTIVE** | `AF-DEDUP-01` / `B93`. **Next implementation outcome.** After `B92`, before `B91`. | Already sequenced. Derive or delete proven copies; do not add a sync layer. |
+| Derive/delete duplicate live facts | **ACTIVE** | `AF-DEDUP-01` / `B93`. **Complete.** After `B92`, before `B91`. | Already sequenced. Derive or delete proven copies; do not add a sync layer. |
 | Balance history / snapshots | **ACTIVE** | Phase 2 `AF-HIST-01` / `B20`. **After** `AF-RECON-01`, as a by-product of refresh. | Already sequenced. Do not start because an older revision put it first in Phase 2. |
 | Longer operating forecast horizon | **PARKED** | 91-day `windowDays`; expander already walks further (B74 / ICS to 2027-05-01). `Forecast.renewal` remains a separate question. | A concrete household question the 91-day operating picture cannot answer. Reuse `expandEvents`. Never a second recurrence or forecast engine. |
 | Improved ingestion | **ACTIVE** | Phase 3 `AF-INGEST-01` / `B78`, to T3. Files still; no provider and no store. | Already sequenced. Entry is T2 plus `AF-INTAKE-01`'s record of manual steps. |

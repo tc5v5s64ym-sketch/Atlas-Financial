@@ -216,7 +216,7 @@ console.log('\n=== known pending charges are modelled, not left in prose ===');
 // $165.13 on the Travel Visa and $82.05 on the MBNA were recorded only as
 // sentences in a note. Credit availability was computed as limit - posted, so
 // the projection saw $21.69 of room on a card already economically over.
-const util = F.utilisation(data.debts, data.revolvingExtra);
+const util = F.utilisation(data.debts, data.revolvingExtra, data.plan);
 const tvRow = util.rows.find(r => r.id === 'travelvisa');
 const mbRow = util.rows.find(r => r.id === 'mbna');
 

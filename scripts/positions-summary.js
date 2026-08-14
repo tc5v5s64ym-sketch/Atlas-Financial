@@ -50,7 +50,9 @@ const cell = v => /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
 const line = cols => cols.map(cell).join(',');
 
 /* ------------------------------------------------------------- the facts */
-const assets = data.assets.reduce((s, a) => s + a.value, 0);
+const pub = F.publicationTotals(data);
+const assetRows = pub.assetRows;
+const assets = pub.assets;
 const debts = data.debts.reduce((s, x) => s + (x.balance || 0), 0);
 const cards = data.debts.filter(x => !x.secured).reduce((s, x) => s + x.balance, 0);
 const secured = data.debts.filter(x => x.secured).reduce((s, x) => s + x.balance, 0);
@@ -58,8 +60,8 @@ const secured = data.debts.filter(x => x.secured).reduce((s, x) => s + x.balance
 // Travel Visa, which is a TD card whose name says nothing about TD.
 const isTD = x => x.institution === 'TD';
 const tdDebt = data.debts.filter(isTD).reduce((s, x) => s + x.balance, 0);
-const util = F.utilisation(data.debts, data.revolvingExtra);
-const spendable = data.plan.startingCash.amount;
+const util = F.utilisation(data.debts, data.revolvingExtra, data.plan);
+const spendable = F.startingCashAmount(data.plan);
 
 // The home is a positions.csv fact, not a data.json one — read it back rather
 // than restating it, so there is still only one place it is written down.
@@ -93,8 +95,8 @@ const generated = new Map();
 const put = (label, cols) => generated.set(label, cols);
 
 put('Total visible assets', W('SUMMARY', 'Total visible assets', 'Asset', 'CAD', n2(assets), {
-  note: `Derived from data.json assets by scripts/positions-summary.js. ${data.assets.length} lines: `
-    + data.assets.filter(a => a.value).map(a => `${a.label.replace(/ —.*$/, '')} ${n2(a.value)}`).join(' + ')
+  note: `Derived from data.json assets by scripts/positions-summary.js. ${assetRows.length} lines: `
+    + assetRows.filter(a => a.value).map(a => `${a.label.replace(/ —.*$/, '')} ${n2(a.value)}`).join(' + ')
     + '; excludes home vehicles pensions business' }));
 
 put('Total TD debt', W('SUMMARY', 'Total TD debt', 'Liability', 'CAD', n2(tdDebt), {

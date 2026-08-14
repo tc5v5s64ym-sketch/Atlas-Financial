@@ -197,7 +197,7 @@ function renderDeepDive(d) {
   // Derived from the debt records, never a second hand-kept list. `used`
   // already includes known pending charges, because a charge that has been
   // authorised has spent the credit whether or not it has posted yet.
-  const util = Forecast.utilisation(d.debts, d.revolvingExtra);
+  const util = Forecast.utilisation(d.debts, d.revolvingExtra, d.plan);
   hbar($('c-util'), util.rows.map(u => ({
     label: u.label, v: u.pct,
     colour: u.pct > 95 ? css('--critical') : css('--serious'),
@@ -220,7 +220,7 @@ function renderDeepDive(d) {
   // Income. The coaching line is gross revenue, so it is coloured as a caution
   // rather than as money the household keeps.
   if (d.income) {
-    hbar($('c-income'), d.income.map(i => ({
+    hbar($('c-income'), (pub.incomeLines || d.income).map(i => ({
       label: i.label, v: i.total,
       colour: /REVENUE/i.test(i.stability || '') || /REVENUE/i.test(i.label) ? css('--serious') : css('--s2'),
       tip: `${i.perMonth ? '~' + money(i.perMonth) + '/month · ' : ''}${i.stability || ''}`,

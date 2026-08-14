@@ -141,7 +141,12 @@ const tdccDebt = data.debts.find(d => d.id === 'tdcc');
 const rowDebt = data.debts.reduce((s, d) => s + (d.balance || 0), 0);
 const rowAnnual = data.debts.reduce((s, d) => s + (d.annualInterest || 0), 0);
 const rowAnnualEx = rowAnnual - (mortgageDebt.annualInterest || 0);
-const rowAssets = data.assets.reduce((s, a) => s + (a.value || 0), 0);
+const cashById = {};
+for (const row of (data.plan.startingCash.breakdown || [])
+  .concat(data.plan.startingCash.heldElsewhere || [])) {
+  if (row.id) cashById[row.id] = row.value || 0;
+}
+const rowAssets = data.assets.reduce((s, a) => s + (a.cash ? (cashById[a.cash] || 0) : (a.value || 0)), 0);
 const rowIncome = (data.income || []).reduce((s, r) => s + (r.total || 0), 0);
 const rowCommit = ((data.commitments && data.commitments.items) || [])
   .reduce((s, i) => s + (i.amount || 0), 0);
@@ -174,7 +179,7 @@ ok(live && same(live.commitmentsTotal, rowCommit)
   && sameCents(live.lacrosseVerified, rowLax),
   'live commitments and lacrosse verified totals follow the item rows');
 
-const liveUtil = F.utilisation(data.debts, data.revolvingExtra);
+const liveUtil = F.utilisation(data.debts, data.revolvingExtra, data.plan);
 ok(live && same(live.creditLeft, liveUtil.totalAvailable),
   'live credit left is utilisation on the same rows, not a stored copy',
   live ? money2(live.creditLeft) : 'none');
@@ -186,7 +191,7 @@ ok(live && same(live.revolvingFacilityCount, liveUtil.rows.length),
 const snap = F.compactSnapshot(data.debts, data.helocHistory);
 ok(live && snap && same(live.monthlyInterest, snap.monthlyInterest),
   'Deep Dive annual/12 and the Plan compact snapshot are one twelfth');
-ok(live && sameCents(live.creditLeft, F.utilisation(data.debts, data.revolvingExtra).totalAvailable),
+ok(live && sameCents(live.creditLeft, F.utilisation(data.debts, data.revolvingExtra, data.plan).totalAvailable),
   'Deep Dive credit-left and the Plan revolving tile are one utilisation figure');
 
 console.log('\n=== stored duplicate authorities are gone ===');

@@ -137,7 +137,7 @@ const wantCommit = (plan.commitments || [])
 ok(near(expected.totals.commitments, wantCommit), '90-day commitments', expected.totals.commitments.toFixed(2));
 ok(expected.weeks.length === 13, '13 weeks');
 ok(near(expected.ending,
-  plan.startingCash.amount + expected.totals.income - expected.totals.obligations
+  F.startingCashAmount(plan) + expected.totals.income - expected.totals.obligations
   - expected.totals.bills - expected.totals.commitments),
   'ledger identity holds', expected.ending.toFixed(2));
 
@@ -157,8 +157,9 @@ ok(near(expected.ending,
 
 // Starting cash is the household spending accounts only — her account excluded.
 const spendableSum = plan.startingCash.breakdown.reduce((s, b) => s + b.value, 0);
-ok(near(plan.startingCash.amount, spendableSum), 'starting cash = the spendable breakdown',
-  plan.startingCash.amount.toFixed(2));
+ok(near(expected.daily[0].balance, spendableSum),
+  'forecast opening cash is the independently summed spendable accounts',
+  expected.daily[0].balance.toFixed(2));
 ok(!plan.income.some(s => /tennis bc/i.test(s.label)),
   'her gross Tennis BC pay is not counted as household income');
 
@@ -268,7 +269,9 @@ ok(gapRec.effectiveFrom === '2026-08-14', 'spending resumes at the first payday'
 const zeroForGap = F.simulate(plan, asOf, Object.assign({}, RECOPTS, { weeklyVariable: 0 }));
 const payday = zeroForGap.events.find(e => e.kind === 'income' && e.amount >= 1000);
 const oldSliced = JSON.parse(JSON.stringify(plan));
-oldSliced.startingCash.amount = zeroForGap.daily.find(p => p.date === payday.date).balance + gapRec.gap.amount;
+oldSliced.startingCash = {
+  amount: zeroForGap.daily.find(p => p.date === payday.date).balance + gapRec.gap.amount,
+};
 oldSliced.windowDays = F.diffDays(payday.date, zeroForGap.end) + 1;
 const oldAnswer = F.recommendWeekly(oldSliced, payday.date, RECOPTS);
 ok(gapRec.weekly < oldAnswer, 'the old re-slicing method still overstates the cap',
@@ -318,7 +321,7 @@ ok(near(gapRec.sim.totals.estimatedIncome, noGap.totals.estimatedIncome),
 // is real evidence and not the same code checking itself.
 function bruteLedger(weekly) {
   const events = F.expandEvents(plan, asOf, gapRec.sim.end, RECOPTS);
-  let bal = plan.startingCash.amount, min = Infinity;
+  let bal = F.startingCashAmount(plan), min = Infinity;
   let minDate = null;
   for (let i = 0; i < plan.windowDays; i++) {
     const date = F.addDays(asOf, i);
@@ -375,7 +378,7 @@ ok(F.recommendWeekly(exact, '2026-01-01', { targetBuffer: 500 }) === 0 ||
 // ending of $4,989.20 — an auditable identity that did not audit.
 {
   const T = gapRec.sim.totals;
-  const rows = plan.startingCash.amount + T.confirmedIncome + T.estimatedIncome + T.injections
+  const rows = F.startingCashAmount(plan) + T.confirmedIncome + T.estimatedIncome + T.injections
     - T.obligations - T.bills - T.commitments - T.variable - T.extra;
   ok(near(rows, gapRec.sim.ending),
     'the ledger rows reconcile to the ending balance once gap funding is one of them',

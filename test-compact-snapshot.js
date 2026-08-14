@@ -107,7 +107,7 @@ console.log('\n=== live plan: identity independent of the engine function ===');
  * helocHistory, added here. Not a copy of compactSnapshot's own reduce. */
 const mortgage = data.debts.find(d => d.id === 'mortgage');
 const helocRow = data.debts.find(d => d.id === 'heloc');
-const LIVE_SECURED = Number(mortgage.postedBalance) + Number(helocRow.postedBalance);
+const LIVE_SECURED = Number(mortgage.balance) + Number(helocRow.balance);
 const LIVE_ANNUAL = data.debts.reduce((s, d) => s + Number(d.annualInterest || 0), 0);
 const LIVE_MONTHLY = LIVE_ANNUAL / 12;
 const helocHist = data.helocHistory || [];

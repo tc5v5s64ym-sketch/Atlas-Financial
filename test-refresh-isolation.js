@@ -53,6 +53,7 @@ const SUITES = [
   'test-evidence-use-register.js',
   'test-mergecard.js',
   'test-live-household.js',
+  'test-dedup-facts.js',
 ];
 
 const CASES = [
@@ -61,10 +62,8 @@ const CASES = [
     label: 'CASE A — Chequing A / starting cash +$1,000',
     allow: ['test-invariants.js'],
     mutate(d) {
-      d.plan.startingCash.amount += 1000;
       const row = d.plan.startingCash.breakdown.find(b => /Chequing A/.test(b.label));
       row.value += 1000;
-      d.assets.find(a => a.label === 'Chequing A').value += 1000;
     },
   },
   {
@@ -74,7 +73,6 @@ const CASES = [
     mutate(d) {
       const mb = d.debts.find(x => x.id === 'mbna');
       mb.balance += 500;
-      mb.postedBalance += 500;
     },
   },
   {

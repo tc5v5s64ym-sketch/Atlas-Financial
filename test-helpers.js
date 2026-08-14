@@ -6,6 +6,8 @@
  * household-value refresh does not require rewriting behaviour assertions.
  */
 
+const F = require('./public/forecast.js');
+
 function clone(x) {
   return JSON.parse(JSON.stringify(x));
 }
@@ -17,7 +19,7 @@ function burrardDue(plan) {
 }
 
 function openingFloor(plan) {
-  return Number(plan.startingCash.amount) - burrardDue(plan);
+  return F.startingCashAmount(plan) - burrardDue(plan);
 }
 
 function gapAtBuffer(plan, buffer) {

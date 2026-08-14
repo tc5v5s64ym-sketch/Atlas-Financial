@@ -186,7 +186,7 @@ ok(LIVE_YTD_DISC_CENTS === 3608218 && LIVE_YTD_AVOID_CENTS === 83100,
 ok(LIVE_YTD_AVG === 9324.38625, 'ytd average is $74,595.09 / 8');
 
 const live = F.deepDive(data, periods.periods.lastMonth);
-ok(live && same(live.elsewhere, LIVE_ELSEWHERE) && same(live.cashAmount, data.plan.startingCash.amount),
+ok(live && same(live.elsewhere, LIVE_ELSEWHERE) && same(live.cashAmount, F.startingCashAmount(data.plan)),
   'live elsewhere is the held-elsewhere sum beside spendable household cash');
 ok(live.interest && same(live.interest.rate, 26.99)
   && cents(live.interest.impliedTotal) === LIVE_IMPLIED_CENTS

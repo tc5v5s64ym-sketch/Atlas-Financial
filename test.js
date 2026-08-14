@@ -48,6 +48,7 @@ const suites = [
   ['authority surface coverage', 'test-authority-coverage.js'],
   ['evidence-use register routing', 'test-evidence-use-register.js'],
   ['live household reconciliation', 'test-live-household.js'],
+  ['duplicate live-fact cleanup (B93)', 'test-dedup-facts.js'],
   ['refresh isolation (B92)', 'test-refresh-isolation.js'],
   ['merge-card check behaviour', 'test-mergecard.js'],
 ];
