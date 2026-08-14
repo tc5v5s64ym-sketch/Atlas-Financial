@@ -1,6 +1,10 @@
 # Atlas Financial Copilot - Architecture Game Plan
 
-**Status:** Dated advisory design proposal; not adopted and not a sequencing authority  
+**Status:** Dated advisory design proposal; not adopted and not a sequencing authority.
+**Post-B90:** remaining order is
+[`docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`](../ATLAS_FINANCIAL_BUILD_STRATEGY.md).
+Leaf-level source objects, a fact store, workflow engine, event sourcing,
+generated canonical state, and a second planner remain rejected.  
 **Prepared:** August 13, 2026  
 **Product owner:** Dale  
 **Scope:** Turn raw household financial evidence into one traceable, deterministic master financial plan and an evidence-backed financial copilot
