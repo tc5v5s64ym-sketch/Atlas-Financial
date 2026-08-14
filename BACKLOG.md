@@ -1020,13 +1020,14 @@ After `B89`. Forward Plan cap uses `plan.budget.categories[].class`; Deep Dive
 historical mix uses `periods.json` `type` from `docs/merchant-library.csv`.
 `test-classification.js` joins them on the existing `from[]` list. Comparable
 overlaps must agree, be a named non-comparable semantic (`business`,
-`reserve`, `unknown`), or be surfaced as owner-unresolved. School & clubs is
-the live disagreement (forward discretionary, historical essential) and is
-Q24 — not guessed. Seven Health merchant-library rows that were typed
-`discretionary` inside the published-essential Health bucket were aligned to
-`essential` so the library cannot first-write-win a contradictory published
-type; amounts and `public/periods.json` are unchanged. Build-strategy item
-`AF-CLASS-01`.
+`reserve`, `unknown`), be surfaced as owner-unresolved, or be named
+source-semantic ambiguity. School & clubs is the live comparable disagreement
+(forward discretionary, historical essential) and is Q24 — not guessed. Health
+merchant-library types remain mixed (`essential` medical rows and
+`discretionary` personal-care rows); the published `periods.json` Health type
+is first-event collapse and is not treated as a clean essential agreement.
+Personal-care merchants were not reclassified as essential. Build-strategy
+item `AF-CLASS-01`.
 
 **Outcome:** the same household spending category cannot disagree on
 essential/discretionary without a failing test. Preserve genuinely distinct

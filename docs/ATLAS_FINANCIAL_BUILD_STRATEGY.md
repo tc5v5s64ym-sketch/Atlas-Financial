@@ -486,11 +486,11 @@ built *on* that picture, the picture needs owners that a test can reach.
   on the existing `from[]` list. Comparable pairs must agree; `business`,
   `reserve`, and `unknown` stay named non-comparable semantics; School & clubs
   is the one live comparable disagreement and is recorded as Q24 rather than
-  guessed. Seven Health library rows inside the published-essential Health
-  bucket were aligned to `essential` so mixed library types cannot flip the
-  published story. Published household cash figures are unchanged. Phase 1
-  product exit was assessed as ready to start `AF-RECON-01` / `B91` (no
-  blocking gap).
+  guessed. Health source rows remain mixed essential/discretionary (medical
+  vs personal care); that mix is a closed source-semantic ambiguity, not a
+  clean essential agreement and not an owner guess. Published household cash
+  figures are unchanged. Phase 1 product exit was assessed as ready to start
+  `AF-RECON-01` / `B91` (no blocking gap).
 
 ### Phase 1 product exit — useful before infrastructure
 

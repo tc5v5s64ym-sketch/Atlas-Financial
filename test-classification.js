@@ -17,9 +17,10 @@
    Comparable classes: essential, discretionary.
    Named non-comparable semantics: business, reserve, unknown.
 
-   The same overlapping comparable concept must not silently be essential in
-   one view and discretionary in the other. Genuinely distinct semantics stay
-   distinct. Unresolved household policy is named, not guessed.
+   Mixed source types inside one mapped category are not a comparable story.
+   `scripts/periods.js` keeps the first event's type and then accumulates later
+   events, so a mixed Health bucket can publish essential or discretionary
+   depending on encounter order. That collapse is not classification truth.
 */
 
 const fs = require('fs');
@@ -38,9 +39,15 @@ const loadJson = rel => JSON.parse(read(rel));
 const COMPARABLE = new Set(['essential', 'discretionary']);
 const PAYPAL_CHANNEL = '@paypal';
 
-/* Closed list. A new essential/discretionary disagreement is a failure unless
- * it is added here AND recorded as an owner question. This is not a wildcard. */
+/* Closed lists. A new essential/discretionary disagreement is a failure unless
+ * it is added here AND recorded. These are not wildcards. */
 const OWNER_UNRESOLVED = new Set(['School & clubs']);
+const SOURCE_AMBIGUOUS = new Set(['Health']);
+
+const PERSONAL_CARE = [
+  'ANNANAILS', 'ZENNKAISALON', 'NAMASTEBEAUTY', 'VNNAILSSPA',
+  'TIFFANYNAILBA', 'GREATCLIPS', 'SKINDISTRICTI',
+];
 
 function splitCsv(line) {
   const out = []; let cur = '', q = false;
@@ -86,6 +93,20 @@ function one(set) {
   return set.size === 1 ? [...set][0] : null;
 }
 
+/* Incumbent scripts/periods.js spend rollup: the first event's type is kept;
+ * later events of the same category only add to the total. */
+function publishedTypeByFirstEvent(events, label) {
+  let type = null;
+  for (const e of events) {
+    if (e.category === label && e.type && type == null) type = e.type;
+  }
+  return type;
+}
+
+function sourceTypeSet(events, label) {
+  return new Set(events.filter(e => e.category === label).map(e => e.type).filter(Boolean));
+}
+
 /* Pure predicate. Returns problem strings; empty means the invariant holds. */
 function classificationProblems({
   categories,
@@ -93,6 +114,7 @@ function classificationProblems({
   library,
   periods,
   unresolved = OWNER_UNRESOLVED,
+  sourceAmbiguous = SOURCE_AMBIGUOUS,
 }) {
   const problems = [];
   const excludedLabels = new Set((excluded || []).map(e => e.from));
@@ -118,9 +140,14 @@ function classificationProblems({
 
       const libTypes = libraryTypes(library, label);
       const histTypes = periodTypes(periods, label);
+      const mixed = libTypes.size > 1;
+      const listedAmbiguous = sourceAmbiguous.has(label);
 
-      if (libTypes.size > 1) {
+      if (mixed && !listedAmbiguous) {
         problems.push(`library-mixed:${label}:${[...libTypes].sort().join(',')}`);
+      }
+      if (!mixed && listedAmbiguous) {
+        problems.push(`stale-source-ambiguous:${label}`);
       }
       if (histTypes.size > 1) {
         problems.push(`periods-mixed:${label}:${[...histTypes].sort().join(',')}`);
@@ -131,6 +158,9 @@ function classificationProblems({
       if (libType && published && libType !== published) {
         problems.push(`stale-periods:${label}:library=${libType}:periods=${published}`);
       }
+
+      /* Mixed source types cannot be compared via the first-event published type. */
+      if (mixed || listedAmbiguous) continue;
 
       const historical = published || libType;
       if (!historical) continue;
@@ -166,6 +196,10 @@ function classificationProblems({
     const cat = (categories || []).find(c => (c.from || []).includes(label));
     if (!cat) problems.push(`unresolved-missing-category:${label}`);
   }
+  for (const label of sourceAmbiguous) {
+    const cat = (categories || []).find(c => (c.from || []).includes(label));
+    if (!cat) problems.push(`source-ambiguous-missing-category:${label}`);
+  }
 
   return problems;
 }
@@ -200,20 +234,26 @@ for (const c of budget.categories) {
       console.log(`  ${c.id.padEnd(16)} ${c.class.padEnd(14)} ← ${label.padEnd(22)} (channel)      non-overlap: PayPal funding`);
       continue;
     }
+    const libTypes = libraryTypes(library, label);
     const published = one(periodTypes(periods, label));
-    const libType = one(libraryTypes(library, label));
-    const historical = published || libType || '(absent)';
-    const unresolved = OWNER_UNRESOLVED.has(label);
-    const comparable = COMPARABLE.has(c.class) && COMPARABLE.has(historical);
+    const libType = one(libTypes);
+    const mixed = libTypes.size > 1;
+    const historical = mixed
+      ? `mixed:${[...libTypes].sort().join(',')}`
+      : (published || libType || '(absent)');
+    const ownerUnresolved = OWNER_UNRESOLVED.has(label);
+    const sourceAmbiguous = SOURCE_AMBIGUOUS.has(label) || mixed;
+    const comparable = !sourceAmbiguous && COMPARABLE.has(c.class) && COMPARABLE.has(published || libType);
     let disposition = 'AGREE';
     if (c.class === 'reserve') disposition = 'INTENTIONAL EXCEPTION: reserve';
     else if (c.class === 'unknown' && historical === 'unknown') disposition = 'AGREE (unknown)';
-    else if (unresolved) disposition = 'OWNER DECISION REQUIRED';
-    else if (comparable && c.class !== historical) disposition = 'CONTRADICTION';
+    else if (sourceAmbiguous) disposition = 'SOURCE-SEMANTIC AMBIGUITY';
+    else if (ownerUnresolved) disposition = 'OWNER DECISION REQUIRED';
+    else if (comparable && c.class !== (published || libType)) disposition = 'CONTRADICTION';
     overlapRows.push({
       id: c.id, label, forward: c.class, historical, comparable, disposition,
     });
-    console.log(`  ${c.id.padEnd(16)} ${c.class.padEnd(14)} ← ${label.padEnd(22)} ${String(historical).padEnd(14)} ${disposition}`);
+    console.log(`  ${c.id.padEnd(16)} ${c.class.padEnd(14)} ← ${label.padEnd(22)} ${String(historical).padEnd(28)} ${disposition}`);
   }
 }
 
@@ -221,6 +261,8 @@ const comparableLive = overlapRows.filter(r => r.comparable && r.disposition ===
 ok(comparableLive.length >= 10,
   'live comparable overlaps that currently agree are enumerated',
   `${comparableLive.length} agreeing pairs`);
+ok(!comparableLive.some(r => r.label === 'Health'),
+  'Health is not treated as a clean comparable essential agreement');
 
 const school = overlapRows.find(r => r.label === 'School & clubs');
 ok(school && school.forward === 'discretionary' && school.historical === 'essential',
@@ -257,10 +299,96 @@ const unknown = overlapRows.find(r => r.label === 'Uncategorised');
 ok(unknown && unknown.forward === 'unknown' && unknown.historical === 'unknown',
   'Uncategorised stays unknown on both sides');
 
+console.log('\n=== Health mixed source semantics ===');
+const health = overlapRows.find(r => r.label === 'Health');
 const healthLib = libraryTypes(library, 'Health');
-ok(healthLib.size === 1 && one(healthLib) === 'essential',
-  'Health merchant-library types are unanimous essential',
-  [...healthLib].join(','));
+ok(healthLib.size === 2 && healthLib.has('essential') && healthLib.has('discretionary'),
+  'Health merchant-library types are mixed essential and discretionary',
+  [...healthLib].sort().join(','));
+ok(health && health.disposition === 'SOURCE-SEMANTIC AMBIGUITY',
+  'Health mixed source types are surfaced as source-semantic ambiguity, not AGREE');
+ok(one(periodTypes(periods, 'Health')) === 'essential',
+  'published periods.json Health type is currently essential (first-event collapse)',
+  one(periodTypes(periods, 'Health')));
+ok(health && health.forward === 'essential' && health.disposition !== 'AGREE',
+  'forward Medical & health being essential does not make mixed Health a clean agreement');
+
+for (const pattern of PERSONAL_CARE) {
+  const row = library.find(r => r.pattern === pattern);
+  ok(row && row.category === 'Health' && row.type === 'discretionary',
+    `${pattern} remains Health/discretionary, not coerced to essential`,
+    row ? `${row.category}/${row.type}` : 'missing');
+}
+
+const dropHealthAmbiguity = classificationProblems(Object.assign({}, live, {
+  sourceAmbiguous: new Set(),
+}));
+ok(dropHealthAmbiguity.some(p => p.startsWith('library-mixed:Health:')),
+  'dropping Health from the closed source-ambiguous list re-exposes the mixed types',
+  dropHealthAmbiguity.filter(p => p.includes('Health')).join('; '));
+
+const coerceHealthEssential = clone(live);
+coerceHealthEssential.library = clone(library).map(r =>
+  r.category === 'Health' ? Object.assign({}, r, { type: 'essential' }) : r);
+ok(classificationProblems(coerceHealthEssential).some(p => p === 'stale-source-ambiguous:Health'),
+  'making Health unanimous essential while it remains listed as source-ambiguous fails',
+  classificationProblems(coerceHealthEssential).filter(p => p.includes('Health')).join('; '));
+
+console.log('\n=== mutation: Health first-event ordering is not classification truth ===');
+const medical = { category: 'Health', type: 'essential' };
+const salon = { category: 'Health', type: 'discretionary' };
+
+function healthOrder(events) {
+  const published = publishedTypeByFirstEvent(events, 'Health');
+  const source = sourceTypeSet(events, 'Health');
+  const lib = [...source].sort().map((t, i) => (
+    { pattern: 'H' + i, category: 'Health', type: t }
+  ));
+  const fixture = {
+    categories: [{ id: 'health', class: 'essential', from: ['Health'] }],
+    excluded: [{ from: 'Business' }],
+    library: lib,
+    periods: { periods: { ytd: { spending: [{ label: 'Health', total: 10, type: published }] } } },
+  };
+  return {
+    published,
+    source: [...source].sort(),
+    mixed: source.size > 1,
+    withoutList: classificationProblems(Object.assign({}, fixture, {
+      unresolved: new Set(), sourceAmbiguous: new Set(),
+    })),
+    withList: classificationProblems(Object.assign({}, fixture, {
+      unresolved: new Set(), sourceAmbiguous: new Set(['Health']),
+    })),
+  };
+}
+
+const essentialFirst = healthOrder([medical, salon]);
+const discretionaryFirst = healthOrder([salon, medical]);
+
+ok(essentialFirst.published === 'essential',
+  'essential-first then discretionary publishes essential under first-event collapse',
+  essentialFirst.published);
+ok(discretionaryFirst.published === 'discretionary',
+  'discretionary-first then essential publishes discretionary under first-event collapse',
+  discretionaryFirst.published);
+ok(essentialFirst.mixed && discretionaryFirst.mixed
+  && essentialFirst.source.join(',') === 'discretionary,essential'
+  && discretionaryFirst.source.join(',') === 'discretionary,essential',
+  'both orderings contain the same mixed source types');
+ok(essentialFirst.withoutList.some(p => p.startsWith('library-mixed:Health:'))
+  && discretionaryFirst.withoutList.some(p => p.startsWith('library-mixed:Health:')),
+  'the guard detects mixed Health source types in both orderings',
+  `essential-first=${essentialFirst.withoutList.join(';')} | discretionary-first=${discretionaryFirst.withoutList.join(';')}`);
+ok(!essentialFirst.withoutList.some(p => p.startsWith('contradiction:Health:'))
+  && !discretionaryFirst.withoutList.some(p => p.startsWith('contradiction:Health:')),
+  'mixed Health is not compared as a clean essential/discretionary contradiction via the collapsed type');
+ok(essentialFirst.withList.length === 0 && discretionaryFirst.withList.length === 0,
+  'listing Health as source-ambiguous makes both orderings explicit rather than failing live');
+ok(essentialFirst.published !== discretionaryFirst.published
+  && essentialFirst.withoutList.filter(p => p.startsWith('library-mixed:Health:'))[0]
+    === discretionaryFirst.withoutList.filter(p => p.startsWith('library-mixed:Health:'))[0],
+  'classification correctness is independent of which Health event is encountered first');
 
 console.log('\n=== mutation: agreeing comparable category, essential ↔ discretionary ===');
 const groceries = live.categories.find(c => c.id === 'groceries');
@@ -343,15 +471,6 @@ const dropSchool = classificationProblems(Object.assign({}, live, { unresolved: 
 ok(dropSchool.some(p => p === 'contradiction:School & clubs:forward=discretionary:historical=essential'),
   'dropping School & clubs from the closed unresolved list re-exposes the contradiction');
 
-const mixedHealth = clone(live);
-mixedHealth.library = clone(library).map((r, i) =>
-  r.category === 'Health' && i === library.findIndex(x => x.category === 'Health')
-    ? Object.assign({}, r, { type: 'discretionary' })
-    : r);
-ok(classificationProblems(mixedHealth).some(p => p.startsWith('library-mixed:Health:')),
-  'mixing essential and discretionary inside one mapped library category fails',
-  classificationProblems(mixedHealth).filter(p => p.includes('Health')).join('; '));
-
 console.log('\n=== generator: library type matches published periods.json ===');
 const mappedLabels = new Set();
 for (const c of budget.categories) {
@@ -362,12 +481,13 @@ for (const c of budget.categories) {
 mappedLabels.add('Business');
 let stale = 0;
 for (const label of mappedLabels) {
+  if (SOURCE_AMBIGUOUS.has(label)) continue;
   const libType = one(libraryTypes(library, label));
   const published = one(periodTypes(periods, label));
   if (libType && published && libType !== published) stale++;
 }
 ok(stale === 0,
-  'overlapping merchant-library types match public/periods.json; generated output is current',
+  'unambiguous overlapping merchant-library types match public/periods.json',
   `${mappedLabels.size} mapped labels`);
 
 const staleLib = clone(live);
