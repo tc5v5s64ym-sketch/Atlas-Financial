@@ -785,8 +785,8 @@ function renderPlan(d, periods) {
   $('hero-tiles').innerHTML = [
     { lab: 'Spendable household cash', val: money(plan.startingCash.amount), tone: 'alert',
       note: 'Chequing A, B and Savings. Amanda’s account is a separate pot.' },
-    (nextOut ? { lab: 'Next payment out', val: money(nextOut.amount),
-      note: `${nextOut.label} on ${fmtDateLong(nextOut.date)}`,
+    (nextOut ? { lab: 'Next cash-out total', val: money(nextOut.amount),
+      note: `${nextOut.label} on ${fmtDateLong(nextOut.date)} — all cash leaving household accounts that day`,
       tone: nextOut.date <= addDays(asOf, 3) ? 'warn' : '' } : null),
     { lab: 'Weekly household cap', val: money(weekly) + '/wk', tone: gap ? 'warn' : '',
       note: state.weeklyVariable != null && state.weeklyVariable !== recommended

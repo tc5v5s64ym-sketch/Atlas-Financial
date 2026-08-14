@@ -30,13 +30,16 @@
     return new Date(Date.UTC(y, m, 0)).getUTCDate();
   }
   // The nth of every month, clamped to shorter months (day 31 → 30 Sep).
+  // Walks until `end`, not a fixed month count: the Plan window is 13 weeks,
+  // but the exported calendar reuses this same expander over a longer horizon.
   function monthlyDates(day, start, end, firstDue) {
     const out = [];
     let [y, m] = start.split('-').map(Number);
-    for (let i = 0; i < 5; i++) { // window is 13 weeks; 5 months always covers it
+    for (;;) {
       const d = Math.min(day, daysInMonth(y, m));
       const iso = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-      if (iso >= start && iso <= end && (!firstDue || iso >= firstDue)) out.push(iso);
+      if (iso > end) break;
+      if (iso >= start && (!firstDue || iso >= firstDue)) out.push(iso);
       m++; if (m > 12) { m = 1; y++; }
     }
     return out;
@@ -1337,44 +1340,35 @@
   }
 
   /* ------------------------------------------------ next due obligation */
-  // Which item on the published payment calendar the household owes next.
+  // Which named cash obligation the household owes next, from the SAME
+  // expandEvents stream the Plan calendar and nextPaymentOut already read.
   //
-  // The Deep Dive page used to answer this itself: it filtered `upcoming`,
-  // sorted it and took the first. That made a household-facing selection an
-  // untested page-script authority — and the ordering was not even stated,
-  // because the comparator never returned 0, so two obligations falling on one
-  // day were ranked by whatever the sort implementation happened to do.
+  // This used to select from a hand-kept `upcoming` list. That list drifted
+  // from the Plan — HELOC 21st vs month-end, Fortis 1st vs 3rd — which is the
+  // B74 defect. Eligibility is now the cash-outflow rule, identical to
+  // nextPaymentOut:
   //
-  // Eligibility, unchanged from what the page already meant:
+  //   INFLOW     amount >= 0. Money arriving is not a payment due.
+  //   NONCASH    capitalised interest. A real cost, but no cash leaves.
+  //   BEFORE     date < as-of. The tile answers what is next, not what already
+  //              left.
   //
-  //   PAID      settled already, so nothing is owed.
-  //   NONCASH   capitalised interest. It is a real cost and the calendar shows
-  //             it, but no cash leaves an account, so it is not a payment due.
-  //   PAST DUE  before the as-of date. The tile answers "what is next", not
-  //             "what is outstanding"; the calendar below still lists a missed
-  //             item with its own "Nd ago" chip.
-  //
-  // Earliest eligible date wins. Where two share that date the calendar's own
-  // order decides, stated here rather than left to a sort — the forward scan
-  // keeps the first and a later equal date never displaces it.
-  //
-  // This names ONE obligation. What the whole day costs is a different
-  // question, and Forecast.nextPaymentOut answers it by summing the cash
-  // events on that date; reconciling the two look-aheads is B74.
-  function nextDue(upcoming, asOf) {
+  // Earliest eligible date wins. Where two share that date, stream order
+  // decides — the forward scan keeps the first and a later equal date never
+  // displaces it. That is ONE named obligation. What the whole day costs is
+  // nextPaymentOut, which sums every eligible event on that same date.
+  function nextDue(events, asOf) {
     let best = null;
-    for (const item of upcoming || []) {
-      if (item.status === 'paid' || item.kind === 'noncash') continue;
-      const days = diffDays(asOf, item.due);
-      if (days < 0) continue;
-      if (!best || item.due < best.item.due) best = { item, days };
+    for (const event of events || []) {
+      if (!(event.amount < 0) || event.kind === 'noncash' || event.date < asOf) continue;
+      if (!best || event.date < best.date) best = event;
     }
     if (!best) return null;
     return {
-      due: best.item.due,
-      what: best.item.what,
-      amount: best.item.amount,
-      daysUntil: best.days,
+      due: best.date,
+      what: best.label,
+      amount: -best.amount,
+      daysUntil: diffDays(asOf, best.date),
     };
   }
 
@@ -1401,7 +1395,7 @@
   // eligible event on that date, as a positive amount. One event keeps its
   // own label; several share a count-and-stem label taken from the first
   // event in stream order. Distinct from `nextDue`, which names one
-  // `upcoming` obligation rather than a projection day-total.
+  // obligation from this same stream rather than the day's cash-out total.
   function nextPaymentOut(events, asOf) {
     let date = null;
     const sameDay = [];

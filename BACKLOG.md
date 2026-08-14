@@ -802,8 +802,9 @@ fails in `Forecast.deepDive`.
    $320 + $303 = $623 on a fixture, proves each exclusion by removing it,
    reconciles the published tile against those two Burrard commitment literals
    in `data.json`, and breaks the day-sum into the single largest outflow so
-   the B73 mutation now fails. No published figure or wording moved. **The
-   reconciliation between this tile and `Forecast.nextDue` remains `B74`'s.**
+   the B73 mutation now fails. No published figure or wording moved. **B74 now
+   feeds both this tile and `Forecast.nextDue` from the same `expandEvents`
+   stream; the two aggregations remain distinct.**
 
    **RESOLVED 2026-08-14 — unallocated / free cash.** `Forecast.unallocatedCash`
    now owns the windowed reserve, the remainder after buffer and reserves, and
@@ -957,27 +958,22 @@ guard does not claim this class, and `docs/RISK_LABELS.md` says the same. The
 protection each item above needs is the engine function it names, with a test
 that reaches the figure — not a guard standing over the defect.
 
-**B74 · Two calendars, and nothing notices when they disagree** · *needs a decision first*
-`renderCalendar()` in `public/plan.js` draws the on-page grid from the forecast
-projection. `scripts/calendar-ics.js` builds `derived/household-payments.ics`
-independently, from `docs/ACCOUNT_FACTS.md` and the recurrence observed in
-chequing data — and B29 records that file as imported into Google Calendar, so
-it is a calendar the household actually reads. Two schedules, two sources, no
-reconciliation: a due date or amount corrected in one can sit stale in the other
-indefinitely. Decide which is authoritative and derive the other from it, or
-state why each legitimately answers a different question. Deriving the `.ics`
-from the projection is the obvious candidate but is not free — the `.ics` covers
-statement closes and renewal reminders the projection does not model.
+**B74 · Two calendars, and nothing notices when they disagree** · **IN REVIEW 2026-08-14**
+Owner chose Option A: one authoritative household cash schedule. Canonical flow
+is `data.json` `plan` → `Forecast.expandEvents`. That stream now feeds the Plan
+calendar, Next cash-out total, Deep Dive Next named payment due, and ICS payment
+VEVENTs. Standing ICS reminders (statement closes, tax deadlines, mortgage
+renewal) remain a thin non-cash overlay. `data.json` `upcoming` is deleted as a
+schedule; paid forensic notes remain in `settled`. The children's RESP $100 on
+the 15th is a canonical `plan.bills` row. CMAW Local 1995 dues were not promoted
+into a permanent bill; owner intent to cancel is a `plan.actions` row. HELOC
+cash treatment is unchanged (month-end `nonCash`); the 21st contractual due date
+stays in Q19 rather than being guessed into a chequing outflow.
 
-**A third look-ahead belongs in the same decision**, found while moving "Next
-due" into the engine. `Forecast.nextDue` names the next single obligation from
-`data.json` `upcoming`; the Plan page's "next payment out" tile sums every
-forecast event on the next outflow date, from the `plan` block. Same-sounding
-question, two sources, two answers — both land on 12 August, but one says
-`$320.00` for Burrard child 1 and the other `$623.00` for the day. Neither is
-wrong for the question it answers, and each sits beside the detail on its own
-page. What is missing is the decision about which look-ahead the household is
-meant to read, and that is this item's, not a defect to patch inside either tile.
+The two look-aheads are kept and labelled apart: Next named payment due is one
+obligation; Next cash-out total is the day's sum. Both read the same event
+stream, so two Burrard payments on 12 August correctly produce $320 and $623
+without two calendars.
 
 **B75 · Nothing checks that the authority table is complete** · **DONE 2026-08-11**
 PR #10 added `test-authority-coverage.js` to the blocking `npm test` suite. It

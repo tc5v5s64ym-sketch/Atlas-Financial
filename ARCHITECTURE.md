@@ -327,7 +327,8 @@ from, replaces or deletes one of them — and says which. It does not stand up a
 second engine, a second weekly figure, a second budget or a second calendar
 beside them. This repository has already shipped that failure, publishing
 `$1,650/wk` in one tile and `$0/wk` below, because two pieces of code answered
-the same question — and it still carries one, noted under the table.
+the same question. The schedule overlap that used to sit under this table is
+closed: `Forecast.expandEvents` is the one cash calendar.
 
 | Concept | Incumbent authority |
 |---|---|
@@ -335,8 +336,8 @@ the same question — and it still carries one, noted under the table.
 | Cash projection over the window | `Forecast.simulate` |
 | Weekly household cap | `Forecast.recommend` — **and only it** |
 | Income dependency deadline — when a modelled income becomes required to preserve the buffer | `Forecast.incomeDeadline` |
-| Next due — which published calendar obligation the household owes soonest | `Forecast.nextDue`, from `data.json` `upcoming` |
-| Next payment out — cash leaving on the next outflow date of the projection | `Forecast.nextPaymentOut`, from `sim.events`. Names the day and sums every cash outflow on it; two registrations on one day are one payment as far as the account is concerned. Distinct from `Forecast.nextDue`, which names one `upcoming` obligation. Reconciling those two look-aheads is `B74`. `public/plan.js` holds the wording and the 3-day tile tone only |
+| Next due — which named cash obligation the household owes soonest | `Forecast.nextDue`, from `Forecast.expandEvents`. Names one event; two obligations on one day do not become a day-total. Distinct from `Forecast.nextPaymentOut`. `public/deepdive.js` holds the wording only |
+| Next payment out — cash leaving on the next outflow date of the projection | `Forecast.nextPaymentOut`, from the same `expandEvents` stream (`sim.events` on the Plan page). Names the day and sums every cash outflow on it; two registrations on one day are one payment as far as the account is concerned. Distinct from `Forecast.nextDue`, which names one obligation from that stream. `public/plan.js` holds the wording and the 3-day tile tone only |
 | Unallocated ending cash — the remainder after the target buffer and windowed reserves, and whether that is free cash | `Forecast.unallocatedCash`, from `sim.ending`, `sim.buffer`, `budget.reserveMonthly` and `plan.windowDays`. Converts the monthly reserve over the window with the calendar month `365.25 / 12`, subtracts buffer and reserves, and decides the leftover verdict on the published cent. `public/plan.js` holds the wording only |
 | Compact snapshot — secured debt total, monthly interest across every facility, and HELOC month-on-month direction | `Forecast.compactSnapshot`, from the debt records' posted `balance` / `annualInterest` / `secured` and `helocHistory`. A month of interest is a twelfth of the recorded annual figure. The HELOC verdict follows the published whole-dollar delta, so a move that prints `$0` is unchanged rather than growth. `public/plan.js` holds the wording and the sign only |
 | Deep Dive derived totals — held-elsewhere grouping, period spending average, discretionary share, avoidable fees, Cash Back Visa cycle fit, and the mortgage's monthly interest | `Forecast.deepDive`, from `plan.startingCash.heldElsewhere`, the selected `periods` entry, `interestCheck` rows, and the `cashback` / `mortgage` debt records. The card rate is the Cash Back Visa `rate`; a cycle is off when `|eff − rate| > 4` percentage points, the incumbent band. Mortgage monthly interest is `monthOfAnnual` on that debt's `annualInterest` — the same twelfth `compactSnapshot` uses. `public/deepdive.js` holds the wording only |
@@ -361,7 +362,7 @@ the same question — and it still carries one, noted under the table.
 | Historical spending series | generated `public/periods.json`, from `scripts/periods.js` |
 | Published figures | `data.json` |
 | Calendar — the on-page month grid and agenda | `renderCalendar()` in `public/plan.js` — **presentation of `sim.events` only** |
-| Calendar — the exported `.ics` | `scripts/calendar-ics.js`, from `docs/ACCOUNT_FACTS.md` and observed recurrence |
+| Calendar — the exported `.ics` | `scripts/calendar-ics.js`: cash-payment VEVENTs **derived** from `Forecast.expandEvents` over a longer horizon; standing reminder VEVENTs (statement closes, tax deadlines, mortgage renewal) remain a thin non-cash overlay |
 | Authority and reconciliation guards | the `npm test` suites |
 
 **The table is not a closed list, and reading it as one is how work goes wrong.**
@@ -395,8 +396,8 @@ The recorded instances have been moved into the engine rather than argued away.
 The Amanda-transfer deadline: `public/plan.js` re-ran the simulation with her
 transfer zeroed and selected the first below-buffer day itself, and
 `Forecast.incomeDeadline` now owns that counterfactual. The "Next due" tile:
-`public/deepdive.js` filtered `upcoming` for unpaid cash items, sorted them and
-took the first, and `Forecast.nextDue` now owns that selection. The homepage
+`public/deepdive.js` used to filter a hand-kept `upcoming` list; `Forecast.nextDue`
+now selects from the same `expandEvents` stream the Plan calendar already uses. The homepage
 mission: `public/plan.js` chose which instructions the household was given and
 composed the sentence, and `Forecast.mission` now owns that selection, returning
 the instructions and the figures behind them while the page keeps the wording.
@@ -490,24 +491,22 @@ and never prints a rate without its convention. The HELOC keeps its own — it i
 prime-linked whatever the mortgage renews into, so choosing fixed must not
 reprice the facility sitting beside it.
 
-**There are already two calendars, and neither of them is `renderCalendar()`.**
-The schedule — dates, amounts, recurrence — is `Forecast.expandEvents`'s, and
-`renderCalendar()` only formats the `sim.events` it is handed; later calendar work
-belongs in the engine, where it can be tested, not in the renderer. The two
-*schedules* are that one and the exported `.ics`, which derives independently from
-standing facts and observed recurrence and which `B29` records as imported into
-Google Calendar. They can drift, and nothing today would notice. That is a
-pre-existing overlap this file *records* rather than creates — recorded as `B74`.
-Until it is resolved, neither is a licence to add a third.
+**The schedule has one owner.** Dates, amounts and recurrence are
+`Forecast.expandEvents`'s, from the `plan` inputs. `renderCalendar()` only
+formats the `sim.events` it is handed. The exported `.ics` derives its
+cash-payment VEVENTs from that same expander over a longer horizon; statement
+closes, tax deadlines and the mortgage-renewal countdown remain reminder-only
+look-points and are tagged so they cannot be read as chequing outflows. A
+hand-kept `upcoming` list used to be a third schedule; it is deleted. Paid
+forensic notes live in `data.json` `settled` as an overlay and do not decide
+what is due.
 
-**A third list of dated obligations already existed, and saying "two" was
-generous.** `data.json` `upcoming` is the hand-kept payment calendar the Deep
-Dive page has always published, maintained beside the `plan` block the projection
-runs on. `Forecast.nextDue` *selects* from that list; it does not build a
-schedule, and no new list was created to give it something to read. But an
-authority that reads a hand-kept list inherits that list's staleness, so the
-reconciliation is now B74's to settle across all three, and B74 records what each
-currently answers.
+**HELOC 21st vs month-end is not settled by this architecture.** The live cash
+plan still models HELOC interest as a month-end `nonCash` capitalisation,
+because the observed posting is a debit on the HELOC itself with no matching
+chequing payment. TD also states a contractual minimum due on the 21st.
+`docs/01_OPEN_QUESTIONS.md` Q19 owns that remaining household-facing question.
+This file does not pick 21st or month-end to make the calendar cleaner.
 
 **`plan.nextDollar` is derived, not instructed.** Its own provenance note says so:
 neither Dale nor Amanda has stated or approved the `protect-then-highest-cost`

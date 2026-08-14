@@ -19,13 +19,21 @@ anything older than a few months as needing re-checking, not as fact.
 | **7th** | Triangle Mastercard minimum | ~$253 | Canadian Tire Bank |
 | **14th & every 14 days** | Mortgage | $1,600.00 | TD |
 | **17th** | TD credit card minimum | ~$94 | TD |
-| **21st** | HELOC minimum (interest only) | ~$814 | TD |
+| **21st** | HELOC contractual minimum (interest only) | ~$814 | TD — **see note** |
 | **31st / month end** | **Amazon.ca Rewards Mastercard minimum** | **$158.27** | MBNA |
 | **1st** | TD Cash Back Visa minimum | $762.36 | TD |
 | **26th** | Travel Visa minimum | $17.00 | TD |
 
 Statement close dates: **TD card ~23rd** · **Triangle 17th** ·
 **MBNA/Amazon 6th** · **TD Cash Back 7th** · **Travel Visa 5th**.
+
+**HELOC 21st vs month-end.** TD EasyWeb states a minimum payment due on the 21st
+equal to the monthly interest charge. The live cash plan does **not** reserve
+chequing cash for that day: observed posting is a month-end debit on the HELOC
+itself with no matching chequing payment, modelled as `nonCash` / `capitalise`
+on day 31. Whether the 21st must also be a household cash outflow is
+`docs/01_OPEN_QUESTIONS.md` Q19. This file records both facts; it does not pick
+one to make a calendar cleaner.
 
 ### The 12 August Burrard registrations are one payment, not two
 
@@ -58,6 +66,7 @@ steady value, not the 18-month median.
 | **14th–15th** | Shaw internet | $78.40 | May–July, chequing and Cash Back |
 | **15th** | BCAA insurance | $82.96 | 18 consecutive months |
 | **15th** | ICBC insurance | $99.91 | 5 consecutive months — newer policy |
+| **15th** | RESP contribution | $100.00 | Owner-stated hard bill, children's RESP, monthly |
 | **every 14 days** (payday cadence) | Fit4Less | $11.54 | 18 months; plus a ~$22 annual fee each July |
 | **month-end** | TD account fees ×2 | $17.95 each | every month captured |
 
@@ -65,6 +74,11 @@ steady value, not the 18-month median.
 March 2026 — route unknown, possibly her account). Netflix does not exist
 anywhere in the data; the streaming spend is Amazon Channels, several small
 charges on scattered days.
+
+**CMAW Local 1995 union dues ($25/month on the 15th) are not a standing
+household bill.** They appear in the chequing history, but the owner intends to
+cancel them. Cancellation is not yet confirmed. They are recorded as an open
+action, not as a canonical `plan.bills` row and not as a future ICS payment.
 
 **BC Hydro is not one of them.** It moved to Amanda's DEBT&PAYMENTS account in
 May 2026 and she has paid it there since — $235, $250, $250. It is therefore

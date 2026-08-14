@@ -181,14 +181,16 @@ ok(/interestTreatment === 'capitalised'/.test(forecastCode),
 ok(/economic/i.test(modellers) && /helocEconomic/.test(forecastCode),
   'and the economic cost is labelled separately from household cash');
 
-// Deep Dive listed it among ordinary dated payments.
-const helocUpcoming = data.upcoming.filter(u => /HELOC/i.test(u.what));
-ok(helocUpcoming.length > 0, 'the HELOC charge still appears on the dated list');
-ok(helocUpcoming.every(u => u.kind === 'noncash'),
+// Deep Dive listed it among ordinary dated payments. After B74 that list is
+// expandEvents, not a hand-kept upcoming calendar.
+const helocEvents = F.expandEvents(plan, asOf, F.addDays(asOf, (plan.windowDays || 91) - 1))
+  .filter(e => e.id === 'heloc' || /HELOC/i.test(e.label));
+ok(helocEvents.length > 0, 'the HELOC charge still appears on the dated list');
+ok(helocEvents.every(e => e.kind === 'noncash'),
   'but marked non-cash, not as a payment falling due',
-  helocUpcoming.map(u => u.kind).join(', '));
-ok(helocUpcoming.every(u => !/minimum/i.test(u.what)),
-  'and no longer called a "minimum"', helocUpcoming.map(u => u.what).join(', '));
+  helocEvents.map(e => e.kind).join(', '));
+ok(helocEvents.every(e => !/minimum/i.test(e.label)),
+  'and no longer called a "minimum"', helocEvents.map(e => e.label).join(', '));
 ok(/noncash/.test(read('public/deepdive.js')),
   'Deep Dive renders a non-cash row differently from a payment');
 
@@ -549,7 +551,7 @@ ok(/No weekly spending\s*\n?\s*figure fixes this/.test(planJs2),
   ok(onDay[0].parts && onDay[0].parts.length === 2,
     'while still carrying both origins for debt attribution',
     onDay[0].parts.map(p => p.debtId || 'cash').join(' + '));
-  ok(adv.holds && adv.weekly === 1135,
+  ok(adv.holds && adv.weekly === 1095,
     'so the day closes on the buffer and the cap survives the split',
     `$${adv.weekly}/week, floor ${money(adv.sim.min.balance)}`);
   ok(near(adv.sim.min.balance, 3000),
@@ -819,6 +821,9 @@ ok(!/They ride inside the variable budget's averages instead/.test(dataStr),
   'and BC Hydro is no longer said to ride inside the household variable budget');
 ok(!/summary: 'BC Hydro/.test(read('scripts/calendar-ics.js')),
   'the household calendar no longer emits a BC Hydro reminder');
+ok(!require('./scripts/calendar-ics.js').buildHouseholdCalendar(plan, asOf)
+  .payments.some(p => /BC Hydro/i.test(p.summary)),
+  'and derived ICS payments do not reintroduce one');
 
 console.log('\n=== no financial event appears twice ===');
 const window = F.simulate(plan, asOf, { scenario: 'expected', weeklyVariable: 0, targetBuffer: 500 });

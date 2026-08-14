@@ -248,9 +248,11 @@ built *on* that picture, the picture needs owners that a test can reach.
 - **Acceptance** — a due date or amount corrected in one place cannot sit stale in
   the other, and a test demonstrates that; or the document records why the two
   legitimately differ, and what stops them drifting.
-- **Prompt** — *Decide whether the exported `.ics` derives from
-  `Forecast.expandEvents` or stays independent, and prove the answer. Note it
-  covers statement closes and renewal reminders the projection does not model.*
+- **State** — **in review.** Owner chose Option A: ICS cash payments `DERIVE`
+  from `Forecast.expandEvents`; standing reminders stay independent and tagged
+  as non-cash. `data.json` `upcoming` is deleted as a schedule authority.
+  Acceptance is proved by `test-schedule-authority.js`. HELOC 21st vs month-end
+  cash treatment remains Q19 and is not closed by this item.
 
 ### Phase 1 product exit — useful before infrastructure
 
