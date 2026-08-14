@@ -346,8 +346,12 @@ ok(!/fundingIsDraw/.test(planJs2Code),
 //    fully funded and the window stays below it. The condition it is gated on
 //    is now Forecast.planStatus's `unfunded` verdict rather than the page's own
 //    `fundingShort`, so the gate is asserted where it now lives.
-ok(/status\.id === 'unfunded'/.test(planJs2),
-  'the success copy is gated on the gap actually being fundable');
+ok(/Forecast\.planPhases\(/.test(planJs2),
+  'the opening phase body comes from the engine, gated on whether the gap is fundable');
+ok(!/status\.id === 'unfunded'/.test(planJs2Code),
+  'and the page no longer re-reads the status verdict to pick that body');
+ok(/openingId = fundingShort \? 'unfunded'/.test(forecastCode),
+  'the engine selects the unfunded opening phase from the funding result');
 
 // 6. The Modeller charged SIMPLE interest on a balance the same page says
 //    capitalises, then reported the opening balance as still owed. The fix
@@ -390,8 +394,10 @@ ok(/fundingPlan\.parts\.map/.test(planJs2),
   'the scoreboard renders the allocated parts rather than a single source');
 ok(!/'the top-ranked source'/.test(planJs2),
   'and no longer calls a two-part plan "the top-ranked source"');
-ok(/helocDrawn > 0/.test(planJs2),
+ok(/drawn > 0 \? 'helocDrawn'/.test(forecastCode),
   'the HELOC risk says whether THIS plan draws on it');
+ok(!/helocDrawn > 0/.test(planJs2Code),
+  'and the page no longer decides that');
 // The cap qualifier attached one simulation's condition to another's answer.
 // The separate full-coverage evaluation belongs to `Forecast.counterfactuals`
 // now; the page reads its result and composes no second scenario.

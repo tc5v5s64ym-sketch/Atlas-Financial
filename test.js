@@ -36,6 +36,7 @@ const suites = [
   ['household budget reconciliation', 'test-budget.js'],
   ['weekly cap conversion + discretionary room', 'test-weekly-cap.js'],
   ['food and fuel monthly figures', 'test-food-fuel.js'],
+  ['phase titles and risk list', 'test-plan-phases.js'],
   ['coupled cash and debt', 'test-debt.js'],
   ['authority invariants', 'test-invariants.js'],
   ['authority surface coverage', 'test-authority-coverage.js'],

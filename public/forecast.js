@@ -671,6 +671,15 @@
     };
   }
 
+  // How much of a funding allocation is drawn on one facility. The page used
+  // this to decide whether the HELOC risk names a draw; the HELOC alternative
+  // uses the same sum to price the counterfactual. One helper, both callers.
+  function drawnOn(funding, debtId) {
+    return ((funding && funding.parts) || [])
+      .filter(p => p.debtId === debtId)
+      .reduce((s, p) => s + p.amount, 0);
+  }
+
   /* --------------------------------------------- alternative gap assumptions */
   // "What if the gap were covered differently?" — asked and answered here.
   //
@@ -821,8 +830,7 @@
         });
       }
 
-      const draw = altFunding.parts
-        .filter(p => p.debtId === option.debtId).reduce((s, p) => s + p.amount, 0);
+      const draw = drawnOn(altFunding, option.debtId);
       // The same debt walk the page shows, under the same weekly figure and the
       // same facilities — only the funding assumption differs. Walked once, so
       // the draw appears in the projection exactly where the injection put it.
@@ -1682,21 +1690,29 @@
   // from and nothing else; money and date formatting are presentation and stay
   // on the page. A part the page has no wording for is a rendering failure,
   // which is why `test-mission.js` checks the two sides still agree.
+  // Facilities over their limit TODAY — the opening mark of the debt walk,
+  // not a later snapshot, and not a crossing the window predicts. The mission
+  // and the phase titles both ask this; they must not each filter the mark.
+  function debtsOverLimitToday(debtProj) {
+    const opening = ((debtProj && debtProj.marks) || []).find(m => m.day === 0);
+    return (opening ? opening.debts : []).filter(x => x.overLimit);
+  }
+  // The day the HELOC actually crosses. Reading this off the 30-day marks
+  // reported 7 October for a crossing that happens on 30 September — a
+  // different month, and on the wrong side of the plan's own deadline. A
+  // facility already over its limit at the start is a different fact.
+  function helocLimitCrossing(debtProj) {
+    return ((debtProj && debtProj.crossings) || [])
+      .find(c => c.id === 'heloc' && !c.alreadyOver) || null;
+  }
+
   function mission(advice, debtProj, opts) {
     debtProj = debtProj || {};
     const { recommended, weekly, sim, gap, funding, fundingShort, overrideBreaches }
       = planContext(advice, opts);
 
-    // Over the limit TODAY — the opening mark of the debt walk, not a later
-    // snapshot, and not a crossing the window predicts.
-    const opening = (debtProj.marks || []).find(m => m.day === 0);
-    const overLimitToday = (opening ? opening.debts : []).filter(x => x.overLimit);
-    // The day the HELOC actually crosses. Reading this off the 30-day marks
-    // reported 7 October for a crossing that happens on 30 September — a
-    // different month, and on the wrong side of the plan's own deadline. A
-    // facility already over its limit at the start is instruction 2, not this.
-    const helocCrossing = (debtProj.crossings || [])
-      .find(c => c.id === 'heloc' && !c.alreadyOver) || null;
+    const overLimitToday = debtsOverLimitToday(debtProj);
+    const helocCrossing = helocLimitCrossing(debtProj);
 
     const parts = [];
     if (gap && fundingShort) {
@@ -1718,6 +1734,156 @@
       : { id: 'surplusToCard' });
 
     return { parts };
+  }
+
+  /* -------------------------- phase titles and the risk list */
+  // The Plan page's three phase headings, the body that depends on which
+  // side of a comparison the window is on, and which risks the household
+  // is shown. `public/plan.js` used to decide all of that — `gap` vs none
+  // for 0–30, `overToday.length` for 31–60, `day90.consumer < today.consumer`
+  // for 61–90, `helocBreach.day <= 60` for the HELOC sentence, and then
+  // which risks appear plus `transferMonthly * 3`, the estimated-commitment
+  // total and `helocDrawn`. Flipping the 61–90 comparison and changing
+  // `* 3` to `* 2` left `npm test` green — ALL 21 SUITES PASSED — because
+  // no test could reach the page.
+  //
+  // This is a coordinator, not a second debt walk or a second deadline.
+  // Over-limit-today and the HELOC crossing are the same helpers the
+  // mission already uses. The Amanda figure is `incomeDeadline`'s amount
+  // and `neededBy`; the three-month impact is the page's `amount * 3`,
+  // which on the published 91-day window equals the already-computed
+  // `ending - endingWithout`. The HELOC draw is `drawnOn(funding, 'heloc')`,
+  // the same sum the HELOC alternative prices. Telecom `planned` is the
+  // category `budgetBreakdown` already built. The page formats; it does
+  // not compare.
+  //
+  // `opts.transfer` is the `incomeDeadline` result the page already ran
+  // (with `notBefore` set to the gap date). `opts.alternatives` is the
+  // `counterfactuals` result already on screen. Re-running either here
+  // would be a second decision system.
+  function planPhases(plan, advice, debtProj, opts) {
+    opts = opts || {};
+    plan = plan || {};
+    debtProj = debtProj || {};
+    const { gap, funding, fundingShort, weekly, sim } = planContext(advice, opts);
+    if (!sim) throw new Error('planPhases requires the simulation being shown');
+
+    const marks = debtProj.marks || [];
+    const markOn = day => marks.find(m => m.day === day) || marks[marks.length - 1] || null;
+    const today = markOn(0);
+    const d30 = markOn(30);
+    const d60 = markOn(60);
+    const day90 = marks.length ? marks[marks.length - 1] : null;
+    const overToday = debtsOverLimitToday(debtProj);
+    const helocCrossing = helocLimitCrossing(debtProj);
+    const cashAt = date => {
+      const p = (sim.daily || []).find(x => x.date === date);
+      return p ? p.balance : (plan.startingCash && plan.startingCash.amount) || 0;
+    };
+
+    const openingId = fundingShort ? 'unfunded' : (gap ? 'coverGap' : 'holdBuffer');
+    const consumerNow = today ? today.consumer : 0;
+    const consumer60 = d60 ? d60.consumer : 0;
+    const consumerFell = day90 && today ? day90.consumer < today.consumer : false;
+    const consumerDownAt60 = d60 && today ? d60.consumer < today.consumer : false;
+    const helocInPhase = !!(helocCrossing && helocCrossing.day <= 60);
+
+    const phases = [
+      {
+        rangeId: '0-30',
+        titleId: gap ? 'coverGap' : 'holdBuffer',
+        id: openingId,
+        weekly,
+        gapAmount: gap ? gap.amount : 0,
+        gapDate: gap ? gap.date : null,
+        shortfall: funding ? funding.shortfall : 0,
+        cashAt30: cashAt(d30 && d30.date),
+        date30: d30 ? d30.date : null,
+      },
+      {
+        rangeId: '31-60',
+        titleId: overToday.length ? 'overLimit' : 'relievePressure',
+        id: overToday.length ? 'overLimit' : 'relievePressure',
+        consumerMove: Math.abs(consumer60 - consumerNow),
+        consumerDirection: consumerDownAt60 ? 'down' : 'up',
+        consumer60,
+        headroom60: d60 ? d60.headroom : 0,
+        helocInPhase,
+        helocDate: helocInPhase ? helocCrossing.date : null,
+      },
+      {
+        rangeId: '61-90',
+        titleId: consumerFell ? 'surplusToPrincipal' : 'stopGrowth',
+        id: consumerFell ? 'surplusToPrincipal' : 'stopGrowth',
+        ending: sim.ending,
+        buffer: sim.buffer,
+      },
+    ];
+
+    const risks = [];
+    const transfer = opts.transfer || null;
+    if (transfer && transfer.amount > 0) {
+      const windowImpact = transfer.amount * 3;
+      risks.push({
+        id: transfer.neededBy ? 'amandaRequired' : 'amandaOptional',
+        amount: transfer.amount,
+        windowImpact,
+        neededBy: transfer.neededBy || null,
+      });
+    }
+
+    const disabled = new Set(opts.disabled || []);
+    const estimated = (plan.commitments || []).filter(c =>
+      c.confidence === 'estimated' && !disabled.has(c.id));
+    if (estimated.length) {
+      risks.push({
+        id: 'estimatedCommitments',
+        count: estimated.length,
+        total: estimated.reduce((s, c) => s + c.amount, 0),
+        labels: estimated.map(c => c.label),
+      });
+    }
+
+    if (helocCrossing) {
+      const drawn = drawnOn(funding, 'heloc');
+      const helocObl = (plan.obligations || []).find(o => o.id === 'heloc');
+      const drawAlt = ((opts.alternatives && opts.alternatives.gapFundingAlternatives) || [])
+        .find(a => a.debtId === helocCrossing.id) || null;
+      risks.push({
+        id: drawn > 0 ? 'helocDrawn' : 'helocNoDraw',
+        date: helocCrossing.date,
+        drawn,
+        monthlyInterest: helocObl ? helocObl.amount : 0,
+        alternative: drawAlt && drawAlt.applies
+          ? {
+              displaces: drawAlt.displaces,
+              alternateDate: drawAlt.alternateCrossing.date,
+            }
+          : null,
+      });
+    }
+
+    const later = (debtProj.crossings || []).filter(c =>
+      !c.alreadyOver && c.id !== 'heloc');
+    for (const c of later) {
+      risks.push({
+        id: 'facilityCrossing',
+        debtId: c.id,
+        label: c.label,
+        date: c.date,
+      });
+    }
+
+    const telecom = ((opts.budget && opts.budget.categories) || [])
+      .find(c => c.id === 'telecom');
+    if (telecom && telecom.planned > 0) {
+      risks.push({
+        id: 'telecomUnrouted',
+        planned: telecom.planned,
+      });
+    }
+
+    return { phases, risks };
   }
 
   /* ------------------------------------------ what the next move achieves */
@@ -2362,7 +2528,7 @@
     recommendWeekly, recommend, incomeDeadline, counterfactuals,
     budgetBreakdown, monthlyFromWeekly,
     projectDebts,
-    nextDue, nextPaymentOut, unallocatedCash, compactSnapshot, planStatus, mission, nextMove, utilisation, renewal,
+    nextDue, nextPaymentOut, unallocatedCash, compactSnapshot, planStatus, mission, planPhases, nextMove, utilisation, renewal,
     payoffDebts, payoffModel,
     paymentForMonths, EPSILON, STEP };
   if (typeof module !== 'undefined' && module.exports) module.exports = Forecast;

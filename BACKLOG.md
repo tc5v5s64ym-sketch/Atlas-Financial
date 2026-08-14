@@ -266,11 +266,11 @@ so treat it as open:
 
 **Every instance recorded below has moved into the engine, and so have the first
 five the closing scan found plus the Plan page's "next payment out" tile,
-its unallocated / free-cash remainder, the compact snapshot, and the
-food-and-fuel totals. The item stays OPEN** — the phase/risk list and the Deep
-Dive totals are still to move. See **the closing scan** at the end of this entry
-for what was inspected, what each candidate was classified as, and the ordered
-outcomes that remain.
+its unallocated / free-cash remainder, the compact snapshot, the
+food-and-fuel totals, and the phase titles / risk list. The item stays OPEN**
+— the Deep Dive totals are still to move. See **the closing scan** at the end
+of this entry for what was inspected, what each candidate was classified as,
+and the ordered outcomes that remain.
 
 - **RESOLVED 2026-08-11 — the payoff modeller.** `Forecast.payoffDebts` and
   `Forecast.payoffModel` now own which debts may be modelled, what each owes
@@ -860,13 +860,28 @@ the branch that moved it before anything was edited — the page mutated,
    `food.target || food.historical` with `food.historical` left `npm test`
    green (ALL 20 SUITES PASSED). Live published figures are unchanged.
 
-   **Item 6 is closed.** Items 7 and 8 remain.
-7. **Phase titles and the risk list** — `public/plan.js` 766–787 and 805–871. The
-   phase headings are chosen by comparing debt marks (`day90.consumer <
-   today.consumer` picks "Put the surplus against principal" or "Stop the
-   growth"), and the risk list decides which risks the household is shown and
-   computes the figures in them (`transferMonthly * 3`, the estimated-commitment
-   total, `helocDrawn`).
+   **Item 6 is closed.**
+7. **Phase titles and the risk list** — `public/plan.js`.
+   **RESOLVED 2026-08-14.** `Forecast.planPhases` now owns which heading each
+   30-day block gets, which opening body applies, which way consumer debt
+   moved, whether the HELOC sentence belongs in 31–60, which risks appear,
+   and the figures inside them. Over-limit-today and the HELOC crossing are
+   the same helpers `Forecast.mission` already uses; the Amanda amount and
+   `neededBy` come from `incomeDeadline`; the window impact is the incumbent
+   `amount × 3`; the HELOC draw is `drawnOn(funding, 'heloc')`, the same
+   sum the HELOC alternative prices; telecom `planned` is the category
+   `budgetBreakdown` already built. `public/plan.js` looks the wording up.
+   `test-plan-phases.js` hand-computes `$2,182 × 3 = $6,546` and
+   `$786+$800+$500+$500+$500 = $3,086`, proves both sides of the gap /
+   over-limit / consumer-fell / HELOC-day-60 / draw / telecom boundaries
+   and equality on `<`, reconciles live titles
+   (`Cover the gap` / `Get back inside the limits` / `Put the surplus
+   against principal`) against those same comparisons on the published
+   marks, and flips `<` to `>` plus `× 3` to `× 2` so the B73 mutation
+   now fails. Before the move, those two mutations left `npm test` green
+   (ALL 21 SUITES PASSED). Live published conclusions are unchanged.
+
+   **Item 7 is closed.** Item 8 remains.
 8. **The Deep Dive's derived totals and its interest reconciliation** —
    `public/deepdive.js`. The cash tile sums and groups `heldElsewhere` (25–42);
    the period block totals discretionary spending and its share of the whole
