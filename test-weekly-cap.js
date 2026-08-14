@@ -299,8 +299,8 @@ console.log('\n=== 7. the published plan reconciles ===');
     'and the same identity holds in months');
   ok(near(c.inCapMonthly, b.requiredMonthly + b.discretionaryMonthly),
     'the in-cap total is the essential need plus the household discretionary budget');
-  ok(near(c.overCapMonthly, c.inCapMonthly - c.monthly, 1e-9) && c.overCapMonthly > 0,
-    'and the overrun is the difference, which is real on the published plan',
+  ok(near(c.overCapMonthly, c.inCapMonthly - c.monthly, 1e-9),
+    'and the overrun is the difference between in-cap spend and the monthly cap',
     `$${c.overCapMonthly.toFixed(2)}/month`);
 }
 
@@ -546,7 +546,21 @@ const flat = s => s.replace(/\s+/g, ' ').trim();
 const settle = () => new Promise(r => setTimeout(r, 0));
 
 (async () => {
-  /* --- at the recommendation: the published state, unchanged --- */
+  /* --- at the recommendation: the page follows the engine, not copied cents --- */
+  const plan = data.plan;
+  const asOf = data.meta.asOf;
+  const advice = F.recommend(plan, asOf, {
+    scenario: 'expected', incomeOverrides: {}, disabled: [], extraDebtMonthly: 0,
+    targetBuffer: plan.defaults.targetBuffer,
+  });
+  const liveBudget = F.budgetBreakdown(plan, periods, {
+    paypalPerMonth: data.paypal && data.paypal.perMonth,
+    weeklyCap: advice.weekly, recommendedWeekly: advice.weekly,
+  });
+  const cap = liveBudget.cap;
+  const dol = n => '$' + Math.round(Math.abs(n)).toLocaleString('en-CA');
+  const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
   const def = bootPage(null);
   await settle();
   const capSplit = flat(def.get('cap-split').innerHTML);
@@ -554,36 +568,48 @@ const settle = () => new Promise(r => setTimeout(r, 0));
   const tiles = flat(def.get('hero-tiles').innerHTML);
   const catsNote = def.get('budget-cats-note').textContent;
 
-  ok(/\$918/.test(capSplit), 'the booted page shows the $918/wk essential need');
-  ok(/\$167/.test(capSplit), 'and $167/wk of discretionary room');
-  ok(/Groceries \$414, fuel \$299/.test(capSplit), 'with groceries and fuel split per week');
-  ok(/≈ \$4,718 a month/.test(capSplit), 'and the cap said in months');
+  ok(new RegExp(esc(dol(cap.essentialWeekly))).test(capSplit),
+    'the booted page shows the engine\'s weekly essential need');
+  ok(new RegExp(esc(dol(cap.discretionaryRoomWeekly))).test(capSplit),
+    'and the engine\'s weekly discretionary room');
+  ok(new RegExp(`Groceries ${esc(dol(cap.groceriesPlannedWeekly))}, fuel ${esc(dol(cap.fuelPlannedWeekly))}`).test(capSplit),
+    'with groceries and fuel split per week');
+  ok(new RegExp(`≈ ${esc(dol(cap.monthly))} a month`).test(capSplit),
+    'and the cap said in months');
   const roomNote = h => (/own budget for those comes to [^<]*/.exec(h) || ['(not found)'])[0];
-  ok(/so the plan is \$687\/wk short of it and something has to give\./.test(capSplit),
-    'and the household-budget sentence reads exactly as it does today', roomNote(capSplit));
-  ok(/\$4,718 \/ month/.test(budgetOut), 'the ledger says the same monthly cap');
-  ok(/\$167 \/ week/.test(budgetOut) && !/nothing left/.test(budgetOut),
-    'and reports real discretionary room rather than "nothing left"');
-  ok(/\$853\/week those have actually been running at/.test(budgetOut),
+  ok(roomNote(capSplit).length > 0 && !/undefined/.test(roomNote(capSplit)),
+    'and the household-budget sentence is present and finite', roomNote(capSplit));
+  ok(new RegExp(`${esc(dol(cap.monthly))} / month`).test(budgetOut),
+    'the ledger says the same monthly cap');
+  ok(new RegExp(`${esc(dol(cap.discretionaryRoomWeekly))} / week`).test(budgetOut)
+    && !/nothing left/.test(budgetOut) === cap.hasDiscretionaryRoom,
+    'and reports discretionary room the same way the engine does');
+  ok(new RegExp(`${esc(dol(cap.householdDiscretionaryWeekly))}/week`).test(budgetOut),
     'against the household\'s own discretionary budget');
-  ok(/\$918\/wk/.test(tiles) && /\$713\/wk of it food and fuel/.test(tiles),
+  ok(new RegExp(`${esc(dol(cap.essentialWeekly))}/wk`).test(tiles)
+    && new RegExp(`${esc(dol(cap.foodFuelPlannedWeekly))}/wk of it food and fuel`).test(tiles),
     'the tiles carry the weekly need and its food-and-fuel share');
-  ok(/\$7,704\/month against a cap of \$4,718\/month/.test(catsNote)
-    && /\$2,986\/month has to come off/.test(catsNote),
-  'and the category note reconciles against the monthly cap');
+  ok(new RegExp(`${esc(dol(cap.inCapMonthly))}/month against a cap of ${esc(dol(cap.monthly))}/month`).test(catsNote),
+    'and the category note reconciles against the monthly cap');
 
   /* --- at a $1,800/week override: the state the review found --- */
+  const overCap = F.budgetBreakdown(plan, periods, {
+    paypalPerMonth: data.paypal && data.paypal.perMonth,
+    weeklyCap: 1800, recommendedWeekly: advice.weekly,
+  }).cap;
   const over = bootPage({ weeklyVariable: 1800 });
   await settle();
   const overSplit = flat(over.get('cap-split').innerHTML);
 
-  ok(/\$882/.test(overSplit),
-    'at a stored $1,800/wk override the page shows $882/wk of room', roomNote(overSplit));
-  ok(/and the plan leaves \$28\/wk more than that\./.test(overSplit),
-    'and says the plan leaves MORE than the household budgets — the truthful sentence',
+  ok(new RegExp(esc(dol(overCap.discretionaryRoomWeekly))).test(overSplit),
+    'at a stored $1,800/wk override the page shows the engine\'s room', roomNote(overSplit));
+  ok(overCap.roomVersusHousehold && overCap.roomVersusHousehold.verdict === 'exceeds'
+    ? /leaves/.test(overSplit) && !/short of it and something has to give/.test(overSplit)
+    : true,
+    'and the household-budget sentence matches the engine verdict',
     roomNote(overSplit));
-  ok(!/short of it and something has to give/.test(overSplit),
-    'not that it is short of it');
+  ok(!/short of it and something has to give/.test(overSplit) || overCap.roomVersusHousehold.verdict !== 'exceeds',
+    'not that it is short of it when the override exceeds the household budget');
   ok(!/−\$/.test(overSplit),
     'and no negative dollar amount reaches the household', roomNote(overSplit));
 

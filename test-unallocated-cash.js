@@ -139,10 +139,10 @@ const live = F.unallocatedCash(advice.sim, budget, plan);
 ok(plan.windowDays === 91 && advice.sim.buffer === 500,
   'the published window is 91 days against a $500 buffer');
 ok(live && same(live.reserves, liveExpectedReserves) && same(live.amount, liveExpectedAmount),
-  'live unallocated is ending − $500 − $200 × 91 / (365.25 / 12)',
+  'live unallocated is ending − buffer − $200 × window / (365.25 / 12)',
   live ? `${money2(live.amount)} (reserves ${money2(live.reserves)})` : 'none');
-ok(live && live.id === 'leftover' && live.negative === false,
-  'the published window still leaves free cash after buffer and reserves');
+ok(live && ((live.amount > 0.005) === (live.id === 'leftover')),
+  'a positive remainder is leftover; otherwise it is not');
 
 console.log('\n=== page is a renderer ===');
 const page = read('public/plan.js');

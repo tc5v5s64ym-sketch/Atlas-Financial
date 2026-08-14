@@ -149,8 +149,8 @@ ok(same(periodDive.mortgageMonthly, 12000 / 12),
   'mortgage monthly is $12,000 / 12 = $1,000 — the compact-snapshot twelfth');
 
 console.log('\n=== live Deep Dive: independent of deepDive ===');
-const LIVE_ELSEWHERE = 2691.85 + 74.2 + 205.92;
-ok(LIVE_ELSEWHERE === 2971.97, 'Amanda $2,691.85 + staging $74.20 + Wise $205.92 = $2,971.97');
+const LIVE_ELSEWHERE = (data.plan.startingCash.heldElsewhere || [])
+  .reduce((s, h) => s + h.value, 0);
 
 const LIVE_IMPLIED_CENTS = [110.59, 109.76, 75.23, 91.43, 117.36]
   .reduce((s, n) => s + cents(n), 0);
@@ -186,8 +186,8 @@ ok(LIVE_YTD_DISC_CENTS === 3608218 && LIVE_YTD_AVOID_CENTS === 83100,
 ok(LIVE_YTD_AVG === 9324.38625, 'ytd average is $74,595.09 / 8');
 
 const live = F.deepDive(data, periods.periods.lastMonth);
-ok(live && same(live.elsewhere, LIVE_ELSEWHERE) && same(live.cashAmount, 79.84),
-  'live elsewhere is $2,971.97 beside $79.84 spendable');
+ok(live && same(live.elsewhere, LIVE_ELSEWHERE) && same(live.cashAmount, data.plan.startingCash.amount),
+  'live elsewhere is the held-elsewhere sum beside spendable household cash');
 ok(live.interest && same(live.interest.rate, 26.99)
   && cents(live.interest.impliedTotal) === LIVE_IMPLIED_CENTS
   && cents(live.interest.chargedTotal) === LIVE_CHARGED_CENTS,

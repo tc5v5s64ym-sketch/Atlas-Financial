@@ -11,6 +11,7 @@ const path = require('path');
 const F = require('./public/forecast.js');
 const data = require('./data.json');
 const icsMod = require('./scripts/calendar-ics.js');
+const { burrardDue } = require('./test-helpers');
 
 let failures = 0;
 const ok = (cond, label, detail = '') => {
@@ -197,8 +198,8 @@ console.log('\n=== next due / next payment out, same stream ===');
     'nextDue is the first named event on that date',
     sameDay.map(e => e.label).join(' | '));
   const daySum = sameDay.reduce((s, e) => s - e.amount, 0);
-  ok(same(out.amount, daySum) && same(daySum, 623) && !same(due.amount, out.amount),
-    'nextPaymentOut is the $623 day total, not the $320 named obligation',
+  ok(same(out.amount, daySum) && same(daySum, burrardDue(plan)) && !same(due.amount, out.amount),
+    'nextPaymentOut is the Burrard day total, not the first named obligation',
     `due $${due.amount} vs out $${out.amount}`);
   ok(/Next cash-out total/.test(read('public/plan.js')),
     'the Plan tile labels the day total as a cash-out total');

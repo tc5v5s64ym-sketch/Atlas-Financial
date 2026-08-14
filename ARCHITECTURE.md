@@ -61,6 +61,11 @@ Three rules follow from this, and the test suite enforces all three:
 - **Every obligation names the debt it moves.** `debtId` plus `effect`
   (`payment` or `capitalise`). Cash leaving the chequing account has to arrive
   somewhere, and the suite reconciles the two sides to the cent.
+- **Household values may change without rewriting behaviour tests.** Engine
+  behaviour uses synthetic fixtures and independent arithmetic; authority tests
+  mutate the parent and check the child follows; live cents belong only in
+  deliberately live reconciliation. A copied household figure is not a
+  specification.
 
 | Layer | Directory | Committed? | Rebuildable? |
 |---|---|---|---|

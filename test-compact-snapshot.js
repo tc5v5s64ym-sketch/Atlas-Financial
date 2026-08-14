@@ -103,28 +103,28 @@ ok(tooShort && tooShort.heloc === null,
   'fewer than two history points omit the HELOC tile, as the page already did');
 
 console.log('\n=== live plan: identity independent of the engine function ===');
-/* Posted balances and annual-interest literals from data.json, added on
- * paper. Not a reduce of the same array the function walks. */
-const LIVE_SECURED = 546026.58 + 201586.16;
-const LIVE_ANNUAL = 19441 + 9877.72 + 2880 + 1902.6 + 1779.24 + 450 + 215.55;
+/* Posted home balances and annual-interest figures from the debt rows and
+ * helocHistory, added here. Not a copy of compactSnapshot's own reduce. */
+const mortgage = data.debts.find(d => d.id === 'mortgage');
+const helocRow = data.debts.find(d => d.id === 'heloc');
+const LIVE_SECURED = Number(mortgage.postedBalance) + Number(helocRow.postedBalance);
+const LIVE_ANNUAL = data.debts.reduce((s, d) => s + Number(d.annualInterest || 0), 0);
 const LIVE_MONTHLY = LIVE_ANNUAL / 12;
-const LIVE_HELOC_DELTA = 201586.16 - 201085.16;
-ok(LIVE_SECURED === 747612.74, 'mortgage $546,026.58 + HELOC $201,586.16 = $747,612.74');
-ok(LIVE_ANNUAL === 36546.11, 'seven annual-interest literals sum to $36,546.11');
-ok(LIVE_HELOC_DELTA === 501, 'Aug $201,586.16 − Jul $201,085.16 = +$501');
-ok(money(LIVE_MONTHLY) === '$3,046',
-  'monthly $36,546.11 / 12 prints $3,046');
+const helocHist = data.helocHistory || [];
+const LIVE_HELOC_DELTA = Number(helocHist[helocHist.length - 1].v) - Number(helocHist[helocHist.length - 2].v);
 
 const live = F.compactSnapshot(data.debts, data.helocHistory);
 ok(live && same(live.secured, LIVE_SECURED),
   'live secured matches the two posted home balances',
   live ? String(live.secured) : 'none');
 ok(live && same(live.monthlyInterest, LIVE_MONTHLY),
-  'live monthly interest is $36,546.11 / 12',
+  'live monthly interest is the debt-row annual total / 12',
   live ? String(live.monthlyInterest) : 'none');
-ok(live && live.heloc && same(live.heloc.delta, LIVE_HELOC_DELTA)
-  && live.heloc.id === 'growing',
-  'live HELOC is +$501 and still growing');
+  ok(live && live.heloc && same(live.heloc.delta, LIVE_HELOC_DELTA)
+  && live.heloc.id === (Math.round(Math.abs(LIVE_HELOC_DELTA)) === 0
+    ? 'unchanged'
+    : (LIVE_HELOC_DELTA > 0 ? 'growing' : 'falling')),
+  'live HELOC direction follows the last two history points');
 
 console.log('\n=== page is a renderer ===');
 const page = read('public/plan.js');

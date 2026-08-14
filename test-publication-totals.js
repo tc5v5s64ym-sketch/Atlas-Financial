@@ -130,56 +130,58 @@ ok(same(fixture.creditLeft, utilFix.totalAvailable),
 ok(same(fixture.revolvingFacilityCount, utilFix.rows.length),
   'and the facility count is utilisation.rows.length');
 
-console.log('\n=== live plan: identity independent of the engine function ===');
-/* Posted balances, annual-interest literals and asset values from data.json,
- * added on paper. Not a reduce of the same array the function walks. */
-const LIVE_DEBT = 546026.58 + 201586.16 + 13497 + 5612.43 + 7855.12 + 1799.97 + 1078.31;
-const LIVE_ANNUAL = 19441 + 9877.72 + 2880 + 1902.6 + 1779.24 + 450 + 215.55;
-const LIVE_ANNUAL_EX = LIVE_ANNUAL - 19441;
-const LIVE_ASSETS = 2691.85 + 506.98 + (-517.72) + 90.58 + 74.2 + 205.92 + 8847 + 31555.85 + 0;
-const LIVE_FIN = LIVE_ASSETS - LIVE_DEBT;
-const LIVE_INCOME = 186152.89 + 63129.47 + 54213 + 2764.63 + 500.04;
-const LIVE_COMMIT = 800 + 2000;
-const LIVE_LAX = 2767.14 + 2822.3 + 140.03;
-ok(sameCents(LIVE_DEBT, 777455.57), 'seven posted balances sum to $777,455.57');
-ok(LIVE_ANNUAL === 36546.11, 'seven annual-interest literals sum to $36,546.11');
-ok(LIVE_ANNUAL_EX === 17105.11, 'excluding the mortgage leaves $17,105.11');
-ok(sameCents(LIVE_ASSETS, 43454.66), 'nine asset literals sum to $43,454.66');
-ok(sameCents(LIVE_FIN, -734000.91), 'financial-accounts-only is −$734,000.91');
-ok(sameCents(LIVE_INCOME, 306760.03), 'five income-line totals sum to $306,760.03');
-ok(LIVE_COMMIT === 2800, 'Warriors $800 + Fusion $2,000 = $2,800');
-ok(sameCents(LIVE_LAX, 5729.47), 'three lacrosse sources sum to $5,729.47');
+console.log('\n=== live plan: publication follows the current rows ===');
+/* Authority link, not a snapshot of today's cents. The FIX fixture above is
+ * the independent arithmetic. Here the published totals must follow the
+ * canonical rows; a legitimate balance refresh must not require rewriting
+ * copied literals. */
+const mortgageDebt = data.debts.find(d => d.id === 'mortgage');
+const helocDebt = data.debts.find(d => d.id === 'heloc');
+const tdccDebt = data.debts.find(d => d.id === 'tdcc');
+const rowDebt = data.debts.reduce((s, d) => s + (d.balance || 0), 0);
+const rowAnnual = data.debts.reduce((s, d) => s + (d.annualInterest || 0), 0);
+const rowAnnualEx = rowAnnual - (mortgageDebt.annualInterest || 0);
+const rowAssets = data.assets.reduce((s, a) => s + (a.value || 0), 0);
+const rowIncome = (data.income || []).reduce((s, r) => s + (r.total || 0), 0);
+const rowCommit = ((data.commitments && data.commitments.items) || [])
+  .reduce((s, i) => s + (i.amount || 0), 0);
+const rowLax = ((data.lacrosse && data.lacrosse.sources) || [])
+  .reduce((s, r) => s + (r.amount || 0), 0);
+const rowIncomeMonthly = Math.round(rowIncome / data.incomeCaptureMonths);
+
+ok(data.debts.length === 7, 'seven posted debt rows');
+ok(data.assets.length === 9, 'nine asset rows');
+ok((data.income || []).length === 5, 'five income-line rows');
 
 const live = F.publicationTotals(data);
-ok(live && sameCents(live.totalDebt, LIVE_DEBT),
-  'live total debt matches the seven posted balances',
+ok(live && sameCents(live.totalDebt, rowDebt),
+  'live total debt follows the posted balances',
   live ? money2(live.totalDebt) : 'none');
-ok(live && same(live.annualInterest, LIVE_ANNUAL)
-  && same(live.annualInterestExMortgage, LIVE_ANNUAL_EX),
-  'live annual interest matches the seven literals');
-ok(live && sameCents(live.assets, LIVE_ASSETS)
-  && sameCents(live.financialAccountsOnly, LIVE_FIN),
-  'live net-worth lines match the asset and debt literals');
+ok(live && same(live.annualInterest, rowAnnual)
+  && same(live.annualInterestExMortgage, rowAnnualEx),
+  'live annual interest follows the debt-record literals');
+ok(live && sameCents(live.assets, rowAssets)
+  && sameCents(live.financialAccountsOnly, rowAssets - rowDebt),
+  'live net-worth lines follow the asset and debt rows');
 ok(data.incomeCaptureMonths === 18,
   'live historical income evidence names its own 18-month capture window');
-ok(live && sameCents(live.incomeTotal, LIVE_INCOME)
-  && same(live.incomePerMonth, 17042)
+ok(live && sameCents(live.incomeTotal, rowIncome)
+  && same(live.incomePerMonth, rowIncomeMonthly)
   && same(live.incomeMonths, 18)
   && same(live.incomeMonths, data.incomeCaptureMonths),
-  'live income total is $306,760.03 over the evidence window, $17,042/month');
-ok(live && same(live.commitmentsTotal, LIVE_COMMIT)
-  && sameCents(live.lacrosseVerified, LIVE_LAX),
-  'live commitments and lacrosse verified totals match the item literals');
+  'live income total and monthly round follow the source-owned window');
+ok(live && same(live.commitmentsTotal, rowCommit)
+  && sameCents(live.lacrosseVerified, rowLax),
+  'live commitments and lacrosse verified totals follow the item rows');
 
 const liveUtil = F.utilisation(data.debts, data.revolvingExtra);
-ok(live && same(live.creditLeft, liveUtil.totalAvailable)
-  && sameCents(live.creditLeft, 1415.98),
-  'live credit left is utilisation $1,415.98, not the retired $1,415.95 store',
+ok(live && same(live.creditLeft, liveUtil.totalAvailable),
+  'live credit left is utilisation on the same rows, not a stored copy',
   live ? money2(live.creditLeft) : 'none');
-ok(live && same(live.helocLimit, 202654),
-  'live HELOC limit is the debt record\'s $202,654');
-ok(live && same(live.revolvingFacilityCount, 7),
-  'seven revolving facilities: six debts with limits plus the overdraft');
+ok(live && same(live.helocLimit, helocDebt.limit),
+  'live HELOC limit is the debt record\'s limit');
+ok(live && same(live.revolvingFacilityCount, liveUtil.rows.length),
+  'revolving facility count is utilisation.rows.length');
 
 const snap = F.compactSnapshot(data.debts, data.helocHistory);
 ok(live && snap && same(live.monthlyInterest, snap.monthlyInterest),
@@ -249,25 +251,25 @@ console.log('\n=== mutation: a canonical input moves every consumer ===');
 const mutatedDebts = data.debts.map(x =>
   x.id === 'triangle' ? Object.assign({}, x, { balance: x.balance + 100 }) : x);
 const afterBalance = F.publicationTotals(Object.assign({}, data, { debts: mutatedDebts }));
-ok(sameCents(afterBalance.totalDebt, LIVE_DEBT + 100),
+ok(sameCents(afterBalance.totalDebt, rowDebt + 100),
   'raising Triangle\'s posted balance by $100 raises total debt by $100',
   money2(afterBalance.totalDebt));
-ok(sameCents(afterBalance.financialAccountsOnly, LIVE_FIN - 100),
+ok(sameCents(afterBalance.financialAccountsOnly, rowAssets - rowDebt - 100),
   'and financial-accounts-only falls by the same $100');
-ok(sameCents(live.totalDebt, LIVE_DEBT),
+ok(sameCents(live.totalDebt, rowDebt),
   'the live engine is unmoved by that fixture');
 
 const withoutCard = F.publicationTotals(Object.assign({}, data, {
   debts: data.debts.filter(x => x.id !== 'tdcc'),
 }));
-ok(sameCents(withoutCard.totalDebt, LIVE_DEBT - 1799.97)
-  && sameCents(withoutCard.annualInterest, LIVE_ANNUAL - 450),
-  'removing the TD credit card drops total debt $1,799.97 and annual interest $450');
+ok(sameCents(withoutCard.totalDebt, rowDebt - tdccDebt.balance)
+  && sameCents(withoutCard.annualInterest, rowAnnual - (tdccDebt.annualInterest || 0)),
+  'removing the TD credit card drops that card\'s posted balance and annual interest');
 
 const extraIncome = (data.income || []).concat([{ label: 'Bonus', total: 1800 }]);
 const afterIncome = F.publicationTotals(Object.assign({}, data, { income: extraIncome }));
-ok(sameCents(afterIncome.incomeTotal, LIVE_INCOME + 1800)
-  && afterIncome.incomePerMonth === Math.round((LIVE_INCOME + 1800) / data.incomeCaptureMonths),
+ok(sameCents(afterIncome.incomeTotal, rowIncome + 1800)
+  && afterIncome.incomePerMonth === Math.round((rowIncome + 1800) / data.incomeCaptureMonths),
   'an extra $1,800 income line moves the footer total and its monthly round');
 
 console.log('\n=== mutation: source-owned capture window, not a code constant ===');
@@ -284,12 +286,11 @@ ok(same(fixture.incomePerMonth, HAND_INCOME_MONTHLY)
   'the 18-month fixture is unmoved by that copy');
 
 const liveWindow19 = F.publicationTotals(Object.assign({}, data, { incomeCaptureMonths: 19 }));
-ok(sameCents(liveWindow19.incomeTotal, LIVE_INCOME)
-  && same(liveWindow19.incomePerMonth, Math.round(LIVE_INCOME / 19))
-  && same(liveWindow19.incomePerMonth, 16145)
-  && liveWindow19.incomePerMonth !== 17042,
-  'live monthly footer follows a 19-month source window: round($306,760.03 / 19) = $16,145');
-ok(same(live.incomePerMonth, 17042) && same(live.incomeMonths, 18),
+ok(sameCents(liveWindow19.incomeTotal, rowIncome)
+  && same(liveWindow19.incomePerMonth, Math.round(rowIncome / 19))
+  && liveWindow19.incomePerMonth !== rowIncomeMonthly,
+  'live monthly footer follows a 19-month source window');
+ok(same(live.incomePerMonth, rowIncomeMonthly) && same(live.incomeMonths, 18),
   'the live 18-month monthly result is unmoved by that copy');
 
 const missingInput = Object.assign({}, FIX);
@@ -314,7 +315,7 @@ const extraCommit = {
   }),
 };
 const afterCommit = F.publicationTotals(Object.assign({}, data, extraCommit));
-ok(afterCommit.commitmentsTotal === LIVE_COMMIT + 150,
+ok(afterCommit.commitmentsTotal === rowCommit + 150,
   'an extra $150 commitment item moves the published total');
 
 console.log('\n=== mutation: breaking the engine formula fails ===');
@@ -331,12 +332,12 @@ try {
 }
 const mutant = sandbox.module.exports;
 const broken = mutant && mutant.publicationTotals(data);
-ok(mutant && broken && sameCents(broken.totalDebt, LIVE_DEBT - 546026.58)
-  && !sameCents(broken.totalDebt, LIVE_DEBT),
-  'omitting the mortgage from the sum understates live total debt by $546,026.58',
+ok(mutant && broken && sameCents(broken.totalDebt, rowDebt - mortgageDebt.balance)
+  && !sameCents(broken.totalDebt, rowDebt),
+  'omitting the mortgage from the sum understates live total debt by that posted balance',
   broken ? money2(broken.totalDebt) : 'mutant missing');
-ok(live && sameCents(live.totalDebt, LIVE_DEBT),
-  'the real engine still answers the independent seven-balance total');
+ok(live && sameCents(live.totalDebt, rowDebt),
+  'the real engine still answers the posted-balance total');
 
 console.log('\n=== mutation: reintroducing a stored scalar is detected ===');
 ok(!data.headline && !data.incomeTotal && data.helocLimit == null,
