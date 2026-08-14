@@ -1,6 +1,6 @@
 # Open Questions — Working Agenda
 
-**Updated 2026-08-09.** Every unanswered question in one place, ranked by what
+**Updated 2026-08-14.** Every unanswered question in one place, ranked by what
 the answer would change. Add new questions here as accounts are reviewed; move
 answered ones to the bottom with the answer recorded.
 
@@ -38,6 +38,21 @@ like every other source. Each budget category in `data.json` has an empty
 `plannedMonthly` slot waiting for the owner figure; filling one flips that row
 from `historical-actual` to `owner-target`, and the tests already assert the
 distinction is reported honestly.
+
+### Q24. Is "School & clubs" essential or discretionary for the household operating plan?
+**Status:** OPEN · **Owner:** Dale + Amanda
+**What we know:** The same `from[]` label is `discretionary` on
+`plan.budget.categories` (id `school`, no owner target) and `essential` in
+`docs/merchant-library.csv` / `public/periods.json`. Amanda stated school costs
+of $210 per school year (approximately 3 × $70); that amount does not decide
+the class. Historical card reporting in `ACCOUNT_FACTS.md` also labels the
+bucket essential. B90 does not guess. The disagreement is named in
+`test-classification.js` as owner-unresolved so it cannot stay silent, and it
+is not flattened into a comparable agree.
+**What the answer changes:** Whether School & clubs sits inside the essential
+weekly need or the discretionary room. Either correction moves a published
+split; leave both sides as they are until the household says which story is
+the operating one.
 
 ### Q1. Does the business make money?
 **Status:** OPEN · **Owner:** Dale + wife + accountant

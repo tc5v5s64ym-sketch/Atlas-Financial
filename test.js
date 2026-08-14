@@ -38,6 +38,7 @@ const suites = [
   ['May 2027 renewal', 'test-renewal.js'],
   ['payoff modeller', 'test-payoff.js'],
   ['household budget reconciliation', 'test-budget.js'],
+  ['spending classification reconciliation', 'test-classification.js'],
   ['weekly cap conversion + discretionary room', 'test-weekly-cap.js'],
   ['food and fuel monthly figures', 'test-food-fuel.js'],
   ['phase titles and risk list', 'test-plan-phases.js'],

@@ -13,7 +13,7 @@ Last reviewed **2026-08-14**. Phase: **analysis** — capture is essentially don
 **Post-B74 implementation order** is owned by
 [`docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`](docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md),
 not by this file. Items `B87`–`B91`, then reused `B20` / `B21`, follow that
-order. Next outcome: **`B90` spending-classification reconciliation**.
+order. Next outcome: **`B91` evidence refresh / reconciliation**.
 
 **Operational knowledge lives in `docs/ACCOUNT_FACTS.md`**, not here: how each
 institution's data is obtained, the download endpoints, and the traps that cost
@@ -1015,10 +1015,17 @@ $1,416). The historical income footer's capture window is
 that does not edit the engine. Build-strategy item
 `AF-PUB-01`.
 
-**B90 · Guard overlapping essential / discretionary classification** · `QUEUED` · *small*
+**B90 · Guard overlapping essential / discretionary classification** · **DONE 2026-08-14** · *small*
 After `B89`. Forward Plan cap uses `plan.budget.categories[].class`; Deep Dive
 historical mix uses `periods.json` `type` from `docs/merchant-library.csv`.
-Overlapping labels can silently tell two stories. Build-strategy item
+`test-classification.js` joins them on the existing `from[]` list. Comparable
+overlaps must agree, be a named non-comparable semantic (`business`,
+`reserve`, `unknown`), or be surfaced as owner-unresolved. School & clubs is
+the live disagreement (forward discretionary, historical essential) and is
+Q24 — not guessed. Seven Health merchant-library rows that were typed
+`discretionary` inside the published-essential Health bucket were aligned to
+`essential` so the library cannot first-write-win a contradictory published
+type; amounts and `public/periods.json` are unchanged. Build-strategy item
 `AF-CLASS-01`.
 
 **Outcome:** the same household spending category cannot disagree on
