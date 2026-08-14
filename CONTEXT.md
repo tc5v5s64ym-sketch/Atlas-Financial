@@ -16,7 +16,7 @@ exist yet, months after it did.
 close a question on its own. The remaining work order lives in
 [`docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`](docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md)
 under **Post-B74 architecture disposition**. Next implementation outcome:
-**spending-classification reconciliation** (`B90`). Do not copy that sequence here.
+**evidence refresh / reconciliation** (`B91`). Do not copy that sequence here.
 
 Everything lives in **one folder**:
 

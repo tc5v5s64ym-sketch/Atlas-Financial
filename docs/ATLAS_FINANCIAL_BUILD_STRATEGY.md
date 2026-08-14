@@ -24,11 +24,11 @@ Capabilities that are wanted but not yet in Phases 1–4 are recorded in
 **Later capabilities — status and reopen trigger**. That table is memory and
 trigger, not a second order of work.
 
-**Current sequencing (14 August 2026).** B74, B87, B88 and B89 are closed. The remaining
+**Current sequencing (14 August 2026).** B74, B87, B88, B89 and B90 are closed. The remaining
 implementation order is the **Post-B74 architecture disposition** below. Next
-implementation outcome: spending-classification reconciliation (`B90`). Next major product
-milestone: evidence refresh / reconciliation (`B91`). History (`B20`) follows
-that loop; it is not the next infrastructure item.
+implementation outcome, and next major product milestone: evidence refresh /
+reconciliation (`B91`). History (`B20`) follows that loop; it is not the next
+infrastructure item.
 
 ---
 
@@ -235,9 +235,9 @@ B88  CRLF / Windows test reliability
   ↓
 B89  derive remaining duplicate publication values
   ↓
-B90  spending-classification reconciliation
+B90  spending-classification reconciliation  ← complete
   ↓
-B91  evidence refresh / reconciliation     ← next major product milestone
+B91  evidence refresh / reconciliation     ← next implementation outcome
   ↓
 B20  history from successful refresh
   ↓
@@ -259,7 +259,7 @@ rules above.
   do not redesign `data.json`. **Complete.**
 - **`AF-CLASS-01` / `B90`** — the same household spending category cannot
   silently tell contradictory essential/discretionary stories. Prefer a
-  small guard. Preserve `business` and `reserve`. **Next implementation outcome.**
+  small guard. Preserve `business` and `reserve`. **Complete.**
 
 ### Next major product milestone — evidence refresh / reconciliation
 
@@ -481,6 +481,19 @@ built *on* that picture, the picture needs owners that a test can reach.
   essential/discretionary without a failing test; `business` and `reserve`
   are named exceptions, not silently coerced.
 - **Non-goals** — a unified classification ontology; recategorising history.
+- **State** — **complete.** `test-classification.js` joins
+  `plan.budget.categories[].class` to merchant-library / `periods.json` types
+  on the existing `from[]` list. Comparable pairs must agree; `business`,
+  `reserve`, and `unknown` stay named non-comparable semantics; School & clubs
+  is the one live comparable disagreement and is recorded as Q24 rather than
+  guessed. Health source rows remain mixed essential/discretionary (medical
+  vs personal care); that mix is a closed source-semantic ambiguity, not an
+  owner guess. `Forecast.rollupSpending` publishes the mix as `unknown` so
+  Deep Dive cannot consume it as a clean essential/discretionary class from
+  first-event order. Published Plan cash figures and historical discretionary
+  dollar totals are unchanged; Health leaves the historical essential class
+  because that class was the collapsed first-event story. Phase 1 product
+  exit was assessed as ready to start `AF-RECON-01` / `B91` (no blocking gap).
 
 ### Phase 1 product exit — useful before infrastructure
 
@@ -511,6 +524,13 @@ or a second planner, record the smallest missing product capability in
 up another forecast, another calendar or another budget. Do not skip the
 post-B74 cleanup (`B87`–`B90`) to start snapshots.
 
+**Assessed after `AF-CLASS-01` / `B90` (2026-08-14).** No blocking gap. The
+incumbent Plan schedule, weekly cap, calendar, commitment path, and unknown-
+spend inclusion already answer those five questions from one authority chain.
+Remaining gaps are evidence freshness (the `B91` job) and owner policy such as
+Q24, not missing product machinery. `AF-RECON-01` is therefore the next
+implementation outcome.
+
 ### AF-RECON-01 · Evidence refresh / reconciliation loop
 
 The next major product milestone after the cleanup above. Not a new layer:
@@ -525,8 +545,9 @@ connect the extractors and canonical state that already exist.
   handoff into `data.json`. Does **not** replace `Forecast`, the Evidence-Use
   Register, or `01_OPEN_QUESTIONS.md`.
 - **Tier** — M3. **Backlog** — `B91`.
-- **Entry gate** — Phase 1 product exit plus `AF-CLASS-01` (`B90`). Cleanup
-  first so the loop is not reconciling duplicate authorities.
+- **Entry gate** — Phase 1 product exit plus `AF-CLASS-01` (`B90`), both
+  complete. Cleanup first so the loop is not reconciling duplicate
+  authorities.
 - **Acceptance** — an unexplained drift on the closed set fails; a matching
   pair passes; the report does not write canonical state by itself; no new
   store, schema, staging platform, provenance graph, extractor architecture,

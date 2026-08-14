@@ -19,6 +19,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const Forecast = require(path.join(__dirname, '..', 'public', 'forecast.js'));
 
 const root = process.argv[2] || path.join(__dirname, '..');
 const asOf = process.argv[3] || '2026-08-09';
@@ -201,12 +202,10 @@ const months = [...new Set(events.map(e => e.month))].filter(Boolean).sort();
 
 function rollup(test) {
   const sel = events.filter(e => test(e.month));
-  const byCat = {}, byFee = {}, byInt = {};
+  const byFee = {}, byInt = {};
   for (const e of sel) {
-    if (e.kind === 'spend') {
-      byCat[e.category] = byCat[e.category] || { total: 0, type: e.type };
-      byCat[e.category].total += e.amount;
-    } else if (e.kind === 'fee') {
+    if (e.kind === 'spend') continue;
+    if (e.kind === 'fee') {
       byFee[e.category] = byFee[e.category] || { total: 0, type: e.type };
       byFee[e.category].total += e.amount;
     } else {
@@ -220,7 +219,7 @@ function rollup(test) {
   const monthsIn = [...new Set(sel.map(e => e.month))].length || 1;
   return {
     months: monthsIn,
-    spending: arr(byCat, true),
+    spending: Forecast.rollupSpending(sel.filter(e => e.kind === 'spend')),
     spendingTotal: Math.round(sel.filter(e => e.kind === 'spend').reduce((s, e) => s + e.amount, 0) * 100) / 100,
     fees: arr(byFee, true),
     feesTotal: Math.round(sel.filter(e => e.kind === 'fee').reduce((s, e) => s + e.amount, 0) * 100) / 100,

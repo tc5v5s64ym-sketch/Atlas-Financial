@@ -355,17 +355,20 @@ function renderPeriod(d, periods) {
     `<b>${money2(p.spendingTotal)}</b> spending · <b>${money2(p.interestTotal)}</b> interest · ` +
     `<b>${money2(p.feesTotal)}</b> fees${per}`;
 
-  hbar($('c-spend'), p.spending.map(s => ({
-    label: s.label, v: s.total,
-    colour: s.type === 'essential' ? css('--s1')
-          : s.type === 'business' ? css('--s2')
-          : s.type === 'unknown' ? grey : css('--serious'),
-    tip: `${s.type} · ${money2(s.total)}`,
-  })), { rowH: 30, padL: 180 });
+  hbar($('c-spend'), p.spending.map(s => {
+    const cls = Forecast.publishedSpendType(s.types || [s.type]);
+    return {
+      label: s.label, v: s.total,
+      colour: cls === 'essential' ? css('--s1')
+            : cls === 'business' ? css('--s2')
+            : cls === 'unknown' ? grey : css('--serious'),
+      tip: `${cls} · ${money2(s.total)}`,
+    };
+  }), { rowH: 30, padL: 180 });
 
   const caveat = (d && d.spendingNote) ? ' ' + d.spendingNote : '';
   $('spend-note').textContent =
-    `${p.label}. Blue is essential, orange discretionary, grey unidentified. ` +
+    `${p.label}. Blue is essential, orange discretionary, grey unidentified or mixed. ` +
     `Discretionary is ${money2(snap.discretionary)} — ${snap.discretionaryShare.toFixed(0)}% of the total, ` +
     `and the part that is a decision rather than a fixed cost.` + caveat;
 
