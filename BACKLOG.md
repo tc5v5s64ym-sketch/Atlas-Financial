@@ -265,11 +265,11 @@ been found, not a count of what exists** — it grew twice under review already,
 so treat it as open:
 
 **Every instance recorded below has moved into the engine, and so have the first
-five the closing scan found plus the Plan page's "next payment out" tile and
-its unallocated / free-cash remainder. The item stays OPEN** — the compact
-snapshot, food-and-fuel totals, the phase/risk list, and the Deep Dive totals
-are still to move. See **the closing scan** at the end of this entry for what
-was inspected, what each candidate was classified as, and the ordered
+five the closing scan found plus the Plan page's "next payment out" tile,
+its unallocated / free-cash remainder, and the compact snapshot. The item
+stays OPEN** — food-and-fuel totals, the phase/risk list, and the Deep Dive
+totals are still to move. See **the closing scan** at the end of this entry for
+what was inspected, what each candidate was classified as, and the ordered
 outcomes that remain.
 
 - **RESOLVED 2026-08-11 — the payoff modeller.** `Forecast.payoffDebts` and
@@ -445,9 +445,10 @@ render* is not true across the browser layer today. The scan found eight concret
 financial authorities living in page scripts. **Items 1, 2, 3, 4 and 5 have since
 moved** — 1 and 2 together, as one authority boundary, because both interpreted
 the same opening gap and the same funding result; 3, 4 and 5 on their own.
-**"Next payment out" has since moved from item 6**, and so has the
-unallocated / free-cash remainder. The rest of item 6, plus items 7 and 8,
-remain, and they are still the list below.
+**"Next payment out" has since moved from item 6**, and so have the
+unallocated / free-cash remainder and the compact snapshot. Food-and-fuel
+subtotals remain in item 6, plus items 7 and 8, and they are still the list
+below.
 
 **The first pass of this scan found seven and missed one**, and the record says
 so rather than presenting eight as though they arrived together. The blocking
@@ -466,14 +467,14 @@ suite cannot see any of them. The same harness run against one engine line
 (`budgetBreakdown`'s `requiredMonthly`) fails immediately, so the suite is
 capable of biting and these figures are simply outside what it can reach.
 
-**Nine of the ten no longer apply**, struck through below: the page expressions
-they mutated do not exist any more, and the decisions they stood for now fail
-the suite when broken in the engine. That is the shape a resolved row takes
-here — not a mutation that stopped mattering, but one whose target moved
-somewhere a test can reach it. The `actionCovers` row was reproduced on the
-branch that moved it before anything was edited — the page mutated,
+**All ten `plan.js` mutations no longer apply**, struck through below: the page
+expressions they mutated do not exist any more, and the decisions they stood
+for now fail the suite when broken in the engine. That is the shape a resolved
+row takes here — not a mutation that stopped mattering, but one whose target
+moved somewhere a test can reach it. The `actionCovers` row was reproduced on
+the branch that moved it before anything was edited — the page mutated,
 `npm test` run, **ALL 15 SUITES PASSED** — and the equivalent mutation in
-`Forecast.nextMove` now fails.
+`Forecast.nextMove` now fails. The two `deepdive.js` rows still pass.
 
 | Mutation | Suite |
 |---|---|
@@ -485,7 +486,7 @@ branch that moved it before anything was edited — the page mutated,
 | ~~`plan.js` funding card: per-source shortfall `needed - available` reversed~~ | **moved — now fails** |
 | ~~`plan.js` `actionCovers`: `>= fundingGap` → `>= fundingGap / 2`~~ | **moved — now fails** |
 | ~~`plan.js` "next payment out": sum of the day → single largest~~ | **moved — now fails** |
-| `plan.js` snapshot interest `/ 12` → `/ 6` | passes |
+| ~~`plan.js` snapshot interest `/ 12` → `/ 6`~~ | **moved — now fails** |
 | ~~`plan.js` reserves window conversion halved~~ | **moved — now fails** |
 | `deepdive.js` interest-check tolerance `4` → `40` | passes |
 | `deepdive.js` discretionary total: classification filter dropped | passes |
@@ -816,10 +817,24 @@ branch that moved it before anything was edited — the page mutated,
    reserve, and halves the window conversion so the B73 mutation now fails.
    No published figure or wording moved on the live plan.
 
-   **Still in this group, not moved:** the compact snapshot (1093–1108) sums secured debt, divides
-   annual interest by twelve, and reads a HELOC month-on-month delta into
-   "still growing" / "coming down"; food-and-fuel sub-totals are summed at
-   634–636, 671, 994 and 999. Each is still a household-facing figure with no
+   **RESOLVED 2026-08-14 — compact snapshot.** `Forecast.compactSnapshot` now
+   owns the secured-debt total, monthly interest across every facility, and
+   the HELOC month-on-month direction: posted `balance` on `secured` debts,
+   `annualInterest / 12`, last history point minus the one before it, with
+   the trend taken on the published whole dollar so a move that prints `$0`
+   cannot read "still growing". `public/plan.js` prints the returned figures
+   and looks the HELOC sentence up; it no longer sums, converts, or selects.
+   `test-compact-snapshot.js` hand-computes `$100,000 + $50,000` and
+   `$7,200 / 12`, proves both HELOC directions and the `$0` boundary,
+   reconciles the live tiles against the posted mortgage/HELOC balances and
+   the seven annual-interest literals, and changes `/ 12` to `/ 6` so the
+   B73 mutation now fails. Live published figures are unchanged
+   (`$747,612.74`, `$3,046`, HELOC `+$501` still growing). The `$0`
+   wording is a real defect found in the move, unreachable on the live
+   history.
+
+   **Still in this group, not moved:** food-and-fuel sub-totals are summed at
+   634–636, 671, 994 and 999. That is still a household-facing figure with no
    owner.
 7. **Phase titles and the risk list** — `public/plan.js` 766–787 and 805–871. The
    phase headings are chosen by comparing debt marks (`day90.consumer <
