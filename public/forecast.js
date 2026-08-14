@@ -1015,6 +1015,13 @@
     const groceries = cat('groceries'), fuel = cat('fuel');
     const foodFuelPlannedMonthly = groceries.planned + fuel.planned;
     const foodFuelHistoricalMonthly = groceries.historical + fuel.historical;
+    // The Plan page printed these as `target || historical` after finding the
+    // two categories itself. A $0 owner target is a figure, not a missing
+    // one, so the incumbent null-check wins over `||`. Distinctive lines so
+    // a mutation that drops the owner target is aimed.
+    const groceriesMonthly = groceries.target != null ? groceries.target : groceries.historical;
+    const fuelMonthly = fuel.target != null ? fuel.target : fuel.historical;
+    const groceriesHasOwnerTarget = groceries.target != null;
 
     // Whether the cap leaves anything once the essentials are paid. Measured
     // with the engine's own epsilon rather than the page's bare comparison of
@@ -1074,6 +1081,7 @@
       foodFuelPlannedMonthly, foodFuelPlannedWeekly: perWeek(foodFuelPlannedMonthly),
       foodFuelHistoricalMonthly,
       foodFuelHistoricalWeekly: perWeek(foodFuelHistoricalMonthly),
+      groceriesMonthly, fuelMonthly, groceriesHasOwnerTarget,
 
       // What the household's own discretionary budget asks for, and how the
       // room the cap leaves compares with it.
