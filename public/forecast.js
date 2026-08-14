@@ -1470,6 +1470,15 @@
     };
   }
 
+  // A month of interest is a twelfth of the recorded annual figure. Compact
+  // snapshot uses this for every facility together; Deep Dive uses it for the
+  // mortgage line the period block used to hardcode. One conversion, both
+  // callers — `/ 12` written twice would be a second calculation of the
+  // same fact.
+  function monthOfAnnual(annual) {
+    return (annual || 0) / 12;
+  }
+
   /* ------------------------------------------ compact snapshot */
   // The Plan page's small tiles: secured debt, monthly interest across every
   // facility, and whether the HELOC is still growing. `public/plan.js` used
@@ -1496,7 +1505,7 @@
       if (debt.secured) secured += debt.balance || 0;
       annualInterest += debt.annualInterest || 0;
     }
-    const monthlyInterest = annualInterest / 12;
+    const monthlyInterest = monthOfAnnual(annualInterest);
     const history = helocHistory || [];
     let heloc = null;
     if (history.length >= 2) {
@@ -1508,6 +1517,107 @@
       };
     }
     return { secured, monthlyInterest, heloc };
+  }
+
+  /* ------------------------------------------ Deep Dive derived totals */
+  // The Deep Dive page used to decide the remaining household-facing
+  // figures B73 recorded as item 8: grouping and totalling `heldElsewhere`,
+  // averaging a period's spending, totalling discretionary spend and its
+  // share, totalling avoidable fees, flagging Cash Back Visa cycles that
+  // do not fit the card's rate, summing implied and charged interest, and
+  // hardcoding "~$1,620/month" for the mortgage and `26.99` for the card.
+  // Widening the ±4pp fit test to 40, swapping the footer rate, halving
+  // the elsewhere total, doubling the monthly average, and replacing
+  // $1,620 with $1,000 left `npm test` green — ALL 22 SUITES PASSED —
+  // because no test could reach the page.
+  //
+  // This coordinator does not walk cash or re-price a card. Spendable cash
+  // is `plan.startingCash.amount`. The card rate is the Cash Back Visa
+  // debt record. A month of mortgage interest is `monthOfAnnual` on that
+  // debt's `annualInterest` — the same twelfth compactSnapshot uses.
+  // The ±4 percentage-point fit band is the incumbent page rule, kept
+  // here rather than restated.
+  //
+  // `period` is the selected `periods.periods` entry. Without one the
+  // period block is omitted; `renderPeriod` passes the period on screen.
+  const INTEREST_FIT_PP = 4;
+
+  function deepDive(data, period) {
+    data = data || {};
+    const cash = (data.plan && data.plan.startingCash) || {};
+    const held = cash.heldElsewhere || [];
+    const byClass = {};
+    const classOrder = [];
+    let elsewhere = 0;
+    for (const h of held) {
+      const cls = h.class || 'unknown';
+      if (!byClass[cls]) {
+        byClass[cls] = { class: cls, total: 0, labels: [] };
+        classOrder.push(cls);
+      }
+      byClass[cls].total += h.value;
+      byClass[cls].labels.push(h.label);
+      elsewhere += h.value;
+    }
+
+    const card = (data.debts || []).find(d => d.id === 'cashback') || null;
+    const ic = data.interestCheck || null;
+    let interest = null;
+    if (ic) {
+      if (!card || card.rate == null) {
+        throw new Error('deepDive interest check requires the Cash Back Visa rate');
+      }
+      const rate = card.rate;
+      const rows = (ic.rows || []).map(r => ({
+        stmt: r.stmt,
+        avg: r.avg,
+        implied: r.implied,
+        charged: r.charged,
+        eff: r.eff,
+        off: Math.abs(r.eff - rate) > INTEREST_FIT_PP,
+      }));
+      interest = {
+        rate,
+        rows,
+        impliedTotal: rows.reduce((s, r) => s + r.implied, 0),
+        chargedTotal: rows.reduce((s, r) => s + r.charged, 0),
+      };
+    }
+
+    const mortgage = (data.debts || []).find(d => d.id === 'mortgage') || null;
+    const mortgageMonthly = mortgage && mortgage.annualInterest != null
+      ? monthOfAnnual(mortgage.annualInterest) : null;
+
+    let periodSnap = null;
+    if (period) {
+      const spendingTotal = period.spendingTotal || 0;
+      const months = period.months || 0;
+      const discretionary = (period.spending || [])
+        .filter(s => s.type === 'discretionary')
+        .reduce((a, b) => a + b.total, 0);
+      const avoidable = (period.fees || [])
+        .filter(s => s.type === 'avoidable')
+        .reduce((a, b) => a + b.total, 0);
+      periodSnap = {
+        spendingTotal,
+        interestTotal: period.interestTotal || 0,
+        feesTotal: period.feesTotal || 0,
+        months,
+        spendingMonthly: months > 1 ? spendingTotal / months : null,
+        discretionary,
+        discretionaryShare: discretionary / (spendingTotal || 1) * 100,
+        avoidable,
+      };
+    }
+
+    return {
+      cashAmount: cash.amount,
+      elsewhere,
+      classes: classOrder.map(k => byClass[k]),
+      interest,
+      mortgageMonthly,
+      period: periodSnap,
+    };
   }
 
   /* ------------------------------- what the plan is, read one way, once ---- */
@@ -2528,7 +2638,7 @@
     recommendWeekly, recommend, incomeDeadline, counterfactuals,
     budgetBreakdown, monthlyFromWeekly,
     projectDebts,
-    nextDue, nextPaymentOut, unallocatedCash, compactSnapshot, planStatus, mission, planPhases, nextMove, utilisation, renewal,
+    nextDue, nextPaymentOut, unallocatedCash, compactSnapshot, deepDive, planStatus, mission, planPhases, nextMove, utilisation, renewal,
     payoffDebts, payoffModel,
     paymentForMonths, EPSILON, STEP };
   if (typeof module !== 'undefined' && module.exports) module.exports = Forecast;

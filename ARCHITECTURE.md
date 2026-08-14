@@ -339,6 +339,7 @@ the same question — and it still carries one, noted under the table.
 | Next payment out — cash leaving on the next outflow date of the projection | `Forecast.nextPaymentOut`, from `sim.events`. Names the day and sums every cash outflow on it; two registrations on one day are one payment as far as the account is concerned. Distinct from `Forecast.nextDue`, which names one `upcoming` obligation. Reconciling those two look-aheads is `B74`. `public/plan.js` holds the wording and the 3-day tile tone only |
 | Unallocated ending cash — the remainder after the target buffer and windowed reserves, and whether that is free cash | `Forecast.unallocatedCash`, from `sim.ending`, `sim.buffer`, `budget.reserveMonthly` and `plan.windowDays`. Converts the monthly reserve over the window with the calendar month `365.25 / 12`, subtracts buffer and reserves, and decides the leftover verdict on the published cent. `public/plan.js` holds the wording only |
 | Compact snapshot — secured debt total, monthly interest across every facility, and HELOC month-on-month direction | `Forecast.compactSnapshot`, from the debt records' posted `balance` / `annualInterest` / `secured` and `helocHistory`. A month of interest is a twelfth of the recorded annual figure. The HELOC verdict follows the published whole-dollar delta, so a move that prints `$0` is unchanged rather than growth. `public/plan.js` holds the wording and the sign only |
+| Deep Dive derived totals — held-elsewhere grouping, period spending average, discretionary share, avoidable fees, Cash Back Visa cycle fit, and the mortgage's monthly interest | `Forecast.deepDive`, from `plan.startingCash.heldElsewhere`, the selected `periods` entry, `interestCheck` rows, and the `cashback` / `mortgage` debt records. The card rate is the Cash Back Visa `rate`; a cycle is off when `|eff − rate| > 4` percentage points, the incumbent band. Mortgage monthly interest is `monthOfAnnual` on that debt's `annualInterest` — the same twelfth `compactSnapshot` uses. `public/deepdive.js` holds the wording only |
 | Plan phase titles and the risk list — which heading each 30-day block gets, which risks appear, and the figures inside them | `Forecast.planPhases`, from the `recommend` and `projectDebts` results plus the already-run `incomeDeadline`, `counterfactuals` and `budgetBreakdown`. Over-limit-today and the HELOC crossing are the same helpers `Forecast.mission` uses. The Amanda window impact is the incumbent `amount × 3`. The HELOC draw is `drawnOn(funding, 'heloc')`, the same sum the HELOC alternative prices. `public/plan.js` holds the wording only |
 | Coupled cash-and-debt walk | `Forecast.projectDebts` |
 | Revolving headroom, limits, pending | `Forecast.utilisation` |
@@ -377,24 +378,21 @@ So the rule, not the enumeration, is what binds:
 - **A page script renders; it does not decide.** `renderCalendar()` and
   `renderPlan()` format what they are given.
 
-**Page scripts do break that third rule today, and the repository now knows
-where.** Every instance `B73` had recorded moved into the engine, and the scan
-for the ones nobody had named ran on 2026-08-12. It read every browser file and
-found eight more — the largest being the status band at the top of the Plan page,
-which selects which of seven verdicts the household reads and picks two of the
-dates inside them. Seven of the eight were found by reading; the eighth, the
-funding-source cards a few lines below that same band, was found by the required
-review after the scan had called itself complete. `B73` records each one with the mutation evidence that no test
-reaches it, and each is its own outcome to move. **Those first two have now
-moved**, together, because they interpreted the same `gap` and the same funding
-result; six remain. **None of them is a row in the
-table above, and none should become one**: a page script that decides is an
-unnamed authority, which is a defect to close, not an incumbent to register. The
-two rows the move added name `Forecast.planStatus` and the funding result, which
-are engine authorities — not the page-side defect they replaced.
+**Page scripts broke that third rule in the instances `B73` recorded, and those
+instances have moved.** The scan for the ones nobody had named ran on
+2026-08-12. It read every browser file and found eight more — the largest being
+the status band at the top of the Plan page, which selects which of seven
+verdicts the household reads and picks two of the dates inside them. Seven of
+the eight were found by reading; the eighth, the funding-source cards a few
+lines below that same band, was found by the required review after the scan had
+called itself complete. `B73` is the work record for which they were, that they
+have now all moved, and that the item is closed. **None of those page-side
+defects was a row in the table above**: a page script that decides is an unnamed
+authority, which is a defect to close, not an incumbent to register. The rows
+the moves added name the engine functions that replaced them.
 
-Seven instances have been moved into the engine rather than argued away. The
-Amanda-transfer deadline: `public/plan.js` re-ran the simulation with her
+The recorded instances have been moved into the engine rather than argued away.
+The Amanda-transfer deadline: `public/plan.js` re-ran the simulation with her
 transfer zeroed and selected the first below-buffer day itself, and
 `Forecast.incomeDeadline` now owns that counterfactual. The "Next due" tile:
 `public/deepdive.js` filtered `upcoming` for unpaid cash items, sorted them and
@@ -420,7 +418,14 @@ for the first breach and the first negative day, totalled the funding parts, and
 a few lines below asked `o.available >= needed` about each source in its own
 arithmetic. `Forecast.planStatus` now owns the verdict and both dates, and
 `Forecast.recommend`'s funding result owns the per-source coverage — so the two
-cannot disagree, which they had. In each
+cannot disagree, which they had. The Deep Dive derived totals: `public/deepdive.js`
+grouped and totalled `heldElsewhere`, averaged a period's spending, totalled
+discretionary spend and avoidable fees, flagged Cash Back Visa cycles with a
+page-side `26.99` and a ±4pp band, summed the implied and charged columns, and
+hardcoded `~$1,620/month` for the mortgage, and `Forecast.deepDive` now owns
+all of it — the card rate from the Cash Back Visa record, the incumbent `>`
+band, and `monthOfAnnual` on the mortgage's `annualInterest`, the same twelfth
+`compactSnapshot` uses. In each
 case the page renders the returned result and a focused test reconciles the move
 against a hand-computed case.
 
@@ -432,9 +437,10 @@ an authority out of a file does not clear the file — the payoff modeller was
 still deciding in `public/modellers.js` after the renewal moved out of it, and
 `public/plan.js` held seven of the eight instances the scan found, having
 already had two moved out of it — and one of those seven was missed by the scan
-itself and caught by the review. It holds five now. The absence of a known
-instance was never evidence that
-none existed, and searching is what settled it.
+itself and caught by the review. The recorded `plan.js` and `deepdive.js`
+instances have since moved; `B73` is the work record, now closed. The absence
+of a known instance was never evidence that none existed, and searching is what
+settled the recorded set.
 
 Anything not named above belongs to one of those three rules, or is that defect.
 If it is genuinely unclear which, that is a question for the required review —
