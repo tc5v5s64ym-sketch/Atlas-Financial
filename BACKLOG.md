@@ -1008,7 +1008,11 @@ verified total, and the HELOC chart limit from canonical `debts` / `assets`
 `paymentBiweekly`. The Deep Dive "Credit left" scalar moves from the stale
 stored $1,415.95 to utilisation's $1,415.98 (the Plan tile, upcoming note
 and positions.csv already used $1,415.98; the whole-dollar tile still prints
-$1,416). Proved by `test-publication-totals.js`. Build-strategy item
+$1,416). The historical income footer's capture window is
+`data.incomeCaptureMonths` beside the `income` rows — the same shape
+`paypal.months` already uses — not a `forecast.js` constant. Proved by
+`test-publication-totals.js`, including an 18 → 19 source-window mutation
+that does not edit the engine. Build-strategy item
 `AF-PUB-01`.
 
 **B90 · Guard overlapping essential / discretionary classification** · `QUEUED` · *small*

@@ -1527,12 +1527,14 @@
   //
   // This function is addition plus a call to utilisation. It does not
   // price a debt, project cash, or invent a second headroom rule. The
-  // captured-income window is the 18 months the Deep Dive footer already
-  // names; the monthly figure is that total rounded to a dollar, which is
-  // what the stored `incomeTotal.perMonth` was. Pages format the returned
+  // historical income footer monthly figure is total / capture window,
+  // rounded to a dollar. That window is an evidence fact —
+  // `data.incomeCaptureMonths`, beside the historical `income` rows, the
+  // same shape `paypal.months` already uses. It is not derived from
+  // `periods.json` `all.months` (19 calendar buckets labelled "18 months"):
+  // those are spending buckets, including a partial current month, and are
+  // not the income-observation denominator. Pages format the returned
   // numbers. data.json keeps the rows being summed.
-  const INCOME_CAPTURE_MONTHS = 18;
-
   function publicationTotals(data) {
     data = data || {};
     const debts = data.debts || [];
@@ -1550,6 +1552,8 @@
     }
     const assetTotal = assets.reduce((s, a) => s + (a.value || 0), 0);
     const incomeTotal = (data.income || []).reduce((s, row) => s + (row.total || 0), 0);
+    const incomeMonths = Number(data.incomeCaptureMonths);
+    const incomeWindow = incomeMonths > 0 && isFinite(incomeMonths) ? incomeMonths : null;
     const commitmentsTotal = ((data.commitments && data.commitments.items) || [])
       .reduce((s, item) => s + (item.amount || 0), 0);
     const lacrosseVerified = ((data.lacrosse && data.lacrosse.sources) || [])
@@ -1566,8 +1570,8 @@
       assets: assetTotal,
       financialAccountsOnly: assetTotal - totalDebt,
       incomeTotal,
-      incomePerMonth: Math.round(incomeTotal / INCOME_CAPTURE_MONTHS),
-      incomeMonths: INCOME_CAPTURE_MONTHS,
+      incomePerMonth: incomeWindow ? Math.round(incomeTotal / incomeWindow) : null,
+      incomeMonths: incomeWindow,
       commitmentsTotal,
       lacrosseVerified,
       helocLimit,

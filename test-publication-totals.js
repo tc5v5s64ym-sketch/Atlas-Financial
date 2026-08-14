@@ -66,6 +66,7 @@ const FIX = {
     { label: 'Pay',     total: 1800 },
     { label: 'Benefit', total:  600 },
   ],
+  incomeCaptureMonths: 18,
   commitments: { items: [{ amount: 800 }, { amount: 200 }] },
   lacrosse: { sources: [{ amount: 300, n: 2 }, { amount: 50, n: 1 }] },
 };
@@ -114,8 +115,9 @@ ok(fixture && same(fixture.creditLeft, HAND_CREDIT)
   fixture ? String(fixture.creditLeft) : 'none');
 ok(fixture && same(fixture.incomeTotal, HAND_INCOME)
   && same(fixture.incomePerMonth, HAND_INCOME_MONTHLY)
-  && same(fixture.incomeMonths, HAND_INCOME_MONTHS),
-  'fixture income total and rounded monthly figure');
+  && same(fixture.incomeMonths, HAND_INCOME_MONTHS)
+  && same(fixture.incomeMonths, FIX.incomeCaptureMonths),
+  'fixture income total and rounded monthly figure follow the source-owned 18-month window');
 ok(fixture && same(fixture.commitmentsTotal, HAND_COMMIT)
   && same(fixture.lacrosseVerified, HAND_LAX)
   && same(fixture.helocLimit, 55000),
@@ -158,10 +160,13 @@ ok(live && same(live.annualInterest, LIVE_ANNUAL)
 ok(live && sameCents(live.assets, LIVE_ASSETS)
   && sameCents(live.financialAccountsOnly, LIVE_FIN),
   'live net-worth lines match the asset and debt literals');
+ok(data.incomeCaptureMonths === 18,
+  'live historical income evidence names its own 18-month capture window');
 ok(live && sameCents(live.incomeTotal, LIVE_INCOME)
   && same(live.incomePerMonth, 17042)
-  && same(live.incomeMonths, 18),
-  'live income total is $306,760.03 over 18 months, $17,042/month');
+  && same(live.incomeMonths, 18)
+  && same(live.incomeMonths, data.incomeCaptureMonths),
+  'live income total is $306,760.03 over the evidence window, $17,042/month');
 ok(live && same(live.commitmentsTotal, LIVE_COMMIT)
   && sameCents(live.lacrosseVerified, LIVE_LAX),
   'live commitments and lacrosse verified totals match the item literals');
@@ -262,8 +267,46 @@ ok(sameCents(withoutCard.totalDebt, LIVE_DEBT - 1799.97)
 const extraIncome = (data.income || []).concat([{ label: 'Bonus', total: 1800 }]);
 const afterIncome = F.publicationTotals(Object.assign({}, data, { income: extraIncome }));
 ok(sameCents(afterIncome.incomeTotal, LIVE_INCOME + 1800)
-  && afterIncome.incomePerMonth === Math.round((LIVE_INCOME + 1800) / 18),
+  && afterIncome.incomePerMonth === Math.round((LIVE_INCOME + 1800) / data.incomeCaptureMonths),
   'an extra $1,800 income line moves the footer total and its monthly round');
+
+console.log('\n=== mutation: source-owned capture window, not a code constant ===');
+const HAND_INCOME_MONTHLY_19 = Math.round(HAND_INCOME / 19);
+ok(HAND_INCOME_MONTHLY_19 === 126 && HAND_INCOME_MONTHLY_19 !== HAND_INCOME_MONTHLY,
+  'independent round($2,400 / 19) is $126, distinct from the 18-month $133');
+const afterWindow = F.publicationTotals(Object.assign({}, FIX, { incomeCaptureMonths: 19 }));
+ok(same(afterWindow.incomeTotal, HAND_INCOME)
+  && same(afterWindow.incomeMonths, 19)
+  && same(afterWindow.incomePerMonth, HAND_INCOME_MONTHLY_19),
+  'changing only incomeCaptureMonths to 19 republishes round(total / 19); forecast.js is unedited');
+ok(same(fixture.incomePerMonth, HAND_INCOME_MONTHLY)
+  && same(fixture.incomeMonths, 18),
+  'the 18-month fixture is unmoved by that copy');
+
+const liveWindow19 = F.publicationTotals(Object.assign({}, data, { incomeCaptureMonths: 19 }));
+ok(sameCents(liveWindow19.incomeTotal, LIVE_INCOME)
+  && same(liveWindow19.incomePerMonth, Math.round(LIVE_INCOME / 19))
+  && same(liveWindow19.incomePerMonth, 16145)
+  && liveWindow19.incomePerMonth !== 17042,
+  'live monthly footer follows a 19-month source window: round($306,760.03 / 19) = $16,145');
+ok(same(live.incomePerMonth, 17042) && same(live.incomeMonths, 18),
+  'the live 18-month monthly result is unmoved by that copy');
+
+const missingInput = Object.assign({}, FIX);
+delete missingInput.incomeCaptureMonths;
+const missing = F.publicationTotals(missingInput);
+ok(missing.incomeMonths === null && missing.incomePerMonth === null,
+  'a missing capture window does not invent 18 months');
+const zero = F.publicationTotals(Object.assign({}, FIX, { incomeCaptureMonths: 0 }));
+ok(zero.incomeMonths === null && zero.incomePerMonth === null,
+  'a zero capture window does not invent 18 months');
+
+ok(!/\bINCOME_CAPTURE_MONTHS\b/.test(read('public/forecast.js')),
+  'forecast.js no longer declares INCOME_CAPTURE_MONTHS');
+ok(!/incomeTotal\s*\/\s*18\b/.test(read('public/forecast.js')),
+  'forecast.js does not hardcode incomeTotal / 18');
+ok(!/\/\s*18\b/.test(read('public/deepdive.js')) && !/\/\s*18\b/.test(read('public/records.js')),
+  'Deep Dive and Records do not divide by a hardcoded 18');
 
 const extraCommit = {
   commitments: Object.assign({}, data.commitments, {
