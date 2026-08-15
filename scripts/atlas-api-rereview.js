@@ -6,6 +6,8 @@ const SHA_RE = /^[0-9a-f]{40}$/i;
 const HANDOFF_MARKER = 'Atlas re-review requested.';
 const PASS_MARKER = 'Atlas Contract / Systems Review — PASS';
 const NOT_PASS_MARKER = 'Atlas Contract / Systems Review — NOT PASS';
+const BLOCKING_MARKER = 'Atlas Contract / Systems Review — BLOCKING';
+const TRUSTED_REVIEWER = 'tc5v5s64ym-sketch';
 
 function clean(value) {
   return String(value == null ? '' : value).replace(/\r/g, '').trim();
@@ -42,6 +44,44 @@ function parseHandoff(body, currentHead) {
     return { ok: false, code: 'head-not-moved', reason: 'Repair handoff did not move the PR head.' };
   }
   return { ok: true, code: 'ok', newHead, priorHead, priorOutcome };
+}
+
+function classifyAtlasReview(body) {
+  const text = String(body || '');
+  if (text.startsWith(PASS_MARKER)) return 'PASS';
+  if (text.startsWith(NOT_PASS_MARKER)) return 'NOT PASS';
+  if (text.startsWith(BLOCKING_MARKER)) return 'BLOCKING';
+  return '';
+}
+
+function validatePriorReview(reviews, priorHead, claimedOutcome) {
+  const sha = clean(priorHead).toLowerCase();
+  const claimed = clean(claimedOutcome).toUpperCase();
+  if (!SHA_RE.test(sha)) {
+    return { ok: false, code: 'malformed-prior-head', reason: 'Handoff prior reviewed SHA is malformed.' };
+  }
+  if (!['NOT PASS', 'BLOCKING'].includes(claimed)) {
+    return { ok: false, code: 'nonblocking-prior-outcome', reason: 'Handoff prior outcome is not a blocking Atlas outcome.' };
+  }
+  const list = Array.isArray(reviews) ? reviews : [];
+  const candidates = list
+    .filter((review) => review && review.user && review.user.login === TRUSTED_REVIEWER)
+    .filter((review) => clean(review.commit_id).toLowerCase() === sha)
+    .map((review) => ({ ...review, atlasOutcome: classifyAtlasReview(review.body) }))
+    .filter((review) => Boolean(review.atlasOutcome))
+    .sort((left, right) => String(left.submitted_at || '').localeCompare(String(right.submitted_at || '')));
+  if (!candidates.length) {
+    return { ok: false, code: 'missing-prior-review', reason: 'No trusted Atlas review exists on the handoff prior SHA.' };
+  }
+  const latest = candidates[candidates.length - 1];
+  if (latest.atlasOutcome !== claimed) {
+    return {
+      ok: false,
+      code: 'prior-outcome-mismatch',
+      reason: `Latest trusted Atlas review on the prior SHA is ${latest.atlasOutcome}, not ${claimed}.`,
+    };
+  }
+  return { ok: true, code: 'ok', reviewId: latest.id, outcome: latest.atlasOutcome, priorHead: sha };
 }
 
 function assertPending(body, currentHead) {
@@ -131,6 +171,11 @@ function main(argv) {
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     return result.ok ? 0 : 2;
   }
+  if (command === 'validate-prior-review') {
+    const result = validatePriorReview(readJson(argv[3]), argv[4], argv[5]);
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    return result.ok ? 0 : 2;
+  }
   if (command === 'assert-pending') {
     const result = assertPending(fs.readFileSync(argv[3], 'utf8'), argv[4]);
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
@@ -140,7 +185,7 @@ function main(argv) {
     process.stdout.write(renderReview(readJson(argv[3]), argv[4], argv[5]));
     return 0;
   }
-  process.stderr.write('usage: atlas-api-rereview.js parse-handoff|assert-pending|render-review ...\n');
+  process.stderr.write('usage: atlas-api-rereview.js parse-handoff|validate-prior-review|assert-pending|render-review ...\n');
   return 1;
 }
 
@@ -151,7 +196,11 @@ module.exports = {
   HANDOFF_MARKER,
   PASS_MARKER,
   NOT_PASS_MARKER,
+  BLOCKING_MARKER,
+  TRUSTED_REVIEWER,
   parseHandoff,
+  classifyAtlasReview,
+  validatePriorReview,
   assertPending,
   validateModelResult,
   renderReview,
