@@ -2,7 +2,9 @@ name: Codex cursor repair dispatch
 
 # Holds no repository credentials. This file may run from a pull_request_review event whose
 # workflow copy is PR-controlled. It only records that a review arrived.
-# The secret-bearing repair workflow is started by workflow_run from main.
+# Trusted Atlas PASS / NOT PASS / BLOCKING and Codex reviews are noted here.
+# The secret-bearing workflow is started by workflow_run from main. It records
+# PASS on the merge card and never starts Cursor for PASS.
 on:
   pull_request_review:
     types: [submitted]
@@ -19,6 +21,7 @@ jobs:
       (
         github.event.review.user.login == 'tc5v5s64ym-sketch' &&
         (
+          startsWith(github.event.review.body, 'Atlas Contract / Systems Review — PASS') ||
           startsWith(github.event.review.body, 'Atlas Contract / Systems Review — NOT PASS') ||
           startsWith(github.event.review.body, 'Atlas Contract / Systems Review — BLOCKING')
         )
