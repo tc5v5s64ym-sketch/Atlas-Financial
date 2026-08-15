@@ -1,0 +1,390 @@
+name: Codex cursor repair
+
+# Secret-bearing path. workflow_run and workflow_dispatch always use this
+# file from the default branch. It re-validates the review through the API
+# and never executes PR-head scripts in a job that has secrets.
+on:
+  workflow_run:
+    workflows: ["Codex cursor repair dispatch"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number that received a Codex review
+        required: true
+        type: number
+      review_id:
+        description: Optional GitHub pull-request review id
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: write
+
+concurrency:
+  group: atlas-cursor-repair-${{ github.event.workflow_run.pull_requests[0].number || inputs.pr_number || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      eligible: ${{ steps.evaluate.outputs.eligible }}
+      pr_number: ${{ steps.evaluate.outputs.pr_number }}
+      head_sha: ${{ steps.evaluate.outputs.head_sha }}
+      head_ref: ${{ steps.evaluate.outputs.head_ref }}
+      reviewed_sha: ${{ steps.evaluate.outputs.reviewed_sha }}
+      review_id: ${{ steps.evaluate.outputs.review_id }}
+      next_round: ${{ steps.evaluate.outputs.next_round }}
+    steps:
+      - name: Checkout trusted default-branch scripts
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Evaluate Codex repair eligibility
+        id: evaluate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_PR: ${{ inputs.pr_number }}
+          DISPATCH_REVIEW: ${{ inputs.review_id }}
+          RUN_HEAD: ${{ github.event.workflow_run.head_sha }}
+          RUN_PR: ${{ github.event.workflow_run.pull_requests[0].number }}
+        run: |
+          set -euo pipefail
+
+          if [[ "${EVENT_NAME}" == 'workflow_dispatch' ]]; then
+            pr_number="${DISPATCH_PR}"
+          elif [[ -n "${RUN_PR}" ]]; then
+            pr_number="${RUN_PR}"
+          else
+            prs="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${RUN_HEAD}/pulls" --jq '.[].number')"
+            pr_number="$(printf '%s\n' "${prs}" | head -n 1)"
+          fi
+
+          if [[ -z "${pr_number}" ]]; then
+            echo "eligible=false" >> "${GITHUB_OUTPUT}"
+            echo "No pull request could be resolved."
+            exit 0
+          fi
+
+          pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${pr_number}")"
+          current_head="$(jq -r '.head.sha' <<<"${pr_json}")"
+          head_ref="$(jq -r '.head.ref' <<<"${pr_json}")"
+
+          reviews_file="$(mktemp "${RUNNER_TEMP:-/tmp}/atlas-codex-reviews.XXXXXX")"
+          comments_file="$(mktemp "${RUNNER_TEMP:-/tmp}/atlas-codex-review-comments.XXXXXX")"
+          state_file="$(mktemp "${RUNNER_TEMP:-/tmp}/atlas-repair-state-comments.XXXXXX")"
+          trap 'rm -f "${reviews_file}" "${comments_file}" "${state_file}"' EXIT
+
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${pr_number}/reviews" \
+            --jq '.[]' > "${reviews_file}.ndjson"
+          jq -s '.' "${reviews_file}.ndjson" > "${reviews_file}"
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${pr_number}/comments" \
+            --jq '.[].body' > "${state_file}"
+
+          review_id="${DISPATCH_REVIEW}"
+          if [[ -z "${review_id}" ]]; then
+            review_id="$(jq -r --arg head "${current_head}" '
+              [ .[]
+                | select((.user.login | ascii_downcase) == "chatgpt-codex-connector[bot]"
+                         or (.user.login | ascii_downcase) == "chatgpt-codex-connector")
+                | select(.commit_id == $head)
+              ]
+              | sort_by(.submitted_at)
+              | last
+              | .id // empty
+            ' "${reviews_file}")"
+          fi
+
+          if [[ -z "${review_id}" ]]; then
+            echo "eligible=false" >> "${GITHUB_OUTPUT}"
+            echo "No genuine Codex review is on the current head."
+            exit 0
+          fi
+
+          review_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${pr_number}/reviews/${review_id}")"
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${pr_number}/reviews/${review_id}/comments" \
+            --jq '.[]' > "${comments_file}.ndjson"
+          jq -s '.' "${comments_file}.ndjson" > "${comments_file}"
+
+          jq -n \
+            --argjson pr "${pr_json}" \
+            --argjson review "${review_json}" \
+            --argjson comments "$(cat "${comments_file}")" \
+            --rawfile state "${state_file}" \
+            '{
+              reviewerLogin: $review.user.login,
+              reviewedSha: $review.commit_id,
+              currentHeadSha: $pr.head.sha,
+              reviewBody: ($review.body // ""),
+              reviewComments: $comments,
+              stateComments: ($state | split("\n")),
+              pr: {
+                number: $pr.number,
+                state: $pr.state,
+                base: { ref: $pr.base.ref },
+                head: { sha: $pr.head.sha, ref: $pr.head.ref }
+              }
+            }' > "${RUNNER_TEMP}/repair-request.json"
+
+          set +e
+          node scripts/atlas-cursor-repair-gate.js evaluate "${RUNNER_TEMP}/repair-request.json" \
+            > "${RUNNER_TEMP}/repair-result.json"
+          status=$?
+          set -e
+
+          eligible=false
+          if [[ "${status}" -eq 0 ]]; then
+            eligible=true
+          elif [[ "${status}" -ne 2 ]]; then
+            echo "Gate script failed with status ${status}."
+            exit 1
+          fi
+
+          next_round="$(jq -r '.nextRound // empty' "${RUNNER_TEMP}/repair-result.json")"
+          echo "eligible=${eligible}" >> "${GITHUB_OUTPUT}"
+          echo "pr_number=${pr_number}" >> "${GITHUB_OUTPUT}"
+          echo "head_sha=${current_head}" >> "${GITHUB_OUTPUT}"
+          echo "head_ref=${head_ref}" >> "${GITHUB_OUTPUT}"
+          echo "reviewed_sha=$(jq -r '.commit_id' <<<"${review_json}")" >> "${GITHUB_OUTPUT}"
+          echo "review_id=${review_id}" >> "${GITHUB_OUTPUT}"
+          echo "next_round=${next_round}" >> "${GITHUB_OUTPUT}"
+          jq -r '.reason' "${RUNNER_TEMP}/repair-result.json"
+
+          node scripts/atlas-cursor-repair-gate.js prompt "${RUNNER_TEMP}/repair-request.json" \
+            > "${RUNNER_TEMP}/repair-prompt.txt"
+
+      - name: Upload gate artifacts
+        if: steps.evaluate.outputs.eligible == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: atlas-cursor-repair-gate
+          path: |
+            ${{ runner.temp }}/repair-request.json
+            ${{ runner.temp }}/repair-result.json
+            ${{ runner.temp }}/repair-prompt.txt
+
+  repair:
+    needs: gate
+    if: needs.gate.outputs.eligible == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    outputs:
+      changed: ${{ steps.cursor.outputs.changed }}
+    env:
+      CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+      ATLAS_CURSOR_MODEL: ${{ vars.ATLAS_CURSOR_MODEL }}
+    steps:
+      - name: Checkout trusted default-branch scripts
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+          path: trusted
+
+      - name: Checkout the gated reviewed SHA for file edits
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.gate.outputs.head_sha }}
+          persist-credentials: false
+          fetch-depth: 0
+          path: pr-worktree
+
+      - name: Confirm the edit worktree is still the gated SHA
+        run: |
+          set -euo pipefail
+          actual="$(git -C pr-worktree rev-parse HEAD)"
+          node trusted/scripts/atlas-cursor-repair-gate.js assert-head \
+            "${{ needs.gate.outputs.head_sha }}" \
+            "${actual}" \
+            "${{ needs.gate.outputs.reviewed_sha }}"
+
+      - name: Download the repair prompt
+        uses: actions/download-artifact@v4
+        with:
+          name: atlas-cursor-repair-gate
+          path: ${{ runner.temp }}/gate
+
+      - name: Install Cursor CLI and prove the configured model
+        run: |
+          set -euo pipefail
+          if [[ -z "${ATLAS_CURSOR_MODEL}" ]]; then
+            echo "Repository variable ATLAS_CURSOR_MODEL is unset. Fail closed."
+            exit 1
+          fi
+          curl -fsS https://cursor.com/install | bash
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+          export PATH="${HOME}/.local/bin:${PATH}"
+          models="$(mktemp "${RUNNER_TEMP:-/tmp}/atlas-cursor-models.XXXXXX")"
+          cursor-agent --list-models > "${models}"
+          if ! grep -F -- "${ATLAS_CURSOR_MODEL}" "${models}" >/dev/null; then
+            echo "ATLAS_CURSOR_MODEL is not in the Cursor CLI model list. Fail closed."
+            exit 1
+          fi
+
+      - name: Run cursor-agent on files only
+        id: cursor
+        run: |
+          set -euo pipefail
+          export PATH="${HOME}/.local/bin:${PATH}"
+
+          sandbox="$(mktemp -d "${RUNNER_TEMP:-/tmp}/atlas-cursor-bin.XXXXXX")"
+          real_git="$(command -v git)"
+          install -m 0755 trusted/scripts/atlas-cursor-repair-deny-git.sh "${sandbox}/git"
+          install -m 0755 trusted/scripts/atlas-cursor-repair-deny-gh.sh "${sandbox}/gh"
+          export ATLAS_REAL_GIT="${real_git}"
+
+          env -u GITHUB_TOKEN -u GH_TOKEN -u ATLAS_AUTOMATION_TOKEN \
+            PATH="${sandbox}:${HOME}/.local/bin:/usr/bin:/bin" \
+            CURSOR_API_KEY="${CURSOR_API_KEY}" \
+            ATLAS_REAL_GIT="${real_git}" \
+            cursor-agent --print --trust --force \
+              --workspace "${GITHUB_WORKSPACE}/pr-worktree" \
+              --model "${ATLAS_CURSOR_MODEL}" \
+              --output-format text \
+              "$(cat "${RUNNER_TEMP}/gate/repair-prompt.txt")"
+
+          git -C pr-worktree add -A
+          git -C pr-worktree diff --cached --binary > "${RUNNER_TEMP}/repair.patch"
+          if [[ ! -s "${RUNNER_TEMP}/repair.patch" ]]; then
+            echo "changed=false" >> "${GITHUB_OUTPUT}"
+            echo "Cursor produced no file changes."
+            exit 0
+          fi
+          echo "changed=true" >> "${GITHUB_OUTPUT}"
+
+      - name: Upload the file-only repair patch
+        if: steps.cursor.outputs.changed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: atlas-cursor-repair-patch
+          path: ${{ runner.temp }}/repair.patch
+
+  test:
+    needs: [gate, repair]
+    if: needs.repair.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout the gated reviewed SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.gate.outputs.head_sha }}
+          persist-credentials: false
+
+      - name: Confirm the test worktree is still the gated SHA
+        env:
+          GATED_SHA: ${{ needs.gate.outputs.head_sha }}
+          REVIEWED_SHA: ${{ needs.gate.outputs.reviewed_sha }}
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          if [[ "${actual}" != "${GATED_SHA}" || "${actual}" != "${REVIEWED_SHA}" ]]; then
+            echo "Test worktree ${actual} is not gated/reviewed SHA ${GATED_SHA}."
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Download the repair patch
+        uses: actions/download-artifact@v4
+        with:
+          name: atlas-cursor-repair-patch
+          path: ${{ runner.temp }}/patch
+
+      - name: Apply the patch and run the correctness suite
+        run: |
+          set -euo pipefail
+          git apply "${RUNNER_TEMP}/patch/repair.patch"
+          npm test
+
+  push:
+    needs: [gate, repair, test]
+    if: needs.repair.outputs.changed == 'true' && needs.test.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout trusted default-branch scripts
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+          path: trusted
+
+      - name: Checkout the PR branch with the automation credential
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.gate.outputs.head_ref }}
+          token: ${{ secrets.ATLAS_AUTOMATION_TOKEN }}
+          persist-credentials: true
+          fetch-depth: 0
+
+      - name: Download the repair patch
+        uses: actions/download-artifact@v4
+        with:
+          name: atlas-cursor-repair-patch
+          path: ${{ runner.temp }}/patch
+
+      - name: Commit, push, and persist the round
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ needs.gate.outputs.pr_number }}
+          GATED_SHA: ${{ needs.gate.outputs.head_sha }}
+          REVIEWED_SHA: ${{ needs.gate.outputs.reviewed_sha }}
+          REVIEW_ID: ${{ needs.gate.outputs.review_id }}
+          NEXT_ROUND: ${{ needs.gate.outputs.next_round }}
+        run: |
+          set -euo pipefail
+          live="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.head.sha')"
+          local_head="$(git rev-parse HEAD)"
+          node trusted/scripts/atlas-cursor-repair-gate.js assert-head \
+            "${GATED_SHA}" "${local_head}" "${live}"
+          node trusted/scripts/atlas-cursor-repair-gate.js assert-head \
+            "${REVIEWED_SHA}" "${local_head}" "${live}"
+          git apply "${RUNNER_TEMP}/patch/repair.patch"
+          git add -A
+          git config core.hooksPath .githooks
+          git config user.name atlas-automation
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m "Apply Codex review repair for ${REVIEWED_SHA} (round ${NEXT_ROUND})."
+          git push
+          repair_sha="$(git rev-parse HEAD)"
+
+          marker='<!-- atlas-cursor-repair-state -->'
+          comments="$(mktemp "${RUNNER_TEMP:-/tmp}/atlas-repair-comments.XXXXXX")"
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+            --jq '.[]' > "${comments}.ndjson"
+          jq -s '.' "${comments}.ndjson" > "${comments}"
+          existing="$(jq -r --arg marker "${marker}" '
+            [.[] | select(.body != null and (.body | contains($marker)))]
+            | last
+            | .id // empty
+          ' "${comments}")"
+
+          body="$(printf '%s\n%s\n\nAutomated Cursor repair round %s for reviewed head `%s`. Pushed `%s`.\n' \
+            "${marker}" \
+            "$(jq -nc --arg rounds "${NEXT_ROUND}" --arg reviewed "${REVIEWED_SHA}" \
+              --arg repair "${repair_sha}" --arg review "${REVIEW_ID}" \
+              '{rounds:($rounds|tonumber),last_reviewed_sha:$reviewed,last_repair_sha:$repair,review_id:$review}')" \
+            "${NEXT_ROUND}" "${REVIEWED_SHA}" "${repair_sha}")"
+
+          if [[ -n "${existing}" ]]; then
+            gh api "repos/${GITHUB_REPOSITORY}/issues/comments/${existing}" \
+              --method PATCH \
+              -f body="${body}"
+          else
+            gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+              --method POST \
+              -f body="${body}"
+          fi
