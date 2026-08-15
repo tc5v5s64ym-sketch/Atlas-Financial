@@ -189,5 +189,79 @@ ok(/atlas-cursor-repair-state/.test(repair),
 ok(/gh api --paginate[\s\S]{0,200}>\s*"\$\{/.test(repair),
   'paginated comments are materialized before the state-marker search');
 
+console.log('\n=== gate→repair race: exact SHA pin ===');
+ok(gate.assertHeadsStillGated(HEAD, HEAD, HEAD).mutate === true,
+  'identical gated/local/remote SHAs may mutate');
+const movedRemote = gate.assertHeadsStillGated(HEAD, HEAD, NEXT);
+ok(movedRemote.ok === false && movedRemote.mutate === false && movedRemote.code === 'head-moved',
+  'a later remote head blocks mutation', movedRemote.code);
+const movedLocal = gate.assertHeadsStillGated(HEAD, NEXT, NEXT);
+ok(movedLocal.mutate === false, 'a later local checkout blocks mutation');
+
+const assertSame = spawnSync(process.execPath, [
+  path.join(__dirname, 'scripts/atlas-cursor-repair-gate.js'),
+  'assert-head', HEAD, HEAD, HEAD,
+], { encoding: 'utf8' });
+ok(assertSame.status === 0, 'assert-head CLI exits 0 when the head is unchanged');
+const assertMoved = spawnSync(process.execPath, [
+  path.join(__dirname, 'scripts/atlas-cursor-repair-gate.js'),
+  'assert-head', HEAD, HEAD, NEXT,
+], { encoding: 'utf8' });
+ok(assertMoved.status === 1 && /moved after the gate/.test(assertMoved.stderr),
+  'assert-head CLI fails closed when the remote head moved');
+
+ok(repairJob.includes('ref: ${{ needs.gate.outputs.head_sha }}'),
+  'repair job checks out the gated SHA');
+ok(!/needs\.gate\.outputs\.head_ref/.test(repairJob),
+  'repair job does not check out the mutable branch ref');
+ok(/needs\.gate\.outputs\.head_sha/.test(testJob)
+  && !/needs\.gate\.outputs\.head_ref/.test(testJob),
+  'test job checks out the gated SHA, not the branch ref');
+ok(/needs\.gate\.outputs\.head_ref/.test(pushJob),
+  'push job may check out the branch because it must mutate it');
+const pushScript = (pushJob.match(/run: \|\n([\s\S]*)$/) || [, ''])[1];
+const assertAt = pushScript.indexOf('assert-head');
+const applyAt = pushScript.indexOf('git apply');
+const commitAt = pushScript.indexOf('git commit');
+const gitPushAt = pushScript.indexOf('git push');
+ok(assertAt >= 0 && applyAt > assertAt && commitAt > applyAt && gitPushAt > commitAt,
+  'push re-checks the live head before apply, commit, or push',
+  `assert=${assertAt} apply=${applyAt} commit=${commitAt} push=${gitPushAt}`);
+ok(/pulls\/\$\{PR_NUMBER\}" --jq '\.head\.sha'/.test(pushJob),
+  'push re-fetches the current remote PR head SHA');
+ok(!/git rebase|git merge|git push --force|git push -f/.test(pushJob),
+  'push path has no rebase, merge, or force-push');
+
+const raceDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'atlas-repair-race-'));
+const git = (args, opts = {}) => spawnSync('git', args, {
+  cwd: raceDir, encoding: 'utf8', ...opts,
+});
+git(['init', '-q']);
+git(['config', 'user.email', 'atlas@example.test']);
+git(['config', 'user.name', 'atlas-test']);
+fs.writeFileSync(path.join(raceDir, 'file.txt'), 'gated\n');
+git(['add', 'file.txt']);
+git(['commit', '-q', '-m', 'gated head']);
+const gated = git(['rev-parse', 'HEAD']).stdout.trim();
+fs.writeFileSync(path.join(raceDir, 'file.txt'), 'later\n');
+git(['add', 'file.txt']);
+git(['commit', '-q', '-m', 'later head']);
+const later = git(['rev-parse', 'HEAD']).stdout.trim();
+git(['checkout', '-q', gated]);
+fs.writeFileSync(path.join(raceDir, 'file.txt'), 'repair-for-gated\n');
+const patch = git(['diff', '--', 'file.txt']).stdout;
+git(['checkout', '-q', '--', 'file.txt']);
+git(['checkout', '-q', later]);
+const race = gate.assertHeadsStillGated(gated, later, later);
+ok(gated !== later && race.mutate === false, 'patch generated for the gated SHA must not apply to a later head');
+if (!race.mutate) {
+  ok(fs.readFileSync(path.join(raceDir, 'file.txt'), 'utf8') === 'later\n',
+    'failing closed leaves the later head unmutated');
+} else {
+  ok(false, 'failing closed leaves the later head unmutated');
+}
+ok(patch.includes('repair-for-gated'), 'the discarded patch was generated against the gated tree');
+try { fs.rmSync(raceDir, { recursive: true, force: true }); } catch { /* ignore */ }
+
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
 process.exit(failures === 0 ? 0 : 1);

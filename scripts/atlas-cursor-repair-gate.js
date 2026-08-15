@@ -56,6 +56,18 @@ function isExactCurrentHead(reviewedSha, currentHeadSha) {
   return Boolean(reviewed) && reviewed === current;
 }
 
+function assertHeadsStillGated(gatedSha, localSha, remoteSha) {
+  if (!isExactCurrentHead(gatedSha, localSha) || !isExactCurrentHead(gatedSha, remoteSha)) {
+    return {
+      ok: false,
+      code: 'head-moved',
+      mutate: false,
+      reason: 'PR head moved after the gate. Fail closed without mutation.',
+    };
+  }
+  return { ok: true, code: 'ok', mutate: true };
+}
+
 function parseRepairState(commentBodies) {
   const bodies = Array.isArray(commentBodies) ? commentBodies : [];
   for (let index = bodies.length - 1; index >= 0; index -= 1) {
@@ -208,7 +220,14 @@ function main(argv) {
     }
     return 0;
   }
-  process.stderr.write('usage: atlas-cursor-repair-gate.js evaluate|prompt|deny-git\n');
+  if (command === 'assert-head') {
+    const result = assertHeadsStillGated(argv[3], argv[4], argv[5]);
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    if (result.ok) return 0;
+    process.stderr.write(`${result.reason}\n`);
+    return 1;
+  }
+  process.stderr.write('usage: atlas-cursor-repair-gate.js evaluate|prompt|deny-git|assert-head\n');
   return 1;
 }
 
@@ -231,4 +250,5 @@ module.exports = {
   evaluateRepairRequest,
   buildRepairPrompt,
   deniedGitVerb,
+  assertHeadsStillGated,
 };
