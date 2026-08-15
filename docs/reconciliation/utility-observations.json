@@ -13,8 +13,9 @@
       "label": "BC Hydro account balance",
       "amount": 451.24,
       "observedAsOf": "2026-08-14",
+      "forbiddenBillIds": ["hydro-account-balance"],
       "source": "docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md",
-      "note": "Informational utility account state. Must not become a scheduled cash event. The dated dues are the cash requirements."
+      "note": "Informational utility account state. Must not become a scheduled cash event. The dated dues are the cash requirements. Only an explicit hydro-account-balance bill row is the forbidden scheduled form of this amount."
     },
     {
       "observationId": "payday-hydro-due-now",

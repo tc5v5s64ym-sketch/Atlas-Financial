@@ -237,6 +237,7 @@ function observationsFromUtility(doc) {
     payingAccountLabel: item.payingAccountLabel || null,
     jointCashPool: item.jointCashPool,
     billIds: item.billIds || null,
+    forbiddenBillIds: item.forbiddenBillIds || null,
     canonical: item.canonical || null,
     source: item.source || null,
     note: item.note || null,
@@ -250,8 +251,10 @@ function scheduledBills(data) {
 
 function compareAccountBalance(row, data) {
   const amount = row.evidenceValue;
-  const scheduled = scheduledBills(data)
-    .filter(b => amount != null && isFinite(amount) && near(Number(b.amount), amount));
+  const forbidden = row.forbiddenBillIds || [];
+  const scheduled = scheduledBills(data).filter(b =>
+    forbidden.includes(b.id)
+    && amount != null && isFinite(amount) && near(Number(b.amount), amount));
   const scheduledWrongly = scheduled.length > 0;
   return {
     observationId: row.observationId,

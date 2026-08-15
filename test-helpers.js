@@ -40,9 +40,9 @@ function cashOnDate(plan, date, occurrences, scenario, start) {
   for (const b of plan.bills || []) {
     if (b.householdObligation === false) continue;
     if (b.payingAccount) {
-      const joint = ((plan.startingCash || {}).breakdown || [])
+      const elsewhere = ((plan.startingCash || {}).heldElsewhere || [])
         .some(r => r.id === b.payingAccount);
-      if (!joint) continue;
+      if (elsewhere) continue;
     }
     if (!occurrences(b, date, date).length) continue;
     n -= Number(b.amount || 0);
@@ -65,9 +65,9 @@ function streamTotal(items, asOf, end, occurrences, opts) {
     if (skipNonCash && item.nonCash) return s;
     if (item.householdObligation === false) return s;
     if (opts && opts.plan && item.payingAccount) {
-      const joint = ((opts.plan.startingCash || {}).breakdown || [])
+      const elsewhere = ((opts.plan.startingCash || {}).heldElsewhere || [])
         .some(r => r.id === item.payingAccount);
-      if (!joint) return s;
+      if (elsewhere) return s;
     }
     const n = occurrences(item, asOf, end).length;
     return s + n * Number(item.amount || 0);

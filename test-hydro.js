@@ -83,8 +83,9 @@ function fixture(billExtra) {
 function independentlyJoint(bill, plan) {
   if (!bill || bill.householdObligation === false) return false;
   if (!bill.payingAccount) return true;
-  return ((plan.startingCash || {}).breakdown || [])
-    .some(r => r.id === bill.payingAccount);
+  const cash = plan.startingCash || {};
+  if ((cash.heldElsewhere || []).some(r => r.id === bill.payingAccount)) return false;
+  return true;
 }
 
 function independentJointCash(plan, start, end) {
@@ -216,6 +217,29 @@ console.log('\n=== F. no duplicate Hydro amount when account-state and dues are 
     && near(sepRow.evidenceValue, DUE_SEP),
     'Sep. 1 due matches the modelled $237.45 bill');
 
+  const unrelated = fixture();
+  unrelated.bills.push({
+    id: 'unrelated-once',
+    label: 'Unrelated once-dated bill',
+    frequency: 'once',
+    date: START,
+    amount: BALANCE,
+    confidence: 'confirmed',
+    householdObligation: true,
+  });
+  const unrelatedResult = R.reconcile({
+    data: { meta: { asOf: START }, plan: unrelated },
+    map: { mappings: [] },
+    observations: [],
+    settlements: { observations: [] },
+    utility,
+  });
+  const unrelatedBalance = unrelatedResult.rows
+    .find(r => r.observationId === 'payday-hydro-account-balance');
+  ok(unrelatedBalance && unrelatedBalance.status === 'MATCH'
+    && unrelatedBalance.scheduled === false,
+    'A. unrelated $451.24 bill does not make Hydro account-balance CONFLICT');
+
   const conflicted = fixture();
   conflicted.bills.push({
     id: 'hydro-account-balance',
@@ -236,7 +260,9 @@ console.log('\n=== F. no duplicate Hydro amount when account-state and dues are 
   });
   const badBalance = bad.rows.find(r => r.observationId === 'payday-hydro-account-balance');
   ok(badBalance && badBalance.status === 'CONFLICT' && badBalance.scheduled === true,
-    'scheduling the $451.24 account balance is CONFLICT');
+    'B. explicit hydro-account-balance $451.24 row is CONFLICT');
+  ok(nowRow && nowRow.status === 'MATCH' && sepRow && sepRow.status === 'MATCH',
+    'C. the two dated Hydro dues do not trigger the account-balance conflict');
 }
 
 console.log('\n=== joint-cash treatment: externally paid Hydro is not deducted ===');
@@ -246,7 +272,7 @@ console.log('\n=== joint-cash treatment: externally paid Hydro is not deducted =
     'held-elsewhere $798.37 is not joint spendable cash',
     money(F.startingCashAmount(plan)));
   ok(plan.bills.every(b => F.billAffectsJointCash(b, plan) === false),
-    'independent Forecast helper: Amanda-paid Hydro is not joint cash');
+    'A. amanda-debt-payments in heldElsewhere → no joint-cash deduction');
   ok(near(independentJointCash(plan, START, END), 0),
     'independent walk: joint-cash Hydro total is $0');
 
@@ -271,13 +297,32 @@ console.log('\n=== joint-cash treatment: externally paid Hydro is not deducted =
 
   const asJoint = fixture({ payingAccount: JOINT });
   ok(asJoint.bills.every(b => F.billAffectsJointCash(b, asJoint) === true),
-    'same bills paid from Chequing A would affect joint cash');
+    'B. chequing-a in breakdown → joint-cash deduction');
   const jointSim = F.simulate(asJoint, START, { weeklyVariable: 0 });
   ok(near(jointSim.ending, OPENING - BALANCE),
     'counterfactual: joint-paid Hydro would deduct $451.24',
     money(jointSim.ending));
   ok(near(independentJointCash(asJoint, START, END), BALANCE),
     'independent walk agrees the joint-paid total is $451.24');
+
+  const typo = fixture({ payingAccount: 'amanda-debt-paymentz' });
+  ok(typo.bills.every(b => independentlyJoint(b, typo) === true),
+    'independent walk: unknown/typo payer still reserves joint cash');
+  ok(typo.bills.every(b => F.billAffectsJointCash(b, typo) === true),
+    'C. typo amanda-debt-paymentz fails closed and deducts joint cash');
+  const typoSim = F.simulate(typo, START, { weeklyVariable: 0 });
+  ok(near(typoSim.ending, OPENING - BALANCE),
+    'C. typo payer ending is opening minus $451.24', money(typoSim.ending));
+
+  const unnamed = fixture({ payingAccount: undefined });
+  unnamed.bills.forEach(b => { delete b.payingAccount; });
+  ok(unnamed.bills.every(b => independentlyJoint(b, unnamed) === true),
+    'independent walk: no payingAccount is incumbent joint cash');
+  ok(unnamed.bills.every(b => F.billAffectsJointCash(b, unnamed) === true),
+    'D. no payingAccount preserves incumbent joint-cash deduction');
+  const unnamedSim = F.simulate(unnamed, START, { weeklyVariable: 0 });
+  ok(near(unnamedSim.ending, OPENING - BALANCE),
+    'D. unnamed payer ending is opening minus $451.24', money(unnamedSim.ending));
 }
 
 console.log('\n=== G. reconciliation remains non-writing ===');
@@ -328,6 +373,47 @@ console.log('\n=== G. reconciliation remains non-writing ===');
     'CLI distinguishes the paying account as external-to-joint-pool');
   ok(hashFile(R.DEFAULT_DATA) === cliBefore,
     'CLI reconcile does not write data.json');
+}
+
+console.log('\n=== Plan calendar and 14-day agenda: external vs cash outflow ===');
+{
+  const planSrc = fs.readFileSync(require('path').join(__dirname, 'public', 'plan.js'), 'utf8');
+  const evHtml = /const evHtml = e => \{([\s\S]*?)\n  \};/.exec(planSrc);
+  ok(!!evHtml, 'calendar evHtml helper is mechanically readable');
+  const evBody = evHtml ? evHtml[1] : '';
+  ok(/isExternalObligation\(e\)/.test(evBody) && /jointCash === false/.test(planSrc),
+    'calendar presentation keys off jointCash === false');
+  ok(/cls =[\s\S]*external \? 'external'[\s\S]*: 'out'/.test(evBody)
+    || /external \? 'external'/.test(evBody),
+    'calendar uses class external, not out, for jointCash:false');
+  ok(/external household obligation/.test(evBody),
+    'calendar names an external household obligation, not a cash movement');
+  ok(/does not reduce joint cash/.test(evBody),
+    'calendar title says the obligation does not reduce joint cash');
+  ok(!/external[\s\S]{0,80}−\$\{money/.test(evBody),
+    'external calendar body does not use the − cash-outflow prefix');
+  ok(/e\.kind === 'noncash' \? '' : e\.amount > 0 \? '\+' : '−'/.test(evBody),
+    'ordinary joint-cash events still render with + / − cash prefixes');
+
+  const agenda = /\$\('agenda-14'\)\.innerHTML = near\.length \? near\.map\(e => \{([\s\S]*?)\}\)\.join\(''\)/.exec(planSrc);
+  ok(!!agenda, '14-day agenda renderer is mechanically readable');
+  const agBody = agenda ? agenda[1] : '';
+  ok(/isExternalObligation\(e\)/.test(agBody),
+    '14-day agenda keys off the same jointCash === false helper');
+  ok(/rowClass = external \? 'external' : \(e\.amount > 0 \? 'in' : 'out'\)/.test(agBody),
+    '14-day agenda uses class external, not out, for jointCash:false');
+  ok(/paid from \$\{externalPayerLabel\(plan, e\)\}/.test(agBody)
+    && /not joint-cash/.test(agBody),
+    '14-day agenda says paid from the paying account and not joint-cash');
+  ok(/external\s*\n\s*\? money\(Math\.abs\(e\.amount\)\)/.test(agBody)
+    || /external\s*\? money\(Math\.abs\(e\.amount\)\)/.test(agBody),
+    '14-day external amount is not prefixed as a cash outflow');
+  ok(/e\.amount > 0 \? '\+' : '−'/.test(agBody)
+    && /e\.amount > 0 \? 'in' : 'out'/.test(agBody)
+    && /e\.amount > 0 \? 'pos' : 'neg'/.test(agBody),
+    'ordinary 14-day rows still render as in/out cash movements');
+  ok(/Amanda \/ DEBT&PAYMENTS/.test(planSrc),
+    'Amanda / DEBT&PAYMENTS remains the held-elsewhere payer label');
 }
 
 console.log('\n=== H. Forecast.expandEvents remains the schedule authority ===');

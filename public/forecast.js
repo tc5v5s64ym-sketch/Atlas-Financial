@@ -285,16 +285,17 @@
   }
 
   // Joint-cash deduction is a separate fact from household obligation.
-  // Incumbent bills have no payingAccount and still leave the joint pool
-  // (`plan.startingCash.breakdown`). A payingAccount that is not on that
-  // breakdown is outside the simulated joint-cash pool — held-elsewhere or
-  // unnamed. That does not invent a transfer and does not treat
-  // held-elsewhere cash as spendable joint cash.
+  // Only a payer POSITIVELY on `plan.startingCash.heldElsewhere` is known
+  // to sit outside the joint pool. No payingAccount, a breakdown payer,
+  // or an unknown/typo id fail closed and still deduct. That does not
+  // invent an account registry or treat held-elsewhere cash as spendable.
   function billAffectsJointCash(bill, plan) {
     if (!billIsHouseholdObligation(bill)) return false;
     if (!bill.payingAccount) return true;
-    const rows = ((plan && plan.startingCash) || {}).breakdown || [];
-    return rows.some(r => r.id === bill.payingAccount);
+    const cash = (plan && plan.startingCash) || {};
+    if ((cash.breakdown || []).some(r => r.id === bill.payingAccount)) return true;
+    if ((cash.heldElsewhere || []).some(r => r.id === bill.payingAccount)) return false;
+    return true;
   }
 
   function isJointCashOutflow(event) {

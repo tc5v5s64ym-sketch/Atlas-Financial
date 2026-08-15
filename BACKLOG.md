@@ -1067,9 +1067,9 @@ untouched. Do not mark this item DONE.
 
 **D4+D5 slice (not completion):** a dated `plan.bills` row may carry
 `payingAccount`. Household-obligation status is a separate fact
-(`householdObligation`, default true). Joint-cash deduction happens only
-when the paying account is on `plan.startingCash.breakdown`, or when no
-paying account is named. Hydro observations live in
+(`householdObligation`, default true). Joint-cash deduction is suppressed only when the paying
+account is on `plan.startingCash.heldElsewhere`. No payingAccount, a
+breakdown payer, or an unknown/typo id fail closed and still deduct. Hydro observations live in
 `docs/reconciliation/utility-observations.json` and compare the Aug. 14
 account balance (informational / not scheduled), the $213.79 current due,
 the $237.45 1 September due, and Amanda / DEBT&PAYMENTS as
