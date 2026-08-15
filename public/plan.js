@@ -713,6 +713,7 @@ function renderPlan(d, periods) {
     disabled: state.disabled,
     weeklyCap: weekly,
     recommendedWeekly: recommended,
+    asOf,
   });
   const cap = budget ? budget.cap : null;
   const capMonthly = Forecast.monthlyFromWeekly(weekly);

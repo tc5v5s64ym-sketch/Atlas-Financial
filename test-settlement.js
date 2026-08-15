@@ -1,5 +1,5 @@
 'use strict';
-/* B91 D3 — settlement-aware commitments.
+/* B91 D3 — settlement-aware commitments, opening-relative.
  *
  * Acceptance corpus: docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md
  * Live Fusion camp / tryouts stay unsettled. This suite proves the
@@ -26,8 +26,12 @@ const money = n => '$' + Number(n).toFixed(2);
 const clone = x => JSON.parse(JSON.stringify(x));
 const hashFile = p => crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
 const SETTLED_ON = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
-const independentlySettled = c =>
-  typeof c.settledOn === 'string' && SETTLED_ON.test(c.settledOn);
+const independentlySettledOn = c =>
+  typeof c.settledOn === 'string' && SETTLED_ON.test(c.settledOn) ? c.settledOn : null;
+const independentlySettledBy = (c, start) => {
+  const d = independentlySettledOn(c);
+  return !!(d && typeof start === 'string' && SETTLED_ON.test(start) && d <= start);
+};
 
 const START = '2026-08-14';
 const END = F.addDays(START, 27);
@@ -36,6 +40,10 @@ const CAMP = 786;
 const SIBLING = 50;
 const CAMP_DATE = '2026-08-20';
 const PAID_BEFORE_OPENING = '2026-08-10';
+const DUE = '2026-08-16';
+const PAID = '2026-08-14';
+const AUG9 = '2026-08-09';
+const AUG15 = '2026-08-15';
 
 function fixture(extraCommitments) {
   return {
@@ -45,6 +53,10 @@ function fixture(extraCommitments) {
     income: [],
     obligations: [],
     bills: [],
+    budget: {
+      basis: 'ytd',
+      categories: [{ id: 'sport', class: 'discretionary', from: [] }],
+    },
     commitments: extraCommitments || [
       {
         id: 'camp',
@@ -53,6 +65,7 @@ function fixture(extraCommitments) {
         amount: CAMP,
         confidence: 'estimated',
         sinkingFund: true,
+        budgetCategory: 'sport',
       },
       {
         id: 'sibling',
@@ -61,25 +74,59 @@ function fixture(extraCommitments) {
         amount: SIBLING,
         confidence: 'confirmed',
         sinkingFund: true,
+        budgetCategory: 'sport',
       },
     ],
   };
 }
 
-function commitmentCash(plan) {
+function temporalFixture() {
+  const plan = fixture();
+  plan.commitments[0].date = DUE;
+  plan.commitments[0].settledOn = PAID;
+  plan.commitments[1].date = DUE;
+  return plan;
+}
+
+function commitmentCash(plan, start, end) {
   return (plan.commitments || [])
-    .filter(c => !independentlySettled(c) && c.date >= START && c.date <= END)
+    .filter(c => !independentlySettledBy(c, start) && c.date >= start && c.date <= end)
     .reduce((s, c) => s + Number(c.amount || 0), 0);
 }
 
-console.log('=== A. unsettled $786 future commitment reserves $786 ===');
+function windowEnd(start) {
+  return F.addDays(start, 27);
+}
+
+const PERIODS = { periods: { ytd: { months: 3, label: 'ytd', spending: [] } } };
+
+function sinkingLabels(plan, start) {
+  const b = F.budgetBreakdown(plan, PERIODS, { asOf: start });
+  return ((b && b.sinkingItems) || []).map(s => s.label);
+}
+
+function estimatedRisk(plan, start) {
+  const sim = F.simulate(plan, start, { weeklyVariable: 0 });
+  const outlook = F.planPhases(plan, {
+    weekly: 0,
+    sim,
+    gap: null,
+    funding: { feasible: true, shortfall: 0, parts: [] },
+  }, {
+    marks: [{ day: 0, date: start, consumer: 0, headroom: 0, debts: [] }],
+    crossings: [],
+  }, { sim, disabled: [] });
+  return (outlook.risks || []).find(r => r.id === 'estimatedCommitments') || null;
+}
+
+console.log('=== preserved: unsettled $786 future commitment reserves $786 ===');
 {
   const plan = fixture();
   const events = F.expandEvents(plan, START, END, {});
   const camp = events.find(e => e.id === 'camp');
   ok(!!camp && camp.date === CAMP_DATE && near(camp.amount, -CAMP),
     'unsettled camp produces a cash event of −$786', money(camp && camp.amount));
-  const independent = commitmentCash(plan);
+  const independent = commitmentCash(plan, START, END);
   ok(near(independent, CAMP + SIBLING),
     'independent walk reserves camp + sibling', money(independent));
   const sim = F.simulate(plan, START, { weeklyVariable: 0 });
@@ -89,39 +136,7 @@ console.log('=== A. unsettled $786 future commitment reserves $786 ===');
     'Forecast commitment total matches the independent walk');
 }
 
-console.log('\n=== B. canonical settledOn excludes the camp from Forecast ===');
-{
-  const plan = fixture();
-  plan.commitments[0].settledOn = PAID_BEFORE_OPENING;
-  ok(independentlySettled(plan.commitments[0]),
-    'independent predicate reads settledOn as settlement');
-  ok(F.commitmentStatus(plan.commitments[0]) === 'settled',
-    'derived status is settled');
-  const events = F.expandEvents(plan, START, END, {});
-  ok(!events.some(e => e.id === 'camp'),
-    'settled camp produces no future cash event');
-  ok(near(commitmentCash(plan), SIBLING),
-    'independent walk now reserves only the sibling');
-  const sim = F.simulate(plan, START, { weeklyVariable: 0 });
-  ok(near(sim.ending, OPENING - SIBLING),
-    'settled ending is opening minus the sibling only', money(sim.ending));
-  ok(near(sim.totals.commitments, SIBLING),
-    'Forecast commitment total is the sibling only');
-}
-
-console.log('\n=== C. same-day sibling still fires ===');
-{
-  const plan = fixture();
-  plan.commitments[0].settledOn = PAID_BEFORE_OPENING;
-  const events = F.expandEvents(plan, START, END, {});
-  const sibling = events.find(e => e.id === 'sibling');
-  ok(!!sibling && sibling.date === CAMP_DATE && near(sibling.amount, -SIBLING),
-    'sibling on the same date still fires at −$50');
-  ok(events.filter(e => e.date === CAMP_DATE).length === 1,
-    'exactly one cash event remains on that date');
-}
-
-console.log('\n=== D. settling changes ending cash by exactly +$786 ===');
+console.log('\n=== preserved: settling changes ending cash by exactly +$786 ===');
 {
   const unsettled = F.simulate(fixture(), START, { weeklyVariable: 0 });
   const settledPlan = fixture();
@@ -134,12 +149,64 @@ console.log('\n=== D. settling changes ending cash by exactly +$786 ===');
     'hand identity: unsettled ending + $786 = settled ending');
 }
 
-console.log('\n=== E. settlement before the Forecast opening date is respected ===');
+console.log('\n=== A. Aug. 9 opening still reserves a camp settledOn Aug. 14 ===');
+{
+  const plan = temporalFixture();
+  ok(independentlySettledOn(plan.commitments[0]) === PAID,
+    'independent predicate reads the settlement date');
+  ok(!independentlySettledBy(plan.commitments[0], AUG9),
+    'independent rule: Aug. 14 is after an Aug. 9 opening — still live');
+  ok(F.commitmentSettledBy(plan.commitments[0], AUG9) === false,
+    'Forecast helper agrees: not settled by Aug. 9');
+  const events = F.expandEvents(plan, AUG9, windowEnd(AUG9), {});
+  const camp = events.find(e => e.id === 'camp');
+  ok(!!camp && camp.date === DUE && near(camp.amount, -CAMP),
+    'Aug. 9 Forecast still reserves the Aug. 16 camp at −$786');
+  const independent = commitmentCash(plan, AUG9, windowEnd(AUG9));
+  ok(near(independent, CAMP + SIBLING),
+    'independent walk still reserves camp + sibling', money(independent));
+  const sim = F.simulate(plan, AUG9, { weeklyVariable: 0 });
+  ok(near(sim.ending, OPENING - independent),
+    'Aug. 9 ending still deducts $786', money(sim.ending));
+}
+
+console.log('\n=== B. Aug. 14 opening excludes the same settledOn ===');
+{
+  const plan = temporalFixture();
+  ok(independentlySettledBy(plan.commitments[0], START),
+    'independent rule: settledOn equals the Aug. 14 opening');
+  ok(F.commitmentSettledBy(plan.commitments[0], START) === true,
+    'Forecast helper agrees: settled by Aug. 14');
+  const events = F.expandEvents(plan, START, END, {});
+  ok(!events.some(e => e.id === 'camp'),
+    'Aug. 14 Forecast excludes the camp');
+  ok(near(commitmentCash(plan, START, END), SIBLING),
+    'independent walk now reserves only the sibling');
+  const sim = F.simulate(plan, START, { weeklyVariable: 0 });
+  ok(near(sim.ending, OPENING - SIBLING),
+    'Aug. 14 ending is opening minus the sibling only', money(sim.ending));
+}
+
+console.log('\n=== C. Aug. 15 opening also excludes it ===');
+{
+  const plan = temporalFixture();
+  ok(independentlySettledBy(plan.commitments[0], AUG15),
+    'independent rule: Aug. 14 is before an Aug. 15 opening');
+  ok(F.commitmentSettledBy(plan.commitments[0], AUG15) === true,
+    'Forecast helper agrees: settled by Aug. 15');
+  const events = F.expandEvents(plan, AUG15, windowEnd(AUG15), {});
+  ok(!events.some(e => e.id === 'camp'),
+    'Aug. 15 Forecast excludes the camp');
+}
+
+console.log('\n=== D. settledOn before opening is still excluded ===');
 {
   const plan = fixture();
   plan.commitments[0].settledOn = PAID_BEFORE_OPENING;
   ok(PAID_BEFORE_OPENING < START, 'settledOn is strictly before the opening date');
   ok(CAMP_DATE > START, 'the commitment date is still in the future');
+  ok(F.commitmentSettledBy(plan.commitments[0], START) === true,
+    'pre-opening settlement is settled for this Forecast');
   const events = F.expandEvents(plan, START, END, {});
   ok(!events.some(e => e.id === 'camp'),
     'a pre-opening settlement still excludes the future-dated camp');
@@ -151,14 +218,76 @@ console.log('\n=== E. settlement before the Forecast opening date is respected =
     'representedEvents does not hide a future-dated paid commitment');
 }
 
-console.log('\n=== F. evidence that it was paid does not write data.json ===');
+console.log('\n=== E. garbage settledOn stays reserved ===');
+{
+  const garbage = fixture();
+  garbage.commitments[0].settledOn = 'paid';
+  ok(!independentlySettledOn(garbage.commitments[0]),
+    'independent predicate rejects a non-date settledOn');
+  ok(F.commitmentStatus(garbage.commitments[0]) === 'unsettled',
+    'derived historical status stays unsettled for garbage');
+  ok(F.commitmentSettledBy(garbage.commitments[0], START) === false,
+    'garbage is not settled for the Forecast opening');
+  ok(F.expandEvents(garbage, START, END, {}).some(e => e.id === 'camp'),
+    'garbage settledOn does not silently drop the cash event');
+}
+
+console.log('\n=== F. sibling commitment still fires ===');
+{
+  const plan = temporalFixture();
+  const events = F.expandEvents(plan, START, END, {});
+  const sibling = events.find(e => e.id === 'sibling');
+  ok(!!sibling && sibling.date === DUE && near(sibling.amount, -SIBLING),
+    'sibling on the same date still fires at −$50');
+  ok(events.filter(e => e.date === DUE).length === 1,
+    'exactly one cash event remains on that date after settlement-day exclusion');
+
+  const before = F.expandEvents(plan, AUG9, windowEnd(AUG9), {});
+  ok(before.some(e => e.id === 'sibling' && near(e.amount, -SIBLING)),
+    'sibling also fires on the Aug. 9 opening that still reserves the camp');
+  ok(before.filter(e => e.date === DUE).length === 2,
+    'Aug. 9 keeps both same-day commitments');
+}
+
+console.log('\n=== G. sinking-fund and estimated-risk use the same opening rule ===');
+{
+  const plan = temporalFixture();
+  const beforeSinking = sinkingLabels(plan, AUG9);
+  const afterSinking = sinkingLabels(plan, START);
+  const laterSinking = sinkingLabels(plan, AUG15);
+  ok(beforeSinking.includes('Fusion camp (synthetic)'),
+    'sinking fund still names the camp before the settlement date');
+  ok(!afterSinking.includes('Fusion camp (synthetic)'),
+    'sinking fund drops the camp on the settlement date');
+  ok(!laterSinking.includes('Fusion camp (synthetic)'),
+    'sinking fund stays dropped after the settlement date');
+  ok(afterSinking.includes('Same-day sibling') && beforeSinking.includes('Same-day sibling'),
+    'sinking fund still names the unsettled sibling on both sides');
+
+  const beforeRisk = estimatedRisk(plan, AUG9);
+  const afterRisk = estimatedRisk(plan, START);
+  const laterRisk = estimatedRisk(plan, AUG15);
+  ok(beforeRisk && beforeRisk.labels.includes('Fusion camp (synthetic)')
+    && near(beforeRisk.total, CAMP),
+    'estimated-risk still includes the $786 camp before settlement');
+  ok(!afterRisk || !afterRisk.labels.includes('Fusion camp (synthetic)'),
+    'estimated-risk drops the camp on the settlement date');
+  ok(!laterRisk || !laterRisk.labels.includes('Fusion camp (synthetic)'),
+    'estimated-risk stays dropped after the settlement date');
+  ok(F.commitmentSettledBy(plan.commitments[0], AUG9) === false
+    && F.commitmentSettledBy(plan.commitments[0], START) === true
+    && F.commitmentSettledBy(plan.commitments[0], AUG15) === true,
+    'both consumers follow Forecast.commitmentSettledBy');
+}
+
+console.log('\n=== no-write: evidence that it was paid does not write data.json ===');
 {
   const before = hashFile(R.DEFAULT_DATA);
   const liveCamp = live.plan.commitments.find(c => c.id === 'fusioncamp');
   const liveTryouts = live.plan.commitments.find(c => c.id === 'tryouts');
-  ok(liveCamp && liveCamp.amount === CAMP && !independentlySettled(liveCamp),
+  ok(liveCamp && liveCamp.amount === CAMP && !independentlySettledOn(liveCamp),
     'live fusioncamp is still the $786 unsettled canonical row');
-  ok(liveTryouts && liveTryouts.amount === 140 && !independentlySettled(liveTryouts),
+  ok(liveTryouts && liveTryouts.amount === 140 && !independentlySettledOn(liveTryouts),
     'live tryouts are still the $140 unsettled canonical row');
 
   const result = R.reconcile({
@@ -195,7 +324,7 @@ console.log('\n=== F. evidence that it was paid does not write data.json ===');
     'live Forecast still reserves $786 until the owner writes settledOn');
 }
 
-console.log('\n=== G. missing or conflicting evidence does not mark a commitment paid ===');
+console.log('\n=== missing or conflicting evidence does not mark a commitment paid ===');
 {
   const plan = fixture();
   const missing = R.reconcile({
@@ -212,7 +341,7 @@ console.log('\n=== G. missing or conflicting evidence does not mark a commitment
   });
   ok(missing.rows[0].status === 'MISSING',
     'an observation with no settledOn date is MISSING');
-  ok(!independentlySettled(plan.commitments[0]),
+  ok(!independentlySettledOn(plan.commitments[0]),
     'that MISSING row did not attach settledOn to the commitment');
   ok(F.expandEvents(plan, START, END, {}).some(e => e.id === 'camp'),
     'Forecast still deducts the camp when settlement evidence is missing');
@@ -245,15 +374,6 @@ console.log('\n=== G. missing or conflicting evidence does not mark a commitment
   ok(F.expandEvents(plan, START, END, {}).some(e => e.id === 'camp' && near(e.amount, -CAMP)),
     'Forecast still reserves $786 when settlement evidence conflicts');
 
-  const garbage = fixture();
-  garbage.commitments[0].settledOn = 'paid';
-  ok(!independentlySettled(garbage.commitments[0]),
-    'independent predicate rejects a non-date settledOn');
-  ok(F.commitmentStatus(garbage.commitments[0]) === 'unsettled',
-    'derived status stays unsettled for garbage');
-  ok(F.expandEvents(garbage, START, END, {}).some(e => e.id === 'camp'),
-    'garbage settledOn does not silently drop the cash event');
-
   const unknown = R.reconcile({
     data: { plan: fixture() },
     map: { mappings: [] },
@@ -268,6 +388,36 @@ console.log('\n=== G. missing or conflicting evidence does not mark a commitment
   });
   ok(unknown.rows[0].status === 'MISSING',
     'settlement evidence for an unknown commitment id is MISSING');
+}
+
+console.log('\n=== proposed Aug. 14 Fusion writes — in memory only ===');
+{
+  const proposed = clone(live);
+  const camp = proposed.plan.commitments.find(c => c.id === 'fusioncamp');
+  const tryouts = proposed.plan.commitments.find(c => c.id === 'tryouts');
+  camp.settledOn = PAID;
+  tryouts.settledOn = PAID;
+  ok(live.plan.commitments.find(c => c.id === 'fusioncamp').settledOn == null,
+    'the live object was not mutated');
+  ok(!independentlySettledOn(JSON.parse(fs.readFileSync(R.DEFAULT_DATA, 'utf8'))
+    .plan.commitments.find(c => c.id === 'fusioncamp')),
+    'data.json still has no fusioncamp settledOn');
+
+  const end9 = F.addDays(AUG9, (proposed.plan.windowDays || 91) - 1);
+  const end14 = F.addDays(START, (proposed.plan.windowDays || 91) - 1);
+  const events9 = F.expandEvents(proposed.plan, AUG9, end9, {});
+  const events14 = F.expandEvents(proposed.plan, START, end14, {});
+  ok(events9.some(e => e.id === 'fusioncamp' && near(e.amount, -CAMP)),
+    'proposed write: an Aug. 9 Forecast still reserves Fusion camp');
+  ok(events9.some(e => e.id === 'tryouts' && near(e.amount, -140)),
+    'proposed write: an Aug. 9 Forecast still reserves Fusion tryouts');
+  ok(!events14.some(e => e.id === 'fusioncamp'),
+    'proposed write: an Aug. 14 Forecast treats Fusion camp as settled');
+  ok(!events14.some(e => e.id === 'tryouts'),
+    'proposed write: an Aug. 14 Forecast treats Fusion tryouts as settled');
+  ok(F.commitmentSettledBy(camp, AUG9) === false
+    && F.commitmentSettledBy(camp, START) === true,
+    'proposed write follows commitmentSettledBy');
 }
 
 console.log('\n=== live Fusion season instalments stay untouched ===');

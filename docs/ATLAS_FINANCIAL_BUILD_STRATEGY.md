@@ -688,10 +688,11 @@ exist.
 - **First slice — not completion.** The closed cash/debt compare
   (`scripts/reconcile.js` + `docs/reconciliation/balance-map.json`) and the
   `representedEvents` cutover on `Forecast.expandEvents` are the foundation.
-  **D3 slice — not completion.** A commitment may carry `settledOn`; Forecast
-  then emits no future cash event for it. Settlement observations compare
-  that field and do not write `data.json`. Live Fusion camp / tryouts stay
-  unsettled until an owner-approved edit. B91 stays open for Hydro dated
+  **D3 slice — not completion.** A commitment may carry `settledOn`.
+  Forecast treats it as already satisfied only when that date is on or
+  before the simulation start, then emits no future cash event. Settlement
+  observations compare that field and do not write `data.json`. Live Fusion
+  camp / tryouts stay unsettled until an owner-approved edit. B91 stays open for Hydro dated
   dues, Amanda income split, card pending, Q19 HELOC mechanics, the
   operating-target question, B20 history, the STALE threshold, and the rest
   of the Aug. 14 corpus. Do not mark this item done.

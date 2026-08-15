@@ -1055,8 +1055,9 @@ payroll already inside the opening observation is not replayed while an
 unposted same-day mortgage still is. Live canonical balances are unchanged.
 
 **D3 slice (not completion):** a dated commitment may carry `settledOn`
-(`YYYY-MM-DD`). That fact means the cash requirement is satisfied; the
-record stays; `Forecast.expandEvents` emits no future cash event for it.
+(`YYYY-MM-DD`). `Forecast.commitmentSettledBy` treats the cash requirement
+as satisfied only when that date is on or before the Forecast opening.
+The record stays; `Forecast.expandEvents` then emits no future cash event.
 Settlement observations live in
 `docs/reconciliation/commitment-settlements.json` and compare against
 `plan.commitments[].settledOn`. The reconciler remains non-writing.

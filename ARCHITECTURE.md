@@ -345,7 +345,7 @@ closed: `Forecast.expandEvents` is the one cash calendar.
 
 | Concept | Incumbent authority |
 |---|---|
-| The schedule — what is due, when, how often | `Forecast.expandEvents`, via `simulate`, from the `plan` inputs. Dated occurrences already inside the opening observation may be named on `plan.opening.representedEvents` or `opts.representedEvents` and are omitted only when that date is the simulation start (`plan.opening` only when its `asOf` is that start). A future represented date is ignored. That list is opening-date settlement evidence, not a date-wide skip and not a second event engine. A dated commitment that has already been paid carries `settledOn` (a `YYYY-MM-DD`) on the commitment itself; that fact means the cash requirement is satisfied, the record stays, and `expandEvents` emits no future cash event for it. Human-readable status is derived. `representedEvents` is not used for a future-dated commitment paid before the opening date |
+| The schedule — what is due, when, how often | `Forecast.expandEvents`, via `simulate`, from the `plan` inputs. Dated occurrences already inside the opening observation may be named on `plan.opening.representedEvents` or `opts.representedEvents` and are omitted only when that date is the simulation start (`plan.opening` only when its `asOf` is that start). A future represented date is ignored. That list is opening-date settlement evidence, not a date-wide skip and not a second event engine. A dated commitment may carry `settledOn` (a `YYYY-MM-DD`). `Forecast.commitmentSettledBy` treats that cash requirement as already satisfied only when the date is on or before the simulation start. The record stays; its scheduled date does not move. Human-readable historical status is derived from the date's presence. Sinking-fund and estimated-commitment risk use the same helper. `representedEvents` is not used for this |
 | Cash projection over the window | `Forecast.simulate` |
 | Weekly household cap | `Forecast.recommend` — **and only it** |
 | Income dependency deadline — when a modelled income becomes required to preserve the buffer | `Forecast.incomeDeadline` |
@@ -517,8 +517,9 @@ chequing outflows. A
 hand-kept `upcoming` list used to be a third schedule; it is deleted. Paid
 forensic notes live in `data.json` `settled` as an overlay and do not decide
 what is due. A commitment that has already been paid keeps its dated
-`plan.commitments` row and records that fact as `settledOn`; Forecast
-derives the status and omits the future cash event.
+`plan.commitments` row and records that fact as `settledOn`. Forecast
+omits the future cash event only when `settledOn` is on or before the
+simulation start.
 
 **HELOC 21st vs month-end is not settled by this architecture.** The live cash
 plan still models HELOC interest as a month-end `nonCash` capitalisation,

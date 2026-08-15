@@ -235,9 +235,10 @@
   // represented date is ignored, not reinterpreted. This is not a
   // date-wide skip: an unrepresented same-day event still fires.
   //
-  // A future-dated commitment paid before the opening date is a different
-  // fact. That lives on the commitment as settledOn and is not expressed
-  // through representedEvents.
+  // A future-dated commitment paid on a known date is a different fact.
+  // That lives on the commitment as settledOn and is not expressed
+  // through representedEvents. Settlement is opening-relative: the cash
+  // requirement is already satisfied only when settledOn <= start.
   function representedKeySet(plan, opts, start) {
     const keys = new Set();
     const take = item => {
@@ -257,13 +258,20 @@
   }
 
   // Machine-readable settlement fact on a dated commitment. A valid
-  // YYYY-MM-DD means the cash requirement has already been satisfied.
-  // The commitment record stays; human-readable status is derived.
-  // Garbage, empty, or missing values are not settlement — fail closed.
+  // YYYY-MM-DD records when the cash requirement was satisfied. The
+  // commitment row stays; human-readable historical status is derived
+  // from that date. Whether THIS Forecast still reserves the cash is
+  // opening-relative: settledOn <= simulation start. Garbage, empty,
+  // missing, or a start that is not a date are not settlement — fail
+  // closed, so the commitment stays reserved.
   const SETTLED_ON = /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
   function commitmentSettledOn(c) {
     const d = c && c.settledOn;
     return typeof d === 'string' && SETTLED_ON.test(d) ? d : null;
+  }
+  function commitmentSettledBy(c, start) {
+    const d = commitmentSettledOn(c);
+    return !!(d && typeof start === 'string' && SETTLED_ON.test(start) && d <= start);
   }
   function commitmentStatus(c) {
     return commitmentSettledOn(c) ? 'settled' : 'unsettled';
@@ -325,10 +333,11 @@
     for (const c of plan.commitments) {
       if (disabled.has(c.id)) continue;
       // A settled commitment keeps its history and its scheduled date.
-      // It does not produce a future cash event. Unsettled behaviour is
-      // unchanged. This is not a date-wide skip: a sibling on the same
-      // date still fires.
-      if (commitmentSettledOn(c)) continue;
+      // It produces no future cash event only when settlement is on or
+      // before this Forecast opening. A later settledOn is still unpaid
+      // relative to this start. This is not a date-wide skip: a sibling
+      // on the same date still fires.
+      if (commitmentSettledBy(c, start)) continue;
       if (c.date >= start && c.date <= end) {
         events.push({ date: c.date, amount: -c.amount, kind: 'commitment', label: c.label, id: c.id, confidence: c.confidence });
       }
@@ -1052,9 +1061,10 @@
     // normal sports spending was $0, which is not what the household budgeted.
     // Sinking-fund commitments are therefore tracked apart, not subtracted.
     const sinking = { total: 0, items: [] };
+    const asOf = opts.asOf || opts.start || null;
     for (const c of plan.commitments || []) {
       if ((opts.disabled || []).indexOf(c.id) >= 0) continue;
-      if (commitmentSettledOn(c)) continue;
+      if (commitmentSettledBy(c, asOf)) continue;
       const perMonth = c.amount / monthsInWindow;
       if (c.sinkingFund) {
         sinking.total += perMonth;
@@ -2176,8 +2186,12 @@
     }
 
     const disabled = new Set(opts.disabled || []);
+    const opening = (sim && sim.start)
+      || (sim && sim.daily && sim.daily[0] && sim.daily[0].date)
+      || null;
     const estimated = (plan.commitments || []).filter(c =>
-      c.confidence === 'estimated' && !disabled.has(c.id) && !commitmentSettledOn(c));
+      c.confidence === 'estimated' && !disabled.has(c.id)
+      && !commitmentSettledBy(c, opening));
     if (estimated.length) {
       risks.push({
         id: 'estimatedCommitments',
@@ -2869,7 +2883,7 @@
     };
   }
 
-  const Forecast = { addDays, diffDays, occurrences, commitmentSettledOn, commitmentStatus, expandEvents, simulate,
+  const Forecast = { addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, expandEvents, simulate,
     recommendWeekly, recommend, incomeDeadline, counterfactuals,
     budgetBreakdown, monthlyFromWeekly,
     projectDebts,
