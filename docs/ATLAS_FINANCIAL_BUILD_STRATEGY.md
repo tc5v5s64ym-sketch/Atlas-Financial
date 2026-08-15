@@ -704,10 +704,15 @@ exist.
   transfers, and household-available remainder. Observed salary is not
   promoted into Forecast. `amandaTransfer` remains the household-cash
   authority. Unknown business obligations fail closed. Live Amanda
-  income canonical state is unchanged. B91 stays open for
-  card pending, Q19 HELOC mechanics, the
-  operating-target question, B20 history, the STALE threshold, and the rest
-  of the Aug. 14 corpus. Do not mark this item done.
+  income canonical state is unchanged.
+  **D8 slice — not completion.** Card-state observations distinguish
+  posted balance, pending, limit, available credit, and confirmed
+  payment. Unknown pending is not $0. Limit and available credit are
+  never household cash. A scheduled payment does not reduce current
+  exposure. Live card canonical state is unchanged. B91 stays open for
+  Q19 HELOC mechanics, the operating-target question, B20 history, the
+  STALE threshold, and the rest of the Aug. 14 corpus. Do not mark this
+  item done.
 
 ---
 
