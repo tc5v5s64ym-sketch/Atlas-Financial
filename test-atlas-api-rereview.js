@@ -23,6 +23,20 @@ ok(!result.ok && result.code === 'stale-handoff', 'rejects a stale Cursor handof
 result = helper.parseHandoff(handoff.replace('NOT PASS', 'PASS'), newHead);
 ok(!result.ok && result.code === 'malformed-handoff', 'rejects a handoff whose prior outcome was not blocking');
 
+console.log('\n=== prior trusted review gate ===');
+const priorReviews = [
+  { id: 1, commit_id: oldHead, submitted_at: '2026-08-15T01:00:00Z', user: { login: helper.TRUSTED_REVIEWER }, body: `${helper.NOT_PASS_MARKER}\nfirst blocker` },
+];
+result = helper.validatePriorReview(priorReviews, oldHead, 'NOT PASS');
+ok(result.ok && result.reviewId === 1, 'accepts the latest trusted blocking review on the claimed prior SHA');
+result = helper.validatePriorReview([{ ...priorReviews[0], user: { login: 'cursor[bot]' } }], oldHead, 'NOT PASS');
+ok(!result.ok && result.code === 'missing-prior-review', 'rejects a blocking assertion that is not backed by the trusted Atlas reviewer');
+result = helper.validatePriorReview([
+  priorReviews[0],
+  { id: 2, commit_id: oldHead, submitted_at: '2026-08-15T02:00:00Z', user: { login: helper.TRUSTED_REVIEWER }, body: `${helper.PASS_MARKER}\nfixed` },
+], oldHead, 'NOT PASS');
+ok(!result.ok && result.code === 'prior-outcome-mismatch', 'rejects an old NOT PASS when the latest trusted review on that SHA is PASS');
+
 console.log('\n=== pending review-card gate ===');
 const pendingBody = `## Atlas Contract / Systems Review\n\n- **Required**: REQUIRED\n- **Exact reviewed head**: ${newHead}\n- **Reviewer**: ChatGPT\n- **Review outcome**: PENDING\n- **Findings and fix verification**: Awaiting exact-head re-review after automated repair.\n\n### Next\ntext\n`;
 result = helper.assertPending(pendingBody, newHead);
@@ -52,6 +66,8 @@ ok(!/secrets\./.test(dispatch) && !/write\b/.test((dispatch.match(/permissions:[
 ok(/workflow_run:\s*\n\s*workflows:\s*\["Atlas re-review handoff dispatch"\]/.test(reviewer), 'secret-bearing reviewer is default-branch workflow_run');
 ok(/permissions:[\s\S]*?actions:\s*read[\s\S]*?checks:\s*read[\s\S]*?contents:\s*read[\s\S]*?pull-requests:\s*read/.test(reviewer), 'reviewer has only the read scopes needed for run jobs, checks, contents, and PR evidence');
 ok(!/permissions:[\s\S]*?\bwrite\b/.test((reviewer.match(/permissions:[\s\S]*?\n\n/) || [''])[0]), 'reviewer GITHUB_TOKEN has no repository write scope');
+ok(/validate-prior-review/.test(reviewer), 'reviewer independently validates the trusted Atlas review behind the Cursor handoff');
+ok(/compare\/\$\{prior_head\}\.\.\.\$\{head_sha\}/.test(reviewer) && /merge_base.*prior_head/.test(reviewer), 'reviewer proves the live repair head descends from the prior reviewed SHA');
 ok(/secrets\.OPENAI_API_KEY/.test(reviewer), 'reviewer uses the owner-approved OpenAI API key');
 ok(/secrets\.ATLAS_AUTOMATION_TOKEN/.test(reviewer), 'reviewer reuses the existing owner automation credential');
 ok(/gh api user/.test(reviewer) && /tc5v5s64ym-sketch/.test(reviewer), 'reviewer fails closed unless the automation token is the trusted reviewer identity');
