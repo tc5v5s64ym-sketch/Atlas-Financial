@@ -19,8 +19,8 @@ jobs:
       (
         github.event.review.user.login == 'tc5v5s64ym-sketch' &&
         (
-          startsWith(trim(github.event.review.body), 'Atlas Contract / Systems Review — NOT PASS') ||
-          startsWith(trim(github.event.review.body), 'Atlas Contract / Systems Review — BLOCKING')
+          startsWith(github.event.review.body, 'Atlas Contract / Systems Review — NOT PASS') ||
+          startsWith(github.event.review.body, 'Atlas Contract / Systems Review — BLOCKING')
         )
       )
     runs-on: ubuntu-latest
