@@ -1,8 +1,12 @@
 name: Request Codex review
 
+# Automatic first advisory pass only. Atlas permits a second advisory pass
+# only after a high-severity/systemic finding, a material high-risk-surface
+# change, or explicit dispatch — never because an ordinary synchronize
+# produced a new SHA.
 on:
   pull_request_target:
-    types: [opened, reopened, ready_for_review, synchronize]
+    types: [opened, reopened, ready_for_review]
   workflow_dispatch:
     inputs:
       pr_number:
@@ -60,9 +64,16 @@ jobs:
           set -euo pipefail
 
           marker="<!-- atlas-codex-review:${HEAD_SHA} -->"
+          comments="$(mktemp "${RUNNER_TEMP:-/tmp}/atlas-codex-comments.XXXXXX")"
+          trap 'rm -f "${comments}"' EXIT
 
-          if gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
-            --jq '.[].body' | grep -Fq "${marker}"; then
+          # Fully materialize every paginated page before searching. Piping
+          # `gh api --paginate` into `grep -q` can SIGPIPE gh under pipefail
+          # after an early match, which then looks like "marker not found".
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+            --jq '.[].body' > "${comments}"
+
+          if grep -Fq "${marker}" "${comments}"; then
             echo "Codex review was already requested for ${HEAD_SHA}."
             exit 0
           fi

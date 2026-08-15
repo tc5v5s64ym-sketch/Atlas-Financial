@@ -50,6 +50,7 @@ const suites = [
   ['live household reconciliation', 'test-live-household.js'],
   ['refresh isolation (B92)', 'test-refresh-isolation.js'],
   ['merge-card check behaviour', 'test-mergecard.js'],
+  ['Codex review-request workflow', 'test-codex-review-request.js'],
 ];
 
 let failed = [];
