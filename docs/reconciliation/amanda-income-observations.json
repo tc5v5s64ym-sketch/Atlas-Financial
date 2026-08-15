@@ -1,0 +1,63 @@
+{
+  "schema": "atlas-amanda-income-observations/v1",
+  "source": "docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md",
+  "owns": "B91 D2 Amanda employment / coaching / transfer observations against plan.income and held-elsewhere cash. Not a payroll engine, business ledger, transfer engine, or second Forecast.",
+  "does_not_own": "Permission to write data.json, promote Tennis BC salary into Forecast income, replace amandaTransfer, or invent a household-available remainder.",
+  "asOf": "2026-08-14",
+  "observations": [
+    {
+      "observationId": "payday-amanda-salary-midmonth",
+      "fact": "employment-deposit",
+      "label": "Tennis BC net around the 15th",
+      "amount": 2168.85,
+      "cadenceHint": "semi-monthly-15th",
+      "landingAccount": "amanda-debt-payments",
+      "observedAsOf": "2026-08-14",
+      "source": "docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md",
+      "note": "Observed Amanda operating income into DEBT&PAYMENTS. No canonical salary fact. Intentionally not promoted into Forecast. Owner evidence is insufficient for a canonical salary replacement. Counting this deposit and amandaTransfer as two household inflows would double-count the same dollars."
+    },
+    {
+      "observationId": "payday-amanda-salary-monthend",
+      "fact": "employment-deposit",
+      "label": "Tennis BC net around month-end",
+      "amount": 2387.99,
+      "cadenceHint": "semi-monthly-month-end",
+      "landingAccount": "amanda-debt-payments",
+      "observedAsOf": "2026-08-14",
+      "source": "docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md",
+      "note": "Observed Amanda operating income into DEBT&PAYMENTS. No canonical salary fact. Intentionally not promoted into Forecast. Owner evidence is insufficient for a canonical salary replacement."
+    },
+    {
+      "observationId": "payday-amanda-coaching-receipt",
+      "fact": "coaching-receipt",
+      "label": "Coaching/business receipt",
+      "amount": null,
+      "unknown": true,
+      "observedAsOf": "2026-08-14",
+      "source": "docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md",
+      "note": "Coaching/business inflows also move through Amanda-controlled accounts. They are business inflows, not automatically household income. This session does not establish an amount."
+    },
+    {
+      "observationId": "payday-amanda-business-obligation",
+      "fact": "business-obligation",
+      "label": "Coach/business obligation",
+      "amount": null,
+      "unknown": true,
+      "observedAsOf": "2026-08-14",
+      "source": "docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md",
+      "note": "Coaches and business obligations must be paid before any remainder is household-available. Unknown in this session. Fail closed — do not guess costs or treat the account balance as spendable."
+    },
+    {
+      "observationId": "payday-amanda-household-available",
+      "fact": "household-available",
+      "label": "Household-available Amanda remainder",
+      "amount": null,
+      "established": false,
+      "observedBalance": 798.37,
+      "landingAccount": "amanda-debt-payments",
+      "observedAsOf": "2026-08-14",
+      "source": "docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md",
+      "note": "Cannot establish a household-available remainder. The Aug. 14 DEBT&PAYMENTS balance is not spendable household cash. Do not compute salary minus guessed coaching costs. Q25 remains OPEN."
+    }
+  ]
+}

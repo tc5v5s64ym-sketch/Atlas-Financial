@@ -17,10 +17,17 @@
  * plan.bills, and paying-account attribution. They do not go through
  * positions.csv. They do not write data.json.
  *
+ * D2 Amanda slice: observations in
+ * docs/reconciliation/amanda-income-observations.json distinguish
+ * Tennis BC salary deposits, coaching/business inflows, business
+ * obligations, household transfers, and household-available remainder.
+ * They do not write data.json and do not promote salary into Forecast.
+ *
  * This command NEVER writes data.json. An owner-approved canonical edit
  * remains a separate explicit action. Evidence that a commitment was
  * paid does not mutate the commitment. Hydro observations do not
- * promote Aug. 14 amounts into live canonical state.
+ * promote Aug. 14 amounts into live canonical state. Amanda salary
+ * evidence does not become a Forecast income stream.
  *
  * Statuses actually assigned here: MATCH / CHANGE / CONFLICT / MISSING.
  * STALE is not assigned — no owner-defined age threshold exists. Evidence
@@ -36,8 +43,19 @@ const DEFAULT_CSV = path.join(ROOT, 'docs', 'positions.csv');
 const DEFAULT_MAP = path.join(ROOT, 'docs', 'reconciliation', 'balance-map.json');
 const DEFAULT_SETTLEMENTS = path.join(ROOT, 'docs', 'reconciliation', 'commitment-settlements.json');
 const DEFAULT_UTILITY = path.join(ROOT, 'docs', 'reconciliation', 'utility-observations.json');
+const DEFAULT_AMANDA = path.join(ROOT, 'docs', 'reconciliation', 'amanda-income-observations.json');
 const SETTLED_ON = /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 const UTILITY_FACTS = new Set(['account-balance', 'dated-due', 'paying-account']);
+const AMANDA_FACTS = new Set([
+  'employment-deposit',
+  'coaching-receipt',
+  'business-obligation',
+  'internal-transfer',
+  'household-transfer',
+  'household-available',
+]);
+const AMANDA_OPERATING_ID = 'amanda-debt-payments';
+const AMANDA_TRANSFER_ID = 'amandaTransfer';
 
 const EPSILON = 0.005;
 const near = (a, b) => Math.abs(Number(a) - Number(b)) <= EPSILON;
@@ -104,7 +122,136 @@ function readCanonical(data, target) {
       locator,
     };
   }
+  if (target.collection === 'income') {
+    const row = ((((data || {}).plan) || {}).income || []).find(r => r.id === target.id);
+    if (!row) return { found: false, value: null, scenarioMonthly: null, locator };
+    const expected = row.scenarioMonthly && row.scenarioMonthly.expected != null
+      ? Number(row.scenarioMonthly.expected)
+      : Number(row.amount);
+    return {
+      found: true,
+      value: isFinite(expected) ? expected : null,
+      scenarioMonthly: row.scenarioMonthly || null,
+      locator,
+    };
+  }
   return { found: false, value: null, locator };
+}
+
+function round2(v) {
+  return Math.round(Number(v) * 100) / 100;
+}
+
+function incomeStreams(data) {
+  return ((((data || {}).plan) || {}).income) || [];
+}
+
+function isAmandaSalaryStream(stream) {
+  if (!stream || stream.id === AMANDA_TRANSFER_ID) return false;
+  const blob = `${stream.id || ''} ${stream.label || ''}`;
+  return /tennis\s*bc|amandaSalary|amanda-salary|amandaEmployment|amanda-employment|amanda.?pay/i.test(blob);
+}
+
+function isCoachingIncomeStream(stream) {
+  if (!stream || stream.id === AMANDA_TRANSFER_ID) return false;
+  const blob = `${stream.id || ''} ${stream.label || ''}`;
+  return /coach|business.?receipt|coaching/i.test(blob);
+}
+
+function amandaTransferStream(data) {
+  return incomeStreams(data).find(s => s.id === AMANDA_TRANSFER_ID) || null;
+}
+
+function forecastHasAmandaDoubleCount(data) {
+  const income = incomeStreams(data);
+  return income.some(s => s.id === AMANDA_TRANSFER_ID) && income.some(isAmandaSalaryStream);
+}
+
+function classifyAmandaMovement(m) {
+  const fact = (m && (m.kind || m.fact)) || null;
+  const unknown = !m || m.unknown === true || m.amount == null || !isFinite(Number(m.amount));
+  const amount = unknown ? 0 : Number(m.amount);
+  const base = {
+    fact,
+    amandaOperatingIncome: 0,
+    coachingInflow: 0,
+    businessObligation: 0,
+    householdCashInflow: 0,
+    newIncome: 0,
+  };
+  if (fact === 'employment-deposit') {
+    return Object.assign({}, base, { amandaOperatingIncome: amount });
+  }
+  if (fact === 'coaching-receipt') {
+    return Object.assign({}, base, { coachingInflow: amount });
+  }
+  if (fact === 'business-obligation') {
+    return Object.assign({}, base, { businessObligation: amount });
+  }
+  if (fact === 'internal-transfer') return base;
+  if (fact === 'household-transfer') {
+    return Object.assign({}, base, { householdCashInflow: amount });
+  }
+  return base;
+}
+
+function householdCashFromAmandaMovements(movements) {
+  return round2((movements || []).reduce(
+    (s, m) => s + classifyAmandaMovement(m).householdCashInflow, 0));
+}
+
+function finiteNumber(v) {
+  return typeof v === 'number' && isFinite(v);
+}
+
+function amandaHouseholdAvailable(input) {
+  if (!input || input.obligationsKnown !== true) {
+    return {
+      established: false,
+      amount: null,
+      reason: 'unknown-business-obligations',
+    };
+  }
+  if (!finiteNumber(input.employment)
+    || !finiteNumber(input.coaching)
+    || !finiteNumber(input.obligations)) {
+    return {
+      established: false,
+      amount: null,
+      reason: 'incomplete-known-inputs',
+    };
+  }
+  return {
+    established: true,
+    amount: round2(input.employment + input.coaching - input.obligations),
+    reason: null,
+  };
+}
+
+function amandaTransferAuthorityContext(data) {
+  const transfer = amandaTransferStream(data);
+  const expected = transfer && transfer.scenarioMonthly && transfer.scenarioMonthly.expected != null
+    ? Number(transfer.scenarioMonthly.expected)
+    : (transfer && transfer.amount != null ? Number(transfer.amount) : null);
+  return {
+    present: !!transfer,
+    locator: transfer ? `income:${AMANDA_TRANSFER_ID}` : null,
+    canonicalExpected: finiteNumber(expected) ? expected : null,
+    independentlyVerifiedByPaydayEvidence: false,
+    note: 'Incumbent Forecast household-cash authority. The Aug. 14 session did not independently observe or verify its scenarioMonthly values.',
+  };
+}
+
+function spendableAmandaAccount(data, id) {
+  const cash = (((data || {}).plan || {}).startingCash) || {};
+  return (cash.breakdown || []).some(r => r.id === (id || AMANDA_OPERATING_ID)
+    && r.class === 'spendable');
+}
+
+function heldElsewhereOperational(data, id) {
+  const cash = (((data || {}).plan || {}).startingCash) || {};
+  const row = (cash.heldElsewhere || []).find(r => r.id === (id || AMANDA_OPERATING_ID));
+  return !!(row && row.class === 'operational');
 }
 
 function householdPositionRows(csvText) {
@@ -365,6 +512,219 @@ function comparePayingAccount(row, data) {
   };
 }
 
+function observationsFromAmanda(doc) {
+  return ((doc && doc.observations) || []).map(item => ({
+    observationId: item.observationId,
+    fact: item.fact,
+    accountLabel: item.label || item.fact,
+    evidenceValue: item.amount != null ? Number(item.amount) : null,
+    evidenceDate: item.observedAsOf || null,
+    landingAccount: item.landingAccount || null,
+    cadenceHint: item.cadenceHint || null,
+    scenarioMonthly: item.scenarioMonthly || null,
+    unknown: item.unknown === true,
+    independentlyObserved: item.independentlyObserved === true,
+    established: item.established === true,
+    observedBalance: item.observedBalance != null ? Number(item.observedBalance) : null,
+    canonical: item.canonical || null,
+    source: item.source || null,
+    note: item.note || null,
+  }));
+}
+
+function compareEmploymentDeposit(row, data) {
+  const transfer = amandaTransferStream(data);
+  const salaryStreams = incomeStreams(data).filter(isAmandaSalaryStream);
+  const doubleCount = forecastHasAmandaDoubleCount(data);
+  let status;
+  if (doubleCount || salaryStreams.length) status = 'CONFLICT';
+  else status = 'MISSING';
+  return {
+    observationId: row.observationId,
+    fact: 'employment-deposit',
+    accountLabel: row.accountLabel,
+    evidenceValue: row.evidenceValue,
+    evidenceDate: row.evidenceDate,
+    landingAccount: row.landingAccount || AMANDA_OPERATING_ID,
+    canonicalValue: null,
+    canonicalTarget: salaryStreams.length
+      ? `income:${salaryStreams.map(s => s.id).join(',')}`
+      : '(no canonical salary fact)',
+    difference: null,
+    status,
+    representation: salaryStreams.length
+      ? 'forecast-salary-stream'
+      : 'observed-not-promoted',
+    intentionallyNotPromoted: salaryStreams.length === 0,
+    doubleCount,
+    householdTransferAuthority: transfer ? `income:${AMANDA_TRANSFER_ID}` : null,
+    note: row.note || (doubleCount
+      ? 'salary stream plus amandaTransfer would double-count household income'
+      : (salaryStreams.length
+        ? 'Tennis BC salary must not become a Forecast income stream beside amandaTransfer'
+        : 'observed Amanda operating income; no canonical salary fact; intentionally not promoted. Owner evidence insufficient for canonical salary replacement')),
+  };
+}
+
+function compareHouseholdTransfer(row, data) {
+  const target = row.canonical || { collection: 'income', id: AMANDA_TRANSFER_ID };
+  const canonical = readCanonical(data, target);
+  const doubleCount = forecastHasAmandaDoubleCount(data);
+  const independent = row.independentlyObserved === true;
+  const observed = independent ? (row.scenarioMonthly || null) : null;
+  const observedAmount = independent && row.evidenceValue != null && isFinite(row.evidenceValue)
+    ? Number(row.evidenceValue) : null;
+  let status;
+  if (doubleCount) status = 'CONFLICT';
+  else if (!canonical.found) status = 'MISSING';
+  else if (!independent) {
+    status = 'MATCH';
+  } else if (observed && canonical.scenarioMonthly) {
+    const keys = ['conservative', 'expected', 'optimistic'];
+    const same = keys.every(k => near(observed[k], canonical.scenarioMonthly[k]));
+    status = same ? 'MATCH' : 'CHANGE';
+  } else if (observedAmount != null && canonical.value != null) {
+    status = near(observedAmount, canonical.value) ? 'MATCH' : 'CHANGE';
+  } else status = 'MISSING';
+
+  return {
+    observationId: row.observationId,
+    fact: 'household-transfer',
+    accountLabel: row.accountLabel,
+    evidenceValue: independent
+      ? (observed && observed.expected != null ? Number(observed.expected) : observedAmount)
+      : null,
+    evidenceDate: row.evidenceDate,
+    landingAccount: row.landingAccount || null,
+    canonicalValue: canonical.found ? canonical.value : null,
+    canonicalTarget: canonical.locator,
+    difference: independent && canonical.found && observed && observed.expected != null
+      ? round2(Number(observed.expected) - canonical.value)
+      : null,
+    status,
+    doubleCount,
+    independentlyObserved: independent,
+    scenarioMonthly: independent && canonical.found ? canonical.scenarioMonthly : null,
+    note: row.note || (doubleCount
+      ? 'amandaTransfer plus a salary stream would double-count household income'
+      : (independent
+        ? 'household transfer is movement of existing money, not new employment income'
+        : 'incumbent Forecast household-cash authority; not independently observed by this evidence record')),
+  };
+}
+
+function compareCoachingReceipt(row, data) {
+  const coachingStreams = incomeStreams(data).filter(isCoachingIncomeStream);
+  const unknown = row.unknown === true || row.evidenceValue == null;
+  let status;
+  if (coachingStreams.length) status = 'CONFLICT';
+  else if (unknown) status = 'MISSING';
+  else status = 'MATCH';
+  return {
+    observationId: row.observationId,
+    fact: 'coaching-receipt',
+    accountLabel: row.accountLabel,
+    evidenceValue: unknown ? null : row.evidenceValue,
+    evidenceDate: row.evidenceDate,
+    canonicalValue: null,
+    canonicalTarget: '(not household Forecast income)',
+    difference: null,
+    status,
+    unknown,
+    representation: 'business-inflow',
+    note: coachingStreams.length
+      ? 'coaching/business receipt must not be a Forecast household-income stream'
+      : (row.note || 'coaching/business receipt is not automatically household income'),
+  };
+}
+
+function compareBusinessObligation(row, data) {
+  const unknown = row.unknown === true || row.evidenceValue == null;
+  const accountId = row.landingAccount || AMANDA_OPERATING_ID;
+  const spendable = spendableAmandaAccount(data, accountId);
+  const operational = heldElsewhereOperational(data, accountId);
+  let status;
+  if (spendable) status = 'CONFLICT';
+  else if (unknown) status = 'MISSING';
+  else status = 'MATCH';
+  return {
+    observationId: row.observationId,
+    fact: 'business-obligation',
+    accountLabel: row.accountLabel,
+    evidenceValue: unknown ? null : row.evidenceValue,
+    evidenceDate: row.evidenceDate,
+    canonicalValue: null,
+    canonicalTarget: operational ? `cash:${accountId}` : '(Amanda operating account)',
+    difference: null,
+    status,
+    unknown,
+    obligationsKnown: !unknown,
+    remainderEstablished: false,
+    note: unknown
+      ? (row.note || 'unknown business obligations fail closed — remainder unresolved')
+      : (row.note || 'known obligation reduces household-available remainder'),
+  };
+}
+
+function compareInternalTransfer(row, data) {
+  const labelled = incomeStreams(data).filter(s =>
+    /internal.?transfer|amanda.?to.?amanda/i.test(`${s.id || ''} ${s.label || ''}`));
+  const status = labelled.length ? 'CONFLICT' : 'MATCH';
+  return {
+    observationId: row.observationId,
+    fact: 'internal-transfer',
+    accountLabel: row.accountLabel,
+    evidenceValue: row.evidenceValue,
+    evidenceDate: row.evidenceDate,
+    canonicalValue: 0,
+    canonicalTarget: '(internal movement — $0 new income)',
+    difference: null,
+    status,
+    householdCashInflow: 0,
+    newIncome: 0,
+    note: labelled.length
+      ? 'internal Amanda transfer must not become Forecast income'
+      : (row.note || 'internal transfer between Amanda-controlled accounts creates $0 new income'),
+  };
+}
+
+function compareHouseholdAvailable(row, data) {
+  const accountId = row.landingAccount || AMANDA_OPERATING_ID;
+  const spendable = spendableAmandaAccount(data, accountId);
+  const established = row.established === true
+    && row.evidenceValue != null && isFinite(row.evidenceValue);
+  const observedBalance = row.observedBalance != null && isFinite(Number(row.observedBalance))
+    ? Number(row.observedBalance) : null;
+  const canonical = readCanonical(data, { collection: 'cash', id: accountId });
+  const canonicalValue = canonical.found ? canonical.value : null;
+  const difference = canonical.found && observedBalance != null
+    ? round2(observedBalance - canonical.value)
+    : null;
+  let status;
+  if (spendable) status = 'CONFLICT';
+  else if (observedBalance == null || !canonical.found) status = 'MISSING';
+  else if (near(observedBalance, canonical.value)) status = 'MATCH';
+  else status = 'CHANGE';
+  return {
+    observationId: row.observationId,
+    fact: 'household-available',
+    accountLabel: row.accountLabel,
+    evidenceValue: established ? row.evidenceValue : null,
+    evidenceDate: row.evidenceDate,
+    observedBalance,
+    canonicalValue,
+    canonicalTarget: canonical.locator,
+    difference,
+    status,
+    remainderEstablished: established,
+    note: spendable
+      ? 'DEBT&PAYMENTS must not be treated as spendable household cash'
+      : (row.note || (established
+        ? 'household-available remainder established from known obligations'
+        : 'household-available remainder is unresolved; fail closed')),
+  };
+}
+
 function compareGroup(rows, data) {
   const first = rows[0];
   const target = first.canonical;
@@ -414,11 +774,16 @@ function reconcile(input) {
     || observationsFromSettlements(input.settlements);
   const extraUtility = input.utilityObservations
     || observationsFromUtility(input.utility);
-  const observations = raw.filter(o => o.fact !== 'settlement' && !UTILITY_FACTS.has(o.fact));
+  const extraAmanda = input.amandaObservations
+    || observationsFromAmanda(input.amanda);
+  const observations = raw.filter(o =>
+    o.fact !== 'settlement' && !UTILITY_FACTS.has(o.fact) && !AMANDA_FACTS.has(o.fact));
   const settlementObservations = raw.filter(o => o.fact === 'settlement')
     .concat(extraSettlements || []);
   const utilityObservations = raw.filter(o => UTILITY_FACTS.has(o.fact))
     .concat(extraUtility || []);
+  const amandaObservations = raw.filter(o => AMANDA_FACTS.has(o.fact))
+    .concat(extraAmanda || []);
   const groups = new Map();
   for (const obs of observations) {
     const key = obs.canonical
@@ -464,6 +829,14 @@ function reconcile(input) {
   for (const group of datedDueGroups.values()) {
     rows.push(...compareDatedDueGroup(group, data));
   }
+  for (const obs of amandaObservations) {
+    if (obs.fact === 'employment-deposit') rows.push(compareEmploymentDeposit(obs, data));
+    else if (obs.fact === 'household-transfer') rows.push(compareHouseholdTransfer(obs, data));
+    else if (obs.fact === 'coaching-receipt') rows.push(compareCoachingReceipt(obs, data));
+    else if (obs.fact === 'business-obligation') rows.push(compareBusinessObligation(obs, data));
+    else if (obs.fact === 'internal-transfer') rows.push(compareInternalTransfer(obs, data));
+    else if (obs.fact === 'household-available') rows.push(compareHouseholdAvailable(obs, data));
+  }
   const counts = { MATCH: 0, STALE: 0, CHANGE: 0, CONFLICT: 0, MISSING: 0 };
   for (const row of rows) counts[row.status] = (counts[row.status] || 0) + 1;
   return {
@@ -472,6 +845,7 @@ function reconcile(input) {
     staleAssigned: false,
     staleReason: (map && map.stale)
       || 'No owner-defined age threshold exists. Evidence dates are reported; STALE is not inferred.',
+    amandaTransferAuthority: amandaTransferAuthorityContext(data),
     rows,
     counts,
   };
@@ -483,6 +857,7 @@ function formatReport(result) {
   lines.push('Source: docs/positions.csv (Household cash/debt rows with a map entry)');
   lines.push('Settlement source: docs/reconciliation/commitment-settlements.json');
   lines.push('Hydro source: docs/reconciliation/utility-observations.json');
+  lines.push('Amanda source: docs/reconciliation/amanda-income-observations.json');
   lines.push('Canonical: data.json via id locator (not array-index JSON Pointer)');
   lines.push(`Canonical as-of: ${result.canonicalAsOf || '(none)'}`);
   lines.push(`STALE: not assigned — ${result.staleReason}`);
@@ -504,14 +879,32 @@ function formatReport(result) {
       ? (row.evidenceSettledOn || '—')
       : row.fact === 'paying-account'
         ? (row.payingAccountLabel || row.payingAccount || '—')
-        : (row.evidenceValue == null ? '—' : n2(row.evidenceValue));
+        : row.fact === 'household-available'
+          ? (row.observedBalance == null ? 'unresolved' : n2(row.observedBalance))
+        : (row.fact === 'coaching-receipt' || row.fact === 'business-obligation'
+          || row.fact === 'household-transfer')
+          && row.evidenceValue == null
+          ? (row.fact === 'household-transfer' ? 'not observed' : 'unresolved')
+          : (row.evidenceValue == null ? '—' : n2(row.evidenceValue));
     const canonical = row.fact === 'settlement'
       ? (row.canonicalSettledOn || 'unsettled')
       : row.fact === 'account-balance'
         ? 'not scheduled'
         : row.fact === 'paying-account'
           ? (row.canonicalPayingAccount || (row.status === 'MISSING' ? 'missing' : '—'))
-          : (row.canonicalValue == null ? '—' : n2(row.canonicalValue));
+          : row.fact === 'employment-deposit'
+            ? (row.status === 'CONFLICT' ? 'double-count' : 'not promoted')
+            : row.fact === 'internal-transfer'
+              ? '$0 income'
+              : row.fact === 'coaching-receipt'
+                ? 'not household'
+                : row.fact === 'business-obligation'
+                  ? (row.remainderEstablished ? n2(row.canonicalValue) : 'unresolved')
+                : row.fact === 'household-available'
+                  ? (row.canonicalValue == null ? '—' : n2(row.canonicalValue))
+            : row.fact === 'household-transfer' && row.independentlyObserved !== true
+              ? 'canonical ctx'
+              : (row.canonicalValue == null ? '—' : n2(row.canonicalValue));
     lines.push([
       pad(row.observationId, 28),
       pad(evidence, 12),
@@ -543,6 +936,56 @@ function formatReport(result) {
       lines.push(bits.join(' — '));
     }
   }
+  const amanda = result.rows.filter(r => AMANDA_FACTS.has(r.fact));
+  if (amanda.length) {
+    lines.push('');
+    lines.push('Amanda income / coaching / transfer distinctions:');
+    for (const row of amanda) {
+      const bits = [`  ${row.observationId}: ${row.fact}`];
+      if (row.fact === 'employment-deposit') {
+        bits.push('observed Amanda operating income');
+        if (row.status === 'CONFLICT') {
+          bits.push('CONFLICT — salary plus transfer would double-count');
+        } else {
+          bits.push('no canonical salary fact — intentionally not promoted');
+        }
+      }
+      if (row.fact === 'household-transfer') {
+        bits.push(row.doubleCount
+          ? 'CONFLICT — must not sit beside a salary stream'
+          : (row.independentlyObserved
+            ? 'independently observed household transfer'
+            : 'canonical authority reference — not independently verified by this evidence'));
+      }
+      if (row.fact === 'coaching-receipt') bits.push('business inflow, not automatically household income');
+      if (row.fact === 'business-obligation') {
+        bits.push(row.unknown
+          ? 'unknown — fail closed, remainder unresolved'
+          : 'reduces household-available remainder');
+      }
+      if (row.fact === 'internal-transfer') bits.push('$0 new income');
+      if (row.fact === 'household-available') {
+        bits.push(row.remainderEstablished
+          ? 'remainder established from known obligations'
+          : 'remainder unresolved — do not treat account balance as spendable');
+      }
+      lines.push(bits.join(' — '));
+    }
+  }
+  const auth = result.amandaTransferAuthority;
+  if (auth) {
+    lines.push('');
+    lines.push('Amanda household-cash Forecast authority (canonical context, not Aug. 14 evidence):');
+    if (auth.present) {
+      lines.push(`  ${auth.locator} — incumbent Forecast household-cash authority`);
+      if (auth.canonicalExpected != null) {
+        lines.push(`  canonical expected (from data.json, not this evidence record): ${n2(auth.canonicalExpected)}`);
+      }
+      lines.push('  Aug. 14 session did not independently observe or verify the canonical scenarioMonthly values');
+    } else {
+      lines.push('  income:amandaTransfer — canonical missing');
+    }
+  }
   lines.push('');
   lines.push('Summary: '
     + STATUSES.map(s => `${result.counts[s] || 0} ${s}`).join(', '));
@@ -557,6 +1000,7 @@ function loadDefaults() {
     positionRows: householdPositionRows(fs.readFileSync(DEFAULT_CSV, 'utf8')),
     settlements: JSON.parse(fs.readFileSync(DEFAULT_SETTLEMENTS, 'utf8')),
     utility: JSON.parse(fs.readFileSync(DEFAULT_UTILITY, 'utf8')),
+    amanda: JSON.parse(fs.readFileSync(DEFAULT_AMANDA, 'utf8')),
   };
 }
 
@@ -574,6 +1018,13 @@ const api = {
   observationsFromPositions,
   observationsFromSettlements,
   observationsFromUtility,
+  observationsFromAmanda,
+  classifyAmandaMovement,
+  householdCashFromAmandaMovements,
+  amandaHouseholdAvailable,
+  amandaTransferAuthorityContext,
+  forecastHasAmandaDoubleCount,
+  isAmandaSalaryStream,
   readCanonical,
   reconcile,
   formatReport,
@@ -582,6 +1033,10 @@ const api = {
   DEFAULT_MAP,
   DEFAULT_SETTLEMENTS,
   DEFAULT_UTILITY,
+  DEFAULT_AMANDA,
+  AMANDA_FACTS,
+  AMANDA_TRANSFER_ID,
+  AMANDA_OPERATING_ID,
 };
 
 if (require.main === module) runCli();
