@@ -424,8 +424,10 @@ console.log('\n=== Deep Dive dated list: outflow vs external vs nonCash ===');
   const body = dated ? dated[1] : '';
   ok(/e\.jointCash === false/.test(body),
     'Deep Dive keys external presentation off jointCash === false');
-  ok(/Household obligation — paid externally, not joint-cash/.test(body),
+  ok(/Household obligation — paid from/.test(body) && /not joint-cash/.test(body),
     'jointCash:false is an externally paid household obligation, not a Dated payment');
+  ok(/externalPayerLabel\(d\.plan, e\)/.test(body) && /event\.payingAccount/.test(src),
+    'Deep Dive derives the external payer from event.payingAccount, not the bill note');
   ok(/chip">external</.test(body) && /not joint-cash/.test(body),
     'external rows carry a distinct external / not-joint-cash chip');
   ok(/noncash \|\| external/.test(body) && /mutedtext/.test(body),
@@ -480,6 +482,16 @@ console.log('\n=== paying-account report: one, shared, and conflicting payers ==
     '3. disagreeing payingAccount values are CONFLICT');
   ok(clashRow.canonicalPayingAccount == null,
     '3. conflicting payers are not collapsed into one canonical payer');
+
+  const partial = fixture();
+  partial.bills = partial.bills.filter(b => b.id === 'hydro-due-now');
+  const partialRow = runPay(partial, payingObs());
+  ok(partialRow && partialRow.status !== 'MATCH',
+    '4. one of two requested payer targets missing is not MATCH');
+  ok(partialRow && partialRow.status === 'MISSING',
+    '4. partial canonical presence is MISSING, not a completed payer match');
+  ok(partialRow.canonicalPayingAccount == null,
+    '4. a partial observation does not publish a canonical payer');
 }
 
 console.log('\n=== H. Forecast.expandEvents remains the schedule authority ===');

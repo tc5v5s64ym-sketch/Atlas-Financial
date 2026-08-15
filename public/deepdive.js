@@ -82,6 +82,16 @@ function renderDeepDive(d) {
   const schedule = Forecast.expandEvents(d.plan, asOf, windowEnd);
   const dated = schedule.filter(e => e.amount < 0 || e.kind === 'noncash');
   const settled = d.settled || [];
+  // Display-only. Plan already has the same lookup; this is not a second
+  // authority — it only names the payingAccount expandEvents already set.
+  const externalPayerLabel = (plan, event) => {
+    const id = event && event.payingAccount;
+    if (id === 'amanda-debt-payments') return 'Amanda / DEBT&PAYMENTS';
+    const cash = (plan && plan.startingCash) || {};
+    const row = (cash.breakdown || []).concat(cash.heldElsewhere || [])
+      .find(r => r.id === id);
+    return (row && row.label) || id || 'an account outside the joint-cash pool';
+  };
   const noteFor = id => {
     for (const list of [d.plan.obligations, d.plan.bills, d.plan.commitments]) {
       const hit = (list || []).find(x => x.id === id);
@@ -118,10 +128,11 @@ function renderDeepDive(d) {
       : external ? ' <span class="chip">not joint-cash</span>' : '';
     const amount = (noncash || external) ? Math.abs(e.amount) : -e.amount;
     const note = noteFor(e.id) || (noncash ? 'No cash leaves' : 'Due');
+    const payer = external ? externalPayerLabel(d.plan, e) : '';
     const status = noncash
       ? '<strong>No cash leaves</strong> — '
       : external
-        ? '<strong>Household obligation — paid externally, not joint-cash</strong>'
+        ? '<strong>Household obligation — paid from ' + payer + ', not joint-cash</strong>'
           + (noteFor(e.id) ? ' — ' : '')
         : '';
     const detail = external ? (noteFor(e.id) || '') : note;

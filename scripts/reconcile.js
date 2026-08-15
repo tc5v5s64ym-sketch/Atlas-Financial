@@ -326,6 +326,7 @@ function comparePayingAccount(row, data) {
   const ids = row.billIds
     || (row.canonical && row.canonical.id ? [row.canonical.id] : []);
   const bills = scheduledBills(data).filter(b => ids.includes(b.id));
+  const complete = ids.length > 0 && bills.length === ids.length;
   const payers = [];
   for (const b of bills) {
     const p = b.payingAccount || null;
@@ -334,6 +335,7 @@ function comparePayingAccount(row, data) {
   let status;
   if (!bills.length) status = 'MISSING';
   else if (payers.length > 1) status = 'CONFLICT';
+  else if (!complete) status = 'MISSING';
   else if (payers[0] === row.payingAccount) status = 'MATCH';
   else status = 'CHANGE';
 
@@ -350,7 +352,7 @@ function comparePayingAccount(row, data) {
     payingAccount: row.payingAccount || null,
     payingAccountLabel: row.payingAccountLabel || null,
     jointCashPool: row.jointCashPool === false ? false : !!row.jointCashPool,
-    canonicalPayingAccount: payers.length === 1 ? payers[0] : null,
+    canonicalPayingAccount: complete && payers.length === 1 ? payers[0] : null,
     canonicalValue: null,
     canonicalTarget: ids.length ? `bills:${ids.join(',')}` : '(unspecified)',
     difference: null,
