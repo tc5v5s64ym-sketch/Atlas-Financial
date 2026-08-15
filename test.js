@@ -57,7 +57,6 @@ const suites = [
   ['Amanda income split (B91 D2)', 'test-amanda-income.js'],
   ['card current state (B91 D8)', 'test-card-state.js'],
   ['merge-card check behaviour', 'test-mergecard.js'],
-  ['Codex review-request workflow', 'test-codex-review-request.js'],
   ['Codex Cursor repair gate', 'test-codex-cursor-repair.js'],
   ['Atlas review-block card sync', 'test-atlas-review-block.js'],
   ['GitHub PR-head confirmation after push', 'test-github-pr-head-sync.js'],

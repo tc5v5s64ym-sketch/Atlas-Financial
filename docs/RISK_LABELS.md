@@ -136,7 +136,13 @@ Default to at most one advisory pass. A second pass is justified only for a
 high-severity/systemic finding or a response that materially changes a high-risk
 runtime, security, schema, authority, cutover, or product-trust surface. The
 retired `codex-review.yml` freshness reporter is not needed under this rule: an
-ordinary push does not create a requirement to rerun an optional audit.
+ordinary push does not create a requirement to rerun an optional audit. Native
+Codex automatic reviews, configured in Codex settings, already post that first
+pass when a pull request is opened for review or marked ready, without an
+`@codex review` comment. The `codex-review-request.yml` comment dispatcher is
+retired: it never successfully posted that comment, and PR #61 still received a
+native Codex review after the dispatcher 403'd. A justified second pass remains
+a human `@codex review` comment. The Codex→Cursor repair path is unchanged.
 
 ## Control retirement
 
@@ -149,7 +155,10 @@ The retired controls in the simplification were review-prose parsing,
 negation handling, advisory freshness reporting, review-round accounting,
 machine-scored scope/atomicity narratives, and open-loop arithmetic. None
 protected product behavior. The surviving tests, reconciliations, invariants,
-security checks, exact-head equality, risk label, and owner gates do.
+security checks, exact-head equality, risk label, and owner gates do. The
+later-retired `codex-review-request.yml` comment dispatcher is the same class:
+native Codex automatic reviews already cover the first advisory pass it tried
+to request.
 
 ## Setup
 
