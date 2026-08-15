@@ -44,6 +44,8 @@ const FORECAST_NON_AUTHORITY = new Set([
   'addDays',
   'diffDays',
   'occurrences',
+  'commitmentSettledOn',
+  'commitmentStatus',
   'recommendWeekly',
   'publishedSpendType',
   'rollupSpending',

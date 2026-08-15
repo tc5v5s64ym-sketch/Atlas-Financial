@@ -6,8 +6,14 @@
  * First B91 closed set: Household cash and debt rows in docs/positions.csv
  * that have a stable id locator in docs/reconciliation/balance-map.json.
  *
+ * D3 settlement slice: commitment settlement observations in
+ * docs/reconciliation/commitment-settlements.json compare a paid/settled
+ * date against plan.commitments[].settledOn. They do not go through
+ * positions.csv or the balance map.
+ *
  * This command NEVER writes data.json. An owner-approved canonical edit
- * remains a separate explicit action.
+ * remains a separate explicit action. Evidence that a commitment was
+ * paid does not mutate the commitment.
  *
  * Statuses actually assigned here: MATCH / CHANGE / CONFLICT / MISSING.
  * STALE is not assigned — no owner-defined age threshold exists. Evidence
@@ -21,6 +27,8 @@ const ROOT = path.join(__dirname, '..');
 const DEFAULT_DATA = path.join(ROOT, 'data.json');
 const DEFAULT_CSV = path.join(ROOT, 'docs', 'positions.csv');
 const DEFAULT_MAP = path.join(ROOT, 'docs', 'reconciliation', 'balance-map.json');
+const DEFAULT_SETTLEMENTS = path.join(ROOT, 'docs', 'reconciliation', 'commitment-settlements.json');
+const SETTLED_ON = /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 
 const EPSILON = 0.005;
 const near = (a, b) => Math.abs(Number(a) - Number(b)) <= EPSILON;
@@ -62,6 +70,13 @@ function readCanonical(data, target) {
     return row
       ? { found: true, value: Number(row.balance), locator }
       : { found: false, value: null, locator };
+  }
+  if (target.collection === 'commitments') {
+    const row = (((data.plan || {}).commitments) || []).find(r => r.id === target.id);
+    if (!row) return { found: false, value: null, settledOn: null, locator };
+    const settledOn = typeof row.settledOn === 'string' && SETTLED_ON.test(row.settledOn)
+      ? row.settledOn : null;
+    return { found: true, value: Number(row.amount), settledOn, locator };
   }
   return { found: false, value: null, locator };
 }
@@ -121,6 +136,68 @@ function observationsFromPositions(positionRows, map) {
   return observations;
 }
 
+function validSettledOn(value) {
+  return typeof value === 'string' && SETTLED_ON.test(value) ? value : null;
+}
+
+function observationsFromSettlements(doc) {
+  return ((doc && doc.observations) || []).map(item => ({
+    observationId: item.observationId,
+    fact: 'settlement',
+    accountLabel: item.label || item.commitmentId,
+    commitmentId: item.commitmentId,
+    settledOn: item.settledOn,
+    evidenceValue: item.amount != null ? Number(item.amount) : null,
+    evidenceDate: item.settledOn || item.observedAsOf || null,
+    canonical: item.canonical || { collection: 'commitments', id: item.commitmentId },
+    source: item.source || null,
+    note: item.note || null,
+  }));
+}
+
+function compareSettlementGroup(rows, data) {
+  const first = rows[0];
+  const target = first.canonical || { collection: 'commitments', id: first.commitmentId };
+  const canonical = readCanonical(data, target);
+  const evidenceDates = [];
+  for (const row of rows) {
+    const d = validSettledOn(row.settledOn);
+    if (d && !evidenceDates.some(x => x === d)) evidenceDates.push(d);
+  }
+  const evidenceAmounts = rows
+    .filter(r => r.evidenceValue != null && isFinite(r.evidenceValue))
+    .map(r => r.evidenceValue);
+  const distinctAmounts = [];
+  for (const v of evidenceAmounts) {
+    if (!distinctAmounts.some(x => near(x, v))) distinctAmounts.push(v);
+  }
+
+  let status;
+  if (!canonical.found) status = 'MISSING';
+  else if (evidenceDates.length > 1 || distinctAmounts.length > 1) status = 'CONFLICT';
+  else if (!evidenceDates.length) status = 'MISSING';
+  else if (distinctAmounts.length === 1 && !near(distinctAmounts[0], canonical.value)) status = 'CONFLICT';
+  else if (canonical.settledOn === evidenceDates[0]) status = 'MATCH';
+  else status = 'CHANGE';
+
+  return rows.map(row => ({
+    observationId: row.observationId,
+    fact: 'settlement',
+    accountLabel: row.accountLabel,
+    commitmentId: row.commitmentId || target.id,
+    evidenceValue: row.evidenceValue,
+    evidenceDate: row.evidenceDate,
+    evidenceSettledOn: validSettledOn(row.settledOn),
+    canonicalValue: canonical.found ? canonical.value : null,
+    canonicalSettledOn: canonical.found ? canonical.settledOn : null,
+    canonicalTarget: canonical.locator,
+    difference: null,
+    status,
+    sourceMissing: !validSettledOn(row.settledOn),
+    note: row.note || null,
+  }));
+}
+
 function compareGroup(rows, data) {
   const first = rows[0];
   const target = first.canonical;
@@ -164,8 +241,13 @@ function compareGroup(rows, data) {
 function reconcile(input) {
   const data = input.data;
   const map = input.map;
-  const observations = input.observations
+  const raw = input.observations
     || observationsFromPositions(input.positionRows || [], map);
+  const extraSettlements = input.settlementObservations
+    || observationsFromSettlements(input.settlements);
+  const observations = raw.filter(o => o.fact !== 'settlement');
+  const settlementObservations = raw.filter(o => o.fact === 'settlement')
+    .concat(extraSettlements || []);
   const groups = new Map();
   for (const obs of observations) {
     const key = obs.canonical
@@ -175,9 +257,20 @@ function reconcile(input) {
     list.push(obs);
     groups.set(key, list);
   }
+  const settlementGroups = new Map();
+  for (const obs of settlementObservations) {
+    const id = (obs.canonical && obs.canonical.id) || obs.commitmentId || obs.observationId;
+    const key = `commitments:${id}`;
+    const list = settlementGroups.get(key) || [];
+    list.push(obs);
+    settlementGroups.set(key, list);
+  }
   const rows = [];
   for (const group of groups.values()) {
     rows.push(...compareGroup(group, data));
+  }
+  for (const group of settlementGroups.values()) {
+    rows.push(...compareSettlementGroup(group, data));
   }
   const counts = { MATCH: 0, STALE: 0, CHANGE: 0, CONFLICT: 0, MISSING: 0 };
   for (const row of rows) counts[row.status] = (counts[row.status] || 0) + 1;
@@ -196,6 +289,7 @@ function formatReport(result) {
   const lines = [];
   lines.push('Atlas reconciliation — non-writing compare');
   lines.push('Source: docs/positions.csv (Household cash/debt rows with a map entry)');
+  lines.push('Settlement source: docs/reconciliation/commitment-settlements.json');
   lines.push('Canonical: data.json via id locator (not array-index JSON Pointer)');
   lines.push(`Canonical as-of: ${result.canonicalAsOf || '(none)'}`);
   lines.push(`STALE: not assigned — ${result.staleReason}`);
@@ -213,11 +307,17 @@ function formatReport(result) {
   const pad = (s, n) => String(s == null ? '' : s).padEnd(n).slice(0, n);
   lines.push(cols.map(([h, n]) => pad(h, n)).join(' '));
   for (const row of result.rows) {
+    const evidence = row.fact === 'settlement'
+      ? (row.evidenceSettledOn || '—')
+      : (row.evidenceValue == null ? '—' : n2(row.evidenceValue));
+    const canonical = row.fact === 'settlement'
+      ? (row.canonicalSettledOn || 'unsettled')
+      : (row.canonicalValue == null ? '—' : n2(row.canonicalValue));
     lines.push([
       pad(row.observationId, 28),
-      pad(row.evidenceValue == null ? '—' : n2(row.evidenceValue), 12),
+      pad(evidence, 12),
       pad(row.evidenceDate || '—', 12),
-      pad(row.canonicalValue == null ? '—' : n2(row.canonicalValue), 12),
+      pad(canonical, 12),
       pad(row.difference == null ? '—' : n2(row.difference), 10),
       pad(row.status, 10),
       pad(row.canonicalTarget, 28),
@@ -235,6 +335,7 @@ function loadDefaults() {
     data: JSON.parse(fs.readFileSync(DEFAULT_DATA, 'utf8')),
     map: JSON.parse(fs.readFileSync(DEFAULT_MAP, 'utf8')),
     positionRows: householdPositionRows(fs.readFileSync(DEFAULT_CSV, 'utf8')),
+    settlements: JSON.parse(fs.readFileSync(DEFAULT_SETTLEMENTS, 'utf8')),
   };
 }
 
@@ -250,12 +351,14 @@ const api = {
   parseCsvLine,
   householdPositionRows,
   observationsFromPositions,
+  observationsFromSettlements,
   readCanonical,
   reconcile,
   formatReport,
   DEFAULT_DATA,
   DEFAULT_CSV,
   DEFAULT_MAP,
+  DEFAULT_SETTLEMENTS,
 };
 
 if (require.main === module) runCli();

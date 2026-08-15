@@ -46,7 +46,10 @@ function renderRecords(d) {
       (d.plan.billsNote ? `<p class="deriv-note">${d.plan.billsNote}</p>` : '') +
       '<h3>Commitments</h3>' +
       d.plan.commitments.map(c => li(`${c.label} — ${fmtDate(c.date)}`, money2(c.amount),
-        c.adjustable ? 'optional' : 'one-time', c.confidence, c.note)).join('');
+        Forecast.commitmentStatus(c) === 'settled'
+          ? 'settled'
+          : (c.adjustable ? 'optional' : 'one-time'),
+        c.confidence, c.note)).join('');
   }
 }
 

@@ -1054,6 +1054,16 @@ assigned — no owner-defined age threshold. `Forecast.expandEvents` accepts
 payroll already inside the opening observation is not replayed while an
 unposted same-day mortgage still is. Live canonical balances are unchanged.
 
+**D3 slice (not completion):** a dated commitment may carry `settledOn`
+(`YYYY-MM-DD`). That fact means the cash requirement is satisfied; the
+record stays; `Forecast.expandEvents` emits no future cash event for it.
+Settlement observations live in
+`docs/reconciliation/commitment-settlements.json` and compare against
+`plan.commitments[].settledOn`. The reconciler remains non-writing.
+Live Fusion camp and tryouts stay unsettled until an explicit
+owner-approved edit. The three $500 Fusion season instalments are
+untouched. Do not mark this item DONE.
+
 **Outcome (whole item, still open):** a small **non-writing** reconciliation
 report over existing observation records: evidence value/date, current Atlas
 value, MATCH / STALE / CHANGE / CONFLICT / MISSING, unresolved item. One

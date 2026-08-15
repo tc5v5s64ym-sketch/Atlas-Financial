@@ -1,0 +1,29 @@
+{
+  "schema": "atlas-commitment-settlement-observations/v1",
+  "source": "docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md",
+  "owns": "B91 settlement observations against plan.commitments. Not a fact store, not a query language, and not a second calendar.",
+  "does_not_own": "Permission to write data.json, Forecast results, commitment amounts, or the three $500 Fusion season instalments.",
+  "asOf": "2026-08-14",
+  "observations": [
+    {
+      "observationId": "payday-fusioncamp-settled",
+      "fact": "settlement",
+      "commitmentId": "fusioncamp",
+      "label": "Fusion camp",
+      "settledOn": "2026-08-14",
+      "amount": 786,
+      "source": "docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md",
+      "note": "Aug. 14 payday session: Fusion camp already paid. Amanda 2026-08-10 also stated already paid. Exact bank posting date is not in the committed corpus. This observation does not write settledOn onto the live commitment."
+    },
+    {
+      "observationId": "payday-tryouts-settled",
+      "fact": "settlement",
+      "commitmentId": "tryouts",
+      "label": "Fusion tryouts",
+      "settledOn": "2026-08-14",
+      "amount": 140,
+      "source": "docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md",
+      "note": "Aug. 14 payday session: Fusion tryouts already paid. Exact bank posting date is not in the committed corpus. This observation does not write settledOn onto the live commitment."
+    }
+  ]
+}

@@ -42,6 +42,7 @@ function cashOnDate(plan, date, occurrences, scenario) {
     n -= Number(b.amount || 0);
   }
   for (const c of plan.commitments || []) {
+    if (typeof c.settledOn === 'string' && /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(c.settledOn)) continue;
     if (c.date === date) n -= Number(c.amount || 0);
   }
   return n;

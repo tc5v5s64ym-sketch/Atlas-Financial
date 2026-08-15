@@ -52,6 +52,7 @@ const suites = [
   ['refresh isolation (B92)', 'test-refresh-isolation.js'],
   ['non-writing reconciliation (B91)', 'test-reconcile.js'],
   ['current-state cutover (B91)', 'test-cutover.js'],
+  ['commitment settlement (B91 D3)', 'test-settlement.js'],
   ['merge-card check behaviour', 'test-mergecard.js'],
 ];
 

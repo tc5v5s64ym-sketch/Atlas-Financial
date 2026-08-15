@@ -273,11 +273,14 @@ Do not fabricate dates or costs.
 **What we know:** The Aug. 14 payday session confirmed Fusion camp (~$786) and
 Fusion tryouts ($140) already paid. Live `plan.commitments` had still dated
 those as upcoming; once B91 reconciles payment, they must no longer reserve
-cash. Three $500 instalments remain on the live plan; their relationship to a
-conditional travel-team fee is unresolved.
-**What the answer changes:** Later Fusion cash dates. This PR does not change
-those live rows. Camp and tryouts paid-status is B91 acceptance evidence, not
-a closed instalment answer.
+cash. The settlement mechanism is `settledOn` on the dated commitment;
+applying it to the live camp and tryout rows is an owner-approved canonical
+edit, not an automatic reconciler write. Three $500 instalments remain on
+the live plan; their relationship to a conditional travel-team fee is
+unresolved.
+**What the answer changes:** Later Fusion cash dates. This slice does not
+change those live rows. Camp and tryouts paid-status is B91 acceptance
+evidence, not a closed instalment answer.
 
 ### Q25. How much of Amanda’s DEBT&PAYMENTS balance is genuinely household-available after coaching, business, and pass-through obligations?
 **Status:** OPEN · **Owner:** Dale + Amanda

@@ -234,6 +234,10 @@
   // is used only when plan.opening.asOf is that same start. A future
   // represented date is ignored, not reinterpreted. This is not a
   // date-wide skip: an unrepresented same-day event still fires.
+  //
+  // A future-dated commitment paid before the opening date is a different
+  // fact. That lives on the commitment as settledOn and is not expressed
+  // through representedEvents.
   function representedKeySet(plan, opts, start) {
     const keys = new Set();
     const take = item => {
@@ -250,6 +254,19 @@
     const represented = representedKeySet(plan, opts, start);
     if (!represented.size) return events;
     return events.filter(e => !represented.has(e.id + '@' + e.date));
+  }
+
+  // Machine-readable settlement fact on a dated commitment. A valid
+  // YYYY-MM-DD means the cash requirement has already been satisfied.
+  // The commitment record stays; human-readable status is derived.
+  // Garbage, empty, or missing values are not settlement — fail closed.
+  const SETTLED_ON = /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
+  function commitmentSettledOn(c) {
+    const d = c && c.settledOn;
+    return typeof d === 'string' && SETTLED_ON.test(d) ? d : null;
+  }
+  function commitmentStatus(c) {
+    return commitmentSettledOn(c) ? 'settled' : 'unsettled';
   }
 
   function streamAmount(stream, opts) {
@@ -307,6 +324,11 @@
     }
     for (const c of plan.commitments) {
       if (disabled.has(c.id)) continue;
+      // A settled commitment keeps its history and its scheduled date.
+      // It does not produce a future cash event. Unsettled behaviour is
+      // unchanged. This is not a date-wide skip: a sibling on the same
+      // date still fires.
+      if (commitmentSettledOn(c)) continue;
       if (c.date >= start && c.date <= end) {
         events.push({ date: c.date, amount: -c.amount, kind: 'commitment', label: c.label, id: c.id, confidence: c.confidence });
       }
@@ -1032,6 +1054,7 @@
     const sinking = { total: 0, items: [] };
     for (const c of plan.commitments || []) {
       if ((opts.disabled || []).indexOf(c.id) >= 0) continue;
+      if (commitmentSettledOn(c)) continue;
       const perMonth = c.amount / monthsInWindow;
       if (c.sinkingFund) {
         sinking.total += perMonth;
@@ -2154,7 +2177,7 @@
 
     const disabled = new Set(opts.disabled || []);
     const estimated = (plan.commitments || []).filter(c =>
-      c.confidence === 'estimated' && !disabled.has(c.id));
+      c.confidence === 'estimated' && !disabled.has(c.id) && !commitmentSettledOn(c));
     if (estimated.length) {
       risks.push({
         id: 'estimatedCommitments',
@@ -2846,7 +2869,7 @@
     };
   }
 
-  const Forecast = { addDays, diffDays, occurrences, expandEvents, simulate,
+  const Forecast = { addDays, diffDays, occurrences, commitmentSettledOn, commitmentStatus, expandEvents, simulate,
     recommendWeekly, recommend, incomeDeadline, counterfactuals,
     budgetBreakdown, monthlyFromWeekly,
     projectDebts,

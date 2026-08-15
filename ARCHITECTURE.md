@@ -345,7 +345,7 @@ closed: `Forecast.expandEvents` is the one cash calendar.
 
 | Concept | Incumbent authority |
 |---|---|
-| The schedule — what is due, when, how often | `Forecast.expandEvents`, via `simulate`, from the `plan` inputs. Dated occurrences already inside the opening observation may be named on `plan.opening.representedEvents` or `opts.representedEvents` and are omitted only when that date is the simulation start (`plan.opening` only when its `asOf` is that start). A future represented date is ignored. That list is settlement evidence, not a date-wide skip and not a second event engine |
+| The schedule — what is due, when, how often | `Forecast.expandEvents`, via `simulate`, from the `plan` inputs. Dated occurrences already inside the opening observation may be named on `plan.opening.representedEvents` or `opts.representedEvents` and are omitted only when that date is the simulation start (`plan.opening` only when its `asOf` is that start). A future represented date is ignored. That list is opening-date settlement evidence, not a date-wide skip and not a second event engine. A dated commitment that has already been paid carries `settledOn` (a `YYYY-MM-DD`) on the commitment itself; that fact means the cash requirement is satisfied, the record stays, and `expandEvents` emits no future cash event for it. Human-readable status is derived. `representedEvents` is not used for a future-dated commitment paid before the opening date |
 | Cash projection over the window | `Forecast.simulate` |
 | Weekly household cap | `Forecast.recommend` — **and only it** |
 | Income dependency deadline — when a modelled income becomes required to preserve the buffer | `Forecast.incomeDeadline` |
@@ -378,7 +378,7 @@ closed: `Forecast.expandEvents` is the one cash calendar.
 | Derived publication aggregates of those facts | `Forecast.publicationTotals` |
 | Calendar — the on-page month grid and agenda | `renderCalendar()` in `public/plan.js` — **presentation of `sim.events` only** |
 | Calendar — the exported `.ics` | `scripts/calendar-ics.js`: cash-payment VEVENTs **derived** from `Forecast.expandEvents` over a longer horizon; standing reminder VEVENTs (statement closes, tax deadlines, mortgage renewal) remain a thin non-cash overlay |
-| Observation-to-canonical cash/debt compare | `scripts/reconcile.js` (non-writing). Maps `docs/positions.csv` Household rows through `docs/reconciliation/balance-map.json` id locators onto `plan.startingCash` / `debts`. Does not write `data.json`. STALE is not assigned; no owner-defined age threshold exists. First B91 closed set only — not a universal fact database |
+| Observation-to-canonical cash/debt compare | `scripts/reconcile.js` (non-writing). Maps `docs/positions.csv` Household rows through `docs/reconciliation/balance-map.json` id locators onto `plan.startingCash` / `debts`. Commitment settlement observations live in `docs/reconciliation/commitment-settlements.json` and compare a paid date against `plan.commitments[].settledOn`; they do not go through `positions.csv` or the balance map. Does not write `data.json`. Evidence that a commitment was paid does not mutate the commitment. STALE is not assigned; no owner-defined age threshold exists. Not a universal fact database |
 
 **The table is not a closed list, and reading it as one is how work goes wrong.**
 Three rounds of advisory review added five rows to it that inspection had missed.
@@ -516,7 +516,9 @@ closes, tax deadlines, the mortgage-renewal countdown and the HELOC contractual
 chequing outflows. A
 hand-kept `upcoming` list used to be a third schedule; it is deleted. Paid
 forensic notes live in `data.json` `settled` as an overlay and do not decide
-what is due.
+what is due. A commitment that has already been paid keeps its dated
+`plan.commitments` row and records that fact as `settledOn`; Forecast
+derives the status and omits the future cash event.
 
 **HELOC 21st vs month-end is not settled by this architecture.** The live cash
 plan still models HELOC interest as a month-end `nonCash` capitalisation,
@@ -564,9 +566,10 @@ owner policy remain enough for household intent. Preferred shape, when built:
 existing observation record → one canonical pointer into `data.json` →
 comparison → owner-approved canonical edit → Forecast. The first B91 slice
 adds the non-writing compare (`scripts/reconcile.js`) and the
-`representedEvents` cutover on `Forecast.expandEvents`. It does not finish
-B91 and does not write canonical state. Sequencing and the Aug. 14 payday
-acceptance corpus live in the build strategy and
+`representedEvents` cutover on `Forecast.expandEvents`. The D3 slice adds
+`settledOn` on a dated commitment and settlement observations against that
+field. Neither slice finishes B91 or writes canonical state. Sequencing and
+the Aug. 14 payday acceptance corpus live in the build strategy and
 [`docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md`](docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md).
 
 **`plan.nextDollar` is derived, not instructed.** Its own provenance note says so:
