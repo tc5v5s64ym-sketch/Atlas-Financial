@@ -7,8 +7,9 @@
  * check reads the live PR body, not the workflow event body, and fails closed
  * when the live PR is closed, retargeted, or no longer the event head. A
  * workflow_dispatch run with explicit PR number and expected head SHA uses
- * that same live validation and fails closed on mismatch. It deliberately
- * does not test the meaning of prose.
+ * that same live validation and fails closed on mismatch. A default-branch
+ * dispatch for a predating PR head records the required check on the
+ * expected head. It deliberately does not test the meaning of prose.
  */
 
 const fs = require('fs');
@@ -122,6 +123,7 @@ async function validate(body, head = HEAD, files = ['docs/status.md'], options =
   const context = {
     eventName,
     sha: options.runSha != null ? options.runSha : eventHead,
+    ref: options.ref || '',
     repo: { owner: 'owner', repo: 'repo' },
     payload: eventName === 'workflow_dispatch'
       ? {
@@ -133,17 +135,28 @@ async function validate(body, head = HEAD, files = ['docs/status.md'], options =
             ? options.dispatchHead
             : eventHead,
         },
+        repository: { default_branch: options.defaultBranch || '' },
       }
       : {
         pull_request: { number: eventNumber, body: eventBody, head: { sha: eventHead } },
       },
   };
+  const createdChecks = options.createdChecks || [];
   const github = {
     rest: {
       pulls: {
         listFiles() {},
         async get() {
           return { data: livePr };
+        },
+      },
+      checks: {
+        async create(params) {
+          createdChecks.push(params);
+          if (options.checkCreateError) {
+            throw new Error(options.checkCreateError);
+          }
+          return { data: { id: 1 } };
         },
       },
     },
@@ -334,6 +347,104 @@ checks.push((async () => {
   ok(
     Boolean(message) && /failed closed/i.test(message) && /workflow run SHA/i.test(message),
     'workflow_dispatch fails closed when the run SHA is not the expected head',
+    message || 'unexpected green',
+  );
+})());
+checks.push((async () => {
+  const createdChecks = [];
+  const message = await validate(card({ review: required }), HEAD, ['docs/status.md'], {
+    eventName: 'workflow_dispatch',
+    runSha: 'c'.repeat(40),
+    ref: 'refs/heads/evil',
+    defaultBranch: 'main',
+    createdChecks,
+  });
+  ok(
+    Boolean(message) && /workflow run SHA/i.test(message) && createdChecks.length === 0,
+    'workflow_dispatch from a non-default ref still fails closed when the run SHA is not the expected head',
+    message || 'unexpected green',
+  );
+})());
+checks.push((async () => {
+  const createdChecks = [];
+  const message = await validate(card({ review: required }), HEAD, ['docs/status.md'], {
+    eventName: 'workflow_dispatch',
+    runSha: 'c'.repeat(40),
+    ref: 'refs/heads/main',
+    defaultBranch: 'main',
+    createdChecks,
+  });
+  ok(
+    !message
+      && createdChecks.length === 1
+      && createdChecks[0].name === 'Merge card mechanical fields'
+      && createdChecks[0].head_sha === HEAD
+      && createdChecks[0].conclusion === 'success',
+    'default-branch dispatch records the required check on the expected head',
+    message || JSON.stringify(createdChecks[0] || {}),
+  );
+})());
+checks.push((async () => {
+  const createdChecks = [];
+  const message = await validate(card({ review: required }), HEAD, ['docs/status.md'], {
+    eventName: 'workflow_dispatch',
+    runSha: HEAD,
+    createdChecks,
+  });
+  ok(
+    !message && createdChecks.length === 0,
+    'PR-head dispatch still uses the Actions job check, not a synthetic check run',
+    message || `checks=${createdChecks.length}`,
+  );
+})());
+checks.push((async () => {
+  const createdChecks = [];
+  const message = await validate(card({ review: required }), HEAD, ['docs/status.md'], {
+    eventName: 'workflow_dispatch',
+    runSha: 'c'.repeat(40),
+    ref: 'refs/heads/main',
+    defaultBranch: 'main',
+    liveHead: 'b'.repeat(40),
+    createdChecks,
+  });
+  ok(
+    Boolean(message) && /live head/i.test(message) && createdChecks.length === 0,
+    'default-branch dispatch does not record a check when the live head moved',
+    message || 'unexpected green',
+  );
+})());
+checks.push((async () => {
+  const createdChecks = [];
+  const message = await validate(card({ omitField: 'Tests' }), HEAD, ['docs/status.md'], {
+    eventName: 'workflow_dispatch',
+    runSha: 'c'.repeat(40),
+    ref: 'refs/heads/main',
+    defaultBranch: 'main',
+    createdChecks,
+  });
+  ok(
+    Boolean(message)
+      && /Tests/.test(message)
+      && createdChecks.length === 1
+      && createdChecks[0].head_sha === HEAD
+      && createdChecks[0].conclusion === 'failure'
+      && createdChecks[0].name === 'Merge card mechanical fields',
+    'default-branch dispatch records a failing required check on the expected head',
+    message || JSON.stringify(createdChecks[0] || {}),
+  );
+})());
+checks.push((async () => {
+  const message = await validate(card({ review: required }), HEAD, ['docs/status.md'], {
+    eventName: 'workflow_dispatch',
+    runSha: 'c'.repeat(40),
+    ref: 'refs/heads/main',
+    defaultBranch: 'main',
+    checkCreateError: 'api down',
+    createdChecks: [],
+  });
+  ok(
+    Boolean(message) && /required check on the expected head/i.test(message),
+    'default-branch dispatch fails closed when the required check cannot be recorded',
     message || 'unexpected green',
   );
 })());

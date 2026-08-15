@@ -11,8 +11,13 @@ name: Merge card check
 # pull_request remains the ordinary path, including human card edits. Trusted
 # Atlas PASS card-sync uses GITHUB_TOKEN, which GitHub does not chain into a
 # pull_request edited run. That automation path starts this same workflow via
-# workflow_dispatch on the PR head branch, with the PR number and expected
-# head SHA. The job name is the required-check identity and must stay put.
+# workflow_dispatch, with the PR number and expected head SHA. The dispatcher
+# targets the PR head branch when that commit already has this trigger, so the
+# required check lands on that SHA. A PR head created before this trigger
+# reached main cannot be targeted (`gh workflow run --ref` uses the workflow
+# version at that ref). Those runs use the default-branch workflow version, and
+# this job records the required check on the expected PR head. The job name is
+# the required-check identity and must stay put.
 
 on:
   pull_request:
@@ -30,6 +35,7 @@ on:
 
 permissions:
   pull-requests: read
+  checks: write
 
 jobs:
   check:
@@ -46,8 +52,11 @@ jobs:
             const dispatchInputs = context.payload.inputs || {};
             const { owner, repo } = context.repo;
             const problems = [];
+            const REQUIRED_CHECK_NAME = 'Merge card mechanical fields';
+            const runSha = String(context.sha || '');
             let eventNumber;
             let eventHead;
+            let reportRequiredCheckOnExpectedHead = false;
 
             if (!owner || !repo) {
               core.setFailed('Merge-card check failed closed: the event does not identify the repository.');
@@ -57,16 +66,20 @@ jobs:
             if (eventName === 'workflow_dispatch') {
               eventNumber = Number(dispatchInputs.pr_number);
               eventHead = String(dispatchInputs.expected_head_sha || '').replace(/\s+/g, '');
-              const runSha = String(context.sha || '');
               if (!/^[0-9a-f]{40}$/i.test(eventHead)) {
                 core.setFailed('Merge-card check failed closed: workflow_dispatch did not identify a 40-character expected head SHA.');
                 return;
               }
               if (!/^[0-9a-f]{40}$/i.test(runSha) || runSha.toLowerCase() !== eventHead.toLowerCase()) {
-                core.setFailed(
-                  `Merge-card check failed closed: workflow run SHA ${runSha.slice(0, 7) || '(missing)'} is not the expected head ${eventHead.slice(0, 7)}.`
-                );
-                return;
+                const defaultBranch = String(((context.payload.repository || {}).default_branch) || '');
+                const runRefName = String(context.ref || '').replace(/^refs\/heads\//, '');
+                if (!defaultBranch || runRefName !== defaultBranch) {
+                  core.setFailed(
+                    `Merge-card check failed closed: workflow run SHA ${runSha.slice(0, 7) || '(missing)'} is not the expected head ${eventHead.slice(0, 7)}.`
+                  );
+                  return;
+                }
+                reportRequiredCheckOnExpectedHead = true;
               }
             } else if (eventName === 'pull_request') {
               eventNumber = Number(eventPr.number);
@@ -303,6 +316,31 @@ jobs:
                     problems.push(`A NOT REQUIRED review must record ${label}: N/A.`);
                   }
                 }
+              }
+            }
+
+            if (reportRequiredCheckOnExpectedHead) {
+              try {
+                await github.rest.checks.create({
+                  owner,
+                  repo,
+                  name: REQUIRED_CHECK_NAME,
+                  head_sha: eventHead,
+                  status: 'completed',
+                  conclusion: problems.length ? 'failure' : 'success',
+                  output: {
+                    title: problems.length
+                      ? `${problems.length} mechanical merge-card problem(s)`
+                      : 'Merge card mechanical fields are complete',
+                    summary: problems.length
+                      ? `- ${problems.join('\n- ')}`
+                      : 'Merge card mechanical fields are complete. Prose remains a reviewer judgement.',
+                  },
+                });
+              } catch (error) {
+                const detail = error && error.message ? ` (${error.message})` : '.';
+                core.setFailed(`Merge-card check failed closed: could not record the required check on the expected head${detail}`);
+                return;
               }
             }
 

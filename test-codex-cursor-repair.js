@@ -295,8 +295,9 @@ ok(/startsWith\(github\.event\.review\.body, 'Atlas Contract \/ Systems Review â
 ok(/Trusted Atlas PASS does not start a repair/.test(repair),
   'trusted workflow does not start Cursor after Atlas PASS');
 ok(/gh workflow run merge-card-check\.yml/.test(repair)
-  && /expected_head_sha/.test(repair),
-  'trusted Atlas PASS dispatches Merge Card check with the expected head SHA');
+  && /expected_head_sha/.test(repair)
+  && /atlas-merge-card-dispatch-ref\.js/.test(repair),
+  'trusted Atlas PASS dispatches Merge Card check with a head-aware workflow ref');
 ok(/actions:\s*write/.test(repair),
   'trusted workflow has actions:write so it can dispatch Merge Card check');
 ok(!/gh api --method PATCH[\s\S]{0,120}\btitle\b/.test(repair)

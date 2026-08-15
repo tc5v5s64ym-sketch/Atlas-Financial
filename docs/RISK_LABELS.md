@@ -39,11 +39,17 @@ The merge card check validates only mechanical facts:
   event body. A closed PR, a non-`main` base, a PR or repository identity
   change, or a live head that is not the event head fails closed; and
 - after trusted Atlas PASS card-sync, the default-branch repair workflow
-  starts a fresh run of this same workflow via `workflow_dispatch` on the PR
-  head branch, with the PR number and expected head SHA. That run uses the
-  existing job name and the same live-PR validation. It fails closed if the
-  live PR/head no longer matches. GitHub does not chain `pull_request`
-  `edited` from `GITHUB_TOKEN`, so that event is not the automation path.
+  starts a fresh run of this same workflow via `workflow_dispatch`, with
+  the PR number and expected head SHA. The dispatcher targets the PR head
+  branch when that commit's workflow file already has the trigger, so the
+  required check lands on that SHA. A PR head that predates the trigger
+  cannot be targeted (`gh workflow run --ref` uses the workflow version at
+  that ref); those runs use the default-branch workflow version, and this
+  job records the required check on the expected PR head. That run uses
+  the existing job name and the same live-PR validation. It fails closed
+  if the live PR/head no longer matches. GitHub does not chain
+  `pull_request` `edited` from `GITHUB_TOKEN`, so that event is not the
+  automation path.
 
 It does not parse prose, negation, severity, scope, dispositions, review rounds,
 or open-loop narratives. It does not prove a review happened. It does not infer
@@ -56,7 +62,10 @@ fields, invalid decisions, stale heads, wrong reviewer identity, and non-passing
 required outcomes fail. It proves the check reads the live PR body rather than
 the workflow event body, and that a moved live head or a closed or retargeted
 PR fails closed. It also proves `workflow_dispatch` with matching live PR/head
-succeeds and fails closed on mismatch.
+succeeds and fails closed on mismatch. A default-branch dispatch for a PR head
+that predates the trigger records the required check on the expected head; a
+non-default dispatch ref whose run SHA is not the expected head still fails
+closed.
 
 ### `tests`
 

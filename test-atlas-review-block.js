@@ -6,10 +6,12 @@
  * write PASS; stale / wrong-reviewer / issue-comment / malformed bodies fail
  * closed; NOT PASS and BLOCKING update the block; a successful Atlas repair
  * push moves the new head to PENDING without carrying the old outcome; PASS
- * does not start Cursor; after PASS card-sync the trusted workflow dispatches
- * the existing Merge Card check on the PR head with explicit PR number and
- * expected head SHA; the dispatcher stays secret-free and read-only; and
- * PR-body mutation lives only on the trusted default-branch workflow.
+ * does not start Cursor; after PASS card-sync the trusted workflow selects
+ * the merge-card-check workflow version from the live PR head and dispatches
+ * that workflow with explicit PR number and expected head SHA, using the
+ * default-branch copy when the live head predates the trigger; the
+ * dispatcher stays secret-free and read-only; and PR-body mutation lives
+ * only on the trusted default-branch workflow.
  */
 
 const fs = require('fs');
@@ -18,11 +20,13 @@ const { spawnSync } = require('child_process');
 const { sourceText } = require('./test-source-text');
 const gate = require('./scripts/atlas-cursor-repair-gate');
 const block = require('./scripts/atlas-review-block');
+const dispatchRef = require('./scripts/atlas-merge-card-dispatch-ref');
 
 const DISPATCH = path.join(__dirname, '.github/workflows/codex-cursor-repair-dispatch.yml');
 const REPAIR = path.join(__dirname, '.github/workflows/codex-cursor-repair.yml');
 const MERGE_CARD = path.join(__dirname, '.github/workflows/merge-card-check.yml');
 const HELPER = path.join(__dirname, 'scripts/atlas-review-block.js');
+const DISPATCH_REF = path.join(__dirname, 'scripts/atlas-merge-card-dispatch-ref.js');
 
 let failures = 0;
 
@@ -406,13 +410,27 @@ const passPath = passStart >= 0 && passExit > passStart
   : '';
 ok(/gh workflow run merge-card-check\.yml/.test(passPath),
   'trusted PASS starts the existing Merge Card workflow via workflow_dispatch');
-ok(/--ref "\$\{live_after_ref\}"/.test(passPath),
-  'the dispatched Merge Card run targets the live PR head branch');
+ok(/atlas-merge-card-dispatch-ref\.js select/.test(passPath),
+  'PASS dispatch selects the workflow ref from the live head copy');
+ok(/contents\/\.github\/workflows\/merge-card-check\.yml/.test(passPath)
+  && /ref=\$\{live_after_head\}/.test(passPath),
+  'PASS dispatch reads merge-card-check.yml at the live PR head SHA');
+ok(/--ref "\$\{dispatch_ref\}"/.test(passPath),
+  'the dispatched Merge Card run uses the selected workflow ref');
+ok(/DEFAULT_BRANCH: \$\{\{ github\.event\.repository\.default_branch \}\}/.test(repair),
+  'PASS dispatch can fall back to the repository default branch');
 ok(/--field "pr_number=\$\{pr_number\}"/.test(passPath)
   && /--field "expected_head_sha=\$\{live_after_head\}"/.test(passPath),
   'dispatch passes explicit PR number and expected head SHA');
 ok(/Fail closed without dispatching Merge Card check/.test(passPath),
   'dispatch is refused if the live PR/head moved after PASS card-sync');
+ok(/Could not read merge-card-check\.yml at live head/.test(passPath),
+  'dispatch is refused if the live head workflow file cannot be read');
+ok(/checks:\s*write/.test(mergeCard),
+  'merge-card-check may record the required check on a predating PR head');
+ok(/REQUIRED_CHECK_NAME = 'Merge card mechanical fields'/.test(mergeCard)
+  && /github\.rest\.checks\.create/.test(mergeCard),
+  'default-branch dispatch records Merge card mechanical fields on the expected head');
 ok(!/cursor-agent/.test(passPath),
   'the PASS dispatch path still does not invoke Cursor');
 ok(!/gh api --method PATCH[\s\S]{0,80}title/.test(passPath)
@@ -430,6 +448,51 @@ ok(!/actions:\s*write/.test(dispatch),
 ok(!/gh workflow run merge-card-check\.yml/.test(repairJob)
   && !/gh workflow run merge-card-check\.yml/.test(pushJob),
   'Merge Card dispatch is not on the Cursor repair or push path');
+
+console.log('\n=== 18. predating PR heads select the default-branch workflow version ===');
+const withTrigger = 'on:\n  pull_request:\n  workflow_dispatch:\n    inputs:\n';
+const withoutTrigger = 'on:\n  pull_request:\n    types: [opened, edited, synchronize, reopened]\n';
+const commentedTrigger = '# workflow_dispatch:\non:\n  pull_request:\n    types: [opened]\n';
+const liveHead = dispatchRef.selectDispatchRef(withTrigger, 'agent/example', 'main');
+ok(liveHead.ok && liveHead.ref === 'agent/example' && liveHead.source === 'pr-head',
+  'PR heads that already have workflow_dispatch keep the live ref', liveHead.source);
+const predating = dispatchRef.selectDispatchRef(withoutTrigger, 'agent/example', 'main');
+ok(predating.ok && predating.ref === 'main' && predating.source === 'default-branch',
+  'PR heads that predate workflow_dispatch use the default branch', predating.source);
+ok(dispatchRef.selectDispatchRef(commentedTrigger, 'agent/example', 'main').source === 'default-branch',
+  'a commented workflow_dispatch does not count as the trigger');
+ok(dispatchRef.selectDispatchRef(mergeCard, 'agent/example', 'main').source === 'pr-head',
+  'the shipped merge-card-check.yml is treated as dispatchable');
+ok(!dispatchRef.selectDispatchRef(withoutTrigger, 'agent/example', '').ok,
+  'predating heads fail closed without a default branch');
+ok(!dispatchRef.selectDispatchRef('', 'agent/example', 'main').ok,
+  'missing workflow text fails closed');
+ok(!dispatchRef.selectDispatchRef(withTrigger, '', 'main').ok,
+  'missing live ref fails closed');
+ok(dispatchRef.selectDispatchRef(`${withoutTrigger}\r\n`, 'agent/example', 'main').source === 'default-branch',
+  'CRLF workflow text still classifies a predating head');
+
+const tmpDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'atlas-dispatch-ref-'));
+const oldWorkflow = path.join(tmpDir, 'old.yml');
+const newWorkflow = path.join(tmpDir, 'new.yml');
+fs.writeFileSync(oldWorkflow, withoutTrigger);
+fs.writeFileSync(newWorkflow, withTrigger);
+const selectOld = spawnSync(process.execPath, [
+  DISPATCH_REF, 'select', oldWorkflow, 'agent/example', 'main',
+], { encoding: 'utf8' });
+ok(selectOld.status === 0 && selectOld.stdout.trim() === 'main',
+  'select CLI returns the default branch for a predating workflow', selectOld.stdout.trim());
+const selectNew = spawnSync(process.execPath, [
+  DISPATCH_REF, 'select', newWorkflow, 'agent/example', 'main',
+], { encoding: 'utf8' });
+ok(selectNew.status === 0 && selectNew.stdout.trim() === 'agent/example',
+  'select CLI returns the live ref when the head already has the trigger', selectNew.stdout.trim());
+const selectMissing = spawnSync(process.execPath, [
+  DISPATCH_REF, 'select', path.join(tmpDir, 'missing.yml'), 'agent/example', 'main',
+], { encoding: 'utf8' });
+ok(selectMissing.status === 1,
+  'select CLI fails closed when the live-head workflow file cannot be read');
+try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }
 
 console.log('\n=== repair-path contracts for card sync and PENDING ===');
 ok(/evaluate-review/.test(gateJob) && /atlas-review-block\.js patch/.test(gateJob),
