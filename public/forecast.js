@@ -222,7 +222,31 @@
   /* --------------------------------------------------------------- events */
   // opts: { scenario, incomeOverrides: {id: monthlyAmount}, disabled: [ids],
   //         injections: [{date, amount}] — one-off cash arriving from outside
-  //         the plan, used to model covering an opening gap }
+  //         the plan, used to model covering an opening gap,
+  //         representedEvents: [{id, date}] — dated occurrences already
+  //         inside the opening observation; those are not replayed }
+  //
+  // Represented events are SCHEDULED occurrences that settlement evidence
+  // shows are already inside the opening cash/debt state. Forecast remains
+  // authority for what should occur; the list is authority for what has
+  // already occurred. This is not a date-wide skip: an unrepresented
+  // same-day event still fires. Also reads plan.opening.representedEvents.
+  function representedKeySet(plan, opts) {
+    const raw = []
+      .concat((opts && opts.representedEvents) || [])
+      .concat((plan && plan.opening && plan.opening.representedEvents) || []);
+    const keys = new Set();
+    for (const item of raw) {
+      if (item && item.id && item.date) keys.add(item.id + '@' + item.date);
+    }
+    return keys;
+  }
+  function omitRepresented(events, plan, opts) {
+    const represented = representedKeySet(plan, opts);
+    if (!represented.size) return events;
+    return events.filter(e => !represented.has(e.id + '@' + e.date));
+  }
+
   function streamAmount(stream, opts) {
     const override = opts.incomeOverrides && opts.incomeOverrides[stream.id];
     let monthly = null;
@@ -338,7 +362,7 @@
     // arranged on exactly that assumption. Sort: date, then income first.
     events.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 :
       (b.amount > 0 ? 1 : 0) - (a.amount > 0 ? 1 : 0));
-    return events;
+    return omitRepresented(events, plan, opts);
   }
 
   /* ------------------------------------------------------------- simulate */

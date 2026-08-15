@@ -6,7 +6,8 @@
 belongs here.
 
 Status: `READY` — nothing blocking · `BLOCKED` — waiting on the household ·
-`QUEUED` — waiting on earlier work
+`QUEUED` — waiting on earlier work · `IN PROGRESS` — first slice landed, item
+not closed
 
 Last reviewed **2026-08-14**. Phase: **analysis** — capture is essentially done.
 
@@ -1036,23 +1037,32 @@ essential/discretionary without a failing test. Preserve genuinely distinct
 semantics (`business`, `reserve`). Prefer a small explicit guard over a new
 classification system.
 
-**B91 · Evidence refresh / reconciliation loop** · `QUEUED` · *architecture, one outcome*
-After `B92` and `B93`. **Next implementation outcome** and next major
+**B91 · Evidence refresh / reconciliation loop** · `IN PROGRESS` · *architecture, first slice — not DONE*
+After `B92` and `B93`. **Current implementation outcome** and next major
 product milestone. Capture and extraction exist; canonical household
 state still changes mainly by hand. The Evidence-Use Register (`B85`) proves
 routing of declared IDs, not that a routed number is current or fresh.
 Build-strategy item `AF-RECON-01`. Payday acceptance corpus:
 [`docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md`](docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md).
 
-**Outcome:** a small **non-writing** reconciliation report over existing
-observation records: evidence value/date, current Atlas value, MATCH / STALE /
-CHANGE / CONFLICT / MISSING, unresolved item. One canonical pointer into
-`data.json`. Owner-approved edits still land there. A live opening
-observation carries cutover / as-of semantics so same-day income already
-inside that observation is not replayed. After reconciling the Aug. 14
-payday corpus, existing Forecast must produce the household payday plan
-without ChatGPT or a Sheet constructing a second model. Do not assert
-$600/week as expected output.
+**First slice (not completion):** `scripts/reconcile.js` compares the closed
+Household cash/debt map in `docs/reconciliation/balance-map.json` to
+canonical `plan.startingCash` / `debts` and does not write `data.json`.
+Statuses assigned: MATCH / CHANGE / CONFLICT / MISSING. STALE is not
+assigned — no owner-defined age threshold. `Forecast.expandEvents` accepts
+`plan.opening.representedEvents` / `opts.representedEvents` so a same-day
+payroll already inside the opening observation is not replayed while an
+unposted same-day mortgage still is. Live canonical balances are unchanged.
+
+**Outcome (whole item, still open):** a small **non-writing** reconciliation
+report over existing observation records: evidence value/date, current Atlas
+value, MATCH / STALE / CHANGE / CONFLICT / MISSING, unresolved item. One
+canonical pointer into `data.json`. Owner-approved edits still land there.
+A live opening observation carries cutover / as-of semantics so same-day
+income already inside that observation is not replayed. After reconciling
+the Aug. 14 payday corpus, existing Forecast must produce the household
+payday plan without ChatGPT or a Sheet constructing a second model. Do not
+assert $600/week as expected output.
 
 **B91 must also consume these payday distinctions:** schedule ≠ posted;
 paid commitments stop reserving cash; account balance ≠ amount currently
