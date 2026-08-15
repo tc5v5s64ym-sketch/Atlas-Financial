@@ -164,6 +164,7 @@ jobs:
       - name: Call owner-authorized OpenAI Atlas reviewer
         if: steps.gate.outputs.skip != 'true'
         env:
+          GH_TOKEN: ${{ github.token }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ATLAS_AUTOMATION_TOKEN: ${{ secrets.ATLAS_AUTOMATION_TOKEN }}
           PR_NUMBER: ${{ steps.gate.outputs.pr_number }}
