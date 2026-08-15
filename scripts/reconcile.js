@@ -793,17 +793,24 @@ function derivePendingFromIdentity(input) {
 
 function cardExposure(state) {
   const pendingUnknown = !!(state && (state.pendingUnknown === true || state.unknownPending === true));
-  if (pendingUnknown) {
-    return { amount: null, unknown: true, reason: 'unknown-pending' };
-  }
+  const pendingConflict = !!(state && state.pendingConflict === true);
   if (state && state.postedConflict === true) {
     return { amount: null, unknown: true, reason: 'conflicted-posted' };
+  }
+  if (pendingConflict) {
+    return { amount: null, unknown: true, reason: 'conflicted-pending' };
+  }
+  if (pendingUnknown) {
+    return { amount: null, unknown: true, reason: 'unknown-pending' };
   }
   if (!state || !finiteNumber(state.posted)) {
     return { amount: null, unknown: true, reason: 'missing-posted' };
   }
   const includesPending = state.balanceIncludesPending === true;
-  const pending = includesPending ? 0 : (finiteNumber(state.pending) ? Number(state.pending) : 0);
+  if (!includesPending && !finiteNumber(state.pending)) {
+    return { amount: null, unknown: true, reason: 'missing-pending' };
+  }
+  const pending = includesPending ? 0 : Number(state.pending);
   let exposure = round2(Number(state.posted) + pending);
   const seen = new Set();
   for (const payment of state.payments || []) {
@@ -962,8 +969,7 @@ function compareAvailableCreditGroup(rows) {
     .filter(r => r.unknown !== true && r.evidenceValue != null && isFinite(r.evidenceValue))
     .map(r => r.evidenceValue);
   const distinct = distinctFinite(amounts);
-  const status = distinct.length > 1 ? 'CONFLICT'
-    : (!amounts.length ? 'MISSING' : 'MATCH');
+  const status = distinct.length > 1 ? 'CONFLICT' : 'MISSING';
   return rows.map(row => ({
     observationId: row.observationId,
     fact: 'available-credit',
@@ -979,7 +985,7 @@ function compareAvailableCreditGroup(rows) {
     identityProven: row.identityProven === true,
     note: status === 'CONFLICT'
       ? (row.note || 'same-time available-credit facts disagree — not guessed')
-      : (row.note || 'available credit is not household cash'),
+      : (row.note || 'available credit is observed, not a canonical Atlas field — $0 household cash'),
   }));
 }
 
@@ -987,10 +993,6 @@ function compareConfirmedPayment(row) {
   const unknown = row.unknown === true || row.evidenceValue == null || !isFinite(row.evidenceValue);
   const posted = row.posted === true;
   const applied = row.appliedToPosted === true;
-  let status;
-  if (unknown) status = 'MISSING';
-  else if (!posted) status = 'MISSING';
-  else status = 'MATCH';
   return {
     observationId: row.observationId,
     fact: 'confirmed-payment',
@@ -998,20 +1000,18 @@ function compareConfirmedPayment(row) {
     accountLabel: row.accountLabel,
     evidenceValue: unknown ? null : row.evidenceValue,
     evidenceDate: row.evidenceDate,
-    canonicalValue: applied ? row.evidenceValue : null,
-    canonicalTarget: applied
-      ? `debts:${row.cardId}#posted-already-includes-payment`
-      : `(confirmed payment — ${posted ? 'posted' : 'not posted'})`,
+    canonicalValue: null,
+    canonicalTarget: '(observed payment — not a canonical payment event)',
     difference: null,
-    status,
+    status: 'MISSING',
     paymentId: row.paymentId || null,
     posted,
     appliedToPosted: applied,
     householdCash: 0,
     note: row.note || (applied
-      ? 'confirmed posted payment already in posted balance — do not subtract again'
+      ? 'confirmed posted payment already in posted balance — do not subtract again; no canonical payment event'
       : (posted
-        ? 'confirmed posted payment reduces exposure once'
+        ? 'confirmed posted payment reduces exposure once; no canonical payment event'
         : 'payment initiated is not payment posted')),
   };
 }
@@ -1087,6 +1087,7 @@ function cardSummaries(cardRows) {
       posted: null,
       pending: null,
       pendingUnknown: false,
+      pendingConflict: false,
       postedConflict: false,
       balanceIncludesPending: false,
       limit: null,
@@ -1123,13 +1124,18 @@ function cardSummaries(cardRows) {
       const t = observationTime(row);
       if (entry._pendingAsOf == null || t > entry._pendingAsOf) {
         entry._pendingAsOf = t;
-        entry.pendingUnknown = row.unknown === true;
+        entry.pendingConflict = row.status === 'CONFLICT';
+        entry.pendingUnknown = entry.pendingConflict || row.unknown === true;
         entry.pending = entry.pendingUnknown || row.evidenceValue == null ? null : row.evidenceValue;
       } else if (t === entry._pendingAsOf) {
-        if (row.unknown) {
+        if (row.status === 'CONFLICT') {
+          entry.pendingConflict = true;
           entry.pendingUnknown = true;
           entry.pending = null;
-        } else if (!entry.pendingUnknown && row.evidenceValue != null) {
+        } else if (row.unknown) {
+          entry.pendingUnknown = true;
+          entry.pending = null;
+        } else if (!entry.pendingUnknown && !entry.pendingConflict && row.evidenceValue != null) {
           entry.pending = row.evidenceValue;
         }
       }
@@ -1157,10 +1163,15 @@ function cardSummaries(cardRows) {
     byCard.set(id, entry);
   }
   return [...byCard.values()].map(entry => {
+    if (entry._pendingAsOf == null) {
+      entry.pendingUnknown = true;
+      entry.pending = null;
+    }
     const exposure = cardExposure({
       posted: entry.posted,
       pending: entry.pending,
       pendingUnknown: entry.pendingUnknown,
+      pendingConflict: entry.pendingConflict === true,
       postedConflict: entry.postedConflict === true,
       balanceIncludesPending: entry.balanceIncludesPending === true,
       payments: entry.confirmedPayments,
@@ -1478,7 +1489,9 @@ function formatReport(result) {
       lines.push('');
       lines.push('Card exposure (fail-closed; not a second authority):');
       for (const card of summaries) {
-        const pending = card.pendingUnknown ? 'unknown' : (card.pending == null ? '—' : n2(card.pending));
+        const pending = card.pendingConflict
+          ? 'CONFLICT'
+          : (card.pendingUnknown ? 'unknown' : (card.pending == null ? '—' : n2(card.pending)));
         const exposure = card.exposureUnknown ? `unknown (${card.exposureReason})` : n2(card.exposure);
         const available = card.availableConflict
           ? 'CONFLICT'

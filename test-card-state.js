@@ -206,8 +206,10 @@ console.log('\n=== 4. $200 available credit creates $0 household cash ===');
   );
   const row = result.rows.find(r => r.observationId === 'synth-available');
   ok(row && near(row.evidenceValue, AVAILABLE) && near(row.householdCash, 0)
-    && /not household cash/.test(row.canonicalTarget),
-    'available credit is informational and $0 household cash');
+    && /not household cash/.test(row.canonicalTarget)
+    && row.status === 'MISSING' && row.status !== 'MATCH'
+    && row.canonicalValue == null,
+    'available credit is informational MISSING, not a canonical MATCH, and $0 household cash');
 }
 
 console.log('\n=== 5. scheduled $500 does not reduce current card balance ===');
@@ -239,8 +241,9 @@ console.log('\n=== 5. scheduled $500 does not reduce current card balance ===');
     }]
   );
   const row = result.rows.find(r => r.observationId === 'synth-scheduled');
-  ok(row && row.reducesExposure === false && near(row.evidenceValue, PAYMENT),
-    'scheduled-payment is flagged as not reducing exposure');
+  ok(row && row.status === 'MATCH' && near(row.canonicalValue, PAYMENT)
+    && row.reducesExposure === false && near(row.evidenceValue, PAYMENT),
+    'scheduled-payment MATCHes the canonical obligation and does not reduce exposure');
   const posted = runCards(
     { meta: { asOf: START }, debts: [debtFixture({ pending: 0 })] },
     [{
@@ -479,10 +482,12 @@ console.log('\n=== 10. reconciler performs no writes ===');
     'live MBNA pending MATCH $82.05 with a proven identity');
   ok(cashPosted && cashPosted.status === 'MATCH' && near(cashPosted.evidenceValue, 5612.43),
     'live Cash Back posted MATCH $5,612.43');
-  ok(cashPay && cashPay.appliedToPosted && cashPay.status === 'MATCH',
-    'live $70 Cash Back payment is confirmed and already in posted');
-  ok(cashSched && cashSched.reducesExposure === false && near(cashSched.evidenceValue, 762.36),
-    'live $762.36 September minimum is schedule-only');
+  ok(cashPay && cashPay.appliedToPosted && cashPay.status === 'MISSING'
+    && cashPay.status !== 'MATCH' && cashPay.canonicalValue == null,
+    'live $70 Cash Back payment is observed, not a canonical MATCH');
+  ok(cashSched && cashSched.status === 'MATCH' && cashSched.reducesExposure === false
+    && near(cashSched.evidenceValue, 762.36),
+    'live $762.36 September minimum MATCHes the canonical obligation and is schedule-only');
 
   const travel14 = result.rows.find(r => r.observationId === 'card-travelvisa-pending-2026-08-14');
   ok(travel14 && travel14.unknown && travel14.status === 'MISSING',
@@ -605,6 +610,76 @@ console.log('\n=== 11. later known pending clears an older unknown ===');
     && unknownSummary.exposureUnknown === true
     && unknownSummary.exposureReason === 'unknown-pending',
     'a later unknown pending still fail-closes exposure');
+}
+
+console.log('\n=== 12. missing or conflicted pending fails exposure closed ===');
+{
+  const helper = R.cardExposure({ posted: POSTED, payments: [] });
+  ok(helper.unknown === true && helper.amount == null
+    && helper.reason === 'missing-pending'
+    && !near(helper.amount || 0, POSTED),
+    'helper: posted with no pending value is unknown exposure, not posted+$0');
+
+  const postedOnly = runCards(
+    { meta: { asOf: START }, debts: [debtFixture()] },
+    [{
+      observationId: 'synth-posted-no-pending',
+      fact: 'posted-balance',
+      cardId: 'synth-card',
+      amount: POSTED,
+      observedAsOf: START,
+      canonical: { collection: 'debts', id: 'synth-card', field: 'balance' },
+    }]
+  );
+  const postedOnlySummary = (postedOnly.cardSummaries || []).find(c => c.cardId === 'synth-card');
+  ok(postedOnlySummary && postedOnlySummary.pendingUnknown === true
+    && postedOnlySummary.pending == null
+    && postedOnlySummary.exposureUnknown === true
+    && postedOnlySummary.exposure == null
+    && !near(postedOnlySummary.exposure || 0, POSTED),
+    'posted with no pending observation publishes unknown exposure, not posted+$0');
+
+  const conflictedPending = runCards(
+    { meta: { asOf: START }, debts: [debtFixture()] },
+    [
+      {
+        observationId: 'synth-posted-for-pending-conflict',
+        fact: 'posted-balance',
+        cardId: 'synth-card',
+        amount: POSTED,
+        observedAsOf: START,
+        canonical: { collection: 'debts', id: 'synth-card', field: 'balance' },
+      },
+      {
+        observationId: 'synth-pending-100',
+        fact: 'pending',
+        cardId: 'synth-card',
+        amount: 100,
+        observedAsOf: START,
+        canonical: { collection: 'debts', id: 'synth-card', field: 'pending' },
+      },
+      {
+        observationId: 'synth-pending-300',
+        fact: 'pending',
+        cardId: 'synth-card',
+        amount: 300,
+        observedAsOf: START,
+        canonical: { collection: 'debts', id: 'synth-card', field: 'pending' },
+      },
+    ]
+  );
+  const pendingRows = conflictedPending.rows.filter(r => r.fact === 'pending');
+  ok(pendingRows.length === 2 && pendingRows.every(r => r.status === 'CONFLICT'),
+    'same-time pending $100 vs $300 is CONFLICT, not a silent choice');
+  const conflictedPendingSummary = (conflictedPending.cardSummaries || []).find(c => c.cardId === 'synth-card');
+  ok(conflictedPendingSummary && conflictedPendingSummary.pendingConflict === true
+    && conflictedPendingSummary.pending == null
+    && conflictedPendingSummary.exposureUnknown === true
+    && conflictedPendingSummary.exposure == null
+    && conflictedPendingSummary.exposureReason === 'conflicted-pending'
+    && !near(conflictedPendingSummary.exposure || 0, independentExposure(POSTED, 100))
+    && !near(conflictedPendingSummary.exposure || 0, independentExposure(POSTED, 300)),
+    'conflicted pending fails exposure closed instead of keeping one value');
 }
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
