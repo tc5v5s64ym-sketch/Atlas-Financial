@@ -31,6 +31,8 @@ result = helper.validatePriorReview(priorReviews, oldHead, 'NOT PASS');
 ok(result.ok && result.reviewId === 1, 'accepts the latest trusted blocking review on the claimed prior SHA');
 result = helper.validatePriorReview([{ ...priorReviews[0], user: { login: 'cursor[bot]' } }], oldHead, 'NOT PASS');
 ok(!result.ok && result.code === 'missing-prior-review', 'rejects a blocking assertion that is not backed by the trusted Atlas reviewer');
+result = helper.validatePriorReview([{ ...priorReviews[0], body: helper.NOT_PASS_MARKER }], oldHead, 'NOT PASS');
+ok(!result.ok && result.code === 'empty-prior-finding', 'rejects a prior blocking review with no concrete finding text');
 result = helper.validatePriorReview([
   priorReviews[0],
   { id: 2, commit_id: oldHead, submitted_at: '2026-08-15T02:00:00Z', user: { login: helper.TRUSTED_REVIEWER }, body: `${helper.PASS_MARKER}\nfixed` },
@@ -69,6 +71,7 @@ ok(!/permissions:[\s\S]*?\bwrite\b/.test((reviewer.match(/permissions:[\s\S]*?\n
 ok(/validate-prior-review/.test(reviewer), 'reviewer independently validates the trusted Atlas review behind the Cursor handoff');
 ok(/compare\/\$\{prior_head\}\.\.\.\$\{head_sha\}/.test(reviewer) && /merge_base.*prior_head/.test(reviewer), 'reviewer proves the live repair head descends from the prior reviewed SHA');
 ok(/prior-review\.md/.test(reviewer) && /prior-comments\.json/.test(reviewer) && /repair\.diff/.test(reviewer), 'review context carries the named prior blocker record and the focused repair diff');
+ok(/reviews\/\$\{prior_review_id\}\/comments[\s\S]*select\(\.user\.login == "tc5v5s64ym-sketch"\)/.test(reviewer), 'only comments from the trusted prior reviewer enter the trusted closure record');
 ok(/for attempt in \$\(seq 1 24\)/.test(reviewer) && /sleep 5/.test(reviewer) && /120 seconds/.test(reviewer), 'reviewer waits boundedly for PENDING bookkeeping before API spend');
 ok(/Call owner-authorized OpenAI Atlas reviewer[\s\S]*?GH_TOKEN:\s*\$\{\{ github\.token \}\}/.test(reviewer), 'post-model PR and review reads use the read-only GITHUB_TOKEN');
 ok(/secrets\.OPENAI_API_KEY/.test(reviewer), 'reviewer uses the owner-approved OpenAI API key');
@@ -77,6 +80,7 @@ ok(/gh api user/.test(reviewer) && /tc5v5s64ym-sketch/.test(reviewer), 'reviewer
 ok(/MODEL: gpt-5\.6/.test(reviewer) && /json_schema/.test(reviewer) && /store:\s*false/.test(reviewer), 'reviewer uses GPT-5.6 structured output without Responses application-state storage');
 ok(/canonical_contracts contains trusted policy text/.test(reviewer) && /prior_review_body[\s\S]*trusted/.test(reviewer), 'developer prompt trusts only default-branch policy and the validated prior Atlas blocker record');
 ok(/bounded follow-up review/.test(reviewer) && /Do not reopen untouched work/.test(reviewer), 'review prompt follows the bounded repair re-review protocol');
+ok(/Queued or in-progress checks do not by themselves/.test(reviewer), 'review prompt does not turn ordinary CI timing into review churn');
 ok(/live_head.*HEAD_SHA/.test(reviewer) && /immediately before review post/.test(reviewer), 'reviewer rechecks the live exact head after the model call and immediately before posting');
 ok(/pulls\/\$\{PR_NUMBER\}\/reviews/.test(reviewer) && /event:\"COMMENT\"/.test(reviewer), 'reviewer posts a normal GitHub review on the exact commit');
 ok(!/gh pr merge|merge_pull_request|git push/.test(reviewer), 'instant reviewer cannot merge or push code');
