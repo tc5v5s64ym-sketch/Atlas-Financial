@@ -1,0 +1,85 @@
+name: Request Codex review
+
+# Automatic first advisory pass only. Atlas permits a second advisory pass
+# only after a high-severity/systemic finding, a material high-risk-surface
+# change, or explicit dispatch — never because an ordinary synchronize
+# produced a new SHA.
+on:
+  pull_request_target:
+    types: [opened, reopened, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number to request a Codex review for
+        required: true
+        type: number
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: write
+
+concurrency:
+  group: codex-review-${{ github.event.pull_request.number || inputs.pr_number }}
+  cancel-in-progress: true
+
+jobs:
+  request:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.draft == false &&
+       github.event.pull_request.base.ref == 'main')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve eligible pull request head
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+        run: |
+          set -euo pipefail
+
+          pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
+          head_sha="$(jq -r '.head.sha' <<<"${pr_json}")"
+          draft="$(jq -r '.draft' <<<"${pr_json}")"
+          base_ref="$(jq -r '.base.ref' <<<"${pr_json}")"
+          state="$(jq -r '.state' <<<"${pr_json}")"
+
+          eligible=true
+          if [[ "${state}" != "open" || "${draft}" == "true" || "${base_ref}" != "main" ]]; then
+            eligible=false
+          fi
+
+          echo "number=${PR_NUMBER}" >> "${GITHUB_OUTPUT}"
+          echo "head_sha=${head_sha}" >> "${GITHUB_OUTPUT}"
+          echo "eligible=${eligible}" >> "${GITHUB_OUTPUT}"
+
+      - name: Request Codex review once for this exact head
+        if: steps.pr.outputs.eligible == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.ATLAS_CODEX_REVIEW_TOKEN || github.token }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+
+          marker="<!-- atlas-codex-review:${HEAD_SHA} -->"
+          comments="$(mktemp "${RUNNER_TEMP:-/tmp}/atlas-codex-comments.XXXXXX")"
+          trap 'rm -f "${comments}"' EXIT
+
+          # Fully materialize every paginated page before searching. Piping
+          # `gh api --paginate` into `grep -q` can SIGPIPE gh under pipefail
+          # after an early match, which then looks like "marker not found".
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+            --jq '.[].body' > "${comments}"
+
+          if grep -Fq "${marker}" "${comments}"; then
+            echo "Codex review was already requested for ${HEAD_SHA}."
+            exit 0
+          fi
+
+          body="${marker}"$'\n''@codex review'$'\n\n'"Automated Atlas review request for exact head ${HEAD_SHA}."
+
+          gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+            --method POST \
+            -f body="${body}"

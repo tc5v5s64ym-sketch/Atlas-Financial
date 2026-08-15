@@ -54,6 +54,7 @@ const suites = [
   ['current-state cutover (B91)', 'test-cutover.js'],
   ['commitment settlement (B91 D3)', 'test-settlement.js'],
   ['merge-card check behaviour', 'test-mergecard.js'],
+  ['Codex review-request workflow', 'test-codex-review-request.js'],
 ];
 
 let failed = [];
