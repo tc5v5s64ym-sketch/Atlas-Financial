@@ -85,10 +85,15 @@ action. Do not guess an effective end date. They are not inside the CRA
 instalment reserve.
 
 **BC Hydro is not one of them.** It moved to Amanda's DEBT&PAYMENTS account in
-May 2026 and she has paid it there since — $235, $250, $250. It is therefore
-correctly absent from a household-accounts plan, and must not be carried inside
-the household variable budget either. See "What she pays directly" below, which
-is the single authority for that list.
+May 2026 and she has paid it there since — $235, $250, $250. It remains a
+household obligation. The paying account is attribution, not a reason to drop
+it from household-obligation reporting. It is correctly absent from the
+joint-cash Forecast (Chequing A, Chequing B and Savings) because DEBT&PAYMENTS
+is held-elsewhere and is not spendable joint cash. It must not be carried
+inside the household variable budget either, and a utility account balance
+must not be scheduled as a cash event — only dated amounts due are cash
+requirements. See "What she pays directly" below, which is the single
+authority for that list.
 
 Income: payroll **bi-weekly** (~$4,264 current recurring net after 2026 CPP/CPP2/EI completion), child benefit **monthly** (~$153.59).
 Bonus or vacation pay has historically landed in **February and July**.

@@ -277,6 +277,31 @@
     return commitmentSettledOn(c) ? 'settled' : 'unsettled';
   }
 
+  // Household obligation and paying account are separate facts (B91 D4/D5).
+  // A bill is a household obligation unless it is explicitly marked false.
+  // Paying-account metadata never flips that by itself.
+  function billIsHouseholdObligation(bill) {
+    return !!(bill && bill.householdObligation !== false);
+  }
+
+  // Joint-cash deduction is a separate fact from household obligation.
+  // Incumbent bills have no payingAccount and still leave the joint pool
+  // (`plan.startingCash.breakdown`). A payingAccount that is not on that
+  // breakdown is outside the simulated joint-cash pool — held-elsewhere or
+  // unnamed. That does not invent a transfer and does not treat
+  // held-elsewhere cash as spendable joint cash.
+  function billAffectsJointCash(bill, plan) {
+    if (!billIsHouseholdObligation(bill)) return false;
+    if (!bill.payingAccount) return true;
+    const rows = ((plan && plan.startingCash) || {}).breakdown || [];
+    return rows.some(r => r.id === bill.payingAccount);
+  }
+
+  function isJointCashOutflow(event) {
+    return !!(event && event.amount < 0 && event.kind !== 'noncash'
+      && event.jointCash !== false);
+  }
+
   function streamAmount(stream, opts) {
     const override = opts.incomeOverrides && opts.incomeOverrides[stream.id];
     let monthly = null;
@@ -326,8 +351,18 @@
       }
     }
     for (const b of plan.bills || []) {
+      // Paying account never erases household-obligation status. Only an
+      // explicit householdObligation: false drops the bill from the schedule.
+      if (!billIsHouseholdObligation(b)) continue;
       for (const date of occurrences(b, start, end)) {
-        events.push({ date, amount: -b.amount, kind: 'bill', label: b.label, id: b.id, confidence: b.confidence });
+        const jointCash = billAffectsJointCash(b, plan);
+        events.push({
+          date, amount: -b.amount, kind: 'bill', label: b.label, id: b.id,
+          confidence: b.confidence,
+          householdObligation: true,
+          payingAccount: b.payingAccount || null,
+          jointCash,
+        });
       }
     }
     for (const c of plan.commitments) {
@@ -450,6 +485,10 @@
       const todays = byDate.get(date) || [];
       for (const e of todays) {
         if (e.kind === 'noncash') { week.noncash += -e.amount; week.events.push(e); continue; }
+        // Household obligation paid outside the joint-cash pool: still on
+        // the schedule (week.events) so it does not disappear, but it is
+        // not deducted from joint cash and is not a week.bills cash total.
+        if (e.jointCash === false) { week.events.push(e); continue; }
         balance += e.amount;
         if (e.kind === 'income') {
           if (e.confidence === 'confirmed') week.confirmedIncome += e.amount;
@@ -642,10 +681,10 @@
     // Everything that must be paid before the first money arrives.
     const firstIncome = zero.events.find(e => e.kind === 'income');
     const preIncomeOut = zero.events
-      .filter(e => e.amount < 0 && e.kind !== 'noncash' && (!firstIncome || e.date < firstIncome.date))
+      .filter(e => isJointCashOutflow(e) && (!firstIncome || e.date < firstIncome.date))
       .reduce((s, e) => s + -e.amount, 0);
     const dueOnGapDay = zero.events
-      .filter(e => e.date === gapDate && e.amount < 0 && e.kind !== 'noncash')
+      .filter(e => e.date === gapDate && isJointCashOutflow(e))
       .reduce((s, e) => s + -e.amount, 0);
 
     // Spending resumes at the first real payday — until then there is nothing
@@ -1053,7 +1092,10 @@
       datedByCategory[cat].total += amount;
       datedByCategory[cat].items.push({ label, amount, kind });
     };
-    for (const b of plan.bills || []) addDated(b.budgetCategory, billMonthly(b), b.label, 'bill');
+    for (const b of plan.bills || []) {
+      if (!billAffectsJointCash(b, plan)) continue;
+      addDated(b.budgetCategory, billMonthly(b), b.label, 'bill');
+    }
     // A dated commitment is NOT automatically a draw against the recurring
     // budget for its category. The household budgets ~$250/month of ordinary
     // sports and activities AND saves separately for the Fusion and Burrard
@@ -1490,6 +1532,9 @@
   //
   //   INFLOW     amount >= 0. Money arriving is not a payment due.
   //   NONCASH    capitalised interest. A real cost, but no cash leaves.
+  //   EXTERNAL   jointCash === false is still eligible: the household still
+  //              owes it. nextPaymentOut excludes those events because they
+  //              are not cash leaving the joint-cash pool.
   //   BEFORE     date < as-of. The tile answers what is next, not what already
   //              left.
   //
@@ -1528,6 +1573,9 @@
   //
   //   INFLOW     amount >= 0. Money arriving is not a payment out.
   //   NONCASH    capitalised interest. A real cost, but no cash leaves.
+  //   EXTERNAL   jointCash === false. A household obligation paid outside
+  //              the joint-cash pool is still nextDue, but it is not cash
+  //              leaving the household accounts this tile measures.
   //   BEFORE     date < as-of. The tile answers what is next, not what already
   //              left.
   //
@@ -1540,7 +1588,7 @@
     let date = null;
     const sameDay = [];
     for (const event of events || []) {
-      if (!(event.amount < 0) || event.kind === 'noncash' || event.date < asOf) continue;
+      if (!isJointCashOutflow(event) || event.date < asOf) continue;
       if (date == null || event.date < date) {
         date = event.date;
         sameDay.length = 0;
@@ -2883,7 +2931,7 @@
     };
   }
 
-  const Forecast = { addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, expandEvents, simulate,
+  const Forecast = { addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, billIsHouseholdObligation, billAffectsJointCash, expandEvents, simulate,
     recommendWeekly, recommend, incomeDeadline, counterfactuals,
     budgetBreakdown, monthlyFromWeekly,
     projectDebts,
