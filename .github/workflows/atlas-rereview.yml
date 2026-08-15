@@ -7,7 +7,8 @@ name: Atlas instant re-review
 # to the owner-authorized OpenAI API. The API result becomes a normal owner-
 # authored GitHub review through the existing ATLAS_AUTOMATION_TOKEN, so the
 # existing trusted review -> card-sync -> repair/merge-card path remains the
-# one downstream authority.
+# one downstream authority. Expected stale-head races exit cleanly; malformed
+# trust/provenance, API, or convergence failures remain visible failures.
 on:
   workflow_run:
     workflows: ["Atlas re-review handoff dispatch"]
@@ -59,7 +60,7 @@ jobs:
             pr_number="$(printf '%s\n' "${prs}" | head -n 1)"
           fi
           if [[ -z "${pr_number}" ]]; then
-            echo "No pull request could be resolved from the handoff run."
+            echo "No pull request could be resolved from an eligible handoff run."
             exit 1
           fi
 
@@ -67,9 +68,19 @@ jobs:
           state="$(jq -r '.state' <<<"${pr_json}")"
           base_ref="$(jq -r '.base.ref' <<<"${pr_json}")"
           head_sha="$(jq -r '.head.sha' <<<"${pr_json}")"
-          if [[ "${state}" != "open" || "${base_ref}" != "main" || ! "${head_sha}" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "Live PR is not an open main-targeting PR with a valid exact head."
+          if [[ "${state}" != "open" || "${base_ref}" != "main" ]]; then
+            echo "Handoff PR is no longer an open PR targeting main; stale event skipped."
+            echo "skip=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          if [[ ! "${head_sha}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Live PR head is malformed. Fail closed."
             exit 1
+          fi
+          if [[ "${RUN_HEAD}" =~ ^[0-9a-f]{40}$ && "${head_sha}" != "${RUN_HEAD}" ]]; then
+            echo "Live PR head moved beyond the handoff workflow head; stale event skipped."
+            echo "skip=true" >> "${GITHUB_OUTPUT}"
+            exit 0
           fi
 
           reviews="$(mktemp "${RUNNER_TEMP:-/tmp}/atlas-rereview-reviews.XXXXXX")"
@@ -84,7 +95,7 @@ jobs:
             ] | sort_by(.submitted_at) | last // empty
           ' "${reviews}")"
           if [[ -z "${handoff_json}" ]]; then
-            echo "No Cursor handoff exists on the live exact head."
+            echo "Eligible dispatch completed on the live head but no matching Cursor handoff review exists. Fail closed."
             exit 1
           fi
           jq -r '.body // ""' <<<"${handoff_json}" > "${RUNNER_TEMP}/handoff.md"
@@ -151,8 +162,9 @@ jobs:
             pending_state="$(jq -r '.state' <<<"${live_pending}")"
             pending_base="$(jq -r '.base.ref' <<<"${live_pending}")"
             if [[ "${pending_head}" != "${head_sha}" || "${pending_state}" != "open" || "${pending_base}" != "main" ]]; then
-              echo "PR moved while waiting for PENDING review-card convergence. Fail closed."
-              exit 1
+              echo "PR moved or closed while waiting for PENDING convergence; stale review run skipped."
+              echo "skip=true" >> "${GITHUB_OUTPUT}"
+              exit 0
             fi
             jq -r '.body // ""' <<<"${live_pending}" > "${RUNNER_TEMP}/pr-body.md"
             set +e
@@ -297,8 +309,8 @@ jobs:
           live_state="$(jq -r '.state' <<<"${live}")"
           live_base="$(jq -r '.base.ref' <<<"${live}")"
           if [[ "${live_head}" != "${HEAD_SHA}" || "${live_state}" != "open" || "${live_base}" != "main" ]]; then
-            echo "PR moved while the model was reviewing. Fail closed without posting a stale review."
-            exit 1
+            echo "PR moved or closed while the model was reviewing; stale result discarded cleanly."
+            exit 0
           fi
 
           reviews="$(mktemp "${RUNNER_TEMP:-/tmp}/atlas-rereview-final.XXXXXX")"
@@ -323,8 +335,8 @@ jobs:
           final_state="$(jq -r '.state' <<<"${final_live}")"
           final_base="$(jq -r '.base.ref' <<<"${final_live}")"
           if [[ "${final_head}" != "${HEAD_SHA}" || "${final_state}" != "open" || "${final_base}" != "main" ]]; then
-            echo "PR moved immediately before review post. Fail closed without posting a stale review."
-            exit 1
+            echo "PR moved immediately before review post; stale result discarded cleanly."
+            exit 0
           fi
 
           jq -n --rawfile body "${RUNNER_TEMP}/review.md" --arg commit "${HEAD_SHA}" \
