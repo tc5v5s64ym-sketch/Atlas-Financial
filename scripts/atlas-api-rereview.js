@@ -54,6 +54,13 @@ function classifyAtlasReview(body) {
   return '';
 }
 
+function markerForOutcome(outcome) {
+  if (outcome === 'PASS') return PASS_MARKER;
+  if (outcome === 'NOT PASS') return NOT_PASS_MARKER;
+  if (outcome === 'BLOCKING') return BLOCKING_MARKER;
+  return '';
+}
+
 function validatePriorReview(reviews, priorHead, claimedOutcome) {
   const sha = clean(priorHead).toLowerCase();
   const claimed = clean(claimedOutcome).toUpperCase();
@@ -80,6 +87,10 @@ function validatePriorReview(reviews, priorHead, claimedOutcome) {
       code: 'prior-outcome-mismatch',
       reason: `Latest trusted Atlas review on the prior SHA is ${latest.atlasOutcome}, not ${claimed}.`,
     };
+  }
+  const marker = markerForOutcome(latest.atlasOutcome);
+  if (!clean(String(latest.body || '').slice(marker.length))) {
+    return { ok: false, code: 'empty-prior-finding', reason: 'Trusted prior blocking review has no concrete finding text.' };
   }
   return { ok: true, code: 'ok', reviewId: latest.id, outcome: latest.atlasOutcome, priorHead: sha };
 }
@@ -200,6 +211,7 @@ module.exports = {
   TRUSTED_REVIEWER,
   parseHandoff,
   classifyAtlasReview,
+  markerForOutcome,
   validatePriorReview,
   assertPending,
   validateModelResult,
