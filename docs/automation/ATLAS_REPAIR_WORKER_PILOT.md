@@ -2,7 +2,7 @@
 
 This file exists only to prove the Cursor-native repair automation end to end.
 
-Pilot token: WRONG
+Pilot token: READY
 
 Expected repaired token: READY
 
