@@ -573,7 +573,14 @@ field. The D4/D5 slice adds Hydro observations
 (`docs/reconciliation/utility-observations.json`) that distinguish an
 informational account balance from dated `plan.bills` dues, and paying-account
 attribution from household-obligation status. Live Hydro canonical state is
-unchanged. None of these slices finishes B91 or writes canonical state. Sequencing and
+unchanged. The D2 slice adds Amanda-income observations
+(`docs/reconciliation/amanda-income-observations.json`) that distinguish
+Tennis BC salary deposits, coaching/business inflows, business
+obligations, household transfers, and household-available remainder.
+`plan.income.amandaTransfer` remains the household-cash Forecast
+authority; observed salary is not promoted into Forecast. Unknown
+business obligations fail closed and do not invent a remainder. Live
+Amanda income canonical state is unchanged. None of these slices finishes B91 or writes canonical state. Sequencing and
 the Aug. 14 payday acceptance corpus live in the build strategy and
 [`docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md`](docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md).
 

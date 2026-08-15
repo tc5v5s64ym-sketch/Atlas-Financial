@@ -698,8 +698,14 @@ exist.
   account and from joint-cash deduction. Hydro observations compare the
   Aug. 14 account balance as informational and the dated dues as
   scheduled requirements; they do not write `data.json`. Live Hydro
-  canonical state stays unchanged until an owner-approved edit. B91 stays open for
-  Amanda income split, card pending, Q19 HELOC mechanics, the
+  canonical state stays unchanged until an owner-approved edit.
+  **D2 slice — not completion.** Amanda-income observations distinguish
+  Tennis BC salary, coaching/business inflows, obligations, household
+  transfers, and household-available remainder. Observed salary is not
+  promoted into Forecast. `amandaTransfer` remains the household-cash
+  authority. Unknown business obligations fail closed. Live Amanda
+  income canonical state is unchanged. B91 stays open for
+  card pending, Q19 HELOC mechanics, the
   operating-target question, B20 history, the STALE threshold, and the rest
   of the Aug. 14 corpus. Do not mark this item done.
 

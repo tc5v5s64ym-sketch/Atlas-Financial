@@ -1077,6 +1077,20 @@ external-to-joint-pool. The reconciler remains non-writing. Live Hydro
 canonical state is unchanged until an explicit owner-approved edit. Do
 not mark this item DONE.
 
+**D2 slice (not completion):** Amanda employment deposits, coaching/business
+inflows, business obligations, household transfers, and household-available
+remainder are distinct observation facts in
+`docs/reconciliation/amanda-income-observations.json`. Observed Tennis BC
+nets ($2,168.85 around the 15th, $2,387.99 around month-end) are income
+into Amanda / DEBT&PAYMENTS, not Forecast household income.
+`plan.income.amandaTransfer` remains the household-cash Forecast
+authority. Coaching receipts are not automatically household income.
+Unknown business obligations fail closed — the reconciler does not
+invent a household-available remainder from salary minus guessed costs,
+and the Aug. 14 $798.37 DEBT&PAYMENTS balance is not spendable.
+The reconciler remains non-writing. Live `amandaTransfer` and
+DEBT&PAYMENTS are unchanged. Do not mark this item DONE.
+
 **Outcome (whole item, still open):** a small **non-writing** reconciliation
 report over existing observation records: evidence value/date, current Atlas
 value, MATCH / STALE / CHANGE / CONFLICT / MISSING, unresolved item. One
