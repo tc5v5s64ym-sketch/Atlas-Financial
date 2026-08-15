@@ -147,14 +147,30 @@ console.log('\n=== 1. salary + transfer is not $4,337.70 household income ===');
   ]);
   const okRows = runAmanda(liveLike);
   const salaryRows = okRows.rows.filter(r => r.fact === 'employment-deposit');
-  ok(salaryRows.length === 2 && salaryRows.every(r => r.status === 'MATCH')
-    && salaryRows.every(r => r.intentionallyNotCanonical)
-    && salaryRows.every(r => r.representation === 'indirect-via-amandaTransfer'),
-    'observed salary is represented indirectly via amandaTransfer, not as Forecast income');
+  ok(salaryRows.length === 2 && salaryRows.every(r => r.status === 'MISSING'),
+    'A. live-like salary observation is MISSING, not MATCH against amandaTransfer');
+  ok(salaryRows.every(r => r.canonicalTarget === '(no canonical salary fact)'),
+    'A. salary canonical target is no salary fact, not income:amandaTransfer');
+  ok(salaryRows.every(r => r.status !== 'MATCH'),
+    'A. salary is not MATCH while only amandaTransfer is present');
+  ok(salaryRows.every(r => r.intentionallyNotPromoted)
+    && salaryRows.every(r => r.representation === 'observed-not-promoted'),
+    'B. salary is observed but intentionally not promoted');
+  ok(salaryRows.every(r => /intentionally not promoted/i.test(r.note || '')),
+    'B. the note says intentionally not promoted');
   const badRows = runAmanda(both);
   ok(badRows.rows.filter(r => r.fact === 'employment-deposit').every(r => r.status === 'CONFLICT')
     && badRows.rows.filter(r => r.fact === 'employment-deposit').every(r => r.doubleCount),
-    'adding Tennis BC salary beside amandaTransfer is CONFLICT');
+    'C. adding Tennis BC salary beside amandaTransfer is CONFLICT');
+  const noTransfer = runAmanda(cashFixture([]));
+  const noTransferSalary = noTransfer.rows.filter(r => r.fact === 'employment-deposit');
+  ok(noTransferSalary.length === 2 && noTransferSalary.every(r => r.status === 'MISSING')
+    && noTransferSalary.every(r => r.status !== 'MATCH'),
+    'D. removing amandaTransfer does not make the salary observation MATCH');
+  const salaryOnly = runAmanda(cashFixture([salaryStream(SALARY)]));
+  ok(salaryOnly.rows.filter(r => r.fact === 'employment-deposit').every(r => r.status === 'CONFLICT')
+    && salaryOnly.rows.filter(r => r.fact === 'employment-deposit').every(r => r.status !== 'MATCH'),
+    'D. a salary stream without amandaTransfer is still not MATCH');
 }
 
 console.log('\n=== 2. internal Amanda transfer creates $0 new income ===');
@@ -284,6 +300,51 @@ console.log('\n=== 5. known business obligation reduces available remainder ==='
     'gross salary plus coaching is not household cash');
 }
 
+console.log('\n=== remainder inputs fail closed unless every value is explicitly finite ===');
+{
+  const closed = extra => R.amandaHouseholdAvailable(Object.assign({
+    obligationsKnown: true,
+  }, extra));
+  const missing = [
+    { employment: null, coaching: 0, obligations: 0, label: 'null employment' },
+    { employment: undefined, coaching: 0, obligations: 0, label: 'undefined employment' },
+    { employment: 0, coaching: null, obligations: 0, label: 'null coaching' },
+    { employment: 0, coaching: undefined, obligations: 0, label: 'undefined coaching' },
+    { employment: 0, coaching: 0, obligations: null, label: 'null obligations' },
+    { employment: 0, coaching: 0, obligations: undefined, label: 'undefined obligations' },
+    { employment: NaN, coaching: 0, obligations: 0, label: 'NaN employment' },
+    { employment: 0, coaching: NaN, obligations: 0, label: 'NaN coaching' },
+    { employment: 0, coaching: 0, obligations: NaN, label: 'NaN obligations' },
+    { employment: '2168.85', coaching: 0, obligations: 0, label: 'string employment' },
+    { employment: 0, coaching: '0', obligations: 0, label: 'string coaching' },
+    { employment: 0, coaching: 0, obligations: '300', label: 'string obligations' },
+    { coaching: 0, obligations: 0, label: 'omitted employment' },
+    { employment: 0, obligations: 0, label: 'omitted coaching' },
+    { employment: 0, coaching: 0, label: 'omitted obligations' },
+  ];
+  for (const c of missing) {
+    const r = closed(c);
+    ok(r.established === false && r.amount == null,
+      `${c.label} does not establish a remainder`);
+  }
+  ok(closed({ obligationsKnown: true }).established === false,
+    'obligationsKnown true with all inputs missing does not collapse to zero');
+  const explicitZero = closed({ employment: 0, coaching: 0, obligations: 0 });
+  ok(explicitZero.established === true && near(explicitZero.amount, 0),
+    'explicit numeric zeros establish remainder $0');
+  const valid = closed({
+    employment: SALARY, coaching: KNOWN_COACHING, obligations: KNOWN_OBLIGATION,
+  });
+  ok(valid.established === true && near(valid.amount, 2268.85),
+    'all three explicit finite numbers calculate employment + coaching − obligations');
+  const unknown = R.amandaHouseholdAvailable({
+    obligationsKnown: false, employment: SALARY, coaching: 0, obligations: 0,
+  });
+  ok(unknown.established === false && unknown.amount == null
+    && unknown.reason === 'unknown-business-obligations',
+    'obligationsKnown !== true still fails closed even when numbers are present');
+}
+
 console.log('\n=== 6. unknown business obligations fail closed ===');
 {
   const remainder = R.amandaHouseholdAvailable({
@@ -368,6 +429,60 @@ console.log('\n=== 7. live amandaTransfer Forecast behaviour is unchanged ===');
     'live DEBT&PAYMENTS is still operational $2,691.85, not spendable');
 }
 
+console.log('\n=== circular transfer observation is not copied canonical evidence ===');
+{
+  const raw = fs.readFileSync(R.DEFAULT_AMANDA, 'utf8');
+  ok(!/"expected"\s*:\s*2182/.test(raw) && !/"conservative"\s*:\s*930/.test(raw)
+    && !/"optimistic"\s*:\s*2400/.test(raw),
+    'Aug. 14 observation file does not copy amandaTransfer 930 / 2,182 / 2,400');
+  ok(!amanda.observations.some(o => o.fact === 'household-transfer'
+    && o.scenarioMonthly && o.scenarioMonthly.expected === 2182),
+    'no household-transfer observation claims the canonical expected amount');
+
+  function transferPlan(expected) {
+    return cashFixture([{
+      id: 'amandaTransfer',
+      label: "Amanda's transfers to the household",
+      frequency: 'monthly',
+      day: 20,
+      scenarioMonthly: { conservative: 930, expected, optimistic: 2400 },
+      confidence: 'estimated',
+    }]);
+  }
+  const at2182 = runAmanda(transferPlan(2182));
+  const at9999 = runAmanda(transferPlan(9999));
+  const copiedMatch = row => row.fact === 'household-transfer'
+    && row.status === 'MATCH'
+    && row.evidenceValue != null
+    && near(row.evidenceValue, 2182);
+  ok(!at2182.rows.some(copiedMatch),
+    'canonical expected $2,182 does not create an Aug. 14 MATCH of copied evidence');
+  ok(!at9999.rows.some(copiedMatch),
+    'changing canonical expected to $9,999 does not leave a copied $2,182 MATCH');
+  ok(at2182.amandaTransferAuthority && at2182.amandaTransferAuthority.present
+    && at2182.amandaTransferAuthority.locator === 'income:amandaTransfer'
+    && near(at2182.amandaTransferAuthority.canonicalExpected, 2182)
+    && at2182.amandaTransferAuthority.independentlyVerifiedByPaydayEvidence === false,
+    'report still names income:amandaTransfer as incumbent canonical context at $2,182');
+  ok(at9999.amandaTransferAuthority && near(at9999.amandaTransferAuthority.canonicalExpected, 9999)
+    && at9999.amandaTransferAuthority.independentlyVerifiedByPaydayEvidence === false,
+    'canonical context follows the mutated expected amount and is still not payday-verified');
+
+  const copied = runAmanda(transferPlan(9999), [{
+    observationId: 'copied-canonical-transfer',
+    fact: 'household-transfer',
+    scenarioMonthly: { conservative: 930, expected: 2182, optimistic: 2400 },
+    independentlyObserved: false,
+    canonical: { collection: 'income', id: 'amandaTransfer' },
+    evidenceDate: START,
+  }]);
+  const copiedRow = copied.rows.find(r => r.observationId === 'copied-canonical-transfer');
+  ok(copiedRow && copiedRow.evidenceValue == null,
+    'a non-independent transfer row does not keep copied $2,182 as evidence');
+  ok(!(copiedRow && copiedRow.status === 'MATCH' && near(copiedRow.evidenceValue, 2182)),
+    'copied $2,182 cannot MATCH a mutated canonical expected');
+}
+
 console.log('\n=== 8. reconciliation performs no writes ===');
 {
   const before = hashFile(R.DEFAULT_DATA);
@@ -392,14 +507,20 @@ console.log('\n=== 8. reconciliation performs no writes ===');
   const coaching = result.rows.find(r => r.observationId === 'payday-amanda-coaching-receipt');
   const obligation = result.rows.find(r => r.observationId === 'payday-amanda-business-obligation');
   const available = result.rows.find(r => r.observationId === 'payday-amanda-household-available');
-  ok(salaryMid && salaryMid.status === 'MATCH' && near(salaryMid.evidenceValue, SALARY)
-    && salaryMid.intentionallyNotCanonical,
-    'live mid-month $2,168.85 is intentionally not Forecast income');
-  ok(salaryEnd && salaryEnd.status === 'MATCH' && near(salaryEnd.evidenceValue, MONTH_END)
-    && salaryEnd.intentionallyNotCanonical,
-    'live month-end $2,387.99 is intentionally not Forecast income');
-  ok(transfer && transfer.status === 'MATCH' && near(transfer.canonicalValue, 2182),
-    'live amandaTransfer expected $2,182 still matches the canonical model');
+  ok(salaryMid && salaryMid.status === 'MISSING' && near(salaryMid.evidenceValue, SALARY)
+    && salaryMid.intentionallyNotPromoted
+    && salaryMid.canonicalTarget === '(no canonical salary fact)',
+    'live mid-month $2,168.85 is observed, MISSING as a salary fact, not MATCH to amandaTransfer');
+  ok(salaryEnd && salaryEnd.status === 'MISSING' && near(salaryEnd.evidenceValue, MONTH_END)
+    && salaryEnd.intentionallyNotPromoted,
+    'live month-end $2,387.99 is observed and intentionally not promoted');
+  ok(!transfer,
+    'Aug. 14 file has no household-transfer observation that copies canonical amounts');
+  ok(result.amandaTransferAuthority && result.amandaTransferAuthority.present
+    && result.amandaTransferAuthority.locator === 'income:amandaTransfer'
+    && near(result.amandaTransferAuthority.canonicalExpected, 2182)
+    && result.amandaTransferAuthority.independentlyVerifiedByPaydayEvidence === false,
+    'live amandaTransfer is reported as unverified canonical context, not MATCH evidence');
   ok(coaching && coaching.status === 'MATCH' && coaching.unknown,
     'live coaching receipt is unresolved and not household income');
   ok(obligation && obligation.status === 'MATCH' && obligation.unknown
@@ -420,10 +541,12 @@ console.log('\n=== 8. reconciliation performs no writes ===');
     'CLI report repeats the no-write contract');
   ok(/Amanda income \/ coaching \/ transfer distinctions/.test(out),
     'CLI names the Amanda income split');
-  ok(/not Forecast household income/.test(out),
-    'CLI reports salary as not Forecast household income');
-  ok(/canonical household-cash Forecast authority/.test(out),
-    'CLI reports amandaTransfer as the household-cash authority');
+  ok(/no canonical salary fact — intentionally not promoted/.test(out),
+    'CLI reports salary as observed and intentionally not promoted');
+  ok(/incumbent Forecast household-cash authority/.test(out),
+    'CLI reports amandaTransfer as the incumbent household-cash authority');
+  ok(/did not independently observe or verify/.test(out),
+    'CLI says Aug. 14 did not independently verify amandaTransfer amounts');
   ok(/remainder unresolved/.test(out),
     'CLI reports household-available remainder as unresolved');
   ok(hashFile(R.DEFAULT_DATA) === cliBefore,

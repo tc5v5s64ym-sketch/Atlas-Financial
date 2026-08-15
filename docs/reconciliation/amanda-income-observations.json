@@ -14,7 +14,7 @@
       "landingAccount": "amanda-debt-payments",
       "observedAsOf": "2026-08-14",
       "source": "docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md",
-      "note": "Employment income into Amanda's operating account. Not household Forecast income. Not a promotion to verified canonical income. Counting this deposit and amandaTransfer as two household inflows would double-count the same dollars."
+      "note": "Observed Amanda operating income into DEBT&PAYMENTS. No canonical salary fact. Intentionally not promoted into Forecast. Owner evidence is insufficient for a canonical salary replacement. Counting this deposit and amandaTransfer as two household inflows would double-count the same dollars."
     },
     {
       "observationId": "payday-amanda-salary-monthend",
@@ -25,22 +25,7 @@
       "landingAccount": "amanda-debt-payments",
       "observedAsOf": "2026-08-14",
       "source": "docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md",
-      "note": "Employment income into Amanda's operating account. Not household Forecast income. Not a promotion to verified canonical income."
-    },
-    {
-      "observationId": "payday-amanda-household-transfer-model",
-      "fact": "household-transfer",
-      "label": "Amanda household-transfer Forecast authority",
-      "canonical": { "collection": "income", "id": "amandaTransfer" },
-      "scenarioMonthly": {
-        "conservative": 930,
-        "expected": 2182,
-        "optimistic": 2400
-      },
-      "landingAccount": "chequing-b",
-      "observedAsOf": "2026-08-14",
-      "source": "docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md",
-      "note": "Current canonical household-cash Forecast authority. A transfer moves already-earned money; it is not new employment or coaching income. Live amounts stay until an owner-approved replacement is proved safe."
+      "note": "Observed Amanda operating income into DEBT&PAYMENTS. No canonical salary fact. Intentionally not promoted into Forecast. Owner evidence is insufficient for a canonical salary replacement."
     },
     {
       "observationId": "payday-amanda-coaching-receipt",

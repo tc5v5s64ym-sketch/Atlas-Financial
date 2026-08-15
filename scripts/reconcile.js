@@ -200,6 +200,10 @@ function householdCashFromAmandaMovements(movements) {
     (s, m) => s + classifyAmandaMovement(m).householdCashInflow, 0));
 }
 
+function finiteNumber(v) {
+  return typeof v === 'number' && isFinite(v);
+}
+
 function amandaHouseholdAvailable(input) {
   if (!input || input.obligationsKnown !== true) {
     return {
@@ -208,13 +212,33 @@ function amandaHouseholdAvailable(input) {
       reason: 'unknown-business-obligations',
     };
   }
-  const employment = Number(input.employment || 0);
-  const coaching = Number(input.coaching || 0);
-  const obligations = Number(input.obligations || 0);
+  if (!finiteNumber(input.employment)
+    || !finiteNumber(input.coaching)
+    || !finiteNumber(input.obligations)) {
+    return {
+      established: false,
+      amount: null,
+      reason: 'incomplete-known-inputs',
+    };
+  }
   return {
     established: true,
-    amount: round2(employment + coaching - obligations),
+    amount: round2(input.employment + input.coaching - input.obligations),
     reason: null,
+  };
+}
+
+function amandaTransferAuthorityContext(data) {
+  const transfer = amandaTransferStream(data);
+  const expected = transfer && transfer.scenarioMonthly && transfer.scenarioMonthly.expected != null
+    ? Number(transfer.scenarioMonthly.expected)
+    : (transfer && transfer.amount != null ? Number(transfer.amount) : null);
+  return {
+    present: !!transfer,
+    locator: transfer ? `income:${AMANDA_TRANSFER_ID}` : null,
+    canonicalExpected: finiteNumber(expected) ? expected : null,
+    independentlyVerifiedByPaydayEvidence: false,
+    note: 'Incumbent Forecast household-cash authority. The Aug. 14 session did not independently observe or verify its scenarioMonthly values.',
   };
 }
 
@@ -499,6 +523,7 @@ function observationsFromAmanda(doc) {
     cadenceHint: item.cadenceHint || null,
     scenarioMonthly: item.scenarioMonthly || null,
     unknown: item.unknown === true,
+    independentlyObserved: item.independentlyObserved === true,
     established: item.established === true,
     observedBalance: item.observedBalance != null ? Number(item.observedBalance) : null,
     canonical: item.canonical || null,
@@ -513,8 +538,7 @@ function compareEmploymentDeposit(row, data) {
   const doubleCount = forecastHasAmandaDoubleCount(data);
   let status;
   if (doubleCount || salaryStreams.length) status = 'CONFLICT';
-  else if (!transfer) status = 'MISSING';
-  else status = 'MATCH';
+  else status = 'MISSING';
   return {
     observationId: row.observationId,
     fact: 'employment-deposit',
@@ -525,57 +549,67 @@ function compareEmploymentDeposit(row, data) {
     canonicalValue: null,
     canonicalTarget: salaryStreams.length
       ? `income:${salaryStreams.map(s => s.id).join(',')}`
-      : '(intentionally not a Forecast income stream)',
+      : '(no canonical salary fact)',
     difference: null,
     status,
     representation: salaryStreams.length
       ? 'forecast-salary-stream'
-      : (transfer ? 'indirect-via-amandaTransfer' : 'unrepresented'),
-    intentionallyNotCanonical: salaryStreams.length === 0 && !!transfer,
+      : 'observed-not-promoted',
+    intentionallyNotPromoted: salaryStreams.length === 0,
     doubleCount,
     householdTransferAuthority: transfer ? `income:${AMANDA_TRANSFER_ID}` : null,
     note: row.note || (doubleCount
       ? 'salary stream plus amandaTransfer would double-count household income'
       : (salaryStreams.length
         ? 'Tennis BC salary must not become a Forecast income stream beside amandaTransfer'
-        : 'employment deposit is Amanda operating income; household cash authority remains amandaTransfer')),
+        : 'observed Amanda operating income; no canonical salary fact; intentionally not promoted. Owner evidence insufficient for canonical salary replacement')),
   };
 }
 
 function compareHouseholdTransfer(row, data) {
   const target = row.canonical || { collection: 'income', id: AMANDA_TRANSFER_ID };
   const canonical = readCanonical(data, target);
-  const observed = row.scenarioMonthly || null;
   const doubleCount = forecastHasAmandaDoubleCount(data);
+  const independent = row.independentlyObserved === true;
+  const observed = independent ? (row.scenarioMonthly || null) : null;
+  const observedAmount = independent && row.evidenceValue != null && isFinite(row.evidenceValue)
+    ? Number(row.evidenceValue) : null;
   let status;
   if (doubleCount) status = 'CONFLICT';
   else if (!canonical.found) status = 'MISSING';
-  else if (observed && canonical.scenarioMonthly) {
+  else if (!independent) {
+    status = 'MATCH';
+  } else if (observed && canonical.scenarioMonthly) {
     const keys = ['conservative', 'expected', 'optimistic'];
     const same = keys.every(k => near(observed[k], canonical.scenarioMonthly[k]));
     status = same ? 'MATCH' : 'CHANGE';
-  } else if (row.evidenceValue != null && canonical.value != null) {
-    status = near(row.evidenceValue, canonical.value) ? 'MATCH' : 'CHANGE';
+  } else if (observedAmount != null && canonical.value != null) {
+    status = near(observedAmount, canonical.value) ? 'MATCH' : 'CHANGE';
   } else status = 'MISSING';
 
   return {
     observationId: row.observationId,
     fact: 'household-transfer',
     accountLabel: row.accountLabel,
-    evidenceValue: observed && observed.expected != null ? Number(observed.expected) : row.evidenceValue,
+    evidenceValue: independent
+      ? (observed && observed.expected != null ? Number(observed.expected) : observedAmount)
+      : null,
     evidenceDate: row.evidenceDate,
     landingAccount: row.landingAccount || null,
     canonicalValue: canonical.found ? canonical.value : null,
     canonicalTarget: canonical.locator,
-    difference: canonical.found && observed && observed.expected != null
+    difference: independent && canonical.found && observed && observed.expected != null
       ? round2(Number(observed.expected) - canonical.value)
       : null,
     status,
     doubleCount,
-    scenarioMonthly: canonical.found ? canonical.scenarioMonthly : null,
+    independentlyObserved: independent,
+    scenarioMonthly: independent && canonical.found ? canonical.scenarioMonthly : null,
     note: row.note || (doubleCount
       ? 'amandaTransfer plus a salary stream would double-count household income'
-      : 'household transfer is movement of existing money, not new employment income'),
+      : (independent
+        ? 'household transfer is movement of existing money, not new employment income'
+        : 'incumbent Forecast household-cash authority; not independently observed by this evidence record')),
   };
 }
 
@@ -801,6 +835,7 @@ function reconcile(input) {
     staleAssigned: false,
     staleReason: (map && map.stale)
       || 'No owner-defined age threshold exists. Evidence dates are reported; STALE is not inferred.',
+    amandaTransferAuthority: amandaTransferAuthorityContext(data),
     rows,
     counts,
   };
@@ -835,8 +870,9 @@ function formatReport(result) {
       : row.fact === 'paying-account'
         ? (row.payingAccountLabel || row.payingAccount || '—')
         : (row.fact === 'coaching-receipt' || row.fact === 'business-obligation'
-          || row.fact === 'household-available') && row.evidenceValue == null
-          ? 'unresolved'
+          || row.fact === 'household-available' || row.fact === 'household-transfer')
+          && row.evidenceValue == null
+          ? (row.fact === 'household-transfer' ? 'not observed' : 'unresolved')
           : (row.evidenceValue == null ? '—' : n2(row.evidenceValue));
     const canonical = row.fact === 'settlement'
       ? (row.canonicalSettledOn || 'unsettled')
@@ -845,14 +881,16 @@ function formatReport(result) {
         : row.fact === 'paying-account'
           ? (row.canonicalPayingAccount || (row.status === 'MISSING' ? 'missing' : '—'))
           : row.fact === 'employment-deposit'
-            ? (row.doubleCount ? 'double-count' : 'not Forecast')
+            ? (row.status === 'CONFLICT' ? 'double-count' : 'not promoted')
             : row.fact === 'internal-transfer'
               ? '$0 income'
               : row.fact === 'coaching-receipt'
                 ? 'not household'
                 : row.fact === 'business-obligation' || row.fact === 'household-available'
                   ? (row.remainderEstablished ? n2(row.canonicalValue) : 'unresolved')
-                  : (row.canonicalValue == null ? '—' : n2(row.canonicalValue));
+            : row.fact === 'household-transfer' && row.independentlyObserved !== true
+              ? 'canonical ctx'
+              : (row.canonicalValue == null ? '—' : n2(row.canonicalValue));
     lines.push([
       pad(row.observationId, 28),
       pad(evidence, 12),
@@ -891,15 +929,19 @@ function formatReport(result) {
     for (const row of amanda) {
       const bits = [`  ${row.observationId}: ${row.fact}`];
       if (row.fact === 'employment-deposit') {
-        bits.push(row.doubleCount
-          ? 'CONFLICT — salary plus transfer would double-count'
-          : 'Amanda operating income; not Forecast household income');
-        if (row.householdTransferAuthority) bits.push(`household cash via ${row.householdTransferAuthority}`);
+        bits.push('observed Amanda operating income');
+        if (row.status === 'CONFLICT') {
+          bits.push('CONFLICT — salary plus transfer would double-count');
+        } else {
+          bits.push('no canonical salary fact — intentionally not promoted');
+        }
       }
       if (row.fact === 'household-transfer') {
         bits.push(row.doubleCount
           ? 'CONFLICT — must not sit beside a salary stream'
-          : 'canonical household-cash Forecast authority');
+          : (row.independentlyObserved
+            ? 'independently observed household transfer'
+            : 'canonical authority reference — not independently verified by this evidence'));
       }
       if (row.fact === 'coaching-receipt') bits.push('business inflow, not automatically household income');
       if (row.fact === 'business-obligation') {
@@ -914,6 +956,20 @@ function formatReport(result) {
           : 'remainder unresolved — do not treat account balance as spendable');
       }
       lines.push(bits.join(' — '));
+    }
+  }
+  const auth = result.amandaTransferAuthority;
+  if (auth) {
+    lines.push('');
+    lines.push('Amanda household-cash Forecast authority (canonical context, not Aug. 14 evidence):');
+    if (auth.present) {
+      lines.push(`  ${auth.locator} — incumbent Forecast household-cash authority`);
+      if (auth.canonicalExpected != null) {
+        lines.push(`  canonical expected (from data.json, not this evidence record): ${n2(auth.canonicalExpected)}`);
+      }
+      lines.push('  Aug. 14 session did not independently observe or verify the canonical scenarioMonthly values');
+    } else {
+      lines.push('  income:amandaTransfer — canonical missing');
     }
   }
   lines.push('');
@@ -952,6 +1008,7 @@ const api = {
   classifyAmandaMovement,
   householdCashFromAmandaMovements,
   amandaHouseholdAvailable,
+  amandaTransferAuthorityContext,
   forecastHasAmandaDoubleCount,
   isAmandaSalaryStream,
   readCanonical,

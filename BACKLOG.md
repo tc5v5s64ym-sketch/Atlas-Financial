@@ -1082,9 +1082,12 @@ inflows, business obligations, household transfers, and household-available
 remainder are distinct observation facts in
 `docs/reconciliation/amanda-income-observations.json`. Observed Tennis BC
 nets ($2,168.85 around the 15th, $2,387.99 around month-end) are income
-into Amanda / DEBT&PAYMENTS, not Forecast household income.
-`plan.income.amandaTransfer` remains the household-cash Forecast
-authority. Coaching receipts are not automatically household income.
+into Amanda / DEBT&PAYMENTS. They are observed operating-income deposits
+with no canonical salary fact and are intentionally not promoted into
+Forecast — they do not MATCH `amandaTransfer`. `plan.income.amandaTransfer`
+remains the household-cash Forecast authority and is reported as canonical
+context; the Aug. 14 corpus does not independently observe its
+scenarioMonthly values. Coaching receipts are not automatically household income.
 Unknown business obligations fail closed — the reconciler does not
 invent a household-available remainder from salary minus guessed costs,
 and the Aug. 14 $798.37 DEBT&PAYMENTS balance is not spendable.
