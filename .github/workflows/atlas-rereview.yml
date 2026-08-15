@@ -89,6 +89,22 @@ jobs:
           jq -r '.body // ""' <<<"${handoff_json}" > "${RUNNER_TEMP}/handoff.md"
           node scripts/atlas-api-rereview.js parse-handoff "${RUNNER_TEMP}/handoff.md" "${head_sha}" \
             > "${RUNNER_TEMP}/handoff.json"
+          prior_head="$(jq -r '.priorHead' "${RUNNER_TEMP}/handoff.json")"
+          prior_outcome="$(jq -r '.priorOutcome' "${RUNNER_TEMP}/handoff.json")"
+
+          node scripts/atlas-api-rereview.js validate-prior-review \
+            "${reviews}" "${prior_head}" "${prior_outcome}" \
+            > "${RUNNER_TEMP}/prior-review.json"
+
+          compare_json="$(gh api "repos/${GITHUB_REPOSITORY}/compare/${prior_head}...${head_sha}")"
+          compare_status="$(jq -r '.status // empty' <<<"${compare_json}")"
+          merge_base="$(jq -r '.merge_base_commit.sha // empty' <<<"${compare_json}")"
+          ahead_by="$(jq -r '.ahead_by // 0' <<<"${compare_json}")"
+          behind_by="$(jq -r '.behind_by // 0' <<<"${compare_json}")"
+          if [[ "${compare_status}" != "ahead" || "${merge_base}" != "${prior_head}" || "${ahead_by}" -lt 1 || "${behind_by}" -ne 0 ]]; then
+            echo "Live head is not a forward repair descendant of the trusted prior reviewed SHA. Fail closed."
+            exit 1
+          fi
 
           existing="$(jq -r --arg head "${head_sha}" '
             [ .[]
@@ -124,6 +140,8 @@ jobs:
           jq -n \
             --argjson pr "${pr_json}" \
             --arg head "${head_sha}" \
+            --arg priorHead "${prior_head}" \
+            --arg priorOutcome "${prior_outcome}" \
             --rawfile agents AGENTS.md \
             --rawfile claude CLAUDE.md \
             --rawfile architecture ARCHITECTURE.md \
@@ -133,6 +151,7 @@ jobs:
             '{
               repository: env.GITHUB_REPOSITORY,
               pull_request: {number:$pr.number,title:$pr.title,body:($pr.body // ""),base:$pr.base.ref,head:$head},
+              repair_provenance: {prior_reviewed_head:$priorHead,prior_outcome:$priorOutcome},
               deterministic_checks: $checks,
               canonical_contracts: {agents:$agents,claude:$claude,architecture:$architecture,risk_labels:$risks},
               exact_head_diff: $diff
