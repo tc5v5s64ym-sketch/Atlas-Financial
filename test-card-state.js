@@ -108,6 +108,36 @@ console.log('=== 1. posted $4,800 + pending $300 is not silently posted $5,100 =
   });
   ok(alreadyIncludes.unknown !== true && near(alreadyIncludes.amount, COLLAPSED),
     'posted that already includes pending is not posted+pending again', money(alreadyIncludes.amount));
+
+  const included = runCards(
+    { meta: { asOf: START }, debts: [debtFixture({ balance: COLLAPSED })] },
+    [
+      {
+        observationId: 'synth-posted-includes',
+        fact: 'posted-balance',
+        cardId: 'synth-card',
+        amount: COLLAPSED,
+        balanceIncludesPending: true,
+        observedAsOf: START,
+        canonical: { collection: 'debts', id: 'synth-card', field: 'balance' },
+      },
+      {
+        observationId: 'synth-pending-includes',
+        fact: 'pending',
+        cardId: 'synth-card',
+        amount: PENDING,
+        observedAsOf: START,
+        canonical: { collection: 'debts', id: 'synth-card', field: 'pending' },
+      },
+    ]
+  );
+  const includedSummary = (included.cardSummaries || []).find(c => c.cardId === 'synth-card');
+  ok(includedSummary && includedSummary.balanceIncludesPending === true
+    && includedSummary.exposureUnknown !== true
+    && near(includedSummary.exposure, COLLAPSED)
+    && !near(includedSummary.exposure, independentExposure(COLLAPSED, PENDING)),
+    'summary carries balanceIncludesPending and does not add pending again',
+    money(includedSummary && includedSummary.exposure));
 }
 
 console.log('\n=== 2. pending unknown remains unknown — never $0 ===');
@@ -297,6 +327,21 @@ console.log('\n=== 8. same-time contradictions are CONFLICT, not a guessed ident
   );
   ok(conflicted.rows.every(r => r.fact === 'posted-balance' && r.status === 'CONFLICT'),
     'same-time posted $4,800 vs $5,100 is CONFLICT, not a silent choice');
+  const conflictedSummary = (conflicted.cardSummaries || []).find(c => c.cardId === 'synth-card');
+  ok(conflictedSummary && conflictedSummary.postedConflict === true
+    && conflictedSummary.posted == null
+    && conflictedSummary.exposureUnknown === true
+    && conflictedSummary.exposure == null
+    && conflictedSummary.exposureReason === 'conflicted-posted'
+    && !near(conflictedSummary.exposure || 0, POSTED)
+    && !near(conflictedSummary.exposure || 0, COLLAPSED),
+    'conflicted posted fails exposure closed instead of publishing the last value');
+  const conflictedHelper = R.cardExposure({
+    posted: COLLAPSED, pending: 0, postedConflict: true, payments: [],
+  });
+  ok(conflictedHelper.unknown === true && conflictedHelper.amount == null
+    && conflictedHelper.reason === 'conflicted-posted',
+    'independent exposure helper fail-closes a conflicted posted group');
 
   const avail = runCards(
     { meta: { asOf: START }, debts: [debtFixture()] },
@@ -482,6 +527,84 @@ console.log('\n=== live payday card-state is not artificially green ===');
     'Triangle pending unknown fail-closes exposure');
   ok(near(R.householdCashFromCardCapacity({ limit: 13500, availableCredit: 3 }), 0),
     'Triangle $13,500 limit and $3 available are still $0 cash');
+}
+
+console.log('\n=== 11. later known pending clears an older unknown ===');
+{
+  const laterKnown = runCards(
+    { meta: { asOf: START }, debts: [debtFixture()] },
+    [
+      {
+        observationId: 'synth-pending-later-known',
+        fact: 'pending',
+        cardId: 'synth-card',
+        amount: PENDING,
+        unknown: false,
+        observedAsOf: START,
+        canonical: { collection: 'debts', id: 'synth-card', field: 'pending' },
+      },
+      {
+        observationId: 'synth-pending-older-unknown',
+        fact: 'pending',
+        cardId: 'synth-card',
+        amount: null,
+        unknown: true,
+        observedAsOf: '2026-08-01',
+        canonical: { collection: 'debts', id: 'synth-card', field: 'pending' },
+      },
+      {
+        observationId: 'synth-posted-for-pending-time',
+        fact: 'posted-balance',
+        cardId: 'synth-card',
+        amount: POSTED,
+        observedAsOf: START,
+        canonical: { collection: 'debts', id: 'synth-card', field: 'balance' },
+      },
+    ]
+  );
+  const knownSummary = (laterKnown.cardSummaries || []).find(c => c.cardId === 'synth-card');
+  ok(knownSummary && knownSummary.pendingUnknown !== true && near(knownSummary.pending, PENDING),
+    'later known pending is selected over an older unknown, even when the unknown is last in the file');
+  ok(knownSummary && knownSummary.exposureUnknown !== true
+    && near(knownSummary.exposure, independentExposure(POSTED, PENDING)),
+    'exposure uses the later known pending, not unknown', money(knownSummary && knownSummary.exposure));
+
+  const laterUnknown = runCards(
+    { meta: { asOf: START }, debts: [debtFixture()] },
+    [
+      {
+        observationId: 'synth-pending-older-known',
+        fact: 'pending',
+        cardId: 'synth-card',
+        amount: PENDING,
+        unknown: false,
+        observedAsOf: '2026-08-01',
+        canonical: { collection: 'debts', id: 'synth-card', field: 'pending' },
+      },
+      {
+        observationId: 'synth-pending-later-unknown',
+        fact: 'pending',
+        cardId: 'synth-card',
+        amount: null,
+        unknown: true,
+        observedAsOf: START,
+        canonical: { collection: 'debts', id: 'synth-card', field: 'pending' },
+      },
+      {
+        observationId: 'synth-posted-for-later-unknown',
+        fact: 'posted-balance',
+        cardId: 'synth-card',
+        amount: POSTED,
+        observedAsOf: START,
+        canonical: { collection: 'debts', id: 'synth-card', field: 'balance' },
+      },
+    ]
+  );
+  const unknownSummary = (laterUnknown.cardSummaries || []).find(c => c.cardId === 'synth-card');
+  ok(unknownSummary && unknownSummary.pendingUnknown === true
+    && unknownSummary.exposureUnknown === true
+    && unknownSummary.exposureReason === 'unknown-pending',
+    'a later unknown pending still fail-closes exposure');
 }
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);

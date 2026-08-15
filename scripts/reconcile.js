@@ -796,6 +796,9 @@ function cardExposure(state) {
   if (pendingUnknown) {
     return { amount: null, unknown: true, reason: 'unknown-pending' };
   }
+  if (state && state.postedConflict === true) {
+    return { amount: null, unknown: true, reason: 'conflicted-posted' };
+  }
   if (!state || !finiteNumber(state.posted)) {
     return { amount: null, unknown: true, reason: 'missing-posted' };
   }
@@ -1068,6 +1071,12 @@ function compareCardObservations(cardObservations, data) {
   return rows;
 }
 
+function observationTime(row) {
+  const d = row && row.evidenceDate;
+  if (d == null || d === '' || d === '(none)') return '';
+  return String(d);
+}
+
 function cardSummaries(cardRows) {
   const byCard = new Map();
   for (const row of cardRows || []) {
@@ -1078,6 +1087,8 @@ function cardSummaries(cardRows) {
       posted: null,
       pending: null,
       pendingUnknown: false,
+      postedConflict: false,
+      balanceIncludesPending: false,
       limit: null,
       available: null,
       availableConflict: false,
@@ -1086,14 +1097,41 @@ function cardSummaries(cardRows) {
       unresolved: [],
       householdCashFromLimit: 0,
       householdCashFromAvailable: 0,
+      _postedAsOf: null,
+      _pendingAsOf: null,
     };
-    if (row.fact === 'posted-balance' && row.evidenceValue != null) entry.posted = row.evidenceValue;
+    if (row.fact === 'posted-balance') {
+      const t = observationTime(row);
+      if (entry._postedAsOf == null || t > entry._postedAsOf) {
+        entry._postedAsOf = t;
+        entry.postedConflict = row.status === 'CONFLICT';
+        entry.posted = entry.postedConflict || row.evidenceValue == null ? null : row.evidenceValue;
+        entry.balanceIncludesPending = !entry.postedConflict && row.balanceIncludesPending === true;
+      } else if (t === entry._postedAsOf) {
+        if (row.status === 'CONFLICT') {
+          entry.postedConflict = true;
+          entry.posted = null;
+          entry.balanceIncludesPending = false;
+        } else if (!entry.postedConflict && row.evidenceValue != null) {
+          entry.posted = row.evidenceValue;
+          entry.balanceIncludesPending = row.balanceIncludesPending === true;
+        }
+      }
+    }
     if (row.fact === 'pending') {
-      if (row.unknown) {
-        entry.pendingUnknown = true;
-        entry.unresolved.push('pending unknown');
-      } else if (row.evidenceValue != null) {
-        entry.pending = row.evidenceValue;
+      if (row.unknown) entry.unresolved.push('pending unknown');
+      const t = observationTime(row);
+      if (entry._pendingAsOf == null || t > entry._pendingAsOf) {
+        entry._pendingAsOf = t;
+        entry.pendingUnknown = row.unknown === true;
+        entry.pending = entry.pendingUnknown || row.evidenceValue == null ? null : row.evidenceValue;
+      } else if (t === entry._pendingAsOf) {
+        if (row.unknown) {
+          entry.pendingUnknown = true;
+          entry.pending = null;
+        } else if (!entry.pendingUnknown && row.evidenceValue != null) {
+          entry.pending = row.evidenceValue;
+        }
       }
     }
     if (row.fact === 'limit' && row.evidenceValue != null) entry.limit = row.evidenceValue;
@@ -1123,14 +1161,18 @@ function cardSummaries(cardRows) {
       posted: entry.posted,
       pending: entry.pending,
       pendingUnknown: entry.pendingUnknown,
-      balanceIncludesPending: false,
+      postedConflict: entry.postedConflict === true,
+      balanceIncludesPending: entry.balanceIncludesPending === true,
       payments: entry.confirmedPayments,
     });
-    return Object.assign({}, entry, {
+    const published = Object.assign({}, entry, {
       exposure: exposure.amount,
       exposureUnknown: exposure.unknown === true,
       exposureReason: exposure.reason,
     });
+    delete published._postedAsOf;
+    delete published._pendingAsOf;
+    return published;
   });
 }
 
