@@ -137,12 +137,18 @@ high-severity/systemic finding or a response that materially changes a high-risk
 runtime, security, schema, authority, cutover, or product-trust surface. The
 retired `codex-review.yml` freshness reporter is not needed under this rule: an
 ordinary push does not create a requirement to rerun an optional audit. Native
-Codex automatic reviews, configured in Codex settings, already post that first
-pass when a pull request is opened for review or marked ready, without an
-`@codex review` comment. The `codex-review-request.yml` comment dispatcher is
-retired: it never successfully posted that comment, and PR #61 still received a
-native Codex review after the dispatcher 403'd. A justified second pass remains
-a human `@codex review` comment. The Codex→Cursor repair path is unchanged.
+Codex automatic reviews are the intended first advisory pass: Codex docs say
+they post when a pull request is opened for review or marked ready, without an
+`@codex review` comment. That lane is not presently proven operational in this
+repo. PR #62 received a `chatgpt-codex-connector` notice to create a Codex
+environment rather than an automatic review, so a Codex environment or
+configuration must be restored or created before the first-pass lane is live
+again. The `codex-review-request.yml` comment dispatcher remains retired: it
+never successfully posted `@codex review`, and it is not replaced by another
+token or dispatcher. A justified second pass remains a human `@codex review`
+comment once that environment exists. Atlas Contract / Systems Review, Merge
+Card, and Codex→Cursor handling of genuine submitted Codex reviews remain
+intact; deleting the broken dispatcher does not remove a hard merge authority.
 
 ## Control retirement
 
@@ -157,8 +163,12 @@ machine-scored scope/atomicity narratives, and open-loop arithmetic. None
 protected product behavior. The surviving tests, reconciliations, invariants,
 security checks, exact-head equality, risk label, and owner gates do. The
 later-retired `codex-review-request.yml` comment dispatcher is the same class:
-native Codex automatic reviews already cover the first advisory pass it tried
-to request.
+it was a broken 403-producing comment poster, not a hard merge authority.
+Native Codex automatic reviews remain the intended first-pass mechanism, but
+they are not presently proven operational here until a Codex environment or
+configuration is restored or created. Atlas Contract / Systems Review, Merge
+Card, and Codex→Cursor handling of genuine submitted reviews remain the
+surviving authorities.
 
 ## Setup
 
