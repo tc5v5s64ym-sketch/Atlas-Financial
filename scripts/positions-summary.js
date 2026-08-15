@@ -73,7 +73,8 @@ const homeValue = homeRow ? Number(parse(homeRow)[6]) : null;
 let periods = null;
 try { periods = require(path.join(ROOT, 'public', 'periods.json')); } catch { /* optional */ }
 const budget = periods ? F.budgetBreakdown(data.plan, periods,
-  { paypalPerMonth: data.paypal ? data.paypal.perMonth : 0 }) : null;
+  { paypalPerMonth: data.paypal ? data.paypal.perMonth : 0,
+    asOf: data.meta.asOf }) : null;
 const essentialsMonthly = budget ? budget.requiredMonthly : null;
 
 /* --------------------------------------------------- the generated rows */

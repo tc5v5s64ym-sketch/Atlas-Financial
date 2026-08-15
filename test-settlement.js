@@ -280,6 +280,51 @@ console.log('\n=== G. sinking-fund and estimated-risk use the same opening rule 
     'both consumers follow Forecast.commitmentSettledBy');
 }
 
+console.log('\n=== snapshot-equivalent budgetBreakdown follows settlement timing ===');
+{
+  const plan = fixture();
+  plan.commitments = [{
+    id: 'camp',
+    date: DUE,
+    label: 'Fusion camp (synthetic)',
+    amount: CAMP,
+    confidence: 'estimated',
+    sinkingFund: true,
+    budgetCategory: 'sport',
+    settledOn: PAID,
+  }];
+  const snapshotOpts = asOf => ({
+    paypalPerMonth: 0,
+    weeklyCap: 0,
+    asOf,
+  });
+  const before = F.budgetBreakdown(plan, PERIODS, snapshotOpts(AUG9));
+  const onDay = F.budgetBreakdown(plan, PERIODS, snapshotOpts(PAID));
+  ok((before.sinkingItems || []).some(s => s.label === 'Fusion camp (synthetic)'),
+    'A. budgetBreakdown asOf 2026-08-09 still names the camp in sinking');
+  ok(!(onDay.sinkingItems || []).some(s => s.label === 'Fusion camp (synthetic)'),
+    'B. budgetBreakdown asOf 2026-08-14 excludes the camp from sinking');
+
+  const snapSrc = fs.readFileSync(require('path').join(__dirname, 'scripts', 'figures-snapshot.js'), 'utf8');
+  ok(/F\.budgetBreakdown\(plan, periods, \{[\s\S]*?\basOf\b/.test(snapSrc),
+    'C. figures-snapshot.js passes its canonical asOf into budgetBreakdown');
+
+  const meta = { asOf: PAID };
+  const snapshotStyle = F.budgetBreakdown(plan, PERIODS, {
+    paypalPerMonth: 0,
+    weeklyCap: 0,
+    asOf: meta.asOf,
+  });
+  const timeless = F.budgetBreakdown(plan, PERIODS, {
+    paypalPerMonth: 0,
+    weeklyCap: 0,
+  });
+  ok(!(snapshotStyle.sinkingItems || []).some(s => s.label === 'Fusion camp (synthetic)'),
+    'C. snapshot-style call with meta.asOf 2026-08-14 excludes the camp');
+  ok((timeless.sinkingItems || []).some(s => s.label === 'Fusion camp (synthetic)'),
+    'C. omitting asOf still counts the camp — the old snapshot defect');
+}
+
 console.log('\n=== no-write: evidence that it was paid does not write data.json ===');
 {
   const before = hashFile(R.DEFAULT_DATA);
