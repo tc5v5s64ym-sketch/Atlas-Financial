@@ -3,6 +3,10 @@ name: Codex cursor repair
 # Secret-bearing path. workflow_run and workflow_dispatch always use this
 # file from the default branch. It re-validates the review through the API
 # and never executes PR-head scripts in a job that has secrets.
+# After that revalidation it may edit the PR review block: PASS / NOT PASS /
+# BLOCKING from a trusted Atlas review, or PENDING after a successful repair
+# push. It never infers PASS. pull-requests:write is the minimum permission
+# needed to edit the PR body; the dispatcher remains read-only.
 on:
   workflow_run:
     workflows: ["Codex cursor repair dispatch"]
@@ -20,7 +24,7 @@ on:
 
 permissions:
   contents: read
-  pull-requests: read
+  pull-requests: write
   issues: write
 
 concurrency:
@@ -43,6 +47,7 @@ jobs:
       review_id: ${{ steps.evaluate.outputs.review_id }}
       next_round: ${{ steps.evaluate.outputs.next_round }}
       lane: ${{ steps.evaluate.outputs.lane }}
+      card_outcome: ${{ steps.evaluate.outputs.card_outcome }}
     steps:
       - name: Checkout trusted default-branch scripts
         uses: actions/checkout@v4
@@ -91,6 +96,80 @@ jobs:
           jq -s '.' "${reviews_file}.ndjson" > "${reviews_file}"
           gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${pr_number}/comments" \
             --jq '.[].body' > "${state_file}"
+
+          card_review_id="${DISPATCH_REVIEW}"
+          if [[ -z "${card_review_id}" ]]; then
+            card_review_id="$(node scripts/atlas-review-block.js select-card-review "${reviews_file}" "${current_head}")"
+          fi
+
+          card_outcome=""
+          if [[ -n "${card_review_id}" ]]; then
+            live_pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${pr_number}")"
+            live_head="$(jq -r '.head.sha' <<<"${live_pr_json}")"
+            card_review_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${pr_number}/reviews/${card_review_id}")"
+            jq -n \
+              --argjson pr "${live_pr_json}" \
+              --argjson review "${card_review_json}" \
+              '{
+                source: "pull_request_review",
+                reviewerLogin: $review.user.login,
+                reviewedSha: $review.commit_id,
+                currentHeadSha: $pr.head.sha,
+                reviewBody: ($review.body // ""),
+                pr: {
+                  number: $pr.number,
+                  state: $pr.state,
+                  base: { ref: $pr.base.ref },
+                  head: { sha: $pr.head.sha, ref: $pr.head.ref }
+                }
+              }' > "${RUNNER_TEMP}/card-request.json"
+            set +e
+            node scripts/atlas-review-block.js evaluate-review "${RUNNER_TEMP}/card-request.json" \
+              > "${RUNNER_TEMP}/card-eval.json"
+            card_status=$?
+            set -e
+            if [[ "${card_status}" -eq 0 ]]; then
+              if [[ "${live_head}" != "$(jq -r '.head.sha' <<<"${pr_json}")" ]]; then
+                echo "Live PR head moved before the review-block patch. Fail closed."
+                echo "eligible=false" >> "${GITHUB_OUTPUT}"
+                echo "card_outcome=" >> "${GITHUB_OUTPUT}"
+                exit 0
+              fi
+              jq -r '.body // ""' <<<"${live_pr_json}" > "${RUNNER_TEMP}/pr-body.md"
+              jq '.fields' "${RUNNER_TEMP}/card-eval.json" > "${RUNNER_TEMP}/card-fields.json"
+              set +e
+              node scripts/atlas-review-block.js patch \
+                "${RUNNER_TEMP}/pr-body.md" "${RUNNER_TEMP}/card-fields.json" \
+                > "${RUNNER_TEMP}/pr-body-patched.md"
+              patch_status=$?
+              set -e
+              if [[ "${patch_status}" -ne 0 ]]; then
+                echo "Review block could not be patched deterministically. Fail closed without rewriting the body."
+                exit 1
+              fi
+              jq -n --rawfile body "${RUNNER_TEMP}/pr-body-patched.md" '{body: $body}' \
+                | gh api --method PATCH "repos/${GITHUB_REPOSITORY}/pulls/${pr_number}" --input -
+              card_outcome="$(jq -r '.outcome' "${RUNNER_TEMP}/card-eval.json")"
+              echo "Synced Atlas review block to ${card_outcome} for ${live_head}."
+            elif [[ "${card_status}" -ne 2 ]]; then
+              echo "Review-block helper failed with status ${card_status}."
+              exit 1
+            fi
+          fi
+          echo "card_outcome=${card_outcome}" >> "${GITHUB_OUTPUT}"
+
+          if [[ "${card_outcome}" == "PASS" ]]; then
+            echo "eligible=false" >> "${GITHUB_OUTPUT}"
+            echo "pr_number=${pr_number}" >> "${GITHUB_OUTPUT}"
+            echo "head_sha=${current_head}" >> "${GITHUB_OUTPUT}"
+            echo "head_ref=${head_ref}" >> "${GITHUB_OUTPUT}"
+            echo "reviewed_sha=$(jq -r '.commit_id' <<<"${card_review_json}")" >> "${GITHUB_OUTPUT}"
+            echo "review_id=${card_review_id}" >> "${GITHUB_OUTPUT}"
+            echo "next_round=" >> "${GITHUB_OUTPUT}"
+            echo "lane=" >> "${GITHUB_OUTPUT}"
+            echo "Trusted Atlas PASS does not start a repair."
+            exit 0
+          fi
 
           review_id="${DISPATCH_REVIEW}"
           if [[ -z "${review_id}" ]]; then
@@ -321,7 +400,10 @@ jobs:
           set -euo pipefail
           install -D -m 0644 trusted/scripts/atlas-cursor-repair-gate.js \
             "${RUNNER_TEMP}/atlas-trusted-scripts/atlas-cursor-repair-gate.js"
+          install -D -m 0644 trusted/scripts/atlas-review-block.js \
+            "${RUNNER_TEMP}/atlas-trusted-scripts/atlas-review-block.js"
           test -s "${RUNNER_TEMP}/atlas-trusted-scripts/atlas-cursor-repair-gate.js"
+          test -s "${RUNNER_TEMP}/atlas-trusted-scripts/atlas-review-block.js"
 
       - name: Checkout the PR branch with the automation credential
         uses: actions/checkout@v4
@@ -368,6 +450,50 @@ jobs:
           git commit -m "Apply ${lane_label} review repair for ${REVIEWED_SHA} (round ${NEXT_ROUND})."
           git push
           repair_sha="$(git rev-parse HEAD)"
+          gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" > "${RUNNER_TEMP}/live-pr.json"
+          live_head="$(jq -r '.head.sha' "${RUNNER_TEMP}/live-pr.json")"
+          if [[ "${live_head}" != "${repair_sha}" ]]; then
+            echo "Live PR head ${live_head} is not the pushed repair SHA ${repair_sha}. Fail closed without rewriting the review block."
+            exit 1
+          fi
+          jq -r '.body // ""' "${RUNNER_TEMP}/live-pr.json" > "${RUNNER_TEMP}/pr-body.md"
+          jq --arg newHead "${repair_sha}" --rawfile body "${RUNNER_TEMP}/pr-body.md" '{
+              newHeadSha: $newHead,
+              body: $body,
+              pr: {
+                number: .number,
+                state: .state,
+                base: { ref: .base.ref },
+                head: { sha: .head.sha, ref: .head.ref }
+              }
+            }' "${RUNNER_TEMP}/live-pr.json" > "${RUNNER_TEMP}/pending-request.json"
+          set +e
+          node "${RUNNER_TEMP}/atlas-trusted-scripts/atlas-review-block.js" evaluate-pending \
+            "${RUNNER_TEMP}/pending-request.json" \
+            > "${RUNNER_TEMP}/pending-eval.json"
+          pending_status=$?
+          set -e
+          if [[ "${pending_status}" -eq 0 ]]; then
+            jq '.fields' "${RUNNER_TEMP}/pending-eval.json" > "${RUNNER_TEMP}/pending-fields.json"
+            set +e
+            node "${RUNNER_TEMP}/atlas-trusted-scripts/atlas-review-block.js" patch \
+              "${RUNNER_TEMP}/pr-body.md" "${RUNNER_TEMP}/pending-fields.json" \
+              > "${RUNNER_TEMP}/pr-body-patched.md"
+            pending_patch=$?
+            set -e
+            if [[ "${pending_patch}" -ne 0 ]]; then
+              echo "Review block could not be moved to PENDING deterministically. Fail closed without rewriting the body."
+              exit 1
+            fi
+            jq -n --rawfile body "${RUNNER_TEMP}/pr-body-patched.md" '{body: $body}' \
+              | gh api --method PATCH "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --input -
+            echo "Synced Atlas review block to PENDING for ${repair_sha}."
+          elif [[ "${pending_status}" -eq 2 ]]; then
+            jq -r '.reason' "${RUNNER_TEMP}/pending-eval.json"
+          else
+            echo "Pending review-block helper failed with status ${pending_status}."
+            exit 1
+          fi
 
           marker='<!-- atlas-cursor-repair-state -->'
           comments="$(mktemp "${RUNNER_TEMP:-/tmp}/atlas-repair-comments.XXXXXX")"

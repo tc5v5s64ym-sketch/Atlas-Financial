@@ -290,8 +290,10 @@ ok(/startsWith\(github\.event\.review\.body, 'Atlas Contract \/ Systems Review �
   'dispatch accepts exact-prefix Atlas NOT PASS');
 ok(/startsWith\(github\.event\.review\.body, 'Atlas Contract \/ Systems Review — BLOCKING'\)/.test(dispatch),
   'dispatch accepts exact-prefix Atlas BLOCKING');
-ok(!/Atlas Contract \/ Systems Review — PASS/.test(dispatch),
-  'dispatch does not treat Atlas PASS as a trigger');
+ok(/startsWith\(github\.event\.review\.body, 'Atlas Contract \/ Systems Review — PASS'\)/.test(dispatch),
+  'dispatch records trusted Atlas PASS so the trusted workflow can sync the card');
+ok(/Trusted Atlas PASS does not start a repair/.test(repair),
+  'trusted workflow does not start Cursor after Atlas PASS');
 ok(!/startsWith\(\s*trim\s*\(/.test(dispatch)
   && !/startsWith\(\s*['"][ \t]/.test(dispatch),
   'dispatch does not rely on leading-whitespace normalization');

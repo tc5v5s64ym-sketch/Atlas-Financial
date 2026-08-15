@@ -57,6 +57,7 @@ const suites = [
   ['merge-card check behaviour', 'test-mergecard.js'],
   ['Codex review-request workflow', 'test-codex-review-request.js'],
   ['Codex Cursor repair gate', 'test-codex-cursor-repair.js'],
+  ['Atlas review-block card sync', 'test-atlas-review-block.js'],
 ];
 
 let failed = [];
