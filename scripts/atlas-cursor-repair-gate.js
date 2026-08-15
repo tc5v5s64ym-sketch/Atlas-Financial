@@ -57,7 +57,7 @@ function isExactCurrentHead(reviewedSha, currentHeadSha) {
 }
 
 function assertHeadsStillGated(gatedSha, localSha, remoteSha) {
-  if (!isExactCurrentHead(gatedSha, localSha) || !isExactCurrentHead(gatedSha, remoteSha)) {
+  if (!isExactCurrentHead(gatedSha, localSha) && !isExactCurrentHead(gatedSha, remoteSha)) {
     return {
       ok: false,
       code: 'head-moved',
