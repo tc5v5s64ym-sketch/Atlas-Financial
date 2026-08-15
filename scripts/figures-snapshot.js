@@ -139,6 +139,7 @@ put('totals.nonCashInterest', T.noncash);
 const budget = periods ? F.budgetBreakdown(plan, periods, {
   paypalPerMonth: data.paypal ? data.paypal.perMonth : 0,
   weeklyCap: advice.weekly,
+  asOf,
 }) : null;
 if (budget) {
   put('budget.basis', budget.basis);

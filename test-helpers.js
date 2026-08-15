@@ -26,7 +26,7 @@ function gapAtBuffer(plan, buffer) {
   return Number(buffer) - openingFloor(plan);
 }
 
-function cashOnDate(plan, date, occurrences, scenario) {
+function cashOnDate(plan, date, occurrences, scenario, start) {
   let n = 0;
   for (const s of plan.income || []) {
     if (!occurrences(s, date, date).length) continue;
@@ -42,6 +42,12 @@ function cashOnDate(plan, date, occurrences, scenario) {
     n -= Number(b.amount || 0);
   }
   for (const c of plan.commitments || []) {
+    const settledOn = typeof c.settledOn === 'string'
+      && /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(c.settledOn)
+      ? c.settledOn : null;
+    // Opening-relative: without a forecast start, fail closed and keep the
+    // cash event.
+    if (settledOn && typeof start === 'string' && settledOn <= start) continue;
     if (c.date === date) n -= Number(c.amount || 0);
   }
   return n;

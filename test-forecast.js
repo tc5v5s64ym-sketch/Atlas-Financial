@@ -132,7 +132,10 @@ ok(near(expected.totals.bills, wantBills), '90-day named bills', expected.totals
 const fortisDates = expected.events.filter(e => e.id === 'fortis').map(e => e.date).join(',');
 ok(fortisDates === '2026-09-03,2026-10-03,2026-11-03', 'Fortis skips the already-paid August bill', fortisDates);
 const wantCommit = (plan.commitments || [])
-  .filter(c => c.date >= asOf && c.date <= windowEnd)
+  .filter(c => c.date >= asOf && c.date <= windowEnd
+    && !(typeof c.settledOn === 'string'
+      && /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(c.settledOn)
+      && c.settledOn <= asOf))
   .reduce((s, c) => s + c.amount, 0);
 ok(near(expected.totals.commitments, wantCommit), '90-day commitments', expected.totals.commitments.toFixed(2));
 ok(expected.weeks.length === 13, '13 weeks');
