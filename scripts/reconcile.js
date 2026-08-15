@@ -616,7 +616,10 @@ function compareHouseholdTransfer(row, data) {
 function compareCoachingReceipt(row, data) {
   const coachingStreams = incomeStreams(data).filter(isCoachingIncomeStream);
   const unknown = row.unknown === true || row.evidenceValue == null;
-  const status = coachingStreams.length ? 'CONFLICT' : 'MATCH';
+  let status;
+  if (coachingStreams.length) status = 'CONFLICT';
+  else if (unknown) status = 'MISSING';
+  else status = 'MATCH';
   return {
     observationId: row.observationId,
     fact: 'coaching-receipt',
@@ -642,7 +645,6 @@ function compareBusinessObligation(row, data) {
   const operational = heldElsewhereOperational(data, accountId);
   let status;
   if (spendable) status = 'CONFLICT';
-  else if (unknown && operational) status = 'MATCH';
   else if (unknown) status = 'MISSING';
   else status = 'MATCH';
   return {
@@ -694,7 +696,6 @@ function compareHouseholdAvailable(row, data) {
     && row.evidenceValue != null && isFinite(row.evidenceValue);
   let status;
   if (spendable) status = 'CONFLICT';
-  else if (!established && operational) status = 'MATCH';
   else if (!established) status = 'MISSING';
   else status = 'CHANGE';
   return {

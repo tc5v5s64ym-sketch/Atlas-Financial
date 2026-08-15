@@ -256,8 +256,9 @@ console.log('\n=== 4. coaching/business revenue alone is $0 household cash ===')
     confidence: 'estimated',
   }]);
   const row = runAmanda(liveLike).rows.find(r => r.fact === 'coaching-receipt');
-  ok(row && row.status === 'MATCH' && row.unknown && row.representation === 'business-inflow',
-    'unresolved coaching receipt is correctly not Forecast household income');
+  ok(row && row.status === 'MISSING' && row.status !== 'MATCH'
+    && row.unknown && row.representation === 'business-inflow',
+    'unresolved coaching receipt is MISSING, not MATCH, and still a business inflow');
 
   const asIncome = cashFixture([{
     id: 'coaching',
@@ -373,8 +374,9 @@ console.log('\n=== 6. unknown business obligations fail closed ===');
   ok(near(F.startingCashAmount(liveLike), OPENING),
     'held-elsewhere DEBT&PAYMENTS is not joint spendable cash');
   const avail = runAmanda(liveLike).rows.find(r => r.fact === 'household-available');
-  ok(avail && avail.status === 'MATCH' && avail.remainderEstablished === false,
-    'reconciler leaves household-available unresolved');
+  ok(avail && avail.status === 'MISSING' && avail.status !== 'MATCH'
+    && avail.remainderEstablished === false,
+    'reconciler leaves household-available unresolved as MISSING, not MATCH');
   ok(avail.observedBalance != null && near(avail.observedBalance, SESSION_BALANCE),
     'the session balance is reported as evidence, not as spendable cash');
 
@@ -393,6 +395,50 @@ console.log('\n=== 6. unknown business obligations fail closed ===');
   const bad = runAmanda(spendable).rows.find(r => r.fact === 'household-available');
   ok(bad && bad.status === 'CONFLICT',
     'treating DEBT&PAYMENTS as spendable household cash is CONFLICT');
+}
+
+console.log('\n=== Aug. 14 unresolved monetary facts are not MATCH ===');
+{
+  const liveLike = cashFixture([{
+    id: 'amandaTransfer',
+    label: "Amanda's transfers to the household",
+    frequency: 'monthly',
+    day: 20,
+    scenarioMonthly: { conservative: 930, expected: 2182, optimistic: 2400 },
+    confidence: 'estimated',
+  }]);
+  const held = liveLike.startingCash.heldElsewhere.find(r => r.id === AMANDA);
+  ok(held && held.class === 'operational',
+    'fixture DEBT&PAYMENTS is operational held-elsewhere — classification of where cash sits');
+  const result = runAmanda(liveLike);
+  const coaching = result.rows.find(r => r.observationId === 'payday-amanda-coaching-receipt');
+  const obligation = result.rows.find(r => r.observationId === 'payday-amanda-business-obligation');
+  const available = result.rows.find(r => r.observationId === 'payday-amanda-household-available');
+
+  ok(coaching && coaching.unknown && coaching.evidenceValue == null,
+    'Aug. 14 coaching receipt amount is unresolved');
+  ok(coaching.status === 'MISSING' && coaching.status !== 'MATCH',
+    'unknown coaching receipt is MISSING, not MATCH, even with no Forecast coaching stream');
+  ok(coaching.representation === 'business-inflow'
+    && /business inflow/i.test(coaching.note || ''),
+    'coaching classification remains business inflow, not household income');
+
+  ok(obligation && obligation.unknown && obligation.evidenceValue == null
+    && obligation.remainderEstablished === false,
+    'Aug. 14 business obligation amount is unresolved');
+  ok(obligation.status === 'MISSING' && obligation.status !== 'MATCH',
+    'unknown business obligation is MISSING, not MATCH, despite operational DEBT&PAYMENTS');
+  ok(/fail closed|unresolved/i.test(obligation.note || ''),
+    'obligation note still fail-closes the remainder');
+
+  ok(available && available.remainderEstablished === false
+    && available.evidenceValue == null
+    && near(available.observedBalance, SESSION_BALANCE),
+    'Aug. 14 household-available remainder is unestablished; $798.37 is evidence only');
+  ok(available.status === 'MISSING' && available.status !== 'MATCH',
+    'unestablished remainder is MISSING, not MATCH, despite operational held-elsewhere');
+  ok(/unresolved|not spendable|fail closed/i.test(available.note || ''),
+    'remainder note still says unresolved / not spendable');
 }
 
 console.log('\n=== 7. live amandaTransfer Forecast behaviour is unchanged ===');
@@ -521,14 +567,16 @@ console.log('\n=== 8. reconciliation performs no writes ===');
     && near(result.amandaTransferAuthority.canonicalExpected, 2182)
     && result.amandaTransferAuthority.independentlyVerifiedByPaydayEvidence === false,
     'live amandaTransfer is reported as unverified canonical context, not MATCH evidence');
-  ok(coaching && coaching.status === 'MATCH' && coaching.unknown,
-    'live coaching receipt is unresolved and not household income');
-  ok(obligation && obligation.status === 'MATCH' && obligation.unknown
-    && obligation.remainderEstablished === false,
-    'live business obligation is unknown and fail-closed');
-  ok(available && available.status === 'MATCH' && available.remainderEstablished === false
+  ok(coaching && coaching.status === 'MISSING' && coaching.status !== 'MATCH'
+    && coaching.unknown && coaching.representation === 'business-inflow',
+    'live coaching receipt is unresolved MISSING, not MATCH, and still a business inflow');
+  ok(obligation && obligation.status === 'MISSING' && obligation.status !== 'MATCH'
+    && obligation.unknown && obligation.remainderEstablished === false,
+    'live business obligation is unknown MISSING, not MATCH, and fail-closed');
+  ok(available && available.status === 'MISSING' && available.status !== 'MATCH'
+    && available.remainderEstablished === false
     && near(available.observedBalance, SESSION_BALANCE),
-    'live household-available remainder is unresolved');
+    'live household-available remainder is unestablished MISSING, not MATCH');
 
   ok(hashFile(R.DEFAULT_DATA) === before, 'calling reconcile() does not change data.json');
 
