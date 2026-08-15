@@ -92,6 +92,78 @@
   // did not.
   const openingBalance = debt => debt.balance + (debt.pending || 0);
 
+  // Live cash balances live on `plan.startingCash.breakdown` /
+  // `heldElsewhere`. The published opening total, the matching `assets[]`
+  // cash rows, and Chequing B overdraft usage are derived from those
+  // rows. Synthetic fixtures may still pass `startingCash.amount` or
+  // `revolvingExtra[].used` with no cash id.
+  function cashAccount(plan, id) {
+    const cash = (plan && plan.startingCash) || {};
+    const rows = (cash.breakdown || []).concat(cash.heldElsewhere || []);
+    return rows.find(r => r.id === id) || null;
+  }
+  function startingCashAmount(plan) {
+    const cash = (plan && plan.startingCash) || {};
+    const rows = cash.breakdown || [];
+    if (rows.length) return rows.reduce((s, b) => s + (Number(b.value) || 0), 0);
+    return Number(cash.amount) || 0;
+  }
+  function extraFacilityUsed(facility, plan) {
+    if (facility && facility.cash) {
+      const row = cashAccount(plan, facility.cash);
+      return Math.max(0, -((row && Number(row.value)) || 0));
+    }
+    return Number(facility && facility.used) || 0;
+  }
+  function resolveExtraFacilities(extra, plan) {
+    return (extra || []).map(e => e.cash
+      ? Object.assign({}, e, { used: extraFacilityUsed(e, plan) })
+      : e);
+  }
+  function extraFacilityAvailable(facility) {
+    if (!facility || facility.limit == null) return 0;
+    const used = (Number(facility.used) || 0) + (Number(facility.pending) || 0);
+    return Math.max(0, facility.limit - used);
+  }
+  // Funding-option availability is a view, not a second current-state
+  // balance. A cash-linked option (the Chequing B overdraft) takes
+  // `max(0, limit − used)` from the extra facility; Chequing B remains
+  // the usage authority and `revolvingExtra.limit` remains the limit.
+  // Synthetic options with no `cash` keep the available they declared.
+  function resolveFundingSources(sources, extra, plan) {
+    extra = resolveExtraFacilities(extra, plan);
+    const byId = new Map();
+    const byCash = new Map();
+    for (const e of extra || []) {
+      byId.set(e.id, e);
+      if (e.cash) byCash.set(e.cash, e);
+    }
+    return (sources || []).map(src => {
+      if (!src || !src.cash) return src;
+      const facility = byCash.get(src.cash) || byId.get(src.id);
+      if (!facility) return src;
+      return Object.assign({}, src, { available: extraFacilityAvailable(facility) });
+    });
+  }
+  function assetValue(asset, plan) {
+    if (asset && asset.cash) {
+      const row = cashAccount(plan, asset.cash);
+      return row ? Number(row.value) || 0 : 0;
+    }
+    return Number(asset && asset.value) || 0;
+  }
+  function assetRows(data) {
+    return (data.assets || []).map(a => Object.assign({}, a, { value: assetValue(a, data.plan) }));
+  }
+  function historicalIncomePerMonth(row, months) {
+    if (!row) return null;
+    if (row.perMonth === null) return null;
+    if (typeof row.perMonth === 'number') return row.perMonth;
+    const window = Number(months);
+    if (!(window > 0) || row.total == null) return null;
+    return Math.round(Number(row.total) / window);
+  }
+
   // Payments a year, by declared cadence. `streamAmount` states the same
   // convention from the other side — a monthly figure paid bi-weekly arrives as
   // 26ths of a year's worth — and this is the inverse, used to put a bi-weekly
@@ -295,7 +367,7 @@
       byDate.get(e.date).push(e);
     }
 
-    let balance = plan.startingCash.amount;
+    let balance = startingCashAmount(plan);
     const daily = [];
     // Seeded from the opening balance only when the whole window is being
     // measured; otherwise the first in-range day sets it.
@@ -354,7 +426,7 @@
     // window breaches the buffer even with everything going to plan. Backward
     // pass over daily net changes: requiredClosing = buffer − (the most the
     // balance ever sits below this week's closing at any later day).
-    const delta = daily.map((p, i) => p.balance - (i ? daily[i - 1].balance : plan.startingCash.amount));
+    const delta = daily.map((p, i) => p.balance - (i ? daily[i - 1].balance : startingCashAmount(plan)));
     const suffixMin = new Array(days).fill(Infinity);
     for (let i = days - 1; i >= 0; i--) {
       const later = i + 1 < days ? Math.min(0, suffixMin[i + 1]) : 0;
@@ -450,6 +522,11 @@
     // propagate by construction rather than by a caller remembering to pass
     // them — which is exactly what a page cannot be trusted to do, and what
     // `Forecast.counterfactuals` reads.
+    if (base.fundingSources) {
+      base.fundingSources = resolveFundingSources(
+        base.fundingSources, base.extraFacilities, plan);
+    }
+
     const planOptions = Object.assign({}, base);
 
     // An extra debt payment cannot be larger than the debt available to receive
@@ -1135,7 +1212,8 @@
     // included so that "revolving credit left" means the same thing in the
     // Today tile and in the scoreboard; omitting it made those disagree by
     // $82.28 under one label.
-    const extraAvailable = (opts.extraFacilities || [])
+    const extraFacilities = resolveExtraFacilities(opts.extraFacilities, plan);
+    const extraAvailable = extraFacilities
       .reduce((s, e) => s + Math.max(0, e.limit - (e.used + (e.pending || 0))), 0);
     const days = plan.windowDays || 91;
     const start = asOf;
@@ -1538,7 +1616,7 @@
   function publicationTotals(data) {
     data = data || {};
     const debts = data.debts || [];
-    const assets = data.assets || [];
+    const assets = assetRows(data);
     let totalDebt = 0;
     let annualInterest = 0;
     let annualInterestExMortgage = 0;
@@ -1558,7 +1636,10 @@
       .reduce((s, item) => s + (item.amount || 0), 0);
     const lacrosseVerified = ((data.lacrosse && data.lacrosse.sources) || [])
       .reduce((s, row) => s + (row.amount || 0), 0);
-    const revolving = utilisation(debts, data.revolvingExtra);
+    const revolving = utilisation(debts, data.revolvingExtra, data.plan);
+    const incomeLines = (data.income || []).map(row => Object.assign({}, row, {
+      perMonth: historicalIncomePerMonth(row, incomeWindow),
+    }));
     return {
       totalDebt,
       annualInterest,
@@ -1575,6 +1656,8 @@
       commitmentsTotal,
       lacrosseVerified,
       helocLimit,
+      assetRows: assets,
+      incomeLines,
     };
   }
 
@@ -1591,7 +1674,7 @@
   // because no test could reach the page.
   //
   // This coordinator does not walk cash or re-price a card. Spendable cash
-  // is `plan.startingCash.amount`. The card rate is the Cash Back Visa
+  // is the spendable breakdown sum. The card rate is the Cash Back Visa
   // debt record. A month of mortgage interest is `monthOfAnnual` on that
   // debt's `annualInterest` — the same twelfth compactSnapshot uses.
   // The ±4 percentage-point fit band is the incumbent page rule, kept
@@ -1709,7 +1792,7 @@
     }
 
     return {
-      cashAmount: cash.amount,
+      cashAmount: startingCashAmount(data.plan),
       elsewhere,
       classes: classOrder.map(k => byClass[k]),
       interest,
@@ -1986,7 +2069,7 @@
     const helocCrossing = helocLimitCrossing(debtProj);
     const cashAt = date => {
       const p = (sim.daily || []).find(x => x.date === date);
-      return p ? p.balance : (plan.startingCash && plan.startingCash.amount) || 0;
+      return p ? p.balance : startingCashAmount(plan);
     };
 
     const openingId = fundingShort ? 'unfunded' : (gap ? 'coverGap' : 'holdBuffer');
@@ -2248,7 +2331,8 @@
   // $165.13 of pending charges and the other did not. Derived from the debt
   // records plus the facilities that are not debts (the chequing overdraft),
   // so there is nothing left to drift.
-  function utilisation(debts, extra) {
+  function utilisation(debts, extra, plan) {
+    extra = resolveExtraFacilities(extra, plan);
     const rows = (debts || []).filter(x => x.limit != null).map(x => {
       const pending = x.pending || 0;
       const used = openingBalance(x);
@@ -2739,7 +2823,7 @@
     projectDebts,
     nextDue, nextPaymentOut, unallocatedCash, compactSnapshot, publicationTotals, deepDive, publishedSpendType, rollupSpending, planStatus, mission, planPhases, nextMove, utilisation, renewal,
     payoffDebts, payoffModel,
-    paymentForMonths, EPSILON, STEP };
+    paymentForMonths, startingCashAmount, resolveFundingSources, EPSILON, STEP };
   if (typeof module !== 'undefined' && module.exports) module.exports = Forecast;
   else root.Forecast = Forecast;
 

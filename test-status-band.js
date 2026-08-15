@@ -242,6 +242,7 @@ const rankTrapStatus = F.planStatus(rankTrap, { weeklyOverride: null });
     scenario: data.plan.defaults.scenario, targetBuffer: combineBuf, extraDebtMonthly: 0,
     incomeOverrides: {}, disabled: [], debts: data.debts,
     extraDebtTarget: data.plan.nextDollar.target,
+    extraFacilities: data.revolvingExtra,
   }, { fundingSources: data.plan.funding.options }));
   const s = F.planStatus(adv, { weeklyOverride: null });
   ok(s.id === 'combination' && s.noSingleSourceCovers === true,
@@ -356,9 +357,13 @@ const OPTS = targetBuffer => ({
   extraDebtMonthly: plan.defaults.extraDebtMonthly, incomeOverrides: {},
   disabled: [], debts: data.debts, extraDebtTarget: plan.nextDollar.target,
   fundingSources: plan.funding.options,
+  extraFacilities: data.revolvingExtra,
 });
 const bySource = adv => Object.fromEntries(adv.funding.sources.map(s => [s.id, s]));
 const src = fundingById(plan);
+const odAvailable = F.resolveFundingSources(
+  plan.funding.options, data.revolvingExtra, plan
+).find(o => o.id === 'overdraft').available;
 const floor = openingFloor(plan);
 const COMBINE_GAP = src.amanda.available + src.heloc.available / 2;
 const COMBINE_BUF = COMBINE_GAP + floor;
@@ -376,7 +381,7 @@ const UNFUNDED_BUF = UNFUNDED_GAP + floor;
   ok(s.heloc.verdict === (src.heloc.available + 0.005 >= wantGap ? 'covers' : 'contributes'),
     'and so does the HELOC, on room alone', s.heloc.verdict);
   ok(s.overdraft.verdict === 'insufficient'
-    && same(s.overdraft.shortBy, Math.max(0, wantGap - src.overdraft.available)),
+    && same(s.overdraft.shortBy, Math.max(0, wantGap - odAvailable)),
     'the overdraft is short by gap minus its room', String(s.overdraft.shortBy));
   ok(s.cards.verdict === 'insufficient'
     && same(s.cards.shortBy, Math.max(0, wantGap - src.cards.available)),
@@ -426,7 +431,7 @@ const UNFUNDED_BUF = UNFUNDED_GAP + floor;
   // excluded from the allocation, so offering it would offer money the plan
   // cannot spend.
   const rich = plan.funding.options.map(o =>
-    o.id === 'overdraft' ? Object.assign({}, o, { available: 999999 }) : o);
+    o.id === 'overdraft' ? Object.assign({}, o, { available: 999999, cash: undefined }) : o);
   const buf = plan.defaults.targetBuffer;
   const adv = F.recommend(plan, asOf,
     Object.assign(OPTS(buf), { fundingSources: rich }));
@@ -539,13 +544,13 @@ const MUTATIONS = [
     to: '        const covers = atLeast(src.available, gapAmount);',
     check: m => {
       const rich = plan.funding.options.map(o =>
-        o.id === 'overdraft' ? Object.assign({}, o, { available: 999999 }) : o);
+        o.id === 'overdraft' ? Object.assign({}, o, { available: 999999, cash: undefined }) : o);
       return bySource(m.recommend(plan, asOf,
         Object.assign(OPTS(500), { fundingSources: rich }))).overdraft.verdict === 'covers';
     },
     real: () => {
       const rich = plan.funding.options.map(o =>
-        o.id === 'overdraft' ? Object.assign({}, o, { available: 999999 }) : o);
+        o.id === 'overdraft' ? Object.assign({}, o, { available: 999999, cash: undefined }) : o);
       return bySource(F.recommend(plan, asOf,
         Object.assign(OPTS(500), { fundingSources: rich }))).overdraft.verdict === 'insufficient';
     } },
@@ -555,7 +560,7 @@ const MUTATIONS = [
     to: '          shortBy: Math.max(0, src.available - gapAmount),',
     check: m => cents(bySource(m.recommend(plan, asOf, OPTS(COMBINE_BUF))).overdraft.shortBy) === 0,
     real: () => same(bySource(F.recommend(plan, asOf, OPTS(COMBINE_BUF))).overdraft.shortBy,
-      Math.max(0, gapAtBuffer(plan, COMBINE_BUF) - src.overdraft.available)) },
+      Math.max(0, gapAtBuffer(plan, COMBINE_BUF) - odAvailable)) },
 
   { label: 'totalling the allocation from the gap instead of the parts hides the shortfall',
     from: '    const allocated = parts.reduce((s, p) => s + p.amount, 0);',
@@ -591,7 +596,8 @@ const FORMATTERS = [
 const BAND_SRC = grab(planSrc, /^const STATUS_BAND = \{[\s\S]*?^\};$/m, 'the band wording map');
 const FUND_SRC = grab(planSrc, /^const FUND_VERDICT = \{[\s\S]*?^\};$/m, 'the funding wording map');
 const [STATUS_BAND, FUND_VERDICT] = vm.runInNewContext(
-  `${FORMATTERS}\n${BAND_SRC}\n${FUND_SRC}\n[STATUS_BAND, FUND_VERDICT];`);
+  `${FORMATTERS}\n${BAND_SRC}\n${FUND_SRC}\n[STATUS_BAND, FUND_VERDICT];`,
+  { Forecast: F });
 
 const statusSrc = /\n  function planStatus\(advice, opts\) \{[\s\S]*?\n  \}\n/.exec(FORECAST_SRC);
 ok(!!statusSrc, 'the planStatus function is readable from forecast.js');
@@ -699,7 +705,7 @@ function legacyBand({ adv, sim, weekly, recommended, weeklyVariable }) {
   } else if (gap) {
     return ['statusband crit',
       `<b>Short by ${money(fundingGap)} on ${fmtDateLong(gap.floorDate)} — before any spending at all.</b>
-       The household accounts hold ${money2(plan.startingCash.amount)} today and
+       The household accounts hold ${money2(F.startingCashAmount(plan))} today and
        ${money(preIncomeOut)} of committed payments fall before the next payday.
        This is a timing gap, not a shortage across the 90 days: cover it, hold spending to
        ${money(weekly)}/week from ${fmtDateLong(adv.effectiveFrom)}, and the window
@@ -726,7 +732,7 @@ function legacyCards({ adv }) {
   const gap = adv.gap;
   if (!gap || !plan.funding) return '';
   const needed = gap.amount;
-  return plan.funding.options
+  return F.resolveFundingSources(plan.funding.options, data.revolvingExtra, plan)
     .slice().sort((a, b) => a.rank - b.rank)
     .map(o => {
       const enough = o.available >= needed;

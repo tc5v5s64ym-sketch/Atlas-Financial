@@ -32,9 +32,11 @@ console.log('=== cash classification ===');
 const cash = plan.startingCash;
 const CLASSES = ['spendable', 'operational', 'staging', 'other-liquid', 'restricted'];
 const spendableSum = cash.breakdown.reduce((s, b) => s + b.value, 0);
-ok(near(spendableSum, cash.amount),
+ok(near(spendableSum, F.startingCashAmount(plan)),
   'spendable household cash equals its component accounts',
-  `${money(spendableSum)} = ${money(cash.amount)}`);
+  `${money(spendableSum)} = ${money(F.startingCashAmount(plan))}`);
+ok(!Object.prototype.hasOwnProperty.call(cash, 'amount'),
+  'the opening total is not stored beside the spendable accounts');
 ok(cash.breakdown.every(b => b.class === 'spendable'),
   'every account inside the plan opening balance is classified spendable');
 ok((cash.heldElsewhere || []).every(h => CLASSES.includes(h.class)),
@@ -50,21 +52,23 @@ ok(amanda && amanda.class === 'operational',
   "Amanda's DEBT&PAYMENTS account is operational / pass-through, not spendable",
   amanda ? money(amanda.value) : 'missing');
 
-// The cash register must still reconcile to the balance sheet: every cash
-// account in `assets` appears in exactly one class, and the totals agree.
+// The cash register is the numeric home. Matching `assets[]` rows carry a
+// `cash` id and no stored value — a second stored balance is the defect.
 const cashAccounts = cash.breakdown.concat(cash.heldElsewhere || []);
 const registerTotal = cashAccounts.reduce((s, a) => s + a.value, 0);
-const assetCashLabels = ['DEBT&PAYMENTS chequing', 'Chequing A', 'Chequing B', 'Savings',
-  'SAVINGS-DONT TOUCH', 'Wise (two US spending accounts)'];
-const assetCashTotal = data.assets
-  .filter(a => assetCashLabels.includes(a.label))
+const assetCash = data.assets.filter(a => a.cash);
+ok(assetCash.length === cashAccounts.length,
+  'the balance sheet names exactly the cash-register accounts',
+  `${assetCash.length} linked rows`);
+ok(assetCash.every(a => a.value == null && cashAccounts.some(c => c.id === a.cash)),
+  'linked asset rows store no balance of their own');
+const publishedAssets = F.publicationTotals(data).assetRows;
+const derivedCashTotal = publishedAssets
+  .filter(a => a.cash)
   .reduce((s, a) => s + a.value, 0);
-ok(near(registerTotal, assetCashTotal),
-  'the cash register reconciles to the cash rows on the balance sheet',
-  `${money(registerTotal)} vs ${money(assetCashTotal)}`);
-ok(cashAccounts.length === assetCashLabels.length,
-  'and covers exactly the same accounts, no more and no fewer',
-  `${cashAccounts.length} accounts`);
+ok(near(registerTotal, derivedCashTotal),
+  'derived balance-sheet cash follows the register, not a second stored copy',
+  `${money(registerTotal)} vs ${money(derivedCashTotal)}`);
 
 // The defect this replaced: a headline tile that added all six together.
 ok(!data.headline,
@@ -77,7 +81,9 @@ ok(/Forecast\.publicationTotals/.test(read('public/deepdive.js')),
   'and the remaining Deep Dive tiles derive from Forecast.publicationTotals');
 
 console.log('\n=== assets and debts reconcile ===');
-const assetTotal = data.assets.reduce((s, a) => s + a.value, 0);
+const cashById = {};
+for (const row of cashAccounts) if (row.id) cashById[row.id] = row.value;
+const assetTotal = data.assets.reduce((s, a) => s + (a.cash ? (cashById[a.cash] || 0) : (a.value || 0)), 0);
 const debtTotal = data.debts.reduce((s, x) => s + (x.balance || 0), 0);
 const published = F.publicationTotals(data);
 ok(near(assetTotal, published.assets),
@@ -877,9 +883,9 @@ const advice = F.recommend(plan, asOf, {
   targetBuffer: plan.defaults.targetBuffer,
 });
 ok(advice.sim.daily[0] !== undefined && near(
-  advice.zero.daily[0].balance + 0, plan.startingCash.amount),
+  advice.zero.daily[0].balance + 0, F.startingCashAmount(plan)),
   'the forecast opens on the cash register, not a typed-in number',
-  money(plan.startingCash.amount));
+  money(F.startingCashAmount(plan)));
 // The page must not be able to show a different weekly figure from the engine.
 const planJs = read('public/plan.js');
 ok(/Forecast\.recommend\(/.test(planJs),

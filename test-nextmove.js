@@ -414,7 +414,7 @@ const SHORT_REMAINDER = gapAtBuffer(plan, SHORT_BUF) - ACTION_AMT;
 const DEFAULT_GAP = gapAtBuffer(plan, plan.defaults.targetBuffer);
 
 {
-  const cash = plan.startingCash.amount;
+  const cash = F.startingCashAmount(plan);
   const dueThatDay = (plan.commitments || [])
     .filter(c => c.date === GAP_DATE)
     .reduce((s, c) => s + c.amount, 0);
@@ -733,7 +733,7 @@ function expectMove(s) {
   const due = (plan.commitments || [])
     .filter(c => c.date === GAP_DATE && !disabled.includes(c.id))
     .reduce((sum, c) => sum + Number(c.amount || 0), 0);
-  const floor = plan.startingCash.amount - due;
+  const floor = F.startingCashAmount(plan) - due;
   const gapAmt = s.targetBuffer - floor;
   if (gapAmt <= 0.005) return 'windowEnding';
   if (USABLE_LIVE + 0.005 < gapAmt) return 'unfunded';

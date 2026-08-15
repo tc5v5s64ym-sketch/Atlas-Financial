@@ -49,6 +49,8 @@ const FORECAST_NON_AUTHORITY = new Set([
   'rollupSpending',
   'EPSILON',
   'STEP',
+  'startingCashAmount',
+  'resolveFundingSources',
 ]);
 
 function forecastExportsFrom(source) {

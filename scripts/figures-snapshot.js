@@ -85,7 +85,7 @@ put('meta.targetBuffer', plan.defaults.targetBuffer);
 put('meta.scenario', plan.defaults.scenario);
 
 /* ---- the cash position ------------------------------------------------- */
-put('cash.spendableToday', plan.startingCash.amount);
+put('cash.spendableToday', F.startingCashAmount(plan));
 for (const h of plan.startingCash.heldElsewhere || []) {
   put(`cash.elsewhere.${(h.class || 'unclassified')}`,
     (out[`cash.elsewhere.${h.class || 'unclassified'}`] || 0) + h.value);
@@ -100,6 +100,7 @@ const opts = {
 // The funding source decides whether covering an opening gap costs anything,
 // so the snapshot uses the same default the page does.
 opts.fundingSources = (plan.funding || {}).options;
+opts.extraFacilities = data.revolvingExtra;
 
 const advice = F.recommend(plan, asOf, opts);
 put('plan.mode', advice.mode);
@@ -163,7 +164,7 @@ const proj = F.projectDebts(plan, data.debts, asOf,
 for (const m of proj.marks) {
   if (![0, 30, 60, 90].includes(m.day)) continue;
   const tag = m.day === 0 ? 'today' : 'day' + m.day;
-  const cash = m.day === 0 ? plan.startingCash.amount
+  const cash = m.day === 0 ? F.startingCashAmount(plan)
     : (advice.sim.daily.find(p => p.date === m.date) || {}).balance;
   put(`scoreboard.${tag}.cash`, cash);
   put(`scoreboard.${tag}.consumerDebt`, m.consumer);
@@ -177,8 +178,7 @@ for (const c of proj.crossings || []) {
 }
 
 /* ---- the balance sheet -------------------------------------------------- */
-put('balance.assets',
-  data.assets.reduce((s, a) => s + a.value, 0));
+put('balance.assets', F.publicationTotals(data).assets);
 put('balance.debts',
   data.debts.reduce((s, x) => s + (x.balance || 0), 0));
 // POSTED only, and named so. The scoreboard's consumer-debt figure is posted

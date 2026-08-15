@@ -6,7 +6,7 @@ function renderRecords(d) {
   $('disclaimer').textContent = d.meta.disclaimer;
 
   const pub = Forecast.publicationTotals(d);
-  $('assets').innerHTML = d.assets.map(a => `
+  $('assets').innerHTML = pub.assetRows.map(a => `
     <tr><td>${a.label}</td><td class="num ${a.value < 0 ? 'neg' : ''}">${money2(a.value)}</td></tr>`).join('')
     + `<tr><td><strong>Total assets</strong></td><td class="num"><strong>${money2(pub.assets)}</strong></td></tr>`
     + `<tr><td><strong>Total known debt</strong></td><td class="num neg"><strong>${money2(pub.totalDebt)}</strong></td></tr>`

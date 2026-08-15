@@ -14,20 +14,22 @@
       "scenario": "expected"
     },
     "startingCash": {
-      "amount": 79.84,
       "breakdown": [
         {
+          "id": "chequing-a",
           "label": "Chequing A — payroll and fixed costs",
           "value": 506.98,
           "class": "spendable"
         },
         {
+          "id": "chequing-b",
           "label": "Chequing B — daily spending",
           "value": -517.72,
           "class": "spendable",
-          "note": "Overdrawn; $82.28 of its $600 overdraft still available"
+          "note": "Overdrawn against its $600 overdraft; remaining room is the limit minus the current overdrawn balance"
         },
         {
+          "id": "savings",
           "label": "Savings",
           "value": 90.58,
           "class": "spendable"
@@ -35,18 +37,21 @@
       ],
       "heldElsewhere": [
         {
+          "id": "amanda-debt-payments",
           "label": "DEBT&PAYMENTS — Amanda's account",
           "value": 2691.85,
           "class": "operational",
           "note": "Her Tennis BC pay lands here. Coaches are paid out of it first; only what is left is transferred to the household. Not spendable household cash."
         },
         {
+          "id": "savings-dont-touch",
           "label": "SAVINGS-DONT TOUCH — staging",
           "value": 74.2,
           "class": "staging",
           "note": "On her profile. Money passes through to the HELOC and cards within days; it has never held a balance."
         },
         {
+          "id": "wise",
           "label": "Wise — two US spending accounts",
           "value": 205.92,
           "class": "other-liquid",
@@ -383,11 +388,11 @@
           "debtId": null,
           "label": "Chequing B overdraft",
           "short": "the overdraft",
-          "available": 82.28,
+          "cash": "chequing-b",
           "rate": null,
           "rank": 3,
           "unusable": true,
-          "note": "$82.28 of a $600 limit. Nowhere near enough on its own, and overdraft interest plus the $5 monthly protection fee already run against this account."
+          "note": "A $600 limit. Nowhere near enough on its own, and overdraft interest plus the $5 monthly protection fee already run against this account."
         },
         {
           "id": "cards",
@@ -805,7 +810,6 @@
       "institution": "TD",
       "interestByEvent": true,
       "principalShare": 0.524,
-      "postedBalance": 546026.58,
       "pending": 0,
       "balance": 546026.58,
       "rate": 3.64,
@@ -827,7 +831,6 @@
       "label": "HELOC",
       "institution": "TD",
       "interestByEvent": true,
-      "postedBalance": 201586.16,
       "pending": 0,
       "balance": 201586.16,
       "rate": 4.9,
@@ -852,7 +855,6 @@
       "institution": "Canadian Tire",
       "interestByEvent": false,
       "secured": false,
-      "postedBalance": 13497.0,
       "pending": 0,
       "balance": 13497.0,
       "rate": 21.99,
@@ -874,7 +876,6 @@
       "institution": "TD",
       "interestByEvent": false,
       "secured": false,
-      "postedBalance": 5612.43,
       "pending": 0,
       "balance": 5612.43,
       "rate": 26.99,
@@ -896,7 +897,6 @@
       "institution": "MBNA",
       "interestByEvent": false,
       "secured": false,
-      "postedBalance": 7855.12,
       "pending": 82.05,
       "balance": 7855.12,
       "rate": 21.74,
@@ -919,7 +919,6 @@
       "institution": "TD",
       "interestByEvent": false,
       "secured": false,
-      "postedBalance": 1799.97,
       "pending": 0,
       "balance": 1799.97,
       "rate": 24.99,
@@ -941,7 +940,6 @@
       "institution": "TD",
       "interestByEvent": false,
       "secured": false,
-      "postedBalance": 1078.31,
       "pending": 165.13,
       "pendingNote": "Four AMZN Mktp CA purchases dated 6-8 Aug 2026, read from the TD card page on 2026-08-09. Already incurred - not a forecast of future spending.",
       "balance": 1078.31,
@@ -965,28 +963,28 @@
   "assets": [
     {
       "label": "DEBT&PAYMENTS chequing",
-      "value": 2691.85
+      "cash": "amanda-debt-payments"
     },
     {
       "label": "Chequing A",
-      "value": 506.98
+      "cash": "chequing-a"
     },
     {
       "label": "Chequing B",
-      "value": -517.72
+      "cash": "chequing-b"
     },
     {
       "label": "Savings",
-      "value": 90.58,
+      "cash": "savings",
       "class": "spendable"
     },
     {
       "label": "SAVINGS-DONT TOUCH",
-      "value": 74.2
+      "cash": "savings-dont-touch"
     },
     {
       "label": "Wise (two US spending accounts)",
-      "value": 205.92
+      "cash": "wise"
     },
     {
       "label": "Silver — 100 oz [ESTIMATE]",
@@ -1216,25 +1214,21 @@
     {
       "label": "Payroll (bi-weekly)",
       "total": 186152.89,
-      "perMonth": 10342,
       "stability": "Stable"
     },
     {
       "label": "Her employment — Tennis BC",
       "total": 63129.47,
-      "perMonth": 3507,
       "stability": "Growing — $1,250/month to $6,196/month across the window"
     },
     {
       "label": "Coaching — gross revenue",
       "total": 54213.0,
-      "perMonth": 3012,
       "stability": "REVENUE, not income. Coaches are paid out of this, so only the margin is kept — about 72% on her own figures"
     },
     {
       "label": "Child benefit",
       "total": 2764.63,
-      "perMonth": 154,
       "stability": "Stable"
     },
     {
@@ -1596,7 +1590,7 @@
     {
       "id": "overdraft",
       "label": "Chequing B overdraft",
-      "used": 517.72,
+      "cash": "chequing-b",
       "limit": 600,
       "pending": 0,
       "note": "Not a debt record: an overdraft facility on Chequing B. Counted in revolving headroom."

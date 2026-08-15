@@ -62,6 +62,7 @@ function simOpts(extra = {}) {
     disabled: state.disabled,
     debts: state.debts,
     extraDebtTarget: state.extraDebtTarget,
+    extraFacilities: state.extraFacilities,
   }, extra);
 }
 
@@ -140,7 +141,7 @@ const STATUS_BAND = {
 
   gap: { tone: 'crit', text: (s, plan) =>
     `<b>Short by ${money(s.gapAmount)} on ${fmtDateLong(s.floorDate)} — before any spending at all.</b>
-       The household accounts hold ${money2(plan.startingCash.amount)} today and
+       The household accounts hold ${money2(Forecast.startingCashAmount(plan))} today and
        ${money(s.preIncomeOut)} of committed payments fall before the next payday.
        This is a timing gap, not a shortage across the 90 days: cover it, hold spending to
        ${money(s.weekly)}/week from ${fmtDateLong(s.effectiveFrom)}, and the window
@@ -633,7 +634,7 @@ function renderPlan(d, periods) {
     $('funding-head').textContent = plan.funding.heading;
     $('funding-lede').innerHTML =
       `<b>${money2(dueThatDay)} has to be in the account on ${fmtDateLong(shortDate)}</b>, against the
-       ${money2(plan.startingCash.amount)} the household accounts hold. Restoring the
+       ${money2(Forecast.startingCashAmount(plan))} the household accounts hold. Restoring the
        ${money(sim.buffer)} buffer as well makes the amount to find <b>${money2(needed)}</b>, and that is
        what each source below is measured against.` +
       (group && group.atomic ? ` ${group.note}` : '');
@@ -697,7 +698,7 @@ function renderPlan(d, periods) {
 
   const cashOn = date => {
     const p = sim.daily.find(x => x.date === date);
-    return p ? p.balance : plan.startingCash.amount;
+    return p ? p.balance : Forecast.startingCashAmount(plan);
   };
   const mark = n => debtProj.marks.find(m => m.day === n) || debtProj.marks[debtProj.marks.length - 1];
   const today = mark(0);
@@ -783,7 +784,7 @@ function renderPlan(d, periods) {
   const nextOut = Forecast.nextPaymentOut(sim.events, asOf);
   const consumerNow = today.consumer;
   $('hero-tiles').innerHTML = [
-    { lab: 'Spendable household cash', val: money(plan.startingCash.amount), tone: 'alert',
+    { lab: 'Spendable household cash', val: money(Forecast.startingCashAmount(plan)), tone: 'alert',
       note: 'Chequing A, B and Savings. Amanda’s account is a separate pot.' },
     (nextOut ? { lab: 'Next cash-out total', val: money(nextOut.amount),
       note: `${nextOut.label} on ${fmtDateLong(nextOut.date)} — all cash leaving household accounts that day`,
@@ -994,7 +995,7 @@ function renderPlan(d, periods) {
   const T = sim.totals;
   $('hero-ledger').innerHTML =
     row('Starting available cash <span class="mutedtext">household accounts only</span>',
-      money2(plan.startingCash.amount), '', chipC) +
+      money2(Forecast.startingCashAmount(plan)), '', chipC) +
     (plan.startingCash.heldElsewhere
       ? `<div class="ledger-sub">${plan.startingCash.heldElsewhere.map(h =>
           `<div class="ledger-row sub"><span>${h.label}</span><span>${money2(h.value)} <span class="mutedtext">not counted</span></span></div>`).join('')}</div>`
@@ -1212,7 +1213,7 @@ function renderPlan(d, periods) {
   // Pending charges have already spent the credit they are charged against,
   // so headroom is derived with them included rather than from posted
   // balances alone — the Travel Visa reads $21.69 of room the other way.
-  const revolving = Forecast.utilisation(d.debts, d.revolvingExtra).totalAvailable;
+  const revolving = Forecast.utilisation(d.debts, d.revolvingExtra, plan).totalAvailable;
   const helocTrend = snap.heloc ? HELOC_TREND[snap.heloc.id] : null;
   $('snapshot-tiles').innerHTML = [
     { lab: 'Consumer debt', val: money(consumer), note: 'cards and revolving, excluding the house' },
@@ -1237,6 +1238,7 @@ function wireControls(d) {
   // cannot supply its own idea of what the household owes.
   state.debts = d.debts;
   state.extraDebtTarget = plan.nextDollar && plan.nextDollar.target;
+  state.extraFacilities = d.revolvingExtra;
 
   // Scenario buttons
   for (const b of document.querySelectorAll('#scenario-bar .preset')) {

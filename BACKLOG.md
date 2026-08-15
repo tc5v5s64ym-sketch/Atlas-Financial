@@ -12,8 +12,8 @@ Last reviewed **2026-08-14**. Phase: **analysis** — capture is essentially don
 
 **Post-B74 implementation order** is owned by
 [`docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`](docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md),
-not by this file. Remaining order after `B92`: `B93` → `B91` → `B20` /
-`B21`. Next outcome: **`B93` / AF-DEDUP-01**. Do not start `B91` first.
+not by this file. Remaining order after `B93`: `B91` → `B20` /
+`B21`. Next outcome: **`B91` / AF-RECON-01**.
 
 **Operational knowledge lives in `docs/ACCOUNT_FACTS.md`**, not here: how each
 institution's data is obtained, the download endpoints, and the traps that cost
@@ -981,8 +981,8 @@ obligation; Next cash-out total is the day's sum. Both read the same event
 stream, so two Burrard payments on 12 August correctly produce $320 and $623
 without two calendars.
 
-Do not reopen the closed schedule-authority list. Remaining post-B92 work is
-`B93` → `B91`, then `B20` / `B21`, per the build strategy.
+Do not reopen the closed schedule-authority list. Remaining post-B93 work is
+`B91`, then `B20` / `B21`, per the build strategy.
 
 **B87 · One authority for question OPEN / ANSWERED status** · **DONE 2026-08-14**
 `docs/01_OPEN_QUESTIONS.md` is the sole OPEN / ASKED / ANSWERED / BLOCKED
@@ -1037,8 +1037,8 @@ semantics (`business`, `reserve`). Prefer a small explicit guard over a new
 classification system.
 
 **B91 · Evidence refresh / reconciliation loop** · `QUEUED` · *architecture, one outcome*
-After `B92` and `B93`. Next major product milestone, **not** the next
-implementation outcome. Capture and extraction exist; canonical household
+After `B92` and `B93`. **Next implementation outcome** and next major
+product milestone. Capture and extraction exist; canonical household
 state still changes mainly by hand. The Evidence-Use Register (`B85`) proves
 routing of declared IDs, not that a routed number is current or fresh.
 Build-strategy item `AF-RECON-01`. Payday acceptance corpus:
@@ -1079,14 +1079,16 @@ cents remain only in deliberately live reconciliation (`test-live-household.js`,
 `positions.csv --check`). `node test-refresh-isolation.js` proves the four
 refresh classes. Do not start `B91` first.
 
-**B93 · Derive or delete proven duplicate live facts** · `READY` · *architecture, one outcome*
-After `B92`, before `B91`. **Next implementation outcome.** Verified still present after PR #42: cash
-repeated between `plan.startingCash` and `assets[]`; `revolvingExtra[].used`
-matching Chequing B; `debts[].postedBalance` duplicating `debts[].balance`;
-`income[].perMonth` matching `total / incomeCaptureMonths`. Re-verify at
-implementation. Prefer derive/delete. Do not add a sync layer. Do not treat
-`docs/positions.csv` as a universal fact database. Build-strategy item
-`AF-DEDUP-01`.
+**B93 · Derive or delete proven duplicate live facts** · **DONE 2026-08-14** · *architecture, one outcome*
+After `B92`, before `B91`. Cash balances live on `plan.startingCash` account
+rows; matching `assets[]` rows keep label/order and a `cash` id. Overdraft
+`used` and funding-option availability are `max(0, −chequing-b)` and
+`max(0, limit − used)` from `revolvingExtra.limit`. `debts[].balance` is the
+posted opening; `postedBalance` is gone. Recurring historical `perMonth` is
+`round(total / incomeCaptureMonths)`; the insurance one-off keeps
+`perMonth: null`. Proved by `test-dedup-facts.js`. Published Plan figures
+unchanged 75/75. Do not add a sync layer. Do not treat `docs/positions.csv`
+as a universal fact database. Build-strategy item `AF-DEDUP-01`.
 
 **B75 · Nothing checks that the authority table is complete** · **DONE 2026-08-11**
 PR #10 added `test-authority-coverage.js` to the blocking `npm test` suite. It
