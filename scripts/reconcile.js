@@ -23,11 +23,20 @@
  * obligations, household transfers, and household-available remainder.
  * They do not write data.json and do not promote salary into Forecast.
  *
+ * D8 card-state slice: observations in
+ * docs/reconciliation/card-state-observations.json distinguish posted
+ * balance, pending, limit, available credit, and confirmed payment.
+ * They do not write data.json, do not treat limit or available credit
+ * as household cash, and do not invent pending from
+ * limit − posted − available unless that identity is proven for that
+ * card and timestamp. Unknown pending is not $0.
+ *
  * This command NEVER writes data.json. An owner-approved canonical edit
  * remains a separate explicit action. Evidence that a commitment was
  * paid does not mutate the commitment. Hydro observations do not
  * promote Aug. 14 amounts into live canonical state. Amanda salary
- * evidence does not become a Forecast income stream.
+ * evidence does not become a Forecast income stream. Card observations
+ * are not a second financial authority.
  *
  * Statuses actually assigned here: MATCH / CHANGE / CONFLICT / MISSING.
  * STALE is not assigned — no owner-defined age threshold exists. Evidence
@@ -44,6 +53,7 @@ const DEFAULT_MAP = path.join(ROOT, 'docs', 'reconciliation', 'balance-map.json'
 const DEFAULT_SETTLEMENTS = path.join(ROOT, 'docs', 'reconciliation', 'commitment-settlements.json');
 const DEFAULT_UTILITY = path.join(ROOT, 'docs', 'reconciliation', 'utility-observations.json');
 const DEFAULT_AMANDA = path.join(ROOT, 'docs', 'reconciliation', 'amanda-income-observations.json');
+const DEFAULT_CARDS = path.join(ROOT, 'docs', 'reconciliation', 'card-state-observations.json');
 const SETTLED_ON = /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 const UTILITY_FACTS = new Set(['account-balance', 'dated-due', 'paying-account']);
 const AMANDA_FACTS = new Set([
@@ -56,6 +66,15 @@ const AMANDA_FACTS = new Set([
 ]);
 const AMANDA_OPERATING_ID = 'amanda-debt-payments';
 const AMANDA_TRANSFER_ID = 'amandaTransfer';
+const CARD_FACTS = new Set([
+  'posted-balance',
+  'pending',
+  'limit',
+  'available-credit',
+  'confirmed-payment',
+  'scheduled-payment',
+]);
+const CARD_IDS = new Set(['triangle', 'cashback', 'mbna', 'tdcc', 'travelvisa']);
 
 const EPSILON = 0.005;
 const near = (a, b) => Math.abs(Number(a) - Number(b)) <= EPSILON;
@@ -121,6 +140,12 @@ function readCanonical(data, target) {
       householdObligation: row.householdObligation !== false,
       locator,
     };
+  }
+  if (target.collection === 'obligations') {
+    const row = (((data.plan || {}).obligations) || []).find(r => r.id === target.id);
+    return row
+      ? { found: true, value: Number(row.amount), debtId: row.debtId || null, locator }
+      : { found: false, value: null, debtId: null, locator };
   }
   if (target.collection === 'income') {
     const row = ((((data || {}).plan) || {}).income || []).find(r => r.id === target.id);
@@ -725,6 +750,443 @@ function compareHouseholdAvailable(row, data) {
   };
 }
 
+function householdCashFromCardCapacity() {
+  return 0;
+}
+
+function readDebtCard(data, id) {
+  const locator = `debts:${id || '(unspecified)'}`;
+  const row = (data.debts || []).find(r => r.id === id);
+  if (!row) {
+    return {
+      found: false, posted: null, pending: null, pendingPresent: false,
+      limit: null, locator,
+    };
+  }
+  const pendingPresent = row.pending != null && row.pending !== '' && isFinite(Number(row.pending));
+  return {
+    found: true,
+    posted: Number(row.balance),
+    pending: pendingPresent ? Number(row.pending) : null,
+    pendingPresent,
+    limit: row.limit == null || row.limit === '' ? null : Number(row.limit),
+    locator,
+  };
+}
+
+function derivePendingFromIdentity(input) {
+  const posted = input && input.posted;
+  const limit = input && input.limit;
+  const available = input && input.available;
+  if (input && input.identityProven !== true) {
+    return { derived: false, pending: null, reason: 'identity-not-proven' };
+  }
+  if (!finiteNumber(posted) || !finiteNumber(limit) || !finiteNumber(available)) {
+    return { derived: false, pending: null, reason: 'incomplete-identity-inputs' };
+  }
+  return {
+    derived: true,
+    pending: round2(Number(limit) - Number(posted) - Number(available)),
+    reason: null,
+  };
+}
+
+function cardExposure(state) {
+  const pendingUnknown = !!(state && (state.pendingUnknown === true || state.unknownPending === true));
+  const pendingConflict = !!(state && state.pendingConflict === true);
+  if (state && state.postedConflict === true) {
+    return { amount: null, unknown: true, reason: 'conflicted-posted' };
+  }
+  if (pendingConflict) {
+    return { amount: null, unknown: true, reason: 'conflicted-pending' };
+  }
+  if (pendingUnknown) {
+    return { amount: null, unknown: true, reason: 'unknown-pending' };
+  }
+  if (!state || !finiteNumber(state.posted)) {
+    return { amount: null, unknown: true, reason: 'missing-posted' };
+  }
+  const includesPending = state.balanceIncludesPending === true;
+  if (!includesPending && !finiteNumber(state.pending)) {
+    return { amount: null, unknown: true, reason: 'missing-pending' };
+  }
+  const pending = includesPending ? 0 : Number(state.pending);
+  let exposure = round2(Number(state.posted) + pending);
+  const seen = new Set();
+  for (const payment of state.payments || []) {
+    if (!payment || payment.confirmed !== true) continue;
+    if (payment.posted !== true) continue;
+    if (payment.appliedToPosted === true) continue;
+    const id = payment.paymentId || null;
+    if (id && seen.has(id)) continue;
+    if (id) seen.add(id);
+    if (!finiteNumber(payment.amount)) continue;
+    exposure = round2(exposure - Number(payment.amount));
+  }
+  return { amount: exposure, unknown: false, reason: null };
+}
+
+function observationsFromCards(doc) {
+  return ((doc && doc.observations) || []).map(item => ({
+    observationId: item.observationId,
+    fact: item.fact,
+    cardId: item.cardId || (item.canonical && item.canonical.id) || null,
+    accountLabel: item.label || item.cardId,
+    evidenceValue: item.amount != null ? Number(item.amount) : null,
+    evidenceDate: item.observedAsOf || null,
+    unknown: item.unknown === true,
+    identityProven: item.identityProven === true,
+    balanceIncludesPending: item.balanceIncludesPending === true,
+    paymentId: item.paymentId || null,
+    posted: item.posted === true,
+    appliedToPosted: item.appliedToPosted === true,
+    obligationId: item.obligationId || null,
+    canonical: item.canonical || null,
+    source: item.source || null,
+    note: item.note || null,
+  }));
+}
+
+function distinctFinite(values) {
+  const distinct = [];
+  for (const v of values) {
+    if (!distinct.some(x => near(x, v))) distinct.push(v);
+  }
+  return distinct;
+}
+
+function comparePostedBalanceGroup(rows, data) {
+  const first = rows[0];
+  const cardId = first.cardId;
+  const debt = readDebtCard(data, cardId);
+  const amounts = rows
+    .filter(r => r.unknown !== true && r.evidenceValue != null && isFinite(r.evidenceValue))
+    .map(r => r.evidenceValue);
+  const distinct = distinctFinite(amounts);
+  let status;
+  if (!debt.found) status = 'MISSING';
+  else if (distinct.length > 1) status = 'CONFLICT';
+  else if (!amounts.length) status = 'MISSING';
+  else if (near(distinct[0], debt.posted)) status = 'MATCH';
+  else status = 'CHANGE';
+  return rows.map(row => ({
+    observationId: row.observationId,
+    fact: 'posted-balance',
+    cardId,
+    accountLabel: row.accountLabel,
+    evidenceValue: row.unknown ? null : row.evidenceValue,
+    evidenceDate: row.evidenceDate,
+    canonicalValue: debt.found ? debt.posted : null,
+    canonicalTarget: debt.locator,
+    difference: debt.found && row.evidenceValue != null && isFinite(row.evidenceValue)
+      ? round2(row.evidenceValue - debt.posted)
+      : null,
+    status,
+    balanceIncludesPending: row.balanceIncludesPending === true,
+    householdCash: 0,
+    note: row.note || (status === 'CONFLICT'
+      ? 'same-time posted facts disagree — not guessed'
+      : 'posted balance is not pending, limit, or available credit'),
+  }));
+}
+
+function comparePendingGroup(rows, data) {
+  const first = rows[0];
+  const cardId = first.cardId;
+  const debt = readDebtCard(data, cardId);
+  const unknownRows = rows.filter(r => r.unknown === true || r.evidenceValue == null || !isFinite(r.evidenceValue));
+  const known = rows.filter(r => r.unknown !== true && r.evidenceValue != null && isFinite(r.evidenceValue));
+  const distinct = distinctFinite(known.map(r => r.evidenceValue));
+  const mixedUnknownAndKnown = unknownRows.length > 0 && known.length > 0;
+  let status;
+  if (mixedUnknownAndKnown || distinct.length > 1) status = 'CONFLICT';
+  else if (unknownRows.length && !known.length) status = 'MISSING';
+  else if (!debt.found) status = 'MISSING';
+  else if (!debt.pendingPresent) status = 'MISSING';
+  else if (near(distinct[0], debt.pending)) status = 'MATCH';
+  else status = 'CHANGE';
+  return rows.map(row => {
+    const unknown = row.unknown === true || row.evidenceValue == null || !isFinite(row.evidenceValue);
+    return {
+      observationId: row.observationId,
+      fact: 'pending',
+      cardId,
+      accountLabel: row.accountLabel,
+      evidenceValue: unknown ? null : row.evidenceValue,
+      evidenceDate: row.evidenceDate,
+      canonicalValue: debt.found && debt.pendingPresent ? debt.pending : null,
+      canonicalTarget: debt.locator + '#pending',
+      difference: !unknown && debt.found && debt.pendingPresent
+        ? round2(row.evidenceValue - debt.pending)
+        : null,
+      status,
+      unknown,
+      identityProven: row.identityProven === true,
+      householdCash: 0,
+      note: unknown
+        ? (row.note || 'unknown pending is not $0')
+        : (row.note || 'pending is not posted balance'),
+    };
+  });
+}
+
+function compareLimitGroup(rows, data) {
+  const first = rows[0];
+  const cardId = first.cardId;
+  const debt = readDebtCard(data, cardId);
+  const amounts = rows
+    .filter(r => r.evidenceValue != null && isFinite(r.evidenceValue))
+    .map(r => r.evidenceValue);
+  const distinct = distinctFinite(amounts);
+  let status;
+  if (distinct.length > 1) status = 'CONFLICT';
+  else if (!debt.found || debt.limit == null || !isFinite(debt.limit)) status = 'MISSING';
+  else if (!amounts.length) status = 'MISSING';
+  else if (near(distinct[0], debt.limit)) status = 'MATCH';
+  else status = 'CHANGE';
+  return rows.map(row => ({
+    observationId: row.observationId,
+    fact: 'limit',
+    cardId,
+    accountLabel: row.accountLabel,
+    evidenceValue: row.evidenceValue,
+    evidenceDate: row.evidenceDate,
+    canonicalValue: debt.found && debt.limit != null ? debt.limit : null,
+    canonicalTarget: debt.locator + '#limit',
+    difference: debt.found && debt.limit != null && row.evidenceValue != null
+      ? round2(row.evidenceValue - debt.limit)
+      : null,
+    status,
+    householdCash: householdCashFromCardCapacity(),
+    note: row.note || 'credit limit is not household cash',
+  }));
+}
+
+function compareAvailableCreditGroup(rows) {
+  const first = rows[0];
+  const cardId = first.cardId;
+  const amounts = rows
+    .filter(r => r.unknown !== true && r.evidenceValue != null && isFinite(r.evidenceValue))
+    .map(r => r.evidenceValue);
+  const distinct = distinctFinite(amounts);
+  const status = distinct.length > 1 ? 'CONFLICT' : 'MISSING';
+  return rows.map(row => ({
+    observationId: row.observationId,
+    fact: 'available-credit',
+    cardId,
+    accountLabel: row.accountLabel,
+    evidenceValue: row.unknown ? null : row.evidenceValue,
+    evidenceDate: row.evidenceDate,
+    canonicalValue: null,
+    canonicalTarget: '(informational — not household cash)',
+    difference: null,
+    status,
+    householdCash: householdCashFromCardCapacity(),
+    identityProven: row.identityProven === true,
+    note: status === 'CONFLICT'
+      ? (row.note || 'same-time available-credit facts disagree — not guessed')
+      : (row.note || 'available credit is observed, not a canonical Atlas field — $0 household cash'),
+  }));
+}
+
+function compareConfirmedPayment(row) {
+  const unknown = row.unknown === true || row.evidenceValue == null || !isFinite(row.evidenceValue);
+  const posted = row.posted === true;
+  const applied = row.appliedToPosted === true;
+  return {
+    observationId: row.observationId,
+    fact: 'confirmed-payment',
+    cardId: row.cardId,
+    accountLabel: row.accountLabel,
+    evidenceValue: unknown ? null : row.evidenceValue,
+    evidenceDate: row.evidenceDate,
+    canonicalValue: null,
+    canonicalTarget: '(observed payment — not a canonical payment event)',
+    difference: null,
+    status: 'MISSING',
+    paymentId: row.paymentId || null,
+    posted,
+    appliedToPosted: applied,
+    householdCash: 0,
+    note: row.note || (applied
+      ? 'confirmed posted payment already in posted balance — do not subtract again; no canonical payment event'
+      : (posted
+        ? 'confirmed posted payment reduces exposure once; no canonical payment event'
+        : 'payment initiated is not payment posted')),
+  };
+}
+
+function compareScheduledPayment(row, data) {
+  const target = row.canonical || (row.obligationId
+    ? { collection: 'obligations', id: row.obligationId }
+    : null);
+  const canonical = target ? readCanonical(data, target) : { found: false, value: null, locator: '(unspecified)' };
+  let status;
+  if (!canonical.found) status = 'MISSING';
+  else if (row.evidenceValue != null && isFinite(row.evidenceValue)
+    && !near(row.evidenceValue, canonical.value)) status = 'CHANGE';
+  else status = 'MATCH';
+  return {
+    observationId: row.observationId,
+    fact: 'scheduled-payment',
+    cardId: row.cardId,
+    accountLabel: row.accountLabel,
+    evidenceValue: row.evidenceValue,
+    evidenceDate: row.evidenceDate,
+    canonicalValue: canonical.found ? canonical.value : null,
+    canonicalTarget: canonical.locator,
+    difference: canonical.found && row.evidenceValue != null
+      ? round2(row.evidenceValue - canonical.value)
+      : null,
+    status,
+    reducesExposure: false,
+    householdCash: 0,
+    note: row.note || 'scheduled payment reminder is not a confirmed posted payment',
+  };
+}
+
+function compareCardObservations(cardObservations, data) {
+  const rows = [];
+  const groups = new Map();
+  for (const obs of cardObservations || []) {
+    if (!CARD_FACTS.has(obs.fact)) continue;
+    const date = obs.evidenceDate || '(none)';
+    const key = `${obs.cardId || obs.observationId}:${obs.fact}:${date}`;
+    const list = groups.get(key) || [];
+    list.push(obs);
+    groups.set(key, list);
+  }
+  for (const group of groups.values()) {
+    const fact = group[0].fact;
+    if (fact === 'posted-balance') rows.push(...comparePostedBalanceGroup(group, data));
+    else if (fact === 'pending') rows.push(...comparePendingGroup(group, data));
+    else if (fact === 'limit') rows.push(...compareLimitGroup(group, data));
+    else if (fact === 'available-credit') rows.push(...compareAvailableCreditGroup(group));
+    else if (fact === 'confirmed-payment') {
+      for (const row of group) rows.push(compareConfirmedPayment(row));
+    } else if (fact === 'scheduled-payment') {
+      for (const row of group) rows.push(compareScheduledPayment(row, data));
+    }
+  }
+  return rows;
+}
+
+function observationTime(row) {
+  const d = row && row.evidenceDate;
+  if (d == null || d === '' || d === '(none)') return '';
+  return String(d);
+}
+
+function cardSummaries(cardRows) {
+  const byCard = new Map();
+  for (const row of cardRows || []) {
+    const id = row.cardId;
+    if (!id) continue;
+    const entry = byCard.get(id) || {
+      cardId: id,
+      posted: null,
+      pending: null,
+      pendingUnknown: false,
+      pendingConflict: false,
+      postedConflict: false,
+      balanceIncludesPending: false,
+      limit: null,
+      available: null,
+      availableConflict: false,
+      confirmedPayments: [],
+      scheduledPayments: [],
+      unresolved: [],
+      householdCashFromLimit: 0,
+      householdCashFromAvailable: 0,
+      _postedAsOf: null,
+      _pendingAsOf: null,
+    };
+    if (row.fact === 'posted-balance') {
+      const t = observationTime(row);
+      if (entry._postedAsOf == null || t > entry._postedAsOf) {
+        entry._postedAsOf = t;
+        entry.postedConflict = row.status === 'CONFLICT';
+        entry.posted = entry.postedConflict || row.evidenceValue == null ? null : row.evidenceValue;
+        entry.balanceIncludesPending = !entry.postedConflict && row.balanceIncludesPending === true;
+      } else if (t === entry._postedAsOf) {
+        if (row.status === 'CONFLICT') {
+          entry.postedConflict = true;
+          entry.posted = null;
+          entry.balanceIncludesPending = false;
+        } else if (!entry.postedConflict && row.evidenceValue != null) {
+          entry.posted = row.evidenceValue;
+          entry.balanceIncludesPending = row.balanceIncludesPending === true;
+        }
+      }
+    }
+    if (row.fact === 'pending') {
+      if (row.unknown) entry.unresolved.push('pending unknown');
+      const t = observationTime(row);
+      if (entry._pendingAsOf == null || t > entry._pendingAsOf) {
+        entry._pendingAsOf = t;
+        entry.pendingConflict = row.status === 'CONFLICT';
+        entry.pendingUnknown = entry.pendingConflict || row.unknown === true;
+        entry.pending = entry.pendingUnknown || row.evidenceValue == null ? null : row.evidenceValue;
+      } else if (t === entry._pendingAsOf) {
+        if (row.status === 'CONFLICT') {
+          entry.pendingConflict = true;
+          entry.pendingUnknown = true;
+          entry.pending = null;
+        } else if (row.unknown) {
+          entry.pendingUnknown = true;
+          entry.pending = null;
+        } else if (!entry.pendingUnknown && !entry.pendingConflict && row.evidenceValue != null) {
+          entry.pending = row.evidenceValue;
+        }
+      }
+    }
+    if (row.fact === 'limit' && row.evidenceValue != null) entry.limit = row.evidenceValue;
+    if (row.fact === 'available-credit') {
+      if (row.status === 'CONFLICT') entry.availableConflict = true;
+      if (row.evidenceValue != null && entry.available == null) entry.available = row.evidenceValue;
+    }
+    if (row.fact === 'confirmed-payment') {
+      entry.confirmedPayments.push({
+        paymentId: row.paymentId,
+        amount: row.evidenceValue,
+        posted: row.posted === true,
+        appliedToPosted: row.appliedToPosted === true,
+        confirmed: true,
+      });
+    }
+    if (row.fact === 'scheduled-payment') {
+      entry.scheduledPayments.push({ amount: row.evidenceValue });
+    }
+    if (row.status === 'MISSING' || row.status === 'CONFLICT' || row.status === 'CHANGE') {
+      entry.unresolved.push(`${row.fact} ${row.status}`);
+    }
+    byCard.set(id, entry);
+  }
+  return [...byCard.values()].map(entry => {
+    if (entry._pendingAsOf == null) {
+      entry.pendingUnknown = true;
+      entry.pending = null;
+    }
+    const exposure = cardExposure({
+      posted: entry.posted,
+      pending: entry.pending,
+      pendingUnknown: entry.pendingUnknown,
+      pendingConflict: entry.pendingConflict === true,
+      postedConflict: entry.postedConflict === true,
+      balanceIncludesPending: entry.balanceIncludesPending === true,
+      payments: entry.confirmedPayments,
+    });
+    const published = Object.assign({}, entry, {
+      exposure: exposure.amount,
+      exposureUnknown: exposure.unknown === true,
+      exposureReason: exposure.reason,
+    });
+    delete published._postedAsOf;
+    delete published._pendingAsOf;
+    return published;
+  });
+}
+
 function compareGroup(rows, data) {
   const first = rows[0];
   const target = first.canonical;
@@ -776,14 +1238,21 @@ function reconcile(input) {
     || observationsFromUtility(input.utility);
   const extraAmanda = input.amandaObservations
     || observationsFromAmanda(input.amanda);
+  const extraCards = input.cardObservations
+    || observationsFromCards(input.cards);
   const observations = raw.filter(o =>
-    o.fact !== 'settlement' && !UTILITY_FACTS.has(o.fact) && !AMANDA_FACTS.has(o.fact));
+    o.fact !== 'settlement'
+    && !UTILITY_FACTS.has(o.fact)
+    && !AMANDA_FACTS.has(o.fact)
+    && !CARD_FACTS.has(o.fact));
   const settlementObservations = raw.filter(o => o.fact === 'settlement')
     .concat(extraSettlements || []);
   const utilityObservations = raw.filter(o => UTILITY_FACTS.has(o.fact))
     .concat(extraUtility || []);
   const amandaObservations = raw.filter(o => AMANDA_FACTS.has(o.fact))
     .concat(extraAmanda || []);
+  const cardObservations = raw.filter(o => CARD_FACTS.has(o.fact))
+    .concat(extraCards || []);
   const groups = new Map();
   for (const obs of observations) {
     const key = obs.canonical
@@ -837,6 +1306,7 @@ function reconcile(input) {
     else if (obs.fact === 'internal-transfer') rows.push(compareInternalTransfer(obs, data));
     else if (obs.fact === 'household-available') rows.push(compareHouseholdAvailable(obs, data));
   }
+  rows.push(...compareCardObservations(cardObservations, data));
   const counts = { MATCH: 0, STALE: 0, CHANGE: 0, CONFLICT: 0, MISSING: 0 };
   for (const row of rows) counts[row.status] = (counts[row.status] || 0) + 1;
   return {
@@ -846,6 +1316,7 @@ function reconcile(input) {
     staleReason: (map && map.stale)
       || 'No owner-defined age threshold exists. Evidence dates are reported; STALE is not inferred.',
     amandaTransferAuthority: amandaTransferAuthorityContext(data),
+    cardSummaries: cardSummaries(rows.filter(r => CARD_FACTS.has(r.fact))),
     rows,
     counts,
   };
@@ -858,6 +1329,7 @@ function formatReport(result) {
   lines.push('Settlement source: docs/reconciliation/commitment-settlements.json');
   lines.push('Hydro source: docs/reconciliation/utility-observations.json');
   lines.push('Amanda source: docs/reconciliation/amanda-income-observations.json');
+  lines.push('Card source: docs/reconciliation/card-state-observations.json');
   lines.push('Canonical: data.json via id locator (not array-index JSON Pointer)');
   lines.push(`Canonical as-of: ${result.canonicalAsOf || '(none)'}`);
   lines.push(`STALE: not assigned — ${result.staleReason}`);
@@ -885,6 +1357,12 @@ function formatReport(result) {
           || row.fact === 'household-transfer')
           && row.evidenceValue == null
           ? (row.fact === 'household-transfer' ? 'not observed' : 'unresolved')
+        : row.fact === 'available-credit'
+          ? (row.evidenceValue == null ? '—' : n2(row.evidenceValue))
+        : (row.fact === 'pending' && row.unknown)
+          ? 'unknown'
+        : (row.fact === 'confirmed-payment' && row.appliedToPosted)
+          ? n2(row.evidenceValue)
           : (row.evidenceValue == null ? '—' : n2(row.evidenceValue));
     const canonical = row.fact === 'settlement'
       ? (row.canonicalSettledOn || 'unsettled')
@@ -904,6 +1382,14 @@ function formatReport(result) {
                   ? (row.canonicalValue == null ? '—' : n2(row.canonicalValue))
             : row.fact === 'household-transfer' && row.independentlyObserved !== true
               ? 'canonical ctx'
+              : row.fact === 'available-credit' || row.fact === 'limit'
+                ? '$0 cash'
+                : (row.fact === 'pending' && row.unknown)
+                  ? 'not $0'
+                  : row.fact === 'confirmed-payment' && row.appliedToPosted
+                    ? 'already in'
+                    : row.fact === 'scheduled-payment'
+                      ? 'schedule only'
               : (row.canonicalValue == null ? '—' : n2(row.canonicalValue));
     lines.push([
       pad(row.observationId, 28),
@@ -972,6 +1458,48 @@ function formatReport(result) {
       lines.push(bits.join(' — '));
     }
   }
+  const cards = result.rows.filter(r => CARD_FACTS.has(r.fact));
+  if (cards.length) {
+    lines.push('');
+    lines.push('Card current-state distinctions:');
+    for (const row of cards) {
+      const bits = [`  ${row.observationId}: ${row.fact}`];
+      if (row.fact === 'posted-balance') bits.push('posted is not pending');
+      if (row.fact === 'pending') {
+        bits.push(row.unknown
+          ? 'unknown pending is not $0'
+          : 'pending is not posted');
+      }
+      if (row.fact === 'limit') bits.push('limit is not household cash');
+      if (row.fact === 'available-credit') {
+        bits.push(row.status === 'CONFLICT'
+          ? 'CONFLICT — same-time available-credit facts disagree, not household cash'
+          : 'available credit is not household cash');
+      }
+      if (row.fact === 'confirmed-payment') {
+        bits.push(row.appliedToPosted
+          ? 'already in posted — do not subtract again'
+          : (row.posted ? 'reduces exposure once' : 'initiated is not posted'));
+      }
+      if (row.fact === 'scheduled-payment') bits.push('schedule is not a confirmed posted payment');
+      lines.push(bits.join(' — '));
+    }
+    const summaries = result.cardSummaries || [];
+    if (summaries.length) {
+      lines.push('');
+      lines.push('Card exposure (fail-closed; not a second authority):');
+      for (const card of summaries) {
+        const pending = card.pendingConflict
+          ? 'CONFLICT'
+          : (card.pendingUnknown ? 'unknown' : (card.pending == null ? '—' : n2(card.pending)));
+        const exposure = card.exposureUnknown ? `unknown (${card.exposureReason})` : n2(card.exposure);
+        const available = card.availableConflict
+          ? 'CONFLICT'
+          : (card.available == null ? '—' : n2(card.available));
+        lines.push(`  ${card.cardId}: posted ${card.posted == null ? '—' : n2(card.posted)} · pending ${pending} · limit ${card.limit == null ? '—' : n2(card.limit)} · available ${available} · exposure ${exposure} · household cash from limit/available $0.00`);
+      }
+    }
+  }
   const auth = result.amandaTransferAuthority;
   if (auth) {
     lines.push('');
@@ -1001,6 +1529,7 @@ function loadDefaults() {
     settlements: JSON.parse(fs.readFileSync(DEFAULT_SETTLEMENTS, 'utf8')),
     utility: JSON.parse(fs.readFileSync(DEFAULT_UTILITY, 'utf8')),
     amanda: JSON.parse(fs.readFileSync(DEFAULT_AMANDA, 'utf8')),
+    cards: JSON.parse(fs.readFileSync(DEFAULT_CARDS, 'utf8')),
   };
 }
 
@@ -1019,8 +1548,13 @@ const api = {
   observationsFromSettlements,
   observationsFromUtility,
   observationsFromAmanda,
+  observationsFromCards,
   classifyAmandaMovement,
   householdCashFromAmandaMovements,
+  householdCashFromCardCapacity,
+  derivePendingFromIdentity,
+  cardExposure,
+  cardSummaries,
   amandaHouseholdAvailable,
   amandaTransferAuthorityContext,
   forecastHasAmandaDoubleCount,
@@ -1034,7 +1568,10 @@ const api = {
   DEFAULT_SETTLEMENTS,
   DEFAULT_UTILITY,
   DEFAULT_AMANDA,
+  DEFAULT_CARDS,
   AMANDA_FACTS,
+  CARD_FACTS,
+  CARD_IDS,
   AMANDA_TRANSFER_ID,
   AMANDA_OPERATING_ID,
 };

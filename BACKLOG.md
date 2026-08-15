@@ -1094,6 +1094,21 @@ and the Aug. 14 $798.37 DEBT&PAYMENTS balance is not spendable.
 The reconciler remains non-writing. Live `amandaTransfer` and
 DEBT&PAYMENTS are unchanged. Do not mark this item DONE.
 
+**D8 slice (not completion):** credit-card current state is observed as
+distinct facts in
+`docs/reconciliation/card-state-observations.json`: posted balance,
+pending, limit, available credit, and confirmed payment. Exposure is
+derived fail-closed from those facts. Unknown pending is not $0. Limit
+and available credit are never household cash. A scheduled minimum is
+not a confirmed posted payment. The same confirmed payment cannot reduce
+exposure twice. Same-time contradictory posted / available / limit
+figures are CONFLICT, not a guessed identity. Pending is not
+manufactured as limit − posted − available unless that identity is
+proven for that card and timestamp (MBNA 2026-08-09 is the committed
+proven case). The reconciler remains non-writing. Live card
+balances/limits/pending/payments are unchanged. Do not mark this item
+DONE.
+
 **Outcome (whole item, still open):** a small **non-writing** reconciliation
 report over existing observation records: evidence value/date, current Atlas
 value, MATCH / STALE / CHANGE / CONFLICT / MISSING, unresolved item. One
