@@ -1,14 +1,20 @@
 'use strict';
-/* Gate for Codex → Cursor repair. `node scripts/atlas-cursor-repair-gate.js`
+/* Gate for Codex or trusted ChatGPT Atlas → Cursor repair.
+ * `node scripts/atlas-cursor-repair-gate.js`
  *
  * This is the sole authority for who may start a repair, whether the reviewed
  * SHA is still the PR head, and whether another automated round is allowed.
  * The GitHub workflow calls it from a default-branch checkout. It never talks
  * to the network and never reads secrets.
  *
+ * Two trigger lanes share one downstream repair path:
+ *   A) genuine Codex connector review (identity-closed, unchanged)
+ *   B) trusted owner Atlas Contract / Systems Review — NOT PASS or BLOCKING
+ *
  * CLI:
- *   evaluate <request.json>  → result JSON; exit 0 proceed, 2 skip, 1 error
- *   prompt   <request.json>  → repair prompt on stdout
+ *   evaluate <request.json>              → result JSON; exit 0 proceed, 2 skip, 1 error
+ *   prompt   <request.json>              → repair prompt on stdout
+ *   select-review <reviews.json> <sha>   → eligible review id or empty
  */
 
 const fs = require('fs');
@@ -19,6 +25,12 @@ const STATE_MARKER = '<!-- atlas-cursor-repair-state -->';
 const CODEX_LOGINS = Object.freeze([
   'chatgpt-codex-connector[bot]',
   'chatgpt-codex-connector',
+]);
+const TRUSTED_ATLAS_REVIEWER_LOGIN = 'tc5v5s64ym-sketch';
+const ATLAS_PASS_MARKER = 'Atlas Contract / Systems Review — PASS';
+const ATLAS_BLOCKING_MARKERS = Object.freeze([
+  'Atlas Contract / Systems Review — NOT PASS',
+  'Atlas Contract / Systems Review — BLOCKING',
 ]);
 const DENIED_GIT_VERBS = Object.freeze([
   'push',
@@ -36,6 +48,98 @@ function normalizeLogin(login) {
 function isGenuineCodexReviewer(login) {
   const normalized = normalizeLogin(login);
   return CODEX_LOGINS.some((allowed) => allowed.toLowerCase() === normalized);
+}
+
+function isTrustedAtlasReviewer(login) {
+  return String(login || '') === TRUSTED_ATLAS_REVIEWER_LOGIN;
+}
+
+function identifyRepairLane(input) {
+  const login = input && input.reviewerLogin;
+  if (isGenuineCodexReviewer(login)) return 'codex';
+  if (isTrustedAtlasReviewer(login)) return 'atlas';
+  return null;
+}
+
+function classifyAtlasReviewBody(body) {
+  const trimmed = String(body || '').trim();
+  if (!trimmed) {
+    return {
+      ok: false,
+      code: 'not-atlas-blocking-review',
+      reason: 'Owner review is not a blocking Atlas Contract / Systems Review.',
+      findings: [],
+    };
+  }
+  if (trimmed.startsWith(ATLAS_PASS_MARKER)) {
+    return {
+      ok: false,
+      code: 'atlas-pass',
+      reason: 'Atlas Contract / Systems Review PASS does not start a repair.',
+      findings: [],
+    };
+  }
+  const marker = ATLAS_BLOCKING_MARKERS.find((prefix) => trimmed.startsWith(prefix));
+  if (!marker) {
+    return {
+      ok: false,
+      code: 'not-atlas-blocking-review',
+      reason: 'Owner review is not a blocking Atlas Contract / Systems Review.',
+      findings: [],
+    };
+  }
+  const findingsText = trimmed.slice(marker.length).trim();
+  if (!findingsText) {
+    return {
+      ok: false,
+      code: 'empty-atlas-finding',
+      reason: 'Atlas Contract / Systems Review has no finding text after the marker.',
+      findings: [],
+    };
+  }
+  return {
+    ok: true,
+    code: 'ok',
+    marker,
+    findings: [findingsText],
+  };
+}
+
+function atlasFindingTexts(input) {
+  const classified = classifyAtlasReviewBody(input && input.reviewBody);
+  return classified.ok ? classified.findings : [];
+}
+
+function hasAtlasFindings(input) {
+  return atlasFindingTexts(input).length > 0;
+}
+
+function reviewLogin(review) {
+  return review && review.user && review.user.login;
+}
+
+function isCodexSelectionCandidate(review, currentHeadSha) {
+  return isGenuineCodexReviewer(reviewLogin(review))
+    && isExactCurrentHead(review && review.commit_id, currentHeadSha);
+}
+
+function isAtlasSelectionCandidate(review, currentHeadSha) {
+  return isTrustedAtlasReviewer(reviewLogin(review))
+    && isExactCurrentHead(review && review.commit_id, currentHeadSha)
+    && classifyAtlasReviewBody(review && review.body).ok;
+}
+
+function selectEligibleReview(reviews, currentHeadSha) {
+  const list = Array.isArray(reviews) ? reviews.slice() : [];
+  const candidates = list.filter((review) => (
+    isCodexSelectionCandidate(review, currentHeadSha)
+    || isAtlasSelectionCandidate(review, currentHeadSha)
+  ));
+  if (!candidates.length) return null;
+  candidates.sort((left, right) => (
+    String(left && left.submitted_at || '').localeCompare(String(right && right.submitted_at || ''))
+  ));
+  return candidates[candidates.length - 1];
 }
 
 function isOpenPrTargetingMain(pr) {
@@ -129,7 +233,8 @@ function hasCodexFindings(input) {
 
 function evaluateRepairRequest(input) {
   const state = parseRepairState(input && input.stateComments);
-  if (!isGenuineCodexReviewer(input && input.reviewerLogin)) {
+  const lane = identifyRepairLane(input);
+  if (!lane) {
     return { ok: false, code: 'not-codex-reviewer', reason: 'Reviewer is not the Codex connector.', state };
   }
   if (!isOpenPrTargetingMain(input && input.pr)) {
@@ -142,8 +247,15 @@ function evaluateRepairRequest(input) {
   if (!isExactCurrentHead(input.reviewedSha, input.currentHeadSha || input.pr.head.sha)) {
     return { ok: false, code: 'stale-head', reason: 'Reviewed SHA is not the current PR head.', state };
   }
-  if (!hasCodexFindings(input)) {
-    return { ok: false, code: 'no-findings', reason: 'Codex review has no findings to repair.', state };
+  if (lane === 'codex') {
+    if (!hasCodexFindings(input)) {
+      return { ok: false, code: 'no-findings', reason: 'Codex review has no findings to repair.', state };
+    }
+  } else {
+    const atlas = classifyAtlasReviewBody(input && input.reviewBody);
+    if (!atlas.ok) {
+      return { ok: false, code: atlas.code, reason: atlas.reason, state };
+    }
   }
   if (state.last_reviewed_sha
     && isExactCurrentHead(state.last_reviewed_sha, input.reviewedSha)) {
@@ -160,22 +272,32 @@ function evaluateRepairRequest(input) {
   return {
     ok: true,
     code: 'ok',
-    reason: 'Eligible Codex finding on the current head.',
+    lane,
+    reason: lane === 'atlas'
+      ? 'Eligible Atlas Contract / Systems Review finding on the current head.'
+      : 'Eligible Codex finding on the current head.',
     state,
     nextRound: state.rounds + 1,
   };
 }
 
 function buildRepairPrompt(input) {
-  const findings = codexFindingTexts(input);
+  const lane = identifyRepairLane(input) || 'codex';
+  const findings = lane === 'atlas' ? atlasFindingTexts(input) : codexFindingTexts(input);
   const head = input.currentHeadSha || (input.pr && input.pr.head && input.pr.head.sha) || '';
   const number = input.pr && input.pr.number;
+  const findingHeader = lane === 'atlas'
+    ? 'Fix only the genuine Atlas Contract / Systems Review findings below.'
+    : 'Fix only the genuine Codex review findings below.';
+  const findingLabel = lane === 'atlas'
+    ? 'Atlas Contract / Systems Review findings:'
+    : 'Codex findings:';
   return [
     'Read AGENTS.md and CLAUDE.md first. Follow those briefs.',
     '',
     `You are repairing pull request #${number} at exact current head ${head}.`,
     '',
-    'Fix only the genuine Codex review findings below.',
+    findingHeader,
     'Do not expand scope. Do not start a second outcome. Do not add features, refactors, or drive-by cleanup.',
     '',
     'Edit files only.',
@@ -183,7 +305,7 @@ function buildRepairPrompt(input) {
     'Do not mutate the pull request, post GitHub comments, or orchestrate GitHub workflows.',
     'Do not use gh. Deterministic workflow steps own checkout, tests, commit, push, and PR state.',
     '',
-    'Codex findings:',
+    findingLabel,
     ...findings.map((finding, index) => `${index + 1}. ${finding}`),
   ].join('\n');
 }
@@ -212,6 +334,13 @@ function main(argv) {
     process.stdout.write(`${buildRepairPrompt(request)}\n`);
     return 0;
   }
+  if (command === 'select-review') {
+    const selected = selectEligibleReview(readJsonArg(argv[3]), argv[4]);
+    if (selected && selected.id != null && selected.id !== '') {
+      process.stdout.write(String(selected.id));
+    }
+    return 0;
+  }
   if (command === 'deny-git') {
     const verb = deniedGitVerb(argv.slice(3));
     if (verb) {
@@ -227,7 +356,7 @@ function main(argv) {
     process.stderr.write(`${result.reason}\n`);
     return 1;
   }
-  process.stderr.write('usage: atlas-cursor-repair-gate.js evaluate|prompt|deny-git|assert-head\n');
+  process.stderr.write('usage: atlas-cursor-repair-gate.js evaluate|prompt|select-review|deny-git|assert-head\n');
   return 1;
 }
 
@@ -239,14 +368,23 @@ module.exports = {
   MAX_ROUNDS,
   STATE_MARKER,
   CODEX_LOGINS,
+  TRUSTED_ATLAS_REVIEWER_LOGIN,
+  ATLAS_PASS_MARKER,
+  ATLAS_BLOCKING_MARKERS,
   DENIED_GIT_VERBS,
   isGenuineCodexReviewer,
+  isTrustedAtlasReviewer,
+  identifyRepairLane,
+  classifyAtlasReviewBody,
   isOpenPrTargetingMain,
   isExactCurrentHead,
   parseRepairState,
   serializeRepairState,
   canStartRound,
   hasCodexFindings,
+  hasAtlasFindings,
+  atlasFindingTexts,
+  selectEligibleReview,
   evaluateRepairRequest,
   buildRepairPrompt,
   deniedGitVerb,

@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       pr_number:
-        description: Pull request number that received a Codex review
+        description: Pull request number that received a Codex or trusted Atlas review
         required: true
         type: number
       review_id:
@@ -42,6 +42,7 @@ jobs:
       reviewed_sha: ${{ steps.evaluate.outputs.reviewed_sha }}
       review_id: ${{ steps.evaluate.outputs.review_id }}
       next_round: ${{ steps.evaluate.outputs.next_round }}
+      lane: ${{ steps.evaluate.outputs.lane }}
     steps:
       - name: Checkout trusted default-branch scripts
         uses: actions/checkout@v4
@@ -49,7 +50,7 @@ jobs:
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
 
-      - name: Evaluate Codex repair eligibility
+      - name: Evaluate repair eligibility
         id: evaluate
         env:
           GH_TOKEN: ${{ github.token }}
@@ -93,21 +94,12 @@ jobs:
 
           review_id="${DISPATCH_REVIEW}"
           if [[ -z "${review_id}" ]]; then
-            review_id="$(jq -r --arg head "${current_head}" '
-              [ .[]
-                | select((.user.login | ascii_downcase) == "chatgpt-codex-connector[bot]"
-                         or (.user.login | ascii_downcase) == "chatgpt-codex-connector")
-                | select(.commit_id == $head)
-              ]
-              | sort_by(.submitted_at)
-              | last
-              | .id // empty
-            ' "${reviews_file}")"
+            review_id="$(node scripts/atlas-cursor-repair-gate.js select-review "${reviews_file}" "${current_head}")"
           fi
 
           if [[ -z "${review_id}" ]]; then
             echo "eligible=false" >> "${GITHUB_OUTPUT}"
-            echo "No genuine Codex review is on the current head."
+            echo "No eligible Codex or Atlas review is on the current head."
             exit 0
           fi
 
@@ -151,6 +143,7 @@ jobs:
           fi
 
           next_round="$(jq -r '.nextRound // empty' "${RUNNER_TEMP}/repair-result.json")"
+          lane="$(jq -r '.lane // empty' "${RUNNER_TEMP}/repair-result.json")"
           echo "eligible=${eligible}" >> "${GITHUB_OUTPUT}"
           echo "pr_number=${pr_number}" >> "${GITHUB_OUTPUT}"
           echo "head_sha=${current_head}" >> "${GITHUB_OUTPUT}"
@@ -158,6 +151,7 @@ jobs:
           echo "reviewed_sha=$(jq -r '.commit_id' <<<"${review_json}")" >> "${GITHUB_OUTPUT}"
           echo "review_id=${review_id}" >> "${GITHUB_OUTPUT}"
           echo "next_round=${next_round}" >> "${GITHUB_OUTPUT}"
+          echo "lane=${lane}" >> "${GITHUB_OUTPUT}"
           jq -r '.reason' "${RUNNER_TEMP}/repair-result.json"
 
           node scripts/atlas-cursor-repair-gate.js prompt "${RUNNER_TEMP}/repair-request.json" \
@@ -344,6 +338,7 @@ jobs:
           REVIEWED_SHA: ${{ needs.gate.outputs.reviewed_sha }}
           REVIEW_ID: ${{ needs.gate.outputs.review_id }}
           NEXT_ROUND: ${{ needs.gate.outputs.next_round }}
+          LANE: ${{ needs.gate.outputs.lane }}
         run: |
           set -euo pipefail
           live="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.head.sha')"
@@ -357,7 +352,11 @@ jobs:
           git config core.hooksPath .githooks
           git config user.name atlas-automation
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m "Apply Codex review repair for ${REVIEWED_SHA} (round ${NEXT_ROUND})."
+          lane_label="Codex"
+          if [[ "${LANE}" == "atlas" ]]; then
+            lane_label="Atlas"
+          fi
+          git commit -m "Apply ${lane_label} review repair for ${REVIEWED_SHA} (round ${NEXT_ROUND})."
           git push
           repair_sha="$(git rev-parse HEAD)"
 
