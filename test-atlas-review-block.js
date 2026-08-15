@@ -399,11 +399,12 @@ ok(!/evaluate-review/.test(repairJob) && !/atlas-review-block\.js patch/.test(re
   'Cursor repair job does not patch the PR body');
 ok(/evaluate-pending/.test(pushJob) && /atlas-review-block\.js"? patch/.test(pushJob),
   'push job moves a confirmed new head to PENDING through the helper');
-ok(/git push/.test(pushJob) && pushJob.indexOf('git push') < pushJob.indexOf('evaluate-pending'),
-  'PENDING evaluation happens only after git push');
-ok(/pulls\/\$\{PR_NUMBER\}" --jq '\.head\.sha'/.test(pushJob)
-  || /pulls\/\$\{PR_NUMBER\}/.test(pushJob),
-  'push job re-reads the live PR head before PENDING');
+const confirmCallAt = pushJob.search(/atlas-github-pr-head-sync\.js"?\s+confirm/);
+ok(/git push/.test(pushJob) && pushJob.indexOf('git push') < confirmCallAt
+  && confirmCallAt < pushJob.indexOf('evaluate-pending'),
+  'PENDING evaluation happens only after live PR-head confirmation');
+ok(/atlas-github-pr-head-sync\.js/.test(pushJob) && /live_head=/.test(pushJob),
+  'push job still validates the confirmed live PR head before PENDING');
 ok(/auto-merge|enablePullRequestAutoMerge|merge_method/.test(repair) === false,
   'no auto-merge machinery');
 ok(!/git rebase|git merge|git push --force|git push -f/.test(pushJob),

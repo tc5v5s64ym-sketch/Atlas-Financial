@@ -437,8 +437,13 @@ ok(firstAssertAt >= 0 && secondAssertAt > firstAssertAt
   `assert1=${firstAssertAt} assert2=${secondAssertAt} apply=${applyAt} commit=${commitAt} push=${gitPushAt}`);
 ok(!/git apply|git commit|git push|git rebase|git merge/.test(pushScript.slice(0, firstAssertAt)),
   'no apply, commit, push, rebase, or merge before the first assert-head');
-ok(/pulls\/\$\{PR_NUMBER\}" --jq '\.head\.sha'/.test(pushJob),
-  'push re-fetches the current remote PR head SHA');
+ok(/atlas-github-pr-head-sync\.js/.test(pushJob),
+  'push confirms the live PR head through the bounded helper');
+ok(/git push/.test(pushScript) && pushScript.indexOf('git push') < pushScript.indexOf('atlas-github-pr-head-sync.js'),
+  'live PR-head confirmation happens after git push');
+ok(pushScript.indexOf('atlas-github-pr-head-sync.js') < pushScript.indexOf('evaluate-pending')
+  && pushScript.indexOf('atlas-github-pr-head-sync.js') < pushScript.indexOf('atlas-cursor-repair-state'),
+  'PENDING and the repair-round marker wait for live PR-head confirmation');
 ok(!/git rebase|git merge|git push --force|git push -f/.test(pushJob),
   'push path has no rebase, merge, or force-push');
 ok(/path: trusted/.test(pushJob.split('Checkout the PR branch')[0] || ''),
@@ -446,6 +451,9 @@ ok(/path: trusted/.test(pushJob.split('Checkout the PR branch')[0] || ''),
 ok(preserveStep.includes('trusted/scripts/atlas-cursor-repair-gate.js')
   && preserveStep.includes('${RUNNER_TEMP}/atlas-trusted-scripts/atlas-cursor-repair-gate.js'),
   'push job copies the trusted default-branch gate script to RUNNER_TEMP');
+ok(preserveStep.includes('trusted/scripts/atlas-github-pr-head-sync.js')
+  && preserveStep.includes('${RUNNER_TEMP}/atlas-trusted-scripts/atlas-github-pr-head-sync.js'),
+  'push job copies the trusted live PR-head confirmation helper to RUNNER_TEMP');
 ok(pushJob.indexOf('atlas-trusted-scripts') >= 0
   && pushJob.indexOf('Checkout the PR branch') > pushJob.indexOf('atlas-trusted-scripts'),
   'the trusted gate script is preserved before the PR-branch checkout');
