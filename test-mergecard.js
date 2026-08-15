@@ -5,8 +5,11 @@
  * catches missing fields, invalid closed forms, stale reviewed heads, wrong
  * reviewer identity, and a non-passing required review. It also proves the
  * check reads the live PR body, not the workflow event body, and fails closed
- * when the live PR is closed, retargeted, or no longer the event head. It
- * deliberately does not test the meaning of prose.
+ * when the live PR is closed, retargeted, or no longer the event head. A
+ * workflow_dispatch run with explicit PR number and expected head SHA uses
+ * that same live validation and fails closed on mismatch. A default-branch
+ * dispatch for a predating PR head records the required check on the
+ * expected head. It deliberately does not test the meaning of prose.
  */
 
 const fs = require('fs');
@@ -116,18 +119,44 @@ async function validate(body, head = HEAD, files = ['docs/status.md'], options =
       repo: { full_name: options.liveHeadRepo || 'owner/repo' },
     },
   };
+  const eventName = options.eventName || 'pull_request';
   const context = {
+    eventName,
+    sha: options.runSha != null ? options.runSha : eventHead,
+    ref: options.ref || '',
     repo: { owner: 'owner', repo: 'repo' },
-    payload: {
-      pull_request: { number: eventNumber, body: eventBody, head: { sha: eventHead } },
-    },
+    payload: eventName === 'workflow_dispatch'
+      ? {
+        inputs: {
+          pr_number: Object.prototype.hasOwnProperty.call(options, 'dispatchPr')
+            ? options.dispatchPr
+            : eventNumber,
+          expected_head_sha: Object.prototype.hasOwnProperty.call(options, 'dispatchHead')
+            ? options.dispatchHead
+            : eventHead,
+        },
+        repository: { default_branch: options.defaultBranch || '' },
+      }
+      : {
+        pull_request: { number: eventNumber, body: eventBody, head: { sha: eventHead } },
+      },
   };
+  const createdChecks = options.createdChecks || [];
   const github = {
     rest: {
       pulls: {
         listFiles() {},
         async get() {
           return { data: livePr };
+        },
+      },
+      checks: {
+        async create(params) {
+          createdChecks.push(params);
+          if (options.checkCreateError) {
+            throw new Error(options.checkCreateError);
+          }
+          return { data: { id: 1 } };
         },
       },
     },
@@ -179,6 +208,12 @@ const required = {
   'Findings and fix verification': 'No blockers remain on this exact head',
 };
 green('a passing required review on the exact head passes', card({ review: required }));
+checks.push((async () => {
+  const message = await validate(card({ review: required }), HEAD, ['docs/status.md'], {
+    runSha: 'd'.repeat(40),
+  });
+  ok(!message, 'pull_request still validates the event head, not github.sha', message);
+})());
 checks.push((async () => {
   const staleEventBody = card({ review: { ...required, 'Review outcome': 'NOT PASS' } });
   const livePassBody = card({ review: required });
@@ -284,6 +319,201 @@ red('NOT REQUIRED uses N/A for reviewer', card({ review: {
 red('NOT REQUIRED uses N/A for outcome', card({ review: {
   'Review outcome': 'PASS',
 } }), /Review outcome: N\/A/i);
+
+checks.push((async () => {
+  const message = await validate(card({ review: required }), HEAD, ['docs/status.md'], {
+    eventName: 'workflow_dispatch',
+    runSha: HEAD,
+  });
+  ok(!message, 'workflow_dispatch with matching live PR/head and PASS card succeeds', message);
+})());
+checks.push((async () => {
+  const message = await validate(card({ review: required }), HEAD, ['docs/status.md'], {
+    eventName: 'workflow_dispatch',
+    runSha: HEAD,
+    liveHead: 'b'.repeat(40),
+  });
+  ok(
+    Boolean(message) && /failed closed/i.test(message) && /live head/i.test(message),
+    'workflow_dispatch fails closed when the live head moved',
+    message || 'unexpected green',
+  );
+})());
+checks.push((async () => {
+  const message = await validate(card({ review: required }), HEAD, ['docs/status.md'], {
+    eventName: 'workflow_dispatch',
+    runSha: 'c'.repeat(40),
+  });
+  ok(
+    Boolean(message) && /failed closed/i.test(message) && /workflow run SHA/i.test(message),
+    'workflow_dispatch fails closed when the run SHA is not the expected head',
+    message || 'unexpected green',
+  );
+})());
+checks.push((async () => {
+  const createdChecks = [];
+  const message = await validate(card({ review: required }), HEAD, ['docs/status.md'], {
+    eventName: 'workflow_dispatch',
+    runSha: 'c'.repeat(40),
+    ref: 'refs/heads/evil',
+    defaultBranch: 'main',
+    createdChecks,
+  });
+  ok(
+    Boolean(message) && /workflow run SHA/i.test(message) && createdChecks.length === 0,
+    'workflow_dispatch from a non-default ref still fails closed when the run SHA is not the expected head',
+    message || 'unexpected green',
+  );
+})());
+checks.push((async () => {
+  const createdChecks = [];
+  const message = await validate(card({ review: required }), HEAD, ['docs/status.md'], {
+    eventName: 'workflow_dispatch',
+    runSha: 'c'.repeat(40),
+    ref: 'refs/heads/main',
+    defaultBranch: 'main',
+    createdChecks,
+  });
+  ok(
+    !message
+      && createdChecks.length === 1
+      && createdChecks[0].name === 'Merge card mechanical fields'
+      && createdChecks[0].head_sha === HEAD
+      && createdChecks[0].conclusion === 'success',
+    'default-branch dispatch records the required check on the expected head',
+    message || JSON.stringify(createdChecks[0] || {}),
+  );
+})());
+checks.push((async () => {
+  const createdChecks = [];
+  const message = await validate(card({ review: required }), HEAD, ['docs/status.md'], {
+    eventName: 'workflow_dispatch',
+    runSha: HEAD,
+    createdChecks,
+  });
+  ok(
+    !message && createdChecks.length === 0,
+    'PR-head dispatch still uses the Actions job check, not a synthetic check run',
+    message || `checks=${createdChecks.length}`,
+  );
+})());
+checks.push((async () => {
+  const createdChecks = [];
+  const message = await validate(card({ review: required }), HEAD, ['docs/status.md'], {
+    eventName: 'workflow_dispatch',
+    runSha: 'c'.repeat(40),
+    ref: 'refs/heads/main',
+    defaultBranch: 'main',
+    liveHead: 'b'.repeat(40),
+    createdChecks,
+  });
+  ok(
+    Boolean(message) && /live head/i.test(message) && createdChecks.length === 0,
+    'default-branch dispatch does not record a check when the live head moved',
+    message || 'unexpected green',
+  );
+})());
+checks.push((async () => {
+  const createdChecks = [];
+  const message = await validate(card({ omitField: 'Tests' }), HEAD, ['docs/status.md'], {
+    eventName: 'workflow_dispatch',
+    runSha: 'c'.repeat(40),
+    ref: 'refs/heads/main',
+    defaultBranch: 'main',
+    createdChecks,
+  });
+  ok(
+    Boolean(message)
+      && /Tests/.test(message)
+      && createdChecks.length === 1
+      && createdChecks[0].head_sha === HEAD
+      && createdChecks[0].conclusion === 'failure'
+      && createdChecks[0].name === 'Merge card mechanical fields',
+    'default-branch dispatch records a failing required check on the expected head',
+    message || JSON.stringify(createdChecks[0] || {}),
+  );
+})());
+checks.push((async () => {
+  const message = await validate(card({ review: required }), HEAD, ['docs/status.md'], {
+    eventName: 'workflow_dispatch',
+    runSha: 'c'.repeat(40),
+    ref: 'refs/heads/main',
+    defaultBranch: 'main',
+    checkCreateError: 'api down',
+    createdChecks: [],
+  });
+  ok(
+    Boolean(message) && /required check on the expected head/i.test(message),
+    'default-branch dispatch fails closed when the required check cannot be recorded',
+    message || 'unexpected green',
+  );
+})());
+checks.push((async () => {
+  const message = await validate(card({ review: required }), HEAD, ['docs/status.md'], {
+    eventName: 'workflow_dispatch',
+    runSha: HEAD,
+    dispatchHead: 'not-a-sha',
+  });
+  ok(
+    Boolean(message) && /failed closed/i.test(message) && /expected head SHA/i.test(message),
+    'workflow_dispatch fails closed without a 40-character expected head SHA',
+    message || 'unexpected green',
+  );
+})());
+checks.push((async () => {
+  const message = await validate(card({ review: required }), HEAD, ['docs/status.md'], {
+    eventName: 'workflow_dispatch',
+    runSha: HEAD,
+    dispatchPr: 'not-a-number',
+  });
+  ok(
+    Boolean(message) && /failed closed/i.test(message) && /pull request/i.test(message),
+    'workflow_dispatch fails closed without a PR number',
+    message || 'unexpected green',
+  );
+})());
+checks.push((async () => {
+  const staleEventBody = card({ review: { ...required, 'Review outcome': 'NOT PASS' } });
+  const livePassBody = card({ review: required });
+  const message = await validate(livePassBody, HEAD, ['docs/status.md'], {
+    eventName: 'workflow_dispatch',
+    runSha: HEAD,
+    eventBody: staleEventBody,
+  });
+  ok(!message, 'workflow_dispatch still reads the live PASS card, not a stale event body', message);
+})());
+checks.push((async () => {
+  const message = await validate(card({ review: required }), HEAD, ['docs/status.md'], {
+    eventName: 'issue_comment',
+  });
+  ok(
+    Boolean(message) && /failed closed/i.test(message) && /unsupported event/i.test(message),
+    'an unsupported event fails closed',
+    message || 'unexpected green',
+  );
+})());
+
+checks.push((async () => {
+  const atlas = require('./scripts/atlas-review-block');
+  const livePass = card({
+    review: {
+      Required: 'REQUIRED — review machinery changed',
+      'Exact reviewed head': HEAD,
+      Reviewer: 'ChatGPT',
+      'Review outcome': 'PASS',
+      'Findings and fix verification': atlas.PASS_FINDINGS,
+    },
+  });
+  const message = await validate(livePass, HEAD, ['.github/workflows/merge-card-check.yml'], {
+    eventName: 'workflow_dispatch',
+    runSha: HEAD,
+  });
+  ok(
+    !message,
+    '#55 sequence: trusted PASS card on the current live head validates via workflow_dispatch',
+    message,
+  );
+})());
 
 // The gate only requires the notes to exist. It does not inspect negation or
 // decide whether every finding was dispositioned.

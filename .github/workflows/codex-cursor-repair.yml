@@ -6,7 +6,14 @@ name: Codex cursor repair
 # After that revalidation it may edit the PR review block: PASS / NOT PASS /
 # BLOCKING from a trusted Atlas review, or PENDING after a repair push whose
 # live PR head has converged to the locally pushed SHA. It never infers PASS.
+# After a trusted PASS card-sync it starts a fresh Merge Card check via
+# workflow_dispatch. It targets the PR head branch when that commit already
+# has the trigger. A PR head that predates the trigger uses the default-branch
+# workflow version instead. It does not rely on pull_request edited from
+# GITHUB_TOKEN, which GitHub does not chain. It does not infer PASS, merge, or
+# write financial state.
 # pull-requests:write is the minimum permission needed to edit the PR body;
+# actions:write is the minimum permission needed to dispatch Merge Card check;
 # the dispatcher remains read-only.
 on:
   workflow_run:
@@ -24,6 +31,7 @@ on:
         type: string
 
 permissions:
+  actions: write
   contents: read
   pull-requests: write
   issues: write
@@ -65,6 +73,7 @@ jobs:
           DISPATCH_REVIEW: ${{ inputs.review_id }}
           RUN_HEAD: ${{ github.event.workflow_run.head_sha }}
           RUN_PR: ${{ github.event.workflow_run.pull_requests[0].number }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
 
@@ -169,6 +178,40 @@ jobs:
             echo "next_round=" >> "${GITHUB_OUTPUT}"
             echo "lane=" >> "${GITHUB_OUTPUT}"
             echo "Trusted Atlas PASS does not start a repair."
+
+            live_after="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${pr_number}")"
+            live_after_head="$(jq -r '.head.sha' <<<"${live_after}")"
+            live_after_ref="$(jq -r '.head.ref' <<<"${live_after}")"
+            live_after_state="$(jq -r '.state' <<<"${live_after}")"
+            live_after_base="$(jq -r '.base.ref' <<<"${live_after}")"
+            if [[ "${live_after_state}" != "open" || "${live_after_base}" != "main" ]]; then
+              echo "Live PR is no longer an open PR targeting main after trusted PASS card sync. Fail closed without dispatching Merge Card check."
+              exit 1
+            fi
+            if [[ "${live_after_head}" != "${live_head}" || "${live_after_ref}" != "${head_ref}" ]]; then
+              echo "Live PR head moved after trusted PASS card sync. Fail closed without dispatching Merge Card check."
+              exit 1
+            fi
+            set +e
+            workflow_b64="$(gh api "repos/${GITHUB_REPOSITORY}/contents/.github/workflows/merge-card-check.yml?ref=${live_after_head}" --jq '.content')"
+            workflow_fetch=$?
+            set -e
+            if [[ "${workflow_fetch}" -ne 0 || -z "${workflow_b64}" || "${workflow_b64}" == "null" ]]; then
+              echo "Could not read merge-card-check.yml at live head ${live_after_head}. Fail closed without dispatching Merge Card check."
+              exit 1
+            fi
+            printf '%s' "${workflow_b64}" | base64 -d > "${RUNNER_TEMP}/merge-card-check-at-head.yml"
+            if [[ ! -s "${RUNNER_TEMP}/merge-card-check-at-head.yml" ]]; then
+              echo "Decoded merge-card-check.yml at live head ${live_after_head} was empty. Fail closed without dispatching Merge Card check."
+              exit 1
+            fi
+            dispatch_ref="$(node scripts/atlas-merge-card-dispatch-ref.js select \
+              "${RUNNER_TEMP}/merge-card-check-at-head.yml" "${live_after_ref}" "${DEFAULT_BRANCH}")"
+            gh workflow run merge-card-check.yml \
+              --ref "${dispatch_ref}" \
+              --field "pr_number=${pr_number}" \
+              --field "expected_head_sha=${live_after_head}"
+            echo "Dispatched Merge Card check for PR ${pr_number} at ${live_after_head} using ref ${dispatch_ref}."
             exit 0
           fi
 
