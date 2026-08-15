@@ -208,6 +208,80 @@ console.log('\n=== bounded timeout fails closed ===');
     'timeout leaves review block, repair marker, and readiness untouched');
 }
 
+console.log('\n=== each fetch receives the remaining confirmation deadline ===');
+{
+  const clock = fakeClock();
+  const remainings = [];
+  const fetchPr = (_attempts, remainingMs) => {
+    remainings.push(remainingMs);
+    return snapshot({ head: { sha: PREV } });
+  };
+  const result = sync.waitForLivePrHead({
+    ...expected(),
+    fetchPr,
+    now: clock.now,
+    sleep: clock.sleep,
+    timeoutMs: 1000,
+    intervalMs: 250,
+  });
+  ok(!result.ok && result.code === 'timeout', 'still fails closed at the deadline', result.code);
+  ok(JSON.stringify(remainings) === JSON.stringify([1000, 750, 500, 250, 0]),
+    'each GitHub fetch is given only the time left in the window', JSON.stringify(remainings));
+}
+
+console.log('\n=== fetch timeout is confirmation timeout, not a generic fetch failure ===');
+{
+  const timedOut = new Error('stalled');
+  timedOut.code = 'ETIMEDOUT';
+  const timeout = sync.waitForLivePrHead({
+    ...expected(),
+    fetchPr: () => { throw timedOut; },
+    now: () => 0,
+    sleep: () => {},
+    timeoutMs: 1000,
+  });
+  ok(timeout.code === 'timeout' && timeout.mutate === false,
+    'spawnSync ETIMEDOUT is the bounded confirmation timeout', timeout.code);
+  const failed = sync.waitForLivePrHead({
+    ...expected(),
+    fetchPr: () => { throw new Error('network down'); },
+    now: () => 0,
+    sleep: () => {},
+    timeoutMs: 1000,
+  });
+  ok(failed.code === 'fetch-failed' && failed.mutate === false,
+    'non-timeout fetch errors stay fetch-failed', failed.code);
+}
+
+console.log('\n=== stalling gh child is killed at the remaining deadline ===');
+{
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-pr-head-gh-'));
+  const ghPath = path.join(tmp, 'gh');
+  fs.writeFileSync(ghPath, `#!${process.execPath}\nsetTimeout(() => {}, 30000);\n`);
+  fs.chmodSync(ghPath, 0o755);
+  const origPath = process.env.PATH;
+  process.env.PATH = `${tmp}${path.delimiter}${origPath}`;
+  const started = Date.now();
+  let result;
+  try {
+    result = sync.waitForLivePrHead({
+      ...expected(),
+      fetchPr: (_attempts, remainingMs) => sync.fetchPrViaGh('owner/atlas', 55, remainingMs),
+      timeoutMs: 400,
+      intervalMs: 50,
+    });
+  } finally {
+    process.env.PATH = origPath;
+  }
+  const elapsed = Date.now() - started;
+  ok(result && result.code === 'timeout',
+    'a stalled gh api is classified as confirmation timeout', result && result.code);
+  ok(result && result.mutate === false, 'a stalled gh api does not permit mutation');
+  ok(elapsed < 5000, 'confirmation returns before the stalled child would have exited',
+    `elapsed=${elapsed}`);
+  try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* ignore */ }
+}
+
 console.log('\n=== unexpected third SHA fails closed ===');
 {
   const { state, bookkeeping } = trackingBookkeeping();

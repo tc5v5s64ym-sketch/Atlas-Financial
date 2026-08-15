@@ -179,12 +179,20 @@ function waitForLivePrHead(input) {
   while (true) {
     attempts += 1;
     let snapshot;
+    const remainingMs = deadline - now();
     try {
-      snapshot = input.fetchPr(attempts);
+      snapshot = input.fetchPr(attempts, remainingMs);
     } catch (error) {
+      const elapsedMs = now() - started;
+      if (error && error.code === 'ETIMEDOUT') {
+        return fail('timeout', `Live PR head did not converge to the pushed SHA within ${timeoutMs}ms.`, {
+          attempts,
+          elapsedMs,
+        });
+      }
       return fail('fetch-failed', `Live PR fetch failed: ${error && error.message ? error.message : error}.`, {
         attempts,
-        elapsedMs: now() - started,
+        elapsedMs,
       });
     }
     const verdict = classifyLivePrHeadRead(snapshot, input);
@@ -234,11 +242,23 @@ function confirmPushedPrHead(input) {
   };
 }
 
-function fetchPrViaGh(repository, prNumber) {
+function spawnTimeoutMs(timeoutMs) {
+  const bounded = Number(timeoutMs);
+  if (Number.isFinite(bounded)) return Math.max(1, bounded);
+  return DEFAULT_TIMEOUT_MS;
+}
+
+function fetchPrViaGh(repository, prNumber, timeoutMs) {
   const result = spawnSync('gh', ['api', `repos/${repository}/pulls/${prNumber}`], {
     encoding: 'utf8',
     env: process.env,
+    timeout: spawnTimeoutMs(timeoutMs),
   });
+  if (result.error && result.error.code === 'ETIMEDOUT') {
+    const error = new Error('Live PR fetch exceeded the remaining confirmation deadline.');
+    error.code = 'ETIMEDOUT';
+    throw error;
+  }
   if (result.status !== 0) {
     const detail = String(result.stderr || result.stdout || '').trim() || `exit ${result.status}`;
     throw new Error(detail);
@@ -269,7 +289,7 @@ function main(argv) {
     const identity = request && request.identity;
     const result = confirmPushedPrHead({
       ...request,
-      fetchPr: () => fetchPrViaGh(identity.repository, identity.prNumber),
+      fetchPr: (_attempts, remainingMs) => fetchPrViaGh(identity.repository, identity.prNumber, remainingMs),
     });
     if (!result.ok) {
       process.stderr.write(`${result.reason}\n`);
