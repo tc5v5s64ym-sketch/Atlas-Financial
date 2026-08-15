@@ -1,0 +1,25 @@
+name: Codex cursor repair dispatch
+
+# Holds no repository credentials. This file may run from a pull_request_review event whose
+# workflow copy is PR-controlled. It only records that a review arrived.
+# The secret-bearing repair workflow is started by workflow_run from main.
+on:
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  note:
+    if: >-
+      github.event.review.user.login == 'chatgpt-codex-connector[bot]' ||
+      github.event.review.user.login == 'chatgpt-codex-connector'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Record the review identity for the trusted repair workflow
+        run: |
+          set -euo pipefail
+          echo "Codex review submitted on PR ${{ github.event.pull_request.number }}."
