@@ -229,20 +229,25 @@
   // Represented events are SCHEDULED occurrences that settlement evidence
   // shows are already inside the opening cash/debt state. Forecast remains
   // authority for what should occur; the list is authority for what has
-  // already occurred. This is not a date-wide skip: an unrepresented
-  // same-day event still fires. Also reads plan.opening.representedEvents.
-  function representedKeySet(plan, opts) {
-    const raw = []
-      .concat((opts && opts.representedEvents) || [])
-      .concat((plan && plan.opening && plan.opening.representedEvents) || []);
+  // already occurred. Cutover is opening-date only: an entry is used only
+  // when its date is the simulation start. plan.opening.representedEvents
+  // is used only when plan.opening.asOf is that same start. A future
+  // represented date is ignored, not reinterpreted. This is not a
+  // date-wide skip: an unrepresented same-day event still fires.
+  function representedKeySet(plan, opts, start) {
     const keys = new Set();
-    for (const item of raw) {
-      if (item && item.id && item.date) keys.add(item.id + '@' + item.date);
+    const take = item => {
+      if (item && item.id && item.date === start) keys.add(item.id + '@' + item.date);
+    };
+    for (const item of (opts && opts.representedEvents) || []) take(item);
+    const opening = plan && plan.opening;
+    if (opening && opening.asOf === start) {
+      for (const item of opening.representedEvents || []) take(item);
     }
     return keys;
   }
-  function omitRepresented(events, plan, opts) {
-    const represented = representedKeySet(plan, opts);
+  function omitRepresented(events, plan, opts, start) {
+    const represented = representedKeySet(plan, opts, start);
     if (!represented.size) return events;
     return events.filter(e => !represented.has(e.id + '@' + e.date));
   }
@@ -362,7 +367,7 @@
     // arranged on exactly that assumption. Sort: date, then income first.
     events.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 :
       (b.amount > 0 ? 1 : 0) - (a.amount > 0 ? 1 : 0));
-    return omitRepresented(events, plan, opts);
+    return omitRepresented(events, plan, opts, start);
   }
 
   /* ------------------------------------------------------------- simulate */

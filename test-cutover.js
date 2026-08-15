@@ -169,5 +169,39 @@ console.log('\n=== E. no broad date-based suppression ===');
     'disabled[] is commitments-only — it is not a hidden date skip for income');
 }
 
+console.log('\n=== F. opening-date-only cutover (reviewer A–E) ===');
+{
+  ok(payrollDates.includes(nextPayroll),
+    'independent occurrences: Aug. 28 payroll is on the grid', nextPayroll);
+
+  const events = F.expandEvents(plan, AS_OF, END, {});
+  ok(!events.some(e => e.id === 'payroll' && e.date === AS_OF),
+    'A. Aug. 14 payroll represented in the Aug. 14 opening is suppressed');
+  ok(events.some(e => e.id === 'mortgage' && e.date === AS_OF && near(e.amount, -MORTGAGE)),
+    'B. Aug. 14 mortgage is not represented and still fires');
+  ok(events.some(e => e.id === 'other-same-day' && e.date === AS_OF && near(e.amount, -OTHER_BILL)),
+    'C. Aug. 14 unrelated same-day bill is not represented and still fires');
+
+  const futureListed = F.expandEvents(fixture({ opening: undefined }), AS_OF, END, {
+    representedEvents: [{ id: 'payroll', date: nextPayroll }],
+  });
+  ok(futureListed.some(e => e.id === 'payroll' && e.date === nextPayroll),
+    'D. Aug. 28 payroll listed in opts.representedEvents still fires when start is Aug. 14');
+  ok(futureListed.some(e => e.id === 'payroll' && e.date === AS_OF),
+    'D. that future listing does not suppress the Aug. 14 payroll either');
+
+  const openingFuture = F.expandEvents(fixture({
+    opening: { asOf: AS_OF, representedEvents: [{ id: 'payroll', date: nextPayroll }] },
+  }), AS_OF, END, {});
+  ok(openingFuture.some(e => e.id === 'payroll' && e.date === nextPayroll),
+    'D. Aug. 28 payroll listed on plan.opening still fires when start is Aug. 14');
+
+  const mismatched = F.expandEvents(fixture({
+    opening: { asOf: '2026-08-13', representedEvents: [{ id: 'payroll', date: AS_OF }] },
+  }), AS_OF, END, {});
+  ok(mismatched.some(e => e.id === 'payroll' && e.date === AS_OF),
+    'E. opening.asOf 2026-08-13 does not govern a 2026-08-14 start — payroll still fires');
+}
+
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
 process.exit(failures === 0 ? 0 : 1);

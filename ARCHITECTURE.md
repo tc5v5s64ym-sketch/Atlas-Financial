@@ -345,7 +345,7 @@ closed: `Forecast.expandEvents` is the one cash calendar.
 
 | Concept | Incumbent authority |
 |---|---|
-| The schedule — what is due, when, how often | `Forecast.expandEvents`, via `simulate`, from the `plan` inputs. Dated occurrences already inside the opening observation may be named on `plan.opening.representedEvents` or `opts.representedEvents` and are not replayed. That list is settlement evidence, not a date-wide skip and not a second event engine |
+| The schedule — what is due, when, how often | `Forecast.expandEvents`, via `simulate`, from the `plan` inputs. Dated occurrences already inside the opening observation may be named on `plan.opening.representedEvents` or `opts.representedEvents` and are omitted only when that date is the simulation start (`plan.opening` only when its `asOf` is that start). A future represented date is ignored. That list is settlement evidence, not a date-wide skip and not a second event engine |
 | Cash projection over the window | `Forecast.simulate` |
 | Weekly household cap | `Forecast.recommend` — **and only it** |
 | Income dependency deadline — when a modelled income becomes required to preserve the buffer | `Forecast.incomeDeadline` |
