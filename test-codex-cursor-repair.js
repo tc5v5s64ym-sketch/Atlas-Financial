@@ -275,6 +275,13 @@ console.log('\n=== shipped workflows ===');
 const dispatch = sourceText(fs.readFileSync(DISPATCH, 'utf8'));
 const repair = sourceText(fs.readFileSync(REPAIR, 'utf8'));
 
+ok(!fs.existsSync(path.join(__dirname, '.github/workflows/codex-review-request.yml')),
+  'Request Codex review comment-dispatcher is retired');
+ok(!/@codex review/.test(dispatch) && !/@codex review/.test(repair),
+  'Codex→Cursor repair path does not post @codex review');
+ok(!/ATLAS_CODEX_REVIEW_TOKEN/.test(dispatch) && !/ATLAS_CODEX_REVIEW_TOKEN/.test(repair),
+  'repair path does not use the retired review-request token');
+
 ok(!/\$\{\{\s*secrets\./.test(dispatch), 'dispatch workflow references no secrets');
 ok(/pull_request_review:/.test(dispatch) && /types:\s*\[submitted\]/.test(dispatch),
   'dispatch listens for submitted reviews only');
