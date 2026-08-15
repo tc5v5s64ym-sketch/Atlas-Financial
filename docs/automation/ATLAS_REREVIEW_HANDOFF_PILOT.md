@@ -2,7 +2,7 @@
 
 This file exists only to prove the native Cursor repair -> re-review handoff loop.
 
-Pilot token: WRONG
+Pilot token: READY
 Expected token: READY
 
 Do not merge this pilot PR.
