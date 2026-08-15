@@ -3,6 +3,10 @@ name: Merge card check
 # Mechanical merge-card validation only. This check verifies required fields,
 # closed-form decisions, and the exact reviewed head. It does not interpret
 # prose, findings, scope arguments, negation, or review quality.
+#
+# The workflow event identifies the PR, repository, and head being validated.
+# Card text is always read from the live pull request via pulls.get. A rerun
+# therefore cannot re-validate a stale event body after the live card changed.
 
 on:
   pull_request:
@@ -21,16 +25,87 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const body = (context.payload.pull_request && context.payload.pull_request.body) || '';
-            const head = ((context.payload.pull_request || {}).head || {}).sha || '';
+            const eventPr = context.payload.pull_request || {};
+            const { owner, repo } = context.repo;
+            const eventNumber = Number(eventPr.number);
+            const eventHead = ((eventPr.head || {}).sha) || '';
             const problems = [];
+
+            if (!owner || !repo) {
+              core.setFailed('Merge-card check failed closed: the event does not identify the repository.');
+              return;
+            }
+            if (!Number.isInteger(eventNumber) || eventNumber <= 0) {
+              core.setFailed('Merge-card check failed closed: the event does not identify the pull request.');
+              return;
+            }
+            if (!/^[0-9a-f]{40}$/i.test(eventHead)) {
+              core.setFailed('Merge-card check failed closed: the event does not identify a 40-character head SHA.');
+              return;
+            }
+
+            let livePr;
+            try {
+              const liveResponse = await github.rest.pulls.get({
+                owner,
+                repo,
+                pull_number: eventNumber,
+              });
+              livePr = liveResponse && liveResponse.data;
+            } catch (error) {
+              const detail = error && error.message ? ` (${error.message})` : '.';
+              core.setFailed(`Merge-card check failed closed: live pull request fetch failed${detail}`);
+              return;
+            }
+            if (!livePr || typeof livePr !== 'object') {
+              core.setFailed('Merge-card check failed closed: live pull request snapshot is missing.');
+              return;
+            }
+
+            const liveNumber = Number(livePr.number);
+            const liveRepo = ((((livePr.base || {}).repo) || {}).full_name) || '';
+            const expectedRepo = `${owner}/${repo}`;
+            const liveState = livePr.state;
+            const liveBaseRef = ((livePr.base || {}).ref) || '';
+            const liveHead = ((livePr.head || {}).sha) || '';
+
+            if (!Number.isInteger(liveNumber) || liveNumber !== eventNumber) {
+              core.setFailed(
+                `Merge-card check failed closed: live PR ${liveNumber} is not event PR ${eventNumber}.`
+              );
+              return;
+            }
+            if (!liveRepo || liveRepo.toLowerCase() !== expectedRepo.toLowerCase()) {
+              core.setFailed(
+                `Merge-card check failed closed: live repository ${liveRepo || '(missing)'} is not ${expectedRepo}.`
+              );
+              return;
+            }
+            if (liveState !== 'open' || livePr.merged === true) {
+              core.setFailed('Merge-card check failed closed: pull request is not open.');
+              return;
+            }
+            if (liveBaseRef !== 'main') {
+              core.setFailed(
+                `Merge-card check failed closed: pull request base is ${liveBaseRef || '(missing)'}, not main.`
+              );
+              return;
+            }
+            if (!/^[0-9a-f]{40}$/i.test(liveHead) || liveHead.toLowerCase() !== eventHead.toLowerCase()) {
+              core.setFailed(
+                `Merge-card check failed closed: live head ${liveHead.slice(0, 7) || '(missing)'} is not the event head ${eventHead.slice(0, 7)}.`
+              );
+              return;
+            }
+
+            const body = livePr.body || '';
+            const head = eventHead;
+            const pull_number = eventNumber;
 
             // A small, closed path set is always high-risk in this repository.
             // File paths are mechanical facts. The list does not inspect prose or
             // try to infer risk from wording. Changes outside this set still use
             // the canonical human trigger decision in CLAUDE.md.
-            const { owner, repo } = context.repo;
-            const pull_number = context.payload.pull_request.number;
             const files = await github.paginate(github.rest.pulls.listFiles, {
               owner,
               repo,

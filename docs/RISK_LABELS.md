@@ -33,8 +33,11 @@ The merge card check validates only mechanical facts:
 - `Current-state verdict` opens with one documented closed value;
 - the architecture-review decision opens `REQUIRED` or `NOT REQUIRED`;
 - a required review records a bare 40-character SHA equal to the PR head,
-  `Reviewer: ChatGPT`, and `Review outcome: PASS`; and
-- a not-required review records `N/A` for head, reviewer, and outcome.
+  `Reviewer: ChatGPT`, and `Review outcome: PASS`;
+- a not-required review records `N/A` for head, reviewer, and outcome; and
+- card text is read from the live pull request (`pulls.get`), not the workflow
+  event body. A closed PR, a non-`main` base, a PR or repository identity
+  change, or a live head that is not the event head fails closed.
 
 It does not parse prose, negation, severity, scope, dispositions, review rounds,
 or open-loop narratives. It does not prove a review happened. It prevents the
@@ -42,7 +45,9 @@ mechanical failure in which a required verdict outlives the code it covered.
 
 `test-mergecard.js` executes the real inline workflow script. It proves missing
 fields, invalid decisions, stale heads, wrong reviewer identity, and non-passing
-required outcomes fail.
+required outcomes fail. It proves the check reads the live PR body rather than
+the workflow event body, and that a moved live head or a closed or retargeted
+PR fails closed.
 
 ### `tests`
 

@@ -3,8 +3,10 @@
 /* Mechanical coverage for .github/workflows/merge-card-check.yml.
  * The suite executes the workflow's real inline script. It proves the check
  * catches missing fields, invalid closed forms, stale reviewed heads, wrong
- * reviewer identity, and a non-passing required review. It deliberately does
- * not test the meaning of prose.
+ * reviewer identity, and a non-passing required review. It also proves the
+ * check reads the live PR body, not the workflow event body, and fails closed
+ * when the live PR is closed, retargeted, or no longer the event head. It
+ * deliberately does not test the meaning of prose.
  */
 
 const fs = require('fs');
@@ -89,18 +91,46 @@ function card({ fields = {}, review = {}, omitField } = {}) {
   ].join('\n');
 }
 
-async function validate(body, head = HEAD, files = ['docs/status.md']) {
+async function validate(body, head = HEAD, files = ['docs/status.md'], options = {}) {
   let failure = '';
   const core = {
     setFailed(message) { failure = String(message); },
     info() {},
   };
+  const eventNumber = options.eventNumber != null ? options.eventNumber : 1;
+  const eventHead = options.eventHead || head;
+  const eventBody = Object.prototype.hasOwnProperty.call(options, 'eventBody')
+    ? options.eventBody
+    : body;
+  const livePr = {
+    number: options.liveNumber != null ? options.liveNumber : eventNumber,
+    state: options.state != null ? options.state : 'open',
+    merged: options.merged === true,
+    body,
+    base: {
+      ref: options.baseRef != null ? options.baseRef : 'main',
+      repo: { full_name: options.liveRepo || 'owner/repo' },
+    },
+    head: {
+      sha: options.liveHead || head,
+      repo: { full_name: options.liveHeadRepo || 'owner/repo' },
+    },
+  };
   const context = {
     repo: { owner: 'owner', repo: 'repo' },
-    payload: { pull_request: { number: 1, body, head: { sha: head } } },
+    payload: {
+      pull_request: { number: eventNumber, body: eventBody, head: { sha: eventHead } },
+    },
   };
   const github = {
-    rest: { pulls: { listFiles() {} } },
+    rest: {
+      pulls: {
+        listFiles() {},
+        async get() {
+          return { data: livePr };
+        },
+      },
+    },
     paginate: async () => files.map((filename) => ({ filename })),
   };
   await vm.runInNewContext(
@@ -149,6 +179,64 @@ const required = {
   'Findings and fix verification': 'No blockers remain on this exact head',
 };
 green('a passing required review on the exact head passes', card({ review: required }));
+checks.push((async () => {
+  const staleEventBody = card({ review: { ...required, 'Review outcome': 'NOT PASS' } });
+  const livePassBody = card({ review: required });
+  const message = await validate(livePassBody, HEAD, ['docs/status.md'], {
+    eventBody: staleEventBody,
+  });
+  ok(!message, 'stale event body NOT PASS + live body PASS on the same head succeeds', message);
+})());
+checks.push((async () => {
+  const message = await validate(card({ review: required }), HEAD, ['docs/status.md'], {
+    liveHead: 'b'.repeat(40),
+  });
+  ok(
+    Boolean(message) && /failed closed/i.test(message) && /live head/i.test(message),
+    'a moved live head fails closed',
+    message || 'unexpected green',
+  );
+})());
+checks.push((async () => {
+  const message = await validate(card({ review: required }), HEAD, ['docs/status.md'], {
+    state: 'closed',
+  });
+  ok(
+    Boolean(message) && /failed closed/i.test(message) && /not open/i.test(message),
+    'a closed PR fails closed',
+    message || 'unexpected green',
+  );
+})());
+checks.push((async () => {
+  const message = await validate(card({ review: required }), HEAD, ['docs/status.md'], {
+    baseRef: 'other',
+  });
+  ok(
+    Boolean(message) && /failed closed/i.test(message) && /not main/i.test(message),
+    'a base-changed PR fails closed',
+    message || 'unexpected green',
+  );
+})());
+checks.push((async () => {
+  const message = await validate(card({ review: required }), HEAD, ['docs/status.md'], {
+    liveNumber: 99,
+  });
+  ok(
+    Boolean(message) && /failed closed/i.test(message) && /live PR 99/i.test(message),
+    'a live PR number mismatch fails closed',
+    message || 'unexpected green',
+  );
+})());
+checks.push((async () => {
+  const message = await validate(card({ review: required }), HEAD, ['docs/status.md'], {
+    liveRepo: 'other/repo',
+  });
+  ok(
+    Boolean(message) && /failed closed/i.test(message) && /live repository/i.test(message),
+    'a live repository mismatch fails closed',
+    message || 'unexpected green',
+  );
+})());
 green(
   'a passing required review covers a mechanically high-risk path',
   card({ review: required }),
