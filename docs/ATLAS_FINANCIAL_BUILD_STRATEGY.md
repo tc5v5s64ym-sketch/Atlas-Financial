@@ -685,6 +685,13 @@ exist.
   approved edits still land in `data.json`. Do not generate `data.json`.
   Record what review ceremony the run actually needed — that is evidence
   for the open governance question, not a new gate.*
+- **First slice — not completion.** The closed cash/debt compare
+  (`scripts/reconcile.js` + `docs/reconciliation/balance-map.json`) and the
+  `representedEvents` cutover on `Forecast.expandEvents` are the foundation.
+  B91 stays open for Hydro dated dues, Fusion paid status, Amanda income
+  split, card pending, commitment settlement, Q19 HELOC mechanics, and the
+  rest of the Aug. 14 corpus. Do not mark this item done from the first
+  slice.
 
 ---
 

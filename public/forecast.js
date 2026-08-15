@@ -222,7 +222,36 @@
   /* --------------------------------------------------------------- events */
   // opts: { scenario, incomeOverrides: {id: monthlyAmount}, disabled: [ids],
   //         injections: [{date, amount}] — one-off cash arriving from outside
-  //         the plan, used to model covering an opening gap }
+  //         the plan, used to model covering an opening gap,
+  //         representedEvents: [{id, date}] — dated occurrences already
+  //         inside the opening observation; those are not replayed }
+  //
+  // Represented events are SCHEDULED occurrences that settlement evidence
+  // shows are already inside the opening cash/debt state. Forecast remains
+  // authority for what should occur; the list is authority for what has
+  // already occurred. Cutover is opening-date only: an entry is used only
+  // when its date is the simulation start. plan.opening.representedEvents
+  // is used only when plan.opening.asOf is that same start. A future
+  // represented date is ignored, not reinterpreted. This is not a
+  // date-wide skip: an unrepresented same-day event still fires.
+  function representedKeySet(plan, opts, start) {
+    const keys = new Set();
+    const take = item => {
+      if (item && item.id && item.date === start) keys.add(item.id + '@' + item.date);
+    };
+    for (const item of (opts && opts.representedEvents) || []) take(item);
+    const opening = plan && plan.opening;
+    if (opening && opening.asOf === start) {
+      for (const item of opening.representedEvents || []) take(item);
+    }
+    return keys;
+  }
+  function omitRepresented(events, plan, opts, start) {
+    const represented = representedKeySet(plan, opts, start);
+    if (!represented.size) return events;
+    return events.filter(e => !represented.has(e.id + '@' + e.date));
+  }
+
   function streamAmount(stream, opts) {
     const override = opts.incomeOverrides && opts.incomeOverrides[stream.id];
     let monthly = null;
@@ -338,7 +367,7 @@
     // arranged on exactly that assumption. Sort: date, then income first.
     events.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 :
       (b.amount > 0 ? 1 : 0) - (a.amount > 0 ? 1 : 0));
-    return events;
+    return omitRepresented(events, plan, opts, start);
   }
 
   /* ------------------------------------------------------------- simulate */

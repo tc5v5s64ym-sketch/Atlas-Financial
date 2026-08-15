@@ -54,6 +54,8 @@ const SUITES = [
   'test-mergecard.js',
   'test-live-household.js',
   'test-dedup-facts.js',
+  'test-reconcile.js',
+  'test-cutover.js',
 ];
 
 const CASES = [

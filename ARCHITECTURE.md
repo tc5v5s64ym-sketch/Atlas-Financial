@@ -345,7 +345,7 @@ closed: `Forecast.expandEvents` is the one cash calendar.
 
 | Concept | Incumbent authority |
 |---|---|
-| The schedule — what is due, when, how often | `Forecast.expandEvents`, via `simulate`, from the `plan` inputs |
+| The schedule — what is due, when, how often | `Forecast.expandEvents`, via `simulate`, from the `plan` inputs. Dated occurrences already inside the opening observation may be named on `plan.opening.representedEvents` or `opts.representedEvents` and are omitted only when that date is the simulation start (`plan.opening` only when its `asOf` is that start). A future represented date is ignored. That list is settlement evidence, not a date-wide skip and not a second event engine |
 | Cash projection over the window | `Forecast.simulate` |
 | Weekly household cap | `Forecast.recommend` — **and only it** |
 | Income dependency deadline — when a modelled income becomes required to preserve the buffer | `Forecast.incomeDeadline` |
@@ -378,7 +378,7 @@ closed: `Forecast.expandEvents` is the one cash calendar.
 | Derived publication aggregates of those facts | `Forecast.publicationTotals` |
 | Calendar — the on-page month grid and agenda | `renderCalendar()` in `public/plan.js` — **presentation of `sim.events` only** |
 | Calendar — the exported `.ics` | `scripts/calendar-ics.js`: cash-payment VEVENTs **derived** from `Forecast.expandEvents` over a longer horizon; standing reminder VEVENTs (statement closes, tax deadlines, mortgage renewal) remain a thin non-cash overlay |
-| Authority and reconciliation guards | the `npm test` suites |
+| Observation-to-canonical cash/debt compare | `scripts/reconcile.js` (non-writing). Maps `docs/positions.csv` Household rows through `docs/reconciliation/balance-map.json` id locators onto `plan.startingCash` / `debts`. Does not write `data.json`. STALE is not assigned; no owner-defined age threshold exists. First B91 closed set only — not a universal fact database |
 
 **The table is not a closed list, and reading it as one is how work goes wrong.**
 Three rounds of advisory review added five rows to it that inspection had missed.
@@ -562,8 +562,11 @@ a `source` object on every numeric leaf, a second payday or budgeting engine,
 or leaf-level provenance. Existing interviews, open questions, and dated
 owner policy remain enough for household intent. Preferred shape, when built:
 existing observation record → one canonical pointer into `data.json` →
-comparison → owner-approved canonical edit → Forecast. Sequencing and the
-Aug. 14 payday acceptance corpus live in the build strategy and
+comparison → owner-approved canonical edit → Forecast. The first B91 slice
+adds the non-writing compare (`scripts/reconcile.js`) and the
+`representedEvents` cutover on `Forecast.expandEvents`. It does not finish
+B91 and does not write canonical state. Sequencing and the Aug. 14 payday
+acceptance corpus live in the build strategy and
 [`docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md`](docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md).
 
 **`plan.nextDollar` is derived, not instructed.** Its own provenance note says so:
