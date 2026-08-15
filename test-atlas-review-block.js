@@ -6,7 +6,9 @@
  * write PASS; stale / wrong-reviewer / issue-comment / malformed bodies fail
  * closed; NOT PASS and BLOCKING update the block; a successful Atlas repair
  * push moves the new head to PENDING without carrying the old outcome; PASS
- * does not start Cursor; the dispatcher stays secret-free and read-only; and
+ * does not start Cursor; after PASS card-sync the trusted workflow dispatches
+ * the existing Merge Card check on the PR head with explicit PR number and
+ * expected head SHA; the dispatcher stays secret-free and read-only; and
  * PR-body mutation lives only on the trusted default-branch workflow.
  */
 
@@ -382,15 +384,54 @@ ok(!/contents:\s*write/.test(repair), 'GITHUB_TOKEN is still not granted content
 ok(/atlas-review-block\.js/.test(repair.split(/^  push:\n/m)[0] || repair),
   'card sync from a trusted review runs in the default-branch gate path');
 
-console.log('\n=== 17. merge-card check is expected to rerun after body edit ===');
-ok(/types:\s*\[opened, edited, synchronize, reopened\]/.test(mergeCard),
-  'merge-card-check still listens for pull_request edited');
-ok(/pull_request:/.test(mergeCard), 'merge-card-check is a pull_request workflow');
-
-console.log('\n=== repair-path contracts for card sync and PENDING ===');
 const gateJob = (repair.split(/^  gate:\n/m)[1] || '').split(/^  repair:\n/m)[0];
 const repairJob = (repair.split(/^  repair:\n/m)[1] || '').split(/^  test:\n/m)[0];
 const pushJob = repair.split(/^  push:\n/m)[1] || '';
+
+console.log('\n=== 17. trusted PASS card-sync dispatches Merge Card check ===');
+ok(/workflow_dispatch:/.test(mergeCard),
+  'merge-card-check accepts workflow_dispatch');
+ok(/pr_number:/.test(mergeCard) && /expected_head_sha:/.test(mergeCard),
+  'merge-card-check dispatch inputs are PR number and expected head SHA');
+ok(/name: Merge card mechanical fields/.test(mergeCard),
+  'required check identity Merge card mechanical fields is unchanged');
+ok(/types:\s*\[opened, edited, synchronize, reopened\]/.test(mergeCard),
+  'merge-card-check still listens for human pull_request edited');
+ok(/pull_request:/.test(mergeCard), 'merge-card-check remains a pull_request workflow');
+
+const passStart = gateJob.search(/card_outcome\}" == "PASS"/);
+const passExit = gateJob.indexOf('exit 0', passStart);
+const passPath = passStart >= 0 && passExit > passStart
+  ? gateJob.slice(passStart, passExit)
+  : '';
+ok(/gh workflow run merge-card-check\.yml/.test(passPath),
+  'trusted PASS starts the existing Merge Card workflow via workflow_dispatch');
+ok(/--ref "\$\{live_after_ref\}"/.test(passPath),
+  'the dispatched Merge Card run targets the live PR head branch');
+ok(/--field "pr_number=\$\{pr_number\}"/.test(passPath)
+  && /--field "expected_head_sha=\$\{live_after_head\}"/.test(passPath),
+  'dispatch passes explicit PR number and expected head SHA');
+ok(/Fail closed without dispatching Merge Card check/.test(passPath),
+  'dispatch is refused if the live PR/head moved after PASS card-sync');
+ok(!/cursor-agent/.test(passPath),
+  'the PASS dispatch path still does not invoke Cursor');
+ok(!/gh api --method PATCH[\s\S]{0,80}title/.test(passPath)
+  && !/--method PATCH[\s\S]{0,200}"title"/.test(repair),
+  'PASS path does not use a synthetic title edit to retrigger checks');
+ok(!/gh run rerun/.test(passPath) && !/gh run rerun/.test(repair),
+  'PASS path does not manually rerun an existing Merge Card check');
+ok((mergeCard.match(/^\s+script:\s*\|\s*$/m) || []).length === 1
+  && /github\.rest\.pulls\.get/.test(mergeCard),
+  'Merge Card validation stays one live-PR script; dispatch does not duplicate it');
+ok(/actions:\s*write/.test(repair),
+  'trusted workflow may dispatch Merge Card check');
+ok(!/actions:\s*write/.test(dispatch),
+  'PR-controlled dispatcher is not granted actions:write');
+ok(!/gh workflow run merge-card-check\.yml/.test(repairJob)
+  && !/gh workflow run merge-card-check\.yml/.test(pushJob),
+  'Merge Card dispatch is not on the Cursor repair or push path');
+
+console.log('\n=== repair-path contracts for card sync and PENDING ===');
 ok(/evaluate-review/.test(gateJob) && /atlas-review-block\.js patch/.test(gateJob),
   'gate job evaluates a trusted review and patches only through the helper');
 ok(/select-card-review/.test(gateJob),

@@ -294,6 +294,14 @@ ok(/startsWith\(github\.event\.review\.body, 'Atlas Contract \/ Systems Review â
   'dispatch records trusted Atlas PASS so the trusted workflow can sync the card');
 ok(/Trusted Atlas PASS does not start a repair/.test(repair),
   'trusted workflow does not start Cursor after Atlas PASS');
+ok(/gh workflow run merge-card-check\.yml/.test(repair)
+  && /expected_head_sha/.test(repair),
+  'trusted Atlas PASS dispatches Merge Card check with the expected head SHA');
+ok(/actions:\s*write/.test(repair),
+  'trusted workflow has actions:write so it can dispatch Merge Card check');
+ok(!/gh api --method PATCH[\s\S]{0,120}\btitle\b/.test(repair)
+  && !/gh run rerun/.test(repair),
+  'repair workflow has no synthetic title edit or manual Merge Card rerun');
 ok(!/startsWith\(\s*trim\s*\(/.test(dispatch)
   && !/startsWith\(\s*['"][ \t]/.test(dispatch),
   'dispatch does not rely on leading-whitespace normalization');

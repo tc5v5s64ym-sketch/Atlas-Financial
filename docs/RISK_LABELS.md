@@ -37,17 +37,26 @@ The merge card check validates only mechanical facts:
 - a not-required review records `N/A` for head, reviewer, and outcome; and
 - card text is read from the live pull request (`pulls.get`), not the workflow
   event body. A closed PR, a non-`main` base, a PR or repository identity
-  change, or a live head that is not the event head fails closed.
+  change, or a live head that is not the event head fails closed; and
+- after trusted Atlas PASS card-sync, the default-branch repair workflow
+  starts a fresh run of this same workflow via `workflow_dispatch` on the PR
+  head branch, with the PR number and expected head SHA. That run uses the
+  existing job name and the same live-PR validation. It fails closed if the
+  live PR/head no longer matches. GitHub does not chain `pull_request`
+  `edited` from `GITHUB_TOKEN`, so that event is not the automation path.
 
 It does not parse prose, negation, severity, scope, dispositions, review rounds,
-or open-loop narratives. It does not prove a review happened. It prevents the
-mechanical failure in which a required verdict outlives the code it covered.
+or open-loop narratives. It does not prove a review happened. It does not infer
+PASS, merge, or write financial state. It prevents the mechanical failure in
+which a required verdict outlives the code it covered, and the mechanical
+failure in which a trusted PASS card-sync leaves the required check stale.
 
 `test-mergecard.js` executes the real inline workflow script. It proves missing
 fields, invalid decisions, stale heads, wrong reviewer identity, and non-passing
 required outcomes fail. It proves the check reads the live PR body rather than
 the workflow event body, and that a moved live head or a closed or retargeted
-PR fails closed.
+PR fails closed. It also proves `workflow_dispatch` with matching live PR/head
+succeeds and fails closed on mismatch.
 
 ### `tests`
 

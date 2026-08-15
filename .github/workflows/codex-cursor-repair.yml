@@ -6,7 +6,12 @@ name: Codex cursor repair
 # After that revalidation it may edit the PR review block: PASS / NOT PASS /
 # BLOCKING from a trusted Atlas review, or PENDING after a repair push whose
 # live PR head has converged to the locally pushed SHA. It never infers PASS.
+# After a trusted PASS card-sync it starts a fresh Merge Card check on the
+# same PR head via workflow_dispatch. It does not rely on pull_request edited
+# from GITHUB_TOKEN, which GitHub does not chain. It does not infer PASS,
+# merge, or write financial state.
 # pull-requests:write is the minimum permission needed to edit the PR body;
+# actions:write is the minimum permission needed to dispatch Merge Card check;
 # the dispatcher remains read-only.
 on:
   workflow_run:
@@ -24,6 +29,7 @@ on:
         type: string
 
 permissions:
+  actions: write
   contents: read
   pull-requests: write
   issues: write
@@ -169,6 +175,25 @@ jobs:
             echo "next_round=" >> "${GITHUB_OUTPUT}"
             echo "lane=" >> "${GITHUB_OUTPUT}"
             echo "Trusted Atlas PASS does not start a repair."
+
+            live_after="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${pr_number}")"
+            live_after_head="$(jq -r '.head.sha' <<<"${live_after}")"
+            live_after_ref="$(jq -r '.head.ref' <<<"${live_after}")"
+            live_after_state="$(jq -r '.state' <<<"${live_after}")"
+            live_after_base="$(jq -r '.base.ref' <<<"${live_after}")"
+            if [[ "${live_after_state}" != "open" || "${live_after_base}" != "main" ]]; then
+              echo "Live PR is no longer an open PR targeting main after trusted PASS card sync. Fail closed without dispatching Merge Card check."
+              exit 1
+            fi
+            if [[ "${live_after_head}" != "${live_head}" || "${live_after_ref}" != "${head_ref}" ]]; then
+              echo "Live PR head moved after trusted PASS card sync. Fail closed without dispatching Merge Card check."
+              exit 1
+            fi
+            gh workflow run merge-card-check.yml \
+              --ref "${live_after_ref}" \
+              --field "pr_number=${pr_number}" \
+              --field "expected_head_sha=${live_after_head}"
+            echo "Dispatched Merge Card check for PR ${pr_number} at ${live_after_head}."
             exit 0
           fi
 
