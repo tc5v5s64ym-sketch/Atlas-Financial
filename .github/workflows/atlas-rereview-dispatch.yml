@@ -1,0 +1,25 @@
+name: Atlas re-review handoff dispatch
+
+# PR-controlled and deliberately secret-free. It only records that Cursor
+# submitted the native handoff review. The secret-bearing reviewer runs from
+# default-branch code through workflow_run and revalidates every live fact.
+on:
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  note:
+    if: >-
+      github.event.review.user.login == 'cursor[bot]' &&
+      contains(github.event.review.body, 'Atlas re-review requested.')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Record eligible Cursor handoff
+        run: |
+          set -euo pipefail
+          echo "Cursor re-review handoff submitted on PR ${{ github.event.pull_request.number }} at ${{ github.event.review.commit_id }}."
