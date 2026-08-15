@@ -68,6 +68,7 @@ ok(/permissions:[\s\S]*?actions:\s*read[\s\S]*?checks:\s*read[\s\S]*?contents:\s
 ok(!/permissions:[\s\S]*?\bwrite\b/.test((reviewer.match(/permissions:[\s\S]*?\n\n/) || [''])[0]), 'reviewer GITHUB_TOKEN has no repository write scope');
 ok(/validate-prior-review/.test(reviewer), 'reviewer independently validates the trusted Atlas review behind the Cursor handoff');
 ok(/compare\/\$\{prior_head\}\.\.\.\$\{head_sha\}/.test(reviewer) && /merge_base.*prior_head/.test(reviewer), 'reviewer proves the live repair head descends from the prior reviewed SHA');
+ok(/Call owner-authorized OpenAI Atlas reviewer[\s\S]*?GH_TOKEN:\s*\$\{\{ github\.token \}\}/.test(reviewer), 'post-model PR and review reads use the read-only GITHUB_TOKEN');
 ok(/secrets\.OPENAI_API_KEY/.test(reviewer), 'reviewer uses the owner-approved OpenAI API key');
 ok(/secrets\.ATLAS_AUTOMATION_TOKEN/.test(reviewer), 'reviewer reuses the existing owner automation credential');
 ok(/gh api user/.test(reviewer) && /tc5v5s64ym-sketch/.test(reviewer), 'reviewer fails closed unless the automation token is the trusted reviewer identity');
