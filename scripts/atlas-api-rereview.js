@@ -145,6 +145,86 @@ function validateModelResult(value) {
   return { ok: true, code: 'ok', outcome, summary, blockers };
 }
 
+function shaOrEmpty(value) {
+  const sha = clean(value).toLowerCase();
+  return SHA_RE.test(sha) ? sha : '';
+}
+
+function parentShas(value) {
+  if (!Array.isArray(value)) return [];
+  return value.map(shaOrEmpty).filter(Boolean);
+}
+
+/**
+ * pull_request_review dispatchers run on refs/pull/<n>/merge. GitHub therefore
+ * sets workflow_run.head_sha to that synthetic merge commit, not the PR head.
+ * The expected exact head must come from the associated PR head in the
+ * workflow_run payload, or from the merge commit's second parent. Never treat
+ * workflow_run.head_sha itself as the PR head.
+ */
+function evaluateDispatchExactHead(input) {
+  const liveHead = shaOrEmpty(input && input.liveHead);
+  const associatedPullHead = shaOrEmpty(input && input.associatedPullHead);
+  const workflowRunHead = shaOrEmpty(input && input.workflowRunHead);
+  const mergeParents = parentShas(input && input.mergeParents);
+
+  if (!liveHead) {
+    return {
+      ok: false,
+      action: 'fail',
+      code: 'malformed-live-head',
+      reason: 'Live PR head is not a 40-character SHA.',
+    };
+  }
+
+  let expectedHead = '';
+  let source = '';
+  if (associatedPullHead) {
+    expectedHead = associatedPullHead;
+    source = 'associated-pull-head';
+  } else if (mergeParents.length >= 2) {
+    expectedHead = mergeParents[1];
+    source = 'merge-ref-second-parent';
+  } else {
+    return {
+      ok: false,
+      action: 'fail',
+      code: 'unresolved-dispatch-head',
+      reason: 'Dispatch-time PR head could not be derived without treating workflow_run.head_sha as the PR head.',
+    };
+  }
+
+  if (workflowRunHead && expectedHead === workflowRunHead && mergeParents.length >= 2) {
+    return {
+      ok: false,
+      action: 'fail',
+      code: 'merge-sha-used-as-pr-head',
+      reason: 'Resolved dispatch head equals the workflow_run merge SHA; refusing to treat that as the PR head.',
+    };
+  }
+
+  if (liveHead !== expectedHead) {
+    return {
+      ok: false,
+      action: 'skip',
+      code: 'stale-head',
+      reason: `Live PR head ${liveHead.slice(0, 7)} moved beyond dispatch-time PR head ${expectedHead.slice(0, 7)}.`,
+      liveHead,
+      expectedHead,
+      source,
+    };
+  }
+
+  return {
+    ok: true,
+    action: 'proceed',
+    code: 'ok',
+    head: liveHead,
+    expectedHead,
+    source,
+  };
+}
+
 function renderReview(value, head, model) {
   const sha = clean(head).toLowerCase();
   if (!SHA_RE.test(sha)) throw new Error('Exact reviewed head is malformed.');
@@ -192,11 +272,22 @@ function main(argv) {
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     return result.ok ? 0 : 2;
   }
+  if (command === 'evaluate-dispatch-head') {
+    const result = evaluateDispatchExactHead({
+      liveHead: argv[3],
+      associatedPullHead: argv[4],
+      workflowRunHead: argv[5],
+      mergeParents: argv[6] ? JSON.parse(argv[6]) : [],
+    });
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    if (result.action === 'skip') return 2;
+    return result.ok ? 0 : 1;
+  }
   if (command === 'render-review') {
     process.stdout.write(renderReview(readJson(argv[3]), argv[4], argv[5]));
     return 0;
   }
-  process.stderr.write('usage: atlas-api-rereview.js parse-handoff|validate-prior-review|assert-pending|render-review ...\n');
+  process.stderr.write('usage: atlas-api-rereview.js parse-handoff|validate-prior-review|assert-pending|evaluate-dispatch-head|render-review ...\n');
   return 1;
 }
 
@@ -214,6 +305,7 @@ module.exports = {
   markerForOutcome,
   validatePriorReview,
   assertPending,
+  evaluateDispatchExactHead,
   validateModelResult,
   renderReview,
 };

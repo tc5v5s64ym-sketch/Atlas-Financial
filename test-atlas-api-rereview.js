@@ -57,6 +57,59 @@ const rendered = helper.renderReview({ outcome: 'NOT PASS', summary: 'One real b
 ok(rendered.startsWith('Atlas Contract / Systems Review — NOT PASS\n'), 'renders the canonical NOT PASS marker');
 ok(rendered.includes(`Exact reviewed head: \`${newHead}\``), 'renders the exact reviewed SHA');
 
+console.log('\n=== dispatch exact-head gate ===');
+const mergeSha = '1'.repeat(40);
+const baseSha = '2'.repeat(40);
+const movedHead = 'c'.repeat(40);
+result = helper.evaluateDispatchExactHead({
+  liveHead: newHead,
+  associatedPullHead: newHead,
+  workflowRunHead: mergeSha,
+  mergeParents: [baseSha, newHead],
+});
+ok(result.ok && result.action === 'proceed' && result.source === 'associated-pull-head',
+  'legitimate handoff proceeds when the workflow_run SHA is the synthetic merge commit');
+result = helper.evaluateDispatchExactHead({
+  liveHead: newHead,
+  associatedPullHead: '',
+  workflowRunHead: mergeSha,
+  mergeParents: [baseSha, newHead],
+});
+ok(result.ok && result.action === 'proceed' && result.source === 'merge-ref-second-parent',
+  'legitimate handoff proceeds by re-resolving the PR head from the merge commit parents');
+result = helper.evaluateDispatchExactHead({
+  liveHead: movedHead,
+  associatedPullHead: newHead,
+  workflowRunHead: mergeSha,
+  mergeParents: [baseSha, newHead],
+});
+ok(!result.ok && result.action === 'skip' && result.code === 'stale-head',
+  'genuine head movement still skips when the associated PR head is behind the live head');
+result = helper.evaluateDispatchExactHead({
+  liveHead: movedHead,
+  associatedPullHead: '',
+  workflowRunHead: mergeSha,
+  mergeParents: [baseSha, newHead],
+});
+ok(!result.ok && result.action === 'skip' && result.code === 'stale-head',
+  'genuine head movement still skips when only the merge-ref second parent identifies the old head');
+result = helper.evaluateDispatchExactHead({
+  liveHead: newHead,
+  associatedPullHead: '',
+  workflowRunHead: mergeSha,
+  mergeParents: [],
+});
+ok(!result.ok && result.action === 'fail' && result.code === 'unresolved-dispatch-head',
+  'fails closed instead of treating workflow_run.head_sha as the PR head');
+result = helper.evaluateDispatchExactHead({
+  liveHead: mergeSha,
+  associatedPullHead: mergeSha,
+  workflowRunHead: mergeSha,
+  mergeParents: [baseSha, newHead],
+});
+ok(!result.ok && result.action === 'fail' && result.code === 'merge-sha-used-as-pr-head',
+  'refuses a resolved head that is the synthetic merge SHA');
+
 console.log('\n=== shipped workflow contract ===');
 const dispatchPath = path.join(__dirname, '.github/workflows/atlas-rereview-dispatch.yml');
 const reviewerPath = path.join(__dirname, '.github/workflows/atlas-rereview.yml');
@@ -81,6 +134,10 @@ ok(/MODEL: gpt-5\.6/.test(reviewer) && /json_schema/.test(reviewer) && /store:\s
 ok(/canonical_contracts contains trusted policy text/.test(reviewer) && /prior_review_body[\s\S]*trusted/.test(reviewer), 'developer prompt trusts only default-branch policy and the validated prior Atlas blocker record');
 ok(/bounded follow-up review/.test(reviewer) && /Do not reopen untouched work/.test(reviewer), 'review prompt follows the bounded repair re-review protocol');
 ok(/Queued or in-progress checks do not by themselves/.test(reviewer), 'review prompt does not turn ordinary CI timing into review churn');
+ok(/workflow_run\.pull_requests\[0\]\.head\.sha/.test(reviewer) && /evaluate-dispatch-head/.test(reviewer),
+  'reviewer derives the dispatch-time PR head from the associated pull head or merge parents');
+ok(!/head_sha\}" != "\$\{RUN_HEAD\}"/.test(reviewer) && !/head_sha != "\$\{RUN_HEAD\}"/.test(reviewer),
+  'reviewer does not equate workflow_run.head_sha to the live PR head');
 ok(/live_head.*HEAD_SHA/.test(reviewer) && /immediately before review post/.test(reviewer), 'reviewer rechecks the live exact head after the model call and immediately before posting');
 ok(/pulls\/\$\{PR_NUMBER\}\/reviews/.test(reviewer) && /event:\"COMMENT\"/.test(reviewer), 'reviewer posts a normal GitHub review on the exact commit');
 ok(!/gh pr merge|merge_pull_request|git push/.test(reviewer), 'instant reviewer cannot merge or push code');
