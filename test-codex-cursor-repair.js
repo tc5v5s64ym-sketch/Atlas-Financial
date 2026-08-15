@@ -3,9 +3,9 @@
  * `node test-codex-cursor-repair.js`
  *
  * Proves the gate predicates and the shipped workflow contracts: genuine
- * Codex only, stale heads rejected, round cap, no untrusted PR code in a
- * secret-bearing job, automation-token push, and no GitHub mutation tools
- * in Cursor's PATH.
+ * Codex only, stale heads rejected, round cap, exact-SHA pin after the
+ * gate, no untrusted PR code in a secret-bearing job, automation-token
+ * push, and no GitHub mutation tools in Cursor's PATH.
  */
 
 const fs = require('fs');
