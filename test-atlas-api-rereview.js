@@ -50,11 +50,13 @@ ok(/pull_request_review:\s*\n\s*types:\s*\[submitted\]/.test(dispatch), 'secret-
 ok(/cursor\[bot\]/.test(dispatch) && /Atlas re-review requested\./.test(dispatch), 'dispatcher is scoped to the Cursor handoff marker');
 ok(!/secrets\./.test(dispatch) && !/write\b/.test((dispatch.match(/permissions:[\s\S]*?\n\n/) || [''])[0]), 'dispatcher carries no secrets or write permission');
 ok(/workflow_run:\s*\n\s*workflows:\s*\["Atlas re-review handoff dispatch"\]/.test(reviewer), 'secret-bearing reviewer is default-branch workflow_run');
-ok(/permissions:[\s\S]*?actions:\s*read[\s\S]*?contents:\s*read[\s\S]*?pull-requests:\s*read/.test(reviewer), 'reviewer can read dispatcher jobs without repository write permission');
+ok(/permissions:[\s\S]*?actions:\s*read[\s\S]*?checks:\s*read[\s\S]*?contents:\s*read[\s\S]*?pull-requests:\s*read/.test(reviewer), 'reviewer has only the read scopes needed for run jobs, checks, contents, and PR evidence');
+ok(!/permissions:[\s\S]*?\bwrite\b/.test((reviewer.match(/permissions:[\s\S]*?\n\n/) || [''])[0]), 'reviewer GITHUB_TOKEN has no repository write scope');
 ok(/secrets\.OPENAI_API_KEY/.test(reviewer), 'reviewer uses the owner-approved OpenAI API key');
 ok(/secrets\.ATLAS_AUTOMATION_TOKEN/.test(reviewer), 'reviewer reuses the existing owner automation credential');
 ok(/gh api user/.test(reviewer) && /tc5v5s64ym-sketch/.test(reviewer), 'reviewer fails closed unless the automation token is the trusted reviewer identity');
 ok(/MODEL: gpt-5\.6/.test(reviewer) && /json_schema/.test(reviewer) && /store:\s*false/.test(reviewer), 'reviewer uses GPT-5.6 structured output without Responses application-state storage');
+ok(/canonical_contracts contains trusted policy text/.test(reviewer) && /Every other field[\s\S]*untrusted evidence/.test(reviewer), 'developer prompt separates trusted default-branch policy from untrusted PR evidence');
 ok(/assert-pending/.test(reviewer) && /parse-handoff/.test(reviewer), 'reviewer requires the exact repair handoff and PENDING card state');
 ok(/live_head.*HEAD_SHA/.test(reviewer) && /Fail closed without posting a stale review/.test(reviewer), 'reviewer rechecks the live exact head after the model call');
 ok(/pulls\/\$\{PR_NUMBER\}\/reviews/.test(reviewer) && /event:\"COMMENT\"/.test(reviewer), 'reviewer posts a normal GitHub review on the exact commit');
