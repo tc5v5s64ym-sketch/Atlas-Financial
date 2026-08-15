@@ -1082,8 +1082,9 @@ refresh classes. Do not start `B91` first.
 **B93 · Derive or delete proven duplicate live facts** · **DONE 2026-08-14** · *architecture, one outcome*
 After `B92`, before `B91`. Cash balances live on `plan.startingCash` account
 rows; matching `assets[]` rows keep label/order and a `cash` id. Overdraft
-`used` is `max(0, −chequing-b)`. `debts[].balance` is the posted opening;
-`postedBalance` is gone. Recurring historical `perMonth` is
+`used` and funding-option availability are `max(0, −chequing-b)` and
+`max(0, limit − used)` from `revolvingExtra.limit`. `debts[].balance` is the
+posted opening; `postedBalance` is gone. Recurring historical `perMonth` is
 `round(total / incomeCaptureMonths)`; the insurance one-off keeps
 `perMonth: null`. Proved by `test-dedup-facts.js`. Published Plan figures
 unchanged 75/75. Do not add a sync layer. Do not treat `docs/positions.csv`

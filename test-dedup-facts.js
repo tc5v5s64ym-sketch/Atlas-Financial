@@ -90,6 +90,28 @@ console.log('\n=== B. overdraft — one edit of Chequing B ===');
     { extraFacilities: before.revolvingExtra });
   const projAfter = F.projectDebts(after.plan, after.debts, after.meta.asOf,
     { extraFacilities: after.revolvingExtra });
+  const fundBefore = F.resolveFundingSources(
+    before.plan.funding.options, before.revolvingExtra, before.plan);
+  const fundAfter = F.resolveFundingSources(
+    after.plan.funding.options, after.revolvingExtra, after.plan);
+  const odFundBefore = fundBefore.find(o => o.id === 'overdraft');
+  const odFundAfter = fundAfter.find(o => o.id === 'overdraft');
+  const recOpts = d => ({
+    scenario: d.plan.defaults.scenario,
+    targetBuffer: d.plan.defaults.targetBuffer,
+    extraDebtMonthly: d.plan.defaults.extraDebtMonthly || 0,
+    incomeOverrides: {},
+    disabled: [],
+    debts: d.debts,
+    extraDebtTarget: d.plan.nextDollar && d.plan.nextDollar.target,
+    fundingSources: d.plan.funding.options,
+    extraFacilities: d.revolvingExtra,
+  });
+  const recBefore = F.recommend(before.plan, before.meta.asOf, recOpts(before));
+  const recAfter = F.recommend(after.plan, after.meta.asOf, recOpts(after));
+  const recOdBefore = recBefore.funding.sources.find(s => s.id === 'overdraft');
+  const recOdAfter = recAfter.funding.sources.find(s => s.id === 'overdraft');
+  const staleAvailable = 82.28;
 
   ok(near(independentSpendable(after) - independentSpendable(before), -100),
     'Plan starting cash falls $100');
@@ -106,6 +128,18 @@ console.log('\n=== B. overdraft — one edit of Chequing B ===');
   ok(near(projAfter.marks[0].headroom - projBefore.marks[0].headroom, -odBefore.available),
     'day-0 extra-facility headroom falls by that same remaining room');
   ok(od.used == null, 'no revolvingExtra.used edit exists or is required');
+  ok(near(odFundAfter.available, 0) && odFundBefore.available > 0,
+    'funding-option availability follows Chequing B — the remaining room cannot absorb $100');
+  ok(near(odFundAfter.available, odAfter.available)
+    && near(odFundBefore.available, odBefore.available),
+    'funding-option availability matches utilisation availability');
+  ok(after.plan.funding.options.find(o => o.id === 'overdraft').available == null,
+    'no funding-option available edit exists or is required');
+  ok(near(recOdAfter.available, 0) && !near(recOdAfter.available, staleAvailable),
+    'Forecast.recommend does not retain stale $82.28 after the Chequing B edit');
+  ok(near(recOdBefore.available, odBefore.available)
+    && near(recOdAfter.available, odAfter.available),
+    'recommend funding input follows the same derived availability');
 
   const roomy = clone(data);
   cashById(roomy, 'chequing-b').value = -200;
@@ -116,6 +150,12 @@ console.log('\n=== B. overdraft — one edit of Chequing B ===');
   ok(near(u0.used, 200) && near(u0.available, 400)
     && near(u1.used, 300) && near(u1.available, 300),
     'when the overdraft still has room, used +$100 drops available $100');
+  const f0 = F.resolveFundingSources(roomy.plan.funding.options, roomy.revolvingExtra, roomy.plan)
+    .find(o => o.id === 'overdraft');
+  const f1 = F.resolveFundingSources(roomyDeeper.plan.funding.options, roomyDeeper.revolvingExtra, roomyDeeper.plan)
+    .find(o => o.id === 'overdraft');
+  ok(near(f0.available, 400) && near(f1.available, 300),
+    'and the funding-option view drops that same $100');
 }
 
 console.log('\n=== C. debt — one edit of MBNA balance ===');
@@ -232,6 +272,15 @@ ok((data.income || []).every(r => r.perMonth == null || r.perMonth === null),
   'historical income stores no numeric perMonth');
 ok((data.income || []).some(r => r.perMonth === null && /One-off/i.test(r.stability || '')),
   'the one-off row is the only perMonth: null marker');
+{
+  const odOpt = (data.plan.funding.options || []).find(o => o.id === 'overdraft');
+  ok(odOpt && odOpt.cash === 'chequing-b' && typeof odOpt.available !== 'number',
+    'overdraft funding option names Chequing B and stores no numeric availability');
+  ok((data.plan.funding.options || []).every(o => !o.cash || typeof o.available !== 'number'),
+    'no cash-linked funding option stores a numeric current availability');
+  ok(!JSON.stringify(data).includes('82.28'),
+    'data.json stores no hard-coded $82.28 current overdraft availability');
+}
 
 console.log('\n=== synthetic fixtures still accept explicit amount / used ===');
 {

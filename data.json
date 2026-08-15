@@ -26,7 +26,7 @@
           "label": "Chequing B — daily spending",
           "value": -517.72,
           "class": "spendable",
-          "note": "Overdrawn; $82.28 of its $600 overdraft still available"
+          "note": "Overdrawn against its $600 overdraft; remaining room is the limit minus the current overdrawn balance"
         },
         {
           "id": "savings",
@@ -388,11 +388,11 @@
           "debtId": null,
           "label": "Chequing B overdraft",
           "short": "the overdraft",
-          "available": 82.28,
+          "cash": "chequing-b",
           "rate": null,
           "rank": 3,
           "unusable": true,
-          "note": "$82.28 of a $600 limit. Nowhere near enough on its own, and overdraft interest plus the $5 monthly protection fee already run against this account."
+          "note": "A $600 limit. Nowhere near enough on its own, and overdraft interest plus the $5 monthly protection fee already run against this account."
         },
         {
           "id": "cards",

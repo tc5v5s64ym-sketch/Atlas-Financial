@@ -120,6 +120,31 @@
       ? Object.assign({}, e, { used: extraFacilityUsed(e, plan) })
       : e);
   }
+  function extraFacilityAvailable(facility) {
+    if (!facility || facility.limit == null) return 0;
+    const used = (Number(facility.used) || 0) + (Number(facility.pending) || 0);
+    return Math.max(0, facility.limit - used);
+  }
+  // Funding-option availability is a view, not a second current-state
+  // balance. A cash-linked option (the Chequing B overdraft) takes
+  // `max(0, limit − used)` from the extra facility; Chequing B remains
+  // the usage authority and `revolvingExtra.limit` remains the limit.
+  // Synthetic options with no `cash` keep the available they declared.
+  function resolveFundingSources(sources, extra, plan) {
+    extra = resolveExtraFacilities(extra, plan);
+    const byId = new Map();
+    const byCash = new Map();
+    for (const e of extra || []) {
+      byId.set(e.id, e);
+      if (e.cash) byCash.set(e.cash, e);
+    }
+    return (sources || []).map(src => {
+      if (!src || !src.cash) return src;
+      const facility = byCash.get(src.cash) || byId.get(src.id);
+      if (!facility) return src;
+      return Object.assign({}, src, { available: extraFacilityAvailable(facility) });
+    });
+  }
   function assetValue(asset, plan) {
     if (asset && asset.cash) {
       const row = cashAccount(plan, asset.cash);
@@ -497,6 +522,11 @@
     // propagate by construction rather than by a caller remembering to pass
     // them — which is exactly what a page cannot be trusted to do, and what
     // `Forecast.counterfactuals` reads.
+    if (base.fundingSources) {
+      base.fundingSources = resolveFundingSources(
+        base.fundingSources, base.extraFacilities, plan);
+    }
+
     const planOptions = Object.assign({}, base);
 
     // An extra debt payment cannot be larger than the debt available to receive
@@ -2793,7 +2823,7 @@
     projectDebts,
     nextDue, nextPaymentOut, unallocatedCash, compactSnapshot, publicationTotals, deepDive, publishedSpendType, rollupSpending, planStatus, mission, planPhases, nextMove, utilisation, renewal,
     payoffDebts, payoffModel,
-    paymentForMonths, startingCashAmount, EPSILON, STEP };
+    paymentForMonths, startingCashAmount, resolveFundingSources, EPSILON, STEP };
   if (typeof module !== 'undefined' && module.exports) module.exports = Forecast;
   else root.Forecast = Forecast;
 

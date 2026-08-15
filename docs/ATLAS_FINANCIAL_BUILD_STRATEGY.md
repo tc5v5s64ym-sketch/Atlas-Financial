@@ -628,10 +628,12 @@ derive/delete of proven duplicate live facts (`B93`). Both are complete.
   itself; changing the Aug. 9 balances to Aug. 14 values.
 - **State** — **complete.** Cash balances live on `plan.startingCash`
   account rows; matching `assets[]` rows keep label/order and a `cash` id.
-  Overdraft `used` is `max(0, −chequing-b)`. `debts[].balance` is the posted
-  opening. Recurring historical `perMonth` is `round(total / window)`; the
-  insurance one-off keeps `perMonth: null`. Proved by `test-dedup-facts.js`.
-  Published Plan figures unchanged 75/75 vs starting main.
+  Overdraft `used` and funding-option availability are `max(0, −chequing-b)`
+  and `max(0, limit − used)` from `revolvingExtra.limit`. `debts[].balance`
+  is the posted opening. Recurring historical `perMonth` is
+  `round(total / window)`; the insurance one-off keeps `perMonth: null`.
+  Proved by `test-dedup-facts.js`. Published Plan figures unchanged 75/75
+  vs starting main.
 
 ### AF-RECON-01 · Evidence refresh / reconciliation loop
 

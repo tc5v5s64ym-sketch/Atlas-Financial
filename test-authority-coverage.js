@@ -50,6 +50,7 @@ const FORECAST_NON_AUTHORITY = new Set([
   'EPSILON',
   'STEP',
   'startingCashAmount',
+  'resolveFundingSources',
 ]);
 
 function forecastExportsFrom(source) {

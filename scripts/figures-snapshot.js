@@ -100,6 +100,7 @@ const opts = {
 // The funding source decides whether covering an opening gap costs anything,
 // so the snapshot uses the same default the page does.
 opts.fundingSources = (plan.funding || {}).options;
+opts.extraFacilities = data.revolvingExtra;
 
 const advice = F.recommend(plan, asOf, opts);
 put('plan.mode', advice.mode);

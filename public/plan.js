@@ -62,6 +62,7 @@ function simOpts(extra = {}) {
     disabled: state.disabled,
     debts: state.debts,
     extraDebtTarget: state.extraDebtTarget,
+    extraFacilities: state.extraFacilities,
   }, extra);
 }
 
@@ -1237,6 +1238,7 @@ function wireControls(d) {
   // cannot supply its own idea of what the household owes.
   state.debts = d.debts;
   state.extraDebtTarget = plan.nextDollar && plan.nextDollar.target;
+  state.extraFacilities = d.revolvingExtra;
 
   // Scenario buttons
   for (const b of document.querySelectorAll('#scenario-bar .preset')) {

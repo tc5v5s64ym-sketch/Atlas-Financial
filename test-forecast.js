@@ -149,9 +149,10 @@ ok(near(expected.ending,
   ok((plan.groups || []).some(g => g.id === 'burrard' && g.atomic), 'and the pair is flagged atomic');
   const due = grp.reduce((s, c) => s + c.amount, 0);
   ok(near(due, burrardDue(plan)), 'the atomic pair totals the Burrard due on that day', due.toFixed(2));
-  const can = plan.funding.options.filter(o => !o.unusable && o.available >= due).map(o => o.id).sort();
+  const funding = F.resolveFundingSources(plan.funding.options, data.revolvingExtra, plan);
+  const can = funding.filter(o => !o.unusable && o.available >= due).map(o => o.id).sort();
   ok(can.length >= 1, 'at least one usable source can cover the Burrard due', can.join(',') || 'none');
-  const cardsPlusOd = plan.funding.options.filter(o => o.unusable).reduce((s, o) => s + o.available, 0);
+  const cardsPlusOd = funding.filter(o => o.unusable).reduce((s, o) => s + o.available, 0);
   ok(cardsPlusOd < due, 'cards and overdraft combined fall short', `$${cardsPlusOd.toFixed(2)} vs $${due}`);
 }
 
