@@ -416,18 +416,96 @@ ok(/needs\.gate\.outputs\.head_sha/.test(testJob)
   'test job checks out the gated SHA, not the branch ref');
 ok(/needs\.gate\.outputs\.head_ref/.test(pushJob),
   'push job may check out the branch because it must mutate it');
-const pushScript = (pushJob.match(/run: \|\n([\s\S]*)$/) || [, ''])[1];
-const assertAt = pushScript.indexOf('assert-head');
+const pushSteps = pushJob.split(/\n      - name: /);
+const preserveStep = pushSteps.find((step) => step.includes('atlas-trusted-scripts')) || '';
+const prCheckoutStep = pushSteps.find((step) => step.startsWith('Checkout the PR branch')) || '';
+const commitStep = pushSteps.find((step) => step.startsWith('Commit, push, and persist the round')) || '';
+const pushScript = (commitStep.match(/run: \|\n([\s\S]*)$/) || [, ''])[1];
+const assertCalls = [...pushScript.matchAll(/node[^\n]*assert-head/g)].map((match) => match[0]);
+const firstAssertAt = pushScript.indexOf('assert-head');
+const secondAssertAt = pushScript.indexOf('assert-head', firstAssertAt + 1);
 const applyAt = pushScript.indexOf('git apply');
 const commitAt = pushScript.indexOf('git commit');
 const gitPushAt = pushScript.indexOf('git push');
-ok(assertAt >= 0 && applyAt > assertAt && commitAt > applyAt && gitPushAt > commitAt,
-  'push re-checks the live head before apply, commit, or push',
-  `assert=${assertAt} apply=${applyAt} commit=${commitAt} push=${gitPushAt}`);
+ok(assertCalls.length === 2,
+  'both pre-mutation assert-head calls remain', `count=${assertCalls.length}`);
+ok(firstAssertAt >= 0 && secondAssertAt > firstAssertAt
+  && applyAt > secondAssertAt && commitAt > applyAt && gitPushAt > commitAt,
+  'git apply occurs only after both assert-head checks; commit/push only after apply',
+  `assert1=${firstAssertAt} assert2=${secondAssertAt} apply=${applyAt} commit=${commitAt} push=${gitPushAt}`);
+ok(!/git apply|git commit|git push|git rebase|git merge/.test(pushScript.slice(0, firstAssertAt)),
+  'no apply, commit, push, rebase, or merge before the first assert-head');
 ok(/pulls\/\$\{PR_NUMBER\}" --jq '\.head\.sha'/.test(pushJob),
   'push re-fetches the current remote PR head SHA');
 ok(!/git rebase|git merge|git push --force|git push -f/.test(pushJob),
   'push path has no rebase, merge, or force-push');
+ok(/path: trusted/.test(pushJob.split('Checkout the PR branch')[0] || ''),
+  'trusted default-branch checkout uses path trusted');
+ok(preserveStep.includes('trusted/scripts/atlas-cursor-repair-gate.js')
+  && preserveStep.includes('${RUNNER_TEMP}/atlas-trusted-scripts/atlas-cursor-repair-gate.js'),
+  'push job copies the trusted default-branch gate script to RUNNER_TEMP');
+ok(pushJob.indexOf('atlas-trusted-scripts') >= 0
+  && pushJob.indexOf('Checkout the PR branch') > pushJob.indexOf('atlas-trusted-scripts'),
+  'the trusted gate script is preserved before the PR-branch checkout');
+ok(/path: pr-worktree/.test(prCheckoutStep),
+  'PR-branch checkout uses sibling path pr-worktree and cannot overwrite trusted/');
+ok(!/clean:\s*false/.test(pushJob),
+  'push job does not keep trusted/ by disabling checkout clean inside the PR tree');
+ok(/working-directory:\s*pr-worktree/.test(commitStep),
+  'push mutation step runs inside the PR worktree');
+ok(assertCalls.every((call) => (
+  call.includes('${RUNNER_TEMP}/atlas-trusted-scripts/atlas-cursor-repair-gate.js')
+)), 'both assert-head calls use the preserved RUNNER_TEMP trusted script');
+ok(!/node trusted\/scripts\/atlas-cursor-repair-gate\.js/.test(commitStep),
+  'assert-head does not depend on workspace trusted/ after the PR checkout');
+ok((repair.match(/^  push:\n/gm) || []).length === 1
+  && /LANE/.test(commitStep)
+  && /lane_label="Codex"/.test(commitStep)
+  && /LANE\}" == "atlas"/.test(commitStep),
+  'existing Codex and Atlas lanes still share the same downstream push path');
+
+console.log('\n=== push job trusted script survives PR-branch checkout ===');
+const simRoot = fs.mkdtempSync(path.join(require('os').tmpdir(), 'atlas-push-trusted-'));
+const simWorkspace = path.join(simRoot, 'workspace');
+const simTemp = path.join(simRoot, 'runner-temp');
+const simTrustedDir = path.join(simWorkspace, 'trusted', 'scripts');
+const simPreservedDir = path.join(simTemp, 'atlas-trusted-scripts');
+fs.mkdirSync(simTrustedDir, { recursive: true });
+fs.mkdirSync(simPreservedDir, { recursive: true });
+const gateSrc = path.join(__dirname, 'scripts/atlas-cursor-repair-gate.js');
+const simTrusted = path.join(simTrustedDir, 'atlas-cursor-repair-gate.js');
+const simPreserved = path.join(simPreservedDir, 'atlas-cursor-repair-gate.js');
+fs.copyFileSync(gateSrc, simTrusted);
+fs.copyFileSync(simTrusted, simPreserved);
+ok(fs.existsSync(simTrusted), 'trusted checkout has the gate script before the PR checkout');
+for (const name of fs.readdirSync(simWorkspace)) {
+  fs.rmSync(path.join(simWorkspace, name), { recursive: true, force: true });
+}
+ok(!fs.existsSync(simTrusted),
+  'a workspace-root PR checkout deletes trusted/scripts — the live MODULE_NOT_FOUND path');
+ok(fs.existsSync(simPreserved),
+  'the preserved RUNNER_TEMP copy is not deleted or overwritten by the PR-branch checkout');
+const preservedAssert = spawnSync(process.execPath, [
+  simPreserved, 'assert-head', HEAD, HEAD, HEAD,
+], { encoding: 'utf8' });
+ok(preservedAssert.status === 0,
+  'assert-head can run from the preserved trusted script after the workspace wipe');
+const wipedAssert = spawnSync(process.execPath, [
+  simTrusted, 'assert-head', HEAD, HEAD, HEAD,
+], { encoding: 'utf8' });
+ok(wipedAssert.status !== 0,
+  'assert-head against the wiped workspace trusted/ path fails closed');
+const siblingRoot = fs.mkdtempSync(path.join(require('os').tmpdir(), 'atlas-push-sibling-'));
+const siblingTrusted = path.join(siblingRoot, 'trusted', 'scripts');
+const siblingPr = path.join(siblingRoot, 'pr-worktree');
+fs.mkdirSync(siblingTrusted, { recursive: true });
+fs.mkdirSync(siblingPr, { recursive: true });
+fs.copyFileSync(gateSrc, path.join(siblingTrusted, 'atlas-cursor-repair-gate.js'));
+fs.writeFileSync(path.join(siblingPr, 'README.md'), 'pr branch\n');
+ok(fs.existsSync(path.join(siblingTrusted, 'atlas-cursor-repair-gate.js')),
+  'a sibling pr-worktree checkout leaves the trusted default-branch copy in place');
+try { fs.rmSync(simRoot, { recursive: true, force: true }); } catch { /* ignore */ }
+try { fs.rmSync(siblingRoot, { recursive: true, force: true }); } catch { /* ignore */ }
 
 const raceDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'atlas-repair-race-'));
 const git = (args, opts = {}) => spawnSync('git', args, {

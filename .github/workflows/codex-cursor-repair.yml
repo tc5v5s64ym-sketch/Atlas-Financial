@@ -316,6 +316,13 @@ jobs:
           persist-credentials: false
           path: trusted
 
+      - name: Preserve trusted gate script outside the PR worktree
+        run: |
+          set -euo pipefail
+          install -D -m 0644 trusted/scripts/atlas-cursor-repair-gate.js \
+            "${RUNNER_TEMP}/atlas-trusted-scripts/atlas-cursor-repair-gate.js"
+          test -s "${RUNNER_TEMP}/atlas-trusted-scripts/atlas-cursor-repair-gate.js"
+
       - name: Checkout the PR branch with the automation credential
         uses: actions/checkout@v4
         with:
@@ -323,6 +330,7 @@ jobs:
           token: ${{ secrets.ATLAS_AUTOMATION_TOKEN }}
           persist-credentials: true
           fetch-depth: 0
+          path: pr-worktree
 
       - name: Download the repair patch
         uses: actions/download-artifact@v4
@@ -331,6 +339,7 @@ jobs:
           path: ${{ runner.temp }}/patch
 
       - name: Commit, push, and persist the round
+        working-directory: pr-worktree
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ needs.gate.outputs.pr_number }}
@@ -343,9 +352,9 @@ jobs:
           set -euo pipefail
           live="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.head.sha')"
           local_head="$(git rev-parse HEAD)"
-          node trusted/scripts/atlas-cursor-repair-gate.js assert-head \
+          node "${RUNNER_TEMP}/atlas-trusted-scripts/atlas-cursor-repair-gate.js" assert-head \
             "${GATED_SHA}" "${local_head}" "${live}"
-          node trusted/scripts/atlas-cursor-repair-gate.js assert-head \
+          node "${RUNNER_TEMP}/atlas-trusted-scripts/atlas-cursor-repair-gate.js" assert-head \
             "${REVIEWED_SHA}" "${local_head}" "${live}"
           git apply "${RUNNER_TEMP}/patch/repair.patch"
           git add -A
