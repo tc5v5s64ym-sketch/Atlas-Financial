@@ -4,9 +4,10 @@ name: Codex cursor repair
 # file from the default branch. It re-validates the review through the API
 # and never executes PR-head scripts in a job that has secrets.
 # After that revalidation it may edit the PR review block: PASS / NOT PASS /
-# BLOCKING from a trusted Atlas review, or PENDING after a successful repair
-# push. It never infers PASS. pull-requests:write is the minimum permission
-# needed to edit the PR body; the dispatcher remains read-only.
+# BLOCKING from a trusted Atlas review, or PENDING after a repair push whose
+# live PR head has converged to the locally pushed SHA. It never infers PASS.
+# pull-requests:write is the minimum permission needed to edit the PR body;
+# the dispatcher remains read-only.
 on:
   workflow_run:
     workflows: ["Codex cursor repair dispatch"]
@@ -402,8 +403,11 @@ jobs:
             "${RUNNER_TEMP}/atlas-trusted-scripts/atlas-cursor-repair-gate.js"
           install -D -m 0644 trusted/scripts/atlas-review-block.js \
             "${RUNNER_TEMP}/atlas-trusted-scripts/atlas-review-block.js"
+          install -D -m 0644 trusted/scripts/atlas-github-pr-head-sync.js \
+            "${RUNNER_TEMP}/atlas-trusted-scripts/atlas-github-pr-head-sync.js"
           test -s "${RUNNER_TEMP}/atlas-trusted-scripts/atlas-cursor-repair-gate.js"
           test -s "${RUNNER_TEMP}/atlas-trusted-scripts/atlas-review-block.js"
+          test -s "${RUNNER_TEMP}/atlas-trusted-scripts/atlas-github-pr-head-sync.js"
 
       - name: Checkout the PR branch with the automation credential
         uses: actions/checkout@v4
@@ -425,6 +429,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ needs.gate.outputs.pr_number }}
+          HEAD_REF: ${{ needs.gate.outputs.head_ref }}
           GATED_SHA: ${{ needs.gate.outputs.head_sha }}
           REVIEWED_SHA: ${{ needs.gate.outputs.reviewed_sha }}
           REVIEW_ID: ${{ needs.gate.outputs.review_id }}
@@ -450,7 +455,33 @@ jobs:
           git commit -m "Apply ${lane_label} review repair for ${REVIEWED_SHA} (round ${NEXT_ROUND})."
           git push
           repair_sha="$(git rev-parse HEAD)"
-          gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" > "${RUNNER_TEMP}/live-pr.json"
+          jq -n \
+            --arg expectedSha "${repair_sha}" \
+            --arg previousSha "${GATED_SHA}" \
+            --arg repository "${GITHUB_REPOSITORY}" \
+            --argjson prNumber "${PR_NUMBER}" \
+            --arg headRef "${HEAD_REF}" \
+            --arg baseRef "main" \
+            '{
+              expectedSha: $expectedSha,
+              previousSha: $previousSha,
+              identity: {
+                repository: $repository,
+                prNumber: $prNumber,
+                headRef: $headRef,
+                baseRef: $baseRef
+              }
+            }' > "${RUNNER_TEMP}/head-sync-request.json"
+          set +e
+          node "${RUNNER_TEMP}/atlas-trusted-scripts/atlas-github-pr-head-sync.js" confirm \
+            "${RUNNER_TEMP}/head-sync-request.json" \
+            > "${RUNNER_TEMP}/live-pr.json"
+          sync_status=$?
+          set -e
+          if [[ "${sync_status}" -ne 0 ]]; then
+            echo "Live PR head did not converge to the pushed repair SHA ${repair_sha}. Fail closed without rewriting the review block."
+            exit 1
+          fi
           live_head="$(jq -r '.head.sha' "${RUNNER_TEMP}/live-pr.json")"
           if [[ "${live_head}" != "${repair_sha}" ]]; then
             echo "Live PR head ${live_head} is not the pushed repair SHA ${repair_sha}. Fail closed without rewriting the review block."

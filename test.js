@@ -59,6 +59,7 @@ const suites = [
   ['Codex review-request workflow', 'test-codex-review-request.js'],
   ['Codex Cursor repair gate', 'test-codex-cursor-repair.js'],
   ['Atlas review-block card sync', 'test-atlas-review-block.js'],
+  ['GitHub PR-head confirmation after push', 'test-github-pr-head-sync.js'],
 ];
 
 let failed = [];
