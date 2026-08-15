@@ -108,20 +108,30 @@ function renderDeepDive(d) {
   const datedRows = dated.map(e => {
     const n = daysUntil(e.date);
     const noncash = e.kind === 'noncash';
-    const soon = !noncash && n >= 0 && n <= 7;
+    const external = e.jointCash === false;
+    const soon = !noncash && !external && n >= 0 && n <= 7;
     const chip = noncash ? '<span class="chip">charged</span>'
+      : external ? '<span class="chip">external</span>'
       : `<span class="chip ${soon ? 'w' : 'e'}">${dueWord(n)}</span>`;
     const kind = e.kind === 'commitment' ? ' <span class="chip">commitment</span>'
-      : noncash ? ' <span class="chip">non-cash</span>' : '';
-    const amount = noncash ? Math.abs(e.amount) : -e.amount;
+      : noncash ? ' <span class="chip">non-cash</span>'
+      : external ? ' <span class="chip">not joint-cash</span>' : '';
+    const amount = (noncash || external) ? Math.abs(e.amount) : -e.amount;
     const note = noteFor(e.id) || (noncash ? 'No cash leaves' : 'Due');
+    const status = noncash
+      ? '<strong>No cash leaves</strong> — '
+      : external
+        ? '<strong>Household obligation — paid externally, not joint-cash</strong>'
+          + (noteFor(e.id) ? ' — ' : '')
+        : '';
+    const detail = external ? (noteFor(e.id) || '') : note;
     return `
-    <tr class="${noncash ? '' : soon ? 'soon' : ''}">
+    <tr class="${noncash || external ? '' : soon ? 'soon' : ''}">
       <td>${fmtDate(e.date)} ${chip}</td>
       <td>${e.label}${kind}</td>
-      <td class="num">${noncash
+      <td class="num">${noncash || external
         ? `<span class="mutedtext">${money2(amount)}</span>` : money2(amount)}</td>
-      <td>${noncash ? '<strong>No cash leaves</strong> — ' : ''}${note}</td>
+      <td>${status}${detail}</td>
     </tr>`;
   });
   $('upcoming').innerHTML = settledRows.concat(datedRows).join('');

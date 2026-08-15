@@ -350,7 +350,7 @@ function comparePayingAccount(row, data) {
     payingAccount: row.payingAccount || null,
     payingAccountLabel: row.payingAccountLabel || null,
     jointCashPool: row.jointCashPool === false ? false : !!row.jointCashPool,
-    canonicalPayingAccount: bills.length === 1 ? (bills[0].payingAccount || null) : null,
+    canonicalPayingAccount: payers.length === 1 ? payers[0] : null,
     canonicalValue: null,
     canonicalTarget: ids.length ? `bills:${ids.join(',')}` : '(unspecified)',
     difference: null,
