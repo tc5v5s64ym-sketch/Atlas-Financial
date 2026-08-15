@@ -37,6 +37,7 @@ const COACHING = 4000;
 const KNOWN_OBLIGATION = 300;
 const KNOWN_COACHING = 400;
 const SESSION_BALANCE = 798.37;
+const CANONICAL_HELD = 2691.85;
 const AMANDA = 'amanda-debt-payments';
 const JOINT = 'chequing-b';
 
@@ -374,11 +375,11 @@ console.log('\n=== 6. unknown business obligations fail closed ===');
   ok(near(F.startingCashAmount(liveLike), OPENING),
     'held-elsewhere DEBT&PAYMENTS is not joint spendable cash');
   const avail = runAmanda(liveLike).rows.find(r => r.fact === 'household-available');
-  ok(avail && avail.status === 'MISSING' && avail.status !== 'MATCH'
-    && avail.remainderEstablished === false,
-    'reconciler leaves household-available unresolved as MISSING, not MATCH');
-  ok(avail.observedBalance != null && near(avail.observedBalance, SESSION_BALANCE),
-    'the session balance is reported as evidence, not as spendable cash');
+  ok(avail && avail.remainderEstablished === false && avail.evidenceValue == null,
+    'matching held-elsewhere cash does not establish a household-available remainder');
+  ok(avail.status === 'MATCH' && near(avail.canonicalValue, SESSION_BALANCE)
+    && near(avail.difference, 0) && near(avail.observedBalance, SESSION_BALANCE),
+    'observed DEBT&PAYMENTS balance still reconciles against the held-elsewhere row');
 
   const spendable = cashFixture([{
     id: 'amandaTransfer',
@@ -435,10 +436,82 @@ console.log('\n=== Aug. 14 unresolved monetary facts are not MATCH ===');
     && available.evidenceValue == null
     && near(available.observedBalance, SESSION_BALANCE),
     'Aug. 14 household-available remainder is unestablished; $798.37 is evidence only');
-  ok(available.status === 'MISSING' && available.status !== 'MATCH',
-    'unestablished remainder is MISSING, not MATCH, despite operational held-elsewhere');
+  ok(available.status === 'MATCH' && available.status !== 'MISSING'
+    && near(available.canonicalValue, SESSION_BALANCE)
+    && near(available.difference, 0),
+    'unestablished remainder does not hide a matching held-elsewhere balance compare');
   ok(/unresolved|not spendable|fail closed/i.test(available.note || ''),
     'remainder note still says unresolved / not spendable');
+}
+
+console.log('\n=== DEBT&PAYMENTS observed balance is reconciled against held-elsewhere ===');
+{
+  const independentDiff = Math.round((SESSION_BALANCE - CANONICAL_HELD) * 100) / 100;
+  ok(near(independentDiff, -1893.48),
+    'independent: $798.37 − $2,691.85 = −$1,893.48',
+    money(independentDiff));
+
+  const changed = cashFixture([{
+    id: 'amandaTransfer',
+    label: "Amanda's transfers to the household",
+    frequency: 'monthly',
+    day: 20,
+    scenarioMonthly: { conservative: 930, expected: 2182, optimistic: 2400 },
+    confidence: 'estimated',
+  }]);
+  changed.startingCash.heldElsewhere[0].value = CANONICAL_HELD;
+  ok(changed.startingCash.heldElsewhere[0].class === 'operational',
+    'fixture keeps DEBT&PAYMENTS operational / non-spendable');
+  const available = runAmanda(changed).rows.find(r => r.fact === 'household-available');
+  ok(available && available.status === 'CHANGE'
+    && near(available.observedBalance, SESSION_BALANCE)
+    && near(available.canonicalValue, CANONICAL_HELD)
+    && near(available.difference, independentDiff)
+    && available.canonicalTarget === `cash:${AMANDA}`
+    && available.remainderEstablished === false,
+    'Aug. 14 $798.37 vs canonical held-elsewhere $2,691.85 is CHANGE for owner reconciliation');
+}
+
+console.log('\n=== established remainder state is preserved ===');
+{
+  const liveLike = cashFixture([{
+    id: 'amandaTransfer',
+    label: "Amanda's transfers to the household",
+    frequency: 'monthly',
+    day: 20,
+    scenarioMonthly: { conservative: 930, expected: 2182, optimistic: 2400 },
+    confidence: 'estimated',
+  }]);
+  const established = runAmanda(liveLike, [{
+    observationId: 'owner-established-remainder',
+    fact: 'household-available',
+    accountLabel: 'Household-available Amanda remainder',
+    evidenceValue: 2268.85,
+    evidenceDate: START,
+    established: true,
+    observedBalance: SESSION_BALANCE,
+    landingAccount: AMANDA,
+  }]).rows.find(r => r.observationId === 'owner-established-remainder');
+  ok(established && established.remainderEstablished === true
+    && near(established.evidenceValue, 2268.85),
+    'owner-established remainder is reported established, not hard-coded unresolved');
+  ok(established.status === 'MATCH' && near(established.canonicalValue, SESSION_BALANCE)
+    && near(established.difference, 0),
+    'established remainder still reconciles the observed DEBT&PAYMENTS balance');
+
+  const missingBalance = runAmanda(liveLike, [{
+    observationId: 'established-without-balance',
+    fact: 'household-available',
+    accountLabel: 'Household-available Amanda remainder',
+    evidenceValue: 2268.85,
+    evidenceDate: START,
+    established: true,
+    landingAccount: AMANDA,
+  }]).rows.find(r => r.observationId === 'established-without-balance');
+  ok(missingBalance && missingBalance.remainderEstablished === true
+    && near(missingBalance.evidenceValue, 2268.85)
+    && missingBalance.status === 'MISSING',
+    'established remainder stays established even when no observed balance can be compared');
 }
 
 console.log('\n=== 7. live amandaTransfer Forecast behaviour is unchanged ===');
@@ -471,7 +544,7 @@ console.log('\n=== 7. live amandaTransfer Forecast behaviour is unchanged ===');
 
   const held = (live.plan.startingCash.heldElsewhere || [])
     .find(r => r.id === AMANDA);
-  ok(held && held.class === 'operational' && near(held.value, 2691.85),
+  ok(held && held.class === 'operational' && near(held.value, CANONICAL_HELD),
     'live DEBT&PAYMENTS is still operational $2,691.85, not spendable');
 }
 
@@ -573,10 +646,15 @@ console.log('\n=== 8. reconciliation performs no writes ===');
   ok(obligation && obligation.status === 'MISSING' && obligation.status !== 'MATCH'
     && obligation.unknown && obligation.remainderEstablished === false,
     'live business obligation is unknown MISSING, not MATCH, and fail-closed');
-  ok(available && available.status === 'MISSING' && available.status !== 'MATCH'
-    && available.remainderEstablished === false
+  ok(available && available.remainderEstablished === false
+    && available.evidenceValue == null
     && near(available.observedBalance, SESSION_BALANCE),
-    'live household-available remainder is unestablished MISSING, not MATCH');
+    'live household-available remainder is still unestablished');
+  ok(available.status === 'CHANGE' && available.status !== 'MISSING'
+    && near(available.canonicalValue, CANONICAL_HELD)
+    && near(available.difference, Math.round((SESSION_BALANCE - CANONICAL_HELD) * 100) / 100)
+    && available.canonicalTarget === `cash:${AMANDA}`,
+    'live $798.37 vs held-elsewhere $2,691.85 is CHANGE, not hidden behind remainder MISSING');
 
   ok(hashFile(R.DEFAULT_DATA) === before, 'calling reconcile() does not change data.json');
 
@@ -597,6 +675,8 @@ console.log('\n=== 8. reconciliation performs no writes ===');
     'CLI says Aug. 14 did not independently verify amandaTransfer amounts');
   ok(/remainder unresolved/.test(out),
     'CLI reports household-available remainder as unresolved');
+  ok(/798\.37/.test(out) && /2691\.85/.test(out),
+    'CLI surfaces the Aug. 14 DEBT&PAYMENTS balance against canonical held-elsewhere');
   ok(hashFile(R.DEFAULT_DATA) === cliBefore,
     'CLI reconcile does not write data.json');
 }

@@ -691,12 +691,19 @@ function compareInternalTransfer(row, data) {
 function compareHouseholdAvailable(row, data) {
   const accountId = row.landingAccount || AMANDA_OPERATING_ID;
   const spendable = spendableAmandaAccount(data, accountId);
-  const operational = heldElsewhereOperational(data, accountId);
   const established = row.established === true
     && row.evidenceValue != null && isFinite(row.evidenceValue);
+  const observedBalance = row.observedBalance != null && isFinite(Number(row.observedBalance))
+    ? Number(row.observedBalance) : null;
+  const canonical = readCanonical(data, { collection: 'cash', id: accountId });
+  const canonicalValue = canonical.found ? canonical.value : null;
+  const difference = canonical.found && observedBalance != null
+    ? round2(observedBalance - canonical.value)
+    : null;
   let status;
   if (spendable) status = 'CONFLICT';
-  else if (!established) status = 'MISSING';
+  else if (observedBalance == null || !canonical.found) status = 'MISSING';
+  else if (near(observedBalance, canonical.value)) status = 'MATCH';
   else status = 'CHANGE';
   return {
     observationId: row.observationId,
@@ -704,15 +711,17 @@ function compareHouseholdAvailable(row, data) {
     accountLabel: row.accountLabel,
     evidenceValue: established ? row.evidenceValue : null,
     evidenceDate: row.evidenceDate,
-    observedBalance: row.observedBalance != null ? Number(row.observedBalance) : null,
-    canonicalValue: null,
-    canonicalTarget: operational ? `cash:${accountId}` : '(unestablished remainder)',
-    difference: null,
+    observedBalance,
+    canonicalValue,
+    canonicalTarget: canonical.locator,
+    difference,
     status,
-    remainderEstablished: false,
+    remainderEstablished: established,
     note: spendable
       ? 'DEBT&PAYMENTS must not be treated as spendable household cash'
-      : (row.note || 'household-available remainder is unresolved; fail closed'),
+      : (row.note || (established
+        ? 'household-available remainder established from known obligations'
+        : 'household-available remainder is unresolved; fail closed')),
   };
 }
 
@@ -870,8 +879,10 @@ function formatReport(result) {
       ? (row.evidenceSettledOn || '—')
       : row.fact === 'paying-account'
         ? (row.payingAccountLabel || row.payingAccount || '—')
+        : row.fact === 'household-available'
+          ? (row.observedBalance == null ? 'unresolved' : n2(row.observedBalance))
         : (row.fact === 'coaching-receipt' || row.fact === 'business-obligation'
-          || row.fact === 'household-available' || row.fact === 'household-transfer')
+          || row.fact === 'household-transfer')
           && row.evidenceValue == null
           ? (row.fact === 'household-transfer' ? 'not observed' : 'unresolved')
           : (row.evidenceValue == null ? '—' : n2(row.evidenceValue));
@@ -887,8 +898,10 @@ function formatReport(result) {
               ? '$0 income'
               : row.fact === 'coaching-receipt'
                 ? 'not household'
-                : row.fact === 'business-obligation' || row.fact === 'household-available'
+                : row.fact === 'business-obligation'
                   ? (row.remainderEstablished ? n2(row.canonicalValue) : 'unresolved')
+                : row.fact === 'household-available'
+                  ? (row.canonicalValue == null ? '—' : n2(row.canonicalValue))
             : row.fact === 'household-transfer' && row.independentlyObserved !== true
               ? 'canonical ctx'
               : (row.canonicalValue == null ? '—' : n2(row.canonicalValue));
