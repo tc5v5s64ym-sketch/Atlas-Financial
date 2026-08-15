@@ -1,0 +1,58 @@
+{
+  "schema": "atlas-utility-observations/v1",
+  "source": "docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md",
+  "owns": "B91 D4/D5 Hydro observations against plan.bills. Not a utility-account subsystem, not an accounts-payable ledger, and not a second calendar.",
+  "does_not_own": "Permission to write data.json, Forecast results, live Hydro amounts, or positions.csv rows.",
+  "asOf": "2026-08-14",
+  "observations": [
+    {
+      "observationId": "payday-hydro-account-balance",
+      "fact": "account-balance",
+      "role": "informational",
+      "utility": "bc-hydro",
+      "label": "BC Hydro account balance",
+      "amount": 451.24,
+      "observedAsOf": "2026-08-14",
+      "forbiddenBillIds": ["hydro-account-balance"],
+      "source": "docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md",
+      "note": "Informational utility account state. Must not become a scheduled cash event. The dated dues are the cash requirements. Only an explicit hydro-account-balance bill row is the forbidden scheduled form of this amount."
+    },
+    {
+      "observationId": "payday-hydro-due-now",
+      "fact": "dated-due",
+      "utility": "bc-hydro",
+      "label": "BC Hydro current due",
+      "amount": 213.79,
+      "dueDate": "2026-08-14",
+      "observedAsOf": "2026-08-14",
+      "canonical": { "collection": "bills", "id": "hydro-due-now" },
+      "source": "docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md",
+      "note": "Dated household cash requirement due now as of the Aug. 14 observation. Not the $451.24 account balance."
+    },
+    {
+      "observationId": "payday-hydro-due-sep1",
+      "fact": "dated-due",
+      "utility": "bc-hydro",
+      "label": "BC Hydro due 1 September",
+      "amount": 237.45,
+      "dueDate": "2026-09-01",
+      "observedAsOf": "2026-08-14",
+      "canonical": { "collection": "bills", "id": "hydro-due-sep1" },
+      "source": "docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md",
+      "note": "Dated household cash requirement due 2026-09-01. Not the $451.24 account balance."
+    },
+    {
+      "observationId": "payday-hydro-paying-account",
+      "fact": "paying-account",
+      "utility": "bc-hydro",
+      "label": "BC Hydro paying account",
+      "payingAccount": "amanda-debt-payments",
+      "payingAccountLabel": "Amanda / DEBT&PAYMENTS",
+      "jointCashPool": false,
+      "billIds": ["hydro-due-now", "hydro-due-sep1"],
+      "observedAsOf": "2026-08-14",
+      "source": "docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md",
+      "note": "Attribution/funding route. Does not erase household-obligation status. DEBT&PAYMENTS is held-elsewhere, not joint spendable cash."
+    }
+  ]
+}

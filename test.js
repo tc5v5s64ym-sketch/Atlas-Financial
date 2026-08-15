@@ -53,6 +53,7 @@ const suites = [
   ['non-writing reconciliation (B91)', 'test-reconcile.js'],
   ['current-state cutover (B91)', 'test-cutover.js'],
   ['commitment settlement (B91 D3)', 'test-settlement.js'],
+  ['Hydro dated obligation (B91 D4+D5)', 'test-hydro.js'],
   ['merge-card check behaviour', 'test-mergecard.js'],
   ['Codex review-request workflow', 'test-codex-review-request.js'],
   ['Codex Cursor repair gate', 'test-codex-cursor-repair.js'],

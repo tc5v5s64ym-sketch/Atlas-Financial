@@ -47,6 +47,8 @@ const FORECAST_NON_AUTHORITY = new Set([
   'commitmentSettledOn',
   'commitmentSettledBy',
   'commitmentStatus',
+  'billIsHouseholdObligation',
+  'billAffectsJointCash',
   'recommendWeekly',
   'publishedSpendType',
   'rollupSpending',

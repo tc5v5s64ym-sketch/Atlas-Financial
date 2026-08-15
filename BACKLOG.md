@@ -1065,6 +1065,18 @@ Live Fusion camp and tryouts stay unsettled until an explicit
 owner-approved edit. The three $500 Fusion season instalments are
 untouched. Do not mark this item DONE.
 
+**D4+D5 slice (not completion):** a dated `plan.bills` row may carry
+`payingAccount`. Household-obligation status is a separate fact
+(`householdObligation`, default true). Joint-cash deduction is suppressed only when the paying
+account is on `plan.startingCash.heldElsewhere`. No payingAccount, a
+breakdown payer, or an unknown/typo id fail closed and still deduct. Hydro observations live in
+`docs/reconciliation/utility-observations.json` and compare the Aug. 14
+account balance (informational / not scheduled), the $213.79 current due,
+the $237.45 1 September due, and Amanda / DEBT&PAYMENTS as
+external-to-joint-pool. The reconciler remains non-writing. Live Hydro
+canonical state is unchanged until an explicit owner-approved edit. Do
+not mark this item DONE.
+
 **Outcome (whole item, still open):** a small **non-writing** reconciliation
 report over existing observation records: evidence value/date, current Atlas
 value, MATCH / STALE / CHANGE / CONFLICT / MISSING, unresolved item. One

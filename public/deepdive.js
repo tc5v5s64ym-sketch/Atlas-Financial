@@ -82,6 +82,16 @@ function renderDeepDive(d) {
   const schedule = Forecast.expandEvents(d.plan, asOf, windowEnd);
   const dated = schedule.filter(e => e.amount < 0 || e.kind === 'noncash');
   const settled = d.settled || [];
+  // Display-only. Plan already has the same lookup; this is not a second
+  // authority — it only names the payingAccount expandEvents already set.
+  const externalPayerLabel = (plan, event) => {
+    const id = event && event.payingAccount;
+    if (id === 'amanda-debt-payments') return 'Amanda / DEBT&PAYMENTS';
+    const cash = (plan && plan.startingCash) || {};
+    const row = (cash.breakdown || []).concat(cash.heldElsewhere || [])
+      .find(r => r.id === id);
+    return (row && row.label) || id || 'an account outside the joint-cash pool';
+  };
   const noteFor = id => {
     for (const list of [d.plan.obligations, d.plan.bills, d.plan.commitments]) {
       const hit = (list || []).find(x => x.id === id);
@@ -108,20 +118,31 @@ function renderDeepDive(d) {
   const datedRows = dated.map(e => {
     const n = daysUntil(e.date);
     const noncash = e.kind === 'noncash';
-    const soon = !noncash && n >= 0 && n <= 7;
+    const external = e.jointCash === false;
+    const soon = !noncash && !external && n >= 0 && n <= 7;
     const chip = noncash ? '<span class="chip">charged</span>'
+      : external ? '<span class="chip">external</span>'
       : `<span class="chip ${soon ? 'w' : 'e'}">${dueWord(n)}</span>`;
     const kind = e.kind === 'commitment' ? ' <span class="chip">commitment</span>'
-      : noncash ? ' <span class="chip">non-cash</span>' : '';
-    const amount = noncash ? Math.abs(e.amount) : -e.amount;
+      : noncash ? ' <span class="chip">non-cash</span>'
+      : external ? ' <span class="chip">not joint-cash</span>' : '';
+    const amount = (noncash || external) ? Math.abs(e.amount) : -e.amount;
     const note = noteFor(e.id) || (noncash ? 'No cash leaves' : 'Due');
+    const payer = external ? externalPayerLabel(d.plan, e) : '';
+    const status = noncash
+      ? '<strong>No cash leaves</strong> — '
+      : external
+        ? '<strong>Household obligation — paid from ' + payer + ', not joint-cash</strong>'
+          + (noteFor(e.id) ? ' — ' : '')
+        : '';
+    const detail = external ? (noteFor(e.id) || '') : note;
     return `
-    <tr class="${noncash ? '' : soon ? 'soon' : ''}">
+    <tr class="${noncash || external ? '' : soon ? 'soon' : ''}">
       <td>${fmtDate(e.date)} ${chip}</td>
       <td>${e.label}${kind}</td>
-      <td class="num">${noncash
+      <td class="num">${noncash || external
         ? `<span class="mutedtext">${money2(amount)}</span>` : money2(amount)}</td>
-      <td>${noncash ? '<strong>No cash leaves</strong> — ' : ''}${note}</td>
+      <td>${status}${detail}</td>
     </tr>`;
   });
   $('upcoming').innerHTML = settledRows.concat(datedRows).join('');

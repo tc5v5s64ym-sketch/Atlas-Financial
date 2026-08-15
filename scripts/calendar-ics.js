@@ -71,6 +71,17 @@ function paymentDescription(plan, event, asOf) {
   ].filter(Boolean).join('\n\n');
 }
 
+function householdObligationDescription(plan, event, asOf) {
+  const item = planItem(plan, event.id);
+  const note = item && item.note ? item.note.trim() : '';
+  const payer = event.payingAccount || (item && item.payingAccount) || 'an account outside the joint-cash pool';
+  return [
+    `Household obligation of $${money(Math.abs(event.amount))}. Paid from ${payer} — not a joint-cash outflow.`,
+    note,
+    `Kind: reminder — household obligation, not a chequing outflow from the joint-cash pool. Derived from the Plan (${event.id}) on ${asOf}.`,
+  ].filter(Boolean).join('\n\n');
+}
+
 function noncashDescription(plan, event, asOf) {
   const item = planItem(plan, event.id);
   const note = item && item.note ? item.note.trim() : '';
@@ -178,14 +189,19 @@ function buildHouseholdCalendar(plan, asOf, end) {
   const payments = [];
   const derivedReminders = [];
   for (const event of stream) {
-    if (event.kind === 'noncash') {
+    if (event.kind === 'noncash' || event.jointCash === false) {
+      const external = event.jointCash === false;
       derivedReminders.push({
         uid: `atlas-reminder-${event.id}-${dateOnly(event.date)}@household`,
-        summary: `Reminder — ${event.label} (no cash leaves chequing)`,
+        summary: external
+          ? `Reminder — ${event.label} (household obligation; not joint cash)`
+          : `Reminder — ${event.label} (no cash leaves chequing)`,
         start: event.date,
         kind: 'reminder',
         alarms: 'day-of',
-        description: noncashDescription(plan, event, asOf),
+        description: external
+          ? householdObligationDescription(plan, event, asOf)
+          : noncashDescription(plan, event, asOf),
         sourceId: event.id,
         amount: Math.abs(event.amount),
       });

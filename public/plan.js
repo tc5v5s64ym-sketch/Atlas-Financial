@@ -465,6 +465,19 @@ function shortLabel(label) {
     .replace(/Coaching.*/i, 'Tennis transfer');
 }
 
+function isExternalObligation(e) {
+  return !!(e && e.jointCash === false);
+}
+
+function externalPayerLabel(plan, event) {
+  const id = event && event.payingAccount;
+  if (id === 'amanda-debt-payments') return 'Amanda / DEBT&PAYMENTS';
+  const cash = (plan && plan.startingCash) || {};
+  const row = (cash.breakdown || []).concat(cash.heldElsewhere || [])
+    .find(r => r.id === id);
+  return (row && row.label) || id || 'an account outside the joint-cash pool';
+}
+
 // Month-grid calendar (desktop) and agenda list (mobile) from the same
 // simulation. Each is a real table/list, so screen readers get both.
 function renderCalendar(sim, neededBy, plan) {
@@ -482,11 +495,20 @@ function renderCalendar(sim, neededBy, plan) {
 
   const evHtml = e => {
     const est = e.confidence === 'estimated' ? '<span class="est">≈</span>' : '';
-    const cls = e.amount > 0 ? 'in' : e.kind === 'commitment' ? 'commit'
-      : e.kind === 'noncash' ? 'noncash' : 'out';
+    const external = isExternalObligation(e);
+    const cls = e.amount > 0 ? 'in'
+      : e.kind === 'noncash' ? 'noncash'
+      : external ? 'external'
+      : e.kind === 'commitment' ? 'commit'
+      : 'out';
     const tie = atomic.has(groupOf[e.id]) ? '<span class="tie" title="Must be paid together, same day">⛓</span>' : '';
-    return `<span class="cal-ev ${cls}" title="${e.label} ${money2(Math.abs(e.amount))}${e.kind === 'noncash' ? ' — capitalised, not paid' : ''}">` +
-      `${e.kind === 'noncash' ? '' : e.amount > 0 ? '+' : '−'}${money(Math.abs(e.amount)).slice(1)} ${est}${tie}${shortLabel(e.label)}</span>`;
+    const title = external
+      ? `${e.label} ${money2(Math.abs(e.amount))} — household obligation, paid externally, does not reduce joint cash`
+      : `${e.label} ${money2(Math.abs(e.amount))}${e.kind === 'noncash' ? ' — capitalised, not paid' : ''}`;
+    const body = external
+      ? `${money(Math.abs(e.amount)).slice(1)} ${est}${tie}${shortLabel(e.label)} — external household obligation`
+      : `${e.kind === 'noncash' ? '' : e.amount > 0 ? '+' : '−'}${money(Math.abs(e.amount)).slice(1)} ${est}${tie}${shortLabel(e.label)}`;
+    return `<span class="cal-ev ${cls}" title="${title}">${body}</span>`;
   };
 
   // ---- month grids ----
@@ -867,14 +889,25 @@ function renderPlan(d, periods) {
   const near = sim.events
     .filter(e => e.date >= asOf && e.date <= horizon && Math.abs(e.amount) >= 50)
     .sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : (b.amount > 0 ? 1 : 0) - (a.amount > 0 ? 1 : 0));
-  $('agenda-14').innerHTML = near.length ? near.map(e => `
-    <div class="ag14 ${e.amount > 0 ? 'in' : 'out'}${e.date === (gap && gap.date) ? ' ag14-key' : ''}">
+  $('agenda-14').innerHTML = near.length ? near.map(e => {
+    const external = isExternalObligation(e);
+    const rowClass = external ? 'external' : (e.amount > 0 ? 'in' : 'out');
+    const amtClass = external ? '' : (e.amount > 0 ? 'pos' : 'neg');
+    const amt = external
+      ? money(Math.abs(e.amount))
+      : `${e.amount > 0 ? '+' : '−'}${money(Math.abs(e.amount)).slice(1)}`;
+    const lab = external
+      ? `${e.label} — paid from ${externalPayerLabel(plan, e)}<br><span class="mutedtext">not joint-cash</span>`
+      : e.label;
+    return `
+    <div class="ag14 ${rowClass}${e.date === (gap && gap.date) ? ' ag14-key' : ''}">
       <span class="ag14-date">${fmtDate(e.date)}</span>
-      <span class="ag14-amt ${e.amount > 0 ? 'pos' : 'neg'}">${e.amount > 0 ? '+' : '−'}${money(Math.abs(e.amount)).slice(1)}</span>
-      <span class="ag14-lab">${e.label}</span>
+      <span class="ag14-amt ${amtClass}">${amt}</span>
+      <span class="ag14-lab">${lab}</span>
       <span class="ag14-conf"><span class="chip ${e.confidence === 'confirmed' ? 'v'
         : e.confidence === 'estimated' ? 'w' : ''}">${e.confidence}</span></span>
-    </div>`).join('') : '<p class="lede">Nothing of $50 or more falls in the next fortnight.</p>';
+    </div>`;
+  }).join('') : '<p class="lede">Nothing of $50 or more falls in the next fortnight.</p>';
   $('agenda-14-note').innerHTML =
     `Movements of $50 or more only. ${gap ? `The highlighted row is the day the gap has to be covered by. ` : ''}` +
     `The rest of the window is behind <b>View full 90-day calendar</b> below.`;

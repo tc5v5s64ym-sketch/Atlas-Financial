@@ -692,8 +692,14 @@ exist.
   Forecast treats it as already satisfied only when that date is on or
   before the simulation start, then emits no future cash event. Settlement
   observations compare that field and do not write `data.json`. Live Fusion
-  camp / tryouts stay unsettled until an owner-approved edit. B91 stays open for Hydro dated
-  dues, Amanda income split, card pending, Q19 HELOC mechanics, the
+  camp / tryouts stay unsettled until an owner-approved edit.
+  **D4+D5 slice — not completion.** Dated `plan.bills` may carry
+  `payingAccount`. Household obligation stays distinct from the paying
+  account and from joint-cash deduction. Hydro observations compare the
+  Aug. 14 account balance as informational and the dated dues as
+  scheduled requirements; they do not write `data.json`. Live Hydro
+  canonical state stays unchanged until an owner-approved edit. B91 stays open for
+  Amanda income split, card pending, Q19 HELOC mechanics, the
   operating-target question, B20 history, the STALE threshold, and the rest
   of the Aug. 14 corpus. Do not mark this item done.
 

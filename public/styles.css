@@ -377,6 +377,7 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
 .fund-no .fund-lab, .fund-no .fund-amt { color:var(--muted); font-weight:600; }
 .fund-yes { border-left:3px solid var(--good); padding-left:12px; }
 .cal-ev.noncash { color:var(--muted); font-style:italic; }
+.cal-ev.external { color:var(--muted); font-style:italic; }
 .tie { color:var(--serious); margin-right:2px; }
 
 .wk-track { margin-top:6px; font-size:.78rem; color:var(--muted); }
@@ -529,6 +530,7 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
 .ag14-amt { font-variant-numeric: tabular-nums; font-weight: 650; text-align: right; }
 .ag14-amt.pos { color: var(--success-text); }
 .ag14-amt.neg { color: var(--text-primary); }
+.ag14.external .ag14-amt { color: var(--muted); font-weight: 600; }
 .ag14-lab { font-size: .87rem; line-height: 1.35; }
 .ag14-conf { text-align: right; }
 
