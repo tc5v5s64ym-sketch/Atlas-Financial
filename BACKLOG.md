@@ -1123,6 +1123,14 @@ screenshot). Fit4Less, BCAA, ICBC, and RESP stay unknown. The reconciler
 remains non-writing. Live `plan.opening` is unchanged — there is still
 no Aug. 14 cutover on canonical state. Do not mark this item DONE.
 
+**D11 slice (not completion):** `Forecast.recommend` derives
+`nearBoundary` from existing `zero.events` — named joint-cash outflows
+on the next payday and the following calendar day. `Forecast.mission`
+emits that list before surplus-use guidance. Forecast arithmetic is
+unchanged: no second horizon, no new payday engine, no `$600/week`
+policy. Live household financial facts are unchanged. Do not mark this
+item DONE.
+
 **Outcome (whole item, still open):** a small **non-writing** reconciliation
 report over existing observation records: evidence value/date, current Atlas
 value, MATCH / STALE / CHANGE / CONFLICT / MISSING, unresolved item. One
