@@ -14,6 +14,6 @@ One independently provable outcome per pull request. Run this
 repository's required tests and checks. Complete the Atlas Merge Card
 accurately.
 
-**Copilot-specific execution.** Never merge your own pull request.
 Stop for owner-reserved, security, destructive, or financial-authority
-decisions.
+decisions. Merge only under the same `CLAUDE.md` merge gate and merge
+policy as any other approved surface.
