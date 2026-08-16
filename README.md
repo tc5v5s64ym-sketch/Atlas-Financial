@@ -62,6 +62,18 @@ npm start
 Then open http://localhost:3000. On Windows PowerShell, set the same two
 variables with `$env:` prefixes before running `npm start`.
 
+GitHub `main` moves when pull requests merge; this folder does not. Fast-forward
+local `main` without switching you off a feature branch or discarding work:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\sync-main.ps1
+powershell -ExecutionPolicy Bypass -File scripts\sync-main.ps1 -InstallTask
+```
+
+`-InstallTask` registers an at-logon and every-2-hour run. The task only
+fast-forwards `main`. It never pushes, never force-updates, and never touches a
+dirty worktree.
+
 Run the smoke test against a running server:
 
 ```bash
