@@ -66,6 +66,7 @@ const suites = [
   ['Merge Card primary-risk projection', 'test-atlas-primary-risk.js'],
   ['GitHub PR-head confirmation after push', 'test-github-pr-head-sync.js'],
   ['local main sync safety contract', 'test-sync-main.js'],
+  ['failed-check auto-repair contract', 'test-atlas-test-repair.js'],
 ];
 
 let failed = [];
