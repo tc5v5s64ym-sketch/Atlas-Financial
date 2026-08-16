@@ -385,6 +385,152 @@ ok(movedRemote.ok === false && movedRemote.mutate === false && movedRemote.code 
 const movedLocal = gate.assertHeadsStillGated(HEAD, NEXT, NEXT);
 ok(movedLocal.mutate === false, 'a later local checkout blocks mutation');
 
+console.log('\n=== Cursor-first push still syncs PENDING ===');
+const TREE = '1'.repeat(40);
+const OTHER_TREE = '2'.repeat(40);
+function aheadCompare(base, head, extras = {}) {
+  return {
+    status: 'ahead',
+    merge_base_commit: { sha: base },
+    ahead_by: extras.ahead_by == null ? 1 : extras.ahead_by,
+    behind_by: 0,
+    head: { sha: head },
+    ...extras,
+  };
+}
+function trustedProvenance(overrides = {}) {
+  return {
+    reviewedSha: HEAD,
+    expectedTreeSha: TREE,
+    liveTreeSha: TREE,
+    ...overrides,
+  };
+}
+const stillGated = gate.classifyRepairPushHead(HEAD, HEAD, HEAD, aheadCompare(HEAD, HEAD));
+ok(stillGated.ok && stillGated.action === 'push' && stillGated.mutate === true,
+  'unchanged gated/local/live heads still take the push path', stillGated.action);
+const stillGatedReviewed = gate.classifyRepairPushHead(
+  HEAD, HEAD, HEAD, aheadCompare(HEAD, HEAD), trustedProvenance(),
+);
+ok(stillGatedReviewed.ok && stillGatedReviewed.action === 'push',
+  'unchanged heads still push when reviewed SHA matches the gated SHA');
+const cursorPushed = gate.classifyRepairPushHead(
+  HEAD, NEXT, NEXT, aheadCompare(HEAD, NEXT), trustedProvenance(),
+);
+ok(cursorPushed.ok && cursorPushed.action === 'adopt-live' && cursorPushed.mutate === false,
+  'Cursor-pushed descendant is adopted without mutation when the trusted tree matches', cursorPushed.action);
+ok(cursorPushed.repairSha === NEXT && cursorPushed.code === 'already-repaired',
+  'adopt-live records the live repair SHA');
+const staleCheckout = gate.classifyRepairPushHead(
+  HEAD, HEAD, NEXT, aheadCompare(HEAD, NEXT), trustedProvenance(),
+);
+ok(staleCheckout.ok && staleCheckout.action === 'adopt-live' && staleCheckout.mutate === false,
+  'gated local checkout with a trusted live repair still skips mutation', staleCheckout.action);
+const diverged = gate.classifyRepairPushHead(HEAD, HEAD, NEXT, {
+  status: 'diverged',
+  merge_base_commit: { sha: 'c'.repeat(40) },
+  ahead_by: 1,
+  behind_by: 1,
+}, trustedProvenance());
+ok(diverged.ok === false && diverged.mutate === false && diverged.code === 'head-moved',
+  'a diverged live head still fails closed without mutation', diverged.code);
+const thirdHead = 'c'.repeat(40);
+const unexpectedLocal = gate.classifyRepairPushHead(
+  HEAD, thirdHead, NEXT, aheadCompare(HEAD, NEXT), trustedProvenance(),
+);
+ok(unexpectedLocal.ok === false && unexpectedLocal.code === 'head-moved',
+  'an unexpected local SHA fails closed even when live is a descendant', unexpectedLocal.code);
+
+console.log('\n=== adopt-live rejects untrusted descendants ===');
+const noProvenance = gate.classifyRepairPushHead(HEAD, NEXT, NEXT, aheadCompare(HEAD, NEXT));
+ok(noProvenance.ok === false && noProvenance.mutate === false && noProvenance.code === 'reviewed-mismatch',
+  'a descendant without reviewed-SHA provenance is not adopted', noProvenance.code);
+const reviewedOther = gate.classifyRepairPushHead(
+  HEAD, NEXT, NEXT, aheadCompare(HEAD, NEXT), trustedProvenance({ reviewedSha: thirdHead }),
+);
+ok(reviewedOther.ok === false && reviewedOther.code === 'reviewed-mismatch',
+  'adopt-live fails closed when reviewed SHA is not the gated SHA', reviewedOther.code);
+const unrelatedTree = gate.classifyRepairPushHead(
+  HEAD, NEXT, NEXT, aheadCompare(HEAD, NEXT), trustedProvenance({ liveTreeSha: OTHER_TREE }),
+);
+ok(unrelatedTree.ok === false && unrelatedTree.mutate === false && unrelatedTree.code === 'unrelated-descendant',
+  'an unrelated one-commit descendant with a different tree is rejected', unrelatedTree.code);
+const extraAhead = gate.classifyRepairPushHead(
+  HEAD, NEXT, NEXT, aheadCompare(HEAD, NEXT, { ahead_by: 2 }), trustedProvenance(),
+);
+ok(extraAhead.ok === false && extraAhead.mutate === false && extraAhead.code === 'extra-descendant',
+  'a two-commit descendant is rejected even when the live tree matches', extraAhead.code);
+const extraCommits = gate.classifyRepairPushHead(
+  HEAD,
+  NEXT,
+  NEXT,
+  aheadCompare(HEAD, NEXT, {
+    commits: [
+      { sha: thirdHead, commit: { tree: { sha: TREE } } },
+      { sha: NEXT, commit: { tree: { sha: TREE } } },
+    ],
+  }),
+  trustedProvenance(),
+);
+ok(extraCommits.ok === false && extraCommits.code === 'extra-descendant',
+  'compare.commits longer than one is rejected as an extra descendant', extraCommits.code);
+ok(gate.isSingleForwardRepairCompare(HEAD, NEXT, aheadCompare(HEAD, NEXT)) === true,
+  'a one-commit ahead compare is a single forward repair');
+ok(gate.isSingleForwardRepairCompare(HEAD, NEXT, aheadCompare(HEAD, NEXT, { ahead_by: 2 })) === false,
+  'ahead_by greater than 1 is not a single forward repair');
+
+const compareFile = path.join(require('os').tmpdir(), `atlas-push-compare-${process.pid}.json`);
+const provenanceFile = path.join(require('os').tmpdir(), `atlas-push-provenance-${process.pid}.json`);
+fs.writeFileSync(compareFile, JSON.stringify(aheadCompare(HEAD, NEXT)));
+fs.writeFileSync(provenanceFile, JSON.stringify(trustedProvenance()));
+const classifyBare = spawnSync(process.execPath, [
+  path.join(__dirname, 'scripts/atlas-cursor-repair-gate.js'),
+  'classify-push-head', HEAD, NEXT, NEXT, compareFile,
+], { encoding: 'utf8' });
+ok(classifyBare.status === 1 && /reviewed SHA/.test(classifyBare.stderr),
+  'classify-push-head CLI fails closed for a descendant without provenance');
+const classifyAdopt = spawnSync(process.execPath, [
+  path.join(__dirname, 'scripts/atlas-cursor-repair-gate.js'),
+  'classify-push-head', HEAD, NEXT, NEXT, compareFile, provenanceFile,
+], { encoding: 'utf8' });
+ok(classifyAdopt.status === 0 && /adopt-live/.test(classifyAdopt.stdout),
+  'classify-push-head CLI exits 0 for a trusted Cursor-first repair tree');
+const classifyFail = spawnSync(process.execPath, [
+  path.join(__dirname, 'scripts/atlas-cursor-repair-gate.js'),
+  'classify-push-head', HEAD, HEAD, NEXT, compareFile, provenanceFile,
+], { encoding: 'utf8' });
+ok(classifyFail.status === 0 && /adopt-live/.test(classifyFail.stdout),
+  'classify-push-head CLI adopts when local is still gated and live is the trusted repair');
+fs.writeFileSync(provenanceFile, JSON.stringify(trustedProvenance({ liveTreeSha: OTHER_TREE })));
+const classifyUnrelated = spawnSync(process.execPath, [
+  path.join(__dirname, 'scripts/atlas-cursor-repair-gate.js'),
+  'classify-push-head', HEAD, NEXT, NEXT, compareFile, provenanceFile,
+], { encoding: 'utf8' });
+ok(classifyUnrelated.status === 1 && /repair\.patch tree/.test(classifyUnrelated.stderr),
+  'classify-push-head CLI rejects an unrelated descendant tree');
+fs.writeFileSync(compareFile, JSON.stringify(aheadCompare(HEAD, NEXT, { ahead_by: 2 })));
+fs.writeFileSync(provenanceFile, JSON.stringify(trustedProvenance()));
+const classifyExtra = spawnSync(process.execPath, [
+  path.join(__dirname, 'scripts/atlas-cursor-repair-gate.js'),
+  'classify-push-head', HEAD, NEXT, NEXT, compareFile, provenanceFile,
+], { encoding: 'utf8' });
+ok(classifyExtra.status === 1 && /more than one commit/.test(classifyExtra.stderr),
+  'classify-push-head CLI rejects an extra descendant');
+fs.writeFileSync(compareFile, JSON.stringify({
+  status: 'diverged',
+  merge_base_commit: { sha: thirdHead },
+  ahead_by: 1,
+  behind_by: 1,
+}));
+const classifyMoved = spawnSync(process.execPath, [
+  path.join(__dirname, 'scripts/atlas-cursor-repair-gate.js'),
+  'classify-push-head', HEAD, HEAD, NEXT, compareFile, provenanceFile,
+], { encoding: 'utf8' });
+ok(classifyMoved.status === 1 && /moved after the gate/.test(classifyMoved.stderr),
+  'classify-push-head CLI fails closed when the live head is not a forward repair');
+try { fs.unlinkSync(compareFile); } catch { /* ignore */ }
+try { fs.unlinkSync(provenanceFile); } catch { /* ignore */ }
+
 const assertSame = spawnSync(process.execPath, [
   path.join(__dirname, 'scripts/atlas-cursor-repair-gate.js'),
   'assert-head', HEAD, HEAD, HEAD,
@@ -442,17 +588,44 @@ const pushScript = (commitStep.match(/run: \|\n([\s\S]*)$/) || [, ''])[1];
 const assertCalls = [...pushScript.matchAll(/node[^\n]*assert-head/g)].map((match) => match[0]);
 const firstAssertAt = pushScript.indexOf('assert-head');
 const secondAssertAt = pushScript.indexOf('assert-head', firstAssertAt + 1);
-const applyAt = pushScript.indexOf('git apply');
+const cachedApplyAt = pushScript.indexOf('git apply --cached');
+const mutationApplyAt = (() => {
+  let idx = 0;
+  while (idx < pushScript.length) {
+    const found = pushScript.indexOf('git apply', idx);
+    if (found < 0) return -1;
+    if (!pushScript.slice(found).startsWith('git apply --cached')) return found;
+    idx = found + 1;
+  }
+  return -1;
+})();
 const commitAt = pushScript.indexOf('git commit');
 const gitPushAt = pushScript.indexOf('git push');
+const classifyAt = pushScript.indexOf('classify-push-head');
 ok(assertCalls.length === 2,
   'both pre-mutation assert-head calls remain', `count=${assertCalls.length}`);
 ok(firstAssertAt >= 0 && secondAssertAt > firstAssertAt
-  && applyAt > secondAssertAt && commitAt > applyAt && gitPushAt > commitAt,
-  'git apply occurs only after both assert-head checks; commit/push only after apply',
-  `assert1=${firstAssertAt} assert2=${secondAssertAt} apply=${applyAt} commit=${commitAt} push=${gitPushAt}`);
-ok(!/git apply|git commit|git push|git rebase|git merge/.test(pushScript.slice(0, firstAssertAt)),
-  'no apply, commit, push, rebase, or merge before the first assert-head');
+  && mutationApplyAt > secondAssertAt && commitAt > mutationApplyAt && gitPushAt > commitAt,
+  'worktree git apply occurs only after both assert-head checks; commit/push only after apply',
+  `assert1=${firstAssertAt} assert2=${secondAssertAt} apply=${mutationApplyAt} commit=${commitAt} push=${gitPushAt}`);
+ok(cachedApplyAt >= 0 && cachedApplyAt < classifyAt && classifyAt < mutationApplyAt,
+  'expected tree is derived from repair.patch before classify; mutation apply stays after classify');
+ok(/push-provenance\.json/.test(pushScript)
+  && /reviewedSha/.test(pushScript)
+  && /expectedTreeSha/.test(pushScript)
+  && /liveTreeSha/.test(pushScript)
+  && /REVIEWED_SHA/.test(pushScript),
+  'push binds classify-push-head to reviewed SHA and the trusted patch tree');
+ok(/git write-tree/.test(pushScript) && pushScript.indexOf('git write-tree') < classifyAt,
+  'trusted expected tree is written from the gated index plus repair.patch');
+ok(/adopt-live/.test(pushScript) && /evaluate-pending/.test(pushScript)
+  && pushScript.indexOf('adopt-live') < pushScript.indexOf('evaluate-pending'),
+  'adopt-live still reaches PENDING bookkeeping without a second push');
+ok(/git apply/.test(pushScript) && /push_action.*"push"/.test(pushScript.replace(/\s+/g, ' '))
+  || /push_action\}" == "push"/.test(pushScript),
+  'git apply remains inside the classified push arm');
+ok(!/git apply(?! --cached)|git commit|git push|git rebase|git merge/.test(pushScript.slice(0, firstAssertAt)),
+  'no worktree apply, commit, push, rebase, or merge before the first assert-head');
 ok(/atlas-github-pr-head-sync\.js/.test(pushJob),
   'push confirms the live PR head through the bounded helper');
 ok(/git push/.test(pushScript) && pushScript.indexOf('git push') < pushScript.indexOf('atlas-github-pr-head-sync.js'),
@@ -563,6 +736,77 @@ if (!race.mutate) {
 }
 ok(patch.includes('repair-for-gated'), 'the discarded patch was generated against the gated tree');
 try { fs.rmSync(raceDir, { recursive: true, force: true }); } catch { /* ignore */ }
+
+console.log('\n=== adopt-live binds to the trusted patch tree from a real git repo ===');
+const bindDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'atlas-repair-bind-'));
+const bindGit = (args, opts = {}) => spawnSync('git', args, {
+  cwd: bindDir, encoding: 'utf8', env: { ...process.env, GIT_INDEX_FILE: undefined, ...opts.env },
+});
+bindGit(['init', '-q']);
+bindGit(['config', 'user.email', 'atlas@example.test']);
+bindGit(['config', 'user.name', 'atlas-test']);
+fs.writeFileSync(path.join(bindDir, 'file.txt'), 'gated\n');
+bindGit(['add', 'file.txt']);
+bindGit(['commit', '-q', '-m', 'gated head']);
+const bindGated = bindGit(['rev-parse', 'HEAD']).stdout.trim();
+fs.writeFileSync(path.join(bindDir, 'file.txt'), 'trusted-repair\n');
+bindGit(['add', 'file.txt']);
+const bindPatch = path.join(bindDir, 'repair.patch');
+fs.writeFileSync(bindPatch, bindGit(['diff', '--cached', '--binary']).stdout);
+bindGit(['commit', '-q', '-m', 'trusted repair']);
+const bindRepair = bindGit(['rev-parse', 'HEAD']).stdout.trim();
+const bindRepairTree = bindGit(['rev-parse', 'HEAD^{tree}']).stdout.trim();
+fs.writeFileSync(path.join(bindDir, 'file.txt'), 'unrelated-descendant\n');
+bindGit(['add', 'file.txt']);
+bindGit(['commit', '-q', '-m', 'unrelated extra']);
+const bindUnrelated = bindGit(['rev-parse', 'HEAD']).stdout.trim();
+const bindUnrelatedTree = bindGit(['rev-parse', 'HEAD^{tree}']).stdout.trim();
+const expectedIndex = path.join(bindDir, 'expected.index');
+const derivedTree = bindGit(['write-tree'], {
+  env: (() => {
+    bindGit(['read-tree', `--index-output=${expectedIndex}`, bindGated]);
+    const applied = spawnSync('git', ['apply', '--cached', bindPatch], {
+      cwd: bindDir, encoding: 'utf8', env: { ...process.env, GIT_INDEX_FILE: expectedIndex },
+    });
+    ok(applied.status === 0, 'trusted repair.patch applies to the gated index');
+    return { GIT_INDEX_FILE: expectedIndex };
+  })(),
+}).stdout.trim();
+ok(derivedTree === bindRepairTree && derivedTree !== bindUnrelatedTree,
+  'write-tree from gated index plus repair.patch equals the trusted repair tree only');
+const bindCompare = (head, aheadBy) => ({
+  status: 'ahead',
+  merge_base_commit: { sha: bindGated },
+  ahead_by: aheadBy,
+  behind_by: 0,
+  head: { sha: head },
+});
+const bindAdopt = gate.classifyRepairPushHead(bindGated, bindRepair, bindRepair, bindCompare(bindRepair, 1), {
+  reviewedSha: bindGated,
+  expectedTreeSha: derivedTree,
+  liveTreeSha: bindRepairTree,
+});
+ok(bindAdopt.ok && bindAdopt.action === 'adopt-live',
+  'real trusted one-commit repair tree is adopted', bindAdopt.code);
+const bindRejectUnrelated = gate.classifyRepairPushHead(
+  bindGated, bindUnrelated, bindUnrelated, bindCompare(bindUnrelated, 1), {
+    reviewedSha: bindGated,
+    expectedTreeSha: derivedTree,
+    liveTreeSha: bindUnrelatedTree,
+  },
+);
+ok(bindRejectUnrelated.ok === false && bindRejectUnrelated.code === 'unrelated-descendant',
+  'real unrelated descendant tree is rejected', bindRejectUnrelated.code);
+const bindRejectExtra = gate.classifyRepairPushHead(
+  bindGated, bindUnrelated, bindUnrelated, bindCompare(bindUnrelated, 2), {
+    reviewedSha: bindGated,
+    expectedTreeSha: derivedTree,
+    liveTreeSha: derivedTree,
+  },
+);
+ok(bindRejectExtra.ok === false && bindRejectExtra.code === 'extra-descendant',
+  'real extra descendant is rejected even if a later tree is restated as trusted', bindRejectExtra.code);
+try { fs.rmSync(bindDir, { recursive: true, force: true }); } catch { /* ignore */ }
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
 process.exit(failures === 0 ? 0 : 1);
