@@ -34,7 +34,7 @@ for (const f of scripts) {
   try { new vm.Script(read('public/' + f), { filename: f }); ok(true, `public/${f}`); }
   catch (e) { ok(false, `public/${f}`, e.message); }
 }
-for (const f of ['server.js', 'test-forecast.js', 'test-budget.js', 'test-debt.js', 'test-invariants.js', 'test-mergecard.js']) {
+for (const f of ['server.js', 'test-forecast.js', 'test-budget.js', 'test-debt.js', 'test-invariants.js', 'scripts/figures-snapshot.js', 'scripts/figures-compare.js']) {
   try { new vm.Script(read(f), { filename: f }); ok(true, f); }
   catch (e) { ok(false, f, e.message); }
 }
@@ -110,70 +110,15 @@ ok(hookExecutable,
     ? `index mode ${hookIndexMode || 'missing'}`
     : (fs.existsSync(hookPath) ? '0' + (fs.statSync(hookPath).mode & 0o777).toString(8) : 'missing'));
 
-console.log('\n=== the review gates agree with each other ===');
-// The gates are three files that have to name the same things. If the template
-// renames a field, the merge-card check fails every PR until someone notices;
-// if the manifest and the gate disagree about the primary labels, the gate is
-// unsatisfiable. Both are silent failures, so they are checked here.
-const template = read('.github/PULL_REQUEST_TEMPLATE.md');
-const mergeCard = read('.github/workflows/merge-card-check.yml');
-const gate = read('.github/workflows/risk-label-gate.yml');
-const manifest = read('.github/labels.yml');
-const labelerCfg = read('.github/labeler.yml');
-const primaryRiskHelper = read('scripts/atlas-primary-risk.js');
-
-// Every field the check requires must exist in the template it points people at.
-const fieldsBlock = (/const FIELDS = \[([\s\S]*?)\n\s*\];/.exec(mergeCard) || [, ''])[1];
-const reviewFieldsBlock = (/const REVIEW_FIELDS = \[([\s\S]*?)\n\s*\];/.exec(mergeCard) || [, ''])[1];
-const required = [...`${fieldsBlock}\n${reviewFieldsBlock}`.matchAll(/'([^']+)'/g)].map(m => m[1]);
-ok(required.length >= 8, 'the merge-card check declares its required fields', `${required.length} fields`);
-const missingFromTemplate = required.filter(f => !template.includes(`**${f}**`));
-ok(missingFromTemplate.length === 0,
-  'every field the check requires exists in the PR template',
-  missingFromTemplate.join(', ') || 'all present');
-ok(/^### Atlas Contract \/ Systems Review$/m.test(template),
-  'the template carries the review section the mechanical check requires');
-
-// And every prose heading it requires.
-const headings = [...mergeCard.matchAll(/^\s*for \(const heading of \[([^\]]+)\]/gms)]
-  .flatMap(m => [...m[1].matchAll(/'([^']+)'/g)].map(x => x[1]));
-const missingHeadings = headings.filter(h => !new RegExp(`^#{2,4}\\s*${h.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`, 'm').test(template));
-ok(missingHeadings.length === 0,
-  'every prose section the check requires exists in the template',
-  missingHeadings.join(', ') || `${headings.length} sections`);
-
-// The helper's primary list, the merge-card closed vocabulary, and the
-// manifest must describe the same four labels. The workflow must not keep a
-// second copy.
-const helperPrimary = (/const PRIMARY = Object\.freeze\(\[([^\]]+)\]\)/.exec(primaryRiskHelper) || [, ''])[1]
-  .match(/'([^']+)'/g) || [];
-const gateNames = helperPrimary.map(s => s.replace(/'/g, ''));
-ok(gateNames.length === 4, 'the primary-risk helper names four primary labels', gateNames.join(', '));
-ok(/scripts\/atlas-primary-risk\.js/.test(gate), 'the risk gate derives the GitHub label from the helper');
-ok(!/const PRIMARY = \[/.test(gate), 'the risk-gate workflow does not keep a second PRIMARY list');
-const mergeCardPrimary = (/const PRIMARY_RISK = \[([^\]]+)\]/.exec(mergeCard) || [, ''])[1]
-  .match(/'([^']+)'/g) || [];
-ok(mergeCardPrimary.map(s => s.replace(/'/g, '')).join(',') === gateNames.join(','),
-  'merge-card-check uses the same closed Primary risk vocabulary');
-const notInManifest = gateNames.filter(n => !new RegExp(`^- name: ${n}$`, 'm').test(manifest));
-ok(notInManifest.length === 0,
-  'and every one of them exists in the label manifest', notInManifest.join(', ') || 'all present');
-
-// Every category the labeller can apply must exist too, or PRs get labelled
-// with names the repo does not have.
-const labelerNames = [...labelerCfg.matchAll(/^([a-z][a-z-]*):$/gm)].map(m => m[1]);
-const unknown = labelerNames.filter(n => !new RegExp(`^- name: ${n}$`, 'm').test(manifest));
-ok(unknown.length === 0, 'every auto-applied category label is in the manifest',
-  unknown.join(', ') || `${labelerNames.length} categories`);
-ok(labelerNames.every(n => !gateNames.includes(n)),
-  'and no primary label is applied automatically by path',
-  'the primary label is projected from the Merge Card, not from paths');
-
-// The snapshot the figures review diffs must actually run.
+console.log('\n=== published-figure comparison is still in CI ===');
 ok(fs.existsSync(path.join(__dirname, 'scripts/figures-snapshot.js')),
   'the published-figures snapshot script exists');
-ok(/figures-snapshot\.js/.test(read('.github/workflows/figures-review.yml')),
-  'and the figures review runs it');
+ok(fs.existsSync(path.join(__dirname, 'scripts/figures-compare.js')),
+  'the published-figures compare script exists');
+ok(/figures-snapshot\.js/.test(read('.github/workflows/atlas-ci.yml')),
+  'and Atlas CI runs the snapshot');
+ok(/figures-compare\.js/.test(read('.github/workflows/atlas-ci.yml')),
+  'and Atlas CI compares base against head in the same job');
 
 console.log('\n=== the security gate is intact ===');
 const server = read('server.js');

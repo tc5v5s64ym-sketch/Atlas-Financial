@@ -51,7 +51,7 @@ const SUITES = [
   'test-invariants.js',
   'test-authority-coverage.js',
   'test-evidence-use-register.js',
-  'test-mergecard.js',
+  'test-atlas-ci.js',
   'test-live-household.js',
   'test-dedup-facts.js',
   'test-reconcile.js',

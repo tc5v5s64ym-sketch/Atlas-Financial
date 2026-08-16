@@ -57,7 +57,8 @@ has to agree.
 Four fields in the merge card: builder surface, primary builder model,
 supporting models (or `None`), and the dispatch authority. Record the model name
 your surface actually displays. If it withholds it, say so plainly — never guess
-one. `CLAUDE.md` holds the rule.
+one. `CLAUDE.md` holds the rule. The card is a human-readable record, not a
+CI state machine.
 
 ## Branches, handoff, and scope
 
@@ -83,7 +84,7 @@ This is the one launcher. Do not write a second one.
 > owns eligibility, order and interruption, and this launcher restates none of
 > it. Verify current repository state
 > before editing. Use a fresh `agent/<outcome>` branch from current `main`.
-> One independently provable outcome, merge card filled, findings
+> One independently provable outcome, slim merge card filled, findings
 > dispositioned. Stop only for an owner-reserved item or the required review.
 
 Before implementing, report only: the source/item, the current-state verdict,

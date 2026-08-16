@@ -4,100 +4,76 @@ This file records the repository's merge gates, what each gate checks, and the
 demonstrated failure that justifies it. [`CLAUDE.md`](../CLAUDE.md) owns review
 authority and the bounded review protocol.
 
-## Primary risk — exactly one, from the Merge Card
+## Delivery path
 
-| Label | Meaning | Owner action |
+Cursor builds and runs focused/local tests → pull request → one GitHub-hosted
+**Atlas CI** check → ChatGPT exact-head Atlas Contract / Systems Review when a
+high-risk trigger fires → `PASS` plus green CI → merge.
+
+GitHub Pro branch protection (configured by the owner after the code that
+introduces Atlas CI lands) enforces the PR + CI boundary on `main`. Intended
+settings:
+
+- `main` is protected
+- changes land through a pull request
+- the required status check is **Atlas CI**
+- force pushes and deletion are blocked
+- "require branch to be up to date" stays off unless a real race appears —
+  that setting mostly creates extra CI reruns
+- do **not** require a GitHub reviewer; a single-owner repository would
+  self-block
+- the owner retains emergency/bypass authority
+
+Native ChatGPT / Codex usage is the review lane. There is no OpenAI API
+review path and no `OPENAI_API_KEY` in Actions.
+
+## Primary risk — human guidance, not a GitHub label gate
+
+| Signal | Meaning | Owner action |
 |---|---|---|
-| `auto-safe` | No published figure moves and no fact changes home. | None. Merge on green. |
-| `figures-moved` | A figure the household reads changes. | Read the figures diff and reconcile it with the card. |
-| `owner-decision` | A household fact or owner-reserved decision is outstanding. | Answer the exact question. |
-| `blocked` | A hard gate failed or a real blocker remains. | Do not merge. |
+| no figures moved, no owner question | Safe on green Atlas CI, plus ChatGPT `PASS` when review was required. | None. Merge on green. |
+| figures moved | A Plan-page figure the household reads changes. | Read the Atlas CI figures summary and reconcile it with the card. |
+| owner decision required | A household fact or owner-reserved decision is outstanding. | Answer the exact question. |
+| blocked | A hard gate failed or a real blocker remains. | Do not merge. |
 
-The Merge Card `Primary risk` row is the authority. The GitHub primary-risk
-label is a synchronized projection of that closed value, not a second
-judgement. `risk-label-gate.yml` reads the live card, applies exactly that
-label, removes the other three, and requires the live GitHub label to equal
-the card. It runs from the default-branch workflow through
-`pull_request_target`, so a pull request cannot weaken the copy of the gate
-that judges it. A malformed card fails red and does not invent a label.
-
-Category labels are descriptive and non-blocking:
-
-`engine` · `published-figures` · `plan-page` · `authority-docs` · `security` ·
-`tests` · `infrastructure` · `evidence-only`
+The merge card records the signal. GitHub labels are optional description.
+They are not a second merge authority.
 
 ## Hard gates
 
-### `merge-card-check`
+### Atlas CI
 
-The merge card check validates only mechanical facts:
+One GitHub-hosted job per pull-request head update. It does not also run on
+branch push. The check name is `Atlas CI`.
 
-- the Atlas Merge Card heading exists;
-- the required table rows exist and are not blank placeholders;
-- `Current-state verdict` opens with one documented closed value;
-- `Primary risk` opens with one of `auto-safe` / `figures-moved` /
-  `owner-decision` / `blocked`;
-- the architecture-review decision opens `REQUIRED` or `NOT REQUIRED`;
-- a required review is satisfied by a card `PASS` on the exact head with
-  `Reviewer: ChatGPT`, **or** by a trusted Atlas PASS review
-  (`tc5v5s64ym-sketch` and the canonical marker prefix) on the live head —
-  so a `PENDING` card cannot hang after that PASS exists; that override
-  covers only stale `PENDING`; an explicit live-card `BLOCKING` or
-  `NOT PASS` still fails even if a trusted PASS exists; `PENDING` with no
-  trusted PASS still fails closed, with an awaiting-review message;
-- a trusted NOT PASS / BLOCKING on the live head fails closed even if the
-  card still says PASS;
-- a not-required review records `N/A` for head, reviewer, and outcome; and
-- card text is read from the live pull request (`pulls.get`), not the workflow
-  event body. A closed PR, a non-`main` base, a PR or repository identity
-  change, or a live head that is not the event head fails closed; and
-- the check also runs on `pull_request_review` submitted, so posting a trusted
-  Atlas PASS retriggers it without waiting for card-sync. After trusted Atlas
-  PASS card-sync, the default-branch repair workflow still starts a fresh run
-  of this same workflow via `workflow_dispatch`, with
-  the PR number and expected head SHA. The dispatcher targets the PR head
-  branch when that commit's workflow file already has the trigger, so the
-  required check lands on that SHA. A PR head that predates the trigger
-  cannot be targeted (`gh workflow run --ref` uses the workflow version at
-  that ref); those runs use the default-branch workflow version, and this
-  job records the required check on the expected PR head. That run uses
-  the existing job name and the same live-PR validation. It fails closed
-  if the live PR/head no longer matches. GitHub does not chain
-  `pull_request` `edited` from `GITHUB_TOKEN`, so that event is not the
-  card-sync path. Codex reviews do not satisfy the required review.
+It preserves the demonstrated deterministic protection:
 
-It does not parse prose, negation, severity, scope, dispositions, review rounds,
-or open-loop narratives. It does not infer PASS from CI, Codex, or an older
-SHA. It does not merge or write financial state. It prevents the mechanical
-failure in which a required verdict outlives the code it covered, the
-mechanical failure in which a trusted PASS card-sync leaves the required
-check stale, and the hang in which a live trusted PASS exists but the card
-is still PENDING.
+- `npm test` — the financial publication correctness suite in [`test.js`](../test.js),
+  including the static/raw-data guard in `test-static.js`
+- published-figure comparison — `scripts/figures-snapshot.js` on base and head,
+  diffed by `scripts/figures-compare.js`, written to the check summary
 
-`test-mergecard.js` executes the real inline workflow script. It proves missing
-fields, invalid decisions, stale heads, wrong reviewer identity, and non-passing
-required outcomes fail. It proves a PENDING card with a trusted Atlas PASS on
-the live head succeeds, that Codex does not satisfy that path, that an
-explicit BLOCKING or NOT PASS on the live card still fails even when a
-trusted PASS exists, and that a later trusted NOT PASS on the live head
-fails closed. It proves the check reads the live PR body rather than the
-workflow event body, and that a moved live head or a closed or retargeted PR
-fails closed. It also proves `workflow_dispatch` with matching live PR/head
-succeeds and fails closed on mismatch. A default-branch dispatch for a PR
-head that predates the trigger records the required check on the expected
-head; a non-default dispatch ref whose run SHA is not the expected head
-still fails closed.
+A moved figure does not fail the job. The failure mode this comparison exists
+to catch is a figure moving *unnoticed*. The weekly-cap defect that started
+the correctness work changed a derived answer by $400 without crashing; a
+`data.json` diff would not have shown it.
 
-### `tests`
+Scope of the snapshot is Plan-page headline figures. It does not cover Deep
+Dive, Records, or Modellers.
 
-`npm test` runs the suites registered in [`test.js`](../test.js), which is the
-registry. This file keeps no copy of that list: a second inventory drifts as
-soon as a suite is added, and a gate document that misstates what the gate runs
-is worse than one that does not enumerate it. One lived here until 2026-08-12
-claiming seven suites against a registry that held fifteen.
+No secrets are used. The password gate and live-site checks stay out of CI
+because they need `SITE_PASSWORD` and a deployed instance.
 
-What the suites are is `test.js`'s. **Why they block** is this file's, and each
-one earns it against a demonstrated failure:
+`test-atlas-ci.js` proves this is the only workflow, that it still runs
+`npm test` and the figure comparison, and that the OpenAI API review path
+and the retired orchestration files are gone.
+
+### `npm test`
+
+[`test.js`](../test.js) is the registry. This file keeps no copy of that list.
+
+**Why the suites block** is this file's, and each one earns it against a
+demonstrated failure:
 
 - the weekly cap double-counted a payday;
 - one page published `$1,650/week` and `$0/week` for the same concept;
@@ -125,6 +101,8 @@ The static suite and pre-commit hook keep identifiers, raw/derived data,
 credentials, secrets, PDFs, and protected security behavior out of tracked
 changes. These controls remain hard because the repository contains private
 household source material and previously lost its hook protection silently.
+Atlas CI repeats the content scan via `test-static.js`; the hook does not run
+in Actions.
 
 ### Owner-reserved gates
 
@@ -135,75 +113,57 @@ financial-data connectivity, or a direction change. The owner gate in
 
 ## Review surfaces
 
-### Published figures review — advisory reconciliation
+### Published figures — Atlas CI summary
 
-`figures-review.yml` runs the engine on the base and head and comments with the
-figures that changed. It exists because the shipped weekly-cap defect changed a
-derived answer without crashing. The workflow is advisory because moving a
-figure is often the purpose of a PR; an unexplained mismatch between the comment
-and merge card is still a correctness defect to resolve.
+The same Atlas CI job writes which Plan-page figures moved. It exists because
+the shipped weekly-cap defect changed a derived answer without crashing. Moving
+a figure is often the purpose of a PR; an unexplained mismatch between the
+summary and the merge card is still a correctness defect to resolve.
 
 ### Atlas Contract / Systems Review — trigger-based blocking review
 
 This review is required only for the high-risk triggers in `CLAUDE.md`.
 The question is whether the exact head is unsafe or architecturally wrong to
-merge. The initial pass reports blockers only. A follow-up verifies the named
-fixes and the high-risk surface changed by those fixes. It does not reopen the
-untouched artifact for unlimited new findings.
-
-When the live Merge Card says `Required: REQUIRED`, the owner-authorized
-GPT-5.6 Atlas reviewer may perform that first review over the existing
-`OPENAI_API_KEY` / trusted Atlas reviewer path (`atlas-first-review.yml`).
-It uses the same exact-head and identity boundaries as the PR #63 follow-up
-reviewer. It does not spend on `NOT REQUIRED` cards, unparsed Required
-fields, drafts, or a SHA that already has a trusted PASS / NOT PASS /
-BLOCKING. Cursor still cannot write PASS. The Merge Card still records
-`Reviewer: ChatGPT`. Repair follow-up remains `atlas-rereview.yml`.
+merge. ChatGPT performs it on the exact head. A builder cannot declare `PASS`.
+There is no Actions job that calls the OpenAI API to produce that review.
 
 ### Independent improvement audit — optional
 
-Default to at most one advisory pass. A second pass is justified only for a
-high-severity/systemic finding or a response that materially changes a high-risk
-runtime, security, schema, authority, cutover, or product-trust surface. The
-retired `codex-review.yml` freshness reporter is not needed under this rule: an
-ordinary push does not create a requirement to rerun an optional audit. Native
-Codex automatic reviews are the intended first advisory pass: Codex docs say
-they post when a pull request is opened for review or marked ready, without an
-`@codex review` comment. That lane is operational: PR #63 received a real
-`chatgpt-codex-connector[bot]` review that found implementation defects. Codex
-remains advisory. It is not Atlas PASS authority. The `codex-review-request.yml`
-comment dispatcher remains retired: it never successfully posted `@codex review`,
-and it is not replaced by another token or dispatcher. A justified second pass
-remains a human `@codex review` comment. Atlas Contract / Systems Review, Merge
-Card, and Codex→Cursor handling of genuine submitted Codex reviews remain
-intact; deleting the broken dispatcher does not remove a hard merge authority.
+Default to at most one advisory pass. Native Codex automatic reviews remain
+an acceptable advisory first pass. Codex is not Atlas `PASS` authority.
 
 ## Control retirement
 
-Governance controls are not grow-only. `CLAUDE.md` owns the lifecycle rule. A
-control may be narrowed or retired when another surviving control covers its
-demonstrated failure at least as directly, or when the protected path no longer
-exists and a focused regression test proves that fact.
+Governance controls are not grow-only. `CLAUDE.md` owns the lifecycle rule.
 
-The retired controls in the simplification were review-prose parsing,
-negation handling, advisory freshness reporting, review-round accounting,
-machine-scored scope/atomicity narratives, and open-loop arithmetic. None
-protected product behavior. The surviving tests, reconciliations, invariants,
-security checks, exact-head equality, risk label, and owner gates do. The
-later-retired `codex-review-request.yml` comment dispatcher is the same class:
-it was a broken 403-producing comment poster, not a hard merge authority.
-Native Codex automatic reviews are the intended first-pass advisory mechanism
-and are proven operational as of PR #63. They remain advisory. Atlas Contract /
-Systems Review, Merge Card, and Codex→Cursor handling of genuine submitted
-reviews remain the surviving authorities.
+This simplification retires custom machinery whose purpose is now carried by
+GitHub Pro branch protection, the one Atlas CI check, ChatGPT exact-head
+review, and Cursor's own build/repair:
 
-## Setup
+- OpenAI API first-review and re-review (`OPENAI_API_KEY`)
+- first/rereview dispatchers
+- Codex/Cursor repair GitHub-Action orchestration
+- Merge Card mechanical/executable gate
+- risk-label Actions gates and redundant label Actions
+- PENDING / card-sync / retry plumbing
+- scripts and tests that existed solely to prove that orchestration
 
-The labels are created from `.github/labels.yml`. Add `tests`, `Merge card
-mechanical fields`, and `risk-label/primary` to branch protection's required
-status checks for `main`. The owner makes that repository-setting change; a
-workflow does not grant itself merge authority. Standing auto-merge of
-qualifying `auto-safe` pull requests is owner-granted as of 2026-08-16 and
-must not become operational until GitHub itself is enforcing those checks.
-That grant does not apply to `figures-moved`, `owner-decision`, `blocked`,
-or any other owner-reserved stop.
+What replaces each demonstrated protection:
+
+| Retired control | Surviving protection |
+|---|---|
+| `tests` workflow (push + pull_request) | Atlas CI on pull_request only, still running `npm test` |
+| `figures-review.yml` comment job | Same snapshot comparison inside Atlas CI, on the check summary |
+| `merge-card-check` exact-head / REQUIRED fields | ChatGPT exact-head review as a human record; Atlas CI for code; builder cannot write `PASS` |
+| `risk-label/primary` | Figures summary + merge-card owner-decision row + branch protection |
+| OpenAI API Atlas review | Native ChatGPT exact-head review on the ChatGPT subscription |
+| Cursor repair Actions | Cursor's own build/repair on the PR |
+| Label sync / auto-label | Optional manual labels; not a safety property |
+
+The earlier-retired controls (review-prose parsing, advisory freshness
+reporting, the broken `codex-review-request.yml` dispatcher) stay retired.
+
+Standing auto-merge of qualifying no-figures-moved pull requests remains
+owner-granted and must not become operational until GitHub itself is
+enforcing **Atlas CI** on `main`. That grant does not apply to
+figures-moved work, owner-reserved stops, or any other owner-reserved item.

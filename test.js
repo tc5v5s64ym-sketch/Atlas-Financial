@@ -58,13 +58,7 @@ const suites = [
   ['card current state (B91 D8)', 'test-card-state.js'],
   ['schedule vs posted (B91 D7)', 'test-posting.js'],
   ['near-boundary payday output (B91 D11)', 'test-near-boundary.js'],
-  ['merge-card check behaviour', 'test-mergecard.js'],
-  ['Codex Cursor repair gate', 'test-codex-cursor-repair.js'],
-  ['Atlas review-block card sync', 'test-atlas-review-block.js'],
-  ['instant Atlas API re-review', 'test-atlas-api-rereview.js'],
-  ['Atlas first REQUIRED review wake-up', 'test-atlas-first-review.js'],
-  ['Merge Card primary-risk projection', 'test-atlas-primary-risk.js'],
-  ['GitHub PR-head confirmation after push', 'test-github-pr-head-sync.js'],
+  ['Atlas CI delivery-system shape', 'test-atlas-ci.js'],
 ];
 
 let failed = [];

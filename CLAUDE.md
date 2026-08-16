@@ -85,8 +85,11 @@ wording, its reactions, or its identity.
 
 ### GitHub Actions
 
-The deterministic hard gates. A required check that is missing, stale, skipped,
-errored, timed out, cancelled or failed **is a failure**, not an absence of one.
+The deterministic hard gate is the single **Atlas CI** check. A required check
+that is missing, stale, skipped, errored, timed out, cancelled or failed **is
+a failure**, not an absence of one. GitHub Pro branch protection enforces the
+pull-request + Atlas CI boundary on `main`. There is no OpenAI API review
+path and no Actions repair/review orchestrator.
 
 ---
 
@@ -156,19 +159,15 @@ result is `PASS` when no unsafe or architecturally wrong condition remains.
 
 #### Merge-card record
 
-The review block records five fields:
+The merge card is a small human-readable PR record. It is not an executable
+state machine. When review is required it records:
 
-- **Required** — opens `REQUIRED` or `NOT REQUIRED`;
-- **Exact reviewed head** — the current full SHA when required, else `N/A`;
-- **Reviewer** — `ChatGPT` when required, else `N/A`;
-- **Review outcome** — `PASS` before merge when required, else `N/A`; and
-- **Findings and fix verification** — the blocker record or `N/A`.
+- **Exact reviewed head** — the current full SHA;
+- **Review result** — `PASS` or `BLOCKING`.
 
-`merge-card-check` enforces those closed forms, exact-head equality, and a
-small closed list of file paths that always touch a high-risk surface. A pull
-request touching one of those paths cannot claim `NOT REQUIRED`. Paths outside
-that list still use the trigger decision above. The check does not interpret
-findings prose or claim that a review was good.
+A builder cannot declare Atlas `PASS`. ChatGPT writes that result on the
+exact head. GitHub does not require a reviewer identity that would self-block
+this single-owner repository.
 
 ### Independent improvement audit — optional and bounded
 
@@ -189,12 +188,9 @@ blocker is the defect, not the existence or freshness of an advisory review.
 
 The active implementation agent merges when all of these hold:
 
-- every applicable GitHub check passed **on the exact current head**;
-- the merge card is complete, including attribution and the review block;
-- exactly one primary risk value, taken from the Merge Card and projected onto
-  the GitHub label (`docs/RISK_LABELS.md`);
-- the required review records `PASS` on the exact merged head when a high-risk
-  trigger fired;
+- **Atlas CI** passed **on the exact current head**;
+- the required ChatGPT review records `PASS` on the exact merged head when a
+  high-risk trigger fired;
 - no real financial, security, authority, invariant, or product-trust blocker
   remains;
 - one independently provable outcome, clean branch, no unrelated drift, no
@@ -203,25 +199,24 @@ The active implementation agent merges when all of these hold:
 
 ## Merge policy
 
-The Merge Card `Primary risk` row decides what the owner does. The GitHub
-primary label is a projection of that row, not a second judgement.
-`docs/RISK_LABELS.md` defines each closed value:
+`docs/RISK_LABELS.md` records what the owner does with the signal on the card
+and the Atlas CI figures summary:
 
-- **`auto-safe`** — merge on green. No approval click, no waiting.
-- **`figures-moved`** — the owner sees the figures diff before the merge. That
-  is a *look*, not a sign-off ritual: reconcile the bot's list against the card,
-  and if they disagree, one of them is wrong.
-- **`owner-decision`** — blocked on a person, not on code.
-- **`blocked`** — not mergeable as it stands.
+- no figures moved and no owner question — merge on green;
+- figures moved — the owner looks at the Atlas CI figures summary and
+  reconciles it with the card;
+- owner decision required — blocked on a person, not on code;
+- a hard gate failed or a real blocker remains — not mergeable.
 
 The owner never has to click approve to make a green, in-scope pull request
 mergeable. Owner-reserved items are **gates on specific questions**, never merge
-approvals.
+approvals. GitHub labels are optional description, not a second authority.
 
 ## Merge-card attribution
 
-Every pull request declares who did the work, in the merge card. It is the only
-place — no commit trailer, no model registry, no tracking sheet beside it.
+Every pull request declares who did the work, in the merge card. It is a
+human record, not a CI gate — no commit trailer, no model registry, no
+tracking sheet beside it.
 
 - **Builder surface** — the tool the work ran on;
 - **Primary builder model** — the exact model name the surface displays;
@@ -360,9 +355,9 @@ Every implementation pull request should be explainable as one chain:
 **purpose → authority → implementation → integration → proof → cleanup →
 closure.**
 
-Work is finished when a loop is closed, not when code lands. Use the merge-card
-reviewer-guidance section to state the outcome, non-goals, authority, consumer,
-proof, and cleanup in concise prose. CI does not score or count them.
+Work is finished when a loop is closed, not when code lands. State the
+outcome, non-goals, authority, consumer, proof, and cleanup in concise prose
+on the pull request. CI does not score or count them.
 
 For every new production building block — a module, a derived figure, a script,
 a workflow, a bridge — name:
@@ -383,8 +378,8 @@ step. What it may not do is call itself finished.
 
 ### Defect classification
 
-Before fixing, classify — and record it in the card's **Authority impact** row,
-which is already the home for what wins and what loses:
+Before fixing, classify — and say on the pull request what wins and what
+loses:
 
 - **Local defect** — one owner is wrong. Fix that owner.
 - **Authority defect** — two or more things decide the same concept. Choose one
@@ -436,16 +431,14 @@ proved and reviewed on one head, so there is little left to ask about.
 
 ## Machines enforce structure; reviewers judge meaning
 
-CI may enforce a fixed vocabulary, a field's presence, a SHA shape, equality to
-the current head, an arithmetic identity, or another deterministic fact. CI may
-not infer meaning from prose, negation, severity wording, scope arguments,
-finding dispositions, or review-round narratives.
+Atlas CI may enforce an arithmetic identity, a static/raw-data scan, or another
+deterministic fact. CI may not infer meaning from prose, negation, severity
+wording, scope arguments, finding dispositions, or review-round narratives.
 
-`merge-card-check` therefore checks required rows, the current-state opening,
-the closed required-review record, and whether a mechanically high-risk file
-path was incorrectly marked `NOT REQUIRED`. File paths are facts, not prose.
-Small-PR discipline, closed-loop delivery, advisory dispositions, and cleanup
-explanations remain reviewer guidance.
+The one GitHub-hosted job therefore runs `npm test` and the published-figure
+comparison. Exact-head Atlas review remains a ChatGPT judgement recorded on
+the card. Small-PR discipline, closed-loop delivery, advisory dispositions,
+and cleanup explanations remain reviewer guidance.
 
 ## Governance-control lifecycle
 
@@ -513,12 +506,12 @@ npm test
 
 Then whatever the change actually touches: `node test-forecast.js` after any
 change to the `plan` block, `node test-local.js` after `server.js`,
-`node test-mergecard.js` after the merge card check or the pull request
+`node test-atlas-ci.js` after the Atlas CI workflow or the pull request
 template, and `node verify-live.js` against the deployed site for the security
 behaviour visible without a password.
 
-**The review machinery is code, and it is tested like code.** A change to
-`merge-card-check.yml` that nothing catches is a change to what may merge.
+**The CI workflow is code, and it is tested like code.** A change to
+`atlas-ci.yml` that nothing catches is a change to what may merge.
 
 A test should prove the failure cannot recur through the path a household
 actually reads — not only through the helper that was just written.

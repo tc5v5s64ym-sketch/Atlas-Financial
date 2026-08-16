@@ -2,10 +2,10 @@
 /* Every published headline figure, as one flat JSON map. `node scripts/figures-snapshot.js`
  *
  * This exists so a pull request cannot move a number the household acts on
- * without anyone noticing. CI runs it on the base revision and on the head,
- * diffs the two, and posts the result on the PR. A change here is not a
- * failure — it is usually the whole point of the change — but it has to be
- * SEEN, and it has to match what the merge card says was intended.
+ * without anyone noticing. Atlas CI runs it on the base revision and on the
+ * head, diffs the two, and writes the result on the check summary. A change
+ * here is not a failure — it is usually the whole point of the change — but
+ * it has to be SEEN, and it has to match what the merge card says was intended.
  *
  * The rule for what belongs in here: if the household could read it off the
  * Plan page and do something differently because of it, it belongs. Anything

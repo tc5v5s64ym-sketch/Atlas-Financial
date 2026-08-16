@@ -1230,37 +1230,27 @@ caught, give it a deterministic predicate, prove that predicate fails on the
 mechanical defect, and state its retirement condition. This is governance, not
 product truth: it changes no figure and gates no product work.
 
-**B82 · The figures comment claims a wider scope than it checks** · *governance, small*
-`figures-review.yml` compares `scripts/figures-snapshot.js` output between base
-and head, and on a clean run posts: *"Every one of the N figures the household
-can read off the Plan page is identical on this head and on `main`. Whatever this
-PR changes, it does not change what the household is told."* The first sentence
-is exactly right and names its scope. The second generalises past it — the
-snapshot's own rule is what the household reads off the **Plan page**, and the
-household is also told things on Deep Dive, Records and Modellers. A pull request
-that moves only a Deep Dive figure would draw that sentence unchanged.
-Found on PR #13, which moved the Deep Dive "Next due" selection: the comment
-reported 75/75 identical and was correct, but nothing it compared covered the
-tile the PR was about. Nothing is wrong in the repository today and no figure is
-misreported; the defect is that a true, narrow result is worded as a broad one,
-which is the false-green shape this repository already has scar tissue for —
-`scripts/figures-snapshot.js`'s own header records an earlier conflation of
-"unchanged against the previous commit" with "unchanged against base". The
-cheapest honest fix is wording: say what was compared and stop. Anything more —
-extending the snapshot to the other three pages — is a real scope decision about
-what counts as a published figure, and belongs to the owner, not to a wording
-fix.
+**B82 · The figures comment claims a wider scope than it checks** · **DONE 2026-08-16** · *governance, small*
+`figures-review.yml` used to post *"Whatever this PR changes, it does not change
+what the household is told"* after comparing only Plan-page snapshot keys.
+Found on PR #13. The wording fix landed with the Atlas CI fold: 
+`scripts/figures-compare.js` names Plan-page headline figures from
+`scripts/figures-snapshot.js` and explicitly does not cover Deep Dive, Records,
+or Modellers. Extending the snapshot to the other three pages remains an owner
+scope decision.
 
-**Issue #57 remainder · Autonomous delivery loop** · *governance, not a new B-id*
+**Issue #57 remainder · Autonomous delivery loop** · **SUPERSEDED 2026-08-16** · *governance, not a new B-id*
 
-The repair → handoff → GPT-5.6 follow-up → card-sync middle is live as of
-PR #63. Duplicate GitHub/Merge-Card primary-risk state closed in PR #64.
-Owner granted first REQUIRED GPT-5.6 reviews on 2026-08-16; the first-review
-wake-up is this outcome. Standing auto-merge of qualifying `auto-safe` PRs
-is granted but must not become operational until GitHub itself enforces
-`tests`, `Merge card mechanical fields`, and `risk-label/primary` on `main`.
-Next-node wakeup remains later. They do not reorder `B91` and they are not
-a slice taxonomy.
+Owner instruction after upgrading GitHub to Pro: replace the custom
+review/orchestration maze with the smallest delivery system that keeps the
+demonstrated hard safety properties. Atlas CI (one job per PR-head update:
+`npm test` plus published-figure comparison on the check summary) is the
+GitHub-hosted gate. ChatGPT exact-head Atlas review remains required when a
+high-risk trigger fires, on the ChatGPT subscription, not the OpenAI API.
+Cursor builds and repairs itself. GitHub Pro branch protection enforces the
+PR + CI boundary after that code lands. PR #67 (prove the old first-review
+loop) is obsolete under this architecture and should be closed unmerged.
+Does not reorder `B91`.
 
 **B85 · Evidence-Use Register** · **DONE 2026-08-13** · *architecture, one outcome*
 

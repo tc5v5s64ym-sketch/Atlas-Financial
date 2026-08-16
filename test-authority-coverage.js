@@ -176,9 +176,11 @@ for (const script of ['scripts/periods.js', 'scripts/calendar-ics.js']) {
 }
 
 console.log('\n=== hard-gate protection ===');
-const mergeCard = read('.github/workflows/merge-card-check.yml');
-ok(/authority-coverage/.test(mergeCard),
-  'changing this guard is mechanically high-risk and cannot claim NOT REQUIRED');
+const atlasCi = read('.github/workflows/atlas-ci.yml');
+ok(/npm test/.test(atlasCi),
+  'Atlas CI runs the correctness suite that includes this guard');
+ok(/test-authority-coverage\.js/.test(read('test.js')),
+  'this guard is registered in npm test');
 
 console.log('\n=== declared coverage boundary ===');
 ok(/Page scripts that decide rather than render remain the B73 review class/.test(

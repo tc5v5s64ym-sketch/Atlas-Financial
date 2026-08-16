@@ -194,7 +194,7 @@ never outranks the repository.
 
 ## Review and merge portability
 
-GitHub Actions and deterministic checks remain the hard mechanical gates.
+GitHub Actions' **Atlas CI** check remains the hard mechanical gate.
 Independent agent review remains optional/advisory unless `CLAUDE.md` says a
 real defect itself blocks. The trigger-based Atlas Contract / Systems Review is
 separate and is performed by ChatGPT when required.

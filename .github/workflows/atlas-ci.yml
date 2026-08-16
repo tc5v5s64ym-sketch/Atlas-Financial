@@ -1,0 +1,63 @@
+# Atlas CI — the one GitHub-hosted check.
+#
+# Runs once per pull-request head update. It does not also run on branch push,
+# so a normal PR does not pay for the same suite twice. Published-figure
+# comparison lives in this same job and is written to the check summary; it
+# does not spend a second runner merely to post a comment.
+#
+# No secrets. No OpenAI API. No repair or review orchestration.
+name: Atlas CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: atlas-ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    name: Atlas CI
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # No dependencies are needed to run the suite — it is plain Node — so the
+      # install is skipped rather than pulling express in to sit unused.
+      - name: Run the correctness suite
+        run: npm test
+
+      # Each revision runs its own snapshot script. The engine's shape changes
+      # between revisions; one revision's script against the other's data is
+      # not a comparison of anything.
+      - name: Snapshot published figures
+        run: |
+          set -euo pipefail
+          node scripts/figures-snapshot.js > "$RUNNER_TEMP/head.json"
+          git fetch origin "${{ github.base_ref }}"
+          git worktree add "$RUNNER_TEMP/base" "origin/${{ github.base_ref }}"
+          if [ -f "$RUNNER_TEMP/base/scripts/figures-snapshot.js" ]; then
+            ( cd "$RUNNER_TEMP/base" && node scripts/figures-snapshot.js ) > "$RUNNER_TEMP/base.json"
+          else
+            echo 'null' > "$RUNNER_TEMP/base.json"
+          fi
+
+      - name: Compare published figures
+        run: |
+          set -euo pipefail
+          node scripts/figures-compare.js \
+            "$RUNNER_TEMP/base.json" \
+            "$RUNNER_TEMP/head.json" \
+            --base-ref="${{ github.base_ref }}" \
+            > "$GITHUB_STEP_SUMMARY"
