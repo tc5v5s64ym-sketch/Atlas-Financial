@@ -28,8 +28,11 @@ trigger, not a second order of work.
 `B91` remains **IN PROGRESS** and is not DONE. Owner instruction the same
 day: manual current-state capture is now the binding product limit, so a
 read-only connectivity spike (`B80`) is brought forward rather than waiting
-on `B20` / `B21` / `B78`. History remains a by-product of successful
-refresh. Do not start `B20` first. Do not mark `B91` done.
+on `B20` / `B21` / `B78`. A later owner instruction the same day established
+the master-forecast product contract (`AF-PLAN-01` / `B94`); engine work is
+queued, not started, and does not interrupt `B91` or `B80`. History remains
+a by-product of successful refresh. Do not start `B20` first. Do not mark
+`B91` done.
 
 ---
 
@@ -263,7 +266,8 @@ B78  refresh identity / idempotency on real provider behaviour
   ↓
 B20  history from successful refresh
   ↓
-longer forecast horizon when a household question requires it
+B94 / AF-PLAN-01  one master forecast, ≥12 months; views only
+     ← contract established 2026-08-16; engine work queued, not started
 ```
 
 Later items are not mechanically blocked by every earlier one. Agents must
@@ -347,9 +351,10 @@ are not authorities.
 - **`AF-HIST-01` / `B20`** — balance history should be a **by-product of
   successful refreshes**, not an independent system built first. Do not pull
   it ahead of `AF-RECON-01` because an earlier revision of this file did.
-- **Longer operating horizons** — later. B74 proved recurrence expansion can
-  already run beyond the 91-day display. Extend the operating picture only
-  when a concrete household question requires it. Do not add a second engine.
+- **`AF-PLAN-01` / `B94`** — the 2026-08-16 owner instruction established the
+  master-forecast product contract in `ARCHITECTURE.md`. Engine work is
+  queued, not started. Prefer after `B91` so a longer horizon is fed current
+  facts. Do not add a second engine. Do not mark `B91` done to make room.
 - **`AF-INTAKE-01` / `B21`** — a second-month intake run remains the proof
   that the refresh path works on new evidence. It waits on `AF-RECON-01`,
   not on snapshots existing first.
@@ -596,7 +601,8 @@ authority chain. Remaining gaps are evidence freshness (`B91`) and owner
 policy such as Q24, not missing product machinery. The Aug. 14 reviews and
 payday test then showed the prerequisites: refresh-safe tests (`B92`) and
 derive/delete of proven duplicate live facts (`B93`). Both are complete.
-`B91` is next.
+`B91` is next. The 2026-08-16 master-forecast contract is destination, not
+a retroactive Phase 1 gap; engine work is `AF-PLAN-01` / `B94`.
 
 ### AF-TEST-01 · Make ordinary evidence refresh cheap
 
@@ -746,6 +752,43 @@ exist.
   policy), Q19, unknown card pending, and $600/week are not
   promoted. Date relation is reported without a universal STALE
   threshold. Do not mark this item done.
+
+### AF-PLAN-01 · One master forecast; ranges are views
+
+Owner instruction 2026-08-16 established the product contract in
+`ARCHITECTURE.md`. This item is the later engine work. It is **queued, not
+started**, and this pull request does not implement it.
+
+- **Outcome** — Forecast, in place, is the one master household forecast with
+  a knowledge horizon of at least twelve months. Week, payday, month, 13
+  weeks, 6 months, 1 year, and a custom date range are views of that same
+  projection. Changing the visible range does not change what the plan
+  knows. Known major costs outside the visible span still constrain today's
+  `Forecast.recommend` safe-to-spend. Forecast sequences funding among
+  future commitments by timing, certainty, and owner-stated priority.
+  Planned debt is allowed when necessary and is forecast with consequences
+  and a repayment path on the existing cash-and-debt walk. Named major
+  future plans publish ON TRACK / AT RISK / FUNDING GAP from Forecast.
+- **Incumbent** — `Forecast` (`expandEvents`, `simulate`, `recommend`,
+  `projectDebts`) and `data.json` `plan`. `EVOLVE`. Does **not** replace
+  Forecast, add a goals engine, add a payday engine, or invent a generic
+  planning schema.
+- **Tier** — **M3** when the engine work starts. The 2026-08-16 contract
+  pull request is documentation only (M1 on figures; still triggers the
+  blocking review because it records product direction).
+- **Backlog** — `B94`.
+- **Entry gate** — prefer `AF-RECON-01` / `B91` far enough along that the
+  longer horizon is not built on a stale opening. Do not start this item
+  in order to mark `B91` done.
+- **Acceptance** — one Forecast projection; named ranges are views; a
+  hidden later commitment still reduces today's cap; funding sequence and
+  planned-debt repayment are Forecast results; major-plan verdicts come
+  from Forecast; pages render. Proof is independent of the function under
+  change. No second planner.
+- **Non-goals** — a second planner; a generic schema; a goals product; a
+  retirement engine; changing live household facts in the contract PR;
+  finishing `B91`; opening the store or connectivity gates.
+- **State** — **contract established 2026-08-16. Engine work queued.**
 
 ---
 
@@ -971,7 +1014,7 @@ resurrect it.
 | Refresh-safe tests | **ACTIVE** | `AF-TEST-01` / `B92`. **Complete.** | Already sequenced. Unpin behaviour tests from live household numbers. |
 | Derive/delete duplicate live facts | **ACTIVE** | `AF-DEDUP-01` / `B93`. **Complete.** After `B92`, before `B91`. | Already sequenced. Derive or delete proven copies; do not add a sync layer. |
 | Balance history / snapshots | **ACTIVE** | Phase 2 `AF-HIST-01` / `B20`. **After** `AF-RECON-01`, as a by-product of refresh. | Already sequenced. Do not start because an older revision put it first in Phase 2. |
-| Longer operating forecast horizon | **PARKED** | 91-day `windowDays`; expander already walks further (B74 / ICS to 2027-05-01). `Forecast.renewal` remains a separate question. | A concrete household question the 91-day operating picture cannot answer. Reuse `expandEvents`. Never a second recurrence or forecast engine. |
+| One master forecast / longer operating horizon | **ACTIVE** | `AF-PLAN-01` / `B94`. Contract established 2026-08-16 in `ARCHITECTURE.md`. Live display remains 91-day `windowDays`; expander already walks further (B74 / ICS to 2027-05-01). Engine work queued, not started. | Already sequenced. Evolve Forecast. Never a second recurrence, payday, goals, or forecast engine. Do not start in the contract PR. |
 | Improved ingestion | **ACTIVE** | Phase 3 `AF-INGEST-01` / `B78`, to T3. Files still; no provider and no store. | Already sequenced. Entry is T2 plus `AF-INTAKE-01`'s record of manual steps. |
 | Automated financial-data connectivity / transaction feeds | **GATED** (live `B81`) | `ARCHITECTURE.md` connectivity gate. `AF-LIVE-01` / `B80` evaluation + fixture observe seam is authorised and in progress. `AF-LIVE-02` / `B81` stays closed until T4. | The owner passes the five-condition gate before any live connection becomes canonical. Evaluation does not require T3. Obtain no credential in git. |
 | Richer payroll / bonus / pension-contribution modelling | **PARKED** | The 91-day plan consumes estimated net pay. A statutory payroll engine (`EMP-006`) is excluded. Optional pension cash is already inside that net. No bonus cash event is on the live plan. | A named consumer that current net cannot serve — a window that includes a CPP/EI reset, or an owner-supplied bonus or pension cash event, or an owner-supplied horizon that needs statutory seasonality. Do not build a payroll engine in order to absorb a net `Forecast` already consumes. |

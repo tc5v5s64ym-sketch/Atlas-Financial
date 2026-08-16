@@ -34,7 +34,8 @@ facts PR; each needs its own independently provable outcome):
 not by this file. Remaining order after the B91 current-state foundation:
 read-only connectivity (`B80` spike, then a live Lunch Money observation
 test) → prove refresh identity on real provider behaviour (`B78`) →
-`B20` / `B21`. `B91` stays **IN PROGRESS** and is not DONE.
+`B20` / `B21` → `B94` / `AF-PLAN-01` (master-forecast contract established
+2026-08-16; engine work queued). `B91` stays **IN PROGRESS** and is not DONE.
 
 **Operational knowledge lives in `docs/ACCOUNT_FACTS.md`**, not here: how each
 institution's data is obtained, the download endpoints, and the traps that cost
@@ -1221,6 +1222,24 @@ posted opening; `postedBalance` is gone. Recurring historical `perMonth` is
 `perMonth: null`. Proved by `test-dedup-facts.js`. Published Plan figures
 unchanged 75/75. Do not add a sync layer. Do not treat `docs/positions.csv`
 as a universal fact database. Build-strategy item `AF-DEDUP-01`.
+
+**B94 · One master forecast; ranges are views** · `QUEUED` · *product contract established; engine work not started*
+Owner instruction 2026-08-16. The product contract lives in
+`ARCHITECTURE.md` under **One plan, many windows**: one Forecast
+projection at least 12 months forward; week / payday / month / 13 weeks /
+6 months / 1 year / custom range are views; changing the visible range
+does not change what the plan knows; known major costs outside the
+visible span still constrain today's safe-to-spend; Forecast sequences
+funding by timing, certainty and owner-stated priority; planned debt is
+allowed when necessary and must carry consequences and a repayment path;
+major future plans show ON TRACK / AT RISK / FUNDING GAP from Forecast.
+Forecast remains the planner. Do not create a second planner, a generic
+schema, or a parallel authority.
+
+The 2026-08-16 pull request records that contract only. It does not
+change `windowDays`, `Forecast.recommend`, `data.json`, or any published
+figure. Engine work waits on this item and should not run ahead of a
+trustworthy `B91` opening. Build-strategy item `AF-PLAN-01`.
 
 **B75 · Nothing checks that the authority table is complete** · **DONE 2026-08-11**
 PR #10 added `test-authority-coverage.js` to the blocking `npm test` suite. It
