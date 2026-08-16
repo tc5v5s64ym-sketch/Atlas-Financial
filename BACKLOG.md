@@ -33,7 +33,7 @@ facts PR; each needs its own independently provable outcome):
 [`docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`](docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md),
 not by this file. Current order (2026-08-16, after PR #82): finish `B91`
 with the freshest coherent current-state opening → `B94` master-forecast
-engine → prove the payday question end-to-end. `B80` and the live Lunch
+engine → `B96` prove the payday question end-to-end. `B80` and the live Lunch
 Money observation test are **done**. `B95` already absorbed the known
 major future costs onto `plan.commitments` — that is the one home; do not
 open a ticket per purchase. `B20` / `B21`, `B78`, provider-completeness,
@@ -54,10 +54,16 @@ to be visible, merchant strings needing normalising before matching).
 
 **Revalidate after the `B91` opening.** The crossing dates and the
 "draw $623 and it becomes 31 August" urgency are from the **2026-08-09
-Forecast opening**. They are not current published truth. The 12 August
-Burrard registrations are owner-confirmed paid (2026-08-16) and were not
-drawn on the HELOC for that purpose. Do not carry the Aug. 9 three-week
-loan story forward as today's plan.
+Forecast opening**. The 12 August Burrard registrations are
+owner-confirmed paid (2026-08-16) and were not drawn on the HELOC for
+that purpose. Do not carry the Aug. 9 three-week loan story forward as
+today's household plan.
+
+The **30 September** crossing is still the current published result:
+`data.json` remains dated 2026-08-09, and the current figure snapshot
+reports `debt.overLimit.heloc` as `2026-09-30`. That published figure is
+not verified current household truth until `B91` replaces the opening.
+It has not been retired from the site.
 
 On that 9 August opening the HELOC sat at $201,586.16 against a $202,654
 limit — $1,067.84 of headroom — and capitalises about **$814 a month with
@@ -1011,7 +1017,7 @@ stream, so two Burrard payments on 12 August correctly produce $320 and $623
 without two calendars.
 
 Do not reopen the closed schedule-authority list. Remaining critical path
-is finish `B91`, then `B94`, then the end-to-end payday proof, per the
+is finish `B91`, then `B94`, then `B96` (end-to-end payday proof), per the
 build strategy. `B20` / `B21` are not that path.
 
 **B87 · One authority for question OPEN / ANSWERED status** · **DONE 2026-08-14**
@@ -1260,9 +1266,9 @@ published figure. Engine work waits on this item and should not run ahead
 of a trustworthy `B91` opening. `B95` has already given the known major
 future costs one Plan home; this item does not re-home them. ON TRACK /
 AT RISK / FUNDING GAP applies to those major future plans, not to
-individual transactions or budget categories. After the engine exists,
-prove the payday question end-to-end: fresh evidence → canonical state →
-Forecast → household answer. Build-strategy item `AF-PLAN-01`.
+individual transactions or budget categories. The end-to-end payday
+proof is `B96` / `AF-PLAN-02`, after this engine exists; it is not part
+of this item. Build-strategy item `AF-PLAN-01`.
 
 **B95 · Absorb known major future costs onto the master plan** · **DONE 2026-08-16** · *canonical plan / evidence absorption*
 **This is the one backlog home for major-future-spend absorption.** Do
@@ -1272,19 +1278,26 @@ savings engine, a generic schema, or a second planner.
 Owner instruction 2026-08-16. Known major future spending and the named
 annual irregulars now have one home: unsettled `plan.commitments` for the
 one-off / owner-estimated costs, and the existing property-tax **reserve**
-for the annual municipal lump. Current owner estimates on that home:
-Fusion season ~$2,000; Burrards team fees ~$700; Warriors Elite Academy
-~$800; Seattle Nov $1,200; Seattle Dec $1,200; Christmas $3,500;
-downstairs couch ~$1,700 flexible; exterior painting $700–$1,200
-flexible; Indio Jan 2027 $5,260–$5,460; Provincials $1,000, timing TBD;
-plus home insurance and vehicle maintenance already supported by Atlas
-evidence. Deep Dive reads those rows through `Forecast.publicationTotals`;
+for the annual municipal lump. Amounts, timing, flexibility, and ranges
+live on those rows — do not copy them here. Deep Dive reads those rows
+through `Forecast.publicationTotals`;
 `data.commitments.items` is deleted as a second list. Undated rows emit
 no cash event and are not smeared across the 91-day sinking line. Open
 ranges stay ranges. No dates, priorities, funding amounts, or debt
 policy were invented. B94 sequencing and out-of-window safe-to-spend are
 not started. Proved by `test-major-future-costs.js`. A later estimate
 change is an edit to the existing row, not a new backlog item.
+
+**B96 · Prove the payday question end-to-end** · `QUEUED` · *after B94; not started*
+Distinct from `B94`. This item does not implement the master-forecast
+engine. After that engine exists, prove the closed loop a household
+actually reads: fresh evidence → canonical state → Forecast → household
+answer. Entry is `B91` far enough along that the opening is the current
+canonical state, and `B94` far enough along that Forecast is the master
+projection. Acceptance is an independently proved payday answer from
+that chain, not a test of the function under change. Do not invent a
+second payday engine. Do not encode $600/week as policy. Build-strategy
+item `AF-PLAN-02`.
 
 **B75 · Nothing checks that the authority table is complete** · **DONE 2026-08-11**
 PR #10 added `test-authority-coverage.js` to the blocking `npm test` suite. It

@@ -32,8 +32,9 @@ current-state opening**. Do not keep the project blocked waiting for a
 historical Aug. 14 opening if newer complete evidence can provide the
 correct cutover. Known major future costs already have one Plan home
 (`B95`). Next engine work is `B94` / `AF-PLAN-01` (contract established;
-runtime not started). Then prove the payday question end-to-end: fresh
-evidence → canonical state → Forecast → household answer. `B20` / `B21`,
+runtime not started). Then `B96` / `AF-PLAN-02`: prove the payday
+question end-to-end: fresh evidence → canonical state → Forecast →
+household answer. `B20` / `B21`,
 `B78`, provider-completeness, broad historical forensics, and old
 categorisation cleanup are **not** critical-path gates unless they expose a
 demonstrated material source or financial-correctness gap. Do not mark
@@ -264,7 +265,7 @@ B94 / AF-PLAN-01  master-forecast engine
        gravity; dynamic funding reallocation; planned-debt
        consequences; major-plan ON TRACK / AT RISK / FUNDING GAP
   ↓
-End-to-end payday proof
+B96 / AF-PLAN-02  end-to-end payday proof
      fresh evidence → canonical state → Forecast → household answer
 ```
 
@@ -361,8 +362,10 @@ are not authorities.
   next critical-path item after a trustworthy `B91` opening. `B95` has
   already given the known major future costs one Plan home. Do not wait on
   `B20` / `B21`. Do not add a second engine. Do not mark `B91` done to make
-  room. After the engine exists, prove the payday question end-to-end from
-  fresh evidence → canonical state → Forecast → household answer.
+  room.
+- **`AF-PLAN-02` / `B96`** — after the engine exists, prove the payday
+  question end-to-end from fresh evidence → canonical state → Forecast →
+  household answer.
 - **`AF-HIST-01` / `B20`** — balance history should be a **by-product of
   successful refreshes**, not an independent system built first. Not a
   critical-path gate.
@@ -614,7 +617,8 @@ payday test then showed the prerequisites: refresh-safe tests (`B92`) and
 derive/delete of proven duplicate live facts (`B93`). Both are complete.
 `B80`, the live Lunch Money observation test, and `B95` are also complete.
 Critical path is finish `B91` with the freshest coherent opening, then
-`AF-PLAN-01` / `B94`, then the end-to-end payday proof. The 2026-08-16
+`AF-PLAN-01` / `B94`, then `AF-PLAN-02` / `B96` end-to-end payday proof.
+The 2026-08-16
 master-forecast contract is destination, not a retroactive Phase 1 gap.
 
 ### AF-TEST-01 · Make ordinary evidence refresh cheap
@@ -821,9 +825,8 @@ already given the known major future costs one Plan home.
   hidden later commitment still reduces today's cap; funding sequence,
   reallocation of released capacity, and planned-debt repayment are
   Forecast results; major-plan verdicts come from Forecast; pages render.
-  After the engine exists, the payday question is proved end-to-end from
-  fresh evidence → canonical state → Forecast → household answer. Proof
-  is independent of the function under change. No second planner.
+  Proof is independent of the function under change. No second planner.
+  End-to-end payday proof is `AF-PLAN-02` / `B96`, not this item.
 - **Non-goals** — a second planner; a generic schema; a goals product; a
   retirement engine; changing live household facts in a planning PR;
   finishing `B91`; opening the store or connectivity gates; applying
@@ -831,6 +834,27 @@ already given the known major future costs one Plan home.
   categories.
 - **State** — **contract established 2026-08-16. Engine work queued
   after `B91`. `B95` absorption already done.**
+
+### AF-PLAN-02 · Prove the payday question end-to-end
+
+After `AF-PLAN-01` / `B94`. This is a distinct critical-path step, not
+part of the engine item.
+
+- **Outcome** — a household payday answer is produced from the closed
+  loop: fresh evidence → canonical state → Forecast → household answer.
+- **Incumbent** — `B91` canonical state and `B94` Forecast. `CONSUME`.
+  Does **not** add a payday engine, a second forecast, or encode
+  `$600/week` as policy.
+- **Tier** — **M3**. Independent proof of the path a household actually
+  reads. **Backlog** — `B96`.
+- **Entry gate** — `AF-RECON-01` / `B91` far enough that the opening is
+  current canonical state, and `AF-PLAN-01` / `B94` far enough that
+  Forecast is the master projection.
+- **Acceptance** — the payday question is answered from that chain;
+  proof is independent of the function under change; no second planner.
+- **Non-goals** — implementing the master-forecast engine (`B94`);
+  finishing `B91`; a second payday engine; encoding `$600/week`.
+- **State** — **queued after `B94`. Not started.**
 
 ---
 
@@ -1066,6 +1090,7 @@ resurrect it.
 | Derive/delete duplicate live facts | **ACTIVE** | `AF-DEDUP-01` / `B93`. **Complete.** After `B92`, before `B91`. | Already sequenced. Derive or delete proven copies; do not add a sync layer. |
 | Balance history / snapshots | **ACTIVE** | Phase 2 `AF-HIST-01` / `B20`. **After** `AF-RECON-01`, as a by-product of refresh. | Already sequenced. Do not start because an older revision put it first in Phase 2. |
 | One master forecast / longer operating horizon | **ACTIVE** | `AF-PLAN-01` / `B94`. Contract established 2026-08-16 in `ARCHITECTURE.md`. Live display remains 91-day `windowDays`; expander already walks further (B74 / ICS to 2027-05-01). Engine work queued after `B91`. `B95` already absorbed the known major costs. | Already sequenced. Evolve Forecast. Never a second recurrence, payday, goals, or forecast engine. Do not start in a planning PR. |
+| End-to-end payday proof | **ACTIVE** | `AF-PLAN-02` / `B96`, after `B94`. | Already sequenced. Prove fresh evidence → canonical state → Forecast → household answer. Not a second payday engine. |
 | Improved ingestion | **ACTIVE** | Phase 3 `AF-INGEST-01` / `B78`, to T3. Files still; no provider and no store. | Already sequenced. Entry is T2 plus `AF-INTAKE-01`'s record of manual steps. |
 | Automated financial-data connectivity / transaction feeds | **GATED** (live `B81`) | `ARCHITECTURE.md` connectivity gate. `AF-LIVE-01` / `B80` evaluation + live Lunch Money observation test are **complete**. Remaining provider-completeness is not a critical-path gate. `AF-LIVE-02` / `B81` stays closed until T4. | The owner passes the five-condition gate before any live connection becomes canonical. Obtain no credential in git. |
 | Richer payroll / bonus / pension-contribution modelling | **PARKED** | The 91-day plan consumes estimated net pay. A statutory payroll engine (`EMP-006`) is excluded. Optional pension cash is already inside that net. No bonus cash event is on the live plan. | A named consumer that current net cannot serve — a window that includes a CPP/EI reset, or an owner-supplied bonus or pension cash event, or an owner-supplied horizon that needs statutory seasonality. Do not build a payroll engine in order to absorb a net `Forecast` already consumes. |

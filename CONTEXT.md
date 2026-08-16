@@ -117,14 +117,11 @@ off and closed. A live Lunch Money observation pull ran on 2026-08-16; that
 pull stays out of git.
 
 **Known major future costs already have one Plan home** (`B95` / PR #82):
-Fusion season ~$2,000; Burrards team fees ~$700; Warriors Elite Academy ~$800;
-Seattle Nov $1,200; Seattle Dec $1,200; Christmas $3,500; downstairs couch
-~$1,700 flexible; exterior painting $700–$1,200 flexible; Indio Jan 2027
-$5,260–$5,460; Provincials $1,000, timing TBD. Annual irregulars already
+unsettled `plan.commitments`. Amounts, timing, flexibility, and ranges
+live on those rows — do not copy them here. Annual irregulars already
 supported by Atlas evidence stay where they already live (home insurance and
 vehicle maintenance on `plan.commitments`; property tax as the existing
-reserve). Confidence and flexibility are preserved. This is not a goals
-engine.
+reserve). Remaining unknowns are Q22. This is not a goals engine.
 
 **Still outstanding / owner-blocked:** the wife's business economics (Q1); a
 home valuation (Q3); WebBroker holdings (Q11 — needs an exchange-agreement
