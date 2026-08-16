@@ -46,6 +46,13 @@ They are not a second merge authority.
 One GitHub-hosted job per pull-request head update. It does not also run on
 branch push. The check name is `Atlas CI`.
 
+The workflow file is loaded from the default branch via `pull_request_target`.
+A pull request that edits `.github/workflows/atlas-ci.yml` cannot change the
+steps or the check name that authorize its own merge. The job checks out the
+pull-request head to run the suite, then publishes the `Atlas CI` context onto
+that same head SHA — `pull_request_target`'s own job conclusion lands on the
+default-branch commit, which is not the commit branch protection evaluates.
+
 It preserves the demonstrated deterministic protection:
 
 - `npm test` — the financial publication correctness suite in [`test.js`](../test.js),
@@ -64,9 +71,10 @@ Dive, Records, or Modellers.
 No secrets are used. The password gate and live-site checks stay out of CI
 because they need `SITE_PASSWORD` and a deployed instance.
 
-`test-atlas-ci.js` proves this is the only workflow, that it still runs
-`npm test` and the figure comparison, and that the OpenAI API review path
-and the retired orchestration files are gone.
+`test-atlas-ci.js` proves this is the only workflow, that its definition is
+not taken from the pull request, that it still runs `npm test` and the
+figure comparison, and that the OpenAI API review path and the retired
+orchestration files are gone.
 
 ### `npm test`
 
@@ -152,7 +160,7 @@ What replaces each demonstrated protection:
 
 | Retired control | Surviving protection |
 |---|---|
-| `tests` workflow (push + pull_request) | Atlas CI on pull_request only, still running `npm test` |
+| `tests` workflow (push + pull_request) | Atlas CI on pull_request_target only, still running `npm test` |
 | `figures-review.yml` comment job | Same snapshot comparison inside Atlas CI, on the check summary |
 | `merge-card-check` exact-head / REQUIRED fields | ChatGPT exact-head review as a human record; Atlas CI for code; builder cannot write `PASS` |
 | `risk-label/primary` | Figures summary + merge-card owner-decision row + branch protection |

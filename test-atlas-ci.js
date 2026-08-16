@@ -2,9 +2,11 @@
 /* Shape of the lean delivery system. `node test-atlas-ci.js`
  *
  * Proves the retired orchestration is gone, that Atlas CI is the only
- * GitHub-hosted workflow, and that it still runs the real safety properties:
- * npm test (correctness + static/raw-data guard) and published-figure
- * comparison. It does not re-run the financial suites.
+ * GitHub-hosted workflow, that its definition is loaded from the default
+ * branch (so a PR that edits atlas-ci.yml cannot redefine the check that
+ * authorizes its own merge), and that it still runs the real safety
+ * properties: npm test (correctness + static/raw-data guard) and
+ * published-figure comparison. It does not re-run the financial suites.
  */
 
 const fs = require('fs');
@@ -34,15 +36,50 @@ ok((atlasCi.match(/runs-on:/g) || []).length === 1,
 ok(/^jobs:\n  ci:\n    name: Atlas CI/m.test(atlasCi),
   'that job id is ci and its check name is Atlas CI');
 
-console.log('\n=== trigger is PR-head only ===');
-ok(/^\s+pull_request:\s*$/m.test(atlasCi), 'triggers on pull_request');
+// GitHub loads pull_request_target workflows from the default branch.
+// A pull_request trigger would let the PR supply the gate definition.
+const trustedGate = yaml => {
+  const pullRequestTarget = /^\s+pull_request_target:\s*$/m.test(yaml);
+  const pullRequest = /^\s+pull_request:\s*$/m.test(yaml);
+  const headCheckout = /ref:\s*\$\{\{\s*github\.event\.pull_request\.head\.sha\s*\}\}/.test(yaml);
+  const headStatus = /context="Atlas CI"/.test(yaml)
+    && /HEAD_SHA:\s*\$\{\{\s*github\.event\.pull_request\.head\.sha\s*\}\}/.test(yaml);
+  const suite = /npm test/.test(yaml) && /scripts\/figures-compare\.js/.test(yaml);
+  return pullRequestTarget && !pullRequest && headCheckout && headStatus && suite;
+};
+
+console.log('\n=== trigger is trusted default-branch definition, PR-head only ===');
+ok(/^\s+pull_request_target:\s*$/m.test(atlasCi),
+  'triggers on pull_request_target — GitHub loads this file from the default branch');
+ok(!/^\s+pull_request:\s*$/m.test(atlasCi),
+  'does not also trigger on pull_request — a PR cannot supply the gate definition');
 ok(/types:\s*\[opened,\s*synchronize,\s*reopened\]/.test(atlasCi),
   'and only on opened / synchronize / reopened');
 ok(!/^\s+push:/m.test(atlasCi), 'does not also trigger on push');
-ok(!/pull_request_target/.test(atlasCi), 'does not use pull_request_target');
 ok(!/workflow_run:/.test(atlasCi), 'does not chain through workflow_run');
 ok(!/pull_request_review:/.test(atlasCi), 'does not retrigger on reviews');
 ok(!/workflow_dispatch:/.test(atlasCi), 'has no dispatcher entry point');
+ok(/ref:\s*\$\{\{\s*github\.event\.pull_request\.head\.sha\s*\}\}/.test(atlasCi),
+  'checkouts the PR head for the suite, not the default-branch tree');
+ok(/HEAD_SHA:\s*\$\{\{\s*github\.event\.pull_request\.head\.sha\s*\}\}/.test(atlasCi)
+  && /context="Atlas CI"/.test(atlasCi),
+  'publishes the required Atlas CI context onto that same head SHA');
+ok(trustedGate(atlasCi),
+  'the live workflow satisfies the non-self-modifiable gate predicate');
+ok(!trustedGate([
+  'name: Atlas CI',
+  'on:',
+  '  pull_request:',
+  '    types: [opened, synchronize, reopened]',
+  'jobs:',
+  '  ci:',
+  '    name: Atlas CI',
+  '    steps:',
+  '      - run: echo skip',
+].join('\n')),
+  'a PR-supplied pull_request workflow fails that predicate');
+ok(!trustedGate(atlasCi.replace('pull_request_target:', 'pull_request:')),
+  'editing the live file onto pull_request is enough to fail the predicate');
 
 console.log('\n=== real safety properties are in the one job ===');
 ok(/npm test/.test(atlasCi), 'runs npm test (correctness + static/raw-data guard)');
@@ -57,8 +94,12 @@ ok(!/OPENAI_API_KEY/.test(atlasCi), 'does not reference OPENAI_API_KEY');
 ok(!/ATLAS_AUTOMATION_TOKEN/.test(atlasCi), 'does not reference ATLAS_AUTOMATION_TOKEN');
 ok(!/CURSOR_API_KEY/.test(atlasCi), 'does not reference CURSOR_API_KEY');
 ok(!/\$\{\{\s*secrets\./.test(atlasCi), 'holds no repository secrets');
-ok(/permissions:\s*\n\s+contents:\s*read\s*$/m.test(atlasCi),
-  'contents:read is the only permission');
+ok(/permissions:\s*\n\s+contents:\s*read\s*\n\s+statuses:\s*write\s*$/m.test(atlasCi),
+  'contents:read plus statuses:write to publish on the exact head');
+ok(!/contents:\s*write/.test(atlasCi), 'does not request contents:write');
+ok(!/pull-requests:\s*write/.test(atlasCi), 'does not request pull-requests:write');
+ok(!/OPENAI_API_KEY/.test(atlasCi) && (atlasCi.match(/GITHUB_TOKEN:\s*''/g) || []).length >= 3,
+  'unsets GITHUB_TOKEN while untrusted head code runs');
 
 const retiredWorkflows = [
   'test.yml',

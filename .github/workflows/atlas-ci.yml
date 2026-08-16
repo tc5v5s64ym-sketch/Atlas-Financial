@@ -1,19 +1,31 @@
 # Atlas CI — the one GitHub-hosted check.
 #
-# Runs once per pull-request head update. It does not also run on branch push,
-# so a normal PR does not pay for the same suite twice. Published-figure
-# comparison lives in this same job and is written to the check summary; it
-# does not spend a second runner merely to post a comment.
+# The workflow file is loaded from the default branch
+# (`pull_request_target`). A pull request that edits this file cannot
+# change the steps or the check name that authorize its own merge.
+# GitHub's GITHUB_SHA for this event is the default-branch commit, so
+# this same job publishes the result onto the pull-request head SHA —
+# the commit branch protection evaluates.
+#
+# The suite still runs against that head, checked out below. No
+# repository secrets are referenced. GITHUB_TOKEN is contents:read
+# plus statuses:write, and is unset while untrusted head code runs.
+#
+# Runs once per pull-request head update. It does not also run on branch
+# push. Published-figure comparison lives in this same job and is written
+# to the check summary; it does not spend a second runner merely to post
+# a comment.
 #
 # No secrets. No OpenAI API. No repair or review orchestration.
 name: Atlas CI
 
 on:
-  pull_request:
+  pull_request_target:
     types: [opened, synchronize, reopened]
 
 permissions:
   contents: read
+  statuses: write
 
 concurrency:
   group: atlas-ci-${{ github.event.pull_request.number }}
@@ -27,7 +39,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
+
+      - name: Fetch the base revision for figure comparison
+        run: |
+          set -euo pipefail
+          git fetch origin "${{ github.base_ref }}"
+          git worktree add "$RUNNER_TEMP/base" "origin/${{ github.base_ref }}"
 
       - uses: actions/setup-node@v4
         with:
@@ -36,17 +55,19 @@ jobs:
       # No dependencies are needed to run the suite — it is plain Node — so the
       # install is skipped rather than pulling express in to sit unused.
       - name: Run the correctness suite
+        env:
+          GITHUB_TOKEN: ''
         run: npm test
 
       # Each revision runs its own snapshot script. The engine's shape changes
       # between revisions; one revision's script against the other's data is
       # not a comparison of anything.
       - name: Snapshot published figures
+        env:
+          GITHUB_TOKEN: ''
         run: |
           set -euo pipefail
           node scripts/figures-snapshot.js > "$RUNNER_TEMP/head.json"
-          git fetch origin "${{ github.base_ref }}"
-          git worktree add "$RUNNER_TEMP/base" "origin/${{ github.base_ref }}"
           if [ -f "$RUNNER_TEMP/base/scripts/figures-snapshot.js" ]; then
             ( cd "$RUNNER_TEMP/base" && node scripts/figures-snapshot.js ) > "$RUNNER_TEMP/base.json"
           else
@@ -54,6 +75,8 @@ jobs:
           fi
 
       - name: Compare published figures
+        env:
+          GITHUB_TOKEN: ''
         run: |
           set -euo pipefail
           node scripts/figures-compare.js \
@@ -61,3 +84,23 @@ jobs:
             "$RUNNER_TEMP/head.json" \
             --base-ref="${{ github.base_ref }}" \
             > "$GITHUB_STEP_SUMMARY"
+
+      # pull_request_target's job conclusion lands on the default-branch SHA.
+      # Branch protection evaluates the pull-request head, so the same job
+      # writes the required context there. This is not a second runner.
+      - name: Publish Atlas CI on the exact head
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          state=failure
+          if [ "${{ job.status }}" = "success" ]; then
+            state=success
+          fi
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${HEAD_SHA}" \
+            -f state="$state" \
+            -f context="Atlas CI" \
+            -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            -f description="Correctness suite and published-figure comparison"
