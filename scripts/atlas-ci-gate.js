@@ -1,16 +1,22 @@
 'use strict';
-/* Trusted-gate validator for Atlas CI. `node scripts/atlas-ci-gate.js evaluate-pr <workflows-dir>`
+/* Trusted-gate validator for Atlas CI.
+ * `node scripts/atlas-ci-gate.js evaluate-pr <pr-root> <trusted-root>`
  *
- * Reads workflow YAML as data. It does not execute PR code. The Actions
- * workflow checks this helper out from the default branch, then points it at
- * the PR head's `.github/workflows` directory so a self-edit cannot redefine
- * the merge gate or land a spoof `pull_request` workflow.
+ * Reads the PR tree as data. It does not execute PR code. The Actions
+ * workflow checks this helper out from the default branch, then compares
+ * the PR's atlas-ci.yml and this helper byte-for-byte with the trusted
+ * copies so a self-edit cannot redefine the merge gate, land a spoof
+ * pull_request workflow, or poison the next PR's validator.
  */
 
 const fs = require('fs');
 const path = require('path');
 
 const REQUIRED_FILE = 'atlas-ci.yml';
+const PROTECTED_FILES = [
+  path.join('.github', 'workflows', REQUIRED_FILE),
+  path.join('scripts', 'atlas-ci-gate.js'),
+];
 
 function stripCommentLines(text) {
   return String(text || '').replace(/\r\n/g, '\n').replace(/^\s*#.*$/gm, '');
@@ -59,8 +65,8 @@ function evaluateWorkflowText(text, filename) {
   if (!/^\s+name:\s*Atlas CI\s*$/m.test(src)) {
     reasons.push('job name must be Atlas CI');
   }
-  if ((src.match(/runs-on:/g) || []).length !== 1) {
-    reasons.push('workflow must have exactly one GitHub-hosted job');
+  if ((src.match(/runs-on:/g) || []).length !== 2) {
+    reasons.push('workflow must have exactly two GitHub-hosted jobs');
   }
   if (!/npm test/.test(src)) {
     reasons.push('workflow must run npm test');
@@ -76,6 +82,15 @@ function evaluateWorkflowText(text, filename) {
   }
   if (!/GITHUB_TOKEN:\s*['"]{2}/.test(src)) {
     reasons.push('PR code must not receive GITHUB_TOKEN');
+  }
+  if (!/statuses:\s*none/.test(src)) {
+    reasons.push('suite job must set statuses: none');
+  }
+  if (!/needs\.test\.result/.test(src)) {
+    reasons.push('status publisher must consume the suite job result');
+  }
+  if (!/evaluate-pr pr trusted/.test(src)) {
+    reasons.push('gate helper must compare the PR tree with the trusted copies');
   }
   if (/\$\{\{\s*secrets\./.test(src) || /OPENAI_API_KEY/.test(src) || /ATLAS_AUTOMATION_TOKEN/.test(src) || /CURSOR_API_KEY/.test(src)) {
     reasons.push('workflow must not reference repository secrets or paid AI keys');
@@ -98,34 +113,55 @@ function listWorkflowFiles(dir) {
   return fs.readdirSync(dir).filter((name) => /\.ya?ml$/i.test(name)).sort();
 }
 
-function evaluatePrWorkflows(dir) {
+function relPosix(rel) {
+  return rel.split(path.sep).join('/');
+}
+
+function evaluatePr(prRoot, trustedRoot) {
   const reasons = [];
-  const files = listWorkflowFiles(dir);
-  if (!files.length) {
-    return { ok: false, reasons: ['PR head has no GitHub workflow files — the trusted gate would be deleted'] };
+  if (!prRoot || !trustedRoot) {
+    return { ok: false, reasons: ['evaluate-pr requires <pr-root> and <trusted-root>'] };
   }
-  if (files.length !== 1 || files[0] !== REQUIRED_FILE) {
+
+  const workflowDir = path.join(prRoot, '.github', 'workflows');
+  const files = listWorkflowFiles(workflowDir);
+  if (!files.length) {
+    reasons.push('PR head has no GitHub workflow files — the trusted gate would be deleted');
+  } else if (files.length !== 1 || files[0] !== REQUIRED_FILE) {
     reasons.push(
       `PR head must contain only ${REQUIRED_FILE}, not a self-authored or extra workflow (found: ${files.join(', ') || 'none'})`
     );
   }
-  const target = path.join(dir, REQUIRED_FILE);
-  if (!fs.existsSync(target)) {
-    reasons.push(`PR head is missing ${REQUIRED_FILE}`);
-    return { ok: false, reasons };
+
+  for (const rel of PROTECTED_FILES) {
+    const label = relPosix(rel);
+    const prFile = path.join(prRoot, rel);
+    const trustedFile = path.join(trustedRoot, rel);
+    if (!fs.existsSync(trustedFile) || !fs.statSync(trustedFile).isFile()) {
+      reasons.push(`trusted copy of ${label} is missing`);
+      continue;
+    }
+    if (!fs.existsSync(prFile) || !fs.statSync(prFile).isFile()) {
+      reasons.push(`PR head is missing ${label}`);
+      continue;
+    }
+    const prBytes = fs.readFileSync(prFile);
+    const trustedBytes = fs.readFileSync(trustedFile);
+    if (Buffer.compare(prBytes, trustedBytes) !== 0) {
+      reasons.push(`${label} does not match the trusted default-branch copy`);
+    }
   }
-  const evaluated = evaluateWorkflowText(fs.readFileSync(target, 'utf8'), REQUIRED_FILE);
-  reasons.push(...evaluated.reasons);
+
   return { ok: reasons.length === 0, reasons, files };
 }
 
 function main(argv) {
   const command = argv[2];
-  if (command !== 'evaluate-pr' || !argv[3]) {
-    process.stderr.write('usage: node scripts/atlas-ci-gate.js evaluate-pr <workflows-dir>\n');
+  if (command !== 'evaluate-pr' || !argv[3] || !argv[4]) {
+    process.stderr.write('usage: node scripts/atlas-ci-gate.js evaluate-pr <pr-root> <trusted-root>\n');
     process.exit(2);
   }
-  const result = evaluatePrWorkflows(argv[3]);
+  const result = evaluatePr(argv[3], argv[4]);
   process.stdout.write(JSON.stringify(result, null, 2) + '\n');
   process.exit(result.ok ? 0 : 1);
 }
@@ -133,7 +169,8 @@ function main(argv) {
 if (require.main === module) main(process.argv);
 
 module.exports = {
-  evaluatePrWorkflows,
+  evaluatePr,
   evaluateWorkflowText,
   workflowEvents,
+  PROTECTED_FILES,
 };

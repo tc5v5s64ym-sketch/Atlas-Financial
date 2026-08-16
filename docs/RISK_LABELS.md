@@ -43,8 +43,9 @@ They are not a second merge authority.
 
 ### Atlas CI
 
-One GitHub-hosted job per pull-request head update. It does not also run on
-branch push. The check name is `Atlas CI`.
+One GitHub-hosted **check** per pull-request head update. It does not also run
+on branch push. The check name is `Atlas CI`. Two jobs on separate runners
+implement it.
 
 GitHub Pro branch protection can require that named status. It cannot, on a
 personal repository, pin the *workflow definition* to default-branch state:
@@ -54,14 +55,20 @@ uses `pull_request_target`, which always runs this file from the default
 branch. A PR that edits, deletes, or no-ops `.github/workflows/atlas-ci.yml`
 cannot change the gate that judges that PR.
 
-The job still tests the exact live PR head: it re-fetches the open PR, checks
-out that SHA with `persist-credentials: false`, runs `npm test` and the
-published-figure comparison with `GITHUB_TOKEN` unset, and publishes the
-`Atlas CI` status onto that SHA. No repository secrets are granted. A
-default-branch helper (`scripts/atlas-ci-gate.js`) reads the PR's workflow
-directory as data and rejects a gutted, deleted, secret-bearing, or extra
-`pull_request` workflow so a poisoned definition cannot become the next
-trusted copy.
+The trusted definition is recursive. Ordinary PRs cannot change
+`.github/workflows/atlas-ci.yml` *or* `scripts/atlas-ci-gate.js`: the
+default-branch helper compares both files byte-for-byte with the trusted
+copies and rejects extra workflow files. Landing a gate upgrade is an owner
+bypass, not an ordinary merge.
+
+The suite job (`statuses: none`) still tests the exact live PR head: it
+re-fetches the open PR, checks out that SHA with `persist-credentials: false`,
+and runs `npm test` and the published-figure comparison with `GITHUB_TOKEN`
+unset. No repository secrets are granted. The publisher job
+(`statuses: write`) executes no PR code, checks nothing out, and consumes
+only the trusted event/API head plus the suite job result before posting
+`Atlas CI` onto that SHA. Unsetting the token during `npm test` is not the
+isolation boundary; the separate runner is.
 
 It preserves the demonstrated deterministic protection:
 
@@ -82,9 +89,10 @@ No secrets are used. The password gate and live-site checks stay out of CI
 because they need `SITE_PASSWORD` and a deployed instance.
 
 `test-atlas-ci.js` proves this is the only workflow, that it still runs
-`npm test` and the figure comparison, that a synthetic self-edit cannot
-redefine the trusted gate, and that the OpenAI API review path and the
-retired orchestration files are gone.
+`npm test` and the figure comparison, that the suite and publisher are
+isolated, that a synthetic self-edit of `atlas-ci.yml` or
+`scripts/atlas-ci-gate.js` cannot redefine the trusted gate, and that the
+OpenAI API review path and the retired orchestration files are gone.
 
 ### `npm test`
 
@@ -133,7 +141,7 @@ financial-data connectivity, or a direction change. The owner gate in
 
 ### Published figures — Atlas CI summary
 
-The same Atlas CI job writes which Plan-page figures moved. It exists because
+The same Atlas CI suite writes which Plan-page figures moved. It exists because
 the shipped weekly-cap defect changed a derived answer without crashing. Moving
 a figure is often the purpose of a PR; an unexplained mismatch between the
 summary and the merge card is still a correctness defect to resolve.

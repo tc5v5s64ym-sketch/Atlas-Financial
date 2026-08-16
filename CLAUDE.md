@@ -87,12 +87,16 @@ wording, its reactions, or its identity.
 
 The deterministic hard gate is the single **Atlas CI** check. Its workflow
 definition is taken from the default branch (`pull_request_target`); a pull
-request cannot author the gate that judges it. The job tests the exact live
-PR head with credentials disabled and `GITHUB_TOKEN` unset. A required check
-that is missing, stale, skipped, errored, timed out, cancelled or failed **is
-a failure**, not an absence of one. GitHub Pro branch protection enforces the
-pull-request + Atlas CI boundary on `main`. There is no OpenAI API review
-path and no Actions repair/review orchestrator.
+request cannot author the gate that judges it. Ordinary PRs cannot change
+`.github/workflows/atlas-ci.yml` or `scripts/atlas-ci-gate.js` — both are
+compared byte-for-byte with the trusted copies. Two jobs on separate runners:
+the suite tests the exact live PR head with credentials disabled and
+`GITHUB_TOKEN` unset; the status publisher has `statuses: write`, executes no
+PR code, and consumes only the trusted event/API head plus the suite result.
+A required check that is missing, stale, skipped, errored, timed out,
+cancelled or failed **is a failure**, not an absence of one. GitHub Pro
+branch protection enforces the pull-request + Atlas CI boundary on `main`.
+There is no OpenAI API review path and no Actions repair/review orchestrator.
 
 ---
 
@@ -438,10 +442,12 @@ Atlas CI may enforce an arithmetic identity, a static/raw-data scan, or another
 deterministic fact. CI may not infer meaning from prose, negation, severity
 wording, scope arguments, finding dispositions, or review-round narratives.
 
-The one GitHub-hosted job therefore runs `npm test` and the published-figure
-comparison. Exact-head Atlas review remains a ChatGPT judgement recorded on
-the card. Small-PR discipline, closed-loop delivery, advisory dispositions,
-and cleanup explanations remain reviewer guidance.
+The Atlas CI check therefore runs `npm test` and the published-figure
+comparison in an unprivileged suite job, then publishes the required status
+from a second job that never executes PR code. Exact-head Atlas review
+remains a ChatGPT judgement recorded on the card. Small-PR discipline,
+closed-loop delivery, advisory dispositions, and cleanup explanations remain
+reviewer guidance.
 
 ## Governance-control lifecycle
 

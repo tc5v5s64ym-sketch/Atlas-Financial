@@ -3,7 +3,8 @@
  *
  * Proves Atlas CI is the only GitHub-hosted workflow, that it still runs the
  * real safety properties, that retired orchestration stays gone, and that a
- * PR cannot redefine the trusted merge gate by editing atlas-ci.yml.
+ * PR cannot redefine the trusted merge gate by editing atlas-ci.yml or the
+ * helper that decides whether that YAML is safe.
  */
 
 const fs = require('fs');
@@ -11,7 +12,7 @@ const os = require('os');
 const path = require('path');
 const { compare } = require('./scripts/figures-compare');
 const {
-  evaluatePrWorkflows,
+  evaluatePr,
   evaluateWorkflowText,
   workflowEvents,
 } = require('./scripts/atlas-ci-gate');
@@ -28,28 +29,43 @@ const workflowDir = path.join(__dirname, '.github', 'workflows');
 const workflowFiles = fs.readdirSync(workflowDir).filter(f => /\.ya?ml$/.test(f)).sort();
 const atlasCi = read('.github/workflows/atlas-ci.yml');
 const gateSource = read('scripts/atlas-ci-gate.js');
+const testJob = (atlasCi.match(/^  test:\n[\s\S]*?(?=^  publish:)/m) || [''])[0];
+const publishJob = (atlasCi.match(/^  publish:\n[\s\S]*/m) || [''])[0];
+const workflowPerms = atlasCi.split(/^jobs:/m)[0];
 
-function writeFixture(files) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-ci-gate-'));
-  for (const [name, body] of Object.entries(files)) {
-    fs.writeFileSync(path.join(dir, name), body);
+function writePrTree({ workflow = atlasCi, helper = gateSource, extra = {} } = {}) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-ci-pr-'));
+  fs.mkdirSync(path.join(root, '.github', 'workflows'), { recursive: true });
+  fs.mkdirSync(path.join(root, 'scripts'), { recursive: true });
+  if (workflow != null) {
+    fs.writeFileSync(path.join(root, '.github', 'workflows', 'atlas-ci.yml'), workflow);
   }
-  return dir;
+  if (helper != null) {
+    fs.writeFileSync(path.join(root, 'scripts', 'atlas-ci-gate.js'), helper);
+  }
+  for (const [name, body] of Object.entries(extra)) {
+    const dest = path.join(root, name);
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.writeFileSync(dest, body);
+  }
+  return root;
 }
 
 const shippedEval = evaluateWorkflowText(atlasCi, 'atlas-ci.yml');
-const shippedDirEval = evaluatePrWorkflows(workflowDir);
+const shippedDirEval = evaluatePr(__dirname, __dirname);
 
 console.log('=== one GitHub-hosted workflow ===');
 ok(workflowFiles.length === 1, 'exactly one workflow file', workflowFiles.join(', ') || 'none');
 ok(workflowFiles[0] === 'atlas-ci.yml', 'that file is atlas-ci.yml');
 ok(/^name:\s*Atlas CI\s*$/m.test(atlasCi), 'workflow name is Atlas CI');
-ok(/^\s+name:\s*Atlas CI\s*$/m.test(atlasCi), 'job name is Atlas CI');
+ok(/^\s+name:\s*Atlas CI\s*$/m.test(atlasCi), 'required job name is Atlas CI');
 ok((atlasCi.match(/^jobs:/gm) || []).length === 1, 'the file declares jobs once');
-ok((atlasCi.match(/runs-on:/g) || []).length === 1,
-  'exactly one runs-on — one GitHub-hosted job');
-ok(/^jobs:\n  ci:\n    name: Atlas CI/m.test(atlasCi),
-  'that job id is ci and its check name is Atlas CI');
+ok((atlasCi.match(/runs-on:/g) || []).length === 2,
+  'exactly two runs-on — unprivileged suite plus status publisher');
+ok(/^jobs:\n  test:\n    name: Atlas CI suite/m.test(atlasCi),
+  'the suite job id is test');
+ok(/^  publish:\n    name: Atlas CI/m.test(atlasCi),
+  'the publisher job id is publish and its check name is Atlas CI');
 
 console.log('\n=== trusted default-branch definition ===');
 ok(/^\s+pull_request_target:\s*$/m.test(atlasCi),
@@ -66,8 +82,8 @@ ok(/github\.event\.repository\.default_branch/.test(atlasCi),
   'checks out a trusted default-branch copy');
 ok(/persist-credentials:\s*false/.test(atlasCi),
   'checkouts disable credentials so PR code does not keep GITHUB_TOKEN');
-ok(/atlas-ci-gate\.js evaluate-pr/.test(atlasCi),
-  'validates the PR workflow directory with the default-branch helper');
+ok(/atlas-ci-gate\.js evaluate-pr pr trusted/.test(atlasCi),
+  'validates the PR tree against trusted copies of the gate files');
 ok(/path:\s*pr/.test(atlasCi) && /steps\.head\.outputs\.sha/.test(atlasCi),
   'checks out the exact live PR head SHA');
 ok(/Live head .* is not the event head/.test(atlasCi),
@@ -75,21 +91,40 @@ ok(/Live head .* is not the event head/.test(atlasCi),
 ok(/Fork pull requests are refused/.test(atlasCi),
   'fails closed on fork heads rather than checking them out');
 
-console.log('\n=== real safety properties are in the one job ===');
-ok(/npm test/.test(atlasCi), 'runs npm test (correctness + static/raw-data guard)');
-ok(/working-directory:\s*pr/.test(atlasCi), 'npm test runs on the PR-head checkout');
-ok(/scripts\/figures-snapshot\.js/.test(atlasCi), 'snapshots published figures on each revision');
-ok(/cd pr && node scripts\/figures-snapshot\.js/.test(atlasCi),
+console.log('\n=== suite job still runs the real safety properties ===');
+ok(/npm test/.test(testJob), 'runs npm test (correctness + static/raw-data guard)');
+ok(/working-directory:\s*pr/.test(testJob), 'npm test runs on the PR-head checkout');
+ok(/scripts\/figures-snapshot\.js/.test(testJob), 'snapshots published figures on each revision');
+ok(/cd pr && node scripts\/figures-snapshot\.js/.test(testJob),
   'head snapshot uses the PR revision\'s own script');
-ok(/cd trusted && node scripts\/figures-snapshot\.js/.test(atlasCi),
+ok(/cd trusted && node scripts\/figures-snapshot\.js/.test(testJob),
   'base snapshot uses the default-branch revision\'s own script');
-ok(/trusted\/scripts\/figures-compare\.js/.test(atlasCi),
+ok(/trusted\/scripts\/figures-compare\.js/.test(testJob),
   'compare helper is the trusted default-branch copy');
-ok(/GITHUB_STEP_SUMMARY/.test(atlasCi), 'writes the comparison to the check summary');
+ok(/GITHUB_STEP_SUMMARY/.test(testJob), 'writes the comparison to the check summary');
 ok(!/issues\.createComment|pull-requests:\s*write/.test(atlasCi),
   'does not spend a runner job posting a PR comment');
-ok(/context:"Atlas CI"/.test(atlasCi),
+ok(/context:"Atlas CI"/.test(publishJob),
   'publishes the required status named Atlas CI onto the exact head');
+
+console.log('\n=== untrusted suite and status publication are isolated ===');
+ok(!/statuses:\s*write/.test(workflowPerms),
+  'workflow-level permissions do not grant statuses:write');
+ok(/statuses:\s*none/.test(testJob) && !/statuses:\s*write/.test(testJob),
+  'suite job sets statuses: none and does not receive statuses:write');
+ok(/statuses:\s*write/.test(publishJob),
+  'publisher job is the only one granted statuses:write');
+ok(/needs:\s*test/.test(publishJob), 'publisher waits on the suite job');
+ok(/needs\.test\.result/.test(publishJob),
+  'publisher consumes only the prior job result');
+ok(!/actions\/checkout/.test(publishJob),
+  'publisher does not check out PR or trusted code');
+ok(!/npm test/.test(publishJob), 'publisher does not run npm test');
+ok(!/node /.test(publishJob), 'publisher executes no Node / PR code');
+ok(/GITHUB_TOKEN:\s*['"]{2}/.test(testJob),
+  'unsets GITHUB_TOKEN before running PR code');
+ok(/GH_TOKEN:\s*['"]{2}/.test(testJob),
+  'unsets GH_TOKEN before running PR code');
 
 console.log('\n=== no secrets / paid AI / privileged token to PR code ===');
 ok(!/OPENAI_API_KEY/.test(atlasCi), 'does not reference OPENAI_API_KEY');
@@ -98,12 +133,8 @@ ok(!/CURSOR_API_KEY/.test(atlasCi), 'does not reference CURSOR_API_KEY');
 ok(!/\$\{\{\s*secrets\./.test(atlasCi), 'holds no repository secrets');
 ok(!/contents:\s*write/.test(atlasCi), 'does not grant contents:write');
 ok(!/pull-requests:\s*write/.test(atlasCi), 'does not grant pull-requests:write');
-ok(/GITHUB_TOKEN:\s*['"]{2}/.test(atlasCi),
-  'unsets GITHUB_TOKEN before running PR code');
-ok(/GH_TOKEN:\s*['"]{2}/.test(atlasCi),
-  'unsets GH_TOKEN before running PR code');
-ok(/permissions:[\s\S]*contents:\s*read[\s\S]*pull-requests:\s*read[\s\S]*statuses:\s*write/.test(atlasCi),
-  'permissions are contents:read, pull-requests:read, statuses:write');
+ok(/permissions:[\s\S]*contents:\s*read[\s\S]*pull-requests:\s*read/.test(workflowPerms),
+  'workflow permissions are contents:read, pull-requests:read');
 
 const retiredWorkflows = [
   'test.yml',
@@ -178,13 +209,13 @@ ok(shippedEval.ok,
   'the shipped atlas-ci.yml is accepted by the trusted gate helper',
   (shippedEval.reasons || []).join('; '));
 ok(shippedDirEval.ok,
-  'the shipped workflows directory is accepted',
+  'identical PR and trusted copies are accepted',
   (shippedDirEval.reasons || []).join('; '));
-ok(/path: trusted/.test(atlasCi) && /evaluate-pr pr\/\.github\/workflows/.test(atlasCi),
+ok(/path: trusted/.test(atlasCi) && /evaluate-pr pr trusted/.test(atlasCi),
   'PR YAML is data for the trusted helper, not the executed gate');
 
-const exit0 = writeFixture({
-  'atlas-ci.yml': [
+const exit0 = writePrTree({
+  workflow: [
     'name: Atlas CI',
     'on:',
     '  pull_request:',
@@ -197,16 +228,14 @@ const exit0 = writeFixture({
     '',
   ].join('\n'),
 });
-const exit0Result = evaluatePrWorkflows(exit0);
+const exit0Result = evaluatePr(exit0, __dirname);
 ok(!exit0Result.ok, 'a PR that changes the gate to pull_request + exit 0 is rejected');
-ok((exit0Result.reasons || []).some(r => /pull_request/.test(r)),
-  'because pull_request would run PR-authored YAML',
+ok((exit0Result.reasons || []).some(r => /atlas-ci\.yml does not match/.test(r)),
+  'because the workflow bytes differ from the trusted copy',
   (exit0Result.reasons || []).join('; '));
-ok((exit0Result.reasons || []).some(r => /npm test/.test(r)),
-  'and because npm test is missing');
 
-const guttedTrusted = writeFixture({
-  'atlas-ci.yml': [
+const guttedTrusted = writePrTree({
+  workflow: [
     'name: Atlas CI',
     'on:',
     '  pull_request_target:',
@@ -219,49 +248,68 @@ const guttedTrusted = writeFixture({
     '',
   ].join('\n'),
 });
-const guttedResult = evaluatePrWorkflows(guttedTrusted);
+const guttedResult = evaluatePr(guttedTrusted, __dirname);
 ok(!guttedResult.ok,
   'a PR that keeps pull_request_target but replaces the suite with exit 0 is rejected');
-ok((guttedResult.reasons || []).some(r => /npm test/.test(r)),
+ok((guttedResult.reasons || []).some(r => /atlas-ci\.yml does not match/.test(r)),
   'so a no-op cannot land as the next trusted definition');
 
-const deleted = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-ci-deleted-'));
-const deletedResult = evaluatePrWorkflows(deleted);
+const deleted = writePrTree({ workflow: null });
+const deletedResult = evaluatePr(deleted, __dirname);
 ok(!deletedResult.ok, 'a PR that deletes atlas-ci.yml is rejected');
-ok((deletedResult.reasons || []).some(r => /deleted|no GitHub workflow/i.test(r)),
+ok((deletedResult.reasons || []).some(r => /deleted|no GitHub workflow|missing \.github\/workflows\/atlas-ci\.yml/i.test(r)),
   'with an explicit missing-gate reason');
 
-const extra = writeFixture({
-  'atlas-ci.yml': atlasCi,
-  'evil.yml': [
-    'name: Atlas CI',
-    'on:',
-    '  pull_request:',
-    'jobs:',
-    '  ci:',
-    '    name: Atlas CI',
-    '    runs-on: ubuntu-latest',
-    '    steps:',
-    '      - run: exit 0',
-    '',
-  ].join('\n'),
+const extra = writePrTree({
+  extra: {
+    '.github/workflows/evil.yml': [
+      'name: Atlas CI',
+      'on:',
+      '  pull_request:',
+      'jobs:',
+      '  ci:',
+      '    name: Atlas CI',
+      '    runs-on: ubuntu-latest',
+      '    steps:',
+      '      - run: exit 0',
+      '',
+    ].join('\n'),
+  },
 });
-const extraResult = evaluatePrWorkflows(extra);
+const extraResult = evaluatePr(extra, __dirname);
 ok(!extraResult.ok, 'a PR that adds a second pull_request workflow is rejected');
 ok((extraResult.reasons || []).some(r => /only atlas-ci\.yml/.test(r)),
   'so a spoof check named Atlas CI cannot be authored by the PR');
 
-const secrets = writeFixture({
-  'atlas-ci.yml': atlasCi.replace(
+const secrets = writePrTree({
+  workflow: atlasCi.replace(
     'statuses: write',
     'statuses: write\n    OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}'
   ),
 });
-const secretsResult = evaluatePrWorkflows(secrets);
+const secretsResult = evaluatePr(secrets, __dirname);
 ok(!secretsResult.ok, 'a PR that introduces OPENAI_API_KEY / secrets. is rejected');
+ok((secretsResult.reasons || []).some(r => /atlas-ci\.yml does not match/.test(r)),
+  'because any workflow byte change is refused');
 
-ok(/Does not execute PR YAML/.test(read('.github/workflows/atlas-ci.yml'))
-  || /PR workflows as data/.test(atlasCi),
+const helperOnly = writePrTree({
+  helper: gateSource + '\n// weaken the next PR\'s trusted validator\n',
+});
+const helperOnlyResult = evaluatePr(helperOnly, __dirname);
+ok(!helperOnlyResult.ok, 'a PR that edits only scripts/atlas-ci-gate.js is rejected');
+ok((helperOnlyResult.reasons || []).some(r => /scripts\/atlas-ci-gate\.js does not match/.test(r)),
+  'because the helper bytes differ from the trusted copy',
+  (helperOnlyResult.reasons || []).join('; '));
+ok(!(helperOnlyResult.reasons || []).some(r => /atlas-ci\.yml does not match/.test(r)),
+  'while the unchanged workflow copy is not the reason');
+
+const missingHelper = writePrTree({ helper: null });
+const missingHelperResult = evaluatePr(missingHelper, __dirname);
+ok(!missingHelperResult.ok, 'a PR that deletes scripts/atlas-ci-gate.js is rejected');
+ok((missingHelperResult.reasons || []).some(r => /missing scripts\/atlas-ci-gate\.js/.test(r)),
+  'with an explicit missing-helper reason');
+
+ok(/Does not execute PR YAML/.test(atlasCi) || /PR tree as data/.test(atlasCi),
   'the shipped workflow states that PR YAML is not executed as the gate');
 ok(!/require\('\.\/scripts\/atlas-ci-gate'\)/.test(gateSource),
   'the gate helper has no dependency on PR test code');

@@ -8,11 +8,14 @@
 # would execute PR-authored YAML. This is the smallest pattern that actually
 # closes that hole.
 #
-# The job still tests the exact live PR head: it re-fetches the open PR,
-# checks out that SHA with credentials disabled, runs npm test and the
-# published-figure comparison with GITHUB_TOKEN unset, and publishes the
-# Atlas CI status onto that SHA. No repository secrets are granted. PR code
-# never sees a write-capable token.
+# The trusted definition is recursive: ordinary PRs cannot change this file
+# *or* scripts/atlas-ci-gate.js. The default-branch helper compares both
+# byte-for-byte with the trusted copies. Owner bypass is the upgrade path.
+#
+# Two jobs on separate runners. The suite tests the exact live PR head with
+# credentials disabled and GITHUB_TOKEN unset. The publisher has
+# statuses: write, checks nothing out, executes no PR code, and consumes
+# only the trusted event/API head plus the suite job result.
 #
 # No OpenAI API. No repair or review orchestration.
 name: Atlas CI
@@ -24,17 +27,20 @@ on:
 permissions:
   contents: read
   pull-requests: read
-  statuses: write
 
 concurrency:
   group: atlas-ci-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
-  ci:
-    name: Atlas CI
+  test:
+    name: Atlas CI suite
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: read
+      statuses: none
     steps:
       - name: Identify the exact live PR head
         id: head
@@ -105,9 +111,9 @@ jobs:
         with:
           node-version: '20'
 
-      # Default-branch helper, PR workflows as data. Does not execute PR YAML.
-      - name: Refuse a PR-authored or gutted gate
-        run: node trusted/scripts/atlas-ci-gate.js evaluate-pr pr/.github/workflows
+      # Default-branch helper, PR tree as data. Does not execute PR YAML.
+      - name: Refuse a mutated trusted gate
+        run: node trusted/scripts/atlas-ci-gate.js evaluate-pr pr trusted
 
       - name: Run the correctness suite
         working-directory: pr
@@ -132,17 +138,68 @@ jobs:
             --base-ref="${{ github.event.pull_request.base.ref }}" \
             > "$GITHUB_STEP_SUMMARY"
 
-      - name: Publish Atlas CI on the exact head
-        if: always() && steps.head.outputs.sha != ''
+  publish:
+    name: Atlas CI
+    needs: test
+    if: always() && needs.test.result != 'cancelled'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+      statuses: write
+    steps:
+      - name: Publish Atlas CI on the exact live head
         env:
           GH_TOKEN: ${{ github.token }}
-          HEAD_SHA: ${{ steps.head.outputs.sha }}
-          JOB_STATUS: ${{ job.status }}
+          EVENT_NUMBER: ${{ github.event.pull_request.number }}
+          EVENT_HEAD: ${{ github.event.pull_request.head.sha }}
+          EVENT_FORK: ${{ github.event.pull_request.head.repo.full_name }}
+          TEST_RESULT: ${{ needs.test.result }}
         run: |
           set -euo pipefail
+          if [[ "${EVENT_FORK}" != "${GITHUB_REPOSITORY}" ]]; then
+            echo "Fork pull requests are refused. Fail closed."
+            exit 1
+          fi
+          if [[ ! "${EVENT_NUMBER}" =~ ^[1-9][0-9]*$ ]]; then
+            echo "Event did not identify the pull request. Fail closed."
+            exit 1
+          fi
+          if [[ ! "${EVENT_HEAD}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Event did not identify a 40-character head SHA. Fail closed."
+            exit 1
+          fi
+          pr="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${EVENT_NUMBER}")"
+          live_number="$(jq -r '.number' <<<"${pr}")"
+          live_state="$(jq -r '.state' <<<"${pr}")"
+          live_merged="$(jq -r '.merged' <<<"${pr}")"
+          live_base="$(jq -r '.base.ref' <<<"${pr}")"
+          live_head="$(jq -r '.head.sha' <<<"${pr}")"
+          live_repo="$(jq -r '.head.repo.full_name' <<<"${pr}")"
+          if [[ "${live_number}" != "${EVENT_NUMBER}" ]]; then
+            echo "Live PR ${live_number} is not event PR ${EVENT_NUMBER}. Fail closed."
+            exit 1
+          fi
+          if [[ "${live_state}" != "open" || "${live_merged}" == "true" ]]; then
+            echo "Pull request is not open. Fail closed."
+            exit 1
+          fi
+          if [[ "${live_base}" != "main" ]]; then
+            echo "Pull request base is ${live_base:-missing}, not main. Fail closed."
+            exit 1
+          fi
+          if [[ "${live_repo}" != "${GITHUB_REPOSITORY}" ]]; then
+            echo "Live head repository ${live_repo:-missing} is not ${GITHUB_REPOSITORY}. Fail closed."
+            exit 1
+          fi
+          if [[ ! "${live_head}" =~ ^[0-9a-f]{40}$ || "${live_head}" != "${EVENT_HEAD}" ]]; then
+            echo "Live head ${live_head:0:7} is not the event head ${EVENT_HEAD:0:7}. Fail closed."
+            exit 1
+          fi
           state="failure"
           description="Atlas CI failed on this exact head."
-          if [[ "${JOB_STATUS}" == "success" ]]; then
+          if [[ "${TEST_RESULT}" == "success" ]]; then
             state="success"
             description="Trusted default-branch Atlas CI passed on this exact head."
           fi
@@ -151,7 +208,7 @@ jobs:
             --arg desc "${description:0:140}" \
             --arg url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
             '{state:$state, context:"Atlas CI", description:$desc, target_url:$url}' \
-            | gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${HEAD_SHA}" --input - >/dev/null
+            | gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${live_head}" --input - >/dev/null
           if [[ "${state}" != "success" ]]; then
             exit 1
           fi
