@@ -1,0 +1,8 @@
+{
+  "schema": "atlas-provider-account-map/v1",
+  "owns": "Owner-observed Lunch Money provider-account-id to Atlas canonical-id mapping for live GET. Display names are labels only. Empty until a live connection records real IDs.",
+  "does_not_own": "Financial values, permission to write data.json, automatic account creation, Forecast, or synthetic fixture IDs.",
+  "provider": "lunchmoney",
+  "scope": "live",
+  "mappings": []
+}

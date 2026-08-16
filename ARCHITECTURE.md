@@ -378,6 +378,7 @@ closed: `Forecast.expandEvents` is the one cash calendar.
 | Derived publication aggregates of those facts | `Forecast.publicationTotals` |
 | Calendar — the on-page month grid and agenda | `renderCalendar()` in `public/plan.js` — **presentation of `sim.events` only** |
 | Calendar — the exported `.ics` | `scripts/calendar-ics.js`: cash-payment VEVENTs **derived** from `Forecast.expandEvents` over a longer horizon; standing reminder VEVENTs (statement closes, tax deadlines, mortgage renewal) remain a thin non-cash overlay |
+| Read-only provider observation | `scripts/provider-observe.js` turns a Lunch Money fixture, or a local GET when `LUNCHMONEY_ACCESS_TOKEN` is set, into B91 observations. Live mapping is `docs/connectivity/provider-account-map.json` by provider account ID, not display name; it is owner-observed and does not carry synthetic fixture IDs. Fixture mapping lives only in `docs/connectivity/fixtures/provider-account-map.json`. Unknown IDs stay unmapped. Never writes `data.json`. Not a financial authority, not Forecast, and not T4. |
 | Observation-to-canonical cash/debt compare | `scripts/reconcile.js` (non-writing). Maps `docs/positions.csv` Household rows through `docs/reconciliation/balance-map.json` id locators onto `plan.startingCash` / `debts`. Commitment settlement observations live in `docs/reconciliation/commitment-settlements.json` and compare a paid date against `plan.commitments[].settledOn`; they do not go through `positions.csv` or the balance map. Hydro observations live in `docs/reconciliation/utility-observations.json`. Amanda-income observations live in `docs/reconciliation/amanda-income-observations.json`. Card-state observations live in `docs/reconciliation/card-state-observations.json` and distinguish posted balance, pending, limit, available credit, and confirmed payment; they are not a second financial authority. Limit and available credit are never household cash. Unknown pending is not $0. Pending is not manufactured as limit − posted − available unless that identity is proven for that card and timestamp. Posting observations live in `docs/reconciliation/posting-observations.json` and compare whether a scheduled occurrence has posted against `plan.opening.representedEvents`. Forecast remains authority for what should happen; posting evidence is authority for what has happened. Unknown posting is not posted and is not unposted. Does not write `data.json`. STALE is not assigned; no owner-defined age threshold exists. Not a universal fact database |
 
 **The table is not a closed list, and reading it as one is how work goes wrong.**
@@ -658,6 +659,12 @@ an **owner-approved desired capability**. It is gated on all five of:
 Condition 5 is about pointing something live, not about building the foundation:
 the foundation may be built first, without a provider, and doing so satisfies one
 condition rather than opening the gate.
+
+**Current seam, not the gate.** Owner instruction 2026-08-16 recorded condition 1
+and authorised a fixture-first observe path. `scripts/provider-observe.js` may
+GET Lunch Money locally if the owner sets `LUNCHMONEY_ACCESS_TOKEN` in their
+shell. That test does not write `data.json`, does not store a bank password, and
+does not open T4 / `B81`.
 
 ---
 
