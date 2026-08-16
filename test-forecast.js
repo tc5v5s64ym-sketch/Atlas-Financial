@@ -127,7 +127,7 @@ ok(near(expected.totals.noncash, wantNoncash), 'HELOC interest is tracked but no
   const without = F.simulate(stripped, asOf, { scenario: 'expected', weeklyVariable: 0, targetBuffer: plan.defaults.targetBuffer }).ending;
   ok(near(withHeloc, without), 'removing the non-cash charge changes nothing', `${withHeloc.toFixed(2)} vs ${without.toFixed(2)}`);
 }
-const wantBills = streamTotal(plan.bills, asOf, windowEnd, F.occurrences);
+const wantBills = streamTotal(plan.bills, asOf, windowEnd, F.occurrences, { plan });
 ok(near(expected.totals.bills, wantBills), '90-day named bills', expected.totals.bills.toFixed(2));
 const fortisDates = expected.events.filter(e => e.id === 'fortis').map(e => e.date).join(',');
 ok(fortisDates === '2026-09-03,2026-10-03,2026-11-03', 'Fortis skips the already-paid August bill', fortisDates);
@@ -332,7 +332,7 @@ function bruteLedger(weekly) {
     const measured = date >= gapRec.gap.date;
     if (date === gapRec.gap.date) bal += gapRec.gap.amount;
     for (const e of events) {
-      if (e.date !== date || e.kind === 'noncash') continue;
+      if (e.date !== date || e.kind === 'noncash' || e.jointCash === false) continue;
       bal += e.amount;
       if (measured && bal < min) { min = bal; minDate = date; }
     }

@@ -29,7 +29,8 @@ const windowEnd = F.addDays(asOf, (plan.windowDays || 91) - 1);
 const icsEnd = icsMod.ICS_HORIZON_END;
 
 function cashEvents(p, start, end) {
-  return F.expandEvents(p, start, end).filter(e => e.amount < 0 && e.kind !== 'noncash');
+  return F.expandEvents(p, start, end)
+    .filter(e => e.amount < 0 && e.kind !== 'noncash' && e.jointCash !== false);
 }
 function paymentKey(date, id, amount) {
   return `${date}|${id}|${cents(amount)}`;
@@ -98,6 +99,11 @@ console.log('\n=== ICS payments bijection with expandEvents ===');
     extra.slice(0, 5).join(', ') || `${fromIcs.size} matched`);
   ok(built.payments.every(p => p.kind === 'payment'),
     'derived payment entries are tagged payment');
+  ok(built.reminders.some(r => r.sourceId === 'hydro-due-sep1'
+      && /not joint cash/i.test(r.summary)),
+    'Hydro Sept. 1 is an ICS reminder, not a joint-cash payment');
+  ok(!built.payments.some(p => p.sourceId === 'hydro-due-sep1'),
+    'Hydro Sept. 1 has no ICS payment VEVENT');
 }
 
 console.log('\n=== reminder separation ===');
