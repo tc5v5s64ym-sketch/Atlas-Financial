@@ -204,6 +204,10 @@ A ChatGPT architecture review is optional help from the decision desk. It is
 not a required SHA-matching check. Do not hold a green, complete, in-scope
 pull request for an exact-head PASS.
 
+Failed `tests` or merge-card completeness checks start one automatic Cursor
+repair. The patch is tested before it is pushed. Two failed attempts stop
+and comment; they do not loop. A repair must not weaken a financial test.
+
 ## Merge policy
 
 The Merge Card `Primary risk` row decides what the owner does. The GitHub

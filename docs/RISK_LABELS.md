@@ -122,10 +122,13 @@ merge. The initial pass reports blockers only. A follow-up verifies the named
 fixes and the high-risk surface changed by those fixes. It does not reopen the
 untouched artifact for unlimited new findings.
 
-The paid first-review / re-review / Cursor-repair spend path is **parked**
-as of 2026-08-16. Those workflows remain in the tree but exit before any
-OpenAI or Cursor API call. ChatGPT can still advise from the decision desk.
-It is not a required SHA-matching merge check.
+A red `tests` or merge-card completeness check starts **one automatic
+Cursor repair** (`atlas-test-repair.yml`). Codex findings still use the
+existing Cursor repair path. Both test the patch before pushing. Two
+failed test-repair attempts stop and comment rather than loop. A repair
+must not weaken a financial test or invent a figure. Paid OpenAI
+first-review / re-review stay parked. ChatGPT can still advise from the
+decision desk. It is not a required SHA-matching merge check.
 
 ### Independent improvement audit — optional
 

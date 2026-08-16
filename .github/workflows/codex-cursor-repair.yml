@@ -81,10 +81,6 @@ jobs:
         run: |
           set -euo pipefail
 
-          echo "Parked 2026-08-16: owner lean-CI. Automatic repair is off so a fix cannot invalidate the merge gate."
-          echo "eligible=false" >> "${GITHUB_OUTPUT}"
-          exit 0
-
           if [[ "${EVENT_NAME}" == 'workflow_dispatch' ]]; then
             pr_number="${DISPATCH_PR}"
           elif [[ -n "${RUN_PR}" ]]; then
