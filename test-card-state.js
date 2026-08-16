@@ -477,9 +477,17 @@ console.log('\n=== 10. reconciler performs no writes ===');
   ok(travelPending && travelPending.status === 'MATCH' && near(travelPending.evidenceValue, 165.13)
     && !near(travelPending.evidenceValue, 1243.44),
     'live Travel Visa pending MATCH $165.13, not collapsed $1,243.44');
-  ok(mbnaPending && mbnaPending.status === 'CHANGE' && near(mbnaPending.evidenceValue, 82.05)
+  ok(mbnaPending && mbnaPending.status === 'MATCH' && near(mbnaPending.evidenceValue, 82.05)
     && mbnaPending.identityProven === true,
-    'Aug. 9 MBNA pending $82.05 is CHANGE against current known-zero pending');
+    'Aug. 9 MBNA pending $82.05 MATCHes the 9 August opening');
+  const mbnaPosted16 = result.rows.find(r => r.observationId === 'card-mbna-posted-2026-08-16');
+  const triPosted16 = result.rows.find(r => r.observationId === 'card-triangle-posted-2026-08-16');
+  ok(mbnaPosted16 && mbnaPosted16.status === 'CHANGE' && near(mbnaPosted16.evidenceValue, 8003.61)
+    && near(mbnaPosted16.canonicalValue, 7855.12),
+    'Aug. 16 MBNA $8,003.61 is CHANGE against the 9 August opening');
+  ok(triPosted16 && triPosted16.status === 'CHANGE' && near(triPosted16.evidenceValue, 13197)
+    && near(triPosted16.canonicalValue, 13497),
+    'Aug. 16 Triangle $13,197 is CHANGE against the 9 August opening');
   ok(cashPosted && cashPosted.status === 'MATCH' && near(cashPosted.evidenceValue, 5612.43),
     'live Cash Back posted MATCH $5,612.43');
   ok(cashPay && cashPay.appliedToPosted && cashPay.status === 'MISSING'

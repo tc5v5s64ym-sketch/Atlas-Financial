@@ -242,17 +242,21 @@ Unknown pending is allowed until then; it must not be treated as zero.
 **Status:** ANSWERED · **Owner:** Dale + Amanda
 **Answer:** Triangle, MBNA, and Affirm/Flexiti are no longer unknown.
 
-Triangle (2026-08-16 screenshot): posted **$13,197.00**, pending **$15.62**,
+Triangle (2026-08-16 screenshot — dated observation, not the 9 August
+Forecast opening): posted **$13,197.00**, pending **$15.62**,
 limit $13,500, available credit $287.38 (not cash). Observed exposure
-$13,212.62. Purchase rate remains 21.99% / cash 22.99% from the earlier
+$13,212.62. Canonical opening remains posted **$13,497.00** as of 9 August.
+Purchase rate remains 21.99% / cash 22.99% from the earlier
 disclosure. Displayed minimum $0.00; displayed due date Aug. 7 2026; future
 minimums remain estimated.
 
-MBNA (screenshot current balance; statement for the rest): current posted
-**$8,003.61**, pending $0.00, limit $8,000 (over by $3.61). Statement
-balance $7,855.12, minimum **$158.27**, due **2026-08-31**, purchase APR
+MBNA (screenshot is dated observation; statement for min/due/APR; 9 August
+opening remains posted **$7,855.12** + pending **$82.05**): 16 August posted
+**$8,003.61**, pending $0.00, limit $8,000 (over by $3.61 on that screenshot).
+Statement balance $7,855.12, minimum **$158.27**, due **2026-08-31**, purchase APR
 **21.74%**, cash advance / BT APR **22.99%**, statement interest $148.27.
-Do not round current back to the statement amount.
+Do not round the 16 August observation back to the statement amount, and do
+not write it into the 9 August opening.
 
 Affirm/Flexiti remains owner-confirmed paid off and closed.
 

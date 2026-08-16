@@ -116,37 +116,63 @@ console.log('\n=== 6. Noble quarterly garbage without duplicating history ===');
     'June 18 is not invented as arrears');
 }
 
-console.log('\n=== 7–8. Triangle posted/pending stay separate; Aug. 10 payment recorded without on-time claim ===');
+console.log('\n=== 7–9. Aug. 16 Triangle/MBNA stay observations; opening stays 9 August ===');
 {
+  ok(data.meta.asOf === '2026-08-09', 'canonical asOf remains 2026-08-09');
   const tri = data.debts.find(d => d.id === 'triangle');
-  ok(tri && near(tri.balance, 13197) && near(tri.pending, 15.62),
-    'Triangle posted $13,197.00 pending $15.62',
-    `${money(tri.balance)} + ${money(tri.pending)}`);
-  const exposure = Math.round((tri.balance + tri.pending) * 100) / 100;
-  ok(near(exposure, 13212.62),
-    'independent exposure is posted+pending $13,212.62', money(exposure));
-  ok(!near(tri.balance, exposure),
-    'posted is not silently collapsed to exposure');
-  const obl = plan.obligations.find(o => o.id === 'triangle');
-  const hay = [tri.pendingNote, tri.note, obl && obl.note].filter(Boolean).join(' ');
+  const mbna = data.debts.find(d => d.id === 'mbna');
+  ok(tri && near(tri.balance, 13497) && near(tri.pending || 0, 0),
+    'Triangle opening is the 9 August posted $13,497.00', money(tri.balance));
+  ok(mbna && near(mbna.balance, 7855.12) && near(mbna.pending, 82.05),
+    'MBNA opening is 9 August posted $7,855.12 + pending $82.05',
+    `${money(mbna.balance)} + ${money(mbna.pending)}`);
+  ok(!near(tri.balance, 13197) && !near(mbna.balance, 8003.61),
+    'Aug. 16 screenshot totals are not written into the opening');
+
+  const obs = require(path.join(__dirname, 'docs/reconciliation/card-state-observations.json')).observations;
+  const triPosted = obs.find(o => o.observationId === 'card-triangle-posted-2026-08-16');
+  const triPend = obs.find(o => o.observationId === 'card-triangle-pending-2026-08-16');
+  const mbPosted = obs.find(o => o.observationId === 'card-mbna-posted-2026-08-16');
+  const mbPend = obs.find(o => o.observationId === 'card-mbna-pending-2026-08-16');
+  ok(triPosted && near(triPosted.amount, 13197) && triPend && near(triPend.amount, 15.62),
+    'Aug. 16 Triangle observation keeps posted $13,197.00 and pending $15.62 separate');
+  const obsExposure = Math.round((triPosted.amount + triPend.amount) * 100) / 100;
+  ok(near(obsExposure, 13212.62) && !near(triPosted.amount, obsExposure),
+    'independent observed exposure is posted+pending $13,212.62', money(obsExposure));
+  ok(mbPosted && near(mbPosted.amount, 8003.61) && mbPend && near(mbPend.amount, 0)
+    && !near(mbPosted.amount, 7855.12),
+    'Aug. 16 MBNA observation is $8,003.61 pending $0, not rounded to the statement');
+
+  const hay = [
+    tri.note,
+    (plan.obligations.find(o => o.id === 'triangle') || {}).note,
+    JSON.stringify(obs.filter(o => /triangle.*2026-08-1[06]/.test(o.observationId))),
+  ].join(' ');
   ok(/2026-08-10|Aug\. 10/.test(hay) && /\$300/.test(hay),
     'Aug. 10 $300 payment is recorded');
   ok(/on-time/i.test(hay) && /not proven/i.test(hay),
     'on-time status is not invented');
-  ok(/287\.38/.test(hay) && /not household cash|never cash/i.test(hay),
+  ok(/287\.38/.test(hay) && /not household cash|never cash|not cash/i.test(hay),
     'available credit is not converted to household cash');
-}
 
-console.log('\n=== 9. MBNA current $8,003.61; statement owns min/due/APR ===');
-{
-  const mbna = data.debts.find(d => d.id === 'mbna');
-  const obl = plan.obligations.find(o => o.id === 'mbna');
-  ok(mbna && near(mbna.balance, 8003.61) && near(mbna.pending, 0),
-    'current posted is $8,003.61 pending $0', money(mbna.balance));
-  ok(!near(mbna.balance, 7855.12),
-    'current is not rounded back to the statement amount');
-  ok(obl && near(obl.amount, 158.27) && obl.day === 31,
-    'statement minimum $158.27 due month-end stays on the obligation');
+  const once = plan.obligations.find(o => o.id === 'mbna-aug31');
+  const monthly = plan.obligations.find(o => o.id === 'mbna');
+  ok(once && once.frequency === 'once' && once.date === '2026-08-31'
+    && once.confidence === 'confirmed' && near(once.amount, 158.27),
+    'Aug. 31 MBNA statement minimum is a confirmed one-time row');
+  ok(monthly && monthly.frequency === 'monthly' && monthly.firstDue === '2026-09-30'
+    && monthly.confidence === 'estimated' && near(monthly.amount, 158.27),
+    'later MBNA minimums remain estimated from 2026-09-30');
+  const events = F.expandEvents(plan, asOf, windowEnd, {});
+  const mbnaEvents = events.filter(e => e.id === 'mbna' || e.id === 'mbna-aug31');
+  const aug31 = mbnaEvents.find(e => e.date === '2026-08-31');
+  ok(aug31 && aug31.confidence === 'confirmed' && near(Math.abs(aug31.amount), 158.27),
+    'Forecast emits the Aug. 31 minimum as confirmed');
+  ok(mbnaEvents.filter(e => e.date > '2026-08-31')
+    .every(e => e.confidence === 'estimated' && e.id === 'mbna'),
+    'later MBNA cash events are the estimated recurrence, not confirmed');
+  ok(!mbnaEvents.some(e => e.date === '2026-08-31' && e.id === 'mbna'),
+    'the monthly row does not double-count August');
   ok(/21\.74/.test(mbna.rateBasis) && near(mbna.rate, 21.74),
     'purchase APR 21.74% comes from the statement');
   ok(/22\.99/.test(mbna.rateBasis),
@@ -222,6 +248,18 @@ console.log('\n=== 16–18. HELOC interest posting and cash payment stay distinc
   ok(/^OPEN\b/.test(statusOf('Q19')), 'Q19 remains OPEN', statusOf('Q19'));
   ok(/must not claim confident zero household\s+cash impact/i.test(questions),
     'Q19 still forbids claiming confident zero cash impact');
+  ok(!/no cash leaves any account for it/i.test(data.upcomingNote),
+    'upcomingNote does not claim confident zero HELOC cash impact');
+  ok(/9 August opening|2026-08-09 opening|as-of/i.test(data.upcomingNote)
+    && /PAID/i.test(data.upcomingNote),
+    'upcomingNote dates Burrards $623 as the Aug. 9 opening and records them paid');
+  const util = F.utilisation(data.debts, data.revolvingExtra, data.plan);
+  ok(near(util.totalAvailable, 1415.98) && /1,415\.98/.test(data.upcomingNote),
+    'upcomingNote credit headroom is this opening\'s derived $1,415.98',
+    money(util.totalAvailable));
+  const pendingTotal = data.debts.reduce((s, d) => s + Number(d.pending || 0), 0);
+  ok(near(pendingTotal, 247.18) && /247\.18/.test(data.upcomingNote),
+    'upcomingNote pending $247.18 is this opening\'s pending sum', money(pendingTotal));
 }
 
 console.log('\n=== 19. Q20 and Q21 remain unresolved ===');

@@ -527,10 +527,9 @@ ok(NONCASH_MIN.minimumConfidence === null && byId.heloc.minimumConfidence === nu
   'and where nothing contributed there is no figure to tag');
 // The real debt list, against `data.json`'s own declarations.
 ok(byId.mortgage.minimumConfidence === 'confirmed'
-  && byId.mbna.minimumConfidence === 'confirmed'
-  && ['triangle', 'cashback', 'tdcc', 'travelvisa']
+  && ['triangle', 'cashback', 'mbna', 'tdcc', 'travelvisa']
     .every(id => byId[id].minimumConfidence === 'estimated'),
-'the statement-backed MBNA minimum is confirmed; four revolving card minimums remain estimated',
+'five of the seven published minimums are estimated, and say so',
 REAL.map(d => `${d.id}=${d.minimumConfidence}`).join(' '));
 // Each one agrees with the obligation it came from, rather than with a guess.
 for (const d of REAL) {

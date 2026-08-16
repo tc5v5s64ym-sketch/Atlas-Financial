@@ -281,13 +281,15 @@ Interac notifications matters, and why B64 will not be solved from transfer data
 | Due | 7th, monthly · statement dated 17th |
 | Structure | Revolving. Issuer states 99+ years to repay at minimum payments |
 
-**Current observation, 2026-08-16 screenshot** (canonical posted/pending live
-in `data.json`): posted **$13,197.00**, pending **$15.62**, available credit
-**$287.38** (not household cash), last statement balance $13,309.70,
-displayed minimum $0.00, displayed due date Aug. 7 2026. A **$300 payment
-posted Aug. 10**. Posted and pending stay separate. Observed exposure =
-$13,197.00 + $15.62 = $13,212.62. On-time status for the Aug. 7 obligation
-is not proven; the payment posted after the displayed due date.
+**Current observation, 2026-08-16 screenshot** (dated observation, not the
+2026-08-09 Forecast opening in `data.json`): posted **$13,197.00**, pending
+**$15.62**, available credit **$287.38** (not household cash), last statement
+balance $13,309.70, displayed minimum $0.00, displayed due date Aug. 7 2026.
+A **$300 payment posted Aug. 10**. Posted and pending stay separate.
+Observed exposure = $13,197.00 + $15.62 = $13,212.62. On-time status for
+the Aug. 7 obligation is not proven; the payment posted after the displayed
+due date. Canonical opening remains posted **$13,497.00** / pending unknown
+as of 9 August until a coherent cutover.
 
 ## Insurance *(verified 2026-08-09)*
 
@@ -1782,10 +1784,11 @@ B10 and B36 were the same debt counted twice.
 | | |
 |---|---|
 | Issuer | MBNA (a TD Bank Group brand) |
-| Current balance | **$8,003.61** *(2026-08-16 screenshot — do not round back to the statement)* |
+| Current opening (2026-08-09) | **$7,855.12** posted + **$82.05** pending |
+| 2026-08-16 screenshot | **$8,003.61** posted, pending **$0.00** *(observation, not the Forecast opening — do not round that observation back to the statement)* |
 | Credit limit | **$8,000.00** |
-| Available credit | **$0.00** |
-| Pending transactions | $0.00 |
+| Available credit | **$62.83** on the 9 August opening; **$0.00** on the 2026-08-16 screenshot (never cash) |
+| Pending transactions | **$82.05** on the 9 August opening; **$0.00** on the 2026-08-16 screenshot |
 | Last statement balance | $7,855.12 |
 | Minimum payment | **$158.27**, due **31 Aug 2026** |
 | Statement closing | **6th of the month** (June 2026 closed on the 8th) |
@@ -1807,11 +1810,11 @@ cash-advance component here, unlike the open question on the TD Cash Back Visa.
 **21.74% is the second-lowest card rate in the household**, behind only the
 Travel Visa's 19.99%. The problem with this card is not its rate.
 
-**Utilisation on the 2026-08-09 read was 98.2%**, or **99.2%** once the then
-$82.05 of pending transactions was counted. The 2026-08-16 screenshot is
-the fresher current balance: posted **$8,003.61**, pending **$0.00**,
-available **$0.00**, **$3.61 over** the $8,000 limit. Available credit is
-never household cash.
+**Utilisation on the 2026-08-09 opening was 98.2%**, or **99.2%** once the
+$82.05 of pending transactions is counted. The 2026-08-16 screenshot is a
+fresher dated observation: posted **$8,003.61**, pending **$0.00**,
+available **$0.00**, **$3.61 over** the $8,000 limit. It is not written into
+the 9 August Forecast opening. Available credit is never household cash.
 
 **No Payment Plans.** The Payment Plans tab reads "No Payment Plans to display"
 and "You do not have any recent purchases that are eligible" — so no MBNA

@@ -4,6 +4,11 @@ Status authority for open questions remains `docs/01_OPEN_QUESTIONS.md`.
 This file is the source-intake record for the 2026-08-16 owner-confirmed
 package. It does not become a second facts authority.
 
+Triangle (`AUG16-005`) and MBNA (`AUG16-006`) screenshots are dated
+observations. They do not rewrite the 2026-08-09 Forecast opening in
+`data.json` until a coherent current-state cutover. Mixed-time openings
+are refused.
+
 Raw statement binaries are not committed. Sanitised facts below are the
 ones this package may consume.
 
@@ -120,6 +125,7 @@ independent identity source already proves that card.
 - 2026-08-10 posted payment: TD BANKLINE/TELELIGNE TD -$300.00
 
 Observed exposure = $13,197.00 posted + $15.62 pending = $13,212.62.
+Dated observation, not the 2026-08-09 opening (posted $13,497.00).
 
 The $300 payment is confirmed posted Aug. 10. That date is after the
 displayed Aug. 7 due date. This package does not prove on-time status or
@@ -133,9 +139,12 @@ default-rate consequences.
 - Pending transactions: $0.00
 - Credit limit: $8,000.00
 
-The screenshot is the fresher current-balance evidence. The statement
-remains authority for minimum, due date, APRs, statement balance, and
-interest. Do not round the current balance back to the statement amount.
+The screenshot is fresher current-balance evidence than the statement.
+It remains a dated observation, not the 2026-08-09 Forecast opening
+(posted $7,855.12 + pending $82.05). The statement remains authority for
+minimum, due date, APRs, statement balance, and interest. Do not round
+the observation back to the statement amount, and do not write it into
+the opening alone.
 
 ## OWNER CONFIRMATION
 `AUG16-007`
