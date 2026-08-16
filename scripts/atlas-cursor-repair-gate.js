@@ -16,8 +16,10 @@
  *   prompt   <request.json>              → repair prompt on stdout
  *   select-review <reviews.json> <sha>   → eligible review id or empty
  *   assert-head <gated> <local> <remote>
- *   classify-push-head <gated> <local> <live> <compare.json>
+ *   classify-push-head <gated> <local> <live> <compare.json> [provenance.json]
  *                                        → JSON; exit 0 push|adopt-live, 1 fail
+ *     provenance.json binds adopt-live to reviewed-SHA lineage and the
+ *     trusted repair.patch tree. Without that bind, a descendant fails closed.
  */
 
 const fs = require('fs');
@@ -196,9 +198,31 @@ function isForwardRepairCompare(baseSha, headSha, compare) {
     && behind === 0;
 }
 
-// Cursor Automation can push the repair before this job mutates. That is a
-// forward descendant, not a lost gate: skip apply/push and still sync PENDING.
-function classifyRepairPushHead(gatedSha, localSha, liveSha, compare) {
+function isSingleForwardRepairCompare(baseSha, headSha, compare) {
+  if (!isForwardRepairCompare(baseSha, headSha, compare)) return false;
+  if (Number(compare && compare.ahead_by) !== 1) return false;
+  if (Array.isArray(compare && compare.commits) && compare.commits.length !== 1) {
+    return false;
+  }
+  return true;
+}
+
+function reviewedShaMatchesGated(gatedSha, provenance) {
+  const reviewed = shaOrEmpty(provenance && provenance.reviewedSha);
+  return isFortyCharSha(reviewed) && reviewed === shaOrEmpty(gatedSha);
+}
+
+function liveTreeMatchesTrustedRepair(provenance) {
+  const expectedTree = shaOrEmpty(provenance && provenance.expectedTreeSha);
+  const liveTree = shaOrEmpty(provenance && provenance.liveTreeSha);
+  return isFortyCharSha(expectedTree) && isFortyCharSha(liveTree) && expectedTree === liveTree;
+}
+
+// Cursor Automation can push the repair before this job mutates. Adopt that
+// live head only when it is the one-commit descendant of the reviewed/gated
+// SHA whose tree equals the trusted repair.patch. Any other descendant fails
+// closed: skip apply/push and do not sync PENDING.
+function classifyRepairPushHead(gatedSha, localSha, liveSha, compare, provenance) {
   const gated = shaOrEmpty(gatedSha);
   const local = shaOrEmpty(localSha);
   const live = shaOrEmpty(liveSha);
@@ -212,6 +236,15 @@ function classifyRepairPushHead(gatedSha, localSha, liveSha, compare) {
     };
   }
   if (gated === local && gated === live) {
+    if (provenance && provenance.reviewedSha && !reviewedShaMatchesGated(gated, provenance)) {
+      return {
+        ok: false,
+        action: 'fail',
+        code: 'reviewed-mismatch',
+        mutate: false,
+        reason: 'Reviewed SHA is not the gated SHA. Fail closed without mutation.',
+      };
+    }
     return {
       ok: true,
       action: 'push',
@@ -220,22 +253,58 @@ function classifyRepairPushHead(gatedSha, localSha, liveSha, compare) {
       repairSha: gated,
     };
   }
-  if (isForwardRepairCompare(gated, live, compare) && (local === gated || local === live)) {
+  if (local !== gated && local !== live) {
     return {
-      ok: true,
-      action: 'adopt-live',
-      code: 'already-repaired',
+      ok: false,
+      action: 'fail',
+      code: 'head-moved',
       mutate: false,
-      repairSha: live,
-      reason: 'Live PR head already moved to a forward repair of the gated SHA. Skip mutation and sync PENDING.',
+      reason: 'PR head moved after the gate. Fail closed without mutation.',
+    };
+  }
+  if (!reviewedShaMatchesGated(gated, provenance)) {
+    return {
+      ok: false,
+      action: 'fail',
+      code: 'reviewed-mismatch',
+      mutate: false,
+      reason: 'Adopt-live requires the reviewed SHA to equal the gated SHA. Fail closed without mutation.',
+    };
+  }
+  if (!isForwardRepairCompare(gated, live, compare)) {
+    return {
+      ok: false,
+      action: 'fail',
+      code: 'head-moved',
+      mutate: false,
+      reason: 'PR head moved after the gate. Fail closed without mutation.',
+    };
+  }
+  if (!isSingleForwardRepairCompare(gated, live, compare)) {
+    return {
+      ok: false,
+      action: 'fail',
+      code: 'extra-descendant',
+      mutate: false,
+      reason: 'Live head is more than one commit ahead of the gated SHA. Fail closed without mutation.',
+    };
+  }
+  if (!liveTreeMatchesTrustedRepair(provenance)) {
+    return {
+      ok: false,
+      action: 'fail',
+      code: 'unrelated-descendant',
+      mutate: false,
+      reason: 'Live tree does not match the trusted repair.patch tree. Fail closed without mutation.',
     };
   }
   return {
-    ok: false,
-    action: 'fail',
-    code: 'head-moved',
+    ok: true,
+    action: 'adopt-live',
+    code: 'already-repaired',
     mutate: false,
-    reason: 'PR head moved after the gate. Fail closed without mutation.',
+    repairSha: live,
+    reason: 'Live PR head already matches the trusted one-commit repair of the reviewed SHA. Skip mutation and sync PENDING.',
   };
 }
 
@@ -424,7 +493,8 @@ function main(argv) {
     return 1;
   }
   if (command === 'classify-push-head') {
-    const result = classifyRepairPushHead(argv[3], argv[4], argv[5], readJsonArg(argv[6]));
+    const provenance = argv[7] ? readJsonArg(argv[7]) : {};
+    const result = classifyRepairPushHead(argv[3], argv[4], argv[5], readJsonArg(argv[6]), provenance);
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     if (result.ok) return 0;
     process.stderr.write(`${result.reason}\n`);
@@ -464,5 +534,6 @@ module.exports = {
   deniedGitVerb,
   assertHeadsStillGated,
   isForwardRepairCompare,
+  isSingleForwardRepairCompare,
   classifyRepairPushHead,
 };

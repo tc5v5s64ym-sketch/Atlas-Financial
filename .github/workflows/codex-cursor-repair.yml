@@ -6,8 +6,10 @@ name: Codex cursor repair
 # After that revalidation it may edit the PR review block: PASS / NOT PASS /
 # BLOCKING from a trusted Atlas review, or PENDING after a repair push whose
 # live PR head has converged to the locally pushed SHA. If Cursor Automation
-# already pushed a forward repair of the gated SHA, this job skips mutation
-# and still syncs PENDING onto that live head. It never infers PASS.
+# already pushed the exact trusted repair tree — one commit ahead of the
+# reviewed/gated SHA, matching repair.patch — this job skips mutation and
+# still syncs PENDING onto that live head. Any other descendant fails closed.
+# It never infers PASS.
 # After a trusted PASS card-sync it starts a fresh Merge Card check via
 # workflow_dispatch. It targets the PR head branch when that commit already
 # has the trigger. A PR head that predates the trigger uses the default-branch
@@ -486,9 +488,48 @@ jobs:
           local_head="$(git rev-parse HEAD)"
           gh api "repos/${GITHUB_REPOSITORY}/compare/${GATED_SHA}...${live}" \
             > "${RUNNER_TEMP}/push-compare.json"
+          if ! git cat-file -e "${GATED_SHA}^{tree}"; then
+            echo "Gated SHA ${GATED_SHA} is not in this worktree. Fail closed without mutation."
+            exit 1
+          fi
+          expected_index="${RUNNER_TEMP}/expected.index"
+          rm -f "${expected_index}"
+          git read-tree --index-output="${expected_index}" "${GATED_SHA}"
+          if ! GIT_INDEX_FILE="${expected_index}" git apply --cached "${RUNNER_TEMP}/patch/repair.patch"; then
+            echo "Trusted repair.patch does not apply to the gated tree. Fail closed without mutation."
+            exit 1
+          fi
+          expected_tree="$(GIT_INDEX_FILE="${expected_index}" git write-tree)"
+          live_tree="$(jq -r --arg live "${live}" '
+            def norm: ascii_downcase;
+            (.commits // [])
+            | map(select((.sha | norm) == ($live | norm)))
+            | last
+            | .commit.tree.sha // empty
+          ' "${RUNNER_TEMP}/push-compare.json")"
+          if [[ -z "${live_tree}" ]]; then
+            live_tree="$(jq -r --arg live "${live}" '
+              def norm: ascii_downcase;
+              if ((.head.sha // "") | norm) == ($live | norm)
+              then .head.commit.tree.sha // empty
+              else empty
+              end
+            ' "${RUNNER_TEMP}/push-compare.json")"
+          fi
+          if [[ -z "${live_tree}" ]] && git cat-file -e "${live}^{tree}" 2>/dev/null; then
+            live_tree="$(git rev-parse "${live}^{tree}")"
+          fi
+          jq -n \
+            --arg reviewed "${REVIEWED_SHA}" \
+            --arg expectedTree "${expected_tree}" \
+            --arg liveTree "${live_tree}" \
+            '{reviewedSha:$reviewed,expectedTreeSha:$expectedTree,liveTreeSha:$liveTree}' \
+            > "${RUNNER_TEMP}/push-provenance.json"
           set +e
           node "${RUNNER_TEMP}/atlas-trusted-scripts/atlas-cursor-repair-gate.js" classify-push-head \
-            "${GATED_SHA}" "${local_head}" "${live}" "${RUNNER_TEMP}/push-compare.json" \
+            "${GATED_SHA}" "${local_head}" "${live}" \
+            "${RUNNER_TEMP}/push-compare.json" \
+            "${RUNNER_TEMP}/push-provenance.json" \
             > "${RUNNER_TEMP}/push-classify.json"
           classify_status=$?
           set -e
