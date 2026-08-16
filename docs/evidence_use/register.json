@@ -663,6 +663,29 @@
       "disposition": "EXCLUDED",
       "exclusion_reason": "A live copilot API is security-relevant and owner-gated. Not started.",
       "no_review_reason": "Durable closed gate: no live API in this outcome."
+    },
+    {
+      "id": "WB-001",
+      "source": "docs/source_intake/HOUSEHOLD_BUDGET_WORKBOOKS_2026-08-16.md",
+      "disposition": "CONSUMED",
+      "routed_to": {
+        "path": "docs/source_intake/HOUSEHOLD_BUDGET_WORKBOOKS_2026-08-16.md",
+        "heading": "Authority that wins"
+      }
+    },
+    {
+      "id": "WB-002",
+      "source": "docs/source_intake/HOUSEHOLD_BUDGET_WORKBOOKS_2026-08-16.md",
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "The tracker template My Recommendation section is advisory material derived from April/May actuals. A recommendation is not owner-approved household policy and must not become plannedMonthly.",
+      "no_review_reason": "Durable: advisory workbook values stay out of canonical Plan state unless the owner later adopts them."
+    },
+    {
+      "id": "WB-003",
+      "source": "docs/source_intake/HOUSEHOLD_BUDGET_WORKBOOKS_2026-08-16.md",
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "HOME BUDGET.xlsx sinking-fund and annual-bill planning is historical owner-created evidence. Amounts are not independently extracted into the repository and are not current approved targets. They stay out of Forecast.",
+      "no_review_reason": "Existing owner-decision home is data.json plan.budget.ownerTargets.sinkingFundsNote. Historical workbook planning is not that approval."
     }
   ]
 }

@@ -318,7 +318,7 @@ console.log('\n=== J. observation files remain evidence, not competing canonical
 console.log('\n=== remaining owner questions stay open ===');
 {
   const md = questionsMarkdown();
-  ok(/^OPEN\b/.test(questionStatus(md, 'Q0')), 'Q0 HOME BUDGET remains OPEN');
+  ok(/^ANSWERED\b/.test(questionStatus(md, 'Q0')), 'Q0 HOME BUDGET is ANSWERED — workbooks classified, policy unchanged');
   ok(/^OPEN\b/.test(questionStatus(md, 'Q17')), 'Q17 Hydro 14 August due remains OPEN');
   ok(/^OPEN\b/.test(questionStatus(md, 'Q19')), 'Q19 HELOC remains OPEN');
   ok(/^OPEN\b/.test(questionStatus(md, 'Q23')), 'Q23 Fusion instalments remain OPEN');

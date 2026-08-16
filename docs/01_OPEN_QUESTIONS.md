@@ -1,6 +1,6 @@
 # Open Questions — Working Agenda
 
-**Updated 2026-08-14.** Every unanswered question in one place, ranked by what
+**Updated 2026-08-16.** Every unanswered question in one place, ranked by what
 the answer would change. Add new questions here as accounts are reviewed; move
 answered ones to the bottom with the answer recorded.
 
@@ -12,34 +12,6 @@ the site may hold evidence about a question. They do not close it.
 ---
 
 ## Tier 1 — Changes what the numbers mean
-
-### Q0. Where is the household budget that was built with the owner?
-**Status:** OPEN · **Owner:** Dale + Amanda
-**What we know:** Two workbooks were named as containing household budget work
-developed with the owner — `monthly_budget_tracker_template.xlsx` and
-`HOME BUDGET.xlsx`. Neither has ever reached this repository. There is no trace
-of them or of any figure derived from them in the working tree or anywhere in
-git history, and `scripts/xlsx.js` — the only spreadsheet reader here — was
-written for Amanda's *coaching* workbooks, not these. The Aug. 14 payday
-session located `HOME BUDGET.xlsx` in Gmail; it is still not absorbed into
-Atlas. The plan's household budget is therefore built entirely from the
-transaction record: 18 months of categorised spending, classified essential /
-discretionary / reserve, with everything already dated on the calendar
-subtracted from its own category.
-**What the answer changes:** The weekly household cap is $1,250, of which
-$940/week is the essential requirement and $310/week is everything optional.
-Those essentials are *descriptions of past behaviour*, not targets the household
-agreed to. An owner budget would replace them — and it should, because a target
-beats an average. The likeliest single effect is on travel: it carries
-$985/month in the historical average, concentrated in May–July 2026, with no
-trip known to fall inside this window. If that is right, the discretionary
-figure above is understated by roughly that much.
-**How to answer:** Put the two workbooks somewhere local and readable. They must
-NOT be committed — they are household financial detail and belong under `raw/`
-like every other source. Each budget category in `data.json` has an empty
-`plannedMonthly` slot waiting for the owner figure; filling one flips that row
-from `historical-actual` to `owner-target`, and the tests already assert the
-distinction is reported honestly.
 
 ### Q24. Is "School & clubs" essential or discretionary for the household operating plan?
 **Status:** OPEN · **Owner:** Dale + Amanda
@@ -316,6 +288,27 @@ Unknown pending is allowed until then; it must not be treated as zero.
 ---
 
 ## Answered
+
+### Q0. Where are the two named owner budget workbooks? — ANSWERED 2026-08-16
+**Status:** ANSWERED · **Owner:** Dale + Amanda
+**Answer:** The original question was “where is the household budget that was built with the owner?” Both named workbooks exist. Amanda emailed `HOME BUDGET.xlsx` and
+`monthly_budget_tracker_template.xlsx` to Dale on 2026-08-09. They are
+classified in
+[`docs/source_intake/HOUSEHOLD_BUDGET_WORKBOOKS_2026-08-16.md`](source_intake/HOUSEHOLD_BUDGET_WORKBOOKS_2026-08-16.md).
+The binaries stay out of git.
+
+They do **not** replace the nine owner-stated Aug. 10 targets in `data.json`.
+`HOME BUDGET.xlsx` is historical per-paycheque planning (groceries ~$1,200/month
+and gas ~$400/month conflict with the later $1,800 and $1,300). The tracker's
+`My Recommendation` section is advisory, derived from April/May actuals, and is
+not owner policy. Personal $600 and Subscriptions $300 match on amount only;
+the Personal → Shopping mapping is still unconfirmed. Sinking-fund planning in
+the older workbook is not a current approved target.
+
+Q0 was "where are the workbooks / absorb them." That is done. Remaining items
+are ordinary policy questions already recorded on the budget block: completeness
+of the nine lines, current sinking-fund amounts, and the Personal mapping.
+They are not a continuation of "find the missing files."
 
 ### Q9. What does the PayPal spending buy? — ANSWERED 2026-08-09
 351 transactions reviewed, July 2025 – March 2026. **$5,725.63 outgoing over nine
