@@ -31,7 +31,7 @@ const atlasCi = read('.github/workflows/atlas-ci.yml');
 const gateSource = read('scripts/atlas-ci-gate.js');
 const testJob = (atlasCi.match(/^  test:\n[\s\S]*?(?=^  publish:)/m) || [''])[0];
 const publishJob = (atlasCi.match(/^  publish:\n[\s\S]*/m) || [''])[0];
-const workflowPerms = atlasCi.split(/^jobs:/m)[0];
+const workflowPerms = (atlasCi.match(/^permissions:\n(?:  .*\n)*/m) || [''])[0];
 
 function writePrTree({ workflow = atlasCi, helper = gateSource, extra = {} } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-ci-pr-'));

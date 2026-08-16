@@ -13,9 +13,10 @@
 # byte-for-byte with the trusted copies. Owner bypass is the upgrade path.
 #
 # Two jobs on separate runners. The suite tests the exact live PR head with
-# credentials disabled and GITHUB_TOKEN unset. The publisher has
-# statuses: write, checks nothing out, executes no PR code, and consumes
-# only the trusted event/API head plus the suite job result.
+# credentials disabled and GITHUB_TOKEN unset. The publisher is the only
+# job allowed to write commit statuses; it checks nothing out, executes no
+# PR code, and consumes only the trusted event/API head plus the suite
+# job result.
 #
 # No OpenAI API. No repair or review orchestration.
 name: Atlas CI
