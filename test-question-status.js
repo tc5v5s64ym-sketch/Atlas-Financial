@@ -6,7 +6,7 @@
  * data.json.questions may explain evidence; they may not independently close
  * a question, including by overloading tier 0 as "answered".
  *
- * Q2 and Q5 are the live proving cases. The suite must fail if a publication
+ * Q2 and Q20 are the live proving cases. The suite must fail if a publication
  * copy independently marks either ANSWERED while the canonical file still
  * has it OPEN — and the reverse on a proving fixture.
  */
@@ -198,12 +198,15 @@ console.log('=== canonical authority parses ===');
   const q2 = live.byId.get('Q2');
   const q5 = live.byId.get('Q5');
   const q9 = live.byId.get('Q9');
+  const q20 = live.byId.get('Q20');
   ok(live.canonical.length >= 10, 'canonical file yields household questions',
     String(live.canonical.length));
   ok(q2 && q2.status === 'OPEN', 'canonical Q2 is OPEN',
     q2 ? `${q2.status} — ${q2.title}` : 'missing');
-  ok(q5 && q5.status === 'OPEN', 'canonical Q5 is OPEN',
-    q5 ? `${q5.status} — ${q5.title}` : 'missing');
+  ok(q20 && q20.status === 'OPEN', 'canonical Q20 is OPEN (emergency reserve remains unresolved)',
+    q20 ? `${q20.status} — ${q20.title}` : 'missing');
+  ok(q5 && q5.status === 'ANSWERED', 'canonical Q5 is ANSWERED (garage/lab income ended)',
+    q5 ? q5.status : 'missing');
   ok(q9 && q9.status === 'ANSWERED', 'canonical Q9 is ANSWERED (reverse-direction fixture exists in live file)',
     q9 ? q9.status : 'missing');
   ok(live.canonical.every(q => !q.status || CANONICAL_STATUSES.includes(q.status)
@@ -224,12 +227,16 @@ console.log('\n=== live publication cannot contradict canonical status ===');
     'Deep Dive questions renderer has no independent answered/done bit');
   const q2pub = published.filter(q => matchesCanonical(q, live.byId.get('Q2')));
   const q5pub = published.filter(q => matchesCanonical(q, live.byId.get('Q5')));
+  const q20pub = published.filter(q => matchesCanonical(q, live.byId.get('Q20')));
   ok(q2pub.length >= 1 && q2pub.every(q => !encodesAnswered(q)),
     'household-facing Q2 is not marked ANSWERED',
     q2pub.map(q => q.q).join(' | ') || 'absent');
-  ok(q5pub.length >= 1 && q5pub.every(q => !encodesAnswered(q)),
-    'household-facing Q5 is not marked ANSWERED',
+  ok(q5pub.length === 0 || q5pub.every(q => encodesAnswered(q)),
+    'canonical-ANSWERED Q5 is not independently presented as OPEN',
     q5pub.map(q => q.q).join(' | ') || 'absent');
+  ok(q20pub.every(q => !encodesAnswered(q)),
+    'household-facing Q20 is not marked ANSWERED',
+    q20pub.map(q => q.q).join(' | ') || 'absent');
   const q9pub = published.filter(q => matchesCanonical(q, live.byId.get('Q9')));
   ok(q9pub.length === 0 || q9pub.every(q => encodesAnswered(q)),
     'canonical-ANSWERED Q9 is not independently presented as OPEN');
@@ -244,29 +251,29 @@ console.log('\n=== mutation recreates the old defect ===');
     changes: 'Nothing is hiding.',
     owner: 'Closed 9 Aug 2026',
   };
-  const oldQ5 = {
+  const oldQ20 = {
     tier: 0,
-    q: 'ANSWERED — the monthly transfer was rent, and it stopped',
-    detail: 'It was not a spousal transfer. It stopped after May 2026.',
-    changes: 'Recorded for 18 months as her contribution.',
-    owner: 'Answered 9 Aug 2026',
+    q: 'ANSWERED — emergency reserve target is $10,000',
+    detail: 'Invented close of Q20.',
+    changes: 'Must fail while Q20 is OPEN.',
+    owner: 'Closed 16 Aug 2026',
   };
   const q2Mutant = clone(published).concat(oldQ2);
-  const q5Mutant = clone(published).concat(oldQ5);
+  const q20Mutant = clone(published).concat(oldQ20);
   let q2Err = null;
-  let q5Err = null;
+  let q20Err = null;
   try {
     assertQuestionStatusAuthority({ markdown, publishedQuestions: q2Mutant, rendererSource });
   } catch (err) { q2Err = err; }
   try {
-    assertQuestionStatusAuthority({ markdown, publishedQuestions: q5Mutant, rendererSource });
-  } catch (err) { q5Err = err; }
+    assertQuestionStatusAuthority({ markdown, publishedQuestions: q20Mutant, rendererSource });
+  } catch (err) { q20Err = err; }
   ok(!!q2Err && /Q2|independently claims ANSWERED/i.test(q2Err.message),
     'mutating publication to mark canonical-OPEN Q2 ANSWERED fails',
     q2Err ? q2Err.message.split('\n')[0] : 'suite stayed green');
-  ok(!!q5Err && /Q5/i.test(q5Err.message),
-    'mutating publication to mark canonical-OPEN Q5 ANSWERED fails',
-    q5Err ? q5Err.message.split('\n')[0] : 'suite stayed green');
+  ok(!!q20Err && /Q20/i.test(q20Err.message),
+    'mutating publication to mark canonical-OPEN Q20 ANSWERED fails',
+    q20Err ? q20Err.message.split('\n')[0] : 'suite stayed green');
 
   const idMutant = clone(published);
   const q2card = idMutant.find(q => q.id === 'Q2');

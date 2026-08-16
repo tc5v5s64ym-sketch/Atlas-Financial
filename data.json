@@ -38,10 +38,10 @@
       "heldElsewhere": [
         {
           "id": "amanda-debt-payments",
-          "label": "DEBT&PAYMENTS — Amanda's account",
+          "label": "TENNIS INCOME — Amanda's account",
           "value": 2691.85,
           "class": "operational",
-          "note": "Her Tennis BC pay lands here. Coaches are paid out of it first; only what is left is transferred to the household. Not spendable household cash."
+          "note": "Owner-renamed from DEBT&PAYMENTS; same canonical account identity. Amanda's Tennis BC salary and coaching income land here. Coaches, business and pass-through amounts are paid from this account first; whatever remains is transferred into BILLS ACCOUNT (Chequing A). Money becomes household-available only when it is actually transferred. The raw balance is not automatically spendable household cash. Do not estimate how much of the current balance is household-available (Q25)."
         },
         {
           "id": "savings-dont-touch",
@@ -58,7 +58,7 @@
           "note": "US-dollar holiday accounts."
         }
       ],
-      "note": "The household spending accounts only — Chequing A, Chequing B and Savings, the three the mortgage, bills and card minimums are actually paid from. Amanda's DEBT&PAYMENTS account is deliberately excluded: her Tennis BC pay lands there and is not household money until she has paid her coaches and moved the remainder across (owner-stated). Wise, the silver and the RESP are excluded too."
+      "note": "The household spending accounts only — Chequing A, Chequing B and Savings, the three the mortgage, bills and card minimums are actually paid from. Amanda's TENNIS INCOME account (id amanda-debt-payments) is deliberately excluded: her Tennis BC pay and coaching income land there, coaches and pass-through obligations are paid first, and only what she actually transfers into BILLS ACCOUNT is household money (owner-stated 2026-08-16). Wise, the silver and the RESP are excluded too."
     },
     "income": [
       {
@@ -114,7 +114,7 @@
         "amount": 814.18,
         "confidence": "confirmed",
         "nonCash": true,
-        "note": "Charged on the last day of the month and capitalised onto the HELOC balance — it does not leave a chequing account, so it is shown on the calendar but never deducted from cash. The last three charges were $810.09, $787.58 and $814.18, each appearing as a debit on the HELOC itself with no matching chequing payment. The cost is real: the balance grows by this amount every month, which is why the HELOC has risen every month since February."
+        "note": "Charged on the last day of the month and capitalised onto the HELOC balance — it does not leave a chequing account, so it is shown on the calendar but never deducted from cash. Dec 2025–Jul 2026 statements: the displayed regular minimum equals that period's interest; overdue $0; contractual due date the 21st; a Pre-Authorized Debit Date around the 1st is shown. Manual payments can reduce the residual PAD (Feb min $751.46 collected in full 2 Mar; May min $810.09 collected as $800 + $10.09 on 2–3 Jun). The Jul statement shows $814.18 due 2026-08-21 and PAD date 2026-08-01. The live Lunch Money pull began after Aug. 1 and does not prove whether that PAD occurred. The Aug. 14 $1,100 payment does not, by itself, prove another $814.18 is due, and does not prove the PAD did not happen. cashPayment remains $0. Do not claim confident zero remaining August cash impact (Q19)."
       },
       {
         "id": "triangle",
@@ -126,7 +126,7 @@
         "firstDue": "2026-09-07",
         "amount": 253.57,
         "confidence": "estimated",
-        "note": "August is paid. Future statement minimums are estimated at the current level."
+        "note": "A $300 payment posted 2026-08-10 (TD BANKLINE). Displayed due date on the 2026-08-16 screenshot was Aug. 7 with displayed minimum $0.00. Posted after the displayed due date — on-time status and default-rate consequences are not proven. Future statement minimums are estimated at the current level. firstDue 2026-09-07."
       },
       {
         "id": "cashback-sep",
@@ -159,8 +159,8 @@
         "frequency": "monthly",
         "day": 31,
         "amount": 158.27,
-        "confidence": "estimated",
-        "note": "Due at month-end; the day clamps to shorter months. Future minimums estimated at the current level."
+        "confidence": "confirmed",
+        "note": "Statement authority: minimum $158.27 due 2026-08-31. Purchase APR 21.74%; cash advance / balance transfer 22.99%. Statement balance $7,855.12; statement interest $148.27. Current posted balance is the 2026-08-16 screenshot ($8,003.61), not the statement amount. Future minimums after this statement remain estimated at the current level. Day clamps to shorter months."
       },
       {
         "id": "tdcc",
@@ -275,10 +275,20 @@
         "budgetCategory": null,
         "householdObligation": true,
         "payingAccount": "amanda-debt-payments",
-        "note": "Aug. 14 payday evidence: $237.45 new charges due 1 September. Household obligation; Amanda / DEBT&PAYMENTS pays it, so it does not reduce joint cash. The $451.24 account balance is not scheduled. The $213.79 that was due on 14 August is not on this plan — later settlement status is unknown (Q17)."
+        "note": "Aug. 14 payday evidence: $237.45 new charges due 1 September. Household obligation; Amanda / TENNIS INCOME (id amanda-debt-payments) pays it, so it does not reduce joint cash. Owner-confirmed 2026-08-16: the old questioned outstanding Hydro amount ($213.79 / $451.24 arrears) is SETTLED. Settlement of the old amount does not cancel this future bill. The $451.24 account balance is not scheduled."
+      },
+      {
+        "id": "noble-garbage",
+        "label": "Noble Disposal Services — garbage",
+        "frequency": "once",
+        "date": "2026-09-18",
+        "amount": 95.85,
+        "confidence": "confirmed",
+        "budgetCategory": "household",
+        "note": "Primary invoice: 3 Month Subscription — Package A: 2 cans. Total $95.85 every 3 months on the 18th, repeats indefinitely. A March 18 2026 payment of $95.85 is shown. Forecast has no quarterly expander, so this is the next in-window dated due (2026-09-18), not a duplicate of the March payment and not an invented June arrears. Do not infer the paying card from a Visa 0870 mask."
       }
     ],
-    "billsNote": "Extracted from the transaction history, not guessed: only bills still active in the last three months are dated here, and every one of them is paid from Chequing A except BC Hydro. The children's RESP contribution is included as a hard $100 monthly bill on the 15th (owner-stated). CMAW Local 1995 union dues ($25 on the 15th) remain dated here because they are still on the statement; the owner intends to cancel them, but cancellation is not yet confirmed, so the $25 stays reserved until evidence closes that action. They are not a spending category and are not inside the CRA instalment reserve. BC Hydro remains a household obligation paid from Amanda's DEBT&PAYMENTS account: the 1 September $237.45 dated due is on the plan and does not reduce joint cash. The $451.24 account balance is not scheduled. The $213.79 that was due on 14 August is omitted until refreshed evidence shows whether it was paid (Q17). Telus stopped leaving any captured account in March 2026 and its route is still unknown. Streaming is Amazon Channels — several small charges on scattered days, left inside the variable budget. There is no Netflix anywhere in the data.",
+    "billsNote": "Extracted from the transaction history, not guessed: only bills still active in the last three months are dated here, and every one of them is paid from Chequing A except BC Hydro. The children's RESP contribution is included as a hard $100 monthly bill on the 15th (owner-stated). CMAW Local 1995 union dues ($25 on the 15th) remain dated here because they are still on the statement; the owner intends to cancel them, but cancellation is not yet confirmed, so the $25 stays reserved until evidence closes that action. They are not a spending category and are not inside the CRA instalment reserve. BC Hydro remains a household obligation paid from Amanda's TENNIS INCOME account: the 1 September $237.45 dated due is on the plan and does not reduce joint cash. Owner-confirmed 2026-08-16: the old Hydro arrears are settled and are not scheduled. Noble Disposal Services is the household garbage bill: $95.85 every 3 months on the 18th; next dated due 2026-09-18. TELUS IS CLOSED — do not forecast Telus as an active household bill. Streaming is Amazon Channels — several small charges on scattered days, left inside the variable budget. There is no Netflix anywhere in the data.",
     "commitments": [
       {
         "id": "burrard1",
@@ -288,7 +298,9 @@
         "budgetCategory": "sport",
         "confidence": "confirmed",
         "group": "burrard",
-        "sinkingFund": true
+        "sinkingFund": true,
+        "settledOn": "2026-08-16",
+        "note": "Owner-confirmed 2026-08-16: this registration is PAID. No registration amount remains owed. settledOn is the evidence date; the exact posting date is not proven. An Aug. 9 opening still reserves this row because settledOn is after as-of. Upcoming team fees are a separate estimated item, not this registration."
       },
       {
         "id": "burrard2",
@@ -298,7 +310,9 @@
         "budgetCategory": "sport",
         "confidence": "confirmed",
         "group": "burrard",
-        "sinkingFund": true
+        "sinkingFund": true,
+        "settledOn": "2026-08-16",
+        "note": "Owner-confirmed 2026-08-16: this registration is PAID. No registration amount remains owed. settledOn is the evidence date; the exact posting date is not proven. An Aug. 9 opening still reserves this row because settledOn is after as-of. Upcoming team fees are a separate estimated item, not this registration."
       },
       {
         "id": "fusioncamp",
@@ -320,7 +334,7 @@
         "confidence": "confirmed",
         "sinkingFund": true,
         "settledOn": "2026-08-14",
-        "note": "Aug. 14 payday evidence: already paid. settledOn records that fact; the row is retained. The three $500 Fusion season instalments are a separate Q23 question."
+        "note": "Aug. 14 payday evidence: already paid. settledOn records that fact; the row is retained. Owner-confirmed 2026-08-16: there are currently NO pending Fusion instalments; the three live-plan $500 rows were stale and have been removed."
       },
       {
         "id": "warriors",
@@ -332,38 +346,6 @@
         "adjustable": true,
         "note": "Owner-stated \"about $800\", September, not yet invoiced. Mid-month assumed.",
         "sinkingFund": true
-      },
-      {
-        "id": "fusion-sep",
-        "date": "2026-09-15",
-        "label": "Fusion season — September instalment",
-        "amount": 500.0,
-        "budgetCategory": "sport",
-        "confidence": "estimated",
-        "adjustable": true,
-        "note": "Planned as roughly $500/month across four months; selection expected after the 22 August tryouts.",
-        "sinkingFund": true
-      },
-      {
-        "id": "fusion-oct",
-        "date": "2026-10-15",
-        "label": "Fusion season — October instalment",
-        "amount": 500.0,
-        "budgetCategory": "sport",
-        "confidence": "estimated",
-        "adjustable": true,
-        "sinkingFund": true
-      },
-      {
-        "id": "fusion-nov",
-        "date": "2026-11-01",
-        "label": "Fusion season — November instalment",
-        "amount": 500.0,
-        "budgetCategory": "sport",
-        "confidence": "estimated",
-        "adjustable": true,
-        "note": "Date unknown; placed on the 1st, the cautious choice inside the window.",
-        "sinkingFund": true
       }
     ],
     "groups": [
@@ -371,7 +353,7 @@
         "id": "burrard",
         "label": "Burrard registrations",
         "atomic": true,
-        "note": "Both children are registered on the same day (owner-stated), so this cannot be staggered across the payday two days later — it is the full amount or neither child is registered."
+        "note": "Both children's Burrards registrations are owner-confirmed PAID (2026-08-16). The pair was atomic on the original due day; it is retained as settled history. Upcoming team fees (~$700, September TBD) are a separate estimated item, not these registrations."
       }
     ],
     "funding": {
@@ -478,7 +460,7 @@
           "plannedMonthly": 150,
           "ownerLine": "Household",
           "targetSource": "owner-stated-2026-08-10",
-          "why": "OWNER TARGET WINS. $150 against $366.19 historical, which includes the $124 FortisBC bill now dated on the calendar. The target covers supplies only, so FortisBC is subtracted from it."
+          "why": "OWNER TARGET WINS. $150 against $366.19 historical, which includes the $124 FortisBC bill now dated on the calendar. The target covers supplies only, so FortisBC is subtracted from it. Noble Disposal $95.85 due 2026-09-18 is also dated (household garbage) and is subtracted so the quarterly invoice is not also inside the weekly cap. The $150 owner target amount itself is unchanged."
         },
         {
           "id": "health",
@@ -500,7 +482,7 @@
             "Telecom"
           ],
           "plannedMonthly": null,
-          "why": "Shaw is dated at $78.40 and subtracted. The remainder is the Telus phone bills, which stopped leaving any captured account in March 2026 — the route is unknown, so the cost is carried inside the cap rather than dated."
+          "why": "Shaw is dated at $78.40 and subtracted. TELUS IS CLOSED (owner-confirmed 2026-08-16) and is not forecast as an active bill. The historical telecom remainder still includes past Telus activity in the spending series; that is observation history, not a live Telus recurrence. Bell Mobility is card-paid (see ACCOUNT_FACTS): do not date the Aug. 1 $356.62 arrears/travel bill as the normal monthly run rate, and do not add a second Bell $250 expense on top of the pending Travel Visa payment."
         },
         {
           "id": "insurance",
@@ -588,7 +570,7 @@
           "plannedMonthly": 250,
           "ownerLine": "Sports / Activities",
           "targetSource": "owner-stated-2026-08-10",
-          "why": "OWNER TARGET WINS, AND IS KEPT SEPARATE FROM THE SEASON FEES. $250/month of ordinary sports and activities. The Fusion and Burrard commitments are dated sinking-fund items on the calendar and are NOT netted off this line — doing so previously drove recurring sports to $0, which is not what the household budgeted. Fit4Less at $25/month IS dated and recurring, so it is subtracted, leaving $225."
+          "why": "OWNER TARGET WINS, AND IS KEPT SEPARATE FROM THE SEASON FEES. $250/month of ordinary sports and activities. Fusion camp and tryouts are dated settled sinking-fund items; Burrards registrations are settled as of 2026-08-16. There are currently no pending Fusion instalments on the calendar. Fit4Less at $25/month IS dated and recurring, so it is subtracted, leaving $225. The $250 owner target is unchanged."
         },
         {
           "id": "entertainment",
@@ -615,12 +597,12 @@
         {
           "id": "school",
           "label": "School & clubs",
-          "class": "discretionary",
+          "class": "essential",
           "from": [
             "School & clubs"
           ],
           "plannedMonthly": null,
-          "why": "School fees and club dues outside the dated lacrosse commitments."
+          "why": "Owner-confirmed 2026-08-16: School & clubs is ESSENTIAL for the household operating plan (Q24 ANSWERED). School fees and club dues outside the dated lacrosse commitments. No owner monthly target — the nine Aug. 10 plannedMonthly amounts are unchanged."
         },
         {
           "id": "paypal",
@@ -700,8 +682,8 @@
         "what": "Fund the 12 August registrations — Amanda's account, or failing that the HELOC",
         "amount": 1050.0,
         "due": "2026-08-11",
-        "why": "Both registrations are paid on the same day and total $623.00; the household accounts hold $79.84. Cards and the overdraft cannot cover it — combined they reach $348.11. That leaves two sources, and they are not equal. Amanda releasing about $1,050 from her tennis account costs nothing and adds no debt. The HELOC reaches the amount but should be the last resort, not the fallback: it capitalises about $814 a month with nothing repaying it and passes its own limit on 30 September as it stands, and a $623 draw pulls that forward to 31 August. Decide before the 11th so the money is in place on the day.",
-        "status": "open",
+        "why": "Owner-confirmed 2026-08-16: Logan's and Linden's Burrards registrations are both PAID. No registration amounts remain owed. The action is done; the commitment rows are retained with settledOn 2026-08-16.",
+        "status": "done",
         "owner": "Amanda, then both"
       },
       {
@@ -742,18 +724,18 @@
         "owner": "Dale"
       }
     ],
-    "actionsNote": "The first is new and it is the one that matters: on the household accounts alone there is not enough to pay the 12 August registrations.",
+    "actionsNote": "The 12 August Burrards registrations are owner-confirmed paid (2026-08-16). The Fusion camp action is already done. Remaining open actions are the TD credit-card minimum, Cash Back over-limit, a standing Amanda transfer, and CMAW dues cancellation.",
     "assumptions": [
       "The window is the 13 weeks (91 days) starting on the as-of date. Every date in the projection is derived from that date — nothing is hardcoded to a calendar month.",
       "Deposits are assumed to land before payments due the same day. Payday-timed bills (the mortgage on the 14th) are arranged on exactly that assumption.",
       "Every figure is tagged. Confirmed means the institution or a long observed history states it; estimated means it is modelled and shown in amber with a ≈ mark throughout.",
       "Future card statement minimums are estimates carried at the current level; real minimums move with the balance.",
-      "Named recurring bills — FortisBC, Shaw, BCAA, ICBC, the children's RESP contribution, CMAW Local 1995 union dues, Fit4Less, the TD account fees — are dated on the calendar with days extracted from the transaction history or, for the RESP, from the owner-stated hard bill, and are excluded from the variable budget so nothing is counted twice. The RESP is an internal transfer, not a spending category. Union dues remain dated until cancellation is actually confirmed; the cancel action stays open and the bill is retired when evidence closes it. The 1 September BC Hydro $237.45 due is a household obligation paid from Amanda / DEBT&PAYMENTS: it is dated, it does not reduce joint cash, and it is not subtracted from household averages. The variable budget covers everything else: groceries, fuel, phones, streaming, PayPal and the rest.",
-      "One known cost has no reliable date and is NOT on the calendar: the Telus phone bills, absent from every captured account since March 2026, route unknown. It rides inside the household budget's telecom average instead. The $213.79 Hydro amount that was due 14 August is also not dated here — later settlement status is unknown (Q17).",
+      "Named recurring bills — FortisBC, Shaw, BCAA, ICBC, the children's RESP contribution, CMAW Local 1995 union dues, Fit4Less, the TD account fees, and Noble Disposal garbage ($95.85 due 2026-09-18) — are dated on the calendar with days extracted from the transaction history, the owner-stated RESP hard bill, or the Noble invoice, and are excluded from the variable budget so nothing is counted twice. The RESP is an internal transfer, not a spending category. Union dues remain dated until cancellation is actually confirmed; the cancel action stays open and the bill is retired when evidence closes it. The 1 September BC Hydro $237.45 due is a household obligation paid from Amanda / TENNIS INCOME: it is dated, it does not reduce joint cash, and it is not subtracted from household averages. TELUS IS CLOSED. The variable budget covers everything else: groceries, fuel, phones, streaming, PayPal and the rest.",
+      "TELUS IS CLOSED (owner-confirmed 2026-08-16) and is not forecast as an active household bill. The old BC Hydro arrears are settled and are not a future obligation; the 1 September $237.45 Hydro due remains. Bell's Aug. 1 $356.62 bill is arrears plus travel usage, not the normal ~$104.20 monthly baseline, and is not dated as a joint-cash bill (a valid $250 Bell payment is already pending on Travel Visa).",
       "Each week's 'keep above' figure is the closing balance below which the rest of the window would breach the buffer even with everything going to plan — it is the week-by-week track to stay on, computed backwards from the end of the window.",
-      "The plan is the HOUSEHOLD SPENDING ACCOUNTS ONLY — Chequing A, Chequing B and Savings. Amanda's DEBT&PAYMENTS account is a separate pot: her Tennis BC pay lands there, coaches are paid from it, and only the remainder crosses over. Neither its balance nor her gross pay is counted as household money; only her actual transfers are, measured from the transfer record. Internal transfers between household accounts are excluded throughout.",
+      "The plan is the HOUSEHOLD SPENDING ACCOUNTS ONLY — Chequing A, Chequing B and Savings. Amanda's TENNIS INCOME account (id amanda-debt-payments) is a separate pot: Tennis BC salary and coaching income land there, coaches and pass-through obligations are paid from it, and only the remainder actually transferred into BILLS ACCOUNT is household money. Neither its raw balance nor her gross pay is counted as household cash; only her actual transfers are, measured from the transfer record. Internal transfers between household accounts are excluded throughout.",
       "Because her account is excluded, so is most of what it pays. She settles BC Hydro, part of the MBNA minimum and some card payments direct from it — roughly $940/month that does not reduce joint cash. The 1 September Hydro $237.45 due is dated as an external household obligation for that reason. Every card minimum is nonetheless charged to the household here, which is the cautious reading: if she keeps paying a share, the household finishes better than shown.",
-      "HELOC interest is capitalised, not paid. It is charged as a debit on the HELOC itself at month-end and no matching chequing payment exists, so it is shown on the calendar and excluded from the cash maths. That is not good news — it means the balance grows by about $814 every month with nothing repaying it.",
+      "HELOC interest is capitalised, not paid from joint cash as a Forecast outflow. Statements show the regular minimum tracking monthly interest, due the 21st, with a PAD mechanism around the 1st, and manual payments that can reduce the residual PAD. The Aug. 1 2026 PAD is not proven by the live pull. Do not invent a duplicate full $814.18 chequing reserve, and do not claim confident zero remaining August cash impact (Q19).",
       "No bonus is modelled: bonuses have historically landed in February and July, outside this window.",
       "The recommended weekly budget is solved from the forecast: the largest weekly spend that keeps the projected balance above the target buffer on every single day of the window.",
       "Room for extra debt repayment is measured at the end of the window — cash projected above the buffer once every obligation and commitment has cleared. Paying it earlier than the low point would breach the buffer.",
@@ -776,47 +758,46 @@
   ],
   "upcomingNote": "The tight moment is 12 August. Burrard ($623.00) falls two days before payday against $79.84 of spendable household cash — Chequing A, Chequing B and Savings — so on the household accounts alone it does not clear; the Plan page sizes the gap at $1,043.16 including the $500 buffer and shows what can cover it. The Fusion camp ($786.00) follows on the 16th, after payday. There is $1,415.98 of credit left across every facility combined, and $247.18 of that is already spoken for by pending charges. HELOC interest is capitalised onto the balance at month-end: no cash leaves any account for it. Dated payments below are derived from the Plan; the two paid rows are a forensic overlay, not a second schedule.",
   "commitments": {
-    "heading": "Big-ticket items already committed",
-    "note": "Beyond the dates above. Kept here so they do not arrive as a surprise — sports commitments across August to December total about $4,349, roughly $870/month, against the $348/month youth lacrosse has actually averaged. That is two and a half times the established rate, and the funding record below shows $2,269.80 of past lacrosse cost went onto the HELOC at 4.90%.",
+    "heading": "Big-ticket items — committed and estimated",
+    "note": "Beyond the dated Plan calendar. Warriors remains an estimated dated commitment. Upcoming Fusion season and Burrards team fees are planning estimates with unknown dates — not confirmed invoices. Current known tournaments are listed without fabricated costs. These stay out of the headline cash and debt tiles.",
     "items": [
       {
         "what": "Warriors Elite Academy",
         "when": "September 2026",
         "amount": 800,
         "confidence": "committed",
-        "note": "Amount is the owner's figure, stated as \"about $800\", and not yet invoiced. The commitment itself is firm."
+        "note": "Amount is the owner's figure, stated as \"about $800\", and not yet invoiced. The commitment itself is firm. Dated on the Plan calendar."
       },
       {
-        "what": "Fusion season fees",
-        "when": "September – December 2026",
+        "what": "Fusion upcoming season (planning estimate)",
+        "when": "late September 2026 onward — exact dates TBD",
         "amount": 2000,
-        "confidence": "committed",
-        "note": "Tryouts are 22 August and selection is expected (owner-stated 9 Aug). Planned as roughly $500/month across four months rather than a lump sum, so it lands as a recurring cost, not a one-off."
+        "confidence": "estimated",
+        "note": "Owner-confirmed 2026-08-16: there are currently NO pending Fusion instalments. The three live-plan $500 rows were stale and were removed. Upcoming season planning estimate is approximately 4 × ~$500, probably starting late September 2026. Exact total, instalment count, and dates are unknown. Not current invoices or confirmed due dates."
+      },
+      {
+        "what": "Burrards upcoming team fees (planning estimate)",
+        "when": "September 2026 — exact date TBD",
+        "amount": 700,
+        "confidence": "estimated",
+        "note": "Owner-confirmed 2026-08-16: Logan's and Linden's registrations are both PAID; no registration amounts remain owed. Expected upcoming team fees approximately $700 total sometime in September 2026. Exact amount and due date unknown. Not a confirmed invoice. No September date was fabricated."
+      },
+      {
+        "what": "Tournaments — current known list",
+        "when": "Nov 2026 – Jan 2027; Provincials TBD",
+        "amount": null,
+        "confidence": "estimated",
+        "note": "Owner's current known list (2026-08-16): Seattle November 2026; Seattle December 2026; Indio, California January 2027; Provincials expected but location/date/cost unknown. No other specifically known tournaments. Tacoma is not on the current known list. Do not invent dates or costs."
       }
     ],
     "schedule": [
       {
         "m": "September",
-        "amount": 1300,
-        "note": "Warriors $800 plus the first Fusion instalment"
-      },
-      {
-        "m": "October",
-        "amount": 500,
-        "note": "Fusion"
-      },
-      {
-        "m": "November",
-        "amount": 500,
-        "note": "Fusion"
-      },
-      {
-        "m": "December",
-        "amount": 500,
-        "note": "Fusion"
+        "amount": 800,
+        "note": "Warriors ~$800 dated mid-month as an estimate, not yet invoiced. Upcoming Fusion (~4 × ~$500) and Burrards team fees (~$700) are not placed on a fabricated September day."
       }
     ],
-    "totalNote": "Both are treated as committed: the Fusion season is written in on the expectation of selection rather than held back as a maybe. September is the heavy month at $1,300, and it arrives alongside the TD Cash Back minimum. Amounts remain owner-stated rather than invoiced, so they are planning figures — and they stay out of the headline cash and debt tiles, which carry institution-verified amounts only."
+    "totalNote": "Warriors is treated as a firm-but-uninvoice estimated dated commitment. Upcoming Fusion and Burrards team fees are planning estimates only. They stay out of the headline cash and debt tiles, which carry institution-verified amounts only."
   },
   "debts": [
     {
@@ -862,7 +843,7 @@
       "limit": 202654,
       "confidence": "verified",
       "secured": true,
-      "note": "Interest is CAPITALISED onto this balance at month end, not paid from any chequing account. $814.18/month is therefore an economic cost and a balance increase, and $0.00 of household cash. The last three charges were $810.09, $787.58 and $814.18, each a debit on the HELOC itself with no matching chequing payment. cashPayment and monthlyInterest are the canonical split; every page derives its wording from interestTreatment and must not present this as a bill that gets paid."
+      "note": "Interest is CAPITALISED onto this balance at month end, not paid from any chequing account. $814.18/month is therefore an economic cost and a balance increase, and $0.00 of household cash in Forecast. Dec 2025–Jul 2026 statements: regular minimum equals that period's interest; due the 21st; PAD around the 1st; overdue $0. Manual payments can reduce the residual automatic collection. cashPayment and monthlyInterest are the canonical split; every page derives its wording from interestTreatment and must not present this as a joint-cash bill. Aug. 1 2026 PAD status is unknown (Q19)."
     },
     {
       "id": "triangle",
@@ -870,20 +851,22 @@
       "institution": "Canadian Tire",
       "interestByEvent": false,
       "secured": false,
-      "pending": 0,
-      "balance": 13497.0,
+      "pending": 15.62,
+      "balance": 13197.0,
       "rate": 21.99,
       "rateBasis": "Purchases 21.99% / cash 22.99%",
       "rateConvention": "card",
-      "structure": "Revolving — 99.98% used",
+      "structure": "Revolving — 97.9% used once pending is counted",
       "annualInterest": 2880,
       "payment": 253.57,
       "interestTreatment": "paid",
       "cashPayment": 253.57,
       "frequency": "Monthly minimum",
-      "nextDue": "2026-08-07",
+      "nextDue": "2026-09-07",
       "limit": 13500,
-      "confidence": "verified"
+      "confidence": "verified",
+      "pendingNote": "2026-08-16 Canadian Tire Bank screenshot: posted $13,197.00 + pending $15.62 = $13,212.62 observed exposure. Available credit $287.38 is not household cash. Last statement balance $13,309.70. Displayed minimum $0.00; displayed due date Aug. 7 2026. A $300 payment posted Aug. 10. Do not claim on-time status from the screenshot alone.",
+      "note": "Current posted $13,197.00 from the 2026-08-16 screenshot. Keep posted and pending separate. Available credit is never cash. Annual interest $2,880 is the existing statement-derived figure, not recomputed from the new posted balance."
     },
     {
       "id": "cashback",
@@ -912,12 +895,12 @@
       "institution": "MBNA",
       "interestByEvent": false,
       "secured": false,
-      "pending": 82.05,
-      "balance": 7855.12,
+      "pending": 0,
+      "balance": 8003.61,
       "rate": 21.74,
       "rateBasis": "Purchases 21.74% / cash and transfers 22.99%",
       "rateConvention": "card",
-      "structure": "Revolving — $0 to $7,855 in eight months; 99.2% used once pending is counted",
+      "structure": "Revolving — $3.61 over its $8,000 limit on the current posted balance",
       "annualInterest": 1779.24,
       "payment": 158.27,
       "interestTreatment": "paid",
@@ -926,7 +909,8 @@
       "nextDue": "2026-08-31",
       "limit": 8000,
       "confidence": "verified",
-      "pendingNote": "Read from the MBNA card page on 2026-08-09 and reconciled against the limit there: $8,000.00 - $7,855.12 - $82.05 = $62.83 available. Already incurred."
+      "pendingNote": "2026-08-16 screenshot: pending transactions $0.00; available credit $0.00. Current posted $8,003.61 is fresher than the statement balance $7,855.12. Do not round current back to the statement amount.",
+      "note": "Screenshot is current-balance authority ($8,003.61). Statement remains authority for minimum $158.27, due 2026-08-31, purchase APR 21.74%, cash advance / BT APR 22.99%, statement balance $7,855.12, and statement interest $148.27. annualInterest $1,779.24 = $148.27 × 12."
     },
     {
       "id": "tdcc",
@@ -973,11 +957,11 @@
       "note": "$165.13 of pending charges takes the effective balance to $1,243.44 against a $1,100 limit — $143.44 over. The posted balance alone still reads under the limit, which is why the pending figure is modelled rather than left in prose."
     }
   ],
-  "debtsNote": "Affirm/Flexiti is gone: owner-confirmed paid off and closed, $2,654.28 across the window. Every card balance here was read from the institution on 9 August. The Cash Back Visa's $158.55 interest charge is no longer an open question — it is 26.99% on the average daily balance, not on the closing balance, and the two are far apart on a card that is paid down and run back up. See the reconciliation under Money in and out.",
-  "utilisationNote": "Derived from the debt records plus the Chequing B overdraft — there is no second list of balances to drift. The Cash Back Visa is at 112.2%, $612.43 beyond its $5,000 limit even after the 9 August payment, with the $29.00 over-limit fee accruing until it is back under; TD's own page shows $70.00 available, which is the payment credited as headroom rather than real room. The Travel Visa is the smallest facility in the household at $1,100.00 and $165.13 of pending charges take it $143.44 over, so its real available credit is nil.",
+  "debtsNote": "Affirm/Flexiti is gone: owner-confirmed paid off and closed, $2,654.28 across the window. Triangle posted $13,197.00 and pending $15.62, and MBNA posted $8,003.61 pending $0.00, are the 2026-08-16 screenshot current-state figures. Other card balances remain the 9 August institution read. The Cash Back Visa's $158.55 interest charge is no longer an open question — it is 26.99% on the average daily balance, not on the closing balance. See the reconciliation under Money in and out.",
+  "utilisationNote": "Derived from the debt records plus the Chequing B overdraft — there is no second list of balances to drift. The Cash Back Visa is at 112.2%, $612.43 beyond its $5,000 limit even after the 9 August payment, with the $29.00 over-limit fee accruing until it is back under. Triangle available credit $287.38 (2026-08-16) is not household cash. MBNA is $3.61 over its $8,000 limit on the current posted balance with $0 pending. The Travel Visa is the smallest facility at $1,100.00 and $165.13 of pending charges take it $143.44 over, so its real available credit is nil.",
   "assets": [
     {
-      "label": "DEBT&PAYMENTS chequing",
+      "label": "TENNIS INCOME chequing",
       "cash": "amanda-debt-payments"
     },
     {
@@ -1483,10 +1467,10 @@
     },
     {
       "tier": 2,
-      "q": "Is the garage rent coming back, and what does a lab in the garage mean?",
-      "detail": "Her parents moved their dental lab into the garage and paid $1,000–1,100/month until May 2026, when it stopped because that business is not going well. This was misfiled for 18 months as a spousal transfer rather than rental income on the home.",
+      "q": "ANSWERED — Is the garage rent coming back, and what does a lab in the garage mean?",
+      "detail": "Owner-confirmed 2026-08-16: the garage/lab income that funded the historical transfer has ended. Q5 is ANSWERED. Insurance / capital-gains implications of past business use of the home remain an accountant question, not a Forecast income stream.",
       "changes": "$12,600/year of income that disappeared without registering as an income event. Business use of the home may also affect insurance, and creates both a possible deduction and a capital-gains exposure worth an accountant's view before the May 2027 renewal.",
-      "owner": "Both + accountant"
+      "owner": "Answered 2026-08-16"
     },
     {
       "tier": 2,
@@ -1513,10 +1497,10 @@
     {
       "id": "Q5",
       "tier": 2,
-      "q": "Why did the wife's monthly transfer stop after May 2026?",
-      "detail": "$1,000/month from March 2025, stepping to $1,100 in November 2025, reliable through May 2026, then absent. Standing facts record an analysis that this was garage rent; that is evidence, not a closed household answer.",
-      "changes": "~$1,100/month. If the payment method changed, the money may still be arriving elsewhere. If the income changed, the household budget needs rebuilding around it.",
-      "owner": "Dale + wife"
+      "q": "ANSWERED — Why did the wife's monthly transfer stop after May 2026?",
+      "detail": "Owner-confirmed 2026-08-16: Amanda is no longer receiving the garage/lab income that funded the historical ~$1,000–$1,100 monthly transfer. This is not missing household income; the income source ended. Atlas does not forecast that old stream. Canonical status lives in docs/01_OPEN_QUESTIONS.md.",
+      "changes": "Do not continue forecasting the old garage/lab transfer. It was never Tennis BC / household contribution in the current sense.",
+      "owner": "Answered 2026-08-16"
     }
   ],
   "coverage": [

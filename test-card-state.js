@@ -465,7 +465,7 @@ console.log('\n=== 10. reconciler performs no writes ===');
 
   ok(trianglePending && trianglePending.unknown && trianglePending.status === 'MISSING'
     && trianglePending.evidenceValue == null,
-    'live Triangle pending is unknown MISSING, not $0');
+    'Aug. 9 Triangle pending observation remains unknown MISSING, not $0');
   ok(cashPending14 && cashPending14.unknown && cashPending14.status === 'MISSING',
     'Aug. 14 Cash Back pending is unknown, not canonical $0');
   ok(cashAvailCsv && cashAvailPage
@@ -477,9 +477,9 @@ console.log('\n=== 10. reconciler performs no writes ===');
   ok(travelPending && travelPending.status === 'MATCH' && near(travelPending.evidenceValue, 165.13)
     && !near(travelPending.evidenceValue, 1243.44),
     'live Travel Visa pending MATCH $165.13, not collapsed $1,243.44');
-  ok(mbnaPending && mbnaPending.status === 'MATCH' && near(mbnaPending.evidenceValue, 82.05)
+  ok(mbnaPending && mbnaPending.status === 'CHANGE' && near(mbnaPending.evidenceValue, 82.05)
     && mbnaPending.identityProven === true,
-    'live MBNA pending MATCH $82.05 with a proven identity');
+    'Aug. 9 MBNA pending $82.05 is CHANGE against current known-zero pending');
   ok(cashPosted && cashPosted.status === 'MATCH' && near(cashPosted.evidenceValue, 5612.43),
     'live Cash Back posted MATCH $5,612.43');
   ok(cashPay && cashPay.appliedToPosted && cashPay.status === 'MISSING'
@@ -528,10 +528,10 @@ console.log('\n=== live payday card-state is not artificially green ===');
   const triangle = (result.cardSummaries || []).find(c => c.cardId === 'triangle');
   ok(cashback && cashback.availableConflict === true,
     'Cash Back available-credit summary is CONFLICT');
-  ok(triangle && triangle.pendingUnknown === true && triangle.exposureUnknown === true,
-    'Triangle pending unknown fail-closes exposure');
-  ok(near(R.householdCashFromCardCapacity({ limit: 13500, availableCredit: 3 }), 0),
-    'Triangle $13,500 limit and $3 available are still $0 cash');
+  ok(triangle && triangle.pendingUnknown !== true && near(triangle.pending, 15.62),
+    'later known Triangle pending $15.62 clears the older unknown');
+  ok(near(R.householdCashFromCardCapacity({ limit: 13500, availableCredit: 287.38 }), 0),
+    'Triangle $13,500 limit and $287.38 available are still $0 cash');
 }
 
 console.log('\n=== 11. later known pending clears an older unknown ===');

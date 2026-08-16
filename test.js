@@ -71,6 +71,7 @@ const suites = [
   ['failed-check auto-repair contract', 'test-atlas-test-repair.js'],
   ['read-only provider observation (connectivity spike)', 'test-provider-observe.js'],
   ['live pending observations (B91 / B78)', 'test-pending-observe.js'],
+  ['Aug. 16 household evidence absorption', 'test-aug16-evidence.js'],
 ];
 
 let failed = [];

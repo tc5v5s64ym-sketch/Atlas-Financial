@@ -42,7 +42,7 @@ const PAYPAL_CHANNEL = '@paypal';
 
 /* Closed lists. A new essential/discretionary disagreement is a failure unless
  * it is added here AND recorded. These are not wildcards. */
-const OWNER_UNRESOLVED = new Set(['School & clubs']);
+const OWNER_UNRESOLVED = new Set();
 const SOURCE_AMBIGUOUS = new Set(['Health']);
 
 const PERSONAL_CARE = [
@@ -270,14 +270,14 @@ ok(!comparableLive.some(r => r.label === 'Health'),
   'Health is not treated as a clean comparable essential agreement');
 
 const school = overlapRows.find(r => r.label === 'School & clubs');
-ok(school && school.forward === 'discretionary' && school.historical === 'essential',
-  'School & clubs is the live comparable disagreement',
+ok(school && school.forward === 'essential' && school.historical === 'essential',
+  'School & clubs is essential on both sides',
   school ? `${school.forward} vs ${school.historical}` : 'missing');
-ok(school && school.disposition === 'OWNER DECISION REQUIRED',
-  'that disagreement is surfaced as unresolved, not silently accepted');
+ok(school && school.disposition === 'AGREE',
+  'that agreement is a comparable AGREE, not an owner-unresolved split');
 ok(/Q24/.test(questions) && /School & clubs/.test(questions)
-  && /essential/.test(questions) && /discretionary/.test(questions),
-  'the unresolved school classification is recorded as Q24 in 01_OPEN_QUESTIONS.md');
+  && /ANSWERED/.test(questions) && /essential/i.test(questions),
+  'Q24 is recorded ANSWERED as essential in 01_OPEN_QUESTIONS.md');
 
 console.log('\n=== named non-comparable semantics ===');
 const business = overlapRows.find(r => r.label === 'Business');
@@ -574,9 +574,11 @@ ok(classificationProblems(invent).some(p =>
   'a new overlapping essential/discretionary pair fails unless explicitly named',
   classificationProblems(invent).filter(p => p.includes('GhostSpend')).join('; '));
 
-const dropSchool = classificationProblems(Object.assign({}, live, { unresolved: new Set() }));
-ok(dropSchool.some(p => p === 'contradiction:School & clubs:forward=discretionary:historical=essential'),
-  'dropping School & clubs from the closed unresolved list re-exposes the contradiction');
+const markSchoolUnresolved = classificationProblems(Object.assign({}, live, {
+  unresolved: new Set(['School & clubs']),
+}));
+ok(markSchoolUnresolved.some(p => p === 'stale-unresolved:School & clubs'),
+  'keeping School & clubs on the unresolved list after they agree is stale');
 
 console.log('\n=== generator: library type matches published periods.json ===');
 const mappedLabels = new Set();

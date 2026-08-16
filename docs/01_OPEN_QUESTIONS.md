@@ -13,21 +13,6 @@ the site may hold evidence about a question. They do not close it.
 
 ## Tier 1 — Changes what the numbers mean
 
-### Q24. Is "School & clubs" essential or discretionary for the household operating plan?
-**Status:** OPEN · **Owner:** Dale + Amanda
-**What we know:** The same `from[]` label is `discretionary` on
-`plan.budget.categories` (id `school`, no owner target) and `essential` in
-`docs/merchant-library.csv` / `public/periods.json`. Amanda stated school costs
-of $210 per school year (approximately 3 × $70); that amount does not decide
-the class. Historical card reporting in `ACCOUNT_FACTS.md` also labels the
-bucket essential. B90 does not guess. The disagreement is named in
-`test-classification.js` as owner-unresolved so it cannot stay silent, and it
-is not flattened into a comparable agree.
-**What the answer changes:** Whether School & clubs sits inside the essential
-weekly need or the discretionary room. Either correction moves a published
-split; leave both sides as they are until the household says which story is
-the operating one.
-
 ### Q1. Does the business make money?
 **Status:** OPEN · **Owner:** Dale + wife + accountant
 **What we know:** $54,213 of inbound e-transfers over 18 months (~$3,012/month)
@@ -69,37 +54,6 @@ is a weaker proxy but better than nothing.
 ---
 
 ## Tier 2 — Changes the plan
-
-### Q4. What are the balances and rates on the remaining non-TD debts?
-**Status:** PARTIALLY ANSWERED 2026-08-09 · **Owner:** Dale + wife
-**Answered — Triangle Mastercard (Canadian Tire Bank):** $13,497.00 against a
-$13,500 limit (99.98% used, $3.00 available). **21.99% on purchases, 22.99% on
-cash.** Minimum $253.57, due 7 Aug 2026. Costs roughly **$2,880/year** in
-interest. Over five statements $3,880 was paid and the balance fell $189.07.
-Issuer's disclosure: **99+ years to repay at minimums.**
-**Still open:** MBNA Mastercard ($750 paid, new since June 2026) and
-Affirm/Flexiti (~$44.59/month) — balances and rates unknown.
-**What it already changed:** the debt ranking. Triangle is now the largest
-non-mortgage interest cost — six times the TD card's — and the first target for
-any surplus. Total known debt rose to $762,909.71 and financial-account net worth
-fell to −$730,904.02.
-
-### Q4b. Was the Triangle payment due 7 August actually made?
-**Status:** OPEN — TIME-SENSITIVE · **Owner:** Dale
-**What we know:** As at 9 August the account shows "Remaining Balance Due
-$13,309.70" — the full statement balance, unchanged. The current balance differs
-from it only by two new purchases ($187.30). No payment appears to have posted.
-**What the answer changes:** A late payment risks a fee, a default rate, and
-credit reporting — on a card already at 99.98% utilisation. If a payment is in
-transit this is moot; if not, it should be made today.
-
-### Q5. Why did the wife's monthly transfer stop after May 2026?
-**Status:** OPEN · **Owner:** Dale + wife
-**What we know:** $1,000/month from March 2025, stepping to $1,100 in November
-2025, reliable through May 2026. Absent June, July, August 2026.
-**What the answer changes:** ~$1,100/month. If the payment method changed, the
-money may still be arriving elsewhere and the income picture is intact. If the
-income changed, the household budget needs rebuilding around it.
 
 ### Q6. What are the two unidentified accounts?
 **Status:** OPEN · **Owner:** Dale + wife
@@ -179,58 +133,52 @@ consider a fund change. No change is authorised until this is answered.
 versus beneficiary). Correction is with Sun Life, never automated.
 **What the answer changes:** An owner action only. Atlas must not attempt it.
 
-### Q17. What is currently due on BC Hydro, as distinct from the account balance, and has the past-due amount been paid?
-**Status:** OPEN · **Owner:** Dale or Amanda
-**What we know:** Earlier August evidence showed a carried balance, a late
-fee, and $451.24 as the amount shown due. The Aug. 14 payday session split
-that: $213.79 due now, $237.45 new charges due 1 September, $451.24 total
-account balance. Hydro is paid from Amanda’s account, not the
-household-account cash pool, but it remains a household obligation (paying
-account and obligation are separate facts). Atlas should schedule dated cash
-requirements, not the whole account balance by default. Live `plan.bills`
-now includes the 1 September $237.45 due (`hydro-due-sep1`), paid from
-Amanda / DEBT&PAYMENTS, not deducted from joint cash. The $213.79 that was
-due on 14 August is **not** on the plan: later evidence does not show
-whether it was paid, so it is not marked settled and not kept as a past-due
-row.
-**What the answer changes:** Whether the 14 August arrears obligation still
-exists, and whether any later Hydro statement has superseded the 1 September
-amount.
-
-### Q18. What are the current Bell Mobility, Telus, and garbage/waste amounts, cadences, and payment routes?
+### Q18. What remains unresolved on Bell Mobility payment route and the second Bell/watch account amount?
 **Status:** OPEN · **Owner:** Dale + Amanda
-**What we know:** Bell is an Amanda-stated estimate around $150/month. Telus
-amount/route and garbage provider/cadence/amount were not supplied with
-sufficient current evidence.
-**What the answer changes:** Whether the household bill set is complete.
+**What we know (2026-08-16):** TELUS IS CLOSED and is not forecast as an
+active bill. Noble Disposal Services is the household garbage bill: $95.85
+every 3 months on the 18th (next dated due 2026-09-18). Main Bell August 1
+bill is $356.62 due Aug. 17 (arrears + travel/roaming, not the ~$104.20
+normal monthly baseline). A valid $250 Bell Mobility payment is pending on
+Travel Visa dated Aug. 14; inferred residual $106.62 is an inference only
+while that payment remains pending. A second Bell/watch account is still
+active and is not the $15 watch line on the main Bell account. Exact current
+amount/cadence on that second account is not proven by this package.
+**What the answer changes:** The residual second-account bill amount, and
+whether any remaining Bell cash still needs a joint-cash dated row after the
+pending $250 posts. Do not double-count the Bell obligation, the pending card
+payment, and a second invented Bell expense.
 
-### Q19. What are the exact HELOC payment mechanics, and does the household cash plan need to reserve a payment?
+### Q19. What is the remaining August 2026 HELOC cash impact given the unproven Aug. 1 PAD?
 **Status:** OPEN · **Owner:** Dale
-**What we know:** The July statement posted $814.18 interest to the HELOC and
-displayed a separate $814.18 minimum due 21 August. Live `plan.obligations`
-treats the charge as non-cash on day 31. ACCOUNT_FACTS still records the
-TD-stated 21st contractual due date. B74 removed the ICS 21st *payment* (it was
-masquerading as a chequing outflow), keeps the 21st as a reminder-only look-point,
-and derives a month-end non-cash reminder from the Plan. The Aug. 14 payday
-session left the mechanics unresolved and added contradictory household
-evidence: the model treats about $814.18 as capitalised; the household has
-historically made ~$1,000 HELOC payments; the owner believed payment/interest
-came from chequing; contractual minimum, due date, last ~$1,000 payment,
-whether a separate auto-debit occurs, and how a payment satisfies the minimum
-remain unverified. This question does not choose among treatments and is not
-closed by B74 or by B91 planning. B91 must not claim confident zero household
-cash impact while these mechanics remain unresolved.
-**What the answer changes:** Whether the 91-day cash plan must reserve a HELOC
-payment, on which date, and from which account. A later figure PR would consume
-the answer; architecture disposition does not.
+**What we know (2026-08-16):** Statement series Dec 2025–Jul 2026 answers the
+broad mechanics. Regular minimum tracks that period's interest in every
+supplied month. Due date is the 21st. A Pre-Authorized Debit Date around the
+1st exists. Overdue was $0 on every supplied statement. Manual payments can
+reduce the remaining required minimum; the automatic payment can then collect
+only the residual (Feb min $751.46 collected in full 2 Mar; May min $810.09
+collected as $800 + $10.09 on 2–3 Jun). Interest posting and cash payment
+remain distinct facts. Live Forecast still treats the $814.18 as non-cash
+capitalisation (`cashPayment: 0`).
+**Still open:** the Jul statement shows PAD date Aug. 1 2026. The live Lunch
+Money pull began after Aug. 1 and does not prove whether that PAD occurred.
+A separate $1,100 HELOC payment on Aug. 14 does not, by itself, prove another
+$814.18 is due, and does not prove the PAD did not happen. Exact remaining
+August cash impact needs the transaction history around Aug. 1.
+Atlas must not claim confident zero household cash impact while that
+settlement status remains unresolved, and must not invent a duplicate full
+minimum reserve after confirmed payments have already satisfied it.
+**What the answer changes:** Whether any residual August HELOC cash still
+belongs on the 91-day plan, and from which account.
 
 ### Q20. What emergency-reserve target, Amanda retirement/RESP intent, and Dale policy view should apply? How should true surplus be used?
 **Status:** OPEN · **Owner:** Dale + Amanda
 **What we know:** The August interviews did not capture these sufficiently.
 The Aug. 14 payday session asked the longer-term surplus question again:
-high-interest debt vs sports/travel reserves vs emergency reserve. No
-session choice is household policy. `plan.nextDollar` remains derived, not
-owner-instructed.
+high-interest debt vs sports/travel reserves vs emergency reserve. Owner-
+confirmed 2026-08-16: the owner does **not** currently know what emergency
+cash target the household wants. Do not invent one. No session choice is
+household policy. `plan.nextDollar` remains derived, not owner-instructed.
 **What the answer changes:** Household policy. Nothing is promoted from silence
 or from one payday session.
 
@@ -240,31 +188,28 @@ or from one payday session.
 amount. It must not be double-counted.
 **What the answer changes:** Historical sports norms only, after evidence.
 
-### Q22. Are there one or two additional tournaments beyond Seattle, Tacoma, and Indio, and if so with what dates and costs?
+### Q22. What are the remaining unknown tournament costs, and what are Provincials date/location/cost?
 **Status:** OPEN · **Owner:** Dale + Amanda
-**What we know:** Named as unknown/optional. No amount or date exists.
-**What the answer changes:** Scenario placeholders only until evidence exists.
-Do not fabricate dates or costs.
+**What we know (2026-08-16):** Current known planning list is Seattle
+November 2026; Seattle December 2026; Indio, California January 2027;
+Provincials expected but location/date/cost unknown. There are no other
+specifically known tournaments. Tacoma is not on the current known list and
+is not preserved as confirmed from older interview evidence alone. Costs for
+the named Seattle/Indio events are still not supplied.
+**What the answer changes:** Dated tournament cash only after evidence
+exists. Do not fabricate dates or costs. Do not restore generic "one or two
+mystery extra tournaments" language.
 
-### Q23. How do the three live-plan $500 Fusion instalments relate to the travel-team or season fee, now that camp and tryouts are paid?
+### Q25. How much of Amanda’s TENNIS INCOME balance is genuinely household-available after coaching, business, and pass-through obligations?
 **Status:** OPEN · **Owner:** Dale + Amanda
-**What we know:** The Aug. 14 payday session confirmed Fusion camp (~$786) and
-Fusion tryouts ($140) already paid. Live `plan.commitments` now records
-those as `settledOn: "2026-08-14"`; the rows stay, and Forecast omits their
-future cash events only when the opening is on or after that date. Three
-$500 instalments remain on the live plan; their relationship to a
-conditional travel-team fee is unresolved.
-**What the answer changes:** Later Fusion cash dates. Camp and tryouts
-paid-status is now on the canonical rows; that does not close the
-instalment question.
-
-### Q25. How much of Amanda’s DEBT&PAYMENTS balance is genuinely household-available after coaching, business, and pass-through obligations?
-**Status:** OPEN · **Owner:** Dale + Amanda
-**What we know:** The account is already excluded from spendable
-`plan.startingCash` because Tennis BC pay lands there and coaches are paid
-first. The Aug. 14 payday session observed $798.37 in that account and
-reiterated that some may belong to coaching/business/pass-through
-obligations. A fresh balance is not automatically spendable starting cash.
+**What we know:** The account (id `amanda-debt-payments`, display name
+TENNIS INCOME, previously labelled DEBT&PAYMENTS) is already excluded from
+spendable `plan.startingCash`. Tennis BC salary and coaching income land
+there; coaches/business/pass-through amounts are paid first; remainder is
+transferred into BILLS ACCOUNT. Money becomes household-available when it
+is actually transferred. The Aug. 14 payday session observed $798.37 in
+that account. A fresh balance is not automatically spendable starting cash.
+Do not estimate how much of the current balance is household-available.
 **What the answer changes:** How much, if any, of that balance can enter
 household available cash after a refresh. B91 must preserve held/pass-through
 semantics rather than guessing.
@@ -292,6 +237,64 @@ Unknown pending is allowed until then; it must not be treated as zero.
 ---
 
 ## Answered
+
+### Q4. What are the balances and rates on the remaining non-TD debts? — ANSWERED 2026-08-16
+**Status:** ANSWERED · **Owner:** Dale + Amanda
+**Answer:** Triangle, MBNA, and Affirm/Flexiti are no longer unknown.
+
+Triangle (2026-08-16 screenshot): posted **$13,197.00**, pending **$15.62**,
+limit $13,500, available credit $287.38 (not cash). Observed exposure
+$13,212.62. Purchase rate remains 21.99% / cash 22.99% from the earlier
+disclosure. Displayed minimum $0.00; displayed due date Aug. 7 2026; future
+minimums remain estimated.
+
+MBNA (screenshot current balance; statement for the rest): current posted
+**$8,003.61**, pending $0.00, limit $8,000 (over by $3.61). Statement
+balance $7,855.12, minimum **$158.27**, due **2026-08-31**, purchase APR
+**21.74%**, cash advance / BT APR **22.99%**, statement interest $148.27.
+Do not round current back to the statement amount.
+
+Affirm/Flexiti remains owner-confirmed paid off and closed.
+
+### Q4b. Was the Triangle payment due 7 August actually made? — ANSWERED 2026-08-16
+**Status:** ANSWERED · **Owner:** Dale
+**Answer:** A **$300 payment posted 2026-08-10** (TD BANKLINE/TELELIGNE TD).
+That closes the stale claim that no payment appears to have posted. The
+payment posted after the displayed Aug. 7 due date. On-time status and any
+default-rate consequences are **not** proven from the screenshot alone.
+
+### Q5. Why did the wife's monthly transfer stop after May 2026? — ANSWERED 2026-08-16
+**Status:** ANSWERED · **Owner:** Dale + Amanda
+**Answer:** Amanda is no longer receiving the garage/lab income that funded
+that historical ~$1,000–$1,100 monthly transfer. This is not missing
+household income. The income source ended. Atlas does not forecast that old
+stream.
+
+### Q17. What is currently due on BC Hydro, as distinct from the account balance, and has the past-due amount been paid? — ANSWERED 2026-08-16
+**Status:** ANSWERED · **Owner:** Dale + Amanda
+**Answer:** Owner-confirmed 2026-08-16: the old BC Hydro amount previously
+questioned as outstanding has been **SETTLED**. It is not a future
+obligation. The known future Sep. 1 Hydro obligation of **$237.45**
+(`hydro-due-sep1`) remains a current valid bill, paid from Amanda / TENNIS
+INCOME, not deducted from joint cash. Settlement of the old amount does not
+cancel that future bill. The account balance is still not scheduled as a
+cash event.
+
+### Q23. How do the three live-plan $500 Fusion instalments relate to the travel-team or season fee, now that camp and tryouts are paid? — ANSWERED 2026-08-16
+**Status:** ANSWERED · **Owner:** Dale + Amanda
+**Answer:** There are currently **NO pending Fusion instalments**. The three
+live-plan $500 rows were stale and have been removed from `plan.commitments`.
+Camp and tryouts remain settled as of 2026-08-14. Upcoming Fusion season is
+a planning estimate only: approximately 4 × ~$500, probably starting late
+September 2026. Exact total, dates, and instalment count remain unknown and
+are **not** confirmed invoices.
+
+### Q24. Is "School & clubs" essential or discretionary for the household operating plan? — ANSWERED 2026-08-16
+**Status:** ANSWERED · **Owner:** Dale + Amanda
+**Answer:** School & clubs is **ESSENTIAL** for the household operating
+plan. `plan.budget.categories` id `school` now matches
+`docs/merchant-library.csv` / `public/periods.json`. The nine Aug. 10 owner
+`plannedMonthly` targets are unchanged.
 
 ### Q0. Where are the two named owner budget workbooks? — ANSWERED 2026-08-16
 **Status:** ANSWERED · **Owner:** Dale + Amanda

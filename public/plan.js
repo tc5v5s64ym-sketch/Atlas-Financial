@@ -294,7 +294,7 @@ const RISK_WHAT = {
   helocDrawn: r => `The HELOC passes its own limit on ${fmtDateLong(r.date)}, and this plan draws ${money(r.drawn)} on it`,
   helocNoDraw: r => `The HELOC passes its own limit on ${fmtDateLong(r.date)} with no new borrowing`,
   facilityCrossing: r => `${r.label} goes over its limit on ${fmtDateLong(r.date)}`,
-  telecomUnrouted: r => `The Telus bills have no known route — ${money(r.planned)}/month`,
+  telecomUnrouted: r => `Closed Telus is not an active bill — historical telecom remainder ${money(r.planned)}/month still sits inside the cap`,
 };
 const RISK_CHANGE = {
   amandaRequired: r =>
@@ -319,8 +319,7 @@ const RISK_CHANGE = {
                in the days before each payment. Each crossing risks an over-limit fee on top of the interest,
                which raises the card's effective rate above its headline one.`,
   telecomUnrouted: () =>
-    `Absent from every captured account since March 2026. They are carried inside the cap, but if they are
-               being paid from somewhere not captured the real household cost is higher than shown.`,
+    `TELUS IS CLOSED (owner-confirmed 2026-08-16). Historical telecom spending still leaves a remainder after Shaw is dated. That remainder is not a live Telus recurrence.`,
 };
 
 /* ------------------------------------------- HELOC month-on-month, in words */
@@ -472,7 +471,7 @@ function isExternalObligation(e) {
 
 function externalPayerLabel(plan, event) {
   const id = event && event.payingAccount;
-  if (id === 'amanda-debt-payments') return 'Amanda / DEBT&PAYMENTS';
+  if (id === 'amanda-debt-payments') return 'Amanda / TENNIS INCOME';
   const cash = (plan && plan.startingCash) || {};
   const row = (cash.breakdown || []).concat(cash.heldElsewhere || [])
     .find(r => r.id === id);

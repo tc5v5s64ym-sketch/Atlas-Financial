@@ -9,7 +9,25 @@ Status: `READY` — nothing blocking · `BLOCKED` — waiting on the household �
 `QUEUED` — waiting on earlier work · `IN PROGRESS` — first slice landed, item
 not closed
 
-Last reviewed **2026-08-14**. Phase: **analysis** — capture is essentially done.
+Last reviewed **2026-08-16**. Phase: **analysis** — capture is essentially done.
+
+**Follow-ups from the 2026-08-16 evidence pack** (not mixed into that
+facts PR; each needs its own independently provable outcome):
+
+- **Noble quarterly expander** — Forecast `occurrences()` has no quarterly
+  frequency. Noble is dated as the next in-window `once` due (2026-09-18).
+  A later PR may add a real quarterly cadence without inventing a second
+  calendar.
+- **HELOC residual PAD** — statement mechanics are recorded; current August
+  cash impact still needs the Aug. 1 transaction history (Q19). Do not
+  invent a duplicate full minimum or a confident zero.
+- **Historical Telus in the telecom remainder** — Telus is closed and is not
+  a live bill. The spending series still leaves a telecom remainder after
+  Shaw. Cleaning that remainder is a separate figure PR.
+- **Bell baseline vs card-paid current bill** — do not date $356.62 or
+  ~$104.20 as joint cash. The valid $250 pending Travel Visa payment is
+  observation. A later PR may model Bell as a card-paid obligation without
+  double-counting.
 
 **Post-B74 implementation order** is owned by
 [`docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`](docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md),

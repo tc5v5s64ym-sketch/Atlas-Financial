@@ -146,7 +146,7 @@ function standingReminders(asOf) {
       start: '2026-08-21', rrule: MONTHLY(21),
       kind: 'reminder',
       sourceId: 'heloc-contractual-due',
-      description: 'TD Home Equity FlexLine contractual due date. Observed posting is month-end capitalisation into the HELOC balance (~$814), not a cash payment from chequing. This reminder is a look-point only. Q19 remains open on whether cash must still be reserved on the 21st.' + src },
+      description: 'TD Home Equity FlexLine contractual due date. Observed posting is month-end capitalisation into the HELOC balance (~$814), not a cash payment from chequing. Statements show a PAD around the 1st and that manual payments can reduce the residual automatic collection. This reminder is a look-point only. Q19 remains open on current August settlement (whether the Aug. 1 PAD already occurred). Atlas must not claim confident zero household cash impact while that status is unresolved.' + src },
     { uid: 'atlas-reminder-property-tax@household',
       summary: 'Reminder — Maple Ridge property tax due', start: '2027-07-02', rrule: 'FREQ=YEARLY',
       kind: 'reminder',

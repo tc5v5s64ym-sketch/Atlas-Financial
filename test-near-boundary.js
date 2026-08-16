@@ -174,7 +174,7 @@ ok(none.nearBoundary.payday == null && none.nearBoundary.items.length === 0
   && none.nearBoundary.total === 0,
   'without a payday the derived view is empty rather than guessed');
 
-console.log('\n=== F. live plan: expose existing Aug 14–15 cluster; weekly math frozen ===');
+console.log('\n=== F. live plan: expose existing Aug 14–15 cluster; weekly follows current commitments ===');
 const liveOpts = {
   scenario: 'expected', incomeOverrides: {}, disabled: [], extraDebtMonthly: 0,
   targetBuffer: live.plan.defaults.targetBuffer,
@@ -184,11 +184,11 @@ const liveOpts = {
   extraDebtTarget: live.plan.nextDollar && live.plan.nextDollar.target,
 };
 const liveRec = F.recommend(live.plan, live.meta.asOf, liveOpts);
-ok(liveRec.weekly === 1085 && liveRec.mode === 'openingGap'
+ok(liveRec.weekly === 1165 && liveRec.mode === 'openingGap'
   && near(liveRec.gap.amount, 1043.16)
   && near(liveRec.sim.min.balance, 500) && liveRec.sim.min.date === '2026-08-12'
-  && near(liveRec.sim.ending, 5208.51),
-  'live weekly $1,085, gap $1,043.16, floor $500 on 12 Aug, ending $5,208.51 — unchanged',
+  && near(liveRec.sim.ending, 5629.80),
+  'live weekly $1,165, gap $1,043.16, floor $500 on 12 Aug, ending $5,629.80',
   `${liveRec.weekly} / ${liveRec.gap && liveRec.gap.amount} / ${liveRec.sim.min.balance} / ${liveRec.sim.ending}`);
 
 ok(liveRec.nearBoundary.payday === '2026-08-14'
