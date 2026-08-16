@@ -59,6 +59,7 @@ const suites = [
   ['merge-card check behaviour', 'test-mergecard.js'],
   ['Codex Cursor repair gate', 'test-codex-cursor-repair.js'],
   ['Atlas review-block card sync', 'test-atlas-review-block.js'],
+  ['instant Atlas API re-review', 'test-atlas-api-rereview.js'],
   ['GitHub PR-head confirmation after push', 'test-github-pr-head-sync.js'],
 ];
 
