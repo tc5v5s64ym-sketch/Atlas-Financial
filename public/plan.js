@@ -91,7 +91,7 @@ const MISSION_PART = {
   cutSpending: p => `cut spending to ${money(p.supported)} a week — ${money(p.unsupported)} does not hold`,
   holdSpending: p => `hold spending to ${money(p.weekly)} a week`,
   helocLimit: p => `and stop the HELOC growing before it passes its own limit in ${fmtMonth(p.date)}`,
-  nearBoundary: p => `and ${money2(p.total)} of named obligations fall on or immediately after the next payday (${fmtDateLong(p.payday)})`,
+  nearBoundary: p => `and ${money2(p.total)} of named obligations (${p.items.map(x => x.label).join(', ')}) fall on or immediately after the next payday (${fmtDateLong(p.payday)})`,
   surplusToCard: () => 'and put the surplus against the most expensive card',
 };
 

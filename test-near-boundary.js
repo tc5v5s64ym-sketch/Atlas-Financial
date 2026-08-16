@@ -99,8 +99,10 @@ ok(ids(mission) === 'holdSpending → nearBoundary → surplusToCard',
   'mission exposes the obligation before surplus-use guidance',
   ids(mission));
 ok(part(mission, 'nearBoundary').total === nb.total
-  && part(mission, 'nearBoundary').payday === PAYDAY,
-  'the mission part carries the recommend total and payday, not a second sum');
+  && part(mission, 'nearBoundary').payday === PAYDAY
+  && part(mission, 'nearBoundary').items
+  && part(mission, 'nearBoundary').items[0].label === 'Hydro',
+  'the mission part carries the recommend total, payday and item names');
 ok(part(mission, 'holdSpending').weekly === FROZEN_WEEKLY,
   'the spending instruction is still the unchanged weekly cap');
 
@@ -199,19 +201,19 @@ const handItems = [];
 for (const o of live.plan.obligations || []) {
   if (o.nonCash) continue;
   for (const date of F.occurrences(o, PAYDAY_LIVE, UNTIL_LIVE)) {
-    handItems.push({ id: o.id, date, amount: o.amount });
+    handItems.push({ id: o.id, label: o.label, date, amount: o.amount });
   }
 }
 for (const b of live.plan.bills || []) {
   if (!F.billIsHouseholdObligation(b) || !F.billAffectsJointCash(b, live.plan)) continue;
   for (const date of F.occurrences(b, PAYDAY_LIVE, UNTIL_LIVE)) {
-    handItems.push({ id: b.id, date, amount: b.amount });
+    handItems.push({ id: b.id, label: b.label, date, amount: b.amount });
   }
 }
 for (const c of live.plan.commitments || []) {
   if (F.commitmentSettledBy(c, live.meta.asOf)) continue;
   if (c.date >= PAYDAY_LIVE && c.date <= UNTIL_LIVE) {
-    handItems.push({ id: c.id, date: c.date, amount: c.amount });
+    handItems.push({ id: c.id, label: c.label, date: c.date, amount: c.amount });
   }
 }
 const handTotal = handItems.reduce((s, item) => s + item.amount, 0);
@@ -238,6 +240,12 @@ ok(nbIdx >= 0 && surplusIdx >= 0 && nbIdx < surplusIdx,
   ids(liveMission));
 ok(near(part(liveMission, 'nearBoundary').total, 1997.81),
   'the live mission total is the independent $1,997.81');
+const handLabels = handItems.map(i => i.label).sort().join(',');
+const missionLabels = (part(liveMission, 'nearBoundary').items || [])
+  .map(i => i.label).sort().join(',');
+ok(handLabels === missionLabels,
+  'the live mission carries the independent plan-row labels',
+  missionLabels);
 ok(!/\$600/.test(JSON.stringify(liveRec.nearBoundary))
   && !/\$600/.test(ids(liveMission)),
   '$600/week is not encoded as payday or surplus policy');
@@ -246,10 +254,29 @@ console.log('\n=== G. page renders the engine part; mutation drops the exposure 
 const planSrc = read('public/plan.js');
 ok(/nearBoundary:\s*p\s*=>/.test(planSrc),
   'the Plan page has wording for the near-boundary instruction');
+ok(/p\.items\.map\(\s*x\s*=>\s*x\.label\s*\)/.test(planSrc),
+  'that wording renders the item names the engine carried');
 ok(/Forecast\.mission\(/.test(planSrc),
   'the page still reads the mission from Forecast');
 ok(!/nearBoundaryObligations/.test(planSrc),
   'the page does not compute the boundary list itself');
+
+const appSrc = read('public/app.js');
+const grab = (src, re) => (re.exec(src) || [''])[0];
+const FORMATTERS = [
+  grab(appSrc, /^const money = .*$/m),
+  grab(appSrc, /^const money2 = .*$/m),
+  grab(appSrc, /^const fmtDateLong = .*$/m),
+  grab(planSrc, /^const fmtMonth = .*$/m),
+].join('\n');
+const MAP_SRC = grab(planSrc, /^const MISSION_PART = \{[\s\S]*?^\};$/m);
+const MISSION_PART = vm.runInNewContext(`${FORMATTERS}\n${MAP_SRC}\nMISSION_PART;`);
+const liveSentence = liveMission.parts.map(p => MISSION_PART[p.id](p)).join(', ')
+  .replace(/^./, c => c.toUpperCase()) + '.';
+ok(handItems.every(item => item.label && liveSentence.includes(item.label)),
+  'the live Plan sentence names every independent 14–15 Aug obligation',
+  handItems.filter(item => !liveSentence.includes(item.label)).map(i => i.label).join(', ')
+    || liveSentence);
 
 const FORECAST_SRC = read('public/forecast.js');
 const FROM = '        nearBoundary: nearBoundaryObligations(zeroSim.events, asOf, payFloor),';

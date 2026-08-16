@@ -279,8 +279,10 @@ ok(ids(withBoundary) === 'holdSpending → nearBoundary → surplusToCard',
   ids(withBoundary));
 ok(part(withBoundary, 'nearBoundary').total === 900
   && part(withBoundary, 'nearBoundary').payday === '2026-03-06'
-  && part(withBoundary, 'nearBoundary').count === 1,
-  'the part carries the recommend total, payday and count');
+  && part(withBoundary, 'nearBoundary').count === 1
+  && part(withBoundary, 'nearBoundary').items
+  && part(withBoundary, 'nearBoundary').items[0].label === 'Hydro',
+  'the part carries the recommend total, payday, count and item names');
 
 const boundaryAndHeloc = F.mission(
   advice({ weekly: 900, nearBoundary: {
@@ -476,7 +478,7 @@ function legacySentence({ adv, sim, weekly, debtProj, weeklyVariable }) {
   }
   const nb = adv.nearBoundary;
   if (nb && nb.items && nb.items.length) {
-    missionParts.push(`and ${money2(nb.total)} of named obligations fall on or immediately after the next payday (${fmtDateLong(nb.payday)})`);
+    missionParts.push(`and ${money2(nb.total)} of named obligations (${nb.items.map(x => x.label).join(', ')}) fall on or immediately after the next payday (${fmtDateLong(nb.payday)})`);
   }
   if (helocBreach) missionParts.push(`and stop the HELOC growing before it passes its own limit in ${fmtMonth(helocBreach.date)}`);
   else missionParts.push('and put the surplus against the most expensive card');
@@ -486,7 +488,7 @@ function legacySentence({ adv, sim, weekly, debtProj, weeklyVariable }) {
 const SETTINGS = [
   { what: 'the published default — $500 buffer, no override',
     targetBuffer: plan.defaults.targetBuffer, weeklyVariable: null,
-    expect: /^Cover the .* timing gap by .*, get the .* back under its limit, hold spending to .* a week, and .* of named obligations fall on or immediately after the next payday .*, and stop the HELOC growing/ },
+    expect: /^Cover the .* timing gap by .*, get the .* back under its limit, hold spending to .* a week, and .* of named obligations .* fall on or immediately after the next payday .*, and stop the HELOC growing/ },
   { what: 'a $1,500/week override the forecast does not support',
     targetBuffer: plan.defaults.targetBuffer, weeklyVariable: 1500,
     expect: /cut spending to .* a week — .* does not hold/ },
@@ -513,6 +515,16 @@ const unreachableMission = F.mission(unreachable.adv, unreachable.debtProj,
 ok(!part(unreachableMission, 'holdSpending') && !part(unreachableMission, 'cutSpending'),
   'no weekly figure is instructed against a gap the real plan cannot fund',
   ids(unreachableMission));
+
+const liveDefault = published({
+  targetBuffer: plan.defaults.targetBuffer, weeklyVariable: null,
+});
+const liveSentence = render(F.mission(liveDefault.adv, liveDefault.debtProj,
+  { weeklyOverride: null, sim: liveDefault.sim }));
+const liveNames = (liveDefault.adv.nearBoundary.items || []).map(i => i.label);
+ok(liveNames.length === 7 && liveNames.every(name => liveSentence.includes(name)),
+  'the live Plan sentence names every near-boundary obligation',
+  liveNames.filter(name => !liveSentence.includes(name)).join(', ') || liveSentence);
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
 process.exit(failures === 0 ? 0 : 1);

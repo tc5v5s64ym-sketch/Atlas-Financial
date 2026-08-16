@@ -2187,6 +2187,7 @@
         until: nearBoundary.until,
         total: nearBoundary.total,
         count: nearBoundary.items.length,
+        items: nearBoundary.items.map(x => ({ id: x.id, label: x.label })),
       });
     }
     parts.push(helocCrossing
