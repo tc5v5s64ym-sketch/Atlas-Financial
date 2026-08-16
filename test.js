@@ -68,7 +68,6 @@ const suites = [
   ['GitHub PR-head confirmation after push', 'test-github-pr-head-sync.js'],
   ['local main sync safety contract', 'test-sync-main.js'],
   ['failed-check auto-repair contract', 'test-atlas-test-repair.js'],
-  ['auto-repair live probe (delete after trial)', 'test-auto-repair-probe.js'],
 ];
 
 let failed = [];
