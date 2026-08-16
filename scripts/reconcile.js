@@ -54,6 +54,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const Forecast = require('../public/forecast.js');
 
 const ROOT = path.join(__dirname, '..');
 const DEFAULT_DATA = path.join(ROOT, 'data.json');
@@ -1115,13 +1116,28 @@ function observationsFromPosting(doc) {
   }));
 }
 
-function scheduledEventExists(data, eventId) {
+function schedulePlanWithoutCutover(plan) {
+  return {
+    income: (plan && plan.income) || [],
+    obligations: (plan && plan.obligations) || [],
+    bills: (plan && plan.bills) || [],
+    commitments: (plan && plan.commitments) || [],
+    startingCash: plan && plan.startingCash,
+  };
+}
+
+function scheduledEventExists(data, eventId, scheduledDate) {
+  if (!eventId || !scheduledDate) return false;
   const plan = ((data || {}).plan) || {};
-  if (!eventId) return false;
-  return ((plan.income || []).some(s => s.id === eventId)
-    || (plan.obligations || []).some(s => s.id === eventId)
-    || (plan.bills || []).some(s => s.id === eventId)
-    || (plan.commitments || []).some(s => s.id === eventId));
+  // Forecast decides whether {id, date} is a cash occurrence. Opening
+  // cutover is posting, not schedule, so representedEvents is omitted.
+  const events = Forecast.expandEvents(
+    schedulePlanWithoutCutover(plan),
+    scheduledDate,
+    scheduledDate,
+    {}
+  );
+  return events.some(e => e.id === eventId && e.date === scheduledDate && e.kind !== 'noncash');
 }
 
 function representedOnOpening(data, eventId, date) {
@@ -1158,7 +1174,7 @@ function comparePostingGroup(rows, data) {
     if (!states.includes(state)) states.push(state);
   }
   const mixed = states.length > 1;
-  const exists = scheduledEventExists(data, eventId);
+  const exists = scheduledEventExists(data, eventId, scheduledDate);
   const represented = representedOnOpening(data, eventId, scheduledDate);
   const asOf = openingAsOf(data);
   const locator = eventId

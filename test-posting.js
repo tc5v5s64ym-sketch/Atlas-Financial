@@ -414,5 +414,116 @@ console.log('\n=== L. live Fusion / Hydro / Amanda / weekly policy untouched ===
     'the live object was not mutated by the posting compare');
 }
 
+console.log('\n=== M. Forecast occurrence is date-aware; nonCash/settled are not cash postings ===');
+{
+  const WRONG = '2026-08-13';
+  const NEXT_PAY = F.addDays(AS_OF, 14);
+  const CAMP = '2026-08-16';
+  const HELOC_DAY = '2026-08-31';
+  const plan = fixture().plan;
+  ok(!F.occurrences(plan.income[0], WRONG, WRONG).includes(WRONG),
+    'independent occurrences: payroll is not scheduled on Aug. 13');
+  ok(F.occurrences(plan.income[0], NEXT_PAY, NEXT_PAY).includes(NEXT_PAY),
+    'independent occurrences: next payroll is 28 Aug');
+
+  const wrongPosted = runPosting(fixture(), [postingObs({
+    observationId: 'synth-payroll-wrong-date',
+    eventId: 'payroll',
+    scheduledDate: WRONG,
+    posted: true,
+  })]);
+  const wrongRow = wrongPosted.rows.find(r => r.observationId === 'synth-payroll-wrong-date');
+  ok(wrongRow && wrongRow.status === 'MISSING' && wrongRow.scheduledExists === false,
+    'posted payroll on a date Forecast never scheduled is MISSING, not CHANGE');
+
+  const wrongUnposted = runPosting(fixture(), [postingObs({
+    observationId: 'synth-mortgage-wrong-date',
+    eventId: 'mortgage',
+    scheduledDate: WRONG,
+    posted: false,
+  })]);
+  const wrongMortgage = wrongUnposted.rows.find(r => r.observationId === 'synth-mortgage-wrong-date');
+  ok(wrongMortgage && wrongMortgage.status === 'MISSING' && wrongMortgage.scheduledExists === false,
+    'unposted mortgage on a date Forecast never scheduled is MISSING, not MATCH');
+
+  const later = runPosting(fixture(), [postingObs({
+    observationId: 'synth-payroll-next',
+    eventId: 'payroll',
+    scheduledDate: NEXT_PAY,
+    posted: true,
+  })]);
+  const laterRow = later.rows.find(r => r.observationId === 'synth-payroll-next');
+  ok(laterRow && laterRow.status === 'CHANGE' && laterRow.scheduledExists === true,
+    'posted payroll on a later Forecast date is still CHANGE, not dropped');
+
+  const helocData = fixture();
+  helocData.plan.obligations.push({
+    id: 'heloc',
+    label: 'HELOC interest',
+    frequency: 'monthly',
+    day: 31,
+    amount: 814.18,
+    nonCash: true,
+    confidence: 'confirmed',
+  });
+  const helocEvents = F.expandEvents(helocData.plan, HELOC_DAY, HELOC_DAY, {});
+  ok(helocEvents.some(e => e.id === 'heloc' && e.kind === 'noncash'),
+    'Forecast emits HELOC as noncash on the 31st');
+  ok(!helocEvents.some(e => e.id === 'heloc' && e.kind !== 'noncash'),
+    'Forecast does not emit HELOC as a cash occurrence');
+  const helocPosted = runPosting(helocData, [postingObs({
+    observationId: 'synth-heloc-posted',
+    eventId: 'heloc',
+    scheduledDate: HELOC_DAY,
+    posted: true,
+  })]);
+  const helocRow = helocPosted.rows.find(r => r.observationId === 'synth-heloc-posted');
+  ok(helocRow && helocRow.status === 'MISSING' && helocRow.scheduledExists === false,
+    'nonCash HELOC is not a cash posting occurrence — MISSING, not CHANGE');
+
+  const settledData = fixture();
+  settledData.plan.commitments.push({
+    id: 'fusioncamp',
+    label: 'Fusion camp',
+    date: CAMP,
+    amount: 786,
+    settledOn: AS_OF,
+    confidence: 'confirmed',
+  });
+  const campEvents = F.expandEvents(settledData.plan, CAMP, CAMP, {});
+  ok(!campEvents.some(e => e.id === 'fusioncamp'),
+    'Forecast does not emit a settled commitment as a cash occurrence');
+  const campPosted = runPosting(settledData, [postingObs({
+    observationId: 'synth-camp-posted',
+    eventId: 'fusioncamp',
+    scheduledDate: CAMP,
+    posted: true,
+  })]);
+  const campRow = campPosted.rows.find(r => r.observationId === 'synth-camp-posted');
+  ok(campRow && campRow.status === 'MISSING' && campRow.scheduledExists === false,
+    'settled commitment is not a scheduled cash occurrence — MISSING, not CHANGE');
+
+  const openData = fixture();
+  openData.plan.commitments.push({
+    id: 'tryouts',
+    label: 'Fusion tryouts',
+    date: CAMP,
+    amount: 140,
+    confidence: 'confirmed',
+  });
+  const tryoutEvents = F.expandEvents(openData.plan, CAMP, CAMP, {});
+  ok(tryoutEvents.some(e => e.id === 'tryouts' && e.kind === 'commitment'),
+    'Forecast still emits an unsettled commitment');
+  const tryoutUnposted = runPosting(openData, [postingObs({
+    observationId: 'synth-tryouts-unposted',
+    eventId: 'tryouts',
+    scheduledDate: CAMP,
+    posted: false,
+  })]);
+  const tryoutRow = tryoutUnposted.rows.find(r => r.observationId === 'synth-tryouts-unposted');
+  ok(tryoutRow && tryoutRow.status === 'MATCH' && tryoutRow.scheduledExists === true,
+    'unsettled commitment on its Forecast date remains a scheduled unposted MATCH');
+}
+
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
 process.exit(failures === 0 ? 0 : 1);
