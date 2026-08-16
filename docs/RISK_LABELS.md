@@ -46,12 +46,22 @@ They are not a second merge authority.
 One GitHub-hosted job per pull-request head update. It does not also run on
 branch push. The check name is `Atlas CI`.
 
-The workflow file is loaded from the default branch via `pull_request_target`.
-A pull request that edits `.github/workflows/atlas-ci.yml` cannot change the
-steps or the check name that authorize its own merge. The job checks out the
-pull-request head to run the suite, then publishes the `Atlas CI` context onto
-that same head SHA — `pull_request_target`'s own job conclusion lands on the
-default-branch commit, which is not the commit branch protection evaluates.
+GitHub Pro branch protection can require that named status. It cannot, on a
+personal repository, pin the *workflow definition* to default-branch state:
+"require workflows" is an organisation/enterprise ruleset, and a
+`pull_request` trigger executes the YAML from the PR. Atlas CI therefore
+uses `pull_request_target`, which always runs this file from the default
+branch. A PR that edits, deletes, or no-ops `.github/workflows/atlas-ci.yml`
+cannot change the gate that judges that PR.
+
+The job still tests the exact live PR head: it re-fetches the open PR, checks
+out that SHA with `persist-credentials: false`, runs `npm test` and the
+published-figure comparison with `GITHUB_TOKEN` unset, and publishes the
+`Atlas CI` status onto that SHA. No repository secrets are granted. A
+default-branch helper (`scripts/atlas-ci-gate.js`) reads the PR's workflow
+directory as data and rejects a gutted, deleted, secret-bearing, or extra
+`pull_request` workflow so a poisoned definition cannot become the next
+trusted copy.
 
 It preserves the demonstrated deterministic protection:
 
@@ -71,10 +81,10 @@ Dive, Records, or Modellers.
 No secrets are used. The password gate and live-site checks stay out of CI
 because they need `SITE_PASSWORD` and a deployed instance.
 
-`test-atlas-ci.js` proves this is the only workflow, that its definition is
-not taken from the pull request, that it still runs `npm test` and the
-figure comparison, and that the OpenAI API review path and the retired
-orchestration files are gone.
+`test-atlas-ci.js` proves this is the only workflow, that it still runs
+`npm test` and the figure comparison, that a synthetic self-edit cannot
+redefine the trusted gate, and that the OpenAI API review path and the
+retired orchestration files are gone.
 
 ### `npm test`
 
@@ -160,7 +170,7 @@ What replaces each demonstrated protection:
 
 | Retired control | Surviving protection |
 |---|---|
-| `tests` workflow (push + pull_request) | Atlas CI on pull_request_target only, still running `npm test` |
+| `tests` workflow (push + pull_request) | Atlas CI from default-branch `pull_request_target`, still running `npm test` |
 | `figures-review.yml` comment job | Same snapshot comparison inside Atlas CI, on the check summary |
 | `merge-card-check` exact-head / REQUIRED fields | ChatGPT exact-head review as a human record; Atlas CI for code; builder cannot write `PASS` |
 | `risk-label/primary` | Figures summary + merge-card owner-decision row + branch protection |

@@ -85,7 +85,10 @@ wording, its reactions, or its identity.
 
 ### GitHub Actions
 
-The deterministic hard gate is the single **Atlas CI** check. A required check
+The deterministic hard gate is the single **Atlas CI** check. Its workflow
+definition is taken from the default branch (`pull_request_target`); a pull
+request cannot author the gate that judges it. The job tests the exact live
+PR head with credentials disabled and `GITHUB_TOKEN` unset. A required check
 that is missing, stale, skipped, errored, timed out, cancelled or failed **is
 a failure**, not an absence of one. GitHub Pro branch protection enforces the
 pull-request + Atlas CI boundary on `main`. There is no OpenAI API review

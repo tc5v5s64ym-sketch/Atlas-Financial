@@ -1,22 +1,20 @@
 # Atlas CI — the one GitHub-hosted check.
 #
-# The workflow file is loaded from the default branch
-# (`pull_request_target`). A pull request that edits this file cannot
-# change the steps or the check name that authorize its own merge.
-# GitHub's GITHUB_SHA for this event is the default-branch commit, so
-# this same job publishes the result onto the pull-request head SHA —
-# the commit branch protection evaluates.
+# TRUST MODEL: pull_request_target uses this file from the default branch.
+# A pull request that edits, deletes, or no-ops this YAML cannot change the
+# gate that judges it. GitHub Pro status-check / branch-protection rules
+# cannot pin the workflow *definition* on a personal repository — "require
+# workflows" is organisation/enterprise-only, and a pull_request trigger
+# would execute PR-authored YAML. This is the smallest pattern that actually
+# closes that hole.
 #
-# The suite still runs against that head, checked out below. No
-# repository secrets are referenced. GITHUB_TOKEN is contents:read
-# plus statuses:write, and is unset while untrusted head code runs.
+# The job still tests the exact live PR head: it re-fetches the open PR,
+# checks out that SHA with credentials disabled, runs npm test and the
+# published-figure comparison with GITHUB_TOKEN unset, and publishes the
+# Atlas CI status onto that SHA. No repository secrets are granted. PR code
+# never sees a write-capable token.
 #
-# Runs once per pull-request head update. It does not also run on branch
-# push. Published-figure comparison lives in this same job and is written
-# to the check summary; it does not spend a second runner merely to post
-# a comment.
-#
-# No secrets. No OpenAI API. No repair or review orchestration.
+# No OpenAI API. No repair or review orchestration.
 name: Atlas CI
 
 on:
@@ -25,6 +23,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
   statuses: write
 
 concurrency:
@@ -37,70 +36,122 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
-
-      - name: Fetch the base revision for figure comparison
+      - name: Identify the exact live PR head
+        id: head
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NUMBER: ${{ github.event.pull_request.number }}
+          EVENT_HEAD: ${{ github.event.pull_request.head.sha }}
+          EVENT_FORK: ${{ github.event.pull_request.head.repo.full_name }}
         run: |
           set -euo pipefail
-          git fetch origin "${{ github.base_ref }}"
-          git worktree add "$RUNNER_TEMP/base" "origin/${{ github.base_ref }}"
+          if [[ "${EVENT_FORK}" != "${GITHUB_REPOSITORY}" ]]; then
+            echo "Fork pull requests are refused. Fail closed."
+            exit 1
+          fi
+          if [[ ! "${EVENT_NUMBER}" =~ ^[1-9][0-9]*$ ]]; then
+            echo "Event did not identify the pull request. Fail closed."
+            exit 1
+          fi
+          if [[ ! "${EVENT_HEAD}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Event did not identify a 40-character head SHA. Fail closed."
+            exit 1
+          fi
+          pr="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${EVENT_NUMBER}")"
+          live_number="$(jq -r '.number' <<<"${pr}")"
+          live_state="$(jq -r '.state' <<<"${pr}")"
+          live_merged="$(jq -r '.merged' <<<"${pr}")"
+          live_base="$(jq -r '.base.ref' <<<"${pr}")"
+          live_head="$(jq -r '.head.sha' <<<"${pr}")"
+          live_repo="$(jq -r '.head.repo.full_name' <<<"${pr}")"
+          if [[ "${live_number}" != "${EVENT_NUMBER}" ]]; then
+            echo "Live PR ${live_number} is not event PR ${EVENT_NUMBER}. Fail closed."
+            exit 1
+          fi
+          if [[ "${live_state}" != "open" || "${live_merged}" == "true" ]]; then
+            echo "Pull request is not open. Fail closed."
+            exit 1
+          fi
+          if [[ "${live_base}" != "main" ]]; then
+            echo "Pull request base is ${live_base:-missing}, not main. Fail closed."
+            exit 1
+          fi
+          if [[ "${live_repo}" != "${GITHUB_REPOSITORY}" ]]; then
+            echo "Live head repository ${live_repo:-missing} is not ${GITHUB_REPOSITORY}. Fail closed."
+            exit 1
+          fi
+          if [[ ! "${live_head}" =~ ^[0-9a-f]{40}$ || "${live_head}" != "${EVENT_HEAD}" ]]; then
+            echo "Live head ${live_head:0:7} is not the event head ${EVENT_HEAD:0:7}. Fail closed."
+            exit 1
+          fi
+          echo "sha=${live_head}" >> "${GITHUB_OUTPUT}"
+
+      - name: Checkout trusted default-branch copy
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+          path: trusted
+
+      - name: Checkout the exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.head.outputs.sha }}
+          persist-credentials: false
+          fetch-depth: 1
+          path: pr
 
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      # No dependencies are needed to run the suite — it is plain Node — so the
-      # install is skipped rather than pulling express in to sit unused.
+      # Default-branch helper, PR workflows as data. Does not execute PR YAML.
+      - name: Refuse a PR-authored or gutted gate
+        run: node trusted/scripts/atlas-ci-gate.js evaluate-pr pr/.github/workflows
+
       - name: Run the correctness suite
+        working-directory: pr
         env:
           GITHUB_TOKEN: ''
+          GH_TOKEN: ''
         run: npm test
 
-      # Each revision runs its own snapshot script. The engine's shape changes
-      # between revisions; one revision's script against the other's data is
-      # not a comparison of anything.
-      - name: Snapshot published figures
+      # Each revision runs its own snapshot script. The compare helper is the
+      # trusted default-branch copy so a PR cannot lie about the diff.
+      - name: Snapshot and compare published figures
         env:
           GITHUB_TOKEN: ''
+          GH_TOKEN: ''
         run: |
           set -euo pipefail
-          node scripts/figures-snapshot.js > "$RUNNER_TEMP/head.json"
-          if [ -f "$RUNNER_TEMP/base/scripts/figures-snapshot.js" ]; then
-            ( cd "$RUNNER_TEMP/base" && node scripts/figures-snapshot.js ) > "$RUNNER_TEMP/base.json"
-          else
-            echo 'null' > "$RUNNER_TEMP/base.json"
-          fi
-
-      - name: Compare published figures
-        env:
-          GITHUB_TOKEN: ''
-        run: |
-          set -euo pipefail
-          node scripts/figures-compare.js \
+          ( cd pr && node scripts/figures-snapshot.js ) > "$RUNNER_TEMP/head.json"
+          ( cd trusted && node scripts/figures-snapshot.js ) > "$RUNNER_TEMP/base.json"
+          node trusted/scripts/figures-compare.js \
             "$RUNNER_TEMP/base.json" \
             "$RUNNER_TEMP/head.json" \
-            --base-ref="${{ github.base_ref }}" \
+            --base-ref="${{ github.event.pull_request.base.ref }}" \
             > "$GITHUB_STEP_SUMMARY"
 
-      # pull_request_target's job conclusion lands on the default-branch SHA.
-      # Branch protection evaluates the pull-request head, so the same job
-      # writes the required context there. This is not a second runner.
       - name: Publish Atlas CI on the exact head
-        if: always()
+        if: always() && steps.head.outputs.sha != ''
         env:
           GH_TOKEN: ${{ github.token }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_SHA: ${{ steps.head.outputs.sha }}
+          JOB_STATUS: ${{ job.status }}
         run: |
           set -euo pipefail
-          state=failure
-          if [ "${{ job.status }}" = "success" ]; then
-            state=success
+          state="failure"
+          description="Atlas CI failed on this exact head."
+          if [[ "${JOB_STATUS}" == "success" ]]; then
+            state="success"
+            description="Trusted default-branch Atlas CI passed on this exact head."
           fi
-          gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${HEAD_SHA}" \
-            -f state="$state" \
-            -f context="Atlas CI" \
-            -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
-            -f description="Correctness suite and published-figure comparison"
+          jq -n \
+            --arg state "${state}" \
+            --arg desc "${description:0:140}" \
+            --arg url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            '{state:$state, context:"Atlas CI", description:$desc, target_url:$url}' \
+            | gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${HEAD_SHA}" --input - >/dev/null
+          if [[ "${state}" != "success" ]]; then
+            exit 1
+          fi
