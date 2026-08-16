@@ -378,7 +378,7 @@ closed: `Forecast.expandEvents` is the one cash calendar.
 | Derived publication aggregates of those facts | `Forecast.publicationTotals` |
 | Calendar — the on-page month grid and agenda | `renderCalendar()` in `public/plan.js` — **presentation of `sim.events` only** |
 | Calendar — the exported `.ics` | `scripts/calendar-ics.js`: cash-payment VEVENTs **derived** from `Forecast.expandEvents` over a longer horizon; standing reminder VEVENTs (statement closes, tax deadlines, mortgage renewal) remain a thin non-cash overlay |
-| Observation-to-canonical cash/debt compare | `scripts/reconcile.js` (non-writing). Maps `docs/positions.csv` Household rows through `docs/reconciliation/balance-map.json` id locators onto `plan.startingCash` / `debts`. Commitment settlement observations live in `docs/reconciliation/commitment-settlements.json` and compare a paid date against `plan.commitments[].settledOn`; they do not go through `positions.csv` or the balance map. Hydro observations live in `docs/reconciliation/utility-observations.json`. Amanda-income observations live in `docs/reconciliation/amanda-income-observations.json`. Card-state observations live in `docs/reconciliation/card-state-observations.json` and distinguish posted balance, pending, limit, available credit, and confirmed payment; they are not a second financial authority. Limit and available credit are never household cash. Unknown pending is not $0. Pending is not manufactured as limit − posted − available unless that identity is proven for that card and timestamp. Does not write `data.json`. STALE is not assigned; no owner-defined age threshold exists. Not a universal fact database |
+| Observation-to-canonical cash/debt compare | `scripts/reconcile.js` (non-writing). Maps `docs/positions.csv` Household rows through `docs/reconciliation/balance-map.json` id locators onto `plan.startingCash` / `debts`. Commitment settlement observations live in `docs/reconciliation/commitment-settlements.json` and compare a paid date against `plan.commitments[].settledOn`; they do not go through `positions.csv` or the balance map. Hydro observations live in `docs/reconciliation/utility-observations.json`. Amanda-income observations live in `docs/reconciliation/amanda-income-observations.json`. Card-state observations live in `docs/reconciliation/card-state-observations.json` and distinguish posted balance, pending, limit, available credit, and confirmed payment; they are not a second financial authority. Limit and available credit are never household cash. Unknown pending is not $0. Pending is not manufactured as limit − posted − available unless that identity is proven for that card and timestamp. Posting observations live in `docs/reconciliation/posting-observations.json` and compare whether a scheduled occurrence has posted against `plan.opening.representedEvents`. Forecast remains authority for what should happen; posting evidence is authority for what has happened. Unknown posting is not posted and is not unposted. Does not write `data.json`. STALE is not assigned; no owner-defined age threshold exists. Not a universal fact database |
 
 **The table is not a closed list, and reading it as one is how work goes wrong.**
 Three rounds of advisory review added five rows to it that inspection had missed.
@@ -586,7 +586,13 @@ distinguish posted balance, pending, limit, available credit, and
 confirmed payment. Limit and available credit are never household cash.
 Unknown pending is not $0. A scheduled minimum is not a confirmed posted
 payment. Live card balances, limits, pending, and payments are unchanged.
-None of these slices finishes B91 or writes canonical state. Sequencing and
+The D7 slice adds posting observations
+(`docs/reconciliation/posting-observations.json`) that compare whether a
+scheduled occurrence has posted against `plan.opening.representedEvents`.
+Forecast remains authority for what should happen; posting evidence is
+authority for what has happened. Unknown posting is not posted and is
+not unposted. Live `plan.opening` is unchanged. None of these slices
+finishes B91 or writes canonical state. Sequencing and
 the Aug. 14 payday acceptance corpus live in the build strategy and
 [`docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md`](docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md).
 
