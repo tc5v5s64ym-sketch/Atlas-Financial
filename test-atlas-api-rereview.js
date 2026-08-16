@@ -164,6 +164,19 @@ ok(/secrets\.ATLAS_AUTOMATION_TOKEN/.test(reviewer), 'reviewer reuses the existi
 ok(/gh api user/.test(reviewer) && /tc5v5s64ym-sketch/.test(reviewer), 'reviewer fails closed unless the automation token is the trusted reviewer identity');
 ok(/MODEL: gpt-5\.6/.test(reviewer) && /json_schema/.test(reviewer) && /store:\s*false/.test(reviewer), 'reviewer uses GPT-5.6 structured output without Responses application-state storage');
 ok(/canonical_contracts contains trusted policy text/.test(reviewer) && /prior_review_body[\s\S]*trusted/.test(reviewer), 'developer prompt trusts only default-branch policy and the validated prior Atlas blocker record');
+ok(/--rawfile portability docs\/BUILDER_PORTABILITY\.md/.test(reviewer)
+  && /--rawfile contextDoc CONTEXT\.md/.test(reviewer)
+  && /--rawfile accountFacts docs\/ACCOUNT_FACTS\.md/.test(reviewer)
+  && /--rawfile buildStrategy docs\/ATLAS_FINANCIAL_BUILD_STRATEGY\.md/.test(reviewer)
+  && /--rawfile backlog BACKLOG\.md/.test(reviewer)
+  && /--rawfile openQuestions docs\/01_OPEN_QUESTIONS\.md/.test(reviewer),
+  'follow-up trusted context includes the remaining AGENTS.md routed documents');
+ok(/builder_portability:\$portability/.test(reviewer)
+  && /account_facts:\$accountFacts/.test(reviewer)
+  && /build_strategy:\$buildStrategy/.test(reviewer)
+  && /backlog:\$backlog/.test(reviewer)
+  && /open_questions:\$openQuestions/.test(reviewer),
+  'follow-up canonical_contracts exposes those remaining documents to the API reviewer');
 ok(/bounded follow-up review/.test(reviewer) && /Do not reopen untouched work/.test(reviewer), 'review prompt follows the bounded repair re-review protocol');
 ok(/Queued or in-progress checks do not by themselves/.test(reviewer), 'review prompt does not turn ordinary CI timing into review churn');
 ok(/workflow_run\.pull_requests\[0\]\.head\.sha/.test(reviewer) && /evaluate-dispatch-head/.test(reviewer),

@@ -234,7 +234,13 @@ jobs:
             --rawfile repairDiff "${RUNNER_TEMP}/repair.diff" \
             --rawfile agents AGENTS.md \
             --rawfile claude CLAUDE.md \
+            --rawfile portability docs/BUILDER_PORTABILITY.md \
+            --rawfile contextDoc CONTEXT.md \
             --rawfile architecture ARCHITECTURE.md \
+            --rawfile accountFacts docs/ACCOUNT_FACTS.md \
+            --rawfile buildStrategy docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md \
+            --rawfile backlog BACKLOG.md \
+            --rawfile openQuestions docs/01_OPEN_QUESTIONS.md \
             --rawfile risks docs/RISK_LABELS.md \
             --rawfile diff "${RUNNER_TEMP}/pr.diff" \
             --argjson checks "$(cat "${RUNNER_TEMP}/checks.json")" \
@@ -249,7 +255,18 @@ jobs:
                 repair_diff:$repairDiff
               },
               deterministic_checks: $checks,
-              canonical_contracts: {agents:$agents,claude:$claude,architecture:$architecture,risk_labels:$risks},
+              canonical_contracts: {
+                agents:$agents,
+                claude:$claude,
+                builder_portability:$portability,
+                context:$contextDoc,
+                architecture:$architecture,
+                account_facts:$accountFacts,
+                build_strategy:$buildStrategy,
+                backlog:$backlog,
+                open_questions:$openQuestions,
+                risk_labels:$risks
+              },
               exact_head_diff: $diff
             }' > "${RUNNER_TEMP}/review-context.json"
 

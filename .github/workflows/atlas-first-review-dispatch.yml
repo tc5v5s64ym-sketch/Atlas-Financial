@@ -3,8 +3,10 @@ name: Atlas first-review dispatch
 # PR-controlled and deliberately secret-free. It only records that an open
 # non-draft pull request targeting main changed. The secret-bearing reviewer
 # runs from default-branch code through workflow_run, re-fetches the live Merge
-# Card, and spends the OpenAI API only when that card says Required: REQUIRED
-# and no trusted Atlas verdict already exists on the exact head.
+# Card, and spends the OpenAI API only when that card says Required: REQUIRED,
+# no trusted Atlas verdict already exists on the exact head, and the head is
+# not a repaired follow-up (no earlier blocking Atlas verdict, no active
+# Cursor re-review handoff).
 on:
   pull_request:
     types: [opened, reopened, synchronize, edited, ready_for_review]

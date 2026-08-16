@@ -330,21 +330,42 @@ function parseRequiredReviewField(body) {
   };
 }
 
-function latestTrustedAtlasVerdict(reviews, sha) {
-  const head = shaOrEmpty(sha);
-  if (!head) return null;
+function trustedAtlasReviews(reviews) {
   const list = Array.isArray(reviews) ? reviews : [];
-  const candidates = list
+  return list
     .filter((review) => review && review.user && review.user.login === TRUSTED_REVIEWER)
-    .filter((review) => clean(review.commit_id).toLowerCase() === head)
     .map((review) => ({ ...review, atlasOutcome: classifyAtlasReview(review.body) }))
     .filter((review) => Boolean(review.atlasOutcome))
     .sort((left, right) => String(left.submitted_at || '').localeCompare(String(right.submitted_at || '')));
+}
+
+function latestTrustedAtlasVerdict(reviews, sha) {
+  const head = shaOrEmpty(sha);
+  if (!head) return null;
+  const candidates = trustedAtlasReviews(reviews)
+    .filter((review) => clean(review.commit_id).toLowerCase() === head);
+  return candidates.length ? candidates[candidates.length - 1] : null;
+}
+
+function latestTrustedAtlasVerdictAnySha(reviews) {
+  const candidates = trustedAtlasReviews(reviews);
   return candidates.length ? candidates[candidates.length - 1] : null;
 }
 
 function hasTrustedAtlasVerdictOnSha(reviews, sha) {
   return Boolean(latestTrustedAtlasVerdict(reviews, sha));
+}
+
+function hasActiveRepairHandoff(reviews, sha) {
+  const head = shaOrEmpty(sha);
+  if (!head) return false;
+  const list = Array.isArray(reviews) ? reviews : [];
+  return list.some((review) => (
+    review
+    && isCursorHandoffReviewer(review.user && review.user.login)
+    && clean(review.commit_id).toLowerCase() === head
+    && String(review.body || '').includes(HANDOFF_MARKER)
+  ));
 }
 
 function evaluateFirstReviewEligibility(input) {
@@ -371,6 +392,29 @@ function evaluateFirstReviewEligibility(input) {
       head: liveHead,
       existingOutcome: existing.atlasOutcome,
       existingReviewId: existing.id,
+    };
+  }
+  const prior = latestTrustedAtlasVerdictAnySha(input && input.reviews);
+  const priorHead = prior ? shaOrEmpty(prior.commit_id) : '';
+  if (prior && priorHead && priorHead !== liveHead && ['NOT PASS', 'BLOCKING'].includes(prior.atlasOutcome)) {
+    return {
+      ok: false,
+      action: 'skip',
+      code: 'prior-blocking-verdict',
+      reason: `Trusted Atlas ${prior.atlasOutcome} on ${priorHead} leaves this repaired head to the bounded follow-up lane.`,
+      head: liveHead,
+      priorHead,
+      priorOutcome: prior.atlasOutcome,
+      priorReviewId: prior.id,
+    };
+  }
+  if (hasActiveRepairHandoff(input && input.reviews, liveHead)) {
+    return {
+      ok: false,
+      action: 'skip',
+      code: 'repair-handoff',
+      reason: 'Active Cursor Atlas re-review handoff on the live head; leave this repaired head to the bounded follow-up lane.',
+      head: liveHead,
     };
   }
   return {
@@ -483,7 +527,9 @@ module.exports = {
   evaluateDispatchExactHead,
   parseRequiredReviewField,
   latestTrustedAtlasVerdict,
+  latestTrustedAtlasVerdictAnySha,
   hasTrustedAtlasVerdictOnSha,
+  hasActiveRepairHandoff,
   evaluateFirstReviewEligibility,
   validateModelResult,
   renderReview,

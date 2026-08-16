@@ -135,11 +135,69 @@ result = helper.evaluateFirstReviewEligibility({
   liveHead: head,
 });
 ok(result.ok && result.action === 'proceed',
-  'a trusted verdict on a different SHA does not skip the live head');
+  'a trusted PASS on a different SHA does not skip the live head');
+result = helper.evaluateFirstReviewEligibility({
+  body: card('REQUIRED — workflows'),
+  reviews: [{ ...trustedNotPass, commit_id: otherHead }],
+  liveHead: head,
+});
+ok(!result.ok && result.action === 'skip' && result.code === 'prior-blocking-verdict'
+  && result.priorOutcome === 'NOT PASS' && result.priorHead === otherHead,
+  'an earlier trusted NOT PASS leaves the repaired head to the follow-up lane');
+result = helper.evaluateFirstReviewEligibility({
+  body: card('REQUIRED — workflows'),
+  reviews: [{ ...trustedBlocking, commit_id: otherHead }],
+  liveHead: head,
+});
+ok(!result.ok && result.action === 'skip' && result.code === 'prior-blocking-verdict'
+  && result.priorOutcome === 'BLOCKING',
+  'an earlier trusted BLOCKING leaves the repaired head to the follow-up lane');
+result = helper.evaluateFirstReviewEligibility({
+  body: card('REQUIRED — workflows'),
+  reviews: [
+    { ...trustedNotPass, commit_id: otherHead, submitted_at: '2026-08-16T02:00:00Z' },
+    { ...trustedPass, commit_id: 'd'.repeat(40), submitted_at: '2026-08-16T04:00:00Z' },
+  ],
+  liveHead: head,
+});
+ok(result.ok && result.action === 'proceed',
+  'a later trusted PASS on an intermediate SHA returns later heads to the initial-review lane');
+const liveHandoff = {
+  id: 22,
+  commit_id: head,
+  submitted_at: '2026-08-16T05:00:00Z',
+  user: { login: 'cursor[bot]' },
+  body: `Atlas re-review requested.\n\n- **New exact head:** \`${head}\`\n- **Prior reviewed SHA:** \`${otherHead}\`\n- **Prior review outcome:** NOT PASS\n`,
+};
+result = helper.evaluateFirstReviewEligibility({
+  body: card('REQUIRED — workflows'),
+  reviews: [liveHandoff],
+  liveHead: head,
+});
+ok(!result.ok && result.action === 'skip' && result.code === 'repair-handoff',
+  'an active Cursor re-review handoff on the live head leaves the head to the follow-up lane');
+result = helper.evaluateFirstReviewEligibility({
+  body: card('REQUIRED — workflows'),
+  reviews: [{ ...liveHandoff, user: { login: 'cursor' } }],
+  liveHead: head,
+});
+ok(!result.ok && result.code === 'repair-handoff',
+  'the live Cursor Automation login is also an active repair handoff');
+result = helper.evaluateFirstReviewEligibility({
+  body: card('REQUIRED — workflows'),
+  reviews: [{ ...liveHandoff, commit_id: otherHead }],
+  liveHead: head,
+});
+ok(result.ok && result.action === 'proceed',
+  'a stale Cursor handoff on a prior SHA does not skip a new head');
 ok(helper.hasTrustedAtlasVerdictOnSha([trustedPass], head) === true,
   'hasTrustedAtlasVerdictOnSha sees the trusted PASS');
 ok(helper.hasTrustedAtlasVerdictOnSha([nativeCodex], head) === false,
   'hasTrustedAtlasVerdictOnSha ignores Codex');
+ok(helper.hasActiveRepairHandoff([liveHandoff], head) === true,
+  'hasActiveRepairHandoff sees the live-head Cursor handoff');
+ok(helper.hasActiveRepairHandoff([{ ...liveHandoff, commit_id: otherHead }], head) === false,
+  'hasActiveRepairHandoff ignores a handoff on another SHA');
 result = helper.evaluateFirstReviewEligibility({
   body: card('REQUIRED — workflows'),
   reviews: [],
@@ -178,7 +236,7 @@ ok(/evaluate-dispatch-head/.test(reviewer) && /workflow_run\.pull_requests\[0\]\
 ok(!/head_sha\}" != "\$\{RUN_HEAD\}"/.test(reviewer) && !/head_sha != "\$\{RUN_HEAD\}"/.test(reviewer),
   'first reviewer does not equate workflow_run.head_sha to the live PR head');
 ok(/evaluate-first-review/.test(reviewer),
-  'first reviewer uses the shared helper to read live Required and existing trusted verdicts');
+  'first reviewer uses the shared helper to read live Required, existing trusted verdicts, prior blockers, and repair handoffs');
 ok(!/parse-handoff/.test(reviewer) && !/validate-prior-review/.test(reviewer) && !/assert-pending/.test(reviewer),
   'first reviewer does not require a Cursor handoff, prior blocker, or PENDING card');
 ok(!/repair_provenance/.test(reviewer) && !/prior-review\.md/.test(reviewer) && !/repair\.diff/.test(reviewer),
@@ -201,6 +259,19 @@ ok(/MODEL: gpt-5\.6/.test(reviewer) && /json_schema/.test(reviewer) && /store:\s
   'first reviewer uses GPT-5.6 structured output without Responses application-state storage');
 ok(/canonical_contracts contains trusted policy text/.test(reviewer),
   'developer prompt trusts only default-branch policy');
+ok(/--rawfile portability docs\/BUILDER_PORTABILITY\.md/.test(reviewer)
+  && /--rawfile contextDoc CONTEXT\.md/.test(reviewer)
+  && /--rawfile accountFacts docs\/ACCOUNT_FACTS\.md/.test(reviewer)
+  && /--rawfile buildStrategy docs\/ATLAS_FINANCIAL_BUILD_STRATEGY\.md/.test(reviewer)
+  && /--rawfile backlog BACKLOG\.md/.test(reviewer)
+  && /--rawfile openQuestions docs\/01_OPEN_QUESTIONS\.md/.test(reviewer),
+  'first-review trusted context includes the remaining AGENTS.md routed documents');
+ok(/builder_portability:\$portability/.test(reviewer)
+  && /account_facts:\$accountFacts/.test(reviewer)
+  && /build_strategy:\$buildStrategy/.test(reviewer)
+  && /backlog:\$backlog/.test(reviewer)
+  && /open_questions:\$openQuestions/.test(reviewer),
+  'first-review canonical_contracts exposes those remaining documents to the API reviewer');
 ok(/live_head.*HEAD_SHA/.test(reviewer) && /immediately before review post/.test(reviewer),
   'first reviewer rechecks the live exact head after the model call and immediately before posting');
 ok(/evaluate-first-review[\s\S]*final-first-review\.json/.test(reviewer),
