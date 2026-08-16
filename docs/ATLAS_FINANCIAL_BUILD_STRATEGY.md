@@ -735,7 +735,8 @@ exist.
   dated due is on the live plan as an Amanda-paid household obligation.
   Aug. 14 joint-cash opening balances are not in the committed corpus, so
   `plan.opening` / `representedEvents` is not applied. Rogers posting,
-  HOME BUDGET.xlsx, Q19, unknown card pending, and $600/week are not
+  HOME BUDGET.xlsx (later classified 2026-08-16; Q0 ANSWERED; not current
+  policy), Q19, unknown card pending, and $600/week are not
   promoted. Date relation is reported without a universal STALE
   threshold. Do not mark this item done.
 

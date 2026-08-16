@@ -38,6 +38,7 @@ const suites = [
   ['May 2027 renewal', 'test-renewal.js'],
   ['payoff modeller', 'test-payoff.js'],
   ['household budget reconciliation', 'test-budget.js'],
+  ['workbook evidence cannot overwrite owner policy', 'test-workbook-authority.js'],
   ['spending classification reconciliation', 'test-classification.js'],
   ['weekly cap conversion + discretionary room', 'test-weekly-cap.js'],
   ['food and fuel monthly figures', 'test-food-fuel.js'],

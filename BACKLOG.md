@@ -1146,7 +1146,7 @@ relation reports `canonical-older` / `same-day` / `canonical-newer` /
 `incomparable` without assigning STALE. Not promoted: Aug. 14 joint-cash
 opening (no exact balances in the committed corpus, so no
 `representedEvents` payroll cutover); Hydro $213.79 due 14 August;
-Rogers/Shaw posting status; HOME BUDGET.xlsx (not in the repository, Q0);
+Rogers/Shaw posting status; HOME BUDGET.xlsx (not promoted by B91; classified 2026-08-16, Q0 ANSWERED, did not become current policy);
 Amanda DEBT&PAYMENTS as spendable cash; unknown card pending as $0; Q19
 HELOC mechanics; $600/week. Published `meta.asOf` remains 2026-08-09
 because cash/debt snapshots are still that date. Do not mark this item

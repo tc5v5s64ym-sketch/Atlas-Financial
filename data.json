@@ -429,7 +429,7 @@
       "ownerTargets": {
         "status": "partial",
         "source": "owner-stated-2026-08-10",
-        "note": "Nine owner budget targets are now incorporated, supplied directly by the owner on 2026-08-10 and recorded here with that provenance. They are NOT workbook-verified: monthly_budget_tracker_template.xlsx and HOME BUDGET.xlsx are still absent from this repository and from the machine this ran on, so three things remain unconfirmed - (1) that these nine are current and complete rather than a subset, (2) the AMOUNTS of the sinking funds, which were named but not quantified, and (3) whether the owner's 'Personal' line maps to the transaction record's Shopping category. Every category without a target below is still a historical actual and is labelled as one.",
+        "note": "Nine owner budget targets are incorporated, supplied directly by the owner on 2026-08-10 and recorded here with that provenance. They remain owner-stated current policy, not workbook-derived. monthly_budget_tracker_template.xlsx and HOME BUDGET.xlsx have been located and classified in docs/source_intake/HOUSEHOLD_BUDGET_WORKBOOKS_2026-08-16.md: HOME BUDGET.xlsx is historical per-paycheque planning and does not supersede these nine; the tracker's My Recommendation section is advisory, not owner policy. Three policy questions remain open, not missing files - (1) whether these nine are complete rather than a subset, (2) the current approved AMOUNTS of the sinking funds, which were named but not quantified as current targets, and (3) whether the owner's 'Personal' line maps to the transaction record's Shopping category. Every category without a target below is still a historical actual and is labelled as one.",
         "sinkingFundsNamed": [
           "property tax",
           "home insurance",
@@ -440,7 +440,7 @@
           "annual bills",
           "emergency/buffer"
         ],
-        "sinkingFundsNote": "Named by the owner but NOT quantified, so no amount is modelled for them. Property tax and CRA are carried as reserves from the historical record; the Fusion and Burrard commitments are dated on the calendar with owner-stated amounts. Home insurance, Christmas, travel, annual bills and the emergency top-up have no figure and are OWNER DECISION REQUIRED - the workbook would supply them."
+        "sinkingFundsNote": "Named by the owner but NOT quantified as current approved targets, so no amount is modelled for them. Property tax and CRA are carried as reserves from the historical record; the Fusion and Burrard commitments are dated on the calendar with owner-stated amounts. Home insurance, Christmas, travel, annual bills and the emergency top-up have no current approved figure and are OWNER DECISION REQUIRED. HOME BUDGET.xlsx contains sinking-fund planning as historical owner-created evidence; those workbook amounts are not independently extracted into this repository and are not current approved policy. They must not enter Forecast without an explicit later owner authority transition."
       },
       "cardCaveat": "The historical averages below are total household spending — chequing, cards and PayPal. The forecast deducts the weekly cap as CASH from the household chequing accounts, but only card MINIMUMS as debt service. Spending at the historical rate on the cards would therefore show a healthy cash line while the card balances grew. The cap is a cash instruction, and it only holds if the spending is actually paid for rather than carried.",
       "categories": [

@@ -204,16 +204,20 @@ ok(budget.categories.every(c => typeof c.historical === 'number'),
 const differing = budget.categories.filter(c => c.target != null && Math.abs(c.target - c.historical) > 1);
 ok(differing.length >= 5, 'and it differs from the target often enough to matter',
   `${differing.length} of ${budget.ownerTargetCount} differ`);
-ok(/not workbook-verified|NOT workbook-verified/i.test(plan.budget.ownerTargets.note),
-  'the targets are recorded as owner-stated but not workbook-verified');
+ok(/owner-stated current policy|not workbook-derived/i.test(plan.budget.ownerTargets.note),
+  'the targets are recorded as owner-stated current policy, not workbook-derived');
 ok(/monthly_budget_tracker_template|HOME BUDGET/.test(plan.budget.ownerTargets.note),
-  'and the workbooks are still named as the outstanding source');
+  'and the workbooks are named as classified evidence, not as the missing source');
+ok(!/still absent|never supplied|not absorbed|never reached this repository/i.test(plan.budget.ownerTargets.note),
+  'the live budget note no longer claims the workbooks are missing');
 ok(Array.isArray(plan.budget.ownerTargets.sinkingFundsNamed)
   && plan.budget.ownerTargets.sinkingFundsNamed.length > 0,
   'the sinking funds the owner named are recorded',
   plan.budget.ownerTargets.sinkingFundsNamed.join(', '));
 ok(/NOT quantified|not quantified/.test(plan.budget.ownerTargets.sinkingFundsNote),
   'and recorded as unquantified rather than guessed at');
+ok(!/the workbook would supply them/i.test(plan.budget.ownerTargets.sinkingFundsNote),
+  'the sinking-fund note no longer treats the workbook as the missing current source');
 ok(!!plan.budget.cardCaveat && /card/i.test(plan.budget.cardCaveat),
   'the cash-versus-card caveat on the historical averages is stated');
 for (const c of plan.budget.categories) {
