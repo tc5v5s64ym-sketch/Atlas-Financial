@@ -374,6 +374,9 @@
       // relative to this start. This is not a date-wide skip: a sibling
       // on the same date still fires.
       if (commitmentSettledBy(c, start)) continue;
+      // Undated rows stay on the plan. They are not given a fabricated
+      // day and they do not become cash events.
+      if (!c.date || c.amount == null) continue;
       if (c.date >= start && c.date <= end) {
         events.push({ date: c.date, amount: -c.amount, kind: 'commitment', label: c.label, id: c.id, confidence: c.confidence });
       }
@@ -1152,6 +1155,9 @@
     for (const c of plan.commitments || []) {
       if ((opts.disabled || []).indexOf(c.id) >= 0) continue;
       if (commitmentSettledBy(c, asOf)) continue;
+      // Undated or unpriced rows are on the master plan. They are not
+      // smeared across the 91-day window as if they had a due day.
+      if (!c.date || c.amount == null) continue;
       const perMonth = c.amount / monthsInWindow;
       if (c.sinkingFund) {
         sinking.total += perMonth;
@@ -1787,8 +1793,22 @@
     const incomeTotal = (data.income || []).reduce((s, row) => s + (row.total || 0), 0);
     const incomeMonths = Number(data.incomeCaptureMonths);
     const incomeWindow = incomeMonths > 0 && isFinite(incomeMonths) ? incomeMonths : null;
-    const commitmentsTotal = ((data.commitments && data.commitments.items) || [])
+    const asOf = data.meta && data.meta.asOf || null;
+    const commitmentRows = ((data.plan && data.plan.commitments) || [])
+      .filter(c => !commitmentSettledBy(c, asOf));
+    const commitmentsTotal = commitmentRows
       .reduce((s, item) => s + (item.amount || 0), 0);
+    const commitmentItems = commitmentRows.map(c => ({
+      id: c.id,
+      what: c.label,
+      when: c.date || c.when || 'TBD',
+      amount: c.amount == null ? null : c.amount,
+      amountMin: c.amountMin == null ? null : c.amountMin,
+      amountMax: c.amountMax == null ? null : c.amountMax,
+      confidence: c.confidence,
+      adjustable: !!c.adjustable,
+      note: c.note || '',
+    }));
     const lacrosseVerified = ((data.lacrosse && data.lacrosse.sources) || [])
       .reduce((s, row) => s + (row.amount || 0), 0);
     const revolving = utilisation(debts, data.revolvingExtra, data.plan);
@@ -1809,6 +1829,7 @@
       incomePerMonth: incomeWindow ? Math.round(incomeTotal / incomeWindow) : null,
       incomeMonths: incomeWindow,
       commitmentsTotal,
+      commitmentItems,
       lacrosseVerified,
       helocLimit,
       assetRows: assets,

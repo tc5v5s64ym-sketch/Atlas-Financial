@@ -220,8 +220,9 @@ ok(Array.isArray(plan.budget.ownerTargets.sinkingFundsNamed)
   && plan.budget.ownerTargets.sinkingFundsNamed.length > 0,
   'the sinking funds the owner named are recorded',
   plan.budget.ownerTargets.sinkingFundsNamed.join(', '));
-ok(/NOT quantified|not quantified/.test(plan.budget.ownerTargets.sinkingFundsNote),
-  'and recorded as unquantified rather than guessed at');
+ok(/plan\.commitments/.test(plan.budget.ownerTargets.sinkingFundsNote)
+  && /not monthly owner targets/i.test(plan.budget.ownerTargets.sinkingFundsNote),
+  'named sinking funds that now have owner estimates point at plan.commitments');
 ok(!/the workbook would supply them/i.test(plan.budget.ownerTargets.sinkingFundsNote),
   'the sinking-fund note no longer treats the workbook as the missing current source');
 ok(!!plan.budget.cardCaveat && /card/i.test(plan.budget.cardCaveat),

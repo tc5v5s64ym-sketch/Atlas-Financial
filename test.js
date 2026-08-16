@@ -72,6 +72,7 @@ const suites = [
   ['read-only provider observation (connectivity spike)', 'test-provider-observe.js'],
   ['live pending observations (B91 / B78)', 'test-pending-observe.js'],
   ['Aug. 16 household evidence absorption', 'test-aug16-evidence.js'],
+  ['major future costs on the master plan', 'test-major-future-costs.js'],
 ];
 
 let failed = [];

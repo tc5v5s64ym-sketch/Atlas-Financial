@@ -148,35 +148,29 @@ function renderDeepDive(d) {
   $('upcoming').innerHTML = settledRows.concat(datedRows).join('');
   $('upcoming-note').textContent = d.upcomingNote;
 
-  // Committed, but beyond the dated window above — the things that arrive as a
-  // surprise precisely because they have no due date yet.
+  // Known major costs on the master plan. The rows and the total come
+  // from Forecast.publicationTotals (plan.commitments). The heading is
+  // presentation chrome.
   if (d.commitments) {
     const c = d.commitments;
+    const items = pub.commitmentItems || [];
+    const shownAmount = i => i.amount != null ? money(i.amount)
+      : (i.amountMin != null && i.amountMax != null)
+        ? `${money(i.amountMin)}–${money(i.amountMax)}` : '';
     $('commit-head').textContent = c.heading;
     $('commit-note').textContent = c.note;
-    $('commit-list').innerHTML = c.items.map(i => `
+    $('commit-list').innerHTML = items.map(i => `
       <div class="commit">
         <div class="commit-top">
           <span class="commit-what">${i.what}</span>
-          <span class="commit-amt">${money(i.amount)}</span>
+          <span class="commit-amt">${shownAmount(i)}</span>
         </div>
         <div class="commit-meta">
           <span>${i.when}</span>
-          <span class="chip ${i.confidence === 'conditional' ? 'w' : 'e'}">${i.confidence}</span>
+          <span class="chip ${i.adjustable ? 'w' : 'e'}">${i.confidence}${i.adjustable ? ' · flexible' : ''}</span>
         </div>
         <p class="commit-note">${i.note}</p>
       </div>`).join('')
-      + (c.schedule ? `
-        <div class="commit sched">
-          <div class="commit-meta sched-head">When it actually lands</div>
-          ${c.schedule.map(s => `
-            <div class="sched-row">
-              <span>${s.m}</span>
-              <span class="sched-bar"><span style="width:${(s.amount / Math.max(...c.schedule.map(x => x.amount))) * 100}%"></span></span>
-              <span class="sched-amt">${money(s.amount)}</span>
-              <span class="sched-note">${s.note}</span>
-            </div>`).join('')}
-        </div>` : '')
       + `<div class="commit total">
            <div class="commit-top"><span class="commit-what">Total</span><span class="commit-amt">${money(pub.commitmentsTotal)}</span></div>
          </div>`;

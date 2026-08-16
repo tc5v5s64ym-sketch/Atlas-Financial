@@ -191,9 +191,10 @@ console.log('\n=== 10–11. stale Fusion 3 × $500 gone; future estimate is not 
   ok(!events.some(e => /fusion-sep|fusion-oct|fusion-nov/.test(e.id)
     || (e.label && /Fusion season —/.test(e.label) && near(Math.abs(e.amount), 500))),
     'Forecast emits no confirmed $500 Fusion season cash events');
-  const item = (data.commitments.items || []).find(i => /Fusion upcoming/i.test(i.what));
-  ok(item && item.confidence === 'estimated' && /TBD|unknown/i.test(item.when + item.note),
-    'upcoming Fusion is an estimated planning item, not a confirmed invoice');
+  const item = (plan.commitments || []).find(c => c.id === 'fusion-season');
+  ok(item && item.confidence === 'estimated' && item.date == null
+    && near(item.amount, 2000),
+    'upcoming Fusion is an undated estimated plan row, not a confirmed invoice');
   ok(/^ANSWERED\b/.test(statusOf('Q23')), 'Q23 is ANSWERED', statusOf('Q23'));
 }
 
@@ -209,12 +210,12 @@ console.log('\n=== 12–13. Burrards registrations settled; ~$700 team fees rema
   const events16 = F.expandEvents(plan, '2026-08-16', F.addDays('2026-08-16', 90), {});
   ok(!events16.some(e => e.id === 'burrard1' || e.id === 'burrard2'),
     'an Aug. 16 opening omits the paid registrations');
-  const fees = (data.commitments.items || []).find(i => /Burrards upcoming team/i.test(i.what));
+  const fees = (plan.commitments || []).find(c => c.id === 'burrards-team-fees');
   ok(fees && fees.confidence === 'estimated' && near(fees.amount, 700)
-    && /TBD|unknown/i.test(fees.when + fees.note),
-    '~$700 team fees remain estimated/TBD');
-  ok(!(plan.commitments || []).some(c => /team fee/i.test(c.label) && near(c.amount, 700)),
-    'no fabricated exact Burrards team-fee plan.commitments row');
+    && fees.date == null,
+    '~$700 team fees remain an undated estimated plan row');
+  ok(!(plan.commitments || []).some(c => c.id === 'burrards-team-fees' && c.date),
+    'no fabricated exact Burrards team-fee date');
 }
 
 console.log('\n=== 14–15. Bell baseline is not $356.62; pending $250 is not double-counted ===');

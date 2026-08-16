@@ -1,7 +1,7 @@
 'use strict';
 /* Focused proof for Forecast.publicationTotals(). The correctness cases are
  * hand-computed from literal balances, annual-interest figures, asset values,
- * income line totals, commitment items and lacrosse sources — not the
+ * income line totals, unsettled plan.commitments and lacrosse sources — not the
  * function that now produces the answer.
  *
  * Until this move data.json independently stored Deep Dive headline totals,
@@ -67,7 +67,7 @@ const FIX = {
     { label: 'Benefit', total:  600 },
   ],
   incomeCaptureMonths: 18,
-  commitments: { items: [{ amount: 800 }, { amount: 200 }] },
+  plan: { commitments: [{ id: 'a', amount: 800 }, { id: 'b', amount: 200 }] },
   lacrosse: { sources: [{ amount: 300, n: 2 }, { amount: 50, n: 1 }] },
 };
 const HAND_DEBT = 100000 + 50000 + 8000;
@@ -148,7 +148,9 @@ for (const row of (data.plan.startingCash.breakdown || [])
 }
 const rowAssets = data.assets.reduce((s, a) => s + (a.cash ? (cashById[a.cash] || 0) : (a.value || 0)), 0);
 const rowIncome = (data.income || []).reduce((s, r) => s + (r.total || 0), 0);
-const rowCommit = ((data.commitments && data.commitments.items) || [])
+const asOf = data.meta && data.meta.asOf || null;
+const rowCommit = ((data.plan && data.plan.commitments) || [])
+  .filter(c => !F.commitmentSettledBy(c, asOf))
   .reduce((s, i) => s + (i.amount || 0), 0);
 const rowLax = ((data.lacrosse && data.lacrosse.sources) || [])
   .reduce((s, r) => s + (r.amount || 0), 0);
@@ -215,6 +217,8 @@ ok(data.mortgage.remainingYears != null && data.mortgage.maturity
   'and still holds the renewal standing facts');
 ok(data.commitments.total == null,
   'commitments no longer store a separate total');
+ok(data.commitments.items == null && data.commitments.schedule == null,
+  'Deep Dive no longer keeps a second commitments list');
 ok(data.lacrosse.verified == null,
   'lacrosse no longer stores a separate verified total');
 
@@ -314,14 +318,14 @@ ok(!/incomeTotal\s*\/\s*18\b/.test(read('public/forecast.js')),
 ok(!/\/\s*18\b/.test(read('public/deepdive.js')) && !/\/\s*18\b/.test(read('public/records.js')),
   'Deep Dive and Records do not divide by a hardcoded 18');
 
-const extraCommit = {
-  commitments: Object.assign({}, data.commitments, {
-    items: (data.commitments.items || []).concat([{ amount: 150 }]),
+const extraPlan = {
+  plan: Object.assign({}, data.plan, {
+    commitments: (data.plan.commitments || []).concat([{ id: 'extra-commit', amount: 150 }]),
   }),
 };
-const afterCommit = F.publicationTotals(Object.assign({}, data, extraCommit));
+const afterCommit = F.publicationTotals(Object.assign({}, data, extraPlan));
 ok(afterCommit.commitmentsTotal === rowCommit + 150,
-  'an extra $150 commitment item moves the published total');
+  'an extra $150 plan.commitments row moves the published total');
 
 console.log('\n=== mutation: breaking the engine formula fails ===');
 const FORECAST_SRC = read('public/forecast.js');
