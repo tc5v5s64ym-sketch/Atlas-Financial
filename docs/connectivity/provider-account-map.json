@@ -1,33 +1,8 @@
 {
   "schema": "atlas-provider-account-map/v1",
-  "owns": "Explicit Lunch Money provider-account-id to Atlas canonical-id mapping. Display names are labels only.",
-  "does_not_own": "Financial values, permission to write data.json, automatic account creation, or Forecast.",
+  "owns": "Owner-observed Lunch Money provider-account-id to Atlas canonical-id mapping for live GET. Display names are labels only. Empty until a live connection records real IDs.",
+  "does_not_own": "Financial values, permission to write data.json, automatic account creation, Forecast, or synthetic fixture IDs.",
   "provider": "lunchmoney",
-  "mappings": [
-    {
-      "providerAccountId": "1001",
-      "canonical": { "collection": "cash", "id": "chequing-a" },
-      "atlasRole": "household-cash"
-    },
-    {
-      "providerAccountId": "1002",
-      "canonical": { "collection": "cash", "id": "chequing-b" },
-      "atlasRole": "household-cash"
-    },
-    {
-      "providerAccountId": "2001",
-      "canonical": { "collection": "debts", "id": "tdcc" },
-      "atlasRole": "revolving-credit"
-    },
-    {
-      "providerAccountId": "2002",
-      "canonical": { "collection": "debts", "id": "heloc" },
-      "atlasRole": "heloc"
-    },
-    {
-      "providerAccountId": "2003",
-      "canonical": { "collection": "debts", "id": "mortgage" },
-      "atlasRole": "mortgage"
-    }
-  ]
+  "scope": "live",
+  "mappings": []
 }

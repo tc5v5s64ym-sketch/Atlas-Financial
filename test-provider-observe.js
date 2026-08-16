@@ -11,7 +11,8 @@ const R = require('./scripts/reconcile.js');
 
 const ROOT = __dirname;
 const FIXTURE = path.join(ROOT, 'docs', 'connectivity', 'fixtures', 'lunchmoney-sample.json');
-const MAP = path.join(ROOT, 'docs', 'connectivity', 'provider-account-map.json');
+const MAP = path.join(ROOT, 'docs', 'connectivity', 'fixtures', 'provider-account-map.json');
+const LIVE_MAP = path.join(ROOT, 'docs', 'connectivity', 'provider-account-map.json');
 const DATA = path.join(ROOT, 'data.json');
 
 let failures = 0;
@@ -169,6 +170,89 @@ console.log('=== K. missing API secret fails closed and is not printed ===');
   ok(/LUNCHMONEY_ACCESS_TOKEN is not set/.test(message),
     'error names the env var without inventing a token');
   ok(!/Bearer\s+\S+/.test(message), 'failure text does not contain a bearer token');
+}
+
+console.log('=== L. live transaction request includes pending ===');
+{
+  const url = O.lunchMoneyTransactionsUrl('2026-08-16T18:00:00.000Z');
+  ok(url.pathname === '/v2/transactions', 'live request targets GET /v2/transactions');
+  ok(url.searchParams.get('include_pending') === 'true',
+    'live transactions URL sets include_pending=true', url.search);
+
+  const harness = [
+    "'use strict';",
+    "const https = require('https');",
+    "const { EventEmitter } = require('events');",
+    'const seen = [];',
+    'https.request = (url, options, cb) => {',
+    "  seen.push(url && url.href ? url.href : String(url));",
+    '  const req = new EventEmitter();',
+    '  req.end = () => {',
+    '    process.nextTick(() => {',
+    '      const res = new EventEmitter();',
+    '      res.statusCode = 200;',
+    '      cb(res);',
+    "      res.emit('data', Buffer.from('{}'));",
+    "      res.emit('end');",
+    '    });',
+    '  };',
+    '  return req;',
+    '};',
+    `const O = require(${JSON.stringify(path.join(ROOT, 'scripts', 'provider-observe.js'))});`,
+    "O.fetchLunchMoneyLive('test-token', '2026-08-16T18:00:00.000Z').then(() => {",
+    '  process.stdout.write(JSON.stringify(seen));',
+    '}).catch((err) => {',
+    '  process.stderr.write(String(err && err.message || err));',
+    '  process.exit(1);',
+    '});',
+  ].join('\n');
+  const captured = JSON.parse(execFileSync(process.execPath, ['-e', harness], {
+    cwd: ROOT,
+    encoding: 'utf8',
+  }));
+  const tx = captured.find(u => /\/v2\/transactions(?:\?|$)/.test(u));
+  ok(!!tx, 'live fetch actually GET /v2/transactions', JSON.stringify(captured));
+  ok(tx && new URL(tx).searchParams.get('include_pending') === 'true',
+    'live request URL contains include_pending=true', tx);
+}
+
+console.log('=== M. unobserved live account IDs cannot match fixture mappings ===');
+{
+  const liveMap = JSON.parse(fs.readFileSync(LIVE_MAP, 'utf8'));
+  const fixtureIds = ['1001', '1002', '2001', '2002', '2003'];
+  ok(liveMap.scope === 'live', 'default map is the live/owner-observed scope');
+  ok(Array.isArray(liveMap.mappings) && liveMap.mappings.length === 0,
+    'default live map has no synthetic fixture IDs');
+  ok(!liveMap.mappings.some(m => fixtureIds.includes(String(m.providerAccountId))),
+    'fixture IDs 1001–2003 are absent from the live map');
+  const report = O.observe({ provider: 'lunchmoney', payload, accountMap: liveMap, data });
+  ok(report.mapped.length === 0, 'fixture accounts stay unmapped under the live map');
+  ok(fixtureIds.every(id => report.unmapped.some(u => u.providerAccountId === id)),
+    'unobserved live IDs do not inherit fixture canonical mappings');
+  ok(!report.observations.some(o => fixtureIds.includes(String(o.providerAccountId))),
+    'fixture IDs produce no live canonical observations');
+
+  let threw = false;
+  let message = '';
+  try {
+    execFileSync(process.execPath, [
+      path.join(ROOT, 'scripts', 'provider-observe.js'),
+      '--provider', 'lunchmoney',
+      '--live',
+      '--map', MAP,
+    ], {
+      cwd: ROOT,
+      encoding: 'utf8',
+      env: Object.assign({}, process.env, { LUNCHMONEY_ACCESS_TOKEN: 'test-token-not-used' }),
+    });
+  } catch (e) {
+    threw = true;
+    message = String(e.stderr || e.stdout || e.message || '');
+  }
+  ok(threw, 'live CLI refuses a fixture-scoped account map');
+  ok(/Fixture account map cannot authorize a live canonical mapping/.test(message),
+    'refusal names the fixture-map live boundary');
+  ok(!/Bearer\s+\S+/.test(message), 'fixture-map refusal does not print a bearer token');
 }
 
 if (failures) {

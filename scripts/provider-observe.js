@@ -5,7 +5,8 @@
  *   node scripts/provider-observe.js --provider lunchmoney --live
  *
  * Live mode requires LUNCHMONEY_ACCESS_TOKEN in the environment. It never
- * writes data.json. Unknown provider account IDs stay unmapped.
+ * writes data.json. Unknown provider account IDs stay unmapped. Synthetic
+ * fixture mappings cannot authorize a live canonical mapping.
  */
 
 const fs = require('fs');
@@ -15,6 +16,7 @@ const R = require('./reconcile.js');
 
 const ROOT = path.join(__dirname, '..');
 const DEFAULT_MAP = path.join(ROOT, 'docs', 'connectivity', 'provider-account-map.json');
+const FIXTURE_MAP = path.join(ROOT, 'docs', 'connectivity', 'fixtures', 'provider-account-map.json');
 const DEFAULT_DATA = path.join(ROOT, 'data.json');
 const LIVE_BASE = 'https://api.lunchmoney.dev/v2';
 const TOKEN_ENV = 'LUNCHMONEY_ACCESS_TOKEN';
@@ -28,7 +30,7 @@ function fail(message) {
 }
 
 function parseArgs(argv) {
-  const out = { provider: null, fixture: null, live: false, map: DEFAULT_MAP, data: DEFAULT_DATA };
+  const out = { provider: null, fixture: null, live: false, map: null, data: DEFAULT_DATA };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--provider') out.provider = argv[++i];
@@ -39,6 +41,18 @@ function parseArgs(argv) {
     else if (a === '--help' || a === '-h') out.help = true;
   }
   return out;
+}
+
+function resolveMapPath(args) {
+  if (args.map) return args.map;
+  return args.live ? DEFAULT_MAP : FIXTURE_MAP;
+}
+
+function assertLiveMap(mapDoc) {
+  if (!mapDoc || mapDoc.provider !== 'lunchmoney') fail('Account map is missing or is not a lunchmoney map.');
+  if (mapDoc.scope === 'fixture') {
+    fail('Fixture account map cannot authorize a live canonical mapping.');
+  }
 }
 
 function loadJson(file) {
@@ -162,13 +176,19 @@ function accountsFromLivePayloads(plaid, manuals) {
   );
 }
 
-async function fetchLunchMoneyLive(token, now) {
-  if (!token) fail(`${TOKEN_ENV} is not set. Live observation refuses to run.`);
+function lunchMoneyTransactionsUrl(now) {
   const txUrl = new URL(`${LIVE_BASE}/transactions`);
   const end = dateOnly(now);
   const start = dateOnly(new Date(Date.parse(now) - 14 * 86400000).toISOString());
   txUrl.searchParams.set('start_date', start);
   txUrl.searchParams.set('end_date', end);
+  txUrl.searchParams.set('include_pending', 'true');
+  return txUrl;
+}
+
+async function fetchLunchMoneyLive(token, now) {
+  if (!token) fail(`${TOKEN_ENV} is not set. Live observation refuses to run.`);
+  const txUrl = lunchMoneyTransactionsUrl(now);
   await httpsGetJson(new URL(`${LIVE_BASE}/me`), token);
   const plaid = await tryGetJson(new URL(`${LIVE_BASE}/plaid_accounts`), token);
   let manuals = await tryGetJson(new URL(`${LIVE_BASE}/manual_accounts`), token);
@@ -315,7 +335,8 @@ async function run(argv) {
   if (args.provider !== 'lunchmoney') fail('Only --provider lunchmoney is implemented in this spike.');
   if (args.live && args.fixture) fail('Use either --fixture or --live, not both.');
   if (!args.live && !args.fixture) fail('Pass --fixture <file> or --live.');
-  const accountMap = loadJson(args.map);
+  const accountMap = loadJson(resolveMapPath(args));
+  if (args.live) assertLiveMap(accountMap);
   const data = loadJson(args.data);
   let payload;
   if (args.live) {
@@ -337,8 +358,13 @@ async function run(argv) {
 const api = {
   TOKEN_ENV,
   LIVE_BASE,
+  DEFAULT_MAP,
+  FIXTURE_MAP,
   parseArgs,
+  resolveMapPath,
+  assertLiveMap,
   mappingFor,
+  lunchMoneyTransactionsUrl,
   normalizeLunchMoneyAccount,
   normalizeLunchMoneyTransaction,
   normalizeLunchMoneyPayload,
