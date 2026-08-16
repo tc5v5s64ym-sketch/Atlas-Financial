@@ -1,7 +1,9 @@
 # Provider coverage — read-only connectivity spike
 
 Verified against official docs on 2026-08-16. Institution-count marketing is not
-used. A live household connection is **not** in this PR.
+used. The live Lunch Money observation test ran the same day; that pull
+stays out of git. This file is the written B80 evaluation. Remaining
+UNKNOWN cells are completeness, not a reason to schedule B80 again.
 
 ## A. Atlas household account matrix
 
@@ -107,27 +109,32 @@ Coverage of the actual TD/MBNA/Triangle/Wise/PayPal/Sun Life products remains
 UNKNOWN until Dale connects them in Lunch Money and we inspect one fixture
 pull.
 
-## H. Still requires a live connection test
+## H. Live observation test — already run
 
-- Which household accounts actually appear
+The owner completed a live Lunch Money GET on 2026-08-16. That pull stays
+out of git. Mapped pending rows already feed B91 observations. **Do not
+schedule B80 or this test as a future milestone.**
+
+What that test did **not** close, and what is **not** a critical-path
+gate unless a later refresh demonstrates a material source gap:
+
+- Which household accounts actually appear, product by product
 - Credit limit / available credit / HELOC / mortgage fields
-- Pending vs posted identity when a charge posts
+- Pending vs posted identity when a specific charge posts
 - `updated_at` / sync freshness
-- Whether live traffic returns `/v2/plaid_accounts` and `/v2/manual_accounts`
-  (the spike uses those; `/assets` is a 404 fallback only)
+- Whether every live account arrives through `/v2/plaid_accounts` versus
+  `/v2/manual_accounts` (the spike uses those; `/assets` is a 404 fallback
+  only)
 
-## I. Owner action for that test
+## I. Owner action if a later completeness pull is needed
 
-1. Create a Lunch Money account (or use an existing one).
-2. Create a **test budget** first; generate a token there.
-3. Personally connect whatever institutions Lunch Money offers. Atlas is not
-   in that login.
-4. When ready, generate a token on the real budget.
-5. Set `LUNCHMONEY_ACCESS_TOKEN` in the local shell only.
-6. Run `node scripts/provider-observe.js --provider lunchmoney --live`.
-7. Do not paste the token into git, a PR, chat, or a fixture.
+1. Dale connects institutions **inside Lunch Money**. Atlas is not in that
+   login.
+2. Set `LUNCHMONEY_ACCESS_TOKEN` in the local shell only.
+3. Run `node scripts/provider-observe.js --provider lunchmoney --live`.
+4. Do not paste the token into git, a PR, chat, or a fixture.
 
-This PR is **READY FOR OWNER CONNECTION TEST** of Lunch Money only.
-It is **NOT READY** to point Wealthica or Flinks live, and it does not
-satisfy `ARCHITECTURE.md`'s full connectivity gate (security review,
-idempotent live import, and owner pass of T4 remain).
+This evaluation is **complete**. It is **NOT** permission to point
+Wealthica or Flinks live, and it does not satisfy `ARCHITECTURE.md`'s
+full connectivity gate (security review, idempotent live import, and
+owner pass of T4 remain). `B81` stays closed.

@@ -10,13 +10,17 @@ here until 2026-08-12 and had already drifted: it omitted two documents the
 router lists and still announced the build strategy as something that did not
 exist yet, months after it did.
 
-**Post-B74.** PR #37 gave the household cash schedule one Plan owner
-(`Forecast.expandEvents`). Question OPEN / ANSWERED status is owned by
-[`docs/01_OPEN_QUESTIONS.md`](docs/01_OPEN_QUESTIONS.md); Deep Dive cannot
-close a question on its own. The remaining work order lives in
-[`docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`](docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md)
-under **Post-B74 architecture disposition** (Post-B90 remaining order). Do not
-copy that sequence here.
+**Current product posture (2026-08-16).** The household cash schedule has one
+Plan owner (`Forecast.expandEvents`, PR #37). Question OPEN / ANSWERED status
+is owned by [`docs/01_OPEN_QUESTIONS.md`](docs/01_OPEN_QUESTIONS.md); Deep Dive
+cannot close a question on its own. The master-forecast direction already
+lives in [`ARCHITECTURE.md`](ARCHITECTURE.md). Known major future costs
+already live on `plan.commitments` (`B95` / PR #82). The published Forecast
+opening is still 2026-08-09 — that is a `B91` gap, not a reason to treat
+every 9 August conclusion as today's household truth. The critical path lives
+in
+[`docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`](docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md).
+Do not copy that sequence here.
 
 Everything lives in **one folder**:
 
@@ -93,20 +97,50 @@ and `data.json`.
 | `CREDIT_CARD_DEEP_DIVE.md` | The TD card penalty rate and its 12-month clock |
 | `dashboard.html` | The original local dashboard, superseded by the deployed site |
 
-## State as at 2026-08-09
+## Current state as at 2026-08-16
 
-**Captured:** TD (11 accounts, 4,222 transactions over 18 months), TD credit card
-(11 statements), mortgage and HELOC terms, Triangle Mastercard (5 statements),
-PayPal (351 transactions).
+This is the product picture a new session should start from. It is **not** the
+9 August first-pass capture this file used to open on, and it is **not** a
+claim that the published Forecast opening has moved.
 
-**Outstanding:** MBNA Mastercard, Affirm/Flexiti, the wife's business, a home
-valuation, and WebBroker holdings (blocked — needs an exchange-agreement
-acceptance, which is the account holder's decision).
+**Published Forecast opening remains 2026-08-09.** `data.json` `meta.asOf` and
+the cash/debt snapshots Forecast walks are still that opening. Newer
+observations (16 August screenshots, Lunch Money, owner-confirmed settlements)
+exist and have been absorbed where they were strong enough. They do not, by
+themselves, rewrite the opening. Finishing that cutover is `B91`.
 
-**Four questions only the household can answer**, all in `01_OPEN_QUESTIONS.md`:
-where $46,657 of "credit card" transfers actually go; what the two unidentified
-accounts are; why the monthly spousal transfer stopped after May 2026; and
-whether the business makes money after cost of goods.
+**Captured (broader than the old 11-account / 4,222-transaction picture):**
+`data.json` `meta` currently records TD (15 accounts) · Triangle Mastercard ·
+MBNA · PayPal ×2 · Wise ×2; 4,762 transactions; 48 statements. Mortgage and
+HELOC terms are in. MBNA is captured. Affirm/Flexiti is owner-confirmed paid
+off and closed. A live Lunch Money observation pull ran on 2026-08-16; that
+pull stays out of git.
+
+**Known major future costs already have one Plan home** (`B95` / PR #82):
+Fusion season ~$2,000; Burrards team fees ~$700; Warriors Elite Academy ~$800;
+Seattle Nov $1,200; Seattle Dec $1,200; Christmas $3,500; downstairs couch
+~$1,700 flexible; exterior painting $700–$1,200 flexible; Indio Jan 2027
+$5,260–$5,460; Provincials $1,000, timing TBD. Annual irregulars already
+supported by Atlas evidence stay where they already live (home insurance and
+vehicle maintenance on `plan.commitments`; property tax as the existing
+reserve). Confidence and flexibility are preserved. This is not a goals
+engine.
+
+**Still outstanding / owner-blocked:** the wife's business economics (Q1); a
+home valuation (Q3); WebBroker holdings (Q11 — needs an exchange-agreement
+acceptance, which is the account holder's decision); the two unidentified
+accounts (Q6); where the $46,657 of "credit card" transfers go (Q2). Q5 (why
+the monthly spousal transfer stopped after May 2026) is **ANSWERED** — the
+garage/lab income ended.
+
+**Do not carry these 9 August conclusions forward as current truth** without
+revalidation after the `B91` opening: $79.84 of spendable household cash; the
+unpaid 12 August Burrard registrations; Triangle at $13,497 / $3 of headroom;
+the HELOC crossing on 31 August if those registrations were drawn. Dated
+16 August observations already contradict several of those opening facts.
+
+Household questions live in `01_OPEN_QUESTIONS.md`. Sequencing lives in the
+build strategy. Do not invent a second list here.
 
 ## How to update the site
 

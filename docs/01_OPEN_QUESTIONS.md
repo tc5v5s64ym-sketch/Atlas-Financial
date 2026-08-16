@@ -190,15 +190,41 @@ amount. It must not be double-counted.
 
 ### Q22. What are the remaining unknown tournament costs, and what are Provincials date/location/cost?
 **Status:** OPEN · **Owner:** Dale + Amanda
-**What we know (2026-08-16, estimates absorbed 2026-08-16):** Current known
-planning list is on `plan.commitments`: Seattle November 2026 owner estimate
-$1,200; Seattle December 2026 owner estimate $1,200; Indio January 2027
-owner estimate $5,260–$5,460; Provincials owner estimate $1,000, timing TBD.
+**What we know (2026-08-16, estimates absorbed onto `plan.commitments` by
+`B95`):** the known major future costs already have **one Plan home**. This
+question does not restate a second amount list. Current owner estimates on
+that home:
+
+| Item | Owner estimate | Notes |
+|---|---|---|
+| Fusion season | ~$2,000 | likely late Sep 2026; not invoiced |
+| Burrards team fees | ~$700 | likely Sep 2026; not the settled 12 Aug registrations |
+| Warriors Elite Academy | ~$800 | around Sep 2026; existing mid-month assumption |
+| Seattle tournament #1 | $1,200 | Nov 2026; no day invented |
+| Seattle tournament #2 | $1,200 | Dec 2026; no day invented |
+| Christmas 2026 | $3,500 | by Christmas; interview $5,000–$6,000/year is not this row |
+| Downstairs couch | ~$1,700 | Nov–Dec 2026; **flexible** |
+| Exterior painting | $700–$1,200 | Fall 2026; **flexible**; range not collapsed |
+| Indio tournament | $5,260–$5,460 | Jan 2027; range not collapsed |
+| Provincials | $1,000 | timing TBD |
+
+Annual irregulars already supported by Atlas evidence stay where they
+already live: home insurance and vehicle maintenance on
+`plan.commitments`; property tax as the existing reserve
+($5,600–$6,000/year). Do not copy them here.
+
 There are no other specifically known tournaments. Tacoma is not on the
 current known list. Exact due dates, Indio's point amount, and Provincials
 location/date remain unknown.
+
+ON TRACK / AT RISK / FUNDING GAP waits on `B94` and applies to these
+**major future plans**, not to individual transactions or budget
+categories. Ordinary spending matters through its aggregate effect on the
+household's ability to fund those plans.
 **What the answer changes:** A dated cash event, or collapsing a range to
 one amount, only after evidence exists. Do not fabricate dates or midpoints.
+A later estimate change is an edit to the existing `plan.commitments` row
+(`B95`), not a new question and not a new backlog item.
 
 ### Q25. How much of Amanda’s TENNIS INCOME balance is genuinely household-available after coaching, business, and pass-through obligations?
 **Status:** OPEN · **Owner:** Dale + Amanda
