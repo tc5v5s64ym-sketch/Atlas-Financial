@@ -14,6 +14,7 @@
  * CLI:
  *   evaluate <request.json>              → result JSON; exit 0 proceed, 2 skip, 1 error
  *   prompt   <request.json>              → repair prompt on stdout
+ *   select-review <reviews.json> <sha>   → eligible review id or empty
  *   assert-head <gated> <local> <remote>
  *   classify-push-head <gated> <local> <live> <compare.json>
  *                                        → JSON; exit 0 push|adopt-live, 1 fail
