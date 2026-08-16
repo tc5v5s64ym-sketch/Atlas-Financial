@@ -131,11 +131,20 @@ and merge card is still a correctness defect to resolve.
 
 ### Atlas Contract / Systems Review — trigger-based blocking review
 
-This manual review is required only for the high-risk triggers in `CLAUDE.md`.
+This review is required only for the high-risk triggers in `CLAUDE.md`.
 The question is whether the exact head is unsafe or architecturally wrong to
 merge. The initial pass reports blockers only. A follow-up verifies the named
 fixes and the high-risk surface changed by those fixes. It does not reopen the
 untouched artifact for unlimited new findings.
+
+When the live Merge Card says `Required: REQUIRED`, the owner-authorized
+GPT-5.6 Atlas reviewer may perform that first review over the existing
+`OPENAI_API_KEY` / trusted Atlas reviewer path (`atlas-first-review.yml`).
+It uses the same exact-head and identity boundaries as the PR #63 follow-up
+reviewer. It does not spend on `NOT REQUIRED` cards, unparsed Required
+fields, drafts, or a SHA that already has a trusted PASS / NOT PASS /
+BLOCKING. Cursor still cannot write PASS. The Merge Card still records
+`Reviewer: ChatGPT`. Repair follow-up remains `atlas-rereview.yml`.
 
 ### Independent improvement audit — optional
 
@@ -176,7 +185,11 @@ reviews remain the surviving authorities.
 
 ## Setup
 
-The labels are created from `.github/labels.yml`. Add `risk-label/primary` and
-`test` to branch protection's required status checks for `main`. The owner makes
-that repository-setting change; a workflow does not grant itself merge
-authority.
+The labels are created from `.github/labels.yml`. Add `tests`, `Merge card
+mechanical fields`, and `risk-label/primary` to branch protection's required
+status checks for `main`. The owner makes that repository-setting change; a
+workflow does not grant itself merge authority. Standing auto-merge of
+qualifying `auto-safe` pull requests is owner-granted as of 2026-08-16 and
+must not become operational until GitHub itself is enforcing those checks.
+That grant does not apply to `figures-moved`, `owner-decision`, `blocked`,
+or any other owner-reserved stop.

@@ -1232,10 +1232,13 @@ fix.
 **Issue #57 remainder · Autonomous delivery loop** · *governance, not a new B-id*
 
 The repair → handoff → GPT-5.6 follow-up → card-sync middle is live as of
-PR #63. Duplicate GitHub/Merge-Card primary-risk state is the leftover #63
-defect. First REQUIRED review API spend, branch protection, standing
-auto-merge, and next-node wakeup remain owner-gated on Issue #57. They do
-not reorder `B91` and they are not a slice taxonomy.
+PR #63. Duplicate GitHub/Merge-Card primary-risk state closed in PR #64.
+Owner granted first REQUIRED GPT-5.6 reviews on 2026-08-16; the first-review
+wake-up is this outcome. Standing auto-merge of qualifying `auto-safe` PRs
+is granted but must not become operational until GitHub itself enforces
+`tests`, `Merge card mechanical fields`, and `risk-label/primary` on `main`.
+Next-node wakeup remains later. They do not reorder `B91` and they are not
+a slice taxonomy.
 
 **B85 · Evidence-Use Register** · **DONE 2026-08-13** · *architecture, one outcome*
 
