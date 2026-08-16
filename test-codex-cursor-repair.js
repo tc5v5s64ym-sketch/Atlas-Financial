@@ -385,6 +385,68 @@ ok(movedRemote.ok === false && movedRemote.mutate === false && movedRemote.code 
 const movedLocal = gate.assertHeadsStillGated(HEAD, NEXT, NEXT);
 ok(movedLocal.mutate === false, 'a later local checkout blocks mutation');
 
+console.log('\n=== Cursor-first push still syncs PENDING ===');
+function aheadCompare(base, head) {
+  return {
+    status: 'ahead',
+    merge_base_commit: { sha: base },
+    ahead_by: 1,
+    behind_by: 0,
+    head: { sha: head },
+  };
+}
+const stillGated = gate.classifyRepairPushHead(HEAD, HEAD, HEAD, aheadCompare(HEAD, HEAD));
+ok(stillGated.ok && stillGated.action === 'push' && stillGated.mutate === true,
+  'unchanged gated/local/live heads still take the push path', stillGated.action);
+const cursorPushed = gate.classifyRepairPushHead(HEAD, NEXT, NEXT, aheadCompare(HEAD, NEXT));
+ok(cursorPushed.ok && cursorPushed.action === 'adopt-live' && cursorPushed.mutate === false,
+  'Cursor-pushed descendant is adopted without mutation', cursorPushed.action);
+ok(cursorPushed.repairSha === NEXT && cursorPushed.code === 'already-repaired',
+  'adopt-live records the live repair SHA');
+const staleCheckout = gate.classifyRepairPushHead(HEAD, HEAD, NEXT, aheadCompare(HEAD, NEXT));
+ok(staleCheckout.ok && staleCheckout.action === 'adopt-live' && staleCheckout.mutate === false,
+  'gated local checkout with a live descendant still skips mutation', staleCheckout.action);
+const diverged = gate.classifyRepairPushHead(HEAD, HEAD, NEXT, {
+  status: 'diverged',
+  merge_base_commit: { sha: 'c'.repeat(40) },
+  ahead_by: 1,
+  behind_by: 1,
+});
+ok(diverged.ok === false && diverged.mutate === false && diverged.code === 'head-moved',
+  'a diverged live head still fails closed without mutation', diverged.code);
+const thirdHead = 'c'.repeat(40);
+const unexpectedLocal = gate.classifyRepairPushHead(HEAD, thirdHead, NEXT, aheadCompare(HEAD, NEXT));
+ok(unexpectedLocal.ok === false && unexpectedLocal.code === 'head-moved',
+  'an unexpected local SHA fails closed even when live is a descendant', unexpectedLocal.code);
+
+const compareFile = path.join(require('os').tmpdir(), `atlas-push-compare-${process.pid}.json`);
+fs.writeFileSync(compareFile, JSON.stringify(aheadCompare(HEAD, NEXT)));
+const classifyAdopt = spawnSync(process.execPath, [
+  path.join(__dirname, 'scripts/atlas-cursor-repair-gate.js'),
+  'classify-push-head', HEAD, NEXT, NEXT, compareFile,
+], { encoding: 'utf8' });
+ok(classifyAdopt.status === 0 && /adopt-live/.test(classifyAdopt.stdout),
+  'classify-push-head CLI exits 0 for a Cursor-first descendant');
+const classifyFail = spawnSync(process.execPath, [
+  path.join(__dirname, 'scripts/atlas-cursor-repair-gate.js'),
+  'classify-push-head', HEAD, HEAD, NEXT, compareFile,
+], { encoding: 'utf8' });
+ok(classifyFail.status === 0 && /adopt-live/.test(classifyFail.stdout),
+  'classify-push-head CLI adopts when local is still gated and live moved forward');
+fs.writeFileSync(compareFile, JSON.stringify({
+  status: 'diverged',
+  merge_base_commit: { sha: thirdHead },
+  ahead_by: 1,
+  behind_by: 1,
+}));
+const classifyMoved = spawnSync(process.execPath, [
+  path.join(__dirname, 'scripts/atlas-cursor-repair-gate.js'),
+  'classify-push-head', HEAD, HEAD, NEXT, compareFile,
+], { encoding: 'utf8' });
+ok(classifyMoved.status === 1 && /moved after the gate/.test(classifyMoved.stderr),
+  'classify-push-head CLI fails closed when the live head is not a forward repair');
+try { fs.unlinkSync(compareFile); } catch { /* ignore */ }
+
 const assertSame = spawnSync(process.execPath, [
   path.join(__dirname, 'scripts/atlas-cursor-repair-gate.js'),
   'assert-head', HEAD, HEAD, HEAD,
@@ -451,6 +513,15 @@ ok(firstAssertAt >= 0 && secondAssertAt > firstAssertAt
   && applyAt > secondAssertAt && commitAt > applyAt && gitPushAt > commitAt,
   'git apply occurs only after both assert-head checks; commit/push only after apply',
   `assert1=${firstAssertAt} assert2=${secondAssertAt} apply=${applyAt} commit=${commitAt} push=${gitPushAt}`);
+ok(pushScript.indexOf('classify-push-head') >= 0
+  && pushScript.indexOf('classify-push-head') < applyAt,
+  'push classifies Cursor-first live heads before any git apply');
+ok(/adopt-live/.test(pushScript) && /evaluate-pending/.test(pushScript)
+  && pushScript.indexOf('adopt-live') < pushScript.indexOf('evaluate-pending'),
+  'adopt-live still reaches PENDING bookkeeping without a second push');
+ok(/git apply/.test(pushScript) && /push_action.*"push"/.test(pushScript.replace(/\s+/g, ' '))
+  || /push_action\}" == "push"/.test(pushScript),
+  'git apply remains inside the classified push arm');
 ok(!/git apply|git commit|git push|git rebase|git merge/.test(pushScript.slice(0, firstAssertAt)),
   'no apply, commit, push, rebase, or merge before the first assert-head');
 ok(/atlas-github-pr-head-sync\.js/.test(pushJob),

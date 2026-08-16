@@ -5,7 +5,9 @@ name: Codex cursor repair
 # and never executes PR-head scripts in a job that has secrets.
 # After that revalidation it may edit the PR review block: PASS / NOT PASS /
 # BLOCKING from a trusted Atlas review, or PENDING after a repair push whose
-# live PR head has converged to the locally pushed SHA. It never infers PASS.
+# live PR head has converged to the locally pushed SHA. If Cursor Automation
+# already pushed a forward repair of the gated SHA, this job skips mutation
+# and still syncs PENDING onto that live head. It never infers PASS.
 # After a trusted PASS card-sync it starts a fresh Merge Card check via
 # workflow_dispatch. It targets the PR head branch when that commit already
 # has the trigger. A PR head that predates the trigger uses the default-branch
@@ -482,52 +484,80 @@ jobs:
           set -euo pipefail
           live="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.head.sha')"
           local_head="$(git rev-parse HEAD)"
-          node "${RUNNER_TEMP}/atlas-trusted-scripts/atlas-cursor-repair-gate.js" assert-head \
-            "${GATED_SHA}" "${local_head}" "${live}"
-          node "${RUNNER_TEMP}/atlas-trusted-scripts/atlas-cursor-repair-gate.js" assert-head \
-            "${REVIEWED_SHA}" "${local_head}" "${live}"
-          git apply "${RUNNER_TEMP}/patch/repair.patch"
-          git add -A
-          git config core.hooksPath .githooks
-          git config user.name atlas-automation
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          lane_label="Codex"
-          if [[ "${LANE}" == "atlas" ]]; then
-            lane_label="Atlas"
-          fi
-          git commit -m "Apply ${lane_label} review repair for ${REVIEWED_SHA} (round ${NEXT_ROUND})."
-          git push
-          repair_sha="$(git rev-parse HEAD)"
-          jq -n \
-            --arg expectedSha "${repair_sha}" \
-            --arg previousSha "${GATED_SHA}" \
-            --arg repository "${GITHUB_REPOSITORY}" \
-            --argjson prNumber "${PR_NUMBER}" \
-            --arg headRef "${HEAD_REF}" \
-            --arg baseRef "main" \
-            '{
-              expectedSha: $expectedSha,
-              previousSha: $previousSha,
-              identity: {
-                repository: $repository,
-                prNumber: $prNumber,
-                headRef: $headRef,
-                baseRef: $baseRef
-              }
-            }' > "${RUNNER_TEMP}/head-sync-request.json"
+          gh api "repos/${GITHUB_REPOSITORY}/compare/${GATED_SHA}...${live}" \
+            > "${RUNNER_TEMP}/push-compare.json"
           set +e
-          node "${RUNNER_TEMP}/atlas-trusted-scripts/atlas-github-pr-head-sync.js" confirm \
-            "${RUNNER_TEMP}/head-sync-request.json" \
-            > "${RUNNER_TEMP}/live-pr.json"
-          sync_status=$?
+          node "${RUNNER_TEMP}/atlas-trusted-scripts/atlas-cursor-repair-gate.js" classify-push-head \
+            "${GATED_SHA}" "${local_head}" "${live}" "${RUNNER_TEMP}/push-compare.json" \
+            > "${RUNNER_TEMP}/push-classify.json"
+          classify_status=$?
           set -e
-          if [[ "${sync_status}" -ne 0 ]]; then
-            echo "Live PR head did not converge to the pushed repair SHA ${repair_sha}. Fail closed without rewriting the review block."
+          if [[ "${classify_status}" -ne 0 ]]; then
+            jq -r '.reason // "PR head moved after the gate. Fail closed without mutation."' \
+              "${RUNNER_TEMP}/push-classify.json"
             exit 1
           fi
-          live_head="$(jq -r '.head.sha' "${RUNNER_TEMP}/live-pr.json")"
-          if [[ "${live_head}" != "${repair_sha}" ]]; then
-            echo "Live PR head ${live_head} is not the pushed repair SHA ${repair_sha}. Fail closed without rewriting the review block."
+          push_action="$(jq -r '.action // empty' "${RUNNER_TEMP}/push-classify.json")"
+          if [[ "${push_action}" == "adopt-live" ]]; then
+            repair_sha="$(jq -r '.repairSha // empty' "${RUNNER_TEMP}/push-classify.json")"
+            jq -r '.reason // "Live PR head already repaired."' "${RUNNER_TEMP}/push-classify.json"
+            gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" > "${RUNNER_TEMP}/live-pr.json"
+            live_head="$(jq -r '.head.sha' "${RUNNER_TEMP}/live-pr.json")"
+            if [[ "${live_head}" != "${repair_sha}" ]]; then
+              echo "Live PR head ${live_head} moved again after adopt-live classification. Fail closed without rewriting the review block."
+              exit 1
+            fi
+          elif [[ "${push_action}" == "push" ]]; then
+            node "${RUNNER_TEMP}/atlas-trusted-scripts/atlas-cursor-repair-gate.js" assert-head \
+              "${GATED_SHA}" "${local_head}" "${live}"
+            node "${RUNNER_TEMP}/atlas-trusted-scripts/atlas-cursor-repair-gate.js" assert-head \
+              "${REVIEWED_SHA}" "${local_head}" "${live}"
+            git apply "${RUNNER_TEMP}/patch/repair.patch"
+            git add -A
+            git config core.hooksPath .githooks
+            git config user.name atlas-automation
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            lane_label="Codex"
+            if [[ "${LANE}" == "atlas" ]]; then
+              lane_label="Atlas"
+            fi
+            git commit -m "Apply ${lane_label} review repair for ${REVIEWED_SHA} (round ${NEXT_ROUND})."
+            git push
+            repair_sha="$(git rev-parse HEAD)"
+            jq -n \
+              --arg expectedSha "${repair_sha}" \
+              --arg previousSha "${GATED_SHA}" \
+              --arg repository "${GITHUB_REPOSITORY}" \
+              --argjson prNumber "${PR_NUMBER}" \
+              --arg headRef "${HEAD_REF}" \
+              --arg baseRef "main" \
+              '{
+                expectedSha: $expectedSha,
+                previousSha: $previousSha,
+                identity: {
+                  repository: $repository,
+                  prNumber: $prNumber,
+                  headRef: $headRef,
+                  baseRef: $baseRef
+                }
+              }' > "${RUNNER_TEMP}/head-sync-request.json"
+            set +e
+            node "${RUNNER_TEMP}/atlas-trusted-scripts/atlas-github-pr-head-sync.js" confirm \
+              "${RUNNER_TEMP}/head-sync-request.json" \
+              > "${RUNNER_TEMP}/live-pr.json"
+            sync_status=$?
+            set -e
+            if [[ "${sync_status}" -ne 0 ]]; then
+              echo "Live PR head did not converge to the pushed repair SHA ${repair_sha}. Fail closed without rewriting the review block."
+              exit 1
+            fi
+            live_head="$(jq -r '.head.sha' "${RUNNER_TEMP}/live-pr.json")"
+            if [[ "${live_head}" != "${repair_sha}" ]]; then
+              echo "Live PR head ${live_head} is not the pushed repair SHA ${repair_sha}. Fail closed without rewriting the review block."
+              exit 1
+            fi
+          else
+            echo "Repair push classification was not push or adopt-live. Fail closed without mutation."
             exit 1
           fi
           jq -r '.body // ""' "${RUNNER_TEMP}/live-pr.json" > "${RUNNER_TEMP}/pr-body.md"

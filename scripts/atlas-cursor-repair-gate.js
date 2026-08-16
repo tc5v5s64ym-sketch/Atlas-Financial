@@ -160,6 +160,14 @@ function isExactCurrentHead(reviewedSha, currentHeadSha) {
   return Boolean(reviewed) && reviewed === current;
 }
 
+function shaOrEmpty(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function isFortyCharSha(value) {
+  return /^[0-9a-f]{40}$/.test(shaOrEmpty(value));
+}
+
 function assertHeadsStillGated(gatedSha, localSha, remoteSha) {
   if (!isExactCurrentHead(gatedSha, localSha) || !isExactCurrentHead(gatedSha, remoteSha)) {
     return {
@@ -170,6 +178,62 @@ function assertHeadsStillGated(gatedSha, localSha, remoteSha) {
     };
   }
   return { ok: true, code: 'ok', mutate: true };
+}
+
+function isForwardRepairCompare(baseSha, headSha, compare) {
+  const base = shaOrEmpty(baseSha);
+  const head = shaOrEmpty(headSha);
+  if (!isFortyCharSha(base) || !isFortyCharSha(head) || base === head) return false;
+  const mergeBase = shaOrEmpty(compare && compare.merge_base_commit && compare.merge_base_commit.sha);
+  const ahead = Number(compare && compare.ahead_by);
+  const behind = Number(compare && compare.behind_by);
+  return String(compare && compare.status || '') === 'ahead'
+    && mergeBase === base
+    && Number.isFinite(ahead) && ahead >= 1
+    && behind === 0;
+}
+
+// Cursor Automation can push the repair before this job mutates. That is a
+// forward descendant, not a lost gate: skip apply/push and still sync PENDING.
+function classifyRepairPushHead(gatedSha, localSha, liveSha, compare) {
+  const gated = shaOrEmpty(gatedSha);
+  const local = shaOrEmpty(localSha);
+  const live = shaOrEmpty(liveSha);
+  if (!isFortyCharSha(gated) || !isFortyCharSha(local) || !isFortyCharSha(live)) {
+    return {
+      ok: false,
+      action: 'fail',
+      code: 'malformed-head',
+      mutate: false,
+      reason: 'Gated, local, or live SHA is not a 40-character SHA.',
+    };
+  }
+  if (gated === local && gated === live) {
+    return {
+      ok: true,
+      action: 'push',
+      code: 'ok',
+      mutate: true,
+      repairSha: gated,
+    };
+  }
+  if (isForwardRepairCompare(gated, live, compare) && (local === gated || local === live)) {
+    return {
+      ok: true,
+      action: 'adopt-live',
+      code: 'already-repaired',
+      mutate: false,
+      repairSha: live,
+      reason: 'Live PR head already moved to a forward repair of the gated SHA. Skip mutation and sync PENDING.',
+    };
+  }
+  return {
+    ok: false,
+    action: 'fail',
+    code: 'head-moved',
+    mutate: false,
+    reason: 'PR head moved after the gate. Fail closed without mutation.',
+  };
 }
 
 function parseRepairState(commentBodies) {
@@ -356,7 +420,14 @@ function main(argv) {
     process.stderr.write(`${result.reason}\n`);
     return 1;
   }
-  process.stderr.write('usage: atlas-cursor-repair-gate.js evaluate|prompt|select-review|deny-git|assert-head\n');
+  if (command === 'classify-push-head') {
+    const result = classifyRepairPushHead(argv[3], argv[4], argv[5], readJsonArg(argv[6]));
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    if (result.ok) return 0;
+    process.stderr.write(`${result.reason}\n`);
+    return 1;
+  }
+  process.stderr.write('usage: atlas-cursor-repair-gate.js evaluate|prompt|select-review|deny-git|assert-head|classify-push-head\n');
   return 1;
 }
 
@@ -389,4 +460,6 @@ module.exports = {
   buildRepairPrompt,
   deniedGitVerb,
   assertHeadsStillGated,
+  isForwardRepairCompare,
+  classifyRepairPushHead,
 };
