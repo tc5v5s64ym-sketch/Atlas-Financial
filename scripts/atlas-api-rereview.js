@@ -255,6 +255,176 @@ function evaluateDispatchExactHead(input) {
   };
 }
 
+function reviewSection(body) {
+  const text = String(body || '');
+  const heading = /(^|\n)[ \t]*#{2,4}[ \t]*Atlas Contract \/ Systems Review[ \t]*(?=\n|$)/i.exec(text);
+  if (!heading) return null;
+  const afterStart = heading.index + heading[0].length;
+  const after = text.slice(afterStart);
+  const nextHeading = /\n[ \t]*#{1,6}[ \t]+/.exec(after);
+  return nextHeading ? after.slice(0, nextHeading.index) : after;
+}
+
+function readReviewField(section, label) {
+  const escaped = String(label || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = new RegExp(
+    `^[ \\t]*[-*][ \\t]*\\*{0,2}${escaped}\\*{0,2}[ \\t]*:(.*)$`,
+    'im'
+  ).exec(String(section || ''));
+  if (!match) return null;
+  return String(match[1])
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/\*\*/g, '')
+    .trim();
+}
+
+function parseRequiredReviewField(body) {
+  const section = reviewSection(body);
+  if (section == null) {
+    return {
+      ok: false,
+      action: 'skip',
+      code: 'missing-review-section',
+      required: false,
+      reason: 'PR body has no Atlas Contract / Systems Review section.',
+    };
+  }
+  const raw = readReviewField(section, 'Required');
+  if (raw == null || raw === '') {
+    return {
+      ok: false,
+      action: 'skip',
+      code: 'missing-required-field',
+      required: false,
+      reason: 'Live Merge Card has no parseable Required field.',
+    };
+  }
+  const required = /^REQUIRED(?:\b|[ \t]*[—–:.-])/i.test(raw);
+  const notRequired = /^NOT[ \t]+REQUIRED(?:\b|[ \t]*[—–:.-])/i.test(raw);
+  if (required) {
+    return {
+      ok: true,
+      action: 'proceed',
+      code: 'required',
+      required: true,
+      raw,
+    };
+  }
+  if (notRequired) {
+    return {
+      ok: false,
+      action: 'skip',
+      code: 'not-required',
+      required: false,
+      raw,
+      reason: 'Live Merge Card says Required: NOT REQUIRED; no first-review API spend.',
+    };
+  }
+  return {
+    ok: false,
+    action: 'skip',
+    code: 'unparsed-required',
+    required: false,
+    raw,
+    reason: 'Live Merge Card Required field is not REQUIRED or NOT REQUIRED; no first-review API spend.',
+  };
+}
+
+function trustedAtlasReviews(reviews) {
+  const list = Array.isArray(reviews) ? reviews : [];
+  return list
+    .filter((review) => review && review.user && review.user.login === TRUSTED_REVIEWER)
+    .map((review) => ({ ...review, atlasOutcome: classifyAtlasReview(review.body) }))
+    .filter((review) => Boolean(review.atlasOutcome))
+    .sort((left, right) => String(left.submitted_at || '').localeCompare(String(right.submitted_at || '')));
+}
+
+function latestTrustedAtlasVerdict(reviews, sha) {
+  const head = shaOrEmpty(sha);
+  if (!head) return null;
+  const candidates = trustedAtlasReviews(reviews)
+    .filter((review) => clean(review.commit_id).toLowerCase() === head);
+  return candidates.length ? candidates[candidates.length - 1] : null;
+}
+
+function latestTrustedAtlasVerdictAnySha(reviews) {
+  const candidates = trustedAtlasReviews(reviews);
+  return candidates.length ? candidates[candidates.length - 1] : null;
+}
+
+function hasTrustedAtlasVerdictOnSha(reviews, sha) {
+  return Boolean(latestTrustedAtlasVerdict(reviews, sha));
+}
+
+function hasActiveRepairHandoff(reviews, sha) {
+  const head = shaOrEmpty(sha);
+  if (!head) return false;
+  const list = Array.isArray(reviews) ? reviews : [];
+  return list.some((review) => (
+    review
+    && isCursorHandoffReviewer(review.user && review.user.login)
+    && clean(review.commit_id).toLowerCase() === head
+    && String(review.body || '').includes(HANDOFF_MARKER)
+  ));
+}
+
+function evaluateFirstReviewEligibility(input) {
+  const liveHead = shaOrEmpty(input && input.liveHead);
+  if (!liveHead) {
+    return {
+      ok: false,
+      action: 'fail',
+      code: 'malformed-live-head',
+      reason: 'Live PR head is not a 40-character SHA.',
+    };
+  }
+  const parsed = parseRequiredReviewField(input && input.body);
+  if (parsed.action === 'skip') {
+    return { ...parsed, head: liveHead };
+  }
+  const existing = latestTrustedAtlasVerdict(input && input.reviews, liveHead);
+  if (existing) {
+    return {
+      ok: false,
+      action: 'skip',
+      code: 'duplicate-trusted-verdict',
+      reason: `Trusted Atlas ${existing.atlasOutcome} already exists on ${liveHead}; no duplicate API call.`,
+      head: liveHead,
+      existingOutcome: existing.atlasOutcome,
+      existingReviewId: existing.id,
+    };
+  }
+  const prior = latestTrustedAtlasVerdictAnySha(input && input.reviews);
+  const priorHead = prior ? shaOrEmpty(prior.commit_id) : '';
+  if (prior && priorHead && priorHead !== liveHead && ['NOT PASS', 'BLOCKING'].includes(prior.atlasOutcome)) {
+    return {
+      ok: false,
+      action: 'skip',
+      code: 'prior-blocking-verdict',
+      reason: `Trusted Atlas ${prior.atlasOutcome} on ${priorHead} leaves this repaired head to the bounded follow-up lane.`,
+      head: liveHead,
+      priorHead,
+      priorOutcome: prior.atlasOutcome,
+      priorReviewId: prior.id,
+    };
+  }
+  if (hasActiveRepairHandoff(input && input.reviews, liveHead)) {
+    return {
+      ok: false,
+      action: 'skip',
+      code: 'repair-handoff',
+      reason: 'Active Cursor Atlas re-review handoff on the live head; leave this repaired head to the bounded follow-up lane.',
+      head: liveHead,
+    };
+  }
+  return {
+    ok: true,
+    action: 'proceed',
+    code: 'ok',
+    head: liveHead,
+  };
+}
+
 function renderReview(value, head, model) {
   const sha = clean(head).toLowerCase();
   if (!SHA_RE.test(sha)) throw new Error('Exact reviewed head is malformed.');
@@ -317,7 +487,23 @@ function main(argv) {
     process.stdout.write(renderReview(readJson(argv[3]), argv[4], argv[5]));
     return 0;
   }
-  process.stderr.write('usage: atlas-api-rereview.js parse-handoff|validate-prior-review|assert-pending|evaluate-dispatch-head|render-review ...\n');
+  if (command === 'parse-required') {
+    const result = parseRequiredReviewField(fs.readFileSync(argv[3], 'utf8'));
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    if (result.action === 'skip') return 2;
+    return result.ok ? 0 : 1;
+  }
+  if (command === 'evaluate-first-review') {
+    const result = evaluateFirstReviewEligibility({
+      body: fs.readFileSync(argv[3], 'utf8'),
+      reviews: readJson(argv[4]),
+      liveHead: argv[5],
+    });
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    if (result.action === 'skip') return 2;
+    return result.ok ? 0 : 1;
+  }
+  process.stderr.write('usage: atlas-api-rereview.js parse-handoff|validate-prior-review|assert-pending|evaluate-dispatch-head|render-review|parse-required|evaluate-first-review ...\n');
   return 1;
 }
 
@@ -339,6 +525,12 @@ module.exports = {
   validatePriorReview,
   assertPending,
   evaluateDispatchExactHead,
+  parseRequiredReviewField,
+  latestTrustedAtlasVerdict,
+  latestTrustedAtlasVerdictAnySha,
+  hasTrustedAtlasVerdictOnSha,
+  hasActiveRepairHandoff,
+  evaluateFirstReviewEligibility,
   validateModelResult,
   renderReview,
 };
