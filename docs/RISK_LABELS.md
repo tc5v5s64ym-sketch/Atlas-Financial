@@ -37,7 +37,10 @@ with itself:
 - the required table rows exist and are not blank placeholders;
 - `Current-state verdict` opens with one documented closed value;
 - `Primary risk` opens with one of `auto-safe` / `figures-moved` /
-  `owner-decision` / `blocked`;
+  `owner-decision` / `blocked`. Plain text and ordinary Markdown inline
+  code are both accepted (`auto-safe` or the same word wrapped in
+  backticks). Presentation is normalized before the closed vocabulary
+  is checked. Only those four values are valid;
 - the review decision opens `REQUIRED` or `NOT REQUIRED`;
 - a not-required review records `N/A` for head, reviewer, and outcome; and
 - card text is read from the live pull request (`pulls.get`), not the workflow

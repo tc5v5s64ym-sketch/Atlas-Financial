@@ -10,6 +10,8 @@ name: Merge card check
 # with itself so a reader can see the claim.
 #
 # Card text is always read from the live pull request via pulls.get.
+# The Primary-risk helper is loaded from the trusted default branch, never
+# from PR-head JavaScript. Live PR body and labels are data only.
 
 on:
   pull_request:
@@ -28,6 +30,7 @@ on:
         type: string
 
 permissions:
+  contents: read
   pull-requests: read
   checks: write
 
@@ -37,6 +40,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Checkout trusted default-branch helper
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
       - name: Validate mechanical merge-card facts
         uses: actions/github-script@v7
         with:
@@ -152,6 +161,22 @@ jobs:
             const head = eventHead;
             const pull_number = eventNumber;
 
+            // Workspace is the trusted default-branch checkout above, not the
+            // PR head. Live card text stays data from pulls.get.
+            let helper;
+            try {
+              const workspace = process.env.GITHUB_WORKSPACE || process.cwd();
+              helper = require(`${workspace}/scripts/atlas-primary-risk.js`);
+            } catch (error) {
+              const detail = error && error.message ? ` (${error.message})` : '.';
+              core.setFailed(`Merge-card check failed closed: could not load the Primary-risk helper${detail}`);
+              return;
+            }
+            if (!helper || typeof helper.parsePrimaryRisk !== 'function') {
+              core.setFailed('Merge-card check failed closed: Primary-risk helper is missing parsePrimaryRisk.');
+              return;
+            }
+
             // A small, closed path set is always high-risk in this repository.
             // File paths are mechanical facts. The list does not inspect prose or
             // try to infer risk from wording. Changes outside this set still use
@@ -247,12 +272,13 @@ jobs:
               problems.push(`"Current-state verdict" must open with one of: ${CURRENT_STATE.join(' / ')}.`);
             }
 
-            const primaryRisk = rowValue('Primary risk') || '';
-            const PRIMARY_RISK = ['auto-safe', 'figures-moved', 'owner-decision', 'blocked'];
-            if (primaryRisk && !PRIMARY_RISK.some(
-              (value) => new RegExp(`^${esc(value)}(?:[ \\t]*[—–:.-]|$)`, 'i').test(primaryRisk)
-            )) {
-              problems.push(`"Primary risk" must open with one of: ${PRIMARY_RISK.join(' / ')}.`);
+            const parsedPrimary = helper.parsePrimaryRisk(body);
+            if (!parsedPrimary.ok && parsedPrimary.code === 'invalid') {
+              problems.push(parsedPrimary.reason);
+            } else if (!parsedPrimary.ok && parsedPrimary.code === 'blank' && rowValue('Primary risk')) {
+              // Presentation-only residue (e.g. empty inline code) looked filled
+              // to the field loop; the helper is the closed-vocabulary authority.
+              problems.push(parsedPrimary.reason);
             }
 
             const reviewHeading =

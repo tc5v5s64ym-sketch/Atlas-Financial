@@ -168,7 +168,7 @@ async function validate(body, head = HEAD, files = ['docs/status.md'], options =
   };
   await vm.runInNewContext(
     `(async () => {\n${SCRIPT}\n})()`,
-    { context, core, github },
+    { context, core, github, require: options.require || require, process },
     { timeout: 1000 },
   );
   return failure;
@@ -206,6 +206,27 @@ green('later current-state prose is not semantically parsed', card({
 green('Primary risk may carry an explanation after the closed value', card({
   fields: { 'Primary risk': 'auto-safe — no published figure moves' },
 }));
+green('Primary risk accepts ordinary inline-code around auto-safe', card({
+  fields: { 'Primary risk': '`auto-safe`' },
+}));
+green('Primary risk accepts inline-code figures-moved with an explanation', card({
+  fields: { 'Primary risk': '`figures-moved` — Plan tile weekly cap' },
+}));
+green('Primary risk accepts inline-code owner-decision', card({
+  fields: { 'Primary risk': '`owner-decision`' },
+}));
+green('Primary risk accepts inline-code blocked', card({
+  fields: { 'Primary risk': '`blocked`' },
+}));
+red('inline-code around an unknown Primary risk still fails', card({ fields: {
+  'Primary risk': '`probably-fine`',
+} }), /Primary risk.*must open/i);
+red('inline-code around two Primary risk values still fails', card({ fields: {
+  'Primary risk': '`auto-safe` `figures-moved`',
+} }), /Primary risk.*must open/i);
+red('partial Primary risk remains invalid', card({ fields: {
+  'Primary risk': 'figures',
+} }), /Primary risk.*must open/i);
 
 const required = {
   Required: 'REQUIRED — review machinery changed',
@@ -412,6 +433,16 @@ checks.push((async () => {
 red('Primary risk uses the closed vocabulary', card({ fields: {
   'Primary risk': 'probably-fine',
 } }), /Primary risk.*must open/i);
+checks.push((async () => {
+  const message = await validate(card(), HEAD, ['docs/status.md'], {
+    require() { throw new Error('missing helper'); },
+  });
+  ok(
+    Boolean(message) && /failed closed/i.test(message) && /helper/i.test(message),
+    'a missing Primary-risk helper fails closed',
+    message || 'unexpected green',
+  );
+})());
 red('required-review notes cannot be blank', card({ review: {
   ...required, 'Findings and fix verification': '<!-- notes -->',
 } }), /fix verification.*blank/i);

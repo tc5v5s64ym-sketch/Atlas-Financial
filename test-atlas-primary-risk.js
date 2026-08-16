@@ -49,6 +49,8 @@ ok(helper.parsePrimaryRisk(card('figures-moved — Plan tile weekly cap')).value
   'explanation after an em-dash is still the closed value');
 ok(helper.parsePrimaryRisk(card('OWNER-DECISION')).value === 'owner-decision',
   'closed value is case-insensitive');
+ok(helper.parsePrimaryRisk(card('**auto-safe**')).value === 'auto-safe',
+  'existing bold emphasis around the closed value still parses');
 ok(helper.parsePrimaryRisk('## Atlas Merge Card\n\n- **Primary risk**: blocked\n').value === 'blocked',
   'bullet form parses');
 ok(helper.parsePrimaryRisk(card('auto-safe / owner-decision')).ok === false,
@@ -61,6 +63,38 @@ ok(helper.parsePrimaryRisk('## Atlas Merge Card\n\n| **Title** | x |\n').code ==
   'missing Primary risk row fails');
 ok(helper.parsePrimaryRisk(card('maybe-safe')).code === 'invalid',
   'unknown primary risk fails');
+
+console.log('\n=== #81/#82/#83 inline-code presentation ===');
+ok(helper.parsePrimaryRisk(card('`auto-safe`')).value === 'auto-safe',
+  'table row `auto-safe` parses as auto-safe');
+ok(helper.parsePrimaryRisk(card('`figures-moved`')).value === 'figures-moved',
+  'table row `figures-moved` parses as figures-moved');
+ok(helper.parsePrimaryRisk(card('`owner-decision`')).value === 'owner-decision',
+  'table row `owner-decision` parses as owner-decision');
+ok(helper.parsePrimaryRisk(card('`blocked`')).value === 'blocked',
+  'table row `blocked` parses as blocked');
+ok(helper.parsePrimaryRisk(card('`figures-moved` — Plan tile weekly cap')).value === 'figures-moved',
+  'inline-code value plus explanation is still figures-moved');
+ok(helper.parsePrimaryRisk(card('`AUTO-SAFE`')).value === 'auto-safe',
+  'inline-code closed value stays case-insensitive');
+ok(helper.parsePrimaryRisk(card('`probably-fine`')).code === 'invalid',
+  'inline-code around an unknown value still fails');
+ok(helper.parsePrimaryRisk(card('`auto-safe` `figures-moved`')).ok === false,
+  'two inline-code values are not one closed Primary risk');
+ok(helper.parsePrimaryRisk(card('`auto-safe` / `owner-decision`')).ok === false,
+  'slash-separated inline-code leftover template is not auto-safe');
+ok(helper.parsePrimaryRisk(card('`auto`')).code === 'invalid',
+  'partial closed value in inline code still fails');
+ok(helper.parsePrimaryRisk(card('`auto-safe')).code === 'invalid',
+  'unclosed inline-code around a closed value still fails');
+ok(helper.evaluateGate({
+  body: card('`figures-moved`'),
+  labels: ['figures-moved'],
+}).state === 'success', 'inline-code card still matches the GitHub label');
+ok(helper.evaluate({
+  body: card('`auto-safe`'),
+  labels: ['auto-safe', 'tests'],
+}).code === 'ok', 'inline-code card does not invent a second label plan');
 
 console.log('\n=== card is the authority; GitHub label is the projection ===');
 const match = helper.evaluate({
@@ -165,6 +199,23 @@ ok(/ref:\s*\$\{\{\s*github\.event\.repository\.default_branch\s*\}\}/.test(workf
   'helper checkout is the default branch with credentials disabled');
 ok(/scripts\/atlas-primary-risk\.js/.test(workflow), 'workflow uses the helper');
 ok(!/const PRIMARY = \[/.test(workflow), 'workflow does not keep a second PRIMARY list');
+const mergeCardWorkflow = fs.readFileSync(
+  path.join(__dirname, '.github/workflows/merge-card-check.yml'),
+  'utf8',
+);
+ok(/scripts\/atlas-primary-risk\.js/.test(mergeCardWorkflow),
+  'merge-card-check uses the same helper');
+ok(!/const PRIMARY_RISK = \[/.test(mergeCardWorkflow),
+  'merge-card-check does not keep a second PRIMARY list');
+const mergeCardDefaultBranch = mergeCardWorkflow.search(
+  /ref:\s*\$\{\{\s*github\.event\.repository\.default_branch\s*\}\}/,
+);
+const mergeCardRequire = mergeCardWorkflow.search(/atlas-primary-risk\.js/);
+ok(mergeCardDefaultBranch >= 0 && mergeCardRequire > mergeCardDefaultBranch
+  && /persist-credentials:\s*false/.test(mergeCardWorkflow),
+  'merge-card-check checks out the trusted default branch before requiring the helper');
+ok(!/ref:\s*\$\{\{\s*github\.event\.pull_request\.head/.test(mergeCardWorkflow),
+  'merge-card-check never checks out the PR head');
 ok(/pull-requests:\s*write/.test(workflow), 'label mutation is the declared write scope');
 ok(!/CURSOR_API_KEY|OPENAI_API_KEY|ATLAS_AUTOMATION_TOKEN/.test(workflow),
   'projection does not use repository secrets');
