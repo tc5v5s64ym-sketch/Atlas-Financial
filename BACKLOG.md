@@ -1112,7 +1112,10 @@ figures are CONFLICT, not a guessed identity. Pending is not
 manufactured as limit − posted − available unless that identity is
 proven for that card and timestamp (MBNA 2026-08-09 is the committed
 proven case). The reconciler remains non-writing. Live card
-balances/limits/pending/payments are unchanged. Do not mark this item
+balances/limits/pending/payments are unchanged. The later pending-
+transaction slice derives mapped revolving-credit pending from Lunch
+Money transactions (Bell Mobility $250 on Travel Visa is the acceptance
+fixture) and still does not write live card state. Do not mark this item
 DONE.
 
 **D7 slice (not completion):** posting observations live in
@@ -1353,10 +1356,13 @@ Build-strategy item `AF-INGEST-01`, and the evidence trajectory gate T3 is made
 of. Importing the same statement twice must change nothing; a corrected record
 must update rather than duplicate; every imported row must trace to its source.
 **After the live Lunch Money observation test**, prove refresh identity using
-real provider behaviour rather than an invented dedup engine. File-statement
-re-import remains useful later; it no longer blocks the observation seam.
-`B20` / `B21` wait on successful refresh, not the other way around. Proof is a
-real re-import on real household data that changes nothing, not a fixture.
+real provider behaviour rather than an invented dedup engine. Fixture
+coverage now collapses the same `providerTransactionId` from pending to
+posted without double-counting. The real Bell Mobility transaction
+`2461295531` is still pending as of 2026-08-16 and is the acceptance case
+once the provider posts it. File-statement re-import remains useful later.
+`B20` / `B21` wait on successful refresh, not the other way around. Proof
+that closes this item is still a real re-import on real household data.
 
 **B79 · The store question, answered by evidence** · `QUEUED` · *needs the owner*
 Build-strategy item `AF-STORE-01`. A written answer to whether the file
@@ -1371,8 +1377,11 @@ Build-strategy item `AF-LIVE-01`. Owner instruction 2026-08-16: manual
 current-state capture is the binding product limit, so observation
 connectivity is evaluated now rather than after B20/B21/B78.
 Written evaluation: [`docs/connectivity/PROVIDER_COVERAGE.md`](docs/connectivity/PROVIDER_COVERAGE.md).
-First provider for a personal read-only test: **Lunch Money**. No live
-connection and no credential are in this repository. `B81` remains gated.
+First provider for a personal read-only test: **Lunch Money**. The owner
+completed a live GET on 2026-08-16; that pull stays out of git. The
+pending-transaction slice now converts mapped revolving-credit pending
+rows into B91 pending observations and does not write `data.json`.
+No credential is in this repository. `B81` remains gated.
 
 **B81 · Point something live** · `QUEUED` · *gated, owner-reserved*
 Build-strategy item `AF-LIVE-02`. One read-only connection, after

@@ -21,6 +21,7 @@ statements-*/
 
 # Local machine-specific config (account numbers used by the scripts)
 scripts/local-config.json
+docs/connectivity/provider-account-map.local.json
 
 # Secrets — these live in Render environment variables and nowhere else
 .env

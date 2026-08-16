@@ -48,9 +48,12 @@
  * write representedEvents.
  *
  * Statuses actually assigned here: MATCH / CHANGE / CONFLICT / MISSING.
- * STALE is not assigned — no owner-defined age threshold exists. Observation
- * time is distinct from due, settlement, and scheduled dates. A date
- * relation is reported only where those timestamps are comparable.
+ * STALE is not assigned. The owner 90-day rule applies only to unresolved
+ * pending bill/payment transaction effects for current cash forecasting
+ * inside scripts/provider-observe.js; it does not assign STALE here and
+ * does not rewrite historical provider status. Observation time is distinct
+ * from due, settlement, and scheduled dates. A date relation is reported
+ * only where those timestamps are comparable.
  */
 
 const fs = require('fs');
