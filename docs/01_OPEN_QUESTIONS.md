@@ -215,9 +215,15 @@ that: $213.79 due now, $237.45 new charges due 1 September, $451.24 total
 account balance. Hydro is paid from Amanda’s account, not the
 household-account cash pool, but it remains a household obligation (paying
 account and obligation are separate facts). Atlas should schedule dated cash
-requirements, not the whole account balance by default.
-**What the answer changes:** Which dated Hydro cash amounts belong on the
-household plan, and whether an arrears obligation still exists.
+requirements, not the whole account balance by default. Live `plan.bills`
+now includes the 1 September $237.45 due (`hydro-due-sep1`), paid from
+Amanda / DEBT&PAYMENTS, not deducted from joint cash. The $213.79 that was
+due on 14 August is **not** on the plan: later evidence does not show
+whether it was paid, so it is not marked settled and not kept as a past-due
+row.
+**What the answer changes:** Whether the 14 August arrears obligation still
+exists, and whether any later Hydro statement has superseded the 1 September
+amount.
 
 ### Q18. What are the current Bell Mobility, Telus, and garbage/waste amounts, cadences, and payment routes?
 **Status:** OPEN · **Owner:** Dale + Amanda
@@ -271,16 +277,14 @@ Do not fabricate dates or costs.
 ### Q23. How do the three live-plan $500 Fusion instalments relate to the travel-team or season fee, now that camp and tryouts are paid?
 **Status:** OPEN · **Owner:** Dale + Amanda
 **What we know:** The Aug. 14 payday session confirmed Fusion camp (~$786) and
-Fusion tryouts ($140) already paid. Live `plan.commitments` had still dated
-those as upcoming; once B91 reconciles payment, they must no longer reserve
-cash. The settlement mechanism is `settledOn` on the dated commitment;
-applying it to the live camp and tryout rows is an owner-approved canonical
-edit, not an automatic reconciler write. Three $500 instalments remain on
-the live plan; their relationship to a conditional travel-team fee is
-unresolved.
-**What the answer changes:** Later Fusion cash dates. This slice does not
-change those live rows. Camp and tryouts paid-status is B91 acceptance
-evidence, not a closed instalment answer.
+Fusion tryouts ($140) already paid. Live `plan.commitments` now records
+those as `settledOn: "2026-08-14"`; the rows stay, and Forecast omits their
+future cash events only when the opening is on or after that date. Three
+$500 instalments remain on the live plan; their relationship to a
+conditional travel-team fee is unresolved.
+**What the answer changes:** Later Fusion cash dates. Camp and tryouts
+paid-status is now on the canonical rows; that does not close the
+instalment question.
 
 ### Q25. How much of Amanda’s DEBT&PAYMENTS balance is genuinely household-available after coaching, business, and pass-through obligations?
 **Status:** OPEN · **Owner:** Dale + Amanda

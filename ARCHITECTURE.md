@@ -599,6 +599,13 @@ not add a horizon, change the weekly search, or write `data.json`. None
 of these slices finishes B91 or writes canonical state. Sequencing and
 the Aug. 14 payday acceptance corpus live in the build strategy and
 [`docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md`](docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md).
+The later current-state cutover is the owner-approved write of Fusion
+camp/tryouts `settledOn: "2026-08-14"` and the 1 September Hydro dated
+due onto live `data.json`. It does not invent Aug. 14 joint-cash opening
+balances, does not put payroll on `representedEvents` without those
+balances, does not add the 14 August Hydro due, does not resolve Q19,
+and does not encode $600/week. Observation files remain evidence; the
+reconciler remains non-writing. B91 stays open.
 
 **`plan.nextDollar` is derived, not instructed.** Its own provenance note says so:
 neither Dale nor Amanda has stated or approved the `protect-then-highest-cost`

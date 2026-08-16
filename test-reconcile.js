@@ -110,6 +110,10 @@ console.log('\n=== B. newer observed balance differing from canonical → CHANGE
     'reported difference equals the independent subtraction');
   ok(row.evidenceDate === '2026-08-14' && result.canonicalAsOf === '2026-08-09',
     'both dates are reported so freshness stays an owner decision');
+  ok(row.dateRelation === 'canonical-older',
+    'the row names that canonical as-of is older than this evidence');
+  ok(result.staleAssigned === false && result.counts.STALE === 0,
+    'that older relationship is not assigned STALE');
 }
 
 console.log('\n=== C. missing canonical target → MISSING ===');
@@ -180,6 +184,10 @@ console.log('\n=== E. no-write guarantee ===');
   ok(/does not write data\.json/.test(out),
     'the printed report repeats the no-write contract');
   ok(/MATCH/.test(out), 'the live CLI report includes MATCH rows');
+  ok(/canonical-older means this evidence date is newer than canonical as-of/.test(out),
+    'the CLI reports the date relation without assigning STALE');
+  ok(/Date relation \(not a STALE assignment\)/.test(out),
+    'the CLI names date relation as not a STALE assignment');
 
   const copy = path.join(__dirname, 'data.json');
   const live = JSON.parse(fs.readFileSync(copy, 'utf8'));

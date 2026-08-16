@@ -1245,6 +1245,28 @@ function observationTime(row) {
   return String(d);
 }
 
+// Date comparison only. This is not a STALE assignment: there is no
+// owner-defined age threshold. "canonical-older" means the published
+// as-of is older than this observation's evidence date.
+const DATE_RELATIONS = ['canonical-older', 'same-day', 'canonical-newer', 'incomparable'];
+function dateRelation(evidenceDate, canonicalAsOf) {
+  const ev = evidenceDate == null || evidenceDate === '' || evidenceDate === '(none)'
+    ? '' : String(evidenceDate);
+  const asOf = canonicalAsOf == null || canonicalAsOf === '' ? '' : String(canonicalAsOf);
+  if (!ev || !asOf) return 'incomparable';
+  if (ev === asOf) return 'same-day';
+  if (ev > asOf) return 'canonical-older';
+  return 'canonical-newer';
+}
+function annotateDateRelation(rows, canonicalAsOf) {
+  const counts = { 'canonical-older': 0, 'same-day': 0, 'canonical-newer': 0, incomparable: 0 };
+  for (const row of rows || []) {
+    row.dateRelation = dateRelation(row.evidenceDate, canonicalAsOf);
+    counts[row.dateRelation] = (counts[row.dateRelation] || 0) + 1;
+  }
+  return counts;
+}
+
 function cardSummaries(cardRows) {
   const byCard = new Map();
   for (const row of cardRows || []) {
@@ -1483,12 +1505,15 @@ function reconcile(input) {
   rows.push(...comparePostingObservations(postingObservations, data));
   const counts = { MATCH: 0, STALE: 0, CHANGE: 0, CONFLICT: 0, MISSING: 0 };
   for (const row of rows) counts[row.status] = (counts[row.status] || 0) + 1;
+  const canonicalAsOf = data.meta && data.meta.asOf ? data.meta.asOf : null;
+  const dateRelationCounts = annotateDateRelation(rows, canonicalAsOf);
   return {
     writesCanonicalState: false,
-    canonicalAsOf: data.meta && data.meta.asOf ? data.meta.asOf : null,
+    canonicalAsOf,
     staleAssigned: false,
     staleReason: (map && map.stale)
       || 'No owner-defined age threshold exists. Evidence dates are reported; STALE is not inferred.',
+    dateRelationCounts,
     amandaTransferAuthority: amandaTransferAuthorityContext(data),
     cardSummaries: cardSummaries(rows.filter(r => CARD_FACTS.has(r.fact))),
     rows,
@@ -1508,6 +1533,10 @@ function formatReport(result) {
   lines.push('Canonical: data.json via id locator (not array-index JSON Pointer)');
   lines.push(`Canonical as-of: ${result.canonicalAsOf || '(none)'}`);
   lines.push(`STALE: not assigned — ${result.staleReason}`);
+  const rel = result.dateRelationCounts || {};
+  lines.push('Date relation (not a STALE assignment): '
+    + DATE_RELATIONS.map(k => `${rel[k] || 0} ${k}`).join(', '));
+  lines.push('canonical-older means this evidence date is newer than canonical as-of.');
   lines.push('This command does not write data.json.');
   lines.push('');
   const cols = [
@@ -1735,6 +1764,8 @@ function runCli() {
 const api = {
   EPSILON,
   STATUSES,
+  DATE_RELATIONS,
+  dateRelation,
   parseCsvLine,
   householdPositionRows,
   observationsFromPositions,
