@@ -4,7 +4,7 @@ This file records the repository's merge gates, what each gate checks, and the
 demonstrated failure that justifies it. [`CLAUDE.md`](../CLAUDE.md) owns review
 authority and the bounded review protocol.
 
-## Primary risk label — exactly one
+## Primary risk — exactly one, from the Merge Card
 
 | Label | Meaning | Owner action |
 |---|---|---|
@@ -13,9 +13,13 @@ authority and the bounded review protocol.
 | `owner-decision` | A household fact or owner-reserved decision is outstanding. | Answer the exact question. |
 | `blocked` | A hard gate failed or a real blocker remains. | Do not merge. |
 
-`risk-label-gate.yml` enforces exactly one primary label. It runs from the
-default-branch workflow through `pull_request_target`, so a pull request cannot
-weaken the copy of the gate that judges it.
+The Merge Card `Primary risk` row is the authority. The GitHub primary-risk
+label is a synchronized projection of that closed value, not a second
+judgement. `risk-label-gate.yml` reads the live card, applies exactly that
+label, removes the other three, and requires the live GitHub label to equal
+the card. It runs from the default-branch workflow through
+`pull_request_target`, so a pull request cannot weaken the copy of the gate
+that judges it. A malformed card fails red and does not invent a label.
 
 Category labels are descriptive and non-blocking:
 
@@ -31,9 +35,12 @@ The merge card check validates only mechanical facts:
 - the Atlas Merge Card heading exists;
 - the required table rows exist and are not blank placeholders;
 - `Current-state verdict` opens with one documented closed value;
+- `Primary risk` opens with one of `auto-safe` / `figures-moved` /
+  `owner-decision` / `blocked`;
 - the architecture-review decision opens `REQUIRED` or `NOT REQUIRED`;
 - a required review records a bare 40-character SHA equal to the PR head,
-  `Reviewer: ChatGPT`, and `Review outcome: PASS`;
+  `Reviewer: ChatGPT`, and `Review outcome: PASS` — `PENDING` still fails
+  closed, with an awaiting-review message rather than a generic PASS error;
 - a not-required review records `N/A` for head, reviewer, and outcome; and
 - card text is read from the live pull request (`pulls.get`), not the workflow
   event body. A closed PR, a non-`main` base, a PR or repository identity
@@ -139,14 +146,12 @@ retired `codex-review.yml` freshness reporter is not needed under this rule: an
 ordinary push does not create a requirement to rerun an optional audit. Native
 Codex automatic reviews are the intended first advisory pass: Codex docs say
 they post when a pull request is opened for review or marked ready, without an
-`@codex review` comment. That lane is not presently proven operational in this
-repo. PR #62 received a `chatgpt-codex-connector` notice to create a Codex
-environment rather than an automatic review, so a Codex environment or
-configuration must be restored or created before the first-pass lane is live
-again. The `codex-review-request.yml` comment dispatcher remains retired: it
-never successfully posted `@codex review`, and it is not replaced by another
-token or dispatcher. A justified second pass remains a human `@codex review`
-comment once that environment exists. Atlas Contract / Systems Review, Merge
+`@codex review` comment. That lane is operational: PR #63 received a real
+`chatgpt-codex-connector[bot]` review that found implementation defects. Codex
+remains advisory. It is not Atlas PASS authority. The `codex-review-request.yml`
+comment dispatcher remains retired: it never successfully posted `@codex review`,
+and it is not replaced by another token or dispatcher. A justified second pass
+remains a human `@codex review` comment. Atlas Contract / Systems Review, Merge
 Card, and Codex→Cursor handling of genuine submitted Codex reviews remain
 intact; deleting the broken dispatcher does not remove a hard merge authority.
 
@@ -164,11 +169,10 @@ protected product behavior. The surviving tests, reconciliations, invariants,
 security checks, exact-head equality, risk label, and owner gates do. The
 later-retired `codex-review-request.yml` comment dispatcher is the same class:
 it was a broken 403-producing comment poster, not a hard merge authority.
-Native Codex automatic reviews remain the intended first-pass mechanism, but
-they are not presently proven operational here until a Codex environment or
-configuration is restored or created. Atlas Contract / Systems Review, Merge
-Card, and Codex→Cursor handling of genuine submitted reviews remain the
-surviving authorities.
+Native Codex automatic reviews are the intended first-pass advisory mechanism
+and are proven operational as of PR #63. They remain advisory. Atlas Contract /
+Systems Review, Merge Card, and Codex→Cursor handling of genuine submitted
+reviews remain the surviving authorities.
 
 ## Setup
 

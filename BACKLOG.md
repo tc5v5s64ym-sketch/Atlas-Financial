@@ -1229,6 +1229,14 @@ extending the snapshot to the other three pages — is a real scope decision abo
 what counts as a published figure, and belongs to the owner, not to a wording
 fix.
 
+**Issue #57 remainder · Autonomous delivery loop** · *governance, not a new B-id*
+
+The repair → handoff → GPT-5.6 follow-up → card-sync middle is live as of
+PR #63. Duplicate GitHub/Merge-Card primary-risk state is the leftover #63
+defect. First REQUIRED review API spend, branch protection, standing
+auto-merge, and next-node wakeup remain owner-gated on Issue #57. They do
+not reorder `B91` and they are not a slice taxonomy.
+
 **B85 · Evidence-Use Register** · **DONE 2026-08-13** · *architecture, one outcome*
 
 Explicitly identified August 13 evidence IDs now have a live CI-checked

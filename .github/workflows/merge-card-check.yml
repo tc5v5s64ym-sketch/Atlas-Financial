@@ -253,6 +253,14 @@ jobs:
               problems.push(`"Current-state verdict" must open with one of: ${CURRENT_STATE.join(' / ')}.`);
             }
 
+            const primaryRisk = rowValue('Primary risk') || '';
+            const PRIMARY_RISK = ['auto-safe', 'figures-moved', 'owner-decision', 'blocked'];
+            if (primaryRisk && !PRIMARY_RISK.some(
+              (value) => new RegExp(`^${esc(value)}(?:[ \\t]*[—–:.-]|$)`, 'i').test(primaryRisk)
+            )) {
+              problems.push(`"Primary risk" must open with one of: ${PRIMARY_RISK.join(' / ')}.`);
+            }
+
             const reviewHeading =
               /^[ \t]*#{2,4}[ \t]*Atlas Contract \/ Systems Review[ \t]*$/im.exec(body);
             if (!reviewHeading) {
@@ -299,7 +307,9 @@ jobs:
                 if (!/^ChatGPT$/i.test(review.Reviewer)) {
                   problems.push('A required Atlas Contract / Systems Review must record Reviewer: ChatGPT.');
                 }
-                if (!/^PASS$/i.test(review['Review outcome'])) {
+                if (/^PENDING$/i.test(review['Review outcome'])) {
+                  problems.push('Awaiting exact-head Atlas review — Review outcome is PENDING, not PASS.');
+                } else if (!/^PASS$/i.test(review['Review outcome'])) {
                   problems.push('A required review must record Review outcome: PASS before merge.');
                 }
               }
