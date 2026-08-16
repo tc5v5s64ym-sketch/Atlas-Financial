@@ -150,9 +150,11 @@
     {
       "id": "BILL-HYD-002",
       "source": "docs/source_intake/HOUSEHOLD_BILL_FACTS_2026-08-13.md",
-      "disposition": "UNRESOLVED",
-      "question_path": "docs/01_OPEN_QUESTIONS.md",
-      "question_marker": "Q17."
+      "disposition": "CONSUMED",
+      "routed_to": {
+        "path": "docs/01_OPEN_QUESTIONS.md",
+        "heading": "Q17."
+      }
     },
     {
       "id": "BILL-HYD-003",
@@ -227,16 +229,20 @@
     {
       "id": "BILL-OTH-001",
       "source": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
-      "disposition": "UNRESOLVED",
-      "question_path": "docs/01_OPEN_QUESTIONS.md",
-      "question_marker": "Q18."
+      "disposition": "CONSUMED",
+      "routed_to": {
+        "path": "docs/ACCOUNT_FACTS.md",
+        "heading": "Bell Mobility"
+      }
     },
     {
       "id": "BILL-OTH-002",
       "source": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
-      "disposition": "UNRESOLVED",
-      "question_path": "docs/01_OPEN_QUESTIONS.md",
-      "question_marker": "Q18."
+      "disposition": "CONSUMED",
+      "routed_to": {
+        "path": "data.json",
+        "json_pointer": "/plan/bills/9"
+      }
     },
     {
       "id": "BILL-OTH-003",
@@ -527,16 +533,20 @@
     {
       "id": "TRAVEL-003",
       "source": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
-      "disposition": "UNRESOLVED",
-      "question_path": "docs/01_OPEN_QUESTIONS.md",
-      "question_marker": "Q22."
+      "disposition": "CONSUMED",
+      "routed_to": {
+        "path": "docs/01_OPEN_QUESTIONS.md",
+        "heading": "Q22."
+      }
     },
     {
       "id": "COMMIT-001",
       "source": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
-      "disposition": "UNRESOLVED",
-      "question_path": "docs/01_OPEN_QUESTIONS.md",
-      "question_marker": "Q23."
+      "disposition": "CONSUMED",
+      "routed_to": {
+        "path": "data.json",
+        "json_pointer": "/plan/commitments/2"
+      }
     },
     {
       "id": "COMMIT-002",
@@ -555,9 +565,11 @@
     {
       "id": "COMMIT-004",
       "source": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
-      "disposition": "UNRESOLVED",
-      "question_path": "docs/01_OPEN_QUESTIONS.md",
-      "question_marker": "Q23."
+      "disposition": "CONSUMED",
+      "routed_to": {
+        "path": "docs/01_OPEN_QUESTIONS.md",
+        "heading": "Q23."
+      }
     },
     {
       "id": "TXN-001",
@@ -686,6 +698,69 @@
       "disposition": "EXCLUDED",
       "exclusion_reason": "HOME BUDGET.xlsx sinking-fund and annual-bill planning is historical owner-created evidence. Amounts are not independently extracted into the repository and are not current approved targets. They stay out of Forecast.",
       "no_review_reason": "Existing owner-decision home is data.json plan.budget.ownerTargets.sinkingFundsNote. Historical workbook planning is not that approval."
+    },
+    {
+      "id": "AUG16-001",
+      "source": "docs/source_intake/HOUSEHOLD_EVIDENCE_2026-08-16.md",
+      "disposition": "CONSUMED",
+      "routed_to": {
+        "path": "docs/ACCOUNT_FACTS.md",
+        "heading": "HELOC interest is capitalised"
+      }
+    },
+    {
+      "id": "AUG16-002",
+      "source": "docs/source_intake/HOUSEHOLD_EVIDENCE_2026-08-16.md",
+      "disposition": "CONSUMED",
+      "routed_to": {
+        "path": "docs/ACCOUNT_FACTS.md",
+        "heading": "Bell Mobility"
+      }
+    },
+    {
+      "id": "AUG16-003",
+      "source": "docs/source_intake/HOUSEHOLD_EVIDENCE_2026-08-16.md",
+      "disposition": "CONSUMED",
+      "routed_to": {
+        "path": "data.json",
+        "json_pointer": "/debts"
+      }
+    },
+    {
+      "id": "AUG16-004",
+      "source": "docs/source_intake/HOUSEHOLD_EVIDENCE_2026-08-16.md",
+      "disposition": "CONSUMED",
+      "routed_to": {
+        "path": "data.json",
+        "json_pointer": "/plan/bills/9"
+      }
+    },
+    {
+      "id": "AUG16-005",
+      "source": "docs/source_intake/HOUSEHOLD_EVIDENCE_2026-08-16.md",
+      "disposition": "CONSUMED",
+      "routed_to": {
+        "path": "data.json",
+        "json_pointer": "/debts"
+      }
+    },
+    {
+      "id": "AUG16-006",
+      "source": "docs/source_intake/HOUSEHOLD_EVIDENCE_2026-08-16.md",
+      "disposition": "CONSUMED",
+      "routed_to": {
+        "path": "data.json",
+        "json_pointer": "/debts"
+      }
+    },
+    {
+      "id": "AUG16-007",
+      "source": "docs/source_intake/HOUSEHOLD_EVIDENCE_2026-08-16.md",
+      "disposition": "CONSUMED",
+      "routed_to": {
+        "path": "docs/01_OPEN_QUESTIONS.md",
+        "heading": "Open Questions"
+      }
     }
   ]
 }

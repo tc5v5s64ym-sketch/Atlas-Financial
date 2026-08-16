@@ -47,9 +47,9 @@ ok((cash.heldElsewhere || []).every(h => h.class !== 'spendable'),
 
 // Amanda's account is operational, not household money. This is the whole
 // reason the plan opens at $79.84 rather than $2,771.69.
-const amanda = (cash.heldElsewhere || []).find(h => /DEBT&PAYMENTS/.test(h.label));
+const amanda = (cash.heldElsewhere || []).find(h => h.id === 'amanda-debt-payments');
 ok(amanda && amanda.class === 'operational',
-  "Amanda's DEBT&PAYMENTS account is operational / pass-through, not spendable",
+  "Amanda's TENNIS INCOME account is operational / pass-through, not spendable",
   amanda ? money(amanda.value) : 'missing');
 
 // The cash register is the numeric home. Matching `assets[]` rows carry a

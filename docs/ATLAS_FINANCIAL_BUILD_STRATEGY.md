@@ -547,9 +547,9 @@ built *on* that picture, the picture needs owners that a test can reach.
 - **State** — **complete.** `test-classification.js` joins
   `plan.budget.categories[].class` to merchant-library / `periods.json` types
   on the existing `from[]` list. Comparable pairs must agree; `business`,
-  `reserve`, and `unknown` stay named non-comparable semantics; School & clubs
-  is the one live comparable disagreement and is recorded as Q24 rather than
-  guessed. Health source rows remain mixed essential/discretionary (medical
+  `reserve`, and `unknown` stay named non-comparable semantics. School & clubs
+  is owner-confirmed essential on both sides (Q24 ANSWERED 2026-08-16), not a
+  live comparable disagreement. Health source rows remain mixed essential/discretionary (medical
   vs personal care); that mix is a closed source-semantic ambiguity, not an
   owner guess. `Forecast.rollupSpending` publishes the mix as `unknown` so
   Deep Dive cannot consume it as a clean essential/discretionary class from

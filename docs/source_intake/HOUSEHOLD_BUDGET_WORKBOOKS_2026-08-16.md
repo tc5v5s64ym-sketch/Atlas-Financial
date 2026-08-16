@@ -80,8 +80,9 @@ These are policy questions, not missing files:
    Finding the workbooks does not make the historical workbook the missing
    remainder.
 
-Travel remaining a historical actual, and School & clubs remaining Q24, are
-unchanged.
+Travel remaining a historical actual, and School & clubs now owner-confirmed
+essential (Q24 ANSWERED 2026-08-16), are current-state facts. This workbook
+record does not own those classifications.
 
 ## Proof this record is not a second budget
 

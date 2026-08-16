@@ -5,7 +5,7 @@
   "does_not_own": "Permission to write data.json, invent pending from limit − posted − available, treat limit or available credit as household cash, or treat a scheduled minimum as a posted payment.",
   "asOf": "2026-08-14",
   "notes": [
-    "Freshest quantitative institution figures in the committed corpus are 2026-08-09 (ACCOUNT_FACTS / positions.csv / data.json). The Aug. 14 payday session observed that Cash Back Visa and Travel Visa were over limit, posted balances were known, and pending was unknown — it does not record those posted amounts.",
+    "Freshest quantitative institution figures for Triangle posted/pending/available and MBNA posted/pending/available are 2026-08-16 screenshots. They are dated observations, not the 2026-08-09 Forecast opening in data.json. Other card posted balances remain 2026-08-09. Do not partially cut over only two debts. The Aug. 14 payday session observed that Cash Back Visa and Travel Visa were over limit, posted balances were known, and pending was unknown — it does not record those posted amounts. Aug. 9 observations are retained as dated evidence and must not be rewritten.",
     "Do not manufacture pending = limit − posted − available unless identityProven is true for that card and timestamp. MBNA on 2026-08-09 is the one committed case where the issuer page proved that identity.",
     "Unknown pending is not $0. A stored canonical pending of 0 is a claim, not proof, unless the observation itself is a known-zero pending fact."
   ],
@@ -79,6 +79,53 @@
       "canonical": { "collection": "obligations", "id": "triangle" },
       "source": "data.json plan.obligations",
       "note": "A scheduled minimum reminder is not proof a payment posted and does not reduce current card exposure."
+    },
+    {
+      "observationId": "card-triangle-posted-2026-08-16",
+      "fact": "posted-balance",
+      "cardId": "triangle",
+      "label": "Triangle Mastercard posted balance",
+      "amount": 13197.00,
+      "balanceIncludesPending": false,
+      "observedAsOf": "2026-08-16",
+      "canonical": { "collection": "debts", "id": "triangle", "field": "balance" },
+      "source": "docs/source_intake/HOUSEHOLD_EVIDENCE_2026-08-16.md",
+      "note": "Screenshot posted balance. Dated observation, not the 2026-08-09 opening ($13,497.00). Reconcile reports CHANGE until a coherent cutover."
+    },
+    {
+      "observationId": "card-triangle-pending-2026-08-16",
+      "fact": "pending",
+      "cardId": "triangle",
+      "label": "Triangle Mastercard pending",
+      "amount": 15.62,
+      "unknown": false,
+      "observedAsOf": "2026-08-16",
+      "canonical": { "collection": "debts", "id": "triangle", "field": "pending" },
+      "source": "docs/source_intake/HOUSEHOLD_EVIDENCE_2026-08-16.md",
+      "note": "Keep posted and pending separate. Dated observation, not the 2026-08-09 opening. Do not fold $15.62 into posted $13,197.00."
+    },
+    {
+      "observationId": "card-triangle-available-2026-08-16",
+      "fact": "available-credit",
+      "cardId": "triangle",
+      "label": "Triangle Mastercard available credit",
+      "amount": 287.38,
+      "observedAsOf": "2026-08-16",
+      "source": "docs/source_intake/HOUSEHOLD_EVIDENCE_2026-08-16.md",
+      "note": "Bank-reported capacity. Never household cash. 13500 - 13197 - 15.62 = 287.38."
+    },
+    {
+      "observationId": "card-triangle-confirmed-payment-2026-08-10",
+      "fact": "confirmed-payment",
+      "cardId": "triangle",
+      "label": "Triangle Mastercard payment posted 10 Aug",
+      "amount": 300.00,
+      "paymentId": "triangle-2026-08-10-300",
+      "posted": true,
+      "appliedToPosted": true,
+      "observedAsOf": "2026-08-16",
+      "source": "docs/source_intake/HOUSEHOLD_EVIDENCE_2026-08-16.md",
+      "note": "TD BANKLINE/TELELIGNE TD -$300.00 posted 2026-08-10. Same economic payment as the Aug. 9 Chequing A $300 — do not subtract twice. Posted after the displayed Aug. 7 due date; on-time status is not proven."
     },
 
     {
@@ -232,6 +279,40 @@
       "canonical": { "collection": "obligations", "id": "mbna" },
       "source": "data.json plan.obligations",
       "note": "Scheduled minimum. Not a confirmed posted payment."
+    },
+    {
+      "observationId": "card-mbna-posted-2026-08-16",
+      "fact": "posted-balance",
+      "cardId": "mbna",
+      "label": "Amazon.ca Rewards Mastercard posted balance",
+      "amount": 8003.61,
+      "balanceIncludesPending": false,
+      "observedAsOf": "2026-08-16",
+      "canonical": { "collection": "debts", "id": "mbna", "field": "balance" },
+      "source": "docs/source_intake/HOUSEHOLD_EVIDENCE_2026-08-16.md",
+      "note": "Screenshot current balance. Dated observation, not the 2026-08-09 opening ($7,855.12). Do not round back to the statement $7,855.12. Reconcile reports CHANGE until a coherent cutover."
+    },
+    {
+      "observationId": "card-mbna-pending-2026-08-16",
+      "fact": "pending",
+      "cardId": "mbna",
+      "label": "Amazon.ca Rewards Mastercard pending",
+      "amount": 0.00,
+      "unknown": false,
+      "observedAsOf": "2026-08-16",
+      "canonical": { "collection": "debts", "id": "mbna", "field": "pending" },
+      "source": "docs/source_intake/HOUSEHOLD_EVIDENCE_2026-08-16.md",
+      "note": "Screenshot pending $0.00 is a known-zero pending fact, not an unknown coerced to zero."
+    },
+    {
+      "observationId": "card-mbna-available-2026-08-16",
+      "fact": "available-credit",
+      "cardId": "mbna",
+      "label": "Amazon.ca Rewards Mastercard available credit",
+      "amount": 0.00,
+      "observedAsOf": "2026-08-16",
+      "source": "docs/source_intake/HOUSEHOLD_EVIDENCE_2026-08-16.md",
+      "note": "Available credit $0.00. Never household cash. Card is over its $8,000 limit on the current posted balance."
     },
 
     {

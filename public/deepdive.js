@@ -86,7 +86,7 @@ function renderDeepDive(d) {
   // authority — it only names the payingAccount expandEvents already set.
   const externalPayerLabel = (plan, event) => {
     const id = event && event.payingAccount;
-    if (id === 'amanda-debt-payments') return 'Amanda / DEBT&PAYMENTS';
+    if (id === 'amanda-debt-payments') return 'Amanda / TENNIS INCOME';
     const cash = (plan && plan.startingCash) || {};
     const row = (cash.breakdown || []).concat(cash.heldElsewhere || [])
       .find(r => r.id === id);

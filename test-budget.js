@@ -100,7 +100,13 @@ ok(near(telecom.dated, shaw.amount), 'Shaw is subtracted from the telecom averag
 ok(near(telecom.planned, telecom.historical - shaw.amount),
   'so telecom carries only the undated remainder', money(telecom.planned));
 const household = budget.categories.find(c => c.id === 'household');
-ok(near(household.dated, fortis.amount), 'FortisBC is subtracted from household', money(household.dated));
+const noble = plan.bills.find(b => b.id === 'noble-garbage');
+const monthsInWindow = (plan.windowDays || 91) / (365.25 / 12);
+ok(noble && noble.frequency === 'once' && noble.budgetCategory === 'household',
+  'Noble is the dated household garbage bill');
+ok(near(household.dated, fortis.amount + noble.amount / monthsInWindow),
+  'FortisBC and the in-window Noble quarterly due are subtracted from household',
+  money(household.dated));
 const insurance = budget.categories.find(c => c.id === 'insurance');
 ok(near(insurance.dated, bcaa.amount + icbc.amount), 'BCAA + ICBC are subtracted from insurance', money(insurance.dated));
 ok(insurance.planned === 0 && insurance.fullyDated,

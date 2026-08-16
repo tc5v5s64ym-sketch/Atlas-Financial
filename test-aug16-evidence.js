@@ -1,0 +1,287 @@
+'use strict';
+/* 2026-08-16 household-evidence absorption.
+ * `node test-aug16-evidence.js`
+ *
+ * Independent proofs for the authorised canonical cleanup. Does not invent a
+ * second Forecast, and does not redo PR #79 pending-transaction logic.
+ */
+const fs = require('fs');
+const path = require('path');
+const F = require('./public/forecast.js');
+const data = require('./data.json');
+const { sourceText } = require('./test-source-text');
+
+let failures = 0;
+const ok = (cond, label, detail = '') => {
+  if (!cond) failures++;
+  console.log(`  ${cond ? 'PASS' : 'FAIL'}  ${label}${detail ? '  — ' + detail : ''}`);
+};
+const near = (a, b, eps = 0.005) => Math.abs(Number(a) - Number(b)) <= eps;
+const money = n => Number(n).toFixed(2);
+
+const questions = sourceText(fs.readFileSync(path.join(__dirname, 'docs/01_OPEN_QUESTIONS.md'), 'utf8'));
+const plan = data.plan;
+const asOf = data.meta.asOf;
+const windowEnd = F.addDays(asOf, (plan.windowDays || 91) - 1);
+const tennis = (plan.startingCash.heldElsewhere || []).find(h => h.id === 'amanda-debt-payments');
+const spendable = F.startingCashAmount(plan);
+const independentSpendable = (plan.startingCash.breakdown || [])
+  .reduce((s, r) => s + Number(r.value || 0), 0);
+
+function statusOf(id) {
+  const re = new RegExp('### ' + id + '\\.[\\s\\S]*?\\*\\*Status:\\*\\*\\s*([^\\n]+)');
+  const m = re.exec(questions);
+  return m ? m[1].trim() : null;
+}
+
+console.log('=== 1. TENNIS INCOME does not inflate household starting cash ===');
+{
+  ok(!!tennis && tennis.id === 'amanda-debt-payments',
+    'canonical identity remains amanda-debt-payments');
+  ok(/TENNIS INCOME/.test(tennis.label),
+    'display name is TENNIS INCOME', tennis.label);
+  ok(tennis.class === 'operational' && near(tennis.value, 2691.85),
+    'held-elsewhere operational balance is unchanged', money(tennis.value));
+  ok(near(spendable, independentSpendable) && near(spendable, 79.84),
+    'starting cash is the three spendable rows only', money(spendable));
+  ok(Math.abs(spendable - (independentSpendable + tennis.value)) > 1,
+    'adding TENNIS INCOME would inflate opening cash — and is not done');
+}
+
+console.log('\n=== 2. old garage/lab transfer is not forecast as ongoing income ===');
+{
+  const ids = (plan.income || []).map(s => s.id);
+  ok(!ids.includes('garageRent') && !ids.includes('labRent') && !ids.includes('garageLab'),
+    'no garage/lab income stream exists on the plan');
+  const hay = JSON.stringify(plan.income);
+  ok(!/1,?100/.test(hay) || ids.includes('amandaTransfer'),
+    'amandaTransfer remains the household-crossing estimate, not the ended rent');
+  ok(/^ANSWERED\b/.test(statusOf('Q5')), 'Q5 is ANSWERED', statusOf('Q5'));
+  ok(!plan.income.some(s => /garage|lab rent/i.test(s.label + (s.note || ''))),
+    'no income row is labelled as garage/lab rent');
+}
+
+console.log('\n=== 3. School & clubs is consistently ESSENTIAL ===');
+{
+  const school = plan.budget.categories.find(c => c.id === 'school');
+  ok(school && school.class === 'essential',
+    'plan.budget school class is essential', school && school.class);
+  ok(/^ANSWERED\b/.test(statusOf('Q24')), 'Q24 is ANSWERED', statusOf('Q24'));
+  ok(/essential/i.test(statusOf('Q24') + questions),
+    'canonical question records essential');
+  const targets = plan.budget.categories.filter(c => c.plannedMonthly != null);
+  ok(targets.length === 9, 'nine Aug. 10 owner plannedMonthly targets unchanged in count');
+  ok(school.plannedMonthly == null, 'school still has no owner monthly target');
+}
+
+console.log('\n=== 4. old Hydro arrears is not a future obligation ===');
+{
+  const hydro = (plan.bills || []).filter(b => /hydro/i.test(b.id + b.label));
+  ok(!hydro.some(b => b.id === 'hydro-due-now' || near(b.amount, 213.79)),
+    'no $213.79 / hydro-due-now future bill');
+  ok(!hydro.some(b => near(b.amount, 451.24)),
+    'the $451.24 account balance is not scheduled');
+  const sep = hydro.find(b => b.id === 'hydro-due-sep1');
+  ok(sep && near(sep.amount, 237.45) && sep.date === '2026-09-01',
+    'Sep. 1 $237.45 Hydro remains');
+  ok(/^ANSWERED\b/.test(statusOf('Q17')), 'Q17 arrears portion is ANSWERED', statusOf('Q17'));
+}
+
+console.log('\n=== 5. Telus does not recur after owner-confirmed closure ===');
+{
+  ok(!(plan.bills || []).some(b => /telus/i.test(b.id + b.label)),
+    'no Telus plan.bills row');
+  ok(/TELUS IS CLOSED/.test(plan.billsNote),
+    'billsNote records Telus closed');
+  ok(/^OPEN\b/.test(statusOf('Q18')),
+    'Q18 remains open only for residual Bell facts', statusOf('Q18'));
+  ok(/TELUS IS CLOSED/.test(questions),
+    'open-questions file records Telus closed');
+}
+
+console.log('\n=== 6. Noble quarterly garbage without duplicating history ===');
+{
+  const noble = (plan.bills || []).find(b => b.id === 'noble-garbage');
+  ok(noble && near(noble.amount, 95.85) && noble.date === '2026-09-18'
+    && noble.frequency === 'once' && noble.budgetCategory === 'household',
+    'Noble is a once $95.85 due 2026-09-18 household bill');
+  const events = F.expandEvents(plan, asOf, windowEnd, {});
+  const nobleEvents = events.filter(e => e.id === 'noble-garbage');
+  ok(nobleEvents.length === 1 && nobleEvents[0].date === '2026-09-18'
+    && near(nobleEvents[0].amount, -95.85),
+    'exactly one Noble cash event in the 91-day window');
+  ok(!events.some(e => e.id === 'noble-garbage' && e.date === '2026-03-18'),
+    'March 18 history is not duplicated as a future event');
+  ok(!events.some(e => e.id === 'noble-garbage' && e.date === '2026-06-18'),
+    'June 18 is not invented as arrears');
+}
+
+console.log('\n=== 7–9. Aug. 16 Triangle/MBNA stay observations; opening stays 9 August ===');
+{
+  ok(data.meta.asOf === '2026-08-09', 'canonical asOf remains 2026-08-09');
+  const tri = data.debts.find(d => d.id === 'triangle');
+  const mbna = data.debts.find(d => d.id === 'mbna');
+  ok(tri && near(tri.balance, 13497) && near(tri.pending || 0, 0),
+    'Triangle opening is the 9 August posted $13,497.00', money(tri.balance));
+  ok(mbna && near(mbna.balance, 7855.12) && near(mbna.pending, 82.05),
+    'MBNA opening is 9 August posted $7,855.12 + pending $82.05',
+    `${money(mbna.balance)} + ${money(mbna.pending)}`);
+  ok(!near(tri.balance, 13197) && !near(mbna.balance, 8003.61),
+    'Aug. 16 screenshot totals are not written into the opening');
+
+  const obs = require(path.join(__dirname, 'docs/reconciliation/card-state-observations.json')).observations;
+  const triPosted = obs.find(o => o.observationId === 'card-triangle-posted-2026-08-16');
+  const triPend = obs.find(o => o.observationId === 'card-triangle-pending-2026-08-16');
+  const mbPosted = obs.find(o => o.observationId === 'card-mbna-posted-2026-08-16');
+  const mbPend = obs.find(o => o.observationId === 'card-mbna-pending-2026-08-16');
+  ok(triPosted && near(triPosted.amount, 13197) && triPend && near(triPend.amount, 15.62),
+    'Aug. 16 Triangle observation keeps posted $13,197.00 and pending $15.62 separate');
+  const obsExposure = Math.round((triPosted.amount + triPend.amount) * 100) / 100;
+  ok(near(obsExposure, 13212.62) && !near(triPosted.amount, obsExposure),
+    'independent observed exposure is posted+pending $13,212.62', money(obsExposure));
+  ok(mbPosted && near(mbPosted.amount, 8003.61) && mbPend && near(mbPend.amount, 0)
+    && !near(mbPosted.amount, 7855.12),
+    'Aug. 16 MBNA observation is $8,003.61 pending $0, not rounded to the statement');
+
+  const hay = [
+    tri.note,
+    (plan.obligations.find(o => o.id === 'triangle') || {}).note,
+    JSON.stringify(obs.filter(o => /triangle.*2026-08-1[06]/.test(o.observationId))),
+  ].join(' ');
+  ok(/2026-08-10|Aug\. 10/.test(hay) && /\$300/.test(hay),
+    'Aug. 10 $300 payment is recorded');
+  ok(/on-time/i.test(hay) && /not proven/i.test(hay),
+    'on-time status is not invented');
+  ok(/287\.38/.test(hay) && /not household cash|never cash|not cash/i.test(hay),
+    'available credit is not converted to household cash');
+
+  const once = plan.obligations.find(o => o.id === 'mbna-aug31');
+  const monthly = plan.obligations.find(o => o.id === 'mbna');
+  ok(once && once.frequency === 'once' && once.date === '2026-08-31'
+    && once.confidence === 'confirmed' && near(once.amount, 158.27),
+    'Aug. 31 MBNA statement minimum is a confirmed one-time row');
+  ok(monthly && monthly.frequency === 'monthly' && monthly.firstDue === '2026-09-30'
+    && monthly.confidence === 'estimated' && near(monthly.amount, 158.27),
+    'later MBNA minimums remain estimated from 2026-09-30');
+  const events = F.expandEvents(plan, asOf, windowEnd, {});
+  const mbnaEvents = events.filter(e => e.id === 'mbna' || e.id === 'mbna-aug31');
+  const aug31 = mbnaEvents.find(e => e.date === '2026-08-31');
+  ok(aug31 && aug31.confidence === 'confirmed' && near(Math.abs(aug31.amount), 158.27),
+    'Forecast emits the Aug. 31 minimum as confirmed');
+  ok(mbnaEvents.filter(e => e.date > '2026-08-31')
+    .every(e => e.confidence === 'estimated' && e.id === 'mbna'),
+    'later MBNA cash events are the estimated recurrence, not confirmed');
+  ok(!mbnaEvents.some(e => e.date === '2026-08-31' && e.id === 'mbna'),
+    'the monthly row does not double-count August');
+  ok(/21\.74/.test(mbna.rateBasis) && near(mbna.rate, 21.74),
+    'purchase APR 21.74% comes from the statement');
+  ok(/22\.99/.test(mbna.rateBasis),
+    'cash advance / BT APR 22.99% comes from the statement');
+  ok(mbna.nextDue === '2026-08-31', 'due date 2026-08-31');
+  ok(near(mbna.annualInterest, 1779.24),
+    'annualInterest remains $148.27 × 12', money(mbna.annualInterest));
+}
+
+console.log('\n=== 10–11. stale Fusion 3 × $500 gone; future estimate is not a confirmed invoice ===');
+{
+  const ids = (plan.commitments || []).map(c => c.id);
+  ok(!ids.includes('fusion-sep') && !ids.includes('fusion-oct') && !ids.includes('fusion-nov'),
+    'the three live-plan $500 Fusion rows are gone');
+  const events = F.expandEvents(plan, asOf, windowEnd, {});
+  ok(!events.some(e => /fusion-sep|fusion-oct|fusion-nov/.test(e.id)
+    || (e.label && /Fusion season —/.test(e.label) && near(Math.abs(e.amount), 500))),
+    'Forecast emits no confirmed $500 Fusion season cash events');
+  const item = (data.commitments.items || []).find(i => /Fusion upcoming/i.test(i.what));
+  ok(item && item.confidence === 'estimated' && /TBD|unknown/i.test(item.when + item.note),
+    'upcoming Fusion is an estimated planning item, not a confirmed invoice');
+  ok(/^ANSWERED\b/.test(statusOf('Q23')), 'Q23 is ANSWERED', statusOf('Q23'));
+}
+
+console.log('\n=== 12–13. Burrards registrations settled; ~$700 team fees remain estimated ===');
+{
+  const b1 = plan.commitments.find(c => c.id === 'burrard1');
+  const b2 = plan.commitments.find(c => c.id === 'burrard2');
+  ok(b1 && b1.settledOn === '2026-08-16' && b2 && b2.settledOn === '2026-08-16',
+    'both Burrards registrations are settledOn 2026-08-16');
+  const events9 = F.expandEvents(plan, asOf, windowEnd, {});
+  ok(events9.some(e => e.id === 'burrard1') && events9.some(e => e.id === 'burrard2'),
+    'an Aug. 9 opening still reserves them (settledOn is after as-of)');
+  const events16 = F.expandEvents(plan, '2026-08-16', F.addDays('2026-08-16', 90), {});
+  ok(!events16.some(e => e.id === 'burrard1' || e.id === 'burrard2'),
+    'an Aug. 16 opening omits the paid registrations');
+  const fees = (data.commitments.items || []).find(i => /Burrards upcoming team/i.test(i.what));
+  ok(fees && fees.confidence === 'estimated' && near(fees.amount, 700)
+    && /TBD|unknown/i.test(fees.when + fees.note),
+    '~$700 team fees remain estimated/TBD');
+  ok(!(plan.commitments || []).some(c => /team fee/i.test(c.label) && near(c.amount, 700)),
+    'no fabricated exact Burrards team-fee plan.commitments row');
+}
+
+console.log('\n=== 14–15. Bell baseline is not $356.62; pending $250 is not double-counted ===');
+{
+  ok(!(plan.bills || []).some(b => /bell/i.test(b.id + b.label)),
+    'no Bell row is dated as a joint-cash bill');
+  ok(!(plan.bills || []).some(b => near(b.amount, 356.62) || near(b.amount, 104.20)),
+    'neither $356.62 nor ~$104.20 is a dated cash bill');
+  const facts = fs.readFileSync(path.join(__dirname, 'docs/ACCOUNT_FACTS.md'), 'utf8');
+  ok(/\$356\.62/.test(facts) && /104\.20/.test(facts),
+    'ACCOUNT_FACTS records the Aug bill and the June baseline separately');
+  ok(/inferred residual/i.test(facts) && /\$250/.test(facts),
+    'the $250 pending payment is recorded without marking Bell fully settled');
+  ok(!/second Bell \$250 expense/i.test(JSON.stringify(plan.bills)),
+    'plan.bills does not invent a second Bell $250 expense');
+}
+
+console.log('\n=== 16–18. HELOC interest posting and cash payment stay distinct; Aug. 1 not silently paid ===');
+{
+  const heloc = plan.obligations.find(o => o.id === 'heloc');
+  const debt = data.debts.find(d => d.id === 'heloc');
+  ok(heloc && heloc.nonCash === true && near(heloc.amount, 814.18),
+    'HELOC obligation remains non-cash $814.18');
+  ok(debt && near(debt.cashPayment, 0) && debt.interestTreatment === 'capitalised',
+    'cashPayment stays $0; interest is capitalised');
+  const events = F.expandEvents(plan, asOf, windowEnd, {});
+  ok(!events.some(e => e.id === 'heloc' && e.kind !== 'noncash'),
+    'no HELOC chequing outflow was invented');
+  ok(!events.some(e => e.id === 'heloc' && e.date === '2026-08-01'),
+    'Aug. 1 PAD is not fabricated as a cash event');
+  ok(/^OPEN\b/.test(statusOf('Q19')), 'Q19 remains OPEN', statusOf('Q19'));
+  ok(/must not claim confident zero household\s+cash impact/i.test(questions),
+    'Q19 still forbids claiming confident zero cash impact');
+  ok(!/no cash leaves any account for it/i.test(data.upcomingNote),
+    'upcomingNote does not claim confident zero HELOC cash impact');
+  ok(/9 August opening|2026-08-09 opening|as-of/i.test(data.upcomingNote)
+    && /PAID/i.test(data.upcomingNote),
+    'upcomingNote dates Burrards $623 as the Aug. 9 opening and records them paid');
+  const util = F.utilisation(data.debts, data.revolvingExtra, data.plan);
+  ok(near(util.totalAvailable, 1415.98) && /1,415\.98/.test(data.upcomingNote),
+    'upcomingNote credit headroom is this opening\'s derived $1,415.98',
+    money(util.totalAvailable));
+  const pendingTotal = data.debts.reduce((s, d) => s + Number(d.pending || 0), 0);
+  ok(near(pendingTotal, 247.18) && /247\.18/.test(data.upcomingNote),
+    'upcomingNote pending $247.18 is this opening\'s pending sum', money(pendingTotal));
+}
+
+console.log('\n=== 19. Q20 and Q21 remain unresolved ===');
+{
+  ok(/^OPEN\b/.test(statusOf('Q20')), 'Q20 emergency reserve remains OPEN', statusOf('Q20'));
+  ok(/^OPEN\b/.test(statusOf('Q21')), 'Q21 $527.80 remains OPEN', statusOf('Q21'));
+  ok(/does \*\*not\*\* currently know|does not currently know/i.test(questions),
+    'Q20 records that the owner does not know the emergency-cash target');
+}
+
+console.log('\n=== nine owner budget targets unchanged ===');
+{
+  const want = {
+    groceries: 1800, fuel: 1300, household: 150, health: 100,
+    pets: 110, sport: 250, subscriptions: 300,
+    restaurants: 800, shopping: 600,
+  };
+  for (const [id, amt] of Object.entries(want)) {
+    const c = plan.budget.categories.find(x => x.id === id);
+    ok(c && near(c.plannedMonthly, amt), `${id} plannedMonthly still ${amt}`);
+  }
+}
+
+console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
+process.exit(failures === 0 ? 0 : 1);

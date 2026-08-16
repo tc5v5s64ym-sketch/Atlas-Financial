@@ -84,9 +84,8 @@ ok(events9.some(e => e.id === 'tryouts' && near(e.amount, -TRYOUTS)),
 ok(!events14.some(e => e.id === 'fusioncamp' || e.id === 'tryouts'),
   'an Aug. 14 Forecast emits no Fusion camp or tryouts cash event');
 ok(['fusion-sep', 'fusion-oct', 'fusion-nov'].every(id => {
-  const row = live.plan.commitments.find(c => c.id === id);
-  return row && row.amount === 500 && !row.settledOn;
-}), 'the three $500 Fusion instalments remain unsettled (Q23)');
+  return !live.plan.commitments.some(c => c.id === id);
+}), 'the three stale $500 Fusion instalments are gone (Q23 ANSWERED)');
 ok((live.plan.actions || []).some(a => /Fusion camp/i.test(a.what) && a.status === 'done'),
   'the Fund the Fusion camp action is marked done, not deleted');
 
@@ -168,7 +167,7 @@ console.log('\n=== E. unknown card pending is not converted to zero ===');
 console.log('\n=== F. held-elsewhere money is not automatically spendable joint cash ===');
 {
   const held = (live.plan.startingCash.heldElsewhere || []).find(r => r.id === AMANDA);
-  ok(held && held.value > 0, 'Amanda / DEBT&PAYMENTS remains on heldElsewhere');
+  ok(held && held.value > 0, 'Amanda / TENNIS INCOME remains on heldElsewhere');
   ok(!near(F.startingCashAmount(live.plan), independentSpendable(live.plan) + held.value),
     'held-elsewhere is not inside Forecast opening cash');
   ok(near(F.startingCashAmount(live.plan), opening),
@@ -208,8 +207,8 @@ console.log('\n=== H. existing Forecast produces payday outputs after cutover ==
 {
   const rec9 = F.recommend(live.plan, AUG9, liveOpts());
   const rec14 = F.recommend(live.plan, PAYDAY, liveOpts());
-  ok(rec9.weekly === 1085 && rec9.mode === 'openingGap' && near(rec9.gap.amount, 1043.16),
-    'published Aug. 9 as-of still yields weekly $1,085 and the 12 Aug gap — Fusion settledOn is later');
+  ok(rec9.weekly === 1165 && rec9.mode === 'openingGap' && near(rec9.gap.amount, 1043.16),
+    'published Aug. 9 as-of still yields the 12 Aug gap; weekly is $1,165 after stale Fusion instalments were removed');
   ok(near(opening, 79.84),
     'independent spendable opening is still the 9 Aug $79.84 snapshot', money(opening));
   ok(opening + 0.005 < BUFFER,
@@ -319,9 +318,11 @@ console.log('\n=== remaining owner questions stay open ===');
 {
   const md = questionsMarkdown();
   ok(/^ANSWERED\b/.test(questionStatus(md, 'Q0')), 'Q0 HOME BUDGET is ANSWERED — workbooks classified, policy unchanged');
-  ok(/^OPEN\b/.test(questionStatus(md, 'Q17')), 'Q17 Hydro 14 August due remains OPEN');
-  ok(/^OPEN\b/.test(questionStatus(md, 'Q19')), 'Q19 HELOC remains OPEN');
-  ok(/^OPEN\b/.test(questionStatus(md, 'Q23')), 'Q23 Fusion instalments remain OPEN');
+  ok(/^ANSWERED\b/.test(questionStatus(md, 'Q17')), 'Q17 Hydro arrears is ANSWERED — settled, Sep. 1 remains');
+  ok(/^OPEN\b/.test(questionStatus(md, 'Q19')), 'Q19 HELOC current August settlement remains OPEN');
+  ok(/^ANSWERED\b/.test(questionStatus(md, 'Q23')), 'Q23 Fusion instalments are ANSWERED — none currently owed');
+  ok(/^OPEN\b/.test(questionStatus(md, 'Q20')), 'Q20 emergency reserve remains OPEN');
+  ok(/^OPEN\b/.test(questionStatus(md, 'Q21')), 'Q21 $527.80 remains OPEN');
   ok(/^OPEN\b/.test(questionStatus(md, 'Q25')), 'Q25 Amanda available remainder remains OPEN');
   ok(/^OPEN\b/.test(questionStatus(md, 'Q26')), 'Q26 card pending remains OPEN');
 }

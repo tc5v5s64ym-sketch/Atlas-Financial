@@ -464,16 +464,15 @@ console.log('\n=== live Aug. 14 Fusion write follows commitmentSettledBy ===');
     'live write follows commitmentSettledBy');
 }
 
-console.log('\n=== live Fusion season instalments stay untouched ===');
+console.log('\n=== live Fusion season instalments were stale and are gone ===');
 {
   const ids = ['fusion-sep', 'fusion-oct', 'fusion-nov'];
   for (const id of ids) {
     const row = live.plan.commitments.find(c => c.id === id);
-    ok(row && row.amount === 500 && !row.settledOn,
-      `${id} remains a $500 unsettled live commitment`);
+    ok(!row, `${id} is not a live plan commitment`);
   }
   ok(!settlements.observations.some(o => ids.includes(o.commitmentId)),
-    'the settlement fixture does not observe the three $500 instalments');
+    'the settlement fixture does not observe the three removed $500 instalments');
 }
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);

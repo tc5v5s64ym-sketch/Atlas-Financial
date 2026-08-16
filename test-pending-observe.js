@@ -339,8 +339,9 @@ console.log('\n=== 15. existing Forecast outputs stay unchanged without a live o
     extraFacilities: data.revolvingExtra,
     extraDebtTarget: data.plan.nextDollar && data.plan.nextDollar.target,
   });
-  ok(rec.weekly === 1085 && rec.mode === 'openingGap',
-    'published Aug. 9 recommend is unchanged', `${rec.mode} weekly ${rec.weekly}`);
+  ok(rec.weekly === 1165 && rec.mode === 'openingGap',
+    'published Aug. 9 recommend still openingGap; weekly is $1,165 after stale Fusion instalments were removed',
+    `${rec.mode} weekly ${rec.weekly}`);
   ok(near(F.startingCashAmount(data.plan), 79.84),
     'live spendable opening remains the Aug. 9 $79.84 snapshot');
   ok(!data.plan.opening, 'live plan still has no opening cutover written');

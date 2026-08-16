@@ -27,21 +27,27 @@ anything older than a few months as needing re-checking, not as fact.
 Statement close dates: **TD card ~23rd** · **Triangle 17th** ·
 **MBNA/Amazon 6th** · **TD Cash Back 7th** · **Travel Visa 5th**.
 
-**HELOC 21st vs month-end.** TD EasyWeb states a minimum payment due on the 21st
-equal to the monthly interest charge. The live cash plan does **not** reserve
-chequing cash for that day: observed posting is a month-end debit on the HELOC
-itself with no matching chequing payment, modelled as `nonCash` / `capitalise`
-on day 31. The household calendar keeps the 21st as a reminder-only look-point
-(not a chequing outflow) and derives the month-end capitalisation reminder from
-the Plan. Whether the 21st must also be a household cash outflow is
-`docs/01_OPEN_QUESTIONS.md` Q19. This file records both facts; it does not pick
-one to make a calendar cleaner.
+**HELOC 21st vs month-end.** TD EasyWeb and the Dec 2025–Jul 2026 statements
+state a minimum payment due on the **21st** equal to that period's interest
+(overdue $0 on every supplied statement), with a Pre-Authorized Debit Date
+around the **1st**. Observed posting of the interest charge is a month-end
+debit on the HELOC itself. Manual payments can reduce the residual automatic
+collection. The live cash plan still does **not** invent a duplicate full
+$814.18 chequing outflow for the interest posting (`nonCash` / `capitalise`
+on day 31). The household calendar keeps the 21st as a reminder-only
+look-point. Current August settlement — whether the Aug. 1 PAD already
+occurred — remains Q19. This file records the mechanics; it does not claim
+confident zero remaining August cash impact.
 
-### The 12 August Burrard registrations are one payment, not two
+### The 12 August Burrard registrations are paid
 
-*(owner-stated 2026-08-09)* Both children are registered on the same day, so the
-**$623.00 cannot be staggered** across the 14 August payday — it is the full
-amount or neither child is registered.
+*(owner-stated 2026-08-09 as an atomic same-day pair; owner-confirmed PAID
+2026-08-16)* Logan's and Linden's Burrards registrations are both paid. No
+registration amounts remain owed. Upcoming team fees are a separate planning
+estimate of approximately **$700 total** sometime in September 2026; exact
+amount and due date unknown. Not a confirmed invoice. The historical Aug. 9
+opening-gap arithmetic below is left as the as-of snapshot; it is not a
+current unpaid obligation.
 
 Against **$79.84** in the household spending accounts, only two sources can
 reach it on the day:
@@ -70,12 +76,44 @@ steady value, not the 18-month median.
 | **15th** | ICBC insurance | $99.91 | 5 consecutive months — newer policy |
 | **15th** | RESP contribution | $100.00 | Owner-stated hard bill, children's RESP, monthly |
 | **every 14 days** (payday cadence) | Fit4Less | $11.54 | 18 months; plus a ~$22 annual fee each July |
-| **month-end** | TD account fees ×2 | $17.95 each | every month captured |
+| **18th, every 3 months** | Noble Disposal Services — garbage | **$95.85** | Invoice cadence; next dated due 2026-09-18 |
 
-**One known cost has no current route through chequing:** Telus (last seen
-March 2026 — route unknown, possibly her account). Netflix does not exist
-anywhere in the data; the streaming spend is Amazon Channels, several small
-charges on scattered days.
+**TELUS IS CLOSED** (owner-confirmed 2026-08-16). Do not forecast Telus as an
+active household bill unless newer transaction evidence proves a new active
+Telus service. Historical Telus charges remain in the captured telecom
+series; that is history, not a live recurrence.
+
+**Noble Disposal Services** is the household garbage bill (owner-confirmed
+2026-08-16; primary invoice): $95.85 every 3 months on the 18th, Package A
+2 cans, repeats indefinitely. A March 18 2026 payment of $95.85 is shown.
+Canonical next dated due is 2026-09-18. Do not infer the paying card from a
+Visa 0870 mask.
+
+Netflix does not exist anywhere in the data; the streaming spend is Amazon
+Channels, several small charges on scattered days.
+
+### Bell Mobility — main account and second watch account *(absorbed 2026-08-16)*
+
+August 1 2026 main-account bill (primary statement): previous amount due
+$373.31; payment received Jul. 17 −$250.00; unpaid balance $123.31; current
+charges $233.31; **total due $356.62** by **2026-08-17**. August current
+charges included $70.00 monthly, $25.80 device payment, $110.00 usage / long
+distance, $21.34 tax. That $356.62 is **not** the normal monthly run rate.
+
+June statement (normal recurring baseline, no unusual travel usage): $70.00
+monthly services + $25.80 device payment + $8.40 taxes ≈ **$104.20**. The
+main phone plan itself is $55; the same Bell account also contains a $15
+watch line.
+
+A Lunch Money pending Bell Mobility **$250.00** on Travel Visa dated
+2026-08-14 is owner-confirmed **valid**. It remains pending until it posts.
+Against the Aug. 17 total, $106.62 is an **inferred residual only** while
+the $250 remains pending. Do not mark the Bell obligation fully settled.
+Do not date $356.62 as joint-cash. Do not add a second Bell $250 expense.
+
+A **second Bell/watch account is still active**. It is not the $15 watch
+line on the main account. Exact current amount is not proven by this
+package.
 
 **CMAW Local 1995 union dues ($25/month on the 15th) remain a standing Plan
 bill until cancellation is actually confirmed.** They still appear in the
@@ -84,16 +122,18 @@ action, but the $25 stays reserved as household cash until evidence closes the
 action. Do not guess an effective end date. They are not inside the CRA
 instalment reserve.
 
-**BC Hydro is not one of them.** It moved to Amanda's DEBT&PAYMENTS account in
-May 2026 and she has paid it there since — $235, $250, $250. It remains a
+**BC Hydro is not one of them.** It moved to Amanda's TENNIS INCOME account
+(id `amanda-debt-payments`, previously nicknamed DEBT&PAYMENTS) — it moved
+here in May 2026 — and she has paid it there since — $235, $250, $250. It remains a
 household obligation. The paying account is attribution, not a reason to drop
 it from household-obligation reporting. It is correctly absent from the
-joint-cash Forecast (Chequing A, Chequing B and Savings) because DEBT&PAYMENTS
-is held-elsewhere and is not spendable joint cash. It must not be carried
-inside the household variable budget either, and a utility account balance
-must not be scheduled as a cash event — only dated amounts due are cash
-requirements. See "What she pays directly" below, which is the single
-authority for that list.
+joint-cash Forecast (Chequing A, Chequing B and Savings) because TENNIS
+INCOME is held-elsewhere and is not spendable joint cash. Owner-confirmed
+2026-08-16: the old questioned outstanding Hydro amount is **settled**. The
+1 September $237.45 due remains. It must not be carried inside the household
+variable budget either, and a utility account balance must not be scheduled
+as a cash event — only dated amounts due are cash requirements. See "What
+she pays directly" below, which is the single authority for that list.
 
 Income: payroll **bi-weekly** (~$4,264 current recurring net after 2026 CPP/CPP2/EI completion), child benefit **monthly** (~$153.59).
 Bonus or vacation pay has historically landed in **February and July**.
@@ -232,7 +272,7 @@ Interac notifications matters, and why B64 will not be solved from transfer data
 | Due | 17th, monthly |
 | Note | Since 2 July 2026 TD charges **interest on unpaid interest** |
 
-## Triangle Mastercard — Canadian Tire Bank *(verified 2026-08-09)*
+## Triangle Mastercard — Canadian Tire Bank *(verified 2026-08-09; current posted/pending 2026-08-16)*
 
 | | |
 |---|---|
@@ -240,6 +280,16 @@ Interac notifications matters, and why B64 will not be solved from transfer data
 | Credit limit | **$13,500.00** |
 | Due | 7th, monthly · statement dated 17th |
 | Structure | Revolving. Issuer states 99+ years to repay at minimum payments |
+
+**Current observation, 2026-08-16 screenshot** (dated observation, not the
+2026-08-09 Forecast opening in `data.json`): posted **$13,197.00**, pending
+**$15.62**, available credit **$287.38** (not household cash), last statement
+balance $13,309.70, displayed minimum $0.00, displayed due date Aug. 7 2026.
+A **$300 payment posted Aug. 10**. Posted and pending stay separate.
+Observed exposure = $13,197.00 + $15.62 = $13,212.62. On-time status for
+the Aug. 7 obligation is not proven; the payment posted after the displayed
+due date. Canonical opening remains posted **$13,497.00** / pending unknown
+as of 9 August until a coherent cutover.
 
 ## Insurance *(verified 2026-08-09)*
 
@@ -324,15 +374,22 @@ five appear on both and are the same accounts:
 
 **Four accounts appear only on her profile:**
 
-### DEBT&PAYMENTS chequing *(…6458934)*
+### TENNIS INCOME chequing *(…6458934)* — previously nicknamed DEBT&PAYMENTS
 Balance $2,691.85, **no overdraft facility**. Charges a **$3.95 monthly account
 fee**, plus withdrawal and cheque-return fees — the other chequing accounts do
 not. This is where her employment income lands and where many household debt
 payments originate.
 
-**This balance is not household spendable cash** *(owner-stated 2026-08-09)*.
-Her Tennis BC pay lands here, coaches are paid out of it, and only the remainder
-is moved across. Any cash-flow plan must treat it as a separate pot.
+**This balance is not household spendable cash** *(owner-stated 2026-08-09;
+operating semantics restated 2026-08-16)*. The owner renamed the account
+**TENNIS INCOME**; the canonical id remains `amanda-debt-payments`. Amanda's
+Tennis BC salary lands here and is transferred promptly into BILLS ACCOUNT.
+Coaching income also lands here. Coaches/business/pass-through amounts are
+paid from this account first. Whatever remains after coaching obligations
+is transferred into BILLS ACCOUNT. Money becomes household-available when
+it is actually transferred into the household cash pool. The raw balance is
+NOT automatically spendable household cash. Do not estimate how much of the
+current balance is household-available (Q25).
 
 **Her Tennis BC pay is semi-monthly, not bi-weekly** — the **15th and the last
 day of the month**, verified across all 18 months. Recent: $2,168.85 on 15 Jul,
@@ -356,16 +413,35 @@ $940/month: BC Hydro (it moved here in May 2026), part of the MBNA minimum,
 some card payments, CRA instalments and part of the property tax. So her total
 contribution is larger than the transfers alone.
 
-### HELOC interest is capitalised, not paid *(verified 2026-08-09)*
+### HELOC interest is capitalised, not paid *(verified 2026-08-09; statement series absorbed 2026-08-16)*
 
 The monthly interest — $810.09, $787.58, $814.18 for May, June, July — is
 charged **as a debit on the HELOC itself** at month end. **No matching payment
-leaves any chequing account.** Payments into the HELOC are separate, irregular
-lump sums from her account and the staging account.
+leaves any chequing account as the interest posting.** Payments into the HELOC
+are a separate fact.
 
-This matters two ways. For **cash flow**, the ~$814/month is not an outflow and
-must not be modelled as one. For **debt**, it is why the balance rises every
-month with nothing repaying it.
+Dec 2025–Jul 2026 primary statements: credit limit / current plan limit
+**$202,654**. In every supplied month the displayed regular minimum equals
+that period's interest charge. Overdue = $0. Payment due date is the **21st**.
+A Pre-Authorized Debit Date around the **1st** is shown. Observed mechanics:
+a manual payment can reduce the remaining required minimum, and the automatic
+payment can collect only the residual (February minimum $751.46 collected in
+full 2 March; May minimum $810.09 collected as $800.00 on 2 June plus $10.09
+on 3 June). Manual payments also appear from household TD chequing
+accounts, including Bills Account and TENNIS INCOME.
+
+The Jul statement shows $814.18 due 21 August and PAD date 1 August. The live
+Lunch Money pull began after Aug. 1 and does not prove whether that PAD
+occurred. An Aug. 14 $1,100 payment does not, by itself, prove another
+$814.18 is due or that the PAD did not happen. Forecast still does not treat
+the interest charge as joint-cash. Q19 is narrowed to current August
+settlement evidence.
+
+This matters two ways. For **cash flow**, the ~$814/month interest posting is
+not an automatic chequing outflow and must not be modelled as a duplicate
+full minimum after confirmed payments have already satisfied it. For
+**debt**, capitalised interest is why the balance can rise with nothing
+repaying it.
 
 ### SAVINGS-DONT TOUCH *(…6478420)* — **a staging account, not savings**
 Balance $74.20. Despite the name, nothing is saved here. Money arrives from
@@ -550,9 +626,9 @@ a period with no family travel in it].
 
 ## The $1,000–1,100 monthly transfer was RENT, not a spousal transfer
 
-*(Owner-confirmed 2026-08-09 as standing-fact evidence. This corrects an
-18-month misreading. It does not close Q5. Q5 remains OPEN in
-`docs/01_OPEN_QUESTIONS.md` until that file records it as ANSWERED.)*
+*(Owner-confirmed 2026-08-09 as standing-fact evidence, and owner-confirmed
+again 2026-08-16 that the income source ended. Q5 is ANSWERED in
+`docs/01_OPEN_QUESTIONS.md`. Do not forecast that old stream.)*
 
 It was **rent paid by Amanda's parents**, because they moved **their lab into the
 garage**. It ran from March 2025, stepped from $1,000 to $1,100 in November, and
@@ -1708,10 +1784,11 @@ B10 and B36 were the same debt counted twice.
 | | |
 |---|---|
 | Issuer | MBNA (a TD Bank Group brand) |
-| Current balance | **$7,855.12** |
+| Current opening (2026-08-09) | **$7,855.12** posted + **$82.05** pending |
+| 2026-08-16 screenshot | **$8,003.61** posted, pending **$0.00** *(observation, not the Forecast opening — do not round that observation back to the statement)* |
 | Credit limit | **$8,000.00** |
-| Available credit | **$62.83** |
-| Pending transactions | $82.05 |
+| Available credit | **$62.83** on the 9 August opening; **$0.00** on the 2026-08-16 screenshot (never cash) |
+| Pending transactions | **$82.05** on the 9 August opening; **$0.00** on the 2026-08-16 screenshot |
 | Last statement balance | $7,855.12 |
 | Minimum payment | **$158.27**, due **31 Aug 2026** |
 | Statement closing | **6th of the month** (June 2026 closed on the 8th) |
@@ -1733,11 +1810,11 @@ cash-advance component here, unlike the open question on the TD Cash Back Visa.
 **21.74% is the second-lowest card rate in the household**, behind only the
 Travel Visa's 19.99%. The problem with this card is not its rate.
 
-**Utilisation is 98.2%**, or **99.2%** once the $82.05 of pending transactions is
-counted. Available credit and pending reconcile exactly against the limit:
-$8,000.00 − $7,855.12 − $82.05 = $62.83 [calculated], so pending is already
-netted off the available figure. **A little over $60 of room remains on an
-$8,000 card.**
+**Utilisation on the 2026-08-09 opening was 98.2%**, or **99.2%** once the
+$82.05 of pending transactions is counted. The 2026-08-16 screenshot is a
+fresher dated observation: posted **$8,003.61**, pending **$0.00**,
+available **$0.00**, **$3.61 over** the $8,000 limit. It is not written into
+the 9 August Forecast opening. Available credit is never household cash.
 
 **No Payment Plans.** The Payment Plans tab reads "No Payment Plans to display"
 and "You do not have any recent purchases that are eligible" — so no MBNA

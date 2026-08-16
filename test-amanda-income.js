@@ -704,8 +704,8 @@ console.log('\n=== live Fusion / Hydro / HELOC / card surfaces ===');
     'live Fusion camp is the $786 row with settledOn 2026-08-14');
   ok(tryouts && near(tryouts.amount, 140) && tryouts.settledOn === START,
     'live Fusion tryouts are the $140 row with settledOn 2026-08-14');
-  ok(instalments.length === 3,
-    'the three $500 Fusion season instalments are untouched');
+  ok(instalments.length === 0,
+    'the three stale $500 Fusion season instalments are gone');
   const liveHydro = (live.plan.bills || []).filter(b => /hydro/i.test(b.id + b.label));
   ok(liveHydro.length === 1 && liveHydro[0].id === 'hydro-due-sep1',
     'live plan.bills has the 1 September Hydro dated due');

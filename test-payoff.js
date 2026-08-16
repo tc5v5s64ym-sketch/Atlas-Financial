@@ -202,8 +202,8 @@ ok(banded.precision === 'monthly-equivalent' && !!banded.interestOnlyBand,
 ok(byId.mortgage.precision === 'exact' && byId.mortgage.interestOnlyBand === null
   && byId.heloc.precision === 'exact' && byId.heloc.interestOnlyBand === null,
 'a prime-linked facility is charged monthly for real, so it carries none');
-ok(near(banded.interestOnlyBand.low, 13497 * 0.2199 * 28 / 365)
-  && near(banded.interestOnlyBand.high, 13497 * 0.2199 * 32 / 365),
+ok(near(banded.interestOnlyBand.low, banded.balance * 0.2199 * 28 / 365)
+  && near(banded.interestOnlyBand.high, banded.balance * 0.2199 * 32 / 365),
 'the published band is the daily rate over the shortest and longest real cycle',
 `${money(banded.interestOnlyBand.low)} – ${money(banded.interestOnlyBand.high)}`);
 ok(banded.interestOnlyBand.low < banded.interestOnly
@@ -233,7 +233,7 @@ let worstMonths = 0, worstInterestPct = 0;
 for (const payment of [253.57, 300, 400, 600, 1000]) {
   const level = F.payoffModel(byId.triangle, payment);
   for (let start = 0; start < 12; start++) {
-    const varied = walkVaryingCycles(13497, 21.99, payment, start);
+    const varied = walkVaryingCycles(banded.balance, 21.99, payment, start);
     worstMonths = Math.max(worstMonths, Math.abs(varied.months - level.months));
     worstInterestPct = Math.max(worstInterestPct,
       Math.abs(varied.interest - level.totalInterest) / level.totalInterest * 100);

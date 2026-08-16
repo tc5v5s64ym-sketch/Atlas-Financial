@@ -335,7 +335,7 @@ console.log('\n=== G. reconciliation remains non-writing ===');
     && liveHydro[0].householdObligation === true,
     'live plan has the 1 September Hydro dated due, paid from Amanda, still a household obligation');
   ok(!liveHydro.some(b => b.id === 'hydro-due-now'),
-    'the 14 August Hydro due was not added — settlement status is unknown');
+    'the 14 August Hydro due was not added — owner-confirmed settled');
 
   const result = R.reconcile({
     data: live,
@@ -360,7 +360,7 @@ console.log('\n=== G. reconciliation remains non-writing ===');
   ok(payRow && payRow.status === 'MISSING'
     && payRow.jointCashPool === false
     && payRow.payingAccountLabel === 'Amanda / DEBT&PAYMENTS',
-    'paying-account observation still MISSING while hydro-due-now is absent');
+    'paying-account observation still MISSING while hydro-due-now is absent (Aug. 14 observation label retained)');
 
   const after = hashFile(R.DEFAULT_DATA);
   ok(before === after, 'calling reconcile() does not change data.json');
@@ -419,8 +419,8 @@ console.log('\n=== Plan calendar and 14-day agenda: external vs cash outflow ===
     && /e\.amount > 0 \? 'in' : 'out'/.test(agBody)
     && /e\.amount > 0 \? 'pos' : 'neg'/.test(agBody),
     'ordinary 14-day rows still render as in/out cash movements');
-  ok(/Amanda \/ DEBT&PAYMENTS/.test(planSrc),
-    'Amanda / DEBT&PAYMENTS remains the held-elsewhere payer label');
+  ok(/Amanda \/ TENNIS INCOME/.test(planSrc),
+    'Amanda / TENNIS INCOME is the held-elsewhere payer display label');
 }
 
 console.log('\n=== Deep Dive dated list: outflow vs external vs nonCash ===');
@@ -526,8 +526,8 @@ console.log('\n=== live Fusion / Amanda / HELOC / card surfaces ===');
     'live Fusion camp is the $786 row with settledOn 2026-08-14');
   ok(tryouts && near(tryouts.amount, 140) && tryouts.settledOn === START,
     'live Fusion tryouts are the $140 row with settledOn 2026-08-14');
-  ok(instalments.length === 3,
-    'the three $500 Fusion season instalments are untouched',
+  ok(instalments.length === 0,
+    'the three stale $500 Fusion season instalments are gone',
     String(instalments.length));
   const amanda = live.plan.income.find(s => s.id === 'amandaTransfer');
   ok(amanda && amanda.scenarioMonthly && amanda.scenarioMonthly.expected === 2182,
