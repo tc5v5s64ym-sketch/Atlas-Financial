@@ -190,15 +190,33 @@ amount. It must not be double-counted.
 
 ### Q22. What are the remaining unknown tournament costs, and what are Provincials date/location/cost?
 **Status:** OPEN · **Owner:** Dale + Amanda
-**What we know (2026-08-16, estimates absorbed 2026-08-16):** Current known
-planning list is on `plan.commitments`: Seattle November 2026 owner estimate
-$1,200; Seattle December 2026 owner estimate $1,200; Indio January 2027
-owner estimate $5,260–$5,460; Provincials owner estimate $1,000, timing TBD.
+**What we know (2026-08-16, estimates absorbed onto `plan.commitments` by
+`B95`):** the known major future costs already have **one Plan home**. This
+question does not restate their amounts, timing, or flexibility. Read the
+canonical rows: `fusion-season`, `burrards-team-fees`, `warriors`,
+`seattle-nov`, `seattle-dec`, `christmas-2026`, `downstairs-couch`,
+`exterior-painting`, `indio-tournament`, `provincials`. Annual irregulars
+already supported by Atlas evidence stay where they already live: home
+insurance and vehicle maintenance on `plan.commitments`; property tax as
+the existing reserve. Do not copy those values here.
+
 There are no other specifically known tournaments. Tacoma is not on the
-current known list. Exact due dates, Indio's point amount, and Provincials
-location/date remain unknown.
+current known list.
+
+Still unanswered, and only these:
+- exact due dates for the undated rows
+- a point amount for Indio (`indio-tournament` is still a range)
+- Provincials location and date (`provincials` timing is TBD; the cost
+  estimate lives on that row)
+
+ON TRACK / AT RISK / FUNDING GAP waits on `B94` and applies to these
+**major future plans**, not to individual transactions or budget
+categories. Ordinary spending matters through its aggregate effect on the
+household's ability to fund those plans.
 **What the answer changes:** A dated cash event, or collapsing a range to
 one amount, only after evidence exists. Do not fabricate dates or midpoints.
+A later estimate change is an edit to the existing `plan.commitments` row
+(`B95`), not a new question and not a new backlog item.
 
 ### Q25. How much of Amanda’s TENNIS INCOME balance is genuinely household-available after coaching, business, and pass-through obligations?
 **Status:** OPEN · **Owner:** Dale + Amanda
