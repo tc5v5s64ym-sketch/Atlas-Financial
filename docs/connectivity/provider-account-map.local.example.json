@@ -1,0 +1,55 @@
+{
+  "schema": "atlas-provider-account-map/v1",
+  "owns": "Owner-observed Lunch Money provider-account-id to Atlas canonical-id mapping for this machine only. Copy to provider-account-map.local.json and fill the real IDs. That local file is gitignored.",
+  "does_not_own": "Financial values, permission to write data.json, automatic account creation, Forecast, or synthetic fixture IDs.",
+  "provider": "lunchmoney",
+  "scope": "live",
+  "storage": "local",
+  "notes": [
+    "Identity is providerAccountId, never the display name.",
+    "Mapping does not authorize a canonical write.",
+    "Leave DEBT&PAYMENTS and SAVINGS-DONT TOUCH unmapped. Do not give them atlasRole household-cash."
+  ],
+  "mappings": [
+    {
+      "providerAccountId": "YOUR_BILLS_ACCOUNT_ID",
+      "canonical": { "collection": "cash", "id": "chequing-a" },
+      "atlasRole": "household-cash"
+    },
+    {
+      "providerAccountId": "YOUR_WEEKLY_SPENDING_ID",
+      "canonical": { "collection": "cash", "id": "chequing-b" },
+      "atlasRole": "household-cash"
+    },
+    {
+      "providerAccountId": "YOUR_EMERGENCY_SAVING_ID",
+      "canonical": { "collection": "cash", "id": "savings" },
+      "atlasRole": "household-cash"
+    },
+    {
+      "providerAccountId": "YOUR_PERSONAL_CREDIT_CARD_ID",
+      "canonical": { "collection": "debts", "id": "tdcc" },
+      "atlasRole": "revolving-credit"
+    },
+    {
+      "providerAccountId": "YOUR_CASH_BACK_VISA_ID",
+      "canonical": { "collection": "debts", "id": "cashback" },
+      "atlasRole": "revolving-credit"
+    },
+    {
+      "providerAccountId": "YOUR_TRAVEL_VISA_ID",
+      "canonical": { "collection": "debts", "id": "travelvisa" },
+      "atlasRole": "revolving-credit"
+    },
+    {
+      "providerAccountId": "YOUR_HELOC_ID",
+      "canonical": { "collection": "debts", "id": "heloc" },
+      "atlasRole": "heloc"
+    },
+    {
+      "providerAccountId": "YOUR_MORTGAGE_ID",
+      "canonical": { "collection": "debts", "id": "mortgage" },
+      "atlasRole": "mortgage"
+    }
+  ]
+}

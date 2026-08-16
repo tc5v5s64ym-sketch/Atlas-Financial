@@ -70,6 +70,7 @@ const suites = [
   ['local main sync safety contract', 'test-sync-main.js'],
   ['failed-check auto-repair contract', 'test-atlas-test-repair.js'],
   ['read-only provider observation (connectivity spike)', 'test-provider-observe.js'],
+  ['live pending observations (B91 / B78)', 'test-pending-observe.js'],
 ];
 
 let failed = [];

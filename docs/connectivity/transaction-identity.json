@@ -1,0 +1,21 @@
+{
+  "schema": "atlas-provider-transaction-identity/v1",
+  "owns": "Unambiguous provider-transaction to Forecast-event identity. A match requires payee pattern + mapped Atlas account + scheduled date. Amount similarity is not identity.",
+  "does_not_own": "Permission to write plan.opening or representedEvents onto data.json, pending-to-posted proof, or a second event engine.",
+  "billPaymentPayees": [
+    "Bell Mobility",
+    "Bell",
+    "Shaw",
+    "Fortis",
+    "Telus"
+  ],
+  "rules": [
+    {
+      "eventId": "payroll",
+      "payeePattern": "SEASPAN",
+      "atlasAccountId": "chequing-a",
+      "direction": "credit",
+      "note": "Seaspan is already on the live payroll label. Do not match a same-day deposit by amount alone."
+    }
+  ]
+}

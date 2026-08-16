@@ -717,6 +717,13 @@ exist.
   payment. Unknown pending is not $0. Limit and available credit are
   never household cash. A scheduled payment does not reduce current
   exposure. Live card canonical state is unchanged.
+  **Pending-transaction slice — not completion.** Mapped Lunch Money
+  pending card transactions become pending observations. A 90-day
+  presumed-settled treatment applies only to pending bill/payment
+  effects for current forecasting. Same `providerTransactionId`
+  pending→posted is collapsed in fixtures. Live `data.json` is not
+  written. The Bell Mobility transaction remains pending and is not
+  a completed B78 proof.
   **D7 slice — not completion.** Posting observations distinguish a
   scheduled occurrence from a posted one and compare that fact to
   `plan.opening.representedEvents`. Forecast remains the schedule

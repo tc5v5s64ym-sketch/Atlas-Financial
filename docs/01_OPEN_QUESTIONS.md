@@ -274,6 +274,10 @@ semantics rather than guessing.
 **What we know:** The Aug. 14 payday session found both cards over limit, with
 posted balances known and pending unknown. Posted, pending, limit, available
 credit, and confirmed payment are distinct; available credit is never cash.
+A 2026-08-16 Lunch Money observation recorded Travel Visa posted $862.68 and
+one pending Bell Mobility debit of $250.00. If posted excludes pending, the
+inferred exposure is $1,112.68 against the $1,100 limit. That is observation
+evidence, not a canonical write, and it does not answer Cash Back pending.
 **What the answer changes:** Exact card action only when a refresh needs it.
 Unknown pending is allowed until then; it must not be treated as zero.
 

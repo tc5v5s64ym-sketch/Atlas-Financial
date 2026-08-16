@@ -16,12 +16,18 @@ const R = require('./reconcile.js');
 
 const ROOT = path.join(__dirname, '..');
 const DEFAULT_MAP = path.join(ROOT, 'docs', 'connectivity', 'provider-account-map.json');
+const LOCAL_MAP = path.join(ROOT, 'docs', 'connectivity', 'provider-account-map.local.json');
 const FIXTURE_MAP = path.join(ROOT, 'docs', 'connectivity', 'fixtures', 'provider-account-map.json');
+const DEFAULT_IDENTITY = path.join(ROOT, 'docs', 'connectivity', 'transaction-identity.json');
 const DEFAULT_DATA = path.join(ROOT, 'data.json');
 const LIVE_BASE = 'https://api.lunchmoney.dev/v2';
 const TOKEN_ENV = 'LUNCHMONEY_ACCESS_TOKEN';
 const CASH_ROLES = new Set(['household-cash']);
 const CREDIT_ROLES = new Set(['revolving-credit']);
+const CURRENT_STATE_HISTORY_DAYS = 14;
+const RECONCILE_HISTORY_DAYS = 120;
+const BILL_PAYMENT_PENDING_DAYS = 90;
+const Forecast = require('../public/forecast.js');
 
 function fail(message) {
   const err = new Error(message);
@@ -30,7 +36,10 @@ function fail(message) {
 }
 
 function parseArgs(argv) {
-  const out = { provider: null, fixture: null, live: false, map: null, data: DEFAULT_DATA };
+  const out = {
+    provider: null, fixture: null, live: false, map: null,
+    data: DEFAULT_DATA, mode: 'current-state', historyDays: null,
+  };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--provider') out.provider = argv[++i];
@@ -38,14 +47,28 @@ function parseArgs(argv) {
     else if (a === '--live') out.live = true;
     else if (a === '--map') out.map = argv[++i];
     else if (a === '--data') out.data = argv[++i];
+    else if (a === '--mode') out.mode = argv[++i];
+    else if (a === '--history-days') out.historyDays = Number(argv[++i]);
     else if (a === '--help' || a === '-h') out.help = true;
   }
   return out;
 }
 
+function historyDaysFromArgs(args) {
+  if (args && args.historyDays != null && isFinite(args.historyDays)) {
+    return Math.max(1, Math.floor(args.historyDays));
+  }
+  if (args && args.mode === 'reconcile') return RECONCILE_HISTORY_DAYS;
+  return CURRENT_STATE_HISTORY_DAYS;
+}
+
 function resolveMapPath(args) {
   if (args.map) return args.map;
-  return args.live ? DEFAULT_MAP : FIXTURE_MAP;
+  if (args.live) {
+    if (fs.existsSync(LOCAL_MAP)) return LOCAL_MAP;
+    return DEFAULT_MAP;
+  }
+  return FIXTURE_MAP;
 }
 
 function assertLiveMap(mapDoc) {
@@ -108,6 +131,9 @@ function normalizeLunchMoneyTransaction(raw) {
     payee: raw.payee || raw.original_name || null,
     pending: raw.is_pending === true,
     status: raw.status || null,
+    kind: raw.kind || null,
+    contradictoryEvidence: raw.contradictoryEvidence === true,
+    confirmedSettlement: raw.confirmedSettlement === true,
   };
 }
 
@@ -176,19 +202,21 @@ function accountsFromLivePayloads(plaid, manuals) {
   );
 }
 
-function lunchMoneyTransactionsUrl(now) {
+function lunchMoneyTransactionsUrl(now, historyDays) {
+  const days = historyDays == null ? CURRENT_STATE_HISTORY_DAYS : Number(historyDays);
+  const span = isFinite(days) && days > 0 ? Math.floor(days) : CURRENT_STATE_HISTORY_DAYS;
   const txUrl = new URL(`${LIVE_BASE}/transactions`);
   const end = dateOnly(now);
-  const start = dateOnly(new Date(Date.parse(now) - 14 * 86400000).toISOString());
+  const start = dateOnly(new Date(Date.parse(now) - span * 86400000).toISOString());
   txUrl.searchParams.set('start_date', start);
   txUrl.searchParams.set('end_date', end);
   txUrl.searchParams.set('include_pending', 'true');
   return txUrl;
 }
 
-async function fetchLunchMoneyLive(token, now) {
+async function fetchLunchMoneyLive(token, now, historyDays) {
   if (!token) fail(`${TOKEN_ENV} is not set. Live observation refuses to run.`);
-  const txUrl = lunchMoneyTransactionsUrl(now);
+  const txUrl = lunchMoneyTransactionsUrl(now, historyDays);
   await httpsGetJson(new URL(`${LIVE_BASE}/me`), token);
   const plaid = await tryGetJson(new URL(`${LIVE_BASE}/plaid_accounts`), token);
   let manuals = await tryGetJson(new URL(`${LIVE_BASE}/manual_accounts`), token);
@@ -200,6 +228,323 @@ async function fetchLunchMoneyLive(token, now) {
     accounts: accountsFromLivePayloads(plaid, manuals),
     transactions: (txPayload && txPayload.transactions) || [],
   };
+}
+
+function round2(v) {
+  return Math.round(Number(v) * 100) / 100;
+}
+
+function parseIsoDate(value) {
+  const d = dateOnly(value);
+  if (!d || !/^\d{4}-\d{2}-\d{2}$/.test(d)) return null;
+  return d;
+}
+
+function calendarDaysBetween(from, to) {
+  const a = parseIsoDate(from);
+  const b = parseIsoDate(to);
+  if (!a || !b) return null;
+  const ms = Date.parse(b + 'T00:00:00Z') - Date.parse(a + 'T00:00:00Z');
+  if (!isFinite(ms)) return null;
+  return Math.round(ms / 86400000);
+}
+
+// Lunch Money v2: positive amount = debit, negative amount = credit.
+// That sign is fixed and does not follow the user's display preference.
+function lunchMoneyDebitAmount(amount) {
+  if (amount == null || amount === '' || !isFinite(Number(amount))) return null;
+  return Number(amount);
+}
+
+function billPaymentPayees(plan, extra) {
+  const labels = [];
+  const push = value => {
+    if (value == null || value === '') return;
+    const s = String(value);
+    if (!labels.some(x => x.toLowerCase() === s.toLowerCase())) labels.push(s);
+  };
+  for (const row of [].concat(
+    extra || [],
+    (plan && plan.bills) || [],
+    (plan && plan.obligations) || [],
+    (plan && plan.commitments) || []
+  )) {
+    if (typeof row === 'string') push(row);
+    else if (row && row.label) push(row.label);
+  }
+  return labels;
+}
+
+function isBillOrPaymentTransaction(tx, plan, extraPayees) {
+  if (!tx) return false;
+  if (tx.kind === 'bill-payment' || tx.kind === 'payment') return true;
+  const payee = tx.payee ? String(tx.payee).toLowerCase() : '';
+  if (!payee) return false;
+  if (/\b(bill payment|bill pay)\b/.test(payee)) return true;
+  return billPaymentPayees(plan, extraPayees).some((label) => {
+    const l = String(label).toLowerCase();
+    return payee.includes(l) || l.includes(payee);
+  });
+}
+
+function pendingForecastTreatment(tx, asOf, opts) {
+  const historicalStatus = tx && tx.pending ? 'pending' : 'posted';
+  if (!tx || !tx.pending) {
+    return {
+      treatment: 'confirmed-settled',
+      historicalStatus,
+      confidence: 'confirmed',
+      conflict: false,
+    };
+  }
+  if (tx.contradictoryEvidence === true || (opts && opts.contradictoryEvidence === true)) {
+    return {
+      treatment: 'unresolved',
+      historicalStatus: 'pending',
+      confidence: 'unresolved',
+      conflict: true,
+    };
+  }
+  if (tx.confirmedSettlement === true || (opts && opts.confirmedSettlement === true)) {
+    return {
+      treatment: 'confirmed-settled',
+      historicalStatus: 'pending',
+      confidence: 'confirmed',
+      conflict: false,
+    };
+  }
+  const age = calendarDaysBetween(tx.date, asOf);
+  const billOrPayment = isBillOrPaymentTransaction(
+    tx,
+    opts && opts.plan,
+    opts && opts.billPaymentPayees
+  );
+  if (billOrPayment && age != null && age > BILL_PAYMENT_PENDING_DAYS) {
+    return {
+      treatment: 'presumed-settled-for-current-forecast',
+      historicalStatus: 'pending',
+      confidence: 'inferred',
+      conflict: false,
+      ageDays: age,
+    };
+  }
+  return {
+    treatment: 'unresolved',
+    historicalStatus: 'pending',
+    confidence: 'unresolved',
+    conflict: false,
+    ageDays: age,
+  };
+}
+
+function collapseByProviderTransactionId(transactions) {
+  const byId = new Map();
+  for (const tx of transactions || []) {
+    const id = tx && tx.providerTransactionId;
+    if (!id) continue;
+    const list = byId.get(id) || [];
+    list.push(tx);
+    byId.set(id, list);
+  }
+  const collapsed = [];
+  const identityEvidence = [];
+  for (const [id, list] of byId) {
+    const posted = list.filter(t => t.pending !== true);
+    const pending = list.filter(t => t.pending === true);
+    if (posted.length && pending.length) {
+      const winner = posted[0];
+      collapsed.push(Object.assign({}, winner, {
+        pending: false,
+        priorPending: true,
+        identity: id,
+      }));
+      identityEvidence.push({
+        providerTransactionId: id,
+        transition: 'pending-to-posted',
+        pendingCount: pending.length,
+        postedCount: posted.length,
+        ghostPending: false,
+        doubleCounted: false,
+      });
+    } else {
+      collapsed.push(...list);
+    }
+  }
+  return { transactions: collapsed, identityEvidence };
+}
+
+function pendingComponentsForCard(transactions, mapping, asOf, opts) {
+  const accountId = mapping && mapping.providerAccountId != null
+    ? String(mapping.providerAccountId) : null;
+  if (!accountId || !CREDIT_ROLES.has(mapping.atlasRole)) return [];
+  const components = [];
+  for (const tx of transactions || []) {
+    if (String(tx.providerAccountId) !== accountId) continue;
+    if (tx.pending !== true) continue;
+    const amount = lunchMoneyDebitAmount(tx.amount);
+    if (amount == null) continue;
+    const treatment = pendingForecastTreatment(tx, asOf, opts);
+    components.push({
+      providerTransactionId: tx.providerTransactionId,
+      date: tx.date,
+      payee: tx.payee,
+      amount,
+      sign: amount >= 0 ? 'debit' : 'credit',
+      pending: true,
+      settlementTreatment: treatment.treatment,
+      historicalStatus: treatment.historicalStatus,
+      confidence: treatment.confidence,
+      conflict: treatment.conflict === true,
+      contributesToCurrentPending: treatment.treatment === 'unresolved' && treatment.conflict !== true,
+    });
+  }
+  return components;
+}
+
+function netCurrentPending(components) {
+  let sum = 0;
+  let unresolved = 0;
+  for (const c of components || []) {
+    if (!c.contributesToCurrentPending) continue;
+    unresolved += 1;
+    sum += Number(c.amount);
+  }
+  return { amount: round2(sum), unresolved };
+}
+
+function inferredCardState(posted, pending, limit) {
+  const postedN = posted == null || !isFinite(Number(posted)) ? null : Number(posted);
+  const pendingN = pending == null || !isFinite(Number(pending)) ? null : Number(pending);
+  const limitN = limit == null || !isFinite(Number(limit)) ? null : Number(limit);
+  if (postedN == null || pendingN == null) {
+    return {
+      posted: postedN,
+      pending: pendingN,
+      exposure: null,
+      limit: limitN,
+      overLimit: null,
+      kind: 'inference-from-posted-plus-pending',
+      householdCash: 0,
+      unknown: true,
+    };
+  }
+  const exposure = round2(postedN + pendingN);
+  const overLimit = limitN == null ? null : round2(Math.max(0, exposure - limitN));
+  return {
+    posted: postedN,
+    pending: pendingN,
+    exposure,
+    limit: limitN,
+    overLimit,
+    kind: 'inference-from-posted-plus-pending',
+    householdCash: 0,
+    unknown: false,
+  };
+}
+
+function pendingObservationsFromTransactions(input) {
+  const mapDoc = input.accountMap;
+  const asOf = dateOnly(input.asOf || input.fetchedAt);
+  const opts = {
+    plan: input.plan,
+    billPaymentPayees: input.billPaymentPayees,
+  };
+  const out = [];
+  for (const mapping of (mapDoc && mapDoc.mappings) || []) {
+    if (!CREDIT_ROLES.has(mapping.atlasRole) || !mapping.canonical || !mapping.canonical.id) {
+      continue;
+    }
+    const components = pendingComponentsForCard(
+      input.transactions, mapping, asOf, opts
+    );
+    if (!components.length) continue;
+    const net = netCurrentPending(components);
+    const allSettledForForecast = net.unresolved === 0 && components.every(c =>
+      c.settlementTreatment === 'presumed-settled-for-current-forecast'
+      || c.settlementTreatment === 'confirmed-settled');
+    const unknown = !allSettledForForecast && components.length > 0
+      && components.every(c => c.conflict);
+    out.push({
+      observationId: `lm-${mapping.providerAccountId}-pending`,
+      fact: 'pending',
+      cardId: mapping.canonical.id,
+      provider: 'lunchmoney',
+      providerAccountId: String(mapping.providerAccountId),
+      accountLabel: mapping.canonical.id,
+      evidenceValue: unknown ? null : net.amount,
+      observedAsOf: asOf,
+      evidenceDate: asOf,
+      unknown: !!unknown,
+      balanceIncludesPending: false,
+      canonical: { collection: 'debts', id: mapping.canonical.id, field: 'pending' },
+      source: 'provider-observe:lunchmoney-transactions',
+      note: allSettledForForecast
+        ? 'Aged pending bill/payment excluded from current pending; historical status remains pending.'
+        : 'Pending exposure from mapped provider transactions. Posted balance is a separate fact. Not household cash.',
+      components,
+    });
+  }
+  return out;
+}
+
+function payeeMatches(payee, pattern) {
+  if (!payee || !pattern) return false;
+  return String(payee).toLowerCase().includes(String(pattern).toLowerCase());
+}
+
+function scheduledEventsOn(plan, date) {
+  if (!plan || !date) return [];
+  const slim = {
+    income: plan.income || [],
+    obligations: plan.obligations || [],
+    bills: plan.bills || [],
+    commitments: plan.commitments || [],
+    startingCash: plan.startingCash,
+  };
+  return Forecast.expandEvents(slim, date, date, {}).filter(e => e && e.kind !== 'noncash');
+}
+
+function representedEventCandidates(input) {
+  const rules = (input.identityRules || []).filter(r => r && r.eventId && r.payeePattern);
+  if (!rules.length) return [];
+  const mapDoc = input.accountMap;
+  const candidates = [];
+  const seenEvent = new Set();
+  const eventHits = new Map();
+  for (const tx of input.transactions || []) {
+    if (tx.pending === true) continue;
+    const mapping = mappingFor(mapDoc, tx.providerAccountId);
+    if (!mapping || !mapping.canonical || !mapping.canonical.id) continue;
+    const amount = lunchMoneyDebitAmount(tx.amount);
+    for (const rule of rules) {
+      if (rule.atlasAccountId && mapping.canonical.id !== rule.atlasAccountId) continue;
+      if (!payeeMatches(tx.payee, rule.payeePattern)) continue;
+      if (rule.direction === 'credit' && !(amount < 0)) continue;
+      if (rule.direction === 'debit' && !(amount > 0)) continue;
+      const scheduled = scheduledEventsOn(input.plan, tx.date)
+        .filter(e => e.id === rule.eventId && e.date === tx.date);
+      if (scheduled.length !== 1) continue;
+      const key = rule.eventId + '@' + tx.date;
+      const list = eventHits.get(key) || [];
+      list.push({
+        id: rule.eventId,
+        date: tx.date,
+        providerTransactionId: tx.providerTransactionId,
+        providerAccountId: tx.providerAccountId,
+        payee: tx.payee,
+        identity: 'payee+account+date',
+        amountNotUsed: true,
+      });
+      eventHits.set(key, list);
+    }
+  }
+  for (const [key, hits] of eventHits) {
+    if (hits.length !== 1) continue;
+    if (seenEvent.has(key)) continue;
+    seenEvent.add(key);
+    candidates.push(hits[0]);
+  }
+  return candidates;
 }
 
 function observationsFromMappedAccount(account, mapping, fetchedAt) {
@@ -285,6 +630,8 @@ function observe(input) {
   const mapped = [];
   const unmapped = [];
   const observations = [];
+  const postedByCard = new Map();
+  const limitByCard = new Map();
   for (const account of normalized.accounts) {
     const mapping = mappingFor(mapDoc, account.providerAccountId);
     if (!mapping || !mapping.canonical || !mapping.canonical.id) {
@@ -302,8 +649,61 @@ function observe(input) {
       collection: mapping.canonical.collection,
       atlasRole: mapping.atlasRole,
     });
-    observations.push(...observationsFromMappedAccount(account, mapping, normalized.fetchedAt));
+    const accountObs = observationsFromMappedAccount(account, mapping, normalized.fetchedAt);
+    observations.push(...accountObs);
+    if (CREDIT_ROLES.has(mapping.atlasRole)) {
+      if (account.balance != null) postedByCard.set(mapping.canonical.id, account.balance);
+      if (account.limit != null) limitByCard.set(mapping.canonical.id, account.limit);
+    }
   }
+  const collapsed = collapseByProviderTransactionId(normalized.transactions);
+  const identityRules = input.identityRules
+    || ((input.identity && input.identity.rules) || []);
+  const billPaymentPayees = input.billPaymentPayees
+    || ((input.identity && input.identity.billPaymentPayees) || []);
+  const pendingObs = pendingObservationsFromTransactions({
+    transactions: collapsed.transactions,
+    accountMap: mapDoc,
+    asOf: dateOnly(normalized.fetchedAt),
+    fetchedAt: normalized.fetchedAt,
+    plan: input.data && input.data.plan,
+    billPaymentPayees,
+  });
+  observations.push(...pendingObs);
+  const cardInferences = [];
+  for (const obs of pendingObs) {
+    const inference = inferredCardState(
+      postedByCard.has(obs.cardId) ? postedByCard.get(obs.cardId) : null,
+      obs.unknown ? null : obs.evidenceValue,
+      limitByCard.has(obs.cardId) ? limitByCard.get(obs.cardId) : null
+    );
+    cardInferences.push(Object.assign({ cardId: obs.cardId }, inference));
+  }
+  for (const [cardId, posted] of postedByCard) {
+    if (cardInferences.some(c => c.cardId === cardId)) continue;
+    if (!limitByCard.has(cardId)) continue;
+    cardInferences.push(Object.assign({ cardId }, inferredCardState(posted, null, limitByCard.get(cardId))));
+  }
+  const represented = representedEventCandidates({
+    transactions: collapsed.transactions,
+    accountMap: mapDoc,
+    plan: input.data && input.data.plan,
+    identityRules,
+  });
+  const postingObservations = represented.map(c => ({
+    observationId: `lm-${c.providerTransactionId}-posting`,
+    fact: 'posting',
+    eventId: c.id,
+    accountLabel: c.payee,
+    scheduledDate: c.date,
+    posted: true,
+    unknown: false,
+    observedAsOf: dateOnly(normalized.fetchedAt),
+    evidenceDate: dateOnly(normalized.fetchedAt),
+    canonical: { collection: 'representedEvents', id: c.id, date: c.date },
+    source: 'provider-observe:lunchmoney-transactions',
+    note: 'Identity is payee + mapped account + scheduled date. Amount similarity was not used.',
+  }));
   const compareObs = observations.filter(o => !R.CARD_FACTS.has(o.fact));
   const cardObs = observations.filter(o => R.CARD_FACTS.has(o.fact));
   const result = R.reconcile({
@@ -311,6 +711,7 @@ function observe(input) {
     map: input.balanceMap || { mappings: [] },
     observations: compareObs,
     cardObservations: cardObs,
+    postingObservations,
   });
   return {
     writesCanonicalState: false,
@@ -319,28 +720,49 @@ function observe(input) {
     mapped,
     unmapped,
     transactions: normalized.transactions,
+    collapsedTransactions: collapsed.transactions,
+    identityEvidence: collapsed.identityEvidence,
     observations,
     spendableCash: spendableCashFromObservations(observations),
     cardCapacityIsCash: R.householdCashFromCardCapacity(),
+    cardInferences,
+    representedEventCandidates: represented,
     reconciliation: result,
   };
+}
+
+function loadIdentity(file) {
+  if (!file || !fs.existsSync(file)) return { rules: [], billPaymentPayees: [] };
+  return loadJson(file);
 }
 
 async function run(argv) {
   const args = parseArgs(argv);
   if (args.help) {
-    process.stdout.write('Usage: node scripts/provider-observe.js --provider lunchmoney --fixture <file>\n');
+    process.stdout.write(
+      'Usage: node scripts/provider-observe.js --provider lunchmoney --fixture <file>\n'
+      + '       node scripts/provider-observe.js --provider lunchmoney --live [--mode current-state|reconcile] [--history-days N]\n'
+    );
     return 0;
   }
   if (args.provider !== 'lunchmoney') fail('Only --provider lunchmoney is implemented in this spike.');
   if (args.live && args.fixture) fail('Use either --fixture or --live, not both.');
   if (!args.live && !args.fixture) fail('Pass --fixture <file> or --live.');
+  if (args.mode && args.mode !== 'current-state' && args.mode !== 'reconcile') {
+    fail('Mode must be current-state or reconcile.');
+  }
   const accountMap = loadJson(resolveMapPath(args));
   if (args.live) assertLiveMap(accountMap);
   const data = loadJson(args.data);
+  const identity = loadIdentity(DEFAULT_IDENTITY);
+  const historyDays = historyDaysFromArgs(args);
   let payload;
   if (args.live) {
-    payload = await fetchLunchMoneyLive(process.env[TOKEN_ENV], new Date().toISOString());
+    payload = await fetchLunchMoneyLive(
+      process.env[TOKEN_ENV],
+      new Date().toISOString(),
+      historyDays
+    );
   } else {
     payload = loadJson(args.fixture);
   }
@@ -349,6 +771,7 @@ async function run(argv) {
     payload,
     accountMap,
     data,
+    identity,
     fetchedAt: payload.fetchedAt,
   });
   process.stdout.write(JSON.stringify(report, null, 2) + '\n');
@@ -359,12 +782,26 @@ const api = {
   TOKEN_ENV,
   LIVE_BASE,
   DEFAULT_MAP,
+  LOCAL_MAP,
   FIXTURE_MAP,
+  DEFAULT_IDENTITY,
+  CURRENT_STATE_HISTORY_DAYS,
+  RECONCILE_HISTORY_DAYS,
+  BILL_PAYMENT_PENDING_DAYS,
   parseArgs,
+  historyDaysFromArgs,
   resolveMapPath,
   assertLiveMap,
   mappingFor,
   lunchMoneyTransactionsUrl,
+  lunchMoneyDebitAmount,
+  calendarDaysBetween,
+  isBillOrPaymentTransaction,
+  pendingForecastTreatment,
+  collapseByProviderTransactionId,
+  pendingObservationsFromTransactions,
+  inferredCardState,
+  representedEventCandidates,
   normalizeLunchMoneyAccount,
   normalizeLunchMoneyTransaction,
   normalizeLunchMoneyPayload,

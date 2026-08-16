@@ -1,0 +1,139 @@
+{
+  "provider": "lunchmoney",
+  "fetchedAt": "2026-08-16T18:00:00.000Z",
+  "source": "Sanitised acceptance fixture shaped like the 2026-08-16 live Lunch Money/Plaid pull. Fixture account IDs 3001–3008 are not live provider IDs. providerTransactionId 2461295531 is the owner-preserved Bell Mobility identity for later pending-to-posted proof.",
+  "accounts": [
+    {
+      "id": 3001,
+      "name": "BILLS ACCOUNT",
+      "type": "cash",
+      "subtype": "checking",
+      "institution_name": "TD Canada Trust",
+      "balance": 1320.13,
+      "currency": "cad",
+      "updated_at": "2026-08-16T17:55:00.000Z"
+    },
+    {
+      "id": 3002,
+      "name": "WEEKLY SPENDING",
+      "type": "cash",
+      "subtype": "checking",
+      "institution_name": "TD Canada Trust",
+      "balance": 932.05,
+      "currency": "cad",
+      "updated_at": "2026-08-16T17:55:00.000Z"
+    },
+    {
+      "id": 3003,
+      "name": "EMERGENCY SAVING",
+      "type": "cash",
+      "subtype": "savings",
+      "institution_name": "TD Canada Trust",
+      "balance": 0.58,
+      "currency": "cad",
+      "updated_at": "2026-08-16T17:55:00.000Z"
+    },
+    {
+      "id": 3004,
+      "name": "PERSONAL CREDIT CARD",
+      "type": "credit",
+      "subtype": "credit_card",
+      "institution_name": "TD Canada Trust",
+      "balance": 1705.94,
+      "credit_limit": 2000,
+      "currency": "cad",
+      "updated_at": "2026-08-16T17:55:00.000Z"
+    },
+    {
+      "id": 3005,
+      "name": "TD CASH BACK VISA* CARD",
+      "type": "credit",
+      "subtype": "credit_card",
+      "institution_name": "TD Canada Trust",
+      "balance": 4799.43,
+      "credit_limit": 5000,
+      "currency": "cad",
+      "updated_at": "2026-08-16T17:55:00.000Z"
+    },
+    {
+      "id": 3006,
+      "name": "TRAVEL VISA",
+      "type": "credit",
+      "subtype": "credit_card",
+      "institution_name": "TD Canada Trust",
+      "balance": 862.68,
+      "credit_limit": 1100,
+      "currency": "cad",
+      "updated_at": "2026-08-16T17:55:00.000Z"
+    },
+    {
+      "id": 3007,
+      "name": "LINE OF CREDIT - HOME EQUITY",
+      "type": "loan",
+      "subtype": "line_of_credit",
+      "institution_name": "TD Canada Trust",
+      "balance": 200486.16,
+      "currency": "cad",
+      "updated_at": "2026-08-16T17:55:00.000Z"
+    },
+    {
+      "id": 3008,
+      "name": "MORTGAGE",
+      "type": "loan",
+      "subtype": "mortgage",
+      "institution_name": "TD Canada Trust",
+      "balance": 545188.30,
+      "currency": "cad",
+      "updated_at": "2026-08-16T17:55:00.000Z"
+    },
+    {
+      "id": 3997,
+      "name": "DEBT&PAYMENTS",
+      "type": "cash",
+      "subtype": "checking",
+      "institution_name": "TD Canada Trust",
+      "balance": 798.37,
+      "currency": "cad",
+      "updated_at": "2026-08-16T17:55:00.000Z"
+    },
+    {
+      "id": 3996,
+      "name": "SAVINGS-DONT TOUCH",
+      "type": "cash",
+      "subtype": "savings",
+      "institution_name": "TD Canada Trust",
+      "balance": 1000.00,
+      "currency": "cad",
+      "updated_at": "2026-08-16T17:55:00.000Z"
+    },
+    {
+      "id": 3999,
+      "name": "Unmapped Extra",
+      "type": "cash",
+      "institution_name": "Unknown",
+      "balance": 50.00,
+      "currency": "cad",
+      "updated_at": "2026-08-16T17:55:00.000Z"
+    }
+  ],
+  "transactions": [
+    {
+      "id": 2461295531,
+      "account_id": 3006,
+      "date": "2026-08-14",
+      "amount": 250.00,
+      "payee": "Bell Mobility",
+      "is_pending": true,
+      "status": "unreviewed"
+    },
+    {
+      "id": 88011,
+      "account_id": 3001,
+      "date": "2026-08-14",
+      "amount": -4274.98,
+      "payee": "SEASPAN PAYROLL",
+      "is_pending": false,
+      "status": "reviewed"
+    }
+  ]
+}

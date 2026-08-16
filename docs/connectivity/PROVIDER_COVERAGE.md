@@ -31,8 +31,23 @@ Official: https://lunchmoney.dev/ and https://lunchmoney.dev/v2/docs
 - Personal Bearer token from https://my.lunchmoney.app/developers. No sales call.
 - Official v2 (open alpha; official SDK names GET `/me`, `/plaid_accounts`,
   `/manual_accounts`, `/transactions`). Atlas implements **GET only**.
-- Transactions expose `id`. Official docs mention `is_pending`; pending→posted
-  replacement rules remain **UNKNOWN / MUST TEST**.
+- Transactions expose `id`. Official v2 sign: **positive = debit, negative =
+  credit**. Official docs mention `is_pending`. Same `id` pending+posted is
+  treated as one economic transaction (posted wins; no ghost pending). A
+  real household pending→posted replacement on this budget is still
+  **UNKNOWN / MUST TEST** until Bell Mobility `2461295531` posts.
+- Live GET `/transactions` is windowed: `--mode current-state` is 14 days;
+  `--mode reconcile` is 120 days so the 90-day pending-bill rule can see
+  aged rows. Override with `--history-days N`. Do not fetch two years on
+  every current-state call.
+- A pending bill/payment older than 90 days may be **presumed settled for
+  current forecasting only** (`confidence: inferred`). Historical provider
+  status stays pending. That is not a universal STALE threshold.
+- Real live `providerAccountId` values stay in gitignored
+  `docs/connectivity/provider-account-map.local.json`. They are stable
+  household account identifiers and are not committed. Copy
+  `provider-account-map.local.example.json`. Leave DEBT&PAYMENTS and
+  SAVINGS-DONT TOUCH unmapped.
 - Dale connects institutions **inside Lunch Money**. Atlas would only hold
   `LUNCHMONEY_ACCESS_TOKEN`.
 - Credit limit, available credit, HELOC/mortgage subtypes, and Canadian
