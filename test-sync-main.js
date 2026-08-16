@@ -12,6 +12,16 @@ const { sourceText } = require('./test-source-text');
 
 const src = sourceText(fs.readFileSync(path.join(__dirname, 'scripts', 'sync-main.ps1'), 'utf8'));
 
+function executablePowerShell(ps1) {
+  return ps1
+    .replace(/<#[\s\S]*?#>/g, '')
+    .replace(/^\s*#.*$/gm, '');
+}
+
+function hasGitBranchSwitch(ps1) {
+  return /\bgit\b[^\n]*\b(?:switch|checkout)\b/.test(executablePowerShell(ps1));
+}
+
 let failures = 0;
 const ok = (cond, label, detail = '') => {
   if (!cond) failures++;
@@ -22,7 +32,9 @@ console.log('=== sync-main.ps1 safety contract ===');
 ok(src.includes('merge --ff-only'), 'fast-forwards with --ff-only');
 ok(src.includes('git fetch origin --prune'), 'fetches and prunes');
 ok(/refuse to touch a dirty worktree|Cannot fast-forward main: dirty/.test(src), 'refuses a dirty main worktree');
-ok(/leave the current branch alone if it is not main/.test(src), 'does not switch off a feature branch');
+ok(!hasGitBranchSwitch(src), 'does not switch off a feature branch');
+ok(hasGitBranchSwitch(`${src}\n& git switch main\n`), 'detects an injected git switch in executable statements');
+ok(hasGitBranchSwitch(`${src}\n& git checkout main\n`), 'detects an injected git checkout in executable statements');
 ok(!/\bgit\s+reset\s+--hard/.test(src), 'never git reset --hard');
 ok(!/push\s+--force|push\s+-f\b/.test(src), 'never force-pushes');
 ok(!/--no-verify/.test(src), 'never bypasses hooks');

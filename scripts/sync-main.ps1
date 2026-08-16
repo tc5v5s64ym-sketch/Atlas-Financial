@@ -188,7 +188,7 @@ function Sync-LocalMain {
         if ($LASTEXITCODE -ne 0) { throw 'git merge --ff-only failed' }
     } else {
         Write-Log 'main is not checked out; updating the local main ref only.'
-        & git update-ref refs/heads/main $originMain
+        & git update-ref refs/heads/main $originMain $localMain
         if ($LASTEXITCODE -ne 0) { throw 'git update-ref failed' }
     }
 
