@@ -584,6 +584,46 @@
     return lo;
   }
 
+  /* ------------------------------------- near-boundary payday obligations */
+  // Named joint-cash outflows already in the Forecast event stream that fall
+  // on the next payday or the following calendar day. Payday output consumes
+  // this list so current surplus is not treated as free before those
+  // already-known bills. It does not re-expand, re-simulate, or change the
+  // weekly search. Extra debt payments and gap injections are surplus use,
+  // not obligations, and are omitted. The window is those two existing
+  // calendar dates — not a second forecast horizon.
+  function nearBoundaryObligations(events, asOf, paydayFloor) {
+    const floor = paydayFloor != null ? paydayFloor : 1000;
+    let payday = null;
+    for (const event of events || []) {
+      if (event.kind === 'income' && event.amount >= floor && event.date >= asOf) {
+        payday = event.date;
+        break;
+      }
+    }
+    if (!payday) return { payday: null, until: null, items: [], total: 0 };
+    const until = addDays(payday, 1);
+    const items = [];
+    for (const event of events || []) {
+      if (!isJointCashOutflow(event)) continue;
+      if (event.kind === 'extra' || event.kind === 'injection') continue;
+      if (event.date < payday || event.date > until) continue;
+      items.push({
+        date: event.date,
+        id: event.id,
+        label: event.label,
+        kind: event.kind,
+        amount: -event.amount,
+      });
+    }
+    return {
+      payday,
+      until,
+      items,
+      total: items.reduce((sum, item) => sum + item.amount, 0),
+    };
+  }
+
   /* ------------------------------------------------- the recommendation */
   // THE single authority for "how much can the household spend per week".
   // Both the headline tile and the budget breakdown read this one result, so
@@ -628,6 +668,7 @@
     }
 
     const planOptions = Object.assign({}, base);
+    const payFloor = base.paydayFloor != null ? base.paydayFloor : 1000;
 
     // An extra debt payment cannot be larger than the debt available to receive
     // it. Ask the debt projection what each one actually absorbs and spend that,
@@ -690,7 +731,6 @@
 
     // Spending resumes at the first real payday — until then there is nothing
     // spare, which is the honest answer for the opening days.
-    const payFloor = base.paydayFloor != null ? base.paydayFloor : 1000;
     const firstPay = zero.events.find(e => e.kind === 'income' && e.amount >= payFloor);
     const spendFrom = firstPay ? firstPay.date : gapDate;
 
@@ -795,6 +835,10 @@
       return {
         mode, weekly: weeklyCap, effectiveFrom, buffer, gap, sim, zero: zeroSim,
         step: STEP,
+        // Named joint-cash obligations already in `zero.events` on the next
+        // payday and the following calendar day. Derived, not stored, and not
+        // a second horizon: the weekly search and the balances are unchanged.
+        nearBoundary: nearBoundaryObligations(zeroSim.events, asOf, payFloor),
         // The options behind `sim`, so a caller overriding the weekly figure
         // re-simulates under the same assumptions instead of inventing its own.
         simOptions: simOptions,
@@ -2078,7 +2122,11 @@
   //      Where the household has set its own weekly figure and the projection
   //      breaches the buffer at it, the instruction is to cut to the supported
   //      figure, and it names the figure that does not hold.
-  //   4. WHAT THE SURPLUS IS FOR. A HELOC crossing its own limit inside the
+  //   4. OBLIGATIONS ALREADY KNOWN AT THE NEXT PAYDAY BOUNDARY. Current
+  //      surplus is not free to put at debt until those named joint-cash
+  //      outflows — already in the recommend event stream — have been shown.
+  //      The mission names them; it does not re-price the weekly cap.
+  //   5. WHAT THE SURPLUS IS FOR. A HELOC crossing its own limit inside the
   //      window outranks paying down a card, because that crossing happens on
   //      capitalised interest alone — no one has to borrow another dollar for
   //      it. Absent that, the surplus goes at the most expensive card.
@@ -2130,6 +2178,17 @@
       parts.push(overrideBreaches
         ? { id: 'cutSpending', supported: recommended, unsupported: weekly }
         : { id: 'holdSpending', weekly });
+    }
+    const nearBoundary = advice.nearBoundary;
+    if (nearBoundary && nearBoundary.items && nearBoundary.items.length) {
+      parts.push({
+        id: 'nearBoundary',
+        payday: nearBoundary.payday,
+        until: nearBoundary.until,
+        total: nearBoundary.total,
+        count: nearBoundary.items.length,
+        items: nearBoundary.items.map(x => ({ id: x.id, label: x.label })),
+      });
     }
     parts.push(helocCrossing
       ? { id: 'helocLimit', date: helocCrossing.date }

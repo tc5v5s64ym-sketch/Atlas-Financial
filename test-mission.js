@@ -96,6 +96,8 @@ const fundable = F.mission(
   { weeklyOverride: null });
 ok(ids(fundable) === 'coverGap → holdSpending → surplusToCard',
   'cover the gap, hold spending, then the surplus at the card', ids(fundable));
+ok(!part(fundable, 'nearBoundary'),
+  'fixtures without a recommend.nearBoundary list do not invent one');
 ok(part(fundable, 'coverGap').amount === 1043.16
   && part(fundable, 'coverGap').by === '2026-03-12',
   'the gap instruction carries $1,043.16 by 12 March',
@@ -261,6 +263,45 @@ ok(ids(laterMark) === 'overLimit → holdSpending → surplusToCard',
   'the opening mark decides the over-limit instruction, not a later one',
   ids(laterMark));
 
+console.log('\n=== near-boundary obligations precede surplus-use guidance ===');
+/* Literal recommend.nearBoundary, as Forecast.recommend now attaches from
+ * existing events. The mission must name it before the surplus instruction
+ * and must not choose the window or re-sum the items. */
+const withBoundary = F.mission(
+  advice({ weekly: 900, nearBoundary: {
+    payday: '2026-03-06', until: '2026-03-07', total: 900,
+    items: [{ date: '2026-03-07', id: 'hydro', label: 'Hydro', kind: 'bill', amount: 900 }],
+  } }),
+  walk({ marks: [opening(NOTHING_OVER)] }),
+  { weeklyOverride: null });
+ok(ids(withBoundary) === 'holdSpending → nearBoundary → surplusToCard',
+  'named near-boundary obligations sit before surplus-to-card',
+  ids(withBoundary));
+ok(part(withBoundary, 'nearBoundary').total === 900
+  && part(withBoundary, 'nearBoundary').payday === '2026-03-06'
+  && part(withBoundary, 'nearBoundary').count === 1
+  && part(withBoundary, 'nearBoundary').items
+  && part(withBoundary, 'nearBoundary').items[0].label === 'Hydro',
+  'the part carries the recommend total, payday, count and item names');
+
+const boundaryAndHeloc = F.mission(
+  advice({ weekly: 900, nearBoundary: {
+    payday: '2026-03-06', until: '2026-03-07', total: 900,
+    items: [{ date: '2026-03-07', id: 'hydro', label: 'Hydro', kind: 'bill', amount: 900 }],
+  } }),
+  walk({ marks: [opening(NOTHING_OVER)], crossings: HELOC_CROSSES }),
+  { weeklyOverride: null });
+ok(ids(boundaryAndHeloc) === 'holdSpending → nearBoundary → helocLimit',
+  'they also sit before a HELOC-crossing surplus instruction',
+  ids(boundaryAndHeloc));
+
+const emptyBoundary = F.mission(
+  advice({ weekly: 900, nearBoundary: { payday: '2026-03-06', until: '2026-03-07', items: [], total: 0 } }),
+  walk({ marks: [opening(NOTHING_OVER)] }),
+  { weeklyOverride: null });
+ok(ids(emptyBoundary) === 'holdSpending → surplusToCard',
+  'an empty list does not insert a vacant instruction', ids(emptyBoundary));
+
 console.log('\n=== mutation: breaking the engine breaks the answer ===');
 /* The strongest form available here: mutate the engine source, load the mutant,
  * and require it to disagree with the real engine on a case above. A guard that
@@ -348,6 +389,7 @@ const grab = (src, re, what) => {
 };
 const FORMATTERS = [
   grab(appSrc, /^const money = .*$/m, 'money()'),
+  grab(appSrc, /^const money2 = .*$/m, 'money2()'),
   grab(appSrc, /^const fmtDateLong = .*$/m, 'fmtDateLong()'),
   grab(planSrc, /^const fmtMonth = .*$/m, 'fmtMonth()'),
 ].join('\n');
@@ -364,7 +406,7 @@ ok(!!missionSrc, 'the mission function is readable from forecast.js');
 const engineIds = [...new Set([...(missionSrc ? missionSrc[0] : '')
   .matchAll(/\bid: '([A-Za-z]+)'/g)].map(m => m[1]))].sort();
 const wordedIds = Object.keys(MISSION_PART).sort();
-ok(engineIds.length === 7, 'the engine emits seven instructions', engineIds.join(', '));
+ok(engineIds.length === 8, 'the engine emits eight instructions', engineIds.join(', '));
 ok(engineIds.every(id => wordedIds.includes(id)),
   'the page has wording for every instruction the engine can emit',
   engineIds.filter(id => !wordedIds.includes(id)).join(', ') || 'none missing');
@@ -391,8 +433,8 @@ console.log('\n=== migration equivalence on the real published plan ===');
  * be live: the published default, a weekly override that breaches, and a buffer
  * no source can reach. */
 const plan = data.plan, asOf = data.meta.asOf;
-const [money, fmtDateLong, fmtMonth] = vm.runInNewContext(
-  `${FORMATTERS}\n[money, fmtDateLong, fmtMonth];`);
+const [money, money2, fmtDateLong, fmtMonth] = vm.runInNewContext(
+  `${FORMATTERS}\n[money, money2, fmtDateLong, fmtMonth];`);
 
 function published({ targetBuffer, weeklyVariable }) {
   const base = { scenario: plan.defaults.scenario, targetBuffer,
@@ -434,6 +476,10 @@ function legacySentence({ adv, sim, weekly, debtProj, weeklyVariable }) {
       ? `cut spending to ${money(recommended)} a week — ${money(weekly)} does not hold`
       : `hold spending to ${money(weekly)} a week`);
   }
+  const nb = adv.nearBoundary;
+  if (nb && nb.items && nb.items.length) {
+    missionParts.push(`and ${money2(nb.total)} of named obligations (${nb.items.map(x => x.label).join(', ')}) fall on or immediately after the next payday (${fmtDateLong(nb.payday)})`);
+  }
   if (helocBreach) missionParts.push(`and stop the HELOC growing before it passes its own limit in ${fmtMonth(helocBreach.date)}`);
   else missionParts.push('and put the surplus against the most expensive card');
   return missionParts.join(', ').replace(/^./, c => c.toUpperCase()) + '.';
@@ -442,7 +488,7 @@ function legacySentence({ adv, sim, weekly, debtProj, weeklyVariable }) {
 const SETTINGS = [
   { what: 'the published default — $500 buffer, no override',
     targetBuffer: plan.defaults.targetBuffer, weeklyVariable: null,
-    expect: /^Cover the .* timing gap by .*, get the .* back under its limit, hold spending to .* a week, and stop the HELOC growing/ },
+    expect: /^Cover the .* timing gap by .*, get the .* back under its limit, hold spending to .* a week, and .* of named obligations .* fall on or immediately after the next payday .*, and stop the HELOC growing/ },
   { what: 'a $1,500/week override the forecast does not support',
     targetBuffer: plan.defaults.targetBuffer, weeklyVariable: 1500,
     expect: /cut spending to .* a week — .* does not hold/ },
@@ -469,6 +515,16 @@ const unreachableMission = F.mission(unreachable.adv, unreachable.debtProj,
 ok(!part(unreachableMission, 'holdSpending') && !part(unreachableMission, 'cutSpending'),
   'no weekly figure is instructed against a gap the real plan cannot fund',
   ids(unreachableMission));
+
+const liveDefault = published({
+  targetBuffer: plan.defaults.targetBuffer, weeklyVariable: null,
+});
+const liveSentence = render(F.mission(liveDefault.adv, liveDefault.debtProj,
+  { weeklyOverride: null, sim: liveDefault.sim }));
+const liveNames = (liveDefault.adv.nearBoundary.items || []).map(i => i.label);
+ok(liveNames.length === 7 && liveNames.every(name => liveSentence.includes(name)),
+  'the live Plan sentence names every near-boundary obligation',
+  liveNames.filter(name => !liveSentence.includes(name)).join(', ') || liveSentence);
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
 process.exit(failures === 0 ? 0 : 1);

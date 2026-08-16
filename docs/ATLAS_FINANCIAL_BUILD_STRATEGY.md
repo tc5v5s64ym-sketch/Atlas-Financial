@@ -714,7 +714,12 @@ exist.
   scheduled occurrence from a posted one and compare that fact to
   `plan.opening.representedEvents`. Forecast remains the schedule
   authority. Unknown posting is not posted and is not unposted. Live
-  `plan.opening` is unchanged. B91 stays open for
+  `plan.opening` is unchanged.
+  **D11 slice — not completion.** Payday output exposes named
+  joint-cash obligations already in the Forecast event stream on the
+  next payday and the following calendar day, before surplus-use
+  guidance. Forecast arithmetic is unchanged. Live household facts are
+  unchanged. B91 stays open for
   Q19 HELOC mechanics, the operating-target question, B20 history, the
   STALE threshold, and the rest of the Aug. 14 corpus. Do not mark this
   item done.
