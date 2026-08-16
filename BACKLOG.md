@@ -34,8 +34,9 @@ facts PR; each needs its own independently provable outcome):
 not by this file. Remaining order after the B91 current-state foundation:
 read-only connectivity (`B80` spike, then a live Lunch Money observation
 test) → prove refresh identity on real provider behaviour (`B78`) →
-`B20` / `B21` → `B94` / `AF-PLAN-01` (master-forecast contract established
-2026-08-16; engine work queued). `B91` stays **IN PROGRESS** and is not DONE.
+`B20` / `B21`. `B94` / `AF-PLAN-01` (master-forecast contract established
+2026-08-16; engine work queued) prefers a trustworthy `B91` opening and
+is not gated on `B20` / `B21`. `B91` stays **IN PROGRESS** and is not DONE.
 
 **Operational knowledge lives in `docs/ACCOUNT_FACTS.md`**, not here: how each
 institution's data is obtained, the download endpoints, and the traps that cost
@@ -1230,9 +1231,13 @@ projection at least 12 months forward; week / payday / month / 13 weeks /
 6 months / 1 year / custom range are views; changing the visible range
 does not change what the plan knows; known major costs outside the
 visible span still constrain today's safe-to-spend; Forecast sequences
-funding by timing, certainty and owner-stated priority; planned debt is
-allowed when necessary and must carry consequences and a repayment path;
-major future plans show ON TRACK / AT RISK / FUNDING GAP from Forecast.
+funding by timing, certainty, owner-stated priority and flexibility, and
+reallocates capacity a commitment releases rather than turning it
+automatically into safe-to-spend; planned debt may be part of the path
+when it is the better household plan, including to preserve cash for
+higher-priority needs, and must carry consequences and a repayment path
+in advance; debt is owner-constrained and never automatic; major future
+plans show ON TRACK / AT RISK / FUNDING GAP from Forecast.
 Forecast remains the planner. Do not create a second planner, a generic
 schema, or a parallel authority.
 

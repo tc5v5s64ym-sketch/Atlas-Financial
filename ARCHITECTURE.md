@@ -268,19 +268,30 @@ future. An estimate still cannot be presented as verified.
 
 **Forecast sequences funding among future commitments.** When several dated
 commitments compete for the same cash, Forecast — not a page and not a
-conversation — decides the order using timing, certainty, and owner-stated
-priority. This is not a goals engine and not a generic priority schema. Until
-the capability is earned, existing `plan.nextDollar`, `recommend` funding, and
-dated `plan.commitments` remain the incumbents. Promoting a priority ranking
-to owner instruction stays owner-reserved (`plan.nextDollar` is still derived).
+conversation — decides the order using timing, certainty, owner-stated
+priority, and flexibility. When a commitment is fully funded, paid, deferred,
+reduced, or otherwise releases capacity, Forecast reallocates that freed
+capacity across the remaining plan. Freed capacity does not automatically
+become safe-to-spend. This is the contract for behaviour such as finishing
+one trip and power-saving the released cash into a later one, or deferring a
+flexible purchase when a harder commitment needs the cash. This is not a
+goals engine and not a generic priority schema. Until the capability is
+earned, existing `plan.nextDollar`, `recommend` funding, and dated
+`plan.commitments` remain the incumbents. Promoting a priority ranking to
+owner instruction stays owner-reserved (`plan.nextDollar` is still derived).
 
-**Planned debt is allowed when necessary.** If cash cannot cover a commitment
-in time, the plan may include borrowing. When it does, Forecast must show the
+**Planned debt is allowed when it is the better household plan, not only
+when cash is short.** Intentional borrowing may be part of the planned path
+when preserving cash for higher-priority needs is better than paying a
+commitment from cash in time. A cash shortfall that cannot cover a
+commitment in time remains one valid reason, not the only one. When the
+plan includes borrowing, Forecast must project the borrowing, the
 consequences — interest, headroom, limit-crossing, later cash — and a
-repayment path on the same coupled cash-and-debt walk. Unforecast borrowing is
-not a plan. This does not create a second debt modeller;
-`Forecast.projectDebts` and `Forecast.recommend` remain the walk. It does not
-authorise an automated action against an account.
+repayment path on the same coupled cash-and-debt walk, in advance.
+Unforecast borrowing is not a plan. Debt is deterministic and
+owner-constrained; it is never automatic. This does not create a second
+debt modeller; `Forecast.projectDebts` and `Forecast.recommend` remain the
+walk. It does not authorise an automated action against an account.
 
 **Major future plans show ON TRACK / AT RISK / FUNDING GAP.** A named major
 future plan the household is funding — travel, a sports season, the May 2027
@@ -430,9 +441,10 @@ closed: `Forecast.expandEvents` is the one cash calendar.
 | Observation-to-canonical cash/debt compare | `scripts/reconcile.js` (non-writing). Maps `docs/positions.csv` Household rows through `docs/reconciliation/balance-map.json` id locators onto `plan.startingCash` / `debts`. Commitment settlement observations live in `docs/reconciliation/commitment-settlements.json` and compare a paid date against `plan.commitments[].settledOn`; they do not go through `positions.csv` or the balance map. Hydro observations live in `docs/reconciliation/utility-observations.json`. Amanda-income observations live in `docs/reconciliation/amanda-income-observations.json`. Card-state observations live in `docs/reconciliation/card-state-observations.json` and distinguish posted balance, pending, limit, available credit, and confirmed payment; they are not a second financial authority. Limit and available credit are never household cash. Unknown pending is not $0. Pending is not manufactured as limit − posted − available unless that identity is proven for that card and timestamp. Posting observations live in `docs/reconciliation/posting-observations.json` and compare whether a scheduled occurrence has posted against `plan.opening.representedEvents`. Forecast remains authority for what should happen; posting evidence is authority for what has happened. Unknown posting is not posted and is not unposted. Does not write `data.json`. STALE is not assigned. The owner 90-day rule lives on pending bill/payment observations in `scripts/provider-observe.js` and is not a reconcile STALE status. Not a universal fact database |
 
 **The 2026-08-16 master-forecast contract is direction, not a set of new
-incumbent rows.** Safe-to-spend across the known future, funding sequence,
-planned-debt consequences with a repayment path, and ON TRACK / AT RISK /
-FUNDING GAP remain Forecast's to earn. A page, ChatGPT, or Sheet that answers
+incumbent rows.** Safe-to-spend across the known future, funding sequence
+and reallocation of freed capacity, planned-debt consequences with a
+repayment path, and ON TRACK / AT RISK / FUNDING GAP remain Forecast's to
+earn. A page, ChatGPT, or Sheet that answers
 any of them first is the `B73` defect arriving through a new door. Do not
 register a future function as if it already existed.
 

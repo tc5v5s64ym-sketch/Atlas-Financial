@@ -30,9 +30,10 @@ day: manual current-state capture is now the binding product limit, so a
 read-only connectivity spike (`B80`) is brought forward rather than waiting
 on `B20` / `B21` / `B78`. A later owner instruction the same day established
 the master-forecast product contract (`AF-PLAN-01` / `B94`); engine work is
-queued, not started, and does not interrupt `B91` or `B80`. History remains
-a by-product of successful refresh. Do not start `B20` first. Do not mark
-`B91` done.
+queued, not started, and does not interrupt `B91` or `B80`. Prefer a
+trustworthy `B91` opening before that engine work. `B20` / `B21` proceed
+independently and do not gate `B94`. History remains a by-product of
+successful refresh. Do not start `B20` first. Do not mark `B91` done.
 
 ---
 
@@ -264,10 +265,12 @@ live Lunch Money connection test (owner, outside the repo)
   ↓
 B78  refresh identity / idempotency on real provider behaviour
   ↓
-B20  history from successful refresh
-  ↓
+B20 / B21  history and second-month intake
+     ← independent of B94; by-product of successful refresh
+
 B94 / AF-PLAN-01  one master forecast, ≥12 months; views only
      ← contract established 2026-08-16; engine work queued, not started
+     ← prefer a trustworthy B91 opening; not gated on B20 / B21
 ```
 
 Later items are not mechanically blocked by every earlier one. Agents must
@@ -354,7 +357,8 @@ are not authorities.
 - **`AF-PLAN-01` / `B94`** — the 2026-08-16 owner instruction established the
   master-forecast product contract in `ARCHITECTURE.md`. Engine work is
   queued, not started. Prefer after `B91` so a longer horizon is fed current
-  facts. Do not add a second engine. Do not mark `B91` done to make room.
+  facts. Do not wait on `B20` / `B21`. Do not add a second engine. Do not
+  mark `B91` done to make room.
 - **`AF-INTAKE-01` / `B21`** — a second-month intake run remains the proof
   that the refresh path works on new evidence. It waits on `AF-RECON-01`,
   not on snapshots existing first.
@@ -765,10 +769,14 @@ started**, and this pull request does not implement it.
   projection. Changing the visible range does not change what the plan
   knows. Known major costs outside the visible span still constrain today's
   `Forecast.recommend` safe-to-spend. Forecast sequences funding among
-  future commitments by timing, certainty, and owner-stated priority.
-  Planned debt is allowed when necessary and is forecast with consequences
-  and a repayment path on the existing cash-and-debt walk. Named major
-  future plans publish ON TRACK / AT RISK / FUNDING GAP from Forecast.
+  future commitments by timing, certainty, owner-stated priority, and
+  flexibility, and reallocates capacity a commitment releases rather than
+  turning it automatically into safe-to-spend. Planned debt may be part of
+  the path when it is the better household plan, including to preserve cash
+  for higher-priority needs, and is forecast in advance with consequences
+  and a repayment path on the existing cash-and-debt walk. Debt is
+  owner-constrained and never automatic. Named major future plans publish
+  ON TRACK / AT RISK / FUNDING GAP from Forecast.
 - **Incumbent** — `Forecast` (`expandEvents`, `simulate`, `recommend`,
   `projectDebts`) and `data.json` `plan`. `EVOLVE`. Does **not** replace
   Forecast, add a goals engine, add a payday engine, or invent a generic
@@ -778,13 +786,13 @@ started**, and this pull request does not implement it.
   blocking review because it records product direction).
 - **Backlog** — `B94`.
 - **Entry gate** — prefer `AF-RECON-01` / `B91` far enough along that the
-  longer horizon is not built on a stale opening. Do not start this item
-  in order to mark `B91` done.
+  longer horizon is not built on a stale opening. Do not wait on `B20` /
+  `B21`. Do not start this item in order to mark `B91` done.
 - **Acceptance** — one Forecast projection; named ranges are views; a
-  hidden later commitment still reduces today's cap; funding sequence and
-  planned-debt repayment are Forecast results; major-plan verdicts come
-  from Forecast; pages render. Proof is independent of the function under
-  change. No second planner.
+  hidden later commitment still reduces today's cap; funding sequence,
+  reallocation of released capacity, and planned-debt repayment are
+  Forecast results; major-plan verdicts come from Forecast; pages render.
+  Proof is independent of the function under change. No second planner.
 - **Non-goals** — a second planner; a generic schema; a goals product; a
   retirement engine; changing live household facts in the contract PR;
   finishing `B91`; opening the store or connectivity gates.
