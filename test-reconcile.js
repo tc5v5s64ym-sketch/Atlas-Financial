@@ -322,6 +322,38 @@ console.log('\n=== G. due/settlement/scheduled dates are not observation times =
     '9 Aug card posted-balance still reports same-day against meta.asOf');
   ok(pending && pending.dateRelation === 'canonical-older',
     '14 Aug card pending still reports canonical-older against meta.asOf');
+
+  ok(R.freshnessOwnedByMetaAsOf({ fact: 'limit' }) === false,
+    'limit is a standing fact, not a meta.asOf snapshot-freshness fact');
+  ok(R.freshnessOwnedByMetaAsOf({ fact: 'posted-balance' }) === true,
+    'posted-balance freshness remains owned by meta.asOf');
+  const limit = R.reconcile({
+    data: {
+      meta: { asOf: '2026-08-09' },
+      plan: { startingCash: { breakdown: [], heldElsewhere: [] } },
+      debts: [{ id: 'cashback', balance: 5070, limit: 5000, pending: 0 }],
+    },
+    map: { mappings: [] },
+    observations: [],
+    settlements: { observations: [] },
+    cards: { observations: [
+      {
+        observationId: 'card-cashback-limit-2026-08-14',
+        fact: 'limit',
+        cardId: 'cashback',
+        amount: 5000,
+        observedAsOf: '2026-08-14',
+        canonical: { collection: 'debts', id: 'cashback', field: 'limit' },
+      },
+    ] },
+  });
+  const limitRow = limit.rows.find(r => r.observationId === 'card-cashback-limit-2026-08-14');
+  ok(limitRow && limitRow.status === 'MATCH',
+    'later observed matching limit still MATCHES the canonical ceiling');
+  ok(limitRow && limitRow.dateRelation === 'incomparable',
+    'a later observed card limit is incomparable — meta.asOf is not a standing-fact verification timestamp');
+  ok(R.dateRelation(limitRow.evidenceDate, '2026-08-09') === 'canonical-older',
+    'comparing the later limit observation to meta.asOf would have overclaimed freshness — that path is closed');
 }
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);

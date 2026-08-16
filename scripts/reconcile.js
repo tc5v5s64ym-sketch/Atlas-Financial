@@ -89,13 +89,12 @@ const CARD_FACTS = new Set([
 const CARD_IDS = new Set(['triangle', 'cashback', 'mbna', 'tdcc', 'travelvisa']);
 const POSTING_FACTS = new Set(['posting']);
 // Snapshot facts whose published freshness is owned by data.meta.asOf.
-// Dated-due, settlement, posting, Amanda, and paying-account facts are
-// not: their effective dates are not observation times, and they have
-// no canonical freshness date to substitute with the cash snapshot.
+// Standing facts (rates, limits, due dates, renewal dates), dated-due,
+// settlement, posting, Amanda, and paying-account facts are not: they
+// have no canonical freshness date to substitute with the cash snapshot.
 const META_ASOF_FRESHNESS_FACTS = new Set([
   'posted-balance',
   'pending',
-  'limit',
   'available-credit',
 ]);
 
