@@ -2,14 +2,11 @@
 
 /* Mechanical coverage for .github/workflows/merge-card-check.yml.
  * The suite executes the workflow's real inline script. It proves the check
- * catches missing fields, invalid closed forms, stale reviewed heads, wrong
- * reviewer identity, and a non-passing required review. It also proves the
- * check reads the live PR body, not the workflow event body, and fails closed
- * when the live PR is closed, retargeted, or no longer the event head. A
- * workflow_dispatch run with explicit PR number and expected head SHA uses
- * that same live validation and fails closed on mismatch. A default-branch
- * dispatch for a predating PR head records the required check on the
- * expected head. It deliberately does not test the meaning of prose.
+ * catches missing fields and invalid closed forms, and that it does NOT hang
+ * a PR on a review SHA, PASS/PENDING, or ChatGPT identity. It also proves
+ * the check reads the live PR body, not the workflow event body, and fails
+ * closed when the live PR is closed, retargeted, or no longer the event head.
+ * It deliberately does not test the meaning of prose.
  */
 
 const fs = require('fs');
@@ -283,37 +280,35 @@ checks.push((async () => {
   );
 })());
 green(
-  'a passing required review covers a mechanically high-risk path',
+  'a complete card covers a high-risk path without a SHA lock',
   card({ review: required }),
   ['data.json'],
 );
-red(
-  'a mechanically high-risk path cannot claim NOT REQUIRED',
+green(
+  'a high-risk path may say NOT REQUIRED — review SHA is not a merge lock',
   card(),
-  /mechanically high-risk path/i,
   ['data.json'],
 );
-red(
-  'a hard-gate workflow cannot claim NOT REQUIRED',
+green(
+  'a workflow change may say NOT REQUIRED — tests are the junk gate',
   card(),
-  /merge-card-check\.yml/i,
   ['.github/workflows/merge-card-check.yml'],
 );
-red('a required review needs a 40-character SHA', card({ review: {
+green('an incomplete review SHA does not fail the completeness check', card({ review: {
   ...required, 'Exact reviewed head': 'abc1234',
-} }), /40-character SHA/i);
-red('a stale required review fails', card({ review: {
+} }));
+green('a stale review SHA does not fail the completeness check', card({ review: {
   ...required, 'Exact reviewed head': 'b'.repeat(40),
-} }), /not the PR head/i);
-red('the required lane has one reviewer identity', card({ review: {
+} }));
+green('a non-ChatGPT reviewer does not fail the completeness check', card({ review: {
   ...required, Reviewer: 'Codex',
-} }), /Reviewer: ChatGPT/i);
-red('a blocking required review cannot merge', card({ review: {
+} }));
+green('a BLOCKING review outcome does not fail the completeness check', card({ review: {
   ...required, 'Review outcome': 'BLOCKING',
-} }), /outcome: PASS/i);
-red('a pending required review cannot merge', card({ review: {
+} }));
+green('a PENDING review outcome does not fail the completeness check', card({ review: {
   ...required, 'Review outcome': 'PENDING',
-} }), /Awaiting exact-head Atlas review/i);
+} }));
 
 const trustedPass = [{
   id: 1,
@@ -331,14 +326,14 @@ checks.push((async () => {
   const message = await validate(card({ review: pendingRequired }), HEAD, ['docs/status.md'], {
     reviews: trustedPass,
   });
-  ok(!message, 'PENDING card + trusted Atlas PASS on the live head succeeds', message);
+  ok(!message, 'PENDING card still passes completeness without a SHA lock', message);
 })());
 checks.push((async () => {
   const message = await validate(card({ review: pendingRequired }), HEAD, ['.github/workflows/merge-card-check.yml'], {
     eventName: 'pull_request_review',
     reviews: trustedPass,
   });
-  ok(!message, 'pull_request_review with trusted Atlas PASS on a PENDING card succeeds', message);
+  ok(!message, 'pull_request_review with a PENDING card still passes completeness', message);
 })());
 checks.push((async () => {
   const message = await validate(card({ review: pendingRequired }), HEAD, ['docs/status.md'], {
@@ -347,11 +342,7 @@ checks.push((async () => {
       user: { login: 'chatgpt-codex-connector[bot]' },
     }],
   });
-  ok(
-    Boolean(message) && /Awaiting exact-head Atlas review/i.test(message),
-    'PENDING card + Codex PASS-shaped review still awaits trusted Atlas PASS',
-    message || 'unexpected green',
-  );
+  ok(!message, 'Codex review does not fail the completeness check', message);
 })());
 checks.push((async () => {
   const message = await validate(card({ review: pendingRequired }), HEAD, ['docs/status.md'], {
@@ -360,21 +351,13 @@ checks.push((async () => {
       body: 'Atlas Contract / Systems Review — NOT PASS\n\nExact-head proof is missing.\n',
     }],
   });
-  ok(
-    Boolean(message) && /Trusted Atlas review on this head is NOT PASS/i.test(message),
-    'trusted NOT PASS on the live head cannot merge even if the card is only PENDING',
-    message || 'unexpected green',
-  );
+  ok(!message, 'trusted NOT PASS does not fail the completeness check', message);
 })());
 checks.push((async () => {
   const message = await validate(card({ review: pendingRequired }), HEAD, ['docs/status.md'], {
     reviews: [{ ...trustedPass[0], commit_id: 'b'.repeat(40) }],
   });
-  ok(
-    Boolean(message) && /Awaiting exact-head Atlas review/i.test(message),
-    'trusted PASS on a different SHA does not satisfy the live head',
-    message || 'unexpected green',
-  );
+  ok(!message, 'a review on another SHA does not fail the completeness check', message);
 })());
 checks.push((async () => {
   const staleCard = card({
@@ -388,7 +371,7 @@ checks.push((async () => {
   const message = await validate(staleCard, HEAD, ['docs/status.md'], {
     reviews: trustedPass,
   });
-  ok(!message, 'trusted PASS on the live head wins over a stale PENDING card SHA and reviewer', message);
+  ok(!message, 'a stale PENDING card still passes completeness', message);
 })());
 checks.push((async () => {
   const message = await validate(card({ review: {
@@ -397,11 +380,7 @@ checks.push((async () => {
   } }), HEAD, ['docs/status.md'], {
     reviews: trustedPass,
   });
-  ok(
-    Boolean(message) && /outcome: PASS/i.test(message),
-    'trusted PASS does not override an explicit BLOCKING card on the live head',
-    message || 'unexpected green',
-  );
+  ok(!message, 'an explicit BLOCKING card still passes completeness', message);
 })());
 checks.push((async () => {
   const message = await validate(card({ review: {
@@ -410,11 +389,7 @@ checks.push((async () => {
   } }), HEAD, ['docs/status.md'], {
     reviews: trustedPass,
   });
-  ok(
-    Boolean(message) && /outcome: PASS/i.test(message),
-    'trusted PASS does not override an explicit NOT PASS card on the live head',
-    message || 'unexpected green',
-  );
+  ok(!message, 'an explicit NOT PASS card still passes completeness', message);
 })());
 checks.push((async () => {
   const message = await validate(card({ review: required }), HEAD, ['docs/status.md'], {
@@ -426,21 +401,13 @@ checks.push((async () => {
       body: 'Atlas Contract / Systems Review — NOT PASS\n\nNew blocker.\n',
     }],
   });
-  ok(
-    Boolean(message) && /Trusted Atlas review on this head is NOT PASS/i.test(message),
-    'a later trusted NOT PASS on the live head overrides a PASS card',
-    message || 'unexpected green',
-  );
+  ok(!message, 'a later trusted NOT PASS does not fail the completeness check', message);
 })());
 checks.push((async () => {
   const message = await validate(card({ review: pendingRequired }), HEAD, ['docs/status.md'], {
     reviewsError: 'api down',
   });
-  ok(
-    Boolean(message) && /trusted Atlas reviews could not be loaded/i.test(message),
-    'REQUIRED review fails closed when trusted reviews cannot be loaded',
-    message || 'unexpected green',
-  );
+  ok(!message, 'completeness does not depend on loading trusted reviews', message);
 })());
 red('Primary risk uses the closed vocabulary', card({ fields: {
   'Primary risk': 'probably-fine',

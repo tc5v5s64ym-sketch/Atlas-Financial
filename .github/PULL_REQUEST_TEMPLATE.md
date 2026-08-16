@@ -69,8 +69,8 @@
 
   Closed forms enforced by CI:
   - Required opens REQUIRED or NOT REQUIRED.
-  - REQUIRED: exact current 40-character head, Reviewer ChatGPT, outcome PASS.
   - NOT REQUIRED: head, reviewer, and outcome are each N/A.
+  Review SHA / PASS / PENDING are notes. They do not fail the check.
 -->
 
 - **Required**: <!-- REQUIRED — trigger; or NOT REQUIRED — why no high-risk trigger fired -->

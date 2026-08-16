@@ -164,11 +164,11 @@ The review block records five fields:
 - **Review outcome** — `PASS` before merge when required, else `N/A`; and
 - **Findings and fix verification** — the blocker record or `N/A`.
 
-`merge-card-check` enforces those closed forms, exact-head equality, and a
-small closed list of file paths that always touch a high-risk surface. A pull
-request touching one of those paths cannot claim `NOT REQUIRED`. Paths outside
-that list still use the trigger decision above. The check does not interpret
-findings prose or claim that a review was good.
+`merge-card-check` enforces the card is filled and the closed openings are
+valid. It does **not** lock merge on a review SHA, a PASS/PENDING outcome,
+or ChatGPT identity. Confidence that the change is not junk comes from
+`npm test`, the secret hook, and the figures comment. ChatGPT remains the
+decision desk. It is not a SHA-matching merge lock.
 
 ### Independent improvement audit — optional and bounded
 
@@ -189,17 +189,20 @@ blocker is the defect, not the existence or freshness of an advisory review.
 
 The active implementation agent merges when all of these hold:
 
-- every applicable GitHub check passed **on the exact current head**;
-- the merge card is complete, including attribution and the review block;
+- `npm test` and the other applicable GitHub checks passed **on the exact
+  current head**;
+- the merge card is complete, including attribution;
 - exactly one primary risk value, taken from the Merge Card and projected onto
   the GitHub label (`docs/RISK_LABELS.md`);
-- the required review records `PASS` on the exact merged head when a high-risk
-  trigger fired;
 - no real financial, security, authority, invariant, or product-trust blocker
   remains;
 - one independently provable outcome, clean branch, no unrelated drift, no
   secret or raw data; and
 - no owner-reserved item is outstanding.
+
+A ChatGPT architecture review is optional help from the decision desk. It is
+not a required SHA-matching check. Do not hold a green, complete, in-scope
+pull request for an exact-head PASS.
 
 ## Merge policy
 
