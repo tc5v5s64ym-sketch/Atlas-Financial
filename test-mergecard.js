@@ -46,6 +46,12 @@ function extractScript() {
 }
 
 const SCRIPT = extractScript();
+const WORKFLOW_TEXT = fs.readFileSync(WORKFLOW, 'utf8');
+// Script-only tests cannot catch deleting the YAML trigger. The shipped file must.
+ok(
+  /pull_request_review:\s*\n\s*types:\s*\[submitted\]/.test(WORKFLOW_TEXT),
+  'shipped merge-card workflow retriggers when a review is submitted',
+);
 
 const FIELDS = {
   Title: 'Simplify review governance',
