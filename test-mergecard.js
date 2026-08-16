@@ -391,6 +391,32 @@ checks.push((async () => {
   ok(!message, 'trusted PASS on the live head wins over a stale PENDING card SHA and reviewer', message);
 })());
 checks.push((async () => {
+  const message = await validate(card({ review: {
+    ...required,
+    'Review outcome': 'BLOCKING',
+  } }), HEAD, ['docs/status.md'], {
+    reviews: trustedPass,
+  });
+  ok(
+    Boolean(message) && /outcome: PASS/i.test(message),
+    'trusted PASS does not override an explicit BLOCKING card on the live head',
+    message || 'unexpected green',
+  );
+})());
+checks.push((async () => {
+  const message = await validate(card({ review: {
+    ...required,
+    'Review outcome': 'NOT PASS',
+  } }), HEAD, ['docs/status.md'], {
+    reviews: trustedPass,
+  });
+  ok(
+    Boolean(message) && /outcome: PASS/i.test(message),
+    'trusted PASS does not override an explicit NOT PASS card on the live head',
+    message || 'unexpected green',
+  );
+})());
+checks.push((async () => {
   const message = await validate(card({ review: required }), HEAD, ['docs/status.md'], {
     reviews: [{
       id: 2,

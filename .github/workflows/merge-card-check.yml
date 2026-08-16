@@ -10,7 +10,9 @@ name: Merge card check
 #
 # pull_request remains the ordinary path, including human card edits. A trusted
 # Atlas PASS review on the live head also satisfies a REQUIRED review, so a
-# PENDING card cannot hang after that PASS exists. pull_request_review
+# PENDING card cannot hang after that PASS exists. That override covers only
+# the stale PENDING projection; an explicit later BLOCKING or NOT PASS on the
+# live card still fails. pull_request_review
 # submitted retriggers this check when that review lands. Codex reviews are
 # not Atlas PASS. Trusted Atlas PASS card-sync still uses GITHUB_TOKEN, which
 # GitHub does not chain into a pull_request edited run, and still starts this
@@ -334,9 +336,11 @@ jobs:
                   return;
                 }
 
-                if (trustedOutcome === 'PASS') {
+                if (trustedOutcome === 'PASS' && /^PENDING$/i.test(review['Review outcome'])) {
                   // Live trusted Atlas PASS on this exact head is the review
                   // authority. A PENDING card is a stale projection, not a hang.
+                  // An explicit later BLOCKING or NOT PASS on the live card is
+                  // not overridden by that PASS.
                 } else if (trustedOutcome === 'NOT PASS' || trustedOutcome === 'BLOCKING') {
                   problems.push(`Trusted Atlas review on this head is ${trustedOutcome}, not PASS.`);
                 } else {
