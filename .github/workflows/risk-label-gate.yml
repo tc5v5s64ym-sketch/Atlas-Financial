@@ -13,11 +13,14 @@ name: Risk label gate
 # FAIL-CLOSED, NEVER-STALE:
 #   · the head is marked `pending` on every trigger, so a prior green cannot
 #     survive into a run that has not yet evaluated it;
-#   · a final `if: always()` step publishes a definitive success or failure to
-#     the exact head, so an API error or a cancelled run leaves red, not green;
+#   · an EXIT trap publishes failure if the shell aborts after pending, so a
+#     helper or API error cannot leave the required check stranded pending;
+#   · the live Merge Card is re-fetched and revalidated before success, so a
+#     card edit queued behind this run cannot be published as the stale body;
 #   · per-PR concurrency serialises runs so a newer label or card edit
-#     publishes last. cancel-in-progress is FALSE on purpose — cancelling would
-#     still fire the always() publisher and could overwrite a newer result.
+#     publishes last. cancel-in-progress is FALSE on purpose — cancelling a
+#     superseded run would still fire its publisher and could overwrite a
+#     newer result.
 #
 # TRUST MODEL: `pull_request_target` runs the workflow definition from the
 # default branch, so a PR editing this file cannot make the gate evaluate its
@@ -80,17 +83,95 @@ jobs:
           sha="${EVENT_HEAD}"
           state="failure"
           description="Gate errored — treated as failure."
+          published=0
 
-          publish() {
+          post_status() {
             jq -n \
               --arg state "${state}" \
               --arg desc "${description:0:140}" \
               --arg url "${target_url}" \
               '{state:$state, context:"risk-label/primary", description:$desc, target_url:$url}' \
               | gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${sha}" --input - >/dev/null
+          }
+
+          publish() {
+            post_status
+            published=1
             if [[ "${state}" != "success" ]]; then
               echo "${description}"
               exit 1
+            fi
+          }
+
+          on_exit() {
+            if [[ "${published}" -ne 1 ]]; then
+              state="failure"
+              description="Gate errored — treated as failure."
+              echo "${description}"
+              post_status || true
+              published=1
+            fi
+          }
+          trap on_exit EXIT
+
+          load_live_card() {
+            pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${EVENT_NUMBER}")"
+            live_number="$(jq -r '.number' <<<"${pr_json}")"
+            live_repo="$(jq -r '.base.repo.full_name // empty' <<<"${pr_json}")"
+            live_state="$(jq -r '.state' <<<"${pr_json}")"
+            live_merged="$(jq -r '.merged' <<<"${pr_json}")"
+            live_base="$(jq -r '.base.ref // empty' <<<"${pr_json}")"
+            live_head="$(jq -r '.head.sha // empty' <<<"${pr_json}")"
+            sha="${live_head}"
+
+            if [[ "${live_number}" != "${EVENT_NUMBER}" ]]; then
+              description="Gate errored (live PR ${live_number} is not event PR ${EVENT_NUMBER}) — treated as failure."
+              publish
+            fi
+            if [[ "${live_repo}" != "${GITHUB_REPOSITORY}" ]]; then
+              description="Gate errored (live repository ${live_repo:-missing} is not ${GITHUB_REPOSITORY}) — treated as failure."
+              publish
+            fi
+            if [[ "${live_state}" != "open" || "${live_merged}" == "true" ]]; then
+              description="Gate errored (pull request is not open) — treated as failure."
+              publish
+            fi
+            if [[ "${live_base}" != "main" ]]; then
+              description="Gate errored (pull request base is ${live_base:-missing}, not main) — treated as failure."
+              publish
+            fi
+            if [[ ! "${live_head}" =~ ^[0-9a-f]{40}$ || "${live_head}" != "${EVENT_HEAD}" ]]; then
+              description="Gate errored (live head ${live_head:0:7} is not the event head ${EVENT_HEAD:0:7}) — treated as failure."
+              publish
+            fi
+
+            jq -r '.body // ""' <<<"${pr_json}" > "${RUNNER_TEMP}/pr-body.md"
+            labels_json="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${EVENT_NUMBER}/labels" \
+              --jq '.[].name' | jq -R -s -c 'split("\n") | map(select(length > 0))')"
+            jq -n --rawfile body "${RUNNER_TEMP}/pr-body.md" --argjson labels "${labels_json}" \
+              '{body:$body, labels:$labels}' > "${RUNNER_TEMP}/risk-request.json"
+          }
+
+          apply_card_labels() {
+            node scripts/atlas-primary-risk.js evaluate "${RUNNER_TEMP}/risk-request.json" \
+              > "${RUNNER_TEMP}/risk-plan.json"
+            mapfile -t add_labels < <(jq -r '.add // [] | .[]' "${RUNNER_TEMP}/risk-plan.json")
+            mapfile -t remove_labels < <(jq -r '.remove // [] | .[]' "${RUNNER_TEMP}/risk-plan.json")
+            if ((${#add_labels[@]})); then
+              jq -n --argjson labels "$(jq -c '.add' "${RUNNER_TEMP}/risk-plan.json")" '{labels:$labels}' \
+                | gh api --method POST "repos/${GITHUB_REPOSITORY}/issues/${EVENT_NUMBER}/labels" --input - >/dev/null
+            fi
+            if ((${#remove_labels[@]})); then
+              for name in "${remove_labels[@]}"; do
+                encoded="$(jq -rn --arg name "${name}" '$name | @uri')"
+                gh api --method DELETE "repos/${GITHUB_REPOSITORY}/issues/${EVENT_NUMBER}/labels/${encoded}" >/dev/null
+              done
+            fi
+            if ((${#add_labels[@]})) || ((${#remove_labels[@]})); then
+              labels_json="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${EVENT_NUMBER}/labels" \
+                --jq '.[].name' | jq -R -s -c 'split("\n") | map(select(length > 0))')"
+              jq -n --rawfile body "${RUNNER_TEMP}/pr-body.md" --argjson labels "${labels_json}" \
+                '{body:$body, labels:$labels}' > "${RUNNER_TEMP}/risk-request.json"
             fi
           }
 
@@ -103,62 +184,15 @@ jobs:
             publish
           fi
 
-          pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${EVENT_NUMBER}")"
-          live_number="$(jq -r '.number' <<<"${pr_json}")"
-          live_repo="$(jq -r '.base.repo.full_name // empty' <<<"${pr_json}")"
-          live_state="$(jq -r '.state' <<<"${pr_json}")"
-          live_merged="$(jq -r '.merged' <<<"${pr_json}")"
-          live_base="$(jq -r '.base.ref // empty' <<<"${pr_json}")"
-          live_head="$(jq -r '.head.sha // empty' <<<"${pr_json}")"
-          sha="${live_head}"
-
-          if [[ "${live_number}" != "${EVENT_NUMBER}" ]]; then
-            description="Gate errored (live PR ${live_number} is not event PR ${EVENT_NUMBER}) — treated as failure."
-            publish
-          fi
-          if [[ "${live_repo}" != "${GITHUB_REPOSITORY}" ]]; then
-            description="Gate errored (live repository ${live_repo:-missing} is not ${GITHUB_REPOSITORY}) — treated as failure."
-            publish
-          fi
-          if [[ "${live_state}" != "open" || "${live_merged}" == "true" ]]; then
-            description="Gate errored (pull request is not open) — treated as failure."
-            publish
-          fi
-          if [[ "${live_base}" != "main" ]]; then
-            description="Gate errored (pull request base is ${live_base:-missing}, not main) — treated as failure."
-            publish
-          fi
-          if [[ ! "${live_head}" =~ ^[0-9a-f]{40}$ || "${live_head}" != "${EVENT_HEAD}" ]]; then
-            description="Gate errored (live head ${live_head:0:7} is not the event head ${EVENT_HEAD:0:7}) — treated as failure."
-            publish
-          fi
-
-          jq -r '.body // ""' <<<"${pr_json}" > "${RUNNER_TEMP}/pr-body.md"
-          labels_json="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${EVENT_NUMBER}/labels" \
-            --jq '.[].name' | jq -R -s -c 'split("\n") | map(select(length > 0))')"
-          jq -n --rawfile body "${RUNNER_TEMP}/pr-body.md" --argjson labels "${labels_json}" \
-            '{body:$body, labels:$labels}' > "${RUNNER_TEMP}/risk-request.json"
-
-          node scripts/atlas-primary-risk.js evaluate "${RUNNER_TEMP}/risk-request.json" \
-            > "${RUNNER_TEMP}/risk-plan.json"
-          mapfile -t add_labels < <(jq -r '.add // [] | .[]' "${RUNNER_TEMP}/risk-plan.json")
-          mapfile -t remove_labels < <(jq -r '.remove // [] | .[]' "${RUNNER_TEMP}/risk-plan.json")
-          if ((${#add_labels[@]})); then
-            jq -n --argjson labels "$(jq -c '.add' "${RUNNER_TEMP}/risk-plan.json")" '{labels:$labels}' \
-              | gh api --method POST "repos/${GITHUB_REPOSITORY}/issues/${EVENT_NUMBER}/labels" --input - >/dev/null
-          fi
-          if ((${#remove_labels[@]})); then
-            for name in "${remove_labels[@]}"; do
-              encoded="$(jq -rn --arg name "${name}" '$name | @uri')"
-              gh api --method DELETE "repos/${GITHUB_REPOSITORY}/issues/${EVENT_NUMBER}/labels/${encoded}" >/dev/null
-            done
-          fi
-          if ((${#add_labels[@]})) || ((${#remove_labels[@]})); then
-            labels_json="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${EVENT_NUMBER}/labels" \
-              --jq '.[].name' | jq -R -s -c 'split("\n") | map(select(length > 0))')"
-            jq -n --rawfile body "${RUNNER_TEMP}/pr-body.md" --argjson labels "${labels_json}" \
-              '{body:$body, labels:$labels}' > "${RUNNER_TEMP}/risk-request.json"
-          fi
+          load_live_card
+          apply_card_labels
+          # A card edit during this run is queued behind concurrency and cannot
+          # mark pending until we finish. Re-read the live card, re-project it,
+          # then snapshot again before the gate so success cannot be published
+          # from the body captured at start.
+          load_live_card
+          apply_card_labels
+          load_live_card
 
           set +e
           node scripts/atlas-primary-risk.js evaluate-gate "${RUNNER_TEMP}/risk-request.json" \

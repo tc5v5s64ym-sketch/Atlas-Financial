@@ -6,7 +6,8 @@
  * idempotent label sync from the card, and fails the gate when the live
  * GitHub labels do not equal that card value. Also proves the shipped
  * workflow contracts: trusted default-branch helper, edited-card wakeup,
- * no PR-head execution, no second PRIMARY list, and no auto-merge.
+ * no PR-head execution, no second PRIMARY list, no auto-merge, live-card
+ * revalidation before success, and failure publication if the shell aborts.
  */
 
 const fs = require('fs');
@@ -174,6 +175,22 @@ ok(!/ref:\s*\$\{\{\s*github\.event\.pull_request\.head/.test(workflow),
   'workflow never checks out the PR head');
 ok(/live head[\s\S]*event head/.test(workflow) || /liveHead[\s\S]*eventHead/.test(workflow),
   'live head must still equal the event head');
+ok(/on_exit\(\) \{[\s\S]*post_status[\s\S]*\}\s*trap on_exit EXIT/.test(workflow)
+  && /published=0/.test(workflow)
+  && /published=1/.test(workflow),
+  'shell abort publishes failure via EXIT trap instead of leaving pending');
+const loadAt = [];
+let from = 0;
+while (workflow.indexOf('load_live_card', from) !== -1) {
+  loadAt.push(workflow.indexOf('load_live_card', from));
+  from = loadAt[loadAt.length - 1] + 1;
+}
+const lastApply = workflow.lastIndexOf('apply_card_labels');
+const gateAt = workflow.indexOf('evaluate-gate');
+ok(loadAt.length >= 4 && lastApply !== -1 && gateAt !== -1
+  && loadAt[loadAt.length - 1] > lastApply
+  && loadAt[loadAt.length - 1] < gateAt,
+  'live Merge Card is re-fetched after label sync and before evaluate-gate');
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
 process.exit(failures === 0 ? 0 : 1);
