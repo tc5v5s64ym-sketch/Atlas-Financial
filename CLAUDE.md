@@ -191,8 +191,8 @@ The active implementation agent merges when all of these hold:
 
 - every applicable GitHub check passed **on the exact current head**;
 - the merge card is complete, including attribution and the review block;
-- exactly one primary risk label, and it is honest about what the owner has to
-  do (`docs/RISK_LABELS.md`);
+- exactly one primary risk value, taken from the Merge Card and projected onto
+  the GitHub label (`docs/RISK_LABELS.md`);
 - the required review records `PASS` on the exact merged head when a high-risk
   trigger fired;
 - no real financial, security, authority, invariant, or product-trust blocker
@@ -203,8 +203,9 @@ The active implementation agent merges when all of these hold:
 
 ## Merge policy
 
-The primary risk label decides what the owner does, and `docs/RISK_LABELS.md`
-defines each one:
+The Merge Card `Primary risk` row decides what the owner does. The GitHub
+primary label is a projection of that row, not a second judgement.
+`docs/RISK_LABELS.md` defines each closed value:
 
 - **`auto-safe`** — merge on green. No approval click, no waiting.
 - **`figures-moved`** — the owner sees the figures diff before the merge. That

@@ -3,8 +3,8 @@
 # .github/workflows/labels.yml. Keep the three in step.
 
 # ---------------------------------------------------------------- PRIMARY
-# Exactly ONE per PR. Enforced by .github/workflows/risk-label-gate.yml.
-# This answers: what does the OWNER have to do about this pull request?
+# Exactly ONE per PR. The Merge Card Primary risk row is the authority;
+# .github/workflows/risk-label-gate.yml projects that value onto GitHub.
 - name: auto-safe
   color: "0e8a16"   # green
   description: "No published figure moves and no authority changes home. Merge on green."

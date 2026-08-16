@@ -856,6 +856,11 @@ would lose them.
   boundaries stay. `AF-RECON-01` / `B91` should produce evidence about whether
   a figures-only evidence update needs the same architecture review as an
   engine-authority change. Do not add a gate to get there.
+- **Issue #57 remainder — autonomous delivery loop.** Governance, not product.
+  The repair → handoff → GPT-5.6 follow-up → card-sync middle is live. The
+  remaining owner-gated pieces (first REQUIRED review API spend, branch
+  protection, standing auto-merge, next-node wakeup) stay on Issue #57. They
+  do not reorder `B91`.
 
 `BACKLOG.md` holds what each actually says, including the evidence and the
 options — this file names them so the sequence does not lose them, and does not

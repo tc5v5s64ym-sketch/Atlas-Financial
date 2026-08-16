@@ -1,7 +1,8 @@
 # Path -> CATEGORY label map for the auto-labeller (actions/labeler@v5).
 # These say what a PR touches. The single PRIMARY risk label (auto-safe /
-# figures-moved / owner-decision / blocked) is a judgement, not a path, and
-# stays on the merge card. See docs/RISK_LABELS.md.
+# figures-moved / owner-decision / blocked) is projected from the Merge Card
+# by the risk-label gate. No path can tell you whether a change needs the
+# owner. See docs/RISK_LABELS.md.
 
 engine:
   - changed-files:

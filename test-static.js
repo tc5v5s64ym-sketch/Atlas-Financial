@@ -120,6 +120,7 @@ const mergeCard = read('.github/workflows/merge-card-check.yml');
 const gate = read('.github/workflows/risk-label-gate.yml');
 const manifest = read('.github/labels.yml');
 const labelerCfg = read('.github/labeler.yml');
+const primaryRiskHelper = read('scripts/atlas-primary-risk.js');
 
 // Every field the check requires must exist in the template it points people at.
 const fieldsBlock = (/const FIELDS = \[([\s\S]*?)\n\s*\];/.exec(mergeCard) || [, ''])[1];
@@ -141,11 +142,19 @@ ok(missingHeadings.length === 0,
   'every prose section the check requires exists in the template',
   missingHeadings.join(', ') || `${headings.length} sections`);
 
-// The gate's primary list and the manifest must describe the same four labels.
-const gatePrimary = (/const PRIMARY = \[([^\]]+)\]/.exec(gate) || [, ''])[1]
+// The helper's primary list, the merge-card closed vocabulary, and the
+// manifest must describe the same four labels. The workflow must not keep a
+// second copy.
+const helperPrimary = (/const PRIMARY = Object\.freeze\(\[([^\]]+)\]\)/.exec(primaryRiskHelper) || [, ''])[1]
   .match(/'([^']+)'/g) || [];
-const gateNames = gatePrimary.map(s => s.replace(/'/g, ''));
-ok(gateNames.length === 4, 'the risk gate names four primary labels', gateNames.join(', '));
+const gateNames = helperPrimary.map(s => s.replace(/'/g, ''));
+ok(gateNames.length === 4, 'the primary-risk helper names four primary labels', gateNames.join(', '));
+ok(/scripts\/atlas-primary-risk\.js/.test(gate), 'the risk gate derives the GitHub label from the helper');
+ok(!/const PRIMARY = \[/.test(gate), 'the risk-gate workflow does not keep a second PRIMARY list');
+const mergeCardPrimary = (/const PRIMARY_RISK = \[([^\]]+)\]/.exec(mergeCard) || [, ''])[1]
+  .match(/'([^']+)'/g) || [];
+ok(mergeCardPrimary.map(s => s.replace(/'/g, '')).join(',') === gateNames.join(','),
+  'merge-card-check uses the same closed Primary risk vocabulary');
 const notInManifest = gateNames.filter(n => !new RegExp(`^- name: ${n}$`, 'm').test(manifest));
 ok(notInManifest.length === 0,
   'and every one of them exists in the label manifest', notInManifest.join(', ') || 'all present');
@@ -158,7 +167,7 @@ ok(unknown.length === 0, 'every auto-applied category label is in the manifest',
   unknown.join(', ') || `${labelerNames.length} categories`);
 ok(labelerNames.every(n => !gateNames.includes(n)),
   'and no primary label is applied automatically by path',
-  'the primary label is a judgement, not a path');
+  'the primary label is projected from the Merge Card, not from paths');
 
 // The snapshot the figures review diffs must actually run.
 ok(fs.existsSync(path.join(__dirname, 'scripts/figures-snapshot.js')),

@@ -199,6 +199,9 @@ red('the current-state verdict uses a closed opening', card({ fields: { 'Current
 green('later current-state prose is not semantically parsed', card({
   fields: { 'Current-state verdict': 'STILL BROKEN or ALREADY FIXED — reviewer must judge this bad prose' },
 }));
+green('Primary risk may carry an explanation after the closed value', card({
+  fields: { 'Primary risk': 'auto-safe — no published figure moves' },
+}));
 
 const required = {
   Required: 'REQUIRED — review machinery changed',
@@ -303,7 +306,10 @@ red('a blocking required review cannot merge', card({ review: {
 } }), /outcome: PASS/i);
 red('a pending required review cannot merge', card({ review: {
   ...required, 'Review outcome': 'PENDING',
-} }), /outcome: PASS/i);
+} }), /Awaiting exact-head Atlas review/i);
+red('Primary risk uses the closed vocabulary', card({ fields: {
+  'Primary risk': 'probably-fine',
+} }), /Primary risk.*must open/i);
 red('required-review notes cannot be blank', card({ review: {
   ...required, 'Findings and fix verification': '<!-- notes -->',
 } }), /fix verification.*blank/i);
