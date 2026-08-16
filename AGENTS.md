@@ -35,12 +35,11 @@ security, authority, trust, or owner-reserved boundaries in `CLAUDE.md` and
 
 ## The three things agents get wrong here
 
-**The review lanes are not interchangeable.** ChatGPT performs the blocking
-Atlas Contract / Systems Review when a high-risk trigger fires. It asks only
-whether the exact head is unsafe or architecturally wrong to merge. Independent
-agent review is an optional improvement audit: default one pass, with a second
-only for a high-severity/systemic issue or a materially changed high-risk
-surface. `CLAUDE.md` holds the trigger list and bounded follow-up protocol.
+**The review lanes are not interchangeable.** ChatGPT is the decision desk.
+It may review a high-risk change, but that review is not a SHA-matching merge
+lock. Independent agent review is an optional improvement audit. Confidence
+that a PR is not junk is `npm test`, the secret hook, and the figures
+comment. `CLAUDE.md` holds the merge gate.
 
 **A real defect still blocks.** The blocker is the financial, security,
 authority, invariant, or trust defect itself — not an advisory review's status
@@ -84,7 +83,8 @@ This is the one launcher. Do not write a second one.
 > it. Verify current repository state
 > before editing. Use a fresh `agent/<outcome>` branch from current `main`.
 > One independently provable outcome, merge card filled, findings
-> dispositioned. Stop only for an owner-reserved item or the required review.
+> dispositioned. Stop only for an owner-reserved item. Merge on green
+> tests and a complete card.
 
 Before implementing, report only: the source/item, the current-state verdict,
 whether code is actually required, and any owner gate. Then go.

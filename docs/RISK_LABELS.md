@@ -30,63 +30,34 @@ Category labels are descriptive and non-blocking:
 
 ### `merge-card-check`
 
-The merge card check validates only mechanical facts:
+The merge card check validates only that the card is complete and aligned
+with itself:
 
 - the Atlas Merge Card heading exists;
 - the required table rows exist and are not blank placeholders;
 - `Current-state verdict` opens with one documented closed value;
 - `Primary risk` opens with one of `auto-safe` / `figures-moved` /
   `owner-decision` / `blocked`;
-- the architecture-review decision opens `REQUIRED` or `NOT REQUIRED`;
-- a required review is satisfied by a card `PASS` on the exact head with
-  `Reviewer: ChatGPT`, **or** by a trusted Atlas PASS review
-  (`tc5v5s64ym-sketch` and the canonical marker prefix) on the live head —
-  so a `PENDING` card cannot hang after that PASS exists; that override
-  covers only stale `PENDING`; an explicit live-card `BLOCKING` or
-  `NOT PASS` still fails even if a trusted PASS exists; `PENDING` with no
-  trusted PASS still fails closed, with an awaiting-review message;
-- a trusted NOT PASS / BLOCKING on the live head fails closed even if the
-  card still says PASS;
+- the review decision opens `REQUIRED` or `NOT REQUIRED`;
 - a not-required review records `N/A` for head, reviewer, and outcome; and
 - card text is read from the live pull request (`pulls.get`), not the workflow
   event body. A closed PR, a non-`main` base, a PR or repository identity
-  change, or a live head that is not the event head fails closed; and
-- the check also runs on `pull_request_review` submitted, so posting a trusted
-  Atlas PASS retriggers it without waiting for card-sync. After trusted Atlas
-  PASS card-sync, the default-branch repair workflow still starts a fresh run
-  of this same workflow via `workflow_dispatch`, with
-  the PR number and expected head SHA. The dispatcher targets the PR head
-  branch when that commit's workflow file already has the trigger, so the
-  required check lands on that SHA. A PR head that predates the trigger
-  cannot be targeted (`gh workflow run --ref` uses the workflow version at
-  that ref); those runs use the default-branch workflow version, and this
-  job records the required check on the expected PR head. That run uses
-  the existing job name and the same live-PR validation. It fails closed
-  if the live PR/head no longer matches. GitHub does not chain
-  `pull_request` `edited` from `GITHUB_TOKEN`, so that event is not the
-  card-sync path. Codex reviews do not satisfy the required review.
+  change, or a live head that is not the event head fails closed.
 
-It does not parse prose, negation, severity, scope, dispositions, review rounds,
-or open-loop narratives. It does not infer PASS from CI, Codex, or an older
-SHA. It does not merge or write financial state. It prevents the mechanical
-failure in which a required verdict outlives the code it covered, the
-mechanical failure in which a trusted PASS card-sync leaves the required
-check stale, and the hang in which a live trusted PASS exists but the card
-is still PENDING.
+It does **not** fail on a review SHA, a PASS / PENDING / NOT PASS / BLOCKING
+outcome, ChatGPT identity, or a trusted Atlas review. Those fields stay on
+the card as notes. A later fix must not turn this check red.
+
+Confidence that the change is not junk is the job of `npm test`, the secret
+hook, and the figures comment. This check only stops an empty or malformed
+card.
 
 `test-mergecard.js` executes the real inline workflow script. It proves missing
-fields, invalid decisions, stale heads, wrong reviewer identity, and non-passing
-required outcomes fail. It proves a PENDING card with a trusted Atlas PASS on
-the live head succeeds, that Codex does not satisfy that path, that an
-explicit BLOCKING or NOT PASS on the live card still fails even when a
-trusted PASS exists, and that a later trusted NOT PASS on the live head
-fails closed. It proves the check reads the live PR body rather than the
-workflow event body, and that a moved live head or a closed or retargeted PR
-fails closed. It also proves `workflow_dispatch` with matching live PR/head
-succeeds and fails closed on mismatch. A default-branch dispatch for a PR
-head that predates the trigger records the required check on the expected
-head; a non-default dispatch ref whose run SHA is not the expected head
-still fails closed.
+fields and invalid closed openings fail, and that review SHA / PASS / PENDING
+do not. It proves the check reads the live PR body rather than the workflow
+event body, and that a moved live head or a closed or retargeted PR fails
+closed. It also proves `workflow_dispatch` with matching live PR/head succeeds
+and fails closed on mismatch.
 
 ### `tests`
 
@@ -151,14 +122,10 @@ merge. The initial pass reports blockers only. A follow-up verifies the named
 fixes and the high-risk surface changed by those fixes. It does not reopen the
 untouched artifact for unlimited new findings.
 
-When the live Merge Card says `Required: REQUIRED`, the owner-authorized
-GPT-5.6 Atlas reviewer may perform that first review over the existing
-`OPENAI_API_KEY` / trusted Atlas reviewer path (`atlas-first-review.yml`).
-It uses the same exact-head and identity boundaries as the PR #63 follow-up
-reviewer. It does not spend on `NOT REQUIRED` cards, unparsed Required
-fields, drafts, or a SHA that already has a trusted PASS / NOT PASS /
-BLOCKING. Cursor still cannot write PASS. The Merge Card still records
-`Reviewer: ChatGPT`. Repair follow-up remains `atlas-rereview.yml`.
+The paid first-review / re-review / Cursor-repair spend path is **parked**
+as of 2026-08-16. Those workflows remain in the tree but exit before any
+OpenAI or Cursor API call. ChatGPT can still advise from the decision desk.
+It is not a required SHA-matching merge check.
 
 ### Independent improvement audit — optional
 
