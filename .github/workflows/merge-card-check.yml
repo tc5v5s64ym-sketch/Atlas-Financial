@@ -10,6 +10,8 @@ name: Merge card check
 # with itself so a reader can see the claim.
 #
 # Card text is always read from the live pull request via pulls.get.
+# The Primary-risk helper is loaded from the trusted default branch, never
+# from PR-head JavaScript. Live PR body and labels are data only.
 
 on:
   pull_request:
@@ -38,9 +40,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Checkout Primary-risk helper
+      - name: Checkout trusted default-branch helper
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
 
       - name: Validate mechanical merge-card facts
@@ -158,6 +161,8 @@ jobs:
             const head = eventHead;
             const pull_number = eventNumber;
 
+            // Workspace is the trusted default-branch checkout above, not the
+            // PR head. Live card text stays data from pulls.get.
             let helper;
             try {
               const workspace = process.env.GITHUB_WORKSPACE || process.cwd();

@@ -207,6 +207,15 @@ ok(/scripts\/atlas-primary-risk\.js/.test(mergeCardWorkflow),
   'merge-card-check uses the same helper');
 ok(!/const PRIMARY_RISK = \[/.test(mergeCardWorkflow),
   'merge-card-check does not keep a second PRIMARY list');
+const mergeCardDefaultBranch = mergeCardWorkflow.search(
+  /ref:\s*\$\{\{\s*github\.event\.repository\.default_branch\s*\}\}/,
+);
+const mergeCardRequire = mergeCardWorkflow.search(/atlas-primary-risk\.js/);
+ok(mergeCardDefaultBranch >= 0 && mergeCardRequire > mergeCardDefaultBranch
+  && /persist-credentials:\s*false/.test(mergeCardWorkflow),
+  'merge-card-check checks out the trusted default branch before requiring the helper');
+ok(!/ref:\s*\$\{\{\s*github\.event\.pull_request\.head/.test(mergeCardWorkflow),
+  'merge-card-check never checks out the PR head');
 ok(/pull-requests:\s*write/.test(workflow), 'label mutation is the declared write scope');
 ok(!/CURSOR_API_KEY|OPENAI_API_KEY|ATLAS_AUTOMATION_TOKEN/.test(workflow),
   'projection does not use repository secrets');

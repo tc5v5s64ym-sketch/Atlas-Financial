@@ -154,6 +154,15 @@ ok(!/const PRIMARY = \[/.test(gate), 'the risk-gate workflow does not keep a sec
 ok(/scripts\/atlas-primary-risk\.js/.test(mergeCard), 'merge-card-check consumes the helper for Primary risk');
 ok(/parsePrimaryRisk/.test(mergeCard), 'merge-card-check calls parsePrimaryRisk rather than a second enum regex');
 ok(!/const PRIMARY_RISK = \[/.test(mergeCard), 'merge-card-check does not keep a second PRIMARY list');
+const mergeCardCheckout = mergeCard.search(
+  /ref:\s*\$\{\{\s*github\.event\.repository\.default_branch\s*\}\}/,
+);
+const mergeCardHelper = mergeCard.search(/atlas-primary-risk\.js/);
+ok(mergeCardCheckout >= 0 && mergeCardHelper > mergeCardCheckout,
+  'merge-card-check checks out the trusted default branch before requiring the helper');
+ok(/persist-credentials:\s*false/.test(mergeCard)
+  && !/ref:\s*\$\{\{\s*github\.event\.pull_request\.head/.test(mergeCard),
+  'merge-card-check helper checkout disables credentials and is not the PR head');
 const notInManifest = gateNames.filter(n => !new RegExp(`^- name: ${n}$`, 'm').test(manifest));
 ok(notInManifest.length === 0,
   'and every one of them exists in the label manifest', notInManifest.join(', ') || 'all present');
