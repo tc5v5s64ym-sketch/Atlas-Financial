@@ -284,6 +284,15 @@ ok(/persist-credentials:\s*false/.test(reviewer),
   'trusted first reviewer checks out default-branch code without credentials');
 ok(!/ref:\s*\$\{\{\s*github\.event\.workflow_run\.head_sha/.test(reviewer),
   'trusted first reviewer does not check out the PR head');
+const openaiCall = fs.readFileSync(path.join(__dirname, 'scripts/atlas-openai-call.sh'), 'utf8');
+ok(/bash scripts\/atlas-openai-call\.sh/.test(reviewer),
+  'first reviewer calls OpenAI through the shared retry helper');
+ok(!/curl -fsS https:\/\/api\.openai.com/.test(reviewer),
+  'first reviewer does not fail-fast curl OpenAI');
+ok(/429/.test(openaiCall) && /backing off/.test(openaiCall) && /seq 1/.test(openaiCall),
+  'OpenAI helper retries 429 instead of exiting 22');
+ok(!/curl -[a-z]*f/.test(openaiCall),
+  'OpenAI helper does not use curl -f, which turns 429 into exit 22');
 
 console.log('\n=== follow-up path is unchanged and separate ===');
 ok(/Atlas re-review requested\./.test(followUpDispatch),

@@ -186,6 +186,8 @@ ok(!/head_sha\}" != "\$\{RUN_HEAD\}"/.test(reviewer) && !/head_sha != "\$\{RUN_H
 ok(/live_head.*HEAD_SHA/.test(reviewer) && /immediately before review post/.test(reviewer), 'reviewer rechecks the live exact head after the model call and immediately before posting');
 ok(/pulls\/\$\{PR_NUMBER\}\/reviews/.test(reviewer) && /event:\"COMMENT\"/.test(reviewer), 'reviewer posts a normal GitHub review on the exact commit');
 ok(!/gh pr merge|merge_pull_request|git push/.test(reviewer), 'instant reviewer cannot merge or push code');
+ok(/bash scripts\/atlas-openai-call\.sh/.test(reviewer), 'follow-up reviewer calls OpenAI through the shared retry helper');
+ok(!/curl -fsS https:\/\/api\.openai.com/.test(reviewer), 'follow-up reviewer does not fail-fast curl OpenAI');
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
 process.exit(failures === 0 ? 0 : 1);

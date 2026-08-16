@@ -331,18 +331,10 @@ jobs:
               ]
             }' > "${RUNNER_TEMP}/openai-request.json"
 
-          curl -fsS https://api.openai.com/v1/responses \
-            -H 'Content-Type: application/json' \
-            -H "Authorization: Bearer ${OPENAI_API_KEY}" \
-            --data-binary "@${RUNNER_TEMP}/openai-request.json" \
-            > "${RUNNER_TEMP}/openai-response.json"
+          bash scripts/atlas-openai-call.sh \
+            "${RUNNER_TEMP}/openai-request.json" \
+            "${RUNNER_TEMP}/openai-response.json"
 
-          status="$(jq -r '.status // empty' "${RUNNER_TEMP}/openai-response.json")"
-          if [[ "${status}" != "completed" ]]; then
-            echo "OpenAI review did not complete successfully. Fail closed."
-            jq -r '.error.message // .incomplete_details.reason // "unknown response failure"' "${RUNNER_TEMP}/openai-response.json"
-            exit 1
-          fi
           jq -r '[.output[]? | .content[]? | select(.type == "output_text") | .text] | join("")' \
             "${RUNNER_TEMP}/openai-response.json" > "${RUNNER_TEMP}/model-result.json"
           node scripts/atlas-api-rereview.js render-review \

@@ -8,20 +8,27 @@ name: Merge card check
 # Card text is always read from the live pull request via pulls.get. A rerun
 # therefore cannot re-validate a stale event body after the live card changed.
 #
-# pull_request remains the ordinary path, including human card edits. Trusted
-# Atlas PASS card-sync uses GITHUB_TOKEN, which GitHub does not chain into a
-# pull_request edited run. That automation path starts this same workflow via
-# workflow_dispatch, with the PR number and expected head SHA. The dispatcher
-# targets the PR head branch when that commit already has this trigger, so the
-# required check lands on that SHA. A PR head created before this trigger
-# reached main cannot be targeted (`gh workflow run --ref` uses the workflow
-# version at that ref). Those runs use the default-branch workflow version, and
-# this job records the required check on the expected PR head. The job name is
-# the required-check identity and must stay put.
+# pull_request remains the ordinary path, including human card edits. A trusted
+# Atlas PASS review on the live head also satisfies a REQUIRED review, so a
+# PENDING card cannot hang after that PASS exists. That override covers only
+# the stale PENDING projection; an explicit later BLOCKING or NOT PASS on the
+# live card still fails. pull_request_review
+# submitted retriggers this check when that review lands. Codex reviews are
+# not Atlas PASS. Trusted Atlas PASS card-sync still uses GITHUB_TOKEN, which
+# GitHub does not chain into a pull_request edited run, and still starts this
+# same workflow via workflow_dispatch as a backup. The dispatcher targets the
+# PR head branch when that commit already has the trigger, so the required
+# check lands on that SHA. A PR head created before this trigger reached main
+# cannot be targeted (`gh workflow run --ref` uses the workflow version at
+# that ref). Those runs use the default-branch workflow version, and this job
+# records the required check on the expected PR head. The job name is the
+# required-check identity and must stay put.
 
 on:
   pull_request:
     types: [opened, edited, synchronize, reopened]
+  pull_request_review:
+    types: [submitted]
   workflow_dispatch:
     inputs:
       pr_number:
@@ -81,7 +88,7 @@ jobs:
                 }
                 reportRequiredCheckOnExpectedHead = true;
               }
-            } else if (eventName === 'pull_request') {
+            } else if (eventName === 'pull_request' || eventName === 'pull_request_review') {
               eventNumber = Number(eventPr.number);
               eventHead = ((eventPr.head || {}).sha) || '';
             } else {
@@ -298,19 +305,59 @@ jobs:
               }
 
               if (required) {
-                const reviewedHead = review['Exact reviewed head'].replace(/[`\s]/g, '');
-                if (!/^[0-9a-f]{40}$/i.test(reviewedHead)) {
-                  problems.push('A required review must record one bare 40-character SHA.');
-                } else if (head && reviewedHead.toLowerCase() !== head.toLowerCase()) {
-                  problems.push(`The reviewed head ${reviewedHead.slice(0, 7)} is not the PR head ${head.slice(0, 7)}.`);
+                let trustedOutcome = '';
+                try {
+                  const reviews = await github.paginate(github.rest.pulls.listReviews, {
+                    owner,
+                    repo,
+                    pull_number,
+                    per_page: 100,
+                  });
+                  const list = Array.isArray(reviews) ? reviews : [];
+                  const candidates = list
+                    .filter((item) => item && item.user && item.user.login === 'tc5v5s64ym-sketch')
+                    .filter((item) => String(item.commit_id || '').toLowerCase() === String(head).toLowerCase())
+                    .map((item) => {
+                      const text = String(item.body || '');
+                      let atlasOutcome = '';
+                      if (text.startsWith('Atlas Contract / Systems Review — PASS')) atlasOutcome = 'PASS';
+                      else if (text.startsWith('Atlas Contract / Systems Review — NOT PASS')) atlasOutcome = 'NOT PASS';
+                      else if (text.startsWith('Atlas Contract / Systems Review — BLOCKING')) atlasOutcome = 'BLOCKING';
+                      return { submitted_at: item.submitted_at, atlasOutcome };
+                    })
+                    .filter((item) => item.atlasOutcome)
+                    .sort((left, right) => String(left.submitted_at || '').localeCompare(String(right.submitted_at || '')));
+                  if (candidates.length) {
+                    trustedOutcome = candidates[candidates.length - 1].atlasOutcome;
+                  }
+                } catch (error) {
+                  const detail = error && error.message ? ` (${error.message})` : '.';
+                  core.setFailed(`Merge-card check failed closed: trusted Atlas reviews could not be loaded${detail}`);
+                  return;
                 }
-                if (!/^ChatGPT$/i.test(review.Reviewer)) {
-                  problems.push('A required Atlas Contract / Systems Review must record Reviewer: ChatGPT.');
-                }
-                if (/^PENDING$/i.test(review['Review outcome'])) {
-                  problems.push('Awaiting exact-head Atlas review — Review outcome is PENDING, not PASS.');
-                } else if (!/^PASS$/i.test(review['Review outcome'])) {
-                  problems.push('A required review must record Review outcome: PASS before merge.');
+
+                if (trustedOutcome === 'PASS' && /^PENDING$/i.test(review['Review outcome'])) {
+                  // Live trusted Atlas PASS on this exact head is the review
+                  // authority. A PENDING card is a stale projection, not a hang.
+                  // An explicit later BLOCKING or NOT PASS on the live card is
+                  // not overridden by that PASS.
+                } else if (trustedOutcome === 'NOT PASS' || trustedOutcome === 'BLOCKING') {
+                  problems.push(`Trusted Atlas review on this head is ${trustedOutcome}, not PASS.`);
+                } else {
+                  const reviewedHead = review['Exact reviewed head'].replace(/[`\s]/g, '');
+                  if (!/^[0-9a-f]{40}$/i.test(reviewedHead)) {
+                    problems.push('A required review must record one bare 40-character SHA.');
+                  } else if (head && reviewedHead.toLowerCase() !== head.toLowerCase()) {
+                    problems.push(`The reviewed head ${reviewedHead.slice(0, 7)} is not the PR head ${head.slice(0, 7)}.`);
+                  }
+                  if (!/^ChatGPT$/i.test(review.Reviewer)) {
+                    problems.push('A required Atlas Contract / Systems Review must record Reviewer: ChatGPT.');
+                  }
+                  if (/^PENDING$/i.test(review['Review outcome'])) {
+                    problems.push('Awaiting exact-head Atlas review — Review outcome is PENDING, not PASS.');
+                  } else if (!/^PASS$/i.test(review['Review outcome'])) {
+                    problems.push('A required review must record Review outcome: PASS before merge.');
+                  }
                 }
               }
 
