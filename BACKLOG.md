@@ -13,8 +13,10 @@ Last reviewed **2026-08-14**. Phase: **analysis** — capture is essentially don
 
 **Post-B74 implementation order** is owned by
 [`docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`](docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md),
-not by this file. Remaining order after `B93`: `B91` → `B20` /
-`B21`. Next outcome: **`B91` / AF-RECON-01**.
+not by this file. Remaining order after the B91 current-state foundation:
+read-only connectivity (`B80` spike, then a live Lunch Money observation
+test) → prove refresh identity on real provider behaviour (`B78`) →
+`B20` / `B21`. `B91` stays **IN PROGRESS** and is not DONE.
 
 **Operational knowledge lives in `docs/ACCOUNT_FACTS.md`**, not here: how each
 institution's data is obtained, the download endpoints, and the traps that cost
@@ -1350,10 +1352,11 @@ request that removed the tables, because leaving this entry open would have left
 Build-strategy item `AF-INGEST-01`, and the evidence trajectory gate T3 is made
 of. Importing the same statement twice must change nothing; a corrected record
 must update rather than duplicate; every imported row must trace to its source.
-**On the file foundation — no store, no provider.** Waits on `B20` and `B21`, and
-on the record of manual interventions the second intake run produces. `B20` and
-`B21` themselves wait on `B91`. Proof is a real re-import on real household data
-that changes nothing, not a fixture.
+**After the live Lunch Money observation test**, prove refresh identity using
+real provider behaviour rather than an invented dedup engine. File-statement
+re-import remains useful later; it no longer blocks the observation seam.
+`B20` / `B21` wait on successful refresh, not the other way around. Proof is a
+real re-import on real household data that changes nothing, not a fixture.
 
 **B79 · The store question, answered by evidence** · `QUEUED` · *needs the owner*
 Build-strategy item `AF-STORE-01`. A written answer to whether the file
@@ -1363,12 +1366,13 @@ and says passing it is an owner decision, recorded — and names "relational
 modelling would be tidier" and "a later capability assumes it" as things that are
 not reasons. Waits on `B78`. Do not introduce a store to answer this.
 
-**B80 · Evaluate connectivity providers, point nothing live** · `QUEUED` · *needs the owner*
-Build-strategy item `AF-LIVE-01`. A written evaluation of what actually serves
-these institutions in Canada, verified when the work starts rather than assumed,
-and what each provider's failure modes cost — `ARCHITECTURE.md`'s connectivity
-conditions 2 and 4. **Choose nothing, obtain no credential, attempt no
-connection.** Waits on T3 and an owner decision to evaluate at all.
+**B80 · Evaluate connectivity providers, point nothing live** · `IN PROGRESS` · *owner brought this forward*
+Build-strategy item `AF-LIVE-01`. Owner instruction 2026-08-16: manual
+current-state capture is the binding product limit, so observation
+connectivity is evaluated now rather than after B20/B21/B78.
+Written evaluation: [`docs/connectivity/PROVIDER_COVERAGE.md`](docs/connectivity/PROVIDER_COVERAGE.md).
+First provider for a personal read-only test: **Lunch Money**. No live
+connection and no credential are in this repository. `B81` remains gated.
 
 **B81 · Point something live** · `QUEUED` · *gated, owner-reserved*
 Build-strategy item `AF-LIVE-02`. One read-only connection, after

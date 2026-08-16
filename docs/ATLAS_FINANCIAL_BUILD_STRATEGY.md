@@ -24,11 +24,12 @@ Capabilities that are wanted but not yet in Phases 1–4 are recorded in
 **Later capabilities — status and reopen trigger**. That table is memory and
 trigger, not a second order of work.
 
-**Current sequencing (14 August 2026, post-B93).** B74, B87, B88, B89, B90, B92
-and B93 are closed. The remaining implementation order is the **Post-B90
-remaining order** in the disposition below — strengthened `B91`, then history
-as a by-product. Next implementation outcome: evidence refresh / reconciliation
-(`B91`). Do not start `B20` first.
+**Current sequencing (16 August 2026).** B74, B87–B90, B92 and B93 are closed.
+`B91` remains **IN PROGRESS** and is not DONE. Owner instruction the same
+day: manual current-state capture is now the binding product limit, so a
+read-only connectivity spike (`B80`) is brought forward rather than waiting
+on `B20` / `B21` / `B78`. History remains a by-product of successful
+refresh. Do not start `B20` first. Do not mark `B91` done.
 
 ---
 
@@ -251,8 +252,14 @@ B92  refresh-safe tests                     ← complete
 B93  derive/delete proven duplicate live facts  ← complete
   ↓
 B91  evidence refresh / reconciliation + current-state cutover
-     ← next implementation outcome
-     (Aug. 14 payday acceptance)
+     ← IN PROGRESS, not DONE
+  ↓
+B80  read-only connectivity spike (Lunch Money first)
+     ← owner-brought-forward observation path
+  ↓
+live Lunch Money connection test (owner, outside the repo)
+  ↓
+B78  refresh identity / idempotency on real provider behaviour
   ↓
 B20  history from successful refresh
   ↓
@@ -278,8 +285,8 @@ rules above.
 
 ### Next implementation outcomes — cheap refresh, then reconciliation
 
-`B92` and `B93` are closed. `B91` is the next implementation outcome, not a
-new architecture layer.
+`B92` and `B93` are closed. `B91` remains **IN PROGRESS** and is not a new
+architecture layer. `B80` is the brought-forward read-only observation seam.
 
 **`AF-TEST-01` / `B92`.** Make ordinary evidence refresh cheap. **Complete.**
 Measured before the unpin, on throwaway clones: changing Chequing A broke 8
@@ -828,20 +835,22 @@ that exists, without a provider and without a store.
 
 ## Phase 4 — connectivity · gated at T4
 
-**Not scheduled.** `ARCHITECTURE.md` gates this on five conditions including
-security review and an owner decision. Two items are named so the phase has a
-shape, and neither may start before the gate.
+`ARCHITECTURE.md` still owns the five-condition gate for pointing anything
+**live**. The owner has now recorded condition 1 (manual capture is the
+binding limit) and authorised the B80 evaluation plus a fixture-only
+observe seam. T4 / `B81` remain closed.
 
 ### AF-LIVE-01 · Evaluate providers, point nothing live
 
 - **Outcome** — a written evaluation of what actually serves these institutions
   in Canada, verified when the work starts, and what each provider's failure modes
-  cost.
-- **Tier** — M4. **Backlog** — `B80`. **Entry gate** — T3 **and** an owner decision to evaluate.
-- **Acceptance** — no provider chosen, no credential obtained, no connection
-  attempted. Evaluation is reading and writing.
+  cost. First personal-API candidate recorded: Lunch Money.
+- **Tier** — M4. **Backlog** — `B80`. **Entry gate** — owner instruction 2026-08-16
+  (manual freshness bottleneck). T3 is not required to *evaluate*.
+- **Acceptance** — evaluation written; no live credential in the repo; no
+  `data.json` write; observe CLI is fixture-first.
 - **Prompt** — *Evaluate current Canadian availability and provider semantics per
-  `ARCHITECTURE.md`'s conditions 2 and 4. Choose nothing. Obtain no credential.*
+  `ARCHITECTURE.md`'s conditions 2 and 4. Obtain no credential. Do not open T4.*
 
 ### AF-LIVE-02 · Point something live
 
@@ -950,13 +959,13 @@ resurrect it.
 
 | Capability | Status | Home today | Reopen trigger |
 |---|---|---|---|
-| Evidence refresh / reconciliation | **ACTIVE** | `AF-RECON-01` / `B91`, after `B92` and `B93`. **Next implementation outcome.** Major product milestone. | Already sequenced. Do not replace with a store, schema, leaf-level provenance, or copilot absorption stack. |
+| Evidence refresh / reconciliation | **ACTIVE** | `AF-RECON-01` / `B91`, after `B92` and `B93`. **IN PROGRESS, not DONE.** Major product milestone. | Already sequenced. Do not replace with a store, schema, leaf-level provenance, or copilot absorption stack. Do not mark done to make connectivity look later. |
 | Refresh-safe tests | **ACTIVE** | `AF-TEST-01` / `B92`. **Complete.** | Already sequenced. Unpin behaviour tests from live household numbers. |
 | Derive/delete duplicate live facts | **ACTIVE** | `AF-DEDUP-01` / `B93`. **Complete.** After `B92`, before `B91`. | Already sequenced. Derive or delete proven copies; do not add a sync layer. |
 | Balance history / snapshots | **ACTIVE** | Phase 2 `AF-HIST-01` / `B20`. **After** `AF-RECON-01`, as a by-product of refresh. | Already sequenced. Do not start because an older revision put it first in Phase 2. |
 | Longer operating forecast horizon | **PARKED** | 91-day `windowDays`; expander already walks further (B74 / ICS to 2027-05-01). `Forecast.renewal` remains a separate question. | A concrete household question the 91-day operating picture cannot answer. Reuse `expandEvents`. Never a second recurrence or forecast engine. |
 | Improved ingestion | **ACTIVE** | Phase 3 `AF-INGEST-01` / `B78`, to T3. Files still; no provider and no store. | Already sequenced. Entry is T2 plus `AF-INTAKE-01`'s record of manual steps. |
-| Automated financial-data connectivity / transaction feeds | **GATED** | `ARCHITECTURE.md` connectivity gate. Phase 4 `AF-LIVE-01` / `B80` and `AF-LIVE-02` / `B81`, not scheduled until T4. | The owner passes the five-condition gate. Evaluation may start only after T3 and an owner decision to evaluate. Choose nothing and obtain no credential until then. |
+| Automated financial-data connectivity / transaction feeds | **GATED** (live `B81`) | `ARCHITECTURE.md` connectivity gate. `AF-LIVE-01` / `B80` evaluation + fixture observe seam is authorised and in progress. `AF-LIVE-02` / `B81` stays closed until T4. | The owner passes the five-condition gate before any live connection becomes canonical. Evaluation does not require T3. Obtain no credential in git. |
 | Richer payroll / bonus / pension-contribution modelling | **PARKED** | The 91-day plan consumes estimated net pay. A statutory payroll engine (`EMP-006`) is excluded. Optional pension cash is already inside that net. No bonus cash event is on the live plan. | A named consumer that current net cannot serve — a window that includes a CPP/EI reset, or an owner-supplied bonus or pension cash event, or an owner-supplied horizon that needs statutory seasonality. Do not build a payroll engine in order to absorb a net `Forecast` already consumes. |
 | Retirement planning | **PARKED** | `ARCHITECTURE.md` destination names pension and investments. Live published net worth excludes pensions. There is no `Forecast` retirement function. The advisory copilot "retirement engine" is not adopted. | An owner decision to include pensions in a published window, or to earn a retirement span on the one plan. Not a second planner. |
 | Goals and sinking funds | **PARKED** | `ARCHITECTURE.md` destination names sinking funds. Dated commitments already have a plan path. Interview sports/travel amounts remain proposed, not shared policy. The advisory "goals engine" is not adopted. | Owner-promoted shared targets, or a product-exit gap that the existing plan/commitment path cannot answer. Do not stand up a goals engine beside `Forecast`. |
