@@ -38,15 +38,21 @@ The merge card check validates only mechanical facts:
 - `Primary risk` opens with one of `auto-safe` / `figures-moved` /
   `owner-decision` / `blocked`;
 - the architecture-review decision opens `REQUIRED` or `NOT REQUIRED`;
-- a required review records a bare 40-character SHA equal to the PR head,
-  `Reviewer: ChatGPT`, and `Review outcome: PASS` — `PENDING` still fails
-  closed, with an awaiting-review message rather than a generic PASS error;
+- a required review is satisfied by a card `PASS` on the exact head with
+  `Reviewer: ChatGPT`, **or** by a trusted Atlas PASS review
+  (`tc5v5s64ym-sketch` and the canonical marker prefix) on the live head —
+  so a `PENDING` card cannot hang after that PASS exists; `PENDING` with no
+  trusted PASS still fails closed, with an awaiting-review message;
+- a trusted NOT PASS / BLOCKING on the live head fails closed even if the
+  card still says PASS;
 - a not-required review records `N/A` for head, reviewer, and outcome; and
 - card text is read from the live pull request (`pulls.get`), not the workflow
   event body. A closed PR, a non-`main` base, a PR or repository identity
   change, or a live head that is not the event head fails closed; and
-- after trusted Atlas PASS card-sync, the default-branch repair workflow
-  starts a fresh run of this same workflow via `workflow_dispatch`, with
+- the check also runs on `pull_request_review` submitted, so posting a trusted
+  Atlas PASS retriggers it without waiting for card-sync. After trusted Atlas
+  PASS card-sync, the default-branch repair workflow still starts a fresh run
+  of this same workflow via `workflow_dispatch`, with
   the PR number and expected head SHA. The dispatcher targets the PR head
   branch when that commit's workflow file already has the trigger, so the
   required check lands on that SHA. A PR head that predates the trigger
@@ -56,23 +62,27 @@ The merge card check validates only mechanical facts:
   the existing job name and the same live-PR validation. It fails closed
   if the live PR/head no longer matches. GitHub does not chain
   `pull_request` `edited` from `GITHUB_TOKEN`, so that event is not the
-  automation path.
+  card-sync path. Codex reviews do not satisfy the required review.
 
 It does not parse prose, negation, severity, scope, dispositions, review rounds,
-or open-loop narratives. It does not prove a review happened. It does not infer
-PASS, merge, or write financial state. It prevents the mechanical failure in
-which a required verdict outlives the code it covered, and the mechanical
-failure in which a trusted PASS card-sync leaves the required check stale.
+or open-loop narratives. It does not infer PASS from CI, Codex, or an older
+SHA. It does not merge or write financial state. It prevents the mechanical
+failure in which a required verdict outlives the code it covered, the
+mechanical failure in which a trusted PASS card-sync leaves the required
+check stale, and the hang in which a live trusted PASS exists but the card
+is still PENDING.
 
 `test-mergecard.js` executes the real inline workflow script. It proves missing
 fields, invalid decisions, stale heads, wrong reviewer identity, and non-passing
-required outcomes fail. It proves the check reads the live PR body rather than
-the workflow event body, and that a moved live head or a closed or retargeted
-PR fails closed. It also proves `workflow_dispatch` with matching live PR/head
-succeeds and fails closed on mismatch. A default-branch dispatch for a PR head
-that predates the trigger records the required check on the expected head; a
-non-default dispatch ref whose run SHA is not the expected head still fails
-closed.
+required outcomes fail. It proves a PENDING card with a trusted Atlas PASS on
+the live head succeeds, that Codex does not satisfy that path, and that a
+later trusted NOT PASS on the live head fails closed. It proves the check
+reads the live PR body rather than the workflow event body, and that a moved
+live head or a closed or retargeted PR fails closed. It also proves
+`workflow_dispatch` with matching live PR/head succeeds and fails closed on
+mismatch. A default-branch dispatch for a PR head that predates the trigger
+records the required check on the expected head; a non-default dispatch ref
+whose run SHA is not the expected head still fails closed.
 
 ### `tests`
 

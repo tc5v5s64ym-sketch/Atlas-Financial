@@ -149,6 +149,7 @@ async function validate(body, head = HEAD, files = ['docs/status.md'], options =
         async get() {
           return { data: livePr };
         },
+        listReviews() {},
       },
       checks: {
         async create(params) {
@@ -160,7 +161,13 @@ async function validate(body, head = HEAD, files = ['docs/status.md'], options =
         },
       },
     },
-    paginate: async () => files.map((filename) => ({ filename })),
+    paginate: async (fn) => {
+      if (fn === github.rest.pulls.listReviews) {
+        if (options.reviewsError) throw new Error(options.reviewsError);
+        return Array.isArray(options.reviews) ? options.reviews : [];
+      }
+      return files.map((filename) => ({ filename }));
+    },
   };
   await vm.runInNewContext(
     `(async () => {\n${SCRIPT}\n})()`,
@@ -307,6 +314,108 @@ red('a blocking required review cannot merge', card({ review: {
 red('a pending required review cannot merge', card({ review: {
   ...required, 'Review outcome': 'PENDING',
 } }), /Awaiting exact-head Atlas review/i);
+
+const trustedPass = [{
+  id: 1,
+  commit_id: HEAD,
+  submitted_at: '2026-08-16T05:38:55Z',
+  user: { login: 'tc5v5s64ym-sketch' },
+  body: 'Atlas Contract / Systems Review — PASS\n\nExact reviewed head: `' + HEAD + '`\n',
+}];
+const pendingRequired = {
+  ...required,
+  'Review outcome': 'PENDING',
+  'Findings and fix verification': 'Awaiting exact-head Atlas review.',
+};
+checks.push((async () => {
+  const message = await validate(card({ review: pendingRequired }), HEAD, ['docs/status.md'], {
+    reviews: trustedPass,
+  });
+  ok(!message, 'PENDING card + trusted Atlas PASS on the live head succeeds', message);
+})());
+checks.push((async () => {
+  const message = await validate(card({ review: pendingRequired }), HEAD, ['.github/workflows/merge-card-check.yml'], {
+    eventName: 'pull_request_review',
+    reviews: trustedPass,
+  });
+  ok(!message, 'pull_request_review with trusted Atlas PASS on a PENDING card succeeds', message);
+})());
+checks.push((async () => {
+  const message = await validate(card({ review: pendingRequired }), HEAD, ['docs/status.md'], {
+    reviews: [{
+      ...trustedPass[0],
+      user: { login: 'chatgpt-codex-connector[bot]' },
+    }],
+  });
+  ok(
+    Boolean(message) && /Awaiting exact-head Atlas review/i.test(message),
+    'PENDING card + Codex PASS-shaped review still awaits trusted Atlas PASS',
+    message || 'unexpected green',
+  );
+})());
+checks.push((async () => {
+  const message = await validate(card({ review: pendingRequired }), HEAD, ['docs/status.md'], {
+    reviews: [{
+      ...trustedPass[0],
+      body: 'Atlas Contract / Systems Review — NOT PASS\n\nExact-head proof is missing.\n',
+    }],
+  });
+  ok(
+    Boolean(message) && /Trusted Atlas review on this head is NOT PASS/i.test(message),
+    'trusted NOT PASS on the live head cannot merge even if the card is only PENDING',
+    message || 'unexpected green',
+  );
+})());
+checks.push((async () => {
+  const message = await validate(card({ review: pendingRequired }), HEAD, ['docs/status.md'], {
+    reviews: [{ ...trustedPass[0], commit_id: 'b'.repeat(40) }],
+  });
+  ok(
+    Boolean(message) && /Awaiting exact-head Atlas review/i.test(message),
+    'trusted PASS on a different SHA does not satisfy the live head',
+    message || 'unexpected green',
+  );
+})());
+checks.push((async () => {
+  const staleCard = card({
+    review: {
+      ...required,
+      'Exact reviewed head': 'b'.repeat(40),
+      Reviewer: 'Codex',
+      'Review outcome': 'PENDING',
+    },
+  });
+  const message = await validate(staleCard, HEAD, ['docs/status.md'], {
+    reviews: trustedPass,
+  });
+  ok(!message, 'trusted PASS on the live head wins over a stale PENDING card SHA and reviewer', message);
+})());
+checks.push((async () => {
+  const message = await validate(card({ review: required }), HEAD, ['docs/status.md'], {
+    reviews: [{
+      id: 2,
+      commit_id: HEAD,
+      submitted_at: '2026-08-16T06:00:00Z',
+      user: { login: 'tc5v5s64ym-sketch' },
+      body: 'Atlas Contract / Systems Review — NOT PASS\n\nNew blocker.\n',
+    }],
+  });
+  ok(
+    Boolean(message) && /Trusted Atlas review on this head is NOT PASS/i.test(message),
+    'a later trusted NOT PASS on the live head overrides a PASS card',
+    message || 'unexpected green',
+  );
+})());
+checks.push((async () => {
+  const message = await validate(card({ review: pendingRequired }), HEAD, ['docs/status.md'], {
+    reviewsError: 'api down',
+  });
+  ok(
+    Boolean(message) && /trusted Atlas reviews could not be loaded/i.test(message),
+    'REQUIRED review fails closed when trusted reviews cannot be loaded',
+    message || 'unexpected green',
+  );
+})());
 red('Primary risk uses the closed vocabulary', card({ fields: {
   'Primary risk': 'probably-fine',
 } }), /Primary risk.*must open/i);
