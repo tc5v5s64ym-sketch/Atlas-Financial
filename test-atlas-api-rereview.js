@@ -110,13 +110,45 @@ result = helper.evaluateDispatchExactHead({
 ok(!result.ok && result.action === 'fail' && result.code === 'merge-sha-used-as-pr-head',
   'refuses a resolved head that is the synthetic merge SHA');
 
+console.log('\n=== dispatcher Cursor identity gate ===');
+ok(helper.CURSOR_HANDOFF_LOGINS.includes('cursor'),
+  'closed login set includes the live Cursor Automation login');
+ok(helper.isCursorHandoffReviewer('cursor') === true,
+  'live GitHub login cursor is an eligible Cursor handoff reviewer');
+ok(helper.isCursorHandoffReviewer('cursor[bot]') === true,
+  'REST/App form cursor[bot] remains the same Cursor identity');
+ok(helper.isCursorHandoffReviewer('Cursor') === false,
+  'Cursor login match is exact and case-sensitive');
+ok(helper.isCursorHandoffReviewer('cursor-automation') === false,
+  'prefix-similar logins are not treated as Cursor');
+result = helper.evaluateDispatchHandoff({ login: 'cursor', body: handoff });
+ok(result.ok && result.action === 'proceed',
+  'dispatcher job executes for the live Cursor handoff login');
+result = helper.evaluateDispatchHandoff({ login: 'cursor[bot]', body: handoff });
+ok(result.ok && result.action === 'proceed',
+  'dispatcher job still executes for the REST/App Cursor login');
+for (const login of ['octocat', 'github-actions[bot]', 'dependabot[bot]', 'chatgpt-codex-connector[bot]', 'tc5v5s64ym-sketch', 'Cursor', '']) {
+  result = helper.evaluateDispatchHandoff({ login, body: handoff });
+  ok(!result.ok && result.action === 'skip' && result.code === 'not-cursor-reviewer',
+    `dispatcher rejects a handoff-shaped review from ${login || '(empty)'}`);
+}
+result = helper.evaluateDispatchHandoff({ login: 'cursor', body: 'Looks ready to merge.' });
+ok(!result.ok && result.code === 'not-handoff',
+  'dispatcher rejects a Cursor review that is not the handoff marker');
+
 console.log('\n=== shipped workflow contract ===');
 const dispatchPath = path.join(__dirname, '.github/workflows/atlas-rereview-dispatch.yml');
 const reviewerPath = path.join(__dirname, '.github/workflows/atlas-rereview.yml');
 const dispatch = fs.readFileSync(dispatchPath, 'utf8');
 const reviewer = fs.readFileSync(reviewerPath, 'utf8');
 ok(/pull_request_review:\s*\n\s*types:\s*\[submitted\]/.test(dispatch), 'secret-free dispatcher listens to submitted PR reviews');
-ok(/cursor\[bot\]/.test(dispatch) && /Atlas re-review requested\./.test(dispatch), 'dispatcher is scoped to the Cursor handoff marker');
+ok(dispatch.includes("github.event.review.user.login == 'cursor'"),
+  'dispatcher YAML accepts the live Cursor Automation login');
+ok(dispatch.includes("github.event.review.user.login == 'cursor[bot]'"),
+  'dispatcher YAML still accepts the REST/App Cursor login');
+ok(/Atlas re-review requested\./.test(dispatch), 'dispatcher is scoped to the Cursor handoff marker');
+ok(!/startsWith\(github\.event\.review\.user\.login/.test(dispatch) && !/contains\(github\.event\.review\.user\.login/.test(dispatch),
+  'dispatcher does not broaden Cursor identity with prefix or contains matching');
 ok(!/secrets\./.test(dispatch) && !/write\b/.test((dispatch.match(/permissions:[\s\S]*?\n\n/) || [''])[0]), 'dispatcher carries no secrets or write permission');
 ok(/workflow_run:\s*\n\s*workflows:\s*\["Atlas re-review handoff dispatch"\]/.test(reviewer), 'secret-bearing reviewer is default-branch workflow_run');
 ok(/permissions:[\s\S]*?actions:\s*read[\s\S]*?checks:\s*read[\s\S]*?contents:\s*read[\s\S]*?pull-requests:\s*read/.test(reviewer), 'reviewer has only the read scopes needed for run jobs, checks, contents, and PR evidence');

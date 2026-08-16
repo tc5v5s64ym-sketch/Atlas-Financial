@@ -14,7 +14,8 @@ permissions:
 jobs:
   note:
     if: >-
-      github.event.review.user.login == 'cursor[bot]' &&
+      (github.event.review.user.login == 'cursor' ||
+       github.event.review.user.login == 'cursor[bot]') &&
       contains(github.event.review.body, 'Atlas re-review requested.')
     runs-on: ubuntu-latest
     timeout-minutes: 5

@@ -8,6 +8,10 @@ const PASS_MARKER = 'Atlas Contract / Systems Review — PASS';
 const NOT_PASS_MARKER = 'Atlas Contract / Systems Review — NOT PASS';
 const BLOCKING_MARKER = 'Atlas Contract / Systems Review — BLOCKING';
 const TRUSTED_REVIEWER = 'tc5v5s64ym-sketch';
+// Live Cursor Automation reviews on this repository use GitHub login
+// `cursor`. The REST/App form of the same identity is `cursor[bot]`.
+// Accept only those two exact logins; do not match prefixes or other users.
+const CURSOR_HANDOFF_LOGINS = Object.freeze(['cursor', 'cursor[bot]']);
 
 function clean(value) {
   return String(value == null ? '' : value).replace(/\r/g, '').trim();
@@ -19,6 +23,32 @@ function parseMarkdownSha(body, label) {
   const re = new RegExp(`${escaped}[^\\n]*?\\x60([0-9a-f]{40})\\x60`, 'i');
   const match = re.exec(text);
   return match ? match[1].toLowerCase() : '';
+}
+
+function isCursorHandoffReviewer(login) {
+  return CURSOR_HANDOFF_LOGINS.includes(String(login || ''));
+}
+
+function evaluateDispatchHandoff(input) {
+  const login = input && input.login != null ? String(input.login) : '';
+  const body = input && input.body != null ? String(input.body) : '';
+  if (!isCursorHandoffReviewer(login)) {
+    return {
+      ok: false,
+      action: 'skip',
+      code: 'not-cursor-reviewer',
+      reason: 'Reviewer is not the Cursor Automation identity used by this repository.',
+    };
+  }
+  if (!body.includes(HANDOFF_MARKER)) {
+    return {
+      ok: false,
+      action: 'skip',
+      code: 'not-handoff',
+      reason: 'Review body is not a Cursor Atlas re-review handoff.',
+    };
+  }
+  return { ok: true, action: 'proceed', code: 'ok' };
 }
 
 function parseHandoff(body, currentHead) {
@@ -300,6 +330,9 @@ module.exports = {
   NOT_PASS_MARKER,
   BLOCKING_MARKER,
   TRUSTED_REVIEWER,
+  CURSOR_HANDOFF_LOGINS,
+  isCursorHandoffReviewer,
+  evaluateDispatchHandoff,
   parseHandoff,
   classifyAtlasReview,
   markerForOutcome,
