@@ -204,17 +204,37 @@ and an owner decision — never by a plan reaching that line.
 The tiers below describe **the stage each capability is at**, not a ceiling — and
 not a record of current progress, which is `BACKLOG.md`'s.
 
-### One plan, many windows — owner-approved 2026-08-12
+### One plan, many windows — owner-approved 2026-08-12, refined 2026-08-16
 
-Atlas maintains **one grand household financial plan**, and every horizon is a
-window onto it. A one-, two- or three-week view and a two-, three-, nine- or
-twelve-month view are not separate forecasts; they are different spans of the
-same dated projection, from the same starting facts. Changing an input
-recalculates every affected horizon from that one plan, so a short-horizon
-answer cannot quietly contradict a long-horizon one.
+Atlas maintains **one master household financial forecast**, and every horizon
+is a window onto it. That forecast is the dated projection Forecast produces
+from `data.json` `plan` and the opening cash and debt facts. Its knowledge
+horizon is **at least twelve months** from the opening as-of.
 
-**The deterministic engine stays where financial decisions are made.** That is
-the rule at the top of this file applied to the destination, not replaced by it.
+The live Plan page still *displays* a 91-day window (`plan.windowDays`). That
+display is a view, not the plan's knowledge bound. This contract does not by
+itself change `windowDays`, `Forecast.recommend`, or any published figure.
+
+**Named ranges are views of that same forecast.** Week, payday, month, 13 weeks,
+6 months, 1 year, and a custom date range are different spans of the same dated
+projection, from the same starting facts. They are not separate forecasts, not
+separate engines, and not separate answers. A payday plan is Forecast output
+shown for a payday span; it is not a second payday planner.
+
+**Changing the visible range never changes what the plan knows.** Shortening the
+window does not drop a later commitment from the forecast, from safe-to-spend,
+or from the funding sequence. Changing an input recalculates every affected
+view from that one plan, so a short-horizon answer cannot quietly contradict a
+long-horizon one.
+
+**The deterministic engine stays where financial decisions are made.** Forecast
+is the planner and the calculation authority. That is the rule at the top of
+this file applied to the destination, not replaced by it. A page, ChatGPT, a
+Google Sheet, or a later helper may not stand up a second planner, a generic
+planning schema, or a parallel authority. The capabilities below are earned by
+**evolving Forecast in place**. Until a capability is earned it is not an
+incumbent-table row, and the absence of a row is not a licence to invent an
+owner beside Forecast.
 
 **Two consumers plus one execution tracker, one answer.**
 
@@ -238,9 +258,48 @@ commitments, sinking funds, planned purchases and travel, and assets, pension
 and investments — together with the scenario inputs that vary them. Naming them
 here authorises none of them; each still passes its own gate below.
 
-**Safe-to-spend is constrained by the future, not by today's balance.** It has to
-hold back what known commitments, required debt payments and the buffer policy
-will need across the horizon being asked about.
+**Safe-to-spend is constrained by the future the plan knows, not by today's
+balance and not by the visible range.** `Forecast.recommend` remains the weekly
+household cap. Known major costs, required debt payments and the buffer policy
+hold back today's figure even when they fall outside the span on screen. The
+live engine still searches inside `plan.windowDays`; earning this sentence
+means that function, not a second cap, considers the master forecast's known
+future. An estimate still cannot be presented as verified.
+
+**Forecast sequences funding among future commitments.** When several dated
+commitments compete for the same cash, Forecast — not a page and not a
+conversation — decides the order using timing, certainty, owner-stated
+priority, and flexibility. When a commitment is fully funded, paid, deferred,
+reduced, or otherwise releases capacity, Forecast reallocates that freed
+capacity across the remaining plan. Freed capacity does not automatically
+become safe-to-spend. This is the contract for behaviour such as finishing
+one trip and power-saving the released cash into a later one, or deferring a
+flexible purchase when a harder commitment needs the cash. This is not a
+goals engine and not a generic priority schema. Until the capability is
+earned, existing `plan.nextDollar`, `recommend` funding, and dated
+`plan.commitments` remain the incumbents. Promoting a priority ranking to
+owner instruction stays owner-reserved (`plan.nextDollar` is still derived).
+
+**Planned debt is allowed when it is the better household plan, not only
+when cash is short.** Intentional borrowing may be part of the planned path
+when preserving cash for higher-priority needs is better than paying a
+commitment from cash in time. A cash shortfall that cannot cover a
+commitment in time remains one valid reason, not the only one. When the
+plan includes borrowing, Forecast must project the borrowing, the
+consequences — interest, headroom, limit-crossing, later cash — and a
+repayment path on the same coupled cash-and-debt walk, in advance.
+Unforecast borrowing is not a plan. Debt is deterministic and
+owner-constrained; it is never automatic. This does not create a second
+debt modeller; `Forecast.projectDebts` and `Forecast.recommend` remain the
+walk. It does not authorise an automated action against an account.
+
+**Major future plans show ON TRACK / AT RISK / FUNDING GAP.** A named major
+future plan the household is funding — travel, a sports season, the May 2027
+renewal, a large purchase — publishes exactly one of those three verdicts from
+Forecast. Pages render the verdict; they do not invent it. This is not a goals
+product and not a fifth published-figure trust label. The four-label contract
+for a published figure — verified / calculated / estimated / unknown — is
+unchanged.
 
 **A scenario changes an input to this plan.** It is not a disconnected
 calculator, and its answer is compared against the same baseline the plan
@@ -380,6 +439,14 @@ closed: `Forecast.expandEvents` is the one cash calendar.
 | Calendar — the exported `.ics` | `scripts/calendar-ics.js`: cash-payment VEVENTs **derived** from `Forecast.expandEvents` over a longer horizon; standing reminder VEVENTs (statement closes, tax deadlines, mortgage renewal) remain a thin non-cash overlay |
 | Read-only provider observation | `scripts/provider-observe.js` turns a Lunch Money fixture, or a local GET when `LUNCHMONEY_ACCESS_TOKEN` is set, into B91 observations. Live mapping is by provider account ID, not display name. Real live IDs stay in gitignored `docs/connectivity/provider-account-map.local.json`; the committed live map remains the empty schema. Fixture mapping lives only under `docs/connectivity/fixtures/`. Unknown IDs stay unmapped. Mapped revolving-credit pending transactions become `fact: pending` observations (Lunch Money v2: positive debit, negative credit). Same `providerTransactionId` pending+posted collapses to posted and does not double-count. A pending bill/payment older than 90 days may be presumed settled for current forecasting only (`confidence: inferred`); historical provider status stays pending. That 90-day rule is not a universal STALE threshold. Transaction history is `--history-days` / `--mode current-state` (14 days) or `--mode reconcile` (120 days). `representedEventCandidates` require payee pattern + mapped account + scheduled date; amount similarity is not identity and does not write `plan.opening`. Never writes `data.json`. Not a financial authority, not Forecast, and not T4. |
 | Observation-to-canonical cash/debt compare | `scripts/reconcile.js` (non-writing). Maps `docs/positions.csv` Household rows through `docs/reconciliation/balance-map.json` id locators onto `plan.startingCash` / `debts`. Commitment settlement observations live in `docs/reconciliation/commitment-settlements.json` and compare a paid date against `plan.commitments[].settledOn`; they do not go through `positions.csv` or the balance map. Hydro observations live in `docs/reconciliation/utility-observations.json`. Amanda-income observations live in `docs/reconciliation/amanda-income-observations.json`. Card-state observations live in `docs/reconciliation/card-state-observations.json` and distinguish posted balance, pending, limit, available credit, and confirmed payment; they are not a second financial authority. Limit and available credit are never household cash. Unknown pending is not $0. Pending is not manufactured as limit − posted − available unless that identity is proven for that card and timestamp. Posting observations live in `docs/reconciliation/posting-observations.json` and compare whether a scheduled occurrence has posted against `plan.opening.representedEvents`. Forecast remains authority for what should happen; posting evidence is authority for what has happened. Unknown posting is not posted and is not unposted. Does not write `data.json`. STALE is not assigned. The owner 90-day rule lives on pending bill/payment observations in `scripts/provider-observe.js` and is not a reconcile STALE status. Not a universal fact database |
+
+**The 2026-08-16 master-forecast contract is direction, not a set of new
+incumbent rows.** Safe-to-spend across the known future, funding sequence
+and reallocation of freed capacity, planned-debt consequences with a
+repayment path, and ON TRACK / AT RISK / FUNDING GAP remain Forecast's to
+earn. A page, ChatGPT, or Sheet that answers
+any of them first is the `B73` defect arriving through a new door. Do not
+register a future function as if it already existed.
 
 **The table is not a closed list, and reading it as one is how work goes wrong.**
 Three rounds of advisory review added five rows to it that inspection had missed.
