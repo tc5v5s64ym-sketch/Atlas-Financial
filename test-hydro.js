@@ -2,8 +2,8 @@
 /* B91 D4+D5 — dated household obligation vs account balance / paying account.
  *
  * Acceptance corpus: docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md
- * Live Hydro canonical state is unchanged. This suite proves the mechanism
- * on synthetic fixtures plus the preserved Aug. 14 observations.
+ * Live Hydro: the 1 September dated due is now canonical; the 14 August
+ * due is not. This suite still proves the mechanism on synthetic fixtures.
  *
  * Independent proof: hand arithmetic on the named dated amounts and the
  * paying-account / breakdown membership rule. That is not a second call
@@ -329,7 +329,13 @@ console.log('\n=== G. reconciliation remains non-writing ===');
 {
   const before = hashFile(R.DEFAULT_DATA);
   const liveHydro = (live.plan.bills || []).filter(b => /hydro/i.test(b.id + b.label));
-  ok(liveHydro.length === 0, 'live plan.bills still has no Hydro row');
+  ok(liveHydro.length === 1 && liveHydro[0].id === 'hydro-due-sep1'
+    && near(liveHydro[0].amount, DUE_SEP) && liveHydro[0].date === DUE_SEP_DATE
+    && liveHydro[0].payingAccount === AMANDA
+    && liveHydro[0].householdObligation === true,
+    'live plan has the 1 September Hydro dated due, paid from Amanda, still a household obligation');
+  ok(!liveHydro.some(b => b.id === 'hydro-due-now'),
+    'the 14 August Hydro due was not added — settlement status is unknown');
 
   const result = R.reconcile({
     data: live,
@@ -347,13 +353,14 @@ console.log('\n=== G. reconciliation remains non-writing ===');
     && /informational/.test(balanceRow.note || ''),
     'live account balance is informational / not scheduled');
   ok(nowRow && nowRow.status === 'MISSING',
-    'live current due is canonical missing/change');
-  ok(sepRow && sepRow.status === 'MISSING',
-    'live Sep. 1 due is canonical missing/change');
+    'live current due is still canonical missing — not guessed settled or still due');
+  ok(sepRow && sepRow.status === 'MATCH' && near(sepRow.canonicalValue, DUE_SEP)
+    && sepRow.canonicalDate === DUE_SEP_DATE,
+    'live Sep. 1 due matches the Aug. 14 dated observation');
   ok(payRow && payRow.status === 'MISSING'
     && payRow.jointCashPool === false
     && payRow.payingAccountLabel === 'Amanda / DEBT&PAYMENTS',
-    'live paying account is Amanda / external-to-joint-pool and canonical-missing');
+    'paying-account observation still MISSING while hydro-due-now is absent');
 
   const after = hashFile(R.DEFAULT_DATA);
   ok(before === after, 'calling reconcile() does not change data.json');
@@ -368,7 +375,7 @@ console.log('\n=== G. reconciliation remains non-writing ===');
   ok(/informational \/ not scheduled amount/.test(out),
     'CLI distinguishes the account balance as informational');
   ok(/canonical missing\/change/.test(out),
-    'CLI distinguishes dated dues as canonical missing/change');
+    'CLI still distinguishes the unapplied 14 August due as canonical missing/change');
   ok(/Amanda \/ external-to-joint-pool/.test(out),
     'CLI distinguishes the paying account as external-to-joint-pool');
   ok(hashFile(R.DEFAULT_DATA) === cliBefore,
@@ -509,16 +516,16 @@ console.log('\n=== H. Forecast.expandEvents remains the schedule authority ===')
     'the household calendar still derives from Forecast.expandEvents');
 }
 
-console.log('\n=== live Fusion / Amanda / HELOC / card surfaces untouched ===');
+console.log('\n=== live Fusion / Amanda / HELOC / card surfaces ===');
 {
   const camp = live.plan.commitments.find(c => c.id === 'fusioncamp');
   const tryouts = live.plan.commitments.find(c => c.id === 'tryouts');
   const instalments = (live.plan.commitments || [])
     .filter(c => /fusion/i.test(c.id + c.label) && near(c.amount, 500));
-  ok(camp && near(camp.amount, 786) && !camp.settledOn,
-    'live Fusion camp is still the unsettled $786 row');
-  ok(tryouts && near(tryouts.amount, 140) && !tryouts.settledOn,
-    'live Fusion tryouts are still the unsettled $140 row');
+  ok(camp && near(camp.amount, 786) && camp.settledOn === START,
+    'live Fusion camp is the $786 row with settledOn 2026-08-14');
+  ok(tryouts && near(tryouts.amount, 140) && tryouts.settledOn === START,
+    'live Fusion tryouts are the $140 row with settledOn 2026-08-14');
   ok(instalments.length === 3,
     'the three $500 Fusion season instalments are untouched',
     String(instalments.length));

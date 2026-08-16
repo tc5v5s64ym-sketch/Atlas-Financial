@@ -10,8 +10,10 @@ Not a roadmap, not a second planner, and not a household-policy authority.
 **Open household questions:** [`docs/01_OPEN_QUESTIONS.md`](../01_OPEN_QUESTIONS.md).
 
 This file preserves one payday session as the closed acceptance case for
-evidence → canonical refresh. It does not implement that loop, does not move
-live figures, and does not encode the session's chosen weekly spend as policy.
+evidence → canonical refresh. The B91 current-state cutover writes only
+owner-approved facts that the committed corpus can support. It does not
+make ChatGPT or a Sheet a second planner, and it does not encode the
+session's chosen weekly spend as policy.
 
 ```
 fresh evidence

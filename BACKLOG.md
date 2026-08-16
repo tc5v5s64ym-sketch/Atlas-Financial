@@ -1037,11 +1037,13 @@ essential/discretionary without a failing test. Preserve genuinely distinct
 semantics (`business`, `reserve`). Prefer a small explicit guard over a new
 classification system.
 
-**B91 · Evidence refresh / reconciliation loop** · `IN PROGRESS` · *architecture, first slice — not DONE*
+**B91 · Evidence refresh / reconciliation loop** · `IN PROGRESS` · *architecture, current-state cutover — not DONE*
 After `B92` and `B93`. **Current implementation outcome** and next major
-product milestone. Capture and extraction exist; canonical household
-state still changes mainly by hand. The Evidence-Use Register (`B85`) proves
-routing of declared IDs, not that a routed number is current or fresh.
+product milestone. Capture, extraction, and the non-writing reconciliation
+report exist. Owner-approved Aug. 14 evidence that was strong enough has
+now been written into canonical `data.json`; Forecast consumes that state.
+The Evidence-Use Register (`B85`) proves routing of declared IDs, not that
+a routed number is current or fresh.
 Build-strategy item `AF-RECON-01`. Payday acceptance corpus:
 [`docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md`](docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md).
 
@@ -1061,9 +1063,9 @@ The record stays; `Forecast.expandEvents` then emits no future cash event.
 Settlement observations live in
 `docs/reconciliation/commitment-settlements.json` and compare against
 `plan.commitments[].settledOn`. The reconciler remains non-writing.
-Live Fusion camp and tryouts stay unsettled until an explicit
-owner-approved edit. The three $500 Fusion season instalments are
-untouched. Do not mark this item DONE.
+Live Fusion camp and tryouts now carry `settledOn: "2026-08-14"` from the
+owner-approved current-state cutover. The three $500 Fusion season
+instalments are untouched (Q23). Do not mark this item DONE.
 
 **D4+D5 slice (not completion):** a dated `plan.bills` row may carry
 `payingAccount`. Household-obligation status is a separate fact
@@ -1074,8 +1076,10 @@ breakdown payer, or an unknown/typo id fail closed and still deduct. Hydro obser
 account balance (informational / not scheduled), the $213.79 current due,
 the $237.45 1 September due, and Amanda / DEBT&PAYMENTS as
 external-to-joint-pool. The reconciler remains non-writing. Live Hydro
-canonical state is unchanged until an explicit owner-approved edit. Do
-not mark this item DONE.
+now includes the 1 September $237.45 dated due (`hydro-due-sep1`), paid
+from Amanda, still a household obligation, not joint cash. The $213.79
+that was due 14 August is **not** on the plan — later settlement status
+is unknown (Q17). Do not mark this item DONE.
 
 **D2 slice (not completion):** Amanda employment deposits, coaching/business
 inflows, business obligations, household transfers, and household-available
@@ -1131,15 +1135,33 @@ unchanged: no second horizon, no new payday engine, no `$600/week`
 policy. Live household financial facts are unchanged. Do not mark this
 item DONE.
 
+**Current-state cutover (not completion):** owner-approved Aug. 14 evidence
+that was strong enough now lives on canonical Plan rows. Fusion camp and
+tryouts carry `settledOn: "2026-08-14"`; the rows remain. `hydro-due-sep1`
+($237.45 due 1 September, Amanda / DEBT&PAYMENTS, household obligation)
+is on `plan.bills` and does not reduce joint cash. Reconciler date
+relation reports `canonical-older` / `same-day` / `canonical-newer` /
+`incomparable` without assigning STALE. Not promoted: Aug. 14 joint-cash
+opening (no exact balances in the committed corpus, so no
+`representedEvents` payroll cutover); Hydro $213.79 due 14 August;
+Rogers/Shaw posting status; HOME BUDGET.xlsx (not in the repository, Q0);
+Amanda DEBT&PAYMENTS as spendable cash; unknown card pending as $0; Q19
+HELOC mechanics; $600/week. Published `meta.asOf` remains 2026-08-09
+because cash/debt snapshots are still that date. Do not mark this item
+DONE.
+
 **Outcome (whole item, still open):** a small **non-writing** reconciliation
 report over existing observation records: evidence value/date, current Atlas
 value, MATCH / STALE / CHANGE / CONFLICT / MISSING, unresolved item. One
-canonical pointer into `data.json`. Owner-approved edits still land there.
-A live opening observation carries cutover / as-of semantics so same-day
-income already inside that observation is not replayed. After reconciling
-the Aug. 14 payday corpus, existing Forecast must produce the household
-payday plan without ChatGPT or a Sheet constructing a second model. Do not
-assert $600/week as expected output.
+canonical pointer into `data.json`. Owner-approved edits land there and
+Forecast consumes them. A live opening observation carries cutover / as-of
+semantics so same-day income already inside that observation is not
+replayed — that cutover is still blocked on a missing Aug. 14 joint-cash
+opening observation. After reconciling the Aug. 14 payday corpus, existing
+Forecast must produce the household payday plan without ChatGPT or a Sheet
+constructing a second model. Do not assert $600/week as expected output.
+B91 cannot close while the post-payday opening cash is unobserved, Q19
+is OPEN, and the remaining re-observations above are outstanding.
 
 **B91 must also consume these payday distinctions:** schedule ≠ posted;
 paid commitments stop reserving cash; account balance ≠ amount currently

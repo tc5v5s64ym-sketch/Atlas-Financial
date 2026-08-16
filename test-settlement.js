@@ -2,8 +2,9 @@
 /* B91 D3 — settlement-aware commitments, opening-relative.
  *
  * Acceptance corpus: docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md
- * Live Fusion camp / tryouts stay unsettled. This suite proves the
- * mechanism on synthetic fixtures plus the preserved Aug. 14 observations.
+ * Live Fusion camp / tryouts now carry owner-approved settledOn 2026-08-14.
+ * This suite still proves the mechanism on synthetic fixtures, and that
+ * the reconciler does not write data.json.
  *
  * Independent proof: hand subtraction of named amounts. That is not a
  * second call to expandEvents or simulate.
@@ -330,10 +331,10 @@ console.log('\n=== no-write: evidence that it was paid does not write data.json 
   const before = hashFile(R.DEFAULT_DATA);
   const liveCamp = live.plan.commitments.find(c => c.id === 'fusioncamp');
   const liveTryouts = live.plan.commitments.find(c => c.id === 'tryouts');
-  ok(liveCamp && liveCamp.amount === CAMP && !independentlySettledOn(liveCamp),
-    'live fusioncamp is still the $786 unsettled canonical row');
-  ok(liveTryouts && liveTryouts.amount === 140 && !independentlySettledOn(liveTryouts),
-    'live tryouts are still the $140 unsettled canonical row');
+  ok(liveCamp && liveCamp.amount === CAMP && independentlySettledOn(liveCamp) === PAID,
+    'live fusioncamp retains the $786 row with settledOn 2026-08-14');
+  ok(liveTryouts && liveTryouts.amount === 140 && independentlySettledOn(liveTryouts) === PAID,
+    'live tryouts retain the $140 row with settledOn 2026-08-14');
 
   const result = R.reconcile({
     data: live,
@@ -343,10 +344,10 @@ console.log('\n=== no-write: evidence that it was paid does not write data.json 
   });
   const campRow = result.rows.find(r => r.observationId === 'payday-fusioncamp-settled');
   const tryRow = result.rows.find(r => r.observationId === 'payday-tryouts-settled');
-  ok(campRow && campRow.status === 'CHANGE' && campRow.canonicalSettledOn == null,
-    'Aug. 14 camp observation vs unsettled canonical is CHANGE');
-  ok(tryRow && tryRow.status === 'CHANGE' && tryRow.canonicalSettledOn == null,
-    'Aug. 14 tryouts observation vs unsettled canonical is CHANGE');
+  ok(campRow && campRow.status === 'MATCH' && campRow.canonicalSettledOn === PAID,
+    'Aug. 14 camp observation vs canonical settledOn is MATCH');
+  ok(tryRow && tryRow.status === 'MATCH' && tryRow.canonicalSettledOn === PAID,
+    'Aug. 14 tryouts observation vs canonical settledOn is MATCH');
 
   const out = execFileSync(process.execPath, ['scripts/reconcile.js'], {
     cwd: __dirname, encoding: 'utf8',
@@ -355,18 +356,22 @@ console.log('\n=== no-write: evidence that it was paid does not write data.json 
   ok(before === after, 'running the CLI leaves data.json bytes unchanged');
   ok(/does not write data\.json/.test(out),
     'the printed report repeats the no-write contract');
-  ok(/payday-fusioncamp-settled/.test(out) && /CHANGE/.test(out),
-    'the live report names the Fusion camp CHANGE');
+  ok(/payday-fusioncamp-settled/.test(out) && /MATCH/.test(out),
+    'the live report names the Fusion camp MATCH');
 
   const afterLive = JSON.parse(fs.readFileSync(R.DEFAULT_DATA, 'utf8'));
   const afterCamp = afterLive.plan.commitments.find(c => c.id === 'fusioncamp');
-  ok(!afterCamp.settledOn,
-    'reconciler did not write settledOn onto live fusioncamp');
+  ok(independentlySettledOn(afterCamp) === PAID,
+    'reconciler did not strip settledOn from live fusioncamp');
 
-  const liveEvents = F.expandEvents(live.plan, live.meta.asOf,
-    F.addDays(live.meta.asOf, (live.plan.windowDays || 91) - 1), {});
-  ok(liveEvents.some(e => e.id === 'fusioncamp' && near(e.amount, -CAMP)),
-    'live Forecast still reserves $786 until the owner writes settledOn');
+  const liveEvents9 = F.expandEvents(live.plan, AUG9,
+    F.addDays(AUG9, (live.plan.windowDays || 91) - 1), {});
+  const liveEvents14 = F.expandEvents(live.plan, START,
+    F.addDays(START, (live.plan.windowDays || 91) - 1), {});
+  ok(liveEvents9.some(e => e.id === 'fusioncamp' && near(e.amount, -CAMP)),
+    'an Aug. 9 Forecast still reserves $786 — settlement is opening-relative');
+  ok(!liveEvents14.some(e => e.id === 'fusioncamp'),
+    'an Aug. 14 Forecast no longer reserves Fusion camp');
 }
 
 console.log('\n=== missing or conflicting evidence does not mark a commitment paid ===');
@@ -435,34 +440,28 @@ console.log('\n=== missing or conflicting evidence does not mark a commitment pa
     'settlement evidence for an unknown commitment id is MISSING');
 }
 
-console.log('\n=== proposed Aug. 14 Fusion writes — in memory only ===');
+console.log('\n=== live Aug. 14 Fusion write follows commitmentSettledBy ===');
 {
-  const proposed = clone(live);
-  const camp = proposed.plan.commitments.find(c => c.id === 'fusioncamp');
-  const tryouts = proposed.plan.commitments.find(c => c.id === 'tryouts');
-  camp.settledOn = PAID;
-  tryouts.settledOn = PAID;
-  ok(live.plan.commitments.find(c => c.id === 'fusioncamp').settledOn == null,
-    'the live object was not mutated');
-  ok(!independentlySettledOn(JSON.parse(fs.readFileSync(R.DEFAULT_DATA, 'utf8'))
-    .plan.commitments.find(c => c.id === 'fusioncamp')),
-    'data.json still has no fusioncamp settledOn');
+  const camp = live.plan.commitments.find(c => c.id === 'fusioncamp');
+  const tryouts = live.plan.commitments.find(c => c.id === 'tryouts');
+  ok(independentlySettledOn(camp) === PAID && independentlySettledOn(tryouts) === PAID,
+    'live canonical carries settledOn 2026-08-14 on both Fusion rows');
 
-  const end9 = F.addDays(AUG9, (proposed.plan.windowDays || 91) - 1);
-  const end14 = F.addDays(START, (proposed.plan.windowDays || 91) - 1);
-  const events9 = F.expandEvents(proposed.plan, AUG9, end9, {});
-  const events14 = F.expandEvents(proposed.plan, START, end14, {});
+  const end9 = F.addDays(AUG9, (live.plan.windowDays || 91) - 1);
+  const end14 = F.addDays(START, (live.plan.windowDays || 91) - 1);
+  const events9 = F.expandEvents(live.plan, AUG9, end9, {});
+  const events14 = F.expandEvents(live.plan, START, end14, {});
   ok(events9.some(e => e.id === 'fusioncamp' && near(e.amount, -CAMP)),
-    'proposed write: an Aug. 9 Forecast still reserves Fusion camp');
+    'an Aug. 9 Forecast still reserves Fusion camp');
   ok(events9.some(e => e.id === 'tryouts' && near(e.amount, -140)),
-    'proposed write: an Aug. 9 Forecast still reserves Fusion tryouts');
+    'an Aug. 9 Forecast still reserves Fusion tryouts');
   ok(!events14.some(e => e.id === 'fusioncamp'),
-    'proposed write: an Aug. 14 Forecast treats Fusion camp as settled');
+    'an Aug. 14 Forecast treats Fusion camp as settled');
   ok(!events14.some(e => e.id === 'tryouts'),
-    'proposed write: an Aug. 14 Forecast treats Fusion tryouts as settled');
+    'an Aug. 14 Forecast treats Fusion tryouts as settled');
   ok(F.commitmentSettledBy(camp, AUG9) === false
     && F.commitmentSettledBy(camp, START) === true,
-    'proposed write follows commitmentSettledBy');
+    'live write follows commitmentSettledBy');
 }
 
 console.log('\n=== live Fusion season instalments stay untouched ===');

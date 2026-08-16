@@ -2,9 +2,11 @@
 /* B91 D2 — Amanda salary vs coaching/business vs household transfers.
  *
  * Acceptance corpus: docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md
- * Live amandaTransfer / DEBT&PAYMENTS / Hydro / Fusion / HELOC / cards stay
- * unchanged. This suite proves the semantic split on classified movements
- * plus existing Forecast.expandEvents. It is not a second income engine.
+ * Live amandaTransfer / DEBT&PAYMENTS / HELOC / cards stay unchanged.
+ * Fusion settlement and the Hydro September dated due are the B91
+ * current-state cutover, not this D2 split. This suite proves the
+ * semantic split on classified movements plus existing
+ * Forecast.expandEvents. It is not a second income engine.
  *
  * Independent proof: hand addition of named classified amounts. That is
  * not a second call to expandEvents or simulate.
@@ -692,20 +694,23 @@ console.log('\n=== Forecast.expandEvents remains the household-cash authority ==
     'Amanda movement classification lives on the reconciler path, not Forecast');
 }
 
-console.log('\n=== live Fusion / Hydro / HELOC / card surfaces untouched ===');
+console.log('\n=== live Fusion / Hydro / HELOC / card surfaces ===');
 {
   const camp = live.plan.commitments.find(c => c.id === 'fusioncamp');
   const tryouts = live.plan.commitments.find(c => c.id === 'tryouts');
   const instalments = (live.plan.commitments || [])
     .filter(c => /fusion/i.test(c.id + c.label) && near(c.amount, 500));
-  ok(camp && near(camp.amount, 786) && !camp.settledOn,
-    'live Fusion camp is still the unsettled $786 row');
-  ok(tryouts && near(tryouts.amount, 140) && !tryouts.settledOn,
-    'live Fusion tryouts are still the unsettled $140 row');
+  ok(camp && near(camp.amount, 786) && camp.settledOn === START,
+    'live Fusion camp is the $786 row with settledOn 2026-08-14');
+  ok(tryouts && near(tryouts.amount, 140) && tryouts.settledOn === START,
+    'live Fusion tryouts are the $140 row with settledOn 2026-08-14');
   ok(instalments.length === 3,
     'the three $500 Fusion season instalments are untouched');
   const liveHydro = (live.plan.bills || []).filter(b => /hydro/i.test(b.id + b.label));
-  ok(liveHydro.length === 0, 'live plan.bills still has no Hydro row');
+  ok(liveHydro.length === 1 && liveHydro[0].id === 'hydro-due-sep1',
+    'live plan.bills has the 1 September Hydro dated due');
+  ok(!liveHydro.some(b => b.id === 'hydro-due-now'),
+    'the 14 August Hydro due is still absent');
   const heloc = live.plan.obligations.find(o => o.id === 'heloc');
   ok(heloc && heloc.nonCash === true && near(heloc.amount, 814.18),
     'live HELOC capitalisation is untouched');

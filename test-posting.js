@@ -396,16 +396,19 @@ console.log('\n=== K. no-write CLI + Forecast remains the schedule authority ===
     'no posting engine, state machine, or lifecycle layer was added');
 }
 
-console.log('\n=== L. live Fusion / Hydro / Amanda / weekly policy untouched ===');
+console.log('\n=== L. live Fusion / Hydro / Amanda / weekly policy ===');
 {
   const camp = live.plan.commitments.find(c => c.id === 'fusioncamp');
   const tryouts = live.plan.commitments.find(c => c.id === 'tryouts');
-  ok(camp && near(camp.amount, 786) && !camp.settledOn,
-    'live Fusion camp is still the unsettled $786 row');
-  ok(tryouts && near(tryouts.amount, 140) && !tryouts.settledOn,
-    'live Fusion tryouts are still the unsettled $140 row');
-  ok(!(live.plan.bills || []).some(b => /hydro/i.test(b.id + b.label)),
-    'live Hydro canonical bills were not invented');
+  ok(camp && near(camp.amount, 786) && camp.settledOn === AS_OF,
+    'live Fusion camp is the $786 row with settledOn 2026-08-14');
+  ok(tryouts && near(tryouts.amount, 140) && tryouts.settledOn === AS_OF,
+    'live Fusion tryouts are the $140 row with settledOn 2026-08-14');
+  const hydro = (live.plan.bills || []).filter(b => /hydro/i.test(b.id + b.label));
+  ok(hydro.length === 1 && hydro[0].id === 'hydro-due-sep1',
+    'live Hydro canonical bills include only the 1 September dated due');
+  ok(!hydro.some(b => b.id === 'hydro-due-now'),
+    'the 14 August Hydro due was not invented as still unpaid');
   const amanda = live.plan.income.find(s => s.id === 'amandaTransfer');
   ok(amanda && amanda.scenarioMonthly && amanda.scenarioMonthly.expected === 2182,
     'Amanda transfer authority is untouched');

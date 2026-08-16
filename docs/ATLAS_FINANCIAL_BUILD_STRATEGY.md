@@ -723,6 +723,14 @@ exist.
   Q19 HELOC mechanics, the operating-target question, B20 history, the
   STALE threshold, and the rest of the Aug. 14 corpus. Do not mark this
   item done.
+  **Current-state cutover — not completion.** Owner-approved Fusion camp
+  and tryouts now carry `settledOn: "2026-08-14"`. The 1 September Hydro
+  dated due is on the live plan as an Amanda-paid household obligation.
+  Aug. 14 joint-cash opening balances are not in the committed corpus, so
+  `plan.opening` / `representedEvents` is not applied. Rogers posting,
+  HOME BUDGET.xlsx, Q19, unknown card pending, and $600/week are not
+  promoted. Date relation is reported without a universal STALE
+  threshold. Do not mark this item done.
 
 ---
 
