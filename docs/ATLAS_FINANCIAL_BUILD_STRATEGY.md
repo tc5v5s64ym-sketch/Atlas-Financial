@@ -709,7 +709,12 @@ exist.
   posted balance, pending, limit, available credit, and confirmed
   payment. Unknown pending is not $0. Limit and available credit are
   never household cash. A scheduled payment does not reduce current
-  exposure. Live card canonical state is unchanged. B91 stays open for
+  exposure. Live card canonical state is unchanged.
+  **D7 slice — not completion.** Posting observations distinguish a
+  scheduled occurrence from a posted one and compare that fact to
+  `plan.opening.representedEvents`. Forecast remains the schedule
+  authority. Unknown posting is not posted and is not unposted. Live
+  `plan.opening` is unchanged. B91 stays open for
   Q19 HELOC mechanics, the operating-target question, B20 history, the
   STALE threshold, and the rest of the Aug. 14 corpus. Do not mark this
   item done.

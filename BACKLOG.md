@@ -1109,6 +1109,20 @@ proven case). The reconciler remains non-writing. Live card
 balances/limits/pending/payments are unchanged. Do not mark this item
 DONE.
 
+**D7 slice (not completion):** posting observations live in
+`docs/reconciliation/posting-observations.json` and compare whether a
+scheduled occurrence has posted against `plan.opening.representedEvents`.
+Forecast remains authority for what should happen. Posting evidence is
+authority for what has happened. A posted same-day event missing from
+`representedEvents` is CHANGE (double-count risk). An unposted event
+named there is CONFLICT (skipped-obligation risk). Unknown posting is
+MISSING, not guessed posted or unposted, and inventing a represented
+entry for it is CONFLICT. The Aug. 14 corpus proving pair is payroll
+(posted, inside the opening) and mortgage (expected, not on the bank
+screenshot). Fit4Less, BCAA, ICBC, and RESP stay unknown. The reconciler
+remains non-writing. Live `plan.opening` is unchanged — there is still
+no Aug. 14 cutover on canonical state. Do not mark this item DONE.
+
 **Outcome (whole item, still open):** a small **non-writing** reconciliation
 report over existing observation records: evidence value/date, current Atlas
 value, MATCH / STALE / CHANGE / CONFLICT / MISSING, unresolved item. One

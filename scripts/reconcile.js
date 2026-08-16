@@ -31,12 +31,21 @@
  * limit − posted − available unless that identity is proven for that
  * card and timestamp. Unknown pending is not $0.
  *
+ * D7 posting slice: observations in
+ * docs/reconciliation/posting-observations.json compare whether a
+ * scheduled occurrence has posted against plan.opening.representedEvents.
+ * Forecast remains authority for what should happen. Posting evidence
+ * is authority for what has happened. Unknown posting is not posted
+ * and is not unposted. They do not write data.json and are not a
+ * lifecycle state machine.
+ *
  * This command NEVER writes data.json. An owner-approved canonical edit
  * remains a separate explicit action. Evidence that a commitment was
  * paid does not mutate the commitment. Hydro observations do not
  * promote Aug. 14 amounts into live canonical state. Amanda salary
  * evidence does not become a Forecast income stream. Card observations
- * are not a second financial authority.
+ * are not a second financial authority. Posting evidence does not
+ * write representedEvents.
  *
  * Statuses actually assigned here: MATCH / CHANGE / CONFLICT / MISSING.
  * STALE is not assigned — no owner-defined age threshold exists. Evidence
@@ -45,6 +54,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const Forecast = require('../public/forecast.js');
 
 const ROOT = path.join(__dirname, '..');
 const DEFAULT_DATA = path.join(ROOT, 'data.json');
@@ -54,6 +64,7 @@ const DEFAULT_SETTLEMENTS = path.join(ROOT, 'docs', 'reconciliation', 'commitmen
 const DEFAULT_UTILITY = path.join(ROOT, 'docs', 'reconciliation', 'utility-observations.json');
 const DEFAULT_AMANDA = path.join(ROOT, 'docs', 'reconciliation', 'amanda-income-observations.json');
 const DEFAULT_CARDS = path.join(ROOT, 'docs', 'reconciliation', 'card-state-observations.json');
+const DEFAULT_POSTING = path.join(ROOT, 'docs', 'reconciliation', 'posting-observations.json');
 const SETTLED_ON = /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 const UTILITY_FACTS = new Set(['account-balance', 'dated-due', 'paying-account']);
 const AMANDA_FACTS = new Set([
@@ -75,6 +86,7 @@ const CARD_FACTS = new Set([
   'scheduled-payment',
 ]);
 const CARD_IDS = new Set(['triangle', 'cashback', 'mbna', 'tdcc', 'travelvisa']);
+const POSTING_FACTS = new Set(['posting']);
 
 const EPSILON = 0.005;
 const near = (a, b) => Math.abs(Number(a) - Number(b)) <= EPSILON;
@@ -157,6 +169,20 @@ function readCanonical(data, target) {
       found: true,
       value: isFinite(expected) ? expected : null,
       scenarioMonthly: row.scenarioMonthly || null,
+      locator,
+    };
+  }
+  if (target.collection === 'representedEvents') {
+    const opening = (((data || {}).plan) || {}).opening || null;
+    const date = target.date || null;
+    const events = (opening && opening.representedEvents) || [];
+    const represented = !!(opening && date && opening.asOf === date
+      && events.some(e => e && e.id === target.id && e.date === date));
+    return {
+      found: !!(opening && opening.asOf),
+      value: represented ? 1 : 0,
+      represented,
+      openingAsOf: opening && opening.asOf ? opening.asOf : null,
       locator,
     };
   }
@@ -1071,6 +1097,148 @@ function compareCardObservations(cardObservations, data) {
   return rows;
 }
 
+function observationsFromPosting(doc) {
+  return ((doc && doc.observations) || []).map(item => ({
+    observationId: item.observationId,
+    fact: item.fact || 'posting',
+    eventId: item.eventId || (item.canonical && item.canonical.id) || null,
+    accountLabel: item.label || item.eventId,
+    evidenceValue: null,
+    evidenceDate: item.observedAsOf || item.scheduledDate || null,
+    scheduledDate: item.scheduledDate || null,
+    posted: item.posted === true,
+    unknown: item.unknown === true || (item.posted !== true && item.posted !== false),
+    canonical: item.canonical || (item.eventId
+      ? { collection: 'representedEvents', id: item.eventId, date: item.scheduledDate || null }
+      : null),
+    source: item.source || null,
+    note: item.note || null,
+  }));
+}
+
+function schedulePlanWithoutCutover(plan) {
+  return {
+    income: (plan && plan.income) || [],
+    obligations: (plan && plan.obligations) || [],
+    bills: (plan && plan.bills) || [],
+    commitments: (plan && plan.commitments) || [],
+    startingCash: plan && plan.startingCash,
+  };
+}
+
+function scheduledEventExists(data, eventId, scheduledDate) {
+  if (!eventId || !scheduledDate) return false;
+  const plan = ((data || {}).plan) || {};
+  // Forecast decides whether {id, date} is a cash occurrence. Opening
+  // cutover is posting, not schedule, so representedEvents is omitted.
+  const events = Forecast.expandEvents(
+    schedulePlanWithoutCutover(plan),
+    scheduledDate,
+    scheduledDate,
+    {}
+  );
+  return events.some(e => e.id === eventId && e.date === scheduledDate && e.kind !== 'noncash');
+}
+
+function representedOnOpening(data, eventId, date) {
+  const opening = (((data || {}).plan) || {}).opening || null;
+  if (!opening || !eventId || !date || opening.asOf !== date) return false;
+  return (opening.representedEvents || []).some(e => e && e.id === eventId && e.date === date);
+}
+
+function openingAsOf(data) {
+  const opening = (((data || {}).plan) || {}).opening || null;
+  return opening && opening.asOf ? opening.asOf : null;
+}
+
+function postingState(row) {
+  if (!row || row.unknown === true) return 'unknown';
+  if (row.posted === true) return 'posted';
+  if (row.posted === false) return 'unposted';
+  return 'unknown';
+}
+
+function derivedPostingStatus(postedState, represented) {
+  if (postedState === 'unknown') return represented ? 'invented-posting' : 'posting-unknown';
+  if (postedState === 'posted') return represented ? 'posted-represented' : 'posted-not-represented';
+  return represented ? 'unposted-but-represented' : 'scheduled-unposted';
+}
+
+function comparePostingGroup(rows, data) {
+  const first = rows[0];
+  const eventId = first.eventId || (first.canonical && first.canonical.id) || null;
+  const scheduledDate = first.scheduledDate || first.evidenceDate || null;
+  const states = [];
+  for (const row of rows) {
+    const state = postingState(row);
+    if (!states.includes(state)) states.push(state);
+  }
+  const mixed = states.length > 1;
+  const exists = scheduledEventExists(data, eventId, scheduledDate);
+  const represented = representedOnOpening(data, eventId, scheduledDate);
+  const asOf = openingAsOf(data);
+  const locator = eventId
+    ? `representedEvents:${eventId}@${scheduledDate || '(none)'}`
+    : '(unspecified)';
+
+  return rows.map(row => {
+    const state = postingState(row);
+    let status;
+    if (mixed) status = 'CONFLICT';
+    else if (!exists) status = 'MISSING';
+    else if (state === 'unknown') status = represented ? 'CONFLICT' : 'MISSING';
+    else if (state === 'posted') status = represented ? 'MATCH' : 'CHANGE';
+    else status = represented ? 'CONFLICT' : 'MATCH';
+    const derived = mixed
+      ? 'conflicted-posting'
+      : derivedPostingStatus(state, represented);
+    return {
+      observationId: row.observationId,
+      fact: 'posting',
+      eventId,
+      accountLabel: row.accountLabel,
+      evidenceValue: null,
+      evidenceDate: row.evidenceDate,
+      scheduledDate,
+      posted: state === 'posted',
+      unknown: state === 'unknown',
+      represented,
+      openingAsOf: asOf,
+      scheduledExists: exists,
+      derivedStatus: derived,
+      canonicalValue: represented ? 1 : (exists ? 0 : null),
+      canonicalTarget: locator,
+      difference: null,
+      status,
+      note: mixed
+        ? (row.note || 'same-time posting facts disagree — not guessed')
+        : (row.note || (state === 'unknown'
+          ? 'unknown posting is not posted and is not unposted'
+          : (state === 'posted'
+            ? 'posted occurrence must be named on representedEvents when opening.asOf is that date'
+            : 'schedule is not proof of posting'))),
+    };
+  });
+}
+
+function comparePostingObservations(postingObservations, data) {
+  const rows = [];
+  const groups = new Map();
+  for (const obs of postingObservations || []) {
+    if (!POSTING_FACTS.has(obs.fact)) continue;
+    const eventId = obs.eventId || (obs.canonical && obs.canonical.id) || obs.observationId;
+    const date = obs.scheduledDate || obs.evidenceDate || '(none)';
+    const key = `${eventId}:${date}`;
+    const list = groups.get(key) || [];
+    list.push(obs);
+    groups.set(key, list);
+  }
+  for (const group of groups.values()) {
+    rows.push(...comparePostingGroup(group, data));
+  }
+  return rows;
+}
+
 function observationTime(row) {
   const d = row && row.evidenceDate;
   if (d == null || d === '' || d === '(none)') return '';
@@ -1240,11 +1408,14 @@ function reconcile(input) {
     || observationsFromAmanda(input.amanda);
   const extraCards = input.cardObservations
     || observationsFromCards(input.cards);
+  const extraPosting = input.postingObservations
+    || observationsFromPosting(input.posting);
   const observations = raw.filter(o =>
     o.fact !== 'settlement'
     && !UTILITY_FACTS.has(o.fact)
     && !AMANDA_FACTS.has(o.fact)
-    && !CARD_FACTS.has(o.fact));
+    && !CARD_FACTS.has(o.fact)
+    && !POSTING_FACTS.has(o.fact));
   const settlementObservations = raw.filter(o => o.fact === 'settlement')
     .concat(extraSettlements || []);
   const utilityObservations = raw.filter(o => UTILITY_FACTS.has(o.fact))
@@ -1253,6 +1424,8 @@ function reconcile(input) {
     .concat(extraAmanda || []);
   const cardObservations = raw.filter(o => CARD_FACTS.has(o.fact))
     .concat(extraCards || []);
+  const postingObservations = raw.filter(o => POSTING_FACTS.has(o.fact))
+    .concat(extraPosting || []);
   const groups = new Map();
   for (const obs of observations) {
     const key = obs.canonical
@@ -1307,6 +1480,7 @@ function reconcile(input) {
     else if (obs.fact === 'household-available') rows.push(compareHouseholdAvailable(obs, data));
   }
   rows.push(...compareCardObservations(cardObservations, data));
+  rows.push(...comparePostingObservations(postingObservations, data));
   const counts = { MATCH: 0, STALE: 0, CHANGE: 0, CONFLICT: 0, MISSING: 0 };
   for (const row of rows) counts[row.status] = (counts[row.status] || 0) + 1;
   return {
@@ -1330,6 +1504,7 @@ function formatReport(result) {
   lines.push('Hydro source: docs/reconciliation/utility-observations.json');
   lines.push('Amanda source: docs/reconciliation/amanda-income-observations.json');
   lines.push('Card source: docs/reconciliation/card-state-observations.json');
+  lines.push('Posting source: docs/reconciliation/posting-observations.json');
   lines.push('Canonical: data.json via id locator (not array-index JSON Pointer)');
   lines.push(`Canonical as-of: ${result.canonicalAsOf || '(none)'}`);
   lines.push(`STALE: not assigned — ${result.staleReason}`);
@@ -1361,6 +1536,8 @@ function formatReport(result) {
           ? (row.evidenceValue == null ? '—' : n2(row.evidenceValue))
         : (row.fact === 'pending' && row.unknown)
           ? 'unknown'
+        : row.fact === 'posting'
+          ? (row.unknown ? 'unknown' : (row.posted ? 'posted' : 'unposted'))
         : (row.fact === 'confirmed-payment' && row.appliedToPosted)
           ? n2(row.evidenceValue)
           : (row.evidenceValue == null ? '—' : n2(row.evidenceValue));
@@ -1390,6 +1567,8 @@ function formatReport(result) {
                     ? 'already in'
                     : row.fact === 'scheduled-payment'
                       ? 'schedule only'
+                  : row.fact === 'posting'
+                    ? (row.represented ? 'represented' : (row.scheduledExists ? 'not represented' : 'missing'))
               : (row.canonicalValue == null ? '—' : n2(row.canonicalValue));
     lines.push([
       pad(row.observationId, 28),
@@ -1500,6 +1679,19 @@ function formatReport(result) {
       }
     }
   }
+  const posting = result.rows.filter(r => POSTING_FACTS.has(r.fact));
+  if (posting.length) {
+    lines.push('');
+    lines.push('Schedule vs posted distinctions:');
+    for (const row of posting) {
+      const bits = [`  ${row.observationId}: posting`];
+      if (row.unknown) bits.push('unknown posting is not posted and is not unposted');
+      else if (row.posted) bits.push('posted is not merely scheduled');
+      else bits.push('schedule is not proof of posting');
+      bits.push(row.derivedStatus || row.status);
+      lines.push(bits.join(' — '));
+    }
+  }
   const auth = result.amandaTransferAuthority;
   if (auth) {
     lines.push('');
@@ -1530,6 +1722,7 @@ function loadDefaults() {
     utility: JSON.parse(fs.readFileSync(DEFAULT_UTILITY, 'utf8')),
     amanda: JSON.parse(fs.readFileSync(DEFAULT_AMANDA, 'utf8')),
     cards: JSON.parse(fs.readFileSync(DEFAULT_CARDS, 'utf8')),
+    posting: JSON.parse(fs.readFileSync(DEFAULT_POSTING, 'utf8')),
   };
 }
 
@@ -1549,6 +1742,9 @@ const api = {
   observationsFromUtility,
   observationsFromAmanda,
   observationsFromCards,
+  observationsFromPosting,
+  representedOnOpening,
+  scheduledEventExists,
   classifyAmandaMovement,
   householdCashFromAmandaMovements,
   householdCashFromCardCapacity,
@@ -1569,8 +1765,10 @@ const api = {
   DEFAULT_UTILITY,
   DEFAULT_AMANDA,
   DEFAULT_CARDS,
+  DEFAULT_POSTING,
   AMANDA_FACTS,
   CARD_FACTS,
+  POSTING_FACTS,
   CARD_IDS,
   AMANDA_TRANSFER_ID,
   AMANDA_OPERATING_ID,

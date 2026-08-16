@@ -1,0 +1,86 @@
+{
+  "schema": "atlas-posting-observations/v1",
+  "source": "docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md",
+  "owns": "B91 D7 posting observations against plan.opening.representedEvents. Forecast remains authority for what should happen. These records are authority for whether a scheduled occurrence has posted. Not a lifecycle state machine, not a second calendar, and not a second Forecast.",
+  "does_not_own": "Permission to write data.json, Forecast results, representedEvents, or to treat a schedule as proof of posting.",
+  "asOf": "2026-08-14",
+  "notes": [
+    "A live opening observation needs explicit cutover semantics so events already inside that observation are not replayed. representedEvents is that list. This file compares posting evidence to that list and does not write it.",
+    "Unknown posting is not unposted and is not posted. Fail closed: do not put an unknown item on representedEvents.",
+    "Fit4Less, BCAA, ICBC, and RESP are named in the Aug. 14 corpus as same-day or next-day scheduled items. The committed corpus does not establish whether they posted. They stay unknown."
+  ],
+  "observations": [
+    {
+      "observationId": "payday-payroll-posted",
+      "fact": "posting",
+      "eventId": "payroll",
+      "label": "Seaspan payroll",
+      "scheduledDate": "2026-08-14",
+      "posted": true,
+      "observedAsOf": "2026-08-14",
+      "canonical": { "collection": "representedEvents", "id": "payroll" },
+      "source": "docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md",
+      "note": "Pay landed. Already inside the Aug. 14 opening observation. When opening.asOf is 2026-08-14 this occurrence must be named on representedEvents, or Forecast replays it."
+    },
+    {
+      "observationId": "payday-mortgage-unposted",
+      "fact": "posting",
+      "eventId": "mortgage",
+      "label": "Mortgage",
+      "scheduledDate": "2026-08-14",
+      "posted": false,
+      "observedAsOf": "2026-08-14",
+      "canonical": { "collection": "representedEvents", "id": "mortgage" },
+      "source": "docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md",
+      "note": "Expected Aug. 14 but not yet on the bank screenshot. Schedule is not proof of posting. Must not be on representedEvents. Forecast still deducts it."
+    },
+    {
+      "observationId": "payday-fit4less-posting-unknown",
+      "fact": "posting",
+      "eventId": "fit4less",
+      "label": "Fit4Less membership",
+      "scheduledDate": "2026-08-14",
+      "unknown": true,
+      "observedAsOf": "2026-08-14",
+      "canonical": { "collection": "representedEvents", "id": "fit4less" },
+      "source": "docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md",
+      "note": "Same-day scheduled item. Posting is not established in the committed corpus. Unknown posting is not posted and is not unposted."
+    },
+    {
+      "observationId": "payday-bcaa-posting-unknown",
+      "fact": "posting",
+      "eventId": "bcaa",
+      "label": "BCAA insurance",
+      "scheduledDate": "2026-08-15",
+      "unknown": true,
+      "observedAsOf": "2026-08-14",
+      "canonical": { "collection": "representedEvents", "id": "bcaa" },
+      "source": "docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md",
+      "note": "Next-day scheduled item as of the Aug. 14 observation. Posting is not established. Do not invent a representedEvents cutover for it."
+    },
+    {
+      "observationId": "payday-icbc-posting-unknown",
+      "fact": "posting",
+      "eventId": "icbc",
+      "label": "ICBC insurance",
+      "scheduledDate": "2026-08-15",
+      "unknown": true,
+      "observedAsOf": "2026-08-14",
+      "canonical": { "collection": "representedEvents", "id": "icbc" },
+      "source": "docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md",
+      "note": "Next-day scheduled item as of the Aug. 14 observation. Posting is not established. Do not invent a representedEvents cutover for it."
+    },
+    {
+      "observationId": "payday-resp-posting-unknown",
+      "fact": "posting",
+      "eventId": "resp",
+      "label": "RESP contribution",
+      "scheduledDate": "2026-08-15",
+      "unknown": true,
+      "observedAsOf": "2026-08-14",
+      "canonical": { "collection": "representedEvents", "id": "resp" },
+      "source": "docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md",
+      "note": "Next-day scheduled item as of the Aug. 14 observation. Posting is not established. Do not invent a representedEvents cutover for it."
+    }
+  ]
+}
