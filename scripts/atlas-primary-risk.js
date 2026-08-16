@@ -3,8 +3,10 @@
  * `node scripts/atlas-primary-risk.js`
  *
  * The Merge Card "Primary risk" row is the authority. The GitHub label is a
- * projection of that closed value, not a second judgement. This helper never
- * infers risk from paths, never talks to the network, and never reads secrets.
+ * projection of that closed value, not a second judgement. Presentation
+ * Markdown (bold markers, one wrapping inline-code span) is stripped before
+ * the closed vocabulary is checked. This helper never infers risk from
+ * paths, never talks to the network, and never reads secrets.
  * The trusted default-branch workflow applies the planned label mutation, then
  * evaluates the live labels against the card.
  *
@@ -23,11 +25,15 @@ const PRIMARY_RE = new RegExp(
 );
 
 function clean(value) {
-  return String(value == null ? '' : value)
+  const text = String(value == null ? '' : value)
     .replace(/<!--[\s\S]*?-->/g, '')
     .replace(/\*\*/g, '')
     .replace(/\r/g, '')
     .trim();
+  // Ordinary Markdown inline code around the opening token is presentation,
+  // not part of the closed value. Strip one wrapping pair, then re-trim.
+  // Do not strip every backtick: `auto-`safe`` must not become auto-safe.
+  return text.replace(/^`([^`\n]+)`/, '$1').trim();
 }
 
 function sectionAfter(body, heading) {

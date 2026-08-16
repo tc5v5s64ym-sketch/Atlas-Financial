@@ -12,7 +12,7 @@
 | Field | Value |
 |---|---|
 | **Title** | <!-- one line --> |
-| **Primary risk** | <!-- auto-safe / owner-decision / figures-moved / blocked --> |
+| **Primary risk** | <!-- one of: auto-safe / figures-moved / owner-decision / blocked — plain text or ordinary inline code --> |
 | **Files / categories touched** | <!-- concise --> |
 | **Current-state verdict** | <!-- OPEN with STILL BROKEN / ALREADY FIXED / PARTIALLY FIXED / FIXED BUT UNTESTED / STALE-SUPERSEDED / NEEDS OWNER ANSWER; then source and evidence from current main --> |
 | **Builder surface** | <!-- the tool this work ran on --> |

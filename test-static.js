@@ -151,10 +151,9 @@ const gateNames = helperPrimary.map(s => s.replace(/'/g, ''));
 ok(gateNames.length === 4, 'the primary-risk helper names four primary labels', gateNames.join(', '));
 ok(/scripts\/atlas-primary-risk\.js/.test(gate), 'the risk gate derives the GitHub label from the helper');
 ok(!/const PRIMARY = \[/.test(gate), 'the risk-gate workflow does not keep a second PRIMARY list');
-const mergeCardPrimary = (/const PRIMARY_RISK = \[([^\]]+)\]/.exec(mergeCard) || [, ''])[1]
-  .match(/'([^']+)'/g) || [];
-ok(mergeCardPrimary.map(s => s.replace(/'/g, '')).join(',') === gateNames.join(','),
-  'merge-card-check uses the same closed Primary risk vocabulary');
+ok(/scripts\/atlas-primary-risk\.js/.test(mergeCard), 'merge-card-check consumes the helper for Primary risk');
+ok(/parsePrimaryRisk/.test(mergeCard), 'merge-card-check calls parsePrimaryRisk rather than a second enum regex');
+ok(!/const PRIMARY_RISK = \[/.test(mergeCard), 'merge-card-check does not keep a second PRIMARY list');
 const notInManifest = gateNames.filter(n => !new RegExp(`^- name: ${n}$`, 'm').test(manifest));
 ok(notInManifest.length === 0,
   'and every one of them exists in the label manifest', notInManifest.join(', ') || 'all present');
