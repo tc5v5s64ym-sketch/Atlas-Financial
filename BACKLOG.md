@@ -1246,6 +1246,18 @@ change `windowDays`, `Forecast.recommend`, `data.json`, or any published
 figure. Engine work waits on this item and should not run ahead of a
 trustworthy `B91` opening. Build-strategy item `AF-PLAN-01`.
 
+**B95 · Absorb known major future costs onto the master plan** · **DONE 2026-08-16** · *canonical plan / evidence absorption*
+Owner instruction 2026-08-16. Known major future spending and the named
+annual irregulars now have one home: unsettled `plan.commitments` for the
+one-off / owner-estimated costs, and the existing property-tax **reserve**
+for the annual municipal lump. Deep Dive reads those rows through
+`Forecast.publicationTotals`; `data.commitments.items` is deleted as a
+second list. Undated rows emit no cash event and are not smeared across
+the 91-day sinking line. Open ranges stay ranges. No dates, priorities,
+funding amounts, or debt policy were invented. B94 sequencing and
+out-of-window safe-to-spend are not started. Proved by
+`test-major-future-costs.js`.
+
 **B75 · Nothing checks that the authority table is complete** · **DONE 2026-08-11**
 PR #10 added `test-authority-coverage.js` to the blocking `npm test` suite. It
 mechanically enumerates the named, closed surfaces earned by this finding:

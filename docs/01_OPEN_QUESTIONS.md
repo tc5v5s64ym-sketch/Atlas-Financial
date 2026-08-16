@@ -190,15 +190,15 @@ amount. It must not be double-counted.
 
 ### Q22. What are the remaining unknown tournament costs, and what are Provincials date/location/cost?
 **Status:** OPEN · **Owner:** Dale + Amanda
-**What we know (2026-08-16):** Current known planning list is Seattle
-November 2026; Seattle December 2026; Indio, California January 2027;
-Provincials expected but location/date/cost unknown. There are no other
-specifically known tournaments. Tacoma is not on the current known list and
-is not preserved as confirmed from older interview evidence alone. Costs for
-the named Seattle/Indio events are still not supplied.
-**What the answer changes:** Dated tournament cash only after evidence
-exists. Do not fabricate dates or costs. Do not restore generic "one or two
-mystery extra tournaments" language.
+**What we know (2026-08-16, estimates absorbed 2026-08-16):** Current known
+planning list is on `plan.commitments`: Seattle November 2026 owner estimate
+$1,200; Seattle December 2026 owner estimate $1,200; Indio January 2027
+owner estimate $5,260–$5,460; Provincials owner estimate $1,000, timing TBD.
+There are no other specifically known tournaments. Tacoma is not on the
+current known list. Exact due dates, Indio's point amount, and Provincials
+location/date remain unknown.
+**What the answer changes:** A dated cash event, or collapsing a range to
+one amount, only after evidence exists. Do not fabricate dates or midpoints.
 
 ### Q25. How much of Amanda’s TENNIS INCOME balance is genuinely household-available after coaching, business, and pass-through obligations?
 **Status:** OPEN · **Owner:** Dale + Amanda

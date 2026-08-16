@@ -356,8 +356,124 @@
         "budgetCategory": "sport",
         "confidence": "estimated",
         "adjustable": true,
-        "note": "Owner-stated \"about $800\", September, not yet invoiced. Mid-month assumed.",
+        "note": "Owner estimate ~$800, around Sep 2026, not yet invoiced. The 15th is the existing mid-month assumption already on this row; this absorption does not invent a new day.",
         "sinkingFund": true
+      },
+      {
+        "id": "fusion-season",
+        "label": "Fusion season",
+        "amount": 2000.0,
+        "when": "late Sep 2026",
+        "budgetCategory": "sport",
+        "confidence": "estimated",
+        "sinkingFund": true,
+        "note": "Owner estimate ~$2,000, likely beginning late Sep 2026. Not an invoice and not a confirmed instalment schedule. No day is invented. Camp and tryouts stay the settled rows; this is the upcoming season, not those."
+      },
+      {
+        "id": "burrards-team-fees",
+        "label": "Burrards team fees",
+        "amount": 700.0,
+        "when": "Sep 2026",
+        "budgetCategory": "sport",
+        "confidence": "estimated",
+        "sinkingFund": true,
+        "note": "Owner estimate ~$700, likely Sep 2026. Not a confirmed invoice. No September day is invented. Distinct from the settled 12 August registrations."
+      },
+      {
+        "id": "seattle-nov",
+        "label": "Seattle tournament #1",
+        "amount": 1200.0,
+        "when": "Nov 2026",
+        "budgetCategory": "travel",
+        "confidence": "estimated",
+        "sinkingFund": true,
+        "note": "Owner estimate $1,200, Nov 2026. Tournament dates are not a payment due date; no day is invented. Tacoma is not on the current known list."
+      },
+      {
+        "id": "seattle-dec",
+        "label": "Seattle tournament #2",
+        "amount": 1200.0,
+        "when": "Dec 2026",
+        "budgetCategory": "travel",
+        "confidence": "estimated",
+        "sinkingFund": true,
+        "note": "Owner estimate $1,200, Dec 2026. No day is invented. Distinct from Seattle #1."
+      },
+      {
+        "id": "christmas-2026",
+        "label": "Christmas 2026",
+        "amount": 3500.0,
+        "when": "by Christmas 2026",
+        "budgetCategory": null,
+        "confidence": "estimated",
+        "sinkingFund": true,
+        "note": "Owner estimate $3,500 by Christmas 2026. Amanda's 10 August interview $5,000–$6,000/year remains interview evidence, not this row. No day is invented."
+      },
+      {
+        "id": "downstairs-couch",
+        "label": "Downstairs couch",
+        "amount": 1700.0,
+        "when": "Nov–Dec 2026",
+        "budgetCategory": null,
+        "confidence": "estimated",
+        "adjustable": true,
+        "sinkingFund": true,
+        "note": "Owner estimate ~$1,700, Nov–Dec 2026, flexible. Timing can move. No day is invented."
+      },
+      {
+        "id": "exterior-painting",
+        "label": "Exterior painting",
+        "amount": null,
+        "amountMin": 700.0,
+        "amountMax": 1200.0,
+        "when": "Fall 2026",
+        "budgetCategory": null,
+        "confidence": "estimated",
+        "adjustable": true,
+        "sinkingFund": true,
+        "note": "Owner estimate $700–$1,200, Fall 2026, flexible. Range only — no midpoint is invented and no day is invented."
+      },
+      {
+        "id": "indio-tournament",
+        "label": "Indio tournament",
+        "amount": null,
+        "amountMin": 5260.0,
+        "amountMax": 5460.0,
+        "when": "Jan 2027",
+        "budgetCategory": "travel",
+        "confidence": "estimated",
+        "sinkingFund": true,
+        "note": "Owner estimate $5,260–$5,460, Jan 2027. Range only — no midpoint is invented and no day is invented."
+      },
+      {
+        "id": "provincials",
+        "label": "Provincials",
+        "amount": 1000.0,
+        "when": "timing TBD",
+        "budgetCategory": "sport",
+        "confidence": "estimated",
+        "sinkingFund": true,
+        "note": "Owner estimate $1,000. Timing, location, and a due date are unknown. No date is invented."
+      },
+      {
+        "id": "home-insurance",
+        "label": "Home insurance",
+        "amount": 3131.76,
+        "when": "around Feb",
+        "budgetCategory": "insurance",
+        "confidence": "estimated",
+        "sinkingFund": true,
+        "note": "Last verified Square One premium $3,131.76, auto-renews around 10 February (ACCOUNT_FACTS). The next cash event is estimated — the premium rose ~17% last year. Paying account is still unknown (B69). Not a dated joint-cash bill, because that would smear a February cost across the 91-day window."
+      },
+      {
+        "id": "vehicle-maintenance",
+        "label": "Vehicle maintenance",
+        "amount": 2400.0,
+        "when": "annual",
+        "budgetCategory": null,
+        "confidence": "estimated",
+        "sinkingFund": true,
+        "note": "Owner estimate ~$2,400/year. No known repair is currently due. Not a monthly owner budget target and not a dated cash event."
       }
     ],
     "groups": [
@@ -365,7 +481,7 @@
         "id": "burrard",
         "label": "Burrard registrations",
         "atomic": true,
-        "note": "Both children's Burrards registrations are owner-confirmed PAID (2026-08-16). The pair was atomic on the original due day; it is retained as settled history. Upcoming team fees (~$700, September TBD) are a separate estimated item, not these registrations."
+        "note": "Both children's Burrards registrations are owner-confirmed PAID (2026-08-16). The pair was atomic on the original due day; it is retained as settled history. Upcoming team fees are the separate estimated plan row burrards-team-fees, not these registrations."
       }
     ],
     "funding": {
@@ -434,7 +550,7 @@
           "annual bills",
           "emergency/buffer"
         ],
-        "sinkingFundsNote": "Named by the owner but NOT quantified as current approved targets, so no amount is modelled for them. Property tax and CRA are carried as reserves from the historical record; the Fusion and Burrard commitments are dated on the calendar with owner-stated amounts. Home insurance, Christmas, travel, annual bills and the emergency top-up have no current approved figure and are OWNER DECISION REQUIRED. HOME BUDGET.xlsx contains sinking-fund planning as historical owner-created evidence; those workbook amounts are not independently extracted into this repository and are not current approved policy. They must not enter Forecast without an explicit later owner authority transition."
+        "sinkingFundsNote": "Named sinking funds are not a second savings system. Property tax and CRA stay reserve categories (historical). Fusion season, Burrards team fees, Christmas, travel tournaments, home insurance and vehicle maintenance now live as plan.commitments rows with owner estimates — undated unless a real date already existed. Those rows are not monthly owner targets and do not invent a day. Emergency/buffer remains owner-unquantified (Q20). HOME BUDGET.xlsx sinking-fund amounts are still not current approved policy."
       },
       "cardCaveat": "The historical averages below are total household spending — chequing, cards and PayPal. The forecast deducts the weekly cap as CASH from the household chequing accounts, but only card MINIMUMS as debt service. Spending at the historical rate on the cards would therefore show a healthy cash line while the card balances grew. The cap is a cash instruction, and it only holds if the spending is actually paid for rather than carried.",
       "categories": [
@@ -526,7 +642,7 @@
             "Property tax"
           ],
           "plannedMonthly": null,
-          "why": "An annual lump, historically paid partly from the HELOC and partly by Amanda. No instalment falls inside this window, so it must NOT be inside the weekly cap — but it is a real cost and is shown as a reserve so a surplus is not mistaken for free money."
+          "why": "An annual lump, historically paid partly from the HELOC and partly by Amanda. No instalment falls inside this window, so it must NOT be inside the weekly cap — but it is a real cost and is shown as a reserve so a surplus is not mistaken for free money. Owner estimate $5,600–$6,000/year; last captured payment $5,639.67 on 2 Jul 2026 (ACCOUNT_FACTS). The range is not collapsed to a midpoint and is not copied onto plan.commitments — this reserve is the one home."
         },
         {
           "id": "tax",
@@ -582,7 +698,7 @@
           "plannedMonthly": 250,
           "ownerLine": "Sports / Activities",
           "targetSource": "owner-stated-2026-08-10",
-          "why": "OWNER TARGET WINS, AND IS KEPT SEPARATE FROM THE SEASON FEES. $250/month of ordinary sports and activities. Fusion camp and tryouts are dated settled sinking-fund items; Burrards registrations are settled as of 2026-08-16. There are currently no pending Fusion instalments on the calendar. Fit4Less at $25/month IS dated and recurring, so it is subtracted, leaving $225. The $250 owner target is unchanged."
+          "why": "OWNER TARGET WINS, AND IS KEPT SEPARATE FROM THE SEASON FEES. $250/month of ordinary sports and activities. Fusion camp and tryouts are dated settled sinking-fund items; Burrards registrations are settled as of 2026-08-16. Upcoming Fusion season, Burrards team fees, Warriors, Seattle tournaments and Provincials are separate plan.commitments rows, not this monthly line. Fit4Less at $25/month IS dated and recurring, so it is subtracted, leaving $225. The $250 owner target is unchanged."
         },
         {
           "id": "entertainment",
@@ -770,46 +886,9 @@
   ],
   "upcomingNote": "This note is the 9 August opening, not a 16 August cutover. On that opening the tight moment is 12 August: Burrard registrations ($623.00) fall two days before payday against $79.84 of spendable household cash — Chequing A, Chequing B and Savings — so on the household accounts alone they do not clear; the Plan page sizes the gap at $1,043.16 including the $500 buffer. Owner-confirmed 16 August: both registrations are PAID and no registration amount remains owed; they still appear here because settledOn is after this as-of. The Fusion camp ($786.00) follows on the 16th, after payday. Revolving headroom on this opening is the derived $1,415.98 across every facility combined, with $247.18 of pending charges already spoken for (Forecast.utilisation on these debt records — not a copied 16 August screenshot). HELOC interest posting is capitalised onto the balance at month-end and is not a Forecast chequing outflow; that is not a claim of confident zero remaining August cash impact — the Aug. 1 PAD is unproven (Q19). Dated payments below are derived from the Plan; the two paid rows are a forensic overlay, not a second schedule.",
   "commitments": {
-    "heading": "Big-ticket items — committed and estimated",
-    "note": "Beyond the dated Plan calendar. Warriors remains an estimated dated commitment. Upcoming Fusion season and Burrards team fees are planning estimates with unknown dates — not confirmed invoices. Current known tournaments are listed without fabricated costs. These stay out of the headline cash and debt tiles.",
-    "items": [
-      {
-        "what": "Warriors Elite Academy",
-        "when": "September 2026",
-        "amount": 800,
-        "confidence": "committed",
-        "note": "Amount is the owner's figure, stated as \"about $800\", and not yet invoiced. The commitment itself is firm. Dated on the Plan calendar."
-      },
-      {
-        "what": "Fusion upcoming season (planning estimate)",
-        "when": "late September 2026 onward — exact dates TBD",
-        "amount": 2000,
-        "confidence": "estimated",
-        "note": "Owner-confirmed 2026-08-16: there are currently NO pending Fusion instalments. The three live-plan $500 rows were stale and were removed. Upcoming season planning estimate is approximately 4 × ~$500, probably starting late September 2026. Exact total, instalment count, and dates are unknown. Not current invoices or confirmed due dates."
-      },
-      {
-        "what": "Burrards upcoming team fees (planning estimate)",
-        "when": "September 2026 — exact date TBD",
-        "amount": 700,
-        "confidence": "estimated",
-        "note": "Owner-confirmed 2026-08-16: Logan's and Linden's registrations are both PAID; no registration amounts remain owed. Expected upcoming team fees approximately $700 total sometime in September 2026. Exact amount and due date unknown. Not a confirmed invoice. No September date was fabricated."
-      },
-      {
-        "what": "Tournaments — current known list",
-        "when": "Nov 2026 – Jan 2027; Provincials TBD",
-        "amount": null,
-        "confidence": "estimated",
-        "note": "Owner's current known list (2026-08-16): Seattle November 2026; Seattle December 2026; Indio, California January 2027; Provincials expected but location/date/cost unknown. No other specifically known tournaments. Tacoma is not on the current known list. Do not invent dates or costs."
-      }
-    ],
-    "schedule": [
-      {
-        "m": "September",
-        "amount": 800,
-        "note": "Warriors ~$800 dated mid-month as an estimate, not yet invoiced. Upcoming Fusion (~4 × ~$500) and Burrards team fees (~$700) are not placed on a fabricated September day."
-      }
-    ],
-    "totalNote": "Warriors is treated as a firm-but-uninvoice estimated dated commitment. Upcoming Fusion and Burrards team fees are planning estimates only. They stay out of the headline cash and debt tiles, which carry institution-verified amounts only."
+    "heading": "Known major costs on the master plan",
+    "note": "Rendered from plan.commitments. Dated rows also appear on the Plan calendar; undated rows are known to the plan without a fabricated day. Ranges are not collapsed to a midpoint. ON TRACK / AT RISK / FUNDING GAP is not computed here — that waits on B94 and applies to major future plans, not to ordinary budget categories.",
+    "totalNote": "The printed total is the sum of point estimates on unsettled plan.commitments. Open ranges (painting, Indio) are listed and excluded from that single total. Institution-verified headline cash and debt tiles are separate."
   },
   "debts": [
     {
