@@ -184,8 +184,10 @@ console.log('\n=== E. no-write guarantee ===');
   ok(/does not write data\.json/.test(out),
     'the printed report repeats the no-write contract');
   ok(/MATCH/.test(out), 'the live CLI report includes MATCH rows');
-  ok(/canonical-older means this evidence date is newer than canonical as-of/.test(out),
+  ok(/canonical-older means this observation time is newer than a comparable canonical freshness date/.test(out),
     'the CLI reports the date relation without assigning STALE');
+  ok(/Due, settlement, and scheduled dates are not observation times/.test(out),
+    'the CLI refuses to treat due or settlement dates as observation time');
   ok(/Date relation \(not a STALE assignment\)/.test(out),
     'the CLI names date relation as not a STALE assignment');
 
@@ -217,6 +219,109 @@ console.log('\n=== F. locator is id-stable, not array position ===');
   const rowA = result.rows[0];
   ok(rowA.status === 'MATCH' && rowA.canonicalTarget === 'cash:chequing-a',
     'reversing cash/debt arrays does not lose the Chequing A locator');
+}
+
+console.log('\n=== G. due/settlement/scheduled dates are not observation times ===');
+{
+  const utility = require('./docs/reconciliation/utility-observations.json');
+  const sepObs = R.observationsFromUtility(utility)
+    .find(o => o.observationId === 'payday-hydro-due-sep1');
+  ok(sepObs && sepObs.dueDate === '2026-09-01',
+    'adapter keeps the Sept. 1 due date as the effective date');
+  ok(sepObs.observedAsOf === '2026-08-14' && sepObs.evidenceDate === '2026-08-14',
+    'adapter uses observedAsOf 14 Aug, not the due date, as observation time');
+  ok(sepObs.evidenceDate !== sepObs.dueDate,
+    'due date does not masquerade as observedAsOf');
+
+  const live = JSON.parse(fs.readFileSync(path.join(__dirname, 'data.json'), 'utf8'));
+  const hydro = R.reconcile({
+    data: live,
+    map: { mappings: [] },
+    observations: [],
+    settlements: { observations: [] },
+    utility,
+  });
+  const sepRow = hydro.rows.find(r => r.observationId === 'payday-hydro-due-sep1');
+  ok(sepRow && sepRow.status === 'MATCH' && sepRow.dueDate === '2026-09-01',
+    'live Sept. 1 Hydro bill MATCHES the Aug. 14 observation');
+  ok(sepRow.dateRelation === 'incomparable',
+    'Sept. 1 Hydro MATCH is not canonical-older merely because the due date is after 9 Aug');
+  ok(R.dateRelation(sepRow.dueDate, live.meta.asOf) === 'canonical-older',
+    'comparing the due date to meta.asOf would have overclaimed freshness — that path is closed');
+
+  const posting = R.observationsFromPosting({
+    observations: [{
+      observationId: 'synth-scheduled-only',
+      fact: 'posting',
+      eventId: 'payroll',
+      scheduledDate: '2026-08-15',
+    }],
+  })[0];
+  ok(posting.scheduledDate === '2026-08-15' && posting.evidenceDate == null,
+    'scheduledDate does not fill in as observedAsOf when observation time is missing');
+
+  const settlement = R.observationsFromSettlements({
+    observations: [{
+      observationId: 'synth-settled',
+      fact: 'settlement',
+      commitmentId: 'fusioncamp',
+      settledOn: '2026-08-14',
+      amount: 786,
+    }],
+  })[0];
+  ok(settlement.settledOn === '2026-08-14' && settlement.evidenceDate == null,
+    'settledOn does not masquerade as observedAsOf');
+
+  const d = fixtureState();
+  const balance = R.reconcile({
+    data: d,
+    map,
+    observations: [{
+      observationId: 'pos-chequing-a',
+      accountLabel: 'Chequing A',
+      evidenceValue: 100.25,
+      evidenceDate: '2026-08-14',
+      canonical: { collection: 'cash', id: 'chequing-a' },
+    }],
+  }).rows[0];
+  ok(balance.dateRelation === 'canonical-older',
+    'balance rows with a comparable observation timestamp still report canonical-older');
+
+  const card = R.reconcile({
+    data: {
+      meta: { asOf: '2026-08-09' },
+      plan: { startingCash: { breakdown: [], heldElsewhere: [] } },
+      debts: [{ id: 'cashback', balance: 5070, limit: 5000, pending: 0 }],
+    },
+    map: { mappings: [] },
+    observations: [],
+    settlements: { observations: [] },
+    cards: { observations: [
+      {
+        observationId: 'card-cashback-posted-2026-08-09',
+        fact: 'posted-balance',
+        cardId: 'cashback',
+        amount: 5070,
+        observedAsOf: '2026-08-09',
+        canonical: { collection: 'debts', id: 'cashback', field: 'balance' },
+      },
+      {
+        observationId: 'card-cashback-pending-2026-08-14',
+        fact: 'pending',
+        cardId: 'cashback',
+        amount: null,
+        unknown: true,
+        observedAsOf: '2026-08-14',
+        canonical: { collection: 'debts', id: 'cashback', field: 'pending' },
+      },
+    ] },
+  });
+  const posted = card.rows.find(r => r.observationId === 'card-cashback-posted-2026-08-09');
+  const pending = card.rows.find(r => r.observationId === 'card-cashback-pending-2026-08-14');
+  ok(posted && posted.dateRelation === 'same-day',
+    '9 Aug card posted-balance still reports same-day against meta.asOf');
+  ok(pending && pending.dateRelation === 'canonical-older',
+    '14 Aug card pending still reports canonical-older against meta.asOf');
 }
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);

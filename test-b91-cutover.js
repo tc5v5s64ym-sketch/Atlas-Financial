@@ -285,14 +285,26 @@ console.log('\n=== J. observation files remain evidence, not competing canonical
   ok(campRow && campRow.status === 'MATCH', 'Fusion camp observation is MATCH against canonical settledOn');
   ok(tryRow && tryRow.status === 'MATCH', 'Fusion tryouts observation is MATCH against canonical settledOn');
   ok(sepRow && sepRow.status === 'MATCH', 'Hydro 1 September observation is MATCH against the live bill');
+  ok(sepRow.dueDate === '2026-09-01' && sepRow.observedAsOf === PAYDAY
+    && sepRow.evidenceDate === PAYDAY,
+    'Sept. 1 remains the due date; observation time is 14 Aug');
+  ok(sepRow.dateRelation === 'incomparable',
+    'Hydro MATCH is not canonical-older merely because the due date is after 9 Aug');
   ok(nowRow && nowRow.status === 'MISSING', 'Hydro 14 August due remains MISSING — not guessed');
   ok(payRow && payRow.status === 'CHANGE',
     'posted payroll vs missing representedEvents is still CHANGE — opening cash was not invented');
   ok(mortRow && mortRow.status === 'MATCH', 'unposted mortgage remains correctly unrepresented');
   ok(result.staleAssigned === false && result.counts.STALE === 0,
     'STALE is still not assigned');
+  const cardPending14 = result.rows.find(r => r.observationId === 'card-cashback-pending-2026-08-14');
+  const cardPosted9 = result.rows.find(r => r.observationId === 'card-cashback-posted-2026-08-09'
+    || (r.fact === 'posted-balance' && r.cardId === 'cashback' && r.evidenceDate === AUG9));
+  ok(cardPending14 && cardPending14.dateRelation === 'canonical-older',
+    'Aug. 14 card pending still reports canonical-older than as-of 9 Aug');
+  ok(cardPosted9 && cardPosted9.dateRelation === 'same-day',
+    '9 Aug card posted-balance still reports same-day');
   ok(result.dateRelationCounts && result.dateRelationCounts['canonical-older'] > 0,
-    'Aug. 14 evidence is reported as canonical-older than as-of 9 Aug');
+    'comparable Aug. 14 snapshot evidence is still reported as canonical-older than as-of 9 Aug');
   const out = execFileSync(process.execPath, ['scripts/reconcile.js'], {
     cwd: __dirname, encoding: 'utf8',
   });

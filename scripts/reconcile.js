@@ -48,8 +48,9 @@
  * write representedEvents.
  *
  * Statuses actually assigned here: MATCH / CHANGE / CONFLICT / MISSING.
- * STALE is not assigned — no owner-defined age threshold exists. Evidence
- * dates are reported so that decision stays explicit.
+ * STALE is not assigned — no owner-defined age threshold exists. Observation
+ * time is distinct from due, settlement, and scheduled dates. A date
+ * relation is reported only where those timestamps are comparable.
  */
 
 const fs = require('fs');
@@ -87,6 +88,16 @@ const CARD_FACTS = new Set([
 ]);
 const CARD_IDS = new Set(['triangle', 'cashback', 'mbna', 'tdcc', 'travelvisa']);
 const POSTING_FACTS = new Set(['posting']);
+// Snapshot facts whose published freshness is owned by data.meta.asOf.
+// Dated-due, settlement, posting, Amanda, and paying-account facts are
+// not: their effective dates are not observation times, and they have
+// no canonical freshness date to substitute with the cash snapshot.
+const META_ASOF_FRESHNESS_FACTS = new Set([
+  'posted-balance',
+  'pending',
+  'limit',
+  'available-credit',
+]);
 
 const EPSILON = 0.005;
 const near = (a, b) => Math.abs(Number(a) - Number(b)) <= EPSILON;
@@ -372,7 +383,8 @@ function observationsFromSettlements(doc) {
     commitmentId: item.commitmentId,
     settledOn: item.settledOn,
     evidenceValue: item.amount != null ? Number(item.amount) : null,
-    evidenceDate: item.settledOn || item.observedAsOf || null,
+    observedAsOf: item.observedAsOf || null,
+    evidenceDate: item.observedAsOf || null,
     canonical: item.canonical || { collection: 'commitments', id: item.commitmentId },
     source: item.source || null,
     note: item.note || null,
@@ -410,6 +422,7 @@ function compareSettlementGroup(rows, data) {
     accountLabel: row.accountLabel,
     commitmentId: row.commitmentId || target.id,
     evidenceValue: row.evidenceValue,
+    observedAsOf: row.observedAsOf || null,
     evidenceDate: row.evidenceDate,
     evidenceSettledOn: validSettledOn(row.settledOn),
     canonicalValue: canonical.found ? canonical.value : null,
@@ -429,7 +442,8 @@ function observationsFromUtility(doc) {
     utility: item.utility || null,
     accountLabel: item.label || item.utility,
     evidenceValue: item.amount != null ? Number(item.amount) : null,
-    evidenceDate: item.dueDate || item.observedAsOf || null,
+    observedAsOf: item.observedAsOf || null,
+    evidenceDate: item.observedAsOf || null,
     dueDate: item.dueDate || null,
     payingAccount: item.payingAccount || null,
     payingAccountLabel: item.payingAccountLabel || null,
@@ -460,6 +474,7 @@ function compareAccountBalance(row, data) {
     role: 'informational',
     accountLabel: row.accountLabel,
     evidenceValue: amount,
+    observedAsOf: row.observedAsOf || null,
     evidenceDate: row.evidenceDate,
     canonicalValue: null,
     canonicalTarget: '(informational — not a scheduled amount)',
@@ -503,6 +518,7 @@ function compareDatedDueGroup(rows, data) {
     fact: 'dated-due',
     accountLabel: row.accountLabel,
     evidenceValue: row.evidenceValue,
+    observedAsOf: row.observedAsOf || null,
     evidenceDate: row.evidenceDate,
     dueDate: row.dueDate || null,
     canonicalValue: canonical.found ? canonical.value : null,
@@ -546,6 +562,7 @@ function comparePayingAccount(row, data) {
     fact: 'paying-account',
     accountLabel: row.accountLabel,
     evidenceValue: null,
+    observedAsOf: row.observedAsOf || null,
     evidenceDate: row.evidenceDate,
     payingAccount: row.payingAccount || null,
     payingAccountLabel: row.payingAccountLabel || null,
@@ -859,6 +876,7 @@ function observationsFromCards(doc) {
     cardId: item.cardId || (item.canonical && item.canonical.id) || null,
     accountLabel: item.label || item.cardId,
     evidenceValue: item.amount != null ? Number(item.amount) : null,
+    observedAsOf: item.observedAsOf || null,
     evidenceDate: item.observedAsOf || null,
     unknown: item.unknown === true,
     identityProven: item.identityProven === true,
@@ -901,6 +919,7 @@ function comparePostedBalanceGroup(rows, data) {
     cardId,
     accountLabel: row.accountLabel,
     evidenceValue: row.unknown ? null : row.evidenceValue,
+    observedAsOf: row.observedAsOf || null,
     evidenceDate: row.evidenceDate,
     canonicalValue: debt.found ? debt.posted : null,
     canonicalTarget: debt.locator,
@@ -939,6 +958,7 @@ function comparePendingGroup(rows, data) {
       cardId,
       accountLabel: row.accountLabel,
       evidenceValue: unknown ? null : row.evidenceValue,
+      observedAsOf: row.observedAsOf || null,
       evidenceDate: row.evidenceDate,
       canonicalValue: debt.found && debt.pendingPresent ? debt.pending : null,
       canonicalTarget: debt.locator + '#pending',
@@ -1104,7 +1124,8 @@ function observationsFromPosting(doc) {
     eventId: item.eventId || (item.canonical && item.canonical.id) || null,
     accountLabel: item.label || item.eventId,
     evidenceValue: null,
-    evidenceDate: item.observedAsOf || item.scheduledDate || null,
+    observedAsOf: item.observedAsOf || null,
+    evidenceDate: item.observedAsOf || null,
     scheduledDate: item.scheduledDate || null,
     posted: item.posted === true,
     unknown: item.unknown === true || (item.posted !== true && item.posted !== false),
@@ -1167,7 +1188,7 @@ function derivedPostingStatus(postedState, represented) {
 function comparePostingGroup(rows, data) {
   const first = rows[0];
   const eventId = first.eventId || (first.canonical && first.canonical.id) || null;
-  const scheduledDate = first.scheduledDate || first.evidenceDate || null;
+  const scheduledDate = first.scheduledDate || null;
   const states = [];
   for (const row of rows) {
     const state = postingState(row);
@@ -1198,6 +1219,7 @@ function comparePostingGroup(rows, data) {
       eventId,
       accountLabel: row.accountLabel,
       evidenceValue: null,
+      observedAsOf: row.observedAsOf || null,
       evidenceDate: row.evidenceDate,
       scheduledDate,
       posted: state === 'posted',
@@ -1227,7 +1249,7 @@ function comparePostingObservations(postingObservations, data) {
   for (const obs of postingObservations || []) {
     if (!POSTING_FACTS.has(obs.fact)) continue;
     const eventId = obs.eventId || (obs.canonical && obs.canonical.id) || obs.observationId;
-    const date = obs.scheduledDate || obs.evidenceDate || '(none)';
+    const date = obs.scheduledDate || '(none)';
     const key = `${eventId}:${date}`;
     const list = groups.get(key) || [];
     list.push(obs);
@@ -1240,19 +1262,26 @@ function comparePostingObservations(postingObservations, data) {
 }
 
 function observationTime(row) {
-  const d = row && row.evidenceDate;
+  if (!row) return '';
+  const d = row.observedAsOf || row.evidenceDate;
   if (d == null || d === '' || d === '(none)') return '';
   return String(d);
 }
 
+function freshnessOwnedByMetaAsOf(row) {
+  return !!(row && (!row.fact || META_ASOF_FRESHNESS_FACTS.has(row.fact)));
+}
+
 // Date comparison only. This is not a STALE assignment: there is no
 // owner-defined age threshold. "canonical-older" means the published
-// as-of is older than this observation's evidence date.
+// freshness timestamp is older than this row's observation time.
+// Due, settlement, and scheduled dates are not observation times.
+// meta.asOf is used only for snapshot facts whose freshness it owns.
 const DATE_RELATIONS = ['canonical-older', 'same-day', 'canonical-newer', 'incomparable'];
-function dateRelation(evidenceDate, canonicalAsOf) {
-  const ev = evidenceDate == null || evidenceDate === '' || evidenceDate === '(none)'
-    ? '' : String(evidenceDate);
-  const asOf = canonicalAsOf == null || canonicalAsOf === '' ? '' : String(canonicalAsOf);
+function dateRelation(observed, canonicalFreshness) {
+  const ev = observed == null || observed === '' || observed === '(none)'
+    ? '' : String(observed);
+  const asOf = canonicalFreshness == null || canonicalFreshness === '' ? '' : String(canonicalFreshness);
   if (!ev || !asOf) return 'incomparable';
   if (ev === asOf) return 'same-day';
   if (ev > asOf) return 'canonical-older';
@@ -1261,7 +1290,11 @@ function dateRelation(evidenceDate, canonicalAsOf) {
 function annotateDateRelation(rows, canonicalAsOf) {
   const counts = { 'canonical-older': 0, 'same-day': 0, 'canonical-newer': 0, incomparable: 0 };
   for (const row of rows || []) {
-    row.dateRelation = dateRelation(row.evidenceDate, canonicalAsOf);
+    const observed = observationTime(row);
+    const freshness = freshnessOwnedByMetaAsOf(row)
+      ? (canonicalAsOf == null || canonicalAsOf === '' ? '' : String(canonicalAsOf))
+      : '';
+    row.dateRelation = dateRelation(observed, freshness);
     counts[row.dateRelation] = (counts[row.dateRelation] || 0) + 1;
   }
   return counts;
@@ -1536,7 +1569,8 @@ function formatReport(result) {
   const rel = result.dateRelationCounts || {};
   lines.push('Date relation (not a STALE assignment): '
     + DATE_RELATIONS.map(k => `${rel[k] || 0} ${k}`).join(', '));
-  lines.push('canonical-older means this evidence date is newer than canonical as-of.');
+  lines.push('canonical-older means this observation time is newer than a comparable canonical freshness date.');
+  lines.push('Due, settlement, and scheduled dates are not observation times. meta.asOf is not a universal substitute.');
   lines.push('This command does not write data.json.');
   lines.push('');
   const cols = [
@@ -1766,6 +1800,7 @@ const api = {
   STATUSES,
   DATE_RELATIONS,
   dateRelation,
+  freshnessOwnedByMetaAsOf,
   parseCsvLine,
   householdPositionRows,
   observationsFromPositions,
