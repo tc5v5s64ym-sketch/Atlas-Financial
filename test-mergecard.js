@@ -45,12 +45,89 @@ function extractScript() {
   return script.join('\n');
 }
 
+function extractTopLevelOnMapping(text) {
+  const lines = String(text).split(/\r?\n/);
+  const start = lines.findIndex((line) => /^on:\s*(?:#.*)?$/.test(line));
+  if (start < 0) return [];
+  const body = [];
+  for (let index = start + 1; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (!line.trim()) {
+      body.push(line);
+      continue;
+    }
+    if (/^[ \t]/.test(line)) {
+      body.push(line);
+      continue;
+    }
+    if (line.trimStart().startsWith('#')) continue;
+    break;
+  }
+  return body;
+}
+
+function hasSubmittedPullRequestReviewOnEvent(text) {
+  const rows = extractTopLevelOnMapping(text)
+    .map((line) => ({
+      indent: line.match(/^[ \t]*/)[0].length,
+      trimmed: line.trim(),
+    }))
+    .filter((row) => row.trimmed && !row.trimmed.startsWith('#'));
+  if (!rows.length) return false;
+  const eventIndent = Math.min(...rows.map((row) => row.indent));
+  for (let index = 0; index < rows.length; index += 1) {
+    const row = rows[index];
+    if (row.indent !== eventIndent) continue;
+    if (!/^pull_request_review:\s*$/.test(row.trimmed)) continue;
+    const children = [];
+    for (let childIndex = index + 1; childIndex < rows.length; childIndex += 1) {
+      if (rows[childIndex].indent <= eventIndent) break;
+      children.push(rows[childIndex]);
+    }
+    if (!children.length) continue;
+    const childIndent = Math.min(...children.map((child) => child.indent));
+    if (children.some((child) => (
+      child.indent === childIndent && /^types:\s*\[submitted\]\s*$/.test(child.trimmed)
+    ))) {
+      return true;
+    }
+  }
+  return false;
+}
+
 const SCRIPT = extractScript();
 const WORKFLOW_TEXT = fs.readFileSync(WORKFLOW, 'utf8');
-// Script-only tests cannot catch deleting the YAML trigger. The shipped file must.
+// Script-only tests cannot catch deleting the YAML trigger. The shipped file must
+// carry pull_request_review as a top-level `on` event, not merely as nearby text.
 ok(
-  /pull_request_review:\s*\n\s*types:\s*\[submitted\]/.test(WORKFLOW_TEXT),
+  hasSubmittedPullRequestReviewOnEvent(WORKFLOW_TEXT),
   'shipped merge-card workflow retriggers when a review is submitted',
+);
+ok(
+  !hasSubmittedPullRequestReviewOnEvent([
+    'on:',
+    '  pull_request:',
+    '    types: [opened]',
+    '    pull_request_review:',
+    '      types: [submitted]',
+    'permissions:',
+    '  contents: read',
+  ].join('\n')),
+  'review trigger nested under another on key is not a top-level event',
+);
+ok(
+  !hasSubmittedPullRequestReviewOnEvent([
+    'on:',
+    '  pull_request:',
+    '    types: [opened]',
+    'jobs:',
+    '  check:',
+    '    steps:',
+    '      - run: |',
+    '          pull_request_review:',
+    '            types: [submitted]',
+  ].join('\n')),
+  'review trigger text inside a block scalar is not a top-level on event',
 );
 
 const FIELDS = {
