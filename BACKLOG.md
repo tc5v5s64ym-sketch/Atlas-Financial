@@ -35,7 +35,7 @@ not by this file. Current order (2026-08-16, after the `B91` opening):
 `B96` is **done**. `B80`, the live Lunch Money observation test, `B95`, `B91` /
 `AF-RECON-01`, `B94` / `AF-PLAN-01`, and `B96` / `AF-PLAN-02` are **done**. `B95` already absorbed the known major future
 costs onto `plan.commitments` — that is the one home; do not open a ticket
-per purchase. `B20` / `B21`, `B78`, provider-completeness, broad historical
+per purchase. `B21`, `B78`, provider-completeness, broad historical
 forensics, and old categorisation cleanup are not critical-path gates
 unless they expose a demonstrated material source or financial-correctness
 gap.
@@ -1541,7 +1541,25 @@ double-counting.
 **B40 · Fold Instacart and delivery in** *(on B38)* · *medium*
 
 **B19 · Refresh the mortgage and HELOC deep dive** · *small*
-Written before the spouse's accounts were known.
+Written before the spouse's accounts were known. The Deep Dive
+`helocHistory` August point is still $201,586.16 (the 2026-08-09 /
+pre-payment reading) while live `debts.heloc` is the 2026-08-16
+$200,486.16 opening. That monthly series is not B20 and was not
+updated here.
+
+**B20 · `snapshots/<date>.json` and trend charts** · **DONE 2026-08-17** · *history as a refresh by-product*
+Build-strategy item `AF-HIST-01`. After `B91`. Two independently
+reconciled openings: `snapshots/2026-08-09.json` from the last coherent
+81210ac publication (balances match contemporaneous `data.json` and
+`positions.csv` as_of 2026-08-09) and `snapshots/2026-08-16.json` from
+the live B91 opening. Mixed-date rows are omitted — TENNIS INCOME and
+SAVINGS-DONT TOUCH stay on the August 9 file only. A successful
+`node scripts/snapshot-balances.js` writes the current as-of file;
+re-running is a no-op; a conflicting same-date file fails closed.
+The Plan page prints display deltas. Forecast, `data.json` current
+state, and `public/periods.json` spending history are unchanged.
+T2 holds for the stored HELOC pair: $201,586.16 on 9 Aug → $200,486.16
+on 16 Aug, independently $1,100.00 down. Not B21 and not B78.
 
 **B30 · Fees dashboard** · **DONE 2026-08-09** — site section 11, avoidable in
 red against structural in blue. YTD **$1,160.45**, of which **$831.00 avoidable**.
@@ -1560,14 +1578,6 @@ actually charged by facility. The mortgage is excluded and the caption says why.
 all, driving spending, interest and fees. Built by `scripts/periods.js`.
 **Rebuild it after every capture** or the selector goes stale while the rest of
 the page moves.
-
-**B20 · `snapshots/<date>.json` and trend charts** · `QUEUED` · *medium*
-Build-strategy item `AF-HIST-01`. **Waits on `B91`**, which itself waits on
-`B92` and `B93`. History should be a by-product of successful refreshes, not
-an independent system built first. **Not a critical-path gate.** Do not
-start this because an older strategy revision put it at the front of Phase
-2, and do not start it because `B91` used to be next after `B90`. Files,
-not a store.
 
 **B21 · Second-month intake run** · `QUEUED` · *small*
 Build-strategy item `AF-INTAKE-01`. **Waits on `B91`** (after `B92` / `B93`), so the intake writes

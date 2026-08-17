@@ -351,18 +351,19 @@ this one already had.
 
 **Spending, interest and fees already have history** — `public/periods.json`
 feeds a monthly trend on the Deep Dive, and `B65` records the period selector as
-done. What has no history is **account balances**: the site shows those at a
-single point in time, so the questions that matter over the next year cannot be
-answered — is the HELOC actually falling, is Triangle moving, did the changes
-stick.
+done. **Account balances now have dated openings** — `snapshots/<YYYY-MM-DD>.json`
+is a by-product of a successful refresh. Each file is a same-date financial-state
+subset (account identity, side, currency, posted balance, pending when known),
+not a copy of `data.json` policy. `data.json` remains the current-state
+authority. The Plan page reads those openings and prints display deltas. A
+second independently reconciled opening is required before a trend is claimed;
+unknown stays unknown. The 18-month `helocHistory` series on Deep Dive is a
+separate monthly chart inside current-state `data.json` and is not this
+mechanism.
 
 The distinction matters because the loose version of this sentence said the whole
-site was a single point in time, which would send later work to rebuild a trend
-capability that already ships.
-
-The intended mechanism is `snapshots/<YYYY-MM-DD>.json` — one file per reading,
-same shape as `data.json`, with the site drawing trend lines across them. This
-needs no database: files in git give history, diffs and versioning for free.
+site was a single point in time, which would send later work to rebuild a
+spending trend that already ships.
 
 ### Tier 3 — an interaction layer *(gated, not yet earned)*
 
@@ -453,6 +454,7 @@ closed: `Forecast.expandEvents` is the one cash calendar.
 | Debt rate conventions — what a debt's quoted rate means per period, and how closely a monthly model reproduces it | `PAYOFF_RATE_BASIS` and `PAYOFF_BASIS_PRECISION` in `public/forecast.js`, from each debt record's `rateConvention`. A prime-linked facility is compounded monthly, so a monthly period is **exact**. A card charges a daily rate over the days in each statement cycle, so a monthly period is a **monthly-equivalent** average: exact over a year, and published with the cycle band for any single period. An undeclared convention throws |
 | What one debt costs the household in cash each month | `monthlyCashFor` in `public/forecast.js`, from `plan.obligations`; read by both `Forecast.renewal` and the payoff modeller |
 | Historical spending series | generated `public/periods.json`, from `scripts/periods.js`. Category rollup is `Forecast.rollupSpending`: mixed comparable source types (`essential` and `discretionary`) publish `type: unknown` with the source `types` retained, rather than the first event's class. Totals stay conserved. |
+| Account-balance history — dated openings only | `snapshots/<YYYY-MM-DD>.json`, written by `scripts/snapshot-balances.js` after a successful canonical refresh. Same-date subset of `plan.startingCash` / `debts` (identity, side, currency, posted balance, pending). Mixed-date `positions.csv` rows are omitted. Re-running the same reading is a no-op; a conflicting same-date file fails closed. Not current-state, not Forecast input, not spending history. `public/plan.js` / `public/balance-history.js` hold display deltas and wording only |
 | Published facts and owner policy | `data.json` |
 | Derived publication aggregates of those facts | `Forecast.publicationTotals` |
 | Calendar — the on-page month grid and agenda | `renderCalendar()` in `public/plan.js` — **presentation of `sim.events` only** |
@@ -702,6 +704,9 @@ Fusion camp/tryouts `settledOn: "2026-08-14"`, and kept the 1 September
 Hydro dated due. It does not invent Aug. 14 joint-cash opening balances,
 does not resolve Q19, and does not encode $600/week. Observation files
 remain evidence; the reconciler remains non-writing. B91 is done.
+A successful later refresh writes the new current state into `data.json`
+and then `scripts/snapshot-balances.js` emits `snapshots/<as-of>.json`
+without hand-editing. That write does not change Forecast inputs.
 
 **`plan.nextDollar` is derived, not instructed.** Its own provenance note says so:
 neither Dale nor Amanda has stated or approved the `protect-then-highest-cost`

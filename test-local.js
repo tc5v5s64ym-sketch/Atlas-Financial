@@ -22,11 +22,14 @@ async function main() {
   r = await fetch(`${BASE}/data.json`, { redirect: 'manual' });
   ok(r.status === 401, 'GET /data.json is blocked', `status ${r.status}`);
 
+  r = await fetch(`${BASE}/balance-history.json`, { redirect: 'manual' });
+  ok(r.status === 401, 'GET /balance-history.json is blocked', `status ${r.status}`);
+
   r = await fetch(`${BASE}/app.js`, { redirect: 'manual' });
   ok(r.status === 302, 'GET /app.js redirects to login', `status ${r.status}`);
 
   // Every page and script of the multi-page layout sits behind the same gate.
-  for (const p of ['/deepdive.html', '/modellers.html', '/records.html', '/plan.js', '/forecast.js', '/periods.json']) {
+  for (const p of ['/deepdive.html', '/modellers.html', '/records.html', '/plan.js', '/forecast.js', '/balance-history.js', '/periods.json']) {
     r = await fetch(`${BASE}${p}`, { redirect: 'manual' });
     ok(r.status === 302, `GET ${p} redirects to login`, `status ${r.status}`);
   }
@@ -67,6 +70,14 @@ async function main() {
   ok(data.debts && data.debts.length >= 4, 'data has debts', `${data.debts?.length} entries`);
   ok(data.questions && data.questions.length >= 3, 'data has questions', `${data.questions?.length} entries`);
   ok(!!data.mortgage && !!data.helocHistory, 'data has mortgage and HELOC history');
+
+  r = await fetch(`${BASE}/balance-history.json`, { headers: { cookie } });
+  ok(r.status === 200, 'GET /balance-history.json succeeds', `status ${r.status}`);
+  const history = await r.json();
+  ok(history && Array.isArray(history.snapshots), 'history has snapshots',
+    history && history.snapshots ? `${history.snapshots.length} openings` : 'missing');
+  ok(history.currentStateAuthority === 'data.json',
+    'history names data.json as current-state authority');
 
   r = await fetch(`${BASE}/`, { headers: { cookie } });
   const html = await r.text();

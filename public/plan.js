@@ -745,7 +745,21 @@ function paydayAnswerHtml(ctx) {
 }
 
 /* ----------------------------------------------------------- rendering */
-function renderPlan(d, periods) {
+function renderBalanceHistory(history) {
+  const mount = $('balance-history');
+  if (!mount) return;
+  if (typeof BalanceHistory === 'undefined' || !BalanceHistory.render) {
+    mount.textContent = 'Balance history could not be loaded.';
+    return;
+  }
+  if (!history || !Array.isArray(history.snapshots)) {
+    mount.innerHTML = '<p class="lede">Dated openings are not available on this load.</p>';
+    return;
+  }
+  mount.innerHTML = BalanceHistory.render(history);
+}
+
+function renderPlan(d, periods, history) {
   const plan = d.plan;
   const asOf = d.meta.asOf;
 
@@ -1464,6 +1478,9 @@ function renderPlan(d, periods) {
       <div class="lab">${t.lab}</div><div class="val">${t.val}</div><div class="note">${t.note}</div>
     </div>`).join('');
 
+  /* ---- dated openings: display-only deltas from stored snapshots ---- */
+  renderBalanceHistory(history);
+
   /* ---- payday answer: format existing Forecast results, decide nothing ---- */
   const paydayMount = $('payday-answer-body');
   if (paydayMount) {
@@ -1576,7 +1593,7 @@ function wireControls(d) {
 if (typeof App !== 'undefined') {
   App.once(wireControls);
   App.register(renderPlan);
-  App.boot({ periods: true });
+  App.boot({ periods: true, history: true });
 }
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = { paydayAnswerHtml, MISSION_PART, NEXT_MOVE, STATUS_BAND };

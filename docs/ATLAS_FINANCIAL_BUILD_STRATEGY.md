@@ -33,11 +33,13 @@ corpus remains the distinction checklist. Known major future costs
 already have one Plan home (`B95`). `B94` / `AF-PLAN-01` is **DONE**:
 Forecast is the one master plan over a ≥12-month knowledge horizon.
 `B96` / `AF-PLAN-02` is **DONE**: the household payday answer is produced
-from that chain and independently proved. `B20` / `B21`,
+from that chain and independently proved. `B20` / `AF-HIST-01` is
+**DONE**: dated openings exist for 2026-08-09 and 2026-08-16, and T2
+holds for the stored HELOC pair. `B21`,
 `B78`, provider-completeness, broad historical forensics, and old
 categorisation cleanup are **not** critical-path gates unless they expose a
 demonstrated material source or financial-correctness gap. Do not start
-`B20` first.
+`B21` in order to populate more history.
 
 ---
 
@@ -98,7 +100,7 @@ phase starts — not a date.
 | Gate | Holds when |
 |---|---|
 | **T1** | Every financial answer the site publishes has a named owner reachable by `npm test`, and the authority record is mechanically checked rather than maintained by inspection. |
-| **T2** | Account balances have history, so a trend question can be answered from the repository rather than from memory. |
+| **T2** | Account balances have history, so a trend question can be answered from the repository rather than from memory. **Met 2026-08-17** by the independently reconciled HELOC pair in `snapshots/2026-08-09.json` ($201,586.16) and `snapshots/2026-08-16.json` ($200,486.16): the stored history answers that the HELOC fell $1,100.00 between those openings. That is two dated openings, not a long-run monthly verdict. |
 | **T3** | Import is **idempotent and identity-stable on real household data** — re-importing changes nothing, and a corrected record updates rather than duplicates. Proven on files, with no provider involved. |
 | **T4** | `ARCHITECTURE.md`'s connectivity gate is met in full, and **the owner has passed it**. |
 
@@ -361,9 +363,10 @@ are not authorities.
 - **`AF-PLAN-02` / `B96`** — after the engine exists, prove the payday
   question end-to-end from fresh evidence → canonical state → Forecast →
   household answer.
-- **`AF-HIST-01` / `B20`** — balance history should be a **by-product of
-  successful refreshes**, not an independent system built first. Not a
-  critical-path gate.
+- **`AF-HIST-01` / `B20`** — **DONE 2026-08-17.** Balance history is a
+  by-product of successful refresh: `scripts/snapshot-balances.js` writes
+  `snapshots/<YYYY-MM-DD>.json` from canonical `data.json` plus same-date
+  `positions.csv` rows. Not a critical-path gate.
 - **`AF-INTAKE-01` / `B21`** — a second-month intake run remains the proof
   that the refresh path works on new evidence. Not a critical-path gate.
   It waits on `AF-RECON-01`, not on snapshots existing first.
@@ -859,10 +862,11 @@ part of the engine item.
 ## Phase 2 — cadence and trend · to T2
 
 Spending, interest and fees already have history through `public/periods.json`.
-**Account balances do not.** That remains the T2 gap. **This phase no longer
-starts with snapshots.** Post-B74, `AF-RECON-01` is the milestone after Phase 1;
-history is a by-product of successful refresh, not the next item after the
-product exit.
+**Account balances now have dated openings** through `snapshots/`. T2 is met
+by the independently reconciled 2026-08-09 / 2026-08-16 pair. **This phase
+no longer starts with snapshots.** Post-B74, `AF-RECON-01` was the milestone
+after Phase 1; history is a by-product of successful refresh, not the next
+item after the product exit.
 
 ### AF-HIST-01 · Balance snapshots and trend
 
@@ -889,6 +893,9 @@ product exit.
   of the refresh loop. Files, not a store — `ARCHITECTURE.md` says git gives
   history, diffs and versioning free, and the store gate is closed. Do not touch
   the spending series.*
+- **State** — **proved 2026-08-17.** Two dated openings, independently
+  reconciled. Mixed-date rows omitted. Re-run is a no-op. Plan page prints
+  display deltas. T2 met on the stored HELOC pair. `B21` / `B78` not started.
 
 ### AF-INTAKE-01 · Prove the intake path on a second month
 
@@ -1086,7 +1093,7 @@ resurrect it.
 | Evidence refresh / reconciliation | **ACTIVE** | `AF-RECON-01` / `B91`, after `B92` and `B93`. **Complete 2026-08-16.** Published opening is 2026-08-16. Aug. 14 corpus remains the distinction checklist. | Already sequenced. Do not replace with a store, schema, leaf-level provenance, or copilot absorption stack. |
 | Refresh-safe tests | **ACTIVE** | `AF-TEST-01` / `B92`. **Complete.** | Already sequenced. Unpin behaviour tests from live household numbers. |
 | Derive/delete duplicate live facts | **ACTIVE** | `AF-DEDUP-01` / `B93`. **Complete.** After `B92`, before `B91`. | Already sequenced. Derive or delete proven copies; do not add a sync layer. |
-| Balance history / snapshots | **ACTIVE** | Phase 2 `AF-HIST-01` / `B20`. **After** `AF-RECON-01`, as a by-product of refresh. | Already sequenced. Do not start because an older revision put it first in Phase 2. |
+| Balance history / snapshots | **ACTIVE** | Phase 2 `AF-HIST-01` / `B20`. **Complete 2026-08-17.** Dated openings for 2026-08-09 and 2026-08-16. T2 met on the stored HELOC pair. | Already sequenced. Do not start `B21` in order to manufacture more history. |
 | One master forecast / longer operating horizon | **ACTIVE** | `AF-PLAN-01` / `B94`. **Complete 2026-08-16.** Live display remains 91-day `windowDays`; `Forecast.recommend` searches the ≥12-month knowledge horizon. `B95` already absorbed the known major costs. | Already sequenced. Evolve Forecast. Never a second recurrence, payday, goals, or forecast engine. |
 | End-to-end payday proof | **ACTIVE** | `AF-PLAN-02` / `B96`, after `B94`. **Complete 2026-08-16.** Household payday answer is composed from incumbent Forecast results on the 2026-08-16 opening. | Already sequenced. Prove fresh evidence → canonical state → Forecast → household answer. Not a second payday engine. |
 | Improved ingestion | **ACTIVE** | Phase 3 `AF-INGEST-01` / `B78`, to T3. Files still; no provider and no store. | Already sequenced. Entry is T2 plus `AF-INTAKE-01`'s record of manual steps. |

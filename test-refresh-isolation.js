@@ -56,13 +56,14 @@ const SUITES = [
   'test-dedup-facts.js',
   'test-reconcile.js',
   'test-cutover.js',
+  'test-b20-history.js',
 ];
 
 const CASES = [
   {
     id: 'cash',
     label: 'CASE A — Chequing A / starting cash +$1,000',
-    allow: ['test-invariants.js'],
+    allow: ['test-invariants.js', 'test-b20-history.js'],
     mutate(d) {
       const row = d.plan.startingCash.breakdown.find(b => /Chequing A/.test(b.label));
       row.value += 1000;
@@ -71,7 +72,7 @@ const CASES = [
   {
     id: 'card',
     label: 'CASE B — MBNA posted and current balance +$500',
-    allow: ['test-invariants.js'],
+    allow: ['test-invariants.js', 'test-b20-history.js'],
     mutate(d) {
       const mb = d.debts.find(x => x.id === 'mbna');
       mb.balance += 500;

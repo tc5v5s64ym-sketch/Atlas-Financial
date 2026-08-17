@@ -13,6 +13,7 @@ const express = require('express');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const SnapshotBalances = require('./scripts/snapshot-balances.js');
 
 const PASSWORD = process.env.SITE_PASSWORD;
 const SECRET = process.env.SESSION_SECRET;
@@ -163,7 +164,9 @@ app.get('/healthz', (_req, res) => res.type('text/plain').send('ok'));
 app.use((req, res, next) => {
   if (req.path === '/login' || req.path === '/styles.css' || req.path === '/robots.txt') return next();
   if (authed(req)) return next();
-  if (req.path === '/data.json') return res.status(401).json({ error: 'not authenticated' });
+  if (req.path === '/data.json' || req.path === '/balance-history.json') {
+    return res.status(401).json({ error: 'not authenticated' });
+  }
   return res.redirect('/login');
 });
 
@@ -182,6 +185,33 @@ app.get('/data.json', (_req, res) => {
   } catch (err) {
     console.error('data.json could not be read:', err.message);
     res.status(500).json({ error: 'data unavailable' });
+  }
+});
+
+// Dated balance snapshots. Assembled at request time from snapshots/*.json
+// so that folder remains the history authority. Not Forecast input and not
+// a second current-state document.
+let cachedHistory = null;
+let cachedHistoryAt = 0;
+function historyMtime(dir) {
+  if (!fs.existsSync(dir)) return 0;
+  return fs.readdirSync(dir).reduce((max, name) => {
+    const st = fs.statSync(path.join(dir, name));
+    return st.mtimeMs > max ? st.mtimeMs : max;
+  }, 0);
+}
+app.get('/balance-history.json', (_req, res) => {
+  try {
+    const dir = SnapshotBalances.DEFAULT_OUT;
+    const stamp = historyMtime(dir);
+    if (!cachedHistory || stamp !== cachedHistoryAt) {
+      cachedHistory = SnapshotBalances.loadHistory(dir);
+      cachedHistoryAt = stamp;
+    }
+    res.json(cachedHistory);
+  } catch (err) {
+    console.error('balance history could not be read:', err.message);
+    res.status(500).json({ error: 'history unavailable' });
   }
 });
 
