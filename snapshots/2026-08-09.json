@@ -3,6 +3,14 @@
     "asOf": "2026-08-09",
     "role": "historical-observation",
     "currentStateAuthority": "data.json",
+    "spendableCoverage": {
+        "expectedIds": [
+            "chequing-a",
+            "chequing-b",
+            "savings"
+        ],
+        "complete": true
+    },
     "accounts": [
         {
             "id": "amanda-debt-payments",

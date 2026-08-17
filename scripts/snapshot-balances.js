@@ -17,6 +17,11 @@
  * date, and refuses to write when a same-date positions row disagrees
  * with data.json. Mixed-date rows are omitted, not back-dated.
  *
+ * Spendable completeness for that date is derived from
+ * plan.startingCash.breakdown on the same canonical opening and stored as
+ * snapshot coverage metadata. The page consumes that metadata; it does
+ * not re-declare household spendable membership.
+ *
  * Re-running the same dated reading is a no-op. An existing file whose
  * contents disagree with the current reading is a hard failure — this
  * command does not rewrite history.
@@ -90,6 +95,33 @@ function findCash(data, id) {
   const elsewhere = pots.heldElsewhere.find(r => r.id === id);
   if (elsewhere) return { row: elsewhere, pot: 'held-elsewhere' };
   return null;
+}
+
+function expectedSpendableIds(data) {
+  const breakdown = cashRows(data).breakdown || [];
+  const ids = [];
+  const seen = new Set();
+  for (const row of breakdown) {
+    if (!row || typeof row.id !== 'string' || !row.id || seen.has(row.id)) continue;
+    seen.add(row.id);
+    ids.push(row.id);
+  }
+  ids.sort();
+  return ids;
+}
+
+function spendableCoverageFrom(data, accounts) {
+  const expectedIds = expectedSpendableIds(data);
+  const present = new Set(
+    (accounts || [])
+      .filter(a => a && a.collection === 'cash' && a.pot === 'spendable'
+        && Number.isFinite(Number(a.balance)))
+      .map(a => a.id)
+  );
+  return {
+    expectedIds,
+    complete: expectedIds.length > 0 && expectedIds.every(id => present.has(id)),
+  };
 }
 
 function findDebt(data, id) {
@@ -221,19 +253,29 @@ function buildSnapshot(data, positionsRows, map) {
     asOf,
     role: 'historical-observation',
     currentStateAuthority: 'data.json',
+    spendableCoverage: spendableCoverageFrom(data, accounts),
     accounts,
     omitted,
   };
 }
 
 function publicSnapshot(doc) {
-  return {
+  const out = {
     schema: doc.schema,
     asOf: doc.asOf,
     role: doc.role,
     currentStateAuthority: doc.currentStateAuthority,
-    accounts: doc.accounts,
   };
+  if (doc.spendableCoverage) {
+    out.spendableCoverage = {
+      expectedIds: Array.isArray(doc.spendableCoverage.expectedIds)
+        ? doc.spendableCoverage.expectedIds.slice()
+        : [],
+      complete: doc.spendableCoverage.complete === true,
+    };
+  }
+  out.accounts = doc.accounts;
+  return out;
 }
 
 function encodeSnapshot(doc) {
@@ -397,6 +439,8 @@ module.exports = {
   parsePositions,
   parseCsvLine,
   snapshotAsOf,
+  expectedSpendableIds,
+  spendableCoverageFrom,
   buildSnapshot,
   writeSnapshot,
   loadHistory,

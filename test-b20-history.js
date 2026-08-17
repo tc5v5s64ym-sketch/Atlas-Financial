@@ -442,6 +442,9 @@ console.log('\n=== 15. snapshots stay a financial-state subset, not a policy cop
     ok(doc.schema === 'atlas-balance-snapshot/v1', `${doc.asOf} uses the snapshot schema`);
     ok(doc.role === 'historical-observation', `${doc.asOf} is marked historical`);
     ok(doc.currentStateAuthority === 'data.json', `${doc.asOf} names data.json as current-state`);
+    ok(doc.spendableCoverage && Array.isArray(doc.spendableCoverage.expectedIds)
+      && doc.spendableCoverage.expectedIds.length > 0,
+      `${doc.asOf} carries spendable coverage from that dated opening`);
     ok(!doc.plan && !doc.actions && !doc.nextDollar && !doc.budget && !doc.helocHistory,
       `${doc.asOf} does not copy plan policy or helocHistory`);
     ok(!JSON.stringify(doc).includes('SITE_PASSWORD'),
@@ -458,9 +461,11 @@ console.log('\n=== 16. incomplete spendable snapshots cannot publish a complete 
   const cash = (id, label, balance) => ({
     id, label, collection: 'cash', pot: 'spendable', side: 'asset', balance,
   });
+  const three = ['chequing-a', 'chequing-b', 'savings'];
   const onlyA = {
     snapshots: [{
       asOf: AUG16,
+      spendableCoverage: { expectedIds: three, complete: false },
       accounts: [cash('chequing-a', 'Chequing A', 999.00)],
     }],
   };
@@ -475,10 +480,24 @@ console.log('\n=== 16. incomplete spendable snapshots cannot publish a complete 
   ok(htmlOnlyA.includes(History.money2(999)),
     'the missing-account fixture still shows Chequing A as its own opening');
 
+  const noCoverage = {
+    snapshots: [{
+      asOf: AUG16,
+      accounts: [
+        cash('chequing-a', 'Chequing A', 100),
+        cash('chequing-b', 'Chequing B', 200),
+        cash('savings', 'Savings', 50),
+      ],
+    }],
+  };
+  ok(History.spendableSeries(noCoverage).length === 0,
+    'three cash rows without dated coverage metadata are not a complete household total');
+
   const mixedCompleteness = {
     snapshots: [
       {
         asOf: AUG9,
+        spendableCoverage: { expectedIds: three, complete: true },
         accounts: [
           cash('chequing-a', 'Chequing A', 100),
           cash('chequing-b', 'Chequing B', 200),
@@ -487,6 +506,7 @@ console.log('\n=== 16. incomplete spendable snapshots cannot publish a complete 
       },
       {
         asOf: AUG16,
+        spendableCoverage: { expectedIds: three, complete: false },
         accounts: [cash('chequing-a', 'Chequing A', 999.00)],
       },
     ],
@@ -510,6 +530,77 @@ console.log('\n=== 16. incomplete spendable snapshots cannot publish a complete 
     'committed openings still have the complete Chequing A / B / Savings set');
   ok(liveSpendable.every(p => ['chequing-a', 'chequing-b', 'savings'].every(id => p.ids.includes(id))),
     'live spendable totals include all three expected identities');
+  const liveExpected = (live.plan.startingCash.breakdown || []).map(r => r.id).sort();
+  ok(JSON.stringify(snap16.spendableCoverage.expectedIds) === JSON.stringify(liveExpected)
+    && snap16.spendableCoverage.complete === true,
+    'Aug. 16 coverage matches that dated data.json breakdown, not a page list');
+}
+
+console.log('\n=== 18. snapshot coverage, not page membership, decides a complete spendable total ===');
+{
+  const extraId = 'extra-spendable';
+  const pageSrc = read('public/balance-history.js');
+  ok(!/HOUSEHOLD_SPENDABLE_IDS/.test(pageSrc),
+    'the page does not hard-code a household spendable identity list');
+  ok(!new RegExp(extraId).test(pageSrc),
+    `the page does not name ${extraId}`);
+
+  const mapWithExtra = JSON.parse(JSON.stringify(map));
+  mapWithExtra.mappings.push({
+    observationId: 'pos-extra-spendable',
+    accountLabel: 'Extra Spendable',
+    canonical: { collection: 'cash', id: extraId },
+  });
+  const fourCash = [
+    { id: 'chequing-a', label: 'Chequing A', value: 100, pot: 'spendable' },
+    { id: 'chequing-b', label: 'Chequing B', value: 200, pot: 'spendable' },
+    { id: 'savings', label: 'Savings', value: 50, pot: 'spendable' },
+    { id: extraId, label: 'Extra Spendable', value: 25, pot: 'spendable' },
+  ];
+  const dataFour = fixtureData(AUG16, fourCash, [
+    { id: 'heloc', label: 'HELOC', balance: 1000, pending: 0, confidence: 'verified' },
+  ]);
+  const omittedPositions = fixturePositions([
+    { label: 'Chequing A', balance: 100, asOf: AUG16, side: 'Asset' },
+    { label: 'Chequing B', balance: 200, asOf: AUG16, side: 'Asset' },
+    { label: 'Savings', balance: 50, asOf: AUG16, side: 'Asset' },
+    { label: 'Extra Spendable', balance: 25, asOf: AUG9, side: 'Asset' },
+    { label: 'HELOC', balance: 1000, asOf: AUG16, side: 'Liability', type: 'Home equity line' },
+  ]);
+  const omitted = S.buildSnapshot(dataFour, S.parsePositions(omittedPositions), mapWithExtra);
+  const expectedFour = [extraId, 'chequing-a', 'chequing-b', 'savings'].sort();
+  ok(JSON.stringify(omitted.spendableCoverage.expectedIds) === JSON.stringify(expectedFour),
+    'writer expected ids come from that dated startingCash.breakdown, including the fourth account');
+  ok(omitted.spendableCoverage.complete === false,
+    'omitting the fourth same-date spendable account is not a complete opening');
+  ok(!acc(omitted, extraId),
+    'the stale fourth account is omitted from the dated snapshot');
+  const omittedHistory = { snapshots: [S.publicSnapshot(omitted)] };
+  const omittedSeries = History.spendableSeries(omittedHistory);
+  ok(omittedSeries.length === 0,
+    'A+B+Savings without the dated fourth account is not Spendable household cash');
+  ok(!History.accountRows(omittedHistory).some(r => r.id === 'spendable-cash'),
+    'account rows do not publish a complete total when coverage is incomplete');
+  const omittedHtml = History.render(omittedHistory);
+  ok(!/Spendable household cash/.test(omittedHtml),
+    'the page does not label the incomplete four-account opening as household cash');
+  ok(omittedHtml.includes(History.money2(100)) && omittedHtml.includes(History.money2(200)),
+    'the incomplete fixture still shows the present cash accounts as themselves');
+
+  const completePositions = fixturePositions([
+    { label: 'Chequing A', balance: 100, asOf: AUG16, side: 'Asset' },
+    { label: 'Chequing B', balance: 200, asOf: AUG16, side: 'Asset' },
+    { label: 'Savings', balance: 50, asOf: AUG16, side: 'Asset' },
+    { label: 'Extra Spendable', balance: 25, asOf: AUG16, side: 'Asset' },
+    { label: 'HELOC', balance: 1000, asOf: AUG16, side: 'Liability', type: 'Home equity line' },
+  ]);
+  const complete = S.buildSnapshot(dataFour, S.parsePositions(completePositions), mapWithExtra);
+  ok(complete.spendableCoverage.complete === true && !!acc(complete, extraId),
+    'the same four-account opening is complete when every expected id is same-date');
+  const completeSeries = History.spendableSeries({ snapshots: [S.publicSnapshot(complete)] });
+  ok(completeSeries.length === 1 && near(completeSeries[0].balance, 375)
+    && completeSeries[0].ids.includes(extraId),
+    'display consumes snapshot coverage and sums all four dated spendable accounts');
 }
 
 console.log('\n=== 17. revolving history discloses pending and fails closed when pending is unknown ===');

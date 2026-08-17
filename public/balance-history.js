@@ -17,11 +17,6 @@
   };
   const round2 = v => Math.round(Number(v) * 100) / 100;
 
-  // Standing household spendable identity. A dated opening that is missing any
-  // of these is not the household cash total — mixed-date omission must not
-  // relabel Chequing A alone as "Spendable household cash".
-  const HOUSEHOLD_SPENDABLE_IDS = Object.freeze(['chequing-a', 'chequing-b', 'savings']);
-
   function snapshotsOf(history) {
     return ((history && history.snapshots) || [])
       .filter(s => s && typeof s.asOf === 'string' && Array.isArray(s.accounts))
@@ -168,16 +163,36 @@
       a && a.collection === 'cash' && a.pot === 'spendable' && Number.isFinite(Number(a.balance)));
   }
 
-  function isCompleteSpendable(rows) {
-    const ids = new Set((rows || []).map(r => r.id));
-    return HOUSEHOLD_SPENDABLE_IDS.every(id => ids.has(id));
+  // Completeness is historical coverage from the snapshot, not a page-owned
+  // identity list. Missing metadata fails closed: an incomplete or undeclared
+  // set is not "Spendable household cash".
+  function coverageExpectedIds(snap) {
+    const ids = snap && snap.spendableCoverage && snap.spendableCoverage.expectedIds;
+    if (!Array.isArray(ids) || ids.length === 0) return null;
+    const out = [];
+    const seen = new Set();
+    for (const id of ids) {
+      if (typeof id !== 'string' || !id || seen.has(id)) continue;
+      seen.add(id);
+      out.push(id);
+    }
+    return out.length ? out : null;
+  }
+
+  function isCompleteSpendable(snap) {
+    const expected = coverageExpectedIds(snap);
+    if (!expected) return false;
+    const present = new Set(spendableRowsOf(snap).map(r => r.id));
+    return expected.every(id => present.has(id));
   }
 
   function spendableSeries(history) {
     const pts = [];
     for (const snap of snapshotsOf(history)) {
-      const rows = spendableRowsOf(snap);
-      if (!isCompleteSpendable(rows)) continue;
+      const expected = coverageExpectedIds(snap);
+      if (!expected || !isCompleteSpendable(snap)) continue;
+      const byId = new Map(spendableRowsOf(snap).map(r => [r.id, r]));
+      const rows = expected.map(id => byId.get(id));
       pts.push({
         asOf: snap.asOf,
         id: 'spendable-cash',
@@ -185,7 +200,7 @@
         collection: 'cash',
         side: 'asset',
         complete: true,
-        ids: rows.map(r => r.id).sort(),
+        ids: expected.slice().sort(),
         balance: round2(rows.reduce((s, r) => s + Number(r.balance), 0)),
       });
     }
@@ -292,6 +307,7 @@
     spendableSeries,
     comparableSpendable,
     isCompleteSpendable,
+    coverageExpectedIds,
     accountRows,
     signedMoney,
     formatOpening,
@@ -299,7 +315,6 @@
     render,
     money2,
     fmtDate,
-    HOUSEHOLD_SPENDABLE_IDS,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = BalanceHistory;

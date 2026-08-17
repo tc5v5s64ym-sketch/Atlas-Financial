@@ -3,6 +3,14 @@
     "asOf": "2026-08-16",
     "role": "historical-observation",
     "currentStateAuthority": "data.json",
+    "spendableCoverage": {
+        "expectedIds": [
+            "chequing-a",
+            "chequing-b",
+            "savings"
+        ],
+        "complete": true
+    },
     "accounts": [
         {
             "id": "cashback",
