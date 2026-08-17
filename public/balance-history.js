@@ -17,6 +17,11 @@
   };
   const round2 = v => Math.round(Number(v) * 100) / 100;
 
+  // Standing household spendable identity. A dated opening that is missing any
+  // of these is not the household cash total — mixed-date omission must not
+  // relabel Chequing A alone as "Spendable household cash".
+  const HOUSEHOLD_SPENDABLE_IDS = Object.freeze(['chequing-a', 'chequing-b', 'savings']);
+
   function snapshotsOf(history) {
     return ((history && history.snapshots) || [])
       .filter(s => s && typeof s.asOf === 'string' && Array.isArray(s.accounts))
@@ -55,47 +60,131 @@
     return pts;
   }
 
+  function isDebtPoint(pt) {
+    return !!(pt && (pt.collection === 'debts' || pt.side === 'liability'));
+  }
+
+  function pendingAmount(pt) {
+    if (!pt || pt.pendingUnknown) return null;
+    if (pt.pending == null) return 0;
+    const n = Number(pt.pending);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function exposureOf(pt) {
+    const pending = pendingAmount(pt);
+    if (pending == null || !pt || !Number.isFinite(Number(pt.balance))) return null;
+    return round2(Number(pt.balance) + pending);
+  }
+
+  function signedDirection(delta) {
+    if (delta > 0) return 'up';
+    if (delta < 0) return 'down';
+    return 'unchanged';
+  }
+
+  function emptyMove(current) {
+    return {
+      sufficient: false,
+      current: current || null,
+      prior: null,
+      delta: null,
+      direction: null,
+      postedDelta: null,
+      postedDirection: null,
+      exposureSufficient: false,
+      currentExposure: current ? exposureOf(current) : null,
+      priorExposure: null,
+      exposureDelta: null,
+      exposureDirection: null,
+      pendingUnknown: !!(current && current.pendingUnknown),
+    };
+  }
+
   function displayMove(points) {
-    if (!points || points.length === 0) {
-      return { sufficient: false, current: null, prior: null, delta: null, direction: null };
-    }
+    if (!points || points.length === 0) return emptyMove(null);
     const current = points[points.length - 1];
-    if (points.length < 2) {
-      return { sufficient: false, current, prior: null, delta: null, direction: null };
-    }
+    if (points.length < 2) return emptyMove(current);
     const prior = points[points.length - 2];
-    const delta = round2(current.balance - prior.balance);
-    const direction = delta > 0 ? 'up' : delta < 0 ? 'down' : 'unchanged';
-    return { sufficient: true, current, prior, delta, direction };
+    const postedDelta = round2(current.balance - prior.balance);
+    const postedDirection = signedDirection(postedDelta);
+    const currentExposure = exposureOf(current);
+    const priorExposure = exposureOf(prior);
+    const exposureSufficient = currentExposure != null && priorExposure != null;
+    const exposureDelta = exposureSufficient ? round2(currentExposure - priorExposure) : null;
+    const exposureDirection = exposureSufficient ? signedDirection(exposureDelta) : null;
+    const pendingUnknown = current.pendingUnknown === true || prior.pendingUnknown === true;
+    const sufficient = isDebtPoint(current) ? (exposureSufficient && !pendingUnknown) : true;
+    const direction = sufficient
+      ? (isDebtPoint(current) && exposureSufficient ? exposureDirection : postedDirection)
+      : null;
+    return {
+      sufficient,
+      current,
+      prior,
+      delta: postedDelta,
+      direction,
+      postedDelta,
+      postedDirection,
+      exposureSufficient,
+      currentExposure,
+      priorExposure,
+      exposureDelta,
+      exposureDirection,
+      pendingUnknown,
+    };
   }
 
   function movementWord(move, label) {
     const name = label || (move.current && move.current.label) || 'This account';
+    if (move.pendingUnknown && isDebtPoint(move.current)) {
+      const when = move.prior
+        ? `Between ${fmtDate(move.prior.asOf)} and ${fmtDate(move.current.asOf)} `
+        : (move.current ? `On ${fmtDate(move.current.asOf)} ` : '');
+      return `${when}${name} posted balance is visible, but pending is unknown. Not a complete debt trend.`;
+    }
     if (!move.sufficient) {
       if (move.current) {
         return `${name} has one dated opening (${fmtDate(move.current.asOf)}). Not enough history yet for a trend.`;
       }
       return `${name} has no dated opening yet.`;
     }
-    if (move.direction === 'unchanged') {
-      return `Between ${fmtDate(move.prior.asOf)} and ${fmtDate(move.current.asOf)} the ${name} balance was unchanged.`;
+    const useExposure = isDebtPoint(move.current) && move.exposureSufficient;
+    const direction = useExposure ? move.exposureDirection : move.direction;
+    const amount = useExposure ? move.exposureDelta : move.delta;
+    const pendingUsed = useExposure && (
+      (pendingAmount(move.current) || 0) !== 0 || (pendingAmount(move.prior) || 0) !== 0
+    );
+    const what = pendingUsed ? 'posted-plus-pending exposure' : 'balance';
+    if (direction === 'unchanged') {
+      return `Between ${fmtDate(move.prior.asOf)} and ${fmtDate(move.current.asOf)} the ${name} ${what} was unchanged.`;
     }
-    const verb = move.direction === 'down' ? 'fell' : 'rose';
-    return `Between ${fmtDate(move.prior.asOf)} and ${fmtDate(move.current.asOf)} the ${name} balance ${verb} ${money2(Math.abs(move.delta))}.`;
+    const verb = direction === 'down' ? 'fell' : 'rose';
+    return `Between ${fmtDate(move.prior.asOf)} and ${fmtDate(move.current.asOf)} the ${name} ${what} ${verb} ${money2(Math.abs(amount))}.`;
+  }
+
+  function spendableRowsOf(snap) {
+    return ((snap && snap.accounts) || []).filter(a =>
+      a && a.collection === 'cash' && a.pot === 'spendable' && Number.isFinite(Number(a.balance)));
+  }
+
+  function isCompleteSpendable(rows) {
+    const ids = new Set((rows || []).map(r => r.id));
+    return HOUSEHOLD_SPENDABLE_IDS.every(id => ids.has(id));
   }
 
   function spendableSeries(history) {
     const pts = [];
     for (const snap of snapshotsOf(history)) {
-      const rows = snap.accounts.filter(a =>
-        a && a.collection === 'cash' && a.pot === 'spendable' && Number.isFinite(Number(a.balance)));
-      if (!rows.length) continue;
+      const rows = spendableRowsOf(snap);
+      if (!isCompleteSpendable(rows)) continue;
       pts.push({
         asOf: snap.asOf,
         id: 'spendable-cash',
         label: 'Spendable household cash',
         collection: 'cash',
         side: 'asset',
+        complete: true,
         ids: rows.map(r => r.id).sort(),
         balance: round2(rows.reduce((s, r) => s + Number(r.balance), 0)),
       });
@@ -139,6 +228,23 @@
     return (v > 0 ? '+' : '−') + money2(Math.abs(v)).slice(1);
   }
 
+  function formatOpening(pt) {
+    if (!pt) return '—';
+    const posted = money2(pt.balance);
+    if (!isDebtPoint(pt)) return posted;
+    if (pt.pendingUnknown) return `${posted} posted · pending unknown`;
+    return `${posted} posted · ${money2(pendingAmount(pt))} pending`;
+  }
+
+  function formatMovement(move) {
+    if (!move || !move.current) return '—';
+    if (isDebtPoint(move.current)) {
+      if (move.pendingUnknown || !move.exposureSufficient) return '—';
+      return signedMoney(move.exposureDelta);
+    }
+    return move.sufficient ? signedMoney(move.delta) : '—';
+  }
+
   function render(history) {
     const rows = accountRows(history);
     if (!rows.length) {
@@ -148,13 +254,13 @@
     const helocLine = heloc ? `<p class="lede" id="balance-history-heloc">${movementWord(heloc.move, 'HELOC')}</p>` : '';
     const body = rows.map(r => {
       const move = r.move;
-      const current = move.current ? money2(move.current.balance) : '—';
-      const prior = move.prior ? money2(move.prior.balance) : '—';
-      const delta = move.sufficient ? signedMoney(move.delta) : '—';
-      const dates = move.sufficient
+      const current = formatOpening(move.current);
+      const prior = formatOpening(move.prior);
+      const delta = formatMovement(move);
+      const dates = move.prior && move.current
         ? `${fmtDate(move.prior.asOf)} → ${fmtDate(move.current.asOf)}`
         : (move.current ? fmtDate(move.current.asOf) : '—');
-      const note = move.sufficient ? movementWord(move, r.label) : 'Not enough dated openings yet for a trend.';
+      const note = movementWord(move, r.label);
       return `<tr>
         <td>${r.label}${r.kind === 'aggregate' ? ' <span class="chip">sum</span>' : ''}</td>
         <td>${r.side === 'liability' ? 'Liability' : 'Asset'}</td>
@@ -185,11 +291,15 @@
     movementWord,
     spendableSeries,
     comparableSpendable,
+    isCompleteSpendable,
     accountRows,
     signedMoney,
+    formatOpening,
+    formatMovement,
     render,
     money2,
     fmtDate,
+    HOUSEHOLD_SPENDABLE_IDS,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = BalanceHistory;

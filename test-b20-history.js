@@ -28,6 +28,18 @@ const money = n => '$' + Number(n).toFixed(2);
 const read = p => fs.readFileSync(path.join(__dirname, p), 'utf8');
 const parseCsv = text => S.parsePositions(text);
 
+function gitShow(spec) {
+  try {
+    return execFileSync('git', ['show', spec], { encoding: 'utf8' });
+  } catch (err) {
+    const detail = err && err.message ? err.message : String(err);
+    throw new Error(
+      `B20 independent proof needs git history for ${spec} `
+      + `(CI checkout must use fetch-depth: 0). ${detail}`
+    );
+  }
+}
+
 const AUG9 = '2026-08-09';
 const AUG16 = '2026-08-16';
 const MIXED = '08fd3e1';
@@ -150,8 +162,8 @@ console.log('\n=== 2. account identity is stable across readings ===');
 console.log('\n=== 3. each historical balance has an independently defensible date and amount ===');
 {
   ok(snap9.asOf === AUG9, 'committed Aug. 9 snapshot is dated 2026-08-09');
-  const histData = JSON.parse(execFileSync('git', ['show', `${AUG9_REV}:data.json`], { encoding: 'utf8' }));
-  const histPos = parseCsv(execFileSync('git', ['show', `${AUG9_REV}:docs/positions.csv`], { encoding: 'utf8' }));
+  const histData = JSON.parse(gitShow(`${AUG9_REV}:data.json`));
+  const histPos = parseCsv(gitShow(`${AUG9_REV}:docs/positions.csv`));
   ok(histData.meta.asOf === AUG9, '81210ac data.json as-of is 2026-08-09');
   for (const [id, amount] of Object.entries(AUG9_INDEPENDENT)) {
     const row = acc(snap9, id);
@@ -209,9 +221,9 @@ console.log('\n=== 4. mixed-date source rows cannot become one dated snapshot ==
     'the mixed-date omission is explicit');
 
   const mixed = S.buildSnapshot(
-    JSON.parse(execFileSync('git', ['show', `${MIXED}:data.json`], { encoding: 'utf8' })),
-    parseCsv(execFileSync('git', ['show', `${MIXED}:docs/positions.csv`], { encoding: 'utf8' })),
-    JSON.parse(execFileSync('git', ['show', `${MIXED}:docs/reconciliation/balance-map.json`], { encoding: 'utf8' }))
+    JSON.parse(gitShow(`${MIXED}:data.json`)),
+    parseCsv(gitShow(`${MIXED}:docs/positions.csv`)),
+    JSON.parse(gitShow(`${MIXED}:docs/reconciliation/balance-map.json`))
   );
   ok(mixed.asOf === AUG9, '08fd3e1 still publishes as-of 2026-08-09');
   ok(!acc(mixed, 'triangle') && !acc(mixed, 'mbna'),
@@ -370,7 +382,7 @@ console.log('\n=== 11. missing historical observations stay missing ===');
   ok(move.sufficient === false && move.prior == null,
     'one point is not turned into a trend');
   const html = History.render(history);
-  ok(/Not enough dated openings yet for a trend/.test(html),
+  ok(/Not enough history yet for a trend/.test(html),
     'the page says trend history is not yet sufficient');
   ok(!History.seriesFor(history, 'wise').length,
     'Wise is not invented — it is not in the closed B91 map');
@@ -439,6 +451,131 @@ console.log('\n=== 15. snapshots stay a financial-state subset, not a policy cop
         `${doc.asOf} ${a.id} provenance is the same dated reading`);
     }
   }
+}
+
+console.log('\n=== 16. incomplete spendable snapshots cannot publish a complete household total ===');
+{
+  const cash = (id, label, balance) => ({
+    id, label, collection: 'cash', pot: 'spendable', side: 'asset', balance,
+  });
+  const onlyA = {
+    snapshots: [{
+      asOf: AUG16,
+      accounts: [cash('chequing-a', 'Chequing A', 999.00)],
+    }],
+  };
+  const seriesOnlyA = History.spendableSeries(onlyA);
+  ok(seriesOnlyA.length === 0,
+    'Chequing A alone is withheld from the spendable-household-cash series');
+  ok(!History.accountRows(onlyA).some(r => r.id === 'spendable-cash'),
+    'account rows do not invent a complete spendable total from one cash account');
+  const htmlOnlyA = History.render(onlyA);
+  ok(!/Spendable household cash/.test(htmlOnlyA),
+    'the page does not label Chequing A as Spendable household cash');
+  ok(htmlOnlyA.includes(History.money2(999)),
+    'the missing-account fixture still shows Chequing A as its own opening');
+
+  const mixedCompleteness = {
+    snapshots: [
+      {
+        asOf: AUG9,
+        accounts: [
+          cash('chequing-a', 'Chequing A', 100),
+          cash('chequing-b', 'Chequing B', 200),
+          cash('savings', 'Savings', 50),
+        ],
+      },
+      {
+        asOf: AUG16,
+        accounts: [cash('chequing-a', 'Chequing A', 999.00)],
+      },
+    ],
+  };
+  const series = History.spendableSeries(mixedCompleteness);
+  ok(series.length === 1 && series[0].asOf === AUG9 && near(series[0].balance, 350),
+    'only the complete three-account opening is a household spendable total');
+  ok(!series.some(p => near(p.balance, 999)),
+    'the incomplete 2026-08-16 Chequing A reading is not a complete total');
+  const agg = History.accountRows(mixedCompleteness).find(r => r.id === 'spendable-cash');
+  ok(agg && agg.move.current && agg.move.current.asOf === AUG9 && near(agg.move.current.balance, 350),
+    'latest published household cash is the complete opening, not $999');
+  ok(agg.move.sufficient === false,
+    'an incomplete later snapshot does not create a two-point household-cash trend');
+  const htmlMixed = History.render(mixedCompleteness);
+  ok(!htmlMixed.includes(History.signedMoney(649)),
+    'page does not publish 999 − 350 as the spendable household movement');
+
+  const liveSpendable = History.spendableSeries(history);
+  ok(liveSpendable.length === 2 && liveSpendable.every(p => p.complete === true),
+    'committed openings still have the complete Chequing A / B / Savings set');
+  ok(liveSpendable.every(p => ['chequing-a', 'chequing-b', 'savings'].every(id => p.ids.includes(id))),
+    'live spendable totals include all three expected identities');
+}
+
+console.log('\n=== 17. revolving history discloses pending and fails closed when pending is unknown ===');
+{
+  const travelPosted9 = AUG9_INDEPENDENT.travelvisa;
+  const travelPosted16 = AUG16_INDEPENDENT.travelvisa;
+  const travelPending9 = 165.13;
+  const travelPending16 = 250;
+  const travelExposure9 = roundIndependent(travelPosted9 + travelPending9);
+  const travelExposure16 = roundIndependent(travelPosted16 + travelPending16);
+  ok(near(travelExposure9, 1243.44) && near(travelExposure16, 1112.68),
+    'independent Travel Visa exposure is posted plus known pending');
+
+  const travelMove = History.displayMove(History.seriesFor(history, 'travelvisa'));
+  ok(near(travelMove.current.balance, travelPosted16) && near(travelMove.current.pending, travelPending16),
+    'Travel Visa series keeps posted $862.68 and pending $250.00');
+  ok(near(travelMove.currentExposure, travelExposure16) && near(travelMove.priorExposure, travelExposure9),
+    'Travel Visa exposure uses posted plus pending on both openings');
+  ok(travelMove.exposureSufficient === true && travelMove.sufficient === true,
+    'known pending is enough for a complete Travel Visa debt trend');
+  ok(near(travelMove.exposureDelta, roundIndependent(travelExposure16 - travelExposure9)),
+    'Travel Visa exposure fell independently by posted-plus-pending');
+
+  const mbnaPosted9 = AUG9_INDEPENDENT.mbna;
+  const mbnaPosted16 = AUG16_INDEPENDENT.mbna;
+  const mbnaPending9 = 82.05;
+  const mbnaPending16 = 0;
+  const mbnaExposure9 = roundIndependent(mbnaPosted9 + mbnaPending9);
+  const mbnaExposure16 = roundIndependent(mbnaPosted16 + mbnaPending16);
+  ok(near(mbnaExposure9, 7937.17) && near(mbnaExposure16, 8003.61),
+    'independent MBNA exposure is $7,937.17 → $8,003.61');
+  ok(near(roundIndependent(mbnaPosted16 - mbnaPosted9), 148.49),
+    'independent MBNA posted movement is +$148.49');
+  ok(near(roundIndependent(mbnaExposure16 - mbnaExposure9), 66.44),
+    'independent MBNA exposure movement is +$66.44');
+
+  const mbnaMove = History.displayMove(History.seriesFor(history, 'mbna'));
+  ok(near(mbnaMove.postedDelta, 148.49) && mbnaMove.postedDirection === 'up',
+    'posted MBNA series still records the +$148.49 posted rise');
+  ok(near(mbnaMove.exposureDelta, 66.44) && mbnaMove.exposureDirection === 'up',
+    'household-facing MBNA trend is the +$66.44 exposure rise');
+  const mbnaWord = History.movementWord(mbnaMove, 'MBNA');
+  ok(/posted-plus-pending exposure/.test(mbnaWord) && /rose/.test(mbnaWord),
+    'MBNA wording names exposure, not posted-only movement');
+  ok(mbnaWord.includes(History.money2(66.44)),
+    'MBNA wording uses the independent exposure delta, not +$148.49');
+
+  const cashMove = History.displayMove(History.seriesFor(history, 'cashback'));
+  ok(cashMove.current && cashMove.current.pendingUnknown === true,
+    'Cash Back current opening still carries Q26 pendingUnknown');
+  ok(cashMove.pendingUnknown === true && cashMove.sufficient === false
+    && cashMove.exposureSufficient === false,
+    'unknown pending fails closed — Cash Back has no complete debt trend');
+  const cashWord = History.movementWord(cashMove, 'Cash Back');
+  ok(/pending is unknown/.test(cashWord) && !/fell/.test(cashWord) && !/rose/.test(cashWord),
+    'Cash Back wording does not imply a complete rise or fall');
+
+  const html = History.render(history);
+  ok(html.includes('pending unknown'),
+    'the page discloses that Cash Back pending is unknown');
+  ok(html.includes(History.money2(250)) && html.includes('pending'),
+    'the page shows Travel Visa $250.00 pending beside posted');
+  ok(html.includes(History.signedMoney(66.44)),
+    'the page publishes the independent MBNA exposure movement');
+  ok(!html.includes(History.signedMoney(148.49)),
+    'the page does not publish MBNA posted-only +$148.49 as the debt movement');
 }
 
 console.log('\n=== T2. the HELOC question is answerable from stored history ===');
