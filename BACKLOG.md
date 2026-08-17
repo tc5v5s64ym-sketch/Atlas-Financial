@@ -38,10 +38,11 @@ Lunch Money **read** observation test, `B95`, `B91` / `AF-RECON-01`, `B94` /
 `AF-PLAN-01`, `B96` / `AF-PLAN-02`, and `B20` / `AF-HIST-01` are **done**.
 Owner decision **2026-08-17**: Lunch Money is the household's **normal
 operational financial update feed**. Forecast remains the planner.
-Automatic canonical writes are **not** approved. Remaining refresh sequence:
-`B21` (prove that Lunch Money path on a later observation), then `B78` / T3
-(identity-stable idempotent Lunch Money import), then T4 / `B81` (trusted
-canonical refresh, owner-gated). Do **not** wait for a second month of
+Automatic canonical writes are **not** approved. `B21` / `AF-INTAKE-01` is
+**DONE 2026-08-17** — later live observe → reconcile proof is
+[`docs/connectivity/LUNCH_MONEY_REFRESH_PROOF_2026-08-17.md`](docs/connectivity/LUNCH_MONEY_REFRESH_PROOF_2026-08-17.md).
+The next identity/idempotency outcome is `B78` / T3. T4 / `B81` (trusted
+canonical refresh) remains owner-gated. Do **not** wait for a second month of
 routine statement files. Provider-completeness, broad historical forensics,
 old categorisation cleanup, and file-statement backfill are not
 critical-path gates unless they expose a demonstrated material source or
@@ -1460,27 +1461,35 @@ request that removed the tables, because leaving this entry open would have left
 `BACKLOG.md` describing two tables that no longer exist.
 
 
-**B78 · Idempotent Lunch Money import with stable identity** · `QUEUED` · *medium*
+**B78 · Idempotent Lunch Money import with stable identity** · `QUEUED` · *medium — next identity/idempotency outcome*
 Build-strategy item `AF-INGEST-01`, and the evidence trajectory gate T3 is made
-of. The **normal Lunch Money observation/import path** must be identity-stable
-and idempotent before automated canonical refresh is trusted. Use existing
-Lunch Money provider account IDs / transaction IDs and the existing
-reconciliation architecture. Do **not** invent a new identity system.
-Acceptance is on **real household Lunch Money data**, for example: the same
-observation imported or reconciled twice creates no duplicate state; stable
-provider account identity survives a display-name change; a corrected or
-changed provider observation updates the same canonical target rather than
-creating another; pending→posted transaction identity is handled truthfully
-when real provider evidence demonstrates it; unmapped accounts fail closed;
-provider credit is never household cash. Fixture coverage already collapses
-the same `providerTransactionId` from pending to posted without
-double-counting. The real Bell Mobility transaction `2461295531` is still
-pending as of 2026-08-16 and remains a pending→posted acceptance case once
-the provider posts it. File-statement re-import remains useful later as
+of. **Next after `B21`.** The **normal Lunch Money observation/import path**
+must be identity-stable and idempotent before automated canonical refresh is
+trusted. Use existing Lunch Money provider account IDs / transaction IDs and
+the existing reconciliation architecture. Do **not** invent a new identity
+system. Acceptance is on **real household Lunch Money data**, for example:
+the same observation imported or reconciled twice creates no duplicate
+state; stable provider account identity survives a display-name change; a
+corrected or changed provider observation updates the same canonical
+target rather than creating another; pending→posted transaction identity
+is handled truthfully when real provider evidence demonstrates it;
+unmapped accounts fail closed; provider credit is never household cash.
+Fixture coverage already collapses the same `providerTransactionId` from
+pending to posted without double-counting. **B21 did not observe a real
+pending→posted transition**; that household acceptance case remains open.
+The real Bell Mobility transaction `2461295531` is still pending as of
+2026-08-16 and remains a pending→posted acceptance case once the provider
+posts it. File-statement re-import remains useful later as
 fallback/backfill, not as this item's proof. Entry is T2 (met) plus `B21`'s
-Lunch Money proof record — **not** a manual-step log from a rejected
-second-month PDF workflow. Automatic canonical writes still wait on T4 /
-`B81`.
+proof
+[`docs/connectivity/LUNCH_MONEY_REFRESH_PROOF_2026-08-17.md`](docs/connectivity/LUNCH_MONEY_REFRESH_PROOF_2026-08-17.md).
+Inputs from that run: no real pending→posted case; 120-day historical
+payroll posting-candidate CHANGE noise must not backfill
+`representedEvents`; automatic-versus-manual endpoint origin is not
+preserved in the normalized report; the Triangle same-day discrepancy
+needs freshness/time resolution before any canonical replacement; the
+fresh $10 Chequing B change is unused. Automatic canonical writes still
+wait on T4 / `B81`.
 
 **B79 · The store question, answered by evidence** · `QUEUED` · *needs the owner*
 Build-strategy item `AF-STORE-01`. A written answer to whether the file
@@ -1603,18 +1612,20 @@ all, driving spending, interest and fees. Built by `scripts/periods.js`.
 **Rebuild it after every capture** or the selector goes stale while the rest of
 the page moves.
 
-**B21 · Prove the normal Lunch Money refresh path** · `QUEUED` · *small*
-Build-strategy item `AF-INTAKE-01`. **Waits on `B91`** (done) and the live
-read observation seam (done). **Not** a second month of statement PDFs.
-The real test: a later/fresh Lunch Money observation through live/read-only
-observe → existing reconciliation → proposed canonical changes / conflicts /
-missing facts → Forecast-ready refresh boundary. Record what Lunch Money
-supplied automatically, what owner-maintained Lunch Money accounts depended
-on manual freshness, what mapped, what needed a human, what provider
-semantics remain ambiguous, and what Atlas still needs owner or institution
-evidence for. A stale manual Lunch Money account does not block unrelated
-automatically refreshed accounts. Do not write canonical state
-automatically. File extraction remains fallback/backfill, not this proof.
+**B21 · Prove the normal Lunch Money refresh path** · **DONE 2026-08-17** · *small*
+Build-strategy item `AF-INTAKE-01`. Owner-run later live observation
+`2026-08-17T23:38:15.373Z` through incumbent
+`scripts/provider-observe.js --provider lunchmoney --live --mode reconcile`
+and `scripts/reconcile.js`. 10 mapped, 2 deliberately unmapped
+(DEBT&PAYMENTS, SAVINGS-DONT TOUCH). MATCH 11 / CHANGE 8 / CONFLICT 0 /
+MISSING 0 / STALE 0. Observed spendable cash $2,242.76. No canonical
+write. Proof:
+[`docs/connectivity/LUNCH_MONEY_REFRESH_PROOF_2026-08-17.md`](docs/connectivity/LUNCH_MONEY_REFRESH_PROOF_2026-08-17.md).
+Material surfaces: fresh $10 Chequing B CHANGE (unused); Triangle
+same-day +$112.70 discrepancy (no winner chosen); six historical payroll
+posting-candidate CHANGE rows treated as reconciliation noise. Manual
+versus automatic endpoint origin was not preserved and was not invented.
+No real pending→posted case. Next identity/idempotency outcome is `B78`.
 
 **B29 · Payment calendar** · **DONE 2026-08-09**, **authority closed by B74 / PR #37 on 2026-08-14**
 `scripts/calendar-ics.js` writes `derived/household-payments.ics` for Google
