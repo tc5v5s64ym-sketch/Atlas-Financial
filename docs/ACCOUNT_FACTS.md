@@ -76,7 +76,7 @@ steady value, not the 18-month median.
 | **15th** | ICBC insurance | $99.91 | 5 consecutive months — newer policy |
 | **15th** | RESP contribution | $100.00 | Owner-stated hard bill, children's RESP, monthly |
 | **every 14 days** (payday cadence) | Fit4Less | $11.54 | 18 months; plus a ~$22 annual fee each July |
-| **18th, every 3 months** | Noble Disposal Services — garbage | **$95.85** | Invoice cadence; next dated due 2026-09-18 |
+| **18th, every 3 months** | Noble Disposal Services — garbage | **$95.85** | Invoice cadence; Forecast quarterly row, firstDue 2026-09-18 |
 
 **TELUS IS CLOSED** (owner-confirmed 2026-08-16). Do not forecast Telus as an
 active household bill unless newer transaction evidence proves a new active
@@ -85,9 +85,10 @@ series; that is history, not a live recurrence.
 
 **Noble Disposal Services** is the household garbage bill (owner-confirmed
 2026-08-16; primary invoice): $95.85 every 3 months on the 18th, Package A
-2 cans, repeats indefinitely. A March 18 2026 payment of $95.85 is shown.
-Canonical next dated due is 2026-09-18. Do not infer the paying card from a
-Visa 0870 mask.
+2 cans, repeats indefinitely. A March 18 2026 payment of $95.85 is the
+observed cadence phase. Canonical `plan.bills` row `noble-garbage` is the
+Forecast quarterly recurrence (`day` 18, `anchor` 2026-03-18, `firstDue`
+2026-09-18). Do not infer the paying card from a Visa 0870 mask.
 
 Netflix does not exist anywhere in the data; the streaming spend is Amazon
 Channels, several small charges on scattered days.
