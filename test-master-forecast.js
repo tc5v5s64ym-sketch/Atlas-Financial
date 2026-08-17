@@ -1202,6 +1202,104 @@ console.log('\n=== overdue unsettled point commitments stay protected ===');
 }
 
 {
+  // Optional overdue residual is not the protected joint overdue pool.
+  // Two named optional purposes with independent $100 gaps must both be
+  // financed when the owner names both; they must not share one $100.
+  const firstDue = F.addDays(AS_OF, -2);
+  const secondDue = F.addDays(AS_OF, -1);
+  const start = 500;
+  const buffer = 500;
+  const each = 100;
+  const plan = barePlan({
+    windowDays: 40,
+    startingCash: { amount: start },
+    defaults: { targetBuffer: buffer },
+    commitments: [
+      { id: 'opt-a', label: 'Optional overdue A', date: firstDue,
+        amount: each, optional: true, confidence: 'estimated' },
+      { id: 'opt-b', label: 'Optional overdue B', date: secondDue,
+        amount: each, optional: true, confidence: 'estimated' },
+    ],
+  });
+  ok(start - buffer === 0 && each + each === 200,
+    'independent: no leftover residual; two optional $100 gaps sum to $200');
+  const plans = F.majorPlans(plan, AS_OF, recOpts({ weeklyVariable: 0 }));
+  const optA = plans.find(p => p.id === 'opt-a');
+  const optB = plans.find(p => p.id === 'opt-b');
+  ok(optA && optA.flexibility === 'optional' && optA.verdict === 'FUNDING GAP'
+    && near(optA.remaining, each),
+    'first optional overdue keeps an independent $100 residual gap',
+    optA && `${optA.verdict} remaining=${optA.remaining}`);
+  ok(optB && optB.flexibility === 'optional' && optB.verdict === 'FUNDING GAP'
+    && near(optB.remaining, each),
+    'second optional overdue keeps an independent $100 residual gap',
+    optB && `${optB.verdict} remaining=${optB.remaining}`);
+  const debt = F.plannedDebt(plan, AS_OF, recOpts({
+    allowPlannedDebt: true,
+    plannedDebtFacility: 'card-x',
+    plannedDebtPurposes: ['opt-a', 'opt-b'],
+    debts: [{ id: 'card-x', label: 'A card', rate: 19.99, balance: 0, pending: 0, limit: 5000 }],
+    plannedDebtPayment: 20,
+    weeklyVariable: 0,
+  }));
+  ok(near(debt.borrowed, 200),
+    'two past-dated optional named purposes borrow $200, not a shared $100',
+    String(debt.borrowed));
+}
+
+{
+  // Explicit $20 on protected overdue A counts toward the $60 joint
+  // shortfall before B is auto-sized. Total borrowed is $60, not $80.
+  const firstDue = F.addDays(AS_OF, -2);
+  const secondDue = F.addDays(AS_OF, -1);
+  const start = 600;
+  const buffer = 500;
+  const each = 80;
+  const plan = barePlan({
+    windowDays: 40,
+    startingCash: { amount: start },
+    defaults: { targetBuffer: buffer },
+    income: [{
+      id: 'after-deadline', label: 'Pay after overdue dates', frequency: 'once',
+      date: F.addDays(AS_OF, 14), amount: 5000, confidence: 'confirmed',
+    }],
+    commitments: [
+      { id: 'overdue-a', label: 'Unpaid two days ago', date: firstDue,
+        amount: each, confidence: 'confirmed' },
+      { id: 'overdue-b', label: 'Unpaid yesterday', date: secondDue,
+        amount: each, confidence: 'confirmed' },
+    ],
+  });
+  ok(start - buffer === 100 && each + each - 100 === 60,
+    'independent: protected overdue aggregate is still $60 short before financing');
+  const debt = F.plannedDebt(plan, AS_OF, recOpts({
+    allowPlannedDebt: true,
+    plannedDebtFacility: 'card-x',
+    plannedDebtPurposes: ['overdue-a', 'overdue-b'],
+    plannedDebtAmounts: { 'overdue-a': 20 },
+    debts: [{ id: 'card-x', label: 'A card', rate: 19.99, balance: 0, pending: 0, limit: 5000 }],
+    plannedDebtPayment: 20,
+    weeklyVariable: 0,
+  }));
+  ok(near(debt.borrowed, 60),
+    'explicit $20 on A plus auto B borrows $60 total, not $80',
+    String(debt.borrowed));
+  const drawnA = (debt.draws || []).find(d => d.id === 'overdue-a');
+  const drawnB = (debt.draws || []).find(d => d.id === 'overdue-b');
+  ok(drawnA && near(drawnA.amount, 20),
+    'the explicit $20 on A still occurs',
+    drawnA && String(drawnA.amount));
+  ok(drawnB && near(drawnB.amount, 40),
+    'B auto-sizes to the remaining $40 of the protected overdue pool',
+    drawnB && String(drawnB.amount));
+  ok(start + 60 - buffer === each + each,
+    'independent: $60 as-of proceeds land current surplus on the $160 floor');
+  ok(debt.feasible === true,
+    'the $60 same-walk path leaves the protected plan feasible',
+    `feasible=${debt.feasible} borrowed=${debt.borrowed}`);
+}
+
+{
   // Passing a ranged deadline is the overdue-point repair: original date,
   // min/max preserved, aggregate floor vs as-of surplus. surplusOn() has
   // no day before as-of, so testing item.date would be a permanent gap.

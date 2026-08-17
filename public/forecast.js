@@ -1380,30 +1380,52 @@
     }
 
     let remainingCap = capacity;
-    // majorPlans reports the joint overdue remaining on every overdue row.
-    // Automatic draws must consume that shared shortfall once, not once
-    // per named purpose.
-    let overdueGapLeft = null;
-    const draws = [];
-    for (const g of named) {
-      const authorized = plannedDebtAuthorizedAmount(opts, g.id);
-      const overdueAuto = authorized == null && g.date && asOf && g.date < asOf
-        && g.verdict === 'FUNDING GAP' && g.remaining > 0;
-      let want = 0;
-      if (authorized != null) {
-        want = authorized;
-      } else if (overdueAuto) {
-        if (overdueGapLeft == null) overdueGapLeft = g.remaining;
-        want = overdueGapLeft;
-      } else if (g.verdict === 'FUNDING GAP' && g.remaining > 0) {
-        want = g.remaining;
+    const seq = fundingSequence(plan, asOf, opts);
+    const overdueProtectedIds = new Set(
+      overdueProtectedBy(seq, asOf).items.map(item => item.id)
+    );
+    // majorPlans reports the joint protected overdue remaining on every
+    // protected overdue row. Automatic draws consume that shared shortfall
+    // once. Optional residual purposes are not in this set and keep
+    // independent remaining. Explicit amounts still occur, and a draw
+    // that belongs to the protected overdue pool reduces the shared
+    // remainder before any auto-sized draw is added.
+    let protectedOverdueAutoLeft = 0;
+    for (const p of plans) {
+      if (overdueProtectedIds.has(p.id) && p.verdict === 'FUNDING GAP' && p.remaining > 0) {
+        protectedOverdueAutoLeft = p.remaining;
+        break;
       }
+    }
+    const draws = [];
+    const takeDraw = (g, want) => {
       const amount = Math.min(want, remainingCap);
-      if (!(amount > 0)) continue;
+      if (!(amount > 0)) return 0;
       const date = g.date && g.date >= asOf ? g.date : asOf;
       draws.push({ id: g.id, amount, date, purpose: g.label || g.id });
       remainingCap -= amount;
-      if (overdueAuto) overdueGapLeft -= amount;
+      return amount;
+    };
+    for (const g of named) {
+      const authorized = plannedDebtAuthorizedAmount(opts, g.id);
+      if (authorized == null) continue;
+      const amount = takeDraw(g, authorized);
+      if (overdueProtectedIds.has(g.id)) {
+        protectedOverdueAutoLeft = Math.max(0, protectedOverdueAutoLeft - amount);
+      }
+    }
+    for (const g of named) {
+      if (plannedDebtAuthorizedAmount(opts, g.id) != null) continue;
+      let want = 0;
+      if (overdueProtectedIds.has(g.id)) {
+        want = protectedOverdueAutoLeft;
+      } else if (g.verdict === 'FUNDING GAP' && g.remaining > 0) {
+        want = g.remaining;
+      }
+      const amount = takeDraw(g, want);
+      if (overdueProtectedIds.has(g.id)) {
+        protectedOverdueAutoLeft = Math.max(0, protectedOverdueAutoLeft - amount);
+      }
     }
     const borrowed = draws.reduce((s, d) => s + d.amount, 0);
     const horizon = knowledgeHorizon(plan, asOf, opts);
@@ -1449,7 +1471,6 @@
       injections, plannedFlows,
     });
     const post = simulate(plan, asOf, walkOpts);
-    const seq = fundingSequence(plan, asOf, opts);
     const hasCadence = monthlyPayment > 0 && plannedFlows.length > 0;
     const debtWalk = projectDebts(plan, debts, asOf, walkOpts);
     const state = debtWalk.byId && debtWalk.byId[facility.id];
