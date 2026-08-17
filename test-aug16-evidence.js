@@ -102,9 +102,11 @@ console.log('\n=== 5. Telus does not recur after owner-confirmed closure ===');
 console.log('\n=== 6. Noble quarterly garbage without duplicating history ===');
 {
   const noble = (plan.bills || []).find(b => b.id === 'noble-garbage');
-  ok(noble && near(noble.amount, 95.85) && noble.date === '2026-09-18'
-    && noble.frequency === 'once' && noble.budgetCategory === 'household',
-    'Noble is a once $95.85 due 2026-09-18 household bill');
+  ok(noble && near(noble.amount, 95.85) && noble.day === 18
+    && noble.frequency === 'quarterly' && noble.firstDue === '2026-09-18'
+    && noble.anchor === '2026-03-18' && noble.budgetCategory === 'household'
+    && noble.date == null,
+    'Noble is the quarterly $95.85 household bill, firstDue 2026-09-18');
   const events = F.expandEvents(plan, asOf, windowEnd, {});
   const nobleEvents = events.filter(e => e.id === 'noble-garbage');
   ok(nobleEvents.length === 1 && nobleEvents[0].date === '2026-09-18'

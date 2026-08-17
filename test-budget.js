@@ -101,11 +101,10 @@ ok(near(telecom.planned, telecom.historical - shaw.amount),
   'so telecom carries only the undated remainder', money(telecom.planned));
 const household = budget.categories.find(c => c.id === 'household');
 const noble = plan.bills.find(b => b.id === 'noble-garbage');
-const monthsInWindow = (plan.windowDays || 91) / (365.25 / 12);
-ok(noble && noble.frequency === 'once' && noble.budgetCategory === 'household',
+ok(noble && noble.frequency === 'quarterly' && noble.budgetCategory === 'household',
   'Noble is the dated household garbage bill');
-ok(near(household.dated, fortis.amount + noble.amount / monthsInWindow),
-  'FortisBC and the in-window Noble quarterly due are subtracted from household',
+ok(near(household.dated, fortis.amount + noble.amount / 3),
+  'FortisBC and the quarterly Noble monthly-equivalent are subtracted from household',
   money(household.dated));
 const insurance = budget.categories.find(c => c.id === 'insurance');
 ok(insurance.dated + 0.01 >= bcaa.amount + icbc.amount,

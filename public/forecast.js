@@ -60,6 +60,43 @@
     }
     return out;
   }
+  // Shift `iso`'s month by `n`, keeping the requested day-of-month and
+  // clamping to shorter months (31 January + 3 months → 30 April).
+  function addCalendarMonths(iso, n, day) {
+    let [y, m] = iso.split('-').map(Number);
+    m += n;
+    while (m > 12) { m -= 12; y++; }
+    while (m < 1) { m += 12; y--; }
+    const d = Math.min(day, daysInMonth(y, m));
+    return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  }
+  // Every 3 months on `day`. Phase comes from `anchor` if present, else
+  // `firstDue`, else the first matching day on or after `start`. `firstDue`
+  // is a filter, not a rewrite of the cadence: dates before it are omitted
+  // rather than shifted, so an observed historical payment can set the
+  // phase without manufacturing a pre-opening unpaid event.
+  function quarterlyDates(day, start, end, firstDue, anchor) {
+    const phaseIso = anchor || firstDue;
+    let origin;
+    if (phaseIso) {
+      const [y, m] = phaseIso.split('-').map(Number);
+      const d = Math.min(day, daysInMonth(y, m));
+      origin = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    } else {
+      let [y, m] = start.split('-').map(Number);
+      let d = Math.min(day, daysInMonth(y, m));
+      origin = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      if (origin < start) origin = addCalendarMonths(origin, 1, day);
+    }
+    const out = [];
+    let t = origin;
+    while (t > start) t = addCalendarMonths(t, -3, day);
+    while (t <= end) {
+      if (t >= start && (!firstDue || t >= firstDue)) out.push(t);
+      t = addCalendarMonths(t, 3, day);
+    }
+    return out;
+  }
 
   function occurrences(item, start, end) {
     if (item.frequency === 'once') {
@@ -71,6 +108,9 @@
     }
     if (item.frequency === 'monthly') {
       return monthlyDates(item.day, start, end, item.firstDue);
+    }
+    if (item.frequency === 'quarterly') {
+      return quarterlyDates(item.day, start, end, item.firstDue, item.anchor);
     }
     return [];
   }
@@ -2161,6 +2201,7 @@
     // A month of window, for turning dated items into a monthly equivalent.
     const monthsInWindow = (plan.windowDays || 91) / (365.25 / 12);
     const billMonthly = b => b.frequency === 'biweekly' ? b.amount * 26 / 12
+      : b.frequency === 'quarterly' ? b.amount / 3
       : b.frequency === 'once' ? b.amount / monthsInWindow : b.amount;
 
     // Dated items declare which variable category they would otherwise sit in.

@@ -32,7 +32,10 @@ function renderRecords(d) {
         </div>
         ${note ? `<p class="deriv-note">${note}</p>` : ''}
       </div>`;
-    const freqWord = s => s.frequency === 'biweekly' ? 'bi-weekly' : s.frequency === 'once' ? 'one-time' : 'monthly';
+    const freqWord = s => s.frequency === 'biweekly' ? 'bi-weekly'
+      : s.frequency === 'once' ? 'one-time'
+      : s.frequency === 'quarterly' ? 'every 3 months'
+      : 'monthly';
     $('derivations').innerHTML =
       '<h3>Income streams</h3>' +
       d.plan.income.map(s => li(s.label,

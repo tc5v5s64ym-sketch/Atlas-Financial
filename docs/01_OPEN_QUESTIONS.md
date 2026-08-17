@@ -137,7 +137,7 @@ versus beneficiary). Correction is with Sun Life, never automated.
 **Status:** OPEN · **Owner:** Dale + Amanda
 **What we know (2026-08-16):** TELUS IS CLOSED and is not forecast as an
 active bill. Noble Disposal Services is the household garbage bill: $95.85
-every 3 months on the 18th (next dated due 2026-09-18). Main Bell August 1
+every 3 months on the 18th (Forecast quarterly row, firstDue 2026-09-18). Main Bell August 1
 bill is $356.62 due Aug. 17 (arrears + travel/roaming, not the ~$104.20
 normal monthly baseline). A valid $250 Bell Mobility payment is pending on
 Travel Visa dated Aug. 14; inferred residual $106.62 is an inference only

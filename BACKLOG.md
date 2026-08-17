@@ -14,10 +14,10 @@ Last reviewed **2026-08-16**. Phase: **analysis** — capture is essentially don
 **Follow-ups from the 2026-08-16 evidence pack** (not mixed into that
 facts PR; each needs its own independently provable outcome):
 
-- **Noble quarterly expander** — Forecast `occurrences()` has no quarterly
-  frequency. Noble is dated as the next in-window `once` due (2026-09-18).
-  A later PR may add a real quarterly cadence without inventing a second
-  calendar.
+- **Noble quarterly expander** — **DONE.** Forecast `occurrences()` expands
+  `frequency: quarterly`. Canonical `noble-garbage` is the one quarterly
+  row (`day` 18, `anchor` 2026-03-18, `firstDue` 2026-09-18). The temporary
+  `once` workaround is gone.
 - **HELOC residual PAD** — statement mechanics are recorded; current August
   cash impact still needs the Aug. 1 transaction history (Q19). Do not
   invent a duplicate full minimum or a confident zero.
