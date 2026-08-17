@@ -423,8 +423,10 @@ console.log('\n=== 9. live Forecast still keeps posted and pending distinct ==='
     && near(travelRow.pending, travel.pending)
     && near(travelRow.used, independentTravel),
     'Forecast.utilisation still reports posted and pending separately');
-  ok(cashRow && near(cashRow.posted, 4799.43) && near(cashRow.pending, 0),
-    'Forecast still uses the live Cash Back posted/pending pair');
+  ok(cashRow && near(cashRow.posted, 4799.43)
+    && cashRow.pendingUnknown === true && cashRow.pending == null
+    && cashRow.available == null && cashRow.overLimit == null,
+    'live Cash Back pending stays unknown; posted room is not published as $200.57');
   ok(hashFile(require('path').join(__dirname, 'public', 'forecast.js')) === forecastHash,
     'this suite does not rewrite forecast.js');
   ok(hashFile(R.DEFAULT_DATA) === dataHash, 'this suite does not rewrite data.json');

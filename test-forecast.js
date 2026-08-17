@@ -438,6 +438,42 @@ ok(F.recommendWeekly(exact, '2026-01-01', { targetBuffer: 500 }) === 0 ||
   ok(near(funded.min.balance, 140) && near(funded.daily[0].balance, 140),
     'the same-day top-up lifts the seed so the day closes on 100 + 80 − 40',
     funded.min.balance.toFixed(2));
+  ok(near(funded.weeks[0].opening, 100),
+    'the displayed week opening stays at unfunded cash so the ledger still counts the injection',
+    funded.weeks[0].opening.toFixed(2));
+  ok(near(funded.weeks[0].low, 140) && funded.weeks[0].belowBuffer === false,
+    'week 1 low uses the post-injection boundary, not the unfunded opening',
+    funded.weeks[0].low.toFixed(2));
+}
+
+console.log('\n=== 10. a buffer above live opening does not shade a funded week 1 ===');
+// Independent: opening $2,252.76, buffer $2,500, same-day top-up of the gap.
+// sim.min is $2,500 after the injection. Week 1 must not keep the unfunded
+// $2,252.76 as its low and flag belowBuffer.
+{
+  const OPENING = 2252.76;
+  const BUFFER = 2500;
+  const GAP = BUFFER - OPENING;
+  const plan = {
+    windowDays: 7,
+    defaults: { targetBuffer: BUFFER },
+    startingCash: { breakdown: [{ id: 'a', value: OPENING, class: 'spendable' }] },
+    income: [], obligations: [], bills: [], commitments: [],
+  };
+  const day = '2026-08-16';
+  const funded = F.simulate(plan, day, {
+    weeklyVariable: 0, targetBuffer: BUFFER, measureFrom: day,
+    injections: [{ date: day, amount: GAP, id: 'gapFunding', label: 'top-up' }],
+  });
+  ok(near(GAP, 247.24), 'independent gap is $2,500 − $2,252.76', GAP.toFixed(2));
+  ok(near(funded.min.balance, BUFFER),
+    'the recommendation floor is the funded buffer', funded.min.balance.toFixed(2));
+  ok(near(funded.weeks[0].opening, OPENING),
+    'week 1 still opens at the unfunded cash for the ledger',
+    funded.weeks[0].opening.toFixed(2));
+  ok(near(funded.weeks[0].low, BUFFER) && funded.weeks[0].belowBuffer === false,
+    'week 1 low is the post-injection $2,500, not the unfunded $2,252.76',
+    funded.weeks[0].low.toFixed(2));
 }
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);

@@ -228,9 +228,14 @@ const util = F.utilisation(data.debts, data.revolvingExtra, data.plan);
 const tvRow = util.rows.find(r => r.id === 'travelvisa');
 const mbRow = util.rows.find(r => r.id === 'mbna');
 
-ok(data.debts.every(x => typeof x.pending === 'number'),
-  'every debt states its pending amount, including the zeros',
-  `${data.debts.filter(x => x.pending > 0).length} of ${data.debts.length} carry pending`);
+ok(data.debts.every(x => typeof x.pending === 'number' || x.pendingUnknown === true),
+  'every debt states its pending amount, or marks it unknown rather than as $0',
+  `${data.debts.filter(x => x.pendingUnknown).map(x => x.id).join(', ') || 'none unknown'}; `
+    + `${data.debts.filter(x => x.pending > 0).length} of ${data.debts.length} carry known pending`);
+const cashRow = util.rows.find(r => r.id === 'cashback');
+ok(cashRow && cashRow.pendingUnknown === true && cashRow.available == null
+    && cashRow.overLimit == null,
+  'unknown Cash Back pending does not publish $200.57 of posted room or close over-limit');
 const tvDebt = data.debts.find(x => x.id === 'travelvisa');
 const mbDebt = data.debts.find(x => x.id === 'mbna');
 ok(near(tvRow.pending, tvDebt.pending), 'the Travel Visa pending charges are represented', money(tvRow.pending));
@@ -246,7 +251,7 @@ ok(tvRow.posted < tvRow.limit,
 ok(tvRow.available === 0 || tvRow.used < tvRow.limit,
   'available credit is nil when effective use meets the limit', money(tvRow.available));
 
-ok(near(util.totalPending, data.debts.reduce((s, x) => s + (x.pending || 0), 0)),
+ok(near(util.totalPending, data.debts.reduce((s, x) => s + (x.pendingUnknown ? 0 : (x.pending || 0)), 0)),
   'total pending across the household', money(util.totalPending));
 // The Plan shows "revolving credit left" in the Today tile and again as the
 // day-0 scoreboard row. They came from different functions and disagreed by
@@ -256,7 +261,7 @@ const projWithExtra = F.projectDebts(plan, data.debts, asOf,
 ok(near(projWithExtra.marks[0].headroom, util.totalAvailable),
   'the scoreboard day-0 headroom equals the Today tile figure',
   `${money(projWithExtra.marks[0].headroom)} = ${money(util.totalAvailable)}`);
-ok(util.overLimitCount === util.rows.filter(r => r.overLimit).length
+ok(util.overLimitCount === util.rows.filter(r => r.overLimit === true).length
   && util.overLimitCount >= 1,
   'over-limit count matches the utilisation rows',
   util.rows.filter(r => r.overLimit).map(r => r.label).join(', '));

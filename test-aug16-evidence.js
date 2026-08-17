@@ -260,9 +260,13 @@ console.log('\n=== 16–18. HELOC interest posting and cash payment stay distinc
   ok(typeof util.totalAvailable === 'number' && util.totalAvailable > 0,
     'upcomingNote credit headroom is derived from this opening',
     money(util.totalAvailable));
-  const pendingTotal = data.debts.reduce((s, d) => s + Number(d.pending || 0), 0);
+  const pendingTotal = data.debts
+    .filter(d => !d.pendingUnknown)
+    .reduce((s, d) => s + Number(d.pending || 0), 0);
+  ok(data.debts.find(d => d.id === 'cashback').pendingUnknown === true,
+    'Cash Back pending is unknown on this opening, not $0');
   ok(near(pendingTotal, 15.62 + 250),
-    'this opening pending is Triangle $15.62 + Travel Visa Bell $250.00',
+    'this opening known pending is Triangle $15.62 + Travel Visa Bell $250.00',
     money(pendingTotal));
 }
 

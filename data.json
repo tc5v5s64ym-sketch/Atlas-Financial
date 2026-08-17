@@ -1026,7 +1026,8 @@
             "institution": "TD",
             "interestByEvent": false,
             "secured": false,
-            "pending": 0,
+            "pending": null,
+            "pendingUnknown": true,
             "balance": 4799.43,
             "rate": 26.99,
             "rateBasis": "Purchases 26.99% / cash 27.99%",
@@ -1040,7 +1041,7 @@
             "nextDue": "2026-10-01",
             "limit": 5000,
             "confidence": "verified",
-            "pendingNote": "No pending Cash Back rows in the 14-day 2026-08-16 Lunch Money window. That is not a new institution-page known-zero reading; unknown pending is not invented as a positive amount either. Forecast treats a missing pending as $0.",
+            "pendingNote": "No pending Cash Back rows in the 14-day 2026-08-16 Lunch Money window. That is not a new institution-page known-zero reading. Unknown pending is not $0, and posted room is not published as available credit until pending is observed.",
             "note": "2026-08-16 Lunch Money posted $4,799.43. Independent identity: 5,612.43 - 50.00 Aug. 13 - 763.00 Aug. 14 = 4,799.43. Under the $5,000 limit. Available credit is never household cash."
         },
         {

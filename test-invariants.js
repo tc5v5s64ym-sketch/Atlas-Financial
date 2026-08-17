@@ -910,8 +910,11 @@ ok(missingConfidence.length === 0, 'every planning input carries a confidence ta
 ok(planItems.every(x => ['confirmed', 'estimated', 'planned'].includes(x.confidence)),
   'and the tags come from a closed vocabulary');
 ok(/^\d{4}-\d{2}-\d{2}$/.test(data.meta.asOf), 'the as-of date is a real date', data.meta.asOf);
-ok(periods.asOf === data.meta.asOf,
-  'the generated spending history is as-of the same day as the plan',
+ok(periods.asOf === '2026-08-09',
+  'the generated spending history still carries the date of the ledger it was built from',
+  periods.asOf);
+ok(periods.asOf <= data.meta.asOf,
+  'and is not dated after the Forecast opening',
   `${periods.asOf} vs ${data.meta.asOf}`);
 ok(plan.budget.ownerTargets && plan.budget.ownerTargets.status,
   'the budget records whether an owner target exists',

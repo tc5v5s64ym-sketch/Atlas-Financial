@@ -187,8 +187,12 @@ console.log('\n=== F. debt openings independently match their source identities 
   ok(near(byId.cashback.balance, 4799.43)
     && near(5612.43 - 50 - 763, 4799.43),
     'Cash Back $4,799.43 = 5,612.43 − $50 − $763');
+  ok(byId.cashback.pendingUnknown === true && byId.cashback.pending == null,
+    'Cash Back pending is unknown, not a Lunch Money empty-window $0');
   ok(byId.cashback.balance + 0.005 < 5000,
     'Cash Back is under its $5,000 limit on posted');
+  ok(Math.abs(5000 - 4799.43 - 200.57) < 0.005,
+    'independent posted room is $200.57 — and that is not a known-zero pending reading');
   ok(near(byId.tdcc.balance, 1705.94) && near(1799.97 - 94.03, 1705.94),
     'TD card $1,705.94 = 1,799.97 − the posted $94.03');
   ok(near(byId.travelvisa.balance, 862.68) && near(byId.travelvisa.pending, 250),
@@ -214,8 +218,14 @@ console.log('\n=== G. Amanda / TENNIS INCOME is not spendable; card capacity is 
   ok(!(live.plan.bills || []).some(b => /bell/i.test(b.id + b.label)),
     'Bell is not dated as a joint-cash bill beside the $250 pending');
   const util = F.utilisation(live.debts, live.revolvingExtra, live.plan);
+  const cashRow = util.rows.find(r => r.id === 'cashback');
   ok(util.rows.every(r => r.available == null || r.available >= 0),
     'utilisation available figures are non-negative');
+  ok(cashRow && cashRow.pendingUnknown === true && cashRow.pending == null
+    && cashRow.available == null && cashRow.overLimit == null,
+    'Cash Back posted room is not published as $200.57 available, and over-limit is not closed');
+  ok(!util.rows.some(r => r.id === 'cashback' && near(r.available, 200.57)),
+    'utilisation does not convert unknown Cash Back pending into $200.57 available');
   ok(!/household cash|spendable/.test(JSON.stringify(util.rows.map(r => r.available))),
     'utilisation does not relabel capacity as cash');
 }
