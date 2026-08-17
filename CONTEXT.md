@@ -19,7 +19,9 @@ already live on `plan.commitments` (`B95` / PR #82). The published Forecast
 opening is 2026-08-16 (`B91` / `AF-RECON-01`). Forecast is the one
 master plan (`B94` / `AF-PLAN-01`): the 91-day Plan display is a view
 of a ≥12-month knowledge horizon. The household payday answer is
-composed from that Forecast (`B96` / `AF-PLAN-02`). Do not treat 9 August
+composed from that Forecast (`B96` / `AF-PLAN-02`). Dated account-balance
+openings live in `snapshots/` (`B20` / `AF-HIST-01`); `data.json` remains
+current-state authority. Do not treat 9 August
 conclusions as today's household truth. The critical path lives
 in
 [`docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`](docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md).
@@ -39,6 +41,7 @@ source data and the scripts.
 | Path | What it is | In git? |
 |---|---|---|
 | `server.js`, `data.json`, `public/` | The deployed site | **Yes** |
+| `snapshots/` | Dated account-balance openings (history, not current state) | **Yes** |
 | `docs/` | The analysis and written reports | **Yes** |
 | `scripts/` | Re-runnable analysis scripts | **Yes** |
 | `raw/` | Bank exports and statement PDFs | **NO — never** |
@@ -110,7 +113,10 @@ This is the product picture a new session should start from. It is **not** the
 summed Lunch Money mapped balances (Chequing A $1,320.13 + Chequing B
 $932.05 + Savings $0.58 = $2,252.76). The 14 August payday cluster is
 already inside those snapshots and is not replayed. Amanda / TENNIS INCOME
-is still held-elsewhere. Q19 remains OPEN. `B91` is done.
+is still held-elsewhere. Q19 remains OPEN. `B91` is done. Dated
+balance openings for 2026-08-09 and 2026-08-16 live in `snapshots/`;
+`B20` is done. TENNIS INCOME and SAVINGS-DONT TOUCH still have only
+the 2026-08-09 reading.
 
 **Captured (broader than the old 11-account / 4,222-transaction picture):**
 `data.json` `meta` currently records TD (15 accounts) · Triangle Mastercard ·

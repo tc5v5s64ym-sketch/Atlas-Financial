@@ -199,13 +199,13 @@ function applyTheme(mode) {
 // Pages register render callbacks; the core fetches the data, applies the
 // theme, and re-runs the callbacks whenever the theme changes.
 const App = (() => {
-  let DATA = null, PERIODS = null;
+  let DATA = null, PERIODS = null, HISTORY = null;
   const hooks = [];   // re-run on every render (data arrival, theme change)
   const onceHooks = []; // run once when data arrives (control wiring)
 
   function rerender() {
     if (!DATA) return;
-    for (const fn of hooks) fn(DATA, PERIODS);
+    for (const fn of hooks) fn(DATA, PERIODS, HISTORY);
   }
 
   function setupTheme() {
@@ -253,13 +253,18 @@ const App = (() => {
     setupSpy();
     const wants = [fetch('/data.json', { credentials: 'same-origin' })
       .then(r => { if (r.status === 401) { location.href = '/login'; throw new Error('auth'); } return r.json(); })];
-    if (opts.periods) {
-      wants.push(fetch('/periods.json', { credentials: 'same-origin' })
+    wants.push(opts.periods
+      ? fetch('/periods.json', { credentials: 'same-origin' })
         .then(r => r.ok ? r.json() : null)
-        .catch(() => null));
-    }
-    Promise.all(wants).then(([d, p]) => {
-      DATA = d; PERIODS = p || null;
+        .catch(() => null)
+      : Promise.resolve(null));
+    wants.push(opts.history
+      ? fetch('/balance-history.json', { credentials: 'same-origin' })
+        .then(r => r.ok ? r.json() : null)
+        .catch(() => null)
+      : Promise.resolve(null));
+    Promise.all(wants).then(([d, p, h]) => {
+      DATA = d; PERIODS = p || null; HISTORY = h || null;
       const asof = $('asof');
       if (asof) {
         let text = 'As at ' + fmtDateLong(d.meta.asOf);
@@ -268,7 +273,7 @@ const App = (() => {
         }
         asof.textContent = text;
       }
-      for (const fn of onceHooks) fn(DATA, PERIODS);
+      for (const fn of onceHooks) fn(DATA, PERIODS, HISTORY);
       rerender();
     }).catch(err => {
       if (err.message === 'auth') return;
@@ -286,5 +291,6 @@ const App = (() => {
     boot,
     get data() { return DATA; },
     get periods() { return PERIODS; },
+    get history() { return HISTORY; },
   };
 })();

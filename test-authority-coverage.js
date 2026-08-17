@@ -170,7 +170,7 @@ for (const fn of ['amortisedPayment', 'paymentForMonths', 'payoffModel', 'payoff
 }
 
 console.log('\n=== artifact-writer coverage ===');
-for (const script of ['scripts/periods.js', 'scripts/calendar-ics.js']) {
+for (const script of ['scripts/periods.js', 'scripts/calendar-ics.js', 'scripts/snapshot-balances.js']) {
   ok(fs.existsSync(path.join(__dirname, script)), `${script} exists`);
   const short = path.basename(script);
   ok(incumbentTable.includes(script) || incumbentTable.includes(short),

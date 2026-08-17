@@ -19,6 +19,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # B20 independent proof reads historical `data.json` / `positions.csv`
+          # via `git show 81210ac` and `git show 08fd3e1`. The default shallow
+          # checkout cannot see those commits, so the required suite would go
+          # red without the history.
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
