@@ -3,7 +3,7 @@
  * Forecast.recommend() now returns. `node test-status-band.js`
  *
  * These are the two most prominent financial verdicts on the site: the band at
- * the top of the Plan page, which selects which of seven conclusions the
+ * the top of the Plan page, which selects which of eight conclusions the
  * household reads about the next 13 weeks, and the cards a few lines below it,
  * which say whether each account can cover the opening gap. Until this move
  * `public/plan.js` decided both, where no test could reach them — B73 recorded
@@ -292,6 +292,24 @@ ok(onPlan.id === 'onPlan', 'an above-buffer projection selects the on-plan verdi
 ok(same(onPlan.ending, 4200) && same(onPlan.low, 1200) && onPlan.lowDate === AS_OF,
   'and carries the ending and the low it never went under');
 
+console.log('\n=== 7b. recommend already marked the protected plan INFEASIBLE ===');
+/* Copied from advice.infeasible — the band must not re-decide. A buffer-holding
+ * simulation with mode infeasible is the B94/B96 case the old seven-verdict
+ * band would have published as onPlan. */
+const infeasibleAdvice = advice({
+  mode: 'infeasible',
+  infeasible: {
+    kind: 'encumbered', date: '2026-11-07', shortfall: 1200,
+    label: 'Christmas 2026',
+  },
+});
+const infeasible = F.planStatus(infeasibleAdvice, { weeklyOverride: null });
+ok(infeasible.id === 'infeasible',
+  'an infeasible recommend result selects INFEASIBLE, not onPlan', infeasible.id);
+ok(same(infeasible.shortfall, 1200) && infeasible.label === 'Christmas 2026'
+  && infeasible.date === '2026-11-07' && same(infeasible.buffer, 500),
+  'and copies the first failing constraint from advice.infeasible');
+
 console.log('\n=== 8. the boundary is the engine\'s epsilon, in both directions ===');
 /* The page compared the dip against a bare `sim.min.balance < sim.buffer` while
  * testing the override breach against `sim.buffer - 0.005`. Two conventions in
@@ -475,9 +493,15 @@ function mutant(from, to) {
   } catch (e) { return { error: e.message }; }
   return { engine: sandbox.module.exports };
 }
-const realStatus = { unfunded, breach, combo, plain, negative, belowBuffer, onPlan };
+const realStatus = { unfunded, breach, combo, plain, negative, belowBuffer, onPlan, infeasible };
 
 const MUTATIONS = [
+  { label: 'dropping the infeasible branch publishes onPlan beside a failed protected plan',
+    from: '    if (advice.mode === \'infeasible\' && advice.infeasible) {',
+    to: '    if (false && advice.mode === \'infeasible\' && advice.infeasible) {',
+    check: m => m.planStatus(infeasibleAdvice, { weeklyOverride: null }).id === 'onPlan',
+    real: () => infeasible.id === 'infeasible' },
+
   { label: 'testing the override breach before the funding shortfall blames spending for an unfundable gap',
     from: `    if (gap && fundingShort) {
       return { id: 'unfunded', gapAmount, floorDate: gap.floorDate,
@@ -607,7 +631,7 @@ ok(!!statusSrc, 'the planStatus function is readable from forecast.js');
 const engineIds = [...new Set([...(statusSrc ? statusSrc[0] : '')
   .matchAll(/\bid: '([A-Za-z]+)'/g)].map(m => m[1]))].sort();
 const wordedIds = Object.keys(STATUS_BAND).sort();
-ok(engineIds.length === 7, 'the engine emits seven verdicts', engineIds.join(', '));
+ok(engineIds.length === 8, 'the engine emits eight verdicts', engineIds.join(', '));
 ok(engineIds.every(id => wordedIds.includes(id)),
   'the page has wording for every verdict the engine can emit',
   engineIds.filter(id => !wordedIds.includes(id)).join(', ') || 'none missing');
@@ -809,7 +833,7 @@ for (const s of SETTINGS) {
       : `\n      old: ${flat(legacyCards(inputs))}\n      new: ${flat(movedCards(inputs))}`);
 }
 ok(['onPlan', 'negative', 'combination', 'overrideBreach', 'unfunded'].every(id => seen.has(id)),
-  'the published data reaches five of the seven verdicts',
+  'the published data reaches five of the eight verdicts',
   [...seen].join(', '));
 ok(!seen.has('gap') && !seen.has('belowBuffer'),
   'and the remaining two are proved on fixtures above');

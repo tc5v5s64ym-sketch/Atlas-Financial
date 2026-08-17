@@ -3059,7 +3059,7 @@
   }
 
   /* -------------------------------------------------------- the status band */
-  // The verdict at the top of the Plan page: which of seven conclusions the
+  // The verdict at the top of the Plan page: which of eight conclusions the
   // household reads about the next 13 weeks, and the figures inside it.
   //
   // `public/plan.js` used to decide this, and it was the most prominent
@@ -3069,7 +3069,9 @@
   //
   // The order is the decision, and each step earns its place:
   //
-  //   1. A GAP NO SOURCE CAN REACH outranks everything. At that buffer the
+  //   0. RECOMMEND ALREADY MARKED THE PROTECTED PLAN INFEASIBLE. Copied from
+  //      advice.infeasible so the band cannot read "on plan" beside that.
+  //   1. A GAP NO SOURCE CAN REACH outranks everything else. At that buffer the
   //      floor sits below it whatever the household spends, so naming a weekly
   //      figure would blame spending for something spending cannot fix.
   //   2. A WEEKLY FIGURE THE HOUSEHOLD SET that breaches the buffer is the
@@ -3108,6 +3110,22 @@
     const buffer = sim.buffer;
     const gapAmount = gap ? gap.amount : 0;
     const daily = sim.daily || [];
+
+    // Recommend already decided the protected master plan cannot work.
+    // Surface that here so the band cannot read "on plan" beside payday
+    // INFEASIBLE. Figures are copied from advice.infeasible; nothing is
+    // re-derived.
+    if (advice.mode === 'infeasible' && advice.infeasible) {
+      const fail = advice.infeasible;
+      return {
+        id: 'infeasible',
+        kind: fail.kind,
+        date: fail.date,
+        shortfall: fail.shortfall,
+        label: fail.label,
+        buffer,
+      };
+    }
 
     if (gap && fundingShort) {
       return { id: 'unfunded', gapAmount, floorDate: gap.floorDate,

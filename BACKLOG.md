@@ -32,14 +32,13 @@ facts PR; each needs its own independently provable outcome):
 **Critical path** is owned by
 [`docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`](docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md),
 not by this file. Current order (2026-08-16, after the `B91` opening):
-`B94` is **done**. Next is `B96` prove the payday question end-to-end.
-`B80`, the live Lunch Money observation test, `B95`, `B91` /
-`AF-RECON-01`, and `B94` / `AF-PLAN-01` are **done**. `B95` already absorbed the known major future
+`B96` is **done**. `B80`, the live Lunch Money observation test, `B95`, `B91` /
+`AF-RECON-01`, `B94` / `AF-PLAN-01`, and `B96` / `AF-PLAN-02` are **done**. `B95` already absorbed the known major future
 costs onto `plan.commitments` — that is the one home; do not open a ticket
 per purchase. `B20` / `B21`, `B78`, provider-completeness, broad historical
 forensics, and old categorisation cleanup are not critical-path gates
 unless they expose a demonstrated material source or financial-correctness
-gap. Do not start `B96` in this engine pull request.
+gap.
 
 **Operational knowledge lives in `docs/ACCOUNT_FACTS.md`**, not here: how each
 institution's data is obtained, the download endpoints, and the traps that cost
@@ -1281,7 +1280,7 @@ policy were invented. B94 sequencing and out-of-window safe-to-spend are
 not started. Proved by `test-major-future-costs.js`. A later estimate
 change is an edit to the existing row, not a new backlog item.
 
-**B96 · Prove the payday question end-to-end** · `QUEUED` · *after B94; not started*
+**B96 · Prove the payday question end-to-end** · **DONE 2026-08-16** · *after B94; one outcome*
 Distinct from `B94`. This item does not implement the master-forecast
 engine. After that engine exists, prove the closed loop a household
 actually reads: fresh evidence → canonical state → Forecast → household
@@ -1291,6 +1290,21 @@ projection. Acceptance is an independently proved payday answer from
 that chain, not a test of the function under change. Do not invent a
 second payday engine. Do not encode $600/week as policy. Build-strategy
 item `AF-PLAN-02`.
+
+Proved on the 2026-08-16 opening. The Plan page composes the household
+payday answer from incumbent Forecast results (`recommend`,
+`fundingSequence`, `majorPlans`, `plannedDebt`, `nearBoundary`,
+`nextPaymentOut`, `nextDue`, `unallocatedCash`, `mission`, `nextMove`,
+`planStatus`). No `Forecast.paydayPlan` was added. Spendable cash is the
+independent $2,252.76 identity. Weekly $920 is the master-plan cap, not
+cash-minus-bills and not $600 policy. A dated January commitment on this
+same plan reduces that cap; changing only the visible window does not.
+Settled rows stay settled; released capacity redirects along
+`fundingSequence` without becoming automatic safe-to-spend. Overdue
+protected items cannot be rescued by later income. Credit is not cash.
+Q19 / Q20 / Q25 / Q26 stay OPEN and fail-closed. `planStatus` copies
+recommend's INFEASIBLE result so the band cannot read "on plan" beside
+it. Proved by `test-b96-payday.js`.
 
 **B75 · Nothing checks that the authority table is complete** · **DONE 2026-08-11**
 PR #10 added `test-authority-coverage.js` to the blocking `npm test` suite. It

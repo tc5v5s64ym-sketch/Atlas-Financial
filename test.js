@@ -74,6 +74,7 @@ const suites = [
   ['Aug. 16 household evidence absorption', 'test-aug16-evidence.js'],
   ['major future costs on the master plan', 'test-major-future-costs.js'],
   ['master forecast engine (B94 / AF-PLAN-01)', 'test-master-forecast.js'],
+  ['end-to-end payday proof (B96 / AF-PLAN-02)', 'test-b96-payday.js'],
 ];
 
 let failed = [];

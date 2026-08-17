@@ -18,7 +18,8 @@ lives in [`ARCHITECTURE.md`](ARCHITECTURE.md). Known major future costs
 already live on `plan.commitments` (`B95` / PR #82). The published Forecast
 opening is 2026-08-16 (`B91` / `AF-RECON-01`). Forecast is the one
 master plan (`B94` / `AF-PLAN-01`): the 91-day Plan display is a view
-of a ≥12-month knowledge horizon. Do not treat 9 August
+of a ≥12-month knowledge horizon. The household payday answer is
+composed from that Forecast (`B96` / `AF-PLAN-02`). Do not treat 9 August
 conclusions as today's household truth. The critical path lives
 in
 [`docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`](docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md).
