@@ -10,7 +10,14 @@ here until 2026-08-12 and had already drifted: it omitted two documents the
 router lists and still announced the build strategy as something that did not
 exist yet, months after it did.
 
-**Current product posture (2026-08-16).** The household cash schedule has one
+**Current product posture (2026-08-17).** Lunch Money is the household's
+**normal operational financial update feed** (owner decision 2026-08-17).
+Forecast remains the sole deterministic planning and calculation authority.
+Lunch Money is evidence, not the planner and not canonical household policy.
+Live read-only observation already exists and has been exercised; automatic
+canonical writes are **not** approved. Owner-maintained Lunch Money account
+freshness is accepted owner policy and does not block unrelated
+automatically refreshed accounts. The household cash schedule has one
 Plan owner (`Forecast.expandEvents`, PR #37). Question OPEN / ANSWERED status
 is owned by [`docs/01_OPEN_QUESTIONS.md`](docs/01_OPEN_QUESTIONS.md); Deep Dive
 cannot close a question on its own. The master-forecast direction already
@@ -25,7 +32,8 @@ current-state authority. Do not treat 9 August
 conclusions as today's household truth. The critical path lives
 in
 [`docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`](docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md).
-Do not copy that sequence here.
+Do not copy that sequence here. Do not treat a second month of routine
+statement files as the next operational prerequisite.
 
 Everything lives in **one folder**:
 
@@ -150,6 +158,15 @@ build strategy. Do not invent a second list here.
 
 ## How to update the site
 
+**Routine freshness is not a second statement download.** The intended
+operating path is Lunch Money → Atlas observation + reconciliation →
+canonical Atlas state → Forecast → the site. Today the canonical write is
+still an explicit `data.json` edit after that compare; automatic production
+writes are not earned. File capture remains the fallback/backfill/direct-
+evidence path, not the monthly operational requirement.
+
+When a published figure does need to change:
+
 1. Edit `data.json` in this repo — every figure on the site comes from it
 2. **Check it renders** — see below
 3. Commit and push to `main`
@@ -219,8 +236,8 @@ node -e "const d=require('./data.json'),fs=require('fs');const a=['app','forecas
 | `data.json` | **by hand** | balances, rates, notes, questions, coverage |
 | `public/periods.json` | **generated** | monthly spending, interest and fees series |
 
-**Rebuild the generated one after any new capture**, or the period selector goes
-stale while the rest of the page updates:
+**Rebuild the generated one after any new spending capture**, or the period
+selector goes stale while the rest of the page updates:
 
 ```bash
 node scripts/periods.js . 2026-08-16

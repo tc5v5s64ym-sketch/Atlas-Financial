@@ -595,11 +595,16 @@ household* through an institution's ordinary login path, it is prohibited.
 [`ARCHITECTURE.md`](ARCHITECTURE.md) states that fail-closed rule and is the one
 home for it.
 
-**Two gated capabilities:** a canonical store, and automated financial-data
-connectivity. Both are wanted and neither is authorised yet.
+**Two gated capabilities:** a canonical store, and trusted canonical
+refresh from live financial-data connectivity. The store is wanted and not
+authorised. Live **read-only** Lunch Money observation already exists and
+has been exercised; automatic or unrestricted canonical **writes** from that
+feed are **not** authorised.
 [`ARCHITECTURE.md`](ARCHITECTURE.md) holds the exact gate for each. A capability
 is started when its gate is met and Dale says so, not when a plan reaches that
-line. Owner-reserved stop 5 is unchanged.
+line. Owner-reserved stop 5 is unchanged. The 2026-08-17 decision that Lunch
+Money is the normal operational update feed is product direction, not a pass
+of the write gate.
 
 **Still nothing here:** no second dashboard, and no governance system beyond this
 file. The gates that exist are the ones that caught something real. Add a gate
