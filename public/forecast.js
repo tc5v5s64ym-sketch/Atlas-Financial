@@ -1381,14 +1381,19 @@
 
     let remainingCap = capacity;
     const seq = fundingSequence(plan, asOf, opts);
-    const overdueProtectedIds = new Set(
-      overdueProtectedBy(seq, asOf).items.map(item => item.id)
-    );
+    const overdueProtected = overdueProtectedBy(seq, asOf);
+    const overdueProtectedIds = new Set(overdueProtected.items.map(item => item.id));
+    const overdueFloorById = new Map();
+    for (const item of overdueProtected.items) {
+      overdueFloorById.set(item.id, item.bounds ? item.bounds.floor : 0);
+    }
     // majorPlans reports the joint protected overdue remaining on every
     // protected overdue row. Automatic draws consume that shared shortfall
-    // once. Optional residual purposes are not in this set and keep
-    // independent remaining. Explicit amounts still occur, and a draw
-    // that belongs to the protected overdue pool reduces the shared
+    // once, but only up to the base floors of the named auto-eligible
+    // protected overdue purposes. Naming A does not authorize financing B.
+    // Optional residual purposes are not in this set and keep independent
+    // remaining. Explicit amounts still occur exactly as authorized, and a
+    // draw that belongs to the protected overdue pool reduces the shared
     // remainder before any auto-sized draw is added.
     let protectedOverdueAutoLeft = 0;
     for (const p of plans) {
@@ -1397,6 +1402,13 @@
         break;
       }
     }
+    let namedAutoProtectedFloor = 0;
+    for (const g of named) {
+      if (!overdueProtectedIds.has(g.id)) continue;
+      if (plannedDebtAuthorizedAmount(opts, g.id) != null) continue;
+      namedAutoProtectedFloor += overdueFloorById.get(g.id) || 0;
+    }
+    protectedOverdueAutoLeft = Math.min(protectedOverdueAutoLeft, namedAutoProtectedFloor);
     const draws = [];
     const takeDraw = (g, want) => {
       const amount = Math.min(want, remainingCap);
@@ -1418,7 +1430,8 @@
       if (plannedDebtAuthorizedAmount(opts, g.id) != null) continue;
       let want = 0;
       if (overdueProtectedIds.has(g.id)) {
-        want = protectedOverdueAutoLeft;
+        const purposeFloor = overdueFloorById.get(g.id) || 0;
+        want = Math.min(protectedOverdueAutoLeft, purposeFloor);
       } else if (g.verdict === 'FUNDING GAP' && g.remaining > 0) {
         want = g.remaining;
       }

@@ -1300,6 +1300,71 @@ console.log('\n=== overdue unsettled point commitments stay protected ===');
 }
 
 {
+  // Naming only A must not auto-draw the joint overdue gap that includes B.
+  // Independent: surplus 0; A $50 + B $100 = $150 joint gap.
+  const firstDue = F.addDays(AS_OF, -2);
+  const secondDue = F.addDays(AS_OF, -1);
+  const start = 500;
+  const buffer = 500;
+  const aAmt = 50;
+  const bAmt = 100;
+  const plan = barePlan({
+    windowDays: 40,
+    startingCash: { amount: start },
+    defaults: { targetBuffer: buffer },
+    commitments: [
+      { id: 'overdue-a', label: 'Unpaid A', date: firstDue,
+        amount: aAmt, confidence: 'confirmed' },
+      { id: 'overdue-b', label: 'Unpaid B', date: secondDue,
+        amount: bAmt, confidence: 'confirmed' },
+    ],
+  });
+  ok(start - buffer === 0 && aAmt + bAmt === 150,
+    'independent: no as-of surplus; protected overdue floors sum to $150');
+  const onlyA = F.plannedDebt(plan, AS_OF, recOpts({
+    allowPlannedDebt: true,
+    plannedDebtFacility: 'card-x',
+    plannedDebtPurposes: ['overdue-a'],
+    debts: [{ id: 'card-x', label: 'A card', rate: 19.99, balance: 0, pending: 0, limit: 5000 }],
+    plannedDebtPayment: 20,
+    weeklyVariable: 0,
+  }));
+  ok(near(onlyA.borrowed, aAmt),
+    'naming only A auto-borrows at most A\'s $50 floor, not the $150 joint gap',
+    String(onlyA.borrowed));
+  const drawnOnlyA = (onlyA.draws || []).find(d => d.id === 'overdue-a');
+  const drawnBFromA = (onlyA.draws || []).find(d => d.id === 'overdue-b');
+  ok(drawnOnlyA && near(drawnOnlyA.amount, aAmt) && !drawnBFromA,
+    'the $50 draw is labelled for A; unnamed B is not allocated',
+    JSON.stringify(onlyA.draws));
+  ok(onlyA.feasible === false,
+    'the plan stays infeasible because unnamed B is still unfinanced',
+    `feasible=${onlyA.feasible} borrowed=${onlyA.borrowed}`);
+
+  const both = F.plannedDebt(plan, AS_OF, recOpts({
+    allowPlannedDebt: true,
+    plannedDebtFacility: 'card-x',
+    plannedDebtPurposes: ['overdue-a', 'overdue-b'],
+    debts: [{ id: 'card-x', label: 'A card', rate: 19.99, balance: 0, pending: 0, limit: 5000 }],
+    plannedDebtPayment: 20,
+    weeklyVariable: 0,
+  }));
+  ok(near(both.borrowed, aAmt + bAmt),
+    'naming A and B may borrow the $150 joint gap',
+    String(both.borrowed));
+  const drawnA = (both.draws || []).find(d => d.id === 'overdue-a');
+  const drawnB = (both.draws || []).find(d => d.id === 'overdue-b');
+  ok(drawnA && near(drawnA.amount, aAmt) && drawnB && near(drawnB.amount, bAmt),
+    'each named purpose auto-draws only its own base floor',
+    JSON.stringify(both.draws));
+  ok(start + aAmt + bAmt - buffer === aAmt + bAmt,
+    'independent: a $150 as-of draw lands current surplus on the $150 floor');
+  ok(both.feasible === true,
+    'both named purposes plus repayment can make the protected plan feasible',
+    `feasible=${both.feasible} borrowed=${both.borrowed}`);
+}
+
+{
   // Passing a ranged deadline is the overdue-point repair: original date,
   // min/max preserved, aggregate floor vs as-of surplus. surplusOn() has
   // no day before as-of, so testing item.date would be a permanent gap.
