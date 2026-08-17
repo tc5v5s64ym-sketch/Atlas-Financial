@@ -916,6 +916,8 @@ ok(periods.asOf === '2026-08-09',
 ok(periods.asOf <= data.meta.asOf,
   'and is not dated after the Forecast opening',
   `${periods.asOf} vs ${data.meta.asOf}`);
+ok(/PERIODS\.asOf/.test(read('public/app.js')),
+  'Deep Dive header publishes the history source as-of separately when it differs from the plan');
 ok(plan.budget.ownerTargets && plan.budget.ownerTargets.status,
   'the budget records whether an owner target exists',
   plan.budget.ownerTargets.status);

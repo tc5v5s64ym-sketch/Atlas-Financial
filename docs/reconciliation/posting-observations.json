@@ -8,7 +8,7 @@
     "A live opening observation needs explicit cutover semantics so events already inside that observation are not replayed. representedEvents is that list. This file compares posting evidence to that list and does not write it.",
     "Unknown posting is not unposted and is not posted. Fail closed: do not put an unknown item on representedEvents.",
     "The 2026-08-16 Forecast opening is after Friday 14 August. Posted 14 August items fall before asOf and are not replayed even when they are not on representedEvents. representedEvents remains empty because no same-day 16 August scheduled item is inside the observation.",
-    "BCAA, ICBC, RESP, and union dues were due Saturday 15 August and were not observed posted in the 2026-08-16 pull. They stay unknown here and are reserved on the live plan as once rows."
+    "BCAA, ICBC, RESP, and union dues were due Saturday 15 August. Posting remains unknown: the Aug. 14 corpus did not observe them, and unknown posting is not proof of unposted. They stay unknown here and are reserved on the live plan as once rows."
   ],
   "observations": [
     {
@@ -69,7 +69,7 @@
       "observedAsOf": "2026-08-14",
       "canonical": { "collection": "representedEvents", "id": "bcaa" },
       "source": "docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md",
-      "note": "Next-day scheduled item as of the Aug. 14 observation. Still not observed posted in the 2026-08-16 pull. Reserved on the live plan as bcaa-aug15-outstanding. Do not invent a representedEvents cutover for it."
+      "note": "Next-day scheduled item as of the Aug. 14 observation. Unknown posting is not posted and is not unposted. Saturday 15 August is inside the 14-day current-state window ending 2026-08-16. Reserved on the live plan as bcaa-aug15-outstanding. Do not invent a representedEvents cutover for it."
     },
     {
       "observationId": "payday-icbc-posting-unknown",
@@ -81,7 +81,7 @@
       "observedAsOf": "2026-08-14",
       "canonical": { "collection": "representedEvents", "id": "icbc" },
       "source": "docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md",
-      "note": "Next-day scheduled item as of the Aug. 14 observation. Still not observed posted in the 2026-08-16 pull. Reserved on the live plan as icbc-aug15-outstanding. Do not invent a representedEvents cutover for it."
+      "note": "Next-day scheduled item as of the Aug. 14 observation. Unknown posting is not posted and is not unposted. Reserved on the live plan as icbc-aug15-outstanding. Do not invent a representedEvents cutover for it."
     },
     {
       "observationId": "payday-resp-posting-unknown",
@@ -93,7 +93,7 @@
       "observedAsOf": "2026-08-14",
       "canonical": { "collection": "representedEvents", "id": "resp" },
       "source": "docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md",
-      "note": "Next-day scheduled item as of the Aug. 14 observation. Still not observed posted in the 2026-08-16 pull. Reserved on the live plan as resp-aug15-outstanding. Do not invent a representedEvents cutover for it."
+      "note": "Next-day scheduled item as of the Aug. 14 observation. Unknown posting is not posted and is not unposted. Reserved on the live plan as resp-aug15-outstanding. Do not invent a representedEvents cutover for it."
     },
     {
       "observationId": "payday-uniondues-posting-unknown",

@@ -261,7 +261,13 @@ const App = (() => {
     Promise.all(wants).then(([d, p]) => {
       DATA = d; PERIODS = p || null;
       const asof = $('asof');
-      if (asof) asof.textContent = 'As at ' + fmtDateLong(d.meta.asOf);
+      if (asof) {
+        let text = 'As at ' + fmtDateLong(d.meta.asOf);
+        if (PERIODS && PERIODS.asOf && PERIODS.asOf !== d.meta.asOf) {
+          text += ' · spending history as at ' + fmtDateLong(PERIODS.asOf);
+        }
+        asof.textContent = text;
+      }
       for (const fn of onceHooks) fn(DATA, PERIODS);
       rerender();
     }).catch(err => {

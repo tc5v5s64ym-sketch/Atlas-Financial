@@ -166,6 +166,16 @@ console.log('\n=== E. unposted 15 August bills remain reserved; unknown posting 
     'independent 15 August unposted reserve is $307.87', money(reserved));
   ok(!live.plan.opening.representedEvents.some(e => unknownIds.includes(e.id)),
     'unknown posting was not written onto representedEvents');
+  const bcaa = (live.plan.bills || []).find(b => b.id === 'bcaa-aug15-outstanding');
+  const bcaaObs = posting.observations.find(o => o.eventId === 'bcaa');
+  ok(bcaa && /posting unknown/i.test(bcaa.label),
+    'the reserved BCAA row is labelled unknown posting, not confirmed unposted');
+  ok(bcaa && !/not in the 2026-08-16 Lunch Money window/i.test(bcaa.note),
+    'BCAA does not claim 15 August is outside the 14-day current-state window');
+  ok(bcaaObs && bcaaObs.observedAsOf === '2026-08-14' && bcaaObs.unknown === true,
+    'BCAA posting provenance stays the Aug. 14 unknown observation');
+  ok(!/Still not observed posted in the 2026-08-16 pull/i.test(bcaaObs.note),
+    'unknown Aug. 14 provenance is not rewritten as an Aug. 16 confirmed absence');
 }
 
 console.log('\n=== F. debt openings independently match their source identities ===');
@@ -228,6 +238,14 @@ console.log('\n=== G. Amanda / TENNIS INCOME is not spendable; card capacity is 
     'utilisation does not convert unknown Cash Back pending into $200.57 available');
   ok(!/household cash|spendable/.test(JSON.stringify(util.rows.map(r => r.available))),
     'utilisation does not relabel capacity as cash');
+  const cards = (live.plan.funding && live.plan.funding.options || [])
+    .find(o => o.id === 'cards');
+  ok(cards && near(cards.available, 287.38 + 294.06),
+    'the unusable cards funding option excludes unknown Cash Back headroom',
+    String(cards && cards.available));
+  const cashAction = (live.plan.actions || []).find(a => /Cash Back Visa back under/i.test(a.what));
+  ok(cashAction && cashAction.status === 'open',
+    'the Cash Back over-limit action stays open while pending is unknown');
 }
 
 console.log('\n=== H. Q19 remains unresolved and is not silent zero cash impact ===');
@@ -299,6 +317,7 @@ console.log('\n=== K. observation files remain evidence; reconciler does not wri
   const triPosted16 = result.rows.find(r => r.observationId === 'card-triangle-posted-2026-08-16');
   const mbPosted16 = result.rows.find(r => r.observationId === 'card-mbna-posted-2026-08-16');
   const cashPosted16 = result.rows.find(r => r.observationId === 'card-cashback-posted-2026-08-16');
+  const cashPending16 = result.rows.find(r => r.observationId === 'card-cashback-pending-2026-08-16');
   ok(campRow && campRow.status === 'MATCH', 'Fusion camp observation is MATCH against canonical settledOn');
   ok(tryRow && tryRow.status === 'MATCH', 'Fusion tryouts observation is MATCH against canonical settledOn');
   ok(sepRow && sepRow.status === 'MATCH', 'Hydro 1 September observation is MATCH against the live bill');
@@ -309,6 +328,8 @@ console.log('\n=== K. observation files remain evidence; reconciler does not wri
     'Aug. 16 MBNA posted observation MATCHES the opening');
   ok(cashPosted16 && cashPosted16.status === 'MATCH' && near(cashPosted16.evidenceValue, 4799.43),
     'Aug. 16 Cash Back posted observation MATCHES the opening');
+  ok(cashPending16 && cashPending16.unknown === true,
+    'Aug. 16 Cash Back pending observation stays unknown, not $0');
   ok(result.staleAssigned === false && result.counts.STALE === 0,
     'STALE is still not assigned');
   const out = execFileSync(process.execPath, ['scripts/reconcile.js'], {
