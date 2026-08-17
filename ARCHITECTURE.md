@@ -19,9 +19,14 @@ heading. `CONTEXT.md` orients a session; this explains the design.
   data.json     PUBLICATION   the figures the site shows   committed → deployed
 ```
 
+Those five layers are the **file-evidence path**. They remain how statement
+PDFs, exports, and other captured files move when that path is used. They are
+not the household's normal operational refresh.
+
 Material only ever flows **down**. Nothing edits `raw/`. Nothing hand-writes
-`derived/`. A figure that reaches `data.json` can always be traced back up to a
-statement.
+`derived/`. A published figure traces to its evidence: a Lunch Money
+observation on the normal refresh path, or a statement / institution artifact
+when that file path is the source.
 
 ### Inside publication: source facts to a decision
 
@@ -84,7 +89,75 @@ git.
 
 ## The flow, end to end
 
-A statement arrives → it becomes a live figure:
+**Normal operation — owner-approved 2026-08-17.** Lunch Money is the
+household's **normal operational financial update feed**. The owner does not
+want to maintain the same current account data twice by syncing Lunch Money
+and separately downloading routine monthly statements into Atlas.
+
+```
+institutions / owner-maintained Lunch Money accounts
+    ↓
+Lunch Money                              evidence / update feed
+    ↓
+Atlas observation + reconciliation       read-only observe; non-writing compare
+    ↓
+canonical Atlas state                    data.json; automatic write not yet earned
+    ↓
+Forecast                                 sole planning / calculation authority
+    ↓
+Atlas website / ChatGPT / other consumers
+```
+
+Forecast remains the sole deterministic planning and financial calculation
+authority. Lunch Money is an evidence/update source. It is not the planner,
+not the canonical Atlas plan, not household policy, and not authority over
+future commitments, priorities, or owner decisions. Where institutional
+evidence directly contradicts Lunch Money and is available, the institution
+is stronger factual evidence.
+
+Routine use is:
+
+1. Lunch Money automatically refreshes connected accounts.
+2. The owner updates any manual Lunch Money accounts when they want those
+   balances current.
+3. Atlas reads Lunch Money.
+4. Atlas reconciles new observations against canonical state.
+5. Supported changes flow through the existing Atlas refresh /
+   canonical-update mechanism **once that write path is earned**. Today the
+   canonical write is still an explicit owner-approved edit of `data.json`,
+   not an automatic production write.
+6. Forecast recalculates.
+7. Atlas exposes the freshness and uncertainty that remain.
+
+Some household accounts or cards are not automatically refreshed by Lunch
+Money and require the owner to update current balances there. That is
+**accepted owner policy**. Do not require a duplicate Atlas statement-import
+workflow merely because those accounts are manual in Lunch Money. Atlas
+consumes the state Lunch Money reports while preserving truthful freshness /
+observation metadata. If a manually maintained Lunch Money account is stale:
+do not pretend it is institution-live; do not manufacture a newer balance;
+do not block all other current-state refresh because that one account is
+older; preserve and report its actual observed or provider-updated freshness
+where available. Accuracy of that account's contribution to the outlook
+depends on the owner's Lunch Money update. Do not hard-code the count or
+identity of manual accounts unless current live evidence or the account map
+actually proves them.
+
+Owner-only information still enters Atlas separately when Lunch Money cannot
+know it: future commitments, planned purchases and travel, household policy,
+priorities, cancellation or settlement knowledge, unknown account purpose,
+contractual facts Lunch Money does not supply, and exceptional corrections.
+That is not duplicate balance maintenance.
+
+**The file path remains for manual, historical, and fallback evidence.**
+Historical and manual statement files are useful for backfill, dispute and
+verification, contractual terms Lunch Money does not expose, direct
+institutional evidence when a provider value conflicts, and unusual evidence
+collection. They are **not** the routine monthly operational refresh
+requirement. Proven statement extraction tooling is not deleted and is not
+declared useless. It is not the operational prerequisite for Atlas freshness.
+
+When a statement file is the source:
 
 1. **Drop it in `raw/`.** Never edit it. Never rename it beyond a clear
    convention: `raw/statements-<institution>/<YYYY-MM-DD>-<account>.pdf`
@@ -98,8 +171,8 @@ A statement arrives → it becomes a live figure:
 5. **Update `data.json`** with figures that belong on the site.
 6. **Commit and push.** Render deploys within a couple of minutes.
 
-The pre-commit hook refuses steps 1 and 3 from reaching git, whatever else
-goes wrong.
+The pre-commit hook refuses file-path steps 1 and 3 from reaching git,
+whatever else goes wrong.
 
 ---
 
@@ -248,10 +321,11 @@ owner beside Forecast.
 
 None of them may create a second financial answer, and none is an authority.
 They consume the same ones. A surface that works a figure out for itself is the
-defect `B73` exists to close, arriving through a new door. The intended
-refresh chain, once `B91` exists, is fresh evidence → reconciliation →
-canonical Atlas state → Forecast → payday-plan output, then those three
-surfaces. Sequencing of that work lives in
+defect `B73` exists to close, arriving through a new door. The **normal**
+refresh chain is Lunch Money → observation + reconciliation → canonical Atlas
+state → Forecast → those three surfaces. `B91` is done. Lunch Money is the
+evidence/update feed, not a second planner. Automatic canonical writes are
+not yet earned. Sequencing of that remaining work lives in
 [`docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`](docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md).
 
 **What the plan is expected to cover, as each capability is earned:** material
@@ -635,10 +709,18 @@ that remaining household-facing question. This file does not pick 21st or
 month-end to make the calendar cleaner. Refresh work must not claim confident
 zero household cash impact while those mechanics remain unresolved.
 
-**Current-state refresh is the remaining gap, not a second engine.** Forecast
-is the deterministic financial engine and stays that. The household now needs
-a path from fresh evidence to canonical `data.json` so Forecast is fed current
-facts. Direction, not a schema:
+**Current-state refresh uses Lunch Money as the normal feed; Forecast stays
+the engine.** Owner decision **2026-08-17**: Lunch Money is the household's
+normal operational financial update feed. Forecast remains the deterministic
+financial engine and the sole planning / calculation authority. Lunch Money
+is evidence, not the planner, not canonical household policy, and not
+authority over future commitments, priorities, or owner decisions. The live
+read-only GET seam (`scripts/provider-observe.js`) is an **incumbent** and
+has already been exercised. `scripts/reconcile.js` is the non-writing
+compare. **Automatic canonical writes are not approved.** B91 is done. The
+remaining capability to earn is trusted canonical refresh from a later Lunch
+Money observation, with identity and idempotency proved first. Direction,
+not a schema:
 
 - freshness belongs to the evidence class (live balances, contractual
   recurring facts, household policy, derived engine results), not merely one
@@ -710,9 +792,11 @@ Fusion camp/tryouts `settledOn: "2026-08-14"`, and kept the 1 September
 Hydro dated due. It does not invent Aug. 14 joint-cash opening balances,
 does not resolve Q19, and does not encode $600/week. Observation files
 remain evidence; the reconciler remains non-writing. B91 is done.
-A successful later refresh writes the new current state into `data.json`
-and then `scripts/snapshot-balances.js` emits `snapshots/<as-of>.json`
-without hand-editing. That write does not change Forecast inputs.
+A later successful refresh still writes the new current state into
+`data.json` only through the earned canonical-update mechanism, then
+`scripts/snapshot-balances.js` emits `snapshots/<as-of>.json` without
+hand-editing. That snapshot write does not change Forecast inputs. Automatic
+production writes from Lunch Money are **not** that mechanism today.
 
 **`plan.nextDollar` is derived, not instructed.** Its own provenance note says so:
 neither Dale nor Amanda has stated or approved the `protect-then-highest-cost`
@@ -750,27 +834,46 @@ store would only add failure modes.
 
 ### Automated financial-data connectivity
 
-Reading account data automatically, rather than from files the owner exports, is
-an **owner-approved desired capability**. It is gated on all five of:
+Lunch Money as the **normal operational update feed** is owner-approved
+product direction (2026-08-17). That direction does **not** authorize bank
+credentials in Atlas, money movement, autonomous institution changes, silent
+production writes, bypassing reconciliation, or treating unknown or stale
+values as current.
 
-1. **proven need** — the manual capture path is demonstrably the binding limit;
+Two capabilities must not be conflated:
+
+- **Live read-only observation** — already built and exercised.
+  `scripts/provider-observe.js` may GET Lunch Money locally when the owner
+  sets `LUNCHMONEY_ACCESS_TOKEN` in their shell. That seam does not write
+  `data.json`, does not store a bank password, and is not T4 / `B81`.
+- **Trusted canonical refresh** — the remaining gated capability. Automatic
+  or unrestricted writes from the live feed into canonical Atlas state are
+  **not** approved. T4 / `B81` wait on the remaining conditions below and an
+  explicit owner pass.
+
+Pointing automatic canonical writes at the live feed is gated on all five of:
+
+1. **proven need** — recorded: the owner will not maintain the same current
+   account data twice via Lunch Money and a separate routine statement import;
 2. **current Canadian availability** — a provider that actually serves these
    institutions, verified when the work starts, not assumed;
 3. **security review** — owner-reserved, and unchanged by anything here;
 4. **provider semantics** — how it identifies accounts, transactions, pending
    state and corrections, and what its failure modes cost;
-5. **a working canonical ingestion foundation** — idempotent import and identity
-   proven **before anything live is pointed at it**.
+5. **a working canonical ingestion foundation** — idempotent import and
+   identity proven **before automatic canonical writes are pointed at the
+   live feed**.
 
-Condition 5 is about pointing something live, not about building the foundation:
-the foundation may be built first, without a provider, and doing so satisfies one
-condition rather than opening the gate.
+Condition 5 is about trusted writes, not about building the foundation, and
+not about the existing read-only GET: the foundation may be built first, and
+doing so satisfies one condition rather than opening the gate. The existing
+live Lunch Money GET is an incumbent. Future trusted canonical refresh is
+the remaining capability to earn.
 
-**Current seam, not the gate.** Owner instruction 2026-08-16 recorded condition 1
-and authorised a fixture-first observe path. `scripts/provider-observe.js` may
-GET Lunch Money locally if the owner sets `LUNCHMONEY_ACCESS_TOKEN` in their
-shell. That test does not write `data.json`, does not store a bank password, and
-does not open T4 / `B81`.
+**Current seam, not the gate.** Owner instruction 2026-08-16 recorded
+condition 1 and authorised a fixture-first observe path. The 2026-08-17
+direction names Lunch Money as the normal feed and still does not open T4 /
+`B81`.
 
 ---
 
