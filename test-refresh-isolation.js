@@ -181,7 +181,10 @@ console.log('\n=== anti-mutation: financial truth still bites ===');
     'omitting the bill from that identity disagrees — conservation still bites');
 
   const rec = F.recommendWeekly(fixture, '2026-01-01', { targetBuffer: 100 });
-  const over = F.simulate(fixture, '2026-01-01', { weeklyVariable: rec + 10, targetBuffer: 100 });
+  const days = F.knowledgeHorizon(fixture, '2026-01-01', {}).days;
+  const over = F.simulate(fixture, '2026-01-01', {
+    weeklyVariable: rec + 10, targetBuffer: 100, horizonDays: days,
+  });
   ok(over.min.balance < 100, 'one $10 step above the cap still breaches the floor');
 
   const live = JSON.parse(fs.readFileSync(DATA, 'utf8'));

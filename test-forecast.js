@@ -78,13 +78,19 @@ ok(near(simReq.weeks[0].requiredClosing, 170), 'week 1 must close ≥ buffer + f
 ok(near(simReq.weeks[1].requiredClosing, 100), 'final week track equals the buffer', simReq.weeks[1].requiredClosing.toFixed(2));
 
 console.log('\n=== recommender ===');
+const recHorizon = F.knowledgeHorizon(fixture, '2026-01-01', {});
 const rec = F.recommendWeekly(fixture, '2026-01-01', { targetBuffer: 100 });
-// Two constraints: day 3 (500 − 3W/7 ≥ 100 → W ≤ 933) and the ending
-// (1100 − 2W ≥ 100 → W ≤ 500). The ending binds, exactly on a $5 step.
-ok(rec === 500, 'solves the binding constraint to the nearest $5', String(rec));
-const simRec = F.simulate(fixture, '2026-01-01', { weeklyVariable: rec, targetBuffer: 100 });
+// Day 3: 500 − 3W/7 ≥ 100 → W ≤ 933. After pay and the bill, the last
+// knowledge-horizon day binds: 1100 − (W/7)×days ≥ 100 → W ≤ 1000 × 7 / days.
+const wantRec = Math.floor(((500 + 1000 - 400 - 100) * 7 / recHorizon.days) / 5) * 5;
+ok(rec === wantRec, 'solves the binding constraint to the nearest $5', String(rec));
+const simRec = F.simulate(fixture, '2026-01-01', {
+  weeklyVariable: rec, targetBuffer: 100, horizonDays: recHorizon.days,
+});
 ok(simRec.min.balance >= 100, 'recommended budget respects the buffer', simRec.min.balance.toFixed(2));
-const simOver = F.simulate(fixture, '2026-01-01', { weeklyVariable: rec + 10, targetBuffer: 100 });
+const simOver = F.simulate(fixture, '2026-01-01', {
+  weeklyVariable: rec + 10, targetBuffer: 100, horizonDays: recHorizon.days,
+});
 ok(simOver.min.balance < 100, 'and $10 more breaches it', simOver.min.balance.toFixed(2));
 
 console.log('\n=== the real plan block ===');
