@@ -90,6 +90,13 @@
   // once: the Travel Visa published $0 available beside a derived $21.69,
   // because one of them knew about $165.13 of pending charges and the other
   // did not.
+  //
+  // Unknown pending is not $0. `openingBalance` still adds a missing pending
+  // as $0 so posted-only arithmetic stays defined; utilisation must not
+  // publish headroom or a cleared over-limit state from that posted-only
+  // figure when `pendingUnknown` is set.
+  const isPendingUnknown = debt => !!(debt && (debt.pendingUnknown === true
+    || debt.unknownPending === true));
   const openingBalance = debt => debt.balance + (debt.pending || 0);
 
   // Live cash balances live on `plan.startingCash.breakdown` /
@@ -509,6 +516,10 @@
           // day that actually closes on the buffer.
           if (date === start && measureFrom <= start && min.date === start) {
             min = { date, balance };
+            // week.low later includes week.opening. Leaving it at the
+            // pre-injection cash made a funded sim.min sit above buffer
+            // while week 1 still reported below-buffer.
+            week.opening = balance;
           }
         }
         else if (e.kind === 'obligation') week.obligations += -e.amount;
@@ -1392,12 +1403,13 @@
       // Carrying pending charges from the opening balance is what makes
       // headroom, over-limit state and interest all agree with what the
       // institution would say today. The rule itself is `openingBalance`.
-      const pending = x.pending || 0;
+      const pendingUnknown = isPendingUnknown(x);
+      const pending = pendingUnknown ? null : (x.pending || 0);
       const opening = openingBalance(x);
       const s = {
         id: x.id, label: x.label, secured: !!x.secured, rate: x.rate || 0,
         limit: x.limit, opening, balance: opening,
-        postedBalance: x.balance, pending,
+        postedBalance: x.balance, pending, pendingUnknown,
         interestByEvent: !!x.interestByEvent, principalShare: x.principalShare,
         interest: 0, paid: 0, capitalised: 0, drawn: 0,
         // The day the balance actually crosses the limit. Tracked on the daily
@@ -1475,18 +1487,22 @@
       debts: state.map(s => ({
         id: s.id, label: s.label, secured: s.secured, balance: s.balance,
         limit: s.limit, postedBalance: s.postedBalance, pending: s.pending,
-        available: s.limit != null ? Math.max(0, s.limit - s.balance) : null,
-        overLimit: s.limit != null && s.balance > s.limit,
-        overLimitBy: s.limit != null ? Math.max(0, s.balance - s.limit) : 0,
+        pendingUnknown: !!s.pendingUnknown,
+        available: s.limit == null || s.pendingUnknown ? null
+          : Math.max(0, s.limit - s.balance),
+        overLimit: s.limit != null && !s.pendingUnknown && s.balance > s.limit,
+        overLimitBy: s.limit != null && !s.pendingUnknown
+          ? Math.max(0, s.balance - s.limit) : 0,
         interest: s.interest, paid: s.paid, drawn: s.drawn, firstOver: s.firstOver,
       })),
       consumer: state.filter(s => !s.secured).reduce((a, s) => a + s.balance, 0),
       secured: state.filter(s => s.secured).reduce((a, s) => a + s.balance, 0),
       heloc: byId.heloc ? byId.heloc.balance : 0,
       // Revolving headroom across every facility that has a limit.
-      headroom: state.filter(s => s.limit != null)
+      headroom: state.filter(s => s.limit != null && !s.pendingUnknown)
         .reduce((a, s) => a + Math.max(0, s.limit - s.balance), 0) + extraAvailable,
-      overLimitCount: state.filter(s => s.limit != null && s.balance > s.limit).length,
+      overLimitCount: state.filter(s => s.limit != null && !s.pendingUnknown
+        && s.balance > s.limit).length,
       interestToDate: state.reduce((a, s) => a + s.interest, 0),
     });
     marks.push(snapshot(0, start));
@@ -2542,12 +2558,15 @@
   function utilisation(debts, extra, plan) {
     extra = resolveExtraFacilities(extra, plan);
     const rows = (debts || []).filter(x => x.limit != null).map(x => {
-      const pending = x.pending || 0;
-      const used = openingBalance(x);
+      const pendingUnknown = isPendingUnknown(x);
+      const pending = pendingUnknown ? null : (x.pending || 0);
+      const used = pendingUnknown ? x.balance : openingBalance(x);
       return {
         id: x.id, label: x.label, posted: x.balance, pending, used, limit: x.limit,
-        available: Math.max(0, x.limit - used),
-        overLimit: used > x.limit, overLimitBy: Math.max(0, used - x.limit),
+        pendingUnknown,
+        available: pendingUnknown ? null : Math.max(0, x.limit - used),
+        overLimit: pendingUnknown ? null : used > x.limit,
+        overLimitBy: pendingUnknown ? null : Math.max(0, used - x.limit),
         pct: x.limit ? (used / x.limit) * 100 : null,
       };
     });
@@ -2565,9 +2584,10 @@
       rows,
       // The headline the Plan quotes. Pending is already inside `used`, so a
       // card that is economically full contributes nothing here.
-      totalAvailable: rows.reduce((s, r) => s + r.available, 0),
-      totalPending: rows.reduce((s, r) => s + r.pending, 0),
-      overLimitCount: rows.filter(r => r.overLimit).length,
+      totalAvailable: rows.reduce((s, r) => s + (r.available == null ? 0 : r.available), 0),
+      totalPending: rows.reduce((s, r) => s + (r.pending == null ? 0 : r.pending), 0),
+      overLimitCount: rows.filter(r => r.overLimit === true).length,
+      unknownPendingCount: rows.filter(r => r.pendingUnknown).length,
     };
   }
 
@@ -2946,7 +2966,8 @@
           // balance is under its limit but whose pending charges take it over
           // owes the larger figure, and a payoff answered on the smaller one is
           // answered for a debt the household does not have.
-          balance, posted: x.balance, pending: x.pending || 0,
+          balance, posted: x.balance,
+          pending: isPendingUnknown(x) ? null : (x.pending || 0),
           rate: x.rate, convention, monthlyRate,
           // Whether `monthlyRate` is the convention or an average of it. The
           // page has to say which; see `PAYOFF_BASIS_PRECISION`.

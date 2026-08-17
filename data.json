@@ -219,7 +219,7 @@
                 "amount": 82.96,
                 "confidence": "confirmed",
                 "budgetCategory": "insurance",
-                "note": "Eighteen consecutive months on the 15th; $82.96 in each of the last three. The 15 August occurrence is the once row bcaa-aug15-outstanding because it was not observed posted. firstDue 2026-09-15.",
+                "note": "Eighteen consecutive months on the 15th; $82.96 in each of the last three. The 15 August occurrence is the once row bcaa-aug15-outstanding because posting remains unknown. firstDue 2026-09-15.",
                 "firstDue": "2026-09-15"
             },
             {
@@ -230,7 +230,7 @@
                 "amount": 99.91,
                 "confidence": "confirmed",
                 "budgetCategory": "insurance",
-                "note": "$99.91 on the 15th, five consecutive months. The 15 August occurrence is the once row icbc-aug15-outstanding because it was not observed posted. firstDue 2026-09-15.",
+                "note": "$99.91 on the 15th, five consecutive months. The 15 August occurrence is the once row icbc-aug15-outstanding because posting remains unknown. firstDue 2026-09-15.",
                 "firstDue": "2026-09-15"
             },
             {
@@ -241,7 +241,7 @@
                 "amount": 100,
                 "confidence": "confirmed",
                 "budgetCategory": null,
-                "note": "Children's RESP contribution, $100 on the 15th. Owner-stated hard recurring household bill. The 15 August occurrence is the once row resp-aug15-outstanding because it was not observed posted. firstDue 2026-09-15. Classified as an internal transfer in the transaction history, so it is dated here and not subtracted from a spending category.",
+                "note": "Children's RESP contribution, $100 on the 15th. Owner-stated hard recurring household bill. The 15 August occurrence is the once row resp-aug15-outstanding because posting remains unknown. firstDue 2026-09-15. Classified as an internal transfer in the transaction history, so it is dated here and not subtracted from a spending category.",
                 "firstDue": "2026-09-15"
             },
             {
@@ -252,7 +252,7 @@
                 "amount": 25,
                 "confidence": "confirmed",
                 "budgetCategory": null,
-                "note": "Still active on the RBC chequing statement ($25 on the 15th). The 15 August occurrence is the once row uniondues-aug15-outstanding because it was not observed posted. firstDue 2026-09-15. Owner intends to cancel (open action: Cancel CMAW Local 1995 dues). Reserved as a cash outflow until cancellation is actually confirmed.",
+                "note": "Still active on the RBC chequing statement ($25 on the 15th). The 15 August occurrence is the once row uniondues-aug15-outstanding because posting remains unknown. firstDue 2026-09-15. Owner intends to cancel (open action: Cancel CMAW Local 1995 dues). Reserved as a cash outflow until cancellation is actually confirmed.",
                 "firstDue": "2026-09-15"
             },
             {
@@ -277,43 +277,43 @@
             },
             {
                 "id": "bcaa-aug15-outstanding",
-                "label": "BCAA insurance — 15 August still unposted",
+                "label": "BCAA insurance — 15 August posting unknown",
                 "frequency": "once",
                 "date": "2026-08-16",
                 "amount": 82.96,
                 "confidence": "confirmed",
                 "budgetCategory": "insurance",
-                "note": "Monthly BCAA is due the 15th. Saturday 15 August 2026 is not in the 2026-08-16 Lunch Money window, and no BCAA payee posted on Friday 14 August. Fail closed: reserve the scheduled amount on this opening. The monthly row remains for 15 September onward."
+                "note": "Monthly BCAA is due the 15th. Posting remains unknown: the Aug. 14 corpus did not observe it, and unknown posting is not proof of unposted. Saturday 15 August is inside the 14-day current-state window ending 2026-08-16. Fail closed: reserve the scheduled amount on this opening. The monthly row remains for 15 September onward."
             },
             {
                 "id": "icbc-aug15-outstanding",
-                "label": "ICBC insurance — 15 August still unposted",
+                "label": "ICBC insurance — 15 August posting unknown",
                 "frequency": "once",
                 "date": "2026-08-16",
                 "amount": 99.91,
                 "confidence": "confirmed",
                 "budgetCategory": "insurance",
-                "note": "Monthly ICBC is due the 15th. Not observed posted in the 2026-08-16 pull. Fail closed: reserve the scheduled amount on this opening. The monthly row remains for 15 September onward."
+                "note": "Monthly ICBC is due the 15th. Posting remains unknown: the Aug. 14 corpus did not observe it, and unknown posting is not proof of unposted. Fail closed: reserve the scheduled amount on this opening. The monthly row remains for 15 September onward."
             },
             {
                 "id": "resp-aug15-outstanding",
-                "label": "RESP contribution — 15 August still unposted",
+                "label": "RESP contribution — 15 August posting unknown",
                 "frequency": "once",
                 "date": "2026-08-16",
                 "amount": 100,
                 "confidence": "confirmed",
                 "budgetCategory": null,
-                "note": "Monthly RESP is due the 15th. Not observed posted in the 2026-08-16 pull. Fail closed: reserve the scheduled amount on this opening. The monthly row remains for 15 September onward."
+                "note": "Monthly RESP is due the 15th. Posting remains unknown: the Aug. 14 corpus did not observe it, and unknown posting is not proof of unposted. Fail closed: reserve the scheduled amount on this opening. The monthly row remains for 15 September onward."
             },
             {
                 "id": "uniondues-aug15-outstanding",
-                "label": "CMAW Local 1995 union dues — 15 August still unposted",
+                "label": "CMAW Local 1995 union dues — 15 August posting unknown",
                 "frequency": "once",
                 "date": "2026-08-16",
                 "amount": 25,
                 "confidence": "confirmed",
                 "budgetCategory": null,
-                "note": "Monthly union dues are due the 15th. Not observed posted in the 2026-08-16 pull. Fail closed: reserve the scheduled amount on this opening until cancellation is confirmed. The monthly row remains for 15 September onward."
+                "note": "Monthly union dues are due the 15th. Posting remains unknown. Fail closed: reserve the scheduled amount on this opening until cancellation is confirmed. The monthly row remains for 15 September onward."
             },
             {
                 "id": "hydro-due-sep1",
@@ -338,7 +338,7 @@
                 "note": "Primary invoice: 3 Month Subscription — Package A: 2 cans. Total $95.85 every 3 months on the 18th, repeats indefinitely. A March 18 2026 payment of $95.85 is shown. Forecast has no quarterly expander, so this is the next in-window dated due (2026-09-18), not a duplicate of the March payment and not an invented June arrears. Do not infer the paying card from a Visa 0870 mask."
             }
         ],
-        "billsNote": "Extracted from the transaction history, not guessed: only bills still active in the last three months are dated here, and every one of them is paid from Chequing A except the 1 September BC Hydro. The 15 August BCAA, ICBC, RESP and union-dues occurrences were not observed posted in the 2026-08-16 pull (15 August was a Saturday) and are reserved as once rows on this opening; the monthly rows resume 15 September. The children's RESP contribution is included as a hard $100 monthly bill. CMAW Local 1995 union dues ($25) remain dated because they are still on the statement; the owner intends to cancel them, but cancellation is not yet confirmed. BC Hydro remains a household obligation paid from Amanda's TENNIS INCOME account for the 1 September $237.45 dated due; a $220 Hydro debit from BILLS ACCOUNT on 14 August is already inside opening cash and is not scheduled again. Owner-confirmed 2026-08-16: the old Hydro arrears are settled and are not scheduled. Noble Disposal Services is the household garbage bill: $95.85 every 3 months on the 18th; next dated due 2026-09-18. TELUS IS CLOSED — do not forecast Telus as an active household bill. Streaming is Amazon Channels — several small charges on scattered days, left inside the variable budget. There is no Netflix anywhere in the data.",
+        "billsNote": "Extracted from the transaction history, not guessed: only bills still active in the last three months are dated here, and every one of them is paid from Chequing A except the 1 September BC Hydro. The 15 August BCAA, ICBC, RESP and union-dues occurrences remain unknown in posting (not a confirmed unposted fact) and are reserved as once rows on this opening; the monthly rows resume 15 September. The children's RESP contribution is included as a hard $100 monthly bill. CMAW Local 1995 union dues ($25) remain dated because they are still on the statement; the owner intends to cancel them, but cancellation is not yet confirmed. BC Hydro remains a household obligation paid from Amanda's TENNIS INCOME account for the 1 September $237.45 dated due; a $220 Hydro debit from BILLS ACCOUNT on 14 August is already inside opening cash and is not scheduled again. Owner-confirmed 2026-08-16: the old Hydro arrears are settled and are not scheduled. Noble Disposal Services is the household garbage bill: $95.85 every 3 months on the 18th; next dated due 2026-09-18. TELUS IS CLOSED — do not forecast Telus as an active household bill. Streaming is Amazon Channels — several small charges on scattered days, left inside the variable budget. There is no Netflix anywhere in the data.",
         "commitments": [
             {
                 "id": "burrard1",
@@ -562,11 +562,11 @@
                     "debtId": null,
                     "label": "Credit cards",
                     "short": "the cards",
-                    "available": 782.01,
+                    "available": 581.44,
                     "rate": null,
                     "rank": 4,
                     "unusable": true,
-                    "note": "Derived from this opening's posted+pending vs limits: Triangle $287.38 + Cash Back $200.57 + TD card $294.06 + MBNA $0 + Travel Visa $0. Available credit is never household cash. Travel Visa is $12.68 over once the $250 Bell pending is counted."
+                    "note": "Derived from this opening's known posted+pending vs limits: Triangle $287.38 + TD card $294.06 + MBNA $0 + Travel Visa $0. Cash Back pending is unknown, so its $200.57 posted-only headroom is not published. Available credit is never household cash. Travel Visa is $12.68 over once the $250 Bell pending is counted."
                 }
             ]
         },
@@ -803,7 +803,7 @@
             "provenance": "derived",
             "provenanceNote": "DERIVED PLAN POLICY, not an owner instruction. Neither Dale nor Amanda has stated or approved this ordering; it was derived by the implementation from the current financial facts — the penalty-rate clock on the TD credit card, the over-limit fee on the Cash Back Visa, and the HELOC crossing its own limit inside the window. It was previously presented as a household decision, which no owner statement supported. The ordering is offered as a recommendation and remains open to the owner overriding it; if they adopt it, this would change this field to owner-stated with a dated reference.",
             "target": "cashback",
-            "summary": "The next surplus dollar goes to the TD Cash Back Visa: it is the highest rate the household pays at 26.99%. The card is under its $5,000 limit on this opening (posted $4,799.43).",
+            "summary": "The next surplus dollar goes to the TD Cash Back Visa: it is the highest rate the household pays at 26.99%. Posted $4,799.43 is under the $5,000 limit; pending is unknown, so under-limit including pending is not a known fact.",
             "order": [
                 {
                     "rank": 1,
@@ -818,7 +818,7 @@
                 {
                     "rank": 3,
                     "rule": "Correct the over-limit conditions",
-                    "why": "The TD Cash Back Visa is back under its $5,000 limit on this opening (posted $4,799.43). Getting a card back inside its limit remains a guaranteed return when an over-limit condition exists."
+                    "why": "Posted $4,799.43 is under the $5,000 limit, but Cash Back pending is unknown. Getting a card back inside its limit remains a guaranteed return when an over-limit condition is known to exist."
                 },
                 {
                     "rank": 4,
@@ -856,7 +856,7 @@
                 "what": "Cancel CMAW Local 1995 dues",
                 "amount": 25,
                 "due": null,
-                "why": "Still reserved as a cash outflow until cancellation is actually confirmed. The 15 August occurrence was not observed posted and is reserved on this opening. Do not guess an effective end date.",
+                "why": "Still reserved as a cash outflow until cancellation is actually confirmed. The 15 August occurrence remains unknown in posting and is reserved on this opening. Do not guess an effective end date.",
                 "status": "open",
                 "owner": "Dale"
             },
@@ -884,19 +884,20 @@
             },
             {
                 "what": "Get the Cash Back Visa back under $5,000",
-                "amount": 762.36,
-                "due": "2026-09-01",
-                "why": "The 2026-08-16 posted balance is $4,799.43. The 14 August $763 payment put the card under its limit. The action is done; the over-limit September spike is not reserved again.",
-                "status": "done"
+                "amount": null,
+                "due": null,
+                "why": "Posted $4,799.43 is under the $5,000 limit. Pending is unknown on this opening (Q26): the 14-day Lunch Money window is not a known-zero institution reading. Do not mark this action done or publish headroom until pending is observed.",
+                "status": "open",
+                "owner": "Dale"
             }
         ],
-        "actionsNote": "The 12 August Burrards registrations, the Fusion camp, the August TD-card minimum, and the Cash Back over-limit condition are done on this opening. Remaining open actions are a standing Amanda transfer and CMAW dues cancellation.",
+        "actionsNote": "The 12 August Burrards registrations, the Fusion camp, and the August TD-card minimum are done on this opening. The Cash Back over-limit action stays open because pending is unknown. Remaining open actions are a standing Amanda transfer, CMAW dues cancellation, and confirming Cash Back pending.",
         "assumptions": [
             "The window is the 13 weeks (91 days) starting on the as-of date. Every date in the projection is derived from that date — nothing is hardcoded to a calendar month.",
             "Deposits are assumed to land before payments due the same day. The 14 August payday cluster is already inside this opening and is not replayed.",
             "Every figure is tagged. Confirmed means the institution or a long observed history states it; estimated means it is modelled and shown in amber with a ≈ mark throughout.",
             "Future card statement minimums are estimates carried at the current level; real minimums move with the balance.",
-            "Named recurring bills — FortisBC, Shaw, BCAA, ICBC, the children's RESP contribution, CMAW Local 1995 union dues, Fit4Less, the TD account fees, and Noble Disposal garbage ($95.85 due 2026-09-18) — are dated on the calendar. The 15 August BCAA, ICBC, RESP and union-dues occurrences were not observed posted and are reserved as once rows on this 16 August opening; the monthly rows resume 15 September. The 1 September BC Hydro $237.45 due is a household obligation paid from Amanda / TENNIS INCOME: it is dated, it does not reduce joint cash, and it is not subtracted from household averages. TELUS IS CLOSED. The variable budget covers everything else: groceries, fuel, phones, streaming, PayPal and the rest.",
+            "Named recurring bills — FortisBC, Shaw, BCAA, ICBC, the children's RESP contribution, CMAW Local 1995 union dues, Fit4Less, the TD account fees, and Noble Disposal garbage ($95.85 due 2026-09-18) — are dated on the calendar. The 15 August BCAA, ICBC, RESP and union-dues occurrences remain unknown in posting and are reserved as once rows on this 16 August opening; the monthly rows resume 15 September. The 1 September BC Hydro $237.45 due is a household obligation paid from Amanda / TENNIS INCOME: it is dated, it does not reduce joint cash, and it is not subtracted from household averages. TELUS IS CLOSED. The variable budget covers everything else: groceries, fuel, phones, streaming, PayPal and the rest.",
             "TELUS IS CLOSED (owner-confirmed 2026-08-16) and is not forecast as an active household bill. The old BC Hydro arrears are settled and are not a future obligation; the 1 September $237.45 Hydro due remains. A Bc Hydro $220 debit from BILLS ACCOUNT on 14 August is already inside opening cash. Bell's Aug. 1 $356.62 bill is arrears plus travel usage, not the normal ~$104.20 monthly baseline, and is not dated as a joint-cash bill (a valid $250 Bell payment is pending on Travel Visa).",
             "The plan is the HOUSEHOLD SPENDING ACCOUNTS ONLY — Chequing A, Chequing B and Savings as of 2026-08-16. Amanda's TENNIS INCOME account is a separate pot. The $2,691.85 held-elsewhere figure is the last 2026-08-09 reading, not this cutover, and is not automatically spendable (Q25).",
             "The plan is the HOUSEHOLD SPENDING ACCOUNTS ONLY — Chequing A, Chequing B and Savings. Amanda's TENNIS INCOME account (id amanda-debt-payments) is a separate pot: Tennis BC salary and coaching income land there, coaches and pass-through obligations are paid from it, and only the remainder actually transferred into BILLS ACCOUNT is household money. Neither its raw balance nor her gross pay is counted as household cash; only her actual transfers are, measured from the transfer record. Internal transfers between household accounts are excluded throughout.",
@@ -1026,12 +1027,13 @@
             "institution": "TD",
             "interestByEvent": false,
             "secured": false,
-            "pending": 0,
+            "pending": null,
+            "pendingUnknown": true,
             "balance": 4799.43,
             "rate": 26.99,
             "rateBasis": "Purchases 26.99% / cash 27.99%",
             "rateConvention": "card",
-            "structure": "Revolving — under its $5,000 limit on posted",
+            "structure": "Revolving — posted $4,799.43; pending unknown",
             "annualInterest": 1902.6,
             "payment": 170,
             "interestTreatment": "paid",
@@ -1040,8 +1042,8 @@
             "nextDue": "2026-10-01",
             "limit": 5000,
             "confidence": "verified",
-            "pendingNote": "No pending Cash Back rows in the 14-day 2026-08-16 Lunch Money window. That is not a new institution-page known-zero reading; unknown pending is not invented as a positive amount either. Forecast treats a missing pending as $0.",
-            "note": "2026-08-16 Lunch Money posted $4,799.43. Independent identity: 5,612.43 - 50.00 Aug. 13 - 763.00 Aug. 14 = 4,799.43. Under the $5,000 limit. Available credit is never household cash."
+            "pendingNote": "No pending Cash Back rows in the 14-day 2026-08-16 Lunch Money window. That is not a new institution-page known-zero reading. Unknown pending is not $0 and is not invented as a positive amount. Do not publish known headroom until pending is observed.",
+            "note": "2026-08-16 Lunch Money posted $4,799.43. Independent identity: 5,612.43 - 50.00 Aug. 13 - 763.00 Aug. 14 = 4,799.43. Posted is under the $5,000 limit; pending is unknown, so available credit is not a known fact. Available credit is never household cash."
         },
         {
             "id": "mbna",
@@ -1113,7 +1115,7 @@
         }
     ],
     "debtsNote": "Affirm/Flexiti is gone: owner-confirmed paid off and closed, $2,654.28 across the window. Every card, mortgage and HELOC posted balance here is the 2026-08-16 cutover. Triangle posted/pending come from the same-day owner screenshot; Lunch Money's Triangle $13,309.70 is the last-statement figure and is not this posted opening. Cash Back and Travel Visa pending that the 14-day window does not show are not invented. Available credit is never household cash.",
-    "utilisationNote": "Derived from the debt records plus the Chequing B overdraft — there is no second list of balances to drift. Available credit is never household cash. On this opening Cash Back is under its $5,000 limit on posted; Travel Visa is over once the $250 Bell pending is counted; MBNA is over on posted $8,003.61; Triangle pending $15.62 is kept separate from posted $13,197.00.",
+    "utilisationNote": "Derived from the debt records plus the Chequing B overdraft — there is no second list of balances to drift. Available credit is never household cash. Cash Back pending is unknown, so its posted-only headroom is not published. Travel Visa is over once the $250 Bell pending is counted; MBNA is over on posted $8,003.61; Triangle pending $15.62 is kept separate from posted $13,197.00.",
     "assets": [
         {
             "label": "TENNIS INCOME chequing",

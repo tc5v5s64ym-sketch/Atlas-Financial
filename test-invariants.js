@@ -910,9 +910,19 @@ ok(missingConfidence.length === 0, 'every planning input carries a confidence ta
 ok(planItems.every(x => ['confirmed', 'estimated', 'planned'].includes(x.confidence)),
   'and the tags come from a closed vocabulary');
 ok(/^\d{4}-\d{2}-\d{2}$/.test(data.meta.asOf), 'the as-of date is a real date', data.meta.asOf);
-ok(periods.asOf === data.meta.asOf,
-  'the generated spending history is as-of the same day as the plan',
+ok(/^\d{4}-\d{2}-\d{2}$/.test(periods.asOf),
+  'the generated spending history carries its own source as-of', periods.asOf);
+ok(periods.asOf <= data.meta.asOf,
+  'spending-history as-of is not newer than the plan opening',
   `${periods.asOf} vs ${data.meta.asOf}`);
+if (periods.asOf !== data.meta.asOf) {
+  const appJs = read('public/app.js');
+  const diveJs = read('public/deepdive.js');
+  ok(/PERIODS\.asOf/.test(appJs),
+    'Deep Dive header publishes the history source as-of separately when it differs from the plan');
+  ok(/periods\.asOf/.test(diveJs),
+    'the spending-period notes name the history source as-of');
+}
 ok(plan.budget.ownerTargets && plan.budget.ownerTargets.status,
   'the budget records whether an owner target exists',
   plan.budget.ownerTargets.status);

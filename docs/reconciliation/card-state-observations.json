@@ -230,7 +230,19 @@
       "observedAsOf": "2026-08-16",
       "canonical": { "collection": "debts", "id": "cashback", "field": "balance" },
       "source": "2026-08-16 Lunch Money observation",
-      "note": "Posted $4,799.43. Independent identity: 5,612.43 - 50.00 Aug. 13 - 763.00 Aug. 14 = 4,799.43. Under the $5,000 limit. Not pending and not available credit."
+      "note": "Posted $4,799.43. Independent identity: 5,612.43 - 50.00 Aug. 13 - 763.00 Aug. 14 = 4,799.43. Posted is under the $5,000 limit. Not pending and not available credit."
+    },
+    {
+      "observationId": "card-cashback-pending-2026-08-16",
+      "fact": "pending",
+      "cardId": "cashback",
+      "label": "TD Cash Back Visa pending",
+      "amount": null,
+      "unknown": true,
+      "observedAsOf": "2026-08-16",
+      "canonical": { "collection": "debts", "id": "cashback", "field": "pending" },
+      "source": "2026-08-16 Lunch Money observation",
+      "note": "No pending Cash Back rows in the 14-day 2026-08-16 Lunch Money window. That is not a new institution-page known-zero reading. Unknown pending is not $0."
     },
     {
       "observationId": "card-tdcc-posted-2026-08-16",

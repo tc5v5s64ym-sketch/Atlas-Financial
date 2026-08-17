@@ -440,5 +440,30 @@ ok(F.recommendWeekly(exact, '2026-01-01', { targetBuffer: 500 }) === 0 ||
     funded.min.balance.toFixed(2));
 }
 
+// A buffer above starting cash must lift week 1's low with sim.min.
+// Opening $100, $80 as-of injection, no bills, buffer $150.
+{
+  const tiny = {
+    windowDays: 7,
+    defaults: { targetBuffer: 150 },
+    startingCash: { breakdown: [{ id: 'a', value: 100, class: 'spendable' }] },
+    income: [], obligations: [], bills: [], commitments: [],
+  };
+  const day = '2026-08-16';
+  const funded = F.simulate(tiny, day, {
+    weeklyVariable: 0, targetBuffer: 150, measureFrom: day,
+    injections: [{ date: day, amount: 80, id: 'gapFunding', label: 'top-up' }],
+  });
+  const week = funded.weeks[0];
+  ok(near(funded.min.balance, 180),
+    'sim.min uses the post-injection floor when the buffer is above starting cash',
+    funded.min.balance.toFixed(2));
+  ok(near(week.opening, 180) && near(week.low, 180),
+    'week 1 opening and low use the same post-injection floor',
+    `${week.opening.toFixed(2)} / ${week.low.toFixed(2)}`);
+  ok(week.belowBuffer === false,
+    'week 1 is not below-buffer after a successful as-of injection');
+}
+
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
 process.exit(failures === 0 ? 0 : 1);

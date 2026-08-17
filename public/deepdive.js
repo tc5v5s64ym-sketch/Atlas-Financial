@@ -218,9 +218,12 @@ function renderDeepDive(d) {
     colour: u.pct > 95 ? css('--critical') : css('--serious'),
     // Over the limit is a different fact from merely near it, so say so rather
     // than showing "$0 left" and letting the bar imply it.
-    vlabel: u.overLimit ? money(u.overLimitBy) + ' OVER' : money(u.available) + ' left',
-    tip: `${money2(u.used)} of a ${money2(u.limit)} limit · ${u.pct.toFixed(1)}% used`
-      + (u.pending ? ` · includes ${money2(u.pending)} pending, already incurred` : ''),
+    vlabel: u.pendingUnknown ? 'pending unknown'
+      : (u.overLimit ? money(u.overLimitBy) + ' OVER' : money(u.available) + ' left'),
+    tip: u.pendingUnknown
+      ? `${money2(u.posted)} posted of a ${money2(u.limit)} limit · pending unknown, so headroom is not published`
+      : `${money2(u.used)} of a ${money2(u.limit)} limit · ${u.pct.toFixed(1)}% used`
+        + (u.pending ? ` · includes ${money2(u.pending)} pending, already incurred` : ''),
   })), { rowH: 40, padL: 176 });
   if (d.utilisationNote) $('util-note').textContent = d.utilisationNote;
 
@@ -382,10 +385,13 @@ function renderPeriod(d, periods) {
   }), { rowH: 30, padL: 180 });
 
   const caveat = (d && d.spendingNote) ? ' ' + d.spendingNote : '';
+  const historyAsOf = periods.asOf && d && d.meta && periods.asOf !== d.meta.asOf
+    ? ` History as at ${periods.asOf}, not the ${d.meta.asOf} Forecast opening.`
+    : '';
   $('spend-note').textContent =
     `${p.label}. Blue is essential, orange discretionary, grey unidentified or mixed. ` +
     `Discretionary is ${money2(snap.discretionary)} — ${snap.discretionaryShare.toFixed(0)}% of the total, ` +
-    `and the part that is a decision rather than a fixed cost.` + caveat;
+    `and the part that is a decision rather than a fixed cost.` + caveat + historyAsOf;
 
   hbar($('c-interest'), p.interest.map(s => ({
     label: s.label, v: s.total, colour: css('--serious'), tip: money2(s.total),

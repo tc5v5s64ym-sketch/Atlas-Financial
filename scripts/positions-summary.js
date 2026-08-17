@@ -120,9 +120,12 @@ put('Financial-account net worth', W('SUMMARY', 'Financial-account net worth', '
 put('Total revolving credit available', W('CREDIT', 'Total revolving credit available', 'Net', 'CAD',
   n2(util.totalAvailable), {
     note: 'Derived by Forecast.utilisation from the debt records plus the chequing overdraft. '
-      + util.rows.map(r => `${r.label.replace(/ \(.*$/, '')} ${n2(r.available)}`).join(' + ')
+      + util.rows.map(r => `${r.label.replace(/ \(.*$/, '')} ${r.available == null ? 'unknown' : n2(r.available)}`).join(' + ')
       + `. Includes ${n2(util.totalPending)} of pending charges as credit already spent; `
-      + `${util.overLimitCount} facilities are over their limit` }));
+      + `${util.overLimitCount} facilities are over their limit`
+      + (util.unknownPendingCount
+        ? `; ${util.unknownPendingCount} facility has unknown pending so that headroom is excluded`
+        : '') }));
 
 if (householdNetWorth != null) {
   put('Household net worth', W('SUMMARY', 'Household net worth', 'Net', 'CAD', n2(householdNetWorth), {

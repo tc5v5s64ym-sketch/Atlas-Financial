@@ -228,9 +228,10 @@ const util = F.utilisation(data.debts, data.revolvingExtra, data.plan);
 const tvRow = util.rows.find(r => r.id === 'travelvisa');
 const mbRow = util.rows.find(r => r.id === 'mbna');
 
-ok(data.debts.every(x => typeof x.pending === 'number'),
-  'every debt states its pending amount, including the zeros',
-  `${data.debts.filter(x => x.pending > 0).length} of ${data.debts.length} carry pending`);
+ok(data.debts.every(x => typeof x.pending === 'number' || x.pendingUnknown === true),
+  'every debt states its pending amount, or marks pending unknown',
+  `${data.debts.filter(x => x.pendingUnknown).length} unknown, `
+    + `${data.debts.filter(x => x.pending > 0).length} of ${data.debts.length} carry a known pending`);
 const tvDebt = data.debts.find(x => x.id === 'travelvisa');
 const mbDebt = data.debts.find(x => x.id === 'mbna');
 ok(near(tvRow.pending, tvDebt.pending), 'the Travel Visa pending charges are represented', money(tvRow.pending));
