@@ -71,23 +71,19 @@
     return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
   }
   // Every 3 months on `day`. Phase comes from `anchor` if present, else
-  // `firstDue`, else the first matching day on or after `start`. `firstDue`
-  // is a filter, not a rewrite of the cadence: dates before it are omitted
-  // rather than shifted, so an observed historical payment can set the
-  // phase without manufacturing a pre-opening unpaid event.
+  // `firstDue`. Without a phase-bearing field the expander fails closed:
+  // inventing an origin from the caller's `start` would make the same
+  // canonical row produce a different schedule for a different view.
+  // `firstDue` is also a filter, not a rewrite of the cadence: dates
+  // before it are omitted rather than shifted, so an observed historical
+  // payment can set the phase without manufacturing a pre-opening unpaid
+  // event.
   function quarterlyDates(day, start, end, firstDue, anchor) {
     const phaseIso = anchor || firstDue;
-    let origin;
-    if (phaseIso) {
-      const [y, m] = phaseIso.split('-').map(Number);
-      const d = Math.min(day, daysInMonth(y, m));
-      origin = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-    } else {
-      let [y, m] = start.split('-').map(Number);
-      let d = Math.min(day, daysInMonth(y, m));
-      origin = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-      if (origin < start) origin = addCalendarMonths(origin, 1, day);
-    }
+    if (!phaseIso) return [];
+    const [y, m] = phaseIso.split('-').map(Number);
+    const d = Math.min(day, daysInMonth(y, m));
+    const origin = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     const out = [];
     let t = origin;
     while (t > start) t = addCalendarMonths(t, -3, day);

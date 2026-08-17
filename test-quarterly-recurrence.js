@@ -194,8 +194,9 @@ console.log('\n=== amount change on the canonical row reaches every schedule con
 
 console.log('\n=== synthetic every-3-months primitive (not a Noble date list) ===');
 {
-  const item = { frequency: 'quarterly', day: 15 };
-  // First 15th on or after 10 Jan 2026 is 15 Jan; then +3 calendar months.
+  // Fully specified: firstDue is the phase. Hand list from 15 Jan 2026:
+  // 15 Jan, 15 Apr, 15 Jul, 15 Oct.
+  const item = { frequency: 'quarterly', day: 15, firstDue: '2026-01-15' };
   ok(sameDates(F.occurrences(item, '2026-01-10', '2026-12-31'),
     ['2026-01-15', '2026-04-15', '2026-07-15', '2026-10-15']),
     'start before first matching day: Jan/Apr/Jul/Oct 15');
@@ -226,6 +227,28 @@ console.log('\n=== synthetic every-3-months primitive (not a Noble date list) ==
     '2026-01-01', '2026-12-31'),
     ['2026-01-31', '2026-04-30', '2026-07-31', '2026-10-31']),
     'day 31 clamps on shorter months, same rule as monthly');
+}
+
+console.log('\n=== one fully specified cadence, two view starts ===');
+{
+  // Same row, two windows. Hand list is still Jan/Apr/Jul/Oct 15.
+  // A Feb start may drop January; it must not invent Feb/May/Aug/Nov.
+  const item = { frequency: 'quarterly', day: 15, firstDue: '2026-01-15' };
+  const fromJan = F.occurrences(item, '2026-01-10', '2026-12-31');
+  const fromFeb = F.occurrences(item, '2026-02-01', '2026-12-31');
+  ok(sameDates(fromJan, ['2026-01-15', '2026-04-15', '2026-07-15', '2026-10-15']),
+    'Jan 10 view is the Jan-phase slice');
+  ok(sameDates(fromFeb, ['2026-04-15', '2026-07-15', '2026-10-15']),
+    'Feb 1 view is a later slice of the same cadence, not Feb/May/Aug/Nov');
+}
+
+console.log('\n=== under-specified quarterly cannot invent a phase ===');
+{
+  const item = { frequency: 'quarterly', day: 15 };
+  ok(sameDates(F.occurrences(item, '2026-01-10', '2026-12-31'), []),
+    'missing anchor and firstDue from Jan 10 yields no dates');
+  ok(sameDates(F.occurrences(item, '2026-02-01', '2026-12-31'), []),
+    'the same under-specified row from Feb 1 also yields no dates, not a Feb-phase invention');
 }
 
 console.log('\n=== firstDue omits a mid-cycle date without shifting the phase ===');
