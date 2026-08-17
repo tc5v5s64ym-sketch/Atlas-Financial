@@ -145,8 +145,41 @@ console.log('\n=== 7 / 91 / 365-day views share master knowledge and today\'s ca
   ok(named.every(v => v.days >= 1 && v.days <= a.knowledge.days && v.start === AS_OF),
     'week / payday / month / 13-week / 6-month / 1-year are slices of the same knowledge');
   const custom = F.viewRange(plan, AS_OF, { start: AS_OF, end: F.addDays(AS_OF, 20) }, {});
-  ok(custom.id === 'custom' && custom.days === 21,
-    'a custom date range is the same kind of view', `${custom.days} days`);
+  ok(custom.id === 'custom' && custom.days === 21 && custom.start === AS_OF,
+    'a custom date range starting today is the same kind of view', `${custom.days} days`);
+
+  const futureStart = '2026-09-01';
+  const futureEnd = '2026-09-30';
+  const futureView = F.viewRange(plan, AS_OF, { start: futureStart, end: futureEnd }, {});
+  ok(futureView.start === futureStart && futureView.end === futureEnd && futureView.days === 30,
+    'a custom Sep 1–Sep 30 view keeps its future start, not as-of',
+    `${futureView.start}..${futureView.end} (${futureView.days} days)`);
+  const sliced = F.recommend(plan, AS_OF, recOpts({
+    view: { start: futureStart, end: futureEnd },
+  }));
+  ok(sliced.view.start === futureStart && sliced.sim.start === futureStart
+    && sliced.sim.end === futureEnd && sliced.sim.daily[0].date === futureStart,
+    'simulate slices the master walk from the requested start',
+    `${sliced.sim.start}..${sliced.sim.end} first=${sliced.sim.daily[0] && sliced.sim.daily[0].date}`);
+  ok(sliced.weekly === a.weekly,
+    'a future-start custom view does not change today\'s weekly cap',
+    `$${sliced.weekly}`);
+  const sepIncome = F.addDays(futureStart, 10);
+  const planWithDates = Object.assign({}, plan, {
+    income: plan.income.concat([
+      { id: 'aug-pay', label: 'August only', frequency: 'once', date: '2026-08-20',
+        amount: 111, confidence: 'confirmed' },
+      { id: 'sep-pay', label: 'September only', frequency: 'once', date: sepIncome,
+        amount: 222, confidence: 'confirmed' },
+    ]),
+  });
+  const sepSlice = F.recommend(planWithDates, AS_OF, recOpts({
+    view: { start: futureStart, end: futureEnd },
+  }));
+  ok(sepSlice.sim.events.some(e => e.id === 'sep-pay')
+    && !sepSlice.sim.events.some(e => e.id === 'aug-pay'),
+    'the September view contains September events and not the August one',
+    (sepSlice.sim.events || []).map(e => e.id).join(','));
 }
 
 console.log('\n=== completing a nearer commitment redirects capacity ===');
@@ -325,10 +358,28 @@ console.log('\n=== no planned debt unless explicitly permitted ===');
   ok(!(advice.simOptions && (advice.simOptions.injections || []).some(i => i.debtId)),
     'default path introduces no planned-debt injection');
 
-  const facility = { id: 'card-x', label: 'A card', rate: 19.99, balance: 100, limit: 5000 };
-  const permitted = F.plannedDebt(plan, AS_OF, recOpts({
+  const facility = { id: 'card-x', label: 'A card', rate: 19.99, balance: 100, pending: 50, limit: 5000 };
+  const laterPay = F.addDays(F.addDays(AS_OF, 20), 5);
+  const planAffordable = Object.assign({}, plan, {
+    income: plan.income.concat([{
+      id: 'later-cover', label: 'Later cover', frequency: 'once', date: laterPay,
+      amount: 2500, confidence: 'confirmed',
+    }]),
+  });
+  const unnamed = F.plannedDebt(plan, AS_OF, recOpts({
     allowPlannedDebt: true,
     plannedDebtFacility: 'card-x',
+    debts: [facility],
+    weeklyVariable: 0,
+  }));
+  ok(unnamed.borrowed === 0 && unnamed.feasible === false,
+    'allowPlannedDebt alone does not silently finance every gap; purposes must be named',
+    JSON.stringify({ borrowed: unnamed.borrowed, feasible: unnamed.feasible }));
+
+  const permitted = F.plannedDebt(planAffordable, AS_OF, recOpts({
+    allowPlannedDebt: true,
+    plannedDebtFacility: 'card-x',
+    plannedDebtPurposes: ['gap-item'],
     debts: [facility],
     weeklyVariable: 0,
   }));
@@ -336,26 +387,32 @@ console.log('\n=== no planned debt unless explicitly permitted ===');
   const afterPay = 600 - 2000;
   const wantBorrowed = 500 - afterPay; // 1900 to land on the buffer
   ok(permitted.permitted === true && near(permitted.borrowed, wantBorrowed) && wantBorrowed > 0,
-    'when borrowing is explicitly permitted, the draw is the independent buffer gap',
+    'when borrowing is explicitly permitted and purpose-named, the draw is the independent buffer gap',
     `$${permitted.borrowed} vs hand $${wantBorrowed}`);
   ok(permitted.draws && permitted.draws.length === 1 && permitted.draws[0].id === 'gap-item'
     && permitted.draws[0].date === due,
     'the draw is purpose-specific and lands on the commitment date',
     JSON.stringify(permitted.draws));
-  const horizon = F.knowledgeHorizon(plan, AS_OF, {});
-  const daysHeld = F.diffDays(due, horizon.end);
-  const wantInterest = wantBorrowed * (19.99 / 100) * (daysHeld / 365);
-  ok(near(permitted.interest, wantInterest),
-    'interest is principal × rate × (days from draw date to horizon end) / 365',
-    `${permitted.interest.toFixed(4)} vs ${wantInterest.toFixed(4)} (held ${daysHeld} days)`);
-  ok(permitted.feasible === true,
-    'injecting the purpose-specific draw on the due date makes the master walk hold');
-  ok(permitted.capacity === 4900, 'the draw is capped by limit − posted balance',
+  ok(permitted.feasible === false,
+    'a draw without a repayment cadence is not a proven post-financing plan');
+  ok(permitted.capacity === 4850,
+    'capacity is limit − (posted + pending), not posted alone',
     String(permitted.capacity));
-
-  const withPay = F.plannedDebt(plan, AS_OF, recOpts({
+  const unknownPending = F.plannedDebt(planAffordable, AS_OF, recOpts({
     allowPlannedDebt: true,
     plannedDebtFacility: 'card-x',
+    plannedDebtPurposes: ['gap-item'],
+    debts: [{ id: 'card-x', label: 'A card', rate: 19.99, balance: 100, pendingUnknown: true, limit: 5000 }],
+    weeklyVariable: 0,
+  }));
+  ok(unknownPending.capacity === 0 && unknownPending.borrowed === 0,
+    'unknown pending is not treated as $0 usable room',
+    String(unknownPending.capacity));
+
+  const withPay = F.plannedDebt(planAffordable, AS_OF, recOpts({
+    allowPlannedDebt: true,
+    plannedDebtFacility: 'card-x',
+    plannedDebtPurposes: ['gap-item'],
     debts: [facility],
     plannedDebtPayment: 100,
     weeklyVariable: 0,
@@ -364,15 +421,28 @@ console.log('\n=== no planned debt unless explicitly permitted ===');
     && withPay.repayment.months > 0 && withPay.repayment.flows > 0,
     'repayment cash flows are inserted into the same projection, not only described',
     withPay.repayment && `${withPay.repayment.months} months, ${withPay.repayment.flows} flows`);
+  ok(withPay.feasible === true,
+    'with a stated cadence and later income covering the payments, the post-financing walk holds');
+  ok(withPay.interest < permitted.interest,
+    'interest responds to the repayment path: paying down costs less interest than holding the draw',
+    `${withPay.interest.toFixed(4)} < ${permitted.interest.toFixed(4)}`);
+  ok(withPay.endingBalance != null && permitted.endingBalance != null
+    && withPay.endingBalance < permitted.endingBalance,
+    'future facility balance is carried on the same path and falls when repayments land',
+    `${withPay.endingBalance.toFixed(2)} < ${permitted.endingBalance.toFixed(2)}`);
+  ok(permitted.endingBalance - withPay.endingBalance >= 100 - 1,
+    'the balance drop is at least one stated $100 repayment, independently of the interest helper',
+    String(permitted.endingBalance - withPay.endingBalance));
 
-  const tight = F.plannedDebt(plan, AS_OF, recOpts({
+  const tight = F.plannedDebt(planAffordable, AS_OF, recOpts({
     allowPlannedDebt: true,
     plannedDebtFacility: 'card-x',
-    debts: [{ id: 'card-x', label: 'A card', rate: 19.99, balance: 100, limit: 500 }],
+    plannedDebtPurposes: ['gap-item'],
+    debts: [{ id: 'card-x', label: 'A card', rate: 19.99, balance: 100, pending: 50, limit: 500 }],
     weeklyVariable: 0,
   }));
-  ok(near(tight.borrowed, 400) && tight.borrowed < wantBorrowed,
-    'a smaller facility cannot over-draw its capacity',
+  ok(near(tight.borrowed, 350) && tight.borrowed < wantBorrowed,
+    'a smaller facility cannot over-draw its pending-aware capacity',
     `$${tight.borrowed} capacity $${tight.capacity}`);
   ok(tight.feasible === false,
     'an under-capacity draw is not reported as a feasible post-financing plan');
@@ -477,6 +547,55 @@ console.log('\n=== undated known commitments constrain today\'s cap; ranges stay
 }
 
 {
+  const due = F.addDays(AS_OF, 9); // 10th calendar day, 2026-08-25
+  const laterIncome = F.addDays(AS_OF, 14); // 2026-08-30, after the deadline
+  const days = 40;
+  const buffer = 500;
+  const rangePlan = start => barePlan({
+    windowDays: days,
+    startingCash: { amount: start },
+    defaults: { targetBuffer: buffer },
+    income: [{
+      id: 'after-deadline', label: 'Pay after deadline', frequency: 'once',
+      date: laterIncome, amount: 5000, confidence: 'confirmed',
+    }],
+    commitments: [{
+      id: 'dated-range', label: 'A dated range', date: due,
+      amount: null, amountMin: 1000, amountMax: 2000, confidence: 'estimated',
+    }],
+  });
+  const horizon = F.knowledgeHorizon(rangePlan(2000), AS_OF, {});
+  ok(horizon.days >= F.diffDays(AS_OF, due) + 1 && horizon.end >= due,
+    'a dated range-only row extends the knowledge horizon to its deadline',
+    `${horizon.days} days end=${horizon.end}`);
+  const covered = F.majorPlans(rangePlan(3500), AS_OF, recOpts({ weeklyVariable: 0 }))
+    .find(p => p.id === 'dated-range');
+  // Surplus on due date at W=0: 3500 - 500 = 3000, covers ceiling 2000.
+  ok(covered && covered.need == null && covered.amountMin === 1000 && covered.amountMax === 2000
+    && covered.verdict === 'ON TRACK',
+    'dated range stays a range and is ON TRACK when the deadline surplus covers the ceiling');
+  const risk = F.majorPlans(rangePlan(2000), AS_OF, recOpts({ weeklyVariable: 0 }))
+    .find(p => p.id === 'dated-range');
+  // Surplus on due date: 2000 - 500 = 1500. Floor 1000 ok, ceiling 2000 not.
+  // Horizon leftover includes the $5,000 after the deadline and would wrongly pass.
+  ok(risk && risk.verdict === 'AT RISK',
+    'income after the deadline cannot make a ranged commitment look ceiling-feasible',
+    risk && risk.verdict);
+  const gap = F.majorPlans(rangePlan(1400), AS_OF, recOpts({ weeklyVariable: 0 }))
+    .find(p => p.id === 'dated-range');
+  // Surplus on due date: 1400 - 500 = 900 < floor 1000, even though $5,000 arrives later.
+  ok(gap && gap.verdict === 'FUNDING GAP',
+    'missing the floor by the stated date is a FUNDING GAP despite later income',
+    gap && gap.verdict);
+  const rec = F.recommend(rangePlan(2000), AS_OF, recOpts());
+  // Surplus on due (10 days of variable): 2000 - 10*(W/7) - 500 >= 1000 → W <= 350.
+  const wantDated = Math.floor(((2000 - buffer - 1000) * 7 / 10) / 5) * 5;
+  ok(rec.weekly === wantDated,
+    'weekly is bound by capacity on the range deadline, not by leftover after later income',
+    `$${rec.weekly} vs hand $${wantDated}`);
+}
+
+{
   const plan = barePlan({
     windowDays: 14,
     startingCash: { amount: 2000 },
@@ -496,6 +615,63 @@ console.log('\n=== undated known commitments constrain today\'s cap; ranges stay
   ok(rec.weekly === want,
     'only the required undated need constrains weekly; optional is residual',
     `$${rec.weekly} vs hand $${want}`);
+}
+
+{
+  const plan = barePlan({
+    windowDays: 14,
+    startingCash: { amount: 1800 },
+    defaults: { targetBuffer: 500 },
+    commitments: [
+      { id: 'required-item', label: 'Required undated', amount: 1000, confidence: 'confirmed' },
+      { id: 'optional-item', label: 'Optional undated', amount: 1000, optional: true, priority: 1, confidence: 'estimated' },
+    ],
+  });
+  const plans = F.majorPlans(plan, AS_OF, recOpts({ weeklyVariable: 0 }));
+  const optional = plans.find(p => p.id === 'optional-item');
+  const leftover = 1800 - 500; // 1300
+  const residual = leftover - 1000; // 300 after the required floor
+  ok(optional && optional.need === 1000,
+    'optional keeps its actual $1,000 target rather than a zero protected floor',
+    optional && String(optional.need));
+  ok(optional && optional.verdict !== 'ON TRACK' && optional.funded === false,
+    'an optional $1,000 item with only $300 residual is not reported fully funded/ON TRACK',
+    optional && `${optional.verdict} remaining=${optional.remaining}`);
+  ok(optional && near(optional.remaining, 1000 - residual),
+    'optional residual allocation is the leftover $300, not the full target',
+    optional && String(optional.remaining));
+}
+
+{
+  const days = 14;
+  const start = 2000;
+  const buffer = 500;
+  const undated = 1000;
+  const plan = barePlan({
+    windowDays: days,
+    startingCash: { amount: start },
+    defaults: { targetBuffer: buffer },
+    commitments: [
+      { id: 'undated-need', label: 'Known undated cost', amount: undated, confidence: 'confirmed' },
+    ],
+  });
+  const rec = F.recommend(plan, AS_OF, recOpts());
+  const row = (rec.majorPlans || []).find(p => p.id === 'undated-need');
+  ok(row && row.funded && row.remaining === 0 && row.encumbered === undated
+    && !plan.commitments[0].settledOn,
+    'fully funded but unpaid: remaining contribution is 0 and principal stays encumbered, without settledOn');
+  const empty = F.recommend(barePlan({
+    windowDays: days, startingCash: { amount: start }, defaults: { targetBuffer: buffer },
+  }), AS_OF, recOpts());
+  ok(rec.weekly < empty.weekly,
+    'funded-unpaid principal still binds today\'s cap; it is not free cash',
+    `$${rec.weekly} < empty-plan $${empty.weekly}`);
+  const settledPlan = JSON.parse(JSON.stringify(plan));
+  settledPlan.commitments[0].settledOn = AS_OF;
+  const settled = F.recommend(settledPlan, AS_OF, recOpts());
+  ok(settled.weekly === empty.weekly,
+    'settlement, not mere funding, releases the encumbered principal',
+    `$${settled.weekly} vs empty-plan $${empty.weekly}`);
 }
 
 console.log('\n=== existing consumers still derive from Forecast ===');

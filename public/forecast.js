@@ -347,9 +347,14 @@
     return 'required';
   }
 
+  function commitmentHasRange(c) {
+    if (!c) return false;
+    const range = commitmentRange(c);
+    return range.amountMin != null || range.amountMax != null;
+  }
+
   function commitmentBounds(c) {
     const flexibility = commitmentFlexibility(c);
-    if (flexibility === 'optional') return { floor: 0, ceiling: 0, flexibility };
     const point = commitmentNeed(c);
     const range = commitmentRange(c);
     const floor = point != null ? point : (range.amountMin != null ? range.amountMin : 0);
@@ -365,7 +370,10 @@
     for (const c of plan.commitments || []) {
       if (disabled.has(c.id)) continue;
       if (commitmentSettledBy(c, asOf)) continue;
-      if (!c.date || commitmentNeed(c) == null) continue;
+      // A dated range still has a deadline. Skipping it because it has no
+      // point amount would let later income fund a cost that was due earlier.
+      if (!c.date) continue;
+      if (commitmentNeed(c) == null && !commitmentHasRange(c)) continue;
       lastDated = Math.max(lastDated, diffDays(asOf, c.date) + 1);
     }
     // Knowledge does not follow the visible range. Recurring streams keep
@@ -418,8 +426,11 @@
       requestedDays = Math.floor(spec);
     } else if (spec && spec.start && spec.end) {
       id = 'custom';
-      const start = spec.start < asOf ? asOf : spec.start;
-      requestedDays = Math.max(1, diffDays(start, spec.end) + 1);
+      let start = spec.start < asOf ? asOf : spec.start;
+      if (start > knowledge.end) start = knowledge.end;
+      let end = spec.end > knowledge.end ? knowledge.end : spec.end;
+      if (end < start) end = start;
+      return { id, start, end, days: Math.max(1, diffDays(start, end) + 1), knowledge };
     } else if (spec && spec.days > 0) {
       id = 'custom';
       requestedDays = Math.floor(spec.days);
@@ -442,8 +453,77 @@
     return plan.windowDays || 91;
   }
 
+  function sliceSimulationFrom(full, asOf, viewStart, viewDays, plan, opts) {
+    const startIdx = full.daily.findIndex(d => d.date >= viewStart);
+    if (startIdx < 0) return full;
+    const take = viewDays == null ? full.daily.length - startIdx : Math.max(1, viewDays);
+    const daily = full.daily.slice(startIdx, startIdx + take);
+    if (!daily.length) return full;
+    if (startIdx === 0 && daily.length === full.daily.length) return full;
+    const start = daily[0].date;
+    const end = daily[daily.length - 1].date;
+    const events = (full.events || []).filter(e => e.date >= start && e.date <= end);
+    const weeks = (full.weeks || []).filter(w => w.start <= end && w.end >= start).map(w => {
+      const copy = Object.assign({}, w);
+      if (copy.start < start) copy.start = start;
+      if (copy.end > end) copy.end = end;
+      const closingRow = daily.find(d => d.date === copy.end) || daily[daily.length - 1];
+      copy.closing = closingRow ? closingRow.balance : copy.closing;
+      if (copy.events) {
+        copy.events = copy.events.filter(e => e.date >= copy.start && e.date <= copy.end);
+      }
+      return copy;
+    });
+    const measureFrom = (opts && opts.measureFrom && opts.measureFrom > start)
+      ? opts.measureFrom : start;
+    let min = { date: measureFrom, balance: Infinity };
+    for (const p of daily) {
+      if (p.date >= measureFrom && p.balance < min.balance) min = { date: p.date, balance: p.balance };
+    }
+    if (min.balance === Infinity) min = { date: start, balance: daily[0].balance };
+    const buffer = full.buffer;
+    const totals = {
+      confirmedIncome: events.filter(e => e.kind === 'income' && e.confidence === 'confirmed')
+        .reduce((s, e) => s + e.amount, 0),
+      estimatedIncome: events.filter(e => e.kind === 'income' && e.confidence !== 'confirmed')
+        .reduce((s, e) => s + e.amount, 0),
+      injections: events.filter(e => e.kind === 'injection').reduce((s, e) => s + e.amount, 0),
+      obligations: events.filter(e => e.kind === 'obligation').reduce((s, e) => s + -e.amount, 0),
+      bills: events.filter(e => e.kind === 'bill' && e.jointCash !== false)
+        .reduce((s, e) => s + -e.amount, 0),
+      noncash: events.filter(e => e.kind === 'noncash').reduce((s, e) => s + -e.amount, 0),
+      commitments: events.filter(e => e.kind === 'commitment').reduce((s, e) => s + -e.amount, 0),
+      variable: 0,
+      extra: events.filter(e => e.kind === 'extra' || e.kind === 'planned-debt')
+        .reduce((s, e) => s + -e.amount, 0),
+    };
+    const opening = startIdx > 0 ? full.daily[startIdx - 1].balance : startingCashAmount(plan);
+    totals.variable = daily.reduce((s, p, i) => {
+      const prev = i ? daily[i - 1].balance : opening;
+      const eventNet = events.filter(e => e.date === p.date && e.kind !== 'noncash' && e.jointCash !== false)
+        .reduce((n, e) => n + e.amount, 0);
+      return s + Math.max(0, prev + eventNet - p.balance);
+    }, 0);
+    totals.income = totals.confirmedIncome + totals.estimatedIncome;
+    const ending = daily[daily.length - 1].balance;
+    return Object.assign({}, full, {
+      start, end, daily, weeks, events, totals, min, ending,
+      shortfall: min.balance < 0 ? -min.balance : 0,
+      breachesBuffer: min.balance < buffer,
+      endingSurplus: ending - buffer,
+      extraDebtCapacity: Math.max(0, ending - buffer),
+      knowledge: {
+        start: full.start, end: full.end, days: full.daily.length,
+        min: full.min, ending: full.ending, events: full.events, totals: full.totals,
+      },
+    });
+  }
+
   function sliceSimulation(full, asOf, viewDays, plan, opts) {
-    if (!full || viewDays == null || viewDays >= full.daily.length) return full;
+    if (!full || !full.daily || !full.daily.length) return full;
+    const viewStart = (opts && opts.viewStart && opts.viewStart > asOf) ? opts.viewStart : asOf;
+    if (viewStart > asOf) return sliceSimulationFrom(full, asOf, viewStart, viewDays, plan, opts);
+    if (viewDays == null || viewDays >= full.daily.length) return full;
     const end = addDays(asOf, viewDays - 1);
     const daily = full.daily.slice(0, viewDays);
     const events = (full.events || []).filter(e => e.date <= end);
@@ -695,6 +775,7 @@
     const viewDays = (opts.viewDays != null && opts.horizonDays != null)
       ? Math.min(opts.viewDays, days)
       : days;
+    const viewStart = (opts.viewStart && opts.viewStart > asOf) ? opts.viewStart : asOf;
     const start = asOf;
     const end = addDays(asOf, days - 1);
     const events = expandEvents(plan, start, end, opts);
@@ -826,7 +907,8 @@
       // above the buffer once everything has cleared. Bounded by zero.
       extraDebtCapacity: Math.max(0, balance - buffer),
     };
-    return viewDays < days ? sliceSimulation(full, asOf, viewDays, plan, opts) : full;
+    return (viewStart > asOf || viewDays < days)
+      ? sliceSimulation(full, asOf, viewDays, plan, opts) : full;
   }
 
   /* ---------------------------------------- funding sequence + verdicts */
@@ -886,14 +968,41 @@
     return !!(item && item.date && item.need != null);
   }
 
-  // Spoken-for principal that is not a dated cash event. Dated point
-  // amounts already leave the walk; double-counting them would treat
-  // paid-out cash as still reserved. Optional items are residual.
+  // A dated range is not a cash event (no midpoint is invented) but it
+  // still has a deadline. Capacity is tested at that date, not at the
+  // horizon end.
+  function isDatedReserve(item) {
+    return !!(item && item.date && item.need == null && item.flexibility !== 'optional'
+      && item.bounds && (item.bounds.floor > 0 || item.bounds.ceiling > 0
+        || item.amountMin != null || item.amountMax != null));
+  }
+
+  function surplusOn(sim, date) {
+    if (!sim || !date) return null;
+    const day = (sim.daily || []).find(d => d.date === date);
+    if (!day) return null;
+    return day.balance - sim.buffer;
+  }
+
+  function datedReserveBy(seq, date) {
+    let floor = 0, ceiling = 0;
+    for (const item of seq || []) {
+      if (!isDatedReserve(item) || item.date > date) continue;
+      floor += item.bounds ? item.bounds.floor : 0;
+      ceiling += item.bounds ? item.bounds.ceiling : 0;
+    }
+    return { floor, ceiling };
+  }
+
+  // Spoken-for principal that is not a dated cash event and not a dated
+  // range (those are tested at their deadline). Dated point amounts already
+  // leave the walk; double-counting them would treat paid-out cash as still
+  // reserved. Optional items are residual.
   function protectedEncumbered(seq) {
     let floor = 0, ceiling = 0;
     for (const item of seq || []) {
       if (!item || item.flexibility === 'optional') continue;
-      if (isCashEventItem(item)) continue;
+      if (isCashEventItem(item) || isDatedReserve(item)) continue;
       floor += item.bounds ? item.bounds.floor : 0;
       ceiling += item.bounds ? item.bounds.ceiling : 0;
     }
@@ -958,6 +1067,29 @@
         remaining = funded ? 0 : Math.max(0, -margin);
         verdict = funded ? 'ON TRACK' : 'FUNDING GAP';
         encumbered = 0;
+      } else if (isDatedReserve(item)) {
+        const surplus = surplusOn(rec, item.date);
+        const due = datedReserveBy(seq, item.date);
+        const othersFloor = due.floor - floor;
+        const othersCeil = due.ceiling - ceiling;
+        const availableFloor = surplus == null ? -Infinity : surplus - othersFloor;
+        const availableCeil = surplus == null ? -Infinity : surplus - othersCeil;
+        funded = surplus != null && atLeast(surplus, due.floor);
+        uncertaintyFunded = surplus != null && atLeast(surplus, due.ceiling);
+        encumbered = floor;
+        if (funded && uncertaintyFunded) {
+          verdict = 'ON TRACK';
+          margin = availableCeil;
+          remaining = 0;
+        } else if (funded) {
+          verdict = 'AT RISK';
+          margin = availableFloor;
+          remaining = Math.max(0, ceiling - Math.max(0, availableCeil));
+        } else {
+          verdict = 'FUNDING GAP';
+          margin = surplus == null ? -floor : availableFloor;
+          remaining = Math.max(0, floor - Math.max(0, availableFloor));
+        }
       } else if (item.flexibility === 'optional') {
         const take = Math.max(0, Math.min(residualPool, floor));
         residualPool -= take;
@@ -1016,11 +1148,21 @@
 
   function facilityCapacity(facility, opts) {
     if (!facility) return 0;
-    const headroom = Math.max(0, (Number(facility.limit) || 0) - (Number(facility.balance) || 0));
+    // Unknown pending is not $0. Posted room is not usable capacity.
+    if (pendingUnknown(facility)) return 0;
+    const used = openingBalance(facility);
+    const headroom = Math.max(0, (Number(facility.limit) || 0) - used);
     if (opts && opts.plannedDebtMax != null && isFinite(Number(opts.plannedDebtMax))) {
       return Math.max(0, Math.min(headroom, Number(opts.plannedDebtMax)));
     }
     return headroom;
+  }
+
+  function plannedDebtPurposeIds(opts) {
+    const ids = [];
+    if (Array.isArray(opts.plannedDebtPurposes)) ids.push.apply(ids, opts.plannedDebtPurposes);
+    if (opts.plannedDebtPurpose) ids.push(opts.plannedDebtPurpose);
+    return new Set(ids.filter(Boolean));
   }
 
   // Planned borrowing is opt-in. Default invents neither permission nor a
@@ -1043,13 +1185,16 @@
     const facility = facilityId ? debts.find(d => d.id === facilityId) : null;
     const capacity = facilityCapacity(facility, opts);
     const plans = opts.majorPlans || majorPlans(plan, asOf, opts);
-    const gaps = plans.filter(p => p.verdict === 'FUNDING GAP' && p.remaining > 0);
-    const gapItems = gaps.map(p => ({ id: p.id, remaining: p.remaining, date: p.date, label: p.label }));
+    const purposes = plannedDebtPurposeIds(opts);
+    const gaps = plans.filter(p => p.verdict === 'FUNDING GAP' && p.remaining > 0
+      && purposes.has(p.id));
+    const gapItems = plans.filter(p => p.verdict === 'FUNDING GAP' && p.remaining > 0)
+      .map(p => ({ id: p.id, remaining: p.remaining, date: p.date, label: p.label }));
 
     if (!facility) {
       return {
         permitted: true, borrowed: 0, facilityId, interest: 0, repayment: null,
-        items: gapItems, draws: [], feasible: false, capacity: 0,
+        items: gapItems, draws: [], feasible: false, capacity: 0, endingBalance: null,
       };
     }
 
@@ -1066,10 +1211,6 @@
     const borrowed = draws.reduce((s, d) => s + d.amount, 0);
     const horizon = knowledgeHorizon(plan, asOf, opts);
     const rate = Number(facility.rate) || 0;
-    const interest = draws.reduce((s, d) => {
-      const daysHeld = Math.max(0, diffDays(d.date, horizon.end));
-      return s + d.amount * (rate / 100) * (daysHeld / 365);
-    }, 0);
 
     const monthlyPayment = opts.plannedDebtPayment != null ? Number(opts.plannedDebtPayment) : null;
     let months = null;
@@ -1104,15 +1245,28 @@
       label: 'Planned draw — ' + d.purpose,
       id: 'planned-debt-' + d.id,
     })));
-    const post = simulate(plan, asOf, Object.assign({}, opts, {
+    const walkOpts = Object.assign({}, opts, {
       horizonDays: horizon.days, viewDays: horizon.days,
+      debtHorizonDays: horizon.days,
       weeklyVariable: opts.weeklyVariable != null ? opts.weeklyVariable : 0,
       injections, plannedFlows,
-    }));
+    });
+    const post = simulate(plan, asOf, walkOpts);
     const enc = protectedEncumbered(fundingSequence(plan, asOf, opts));
-    const feasible = borrowed > 0
+    const hasCadence = monthlyPayment > 0 && plannedFlows.length > 0;
+    const debtWalk = projectDebts(plan, debts, asOf, walkOpts);
+    const state = debtWalk.byId && debtWalk.byId[facility.id];
+    const baseWalk = projectDebts(plan, debts, asOf, Object.assign({}, walkOpts, {
+      injections: opts.injections || [], plannedFlows: [],
+    }));
+    const baseState = baseWalk.byId && baseWalk.byId[facility.id];
+    const interest = (state && baseState) ? state.interest - baseState.interest : (state ? state.interest : 0);
+    const endingBalance = state ? state.balance : null;
+    const withinLimit = !(facility.limit != null && state && state.balance > facility.limit + EPSILON);
+    const cashOk = borrowed > 0
       && atLeast(post.min.balance, post.buffer)
       && atLeast(leftoverAfterBuffer(post), enc.floor);
+    const feasible = hasCadence && cashOk && withinLimit;
 
     return {
       permitted: true,
@@ -1121,6 +1275,7 @@
       rate,
       capacity,
       interest,
+      endingBalance,
       draws,
       feasible,
       repayment: {
@@ -1128,7 +1283,7 @@
         monthlyPayment,
         months,
         flows: plannedFlows.length,
-        path: monthlyPayment > 0
+        path: hasCadence
           ? 'stated monthly repayment on the named facility, from each draw date'
           : 'amount borrowed is known; no repayment cadence was supplied',
       },
@@ -1150,11 +1305,19 @@
       horizonDays: opts.horizonDays != null ? opts.horizonDays : horizon.days,
     });
     if (searchOpts.viewDays == null) searchOpts.viewDays = searchOpts.horizonDays;
-    const encumbered = protectedEncumbered(fundingSequence(plan, asOf, searchOpts)).floor;
+    const seq = fundingSequence(plan, asOf, searchOpts);
+    const encumbered = protectedEncumbered(seq).floor;
+    const datedReserves = seq.filter(isDatedReserve);
     const fits = w => {
       const sim = simulate(plan, asOf, Object.assign({}, searchOpts, { weeklyVariable: w }));
       if (!atLeast(sim.min.balance, buffer)) return false;
-      return atLeast(leftoverAfterBuffer(sim), encumbered);
+      if (!atLeast(leftoverAfterBuffer(sim), encumbered)) return false;
+      for (const item of datedReserves) {
+        const surplus = surplusOn(sim, item.date);
+        const due = datedReserveBy(seq, item.date);
+        if (surplus == null || !atLeast(surplus, due.floor)) return false;
+      }
+      return true;
     };
     if (!fits(0)) return 0; // even zero spending breaches the protected plan
     let lo = 0, hi = 5000;
@@ -1426,8 +1589,10 @@
     // Build the result, and prove the answer is actually binding: one step up
     // must breach the buffer, and where it breaches is the constraint to name.
     function finish(mode, simOptions, weeklyCap, effectiveFrom, gap, zeroSim) {
+      const view = viewRange(plan, asOf, viewSpec || { days: viewDays }, planOptions);
       const viewSim = simulate(plan, asOf, Object.assign({}, simOptions, {
-        weeklyVariable: weeklyCap, horizonDays: horizon.days, viewDays,
+        weeklyVariable: weeklyCap, horizonDays: horizon.days,
+        viewDays: view.days, viewStart: view.start,
       }));
       const knowledgeSim = simulate(plan, asOf, Object.assign({}, simOptions, {
         weeklyVariable: weeklyCap, horizonDays: horizon.days, viewDays: horizon.days,
@@ -1442,7 +1607,6 @@
       const debt = plannedDebt(plan, asOf, Object.assign({}, planOptions, {
         weeklyVariable: weeklyCap, majorPlans: plans,
       }));
-      const view = viewRange(plan, asOf, viewSpec || { days: viewDays }, planOptions);
       const encumbered = protectedEncumbered(sequence).floor;
       const freeCash = leftoverAfterBuffer(knowledgeSim) - encumbered;
       return {
@@ -1464,7 +1628,9 @@
         // The options behind `sim`, so a caller overriding the weekly figure
         // re-simulates under the same assumptions instead of inventing its own.
         // Horizon is included so a page override still walks the master plan.
-        simOptions: Object.assign({}, simOptions, { horizonDays: horizon.days, viewDays }),
+        simOptions: Object.assign({}, simOptions, {
+          horizonDays: horizon.days, viewDays: view.days, viewStart: view.start,
+        }),
         // The assumptions the household actually set, without the recovery the
         // engine derived from them. See where it is built, above.
         planOptions: planOptions,
@@ -1991,7 +2157,10 @@
     const extraFacilities = resolveExtraFacilities(opts.extraFacilities, plan);
     const extraAvailable = extraFacilities
       .reduce((s, e) => s + Math.max(0, e.limit - (e.used + (e.pending || 0))), 0);
-    const days = plan.windowDays || 91;
+    // Cash `horizonDays` on simOptions is not a debt-walk length. Planned
+    // debt asks for the master span explicitly via debtHorizonDays so the
+    // 91-day coupled identity is not silently stretched.
+    const days = opts.debtHorizonDays != null ? opts.debtHorizonDays : (plan.windowDays || 91);
     const start = asOf;
     const end = addDays(asOf, days - 1);
     const events = expandEvents(plan, start, end, opts);
@@ -2170,6 +2339,11 @@
           unabsorbed += left;
           // What this payment could actually land, for the cash side to match.
           extraAbsorbed[e.date] = -e.amount - left;
+        } else if (e.kind === 'planned-debt') {
+          const t = e.debtId ? byId[e.debtId] : null;
+          if (!t) continue;
+          const left = payDown([t], -e.amount);
+          unabsorbed += left;
         }
       }
       for (const s2 of state) {

@@ -1246,7 +1246,9 @@ Forecast remains the planner. Do not create a second planner, a generic
 schema, or a parallel authority.
 
 Engine earned 2026-08-16; contract repaired 2026-08-17 after Atlas
-Contract / Systems Review. `Forecast.recommend` searches
+Contract / Systems Review, including the follow-up repair for future-start
+custom views, dated-range deadlines, optional residual targets, and
+planned-debt pending / repayment / purpose terms. `Forecast.recommend` searches
 `Forecast.knowledgeHorizon` (≥12 months when streams continue; always
 long enough for dated unsettled commitments) and reserves protected
 principal jointly. Named ranges are views.
