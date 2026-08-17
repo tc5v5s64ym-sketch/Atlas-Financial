@@ -535,6 +535,64 @@ console.log('\n=== no planned debt unless explicitly permitted ===');
     `feasible=${overThenUnder.feasible} ending=${overThenUnder.endingBalance}`);
 }
 
+{
+  const due = F.addDays(AS_OF, 9);
+  const laterIncome = F.addDays(AS_OF, 14);
+  const buffer = 500;
+  const floor = 1000;
+  const start = 1400;
+  const plan = barePlan({
+    windowDays: 40,
+    startingCash: { amount: start },
+    defaults: { targetBuffer: buffer },
+    income: [{
+      id: 'after-deadline', label: 'Pay after deadline', frequency: 'once',
+      date: laterIncome, amount: 5000, confidence: 'confirmed',
+    }],
+    commitments: [{
+      id: 'dated-range', label: 'A dated range', date: due,
+      amount: null, amountMin: floor, amountMax: 2000, confidence: 'estimated',
+    }],
+  });
+  // Independent: surplus on due at W=0 is 1400 − 500 = 900; floor 1000; short $100.
+  // $5,000 after the deadline repairs ending leftover, not the deadline.
+  ok(start - buffer === 900 && 900 < floor,
+    'independent: the dated-range floor is short $100 on the due date');
+  const miss = F.plannedDebt(plan, AS_OF, recOpts({
+    allowPlannedDebt: true,
+    plannedDebtFacility: 'card-x',
+    plannedDebtPurposes: ['dated-range'],
+    debts: [{ id: 'card-x', label: 'A card', rate: 19.99, balance: 0, pending: 0, limit: 50 }],
+    plannedDebtPayment: 10,
+    weeklyVariable: 0,
+  }));
+  ok(near(miss.borrowed, 50),
+    'an under-capacity draw still borrows the $50 room',
+    String(miss.borrowed));
+  ok(start + 50 - buffer === 950 && 950 < floor,
+    'independent: $50 on the due date still leaves surplus $950 below the $1,000 floor');
+  ok(miss.feasible === false,
+    'later income after a protected range deadline does not make planned debt feasible',
+    `feasible=${miss.feasible} borrowed=${miss.borrowed}`);
+
+  const covers = F.plannedDebt(plan, AS_OF, recOpts({
+    allowPlannedDebt: true,
+    plannedDebtFacility: 'card-x',
+    plannedDebtPurposes: ['dated-range'],
+    debts: [{ id: 'card-x', label: 'A card', rate: 19.99, balance: 0, pending: 0, limit: 5000 }],
+    plannedDebtPayment: 20,
+    weeklyVariable: 0,
+  }));
+  ok(near(covers.borrowed, 100),
+    'a purpose-named draw sized to the floor shortfall is $100',
+    String(covers.borrowed));
+  ok(start + 100 - buffer === floor,
+    'independent: $100 on the due date lands surplus on the $1,000 floor');
+  ok(covers.feasible === true,
+    'planned debt is feasible when the financing path actually fixes the deadline',
+    `feasible=${covers.feasible} borrowed=${covers.borrowed}`);
+}
+
 console.log('\n=== undated known commitments constrain today\'s cap; ranges stay ranges ===');
 {
   const days = 14;
@@ -584,6 +642,19 @@ console.log('\n=== undated known commitments constrain today\'s cap; ranges stay
   // leftover(0) = 1500; joint floor = 1600; impossible → weekly 0, both FUNDING GAP.
   ok(rec.weekly === 0,
     'two undated needs are reserved jointly: leftover 1500 cannot cover 1600, so weekly is 0');
+  ok(rec.mode === 'infeasible' && rec.holds === false,
+    'joint protected infeasibility is INFEASIBLE, not a normal $0 recommendation',
+    `${rec.mode} holds=${rec.holds}`);
+  ok(rec.zero && rec.zero.min.balance >= buffer,
+    'the ordinary cash buffer still holds at zero spend on this joint gap',
+    rec.zero && String(rec.zero.min.balance));
+  ok(rec.infeasible && rec.infeasible.kind === 'encumbered'
+    && near(rec.infeasible.shortfall, 100),
+    'the first failing constraint is the $100 joint encumbered shortfall',
+    rec.infeasible && `${rec.infeasible.kind} ${rec.infeasible.shortfall}`);
+  ok(rec.infeasible && (rec.infeasible.id === 'a' || rec.infeasible.id === 'b'),
+    'the infeasible record names an affected undated commitment',
+    rec.infeasible && rec.infeasible.id);
   const plans = rec.majorPlans || [];
   ok(plans.every(p => p.verdict === 'FUNDING GAP'),
     'simultaneous infeasibility is a FUNDING GAP on both items, not a serial first-wins queue',
@@ -658,9 +729,13 @@ console.log('\n=== undated known commitments constrain today\'s cap; ranges stay
   const covered = F.majorPlans(rangePlan(3500), AS_OF, recOpts({ weeklyVariable: 0 }))
     .find(p => p.id === 'dated-range');
   // Surplus on due date at W=0: 3500 - 500 = 3000, covers ceiling 2000.
+  // Structural margin is surplus − ceiling = 1000, not the $3,000 surplus.
   ok(covered && covered.need == null && covered.amountMin === 1000 && covered.amountMax === 2000
     && covered.verdict === 'ON TRACK',
     'dated range stays a range and is ON TRACK when the deadline surplus covers the ceiling');
+  ok(covered && near(covered.margin, 3000 - 2000),
+    'ON TRACK dated-range margin is surplus minus the ceiling, not the surplus itself',
+    covered && String(covered.margin));
   const risk = F.majorPlans(rangePlan(2000), AS_OF, recOpts({ weeklyVariable: 0 }))
     .find(p => p.id === 'dated-range');
   // Surplus on due date: 2000 - 500 = 1500. Floor 1000 ok, ceiling 2000 not.
@@ -668,18 +743,43 @@ console.log('\n=== undated known commitments constrain today\'s cap; ranges stay
   ok(risk && risk.verdict === 'AT RISK',
     'income after the deadline cannot make a ranged commitment look ceiling-feasible',
     risk && risk.verdict);
+  ok(risk && near(risk.margin, 1500 - 1000),
+    'AT RISK dated-range margin is the positive base surplus minus floor',
+    risk && String(risk.margin));
+  ok(risk && near(risk.remaining, 2000 - 1500),
+    'AT RISK remaining is the ceiling shortfall, independently 2000 − 1500',
+    risk && String(risk.remaining));
   const gap = F.majorPlans(rangePlan(1400), AS_OF, recOpts({ weeklyVariable: 0 }))
     .find(p => p.id === 'dated-range');
   // Surplus on due date: 1400 - 500 = 900 < floor 1000, even though $5,000 arrives later.
   ok(gap && gap.verdict === 'FUNDING GAP',
     'missing the floor by the stated date is a FUNDING GAP despite later income',
     gap && gap.verdict);
+  ok(gap && near(gap.margin, 900 - 1000),
+    'FUNDING GAP dated-range margin is surplus minus floor (−$100), not the $900 surplus',
+    gap && String(gap.margin));
+  ok(gap && near(gap.remaining, 100),
+    'FUNDING GAP remaining is the independent $100 floor shortfall',
+    gap && String(gap.remaining));
   const rec = F.recommend(rangePlan(2000), AS_OF, recOpts());
   // Surplus on due (10 days of variable): 2000 - 10*(W/7) - 500 >= 1000 → W <= 350.
   const wantDated = Math.floor(((2000 - buffer - 1000) * 7 / 10) / 5) * 5;
   ok(rec.weekly === wantDated,
     'weekly is bound by capacity on the range deadline, not by leftover after later income',
     `$${rec.weekly} vs hand $${wantDated}`);
+
+  const gapRec = F.recommend(rangePlan(1400), AS_OF, recOpts());
+  ok(gapRec.mode === 'infeasible' && gapRec.weekly === 0 && gapRec.holds === false,
+    'a dated-range floor gap is INFEASIBLE, not a normal $0/week cap',
+    `${gapRec.mode} weekly=${gapRec.weekly} holds=${gapRec.holds}`);
+  ok(gapRec.zero && gapRec.zero.min.balance >= buffer,
+    'the ordinary cash buffer still holds: the range is not a cash event',
+    gapRec.zero && String(gapRec.zero.min.balance));
+  ok(gapRec.infeasible && gapRec.infeasible.kind === 'dated-reserve'
+    && gapRec.infeasible.date === due && gapRec.infeasible.id === 'dated-range'
+    && near(gapRec.infeasible.shortfall, 100),
+    'the first failing constraint is the $100 floor shortfall on the stated date',
+    gapRec.infeasible && JSON.stringify(gapRec.infeasible));
 }
 
 {
@@ -888,6 +988,9 @@ console.log('\n=== live opening: Q19, buffer, cards, undated rows ===');
     String(advice.sim.weeks.length));
   ok(advice.plannedDebt.borrowed === 0 && advice.plannedDebt.permitted === false,
     'live recommend does not invent planned debt');
+  ok(advice.mode === 'normal' && advice.holds === true && advice.infeasible == null,
+    'live opening remains a feasible normal recommendation',
+    `${advice.mode} holds=${advice.holds}`);
   ok(advice.buffer === 500, 'the $500 model buffer is unchanged', String(advice.buffer));
   ok(advice.knowledge.encumbered > 0,
     'live undated protected principal is encumbered on the master walk',

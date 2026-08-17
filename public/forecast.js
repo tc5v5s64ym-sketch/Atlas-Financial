@@ -1040,6 +1040,69 @@
     return { floor, ceiling };
   }
 
+  // One protected-feasibility predicate for the weekly search and for
+  // planned-debt validation. Buffer path, still-encumbered principal, and
+  // every dated-reserve deadline. A later income that repairs the ending
+  // leftover does not excuse a missed deadline.
+  function protectedPlanCheck(plan, asOf, opts) {
+    opts = opts || {};
+    const buffer = opts.targetBuffer != null ? opts.targetBuffer
+      : ((plan.defaults && plan.defaults.targetBuffer) || 0);
+    const sim = opts.sim || simulate(plan, asOf, opts);
+    const seq = opts.seq || fundingSequence(plan, asOf, opts);
+    const leftover = leftoverAfterBuffer(sim);
+    const enc = protectedEncumbered(seq);
+    const failures = [];
+
+    if (!atLeast(sim.min.balance, buffer)) {
+      failures.push({
+        kind: 'buffer',
+        date: sim.min.date,
+        shortfall: buffer - sim.min.balance,
+        id: null,
+        label: 'cash buffer',
+      });
+    }
+
+    const seenDates = new Set();
+    for (const item of seq) {
+      if (!isDatedReserve(item) || seenDates.has(item.date)) continue;
+      seenDates.add(item.date);
+      const surplus = surplusOn(sim, item.date);
+      const due = datedReserveBy(seq, item.date);
+      if (surplus == null || !atLeast(surplus, due.floor)) {
+        const have = surplus == null ? 0 : surplus;
+        failures.push({
+          kind: 'dated-reserve',
+          date: item.date,
+          shortfall: due.floor - have,
+          id: item.id,
+          label: item.label,
+        });
+      }
+    }
+
+    if (!atLeast(leftover, enc.floor)) {
+      const undated = seq.find(i => i.flexibility !== 'optional'
+        && !isCashEventItem(i) && !isDatedReserve(i))
+        || seq.find(i => i.flexibility !== 'optional' && !isCashEventItem(i));
+      failures.push({
+        kind: 'encumbered',
+        date: sim.end,
+        shortfall: enc.floor - leftover,
+        id: undated ? undated.id : null,
+        label: undated ? undated.label : 'protected principal',
+      });
+    }
+
+    failures.sort((a, b) => {
+      if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+      const order = { buffer: 0, 'dated-reserve': 1, encumbered: 2 };
+      return (order[a.kind] || 9) - (order[b.kind] || 9);
+    });
+    return { feasible: failures.length === 0, failures, first: failures[0] || null };
+  }
+
   function datedCommitmentFunded(sim, date, buffer) {
     if (!sim || !date) return false;
     const day = (sim.daily || []).find(d => d.date === date);
@@ -1110,25 +1173,23 @@
       } else if (isDatedReserve(item)) {
         const surplus = surplusOn(rec, item.date);
         const due = datedReserveBy(seq, item.date);
-        const othersFloor = due.floor - floor;
-        const othersCeil = due.ceiling - ceiling;
-        const availableFloor = surplus == null ? -Infinity : surplus - othersFloor;
-        const availableCeil = surplus == null ? -Infinity : surplus - othersCeil;
+        const baseMargin = surplus == null ? -due.floor : surplus - due.floor;
+        const rangeMargin = surplus == null ? -due.ceiling : surplus - due.ceiling;
         funded = surplus != null && atLeast(surplus, due.floor);
         uncertaintyFunded = surplus != null && atLeast(surplus, due.ceiling);
         encumbered = floor;
         if (funded && uncertaintyFunded) {
           verdict = 'ON TRACK';
-          margin = availableCeil;
+          margin = rangeMargin;
           remaining = 0;
         } else if (funded) {
           verdict = 'AT RISK';
-          margin = availableFloor;
-          remaining = Math.max(0, ceiling - Math.max(0, availableCeil));
+          margin = baseMargin;
+          remaining = Math.max(0, -rangeMargin);
         } else {
           verdict = 'FUNDING GAP';
-          margin = surplus == null ? -floor : availableFloor;
-          remaining = Math.max(0, floor - Math.max(0, availableFloor));
+          margin = baseMargin;
+          remaining = Math.max(0, -baseMargin);
         }
       } else {
         encumbered = floor;
@@ -1298,7 +1359,7 @@
       injections, plannedFlows,
     });
     const post = simulate(plan, asOf, walkOpts);
-    const enc = protectedEncumbered(fundingSequence(plan, asOf, opts));
+    const seq = fundingSequence(plan, asOf, opts);
     const hasCadence = monthlyPayment > 0 && plannedFlows.length > 0;
     const debtWalk = projectDebts(plan, debts, asOf, walkOpts);
     const state = debtWalk.byId && debtWalk.byId[facility.id];
@@ -1311,9 +1372,10 @@
     const crossedLimit = !!(state && state.firstOver);
     const endingOver = facility.limit != null && state && state.balance > facility.limit + EPSILON;
     const withinLimit = !crossedLimit && !endingOver;
-    const cashOk = borrowed > 0
-      && atLeast(post.min.balance, post.buffer)
-      && atLeast(leftoverAfterBuffer(post), enc.floor);
+    const protectedOk = protectedPlanCheck(plan, asOf, Object.assign({}, walkOpts, {
+      seq, sim: post,
+    })).feasible;
+    const cashOk = borrowed > 0 && protectedOk;
     const feasible = hasCadence && cashOk && withinLimit;
 
     return {
@@ -1340,33 +1402,22 @@
   }
 
   /* ---------------------------------------------------- budget recommender */
-  // The largest weekly variable spend, to the nearest $5, that keeps every
-  // measured day of the projection at or above the target buffer AND leaves
-  // enough ending surplus to cover protected non-event principal jointly.
+  // The largest weekly variable spend, to the nearest $5, that keeps the
+  // protected plan feasible: cash buffer, still-encumbered principal, and
+  // every dated-reserve deadline. Same predicate as planned-debt validation.
   // Monotonic in W, so binary search is exact.
   const STEP = 5;
   function recommendWeekly(plan, asOf, opts) {
     opts = Object.assign({}, opts || {});
-    const buffer = opts.targetBuffer != null ? opts.targetBuffer : plan.defaults.targetBuffer;
     const horizon = knowledgeHorizon(plan, asOf, opts);
     const searchOpts = Object.assign({}, opts, {
       horizonDays: opts.horizonDays != null ? opts.horizonDays : horizon.days,
     });
     if (searchOpts.viewDays == null) searchOpts.viewDays = searchOpts.horizonDays;
     const seq = fundingSequence(plan, asOf, searchOpts);
-    const encumbered = protectedEncumbered(seq).floor;
-    const datedReserves = seq.filter(isDatedReserve);
-    const fits = w => {
-      const sim = simulate(plan, asOf, Object.assign({}, searchOpts, { weeklyVariable: w }));
-      if (!atLeast(sim.min.balance, buffer)) return false;
-      if (!atLeast(leftoverAfterBuffer(sim), encumbered)) return false;
-      for (const item of datedReserves) {
-        const surplus = surplusOn(sim, item.date);
-        const due = datedReserveBy(seq, item.date);
-        if (surplus == null || !atLeast(surplus, due.floor)) return false;
-      }
-      return true;
-    };
+    const fits = w => protectedPlanCheck(plan, asOf, Object.assign({}, searchOpts, {
+      weeklyVariable: w, seq,
+    })).feasible;
     if (!fits(0)) return 0; // even zero spending breaches the protected plan
     let lo = 0, hi = 5000;
     while (fits(hi)) { lo = hi; hi *= 2; if (hi > 80000) break; }
@@ -1422,10 +1473,18 @@
   // Both the headline tile and the budget breakdown read this one result, so
   // the page cannot show two different answers to the same question.
   //
-  // Two cases, one code path:
+  // Three cases, one code path:
   //
-  //   normal      the window already holds the buffer at zero spend, so the
-  //               answer is the largest weekly spend that keeps it there.
+  //   normal      the window already holds the buffer at zero spend, and the
+  //               protected master plan is jointly feasible, so the answer is
+  //               the largest weekly spend that keeps it there.
+  //
+  //   infeasible  the ordinary cash buffer still holds at zero spend, but a
+  //               protected commitment cannot: a dated-reserve deadline or
+  //               jointly encumbered principal fails even at weekly = 0.
+  //               The answer is not $0/week as a feasible cap. It is
+  //               INFEASIBLE, with the first failing constraint, date,
+  //               dollar shortfall, and affected commitment.
   //
   //   openingGap  even zero spend breaches, because money is due before the
   //               first payday arrives. The fix is not a smaller budget, it is
@@ -1509,6 +1568,12 @@
     });
 
     if (atLeast(zero.min.balance, buffer)) {
+      const zeroProtected = protectedPlanCheck(plan, asOf, Object.assign({}, searchBase, {
+        weeklyVariable: 0,
+      }));
+      if (!zeroProtected.feasible) {
+        return finish('infeasible', searchBase, 0, asOf, null, zero, zeroProtected.first);
+      }
       const weekly = recommendWeekly(plan, asOf, searchBase);
       return finish('normal', searchBase, weekly, asOf, null, zero);
     }
@@ -1636,7 +1701,7 @@
 
     // Build the result, and prove the answer is actually binding: one step up
     // must breach the buffer, and where it breaches is the constraint to name.
-    function finish(mode, simOptions, weeklyCap, effectiveFrom, gap, zeroSim) {
+    function finish(mode, simOptions, weeklyCap, effectiveFrom, gap, zeroSim, infeasible) {
       const view = viewRange(plan, asOf, viewSpec || { days: viewDays }, planOptions);
       const viewSim = simulate(plan, asOf, Object.assign({}, simOptions, {
         weeklyVariable: weeklyCap, horizonDays: horizon.days,
@@ -1657,6 +1722,10 @@
       }));
       const encumbered = protectedEncumbered(sequence).floor;
       const freeCash = leftoverAfterBuffer(knowledgeSim) - encumbered;
+      const protectedAtCap = protectedPlanCheck(plan, asOf, Object.assign({}, simOptions, {
+        weeklyVariable: weeklyCap, horizonDays: horizon.days, viewDays: horizon.days,
+        seq: sequence, sim: knowledgeSim,
+      }));
       return {
         mode, weekly: weeklyCap, effectiveFrom, buffer, gap, sim: viewSim, zero: zeroSim,
         step: STEP,
@@ -1669,6 +1738,7 @@
         fundingSequence: sequence,
         majorPlans: plans,
         plannedDebt: debt,
+        infeasible: mode === 'infeasible' ? (infeasible || protectedAtCap.first) : null,
         // Named joint-cash obligations already in `zero.events` on the next
         // payday and the following calendar day. Derived, not stored, and not
         // a second horizon: the weekly search and the balances are unchanged.
@@ -1687,7 +1757,7 @@
         // the visible slice, so a January commitment can be the bind.
         binding: next.min,
         bindingIsReal: below(next.min.balance, buffer),
-        holds: atLeast(knowledgeSim.min.balance, buffer),
+        holds: protectedAtCap.feasible,
       };
     }
   }
