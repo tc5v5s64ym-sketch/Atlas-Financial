@@ -467,11 +467,34 @@
       const copy = Object.assign({}, w);
       if (copy.start < start) copy.start = start;
       if (copy.end > end) copy.end = end;
-      const closingRow = daily.find(d => d.date === copy.end) || daily[daily.length - 1];
-      copy.closing = closingRow ? closingRow.balance : copy.closing;
-      if (copy.events) {
-        copy.events = copy.events.filter(e => e.date >= copy.start && e.date <= copy.end);
-      }
+      const weekEvents = (full.events || []).filter(e => e.date >= copy.start && e.date <= copy.end);
+      copy.events = weekEvents;
+      copy.confirmedIncome = weekEvents.filter(e => e.kind === 'income' && e.confidence === 'confirmed')
+        .reduce((s, e) => s + e.amount, 0);
+      copy.estimatedIncome = weekEvents.filter(e => e.kind === 'income' && e.confidence !== 'confirmed')
+        .reduce((s, e) => s + e.amount, 0);
+      copy.injections = weekEvents.filter(e => e.kind === 'injection').reduce((s, e) => s + e.amount, 0);
+      copy.obligations = weekEvents.filter(e => e.kind === 'obligation').reduce((s, e) => s + -e.amount, 0);
+      copy.bills = weekEvents.filter(e => e.kind === 'bill' && e.jointCash !== false)
+        .reduce((s, e) => s + -e.amount, 0);
+      copy.noncash = weekEvents.filter(e => e.kind === 'noncash').reduce((s, e) => s + -e.amount, 0);
+      copy.commitments = weekEvents.filter(e => e.kind === 'commitment').reduce((s, e) => s + -e.amount, 0);
+      copy.extra = weekEvents.filter(e => e.kind === 'extra' || e.kind === 'planned-debt')
+        .reduce((s, e) => s + -e.amount, 0);
+      const weekDays = daily.filter(d => d.date >= copy.start && d.date <= copy.end);
+      const fullIdx = full.daily.findIndex(d => d.date === copy.start);
+      copy.opening = fullIdx > 0 ? full.daily[fullIdx - 1].balance : startingCashAmount(plan);
+      copy.closing = weekDays.length ? weekDays[weekDays.length - 1].balance : copy.closing;
+      copy.variable = weekDays.reduce((s, p, i) => {
+        const prev = i ? weekDays[i - 1].balance : copy.opening;
+        const eventNet = weekEvents.filter(e => e.date === p.date && e.kind !== 'noncash' && e.jointCash !== false)
+          .reduce((n, e) => n + e.amount, 0);
+        return s + Math.max(0, prev + eventNet - p.balance);
+      }, 0);
+      const low = Math.min(copy.opening, ...weekDays.map(d => d.balance));
+      copy.low = low;
+      copy.belowBuffer = low < full.buffer;
+      copy.negative = low < 0;
       return copy;
     });
     const measureFrom = (opts && opts.measureFrom && opts.measureFrom > start)
@@ -679,6 +702,8 @@
       // Undated rows stay on the plan. They are not given a fabricated
       // day and they do not become cash events.
       if (!c.date || c.amount == null) continue;
+      // Optional items are residual funding, not a protected cash outflow.
+      if (commitmentFlexibility(c) === 'optional') continue;
       if (c.date >= start && c.date <= end) {
         events.push({ date: c.date, amount: -c.amount, kind: 'commitment', label: c.label, id: c.id, confidence: c.confidence });
       }
@@ -914,8 +939,9 @@
   /* ---------------------------------------- funding sequence + verdicts */
   // Presentation order only — not the allocator. Protected items are
   // feasible simultaneously or not at all. Owner priority ranks residual
-  // (optional) allocation after that. Undated rows sort after dated ones;
-  // no day is invented. No commitment id is special.
+  // (optional) allocation after that: among optional items, explicit
+  // owner priority wins over date. Undated rows sort after dated ones
+  // inside the protected band; no day is invented. No commitment id is special.
   function fundingSequence(plan, asOf, opts) {
     opts = opts || {};
     const disabled = new Set(opts.disabled || []);
@@ -948,12 +974,15 @@
       : c.flexibility === 'bounded-flex' ? 1 : 2;
     rows.sort((a, b) => {
       if (flexRank(a) !== flexRank(b)) return flexRank(a) - flexRank(b);
+      const aOpt = a.flexibility === 'optional';
+      const bOpt = b.flexibility === 'optional';
+      const pa = a.priority == null ? Infinity : a.priority;
+      const pb = b.priority == null ? Infinity : b.priority;
+      if (aOpt && bOpt && pa !== pb) return pa - pb;
       const ta = a.date || '\uffff';
       const tb = b.date || '\uffff';
       if (ta !== tb) return ta < tb ? -1 : 1;
       if (certaintyRank(a) !== certaintyRank(b)) return certaintyRank(a) - certaintyRank(b);
-      const pa = a.priority == null ? Infinity : a.priority;
-      const pb = b.priority == null ? Infinity : b.priority;
       if (pa !== pb) return pa - pb;
       return a.index - b.index;
     });
@@ -965,7 +994,7 @@
   }
 
   function isCashEventItem(item) {
-    return !!(item && item.date && item.need != null);
+    return !!(item && item.date && item.need != null && item.flexibility !== 'optional');
   }
 
   // A dated range is not a cash event (no midpoint is invented) but it
@@ -994,15 +1023,17 @@
     return { floor, ceiling };
   }
 
-  // Spoken-for principal that is not a dated cash event and not a dated
-  // range (those are tested at their deadline). Dated point amounts already
-  // leave the walk; double-counting them would treat paid-out cash as still
-  // reserved. Optional items are residual.
+  // Spoken-for principal that has not left the walk as a cash event.
+  // Dated point amounts already leave the walk; double-counting them would
+  // treat paid-out cash as still reserved. A dated range has no cash event,
+  // so its floor stays encumbered from the point it is funded or due until
+  // settlement or authorized release. Optional items are residual after
+  // that still-encumbered protected principal.
   function protectedEncumbered(seq) {
     let floor = 0, ceiling = 0;
     for (const item of seq || []) {
       if (!item || item.flexibility === 'optional') continue;
-      if (isCashEventItem(item) || isDatedReserve(item)) continue;
+      if (isCashEventItem(item)) continue;
       floor += item.bounds ? item.bounds.floor : 0;
       ceiling += item.bounds ? item.bounds.ceiling : 0;
     }
@@ -1059,7 +1090,16 @@
       let verdict = 'FUNDING GAP';
       let encumbered = 0;
 
-      if (isCashEventItem(item)) {
+      if (item.flexibility === 'optional') {
+        const take = Math.max(0, Math.min(residualPool, floor));
+        residualPool -= take;
+        funded = atLeast(take, floor);
+        uncertaintyFunded = funded;
+        margin = take - floor;
+        remaining = Math.max(0, floor - take);
+        verdict = funded ? 'ON TRACK' : 'FUNDING GAP';
+        encumbered = 0;
+      } else if (isCashEventItem(item)) {
         const dayMargin = datedMargin(rec, item.date, rec.buffer);
         funded = datedCommitmentFunded(rec, item.date, rec.buffer);
         uncertaintyFunded = funded;
@@ -1090,15 +1130,6 @@
           margin = surplus == null ? -floor : availableFloor;
           remaining = Math.max(0, floor - Math.max(0, availableFloor));
         }
-      } else if (item.flexibility === 'optional') {
-        const take = Math.max(0, Math.min(residualPool, floor));
-        residualPool -= take;
-        funded = atLeast(take, floor);
-        uncertaintyFunded = funded;
-        margin = take - floor;
-        remaining = Math.max(0, floor - take);
-        verdict = funded ? 'ON TRACK' : 'FUNDING GAP';
-        encumbered = 0;
       } else {
         encumbered = floor;
         const othersFloor = enc.floor - floor;
@@ -1165,13 +1196,27 @@
     return new Set(ids.filter(Boolean));
   }
 
+  function plannedDebtAuthorizedAmount(opts, id) {
+    if (!opts || !id) return null;
+    const map = opts.plannedDebtAmounts;
+    if (map && Object.prototype.hasOwnProperty.call(map, id) && map[id] != null) {
+      const n = Number(map[id]);
+      if (isFinite(n) && n > 0) return n;
+    }
+    return null;
+  }
+
   // Planned borrowing is opt-in. Default invents neither permission nor a
   // facility. Q19 HELOC cash treatment stays unresolved: a caller that
   // names the HELOC still has to say so; this function will not.
   // A permitted draw is purpose-specific, capped by facility capacity, and
   // inserted into the same Forecast projection as proceeds, interest from
-  // the draw date, and required repayment cash flows. Feasible means that
-  // post-financing walk still holds the protected plan.
+  // the draw date, and required repayment cash flows. An owner-authorized
+  // amount may finance a named purpose even when the cash path is already
+  // feasible; a cash shortfall is one reason, not the only one. Feasible
+  // means a repayment cadence is supplied, the post-financing walk still
+  // holds the protected plan, and the named facility never crosses its
+  // limit on that walk — not only that the ending balance is under.
   function plannedDebt(plan, asOf, opts) {
     opts = opts || {};
     const denied = {
@@ -1186,8 +1231,7 @@
     const capacity = facilityCapacity(facility, opts);
     const plans = opts.majorPlans || majorPlans(plan, asOf, opts);
     const purposes = plannedDebtPurposeIds(opts);
-    const gaps = plans.filter(p => p.verdict === 'FUNDING GAP' && p.remaining > 0
-      && purposes.has(p.id));
+    const named = plans.filter(p => purposes.has(p.id));
     const gapItems = plans.filter(p => p.verdict === 'FUNDING GAP' && p.remaining > 0)
       .map(p => ({ id: p.id, remaining: p.remaining, date: p.date, label: p.label }));
 
@@ -1200,8 +1244,10 @@
 
     let remainingCap = capacity;
     const draws = [];
-    for (const g of gaps) {
-      const want = g.remaining > 0 ? g.remaining : 0;
+    for (const g of named) {
+      const authorized = plannedDebtAuthorizedAmount(opts, g.id);
+      const want = authorized != null ? authorized
+        : (g.verdict === 'FUNDING GAP' && g.remaining > 0 ? g.remaining : 0);
       const amount = Math.min(want, remainingCap);
       if (!(amount > 0)) continue;
       const date = g.date && g.date >= asOf ? g.date : asOf;
@@ -1262,7 +1308,9 @@
     const baseState = baseWalk.byId && baseWalk.byId[facility.id];
     const interest = (state && baseState) ? state.interest - baseState.interest : (state ? state.interest : 0);
     const endingBalance = state ? state.balance : null;
-    const withinLimit = !(facility.limit != null && state && state.balance > facility.limit + EPSILON);
+    const crossedLimit = !!(state && state.firstOver);
+    const endingOver = facility.limit != null && state && state.balance > facility.limit + EPSILON;
+    const withinLimit = !crossedLimit && !endingOver;
     const cashOk = borrowed > 0
       && atLeast(post.min.balance, post.buffer)
       && atLeast(leftoverAfterBuffer(post), enc.floor);

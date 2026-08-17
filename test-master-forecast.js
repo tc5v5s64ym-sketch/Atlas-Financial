@@ -180,6 +180,35 @@ console.log('\n=== 7 / 91 / 365-day views share master knowledge and today\'s ca
     && !sepSlice.sim.events.some(e => e.id === 'aug-pay'),
     'the September view contains September events and not the August one',
     (sepSlice.sim.events || []).map(e => e.id).join(','));
+
+  // Week 3 of the as-of walk is 2026-08-30..2026-09-05. A Sep 1 start clips
+  // that week; an 30 August event is in the original week but out of range.
+  const midweekPlan = Object.assign({}, plan, {
+    income: plan.income.concat([
+      { id: 'aug-30-pay', label: 'Same original week, before the view',
+        frequency: 'once', date: '2026-08-30', amount: 333, confidence: 'confirmed' },
+      { id: 'sep-3-pay', label: 'Same original week, inside the view',
+        frequency: 'once', date: '2026-09-03', amount: 222, confidence: 'confirmed' },
+    ]),
+  });
+  const midweekSlice = F.recommend(midweekPlan, AS_OF, recOpts({
+    view: { start: futureStart, end: futureEnd },
+  }));
+  const firstWeek = (midweekSlice.sim.weeks || [])[0];
+  ok(firstWeek && firstWeek.start === futureStart,
+    'the first sliced week begins on the requested start, not the original week start',
+    firstWeek && `${firstWeek.start}..${firstWeek.end}`);
+  ok(firstWeek && near(firstWeek.confirmedIncome, 222),
+    'a partial week recomputes confirmed income from in-range events only',
+    firstWeek && String(firstWeek.confirmedIncome));
+  ok(firstWeek && !(firstWeek.events || []).some(e => e.id === 'aug-30-pay'),
+    'the clipped week does not keep an out-of-range event from the original week');
+  const implied = firstWeek.opening + firstWeek.confirmedIncome + firstWeek.estimatedIncome
+    + firstWeek.injections - firstWeek.obligations - firstWeek.bills
+    - firstWeek.commitments - firstWeek.variable - firstWeek.extra;
+  ok(firstWeek && near(implied, firstWeek.closing, 0.02),
+    'the recomputed partial week still reconciles opening + inflows − outflows to closing',
+    firstWeek && `${implied.toFixed(2)} vs ${firstWeek.closing.toFixed(2)}`);
 }
 
 console.log('\n=== completing a nearer commitment redirects capacity ===');
@@ -446,6 +475,64 @@ console.log('\n=== no planned debt unless explicitly permitted ===');
     `$${tight.borrowed} capacity $${tight.capacity}`);
   ok(tight.feasible === false,
     'an under-capacity draw is not reported as a feasible post-financing plan');
+
+  const cashCovered = Object.assign({}, plan, {
+    startingCash: { amount: 4000 },
+    commitments: [
+      { id: 'gap-item', label: 'Covered from cash', date: F.addDays(AS_OF, 20),
+        amount: 1000, confidence: 'confirmed' },
+    ],
+  });
+  const noAmount = F.plannedDebt(cashCovered, AS_OF, recOpts({
+    allowPlannedDebt: true,
+    plannedDebtFacility: 'card-x',
+    plannedDebtPurposes: ['gap-item'],
+    debts: [facility],
+    weeklyVariable: 0,
+  }));
+  ok(noAmount.borrowed === 0,
+    'a named purpose that is already cash-feasible is not financed without an authorized amount',
+    String(noAmount.borrowed));
+  const authorized = F.plannedDebt(cashCovered, AS_OF, recOpts({
+    allowPlannedDebt: true,
+    plannedDebtFacility: 'card-x',
+    plannedDebtPurposes: ['gap-item'],
+    plannedDebtAmounts: { 'gap-item': 300 },
+    debts: [facility],
+    plannedDebtPayment: 50,
+    weeklyVariable: 0,
+  }));
+  ok(near(authorized.borrowed, 300),
+    'an explicit authorized amount may finance a named purpose even when cash already covers it',
+    `$${authorized.borrowed}`);
+  ok(authorized.draws && authorized.draws[0] && authorized.draws[0].id === 'gap-item',
+    'the authorized draw stays purpose-specific');
+
+  const nearLimit = { id: 'card-x', label: 'A card', rate: 19.99, balance: 495, pending: 0, limit: 500 };
+  const overThenUnder = F.plannedDebt(planAffordable, AS_OF, recOpts({
+    allowPlannedDebt: true,
+    plannedDebtFacility: 'card-x',
+    plannedDebtPurposes: ['gap-item'],
+    debts: [nearLimit],
+    plannedDebtPayment: 100,
+    weeklyVariable: 0,
+  }));
+  // Independent: daily interest on $495 at 19.99% crosses $500 in
+  // 5 / (495 × 0.1999 / 365) ≈ 18.5 days, inside this 40-day walk.
+  const dailyInterest = 495 * 0.1999 / 365;
+  const daysToCross = (500 - 495) / dailyInterest;
+  ok(daysToCross < 40,
+    'independent interest path on the $495 opening crosses the $500 limit inside the walk',
+    `${daysToCross.toFixed(2)} days at $${dailyInterest.toFixed(4)}/day`);
+  ok(overThenUnder.borrowed > 0,
+    'a near-limit facility still draws its remaining pending-aware capacity',
+    String(overThenUnder.borrowed));
+  ok(overThenUnder.endingBalance != null && overThenUnder.endingBalance <= 500 + 0.01,
+    'ending balance can finish at or under the limit after repayment',
+    String(overThenUnder.endingBalance));
+  ok(overThenUnder.feasible === false,
+    'an interim over-limit crossing is not a feasible plan even when the ending balance is under',
+    `feasible=${overThenUnder.feasible} ending=${overThenUnder.endingBalance}`);
 }
 
 console.log('\n=== undated known commitments constrain today\'s cap; ranges stay ranges ===');
@@ -596,6 +683,75 @@ console.log('\n=== undated known commitments constrain today\'s cap; ranges stay
 }
 
 {
+  // Recurring streams keep knowledge past the due date, so later weekly
+  // spend would otherwise consume still-unsettled dated-range principal.
+  const due = F.addDays(AS_OF, 9); // 10 calendar days
+  const start = 2000;
+  const buffer = 500;
+  const floor = 1000;
+  const plan = barePlan({
+    windowDays: 40,
+    startingCash: { amount: start },
+    defaults: { targetBuffer: buffer },
+    income: [{
+      id: 'keep-horizon', label: 'Horizon marker', frequency: 'monthly',
+      anchor: '2026-08-01', amount: 0, confidence: 'confirmed',
+    }],
+    commitments: [{
+      id: 'dated-range', label: 'A dated range', date: due,
+      amount: null, amountMin: floor, amountMax: 2000, confidence: 'estimated',
+    }],
+  });
+  const rec = F.recommend(plan, AS_OF, recOpts());
+  const days = rec.knowledge.days;
+  ok(days > 10,
+    'knowledge continues past the dated-range due date when streams continue',
+    String(days));
+  // Deadline-only would allow W ≤ $350. Horizon leftover without the
+  // reserve: W ≤ (2000 − 500) × 7 / days. Holding the principal through
+  // the whole walk: leftover ≥ 1000 → W ≤ (2000 − 500 − 1000) × 7 / days.
+  const wantHeld = Math.floor(((start - buffer - floor) * 7 / days) / 5) * 5;
+  const wantUnreserved = Math.floor(((start - buffer) * 7 / days) / 5) * 5;
+  ok(rec.weekly === wantHeld,
+    'dated-range principal stays encumbered after its due date until settlement',
+    `$${rec.weekly} vs held-through-horizon $${wantHeld} (unreserved would be $${wantUnreserved})`);
+  ok(rec.knowledge.encumbered === floor,
+    'the dated range floor is still-encumbered principal, not free cash after the date',
+    String(rec.knowledge.encumbered));
+  const empty = F.recommend(barePlan({
+    windowDays: 40, startingCash: { amount: start }, defaults: { targetBuffer: buffer },
+    income: plan.income,
+  }), AS_OF, recOpts());
+  ok(rec.weekly < empty.weekly && empty.weekly === wantUnreserved,
+    'unsettled dated-range principal still binds today\'s cap after the due date',
+    `$${rec.weekly} < empty-plan $${empty.weekly}`);
+}
+
+{
+  const due = F.addDays(AS_OF, 9);
+  const plan = barePlan({
+    windowDays: 40,
+    startingCash: { amount: 2000 },
+    defaults: { targetBuffer: 500 },
+    commitments: [
+      { id: 'dated-range', label: 'A dated range', date: due,
+        amount: null, amountMin: 1000, amountMax: 1000, confidence: 'estimated' },
+      { id: 'optional-item', label: 'Optional undated', amount: 1000, optional: true },
+    ],
+  });
+  const plans = F.majorPlans(plan, AS_OF, recOpts({ weeklyVariable: 0 }));
+  const optional = plans.find(p => p.id === 'optional-item');
+  const leftover = 2000 - 500; // 1500
+  const residual = leftover - 1000; // after still-encumbered dated-range floor
+  ok(optional && optional.verdict !== 'ON TRACK' && optional.funded === false,
+    'optional residual cannot reuse still-encumbered dated-range principal',
+    optional && `${optional.verdict} remaining=${optional.remaining}`);
+  ok(optional && near(optional.remaining, 1000 - residual),
+    'optional residual is leftover after the dated-range floor, not the same $1,000 twice',
+    optional && String(optional.remaining));
+}
+
+{
   const plan = barePlan({
     windowDays: 14,
     startingCash: { amount: 2000 },
@@ -640,6 +796,34 @@ console.log('\n=== undated known commitments constrain today\'s cap; ranges stay
   ok(optional && near(optional.remaining, 1000 - residual),
     'optional residual allocation is the leftover $300, not the full target',
     optional && String(optional.remaining));
+}
+
+{
+  const plan = barePlan({
+    windowDays: 14,
+    startingCash: { amount: 900 },
+    defaults: { targetBuffer: 500 },
+    commitments: [
+      { id: 'optional-early', label: 'Earlier optional', date: '2026-09-01',
+        amount: 400, optional: true, priority: 2, confidence: 'estimated' },
+      { id: 'optional-late', label: 'Later optional, owner-ranked higher', date: '2026-12-01',
+        amount: 400, optional: true, priority: 1, confidence: 'estimated' },
+    ],
+  });
+  const seq = F.fundingSequence(plan, AS_OF, {});
+  ok(seq.map(x => x.id).join(',') === 'optional-late,optional-early',
+    'among optional items, owner priority ranks residual ahead of date',
+    seq.map(x => `${x.id}:p${x.priority}`).join(','));
+  const plans = F.majorPlans(plan, AS_OF, recOpts({ weeklyVariable: 0 }));
+  const early = plans.find(p => p.id === 'optional-early');
+  const late = plans.find(p => p.id === 'optional-late');
+  // leftover = 900 − 500 = 400, enough for exactly one $400 optional.
+  ok(late && late.verdict === 'ON TRACK' && late.funded === true,
+    'the owner-ranked later optional receives the residual $400',
+    late && `${late.verdict} remaining=${late.remaining}`);
+  ok(early && early.verdict !== 'ON TRACK' && early.funded === false,
+    'the earlier optional does not take residual ahead of the owner-ranked item',
+    early && `${early.verdict} remaining=${early.remaining}`);
 }
 
 {

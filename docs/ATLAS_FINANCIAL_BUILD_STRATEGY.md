@@ -827,8 +827,10 @@ already given the known major future costs one Plan home.
   `Forecast.majorPlans` owns ON TRACK / AT RISK / FUNDING GAP (base
   infeasibility is a gap; AT RISK is a protected uncertainty case).
   `Forecast.plannedDebt` is opt-in, purpose-specific, and invents no
-  permission. `B95` absorption already done. End-to-end payday proof
-  remains `B96`.
+  permission. An authorized amount may finance a named purpose when that
+  is the better plan, not only when cash is short; a feasible walk may
+  not cross a facility limit in the interim. `B95` absorption already
+  done. End-to-end payday proof remains `B96`.
 
 ### AF-PLAN-02 · Prove the payday question end-to-end
 
