@@ -1249,9 +1249,10 @@ Engine earned 2026-08-16; contract repaired 2026-08-17 after Atlas
 Contract / Systems Review, including the follow-up repair for future-start
 custom views, dated-range deadlines, optional residual targets, and
 planned-debt pending / repayment / purpose terms. `Forecast.recommend` searches
-`Forecast.knowledgeHorizon` (≥12 months when streams continue; always
+`Forecast.knowledgeHorizon` (≥12 months for every plan; always
 long enough for dated unsettled commitments) and reserves protected
-principal jointly. Named ranges are views.
+principal jointly, including overdue unsettled point amounts until
+settlement. Named ranges are views.
 `Forecast.fundingSequence` / `Forecast.majorPlans` / `Forecast.plannedDebt`
 are the presentation order, the three verdicts with a dollar margin/gap,
 and opt-in purpose-specific planned debt on the same projection. Live

@@ -4,9 +4,9 @@
    this file, so what is tested is exactly what is shown.
 
    The Plan page still *displays* a 13-week view. That view is a slice. The
-   engine's knowledge horizon is at least twelve months (when the plan has
-   continuing streams) and always long enough to include every dated unsettled
-   commitment. Changing the visible range does not change what the plan knows.
+   engine's knowledge horizon is at least twelve months for every plan, and
+   always long enough to include every dated unsettled commitment. Changing
+   the visible range does not change what the plan knows.
 
    Every event carries the confidence it arrived with ('confirmed' or
    'estimated') so the UI can keep the two visually apart. The engine never
@@ -311,13 +311,6 @@
   // in funding sequence and major-plan verdicts without a fabricated day.
   const KNOWLEDGE_MIN_DAYS = 365;
 
-  function hasRecurringStreams(plan) {
-    const rec = item => item && item.frequency && item.frequency !== 'once';
-    return (plan.income || []).some(rec)
-      || (plan.obligations || []).some(rec)
-      || (plan.bills || []).some(rec);
-  }
-
   // Owner-stated point amount only. A range is not collapsed to its floor,
   // a midpoint, or any other stand-in. No point amount → no point need.
   // Range bounds stay on the row and are read separately.
@@ -372,17 +365,15 @@
       if (commitmentSettledBy(c, asOf)) continue;
       // A dated range still has a deadline. Skipping it because it has no
       // point amount would let later income fund a cost that was due earlier.
-      if (!c.date) continue;
+      if (!c.date || c.date < asOf) continue;
       if (commitmentNeed(c) == null && !commitmentHasRange(c)) continue;
       lastDated = Math.max(lastDated, diffDays(asOf, c.date) + 1);
     }
-    // Knowledge does not follow the visible range. Recurring streams keep
-    // at least twelve months. A dated commitment can extend that. A short
-    // fixture with neither stays on its declared window so existing
-    // 14-day ledgers are not silently drained for a year.
-    const days = hasRecurringStreams(plan)
-      ? Math.max(KNOWLEDGE_MIN_DAYS, lastDated)
-      : (lastDated > 0 ? lastDated : (plan.windowDays || 91));
+    // Knowledge does not follow the visible range. Every plan knows at
+    // least twelve months, whether or not recurring streams exist.
+    // A later dated commitment can extend that. 7/14/91-day windows
+    // remain views of that same walk.
+    const days = Math.max(KNOWLEDGE_MIN_DAYS, lastDated);
     return { start: asOf, end: addDays(asOf, days - 1), days };
   }
 
@@ -997,6 +988,14 @@
     return !!(item && item.date && item.need != null && item.flexibility !== 'optional');
   }
 
+  // A dated point amount whose scheduled date has already passed is still
+  // protected until settlement or authorized release. Passing the due date
+  // does not turn unpaid principal into spendable cash. The original date
+  // is kept; a new due date is not invented.
+  function isOverduePointItem(item, asOf) {
+    return !!(isCashEventItem(item) && asOf && item.date < asOf);
+  }
+
   // A dated range is not a cash event (no midpoint is invented) but it
   // still has a deadline. Capacity is tested at that date, not at the
   // horizon end.
@@ -1024,16 +1023,18 @@
   }
 
   // Spoken-for principal that has not left the walk as a cash event.
-  // Dated point amounts already leave the walk; double-counting them would
-  // treat paid-out cash as still reserved. A dated range has no cash event,
-  // so its floor stays encumbered from the point it is funded or due until
-  // settlement or authorized release. Optional items are residual after
-  // that still-encumbered protected principal.
-  function protectedEncumbered(seq) {
+  // Future dated point amounts already leave the walk; double-counting them
+  // would treat paid-out cash as still reserved. An overdue unsettled point
+  // amount never left the walk, so it stays spoken for until settlement.
+  // A dated range has no cash event, so its floor stays encumbered from
+  // the point it is funded or due until settlement or authorized release.
+  // Optional items are residual after that still-encumbered protected
+  // principal.
+  function protectedEncumbered(seq, asOf) {
     let floor = 0, ceiling = 0;
     for (const item of seq || []) {
       if (!item || item.flexibility === 'optional') continue;
-      if (isCashEventItem(item)) continue;
+      if (isCashEventItem(item) && !isOverduePointItem(item, asOf)) continue;
       floor += item.bounds ? item.bounds.floor : 0;
       ceiling += item.bounds ? item.bounds.ceiling : 0;
     }
@@ -1041,9 +1042,11 @@
   }
 
   // One protected-feasibility predicate for the weekly search and for
-  // planned-debt validation. Buffer path, still-encumbered principal, and
-  // every dated-reserve deadline. A later income that repairs the ending
-  // leftover does not excuse a missed deadline.
+  // planned-debt validation. Buffer path, still-encumbered principal
+  // (including overdue unsettled point amounts), and every dated-reserve
+  // deadline. A later income that repairs the ending leftover does not
+  // excuse a missed deadline, and a passed due date does not drop an
+  // unpaid point obligation.
   function protectedPlanCheck(plan, asOf, opts) {
     opts = opts || {};
     const buffer = opts.targetBuffer != null ? opts.targetBuffer
@@ -1051,7 +1054,7 @@
     const sim = opts.sim || simulate(plan, asOf, opts);
     const seq = opts.seq || fundingSequence(plan, asOf, opts);
     const leftover = leftoverAfterBuffer(sim);
-    const enc = protectedEncumbered(seq);
+    const enc = protectedEncumbered(seq, asOf);
     const failures = [];
 
     if (!atLeast(sim.min.balance, buffer)) {
@@ -1083,21 +1086,23 @@
     }
 
     if (!atLeast(leftover, enc.floor)) {
+      const overdue = seq.find(i => isOverduePointItem(i, asOf));
       const undated = seq.find(i => i.flexibility !== 'optional'
         && !isCashEventItem(i) && !isDatedReserve(i))
         || seq.find(i => i.flexibility !== 'optional' && !isCashEventItem(i));
+      const named = overdue || undated;
       failures.push({
-        kind: 'encumbered',
-        date: sim.end,
+        kind: overdue ? 'overdue' : 'encumbered',
+        date: overdue ? overdue.date : sim.end,
         shortfall: enc.floor - leftover,
-        id: undated ? undated.id : null,
-        label: undated ? undated.label : 'protected principal',
+        id: named ? named.id : null,
+        label: named ? named.label : 'protected principal',
       });
     }
 
     failures.sort((a, b) => {
       if (a.date !== b.date) return a.date < b.date ? -1 : 1;
-      const order = { buffer: 0, 'dated-reserve': 1, encumbered: 2 };
+      const order = { buffer: 0, overdue: 1, 'dated-reserve': 2, encumbered: 3 };
       return (order[a.kind] || 9) - (order[b.kind] || 9);
     });
     return { feasible: failures.length === 0, failures, first: failures[0] || null };
@@ -1136,7 +1141,7 @@
     });
     const rec = simulate(plan, asOf, Object.assign({}, masterOpts, { weeklyVariable: weekly }));
     const leftover = leftoverAfterBuffer(rec);
-    const enc = protectedEncumbered(seq);
+    const enc = protectedEncumbered(seq, asOf);
     const fundingMargin = leftover - enc.floor;
     const uncertaintyMargin = leftover - enc.ceiling;
     const baseJoint = atLeast(leftover, enc.floor);
@@ -1162,7 +1167,7 @@
         remaining = Math.max(0, floor - take);
         verdict = funded ? 'ON TRACK' : 'FUNDING GAP';
         encumbered = 0;
-      } else if (isCashEventItem(item)) {
+      } else if (isCashEventItem(item) && item.date >= asOf) {
         const dayMargin = datedMargin(rec, item.date, rec.buffer);
         funded = datedCommitmentFunded(rec, item.date, rec.buffer);
         uncertaintyFunded = funded;
@@ -1403,8 +1408,9 @@
 
   /* ---------------------------------------------------- budget recommender */
   // The largest weekly variable spend, to the nearest $5, that keeps the
-  // protected plan feasible: cash buffer, still-encumbered principal, and
-  // every dated-reserve deadline. Same predicate as planned-debt validation.
+  // protected plan feasible: cash buffer, still-encumbered principal
+  // (including overdue unsettled point amounts), and every dated-reserve
+  // deadline. Same predicate as planned-debt validation.
   // Monotonic in W, so binary search is exact.
   const STEP = 5;
   function recommendWeekly(plan, asOf, opts) {
@@ -1720,7 +1726,7 @@
       const debt = plannedDebt(plan, asOf, Object.assign({}, planOptions, {
         weeklyVariable: weeklyCap, majorPlans: plans,
       }));
-      const encumbered = protectedEncumbered(sequence).floor;
+      const encumbered = protectedEncumbered(sequence, asOf).floor;
       const freeCash = leftoverAfterBuffer(knowledgeSim) - encumbered;
       const protectedAtCap = protectedPlanCheck(plan, asOf, Object.assign({}, simOptions, {
         weeklyVariable: weeklyCap, horizonDays: horizon.days, viewDays: horizon.days,

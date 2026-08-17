@@ -49,18 +49,26 @@ console.log('=== knowledge horizon is not the 91-day view ===');
     ],
   });
   const h = F.knowledgeHorizon(plan, AS_OF, {});
-  const wantDays = F.diffDays(AS_OF, JAN) + 1;
-  ok(h.days === wantDays, 'a January 2027 dated commitment extends knowledge past a 7-day view',
-    `${h.days} days, want ${wantDays}`);
-  ok(h.end === JAN, 'knowledge end is the commitment date', h.end);
-  ok(h.days >= 365 || !plan.income.some(s => s.frequency && s.frequency !== 'once'),
-    'a fixture with no recurring streams is not silently stretched to 365 days of drain');
+  ok(h.days >= 365, 'every plan knows at least 12 months, even with no recurring streams and a 7-day view',
+    `${h.days} days`);
+  ok(h.end >= JAN, 'the January commitment sits inside that knowledge, not past it', h.end);
+
+  const farDate = F.addDays(AS_OF, 400);
+  const far = F.knowledgeHorizon(barePlan({
+    windowDays: 14,
+    commitments: [
+      { id: 'far', label: 'Beyond a year', date: farDate, amount: 1, confidence: 'confirmed' },
+    ],
+  }), AS_OF, {});
+  ok(far.days === 401 && far.end === farDate,
+    'a dated commitment beyond 12 months extends knowledge past 365 days',
+    `${far.days} days end=${far.end}`);
 }
 
 {
   const live = require('./data.json');
   const h = F.knowledgeHorizon(live.plan, live.meta.asOf, {});
-  ok(h.days >= 365, 'the live plan has continuing streams, so knowledge is at least 12 months',
+  ok(h.days >= 365, 'the live plan knows at least 12 months',
     String(h.days));
   ok(live.plan.windowDays === 91, 'live windowDays stays the 91-day view', String(live.plan.windowDays));
 }
@@ -85,15 +93,15 @@ console.log('\n=== January 2027 commitment reduces August 2026 safe-to-spend ===
   const withC = F.recommend(withLater, AS_OF, recOpts());
   const short = F.recommend(withLater, AS_OF, recOpts({ viewDays: 7 }));
   const withDays = F.knowledgeHorizon(withLater, AS_OF, {}).days;
+  const withoutDays = F.knowledgeHorizon(base, AS_OF, {}).days;
 
   // Independent: only variable spend, so the last day binds.
-  // Without the commitment knowledge stays windowDays. With it, knowledge
-  // is the commitment span. W ≤ (start − lumps − buffer) × 7 / knowledgeDays,
-  // snapped down to $5.
-  const rawWithout = (start - buffer) * 7 / days;
+  // Knowledge is at least 12 months even with no recurring streams.
+  // W ≤ (start − lumps − buffer) × 7 / knowledgeDays, snapped down to $5.
+  const rawWithout = (start - buffer) * 7 / withoutDays;
   const wantWithout = Math.floor(rawWithout / 5) * 5;
   ok(without.weekly === wantWithout,
-    'without the later commitment, weekly is the independent 160-day drain',
+    'without the later commitment, weekly is the independent 365-day drain',
     `$${without.weekly} vs hand $${wantWithout} (raw ${rawWithout.toFixed(4)})`);
 
   const rawWith = (start - laterAmt - buffer) * 7 / withDays;
@@ -130,7 +138,7 @@ console.log('\n=== 7 / 91 / 365-day views share master knowledge and today\'s ca
   ok(a.knowledge.days === b.knowledge.days && b.knowledge.days === c.knowledge.days,
     'all three views report the same knowledge horizon',
     String(a.knowledge.days));
-  ok(a.knowledge.days >= 365, 'recurring pay keeps knowledge at least 12 months',
+  ok(a.knowledge.days >= 365, 'knowledge is at least 12 months across those views',
     String(a.knowledge.days));
   ok(a.weekly === b.weekly && b.weekly === c.weekly,
     'present-day weekly cap is identical across 7 / 91 / 365-day views',
@@ -250,8 +258,9 @@ console.log('\n=== completing a nearer commitment redirects capacity ===');
     'the later item remains, without any id special-case',
     (after.fundingSequence || []).map(x => x.id).join(','));
 
-  // Independent weekly with both lumps: start − near − far − (W/7)×days ≥ buffer
-  const rawBoth = (start - nearAmt - farAmt - buffer) * 7 / days;
+  // Independent weekly with both lumps over the master knowledge horizon.
+  const bothDays = both.knowledge.days;
+  const rawBoth = (start - nearAmt - farAmt - buffer) * 7 / bothDays;
   const wantBoth = Math.floor(rawBoth / 5) * 5;
   ok(both.weekly === wantBoth, 'weekly with both commitments matches the two-lump drain',
     `$${both.weekly} vs hand $${wantBoth}`);
@@ -298,7 +307,9 @@ console.log('\n=== overspend of a point amount is a FUNDING GAP, not AT RISK ===
     'ON TRACK carries a dollar margin',
     onTrack && String(onTrack.margin));
 
-  const overspendWeekly = rec.weekly + 200;
+  // Independent: 41 days of $300/week before the payment leaves
+  // 3000 − (300/7)×41 − 1000 ≈ $243, below the $500 buffer.
+  const overspendWeekly = 300;
   const daily = overspendWeekly / 7;
   const daysThroughPay = F.diffDays(AS_OF, due) + 1;
   const afterPay = 3000 - daily * daysThroughPay - need;
@@ -611,9 +622,8 @@ console.log('\n=== undated known commitments constrain today\'s cap; ranges stay
     ],
   });
   const rec = F.recommend(plan, AS_OF, recOpts());
-  // Independent: leftover = start − (W/7)×days − buffer ≥ undated
-  // 2000 − 2W − 500 ≥ 1000 → W ≤ 250, snapped to $5.
-  const raw = (start - buffer - undated) * 7 / days;
+  // Independent: leftover = start − (W/7)×knowledgeDays − buffer ≥ undated.
+  const raw = (start - buffer - undated) * 7 / rec.knowledge.days;
   const want = Math.floor(raw / 5) * 5;
   ok(rec.weekly === want,
     'an undated known commitment reduces today\'s weekly, not merely labelled after',
@@ -700,7 +710,7 @@ console.log('\n=== undated known commitments constrain today\'s cap; ranges stay
     gap && gap.verdict);
 
   const rec = F.recommend(rangePlan(1800), AS_OF, recOpts());
-  const raw = (1800 - buffer - 1000) * 7 / days;
+  const raw = (1800 - buffer - 1000) * 7 / rec.knowledge.days;
   const want = Math.floor(raw / 5) * 5;
   ok(rec.weekly === want,
     'weekly reserves the range floor, not a midpoint or the ceiling',
@@ -765,11 +775,15 @@ console.log('\n=== undated known commitments constrain today\'s cap; ranges stay
     'FUNDING GAP remaining is the independent $100 floor shortfall',
     gap && String(gap.remaining));
   const rec = F.recommend(rangePlan(2000), AS_OF, recOpts());
-  // Surplus on due (10 days of variable): 2000 - 10*(W/7) - 500 >= 1000 → W <= 350.
-  const wantDated = Math.floor(((2000 - buffer - 1000) * 7 / 10) / 5) * 5;
+  // Deadline: 2000 − 10×(W/7) − 500 ≥ 1000 → W ≤ 350.
+  // Horizon leftover also holds the $1,000 floor after the later $5,000:
+  // W ≤ (2000 + 5000 − 500 − 1000) × 7 / knowledgeDays. The tighter bind wins.
+  const deadlineRaw = (2000 - buffer - 1000) * 7 / 10;
+  const horizonRaw = (2000 + 5000 - buffer - 1000) * 7 / rec.knowledge.days;
+  const wantDated = Math.floor(Math.min(deadlineRaw, horizonRaw) / 5) * 5;
   ok(rec.weekly === wantDated,
-    'weekly is bound by capacity on the range deadline, not by leftover after later income',
-    `$${rec.weekly} vs hand $${wantDated}`);
+    'weekly is the tighter of the range deadline and still-encumbered horizon leftover',
+    `$${rec.weekly} vs hand $${wantDated} (deadline ${deadlineRaw.toFixed(2)}, horizon ${horizonRaw.toFixed(2)})`);
 
   const gapRec = F.recommend(rangePlan(1400), AS_OF, recOpts());
   ok(gapRec.mode === 'infeasible' && gapRec.weekly === 0 && gapRec.holds === false,
@@ -869,7 +883,7 @@ console.log('\n=== undated known commitments constrain today\'s cap; ranges stay
     'owner priority on an optional item cannot rank it ahead of a required one',
     seq.map(x => `${x.id}:${x.flexibility}`).join(','));
   const rec = F.recommend(plan, AS_OF, recOpts());
-  const raw = (2000 - 500 - 1000) * 7 / 14;
+  const raw = (2000 - 500 - 1000) * 7 / rec.knowledge.days;
   const want = Math.floor(raw / 5) * 5;
   ok(rec.weekly === want,
     'only the required undated need constrains weekly; optional is residual',
@@ -959,6 +973,87 @@ console.log('\n=== undated known commitments constrain today\'s cap; ranges stay
   ok(settled.weekly === empty.weekly,
     'settlement, not mere funding, releases the encumbered principal',
     `$${settled.weekly} vs empty-plan $${empty.weekly}`);
+}
+
+console.log('\n=== overdue unsettled point commitments stay protected ===');
+{
+  const yesterday = F.addDays(AS_OF, -1);
+  const start = 800;
+  const buffer = 500;
+  const overdueAmt = 400;
+  const plan = barePlan({
+    windowDays: 14,
+    startingCash: { amount: start },
+    defaults: { targetBuffer: buffer },
+    commitments: [
+      { id: 'overdue-item', label: 'Unpaid yesterday', date: yesterday,
+        amount: overdueAmt, confidence: 'confirmed' },
+    ],
+  });
+  const rec = F.recommend(plan, AS_OF, recOpts());
+  ok((rec.fundingSequence || []).some(x => x.id === 'overdue-item'),
+    'the overdue unsettled point commitment remains in the sequence');
+  ok(rec.mode === 'infeasible' && rec.holds === false && rec.weekly === 0,
+    'cash that cannot cover the overdue obligation is INFEASIBLE, not a spendable weekly cap',
+    `${rec.mode} weekly=${rec.weekly} holds=${rec.holds}`);
+  // Independent: leftover at W=0 is 800 − 500 = 300; need 400; shortfall 100.
+  ok(start - buffer === 300 && overdueAmt - 300 === 100,
+    'independent leftover cannot cover the overdue amount');
+  ok(rec.infeasible && rec.infeasible.id === 'overdue-item'
+    && rec.infeasible.date === yesterday && near(rec.infeasible.shortfall, 100),
+    'the failing constraint keeps the original scheduled date and the $100 shortfall',
+    rec.infeasible && JSON.stringify(rec.infeasible));
+  const row = (rec.majorPlans || []).find(p => p.id === 'overdue-item');
+  ok(row && row.verdict === 'FUNDING GAP' && row.date === yesterday && row.scheduledDate === yesterday,
+    'majorPlans still reports the overdue item on its original date',
+    row && `${row.verdict} ${row.date}`);
+  const events = F.expandEvents(plan, AS_OF, F.addDays(AS_OF, 30), {});
+  ok(!events.some(e => e.id === 'overdue-item'),
+    'expandEvents does not invent a new due date for the overdue item');
+
+  const settledPlan = JSON.parse(JSON.stringify(plan));
+  settledPlan.commitments[0].settledOn = AS_OF;
+  const settled = F.recommend(settledPlan, AS_OF, recOpts());
+  ok(!(settled.fundingSequence || []).some(x => x.id === 'overdue-item'),
+    'settlement drops the overdue item from the sequence');
+  ok(settled.mode === 'normal' && settled.holds === true,
+    'after settledOn the overdue pressure disappears',
+    `${settled.mode} holds=${settled.holds}`);
+  const empty = F.recommend(barePlan({
+    windowDays: 14, startingCash: { amount: start }, defaults: { targetBuffer: buffer },
+  }), AS_OF, recOpts());
+  ok(settled.weekly === empty.weekly,
+    'settled overdue matches the empty-plan cap',
+    `$${settled.weekly} vs $${empty.weekly}`);
+}
+
+{
+  const yesterday = F.addDays(AS_OF, -1);
+  const start = 2000;
+  const buffer = 500;
+  const overdueAmt = 400;
+  const plan = barePlan({
+    windowDays: 14,
+    startingCash: { amount: start },
+    defaults: { targetBuffer: buffer },
+    commitments: [
+      { id: 'overdue-item', label: 'Unpaid yesterday', date: yesterday,
+        amount: overdueAmt, confidence: 'confirmed' },
+    ],
+  });
+  const rec = F.recommend(plan, AS_OF, recOpts());
+  const raw = (start - buffer - overdueAmt) * 7 / rec.knowledge.days;
+  const want = Math.floor(raw / 5) * 5;
+  ok(rec.mode === 'normal' && rec.weekly === want,
+    'when cash can cover the overdue obligation it still reserves it in today\'s cap',
+    `$${rec.weekly} vs hand $${want} (raw ${raw.toFixed(4)})`);
+  ok(rec.knowledge.encumbered === overdueAmt,
+    'overdue point principal is encumbered until settlement',
+    String(rec.knowledge.encumbered));
+  const row = (rec.majorPlans || []).find(p => p.id === 'overdue-item');
+  ok(row && row.verdict === 'ON TRACK' && row.date === yesterday,
+    'majorPlans agrees the overdue item is reserved on its original date, not vanished',
+    row && `${row.verdict} ${row.date}`);
 }
 
 console.log('\n=== existing consumers still derive from Forecast ===');
