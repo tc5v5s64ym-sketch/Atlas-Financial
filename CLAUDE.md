@@ -73,9 +73,10 @@ at the same time.
 The agent selects the work, verifies current state before editing, implements
 one independently provable outcome on a fresh `agent/<outcome>` branch from
 current `main`, proves the numbers independently, opens the pull request with
-the merge card filled, obtains the required review when a trigger fires,
-addresses any real high-severity advisory defect, and merges the exact passing
-head.
+the merge card filled, and addresses any real high-severity advisory defect.
+When a high-risk trigger has fired, it requests the Atlas Contract / Systems
+Review only after the head is a stable merge candidate, then merges the exact
+passing head.
 
 ### Independent agent review — any agent that is not the active builder
 
@@ -106,10 +107,12 @@ defect remains a blocker because the defect is real.
 
 ### Atlas Contract / Systems Review — blocking architecture review
 
-**ChatGPT performs this review.** The active implementation agent cannot satisfy
-its own architecture gate. The review never authorizes a household fact, raw
-data release, secret, schema, production write, or promotion from estimated to
-verified. Those remain owner-reserved.
+**ChatGPT performs this review.** When a high-risk trigger fires, the review is
+required governance before merge. When no high-risk trigger fires, it is not
+required. The active implementation agent cannot satisfy its own architecture
+gate. The review is not a GitHub status check. It never authorizes a household
+fact, raw data release, secret, schema, production write, or promotion from
+estimated to verified. Those remain owner-reserved.
 
 #### High-risk triggers
 
@@ -133,6 +136,23 @@ records current state without moving an authority or trust claim. Neither do
 routine tests, refactors, templates, or comments that leave runtime and hard-gate
 semantics unchanged.
 
+#### When the review is requested
+
+Do not request this review until the pull request is a credible merge
+candidate:
+
+- implementation is complete;
+- the merge card is current;
+- deterministic tests and checks applicable to the head are green;
+- figures review has completed when applicable;
+- one optional independent advisory pass, if run, has completed;
+- genuine high-severity advisory findings have already been repaired; and
+- the head is expected to stay stable.
+
+ChatGPT reviews a candidate for merge, not the first implementation attempt.
+Optional advisory suggestions need not all be fixed. Correct-but-improvable
+work may proceed to systems review.
+
 #### Bounded review protocol
 
 The blocking question is one sentence:
@@ -144,12 +164,20 @@ ownership, false-green proof, numerical/trust invariants, security and owner
 boundaries, and bridge cleanup. Correct-but-improvable work receives `PASS`; any
 improvement notes go to the optional audit.
 
-A blocking result names the exact defect and the proof needed to close it. The
-follow-up review reads the new exact head, verifies those named fixes, and checks
-the high-risk surface changed by the fixes. It does **not** reopen the untouched
-artifact for an unlimited new review. A new blocker is in scope only when the
-fix introduced a new high-severity defect, changed another high-risk surface, or
-made the original blocker impossible to verify without that adjacent fact.
+If the review returns `BLOCKING`, repair only the named blockers and prove those
+repairs with targeted tests plus the normal applicable checks. Then request
+bounded re-review on the new exact head. The follow-up reads that head, verifies
+the named fixes, and checks the high-risk surface changed by those repairs. It
+does **not** reopen the untouched artifact for an unlimited new review. A new
+blocker is in scope only when the fix introduced a new high-severity defect,
+changed another high-risk surface, or made the original blocker impossible to
+verify without that adjacent fact.
+
+If a review repair itself introduces another genuine high-risk blocker, one
+bounded repair is reasonable. If the process then continues producing
+blocker-after-blocker, stop the automation and review churn and return the
+design or process to the decision desk for reassessment. Do not create an
+endless repair / re-review loop.
 
 There is no target number of rounds and no "run until clean" rule. The terminal
 result is `PASS` when no unsafe or architecturally wrong condition remains.
@@ -164,11 +192,16 @@ The review block records five fields:
 - **Review outcome** — `PASS` before merge when required, else `N/A`; and
 - **Findings and fix verification** — the blocker record or `N/A`.
 
-`merge-card-check` enforces the card is filled and the closed openings are
-valid. It does **not** lock merge on a review SHA, a PASS/PENDING outcome,
-or ChatGPT identity. Confidence that the change is not junk comes from
-`npm test`, the secret hook, and the figures comment. ChatGPT remains the
-decision desk. It is not a SHA-matching merge lock.
+Those fields are the governance record. When the review is required, merge waits
+for ChatGPT `PASS` on the current exact head. That wait is a review contract, not
+a GitHub status check.
+
+`merge-card-check` enforces only that the card is filled and the closed openings
+are structurally valid. It does **not** parse or enforce ChatGPT identity,
+`PASS`, `BLOCKING`, or review-SHA equality. Confidence that the change is not
+junk comes from `npm test`, the secret hook, and the figures comment.
+Decision-desk advice from ChatGPT remains optional and is a separate role from
+this review.
 
 ### Independent improvement audit — optional and bounded
 
@@ -200,9 +233,18 @@ The active implementation agent merges when all of these hold:
   secret or raw data; and
 - no owner-reserved item is outstanding.
 
-A ChatGPT architecture review is optional help from the decision desk. It is
-not a required SHA-matching check. Do not hold a green, complete, in-scope
-pull request for an exact-head PASS.
+When a high-risk trigger has fired, Atlas Contract / Systems Review `PASS` on
+the current exact head is also required governance before merge. ChatGPT
+performs that review. The builder cannot satisfy it. It is not a GitHub status
+check: `merge-card-check` does not parse or enforce ChatGPT identity, `PASS`,
+`BLOCKING`, or review-SHA equality.
+
+When no high-risk trigger has fired, the systems review is not required.
+Decision-desk advice from ChatGPT remains optional help. `auto-safe` work may
+still merge on green.
+
+Do not invent a generic owner-approval ceremony, and do not treat the parked
+paid OpenAI reviewer as this review.
 
 Failed `tests` or merge-card completeness checks start one automatic Cursor
 repair. The patch is tested before it is pushed. Two failed attempts stop
@@ -214,12 +256,19 @@ The Merge Card `Primary risk` row decides what the owner does. The GitHub
 primary label is a projection of that row, not a second judgement.
 `docs/RISK_LABELS.md` defines each closed value:
 
-- **`auto-safe`** — merge on green. No approval click, no waiting.
+- **`auto-safe`** — no published figure moves. Merge on green when no
+  systems-review trigger fired. No approval click. A high-risk trigger still
+  waits for Atlas Systems Review `PASS` on the current head.
 - **`figures-moved`** — the owner sees the figures diff before the merge. That
   is a *look*, not a sign-off ritual: reconcile the bot's list against the card,
   and if they disagree, one of them is wrong.
 - **`owner-decision`** — blocked on a person, not on code.
 - **`blocked`** — not mergeable as it stands.
+
+For high-risk triggered work, green tests, a complete card, no real blocker,
+and Atlas Contract / Systems Review `PASS` on the current head make a merge
+candidate. GitHub remains the repository source of truth; that review is
+recorded there, not enforced as another required status check.
 
 The owner never has to click approve to make a green, in-scope pull request
 mergeable. Owner-reserved items are **gates on specific questions**, never merge
@@ -449,10 +498,13 @@ not infer meaning from prose, negation, severity wording, scope arguments,
 finding dispositions, or review-round narratives.
 
 `merge-card-check` therefore checks required rows, the current-state opening,
-the closed required-review record, and whether a mechanically high-risk file
-path was incorrectly marked `NOT REQUIRED`. File paths are facts, not prose.
-Small-PR discipline, closed-loop delivery, advisory dispositions, and cleanup
-explanations remain reviewer guidance.
+and that the review decision opens `REQUIRED` or `NOT REQUIRED` with the closed
+`N/A` fields when not required. It does not judge whether the human trigger
+decision was correct, and it does not parse or enforce `PASS`, `BLOCKING`,
+review-SHA equality, or ChatGPT identity. File paths are facts, not prose;
+they are not a second review-status gate in this check. Small-PR discipline,
+closed-loop delivery, advisory dispositions, and cleanup explanations remain
+reviewer guidance.
 
 ## Governance-control lifecycle
 
