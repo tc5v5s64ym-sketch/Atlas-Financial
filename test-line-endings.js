@@ -94,8 +94,9 @@ const liveLf = sourceText(live);
 const liveCrlf = liveLf.replace(/\n/g, '\r\n');
 const liveIds = missionIds(liveLf);
 const liveCrlfIds = missionIds(sourceText(liveCrlf));
-ok(Array.isArray(liveIds) && liveIds.length === 8 && liveIds.includes('nearBoundary'),
-  'normalized live forecast.js still yields eight mission ids',
+ok(Array.isArray(liveIds) && liveIds.length === 9 && liveIds.includes('nearBoundary')
+  && liveIds.includes('infeasible'),
+  'normalized live forecast.js still yields nine mission ids',
   liveIds ? liveIds.join(',') : 'null');
 ok(JSON.stringify(liveIds) === JSON.stringify(liveCrlfIds),
   'live LF and live CRLF extract the same mission ids');

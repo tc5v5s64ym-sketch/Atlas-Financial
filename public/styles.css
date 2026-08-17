@@ -270,6 +270,21 @@ footer { margin-top:56px; padding-top:18px; border-top:1px solid var(--grid);
   background:color-mix(in srgb, var(--critical) 5%, var(--surface-1)); }
 .statusband.crit b { color:var(--critical); }
 
+.payday-head { margin:0 0 12px; font-size:1rem; }
+.payday-infeasible { border-left:4px solid var(--critical); padding-left:12px; }
+.payday-list { display:flex; flex-direction:column; gap:0; margin:0; }
+.payday-row { display:grid; grid-template-columns:minmax(9rem, 15rem) 1fr; gap:10px 16px;
+              padding:10px 0; border-bottom:1px solid var(--grid); align-items:start; }
+.payday-row:last-child { border-bottom:none; }
+.payday-lab { font-weight:650; font-size:.86rem; }
+.payday-val { font-size:.9rem; color:var(--text-secondary); }
+.payday-val b { color:var(--text-primary); }
+.payday-plans { margin:6px 0 0; padding-left:1.1rem; }
+.payday-plans li { margin:4px 0; }
+@media (max-width:640px) {
+  .payday-row { grid-template-columns:1fr; gap:4px; }
+}
+
 .hero-tiles { grid-template-columns:repeat(3,1fr); }
 @media (max-width:640px) { .hero-tiles { grid-template-columns:1fr 1fr; }
   .hero-tiles .tile:first-child { grid-column:1 / -1; } }
