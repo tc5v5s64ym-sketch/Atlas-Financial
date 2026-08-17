@@ -887,18 +887,28 @@ function renderPlan(d, periods) {
   }
 
   /* ---- major future plans — verdicts from Forecast, wording only ---- */
-  const major = advice.majorPlans || Forecast.majorPlans(plan, asOf,
+  const major = Forecast.majorPlans(plan, asOf,
     Object.assign({}, advice.planOptions || {}, { weeklyVariable: weekly }));
+  const majorAmount = p => {
+    if (p.need != null) return money2(p.need);
+    if (p.amountMin != null && p.amountMax != null) return `${money2(p.amountMin)}–${money2(p.amountMax)}`;
+    if (p.amountMin != null) return `from ${money2(p.amountMin)}`;
+    if (p.amountMax != null) return `up to ${money2(p.amountMax)}`;
+    return 'range';
+  };
+  const majorMargin = p => p.margin == null ? ''
+    : p.margin >= 0 ? ` Margin ${money2(p.margin)}.`
+    : ` Gap ${money2(-p.margin)}.`;
   const MAJOR_VERDICT = {
-    'ON TRACK': p => `<span class="chip v">ON TRACK</span> The projected path funds ${p.label}.`,
-    'AT RISK': p => `<span class="chip w">AT RISK</span> Current spending has used the margin for ${p.label}; cutting remaining discretionary can still recover it.`,
-    'FUNDING GAP': p => `<span class="chip c">FUNDING GAP</span> Even eliminating remaining discretionary cannot fully fund ${p.label} without deferral, extra income, or explicitly permitted borrowing.`,
+    'ON TRACK': p => `<span class="chip v">ON TRACK</span> The authoritative path funds ${p.label}.${majorMargin(p)}`,
+    'AT RISK': p => `<span class="chip w">AT RISK</span> The base case for ${p.label} remains feasible; the protected uncertainty case (the range ceiling) does not.${majorMargin(p)}`,
+    'FUNDING GAP': p => `<span class="chip c">FUNDING GAP</span> The authoritative plan cannot fund ${p.label} on this path.${majorMargin(p)}`,
   };
   const majorHtml = (major || []).map(p => `
     <div class="fund">
       <div class="fund-top">
         <div class="fund-lab">${p.label}${p.date ? ` <span class="mutedtext">${fmtDate(p.date)}</span>` : ''}${p.deferred ? ' <span class="chip w">may move</span>' : ''}</div>
-        <div class="fund-amt">${p.need != null ? money2(p.need) : 'range'}</div>
+        <div class="fund-amt">${majorAmount(p)}</div>
       </div>
       <div class="fund-note">${MAJOR_VERDICT[p.verdict] ? MAJOR_VERDICT[p.verdict](p) : (p.verdict || '')}</div>
     </div>`).join('');

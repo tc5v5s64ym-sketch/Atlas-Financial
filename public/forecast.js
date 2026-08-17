@@ -318,13 +318,44 @@
       || (plan.bills || []).some(rec);
   }
 
-  // Owner-stated need only. A point amount wins. An open range contributes
-  // its stated floor, never a midpoint. No amount and no floor → no need.
+  // Owner-stated point amount only. A range is not collapsed to its floor,
+  // a midpoint, or any other stand-in. No point amount → no point need.
+  // Range bounds stay on the row and are read separately.
   function commitmentNeed(c) {
     if (!c) return null;
     if (c.amount != null && isFinite(Number(c.amount))) return Number(c.amount);
-    if (c.amountMin != null && isFinite(Number(c.amountMin))) return Number(c.amountMin);
     return null;
+  }
+
+  function commitmentRange(c) {
+    if (!c) return { amountMin: null, amountMax: null };
+    return {
+      amountMin: c.amountMin != null && isFinite(Number(c.amountMin)) ? Number(c.amountMin) : null,
+      amountMax: c.amountMax != null && isFinite(Number(c.amountMax)) ? Number(c.amountMax) : null,
+    };
+  }
+
+  // required / bounded-flex / optional. Derived from owner-stated fields;
+  // never written onto live rows. `adjustable` alone is bounded-flex, not
+  // optional. An explicit flexibility value wins when present.
+  function commitmentFlexibility(c) {
+    if (!c) return 'required';
+    if (c.flexibility === 'required' || c.flexibility === 'bounded-flex'
+      || c.flexibility === 'optional') return c.flexibility;
+    if (c.optional === true) return 'optional';
+    if (c.adjustable) return 'bounded-flex';
+    return 'required';
+  }
+
+  function commitmentBounds(c) {
+    const flexibility = commitmentFlexibility(c);
+    if (flexibility === 'optional') return { floor: 0, ceiling: 0, flexibility };
+    const point = commitmentNeed(c);
+    const range = commitmentRange(c);
+    const floor = point != null ? point : (range.amountMin != null ? range.amountMin : 0);
+    const ceiling = point != null ? point
+      : (range.amountMax != null ? range.amountMax : floor);
+    return { floor, ceiling, flexibility };
   }
 
   function knowledgeHorizon(plan, asOf, opts) {
@@ -602,6 +633,23 @@
         debtId: g.parts.length === 1 ? g.parts[0].debtId : null,
         confidence: 'planned' });
     }
+    // Purpose-specific planned-debt cash flows on the same ledger as the
+    // master walk. Positive draws arrive through `injections` above.
+    // Negative amounts here are required repayment leaving cash.
+    for (const flow of opts.plannedFlows || []) {
+      if (!flow || !flow.date || flow.date < start || flow.date > end) continue;
+      const amt = Number(flow.amount);
+      if (!isFinite(amt) || amt === 0) continue;
+      events.push({
+        date: flow.date,
+        amount: amt,
+        kind: amt > 0 ? 'injection' : 'planned-debt',
+        label: flow.label || 'Planned debt',
+        id: flow.id || 'planned-debt',
+        debtId: flow.debtId || null,
+        confidence: 'planned',
+      });
+    }
     if (opts.extraDebtMonthly > 0) {
       // Applied mid-month, the day after the usual payday pattern.
       //
@@ -714,7 +762,7 @@
         else if (e.kind === 'obligation') week.obligations += -e.amount;
         else if (e.kind === 'bill') week.bills += -e.amount;
         else if (e.kind === 'commitment') week.commitments += -e.amount;
-        else if (e.kind === 'extra') week.extra += -e.amount;
+        else if (e.kind === 'extra' || e.kind === 'planned-debt') week.extra += -e.amount;
         week.events.push(e);
         // The intra-day low matters: a big payment can dip below the buffer
         // even when the day closes fine. Income sorts first, so this is the
@@ -782,9 +830,10 @@
   }
 
   /* ---------------------------------------- funding sequence + verdicts */
-  // Sequence future commitments without hard-coded ids. Owner-stated
-  // priority wins when present; otherwise timing, then certainty, then
-  // flexibility. Undated rows sort after dated ones — no day is invented.
+  // Presentation order only — not the allocator. Protected items are
+  // feasible simultaneously or not at all. Owner priority ranks residual
+  // (optional) allocation after that. Undated rows sort after dated ones;
+  // no day is invented. No commitment id is special.
   function fundingSequence(plan, asOf, opts) {
     opts = opts || {};
     const disabled = new Set(opts.disabled || []);
@@ -793,14 +842,18 @@
       if (disabled.has(c.id)) return;
       if (commitmentSettledBy(c, asOf)) return;
       const need = commitmentNeed(c);
-      if (need == null && c.amountMin == null && c.amountMax == null) return;
+      const range = commitmentRange(c);
+      if (need == null && range.amountMin == null && range.amountMax == null) return;
+      const bounds = commitmentBounds(c);
       rows.push({
         id: c.id,
         label: c.label,
         date: c.date || null,
         need,
-        amountMin: c.amountMin != null ? Number(c.amountMin) : null,
-        amountMax: c.amountMax != null ? Number(c.amountMax) : null,
+        amountMin: range.amountMin,
+        amountMax: range.amountMax,
+        bounds,
+        flexibility: bounds.flexibility,
         confidence: c.confidence || null,
         adjustable: !!c.adjustable,
         priority: typeof c.priority === 'number' ? c.priority : null,
@@ -809,15 +862,17 @@
     });
     const certaintyRank = c => c.confidence === 'confirmed' ? 0
       : c.confidence === 'estimated' ? 1 : 2;
+    const flexRank = c => c.flexibility === 'required' ? 0
+      : c.flexibility === 'bounded-flex' ? 1 : 2;
     rows.sort((a, b) => {
-      const pa = a.priority == null ? Infinity : a.priority;
-      const pb = b.priority == null ? Infinity : b.priority;
-      if (pa !== pb) return pa - pb;
+      if (flexRank(a) !== flexRank(b)) return flexRank(a) - flexRank(b);
       const ta = a.date || '\uffff';
       const tb = b.date || '\uffff';
       if (ta !== tb) return ta < tb ? -1 : 1;
       if (certaintyRank(a) !== certaintyRank(b)) return certaintyRank(a) - certaintyRank(b);
-      if (a.adjustable !== b.adjustable) return a.adjustable ? 1 : -1;
+      const pa = a.priority == null ? Infinity : a.priority;
+      const pb = b.priority == null ? Infinity : b.priority;
+      if (pa !== pb) return pa - pb;
       return a.index - b.index;
     });
     return rows.map((c, i) => Object.assign({}, c, { rank: i + 1 }));
@@ -827,6 +882,24 @@
     return (sim && sim.ending != null && sim.buffer != null) ? sim.ending - sim.buffer : 0;
   }
 
+  function isCashEventItem(item) {
+    return !!(item && item.date && item.need != null);
+  }
+
+  // Spoken-for principal that is not a dated cash event. Dated point
+  // amounts already leave the walk; double-counting them would treat
+  // paid-out cash as still reserved. Optional items are residual.
+  function protectedEncumbered(seq) {
+    let floor = 0, ceiling = 0;
+    for (const item of seq || []) {
+      if (!item || item.flexibility === 'optional') continue;
+      if (isCashEventItem(item)) continue;
+      floor += item.bounds ? item.bounds.floor : 0;
+      ceiling += item.bounds ? item.bounds.ceiling : 0;
+    }
+    return { floor, ceiling };
+  }
+
   function datedCommitmentFunded(sim, date, buffer) {
     if (!sim || !date) return false;
     const day = (sim.daily || []).find(d => d.date === date);
@@ -834,38 +907,22 @@
     return atLeast(day.balance, buffer);
   }
 
-  function allocateToSequence(seq, sim) {
-    const buffer = sim.buffer;
-    let pool = leftoverAfterBuffer(sim);
-    return seq.map(item => {
-      const need = item.need;
-      if (item.date) {
-        const funded = datedCommitmentFunded(sim, item.date, buffer);
-        return {
-          id: item.id, funded, allocated: funded && need != null ? need : 0,
-          remaining: funded || need == null ? 0 : need,
-        };
-      }
-      if (need == null) {
-        return { id: item.id, funded: false, allocated: 0, remaining: null };
-      }
-      const take = Math.max(0, Math.min(pool, need));
-      pool -= take;
-      return {
-        id: item.id, funded: atLeast(take, need), allocated: take,
-        remaining: Math.max(0, need - take),
-      };
-    });
+  function datedMargin(sim, date, buffer) {
+    if (!sim || !date) return null;
+    const day = (sim.daily || []).find(d => d.date === date);
+    if (!day) return null;
+    return day.balance - buffer;
   }
 
   // ON TRACK / AT RISK / FUNDING GAP for major future plans only.
   // Ordinary transactions and budget categories are not graded here.
-  // Structural, not a percentage score:
-  //   ON TRACK     the trajectory funds it
-  //   AT RISK      this trajectory does not, but eliminating remaining
-  //                discretionary (weekly = 0) still can
-  //   FUNDING GAP  even weekly = 0 cannot, without deferral, extra income,
-  //                or explicitly permitted borrowing
+  // Feasibility → margin → residual:
+  //   ON TRACK     the authoritative/base case is jointly feasible
+  //   AT RISK      base remains feasible; an explicit protected
+  //                uncertainty case (a range ceiling) is not
+  //   FUNDING GAP  the authoritative/base case is infeasible on this path
+  // A dollar margin (surplus after protected principal) or gap travels
+  // with the verdict. Weekly = 0 is not the AT RISK test.
   function majorPlans(plan, asOf, opts) {
     opts = opts || {};
     const horizon = knowledgeHorizon(plan, asOf, opts);
@@ -875,99 +932,231 @@
       horizonDays: horizon.days, viewDays: horizon.days,
     });
     const rec = simulate(plan, asOf, Object.assign({}, masterOpts, { weeklyVariable: weekly }));
-    const zero = simulate(plan, asOf, Object.assign({}, masterOpts, { weeklyVariable: 0 }));
-    const atRec = allocateToSequence(seq, rec);
-    const atZero = allocateToSequence(seq, zero);
-    return seq.map((item, i) => {
-      const a = atRec[i];
-      const z = atZero[i];
-      const verdict = a.funded ? 'ON TRACK' : z.funded ? 'AT RISK' : 'FUNDING GAP';
+    const leftover = leftoverAfterBuffer(rec);
+    const enc = protectedEncumbered(seq);
+    const fundingMargin = leftover - enc.floor;
+    const uncertaintyMargin = leftover - enc.ceiling;
+    const baseJoint = atLeast(leftover, enc.floor);
+    const uncertaintyJoint = atLeast(leftover, enc.ceiling);
+    let residualPool = leftover - enc.floor;
+
+    return seq.map(item => {
+      const floor = item.bounds ? item.bounds.floor : 0;
+      const ceiling = item.bounds ? item.bounds.ceiling : 0;
+      let funded = false;
+      let uncertaintyFunded = false;
+      let margin = fundingMargin;
+      let remaining = 0;
+      let verdict = 'FUNDING GAP';
+      let encumbered = 0;
+
+      if (isCashEventItem(item)) {
+        const dayMargin = datedMargin(rec, item.date, rec.buffer);
+        funded = datedCommitmentFunded(rec, item.date, rec.buffer);
+        uncertaintyFunded = funded;
+        margin = dayMargin == null ? (funded ? 0 : -floor) : dayMargin;
+        remaining = funded ? 0 : Math.max(0, -margin);
+        verdict = funded ? 'ON TRACK' : 'FUNDING GAP';
+        encumbered = 0;
+      } else if (item.flexibility === 'optional') {
+        const take = Math.max(0, Math.min(residualPool, floor));
+        residualPool -= take;
+        funded = atLeast(take, floor);
+        uncertaintyFunded = funded;
+        margin = take - floor;
+        remaining = Math.max(0, floor - take);
+        verdict = funded ? 'ON TRACK' : 'FUNDING GAP';
+        encumbered = 0;
+      } else {
+        encumbered = floor;
+        const othersFloor = enc.floor - floor;
+        const othersCeil = enc.ceiling - ceiling;
+        const availableFloor = leftover - othersFloor;
+        const availableCeil = leftover - othersCeil;
+        funded = baseJoint;
+        uncertaintyFunded = uncertaintyJoint;
+        if (funded && uncertaintyFunded) {
+          verdict = 'ON TRACK';
+          margin = uncertaintyMargin;
+          remaining = 0;
+        } else if (funded) {
+          verdict = 'AT RISK';
+          margin = fundingMargin;
+          remaining = Math.max(0, ceiling - Math.max(0, availableCeil));
+        } else {
+          verdict = 'FUNDING GAP';
+          margin = fundingMargin;
+          remaining = Math.max(0, floor - Math.max(0, availableFloor));
+        }
+      }
+
       return {
         id: item.id,
         label: item.label,
         date: item.date,
         scheduledDate: item.date,
         need: item.need,
+        amountMin: item.amountMin,
+        amountMax: item.amountMax,
+        flexibility: item.flexibility,
         confidence: item.confidence,
         adjustable: item.adjustable,
         rank: item.rank,
         verdict,
-        funded: a.funded,
-        recoverable: z.funded,
-        allocated: a.allocated,
-        remaining: a.remaining,
+        funded,
+        encumbered,
+        margin,
+        remaining,
+        fundingMargin,
         // Flexible items may yield. Non-flexible dates are never rewritten.
         deferred: !!(item.adjustable && verdict !== 'ON TRACK'),
       };
     });
   }
 
+  function facilityCapacity(facility, opts) {
+    if (!facility) return 0;
+    const headroom = Math.max(0, (Number(facility.limit) || 0) - (Number(facility.balance) || 0));
+    if (opts && opts.plannedDebtMax != null && isFinite(Number(opts.plannedDebtMax))) {
+      return Math.max(0, Math.min(headroom, Number(opts.plannedDebtMax)));
+    }
+    return headroom;
+  }
+
   // Planned borrowing is opt-in. Default invents neither permission nor a
   // facility. Q19 HELOC cash treatment stays unresolved: a caller that
   // names the HELOC still has to say so; this function will not.
+  // A permitted draw is purpose-specific, capped by facility capacity, and
+  // inserted into the same Forecast projection as proceeds, interest from
+  // the draw date, and required repayment cash flows. Feasible means that
+  // post-financing walk still holds the protected plan.
   function plannedDebt(plan, asOf, opts) {
     opts = opts || {};
-    const permitted = !!(opts.allowPlannedDebt);
-    if (!permitted) {
-      return { permitted: false, borrowed: 0, facilityId: null, interest: 0, repayment: null, items: [] };
-    }
-    const plans = opts.majorPlans || majorPlans(plan, asOf, opts);
-    const gaps = plans.filter(p => p.verdict === 'FUNDING GAP' && p.remaining > 0);
-    const borrowed = gaps.reduce((s, p) => s + p.remaining, 0);
+    const denied = {
+      permitted: false, borrowed: 0, facilityId: null, interest: 0,
+      repayment: null, items: [], draws: [], feasible: false, capacity: 0,
+    };
+    if (!opts.allowPlannedDebt) return denied;
+
     const facilityId = opts.plannedDebtFacility || null;
     const debts = opts.debts || [];
     const facility = facilityId ? debts.find(d => d.id === facilityId) : null;
-    if (!(borrowed > 0) || !facility) {
+    const capacity = facilityCapacity(facility, opts);
+    const plans = opts.majorPlans || majorPlans(plan, asOf, opts);
+    const gaps = plans.filter(p => p.verdict === 'FUNDING GAP' && p.remaining > 0);
+    const gapItems = gaps.map(p => ({ id: p.id, remaining: p.remaining, date: p.date, label: p.label }));
+
+    if (!facility) {
       return {
-        permitted: true, borrowed: facility ? borrowed : 0, facilityId,
-        interest: 0, repayment: null,
-        items: gaps.map(p => ({ id: p.id, remaining: p.remaining })),
+        permitted: true, borrowed: 0, facilityId, interest: 0, repayment: null,
+        items: gapItems, draws: [], feasible: false, capacity: 0,
       };
     }
+
+    let remainingCap = capacity;
+    const draws = [];
+    for (const g of gaps) {
+      const want = g.remaining > 0 ? g.remaining : 0;
+      const amount = Math.min(want, remainingCap);
+      if (!(amount > 0)) continue;
+      const date = g.date && g.date >= asOf ? g.date : asOf;
+      draws.push({ id: g.id, amount, date, purpose: g.label || g.id });
+      remainingCap -= amount;
+    }
+    const borrowed = draws.reduce((s, d) => s + d.amount, 0);
     const horizon = knowledgeHorizon(plan, asOf, opts);
     const rate = Number(facility.rate) || 0;
-    const interest = borrowed * (rate / 100) * (horizon.days / 365);
+    const interest = draws.reduce((s, d) => {
+      const daysHeld = Math.max(0, diffDays(d.date, horizon.end));
+      return s + d.amount * (rate / 100) * (daysHeld / 365);
+    }, 0);
+
     const monthlyPayment = opts.plannedDebtPayment != null ? Number(opts.plannedDebtPayment) : null;
     let months = null;
-    if (monthlyPayment > 0) {
+    const plannedFlows = [];
+    if (monthlyPayment > 0 && borrowed > 0) {
       const r = rate / 100 / 12;
       if (r <= 0) months = Math.ceil(borrowed / monthlyPayment);
       else {
         const factor = 1 - (r * borrowed) / monthlyPayment;
         months = factor <= 0 ? null : Math.ceil(-Math.log(factor) / Math.log(1 + r));
       }
+      const firstDraw = draws.reduce((min, d) => d.date < min ? d.date : min, draws[0].date);
+      const startPay = addDays(firstDraw, 1);
+      const day = Number(firstDraw.split('-')[2]) || 15;
+      const payDates = monthlyDates(day, startPay, horizon.end, startPay);
+      const limit = months != null ? Math.min(months, payDates.length) : payDates.length;
+      for (let i = 0; i < limit; i++) {
+        plannedFlows.push({
+          date: payDates[i],
+          amount: -monthlyPayment,
+          label: 'Planned debt repayment',
+          id: 'planned-debt-repay-' + i,
+          debtId: facility.id,
+        });
+      }
     }
+
+    const injections = (opts.injections || []).concat(draws.map(d => ({
+      date: d.date,
+      amount: d.amount,
+      debtId: facility.id,
+      label: 'Planned draw — ' + d.purpose,
+      id: 'planned-debt-' + d.id,
+    })));
+    const post = simulate(plan, asOf, Object.assign({}, opts, {
+      horizonDays: horizon.days, viewDays: horizon.days,
+      weeklyVariable: opts.weeklyVariable != null ? opts.weeklyVariable : 0,
+      injections, plannedFlows,
+    }));
+    const enc = protectedEncumbered(fundingSequence(plan, asOf, opts));
+    const feasible = borrowed > 0
+      && atLeast(post.min.balance, post.buffer)
+      && atLeast(leftoverAfterBuffer(post), enc.floor);
+
     return {
       permitted: true,
       borrowed,
       facilityId: facility.id,
       rate,
+      capacity,
       interest,
+      draws,
+      feasible,
       repayment: {
         facilityId: facility.id,
         monthlyPayment,
         months,
+        flows: plannedFlows.length,
         path: monthlyPayment > 0
-          ? 'stated monthly repayment on the named facility'
+          ? 'stated monthly repayment on the named facility, from each draw date'
           : 'amount borrowed is known; no repayment cadence was supplied',
       },
-      items: gaps.map(p => ({ id: p.id, remaining: p.remaining })),
+      items: draws.map(d => ({ id: d.id, remaining: d.amount, date: d.date })),
     };
   }
 
   /* ---------------------------------------------------- budget recommender */
   // The largest weekly variable spend, to the nearest $5, that keeps every
-  // measured day of the projection at or above the target buffer. Monotonic
-  // in W, so binary search is exact.
+  // measured day of the projection at or above the target buffer AND leaves
+  // enough ending surplus to cover protected non-event principal jointly.
+  // Monotonic in W, so binary search is exact.
   const STEP = 5;
   function recommendWeekly(plan, asOf, opts) {
     opts = Object.assign({}, opts || {});
     const buffer = opts.targetBuffer != null ? opts.targetBuffer : plan.defaults.targetBuffer;
+    const horizon = knowledgeHorizon(plan, asOf, opts);
+    const searchOpts = Object.assign({}, opts, {
+      horizonDays: opts.horizonDays != null ? opts.horizonDays : horizon.days,
+    });
+    if (searchOpts.viewDays == null) searchOpts.viewDays = searchOpts.horizonDays;
+    const encumbered = protectedEncumbered(fundingSequence(plan, asOf, searchOpts)).floor;
     const fits = w => {
-      opts.weeklyVariable = w;
-      return atLeast(simulate(plan, asOf, opts).min.balance, buffer);
+      const sim = simulate(plan, asOf, Object.assign({}, searchOpts, { weeklyVariable: w }));
+      if (!atLeast(sim.min.balance, buffer)) return false;
+      return atLeast(leftoverAfterBuffer(sim), encumbered);
     };
-    if (!fits(0)) return 0; // even zero spending breaches the buffer
+    if (!fits(0)) return 0; // even zero spending breaches the protected plan
     let lo = 0, hi = 5000;
     while (fits(hi)) { lo = hi; hi *= 2; if (hi > 80000) break; }
     while (hi - lo > STEP) {
@@ -999,7 +1188,7 @@
     const items = [];
     for (const event of events || []) {
       if (!isJointCashOutflow(event)) continue;
-      if (event.kind === 'extra' || event.kind === 'injection') continue;
+      if (event.kind === 'extra' || event.kind === 'injection' || event.kind === 'planned-debt') continue;
       if (event.date < payday || event.date > until) continue;
       items.push({
         date: event.date,
@@ -1254,12 +1443,15 @@
         weeklyVariable: weeklyCap, majorPlans: plans,
       }));
       const view = viewRange(plan, asOf, viewSpec || { days: viewDays }, planOptions);
+      const encumbered = protectedEncumbered(sequence).floor;
+      const freeCash = leftoverAfterBuffer(knowledgeSim) - encumbered;
       return {
         mode, weekly: weeklyCap, effectiveFrom, buffer, gap, sim: viewSim, zero: zeroSim,
         step: STEP,
         knowledge: {
           start: horizon.start, end: horizon.end, days: horizon.days,
           min: knowledgeSim.min, ending: knowledgeSim.ending,
+          encumbered, freeCash,
         },
         view,
         fundingSequence: sequence,

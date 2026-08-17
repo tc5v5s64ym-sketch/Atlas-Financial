@@ -1245,11 +1245,14 @@ plans show ON TRACK / AT RISK / FUNDING GAP from Forecast.
 Forecast remains the planner. Do not create a second planner, a generic
 schema, or a parallel authority.
 
-Engine earned 2026-08-16. `Forecast.recommend` searches
+Engine earned 2026-08-16; contract repaired 2026-08-17 after Atlas
+Contract / Systems Review. `Forecast.recommend` searches
 `Forecast.knowledgeHorizon` (≥12 months when streams continue; always
-long enough for dated unsettled commitments). Named ranges are views.
+long enough for dated unsettled commitments) and reserves protected
+principal jointly. Named ranges are views.
 `Forecast.fundingSequence` / `Forecast.majorPlans` / `Forecast.plannedDebt`
-are the sequence, the three verdicts, and opt-in planned debt. Live
+are the presentation order, the three verdicts with a dollar margin/gap,
+and opt-in purpose-specific planned debt on the same projection. Live
 `windowDays` stays 91. No dates, amounts, priority weights, or debt
 permission were invented on live rows. `B95` remains the one home for
 known major costs. ON TRACK / AT RISK / FUNDING GAP applies to those

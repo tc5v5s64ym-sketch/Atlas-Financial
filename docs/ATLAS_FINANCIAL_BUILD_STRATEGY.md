@@ -820,12 +820,15 @@ already given the known major future costs one Plan home.
   finishing `B91`; opening the store or connectivity gates; applying
   ON TRACK / AT RISK / FUNDING GAP to ordinary transactions or budget
   categories.
-- **State** — **engine earned 2026-08-16.** `Forecast.recommend`
-  searches `Forecast.knowledgeHorizon`. Named ranges are views.
-  `Forecast.fundingSequence` and `Forecast.majorPlans` own the
-  sequence and ON TRACK / AT RISK / FUNDING GAP. `Forecast.plannedDebt`
-  is opt-in and invents no permission. `B95` absorption already done.
-  End-to-end payday proof remains `B96`.
+- **State** — **engine earned 2026-08-16; contract repaired 2026-08-17.**
+  `Forecast.recommend` searches `Forecast.knowledgeHorizon` and reserves
+  protected principal jointly. Named ranges are views.
+  `Forecast.fundingSequence` is presentation order.
+  `Forecast.majorPlans` owns ON TRACK / AT RISK / FUNDING GAP (base
+  infeasibility is a gap; AT RISK is a protected uncertainty case).
+  `Forecast.plannedDebt` is opt-in, purpose-specific, and invents no
+  permission. `B95` absorption already done. End-to-end payday proof
+  remains `B96`.
 
 ### AF-PLAN-02 · Prove the payday question end-to-end
 

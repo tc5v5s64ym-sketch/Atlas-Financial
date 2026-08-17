@@ -557,6 +557,9 @@ const settle = () => new Promise(r => setTimeout(r, 0));
   const advice = F.recommend(plan, asOf, {
     scenario: 'expected', incomeOverrides: {}, disabled: [], extraDebtMonthly: 0,
     targetBuffer: plan.defaults.targetBuffer,
+    debts: data.debts,
+    extraDebtTarget: plan.nextDollar && plan.nextDollar.target,
+    fundingSources: plan.funding && plan.funding.options,
   });
   const liveBudget = F.budgetBreakdown(plan, periods, {
     paypalPerMonth: data.paypal && data.paypal.perMonth,

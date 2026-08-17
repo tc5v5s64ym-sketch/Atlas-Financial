@@ -1,7 +1,8 @@
 'use strict';
 /* Known major future costs live on plan.commitments (or the property-tax
  * reserve), once each, and are not Deep Dive prose. Undated rows do not
- * become cash events and do not change the 91-day weekly cap.
+ * become cash events and are not smeared across the 91-day sinking line.
+ * They do encumber protected principal on the B94 master walk.
  *
  * Amounts below are the owner estimates from the 2026-08-16 instruction,
  * written as literals — not read back from the rows they prove.
@@ -110,15 +111,18 @@ const later = F.expandEvents(plan, asOf, '2027-12-31', {});
 ok(!later.some(e => NEW_IDS.includes(e.id)),
   'a longer expander walk still invents no day for undated rows');
 
-console.log('\n=== 91-day weekly cap is unchanged by undated rows ===');
+console.log('\n=== undated rows encumber the master walk without becoming cash ===');
 const recOpts = {
   scenario: 'expected', incomeOverrides: {}, disabled: [], extraDebtMonthly: 0,
   targetBuffer: plan.defaults.targetBuffer,
 };
 const withNew = F.recommend(plan, asOf, recOpts);
 const withoutNew = F.recommend(plan, asOf, Object.assign({}, recOpts, { disabled: NEW_IDS }));
-ok(withNew.weekly === withoutNew.weekly,
-  'disabling the new undated rows does not change recommend.weekly',
+ok(withNew.knowledge.encumbered > withoutNew.knowledge.encumbered,
+  'the absorbed undated rows encumber principal on the master walk',
+  `$${withNew.knowledge.encumbered} vs $${withoutNew.knowledge.encumbered}`);
+ok(withNew.weekly <= withoutNew.weekly,
+  'encumbering those rows cannot raise today\'s cap',
   `$${withNew.weekly} vs $${withoutNew.weekly}`);
 const budget = F.budgetBreakdown(plan, require('./public/periods.json'), {
   paypalPerMonth: data.paypal ? data.paypal.perMonth : 0,
