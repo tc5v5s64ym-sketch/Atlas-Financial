@@ -8,7 +8,7 @@ authority and the bounded review protocol.
 
 | Label | Meaning | Owner action |
 |---|---|---|
-| `auto-safe` | No published figure moves and no fact changes home. | None. Merge on green when no systems-review trigger fired. A high-risk trigger still waits for Atlas Systems Review `PASS`. |
+| `auto-safe` | No published figure moves and no fact changes home. | None. Merge on green when no systems-review trigger fired. A high-risk trigger still waits for Atlas Contract / Systems Review `PASS`. |
 | `figures-moved` | A figure the household reads changes. | Read the figures diff and reconcile it with the card. |
 | `owner-decision` | A household fact or owner-reserved decision is outstanding. | Answer the exact question. |
 | `blocked` | A hard gate failed or a real blocker remains. | Do not merge. |
@@ -162,7 +162,7 @@ failed test-repair attempts stop and comment rather than loop. A repair
 must not weaken a financial test or invent a figure.
 
 ChatGPT decision-desk advice remains optional help. It is a separate role
-from the trigger-based Atlas Systems Review.
+from the trigger-based Atlas Contract / Systems Review.
 
 ### Independent improvement audit — optional
 

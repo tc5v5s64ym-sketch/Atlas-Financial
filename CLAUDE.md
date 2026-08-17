@@ -258,7 +258,7 @@ primary label is a projection of that row, not a second judgement.
 
 - **`auto-safe`** — no published figure moves. Merge on green when no
   systems-review trigger fired. No approval click. A high-risk trigger still
-  waits for Atlas Systems Review `PASS` on the current head.
+  waits for Atlas Contract / Systems Review `PASS` on the current head.
 - **`figures-moved`** — the owner sees the figures diff before the merge. That
   is a *look*, not a sign-off ritual: reconcile the bot's list against the card,
   and if they disagree, one of them is wrong.
