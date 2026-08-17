@@ -31,15 +31,15 @@ facts PR; each needs its own independently provable outcome):
 
 **Critical path** is owned by
 [`docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`](docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md),
-not by this file. Current order (2026-08-16, after PR #82): finish `B91`
-with the freshest coherent current-state opening → `B94` master-forecast
-engine → `B96` prove the payday question end-to-end. `B80` and the live Lunch
-Money observation test are **done**. `B95` already absorbed the known
-major future costs onto `plan.commitments` — that is the one home; do not
-open a ticket per purchase. `B20` / `B21`, `B78`, provider-completeness,
-broad historical forensics, and old categorisation cleanup are not
-critical-path gates unless they expose a demonstrated material source or
-financial-correctness gap. `B91` stays **IN PROGRESS** and is not DONE.
+not by this file. Current order (2026-08-16, after the `B91` opening):
+`B94` master-forecast engine → `B96` prove the payday question end-to-end.
+`B80`, the live Lunch Money observation test, `B95`, and `B91` /
+`AF-RECON-01` are **done**. `B95` already absorbed the known major future
+costs onto `plan.commitments` — that is the one home; do not open a ticket
+per purchase. `B20` / `B21`, `B78`, provider-completeness, broad historical
+forensics, and old categorisation cleanup are not critical-path gates
+unless they expose a demonstrated material source or financial-correctness
+gap. Do not start `B94` in this cutover.
 
 **Operational knowledge lives in `docs/ACCOUNT_FACTS.md`**, not here: how each
 institution's data is obtained, the download endpoints, and the traps that cost
@@ -52,25 +52,17 @@ to be visible, merchant strings needing normalising before matching).
 
 **B70 · The HELOC passes its own limit on 30 September, with no new borrowing** · OPEN · *needs a decision, not analysis*
 
-**Revalidate after the `B91` opening.** The crossing dates and the
-"draw $623 and it becomes 31 August" urgency are from the **2026-08-09
-Forecast opening**. The 12 August Burrard registrations are
-owner-confirmed paid (2026-08-16) and were not drawn on the HELOC for
-that purpose. Do not carry the Aug. 9 three-week loan story forward as
-today's household plan.
+**Revalidate on the `B91` opening.** The "draw $623 and it becomes
+31 August" urgency was the **2026-08-09 Forecast opening**. The 12 August
+Burrard registrations are owner-confirmed paid (2026-08-16) and were not
+drawn on the HELOC for that purpose. Do not carry the Aug. 9 three-week
+loan story forward as today's household plan.
 
-The **30 September** crossing is still the current published result:
-`data.json` remains dated 2026-08-09, and the current figure snapshot
-reports `debt.overLimit.heloc` as `2026-09-30`. That published figure is
-not verified current household truth until `B91` replaces the opening.
-It has not been retired from the site.
-
-On that 9 August opening the HELOC sat at $201,586.16 against a $202,654
-limit — $1,067.84 of headroom — and capitalises about **$814 a month with
-nothing repaying it**. On the observed charge alone that opening crosses
-the limit on **30 September 2026**. The direction (interest-only, thin
-headroom) is still the household question. The date must be recomputed
-from the next coherent opening.
+The 2026-08-16 opening has the HELOC at $200,486.16 against a $202,654
+limit — $2,167.84 of headroom after the posted $1,100 payment — still
+capitalising about **$814 a month with nothing repaying it**. The
+published crossing on this opening is **31 October 2026**. The direction
+(interest-only, thin headroom) is still the household question.
 
 **Needs from the household:** confirm with TD what happens at the limit on an
 interest-only HELOC — whether the charge is refused, permitted with a fee, or
@@ -79,11 +71,11 @@ the most urgent item on the page.
 
 **B71 · Triangle Mastercard is over its limit between payments, every month** · OPEN · *small*
 
-**Revalidate after the `B91` opening.** $13,497.00 against a $13,500
-limit — $3.00 of headroom — is the **2026-08-09 Forecast opening**, not
-the 16 August observation (posted $13,197.00 + pending $15.62; $300
-posted 10 August). Do not treat $3 of headroom or the day-90 $227.71
-over-limit projection as current truth.
+**Revalidate on the `B91` opening.** $13,497.00 against a $13,500
+limit — $3.00 of headroom — was the **2026-08-09 Forecast opening**.
+The 16 August opening uses the screenshot: posted $13,197.00 + pending
+$15.62 ($300 posted 10 August). Do not treat $3 of headroom or the old
+day-90 $227.71 over-limit projection as current truth.
 
 The pattern may still be real on a later opening: interest of roughly
 $247/month against thin headroom can put the card over between payments.
@@ -1073,7 +1065,7 @@ essential/discretionary without a failing test. Preserve genuinely distinct
 semantics (`business`, `reserve`). Prefer a small explicit guard over a new
 classification system.
 
-**B91 · Evidence refresh / reconciliation loop** · `IN PROGRESS` · *architecture, current-state cutover — not DONE*
+**B91 · Evidence refresh / reconciliation loop** · **DONE 2026-08-16** · *architecture, current-state cutover*
 After `B92` and `B93`. **Current implementation outcome** and next major
 product milestone. Capture, extraction, and the non-writing reconciliation
 report exist. Owner-approved Aug. 14 evidence that was strong enough has
@@ -1175,37 +1167,30 @@ unchanged: no second horizon, no new payday engine, no `$600/week`
 policy. Live household financial facts are unchanged. Do not mark this
 item DONE.
 
-**Current-state cutover (not completion):** owner-approved Aug. 14 evidence
-that was strong enough now lives on canonical Plan rows. Fusion camp and
-tryouts carry `settledOn: "2026-08-14"`; the rows remain. `hydro-due-sep1`
-($237.45 due 1 September, Amanda / DEBT&PAYMENTS, household obligation)
-is on `plan.bills` and does not reduce joint cash. Reconciler date
-relation reports `canonical-older` / `same-day` / `canonical-newer` /
-`incomparable` without assigning STALE. Not promoted: a historical Aug. 14
-joint-cash opening (those exact balances are not in the committed corpus);
-Rogers/Shaw posting status; HOME BUDGET.xlsx (not promoted by B91;
-classified 2026-08-16, Q0 ANSWERED, did not become current policy);
-Amanda DEBT&PAYMENTS as spendable cash; unknown card pending as $0; Q19
-HELOC mechanics; $600/week. Published `meta.asOf` remains 2026-08-09
-because cash/debt snapshots are still that date. **Finish this item with
-the freshest coherent complete evidence**, not by waiting for the missing
-Aug. 14 opening. A later live Lunch Money / owner-confirmed observation
-that can supply as-of / represented-events semantics is the correct
-cutover. Do not mark this item DONE.
+**Current-state cutover — complete 2026-08-16.** The published Forecast
+opening is 2026-08-16 from the Lunch Money observation fetched
+2026-08-16T20:57Z plus the same-day Triangle/MBNA screenshots. Spendable
+cash is independently $2,252.76. Friday 14 August payroll, mortgage, Shaw,
+Fit4Less, the $220 Hydro debit, the $94.03 TD-card minimum, and the $763
+Cash Back payment are inside the snapshots and are not replayed.
+`representedEvents` is empty because nothing scheduled on 16 August is
+inside the observation. Unposted 15 August BCAA / ICBC / RESP / union dues
+are reserved as once rows on this opening. Triangle posted/pending come
+from the owner screenshot, not Lunch Money's last-statement figure.
+Amanda / TENNIS INCOME stays held-elsewhere. Q19 stays OPEN. $600/week is
+not encoded. Observation files remain evidence; the reconciler remains
+non-writing. The Aug. 14 corpus stays the distinction checklist.
 
-**Outcome (whole item, still open):** a small **non-writing** reconciliation
-report over existing observation records: evidence value/date, current Atlas
-value, MATCH / STALE / CHANGE / CONFLICT / MISSING, unresolved item. One
-canonical pointer into `data.json`. Owner-approved edits land there and
-Forecast consumes them. A live opening observation carries cutover / as-of
-semantics so same-day income already inside that observation is not
-replayed. After that opening is written from the freshest complete
-evidence, existing Forecast must produce the household payday plan
-without ChatGPT or a Sheet constructing a second model. The Aug. 14
-corpus remains the distinction checklist, not the only acceptable
-cutover. Do not assert $600/week as expected output. Q19 stays OPEN and
-must fail closed; it does not keep B91 blocked on the historical Aug. 14
-opening. B20 history and a universal STALE threshold are not B91 closers.
+**Outcome (whole item, closed 2026-08-16):** a small **non-writing**
+reconciliation report over existing observation records: evidence
+value/date, current Atlas value, MATCH / CHANGE / CONFLICT / MISSING,
+unresolved item. One canonical pointer into `data.json`. Owner-approved
+edits land there and Forecast consumes them. The live opening is
+2026-08-16. Same-day income already inside that observation is not
+replayed. Existing Forecast produces the household payday plan from this
+opening (mode `normal`, weekly $920, not $600 policy). The Aug. 14 corpus
+remains the distinction checklist. Q19 stays OPEN and fail-closed. B20
+history and a universal STALE threshold were not B91 closers.
 
 **B91 must also consume these payday distinctions:** schedule ≠ posted;
 paid commitments stop reserving cash; account balance ≠ amount currently

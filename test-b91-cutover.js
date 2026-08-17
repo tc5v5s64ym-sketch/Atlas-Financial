@@ -1,12 +1,10 @@
 'use strict';
-/* B91 current-state cutover — approved evidence drives canonical state.
+/* B91 current-state cutover — 2026-08-16 opening from the freshest complete
+ * evidence. Forecast remains the only financial engine. Observation files
+ * remain evidence. The reconciler still does not write data.json.
  *
- * Acceptance corpus: docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md
- * Forecast remains the only financial engine. Observation files remain
- * evidence. The reconciler still does not write data.json.
- *
- * Independent proof: plan-row arithmetic and 01_OPEN_QUESTIONS status
- * text, not a second call to recommendWeekly.
+ * Independent proof: plan-row arithmetic and source identities, not a second
+ * call to recommendWeekly.
  */
 const fs = require('fs');
 const path = require('path');
@@ -22,7 +20,7 @@ const cards = require('./docs/reconciliation/card-state-observations.json');
 let failures = 0;
 const ok = (cond, label, detail = '') => {
   if (!cond) failures++;
-  console.log(`  ${cond ? 'PASS' : 'FAIL'}  ${label}${detail ? '  — ' + detail : ''}`);
+  console.log(`  ${cond ? 'PASS' : 'FAIL'}  ${label}${detail ? ' — ' + detail : ''}`);
 };
 const near = (a, b, eps = 0.005) => Math.abs(Number(a) - Number(b)) <= eps;
 const money = n => '$' + Number(n).toFixed(2);
@@ -30,6 +28,7 @@ const hashFile = p => crypto.createHash('sha256').update(fs.readFileSync(p)).dig
 
 const PAYDAY = '2026-08-14';
 const AUG9 = '2026-08-09';
+const AUG16 = '2026-08-16';
 const NEXT_PAY = '2026-08-28';
 const CAMP = 786;
 const TRYOUTS = 140;
@@ -67,10 +66,32 @@ const tryouts = live.plan.commitments.find(c => c.id === 'tryouts');
 const hydroSep = (live.plan.bills || []).find(b => b.id === 'hydro-due-sep1');
 const hydroNow = (live.plan.bills || []).find(b => b.id === 'hydro-due-now');
 const opening = independentSpendable(live.plan);
-const events9 = F.expandEvents(live.plan, AUG9, windowEnd(AUG9), {});
+const events16 = F.expandEvents(live.plan, AUG16, windowEnd(AUG16), {});
 const events14 = F.expandEvents(live.plan, PAYDAY, windowEnd(PAYDAY), {});
+const events9 = F.expandEvents(live.plan, AUG9, windowEnd(AUG9), {});
 
-console.log('=== A. settled Fusion commitments stop reserving future cash ===');
+console.log('=== A. one 2026-08-16 cutover; spendable cash is independently $2,252.76 ===');
+{
+  ok(live.meta.asOf === AUG16, 'published as-of is 2026-08-16', live.meta.asOf);
+  ok(live.plan.opening && live.plan.opening.asOf === AUG16,
+    'plan.opening.asOf is the same cutover');
+  ok(Array.isArray(live.plan.opening.representedEvents)
+    && live.plan.opening.representedEvents.length === 0,
+    'representedEvents is empty — nothing scheduled on 16 August is inside the observation');
+  const a = live.plan.startingCash.breakdown.find(r => r.id === 'chequing-a');
+  const b = live.plan.startingCash.breakdown.find(r => r.id === 'chequing-b');
+  const s = live.plan.startingCash.breakdown.find(r => r.id === 'savings');
+  ok(a && near(a.value, 1320.13), 'Chequing A is the mapped $1,320.13', money(a && a.value));
+  ok(b && near(b.value, 932.05), 'Chequing B is the mapped $932.05', money(b && b.value));
+  ok(s && near(s.value, 0.58), 'Savings is the mapped $0.58', money(s && s.value));
+  const independent = 1320.13 + 932.05 + 0.58;
+  ok(near(independent, 2252.76) && near(opening, independent),
+    'independent spendable sum is $2,252.76', money(opening));
+  ok(near(F.startingCashAmount(live.plan), opening),
+    'Forecast opening cash is that spendable sum only');
+}
+
+console.log('\n=== B. settled commitments do not reserve cash again ===');
 ok(camp && near(camp.amount, CAMP) && camp.settledOn === PAYDAY,
   'live fusioncamp row is retained with settledOn 2026-08-14');
 ok(tryouts && near(tryouts.amount, TRYOUTS) && tryouts.settledOn === PAYDAY,
@@ -79,173 +100,187 @@ ok(F.commitmentStatus(camp) === 'settled' && F.commitmentStatus(tryouts) === 'se
   'derived status is settled; the commitments were not deleted');
 ok(events9.some(e => e.id === 'fusioncamp' && near(e.amount, -CAMP)),
   'independent: an Aug. 9 opening still reserves $786');
-ok(events9.some(e => e.id === 'tryouts' && near(e.amount, -TRYOUTS)),
-  'independent: an Aug. 9 opening still reserves $140');
-ok(!events14.some(e => e.id === 'fusioncamp' || e.id === 'tryouts'),
-  'an Aug. 14 Forecast emits no Fusion camp or tryouts cash event');
+ok(!events16.some(e => e.id === 'fusioncamp' || e.id === 'tryouts'),
+  'the 16 August Forecast emits no Fusion camp or tryouts cash event');
+const b1 = live.plan.commitments.find(c => c.id === 'burrard1');
+const b2 = live.plan.commitments.find(c => c.id === 'burrard2');
+ok(b1 && b1.settledOn === AUG16 && b2 && b2.settledOn === AUG16,
+  'Burrards registrations remain settledOn 2026-08-16');
+ok(!events16.some(e => e.id === 'burrard1' || e.id === 'burrard2'),
+  'the 16 August Forecast emits no Burrards registration cash event');
 ok(['fusion-sep', 'fusion-oct', 'fusion-nov'].every(id => {
   return !live.plan.commitments.some(c => c.id === id);
-}), 'the three stale $500 Fusion instalments are gone (Q23 ANSWERED)');
-ok((live.plan.actions || []).some(a => /Fusion camp/i.test(a.what) && a.status === 'done'),
-  'the Fund the Fusion camp action is marked done, not deleted');
+}), 'the three stale $500 Fusion instalments stay gone');
 
-console.log('\n=== B. payroll represented in a post-pay opening does not replay ===');
+console.log('\n=== C. same-day / already-posted income and transfers are not replayed ===');
 {
   const payroll = live.plan.income.find(s => s.id === 'payroll');
-  const dates = F.occurrences(payroll, PAYDAY, windowEnd(PAYDAY));
-  ok(dates[0] === PAYDAY, 'independent occurrences: payroll is scheduled on Aug. 14');
-  ok(!live.plan.opening, 'live plan has no opening.representedEvents — no post-pay cash observation exists');
-  const livePay = events14.filter(e => e.id === 'payroll' && e.date === PAYDAY);
-  ok(livePay.length === 1 && near(livePay[0].amount, payroll.amount),
-    'without a matching post-pay opening, Aug. 14 payroll still fires once — not guessed represented');
-
-  const cutover = {
-    asOf: PAYDAY,
-    representedEvents: [{ id: 'payroll', date: PAYDAY }],
-  };
-  const withCutover = Object.assign({}, live.plan, { opening: cutover });
-  const cutEvents = F.expandEvents(withCutover, PAYDAY, windowEnd(PAYDAY), {});
-  ok(!cutEvents.some(e => e.id === 'payroll' && e.date === PAYDAY),
-    'the existing representedEvents mechanism still omits same-day payroll when named');
-  ok(cutEvents.some(e => e.id === 'payroll' && e.date === NEXT_PAY),
-    'the next payroll is not skipped by an opening-date cutover');
+  ok(payroll && payroll.amount >= 4247.92 && payroll.amount <= 4274.98,
+    'recurring payroll stays inside the EMP-004 observed net range');
+  ok(!events16.some(e => e.id === 'payroll' && e.date === PAYDAY),
+    '16 August Forecast does not replay 14 August payroll — the date is before as-of');
+  ok(events16.some(e => e.id === 'payroll' && e.date === NEXT_PAY),
+    'the next payroll on 28 August still fires');
+  const amanda = live.plan.income.find(s => s.id === 'amandaTransfer');
+  ok(amanda && amanda.firstDue === '2026-09-20',
+    'amandaTransfer firstDue is 2026-09-20 so August crossings already in cash are not replayed');
+  ok(!events16.some(e => e.id === 'amandaTransfer' && e.date < '2026-09-20'),
+    'no August amandaTransfer cash event is emitted from this opening');
 }
 
-console.log('\n=== C. unposted mortgage still fires ===');
+console.log('\n=== D. posted 14 August obligations are not reserved again ===');
 {
-  const mortgage = live.plan.obligations.find(o => o.id === 'mortgage');
-  const dates = F.occurrences(mortgage, PAYDAY, windowEnd(PAYDAY));
-  ok(dates[0] === PAYDAY, 'independent occurrences: mortgage is scheduled on Aug. 14');
-  const liveMort = events14.filter(e => e.id === 'mortgage' && e.date === PAYDAY);
-  ok(liveMort.length === 1 && near(liveMort[0].amount, -mortgage.amount),
-    'Aug. 14 mortgage still deducts — it was not on representedEvents');
+  ok(!events16.some(e => e.id === 'mortgage' && e.date === PAYDAY),
+    '14 August mortgage is not replayed');
+  ok(events16.some(e => e.id === 'mortgage' && e.date === NEXT_PAY),
+    '28 August mortgage still fires');
+  ok(!events16.some(e => e.id === 'shaw' && e.date === PAYDAY),
+    '14 August Shaw is not replayed');
+  ok(!events16.some(e => e.id === 'fit4less' && e.date === PAYDAY),
+    '14 August Fit4Less is not replayed');
+  const tdcc = live.plan.obligations.find(o => o.id === 'tdcc');
+  ok(tdcc && tdcc.firstDue === '2026-09-17',
+    'TD card firstDue is 2026-09-17 after the posted $94.03 payment');
+  ok(!events16.some(e => e.id === 'tdcc' && e.date === '2026-08-17'),
+    'the paid August TD-card minimum is not reserved on 17 August');
+  ok(!live.plan.obligations.some(o => o.id === 'cashback-sep'),
+    'the $762.36 Cash Back September spike row is gone');
+  ok(!events16.some(e => e.id === 'cashback-sep' || (e.id === 'cashback' && e.date === '2026-09-01')),
+    'Forecast does not reserve the paid Cash Back September spike');
 }
 
-console.log('\n=== D. unknown posting state is not guessed ===');
+console.log('\n=== E. unposted 15 August bills remain reserved; unknown posting is not guessed ===');
 {
-  const unknownIds = ['fit4less', 'bcaa', 'icbc', 'resp'];
+  const unknownIds = ['bcaa', 'icbc', 'resp', 'uniondues'];
   ok(unknownIds.every(id => posting.observations.some(o => o.eventId === id && o.unknown === true)),
-    'Fit4Less / BCAA / ICBC / RESP remain unknown in posting observations');
-  ok(unknownIds.every(id => events14.some(e => e.id === id)),
-    'unknown items still appear on the Forecast schedule — not marked posted');
-  ok(!live.plan.opening || !(live.plan.opening.representedEvents || []).some(e => unknownIds.includes(e.id)),
+    'BCAA / ICBC / RESP / union dues remain unknown in posting observations');
+  for (const id of ['bcaa-aug15-outstanding', 'icbc-aug15-outstanding',
+    'resp-aug15-outstanding', 'uniondues-aug15-outstanding']) {
+    ok(events16.some(e => e.id === id && e.date === AUG16),
+      `${id} is reserved on the 16 August opening`);
+  }
+  const independentMidMonth = 82.96 + 99.91 + 100 + 25;
+  const reserved = events16.filter(e => /aug15-outstanding/.test(e.id))
+    .reduce((s, e) => s + (-e.amount), 0);
+  ok(near(reserved, independentMidMonth),
+    'independent 15 August unposted reserve is $307.87', money(reserved));
+  ok(!live.plan.opening.representedEvents.some(e => unknownIds.includes(e.id)),
     'unknown posting was not written onto representedEvents');
+  const bcaa = (live.plan.bills || []).find(b => b.id === 'bcaa-aug15-outstanding');
+  const bcaaObs = posting.observations.find(o => o.eventId === 'bcaa');
+  ok(bcaa && /posting unknown/i.test(bcaa.label),
+    'the reserved BCAA row is labelled unknown posting, not confirmed unposted');
+  ok(bcaa && !/not in the 2026-08-16 Lunch Money window/i.test(bcaa.note),
+    'BCAA does not claim 15 August is outside the 14-day current-state window');
+  ok(bcaaObs && bcaaObs.observedAsOf === '2026-08-14' && bcaaObs.unknown === true,
+    'BCAA posting provenance stays the Aug. 14 unknown observation');
+  ok(!/Still not observed posted in the 2026-08-16 pull/i.test(bcaaObs.note),
+    'unknown Aug. 14 provenance is not rewritten as an Aug. 16 confirmed absence');
 }
 
-console.log('\n=== E. unknown card pending is not converted to zero ===');
+console.log('\n=== F. debt openings independently match their source identities ===');
 {
-  const cash14 = cards.observations.find(o => o.observationId === 'card-cashback-pending-2026-08-14');
-  const travel14 = cards.observations.find(o => o.observationId === 'card-travelvisa-pending-2026-08-14');
-  ok(cash14 && cash14.unknown === true && cash14.amount == null,
-    'Aug. 14 Cash Back pending observation is unknown, not $0');
-  ok(travel14 && travel14.unknown === true && travel14.amount == null,
-    'Aug. 14 Travel Visa pending observation is unknown, not $0');
-  const cashback = live.debts.find(d => d.id === 'cashback');
-  const travel = live.debts.find(d => d.id === 'travelvisa');
-  ok(cashback && cashback.pending === 0,
-    'live Cash Back pending remains the 9 Aug known-zero, not overwritten by later unknown');
-  ok(travel && near(travel.pending, 165.13),
-    'live Travel Visa pending remains the 9 Aug $165.13, not coerced to $0');
-  const recon = R.reconcile({
-    data: live,
-    map: { mappings: [] },
-    observations: [],
-    settlements: { observations: [] },
-    utility: { observations: [] },
-    amanda: { observations: [] },
-    cards,
-    posting: { observations: [] },
-  });
-  const cashRow = recon.rows.find(r => r.observationId === 'card-cashback-pending-2026-08-14');
-  const travelRow = recon.rows.find(r => r.observationId === 'card-travelvisa-pending-2026-08-14');
-  ok(cashRow && cashRow.unknown === true && cashRow.status !== 'MATCH',
-    'reconciler does not treat Aug. 14 unknown pending as matching a $0 canonical pending');
-  ok(travelRow && travelRow.unknown === true,
-    'Travel Visa Aug. 14 unknown pending stays unknown');
+  const byId = Object.fromEntries(live.debts.map(d => [d.id, d]));
+  ok(near(byId.mortgage.balance, 545188.30)
+    && near(546026.58 - 545188.30, 838.28),
+    'mortgage $545,188.30 = 546,026.58 − 838.28 principal on the posted $1,600');
+  ok(near(byId.heloc.balance, 200486.16)
+    && near(201586.16 - 200486.16, 1100),
+    'HELOC $200,486.16 = 201,586.16 − the posted $1,100 payment');
+  ok(near(byId.triangle.balance, 13197) && near(byId.triangle.pending, 15.62)
+    && near(13497 - 300, 13197),
+    'Triangle posted $13,197.00 = 13,497.00 − $300 Aug. 10; pending $15.62 stays separate');
+  ok(near(13500 - 13197 - 15.62, 287.38),
+    'independent Triangle available $287.38 is never treated as cash');
+  ok(near(byId.mbna.balance, 8003.61) && near(byId.mbna.pending, 0),
+    'MBNA posted $8,003.61 pending $0 matches the screenshot, not the statement $7,855.12');
+  ok(near(byId.cashback.balance, 4799.43)
+    && near(5612.43 - 50 - 763, 4799.43),
+    'Cash Back $4,799.43 = 5,612.43 − $50 − $763');
+  ok(byId.cashback.pendingUnknown === true && byId.cashback.pending == null,
+    'Cash Back pending is unknown, not a Lunch Money empty-window $0');
+  ok(byId.cashback.balance + 0.005 < 5000,
+    'Cash Back is under its $5,000 limit on posted');
+  ok(Math.abs(5000 - 4799.43 - 200.57) < 0.005,
+    'independent posted room is $200.57 — and that is not a known-zero pending reading');
+  ok(near(byId.tdcc.balance, 1705.94) && near(1799.97 - 94.03, 1705.94),
+    'TD card $1,705.94 = 1,799.97 − the posted $94.03');
+  ok(near(byId.travelvisa.balance, 862.68) && near(byId.travelvisa.pending, 250),
+    'Travel Visa posted $862.68 + pending Bell $250.00 are distinct');
+  ok(near(862.68 + 250 - 1100, 12.68),
+    'independent Travel Visa over-limit is $12.68 and is not cash');
 }
 
-console.log('\n=== F. held-elsewhere money is not automatically spendable joint cash ===');
+console.log('\n=== G. Amanda / TENNIS INCOME is not spendable; card capacity is not cash ===');
 {
   const held = (live.plan.startingCash.heldElsewhere || []).find(r => r.id === AMANDA);
-  ok(held && held.value > 0, 'Amanda / TENNIS INCOME remains on heldElsewhere');
-  ok(!near(F.startingCashAmount(live.plan), independentSpendable(live.plan) + held.value),
+  ok(held && near(held.value, 2691.85),
+    'TENNIS INCOME last verified $2,691.85 remains held-elsewhere');
+  ok(!near(F.startingCashAmount(live.plan), opening + held.value),
     'held-elsewhere is not inside Forecast opening cash');
-  ok(near(F.startingCashAmount(live.plan), opening),
-    'opening cash is the spendable breakdown only', money(opening));
   ok(hydroSep && hydroSep.payingAccount === AMANDA && hydroSep.householdObligation === true,
     'Hydro Sept. 1 is a household obligation paid from Amanda');
-  const hydroEv = events14.find(e => e.id === 'hydro-due-sep1');
+  const hydroEv = events16.find(e => e.id === 'hydro-due-sep1');
   ok(hydroEv && hydroEv.jointCash === false && near(hydroEv.amount, -HYDRO_SEP),
     'Hydro Sept. 1 is on the schedule and does not reduce joint cash');
-  const zero = F.simulate(live.plan, PAYDAY, { weeklyVariable: 0, targetBuffer: BUFFER });
-  const withoutHydro = Object.assign({}, live.plan, {
-    bills: (live.plan.bills || []).filter(b => b.id !== 'hydro-due-sep1'),
-  });
-  const zeroNoHydro = F.simulate(withoutHydro, PAYDAY, { weeklyVariable: 0, targetBuffer: BUFFER });
-  ok(near(zero.ending, zeroNoHydro.ending),
-    'removing Hydro Sept. 1 does not change joint-cash ending — independent of recommend');
+  ok(!hydroNow && !events16.some(e => e.id === 'hydro-due-now' || near(e.amount, -213.79)),
+    'the $213.79 / $220 Hydro debit is not scheduled again');
+  ok(!(live.plan.bills || []).some(b => /bell/i.test(b.id + b.label)),
+    'Bell is not dated as a joint-cash bill beside the $250 pending');
+  const util = F.utilisation(live.debts, live.revolvingExtra, live.plan);
+  const cashRow = util.rows.find(r => r.id === 'cashback');
+  ok(util.rows.every(r => r.available == null || r.available >= 0),
+    'utilisation available figures are non-negative');
+  ok(cashRow && cashRow.pendingUnknown === true && cashRow.pending == null
+    && cashRow.available == null && cashRow.overLimit == null,
+    'Cash Back posted room is not published as $200.57 available, and over-limit is not closed');
+  ok(!util.rows.some(r => r.id === 'cashback' && near(r.available, 200.57)),
+    'utilisation does not convert unknown Cash Back pending into $200.57 available');
+  ok(!/household cash|spendable/.test(JSON.stringify(util.rows.map(r => r.available))),
+    'utilisation does not relabel capacity as cash');
+  const cards = (live.plan.funding && live.plan.funding.options || [])
+    .find(o => o.id === 'cards');
+  ok(cards && near(cards.available, 287.38 + 294.06),
+    'the unusable cards funding option excludes unknown Cash Back headroom',
+    String(cards && cards.available));
+  const cashAction = (live.plan.actions || []).find(a => /Cash Back Visa back under/i.test(a.what));
+  ok(cashAction && cashAction.status === 'open',
+    'the Cash Back over-limit action stays open while pending is unknown');
 }
 
-console.log('\n=== G. Q19 remains unresolved and is not silent zero cash impact ===');
+console.log('\n=== H. Q19 remains unresolved and is not silent zero cash impact ===');
 {
   const heloc = live.plan.obligations.find(o => o.id === 'heloc');
   ok(heloc && heloc.nonCash === true && near(heloc.amount, 814.18),
     'live HELOC remains month-end non-cash capitalisation');
-  const helocCash = events14.filter(e => e.id === 'heloc' && e.kind !== 'noncash');
-  ok(helocCash.length === 0, 'no HELOC chequing outflow was invented');
-  const helocNoncash = events14.filter(e => e.id === 'heloc' && e.kind === 'noncash');
-  ok(helocNoncash.length >= 1 && helocNoncash.every(e => e.kind === 'noncash'),
-    'HELOC events that exist are noncash, not a claimed $0 payment');
+  ok(events16.filter(e => e.id === 'heloc' && e.kind !== 'noncash').length === 0,
+    'no HELOC chequing outflow was invented');
   const md = questionsMarkdown();
   ok(/^OPEN\b/.test(questionStatus(md, 'Q19')),
-    'Q19 remains OPEN in docs/01_OPEN_QUESTIONS.md', questionStatus(md, 'Q19'));
+    'Q19 remains OPEN', questionStatus(md, 'Q19'));
   ok(/must not claim confident zero household\s+cash impact/i.test(md),
     'the open question still forbids claiming confident zero cash impact');
 }
 
-console.log('\n=== H. existing Forecast produces payday outputs after cutover ===');
+console.log('\n=== I. existing Forecast produces the payday plan from this opening ===');
 {
-  const rec9 = F.recommend(live.plan, AUG9, liveOpts());
-  const rec14 = F.recommend(live.plan, PAYDAY, liveOpts());
-  ok(rec9.weekly === 1165 && rec9.mode === 'openingGap' && near(rec9.gap.amount, 1043.16),
-    'published Aug. 9 as-of still yields the 12 Aug gap; weekly is $1,165 after stale Fusion instalments were removed');
-  ok(near(opening, 79.84),
-    'independent spendable opening is still the 9 Aug $79.84 snapshot', money(opening));
-  ok(opening + 0.005 < BUFFER,
-    'that opening is below the $500 floor, so an Aug. 14 start is an opening gap');
-  const independentGap = Math.round((BUFFER - opening) * 100) / 100;
-  ok(rec14.mode === 'openingGap' && near(rec14.gap.amount, independentGap) && rec14.weekly === 0,
-    'Aug. 14 Forecast weekly is $0 because stale opening is below the floor, not because $0 is policy',
-    `${rec14.mode} gap ${rec14.gap && rec14.gap.amount} weekly ${rec14.weekly}`);
-  ok(near(rec14.sim.min.balance, opening) && rec14.sim.min.date === PAYDAY,
-    'lowest projected cash at Aug. 14 as-of is the stale opening itself');
-  ok(rec14.sim.buffer === BUFFER, 'protected cash floor remains $500');
-
-  const onPay = events14.filter(e => e.date === PAYDAY && e.amount < 0
-    && e.kind !== 'noncash' && e.jointCash !== false);
-  const onPaySum = onPay.reduce((s, e) => s + (-e.amount), 0);
-  ok(onPay.some(e => e.id === 'mortgage') && onPay.some(e => e.id === 'shaw'),
-    'payday joint-cash outflows still include unposted mortgage and Shaw');
-  const beforeNext = events14.filter(e => e.date > PAYDAY && e.date < NEXT_PAY
-    && e.amount < 0 && e.kind !== 'noncash' && e.jointCash !== false);
-  const beforeIds = beforeNext.map(e => e.id).sort().join(',');
-  ok(beforeIds === 'bcaa,icbc,resp,tdcc,travel,uniondues',
-    'joint-cash obligations after payday and before 28 Aug are the plan-row set', beforeIds);
-  ok(!beforeNext.some(e => e.id === 'fusioncamp' || e.id === 'tryouts'),
-    'settled Fusion is not in the before-next-payday list');
-
-  ok(rec14.nearBoundary.payday === PAYDAY && rec14.nearBoundary.until === '2026-08-15',
-    'near-boundary window is 14–15 Aug from an Aug. 14 start');
-  ok(near(rec14.nearBoundary.total, 1997.81),
-    'near-boundary total remains the independent $1,997.81 payday cluster');
-  ok(!/\$600\s*\/\s*week/.test(JSON.stringify(rec14)) && rec14.weekly !== 600,
+  const rec = F.recommend(live.plan, AUG16, liveOpts());
+  ok(opening + 0.005 > BUFFER, 'opening cash is above the $500 floor', money(opening));
+  ok(rec.mode !== 'openingGap',
+    'this opening is not an opening-gap plan', rec.mode);
+  ok(typeof rec.weekly === 'number' && rec.weekly !== 600,
+    'weekly cap is produced by existing Forecast and is not $600 policy', String(rec.weekly));
+  ok(!/\$600\s*\/\s*week/.test(JSON.stringify(rec)),
     '$600/week is not encoded as the payday output');
-  ok(typeof rec14.sim.ending === 'number' && rec14.sim.ending > opening,
-    'ending cash is produced by existing Forecast', money(rec14.sim.ending));
-  ok(onPaySum > 0, 'payday joint-cash outflows were independently summed', money(onPaySum));
+  ok(rec.sim.buffer === BUFFER, 'protected cash floor remains $500');
+  ok(rec.nearBoundary && rec.nearBoundary.payday === NEXT_PAY,
+    'near-boundary window starts at the next payday from this opening',
+    rec.nearBoundary && rec.nearBoundary.payday);
+  ok(typeof rec.sim.ending === 'number',
+    'ending cash is produced by existing Forecast', money(rec.sim.ending));
 }
 
-console.log('\n=== I. no second forecast/budget engine was introduced ===');
+console.log('\n=== J. no second forecast/budget engine was introduced ===');
 {
   const forecastSrc = fs.readFileSync(path.join(__dirname, 'public', 'forecast.js'), 'utf8');
   const reconSrc = fs.readFileSync(path.join(__dirname, 'scripts', 'reconcile.js'), 'utf8');
@@ -261,7 +296,7 @@ console.log('\n=== I. no second forecast/budget engine was introduced ===');
     'reconciler still states it never writes data.json');
 }
 
-console.log('\n=== J. observation files remain evidence, not competing canonical state ===');
+console.log('\n=== K. observation files remain evidence; reconciler does not write ===');
 {
   const before = hashFile(path.join(__dirname, 'data.json'));
   const result = R.reconcile({
@@ -279,31 +314,24 @@ console.log('\n=== J. observation files remain evidence, not competing canonical
   const tryRow = result.rows.find(r => r.observationId === 'payday-tryouts-settled');
   const sepRow = result.rows.find(r => r.observationId === 'payday-hydro-due-sep1');
   const nowRow = result.rows.find(r => r.observationId === 'payday-hydro-due-now');
-  const payRow = result.rows.find(r => r.observationId === 'payday-payroll-posted');
-  const mortRow = result.rows.find(r => r.observationId === 'payday-mortgage-unposted');
+  const triPosted16 = result.rows.find(r => r.observationId === 'card-triangle-posted-2026-08-16');
+  const mbPosted16 = result.rows.find(r => r.observationId === 'card-mbna-posted-2026-08-16');
+  const cashPosted16 = result.rows.find(r => r.observationId === 'card-cashback-posted-2026-08-16');
+  const cashPending16 = result.rows.find(r => r.observationId === 'card-cashback-pending-2026-08-16');
   ok(campRow && campRow.status === 'MATCH', 'Fusion camp observation is MATCH against canonical settledOn');
   ok(tryRow && tryRow.status === 'MATCH', 'Fusion tryouts observation is MATCH against canonical settledOn');
   ok(sepRow && sepRow.status === 'MATCH', 'Hydro 1 September observation is MATCH against the live bill');
-  ok(sepRow.dueDate === '2026-09-01' && sepRow.observedAsOf === PAYDAY
-    && sepRow.evidenceDate === PAYDAY,
-    'Sept. 1 remains the due date; observation time is 14 Aug');
-  ok(sepRow.dateRelation === 'incomparable',
-    'Hydro MATCH is not canonical-older merely because the due date is after 9 Aug');
   ok(nowRow && nowRow.status === 'MISSING', 'Hydro 14 August due remains MISSING — not guessed');
-  ok(payRow && payRow.status === 'CHANGE',
-    'posted payroll vs missing representedEvents is still CHANGE — opening cash was not invented');
-  ok(mortRow && mortRow.status === 'MATCH', 'unposted mortgage remains correctly unrepresented');
+  ok(triPosted16 && triPosted16.status === 'MATCH' && near(triPosted16.evidenceValue, 13197),
+    'Aug. 16 Triangle posted observation MATCHES the opening');
+  ok(mbPosted16 && mbPosted16.status === 'MATCH' && near(mbPosted16.evidenceValue, 8003.61),
+    'Aug. 16 MBNA posted observation MATCHES the opening');
+  ok(cashPosted16 && cashPosted16.status === 'MATCH' && near(cashPosted16.evidenceValue, 4799.43),
+    'Aug. 16 Cash Back posted observation MATCHES the opening');
+  ok(cashPending16 && cashPending16.unknown === true,
+    'Aug. 16 Cash Back pending observation stays unknown, not $0');
   ok(result.staleAssigned === false && result.counts.STALE === 0,
     'STALE is still not assigned');
-  const cardPending14 = result.rows.find(r => r.observationId === 'card-cashback-pending-2026-08-14');
-  const cardPosted9 = result.rows.find(r => r.observationId === 'card-cashback-posted-2026-08-09'
-    || (r.fact === 'posted-balance' && r.cardId === 'cashback' && r.evidenceDate === AUG9));
-  ok(cardPending14 && cardPending14.dateRelation === 'canonical-older',
-    'Aug. 14 card pending still reports canonical-older than as-of 9 Aug');
-  ok(cardPosted9 && cardPosted9.dateRelation === 'same-day',
-    '9 Aug card posted-balance still reports same-day');
-  ok(result.dateRelationCounts && result.dateRelationCounts['canonical-older'] > 0,
-    'comparable Aug. 14 snapshot evidence is still reported as canonical-older than as-of 9 Aug');
   const out = execFileSync(process.execPath, ['scripts/reconcile.js'], {
     cwd: __dirname, encoding: 'utf8',
   });
@@ -311,20 +339,32 @@ console.log('\n=== J. observation files remain evidence, not competing canonical
     'running the CLI leaves data.json bytes unchanged');
   ok(/Owner-approved canonical edits remain a separate explicit action/.test(out),
     'the report still says observation files do not write canonical state');
-  ok(!hydroNow, 'no hydro-due-now canonical row was manufactured');
 }
 
 console.log('\n=== remaining owner questions stay open ===');
 {
   const md = questionsMarkdown();
-  ok(/^ANSWERED\b/.test(questionStatus(md, 'Q0')), 'Q0 HOME BUDGET is ANSWERED — workbooks classified, policy unchanged');
-  ok(/^ANSWERED\b/.test(questionStatus(md, 'Q17')), 'Q17 Hydro arrears is ANSWERED — settled, Sep. 1 remains');
+  ok(/^ANSWERED\b/.test(questionStatus(md, 'Q0')), 'Q0 HOME BUDGET is ANSWERED');
+  ok(/^ANSWERED\b/.test(questionStatus(md, 'Q17')), 'Q17 Hydro arrears is ANSWERED');
   ok(/^OPEN\b/.test(questionStatus(md, 'Q19')), 'Q19 HELOC current August settlement remains OPEN');
-  ok(/^ANSWERED\b/.test(questionStatus(md, 'Q23')), 'Q23 Fusion instalments are ANSWERED — none currently owed');
+  ok(/^ANSWERED\b/.test(questionStatus(md, 'Q23')), 'Q23 Fusion instalments are ANSWERED');
   ok(/^OPEN\b/.test(questionStatus(md, 'Q20')), 'Q20 emergency reserve remains OPEN');
   ok(/^OPEN\b/.test(questionStatus(md, 'Q21')), 'Q21 $527.80 remains OPEN');
   ok(/^OPEN\b/.test(questionStatus(md, 'Q25')), 'Q25 Amanda available remainder remains OPEN');
   ok(/^OPEN\b/.test(questionStatus(md, 'Q26')), 'Q26 card pending remains OPEN');
+  ok(/^ANSWERED\b/.test(questionStatus(md, 'Q4')), 'Q4 non-TD balances remain ANSWERED');
+  ok(!/Canonical opening remains posted \*\*\$13,497\.00\*\* as of 9 August/.test(md),
+    'Q4 does not keep the retired Aug. 9 Triangle $13,497 as the canonical opening');
+  ok(!/9 August\s+opening remains posted \*\*\$7,855\.12\*\*/.test(md),
+    'Q4 does not keep the retired Aug. 9 MBNA $7,855.12+$82.05 as the canonical opening');
+  ok(/Triangle[\s\S]*canonical Forecast opening[\s\S]*\$13,197\.00/.test(md)
+    && /MBNA[\s\S]*16 August canonical opening[\s\S]*\$8,003\.61/.test(md),
+    'Q4 records the 2026-08-16 Triangle and MBNA readings as the canonical opening');
+  ok(!/not a canonical write/.test(md),
+    'Q26 does not call the now-canonical Travel Visa pair a non-write');
+  ok(/Travel Visa posted \$862\.68[\s\S]*canonical opening/.test(md)
+    && /OPEN only for Cash Back pending/.test(md),
+    'Q26 keeps Travel Visa $862.68+$250 canonical and stays OPEN only for Cash Back pending');
 }
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);

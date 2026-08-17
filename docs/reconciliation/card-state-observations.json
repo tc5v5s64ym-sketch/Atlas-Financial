@@ -5,7 +5,7 @@
   "does_not_own": "Permission to write data.json, invent pending from limit − posted − available, treat limit or available credit as household cash, or treat a scheduled minimum as a posted payment.",
   "asOf": "2026-08-14",
   "notes": [
-    "Freshest quantitative institution figures for Triangle posted/pending/available and MBNA posted/pending/available are 2026-08-16 screenshots. They are dated observations, not the 2026-08-09 Forecast opening in data.json. Other card posted balances remain 2026-08-09. Do not partially cut over only two debts. The Aug. 14 payday session observed that Cash Back Visa and Travel Visa were over limit, posted balances were known, and pending was unknown — it does not record those posted amounts. Aug. 9 observations are retained as dated evidence and must not be rewritten.",
+    "The 2026-08-16 Forecast opening uses the same-day Triangle/MBNA screenshots for those two cards and the Lunch Money observation for TD cards. Aug. 9 observations are retained as dated evidence and must not be rewritten. Lunch Money Triangle $13,309.70 is the last-statement figure, not the screenshot posted $13,197.00.",
     "Do not manufacture pending = limit − posted − available unless identityProven is true for that card and timestamp. MBNA on 2026-08-09 is the one committed case where the issuer page proved that identity.",
     "Unknown pending is not $0. A stored canonical pending of 0 is a claim, not proof, unless the observation itself is a known-zero pending fact."
   ],
@@ -90,7 +90,7 @@
       "observedAsOf": "2026-08-16",
       "canonical": { "collection": "debts", "id": "triangle", "field": "balance" },
       "source": "docs/source_intake/HOUSEHOLD_EVIDENCE_2026-08-16.md",
-      "note": "Screenshot posted balance. Dated observation, not the 2026-08-09 opening ($13,497.00). Reconcile reports CHANGE until a coherent cutover."
+      "note": "Screenshot posted balance used as the 2026-08-16 opening ($13,197.00). Independent identity: 13,497.00 - 300.00 Aug. 10 payment = 13,197.00."
     },
     {
       "observationId": "card-triangle-pending-2026-08-16",
@@ -102,7 +102,7 @@
       "observedAsOf": "2026-08-16",
       "canonical": { "collection": "debts", "id": "triangle", "field": "pending" },
       "source": "docs/source_intake/HOUSEHOLD_EVIDENCE_2026-08-16.md",
-      "note": "Keep posted and pending separate. Dated observation, not the 2026-08-09 opening. Do not fold $15.62 into posted $13,197.00."
+      "note": "Keep posted and pending separate on the 2026-08-16 opening. Do not fold $15.62 into posted $13,197.00."
     },
     {
       "observationId": "card-triangle-available-2026-08-16",
@@ -215,10 +215,70 @@
       "label": "TD Cash Back Visa September minimum",
       "amount": 762.36,
       "obligationId": "cashback-sep",
-      "observedAsOf": "2026-08-09",
+      "observedAsOf": "2026-08-16",
       "canonical": { "collection": "obligations", "id": "cashback-sep" },
       "source": "data.json plan.obligations",
-      "note": "Scheduled statement minimum. Not a confirmed posted payment and does not reduce current posted balance."
+      "note": "The previous $762.36 September over-limit spike was satisfied by the 2026-08-14 $763.00 payment. The once row is gone so Forecast does not reserve it again. A scheduled minimum is not itself a posted payment."
+    },
+    {
+      "observationId": "card-cashback-posted-2026-08-16",
+      "fact": "posted-balance",
+      "cardId": "cashback",
+      "label": "TD Cash Back Visa posted balance",
+      "amount": 4799.43,
+      "balanceIncludesPending": false,
+      "observedAsOf": "2026-08-16",
+      "canonical": { "collection": "debts", "id": "cashback", "field": "balance" },
+      "source": "2026-08-16 Lunch Money observation",
+      "note": "Posted $4,799.43. Independent identity: 5,612.43 - 50.00 Aug. 13 - 763.00 Aug. 14 = 4,799.43. Posted is under the $5,000 limit. Not pending and not available credit."
+    },
+    {
+      "observationId": "card-cashback-pending-2026-08-16",
+      "fact": "pending",
+      "cardId": "cashback",
+      "label": "TD Cash Back Visa pending",
+      "amount": null,
+      "unknown": true,
+      "observedAsOf": "2026-08-16",
+      "canonical": { "collection": "debts", "id": "cashback", "field": "pending" },
+      "source": "2026-08-16 Lunch Money observation",
+      "note": "No pending Cash Back rows in the 14-day 2026-08-16 Lunch Money window. That is not a new institution-page known-zero reading. Unknown pending is not $0."
+    },
+    {
+      "observationId": "card-tdcc-posted-2026-08-16",
+      "fact": "posted-balance",
+      "cardId": "tdcc",
+      "label": "TD credit card posted balance",
+      "amount": 1705.94,
+      "balanceIncludesPending": false,
+      "observedAsOf": "2026-08-16",
+      "canonical": { "collection": "debts", "id": "tdcc", "field": "balance" },
+      "source": "2026-08-16 Lunch Money observation",
+      "note": "Posted $1,705.94. Independent identity: 1,799.97 - 94.03 Aug. 14 payment = 1,705.94."
+    },
+    {
+      "observationId": "card-travelvisa-posted-2026-08-16",
+      "fact": "posted-balance",
+      "cardId": "travelvisa",
+      "label": "Travel Visa posted balance",
+      "amount": 862.68,
+      "balanceIncludesPending": false,
+      "observedAsOf": "2026-08-16",
+      "canonical": { "collection": "debts", "id": "travelvisa", "field": "balance" },
+      "source": "2026-08-16 Lunch Money observation",
+      "note": "Posted $862.68. Pending Bell $250.00 is a separate fact."
+    },
+    {
+      "observationId": "card-travelvisa-pending-2026-08-16",
+      "fact": "pending",
+      "cardId": "travelvisa",
+      "label": "Travel Visa pending Bell Mobility",
+      "amount": 250.00,
+      "unknown": false,
+      "observedAsOf": "2026-08-16",
+      "canonical": { "collection": "debts", "id": "travelvisa", "field": "pending" },
+      "source": "2026-08-16 Lunch Money observation",
+      "note": "Pending Bell Mobility $250.00 dated 2026-08-14. Owner-confirmed valid Bell payment. Not household cash. Do not also date a Bell cash bill."
     },
 
     {
@@ -290,7 +350,7 @@
       "observedAsOf": "2026-08-16",
       "canonical": { "collection": "debts", "id": "mbna", "field": "balance" },
       "source": "docs/source_intake/HOUSEHOLD_EVIDENCE_2026-08-16.md",
-      "note": "Screenshot current balance. Dated observation, not the 2026-08-09 opening ($7,855.12). Do not round back to the statement $7,855.12. Reconcile reports CHANGE until a coherent cutover."
+      "note": "Screenshot current balance used as the 2026-08-16 opening ($8,003.61). Matches Lunch Money. Do not round back to the statement $7,855.12."
     },
     {
       "observationId": "card-mbna-pending-2026-08-16",

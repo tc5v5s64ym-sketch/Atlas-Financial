@@ -138,18 +138,15 @@ ok(F.nextPaymentOut([], AS_OF) === null, 'an empty stream returns null');
 ok(F.nextPaymentOut(undefined, AS_OF) === null, 'a missing stream returns null');
 
 console.log('\n=== live plan: independent of the old page expression ===');
-/* data.json as-of 2026-08-09. The next dated cash commitments are the two
- * Burrard registrations on 2026-08-12 at $320.00 and $303.00. The next
- * obligation/bill cash dates in the plan block are 14 August (mortgage
- * biweekly from 2026-08-14, Shaw on the 14th). Triangle's next minimum is
- * firstDue 2026-09-07; Fortis day-3 August is before the window. Fusion camp
- * is 2026-08-16. So the next outflow day is 12 August and it costs
- * 320 + 303 = 623, added from the commitment literals, not from simulate. */
+/* data.json as-of 2026-08-16. Burrards are settled. The next dated joint-cash
+ * outflows are the four unposted 15 August bills reserved on this opening:
+ * BCAA $82.96 + ICBC $99.91 + RESP $100.00 + union $25.00 = $307.87. */
 const asOf = data.meta.asOf;
-const burrard = data.plan.commitments.filter(c => c.date === '2026-08-12');
-ok(asOf === '2026-08-09', 'the published as-of is 9 August', asOf);
-ok(burrard.length === 2, 'data.json still has two 12 August Burrard commitments');
-const liveExpected = burrard[0].amount + burrard[1].amount;
+const outstanding = (data.plan.bills || []).filter(b => /aug15-outstanding/.test(b.id));
+ok(asOf === '2026-08-16', 'the published as-of is 16 August', asOf);
+ok(outstanding.length === 4, 'data.json reserves four unposted 15 August bills');
+const liveExpected = outstanding.reduce((s, b) => s + b.amount, 0);
+ok(same(liveExpected, 307.87), 'independent 15 August reserve is $307.87');
 
 const live = F.nextPaymentOut(
   F.recommend(data.plan, asOf, {
@@ -157,9 +154,9 @@ const live = F.nextPaymentOut(
     targetBuffer: data.plan.defaults.targetBuffer,
   }).sim.events,
   asOf);
-ok(live && live.date === '2026-08-12' && live.count === 2
-  && same(live.amount, liveExpected) && live.daysUntil === 3,
-  'the published tile is 12 August, the Burrard day total, three days out',
+ok(live && live.date === '2026-08-16' && live.count === 4
+  && same(live.amount, liveExpected) && live.daysUntil === 0,
+  'the published tile is 16 August, the reserved mid-month total, due today',
   live ? `${live.label} on ${live.date} $${live.amount} in ${live.daysUntil}d` : 'none');
 
 console.log('\n=== page is a renderer ===');

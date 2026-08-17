@@ -129,12 +129,12 @@ ok(!(budget.sinkingItems || []).some(s =>
   'undated rows are not smeared into 91-day sinkingMonthly');
 
 console.log('\n=== published point-estimate total is independently summed ===');
-const preexistingPoints = 320 + 303 + 786 + 140 + 800;
+const preexistingPoints = 800;
 const absorbedPoints = 2000 + 700 + 1200 + 1200 + 3500 + 1700 + 1000 + 3131.76 + 2400;
 const HAND_TOTAL = preexistingPoints + absorbedPoints;
-ok(near(preexistingPoints, 2349) && near(absorbedPoints, 16831.76)
-  && near(HAND_TOTAL, 19180.76),
-  'hand total is $320+$303+$786+$140+$800 plus the absorbed point estimates');
+ok(near(preexistingPoints, 800) && near(absorbedPoints, 16831.76)
+  && near(HAND_TOTAL, 17631.76),
+  'hand total is unsettled Warriors $800 plus the absorbed point estimates; settled rows are excluded');
 ok(near(pub.commitmentsTotal, HAND_TOTAL),
   'publicationTotals matches that independent sum',
   String(pub.commitmentsTotal));

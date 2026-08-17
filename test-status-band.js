@@ -205,13 +205,14 @@ ok(combo.parts.length === 2 && same(combo.borrowed, 851.31),
  * object: the point is that `recommend` genuinely produces this pair.
  * Source sizes follow the live gap, so a cash refresh cannot collapse the
  * trap into a single-source cover. */
-const trapGapAmt = Math.max(1, gapAtBuffer(data.plan, 500));
+const trapBuffer = Math.max(500, Math.ceil(F.startingCashAmount(data.plan) + 400));
+const trapGapAmt = Math.max(1, gapAtBuffer(data.plan, trapBuffer, data.meta.asOf));
 const RANK_TRAP = [
   { id: 'small', label: 'Small', short: 'the small one', available: trapGapAmt * 0.4, rank: 1, debtId: null },
   { id: 'big', label: 'Big', short: 'the big one', available: trapGapAmt * 1.2, rank: 2, debtId: null },
 ];
 const rankTrap = F.recommend(data.plan, data.meta.asOf, {
-  scenario: data.plan.defaults.scenario, targetBuffer: 500, extraDebtMonthly: 0,
+  scenario: data.plan.defaults.scenario, targetBuffer: trapBuffer, extraDebtMonthly: 0,
   incomeOverrides: {}, disabled: [], debts: data.debts,
   extraDebtTarget: data.plan.nextDollar.target, fundingSources: RANK_TRAP,
 });
@@ -236,7 +237,7 @@ const rankTrapStatus = F.planStatus(rankTrap, { weeklyOverride: null });
 {
   const combineBuf = (() => {
     const src = fundingById(data.plan);
-    return src.amanda.available + src.heloc.available / 2 + openingFloor(data.plan);
+    return src.amanda.available + src.heloc.available / 2 + openingFloor(data.plan, data.meta.asOf);
   })();
   const adv = F.recommend(data.plan, data.meta.asOf, Object.assign({
     scenario: data.plan.defaults.scenario, targetBuffer: combineBuf, extraDebtMonthly: 0,
@@ -359,23 +360,23 @@ const OPTS = targetBuffer => ({
   fundingSources: plan.funding.options,
   extraFacilities: data.revolvingExtra,
 });
-const bySource = adv => Object.fromEntries(adv.funding.sources.map(s => [s.id, s]));
+const bySource = adv => Object.fromEntries((adv.funding && adv.funding.sources || []).map(s => [s.id, s]));
 const src = fundingById(plan);
 const odAvailable = F.resolveFundingSources(
   plan.funding.options, data.revolvingExtra, plan
 ).find(o => o.id === 'overdraft').available;
-const floor = openingFloor(plan);
+const floor = openingFloor(plan, asOf);
 const COMBINE_GAP = src.amanda.available + src.heloc.available / 2;
 const COMBINE_BUF = COMBINE_GAP + floor;
 const UNFUNDED_GAP = usableFunding(plan) + 1000;
 const UNFUNDED_BUF = UNFUNDED_GAP + floor;
 
 {
-  const buf = plan.defaults.targetBuffer;
-  const wantGap = gapAtBuffer(plan, buf);
+  const buf = Math.max(plan.defaults.targetBuffer, Math.ceil(floor + 50));
+  const wantGap = gapAtBuffer(plan, buf, asOf);
   const adv = F.recommend(plan, asOf, OPTS(buf));
   const s = bySource(adv);
-  ok(same(adv.gap.amount, wantGap), 'the default-buffer gap is the floor plus the buffer', String(adv.gap.amount));
+  ok(adv.funding && same(adv.gap.amount, wantGap), 'a just-above-floor buffer sizes the gap from the floor', adv.gap ? String(adv.gap.amount) : 'none');
   ok(s.amanda.verdict === (src.amanda.available + 0.005 >= wantGap ? 'covers' : 'contributes'),
     'Amanda\'s verdict follows her available room against that gap', s.amanda.verdict);
   ok(s.heloc.verdict === (src.heloc.available + 0.005 >= wantGap ? 'covers' : 'contributes'),
@@ -392,7 +393,7 @@ const UNFUNDED_BUF = UNFUNDED_GAP + floor;
 {
   const adv = F.recommend(plan, asOf, OPTS(COMBINE_BUF));
   const s = bySource(adv);
-  const wantGap = gapAtBuffer(plan, COMBINE_BUF);
+  const wantGap = gapAtBuffer(plan, COMBINE_BUF, asOf);
   ok(same(adv.gap.amount, wantGap), 'a gap between the largest source and usable total is sized from the floor', String(adv.gap.amount));
   ok(s.amanda.verdict === 'contributes' && same(s.amanda.contributes, src.amanda.available),
     'Amanda contributes her whole balance and no longer covers it alone',
@@ -418,7 +419,7 @@ const UNFUNDED_BUF = UNFUNDED_GAP + floor;
   const contributed = adv.funding.sources.reduce((a, x) => a + x.contributes, 0);
   const usable = usableFunding(plan);
   ok(!adv.funding.feasible && same(contributed, usable)
-    && same(adv.funding.shortfall, gapAtBuffer(plan, UNFUNDED_BUF) - usable),
+    && same(adv.funding.shortfall, gapAtBuffer(plan, UNFUNDED_BUF, asOf) - usable),
     'an unfundable gap allocates every usable source and leaves the rest',
     `${contributed} / ${adv.funding.shortfall}`);
   ok(same(contributed + adv.funding.shortfall, adv.gap.amount),
@@ -432,24 +433,26 @@ const UNFUNDED_BUF = UNFUNDED_GAP + floor;
   // cannot spend.
   const rich = plan.funding.options.map(o =>
     o.id === 'overdraft' ? Object.assign({}, o, { available: 999999, cash: undefined }) : o);
-  const buf = plan.defaults.targetBuffer;
+  const buf = Math.max(plan.defaults.targetBuffer, Math.ceil(floor + 50));
   const adv = F.recommend(plan, asOf,
     Object.assign(OPTS(buf), { fundingSources: rich }));
   const s = bySource(adv);
-  ok(s.overdraft.verdict === 'insufficient' && same(s.overdraft.shortBy, 0),
+  ok(s.overdraft && s.overdraft.verdict === 'insufficient' && same(s.overdraft.shortBy, 0),
     'an unusable source with more than enough is still not a cover',
-    `${s.overdraft.verdict} ${s.overdraft.shortBy}`);
-  ok(same(adv.funding.allocated, gapAtBuffer(plan, buf)) && adv.funding.feasible,
+    s.overdraft ? `${s.overdraft.verdict} ${s.overdraft.shortBy}` : 'missing');
+  ok(adv.funding && same(adv.funding.allocated, gapAtBuffer(plan, buf, asOf)) && adv.funding.feasible,
     'and it is left out of the allocation');
 }
 {
   // The coverage comparison uses the engine's own epsilon, so it cannot
   // disagree with the allocation that stops on the same one: a source half a
   // cent short funds the gap, and must not be reported as failing to.
-  const gapAt500 = F.recommend(plan, asOf, OPTS(500)).gap.amount;
+  const hairBuf = Math.max(500, Math.ceil(floor + 50));
+  const gapBase = F.recommend(plan, asOf, OPTS(hairBuf));
+  const gapAt500 = gapBase.gap ? gapBase.gap.amount : 50;
   const hair = [{ id: 'hair', label: 'Hair-short source', short: 'it',
     available: gapAt500 - 0.004, rank: 1, debtId: null }];
-  const adv = F.recommend(plan, asOf, Object.assign(OPTS(500), { fundingSources: hair }));
+  const adv = F.recommend(plan, asOf, Object.assign(OPTS(hairBuf), { fundingSources: hair }));
   ok(adv.funding.feasible, 'a source half a cent short still funds the gap');
   ok(adv.funding.sources[0].verdict === 'covers',
     'and the card says so rather than "$0 short"', adv.funding.sources[0].verdict);
@@ -527,7 +530,7 @@ const MUTATIONS = [
         .some(s => s.verdict === 'covers');`,
     to: '      const noSingleSourceCovers = true;',
     check: m => m.planStatus(m.recommend(data.plan, data.meta.asOf, {
-      scenario: data.plan.defaults.scenario, targetBuffer: 500, extraDebtMonthly: 0,
+      scenario: data.plan.defaults.scenario, targetBuffer: trapBuffer, extraDebtMonthly: 0,
       incomeOverrides: {}, disabled: [], debts: data.debts,
       extraDebtTarget: data.plan.nextDollar.target, fundingSources: RANK_TRAP,
     }), { weeklyOverride: null }).noSingleSourceCovers === true,
@@ -546,13 +549,13 @@ const MUTATIONS = [
       const rich = plan.funding.options.map(o =>
         o.id === 'overdraft' ? Object.assign({}, o, { available: 999999, cash: undefined }) : o);
       return bySource(m.recommend(plan, asOf,
-        Object.assign(OPTS(500), { fundingSources: rich }))).overdraft.verdict === 'covers';
+        Object.assign(OPTS(Math.max(500, Math.ceil(floor + 50))), { fundingSources: rich }))).overdraft.verdict === 'covers';
     },
     real: () => {
       const rich = plan.funding.options.map(o =>
         o.id === 'overdraft' ? Object.assign({}, o, { available: 999999, cash: undefined }) : o);
       return bySource(F.recommend(plan, asOf,
-        Object.assign(OPTS(500), { fundingSources: rich }))).overdraft.verdict === 'insufficient';
+        Object.assign(OPTS(Math.max(500, Math.ceil(floor + 50))), { fundingSources: rich }))).overdraft.verdict === 'insufficient';
     } },
 
   { label: 'reversing the per-source shortfall reports the wrong figure short',
@@ -560,13 +563,13 @@ const MUTATIONS = [
     to: '          shortBy: Math.max(0, src.available - gapAmount),',
     check: m => cents(bySource(m.recommend(plan, asOf, OPTS(COMBINE_BUF))).overdraft.shortBy) === 0,
     real: () => same(bySource(F.recommend(plan, asOf, OPTS(COMBINE_BUF))).overdraft.shortBy,
-      Math.max(0, gapAtBuffer(plan, COMBINE_BUF) - odAvailable)) },
+      Math.max(0, gapAtBuffer(plan, COMBINE_BUF, asOf) - odAvailable)) },
 
   { label: 'totalling the allocation from the gap instead of the parts hides the shortfall',
     from: '    const allocated = parts.reduce((s, p) => s + p.amount, 0);',
     to: '    const allocated = gapAmount;',
     check: m => same(m.recommend(plan, asOf, OPTS(UNFUNDED_BUF)).funding.allocated,
-      gapAtBuffer(plan, UNFUNDED_BUF)),
+      gapAtBuffer(plan, UNFUNDED_BUF, asOf)),
     real: () => same(F.recommend(plan, asOf, OPTS(UNFUNDED_BUF)).funding.allocated,
       usableFunding(plan)) },
 ];
@@ -781,8 +784,8 @@ const defBuf = plan.defaults.targetBuffer;
 const recWeekly = F.recommend(plan, asOf, OPTS(defBuf)).weekly;
 const overWeekly = recWeekly + 500;
 const SETTINGS = [
-  { what: 'the published default buffer, no override', targetBuffer: defBuf, weeklyVariable: null, expect: 'gap' },
-  { what: 'default buffer, an over-cap weekly override', targetBuffer: defBuf, weeklyVariable: overWeekly, expect: 'overrideBreach' },
+  { what: 'the published default buffer, no override', targetBuffer: defBuf, weeklyVariable: null, expect: 'onPlan' },
+  { what: 'default buffer, an over-cap weekly override', targetBuffer: defBuf, weeklyVariable: overWeekly, expect: 'negative' },
   { what: 'a gap no single source covers, fully funded', targetBuffer: COMBINE_BUF, weeklyVariable: null, expect: 'combination' },
   { what: 'that combination gap, an over-cap override', targetBuffer: COMBINE_BUF, weeklyVariable: overWeekly, expect: 'overrideBreach' },
   { what: 'a gap beyond every usable source', targetBuffer: UNFUNDED_BUF, weeklyVariable: null, expect: 'unfunded' },
@@ -805,11 +808,11 @@ for (const s of SETTINGS) {
     flat(legacyCards(inputs)) === flat(movedCards(inputs)) ? ''
       : `\n      old: ${flat(legacyCards(inputs))}\n      new: ${flat(movedCards(inputs))}`);
 }
-ok(['gap', 'overrideBreach', 'combination', 'unfunded'].every(id => seen.has(id)),
-  'the published data reaches four of the seven verdicts',
+ok(['onPlan', 'negative', 'combination', 'overrideBreach', 'unfunded'].every(id => seen.has(id)),
+  'the published data reaches five of the seven verdicts',
   [...seen].join(', '));
-ok(!seen.has('negative') && !seen.has('belowBuffer') && !seen.has('onPlan'),
-  'and the other three are unreachable on it, so they are proved on fixtures above');
+ok(!seen.has('gap') && !seen.has('belowBuffer'),
+  'and the remaining two are proved on fixtures above');
 
 console.log('\n=== 12b. the band and the source card cannot contradict each other ===');
 /* The blocking review's counterexample, rendered. Both surfaces read one
@@ -932,8 +935,10 @@ function bootPage() {
       'the booted page publishes the four funding-source cards');
     ok(!/undefined|NaN|\[object/.test(fundEl.innerHTML),
       'with no undefined, NaN or [object Object] in them either');
-    ok((fundEl.innerHTML.match(/class="fund /g) || []).length === 4,
-      'one card per declared source',
+    ok((fundEl.innerHTML.match(/class="fund /g) || []).length === (inputs.adv.gap ? 4 : 0),
+      inputs.adv.gap
+        ? 'one card per declared source'
+        : 'no funding cards when the published default has no opening gap',
       String((fundEl.innerHTML.match(/class="fund /g) || []).length));
 
     console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);

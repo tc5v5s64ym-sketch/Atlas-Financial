@@ -139,7 +139,7 @@ console.log('=== J. observations feed existing reconcile, not a second engine ==
     'cash uses B91 cash locator, not the card posted-balance path',
     cashRow && cashRow.canonicalTarget);
   ok(cashRow && cashRow.status === 'CHANGE',
-    'fixture 79.84 vs canonical 506.98 is CHANGE, not a silent rewrite',
+    'fixture 79.84 vs live Chequing A is CHANGE, not a silent rewrite',
     cashRow && cashRow.status);
   ok(cardRow && cardRow.fact === 'posted-balance' && cardRow.cardId === 'tdcc',
     'revolving card posted balance stays on the existing card compare');

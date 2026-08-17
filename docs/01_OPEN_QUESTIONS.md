@@ -237,12 +237,14 @@ semantics rather than guessing.
 **What we know:** The Aug. 14 payday session found both cards over limit, with
 posted balances known and pending unknown. Posted, pending, limit, available
 credit, and confirmed payment are distinct; available credit is never cash.
-A 2026-08-16 Lunch Money observation recorded Travel Visa posted $862.68 and
-one pending Bell Mobility debit of $250.00. If posted excludes pending, the
-inferred exposure is $1,112.68 against the $1,100 limit. That is observation
-evidence, not a canonical write, and it does not answer Cash Back pending.
-**What the answer changes:** Exact card action only when a refresh needs it.
-Unknown pending is allowed until then; it must not be treated as zero.
+The 2026-08-16 cutover made Travel Visa posted $862.68 and pending Bell
+Mobility $250.00 the canonical opening. If posted excludes pending, exposure
+is $1,112.68 against the $1,100 limit. That pair is now a canonical write.
+Q26 remains OPEN only for Cash Back pending and the current exact action on
+that card. Unknown Cash Back pending must not be treated as zero.
+**What the answer changes:** Exact Cash Back action only when a refresh
+proves pending. Unknown pending is allowed until then; it must not be
+treated as zero.
 
 ---
 
@@ -260,21 +262,20 @@ Unknown pending is allowed until then; it must not be treated as zero.
 **Status:** ANSWERED · **Owner:** Dale + Amanda
 **Answer:** Triangle, MBNA, and Affirm/Flexiti are no longer unknown.
 
-Triangle (2026-08-16 screenshot — dated observation, not the 9 August
-Forecast opening): posted **$13,197.00**, pending **$15.62**,
-limit $13,500, available credit $287.38 (not cash). Observed exposure
-$13,212.62. Canonical opening remains posted **$13,497.00** as of 9 August.
-Purchase rate remains 21.99% / cash 22.99% from the earlier
+Triangle (2026-08-16 screenshot — now the canonical Forecast opening): posted
+**$13,197.00**, pending **$15.62**, limit $13,500, available credit $287.38
+(not cash). Exposure $13,212.62. The retired 9 August opening was posted
+**$13,497.00**. Purchase rate remains 21.99% / cash 22.99% from the earlier
 disclosure. Displayed minimum $0.00; displayed due date Aug. 7 2026; future
 minimums remain estimated.
 
-MBNA (screenshot is dated observation; statement for min/due/APR; 9 August
-opening remains posted **$7,855.12** + pending **$82.05**): 16 August posted
-**$8,003.61**, pending $0.00, limit $8,000 (over by $3.61 on that screenshot).
-Statement balance $7,855.12, minimum **$158.27**, due **2026-08-31**, purchase APR
-**21.74%**, cash advance / BT APR **22.99%**, statement interest $148.27.
-Do not round the 16 August observation back to the statement amount, and do
-not write it into the 9 August opening.
+MBNA (screenshot is the 16 August canonical opening; statement remains
+authority for min/due/APR): posted **$8,003.61**, pending $0.00, limit $8,000
+(over by $3.61). The retired 9 August opening was posted **$7,855.12** +
+pending **$82.05**. Statement balance $7,855.12, minimum **$158.27**, due
+**2026-08-31**, purchase APR **21.74%**, cash advance / BT APR **22.99%**,
+statement interest $148.27. Do not round the 16 August opening back to the
+statement amount.
 
 Affirm/Flexiti remains owner-confirmed paid off and closed.
 

@@ -91,6 +91,27 @@
   // because one of them knew about $165.13 of pending charges and the other
   // did not.
   const openingBalance = debt => debt.balance + (debt.pending || 0);
+  const pendingUnknown = x => !!(x && (x.pendingUnknown === true || x.unknownPending === true));
+  // Published headroom and over-limit. Known pending is already inside
+  // `openingBalance`. Unknown pending is not $0: posted room is not published,
+  // and under-limit is not claimed, until pending is observed. A posted
+  // balance already over the limit is over regardless of pending.
+  function publishedAvailable(limit, used, unknownPending) {
+    if (limit == null) return null;
+    if (unknownPending && !(used > limit)) return null;
+    return Math.max(0, limit - used);
+  }
+  function publishedOverLimit(limit, used, unknownPending) {
+    if (limit == null) return false;
+    if (used > limit) return true;
+    if (unknownPending) return null;
+    return false;
+  }
+  function publishedOverLimitBy(limit, used, unknownPending) {
+    if (limit == null) return 0;
+    if (unknownPending && !(used > limit)) return null;
+    return Math.max(0, used - limit);
+  }
 
   // Live cash balances live on `plan.startingCash.breakdown` /
   // `heldElsewhere`. The published opening total, the matching `assets[]`
@@ -466,10 +487,13 @@
       byDate.get(e.date).push(e);
     }
 
-    let balance = startingCashAmount(plan);
+    const openingCash = startingCashAmount(plan);
+    let balance = openingCash;
     const daily = [];
     // Seeded from the opening balance only when the whole window is being
-    // measured; otherwise the first in-range day sets it.
+    // measured; otherwise the first in-range day sets it. A same-day gap
+    // injection below lifts this seed: deposits land before the payments
+    // they fund, and the pre-injection opening is not a measured floor.
     let min = measureFrom <= start ? { date: start, balance } : { date: measureFrom, balance: Infinity };
     const weeks = [];
     let week = null;
@@ -497,7 +521,23 @@
         if (e.kind === 'income') {
           if (e.confidence === 'confirmed') week.confirmedIncome += e.amount;
           else week.estimatedIncome += e.amount;
-        } else if (e.kind === 'injection') week.injections += e.amount;
+        } else if (e.kind === 'injection') {
+          week.injections += e.amount;
+          // Same defect grouping two sources into one event was written to
+          // stop, when the injection falls on as-of rather than a later gap
+          // day: the opening seed stays at starting cash, the transfer
+          // raises the close, and recommendWeekly answers $0/week for a
+          // day that actually closes on the buffer.
+          if (date === start && measureFrom <= start && min.date === start) {
+            min = { date, balance };
+            // week.opening stays at unfunded cash so the ledger still
+            // reconciles opening + injections = close. The weekly low must
+            // use this same post-injection boundary, or week 1 reports the
+            // unfunded opening as a below-buffer dip the recommendation
+            // already treated as funded.
+            week.measuredOpening = balance;
+          }
+        }
         else if (e.kind === 'obligation') week.obligations += -e.amount;
         else if (e.kind === 'bill') week.bills += -e.amount;
         else if (e.kind === 'commitment') week.commitments += -e.amount;
@@ -519,10 +559,12 @@
 
     const buffer = opts.targetBuffer != null ? opts.targetBuffer : (plan.defaults.targetBuffer || 0);
     for (const w of weeks) {
-      const low = Math.min(w.opening, ...daily.filter(d => d.date >= w.start && d.date <= w.end).map(d => d.balance));
+      const seed = w.measuredOpening != null ? w.measuredOpening : w.opening;
+      const low = Math.min(seed, ...daily.filter(d => d.date >= w.start && d.date <= w.end).map(d => d.balance));
       w.low = low;
       w.belowBuffer = low < buffer;
       w.negative = low < 0;
+      delete w.measuredOpening;
     }
 
     // The week-by-week track: the closing balance below which the REST of the
@@ -1379,12 +1421,13 @@
       // Carrying pending charges from the opening balance is what makes
       // headroom, over-limit state and interest all agree with what the
       // institution would say today. The rule itself is `openingBalance`.
-      const pending = x.pending || 0;
+      const unknownPending = pendingUnknown(x);
+      const pending = unknownPending ? null : (x.pending || 0);
       const opening = openingBalance(x);
       const s = {
         id: x.id, label: x.label, secured: !!x.secured, rate: x.rate || 0,
         limit: x.limit, opening, balance: opening,
-        postedBalance: x.balance, pending,
+        postedBalance: x.balance, pending, pendingUnknown: unknownPending,
         interestByEvent: !!x.interestByEvent, principalShare: x.principalShare,
         interest: 0, paid: 0, capitalised: 0, drawn: 0,
         // The day the balance actually crosses the limit. Tracked on the daily
@@ -1462,18 +1505,22 @@
       debts: state.map(s => ({
         id: s.id, label: s.label, secured: s.secured, balance: s.balance,
         limit: s.limit, postedBalance: s.postedBalance, pending: s.pending,
-        available: s.limit != null ? Math.max(0, s.limit - s.balance) : null,
-        overLimit: s.limit != null && s.balance > s.limit,
-        overLimitBy: s.limit != null ? Math.max(0, s.balance - s.limit) : 0,
+        pendingUnknown: !!s.pendingUnknown,
+        available: publishedAvailable(s.limit, s.balance, s.pendingUnknown),
+        overLimit: publishedOverLimit(s.limit, s.balance, s.pendingUnknown),
+        overLimitBy: publishedOverLimitBy(s.limit, s.balance, s.pendingUnknown),
         interest: s.interest, paid: s.paid, drawn: s.drawn, firstOver: s.firstOver,
       })),
       consumer: state.filter(s => !s.secured).reduce((a, s) => a + s.balance, 0),
       secured: state.filter(s => s.secured).reduce((a, s) => a + s.balance, 0),
       heloc: byId.heloc ? byId.heloc.balance : 0,
       // Revolving headroom across every facility that has a limit.
+      // Unknown pending contributes nothing here — posted room is not
+      // published until pending is observed.
       headroom: state.filter(s => s.limit != null)
-        .reduce((a, s) => a + Math.max(0, s.limit - s.balance), 0) + extraAvailable,
-      overLimitCount: state.filter(s => s.limit != null && s.balance > s.limit).length,
+        .reduce((a, s) => a + (publishedAvailable(s.limit, s.balance, s.pendingUnknown) || 0), 0)
+        + extraAvailable,
+      overLimitCount: state.filter(s => publishedOverLimit(s.limit, s.balance, s.pendingUnknown) === true).length,
       interestToDate: state.reduce((a, s) => a + s.interest, 0),
     });
     marks.push(snapshot(0, start));
@@ -2529,12 +2576,15 @@
   function utilisation(debts, extra, plan) {
     extra = resolveExtraFacilities(extra, plan);
     const rows = (debts || []).filter(x => x.limit != null).map(x => {
-      const pending = x.pending || 0;
-      const used = openingBalance(x);
+      const unknownPending = pendingUnknown(x);
+      const pending = unknownPending ? null : (x.pending || 0);
+      const used = unknownPending ? x.balance : openingBalance(x);
       return {
         id: x.id, label: x.label, posted: x.balance, pending, used, limit: x.limit,
-        available: Math.max(0, x.limit - used),
-        overLimit: used > x.limit, overLimitBy: Math.max(0, used - x.limit),
+        pendingUnknown: unknownPending,
+        available: publishedAvailable(x.limit, used, unknownPending),
+        overLimit: publishedOverLimit(x.limit, used, unknownPending),
+        overLimitBy: publishedOverLimitBy(x.limit, used, unknownPending),
         pct: x.limit ? (used / x.limit) * 100 : null,
       };
     });
@@ -2546,15 +2596,16 @@
         available: Math.max(0, e.limit - used),
         overLimit: used > e.limit, overLimitBy: Math.max(0, used - e.limit),
         pct: e.limit ? (used / e.limit) * 100 : null, note: e.note,
+        pendingUnknown: false,
       });
     }
     return {
       rows,
       // The headline the Plan quotes. Pending is already inside `used`, so a
       // card that is economically full contributes nothing here.
-      totalAvailable: rows.reduce((s, r) => s + r.available, 0),
-      totalPending: rows.reduce((s, r) => s + r.pending, 0),
-      overLimitCount: rows.filter(r => r.overLimit).length,
+      totalAvailable: rows.reduce((s, r) => s + (r.available || 0), 0),
+      totalPending: rows.reduce((s, r) => s + (r.pending || 0), 0),
+      overLimitCount: rows.filter(r => r.overLimit === true).length,
     };
   }
 

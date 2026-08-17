@@ -312,11 +312,10 @@ console.log('\n=== I. Aug. 14 corpus observations against a payday opening ===')
   const byId = id => result.rows.find(r => r.observationId === id);
   ok(byId('payday-payroll-posted') && byId('payday-payroll-posted').status === 'MATCH',
     'corpus payroll posted + represented is MATCH');
-  ok(byId('payday-mortgage-unposted') && byId('payday-mortgage-unposted').status === 'MATCH',
-    'corpus mortgage unposted + not represented is MATCH');
-  ok(byId('payday-fit4less-posting-unknown')
-    && byId('payday-fit4less-posting-unknown').status === 'MISSING',
-    'corpus Fit4Less unknown posting is MISSING');
+  ok(byId('payday-mortgage-posted') && byId('payday-mortgage-posted').status === 'CHANGE',
+    'later mortgage posted evidence vs empty representedEvents is CHANGE');
+  ok(byId('payday-fit4less-posted') && byId('payday-fit4less-posted').status === 'CHANGE',
+    'later Fit4Less posted evidence vs empty representedEvents is CHANGE');
   ok(byId('payday-bcaa-posting-unknown')
     && byId('payday-bcaa-posting-unknown').status === 'MISSING',
     'corpus BCAA next-day unknown posting is MISSING');
@@ -332,7 +331,7 @@ console.log('\n=== I. Aug. 14 corpus observations against a payday opening ===')
     'BCAA / ICBC / RESP are dated 15 Aug, not guessed as Aug. 14 postings');
 }
 
-console.log('\n=== J. live canonical is unchanged and cutover is not applied ===');
+console.log('\n=== J. live 16 August opening does not invent representedEvents ===');
 {
   const liveResult = R.reconcile({
     data: live,
@@ -345,17 +344,19 @@ console.log('\n=== J. live canonical is unchanged and cutover is not applied ===
     posting,
   });
   const byId = id => liveResult.rows.find(r => r.observationId === id);
-  ok(!live.plan.opening, 'live plan has no opening / representedEvents cutover');
-  ok(live.meta.asOf === '2026-08-09', 'live canonical as-of remains 9 August');
+  ok(live.plan.opening && live.plan.opening.asOf === '2026-08-16'
+    && (live.plan.opening.representedEvents || []).length === 0,
+    'live opening is 2026-08-16 with empty representedEvents');
+  ok(live.meta.asOf === '2026-08-16', 'live canonical as-of is 16 August');
   ok(byId('payday-payroll-posted') && byId('payday-payroll-posted').status === 'CHANGE',
-    'live payroll posting evidence is CHANGE — cutover not applied');
-  ok(byId('payday-mortgage-unposted') && byId('payday-mortgage-unposted').status === 'MATCH',
-    'live unposted mortgage is correctly not represented');
-  ok(byId('payday-fit4less-posting-unknown').status === 'MISSING'
-    && byId('payday-bcaa-posting-unknown').status === 'MISSING'
+    '14 August payroll posting vs empty representedEvents is CHANGE — asOf is not that date');
+  ok(byId('payday-mortgage-posted') && byId('payday-mortgage-posted').status === 'CHANGE',
+    '14 August mortgage posting vs empty representedEvents is CHANGE — asOf is not that date');
+  ok(byId('payday-bcaa-posting-unknown').status === 'MISSING'
     && byId('payday-icbc-posting-unknown').status === 'MISSING'
-    && byId('payday-resp-posting-unknown').status === 'MISSING',
-    'live unknown same-day/next-day postings stay MISSING');
+    && byId('payday-resp-posting-unknown').status === 'MISSING'
+    && byId('payday-uniondues-posting-unknown').status === 'MISSING',
+    'live unknown 15 August postings stay MISSING');
   ok(liveResult.writesCanonicalState === false, 'reconciler still reports non-writing');
   ok(liveResult.staleAssigned === false && liveResult.counts.STALE === 0,
     'STALE is still not assigned');
@@ -381,7 +382,7 @@ console.log('\n=== K. no-write CLI + Forecast remains the schedule authority ===
   const after = hashFile(R.DEFAULT_DATA);
   ok(before === after, 'running the CLI leaves data.json bytes unchanged');
   ok(/Schedule vs posted/.test(out), 'the printed report includes posting distinctions');
-  ok(/payday-payroll-posted/.test(out) && /payday-mortgage-unposted/.test(out),
+  ok(/payday-payroll-posted/.test(out) && /payday-mortgage-posted/.test(out),
     'the live CLI names the Aug. 14 payroll and mortgage posting observations');
   ok(!/\b600(\.00)?\/wk/.test(out) && !/"weekly":\s*600/.test(JSON.stringify(posting)),
     '$600/week is not encoded as posting or payday policy');

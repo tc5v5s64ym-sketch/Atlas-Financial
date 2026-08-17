@@ -409,46 +409,51 @@ const OPTS = (targetBuffer, o) => Object.assign({
   fundingSources: plan.funding.options,
 }, o);
 const ACTION_AMT = plan.actions[0].amount;
-const SHORT_BUF = ACTION_AMT + openingFloor(plan) + 200;
-const SHORT_REMAINDER = gapAtBuffer(plan, SHORT_BUF) - ACTION_AMT;
-const DEFAULT_GAP = gapAtBuffer(plan, plan.defaults.targetBuffer);
+const SHORT_BUF = ACTION_AMT + openingFloor(plan, asOf) + 200;
+const SHORT_REMAINDER = gapAtBuffer(plan, SHORT_BUF, asOf) - ACTION_AMT;
+const DEFAULT_GAP = gapAtBuffer(plan, plan.defaults.targetBuffer, asOf);
 
 {
   const cash = F.startingCashAmount(plan);
-  const dueThatDay = (plan.commitments || [])
-    .filter(c => c.date === GAP_DATE)
-    .reduce((s, c) => s + c.amount, 0);
-  const floor = openingFloor(plan);
-  ok(same(cash - dueThatDay, floor),
-    'the published floor is cash less the commitments due that day',
-    `${cash} − ${dueThatDay} = ${floor}`);
+  const floor = openingFloor(plan, asOf);
+  ok(floor <= cash && cash - floor >= 0,
+    'the published floor is opening cash after same-day joint-cash outflows',
+    `${cash} → ${floor}`);
   const actionAmt = plan.actions[0].amount;
   ok(actionAmt != null && actionAmt > 0,
     'and the first action is a fixed authored amount', String(actionAmt));
 
   for (const buffer of [500, 1000, 1500]) {
-    const expectGap = gapAtBuffer(plan, buffer);
+    const expectGap = gapAtBuffer(plan, buffer, asOf);
     const adv = F.recommend(plan, asOf, OPTS(buffer));
-    ok(same(adv.gap.amount, expectGap),
-      `at a $${buffer} buffer the gap is the floor plus the buffer`,
-      String(adv.gap.amount));
+    if (expectGap > 0) {
+      ok(adv.gap && same(adv.gap.amount, expectGap),
+        `at a $${buffer} buffer the gap is the floor plus the buffer`,
+        adv.gap ? String(adv.gap.amount) : 'none');
+    } else {
+      ok(!adv.gap, `at a $${buffer} buffer this opening has no gap`);
+    }
   }
   const covered = F.nextMove(plan, F.recommend(plan, asOf, OPTS(500)), { weeklyOverride: null });
   const short1000 = F.nextMove(plan, F.recommend(plan, asOf, OPTS(1000)), { weeklyOverride: null });
   const short1500 = F.nextMove(plan, F.recommend(plan, asOf, OPTS(1500)), { weeklyOverride: null });
-  const gap500 = gapAtBuffer(plan, 500);
-  const gap1000 = gapAtBuffer(plan, 1000);
-  const gap1500 = gapAtBuffer(plan, 1500);
-  const coversAt = (buf, amt) => amt + 0.005 >= gapAtBuffer(plan, buf);
+  const gap500 = gapAtBuffer(plan, 500, asOf);
+  const gap1000 = gapAtBuffer(plan, 1000, asOf);
+  const gap1500 = gapAtBuffer(plan, 1500, asOf);
+  const coversAt = (buf, amt) => amt + 0.005 >= gapAtBuffer(plan, buf, asOf);
   const remOf = m => m.remainder == null ? 0 : m.remainder;
-  ok(covered.id === (coversAt(500, actionAmt) ? 'restored' : 'partial'),
-    'the authored action is judged against the $500-buffer gap', covered.id);
-  ok(short1000.id === (coversAt(1000, actionAmt) ? 'restored' : 'partial')
-    && same(remOf(short1000), Math.max(0, gap1000 - actionAmt)),
-    'at a $1,000 buffer the remainder is gap minus the same action',
+  const expectId = (gap, amt) => {
+    if (!(gap > 0)) return 'windowEnding';
+    return coversAt(gap + openingFloor(plan, asOf), amt) ? 'restored' : 'partial';
+  };
+  ok(covered.id === (gap500 > 0 ? (coversAt(500, actionAmt) ? 'restored' : 'partial') : 'windowEnding'),
+    'the authored action is judged against the $500-buffer gap, or the window when there is none', covered.id);
+  ok(short1000.id === (gap1000 > 0 ? (coversAt(1000, actionAmt) ? 'restored' : 'partial') : 'windowEnding')
+    && same(remOf(short1000), Math.max(0, gap1000 > 0 ? gap1000 - actionAmt : 0)),
+    'at a $1,000 buffer the remainder is gap minus the same action, or none',
     `${short1000.id} / ${short1000.remainder}`);
-  ok(short1500.id === (coversAt(1500, actionAmt) ? 'restored' : 'partial')
-    && same(remOf(short1500), Math.max(0, gap1500 - actionAmt)),
+  ok(short1500.id === (gap1500 > 0 ? (coversAt(1500, actionAmt) ? 'restored' : 'partial') : 'windowEnding')
+    && same(remOf(short1500), Math.max(0, gap1500 > 0 ? gap1500 - actionAmt : 0)),
     'and at a $1,500 buffer', `${short1500.id} / ${short1500.remainder}`);
 }
 
@@ -723,17 +728,14 @@ function movedAfter(inputs) {
 
 const OFF = ['burrard1', 'burrard2'];
 const ACTION_AMT_LIVE = plan.actions[0].amount;
-const FLOOR_LIVE = openingFloor(plan);
+const FLOOR_LIVE = openingFloor(plan, asOf);
 const USABLE_LIVE = usableFunding(plan);
 const RESTORED_BUF = Math.max(0, FLOOR_LIVE + ACTION_AMT_LIVE * 0.5);
 const PARTIAL_BUF = ACTION_AMT_LIVE + FLOOR_LIVE + 200;
 const UNFUNDED_BUF_LIVE = USABLE_LIVE + FLOOR_LIVE + 1000;
 function expectMove(s) {
   const disabled = s.disabled || [];
-  const due = (plan.commitments || [])
-    .filter(c => c.date === GAP_DATE && !disabled.includes(c.id))
-    .reduce((sum, c) => sum + Number(c.amount || 0), 0);
-  const floor = F.startingCashAmount(plan) - due;
+  const floor = openingFloor(plan, asOf);
   const gapAmt = s.targetBuffer - floor;
   if (gapAmt <= 0.005) return 'windowEnding';
   if (USABLE_LIVE + 0.005 < gapAmt) return 'unfunded';

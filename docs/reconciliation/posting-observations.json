@@ -7,7 +7,8 @@
   "notes": [
     "A live opening observation needs explicit cutover semantics so events already inside that observation are not replayed. representedEvents is that list. This file compares posting evidence to that list and does not write it.",
     "Unknown posting is not unposted and is not posted. Fail closed: do not put an unknown item on representedEvents.",
-    "Fit4Less, BCAA, ICBC, and RESP are named in the Aug. 14 corpus as same-day or next-day scheduled items. The committed corpus does not establish whether they posted. They stay unknown."
+    "The 2026-08-16 Forecast opening is after Friday 14 August. Posted 14 August items fall before asOf and are not replayed even when they are not on representedEvents. representedEvents remains empty because no same-day 16 August scheduled item is inside the observation.",
+    "BCAA, ICBC, RESP, and union dues were due Saturday 15 August. Posting remains unknown: the Aug. 14 corpus did not observe them, and unknown posting is not proof of unposted. They stay unknown here and are reserved on the live plan as once rows."
   ],
   "observations": [
     {
@@ -20,31 +21,43 @@
       "observedAsOf": "2026-08-14",
       "canonical": { "collection": "representedEvents", "id": "payroll" },
       "source": "docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md",
-      "note": "Pay landed. Already inside the Aug. 14 opening observation. When opening.asOf is 2026-08-14 this occurrence must be named on representedEvents, or Forecast replays it."
+      "note": "Pay landed at $4,274.98 on BILLS ACCOUNT. Already inside the 2026-08-16 cash opening. When opening.asOf is 2026-08-14 this occurrence must be named on representedEvents. The live opening is 2026-08-16, so Forecast does not replay 14 August payroll."
     },
     {
-      "observationId": "payday-mortgage-unposted",
+      "observationId": "payday-mortgage-posted",
       "fact": "posting",
       "eventId": "mortgage",
       "label": "Mortgage",
       "scheduledDate": "2026-08-14",
-      "posted": false,
-      "observedAsOf": "2026-08-14",
+      "posted": true,
+      "observedAsOf": "2026-08-16",
       "canonical": { "collection": "representedEvents", "id": "mortgage" },
-      "source": "docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md",
-      "note": "Expected Aug. 14 but not yet on the bank screenshot. Schedule is not proof of posting. Must not be on representedEvents. Forecast still deducts it."
+      "source": "2026-08-16 Lunch Money observation",
+      "note": "The Aug. 14 payday session screenshot did not yet show the mortgage. The later complete Lunch Money pull shows TD MORTGAGE $1,600.00 posted 2026-08-14 on BILLS ACCOUNT, and the mortgage posted balance fell by $838.28. Already inside the 2026-08-16 opening. Not on representedEvents because asOf is not 2026-08-14."
     },
     {
-      "observationId": "payday-fit4less-posting-unknown",
+      "observationId": "payday-fit4less-posted",
       "fact": "posting",
       "eventId": "fit4less",
       "label": "Fit4Less membership",
       "scheduledDate": "2026-08-14",
-      "unknown": true,
-      "observedAsOf": "2026-08-14",
+      "posted": true,
+      "observedAsOf": "2026-08-16",
       "canonical": { "collection": "representedEvents", "id": "fit4less" },
-      "source": "docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md",
-      "note": "Same-day scheduled item. Posting is not established in the committed corpus. Unknown posting is not posted and is not unposted."
+      "source": "2026-08-16 Lunch Money observation",
+      "note": "Fit4less Msp $11.54 posted 2026-08-14 on BILLS ACCOUNT. Already inside the 2026-08-16 opening."
+    },
+    {
+      "observationId": "payday-shaw-posted",
+      "fact": "posting",
+      "eventId": "shaw",
+      "label": "Shaw internet",
+      "scheduledDate": "2026-08-14",
+      "posted": true,
+      "observedAsOf": "2026-08-16",
+      "canonical": { "collection": "representedEvents", "id": "shaw" },
+      "source": "2026-08-16 Lunch Money observation",
+      "note": "Shaw Cable $78.40 posted 2026-08-14 on BILLS ACCOUNT. Already inside the 2026-08-16 opening."
     },
     {
       "observationId": "payday-bcaa-posting-unknown",
@@ -56,7 +69,7 @@
       "observedAsOf": "2026-08-14",
       "canonical": { "collection": "representedEvents", "id": "bcaa" },
       "source": "docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md",
-      "note": "Next-day scheduled item as of the Aug. 14 observation. Posting is not established. Do not invent a representedEvents cutover for it."
+      "note": "Next-day scheduled item as of the Aug. 14 observation. Unknown posting is not posted and is not unposted. Saturday 15 August is inside the 14-day current-state window ending 2026-08-16. Reserved on the live plan as bcaa-aug15-outstanding. Do not invent a representedEvents cutover for it."
     },
     {
       "observationId": "payday-icbc-posting-unknown",
@@ -68,7 +81,7 @@
       "observedAsOf": "2026-08-14",
       "canonical": { "collection": "representedEvents", "id": "icbc" },
       "source": "docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md",
-      "note": "Next-day scheduled item as of the Aug. 14 observation. Posting is not established. Do not invent a representedEvents cutover for it."
+      "note": "Next-day scheduled item as of the Aug. 14 observation. Unknown posting is not posted and is not unposted. Reserved on the live plan as icbc-aug15-outstanding. Do not invent a representedEvents cutover for it."
     },
     {
       "observationId": "payday-resp-posting-unknown",
@@ -80,7 +93,19 @@
       "observedAsOf": "2026-08-14",
       "canonical": { "collection": "representedEvents", "id": "resp" },
       "source": "docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md",
-      "note": "Next-day scheduled item as of the Aug. 14 observation. Posting is not established. Do not invent a representedEvents cutover for it."
+      "note": "Next-day scheduled item as of the Aug. 14 observation. Unknown posting is not posted and is not unposted. Reserved on the live plan as resp-aug15-outstanding. Do not invent a representedEvents cutover for it."
+    },
+    {
+      "observationId": "payday-uniondues-posting-unknown",
+      "fact": "posting",
+      "eventId": "uniondues",
+      "label": "CMAW Local 1995 union dues",
+      "scheduledDate": "2026-08-15",
+      "unknown": true,
+      "observedAsOf": "2026-08-16",
+      "canonical": { "collection": "representedEvents", "id": "uniondues" },
+      "source": "2026-08-16 Lunch Money observation",
+      "note": "Due the 15th. Not observed posted in the 2026-08-16 pull. Reserved on the live plan as uniondues-aug15-outstanding. Unknown posting is not posted and is not unposted."
     }
   ]
 }

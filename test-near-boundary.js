@@ -174,7 +174,7 @@ ok(none.nearBoundary.payday == null && none.nearBoundary.items.length === 0
   && none.nearBoundary.total === 0,
   'without a payday the derived view is empty rather than guessed');
 
-console.log('\n=== F. live plan: expose existing Aug 14–15 cluster; weekly follows current commitments ===');
+console.log('\n=== F. live plan: expose existing next-payday cluster; weekly is not $600 policy ===');
 const liveOpts = {
   scenario: 'expected', incomeOverrides: {}, disabled: [], extraDebtMonthly: 0,
   targetBuffer: live.plan.defaults.targetBuffer,
@@ -184,19 +184,16 @@ const liveOpts = {
   extraDebtTarget: live.plan.nextDollar && live.plan.nextDollar.target,
 };
 const liveRec = F.recommend(live.plan, live.meta.asOf, liveOpts);
-ok(liveRec.weekly === 1165 && liveRec.mode === 'openingGap'
-  && near(liveRec.gap.amount, 1043.16)
-  && near(liveRec.sim.min.balance, 500) && liveRec.sim.min.date === '2026-08-12'
-  && near(liveRec.sim.ending, 5629.80),
-  'live weekly $1,165, gap $1,043.16, floor $500 on 12 Aug, ending $5,629.80',
-  `${liveRec.weekly} / ${liveRec.gap && liveRec.gap.amount} / ${liveRec.sim.min.balance} / ${liveRec.sim.ending}`);
+ok(liveRec.mode === 'normal' && liveRec.weekly !== 600 && liveRec.gap == null,
+  'live 16 August opening is a normal plan; $600/week is not policy',
+  `${liveRec.mode} weekly ${liveRec.weekly}`);
 
-ok(liveRec.nearBoundary.payday === '2026-08-14'
-  && liveRec.nearBoundary.until === '2026-08-15',
-  'live next payday from 9 Aug is 14 Aug, window through 15 Aug');
+ok(liveRec.nearBoundary.payday === '2026-08-28'
+  && liveRec.nearBoundary.until === '2026-08-29',
+  'live next payday from 16 Aug is 28 Aug, window through 29 Aug');
 
-const PAYDAY_LIVE = '2026-08-14';
-const UNTIL_LIVE = '2026-08-15';
+const PAYDAY_LIVE = '2026-08-28';
+const UNTIL_LIVE = '2026-08-29';
 const handItems = [];
 for (const o of live.plan.obligations || []) {
   if (o.nonCash) continue;
@@ -217,8 +214,8 @@ for (const c of live.plan.commitments || []) {
   }
 }
 const handTotal = handItems.reduce((s, item) => s + item.amount, 0);
-ok(handItems.length === 7 && near(handTotal, 1997.81),
-  'plan-row occurrences on 14–15 Aug independently total $1,997.81 across 7 items',
+ok(handItems.length === 2 && near(handTotal, 1611.54),
+  'plan-row occurrences on 28–29 Aug independently total $1,611.54 across 2 items',
   `${handItems.length} items, ${handTotal}`);
 ok(liveRec.nearBoundary.items.length === handItems.length
   && near(liveRec.nearBoundary.total, handTotal),
@@ -236,10 +233,10 @@ const liveMission = F.mission(liveRec, liveWalk, { weeklyOverride: null, sim: li
 const nbIdx = liveMission.parts.findIndex(p => p.id === 'nearBoundary');
 const surplusIdx = liveMission.parts.findIndex(p => p.id === 'surplusToCard' || p.id === 'helocLimit');
 ok(nbIdx >= 0 && surplusIdx >= 0 && nbIdx < surplusIdx,
-  'live mission names the Aug 14–15 obligations before surplus-use guidance',
+  'live mission names the Aug 28–29 obligations before surplus-use guidance',
   ids(liveMission));
-ok(near(part(liveMission, 'nearBoundary').total, 1997.81),
-  'the live mission total is the independent $1,997.81');
+ok(near(part(liveMission, 'nearBoundary').total, 1611.54),
+  'the live mission total is the independent $1,611.54');
 const handLabels = handItems.map(i => i.label).sort().join(',');
 const missionLabels = (part(liveMission, 'nearBoundary').items || [])
   .map(i => i.label).sort().join(',');

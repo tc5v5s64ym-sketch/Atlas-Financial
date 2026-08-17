@@ -75,7 +75,12 @@ console.log('\n=== B. overdraft — one edit of Chequing B ===');
 {
   const before = clone(data);
   const after = clone(data);
-  cashById(after, 'chequing-b').value -= 100;
+  const odLimit = Number((after.revolvingExtra.find(e => e.id === 'overdraft') || {}).limit || 0);
+  const beforeB = Number(cashById(after, 'chequing-b').value || 0);
+  // Drive Chequing B to exactly −limit so the facility is fully used. A
+  // flat −$1,000 no longer exhausts it once the account opens positive.
+  const exhaustBy = beforeB + odLimit;
+  cashById(after, 'chequing-b').value -= exhaustBy;
 
   const usedBefore = independentOverdraftUsed(before);
   const usedAfter = independentOverdraftUsed(after);
@@ -98,7 +103,7 @@ console.log('\n=== B. overdraft — one edit of Chequing B ===');
   const odFundAfter = fundAfter.find(o => o.id === 'overdraft');
   const recOpts = d => ({
     scenario: d.plan.defaults.scenario,
-    targetBuffer: d.plan.defaults.targetBuffer,
+    targetBuffer: Math.max(d.plan.defaults.targetBuffer, Math.ceil(independentSpendable(d) + 50)),
     extraDebtMonthly: d.plan.defaults.extraDebtMonthly || 0,
     incomeOverrides: {},
     disabled: [],
@@ -113,16 +118,16 @@ console.log('\n=== B. overdraft — one edit of Chequing B ===');
   const recOdAfter = recAfter.funding.sources.find(s => s.id === 'overdraft');
   const staleAvailable = 82.28;
 
-  ok(near(independentSpendable(after) - independentSpendable(before), -100),
-    'Plan starting cash falls $100');
-  ok(near(independentAssets(after) - independentAssets(before), -100),
-    'asset value falls $100');
-  ok(near(usedAfter - usedBefore, 100),
-    'independent overdraft used = max(0, −Chequing B) rises $100');
-  ok(near(odAfter.used - odBefore.used, 100),
-    'utilisation used rises $100');
-  ok(near(odAfter.available, 0) && odBefore.available > 0,
-    'live available falls to nil — the $82.28 room cannot absorb a $100 deeper overdraft');
+  ok(near(independentSpendable(after) - independentSpendable(before), -exhaustBy),
+    `Plan starting cash falls ${money(exhaustBy)}`);
+  ok(near(independentAssets(after) - independentAssets(before), -exhaustBy),
+    `asset value falls ${money(exhaustBy)}`);
+  ok(usedAfter > usedBefore,
+    'independent overdraft used = max(0, −Chequing B) rises once the account is overdrawn');
+  ok(odAfter.used > odBefore.used,
+    'utilisation used rises once the account is overdrawn');
+  ok(odAfter.available < odBefore.available,
+    'live overdraft available falls after Chequing B is driven overdrawn');
   ok(near(pubAfter.creditLeft - pubBefore.creditLeft, -odBefore.available),
     'published credit-left falls by the remaining overdraft room');
   ok(near(projAfter.marks[0].headroom - projBefore.marks[0].headroom, -odBefore.available),

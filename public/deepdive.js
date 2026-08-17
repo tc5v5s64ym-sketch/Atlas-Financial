@@ -217,10 +217,13 @@ function renderDeepDive(d) {
     label: u.label, v: u.pct,
     colour: u.pct > 95 ? css('--critical') : css('--serious'),
     // Over the limit is a different fact from merely near it, so say so rather
-    // than showing "$0 left" and letting the bar imply it.
-    vlabel: u.overLimit ? money(u.overLimitBy) + ' OVER' : money(u.available) + ' left',
+    // than showing "$0 left" and letting the bar imply it. Unknown pending is
+    // not posted room — do not print "$200 left" from limit − posted.
+    vlabel: u.overLimit ? money(u.overLimitBy) + ' OVER'
+      : (u.pendingUnknown || u.available == null ? 'pending unknown' : money(u.available) + ' left'),
     tip: `${money2(u.used)} of a ${money2(u.limit)} limit · ${u.pct.toFixed(1)}% used`
-      + (u.pending ? ` · includes ${money2(u.pending)} pending, already incurred` : ''),
+      + (u.pendingUnknown ? ' · pending not observed, not $0'
+        : (u.pending ? ` · includes ${money2(u.pending)} pending, already incurred` : '')),
   })), { rowH: 40, padL: 176 });
   if (d.utilisationNote) $('util-note').textContent = d.utilisationNote;
 
@@ -383,7 +386,7 @@ function renderPeriod(d, periods) {
 
   const caveat = (d && d.spendingNote) ? ' ' + d.spendingNote : '';
   $('spend-note').textContent =
-    `${p.label}. Blue is essential, orange discretionary, grey unidentified or mixed. ` +
+    `${p.label}, captured through ${fmtDateLong(periods.asOf)}. Blue is essential, orange discretionary, grey unidentified or mixed. ` +
     `Discretionary is ${money2(snap.discretionary)} — ${snap.discretionaryShare.toFixed(0)}% of the total, ` +
     `and the part that is a decision rather than a fixed cost.` + caveat;
 

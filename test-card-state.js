@@ -405,7 +405,7 @@ console.log('\n=== 8. same-time contradictions are CONFLICT, not a guessed ident
     'MBNA-shaped identity may derive pending only when proven', money(proven.pending));
 }
 
-console.log('\n=== 9. live Forecast/card behaviour is unchanged ===');
+console.log('\n=== 9. live Forecast still keeps posted and pending distinct ===');
 {
   const forecastHash = hashFile(require('path').join(__dirname, 'public', 'forecast.js'));
   const dataHash = hashFile(R.DEFAULT_DATA);
@@ -415,16 +415,18 @@ console.log('\n=== 9. live Forecast/card behaviour is unchanged ===');
   const util = F.utilisation(live.debts, live.revolvingExtra, live.plan);
   const travelRow = util.rows.find(r => r.id === 'travelvisa');
   const cashRow = util.rows.find(r => r.id === 'cashback');
-  ok(near(travel.balance, 1078.31) && near(travel.pending, 165.13),
-    'live Travel Visa posted $1,078.31 and pending $165.13 are unchanged');
-  ok(near(independentTravel, 1243.44),
-    'independent Travel Visa exposure is $1,243.44, not a rewritten posted figure');
+  ok(near(travel.balance, 862.68) && near(travel.pending, 250),
+    'live Travel Visa posted $862.68 and pending Bell $250.00 stay distinct');
+  ok(near(independentTravel, 1112.68),
+    'independent Travel Visa exposure is $1,112.68, not a collapsed posted figure');
   ok(travelRow && near(travelRow.posted, travel.balance)
     && near(travelRow.pending, travel.pending)
     && near(travelRow.used, independentTravel),
     'Forecast.utilisation still reports posted and pending separately');
-  ok(cashRow && near(cashRow.posted, 5612.43) && near(cashRow.pending, 0),
-    'Forecast still uses the live Cash Back posted/pending pair');
+  ok(cashRow && near(cashRow.posted, 4799.43)
+    && cashRow.pendingUnknown === true && cashRow.pending == null
+    && cashRow.available == null && cashRow.overLimit == null,
+    'live Cash Back pending stays unknown; posted room is not published as $200.57');
   ok(hashFile(require('path').join(__dirname, 'public', 'forecast.js')) === forecastHash,
     'this suite does not rewrite forecast.js');
   ok(hashFile(R.DEFAULT_DATA) === dataHash, 'this suite does not rewrite data.json');
@@ -472,30 +474,30 @@ console.log('\n=== 10. reconciler performs no writes ===');
     && cashAvailCsv.status === 'CONFLICT' && cashAvailPage.status === 'CONFLICT'
     && near(cashAvailCsv.householdCash, 0) && near(cashAvailPage.householdCash, 0),
     'live Cash Back available $0 vs $70 is CONFLICT and $0 household cash');
-  ok(travelPosted && travelPosted.status === 'MATCH' && near(travelPosted.evidenceValue, 1078.31),
-    'live Travel Visa posted MATCH $1,078.31');
-  ok(travelPending && travelPending.status === 'MATCH' && near(travelPending.evidenceValue, 165.13)
-    && !near(travelPending.evidenceValue, 1243.44),
-    'live Travel Visa pending MATCH $165.13, not collapsed $1,243.44');
-  ok(mbnaPending && mbnaPending.status === 'MATCH' && near(mbnaPending.evidenceValue, 82.05)
+  ok(travelPosted && travelPosted.status === 'CHANGE' && near(travelPosted.evidenceValue, 1078.31),
+    '9 August Travel Visa posted $1,078.31 is CHANGE against the 16 August opening');
+  ok(travelPending && travelPending.status === 'CHANGE' && near(travelPending.evidenceValue, 165.13)
+    && !near(travelPending.evidenceValue, 1112.68),
+    '9 August Travel Visa pending $165.13 is CHANGE, not collapsed into posted+pending');
+  ok(mbnaPending && mbnaPending.status === 'CHANGE' && near(mbnaPending.evidenceValue, 82.05)
     && mbnaPending.identityProven === true,
-    'Aug. 9 MBNA pending $82.05 MATCHes the 9 August opening');
+    '9 August MBNA pending $82.05 is CHANGE against the known-zero 16 August pending');
   const mbnaPosted16 = result.rows.find(r => r.observationId === 'card-mbna-posted-2026-08-16');
   const triPosted16 = result.rows.find(r => r.observationId === 'card-triangle-posted-2026-08-16');
-  ok(mbnaPosted16 && mbnaPosted16.status === 'CHANGE' && near(mbnaPosted16.evidenceValue, 8003.61)
-    && near(mbnaPosted16.canonicalValue, 7855.12),
-    'Aug. 16 MBNA $8,003.61 is CHANGE against the 9 August opening');
-  ok(triPosted16 && triPosted16.status === 'CHANGE' && near(triPosted16.evidenceValue, 13197)
-    && near(triPosted16.canonicalValue, 13497),
-    'Aug. 16 Triangle $13,197 is CHANGE against the 9 August opening');
-  ok(cashPosted && cashPosted.status === 'MATCH' && near(cashPosted.evidenceValue, 5612.43),
-    'live Cash Back posted MATCH $5,612.43');
+  ok(mbnaPosted16 && mbnaPosted16.status === 'MATCH' && near(mbnaPosted16.evidenceValue, 8003.61)
+    && near(mbnaPosted16.canonicalValue, 8003.61),
+    'Aug. 16 MBNA $8,003.61 MATCHES this opening');
+  ok(triPosted16 && triPosted16.status === 'MATCH' && near(triPosted16.evidenceValue, 13197)
+    && near(triPosted16.canonicalValue, 13197),
+    'Aug. 16 Triangle $13,197 MATCHES this opening');
+  ok(cashPosted && cashPosted.status === 'CHANGE' && near(cashPosted.evidenceValue, 5612.43),
+    '9 August Cash Back posted $5,612.43 is CHANGE against the 16 August opening');
   ok(cashPay && cashPay.appliedToPosted && cashPay.status === 'MISSING'
     && cashPay.status !== 'MATCH' && cashPay.canonicalValue == null,
     'live $70 Cash Back payment is observed, not a canonical MATCH');
-  ok(cashSched && cashSched.status === 'MATCH' && cashSched.reducesExposure === false
+  ok(cashSched && cashSched.status === 'MISSING' && cashSched.reducesExposure === false
     && near(cashSched.evidenceValue, 762.36),
-    'live $762.36 September minimum MATCHes the canonical obligation and is schedule-only');
+    'the paid $762.36 September spike is no longer a canonical obligation');
 
   const travel14 = result.rows.find(r => r.observationId === 'card-travelvisa-pending-2026-08-14');
   ok(travel14 && travel14.unknown && travel14.status === 'MISSING',
