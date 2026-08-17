@@ -546,6 +546,9 @@ console.log('\n=== no planned debt unless explicitly permitted ===');
     startingCash: { amount: start },
     defaults: { targetBuffer: buffer },
     income: [{
+      id: 'keep-horizon', label: 'Horizon marker', frequency: 'monthly',
+      anchor: '2026-08-01', amount: 0, confidence: 'confirmed',
+    }, {
       id: 'after-deadline', label: 'Pay after deadline', frequency: 'once',
       date: laterIncome, amount: 5000, confidence: 'confirmed',
     }],
@@ -583,14 +586,14 @@ console.log('\n=== no planned debt unless explicitly permitted ===');
     plannedDebtPayment: 20,
     weeklyVariable: 0,
   }));
-  ok(near(covers.borrowed, 100),
-    'a purpose-named draw sized to the floor shortfall is $100',
-    String(covers.borrowed));
+  ok(near(covers.borrowed, 100) && covers.repayment && covers.repayment.flows > 0,
+    'a purpose-named $100 draw has a repayment cadence on the longer walk',
+    covers.repayment && `${covers.borrowed} borrowed, ${covers.repayment.flows} flows`);
   ok(start + 100 - buffer === floor,
     'independent: $100 on the due date lands surplus on the $1,000 floor');
   ok(covers.feasible === true,
     'planned debt is feasible when the financing path actually fixes the deadline',
-    `feasible=${covers.feasible} borrowed=${covers.borrowed}`);
+    `feasible=${covers.feasible} borrowed=${covers.borrowed} flows=${covers.repayment && covers.repayment.flows}`);
 }
 
 console.log('\n=== undated known commitments constrain today\'s cap; ranges stay ranges ===');
