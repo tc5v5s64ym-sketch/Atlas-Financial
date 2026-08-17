@@ -1252,7 +1252,7 @@ planned-debt pending / repayment / purpose terms. `Forecast.recommend` searches
 `Forecast.knowledgeHorizon` (≥12 months for every plan; always
 long enough for dated unsettled commitments) and reserves protected
 principal jointly, including overdue unsettled point amounts until
-settlement. Named ranges are views.
+settlement, tested against as-of surplus rather than later income. Named ranges are views.
 `Forecast.fundingSequence` / `Forecast.majorPlans` / `Forecast.plannedDebt`
 are the presentation order, the three verdicts with a dollar margin/gap,
 and opt-in purpose-specific planned debt on the same projection. Live

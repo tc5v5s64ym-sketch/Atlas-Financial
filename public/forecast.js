@@ -1022,6 +1022,21 @@
     return { floor, ceiling };
   }
 
+  // Overdue protected point amounts are one as-of constraint. Their original
+  // scheduled dates are kept. The same current dollar cannot fund two of
+  // them, and later horizon income cannot repair a past deadline.
+  function overdueProtectedBy(seq, asOf) {
+    let floor = 0, ceiling = 0;
+    const items = [];
+    for (const item of seq || []) {
+      if (!isOverduePointItem(item, asOf)) continue;
+      floor += item.bounds ? item.bounds.floor : 0;
+      ceiling += item.bounds ? item.bounds.ceiling : 0;
+      items.push(item);
+    }
+    return { floor, ceiling, items };
+  }
+
   // Spoken-for principal that has not left the walk as a cash event.
   // Future dated point amounts already leave the walk; double-counting them
   // would treat paid-out cash as still reserved. An overdue unsettled point
@@ -1042,11 +1057,13 @@
   }
 
   // One protected-feasibility predicate for the weekly search and for
-  // planned-debt validation. Buffer path, still-encumbered principal
-  // (including overdue unsettled point amounts), and every dated-reserve
+  // planned-debt validation. Buffer path, overdue protected point amounts
+  // against as-of surplus (model buffer and same-day authoritative cash,
+  // not later income), still-encumbered principal, and every dated-reserve
   // deadline. A later income that repairs the ending leftover does not
-  // excuse a missed deadline, and a passed due date does not drop an
-  // unpaid point obligation.
+  // excuse a missed or already-passed deadline, and a passed due date does
+  // not drop an unpaid point obligation. Authorized planned debt may close
+  // an overdue current gap only through the same-walk financing path.
   function protectedPlanCheck(plan, asOf, opts) {
     opts = opts || {};
     const buffer = opts.targetBuffer != null ? opts.targetBuffer
@@ -1081,6 +1098,23 @@
           shortfall: due.floor - have,
           id: item.id,
           label: item.label,
+        });
+      }
+    }
+
+    const overdueDue = overdueProtectedBy(seq, asOf);
+    if (overdueDue.floor > 0) {
+      const surplus = surplusOn(sim, asOf);
+      const have = surplus == null ? 0 : surplus;
+      if (!atLeast(have, overdueDue.floor)) {
+        const named = overdueDue.items[0];
+        failures.push({
+          kind: 'overdue',
+          date: named.date,
+          shortfall: overdueDue.floor - have,
+          id: named.id,
+          label: named.label,
+          ids: overdueDue.items.map(i => i.id),
         });
       }
     }
@@ -1167,6 +1201,28 @@
         remaining = Math.max(0, floor - take);
         verdict = funded ? 'ON TRACK' : 'FUNDING GAP';
         encumbered = 0;
+      } else if (isOverduePointItem(item, asOf)) {
+        const surplus = surplusOn(rec, asOf);
+        const due = overdueProtectedBy(seq, asOf);
+        const have = surplus == null ? 0 : surplus;
+        const baseMargin = have - due.floor;
+        const rangeMargin = have - due.ceiling;
+        funded = atLeast(have, due.floor);
+        uncertaintyFunded = atLeast(have, due.ceiling);
+        encumbered = floor;
+        if (funded && uncertaintyFunded) {
+          verdict = 'ON TRACK';
+          margin = rangeMargin;
+          remaining = 0;
+        } else if (funded) {
+          verdict = 'AT RISK';
+          margin = baseMargin;
+          remaining = Math.max(0, -rangeMargin);
+        } else {
+          verdict = 'FUNDING GAP';
+          margin = baseMargin;
+          remaining = Math.max(0, -baseMargin);
+        }
       } else if (isCashEventItem(item) && item.date >= asOf) {
         const dayMargin = datedMargin(rec, item.date, rec.buffer);
         funded = datedCommitmentFunded(rec, item.date, rec.buffer);
@@ -1408,9 +1464,9 @@
 
   /* ---------------------------------------------------- budget recommender */
   // The largest weekly variable spend, to the nearest $5, that keeps the
-  // protected plan feasible: cash buffer, still-encumbered principal
-  // (including overdue unsettled point amounts), and every dated-reserve
-  // deadline. Same predicate as planned-debt validation.
+  // protected plan feasible: cash buffer, overdue protected point amounts
+  // against as-of surplus, still-encumbered principal, and every
+  // dated-reserve deadline. Same predicate as planned-debt validation.
   // Monotonic in W, so binary search is exact.
   const STEP = 5;
   function recommendWeekly(plan, asOf, opts) {
@@ -1486,11 +1542,11 @@
   //               the largest weekly spend that keeps it there.
   //
   //   infeasible  the ordinary cash buffer still holds at zero spend, but a
-  //               protected commitment cannot: a dated-reserve deadline or
-  //               jointly encumbered principal fails even at weekly = 0.
-  //               The answer is not $0/week as a feasible cap. It is
-  //               INFEASIBLE, with the first failing constraint, date,
-  //               dollar shortfall, and affected commitment.
+  //               protected commitment cannot: an overdue as-of constraint,
+  //               a dated-reserve deadline, or jointly encumbered principal
+  //               fails even at weekly = 0. The answer is not $0/week as a
+  //               feasible cap. It is INFEASIBLE, with the first failing
+  //               constraint, date, dollar shortfall, and affected commitment.
   //
   //   openingGap  even zero spend breaches, because money is due before the
   //               first payday arrives. The fix is not a smaller budget, it is

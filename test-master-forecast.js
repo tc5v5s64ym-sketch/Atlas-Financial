@@ -1056,6 +1056,134 @@ console.log('\n=== overdue unsettled point commitments stay protected ===');
     row && `${row.verdict} ${row.date}`);
 }
 
+{
+  // Later ordinary income must not retroactively fund a past deadline.
+  // Independent: as-of surplus is 600 − 500 = 100; overdue floor 1000;
+  // current gap 900. Horizon leftover includes +$5,000 on 2026-08-30.
+  const due = '2026-08-15';
+  const laterIncome = '2026-08-30';
+  const start = 600;
+  const buffer = 500;
+  const overdueAmt = 1000;
+  const plan = barePlan({
+    windowDays: 40,
+    startingCash: { amount: start },
+    defaults: { targetBuffer: buffer },
+    income: [{
+      id: 'after-deadline', label: 'Pay after overdue date', frequency: 'once',
+      date: laterIncome, amount: 5000, confidence: 'confirmed',
+    }],
+    commitments: [
+      { id: 'overdue-item', label: 'Unpaid yesterday', date: due,
+        amount: overdueAmt, confidence: 'confirmed' },
+    ],
+  });
+  ok(AS_OF === '2026-08-16' && start - buffer === 100 && overdueAmt - 100 === 900,
+    'independent: as-of cash above the buffer is $100; the overdue floor is short $900');
+  ok(start + 5000 - buffer >= overdueAmt,
+    'independent: end-horizon leftover after later income would cover the $1,000');
+  const rec = F.recommend(plan, AS_OF, recOpts());
+  ok(rec.mode === 'infeasible' && rec.holds === false && rec.weekly === 0,
+    'later income cannot make an overdue point obligation look feasible',
+    `${rec.mode} weekly=${rec.weekly} holds=${rec.holds}`);
+  ok(rec.infeasible && rec.infeasible.kind === 'overdue'
+    && rec.infeasible.id === 'overdue-item' && rec.infeasible.date === due
+    && near(rec.infeasible.shortfall, 900),
+    'INFEASIBLE names the original scheduled date and the $900 current shortfall',
+    rec.infeasible && JSON.stringify(rec.infeasible));
+  const row = (rec.majorPlans || []).find(p => p.id === 'overdue-item');
+  ok(row && row.verdict === 'FUNDING GAP' && row.date === due && row.scheduledDate === due
+    && near(row.remaining, 900) && near(row.margin, -900),
+    'majorPlans is FUNDING GAP on the original date; remaining is the $900 as-of gap',
+    row && `${row.verdict} remaining=${row.remaining} margin=${row.margin}`);
+  const events = F.expandEvents(plan, AS_OF, F.addDays(AS_OF, 30), {});
+  ok(!events.some(e => e.id === 'overdue-item'),
+    'expandEvents still does not invent a new due date for the overdue item');
+
+  // Independent: $50 as-of draw lifts surplus to $150, still $850 short.
+  const under = F.plannedDebt(plan, AS_OF, recOpts({
+    allowPlannedDebt: true,
+    plannedDebtFacility: 'card-x',
+    plannedDebtPurposes: ['overdue-item'],
+    debts: [{ id: 'card-x', label: 'A card', rate: 19.99, balance: 0, pending: 0, limit: 50 }],
+    plannedDebtPayment: 10,
+    weeklyVariable: 0,
+  }));
+  ok(near(under.borrowed, 50),
+    'an under-capacity overdue draw still borrows the $50 as-of room',
+    String(under.borrowed));
+  ok(start + 50 - buffer === 150 && 1000 - 150 === 850,
+    'independent: $50 on as-of still leaves a $850 current overdue gap');
+  ok(under.feasible === false,
+    'later income still cannot make an under-financed overdue obligation feasible',
+    `feasible=${under.feasible} borrowed=${under.borrowed}`);
+
+  const covers = F.plannedDebt(plan, AS_OF, recOpts({
+    allowPlannedDebt: true,
+    plannedDebtFacility: 'card-x',
+    plannedDebtPurposes: ['overdue-item'],
+    debts: [{ id: 'card-x', label: 'A card', rate: 19.99, balance: 0, pending: 0, limit: 5000 }],
+    plannedDebtPayment: 50,
+    weeklyVariable: 0,
+  }));
+  ok(near(covers.borrowed, 900) && covers.draws && covers.draws[0] && covers.draws[0].date === AS_OF,
+    'the overdue gap is drawn on as-of, not on a rewritten due date',
+    covers.draws && JSON.stringify(covers.draws));
+  ok(start + 900 - buffer === overdueAmt,
+    'independent: a $900 as-of draw lands current surplus on the $1,000 overdue floor');
+  ok(covers.feasible === true,
+    'authorized planned debt may close the overdue as-of gap on the same walk',
+    `feasible=${covers.feasible} borrowed=${covers.borrowed}`);
+}
+
+{
+  // Two overdue floors share one as-of pool. $80 + $80 against $100 surplus
+  // is a $60 joint gap; checking each item alone would wrongly pass.
+  const firstDue = F.addDays(AS_OF, -2);
+  const secondDue = F.addDays(AS_OF, -1);
+  const start = 600;
+  const buffer = 500;
+  const each = 80;
+  const plan = barePlan({
+    windowDays: 40,
+    startingCash: { amount: start },
+    defaults: { targetBuffer: buffer },
+    income: [{
+      id: 'after-deadline', label: 'Pay after overdue dates', frequency: 'once',
+      date: F.addDays(AS_OF, 14), amount: 5000, confidence: 'confirmed',
+    }],
+    commitments: [
+      { id: 'overdue-a', label: 'Unpaid two days ago', date: firstDue,
+        amount: each, confidence: 'confirmed' },
+      { id: 'overdue-b', label: 'Unpaid yesterday', date: secondDue,
+        amount: each, confidence: 'confirmed' },
+    ],
+  });
+  ok(start - buffer === 100 && each + each - 100 === 60,
+    'independent: $100 as-of surplus cannot cover two $80 overdue floors');
+  const rec = F.recommend(plan, AS_OF, recOpts());
+  ok(rec.mode === 'infeasible' && rec.holds === false && rec.weekly === 0,
+    'aggregated overdue floors are INFEASIBLE even though each item is under $100',
+    `${rec.mode} weekly=${rec.weekly}`);
+  ok(rec.infeasible && rec.infeasible.kind === 'overdue'
+    && rec.infeasible.date === firstDue && near(rec.infeasible.shortfall, 60)
+    && Array.isArray(rec.infeasible.ids)
+    && rec.infeasible.ids.includes('overdue-a') && rec.infeasible.ids.includes('overdue-b'),
+    'the failing constraint keeps original dates and names both overdue items',
+    rec.infeasible && JSON.stringify(rec.infeasible));
+  const plans = rec.majorPlans || [];
+  const a = plans.find(p => p.id === 'overdue-a');
+  const b = plans.find(p => p.id === 'overdue-b');
+  ok(a && a.verdict === 'FUNDING GAP' && a.date === firstDue && a.scheduledDate === firstDue
+    && near(a.remaining, 60),
+    'first overdue item is FUNDING GAP on its original date with the joint $60 gap',
+    a && `${a.verdict} ${a.date} remaining=${a.remaining}`);
+  ok(b && b.verdict === 'FUNDING GAP' && b.date === secondDue && b.scheduledDate === secondDue
+    && near(b.remaining, 60),
+    'second overdue item is FUNDING GAP on its original date; the same $100 cannot fund both',
+    b && `${b.verdict} ${b.date} remaining=${b.remaining}`);
+}
+
 console.log('\n=== existing consumers still derive from Forecast ===');
 {
   const planJs = read('public/plan.js');
