@@ -1312,6 +1312,10 @@ console.log('\n=== overdue unsettled point commitments stay protected ===');
     windowDays: 40,
     startingCash: { amount: start },
     defaults: { targetBuffer: buffer },
+    income: [{
+      id: 'after-deadline', label: 'Pay after overdue dates', frequency: 'once',
+      date: F.addDays(AS_OF, 14), amount: 5000, confidence: 'confirmed',
+    }],
     commitments: [
       { id: 'overdue-a', label: 'Unpaid A', date: firstDue,
         amount: aAmt, confidence: 'confirmed' },
