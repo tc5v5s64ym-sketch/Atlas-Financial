@@ -12,18 +12,27 @@ function clone(x) {
   return JSON.parse(JSON.stringify(x));
 }
 
-function burrardDue(plan) {
+function burrardDue(plan, asOf) {
   return (plan.commitments || [])
     .filter(c => c.group === 'burrard')
+    .filter(c => {
+      if (typeof c.settledOn !== 'string' || !asOf) return true;
+      return c.settledOn > asOf;
+    })
     .reduce((s, c) => s + Number(c.amount || 0), 0);
 }
 
-function openingFloor(plan) {
-  return F.startingCashAmount(plan) - burrardDue(plan);
+function openingFloor(plan, asOf) {
+  const cash = F.startingCashAmount(plan);
+  if (!asOf) return cash - burrardDue(plan);
+  const sameDay = (F.expandEvents(plan, asOf, asOf, {}) || [])
+    .filter(e => e.date === asOf && e.amount < 0 && e.kind !== 'noncash' && e.jointCash !== false)
+    .reduce((s, e) => s + e.amount, 0);
+  return cash + sameDay;
 }
 
-function gapAtBuffer(plan, buffer) {
-  return Number(buffer) - openingFloor(plan);
+function gapAtBuffer(plan, buffer, asOf) {
+  return Number(buffer) - openingFloor(plan, asOf);
 }
 
 function cashOnDate(plan, date, occurrences, scenario, start) {

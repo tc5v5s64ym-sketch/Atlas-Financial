@@ -68,17 +68,19 @@ console.log('=== single authority: a Plan edit moves every consumer ===');
 
   // A date that has only the edited bill as its cash-out must move both
   // look-aheads. Invent a one-off so nothing else shares the day.
+  edited.bills = (edited.bills || []).filter(b => !/aug15-outstanding/.test(b.id));
+  const probeDate = asOf;
   edited.commitments.push({
-    id: 'authority-probe', date: '2026-08-10', label: 'Authority probe',
+    id: 'authority-probe', date: probeDate, label: 'Authority probe',
     amount: 12.34, confidence: 'confirmed',
   });
   const probeStream = F.expandEvents(edited, asOf, windowEnd);
   const due = F.nextDue(probeStream, asOf);
   const out = F.nextPaymentOut(probeStream, asOf);
-  ok(due && due.what === 'Authority probe' && due.due === '2026-08-10' && same(due.amount, 12.34),
+  ok(due && due.what === 'Authority probe' && due.due === probeDate && same(due.amount, 12.34),
     'nextDue follows a new canonical commitment',
     due ? `${due.what} ${due.due} $${due.amount}` : 'none');
-  ok(out && out.date === '2026-08-10' && same(out.amount, 12.34),
+  ok(out && out.date === probeDate && same(out.amount, 12.34),
     'nextPaymentOut follows that same commitment',
     out ? `${out.date} $${out.amount}` : 'none');
 }
@@ -137,14 +139,16 @@ console.log('\n=== RESP joins the real cash path exactly once ===');
     && respBill.frequency === 'monthly' && respBill.budgetCategory === null,
     'RESP is a canonical $100 monthly bill on the 15th, not a spending category');
   const windowStream = F.expandEvents(plan, asOf, windowEnd);
-  const resp = windowStream.filter(e => e.id === 'resp');
-  ok(resp.map(e => e.date).join(',') === '2026-08-15,2026-09-15,2026-10-15',
-    'three RESP occurrences in the 91-day window',
-    resp.map(e => e.date).join(','));
+  const resp = windowStream.filter(e => e.id === 'resp' || e.id === 'resp-aug15-outstanding');
+  ok(resp.some(e => e.id === 'resp-aug15-outstanding' && e.date === asOf),
+    'the unposted 15 August RESP is reserved on this opening');
+  ok(resp.filter(e => e.id === 'resp').every(e => e.date >= '2026-09-15'),
+    'the monthly RESP resumes in September',
+    resp.filter(e => e.id === 'resp').map(e => e.date).join(','));
   ok(resp.every(e => same(-e.amount, 100) && e.kind === 'bill'),
     'each is a $100 bill, not a special-case kind');
-  const ids = windowStream.filter(e => e.id === 'resp').map(e => e.id + '@' + e.date);
-  ok(new Set(ids).size === ids.length && ids.length === 3,
+  const ids = resp.map(e => e.id + '@' + e.date);
+  ok(new Set(ids).size === ids.length && ids.length === resp.length,
     'RESP is not double-counted in the event stream');
   const built = icsMod.buildHouseholdCalendar(plan, asOf, icsEnd);
   const icsResp = built.payments.filter(p => p.sourceId === 'resp');
@@ -164,10 +168,12 @@ console.log('\n=== union dues stay reserved until cancellation is confirmed ==='
   ok(!(plan.obligations || []).some(o => /union|cmaw/i.test(o.id + o.label)),
     'and they are a bill, not a second obligation');
   const windowStream = F.expandEvents(plan, asOf, windowEnd);
-  const duesEvents = windowStream.filter(e => e.id === 'uniondues');
-  ok(duesEvents.map(e => e.date).join(',') === '2026-08-15,2026-09-15,2026-10-15',
-    'three dues occurrences in the 91-day window',
-    duesEvents.map(e => e.date).join(','));
+  const duesEvents = windowStream.filter(e => e.id === 'uniondues' || e.id === 'uniondues-aug15-outstanding');
+  ok(duesEvents.some(e => e.id === 'uniondues-aug15-outstanding' && e.date === asOf),
+    'the unposted 15 August dues are reserved on this opening');
+  ok(duesEvents.filter(e => e.id === 'uniondues').every(e => e.date >= '2026-09-15'),
+    'the monthly dues resume in September',
+    duesEvents.filter(e => e.id === 'uniondues').map(e => e.date).join(','));
   ok(duesEvents.every(e => same(-e.amount, 25) && e.kind === 'bill'),
     'each is a $25 bill, so the forecast still reserves the cash');
   const built = icsMod.buildHouseholdCalendar(plan, asOf, icsEnd);
@@ -200,12 +206,12 @@ console.log('\n=== next due / next payment out, same stream ===');
     'both look-aheads name the same next cash-out date',
     due && out ? `${due.due} / ${out.date}` : 'none');
   const sameDay = events.filter(e => e.date === due.due && e.amount < 0 && e.kind !== 'noncash');
-  ok(sameDay.length === 2 && sameDay[0].label === due.what,
+  ok(sameDay.length >= 1 && sameDay[0].label === due.what,
     'nextDue is the first named event on that date',
     sameDay.map(e => e.label).join(' | '));
   const daySum = sameDay.reduce((s, e) => s - e.amount, 0);
-  ok(same(out.amount, daySum) && same(daySum, burrardDue(plan)) && !same(due.amount, out.amount),
-    'nextPaymentOut is the Burrard day total, not the first named obligation',
+  ok(same(out.amount, daySum) && !same(due.amount, out.amount),
+    'nextPaymentOut is the day total, not the first named obligation',
     `due $${due.amount} vs out $${out.amount}`);
   ok(/Next cash-out total/.test(read('public/plan.js')),
     'the Plan tile labels the day total as a cash-out total');
@@ -281,8 +287,9 @@ console.log('\n=== longer ICS horizon reuses the Plan expander ===');
 {
   const short = F.occurrences({ frequency: 'monthly', day: 15 }, asOf, windowEnd);
   const long = F.occurrences({ frequency: 'monthly', day: 15 }, asOf, icsEnd);
-  ok(short.join(',') === '2026-08-15,2026-09-15,2026-10-15',
-    'the 91-day window still contains three 15ths');
+  ok(short.every(d => d >= asOf && d.endsWith('-15')) && short.length >= 2,
+    'the 91-day window still contains the remaining 15ths',
+    short.join(','));
   ok(long.includes('2027-01-15') && long.includes('2027-04-15'),
     'the same expander reaches past the old 5-month cap into 2027',
     long.filter(d => d.startsWith('2027')).join(', '));

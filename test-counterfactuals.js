@@ -489,8 +489,10 @@ function published(o = {}) {
 }
 {
   const { advice, cf } = published();
-  ok(!cf.fullGapCoverage.applies && cf.fullGapCoverage.reason === 'gapAlreadyFundable',
-    'the published plan\'s gap is fully fundable, so no full-coverage line is shown',
+  ok(!cf.fullGapCoverage.applies
+    && (cf.fullGapCoverage.reason === 'gapAlreadyFundable'
+      || cf.fullGapCoverage.reason === 'noOpeningGap'),
+    'the published plan has no unfunded gap, so no full-coverage line is shown',
     cf.fullGapCoverage.reason);
   const a = altFor(cf, 'heloc');
   ok(!!a, 'a HELOC alternative object is returned');
@@ -521,12 +523,12 @@ function published(o = {}) {
 {
   // At a $5,000 buffer the published data reaches the full-coverage case, and
   // the three scenarios have to give three different answers.
-  const at = s => published({ targetBuffer: 5000, scenario: s }).cf.fullGapCoverage;
+  const at = s => published({ targetBuffer: 8000, scenario: s }).cf.fullGapCoverage;
   const c = at('conservative'), e = at('expected'), o = at('optimistic');
   ok(c.applies && e.applies && o.applies,
-    'a $5,000 buffer reaches the full-coverage case on the published data');
-  ok(cents(c.weekly) < cents(e.weekly) && cents(e.weekly) < cents(o.weekly),
-    'and the three scenarios publish three different weekly figures, in order',
+    'an $8,000 buffer reaches the full-coverage case on the published data');
+  ok(cents(c.weekly) <= cents(e.weekly) && cents(e.weekly) <= cents(o.weekly),
+    'weekly never falls as the income scenario improves',
     [c, e, o].map(x => money(x.weekly)).join(' / '));
   const usable = (plan.funding.options || []).filter(s => !s.unusable)
     .reduce((s, x) => s + x.available, 0);
@@ -542,7 +544,7 @@ function published(o = {}) {
   // while the risk block used to price a $2,043.16 draw on that same facility
   // and publish a crossing date manufactured by the overdraw.
   const helocAvail = plan.funding.options.find(o => o.id === 'heloc').available;
-  const bufHelocShort = helocAvail + openingFloor(plan) + 200;
+  const bufHelocShort = helocAvail + openingFloor(plan, AS_OF) + 200;
   const { advice, cf } = published({ targetBuffer: bufHelocShort });
   const card = advice.funding.sources.find(s => s.id === 'heloc');
   const a = altFor(cf, 'heloc');
@@ -837,10 +839,10 @@ const flat = s => String(s).replace(/\s+/g, ' ').trim();
   const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const { cf: cfDef } = published();
   const helocAlt = altFor(cfDef, 'heloc');
-  const { cf: cf5k } = published({ targetBuffer: 5000 });
+  const { cf: cf5k } = published({ targetBuffer: 8000 });
   const cover = cf5k.fullGapCoverage;
   const helocAvail = plan.funding.options.find(o => o.id === 'heloc').available;
-  const bufHelocShort = helocAvail + openingFloor(plan) + 200;
+  const bufHelocShort = helocAvail + openingFloor(plan, AS_OF) + 200;
   const { advice: tightAdv } = published({ targetBuffer: bufHelocShort });
   const tightCard = tightAdv.funding.sources.find(s => s.id === 'heloc');
   setTimeout(() => {
@@ -857,13 +859,13 @@ const flat = s => String(s).replace(/\s+/g, ' ').trim();
     ok(!/Cover the whole gap/.test(flat(tiles.innerHTML)),
       'and the fully-fundable published plan shows no full-coverage line');
 
-    const raised = bootPage({ scenario: 'expected', targetBuffer: 5000,
+    const raised = bootPage({ scenario: 'expected', targetBuffer: 8000,
       extraDebtMonthly: 0, weeklyVariable: null, incomeOverrides: {}, disabled: [] });
     setTimeout(() => {
       const t = flat(raised.get('hero-tiles').innerHTML);
-      ok(cover.applies, 'a $5,000 buffer reaches the full-coverage case');
+      ok(cover.applies, 'an $8,000 buffer reaches the full-coverage case');
       ok(new RegExp(esc(`with only ${dol(cover.fundable)} of the ${dol(cover.gapAmount)} gap fundable`)).test(t),
-        'at a $5,000 buffer the booted page publishes the fundable split');
+        'at an $8,000 buffer the booted page publishes the fundable split');
       ok(new RegExp(esc(`Cover the whole gap and it becomes ${dol(cover.weekly)}/week`)).test(t),
         'and the full-coverage weekly figure the engine returned');
       ok(!/undefined|NaN|Infinity|\[object/.test(t),

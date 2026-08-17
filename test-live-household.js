@@ -24,8 +24,8 @@ ok(payroll && payroll.amount >= EMP004_LO && payroll.amount <= EMP004_HI,
   payroll ? `$${payroll.amount} vs $${EMP004_LO}–$${EMP004_HI}` : 'missing');
 
 console.log('\n=== live as-of ===');
-ok(data.meta.asOf === '2026-08-09',
-  'published as-of is 9 August 2026', data.meta.asOf);
+ok(data.meta.asOf === '2026-08-16',
+  'published as-of is 16 August 2026', data.meta.asOf);
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
 process.exit(failures === 0 ? 0 : 1);

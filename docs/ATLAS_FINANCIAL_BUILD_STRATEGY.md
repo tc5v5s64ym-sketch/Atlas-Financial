@@ -24,21 +24,20 @@ Capabilities that are wanted but not yet in Phases 1–4 are recorded in
 **Later capabilities — status and reopen trigger**. That table is memory and
 trigger, not a second order of work.
 
-**Current sequencing (16 August 2026, rebased after PR #82).** B74, B80,
-B87–B90, B92, B93 and B95 are closed. The live Lunch Money observation test
-has already happened; it is not a future milestone. `B91` remains **IN
-PROGRESS** and is not DONE. Finish it with the **freshest coherent
-current-state opening**. Do not keep the project blocked waiting for a
-historical Aug. 14 opening if newer complete evidence can provide the
-correct cutover. Known major future costs already have one Plan home
-(`B95`). Next engine work is `B94` / `AF-PLAN-01` (contract established;
-runtime not started). Then `B96` / `AF-PLAN-02`: prove the payday
-question end-to-end: fresh evidence → canonical state → Forecast →
-household answer. `B20` / `B21`,
+**Current sequencing (16 August 2026, after the `B91` opening).** B74, B80,
+B87–B90, B91, B92, B93 and B95 are closed. The live Lunch Money
+observation test has already happened; it is not a future milestone.
+`B91` / `AF-RECON-01` is **DONE**: the published Forecast opening is
+2026-08-16 from the freshest coherent complete evidence. The Aug. 14
+corpus remains the distinction checklist. Known major future costs
+already have one Plan home (`B95`). Next engine work is `B94` /
+`AF-PLAN-01` (contract established; runtime not started). Then `B96` /
+`AF-PLAN-02`: prove the payday question end-to-end: fresh evidence →
+canonical state → Forecast → household answer. `B20` / `B21`,
 `B78`, provider-completeness, broad historical forensics, and old
 categorisation cleanup are **not** critical-path gates unless they expose a
-demonstrated material source or financial-correctness gap. Do not mark
-`B91` done in a planning PR. Do not start `B20` first.
+demonstrated material source or financial-correctness gap. Do not start
+`B94` in the B91 cutover. Do not start `B20` first.
 
 ---
 
@@ -254,10 +253,8 @@ B87–B90, B92, B93                         ← complete
 B80 + live Lunch Money observation test   ← complete; not a future milestone
 B95  absorb known major future costs      ← complete (PR #82)
   ↓
-B91  finish with the freshest coherent current-state opening
-     ← IN PROGRESS, not DONE
-     ← do not block on a historical Aug. 14 opening if newer
-       complete evidence can provide the correct cutover
+B91  2026-08-16 current-state opening
+     ← DONE; Aug. 14 corpus remains the distinction checklist
   ↓
 B94 / AF-PLAN-01  master-forecast engine
      ← contract already in ARCHITECTURE.md; runtime not started
@@ -298,8 +295,8 @@ rules above.
 ### Next implementation outcomes — cheap refresh, then reconciliation
 
 `B92` and `B93` are closed. `B80` and the live Lunch Money observation
-test are closed. `B95` is closed. `B91` remains **IN PROGRESS** and is not
-a new architecture layer.
+test are closed. `B95` is closed. `B91` / `AF-RECON-01` is **DONE** and is
+not a new architecture layer.
 
 **`AF-TEST-01` / `B92`.** Make ordinary evidence refresh cheap. **Complete.**
 Measured before the unpin, on throwaway clones: changing Chequing A broke 8
@@ -575,8 +572,9 @@ built *on* that picture, the picture needs owners that a test can reach.
   first-event order. Published Plan cash figures and historical discretionary
   dollar totals are unchanged; Health leaves the historical essential class
   because that class was the collapsed first-event story. Phase 1 product
-  exit has no blocking product gap. `AF-TEST-01` / `B92` and `AF-DEDUP-01` /
-  `B93` are complete. Next implementation outcome is `AF-RECON-01` / `B91`.
+  exit has no blocking product gap. `AF-TEST-01` / `B92`, `AF-DEDUP-01` /
+  `B93`, and `AF-RECON-01` / `B91` are complete. Next implementation
+  outcome is `AF-PLAN-01` / `B94`.
 
 ### Phase 1 product exit — useful before infrastructure
 
@@ -693,11 +691,9 @@ exist.
 - **Tier** — M3. **Backlog** — `B91`.
 - **Entry gate** — `AF-TEST-01` (`B92`) and `AF-DEDUP-01` (`B93`), plus
   Phase 1 product exit and `AF-CLASS-01` (`B90`), all complete.
-- **Acceptance** — a coherent current-state opening is written from the
-  freshest complete evidence that can actually supply the cutover. Do not
-  keep this item open waiting for a historical Aug. 14 joint-cash
-  opening if a later complete observation can provide the same as-of /
-  represented-events semantics. The Aug. 14 payday corpus in
+- **Acceptance** — **met 2026-08-16.** The published opening is
+  2026-08-16 from the Lunch Money observation plus same-day
+  Triangle/MBNA screenshots. The Aug. 14 payday corpus in
   `docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md` remains the
   distinction checklist: same-day income is not double-counted; schedule
   ≠ posted; paid commitments no longer reserve cash; Hydro schedules
@@ -706,11 +702,9 @@ exist.
   are distinct where evidence exists; Amanda's mixed-purpose balance is
   not auto-spendable; Amanda salary, coaching, and transfers do not share
   one income authority; Q19 HELOC cash impact stays unresolved rather
-  than claimed zero, and does not force Atlas to wait for the Aug. 14
-  opening specifically; near-boundary obligations remain visible from
+  than claimed zero; near-boundary obligations remain visible from
   existing Forecast; the report does not write canonical state by itself.
-  Mathematical maximum vs operational target is re-tested after this
-  loop; $600/week is not encoded as policy.
+  $600/week is not encoded as policy.
 - **Non-goals** — a database, second store, generic fact schema, workflow
   engine, event sourcing, classification registry, provenance graph,
   staging platform, generated `data.json`, `plan.proposals[]`, leaf-level
@@ -767,21 +761,17 @@ exist.
   joint-cash obligations already in the Forecast event stream on the
   next payday and the following calendar day, before surplus-use
   guidance. Forecast arithmetic is unchanged. Live household facts are
-  unchanged. B91 stays open until a coherent current-state opening is
-  written from the freshest complete evidence. Q19 remains a household
-  question and must fail closed; it is not a reason to wait for the
-  historical Aug. 14 opening. B20 history, a universal STALE threshold,
-  and $600/week are not B91 closers. Do not mark this item done.
-  **Current-state cutover — not completion.** Owner-approved Fusion camp
-  and tryouts now carry `settledOn: "2026-08-14"`. The 1 September Hydro
-  dated due is on the live plan as an Amanda-paid household obligation.
-  The published Forecast opening is still 2026-08-09 because no later
-  complete cash/debt observation has yet been written as the cutover.
-  Prefer the freshest coherent complete evidence over waiting for the
-  missing Aug. 14 joint-cash balances. Rogers posting, HOME BUDGET.xlsx
-  (classified 2026-08-16; Q0 ANSWERED; not current policy), Q19, unknown
-  card pending, and $600/week are not promoted. Date relation is reported
-  without a universal STALE threshold. Do not mark this item done.
+  unchanged. Q19 remains a household question and must fail closed. B20
+  history, a universal STALE threshold, and $600/week are not B91
+  closers.
+  **Current-state cutover — complete 2026-08-16.** The published Forecast
+  opening is 2026-08-16. Fusion camp and tryouts remain
+  `settledOn: "2026-08-14"`. The 1 September Hydro dated due remains an
+  Amanda-paid household obligation. The 14 August payday cluster is
+  inside the opening and is not replayed. Rogers posting, HOME
+  BUDGET.xlsx, Q19, unknown card pending as $0, and $600/week are not
+  promoted. Date relation is reported without a universal STALE
+  threshold.
 
 ### AF-PLAN-01 · One master forecast; ranges are views
 
@@ -1085,7 +1075,7 @@ resurrect it.
 
 | Capability | Status | Home today | Reopen trigger |
 |---|---|---|---|
-| Evidence refresh / reconciliation | **ACTIVE** | `AF-RECON-01` / `B91`, after `B92` and `B93`. **IN PROGRESS, not DONE.** Finish with the freshest coherent opening; do not wait for a historical Aug. 14 opening. | Already sequenced. Do not replace with a store, schema, leaf-level provenance, or copilot absorption stack. Do not mark done in a planning PR. |
+| Evidence refresh / reconciliation | **ACTIVE** | `AF-RECON-01` / `B91`, after `B92` and `B93`. **Complete 2026-08-16.** Published opening is 2026-08-16. Aug. 14 corpus remains the distinction checklist. | Already sequenced. Do not replace with a store, schema, leaf-level provenance, or copilot absorption stack. |
 | Refresh-safe tests | **ACTIVE** | `AF-TEST-01` / `B92`. **Complete.** | Already sequenced. Unpin behaviour tests from live household numbers. |
 | Derive/delete duplicate live facts | **ACTIVE** | `AF-DEDUP-01` / `B93`. **Complete.** After `B92`, before `B91`. | Already sequenced. Derive or delete proven copies; do not add a sync layer. |
 | Balance history / snapshots | **ACTIVE** | Phase 2 `AF-HIST-01` / `B20`. **After** `AF-RECON-01`, as a by-product of refresh. | Already sequenced. Do not start because an older revision put it first in Phase 2. |

@@ -485,8 +485,8 @@ ok(byId.heloc.minimum === 0 && byId.heloc.minimumId === 'none',
 ok(near(byId.mortgage.minimum, 1600 * 26 / 12) && near(byId.mortgage.minimum, 3466.6666666667, 1e-6),
   'the mortgage minimum is its bi-weekly payment annualised, not $1,600 read as monthly',
   money(byId.mortgage.minimum));
-ok(near(byId.cashback.minimum, 170) && byId.cashback.unmodelled.join() === 'cashback-sep',
-  'the Cash Back Visa minimum is its recurring level, with the September spike named',
+ok(near(byId.cashback.minimum, 170) && byId.cashback.unmodelled.join() === '',
+  'the Cash Back Visa minimum is its recurring level; the paid September spike is gone',
   `${money(byId.cashback.minimum)} + [${byId.cashback.unmodelled}]`);
 
 /* And how well that minimum is KNOWN travels with it. Most of these are a
@@ -1107,11 +1107,11 @@ setTimeout(() => {
   'at the slider\'s floor it reports the balance growing, by the engine\'s figure',
   money(floor.shortfall));
 
-  // And the Cash Back Visa's September spike is named rather than dropped.
+  // Cash Back is back under its limit; the paid September spike is not named.
   select.value = String(REAL.findIndex(d => d.id === 'cashback'));
   select.fire('change');
-  ok(/cashback-sep/.test(page.get('model-context').textContent),
-    'the obligation with no monthly equivalent is named on the page, not just in the result');
+  ok(!/cashback-sep/.test(page.get('model-context').textContent),
+    'the paid September spike is not named on the page after the cutover');
 
   console.log('\n' + '═'.repeat(60));
   if (failures) {

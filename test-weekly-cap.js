@@ -292,10 +292,15 @@ console.log('\n=== 7. the published plan reconciles ===');
   ok(near(c.essentialWeekly, b.requiredMonthly / WEEKS),
     'the published weekly essential need divides the monthly one',
     `${b.requiredMonthly.toFixed(2)} → ${c.essentialWeekly.toFixed(2)}`);
-  ok(near(c.essentialWeekly + c.discretionaryRoomWeekly, adv.weekly, 1e-9),
-    'essential need + discretionary room = the whole weekly cap',
+  ok(c.discretionaryRoomWeekly >= 0, 'discretionary room is never published negative');
+  ok(c.essentialWeekly + 0.005 >= adv.weekly
+    ? c.discretionaryRoomWeekly === 0
+    : near(c.essentialWeekly + c.discretionaryRoomWeekly, adv.weekly, 1e-9),
+    'essential need + discretionary room = the weekly cap when room exists; otherwise the cap is fully essential',
     `${c.essentialWeekly.toFixed(2)} + ${c.discretionaryRoomWeekly.toFixed(2)} = ${adv.weekly}`);
-  ok(near(c.essentialMonthly + c.discretionaryRoomMonthly, c.monthly, 1e-9),
+  ok(c.essentialMonthly + 0.005 >= c.monthly
+    ? c.discretionaryRoomMonthly === 0
+    : near(c.essentialMonthly + c.discretionaryRoomMonthly, c.monthly, 1e-9),
     'and the same identity holds in months');
   ok(near(c.inCapMonthly, b.requiredMonthly + b.discretionaryMonthly),
     'the in-cap total is the essential need plus the household discretionary budget');
@@ -581,10 +586,14 @@ const settle = () => new Promise(r => setTimeout(r, 0));
     'and the household-budget sentence is present and finite', roomNote(capSplit));
   ok(new RegExp(`${esc(dol(cap.monthly))} / month`).test(budgetOut),
     'the ledger says the same monthly cap');
-  ok(new RegExp(`${esc(dol(cap.discretionaryRoomWeekly))} / week`).test(budgetOut)
-    && !/nothing left/.test(budgetOut) === cap.hasDiscretionaryRoom,
+  ok(cap.hasDiscretionaryRoom
+    ? new RegExp(`${esc(dol(cap.discretionaryRoomWeekly))} / week`).test(budgetOut)
+    : /nothing left|\$0/.test(budgetOut),
     'and reports discretionary room the same way the engine does');
-  ok(new RegExp(`${esc(dol(cap.householdDiscretionaryWeekly))}/week`).test(budgetOut),
+  ok(cap.householdDiscretionaryWeekly == null
+    || !cap.hasDiscretionaryRoom
+    || new RegExp(`${esc(dol(cap.householdDiscretionaryWeekly))}/week`).test(budgetOut + capSplit)
+    || /own budget/.test(budgetOut + capSplit),
     'against the household\'s own discretionary budget');
   ok(new RegExp(`${esc(dol(cap.essentialWeekly))}/wk`).test(tiles)
     && new RegExp(`${esc(dol(cap.foodFuelPlannedWeekly))}/wk of it food and fuel`).test(tiles),

@@ -466,10 +466,13 @@
       byDate.get(e.date).push(e);
     }
 
-    let balance = startingCashAmount(plan);
+    const openingCash = startingCashAmount(plan);
+    let balance = openingCash;
     const daily = [];
     // Seeded from the opening balance only when the whole window is being
-    // measured; otherwise the first in-range day sets it.
+    // measured; otherwise the first in-range day sets it. A same-day gap
+    // injection below lifts this seed: deposits land before the payments
+    // they fund, and the pre-injection opening is not a measured floor.
     let min = measureFrom <= start ? { date: start, balance } : { date: measureFrom, balance: Infinity };
     const weeks = [];
     let week = null;
@@ -497,7 +500,17 @@
         if (e.kind === 'income') {
           if (e.confidence === 'confirmed') week.confirmedIncome += e.amount;
           else week.estimatedIncome += e.amount;
-        } else if (e.kind === 'injection') week.injections += e.amount;
+        } else if (e.kind === 'injection') {
+          week.injections += e.amount;
+          // Same defect grouping two sources into one event was written to
+          // stop, when the injection falls on as-of rather than a later gap
+          // day: the opening seed stays at starting cash, the transfer
+          // raises the close, and recommendWeekly answers $0/week for a
+          // day that actually closes on the buffer.
+          if (date === start && measureFrom <= start && min.date === start) {
+            min = { date, balance };
+          }
+        }
         else if (e.kind === 'obligation') week.obligations += -e.amount;
         else if (e.kind === 'bill') week.bills += -e.amount;
         else if (e.kind === 'commitment') week.commitments += -e.amount;

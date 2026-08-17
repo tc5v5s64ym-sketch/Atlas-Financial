@@ -114,22 +114,23 @@ ok(nothingLeft === null, 'no eligible item returns null', String(nothingLeft));
 ok(F.nextDue([], AS_OF) === null, 'an empty stream returns null');
 ok(F.nextDue(undefined, AS_OF) === null, 'a missing stream returns null');
 
-console.log('\n=== live plan, from the Plan commitments, not a second calendar ===');
+console.log('\n=== live plan, from the Plan bills, not a second calendar ===');
 const asOf = data.meta.asOf;
 const end = F.addDays(asOf, (data.plan.windowDays || 91) - 1);
 const liveEvents = F.expandEvents(data.plan, asOf, end);
 const live = F.nextDue(liveEvents, asOf);
-const burrard = data.plan.commitments.filter(c => c.group === 'burrard');
-ok(burrard.length === 2 && burrard[0].date === burrard[1].date,
-  'both Burrard registrations share a date');
-ok(live && live.what === burrard[0].label && live.amount === burrard[0].amount
-  && live.due === burrard[0].date,
-  'nextDue names the first Burrard commitment, from the Plan',
+const outstanding = (data.plan.bills || []).filter(b => /aug15-outstanding/.test(b.id));
+ok(asOf === '2026-08-16', 'published as-of is 16 August');
+ok(outstanding.length === 4 && outstanding.every(b => b.date === asOf),
+  'four unposted 15 August bills are reserved on this opening');
+ok(live && live.due === asOf && outstanding.some(b => b.label === live.what && b.amount === live.amount),
+  'nextDue names one of those reserved bills, from the Plan',
   live ? `${live.what} ${live.due} $${live.amount}` : 'none');
 const liveOut = F.nextPaymentOut(liveEvents, asOf);
-ok(liveOut && liveOut.date === burrard[0].date
-  && liveOut.amount === burrard[0].amount + burrard[1].amount,
-  'nextPaymentOut on the same stream is the $623 day total',
+const independentOut = outstanding.reduce((s, b) => s + b.amount, 0);
+ok(liveOut && liveOut.date === asOf && liveOut.count === 4
+  && Math.abs(liveOut.amount - independentOut) < 0.005,
+  'nextPaymentOut on the same stream is the $307.87 day total',
   liveOut ? `${liveOut.date} $${liveOut.amount}` : 'none');
 
 console.log('\n=== page is a renderer ===');

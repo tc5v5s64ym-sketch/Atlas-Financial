@@ -326,7 +326,7 @@ console.log('\n=== 14. same-day cutover does not double-count identified payroll
     'unidentified same-day mortgage is not guessed from amount and still fires');
 }
 
-console.log('\n=== 15. existing Forecast outputs stay unchanged without a live opening ===');
+console.log('\n=== 15. existing Forecast consumes the 16 August opening ===');
 {
   const rec = F.recommend(data.plan, data.meta.asOf, {
     scenario: 'expected',
@@ -339,12 +339,13 @@ console.log('\n=== 15. existing Forecast outputs stay unchanged without a live o
     extraFacilities: data.revolvingExtra,
     extraDebtTarget: data.plan.nextDollar && data.plan.nextDollar.target,
   });
-  ok(rec.weekly === 1165 && rec.mode === 'openingGap',
-    'published Aug. 9 recommend still openingGap; weekly is $1,165 after stale Fusion instalments were removed',
+  ok(data.plan.opening && data.plan.opening.asOf === '2026-08-16',
+    'live plan opening cutover is 2026-08-16');
+  ok(near(F.startingCashAmount(data.plan), 2252.76),
+    'live spendable opening is the 16 August $2,252.76 snapshot');
+  ok(rec.mode !== 'openingGap' && rec.weekly !== 600,
+    'existing Forecast consumes that opening; $600/week is not policy',
     `${rec.mode} weekly ${rec.weekly}`);
-  ok(near(F.startingCashAmount(data.plan), 79.84),
-    'live spendable opening remains the Aug. 9 $79.84 snapshot');
-  ok(!data.plan.opening, 'live plan still has no opening cutover written');
 }
 
 console.log('\n=== B78 identity: pending→posted same providerTransactionId ===');
