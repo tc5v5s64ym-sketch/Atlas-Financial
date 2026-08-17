@@ -85,6 +85,9 @@ const fmtRange = (a, b) => {
 // rendering failure, so `test-mission.js` checks that the two sides still name
 // the same set of instructions.
 const MISSION_PART = {
+  infeasible: p => `the protected plan cannot work — ${p.label || 'a protected constraint'}
+    fails${p.date ? ` on ${fmtDateLong(p.date)}` : ''} by ${money2(p.shortfall)}; a weekly spending
+    figure does not fix this`,
   fundingShortfall: p => `find ${money(p.shortfall)} beyond every account available, or lower the buffer`,
   coverGap: p => `cover the ${money(p.amount)} timing gap by ${fmtDateLong(p.by)}`,
   overLimit: p => `get the ${p.debts.map(x => x.label).join(' and ')} back under its limit`,
@@ -703,10 +706,14 @@ function paydayAnswerHtml(ctx) {
           Near-boundary on ${near.payday ? fmtDateLong(near.payday) : 'the next payday'} through the following day:
           ${nearItems}${near.total ? ` (Forecast total ${money2(near.total)})` : ''}.</span></div>
       <div class="payday-row"><span class="payday-lab">Safe to spend</span>
-        <span class="payday-val">Master-plan cap <b>${money(recommended)}/week</b>${
-          weekly !== recommended ? ` — your setting is ${money(weekly)}/week` : ''}.
+        <span class="payday-val">${(advice.mode === 'infeasible' && fail)
+    ? `There is no feasible weekly cap. ${fail.label || 'A protected constraint'} fails${
+      fail.date ? ` on ${fmtDateLong(fail.date)}` : ''} by ${money2(fail.shortfall)}; a weekly spending
+          figure does not fix this.`
+    : `Master-plan cap <b>${money(recommended)}/week</b>${
+      weekly !== recommended ? ` — your setting is ${money(weekly)}/week` : ''}.
           ${cap ? `Discretionary room inside that cap is ${money(cap.discretionaryRoomWeekly)}/week.` : ''}
-          Bound by the ≥12-month knowledge horizon, not by cash minus bills until the next payday.</span></div>
+          Bound by the ≥12-month knowledge horizon, not by cash minus bills until the next payday.`}</span></div>
       <div class="payday-row"><span class="payday-lab">Lowest projected cash</span>
         <span class="payday-val">${knowledgeMin
     ? `<b>${money2(knowledgeMin.balance)}</b> on ${fmtDateLong(knowledgeMin.date)} on the master plan.`

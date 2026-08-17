@@ -302,6 +302,37 @@ const emptyBoundary = F.mission(
 ok(ids(emptyBoundary) === 'holdSpending → surplusToCard',
   'an empty list does not insert a vacant instruction', ids(emptyBoundary));
 
+console.log('\n=== infeasible: the zero-spend sentinel is not a spending instruction ===');
+/* Recommend has already decided the protected plan cannot work. weekly = 0 is
+ * the failure sentinel, not a feasible cap. The status band copies that
+ * infeasible record; the mission must not then tell the household to hold
+ * $0/week and put a surplus against the card. Figures are copied from
+ * advice.infeasible — nothing here re-derives the shortfall. */
+const infeasibleAdvice = advice({
+  mode: 'infeasible',
+  weekly: 0,
+  infeasible: {
+    kind: 'encumbered', date: '2026-11-07', shortfall: 1200,
+    label: 'Christmas 2026',
+  },
+});
+const infeasible = F.mission(
+  infeasibleAdvice,
+  walk({ marks: [opening(NOTHING_OVER)] }),
+  { weeklyOverride: null });
+ok(ids(infeasible) === 'infeasible',
+  'an infeasible recommend result is the mission outcome, not holdSpending',
+  ids(infeasible));
+ok(part(infeasible, 'infeasible').shortfall === 1200
+  && part(infeasible, 'infeasible').label === 'Christmas 2026'
+  && part(infeasible, 'infeasible').date === '2026-11-07'
+  && part(infeasible, 'infeasible').kind === 'encumbered',
+  'and copies the first failing constraint from advice.infeasible',
+  JSON.stringify(part(infeasible, 'infeasible')));
+ok(!part(infeasible, 'holdSpending') && !part(infeasible, 'cutSpending')
+  && !part(infeasible, 'surplusToCard'),
+  'and emits no weekly spending or surplus-use instruction');
+
 console.log('\n=== mutation: breaking the engine breaks the answer ===');
 /* The strongest form available here: mutate the engine source, load the mutant,
  * and require it to disagree with the real engine on a case above. A guard that
@@ -359,6 +390,18 @@ const MUTATIONS = [
     },
     real: () => !!part(breaching, 'cutSpending') },
 
+  { label: 'dropping the infeasible guard instructs $0/week as if the plan held',
+    from: '    if (advice.infeasible && advice.mode === \'infeasible\') {',
+    to: '    if (false && advice.infeasible && advice.mode === \'infeasible\') {',
+    check: m => {
+      const out = m.mission(infeasibleAdvice,
+        walk({ marks: [opening(NOTHING_OVER)] }), { weeklyOverride: null });
+      return !!part(out, 'holdSpending') && part(out, 'holdSpending').weekly === 0
+        && !!part(out, 'surplusToCard');
+    },
+    real: () => ids(infeasible) === 'infeasible'
+      && !part(infeasible, 'holdSpending') && !part(infeasible, 'surplusToCard') },
+
   { label: 'reading a later mark loses an over-limit facility that is over today',
     from: '    const opening = ((debtProj && debtProj.marks) || []).find(m => m.day === 0);',
     to: '    const opening = ((debtProj && debtProj.marks) || []).find(m => m.day === 90);',
@@ -406,7 +449,7 @@ ok(!!missionSrc, 'the mission function is readable from forecast.js');
 const engineIds = [...new Set([...(missionSrc ? missionSrc[0] : '')
   .matchAll(/\bid: '([A-Za-z]+)'/g)].map(m => m[1]))].sort();
 const wordedIds = Object.keys(MISSION_PART).sort();
-ok(engineIds.length === 8, 'the engine emits eight instructions', engineIds.join(', '));
+ok(engineIds.length === 9, 'the engine emits nine instructions', engineIds.join(', '));
 ok(engineIds.every(id => wordedIds.includes(id)),
   'the page has wording for every instruction the engine can emit',
   engineIds.filter(id => !wordedIds.includes(id)).join(', ') || 'none missing');

@@ -426,6 +426,16 @@ console.log('\n=== K. explicit INFEASIBLE when the protected plan cannot work ==
   ok(/INFEASIBLE/.test(html), 'the payday HTML says INFEASIBLE');
   ok(html.includes(rec.infeasible.label) || html.includes('Cannot fund this'),
     'and names the failing protected constraint');
+  const mission = F.mission(rec, { marks: [] }, { sim: rec.sim });
+  ok(mission.parts.length === 1 && mission.parts[0].id === 'infeasible',
+    'Forecast.mission emits the infeasible outcome rather than holdSpending at $0',
+    mission.parts.map(p => p.id).join(' → '));
+  ok(!/hold spending to/.test(html) && !/put the surplus against the most expensive card/.test(html),
+    'infeasible payday HTML does not give hold-spending or surplus-to-card instructions');
+  ok(!/Master-plan cap/.test(html),
+    'and does not label the zero-spend sentinel as a master-plan cap');
+  ok(/no feasible weekly cap/i.test(html) && /weekly spending\s+figure does not fix this/.test(html),
+    'Safe to spend says there is no feasible weekly cap');
 }
 
 if (failures) {

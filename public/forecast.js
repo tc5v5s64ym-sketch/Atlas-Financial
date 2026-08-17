@@ -3244,6 +3244,23 @@
     const { recommended, weekly, sim, gap, funding, fundingShort, overrideBreaches }
       = planContext(advice, opts);
 
+    // Recommend already decided the protected master plan cannot work.
+    // weekly = 0 is the failure sentinel, not a feasible cap, so holdSpending
+    // and surplusToCard would tell the household to spend and save as if the
+    // plan held. Copy the failing constraint; do not re-derive it.
+    if (advice.infeasible && advice.mode === 'infeasible') {
+      const fail = advice.infeasible;
+      return {
+        parts: [{
+          id: 'infeasible',
+          kind: fail.kind,
+          date: fail.date,
+          shortfall: fail.shortfall,
+          label: fail.label,
+        }],
+      };
+    }
+
     const overLimitToday = debtsOverLimitToday(debtProj);
     const helocCrossing = helocLimitCrossing(debtProj);
 
