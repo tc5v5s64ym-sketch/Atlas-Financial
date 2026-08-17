@@ -36,8 +36,7 @@ const PAY = 2000;
 const BILL = 900;
 const BUFFER = 500;
 const WINDOW = 21;
-const FROZEN_WEEKLY = 1030;
-const FROZEN_ENDING = OPENING + PAY - BILL - FROZEN_WEEKLY * (WINDOW / 7);
+const NET_AFTER_BUFFER = OPENING + PAY - BILL - BUFFER;
 
 function fixture(billDate, extra) {
   return Object.assign({
@@ -73,16 +72,19 @@ ok(!zero.events.some(e => e.amount < 0 && e.date < PAYDAY),
   'no cash outflow falls before payday');
 
 const rec = F.recommend(plan, AS_OF, { targetBuffer: BUFFER });
+const horizonDays = rec.knowledge.days;
+const wantWeekly = Math.floor((NET_AFTER_BUFFER * 7 / horizonDays) / 5) * 5;
+const viewEnding = OPENING + PAY - BILL - (wantWeekly / 7) * WINDOW;
 ok(rec.mode === 'normal' && rec.gap == null,
   'there is no opening gap — the surplus before payday is real in the opening-gap sense');
-ok(rec.weekly === FROZEN_WEEKLY,
-  'the weekly cap is the frozen $1,030 from current-main arithmetic',
-  String(rec.weekly));
-ok(near(rec.sim.ending, FROZEN_ENDING) && near(rec.sim.min.balance, FROZEN_ENDING),
-  'ending cash is $2,500 + $2,000 − $900 − $1,030 × 3 = $510',
+ok(horizonDays >= 365 && rec.weekly === wantWeekly,
+  'weekly is the independent 365-day drain after pay and the bill, not the 21-day view',
+  `$${rec.weekly} vs hand $${wantWeekly} over ${horizonDays} days`);
+ok(near(rec.sim.ending, viewEnding),
+  'the 21-day view ending is opening + pay − bill − view variable at that cap',
   String(rec.sim.ending));
-ok(rec.holds === true && rec.sim.min.date === '2026-03-21',
-  'the $510 floor is on the last day and still holds the buffer');
+ok(rec.holds === true,
+  'the protected plan still holds at that cap');
 
 const nb = rec.nearBoundary;
 ok(!!nb && nb.payday === PAYDAY && nb.until === NEXT_DAY,
@@ -103,7 +105,7 @@ ok(part(mission, 'nearBoundary').total === nb.total
   && part(mission, 'nearBoundary').items
   && part(mission, 'nearBoundary').items[0].label === 'Hydro',
   'the mission part carries the recommend total, payday and item names');
-ok(part(mission, 'holdSpending').weekly === FROZEN_WEEKLY,
+ok(part(mission, 'holdSpending').weekly === rec.weekly,
   'the spending instruction is still the unchanged weekly cap');
 
 console.log('\n=== B. same-day payday bill is at the boundary; three days later is not ===');
@@ -128,7 +130,7 @@ ok(later.zero.events.some(e => e.id === 'hydro' && e.date === LATER),
 
 console.log('\n=== C. Forecast arithmetic is unchanged ===');
 const recWeekly = F.recommendWeekly(plan, AS_OF, { targetBuffer: BUFFER });
-ok(rec.weekly === recWeekly && recWeekly === FROZEN_WEEKLY,
+ok(rec.weekly === recWeekly && recWeekly === wantWeekly,
   'recommend.weekly still is recommendWeekly — the search was not retargeted');
 const independentSim = F.simulate(plan, AS_OF, {
   weeklyVariable: rec.weekly, targetBuffer: BUFFER,
@@ -137,10 +139,10 @@ ok(near(independentSim.ending, rec.sim.ending)
   && near(independentSim.min.balance, rec.sim.min.balance)
   && independentSim.min.date === rec.sim.min.date,
   'a direct simulate at that weekly reproduces recommend.sim min and ending');
-ok(near(FROZEN_ENDING, OPENING + PAY - BILL - (FROZEN_WEEKLY / 7) * WINDOW),
-  'the frozen ending is the hand identity, not a second call to recommend');
+ok(near(viewEnding, OPENING + PAY - BILL - (wantWeekly / 7) * WINDOW),
+  'the view ending is the hand identity, not a second call to recommend');
 const over = F.simulate(plan, AS_OF, {
-  weeklyVariable: FROZEN_WEEKLY + 5, targetBuffer: BUFFER,
+  weeklyVariable: rec.weekly + 5, targetBuffer: BUFFER, horizonDays,
 });
 ok(over.min.balance < BUFFER,
   'one $5 step still breaches — the cap is the same binding cap');
@@ -288,8 +290,8 @@ try {
 }
 const mutant = sandbox.module.exports;
 const broken = mutant && mutant.recommend(plan, AS_OF, { targetBuffer: BUFFER });
-ok(mutant && broken && broken.weekly === FROZEN_WEEKLY
-  && near(broken.sim.ending, FROZEN_ENDING)
+ok(mutant && broken && broken.weekly === rec.weekly
+  && near(broken.sim.ending, rec.sim.ending)
   && broken.nearBoundary.items.length === 0,
   'dropping the attachment leaves weekly/ending unchanged and hides the obligation');
 ok(mutant && ids(mutant.mission(broken, EMPTY_WALK, { weeklyOverride: null }))

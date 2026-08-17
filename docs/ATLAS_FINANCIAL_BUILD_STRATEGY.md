@@ -30,14 +30,15 @@ observation test has already happened; it is not a future milestone.
 `B91` / `AF-RECON-01` is **DONE**: the published Forecast opening is
 2026-08-16 from the freshest coherent complete evidence. The Aug. 14
 corpus remains the distinction checklist. Known major future costs
-already have one Plan home (`B95`). Next engine work is `B94` /
-`AF-PLAN-01` (contract established; runtime not started). Then `B96` /
-`AF-PLAN-02`: prove the payday question end-to-end: fresh evidence →
-canonical state → Forecast → household answer. `B20` / `B21`,
+already have one Plan home (`B95`). `B94` / `AF-PLAN-01` is **DONE**:
+Forecast is the one master plan over a ≥12-month knowledge horizon.
+Then `B96` / `AF-PLAN-02`: prove the payday question end-to-end: fresh
+evidence → canonical state → Forecast → household answer. `B20` / `B21`,
 `B78`, provider-completeness, broad historical forensics, and old
 categorisation cleanup are **not** critical-path gates unless they expose a
 demonstrated material source or financial-correctness gap. Do not start
-`B94` in the B91 cutover. Do not start `B20` first.
+`B96` until this engine is the one the payday path reads. Do not start
+`B20` first.
 
 ---
 
@@ -257,10 +258,8 @@ B91  2026-08-16 current-state opening
      ← DONE; Aug. 14 corpus remains the distinction checklist
   ↓
 B94 / AF-PLAN-01  master-forecast engine
-     ← contract already in ARCHITECTURE.md; runtime not started
-     ← ≥12-month knowledge horizon; view windows; future financial
-       gravity; dynamic funding reallocation; planned-debt
-       consequences; major-plan ON TRACK / AT RISK / FUNDING GAP
+     ← DONE; Forecast.knowledgeHorizon / fundingSequence /
+       majorPlans / plannedDebt earned in place
   ↓
 B96 / AF-PLAN-02  end-to-end payday proof
      fresh evidence → canonical state → Forecast → household answer
@@ -573,8 +572,8 @@ built *on* that picture, the picture needs owners that a test can reach.
   dollar totals are unchanged; Health leaves the historical essential class
   because that class was the collapsed first-event story. Phase 1 product
   exit has no blocking product gap. `AF-TEST-01` / `B92`, `AF-DEDUP-01` /
-  `B93`, and `AF-RECON-01` / `B91` are complete. Next implementation
-  outcome is `AF-PLAN-01` / `B94`.
+  `B93`, `AF-RECON-01` / `B91`, and `AF-PLAN-01` / `B94` are complete.
+  Next implementation outcome is `AF-PLAN-02` / `B96`.
 
 ### Phase 1 product exit — useful before infrastructure
 
@@ -614,8 +613,8 @@ policy such as Q24, not missing product machinery. The Aug. 14 reviews and
 payday test then showed the prerequisites: refresh-safe tests (`B92`) and
 derive/delete of proven duplicate live facts (`B93`). Both are complete.
 `B80`, the live Lunch Money observation test, and `B95` are also complete.
-Critical path is finish `B91` with the freshest coherent opening, then
-`AF-PLAN-01` / `B94`, then `AF-PLAN-02` / `B96` end-to-end payday proof.
+Critical path is `AF-PLAN-02` / `B96` end-to-end payday proof after
+the `B91` opening and the `B94` master engine.
 The 2026-08-16
 master-forecast contract is destination, not a retroactive Phase 1 gap.
 
@@ -776,8 +775,7 @@ exist.
 ### AF-PLAN-01 · One master forecast; ranges are views
 
 Owner instruction 2026-08-16 established the product contract in
-`ARCHITECTURE.md`. This item is the later engine work. It is **queued, not
-started**, and this planning rebase does not implement it. `B95` has
+`ARCHITECTURE.md`. The engine work is **done**. `B95` has
 already given the known major future costs one Plan home.
 
 - **Outcome** — Forecast, in place, is the one master household forecast with
@@ -822,8 +820,17 @@ already given the known major future costs one Plan home.
   finishing `B91`; opening the store or connectivity gates; applying
   ON TRACK / AT RISK / FUNDING GAP to ordinary transactions or budget
   categories.
-- **State** — **contract established 2026-08-16. Engine work queued
-  after `B91`. `B95` absorption already done.**
+- **State** — **engine earned 2026-08-16; contract repaired 2026-08-17.**
+  `Forecast.recommend` searches `Forecast.knowledgeHorizon` and reserves
+  protected principal jointly. Named ranges are views.
+  `Forecast.fundingSequence` is presentation order.
+  `Forecast.majorPlans` owns ON TRACK / AT RISK / FUNDING GAP (base
+  infeasibility is a gap; AT RISK is a protected uncertainty case).
+  `Forecast.plannedDebt` is opt-in, purpose-specific, and invents no
+  permission. An authorized amount may finance a named purpose when that
+  is the better plan, not only when cash is short; a feasible walk may
+  not cross a facility limit in the interim. `B95` absorption already
+  done. End-to-end payday proof remains `B96`.
 
 ### AF-PLAN-02 · Prove the payday question end-to-end
 
@@ -1079,13 +1086,13 @@ resurrect it.
 | Refresh-safe tests | **ACTIVE** | `AF-TEST-01` / `B92`. **Complete.** | Already sequenced. Unpin behaviour tests from live household numbers. |
 | Derive/delete duplicate live facts | **ACTIVE** | `AF-DEDUP-01` / `B93`. **Complete.** After `B92`, before `B91`. | Already sequenced. Derive or delete proven copies; do not add a sync layer. |
 | Balance history / snapshots | **ACTIVE** | Phase 2 `AF-HIST-01` / `B20`. **After** `AF-RECON-01`, as a by-product of refresh. | Already sequenced. Do not start because an older revision put it first in Phase 2. |
-| One master forecast / longer operating horizon | **ACTIVE** | `AF-PLAN-01` / `B94`. Contract established 2026-08-16 in `ARCHITECTURE.md`. Live display remains 91-day `windowDays`; expander already walks further (B74 / ICS to 2027-05-01). Engine work queued after `B91`. `B95` already absorbed the known major costs. | Already sequenced. Evolve Forecast. Never a second recurrence, payday, goals, or forecast engine. Do not start in a planning PR. |
+| One master forecast / longer operating horizon | **ACTIVE** | `AF-PLAN-01` / `B94`. **Complete 2026-08-16.** Live display remains 91-day `windowDays`; `Forecast.recommend` searches the ≥12-month knowledge horizon. `B95` already absorbed the known major costs. | Already sequenced. Evolve Forecast. Never a second recurrence, payday, goals, or forecast engine. |
 | End-to-end payday proof | **ACTIVE** | `AF-PLAN-02` / `B96`, after `B94`. | Already sequenced. Prove fresh evidence → canonical state → Forecast → household answer. Not a second payday engine. |
 | Improved ingestion | **ACTIVE** | Phase 3 `AF-INGEST-01` / `B78`, to T3. Files still; no provider and no store. | Already sequenced. Entry is T2 plus `AF-INTAKE-01`'s record of manual steps. |
 | Automated financial-data connectivity / transaction feeds | **GATED** (live `B81`) | `ARCHITECTURE.md` connectivity gate. `AF-LIVE-01` / `B80` evaluation + live Lunch Money observation test are **complete**. Remaining provider-completeness is not a critical-path gate. `AF-LIVE-02` / `B81` stays closed until T4. | The owner passes the five-condition gate before any live connection becomes canonical. Obtain no credential in git. |
 | Richer payroll / bonus / pension-contribution modelling | **PARKED** | The 91-day plan consumes estimated net pay. A statutory payroll engine (`EMP-006`) is excluded. Optional pension cash is already inside that net. No bonus cash event is on the live plan. | A named consumer that current net cannot serve — a window that includes a CPP/EI reset, or an owner-supplied bonus or pension cash event, or an owner-supplied horizon that needs statutory seasonality. Do not build a payroll engine in order to absorb a net `Forecast` already consumes. |
 | Retirement planning | **PARKED** | `ARCHITECTURE.md` destination names pension and investments. Live published net worth excludes pensions. There is no `Forecast` retirement function. The advisory copilot "retirement engine" is not adopted. | An owner decision to include pensions in a published window, or to earn a retirement span on the one plan. Not a second planner. |
-| Goals and sinking funds | **PARKED** | `ARCHITECTURE.md` destination names sinking funds. Known major future costs already live on `plan.commitments` (`B95`); property tax stays the existing reserve. That is one Plan home, not a goals engine and not a second planner. ON TRACK / AT RISK / FUNDING GAP waits on `B94` and applies only to those major plans. | Owner-promoted shared targets, or a product-exit gap that the existing plan/commitment path cannot answer. Do not stand up a goals engine beside `Forecast`. Do not create one ticket per purchase. |
+| Goals and sinking funds | **PARKED** | `ARCHITECTURE.md` destination names sinking funds. Known major future costs already live on `plan.commitments` (`B95`); property tax stays the existing reserve. That is one Plan home, not a goals engine and not a second planner. ON TRACK / AT RISK / FUNDING GAP is `Forecast.majorPlans` and applies only to those major plans. | Owner-promoted shared targets, or a product-exit gap that the existing plan/commitment path cannot answer. Do not stand up a goals engine beside `Forecast`. Do not create one ticket per purchase. |
 | ChatGPT / copilot interface | **PARKED** | `ARCHITECTURE.md` names ChatGPT as a conversational consumer, not an authority. Google Sheet tracks execution the same way. A live copilot API is owner-reserved. The dated copilot game plan is advisory and not adopted. | The owner asks for a repository-state or generated-export interface after one-plan authorities are stable. Never a second financial answer, never the advisory copilot stack, never a live API without an owner security decision, and never a Sheet as authority. |
 | Operational spend target vs mathematical maximum | **PARKED** | `Forecast.recommend` is the mathematical variable-spend maximum subject to the protected floor. The Aug. 14 payday session chose a lower operating amount. No household policy encodes $600/week. | Re-test after `B91` whether payday output should also show an owner-supplied operational target and remaining margin. Do not build that feature in order to record the question. |
 
