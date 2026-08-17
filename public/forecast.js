@@ -2756,6 +2756,115 @@
     return (annual || 0) / 12;
   }
 
+  // Posted HELOC current vs the last monthly historical observation. The
+  // published Plan tile rounds that delta to whole dollars (`money()`), so the
+  // compact verdict follows that dollar: a $0.40 move prints $0, and calling
+  // that "still growing" is the same contradiction the unallocated remainder
+  // had at four tenths of a cent. Exact zero, and any delta that rounds to
+  // zero dollars, is unchanged — not growth.
+  function publishedDeltaId(delta) {
+    const dollars = Math.round(Math.abs(Number(delta)));
+    return dollars === 0 ? 'unchanged' : (delta > 0 ? 'growing' : 'falling');
+  }
+
+  // Deep Dive captions print `money2` (cents). Classify by that published
+  // cent so two different displayed balances cannot read "unchanged".
+  function publishedCentsId(delta, up, down) {
+    const publishedCents = Math.round(Number(delta) * 100);
+    return publishedCents === 0 ? 'unchanged' : (publishedCents > 0 ? up : down);
+  }
+
+  function helocDebtRecord(debts) {
+    return (debts || []).find(d => d.id === 'heloc') || null;
+  }
+
+  function helocVsPrior(debts, helocHistory) {
+    const heloc = helocDebtRecord(debts);
+    const history = helocHistory || [];
+    const prior = history.length ? history[history.length - 1] : null;
+    if (!heloc || heloc.balance == null || !prior || prior.v == null) return null;
+    const delta = Number(heloc.balance) - Number(prior.v);
+    return { delta, id: publishedDeltaId(delta) };
+  }
+
+  function monthYearLabel(iso) {
+    if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const month = Number(iso.slice(5, 7));
+    if (month < 1 || month > 12) return null;
+    return months[month - 1] + ' ' + iso.slice(2, 4);
+  }
+
+  function copyHelocPoint(p) {
+    const row = { m: p.m, v: Number(p.v) };
+    if (p.note) row.note = p.note;
+    return row;
+  }
+
+  // Historical monthly observations stay in `data.helocHistory`. The current
+  // opening is `debts.heloc.balance`. Deep Dive composes those; it does not
+  // store today's balance a second time.
+  function publishedHelocHistory(data) {
+    data = data || {};
+    const history = (data.helocHistory || []).map(copyHelocPoint);
+    const heloc = helocDebtRecord(data.debts);
+    if (!heloc || heloc.balance == null) return history;
+    const label = monthYearLabel(data.meta && data.meta.asOf) || 'now';
+    history.push({ m: label, v: Number(heloc.balance), note: 'current opening' });
+    return history;
+  }
+
+  function lastFebruaryPoint(history) {
+    let found = null;
+    for (const p of history || []) {
+      if (/^Feb\b/.test(p.m)) found = p;
+    }
+    return found;
+  }
+
+  function helocRoseEveryMonthSince(history, startIndex, current) {
+    const series = [];
+    for (let i = startIndex; i < (history || []).length; i++) {
+      series.push(Number(history[i].v));
+    }
+    if (current != null) series.push(Number(current));
+    if (series.length < 2) return null;
+    for (let i = 1; i < series.length; i++) {
+      if (!(series[i] > series[i - 1])) return false;
+    }
+    return true;
+  }
+
+  function helocStory(data) {
+    data = data || {};
+    const heloc = helocDebtRecord(data.debts);
+    const history = data.helocHistory || [];
+    const current = heloc && heloc.balance != null ? Number(heloc.balance) : null;
+    const prior = history.length ? copyHelocPoint(history[history.length - 1]) : null;
+    const vsPriorDelta = current != null && prior && prior.v != null
+      ? current - Number(prior.v) : null;
+    const paydown = lastFebruaryPoint(history);
+    const paydownIndex = paydown ? history.lastIndexOf(paydown) : -1;
+    const sincePaydown = current != null && paydown
+      ? current - Number(paydown.v) : null;
+    return {
+      history: publishedHelocHistory(data),
+      current,
+      asOf: data.meta && data.meta.asOf || null,
+      prior,
+      vsPrior: vsPriorDelta,
+      vsPriorId: vsPriorDelta == null ? null
+        : publishedCentsId(vsPriorDelta, 'growing', 'falling'),
+      paydown: paydown ? copyHelocPoint(paydown) : null,
+      sincePaydown,
+      sincePaydownId: sincePaydown == null ? null
+        : publishedCentsId(sincePaydown, 'higher', 'lower'),
+      roseEveryMonthSincePaydown: paydownIndex >= 0
+        ? helocRoseEveryMonthSince(history, paydownIndex, current) : null,
+    };
+  }
+
   /* ------------------------------------------ compact snapshot */
   // The Plan page's small tiles: secured debt, monthly interest across every
   // facility, and whether the HELOC is still growing. `public/plan.js` used
@@ -2769,12 +2878,10 @@
   // headroom already belongs to `utilisation`.
   //
   // A month of interest is a twelfth of the annual figure the debt records
-  // already carry. The HELOC trend is last month minus the month before.
-  // The published tile rounds that delta to whole dollars (`money()`), so
-  // the verdict follows that dollar: a $0.40 move prints $0, and calling
-  // that "still growing" is the same contradiction the unallocated remainder
-  // had at four tenths of a cent. Exact zero, and any delta that rounds to
-  // zero, is unchanged — not growth.
+  // already carry. Current HELOC is the posted `debts.heloc` opening;
+  // `helocHistory` is the prior monthly observation only. The published
+  // tile rounds that delta to whole dollars (`money()`), so the verdict
+  // follows that dollar.
   function compactSnapshot(debts, helocHistory) {
     let secured = 0;
     let annualInterest = 0;
@@ -2783,17 +2890,7 @@
       annualInterest += debt.annualInterest || 0;
     }
     const monthlyInterest = monthOfAnnual(annualInterest);
-    const history = helocHistory || [];
-    let heloc = null;
-    if (history.length >= 2) {
-      const delta = history[history.length - 1].v - history[history.length - 2].v;
-      const dollars = Math.round(Math.abs(Number(delta)));
-      heloc = {
-        delta,
-        id: dollars === 0 ? 'unchanged' : (delta > 0 ? 'growing' : 'falling'),
-      };
-    }
-    return { secured, monthlyInterest, heloc };
+    return { secured, monthlyInterest, heloc: helocVsPrior(debts, helocHistory) };
   }
 
   /* ------------------------------------------ publication totals */
@@ -2988,6 +3085,7 @@
     const mortgage = (data.debts || []).find(d => d.id === 'mortgage') || null;
     const mortgageMonthly = mortgage && mortgage.annualInterest != null
       ? monthOfAnnual(mortgage.annualInterest) : null;
+    const heloc = helocStory(data);
 
     let periodSnap = null;
     if (period) {
@@ -3017,6 +3115,7 @@
       classes: classOrder.map(k => byClass[k]),
       interest,
       mortgageMonthly,
+      heloc,
       period: periodSnap,
     };
   }

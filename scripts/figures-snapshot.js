@@ -195,6 +195,16 @@ put('balance.consumerDebtEffective',
 put('balance.securedDebt',
   data.debts.filter(x => x.secured).reduce((s, x) => s + x.balance, 0));
 
+const helocSnap = F.compactSnapshot(data.debts, data.helocHistory);
+if (helocSnap.heloc) {
+  put('heloc.vsLastMonth', helocSnap.heloc.delta);
+  put('heloc.vsLastMonthVerdict', helocSnap.heloc.id);
+}
+const dive = F.deepDive(data);
+if (dive.heloc && dive.heloc.current != null) {
+  put('heloc.currentOpening', dive.heloc.current);
+}
+
 /* ---- what the household is told to do ----------------------------------- */
 const first = (plan.actions || [])[0];
 if (first) {

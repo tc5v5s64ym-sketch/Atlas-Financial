@@ -247,6 +247,14 @@ ok(/dive\.interest\.rate/.test(pageCode),
   'the footer rate is the returned Cash Back Visa rate');
 ok(/dive\.mortgageMonthly/.test(pageCode),
   'the mortgage sentence prints monthOfAnnual of the mortgage record');
+ok(/dive\.heloc\.history/.test(pageCode),
+  'the HELOC chart series is the composed Forecast history');
+ok(!/lineChart\(\$\('c-heloc'\), d\.helocHistory/.test(pageCode),
+  'the page no longer charts stored helocHistory as if it included current');
+ok(/helocCaption\(dive\.heloc/.test(pageCode),
+  'the HELOC caption interpolates Forecast heloc facts');
+ok(/HELOC_VS_PRIOR/.test(page) && /HELOC_SINCE_PAYDOWN/.test(page),
+  'trend sentences are wording maps, not page arithmetic on the balances');
 
 console.log('\n=== mutation: the incumbent engine decisions now fail ===');
 const FORECAST_SRC = read('public/forecast.js');

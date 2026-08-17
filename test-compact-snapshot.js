@@ -26,31 +26,31 @@ const money = n => (n < 0 ? '−$' : '$') + Math.round(Math.abs(n)).toLocaleStri
  * out of the secured total.
  *
  *   Mortgage  $100,000   annual interest $3,600   secured
- *   HELOC      $50,000   annual interest $2,400   secured
+ *   HELOC         $110   annual interest $2,400   secured  (current opening)
  *   Amex        $8,000   annual interest $1,200   unsecured
  *
- *   secured = 100,000 + 50,000 = 150,000
+ *   secured = 100,000 + 110 = 100,110
  *   annual  = 3,600 + 2,400 + 1,200 = 7,200
  *   monthly = 7,200 / 12 = 600
- *   HELOC   last − previous
+ *   HELOC   current − last monthly observation
  */
 const FIX_DEBTS = [
-  { name: 'Mortgage', balance: 100000, annualInterest: 3600, secured: true },
-  { name: 'HELOC',    balance:  50000, annualInterest: 2400, secured: true },
-  { name: 'Amex',     balance:   8000, annualInterest: 1200, secured: false },
+  { id: 'mortgage', name: 'Mortgage', balance: 100000, annualInterest: 3600, secured: true },
+  { id: 'heloc',    name: 'HELOC',    balance:  110,   annualInterest: 2400, secured: true },
+  { id: 'amex',     name: 'Amex',     balance:   8000, annualInterest: 1200, secured: false },
 ];
-const HAND_SECURED = 100000 + 50000;
+const HAND_SECURED = 100000 + 110;
 const HAND_ANNUAL = 3600 + 2400 + 1200;
 const HAND_MONTHLY = HAND_ANNUAL / 12;
 const GROW_DELTA = 110 - 100;
 const FALL_DELTA = 100 - 110;
 
 console.log('=== hand-computed compact snapshot ===');
-ok(HAND_SECURED === 150000, 'secured is $100,000 + $50,000, Amex excluded');
+ok(HAND_SECURED === 100110, 'secured is $100,000 + $110, Amex excluded');
 ok(HAND_ANNUAL === 7200 && HAND_MONTHLY === 600,
   'monthly interest is $7,200 / 12 = $600, including the unsecured card');
 
-const growing = F.compactSnapshot(FIX_DEBTS, [{ m: 'Jul', v: 100 }, { m: 'Aug', v: 110 }]);
+const growing = F.compactSnapshot(FIX_DEBTS, [{ m: 'Jul', v: 100 }]);
 ok(!!growing, 'a result is returned');
 ok(growing && same(growing.secured, HAND_SECURED),
   'secured total is the two home facilities',
@@ -60,12 +60,14 @@ ok(growing && same(growing.monthlyInterest, HAND_MONTHLY),
   growing ? String(growing.monthlyInterest) : 'none');
 ok(growing && growing.heloc && same(growing.heloc.delta, GROW_DELTA)
   && growing.heloc.id === 'growing',
-  'HELOC 110 − 100 = +10 and is still growing');
+  'HELOC current 110 − July 100 = +10 and is still growing');
 
-const falling = F.compactSnapshot(FIX_DEBTS, [{ m: 'Jul', v: 110 }, { m: 'Aug', v: 100 }]);
+const fallingDebts = FIX_DEBTS.map(d =>
+  d.id === 'heloc' ? Object.assign({}, d, { balance: 100 }) : d);
+const falling = F.compactSnapshot(fallingDebts, [{ m: 'Jul', v: 110 }]);
 ok(falling && falling.heloc && same(falling.heloc.delta, FALL_DELTA)
   && falling.heloc.id === 'falling',
-  'HELOC 100 − 110 = −10 and is coming down');
+  'HELOC current 100 − July 110 = −10 and is coming down');
 
 console.log('\n=== equality / no-change boundary the tile can reach ===');
 /* money() rounds the absolute delta to whole dollars. The old page used
@@ -73,45 +75,62 @@ console.log('\n=== equality / no-change boundary the tile can reach ===');
  * "still growing". The verdict has to be the verdict of that printed
  * dollar, or the household reads growth beside $0. */
 ok(money(0) === '$0', 'a zero delta prints $0');
-const equal = F.compactSnapshot(FIX_DEBTS, [{ m: 'Jul', v: 100 }, { m: 'Aug', v: 100 }]);
+const equalDebts = FIX_DEBTS.map(d =>
+  d.id === 'heloc' ? Object.assign({}, d, { balance: 100 }) : d);
+const equal = F.compactSnapshot(equalDebts, [{ m: 'Jul', v: 100 }]);
 ok(equal && equal.heloc && same(equal.heloc.delta, 0) && equal.heloc.id === 'unchanged',
   'exact zero is unchanged — the old `>= 0` would have said still growing beside $0');
 
 ok(money(0.4) === '$0', 'a $0.40 move prints $0');
-const subDollarUp = F.compactSnapshot(FIX_DEBTS, [{ v: 100 }, { v: 100.4 }]);
+const subUpDebts = FIX_DEBTS.map(d =>
+  d.id === 'heloc' ? Object.assign({}, d, { balance: 100.4 }) : d);
+const subDollarUp = F.compactSnapshot(subUpDebts, [{ v: 100 }]);
 ok(subDollarUp && subDollarUp.heloc && subDollarUp.heloc.id === 'unchanged'
   && same(Math.round(Math.abs(subDollarUp.heloc.delta)), 0),
   'and is not growth');
 
 ok(money(-0.4) === '−$0', 'a $0.40 fall prints $0');
-const subDollarDown = F.compactSnapshot(FIX_DEBTS, [{ v: 100 }, { v: 99.6 }]);
+const subDownDebts = FIX_DEBTS.map(d =>
+  d.id === 'heloc' ? Object.assign({}, d, { balance: 99.6 }) : d);
+const subDollarDown = F.compactSnapshot(subDownDebts, [{ v: 100 }]);
 ok(subDollarDown && subDollarDown.heloc && subDollarDown.heloc.id === 'unchanged',
   'a sub-dollar fall that prints $0 is also unchanged, not coming down');
 
 ok(money(0.5) === '$1', 'half a dollar prints $1');
-const halfUp = F.compactSnapshot(FIX_DEBTS, [{ v: 100 }, { v: 100.5 }]);
+const halfUpDebts = FIX_DEBTS.map(d =>
+  d.id === 'heloc' ? Object.assign({}, d, { balance: 100.5 }) : d);
+const halfUp = F.compactSnapshot(halfUpDebts, [{ v: 100 }]);
 ok(halfUp && halfUp.heloc && halfUp.heloc.id === 'growing',
   'and is still growing');
 
 ok(money(-0.5) === '−$1', 'half a dollar down prints $1');
-const halfDown = F.compactSnapshot(FIX_DEBTS, [{ v: 100 }, { v: 99.5 }]);
+const halfDownDebts = FIX_DEBTS.map(d =>
+  d.id === 'heloc' ? Object.assign({}, d, { balance: 99.5 }) : d);
+const halfDown = F.compactSnapshot(halfDownDebts, [{ v: 100 }]);
 ok(halfDown && halfDown.heloc && halfDown.heloc.id === 'falling',
   'and is coming down');
 
-const tooShort = F.compactSnapshot(FIX_DEBTS, [{ m: 'Aug', v: 100 }]);
+const tooShort = F.compactSnapshot(FIX_DEBTS, []);
 ok(tooShort && tooShort.heloc === null,
-  'fewer than two history points omit the HELOC tile, as the page already did');
+  'no prior monthly observation omits the HELOC tile');
+const noHeloc = F.compactSnapshot(
+  FIX_DEBTS.filter(d => d.id !== 'heloc'),
+  [{ m: 'Jul', v: 100 }, { m: 'Aug', v: 110 }]
+);
+ok(noHeloc && noHeloc.heloc === null,
+  'a stored history pair is not a current opening when no HELOC debt exists');
 
 console.log('\n=== live plan: identity independent of the engine function ===');
-/* Posted home balances and annual-interest figures from the debt rows and
- * helocHistory, added here. Not a copy of compactSnapshot's own reduce. */
+/* Posted home balances and annual-interest figures from the debt rows.
+ * Current HELOC vs last monthly observation, added here. Not a copy of
+ * compactSnapshot's own subtract. */
 const mortgage = data.debts.find(d => d.id === 'mortgage');
 const helocRow = data.debts.find(d => d.id === 'heloc');
 const LIVE_SECURED = Number(mortgage.balance) + Number(helocRow.balance);
 const LIVE_ANNUAL = data.debts.reduce((s, d) => s + Number(d.annualInterest || 0), 0);
 const LIVE_MONTHLY = LIVE_ANNUAL / 12;
 const helocHist = data.helocHistory || [];
-const LIVE_HELOC_DELTA = Number(helocHist[helocHist.length - 1].v) - Number(helocHist[helocHist.length - 2].v);
+const LIVE_HELOC_DELTA = Number(helocRow.balance) - Number(helocHist[helocHist.length - 1].v);
 
 const live = F.compactSnapshot(data.debts, data.helocHistory);
 ok(live && same(live.secured, LIVE_SECURED),
@@ -120,11 +139,11 @@ ok(live && same(live.secured, LIVE_SECURED),
 ok(live && same(live.monthlyInterest, LIVE_MONTHLY),
   'live monthly interest is the debt-row annual total / 12',
   live ? String(live.monthlyInterest) : 'none');
-  ok(live && live.heloc && same(live.heloc.delta, LIVE_HELOC_DELTA)
+ok(live && live.heloc && same(live.heloc.delta, LIVE_HELOC_DELTA)
   && live.heloc.id === (Math.round(Math.abs(LIVE_HELOC_DELTA)) === 0
     ? 'unchanged'
     : (LIVE_HELOC_DELTA > 0 ? 'growing' : 'falling')),
-  'live HELOC direction follows the last two history points');
+  'live HELOC direction is current posted opening minus last monthly observation');
 
 console.log('\n=== page is a renderer ===');
 const page = read('public/plan.js');
@@ -162,7 +181,9 @@ try {
   ok(false, 'mutant engine loads', e.message);
 }
 const mutant = sandbox.module.exports;
-const broken = mutant && mutant.compactSnapshot(FIX_DEBTS, [{ v: 100 }, { v: 110 }]);
+const broken = mutant && mutant.compactSnapshot(
+  FIX_DEBTS, [{ m: 'Jul', v: 100 }]
+);
 const MUTATED_MONTHLY = HAND_ANNUAL / 6;
 ok(mutant && broken && same(broken.monthlyInterest, MUTATED_MONTHLY)
   && !same(broken.monthlyInterest, HAND_MONTHLY),

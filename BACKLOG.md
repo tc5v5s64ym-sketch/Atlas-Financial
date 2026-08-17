@@ -1540,12 +1540,14 @@ double-counting.
 
 **B40 · Fold Instacart and delivery in** *(on B38)* · *medium*
 
-**B19 · Refresh the mortgage and HELOC deep dive** · *small*
+**B19 · Refresh the mortgage and HELOC deep dive** · **DONE 2026-08-17** · *small*
 Written before the spouse's accounts were known. The Deep Dive
-`helocHistory` August point is still $201,586.16 (the 2026-08-09 /
-pre-payment reading) while live `debts.heloc` is the 2026-08-16
-$200,486.16 opening. That monthly series is not B20 and was not
-updated here.
+`helocHistory` August point was still $201,586.16 (the 2026-08-09 /
+pre-payment reading) while live `debts.heloc` was the 2026-08-16
+$200,486.16 opening. Closed by composing the published current endpoint
+from `debts.heloc` and keeping `helocHistory` as monthly historical
+observations only. Mortgage current figures already came from
+`debts.mortgage` and needed no repair. Q19 stays OPEN. Not B21 and not B78.
 
 **B20 · `snapshots/<date>.json` and trend charts** · **DONE 2026-08-17** · *history as a refresh by-product*
 Build-strategy item `AF-HIST-01`. After `B91`. Two independently

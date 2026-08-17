@@ -44,6 +44,7 @@ const suites = [
   ['food and fuel monthly figures', 'test-food-fuel.js'],
   ['phase titles and risk list', 'test-plan-phases.js'],
   ['Deep Dive derived totals', 'test-deepdive.js'],
+  ['HELOC Deep Dive current-opening agreement (B19)', 'test-heloc-deepdive.js'],
   ['coupled cash and debt', 'test-debt.js'],
   ['authority invariants', 'test-invariants.js'],
   ['authority surface coverage', 'test-authority-coverage.js'],

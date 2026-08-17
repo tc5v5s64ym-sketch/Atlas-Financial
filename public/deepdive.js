@@ -13,6 +13,41 @@ const CASH_CLASS_LABEL = {
   restricted: 'restricted',
 };
 
+/* HELOC caption: Forecast owns the current opening, the prior-month delta,
+ * and whether every month since the February paydown rose. This page
+ * interpolates those facts into the stored historical-window sentence. */
+const HELOC_VS_PRIOR = {
+  growing: (h) =>
+    `Against the ${h.prior.m} observation of ${money2(h.prior.v)}, the ${h.asOf} opening of ${money2(h.current)} is ${money2(Math.abs(h.vsPrior))} higher.`,
+  falling: (h) =>
+    `Against the ${h.prior.m} observation of ${money2(h.prior.v)}, the ${h.asOf} opening of ${money2(h.current)} is ${money2(Math.abs(h.vsPrior))} lower.`,
+  unchanged: (h) =>
+    `Against the ${h.prior.m} observation of ${money2(h.prior.v)}, the ${h.asOf} opening of ${money2(h.current)} is unchanged.`,
+};
+const HELOC_SINCE_PAYDOWN = {
+  higher: (h) =>
+    `Since the February 2026 paydown (${money2(h.paydown.v)}) the opening is ${money2(Math.abs(h.sincePaydown))} higher`,
+  lower: (h) =>
+    `Since the February 2026 paydown (${money2(h.paydown.v)}) the opening is ${money2(Math.abs(h.sincePaydown))} lower`,
+  unchanged: (h) =>
+    `Since the February 2026 paydown (${money2(h.paydown.v)}) the opening is unchanged`,
+};
+
+function helocCaption(story, windowProse) {
+  const parts = [];
+  if (windowProse) parts.push(windowProse.replace(/\s+$/, ''));
+  if (story && story.prior && story.current != null && HELOC_VS_PRIOR[story.vsPriorId]) {
+    parts.push(HELOC_VS_PRIOR[story.vsPriorId](story));
+  }
+  if (story && story.paydown && story.sincePaydownId && HELOC_SINCE_PAYDOWN[story.sincePaydownId]) {
+    const monthly = story.roseEveryMonthSincePaydown
+      ? 'and it has risen every month.'
+      : 'and it has not risen every month.';
+    parts.push(HELOC_SINCE_PAYDOWN[story.sincePaydownId](story) + ', ' + monthly);
+  }
+  return parts.join(' ');
+}
+
 function renderDeepDive(d) {
   $('coverage-line').textContent = `${d.meta.coverage} · ${d.meta.transactions.toLocaleString('en-CA')} transactions, ${d.meta.statements} statements`;
   $('disclaimer').textContent = d.meta.disclaimer;
@@ -227,8 +262,8 @@ function renderDeepDive(d) {
   })), { rowH: 40, padL: 176 });
   if (d.utilisationNote) $('util-note').textContent = d.utilisationNote;
 
-  lineChart($('c-heloc'), d.helocHistory, pub.helocLimit);
-  $('heloc-note').textContent = d.helocSummary;
+  lineChart($('c-heloc'), dive.heloc.history, pub.helocLimit);
+  $('heloc-note').textContent = helocCaption(dive.heloc, d.helocSummary);
 
   diverge($('c-flow'), d.cashflow);
   $('flow-note').textContent = d.cashflowNote;
