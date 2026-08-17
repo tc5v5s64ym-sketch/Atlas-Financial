@@ -84,7 +84,9 @@ This is the one launcher. Do not write a second one.
 > before editing. Use a fresh `agent/<outcome>` branch from current `main`.
 > One independently provable outcome, merge card filled, findings
 > dispositioned. Stop only for an owner-reserved item. Merge on green
-> tests and a complete card.
+> tests and a complete card when no high-risk trigger fired. When a
+> high-risk trigger has fired, merge also waits for Atlas Contract /
+> Systems Review `PASS` on the current exact head.
 
 Before implementing, report only: the source/item, the current-state verdict,
 whether code is actually required, and any owner gate. Then go.

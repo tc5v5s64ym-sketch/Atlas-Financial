@@ -8,7 +8,7 @@ authority and the bounded review protocol.
 
 | Label | Meaning | Owner action |
 |---|---|---|
-| `auto-safe` | No published figure moves and no fact changes home. | None. Merge on green. |
+| `auto-safe` | No published figure moves and no fact changes home. | None. Merge on green when no systems-review trigger fired. A high-risk trigger still waits for Atlas Contract / Systems Review `PASS`. |
 | `figures-moved` | A figure the household reads changes. | Read the figures diff and reconcile it with the card. |
 | `owner-decision` | A household fact or owner-reserved decision is outstanding. | Answer the exact question. |
 | `blocked` | A hard gate failed or a real blocker remains. | Do not merge. |
@@ -49,7 +49,15 @@ with itself:
 
 It does **not** fail on a review SHA, a PASS / PENDING / NOT PASS / BLOCKING
 outcome, ChatGPT identity, or a trusted Atlas review. Those fields stay on
-the card as notes. A later fix must not turn this check red.
+the card as the governance record. Completeness of `REQUIRED` / `NOT REQUIRED`
+is structural, not a judgement that the human trigger decision was correct,
+and not a GitHub lock on ChatGPT `PASS`. A later fix must not turn this check
+red.
+
+Required governance and a required GitHub status check are different things.
+When a high-risk trigger fires, Atlas Contract / Systems Review remains
+required before merge; this workflow still does not parse or enforce that
+`PASS`.
 
 Confidence that the change is not junk is the job of `npm test`, the secret
 hook, and the figures comment. This check only stops an empty or malformed
@@ -117,21 +125,44 @@ derived answer without crashing. The workflow is advisory because moving a
 figure is often the purpose of a PR; an unexplained mismatch between the comment
 and merge card is still a correctness defect to resolve.
 
-### Atlas Contract / Systems Review — trigger-based blocking review
+### Atlas Contract / Systems Review — trigger-based required governance
 
-This review is required only for the high-risk triggers in `CLAUDE.md`.
-The question is whether the exact head is unsafe or architecturally wrong to
-merge. The initial pass reports blockers only. A follow-up verifies the named
-fixes and the high-risk surface changed by those fixes. It does not reopen the
-untouched artifact for unlimited new findings.
+This review is required governance when a high-risk trigger in `CLAUDE.md`
+fires, and it is not required otherwise. ChatGPT performs it on the current
+exact PR head. The outcome is `PASS` or `BLOCKING`. The active builder cannot
+satisfy it.
+
+It is **not** a GitHub status check. `merge-card-check` does not parse or
+enforce ChatGPT identity, `PASS`, `BLOCKING`, or review-SHA equality.
+
+Request it only on a stable merge candidate: implementation complete, merge
+card current, applicable deterministic checks green, figures review completed
+when applicable, any optional advisory pass completed, genuine high-severity
+advisory findings already repaired, and the head expected to stay stable.
+Correct-but-improvable work may proceed; optional advisory suggestions need
+not all be fixed.
+
+A `BLOCKING` result repairs only the named blockers, proves them, and requests
+bounded re-review of that new exact head. If a repair itself introduces
+another genuine high-risk blocker, one bounded repair is reasonable. Further
+blocker-after-blocker churn stops and returns to the decision desk.
+
+### Parked paid OpenAI first-review / re-review
+
+Paid OpenAI first-review and re-review stay parked. That parked automation is
+not the Atlas Contract / Systems Review. Parking it does not make the manual
+ChatGPT review optional, and it does not add API spend.
+
+### Cursor repair of failed tests
 
 A red `tests` or merge-card completeness check starts **one automatic
 Cursor repair** (`atlas-test-repair.yml`). Codex findings still use the
 existing Cursor repair path. Both test the patch before pushing. Two
 failed test-repair attempts stop and comment rather than loop. A repair
-must not weaken a financial test or invent a figure. Paid OpenAI
-first-review / re-review stay parked. ChatGPT can still advise from the
-decision desk. It is not a required SHA-matching merge check.
+must not weaken a financial test or invent a figure.
+
+ChatGPT decision-desk advice remains optional help. It is a separate role
+from the trigger-based Atlas Contract / Systems Review.
 
 ### Independent improvement audit — optional
 

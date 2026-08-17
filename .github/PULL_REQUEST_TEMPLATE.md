@@ -2,9 +2,15 @@
   Atlas Financial merge card.
 
   `merge-card-check` validates only mechanical facts: required rows are filled,
-  the current-state verdict has a closed opening, and a required architecture
-  review records PASS on this exact head. It does not interpret prose, scope,
-  negation, findings, or review quality.
+  the current-state verdict has a closed opening, Primary risk opens with a
+  closed value, and Required opens REQUIRED or NOT REQUIRED (with N/A for
+  head, reviewer, and outcome when not required). It does not interpret prose,
+  scope, negation, findings, or review quality. It does not parse or enforce
+  ChatGPT identity, PASS, BLOCKING, or review-SHA equality.
+
+  Atlas Contract / Systems Review is required governance when a CLAUDE.md
+  high-risk trigger fires, and not required otherwise. That is not a GitHub
+  status check.
 -->
 
 ## 🟦 Atlas Merge Card
@@ -61,16 +67,20 @@
 <!--
   `CLAUDE.md` owns the narrow trigger list and review protocol.
 
-  The blocking question is: Is this exact head unsafe or architecturally wrong
-  to merge? Improvement ideas belong in the optional advisory audit.
+  When a high-risk trigger fires, this review is REQUIRED governance before
+  merge. ChatGPT performs it on the current exact head. The builder cannot
+  satisfy it. Request it only on a stable merge candidate, not the first
+  implementation attempt. Outcome is PASS or BLOCKING.
 
-  On follow-up, verify the named blocker fixes and the high-risk surface changed
-  by those fixes. Do not reopen the whole artifact for unlimited new findings.
+  When no high-risk trigger fires, it is NOT REQUIRED.
 
-  Closed forms enforced by CI:
+  Decision-desk advice is a separate, optional ChatGPT role.
+
+  This is not a GitHub status check. Closed forms enforced by CI:
   - Required opens REQUIRED or NOT REQUIRED.
   - NOT REQUIRED: head, reviewer, and outcome are each N/A.
-  Review SHA / PASS / PENDING are notes. They do not fail the check.
+  Review SHA / PASS / PENDING / BLOCKING are documentary. They do not fail
+  the mechanical check.
 -->
 
 - **Required**: <!-- REQUIRED — trigger; or NOT REQUIRED — why no high-risk trigger fired -->
