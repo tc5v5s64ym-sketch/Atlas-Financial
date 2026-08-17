@@ -32,14 +32,14 @@ facts PR; each needs its own independently provable outcome):
 **Critical path** is owned by
 [`docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`](docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md),
 not by this file. Current order (2026-08-16, after the `B91` opening):
-`B94` master-forecast engine → `B96` prove the payday question end-to-end.
-`B80`, the live Lunch Money observation test, `B95`, and `B91` /
-`AF-RECON-01` are **done**. `B95` already absorbed the known major future
+`B94` is **done**. Next is `B96` prove the payday question end-to-end.
+`B80`, the live Lunch Money observation test, `B95`, `B91` /
+`AF-RECON-01`, and `B94` / `AF-PLAN-01` are **done**. `B95` already absorbed the known major future
 costs onto `plan.commitments` — that is the one home; do not open a ticket
 per purchase. `B20` / `B21`, `B78`, provider-completeness, broad historical
 forensics, and old categorisation cleanup are not critical-path gates
 unless they expose a demonstrated material source or financial-correctness
-gap. Do not start `B94` in this cutover.
+gap. Do not start `B96` in this engine pull request.
 
 **Operational knowledge lives in `docs/ACCOUNT_FACTS.md`**, not here: how each
 institution's data is obtained, the download endpoints, and the traps that cost
@@ -1228,7 +1228,7 @@ posted opening; `postedBalance` is gone. Recurring historical `perMonth` is
 unchanged 75/75. Do not add a sync layer. Do not treat `docs/positions.csv`
 as a universal fact database. Build-strategy item `AF-DEDUP-01`.
 
-**B94 · One master forecast; ranges are views** · `QUEUED` · *product contract established; engine work not started*
+**B94 · One master forecast; ranges are views** · **DONE 2026-08-16** · *engine earned; one outcome*
 Owner instruction 2026-08-16. The product contract lives in
 `ARCHITECTURE.md` under **One plan, many windows**: one Forecast
 projection at least 12 months forward; week / payday / month / 13 weeks /
@@ -1245,15 +1245,17 @@ plans show ON TRACK / AT RISK / FUNDING GAP from Forecast.
 Forecast remains the planner. Do not create a second planner, a generic
 schema, or a parallel authority.
 
-The 2026-08-16 contract pull request records that contract only. It does
-not change `windowDays`, `Forecast.recommend`, `data.json`, or any
-published figure. Engine work waits on this item and should not run ahead
-of a trustworthy `B91` opening. `B95` has already given the known major
-future costs one Plan home; this item does not re-home them. ON TRACK /
-AT RISK / FUNDING GAP applies to those major future plans, not to
-individual transactions or budget categories. The end-to-end payday
-proof is `B96` / `AF-PLAN-02`, after this engine exists; it is not part
-of this item. Build-strategy item `AF-PLAN-01`.
+Engine earned 2026-08-16. `Forecast.recommend` searches
+`Forecast.knowledgeHorizon` (≥12 months when streams continue; always
+long enough for dated unsettled commitments). Named ranges are views.
+`Forecast.fundingSequence` / `Forecast.majorPlans` / `Forecast.plannedDebt`
+are the sequence, the three verdicts, and opt-in planned debt. Live
+`windowDays` stays 91. No dates, amounts, priority weights, or debt
+permission were invented on live rows. `B95` remains the one home for
+known major costs. ON TRACK / AT RISK / FUNDING GAP applies to those
+major future plans, not to individual transactions or budget categories.
+The end-to-end payday proof is `B96` / `AF-PLAN-02`. Proved by
+`test-master-forecast.js`. Build-strategy item `AF-PLAN-01`.
 
 **B95 · Absorb known major future costs onto the master plan** · **DONE 2026-08-16** · *canonical plan / evidence absorption*
 **This is the one backlog home for major-future-spend absorption.** Do

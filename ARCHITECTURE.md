@@ -212,8 +212,9 @@ from `data.json` `plan` and the opening cash and debt facts. Its knowledge
 horizon is **at least twelve months** from the opening as-of.
 
 The live Plan page still *displays* a 91-day window (`plan.windowDays`). That
-display is a view, not the plan's knowledge bound. This contract does not by
-itself change `windowDays`, `Forecast.recommend`, or any published figure.
+display is a view, not the plan's knowledge bound. `Forecast.recommend`
+searches the knowledge horizon; the weekly figure on screen is from that
+master walk, not from the visible range alone.
 
 **Named ranges are views of that same forecast.** Week, payday, month, 13 weeks,
 6 months, 1 year, and a custom date range are different spans of the same dated
@@ -261,10 +262,9 @@ here authorises none of them; each still passes its own gate below.
 **Safe-to-spend is constrained by the future the plan knows, not by today's
 balance and not by the visible range.** `Forecast.recommend` remains the weekly
 household cap. Known major costs, required debt payments and the buffer policy
-hold back today's figure even when they fall outside the span on screen. The
-live engine still searches inside `plan.windowDays`; earning this sentence
-means that function, not a second cap, considers the master forecast's known
-future. An estimate still cannot be presented as verified.
+hold back today's figure even when they fall outside the span on screen. That
+function, not a second cap, searches `Forecast.knowledgeHorizon`. An estimate
+still cannot be presented as verified.
 
 **Forecast sequences funding among future commitments.** When several dated
 commitments compete for the same cash, Forecast — not a page and not a
@@ -275,9 +275,9 @@ capacity across the remaining plan. Freed capacity does not automatically
 become safe-to-spend. This is the contract for behaviour such as finishing
 one trip and power-saving the released cash into a later one, or deferring a
 flexible purchase when a harder commitment needs the cash. This is not a
-goals engine and not a generic priority schema. Until the capability is
-earned, existing `plan.nextDollar`, `recommend` funding, and dated
-`plan.commitments` remain the incumbents. Promoting a priority ranking to
+goals engine and not a generic priority schema. `Forecast.fundingSequence`
+is the order; `Forecast.recommend` still sets the weekly cap from the
+dated cash walk plus that sequence. Promoting a priority ranking to
 owner instruction stays owner-reserved (`plan.nextDollar` is still derived).
 
 **Planned debt is allowed when it is the better household plan, not only
@@ -405,8 +405,12 @@ closed: `Forecast.expandEvents` is the one cash calendar.
 | Concept | Incumbent authority |
 |---|---|
 | The schedule — what is due, when, how often | `Forecast.expandEvents`, via `simulate`, from the `plan` inputs. Dated occurrences already inside the opening observation may be named on `plan.opening.representedEvents` or `opts.representedEvents` and are omitted only when that date is the simulation start (`plan.opening` only when its `asOf` is that start). A future represented date is ignored. That list is opening-date settlement evidence, not a date-wide skip and not a second event engine. A dated commitment may carry `settledOn` (a `YYYY-MM-DD`). `Forecast.commitmentSettledBy` treats that cash requirement as already satisfied only when the date is on or before the simulation start. The record stays; its scheduled date does not move. Human-readable historical status is derived from the date's presence. Sinking-fund and estimated-commitment risk use the same helper. `representedEvents` is not used for this. A dated bill may carry `payingAccount`. `Forecast.billIsHouseholdObligation` is true unless the bill is explicitly `householdObligation: false`; paying-account metadata never flips that. `Forecast.billAffectsJointCash` suppresses joint-cash deduction only when the paying account is on `plan.startingCash.heldElsewhere`. No payingAccount, a `breakdown` payer, or an unknown/typo id fail closed and still deduct. An externally paid household obligation still appears on the `expandEvents` schedule and in `Forecast.nextDue`; `Forecast.simulate` and `Forecast.nextPaymentOut` do not treat it as cash leaving the joint pool. A utility account balance is not a bill |
-| Cash projection over the window | `Forecast.simulate` |
-| Weekly household cap | `Forecast.recommend` — **and only it**. The same result derives `nearBoundary` from existing `zero.events`: named joint-cash outflows on the next payday date and the following calendar day. That list is payday-output visibility, not a second horizon, and does not change the weekly search or the balances |
+| Cash projection over the window | `Forecast.simulate`. `opts.horizonDays` walks the master; `opts.viewDays` slices the same walk for display. Default remains `plan.windowDays` so a caller that has not asked for the master still gets the view |
+| Knowledge horizon — how far the master forecast knows | `Forecast.knowledgeHorizon`. At least twelve months when the plan has continuing income, bills or obligations, and always long enough to include every dated unsettled commitment. Undated rows do not extend it and do not become cash events. The visible range is not an input |
+| Weekly household cap | `Forecast.recommend` — **and only it**. The weekly search walks `Forecast.knowledgeHorizon`, not the visible range, so a dated commitment outside the span on screen still binds today's figure. Opening-gap detection stays on the visible opening so a later shortfall cannot become an Amanda/HELOC injection today. The same result derives `nearBoundary` from existing `zero.events`: named joint-cash outflows on the next payday date and the following calendar day. That list is payday-output visibility, not a second horizon |
+| Funding sequence among future commitments | `Forecast.fundingSequence`, from unsettled `plan.commitments`. Order is owner-stated `priority` when present, then dated timing, then certainty, then flexibility. No commitment id is special. Completing or disabling one item drops it from the sequence; remaining items keep their relative order so freed capacity goes to the next requirement |
+| Major future-plan verdicts — ON TRACK / AT RISK / FUNDING GAP | `Forecast.majorPlans`, from the same sequence. ON TRACK means the trajectory funds it; AT RISK means this trajectory does not but weekly = 0 still can; FUNDING GAP means even eliminating remaining discretionary cannot, without deferral, extra income or explicitly permitted borrowing. Ordinary transactions and budget categories are not graded. Flexible items may be marked deferred; a non-flexible date is never rewritten |
+| Planned-debt consequences when borrowing is explicitly permitted | `Forecast.plannedDebt`. Default is `permitted: false` and `borrowed: 0`. A draw, interest consequence and repayment path exist only when the caller sets `allowPlannedDebt` and names a facility. Q19 HELOC cash treatment is not resolved here |
 | Income dependency deadline — when a modelled income becomes required to preserve the buffer | `Forecast.incomeDeadline` |
 | Next due — which named cash obligation the household owes soonest | `Forecast.nextDue`, from `Forecast.expandEvents`. Names one event; two obligations on one day do not become a day-total. Distinct from `Forecast.nextPaymentOut`. `public/deepdive.js` holds the wording only |
 | Next payment out — cash leaving on the next outflow date of the projection | `Forecast.nextPaymentOut`, from the same `expandEvents` stream (`sim.events` on the Plan page). Names the day and sums every cash outflow on it; two registrations on one day are one payment as far as the account is concerned. Distinct from `Forecast.nextDue`, which names one obligation from that stream. `public/plan.js` holds the wording and the 3-day tile tone only |
@@ -440,13 +444,14 @@ closed: `Forecast.expandEvents` is the one cash calendar.
 | Read-only provider observation | `scripts/provider-observe.js` turns a Lunch Money fixture, or a local GET when `LUNCHMONEY_ACCESS_TOKEN` is set, into B91 observations. Live mapping is by provider account ID, not display name. Real live IDs stay in gitignored `docs/connectivity/provider-account-map.local.json`; the committed live map remains the empty schema. Fixture mapping lives only under `docs/connectivity/fixtures/`. Unknown IDs stay unmapped. Mapped revolving-credit pending transactions become `fact: pending` observations (Lunch Money v2: positive debit, negative credit). Same `providerTransactionId` pending+posted collapses to posted and does not double-count. A pending bill/payment older than 90 days may be presumed settled for current forecasting only (`confidence: inferred`); historical provider status stays pending. That 90-day rule is not a universal STALE threshold. Transaction history is `--history-days` / `--mode current-state` (14 days) or `--mode reconcile` (120 days). `representedEventCandidates` require payee pattern + mapped account + scheduled date; amount similarity is not identity and does not write `plan.opening`. Never writes `data.json`. Not a financial authority, not Forecast, and not T4. |
 | Observation-to-canonical cash/debt compare | `scripts/reconcile.js` (non-writing). Maps `docs/positions.csv` Household rows through `docs/reconciliation/balance-map.json` id locators onto `plan.startingCash` / `debts`. Commitment settlement observations live in `docs/reconciliation/commitment-settlements.json` and compare a paid date against `plan.commitments[].settledOn`; they do not go through `positions.csv` or the balance map. Hydro observations live in `docs/reconciliation/utility-observations.json`. Amanda-income observations live in `docs/reconciliation/amanda-income-observations.json`. Card-state observations live in `docs/reconciliation/card-state-observations.json` and distinguish posted balance, pending, limit, available credit, and confirmed payment; they are not a second financial authority. Limit and available credit are never household cash. Unknown pending is not $0. Pending is not manufactured as limit − posted − available unless that identity is proven for that card and timestamp. Posting observations live in `docs/reconciliation/posting-observations.json` and compare whether a scheduled occurrence has posted against `plan.opening.representedEvents`. Forecast remains authority for what should happen; posting evidence is authority for what has happened. Unknown posting is not posted and is not unposted. Does not write `data.json`. STALE is not assigned. The owner 90-day rule lives on pending bill/payment observations in `scripts/provider-observe.js` and is not a reconcile STALE status. Not a universal fact database |
 
-**The 2026-08-16 master-forecast contract is direction, not a set of new
-incumbent rows.** Safe-to-spend across the known future, funding sequence
-and reallocation of freed capacity, planned-debt consequences with a
-repayment path, and ON TRACK / AT RISK / FUNDING GAP remain Forecast's to
-earn. A page, ChatGPT, or Sheet that answers
-any of them first is the `B73` defect arriving through a new door. Do not
-register a future function as if it already existed.
+**The 2026-08-16 master-forecast contract is now earned in Forecast.**
+Safe-to-spend across the known future is `Forecast.recommend` walking
+`Forecast.knowledgeHorizon`. Funding sequence and reallocation of freed
+capacity are `Forecast.fundingSequence`. Planned-debt consequences with a
+repayment path are `Forecast.plannedDebt` and stay opt-in. ON TRACK /
+AT RISK / FUNDING GAP are `Forecast.majorPlans`. A page, ChatGPT, or Sheet
+that answers any of them first is the `B73` defect arriving through a new
+door.
 
 **The table is not a closed list, and reading it as one is how work goes wrong.**
 Three rounds of advisory review added five rows to it that inspection had missed.

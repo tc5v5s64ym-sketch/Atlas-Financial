@@ -619,8 +619,10 @@ function renderPlan(d, periods) {
   const transferMonthly = transferDependency.amount;
   const neededBy = transferDependency.neededBy;
 
+  const knowledgeEnd = advice.knowledge && advice.knowledge.end
+    ? advice.knowledge.end : sim.end;
   $('plan-window').textContent =
-    `The 13 weeks from ${fmtDateLong(asOf)} to ${fmtDateLong(sim.end)} — every figure below is derived from this window.`;
+    `The ${sim.weeks.length}-week view from ${fmtDateLong(asOf)} to ${fmtDateLong(sim.end)} of the master plan through ${fmtDateLong(knowledgeEnd)}. The weekly cap is set from the full plan, not this window alone.`;
 
   /* ---- status band ---- */
   // WHICH of the seven verdicts the household reads, and every figure and date
@@ -883,6 +885,27 @@ function renderPlan(d, periods) {
       `The ${money(budget.sinkingMonthly)}/month of lacrosse fees is dated on the calendar and saved for separately, ` +
       `so it is not inside this cap and does not reduce the ordinary sports line.`;
   }
+
+  /* ---- major future plans — verdicts from Forecast, wording only ---- */
+  const major = advice.majorPlans || Forecast.majorPlans(plan, asOf,
+    Object.assign({}, advice.planOptions || {}, { weeklyVariable: weekly }));
+  const MAJOR_VERDICT = {
+    'ON TRACK': p => `<span class="chip v">ON TRACK</span> The projected path funds ${p.label}.`,
+    'AT RISK': p => `<span class="chip w">AT RISK</span> Current spending has used the margin for ${p.label}; cutting remaining discretionary can still recover it.`,
+    'FUNDING GAP': p => `<span class="chip c">FUNDING GAP</span> Even eliminating remaining discretionary cannot fully fund ${p.label} without deferral, extra income, or explicitly permitted borrowing.`,
+  };
+  const majorHtml = (major || []).map(p => `
+    <div class="fund">
+      <div class="fund-top">
+        <div class="fund-lab">${p.label}${p.date ? ` <span class="mutedtext">${fmtDate(p.date)}</span>` : ''}${p.deferred ? ' <span class="chip w">may move</span>' : ''}</div>
+        <div class="fund-amt">${p.need != null ? money2(p.need) : 'range'}</div>
+      </div>
+      <div class="fund-note">${MAJOR_VERDICT[p.verdict] ? MAJOR_VERDICT[p.verdict](p) : (p.verdict || '')}</div>
+    </div>`).join('');
+  $('major-plans-list').innerHTML = majorHtml || '<p class="lede">No unsettled major future plans on this opening.</p>';
+  const knowledgeDays = advice.knowledge ? advice.knowledge.days : (plan.windowDays || 91);
+  $('major-plans-note').textContent =
+    `Verdicts are Forecast.majorPlans on the ${knowledgeDays}-day master plan. Ordinary transactions and categories are not individually graded. The $${sim.buffer} figure is the model buffer, not an owner-approved emergency reserve.`;
 
   /* ---- the next fourteen days ---- */
   const horizon = addDays(asOf, 13);
