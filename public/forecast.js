@@ -732,10 +732,21 @@
     // Purpose-specific planned-debt cash flows on the same ledger as the
     // master walk. Positive draws arrive through `injections` above.
     // Negative amounts here are required repayment leaving cash.
+    //
+    // `projectDebts` is the authority on what the named facility actually
+    // absorbed that day, including accrued interest. A final full payment
+    // that exceeds the remaining balance is not a real cash event — the
+    // same rule extras and dated minimums already use. Applying the cap
+    // here, where the event is created, keeps cash out and debt down on
+    // one number.
     for (const flow of opts.plannedFlows || []) {
       if (!flow || !flow.date || flow.date < start || flow.date > end) continue;
-      const amt = Number(flow.amount);
-      if (!isFinite(amt) || amt === 0) continue;
+      const asked = Number(flow.amount);
+      if (!isFinite(asked) || asked === 0) continue;
+      const cap = opts.plannedDebtAbsorbed;
+      const key = flow.id || flow.date;
+      const amt = cap && asked < 0 ? -(cap[key] || 0) : asked;
+      if (amt === 0) continue;
       events.push({
         date: flow.date,
         amount: amt,
@@ -1483,6 +1494,23 @@
       weeklyVariable: opts.weeklyVariable != null ? opts.weeklyVariable : 0,
       injections, plannedFlows,
     });
+    // A stated monthly payment is the ceiling, not a cash demand after the
+    // named facility is clear. Probe what each repayment date can actually
+    // absorb (remaining principal plus interest accrued that day) and emit
+    // that amount — including a partial final payment — so cash and debt
+    // stay on one number. The same absorbed map is handed to expandEvents.
+    if (plannedFlows.length) {
+      const probe = projectDebts(plan, debts, asOf, Object.assign({}, walkOpts, {
+        plannedDebtAbsorbed: null,
+      }));
+      const absorbed = probe.plannedDebtAbsorbed || {};
+      walkOpts.plannedDebtAbsorbed = absorbed;
+      for (let i = plannedFlows.length - 1; i >= 0; i--) {
+        const took = absorbed[plannedFlows[i].id];
+        if (took != null) plannedFlows[i].amount = -took;
+        if (!(-plannedFlows[i].amount > 0)) plannedFlows.splice(i, 1);
+      }
+    }
     const post = simulate(plan, asOf, walkOpts);
     const hasCadence = monthlyPayment > 0 && plannedFlows.length > 0;
     const debtWalk = projectDebts(plan, debts, asOf, walkOpts);
@@ -1517,10 +1545,13 @@
         monthlyPayment,
         months,
         flows: plannedFlows.length,
+        lastAmount: plannedFlows.length ? -plannedFlows[plannedFlows.length - 1].amount : null,
+        total: plannedFlows.reduce((s, f) => s + Math.abs(f.amount), 0),
         path: hasCadence
           ? 'stated monthly repayment on the named facility, from each draw date'
           : 'amount borrowed is known; no repayment cadence was supplied',
       },
+      unabsorbed: debtWalk.unabsorbed,
       items: draws.map(d => ({ id: d.id, remaining: d.amount, date: d.date })),
     };
   }
@@ -2492,6 +2523,11 @@
     // The same, for dated minimums, keyed by date and obligation id — one
     // obligation can fall several times in a window.
     const obligationAbsorbed = {};
+    // Planned-debt repayments use the named facility only. What each
+    // repayment date actually absorbed — remaining balance plus that day's
+    // interest — is handed back so the cash walk can emit a partial final
+    // payment instead of draining the leftover into nothing.
+    const plannedDebtAbsorbed = {};
     const snapshot = (day, date) => ({
       day, date,
       debts: state.map(s => ({
@@ -2586,8 +2622,10 @@
         } else if (e.kind === 'planned-debt') {
           const t = e.debtId ? byId[e.debtId] : null;
           if (!t) continue;
-          const left = payDown([t], -e.amount);
+          const asked = -e.amount;
+          const left = payDown([t], asked);
           unabsorbed += left;
+          plannedDebtAbsorbed[e.id || e.date] = asked - left;
         }
       }
       for (const s2 of state) {
@@ -2601,6 +2639,7 @@
 
     return {
       marks, byId, end, unabsorbed, extraAbsorbed, obligationAbsorbed,
+      plannedDebtAbsorbed,
       // Every facility that is over its limit at some point, on the day it
       // actually happens rather than at the next 30-day snapshot. A facility
       // already over the limit today is a different problem from one that

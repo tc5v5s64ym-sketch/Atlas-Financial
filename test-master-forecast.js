@@ -1368,6 +1368,128 @@ console.log('\n=== overdue unsettled point commitments stay protected ===');
     `feasible=${both.feasible} borrowed=${both.borrowed}`);
 }
 
+console.log('\n=== planned-debt final repayment equals absorbable balance ===');
+{
+  // Planned-debt cash/debt identity: a rate-0 facility opening at $0, a
+  // purpose-authorized $100 draw, and a $60 stated payment derives two
+  // repayment months. The final month can absorb only the remaining $40.
+  // Taking another $60 would leave $20 unabsorbed and understate cash.
+  const due = F.addDays(AS_OF, 20);
+  const start = 4000;
+  const buffer = 500;
+  const drawAmt = 100;
+  const payment = 60;
+  const plan = barePlan({
+    windowDays: 40,
+    startingCash: { amount: start },
+    defaults: { targetBuffer: buffer },
+    income: [{
+      id: 'keep-horizon', label: 'Horizon marker', frequency: 'monthly',
+      anchor: '2026-08-01', amount: 0, confidence: 'confirmed',
+    }, {
+      id: 'later-cover', label: 'Later cover', frequency: 'once',
+      date: F.addDays(due, 80), amount: 500, confidence: 'confirmed',
+    }],
+    commitments: [{
+      id: 'gap-item', label: 'Covered from cash', date: due,
+      amount: 1000, confidence: 'confirmed',
+    }],
+  });
+  const facility = { id: 'card-x', label: 'A card', rate: 0, balance: 0, pending: 0, limit: 5000 };
+  const months = Math.ceil(drawAmt / payment);
+  const last = drawAmt - payment * (months - 1);
+  ok(months === 2 && last === 40 && payment * months === 120,
+    'independent: two full $60 payments would take $120 from cash against a $100 balance');
+
+  const debt = F.plannedDebt(plan, AS_OF, recOpts({
+    allowPlannedDebt: true,
+    plannedDebtFacility: 'card-x',
+    plannedDebtPurposes: ['gap-item'],
+    plannedDebtAmounts: { 'gap-item': drawAmt },
+    debts: [facility],
+    plannedDebtPayment: payment,
+    weeklyVariable: 0,
+  }));
+  ok(near(debt.borrowed, drawAmt),
+    'the authorized draw is still the stated $100',
+    String(debt.borrowed));
+  ok(debt.repayment && debt.repayment.months === months && debt.repayment.flows === months,
+    'amortization still derives two repayment months and emits two flows',
+    debt.repayment && `${debt.repayment.months} months, ${debt.repayment.flows} flows`);
+  ok(near(debt.repayment.lastAmount, last),
+    'the final planned repayment is the remaining $40, not another $60',
+    String(debt.repayment && debt.repayment.lastAmount));
+  ok(near(debt.repayment.total, drawAmt),
+    'planned-debt cash out equals the $100 the facility can absorb',
+    String(debt.repayment && debt.repayment.total));
+  ok(Math.abs(debt.unabsorbed) < 0.005,
+    'the coupled walk reports zero unabsorbed planned-debt cash',
+    String(debt.unabsorbed));
+
+  // Independent same-walk reconstruction. Payment dates follow the engine's
+  // published rule (day-of-month of the first draw, first due the day after)
+  // but the amounts are the independently sized $60 then $40, not a helper.
+  const startPay = F.addDays(due, 1);
+  const payDay = Number(due.split('-')[2]) || 15;
+  const firstPay = (() => {
+    let [y, m] = startPay.split('-').map(Number);
+    for (;;) {
+      const dim = new Date(Date.UTC(y, m, 0)).getUTCDate();
+      const iso = `${y}-${String(m).padStart(2, '0')}-${String(Math.min(payDay, dim)).padStart(2, '0')}`;
+      if (iso >= startPay) return iso;
+      m++; if (m > 12) { m = 1; y++; }
+    }
+  })();
+  const secondPay = (() => {
+    const [y0, m0] = firstPay.split('-').map(Number);
+    let y = y0, m = m0 + 1;
+    if (m > 12) { m = 1; y++; }
+    const dim = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    return `${y}-${String(m).padStart(2, '0')}-${String(Math.min(payDay, dim)).padStart(2, '0')}`;
+  })();
+  const horizon = F.knowledgeHorizon(plan, AS_OF, {});
+  const injections = [{
+    date: due, amount: drawAmt, debtId: 'card-x',
+    label: 'Planned draw — Covered from cash', id: 'planned-debt-gap-item',
+  }];
+  const fullFlows = [0, 1].map(i => ({
+    date: i ? secondPay : firstPay,
+    amount: -payment,
+    label: 'Planned debt repayment',
+    id: 'planned-debt-repay-' + i,
+    debtId: 'card-x',
+  }));
+  const partialFlows = [
+    Object.assign({}, fullFlows[0]),
+    Object.assign({}, fullFlows[1], { amount: -last }),
+  ];
+  const walk = flows => recOpts({
+    horizonDays: horizon.days, viewDays: horizon.days, debtHorizonDays: horizon.days,
+    weeklyVariable: 0, injections, plannedFlows: flows, debts: [facility],
+  });
+  const fullDebt = F.projectDebts(plan, [facility], AS_OF, walk(fullFlows));
+  ok(near(fullDebt.unabsorbed, payment * months - drawAmt),
+    'independent: two full $60 payments leave $20 unabsorbed on the debt walk',
+    String(fullDebt.unabsorbed));
+  const sim = F.simulate(plan, AS_OF, walk(partialFlows));
+  const pr = F.projectDebts(plan, [facility], AS_OF, walk(partialFlows));
+  const repayEvents = sim.events.filter(e => e.kind === 'planned-debt');
+  const cashOut = repayEvents.reduce((s, e) => s + Math.abs(e.amount), 0);
+  const lastEvent = repayEvents[repayEvents.length - 1];
+  ok(lastEvent && lastEvent.date === secondPay && near(lastEvent.amount, -last),
+    'the cash event for the final month is the partial $40',
+    lastEvent && `${lastEvent.date} ${lastEvent.amount}`);
+  ok(near(cashOut, drawAmt),
+    'independent cash walk loses $100, not $120',
+    String(cashOut));
+  ok(near(pr.byId['card-x'].paid, drawAmt) && near(pr.byId['card-x'].balance, 0),
+    'the rate-0 facility absorbs $100 and ends at $0',
+    `paid=${pr.byId['card-x'].paid} balance=${pr.byId['card-x'].balance}`);
+  ok(Math.abs(pr.unabsorbed) < 0.005 && near(cashOut, pr.byId['card-x'].paid),
+    'partial final payment: cash out equals debt down and nothing is unabsorbed',
+    `cash ${cashOut} paid ${pr.byId['card-x'].paid} unabsorbed ${pr.unabsorbed}`);
+}
+
 {
   // Passing a ranged deadline is the overdue-point repair: original date,
   // min/max preserved, aggregate floor vs as-of surplus. surplusOn() has
