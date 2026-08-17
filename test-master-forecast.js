@@ -1182,6 +1182,116 @@ console.log('\n=== overdue unsettled point commitments stay protected ===');
     && near(b.remaining, 60),
     'second overdue item is FUNDING GAP on its original date; the same $100 cannot fund both',
     b && `${b.verdict} ${b.date} remaining=${b.remaining}`);
+
+  const debt = F.plannedDebt(plan, AS_OF, recOpts({
+    allowPlannedDebt: true,
+    plannedDebtFacility: 'card-x',
+    plannedDebtPurposes: ['overdue-a', 'overdue-b'],
+    debts: [{ id: 'card-x', label: 'A card', rate: 19.99, balance: 0, pending: 0, limit: 5000 }],
+    plannedDebtPayment: 20,
+    weeklyVariable: 0,
+  }));
+  ok(near(debt.borrowed, 60),
+    'two named overdue purposes borrow the $60 joint gap once, not $120',
+    String(debt.borrowed));
+  ok(start + 60 - buffer === each + each,
+    'independent: a $60 as-of draw lands current surplus on the $160 overdue floor');
+  ok(debt.feasible === true,
+    'the $60 same-walk draw plus repayment leaves the protected plan feasible',
+    `feasible=${debt.feasible} borrowed=${debt.borrowed} draws=${debt.draws && debt.draws.length}`);
+}
+
+{
+  // Passing a ranged deadline is the overdue-point repair: original date,
+  // min/max preserved, aggregate floor vs as-of surplus. surplusOn() has
+  // no day before as-of, so testing item.date would be a permanent gap.
+  const due = '2026-08-15';
+  const laterIncome = '2026-08-30';
+  const start = 2000;
+  const buffer = 500;
+  const floor = 1000;
+  const ceiling = 1800;
+  const plan = barePlan({
+    windowDays: 40,
+    startingCash: { amount: start },
+    defaults: { targetBuffer: buffer },
+    income: [{
+      id: 'after-deadline', label: 'Pay after overdue range date', frequency: 'once',
+      date: laterIncome, amount: 5000, confidence: 'confirmed',
+    }],
+    commitments: [{
+      id: 'overdue-range', label: 'Unpaid ranged cost', date: due,
+      amount: null, amountMin: floor, amountMax: ceiling, confidence: 'estimated',
+    }],
+  });
+  ok(AS_OF === '2026-08-16' && start - buffer === 1500 && 1500 >= floor && 1500 < ceiling,
+    'independent: as-of surplus covers the overdue range floor, not the ceiling');
+  const rec = F.recommend(plan, AS_OF, recOpts());
+  ok(rec.mode === 'normal' && rec.holds === true && rec.weekly >= 0,
+    'enough as-of cash does not make an overdue range a FUNDING GAP',
+    `${rec.mode} weekly=${rec.weekly} holds=${rec.holds}`);
+  ok(rec.knowledge.encumbered === floor,
+    'the overdue range floor stays encumbered until settlement',
+    String(rec.knowledge.encumbered));
+  const published = (rec.majorPlans || []).find(p => p.id === 'overdue-range');
+  ok(published && published.verdict !== 'FUNDING GAP' && published.date === due
+    && published.scheduledDate === due && published.need == null
+    && published.amountMin === floor && published.amountMax === ceiling
+    && published.encumbered === floor,
+    'original date kept, range not collapsed, floor encumbered',
+    published && `${published.verdict} ${published.date} min=${published.amountMin} max=${published.amountMax} encumbered=${published.encumbered}`);
+  const asOfSurplus = start - buffer;
+  const row = F.majorPlans(plan, AS_OF, recOpts({ weeklyVariable: 0 }))
+    .find(p => p.id === 'overdue-range');
+  ok(row && row.verdict === 'AT RISK' && near(row.remaining, ceiling - asOfSurplus)
+    && near(row.margin, asOfSurplus - floor),
+    'at zero weekly, AT RISK remaining is the independent $300 ceiling shortfall',
+    row && `${row.verdict} remaining=${row.remaining} margin=${row.margin}`);
+  const events = F.expandEvents(plan, AS_OF, F.addDays(AS_OF, 30), {});
+  ok(!events.some(e => e.id === 'overdue-range'),
+    'expandEvents does not invent a cash event or a new due date for the overdue range');
+}
+
+{
+  // Later ordinary income must not retroactively fund a past ranged deadline.
+  const due = '2026-08-15';
+  const laterIncome = '2026-08-30';
+  const start = 600;
+  const buffer = 500;
+  const floor = 1000;
+  const ceiling = 1200;
+  const plan = barePlan({
+    windowDays: 40,
+    startingCash: { amount: start },
+    defaults: { targetBuffer: buffer },
+    income: [{
+      id: 'after-deadline', label: 'Pay after overdue range date', frequency: 'once',
+      date: laterIncome, amount: 5000, confidence: 'confirmed',
+    }],
+    commitments: [{
+      id: 'overdue-range', label: 'Unpaid ranged cost', date: due,
+      amount: null, amountMin: floor, amountMax: ceiling, confidence: 'estimated',
+    }],
+  });
+  ok(AS_OF === '2026-08-16' && start - buffer === 100 && floor - 100 === 900,
+    'independent: as-of cash above the buffer is $100; the overdue range floor is short $900');
+  ok(start + 5000 - buffer >= floor,
+    'independent: end-horizon leftover after later income would cover the $1,000 floor');
+  const rec = F.recommend(plan, AS_OF, recOpts());
+  ok(rec.mode === 'infeasible' && rec.holds === false && rec.weekly === 0,
+    'later income cannot make an overdue range look feasible',
+    `${rec.mode} weekly=${rec.weekly} holds=${rec.holds}`);
+  ok(rec.infeasible && rec.infeasible.kind === 'overdue'
+    && rec.infeasible.id === 'overdue-range' && rec.infeasible.date === due
+    && near(rec.infeasible.shortfall, 900),
+    'INFEASIBLE names the original scheduled date and the $900 current range-floor shortfall',
+    rec.infeasible && JSON.stringify(rec.infeasible));
+  const row = (rec.majorPlans || []).find(p => p.id === 'overdue-range');
+  ok(row && row.verdict === 'FUNDING GAP' && row.date === due
+    && row.amountMin === floor && row.amountMax === ceiling
+    && near(row.remaining, 900) && row.encumbered === floor,
+    'majorPlans keeps the overdue range as a range on the original date',
+    row && `${row.verdict} remaining=${row.remaining} min=${row.amountMin} max=${row.amountMax}`);
 }
 
 console.log('\n=== existing consumers still derive from Forecast ===');
