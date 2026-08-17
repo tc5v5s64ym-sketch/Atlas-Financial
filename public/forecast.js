@@ -2757,14 +2757,21 @@
   }
 
   // Posted HELOC current vs the last monthly historical observation. The
-  // published tile rounds that delta to whole dollars (`money()`), so the
-  // verdict follows that dollar: a $0.40 move prints $0, and calling that
-  // "still growing" is the same contradiction the unallocated remainder had
-  // at four tenths of a cent. Exact zero, and any delta that rounds to zero,
-  // is unchanged — not growth.
+  // published Plan tile rounds that delta to whole dollars (`money()`), so the
+  // compact verdict follows that dollar: a $0.40 move prints $0, and calling
+  // that "still growing" is the same contradiction the unallocated remainder
+  // had at four tenths of a cent. Exact zero, and any delta that rounds to
+  // zero dollars, is unchanged — not growth.
   function publishedDeltaId(delta) {
     const dollars = Math.round(Math.abs(Number(delta)));
     return dollars === 0 ? 'unchanged' : (delta > 0 ? 'growing' : 'falling');
+  }
+
+  // Deep Dive captions print `money2` (cents). Classify by that published
+  // cent so two different displayed balances cannot read "unchanged".
+  function publishedCentsId(delta, up, down) {
+    const publishedCents = Math.round(Number(delta) * 100);
+    return publishedCents === 0 ? 'unchanged' : (publishedCents > 0 ? up : down);
   }
 
   function helocDebtRecord(debts) {
@@ -2835,25 +2842,24 @@
     const history = data.helocHistory || [];
     const current = heloc && heloc.balance != null ? Number(heloc.balance) : null;
     const prior = history.length ? copyHelocPoint(history[history.length - 1]) : null;
-    const vsPrior = helocVsPrior(data.debts, history);
+    const vsPriorDelta = current != null && prior && prior.v != null
+      ? current - Number(prior.v) : null;
     const paydown = lastFebruaryPoint(history);
     const paydownIndex = paydown ? history.lastIndexOf(paydown) : -1;
     const sincePaydown = current != null && paydown
       ? current - Number(paydown.v) : null;
-    const sincePaydownId = sincePaydown == null ? null
-      : (Math.round(Math.abs(Number(sincePaydown))) === 0
-        ? 'unchanged'
-        : (sincePaydown > 0 ? 'higher' : 'lower'));
     return {
       history: publishedHelocHistory(data),
       current,
       asOf: data.meta && data.meta.asOf || null,
       prior,
-      vsPrior: vsPrior ? vsPrior.delta : null,
-      vsPriorId: vsPrior ? vsPrior.id : null,
+      vsPrior: vsPriorDelta,
+      vsPriorId: vsPriorDelta == null ? null
+        : publishedCentsId(vsPriorDelta, 'growing', 'falling'),
       paydown: paydown ? copyHelocPoint(paydown) : null,
       sincePaydown,
-      sincePaydownId,
+      sincePaydownId: sincePaydown == null ? null
+        : publishedCentsId(sincePaydown, 'higher', 'lower'),
       roseEveryMonthSincePaydown: paydownIndex >= 0
         ? helocRoseEveryMonthSince(history, paydownIndex, current) : null,
     };
