@@ -102,7 +102,7 @@ console.log('\n=== 5. Telus does not recur after owner-confirmed closure ===');
   const facts = sourceText(fs.readFileSync(path.join(__dirname, 'docs/ACCOUNT_FACTS.md'), 'utf8'));
   ok(/TELUS IS CLOSED/.test(facts),
     'ACCOUNT_FACTS records Telus closed');
-  ok(/not\*{0,2} proven to be closed Telus/i.test(facts),
+  ok(/not\*{0,2} proven to be\s+closed Telus/i.test(facts),
     'ACCOUNT_FACTS does not treat the post-Shaw remainder as Telus-only');
   ok(/\$250\.00/i.test(facts) && /non-Shaw/i.test(facts),
     'ACCOUNT_FACTS records the July non-Shaw remainder rather than inventing Bell');
