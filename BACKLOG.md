@@ -100,20 +100,43 @@ separate cash obligation or fee. Forecast already implements this:
 and purpose-capped, and `projectDebts` / `plannedDebt` reject an interim
 limit crossing. Direct regression proofs live in `test-master-forecast.js`.
 
-**B71 · Triangle Mastercard is over its limit between payments, every month** · OPEN · *small*
+**B71 · Triangle Mastercard limit risk on the B91 opening** · **DONE / RESOLVED 2026-08-18** · *stale "over every month" claim retired*
 
-**Revalidate on the `B91` opening.** $13,497.00 against a $13,500
-limit — $3.00 of headroom — was the **2026-08-09 Forecast opening**.
-The 16 August opening uses the screenshot: posted $13,197.00 + pending
-$15.62 ($300 posted 10 August). Do not treat $3 of headroom or the old
-day-90 $227.71 over-limit projection as current truth.
+**KNOWN.** Canonical B91 2026-08-16 opening in `data.json`: posted
+**$13,197.00** + pending **$15.62** = exposure **$13,212.62** against a
+**$13,500.00** limit. Headroom **$287.38**. Purchase APR **21.99%** / cash
+**22.99%**. Next modelled minimum **$253.57**, `firstDue` **2026-09-07**,
+confidence **estimated**. The Aug. 10 **$300** payment is already inside
+the opening (independent identity: 13,497.00 − 300.00 = 13,197.00). That
+headroom is **credit, not household cash**. B70 remains the planning
+boundary: it never increases safe-to-spend; $0 headroom would mean $0
+additional borrowing capacity.
 
-The pattern may still be real on a later opening: interest of roughly
-$247/month against thin headroom can put the card over between payments.
-Worth checking whether an over-limit fee is being charged each cycle; if it is,
-it belongs in the fee series and the card's effective rate is higher than
-21.99%. Recompute from the next coherent opening rather than the Aug. 9
-snapshot.
+The 2026-08-09 opening — posted $13,497.00, $3.00 of headroom, day-90
+$227.71 over-limit projection — is retired evidence, not current truth.
+
+**Deterministic Forecast result (current plan; no invented purchases).**
+On both the 91-day view and the 365-day knowledge horizon, Triangle
+**remains under** the $13,500 limit. `projectDebts` reports `firstOver`
+null. Peak modelled exposure is **$13,388.86 on 2026-09-06**, the day
+before the first modelled $253.57 payment, leaving **$111.14** of
+headroom. 91-day ending balance **$13,178.74**. An independent daily
+ledger — opening posted+pending, 21.99%/365 interest, modelled 7th-of-month
+payments from `firstDue` — agrees with Forecast to the cent. The stale
+claim that the card is over its limit between payments every month is
+**not proven** on this opening and is retired.
+
+**RISK.** Interest still consumes headroom (~$8/day at this balance;
+roughly $243/month against the estimated $253.57 minimum). Thin room
+before the September payment is real. Additional real-world purchases
+are not on the deterministic path and Atlas does not invent them; they
+could produce a different result.
+
+**UNKNOWN.** Issuer-specific over-limit treatment or fee. No Triangle
+over-limit fee is observed in available committed evidence. That is not
+a finding that Canadian Tire Bank charges none, and it is not modelled
+as $0. The evidenced $29 over-limit fee belongs to the TD Cash Back Visa,
+not Triangle.
 
 **B63 · Where do the coach payments leave from?** · BLOCKED · *small*
 

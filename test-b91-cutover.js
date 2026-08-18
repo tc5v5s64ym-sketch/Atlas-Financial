@@ -211,6 +211,72 @@ console.log('\n=== F. debt openings independently match their source identities 
     'independent Travel Visa over-limit is $12.68 and is not cash');
 }
 
+console.log('\n=== F2. B71 Triangle current-plan path stays under the limit ===');
+{
+  // Independent ledger, not a second call to projectDebts: opening posted +
+  // pending, 21.99%/365 interest, modelled Triangle payment events only.
+  // Atlas does not invent future purchases.
+  const tri = live.debts.find(d => d.id === 'triangle');
+  const obl = live.plan.obligations.find(o => o.id === 'triangle');
+  const days = live.plan.windowDays || 91;
+  const end = windowEnd(AUG16);
+  const LIMIT = 13500;
+  const RATE = 21.99;
+  const openingUsed = 13197 + 15.62;
+  ok(near(tri.balance, 13197) && near(tri.pending, 15.62) && near(tri.limit, LIMIT)
+    && near(tri.rate, RATE) && near(obl.amount, 253.57) && obl.firstDue === '2026-09-07'
+    && obl.confidence === 'estimated',
+    'B91 Triangle opening, limit, rate, and estimated September minimum are unchanged');
+  ok(near(LIMIT - openingUsed, 287.38),
+    'independent current headroom is $287.38 and is not cash');
+  const pays = F.expandEvents(live.plan, AUG16, end, {})
+    .filter(e => e.id === 'triangle' && e.kind === 'obligation');
+  ok(pays.length === 3 && pays.every(e => e.date >= '2026-09-07')
+    && pays.every(e => near(-e.amount, 253.57)),
+    'modelled Triangle events are the three estimated $253.57 minima from firstDue',
+    pays.map(e => e.date + ':' + (-e.amount)).join(','));
+  let bal = openingUsed;
+  let interest = 0;
+  let paid = 0;
+  let firstOver = null;
+  let peak = bal;
+  let peakDate = AUG16;
+  const payOn = new Map(pays.map(e => [e.date, -e.amount]));
+  for (let i = 0; i < days; i++) {
+    const date = F.addDays(AUG16, i);
+    const daily = bal * (RATE / 100) / 365;
+    bal += daily;
+    interest += daily;
+    const take = payOn.get(date);
+    if (take) {
+      const applied = Math.min(take, bal);
+      bal -= applied;
+      paid += applied;
+    }
+    if (firstOver == null && bal > LIMIT) firstOver = { date, balance: bal };
+    if (bal > peak) { peak = bal; peakDate = date; }
+  }
+  const proj = F.projectDebts(live.plan, live.debts, AUG16, Object.assign(liveOpts(), {
+    debtHorizonDays: days,
+  }));
+  const engine = proj.byId.triangle;
+  ok(firstOver == null && engine.firstOver == null,
+    'independent walk and Forecast both stay under the $13,500 limit on the current plan',
+    firstOver ? firstOver.date : 'no crossing');
+  ok(near(engine.opening, openingUsed) && near(engine.balance, bal)
+    && near(engine.interest, interest) && near(engine.paid, paid),
+    'independent Triangle ledger agrees with projectDebts to the cent',
+    `end ${engine.balance.toFixed(4)} vs ${bal.toFixed(4)}`);
+  ok(peakDate === '2026-09-06' && peak < LIMIT && near(LIMIT - peak, 111.14),
+    'peak is the day before the first modelled payment; $111.14 of headroom remains',
+    `${peakDate} ${peak.toFixed(2)} headroom ${(LIMIT - peak).toFixed(2)}`);
+  const year = F.projectDebts(live.plan, live.debts, AUG16, Object.assign(liveOpts(), {
+    debtHorizonDays: 365,
+  }));
+  ok(year.byId.triangle.firstOver == null,
+    'the 365-day knowledge-horizon walk also does not cross the Triangle limit');
+}
+
 console.log('\n=== G. Amanda / TENNIS INCOME is not spendable; card capacity is not cash ===');
 {
   const held = (live.plan.startingCash.heldElsewhere || []).find(r => r.id === AMANDA);
@@ -365,6 +431,12 @@ console.log('\n=== remaining owner questions stay open ===');
   ok(/Travel Visa posted \$862\.68[\s\S]*canonical opening/.test(md)
     && /OPEN only for Cash Back pending/.test(md),
     'Q26 keeps Travel Visa $862.68+$250 canonical and stays OPEN only for Cash Back pending');
+  const facts = fs.readFileSync(path.join(__dirname, 'docs', 'ACCOUNT_FACTS.md'), 'utf8');
+  ok(!/Canonical opening remains posted \*\*\$13,497\.00\*\* \/ pending unknown/.test(facts),
+    'ACCOUNT_FACTS does not keep the retired Aug. 9 Triangle $13,497 as the canonical opening');
+  ok(/Canonical Forecast opening is the B91 2026-08-16 `data\.json` record/.test(facts)
+    && /posted \*\*\$13,197\.00\*\*/.test(facts),
+    'ACCOUNT_FACTS agrees with the B91 data.json Triangle opening');
 }
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
