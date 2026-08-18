@@ -3,10 +3,12 @@
  *
  *   node scripts/provider-observe.js --provider lunchmoney --fixture <file>
  *   node scripts/provider-observe.js --provider lunchmoney --live
+ *   node scripts/provider-observe.js --provider lunchmoney --live --identity-proof
  *
  * Live mode requires LUNCHMONEY_ACCESS_TOKEN in the environment. It never
  * writes data.json. Unknown provider account IDs stay unmapped. Synthetic
- * fixture mappings cannot authorize a live canonical mapping.
+ * fixture mappings cannot authorize a live canonical mapping. Historical
+ * represented-event candidates are not current-opening corrections.
  */
 
 const fs = require('fs');
@@ -39,6 +41,7 @@ function parseArgs(argv) {
   const out = {
     provider: null, fixture: null, live: false, map: null,
     data: DEFAULT_DATA, mode: 'current-state', historyDays: null,
+    identityProof: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -49,6 +52,7 @@ function parseArgs(argv) {
     else if (a === '--data') out.data = argv[++i];
     else if (a === '--mode') out.mode = argv[++i];
     else if (a === '--history-days') out.historyDays = Number(argv[++i]);
+    else if (a === '--identity-proof') out.identityProof = true;
     else if (a === '--help' || a === '-h') out.help = true;
   }
   return out;
@@ -504,6 +508,168 @@ function scheduledEventsOn(plan, date) {
   return Forecast.expandEvents(slim, date, date, {}).filter(e => e && e.kind !== 'noncash');
 }
 
+function openingAsOfFromData(data) {
+  const opening = data && data.plan && data.plan.opening;
+  return opening && opening.asOf ? String(opening.asOf) : null;
+}
+
+function classifyRepresentedCandidate(candidate, asOf) {
+  const date = candidate && candidate.date ? String(candidate.date) : null;
+  const current = !!(asOf && date && date === asOf);
+  let openingRelevance = 'incomparable';
+  if (asOf && date) {
+    if (date === asOf) openingRelevance = 'current-opening';
+    else if (date < asOf) openingRelevance = 'historical-before-opening';
+    else openingRelevance = 'after-opening';
+  }
+  return Object.assign({}, candidate, {
+    currentOpeningImpact: current,
+    mustNotBackfillOpening: !current,
+    openingRelevance,
+  });
+}
+
+function postingObservationFromCandidate(candidate, fetchedAt) {
+  return {
+    observationId: `lm-${candidate.providerTransactionId}-posting`,
+    fact: 'posting',
+    eventId: candidate.id,
+    accountLabel: candidate.payee,
+    scheduledDate: candidate.date,
+    posted: true,
+    unknown: false,
+    observedAsOf: dateOnly(fetchedAt),
+    evidenceDate: dateOnly(fetchedAt),
+    canonical: { collection: 'representedEvents', id: candidate.id, date: candidate.date },
+    source: 'provider-observe:lunchmoney-transactions',
+    note: 'Identity is payee + mapped account + scheduled date. Amount similarity was not used. Historical candidates are not current-opening corrections.',
+    currentOpeningImpact: candidate.currentOpeningImpact === true,
+    mustNotBackfillOpening: candidate.mustNotBackfillOpening !== false,
+    openingRelevance: candidate.openingRelevance || 'incomparable',
+  };
+}
+
+function sameDayDiscrepancies(recon) {
+  return ((recon && recon.rows) || [])
+    .filter(r => r && r.status === 'CHANGE' && r.dateRelation === 'same-day')
+    .map(r => ({
+      canonicalTarget: r.canonicalTarget || null,
+      fact: r.fact || null,
+      evidenceValue: r.evidenceValue,
+      canonicalValue: r.canonicalValue,
+      evidenceDate: r.evidenceDate || r.observedAsOf || null,
+      dateRelation: 'same-day',
+      winnerChosen: false,
+      reason: 'same-day without adequate time evidence — no canonical winner',
+    }))
+    .sort((a, b) => String(a.canonicalTarget).localeCompare(String(b.canonicalTarget)));
+}
+
+function observationIdentityKey(obs) {
+  if (obs && obs.canonical && obs.canonical.collection) {
+    const c = obs.canonical;
+    return [c.collection, c.id, obs.fact || c.field || '', c.date || '']
+      .filter(part => part !== '')
+      .join(':');
+  }
+  return obs && obs.fact ? String(obs.fact) : 'unknown';
+}
+
+function identityFingerprint(report) {
+  const mapped = (report.mapped || [])
+    .map(m => ({
+      atlasId: m.atlasId,
+      collection: m.collection,
+      atlasRole: m.atlasRole,
+    }))
+    .sort((a, b) => String(a.atlasId).localeCompare(String(b.atlasId)));
+  const observations = (report.observations || [])
+    .map(o => ({
+      key: observationIdentityKey(o),
+      fact: o.fact || null,
+      evidenceValue: o.evidenceValue,
+      unknown: o.unknown === true,
+      evidenceDate: o.evidenceDate || o.observedAsOf || null,
+    }))
+    .sort((a, b) => String(a.key).localeCompare(String(b.key))
+      || String(a.fact).localeCompare(String(b.fact)));
+  const reconciliation = ((report.reconciliation && report.reconciliation.rows) || [])
+    .map(r => ({
+      target: r.canonicalTarget || null,
+      fact: r.fact || null,
+      status: r.status,
+      dateRelation: r.dateRelation || null,
+      evidenceValue: r.evidenceValue,
+      canonicalValue: r.canonicalValue,
+    }))
+    .sort((a, b) => String(a.target).localeCompare(String(b.target))
+      || String(a.fact).localeCompare(String(b.fact)));
+  const classified = report.representedEventCandidates || [];
+  const historical = classified
+    .filter(c => !c.currentOpeningImpact)
+    .map(c => ({
+      eventId: c.id,
+      date: c.date,
+      openingRelevance: c.openingRelevance,
+      mustNotBackfillOpening: c.mustNotBackfillOpening !== false,
+    }))
+    .sort((a, b) => String(a.date).localeCompare(String(b.date))
+      || String(a.eventId).localeCompare(String(b.eventId)));
+  const currentOpening = classified
+    .filter(c => c.currentOpeningImpact)
+    .map(c => ({
+      eventId: c.id,
+      date: c.date,
+      openingRelevance: c.openingRelevance,
+      mustNotBackfillOpening: false,
+    }))
+    .sort((a, b) => String(a.eventId).localeCompare(String(b.eventId)));
+  return {
+    writesCanonicalState: report.writesCanonicalState === true,
+    canonicalWriteAuthorized: false,
+    mappingBy: 'provider-account-id',
+    displayNameIsLabelOnly: true,
+    endpointOriginPreserved: false,
+    cardCapacityIsCash: report.cardCapacityIsCash,
+    spendableCash: report.spendableCash,
+    fetchedAt: report.fetchedAt || null,
+    mapped,
+    unmappedCount: (report.unmapped || []).length,
+    observations,
+    reconciliation,
+    historicalRepresentedEventCandidates: historical,
+    currentOpeningRepresentedEventCandidates: currentOpening,
+    pendingToPostedTransitions: (report.identityEvidence || [])
+      .filter(e => e && e.transition === 'pending-to-posted').length,
+    sameDayDiscrepancies: report.sameDayDiscrepancies
+      || sameDayDiscrepancies(report.reconciliation),
+  };
+}
+
+function identityProofLooksSanitized(proof) {
+  const blob = JSON.stringify(proof == null ? {} : proof);
+  return !/"providerAccountId"\s*:/.test(blob)
+    && !/"providerTransactionId"\s*:/.test(blob)
+    && !/Bearer\s+\S+/.test(blob)
+    && !/LUNCHMONEY_ACCESS_TOKEN/.test(blob);
+}
+
+function compareIdentityFingerprints(a, b) {
+  const left = JSON.stringify(a);
+  const right = JSON.stringify(b);
+  const keyShape = proof => ({
+    mapped: proof && proof.mapped,
+    unmappedCount: proof && proof.unmappedCount,
+    observationKeys: ((proof && proof.observations) || []).map(o => o.key),
+    historical: proof && proof.historicalRepresentedEventCandidates,
+    currentOpening: proof && proof.currentOpeningRepresentedEventCandidates,
+  });
+  return {
+    equal: left === right,
+    keysEqual: JSON.stringify(keyShape(a)) === JSON.stringify(keyShape(b)),
+  };
+}
+
 function representedEventCandidates(input) {
   const rules = (input.identityRules || []).filter(r => r && r.eventId && r.payeePattern);
   if (!rules.length) return [];
@@ -684,26 +850,18 @@ function observe(input) {
     if (!limitByCard.has(cardId)) continue;
     cardInferences.push(Object.assign({ cardId }, inferredCardState(posted, null, limitByCard.get(cardId))));
   }
+  const openingAsOf = openingAsOfFromData(input.data);
   const represented = representedEventCandidates({
     transactions: collapsed.transactions,
     accountMap: mapDoc,
     plan: input.data && input.data.plan,
     identityRules,
-  });
-  const postingObservations = represented.map(c => ({
-    observationId: `lm-${c.providerTransactionId}-posting`,
-    fact: 'posting',
-    eventId: c.id,
-    accountLabel: c.payee,
-    scheduledDate: c.date,
-    posted: true,
-    unknown: false,
-    observedAsOf: dateOnly(normalized.fetchedAt),
-    evidenceDate: dateOnly(normalized.fetchedAt),
-    canonical: { collection: 'representedEvents', id: c.id, date: c.date },
-    source: 'provider-observe:lunchmoney-transactions',
-    note: 'Identity is payee + mapped account + scheduled date. Amount similarity was not used.',
-  }));
+  }).map(c => classifyRepresentedCandidate(c, openingAsOf));
+  // Historical payee+account+date hits are evidence, not current-opening
+  // representedEvents corrections. They must not enter the current compare.
+  const postingObservations = represented
+    .filter(c => c.currentOpeningImpact)
+    .map(c => postingObservationFromCandidate(c, normalized.fetchedAt));
   const compareObs = observations.filter(o => !R.CARD_FACTS.has(o.fact));
   const cardObs = observations.filter(o => R.CARD_FACTS.has(o.fact));
   const result = R.reconcile({
@@ -713,7 +871,8 @@ function observe(input) {
     cardObservations: cardObs,
     postingObservations,
   });
-  return {
+  const sameDay = sameDayDiscrepancies(result);
+  const assembled = {
     writesCanonicalState: false,
     provider: 'lunchmoney',
     fetchedAt: normalized.fetchedAt,
@@ -727,8 +886,11 @@ function observe(input) {
     cardCapacityIsCash: R.householdCashFromCardCapacity(),
     cardInferences,
     representedEventCandidates: represented,
+    sameDayDiscrepancies: sameDay,
     reconciliation: result,
   };
+  assembled.identityProof = identityFingerprint(assembled);
+  return assembled;
 }
 
 function loadIdentity(file) {
@@ -742,6 +904,7 @@ async function run(argv) {
     process.stdout.write(
       'Usage: node scripts/provider-observe.js --provider lunchmoney --fixture <file>\n'
       + '       node scripts/provider-observe.js --provider lunchmoney --live [--mode current-state|reconcile] [--history-days N]\n'
+      + '       [--identity-proof]\n'
     );
     return 0;
   }
@@ -774,7 +937,8 @@ async function run(argv) {
     identity,
     fetchedAt: payload.fetchedAt,
   });
-  process.stdout.write(JSON.stringify(report, null, 2) + '\n');
+  const printed = args.identityProof ? report.identityProof : report;
+  process.stdout.write(JSON.stringify(printed, null, 2) + '\n');
   return 0;
 }
 
@@ -802,6 +966,14 @@ const api = {
   pendingObservationsFromTransactions,
   inferredCardState,
   representedEventCandidates,
+  openingAsOfFromData,
+  classifyRepresentedCandidate,
+  postingObservationFromCandidate,
+  sameDayDiscrepancies,
+  observationIdentityKey,
+  identityFingerprint,
+  identityProofLooksSanitized,
+  compareIdentityFingerprints,
   normalizeLunchMoneyAccount,
   normalizeLunchMoneyTransaction,
   normalizeLunchMoneyPayload,

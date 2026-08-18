@@ -14,7 +14,8 @@ exist yet, months after it did.
 **normal operational financial update feed** (owner decision 2026-08-17).
 Forecast remains the sole deterministic planning and calculation authority.
 Lunch Money is evidence, not the planner and not canonical household policy.
-Live read-only observation already exists and has been exercised; automatic
+Live read-only observation already exists and has been exercised; identity
+and idempotency of that path are proved (`B78` / T3). Automatic
 canonical writes are **not** approved. Owner-maintained Lunch Money account
 freshness is accepted owner policy and does not block unrelated
 automatically refreshed accounts. The household cash schedule has one

@@ -41,7 +41,7 @@ operational financial update feed**. Forecast remains the planner.
 Automatic canonical writes are **not** approved. `B21` / `AF-INTAKE-01` is
 **DONE 2026-08-17** — later live observe → reconcile proof is
 [`docs/connectivity/LUNCH_MONEY_REFRESH_PROOF_2026-08-17.md`](docs/connectivity/LUNCH_MONEY_REFRESH_PROOF_2026-08-17.md).
-The next identity/idempotency outcome is `B78` / T3. T4 / `B81` (trusted
+`B78` / `AF-INGEST-01` / T3 is **DONE**. T4 / `B81` (trusted
 canonical refresh) remains owner-gated. Do **not** wait for a second month of
 routine statement files. Provider-completeness, broad historical forensics,
 old categorisation cleanup, and file-statement backfill are not
@@ -1461,35 +1461,26 @@ request that removed the tables, because leaving this entry open would have left
 `BACKLOG.md` describing two tables that no longer exist.
 
 
-**B78 · Idempotent Lunch Money import with stable identity** · `QUEUED` · *medium — next identity/idempotency outcome*
-Build-strategy item `AF-INGEST-01`, and the evidence trajectory gate T3 is made
-of. **Next after `B21`.** The **normal Lunch Money observation/import path**
-must be identity-stable and idempotent before automated canonical refresh is
-trusted. Use existing Lunch Money provider account IDs / transaction IDs and
-the existing reconciliation architecture. Do **not** invent a new identity
-system. Acceptance is on **real household Lunch Money data**, for example:
-the same observation imported or reconciled twice creates no duplicate
-state; stable provider account identity survives a display-name change; a
-corrected or changed provider observation updates the same canonical
-target rather than creating another; pending→posted transaction identity
-is handled truthfully when real provider evidence demonstrates it;
-unmapped accounts fail closed; provider credit is never household cash.
-Fixture coverage already collapses the same `providerTransactionId` from
-pending to posted without double-counting. **B21 did not observe a real
-pending→posted transition**; that household acceptance case remains open.
-A real Bell Mobility transaction is still pending as of
-2026-08-16 and remains a pending→posted acceptance case once the provider
-posts it. File-statement re-import remains useful later as
-fallback/backfill, not as this item's proof. Entry is T2 (met) plus `B21`'s
-proof
-[`docs/connectivity/LUNCH_MONEY_REFRESH_PROOF_2026-08-17.md`](docs/connectivity/LUNCH_MONEY_REFRESH_PROOF_2026-08-17.md).
-Inputs from that run: no real pending→posted case; 120-day historical
-payroll posting-candidate CHANGE noise must not backfill
-`representedEvents`; automatic-versus-manual endpoint origin is not
-preserved in the normalized report; the Triangle same-day discrepancy
-needs freshness/time resolution before any canonical replacement; the
-fresh $10 Chequing B change is unused. Automatic canonical writes still
-wait on T4 / `B81`.
+**B78 · Idempotent Lunch Money import with stable identity** · **DONE 2026-08-17** · *T3*
+Build-strategy item `AF-INGEST-01`. Incumbent `scripts/provider-observe.js`
+and `scripts/reconcile.js` remain the path. Mapping is still existing
+Lunch Money provider account IDs. Historical posting candidates whose
+date is not the current opening as-of are classified and are not fed to
+the current-opening posting compare, so they cannot backfill
+`representedEvents`. Same-day CHANGE records `winnerChosen: false`.
+`--identity-proof` prints a sanitized fingerprint. No store, no second
+identity system, no automatic writer. Proof:
+[`docs/connectivity/LUNCH_MONEY_IDENTITY_PROOF_B78.md`](docs/connectivity/LUNCH_MONEY_IDENTITY_PROOF_B78.md).
+Real-data replay of the leftover 2026-08-16 owner-run observation:
+identical second fingerprint; MATCH 12 / CHANGE 0; spendable $2,252.76;
+`data.json` unchanged. Display-name rename kept the same keys. A Chequing
+B −$10 correction stayed on `cash:chequing-b` and did not write. Two
+accounts stayed unmapped. `cardCapacityIsCash` 0. No real pending→posted
+case (fixture collapse remains supporting coverage). Endpoint origin was
+not fabricated. Triangle same-day winner still not chosen. Fresh Chequing
+B from B21 remains unused. A new live GET was not available in the
+builder shell (token unset) and is not required to reopen this outcome
+unless a later pull shows a new identity defect. T4 / `B81` stay closed.
 
 **B79 · The store question, answered by evidence** · `QUEUED` · *needs the owner*
 Build-strategy item `AF-STORE-01`. A written answer to whether the file
@@ -1497,7 +1488,7 @@ foundation can still give the invariant, identity and idempotency guarantees the
 work needs, citing what **failed on real data**. `ARCHITECTURE.md` names the gate
 and says passing it is an owner decision, recorded — and names "relational
 modelling would be tidier" and "a later capability assumes it" as things that are
-not reasons. Waits on `B78`. Do not introduce a store to answer this.
+not reasons. `B78` / T3 is done. Do not introduce a store to answer this.
 
 **B80 · Evaluate connectivity providers, point nothing live** · **DONE 2026-08-16** · *owner brought this forward*
 Build-strategy item `AF-LIVE-01`. Owner instruction 2026-08-16: manual
