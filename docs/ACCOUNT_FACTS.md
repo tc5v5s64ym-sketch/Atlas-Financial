@@ -282,7 +282,7 @@ Interac notifications matters, and why B64 will not be solved from transfer data
 | Due | 17th, monthly |
 | Note | Since 2 July 2026 TD charges **interest on unpaid interest** |
 
-## Triangle Mastercard — Canadian Tire Bank *(verified 2026-08-09; current posted/pending 2026-08-16)*
+## Triangle Mastercard — Canadian Tire Bank *(standing terms 2026-08-09; canonical opening B91 2026-08-16)*
 
 | | |
 |---|---|
@@ -291,15 +291,17 @@ Interac notifications matters, and why B64 will not be solved from transfer data
 | Due | 7th, monthly · statement dated 17th |
 | Structure | Revolving. Issuer states 99+ years to repay at minimum payments |
 
-**Current observation, 2026-08-16 screenshot** (dated observation, not the
-2026-08-09 Forecast opening in `data.json`): posted **$13,197.00**, pending
-**$15.62**, available credit **$287.38** (not household cash), last statement
-balance $13,309.70, displayed minimum $0.00, displayed due date Aug. 7 2026.
-A **$300 payment posted Aug. 10**. Posted and pending stay separate.
-Observed exposure = $13,197.00 + $15.62 = $13,212.62. On-time status for
-the Aug. 7 obligation is not proven; the payment posted after the displayed
-due date. Canonical opening remains posted **$13,497.00** / pending unknown
-as of 9 August until a coherent cutover.
+**Canonical Forecast opening is the B91 2026-08-16 `data.json` record**,
+not the 9 August snapshot. The 2026-08-16 owner screenshot is the source
+of that opening: posted **$13,197.00**, pending **$15.62**, available
+credit **$287.38** (not household cash), last statement balance $13,309.70,
+displayed minimum $0.00, displayed due date Aug. 7 2026. A **$300 payment
+posted Aug. 10** is already inside the opening (independent identity:
+13,497.00 − 300.00 = 13,197.00). Posted and pending stay separate.
+Exposure = $13,197.00 + $15.62 = $13,212.62. On-time status for the
+Aug. 7 obligation is not proven; the payment posted after the displayed
+due date. The retired 9 August opening was posted **$13,497.00** / pending
+unknown; it is dated evidence, not current canonical state.
 
 ## Insurance *(verified 2026-08-09)*
 
@@ -1695,7 +1697,8 @@ feared. The correction is real but far smaller than the uncertainty was.
 ## The payoff ranking — settled *(2026-08-09)*
 
 Every rate and balance is now known, so this can finally be stated.
-`scripts/payoff.js` computes it from `data.json`.
+This table is the **9 August snapshot**. Current canonical openings live
+in `data.json` (B91 2026-08-16); this ranking is not a second live copy.
 
 | Card | Balance | Rate | Interest/yr |
 |---|---|---|---|
