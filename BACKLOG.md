@@ -1520,9 +1520,14 @@ Build-strategy item `AF-LIVE-02`. Owner T4 pass:
 [`docs/connectivity/T4_OWNER_PASS_2026-08-17.md`](docs/connectivity/T4_OWNER_PASS_2026-08-17.md).
 The earned mechanism is `scripts/canonical-refresh.js`: incumbent observe
 → reconcile → sanitized preview → `--apply --approve <previewId>` →
-bounded `data.json` write. Default remains non-writing. Live household
+bounded `data.json` write. Default remains non-writing. Optional
+`--cutover-as-of YYYY-MM-DD` is a read-only opening-cutover preflight:
+it answers whether current evidence can truthfully support a proposed
+opening date, and it never writes `meta.asOf`, `plan.opening`, pending,
+or snapshots. Combining it with `--apply` is refused. Live household
 figures are unchanged. Unattended production writes, scheduled refresh,
-and a Render Lunch Money token remain reserved. Do not apply the unused
+a Render Lunch Money token, and the first production opening cutover
+remain reserved. Do not apply the unused
 Chequing B $10, choose a Triangle same-day winner, invent a
 pending→posted case, or infer endpoint origin.
 ---
