@@ -546,6 +546,183 @@ console.log('\n=== no planned debt unless explicitly permitted ===');
     `feasible=${overThenUnder.feasible} ending=${overThenUnder.endingBalance}`);
 }
 
+console.log('\n=== HELOC limit is a planning boundary, not cash (B70) ===');
+{
+  // Independent capacity is limit − (posted + pending), never negative, never
+  // cash. facilityCapacity is not exported; plannedDebt.capacity is that same
+  // bounded headroom, and borrowed may not exceed it.
+  const independentCapacity = facility => {
+    if (facility.pendingUnknown === true || facility.unknownPending === true) return 0;
+    return Math.max(0, (Number(facility.limit) || 0) - (facility.balance + (facility.pending || 0)));
+  };
+  const laterPay = F.addDays(F.addDays(AS_OF, 20), 5);
+  const planAffordable = barePlan({
+    windowDays: 40,
+    startingCash: { amount: 600 },
+    defaults: { targetBuffer: 500 },
+    income: [{
+      id: 'keep-horizon', label: 'Horizon marker', frequency: 'monthly',
+      anchor: '2026-08-01', amount: 0, confidence: 'confirmed',
+    }, {
+      id: 'later-cover', label: 'Later cover', frequency: 'once', date: laterPay,
+      amount: 2500, confidence: 'confirmed',
+    }],
+    commitments: [
+      { id: 'gap-item', label: 'Unfunded', date: F.addDays(AS_OF, 20), amount: 2000, confidence: 'confirmed' },
+    ],
+  });
+
+  // A. zero headroom — posted equals limit, and posted+pending equals limit.
+  const atPostedLimit = { id: 'heloc', label: 'HELOC', rate: 4.90, balance: 202654, pending: 0, limit: 202654 };
+  const atUsedLimit = { id: 'heloc', label: 'HELOC', rate: 4.90, balance: 200000, pending: 2654, limit: 202654 };
+  ok(independentCapacity(atPostedLimit) === 0 && independentCapacity(atUsedLimit) === 0,
+    'independent: posted=limit and posted+pending=limit both leave $0 headroom');
+  for (const facility of [atPostedLimit, atUsedLimit]) {
+    const zero = F.plannedDebt(planAffordable, AS_OF, recOpts({
+      allowPlannedDebt: true,
+      plannedDebtFacility: 'heloc',
+      plannedDebtPurposes: ['gap-item'],
+      debts: [facility],
+      plannedDebtPayment: 100,
+      weeklyVariable: 0,
+    }));
+    ok(zero.capacity === 0 && near(zero.borrowed, 0),
+      'A: at the HELOC limit, facilityCapacity is $0 and plannedDebt.borrowed is $0',
+      `${facility.balance}+${facility.pending} capacity=${zero.capacity} borrowed=${zero.borrowed}`);
+    ok((zero.draws || []).length === 0,
+      'A: $0 headroom cannot create another draw',
+      JSON.stringify(zero.draws));
+  }
+
+  // B. credit is not cash — unused HELOC headroom alone does not raise
+  // starting cash or recommend weekly (safe-to-spend) without authorization.
+  const cashPlan = barePlan({
+    windowDays: 160,
+    startingCash: { amount: 8000 },
+    defaults: { targetBuffer: 500 },
+    income: [{
+      id: 'keep-horizon', label: 'Horizon marker', frequency: 'monthly',
+      anchor: '2026-08-01', amount: 0, confidence: 'confirmed',
+    }],
+  });
+  const unusedHeloc = { id: 'heloc', label: 'HELOC', rate: 4.90, balance: 100000, pending: 0, limit: 202654 };
+  ok(independentCapacity(unusedHeloc) === 102654,
+    'independent: unused HELOC headroom on this fixture is $102,654',
+    String(independentCapacity(unusedHeloc)));
+  const recCashOnly = F.recommend(cashPlan, AS_OF, recOpts());
+  const recWithHeadroom = F.recommend(cashPlan, AS_OF, recOpts({ debts: [unusedHeloc] }));
+  ok(F.startingCashAmount(cashPlan) === 8000,
+    'B: starting cash is the cash opening, not credit headroom',
+    String(F.startingCashAmount(cashPlan)));
+  ok(recCashOnly.weekly === recWithHeadroom.weekly,
+    'B: unused HELOC headroom does not increase Forecast.recommend weekly',
+    `$${recCashOnly.weekly} vs $${recWithHeadroom.weekly}`);
+  const weeks = recCashOnly.knowledge.days / 7;
+  const rawWeekly = (8000 - 500) / weeks;
+  const wantWeekly = Math.floor(rawWeekly / 5) * 5;
+  ok(recCashOnly.weekly === wantWeekly && recWithHeadroom.weekly === wantWeekly,
+    'B: weekly matches the independent cash-only drain, with or without unused HELOC room',
+    `$${recWithHeadroom.weekly} vs hand $${wantWeekly} (raw ${rawWeekly.toFixed(4)})`);
+  ok(recCashOnly.plannedDebt.permitted === false && recWithHeadroom.plannedDebt.borrowed === 0,
+    'B: recommend does not authorize or draw that unused headroom');
+
+  // C. no unapproved repair — an otherwise infeasible protected plan stays
+  // infeasible when a HELOC exists but allowPlannedDebt is false.
+  const due = F.addDays(AS_OF, 9);
+  const infeasiblePlan = barePlan({
+    windowDays: 40,
+    startingCash: { amount: 1400 },
+    defaults: { targetBuffer: 500 },
+    income: [{
+      id: 'keep-horizon', label: 'Horizon marker', frequency: 'monthly',
+      anchor: '2026-08-01', amount: 0, confidence: 'confirmed',
+    }, {
+      id: 'after-deadline', label: 'Pay after deadline', frequency: 'once',
+      date: F.addDays(AS_OF, 14), amount: 5000, confidence: 'confirmed',
+    }],
+    commitments: [{
+      id: 'dated-range', label: 'A dated range', date: due,
+      amount: null, amountMin: 1000, amountMax: 2000, confidence: 'estimated',
+    }],
+  });
+  // Independent: surplus on due at W=0 is 1400 − 500 = 900; floor 1000; short $100.
+  ok(1400 - 500 === 900 && 900 < 1000,
+    'independent: the protected dated-range floor is short $100 with no borrowing');
+  const recBare = F.recommend(infeasiblePlan, AS_OF, recOpts());
+  const recHelocDenied = F.recommend(infeasiblePlan, AS_OF, recOpts({
+    debts: [{ id: 'heloc', label: 'HELOC', rate: 4.90, balance: 0, pending: 0, limit: 202654 }],
+    allowPlannedDebt: false,
+  }));
+  ok(recBare.mode === 'infeasible' && recBare.weekly === 0 && recBare.holds === false,
+    'C: the protected plan is infeasible with no HELOC present',
+    `${recBare.mode} weekly=${recBare.weekly}`);
+  ok(recHelocDenied.mode === 'infeasible' && recHelocDenied.weekly === 0
+    && recHelocDenied.holds === false,
+    'C: an unauthorized HELOC does not repair that infeasibility',
+    `${recHelocDenied.mode} weekly=${recHelocDenied.weekly} borrowed=${recHelocDenied.plannedDebt.borrowed}`);
+  ok(recHelocDenied.plannedDebt.permitted === false && recHelocDenied.plannedDebt.borrowed === 0,
+    'C: allowPlannedDebt false invents neither permission nor a draw');
+
+  // D. authorized borrowing is still bounded by remaining headroom.
+  const thinHeloc = { id: 'heloc', label: 'HELOC', rate: 4.90, balance: 202000, pending: 0, limit: 202654 };
+  const wantRoom = independentCapacity(thinHeloc);
+  ok(wantRoom === 654, 'independent: remaining HELOC headroom is $654', String(wantRoom));
+  const bounded = F.plannedDebt(planAffordable, AS_OF, recOpts({
+    allowPlannedDebt: true,
+    plannedDebtFacility: 'heloc',
+    plannedDebtPurposes: ['gap-item'],
+    debts: [thinHeloc],
+    plannedDebtPayment: 100,
+    weeklyVariable: 0,
+  }));
+  const afterPay = 600 - 2000;
+  const cashGap = 500 - afterPay; // 1900, larger than remaining room
+  ok(cashGap > wantRoom,
+    'independent: the named purpose wants more than remaining HELOC room',
+    `cash gap $${cashGap} vs room $${wantRoom}`);
+  ok(near(bounded.capacity, wantRoom) && near(bounded.borrowed, wantRoom)
+    && bounded.borrowed <= wantRoom,
+    'D: with allowPlannedDebt and a named purpose, the draw is capped at remaining headroom',
+    `borrowed $${bounded.borrowed} capacity $${bounded.capacity}`);
+
+  // E. interim crossing fails — isolate the limit walk from the cash gap.
+  // Cash already covers the named purpose; an authorized $5 draw lands on the
+  // limit; capitalised interest is then over-limit; a $100 repayment can still
+  // finish under. Feasible must still be false.
+  const cashCoveredHeloc = Object.assign({}, planAffordable, {
+    startingCash: { amount: 4000 },
+    commitments: [
+      { id: 'gap-item', label: 'Covered from cash', date: F.addDays(AS_OF, 20),
+        amount: 1000, confidence: 'confirmed' },
+    ],
+  });
+  const nearHelocLimit = { id: 'heloc', label: 'HELOC', rate: 4.90, balance: 495, pending: 0, limit: 500 };
+  const overThenUnderHeloc = F.plannedDebt(cashCoveredHeloc, AS_OF, recOpts({
+    allowPlannedDebt: true,
+    plannedDebtFacility: 'heloc',
+    plannedDebtPurposes: ['gap-item'],
+    plannedDebtAmounts: { 'gap-item': 5 },
+    debts: [nearHelocLimit],
+    plannedDebtPayment: 100,
+    weeklyVariable: 0,
+  }));
+  const drawn = independentCapacity(nearHelocLimit);
+  const afterDraw = 495 + drawn;
+  const dailyHelocInterest = afterDraw * 0.049 / 365;
+  ok(drawn === 5 && afterDraw === 500 && dailyHelocInterest > 0,
+    'independent: drawing remaining $5 lands on the $500 limit; the next capitalised interest is over-limit',
+    `$${dailyHelocInterest.toFixed(4)}/day after draw`);
+  ok(near(overThenUnderHeloc.borrowed, 5),
+    'E: the authorized near-limit HELOC draw is remaining pending-aware capacity',
+    String(overThenUnderHeloc.borrowed));
+  ok(overThenUnderHeloc.endingBalance != null && overThenUnderHeloc.endingBalance <= 500 + 0.01,
+    'E: ending balance can finish at or under the limit after repayment',
+    String(overThenUnderHeloc.endingBalance));
+  ok(overThenUnderHeloc.feasible === false,
+    'E: a HELOC walk that crosses the limit is infeasible even when the ending balance is under',
+    `feasible=${overThenUnderHeloc.feasible} ending=${overThenUnderHeloc.endingBalance}`);
+}
+
 {
   const due = F.addDays(AS_OF, 9);
   const laterIncome = F.addDays(AS_OF, 14);

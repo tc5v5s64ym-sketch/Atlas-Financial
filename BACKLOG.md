@@ -67,7 +67,7 @@ to be visible, merchant strings needing normalising before matching).
 
 ## 🔴 The two that undercut everything else
 
-**B70 · The HELOC passes its own limit on 30 September, with no new borrowing** · OPEN · *needs a decision, not analysis*
+**B70 · The HELOC limit is a planning boundary: $0 headroom means $0 additional borrowing** · **DONE / RESOLVED 2026-08-18** · *owner planning invariant; engine already held it*
 
 **Revalidate on the `B91` opening.** The "draw $623 and it becomes
 31 August" urgency was the **2026-08-09 Forecast opening**. The 12 August
@@ -78,13 +78,27 @@ loan story forward as today's household plan.
 The 2026-08-16 opening has the HELOC at $200,486.16 against a $202,654
 limit — $2,167.84 of headroom after the posted $1,100 payment — still
 capitalising about **$814 a month with nothing repaying it**. The
-published crossing on this opening is **31 October 2026**. The direction
-(interest-only, thin headroom) is still the household question.
+published crossing on this opening is **31 October 2026**. That crossing
+remains a material Forecast condition: available headroom falls toward
+**$0** as the balance approaches the approved limit. It is not household
+cash, and it is not a TD-policy question Atlas must answer before it can
+plan.
 
-**Needs from the household:** confirm with TD what happens at the limit on an
-interest-only HELOC — whether the charge is refused, permitted with a fee, or
-the limit is reviewed. That answer decides whether this is an inconvenience or
-the most urgent item on the page.
+**Planning conclusion (owner 2026-08-18).** HELOC available credit is
+borrowing capacity, not cash. Remaining headroom must never increase
+safe-to-spend. Unapproved borrowing cannot repair an otherwise-infeasible
+plan. At the approved limit, usable borrowing headroom is **$0** and Atlas
+cannot create another draw. A planned-debt path may never draw beyond
+available capacity. If the projected debt crosses the facility limit at
+any point, the financing path is infeasible even if later repayment brings
+the ending balance back under. Lender-specific over-limit treatment —
+refusal, a fee, a forced chequing withdrawal, or a limit review — is not
+a planning blocker unless later direct institutional evidence shows a
+separate cash obligation or fee. Forecast already implements this:
+`facilityCapacity()` returns bounded non-negative headroom,
+`pendingUnknown()` is zero usable capacity, planned borrowing is opt-in
+and purpose-capped, and `projectDebts` / `plannedDebt` reject an interim
+limit crossing. Direct regression proofs live in `test-master-forecast.js`.
 
 **B71 · Triangle Mastercard is over its limit between payments, every month** · OPEN · *small*
 
