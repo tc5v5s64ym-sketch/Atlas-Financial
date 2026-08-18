@@ -52,8 +52,7 @@ account as the main phone service. That $15 line is part of the existing
 main Bell bill total. Atlas must not invent a second bill for that same
 $15 line.
 
-This 2026-08-18 HELOC closeout does not retract the 2026-08-16 owner
-confirmation that a second Bell/watch account exists and is still active.
+This 2026-08-18 HELOC closeout does not retract the 2026-08-16 owner confirmation that a second Bell/watch account exists and is still active.
 That account is not the $15 watch line on the main account. Exact current
 amount/cadence remains unknown. Q18 stays OPEN for the pending Aug. 14
 $250 Bell payment / posting residual, and for that owner-stated second

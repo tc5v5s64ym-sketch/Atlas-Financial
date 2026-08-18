@@ -146,11 +146,7 @@ Atlas must not invent a second bill for that $15 line.
 A valid $250 Bell Mobility payment is pending on Travel Visa dated Aug. 14;
 inferred residual $106.62 is an inference only while that payment remains
 pending.
-Owner confirmation 2026-08-16 (`AUG16-007`): a second Bell/watch account
-is still active. Do not merge it with the $15 watch line on the main Bell
-account. Exact current amount/cadence on that second account is not proven
-by the supplied main-account statements. Absence from those statements does
-not retract the owner-stated fact.
+Owner confirmation 2026-08-16 (`AUG16-007`): a second Bell/watch account is still active. Do not merge it with the $15 watch line on the main Bell account. Exact current amount/cadence on that second account is not proven by the supplied main-account statements. Absence from those statements does not retract the owner-stated fact.
 **Still open:** whether that pending $250 posts, and whether any remaining
 main-account Bell cash still needs a joint-cash dated row after it posts;
 and the residual second-account bill amount/cadence, unless Dale explicitly
