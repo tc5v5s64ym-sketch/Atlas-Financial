@@ -241,7 +241,7 @@ treated as zero.
 
 ## Answered
 
-### Q19. What is the remaining August 2026 HELOC cash impact given the unproven Aug. 1 PAD? — ANSWERED 2026-08-18
+### Q19. What is the remaining August HELOC cash impact given the unproven Aug. 1 PAD? — ANSWERED 2026-08-18
 **Status:** ANSWERED · **Owner:** Dale
 **Answer:** Owner evidence 2026-08-18, read against the Dec 2025–Jul 2026
 HELOC statement series already preserved in the repository.
