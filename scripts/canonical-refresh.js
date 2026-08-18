@@ -3,10 +3,17 @@
  *
  *   node scripts/canonical-refresh.js --fixture <file>
  *   node scripts/canonical-refresh.js --fixture <file> --apply --approve <previewId>
+ *   node scripts/canonical-refresh.js --fixture <file> --cutover-as-of YYYY-MM-DD
  *
  * Default is a non-writing preview. An approved write updates only the
  * posted cash/debt fields listed in that preview. Observe and reconcile
  * remain the incumbents. Forecast remains the planner.
+ *
+ * --cutover-as-of is a read-only opening-cutover preflight. It never
+ * writes data.json, meta.asOf, plan.opening, pending, snapshots, or
+ * provider state. Combining it with --apply / --approve is refused.
+ * previewId remains the posted-field preview contract; it is not a
+ * cutover approval. MATCH is not freshness.
  *
  * Never writes without --apply --approve. Never POST/PUT/PATCH/DELETE
  * Lunch Money. Never stores a token. Unattended production writes are
@@ -31,6 +38,7 @@ const CREDIT_REFUSE_FACTS = new Set([
   'pending', 'limit', 'available-credit', 'confirmed-payment', 'scheduled-payment',
 ]);
 const BACKFILL_FACTS = new Set(['posting']);
+const ISO_DATE = /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 
 function fail(message) {
   const err = new Error(message);
@@ -48,6 +56,7 @@ function parseArgs(argv) {
     apply: false,
     approve: null,
     identity: DEFAULT_IDENTITY,
+    cutoverAsOf: null,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -59,6 +68,7 @@ function parseArgs(argv) {
     else if (a === '--apply') out.apply = true;
     else if (a === '--approve') out.approve = argv[++i];
     else if (a === '--identity') out.identity = argv[++i];
+    else if (a === '--cutover-as-of') out.cutoverAsOf = argv[++i];
     else if (a === '--help' || a === '-h') out.help = true;
     else if (a === '--preview-out') {
       fail('--preview-out is not accepted. Preview writes to stdout only and cannot target canonical state.');
@@ -262,6 +272,400 @@ function identityProofLooksSanitized(doc) {
     && !/LUNCHMONEY_ACCESS_TOKEN/.test(blob);
 }
 
+function dateOnly(value) {
+  if (value == null || value === '') return null;
+  const s = String(value);
+  return s.length >= 10 ? s.slice(0, 10) : s;
+}
+
+function isIsoDate(value) {
+  return typeof value === 'string' && ISO_DATE.test(value);
+}
+
+function issue(code, explanation, extra) {
+  return Object.assign({ code, explanation }, extra || {});
+}
+
+function reconRows(report) {
+  return (report && report.reconciliation && report.reconciliation.rows) || [];
+}
+
+function isPostedFact(row) {
+  if (!row) return false;
+  if (row.fact && CREDIT_REFUSE_FACTS.has(row.fact)) return false;
+  if (row.fact && BACKFILL_FACTS.has(row.fact)) return false;
+  return !row.fact || row.fact === 'posted-balance';
+}
+
+function requiredPostedLocators(data) {
+  const out = [];
+  for (const id of POSTED_CASH) {
+    const row = cashRow(data, id);
+    out.push({
+      locator: `cash:${id}`,
+      collection: 'cash',
+      id,
+      canonicalValue: row && row.value != null && isFinite(Number(row.value))
+        ? Number(row.value)
+        : null,
+    });
+  }
+  for (const debt of (data && data.debts) || []) {
+    if (!debt || !debt.id) continue;
+    if (debt.balance == null || !isFinite(Number(debt.balance))) continue;
+    out.push({
+      locator: `debts:${debt.id}`,
+      collection: 'debts',
+      id: debt.id,
+      canonicalValue: Number(debt.balance),
+    });
+  }
+  return out;
+}
+
+function postedRowsForLocator(report, locator) {
+  return reconRows(report).filter(row => row && row.canonicalTarget === locator && isPostedFact(row));
+}
+
+function pickDatedRow(rows, requestedAsOf, opts) {
+  const allowNonExact = !!(opts && opts.allowNonExact);
+  if (!rows.length) return null;
+  const dated = rows.map(row => ({
+    row,
+    date: dateOnly(row.evidenceDate || row.observedAsOf),
+  }));
+  const exact = dated.filter(item => item.date === requestedAsOf);
+  if (exact.length) {
+    return (exact.find(item => item.row.status === 'CONFLICT') || exact[0]).row;
+  }
+  if (!allowNonExact) return null;
+  const notAfter = dated.filter(item => item.date && item.date <= requestedAsOf)
+    .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  if (notAfter.length) return notAfter[0].row;
+  const after = dated.filter(item => item.date && item.date > requestedAsOf)
+    .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  if (after.length) return after[0].row;
+  return rows[0];
+}
+
+function hasPendingState(debt) {
+  if (!debt) return false;
+  if (debt.pendingUnknown === true || debt.unknownPending === true) return true;
+  if (!Object.prototype.hasOwnProperty.call(debt, 'pending')) return false;
+  return debt.secured === false;
+}
+
+function pendingRowsForDebt(report, id) {
+  const locator = `debts:${id}#pending`;
+  return reconRows(report).filter(row => row && row.fact === 'pending' && (
+    row.cardId === id || row.canonicalTarget === locator
+  ));
+}
+
+function schedulePlan(plan) {
+  return {
+    income: (plan && plan.income) || [],
+    obligations: (plan && plan.obligations) || [],
+    bills: (plan && plan.bills) || [],
+    commitments: (plan && plan.commitments) || [],
+    startingCash: plan && plan.startingCash,
+    opening: plan && plan.opening,
+  };
+}
+
+function isJointCashOutflow(event) {
+  return !!(event && event.amount < 0 && event.kind !== 'noncash' && event.jointCash !== false);
+}
+
+function carriedUnresolvedOutflows(data, requestedAsOf) {
+  const plan = data && data.plan;
+  if (!plan) return { count: 0, total: 0, items: [] };
+  const events = Forecast.expandEvents(schedulePlan(plan), requestedAsOf, requestedAsOf, {});
+  const items = [];
+  for (const event of events) {
+    if (!event || event.date >= requestedAsOf) continue;
+    if (!isJointCashOutflow(event)) continue;
+    items.push({
+      id: event.id || null,
+      scheduledDate: event.date,
+      amount: round2(event.amount),
+      kind: event.kind || null,
+    });
+  }
+  items.sort((a, b) => String(a.scheduledDate).localeCompare(String(b.scheduledDate))
+    || String(a.id).localeCompare(String(b.id)));
+  const total = round2(items.reduce((sum, item) => sum + Number(item.amount), 0));
+  return { count: items.length, total, items };
+}
+
+function sameDayScheduledEvents(data, requestedAsOf) {
+  const plan = data && data.plan;
+  if (!plan) return [];
+  return Forecast.expandEvents(schedulePlan(plan), requestedAsOf, requestedAsOf, {})
+    .filter(event => event && event.date === requestedAsOf && event.kind !== 'noncash');
+}
+
+function sanitizedRepresentedCandidates(report, requestedAsOf) {
+  return ((report && report.representedEventCandidates) || []).map((candidate) => {
+    const classified = O.classifyRepresentedCandidate(candidate, requestedAsOf);
+    return {
+      id: classified.id || null,
+      date: classified.date || null,
+      openingRelevance: classified.openingRelevance,
+      currentOpeningImpact: classified.currentOpeningImpact === true,
+      mustNotBackfillOpening: classified.mustNotBackfillOpening !== false,
+    };
+  });
+}
+
+function pushUnique(list, item) {
+  const key = [item.code, item.locator || '', item.eventId || '', item.evidenceDate || ''].join('|');
+  if (list.some(existing => [existing.code, existing.locator || '', existing.eventId || '', existing.evidenceDate || ''].join('|') === key)) {
+    return;
+  }
+  list.push(item);
+}
+
+function newerEvidenceSupersedes(report, locator, requestedAsOf) {
+  return postedRowsForLocator(report, locator).some((row) => {
+    const evidenceDate = dateOnly(row.evidenceDate || row.observedAsOf);
+    return evidenceDate === requestedAsOf
+      && row.status !== 'CONFLICT'
+      && row.status !== 'MISSING'
+      && row.unknown !== true
+      && row.evidenceValue != null
+      && isFinite(row.evidenceValue)
+      && row.dateRelation === 'canonical-older';
+  });
+}
+
+function buildOpeningCutover(data, report, requestedAsOf) {
+  if (!isIsoDate(requestedAsOf)) {
+    fail('--cutover-as-of must be an explicit YYYY-MM-DD date. Do not infer it from fetchedAt.');
+  }
+  const blockers = [];
+  const warnings = [];
+  const metaAsOf = data && data.meta && data.meta.asOf ? String(data.meta.asOf) : null;
+  const openingAsOf = data && data.plan && data.plan.opening && data.plan.opening.asOf
+    ? String(data.plan.opening.asOf)
+    : null;
+
+  if (!metaAsOf || !openingAsOf || metaAsOf !== openingAsOf) {
+    pushUnique(blockers, issue(
+      'canonical-as-of-incoherent',
+      'meta.asOf and plan.opening.asOf must already agree before Atlas can reason about a successor opening.',
+      { currentMetaAsOf: metaAsOf, currentOpeningAsOf: openingAsOf }
+    ));
+  }
+  if (openingAsOf && requestedAsOf < openingAsOf) {
+    pushUnique(blockers, issue(
+      'requested-as-of-before-current-opening',
+      'A requested cutover date earlier than the current canonical opening is rejected.',
+      { requestedAsOf, currentOpeningAsOf: openingAsOf }
+    ));
+  }
+  if (openingAsOf && requestedAsOf === openingAsOf) {
+    pushUnique(warnings, issue(
+      'same-date-not-an-opening-advance',
+      'This is a same-date diagnostic of the current opening, not an opening-date advance.'
+    ));
+  }
+
+  const accountFreshness = requiredPostedLocators(data).map((loc) => {
+    const rows = postedRowsForLocator(report, loc.locator);
+    const row = pickDatedRow(rows, requestedAsOf, { allowNonExact: true });
+    const evidenceDate = row ? dateOnly(row.evidenceDate || row.observedAsOf) : null;
+    const observedValue = row && row.unknown !== true && row.evidenceValue != null && isFinite(row.evidenceValue)
+      ? row.evidenceValue
+      : null;
+    const fresh = !!(row
+      && evidenceDate === requestedAsOf
+      && row.unknown !== true
+      && observedValue != null
+      && row.status !== 'CONFLICT'
+      && row.status !== 'MISSING');
+    if (!row) {
+      pushUnique(blockers, issue(
+        'missing-posted-opening-evidence',
+        `No trustworthy posted evidence exists for ${loc.locator} on ${requestedAsOf}.`,
+        { locator: loc.locator }
+      ));
+    } else if (row.status === 'CONFLICT' && evidenceDate === requestedAsOf) {
+      pushUnique(blockers, issue(
+        'same-day-no-winner',
+        `Conflicting posted observations for ${loc.locator} on ${requestedAsOf} have no trustworthy winner.`,
+        { locator: loc.locator, evidenceDate }
+      ));
+    } else if (evidenceDate !== requestedAsOf) {
+      pushUnique(blockers, issue(
+        'stale-posted-opening-evidence',
+        `Posted evidence for ${loc.locator} is dated ${evidenceDate || 'unknown'}, not ${requestedAsOf}. MATCH is not freshness.`,
+        { locator: loc.locator, evidenceDate, reconcileStatus: row.status || null }
+      ));
+    }
+    return {
+      locator: loc.locator,
+      canonicalValue: loc.canonicalValue,
+      observedValue,
+      evidenceDate,
+      reconcileStatus: row ? (row.status || null) : 'MISSING',
+      dateRelation: row ? (row.dateRelation || null) : null,
+      freshForRequestedAsOf: fresh,
+    };
+  });
+
+  const pendingDebts = [];
+  const seenPending = new Set();
+  for (const debt of (data && data.debts) || []) {
+    if (!hasPendingState(debt) || seenPending.has(debt.id)) continue;
+    seenPending.add(debt.id);
+    pendingDebts.push(debt);
+  }
+  for (const row of reconRows(report)) {
+    if (!row || row.fact !== 'pending' || !row.cardId || seenPending.has(row.cardId)) continue;
+    const debt = debtRow(data, row.cardId);
+    if (!debt) continue;
+    seenPending.add(row.cardId);
+    pendingDebts.push(debt);
+  }
+
+  for (const debt of pendingDebts) {
+    const locator = `debts:${debt.id}#pending`;
+    const unknown = debt.pendingUnknown === true || debt.unknownPending === true;
+    const known = !unknown && debt.pending != null && debt.pending !== '' && isFinite(Number(debt.pending));
+    const row = pickDatedRow(pendingRowsForDebt(report, debt.id), requestedAsOf, { allowNonExact: false });
+    if (unknown) {
+      const observedUnknown = !row || row.unknown === true || row.evidenceValue == null || !isFinite(row.evidenceValue);
+      if (observedUnknown) {
+        pushUnique(warnings, issue(
+          'pending-remains-unknown',
+          `Canonical pending for ${debt.id} remains UNKNOWN. UNKNOWN is not zero.`,
+          { locator, observedValue: null }
+        ));
+      } else {
+        pushUnique(blockers, issue(
+          'pending-state-change-unresolved',
+          `Canonical pending for ${debt.id} is UNKNOWN but candidate-date evidence reports a numeric amount. Pending cannot be written.`,
+          { locator, canonicalValue: null, observedValue: row.evidenceValue }
+        ));
+      }
+      continue;
+    }
+    if (!known) continue;
+    if (!row) {
+      pushUnique(blockers, issue(
+        'pending-freshness-unproven',
+        `Canonical pending for ${debt.id} is a known numeric value from an older opening and has no candidate-date evidence. It is not current.`,
+        { locator, canonicalValue: Number(debt.pending) }
+      ));
+      continue;
+    }
+    if (row.unknown === true || row.evidenceValue == null || !isFinite(row.evidenceValue)) {
+      pushUnique(blockers, issue(
+        'pending-freshness-unproven',
+        `Candidate-date pending evidence for ${debt.id} does not prove the numeric pending state.`,
+        { locator, canonicalValue: Number(debt.pending), observedValue: null }
+      ));
+      continue;
+    }
+    if (!near(row.evidenceValue, Number(debt.pending))) {
+      pushUnique(blockers, issue(
+        'pending-state-change-unresolved',
+        `Candidate-date pending for ${debt.id} differs from canonical pending. The new opening cannot retain ${Number(debt.pending)}. Pending cannot be written.`,
+        { locator, canonicalValue: Number(debt.pending), observedValue: row.evidenceValue }
+      ));
+    }
+  }
+
+  for (const discrepancy of (report && report.sameDayDiscrepancies) || []) {
+    if (!discrepancy || !discrepancy.canonicalTarget) continue;
+    if (discrepancy.fact && CREDIT_REFUSE_FACTS.has(discrepancy.fact) && discrepancy.fact !== 'pending') continue;
+    if (discrepancy.fact === 'pending') continue;
+    if (newerEvidenceSupersedes(report, discrepancy.canonicalTarget, requestedAsOf)) continue;
+    pushUnique(blockers, issue(
+      'same-day-no-winner',
+      `Same-day reconciliation conflict for ${discrepancy.canonicalTarget} has no trustworthy winner and must not silently participate in the requested opening.`,
+      {
+        locator: discrepancy.canonicalTarget,
+        evidenceDate: discrepancy.evidenceDate || null,
+        fact: discrepancy.fact || null,
+      }
+    ));
+  }
+
+  const candidates = sanitizedRepresentedCandidates(report, requestedAsOf);
+  const sameDayEvents = sameDayScheduledEvents(data, requestedAsOf).map((event) => {
+    const hit = candidates.find(candidate => candidate.id === event.id
+      && candidate.date === event.date
+      && candidate.currentOpeningImpact === true);
+    if (hit) {
+      return {
+        id: event.id,
+        date: event.date,
+        kind: event.kind,
+        amount: round2(event.amount),
+        representation: 'REPRESENTED',
+        representedEventsCandidate: { id: event.id, date: event.date },
+      };
+    }
+    return {
+      id: event.id,
+      date: event.date,
+      kind: event.kind,
+      amount: round2(event.amount),
+      representation: 'UNKNOWN',
+      representedEventsCandidate: null,
+    };
+  });
+  for (const event of sameDayEvents) {
+    if (event.representation !== 'UNKNOWN') continue;
+    pushUnique(blockers, issue(
+      'same-day-event-representation-unknown',
+      `Scheduled cash event ${event.id} on ${event.date} is not proven to be already inside the observed opening balances.`,
+      { eventId: event.id, date: event.date }
+    ));
+  }
+  for (const candidate of candidates) {
+    if (!candidate.date || candidate.date >= requestedAsOf) continue;
+    pushUnique(warnings, issue(
+      'historical-represented-candidate-not-promoted',
+      `Provider identity hit for ${candidate.id} on ${candidate.date} is historical evidence and must not become representedEvents on ${requestedAsOf}.`,
+      { eventId: candidate.id, evidenceDate: candidate.date }
+    ));
+  }
+
+  const unmappedCount = report && report.unmapped ? report.unmapped.length : 0;
+  if (unmappedCount > 0) {
+    pushUnique(warnings, issue(
+      'unmapped-account-materiality-unknown',
+      'Unmapped provider accounts are not inferred into household state. Materiality remains unknown; they are not spendable household cash.',
+      { unmappedCount }
+    ));
+  }
+
+  blockers.sort((a, b) => String(a.code).localeCompare(String(b.code))
+    || String(a.locator || '').localeCompare(String(b.locator || ''))
+    || String(a.eventId || '').localeCompare(String(b.eventId || '')));
+  warnings.sort((a, b) => String(a.code).localeCompare(String(b.code))
+    || String(a.locator || '').localeCompare(String(b.locator || ''))
+    || String(a.eventId || '').localeCompare(String(b.eventId || '')));
+
+  return {
+    requestedAsOf,
+    currentMetaAsOf: metaAsOf,
+    currentOpeningAsOf: openingAsOf,
+    writesOpening: false,
+    cutoverWriteSupported: false,
+    status: blockers.length ? 'BLOCKED' : 'READY_FOR_OWNER_REVIEW',
+    accountFreshness,
+    blockers,
+    warnings,
+    sameDayEvents,
+    carriedUnresolvedOutflows: carriedUnresolvedOutflows(data, requestedAsOf),
+    unmappedCount,
+  };
+}
+
 function buildPreview(report, opts) {
   const { proposed, refused } = proposeFromReport(report);
   const previewId = previewIdFrom(proposed, refused);
@@ -312,9 +716,12 @@ async function loadPayload(args) {
   return loadJson(args.fixture);
 }
 
-function previewFrom(input) {
+function previewFrom(input, opts) {
   const report = O.observe(input);
   const preview = buildPreview(report);
+  if (opts && opts.cutoverAsOf) {
+    preview.openingCutover = buildOpeningCutover(input.data, report, opts.cutoverAsOf);
+  }
   preview.identityProofSanitized = identityProofLooksSanitized(preview);
   if (!preview.identityProofSanitized) fail('Preview is not sanitized.');
   return { report, preview };
@@ -431,11 +838,19 @@ async function run(argv) {
     process.stdout.write(
       'Usage: node scripts/canonical-refresh.js --fixture <file> [--map <file>] [--data <file>]\n'
       + '       node scripts/canonical-refresh.js --fixture <file> --apply --approve <previewId> --data <file>\n'
+      + '       node scripts/canonical-refresh.js --fixture <file> --cutover-as-of YYYY-MM-DD\n'
       + 'Default is a non-writing preview. --live is preview-only unless --apply --approve is also set.\n'
+      + '--cutover-as-of is read-only opening-cutover preflight and cannot be combined with --apply.\n'
     );
     return 0;
   }
   if (args.provider !== 'lunchmoney') fail('Only --provider lunchmoney is implemented.');
+  if (args.cutoverAsOf && (args.apply || args.approve)) {
+    fail('--cutover-as-of is read-only. Combining it with --apply or --approve is refused. Canonical state was not written.');
+  }
+  if (args.cutoverAsOf && !isIsoDate(args.cutoverAsOf)) {
+    fail('--cutover-as-of must be an explicit YYYY-MM-DD date. Do not infer it from fetchedAt.');
+  }
   if (args.apply && !args.approve) fail('No approval = no canonical write. Pass --approve <previewId>.');
   const data = loadJson(args.data);
   const originalBytes = fs.readFileSync(args.data);
@@ -443,7 +858,10 @@ async function run(argv) {
   const mapPath = args.map || O.resolveMapPath({ live: args.live, fixture: args.fixture, map: args.map });
   const accountMap = loadJson(mapPath);
   if (args.live) O.assertLiveMap(accountMap);
-  const { preview } = previewFrom(observeInput(args, data, payload, accountMap));
+  const { preview } = previewFrom(
+    observeInput(args, data, payload, accountMap),
+    args.cutoverAsOf ? { cutoverAsOf: args.cutoverAsOf } : undefined
+  );
   if (!args.apply) {
     process.stdout.write(`${JSON.stringify(preview, null, 2)}\n`);
     return 0;
@@ -480,6 +898,9 @@ const api = {
   proposeFromReport,
   previewIdFrom,
   identityProofLooksSanitized,
+  isIsoDate,
+  requiredPostedLocators,
+  buildOpeningCutover,
   buildPreview,
   previewFrom,
   applyChange,
