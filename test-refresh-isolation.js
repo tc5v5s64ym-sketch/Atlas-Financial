@@ -81,7 +81,7 @@ const CASES = [
   {
     id: 'payrollBill',
     label: 'CASE C — payroll +$200 and Shaw +$20',
-    allow: ['test-invariants.js', 'test-live-household.js'],
+    allow: ['test-live-household.js'],
     mutate(d) {
       d.plan.income.find(s => s.id === 'payroll').amount += 200;
       d.plan.bills.find(b => b.id === 'shaw').amount += 20;

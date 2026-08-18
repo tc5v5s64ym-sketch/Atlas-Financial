@@ -133,29 +133,42 @@ consider a fund change. No change is authorised until this is answered.
 versus beneficiary). Correction is with Sun Life, never automated.
 **What the answer changes:** An owner action only. Atlas must not attempt it.
 
-### Q18. What remains unresolved on Bell Mobility payment route and the second Bell/watch account amount?
+### Q18. What remains unresolved on Bell Mobility settlement state and the second Bell/watch account amount?
 **Status:** OPEN · **Owner:** Dale + Amanda
-**What we know (2026-08-16 statements; $15 watch-line placement from those statements):**
-TELUS IS CLOSED and is not forecast as an active bill. Noble Disposal
-Services is the household garbage bill: $95.85 every 3 months on the 18th
-(Forecast quarterly row, firstDue 2026-09-18). Main Bell August 1 bill is
-$356.62 due Aug. 17 (arrears + travel/roaming, not the ~$104.20 normal
-monthly baseline). The $15 watch line is on **the same Bell account** as the
-main phone service and is already inside that existing Bell bill total.
-Atlas must not invent a second bill for that $15 line.
-A valid $250 Bell Mobility payment is pending on Travel Visa dated Aug. 14;
-inferred residual $106.62 is an inference only while that payment remains
-pending.
-Owner confirmation 2026-08-16 (`AUG16-007`): a second Bell/watch account is still active. Do not merge it with the $15 watch line on the main Bell account. Exact current amount/cadence on that second account is not proven by the supplied main-account statements. Absence from those statements does not retract the owner-stated fact.
-**Still open:** whether that pending $250 posts, and whether any remaining
-main-account Bell cash still needs a joint-cash dated row after it posts;
-and the residual second-account bill amount/cadence, unless Dale explicitly
-retracts or corrects the 2026-08-16 owner confirmation. Do not double-count
-the main Bell obligation, the pending card payment, and a second invented
-copy of the $15 watch line already inside the main bill.
+**What we know (2026-08-16 statements; $15 watch-line placement from those statements; 2026-08-18 owner closeout):**
+TELUS IS CLOSED and contributes **$0** forward. It is not a telecom-cost question. Noble Disposal Services is the household garbage bill: $95.85 every
+3 months on the 18th (Forecast quarterly row, firstDue 2026-09-18).
+
+**Telecom cost (not an open evidence question for these services):**
+Shaw internet is $78.40/month, dated, paid from joint chequing. Main Bell
+June statement is the normal recurring baseline: $70.00 monthly services +
+$25.80 device payment + $8.40 taxes ≈ **$104.20**. The $15 watch line is on
+**the same Bell account** as the main phone service and is already inside
+that existing Bell bill total. Atlas must not invent a second bill for that
+$15 line. The Aug. 1 $356.62 bill is arrears + travel/roaming, not the
+baseline. A valid $250 Bell Mobility payment is pending on Travel Visa dated
+Aug. 14; that is settlement/payment-route evidence, not a second telecom
+expense.
+
+**Still open — settlement state, not cost:** whether that pending $250 posts,
+and whether any remaining main-account Bell cash still needs a joint-cash
+dated row after it posts.
+
+**Still open — one specific active-service fact:** Owner confirmation
+2026-08-16 (`AUG16-007`): a second Bell/watch account is still active. Do
+not merge it with the $15 watch line on the main Bell account. Exact current
+amount/cadence on that second account is not in the supplied main-account
+statements, Lunch Money fixtures, or committed category rollups (July
+Telecom independently equals Shaw $78.40 + the $250 main-account payment).
+Absence from those sources does not retract the owner-stated fact. Do not
+invent an amount.
+
+Do not double-count the main Bell obligation, the pending card payment, and
+a second invented copy of the $15 watch line already inside the main bill.
 **What the answer changes:** Whether any remaining main-account Bell cash
 still needs a dated joint-cash row after the pending $250 posts, and the
-unresolved second-account amount.
+unresolved second-account amount. It does not reopen Telus or the main Bell
+baseline.
 
 ### Q20. What emergency-reserve target, Amanda retirement/RESP intent, and Dale policy view should apply? How should true surplus be used?
 **Status:** OPEN · **Owner:** Dale + Amanda

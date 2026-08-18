@@ -81,20 +81,33 @@ steady value, not the 18-month median.
 | **every 14 days** (payday cadence) | Fit4Less | $11.54 | 18 months; plus a ~$22 annual fee each July |
 | **18th, every 3 months** | Noble Disposal Services — garbage | **$95.85** | Invoice cadence; Forecast quarterly row, firstDue 2026-09-18 |
 
-**TELUS IS CLOSED** (owner-confirmed 2026-08-16). Do not forecast Telus as an
-active household bill unless newer transaction evidence proves a new active
-Telus service. Historical Telus charges remain in the captured telecom
-series; that is history, not a live recurrence. The current Plan remainder
-after dated Shaw contains non-Shaw current spend and is **not** proven to be closed Telus.
-Committed `periods.json` rolls merchants into Telecom, so Telus dollars
-cannot be split from Shaw, Bell, or other Telecom. July 2026 — after Telus
-last appears in captured history (March 2026) — still shows Telecom
-**$328.40**, which independently equals Shaw **$78.40** plus **$250.00** of
-non-Shaw telecom. That identity disproves an entirely-Telus remainder; it
-does **not** prove historical Telus contributes $0 to the YTD-derived
-remainder. The amount of closed-Telus contamination in that remainder is
-**UNKNOWN** from committed category rollups. Do not zero the remainder, and
-do not invent a Bell amount to replace it. Q18 remains the Bell / watch path.
+**TELUS IS CLOSED** (owner-confirmed 2026-08-16; owner closeout 2026-08-18).
+Future Telus cost is **$0**. Do not forecast Telus as an active household bill
+unless newer transaction evidence proves a new active Telus service. Historical
+Telus charges remain legitimate historical spending and must not be deleted,
+rewritten, or recategorized merely because the service is closed.
+
+Forward telecom planning uses the evidenced active services, not the YTD
+blended Telecom average. Committed `periods.json` still rolls merchants into
+Telecom — that is historical truth, not the current requirement. July 2026,
+after Telus last appears in captured history (March 2026), is Telecom
+**$328.40** = Shaw **$78.40** + **$250.00** non-Shaw (the Bell Mobility card
+payment). That identity is history. It does not set the forward remainder.
+
+Current evidenced active services:
+
+- **Shaw internet** — **$78.40/month**, dated on the calendar, paid from
+  BILLS ACCOUNT (joint chequing).
+- **Main Bell Mobility** — June 2026 normal recurring baseline **$104.20/month**
+  (card-paid; see below). Includes the $15 watch line. Not a joint-chequing
+  bill.
+- **Telus** — **$0** forward.
+
+There is no remaining Telus planning question and no need to quantify how much
+historical Telus spending appears inside old category averages. A generic
+merchant-split request is not a planning blocker merely because old Telecom
+totals contain Telus. Q18 is the Bell settlement-state path and the
+owner-stated second Bell/watch account amount, not a Telus-cost question.
 
 **Noble Disposal Services** is the household garbage bill (owner-confirmed
 2026-08-16; primary invoice): $95.85 every 3 months on the 18th, Package A
@@ -133,7 +146,12 @@ Exact current amount/cadence is not proven by this package. Absence of that
 account from the supplied main-account statements is not a retraction.
 Q18 stays open for whether the pending $250 posts and whether any residual
 main-account Bell cash still needs a dated joint-cash row after that
-posting, and for the owner-stated second Bell/watch account amount.
+posting, and for the owner-stated second Bell/watch account amount. The
+main-account **recurring cost** is the June baseline above; that is not a
+Q18 cost question. Do not invent a second-account amount. Absence of that
+account from the supplied main-account statements and from committed
+category rollups (July Telecom = Shaw + the $250 main-account payment) is
+not a retraction of the owner confirmation.
 
 **CMAW Local 1995 union dues ($25/month on the 15th) remain a standing Plan
 bill until cancellation is actually confirmed.** They still appear in the

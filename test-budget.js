@@ -37,6 +37,7 @@ console.log('\n=== amounts are DERIVED, not duplicated ===');
 // typed into data.json, so it cannot drift from the generated history.
 for (const c of plan.budget.categories) {
   if (c.plannedMonthly != null) continue;
+  if (c.currentMonthly != null) continue;
   const declared = JSON.stringify(c);
   if (/\d{3,}\.\d\d/.test(declared.replace(/"why":"[^"]*"/, ''))) {
     ok(false, `category ${c.id} carries a hardcoded amount`, declared.slice(0, 120));
@@ -97,20 +98,20 @@ const bcaa = plan.bills.find(b => b.id === 'bcaa');
 const icbc = plan.bills.find(b => b.id === 'icbc');
 const fit = plan.bills.find(b => b.id === 'fit4less');
 ok(near(telecom.dated, shaw.amount), 'Shaw is subtracted from the telecom average', money(telecom.dated));
-ok(near(telecom.planned, telecom.historical - shaw.amount),
-  'so telecom carries only the undated remainder', money(telecom.planned));
+ok(near(telecom.planned, telecom.current),
+  'so telecom planned is the current-regime undated amount, not historical − Shaw', money(telecom.planned));
 
-console.log('\n=== closed Telus has $0 recurrence; remainder contamination is unquantified ===');
+console.log('\n=== closed Telus is $0 forward; remainder is current-regime Bell ===');
 // Independent of Forecast.budgetBreakdown: category totals in generated
 // periods.json minus the dated Shaw row. Snapshot dollars for the current
-// opening live in test-aug16-evidence.js so an ordinary Shaw refresh cannot
-// make this behaviour suite fail (B92).
+// opening live in test-aug16-evidence.js / test-telecom-current-regime.js
+// so an ordinary Shaw refresh cannot make this behaviour suite fail (B92).
 const ytdTelecom = periods.periods.ytd.spending.find(s => s.label === 'Telecom');
 const lastTelecom = periods.periods.lastMonth.spending.find(s => s.label === 'Telecom');
 const allTelecom = periods.periods.all.spending.find(s => s.label === 'Telecom');
 const ytdMonths = periods.periods.ytd.months;
 const independentYtdAvg = ytdTelecom.total / ytdMonths;
-const independentRemainder = independentYtdAvg - shaw.amount;
+const independentHistoricalRemainder = independentYtdAvg - shaw.amount;
 ok(near(ytdTelecom.total, 1750.61) && ytdMonths === 8,
   'YTD Telecom historical total is $1,750.61 over 8 months',
   money(ytdTelecom.total));
@@ -118,22 +119,24 @@ ok(near(independentYtdAvg, 218.82625),
   'independent YTD average is $218.83/month', money(independentYtdAvg));
 ok(shaw && shaw.budgetCategory === 'telecom' && shaw.frequency === 'monthly',
   'Shaw is the one dated monthly telecom bill', money(shaw.amount));
-ok(near(telecom.historical, independentYtdAvg)
-  && near(telecom.planned, independentRemainder),
-  'budgetBreakdown remainder is independently YTD Telecom / months − Shaw',
-  money(independentRemainder));
+ok(near(telecom.historical, independentYtdAvg),
+  'budgetBreakdown still reports the independent YTD historical average',
+  money(independentYtdAvg));
+ok(near(telecom.planned, 104.2) && near(telecom.current, 104.2),
+  'forward remainder is the evidenced Bell baseline, not YTD − Shaw',
+  money(telecom.planned));
 ok(telecom.datedItems.length === 1 && telecom.datedItems[0].label === 'Shaw internet'
   && near(telecom.datedItems[0].amount, shaw.amount),
   'Shaw is counted once — the only dated telecom item');
 ok(!(plan.bills || []).some(b => /telus/i.test(String(b.id) + ' ' + String(b.label))),
   'no Telus plan.bills row — current Telus recurrence is $0');
 ok(!(plan.bills || []).some(b => /bell/i.test(String(b.id) + ' ' + String(b.label))),
-  'no Bell bill was invented to replace closed Telus');
-ok(telecom.target == null && telecom.source === 'historical-actual',
-  'telecom remainder is derived historical-actual, not a hardcoded replacement');
-ok(lastTelecom.total - shaw.amount > independentRemainder,
-  'July non-Shaw remainder is larger than the YTD remainder — remainder is not entirely Telus',
-  money(lastTelecom.total - shaw.amount) + ' vs ' + money(independentRemainder));
+  'no Bell cash bill was invented — card-paid Bell stays out of plan.bills');
+ok(telecom.target == null && telecom.source === 'current-regime',
+  'telecom remainder is current-regime, not owner-target or historical-actual');
+ok(lastTelecom.total - shaw.amount > independentHistoricalRemainder,
+  'July non-Shaw remainder is larger than the YTD historical remainder',
+  money(lastTelecom.total - shaw.amount) + ' vs ' + money(independentHistoricalRemainder));
 ok(near(allTelecom.total, 3534.93) && allTelecom.total > ytdTelecom.total,
   'full-history Telecom $3,534.93 is preserved — history was not rewritten',
   money(allTelecom.total));
@@ -227,14 +230,18 @@ ok(plan.budget.ownerTargets.status === 'partial',
   plan.budget.ownerTargets.status);
 ok(budget.ownerTargetCount === 9, 'nine categories carry an owner target', String(budget.ownerTargetCount));
 for (const c of budget.categories) {
-  const expected = c.target != null ? 'owner-target' : 'historical-actual';
-  if (c.source !== expected) ok(false, `category ${c.id} is mislabelled`, `${c.source} but target=${c.target}`);
+  const expected = c.target != null ? 'owner-target'
+    : c.current != null ? 'current-regime'
+    : 'historical-actual';
+  if (c.source !== expected) ok(false, `category ${c.id} is mislabelled`, `${c.source} but target=${c.target} current=${c.current}`);
 }
 ok(budget.categories.length >= 18,
-  'every category is labelled owner-target or historical-actual to match what it holds',
+  'every category is labelled owner-target, current-regime, or historical-actual to match what it holds',
   `${budget.categories.length} categories checked`);
-ok(budget.categories.filter(c => c.source === 'historical-actual').length === 9,
-  'and the nine without a target are still honestly historical');
+ok(budget.categories.filter(c => c.source === 'historical-actual').length === 8,
+  'the eight without a target or current-regime stay honestly historical');
+ok(budget.categories.filter(c => c.source === 'current-regime').length === 1,
+  'exactly one category uses current-regime');
 // A target must never be silently invented from an average.
 for (const c of plan.budget.categories) {
   if (c.plannedMonthly != null) {
@@ -276,6 +283,53 @@ ok(plan.budget.categories.length >= 18
   && plan.budget.categories.every(c => c.why && c.why.length >= 20),
   'every category states why its assumption won',
   `${plan.budget.categories.length} reasons present`);
+
+console.log('\n=== current-regime outranks historical and loses to owner target ===');
+{
+  const fixturePeriods = {
+    periods: {
+      ytd: {
+        label: 'YTD',
+        months: 4,
+        spending: [{ label: 'Phones', total: 800 }],
+      },
+    },
+  };
+  const fixturePlan = {
+    windowDays: 91,
+    bills: [{
+      id: 'net', label: 'Internet', frequency: 'monthly', amount: 80,
+      budgetCategory: 'phones',
+    }],
+    commitments: [],
+    budget: {
+      basis: 'ytd',
+      categories: [{
+        id: 'phones', label: 'Phones', class: 'essential',
+        from: ['Phones'], plannedMonthly: null, currentMonthly: 100,
+      }],
+    },
+  };
+  const regime = F.budgetBreakdown(fixturePlan, fixturePeriods, {});
+  const row = regime.categories[0];
+  ok(near(row.historical, 200),
+    'synthetic historical is independently 800 / 4', money(row.historical));
+  ok(near(row.dated, 80), 'synthetic dated internet is $80');
+  ok(near(row.current, 100) && row.source === 'current-regime',
+    'current-regime source is labelled');
+  ok(near(row.gross, 180) && near(row.planned, 100),
+    'gross is current + dated; planned is the undated current amount',
+    money(row.planned));
+  ok(near(row.planned, 100) && !near(row.planned, 200 - 80),
+    'planned is not the historical remainder');
+
+  fixturePlan.budget.categories[0].plannedMonthly = 250;
+  const ownerWins = F.budgetBreakdown(fixturePlan, fixturePeriods, {});
+  const owned = ownerWins.categories[0];
+  ok(owned.source === 'owner-target' && near(owned.gross, 250)
+    && near(owned.planned, 170),
+    'owner target still beats current-regime', money(owned.planned));
+}
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
 process.exit(failures === 0 ? 0 : 1);

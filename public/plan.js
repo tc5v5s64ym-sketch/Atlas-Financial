@@ -302,7 +302,7 @@ const RISK_WHAT = {
   helocDrawn: r => `The HELOC passes its own limit on ${fmtDateLong(r.date)}, and this plan draws ${money(r.drawn)} on it`,
   helocNoDraw: r => `The HELOC passes its own limit on ${fmtDateLong(r.date)} with no new borrowing`,
   facilityCrossing: r => `${r.label} goes over its limit on ${fmtDateLong(r.date)}`,
-  telecomUnrouted: r => `Closed Telus is not an active bill — historical telecom remainder ${money(r.planned)}/month still sits inside the cap`,
+  telecomUnrouted: r => `Card-paid Bell ${money(r.planned)}/month sits inside the cap — Shaw is dated; Telus is $0 forward`,
 };
 const RISK_CHANGE = {
   amandaRequired: r =>
@@ -327,7 +327,7 @@ const RISK_CHANGE = {
                in the days before each payment. Each crossing risks an over-limit fee on top of the interest,
                which raises the card's effective rate above its headline one.`,
   telecomUnrouted: () =>
-    `TELUS IS CLOSED (owner-confirmed 2026-08-16). Historical telecom spending still leaves a remainder after Shaw is dated. That remainder is not a live Telus recurrence.`,
+    `TELUS IS CLOSED. Forward telecom is the evidenced active services. This cap remainder is the main Bell June baseline, not a live Telus bill, not a second Shaw, and not a duplicate $15 watch line.`,
 };
 
 /* ------------------------------------------- HELOC month-on-month, in words */

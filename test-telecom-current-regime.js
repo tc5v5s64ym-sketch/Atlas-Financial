@@ -1,0 +1,143 @@
+'use strict';
+/* Independent proof that forward telecom uses evidenced active services.
+ * `node test-telecom-current-regime.js`
+ *
+ * Does NOT use Forecast.budgetBreakdown as the authority for the Bell
+ * baseline or the delta. Historical totals are read from periods.json.
+ * Shaw is read from plan.bills. The Bell baseline is reconstructed from
+ * the June statement lines recorded in ACCOUNT_FACTS / source evidence.
+ */
+const fs = require('fs');
+const path = require('path');
+const F = require('./public/forecast.js');
+const data = require('./data.json');
+const periods = require('./public/periods.json');
+const { sourceText } = require('./test-source-text');
+
+let failures = 0;
+const ok = (cond, label, detail = '') => {
+  if (!cond) failures++;
+  console.log(`  ${cond ? 'PASS' : 'FAIL'}  ${label}${detail ? '  — ' + detail : ''}`);
+};
+const near = (a, b, eps = 0.005) => Math.abs(Number(a) - Number(b)) <= eps;
+const money = n => Number(n).toFixed(2);
+
+const plan = data.plan;
+const asOf = data.meta.asOf;
+const facts = sourceText(fs.readFileSync(path.join(__dirname, 'docs/ACCOUNT_FACTS.md'), 'utf8'));
+const evidence = sourceText(fs.readFileSync(
+  path.join(__dirname, 'docs/source_intake/HOUSEHOLD_EVIDENCE_2026-08-16.md'), 'utf8'));
+
+console.log('=== historical Telecom totals are unchanged ===');
+const ytd = periods.periods.ytd.spending.find(s => s.label === 'Telecom');
+const last = periods.periods.lastMonth.spending.find(s => s.label === 'Telecom');
+const all = periods.periods.all.spending.find(s => s.label === 'Telecom');
+ok(near(ytd.total, 1750.61) && periods.periods.ytd.months === 8,
+  'YTD Telecom $1,750.61 over 8 months is preserved');
+ok(near(all.total, 3534.93) && periods.periods.all.months === 19,
+  'full-history Telecom $3,534.93 over 19 months is preserved');
+ok(near(last.total, 328.40),
+  'July 2026 Telecom $328.40 is preserved');
+
+console.log('\n=== independent BEFORE historical remainder ===');
+const shaw = (plan.bills || []).find(b => b.id === 'shaw');
+const historicalAvg = ytd.total / periods.periods.ytd.months;
+const beforeRemainder = historicalAvg - shaw.amount;
+ok(near(historicalAvg, 218.82625),
+  'BEFORE historical monthly assumption is independently $218.83',
+  money(historicalAvg));
+ok(shaw && near(shaw.amount, 78.4) && shaw.budgetCategory === 'telecom',
+  'dated/explicit Shaw is $78.40 once');
+ok(near(beforeRemainder, 140.42625),
+  'BEFORE stale remainder is independently YTD − Shaw = $140.43',
+  money(beforeRemainder));
+ok(near(last.total, shaw.amount + 250),
+  'July independently equals Shaw + $250 Bell payment, not a second Shaw');
+
+console.log('\n=== independent AFTER active-service requirement ===');
+// June statement lines from the absorbed evidence, not from budgetBreakdown.
+ok(/\$70\.00 monthly services/.test(evidence) && /\$25\.80 device payment/.test(evidence)
+  && /\$8\.40 taxes/.test(evidence),
+  'June statement lines are in the 2026-08-16 evidence pack');
+const bellBaseline = 70 + 25.80 + 8.40;
+ok(near(bellBaseline, 104.20),
+  'independent June baseline is $70.00 + $25.80 + $8.40 = $104.20',
+  money(bellBaseline));
+ok(/≈ \*\*\$104\.20\*\*/.test(facts) || /≈ \*\*\$104.20\*\*/.test(facts)
+  || /baseline \*\*\$104\.20\/month\*\*/.test(facts),
+  'ACCOUNT_FACTS records the same June baseline');
+const telusForward = 0;
+const afterGross = shaw.amount + bellBaseline + telusForward;
+const afterRemainder = afterGross - shaw.amount;
+ok(near(afterGross, 182.60),
+  'AFTER gross is Shaw $78.40 + Bell $104.20 + Telus $0 = $182.60',
+  money(afterGross));
+ok(near(afterRemainder, 104.20) && near(telusForward, 0),
+  'AFTER remainder is Bell $104.20; Telus forward is $0',
+  money(afterRemainder));
+
+console.log('\n=== engine follows the independent reconstruction ===');
+const opts = {
+  scenario: plan.defaults.scenario, incomeOverrides: {}, disabled: [],
+  extraDebtMonthly: plan.defaults.extraDebtMonthly || 0,
+  targetBuffer: plan.defaults.targetBuffer,
+};
+opts.fundingSources = (plan.funding || {}).options;
+opts.extraFacilities = data.revolvingExtra;
+const advice = F.recommend(plan, asOf, opts);
+const budget = F.budgetBreakdown(plan, periods, {
+  paypalPerMonth: data.paypal ? data.paypal.perMonth : 0,
+  weeklyCap: advice.weekly,
+  asOf,
+});
+const telecom = budget.categories.find(c => c.id === 'telecom');
+ok(telecom.source === 'current-regime' && near(telecom.current, bellBaseline),
+  'engine current-regime amount equals the independent Bell baseline');
+ok(near(telecom.historical, historicalAvg),
+  'engine historical still equals the independent YTD average');
+ok(near(telecom.dated, shaw.amount) && telecom.datedItems.length === 1,
+  'engine dated is Shaw once');
+ok(near(telecom.gross, afterGross) && near(telecom.planned, afterRemainder),
+  'engine gross/planned match the independent AFTER reconstruction');
+
+console.log('\n=== exact delta is entirely the telecom correction ===');
+// BEFORE figures reproduced on main abcfd0dfd90dee6eea328af8bb518e7953ce0f79
+// from periods.json + recommend + budgetBreakdown, before this change.
+const beforeRequired = 4039.53375;
+const beforeEssential = 3523.23625;
+const beforeShortfall = 39.17660714285739;
+const delta = beforeRemainder - afterRemainder;
+ok(near(delta, 36.22625),
+  'independent remainder delta is $36.23/month', money(delta));
+ok(advice.weekly === 920,
+  'weekly cap is unchanged at $920 — recommend does not read the remainder',
+  String(advice.weekly));
+ok(near(advice.sim.ending, 6683.34999999999, 0.01),
+  'ending cash is unchanged — dated cash events did not move');
+ok(near(budget.requiredMonthly, beforeRequired - delta),
+  'AFTER requiredMonthly is BEFORE required minus the independent remainder delta',
+  money(budget.requiredMonthly));
+ok(near(budget.essentialMonthly, beforeEssential - delta),
+  'AFTER essentialMonthly is BEFORE essential minus the same delta',
+  money(budget.essentialMonthly));
+const WEEKS = 365.25 / 12 / 7;
+ok(near(budget.cap.essentialWeekly, (beforeRequired - delta) / WEEKS),
+  'required/week follows AFTER requiredMonthly from the calendar conversion');
+ok(near(budget.cap.essentialShortfallMonthly, beforeShortfall - delta),
+  'essential shortfall shrank by exactly the independent remainder delta',
+  money(budget.cap.essentialShortfallMonthly));
+
+console.log('\n=== no double-count, no invented cash Bell, no Telus bill ===');
+ok(!(plan.bills || []).some(b => /telus/i.test(b.id + ' ' + b.label)),
+  'Telus is not a plan.bills row');
+ok(!(plan.bills || []).some(b => /bell|watch/i.test(b.id + ' ' + b.label)),
+  'Bell / watch are not invented as joint-cash bills');
+ok(!near(telecom.planned, 104.20 + 15) && !near(telecom.planned, 104.20 + 78.4),
+  'watch line and Shaw are not added on top of the Bell baseline');
+ok(!near(telecom.planned, 104.20 + 250) && !near(telecom.planned, 356.62),
+  'card repayment and the exceptional August bill are not the baseline');
+ok(plan.budget.categories.find(c => c.id === 'telecom').currentMonthly === 104.2,
+  'published currentMonthly is the June baseline, not $356.62 or $250');
+
+console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
+process.exit(failures === 0 ? 0 : 1);

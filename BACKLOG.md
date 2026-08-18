@@ -22,20 +22,18 @@ facts PR; each needs its own independently provable outcome):
 - **HELOC residual PAD** — **DONE 2026-08-18.** Q19 ANSWERED: the Aug. 14
   $1,100 payment satisfies the $814.18 August minimum. Interest remains
   non-cash capitalisation. Do not invent a duplicate August cash minimum.
-- **Historical Telus in the telecom remainder** — **NARROWED / OPEN 2026-08-18.**
-  Proven: Telus has $0 active recurrence (no `plan.bills` row; billsNote
-  records TELUS IS CLOSED). Historical Telecom remains valid history
-  ($1,750.61 YTD / 8 months = $218.83; $3,534.93 over 19 months). Shaw is
-  dated once at $78.40. The YTD remainder $140.43/month is YTD Telecom −
-  Shaw and contains non-Shaw current spend: July 2026, after Telus last
-  appears in captured history, is $328.40 = Shaw $78.40 + $250.00 non-Shaw.
-  Not proven: that historical Telus contributes $0 to that remainder.
-  Merchant-level Telus dollars are not recoverable from committed category
-  rollups, so the amount of closed-Telus contamination is **UNKNOWN**. Do
-  not invent $0 or a Bell amount, and do not close this follow-up until
-  merchant-level evidence independently quantifies the Telus contribution.
-  No figure change. Bell remains outside this correction (Q18 / card-paid
-  Bell stay as modelled).
+- **Historical Telus in the telecom remainder** — **CLOSED 2026-08-18.**
+  Owner decision: the household considers the telecom evidence complete for
+  Telus. TELUS IS CLOSED. Future Telus cost is $0. There is no remaining
+  Telus planning question and no need to quantify how much historical Telus
+  spending appears inside old category averages. Historical Telus
+  transactions remain legitimate historical spending ($1,750.61 YTD /
+  8 months = $218.83 historical average; $3,534.93 over 19 months) and were
+  not deleted or recategorized. Forward telecom is the evidenced active
+  services (Shaw $78.40 dated + main Bell $104.20 card-paid June baseline).
+  The stale closed-Telus remainder-split planning blocker is removed. Q18 is
+  only Bell settlement-state and the owner-stated second Bell/watch account
+  amount.
 - **Bell baseline vs card-paid current bill** — do not date $356.62 or
   ~$104.20 as joint cash. The valid $250 pending Travel Visa payment is
   observation. The $15 watch line is on the same main Bell account; do

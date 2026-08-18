@@ -650,7 +650,9 @@
                         "Telecom"
                     ],
                     "plannedMonthly": null,
-                    "why": "Shaw is dated at $78.40 and subtracted. TELUS IS CLOSED (owner-confirmed 2026-08-16) and is not forecast as an active bill. The historical telecom remainder still includes past Telus activity in the spending series; that is observation history, not a live Telus recurrence. Bell Mobility is card-paid (see ACCOUNT_FACTS): do not date the Aug. 1 $356.62 arrears/travel bill as the normal monthly run rate, and do not add a second Bell $250 expense on top of the pending Travel Visa payment."
+                    "currentMonthly": 104.2,
+                    "currentSource": "bell-june-2026-baseline",
+                    "why": "CURRENT-REGIME WINS. Forward telecom is the evidenced active services, not the YTD blended Telecom average. Shaw $78.40 is dated on the calendar and subtracted. Main Bell June baseline is $104.20/month (card-paid Travel Visa: $70.00 monthly services including the $15 watch line, $25.80 device, $8.40 tax) and sits in the cap — not as a joint-chequing bill. TELUS IS CLOSED and contributes $0 forward. Historical Telecom totals remain historical truth. Do not date the Aug. 1 $356.62 arrears/travel bill, do not add a second Bell $250 expense on top of the pending Travel Visa payment, and do not invent a second $15 watch bill. The owner-stated second Bell/watch account remains active; its current amount is not in committed statement or transaction evidence and is not invented here."
                 },
                 {
                     "id": "insurance",
