@@ -35,6 +35,21 @@ function gapAtBuffer(plan, buffer, asOf) {
   return Number(buffer) - openingFloor(plan, asOf);
 }
 
+function independentlyOnceOutflowDates(item, start, end) {
+  if (!item || item.frequency !== 'once' || !item.date) return [];
+  if (item.date > end) return [];
+  if (item.date >= start) return [item.date];
+  return [start];
+}
+
+function outflowHitsDate(item, date, occurrences, start) {
+  if (item && item.frequency === 'once') {
+    if (!start) return item.date === date;
+    return independentlyOnceOutflowDates(item, start, date).includes(date);
+  }
+  return !!(occurrences(item, date, date).length);
+}
+
 function cashOnDate(plan, date, occurrences, scenario, start) {
   let n = 0;
   for (const s of plan.income || []) {
@@ -43,7 +58,7 @@ function cashOnDate(plan, date, occurrences, scenario, start) {
   }
   for (const o of plan.obligations || []) {
     if (o.nonCash) continue;
-    if (!occurrences(o, date, date).length) continue;
+    if (!outflowHitsDate(o, date, occurrences, start)) continue;
     n -= Number(o.amount || 0);
   }
   for (const b of plan.bills || []) {
@@ -53,7 +68,7 @@ function cashOnDate(plan, date, occurrences, scenario, start) {
         .some(r => r.id === b.payingAccount);
       if (elsewhere) continue;
     }
-    if (!occurrences(b, date, date).length) continue;
+    if (!outflowHitsDate(b, date, occurrences, start)) continue;
     n -= Number(b.amount || 0);
   }
   for (const c of plan.commitments || []) {
@@ -70,6 +85,7 @@ function cashOnDate(plan, date, occurrences, scenario, start) {
 
 function streamTotal(items, asOf, end, occurrences, opts) {
   const skipNonCash = !opts || opts.skipNonCash !== false;
+  const onceOutflowsBind = !!(opts && opts.onceOutflowsBind);
   return (items || []).reduce((s, item) => {
     if (skipNonCash && item.nonCash) return s;
     if (item.householdObligation === false) return s;
@@ -78,8 +94,10 @@ function streamTotal(items, asOf, end, occurrences, opts) {
         .some(r => r.id === item.payingAccount);
       if (elsewhere) return s;
     }
-    const n = occurrences(item, asOf, end).length;
-    return s + n * Number(item.amount || 0);
+    const dates = onceOutflowsBind && item.frequency === 'once'
+      ? independentlyOnceOutflowDates(item, asOf, end)
+      : occurrences(item, asOf, end);
+    return s + dates.length * Number(item.amount || 0);
   }, 0);
 }
 

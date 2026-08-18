@@ -111,6 +111,26 @@
     return [];
   }
 
+  // Cadence occurrences() answers whether a declared once date sits inside
+  // the window. That is not settlement. A once cash outflow still on the
+  // plan remains owed if Forecast start later moves past that date: the
+  // reservation lands on this opening so the cash walk still deducts it.
+  // Received once income keeps window semantics — that cash is already
+  // inside the opening observation. Settled once outflows are removed,
+  // named on representedEvents for this start, or encoded as firstDue on
+  // the recurring row. Advancing as-of is not settlement evidence.
+  function onceOutflowDates(item, start, end) {
+    if (!item || item.frequency !== 'once' || !item.date) return [];
+    if (item.date > end) return [];
+    if (item.date >= start) return [item.date];
+    return [start];
+  }
+  function outflowDates(item, start, end) {
+    return item && item.frequency === 'once'
+      ? onceOutflowDates(item, start, end)
+      : occurrences(item, start, end);
+  }
+
   /* --------------------------------------------------------------- money */
   // Half a cent. Balances are built by adding and subtracting floats, so a
   // figure that is exactly the buffer can land at 499.9999999999999. Comparing
@@ -677,7 +697,7 @@
       }
     }
     for (const o of plan.obligations) {
-      for (const date of occurrences(o, start, end)) {
+      for (const date of outflowDates(o, start, end)) {
         // A minimum on a card that has been paid off is not a payment anybody
         // makes — the bank does not take it, because there is nothing to take
         // it against. Capping extras but not these left the two projections
@@ -707,7 +727,7 @@
       // Paying account never erases household-obligation status. Only an
       // explicit householdObligation: false drops the bill from the schedule.
       if (!billIsHouseholdObligation(b)) continue;
-      for (const date of occurrences(b, start, end)) {
+      for (const date of outflowDates(b, start, end)) {
         const jointCash = billAffectsJointCash(b, plan);
         events.push({
           date, amount: -b.amount, kind: 'bill', label: b.label, id: b.id,

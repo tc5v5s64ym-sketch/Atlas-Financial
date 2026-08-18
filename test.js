@@ -55,6 +55,7 @@ const suites = [
   ['refresh isolation (B92)', 'test-refresh-isolation.js'],
   ['non-writing reconciliation (B91)', 'test-reconcile.js'],
   ['current-state cutover (B91)', 'test-cutover.js'],
+  ['unresolved once obligations survive cutover', 'test-cutover-unresolved.js'],
   ['commitment settlement (B91 D3)', 'test-settlement.js'],
   ['Hydro dated obligation (B91 D4+D5)', 'test-hydro.js'],
   ['Amanda income split (B91 D2)', 'test-amanda-income.js'],

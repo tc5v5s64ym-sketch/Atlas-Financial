@@ -121,7 +121,7 @@ const wantEstimated = paydays.length * payroll.amount
 ok(near(expected.totals.estimatedIncome, wantEstimated, 0.05),
   '90-day estimated income includes payroll plus Amanda transfers',
   expected.totals.estimatedIncome.toFixed(2));
-const wantObl = streamTotal(plan.obligations, asOf, windowEnd, F.occurrences);
+const wantObl = streamTotal(plan.obligations, asOf, windowEnd, F.occurrences, { onceOutflowsBind: true });
 ok(near(expected.totals.obligations, wantObl), '90-day cash obligations', expected.totals.obligations.toFixed(2));
 const heloc = plan.obligations.find(o => o.id === 'heloc');
 const wantNoncash = F.occurrences(heloc, asOf, windowEnd).length * heloc.amount;
@@ -135,7 +135,7 @@ ok(near(expected.totals.noncash, wantNoncash), 'HELOC interest is tracked but no
   const without = F.simulate(stripped, asOf, { scenario: 'expected', weeklyVariable: 0, targetBuffer: plan.defaults.targetBuffer }).ending;
   ok(near(withHeloc, without), 'removing the non-cash charge changes nothing', `${withHeloc.toFixed(2)} vs ${without.toFixed(2)}`);
 }
-const wantBills = streamTotal(plan.bills, asOf, windowEnd, F.occurrences, { plan });
+const wantBills = streamTotal(plan.bills, asOf, windowEnd, F.occurrences, { plan, onceOutflowsBind: true });
 ok(near(expected.totals.bills, wantBills), '90-day named bills', expected.totals.bills.toFixed(2));
 const fortisDates = expected.events.filter(e => e.id === 'fortis').map(e => e.date).join(',');
 ok(fortisDates === '2026-09-03,2026-10-03,2026-11-03', 'Fortis skips the already-paid August bill', fortisDates);
