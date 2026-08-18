@@ -41,8 +41,9 @@ operational financial update feed**. Forecast remains the planner.
 Automatic canonical writes are **not** approved. `B21` / `AF-INTAKE-01` is
 **DONE 2026-08-17** — later live observe → reconcile proof is
 [`docs/connectivity/LUNCH_MONEY_REFRESH_PROOF_2026-08-17.md`](docs/connectivity/LUNCH_MONEY_REFRESH_PROOF_2026-08-17.md).
-`B78` / `AF-INGEST-01` / T3 is **DONE**. T4 / `B81` (trusted
-canonical refresh) remains owner-gated. Do **not** wait for a second month of
+`B78` / `AF-INGEST-01` / T3 is **DONE**. `B79` / `AF-STORE-01` is
+**DONE** — file foundation has not demonstrably failed; store gate stays
+closed. T4 / `B81` (trusted canonical refresh) remains owner-gated. Do **not** wait for a second month of
 routine statement files. Provider-completeness, broad historical forensics,
 old categorisation cleanup, and file-statement backfill are not
 critical-path gates unless they expose a demonstrated material source or
@@ -1482,13 +1483,16 @@ B from B21 remains unused. A new live GET was not available in the
 builder shell (token unset) and is not required to reopen this outcome
 unless a later pull shows a new identity defect. T4 / `B81` stay closed.
 
-**B79 · The store question, answered by evidence** · `QUEUED` · *needs the owner*
-Build-strategy item `AF-STORE-01`. A written answer to whether the file
-foundation can still give the invariant, identity and idempotency guarantees the
-work needs, citing what **failed on real data**. `ARCHITECTURE.md` names the gate
-and says passing it is an owner decision, recorded — and names "relational
-modelling would be tidier" and "a later capability assumes it" as things that are
-not reasons. `B78` / T3 is done. Do not introduce a store to answer this.
+**B79 · The store question, answered by evidence** · **DONE 2026-08-18** · *owner-reserved gate stays closed*
+Build-strategy item `AF-STORE-01`. Written answer:
+[`docs/STORE_QUESTION_B79.md`](docs/STORE_QUESTION_B79.md). The file
+foundation has **not** demonstrably failed on real household data. B78 /
+T3 identity and idempotency held. Remaining surfaces (Triangle same-day
+freshness, unused Chequing B $10, no real pending→posted, endpoint
+origin) are not store semantics. Stay with `data.json`,
+`public/periods.json`, observation/reconciliation files, `snapshots/`,
+and git. No store implemented. Gate remains closed. Owner action is not
+required to keep files. T4 / `B81` stays closed.
 
 **B80 · Evaluate connectivity providers, point nothing live** · **DONE 2026-08-16** · *owner brought this forward*
 Build-strategy item `AF-LIVE-01`. Owner instruction 2026-08-16: manual
