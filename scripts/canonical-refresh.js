@@ -47,7 +47,6 @@ function parseArgs(argv) {
     data: DEFAULT_DATA,
     apply: false,
     approve: null,
-    previewOut: null,
     identity: DEFAULT_IDENTITY,
   };
   for (let i = 0; i < argv.length; i++) {
@@ -59,7 +58,9 @@ function parseArgs(argv) {
     else if (a === '--data') out.data = argv[++i];
     else if (a === '--apply') out.apply = true;
     else if (a === '--approve') out.approve = argv[++i];
-    else if (a === '--preview-out') out.previewOut = argv[++i];
+    else if (a === '--preview-out') {
+      fail('--preview-out is not accepted. Preview writes to stdout only and cannot target canonical state.');
+    }
     else if (a === '--identity') out.identity = argv[++i];
     else if (a === '--help' || a === '-h') out.help = true;
   }
@@ -386,21 +387,34 @@ function encodeData(data) {
 }
 
 function replaceFileAtomically(dest, nextBytes) {
-  const original = fs.readFileSync(dest);
-  const tmp = `${dest}.atlas-refresh-tmp`;
-  const bak = `${dest}.atlas-refresh-bak`;
+  const destPath = path.resolve(dest);
+  const tmp = `${destPath}.atlas-refresh-tmp`;
+  const bak = `${destPath}.atlas-refresh-bak`;
+  fs.writeFileSync(tmp, nextBytes, { encoding: 'utf8' });
   try {
-    fs.writeFileSync(tmp, nextBytes, { encoding: 'utf8' });
     JSON.parse(fs.readFileSync(tmp, 'utf8'));
-    fs.writeFileSync(bak, original);
-    fs.writeFileSync(dest, nextBytes, { encoding: 'utf8' });
-    JSON.parse(fs.readFileSync(dest, 'utf8'));
+    try {
+      fs.renameSync(tmp, destPath);
+    } catch (renameErr) {
+      // POSIX rename replaces dest atomically. Windows may refuse to replace
+      // an existing dest in one step; move dest aside, then move tmp in.
+      if (renameErr.code !== 'EPERM' && renameErr.code !== 'EEXIST' && renameErr.code !== 'EACCES') {
+        throw renameErr;
+      }
+      try { fs.unlinkSync(bak); } catch (_) { /* ignore missing prior bak */ }
+      fs.renameSync(destPath, bak);
+      try {
+        fs.renameSync(tmp, destPath);
+      } catch (placeErr) {
+        try { fs.renameSync(bak, destPath); } catch (_) { /* restore best-effort */ }
+        throw placeErr;
+      }
+      try { fs.unlinkSync(bak); } catch (_) { /* leftover bak is not dest */ }
+    }
+    JSON.parse(fs.readFileSync(destPath, 'utf8'));
   } catch (err) {
-    try { fs.writeFileSync(dest, original); } catch (_) { /* restore best-effort */ }
-    throw err;
-  } finally {
     try { fs.unlinkSync(tmp); } catch (_) { /* ignore */ }
-    try { fs.unlinkSync(bak); } catch (_) { /* ignore */ }
+    throw err;
   }
 }
 
@@ -440,9 +454,6 @@ async function run(argv) {
   const accountMap = loadJson(mapPath);
   if (args.live) O.assertLiveMap(accountMap);
   const { preview } = previewFrom(observeInput(args, data, payload, accountMap));
-  if (args.previewOut) {
-    fs.writeFileSync(args.previewOut, `${JSON.stringify(preview, null, 2)}\n`);
-  }
   if (!args.apply) {
     process.stdout.write(`${JSON.stringify(preview, null, 2)}\n`);
     return 0;

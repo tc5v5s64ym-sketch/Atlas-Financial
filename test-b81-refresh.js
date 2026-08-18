@@ -328,6 +328,80 @@ console.log('\n=== J. live preview CLI does not write, and secrets stay out ==='
     'refresh script issues no Lunch Money write method');
 }
 
+console.log('\n=== K. --preview-out cannot modify canonical state ===');
+{
+  const dir = tempDir();
+  const dest = writeTempData(dir, liveData);
+  const beforeDest = hashFile(dest);
+  const sidecar = path.join(dir, 'preview.json');
+  const attackDest = runCli([
+    '--fixture', FIXTURE, '--map', MAP, '--data', dest,
+    '--preview-out', dest,
+  ]);
+  ok(attackDest.code !== 0, '--preview-out targeting dest is refused');
+  ok(/preview-out/.test(attackDest.stderr), 'the error names --preview-out');
+  ok(hashFile(dest) === beforeDest, '--preview-out targeting dest leaves dest byte-identical');
+  const attackSidecar = runCli([
+    '--fixture', FIXTURE, '--map', MAP, '--data', dest,
+    '--preview-out', sidecar,
+  ]);
+  ok(attackSidecar.code !== 0, '--preview-out to a sidecar is refused');
+  ok(!fs.existsSync(sidecar), 'refused --preview-out does not create an output file');
+  ok(hashFile(dest) === beforeDest, 'sidecar attempt leaves dest unchanged');
+  const attackLive = runCli([
+    '--fixture', FIXTURE, '--map', MAP, '--data', dest,
+    '--preview-out', LIVE_DATA,
+  ]);
+  ok(attackLive.code !== 0, '--preview-out targeting live data.json is refused');
+  ok(hashFile(LIVE_DATA) === liveHash, 'live data.json is unchanged by --preview-out');
+  ok(hashFile(dest) === beforeDest, 'temp dest is unchanged by --preview-out live targeting');
+  const attackCwd = runCli([
+    '--fixture', FIXTURE, '--map', MAP, '--data', dest,
+    '--preview-out', 'data.json',
+  ]);
+  ok(attackCwd.code !== 0, '--preview-out data.json from repo cwd is refused');
+  ok(hashFile(LIVE_DATA) === liveHash, 'relative data.json preview-out did not overwrite live canonical state');
+}
+
+console.log('\n=== L. canonical replacement is a same-filesystem rename ===');
+{
+  const dir = tempDir();
+  const dest = writeTempData(dir, liveData);
+  const destResolved = path.resolve(dest);
+  const nextDoc = clone(liveData);
+  nextDoc.plan.startingCash.breakdown.find(r => r.id === 'chequing-b').value = 922.05;
+  const nextBytes = `${JSON.stringify(nextDoc, null, 4)}\n`;
+  const writeTargets = [];
+  const renameOps = [];
+  const origWrite = fs.writeFileSync;
+  const origRename = fs.renameSync;
+  fs.writeFileSync = function patchedWrite(p, data, opts) {
+    writeTargets.push(path.resolve(String(p)));
+    return origWrite.call(fs, p, data, opts);
+  };
+  fs.renameSync = function patchedRename(from, to) {
+    renameOps.push({ from: path.resolve(String(from)), to: path.resolve(String(to)) });
+    return origRename.call(fs, from, to);
+  };
+  try {
+    C.replaceFileAtomically(dest, nextBytes);
+  } finally {
+    fs.writeFileSync = origWrite;
+    fs.renameSync = origRename;
+  }
+  ok(!writeTargets.some(p => p === destResolved),
+    'replacement does not writeFileSync onto dest');
+  ok(renameOps.some(op => op.to === destResolved),
+    'replacement renames a temp file onto dest');
+  ok(renameOps.some(op => op.to === destResolved && path.dirname(op.from) === path.dirname(destResolved)),
+    'the renamed temp file is in the same directory as dest');
+  ok(!fs.existsSync(`${destResolved}.atlas-refresh-tmp`), 'temp file is not left behind');
+  ok(!fs.existsSync(`${destResolved}.atlas-refresh-bak`), 'backup file is not left behind');
+  const after = JSON.parse(fs.readFileSync(dest, 'utf8'));
+  ok(near(after.plan.startingCash.breakdown.find(r => r.id === 'chequing-b').value, 922.05),
+    'dest contains the replacement document');
+}
+
 console.log('\n' + (failures ? `${failures} failure(s)` : 'All B81 refresh checks passed'));
 if (hashFile(LIVE_DATA) !== liveHash) {
   console.log('LIVE data.json changed — failing closed');
