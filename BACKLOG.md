@@ -29,6 +29,11 @@ facts PR; each needs its own independently provable outcome):
   ~$104.20 as joint cash. The valid $250 pending Travel Visa payment is
   observation. A later PR may model Bell as a card-paid obligation without
   double-counting.
+- **Unresolved once cash obligations across a later Forecast start** —
+  owner instruction 2026-08-18. A known unresolved cash obligation still
+  on the plan must remain binding when Forecast start advances past the
+  placeholder date used to reserve it. Advancing as-of is not settlement.
+  Not a new backlog number; not the first production cutover.
 
 **Critical path** is owned by
 [`docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`](docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md),
