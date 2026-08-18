@@ -84,7 +84,14 @@ steady value, not the 18-month median.
 **TELUS IS CLOSED** (owner-confirmed 2026-08-16). Do not forecast Telus as an
 active household bill unless newer transaction evidence proves a new active
 Telus service. Historical Telus charges remain in the captured telecom
-series; that is history, not a live recurrence.
+series; that is history, not a live recurrence. The current Plan remainder
+after dated Shaw is **not** proven to be closed Telus. Committed
+`periods.json` rolls merchants into Telecom, so Telus dollars cannot be
+split from Shaw, Bell, or other Telecom. July 2026 — after Telus last
+appears in captured history (March 2026) — still shows Telecom **$328.40**,
+which independently equals Shaw **$78.40** plus **$250.00** of non-Shaw
+telecom. Do not zero that remainder, and do not invent a Bell amount to
+replace it. Q18 remains the Bell / watch path.
 
 **Noble Disposal Services** is the household garbage bill (owner-confirmed
 2026-08-16; primary invoice): $95.85 every 3 months on the 18th, Package A

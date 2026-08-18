@@ -99,6 +99,49 @@ const fit = plan.bills.find(b => b.id === 'fit4less');
 ok(near(telecom.dated, shaw.amount), 'Shaw is subtracted from the telecom average', money(telecom.dated));
 ok(near(telecom.planned, telecom.historical - shaw.amount),
   'so telecom carries only the undated remainder', money(telecom.planned));
+
+console.log('\n=== closed Telus is not the current telecom remainder ===');
+// Independent of Forecast.budgetBreakdown: category totals in generated
+// periods.json and the dated Shaw row in data.json. Telus last appears in
+// captured history around March 2026; July 2026 is after that closure.
+const ytdTelecom = periods.periods.ytd.spending.find(s => s.label === 'Telecom');
+const lastTelecom = periods.periods.lastMonth.spending.find(s => s.label === 'Telecom');
+const allTelecom = periods.periods.all.spending.find(s => s.label === 'Telecom');
+const ytdMonths = periods.periods.ytd.months;
+const independentYtdAvg = ytdTelecom.total / ytdMonths;
+const independentRemainder = independentYtdAvg - shaw.amount;
+ok(near(ytdTelecom.total, 1750.61) && ytdMonths === 8,
+  'YTD Telecom historical total is $1,750.61 over 8 months',
+  money(ytdTelecom.total));
+ok(near(independentYtdAvg, 218.82625),
+  'independent YTD average is $218.83/month', money(independentYtdAvg));
+ok(shaw && near(shaw.amount, 78.4) && shaw.budgetCategory === 'telecom'
+  && shaw.frequency === 'monthly',
+  'Shaw is the one dated monthly telecom bill', money(shaw.amount));
+ok(near(independentRemainder, 140.42625),
+  'independent remainder after Shaw is $140.43/month', money(independentRemainder));
+ok(near(telecom.historical, independentYtdAvg)
+  && near(telecom.planned, independentRemainder),
+  'budgetBreakdown agrees with that independent identity', money(telecom.planned));
+ok(telecom.datedItems.length === 1 && telecom.datedItems[0].label === 'Shaw internet'
+  && near(telecom.datedItems[0].amount, shaw.amount),
+  'Shaw is counted once — the only dated telecom item');
+ok(!(plan.bills || []).some(b => /telus/i.test(String(b.id) + ' ' + String(b.label))),
+  'no Telus plan.bills row — current Telus recurrence is $0');
+ok(!(plan.bills || []).some(b => /bell/i.test(String(b.id) + ' ' + String(b.label))),
+  'no Bell bill was invented to replace closed Telus');
+ok(telecom.target == null && telecom.source === 'historical-actual',
+  'telecom remainder is derived historical-actual, not a hardcoded replacement');
+ok(near(lastTelecom.total, 328.40),
+  'July 2026 Telecom (after Telus closed) is $328.40', money(lastTelecom.total));
+ok(near(shaw.amount + 250, 328.40) && near(lastTelecom.total, shaw.amount + 250),
+  'July independently equals Shaw $78.40 + $250.00 non-Shaw remainder');
+ok(lastTelecom.total - shaw.amount > independentRemainder,
+  'a post-closure month remainder is larger than the YTD remainder — not Telus-only inflation',
+  money(lastTelecom.total - shaw.amount) + ' vs ' + money(independentRemainder));
+ok(near(allTelecom.total, 3534.93) && allTelecom.total > ytdTelecom.total,
+  'full-history Telecom $3,534.93 is preserved — history was not rewritten',
+  money(allTelecom.total));
 const household = budget.categories.find(c => c.id === 'household');
 const noble = plan.bills.find(b => b.id === 'noble-garbage');
 ok(noble && noble.frequency === 'quarterly' && noble.budgetCategory === 'household',
