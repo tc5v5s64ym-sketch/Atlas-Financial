@@ -106,6 +106,18 @@ console.log('\n=== 5. Telus does not recur after owner-confirmed closure ===');
     'ACCOUNT_FACTS does not treat the post-Shaw remainder as Telus-only');
   ok(/\$250\.00/i.test(facts) && /non-Shaw/i.test(facts),
     'ACCOUNT_FACTS records the July non-Shaw remainder rather than inventing Bell');
+  ok(/closed-Telus contamination[\s\S]{0,80}UNKNOWN/i.test(facts),
+    'ACCOUNT_FACTS records closed-Telus remainder contamination as UNKNOWN');
+  const backlog = sourceText(fs.readFileSync(path.join(__dirname, 'BACKLOG.md'), 'utf8'));
+  const telusFollowUp = (backlog.match(
+    /Historical Telus in the telecom remainder[\s\S]*?(?=Bell baseline vs card-paid)/,
+  ) || [''])[0];
+  ok(telusFollowUp.length > 0,
+    'BACKLOG still has the Historical Telus remainder follow-up');
+  ok(!/\bDONE\b|\bRESOLVED\b/i.test(telusFollowUp) && /\bOPEN\b/.test(telusFollowUp),
+    'Telus remainder follow-up stays OPEN rather than DONE / RESOLVED');
+  ok(/UNKNOWN/i.test(telusFollowUp) && /contamination/i.test(telusFollowUp),
+    'BACKLOG records closed-Telus contamination as UNKNOWN');
   const periods = require('./public/periods.json');
   const shaw = (plan.bills || []).find(b => b.id === 'shaw');
   const ytdTelecom = periods.periods.ytd.spending.find(s => s.label === 'Telecom');

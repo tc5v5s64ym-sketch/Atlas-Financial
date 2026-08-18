@@ -100,7 +100,7 @@ ok(near(telecom.dated, shaw.amount), 'Shaw is subtracted from the telecom averag
 ok(near(telecom.planned, telecom.historical - shaw.amount),
   'so telecom carries only the undated remainder', money(telecom.planned));
 
-console.log('\n=== closed Telus is not the current telecom remainder ===');
+console.log('\n=== closed Telus has $0 recurrence; remainder contamination is unquantified ===');
 // Independent of Forecast.budgetBreakdown: category totals in generated
 // periods.json minus the dated Shaw row. Snapshot dollars for the current
 // opening live in test-aug16-evidence.js so an ordinary Shaw refresh cannot
@@ -132,7 +132,7 @@ ok(!(plan.bills || []).some(b => /bell/i.test(String(b.id) + ' ' + String(b.labe
 ok(telecom.target == null && telecom.source === 'historical-actual',
   'telecom remainder is derived historical-actual, not a hardcoded replacement');
 ok(lastTelecom.total - shaw.amount > independentRemainder,
-  'a post-closure month remainder is larger than the YTD remainder — not Telus-only inflation',
+  'July non-Shaw remainder is larger than the YTD remainder — remainder is not entirely Telus',
   money(lastTelecom.total - shaw.amount) + ' vs ' + money(independentRemainder));
 ok(near(allTelecom.total, 3534.93) && allTelecom.total > ytdTelecom.total,
   'full-history Telecom $3,534.93 is preserved — history was not rewritten',
