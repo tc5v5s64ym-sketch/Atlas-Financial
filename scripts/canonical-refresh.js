@@ -533,6 +533,23 @@ function buildOpeningCutover(data, report, requestedAsOf) {
     const locator = `debts:${debt.id}#pending`;
     const unknown = debt.pendingUnknown === true || debt.unknownPending === true;
     const known = !unknown && debt.pending != null && debt.pending !== '' && isFinite(Number(debt.pending));
+    const candidatePending = pendingRowsForDebt(report, debt.id).filter(item => (
+      dateOnly(item.evidenceDate || item.observedAsOf) === requestedAsOf
+    ));
+    // A conflicted candidate-date group has no trustworthy pending amount.
+    // Do not pick the row that happens to equal canonical pending.
+    if (candidatePending.some(item => item.status === 'CONFLICT')) {
+      pushUnique(blockers, issue(
+        'pending-state-change-unresolved',
+        `Candidate-date pending observations for ${debt.id} conflict. Atlas cannot choose one numeric pending amount. Pending cannot be written.`,
+        {
+          locator,
+          canonicalValue: known ? Number(debt.pending) : null,
+          observedValue: null,
+        }
+      ));
+      continue;
+    }
     const row = pickDatedRow(pendingRowsForDebt(report, debt.id), requestedAsOf, { allowNonExact: false });
     if (unknown) {
       const observedUnknown = !row || row.unknown === true || row.evidenceValue == null || !isFinite(row.evidenceValue);

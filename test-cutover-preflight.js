@@ -402,6 +402,85 @@ console.log('\n=== CASE 6 — pending CHANGE blocks and does not write ===');
   ok(hashFile(dest) === before, 'pending CHANGE leaves data.json byte-identical');
 }
 
+console.log('\n=== CASE 6b — conflicted pending is not resolved by one matching observation ===');
+{
+  const data = makeData({
+    asOf: '2026-08-16',
+    debts: [
+      {
+        id: 'mortgage', balance: 500000, pending: 0, secured: true,
+        interestTreatment: 'paid-in-payment', limit: null,
+      },
+      {
+        id: 'travelvisa', balance: 800, pending: 250, pendingUnknown: false,
+        secured: false, limit: 1100,
+      },
+    ],
+  });
+  const map = extendMap([
+    {
+      providerAccountId: 4106, collection: 'debts', id: 'travelvisa', role: 'revolving-credit',
+    },
+    {
+      providerAccountId: 4198, collection: 'debts', id: 'travelvisa', role: 'revolving-credit',
+    },
+  ]);
+  const payload = makePayload('2026-08-18', matchingPostedAccounts(data, '2026-08-18').concat([
+    accountRow({
+      id: 4106, name: 'Travel Visa', type: 'credit', subtype: 'credit_card',
+      balance: 800, limit: 1100, evidenceDate: '2026-08-18',
+    }),
+  ]), [{
+    id: 88071,
+    account_id: 4106,
+    date: '2026-08-18',
+    amount: 250,
+    payee: 'Merchant Pending Match',
+    is_pending: true,
+    status: 'unreviewed',
+  }, {
+    id: 88072,
+    account_id: 4198,
+    date: '2026-08-18',
+    amount: 342.65,
+    payee: 'Merchant Pending Conflict',
+    is_pending: true,
+    status: 'unreviewed',
+  }]);
+  const dir = tempDir();
+  const dest = writeJson(dir, 'data.json', data);
+  const before = hashFile(dest);
+  const { report, preview } = previewAt(data, payload, { accountMap: map, cutoverAsOf: '2026-08-18' });
+  const pendingRows = ((report.reconciliation && report.reconciliation.rows) || [])
+    .filter(row => row && row.fact === 'pending' && row.cardId === 'travelvisa');
+  const pendingValues = pendingRows.map(row => row.evidenceValue).sort((a, b) => a - b);
+  ok(pendingRows.length === 2 && pendingRows.every(row => row.status === 'CONFLICT'),
+    'reconciler marks both same-date pending observations CONFLICT');
+  ok(near(pendingValues[0], 250) && near(pendingValues[1], 342.65),
+    'independent observations are canonical 250 and disagreeing 342.65');
+  ok(preview.openingCutover.status === 'BLOCKED',
+    'conflicted pending blocks even when one observation equals canonical');
+  ok(codes(preview.openingCutover.blockers).includes('pending-state-change-unresolved'),
+    'blocker code is pending-state-change-unresolved');
+  const pendingBlock = preview.openingCutover.blockers.find(b => b.code === 'pending-state-change-unresolved');
+  ok(pendingBlock && near(pendingBlock.canonicalValue, 250) && pendingBlock.observedValue == null,
+    'blocker does not choose one numeric pending observation');
+  ok(!preview.proposed.some(row => /pending/.test(row.locator || '') || row.field === 'pending'),
+    'no pending write is proposed');
+  const applied = runCli([
+    '--fixture', writeJson(dir, 'payload.json', payload),
+    '--map', writeJson(dir, 'map.json', map),
+    '--data', dest,
+    '--cutover-as-of', '2026-08-18',
+    '--apply', '--approve', preview.previewId,
+  ]);
+  ok(applied.code !== 0, 'cutover plus apply remains refused during pending CONFLICT');
+  const after = JSON.parse(fs.readFileSync(dest, 'utf8'));
+  ok(near(after.debts.find(d => d.id === 'travelvisa').pending, 250),
+    'canonical pending is not written');
+  ok(hashFile(dest) === before, 'pending CONFLICT leaves data.json byte-identical');
+}
+
 console.log('\n=== CASE 7 — pending UNKNOWN is preserved and is not zero ===');
 {
   const data = makeData({
