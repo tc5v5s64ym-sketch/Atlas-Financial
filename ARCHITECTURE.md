@@ -122,10 +122,11 @@ Routine use is:
    balances current.
 3. Atlas reads Lunch Money.
 4. Atlas reconciles new observations against canonical state.
-5. Supported changes flow through the existing Atlas refresh /
-   canonical-update mechanism **once that write path is earned**. Today the
-   canonical write is still an explicit owner-approved edit of `data.json`,
-   not an automatic production write.
+5. Supported changes flow through the earned Atlas refresh /
+   canonical-update mechanism (`scripts/canonical-refresh.js`): observe →
+   reconcile → preview → explicit owner approval → bounded `data.json`
+   write. Default is still a non-writing preview. Unattended production
+   writes and a Render Lunch Money token are **not** authorised.
 6. Forecast recalculates.
 7. Atlas exposes the freshness and uncertainty that remain.
 
@@ -324,8 +325,9 @@ They consume the same ones. A surface that works a figure out for itself is the
 defect `B73` exists to close, arriving through a new door. The **normal**
 refresh chain is Lunch Money → observation + reconciliation → canonical Atlas
 state → Forecast → those three surfaces. `B91` is done. Lunch Money is the
-evidence/update feed, not a second planner. Automatic canonical writes are
-not yet earned. Sequencing of that remaining work lives in
+evidence/update feed, not a second planner. Owner-approved preview/apply
+writes are earned (`B81` first slice). Unattended production writes are
+not. Sequencing of remaining production-reservation work lives in
 [`docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`](docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md).
 
 **What the plan is expected to cover, as each capability is earned:** material
@@ -535,7 +537,8 @@ closed: `Forecast.expandEvents` is the one cash calendar.
 | Derived publication aggregates of those facts | `Forecast.publicationTotals` |
 | Calendar — the on-page month grid and agenda | `renderCalendar()` in `public/plan.js` — **presentation of `sim.events` only** |
 | Calendar — the exported `.ics` | `scripts/calendar-ics.js`: cash-payment VEVENTs **derived** from `Forecast.expandEvents` over a longer horizon; standing reminder VEVENTs (statement closes, tax deadlines, mortgage renewal) remain a thin non-cash overlay |
-| Read-only provider observation | `scripts/provider-observe.js` turns a Lunch Money fixture, or a local GET when `LUNCHMONEY_ACCESS_TOKEN` is set, into B91 observations. Live mapping is by provider account ID, not display name. Real live IDs stay in gitignored `docs/connectivity/provider-account-map.local.json`; the committed live map remains the empty schema. Fixture mapping lives only under `docs/connectivity/fixtures/`. Unknown IDs stay unmapped. Mapped revolving-credit pending transactions become `fact: pending` observations (Lunch Money v2: positive debit, negative credit). Same `providerTransactionId` pending+posted collapses to posted and does not double-count. A pending bill/payment older than 90 days may be presumed settled for current forecasting only (`confidence: inferred`); historical provider status stays pending. That 90-day rule is not a universal STALE threshold. Transaction history is `--history-days` / `--mode current-state` (14 days) or `--mode reconcile` (120 days). `representedEventCandidates` require payee pattern + mapped account + scheduled date; amount similarity is not identity and does not write `plan.opening`. Candidates whose scheduled date is not the current opening as-of are historical evidence and are not fed to the current-opening posting compare; they must not backfill `representedEvents`. Same-day CHANGE records no canonical winner when time evidence is missing. `--identity-proof` prints a sanitized identity fingerprint. Never writes `data.json`. Not a financial authority, not Forecast, and not T4. |
+| Read-only provider observation | `scripts/provider-observe.js` turns a Lunch Money fixture, or a local GET when `LUNCHMONEY_ACCESS_TOKEN` is set, into B91 observations. Live mapping is by provider account ID, not display name. Real live IDs stay in gitignored `docs/connectivity/provider-account-map.local.json`; the committed live map remains the empty schema. Fixture mapping lives only under `docs/connectivity/fixtures/`. Unknown IDs stay unmapped. Mapped revolving-credit pending transactions become `fact: pending` observations (Lunch Money v2: positive debit, negative credit). Same `providerTransactionId` pending+posted collapses to posted and does not double-count. A pending bill/payment older than 90 days may be presumed settled for current forecasting only (`confidence: inferred`); historical provider status stays pending. That 90-day rule is not a universal STALE threshold. Transaction history is `--history-days` / `--mode current-state` (14 days) or `--mode reconcile` (120 days). `representedEventCandidates` require payee pattern + mapped account + scheduled date; amount similarity is not identity and does not write `plan.opening`. Candidates whose scheduled date is not the current opening as-of are historical evidence and are not fed to the current-opening posting compare; they must not backfill `representedEvents`. Same-day CHANGE records no canonical winner when time evidence is missing. `--identity-proof` prints a sanitized identity fingerprint. Never writes `data.json`. Not a financial authority, not Forecast, and not a silent writer. |
+| Trusted canonical refresh | `scripts/canonical-refresh.js` is the earned write path. It consumes the incumbent observer and reconciler, emits a deterministic sanitized preview, and writes `data.json` only after `--apply --approve <previewId>` matches that preview. Eligible writes are posted household-cash values and posted debt balances whose reconcile status is CHANGE and whose date relation is canonical-older. Unmapped, unknown, stale, same-day, conflicting, pending, credit-capacity, and historical-opening evidence are refused. Default is non-writing. Unattended production writes and a Render token are not this command. Snapshot history stays `scripts/snapshot-balances.js`. Forecast remains the planner. |
 | Observation-to-canonical cash/debt compare | `scripts/reconcile.js` (non-writing). Maps `docs/positions.csv` Household rows through `docs/reconciliation/balance-map.json` id locators onto `plan.startingCash` / `debts`. Commitment settlement observations live in `docs/reconciliation/commitment-settlements.json` and compare a paid date against `plan.commitments[].settledOn`; they do not go through `positions.csv` or the balance map. Hydro observations live in `docs/reconciliation/utility-observations.json`. Amanda-income observations live in `docs/reconciliation/amanda-income-observations.json`. Card-state observations live in `docs/reconciliation/card-state-observations.json` and distinguish posted balance, pending, limit, available credit, and confirmed payment; they are not a second financial authority. Limit and available credit are never household cash. Unknown pending is not $0. Pending is not manufactured as limit − posted − available unless that identity is proven for that card and timestamp. Posting observations live in `docs/reconciliation/posting-observations.json` and compare whether a scheduled occurrence has posted against `plan.opening.representedEvents`. Forecast remains authority for what should happen; posting evidence is authority for what has happened. Unknown posting is not posted and is not unposted. Does not write `data.json`. STALE is not assigned. The owner 90-day rule lives on pending bill/payment observations in `scripts/provider-observe.js` and is not a reconcile STALE status. Not a universal fact database |
 
 **The 2026-08-16 master-forecast contract is now earned in Forecast.**
@@ -717,10 +720,9 @@ is evidence, not the planner, not canonical household policy, and not
 authority over future commitments, priorities, or owner decisions. The live
 read-only GET seam (`scripts/provider-observe.js`) is an **incumbent** and
 has already been exercised. `scripts/reconcile.js` is the non-writing
-compare. **Automatic canonical writes are not approved.** B91 is done. The
-remaining capability to earn is trusted canonical refresh from a later Lunch
-Money observation, with identity and idempotency proved first. Direction,
-not a schema:
+compare. **T4 passed 2026-08-17.** `scripts/canonical-refresh.js` is the
+earned preview / approve / bounded-write path. **Unattended production
+writes are not approved.** B91 is done. Direction, not a schema:
 
 - freshness belongs to the evidence class (live balances, contractual
   recurring facts, household policy, derived engine results), not merely one
@@ -792,11 +794,12 @@ Fusion camp/tryouts `settledOn: "2026-08-14"`, and kept the 1 September
 Hydro dated due. It does not invent Aug. 14 joint-cash opening balances,
 does not resolve Q19, and does not encode $600/week. Observation files
 remain evidence; the reconciler remains non-writing. B91 is done.
-A later successful refresh still writes the new current state into
-`data.json` only through the earned canonical-update mechanism, then
-`scripts/snapshot-balances.js` emits `snapshots/<as-of>.json` without
-hand-editing. That snapshot write does not change Forecast inputs. Automatic
-production writes from Lunch Money are **not** that mechanism today.
+A later successful refresh writes posted current-state fields into
+`data.json` only through `scripts/canonical-refresh.js` after an explicit
+preview approval. `scripts/snapshot-balances.js` remains the dated-history
+writer after a successful as-of cutover and is not a second current-state
+authority. That snapshot write does not change Forecast inputs. Unattended
+production writes from Lunch Money are **not** authorised.
 
 **`plan.nextDollar` is derived, not instructed.** Its own provenance note says so:
 neither Dale nor Amanda has stated or approved the `protect-then-highest-cost`
@@ -845,13 +848,17 @@ Two capabilities must not be conflated:
 - **Live read-only observation** — already built and exercised.
   `scripts/provider-observe.js` may GET Lunch Money locally when the owner
   sets `LUNCHMONEY_ACCESS_TOKEN` in their shell. That seam does not write
-  `data.json`, does not store a bank password, and is not T4 / `B81`.
-- **Trusted canonical refresh** — the remaining gated capability. Automatic
-  or unrestricted writes from the live feed into canonical Atlas state are
-  **not** approved. T4 / `B81` wait on the remaining conditions below and an
-  explicit owner pass.
+  `data.json` and does not store a bank password.
+- **Trusted canonical refresh** — owner-passed **2026-08-17** (T4).
+  `scripts/canonical-refresh.js` is the earned preview / approve / bounded
+  write. Automatic or unrestricted production writes, scheduled refresh, and
+  a Render Lunch Money token remain **not** approved. The pass record is
+  [`docs/connectivity/T4_OWNER_PASS_2026-08-17.md`](docs/connectivity/T4_OWNER_PASS_2026-08-17.md).
 
-Pointing automatic canonical writes at the live feed is gated on all five of:
+Pointing **unattended production** writes at the live feed remains gated
+on owner authorization that this T4 pass did **not** grant. The five
+connectivity conditions and the 2026-08-17 owner pass earned the local
+preview/approve writer:
 
 1. **proven need** — recorded: the owner will not maintain the same current
    account data twice via Lunch Money and a separate routine statement import;
@@ -870,10 +877,11 @@ doing so satisfies one condition rather than opening the gate. The existing
 live Lunch Money GET is an incumbent. Future trusted canonical refresh is
 the remaining capability to earn.
 
-**Current seam, not the gate.** Owner instruction 2026-08-16 recorded
-condition 1 and authorised a fixture-first observe path. The 2026-08-17
-direction names Lunch Money as the normal feed and still does not open T4 /
-`B81`.
+**Current seam.** Owner instruction 2026-08-16 recorded condition 1 and
+authorised a fixture-first observe path. The 2026-08-17 feed direction
+names Lunch Money as the normal feed. The later 2026-08-17 owner pass
+opens T4 for the earned preview/approve writer only. It does not authorize
+unattended production writes or a production token.
 
 ---
 
@@ -904,8 +912,11 @@ rule does not, and it is deliberately the catch-all rather than the list above.
 ### Gated — may be permitted later, not permitted now
 
 Provider or API **service credentials**, and OAuth access or refresh tokens, for
-**read-only** data access. Permitted only after the connectivity gate is met
-**and** the owner approves — and never for anything on the absolute list.
+**read-only** data access. The T4 pass permits the existing local-shell
+`LUNCHMONEY_ACCESS_TOKEN` for GET-only observation. Atlas usage remains
+GET-only even though Lunch Money personal tokens are not provider-scoped
+read-only. A production token in Render is still **not** authorised. Never
+for anything on the absolute list.
 
 ### Where a secret may live — the canonical rule
 

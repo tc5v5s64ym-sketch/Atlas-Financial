@@ -38,12 +38,13 @@ Lunch Money **read** observation test, `B95`, `B91` / `AF-RECON-01`, `B94` /
 `AF-PLAN-01`, `B96` / `AF-PLAN-02`, and `B20` / `AF-HIST-01` are **done**.
 Owner decision **2026-08-17**: Lunch Money is the household's **normal
 operational financial update feed**. Forecast remains the planner.
-Automatic canonical writes are **not** approved. `B21` / `AF-INTAKE-01` is
+T4 passed the same date: owner-approved preview/apply writes are earned;
+unattended production writes are **not** approved. `B21` / `AF-INTAKE-01` is
 **DONE 2026-08-17** — later live observe → reconcile proof is
 [`docs/connectivity/LUNCH_MONEY_REFRESH_PROOF_2026-08-17.md`](docs/connectivity/LUNCH_MONEY_REFRESH_PROOF_2026-08-17.md).
 `B78` / `AF-INGEST-01` / T3 is **DONE**. `B79` / `AF-STORE-01` is
 **DONE** — file foundation has not demonstrably failed; store gate stays
-closed. T4 / `B81` (trusted canonical refresh) remains owner-gated. Do **not** wait for a second month of
+closed. `B81` / `AF-LIVE-02` first slice is the earned writer. Do **not** wait for a second month of
 routine statement files. Provider-completeness, broad historical forensics,
 old categorisation cleanup, and file-statement backfill are not
 critical-path gates unless they expose a demonstrated material source or
@@ -1509,17 +1510,16 @@ provider-completeness (which product fields actually appear) is not a
 critical-path gate. The 2026-08-17 owner decision names Lunch Money as the
 normal operational feed; that does not reopen B80 and does not close `B81`.
 
-**B81 · Trusted canonical refresh from the live feed** · `QUEUED` · *gated, owner-reserved*
-Build-strategy item `AF-LIVE-02`. **Live read-only observation already
-exists and has been exercised.** This item is not that GET. It is trusted
-**canonical refresh**: supported Lunch Money observations updating
-canonical Atlas state through the earned mechanism, after
-`ARCHITECTURE.md`'s remaining connectivity conditions and an owner pass.
-The 2026-08-17 feed decision is product direction, not that pass. It does
-not authorize bank credentials, money movement, autonomous institution
-changes, silent production writes, bypassing reconciliation, or treating
-unknown/stale values as current. Recorded so the work record shows the
-remaining capability exists and is blocked — **not** so it can be started.
+**B81 · Trusted canonical refresh from the live feed** · `IN PROGRESS` · *T4 passed 2026-08-17*
+Build-strategy item `AF-LIVE-02`. Owner T4 pass:
+[`docs/connectivity/T4_OWNER_PASS_2026-08-17.md`](docs/connectivity/T4_OWNER_PASS_2026-08-17.md).
+The earned mechanism is `scripts/canonical-refresh.js`: incumbent observe
+→ reconcile → sanitized preview → `--apply --approve <previewId>` →
+bounded `data.json` write. Default remains non-writing. Live household
+figures are unchanged. Unattended production writes, scheduled refresh,
+and a Render Lunch Money token remain reserved. Do not apply the unused
+Chequing B $10, choose a Triangle same-day winner, invent a
+pending→posted case, or infer endpoint origin.
 ---
 
 ## Ready — needs a session at an institution

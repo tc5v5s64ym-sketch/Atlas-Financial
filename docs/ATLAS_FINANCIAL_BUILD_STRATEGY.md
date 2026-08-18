@@ -32,16 +32,16 @@ B21 refresh proof, the B78 identity/idempotency proof, and the B79
 store-question answer have already happened; they are not future
 milestones. Owner decision **2026-08-17**: Lunch Money is
 the household's **normal operational financial update feed**. Forecast
-remains the planner. Automatic canonical writes are **not** approved.
+remains the planner. Unattended production writes are **not** approved.
 T3 is **met**. The store gate is **not** met: files remain the
-foundation. The sequenced path now reaches T4 / `B81` (trusted
-canonical refresh), which remains owner-gated and **closed**. Do **not**
-start `B81`. Do **not** wait for a second month of routine statement
-files. Provider-completeness, broad historical forensics, old
-categorisation cleanup, and file-statement backfill are **not**
-critical-path gates unless they expose a demonstrated material source
-or financial-correctness gap. Do not start `B81` in order to apply the
-unused $10 Chequing B change.
+foundation. **T4 passed 2026-08-17.** `B81` / `AF-LIVE-02` first slice is
+the earned preview / approve / bounded writer. Unattended production
+writes and a Render token remain reserved. Do **not** wait for a second
+month of routine statement files. Provider-completeness, broad historical
+forensics, old categorisation cleanup, and file-statement backfill are
+**not** critical-path gates unless they expose a demonstrated material
+source or financial-correctness gap. Do not use `B81` to apply the unused
+$10 Chequing B change.
 
 ---
 
@@ -104,12 +104,12 @@ phase starts — not a date.
 | **T1** | Every financial answer the site publishes has a named owner reachable by `npm test`, and the authority record is mechanically checked rather than maintained by inspection. |
 | **T2** | Account balances have history, so a trend question can be answered from the repository rather than from memory. **Met 2026-08-17** by the independently reconciled HELOC pair in `snapshots/2026-08-09.json` ($201,586.16) and `snapshots/2026-08-16.json` ($200,486.16): the stored history answers that the HELOC fell $1,100.00 between those openings. That is two dated openings, not a long-run monthly verdict. |
 | **T3** | The **normal Lunch Money observation/import path** is **idempotent and identity-stable on real household data** — re-importing or re-observing changes nothing, and a corrected provider observation updates the same canonical target rather than duplicating. Uses existing Lunch Money provider account IDs / transaction IDs and the existing reconciliation architecture. Not a new identity system. **Met 2026-08-17** by B78: leftover 2026-08-16 owner-run observation replayed twice through the incumbent observer (identical fingerprint, MATCH 12 / CHANGE 0, no `data.json` write). Proof: [`docs/connectivity/LUNCH_MONEY_IDENTITY_PROOF_B78.md`](connectivity/LUNCH_MONEY_IDENTITY_PROOF_B78.md). |
-| **T4** | Trusted **canonical refresh** from the live Lunch Money feed is permitted: `ARCHITECTURE.md`'s remaining connectivity conditions are met, and **the owner has passed the gate**. Live read-only observation already exists and has been exercised; T4 is not that GET. |
+| **T4** | Trusted **canonical refresh** from the live Lunch Money feed is permitted: `ARCHITECTURE.md`'s remaining connectivity conditions are met, and **the owner has passed the gate**. Live read-only observation already exists and has been exercised; T4 is not that GET. **Passed 2026-08-17.** Pass record: [`docs/connectivity/T4_OWNER_PASS_2026-08-17.md`](connectivity/T4_OWNER_PASS_2026-08-17.md). The pass authorizes the earned preview/approve writer, not unattended production writes. |
 
-T1–T3 are conditions an agent can demonstrate. **T4 is an owner decision** and
-nothing here can satisfy it. Reaching T3 satisfies the identity/idempotency
-condition of the connectivity gate; it does not authorize automatic canonical
-writes and does not open the gate.
+T1–T3 are conditions an agent can demonstrate. **T4 is an owner decision.**
+It was passed on 2026-08-17 with the production reservations in the pass
+record. Reaching T3 satisfied the identity/idempotency condition; the
+owner pass opened the writer, not Render and not a scheduler.
 
 ---
 
@@ -289,8 +289,8 @@ B79 / AF-STORE-01  the store question, answered by evidence
        proof in docs/STORE_QUESTION_B79.md; store gate stays closed
   ↓
 B81 / AF-LIVE-02  trusted canonical refresh
-     ← gated / still closed; live READ already exists;
-       automatic WRITE is not approved; do not start
+     ← T4 passed 2026-08-17; preview/approve writer earned;
+       unattended production WRITE is not approved
 ```
 
 Not critical-path gates unless they expose a demonstrated material source
@@ -402,7 +402,7 @@ are not authorities.
   idempotent Lunch Money observation/import on real household data, using
   existing provider IDs and the existing reconciler. T3 met. Proof:
   [`docs/connectivity/LUNCH_MONEY_IDENTITY_PROOF_B78.md`](connectivity/LUNCH_MONEY_IDENTITY_PROOF_B78.md).
-  Automatic canonical writes still wait on T4 / `B81`.
+  At close, automatic canonical writes still waited on T4 / `B81`.
 
 ### Open governance question — do not solve here
 
@@ -972,7 +972,7 @@ and not a T2 requirement. It is **DONE 2026-08-17**.
   Triangle same-day discrepancy unresolved. Historical payroll
   posting-candidate CHANGE rows recorded as noise. Automatic-versus-
   manual endpoint origin not preserved and not invented. No real
-  pending→posted case. T4 / `B81` still closed.
+  pending→posted case. T4 / `B81` was still closed at B21 close.
 
 ---
 
@@ -1043,7 +1043,8 @@ reconciliation, or treating unknown/stale values as current.
 The owner recorded condition 1 and authorised the B80 evaluation plus the
 observe seam. That evaluation and the live Lunch Money **read** test are
 **done**. Remaining provider-completeness work is not a critical-path gate.
-T4 / `B81` remain closed until the remaining conditions and an owner pass.
+**T4 passed 2026-08-17.** `B81` first slice is the earned preview/approve
+writer. Unattended production writes remain reserved.
 
 ### AF-LIVE-01 · Evaluate providers, point nothing live
 
@@ -1060,9 +1061,8 @@ T4 / `B81` remain closed until the remaining conditions and an owner pass.
   pending rows already feed B91 observations. Do not schedule this item
   or the live observation test as a future milestone. Completeness of
   every household product field remains UNKNOWN where the coverage
-  matrix says so, and is not a critical-path gate. `B81` stays gated
-  because **trusted canonical refresh** is not approved; the live GET
-  does not close it.
+  matrix says so, and is not a critical-path gate. The live GET did not
+  close `B81`; the later T4 pass did, for the preview/approve writer only.
 - **Prompt** — *Evaluate current Canadian availability and provider semantics per
   `ARCHITECTURE.md`'s conditions 2 and 4. Obtain no credential. Do not open T4.*
 
@@ -1074,16 +1074,19 @@ T4 / `B81` remain closed until the remaining conditions and an owner pass.
 - **Tier** — M4. **Backlog** — `B81`. **Entry gate** — remaining
   connectivity conditions including identity/idempotency (T3), security
   review, and **owner pass**. Live read observation is already an incumbent.
-- **Acceptance** — writes are through the existing Atlas canonical-update
-  mechanism; reconciliation is not bypassed; unknown/stale values are not
-  treated as current; no institution login credential, ever, under
+  **Entry recorded 2026-08-17.**
+- **Acceptance** — writes are through `scripts/canonical-refresh.js`;
+  reconciliation is not bypassed; unknown/stale values are not treated as
+  current; no institution login credential, ever, under
   `ARCHITECTURE.md`'s absolute; any provider token handled under the secret
-  boundary's configured-secret rule; no silent production writes before the
-  owner pass.
-- **Prompt** — *Do not start this item. It exists so the remaining
-  capability has an end, and it begins only when the owner records that the
-  trusted-canonical-refresh gate is passed. Do not treat the existing live
-  GET as this item.*
+  boundary's configured-secret rule; no silent or unattended production
+  writes.
+- **State** — **first slice in progress.** Preview / approve / bounded
+  posted-field write is earned. Live `data.json` figures are unchanged.
+  Unattended production writes and a Render token remain reserved.
+- **Prompt** — *Do not apply the unused Chequing B $10, choose a Triangle
+  same-day winner, invent a pending→posted case, add a Render token, or
+  schedule refresh.*
 
 ---
 
@@ -1131,10 +1134,9 @@ be scheduled as though it did.
   reaching `AF-RECON-01`. Permanent manual synchronisation between duplicate
   facts is the defect, not a fix. Google Sheet is not an authority.
 - **Anything behind a closed gate.** A canonical store remains gated.
-  Trusted canonical refresh from the live Lunch Money feed remains gated
-  (`B81` / T4). Live read-only observation already exists and is not that
-  gate. `ARCHITECTURE.md` holds both remaining gates and this file
-  sequences toward them without opening either.
+  Unattended production writes and a Render Lunch Money token remain
+  reserved after the T4 pass. Live read-only observation already exists.
+  `ARCHITECTURE.md` holds the remaining reservations.
 - **A forensic cleanup of the historical ledger.** Old unknown transactions stay
   in total spending and may stay categorically unresolved unless they are large
   enough to materially change the plan. The forward ledger gets cleaner as fresh
@@ -1191,8 +1193,8 @@ resurrect it.
 | One master forecast / longer operating horizon | **ACTIVE** | `AF-PLAN-01` / `B94`. **Complete 2026-08-16.** Live display remains 91-day `windowDays`; `Forecast.recommend` searches the ≥12-month knowledge horizon. `B95` already absorbed the known major costs. | Already sequenced. Evolve Forecast. Never a second recurrence, payday, goals, or forecast engine. |
 | End-to-end payday proof | **ACTIVE** | `AF-PLAN-02` / `B96`, after `B94`. **Complete 2026-08-16.** Household payday answer is composed from incumbent Forecast results on the 2026-08-16 opening. | Already sequenced. Prove fresh evidence → canonical state → Forecast → household answer. Not a second payday engine. |
 | Prove the normal Lunch Money refresh path | **ACTIVE** | Phase 2 `AF-INTAKE-01` / `B21`. **Complete 2026-08-17.** Later live observation through existing observe → reconcile. Proof: `docs/connectivity/LUNCH_MONEY_REFRESH_PROOF_2026-08-17.md`. | Already sequenced. Do not reopen to apply the unused $10 Chequing B change or to invent a pending→posted case. |
-| Improved ingestion | **ACTIVE** | Phase 3 `AF-INGEST-01` / `B78`, to T3. **Complete 2026-08-17.** Identity-stable idempotent Lunch Money observation/import on real household data; existing provider IDs; no new identity system; no store; no automatic canonical writer. Proof: `docs/connectivity/LUNCH_MONEY_IDENTITY_PROOF_B78.md`. | Already sequenced. T3 met. `AF-STORE-01` / `B79` is complete; store gate stays closed. T4 / `B81` stay closed. |
-| Automated financial-data connectivity / trusted canonical refresh | **GATED** (`B81`) | `ARCHITECTURE.md` connectivity gate. Live **read** observation (`AF-LIVE-01` / `B80` + GET) is **complete**. Remaining provider-completeness is not a critical-path gate. `AF-LIVE-02` / `B81` stays closed until T4: trusted canonical **write**, not the first live GET. | The owner passes the remaining conditions before automatic canonical writes. Obtain no credential in git. The 2026-08-17 feed decision is product direction, not that pass. |
+| Improved ingestion | **ACTIVE** | Phase 3 `AF-INGEST-01` / `B78`, to T3. **Complete 2026-08-17.** Identity-stable idempotent Lunch Money observation/import on real household data; existing provider IDs; no new identity system; no store. Proof: `docs/connectivity/LUNCH_MONEY_IDENTITY_PROOF_B78.md`. | Already sequenced. T3 met. `AF-STORE-01` / `B79` is complete; store gate stays closed. |
+| Automated financial-data connectivity / trusted canonical refresh | **ACTIVE** (`B81`) | `ARCHITECTURE.md` connectivity gate. Live **read** observation (`AF-LIVE-01` / `B80` + GET) is **complete**. T4 **passed 2026-08-17**. `AF-LIVE-02` first slice is `scripts/canonical-refresh.js`. | Unattended production writes and a Render token remain reserved. Obtain no credential in git. Do not apply the unused $10 or choose a Triangle winner. |
 | Richer payroll / bonus / pension-contribution modelling | **PARKED** | The 91-day plan consumes estimated net pay. A statutory payroll engine (`EMP-006`) is excluded. Optional pension cash is already inside that net. No bonus cash event is on the live plan. | A named consumer that current net cannot serve — a window that includes a CPP/EI reset, or an owner-supplied bonus or pension cash event, or an owner-supplied horizon that needs statutory seasonality. Do not build a payroll engine in order to absorb a net `Forecast` already consumes. |
 | Retirement planning | **PARKED** | `ARCHITECTURE.md` destination names pension and investments. Live published net worth excludes pensions. There is no `Forecast` retirement function. The advisory copilot "retirement engine" is not adopted. | An owner decision to include pensions in a published window, or to earn a retirement span on the one plan. Not a second planner. |
 | Goals and sinking funds | **PARKED** | `ARCHITECTURE.md` destination names sinking funds. Known major future costs already live on `plan.commitments` (`B95`); property tax stays the existing reserve. That is one Plan home, not a goals engine and not a second planner. ON TRACK / AT RISK / FUNDING GAP is `Forecast.majorPlans` and applies only to those major plans. | Owner-promoted shared targets, or a product-exit gap that the existing plan/commitment path cannot answer. Do not stand up a goals engine beside `Forecast`. Do not create one ticket per purchase. |

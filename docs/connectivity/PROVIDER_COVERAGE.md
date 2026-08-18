@@ -135,6 +135,6 @@ gate unless a later refresh demonstrates a material source gap:
 4. Do not paste the token into git, a PR, chat, or a fixture.
 
 This evaluation is **complete**. It is **NOT** permission to point
-Wealthica or Flinks live, and it does not satisfy `ARCHITECTURE.md`'s
-full connectivity gate (security review, idempotent live import, and
-owner pass of T4 remain). `B81` stays closed.
+Wealthica or Flinks live. T4 later passed on 2026-08-17 for the earned
+preview/approve writer only. Unattended production writes and a Render
+token remain reserved.

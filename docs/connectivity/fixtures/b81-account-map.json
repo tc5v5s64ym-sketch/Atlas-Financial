@@ -1,0 +1,54 @@
+{
+  "schema": "atlas-provider-account-map/v1",
+  "owns": "Synthetic fixture-only mapping for the B81 refresh fixture. Display names are labels only. Not valid for live observation. Real Lunch Money account IDs are not used.",
+  "does_not_own": "Financial values, permission to write data.json, automatic account creation, Forecast, or live owner-observed IDs.",
+  "provider": "lunchmoney",
+  "scope": "fixture",
+  "mappings": [
+    {
+      "providerAccountId": "3001",
+      "canonical": { "collection": "cash", "id": "chequing-a" },
+      "atlasRole": "household-cash"
+    },
+    {
+      "providerAccountId": "3002",
+      "canonical": { "collection": "cash", "id": "chequing-b" },
+      "atlasRole": "household-cash"
+    },
+    {
+      "providerAccountId": "3003",
+      "canonical": { "collection": "cash", "id": "savings" },
+      "atlasRole": "household-cash"
+    },
+    {
+      "providerAccountId": "3004",
+      "canonical": { "collection": "debts", "id": "tdcc" },
+      "atlasRole": "revolving-credit"
+    },
+    {
+      "providerAccountId": "3005",
+      "canonical": { "collection": "debts", "id": "cashback" },
+      "atlasRole": "revolving-credit"
+    },
+    {
+      "providerAccountId": "3006",
+      "canonical": { "collection": "debts", "id": "travelvisa" },
+      "atlasRole": "revolving-credit"
+    },
+    {
+      "providerAccountId": "3007",
+      "canonical": { "collection": "debts", "id": "heloc" },
+      "atlasRole": "heloc"
+    },
+    {
+      "providerAccountId": "3008",
+      "canonical": { "collection": "debts", "id": "mortgage" },
+      "atlasRole": "mortgage"
+    },
+    {
+      "providerAccountId": "3010",
+      "canonical": { "collection": "debts", "id": "triangle" },
+      "atlasRole": "revolving-credit"
+    }
+  ]
+}

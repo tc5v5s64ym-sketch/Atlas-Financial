@@ -34,7 +34,7 @@ fi
 # merchant names in the categorisation scripts ("MAPLE RIDGE MOT"), and a city
 # alone identifies nobody. The strong identifiers — surname, street, postal
 # code, email, account and card numbers — are what matter, and they are here.
-patterns='NAUDI|CUTLER PL|V2X8R1|dnaudi@|privaterelay\.appleid|6355425|6012135|6353074|1650429|3225135|9107573|9107595|452005|5446 ?12|14J2W4V|214JL|SITE_PASSWORD *= *["'"'"']|SESSION_SECRET *= *["'"'"']'
+patterns='NAUDI|CUTLER PL|V2X8R1|dnaudi@|privaterelay\.appleid|6355425|6012135|6353074|1650429|3225135|9107573|9107595|452005|5446 ?12|14J2W4V|214JL|SITE_PASSWORD *= *["'"'"']|SESSION_SECRET *= *["'"'"']|LUNCHMONEY_ACCESS_TOKEN *= *["'"'"']'
 
 for f in $staged; do
   [ -f "$f" ] || continue

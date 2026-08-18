@@ -17,7 +17,8 @@ Lunch Money is evidence, not the planner and not canonical household policy.
 Live read-only observation already exists and has been exercised; identity
 and idempotency of that path are proved (`B78` / T3). The file
 foundation has not demonstrably failed (`B79` / `AF-STORE-01`); no store
-is introduced. Automatic canonical writes are **not** approved. Owner-maintained Lunch Money account
+is introduced. Owner-approved preview/apply writes are earned (`B81` first slice).
+Unattended production writes are **not** approved. Owner-maintained Lunch Money account
 freshness is accepted owner policy and does not block unrelated
 automatically refreshed accounts. The household cash schedule has one
 Plan owner (`Forecast.expandEvents`, PR #37). Question OPEN / ANSWERED status
