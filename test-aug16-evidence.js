@@ -106,6 +106,27 @@ console.log('\n=== 5. Telus does not recur after owner-confirmed closure ===');
     'ACCOUNT_FACTS does not treat the post-Shaw remainder as Telus-only');
   ok(/\$250\.00/i.test(facts) && /non-Shaw/i.test(facts),
     'ACCOUNT_FACTS records the July non-Shaw remainder rather than inventing Bell');
+  const periods = require('./public/periods.json');
+  const shaw = (plan.bills || []).find(b => b.id === 'shaw');
+  const ytdTelecom = periods.periods.ytd.spending.find(s => s.label === 'Telecom');
+  const lastTelecom = periods.periods.lastMonth.spending.find(s => s.label === 'Telecom');
+  const allTelecom = periods.periods.all.spending.find(s => s.label === 'Telecom');
+  const ytdAvg = ytdTelecom.total / periods.periods.ytd.months;
+  ok(near(ytdTelecom.total, 1750.61) && periods.periods.ytd.months === 8,
+    'YTD Telecom historical total is $1,750.61 over 8 months');
+  ok(near(ytdAvg, 218.82625),
+    'independent YTD Telecom average is $218.83/month', money(ytdAvg));
+  ok(shaw && near(shaw.amount, 78.4) && shaw.budgetCategory === 'telecom',
+    'current dated Shaw is $78.40 once', money(shaw.amount));
+  ok(near(ytdAvg - shaw.amount, 140.42625),
+    'independent current remainder after Shaw is $140.43/month',
+    money(ytdAvg - shaw.amount));
+  ok(near(lastTelecom.total, 328.40),
+    'July 2026 Telecom (after Telus closed) is $328.40', money(lastTelecom.total));
+  ok(near(78.4 + 250, 328.40) && near(lastTelecom.total, shaw.amount + 250),
+    'July independently equals Shaw $78.40 + $250.00 non-Shaw remainder');
+  ok(near(allTelecom.total, 3534.93),
+    'full-history Telecom $3,534.93 is preserved', money(allTelecom.total));
 }
 
 console.log('\n=== 6. Noble quarterly garbage without duplicating history ===');
