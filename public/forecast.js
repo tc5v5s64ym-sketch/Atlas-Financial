@@ -685,8 +685,10 @@
       && event.jointCash !== false);
   }
   // Past unresolved joint-cash outflows still bind the walk. The scheduled
-  // date stays on the event; only cash application lands on this opening.
-  // That is not a second calendar and not a rewritten due date.
+  // date stays on the event; only application lands on this opening. simulate
+  // and projectDebts share this helper so cash out and debt down stay coupled.
+  // Absorption still keys the original scheduled date. That is not a second
+  // calendar and not a rewritten due date.
   function cashWalkDate(event, start) {
     if (event && start && event.date < start && isJointCashOutflow(event)) return start;
     return event && event.date;
@@ -2595,10 +2597,16 @@
     });
     marks.push(snapshot(0, start));
 
+    // Same application date as simulate(). A carried once cash obligation
+    // keeps e.date, so obligationAbsorbed still keys the original schedule.
     const byDate = new Map();
     for (const e of events) {
-      if (!byDate.has(e.date)) byDate.set(e.date, []);
-      byDate.get(e.date).push(e);
+      const applyOn = cashWalkDate(e, start);
+      if (!byDate.has(applyOn)) byDate.set(applyOn, []);
+      byDate.get(applyOn).push(e);
+    }
+    for (const list of byDate.values()) {
+      list.sort((a, b) => (b.amount > 0 ? 1 : 0) - (a.amount > 0 ? 1 : 0));
     }
 
     for (let i = 0; i < days; i++) {

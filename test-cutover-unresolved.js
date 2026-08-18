@@ -36,6 +36,7 @@ const hashBefore = hashFile(DATA);
 const OPENING = '2026-08-16';
 const LATER = '2026-08-18';
 const OWED = 100;
+const DEBT_OPENING = 500;
 const CASH = 2000;
 const BUFFER = 0;
 const PAYROLL = 1000;
@@ -132,6 +133,36 @@ function cutoverFixture() {
 function reservedAmount(events, id) {
   const hit = (events || []).find(e => e.id === id);
   return hit ? -hit.amount : 0;
+}
+
+function lenderPlan() {
+  return owedPlan({
+    bills: [],
+    obligations: [{
+      id: 'lender',
+      label: 'Once lender payment',
+      frequency: 'once',
+      date: OPENING,
+      amount: OWED,
+      debtId: 'card',
+      effect: 'payment',
+      confidence: 'confirmed',
+    }],
+  });
+}
+
+function lenderDebts() {
+  return [{
+    id: 'card',
+    label: 'Card',
+    balance: DEBT_OPENING,
+    rate: 0,
+    annualInterest: 0,
+    limit: 2000,
+    pending: 0,
+    secured: false,
+    confidence: 'confirmed',
+  }];
 }
 
 console.log('=== CASE 1 — unresolved once obligation at opening ===');
@@ -402,6 +433,52 @@ console.log('\n=== CASE 9 — historical once non-cash is not recapitalised ==='
     'nextDue does not name the historical non-cash charge');
 }
 
+console.log('\n=== CASE 10 — carried once cash debt obligation survives absorption ===');
+{
+  const plan = lenderPlan();
+  const debts = lenderDebts();
+  const independentPaid = OWED;
+  const independentDebtEnd = DEBT_OPENING - independentPaid;
+  const independentCashEnd = CASH - independentPaid;
+  ok(near(independentPaid, 100) && near(independentDebtEnd, 400) && near(independentCashEnd, 1900),
+    'independent arithmetic: $500 debt − $100 payment = $400; $2000 cash − $100 = $1900');
+  const laterEvents = F.expandEvents(plan, LATER, windowEnd(LATER), {});
+  const laterEvent = laterEvents.find(e => e.id === 'lender');
+  ok(laterEvent && laterEvent.date === OPENING && near(laterEvent.amount, -OWED),
+    'expandEvents still emits the original scheduled date, not the later start');
+  const sim = F.simulate(plan, LATER, { weeklyVariable: 0, targetBuffer: BUFFER });
+  const cashLost = CASH - sim.daily[0].balance;
+  ok(near(cashLost, independentPaid),
+    'cash loses the $100 at the later opening', money(cashLost));
+  const proj = F.projectDebts(plan, debts, LATER, {});
+  const card = proj.byId && proj.byId.card;
+  ok(card && near(card.opening, DEBT_OPENING),
+    'debt walk opens on the named $500 balance');
+  ok(card && near(card.paid, independentPaid),
+    'the named card absorbs the $100 payment', card ? money(card.paid) : 'missing');
+  ok(card && near(card.balance, independentDebtEnd),
+    'ending card balance is $400 — opening minus the absorbed payment',
+    card ? money(card.balance) : 'missing');
+  ok(near(cashLost, card.paid),
+    'cash lost equals debt absorbed — the two sides of one payment',
+    `${money(cashLost)} cash vs ${money(card.paid)} absorbed`);
+  ok(near(proj.obligationAbsorbed[OPENING + ':lender'], independentPaid),
+    'absorption still keys 2026-08-16:lender, not the later start');
+  ok(proj.obligationAbsorbed[LATER + ':lender'] == null,
+    'no rewritten-start absorption key is created');
+  const rec = F.recommend(plan, LATER, recOpts({ debts }));
+  const recEvent = rec.sim.events.find(e => e.id === 'lender');
+  ok(recEvent && recEvent.date === OPENING && near(-recEvent.amount, OWED),
+    'recommend still contains the carried $100 after caps',
+    recEvent ? `${recEvent.date} ${money(-recEvent.amount)}` : 'missing');
+  ok(reservedAmount(rec.sim.events, 'lender') === OWED,
+    'the capped recommendation walk still reserves $100');
+  const recDropped = F.recommend(owedPlan({ bills: [], obligations: [] }), LATER, recOpts({ debts }));
+  ok(recDropped.weekly > rec.weekly,
+    'dropping the lender row is what raises the recommendation, not the later start',
+    `${money(rec.weekly)}/week with it vs ${money(recDropped.weekly)}/week without`);
+}
+
 console.log('\n=== mutation: window-only once outflows recreate the defect ===');
 {
   const src = sourceText(fs.readFileSync(path.join(__dirname, 'public', 'forecast.js'), 'utf8'));
@@ -422,6 +499,46 @@ console.log('\n=== mutation: window-only once outflows recreate the defect ===')
     'window-only once semantics drop the unresolved $100 at a later start');
   const real = F.recommend(plan, LATER, recOpts());
   const broken = mutant.recommend(plan, LATER, recOpts());
+  ok(broken.weekly > real.weekly,
+    'that drop manufactures a higher weekly recommendation',
+    `${money(real.weekly)}/week real vs ${money(broken.weekly)}/week mutant`);
+}
+
+console.log('\n=== mutation: debt walk that ignores dates before start recreates the blocker ===');
+{
+  const src = sourceText(fs.readFileSync(path.join(__dirname, 'public', 'forecast.js'), 'utf8'));
+  const from = '    // Same application date as simulate(). A carried once cash obligation\n'
+    + '    // keeps e.date, so obligationAbsorbed still keys the original schedule.\n'
+    + '    const byDate = new Map();\n'
+    + '    for (const e of events) {\n'
+    + '      const applyOn = cashWalkDate(e, start);';
+  const to = '    // Same application date as simulate(). A carried once cash obligation\n'
+    + '    // keeps e.date, so obligationAbsorbed still keys the original schedule.\n'
+    + '    const byDate = new Map();\n'
+    + '    for (const e of events) {\n'
+    + '      const applyOn = e.date;';
+  ok(src.split(from).length - 1 === 1,
+    'the projectDebts cashWalkDate grouping appears once, so the mutation is aimed');
+  const sandbox = { module: { exports: {} } };
+  try {
+    vm.runInNewContext(src.replace(from, to), sandbox, { filename: 'forecast-debt-mutant.js' });
+  } catch (err) {
+    ok(false, 'debt-walk mutant engine loads', err.message);
+  }
+  const mutant = sandbox.module.exports;
+  const plan = lenderPlan();
+  const debts = lenderDebts();
+  const brokenProj = mutant.projectDebts(plan, debts, LATER, {});
+  const brokenCard = brokenProj.byId && brokenProj.byId.card;
+  ok(brokenCard && near(brokenCard.paid, 0) && near(brokenCard.balance, DEBT_OPENING),
+    'window-only debt walk never absorbs the carried $100',
+    brokenCard ? money(brokenCard.paid) : 'missing');
+  const real = F.recommend(plan, LATER, recOpts({ debts }));
+  const broken = mutant.recommend(plan, LATER, recOpts({ debts }));
+  ok(!broken.sim.events.some(e => e.id === 'lender'),
+    'empty absorption then caps the carried obligation to zero in recommend');
+  ok(reservedAmount(real.sim.events, 'lender') === OWED,
+    'the real walk still keeps the $100 after caps');
   ok(broken.weekly > real.weekly,
     'that drop manufactures a higher weekly recommendation',
     `${money(real.weekly)}/week real vs ${money(broken.weekly)}/week mutant`);
