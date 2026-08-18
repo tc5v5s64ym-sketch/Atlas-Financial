@@ -114,16 +114,19 @@
   // Cadence occurrences() answers whether a declared once date sits inside
   // the window. That is not settlement. A once cash outflow still on the
   // plan remains owed if Forecast start later moves past that date: the
-  // reservation lands on this opening so the cash walk still deducts it.
+  // event keeps its scheduled/reservation date, and the cash walk still
+  // deducts it at this opening. Advancing as-of is not a new due date.
   // Received once income keeps window semantics — that cash is already
-  // inside the opening observation. Settled once outflows are removed,
-  // named on representedEvents for this start, or encoded as firstDue on
-  // the recurring row. Advancing as-of is not settlement evidence.
+  // inside the opening observation. Non-cash once charges keep window
+  // semantics so a historical capitalisation is not applied again.
+  // Settled once outflows are removed, named on representedEvents for
+  // this start, or encoded as firstDue on the recurring row.
   function onceOutflowDates(item, start, end) {
     if (!item || item.frequency !== 'once' || !item.date) return [];
     if (item.date > end) return [];
     if (item.date >= start) return [item.date];
-    return [start];
+    if (item.nonCash) return [];
+    return [item.date];
   }
   function outflowDates(item, start, end) {
     return item && item.frequency === 'once'
@@ -509,12 +512,19 @@
     if (startIdx === 0 && daily.length === full.daily.length) return full;
     const start = daily[0].date;
     const end = daily[daily.length - 1].date;
-    const events = (full.events || []).filter(e => e.date >= start && e.date <= end);
+    const walkStart = full.start;
+    const events = (full.events || []).filter(e => {
+      const apply = cashWalkDate(e, walkStart);
+      return apply >= start && apply <= end;
+    });
     const weeks = (full.weeks || []).filter(w => w.start <= end && w.end >= start).map(w => {
       const copy = Object.assign({}, w);
       if (copy.start < start) copy.start = start;
       if (copy.end > end) copy.end = end;
-      const weekEvents = (full.events || []).filter(e => e.date >= copy.start && e.date <= copy.end);
+      const weekEvents = (full.events || []).filter(e => {
+        const apply = cashWalkDate(e, walkStart);
+        return apply >= copy.start && apply <= copy.end;
+      });
       copy.events = weekEvents;
       copy.confirmedIncome = weekEvents.filter(e => e.kind === 'income' && e.confidence === 'confirmed')
         .reduce((s, e) => s + e.amount, 0);
@@ -534,7 +544,7 @@
       copy.closing = weekDays.length ? weekDays[weekDays.length - 1].balance : copy.closing;
       copy.variable = weekDays.reduce((s, p, i) => {
         const prev = i ? weekDays[i - 1].balance : copy.opening;
-        const eventNet = weekEvents.filter(e => e.date === p.date && e.kind !== 'noncash' && e.jointCash !== false)
+        const eventNet = weekEvents.filter(e => cashWalkDate(e, walkStart) === p.date && e.kind !== 'noncash' && e.jointCash !== false)
           .reduce((n, e) => n + e.amount, 0);
         return s + Math.max(0, prev + eventNet - p.balance);
       }, 0);
@@ -570,7 +580,7 @@
     const opening = startIdx > 0 ? full.daily[startIdx - 1].balance : startingCashAmount(plan);
     totals.variable = daily.reduce((s, p, i) => {
       const prev = i ? daily[i - 1].balance : opening;
-      const eventNet = events.filter(e => e.date === p.date && e.kind !== 'noncash' && e.jointCash !== false)
+      const eventNet = events.filter(e => cashWalkDate(e, walkStart) === p.date && e.kind !== 'noncash' && e.jointCash !== false)
         .reduce((n, e) => n + e.amount, 0);
       return s + Math.max(0, prev + eventNet - p.balance);
     }, 0);
@@ -673,6 +683,13 @@
   function isJointCashOutflow(event) {
     return !!(event && event.amount < 0 && event.kind !== 'noncash'
       && event.jointCash !== false);
+  }
+  // Past unresolved joint-cash outflows still bind the walk. The scheduled
+  // date stays on the event; only cash application lands on this opening.
+  // That is not a second calendar and not a rewritten due date.
+  function cashWalkDate(event, start) {
+    if (event && start && event.date < start && isJointCashOutflow(event)) return start;
+    return event && event.date;
   }
 
   function streamAmount(stream, opts) {
@@ -857,8 +874,12 @@
 
     const byDate = new Map();
     for (const e of events) {
-      if (!byDate.has(e.date)) byDate.set(e.date, []);
-      byDate.get(e.date).push(e);
+      const applyOn = cashWalkDate(e, start);
+      if (!byDate.has(applyOn)) byDate.set(applyOn, []);
+      byDate.get(applyOn).push(e);
+    }
+    for (const list of byDate.values()) {
+      list.sort((a, b) => (b.amount > 0 ? 1 : 0) - (a.amount > 0 ? 1 : 0));
     }
 
     const openingCash = startingCashAmount(plan);

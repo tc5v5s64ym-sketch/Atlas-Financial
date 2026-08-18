@@ -39,7 +39,8 @@ function independentlyOnceOutflowDates(item, start, end) {
   if (!item || item.frequency !== 'once' || !item.date) return [];
   if (item.date > end) return [];
   if (item.date >= start) return [item.date];
-  return [start];
+  if (item.nonCash) return [];
+  return [item.date];
 }
 
 function outflowHitsDate(item, date, occurrences, start) {

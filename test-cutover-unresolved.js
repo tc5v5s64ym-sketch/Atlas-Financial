@@ -3,8 +3,9 @@
  * advances past the placeholder date used to reserve them.
  *
  * Independent proof: plan-row presence, posting-unknown observations,
- * hand addition of named amounts, and a mutant that restores window-only
- * once outflows. That is not a second call to onceOutflowDates.
+ * hand addition of named amounts, nextDue/nextPaymentOut schedule identity
+ * across starts, and a mutant that restores window-only once outflows.
+ * That is not a second call to onceOutflowDates.
  *
  * Does not write data.json. Does not call Lunch Money. Does not move the
  * canonical opening. Posted refresh remains a B81 preview/approve write,
@@ -46,7 +47,8 @@ function independentlyOnceOutflowDates(item, start, end) {
   if (!item || item.frequency !== 'once' || !item.date) return [];
   if (item.date > end) return [];
   if (item.date >= start) return [item.date];
-  return [start];
+  if (item.nonCash) return [];
+  return [item.date];
 }
 
 function windowEnd(start) {
@@ -158,11 +160,13 @@ console.log('\n=== CASE 2 — merely advance opening; obligation still binds ===
   ok(F.occurrences(plan.bills[0], LATER, end).length === 0,
     'cadence occurrences does not invent a new due date on 2026-08-18');
   const independentDates = independentlyOnceOutflowDates(plan.bills[0], LATER, end);
-  ok(independentDates.length === 1 && independentDates[0] === LATER,
-    'independent rule: the unresolved outflow lands on this opening');
+  ok(independentDates.length === 1 && independentDates[0] === OPENING,
+    'independent rule: the unresolved outflow keeps its scheduled date');
   const events = F.expandEvents(plan, LATER, end, {});
-  ok(events.some(e => e.id === 'owed' && e.date === LATER && near(e.amount, -OWED)),
+  ok(events.some(e => e.id === 'owed' && e.date === OPENING && near(e.amount, -OWED)),
     'Forecast still reserves $100.00 after start moves to 2026-08-18');
+  ok(!events.some(e => e.id === 'owed' && e.date === LATER),
+    'the same canonical row does not acquire 2026-08-18 as a new due date');
   const sim = F.simulate(plan, LATER, { weeklyVariable: 0, targetBuffer: BUFFER });
   ok(near(sim.daily[0].balance, CASH - OWED),
     'day-0 close still deducts the unresolved $100',
@@ -171,22 +175,22 @@ console.log('\n=== CASE 2 — merely advance opening; obligation still binds ===
     'the $100 did not disappear into the opening cash');
 }
 
-console.log('\n=== CASE 3 — represented on this opening is settlement for the occurrence ===');
+console.log('\n=== CASE 3 — representing the new start is not a rewritten due date ===');
 {
   const plan = owedPlan();
   const end = windowEnd(LATER);
   const events = F.expandEvents(plan, LATER, end, {
     representedEvents: [{ id: 'owed', date: LATER }],
   });
-  ok(!events.some(e => e.id === 'owed'),
-    'representedEvents on this start suppresses the carried reservation');
+  ok(events.some(e => e.id === 'owed' && e.date === OPENING),
+    'representedEvents on the later start does not suppress a past scheduled date');
   const sim = F.simulate(plan, LATER, {
     weeklyVariable: 0,
     targetBuffer: BUFFER,
     representedEvents: [{ id: 'owed', date: LATER }],
   });
-  ok(near(sim.daily[0].balance, CASH),
-    'settled-on-this-opening cash is the opening, not opening minus $100',
+  ok(near(sim.daily[0].balance, CASH - OWED),
+    'cash still deducts the unresolved $100; representing start is not settlement',
     money(sim.daily[0].balance));
 }
 
@@ -289,8 +293,8 @@ console.log('\n=== CASE 6 — live B91 unknown mid-month arithmetic still binds 
   ok(near(laterTotal, independent),
     'Forecast still reserves $307.87 when posting remains UNKNOWN',
     money(laterTotal));
-  ok(laterReserved.every(e => e.date === LATER),
-    'the live reservation lands on the diagnostic opening, not a vanished date');
+  ok(laterReserved.every(e => e.date === OPENING),
+    'the live reservation keeps 2026-08-16, not a rewritten diagnostic opening');
   const openingEvents = F.expandEvents(live.plan, OPENING, windowEnd(OPENING), {});
   const openingTotal = openingEvents.filter(e => reservedRows.some(b => b.id === e.id))
     .reduce((s, e) => s + (-e.amount), 0);
@@ -321,15 +325,90 @@ console.log('\n=== CASE 7 — advancing start alone must not manufacture weekly 
   ok(recLater.weekly <= recOpen.weekly + 0.005
     || reservedAmount(recOpen.sim.events, 'owed') === OWED,
     'the published-style opening also reserved the $100; later start does not free it');
+  const owedOpen = recOpen.sim.events.find(e => e.id === 'owed');
+  const owedLater = recLater.sim.events.find(e => e.id === 'owed');
+  ok(owedOpen && owedLater && owedOpen.date === OPENING && owedLater.date === OPENING,
+    'recommend walks keep the same scheduled date for both starts');
+}
+
+console.log('\n=== CASE 8 — nextDue / nextPaymentOut keep the scheduled date ===');
+{
+  const plan = owedPlan();
+  const third = '2026-08-19';
+  const openEvents = F.expandEvents(plan, OPENING, windowEnd(OPENING), {});
+  const laterEvents = F.expandEvents(plan, LATER, windowEnd(LATER), {});
+  const thirdEvents = F.expandEvents(plan, third, windowEnd(third), {});
+  const dates = [openEvents, laterEvents, thirdEvents]
+    .map(ev => (ev.find(e => e.id === 'owed') || {}).date);
+  ok(dates.every(d => d === OPENING),
+    'the same canonical row keeps 2026-08-16 for starts 16, 18, and 19',
+    dates.join(', '));
+  const dueOpen = F.nextDue(openEvents, OPENING);
+  const dueLater = F.nextDue(laterEvents, LATER);
+  const outOpen = F.nextPaymentOut(openEvents, OPENING);
+  const outLater = F.nextPaymentOut(laterEvents, LATER);
+  ok(dueOpen && dueOpen.due === OPENING && dueOpen.what === 'Unresolved once obligation',
+    'nextDue names the obligation on its scheduled date at the original start');
+  ok(outOpen && outOpen.date === OPENING && near(outOpen.amount, OWED),
+    'nextPaymentOut on the original start is that same scheduled cash-out');
+  ok(!(dueLater && dueLater.due === LATER && dueLater.what === 'Unresolved once obligation'),
+    'nextDue does not present the overdue item as newly due on 2026-08-18');
+  ok(!(outLater && outLater.date === LATER && /Unresolved once obligation/.test(outLater.label)),
+    'nextPaymentOut does not move the overdue cash-out onto the later start');
+  ok(!dueLater || dueLater.due >= LATER,
+    'any later nextDue is on or after the later start, not a rewritten past date');
+  const simLater = F.simulate(plan, LATER, { weeklyVariable: 0, targetBuffer: BUFFER });
+  ok(near(simLater.daily[0].balance, CASH - OWED),
+    'the later cash walk still deducts $100 without renaming the due date',
+    money(simLater.daily[0].balance));
+  ok(simLater.events.some(e => e.id === 'owed' && e.date === OPENING),
+    'that walk still carries the original scheduled date');
+}
+
+console.log('\n=== CASE 9 — historical once non-cash is not recapitalised ===');
+{
+  const CHARGE = 50;
+  const OPENING_DEBT = 1000;
+  const plan = owedPlan({
+    bills: [],
+    obligations: [{
+      id: 'old-charge',
+      label: 'Historical capitalised charge',
+      frequency: 'once',
+      date: OPENING,
+      amount: CHARGE,
+      nonCash: true,
+      effect: 'capitalise',
+      debtId: 'heloc',
+      confidence: 'confirmed',
+    }],
+  });
+  const laterEvents = F.expandEvents(plan, LATER, windowEnd(LATER), {});
+  ok(!laterEvents.some(e => e.id === 'old-charge'),
+    'a historical once non-cash obligation does not replay after start advances');
+  const debts = [{
+    id: 'heloc', label: 'HELOC', balance: OPENING_DEBT, rate: 0, annualInterest: 0,
+    limit: 5000, pending: 0, secured: true, confidence: 'confirmed',
+  }];
+  const proj = F.projectDebts(plan, debts, LATER, {});
+  const heloc = proj.byId && proj.byId.heloc;
+  ok(heloc && near(heloc.balance, OPENING_DEBT),
+    'ending debt is unchanged — the historical charge is not capitalised again',
+    heloc ? money(heloc.balance) : 'missing');
+  ok(heloc && near(heloc.opening, OPENING_DEBT) && near(heloc.capitalised || 0, 0),
+    'opening debt was not grown by a replayed once charge');
+  const laterDue = F.nextDue(laterEvents, LATER);
+  ok(!(laterDue && /Historical capitalised/.test(laterDue.what)),
+    'nextDue does not name the historical non-cash charge');
 }
 
 console.log('\n=== mutation: window-only once outflows recreate the defect ===');
 {
   const src = sourceText(fs.readFileSync(path.join(__dirname, 'public', 'forecast.js'), 'utf8'));
-  const from = '    if (item.date >= start) return [item.date];\n    return [start];';
-  const to = '    if (item.date >= start) return [item.date];\n    return [];';
+  const from = '    if (item.nonCash) return [];\n    return [item.date];';
+  const to = '    if (item.nonCash) return [];\n    return [];';
   ok(src.split(from).length - 1 === 1,
-    'the carry-to-opening return appears once, so the mutation is aimed');
+    'the keep-scheduled-date return appears once, so the mutation is aimed');
   const sandbox = { module: { exports: {} } };
   try {
     vm.runInNewContext(src.replace(from, to), sandbox, { filename: 'forecast-mutant.js' });
