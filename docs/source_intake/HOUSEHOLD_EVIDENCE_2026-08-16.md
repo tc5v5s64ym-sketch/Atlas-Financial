@@ -155,11 +155,12 @@ the opening alone.
 - TELUS IS CLOSED. Do not forecast Telus as an active household bill
   unless newer transaction evidence proves a new active Telus service.
 - Noble Disposal Services is the household garbage service.
-- The Bell statements in this package place a $15 watch line on the same
-  main Bell account as the phone service. That watch line is part of the
-  existing Bell bill total. A separate second Bell/watch household bill is
-  not proven here and must not be invented. (Corrected 2026-08-18 against
-  the same preserved statements.)
+- A second Bell/watch account exists and is still active. Do not merge it
+  with the $15 watch line on the main Bell account. Exact current amount
+  is not proven by this package. The same package's Bell statements place
+  the $15 watch line on the main account; that line is already inside the
+  main bill total and must not be double-counted. Absence from those
+  main-account statements does not retract this owner confirmation.
 - The TD account previously labelled DEBT&PAYMENTS is now TENNIS INCOME
   (same canonical account identity). Amanda's Tennis BC salary and
   coaching income land there; coaches/business/pass-through amounts are
@@ -200,7 +201,11 @@ the opening alone.
   2026-08-18 in `docs/01_OPEN_QUESTIONS.md` Q19 from later owner activity
   evidence; this 16 August package did not close it.
 - Whether the pending Aug. 14 Bell $250 posts, and whether any residual
-  Bell cash still needs a dated joint-cash row after that posting (Q18).
+  main-account Bell cash still needs a dated joint-cash row after that
+  posting (Q18).
+- Exact current amount on the second Bell/watch account. The 2026-08-16
+  owner confirmation that it exists and is still active remains in force
+  unless Dale explicitly retracts or corrects it (Q18).
 - Exact Fusion upcoming dates/total.
 - Exact Burrards team-fee amount/date.
 - Provincials date/location/cost.

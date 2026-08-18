@@ -45,10 +45,16 @@ already preserved in
   another August minimum after Aug. 14, that is new evidence and Q19 may be
   reopened. Do not invent such a transaction now.
 
-## Bell watch line (same preserved statements; no new Bell bill)
+## Bell watch line (same preserved statements; do not duplicate the $15)
 
 The 2026-08-16 Bell statements already place the $15 watch line on the same
-account as the main phone service. The August watch line is part of the
-existing Bell bill total. Atlas must not invent a separate second
-Bell/watch household bill. Q18 stays open only for the pending Aug. 14
-$250 Bell payment / posting residual.
+account as the main phone service. That $15 line is part of the existing
+main Bell bill total. Atlas must not invent a second bill for that same
+$15 line.
+
+This 2026-08-18 HELOC closeout does not retract the 2026-08-16 owner
+confirmation that a second Bell/watch account exists and is still active.
+That account is not the $15 watch line on the main account. Exact current
+amount/cadence remains unknown. Q18 stays OPEN for the pending Aug. 14
+$250 Bell payment / posting residual, and for that owner-stated second
+account unless Dale explicitly retracts or corrects it.

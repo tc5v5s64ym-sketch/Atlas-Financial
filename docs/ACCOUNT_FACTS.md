@@ -96,7 +96,7 @@ Forecast quarterly recurrence (`day` 18, `anchor` 2026-03-18, `firstDue`
 Netflix does not exist anywhere in the data; the streaming spend is Amazon
 Channels, several small charges on scattered days.
 
-### Bell Mobility — one account, including the watch line *(absorbed 2026-08-16; watch-line correction 2026-08-18)*
+### Bell Mobility — main account and second watch account *(absorbed 2026-08-16)*
 
 August 1 2026 main-account bill (primary statement): previous amount due
 $373.31; payment received Jul. 17 −$250.00; unpaid balance $123.31; current
@@ -115,11 +115,15 @@ Against the Aug. 17 total, $106.62 is an **inferred residual only** while
 the $250 remains pending. Do not mark the Bell obligation fully settled.
 Do not date $356.62 as joint-cash. Do not add a second Bell $250 expense.
 The $15 watch line is on the same Bell account as the main phone service.
-It is not a separately proven second Bell account. The August watch line is
-already inside the existing Bell bill total. Do not invent a separate
-second Bell/watch household bill. Q18 stays open only for whether the
-pending $250 posts and whether any residual Bell cash still needs a dated
-joint-cash row after that posting.
+The August watch line is already inside the existing main Bell bill total.
+Do not invent a second household bill for that $15 line.
+A **second Bell/watch account is still active**. Owner confirmation
+2026-08-16: do not merge it with the $15 watch line on the main account.
+Exact current amount/cadence is not proven by this package. Absence of that
+account from the supplied main-account statements is not a retraction.
+Q18 stays open for whether the pending $250 posts and whether any residual
+main-account Bell cash still needs a dated joint-cash row after that
+posting, and for the owner-stated second Bell/watch account amount.
 
 **CMAW Local 1995 union dues ($25/month on the 15th) remain a standing Plan
 bill until cancellation is actually confirmed.** They still appear in the

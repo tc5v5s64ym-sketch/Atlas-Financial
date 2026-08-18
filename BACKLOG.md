@@ -27,10 +27,11 @@ facts PR; each needs its own independently provable outcome):
   Shaw. Cleaning that remainder is a separate figure PR.
 - **Bell baseline vs card-paid current bill** — do not date $356.62 or
   ~$104.20 as joint cash. The valid $250 pending Travel Visa payment is
-  observation. The $15 watch line is on the same Bell account; do not
-  invent a second Bell/watch bill. Q18 stays OPEN only for that
-  pending/posting residual. A later PR may model Bell as a card-paid
-  obligation without double-counting.
+  observation. The $15 watch line is on the same main Bell account; do
+  not invent a second bill for that $15 line. Q18 stays OPEN for that
+  pending/posting residual and for the owner-stated second Bell/watch
+  account amount. A later PR may model Bell as a card-paid obligation
+  without double-counting.
 - **Unresolved once cash obligations across a later Forecast start** —
   owner instruction 2026-08-18. A known unresolved cash obligation still
   on the plan must remain binding when Forecast start advances past the

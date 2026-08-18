@@ -94,9 +94,9 @@ console.log('\n=== 5. Telus does not recur after owner-confirmed closure ===');
   ok(/TELUS IS CLOSED/.test(plan.billsNote),
     'billsNote records Telus closed');
   ok(/^OPEN\b/.test(statusOf('Q18')),
-    'Q18 remains open only for residual Bell payment/posting facts', statusOf('Q18'));
-  ok(!/second Bell\/watch account is still\s+active/i.test(questions),
-    'Q18 does not claim an unexplained separate watch account');
+    'Q18 remains open for residual Bell facts', statusOf('Q18'));
+  ok(/second Bell\/watch account is still\s+active/i.test(questions),
+    'Q18 keeps the owner-stated separate Bell/watch account');
   ok(/TELUS IS CLOSED/.test(questions),
     'open-questions file records Telus closed');
 }

@@ -22,6 +22,8 @@ const money = n => Number(n).toFixed(2);
 
 const questions = sourceText(fs.readFileSync(path.join(__dirname, 'docs/01_OPEN_QUESTIONS.md'), 'utf8'));
 const facts = fs.readFileSync(path.join(__dirname, 'docs/ACCOUNT_FACTS.md'), 'utf8');
+const aug16 = fs.readFileSync(path.join(__dirname, 'docs/source_intake/HOUSEHOLD_EVIDENCE_2026-08-16.md'), 'utf8');
+const aug18 = fs.readFileSync(path.join(__dirname, 'docs/source_intake/HOUSEHOLD_EVIDENCE_2026-08-18.md'), 'utf8');
 const plan = data.plan;
 const asOf = data.meta.asOf;
 const windowEnd = F.addDays(asOf, (plan.windowDays || 91) - 1);
@@ -99,19 +101,26 @@ console.log('\n=== Q19 recorded ANSWERED with the four-part closeout ===');
     'Q19 does not treat HELOC interest as free');
 }
 
-console.log('\n=== Bell watch is not a second invented bill ===');
+console.log('\n=== Bell $15 watch line is not a second invented bill ===');
 {
   ok(!(plan.bills || []).some(b => /bell|watch/i.test(b.id + b.label)),
     'plan.bills does not invent a Bell or watch cash bill');
   ok(/^OPEN\b/.test(statusOf('Q18')),
-    'Q18 stays OPEN for the pending Bell payment/posting residual',
+    'Q18 stays OPEN for pending Bell posting residual and second-account amount',
     statusOf('Q18'));
-  ok(!/second Bell\/watch account is still\s+active/i.test(questions + facts),
-    'Q18 / ACCOUNT_FACTS no longer claim an unexplained separate watch account');
+  ok(/second Bell\/watch account is still\s+active/i.test(questions)
+    && /second Bell\/watch account is still\s+active/i.test(facts),
+    'Q18 / ACCOUNT_FACTS keep the owner-stated separate Bell/watch account');
+  ok(/Do not merge it with the \$15 watch line/i.test(questions + facts),
+    'owner confirmation still forbids merging the second account with the $15 line');
   ok(/same Bell account/i.test(questions) && /same Bell account/i.test(facts),
     'watch line is recorded on the same Bell account as the phone service');
   ok(/inferred residual/i.test(facts) && /\$250/.test(facts),
-    'the pending $250 / inferred residual remains the open Bell uncertainty');
+    'the pending $250 / inferred residual remains an open Bell uncertainty');
+  ok(/A second Bell\/watch account exists and is still active/i.test(aug16),
+    '2026-08-16 owner confirmation of the second Bell/watch account is preserved');
+  ok(/does not retract the 2026-08-16 owner confirmation/i.test(aug18),
+    '2026-08-18 closeout does not retract the owner-stated second account');
 }
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
