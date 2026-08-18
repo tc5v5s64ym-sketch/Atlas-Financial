@@ -1477,7 +1477,7 @@ unmapped accounts fail closed; provider credit is never household cash.
 Fixture coverage already collapses the same `providerTransactionId` from
 pending to posted without double-counting. **B21 did not observe a real
 pending→posted transition**; that household acceptance case remains open.
-The real Bell Mobility transaction `2461295531` is still pending as of
+A real Bell Mobility transaction is still pending as of
 2026-08-16 and remains a pending→posted acceptance case once the provider
 posts it. File-statement re-import remains useful later as
 fallback/backfill, not as this item's proof. Entry is T2 (met) plus `B21`'s
