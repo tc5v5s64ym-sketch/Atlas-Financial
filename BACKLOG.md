@@ -30,16 +30,16 @@ facts PR; each needs its own independently provable outcome):
   transactions remain legitimate historical spending ($1,750.61 YTD /
   8 months = $218.83 historical average; $3,534.93 over 19 months) and were
   not deleted or recategorized. Forward telecom is the evidenced active
-  services (Shaw $78.40 dated + main Bell $104.20 card-paid June baseline).
-  The stale closed-Telus remainder-split planning blocker is removed. Q18 is
-  only Bell settlement-state and the owner-stated second Bell/watch account
-  amount.
-- **Bell baseline vs card-paid current bill** — do not date $356.62 or
-  ~$104.20 as joint cash. The valid $250 pending Travel Visa payment is
-  observation. The $15 watch line is on the same main Bell account; do
-  not invent a second bill for that $15 line. Q18 stays OPEN for that
-  pending/posting residual and for the owner-stated second Bell/watch
-  account amount. A later PR may model Bell as a card-paid obligation
+  services (Shaw $78.40 dated + main Bell $104.20 card-paid June baseline +
+  second Bell/watch CSV $16.80). The stale closed-Telus remainder-split
+  planning blocker is removed. Q18 is only Bell settlement-state.
+- **Bell baseline vs card-paid current bill** — do not date $356.62,
+  ~$104.20, or $16.80 as joint cash. The valid $250 pending Travel Visa
+  payment is observation. The $15 watch line is on the same main Bell
+  account; do not invent a second bill for that $15 line. The second
+  account is a separate $16.80/month CSV cadence, not that $15 line and
+  not that account's arrears. Q18 stays OPEN for the pending/posting
+  residual only. A later PR may model Bell as a card-paid obligation
   without double-counting.
 - **Unresolved once cash obligations across a later Forecast start** —
   owner instruction 2026-08-18. A known unresolved cash obligation still

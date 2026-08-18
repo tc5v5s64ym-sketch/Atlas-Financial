@@ -94,7 +94,7 @@ console.log('\n=== 5. Telus does not recur after owner-confirmed closure ===');
   ok(/TELUS IS CLOSED/.test(plan.billsNote),
     'billsNote records Telus closed');
   ok(/^OPEN\b/.test(statusOf('Q18')),
-    'Q18 remains open for Bell settlement and the second-account amount', statusOf('Q18'));
+    'Q18 remains open for Bell settlement state', statusOf('Q18'));
   ok(/second Bell\/watch account is still\s+active/i.test(questions),
     'Q18 keeps the owner-stated separate Bell/watch account');
   ok(/TELUS IS CLOSED/.test(questions),
@@ -274,8 +274,9 @@ console.log('\n=== 14–15. Bell baseline is not $356.62; pending $250 is not do
 {
   ok(!(plan.bills || []).some(b => /bell/i.test(b.id + b.label)),
     'no Bell row is dated as a joint-cash bill');
-  ok(!(plan.bills || []).some(b => near(b.amount, 356.62) || near(b.amount, 104.20)),
-    'neither $356.62 nor ~$104.20 is a dated cash bill');
+  ok(!(plan.bills || []).some(b => near(b.amount, 356.62) || near(b.amount, 104.20)
+    || near(b.amount, 16.80) || near(b.amount, 121)),
+    'neither $356.62, $104.20, $16.80, nor $121 is a dated cash bill');
   const facts = fs.readFileSync(path.join(__dirname, 'docs/ACCOUNT_FACTS.md'), 'utf8');
   ok(/\$356\.62/.test(facts) && /104\.20/.test(facts),
     'ACCOUNT_FACTS records the Aug bill and the June baseline separately');

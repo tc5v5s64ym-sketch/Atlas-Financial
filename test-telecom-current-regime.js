@@ -55,25 +55,37 @@ ok(near(last.total, shaw.amount + 250),
   'July independently equals Shaw + $250 Bell payment, not a second Shaw');
 
 console.log('\n=== independent AFTER active-service requirement ===');
-// June statement lines from the absorbed evidence, not from budgetBreakdown.
+// Statement / CSV lines from the absorbed evidence, not from budgetBreakdown.
 ok(/\$70\.00 monthly services/.test(evidence) && /\$25\.80 device payment/.test(evidence)
   && /\$8\.40 taxes/.test(evidence),
   'June statement lines are in the 2026-08-16 evidence pack');
-const bellBaseline = 70 + 25.80 + 8.40;
-ok(near(bellBaseline, 104.20),
-  'independent June baseline is $70.00 + $25.80 + $8.40 = $104.20',
-  money(bellBaseline));
-ok(/≈ \*\*\$104\.20\*\*/.test(facts) || /≈ \*\*\$104.20\*\*/.test(facts)
-  || /baseline \*\*\$104\.20\/month\*\*/.test(facts),
-  'ACCOUNT_FACTS records the same June baseline');
+ok(/BYOD Watch SA Ultd Shr 2GB: \$15\.00/.test(evidence)
+  && /GST: \$0\.75/.test(evidence) && /BC PST: \$1\.05/.test(evidence),
+  'second-account CSV lines are in the 2026-08-16 evidence pack');
+const mainBellBaseline = 70 + 25.80 + 8.40;
+const secondWatchBaseline = 15 + 0.75 + 1.05;
+const undatedBell = mainBellBaseline + secondWatchBaseline;
+ok(near(mainBellBaseline, 104.20),
+  'independent main June baseline is $70.00 + $25.80 + $8.40 = $104.20',
+  money(mainBellBaseline));
+ok(near(secondWatchBaseline, 16.80),
+  'independent second-watch CSV is $15.00 + $0.75 + $1.05 = $16.80',
+  money(secondWatchBaseline));
+ok(near(undatedBell, 121.00),
+  'independent undated Bell is $104.20 + $16.80 = $121.00',
+  money(undatedBell));
+ok(/baseline \*\*\$104\.20\/month\*\*/.test(facts)
+  && /\$16\.80\/month/.test(facts)
+  && /\$104\.20 \+ \$16\.80 = \$121\.00/.test(facts),
+  'ACCOUNT_FACTS records both Bell bills and the $121 undated total');
 const telusForward = 0;
-const afterGross = shaw.amount + bellBaseline + telusForward;
+const afterGross = shaw.amount + undatedBell + telusForward;
 const afterRemainder = afterGross - shaw.amount;
-ok(near(afterGross, 182.60),
-  'AFTER gross is Shaw $78.40 + Bell $104.20 + Telus $0 = $182.60',
+ok(near(afterGross, 199.40),
+  'AFTER gross is Shaw $78.40 + Bell $121.00 + Telus $0 = $199.40',
   money(afterGross));
-ok(near(afterRemainder, 104.20) && near(telusForward, 0),
-  'AFTER remainder is Bell $104.20; Telus forward is $0',
+ok(near(afterRemainder, 121.00) && near(telusForward, 0),
+  'AFTER remainder is Bell $121.00; Telus forward is $0',
   money(afterRemainder));
 
 console.log('\n=== engine follows the independent reconstruction ===');
@@ -91,8 +103,8 @@ const budget = F.budgetBreakdown(plan, periods, {
   asOf,
 });
 const telecom = budget.categories.find(c => c.id === 'telecom');
-ok(telecom.source === 'current-regime' && near(telecom.current, bellBaseline),
-  'engine current-regime amount equals the independent Bell baseline');
+ok(telecom.source === 'current-regime' && near(telecom.current, undatedBell),
+  'engine current-regime amount equals the independent undated Bell total');
 ok(near(telecom.historical, historicalAvg),
   'engine historical still equals the independent YTD average');
 ok(near(telecom.dated, shaw.amount) && telecom.datedItems.length === 1,
@@ -107,8 +119,8 @@ const beforeRequired = 4039.53375;
 const beforeEssential = 3523.23625;
 const beforeShortfall = 39.17660714285739;
 const delta = beforeRemainder - afterRemainder;
-ok(near(delta, 36.22625),
-  'independent remainder delta is $36.23/month', money(delta));
+ok(near(delta, 19.42625),
+  'independent remainder delta is $19.43/month', money(delta));
 ok(advice.weekly === 920,
   'weekly cap is unchanged at $920 — recommend does not read the remainder',
   String(advice.weekly));
@@ -132,12 +144,14 @@ ok(!(plan.bills || []).some(b => /telus/i.test(b.id + ' ' + b.label)),
   'Telus is not a plan.bills row');
 ok(!(plan.bills || []).some(b => /bell|watch/i.test(b.id + ' ' + b.label)),
   'Bell / watch are not invented as joint-cash bills');
-ok(!near(telecom.planned, 104.20 + 15) && !near(telecom.planned, 104.20 + 78.4),
-  'watch line and Shaw are not added on top of the Bell baseline');
-ok(!near(telecom.planned, 104.20 + 250) && !near(telecom.planned, 356.62),
+ok(!near(telecom.planned, 104.20 + 15) && !near(telecom.planned, 121 + 15)
+  && !near(telecom.planned, 121 + 78.4),
+  'main-account watch line and Shaw are not added on top of the $121 remainder');
+ok(!near(telecom.planned, 104.20 + 250) && !near(telecom.planned, 121 + 250)
+  && !near(telecom.planned, 356.62),
   'card repayment and the exceptional August bill are not the baseline');
-ok(plan.budget.categories.find(c => c.id === 'telecom').currentMonthly === 104.2,
-  'published currentMonthly is the June baseline, not $356.62 or $250');
+ok(plan.budget.categories.find(c => c.id === 'telecom').currentMonthly === 121,
+  'published currentMonthly is $121.00, not $356.62 or $250');
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
 process.exit(failures === 0 ? 0 : 1);

@@ -327,7 +327,7 @@ const RISK_CHANGE = {
                in the days before each payment. Each crossing risks an over-limit fee on top of the interest,
                which raises the card's effective rate above its headline one.`,
   telecomUnrouted: () =>
-    `TELUS IS CLOSED. Forward telecom is the evidenced active services. This cap remainder is the main Bell June baseline, not a live Telus bill, not a second Shaw, and not a duplicate $15 watch line.`,
+    `TELUS IS CLOSED. Forward telecom is the evidenced active services. This cap remainder is the two evidenced Bell bills (main June baseline plus the separate watch CSV), not a live Telus bill, not a second Shaw, and not a duplicate of the $15 watch line already inside the main Bell bill.`,
 };
 
 /* ------------------------------------------- HELOC month-on-month, in words */

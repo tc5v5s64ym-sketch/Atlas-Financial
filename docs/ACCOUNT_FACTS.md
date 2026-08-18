@@ -101,13 +101,18 @@ Current evidenced active services:
 - **Main Bell Mobility** — June 2026 normal recurring baseline **$104.20/month**
   (card-paid; see below). Includes the $15 watch line. Not a joint-chequing
   bill.
+- **Second Bell/watch account** — **$16.80/month** recurring (card-paid;
+  see below). Distinct from the $15 watch line on the main Bell account.
+  Not a joint-chequing bill.
 - **Telus** — **$0** forward.
+
+Forward undated Bell telecom is therefore **$104.20 + $16.80 = $121.00/month**.
 
 There is no remaining Telus planning question and no need to quantify how much
 historical Telus spending appears inside old category averages. A generic
 merchant-split request is not a planning blocker merely because old Telecom
-totals contain Telus. Q18 is the Bell settlement-state path and the
-owner-stated second Bell/watch account amount, not a Telus-cost question.
+totals contain Telus. Q18 is the Bell settlement-state path, not a
+telecom-cost question.
 
 **Noble Disposal Services** is the household garbage bill (owner-confirmed
 2026-08-16; primary invoice): $95.85 every 3 months on the 18th, Package A
@@ -142,16 +147,18 @@ The August watch line is already inside the existing main Bell bill total.
 Do not invent a second household bill for that $15 line.
 A **second Bell/watch account is still active**. Owner confirmation
 2026-08-16: do not merge it with the $15 watch line on the main account.
-Exact current amount/cadence is not proven by this package. Absence of that
-account from the supplied main-account statements is not a retraction.
+The same 2026-08-16 Gmail handoff attached the second-account CSVs (June 11
+and July 11). Both show the same recurring cadence: BYOD Watch SA Ultd Shr
+2GB **$15.00** + GST **$0.75** + BC PST **$1.05** = **$16.80/month**. That
+account is distinct from the main Bell PDF account. Do not use its
+accumulated amount-due / arrears as the recurring baseline.
 Q18 stays open for whether the pending $250 posts and whether any residual
 main-account Bell cash still needs a dated joint-cash row after that
-posting, and for the owner-stated second Bell/watch account amount. The
-main-account **recurring cost** is the June baseline above; that is not a
-Q18 cost question. Do not invent a second-account amount. Absence of that
-account from the supplied main-account statements and from committed
-category rollups (July Telecom = Shaw + the $250 main-account payment) is
-not a retraction of the owner confirmation.
+posting. The main-account **recurring cost** is the June baseline above;
+the second-account **recurring cost** is $16.80. Neither is a Q18 cost
+question. Absence of the second account from the supplied main-account
+PDFs and from committed category rollups (July Telecom = Shaw + the $250
+main-account payment) is not a retraction of the owner confirmation.
 
 **CMAW Local 1995 union dues ($25/month on the 15th) remain a standing Plan
 bill until cancellation is actually confirmed.** They still appear in the

@@ -122,8 +122,8 @@ ok(shaw && shaw.budgetCategory === 'telecom' && shaw.frequency === 'monthly',
 ok(near(telecom.historical, independentYtdAvg),
   'budgetBreakdown still reports the independent YTD historical average',
   money(independentYtdAvg));
-ok(near(telecom.planned, 104.2) && near(telecom.current, 104.2),
-  'forward remainder is the evidenced Bell baseline, not YTD − Shaw',
+ok(near(telecom.planned, 121) && near(telecom.current, 121),
+  'forward remainder is the evidenced undated Bell total, not YTD − Shaw',
   money(telecom.planned));
 ok(telecom.datedItems.length === 1 && telecom.datedItems[0].label === 'Shaw internet'
   && near(telecom.datedItems[0].amount, shaw.amount),

@@ -90,6 +90,21 @@ The main phone plan itself is $55. The same Bell account also contains a
 $15 watch line. $356.62 is not the normal monthly run rate: it contains
 arrears and travel/roaming.
 
+Amanda's 2026-08-16 handoff: two separate bills; the CSV is an additional
+watch; the Bell PDFs are the phone and a watch.
+
+Second-account CSVs (June 11 and July 11), distinct from the main Bell PDF
+account:
+
+- BYOD Watch SA Ultd Shr 2GB: $15.00
+- GST: $0.75
+- BC PST: $1.05
+- Recurring baseline: **$16.80/month**
+
+Do not use that account's accumulated amount-due / arrears as the
+recurring baseline. Do not merge this $16.80 with the $15 watch line
+already inside the main Bell PDF bill.
+
 ### MBNA Amazon Mastercard statement
 `AUG16-003`
 
@@ -156,11 +171,12 @@ the opening alone.
   unless newer transaction evidence proves a new active Telus service.
 - Noble Disposal Services is the household garbage service.
 - A second Bell/watch account exists and is still active. Do not merge it
-  with the $15 watch line on the main Bell account. Exact current amount
-  is not proven by this package. The same package's Bell statements place
+  with the $15 watch line on the main Bell account. The attached June 11
+  and July 11 CSVs prove the recurring cadence at **$16.80/month**
+  ($15.00 + $0.75 GST + $1.05 BC PST). The same package's Bell PDFs place
   the $15 watch line on the main account; that line is already inside the
   main bill total and must not be double-counted. Absence from those
-  main-account statements does not retract this owner confirmation.
+  main-account PDFs does not retract this owner confirmation.
 - The TD account previously labelled DEBT&PAYMENTS is now TENNIS INCOME
   (same canonical account identity). Amanda's Tennis BC salary and
   coaching income land there; coaches/business/pass-through amounts are
@@ -202,10 +218,9 @@ the opening alone.
   evidence; this 16 August package did not close it.
 - Whether the pending Aug. 14 Bell $250 posts, and whether any residual
   main-account Bell cash still needs a dated joint-cash row after that
-  posting (Q18).
-- Exact current amount on the second Bell/watch account. The 2026-08-16
-  owner confirmation that it exists and is still active remains in force
-  unless Dale explicitly retracts or corrects it (Q18).
+  posting (Q18 settlement state). The second Bell/watch recurring amount
+  is **$16.80/month** from the attached CSVs and is not an open cost
+  question.
 - Exact Fusion upcoming dates/total.
 - Exact Burrards team-fee amount/date.
 - Provincials date/location/cost.
