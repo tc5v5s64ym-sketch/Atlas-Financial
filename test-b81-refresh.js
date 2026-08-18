@@ -454,6 +454,33 @@ console.log('\n=== M. replace refusal leaves dest present and byte-identical ===
     'failure path does not create a dest-aside bak file');
   ok(!fs.existsSync(`${destResolved}.atlas-refresh-tmp`),
     'failed refresh cleans up the temp file');
+
+  const src = fs.readFileSync(SCRIPT, 'utf8');
+  ok(!/atlas-refresh-bak/.test(src), 'there is no dest-aside backup fallback');
+  const { preview } = previewAt(liveData);
+  fs.renameSync = function patchedRename(from, to) {
+    if (path.resolve(String(to)) === destResolved) {
+      const err = new Error('simulated replace failure');
+      err.code = 'EPERM';
+      throw err;
+    }
+    return origRename.call(fs, from, to);
+  };
+  let applyThrew = false;
+  try {
+    C.applyPreview(JSON.parse(originalBytes.toString('utf8')), preview, dest);
+  } catch (err) {
+    applyThrew = /simulated replace failure/.test(String(err && err.message || err));
+  } finally {
+    fs.renameSync = origRename;
+  }
+  ok(applyThrew, 'the refresh apply fails rather than falling back to a dest-aside swap');
+  ok(fs.existsSync(dest), 'data.json still exists after apply failure');
+  ok(Buffer.compare(fs.readFileSync(dest), originalBytes) === 0,
+    'data.json remains byte-identical after apply failure');
+  const still = JSON.parse(fs.readFileSync(dest, 'utf8'));
+  ok(near(still.plan.startingCash.breakdown.find(r => r.id === 'chequing-b').value, 932.05),
+    'no partial Chequing B replacement occurred');
 }
 
 console.log('\n' + (failures ? `${failures} failure(s)` : 'All B81 refresh checks passed'));
