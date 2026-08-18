@@ -1423,8 +1423,9 @@
   }
 
   // Planned borrowing is opt-in. Default invents neither permission nor a
-  // facility. Q19 HELOC cash treatment stays unresolved: a caller that
-  // names the HELOC still has to say so; this function will not.
+  // facility. Naming the HELOC still has to be explicit; this function will
+  // not treat a draw as the default cash path. Remaining August HELOC cash
+  // impact is answered in Q19 and is not a planned-debt default.
   // A permitted draw is purpose-specific, capped by facility capacity, and
   // inserted into the same Forecast projection as proceeds, interest from
   // the draw date, and required repayment cash flows. An owner-authorized

@@ -124,7 +124,8 @@ This is the product picture a new session should start from. It is **not** the
 summed Lunch Money mapped balances (Chequing A $1,320.13 + Chequing B
 $932.05 + Savings $0.58 = $2,252.76). The 14 August payday cluster is
 already inside those snapshots and is not replayed. Amanda / TENNIS INCOME
-is still held-elsewhere. Q19 remains OPEN. `B91` is done. Dated
+is still held-elsewhere. Q19 is ANSWERED (remaining August HELOC cash
+requirement is $0 additional after the 14 August $1,100). `B91` is done. Dated
 balance openings for 2026-08-09 and 2026-08-16 live in `snapshots/`;
 `B20` is done. TENNIS INCOME and SAVINGS-DONT TOUCH still have only
 the 2026-08-09 reading.

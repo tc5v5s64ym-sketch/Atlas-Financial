@@ -248,7 +248,7 @@ console.log('\n=== G. Amanda / TENNIS INCOME is not spendable; card capacity is 
     'the Cash Back over-limit action stays open while pending is unknown');
 }
 
-console.log('\n=== H. Q19 remains unresolved and is not silent zero cash impact ===');
+console.log('\n=== H. Q19 is answered; remaining August cash is not a duplicate $814.18 ===');
 {
   const heloc = live.plan.obligations.find(o => o.id === 'heloc');
   ok(heloc && heloc.nonCash === true && near(heloc.amount, 814.18),
@@ -256,10 +256,10 @@ console.log('\n=== H. Q19 remains unresolved and is not silent zero cash impact 
   ok(events16.filter(e => e.id === 'heloc' && e.kind !== 'noncash').length === 0,
     'no HELOC chequing outflow was invented');
   const md = questionsMarkdown();
-  ok(/^OPEN\b/.test(questionStatus(md, 'Q19')),
-    'Q19 remains OPEN', questionStatus(md, 'Q19'));
-  ok(/must not claim confident zero household\s+cash impact/i.test(md),
-    'the open question still forbids claiming confident zero cash impact');
+  ok(/^ANSWERED\b/.test(questionStatus(md, 'Q19')),
+    'Q19 is ANSWERED', questionStatus(md, 'Q19'));
+  ok(/\$0 additional/i.test(md),
+    'the answered question records $0 additional August HELOC cash');
 }
 
 console.log('\n=== I. existing Forecast produces the payday plan from this opening ===');
@@ -346,7 +346,7 @@ console.log('\n=== remaining owner questions stay open ===');
   const md = questionsMarkdown();
   ok(/^ANSWERED\b/.test(questionStatus(md, 'Q0')), 'Q0 HOME BUDGET is ANSWERED');
   ok(/^ANSWERED\b/.test(questionStatus(md, 'Q17')), 'Q17 Hydro arrears is ANSWERED');
-  ok(/^OPEN\b/.test(questionStatus(md, 'Q19')), 'Q19 HELOC current August settlement remains OPEN');
+  ok(/^ANSWERED\b/.test(questionStatus(md, 'Q19')), 'Q19 remaining August HELOC cash is ANSWERED');
   ok(/^ANSWERED\b/.test(questionStatus(md, 'Q23')), 'Q23 Fusion instalments are ANSWERED');
   ok(/^OPEN\b/.test(questionStatus(md, 'Q20')), 'Q20 emergency reserve remains OPEN');
   ok(/^OPEN\b/.test(questionStatus(md, 'Q21')), 'Q21 $527.80 remains OPEN');

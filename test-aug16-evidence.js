@@ -94,7 +94,9 @@ console.log('\n=== 5. Telus does not recur after owner-confirmed closure ===');
   ok(/TELUS IS CLOSED/.test(plan.billsNote),
     'billsNote records Telus closed');
   ok(/^OPEN\b/.test(statusOf('Q18')),
-    'Q18 remains open only for residual Bell facts', statusOf('Q18'));
+    'Q18 remains open for residual Bell facts', statusOf('Q18'));
+  ok(/second Bell\/watch account is still\s+active/i.test(questions),
+    'Q18 keeps the owner-stated separate Bell/watch account');
   ok(/TELUS IS CLOSED/.test(questions),
     'open-questions file records Telus closed');
 }
@@ -250,11 +252,11 @@ console.log('\n=== 16–18. HELOC interest posting and cash payment stay distinc
     'no HELOC chequing outflow was invented');
   ok(!events.some(e => e.id === 'heloc' && e.date === '2026-08-01'),
     'Aug. 1 PAD is not fabricated as a cash event');
-  ok(/^OPEN\b/.test(statusOf('Q19')), 'Q19 remains OPEN', statusOf('Q19'));
-  ok(/must not claim confident zero household\s+cash impact/i.test(questions),
-    'Q19 still forbids claiming confident zero cash impact');
+  ok(/^ANSWERED\b/.test(statusOf('Q19')), 'Q19 is ANSWERED', statusOf('Q19'));
+  ok(/\$0 additional/i.test(questions) && /14 August/i.test(questions),
+    'Q19 records $0 additional August HELOC cash after the 14 August payment');
   ok(!/no cash leaves any account for it/i.test(data.upcomingNote),
-    'upcomingNote does not claim confident zero HELOC cash impact');
+    'upcomingNote does not claim interest is free');
   ok(/16 August 2026 Forecast opening|2026-08-16/i.test(data.upcomingNote)
     && /settled/i.test(data.upcomingNote),
     'upcomingNote is the 16 August opening and records settled Burrards/Fusion');

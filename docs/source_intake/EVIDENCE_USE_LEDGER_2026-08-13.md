@@ -183,7 +183,7 @@ This ledger deliberately uses descriptive source statuses rather than inventing 
 | HELOC-001 | July opening/closing balance and 99.23% statement utilization | Observed | HELOC position history | Debt trend and risk | Preserved; later Atlas balance remains current |
 | HELOC-002 | 4.90% rate, $202,654 limit, and $814.18 July interest | Observed | Standing terms plus dated interest charge | Debt projection | Preserved; interest is capitalized in current model |
 | HELOC-003 | July advances/charges, credits, and $4,117.85 net increase | Observed/calculated | Private transaction reconciliation plus aggregate history | Debt and transfer analysis | Private counterparties remain local-only |
-| HELOC-004 | $814.18 minimum shown due 2026-08-21 | Observed/action | Dated obligation with reconciliation state | Cash forecast, next-due, reminders | High-priority blocker: payment/funding not confirmed |
+| HELOC-004 | $814.18 minimum shown due 2026-08-21 | Observed/action | Dated obligation with reconciliation state | Cash forecast, next-due, reminders | Closed 2026-08-18: Aug. 14 $1,100 satisfies the August minimum (Q19 ANSWERED); interest remains non-cash capitalisation |
 | TAX-001 | $5,639.67 property-tax draw funded through HELOC | Observed | Reconciled annual expense plus funding source | Reserve planning | Future cash reserve needed to avoid repeat borrowing |
 | MTG-005 | May 2027 renewal and possible HELOC consolidation | Action/scenario | Long-range plan event | Renewal modeller and recommendation engine | Keep visible; future terms unknown |
 

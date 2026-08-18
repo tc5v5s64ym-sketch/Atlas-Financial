@@ -707,10 +707,13 @@ Aug. 14 payday session added contradictory household evidence (~$1,000
 historical payments; owner belief that payment/interest came from chequing;
 autodebit mechanics unverified). The exported calendar keeps that 21st as a
 reminder-only look-point, not a chequing outflow, and derives the month-end
-capitalisation reminder from the Plan. `docs/01_OPEN_QUESTIONS.md` Q19 owns
-that remaining household-facing question. This file does not pick 21st or
-month-end to make the calendar cleaner. Refresh work must not claim confident
-zero household cash impact while those mechanics remain unresolved.
+capitalisation reminder from the Plan. The architectural split remains:
+month-end `nonCash` capitalisation on the cash plan, 21st reminder-only on
+the calendar. This file does not pick 21st or month-end to make the calendar
+cleaner. Remaining August 2026 household cash impact is answered in
+[`docs/01_OPEN_QUESTIONS.md`](docs/01_OPEN_QUESTIONS.md) Q19: the 14 August
+$1,100 payment satisfies the $814.18 minimum, so Forecast must not reserve
+another August joint-cash HELOC minimum. That does not make interest free.
 
 **Current-state refresh uses Lunch Money as the normal feed; Forecast stays
 the engine.** Owner decision **2026-08-17**: Lunch Money is the household's

@@ -310,9 +310,11 @@
     {
       "id": "HELOC-004",
       "source": "docs/source_intake/MORTGAGE_HELOC_FACTS_2026-08-13.md",
-      "disposition": "UNRESOLVED",
-      "question_path": "docs/01_OPEN_QUESTIONS.md",
-      "question_marker": "Q19."
+      "disposition": "CONSUMED",
+      "routed_to": {
+        "path": "docs/ACCOUNT_FACTS.md",
+        "heading": "HELOC interest is capitalised, not paid"
+      }
     },
     {
       "id": "TAX-001",
