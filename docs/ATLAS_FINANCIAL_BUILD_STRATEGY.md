@@ -24,22 +24,24 @@ Capabilities that are wanted but not yet in Phases 1–4 are recorded in
 **Later capabilities — status and reopen trigger**. That table is memory and
 trigger, not a second order of work.
 
-**Current sequencing (17 August 2026, after B78 closeout).**
+**Current sequencing (18 August 2026, after B79 closeout).**
 B74, B80, B87–B90, B91, B92, B93, B94, B95, B96, B20, **B21 /
-AF-INTAKE-01** and **B78 / AF-INGEST-01** are closed. The live Lunch
-Money **read** observation test, the 2026-08-17 B21 refresh proof, and
-the B78 identity/idempotency proof have already happened; they are not
-future milestones. Owner decision **2026-08-17**: Lunch Money is
+AF-INTAKE-01**, **B78 / AF-INGEST-01**, and **B79 / AF-STORE-01** are
+closed. The live Lunch Money **read** observation test, the 2026-08-17
+B21 refresh proof, the B78 identity/idempotency proof, and the B79
+store-question answer have already happened; they are not future
+milestones. Owner decision **2026-08-17**: Lunch Money is
 the household's **normal operational financial update feed**. Forecast
 remains the planner. Automatic canonical writes are **not** approved.
-T3 is **met**. **Next** is `B79` / `AF-STORE-01` (the store question,
-answered by evidence). T4 / `B81` (trusted canonical refresh) remains
-owner-gated and **closed**. Do **not** wait for a second month of
-routine statement files. Provider-completeness, broad historical
-forensics, old categorisation cleanup, and file-statement backfill are
-**not** critical-path gates unless they expose a demonstrated material
-source or financial-correctness gap. Do not start `B79` or `B81` in
-order to apply the unused $10 Chequing B change.
+T3 is **met**. The store gate is **not** met: files remain the
+foundation. The sequenced path now reaches T4 / `B81` (trusted
+canonical refresh), which remains owner-gated and **closed**. Do **not**
+start `B81`. Do **not** wait for a second month of routine statement
+files. Provider-completeness, broad historical forensics, old
+categorisation cleanup, and file-statement backfill are **not**
+critical-path gates unless they expose a demonstrated material source
+or financial-correctness gap. Do not start `B81` in order to apply the
+unused $10 Chequing B change.
 
 ---
 
@@ -283,11 +285,12 @@ B78 / AF-INGEST-01  identity-stable idempotent Lunch Money
        docs/connectivity/LUNCH_MONEY_IDENTITY_PROOF_B78.md
   ↓
 B79 / AF-STORE-01  the store question, answered by evidence
-     ← next; owner decision; do not introduce a store to ask
+     ← DONE 2026-08-18; file foundation has not failed;
+       proof in docs/STORE_QUESTION_B79.md; store gate stays closed
   ↓
 B81 / AF-LIVE-02  trusted canonical refresh
      ← gated / still closed; live READ already exists;
-       automatic WRITE is not approved
+       automatic WRITE is not approved; do not start
 ```
 
 Not critical-path gates unless they expose a demonstrated material source
@@ -1007,19 +1010,21 @@ canonical writer.
 
 ### AF-STORE-01 · The store question, answered by evidence
 
-- **Outcome** — a written answer to whether the file foundation can still give
-  the invariant, identity and idempotency guarantees the work needs.
-- **Incumbent** — `data.json`, generated `public/periods.json`, and git as the
-  history. `CONSUME` unless the gate is met.
+- **Outcome** — **DONE 2026-08-18.** The file foundation has **not**
+  demonstrably failed. Stay with files. Store gate stays closed. Written
+  answer: [`docs/STORE_QUESTION_B79.md`](STORE_QUESTION_B79.md).
+- **Incumbent** — `data.json`, generated `public/periods.json`,
+  observation/reconciliation files, dated `snapshots/`, and git as the
+  history. `CONSUME`.
 - **Tier** — **M4** — `ARCHITECTURE.md` says passing the gate is an owner
-  decision, recorded. **Backlog** — `B79`.
-- **Entry gate** — AF-INGEST-01 complete, so the answer rests on a foundation that
-  was actually pushed.
-- **Acceptance** — the answer cites what **failed on real data**. "Relational
-  modelling would be tidier" and "a later capability assumes it" are named in
-  `ARCHITECTURE.md` as things that are not reasons, and remain so.
-- **Prompt** — *Report whether the file foundation demonstrably failed, with the
-  evidence. Do not introduce a store. If the gate is met, the owner decides.*
+  decision, recorded. The gate was **not** met, so no owner pass is
+  requested. **Backlog** — `B79`.
+- **Entry gate** — AF-INGEST-01 complete.
+- **Acceptance** — the answer cites what failed on real data: **nothing
+  required failed in a way that needs a store.** B78 / T3 identity and
+  idempotency held. "Relational modelling would be tidier" and "a later
+  capability assumes it" remain insufficient.
+- **Prompt** — *closed.*
 
 ---
 
@@ -1186,7 +1191,7 @@ resurrect it.
 | One master forecast / longer operating horizon | **ACTIVE** | `AF-PLAN-01` / `B94`. **Complete 2026-08-16.** Live display remains 91-day `windowDays`; `Forecast.recommend` searches the ≥12-month knowledge horizon. `B95` already absorbed the known major costs. | Already sequenced. Evolve Forecast. Never a second recurrence, payday, goals, or forecast engine. |
 | End-to-end payday proof | **ACTIVE** | `AF-PLAN-02` / `B96`, after `B94`. **Complete 2026-08-16.** Household payday answer is composed from incumbent Forecast results on the 2026-08-16 opening. | Already sequenced. Prove fresh evidence → canonical state → Forecast → household answer. Not a second payday engine. |
 | Prove the normal Lunch Money refresh path | **ACTIVE** | Phase 2 `AF-INTAKE-01` / `B21`. **Complete 2026-08-17.** Later live observation through existing observe → reconcile. Proof: `docs/connectivity/LUNCH_MONEY_REFRESH_PROOF_2026-08-17.md`. | Already sequenced. Do not reopen to apply the unused $10 Chequing B change or to invent a pending→posted case. |
-| Improved ingestion | **ACTIVE** | Phase 3 `AF-INGEST-01` / `B78`, to T3. **Complete 2026-08-17.** Identity-stable idempotent Lunch Money observation/import on real household data; existing provider IDs; no new identity system; no store; no automatic canonical writer. Proof: `docs/connectivity/LUNCH_MONEY_IDENTITY_PROOF_B78.md`. | Already sequenced. T3 met. Next sequenced item is `AF-STORE-01` / `B79`. T4 / `B81` stay closed. |
+| Improved ingestion | **ACTIVE** | Phase 3 `AF-INGEST-01` / `B78`, to T3. **Complete 2026-08-17.** Identity-stable idempotent Lunch Money observation/import on real household data; existing provider IDs; no new identity system; no store; no automatic canonical writer. Proof: `docs/connectivity/LUNCH_MONEY_IDENTITY_PROOF_B78.md`. | Already sequenced. T3 met. `AF-STORE-01` / `B79` is complete; store gate stays closed. T4 / `B81` stay closed. |
 | Automated financial-data connectivity / trusted canonical refresh | **GATED** (`B81`) | `ARCHITECTURE.md` connectivity gate. Live **read** observation (`AF-LIVE-01` / `B80` + GET) is **complete**. Remaining provider-completeness is not a critical-path gate. `AF-LIVE-02` / `B81` stays closed until T4: trusted canonical **write**, not the first live GET. | The owner passes the remaining conditions before automatic canonical writes. Obtain no credential in git. The 2026-08-17 feed decision is product direction, not that pass. |
 | Richer payroll / bonus / pension-contribution modelling | **PARKED** | The 91-day plan consumes estimated net pay. A statutory payroll engine (`EMP-006`) is excluded. Optional pension cash is already inside that net. No bonus cash event is on the live plan. | A named consumer that current net cannot serve — a window that includes a CPP/EI reset, or an owner-supplied bonus or pension cash event, or an owner-supplied horizon that needs statutory seasonality. Do not build a payroll engine in order to absorb a net `Forecast` already consumes. |
 | Retirement planning | **PARKED** | `ARCHITECTURE.md` destination names pension and investments. Live published net worth excludes pensions. There is no `Forecast` retirement function. The advisory copilot "retirement engine" is not adopted. | An owner decision to include pensions in a published window, or to earn a retirement span on the one plan. Not a second planner. |
@@ -1195,6 +1200,8 @@ resurrect it.
 | Operational spend target vs mathematical maximum | **PARKED** | `Forecast.recommend` is the mathematical variable-spend maximum subject to the protected floor. The Aug. 14 payday session chose a lower operating amount. No household policy encodes $600/week. | Re-test after `B91` whether payday output should also show an owner-supplied operational target and remaining margin. Do not build that feature in order to record the question. |
 
 A row here does not make an unlisted `BACKLOG.md` item ineligible. Canonical
-store remains **GATED** where Phase 3 already records it (`AF-STORE-01` /
-`B79`): a demonstrated file-foundation failure on real data, then an owner
-decision — not because a later capability would like a database.
+store remains **GATED**. `AF-STORE-01` / `B79` answered the question:
+the file foundation has not demonstrably failed
+([`docs/STORE_QUESTION_B79.md`](STORE_QUESTION_B79.md)). Reopening still
+requires a demonstrated failure on real data, then an owner decision —
+not because a later capability would like a database.
