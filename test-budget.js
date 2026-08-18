@@ -99,6 +99,44 @@ const fit = plan.bills.find(b => b.id === 'fit4less');
 ok(near(telecom.dated, shaw.amount), 'Shaw is subtracted from the telecom average', money(telecom.dated));
 ok(near(telecom.planned, telecom.historical - shaw.amount),
   'so telecom carries only the undated remainder', money(telecom.planned));
+
+console.log('\n=== closed Telus has $0 recurrence; remainder contamination is unquantified ===');
+// Independent of Forecast.budgetBreakdown: category totals in generated
+// periods.json minus the dated Shaw row. Snapshot dollars for the current
+// opening live in test-aug16-evidence.js so an ordinary Shaw refresh cannot
+// make this behaviour suite fail (B92).
+const ytdTelecom = periods.periods.ytd.spending.find(s => s.label === 'Telecom');
+const lastTelecom = periods.periods.lastMonth.spending.find(s => s.label === 'Telecom');
+const allTelecom = periods.periods.all.spending.find(s => s.label === 'Telecom');
+const ytdMonths = periods.periods.ytd.months;
+const independentYtdAvg = ytdTelecom.total / ytdMonths;
+const independentRemainder = independentYtdAvg - shaw.amount;
+ok(near(ytdTelecom.total, 1750.61) && ytdMonths === 8,
+  'YTD Telecom historical total is $1,750.61 over 8 months',
+  money(ytdTelecom.total));
+ok(near(independentYtdAvg, 218.82625),
+  'independent YTD average is $218.83/month', money(independentYtdAvg));
+ok(shaw && shaw.budgetCategory === 'telecom' && shaw.frequency === 'monthly',
+  'Shaw is the one dated monthly telecom bill', money(shaw.amount));
+ok(near(telecom.historical, independentYtdAvg)
+  && near(telecom.planned, independentRemainder),
+  'budgetBreakdown remainder is independently YTD Telecom / months − Shaw',
+  money(independentRemainder));
+ok(telecom.datedItems.length === 1 && telecom.datedItems[0].label === 'Shaw internet'
+  && near(telecom.datedItems[0].amount, shaw.amount),
+  'Shaw is counted once — the only dated telecom item');
+ok(!(plan.bills || []).some(b => /telus/i.test(String(b.id) + ' ' + String(b.label))),
+  'no Telus plan.bills row — current Telus recurrence is $0');
+ok(!(plan.bills || []).some(b => /bell/i.test(String(b.id) + ' ' + String(b.label))),
+  'no Bell bill was invented to replace closed Telus');
+ok(telecom.target == null && telecom.source === 'historical-actual',
+  'telecom remainder is derived historical-actual, not a hardcoded replacement');
+ok(lastTelecom.total - shaw.amount > independentRemainder,
+  'July non-Shaw remainder is larger than the YTD remainder — remainder is not entirely Telus',
+  money(lastTelecom.total - shaw.amount) + ' vs ' + money(independentRemainder));
+ok(near(allTelecom.total, 3534.93) && allTelecom.total > ytdTelecom.total,
+  'full-history Telecom $3,534.93 is preserved — history was not rewritten',
+  money(allTelecom.total));
 const household = budget.categories.find(c => c.id === 'household');
 const noble = plan.bills.find(b => b.id === 'noble-garbage');
 ok(noble && noble.frequency === 'quarterly' && noble.budgetCategory === 'household',
