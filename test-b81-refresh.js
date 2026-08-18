@@ -361,6 +361,13 @@ console.log('\n=== K. --preview-out cannot modify canonical state ===');
   ]);
   ok(attackCwd.code !== 0, '--preview-out data.json from repo cwd is refused');
   ok(hashFile(LIVE_DATA) === liveHash, 'relative data.json preview-out did not overwrite live canonical state');
+  const unknownOut = runCli([
+    '--fixture', FIXTURE, '--map', MAP, '--data', dest,
+    '--output', dest,
+  ]);
+  ok(unknownOut.code !== 0, 'an unknown output-path flag is refused');
+  ok(hashFile(dest) === beforeDest && hashFile(LIVE_DATA) === liveHash,
+    'unknown output-path flags cannot modify canonical state');
 }
 
 console.log('\n=== L. canonical replacement is a same-filesystem rename ===');

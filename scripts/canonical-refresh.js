@@ -58,11 +58,13 @@ function parseArgs(argv) {
     else if (a === '--data') out.data = argv[++i];
     else if (a === '--apply') out.apply = true;
     else if (a === '--approve') out.approve = argv[++i];
-    else if (a === '--preview-out') {
-      fail('--preview-out is not accepted. Preview writes to stdout only and cannot target canonical state.');
-    }
     else if (a === '--identity') out.identity = argv[++i];
     else if (a === '--help' || a === '-h') out.help = true;
+    else if (a === '--preview-out') {
+      fail('--preview-out is not accepted. Preview writes to stdout only and cannot target canonical state.');
+    } else {
+      fail(`Unknown argument: ${a}`);
+    }
   }
   return out;
 }
@@ -392,6 +394,8 @@ function replaceFileAtomically(dest, nextBytes) {
   const bak = `${destPath}.atlas-refresh-bak`;
   fs.writeFileSync(tmp, nextBytes, { encoding: 'utf8' });
   try {
+    const fd = fs.openSync(tmp, 'r+');
+    try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
     JSON.parse(fs.readFileSync(tmp, 'utf8'));
     try {
       fs.renameSync(tmp, destPath);
