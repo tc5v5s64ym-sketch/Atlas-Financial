@@ -1,6 +1,6 @@
 # Open Questions — Working Agenda
 
-**Updated 2026-08-16.** Every unanswered question in one place, ranked by what
+**Updated 2026-08-18.** Every unanswered question in one place, ranked by what
 the answer would change. Add new questions here as accounts are reviewed; move
 answered ones to the bottom with the answer recorded.
 
@@ -133,43 +133,26 @@ consider a fund change. No change is authorised until this is answered.
 versus beneficiary). Correction is with Sun Life, never automated.
 **What the answer changes:** An owner action only. Atlas must not attempt it.
 
-### Q18. What remains unresolved on Bell Mobility payment route and the second Bell/watch account amount?
+### Q18. What remains unresolved on the Bell Mobility August payment after the pending $250?
 **Status:** OPEN · **Owner:** Dale + Amanda
-**What we know (2026-08-16):** TELUS IS CLOSED and is not forecast as an
-active bill. Noble Disposal Services is the household garbage bill: $95.85
-every 3 months on the 18th (Forecast quarterly row, firstDue 2026-09-18). Main Bell August 1
-bill is $356.62 due Aug. 17 (arrears + travel/roaming, not the ~$104.20
-normal monthly baseline). A valid $250 Bell Mobility payment is pending on
-Travel Visa dated Aug. 14; inferred residual $106.62 is an inference only
-while that payment remains pending. A second Bell/watch account is still
-active and is not the $15 watch line on the main Bell account. Exact current
-amount/cadence on that second account is not proven by this package.
-**What the answer changes:** The residual second-account bill amount, and
-whether any remaining Bell cash still needs a joint-cash dated row after the
-pending $250 posts. Do not double-count the Bell obligation, the pending card
-payment, and a second invented Bell expense.
-
-### Q19. What is the remaining August 2026 HELOC cash impact given the unproven Aug. 1 PAD?
-**Status:** OPEN · **Owner:** Dale
-**What we know (2026-08-16):** Statement series Dec 2025–Jul 2026 answers the
-broad mechanics. Regular minimum tracks that period's interest in every
-supplied month. Due date is the 21st. A Pre-Authorized Debit Date around the
-1st exists. Overdue was $0 on every supplied statement. Manual payments can
-reduce the remaining required minimum; the automatic payment can then collect
-only the residual (Feb min $751.46 collected in full 2 Mar; May min $810.09
-collected as $800 + $10.09 on 2–3 Jun). Interest posting and cash payment
-remain distinct facts. Live Forecast still treats the $814.18 as non-cash
-capitalisation (`cashPayment: 0`).
-**Still open:** the Jul statement shows PAD date Aug. 1 2026. The live Lunch
-Money pull began after Aug. 1 and does not prove whether that PAD occurred.
-A separate $1,100 HELOC payment on Aug. 14 does not, by itself, prove another
-$814.18 is due, and does not prove the PAD did not happen. Exact remaining
-August cash impact needs the transaction history around Aug. 1.
-Atlas must not claim confident zero household cash impact while that
-settlement status remains unresolved, and must not invent a duplicate full
-minimum reserve after confirmed payments have already satisfied it.
-**What the answer changes:** Whether any residual August HELOC cash still
-belongs on the 91-day plan, and from which account.
+**What we know (2026-08-16 statements; watch-line correction 2026-08-18):**
+TELUS IS CLOSED and is not forecast as an active bill. Noble Disposal
+Services is the household garbage bill: $95.85 every 3 months on the 18th
+(Forecast quarterly row, firstDue 2026-09-18). Main Bell August 1 bill is
+$356.62 due Aug. 17 (arrears + travel/roaming, not the ~$104.20 normal
+monthly baseline). The $15 watch line is on **the same Bell account** as the
+main phone service. It is not a separately proven second Bell account. The
+August watch line is already inside the existing Bell bill total. Atlas must
+not invent a separate second Bell/watch household bill.
+A valid $250 Bell Mobility payment is pending on Travel Visa dated Aug. 14;
+inferred residual $106.62 is an inference only while that payment remains
+pending.
+**Still open:** whether that pending $250 posts, and whether any remaining
+Bell cash still needs a joint-cash dated row after it posts. Do not
+double-count the Bell obligation, the pending card payment, and a second
+invented Bell expense.
+**What the answer changes:** Whether any remaining Bell cash still needs a
+dated joint-cash row after the pending $250 posts.
 
 ### Q20. What emergency-reserve target, Amanda retirement/RESP intent, and Dale policy view should apply? How should true surplus be used?
 **Status:** OPEN · **Owner:** Dale + Amanda
@@ -257,6 +240,33 @@ treated as zero.
 ---
 
 ## Answered
+
+### Q19. What is the remaining August 2026 HELOC cash impact given the unproven Aug. 1 PAD? — ANSWERED 2026-08-18
+**Status:** ANSWERED · **Owner:** Dale
+**Answer:** Owner evidence 2026-08-18, read against the Dec 2025–Jul 2026
+HELOC statement series already preserved in the repository.
+
+1. **Interest posting.** $814.18 posted 31 July 2026. It increases the HELOC
+   balance. Forecast treats it as a non-cash capitalisation (`nonCash` /
+   `cashPayment: 0`). Interest is not free and does not disappear.
+2. **Minimum-payment obligation.** The statement minimum is $814.18 due
+   21 August 2026. The current screen continues to display that minimum.
+3. **Payment satisfaction.** The owner made a $1,100 payment into the HELOC
+   on 14 August, already inside the 2026-08-16 canonical opening.
+   Demonstrated HELOC history shows that a manual payment at least equal to
+   the minimum, made before the due date, satisfies that minimum rather than
+   causing TD to collect the same minimum again as a second cash withdrawal
+   (February $751.46 collected in full; May $810.09 collected as residual
+   $800 + $10.09). $1,100 is larger than $814.18.
+4. **Remaining August cash requirement.** $0 additional HELOC minimum should
+   be reserved after the 14 August payment. Atlas must not forecast another
+   $814.18 August joint-cash outflow.
+
+The displayed activity after the 31 July interest posting does not show an
+Aug. 1 HELOC PAD/payment. This answer does **not** state that the Aug. 1 PAD
+occurred. If later direct transaction evidence shows TD nevertheless collected
+another August minimum after 14 August, that is new evidence and this
+conclusion may be reopened. Do not invent such a transaction now.
 
 ### Q4. What are the balances and rates on the remaining non-TD debts? — ANSWERED 2026-08-16
 **Status:** ANSWERED · **Owner:** Dale + Amanda

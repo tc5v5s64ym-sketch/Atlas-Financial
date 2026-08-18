@@ -19,16 +19,18 @@ facts PR; each needs its own independently provable outcome):
   `frequency: quarterly`. Canonical `noble-garbage` is the one quarterly
   row (`day` 18, `anchor` 2026-03-18, `firstDue` 2026-09-18). The temporary
   `once` workaround is gone.
-- **HELOC residual PAD** — statement mechanics are recorded; current August
-  cash impact still needs the Aug. 1 transaction history (Q19). Do not
-  invent a duplicate full minimum or a confident zero.
+- **HELOC residual PAD** — **DONE 2026-08-18.** Q19 ANSWERED: the Aug. 14
+  $1,100 payment satisfies the $814.18 August minimum. Interest remains
+  non-cash capitalisation. Do not invent a duplicate August cash minimum.
 - **Historical Telus in the telecom remainder** — Telus is closed and is not
   a live bill. The spending series still leaves a telecom remainder after
   Shaw. Cleaning that remainder is a separate figure PR.
 - **Bell baseline vs card-paid current bill** — do not date $356.62 or
   ~$104.20 as joint cash. The valid $250 pending Travel Visa payment is
-  observation. A later PR may model Bell as a card-paid obligation without
-  double-counting.
+  observation. The $15 watch line is on the same Bell account; do not
+  invent a second Bell/watch bill. Q18 stays OPEN only for that
+  pending/posting residual. A later PR may model Bell as a card-paid
+  obligation without double-counting.
 - **Unresolved once cash obligations across a later Forecast start** —
   owner instruction 2026-08-18. A known unresolved cash obligation still
   on the plan must remain binding when Forecast start advances past the

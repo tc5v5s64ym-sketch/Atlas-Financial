@@ -31,13 +31,16 @@ Statement close dates: **TD card ~23rd** · **Triangle 17th** ·
 state a minimum payment due on the **21st** equal to that period's interest
 (overdue $0 on every supplied statement), with a Pre-Authorized Debit Date
 around the **1st**. Observed posting of the interest charge is a month-end
-debit on the HELOC itself. Manual payments can reduce the residual automatic
-collection. The live cash plan still does **not** invent a duplicate full
-$814.18 chequing outflow for the interest posting (`nonCash` / `capitalise`
-on day 31). The household calendar keeps the 21st as a reminder-only
-look-point. Current August settlement — whether the Aug. 1 PAD already
-occurred — remains Q19. This file records the mechanics; it does not claim
-confident zero remaining August cash impact.
+debit on the HELOC itself. Manual payments at least equal to the minimum,
+made before the due date, satisfy that minimum rather than causing a second
+full cash collection. The live cash plan still does **not** invent a
+duplicate full $814.18 chequing outflow for the interest posting (`nonCash`
+/ `capitalise` on day 31). The household calendar keeps the 21st as a
+reminder-only look-point. Q19 is **ANSWERED 2026-08-18**: the 14 August
+$1,100 payment already inside the 2026-08-16 opening satisfies the $814.18
+August minimum, so remaining August HELOC cash requirement is **$0
+additional**. That is not a claim that interest is free, and it does not
+state that an Aug. 1 PAD occurred.
 
 ### The 12 August Burrard registrations are paid
 
@@ -93,7 +96,7 @@ Forecast quarterly recurrence (`day` 18, `anchor` 2026-03-18, `firstDue`
 Netflix does not exist anywhere in the data; the streaming spend is Amazon
 Channels, several small charges on scattered days.
 
-### Bell Mobility — main account and second watch account *(absorbed 2026-08-16)*
+### Bell Mobility — one account, including the watch line *(absorbed 2026-08-16; watch-line correction 2026-08-18)*
 
 August 1 2026 main-account bill (primary statement): previous amount due
 $373.31; payment received Jul. 17 −$250.00; unpaid balance $123.31; current
@@ -111,10 +114,12 @@ A Lunch Money pending Bell Mobility **$250.00** on Travel Visa dated
 Against the Aug. 17 total, $106.62 is an **inferred residual only** while
 the $250 remains pending. Do not mark the Bell obligation fully settled.
 Do not date $356.62 as joint-cash. Do not add a second Bell $250 expense.
-
-A **second Bell/watch account is still active**. It is not the $15 watch
-line on the main account. Exact current amount is not proven by this
-package.
+The $15 watch line is on the same Bell account as the main phone service.
+It is not a separately proven second Bell account. The August watch line is
+already inside the existing Bell bill total. Do not invent a separate
+second Bell/watch household bill. Q18 stays open only for whether the
+pending $250 posts and whether any residual Bell cash still needs a dated
+joint-cash row after that posting.
 
 **CMAW Local 1995 union dues ($25/month on the 15th) remain a standing Plan
 bill until cancellation is actually confirmed.** They still appear in the
@@ -414,7 +419,7 @@ $940/month: BC Hydro (it moved here in May 2026), part of the MBNA minimum,
 some card payments, CRA instalments and part of the property tax. So her total
 contribution is larger than the transfers alone.
 
-### HELOC interest is capitalised, not paid *(verified 2026-08-09; statement series absorbed 2026-08-16)*
+### HELOC interest is capitalised, not paid *(verified 2026-08-09; statement series absorbed 2026-08-16; August cash closeout 2026-08-18)*
 
 The monthly interest — $810.09, $787.58, $814.18 for May, June, July — is
 charged **as a debit on the HELOC itself** at month end. **No matching payment
@@ -431,12 +436,16 @@ full 2 March; May minimum $810.09 collected as $800.00 on 2 June plus $10.09
 on 3 June). Manual payments also appear from household TD chequing
 accounts, including Bills Account and TENNIS INCOME.
 
-The Jul statement shows $814.18 due 21 August and PAD date 1 August. The live
-Lunch Money pull began after Aug. 1 and does not prove whether that PAD
-occurred. An Aug. 14 $1,100 payment does not, by itself, prove another
-$814.18 is due or that the PAD did not happen. Forecast still does not treat
-the interest charge as joint-cash. Q19 is narrowed to current August
-settlement evidence.
+The Jul statement shows $814.18 due 21 August and a PAD date of 1 August.
+Owner evidence 2026-08-18: current displayed HELOC balance $200,486.16;
+current variable rate 4.900%; July 31 interest posting $814.18; the screen
+still displays the statement minimum $814.18 due Aug. 21; no Aug. 1 HELOC
+PAD/payment appears in the displayed activity after that interest posting;
+the owner made a $1,100 payment on Aug. 14, already inside the 2026-08-16
+opening. Q19 is **ANSWERED**: that $1,100 satisfies the August minimum under
+the demonstrated mechanics. Forecast still does not treat the interest charge
+as joint-cash. Remaining August HELOC cash requirement is $0 additional.
+This file does not state that the Aug. 1 PAD occurred.
 
 This matters two ways. For **cash flow**, the ~$814/month interest posting is
 not an automatic chequing outflow and must not be modelled as a duplicate

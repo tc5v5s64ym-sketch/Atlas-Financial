@@ -281,11 +281,13 @@ ok(near(snapHeloc(snap9, 'heloc').balance, AUG9)
   && near(snapHeloc(snap16, 'heloc').balance, AUG16),
   'dated openings still hold both HELOC readings');
 
-console.log('\n=== Q19 remains OPEN; HELOC cash model unchanged ===');
+console.log('\n=== Q19 ANSWERED; HELOC cash model unchanged ===');
 const questions = read('docs/01_OPEN_QUESTIONS.md');
 const q19 = questions.slice(questions.indexOf('### Q19.'));
-const q19body = q19.slice(0, q19.indexOf('\n### Q2'));
-ok(/^\*\*Status:\*\* OPEN\b/m.test(q19body), 'Q19 status is still OPEN');
+const q19body = q19.slice(0, q19.indexOf('\n### Q'));
+ok(/^\*\*Status:\*\* ANSWERED\b/m.test(q19body), 'Q19 status is ANSWERED');
+ok(/Remaining August cash requirement/i.test(q19body) && /\$0 additional/i.test(q19body),
+  'Q19 records $0 additional August HELOC cash after the Aug. 14 payment');
 ok(heloc.cashPayment === 0 && heloc.interestTreatment === 'capitalised',
   'HELOC cashPayment remains $0 and interest remains capitalised');
 ok(!/PAD/.test(data.helocSummary) && !/814\.18/.test(data.helocSummary),

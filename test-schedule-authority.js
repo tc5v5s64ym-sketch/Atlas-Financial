@@ -263,7 +263,7 @@ console.log('\n=== HELOC: only evidenced cash semantics are encoded ===');
     && /BYMONTHDAY=21/.test(due21.rrule || '') && /not a chequing outflow/i.test(due21.summary),
     'ICS keeps the 21st as a reminder-only contractual due date');
   ok(!built.payments.some(p => p.start.endsWith('-21') && /HELOC/i.test(p.summary)),
-    'the 21st is not encoded as a chequing outflow — Q19 remains open');
+    'the 21st is not encoded as a chequing outflow');
 }
 
 console.log('\n=== upcoming is no longer a schedule authority ===');

@@ -1517,8 +1517,8 @@ console.log('\n=== live opening: Q19, buffer, cards, undated rows ===');
 
   const heloc = (live.plan.funding && live.plan.funding.options || [])
     .find(o => o.id === 'heloc');
-  ok(heloc && /Q19/.test(heloc.note || ''),
-    'Q19 HELOC uncertainty remains on the live funding option');
+  ok(heloc && /Q19/.test(heloc.note || '') && /ANSWERED/i.test(heloc.note || ''),
+    'live HELOC funding option records Q19 ANSWERED');
 }
 
 if (failures) {

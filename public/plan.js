@@ -735,8 +735,7 @@ function paydayAnswerHtml(ctx) {
       <div class="payday-row"><span class="payday-lab">Debt on this path</span>
         <span class="payday-val">${debtLine}</span></div>
       <div class="payday-row"><span class="payday-lab">Still unresolved</span>
-        <span class="payday-val">Q19 HELOC August cash impact stays OPEN — Forecast does not claim confident zero cash impact.
-          The ${money(advice.buffer)} figure is the model buffer, not a Q20 emergency reserve (Q20 stays OPEN).
+        <span class="payday-val">The ${money(advice.buffer)} figure is the model buffer, not a Q20 emergency reserve (Q20 stays OPEN).
           ${tennis ? 'Q25 TENNIS INCOME household-available remainder stays OPEN.' : ''}
           ${cashback && cashback.pendingUnknown
     ? 'Q26 Cash Back pending is unknown and is not treated as $0.'
