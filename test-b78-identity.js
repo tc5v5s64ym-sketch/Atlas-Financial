@@ -12,7 +12,6 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { execFileSync } = require('child_process');
-const os = require('os');
 const O = require('./scripts/provider-observe.js');
 const R = require('./scripts/reconcile.js');
 
@@ -202,14 +201,12 @@ console.log('\n=== G. unmapped accounts fail closed; credit is never cash ===');
 console.log('\n=== H. CLI identity-proof print is sanitized and read-only ===');
 {
   const before = hashFile(DATA);
-  const tmp = path.join(os.tmpdir(), 'atlas-b78-payload.json');
   const out = execFileSync(process.execPath, [
     path.join(ROOT, 'scripts', 'provider-observe.js'),
     '--provider', 'lunchmoney',
     '--fixture', PENDING,
     '--map', PENDING_MAP,
     '--identity-proof',
-    '--save-payload', tmp,
   ], { cwd: ROOT, encoding: 'utf8' });
   const printed = JSON.parse(out);
   ok(printed.mappingBy === 'provider-account-id', 'CLI identity-proof names provider-account identity');
@@ -219,11 +216,6 @@ console.log('\n=== H. CLI identity-proof print is sanitized and read-only ===');
   ok(O.identityProofLooksSanitized(printed),
     'CLI identity-proof JSON has no provider IDs or token');
   ok(hashFile(DATA) === before, 'CLI run leaves data.json untouched');
-  ok(fs.existsSync(tmp), 'optional payload save wrote the requested local file');
-  const saved = JSON.parse(fs.readFileSync(tmp, 'utf8'));
-  ok(saved.provider === 'lunchmoney' && Array.isArray(saved.accounts),
-    'saved payload is the observation input, not a canonical write');
-  fs.unlinkSync(tmp);
 }
 
 console.log('\n=== I. no second identity system, store, or writer ===');
@@ -237,6 +229,8 @@ console.log('\n=== I. no second identity system, store, or writer ===');
   ok(!/sqlite|postgres|mongodb/i.test(src), 'no store was introduced');
   ok(!/writeFileSync?\s*\(\s*(DEFAULT_DATA|args\.data)/.test(src),
     'observer and reconciler still do not write data.json');
+  ok(!/--save-payload/.test(src) && !/\bsavePayload\b/.test(src),
+    'observer has no raw-payload write flag');
 }
 
 if (failures) {

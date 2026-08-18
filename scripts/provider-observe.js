@@ -41,7 +41,7 @@ function parseArgs(argv) {
   const out = {
     provider: null, fixture: null, live: false, map: null,
     data: DEFAULT_DATA, mode: 'current-state', historyDays: null,
-    identityProof: false, savePayload: null,
+    identityProof: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -53,7 +53,6 @@ function parseArgs(argv) {
     else if (a === '--mode') out.mode = argv[++i];
     else if (a === '--history-days') out.historyDays = Number(argv[++i]);
     else if (a === '--identity-proof') out.identityProof = true;
-    else if (a === '--save-payload') out.savePayload = argv[++i];
     else if (a === '--help' || a === '-h') out.help = true;
   }
   return out;
@@ -905,7 +904,7 @@ async function run(argv) {
     process.stdout.write(
       'Usage: node scripts/provider-observe.js --provider lunchmoney --fixture <file>\n'
       + '       node scripts/provider-observe.js --provider lunchmoney --live [--mode current-state|reconcile] [--history-days N]\n'
-      + '       [--identity-proof] [--save-payload <file>]\n'
+      + '       [--identity-proof]\n'
     );
     return 0;
   }
@@ -929,11 +928,6 @@ async function run(argv) {
     );
   } else {
     payload = loadJson(args.fixture);
-  }
-  if (args.savePayload) {
-    const dest = path.resolve(args.savePayload);
-    fs.mkdirSync(path.dirname(dest), { recursive: true });
-    fs.writeFileSync(dest, JSON.stringify(payload, null, 2) + '\n');
   }
   const report = observe({
     provider: 'lunchmoney',
