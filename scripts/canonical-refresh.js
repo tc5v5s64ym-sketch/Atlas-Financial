@@ -391,30 +391,16 @@ function encodeData(data) {
 function replaceFileAtomically(dest, nextBytes) {
   const destPath = path.resolve(dest);
   const tmp = `${destPath}.atlas-refresh-tmp`;
-  const bak = `${destPath}.atlas-refresh-bak`;
   fs.writeFileSync(tmp, nextBytes, { encoding: 'utf8' });
   try {
     const fd = fs.openSync(tmp, 'r+');
     try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
     JSON.parse(fs.readFileSync(tmp, 'utf8'));
-    try {
-      fs.renameSync(tmp, destPath);
-    } catch (renameErr) {
-      // POSIX rename replaces dest atomically. Windows may refuse to replace
-      // an existing dest in one step; move dest aside, then move tmp in.
-      if (renameErr.code !== 'EPERM' && renameErr.code !== 'EEXIST' && renameErr.code !== 'EACCES') {
-        throw renameErr;
-      }
-      try { fs.unlinkSync(bak); } catch (_) { /* ignore missing prior bak */ }
-      fs.renameSync(destPath, bak);
-      try {
-        fs.renameSync(tmp, destPath);
-      } catch (placeErr) {
-        try { fs.renameSync(bak, destPath); } catch (_) { /* restore best-effort */ }
-        throw placeErr;
-      }
-      try { fs.unlinkSync(bak); } catch (_) { /* leftover bak is not dest */ }
-    }
+    // POSIX rename and Node's Windows MoveFileEx replace dest in one step.
+    // If that replace cannot complete, fail closed with dest still intact.
+    // Never rename dest aside: a crash between dest→bak and tmp→dest would
+    // leave canonical state missing.
+    fs.renameSync(tmp, destPath);
     JSON.parse(fs.readFileSync(destPath, 'utf8'));
   } catch (err) {
     try { fs.unlinkSync(tmp); } catch (_) { /* ignore */ }

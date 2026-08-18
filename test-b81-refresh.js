@@ -409,6 +409,53 @@ console.log('\n=== L. canonical replacement is a same-filesystem rename ===');
     'dest contains the replacement document');
 }
 
+console.log('\n=== M. replace refusal leaves dest present and byte-identical ===');
+{
+  const dir = tempDir();
+  const dest = writeTempData(dir, liveData);
+  const destResolved = path.resolve(dest);
+  const before = hashFile(dest);
+  const originalBytes = fs.readFileSync(dest);
+  const nextDoc = clone(liveData);
+  nextDoc.plan.startingCash.breakdown.find(r => r.id === 'chequing-b').value = 922.05;
+  const nextBytes = `${JSON.stringify(nextDoc, null, 4)}\n`;
+  const origRename = fs.renameSync;
+  const renameOps = [];
+  fs.renameSync = function patchedRename(from, to) {
+    const fromResolved = path.resolve(String(from));
+    const toResolved = path.resolve(String(to));
+    renameOps.push({ from: fromResolved, to: toResolved });
+    if (toResolved === destResolved) {
+      const err = new Error('simulated Windows replace refusal');
+      err.code = 'EPERM';
+      throw err;
+    }
+    return origRename.call(fs, from, to);
+  };
+  let threw = false;
+  let thrown = null;
+  try {
+    C.replaceFileAtomically(dest, nextBytes);
+  } catch (err) {
+    threw = true;
+    thrown = err;
+  } finally {
+    fs.renameSync = origRename;
+  }
+  ok(threw, 'replace refusal is a failed refresh');
+  ok(thrown && thrown.code === 'EPERM', 'the failure is the replace refusal, not a later restore');
+  ok(fs.existsSync(dest), 'original destination is still present');
+  ok(hashFile(dest) === before, 'original destination is byte-identical');
+  ok(Buffer.compare(fs.readFileSync(dest), originalBytes) === 0,
+    'original destination bytes are unchanged');
+  ok(!renameOps.some(op => op.from === destResolved),
+    'failure path never moves dest aside');
+  ok(!fs.existsSync(`${destResolved}.atlas-refresh-bak`),
+    'failure path does not create a dest-aside bak file');
+  ok(!fs.existsSync(`${destResolved}.atlas-refresh-tmp`),
+    'failed refresh cleans up the temp file');
+}
+
 console.log('\n' + (failures ? `${failures} failure(s)` : 'All B81 refresh checks passed'));
 if (hashFile(LIVE_DATA) !== liveHash) {
   console.log('LIVE data.json changed — failing closed');
