@@ -107,7 +107,7 @@ Recommended path: Dale authorizes institutions at the provider. Atlas holds
 only the Lunch Money GET-only token, where `ARCHITECTURE.md` permits: the
 `LUNCHMONEY_ACCESS_TOKEN` environment variable, or on the owner's Windows
 home PC the CurrentUser DPAPI file
-`%LOCALAPPDATA%\\Atlas-Financial\\secrets\\lunchmoney.dat`. Never in git,
+`%LOCALAPPDATA%\Atlas-Financial\secrets\lunchmoney.dat`. Never in git,
 `data.json`, `.env`, client JS, docs, fixtures, GitHub Actions, or Render.
 
 ## G. First provider
