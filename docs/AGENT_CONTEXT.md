@@ -19,6 +19,12 @@ If this file and an authority document disagree about a financial fact,
 owner policy, Forecast behavior, security boundary, or merge gate, **that
 authority document wins**. Fix this file.
 
+This is a maintainability design, not a production-correctness hard gate.
+`npm test` does not freeze skill counts, catalog wording, folder layout, or
+disclaimer phrasing. Deleting an obsolete skill or consolidating lessons
+must not fail an unrelated financial PR. Review of this layer is Git diff
+plus the existing authority rules.
+
 ---
 
 ## The three layers
@@ -50,23 +56,29 @@ explainer to it.
 A skill answers: *when doing this kind of task, what procedure should the
 agent follow?*
 
-The catalog is [`docs/skills/README.md`](skills/README.md). Load **one**
-matching skill, not the folder. Skills are procedure. They may point at
-authority; they must not restate it as a second home.
+The catalog is [`docs/skills/README.md`](skills/README.md). Load a matching
+skill only when the task matches a catalog row. Skills are procedure. They
+may point at authority; they must not restate it as a second home. There is
+no minimum skill count.
 
-v1 ships three skills, chosen from recurring work already in this repo:
+v1 ships two skills, chosen from recurring work that is **not** already
+one load away in `CLAUDE.md`:
 
-- **implement-pr** — any bounded implementation pull request
 - **forecast-runtime** — Forecast / plan-policy / household-facing figure
 - **evidence-intake** — absorbing owner-supplied evidence
 
-Exact-head review is a fourth *class* of work. Its procedure already lives
-in `CLAUDE.md`. v1 does not copy it into a skill.
+Bounded implementation and exact-head review already live in `CLAUDE.md`,
+which is always loaded. v1 does not copy them into skills.
 
 ### 3. Learned technical lessons — durable, never authoritative
 
 [`docs/lessons/TECHNICAL.md`](lessons/TECHNICAL.md) holds engineering
 lessons traced to a PR, commit, review, test failure, or incident.
+
+Load lessons **selectively**. A skill may cite specific lesson IDs. When a
+recurring failure seems relevant, search that file for terms related to
+the current task. Do not read the whole store at the start of every
+implementation. The store is allowed to grow.
 
 A lesson may warn an agent away from a repeated mistake. It may **not**:
 
@@ -172,7 +184,8 @@ PR does not.
 Retired process that already proved the simplification rule, and must not
 be revived as "context architecture": machine-scored scope narratives,
 review-round accounting, and treating independent agent review as a merge
-lock (`docs/RISK_LABELS.md`).
+lock (`docs/RISK_LABELS.md`). Also not a context-architecture control:
+freezing the current skills/lessons layout in `npm test`.
 
 ---
 

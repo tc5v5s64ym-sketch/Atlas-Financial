@@ -49,7 +49,6 @@ const suites = [
   ['coupled cash and debt', 'test-debt.js'],
   ['authority invariants', 'test-invariants.js'],
   ['authority surface coverage', 'test-authority-coverage.js'],
-  ['agent context architecture (authority vs skills vs lessons)', 'test-agent-context.js'],
   ['evidence-use register routing', 'test-evidence-use-register.js'],
   ['live household reconciliation', 'test-live-household.js'],
   ['duplicate live-fact cleanup (B93)', 'test-dedup-facts.js'],

@@ -84,9 +84,10 @@ After switching agents:
 4. Start a fresh `agent/<outcome>` branch from current `main` unless this is the
    forced mid-PR handoff exception below.
 5. Continue under the same financial, trust, review, and merge gates.
-6. Load only the skill the work needs from `docs/skills/README.md`. Scan
-   `docs/lessons/TECHNICAL.md` for a matching technical lesson. Neither is
-   household or owner authority.
+6. Load a skill from `docs/skills/README.md` only when the work matches a
+   catalog row. Search `docs/lessons/TECHNICAL.md` for terms related to the
+   current task when a recurring failure is relevant; do not read the whole
+   lessons store. Neither is household or owner authority.
 
 A new agent should not need a custom history dump from Dale. If repository state
 is insufficient, that is a repository documentation/evidence defect to fix —

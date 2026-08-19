@@ -41,8 +41,8 @@ long. Do not add task procedure or learned memory to it.
 | Need | Load |
 |---|---|
 | Permanent Atlas authority | the read order above. Existing files remain authoritative. This file does not copy them. |
-| Task procedure | only the matching skill in [`docs/skills/`](docs/skills/README.md) |
-| Durable technical lessons | [`docs/lessons/TECHNICAL.md`](docs/lessons/TECHNICAL.md) — non-authoritative, evidence-traced |
+| Task procedure | a matching row in [`docs/skills/`](docs/skills/README.md), when one exists. Implementation procedure already lives in `CLAUDE.md`. There is no minimum skill count. |
+| Durable technical lessons | search [`docs/lessons/TECHNICAL.md`](docs/lessons/TECHNICAL.md) for terms or IDs relevant to the current task — non-authoritative, evidence-traced. Do not load the whole store by default. |
 | How those layers differ, write permission, future dreaming | [`docs/AGENT_CONTEXT.md`](docs/AGENT_CONTEXT.md) |
 
 A lesson must never become household financial truth, owner policy, Forecast

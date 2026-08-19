@@ -6,6 +6,14 @@ work.
 The living list is [`TECHNICAL.md`](TECHNICAL.md).
 How this layer fits: [`../AGENT_CONTEXT.md`](../AGENT_CONTEXT.md).
 
+## How to load
+
+Do not read `TECHNICAL.md` cover to cover at the start of every task.
+Jump to a cited lesson ID, or search the file for terms related to the
+current work, when a recurring failure seems relevant. The store is
+allowed to grow; progressive disclosure depends on that targeted
+retrieval.
+
 ## Hard boundary
 
 A lesson is a warning about how work on this repository has gone
