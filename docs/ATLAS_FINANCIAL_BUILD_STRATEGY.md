@@ -1081,15 +1081,18 @@ writer. Unattended production writes remain reserved.
   `ARCHITECTURE.md`'s absolute; any provider token handled under the secret
   boundary's configured-secret rule; no silent or unattended production
   writes.
-- **State** — **first slice in progress.** Preview / approve / bounded
-  posted-field write is earned. Optional `--cutover-as-of` is a read-only
-  opening-cutover preflight: MATCH is not freshness, and the packet does
-  not write as-of, representedEvents, or pending. Live `data.json`
-  figures are unchanged. Unattended production writes, a Render token,
-  and the first production opening cutover remain reserved.
+- **State** — **opening-cutover writer earned; live production cutover reserved.**
+  Preview / approve / bounded posted-field write is earned. Candidate-date
+  pending writes are earned through a distinct `cutoverApprovalId`. A clean
+  `--cutover-as-of` preflight can now propose one atomic opening through a
+  distinct `openingApprovalId` (`atlas-opening-cutover-approval/v1`).
+  `previewId` and `cutoverApprovalId` cannot authorize that opening. MATCH
+  is not freshness. Live `data.json` figures are unchanged. Unattended
+  production writes, a Render token, and the first production opening
+  cutover remain reserved.
 - **Prompt** — *Do not apply the unused Chequing B $10, choose a Triangle
   same-day winner, invent a pending→posted case, add a Render token,
-  schedule refresh, or implement the first production opening cutover.*
+  schedule refresh, or perform the first production opening cutover.*
 
 ---
 
@@ -1197,7 +1200,7 @@ resurrect it.
 | End-to-end payday proof | **ACTIVE** | `AF-PLAN-02` / `B96`, after `B94`. **Complete 2026-08-16.** Household payday answer is composed from incumbent Forecast results on the 2026-08-16 opening. | Already sequenced. Prove fresh evidence → canonical state → Forecast → household answer. Not a second payday engine. |
 | Prove the normal Lunch Money refresh path | **ACTIVE** | Phase 2 `AF-INTAKE-01` / `B21`. **Complete 2026-08-17.** Later live observation through existing observe → reconcile. Proof: `docs/connectivity/LUNCH_MONEY_REFRESH_PROOF_2026-08-17.md`. | Already sequenced. Do not reopen to apply the unused $10 Chequing B change or to invent a pending→posted case. |
 | Improved ingestion | **ACTIVE** | Phase 3 `AF-INGEST-01` / `B78`, to T3. **Complete 2026-08-17.** Identity-stable idempotent Lunch Money observation/import on real household data; existing provider IDs; no new identity system; no store. Proof: `docs/connectivity/LUNCH_MONEY_IDENTITY_PROOF_B78.md`. | Already sequenced. T3 met. `AF-STORE-01` / `B79` is complete; store gate stays closed. |
-| Automated financial-data connectivity / trusted canonical refresh | **ACTIVE** (`B81`) | `ARCHITECTURE.md` connectivity gate. Live **read** observation (`AF-LIVE-01` / `B80` + GET) is **complete**. T4 **passed 2026-08-17**. `AF-LIVE-02` first slice is `scripts/canonical-refresh.js`, including optional read-only `--cutover-as-of` preflight. | Unattended production writes, a Render token, and the first production opening cutover remain reserved. Obtain no credential in git. Do not apply the unused $10 or choose a Triangle winner. |
+| Automated financial-data connectivity / trusted canonical refresh | **ACTIVE** (`B81`) | `ARCHITECTURE.md` connectivity gate. Live **read** observation (`AF-LIVE-01` / `B80` + GET) is **complete**. T4 **passed 2026-08-17**. `AF-LIVE-02` earned posted, pending, and opening-cutover writers in `scripts/canonical-refresh.js`. Live household opening is not applied. | Unattended production writes, a Render token, and the first production opening cutover remain reserved. Obtain no credential in git. Do not apply the unused $10 or choose a Triangle winner. |
 | Richer payroll / bonus / pension-contribution modelling | **PARKED** | The 91-day plan consumes estimated net pay. A statutory payroll engine (`EMP-006`) is excluded. Optional pension cash is already inside that net. No bonus cash event is on the live plan. | A named consumer that current net cannot serve — a window that includes a CPP/EI reset, or an owner-supplied bonus or pension cash event, or an owner-supplied horizon that needs statutory seasonality. Do not build a payroll engine in order to absorb a net `Forecast` already consumes. |
 | Retirement planning | **PARKED** | `ARCHITECTURE.md` destination names pension and investments. Live published net worth excludes pensions. There is no `Forecast` retirement function. The advisory copilot "retirement engine" is not adopted. | An owner decision to include pensions in a published window, or to earn a retirement span on the one plan. Not a second planner. |
 | Goals and sinking funds | **PARKED** | `ARCHITECTURE.md` destination names sinking funds. Known major future costs already live on `plan.commitments` (`B95`); property tax stays the existing reserve. That is one Plan home, not a goals engine and not a second planner. ON TRACK / AT RISK / FUNDING GAP is `Forecast.majorPlans` and applies only to those major plans. | Owner-promoted shared targets, or a product-exit gap that the existing plan/commitment path cannot answer. Do not stand up a goals engine beside `Forecast`. Do not create one ticket per purchase. |

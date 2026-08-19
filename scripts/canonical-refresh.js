@@ -5,24 +5,30 @@
  *   node scripts/canonical-refresh.js --fixture <file> --apply --approve <previewId>
  *   node scripts/canonical-refresh.js --fixture <file> --cutover-as-of YYYY-MM-DD
  *   node scripts/canonical-refresh.js --fixture <file> --cutover-as-of YYYY-MM-DD --apply --approve-cutover <cutoverApprovalId>
+ *   node scripts/canonical-refresh.js --fixture <file> --cutover-as-of YYYY-MM-DD --apply --approve-opening <openingApprovalId>
  *
  * Default is a non-writing preview. --apply --approve updates only the
  * posted cash/debt fields listed in that preview. previewId cannot
- * authorize pending. Observe and reconcile remain the incumbents.
- * Forecast remains the planner.
+ * authorize pending or an opening. Observe and reconcile remain the
+ * incumbents. Forecast remains the planner.
  *
  * --cutover-as-of without --apply is preflight. It does not write
  * data.json, meta.asOf, plan.opening, or snapshots. Combining it with
  * --apply --approve <previewId> is refused: posted approval is not a
- * cutover approval. MATCH is not freshness.
+ * cutover or opening approval. MATCH is not freshness.
  *
  * --cutover-as-of --apply --approve-cutover writes only the exact
  * candidate-date pending transitions in that cutover fingerprint.
  * It does not advance the opening date.
  *
- * Never writes without --apply --approve. Never POST/PUT/PATCH/DELETE
- * Lunch Money. Never stores a token. Unattended production writes are
- * not this command.
+ * --cutover-as-of --apply --approve-opening writes one atomic opening
+ * when the preflight is clean and openingApprovalId matches the complete
+ * candidate opening. previewId and cutoverApprovalId cannot authorize
+ * that write. No approval = no opening write.
+ *
+ * Never writes without --apply and an exact matching approval.
+ * Never POST/PUT/PATCH/DELETE Lunch Money. Never stores a token.
+ * Unattended production writes are not this command.
  */
 
 const fs = require('fs');
@@ -36,6 +42,7 @@ const DEFAULT_DATA = path.join(ROOT, 'data.json');
 const DEFAULT_IDENTITY = path.join(ROOT, 'docs', 'connectivity', 'transaction-identity.json');
 const SCHEMA = 'atlas-canonical-refresh-preview/v1';
 const CUTOVER_PENDING_SCHEMA = 'atlas-cutover-pending-approval/v1';
+const OPENING_CUTOVER_SCHEMA = 'atlas-opening-cutover-approval/v1';
 const SNAPSHOT_COMMAND = 'node scripts/snapshot-balances.js';
 const EPSILON = 0.005;
 const PENDING_ZERO_PROOF = 'is_pending-unbounded';
@@ -71,6 +78,7 @@ function parseArgs(argv) {
     apply: false,
     approve: null,
     approveCutover: null,
+    approveOpening: null,
     identity: DEFAULT_IDENTITY,
     cutoverAsOf: null,
   };
@@ -84,6 +92,7 @@ function parseArgs(argv) {
     else if (a === '--apply') out.apply = true;
     else if (a === '--approve') out.approve = argv[++i];
     else if (a === '--approve-cutover') out.approveCutover = argv[++i];
+    else if (a === '--approve-opening') out.approveOpening = argv[++i];
     else if (a === '--identity') out.identity = argv[++i];
     else if (a === '--cutover-as-of') out.cutoverAsOf = argv[++i];
     else if (a === '--help' || a === '-h') out.help = true;
@@ -591,6 +600,85 @@ function cutoverApprovalIdFrom(requestedAsOf, transitions) {
   return crypto.createHash('sha256').update(body).digest('hex');
 }
 
+function sortByLocator(a, b) {
+  return String(a && a.locator).localeCompare(String(b && b.locator));
+}
+
+function sortRepresented(a, b) {
+  return String(a && a.date).localeCompare(String(b && b.date))
+    || String(a && a.id).localeCompare(String(b && b.id));
+}
+
+function pendingStateFromEval(evaluated, cardId) {
+  return {
+    locator: evaluated.locator,
+    collection: 'debts',
+    id: cardId || evaluated.cardId,
+    field: 'pending',
+    currentUnknown: evaluated.currentUnknown === true,
+    currentValue: evaluated.currentUnknown ? null : (evaluated.currentValue == null ? null : round2(evaluated.currentValue)),
+    proposedUnknown: false,
+    proposedValue: round2(evaluated.proposedValue),
+    evidenceDate: evaluated.evidenceDate,
+    proof: evaluated.proof || null,
+    kind: evaluated.kind,
+  };
+}
+
+function postedStateFromFreshness(row) {
+  const parsed = parseLocator(row && row.locator);
+  return {
+    locator: row.locator,
+    collection: parsed ? parsed.collection : null,
+    id: parsed ? parsed.id : null,
+    field: parsed && parsed.collection === 'cash' ? 'value' : 'balance',
+    currentValue: row.canonicalValue == null ? null : round2(row.canonicalValue),
+    proposedValue: row.observedValue == null ? null : round2(row.observedValue),
+    evidenceDate: row.evidenceDate || null,
+    freshnessBasis: row.freshnessBasis || null,
+    reconcileStatus: row.reconcileStatus || null,
+  };
+}
+
+function openingFingerprint(cutover) {
+  const proposal = (cutover && cutover.proposedOpening) || {};
+  return {
+    schema: OPENING_CUTOVER_SCHEMA,
+    requestedAsOf: cutover && cutover.requestedAsOf ? cutover.requestedAsOf : null,
+    currentMetaAsOf: cutover && cutover.currentMetaAsOf ? cutover.currentMetaAsOf : null,
+    currentOpeningAsOf: cutover && cutover.currentOpeningAsOf ? cutover.currentOpeningAsOf : null,
+    posted: (proposal.posted || []).slice().sort(sortByLocator).map(row => ({
+      locator: row.locator,
+      currentValue: row.currentValue,
+      observedValue: row.proposedValue,
+      evidenceDate: row.evidenceDate || null,
+      freshnessBasis: row.freshnessBasis || null,
+      reconcileStatus: row.reconcileStatus || null,
+    })),
+    pending: (proposal.pending || []).slice().sort(sortByLocator).map(row => ({
+      locator: row.locator,
+      currentUnknown: row.currentUnknown === true,
+      currentValue: row.currentUnknown === true ? null : row.currentValue,
+      proposedUnknown: row.proposedUnknown === true,
+      proposedValue: row.proposedUnknown === true ? null : row.proposedValue,
+      evidenceDate: row.evidenceDate || null,
+      proof: row.proof || null,
+    })),
+    representedEvents: (proposal.representedEvents || []).slice().sort(sortRepresented).map(row => ({
+      id: row.id,
+      date: row.date,
+    })),
+    openingFields: {
+      metaAsOf: cutover && cutover.requestedAsOf ? cutover.requestedAsOf : null,
+      planOpeningAsOf: cutover && cutover.requestedAsOf ? cutover.requestedAsOf : null,
+    },
+  };
+}
+
+function openingApprovalIdFrom(cutover) {
+  return crypto.createHash('sha256').update(JSON.stringify(openingFingerprint(cutover))).digest('hex');
+}
+
 function collectPendingDebts(data, report) {
   const pendingDebts = [];
   const seenPending = new Set();
@@ -778,6 +866,7 @@ function buildOpeningCutover(data, report, requestedAsOf) {
   });
 
   const pendingTransitions = [];
+  const pendingStates = [];
   for (const debt of collectPendingDebts(data, report)) {
     const evaluated = evaluateCandidatePending(debt, report, requestedAsOf);
     const locator = evaluated.locator;
@@ -821,6 +910,9 @@ function buildOpeningCutover(data, report, requestedAsOf) {
     }
     if (evaluated.kind === 'writable') {
       pendingTransitions.push(pendingTransitionFromEval(evaluated));
+    }
+    if (evaluated.kind === 'writable' || evaluated.kind === 'match') {
+      pendingStates.push(pendingStateFromEval(evaluated, debt.id));
     }
   }
   pendingTransitions.sort((a, b) => String(a.locator).localeCompare(String(b.locator)));
@@ -901,15 +993,49 @@ function buildOpeningCutover(data, report, requestedAsOf) {
     || String(a.locator || '').localeCompare(String(b.locator || ''))
     || String(a.eventId || '').localeCompare(String(b.eventId || '')));
 
+  pendingStates.sort(sortByLocator);
+  const postedStates = accountFreshness.map(postedStateFromFreshness).sort(sortByLocator);
+  const proposedRepresentedEvents = sameDayEvents
+    .filter(event => event && event.representation === 'REPRESENTED' && event.id && event.date)
+    .map(event => ({ id: event.id, date: event.date }))
+    .sort(sortRepresented);
+  const proposedOpening = {
+    requestedAsOf,
+    currentMetaAsOf: metaAsOf,
+    currentOpeningAsOf: openingAsOf,
+    posted: postedStates,
+    pending: pendingStates,
+    representedEvents: proposedRepresentedEvents,
+  };
+  const unknownPendingRemains = warnings.some(item => item.code === 'pending-remains-unknown');
+  const openingAdvance = !!(openingAsOf && requestedAsOf > openingAsOf);
+  const postedFresh = accountFreshness.length > 0
+    && accountFreshness.every(row => row.freshForRequestedAsOf === true);
+  const sameDayKnown = sameDayEvents.every(event => event.representation === 'REPRESENTED');
+  const cutoverWriteSupported = blockers.length === 0
+    && openingAdvance
+    && !unknownPendingRemains
+    && postedFresh
+    && sameDayKnown;
+  const openingDraft = {
+    requestedAsOf,
+    currentMetaAsOf: metaAsOf,
+    currentOpeningAsOf: openingAsOf,
+    proposedOpening,
+  };
+  const openingApprovalId = cutoverWriteSupported ? openingApprovalIdFrom(openingDraft) : null;
+
   return {
     requestedAsOf,
     currentMetaAsOf: metaAsOf,
     currentOpeningAsOf: openingAsOf,
     writesOpening: false,
-    cutoverWriteSupported: false,
+    cutoverWriteSupported,
     pendingWriteSupported: pendingTransitions.length > 0,
     cutoverApprovalId,
+    openingApprovalId,
     pendingTransitions,
+    proposedOpening,
     status: blockers.length ? 'BLOCKED' : 'READY_FOR_OWNER_REVIEW',
     accountFreshness,
     blockers,
@@ -1201,6 +1327,141 @@ function applyPendingPreview(data, preview, destPath) {
   return written;
 }
 
+function unknownPendingBlocksOpening(cutover) {
+  return ((cutover && cutover.warnings) || []).some(item => item.code === 'pending-remains-unknown');
+}
+
+function validateOpeningApplied(before, after, preview) {
+  const cutover = preview && preview.openingCutover;
+  const proposal = cutover && cutover.proposedOpening;
+  if (!cutover || !proposal) fail('Opening proposal is missing.');
+  if (!after || !after.plan || !after.plan.startingCash) fail('Applied document is missing plan.startingCash.');
+  if (!Array.isArray(after.debts)) fail('Applied document is missing debts.');
+  if (!after.meta || !after.meta.asOf) fail('Applied document is missing meta.asOf.');
+  if (!after.plan.opening || !after.plan.opening.asOf) fail('Applied document is missing plan.opening.asOf.');
+  if (String(after.meta.asOf) !== String(cutover.requestedAsOf)) {
+    fail(`Opening write did not set meta.asOf to ${cutover.requestedAsOf}.`);
+  }
+  if (String(after.plan.opening.asOf) !== String(cutover.requestedAsOf)) {
+    fail(`Opening write did not set plan.opening.asOf to ${cutover.requestedAsOf}.`);
+  }
+  if (String(after.meta.asOf) !== String(after.plan.opening.asOf)) {
+    fail('meta.asOf and plan.opening.asOf must move together.');
+  }
+  if (after.plan.nextDollar && before.plan.nextDollar
+    && JSON.stringify(after.plan.nextDollar) !== JSON.stringify(before.plan.nextDollar)) {
+    fail('Opening write must not rewrite plan.nextDollar.');
+  }
+  const allowedPosted = new Set((proposal.posted || []).map(row => row.locator));
+  const beforePosted = collectNumericState(before);
+  const afterPosted = collectNumericState(after);
+  for (const locator of Object.keys(beforePosted)) {
+    if (allowedPosted.has(locator)) continue;
+    if (!near(beforePosted[locator], afterPosted[locator])) {
+      fail(`Unapproved locator changed: ${locator}`);
+    }
+  }
+  for (const change of proposal.posted || []) {
+    const got = afterPosted[change.locator];
+    if (got == null || !near(got, change.proposedValue)) {
+      fail(`Approved locator ${change.locator} did not receive ${change.proposedValue}`);
+    }
+  }
+  const allowedPending = new Set((proposal.pending || []).map(row => row.locator));
+  const beforePending = collectPendingNumericState(before);
+  const afterPending = collectPendingNumericState(after);
+  for (const locator of Object.keys(beforePending)) {
+    const prev = beforePending[locator];
+    const next = afterPending[locator];
+    if (!next) fail(`Pending locator disappeared: ${locator}`);
+    if (prev.limit != null && next.limit != null && !near(prev.limit, next.limit)) {
+      fail(`Opening write must not change limit on ${locator}`);
+    }
+    if (allowedPending.has(locator)) continue;
+    if (prev.unknown !== next.unknown || (prev.value == null ? next.value != null : !near(prev.value, next.value))) {
+      fail(`Unapproved pending locator changed: ${locator}`);
+    }
+  }
+  for (const change of proposal.pending || []) {
+    const got = afterPending[change.locator];
+    if (!got || got.unknown || got.value == null || !near(got.value, change.proposedValue)) {
+      fail(`Approved pending locator ${change.locator} did not receive ${change.proposedValue}`);
+    }
+  }
+  const expectedEvents = (proposal.representedEvents || []).slice().sort(sortRepresented);
+  const gotEvents = ((after.plan.opening && after.plan.opening.representedEvents) || [])
+    .map(row => ({ id: row.id, date: row.date }))
+    .sort(sortRepresented);
+  if (JSON.stringify(gotEvents) !== JSON.stringify(expectedEvents)) {
+    fail('representedEvents do not match the approved candidate-date representation.');
+  }
+  const cash = Forecast.startingCashAmount(after.plan);
+  if (!isFinite(cash)) fail('Forecast cannot consume the applied starting cash.');
+  const used = Forecast.utilisation(after.debts, null, after.plan);
+  if (!used || !Array.isArray(used.rows)) fail('Forecast cannot consume the applied debt pending state.');
+}
+
+function applyOpeningPreview(data, preview, destPath) {
+  const cutover = preview && preview.openingCutover;
+  if (!preview || preview.schema !== SCHEMA) fail('Preview schema is not the earned refresh preview.');
+  if (!cutover) fail('Opening cutover proposal is missing.');
+  if (cutover.cutoverWriteSupported !== true) fail('Opening cutover write is not supported.');
+  if (cutover.status === 'BLOCKED' || (cutover.blockers || []).length) {
+    fail('Opening cutover is blocked. Canonical state was not written.');
+  }
+  if (unknownPendingBlocksOpening(cutover)) {
+    fail('UNKNOWN pending blocks the opening write. Canonical state was not written.');
+  }
+  if (!cutover.openingApprovalId) fail('Opening approval is missing.');
+  if (!cutover.proposedOpening) fail('Exact proposed opening is missing.');
+  if (!isIsoDate(cutover.requestedAsOf)) fail('Opening request is missing an explicit YYYY-MM-DD date.');
+  if (!cutover.currentOpeningAsOf || cutover.requestedAsOf <= cutover.currentOpeningAsOf) {
+    fail('Opening cutover must advance the current canonical opening. Canonical state was not written.');
+  }
+  const recomputed = openingApprovalIdFrom(cutover);
+  if (String(recomputed) !== String(cutover.openingApprovalId)) {
+    fail('Opening approval fingerprint does not match the proposed opening. Canonical state was not written.');
+  }
+  if (String(data.meta && data.meta.asOf) !== String(cutover.currentMetaAsOf)
+    || String(data.plan && data.plan.opening && data.plan.opening.asOf) !== String(cutover.currentOpeningAsOf)) {
+    fail('Current canonical opening changed since preview. Canonical state was not written.');
+  }
+  const next = clone(data);
+  for (const change of cutover.proposedOpening.posted || []) {
+    if (change.proposedValue == null || !isFinite(Number(change.proposedValue))) {
+      fail(`Opening write refused unknown proposed posted value for ${change.locator}`);
+    }
+    if (!change.freshnessBasis) {
+      fail(`Opening write refused posted ${change.locator} without an accepted freshness basis.`);
+    }
+    applyChange(next, {
+      locator: change.locator,
+      field: change.field,
+      currentValue: change.currentValue,
+      proposedValue: change.proposedValue,
+    });
+  }
+  for (const change of cutover.proposedOpening.pending || []) {
+    applyPendingChange(next, change);
+  }
+  if (!next.plan.opening || typeof next.plan.opening !== 'object') {
+    fail('Canonical plan.opening is missing.');
+  }
+  next.plan.opening.representedEvents = (cutover.proposedOpening.representedEvents || []).map(row => ({
+    id: row.id,
+    date: row.date,
+  }));
+  next.meta.asOf = cutover.requestedAsOf;
+  next.plan.opening.asOf = cutover.requestedAsOf;
+  validateOpeningApplied(data, next, preview);
+  const encoded = encodeData(next);
+  JSON.parse(encoded);
+  replaceFileAtomically(destPath, encoded);
+  const written = loadJson(destPath);
+  validateOpeningApplied(data, written, preview);
+  return written;
+}
+
 function applyPreview(data, preview, destPath) {
   if (!preview || preview.schema !== SCHEMA) fail('Preview schema is not the earned refresh preview.');
   if (!preview.previewId) fail('Preview is missing previewId.');
@@ -1229,29 +1490,35 @@ async function run(argv) {
       + '       node scripts/canonical-refresh.js --fixture <file> --apply --approve <previewId> --data <file>\n'
       + '       node scripts/canonical-refresh.js --fixture <file> --cutover-as-of YYYY-MM-DD\n'
       + '       node scripts/canonical-refresh.js --fixture <file> --cutover-as-of YYYY-MM-DD --apply --approve-cutover <cutoverApprovalId> --data <file>\n'
+      + '       node scripts/canonical-refresh.js --fixture <file> --cutover-as-of YYYY-MM-DD --apply --approve-opening <openingApprovalId> --data <file>\n'
       + 'Default is a non-writing preview. --apply --approve writes posted fields only.\n'
-      + '--cutover-as-of without --approve-cutover is read-only. previewId cannot authorize pending.\n'
+      + '--cutover-as-of without an opening or pending approval is read-only.\n'
+      + 'previewId cannot authorize pending or an opening. cutoverApprovalId cannot authorize an opening.\n'
     );
     return 0;
   }
   if (args.provider !== 'lunchmoney') fail('Only --provider lunchmoney is implemented.');
-  if (args.approve && args.approveCutover) {
-    fail('Posted preview approval and cutover pending approval cannot be combined. Canonical state was not written.');
+  const approvalCount = [args.approve, args.approveCutover, args.approveOpening].filter(Boolean).length;
+  if (approvalCount > 1) {
+    fail('Posted, pending, and opening approvals cannot be combined. Canonical state was not written.');
   }
   if (args.approveCutover && !args.cutoverAsOf) {
     fail('--approve-cutover requires --cutover-as-of. Canonical state was not written.');
   }
+  if (args.approveOpening && !args.cutoverAsOf) {
+    fail('--approve-opening requires --cutover-as-of. Canonical state was not written.');
+  }
   if (args.cutoverAsOf && args.approve) {
     fail('--cutover-as-of is read-only for posted previewId. Combining it with --approve is refused. Canonical state was not written.');
   }
-  if (args.cutoverAsOf && args.apply && !args.approveCutover) {
-    fail('--cutover-as-of is read-only without --approve-cutover. Canonical state was not written.');
+  if (args.cutoverAsOf && args.apply && !args.approveCutover && !args.approveOpening) {
+    fail('--cutover-as-of is read-only without --approve-cutover or --approve-opening. Canonical state was not written.');
   }
   if (args.cutoverAsOf && !isIsoDate(args.cutoverAsOf)) {
     fail('--cutover-as-of must be an explicit YYYY-MM-DD date. Do not infer it from fetchedAt.');
   }
-  if (args.apply && !args.approve && !args.approveCutover) {
-    fail('No approval = no canonical write. Pass --approve <previewId> or --approve-cutover <cutoverApprovalId>.');
+  if (args.apply && !args.approve && !args.approveCutover && !args.approveOpening) {
+    fail('No approval = no canonical write. Pass --approve <previewId>, --approve-cutover <cutoverApprovalId>, or --approve-opening <openingApprovalId>.');
   }
   const data = loadJson(args.data);
   const originalBytes = fs.readFileSync(args.data);
@@ -1265,6 +1532,52 @@ async function run(argv) {
   );
   if (!args.apply) {
     process.stdout.write(`${JSON.stringify(preview, null, 2)}\n`);
+    return 0;
+  }
+  if (args.approveOpening) {
+    const cutover = preview.openingCutover;
+    if (!cutover || !cutover.openingApprovalId) {
+      fail('No opening proposal exists to approve. Canonical state was not written.');
+    }
+    if (String(args.approveOpening) === String(preview.previewId)) {
+      fail('Posted previewId cannot authorize an opening write. Canonical state was not written.');
+    }
+    if (cutover.cutoverApprovalId && String(args.approveOpening) === String(cutover.cutoverApprovalId)) {
+      fail('Pending cutoverApprovalId cannot authorize an opening write. Canonical state was not written.');
+    }
+    if (String(args.approveOpening) !== String(cutover.openingApprovalId)) {
+      fail('Opening approval does not match the recomputed opening proposal. Canonical state was not written.');
+    }
+    applyOpeningPreview(data, preview, args.data);
+    const afterBytes = fs.readFileSync(args.data);
+    const result = {
+      schema: OPENING_CUTOVER_SCHEMA,
+      writesCanonicalState: true,
+      canonicalWriteAuthorized: true,
+      writesOpening: true,
+      cutoverWriteSupported: true,
+      unattended: false,
+      productionWrite: false,
+      previewId: preview.previewId,
+      cutoverApprovalId: cutover.cutoverApprovalId || null,
+      openingApprovalId: cutover.openingApprovalId,
+      requestedAsOf: cutover.requestedAsOf,
+      previousOpeningAsOf: cutover.currentOpeningAsOf,
+      applied: {
+        posted: cutover.proposedOpening.posted,
+        pending: cutover.proposedOpening.pending,
+        representedEvents: cutover.proposedOpening.representedEvents,
+        metaAsOf: cutover.requestedAsOf,
+        planOpeningAsOf: cutover.requestedAsOf,
+      },
+      snapshotFollows: SNAPSHOT_COMMAND,
+      snapshotRequired: true,
+      snapshotAsOf: cutover.requestedAsOf,
+      byteChange: afterBytes.compare(originalBytes) !== 0,
+      note: 'Bounded owner-approved opening cutover. meta.asOf and plan.opening.asOf advanced together. Posted previewId and pending cutoverApprovalId did not authorize this write. Run node scripts/snapshot-balances.js after this successful opening; this command did not write a snapshot.',
+    };
+    if (!identityProofLooksSanitized(result)) fail('Apply result is not sanitized.');
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     return 0;
   }
   if (args.approveCutover) {
@@ -1323,6 +1636,7 @@ async function run(argv) {
 const api = {
   SCHEMA,
   CUTOVER_PENDING_SCHEMA,
+  OPENING_CUTOVER_SCHEMA,
   DEFAULT_DATA,
   SNAPSHOT_COMMAND,
   parseArgs,
@@ -1332,6 +1646,8 @@ const api = {
   proposePendingTransitions,
   previewIdFrom,
   cutoverApprovalIdFrom,
+  openingApprovalIdFrom,
+  openingFingerprint,
   identityProofLooksSanitized,
   isIsoDate,
   ownerStatementCadence,
@@ -1349,9 +1665,11 @@ const api = {
   applyPendingChange,
   validateApplied,
   validatePendingApplied,
+  validateOpeningApplied,
   replaceFileAtomically,
   applyPreview,
   applyPendingPreview,
+  applyOpeningPreview,
   run,
 };
 
