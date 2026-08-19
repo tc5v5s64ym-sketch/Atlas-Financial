@@ -54,9 +54,15 @@ function credentialPath(options) {
 
 function pathIsOutsideRepo(file, root) {
   if (!file) return false;
-  const resolved = path.resolve(file);
-  const repo = path.resolve(root || ROOT) + path.sep;
-  return !resolved.toLowerCase().startsWith(repo.toLowerCase());
+  const raw = String(file);
+  // A Windows drive path cannot live inside a POSIX checkout.
+  if (/^[A-Za-z]:[\\/]/.test(raw) && process.platform !== 'win32') return true;
+  const resolved = path.resolve(raw);
+  const repo = path.resolve(root || ROOT);
+  const prefix = repo.toLowerCase() + path.sep;
+  const target = resolved.toLowerCase();
+  if (target === repo.toLowerCase()) return false;
+  return !target.startsWith(prefix);
 }
 
 function powershellPath(options) {
