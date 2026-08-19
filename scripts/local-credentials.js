@@ -17,7 +17,6 @@ const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const { execFile } = require('child_process');
-const readline = require('readline');
 
 const TOKEN_ENV = 'LUNCHMONEY_ACCESS_TOKEN';
 const PATH_ENV = 'ATLAS_LUNCHMONEY_CREDENTIAL_FILE';
@@ -225,38 +224,58 @@ function promptHidden(question, io) {
     fail('LUNCHMONEY_ACCESS_TOKEN is not set and stdin is not a terminal. Set the environment variable once and re-run setup from this machine.');
   }
   return new Promise((resolve, reject) => {
-    const rl = readline.createInterface({ input: stdin, output: stdout, terminal: true });
-    stdin.setRawMode && stdin.setRawMode(true);
-    stdout.write(question);
     let buf = '';
-    const onData = (ch) => {
-      const s = String(ch);
-      if (s === '\u0003') {
-        cleanup();
-        reject(new Error('setup cancelled'));
-        return;
-      }
-      if (s === '\r' || s === '\n' || s === '\u0004') {
-        cleanup();
-        stdout.write('\n');
-        resolve(buf);
-        return;
-      }
-      if (s === '\u007f' || s === '\b') {
-        buf = buf.slice(0, -1);
-        return;
-      }
-      if (s === '\u0015') {
-        buf = '';
-        return;
-      }
-      if (s.charCodeAt(0) < 32) return;
-      buf += s;
-    };
+    let settled = false;
+    const previousRaw = typeof stdin.isRaw === 'boolean' ? stdin.isRaw : false;
+
     function cleanup() {
       stdin.removeListener('data', onData);
-      stdin.setRawMode && stdin.setRawMode(false);
-      rl.close();
+      if (typeof stdin.setRawMode === 'function') {
+        try { stdin.setRawMode(previousRaw); } catch (_) {}
+      }
+    }
+
+    function finish(err, value) {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (err) reject(err);
+      else resolve(value);
+    }
+
+    const onData = (ch) => {
+      const s = Buffer.isBuffer(ch) ? ch.toString('utf8') : String(ch);
+      for (let i = 0; i < s.length; i++) {
+        const c = s[i];
+        if (c === '\u0003') {
+          finish(new Error('setup cancelled'));
+          return;
+        }
+        if (c === '\r' || c === '\n' || c === '\u0004') {
+          try { stdout.write('\n'); } catch (_) {}
+          finish(null, buf);
+          return;
+        }
+        if (c === '\u007f' || c === '\b') {
+          buf = buf.slice(0, -1);
+          continue;
+        }
+        if (c === '\u0015') {
+          buf = '';
+          continue;
+        }
+        if (c.charCodeAt(0) < 32) continue;
+        buf += c;
+      }
+    };
+
+    try {
+      if (typeof stdin.setRawMode === 'function') stdin.setRawMode(true);
+      if (typeof stdin.resume === 'function') stdin.resume();
+      stdout.write(question);
+    } catch (err) {
+      finish(err instanceof Error ? err : new Error(String(err)));
+      return;
     }
     stdin.on('data', onData);
   });
@@ -375,6 +394,7 @@ const api = {
   resolveLunchMoneyAccessToken,
   readWindowsStoredCredential,
   writeWindowsStoredCredential,
+  promptHidden,
   setupLunchMoney,
   removeLunchMoney,
   selftestDpapi,

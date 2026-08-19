@@ -4,6 +4,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { PassThrough } = require('stream');
 const { execFileSync } = require('child_process');
 const C = require('./scripts/local-credentials.js');
 const O = require('./scripts/provider-observe.js');
@@ -85,6 +86,33 @@ function isolatedEnv(extra) {
   const env = Object.assign({}, process.env);
   delete env.LUNCHMONEY_ACCESS_TOKEN;
   return Object.assign(env, extra || {});
+}
+
+function fakeTty() {
+  const stdin = new PassThrough();
+  stdin.isTTY = true;
+  stdin.isRaw = false;
+  const rawCalls = [];
+  stdin.setRawMode = (mode) => {
+    stdin.isRaw = !!mode;
+    rawCalls.push(!!mode);
+    return stdin;
+  };
+  let out = '';
+  const stdout = new PassThrough();
+  stdout.isTTY = true;
+  const origWrite = stdout.write.bind(stdout);
+  stdout.write = (chunk, enc, cb) => {
+    out += Buffer.isBuffer(chunk) ? chunk.toString('utf8') : String(chunk);
+    return origWrite(chunk, enc, cb);
+  };
+  return {
+    stdin,
+    stdout,
+    get out() { return out; },
+    rawCalls,
+    get rawMode() { return stdin.isRaw; },
+  };
 }
 
 (async () => {
@@ -239,6 +267,61 @@ function isolatedEnv(extra) {
     });
     ok(replaced.ok, 'setup --replace succeeds');
     ok(fs.existsSync(file), 'replaced blob exists');
+  }
+
+  console.log('=== hidden prompt does not echo typed secret ===');
+  {
+    const SECRET = 'atlas-hidden-prompt-secret';
+    const tty = fakeTty();
+    const pending = C.promptHidden('Lunch Money access token (input hidden): ', {
+      stdin: tty.stdin,
+      stdout: tty.stdout,
+    });
+    tty.stdin.write(SECRET);
+    tty.stdin.write('\r');
+    const value = await pending;
+    ok(value === SECRET, 'hidden prompt returns the typed secret in memory');
+    ok(!tty.out.includes(SECRET), 'typed secret characters are absent from stdout');
+    ok(tty.out === 'Lunch Money access token (input hidden): \n',
+      'stdout contains only the prompt and a trailing newline');
+    ok(tty.rawCalls[0] === true && tty.rawMode === false,
+      'raw mode is enabled during input and restored afterwards');
+  }
+  {
+    const SECRET = 'atlas-hidden-cancel-secret';
+    const tty = fakeTty();
+    const pending = C.promptHidden('Lunch Money access token (input hidden): ', {
+      stdin: tty.stdin,
+      stdout: tty.stdout,
+    });
+    tty.stdin.write(SECRET);
+    tty.stdin.write('\u0003');
+    const cancelled = await capture(() => pending);
+    ok(cancelled.threw && /cancelled/.test(cancelled.message), 'Ctrl+C cancels hidden prompt');
+    ok(!tty.out.includes(SECRET), 'cancelled prompt does not echo the typed secret');
+    ok(tty.rawMode === false, 'raw mode is restored after cancel');
+  }
+  {
+    const dir = tempDir();
+    const file = path.join(dir, 'lunchmoney.dat');
+    const tty = fakeTty();
+    const store = { calls: [], children: [] };
+    const pending = C.setupLunchMoney({
+      env: isolatedEnv({ ATLAS_LUNCHMONEY_CREDENTIAL_FILE: file }),
+      platform: 'win32',
+      replace: true,
+      execFile: fakeExecFile(store),
+      root: ROOT,
+      io: { stdin: tty.stdin, stdout: tty.stdout },
+    });
+    tty.stdin.write(DUMMY);
+    tty.stdin.write('\r');
+    const setup = await pending;
+    ok(setup.ok, 'bootstrap from hidden TTY prompt succeeds');
+    ok(!tty.out.includes(DUMMY), 'bootstrap TTY stdout does not echo the token');
+    const stdinSent = store.children.some(ch =>
+      ch.stdin.chunks.some(buf => String(buf) === DUMMY));
+    ok(stdinSent, 'bootstrap stored the in-memory prompt value via DPAPI stdin');
   }
 
   console.log('=== 11. resulting secret path is outside the repo ===');
