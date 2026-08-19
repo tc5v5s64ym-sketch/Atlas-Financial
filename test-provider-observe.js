@@ -3,6 +3,7 @@
  * Does not write data.json. Does not treat available credit or HELOC as cash.
  */
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const { execFileSync } = require('child_process');
@@ -202,7 +203,10 @@ console.log('=== K. missing API secret fails closed and is not printed ===');
     ], {
       cwd: ROOT,
       encoding: 'utf8',
-      env: Object.assign({}, process.env, { LUNCHMONEY_ACCESS_TOKEN: '' }),
+      env: Object.assign({}, process.env, {
+        LUNCHMONEY_ACCESS_TOKEN: '',
+        ATLAS_LUNCHMONEY_CREDENTIAL_FILE: path.join(os.tmpdir(), 'atlas-missing-lunchmoney.dat'),
+      }),
     });
   } catch (e) {
     threw = true;
@@ -211,6 +215,13 @@ console.log('=== K. missing API secret fails closed and is not printed ===');
   ok(threw, '--live without a token exits non-zero');
   ok(/LUNCHMONEY_ACCESS_TOKEN is not set/.test(message),
     'error names the env var without inventing a token');
+  if (process.platform === 'win32') {
+    ok(/local credential bootstrap has not been completed/.test(message),
+      'Windows missing store fails closed on bootstrap');
+  } else {
+    ok(/Windows local credential fallback is not available/.test(message),
+      'non-Windows does not emulate DPAPI');
+  }
   ok(!/Bearer\s+\S+/.test(message), 'failure text does not contain a bearer token');
 }
 

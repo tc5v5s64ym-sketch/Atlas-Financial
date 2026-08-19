@@ -5,7 +5,8 @@
  *   node scripts/provider-observe.js --provider lunchmoney --live
  *   node scripts/provider-observe.js --provider lunchmoney --live --identity-proof
  *
- * Live mode requires LUNCHMONEY_ACCESS_TOKEN in the environment. It never
+ * Live mode resolves a Lunch Money token from LUNCHMONEY_ACCESS_TOKEN, or
+ * on Windows from the local CurrentUser DPAPI store. It never
  * writes data.json. Unknown provider account IDs stay unmapped. Synthetic
  * fixture mappings cannot authorize a live canonical mapping. Historical
  * represented-event candidates are not current-opening corrections.
@@ -17,6 +18,7 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 const R = require('./reconcile.js');
+const Credentials = require('./local-credentials.js');
 
 const ROOT = path.join(__dirname, '..');
 const DEFAULT_MAP = path.join(ROOT, 'docs', 'connectivity', 'provider-account-map.json');
@@ -385,8 +387,17 @@ async function fetchLunchMoneyTransactionsPaged(url, token, opts) {
   };
 }
 
+async function resolveLiveToken(options) {
+  const resolved = await Credentials.resolveLunchMoneyAccessToken(options);
+  return resolved.token;
+}
+
+async function resolveLiveCredential(options) {
+  return Credentials.resolveLunchMoneyAccessToken(options);
+}
+
 async function fetchLunchMoneyLive(token, now, historyDays) {
-  if (!token) fail(`${TOKEN_ENV} is not set. Live observation refuses to run.`);
+  if (!token) fail('Live observation has no Lunch Money credential.');
   const txUrl = lunchMoneyTransactionsUrl(now, historyDays);
   await httpsGetJson(new URL(`${LIVE_BASE}/me`), token);
   const plaid = await tryGetJson(new URL(`${LIVE_BASE}/plaid_accounts`), token);
@@ -1135,7 +1146,7 @@ async function run(argv) {
   let payload;
   if (args.live) {
     payload = await fetchLunchMoneyLive(
-      process.env[TOKEN_ENV],
+      await resolveLiveToken(),
       new Date().toISOString(),
       historyDays
     );
@@ -1200,6 +1211,8 @@ const api = {
   spendableCashFromObservations,
   observe,
   fetchLunchMoneyLive,
+  resolveLiveToken,
+  resolveLiveCredential,
   run,
 };
 

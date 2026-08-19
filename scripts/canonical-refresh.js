@@ -1126,7 +1126,7 @@ async function loadPayload(args) {
   if (!args.live && !args.fixture) fail('Pass --fixture <file> or --live.');
   if (args.live) {
     return O.fetchLunchMoneyLive(
-      process.env[O.TOKEN_ENV],
+      await O.resolveLiveToken(),
       new Date().toISOString(),
       O.historyDaysFromArgs({ mode: 'current-state' })
     );

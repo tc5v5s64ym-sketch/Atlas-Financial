@@ -58,8 +58,8 @@ Official: https://lunchmoney.dev/ and https://lunchmoney.dev/v2/docs
   household account identifiers and are not committed. Copy
   `provider-account-map.local.example.json`. Leave DEBT&PAYMENTS and
   SAVINGS-DONT TOUCH unmapped.
-- Dale connects institutions **inside Lunch Money**. Atlas would only hold
-  `LUNCHMONEY_ACCESS_TOKEN`.
+- Dale connects institutions **inside Lunch Money**. Atlas holds only the
+  Lunch Money GET-only token, where `ARCHITECTURE.md` permits.
 - Credit limit, available credit, HELOC/mortgage subtypes, and Canadian
   institution product coverage are **UNKNOWN / MUST TEST**.
 - Refresh frequency is **UNKNOWN / MUST TEST**.
@@ -103,9 +103,12 @@ Official: https://docs.flinks.com/
 
 Atlas never collects a bank username, password, PIN, or 2FA.
 
-Recommended path: Dale authorizes institutions at the provider. Atlas stores
-only a server-side provider token in `LUNCHMONEY_ACCESS_TOKEN`. Never in git,
-`data.json`, client JS, docs, or fixtures.
+Recommended path: Dale authorizes institutions at the provider. Atlas holds
+only the Lunch Money GET-only token, where `ARCHITECTURE.md` permits: the
+`LUNCHMONEY_ACCESS_TOKEN` environment variable, or on the owner's Windows
+home PC the CurrentUser DPAPI file
+`%LOCALAPPDATA%\Atlas-Financial\secrets\lunchmoney.dat`. Never in git,
+`data.json`, `.env`, client JS, docs, fixtures, GitHub Actions, or Render.
 
 ## G. First provider
 
@@ -140,9 +143,16 @@ gate unless a later refresh demonstrates a material source gap:
 
 1. Dale connects institutions **inside Lunch Money**. Atlas is not in that
    login.
-2. Set `LUNCHMONEY_ACCESS_TOKEN` in the local shell only.
+2. One-time on the Windows home PC:
+   `node scripts/local-credentials.js setup-lunchmoney`
+   (uses `LUNCHMONEY_ACCESS_TOKEN` if already set; otherwise prompts once
+   with hidden input). After that, live GET commands resolve the DPAPI
+   file automatically. `LUNCHMONEY_ACCESS_TOKEN` remains the override.
+   Replace: `setup-lunchmoney --replace`. Remove:
+   `node scripts/local-credentials.js remove-lunchmoney`.
 3. Run `node scripts/provider-observe.js --provider lunchmoney --live`.
-4. Do not paste the token into git, a PR, chat, or a fixture.
+4. Do not paste the token into git, a PR, chat, or a fixture. Non-Windows
+   and cloud agents do not read the Windows file.
 
 This evaluation is **complete**. It is **NOT** permission to point
 Wealthica or Flinks live. T4 later passed on 2026-08-17 for the earned

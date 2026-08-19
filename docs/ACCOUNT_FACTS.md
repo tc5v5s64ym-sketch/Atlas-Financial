@@ -2053,9 +2053,6 @@ figure per pattern for exactly this reason.
 - **Tag every figure** verified / calculated / estimated / unknown.
 - The application's own secrets live only where `ARCHITECTURE.md` permits, and
   that file is the one home for the rule — do not restate a narrower version here.
-  Today that means Render environment secrets in production and an environment
-  variable in the developer's shell locally; never in git, never in a log, and
-  never delivered to or persisted in the browser.
 
 ## What only the household can answer
 
