@@ -884,6 +884,93 @@ console.log('\n=== STRUCTURE — blocked packet shaped like the 2026-08-18 diagn
     'prior once obligation remains reserved across the opening advance');
 }
 
+console.log('\n=== CASE TZ — UTC midnight is not the household financial date ===');
+{
+  const INSTANT = '2026-08-19T01:06:40.929Z';
+  const requested = '2026-08-18';
+  // Independent of Forecast.financialDate: August 2026 is PDT (UTC-7).
+  const independent = new Date(Date.parse(INSTANT) - 7 * 3600 * 1000)
+    .toISOString().slice(0, 10);
+  ok(independent === requested,
+    'independent PDT offset of 2026-08-19T01:06:40.929Z is 2026-08-18');
+
+  const data = makeData({ asOf: '2026-08-16' });
+  const accounts = matchingPostedAccounts(data, requested).map(row => (
+    Object.assign({}, row, { updated_at: INSTANT })
+  ));
+  const payload = {
+    provider: 'lunchmoney',
+    fetchedAt: INSTANT,
+    source: 'Synthetic timezone-boundary fixture. Not a live institution pull.',
+    accounts,
+    transactions: [],
+  };
+  const dir = tempDir();
+  const dest = writeJson(dir, 'data.json', data);
+  const before = hashFile(dest);
+  const { report, preview } = previewAt(data, payload, { cutoverAsOf: requested });
+  const cashObs = (report.observations || []).find(o =>
+    o && o.canonical && o.canonical.id === 'chequing-a' && !o.fact);
+  ok(cashObs && cashObs.evidenceDate === requested && cashObs.observedAsOf === requested,
+    'observe evidence date is the household date, not the UTC date prefix',
+    cashObs && cashObs.evidenceDate);
+  const cash = freshness(preview.openingCutover, 'cash:chequing-a');
+  ok(cash && cash.evidenceDate === requested,
+    'posted evidence fetched at 01:06Z is dated 2026-08-18',
+    cash && cash.evidenceDate);
+  ok(cash && cash.freshForRequestedAsOf === true,
+    'that instant is eligible candidate-date evidence for 18 August');
+  ok(!codes(preview.openingCutover.blockers).includes('stale-posted-opening-evidence'),
+    'UTC date crossing does not emit stale-posted-opening-evidence');
+  ok(preview.openingCutover.writesOpening === false
+    && preview.writesCanonicalState === false,
+    'timezone-boundary preflight still writes nothing');
+  ok(hashFile(dest) === before, 'temp data.json is byte-identical after the boundary preview');
+
+  const nextInstant = '2026-08-19T07:06:40.929Z';
+  const independentNext = new Date(Date.parse(nextInstant) - 7 * 3600 * 1000)
+    .toISOString().slice(0, 10);
+  ok(independentNext === '2026-08-19',
+    'independent PDT offset of 07:06Z is 2026-08-19');
+  const nextAccounts = matchingPostedAccounts(data, '2026-08-19').map(row => (
+    Object.assign({}, row, { updated_at: nextInstant })
+  ));
+  const nextPreview = previewAt(data, {
+    provider: 'lunchmoney',
+    fetchedAt: nextInstant,
+    source: payload.source,
+    accounts: nextAccounts,
+    transactions: [],
+  }, { cutoverAsOf: requested });
+  const nextCash = (nextPreview.report.observations || []).find(o =>
+    o && o.canonical && o.canonical.id === 'chequing-a' && !o.fact);
+  ok(nextCash && nextCash.evidenceDate === '2026-08-19',
+    'an instant that is 19 August in Vancouver remains 19 August');
+  ok(codes(nextPreview.preview.openingCutover.blockers).includes('stale-posted-opening-evidence'),
+    'genuine 19 August evidence is not treated as 18 August');
+
+  const stalePayload = makePayload(requested, matchingPostedAccounts(data, '2026-08-16'));
+  stalePayload.fetchedAt = INSTANT;
+  const stale = previewAt(data, stalePayload, { cutoverAsOf: requested });
+  const mortgage = freshness(stale.preview.openingCutover, 'debts:mortgage');
+  ok(mortgage && mortgage.evidenceDate === '2026-08-16'
+    && mortgage.freshForRequestedAsOf === false,
+    'older provider updated_at remains stale even when fetched after UTC midnight');
+  ok(codes(stale.preview.openingCutover.blockers).includes('stale-posted-opening-evidence'),
+    'genuinely older posted evidence still blocks');
+  ok(stale.preview.openingCutover.writesOpening === false, 'stale packet still writes nothing');
+
+  const applied = runCli([
+    '--fixture', writeJson(dir, 'tz-payload.json', payload),
+    '--map', writeJson(dir, 'tz-map.json', BASE_MAP),
+    '--data', dest,
+    '--cutover-as-of', requested,
+  ]);
+  ok(applied.code === 0, 'read-only boundary preflight CLI exits 0');
+  ok(hashFile(dest) === before, 'CLI cutover at the timezone boundary writes nothing');
+  ok(hashFile(LIVE_DATA) === liveHash, 'live data.json is unchanged by the timezone case');
+}
+
 console.log('\n=== invariants — previewId, schema gate, live bytes ===');
 {
   ok(C.isIsoDate('2026-08-18') === true && C.isIsoDate('2026-08-18T18:00:00.000Z') === false,

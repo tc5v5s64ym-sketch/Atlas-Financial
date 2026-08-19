@@ -18,6 +18,34 @@ console.log('=== date arithmetic ===');
 ok(F.addDays('2026-08-09', 90) === '2026-11-07', 'asOf + 90 days = 7 Nov', F.addDays('2026-08-09', 90));
 ok(F.addDays('2026-08-31', 1) === '2026-09-01', 'month rollover');
 ok(F.diffDays('2026-08-09', '2026-11-07') === 90, 'diffDays');
+ok(F.HOUSEHOLD_TIMEZONE === 'America/Vancouver', 'one IANA household timezone');
+ok(F.financialDate('2026-08-18') === '2026-08-18',
+  'a calendar date is not reinterpreted as UTC midnight');
+// Independent of Forecast.financialDate: August 2026 is PDT (UTC-7).
+// DST in 2026 runs 8 March–1 November. 01:06:40.929Z − 7h = 18:06 PDT.
+const LIVE_INSTANT = '2026-08-19T01:06:40.929Z';
+const independentPdt = new Date(Date.parse(LIVE_INSTANT) - 7 * 3600 * 1000)
+  .toISOString().slice(0, 10);
+ok(independentPdt === '2026-08-18',
+  'independent PDT offset of the live preflight instant is 2026-08-18');
+ok(F.financialDate(LIVE_INSTANT) === independentPdt,
+  'financialDate agrees with the independent PDT offset');
+const NEXT_INSTANT = '2026-08-19T07:06:40.929Z';
+const independentNext = new Date(Date.parse(NEXT_INSTANT) - 7 * 3600 * 1000)
+  .toISOString().slice(0, 10);
+ok(independentNext === '2026-08-19',
+  'independent PDT offset of 07:06Z is still 2026-08-19');
+ok(F.financialDate(NEXT_INSTANT) === independentNext,
+  'an instant that is already 19 August in Vancouver stays 19 August');
+// January 2026 is PST (UTC-8). Same clock time is the previous evening.
+const WINTER_INSTANT = '2026-01-19T01:06:40.929Z';
+const independentPst = new Date(Date.parse(WINTER_INSTANT) - 8 * 3600 * 1000)
+  .toISOString().slice(0, 10);
+ok(independentPst === '2026-01-18',
+  'independent PST offset of the winter instant is 2026-01-18');
+ok(F.financialDate(WINTER_INSTANT) === independentPst,
+  'IANA zone follows Pacific daylight-saving, not a fixed UTC-7 offset');
+ok(F.financialDate('not-a-date') === null, 'unparseable instants fail closed');
 
 console.log('\n=== recurrence expansion ===');
 const win = { start: '2026-08-09', end: '2026-11-07' };

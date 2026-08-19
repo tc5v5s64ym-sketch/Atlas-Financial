@@ -18,6 +18,31 @@
   /* --------------------------------------------------------------- dates */
   // ISO date strings throughout; arithmetic in UTC so DST can never shift a
   // payday. A date here is a calendar day, not an instant.
+  // Instants become household calendar days via financialDate() in
+  // America/Vancouver (ACCOUNT_FACTS household timezone). Do not slice a
+  // UTC timestamp's YYYY-MM-DD prefix. Calendar-day arithmetic stays UTC.
+  const HOUSEHOLD_TIMEZONE = 'America/Vancouver';
+  const ISO_CALENDAR_DATE = /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
+  const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})$/;
+  function financialDate(value) {
+    if (value == null || value === '') return null;
+    const s = String(value).trim();
+    if (ISO_CALENDAR_DATE.test(s)) return s;
+    if (!ISO_INSTANT.test(s)) return null;
+    const instant = new Date(s);
+    if (Number.isNaN(instant.getTime())) return null;
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: HOUSEHOLD_TIMEZONE,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(instant);
+    const year = parts.find(p => p.type === 'year');
+    const month = parts.find(p => p.type === 'month');
+    const day = parts.find(p => p.type === 'day');
+    if (!year || !month || !day) return null;
+    return `${year.value}-${month.value}-${day.value}`;
+  }
   function toUTC(iso) {
     const [y, m, d] = iso.split('-').map(Number);
     return Date.UTC(y, m - 1, d);
@@ -4294,7 +4319,7 @@
     };
   }
 
-  const Forecast = { addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, billIsHouseholdObligation, billAffectsJointCash, expandEvents, simulate,
+  const Forecast = { HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, billIsHouseholdObligation, billAffectsJointCash, expandEvents, simulate,
     knowledgeHorizon, viewRange, commitmentNeed, fundingSequence, majorPlans, plannedDebt,
     recommendWeekly, recommend, incomeDeadline, counterfactuals,
     budgetBreakdown, monthlyFromWeekly,

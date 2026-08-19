@@ -41,6 +41,8 @@ ok(!!incumbentTable,
   'ARCHITECTURE.md contains the incumbent financial-authority table');
 
 const FORECAST_NON_AUTHORITY = new Set([
+  'HOUSEHOLD_TIMEZONE',
+  'financialDate',
   'addDays',
   'diffDays',
   'occurrences',

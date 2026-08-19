@@ -273,9 +273,7 @@ function identityProofLooksSanitized(doc) {
 }
 
 function dateOnly(value) {
-  if (value == null || value === '') return null;
-  const s = String(value);
-  return s.length >= 10 ? s.slice(0, 10) : s;
+  return Forecast.financialDate(value);
 }
 
 function isIsoDate(value) {

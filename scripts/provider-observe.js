@@ -92,9 +92,7 @@ function mappingFor(mapDoc, providerAccountId) {
 }
 
 function dateOnly(value) {
-  if (!value) return null;
-  const s = String(value);
-  return s.length >= 10 ? s.slice(0, 10) : s;
+  return Forecast.financialDate(value);
 }
 
 function firstNumber(...values) {
@@ -211,7 +209,12 @@ function lunchMoneyTransactionsUrl(now, historyDays) {
   const span = isFinite(days) && days > 0 ? Math.floor(days) : CURRENT_STATE_HISTORY_DAYS;
   const txUrl = new URL(`${LIVE_BASE}/transactions`);
   const end = dateOnly(now);
-  const start = dateOnly(new Date(Date.parse(now) - span * 86400000).toISOString());
+  if (!end) fail('Transaction history range needs a parseable fetch instant.');
+  const startMs = Date.parse(now);
+  const start = Number.isFinite(startMs)
+    ? dateOnly(new Date(startMs - span * 86400000).toISOString())
+    : Forecast.addDays(end, -span);
+  if (!start) fail('Transaction history start date could not be derived.');
   txUrl.searchParams.set('start_date', start);
   txUrl.searchParams.set('end_date', end);
   txUrl.searchParams.set('include_pending', 'true');
