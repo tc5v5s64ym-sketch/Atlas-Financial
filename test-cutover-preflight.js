@@ -159,13 +159,25 @@ function accountRow(spec) {
   return row;
 }
 
-function makePayload(fetchedAsOf, accounts, transactions) {
-  return {
+function makePayload(fetchedAsOf, accounts, transactions, extra) {
+  return Object.assign({
     provider: 'lunchmoney',
     fetchedAt: `${fetchedAsOf}T18:00:00.000Z`,
     source: 'Synthetic opening-cutover preflight fixture. Not a live institution pull. Fixture IDs 4101–4199 are not live provider IDs.',
     accounts,
     transactions: transactions || [],
+  }, extra || {});
+}
+
+function completePendingCoverage() {
+  return {
+    pendingCoverage: {
+      complete: true,
+      basis: 'is_pending-unbounded',
+      hasMore: false,
+      startDate: null,
+      endDate: null,
+    },
   };
 }
 
@@ -518,6 +530,44 @@ console.log('\n=== CASE 7 — pending UNKNOWN is preserved and is not zero ===')
     'unchanged UNKNOWN is not a pending-change blocker');
 }
 
+console.log('\n=== CASE 7b — proven zero cannot silently write UNKNOWN pending to 0 ===');
+{
+  const data = makeData({
+    asOf: '2026-08-16',
+    debts: [
+      {
+        id: 'mortgage', balance: 500000, pending: 0, secured: true,
+        interestTreatment: 'paid-in-payment', limit: null,
+      },
+      {
+        id: 'cashback', balance: 4000, pending: null, pendingUnknown: true,
+        secured: false, limit: 5000,
+      },
+    ],
+  });
+  const map = extendMap([{
+    providerAccountId: 4105, collection: 'debts', id: 'cashback', role: 'revolving-credit',
+  }]);
+  const payload = makePayload('2026-08-18', matchingPostedAccounts(data, '2026-08-18').concat([
+    accountRow({
+      id: 4105, name: 'Cash Back', type: 'credit', subtype: 'credit_card',
+      balance: 4000, limit: 5000, evidenceDate: '2026-08-18',
+    }),
+  ]), [], completePendingCoverage());
+  const dir = tempDir();
+  const dest = writeJson(dir, 'data.json', data);
+  const before = hashFile(dest);
+  const { report, preview } = previewAt(data, payload, { accountMap: map, cutoverAsOf: '2026-08-18' });
+  const pending = report.observations.find(o => o.observationId === 'lm-4105-pending');
+  ok(pending && near(pending.evidenceValue, 0) && pending.unknown !== true,
+    'provider packet can prove numeric zero without writing it');
+  ok(codes(preview.openingCutover.blockers).includes('pending-state-change-unresolved'),
+    'UNKNOWN canonical pending cannot silently become 0');
+  ok(!preview.proposed.some(row => /pending/.test(String(row.locator || ''))),
+    'no pending write is proposed for UNKNOWN → 0');
+  ok(hashFile(dest) === before, 'UNKNOWN pending is not written to 0');
+}
+
 console.log('\n=== CASE 8 — stale known pending is not current ===');
 {
   const data = makeData({
@@ -548,6 +598,136 @@ console.log('\n=== CASE 8 — stale known pending is not current ===');
     'blocker code is pending-freshness-unproven');
   ok(!preview.proposed.some(row => /pending/.test(String(row.locator))),
     'stale pending is not treated as a posted write');
+}
+
+console.log('\n=== CASE 8a — proven zero pending is candidate-date evidence ===');
+{
+  const data = makeData({
+    asOf: '2026-08-16',
+    debts: [
+      {
+        id: 'mortgage', balance: 500000, pending: 0, secured: true,
+        interestTreatment: 'paid-in-payment', limit: null,
+      },
+      {
+        id: 'tdcc', balance: 1700, pending: 0, pendingUnknown: false,
+        secured: false, limit: 2000,
+      },
+      {
+        id: 'mbna', balance: 8000, pending: 0, pendingUnknown: false,
+        secured: false, limit: 8000,
+      },
+    ],
+  });
+  const map = extendMap([
+    { providerAccountId: 4104, collection: 'debts', id: 'tdcc', role: 'revolving-credit' },
+    { providerAccountId: 4109, collection: 'debts', id: 'mbna', role: 'revolving-credit' },
+  ]);
+  const payload = makePayload('2026-08-18', matchingPostedAccounts(data, '2026-08-18').concat([
+    accountRow({
+      id: 4104, name: 'Personal Card', type: 'credit', subtype: 'credit_card',
+      balance: 1700, limit: 2000, evidenceDate: '2026-08-18',
+    }),
+    accountRow({
+      id: 4109, name: 'MBNA', type: 'credit', subtype: 'credit_card',
+      balance: 8000, limit: 8000, evidenceDate: '2026-08-18',
+    }),
+  ]), [], completePendingCoverage());
+  const { report, preview } = previewAt(data, payload, { accountMap: map, cutoverAsOf: '2026-08-18' });
+  const tdcc = report.observations.find(o => o.observationId === 'lm-4104-pending');
+  const mbna = report.observations.find(o => o.observationId === 'lm-4109-pending');
+  ok(tdcc && near(tdcc.evidenceValue, 0) && tdcc.unknown !== true,
+    'TD Personal candidate-date pending observation is proven 0');
+  ok(mbna && near(mbna.evidenceValue, 0) && mbna.unknown !== true,
+    'MBNA candidate-date pending observation is proven 0');
+  ok(!codes(preview.openingCutover.blockers).includes('pending-freshness-unproven'),
+    'proven zero is not pending-freshness-unproven');
+  ok(!preview.proposed.some(row => /pending/.test(String(row.locator || ''))),
+    'proven zero does not propose a pending write');
+}
+
+console.log('\n=== CASE 8b — empty bounded window is not proven zero ===');
+{
+  const data = makeData({
+    asOf: '2026-08-16',
+    debts: [
+      {
+        id: 'mortgage', balance: 500000, pending: 0, secured: true,
+        interestTreatment: 'paid-in-payment', limit: null,
+      },
+      {
+        id: 'tdcc', balance: 1700, pending: 0, pendingUnknown: false,
+        secured: false, limit: 2000,
+      },
+      {
+        id: 'mbna', balance: 8000, pending: 0, pendingUnknown: false,
+        secured: false, limit: 8000,
+      },
+    ],
+  });
+  const map = extendMap([
+    { providerAccountId: 4104, collection: 'debts', id: 'tdcc', role: 'revolving-credit' },
+    { providerAccountId: 4109, collection: 'debts', id: 'mbna', role: 'revolving-credit' },
+  ]);
+  const payload = makePayload('2026-08-18', matchingPostedAccounts(data, '2026-08-18').concat([
+    accountRow({
+      id: 4104, name: 'Personal Card', type: 'credit', subtype: 'credit_card',
+      balance: 1700, limit: 2000, evidenceDate: '2026-08-18',
+    }),
+    accountRow({
+      id: 4109, name: 'MBNA', type: 'credit', subtype: 'credit_card',
+      balance: 8000, limit: 8000, evidenceDate: '2026-08-18',
+    }),
+  ]));
+  const { report, preview } = previewAt(data, payload, { accountMap: map, cutoverAsOf: '2026-08-18' });
+  ok(!report.observations.some(o => o.fact === 'pending' && (o.cardId === 'tdcc' || o.cardId === 'mbna')),
+    'bounded empty packet does not invent pending 0 observations');
+  ok(preview.openingCutover.status === 'BLOCKED',
+    'unproven zero pending fails closed');
+  const unproven = preview.openingCutover.blockers.filter(b => b.code === 'pending-freshness-unproven');
+  ok(unproven.some(b => b.locator === 'debts:tdcc#pending'),
+    'TD Personal remains pending-freshness-unproven');
+  ok(unproven.some(b => b.locator === 'debts:mbna#pending'),
+    'MBNA remains pending-freshness-unproven');
+}
+
+console.log('\n=== CASE 8c — dated is_pending query cannot prove zero ===');
+{
+  const data = makeData({
+    asOf: '2026-08-16',
+    debts: [
+      {
+        id: 'mortgage', balance: 500000, pending: 0, secured: true,
+        interestTreatment: 'paid-in-payment', limit: null,
+      },
+      {
+        id: 'tdcc', balance: 1700, pending: 0, pendingUnknown: false,
+        secured: false, limit: 2000,
+      },
+    ],
+  });
+  const map = extendMap([
+    { providerAccountId: 4104, collection: 'debts', id: 'tdcc', role: 'revolving-credit' },
+  ]);
+  const payload = makePayload('2026-08-18', matchingPostedAccounts(data, '2026-08-18').concat([
+    accountRow({
+      id: 4104, name: 'Personal Card', type: 'credit', subtype: 'credit_card',
+      balance: 1700, limit: 2000, evidenceDate: '2026-08-18',
+    }),
+  ]), [], {
+    pendingCoverage: {
+      complete: true,
+      basis: 'is_pending-unbounded',
+      hasMore: false,
+      startDate: '2026-08-04',
+      endDate: '2026-08-18',
+    },
+  });
+  const { report, preview } = previewAt(data, payload, { accountMap: map, cutoverAsOf: '2026-08-18' });
+  ok(!report.observations.some(o => o.observationId === 'lm-4104-pending'),
+    'dated pending query does not emit proven zero');
+  ok(codes(preview.openingCutover.blockers).includes('pending-freshness-unproven'),
+    'a date-bounded pending query cannot unblock zero pending');
 }
 
 console.log('\n=== CASE 9 — same-day no winner ===');
