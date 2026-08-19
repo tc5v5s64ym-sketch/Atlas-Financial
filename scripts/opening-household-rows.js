@@ -6,13 +6,20 @@
  * is the permissioned posted/pending state; data.json remains canonical.
  *
  * This constructs dated captured Household rows from that already-approved
- * opening evidence plus incumbent structural metadata. It does not invent
- * mappings, copy live data.json into fake evidence, or write provider IDs.
+ * opening evidence plus incumbent structural metadata. Balance, as-of,
+ * confidence/provenance, pending, and notes come from the approved opening.
+ * Structural columns (institution, limits, rates, payment shape) stay.
+ * It does not invent mappings, copy live data.json into fake evidence, or
+ * write provider IDs.
  */
 
 const POS = require('./positions-summary.js');
 
 const EPSILON = 0.005;
+const FRESHNESS_EXACT_DAY = 'exact-day';
+const FRESHNESS_STATEMENT_CADENCE = 'owner-approved-monthly-statement-cadence';
+const CONFIDENCE_OBSERVED = 'OBSERVED';
+const CONFIDENCE_OBSERVED_CADENCE = 'OBSERVED_CADENCE';
 const COL = {
   entity: 0,
   institution: 1,
@@ -116,6 +123,22 @@ function secretLeak(text) {
     || /SESSION_SECRET/i.test(blob)
     || /"providerAccountId"\s*:/.test(blob)
     || /"providerTransactionId"\s*:/.test(blob);
+}
+
+function confidenceFromApproved(posted) {
+  if (!posted || !posted.freshnessBasis) {
+    fail('Approved posted evidence is missing freshness basis; opening confidence cannot be inherited.');
+  }
+  let label = null;
+  if (posted.freshnessBasis === FRESHNESS_EXACT_DAY) label = CONFIDENCE_OBSERVED;
+  else if (posted.freshnessBasis === FRESHNESS_STATEMENT_CADENCE) label = CONFIDENCE_OBSERVED_CADENCE;
+  else {
+    fail(`Approved posted ${posted.locator} has unsupported freshness basis ${posted.freshnessBasis}.`);
+  }
+  if (/^verified/i.test(label)) {
+    fail(`Opening Household confidence cannot use a verified label for approved observation evidence (${posted.locator}).`);
+  }
+  return label;
 }
 
 function openingNote(posted, pending) {
@@ -225,6 +248,7 @@ function applyApprovedHouseholdRows(opts) {
     while (nextCols.length < 21) nextCols.push('');
     nextCols[COL.balance] = n2(postedValue);
     nextCols[COL.asOf] = requestedAsOf;
+    nextCols[COL.confidence] = confidenceFromApproved(posted);
     nextCols[COL.notes] = openingNote(Object.assign({ requestedAsOf }, posted), pending);
     nextCols[COL.available] = availableFromApproved(
       nextCols,
@@ -250,4 +274,7 @@ module.exports = {
   mappingForLocator,
   pendingForId,
   excludedLabels,
+  confidenceFromApproved,
+  CONFIDENCE_OBSERVED,
+  CONFIDENCE_OBSERVED_CADENCE,
 };

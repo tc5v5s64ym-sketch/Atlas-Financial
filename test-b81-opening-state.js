@@ -16,6 +16,7 @@ const { execFileSync } = require('child_process');
 const C = require('./scripts/canonical-refresh.js');
 const S = require('./scripts/snapshot-balances.js');
 const POS = require('./scripts/positions-summary.js');
+const Household = require('./scripts/opening-household-rows.js');
 const Forecast = require('./public/forecast.js');
 
 const ROOT = __dirname;
@@ -186,7 +187,7 @@ function csvLine(cols) {
   return cols.map(v => (/[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : v)).join(',');
 }
 
-function fixturePositions(data, extraRows) {
+function fixturePositions(data, extraRows, confidenceByLabel) {
   const header = 'entity,institution,account_label,account_type,side,currency,balance,credit_limit,available,interest_rate_pct,rate_basis,fixed_or_variable,structure,payment_amount,payment_frequency,next_due_date,maturity_or_renewal,annual_interest_cost,confidence,as_of,notes';
   const asOf = data.meta.asOf;
   const lines = [header];
@@ -198,7 +199,9 @@ function fixturePositions(data, extraRows) {
     cols[4] = 'Asset'; cols[5] = 'CAD'; cols[6] = Number(row.value).toFixed(2);
     if (row.id === 'chequing-b') { cols[7] = '600.00'; cols[8] = '600.00'; }
     else cols[8] = Number(row.value).toFixed(2);
-    cols[12] = 'Transactional'; cols[18] = 'VERIFIED_TD'; cols[19] = asOf;
+    cols[12] = 'Transactional';
+    cols[18] = (confidenceByLabel && confidenceByLabel[labels[row.id]]) || 'VERIFIED_TD';
+    cols[19] = asOf;
     cols[20] = 'incumbent captured Household row';
     lines.push(csvLine(cols));
   }
@@ -213,7 +216,8 @@ function fixturePositions(data, extraRows) {
     cols[4] = 'Liability'; cols[5] = 'CAD'; cols[6] = Number(debt.balance).toFixed(2);
     if (debt.limit != null) cols[7] = Number(debt.limit).toFixed(2);
     cols[12] = debt.secured ? 'Amortizing' : 'Revolving';
-    cols[18] = 'VERIFIED_TD'; cols[19] = asOf;
+    cols[18] = (confidenceByLabel && confidenceByLabel[name]) || 'VERIFIED_TD';
+    cols[19] = asOf;
     cols[20] = 'incumbent captured Household row';
     lines.push(csvLine(cols));
   }
@@ -254,14 +258,26 @@ function fixtureBalanceMap(data) {
   };
 }
 
-function workspace(dir, data) {
+function workspace(dir, data, extra) {
   const dataPath = writeJson(dir, 'data.json', data);
   const positionsPath = path.join(dir, 'positions.csv');
   const snapshotDir = path.join(dir, 'snapshots');
-  const balanceMapPath = writeJson(dir, 'balance-map.json', fixtureBalanceMap(data));
-  fs.writeFileSync(positionsPath, fixturePositions(data));
+  const balanceMapPath = writeJson(dir, extra && extra.balanceMapName || 'balance-map.json', fixtureBalanceMap(data));
+  fs.writeFileSync(
+    positionsPath,
+    fixturePositions(data, extra && extra.extraRows, extra && extra.confidenceByLabel)
+  );
   fs.mkdirSync(snapshotDir, { recursive: true });
   return { dataPath, positionsPath, snapshotDir, balanceMapPath };
+}
+
+function resolveError(args) {
+  try {
+    C.resolveOpeningArtifactPaths(args);
+    return '';
+  } catch (err) {
+    return String(err.message || err);
+  }
 }
 
 function previewAt(data, payload, extra) {
@@ -374,6 +390,9 @@ console.log('\n=== 1. successful approved opening produces one coherent state ==
   ok(/Owner-approved opening observation 2026-08-18/.test(household(posText, 'Chequing B').notes)
     && /freshness exact-day/.test(household(posText, 'Chequing B').notes),
     'Household provenance cites the approved opening evidence');
+  ok(household(posText, 'Chequing B').confidence === Household.CONFIDENCE_OBSERVED
+    && household(posText, 'Chequing B').confidence !== 'VERIFIED_TD',
+    'exact-day opening confidence comes from the approved observation, not incumbent VERIFIED_TD');
   const computed = POS.regenerateComputedRows(after, posText);
   ok(computed.text.replace(/\r\n?/g, '\n') === posText.replace(/\r\n?/g, '\n'),
     'derived SUMMARY/CREDIT/LIQUIDITY rows already match the new canonical state');
@@ -572,7 +591,185 @@ console.log('\n=== 8. re-running the exact already-applied opening is a defined 
   ok(labels.filter(l => l === 'Chequing A').length === 1, 'Chequing A still has exactly one Household row');
 }
 
-console.log('\n=== 9. live canonical files were not used as the write target ===');
+console.log('\n=== 9. mixed live/non-live artifact targets are refused ===');
+{
+  const pkt = cleanPacket();
+  const dir = tempDir();
+  const ws = workspace(dir, pkt.data);
+  const liveBound = C.resolveOpeningArtifactPaths({ data: C.DEFAULT_DATA });
+  ok(liveBound.positionsPath === C.DEFAULT_POSITIONS
+    && liveBound.snapshotDir === C.DEFAULT_SNAPSHOTS
+    && liveBound.balanceMapPath === C.DEFAULT_BALANCE_MAP,
+    'live data.json binds the incumbent live positions, snapshots, and balance-map paths');
+  const liveOverride = resolveError({
+    data: C.DEFAULT_DATA,
+    positions: ws.positionsPath,
+    snapshots: ws.snapshotDir,
+    balanceMap: ws.balanceMapPath,
+  });
+  ok(/cannot override --positions, --snapshots, or --balance-map/.test(liveOverride),
+    'live data.json refuses fixture positions/snapshots/map overrides', liveOverride);
+  const liveCustomMap = resolveError({
+    data: C.DEFAULT_DATA,
+    balanceMap: ws.balanceMapPath,
+  });
+  ok(/cannot override --positions, --snapshots, or --balance-map/.test(liveCustomMap),
+    'live data.json refuses a custom balance map', liveCustomMap);
+  const livePositionsOverride = resolveError({
+    data: C.DEFAULT_DATA,
+    positions: C.DEFAULT_POSITIONS,
+  });
+  ok(/cannot override --positions, --snapshots, or --balance-map/.test(livePositionsOverride),
+    'live data.json refuses even an explicit live --positions override');
+  const inversePositions = resolveError({
+    data: ws.dataPath,
+    positions: C.DEFAULT_POSITIONS,
+    snapshots: ws.snapshotDir,
+    balanceMap: ws.balanceMapPath,
+  });
+  ok(/cannot target live positions.csv, snapshots\/, or balance-map.json/.test(inversePositions),
+    'non-live data refuses live positions.csv', inversePositions);
+  const inverseSnapshots = resolveError({
+    data: ws.dataPath,
+    positions: ws.positionsPath,
+    snapshots: C.DEFAULT_SNAPSHOTS,
+    balanceMap: ws.balanceMapPath,
+  });
+  ok(/cannot target live positions.csv, snapshots\/, or balance-map.json/.test(inverseSnapshots),
+    'non-live data refuses live snapshots/', inverseSnapshots);
+  const inverseMap = resolveError({
+    data: ws.dataPath,
+    positions: ws.positionsPath,
+    snapshots: ws.snapshotDir,
+    balanceMap: C.DEFAULT_BALANCE_MAP,
+  });
+  ok(/cannot target live positions.csv, snapshots\/, or balance-map.json/.test(inverseMap),
+    'non-live data refuses the live balance map', inverseMap);
+  const missingMap = resolveError({
+    data: ws.dataPath,
+    positions: ws.positionsPath,
+    snapshots: ws.snapshotDir,
+  });
+  ok(/requires --positions, --snapshots, and --balance-map/.test(missingMap),
+    'non-live data no longer silently defaults to the live balance map', missingMap);
+
+  const beforeLiveData = hashFile(LIVE_DATA);
+  const beforeLivePos = hashFile(LIVE_POSITIONS);
+  const beforeLiveSnap = hashFile(path.join(LIVE_SNAPSHOTS, '2026-08-16.json'));
+  const cliLiveMixed = runCli([
+    '--data', LIVE_DATA,
+    '--positions', ws.positionsPath,
+    '--snapshots', ws.snapshotDir,
+    '--balance-map', ws.balanceMapPath,
+    '--cutover-as-of', '2026-08-18',
+    '--apply', '--approve-opening', '0'.repeat(64),
+  ]);
+  ok(cliLiveMixed.code !== 0, 'CLI live data plus fixture artifacts is refused');
+  ok(/cannot override --positions, --snapshots, or --balance-map/.test(cliLiveMixed.stderr),
+    'CLI names the live artifact-set override', cliLiveMixed.stderr.trim());
+  const cliInverse = runCli([
+    '--data', ws.dataPath,
+    '--positions', LIVE_POSITIONS,
+    '--snapshots', ws.snapshotDir,
+    '--balance-map', ws.balanceMapPath,
+    '--cutover-as-of', '2026-08-18',
+    '--apply', '--approve-opening', '0'.repeat(64),
+  ]);
+  ok(cliInverse.code !== 0, 'CLI non-live data plus live positions is refused');
+  ok(/cannot target live positions.csv, snapshots\/, or balance-map.json/.test(cliInverse.stderr),
+    'CLI names the live-target refusal', cliInverse.stderr.trim());
+  const cliLiveCustomMap = runCli([
+    '--data', LIVE_DATA,
+    '--balance-map', ws.balanceMapPath,
+    '--cutover-as-of', '2026-08-18',
+    '--apply', '--approve-opening', '0'.repeat(64),
+  ]);
+  ok(cliLiveCustomMap.code !== 0, 'CLI live custom balance map is refused');
+  ok(/cannot override --positions, --snapshots, or --balance-map/.test(cliLiveCustomMap.stderr),
+    'CLI live custom map is refused before any canonical write', cliLiveCustomMap.stderr.trim());
+  ok(hashFile(LIVE_DATA) === beforeLiveData && hashFile(LIVE_POSITIONS) === beforeLivePos
+    && hashFile(path.join(LIVE_SNAPSHOTS, '2026-08-16.json')) === beforeLiveSnap,
+    'mixed-target refusals leave live canonical files byte-identical');
+}
+
+console.log('\n=== 10. stale incumbent confidence is not carried onto a new opening balance ===');
+{
+  const data = makeData({
+    debts: [
+      {
+        id: 'mortgage', label: 'Mortgage', institution: 'TD',
+        balance: 500000, pending: 0, secured: true, limit: null,
+      },
+      {
+        id: 'triangle', label: 'Triangle Mastercard', institution: 'Canadian Tire Bank',
+        balance: 13197, pending: 0, pendingUnknown: false, secured: false, limit: 13500,
+      },
+    ],
+  });
+  const map = makeProviderMap([
+    { providerAccountId: 4110, collection: 'debts', id: 'triangle', role: 'revolving-credit' },
+  ]);
+  const payload = makePayload('2026-08-18', matchingPostedAccounts(data, '2026-08-18').concat([
+    accountRow({
+      id: 4110, name: 'Triangle', type: 'credit', subtype: 'credit_card',
+      balance: 13495.32, limit: 13500, evidenceDate: '2026-08-17',
+    }),
+  ]), [], completePendingCoverage());
+  const { preview } = previewAt(data, payload, { accountMap: map, cutoverAsOf: '2026-08-18' });
+  const trianglePosted = preview.openingCutover.proposedOpening.posted.find(row => row.locator === 'debts:triangle');
+  ok(preview.openingCutover.cutoverWriteSupported === true && trianglePosted
+    && trianglePosted.freshnessBasis === C.FRESHNESS_STATEMENT_CADENCE
+    && near(trianglePosted.proposedValue, 13495.32),
+    'Triangle cadence evidence is an approved opening observation, not a statement verification');
+  const dir = tempDir();
+  const ws = workspace(dir, data, {
+    confidenceByLabel: { 'Triangle Mastercard': 'VERIFIED_STATEMENT' },
+  });
+  const beforePos = fs.readFileSync(ws.positionsPath, 'utf8');
+  ok(household(beforePos, 'Triangle Mastercard').confidence === 'VERIFIED_STATEMENT'
+    && household(beforePos, 'Chequing A').confidence === 'VERIFIED_TD',
+    'incumbent Triangle confidence is VERIFIED_STATEMENT and cash is VERIFIED_TD');
+  const next = clone(data);
+  next.meta.asOf = '2026-08-18';
+  next.plan.opening.asOf = '2026-08-18';
+  for (const change of preview.openingCutover.proposedOpening.posted) {
+    C.applyChange(next, {
+      locator: change.locator, field: change.field,
+      currentValue: change.currentValue, proposedValue: change.proposedValue,
+    });
+  }
+  for (const change of preview.openingCutover.proposedOpening.pending || []) {
+    C.applyPendingChange(next, change);
+  }
+  const constructed = Household.applyApprovedHouseholdRows({
+    csvText: beforePos,
+    balanceMap: fixtureBalanceMap(data),
+    proposedOpening: preview.openingCutover.proposedOpening,
+    requestedAsOf: '2026-08-18',
+    nextData: next,
+  });
+  ok(household(constructed.text, 'Triangle Mastercard').confidence === Household.CONFIDENCE_OBSERVED_CADENCE
+    && household(constructed.text, 'Triangle Mastercard').confidence !== 'VERIFIED_STATEMENT',
+    'constructed Triangle confidence comes from cadence observation, not VERIFIED_STATEMENT');
+  ok(household(constructed.text, 'Chequing A').confidence === Household.CONFIDENCE_OBSERVED
+    && household(constructed.text, 'Chequing A').confidence !== 'VERIFIED_TD',
+    'constructed cash confidence comes from exact-day observation, not VERIFIED_TD');
+  const applied = runCli(applyArgs(ws, { data, map, payload }, preview.openingCutover.openingApprovalId));
+  ok(applied.code === 0, 'cadence-accepted Triangle opening apply succeeds', applied.stderr.trim());
+  const posText = fs.readFileSync(ws.positionsPath, 'utf8');
+  ok(household(posText, 'Triangle Mastercard').confidence === Household.CONFIDENCE_OBSERVED_CADENCE
+    && household(posText, 'Triangle Mastercard').confidence !== 'VERIFIED_STATEMENT'
+    && near(Number(household(posText, 'Triangle Mastercard').balance), 13495.32)
+    && household(posText, 'Triangle Mastercard').as_of === '2026-08-18',
+    'installed Triangle row keeps the new balance/date without the old statement confidence');
+  const snap = JSON.parse(fs.readFileSync(path.join(ws.snapshotDir, '2026-08-18.json'), 'utf8'));
+  const snapT = snap.accounts.find(row => row.id === 'triangle');
+  ok(snapT && snapT.confidence === Household.CONFIDENCE_OBSERVED_CADENCE
+    && String(snapT.confidence).toLowerCase().startsWith('verified') === false,
+    'snapshot history does not inherit a verified label from the incumbent statement row');
+}
+
+console.log('\n=== 11. live canonical files were not used as the write target ===');
 {
   ok(hashFile(LIVE_DATA) === liveHash, 'live data.json is unchanged');
   ok(hashFile(LIVE_POSITIONS) === livePosHash, 'live positions.csv is unchanged');

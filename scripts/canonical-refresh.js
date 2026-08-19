@@ -1214,20 +1214,41 @@ function replaceFileAtomically(dest, nextBytes) {
   return replaceBytesAtomically(dest, nextBytes, 'json');
 }
 
+function sameResolvedPath(left, right) {
+  const a = path.resolve(left);
+  const b = path.resolve(right);
+  if (a === b) return true;
+  try {
+    if (fs.existsSync(a) && fs.existsSync(b)) {
+      return fs.realpathSync(a) === fs.realpathSync(b);
+    }
+  } catch (_) { /* compare resolved paths only */ }
+  return false;
+}
+
 function resolveOpeningArtifactPaths(args) {
   const dest = path.resolve(args.data);
-  const live = dest === path.resolve(DEFAULT_DATA);
-  const positions = args.positions
-    ? path.resolve(args.positions)
-    : (live ? DEFAULT_POSITIONS : null);
-  const snapshots = args.snapshots
-    ? path.resolve(args.snapshots)
-    : (live ? DEFAULT_SNAPSHOTS : null);
-  const balanceMap = args.balanceMap
-    ? path.resolve(args.balanceMap)
-    : DEFAULT_BALANCE_MAP;
-  if (!positions || !snapshots) {
-    fail('Opening apply requires --positions and --snapshots when --data is not the live canonical file. Canonical state was not written.');
+  const live = sameResolvedPath(dest, DEFAULT_DATA);
+  if (live) {
+    if (args.positions || args.snapshots || args.balanceMap) {
+      fail('Live canonical opening cannot override --positions, --snapshots, or --balance-map. data.json, docs/positions.csv, snapshots/, and docs/reconciliation/balance-map.json are one artifact set. Canonical state was not written.');
+    }
+    return {
+      positionsPath: DEFAULT_POSITIONS,
+      snapshotDir: DEFAULT_SNAPSHOTS,
+      balanceMapPath: DEFAULT_BALANCE_MAP,
+    };
+  }
+  if (!args.positions || !args.snapshots || !args.balanceMap) {
+    fail('Opening apply requires --positions, --snapshots, and --balance-map when --data is not the live canonical file. Canonical state was not written.');
+  }
+  const positions = path.resolve(args.positions);
+  const snapshots = path.resolve(args.snapshots);
+  const balanceMap = path.resolve(args.balanceMap);
+  if (sameResolvedPath(positions, DEFAULT_POSITIONS)
+    || sameResolvedPath(snapshots, DEFAULT_SNAPSHOTS)
+    || sameResolvedPath(balanceMap, DEFAULT_BALANCE_MAP)) {
+    fail('Non-live opening data cannot target live positions.csv, snapshots/, or balance-map.json. Canonical state was not written.');
   }
   return {
     positionsPath: positions,
@@ -1672,6 +1693,14 @@ async function run(argv) {
   if (args.apply && !args.approve && !args.approveCutover && !args.approveOpening) {
     fail('No approval = no canonical write. Pass --approve <previewId>, --approve-cutover <cutoverApprovalId>, or --approve-opening <openingApprovalId>.');
   }
+  const openingArtifactPaths = (args.apply && args.approveOpening && (
+    sameResolvedPath(args.data, DEFAULT_DATA)
+    || args.positions
+    || args.snapshots
+    || args.balanceMap
+  ))
+    ? resolveOpeningArtifactPaths(args)
+    : null;
   const data = loadJson(args.data);
   const originalBytes = fs.readFileSync(args.data);
   const payload = await loadPayload(args);
@@ -1700,8 +1729,12 @@ async function run(argv) {
     if (String(args.approveOpening) !== String(cutover.openingApprovalId)) {
       fail('Opening approval does not match the recomputed opening proposal. Canonical state was not written.');
     }
-    const artifactPaths = resolveOpeningArtifactPaths(args);
-    applyOpeningPreview(data, preview, args.data, artifactPaths);
+    applyOpeningPreview(
+      data,
+      preview,
+      args.data,
+      openingArtifactPaths || resolveOpeningArtifactPaths(args)
+    );
     const afterBytes = fs.readFileSync(args.data);
     const result = {
       schema: OPENING_CUTOVER_SCHEMA,
