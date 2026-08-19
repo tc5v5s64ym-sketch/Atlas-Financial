@@ -78,6 +78,7 @@ const suites = [
   ['trusted canonical refresh (B81 / AF-LIVE-02)', 'test-b81-refresh.js'],
   ['opening-cutover preflight (B81 read-only)', 'test-cutover-preflight.js'],
   ['Aug. 16 household evidence absorption', 'test-aug16-evidence.js'],
+  ['telecom current-regime closeout', 'test-telecom-current-regime.js'],
   ['HELOC Q19 + Bell Q18 evidence closeout', 'test-q19-q18-closeout.js'],
   ['major future costs on the master plan', 'test-major-future-costs.js'],
   ['master forecast engine (B94 / AF-PLAN-01)', 'test-master-forecast.js'],

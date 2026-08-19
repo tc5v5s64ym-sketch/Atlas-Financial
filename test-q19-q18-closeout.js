@@ -106,8 +106,12 @@ console.log('\n=== Bell $15 watch line is not a second invented bill ===');
   ok(!(plan.bills || []).some(b => /bell|watch/i.test(b.id + b.label)),
     'plan.bills does not invent a Bell or watch cash bill');
   ok(/^OPEN\b/.test(statusOf('Q18')),
-    'Q18 stays OPEN for pending Bell posting residual and second-account amount',
+    'Q18 stays OPEN for pending Bell posting residual',
     statusOf('Q18'));
+  ok(/\$16\.80/.test(questions) && /no longer UNKNOWN/i.test(aug18),
+    'second-account recurring $16.80 is recorded and is no longer UNKNOWN');
+  ok(/settlement state/i.test(questions) && /not a telecom-cost question/i.test(questions),
+    'Q18 separates Bell settlement-state from telecom-cost');
   ok(/second Bell\/watch account is still\s+active/i.test(questions)
     && /second Bell\/watch account is still\s+active/i.test(facts),
     'Q18 / ACCOUNT_FACTS keep the owner-stated separate Bell/watch account');

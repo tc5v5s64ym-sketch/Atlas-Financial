@@ -2220,12 +2220,13 @@
   //
   // Amounts are derived from the generated spending history in periods.json,
   // never copied into data.json — one fact, one home. data.json carries only
-  // the classification and any owner override.
+  // the classification, any owner override, and any explicit current-regime
+  // assumption. A current-regime amount is not historical spending.
   //
   // Where a category also has dated items pointing at it (Shaw inside Telecom,
   // the lacrosse fees inside Sport), the dated amount is SUBTRACTED from the
-  // historical average. Without that the plan pays Shaw twice: once on the
-  // calendar and once inside a telecom average that already contains it.
+  // gross (owner target, current-regime, or historical). Without that the
+  // plan pays Shaw twice: once on the calendar and once inside the category.
   function budgetBreakdown(plan, periods, opts) {
     opts = opts || {};
     const budget = plan.budget;
@@ -2283,19 +2284,29 @@
       const historical = (c.from || []).reduce((s, label) =>
         s + (label === '@paypal' ? (opts.paypalPerMonth || 0) : perMonth(label)), 0);
       const dated = datedByCategory[c.id] || { total: 0, items: [] };
-      // An owner target, when one exists, beats the historical average. The
-      // household deciding what it intends to spend is better evidence about
-      // the next 90 days than a description of the last eighteen months.
+      // An owner target, when one exists, beats both a current-regime
+      // assumption and the historical average. Known current recurring
+      // services outrank a blended historical average. The household's
+      // next 90 days are better described by what it intends to spend,
+      // then by what it currently pays, than by the last eighteen months.
       const target = c.plannedMonthly != null ? c.plannedMonthly : null;
-      const gross = target != null ? target : historical;
+      // currentMonthly is the undated current-regime amount — services
+      // already on the calendar stay in dated and are not added again.
+      // This is not a spending-intent target and not a second bill engine.
+      const current = c.currentMonthly != null ? c.currentMonthly : null;
+      const gross = target != null ? target
+        : current != null ? current + dated.total
+        : historical;
       const planned = Math.max(0, gross - dated.total);
       const sinkingHere = sinking.items.filter(s => s.category === c.id)
         .reduce((a, s) => a + s.amount, 0);
       return Object.assign({}, c, {
         historical, dated: dated.total, datedItems: dated.items, target,
+        current,
         // gross is the pre-dated monthly amount — owner target if one exists,
-        // otherwise the historical average. planned is that amount after dated
-        // items are netted off, and is what the weekly cap consumes.
+        // else current-regime (undated current + dated), else the historical
+        // average. planned is that amount after dated items are netted off,
+        // and is what the weekly cap consumes.
         gross, planned,
         // Dated commitments saved for separately. Reported, never netted off
         // the recurring line for the same category.
@@ -2304,7 +2315,9 @@
         // fully accounted for on the calendar — the dated figure is the better
         // current authority and nothing extra belongs in the weekly cap.
         fullyDated: dated.total > 0 && gross - dated.total <= 0,
-        source: target != null ? 'owner-target' : 'historical-actual',
+        source: target != null ? 'owner-target'
+          : current != null ? 'current-regime'
+          : 'historical-actual',
       });
     });
 

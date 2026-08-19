@@ -215,7 +215,9 @@ ok(!/target\s*!=\s*null\s*\?/.test(againstSrc),
   'againstCap does not re-implement target vs historical');
 
 console.log('\n=== mutation: the incumbent gross choice now fails ===');
-const FROM = '      const gross = target != null ? target : historical;';
+const FROM = '      const gross = target != null ? target\n'
+  + '        : current != null ? current + dated.total\n'
+  + '        : historical;';
 const TO = '      const gross = historical;';
 ok(FORECAST_SRC.split(FROM).length - 1 === 1,
   'the target-vs-historical choice appears once in the engine, so the mutation is aimed');
