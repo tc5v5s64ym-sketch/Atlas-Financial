@@ -300,8 +300,8 @@ console.log('\n=== CASE 5 — existing same-day represented payroll cutover rema
 
 console.log('\n=== CASE 6 — live B91 unknown mid-month arithmetic still binds on Aug. 18 ===');
 {
-  ok(live.meta.asOf === OPENING && live.plan.opening.asOf === OPENING,
-    'canonical opening remains 2026-08-16 — this test does not move it');
+  ok(live.meta.asOf === live.plan.opening.asOf,
+    'canonical opening as-of agrees — this test does not move it');
   ok(Array.isArray(live.plan.opening.representedEvents)
     && live.plan.opening.representedEvents.length === 0,
     'live representedEvents stay empty');
@@ -548,8 +548,8 @@ console.log('\n=== live data.json hash is unchanged ===');
 {
   const hashAfter = hashFile(DATA);
   ok(hashAfter === hashBefore, 'data.json SHA-256 is unchanged');
-  ok(live.meta.asOf === OPENING && live.plan.opening.asOf === OPENING,
-    'canonical as-of was not rewritten as a new cutover');
+  ok(live.meta.asOf === live.plan.opening.asOf,
+    'canonical as-of was not rewritten as a new cutover by this suite');
 }
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);

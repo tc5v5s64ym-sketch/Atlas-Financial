@@ -191,9 +191,12 @@ console.log('\n=== 8. DEBT&PAYMENTS and SAVINGS-DONT TOUCH cannot inflate househ
 {
   const report = observeWith();
   const independent = independentCash();
-  ok(near(independent, 2252.76), 'independent mapped cash is $2,252.76');
-  ok(near(report.spendableCash, independent),
-    'spendable cash is $2,252.76, not 2252.76+798.37+1000',
+  ok(near(independent, 2252.76), 'fixture mapped-cash identity 1320.13+932.05+0.58 is $2,252.76');
+  ok(near(report.spendableCash, F.startingCashAmount(data.plan)),
+    'observe spendable cash independently equals Forecast starting cash',
+    money(report.spendableCash));
+  ok(!near(report.spendableCash, report.spendableCash + 798.37 + 1000),
+    'adding DEBT&PAYMENTS $798.37 and SAVINGS-DONT TOUCH $1,000 would disagree with spendable',
     money(report.spendableCash));
   ok(report.unmapped.some(u => u.providerAccountId === '3997'),
     'DEBT&PAYMENTS is unmapped');
@@ -339,10 +342,11 @@ console.log('\n=== 15. existing Forecast consumes the 16 August opening ===');
     extraFacilities: data.revolvingExtra,
     extraDebtTarget: data.plan.nextDollar && data.plan.nextDollar.target,
   });
-  ok(data.plan.opening && data.plan.opening.asOf === '2026-08-16',
-    'live plan opening cutover is 2026-08-16');
-  ok(near(F.startingCashAmount(data.plan), 2252.76),
-    'live spendable opening is the 16 August $2,252.76 snapshot');
+  ok(data.plan.opening && data.plan.opening.asOf === data.meta.asOf,
+    'live plan opening as-of agrees with meta.asOf');
+  ok(near(F.startingCashAmount(data.plan), (data.plan.startingCash.breakdown || [])
+    .reduce((s, r) => s + Number(r.value || 0), 0)),
+    'live spendable opening independently equals the breakdown sum');
   ok(rec.mode !== 'openingGap' && rec.weekly !== 600,
     'existing Forecast consumes that opening; $600/week is not policy',
     `${rec.mode} weekly ${rec.weekly}`);

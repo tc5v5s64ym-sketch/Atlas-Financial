@@ -214,8 +214,95 @@ function payrollIdentity() {
   };
 }
 
+const CASH_POSITION_LABEL = {
+  'chequing-a': 'Chequing A',
+  'chequing-b': 'Chequing B',
+  savings: 'Savings',
+};
+const DEBT_POSITION_LABEL = {
+  mortgage: 'Mortgage',
+  travelvisa: 'Travel Visa',
+  cashback: 'Cash Back Visa',
+  tdcc: 'Credit Card',
+  triangle: 'Triangle Mastercard',
+  mbna: 'Amazon.ca Rewards Mastercard',
+  heloc: 'HELOC',
+};
+
+function fixturePositionsFor(data) {
+  const header = 'entity,institution,account_label,account_type,side,currency,balance,credit_limit,available,interest_rate_pct,rate_basis,fixed_or_variable,structure,payment_amount,payment_frequency,next_due_date,maturity_or_renewal,annual_interest_cost,confidence,as_of,notes';
+  const asOf = data.meta.asOf;
+  const lines = [header];
+  const rowLine = cols => cols.map(v => (/[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : v)).join(',');
+  for (const row of data.plan.startingCash.breakdown) {
+    const cols = new Array(21).fill('');
+    cols[0] = 'Household'; cols[1] = 'TD';
+    cols[2] = CASH_POSITION_LABEL[row.id] || row.id;
+    cols[3] = row.id === 'savings' ? 'Savings' : 'Chequing';
+    cols[4] = 'Asset'; cols[5] = 'CAD'; cols[6] = Number(row.value).toFixed(2);
+    if (row.id === 'chequing-b') { cols[7] = '600.00'; cols[8] = '600.00'; }
+    else cols[8] = Number(row.value).toFixed(2);
+    cols[18] = 'VERIFIED_TD'; cols[19] = asOf; cols[20] = 'incumbent fixture Household row';
+    lines.push(rowLine(cols));
+  }
+  for (const debt of data.debts) {
+    const cols = new Array(21).fill('');
+    cols[0] = 'Household'; cols[1] = 'TD';
+    cols[2] = DEBT_POSITION_LABEL[debt.id] || debt.id;
+    cols[3] = debt.id === 'mortgage' ? 'Mortgage' : (debt.id === 'heloc' ? 'Home equity line' : 'Credit card');
+    cols[4] = 'Liability'; cols[5] = 'CAD'; cols[6] = Number(debt.balance).toFixed(2);
+    if (debt.limit != null) cols[7] = Number(debt.limit).toFixed(2);
+    cols[18] = 'VERIFIED_TD'; cols[19] = asOf; cols[20] = 'incumbent fixture Household row';
+    lines.push(rowLine(cols));
+  }
+  const wise = new Array(21).fill('');
+  wise[0] = 'Household'; wise[1] = 'Wise'; wise[2] = 'Wise account 1 (USD spending)';
+  wise[3] = 'Prepaid multi-currency'; wise[4] = 'Asset'; wise[5] = 'USD'; wise[6] = '1.92';
+  wise[8] = '1.92'; wise[18] = 'CALCULATED'; wise[19] = '2026-08-09';
+  wise[20] = 'excluded standing account';
+  lines.push(rowLine(wise));
+  return `${lines.join('\n')}\n`;
+}
+
+function fixtureBalanceMapFor(data) {
+  const mappings = [];
+  for (const row of data.plan.startingCash.breakdown) {
+    mappings.push({
+      observationId: `pos-${row.id}`,
+      accountLabel: CASH_POSITION_LABEL[row.id] || row.id,
+      canonical: { collection: 'cash', id: row.id },
+    });
+  }
+  for (const debt of data.debts) {
+    mappings.push({
+      observationId: `pos-${debt.id}`,
+      accountLabel: DEBT_POSITION_LABEL[debt.id] || debt.id,
+      canonical: { collection: 'debts', id: debt.id },
+    });
+  }
+  return {
+    schema: 'atlas-balance-reconciliation-map/v1',
+    excluded: [{
+      accountLabel: 'Wise account 1 (USD spending)',
+      reason: 'Two Wise rows share one canonical cash id; this slice maps one observation to one id.',
+    }],
+    mappings,
+  };
+}
+
+function writeOpeningWorkspace(dir, data) {
+  const positionsPath = path.join(dir, 'positions.csv');
+  const snapshotDir = path.join(dir, 'snapshots');
+  const mapPath = path.join(dir, 'balance-map.json');
+  fs.writeFileSync(positionsPath, fixturePositionsFor(data));
+  fs.mkdirSync(snapshotDir, { recursive: true });
+  fs.writeFileSync(mapPath, `${JSON.stringify(fixtureBalanceMapFor(data), null, 2)}\n`);
+  return { positionsPath, snapshotDir, mapPath };
+}
+
 function applyOpening(dir, data, payload, map, approval, extra) {
   const dest = writeJson(dir, extra && extra.dataName || 'data.json', data);
+  const workspace = writeOpeningWorkspace(dir, data);
   const before = hashFile(dest);
   const identity = extra && extra.identity
     ? extra.identity
@@ -225,10 +312,13 @@ function applyOpening(dir, data, payload, map, approval, extra) {
     '--map', writeJson(dir, extra && extra.mapName || 'map.json', map),
     '--identity', writeJson(dir, extra && extra.identityName || 'identity.json', identity),
     '--data', dest,
+    '--positions', workspace.positionsPath,
+    '--snapshots', workspace.snapshotDir,
+    '--balance-map', workspace.mapPath,
     '--cutover-as-of', (extra && extra.asOf) || '2026-08-18',
     '--apply', '--approve-opening', approval,
   ]);
-  return { dest, before, applied, after: JSON.parse(fs.readFileSync(dest, 'utf8')) };
+  return { dest, before, applied, after: JSON.parse(fs.readFileSync(dest, 'utf8')), workspace };
 }
 
 function cleanMatchPacket() {
@@ -848,9 +938,10 @@ console.log('\n=== 23–24. successful opening is Forecast-consumable; live data
     preview.openingCutover.openingApprovalId, { asOf: pkt.requested, identity: pkt.identity });
   ok(applied.code === 0, 'full synthetic opening apply succeeds', applied.stderr.trim());
   const printed = JSON.parse(applied.stdout);
-  ok(printed.writesOpening === true && printed.snapshotRequired === true
+  ok(printed.writesOpening === true && printed.snapshotWritten === true
+    && printed.snapshotRequired === false
     && printed.snapshotFollows === C.SNAPSHOT_COMMAND && printed.snapshotAsOf === pkt.requested,
-    'apply result makes the follow-up snapshot action unambiguous and does not invent one');
+    'apply result records the snapshot as part of the opening using incumbent snapshot semantics');
   ok(near(Forecast.startingCashAmount(after.plan), independentCash),
     'Forecast cash independently equals 1240 after the opening');
   const rec = Forecast.recommend(after.plan, pkt.requested, {});
@@ -883,8 +974,8 @@ console.log('\n=== 23–24. successful opening is Forecast-consumable; live data
 
 console.log('\n=== live household figures were not cut over ===');
 {
-  ok(liveData.meta.asOf === '2026-08-16' && liveData.plan.opening.asOf === '2026-08-16',
-    'committed opening remains 2026-08-16');
+  ok(liveData.meta.asOf === liveData.plan.opening.asOf,
+    'this suite never desynchronized live meta.asOf from plan.opening.asOf');
   ok(hashFile(LIVE_DATA) === liveHash, 'live data.json hash is unchanged after the suite');
 }
 

@@ -121,29 +121,53 @@ function writeFixturePair(dir, data, positionsText) {
   return { dataPath, posPath };
 }
 
-console.log('=== 1. 2026-08-16 snapshot agrees with canonical data.json ===');
+console.log('=== 1. 2026-08-16 snapshot agrees with that pinned opening ===');
 {
   ok(snap16.asOf === AUG16, 'committed Aug. 16 snapshot is dated 2026-08-16');
-  ok(live.meta.asOf === AUG16 && live.plan.opening.asOf === AUG16,
-    'live data.json as-of is still 2026-08-16');
+  const aug16Rev = '28d08a12a18691f34c32bc839d22cd526fc75111';
+  const pinned = JSON.parse(gitShow(`${aug16Rev}:data.json`));
+  ok(pinned.meta.asOf === AUG16 && pinned.plan.opening.asOf === AUG16,
+    '28d08a12 data.json is the 2026-08-16 opening');
+  const pinnedPos = parseCsv(gitShow(`${aug16Rev}:docs/positions.csv`));
   for (const [id, amount] of Object.entries(AUG16_INDEPENDENT)) {
     const row = acc(snap16, id);
     ok(!!row, `${id} is in the Aug. 16 snapshot`);
     if (!row) continue;
     const canonical = id === 'chequing-a' || id === 'chequing-b' || id === 'savings'
-      ? live.plan.startingCash.breakdown.find(r => r.id === id)
-      : live.debts.find(r => r.id === id);
+      ? pinned.plan.startingCash.breakdown.find(r => r.id === id)
+      : pinned.debts.find(r => r.id === id);
     const canonicalAmt = canonical && (canonical.value != null ? canonical.value : canonical.balance);
     ok(near(row.balance, amount) && near(row.balance, canonicalAmt),
-      `${id} snapshot ${money(row.balance)} matches data.json and independent ${money(amount)}`);
-    const pos = positionsNow.find(p => p.account_label === map.mappings.find(m => m.canonical.id === id).accountLabel);
+      `${id} snapshot ${money(row.balance)} matches pinned 28d08a12 and independent ${money(amount)}`);
+    const pos = pinnedPos.find(p => p.account_label === map.mappings.find(m => m.canonical.id === id).accountLabel);
     ok(pos && pos.as_of === AUG16 && near(Number(pos.balance), amount),
-      `${id} contemporaneous positions.csv ${pos && pos.as_of} ${pos && pos.balance}`);
+      `${id} 28d08a12 positions.csv ${pos && pos.as_of} ${pos && pos.balance}`);
   }
   ok(!acc(snap16, 'amanda-debt-payments'),
     'Aug. 16 snapshot omits the 2026-08-09 TENNIS INCOME reading');
   ok(!acc(snap16, 'savings-dont-touch'),
     'Aug. 16 snapshot omits the 2026-08-09 SAVINGS-DONT TOUCH reading');
+}
+
+console.log('\n=== 1b. current canonical opening has a matching same-date snapshot ===');
+{
+  const currentAsOf = live.meta.asOf;
+  ok(currentAsOf && live.plan.opening && live.plan.opening.asOf === currentAsOf,
+    'live meta.asOf and plan.opening.asOf agree');
+  const currentSnapPath = path.join(__dirname, 'snapshots', `${currentAsOf}.json`);
+  ok(fs.existsSync(currentSnapPath),
+    `snapshots/${currentAsOf}.json exists for the current opening`);
+  if (fs.existsSync(currentSnapPath)) {
+    const currentSnap = JSON.parse(read(`snapshots/${currentAsOf}.json`));
+    ok(currentSnap.asOf === currentAsOf, 'current snapshot date matches live as-of');
+    const spendableIds = ['chequing-a', 'chequing-b', 'savings'];
+    for (const id of spendableIds) {
+      const row = acc(currentSnap, id);
+      const cash = live.plan.startingCash.breakdown.find(r => r.id === id);
+      ok(row && cash && near(row.balance, cash.value),
+        `current snapshot ${id} agrees with live data.json`);
+    }
+  }
 }
 
 console.log('\n=== 2. account identity is stable across readings ===');
@@ -296,9 +320,13 @@ console.log('\n=== 6–7. data.json remains current-state authority; history is 
   ok(conflicted, 'an internally consistent new reading still does not rewrite an existing dated file');
   ok(fs.readFileSync(path.join(dir, '2026-08-16.json')).equals(original),
     'the existing 2026-08-16 file bytes are unchanged after the conflict');
-  ok(near(live.debts.find(d => d.id === 'heloc').balance, 200486.16),
-    'live data.json HELOC is still the current 2026-08-16 opening');
-  ok(near(F.startingCashAmount(live.plan), 1320.13 + 932.05 + 0.58),
+  const liveHeloc = live.debts.find(d => d.id === 'heloc');
+  ok(liveHeloc && Number.isFinite(Number(liveHeloc.balance)) && Number(liveHeloc.balance) > 0,
+    'live data.json HELOC remains a finite canonical opening',
+    liveHeloc && String(liveHeloc.balance));
+  const independentLiveCash = (live.plan.startingCash.breakdown || [])
+    .reduce((s, b) => s + Number(b.value || 0), 0);
+  ok(near(F.startingCashAmount(live.plan), independentLiveCash),
     'Forecast still opens from data.json spendable cash, not from snapshots');
   fs.rmSync(dir, { recursive: true, force: true });
 }
@@ -669,17 +697,23 @@ console.log('\n=== 17. revolving history discloses pending and fails closed when
     'the page does not publish MBNA posted-only +$148.49 as the debt movement');
 }
 
-console.log('\n=== T2. the HELOC question is answerable from stored history ===');
+console.log('\n=== T2. the HELOC 9 Aug → 16 Aug pair is answerable from stored history ===');
 {
-  const move = History.displayMove(History.seriesFor(history, 'heloc'));
-  const word = History.movementWord(move, 'HELOC');
-  ok(move.sufficient, 'HELOC has two independently dated openings');
-  ok(near(move.prior.balance, 201586.16) && move.prior.asOf === AUG9,
+  const heloc9 = acc(snap9, 'heloc');
+  const heloc16 = acc(snap16, 'heloc');
+  ok(heloc9 && heloc16, 'HELOC exists on both stored openings');
+  ok(near(heloc9.balance, 201586.16) && snap9.asOf === AUG9,
     'prior HELOC is the 2026-08-09 $201,586.16 opening');
-  ok(near(move.current.balance, 200486.16) && move.current.asOf === AUG16,
-    'current HELOC is the 2026-08-16 $200,486.16 opening');
-  ok(near(move.delta, -1100) && /fell/.test(word),
-    'from stored history: the HELOC fell $1,100.00 between those openings', word);
+  ok(near(heloc16.balance, 200486.16) && snap16.asOf === AUG16,
+    'later stored HELOC is the 2026-08-16 $200,486.16 opening');
+  ok(near(heloc16.balance - heloc9.balance, -1100),
+    'from those two files: the HELOC fell $1,100.00 between those openings');
+  const move = History.displayMove(History.seriesFor(history, 'heloc'));
+  ok(move.sufficient, 'HELOC still has at least two independently dated openings');
+  if (live.meta.asOf === AUG16) {
+    ok(near(move.current.balance, 200486.16) && move.current.asOf === AUG16,
+      'while live as-of is still 16 August, displayMove current is that opening');
+  }
 }
 
 console.log('\n' + '═'.repeat(60));

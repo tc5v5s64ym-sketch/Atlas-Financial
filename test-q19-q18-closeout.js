@@ -10,7 +10,10 @@ const fs = require('fs');
 const path = require('path');
 const F = require('./public/forecast.js');
 const data = require('./data.json');
+const { execFileSync } = require('child_process');
 const { sourceText } = require('./test-source-text');
+const AUG16_REV = '28d08a12a18691f34c32bc839d22cd526fc75111';
+const aug16Pinned = JSON.parse(execFileSync('git', ['show', `${AUG16_REV}:data.json`], { encoding: 'utf8' }));
 
 let failures = 0;
 const ok = (cond, label, detail = '') => {
@@ -36,15 +39,17 @@ function statusOf(id) {
 
 console.log('=== published opening does not move ===');
 {
-  ok(data.meta.asOf === '2026-08-16', 'meta.asOf remains 2026-08-16', asOf);
-  ok(plan.opening && plan.opening.asOf === '2026-08-16',
-    'plan.opening.asOf remains 2026-08-16', plan.opening && plan.opening.asOf);
-  const heloc = data.debts.find(d => d.id === 'heloc');
-  const cash = F.startingCashAmount(plan);
+  ok(aug16Pinned.meta.asOf === '2026-08-16', 'pinned 28d08a12 meta.asOf remains 2026-08-16', aug16Pinned.meta.asOf);
+  ok(aug16Pinned.plan.opening && aug16Pinned.plan.opening.asOf === '2026-08-16',
+    'pinned plan.opening.asOf remains 2026-08-16', aug16Pinned.plan.opening && aug16Pinned.plan.opening.asOf);
+  const heloc = aug16Pinned.debts.find(d => d.id === 'heloc');
+  const cash = F.startingCashAmount(aug16Pinned.plan);
   ok(heloc && near(heloc.balance, 200486.16),
-    'published HELOC balance remains $200,486.16', money(heloc && heloc.balance));
+    'pinned HELOC balance remains $200,486.16', money(heloc && heloc.balance));
   ok(near(cash, 2252.76),
-    'published spendable cash remains $2,252.76', money(cash));
+    'pinned spendable cash remains $2,252.76', money(cash));
+  ok(data.meta.asOf === data.plan.opening.asOf,
+    'live meta.asOf still agrees with plan.opening.asOf');
 }
 
 console.log('\n=== HELOC interest stays nonCash; no duplicate August cash ===');

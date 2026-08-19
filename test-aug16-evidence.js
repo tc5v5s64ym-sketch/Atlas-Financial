@@ -9,6 +9,11 @@ const fs = require('fs');
 const path = require('path');
 const F = require('./public/forecast.js');
 const data = require('./data.json');
+const { execFileSync } = require('child_process');
+const AUG16_REV = '28d08a12a18691f34c32bc839d22cd526fc75111';
+function gitJson(spec) {
+  return JSON.parse(execFileSync('git', ['show', spec], { encoding: 'utf8', cwd: __dirname }));
+}
 const { sourceText } = require('./test-source-text');
 
 let failures = 0;
@@ -22,10 +27,14 @@ const money = n => Number(n).toFixed(2);
 const questions = sourceText(fs.readFileSync(path.join(__dirname, 'docs/01_OPEN_QUESTIONS.md'), 'utf8'));
 const plan = data.plan;
 const asOf = data.meta.asOf;
+const aug16 = gitJson(`${AUG16_REV}:data.json`);
 const windowEnd = F.addDays(asOf, (plan.windowDays || 91) - 1);
 const tennis = (plan.startingCash.heldElsewhere || []).find(h => h.id === 'amanda-debt-payments');
 const spendable = F.startingCashAmount(plan);
 const independentSpendable = (plan.startingCash.breakdown || [])
+  .reduce((s, r) => s + Number(r.value || 0), 0);
+const aug16Spendable = F.startingCashAmount(aug16.plan);
+const aug16Independent = (aug16.plan.startingCash.breakdown || [])
   .reduce((s, r) => s + Number(r.value || 0), 0);
 
 function statusOf(id) {
@@ -42,8 +51,10 @@ console.log('=== 1. TENNIS INCOME does not inflate household starting cash ===')
     'display name is TENNIS INCOME', tennis.label);
   ok(tennis.class === 'operational' && near(tennis.value, 2691.85),
     'held-elsewhere operational balance is unchanged', money(tennis.value));
-  ok(near(spendable, independentSpendable) && near(spendable, 2252.76),
-    'starting cash is the three spendable rows only', money(spendable));
+  ok(near(spendable, independentSpendable),
+    'live starting cash is the three spendable rows only', money(spendable));
+  ok(near(aug16Spendable, aug16Independent) && near(aug16Spendable, 2252.76),
+    'pinned 2026-08-16 opening spendable remains independently $2,252.76', money(aug16Spendable));
   ok(Math.abs(spendable - (independentSpendable + tennis.value)) > 1,
     'adding TENNIS INCOME would inflate opening cash — and is not done');
 }
@@ -166,11 +177,11 @@ console.log('\n=== 6. Noble quarterly garbage without duplicating history ===');
     'June 18 is not invented as arrears');
 }
 
-console.log('\n=== 7–9. Aug. 16 Triangle/MBNA screenshots are this opening ===');
+console.log('\n=== 7–9. Aug. 16 Triangle/MBNA screenshots are that opening ===');
 {
-  ok(data.meta.asOf === '2026-08-16', 'canonical asOf is 2026-08-16');
-  const tri = data.debts.find(d => d.id === 'triangle');
-  const mbna = data.debts.find(d => d.id === 'mbna');
+  ok(aug16.meta.asOf === '2026-08-16', 'pinned 28d08a12 canonical asOf is 2026-08-16');
+  const tri = aug16.debts.find(d => d.id === 'triangle');
+  const mbna = aug16.debts.find(d => d.id === 'mbna');
   ok(tri && near(tri.balance, 13197) && near(tri.pending, 15.62),
     'Triangle opening is the 16 August posted $13,197.00 + pending $15.62',
     `${money(tri.balance)} + ${money(tri.pending)}`);

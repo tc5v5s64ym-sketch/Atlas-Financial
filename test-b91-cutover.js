@@ -13,6 +13,8 @@ const { execFileSync } = require('child_process');
 const F = require('./public/forecast.js');
 const R = require('./scripts/reconcile.js');
 const live = require('./data.json');
+const AUG16_REV = '28d08a12a18691f34c32bc839d22cd526fc75111';
+const aug16Pinned = JSON.parse(execFileSync('git', ['show', `${AUG16_REV}:data.json`], { encoding: 'utf8' }));
 const settlements = require('./docs/reconciliation/commitment-settlements.json');
 const posting = require('./docs/reconciliation/posting-observations.json');
 const cards = require('./docs/reconciliation/card-state-observations.json');
@@ -66,29 +68,32 @@ const tryouts = live.plan.commitments.find(c => c.id === 'tryouts');
 const hydroSep = (live.plan.bills || []).find(b => b.id === 'hydro-due-sep1');
 const hydroNow = (live.plan.bills || []).find(b => b.id === 'hydro-due-now');
 const opening = independentSpendable(live.plan);
-const events16 = F.expandEvents(live.plan, AUG16, windowEnd(AUG16), {});
-const events14 = F.expandEvents(live.plan, PAYDAY, windowEnd(PAYDAY), {});
-const events9 = F.expandEvents(live.plan, AUG9, windowEnd(AUG9), {});
+const events16 = F.expandEvents(aug16Pinned.plan, AUG16, windowEnd(AUG16), {});
+const events14 = F.expandEvents(aug16Pinned.plan, PAYDAY, windowEnd(PAYDAY), {});
+const events9 = F.expandEvents(aug16Pinned.plan, AUG9, windowEnd(AUG9), {});
 
-console.log('=== A. one 2026-08-16 cutover; spendable cash is independently $2,252.76 ===');
+console.log('=== A. pinned 2026-08-16 cutover; spendable cash is independently $2,252.76 ===');
 {
-  ok(live.meta.asOf === AUG16, 'published as-of is 2026-08-16', live.meta.asOf);
-  ok(live.plan.opening && live.plan.opening.asOf === AUG16,
-    'plan.opening.asOf is the same cutover');
-  ok(Array.isArray(live.plan.opening.representedEvents)
-    && live.plan.opening.representedEvents.length === 0,
+  ok(aug16Pinned.meta.asOf === AUG16, 'pinned 28d08a12 as-of is 2026-08-16', aug16Pinned.meta.asOf);
+  ok(aug16Pinned.plan.opening && aug16Pinned.plan.opening.asOf === AUG16,
+    'pinned plan.opening.asOf is the same cutover');
+  ok(Array.isArray(aug16Pinned.plan.opening.representedEvents)
+    && aug16Pinned.plan.opening.representedEvents.length === 0,
     'representedEvents is empty — nothing scheduled on 16 August is inside the observation');
-  const a = live.plan.startingCash.breakdown.find(r => r.id === 'chequing-a');
-  const b = live.plan.startingCash.breakdown.find(r => r.id === 'chequing-b');
-  const s = live.plan.startingCash.breakdown.find(r => r.id === 'savings');
+  const a = aug16Pinned.plan.startingCash.breakdown.find(r => r.id === 'chequing-a');
+  const b = aug16Pinned.plan.startingCash.breakdown.find(r => r.id === 'chequing-b');
+  const s = aug16Pinned.plan.startingCash.breakdown.find(r => r.id === 'savings');
   ok(a && near(a.value, 1320.13), 'Chequing A is the mapped $1,320.13', money(a && a.value));
   ok(b && near(b.value, 932.05), 'Chequing B is the mapped $932.05', money(b && b.value));
   ok(s && near(s.value, 0.58), 'Savings is the mapped $0.58', money(s && s.value));
   const independent = 1320.13 + 932.05 + 0.58;
-  ok(near(independent, 2252.76) && near(opening, independent),
-    'independent spendable sum is $2,252.76', money(opening));
-  ok(near(F.startingCashAmount(live.plan), opening),
+  const pinnedOpening = independentSpendable(aug16Pinned.plan);
+  ok(near(independent, 2252.76) && near(pinnedOpening, independent),
+    'independent spendable sum is $2,252.76', money(pinnedOpening));
+  ok(near(F.startingCashAmount(aug16Pinned.plan), pinnedOpening),
     'Forecast opening cash is that spendable sum only');
+  ok(live.meta.asOf === live.plan.opening.asOf,
+    'live meta.asOf still agrees with plan.opening.asOf');
 }
 
 console.log('\n=== B. settled commitments do not reserve cash again ===');
@@ -178,9 +183,9 @@ console.log('\n=== E. unposted 15 August bills remain reserved; unknown posting 
     'unknown Aug. 14 provenance is not rewritten as an Aug. 16 confirmed absence');
 }
 
-console.log('\n=== F. debt openings independently match their source identities ===');
+console.log('\n=== F. 2026-08-16 debt openings independently match their source identities ===');
 {
-  const byId = Object.fromEntries(live.debts.map(d => [d.id, d]));
+  const byId = Object.fromEntries(aug16Pinned.debts.map(d => [d.id, d]));
   ok(near(byId.mortgage.balance, 545188.30)
     && near(546026.58 - 545188.30, 838.28),
     'mortgage $545,188.30 = 546,026.58 − 838.28 principal on the posted $1,600');
@@ -216,9 +221,9 @@ console.log('\n=== F2. B71 Triangle current-plan path stays under the limit ==='
   // Independent ledger, not a second call to projectDebts: opening posted +
   // pending, 21.99%/365 interest, modelled Triangle payment events only.
   // Atlas does not invent future purchases.
-  const tri = live.debts.find(d => d.id === 'triangle');
-  const obl = live.plan.obligations.find(o => o.id === 'triangle');
-  const days = live.plan.windowDays || 91;
+  const tri = aug16Pinned.debts.find(d => d.id === 'triangle');
+  const obl = aug16Pinned.plan.obligations.find(o => o.id === 'triangle');
+  const days = aug16Pinned.plan.windowDays || 91;
   const end = windowEnd(AUG16);
   const LIMIT = 13500;
   const RATE = 21.99;
@@ -229,7 +234,7 @@ console.log('\n=== F2. B71 Triangle current-plan path stays under the limit ==='
     'B91 Triangle opening, limit, rate, and estimated September minimum are unchanged');
   ok(near(LIMIT - openingUsed, 287.38),
     'independent current headroom is $287.38 and is not cash');
-  const pays = F.expandEvents(live.plan, AUG16, end, {})
+  const pays = F.expandEvents(aug16Pinned.plan, AUG16, end, {})
     .filter(e => e.id === 'triangle' && e.kind === 'obligation');
   ok(pays.length === 3 && pays.every(e => e.date >= '2026-09-07')
     && pays.every(e => near(-e.amount, 253.57)),
@@ -256,8 +261,9 @@ console.log('\n=== F2. B71 Triangle current-plan path stays under the limit ==='
     if (firstOver == null && bal > LIMIT) firstOver = { date, balance: bal };
     if (bal > peak) { peak = bal; peakDate = date; }
   }
-  const proj = F.projectDebts(live.plan, live.debts, AUG16, Object.assign(liveOpts(), {
+  const proj = F.projectDebts(aug16Pinned.plan, aug16Pinned.debts, AUG16, Object.assign(liveOpts(), {
     debtHorizonDays: days,
+    debts: aug16Pinned.debts,
   }));
   const engine = proj.byId.triangle;
   ok(firstOver == null && engine.firstOver == null,
@@ -270,8 +276,9 @@ console.log('\n=== F2. B71 Triangle current-plan path stays under the limit ==='
   ok(peakDate === '2026-09-06' && peak < LIMIT && near(LIMIT - peak, 111.14),
     'peak is the day before the first modelled payment; $111.14 of headroom remains',
     `${peakDate} ${peak.toFixed(2)} headroom ${(LIMIT - peak).toFixed(2)}`);
-  const year = F.projectDebts(live.plan, live.debts, AUG16, Object.assign(liveOpts(), {
+  const year = F.projectDebts(aug16Pinned.plan, aug16Pinned.debts, AUG16, Object.assign(liveOpts(), {
     debtHorizonDays: 365,
+    debts: aug16Pinned.debts,
   }));
   ok(year.byId.triangle.firstOver == null,
     'the 365-day knowledge-horizon walk also does not cross the Triangle limit');
@@ -328,10 +335,14 @@ console.log('\n=== H. Q19 is answered; remaining August cash is not a duplicate 
     'the answered question records $0 additional August HELOC cash');
 }
 
-console.log('\n=== I. existing Forecast produces the payday plan from this opening ===');
+console.log('\n=== I. existing Forecast produces the payday plan from the pinned 2026-08-16 opening ===');
 {
-  const rec = F.recommend(live.plan, AUG16, liveOpts());
-  ok(opening + 0.005 > BUFFER, 'opening cash is above the $500 floor', money(opening));
+  const rec = F.recommend(aug16Pinned.plan, AUG16, Object.assign(liveOpts(), {
+    debts: aug16Pinned.debts,
+    fundingSources: aug16Pinned.plan.funding && aug16Pinned.plan.funding.options,
+  }));
+  const pinnedOpening = independentSpendable(aug16Pinned.plan);
+  ok(pinnedOpening + 0.005 > BUFFER, 'opening cash is above the $500 floor', money(pinnedOpening));
   ok(rec.mode !== 'openingGap',
     'this opening is not an opening-gap plan', rec.mode);
   ok(typeof rec.weekly === 'number' && rec.weekly !== 600,
@@ -380,20 +391,30 @@ console.log('\n=== K. observation files remain evidence; reconciler does not wri
   const tryRow = result.rows.find(r => r.observationId === 'payday-tryouts-settled');
   const sepRow = result.rows.find(r => r.observationId === 'payday-hydro-due-sep1');
   const nowRow = result.rows.find(r => r.observationId === 'payday-hydro-due-now');
-  const triPosted16 = result.rows.find(r => r.observationId === 'card-triangle-posted-2026-08-16');
-  const mbPosted16 = result.rows.find(r => r.observationId === 'card-mbna-posted-2026-08-16');
-  const cashPosted16 = result.rows.find(r => r.observationId === 'card-cashback-posted-2026-08-16');
-  const cashPending16 = result.rows.find(r => r.observationId === 'card-cashback-pending-2026-08-16');
+  const pinnedResult = R.reconcile({
+    data: aug16Pinned,
+    map: require('./docs/reconciliation/balance-map.json'),
+    observations: [],
+    settlements,
+    utility: require('./docs/reconciliation/utility-observations.json'),
+    amanda: require('./docs/reconciliation/amanda-income-observations.json'),
+    cards,
+    posting,
+  });
+  const triPosted16 = pinnedResult.rows.find(r => r.observationId === 'card-triangle-posted-2026-08-16');
+  const mbPosted16 = pinnedResult.rows.find(r => r.observationId === 'card-mbna-posted-2026-08-16');
+  const cashPosted16 = pinnedResult.rows.find(r => r.observationId === 'card-cashback-posted-2026-08-16');
+  const cashPending16 = pinnedResult.rows.find(r => r.observationId === 'card-cashback-pending-2026-08-16');
   ok(campRow && campRow.status === 'MATCH', 'Fusion camp observation is MATCH against canonical settledOn');
   ok(tryRow && tryRow.status === 'MATCH', 'Fusion tryouts observation is MATCH against canonical settledOn');
   ok(sepRow && sepRow.status === 'MATCH', 'Hydro 1 September observation is MATCH against the live bill');
   ok(nowRow && nowRow.status === 'MISSING', 'Hydro 14 August due remains MISSING — not guessed');
   ok(triPosted16 && triPosted16.status === 'MATCH' && near(triPosted16.evidenceValue, 13197),
-    'Aug. 16 Triangle posted observation MATCHES the opening');
+    'Aug. 16 Triangle posted observation MATCHES the pinned 2026-08-16 opening');
   ok(mbPosted16 && mbPosted16.status === 'MATCH' && near(mbPosted16.evidenceValue, 8003.61),
-    'Aug. 16 MBNA posted observation MATCHES the opening');
+    'Aug. 16 MBNA posted observation MATCHES the pinned 2026-08-16 opening');
   ok(cashPosted16 && cashPosted16.status === 'MATCH' && near(cashPosted16.evidenceValue, 4799.43),
-    'Aug. 16 Cash Back posted observation MATCHES the opening');
+    'Aug. 16 Cash Back posted observation MATCHES the pinned 2026-08-16 opening');
   ok(cashPending16 && cashPending16.unknown === true,
     'Aug. 16 Cash Back pending observation stays unknown, not $0');
   ok(result.staleAssigned === false && result.counts.STALE === 0,
