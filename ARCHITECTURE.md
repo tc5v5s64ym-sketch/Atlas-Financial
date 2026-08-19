@@ -141,9 +141,13 @@ do not pretend it is institution-live; do not manufacture a newer balance;
 do not block all other current-state refresh because that one account is
 older; preserve and report its actual observed or provider-updated freshness
 where available. Accuracy of that account's contribution to the outlook
-depends on the owner's Lunch Money update. Do not hard-code the count or
-identity of manual accounts unless current live evidence or the account map
-actually proves them.
+depends on the owner's Lunch Money update. Do not invent a generic count of
+manual accounts. Triangle and MBNA are the owner-named monthly
+statement-maintained exceptions; their evidence cadence lives in
+[`docs/ACCOUNT_FACTS.md`](docs/ACCOUNT_FACTS.md) and is keyed by canonical
+Atlas identity. Cadence may accept current-cycle statement evidence. It
+never rewrites `evidenceDate`. Cash Back and the other live TD accounts
+keep exact-day freshness.
 
 Owner-only information still enters Atlas separately when Lunch Money cannot
 know it: future commitments, planned purchases and travel, household policy,

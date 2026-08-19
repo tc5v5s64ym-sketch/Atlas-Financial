@@ -314,11 +314,12 @@ console.log('\n=== G. credit is not cash or safe-to-spend ===');
     'safe-to-spend is not inflated by dividing credit across the view');
 }
 
-console.log('\n=== H. Q19 ANSWERED; Q20 / Q25 / Q26 stay visible and fail-closed ===');
+console.log('\n=== H. Q19 / Q26 ANSWERED; Q20 / Q25 stay visible and fail-closed ===');
 {
   const md = read('docs/01_OPEN_QUESTIONS.md');
   ok(/^ANSWERED\b/.test(questionStatus(md, 'Q19')), 'Q19 is ANSWERED', questionStatus(md, 'Q19'));
-  for (const id of ['Q20', 'Q25', 'Q26']) {
+  ok(/^ANSWERED\b/.test(questionStatus(md, 'Q26')), 'Q26 evidence is ANSWERED', questionStatus(md, 'Q26'));
+  for (const id of ['Q20', 'Q25']) {
     ok(/^OPEN\b/.test(questionStatus(md, id)), `${id} remains OPEN`, questionStatus(md, id));
   }
   const liveRun = composeLive(live.plan);
@@ -328,8 +329,8 @@ console.log('\n=== H. Q19 ANSWERED; Q20 / Q25 / Q26 stay visible and fail-closed
     'payday HTML does not relabel the $500 buffer as a Q20 emergency reserve');
   ok(/Q25/.test(liveRun.html) && /TENNIS INCOME/.test(liveRun.html),
     'payday HTML keeps TENNIS INCOME out of spendable cash (Q25)');
-  ok(/Q26/.test(liveRun.html) && /pending is unknown/i.test(liveRun.html),
-    'payday HTML keeps unknown Cash Back pending fail-closed (Q26)');
+  ok(/Q26/.test(liveRun.html) && /UNKNOWN/i.test(liveRun.html) && /not treated as \$0/i.test(liveRun.html),
+    'payday HTML keeps canonical Cash Back pending UNKNOWN and fail-closed (Q26)');
   const cashback = live.debts.find(d => d.id === 'cashback');
   ok(cashback && cashback.pendingUnknown === true && cashback.pending == null,
     'canonical Cash Back pending is unknown, not $0');

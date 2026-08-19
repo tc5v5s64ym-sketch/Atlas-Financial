@@ -34,6 +34,14 @@ const SNAPSHOT_COMMAND = 'node scripts/snapshot-balances.js';
 const EPSILON = 0.005;
 
 const POSTED_CASH = new Set(['chequing-a', 'chequing-b', 'savings']);
+// Owner-named monthly statement cadence, keyed by canonical Atlas id.
+// Not a generic freshness default. Not Lunch Money provider IDs.
+const OWNER_STATEMENT_CADENCE = Object.freeze({
+  triangle: Object.freeze({ kind: 'monthly-statement', day: 17 }),
+  mbna: Object.freeze({ kind: 'monthly-statement', day: 8 }),
+});
+const FRESHNESS_EXACT_DAY = 'exact-day';
+const FRESHNESS_STATEMENT_CADENCE = 'owner-approved-monthly-statement-cadence';
 const CREDIT_REFUSE_FACTS = new Set([
   'pending', 'limit', 'available-credit', 'confirmed-payment', 'scheduled-payment',
 ]);
@@ -280,6 +288,59 @@ function isIsoDate(value) {
   return typeof value === 'string' && ISO_DATE.test(value);
 }
 
+function ownerStatementCadence(canonicalId) {
+  const row = canonicalId ? OWNER_STATEMENT_CADENCE[canonicalId] : null;
+  return row ? { kind: row.kind, day: row.day } : null;
+}
+
+// Calendar-month day clamp. Same formula Forecast uses; not 30-day arithmetic.
+function daysInMonth(year, month) {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+function statementDateInMonth(year, month, day) {
+  const clamped = Math.min(Number(day), daysInMonth(year, month));
+  return `${year}-${String(month).padStart(2, '0')}-${String(clamped).padStart(2, '0')}`;
+}
+
+function currentStatementCycleStart(requestedAsOf, statementDay) {
+  if (!isIsoDate(requestedAsOf) || !isFinite(Number(statementDay))) return null;
+  const [year, month] = requestedAsOf.split('-').map(Number);
+  const thisMonth = statementDateInMonth(year, month, statementDay);
+  if (thisMonth <= requestedAsOf) return thisMonth;
+  let priorYear = year;
+  let priorMonth = month - 1;
+  if (priorMonth < 1) {
+    priorMonth = 12;
+    priorYear -= 1;
+  }
+  return statementDateInMonth(priorYear, priorMonth, statementDay);
+}
+
+function nextStatementDate(cycleStart, statementDay) {
+  if (!isIsoDate(cycleStart) || !isFinite(Number(statementDay))) return null;
+  const [year, month] = cycleStart.split('-').map(Number);
+  let nextYear = year;
+  let nextMonth = month + 1;
+  if (nextMonth > 12) {
+    nextMonth = 1;
+    nextYear += 1;
+  }
+  return statementDateInMonth(nextYear, nextMonth, statementDay);
+}
+
+function statementCadenceAccepts(canonicalId, evidenceDate, requestedAsOf) {
+  const cadence = ownerStatementCadence(canonicalId);
+  if (!cadence || cadence.kind !== 'monthly-statement') return false;
+  if (!isIsoDate(evidenceDate) || !isIsoDate(requestedAsOf)) return false;
+  if (evidenceDate > requestedAsOf) return false;
+  const cycleStart = currentStatementCycleStart(requestedAsOf, cadence.day);
+  if (!cycleStart) return false;
+  const nextStart = nextStatementDate(cycleStart, cadence.day);
+  if (nextStart && requestedAsOf >= nextStart) return false;
+  return evidenceDate >= cycleStart && evidenceDate <= requestedAsOf;
+}
+
 function issue(code, explanation, extra) {
   return Object.assign({ code, explanation }, extra || {});
 }
@@ -476,25 +537,30 @@ function buildOpeningCutover(data, report, requestedAsOf) {
     const observedValue = row && row.unknown !== true && row.evidenceValue != null && isFinite(row.evidenceValue)
       ? row.evidenceValue
       : null;
-    const fresh = !!(row
-      && evidenceDate === requestedAsOf
+    const exactDay = evidenceDate === requestedAsOf;
+    const cadenceAccepted = statementCadenceAccepts(loc.id, evidenceDate, requestedAsOf);
+    const trustworthy = !!(row
       && row.unknown !== true
       && observedValue != null
       && row.status !== 'CONFLICT'
       && row.status !== 'MISSING');
+    const fresh = !!(trustworthy && (exactDay || cadenceAccepted));
+    const freshnessBasis = !fresh
+      ? null
+      : (exactDay ? FRESHNESS_EXACT_DAY : FRESHNESS_STATEMENT_CADENCE);
     if (!row) {
       pushUnique(blockers, issue(
         'missing-posted-opening-evidence',
         `No trustworthy posted evidence exists for ${loc.locator} on ${requestedAsOf}.`,
         { locator: loc.locator }
       ));
-    } else if (row.status === 'CONFLICT' && evidenceDate === requestedAsOf) {
+    } else if (row.status === 'CONFLICT' && (exactDay || cadenceAccepted)) {
       pushUnique(blockers, issue(
         'same-day-no-winner',
         `Conflicting posted observations for ${loc.locator} on ${requestedAsOf} have no trustworthy winner.`,
         { locator: loc.locator, evidenceDate }
       ));
-    } else if (evidenceDate !== requestedAsOf) {
+    } else if (!fresh && evidenceDate !== requestedAsOf) {
       pushUnique(blockers, issue(
         'stale-posted-opening-evidence',
         `Posted evidence for ${loc.locator} is dated ${evidenceDate || 'unknown'}, not ${requestedAsOf}. MATCH is not freshness.`,
@@ -509,6 +575,7 @@ function buildOpeningCutover(data, report, requestedAsOf) {
       reconcileStatus: row ? (row.status || null) : 'MISSING',
       dateRelation: row ? (row.dateRelation || null) : null,
       freshForRequestedAsOf: fresh,
+      freshnessBasis,
     };
   });
 
@@ -914,6 +981,13 @@ const api = {
   previewIdFrom,
   identityProofLooksSanitized,
   isIsoDate,
+  ownerStatementCadence,
+  currentStatementCycleStart,
+  nextStatementDate,
+  statementCadenceAccepts,
+  OWNER_STATEMENT_CADENCE,
+  FRESHNESS_EXACT_DAY,
+  FRESHNESS_STATEMENT_CADENCE,
   requiredPostedLocators,
   buildOpeningCutover,
   buildPreview,

@@ -9,6 +9,8 @@
  * writes data.json. Unknown provider account IDs stay unmapped. Synthetic
  * fixture mappings cannot authorize a live canonical mapping. Historical
  * represented-event candidates are not current-opening corrections.
+ * Account timestamps stay distinct: balance_as_of, updated_at,
+ * date_last_fetched. Posted-balance evidence prefers balance_as_of.
  */
 
 const fs = require('fs');
@@ -120,8 +122,26 @@ function normalizeLunchMoneyAccount(raw) {
     balance: firstNumber(raw.balance),
     available: firstNumber(raw.available_balance, raw.available),
     limit: firstNumber(raw.credit_limit, raw.limit),
-    providerUpdatedAt: raw.updated_at || raw.balance_as_of || raw.date_last_fetched || null,
+    updatedAt: raw.updated_at || null,
+    balanceAsOf: raw.balance_as_of || null,
+    dateLastFetched: raw.date_last_fetched || null,
   };
+}
+
+// Posted-balance evidence uses the semantic balance date. Generic object
+// updated_at is not the balance date and must not override an explicit
+// trustworthy balance_as_of. Distinct timestamps stay distinct.
+function postedBalanceEvidenceInstant(account) {
+  if (!account || typeof account !== 'object') return null;
+  return account.balanceAsOf || account.updatedAt || account.dateLastFetched || null;
+}
+
+// Live cash / mortgage / HELOC keep the prior object-update dating so
+// daily-refreshed accounts are not silently retimed by a leftover
+// balance_as_of. This is not statement-cadence freshness.
+function genericAccountEvidenceInstant(account) {
+  if (!account || typeof account !== 'object') return null;
+  return account.updatedAt || account.balanceAsOf || account.dateLastFetched || null;
 }
 
 function normalizeLunchMoneyTransaction(raw) {
@@ -902,7 +922,10 @@ function representedEventCandidates(input) {
 }
 
 function observationsFromMappedAccount(account, mapping, fetchedAt) {
-  const observedAt = account.providerUpdatedAt || fetchedAt;
+  const dated = CREDIT_ROLES.has(mapping.atlasRole)
+    ? postedBalanceEvidenceInstant(account)
+    : genericAccountEvidenceInstant(account);
+  const observedAt = dated || fetchedAt;
   const base = {
     provider: account.provider,
     providerAccountId: account.providerAccountId,
@@ -1169,6 +1192,8 @@ const api = {
   identityProofLooksSanitized,
   compareIdentityFingerprints,
   normalizeLunchMoneyAccount,
+  postedBalanceEvidenceInstant,
+  genericAccountEvidenceInstant,
   normalizeLunchMoneyTransaction,
   normalizeLunchMoneyPayload,
   observationsFromMappedAccount,

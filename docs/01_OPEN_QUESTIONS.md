@@ -232,20 +232,6 @@ Do not estimate how much of the current balance is household-available.
 household available cash after a refresh. B91 must preserve held/pass-through
 semantics rather than guessing.
 
-### Q26. What are the current pending amounts on Cash Back Visa and Travel Visa when exact action is needed?
-**Status:** OPEN · **Owner:** Dale
-**What we know:** The Aug. 14 payday session found both cards over limit, with
-posted balances known and pending unknown. Posted, pending, limit, available
-credit, and confirmed payment are distinct; available credit is never cash.
-The 2026-08-16 cutover made Travel Visa posted $862.68 and pending Bell
-Mobility $250.00 the canonical opening. If posted excludes pending, exposure
-is $1,112.68 against the $1,100 limit. That pair is now a canonical write.
-Q26 remains OPEN only for Cash Back pending and the current exact action on
-that card. Unknown Cash Back pending must not be treated as zero.
-**What the answer changes:** Exact Cash Back action only when a refresh
-proves pending. Unknown pending is allowed until then; it must not be
-treated as zero.
-
 ---
 
 ## Queued for the next round of accounts
@@ -257,6 +243,27 @@ treated as zero.
 ---
 
 ## Answered
+
+### Q26. What are the current pending amounts on Cash Back Visa and Travel Visa when exact action is needed? — ANSWERED 2026-08-18
+**Status:** ANSWERED · **Owner:** Dale
+**Answer:** Travel Visa posted $862.68 and pending Bell Mobility $250.00
+are the 2026-08-16 canonical opening. That pair remains a canonical write.
+
+The remaining Cash Back evidence question is answered by the PR #106
+completed unbounded Lunch Money `is_pending=true` census: current Cash
+Back pending was proven **0**. Cash Back is a normal live Lunch Money
+revolving-credit account, not an owner-maintained monthly statement
+account. That census is evidence only. It does not authorize a Cash Back
+pending write.
+
+`data.json` Cash Back `pendingUnknown` remains **true** and `pending`
+remains null. Promoting UNKNOWN to 0 is a separate owner-authorized
+financial-state write and is **not** authorized by this answer. Atlas
+must not treat canonical UNKNOWN as $0 until that write happens.
+
+A later live pending CHANGE (including Travel Visa 250 vs observed
+342.65) is a cutover pending-state question, not a reopening of this
+evidence answer.
 
 ### Q19. What is the remaining August HELOC cash impact given the unproven Aug. 1 PAD? — ANSWERED 2026-08-18
 **Status:** ANSWERED · **Owner:** Dale

@@ -93,6 +93,48 @@ console.log('=== F. balance observation keeps the provider timestamp ===');
   ok(report.fetchedAt === payload.fetchedAt, 'payload fetchedAt is preserved');
 }
 
+console.log('=== F2. posted-balance evidence prefers balance_as_of over updated_at ===');
+{
+  const acc = O.normalizeLunchMoneyAccount({
+    id: 4110,
+    name: 'Triangle Fixture',
+    type: 'credit',
+    subtype: 'credit_card',
+    balance: 13495.32,
+    credit_limit: 13500,
+    updated_at: '2026-08-16T20:44:19.898Z',
+    balance_as_of: '2026-08-19T03:25:33.904Z',
+  });
+  ok(acc.updatedAt === '2026-08-16T20:44:19.898Z'
+    && acc.balanceAsOf === '2026-08-19T03:25:33.904Z'
+    && acc.dateLastFetched == null,
+    'distinct provider timestamps are preserved, not collapsed');
+  ok(!Object.prototype.hasOwnProperty.call(acc, 'providerUpdatedAt'),
+    'normalized account does not expose a collapsed providerUpdatedAt');
+  ok(O.postedBalanceEvidenceInstant(acc) === '2026-08-19T03:25:33.904Z',
+    'posted-balance instant is balance_as_of, not updated_at');
+  const mapping = {
+    atlasRole: 'revolving-credit',
+    canonical: { collection: 'debts', id: 'triangle' },
+    providerAccountId: '4110',
+  };
+  const obs = O.observationsFromMappedAccount(acc, mapping, '2026-08-19T04:00:00.000Z');
+  const posted = obs.find(o => o.fact === 'posted-balance');
+  ok(posted && posted.evidenceDate === '2026-08-18' && posted.observedAsOf === '2026-08-18',
+    'posted observation is dated 2026-08-18 from balance_as_of, not 2026-08-16',
+    posted && posted.evidenceDate);
+  const cashAcc = O.normalizeLunchMoneyAccount({
+    id: 4101,
+    name: 'Chequing Fixture',
+    type: 'cash',
+    balance: 997.71,
+    updated_at: '2026-08-16T20:00:00.000Z',
+    balance_as_of: '2026-08-19T03:25:33.904Z',
+  });
+  ok(O.genericAccountEvidenceInstant(cashAcc) === '2026-08-16T20:00:00.000Z',
+    'live cash still dates from updated_at when both timestamps exist');
+}
+
 console.log('=== G. pending stays distinct from posted ===');
 {
   const report = O.observe({ provider: 'lunchmoney', payload, accountMap, data });

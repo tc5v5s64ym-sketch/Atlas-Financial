@@ -1366,7 +1366,10 @@ same plan reduces that cap; changing only the visible window does not.
 Settled rows stay settled; released capacity redirects along
 `fundingSequence` without becoming automatic safe-to-spend. Overdue
 protected items cannot be rescued by later income. Credit is not cash.
-Q19 / Q20 / Q25 / Q26 stay OPEN and fail-closed. `planStatus` copies
+Q19 is ANSWERED. Q20 / Q25 stay OPEN and fail-closed. Q26 evidence is
+ANSWERED by the #106 pending census (Cash Back pending proven 0);
+canonical Cash Back pending remains UNKNOWN until a separate write.
+`planStatus` copies
 recommend's INFEASIBLE result so the band cannot read "on plan" beside
 it. Proved by `test-b96-payday.js`.
 

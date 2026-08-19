@@ -417,7 +417,7 @@ console.log('\n=== remaining owner questions stay open ===');
   ok(/^OPEN\b/.test(questionStatus(md, 'Q20')), 'Q20 emergency reserve remains OPEN');
   ok(/^OPEN\b/.test(questionStatus(md, 'Q21')), 'Q21 $527.80 remains OPEN');
   ok(/^OPEN\b/.test(questionStatus(md, 'Q25')), 'Q25 Amanda available remainder remains OPEN');
-  ok(/^OPEN\b/.test(questionStatus(md, 'Q26')), 'Q26 card pending remains OPEN');
+  ok(/^ANSWERED\b/.test(questionStatus(md, 'Q26')), 'Q26 card pending evidence is ANSWERED');
   ok(/^ANSWERED\b/.test(questionStatus(md, 'Q4')), 'Q4 non-TD balances remain ANSWERED');
   ok(!/Canonical opening remains posted \*\*\$13,497\.00\*\* as of 9 August/.test(md),
     'Q4 does not keep the retired Aug. 9 Triangle $13,497 as the canonical opening');
@@ -429,8 +429,9 @@ console.log('\n=== remaining owner questions stay open ===');
   ok(!/not a canonical write/.test(md),
     'Q26 does not call the now-canonical Travel Visa pair a non-write');
   ok(/Travel Visa posted \$862\.68[\s\S]*canonical opening/.test(md)
-    && /OPEN only for Cash Back pending/.test(md),
-    'Q26 keeps Travel Visa $862.68+$250 canonical and stays OPEN only for Cash Back pending');
+    && /pending was proven \*\*0\*\*/.test(md)
+    && /pendingUnknown` remains \*\*true\*\*/.test(md),
+    'Q26 keeps Travel Visa $862.68+$250 canonical, records the #106 Cash Back 0 census, and leaves canonical UNKNOWN unwritten');
   const facts = fs.readFileSync(path.join(__dirname, 'docs', 'ACCOUNT_FACTS.md'), 'utf8');
   ok(!/Canonical opening remains posted \*\*\$13,497\.00\*\* \/ pending unknown/.test(facts),
     'ACCOUNT_FACTS does not keep the retired Aug. 9 Triangle $13,497 as the canonical opening');

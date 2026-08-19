@@ -151,12 +151,25 @@ function accountRow(spec) {
     type: spec.type || 'cash',
     balance: spec.balance,
     currency: 'cad',
-    updated_at: `${spec.evidenceDate}T17:55:00.000Z`,
+    updated_at: spec.updatedAt || `${spec.evidenceDate}T17:55:00.000Z`,
   };
   if (spec.limit != null) row.credit_limit = spec.limit;
   if (spec.available != null) row.available_balance = spec.available;
   if (spec.subtype) row.subtype = spec.subtype;
+  if (spec.balanceAsOf) row.balance_as_of = spec.balanceAsOf;
+  if (spec.dateLastFetched) row.date_last_fetched = spec.dateLastFetched;
   return row;
+}
+
+function revolvingDebt(spec) {
+  return {
+    id: spec.id,
+    balance: spec.balance,
+    pending: spec.pending == null ? 0 : spec.pending,
+    pendingUnknown: spec.pendingUnknown === true,
+    secured: false,
+    limit: spec.limit,
+  };
 }
 
 function makePayload(fetchedAsOf, accounts, transactions, extra) {
@@ -1149,6 +1162,316 @@ console.log('\n=== CASE TZ — UTC midnight is not the household financial date 
   ok(applied.code === 0, 'read-only boundary preflight CLI exits 0');
   ok(hashFile(dest) === before, 'CLI cutover at the timezone boundary writes nothing');
   ok(hashFile(LIVE_DATA) === liveHash, 'live data.json is unchanged by the timezone case');
+}
+
+console.log('\n=== CASE A — posted-balance evidence uses balance_as_of, not updated_at ===');
+{
+  const data = makeData({
+    asOf: '2026-08-16',
+    debts: [
+      { id: 'mortgage', balance: 500000, pending: 0, secured: true, interestTreatment: 'paid-in-payment', limit: null },
+      revolvingDebt({ id: 'triangle', balance: 13197, limit: 13500 }),
+    ],
+  });
+  const map = extendMap([{
+    providerAccountId: 4110, collection: 'debts', id: 'triangle', role: 'revolving-credit',
+  }]);
+  const payload = makePayload('2026-08-18', matchingPostedAccounts(data, '2026-08-18').concat([
+    accountRow({
+      id: 4110, name: 'Triangle', type: 'credit', subtype: 'credit_card',
+      balance: 13495.32, limit: 13500, evidenceDate: '2026-08-16',
+      updatedAt: '2026-08-16T20:44:19.898Z',
+      balanceAsOf: '2026-08-19T03:25:33.904Z',
+    }),
+  ]));
+  const { report, preview } = previewAt(data, payload, { accountMap: map, cutoverAsOf: '2026-08-18' });
+  const obs = (report.observations || []).find(o => o && o.fact === 'posted-balance' && o.cardId === 'triangle');
+  const row = freshness(preview.openingCutover, 'debts:triangle');
+  ok(obs && obs.evidenceDate === '2026-08-18' && obs.observedAsOf === '2026-08-18',
+    'CASE A: posted evidenceDate is balance_as_of 2026-08-18, not updated_at 2026-08-16',
+    obs && obs.evidenceDate);
+  ok(row && row.evidenceDate === '2026-08-18',
+    'CASE A: cutover posted evidenceDate is 2026-08-18');
+  ok(row && row.freshForRequestedAsOf === true, 'CASE A: 2026-08-18 posted evidence is exact-day fresh');
+  ok(row && row.freshnessBasis === C.FRESHNESS_EXACT_DAY, 'CASE A: freshness basis is exact-day');
+}
+
+console.log('\n=== CASE B — statement cadence accepts without rewriting evidenceDate ===');
+{
+  const data = makeData({
+    asOf: '2026-08-16',
+    debts: [
+      { id: 'mortgage', balance: 500000, pending: 0, secured: true, interestTreatment: 'paid-in-payment', limit: null },
+      revolvingDebt({ id: 'triangle', balance: 13197, limit: 13500 }),
+    ],
+  });
+  const map = extendMap([{
+    providerAccountId: 4110, collection: 'debts', id: 'triangle', role: 'revolving-credit',
+  }]);
+  const payload = makePayload('2026-08-18', matchingPostedAccounts(data, '2026-08-18').concat([
+    accountRow({
+      id: 4110, name: 'Triangle', type: 'credit', subtype: 'credit_card',
+      balance: 13495.32, limit: 13500, evidenceDate: '2026-08-17',
+      updatedAt: '2026-08-16T20:44:19.898Z',
+      balanceAsOf: '2026-08-17T17:55:00.000Z',
+    }),
+  ]));
+  const { preview } = previewAt(data, payload, { accountMap: map, cutoverAsOf: '2026-08-18' });
+  const row = freshness(preview.openingCutover, 'debts:triangle');
+  ok(row && row.evidenceDate === '2026-08-17',
+    'CASE B: evidenceDate stays 2026-08-17 and is not rewritten to 2026-08-18',
+    row && row.evidenceDate);
+  ok(row && row.freshForRequestedAsOf === true,
+    'CASE B: Triangle statement-day evidence is accepted for 2026-08-18');
+  ok(row && row.freshnessBasis === C.FRESHNESS_STATEMENT_CADENCE,
+    'CASE B: freshness basis names owner-approved monthly statement cadence');
+  ok(!codes(preview.openingCutover.blockers).includes('stale-posted-opening-evidence')
+    || codes(preview.openingCutover.blockers).every(code => {
+      const hit = (preview.openingCutover.blockers || []).find(b => b.code === 'stale-posted-opening-evidence' && b.locator === 'debts:triangle');
+      return !hit;
+    }),
+    'CASE B: Triangle is not stale-posted-opening-evidence solely for missing exact-day');
+  ok(!(preview.openingCutover.accountFreshness || []).some(r => r.locator === 'debts:triangle' && r.evidenceDate === '2026-08-18'),
+    'CASE B: no Triangle row is relabelled 2026-08-18');
+}
+
+console.log('\n=== CASE C — Triangle current statement cycle remains acceptable after the 17th ===');
+{
+  ok(C.currentStatementCycleStart('2026-08-18', 17) === '2026-08-17',
+    'independent cycle start for 18 Aug / day 17 is 17 Aug');
+  ok(C.nextStatementDate('2026-08-17', 17) === '2026-09-17',
+    'independent next Triangle statement day is 17 Sep');
+  ok(C.statementCadenceAccepts('triangle', '2026-08-17', '2026-08-18') === true,
+    '17 Aug Triangle evidence is in the current cycle on 18 Aug');
+  const data = makeData({
+    asOf: '2026-08-16',
+    debts: [
+      { id: 'mortgage', balance: 500000, pending: 0, secured: true, interestTreatment: 'paid-in-payment', limit: null },
+      revolvingDebt({ id: 'triangle', balance: 13197, limit: 13500 }),
+    ],
+  });
+  const map = extendMap([{
+    providerAccountId: 4110, collection: 'debts', id: 'triangle', role: 'revolving-credit',
+  }]);
+  const payload = makePayload('2026-08-18', matchingPostedAccounts(data, '2026-08-18').concat([
+    accountRow({
+      id: 4110, name: 'Triangle', type: 'credit', subtype: 'credit_card',
+      balance: 13495.32, limit: 13500, evidenceDate: '2026-08-17',
+    }),
+  ]));
+  const { preview } = previewAt(data, payload, { accountMap: map, cutoverAsOf: '2026-08-18' });
+  const row = freshness(preview.openingCutover, 'debts:triangle');
+  ok(row && row.freshForRequestedAsOf === true && row.evidenceDate === '2026-08-17',
+    'CASE C: current-cycle Triangle observation is fresh without exact-day');
+  ok(row && row.freshnessBasis === C.FRESHNESS_STATEMENT_CADENCE,
+    'CASE C: freshness basis is owner-approved statement cadence');
+  ok(!(preview.openingCutover.blockers || []).some(b =>
+    b.code === 'stale-posted-opening-evidence' && b.locator === 'debts:triangle'),
+    'CASE C: no stale-posted-opening-evidence for current-cycle Triangle');
+}
+
+console.log('\n=== CASE D — Triangle prior cycle is not current on the next 17th ===');
+{
+  ok(C.statementCadenceAccepts('triangle', '2026-08-17', '2026-09-17') === false,
+    'independent: 17 Aug evidence is not current on 17 Sep');
+  const data = makeData({
+    asOf: '2026-08-16',
+    debts: [
+      { id: 'mortgage', balance: 500000, pending: 0, secured: true, interestTreatment: 'paid-in-payment', limit: null },
+      revolvingDebt({ id: 'triangle', balance: 13197, limit: 13500 }),
+    ],
+  });
+  const map = extendMap([{
+    providerAccountId: 4110, collection: 'debts', id: 'triangle', role: 'revolving-credit',
+  }]);
+  const payload = makePayload('2026-09-17', matchingPostedAccounts(data, '2026-09-17').concat([
+    accountRow({
+      id: 4110, name: 'Triangle', type: 'credit', subtype: 'credit_card',
+      balance: 13495.32, limit: 13500, evidenceDate: '2026-08-17',
+    }),
+  ]));
+  const { preview } = previewAt(data, payload, { accountMap: map, cutoverAsOf: '2026-09-17' });
+  const row = freshness(preview.openingCutover, 'debts:triangle');
+  ok(row && row.evidenceDate === '2026-08-17',
+    'CASE D: prior-cycle evidenceDate is unchanged at 2026-08-17');
+  ok(row && row.freshForRequestedAsOf === false,
+    'CASE D: 17 Aug Triangle evidence is not current on the next 17th');
+  ok((preview.openingCutover.blockers || []).some(b =>
+    b.code === 'stale-posted-opening-evidence' && b.locator === 'debts:triangle'),
+    'CASE D: Atlas fails closed until new Triangle statement evidence exists');
+  ok(preview.openingCutover.status === 'BLOCKED', 'CASE D: cutover is BLOCKED');
+}
+
+console.log('\n=== CASE E — MBNA monthly day 8 ===');
+{
+  ok(C.ownerStatementCadence('mbna') && C.ownerStatementCadence('mbna').day === 8,
+    'MBNA cadence is keyed by canonical id mbna, day 8');
+  ok(C.statementCadenceAccepts('mbna', '2026-08-08', '2026-08-18') === true,
+    '8 Aug MBNA evidence is in the current cycle on 18 Aug');
+  ok(C.statementCadenceAccepts('mbna', '2026-08-08', '2026-09-08') === false,
+    '8 Aug MBNA evidence is not current on the next 8th');
+  const data = makeData({
+    asOf: '2026-08-16',
+    debts: [
+      { id: 'mortgage', balance: 500000, pending: 0, secured: true, interestTreatment: 'paid-in-payment', limit: null },
+      revolvingDebt({ id: 'mbna', balance: 8003.61, limit: 8000 }),
+    ],
+  });
+  const map = extendMap([{
+    providerAccountId: 4111, collection: 'debts', id: 'mbna', role: 'revolving-credit',
+  }]);
+  const inCycle = previewAt(data, makePayload('2026-08-18', matchingPostedAccounts(data, '2026-08-18').concat([
+    accountRow({
+      id: 4111, name: 'MBNA', type: 'credit', subtype: 'credit_card',
+      balance: 7875.99, limit: 8000, evidenceDate: '2026-08-08',
+    }),
+  ])), { accountMap: map, cutoverAsOf: '2026-08-18' });
+  const inRow = freshness(inCycle.preview.openingCutover, 'debts:mbna');
+  ok(inRow && inRow.evidenceDate === '2026-08-08' && inRow.freshForRequestedAsOf === true,
+    'CASE E: current-cycle MBNA evidence stays dated 8 Aug and is accepted on 18 Aug');
+  ok(inRow && inRow.freshnessBasis === C.FRESHNESS_STATEMENT_CADENCE,
+    'CASE E: MBNA freshness basis is owner-approved statement cadence');
+  ok(!(inCycle.preview.openingCutover.blockers || []).some(b =>
+    b.code === 'stale-posted-opening-evidence' && b.locator === 'debts:mbna'),
+    'CASE E: current-cycle MBNA is not stale solely for missing exact-day');
+
+  const nextCycle = previewAt(data, makePayload('2026-09-08', matchingPostedAccounts(data, '2026-09-08').concat([
+    accountRow({
+      id: 4111, name: 'MBNA', type: 'credit', subtype: 'credit_card',
+      balance: 7875.99, limit: 8000, evidenceDate: '2026-08-08',
+    }),
+  ])), { accountMap: map, cutoverAsOf: '2026-09-08' });
+  const nextRow = freshness(nextCycle.preview.openingCutover, 'debts:mbna');
+  ok(nextRow && nextRow.evidenceDate === '2026-08-08' && nextRow.freshForRequestedAsOf === false,
+    'CASE E: prior-cycle MBNA evidence is unchanged and not current on 8 Sep');
+  ok((nextCycle.preview.openingCutover.blockers || []).some(b =>
+    b.code === 'stale-posted-opening-evidence' && b.locator === 'debts:mbna'),
+    'CASE E: Atlas fails closed on the next MBNA statement day without new evidence');
+}
+
+console.log('\n=== CASE F — normal live accounts keep exact-day freshness ===');
+{
+  ok(!C.ownerStatementCadence('cashback') && !C.ownerStatementCadence('tdcc')
+    && !C.ownerStatementCadence('travelvisa') && !C.ownerStatementCadence('chequing-a'),
+    'Cash Back and other live accounts are not on Triangle/MBNA cadence');
+  const ids = Object.keys(C.OWNER_STATEMENT_CADENCE).sort();
+  ok(ids.length === 2 && ids[0] === 'mbna' && ids[1] === 'triangle',
+    'statement cadence is only triangle and mbna');
+  const data = makeData({
+    asOf: '2026-08-16',
+    debts: [
+      { id: 'mortgage', balance: 500000, pending: 0, secured: true, interestTreatment: 'paid-in-payment', limit: null },
+      revolvingDebt({ id: 'cashback', balance: 4799.43, limit: 5000, pendingUnknown: true }),
+    ],
+  });
+  const map = extendMap([{
+    providerAccountId: 4112, collection: 'debts', id: 'cashback', role: 'revolving-credit',
+  }]);
+  const payload = makePayload('2026-08-18', matchingPostedAccounts(data, '2026-08-18').concat([
+    accountRow({
+      id: 4112, name: 'Cash Back', type: 'credit', subtype: 'credit_card',
+      balance: 4799.43, limit: 5000, evidenceDate: '2026-08-16',
+    }),
+  ]));
+  const { preview } = previewAt(data, payload, { accountMap: map, cutoverAsOf: '2026-08-18' });
+  const row = freshness(preview.openingCutover, 'debts:cashback');
+  ok(row && row.evidenceDate === '2026-08-16' && row.freshForRequestedAsOf === false,
+    'CASE F: Cash Back with 16 Aug evidence is still stale for 18 Aug');
+  ok((preview.openingCutover.blockers || []).some(b =>
+    b.code === 'stale-posted-opening-evidence' && b.locator === 'debts:cashback'),
+    'CASE F: live Cash Back still receives stale-posted-opening-evidence');
+  const mortgage = freshness(preview.openingCutover, 'debts:mortgage');
+  ok(mortgage && mortgage.freshForRequestedAsOf === true && mortgage.freshnessBasis === C.FRESHNESS_EXACT_DAY,
+    'CASE F: mortgage exact-day freshness is unchanged');
+}
+
+console.log('\n=== CASE G — future evidence is not accepted for an earlier opening ===');
+{
+  ok(C.statementCadenceAccepts('triangle', '2026-08-19', '2026-08-18') === false,
+    'independent: future Triangle evidence is not current-cycle for 18 Aug');
+  const data = makeData({
+    asOf: '2026-08-16',
+    debts: [
+      { id: 'mortgage', balance: 500000, pending: 0, secured: true, interestTreatment: 'paid-in-payment', limit: null },
+      revolvingDebt({ id: 'triangle', balance: 13197, limit: 13500 }),
+    ],
+  });
+  const map = extendMap([{
+    providerAccountId: 4110, collection: 'debts', id: 'triangle', role: 'revolving-credit',
+  }]);
+  const payload = makePayload('2026-08-19', matchingPostedAccounts(data, '2026-08-18').concat([
+    accountRow({
+      id: 4110, name: 'Triangle', type: 'credit', subtype: 'credit_card',
+      balance: 13495.32, limit: 13500, evidenceDate: '2026-08-19',
+      balanceAsOf: '2026-08-19T17:55:00.000Z',
+    }),
+  ]));
+  const { preview } = previewAt(data, payload, { accountMap: map, cutoverAsOf: '2026-08-18' });
+  const row = freshness(preview.openingCutover, 'debts:triangle');
+  ok(row && row.evidenceDate === '2026-08-19',
+    'CASE G: future evidenceDate stays 2026-08-19');
+  ok(row && row.freshForRequestedAsOf === false,
+    'CASE G: 19 Aug evidence is not accepted as 18 Aug opening evidence');
+  ok((preview.openingCutover.blockers || []).some(b =>
+    b.code === 'stale-posted-opening-evidence' && b.locator === 'debts:triangle'),
+    'CASE G: future-dated posted evidence fails closed');
+}
+
+console.log('\n=== CASE H — demonstrated Triangle/MBNA live values, no write ===');
+{
+  const data = makeData({
+    asOf: '2026-08-16',
+    debts: [
+      { id: 'mortgage', balance: 500000, pending: 0, secured: true, interestTreatment: 'paid-in-payment', limit: null },
+      revolvingDebt({ id: 'triangle', balance: 13197, limit: 13500, pending: 15.62 }),
+      revolvingDebt({ id: 'mbna', balance: 8003.61, limit: 8000, pending: 0 }),
+    ],
+  });
+  const map = extendMap([
+    { providerAccountId: 4110, collection: 'debts', id: 'triangle', role: 'revolving-credit' },
+    { providerAccountId: 4111, collection: 'debts', id: 'mbna', role: 'revolving-credit' },
+  ]);
+  const dir = tempDir();
+  const dest = writeJson(dir, 'data.json', data);
+  const before = hashFile(dest);
+  const payload = makePayload('2026-08-18', matchingPostedAccounts(data, '2026-08-18').concat([
+    accountRow({
+      id: 4110, name: 'Triangle', type: 'credit', subtype: 'credit_card',
+      balance: 13495.32, limit: 13500, evidenceDate: '2026-08-16',
+      updatedAt: '2026-08-16T20:44:19.898Z',
+      balanceAsOf: '2026-08-19T03:25:33.904Z',
+    }),
+    accountRow({
+      id: 4111, name: 'MBNA', type: 'credit', subtype: 'credit_card',
+      balance: 7875.99, limit: 8000, evidenceDate: '2026-08-16',
+      updatedAt: '2026-08-16T20:46:38.268Z',
+      balanceAsOf: '2026-08-19T03:26:33.481Z',
+    }),
+  ]), [], completePendingCoverage());
+  const { report, preview } = previewAt(data, payload, { accountMap: map, cutoverAsOf: '2026-08-18' });
+  const triangle = freshness(preview.openingCutover, 'debts:triangle');
+  const mbna = freshness(preview.openingCutover, 'debts:mbna');
+  ok(triangle && near(triangle.observedValue, 13495.32) && triangle.evidenceDate === '2026-08-18',
+    'CASE H: Triangle 13,495.32 is dated 2026-08-18 from balance_as_of');
+  ok(mbna && near(mbna.observedValue, 7875.99) && mbna.evidenceDate === '2026-08-18',
+    'CASE H: MBNA 7,875.99 is dated 2026-08-18 from balance_as_of');
+  ok(triangle.freshForRequestedAsOf === true && mbna.freshForRequestedAsOf === true,
+    'CASE H: neither Triangle nor MBNA is stale for 2026-08-18');
+  ok(!(preview.openingCutover.blockers || []).some(b =>
+    (b.locator === 'debts:triangle' || b.locator === 'debts:mbna')
+    && (b.code === 'stale-posted-opening-evidence' || b.code === 'same-day-no-winner')),
+    'CASE H: no stale or same-day-no-winner on the demonstrated posted observations');
+  ok(preview.writesCanonicalState === false
+    && preview.openingCutover.writesOpening === false
+    && preview.canonicalWriteAuthorized === false,
+    'CASE H: no value is written and cutover write is not authorized');
+  ok(hashFile(dest) === before, 'CASE H: temp data.json is byte-identical');
+  ok(hashFile(LIVE_DATA) === liveHash, 'CASE H: live data.json is unchanged');
+  const triangleObs = (report.observations || []).find(o => o && o.fact === 'posted-balance' && o.cardId === 'triangle');
+  const mbnaObs = (report.observations || []).find(o => o && o.fact === 'posted-balance' && o.cardId === 'mbna');
+  ok(triangleObs && triangleObs.evidenceDate === '2026-08-18'
+    && mbnaObs && mbnaObs.evidenceDate === '2026-08-18',
+    'CASE H: observe-layer posted dates follow balance_as_of');
 }
 
 console.log('\n=== invariants — previewId, schema gate, live bytes ===');
