@@ -29,6 +29,11 @@ const CREDIT_ROLES = new Set(['revolving-credit']);
 const CURRENT_STATE_HISTORY_DAYS = 14;
 const RECONCILE_HISTORY_DAYS = 120;
 const BILL_PAYMENT_PENDING_DAYS = 90;
+const PENDING_COVERAGE_BASIS = 'is_pending-unbounded';
+const PENDING_QUERY_PAGE_LIMIT = 1000;
+const PENDING_QUERY_MAX_PAGES = 20;
+const PENDING_COVERAGE_REQUIRED_EVIDENCE =
+  'GET /v2/transactions?is_pending=true with no start_date/end_date, paginated until has_more=false.';
 const Forecast = require('../public/forecast.js');
 
 function fail(message) {
@@ -155,6 +160,7 @@ function normalizeLunchMoneyPayload(payload, fetchedAt) {
     fetchedAt: payload.fetchedAt || fetchedAt,
     accounts: collectLunchMoneyAccounts(payload).map(normalizeLunchMoneyAccount),
     transactions: (payload.transactions || []).map(normalizeLunchMoneyTransaction),
+    pendingCoverage: classifyPendingCoverage(payload),
   };
 }
 
@@ -221,6 +227,144 @@ function lunchMoneyTransactionsUrl(now, historyDays) {
   return txUrl;
 }
 
+function lunchMoneyPendingUniverseUrl() {
+  const txUrl = new URL(`${LIVE_BASE}/transactions`);
+  txUrl.searchParams.set('is_pending', 'true');
+  return txUrl;
+}
+
+function withPage(url, offset, limit) {
+  const pageUrl = new URL(url.href);
+  pageUrl.searchParams.set('limit', String(limit));
+  pageUrl.searchParams.set('offset', String(offset));
+  return pageUrl;
+}
+
+function coverageDate(value) {
+  if (value == null || value === '') return null;
+  return String(value);
+}
+
+function classifyPendingCoverage(raw) {
+  const declared = raw && raw.pendingCoverage;
+  if (!declared || typeof declared !== 'object') {
+    return {
+      complete: false,
+      status: 'insufficient',
+      basis: null,
+      hasMore: null,
+      startDate: null,
+      endDate: null,
+      reason: 'No pending-coverage metadata. A bounded include_pending window is not proof of zero pending.',
+      requiredEvidence: PENDING_COVERAGE_REQUIRED_EVIDENCE,
+    };
+  }
+  const startDate = coverageDate(declared.startDate || declared.start_date);
+  const endDate = coverageDate(declared.endDate || declared.end_date);
+  const basis = declared.basis == null ? null : String(declared.basis);
+  const hasMore = declared.hasMore === true || declared.has_more === true
+    ? true
+    : declared.hasMore === false || declared.has_more === false
+      ? false
+      : null;
+  const truncated = declared.truncated === true;
+  const dated = !!(startDate || endDate);
+  if (basis !== PENDING_COVERAGE_BASIS || dated) {
+    return {
+      complete: false,
+      status: dated ? 'bounded-window' : 'insufficient',
+      basis,
+      hasMore,
+      startDate,
+      endDate,
+      reason: dated
+        ? 'Pending query is date-bounded. Absence inside that window is not proof of zero pending.'
+        : 'Pending coverage basis is not the unbounded is_pending query.',
+      requiredEvidence: PENDING_COVERAGE_REQUIRED_EVIDENCE,
+    };
+  }
+  if (truncated || hasMore !== false || declared.complete !== true) {
+    return {
+      complete: false,
+      status: 'insufficient',
+      basis,
+      hasMore,
+      startDate,
+      endDate,
+      reason: truncated
+        ? 'Pending query was truncated before has_more=false.'
+        : 'Pending query did not complete with has_more=false.',
+      requiredEvidence: PENDING_COVERAGE_REQUIRED_EVIDENCE,
+    };
+  }
+  return {
+    complete: true,
+    status: 'complete',
+    basis,
+    hasMore: false,
+    startDate: null,
+    endDate: null,
+    reason: 'Completed is_pending=true query with no date bound.',
+    requiredEvidence: null,
+  };
+}
+
+function mergeTransactionsById(primary, extra) {
+  const out = [];
+  const seen = new Set();
+  for (const tx of [].concat(primary || [], extra || [])) {
+    if (!tx || tx.id == null) {
+      out.push(tx);
+      continue;
+    }
+    const id = String(tx.id);
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push(tx);
+  }
+  return out;
+}
+
+async function fetchLunchMoneyTransactionsPaged(url, token, opts) {
+  const limit = (opts && opts.limit) || PENDING_QUERY_PAGE_LIMIT;
+  const maxPages = (opts && opts.maxPages) || PENDING_QUERY_MAX_PAGES;
+  const all = [];
+  let offset = 0;
+  let hasMore = null;
+  let pages = 0;
+  let truncated = false;
+  while (pages < maxPages) {
+    const payload = await httpsGetJson(withPage(url, offset, limit), token);
+    const txs = (payload && payload.transactions) || [];
+    all.push(...txs);
+    pages += 1;
+    if (payload && payload.has_more === true) {
+      hasMore = true;
+      if (txs.length === 0) {
+        truncated = true;
+        break;
+      }
+      offset += limit;
+      continue;
+    }
+    if (payload && payload.has_more === false) {
+      hasMore = false;
+      break;
+    }
+    hasMore = null;
+    truncated = true;
+    break;
+  }
+  if (hasMore === true && pages >= maxPages) truncated = true;
+  return {
+    transactions: all,
+    hasMore,
+    complete: hasMore === false && truncated !== true,
+    truncated,
+    pages,
+  };
+}
+
 async function fetchLunchMoneyLive(token, now, historyDays) {
   if (!token) fail(`${TOKEN_ENV} is not set. Live observation refuses to run.`);
   const txUrl = lunchMoneyTransactionsUrl(now, historyDays);
@@ -229,11 +373,26 @@ async function fetchLunchMoneyLive(token, now, historyDays) {
   let manuals = await tryGetJson(new URL(`${LIVE_BASE}/manual_accounts`), token);
   if (!manuals) manuals = await tryGetJson(new URL(`${LIVE_BASE}/assets`), token);
   const txPayload = await httpsGetJson(txUrl, token);
+  const pendingPage = await fetchLunchMoneyTransactionsPaged(
+    lunchMoneyPendingUniverseUrl(),
+    token
+  );
   return {
     provider: 'lunchmoney',
     fetchedAt: now,
     accounts: accountsFromLivePayloads(plaid, manuals),
-    transactions: (txPayload && txPayload.transactions) || [],
+    transactions: mergeTransactionsById(
+      (txPayload && txPayload.transactions) || [],
+      pendingPage.transactions
+    ),
+    pendingCoverage: {
+      complete: pendingPage.complete === true,
+      basis: PENDING_COVERAGE_BASIS,
+      hasMore: pendingPage.hasMore,
+      startDate: null,
+      endDate: null,
+      truncated: pendingPage.truncated === true,
+    },
   };
 }
 
@@ -456,6 +615,8 @@ function pendingObservationsFromTransactions(input) {
     plan: input.plan,
     billPaymentPayees: input.billPaymentPayees,
   };
+  const coverage = input.pendingCoverage
+    || classifyPendingCoverage(input.payload || input);
   const out = [];
   for (const mapping of (mapDoc && mapDoc.mappings) || []) {
     if (!CREDIT_ROLES.has(mapping.atlasRole) || !mapping.canonical || !mapping.canonical.id) {
@@ -464,7 +625,29 @@ function pendingObservationsFromTransactions(input) {
     const components = pendingComponentsForCard(
       input.transactions, mapping, asOf, opts
     );
-    if (!components.length) continue;
+    if (!components.length) {
+      if (!coverage.complete) continue;
+      out.push({
+        observationId: `lm-${mapping.providerAccountId}-pending`,
+        fact: 'pending',
+        cardId: mapping.canonical.id,
+        provider: 'lunchmoney',
+        providerAccountId: String(mapping.providerAccountId),
+        accountLabel: mapping.canonical.id,
+        evidenceValue: 0,
+        observedAsOf: asOf,
+        evidenceDate: asOf,
+        unknown: false,
+        balanceIncludesPending: false,
+        pendingCoverage: coverage.status,
+        pendingProof: coverage.basis,
+        canonical: { collection: 'debts', id: mapping.canonical.id, field: 'pending' },
+        source: 'provider-observe:lunchmoney-transactions',
+        note: 'Proven zero pending from a completed is_pending=true query with no date bound. Absence inside a bounded include_pending window is not this proof. Posted balance is a separate fact. Not household cash.',
+        components: [],
+      });
+      continue;
+    }
     const net = netCurrentPending(components);
     const allSettledForForecast = net.unresolved === 0 && components.every(c =>
       c.settlementTreatment === 'presumed-settled-for-current-forecast'
@@ -483,6 +666,8 @@ function pendingObservationsFromTransactions(input) {
       evidenceDate: asOf,
       unknown: !!unknown,
       balanceIncludesPending: false,
+      pendingCoverage: coverage.status,
+      pendingProof: coverage.complete ? coverage.basis : null,
       canonical: { collection: 'debts', id: mapping.canonical.id, field: 'pending' },
       source: 'provider-observe:lunchmoney-transactions',
       note: allSettledForForecast
@@ -837,6 +1022,7 @@ function observe(input) {
     fetchedAt: normalized.fetchedAt,
     plan: input.data && input.data.plan,
     billPaymentPayees,
+    pendingCoverage: normalized.pendingCoverage,
   });
   observations.push(...pendingObs);
   const cardInferences = [];
@@ -879,6 +1065,7 @@ function observe(input) {
     writesCanonicalState: false,
     provider: 'lunchmoney',
     fetchedAt: normalized.fetchedAt,
+    pendingCoverage: normalized.pendingCoverage,
     mapped,
     unmapped,
     transactions: normalized.transactions,
@@ -955,12 +1142,16 @@ const api = {
   CURRENT_STATE_HISTORY_DAYS,
   RECONCILE_HISTORY_DAYS,
   BILL_PAYMENT_PENDING_DAYS,
+  PENDING_COVERAGE_BASIS,
+  PENDING_COVERAGE_REQUIRED_EVIDENCE,
   parseArgs,
   historyDaysFromArgs,
   resolveMapPath,
   assertLiveMap,
   mappingFor,
   lunchMoneyTransactionsUrl,
+  lunchMoneyPendingUniverseUrl,
+  classifyPendingCoverage,
   lunchMoneyDebitAmount,
   calendarDaysBetween,
   isBillOrPaymentTransaction,

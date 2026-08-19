@@ -1586,6 +1586,14 @@ falsely dated current evidence as 19 August by slicing the UTC timestamp.
 Household financial dates from instants are `Forecast.financialDate` in the
 ACCOUNT_FACTS timezone. MATCH is still not freshness. Genuinely older
 provider evidence is still stale.
+
+That same preflight then emitted `pending-freshness-unproven` for MBNA and
+TD Personal solely because canonical pending was numeric `0` and the
+bounded `include_pending` packet contained no pending components. Absence
+in that window is not proof of zero. Proven zero requires
+`GET /v2/transactions?is_pending=true` with no date bound, paginated until
+`has_more=false`. UNKNOWN pending is still not `0`. This does not write
+pending or resolve Travel Visa / Triangle.
 ---
 
 ## Ready — needs a session at an institution

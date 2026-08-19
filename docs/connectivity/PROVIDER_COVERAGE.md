@@ -42,6 +42,14 @@ Official: https://lunchmoney.dev/ and https://lunchmoney.dev/v2/docs
   `--mode reconcile` is 120 days so the 90-day pending-bill rule can see
   aged rows. Override with `--history-days N`. Do not fetch two years on
   every current-state call.
+- Official v2 also has `GET /transactions?is_pending=true`. That filter
+  returns only pending transactions and takes precedence over
+  `include_pending`. Omitting `start_date`/`end_date` and paging until
+  `has_more=false` is the current-pending universe. Only that completed
+  query may emit numeric pending `0`. An empty bounded `include_pending`
+  window is not proof of zero; missing `has_more`, a date bound, or
+  truncation stays UNKNOWN / unproven. Do not infer zero from mere
+  absence.
 - A pending bill/payment older than 90 days may be **presumed settled for
   current forecasting only** (`confidence: inferred`). Historical provider
   status stays pending. That is not a universal STALE threshold.

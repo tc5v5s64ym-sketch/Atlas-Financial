@@ -375,6 +375,76 @@ console.log('\n=== B78 identity: pending→posted same providerTransactionId ===
     'both provider records are retained as evidence of the transition');
 }
 
+console.log('\n=== B81 zero-pending proof contract ===');
+{
+  const extra = clone(payload);
+  extra.transactions = extra.transactions.filter(tx => tx.is_pending !== true);
+  extra.pendingCoverage = {
+    complete: true,
+    basis: O.PENDING_COVERAGE_BASIS,
+    hasMore: false,
+    startDate: null,
+    endDate: null,
+  };
+  const proven = observeWith(extra);
+  const tdcc = proven.observations.find(o => o.observationId === 'lm-3004-pending');
+  const travelZero = proven.observations.find(o => o.observationId === 'lm-3006-pending');
+  ok(tdcc && near(tdcc.evidenceValue, 0) && tdcc.unknown !== true,
+    'CASE A: complete is_pending universe with no components emits pending 0');
+  ok(tdcc && tdcc.pendingProof === 'is_pending-unbounded',
+    'CASE A names the unbounded is_pending proof');
+  ok(travelZero && near(travelZero.evidenceValue, 0) && travelZero.unknown !== true,
+    'Travel Visa with no remaining pending components is also proven 0');
+  ok(proven.pendingCoverage && proven.pendingCoverage.complete === true,
+    'observe report preserves complete pending coverage');
+
+  const bounded = observeWith(clone(payload));
+  ok(!bounded.observations.some(o => o.observationId === 'lm-3004-pending'),
+    'CASE B: empty bounded window does not emit pending 0 for TD Personal');
+  const travelBounded = bounded.observations.find(o => o.observationId === 'lm-3006-pending');
+  ok(travelBounded && near(travelBounded.evidenceValue, PENDING),
+    'CASE C: nonzero Travel Visa pending still emits from components');
+  ok(bounded.pendingCoverage && bounded.pendingCoverage.complete !== true,
+    'fixture without pendingCoverage is not complete');
+  ok(bounded.pendingCoverage
+    && /bounded include_pending window is not proof/.test(bounded.pendingCoverage.reason),
+    'CASE B records that bounded absence is not zero-proof');
+
+  const datedClaim = clone(payload);
+  datedClaim.transactions = datedClaim.transactions.filter(tx => tx.is_pending !== true);
+  datedClaim.pendingCoverage = {
+    complete: true,
+    basis: 'is_pending-unbounded',
+    hasMore: false,
+    startDate: '2026-08-02',
+    endDate: '2026-08-16',
+  };
+  const dated = observeWith(datedClaim);
+  ok(!dated.observations.some(o => o.fact === 'pending' && !(o.components || []).length),
+    'a dated is_pending query cannot prove zero even if complete is claimed');
+  ok(dated.pendingCoverage && dated.pendingCoverage.status === 'bounded-window',
+    'dated pending query is classified bounded-window');
+
+  const truncatedClaim = clone(payload);
+  truncatedClaim.transactions = [];
+  truncatedClaim.pendingCoverage = {
+    complete: true,
+    basis: 'is_pending-unbounded',
+    hasMore: true,
+    startDate: null,
+    endDate: null,
+  };
+  const truncated = observeWith(truncatedClaim);
+  ok(!truncated.observations.some(o => o.fact === 'pending'),
+    'has_more=true cannot prove zero');
+
+  const cashbackUnknown = data.debts.find(d => d.id === 'cashback');
+  ok(cashbackUnknown && cashbackUnknown.pendingUnknown === true,
+    'canonical Cash Back pending is UNKNOWN on live data');
+  ok(!bounded.observations.some(o => o.observationId === 'lm-3005-pending'),
+    'CASE D: UNKNOWN pending is not manufactured as 0 from a bounded empty window');
+}
+
 console.log('\n=== history window is configurable ===');
 {
   const current = O.lunchMoneyTransactionsUrl('2026-08-16T18:00:00.000Z');
@@ -392,6 +462,15 @@ console.log('\n=== history window is configurable ===');
     'explicit --history-days wins over the mode default');
   ok(O.BILL_PAYMENT_PENDING_DAYS === 90,
     'the 90-day rule is scoped to pending bill/payment effects');
+  const pendingUrl = O.lunchMoneyPendingUniverseUrl();
+  ok(pendingUrl.pathname === '/v2/transactions',
+    'pending-universe query targets GET /v2/transactions');
+  ok(pendingUrl.searchParams.get('is_pending') === 'true',
+    'pending-universe query sets is_pending=true');
+  ok(!pendingUrl.searchParams.has('start_date') && !pendingUrl.searchParams.has('end_date'),
+    'pending-universe query has no date bound');
+  ok(O.PENDING_COVERAGE_BASIS === 'is_pending-unbounded',
+    'complete coverage basis is the unbounded is_pending query');
 }
 
 console.log('\n=== CLI fixture run remains read-only ===');

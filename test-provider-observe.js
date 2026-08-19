@@ -214,10 +214,17 @@ console.log('=== L. live transaction request includes pending ===');
     cwd: ROOT,
     encoding: 'utf8',
   }));
-  const tx = captured.find(u => /\/v2\/transactions(?:\?|$)/.test(u));
+  const tx = captured.find(u => /\/v2\/transactions(?:\?|$)/.test(u) && /include_pending=true/.test(u));
   ok(!!tx, 'live fetch actually GET /v2/transactions', JSON.stringify(captured));
   ok(tx && new URL(tx).searchParams.get('include_pending') === 'true',
     'live request URL contains include_pending=true', tx);
+  const pendingUniverse = captured.find(u => /\/v2\/transactions(?:\?|$)/.test(u) && /is_pending=true/.test(u));
+  ok(!!pendingUniverse, 'live fetch also GET /v2/transactions?is_pending=true', JSON.stringify(captured));
+  const pendingUrl = new URL(pendingUniverse);
+  ok(pendingUrl.searchParams.get('is_pending') === 'true',
+    'pending-universe live request sets is_pending=true');
+  ok(!pendingUrl.searchParams.has('start_date') && !pendingUrl.searchParams.has('end_date'),
+    'pending-universe live request is not date-bounded');
 }
 
 console.log('=== M. unobserved live account IDs cannot match fixture mappings ===');
