@@ -288,7 +288,10 @@ function previewAt(data, payload, extra) {
     data,
     identity: extra.identity || { rules: [], billPaymentPayees: [] },
     fetchedAt: payload.fetchedAt,
-  }, extra.cutoverAsOf ? { cutoverAsOf: extra.cutoverAsOf } : undefined);
+  }, extra.cutoverAsOf ? {
+    cutoverAsOf: extra.cutoverAsOf,
+    balanceMap: extra.balanceMap || fixtureBalanceMap(data),
+  } : undefined);
 }
 
 function cleanPacket(extra) {
@@ -769,7 +772,52 @@ console.log('\n=== 10. stale incumbent confidence is not carried onto a new open
     'snapshot history does not inherit a verified label from the incumbent statement row');
 }
 
-console.log('\n=== 11. live canonical files were not used as the write target ===');
+console.log('\n=== 11. balance-map routing drift refuses the old openingApprovalId ===');
+{
+  const pkt = cleanPacket();
+  pkt.payload.accounts = matchingPostedAccounts(pkt.data, '2026-08-18').map(row => (
+    row.id === 4102 ? Object.assign({}, row, { balance: 190 }) : row
+  ));
+  const originalMap = fixtureBalanceMap(pkt.data);
+  const { preview } = previewAt(pkt.data, pkt.payload, {
+    accountMap: pkt.map,
+    cutoverAsOf: '2026-08-18',
+    balanceMap: originalMap,
+  });
+  const approval = preview.openingCutover.openingApprovalId;
+  ok(preview.openingCutover.cutoverWriteSupported === true && approval,
+    'clean opening preview still issues an openingApprovalId');
+  const dir = tempDir();
+  const ws = workspace(dir, pkt.data);
+  const drifted = JSON.parse(fs.readFileSync(ws.balanceMapPath, 'utf8'));
+  const chequingA = drifted.mappings.find(row => row.canonical && row.canonical.id === 'chequing-a');
+  const chequingB = drifted.mappings.find(row => row.canonical && row.canonical.id === 'chequing-b');
+  ok(chequingA && chequingB, 'fixture map has Chequing A and Chequing B routing');
+  const swapped = {
+    accountLabel: chequingA.accountLabel,
+    observationId: chequingA.observationId,
+  };
+  chequingA.accountLabel = chequingB.accountLabel;
+  chequingA.observationId = chequingB.observationId;
+  chequingB.accountLabel = swapped.accountLabel;
+  chequingB.observationId = swapped.observationId;
+  fs.writeFileSync(ws.balanceMapPath, `${JSON.stringify(drifted, null, 2)}\n`);
+  ok(chequingA.accountLabel === 'Chequing B' && chequingB.accountLabel === 'Chequing A',
+    'only the locator → Household label / observation id routing changed');
+  const beforeData = hashFile(ws.dataPath);
+  const beforePos = hashFile(ws.positionsPath);
+  const snapPath = path.join(ws.snapshotDir, '2026-08-18.json');
+  ok(!fs.existsSync(snapPath), 'no snapshot exists before the refused apply');
+  const applied = runCli(applyArgs(ws, pkt, approval));
+  ok(applied.code !== 0, 'apply refuses the old openingApprovalId after routing drift', applied.stderr.trim());
+  ok(/does not match the recomputed opening proposal|balance-map routing/i.test(applied.stderr),
+    'refusal names the approval mismatch, not a later agreement failure', applied.stderr.trim());
+  ok(hashFile(ws.dataPath) === beforeData, 'routing drift leaves data.json byte-identical');
+  ok(hashFile(ws.positionsPath) === beforePos, 'routing drift leaves positions.csv byte-identical');
+  ok(!fs.existsSync(snapPath), 'routing drift writes no snapshot');
+}
+
+console.log('\n=== 12. live canonical files were not used as the write target ===');
 {
   ok(hashFile(LIVE_DATA) === liveHash, 'live data.json is unchanged');
   ok(hashFile(LIVE_POSITIONS) === livePosHash, 'live positions.csv is unchanged');

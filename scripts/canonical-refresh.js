@@ -23,11 +23,12 @@
  *
  * --cutover-as-of --apply --approve-opening writes one atomic opening
  * when the preflight is clean, openingApprovalId matches the complete
- * candidate opening, and the same-date Household positions plus dated
- * snapshot are constructible from that approved evidence. Canonical
- * data.json is not permanently mutated unless the full transition is
- * proven constructible. previewId and cutoverApprovalId cannot authorize
- * that write. No approval = no opening write.
+ * candidate opening and the current balance-map routing, and the
+ * same-date Household positions plus dated snapshot are constructible
+ * from that approved evidence. Canonical data.json is not permanently
+ * mutated unless the full transition is proven constructible. previewId
+ * and cutoverApprovalId cannot authorize that write. No approval = no
+ * opening write.
  *
  * Never writes without --apply and an exact matching approval.
  * Never POST/PUT/PATCH/DELETE Lunch Money. Never stores a token.
@@ -655,7 +656,28 @@ function postedStateFromFreshness(row) {
   };
 }
 
-function openingFingerprint(cutover) {
+function openingRoutingFingerprint(balanceMap) {
+  const mappings = ((balanceMap && balanceMap.mappings) || [])
+    .map((row) => {
+      if (!row || !row.canonical || !row.canonical.collection || !row.canonical.id) return null;
+      return {
+        locator: `${row.canonical.collection}:${row.canonical.id}`,
+        accountLabel: row.accountLabel ? String(row.accountLabel) : null,
+        observationId: row.observationId ? String(row.observationId) : null,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => String(a.locator).localeCompare(String(b.locator))
+      || String(a.accountLabel || '').localeCompare(String(b.accountLabel || ''))
+      || String(a.observationId || '').localeCompare(String(b.observationId || '')));
+  const excluded = ((balanceMap && balanceMap.excluded) || [])
+    .map((row) => (row && row.accountLabel ? String(row.accountLabel) : null))
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b));
+  return { mappings, excluded };
+}
+
+function openingFingerprint(cutover, balanceMap) {
   const proposal = (cutover && cutover.proposedOpening) || {};
   return {
     schema: OPENING_CUTOVER_SCHEMA,
@@ -687,11 +709,12 @@ function openingFingerprint(cutover) {
       metaAsOf: cutover && cutover.requestedAsOf ? cutover.requestedAsOf : null,
       planOpeningAsOf: cutover && cutover.requestedAsOf ? cutover.requestedAsOf : null,
     },
+    routing: openingRoutingFingerprint(balanceMap),
   };
 }
 
-function openingApprovalIdFrom(cutover) {
-  return crypto.createHash('sha256').update(JSON.stringify(openingFingerprint(cutover))).digest('hex');
+function openingApprovalIdFrom(cutover, balanceMap) {
+  return crypto.createHash('sha256').update(JSON.stringify(openingFingerprint(cutover, balanceMap))).digest('hex');
 }
 
 function collectPendingDebts(data, report) {
@@ -799,7 +822,7 @@ function newerEvidenceSupersedes(report, locator, requestedAsOf) {
   });
 }
 
-function buildOpeningCutover(data, report, requestedAsOf) {
+function buildOpeningCutover(data, report, requestedAsOf, balanceMap) {
   if (!isIsoDate(requestedAsOf)) {
     fail('--cutover-as-of must be an explicit YYYY-MM-DD date. Do not infer it from fetchedAt.');
   }
@@ -1038,7 +1061,7 @@ function buildOpeningCutover(data, report, requestedAsOf) {
     currentOpeningAsOf: openingAsOf,
     proposedOpening,
   };
-  const openingApprovalId = cutoverWriteSupported ? openingApprovalIdFrom(openingDraft) : null;
+  const openingApprovalId = cutoverWriteSupported ? openingApprovalIdFrom(openingDraft, balanceMap) : null;
 
   return {
     requestedAsOf,
@@ -1115,7 +1138,7 @@ function previewFrom(input, opts) {
   const report = O.observe(input);
   const preview = buildPreview(report);
   if (opts && opts.cutoverAsOf) {
-    preview.openingCutover = buildOpeningCutover(input.data, report, opts.cutoverAsOf);
+    preview.openingCutover = buildOpeningCutover(input.data, report, opts.cutoverAsOf, opts.balanceMap);
   }
   preview.identityProofSanitized = identityProofLooksSanitized(preview);
   if (!preview.identityProofSanitized) fail('Preview is not sanitized.');
@@ -1255,6 +1278,19 @@ function resolveOpeningArtifactPaths(args) {
     snapshotDir: snapshots,
     balanceMapPath: balanceMap,
   };
+}
+
+function openingBalanceMapPath(args) {
+  const dest = path.resolve(args.data || DEFAULT_DATA);
+  if (sameResolvedPath(dest, DEFAULT_DATA)) return DEFAULT_BALANCE_MAP;
+  if (args.balanceMap) return path.resolve(args.balanceMap);
+  return null;
+}
+
+function loadOpeningBalanceMap(args) {
+  const mapPath = openingBalanceMapPath(args);
+  if (!mapPath || !fs.existsSync(mapPath)) return { mappings: [], excluded: [] };
+  return loadJson(mapPath);
 }
 
 function artifactsLeakSecrets(dataText, positionsText, snapshot) {
@@ -1587,9 +1623,13 @@ function applyOpeningPreview(data, preview, destPath, opts) {
   if (!cutover.currentOpeningAsOf || cutover.requestedAsOf <= cutover.currentOpeningAsOf) {
     fail('Opening cutover must advance the current canonical opening. Canonical state was not written.');
   }
-  const recomputed = openingApprovalIdFrom(cutover);
+  if (!opts || !opts.balanceMapPath) {
+    fail('Opening write requires a balance-map path. Canonical state was not written.');
+  }
+  const currentBalanceMap = loadJson(opts.balanceMapPath);
+  const recomputed = openingApprovalIdFrom(cutover, currentBalanceMap);
   if (String(recomputed) !== String(cutover.openingApprovalId)) {
-    fail('Opening approval fingerprint does not match the proposed opening. Canonical state was not written.');
+    fail('Opening approval fingerprint does not match the proposed opening or its balance-map routing. Canonical state was not written.');
   }
   if (String(data.meta && data.meta.asOf) !== String(cutover.currentMetaAsOf)
     || String(data.plan && data.plan.opening && data.plan.opening.asOf) !== String(cutover.currentOpeningAsOf)) {
@@ -1709,7 +1749,12 @@ async function run(argv) {
   if (args.live) O.assertLiveMap(accountMap);
   const { preview } = previewFrom(
     observeInput(args, data, payload, accountMap),
-    args.cutoverAsOf ? { cutoverAsOf: args.cutoverAsOf } : undefined
+    args.cutoverAsOf ? {
+      cutoverAsOf: args.cutoverAsOf,
+      balanceMap: openingArtifactPaths
+        ? loadJson(openingArtifactPaths.balanceMapPath)
+        : loadOpeningBalanceMap(args),
+    } : undefined
   );
   if (!args.apply) {
     process.stdout.write(`${JSON.stringify(preview, null, 2)}\n`);
@@ -1840,6 +1885,7 @@ const api = {
   cutoverApprovalIdFrom,
   openingApprovalIdFrom,
   openingFingerprint,
+  openingRoutingFingerprint,
   identityProofLooksSanitized,
   isIsoDate,
   ownerStatementCadence,

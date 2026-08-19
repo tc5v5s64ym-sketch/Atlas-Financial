@@ -187,7 +187,10 @@ function previewAt(data, payload, extra) {
     data,
     identity: extra.identity || { rules: [], billPaymentPayees: [] },
     fetchedAt: payload.fetchedAt,
-  }, extra.cutoverAsOf ? { cutoverAsOf: extra.cutoverAsOf } : undefined);
+  }, extra.cutoverAsOf ? {
+    cutoverAsOf: extra.cutoverAsOf,
+    balanceMap: extra.balanceMap || fixtureBalanceMapFor(data),
+  } : undefined);
 }
 
 function revolving(spec) {
@@ -924,7 +927,7 @@ console.log('\n=== 23–24. successful opening is Forecast-consumable; live data
   const { preview } = previewAt(pkt.data, pkt.payload, {
     accountMap: pkt.map, identity: pkt.identity, cutoverAsOf: pkt.requested,
   });
-  const fingerprint = C.openingFingerprint(preview.openingCutover);
+  const fingerprint = C.openingFingerprint(preview.openingCutover, fixtureBalanceMapFor(pkt.data));
   ok(fingerprint.schema === C.OPENING_CUTOVER_SCHEMA, 'fingerprint schema is atlas-opening-cutover-approval/v1');
   ok(fingerprint.posted.some(row => row.locator === 'cash:chequing-a' && near(row.observedValue, 1000)),
     'fingerprint binds MATCH cash, not only CHANGE fields');
@@ -933,6 +936,11 @@ console.log('\n=== 23–24. successful opening is Forecast-consumable; live data
     'fingerprint binds every participating pending state');
   ok(fingerprint.representedEvents.some(e => e.id === 'payroll'),
     'fingerprint binds candidate-date represented events');
+  ok(fingerprint.routing.mappings.some(row => row.locator === 'cash:chequing-a'
+    && row.accountLabel === 'Chequing A' && row.observationId === 'pos-chequing-a'),
+    'fingerprint binds canonical locator to Household label and observation id');
+  ok(fingerprint.routing.excluded.includes('Wise account 1 (USD spending)'),
+    'fingerprint binds exclusions that affect the opening');
   const dir = tempDir();
   const { dest, applied, after } = applyOpening(dir, pkt.data, pkt.payload, pkt.map,
     preview.openingCutover.openingApprovalId, { asOf: pkt.requested, identity: pkt.identity });
