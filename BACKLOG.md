@@ -1579,6 +1579,13 @@ a Render Lunch Money token, and the first production opening cutover
 remain reserved. Do not apply the unused
 Chequing B $10, choose a Triangle same-day winner, invent a
 pending→posted case, or infer endpoint origin.
+
+The first successful live `--cutover-as-of 2026-08-18` preflight fetched at
+`2026-08-19T01:06:40.929Z` — still 18 August in America/Vancouver — and
+falsely dated current evidence as 19 August by slicing the UTC timestamp.
+Household financial dates from instants are `Forecast.financialDate` in the
+ACCOUNT_FACTS timezone. MATCH is still not freshness. Genuinely older
+provider evidence is still stale.
 ---
 
 ## Ready — needs a session at an institution

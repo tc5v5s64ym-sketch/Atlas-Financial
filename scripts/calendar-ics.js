@@ -228,7 +228,7 @@ function buildHouseholdCalendar(plan, asOf, end) {
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH',
     'X-WR-CALNAME:Bills & payments',
-    'X-WR-TIMEZONE:America/Vancouver',
+    'X-WR-TIMEZONE:' + Forecast.HOUSEHOLD_TIMEZONE,
     `X-WR-CALDESC:${esc('Household cash payments derived from the Plan, plus reminder-only look-points (statement closes, tax, mortgage renewal). Generated ' + asOf + ' by scripts/calendar-ics.js. Payment amounts are the Plan figures as at that date.')}`,
     ...events.flatMap(e => vevent(stamp, e)),
     'END:VCALENDAR',

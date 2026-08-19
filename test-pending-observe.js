@@ -380,6 +380,9 @@ console.log('\n=== history window is configurable ===');
   const current = O.lunchMoneyTransactionsUrl('2026-08-16T18:00:00.000Z');
   ok(current.searchParams.get('start_date') === '2026-08-02',
     'current-state default remains 14 days');
+  const boundary = O.lunchMoneyTransactionsUrl('2026-08-19T01:06:40.929Z');
+  ok(boundary.searchParams.get('end_date') === '2026-08-18',
+    '01:06Z on 19 August UTC is still 18 August for the history window');
   const recon = O.lunchMoneyTransactionsUrl('2026-08-16T18:00:00.000Z', O.RECONCILE_HISTORY_DAYS);
   ok(recon.searchParams.get('start_date') === '2026-04-18',
     'reconcile mode asks for 120 days', recon.searchParams.get('start_date'));

@@ -12,6 +12,15 @@ anything older than a few months as needing re-checking, not as fact.
 
 ---
 
+## Household financial timezone *(owner-stated 2026-08-18)*
+
+Atlas household financial and planning dates use the IANA timezone
+**America/Vancouver**. That is the timezone for Maple Ridge, British
+Columbia. Daylight-saving changes follow that zone. The runtime converter
+is `Forecast.financialDate`. Do not slice a UTC timestamp into a calendar
+date, and do not scatter a second timezone through observation or cutover
+code.
+
 ## Payment calendar
 
 | Day of month | What | Amount | Account |

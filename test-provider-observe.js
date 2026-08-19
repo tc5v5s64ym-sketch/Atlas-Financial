@@ -178,6 +178,10 @@ console.log('=== L. live transaction request includes pending ===');
   ok(url.pathname === '/v2/transactions', 'live request targets GET /v2/transactions');
   ok(url.searchParams.get('include_pending') === 'true',
     'live transactions URL sets include_pending=true', url.search);
+  const boundary = O.lunchMoneyTransactionsUrl('2026-08-19T01:06:40.929Z');
+  ok(boundary.searchParams.get('end_date') === '2026-08-18',
+    'history window end is the household date, not the UTC date prefix',
+    boundary.searchParams.get('end_date'));
 
   const harness = [
     "'use strict';",
