@@ -399,20 +399,21 @@ console.log('\n=== CASE 6 — pending CHANGE blocks and does not write ===');
     payee: 'Merchant Pending',
     is_pending: true,
     status: 'unreviewed',
-  }]);
+  }], completePendingCoverage());
   const dir = tempDir();
   const dest = writeJson(dir, 'data.json', data);
   const before = hashFile(dest);
   const { preview } = previewAt(data, payload, { accountMap: map, cutoverAsOf: '2026-08-18' });
-  ok(preview.openingCutover.status === 'BLOCKED', 'pending CHANGE blocks the opening');
-  ok(codes(preview.openingCutover.blockers).includes('pending-state-change-unresolved'),
-    'blocker code is pending-state-change-unresolved');
-  const pendingBlock = preview.openingCutover.blockers.find(b => b.code === 'pending-state-change-unresolved');
-  ok(pendingBlock && near(pendingBlock.canonicalValue, 250)
-    && near(pendingBlock.observedValue, 342.65),
-    'blocker names canonical 250 vs observed 342.65');
+  ok(!codes(preview.openingCutover.blockers).includes('pending-state-change-unresolved'),
+    'a trustworthy pending CHANGE is a cutover proposal, not a permanent blocker');
+  const pendingHit = (preview.openingCutover.pendingTransitions || []).find(row => row.locator === 'debts:travelvisa#pending');
+  ok(pendingHit && near(pendingHit.currentValue, 250) && near(pendingHit.proposedValue, 342.65),
+    'cutover pending proposal names canonical 250 vs observed 342.65');
+  ok(preview.openingCutover.cutoverApprovalId
+    && preview.openingCutover.cutoverApprovalId !== preview.previewId,
+    'cutover approval id is distinct from posted previewId');
   ok(!preview.proposed.some(row => /pending/.test(row.locator || '') || row.field === 'pending'),
-    'no pending write is proposed');
+    'no pending write is proposed on the ordinary posted preview');
   const applied = runCli([
     '--fixture', writeJson(dir, 'payload.json', payload),
     '--map', writeJson(dir, 'map.json', map),
@@ -574,11 +575,14 @@ console.log('\n=== CASE 7b — proven zero cannot silently write UNKNOWN pending
   const pending = report.observations.find(o => o.observationId === 'lm-4105-pending');
   ok(pending && near(pending.evidenceValue, 0) && pending.unknown !== true,
     'provider packet can prove numeric zero without writing it');
-  ok(codes(preview.openingCutover.blockers).includes('pending-state-change-unresolved'),
-    'UNKNOWN canonical pending cannot silently become 0');
+  ok(!codes(preview.openingCutover.blockers).includes('pending-state-change-unresolved'),
+    'UNKNOWN -> proven 0 is a cutover proposal, not a silent write');
+  const pendingHit = (preview.openingCutover.pendingTransitions || []).find(row => row.locator === 'debts:cashback#pending');
+  ok(pendingHit && pendingHit.currentUnknown === true && near(pendingHit.proposedValue, 0),
+    'cutover proposal carries UNKNOWN -> proven 0');
   ok(!preview.proposed.some(row => /pending/.test(String(row.locator || ''))),
-    'no pending write is proposed for UNKNOWN → 0');
-  ok(hashFile(dest) === before, 'UNKNOWN pending is not written to 0');
+    'no pending write is proposed on the ordinary posted preview for UNKNOWN → 0');
+  ok(hashFile(dest) === before, 'UNKNOWN pending is not written to 0 without cutover approval');
 }
 
 console.log('\n=== CASE 8 — stale known pending is not current ===');
