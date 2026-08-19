@@ -246,7 +246,7 @@ function isolatedEnv(extra) {
     const def = C.defaultCredentialPath({ LOCALAPPDATA: 'C:\\Users\\dnaud\\AppData\\Local' });
     ok(!!def, 'default path is constructed from LOCALAPPDATA');
     ok(C.pathIsOutsideRepo(def, ROOT), 'default DPAPI path is outside the repository');
-    ok(/Atlas-Financial[\\/]secrets[\\/]lunchmoney\\.dat$/i.test(def),
+    ok(/Atlas-Financial[\\/]secrets[\\/]lunchmoney\.dat$/i.test(def),
       'default file is Atlas-Financial/secrets/lunchmoney.dat');
     const live = C.defaultCredentialPath(process.env);
     if (process.platform === 'win32' && process.env.LOCALAPPDATA) {

@@ -855,9 +855,11 @@ values as current.
 Two capabilities must not be conflated:
 
 - **Live read-only observation** — already built and exercised.
-  `scripts/provider-observe.js` may GET Lunch Money locally when the owner
-  sets `LUNCHMONEY_ACCESS_TOKEN` in their shell. That seam does not write
-  `data.json` and does not store a bank password.
+  `scripts/provider-observe.js` may GET Lunch Money locally when
+  `LUNCHMONEY_ACCESS_TOKEN` is set, or on the owner's Windows home PC when
+  the CurrentUser DPAPI blob described under **The secret boundary** is
+  present. That seam does not write `data.json` and does not store a bank
+  password.
 - **Trusted canonical refresh** — owner-passed **2026-08-17** (T4).
   `scripts/canonical-refresh.js` is the earned preview / approve / bounded
   write. Automatic or unrestricted production writes, scheduled refresh, and
@@ -921,11 +923,12 @@ rule does not, and it is deliberately the catch-all rather than the list above.
 ### Gated — may be permitted later, not permitted now
 
 Provider or API **service credentials**, and OAuth access or refresh tokens, for
-**read-only** data access. The T4 pass permits the existing local-shell
-`LUNCHMONEY_ACCESS_TOKEN` for GET-only observation. Atlas usage remains
-GET-only even though Lunch Money personal tokens are not provider-scoped
-read-only. A production token in Render is still **not** authorised. Never
-for anything on the absolute list.
+**read-only** data access. The T4 pass permits the local Lunch Money GET-only token:
+`LUNCHMONEY_ACCESS_TOKEN` in the owner's shell, or the Windows CurrentUser
+DPAPI blob under **Where a secret may live**. Atlas usage remains GET-only
+even though Lunch Money personal tokens are not provider-scoped read-only.
+A production token in Render is still **not** authorised. Never for
+anything on the absolute list.
 
 ### Where a secret may live — the canonical rule
 
@@ -943,20 +946,33 @@ covered separately at the end, and the two must not be conflated.
 A configured secret lives in exactly one of:
 
 - **production** — the deployment platform's environment secrets, which is Render
-  today; the platform's mechanism matters, not the provider's name;
-- **local development** — an environment variable in the developer's own shell,
-  which is how `SITE_PASSWORD` and `SESSION_SECRET` are supplied when running
-  locally, exactly as `README.md` documents;
+  today; the platform's mechanism matters, not the provider's name. A Lunch Money
+  token in Render remains **not** authorised;
+- **local development** — an environment variable in the developer's own shell.
+  That is how `SITE_PASSWORD` and `SESSION_SECRET` are supplied when running
+  locally, exactly as `README.md` documents, and it remains the override for
+  `LUNCHMONEY_ACCESS_TOKEN` (CI, tests, and advanced local use);
+- **the owner's Windows home-PC Lunch Money GET-only store** — a CurrentUser
+  DPAPI-encrypted file at `%LOCALAPPDATA%\Atlas-Financial\secrets\lunchmoney.dat`,
+  decryptable only in that Windows user context, outside the repository.
+  Bootstrap is `node scripts/local-credentials.js setup-lunchmoney`. An existing
+  blob is not replaced unless `--replace` is passed. Removal is
+  `node scripts/local-credentials.js remove-lunchmoney`. Non-Windows processes
+  and remote/cloud agents do not read or emulate this file. This is not a
+  Render token, not a GitHub Actions secret, and not a cloud secret store;
 - **an encrypted server-side store**, if — and only if — a future approved
   provider needs a secret **persisted and rotated** rather than set once, which
   an environment variable cannot do. This exists so OAuth refresh rotation would
-  not require inventing a second rule later. Not authorised today.
+  not require inventing a second rule later. Not authorised today. The
+  Windows DPAPI file above is not this store.
 
 And a configured secret goes **never**: into source control, into `data.json`,
-into a pull request, into a log, or into the browser in any form — not in
-JavaScript, not in `localStorage` or any cookie, not in a file the page fetches,
-not embedded in markup. **No configured secret is ever stored client-side**, and
-nothing below relaxes that.
+into `.env`, into a script, into a command line, into a pull request, into a
+log, into GitHub Actions, or into the browser in any form — not in JavaScript,
+not in `localStorage` or any cookie, not in a file the page fetches, not
+embedded in markup. **No configured secret is ever stored client-side**, and
+nothing below relaxes that. The Windows DPAPI blob is ciphertext outside the
+repository; it is not a second copy of the plaintext token.
 
 #### The session credential
 
