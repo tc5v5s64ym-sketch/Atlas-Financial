@@ -23,11 +23,13 @@ statements-*/
 scripts/local-config.json
 docs/connectivity/provider-account-map.local.json
 
-# Secrets — these live in Render environment variables and nowhere else
+# Secrets — production secrets live in Render; the Lunch Money GET-only
+# token may also live as a Windows DPAPI blob outside this repository.
 .env
 .env.*
 *.local
 secrets.json
+lunchmoney.dat
 
 # Node
 node_modules/
