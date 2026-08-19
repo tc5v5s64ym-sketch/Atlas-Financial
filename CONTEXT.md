@@ -1,7 +1,8 @@
 # Context for a new session
 
 **Start at [`AGENTS.md`](AGENTS.md).** It is the universal router and owns the
-read order; this file is one entry in it.
+read order; this file is one entry in it. Task procedure and technical
+lessons load on demand as `AGENTS.md` directs; lessons are non-authoritative.
 
 Everything below is context and current state — the layout, what has been
 captured, how the site is changed, and the standing rules for working on it.

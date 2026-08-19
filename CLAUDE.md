@@ -16,6 +16,9 @@ a home:
 | Work that can be done | [`BACKLOG.md`](BACKLOG.md) |
 | What only the household can answer | [`docs/01_OPEN_QUESTIONS.md`](docs/01_OPEN_QUESTIONS.md) |
 | What to build next, and in what order | [`docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`](docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md) |
+| Task procedure (load on demand) | [`docs/skills/README.md`](docs/skills/README.md) |
+| Durable technical lessons (non-authoritative; search, do not always-load) | [`docs/lessons/README.md`](docs/lessons/README.md) |
+| Agent context architecture | [`docs/AGENT_CONTEXT.md`](docs/AGENT_CONTEXT.md) |
 
 One fact, one home. Where this file and one of those appear to disagree about a
 mechanism, that file is right about the mechanism and this one is right about

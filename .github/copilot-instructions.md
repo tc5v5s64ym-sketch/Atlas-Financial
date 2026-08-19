@@ -14,6 +14,11 @@ One independently provable outcome per pull request. Run this
 repository's required tests and checks. Complete the Atlas Merge Card
 accurately.
 
+Task procedures live in `docs/skills/` and load on demand. Technical
+lessons in `docs/lessons/` are non-authoritative. See
+[`docs/AGENT_CONTEXT.md`](../docs/AGENT_CONTEXT.md). They are not a
+second Forecast, household-facts, or owner-policy authority.
+
 Stop for owner-reserved, security, destructive, or financial-authority
 decisions. Merge only under the same `CLAUDE.md` merge gate and merge
 policy as any other approved surface.

@@ -33,6 +33,22 @@ the Current-State Verification Gate. It does not erase the financial,
 security, authority, trust, or owner-reserved boundaries in `CLAUDE.md` and
 `ARCHITECTURE.md`.
 
+## Authority, procedure, and lessons
+
+The numbered list above is what a fresh agent always loads. It is already
+long. Do not add task procedure or learned memory to it.
+
+| Need | Load |
+|---|---|
+| Permanent Atlas authority | the read order above. Existing files remain authoritative. This file does not copy them. |
+| Task procedure | a matching row in [`docs/skills/`](docs/skills/README.md), when one exists. Implementation procedure already lives in `CLAUDE.md`. There is no minimum skill count. |
+| Durable technical lessons | search [`docs/lessons/TECHNICAL.md`](docs/lessons/TECHNICAL.md) for terms or IDs relevant to the current task — non-authoritative, evidence-traced. Do not load the whole store by default. |
+| How those layers differ, write permission, future dreaming | [`docs/AGENT_CONTEXT.md`](docs/AGENT_CONTEXT.md) |
+
+A lesson must never become household financial truth, owner policy, Forecast
+behavior, or a second planner. Exact-head review procedure stays in
+`CLAUDE.md`; do not load a parallel copy.
+
 ## The three things agents get wrong here
 
 **The review lanes are not interchangeable.** ChatGPT is the decision desk.
