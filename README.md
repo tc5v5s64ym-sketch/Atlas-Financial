@@ -112,6 +112,8 @@ qualification and loan-to-value. Real decisions need a licensed professional.
 
 - **`AGENTS.md`** / **`CLAUDE.md`** — how work gets done here: who decides, who
   reviews, and what a pull request has to carry before it merges
+- **`docs/AGENT_CONTEXT.md`** — authority vs on-demand skills vs
+  non-authoritative technical lessons
 - **`CONTEXT.md`** — read first in a new session: layout, state, standing rules
 - **`ARCHITECTURE.md`** — how the layers fit together, where new material goes,
   and the staged direction
