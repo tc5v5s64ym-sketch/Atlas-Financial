@@ -12,10 +12,13 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const { sourceText } = require('./test-source-text');
+const { execFileSync } = require('child_process');
 const F = require('./public/forecast.js');
 const live = require('./data.json');
 const periods = require('./public/periods.json');
-const { paydayAnswerHtml } = loadPaydayComposer();
+const AUG16_REV = '28d08a12a18691f34c32bc839d22cd526fc75111';
+const aug16Pinned = JSON.parse(execFileSync('git', ['show', `${AUG16_REV}:data.json`], { encoding: 'utf8' }));
+const { paydayAnswerHtml, money2 } = loadPaydayComposer();
 
 let failures = 0;
 const ok = (cond, label, detail = '') => {
@@ -135,11 +138,13 @@ function composeLive(plan, extra) {
 
 console.log('=== A. current opening cash identity, independently ===');
 {
-  ok(live.meta.asOf === AS_OF, 'canonical as-of is the 2026-08-16 opening', live.meta.asOf);
+  ok(live.meta.asOf === live.plan.opening.asOf,
+    'live meta.asOf agrees with plan.opening.asOf', live.meta.asOf);
   const hand = independentSpendable(live.plan);
-  ok(near(hand, WANT_CASH), 'breakdown 1320.13 + 932.05 + 0.58 = 2252.76', hand.toFixed(2));
   ok(near(F.startingCashAmount(live.plan), hand),
-    'Forecast.startingCashAmount equals that independent sum');
+    'Forecast.startingCashAmount equals the independent spendable sum');
+  ok(aug16Pinned.meta.asOf === AS_OF && near(independentSpendable(aug16Pinned.plan), WANT_CASH),
+    'pinned 2026-08-16 opening spendable remains independently $2,252.76');
   const tennis = (live.plan.startingCash.heldElsewhere || [])
     .find(h => h.id === 'amanda-debt-payments');
   ok(tennis && near(tennis.value, TENNIS),
@@ -150,9 +155,10 @@ console.log('=== A. current opening cash identity, independently ===');
 
 console.log('\n=== B. same master decision across short and longer views ===');
 {
-  const a = F.recommend(live.plan, AS_OF, recOpts({ viewDays: 14 }));
-  const b = F.recommend(live.plan, AS_OF, recOpts({ viewDays: 91 }));
-  const c = F.recommend(live.plan, AS_OF, recOpts({ viewDays: 365 }));
+  const liveAsOf = live.meta.asOf;
+  const a = F.recommend(live.plan, liveAsOf, recOpts({ viewDays: 14 }));
+  const b = F.recommend(live.plan, liveAsOf, recOpts({ viewDays: 91 }));
+  const c = F.recommend(live.plan, liveAsOf, recOpts({ viewDays: 365 }));
   ok(a.weekly === b.weekly && b.weekly === c.weekly,
     '14 / 91 / 365-day views share today\'s weekly cap', `$${a.weekly}`);
   ok(a.knowledge.days === b.knowledge.days && b.knowledge.days === c.knowledge.days
@@ -166,8 +172,9 @@ console.log('\n=== B. same master decision across short and longer views ===');
 
 console.log('\n=== C. future financial gravity affects today; the payday window does not ===');
 {
+  const liveAsOf = live.meta.asOf;
   const base = composeLive(live.plan);
-  const naiveOut = jointCashThrough(live.plan, AS_OF, NEXT_PAY);
+  const naiveOut = jointCashThrough(live.plan, liveAsOf, NEXT_PAY);
   const naiveRemain = independentSpendable(live.plan) - naiveOut;
   const naiveWeekly = Math.floor((naiveRemain / 14) * 7 / 5) * 5;
   ok(naiveOut > 0 && !near(base.advice.weekly, naiveWeekly),
@@ -179,16 +186,16 @@ console.log('\n=== C. future financial gravity affects today; the payday window 
     id: 'b96-jan-gravity', label: 'January 2027 dated cost',
     date: JAN, amount: 25000, confidence: 'confirmed',
   }]);
-  const pulled = F.recommend(withLater.plan, AS_OF, recOpts());
-  const pulledShort = F.recommend(withLater.plan, AS_OF, recOpts({ viewDays: 14 }));
+  const pulled = F.recommend(withLater.plan, liveAsOf, recOpts());
+  const pulledShort = F.recommend(withLater.plan, liveAsOf, recOpts({ viewDays: 14 }));
   ok(pulled.weekly < base.advice.weekly,
     'a dated January 2027 commitment on this same master plan reduces today\'s cap',
     `$${pulled.weekly} < $${base.advice.weekly}`);
   const xmas = clone(live);
   const xmasRow = (xmas.plan.commitments || []).find(c => c.id === 'christmas-2026');
   const encBefore = base.advice.knowledge.encumbered;
-  xmasRow.settledOn = AS_OF;
-  const xmasAfter = F.recommend(xmas.plan, AS_OF, recOpts());
+  xmasRow.settledOn = liveAsOf;
+  const xmasAfter = F.recommend(xmas.plan, liveAsOf, recOpts());
   ok(xmasAfter.knowledge.encumbered < encBefore
     && near(encBefore - xmasAfter.knowledge.encumbered, 3500),
     'settling Christmas releases that encumbered principal independently ($3,500)',
@@ -208,18 +215,18 @@ console.log('\n=== C. future financial gravity affects today; the payday window 
 
 console.log('\n=== D. protected commitments are not double-counted; settled stays settled ===');
 {
-  const events = F.expandEvents(live.plan, AS_OF, F.addDays(AS_OF, 90), {});
+  const events = F.expandEvents(aug16Pinned.plan, AS_OF, F.addDays(AS_OF, 90), {});
   for (const id of ['fusioncamp', 'tryouts', 'burrard1', 'burrard2']) {
     ok(!events.some(e => e.id === id),
-      `${id} is settled on this opening and emits no cash event`);
+      `${id} is settled on the pinned 2026-08-16 opening and emits no cash event`);
   }
-  const seqIds = (F.fundingSequence(live.plan, AS_OF, {}) || []).map(x => x.id);
+  const seqIds = (F.fundingSequence(aug16Pinned.plan, AS_OF, {}) || []).map(x => x.id);
   ok(!seqIds.includes('fusioncamp') && !seqIds.includes('tryouts'),
     'settled Fusion rows are not in the funding sequence');
   const reserved = events.filter(e => e.date === AS_OF && e.kind === 'bill' && e.jointCash !== false);
   const reservedSum = reserved.reduce((s, e) => s + -e.amount, 0);
   ok(near(reservedSum, RESERVED_AUG16),
-    'unknown 15 August bills are reserved once on this opening, independently $307.87',
+    'unknown 15 August bills are reserved once on that opening, independently $307.87',
     reservedSum.toFixed(2));
   const nextOut = F.nextPaymentOut(events, AS_OF);
   ok(nextOut && nextOut.date === AS_OF && near(nextOut.amount, RESERVED_AUG16),
@@ -228,7 +235,8 @@ console.log('\n=== D. protected commitments are not double-counted; settled stay
 
 console.log('\n=== E. funded/settled money redirects; encumbered principal stays claimed ===');
 {
-  const before = F.recommend(live.plan, AS_OF, recOpts());
+  const liveAsOf = live.meta.asOf;
+  const before = F.recommend(live.plan, liveAsOf, recOpts());
   const first = (before.fundingSequence || [])[0];
   const second = (before.fundingSequence || [])[1];
   ok(first && second, 'the live sequence has a next item and a following item',
@@ -237,8 +245,8 @@ console.log('\n=== E. funded/settled money redirects; encumbered principal stays
   const afterPlan = clone(live.plan);
   const row = (afterPlan.commitments || []).find(c => c.id === first.id);
   ok(!!row, 'the first sequenced item is a live commitment');
-  row.settledOn = AS_OF;
-  const after = F.recommend(afterPlan, AS_OF, recOpts());
+  row.settledOn = liveAsOf;
+  const after = F.recommend(afterPlan, liveAsOf, recOpts());
   ok(!(after.fundingSequence || []).some(x => x.id === first.id),
     'settling the first item drops it from the sequence');
   ok((after.fundingSequence || [])[0] && after.fundingSequence[0].id === second.id,
@@ -246,7 +254,7 @@ console.log('\n=== E. funded/settled money redirects; encumbered principal stays
     after.fundingSequence[0] && after.fundingSequence[0].id);
   const empty = clone(live.plan);
   empty.commitments = [];
-  const none = F.recommend(empty, AS_OF, recOpts());
+  const none = F.recommend(empty, liveAsOf, recOpts());
   ok(after.weekly < none.weekly || (after.knowledge.encumbered > 0),
     'settling one item does not treat remaining encumbered principal as free spend');
   const html = composeLive(afterPlan).html;
@@ -256,15 +264,16 @@ console.log('\n=== E. funded/settled money redirects; encumbered principal stays
 
 console.log('\n=== F. overdue obligations cannot be rescued by later income ===');
 {
-  const events = F.expandEvents(live.plan, AS_OF, NEXT_PAY, {});
-  const nextOut = F.nextPaymentOut(events, AS_OF);
+  const liveAsOf = live.meta.asOf;
+  const events = F.expandEvents(live.plan, liveAsOf, NEXT_PAY, {});
+  const nextOut = F.nextPaymentOut(events, liveAsOf);
   const richer = clone(live.plan);
   richer.income = (richer.income || []).concat([{
     id: 'b96-late-windfall', label: 'Later windfall', frequency: 'once',
     date: '2026-08-29', amount: 20000, confidence: 'confirmed',
   }]);
-  const after = F.expandEvents(richer, AS_OF, F.addDays(AS_OF, 20), {});
-  const still = F.nextPaymentOut(after, AS_OF);
+  const after = F.expandEvents(richer, liveAsOf, F.addDays(liveAsOf, 20), {});
+  const still = F.nextPaymentOut(after, liveAsOf);
   ok(nextOut && still && still.date === nextOut.date && near(still.amount, nextOut.amount),
     'a later windfall does not erase today\'s reserved cash-out',
     still && `${still.date} ${still.amount}`);
@@ -306,7 +315,7 @@ console.log('\n=== G. credit is not cash or safe-to-spend ===');
     String(liveRun.revolving));
   ok(!near(cash, cash + liveRun.revolving),
     'adding credit headroom would disagree with spendable cash');
-  ok(liveRun.html.includes('2,252.76') || liveRun.html.includes('$2,252.76'),
+  ok(liveRun.html.includes(money2(cash)) || liveRun.html.includes('$' + money2(cash)),
     'payday HTML publishes the independent spendable cash');
   ok(/not<\/b> cash|not cash/i.test(liveRun.html),
     'payday HTML says credit is not cash');
@@ -367,9 +376,9 @@ console.log('\n=== I. household-facing composed answer agrees with Forecast ==='
     ok(/INFEASIBLE/.test(liveRun.html), 'infeasible recommend renders INFEASIBLE');
   } else {
     ok(!/INFEASIBLE/.test(liveRun.html),
-      'the live 2026-08-16 opening is not published as INFEASIBLE');
+      'the live opening is not published as INFEASIBLE');
   }
-  const nextOut = F.nextPaymentOut(liveRun.sim.events, AS_OF);
+  const nextOut = F.nextPaymentOut(liveRun.sim.events, live.meta.asOf);
   if (nextOut) {
     ok(liveRun.html.includes(nextOut.date.slice(8)) || liveRun.html.includes(nextOut.label.split(' ')[0]),
       'HTML names the Forecast.nextPaymentOut day');

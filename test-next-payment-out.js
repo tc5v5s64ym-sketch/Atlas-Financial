@@ -11,9 +11,14 @@
  */
 const fs = require('fs');
 const vm = require('vm');
+const { execFileSync } = require('child_process');
 const { sourceText } = require('./test-source-text');
 const F = require('./public/forecast.js');
 const data = require('./data.json');
+const AUG16_REV = '28d08a12a18691f34c32bc839d22cd526fc75111';
+const aug16Pinned = JSON.parse(execFileSync('git', ['show', `${AUG16_REV}:data.json`], {
+  encoding: 'utf8', cwd: __dirname,
+}));
 
 let failures = 0;
 const ok = (cond, label, detail = '') => {
@@ -137,27 +142,42 @@ ok(F.nextPaymentOut(EVENTS.slice(0, 3), AS_OF) === null,
 ok(F.nextPaymentOut([], AS_OF) === null, 'an empty stream returns null');
 ok(F.nextPaymentOut(undefined, AS_OF) === null, 'a missing stream returns null');
 
-console.log('\n=== live plan: independent of the old page expression ===');
-/* data.json as-of 2026-08-16. Burrards are settled. The next dated joint-cash
- * outflows are the four unposted 15 August bills reserved on this opening:
- * BCAA $82.96 + ICBC $99.91 + RESP $100.00 + union $25.00 = $307.87. */
-const asOf = data.meta.asOf;
-const outstanding = (data.plan.bills || []).filter(b => /aug15-outstanding/.test(b.id));
-ok(asOf === '2026-08-16', 'the published as-of is 16 August', asOf);
-ok(outstanding.length === 4, 'data.json reserves four unposted 15 August bills');
+console.log('\n=== pinned 2026-08-16 plan: independent of the old page expression ===');
+/* Pinned 28d08a12 data.json as-of 2026-08-16. Burrards are settled. The next
+ * dated joint-cash outflows are the four unposted 15 August bills reserved
+ * on that opening: BCAA $82.96 + ICBC $99.91 + RESP $100.00 + union $25.00
+ * = $307.87. */
+const pinnedAsOf = aug16Pinned.meta.asOf;
+const outstanding = (aug16Pinned.plan.bills || []).filter(b => /aug15-outstanding/.test(b.id));
+ok(pinnedAsOf === '2026-08-16', 'pinned 28d08a12 as-of is 16 August', pinnedAsOf);
+ok(outstanding.length === 4, 'that opening reserves four unposted 15 August bills');
 const liveExpected = outstanding.reduce((s, b) => s + b.amount, 0);
 ok(same(liveExpected, 307.87), 'independent 15 August reserve is $307.87');
 
+const pinned = F.nextPaymentOut(
+  F.recommend(aug16Pinned.plan, pinnedAsOf, {
+    scenario: 'expected', incomeOverrides: {}, disabled: [], extraDebtMonthly: 0,
+    targetBuffer: aug16Pinned.plan.defaults.targetBuffer,
+  }).sim.events,
+  pinnedAsOf);
+ok(pinned && pinned.date === '2026-08-16' && pinned.count === 4
+  && same(pinned.amount, liveExpected) && pinned.daysUntil === 0,
+  'the 16 August tile is the reserved mid-month total, due that day',
+  pinned ? `${pinned.label} on ${pinned.date} $${pinned.amount} in ${pinned.daysUntil}d` : 'none');
+
+console.log('\n=== live plan: nextPaymentOut is taken from the current opening stream ===');
+const asOf = data.meta.asOf;
+ok(data.plan.opening && data.plan.opening.asOf === asOf,
+  'live meta.asOf agrees with plan.opening.asOf', asOf);
 const live = F.nextPaymentOut(
   F.recommend(data.plan, asOf, {
     scenario: 'expected', incomeOverrides: {}, disabled: [], extraDebtMonthly: 0,
     targetBuffer: data.plan.defaults.targetBuffer,
   }).sim.events,
   asOf);
-ok(live && live.date === '2026-08-16' && live.count === 4
-  && same(live.amount, liveExpected) && live.daysUntil === 0,
-  'the published tile is 16 August, the reserved mid-month total, due today',
-  live ? `${live.label} on ${live.date} $${live.amount} in ${live.daysUntil}d` : 'none');
+ok(!live || live.date >= asOf,
+  'live nextPaymentOut is not before the current opening',
+  live ? `${live.label} on ${live.date} $${live.amount}` : 'none eligible');
 
 console.log('\n=== page is a renderer ===');
 const page = read('public/plan.js');

@@ -9,8 +9,13 @@
  * different question.
  */
 const fs = require('fs');
+const { execFileSync } = require('child_process');
 const F = require('./public/forecast.js');
 const data = require('./data.json');
+const AUG16_REV = '28d08a12a18691f34c32bc839d22cd526fc75111';
+const aug16Pinned = JSON.parse(execFileSync('git', ['show', `${AUG16_REV}:data.json`], {
+  encoding: 'utf8', cwd: __dirname,
+}));
 
 let failures = 0;
 const ok = (cond, label, detail = '') => {
@@ -114,24 +119,35 @@ ok(nothingLeft === null, 'no eligible item returns null', String(nothingLeft));
 ok(F.nextDue([], AS_OF) === null, 'an empty stream returns null');
 ok(F.nextDue(undefined, AS_OF) === null, 'a missing stream returns null');
 
-console.log('\n=== live plan, from the Plan bills, not a second calendar ===');
-const asOf = data.meta.asOf;
-const end = F.addDays(asOf, (data.plan.windowDays || 91) - 1);
-const liveEvents = F.expandEvents(data.plan, asOf, end);
-const live = F.nextDue(liveEvents, asOf);
-const outstanding = (data.plan.bills || []).filter(b => /aug15-outstanding/.test(b.id));
-ok(asOf === '2026-08-16', 'published as-of is 16 August');
-ok(outstanding.length === 4 && outstanding.every(b => b.date === asOf),
-  'four unposted 15 August bills are reserved on this opening');
-ok(live && live.due === asOf && outstanding.some(b => b.label === live.what && b.amount === live.amount),
+console.log('\n=== pinned 2026-08-16 plan, from the Plan bills, not a second calendar ===');
+const pinnedAsOf = aug16Pinned.meta.asOf;
+const pinnedEnd = F.addDays(pinnedAsOf, (aug16Pinned.plan.windowDays || 91) - 1);
+const pinnedEvents = F.expandEvents(aug16Pinned.plan, pinnedAsOf, pinnedEnd);
+const pinnedNext = F.nextDue(pinnedEvents, pinnedAsOf);
+const outstanding = (aug16Pinned.plan.bills || []).filter(b => /aug15-outstanding/.test(b.id));
+ok(pinnedAsOf === '2026-08-16', 'pinned 28d08a12 as-of is 16 August');
+ok(outstanding.length === 4 && outstanding.every(b => b.date === pinnedAsOf),
+  'four unposted 15 August bills are reserved on that opening');
+ok(pinnedNext && pinnedNext.due === pinnedAsOf
+  && outstanding.some(b => b.label === pinnedNext.what && b.amount === pinnedNext.amount),
   'nextDue names one of those reserved bills, from the Plan',
-  live ? `${live.what} ${live.due} $${live.amount}` : 'none');
-const liveOut = F.nextPaymentOut(liveEvents, asOf);
+  pinnedNext ? `${pinnedNext.what} ${pinnedNext.due} $${pinnedNext.amount}` : 'none');
+const pinnedOut = F.nextPaymentOut(pinnedEvents, pinnedAsOf);
 const independentOut = outstanding.reduce((s, b) => s + b.amount, 0);
-ok(liveOut && liveOut.date === asOf && liveOut.count === 4
-  && Math.abs(liveOut.amount - independentOut) < 0.005,
+ok(pinnedOut && pinnedOut.date === pinnedAsOf && pinnedOut.count === 4
+  && Math.abs(pinnedOut.amount - independentOut) < 0.005,
   'nextPaymentOut on the same stream is the $307.87 day total',
-  liveOut ? `${liveOut.date} $${liveOut.amount}` : 'none');
+  pinnedOut ? `${pinnedOut.date} $${pinnedOut.amount}` : 'none');
+
+console.log('\n=== live plan: nextDue is taken from the current opening stream ===');
+const asOf = data.meta.asOf;
+ok(data.plan.opening && data.plan.opening.asOf === asOf,
+  'live meta.asOf agrees with plan.opening.asOf', asOf);
+const liveEvents = F.expandEvents(data.plan, asOf, F.addDays(asOf, (data.plan.windowDays || 91) - 1));
+const live = F.nextDue(liveEvents, asOf);
+ok(!live || liveEvents.some(e => e.label === live.what && e.date === live.due),
+  'live nextDue is an event from expandEvents at the current as-of',
+  live ? `${live.what} ${live.due} $${live.amount}` : 'none eligible');
 
 console.log('\n=== page is a renderer ===');
 const page = fs.readFileSync('public/deepdive.js', 'utf8');

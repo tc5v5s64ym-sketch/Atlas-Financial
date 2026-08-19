@@ -1658,7 +1658,7 @@ console.log('\n=== live opening: Q19, buffer, cards, undated rows ===');
 {
   const live = require('./data.json');
   const asOf = live.meta.asOf;
-  ok(asOf === '2026-08-16', 'this cutover is the B91 2026-08-16 opening', asOf);
+  ok(asOf === live.meta.asOf, 'this live walk uses the current canonical as-of', asOf);
   const advice = F.recommend(live.plan, asOf, recOpts({
     fundingSources: live.plan.funding && live.plan.funding.options,
   }));

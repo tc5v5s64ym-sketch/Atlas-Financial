@@ -58,5 +58,9 @@ Lunch Money observation
 ```
 
 Default operation is non-writing. No approval means no canonical write.
-Snapshot / history stays `scripts/snapshot-balances.js` after a successful
-owner-approved write. That existing writer is not replaced.
+Snapshot / history stays `scripts/snapshot-balances.js`. After the later
+opening-state-transition repair, an approved `--approve-opening` write
+must construct same-date Household evidence and the dated snapshot
+before `data.json` is permanently mutated; the snapshot writer is not
+replaced and is no longer a required operator follow-up after a
+successful opening.

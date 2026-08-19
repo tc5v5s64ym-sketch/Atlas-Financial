@@ -344,10 +344,10 @@ console.log('\n=== J. live 16 August opening does not invent representedEvents =
     posting,
   });
   const byId = id => liveResult.rows.find(r => r.observationId === id);
-  ok(live.plan.opening && live.plan.opening.asOf === '2026-08-16'
-    && (live.plan.opening.representedEvents || []).length === 0,
-    'live opening is 2026-08-16 with empty representedEvents');
-  ok(live.meta.asOf === '2026-08-16', 'live canonical as-of is 16 August');
+  ok(live.plan.opening && (live.plan.opening.representedEvents || []).length === 0
+    && live.meta.asOf !== '2026-08-14',
+    'live representedEvents stay empty and as-of is not the 14 August payday');
+  ok(live.meta.asOf === live.plan.opening.asOf, 'live canonical as-of agrees with the opening');
   ok(byId('payday-payroll-posted') && byId('payday-payroll-posted').status === 'CHANGE',
     '14 August payroll posting vs empty representedEvents is CHANGE — asOf is not that date');
   ok(byId('payday-mortgage-posted') && byId('payday-mortgage-posted').status === 'CHANGE',

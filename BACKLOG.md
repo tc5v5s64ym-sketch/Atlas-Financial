@@ -1572,17 +1572,51 @@ Build-strategy item `AF-LIVE-02`. Owner T4 pass:
 [`docs/connectivity/T4_OWNER_PASS_2026-08-17.md`](docs/connectivity/T4_OWNER_PASS_2026-08-17.md).
 The earned mechanism is `scripts/canonical-refresh.js`: incumbent observe
 → reconcile → sanitized preview → exact owner approval → bounded
-`data.json` write. Three distinct approval contracts now exist: posted
+canonical write. Three distinct approval contracts exist: posted
 `previewId`, pending `cutoverApprovalId`, and opening `openingApprovalId`
 (`atlas-opening-cutover-approval/v1`). A clean `--cutover-as-of` preflight
 can propose one atomic canonical opening; only
 `--apply --approve-opening <openingApprovalId>` establishes it. Posted
 `previewId` and pending `cutoverApprovalId` cannot authorize an opening.
-Default remains non-writing. Live household figures are unchanged.
-Unattended production writes, scheduled refresh, a Render Lunch Money
-token, and the first production opening cutover remain reserved. Do not
-apply the unused Chequing B $10, choose a Triangle same-day winner, invent
-a pending→posted case, or infer endpoint origin.
+Default remains non-writing.
+
+An approved opening is one coherent state transition. Before
+`data.json` is permanently mutated, the writer must prove that
+same-date Household rows in `docs/positions.csv` are constructible
+from the approved observation/opening evidence (not invented from
+`data.json`), that computed SUMMARY/CREDIT/LIQUIDITY rows can be
+regenerated, and that `snapshots/<date>.json` can be written with
+incumbent snapshot semantics. A failed construction leaves the prior
+canonical files intact. `positions-summary.js` still owns computed
+rows only. Household detail remains captured evidence.
+`snapshot-balances.js` remains the snapshot authority; it is no longer
+a required operator follow-up after a successful opening.
+
+The first owner-approved live `--cutover-as-of 2026-08-19` opening
+wrote `data.json` on the operator machine and then could not produce
+same-date Household rows or `snapshots/2026-08-19.json`, because the
+writer stopped at the canonical file. That integration defect is the
+reason this transition exists.
+
+Preservation (local only, not pushed): original detached SHA
+`6d1f3bb2ea8b253a1b529060c09bd37e16e45abf` is
+`refs/atlas/b81-original-detached-6d1f3bb`; current remote main
+`28d08a12a18691f34c32bc839d22cd526fc75111` is
+`refs/atlas/b81-remote-main-28d08a12`. The exact approved Aug. 19
+`data.json` bytes (SHA-256
+`C28D5D45609888C8871EC3D5CF43BCB1E8532C54F73FC33A68374FCB106D3E3D`)
+were not present in the implementation checkout, git objects, or
+stashes. The workspace `data.json` remained the 2026-08-16 opening
+`f9c47fcdd1a043198c693c7817bfd5d05be6d63434f5da5621a8646ab8f315c0`.
+This item does not invent replacement Aug. 19 Household evidence or
+fetch a newer live observation. Replay of the owner-approved opening
+through the repaired writer is blocked until those exact bytes and
+the observation/opening evidence that produced them are recoverable.
+
+Unattended production writes, scheduled refresh, and a Render Lunch
+Money token remain reserved. Do not apply the unused Chequing B $10,
+choose a Triangle same-day winner, invent a pending→posted case, or
+infer endpoint origin.
 
 The first successful live `--cutover-as-of 2026-08-18` preflight fetched at
 `2026-08-19T01:06:40.929Z` — still 18 August in America/Vancouver — and

@@ -22,9 +22,13 @@
  * It does not advance the opening date.
  *
  * --cutover-as-of --apply --approve-opening writes one atomic opening
- * when the preflight is clean and openingApprovalId matches the complete
- * candidate opening. previewId and cutoverApprovalId cannot authorize
- * that write. No approval = no opening write.
+ * when the preflight is clean, openingApprovalId matches the complete
+ * candidate opening and the current balance-map routing, and the
+ * same-date Household positions plus dated snapshot are constructible
+ * from that approved evidence. Canonical data.json is not permanently
+ * mutated unless the full transition is proven constructible. previewId
+ * and cutoverApprovalId cannot authorize that write. No approval = no
+ * opening write.
  *
  * Never writes without --apply and an exact matching approval.
  * Never POST/PUT/PATCH/DELETE Lunch Money. Never stores a token.
@@ -36,9 +40,15 @@ const path = require('path');
 const crypto = require('crypto');
 const O = require('./provider-observe.js');
 const Forecast = require('../public/forecast.js');
+const S = require('./snapshot-balances.js');
+const POS = require('./positions-summary.js');
+const Household = require('./opening-household-rows.js');
 
 const ROOT = path.join(__dirname, '..');
 const DEFAULT_DATA = path.join(ROOT, 'data.json');
+const DEFAULT_POSITIONS = path.join(ROOT, 'docs', 'positions.csv');
+const DEFAULT_SNAPSHOTS = path.join(ROOT, 'snapshots');
+const DEFAULT_BALANCE_MAP = path.join(ROOT, 'docs', 'reconciliation', 'balance-map.json');
 const DEFAULT_IDENTITY = path.join(ROOT, 'docs', 'connectivity', 'transaction-identity.json');
 const SCHEMA = 'atlas-canonical-refresh-preview/v1';
 const CUTOVER_PENDING_SCHEMA = 'atlas-cutover-pending-approval/v1';
@@ -81,6 +91,9 @@ function parseArgs(argv) {
     approveOpening: null,
     identity: DEFAULT_IDENTITY,
     cutoverAsOf: null,
+    positions: null,
+    snapshots: null,
+    balanceMap: null,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -95,6 +108,9 @@ function parseArgs(argv) {
     else if (a === '--approve-opening') out.approveOpening = argv[++i];
     else if (a === '--identity') out.identity = argv[++i];
     else if (a === '--cutover-as-of') out.cutoverAsOf = argv[++i];
+    else if (a === '--positions') out.positions = argv[++i];
+    else if (a === '--snapshots') out.snapshots = argv[++i];
+    else if (a === '--balance-map') out.balanceMap = argv[++i];
     else if (a === '--help' || a === '-h') out.help = true;
     else if (a === '--preview-out') {
       fail('--preview-out is not accepted. Preview writes to stdout only and cannot target canonical state.');
@@ -640,7 +656,28 @@ function postedStateFromFreshness(row) {
   };
 }
 
-function openingFingerprint(cutover) {
+function openingRoutingFingerprint(balanceMap) {
+  const mappings = ((balanceMap && balanceMap.mappings) || [])
+    .map((row) => {
+      if (!row || !row.canonical || !row.canonical.collection || !row.canonical.id) return null;
+      return {
+        locator: `${row.canonical.collection}:${row.canonical.id}`,
+        accountLabel: row.accountLabel ? String(row.accountLabel) : null,
+        observationId: row.observationId ? String(row.observationId) : null,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => String(a.locator).localeCompare(String(b.locator))
+      || String(a.accountLabel || '').localeCompare(String(b.accountLabel || ''))
+      || String(a.observationId || '').localeCompare(String(b.observationId || '')));
+  const excluded = ((balanceMap && balanceMap.excluded) || [])
+    .map((row) => (row && row.accountLabel ? String(row.accountLabel) : null))
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b));
+  return { mappings, excluded };
+}
+
+function openingFingerprint(cutover, balanceMap) {
   const proposal = (cutover && cutover.proposedOpening) || {};
   return {
     schema: OPENING_CUTOVER_SCHEMA,
@@ -672,11 +709,12 @@ function openingFingerprint(cutover) {
       metaAsOf: cutover && cutover.requestedAsOf ? cutover.requestedAsOf : null,
       planOpeningAsOf: cutover && cutover.requestedAsOf ? cutover.requestedAsOf : null,
     },
+    routing: openingRoutingFingerprint(balanceMap),
   };
 }
 
-function openingApprovalIdFrom(cutover) {
-  return crypto.createHash('sha256').update(JSON.stringify(openingFingerprint(cutover))).digest('hex');
+function openingApprovalIdFrom(cutover, balanceMap) {
+  return crypto.createHash('sha256').update(JSON.stringify(openingFingerprint(cutover, balanceMap))).digest('hex');
 }
 
 function collectPendingDebts(data, report) {
@@ -784,7 +822,7 @@ function newerEvidenceSupersedes(report, locator, requestedAsOf) {
   });
 }
 
-function buildOpeningCutover(data, report, requestedAsOf) {
+function buildOpeningCutover(data, report, requestedAsOf, balanceMap) {
   if (!isIsoDate(requestedAsOf)) {
     fail('--cutover-as-of must be an explicit YYYY-MM-DD date. Do not infer it from fetchedAt.');
   }
@@ -1023,7 +1061,7 @@ function buildOpeningCutover(data, report, requestedAsOf) {
     currentOpeningAsOf: openingAsOf,
     proposedOpening,
   };
-  const openingApprovalId = cutoverWriteSupported ? openingApprovalIdFrom(openingDraft) : null;
+  const openingApprovalId = cutoverWriteSupported ? openingApprovalIdFrom(openingDraft, balanceMap) : null;
 
   return {
     requestedAsOf,
@@ -1100,7 +1138,7 @@ function previewFrom(input, opts) {
   const report = O.observe(input);
   const preview = buildPreview(report);
   if (opts && opts.cutoverAsOf) {
-    preview.openingCutover = buildOpeningCutover(input.data, report, opts.cutoverAsOf);
+    preview.openingCutover = buildOpeningCutover(input.data, report, opts.cutoverAsOf, opts.balanceMap);
   }
   preview.identityProofSanitized = identityProofLooksSanitized(preview);
   if (!preview.identityProofSanitized) fail('Preview is not sanitized.');
@@ -1175,22 +1213,189 @@ function encodeData(data) {
   return `${JSON.stringify(data, null, 4)}\n`;
 }
 
-function replaceFileAtomically(dest, nextBytes) {
+function replaceBytesAtomically(dest, nextBytes, kind) {
   const destPath = path.resolve(dest);
   const tmp = `${destPath}.atlas-refresh-tmp`;
   fs.writeFileSync(tmp, nextBytes, { encoding: 'utf8' });
   try {
     const fd = fs.openSync(tmp, 'r+');
     try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
-    JSON.parse(fs.readFileSync(tmp, 'utf8'));
+    if (kind === 'json') JSON.parse(fs.readFileSync(tmp, 'utf8'));
     // POSIX rename and Node's Windows MoveFileEx replace dest in one step.
     // If that replace cannot complete, fail closed with dest still intact.
     // Never rename dest aside: a crash between dest→bak and tmp→dest would
     // leave canonical state missing.
     fs.renameSync(tmp, destPath);
-    JSON.parse(fs.readFileSync(destPath, 'utf8'));
+    if (kind === 'json') JSON.parse(fs.readFileSync(destPath, 'utf8'));
   } catch (err) {
     try { fs.unlinkSync(tmp); } catch (_) { /* ignore */ }
+    throw err;
+  }
+}
+
+function replaceFileAtomically(dest, nextBytes) {
+  return replaceBytesAtomically(dest, nextBytes, 'json');
+}
+
+function sameResolvedPath(left, right) {
+  const a = path.resolve(left);
+  const b = path.resolve(right);
+  if (a === b) return true;
+  try {
+    if (fs.existsSync(a) && fs.existsSync(b)) {
+      return fs.realpathSync(a) === fs.realpathSync(b);
+    }
+  } catch (_) { /* compare resolved paths only */ }
+  return false;
+}
+
+function resolveOpeningArtifactPaths(args) {
+  const dest = path.resolve(args.data);
+  const live = sameResolvedPath(dest, DEFAULT_DATA);
+  if (live) {
+    if (args.positions || args.snapshots || args.balanceMap) {
+      fail('Live canonical opening cannot override --positions, --snapshots, or --balance-map. data.json, docs/positions.csv, snapshots/, and docs/reconciliation/balance-map.json are one artifact set. Canonical state was not written.');
+    }
+    return {
+      positionsPath: DEFAULT_POSITIONS,
+      snapshotDir: DEFAULT_SNAPSHOTS,
+      balanceMapPath: DEFAULT_BALANCE_MAP,
+    };
+  }
+  if (!args.positions || !args.snapshots || !args.balanceMap) {
+    fail('Opening apply requires --positions, --snapshots, and --balance-map when --data is not the live canonical file. Canonical state was not written.');
+  }
+  const positions = path.resolve(args.positions);
+  const snapshots = path.resolve(args.snapshots);
+  const balanceMap = path.resolve(args.balanceMap);
+  if (sameResolvedPath(positions, DEFAULT_POSITIONS)
+    || sameResolvedPath(snapshots, DEFAULT_SNAPSHOTS)
+    || sameResolvedPath(balanceMap, DEFAULT_BALANCE_MAP)) {
+    fail('Non-live opening data cannot target live positions.csv, snapshots/, or balance-map.json. Canonical state was not written.');
+  }
+  return {
+    positionsPath: positions,
+    snapshotDir: snapshots,
+    balanceMapPath: balanceMap,
+  };
+}
+
+function openingBalanceMapPath(args) {
+  const dest = path.resolve(args.data || DEFAULT_DATA);
+  if (sameResolvedPath(dest, DEFAULT_DATA)) return DEFAULT_BALANCE_MAP;
+  if (args.balanceMap) return path.resolve(args.balanceMap);
+  return null;
+}
+
+function loadOpeningBalanceMap(args) {
+  const mapPath = openingBalanceMapPath(args);
+  if (!mapPath || !fs.existsSync(mapPath)) return { mappings: [], excluded: [] };
+  return loadJson(mapPath);
+}
+
+function artifactsLeakSecrets(dataText, positionsText, snapshot) {
+  const blob = `${dataText}\n${positionsText}\n${JSON.stringify(snapshot || {})}`;
+  return /LUNCHMONEY_ACCESS_TOKEN/i.test(blob)
+    || /SITE_PASSWORD/i.test(blob)
+    || /SESSION_SECRET/i.test(blob)
+    || /Bearer\s+\S+/.test(blob)
+    || /"providerAccountId"\s*:/.test(blob)
+    || /"providerTransactionId"\s*:/.test(blob);
+}
+
+function assertSnapshotInstallable(snapshotDir, doc) {
+  const dest = path.join(snapshotDir, `${doc.asOf}.json`);
+  if (!fs.existsSync(dest)) return 'missing';
+  let existing;
+  try { existing = JSON.parse(fs.readFileSync(dest, 'utf8')); }
+  catch (err) {
+    fail(`existing ${path.basename(dest)} is not readable JSON: ${err.message}`);
+  }
+  if (JSON.stringify(S.publicSnapshot(existing)) === JSON.stringify(S.publicSnapshot(doc))) {
+    return 'unchanged';
+  }
+  fail(`snapshot ${doc.asOf} already exists and disagrees with the current reading; refusing to rewrite history`);
+}
+
+function assertOpeningAgreement(nextData, csvText, snapshot, cutover, balanceMap) {
+  const rows = S.parsePositions(csvText);
+  const excluded = new Set(((balanceMap && balanceMap.excluded) || []).map(row => row && row.accountLabel).filter(Boolean));
+  const householdLabels = rows.filter(row => row.entity === 'Household').map(row => row.account_label);
+  const duplicate = householdLabels.find((label, idx) => label && householdLabels.indexOf(label) !== idx);
+  if (duplicate) fail(`Duplicate Household authority for ${duplicate}. Canonical state was not written.`);
+  for (const posted of cutover.proposedOpening.posted || []) {
+    const mapping = Household.mappingForLocator(balanceMap, posted.locator);
+    if (!mapping) fail(`Approved posted ${posted.locator} lost its balance-map mapping during agreement.`);
+    if (excluded.has(mapping.accountLabel)) {
+      fail(`Excluded account ${mapping.accountLabel} participated in the opening. Canonical state was not written.`);
+    }
+    const pos = rows.find(row => row.entity === 'Household' && row.account_label === mapping.accountLabel);
+    if (!pos) fail(`Missing Household row for ${mapping.accountLabel} after construction.`);
+    if (pos.as_of !== cutover.requestedAsOf) {
+      fail(`Household ${mapping.accountLabel} as_of is ${pos.as_of}, not ${cutover.requestedAsOf}.`);
+    }
+    if (!near(Number(pos.balance), posted.proposedValue)) {
+      fail(`Household ${mapping.accountLabel} ${pos.balance} disagrees with approved posted ${posted.proposedValue}.`);
+    }
+    const snap = (snapshot.accounts || []).find(row => row.id === mapping.canonical.id);
+    if (!snap) fail(`Snapshot omitted approved opening account ${mapping.canonical.id}.`);
+    if (!near(snap.balance, posted.proposedValue)) {
+      fail(`Snapshot ${mapping.canonical.id} disagrees with approved posted ${posted.proposedValue}.`);
+    }
+  }
+}
+
+function buildOpeningArtifacts(nextData, preview, opts) {
+  if (!opts || !opts.positionsPath || !opts.snapshotDir || !opts.balanceMapPath) {
+    fail('Opening write requires positions.csv, snapshots directory, and balance-map paths. Canonical state was not written.');
+  }
+  const cutover = preview.openingCutover;
+  const incumbentCsv = fs.readFileSync(opts.positionsPath, 'utf8');
+  const balanceMap = loadJson(opts.balanceMapPath);
+  const household = Household.applyApprovedHouseholdRows({
+    csvText: incumbentCsv,
+    balanceMap,
+    proposedOpening: cutover.proposedOpening,
+    requestedAsOf: cutover.requestedAsOf,
+    nextData,
+  });
+  const computed = POS.regenerateComputedRows(nextData, household.text, {
+    periodsPath: opts.periodsPath,
+    periods: (nextData.plan && nextData.plan.budget) ? undefined : null,
+  });
+  const snapshot = S.buildSnapshot(nextData, S.parsePositions(computed.text), balanceMap);
+  if (!snapshot.accounts || !snapshot.accounts.length) {
+    fail(`no same-date accounts for ${cutover.requestedAsOf}; refusing an empty snapshot`);
+  }
+  assertSnapshotInstallable(opts.snapshotDir, snapshot);
+  assertOpeningAgreement(nextData, computed.text, snapshot, cutover, balanceMap);
+  const encoded = encodeData(nextData);
+  if (artifactsLeakSecrets(encoded, computed.text, snapshot)) {
+    fail('Opening artifacts are not sanitized. Canonical state was not written.');
+  }
+  return {
+    encodedData: encoded,
+    positionsText: computed.text,
+    snapshot,
+    updated: household.updated,
+    incumbentCsv,
+  };
+}
+
+function restoreOpeningInstall(destPath, originalData, positionsPath, originalPositions) {
+  try { if (originalData) fs.writeFileSync(destPath, originalData); } catch (_) { /* ignore */ }
+  try { if (originalPositions) fs.writeFileSync(positionsPath, originalPositions); } catch (_) { /* ignore */ }
+}
+
+function installOpeningArtifacts(destPath, artifacts, opts) {
+  const originalData = fs.readFileSync(destPath);
+  const originalPositions = fs.readFileSync(opts.positionsPath);
+  try {
+    replaceFileAtomically(destPath, artifacts.encodedData);
+    replaceBytesAtomically(opts.positionsPath, artifacts.positionsText, 'text');
+    S.writeSnapshot(artifacts.snapshot, opts.snapshotDir);
+  } catch (err) {
+    restoreOpeningInstall(destPath, originalData, opts.positionsPath, originalPositions);
     throw err;
   }
 }
@@ -1401,7 +1606,7 @@ function validateOpeningApplied(before, after, preview) {
   if (!used || !Array.isArray(used.rows)) fail('Forecast cannot consume the applied debt pending state.');
 }
 
-function applyOpeningPreview(data, preview, destPath) {
+function applyOpeningPreview(data, preview, destPath, opts) {
   const cutover = preview && preview.openingCutover;
   if (!preview || preview.schema !== SCHEMA) fail('Preview schema is not the earned refresh preview.');
   if (!cutover) fail('Opening cutover proposal is missing.');
@@ -1418,14 +1623,19 @@ function applyOpeningPreview(data, preview, destPath) {
   if (!cutover.currentOpeningAsOf || cutover.requestedAsOf <= cutover.currentOpeningAsOf) {
     fail('Opening cutover must advance the current canonical opening. Canonical state was not written.');
   }
-  const recomputed = openingApprovalIdFrom(cutover);
+  if (!opts || !opts.balanceMapPath) {
+    fail('Opening write requires a balance-map path. Canonical state was not written.');
+  }
+  const currentBalanceMap = loadJson(opts.balanceMapPath);
+  const recomputed = openingApprovalIdFrom(cutover, currentBalanceMap);
   if (String(recomputed) !== String(cutover.openingApprovalId)) {
-    fail('Opening approval fingerprint does not match the proposed opening. Canonical state was not written.');
+    fail('Opening approval fingerprint does not match the proposed opening or its balance-map routing. Canonical state was not written.');
   }
   if (String(data.meta && data.meta.asOf) !== String(cutover.currentMetaAsOf)
     || String(data.plan && data.plan.opening && data.plan.opening.asOf) !== String(cutover.currentOpeningAsOf)) {
     fail('Current canonical opening changed since preview. Canonical state was not written.');
   }
+  const originalData = fs.readFileSync(destPath);
   const next = clone(data);
   for (const change of cutover.proposedOpening.posted || []) {
     if (change.proposedValue == null || !isFinite(Number(change.proposedValue))) {
@@ -1454,9 +1664,11 @@ function applyOpeningPreview(data, preview, destPath) {
   next.meta.asOf = cutover.requestedAsOf;
   next.plan.opening.asOf = cutover.requestedAsOf;
   validateOpeningApplied(data, next, preview);
-  const encoded = encodeData(next);
-  JSON.parse(encoded);
-  replaceFileAtomically(destPath, encoded);
+  const artifacts = buildOpeningArtifacts(next, preview, opts || {});
+  if (Buffer.compare(fs.readFileSync(destPath), originalData) !== 0) {
+    fail('Canonical data.json changed before the opening install. Canonical state was not written.');
+  }
+  installOpeningArtifacts(destPath, artifacts, opts || {});
   const written = loadJson(destPath);
   validateOpeningApplied(data, written, preview);
   return written;
@@ -1494,6 +1706,7 @@ async function run(argv) {
       + 'Default is a non-writing preview. --apply --approve writes posted fields only.\n'
       + '--cutover-as-of without an opening or pending approval is read-only.\n'
       + 'previewId cannot authorize pending or an opening. cutoverApprovalId cannot authorize an opening.\n'
+      + 'An approved opening also writes same-date Household positions and snapshots/<date>.json.\n'
     );
     return 0;
   }
@@ -1520,6 +1733,14 @@ async function run(argv) {
   if (args.apply && !args.approve && !args.approveCutover && !args.approveOpening) {
     fail('No approval = no canonical write. Pass --approve <previewId>, --approve-cutover <cutoverApprovalId>, or --approve-opening <openingApprovalId>.');
   }
+  const openingArtifactPaths = (args.apply && args.approveOpening && (
+    sameResolvedPath(args.data, DEFAULT_DATA)
+    || args.positions
+    || args.snapshots
+    || args.balanceMap
+  ))
+    ? resolveOpeningArtifactPaths(args)
+    : null;
   const data = loadJson(args.data);
   const originalBytes = fs.readFileSync(args.data);
   const payload = await loadPayload(args);
@@ -1528,7 +1749,12 @@ async function run(argv) {
   if (args.live) O.assertLiveMap(accountMap);
   const { preview } = previewFrom(
     observeInput(args, data, payload, accountMap),
-    args.cutoverAsOf ? { cutoverAsOf: args.cutoverAsOf } : undefined
+    args.cutoverAsOf ? {
+      cutoverAsOf: args.cutoverAsOf,
+      balanceMap: openingArtifactPaths
+        ? loadJson(openingArtifactPaths.balanceMapPath)
+        : loadOpeningBalanceMap(args),
+    } : undefined
   );
   if (!args.apply) {
     process.stdout.write(`${JSON.stringify(preview, null, 2)}\n`);
@@ -1548,13 +1774,20 @@ async function run(argv) {
     if (String(args.approveOpening) !== String(cutover.openingApprovalId)) {
       fail('Opening approval does not match the recomputed opening proposal. Canonical state was not written.');
     }
-    applyOpeningPreview(data, preview, args.data);
+    applyOpeningPreview(
+      data,
+      preview,
+      args.data,
+      openingArtifactPaths || resolveOpeningArtifactPaths(args)
+    );
     const afterBytes = fs.readFileSync(args.data);
     const result = {
       schema: OPENING_CUTOVER_SCHEMA,
       writesCanonicalState: true,
       canonicalWriteAuthorized: true,
       writesOpening: true,
+      writesPositions: true,
+      writesSnapshot: true,
       cutoverWriteSupported: true,
       unattended: false,
       productionWrite: false,
@@ -1571,10 +1804,11 @@ async function run(argv) {
         planOpeningAsOf: cutover.requestedAsOf,
       },
       snapshotFollows: SNAPSHOT_COMMAND,
-      snapshotRequired: true,
+      snapshotRequired: false,
+      snapshotWritten: true,
       snapshotAsOf: cutover.requestedAsOf,
       byteChange: afterBytes.compare(originalBytes) !== 0,
-      note: 'Bounded owner-approved opening cutover. meta.asOf and plan.opening.asOf advanced together. Posted previewId and pending cutoverApprovalId did not authorize this write. Run node scripts/snapshot-balances.js after this successful opening; this command did not write a snapshot.',
+      note: 'Bounded owner-approved opening cutover. meta.asOf, plan.opening.asOf, same-date Household positions, derived position rows, and snapshots/<date>.json advanced together. Posted previewId and pending cutoverApprovalId did not authorize this write. The snapshot uses incumbent snapshot-balances semantics; previous dated files were not rewritten.',
     };
     if (!identityProofLooksSanitized(result)) fail('Apply result is not sanitized.');
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
@@ -1639,6 +1873,9 @@ const api = {
   OPENING_CUTOVER_SCHEMA,
   DEFAULT_DATA,
   SNAPSHOT_COMMAND,
+  DEFAULT_POSITIONS,
+  DEFAULT_SNAPSHOTS,
+  DEFAULT_BALANCE_MAP,
   parseArgs,
   parseLocator,
   eligiblePosted,
@@ -1648,6 +1885,7 @@ const api = {
   cutoverApprovalIdFrom,
   openingApprovalIdFrom,
   openingFingerprint,
+  openingRoutingFingerprint,
   identityProofLooksSanitized,
   isIsoDate,
   ownerStatementCadence,
@@ -1670,6 +1908,8 @@ const api = {
   applyPreview,
   applyPendingPreview,
   applyOpeningPreview,
+  buildOpeningArtifacts,
+  resolveOpeningArtifactPaths,
   run,
 };
 

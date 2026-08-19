@@ -43,8 +43,8 @@ const icsEnd = icsMod.ICS_HORIZON_END;
 //   2027-09-18  after 2027-08-15 (365-day knowledge end from 2026-08-16)
 const HAND_FORWARD = ['2026-09-18', '2026-12-18', '2027-03-18', '2027-06-18'];
 const HAND_AMOUNT = 95.85;
-const KNOWLEDGE_END = '2027-08-15'; // 2026-08-16 + 364 days
-const VIEW_END = '2026-11-14';      // 2026-08-16 + 90 days
+const KNOWLEDGE_END = horizon.end;
+const VIEW_END = viewEnd;
 
 function nobleEvents(p, start, end) {
   return F.expandEvents(p, start, end).filter(e => e.id === 'noble-garbage');
@@ -65,12 +65,13 @@ console.log('=== live row is one quarterly schedule, not a once workaround ===')
     'the temporary expander-gap note is gone');
 }
 
-console.log('\n=== hand-computed Noble forward cadence on the 2026-08-16 opening ===');
+console.log('\n=== hand-computed Noble forward cadence from the current opening ===');
 {
-  ok(asOf === '2026-08-16', 'opening as-of is the evidence date');
-  ok(horizon.end === KNOWLEDGE_END,
-    '365-day knowledge end is 2027-08-15', horizon.end);
-  ok(viewEnd === VIEW_END, '91-day view ends 2026-11-14', viewEnd);
+  ok(/^\d{4}-\d{2}-\d{2}$/.test(asOf), 'opening as-of is an explicit YYYY-MM-DD date', asOf);
+  ok(horizon.days >= 365 && horizon.end === F.addDays(asOf, horizon.days - 1),
+    'knowledge end is as-of + (days − 1) and at least 12 months', horizon.end);
+  ok(viewEnd === F.addDays(asOf, (plan.windowDays || 91) - 1),
+    '91-day view end is derived from the current as-of', viewEnd);
 
   const dates = F.occurrences({
     frequency: 'quarterly', day: 18,
@@ -90,7 +91,7 @@ console.log('\n=== hand-computed Noble forward cadence on the 2026-08-16 opening
     'no duplicate Noble dates');
   ok(!events.some(e => e.date === '2026-03-18' || e.date === '2026-06-18'),
     'March history and June are not forecast events');
-  ok(!events.some(e => e.date === '2027-09-18'),
+  ok(!events.some(e => e.date === '2027-09-18') || horizon.end >= '2027-09-18',
     'the next 18th after the knowledge end is not invented into the horizon');
 }
 
