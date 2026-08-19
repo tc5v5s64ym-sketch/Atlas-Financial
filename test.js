@@ -77,6 +77,7 @@ const suites = [
   ['idempotent Lunch Money identity (B78 / AF-INGEST-01)', 'test-b78-identity.js'],
   ['trusted canonical refresh (B81 / AF-LIVE-02)', 'test-b81-refresh.js'],
   ['opening-cutover preflight (B81 read-only)', 'test-cutover-preflight.js'],
+  ['bounded cutover pending writer (B81)', 'test-b81-pending-writer.js'],
   ['Aug. 16 household evidence absorption', 'test-aug16-evidence.js'],
   ['telecom current-regime closeout', 'test-telecom-current-regime.js'],
   ['HELOC Q19 + Bell Q18 evidence closeout', 'test-q19-q18-closeout.js'],
