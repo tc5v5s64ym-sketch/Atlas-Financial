@@ -218,6 +218,18 @@ console.log('=== L. live transaction request includes pending ===');
   ok(!!tx, 'live fetch actually GET /v2/transactions', JSON.stringify(captured));
   ok(tx && new URL(tx).searchParams.get('include_pending') === 'true',
     'live request URL contains include_pending=true', tx);
+  const census = captured.find(u => {
+    try {
+      const parsed = new URL(u);
+      return parsed.pathname === '/v2/transactions'
+        && parsed.searchParams.get('is_pending') === 'true'
+        && !parsed.searchParams.has('start_date')
+        && !parsed.searchParams.has('end_date');
+    } catch (e) {
+      return false;
+    }
+  });
+  ok(!!census, 'live fetch also GET /v2/transactions?is_pending=true with no date bound', JSON.stringify(captured));
 }
 
 console.log('=== M. unobserved live account IDs cannot match fixture mappings ===');

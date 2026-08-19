@@ -394,6 +394,145 @@ console.log('\n=== history window is configurable ===');
     'the 90-day rule is scoped to pending bill/payment effects');
 }
 
+console.log('\n=== pending census URL is unbounded is_pending filter ===');
+{
+  const url = O.lunchMoneyPendingCensusUrl(0, 2000);
+  ok(url.searchParams.get('is_pending') === 'true', 'census asks is_pending=true');
+  ok(!url.searchParams.has('start_date') && !url.searchParams.has('end_date'),
+    'census has no start_date/end_date bound');
+  ok(!url.searchParams.has('include_pending'),
+    'census does not send include_pending; is_pending takes precedence');
+  ok(!url.searchParams.has('status'), 'census does not filter status');
+  ok(url.searchParams.get('limit') === '2000', 'census uses the documented max page size');
+  const paged = O.lunchMoneyPendingCensusUrl(2000, 2000);
+  ok(paged.searchParams.get('offset') === '2000', 'subsequent pages use offset');
+}
+
+console.log('\n=== CASE A — complete census with no pending components is proven zero ===');
+{
+  const census = O.assemblePendingCensus([{ transactions: [], has_more: false }]);
+  ok(census.complete === true && census.hasMore === false,
+    'empty unbounded page with has_more=false is a complete census');
+  const extra = clone(payload);
+  extra.pendingCensus = census;
+  extra.transactions = extra.transactions.filter(t => t.is_pending !== true);
+  const report = observeWith(extra);
+  const tdcc = report.observations.find(o => o.observationId === 'lm-3004-pending');
+  ok(tdcc && tdcc.unknown !== true && near(tdcc.evidenceValue, 0) && tdcc.pendingProof === 'proven-zero',
+    'TD Personal candidate-date pending observation is proven 0',
+    tdcc && String(tdcc.evidenceValue));
+  ok(tdcc && tdcc.components.length === 0,
+    'proven zero is not inferred from omitted components in a bounded window');
+  const travel = report.observations.find(o => o.observationId === 'lm-3006-pending');
+  ok(travel && near(travel.evidenceValue, 0) && travel.pendingProof === 'proven-zero',
+    'Travel Visa with no remaining pending components is also proven 0 when the census is complete');
+}
+
+console.log('\n=== CASE B — bounded include_pending window does not prove zero ===');
+{
+  const extra = clone(payload);
+  extra.has_more = false;
+  extra.transactions = extra.transactions.filter(t => t.is_pending !== true);
+  const report = observeWith(extra);
+  ok(report.pendingCoverage && report.pendingCoverage.complete !== true,
+    'windowed packet coverage is incomplete');
+  ok(/bounded include_pending window/.test(String(report.pendingCoverage.requiredEvidence)),
+    'incomplete coverage names the evidence still required');
+  const tdcc = report.observations.find(o => o.observationId === 'lm-3004-pending');
+  ok(!tdcc, 'no pending observation is emitted for a mapped card with no pending components');
+  const travel = report.observations.find(o => o.observationId === 'lm-3006-pending');
+  ok(!travel, 'Travel Visa does not emit pending: 0 merely because no pending row was in the window');
+  const falseComplete = O.assessPendingCoverage({
+    complete: true, hasMore: false, transactions: [],
+  });
+  ok(falseComplete.complete !== true,
+    'complete:true without method is_pending-unbounded-paginated is not a census');
+  const bounded = O.assemblePendingCensus(
+    [{ transactions: [], has_more: false }],
+    { startDate: '2026-08-02', endDate: '2026-08-16' }
+  );
+  ok(bounded.complete !== true && bounded.reason === 'census-date-bounded',
+    'a dated is_pending query is not a complete census');
+  const unexhausted = O.assemblePendingCensus([{ transactions: [], has_more: true }]);
+  ok(unexhausted.complete !== true,
+    'has_more=true does not prove coverage even with zero rows on the page');
+}
+
+console.log('\n=== CASE C — nonzero pending remains numeric and is not written ===');
+{
+  const census = O.assemblePendingCensus([{
+    transactions: payload.transactions.filter(t => t.is_pending === true),
+    has_more: false,
+  }]);
+  const extra = clone(payload);
+  extra.pendingCensus = census;
+  extra.transactions.push({
+    id: 88099,
+    account_id: 3006,
+    date: '2026-08-16',
+    amount: 92.65,
+    payee: 'Merchant Pending',
+    is_pending: true,
+  });
+  extra.pendingCensus.transactions = extra.transactions.filter(t => t.is_pending === true);
+  const before = hashFile(DATA);
+  const report = observeWith(extra);
+  const travel = report.observations.find(o => o.observationId === 'lm-3006-pending');
+  const independent = independentExposure(PENDING, 92.65);
+  ok(near(independent, 342.65), 'independent 250+92.65 is $342.65');
+  ok(travel && travel.unknown !== true && near(travel.evidenceValue, independent)
+    && travel.pendingProof === 'numeric',
+    'Travel-Visa-shaped pending is $342.65, not silently written',
+    travel && String(travel.evidenceValue));
+  ok(hashFile(DATA) === before, 'nonzero pending observation does not write data.json');
+}
+
+console.log('\n=== CASE D — UNKNOWN pending is not coerced to zero ===');
+{
+  const report = observeWith();
+  const cashback = report.observations.find(o => o.observationId === 'lm-3005-pending');
+  ok(!cashback, 'Cash Back with no pending components and no census stays absent, not 0');
+  ok(data.debts.find(d => d.id === 'cashback').pendingUnknown === true,
+    'canonical Cash Back pending remains UNKNOWN on disk');
+  ok(data.debts.find(d => d.id === 'cashback').pending == null,
+    'UNKNOWN canonical pending is not stored as 0');
+}
+
+console.log('\n=== CASE E — pending identity and pending-to-posted survive the census ===');
+{
+  const census = O.assemblePendingCensus([{
+    transactions: [{
+      id: Number(BELL_ID),
+      account_id: 3006,
+      date: '2026-08-16',
+      amount: 250.00,
+      payee: 'Bell Mobility',
+      is_pending: true,
+    }],
+    has_more: false,
+  }]);
+  const extra = clone(payload);
+  extra.pendingCensus = census;
+  extra.transactions.push({
+    id: Number(BELL_ID),
+    account_id: 3006,
+    date: '2026-08-16',
+    amount: 250.00,
+    payee: 'Bell Mobility',
+    is_pending: false,
+    status: 'reviewed',
+  });
+  const report = observeWith(extra);
+  const ident = report.identityEvidence.find(e => e.providerTransactionId === BELL_ID);
+  ok(ident && ident.transition === 'pending-to-posted',
+    'census pending + windowed posted still collapses as pending→posted');
+  ok(ident && ident.ghostPending === false && ident.doubleCounted === false,
+    'collapse does not keep a ghost pending or double-count');
+  const pending = report.observations.find(o => o.observationId === 'lm-3006-pending');
+  ok(pending && near(pending.evidenceValue, 0) && pending.pendingProof === 'proven-zero',
+    'after pending→posted, complete census current pending is proven 0');
+}
+
 console.log('\n=== CLI fixture run remains read-only ===');
 {
   const before = hashFile(DATA);

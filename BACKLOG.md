@@ -1586,6 +1586,15 @@ falsely dated current evidence as 19 August by slicing the UTC timestamp.
 Household financial dates from instants are `Forecast.financialDate` in the
 ACCOUNT_FACTS timezone. MATCH is still not freshness. Genuinely older
 provider evidence is still stale.
+
+That same live preflight then exposed a separate pending-liveness defect:
+MBNA and TD Personal canonical pending are numeric `0`, the bounded
+`include_pending` packet contained no pending components, and cutover
+emitted `pending-freshness-unproven`. Absence inside a dated window is
+not zero. Proven zero requires a complete Lunch Money v2
+`is_pending=true` census with no date bound, paginated until
+`has_more=false`. UNKNOWN remains UNKNOWN. Nonzero pending changes
+remain blockers and are not written.
 ---
 
 ## Ready — needs a session at an institution

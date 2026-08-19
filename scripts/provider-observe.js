@@ -9,6 +9,11 @@
  * writes data.json. Unknown provider account IDs stay unmapped. Synthetic
  * fixture mappings cannot authorize a live canonical mapping. Historical
  * represented-event candidates are not current-opening corrections.
+ *
+ * Pending proof is three-valued. A complete Lunch Money v2 pending census
+ * (`GET /transactions?is_pending=true` with no start_date/end_date, paginated
+ * until has_more=false) may prove numeric pending, including proven zero.
+ * Absence inside a bounded include_pending window is not zero.
  */
 
 const fs = require('fs');
@@ -29,6 +34,10 @@ const CREDIT_ROLES = new Set(['revolving-credit']);
 const CURRENT_STATE_HISTORY_DAYS = 14;
 const RECONCILE_HISTORY_DAYS = 120;
 const BILL_PAYMENT_PENDING_DAYS = 90;
+const PENDING_CENSUS_METHOD = 'is_pending-unbounded-paginated';
+const PENDING_CENSUS_LIMIT = 2000;
+const PENDING_CENSUS_MAX_PAGES = 20;
+const PENDING_CENSUS_REQUIRED_EVIDENCE = 'GET /transactions?is_pending=true with no start_date/end_date, paginated until has_more=false. A bounded include_pending window, a missing has_more, or account-level limit/available arithmetic is not this proof.';
 const Forecast = require('../public/forecast.js');
 
 function fail(message) {
@@ -155,6 +164,8 @@ function normalizeLunchMoneyPayload(payload, fetchedAt) {
     fetchedAt: payload.fetchedAt || fetchedAt,
     accounts: collectLunchMoneyAccounts(payload).map(normalizeLunchMoneyAccount),
     transactions: (payload.transactions || []).map(normalizeLunchMoneyTransaction),
+    has_more: payload.has_more,
+    pendingCensus: normalizePendingCensus(payload.pendingCensus),
   };
 }
 
@@ -221,6 +232,216 @@ function lunchMoneyTransactionsUrl(now, historyDays) {
   return txUrl;
 }
 
+function lunchMoneyPendingCensusUrl(offset, limit) {
+  const txUrl = new URL(`${LIVE_BASE}/transactions`);
+  const pageLimit = limit == null ? PENDING_CENSUS_LIMIT : Number(limit);
+  const span = isFinite(pageLimit) && pageLimit > 0
+    ? Math.min(PENDING_CENSUS_LIMIT, Math.floor(pageLimit))
+    : PENDING_CENSUS_LIMIT;
+  txUrl.searchParams.set('is_pending', 'true');
+  txUrl.searchParams.set('limit', String(span));
+  const off = offset == null ? 0 : Number(offset);
+  if (isFinite(off) && off > 0) txUrl.searchParams.set('offset', String(Math.floor(off)));
+  return txUrl;
+}
+
+function censusDateBound(census) {
+  if (!census || typeof census !== 'object') return false;
+  const start = census.startDate != null && census.startDate !== ''
+    ? census.startDate : census.start_date;
+  const end = census.endDate != null && census.endDate !== ''
+    ? census.endDate : census.end_date;
+  return (start != null && start !== '') || (end != null && end !== '');
+}
+
+function incompletePendingCensus(reason, extra) {
+  const out = Object.assign({
+    complete: false,
+    method: PENDING_CENSUS_METHOD,
+    hasMore: null,
+    startDate: null,
+    endDate: null,
+    transactions: [],
+    pageCount: 0,
+    reason,
+    requiredEvidence: PENDING_CENSUS_REQUIRED_EVIDENCE,
+  }, extra || {});
+  out.complete = false;
+  return out;
+}
+
+function pageHasMore(page) {
+  if (!page || typeof page !== 'object') return null;
+  if (page.has_more === true || page.hasMore === true) return true;
+  if (page.has_more === false || page.hasMore === false) return false;
+  return null;
+}
+
+function assemblePendingCensus(pages, opts) {
+  const maxPages = opts && opts.maxPages != null
+    ? Number(opts.maxPages) : PENDING_CENSUS_MAX_PAGES;
+  const startDate = opts && (opts.startDate != null ? opts.startDate : opts.start_date);
+  const endDate = opts && (opts.endDate != null ? opts.endDate : opts.end_date);
+  const list = Array.isArray(pages) ? pages : [];
+  const transactions = [];
+  let lastHasMore = null;
+  let pagesRead = 0;
+  for (let i = 0; i < list.length; i++) {
+    const page = list[i] || {};
+    const txs = Array.isArray(page.transactions) ? page.transactions : [];
+    transactions.push(...txs);
+    pagesRead += 1;
+    lastHasMore = pageHasMore(page);
+    if (lastHasMore === true && txs.length === 0) {
+      return incompletePendingCensus('empty-page-with-has-more', {
+        hasMore: true,
+        startDate: startDate || null,
+        endDate: endDate || null,
+        transactions,
+        pageCount: pagesRead,
+      });
+    }
+    if (lastHasMore !== true) break;
+  }
+  if (startDate || endDate) {
+    return incompletePendingCensus('census-date-bounded', {
+      hasMore: lastHasMore,
+      startDate: startDate || null,
+      endDate: endDate || null,
+      transactions,
+      pageCount: pagesRead,
+    });
+  }
+  if (pagesRead >= maxPages && lastHasMore === true) {
+    return incompletePendingCensus('pagination-unexhausted', {
+      hasMore: true,
+      transactions,
+      pageCount: pagesRead,
+    });
+  }
+  if (lastHasMore !== false) {
+    return incompletePendingCensus('has-more-unknown', {
+      hasMore: lastHasMore,
+      transactions,
+      pageCount: pagesRead,
+    });
+  }
+  return {
+    complete: true,
+    method: PENDING_CENSUS_METHOD,
+    hasMore: false,
+    startDate: null,
+    endDate: null,
+    transactions,
+    pageCount: pagesRead,
+    reason: null,
+    requiredEvidence: null,
+  };
+}
+
+function normalizePendingCensus(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const hasMore = pageHasMore(raw);
+  return {
+    complete: raw.complete === true,
+    method: raw.method || null,
+    hasMore,
+    startDate: raw.startDate || raw.start_date || null,
+    endDate: raw.endDate || raw.end_date || null,
+    reason: raw.reason || null,
+    requiredEvidence: raw.requiredEvidence || null,
+    pageCount: raw.pageCount != null ? Number(raw.pageCount) : null,
+    transactions: Array.isArray(raw.transactions)
+      ? raw.transactions.map(normalizeLunchMoneyTransaction)
+      : [],
+  };
+}
+
+function assessPendingCoverage(census) {
+  if (!census || typeof census !== 'object') {
+    return incompletePendingCensus('no-pending-census');
+  }
+  if (census.method !== PENDING_CENSUS_METHOD) {
+    return incompletePendingCensus('unrecognized-census-method', {
+      method: census.method || null,
+      hasMore: pageHasMore(census),
+      startDate: census.startDate || census.start_date || null,
+      endDate: census.endDate || census.end_date || null,
+      transactions: census.transactions || [],
+      pageCount: census.pageCount || 0,
+    });
+  }
+  if (censusDateBound(census)) {
+    return incompletePendingCensus('census-date-bounded', {
+      hasMore: pageHasMore(census),
+      startDate: census.startDate || census.start_date || null,
+      endDate: census.endDate || census.end_date || null,
+      transactions: census.transactions || [],
+      pageCount: census.pageCount || 0,
+    });
+  }
+  if (pageHasMore(census) !== false) {
+    return incompletePendingCensus(
+      pageHasMore(census) === true ? 'pagination-unexhausted' : 'has-more-unknown',
+      {
+        hasMore: pageHasMore(census),
+        transactions: census.transactions || [],
+        pageCount: census.pageCount || 0,
+      }
+    );
+  }
+  if (census.complete !== true) {
+    return incompletePendingCensus(census.reason || 'census-not-marked-complete', {
+      hasMore: false,
+      transactions: census.transactions || [],
+      pageCount: census.pageCount || 0,
+    });
+  }
+  return {
+    complete: true,
+    method: PENDING_CENSUS_METHOD,
+    hasMore: false,
+    startDate: null,
+    endDate: null,
+    transactions: census.transactions || [],
+    pageCount: census.pageCount || 0,
+    reason: null,
+    requiredEvidence: null,
+  };
+}
+
+function unionTransactions(primary, extra) {
+  const out = [];
+  const seen = new Set();
+  for (const tx of [].concat(primary || [], extra || [])) {
+    if (!tx || tx.providerTransactionId == null) {
+      out.push(tx);
+      continue;
+    }
+    const key = `${tx.providerTransactionId}|${tx.pending === true ? 'p' : 'n'}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(tx);
+  }
+  return out;
+}
+
+async function fetchLunchMoneyPendingCensus(token) {
+  const pages = [];
+  let offset = 0;
+  for (let page = 0; page < PENDING_CENSUS_MAX_PAGES; page++) {
+    const payload = await httpsGetJson(lunchMoneyPendingCensusUrl(offset, PENDING_CENSUS_LIMIT), token);
+    const txs = (payload && payload.transactions) || [];
+    pages.push({
+      transactions: txs,
+      has_more: payload && payload.has_more,
+    });
+    if (!payload || payload.has_more !== true) break;
+    offset += PENDING_CENSUS_LIMIT;
+  }
+  return assemblePendingCensus(pages, { maxPages: PENDING_CENSUS_MAX_PAGES });
+}
+
 async function fetchLunchMoneyLive(token, now, historyDays) {
   if (!token) fail(`${TOKEN_ENV} is not set. Live observation refuses to run.`);
   const txUrl = lunchMoneyTransactionsUrl(now, historyDays);
@@ -229,11 +450,19 @@ async function fetchLunchMoneyLive(token, now, historyDays) {
   let manuals = await tryGetJson(new URL(`${LIVE_BASE}/manual_accounts`), token);
   if (!manuals) manuals = await tryGetJson(new URL(`${LIVE_BASE}/assets`), token);
   const txPayload = await httpsGetJson(txUrl, token);
+  let pendingCensus;
+  try {
+    pendingCensus = await fetchLunchMoneyPendingCensus(token);
+  } catch (err) {
+    pendingCensus = incompletePendingCensus('census-fetch-failed');
+  }
   return {
     provider: 'lunchmoney',
     fetchedAt: now,
     accounts: accountsFromLivePayloads(plaid, manuals),
     transactions: (txPayload && txPayload.transactions) || [],
+    has_more: txPayload && txPayload.has_more,
+    pendingCensus,
   };
 }
 
@@ -456,6 +685,7 @@ function pendingObservationsFromTransactions(input) {
     plan: input.plan,
     billPaymentPayees: input.billPaymentPayees,
   };
+  const coverage = input.pendingCoverage || assessPendingCoverage(input.pendingCensus);
   const out = [];
   for (const mapping of (mapDoc && mapDoc.mappings) || []) {
     if (!CREDIT_ROLES.has(mapping.atlasRole) || !mapping.canonical || !mapping.canonical.id) {
@@ -464,13 +694,37 @@ function pendingObservationsFromTransactions(input) {
     const components = pendingComponentsForCard(
       input.transactions, mapping, asOf, opts
     );
-    if (!components.length) continue;
+    if (!components.length) {
+      if (coverage.complete === true) {
+        out.push({
+          observationId: `lm-${mapping.providerAccountId}-pending`,
+          fact: 'pending',
+          cardId: mapping.canonical.id,
+          provider: 'lunchmoney',
+          providerAccountId: String(mapping.providerAccountId),
+          accountLabel: mapping.canonical.id,
+          evidenceValue: 0,
+          observedAsOf: asOf,
+          evidenceDate: asOf,
+          unknown: false,
+          pendingProof: 'proven-zero',
+          pendingCoverage: 'complete',
+          balanceIncludesPending: false,
+          canonical: { collection: 'debts', id: mapping.canonical.id, field: 'pending' },
+          source: 'provider-observe:lunchmoney-transactions',
+          note: 'Proven zero pending from a complete is_pending census. Absence inside a bounded include_pending window is not this proof.',
+          components: [],
+        });
+      }
+      continue;
+    }
     const net = netCurrentPending(components);
     const allSettledForForecast = net.unresolved === 0 && components.every(c =>
       c.settlementTreatment === 'presumed-settled-for-current-forecast'
       || c.settlementTreatment === 'confirmed-settled');
     const unknown = !allSettledForForecast && components.length > 0
       && components.every(c => c.conflict);
+    const provenZero = coverage.complete === true && !unknown && net.unresolved === 0;
     out.push({
       observationId: `lm-${mapping.providerAccountId}-pending`,
       fact: 'pending',
@@ -482,6 +736,8 @@ function pendingObservationsFromTransactions(input) {
       observedAsOf: asOf,
       evidenceDate: asOf,
       unknown: !!unknown,
+      pendingProof: unknown ? 'unknown' : (provenZero ? 'proven-zero' : 'numeric'),
+      pendingCoverage: coverage.complete === true ? 'complete' : 'incomplete',
       balanceIncludesPending: false,
       canonical: { collection: 'debts', id: mapping.canonical.id, field: 'pending' },
       source: 'provider-observe:lunchmoney-transactions',
@@ -825,7 +1081,13 @@ function observe(input) {
       if (account.limit != null) limitByCard.set(mapping.canonical.id, account.limit);
     }
   }
-  const collapsed = collapseByProviderTransactionId(normalized.transactions);
+  const census = normalized.pendingCensus;
+  const coverage = assessPendingCoverage(census);
+  const collapsed = collapseByProviderTransactionId(
+    coverage.complete === true
+      ? unionTransactions(normalized.transactions, census && census.transactions)
+      : normalized.transactions
+  );
   const identityRules = input.identityRules
     || ((input.identity && input.identity.rules) || []);
   const billPaymentPayees = input.billPaymentPayees
@@ -837,6 +1099,7 @@ function observe(input) {
     fetchedAt: normalized.fetchedAt,
     plan: input.data && input.data.plan,
     billPaymentPayees,
+    pendingCoverage: coverage,
   });
   observations.push(...pendingObs);
   const cardInferences = [];
@@ -890,6 +1153,12 @@ function observe(input) {
     cardInferences,
     representedEventCandidates: represented,
     sameDayDiscrepancies: sameDay,
+    pendingCoverage: {
+      complete: coverage.complete === true,
+      method: coverage.method || null,
+      reason: coverage.reason || null,
+      requiredEvidence: coverage.complete === true ? null : (coverage.requiredEvidence || PENDING_CENSUS_REQUIRED_EVIDENCE),
+    },
     reconciliation: result,
   };
   assembled.identityProof = identityFingerprint(assembled);
@@ -955,18 +1224,26 @@ const api = {
   CURRENT_STATE_HISTORY_DAYS,
   RECONCILE_HISTORY_DAYS,
   BILL_PAYMENT_PENDING_DAYS,
+  PENDING_CENSUS_METHOD,
+  PENDING_CENSUS_LIMIT,
+  PENDING_CENSUS_MAX_PAGES,
+  PENDING_CENSUS_REQUIRED_EVIDENCE,
   parseArgs,
   historyDaysFromArgs,
   resolveMapPath,
   assertLiveMap,
   mappingFor,
   lunchMoneyTransactionsUrl,
+  lunchMoneyPendingCensusUrl,
   lunchMoneyDebitAmount,
   calendarDaysBetween,
   isBillOrPaymentTransaction,
   pendingForecastTreatment,
   collapseByProviderTransactionId,
   pendingObservationsFromTransactions,
+  assemblePendingCensus,
+  assessPendingCoverage,
+  normalizePendingCensus,
   inferredCardState,
   representedEventCandidates,
   openingAsOfFromData,

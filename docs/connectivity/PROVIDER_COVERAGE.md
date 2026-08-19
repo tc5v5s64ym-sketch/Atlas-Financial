@@ -42,6 +42,14 @@ Official: https://lunchmoney.dev/ and https://lunchmoney.dev/v2/docs
   `--mode reconcile` is 120 days so the 90-day pending-bill rule can see
   aged rows. Override with `--history-days N`. Do not fetch two years on
   every current-state call.
+- Pending proof is three-valued and is **not** inferred from that window.
+  Lunch Money v2.11.0 `GET /transactions?is_pending=true` with no
+  `start_date`/`end_date`, paginated until `has_more=false`, is a complete
+  pending census. Only that census may emit candidate-date numeric pending,
+  including proven zero. Official v2 `plaidAccountObject` has `balance` and
+  `limit` and does **not** expose an account-level pending field. Do not
+  manufacture pending as limit − posted − available. Absence inside the
+  bounded `include_pending` packet is UNKNOWN / unproven, not zero.
 - A pending bill/payment older than 90 days may be **presumed settled for
   current forecasting only** (`confidence: inferred`). Historical provider
   status stays pending. That is not a universal STALE threshold.
