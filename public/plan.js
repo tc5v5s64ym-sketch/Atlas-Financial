@@ -738,8 +738,8 @@ function paydayAnswerHtml(ctx) {
         <span class="payday-val">The ${money(advice.buffer)} figure is the model buffer, not a Q20 emergency reserve (Q20 stays OPEN).
           ${tennis ? 'Q25 TENNIS INCOME household-available remainder stays OPEN.' : ''}
           ${cashback && cashback.pendingUnknown
-    ? 'Q26 Cash Back pending is unknown and is not treated as $0.'
-    : 'Q26 Cash Back pending remains the open card-pending question.'}</span></div>
+    ? 'Q26 Cash Back pending is answered as proven 0 by the completed Lunch Money pending census; canonical pending remains UNKNOWN and is not treated as $0.'
+    : 'Q26 Cash Back pending census proved 0.'}</span></div>
     </div>`;
 }
 

@@ -36,6 +36,14 @@ code.
 Statement close dates: **TD card ~23rd** · **Triangle 17th** ·
 **MBNA/Amazon 6th** · **TD Cash Back 7th** · **Travel Visa 5th**.
 
+Owner-approved Lunch Money **posted-evidence cadence** is account-specific
+and is not those close dates copied as a default: Triangle is monthly
+statement-maintained on the **17th**; MBNA is monthly statement-maintained
+on the **8th** (when the statement is incorporated). Cadence changes
+whether existing evidence is acceptable for a later opening. It never
+changes the historical `evidenceDate` itself. Cash Back and the other
+live TD accounts are not on this cadence.
+
 **HELOC 21st vs month-end.** TD EasyWeb and the Dec 2025–Jul 2026 statements
 state a minimum payment due on the **21st** equal to that period's interest
 (overdue $0 on every supplied statement), with a Pre-Authorized Debit Date
@@ -334,6 +342,7 @@ Interac notifications matters, and why B64 will not be solved from transfer data
 | Credit limit | **$13,500.00** |
 | Due | 7th, monthly · statement dated 17th |
 | Structure | Revolving. Issuer states 99+ years to repay at minimum payments |
+| Lunch Money evidence cadence | **Owner-maintained monthly statement.** Atlas identity `triangle` only. Statement/update day **17**. Dale updates Lunch Money when that statement arrives. Atlas must not demand daily Triangle refreshes between statements. A current-cycle observation remains acceptable after the 17th until the next 17th. Cadence never rewrites `evidenceDate`. Not a generic freshness default. |
 
 **Canonical Forecast opening is the B91 2026-08-16 `data.json` record**,
 not the 9 August snapshot. The 2026-08-16 owner screenshot is the source
@@ -1853,6 +1862,7 @@ B10 and B36 were the same debt counted twice.
 | Last statement balance | $7,855.12 |
 | Minimum payment | **$158.27**, due **31 Aug 2026** |
 | Statement closing | **6th of the month** (June 2026 closed on the 8th) |
+| Lunch Money evidence cadence | **Owner-maintained monthly statement.** Atlas identity `mbna` only. Statement/update day **8** — the day Dale incorporates the arrived statement into Lunch Money, not a rewrite of the issuer close date above. Atlas must not demand daily MBNA refreshes between statements. A current-cycle observation remains acceptable after the 8th until the next 8th. Cadence never rewrites `evidenceDate`. Not a generic freshness default. |
 | **Rate — purchases** | **21.74%** |
 | **Rate — cash advances** | **22.99%** |
 | **Rate — balance transfers / access cheques** | **22.99%** |

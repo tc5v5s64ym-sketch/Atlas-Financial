@@ -129,7 +129,9 @@ gate unless a later refresh demonstrates a material source gap:
 - Which household accounts actually appear, product by product
 - Credit limit / available credit / HELOC / mortgage fields
 - Pending vs posted identity when a specific charge posts
-- `updated_at` / sync freshness
+- `updated_at` / `balance_as_of` / `date_last_fetched` stay distinct.
+  Posted-balance evidence uses `balance_as_of` when that field is present.
+  Generic `updated_at` is not the balance date.
 - Whether every live account arrives through `/v2/plaid_accounts` versus
   `/v2/manual_accounts` (the spike uses those; `/assets` is a 404 fallback
   only)
