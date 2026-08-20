@@ -149,6 +149,10 @@ function matchingAccounts(data, tweaks) {
       balance: 50, updated_at: OBSERVED,
     });
   }
+  if (t.omitProviderIds && t.omitProviderIds.length) {
+    const omit = new Set(t.omitProviderIds);
+    return accounts.filter(account => !omit.has(account.id));
+  }
   return accounts;
 }
 
@@ -389,7 +393,7 @@ console.log('\n=== 5. Triangle cadence keeps canonical; unmapped and conflict fa
     data: canonical,
     report: {
       writesCanonicalState: false,
-      fetchedAt: FETCHED_AT,
+      fetchedAt: `${canonical.plan.opening.asOf}T18:00:00.000Z`,
       pendingCoverage: completePendingCoverage(),
       unmapped: [],
       representedEventCandidates: [],
@@ -400,8 +404,8 @@ console.log('\n=== 5. Triangle cadence keeps canonical; unmapped and conflict fa
           canonicalTarget: 'cash:chequing-a',
           canonicalValue: cashValue(canonical, 'chequing-a'),
           evidenceValue: cashValue(canonical, 'chequing-a') - 10,
-          evidenceDate: '2026-08-20',
-          dateRelation: 'canonical-older',
+          evidenceDate: canonical.plan.opening.asOf,
+          dateRelation: 'same-day',
         }],
       },
     },
@@ -420,14 +424,35 @@ console.log('\n=== 6. unknown pending is not invented as zero ===');
     if (row.id !== 'cashback') return row;
     return Object.assign({}, row, { pending: 25, pendingUnknown: false });
   });
-  const result = overlay(canonical, {
+  let threw = null;
+  try {
+    overlay(canonical, {
+      pendingCoverage: null,
+      transactions: [],
+    });
+  } catch (err) {
+    threw = err;
+  }
+  ok(threw && /pending-freshness-unproven/.test(threw.message),
+    'incomplete pending census fails closed rather than advancing the Forecast clock',
+    threw && threw.message);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-live-plan-pending-'));
+  const fixture = path.join(dir, 'fixture.json');
+  fs.writeFileSync(fixture, `${JSON.stringify(payloadFrom(canonical, {
     pendingCoverage: null,
     transactions: [],
+  }), null, 2)}\n`);
+  const served = Live.serveCanonicalOrFixture(canonical, {
+    ATLAS_LIVE_OVERLAY: 'fixture',
+    ATLAS_LIVE_OVERLAY_FIXTURE: fixture,
+    ATLAS_LIVE_OVERLAY_MAP: MAP,
   });
-  ok(near(debt(result.data, 'cashback').pending, 25),
+  ok(served.liveOverlay && served.liveOverlay.applied === false,
+    'server overlay returns the dated opening when pending freshness is unproven');
+  ok(near(debt(served, 'cashback').pending, 25),
     'incomplete pending census does not overlay $0 over known pending');
-  ok(!result.overlays.some(o => o.locator === 'debts:cashback#pending' && near(o.proposedValue, 0)),
-    'unproven zero pending is not proposed');
+  ok(String(served.meta.asOf) === String(canonical.meta.asOf),
+    'unproven pending does not advance the served as-of');
   filesUnchanged('unknown pending');
 }
 
@@ -502,7 +527,10 @@ console.log('\n=== 9. unknown same-day scheduled events fail closed ===');
   const canonical = clone(liveData);
   let threw = null;
   try {
-    overlay(canonical, { fetchedAt: UNKNOWN_SAME_DAY_AT });
+    overlay(canonical, {
+      fetchedAt: UNKNOWN_SAME_DAY_AT,
+      tweaks: { cashAt: '2026-08-20T17:55:00.000Z' },
+    });
   } catch (err) {
     threw = err;
   }
@@ -513,6 +541,7 @@ console.log('\n=== 9. unknown same-day scheduled events fail closed ===');
   const fixture = path.join(dir, 'fixture.json');
   fs.writeFileSync(fixture, `${JSON.stringify(payloadFrom(canonical, {
     fetchedAt: UNKNOWN_SAME_DAY_AT,
+    tweaks: { cashAt: '2026-08-20T17:55:00.000Z' },
   }), null, 2)}\n`);
   const served = Live.serveCanonicalOrFixture(canonical, {
     ATLAS_LIVE_OVERLAY: 'fixture',
@@ -639,6 +668,88 @@ console.log('\n=== 11. a later live purchase changes the plan without replaying 
     .some(e => e.id === 'childBenefit' && e.date === '2026-08-20'),
     'the dated opening would still have emitted that intervening child benefit');
   filesUnchanged('elapsed days');
+}
+
+console.log('\n=== 12. stale MATCH cash does not advance Forecast or skip elapsed events ===');
+{
+  const canonical = clone(liveData);
+  const histAsOf = canonical.plan.opening.asOf;
+  let threw = null;
+  try {
+    overlay(canonical, {
+      fetchedAt: FETCHED_AT,
+      tweaks: { cashAt: '2026-08-19T17:55:00.000Z' },
+    });
+  } catch (err) {
+    threw = err;
+  }
+  ok(threw && /stale-live-cash-evidence/.test(threw.message),
+    'later fetch with Aug 19 MATCH cash fails closed',
+    threw && threw.message);
+  ok(threw && /MATCH is not freshness/.test(threw.message),
+    'failure names MATCH is not freshness');
+
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-live-plan-stale-match-'));
+  const fixture = path.join(dir, 'fixture.json');
+  fs.writeFileSync(fixture, `${JSON.stringify(payloadFrom(canonical, {
+    fetchedAt: FETCHED_AT,
+    tweaks: { cashAt: '2026-08-19T17:55:00.000Z' },
+  }), null, 2)}\n`);
+  const served = Live.serveCanonicalOrFixture(canonical, {
+    ATLAS_LIVE_OVERLAY: 'fixture',
+    ATLAS_LIVE_OVERLAY_FIXTURE: fixture,
+    ATLAS_LIVE_OVERLAY_MAP: MAP,
+  });
+  ok(served.liveOverlay && served.liveOverlay.applied === false,
+    'server overlay keeps the dated opening when MATCH cash is stale');
+  ok(/stale-live-cash-evidence/.test(String(served.liveOverlay.reason || '')),
+    'failed overlay names stale live cash evidence');
+  ok(String(served.meta.asOf) === String(histAsOf),
+    'stale MATCH does not advance meta.asOf');
+  ok(String(served.plan.opening.asOf) === String(histAsOf),
+    'stale MATCH does not advance plan.opening.asOf');
+  ok(Forecast.expandEvents(served.plan, histAsOf, LIVE_AS_OF, {})
+    .some(e => e.id === 'childBenefit' && e.date === '2026-08-20'),
+    'elapsed 20 Aug child benefit is not skipped when the opening does not advance');
+  filesUnchanged('stale MATCH cash');
+}
+
+console.log('\n=== 13. unmapped required cash does not advance Forecast or skip elapsed events ===');
+{
+  const canonical = clone(liveData);
+  const histAsOf = canonical.plan.opening.asOf;
+  let threw = null;
+  try {
+    overlay(canonical, {
+      tweaks: { omitProviderIds: [3001] },
+    });
+  } catch (err) {
+    threw = err;
+  }
+  ok(threw && /missing-live-cash-evidence/.test(threw.message),
+    'missing Chequing A evidence fails closed',
+    threw && threw.message);
+
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-live-plan-unmap-cash-'));
+  const fixture = path.join(dir, 'fixture.json');
+  fs.writeFileSync(fixture, `${JSON.stringify(payloadFrom(canonical, {
+    tweaks: { omitProviderIds: [3001] },
+  }), null, 2)}\n`);
+  const served = Live.serveCanonicalOrFixture(canonical, {
+    ATLAS_LIVE_OVERLAY: 'fixture',
+    ATLAS_LIVE_OVERLAY_FIXTURE: fixture,
+    ATLAS_LIVE_OVERLAY_MAP: MAP,
+  });
+  ok(served.liveOverlay && served.liveOverlay.applied === false,
+    'server overlay keeps the dated opening when required cash is missing');
+  ok(/missing-live-cash-evidence/.test(String(served.liveOverlay.reason || '')),
+    'failed overlay names missing live cash evidence');
+  ok(String(served.plan.opening.asOf) === String(histAsOf),
+    'unmapped required cash does not advance the opening');
+  ok(Forecast.expandEvents(served.plan, histAsOf, LIVE_AS_OF, {})
+    .some(e => e.id === 'childBenefit' && e.date === '2026-08-20'),
+    'elapsed 20 Aug child benefit is not skipped when required cash is missing');
+  filesUnchanged('unmapped required cash');
 }
 
 console.log('\n' + '═'.repeat(60));

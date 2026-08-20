@@ -10,7 +10,11 @@
  *
  * Overlay is today's live plan only: posted household-cash and debt
  * balances, plus revolving pending, plus an in-memory Forecast start
- * equal to the observation's household financial date. Owner policy,
+ * equal to a freshness-qualified observation date. fetchedAt alone
+ * does not advance that start. MATCH is not freshness: required
+ * spendable cash identities need acceptable evidence for the live
+ * date, and required revolving pending must be known/current, or the
+ * overlay fails closed and keeps the dated opening. Owner policy,
  * bills, income rules, and commitments stay on canonical Atlas data.
  * Same-day CHANGE may overlay a current observation; that is not a
  * canonical write. Same-day scheduled cash events need posting /
@@ -112,6 +116,92 @@ function dateAllowsOverlay(row) {
   return row && (row.dateRelation === 'canonical-older' || row.dateRelation === 'same-day');
 }
 
+function liveEvidenceDate(row) {
+  return Forecast.financialDate(row && (row.evidenceDate || row.observedAsOf));
+}
+
+function postedBalanceRow(row) {
+  if (!row) return false;
+  if (row.fact && CREDIT_CAPACITY_FACTS.has(row.fact)) return false;
+  if (row.fact && TRANSFER_INCOME_FACTS.has(row.fact)) return false;
+  if (row.fact && BACKFILL_FACTS.has(row.fact)) return false;
+  if (row.fact === 'pending') return false;
+  return !row.fact || row.fact === 'posted-balance';
+}
+
+function trustworthyNumeric(row) {
+  return !!(row
+    && row.unknown !== true
+    && row.status !== 'CONFLICT'
+    && row.status !== 'MISSING'
+    && row.evidenceValue != null
+    && isFinite(row.evidenceValue));
+}
+
+function postedFreshForLiveAsOf(row, liveAsOf) {
+  if (!trustworthyNumeric(row) || !liveAsOf) return false;
+  const evidenceDate = liveEvidenceDate(row);
+  if (evidenceDate === liveAsOf) return true;
+  const parsed = C.parseLocator(row.canonicalTarget);
+  return !!(parsed && C.statementCadenceAccepts(parsed.id, evidenceDate, liveAsOf));
+}
+
+function pendingFreshForLiveAsOf(row, report, liveAsOf) {
+  if (!trustworthyNumeric(row) || !liveAsOf) return false;
+  if (liveEvidenceDate(row) !== liveAsOf) return false;
+  if (row.status !== 'MATCH' && row.status !== 'CHANGE') return false;
+  if (near(row.evidenceValue, 0) && !pendingCoverageComplete(report)) return false;
+  return true;
+}
+
+function rowFreshForLiveAsOf(row, report, liveAsOf) {
+  if (!row || !liveAsOf) return false;
+  if (row.fact === 'pending') return pendingFreshForLiveAsOf(row, report, liveAsOf);
+  if (!postedBalanceRow(row)) return false;
+  return postedFreshForLiveAsOf(row, liveAsOf);
+}
+
+function postedRowsForLocator(report, locator) {
+  return reconRows(report).filter(row => (
+    row && row.canonicalTarget === locator && postedBalanceRow(row)
+  ));
+}
+
+function pendingRowsForDebt(report, id) {
+  const locator = `debts:${id}#pending`;
+  return reconRows(report).filter(row => row && row.fact === 'pending' && (
+    row.cardId === id || row.canonicalTarget === locator
+  ));
+}
+
+function assertFreshLivePacket(data, report, liveAsOf) {
+  if (!liveAsOf) fail('Live overlay is missing a household financial date.');
+  for (const id of POSTED_CASH) {
+    const locator = `cash:${id}`;
+    const rows = postedRowsForLocator(report, locator);
+    const fresh = rows.find(row => (
+      trustworthyNumeric(row) && liveEvidenceDate(row) === liveAsOf
+    ));
+    if (!fresh) {
+      const sample = rows.find(row => trustworthyNumeric(row)) || rows[0];
+      if (!sample) fail(`missing-live-cash-evidence: ${locator}`);
+      const dated = liveEvidenceDate(sample) || 'unknown';
+      fail(`stale-live-cash-evidence: ${locator} dated ${dated}; MATCH is not freshness`);
+    }
+  }
+  const mappedDebts = new Set(((report && report.mapped) || [])
+    .filter(row => row && row.collection === 'debts' && row.atlasId)
+    .map(row => row.atlasId));
+  for (const debt of (data && data.debts) || []) {
+    if (!hasPendingState(debt)) continue;
+    const pendingRows = pendingRowsForDebt(report, debt.id);
+    if (!mappedDebts.has(debt.id) && !pendingRows.length) continue;
+    const locator = `debts:${debt.id}#pending`;
+    const fresh = pendingRows.find(row => pendingFreshForLiveAsOf(row, report, liveAsOf));
+    if (!fresh) fail(`pending-freshness-unproven: ${locator}`);
+  }
+}
+
 function sanitizedUnmapped(entry) {
   return {
     locator: null,
@@ -192,7 +282,7 @@ function postedRefuseReason(row) {
   return 'not-proposed';
 }
 
-function proposeOverlay(report, canonicalAsOf) {
+function proposeOverlay(report, canonicalAsOf, liveAsOf) {
   const proposed = [];
   const refused = [];
   const seen = new Set();
@@ -202,7 +292,21 @@ function proposeOverlay(report, canonicalAsOf) {
     if (!locator || seen.has(key)) continue;
     seen.add(key);
     const annotated = Object.assign({}, row, { _canonicalAsOf: canonicalAsOf });
-    if (row.status === 'MATCH') continue;
+    if (row.status === 'MATCH') {
+      if (liveAsOf && (row.fact === 'pending' || postedBalanceRow(annotated))
+        && !rowFreshForLiveAsOf(annotated, report, liveAsOf)) {
+        const zeroUnproven = row.fact === 'pending'
+          && row.unknown !== true
+          && row.evidenceValue != null
+          && isFinite(row.evidenceValue)
+          && near(row.evidenceValue, 0)
+          && !pendingCoverageComplete(report);
+        refused.push(refuseRow(annotated, zeroUnproven
+          ? 'unproven-zero-pending'
+          : 'stale-not-current'));
+      }
+      continue;
+    }
     if (row.fact === 'pending') {
       if (pendingOverlayEligible(annotated, report)) {
         const parsed = C.parseLocator(locator);
@@ -449,8 +553,11 @@ function overlayLiveState(input) {
   const historicalOpeningAsOf = (data.plan.opening && data.plan.opening.asOf)
     || (data.meta && data.meta.asOf) || null;
   const liveAsOf = liveAsOfFrom(report, historicalOpeningAsOf);
-  const { proposed, refused } = proposeOverlay(report, historicalOpeningAsOf);
+  const { proposed, refused } = proposeOverlay(report, historicalOpeningAsOf, liveAsOf);
   const postingRefused = refuseNonLiveRepresented(report, liveAsOf);
+  if (historicalOpeningAsOf && liveAsOf && liveAsOf > historicalOpeningAsOf) {
+    assertFreshLivePacket(data, report, liveAsOf);
+  }
   const next = clone(data);
   const cutover = applyLiveCutover(next, report, historicalOpeningAsOf);
   for (const change of proposed) {

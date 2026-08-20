@@ -1102,7 +1102,9 @@ writer. Unattended production writes remain reserved.
   posted/pending from a Lunch Money observation in memory
   (`scripts/live-plan.js`) without rewriting that opening or snapshots.
   The in-memory clone starts Forecast on the observation's household
-  financial date; same-day scheduled events fail closed without posting
+  financial date only when the live packet is freshness-qualified for
+  that date; MATCH is not freshness, and an incomplete or stale packet
+  fails closed. Same-day scheduled events fail closed without posting
   evidence.
   Unattended production writes, a Render token, and a newer live substitute
   opening remain reserved.

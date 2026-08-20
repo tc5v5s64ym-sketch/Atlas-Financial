@@ -179,7 +179,9 @@ operating path is Lunch Money → Atlas observation + reconciliation →
 current in-memory account state → Forecast → the site. Today's live plan
 may overlay current posted balances and pending without rewriting
 historical openings or snapshots (`scripts/live-plan.js`). The in-memory
-clone starts Forecast on the observation's household financial date.
+clone starts Forecast on the observation's household financial date only
+when the live packet is freshness-qualified for that date; MATCH is not
+freshness, and an incomplete or stale packet fails closed.
 A new canonical
 opening is still an explicit owner-approved `data.json` write; automatic
 production writes are not earned. File capture remains the
