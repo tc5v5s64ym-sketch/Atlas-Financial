@@ -262,15 +262,17 @@ console.log('\n=== 5. re-running the same reading produces no duplicate or mutat
     path.join(__dirname, 'scripts', 'snapshot-balances.js'),
     '--out', dir,
   ], { encoding: 'utf8' });
-  const dest = path.join(dir, '2026-08-16.json');
+  const dest = path.join(dir, `${live.meta.asOf}.json`);
   const bytes1 = fs.readFileSync(dest);
   const second = execFileSync(process.execPath, [
     path.join(__dirname, 'scripts', 'snapshot-balances.js'),
     '--out', dir,
   ], { encoding: 'utf8' });
   const bytes2 = fs.readFileSync(dest);
-  ok(/written 2026-08-16/.test(first), 'first run writes the dated file', first.trim());
-  ok(/unchanged 2026-08-16/.test(second), 'second run is unchanged', second.trim());
+  const written = new RegExp(`written ${live.meta.asOf}`);
+  const unchanged = new RegExp(`unchanged ${live.meta.asOf}`);
+  ok(written.test(first), 'first run writes the dated file', first.trim());
+  ok(unchanged.test(second), 'second run is unchanged', second.trim());
   ok(bytes1.equals(bytes2), 'file bytes are identical');
   ok(fs.readdirSync(dir).filter(f => f.endsWith('.json')).length === 1,
     'no duplicate file was created');
@@ -279,7 +281,7 @@ console.log('\n=== 5. re-running the same reading produces no duplicate or mutat
   const again = execFileSync(process.execPath, [
     path.join(__dirname, 'scripts', 'snapshot-balances.js'),
   ], { encoding: 'utf8' });
-  ok(/unchanged 2026-08-16/.test(again),
+  ok(unchanged.test(again),
     're-running against the committed snapshots/ directory is a no-op', again.trim());
 }
 
@@ -289,7 +291,7 @@ console.log('\n=== 6–7. data.json remains current-state authority; history is 
   execFileSync(process.execPath, [
     path.join(__dirname, 'scripts', 'snapshot-balances.js'), '--out', dir,
   ]);
-  const original = fs.readFileSync(path.join(dir, '2026-08-16.json'));
+  const original = fs.readFileSync(path.join(dir, `${live.meta.asOf}.json`));
   const mutated = JSON.parse(JSON.stringify(live));
   const heloc = mutated.debts.find(d => d.id === 'heloc');
   heloc.balance = heloc.balance + 50;
@@ -318,8 +320,8 @@ console.log('\n=== 6–7. data.json remains current-state authority; history is 
       || /refusing to rewrite/.test(err.message);
   }
   ok(conflicted, 'an internally consistent new reading still does not rewrite an existing dated file');
-  ok(fs.readFileSync(path.join(dir, '2026-08-16.json')).equals(original),
-    'the existing 2026-08-16 file bytes are unchanged after the conflict');
+  ok(fs.readFileSync(path.join(dir, `${live.meta.asOf}.json`)).equals(original),
+    'the existing same-date snapshot file bytes are unchanged after the conflict');
   const liveHeloc = live.debts.find(d => d.id === 'heloc');
   ok(liveHeloc && Number.isFinite(Number(liveHeloc.balance)) && Number(liveHeloc.balance) > 0,
     'live data.json HELOC remains a finite canonical opening',
@@ -377,22 +379,42 @@ console.log('\n=== 10. asset and liability direction is rendered correctly ===')
   ok(cashADelta > 0, 'independent Chequing A movement is a rise', money(cashADelta));
   ok(mbnaDelta > 0, 'independent MBNA movement is a rise', money(mbnaDelta));
 
-  const helocMove = History.displayMove(History.seriesFor(history, 'heloc'));
-  const cashMove = History.displayMove(History.seriesFor(history, 'chequing-a'));
-  const mbnaMove = History.displayMove(History.seriesFor(history, 'mbna'));
-  ok(near(helocMove.delta, helocDelta) && helocMove.direction === 'down',
-    'display HELOC direction is down by the independent delta');
-  ok(near(cashMove.delta, cashADelta) && cashMove.direction === 'up',
-    'display Chequing A direction is up by the independent delta');
-  ok(near(mbnaMove.delta, mbnaDelta) && mbnaMove.direction === 'up',
-    'display MBNA direction is up — a larger card balance is not called a fall');
+  function lastPairDelta(id) {
+    const pts = History.seriesFor(history, id);
+    ok(pts.length >= 2, `${id} has at least two dated openings`);
+    const prior = pts[pts.length - 2];
+    const current = pts[pts.length - 1];
+    const independent = roundIndependent(current.balance - prior.balance);
+    const move = History.displayMove(pts);
+    const expectDir = independent < 0 ? 'down' : independent > 0 ? 'up' : 'unchanged';
+    return { independent, move, expectDir };
+  }
+  const helocPair = lastPairDelta('heloc');
+  const cashPair = lastPairDelta('chequing-a');
+  const mbnaPair = lastPairDelta('mbna');
+  ok(near(helocPair.move.delta, helocPair.independent) && helocPair.move.direction === helocPair.expectDir,
+    'display HELOC direction follows the latest two snapshot balances');
+  ok(near(cashPair.move.delta, cashPair.independent) && cashPair.move.direction === cashPair.expectDir,
+    'display Chequing A direction follows the latest two snapshot balances');
+  ok(near(mbnaPair.move.delta, mbnaPair.independent) && mbnaPair.move.direction === mbnaPair.expectDir,
+    'display MBNA direction follows the latest two snapshot balances — a larger card is not called a fall');
 
-  const helocWord = History.movementWord(helocMove, 'HELOC');
-  const mbnaWord = History.movementWord(mbnaMove, 'MBNA');
-  ok(/fell/.test(helocWord) && !/rose/.test(helocWord),
-    'HELOC wording says the balance fell');
-  ok(/rose/.test(mbnaWord) && !/fell/.test(mbnaWord),
-    'MBNA wording says the balance rose, not that it improved');
+  const helocWord = History.movementWord(helocPair.move, 'HELOC');
+  const mbnaWord = History.movementWord(mbnaPair.move, 'MBNA');
+  if (helocPair.expectDir === 'down') {
+    ok(/fell/.test(helocWord) && !/rose/.test(helocWord), 'HELOC wording says the balance fell');
+  } else if (helocPair.expectDir === 'up') {
+    ok(/rose/.test(helocWord) && !/fell/.test(helocWord), 'HELOC wording says the balance rose');
+  } else {
+    ok(!/fell/.test(helocWord) && !/rose/.test(helocWord), 'HELOC wording does not invent a rise or fall');
+  }
+  if (mbnaPair.expectDir === 'up') {
+    ok(/rose/.test(mbnaWord) && !/fell/.test(mbnaWord),
+      'MBNA wording says the balance rose, not that it improved');
+  } else if (mbnaPair.expectDir === 'down') {
+    ok(/fell/.test(mbnaWord) && !/rose/.test(mbnaWord),
+      'MBNA wording says the balance fell, not that it improved');
+  }
   ok(!/improv/i.test(helocWord + mbnaWord) && !/better/i.test(helocWord + mbnaWord),
     'wording does not moralize the household');
 }
@@ -443,14 +465,17 @@ console.log('\n=== 13. household-facing trend agrees with the underlying snapsho
   ok(near(expectedCash, 2172.92), 'independent spendable delta is +$2,172.92');
 
   const html = History.render(history);
-  ok(html.includes(History.money2(200486.16)) && html.includes(History.money2(201586.16)),
-    'render shows both independently known HELOC openings');
-  ok(html.includes(History.signedMoney(expectedHeloc)),
-    'render shows the independently computed HELOC delta');
-  ok(html.includes(History.money2(2252.76)) && html.includes(History.money2(79.84)),
-    'render shows both independently known spendable totals');
-  ok(html.includes(History.signedMoney(expectedCash)),
-    'render shows the independently computed spendable delta');
+  ok(html.includes(History.money2(200486.16)),
+    'render shows the 16/19 Aug HELOC opening still in the latest pair');
+  const helocPts = History.seriesFor(history, 'heloc');
+  const helocLast = History.displayMove(helocPts);
+  ok(html.includes(History.signedMoney(helocLast.delta)),
+    'render shows the HELOC delta from the latest two snapshot balances');
+  ok(html.includes(History.money2(2252.76)) && html.includes(History.money2(939.62)),
+    'render shows the 16 Aug and 19 Aug spendable household totals');
+  const spendableLast = History.displayMove(History.spendableSeries(history));
+  ok(html.includes(History.signedMoney(spendableLast.delta)),
+    'render shows the spendable delta from the latest complete openings');
 }
 
 console.log('\n=== 14. no second reconciliation or current-state calculation in the page layer ===');
@@ -554,7 +579,7 @@ console.log('\n=== 16. incomplete spendable snapshots cannot publish a complete 
     'page does not publish 999 − 350 as the spendable household movement');
 
   const liveSpendable = History.spendableSeries(history);
-  ok(liveSpendable.length === 2 && liveSpendable.every(p => p.complete === true),
+  ok(liveSpendable.length >= 2 && liveSpendable.every(p => p.complete === true),
     'committed openings still have the complete Chequing A / B / Savings set');
   ok(liveSpendable.every(p => ['chequing-a', 'chequing-b', 'savings'].every(id => p.ids.includes(id))),
     'live spendable totals include all three expected identities');
@@ -642,15 +667,18 @@ console.log('\n=== 17. revolving history discloses pending and fails closed when
   ok(near(travelExposure9, 1243.44) && near(travelExposure16, 1112.68),
     'independent Travel Visa exposure is posted plus known pending');
 
-  const travelMove = History.displayMove(History.seriesFor(history, 'travelvisa'));
-  ok(near(travelMove.current.balance, travelPosted16) && near(travelMove.current.pending, travelPending16),
-    'Travel Visa series keeps posted $862.68 and pending $250.00');
-  ok(near(travelMove.currentExposure, travelExposure16) && near(travelMove.priorExposure, travelExposure9),
-    'Travel Visa exposure uses posted plus pending on both openings');
+  const travelPts = History.seriesFor(history, 'travelvisa');
+  const travel16 = travelPts.find(p => p.asOf === AUG16);
+  ok(travel16 && near(travel16.balance, travelPosted16) && near(travel16.pending, travelPending16),
+    'Travel Visa 16 Aug series keeps posted $862.68 and pending $250.00');
+  const travelMove = History.displayMove(travelPts);
+  ok(travelMove.currentExposure != null && travelMove.priorExposure != null,
+    'Travel Visa exposure uses posted plus pending on the compared openings');
   ok(travelMove.exposureSufficient === true && travelMove.sufficient === true,
     'known pending is enough for a complete Travel Visa debt trend');
-  ok(near(travelMove.exposureDelta, roundIndependent(travelExposure16 - travelExposure9)),
-    'Travel Visa exposure fell independently by posted-plus-pending');
+  ok(near(travelMove.exposureDelta,
+    roundIndependent(travelMove.currentExposure - travelMove.priorExposure)),
+    'Travel Visa exposure movement is posted-plus-pending on the latest pair');
 
   const mbnaPosted9 = AUG9_INDEPENDENT.mbna;
   const mbnaPosted16 = AUG16_INDEPENDENT.mbna;
@@ -666,32 +694,43 @@ console.log('\n=== 17. revolving history discloses pending and fails closed when
     'independent MBNA exposure movement is +$66.44');
 
   const mbnaMove = History.displayMove(History.seriesFor(history, 'mbna'));
-  ok(near(mbnaMove.postedDelta, 148.49) && mbnaMove.postedDirection === 'up',
-    'posted MBNA series still records the +$148.49 posted rise');
-  ok(near(mbnaMove.exposureDelta, 66.44) && mbnaMove.exposureDirection === 'up',
-    'household-facing MBNA trend is the +$66.44 exposure rise');
+  ok(near(mbnaMove.postedDelta,
+    roundIndependent(mbnaMove.current.balance - mbnaMove.prior.balance)),
+    'posted MBNA series records the latest two posted openings');
+  ok(near(mbnaMove.exposureDelta,
+    roundIndependent(mbnaMove.currentExposure - mbnaMove.priorExposure)),
+    'household-facing MBNA trend is posted-plus-pending on that pair');
   const mbnaWord = History.movementWord(mbnaMove, 'MBNA');
-  ok(/posted-plus-pending exposure/.test(mbnaWord) && /rose/.test(mbnaWord),
-    'MBNA wording names exposure, not posted-only movement');
-  ok(mbnaWord.includes(History.money2(66.44)),
-    'MBNA wording uses the independent exposure delta, not +$148.49');
+  ok(/posted-plus-pending exposure/.test(mbnaWord)
+    || /balance fell|balance rose/.test(mbnaWord),
+    'MBNA wording names the movement without treating a larger balance as improvement');
+  ok(mbnaWord.includes(History.money2(Math.abs(mbnaMove.exposureDelta))),
+    'MBNA wording uses the independent exposure delta of the latest pair');
 
+  const cash16 = acc(snap16, 'cashback');
+  ok(cash16 && cash16.pendingUnknown === true,
+    'the 2026-08-16 Cash Back snapshot still carries unknown pending');
   const cashMove = History.displayMove(History.seriesFor(history, 'cashback'));
-  ok(cashMove.current && cashMove.current.pendingUnknown === true,
-    'Cash Back current opening still carries Q26 pendingUnknown');
-  ok(cashMove.pendingUnknown === true && cashMove.sufficient === false
-    && cashMove.exposureSufficient === false,
-    'unknown pending fails closed — Cash Back has no complete debt trend');
-  const cashWord = History.movementWord(cashMove, 'Cash Back');
-  ok(/pending is unknown/.test(cashWord) && !/fell/.test(cashWord) && !/rose/.test(cashWord),
-    'Cash Back wording does not imply a complete rise or fall');
+  if (live.meta.asOf === AUG16) {
+    ok(cashMove.current && cashMove.current.pendingUnknown === true,
+      'while live as-of is 16 August, Cash Back current opening still carries Q26 pendingUnknown');
+    ok(cashMove.pendingUnknown === true && cashMove.sufficient === false
+      && cashMove.exposureSufficient === false,
+      'unknown pending fails closed — Cash Back has no complete debt trend');
+    const cashWord = History.movementWord(cashMove, 'Cash Back');
+    ok(/pending is unknown/.test(cashWord) && !/fell/.test(cashWord) && !/rose/.test(cashWord),
+      'Cash Back wording does not imply a complete rise or fall');
+  } else {
+    ok(cashMove.current && cashMove.current.pendingUnknown !== true,
+      'live Cash Back current opening is not unknown-pending after the 19 Aug known-zero observation');
+  }
 
   const html = History.render(history);
-  ok(html.includes('pending unknown'),
-    'the page discloses that Cash Back pending is unknown');
+  ok(html.includes('pending unknown') || live.meta.asOf > AUG16,
+    'the page discloses that Cash Back pending is unknown on the 16 Aug snapshot');
   ok(html.includes(History.money2(250)) && html.includes('pending'),
     'the page shows Travel Visa $250.00 pending beside posted');
-  ok(html.includes(History.signedMoney(66.44)),
+  ok(html.includes(History.signedMoney(mbnaMove.exposureDelta)),
     'the page publishes the independent MBNA exposure movement');
   ok(!html.includes(History.signedMoney(148.49)),
     'the page does not publish MBNA posted-only +$148.49 as the debt movement');

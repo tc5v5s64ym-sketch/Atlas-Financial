@@ -140,7 +140,7 @@ console.log('\n=== RESP joins the real cash path exactly once ===');
     'RESP is a canonical $100 monthly bill on the 15th, not a spending category');
   const windowStream = F.expandEvents(plan, asOf, windowEnd);
   const resp = windowStream.filter(e => e.id === 'resp' || e.id === 'resp-aug15-outstanding');
-  ok(resp.some(e => e.id === 'resp-aug15-outstanding' && e.date === asOf),
+  ok(resp.some(e => e.id === 'resp-aug15-outstanding' && e.date <= asOf),
     'the unposted 15 August RESP is reserved on this opening');
   ok(resp.filter(e => e.id === 'resp').every(e => e.date >= '2026-09-15'),
     'the monthly RESP resumes in September',
@@ -169,7 +169,7 @@ console.log('\n=== union dues stay reserved until cancellation is confirmed ==='
     'and they are a bill, not a second obligation');
   const windowStream = F.expandEvents(plan, asOf, windowEnd);
   const duesEvents = windowStream.filter(e => e.id === 'uniondues' || e.id === 'uniondues-aug15-outstanding');
-  ok(duesEvents.some(e => e.id === 'uniondues-aug15-outstanding' && e.date === asOf),
+  ok(duesEvents.some(e => e.id === 'uniondues-aug15-outstanding' && e.date <= asOf),
     'the unposted 15 August dues are reserved on this opening');
   ok(duesEvents.filter(e => e.id === 'uniondues').every(e => e.date >= '2026-09-15'),
     'the monthly dues resume in September',
@@ -210,9 +210,12 @@ console.log('\n=== next due / next payment out, same stream ===');
     'nextDue is the first named event on that date',
     sameDay.map(e => e.label).join(' | '));
   const daySum = sameDay.reduce((s, e) => s - e.amount, 0);
-  ok(same(out.amount, daySum) && !same(due.amount, out.amount),
-    'nextPaymentOut is the day total, not the first named obligation',
+  ok(same(out.amount, daySum),
+    'nextPaymentOut is the day total of joint-cash outflows',
     `due $${due.amount} vs out $${out.amount}`);
+  ok(sameDay.length === 1 || !same(due.amount, out.amount),
+    'when several payments share the day, nextDue is not the day total',
+    `${sameDay.length} event(s)`);
   ok(/Next cash-out total/.test(read('public/plan.js')),
     'the Plan tile labels the day total as a cash-out total');
   ok(/Next named payment due/.test(read('public/deepdive.js')),

@@ -1130,7 +1130,11 @@ classification system.
 
 **B91 · Evidence refresh / reconciliation loop** · **DONE 2026-08-16** · *architecture, current-state cutover*
 After `B92` and `B93`. **Current implementation outcome** and next major
-product milestone. Capture, extraction, and the non-writing reconciliation
+product milestone. The live published opening is now **2026-08-19**; the
+2026-08-16 cutover remains dated evidence in `snapshots/` and the pinned
+`28d08a12` proof. Owner-approved 19 August household cash/debt values were
+landed without restoring stored funding `available` or `debtId` action
+status as current-state. Capture, extraction, and the non-writing reconciliation
 report exist. Owner-approved Aug. 14 evidence that was strong enough has
 now been written into canonical `data.json`; Forecast consumes that state.
 The Evidence-Use Register (`B85`) proves routing of declared IDs, not that

@@ -334,7 +334,7 @@ Interac notifications matters, and why B64 will not be solved from transfer data
 | Due | 17th, monthly |
 | Note | Since 2 July 2026 TD charges **interest on unpaid interest** |
 
-## Triangle Mastercard — Canadian Tire Bank *(standing terms 2026-08-09; canonical opening B91 2026-08-16)*
+## Triangle Mastercard — Canadian Tire Bank *(standing terms 2026-08-09; current canonical opening 2026-08-19)*
 
 | | |
 |---|---|
@@ -344,17 +344,14 @@ Interac notifications matters, and why B64 will not be solved from transfer data
 | Structure | Revolving. Issuer states 99+ years to repay at minimum payments |
 | Lunch Money evidence cadence | **Owner-maintained monthly statement.** Atlas identity `triangle` only. Statement/update day **17**. Dale updates Lunch Money when that statement arrives. Atlas must not demand daily Triangle refreshes between statements. A current-cycle observation remains acceptable after the 17th until the next 17th. Cadence never rewrites `evidenceDate`. Not a generic freshness default. |
 
-**Canonical Forecast opening is the B91 2026-08-16 `data.json` record**,
-not the 9 August snapshot. The 2026-08-16 owner screenshot is the source
-of that opening: posted **$13,197.00**, pending **$15.62**, available
-credit **$287.38** (not household cash), last statement balance $13,309.70,
-displayed minimum $0.00, displayed due date Aug. 7 2026. A **$300 payment
-posted Aug. 10** is already inside the opening (independent identity:
-13,497.00 − 300.00 = 13,197.00). Posted and pending stay separate.
-Exposure = $13,197.00 + $15.62 = $13,212.62. On-time status for the
-Aug. 7 obligation is not proven; the payment posted after the displayed
-due date. The retired 9 August opening was posted **$13,497.00** / pending
-unknown; it is dated evidence, not current canonical state.
+**Canonical Forecast opening is the 2026-08-19 `data.json` record**,
+not the 9 August snapshot. Posted **$13,495.32**, pending **$0.00**,
+available credit is Forecast-derived (not household cash). The 2026-08-16
+owner-screenshot opening (posted **$13,197.00**, pending **$15.62**,
+available credit **$287.38**, last statement $13,309.70) remains dated
+evidence in `snapshots/2026-08-16.json`. A **$300 payment posted Aug. 10**
+is inside the 16 August dated opening (13,497.00 − 300.00 = 13,197.00).
+The retired 9 August opening was posted **$13,497.00** / pending unknown.
 
 ## Insurance *(verified 2026-08-09)*
 
@@ -1751,7 +1748,7 @@ feared. The correction is real but far smaller than the uncertainty was.
 
 Every rate and balance is now known, so this can finally be stated.
 This table is the **9 August snapshot**. Current canonical openings live
-in `data.json` (B91 2026-08-16); this ranking is not a second live copy.
+in `data.json` (2026-08-19); this ranking is not a second live copy.
 
 | Card | Balance | Rate | Interest/yr |
 |---|---|---|---|
@@ -1854,11 +1851,12 @@ B10 and B36 were the same debt counted twice.
 | | |
 |---|---|
 | Issuer | MBNA (a TD Bank Group brand) |
-| Current opening (2026-08-09) | **$7,855.12** posted + **$82.05** pending |
-| 2026-08-16 screenshot | **$8,003.61** posted, pending **$0.00** *(observation, not the Forecast opening — do not round that observation back to the statement)* |
+| Current Forecast opening (2026-08-19) | **$7,875.99** posted, pending **$0.00** |
+| 2026-08-16 screenshot opening | **$8,003.61** posted, pending **$0.00** *(dated evidence; do not round that observation back to the statement)* |
+| 2026-08-09 opening | **$7,855.12** posted + **$82.05** pending |
 | Credit limit | **$8,000.00** |
-| Available credit | **$62.83** on the 9 August opening; **$0.00** on the 2026-08-16 screenshot (never cash) |
-| Pending transactions | **$82.05** on the 9 August opening; **$0.00** on the 2026-08-16 screenshot |
+| Available credit | Forecast-derived from posted+pending vs the $8,000 limit; never household cash. Dated: **$62.83** on 9 August; **$0.00** on the 2026-08-16 screenshot |
+| Pending transactions | **$0.00** on the 2026-08-19 opening; **$0.00** on the 2026-08-16 screenshot; **$82.05** on the 9 August opening |
 | Last statement balance | $7,855.12 |
 | Minimum payment | **$158.27**, due **31 Aug 2026** |
 | Statement closing | **6th of the month** (June 2026 closed on the 8th) |

@@ -9,8 +9,9 @@
  */
 const fs = require('fs');
 const path = require('path');
+const { execFileSync } = require('child_process');
 const F = require('./public/forecast.js');
-const data = require('./data.json');
+const data = JSON.parse(execFileSync('git', ['show', '28d08a12:data.json'], { encoding: 'utf8' }));
 const periods = require('./public/periods.json');
 const { sourceText } = require('./test-source-text');
 

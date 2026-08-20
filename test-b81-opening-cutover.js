@@ -454,17 +454,18 @@ function fullSyntheticPacket() {
 
 console.log('=== 1. ordinary posted B81 writer still works unchanged ===');
 {
+  const pinned16 = JSON.parse(execFileSync('git', ['show', '28d08a12:data.json'], { encoding: 'utf8' }));
   const identity = JSON.parse(fs.readFileSync(path.join(ROOT, 'docs', 'connectivity', 'transaction-identity.json'), 'utf8'));
   const first = C.previewFrom({
     provider: 'lunchmoney',
     payload: JSON.parse(fs.readFileSync(B81_FIXTURE, 'utf8')),
     accountMap: JSON.parse(fs.readFileSync(B81_MAP, 'utf8')),
-    data: liveData,
+    data: pinned16,
     identity,
     fetchedAt: JSON.parse(fs.readFileSync(B81_FIXTURE, 'utf8')).fetchedAt,
   });
   const dir = tempDir();
-  const dest = writeJson(dir, 'data.json', liveData);
+  const dest = writeJson(dir, 'data.json', pinned16);
   const applied = runCli([
     '--fixture', B81_FIXTURE, '--map', B81_MAP, '--data', dest,
     '--apply', '--approve', first.preview.previewId,
@@ -472,7 +473,7 @@ console.log('=== 1. ordinary posted B81 writer still works unchanged ===');
   ok(applied.code === 0, 'ordinary posted apply still exits 0', applied.stderr.trim());
   const after = JSON.parse(fs.readFileSync(dest, 'utf8'));
   ok(near(cashOf(after, 'chequing-b').value, 922.05), 'posted writer still applies Chequing B 932.05 → 922.05');
-  ok(after.meta.asOf === liveData.meta.asOf && after.plan.opening.asOf === liveData.plan.opening.asOf,
+  ok(after.meta.asOf === pinned16.meta.asOf && after.plan.opening.asOf === pinned16.plan.opening.asOf,
     'posted writer still does not move as-of');
 }
 

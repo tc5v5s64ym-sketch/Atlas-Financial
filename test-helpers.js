@@ -25,10 +25,10 @@ function burrardDue(plan, asOf) {
 function openingFloor(plan, asOf) {
   const cash = F.startingCashAmount(plan);
   if (!asOf) return cash - burrardDue(plan);
-  const sameDay = (F.expandEvents(plan, asOf, asOf, {}) || [])
-    .filter(e => e.date === asOf && e.amount < 0 && e.kind !== 'noncash' && e.jointCash !== false)
+  const openingOut = (F.expandEvents(plan, asOf, asOf, {}) || [])
+    .filter(e => e.date <= asOf && e.amount < 0 && e.kind !== 'noncash' && e.jointCash !== false)
     .reduce((s, e) => s + e.amount, 0);
-  return cash + sameDay;
+  return cash + openingOut;
 }
 
 function gapAtBuffer(plan, buffer, asOf) {

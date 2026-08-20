@@ -43,7 +43,7 @@ const clone = x => JSON.parse(JSON.stringify(x));
 const payload = JSON.parse(fs.readFileSync(FIXTURE, 'utf8'));
 const accountMap = JSON.parse(fs.readFileSync(MAP, 'utf8'));
 const identity = JSON.parse(fs.readFileSync(IDENTITY, 'utf8'));
-const data = JSON.parse(fs.readFileSync(DATA, 'utf8'));
+const data = JSON.parse(execFileSync('git', ['show', '28d08a12:data.json'], { encoding: 'utf8' }));
 
 function observeWith(extraPayload, extraInput) {
   return O.observe(Object.assign({

@@ -247,19 +247,20 @@ semantics rather than guessing.
 ### Q26. What are the current pending amounts on Cash Back Visa and Travel Visa when exact action is needed? — ANSWERED 2026-08-18
 **Status:** ANSWERED · **Owner:** Dale
 **Answer:** Travel Visa posted $862.68 and pending Bell Mobility $250.00
-are the 2026-08-16 canonical opening. That pair remains a canonical write.
+are the 2026-08-16 canonical opening. That pair remains a dated canonical
+write for 16 August.
 
 The remaining Cash Back evidence question is answered by the PR #106
 completed unbounded Lunch Money `is_pending=true` census: current Cash
 Back pending was proven **0**. Cash Back is a normal live Lunch Money
 revolving-credit account, not an owner-maintained monthly statement
-account. That census is evidence only. It does not authorize a Cash Back
-pending write.
+account. That census is evidence only.
 
-`data.json` Cash Back `pendingUnknown` remains **true** and `pending`
-remains null. Promoting UNKNOWN to 0 is a separate owner-authorized
-financial-state write and is **not** authorized by this answer. Atlas
-must not treat canonical UNKNOWN as $0 until that write happens.
+The owner-approved 2026-08-19 opening is the owner-authorized pending
+write: Cash Back `pendingUnknown` is false and pending is **$0.00**;
+Travel Visa posted **$1,205.33** and pending **$0.00**. The 16 August
+UNKNOWN-unwritten constraint is closed by that dated opening. Atlas must
+not treat a later unknown pending as $0.
 
 A later live pending CHANGE (including Travel Visa 250 vs observed
 342.65) is a cutover pending-state question, not a reopening of this
@@ -296,20 +297,21 @@ conclusion may be reopened. Do not invent such a transaction now.
 **Status:** ANSWERED · **Owner:** Dale + Amanda
 **Answer:** Triangle, MBNA, and Affirm/Flexiti are no longer unknown.
 
-Triangle (2026-08-16 screenshot — now the canonical Forecast opening): posted
-**$13,197.00**, pending **$15.62**, limit $13,500, available credit $287.38
-(not cash). Exposure $13,212.62. The retired 9 August opening was posted
+Triangle (current canonical Forecast opening is 2026-08-19): posted
+**$13,495.32**, pending **$0.00**, limit $13,500. Available credit is
+Forecast-derived (not cash). The 2026-08-16 screenshot opening was posted
+**$13,197.00**, pending **$15.62**. The retired 9 August opening was posted
 **$13,497.00**. Purchase rate remains 21.99% / cash 22.99% from the earlier
 disclosure. Displayed minimum $0.00; displayed due date Aug. 7 2026; future
 minimums remain estimated.
 
-MBNA (screenshot is the 16 August canonical opening; statement remains
-authority for min/due/APR): posted **$8,003.61**, pending $0.00, limit $8,000
-(over by $3.61). The retired 9 August opening was posted **$7,855.12** +
-pending **$82.05**. Statement balance $7,855.12, minimum **$158.27**, due
-**2026-08-31**, purchase APR **21.74%**, cash advance / BT APR **22.99%**,
-statement interest $148.27. Do not round the 16 August opening back to the
-statement amount.
+MBNA (current canonical opening is 2026-08-19): posted **$7,875.99**, pending
+$0.00, limit $8,000. The 16 August opening was posted **$8,003.61**, pending
+$0.00. The retired 9 August opening was posted **$7,855.12** + pending
+**$82.05**. Statement remains authority for min/due/APR: statement balance
+$7,855.12, minimum **$158.27**, due **2026-08-31**, purchase APR **21.74%**,
+cash advance / BT APR **22.99%**, statement interest $148.27. Do not round a
+dated opening back to the statement amount.
 
 Affirm/Flexiti remains owner-confirmed paid off and closed.
 

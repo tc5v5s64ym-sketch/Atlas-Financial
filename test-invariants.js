@@ -771,9 +771,11 @@ ok(/No weekly spending\s*\n?\s*figure fixes this/.test(planJs2),
     // The paid-off card's minimum must not turn up on another account either.
     // Extras may still cascade (they do — the next assertion); a redirected
     // $170 November minimum is what this forbids, not a lower close.
-    ok(pr.byId.tdcc.balance > 0,
-      'and it is not redirected to the next debt in the policy chain',
-      `TD credit card closes ${money(pr.byId.tdcc.balance)}`);
+    ok(!adv.sim.events.some(e => {
+      const o = (plan.obligations || []).find(x => x.id === e.id);
+      return e.date === '2026-11-01' && e.kind === 'obligation' && o && o.debtId === 'cashback';
+    }),
+      'and the paid-off card minimum is not redirected onto another account in November');
     // The cascade still applies where it belongs — to explicit extra payments.
     ok(pr.byId.tdcc.balance < tdccOpen,
       'while an EXTRA payment still cascades once its target is clear',
