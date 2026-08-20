@@ -79,8 +79,8 @@ console.log('=== 1. stored funding available is ignored once current state is su
   ok(near(got.find(o => o.id === 'cards').available, cards),
     'cards available is residual utilisation (triangle + cashback), not the stored 1',
     String(got.find(o => o.id === 'cards').available));
-  ok(near(got.find(o => o.id === 'amanda').available, 800),
-    'Amanda available follows the held-elsewhere cash row');
+  ok(near(got.find(o => o.id === 'amanda').available, 0),
+    'Amanda held-elsewhere locator is observational, not the raw $800');
   ok(near(got.find(o => o.id === 'overdraft').available, 600),
     'overdraft available is unused limit while Chequing B is positive');
 }
@@ -163,6 +163,43 @@ console.log('\n=== 5. recommend gap allocation uses derived available, not a sta
   ok(helocSrc && near(helocSrc.available, 100),
     'recommend HELOC available is 100, not the stored 9999',
     helocSrc && String(helocSrc.available));
+}
+
+console.log('\n=== 6. a held-elsewhere raw-balance change does not increase household funding capacity (Q25) ===');
+{
+  const before = fixture();
+  const after = clone(before);
+  const held = after.plan.startingCash.heldElsewhere.find(h => h.id === 'amanda-debt-payments');
+  held.value = 8000;
+  const helocHeadroom = 1000 - 900;
+  const usable = data => fundingOf(data)
+    .filter(o => !o.unusable)
+    .reduce((s, o) => s + Number(o.available || 0), 0);
+  ok(near(usable(before), helocHeadroom) && near(usable(after), helocHeadroom),
+    'usable funding capacity stays HELOC headroom 100, not 800 or 8000',
+    `${usable(before)} → ${usable(after)}`);
+  ok(near(fundingOf(after).find(o => o.id === 'amanda').available, 0),
+    'and Amanda available stays 0 after the held-elsewhere row moves');
+
+  const recOpts = data => ({
+    targetBuffer: 700,
+    fundingSources: data.plan.funding.options,
+    extraFacilities: data.revolvingExtra,
+    debts: data.debts,
+  });
+  const recBefore = F.recommend(before.plan, '2026-08-19', recOpts(before));
+  const recAfter = F.recommend(after.plan, '2026-08-19', recOpts(after));
+  const take = rec => (rec.funding.parts || []).reduce((s, p) => s + p.amount, 0);
+  const amandaTake = rec => (rec.funding.parts || [])
+    .filter(p => p.id === 'amanda')
+    .reduce((s, p) => s + p.amount, 0);
+  ok(near(take(recBefore), take(recAfter)),
+    'recommend allocated gap funding is unchanged when only the held-elsewhere raw balance moves',
+    `${take(recBefore)} → ${take(recAfter)}`);
+  ok(near(amandaTake(recBefore), 0) && near(amandaTake(recAfter), 0),
+    'and the opening gap does not consume the held-elsewhere account');
+  ok(JSON.stringify(after.plan.funding.options) === JSON.stringify(before.plan.funding.options),
+    'plan.funding.options bytes are unchanged');
 }
 
 console.log('\n' + (failures ? `${failures} failure(s)` : 'All current-headroom derivation checks passed'));

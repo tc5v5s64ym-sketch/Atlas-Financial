@@ -1294,9 +1294,12 @@ as a universal fact database. Build-strategy item `AF-DEDUP-01`.
 The leftover class was stored current-balance conclusions on
 `plan.funding.options[].available` (HELOC, cards aggregate, Amanda cash)
 and stored limit-satisfaction on `plan.actions[].status`. Those are now
-Forecast views (`resolveFundingSources` / `resolveActions`) from current
-cash and utilisation. Snapshots remain dated evidence. Do not restore a
-second live headroom number on the option row.
+Forecast views (`resolveFundingSources` / `resolveActions`) from extra
+facilities and utilisation. A held-elsewhere `cash` locator (Amanda /
+TENNIS INCOME) is observational identity only: Q25 stays OPEN, so the
+raw balance is not household funding. Snapshots remain dated evidence.
+Do not restore a second live headroom number on the option row, and do
+not infer fundability from a held-elsewhere balance.
 
 **B94 · One master forecast; ranges are views** · **DONE 2026-08-16** · *engine earned; one outcome*
 Owner instruction 2026-08-16. The product contract lives in

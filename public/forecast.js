@@ -237,13 +237,16 @@
   }
   // Funding-option availability is a view of current cash / utilisation, not a
   // second current-state balance stored on the option. A `cash` locator is an
-  // extra facility (overdraft: max(0, limit − used)) or a startingCash row.
-  // A `debtId` locator is that facility's published utilisation available;
-  // stored `available` is ignored for locators when current state is supplied.
-  // A display-only option with neither locator (`unusable`, the cards
-  // aggregate) is the residual of unclaimed utilisation. A usable option with
-  // a declared planning available and no locator keeps that figure (fixtures,
-  // a counterfactual top-up). Chequing B remains the overdraft usage authority.
+  // extra facility (overdraft: max(0, limit − used)). A held-elsewhere cash
+  // row is observational identity only: Q25 is OPEN, so the raw Amanda /
+  // TENNIS INCOME balance is not household `available`. Breakdown cash is
+  // overdraft usage, not a funding pot. A `debtId` locator is that facility's
+  // published utilisation available; stored `available` is ignored for
+  // locators when current state is supplied. A display-only option with
+  // neither locator (`unusable`, the cards aggregate) is the residual of
+  // unclaimed utilisation. A usable option with a declared planning available
+  // and no locator keeps that figure (fixtures, a counterfactual top-up).
+  // Chequing B remains the overdraft usage authority.
   function resolveFundingSources(sources, extra, plan, debts) {
     extra = resolveExtraFacilities(extra, plan);
     const list = sources || [];
@@ -272,11 +275,11 @@
         const isBreakdown = ((plan && plan.startingCash && plan.startingCash.breakdown) || [])
           .some(r => r && r.id === src.cash);
         // Breakdown cash is overdraft usage, not a funding pot. Held-elsewhere
-        // (Amanda) can fund. Missing extra facilities must not treat Chequing B
-        // as overdraft headroom.
-        if (row && !isBreakdown && row.value != null && isFinite(Number(row.value))) {
-          return Math.max(0, Number(row.value));
-        }
+        // cash (Amanda / TENNIS INCOME) is observational: Q25 is OPEN, and
+        // only an actual household transfer or an explicit owner-authorized
+        // remainder can fund. Missing extra facilities must not treat
+        // Chequing B as overdraft headroom.
+        if (row && !isBreakdown) return 0;
         return src.available;
       }
       if (!util) return src.available;
