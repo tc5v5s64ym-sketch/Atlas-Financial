@@ -561,6 +561,8 @@ console.log('\n=== 5. missing or incomplete evidence refuses ===');
   delete incomplete.payload.pendingCoverage;
   const dir2 = tempDir();
   const ws2 = workspace(dir2, incomplete.data);
+  const beforeData2 = hashFile(ws2.dataPath);
+  const beforePos2 = hashFile(ws2.positionsPath);
   const { preview: preview2 } = previewAt(incomplete.data, incomplete.payload, {
     accountMap: incomplete.map, cutoverAsOf: '2026-08-19', recoverOpeningArtifacts: true,
     positionsPath: ws2.positionsPath, snapshotDir: ws2.snapshotDir,
@@ -574,7 +576,7 @@ console.log('\n=== 5. missing or incomplete evidence refuses ===');
   const applied2 = runCli(recoverArgs(ws2, incomplete, rec2 && rec2.recoveryApprovalId || 'c'.repeat(64)));
   ok(applied2.code !== 0, 'incomplete census apply is refused');
   ok(hashFile(ws.dataPath) === beforeData && hashFile(ws.positionsPath) === beforePos
-    && hashFile(ws2.dataPath) === hashFile(ws2.dataPath)
+    && hashFile(ws2.dataPath) === beforeData2 && hashFile(ws2.positionsPath) === beforePos2
     && !fs.existsSync(path.join(ws.snapshotDir, '2026-08-19.json'))
     && !fs.existsSync(path.join(ws2.snapshotDir, '2026-08-19.json')),
     'incomplete evidence writes nothing');
@@ -760,7 +762,53 @@ console.log('\n=== 10. foreign approvals cannot authorize recovery ===');
     'foreign approvals write nothing');
 }
 
-console.log('\n=== 11. live canonical files were not used as the write target ===');
+console.log('\n=== 11. recoveryApprovalId binds exact proposed artifact bytes ===');
+{
+  const pkt = survivingPacket();
+  const dir = tempDir();
+  const ws = workspace(dir, pkt.data, {
+    priorBalances: { 'chequing-b': 200, triangle: 13197, mbna: 1800 },
+  });
+  const beforeData = hashFile(ws.dataPath);
+  const { preview } = previewAt(pkt.data, pkt.payload, {
+    accountMap: pkt.map, cutoverAsOf: '2026-08-19', recoverOpeningArtifacts: true,
+    positionsPath: ws.positionsPath, snapshotDir: ws.snapshotDir,
+    balanceMapPath: ws.balanceMapPath, dataPath: ws.dataPath,
+    canonicalSha256: hashFile(ws.dataPath).toUpperCase(),
+  });
+  const oldId = recoveryOf(preview) && recoveryOf(preview).recoveryApprovalId;
+  ok(!!oldId && recoveryOf(preview).supported === true,
+    'preview issued a recoveryApprovalId for the exact artifact proposal');
+
+  const originalPos = fs.readFileSync(ws.positionsPath, 'utf8');
+  const mutated = originalPos.replace('Household,TD,Chequing A,', 'Household,TD Canada Trust,Chequing A,');
+  ok(mutated !== originalPos, 'incumbent Chequing A institution field changed');
+  fs.writeFileSync(ws.positionsPath, mutated);
+  const afterMutatePos = hashFile(ws.positionsPath);
+  ok(hashFile(ws.dataPath) === beforeData, 'incumbent mutation does not touch data.json');
+
+  const { preview: preview2 } = previewAt(pkt.data, pkt.payload, {
+    accountMap: pkt.map, cutoverAsOf: '2026-08-19', recoverOpeningArtifacts: true,
+    positionsPath: ws.positionsPath, snapshotDir: ws.snapshotDir,
+    balanceMapPath: ws.balanceMapPath, dataPath: ws.dataPath,
+    canonicalSha256: hashFile(ws.dataPath).toUpperCase(),
+  });
+  const drifted = recoveryOf(preview2);
+  ok(drifted && drifted.supported === true && drifted.recoveryApprovalId
+    && drifted.recoveryApprovalId !== oldId,
+    'structural incumbent drift changes recoveryApprovalId without touching evidence or routing');
+
+  const applied = runCli(recoverArgs(ws, pkt, oldId, {
+    payloadName: 'payload-stale-approval.json', mapName: 'map-stale-approval.json',
+  }));
+  ok(applied.code !== 0, 'old recoveryApprovalId is refused after incumbent structural drift', applied.stderr.trim());
+  ok(hashFile(ws.dataPath) === beforeData
+    && hashFile(ws.positionsPath) === afterMutatePos
+    && !fs.existsSync(path.join(ws.snapshotDir, '2026-08-19.json')),
+    'stale recovery approval writes nothing');
+}
+
+console.log('\n=== 12. live canonical files were not used as the write target ===');
 {
   ok(hashFile(LIVE_DATA) === liveHash, 'live data.json is unchanged');
   ok(hashFile(LIVE_POSITIONS) === livePosHash, 'live positions.csv is unchanged');

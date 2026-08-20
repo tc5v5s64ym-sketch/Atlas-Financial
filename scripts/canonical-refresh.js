@@ -38,9 +38,10 @@
  * It requires a complete trustworthy same-date observation packet whose every
  * required posted and pending value MATCHES the surviving opening.
  * --apply --approve-recovery writes only the missing positions rows and
- * snapshot. It never writes data.json, never advances the opening, never
- * POSTs Lunch Money, and cannot be authorized by previewId,
- * cutoverApprovalId, or openingApprovalId.
+ * snapshot after the approval binds those exact proposed bytes (and the
+ * expected artifact pre-state). It never writes data.json, never advances
+ * the opening, never POSTs Lunch Money, and cannot be authorized by
+ * previewId, cutoverApprovalId, or openingApprovalId.
  *
  * Never writes without --apply and an exact matching approval.
  * Never POST/PUT/PATCH/DELETE Lunch Money. Never stores a token.
@@ -1244,8 +1245,22 @@ function inspectSameDateHousehold(csvText, requestedAsOf, proposedOpening, balan
   return { matching, missingIncumbent, missingSameDate, conflicting };
 }
 
-function recoveryFingerprint(cutover, balanceMap, canonicalSha256) {
+function recoveryArtifactProposal(constructed, incumbentCsv, snapshotDir) {
+  if (!constructed || constructed.positionsText == null || !constructed.snapshot || !constructed.snapshot.asOf) {
+    return null;
+  }
+  const snapshotDest = snapshotDir ? path.join(snapshotDir, `${constructed.snapshot.asOf}.json`) : null;
+  return {
+    proposedPositionsSha256: sha256Bytes(Buffer.from(constructed.positionsText, 'utf8')),
+    proposedSnapshotSha256: sha256Bytes(Buffer.from(S.encodeSnapshot(constructed.snapshot), 'utf8')),
+    snapshotPreState: snapshotDest && fs.existsSync(snapshotDest) ? 'present' : 'absent',
+    positionsNeeded: normalizeNewlines(constructed.positionsText) !== normalizeNewlines(incumbentCsv),
+  };
+}
+
+function recoveryFingerprint(cutover, balanceMap, canonicalSha256, artifactProposal) {
   const proposal = (cutover && cutover.proposedOpening) || {};
+  const artifacts = artifactProposal || {};
   return {
     schema: ARTIFACT_RECOVERY_SCHEMA,
     requestedAsOf: cutover && cutover.requestedAsOf ? cutover.requestedAsOf : null,
@@ -1274,12 +1289,18 @@ function recoveryFingerprint(cutover, balanceMap, canonicalSha256) {
       date: row.date,
     })),
     routing: openingRoutingFingerprint(balanceMap),
-    artifacts: ['positions.csv', 'snapshots/<date>.json'],
+    artifacts: {
+      surfaces: ['positions.csv', 'snapshots/<date>.json'],
+      proposedPositionsSha256: artifacts.proposedPositionsSha256 || null,
+      proposedSnapshotSha256: artifacts.proposedSnapshotSha256 || null,
+      snapshotPreState: artifacts.snapshotPreState || null,
+      positionsNeeded: artifacts.positionsNeeded === true,
+    },
   };
 }
 
-function recoveryApprovalIdFrom(cutover, balanceMap, canonicalSha256) {
-  return crypto.createHash('sha256').update(JSON.stringify(recoveryFingerprint(cutover, balanceMap, canonicalSha256))).digest('hex');
+function recoveryApprovalIdFrom(cutover, balanceMap, canonicalSha256, artifactProposal) {
+  return crypto.createHash('sha256').update(JSON.stringify(recoveryFingerprint(cutover, balanceMap, canonicalSha256, artifactProposal))).digest('hex');
 }
 
 function blockedRecovery(cutover, extra) {
@@ -1503,11 +1524,17 @@ function attachOpeningArtifactRecovery(cutover, data, report, opts) {
     ));
   }
 
+  const artifactProposal = constructed
+    ? recoveryArtifactProposal(constructed, incumbentCsv, opts.snapshotDir)
+    : null;
   const supported = blockers.length === 0
     && postedAllMatch
     && pendingAllMatch
     && censusComplete
     && !!constructed
+    && !!artifactProposal
+    && !!artifactProposal.proposedPositionsSha256
+    && !!artifactProposal.proposedSnapshotSha256
     && (positionsNeeded || snapshotNeeded);
 
   cutover.artifactRecovery = {
@@ -1523,7 +1550,9 @@ function attachOpeningArtifactRecovery(cutover, data, report, opts) {
     snapshotNeeded,
     alreadyComplete: false,
     supported,
-    recoveryApprovalId: supported ? recoveryApprovalIdFrom(cutover, balanceMap, canonicalSha256) : null,
+    recoveryApprovalId: supported
+      ? recoveryApprovalIdFrom(cutover, balanceMap, canonicalSha256, artifactProposal)
+      : null,
     canonicalSha256,
     status: supported ? 'READY_FOR_OWNER_REVIEW' : 'BLOCKED',
     blockers,
@@ -1612,10 +1641,6 @@ function applyRecoveryPreview(data, preview, destPath, originalBytes, opts) {
   if (recovery.canonicalSha256 && recovery.canonicalSha256 !== canonicalSha256) {
     fail('Canonical data.json changed since the recovery preview. Canonical state was not written.');
   }
-  const recomputed = recoveryApprovalIdFrom(cutover, currentBalanceMap, canonicalSha256);
-  if (String(recomputed) !== String(recovery.recoveryApprovalId)) {
-    fail('Recovery approval fingerprint does not match the surviving opening, MATCH packet, or balance-map routing. Canonical state was not written.');
-  }
   assertRecoveryMatchesCanonical(data, cutover);
   if (Buffer.compare(fs.readFileSync(destPath), originalBytes) !== 0) {
     fail('Canonical data.json changed before recovery install. Canonical state was not written.');
@@ -1624,12 +1649,30 @@ function applyRecoveryPreview(data, preview, destPath, originalBytes, opts) {
   if (artifactsLeakSecrets(Buffer.from(originalBytes).toString('utf8'), artifacts.positionsText, artifacts.snapshot)) {
     fail('Recovery artifacts are not sanitized. Canonical state was not written.');
   }
+  const incumbentCsv = fs.readFileSync(opts.positionsPath, 'utf8');
+  const artifactProposal = recoveryArtifactProposal(artifacts, incumbentCsv, opts.snapshotDir);
+  const recomputed = recoveryApprovalIdFrom(cutover, currentBalanceMap, canonicalSha256, artifactProposal);
+  if (!artifactProposal
+    || String(recomputed) !== String(recovery.recoveryApprovalId)) {
+    fail('Recovery approval fingerprint does not match the surviving opening, MATCH packet, balance-map routing, or the exact proposed recovered artifacts. Canonical state was not written.');
+  }
   const positionsNeeded = normalizeNewlines(artifacts.positionsText)
-    !== normalizeNewlines(fs.readFileSync(opts.positionsPath, 'utf8'));
+    !== normalizeNewlines(incumbentCsv);
   const snapshotState = assertSnapshotInstallable(opts.snapshotDir, artifacts.snapshot);
   const snapshotNeeded = snapshotState === 'missing';
   if (!positionsNeeded && !snapshotNeeded) {
     fail('Opening artifacts already present and agree with the MATCH packet; recovery will not rewrite them.');
+  }
+  const installProposal = recoveryArtifactProposal(
+    artifacts,
+    fs.readFileSync(opts.positionsPath, 'utf8'),
+    opts.snapshotDir
+  );
+  if (!installProposal
+    || installProposal.proposedPositionsSha256 !== artifactProposal.proposedPositionsSha256
+    || installProposal.proposedSnapshotSha256 !== artifactProposal.proposedSnapshotSha256
+    || installProposal.snapshotPreState !== artifactProposal.snapshotPreState) {
+    fail('Recovered artifact bytes drifted before install. Canonical state was not written.');
   }
   installRecoveryArtifacts(artifacts, {
     positionsPath: opts.positionsPath,
@@ -2516,6 +2559,7 @@ const api = {
   attachOpeningArtifactRecovery,
   recoveryApprovalIdFrom,
   recoveryFingerprint,
+  recoveryArtifactProposal,
   buildOpeningArtifacts,
   resolveOpeningArtifactPaths,
   run,
