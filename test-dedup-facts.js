@@ -96,9 +96,9 @@ console.log('\n=== B. overdraft — one edit of Chequing B ===');
   const projAfter = F.projectDebts(after.plan, after.debts, after.meta.asOf,
     { extraFacilities: after.revolvingExtra });
   const fundBefore = F.resolveFundingSources(
-    before.plan.funding.options, before.revolvingExtra, before.plan);
+    before.plan.funding.options, before.revolvingExtra, before.plan, before.debts);
   const fundAfter = F.resolveFundingSources(
-    after.plan.funding.options, after.revolvingExtra, after.plan);
+    after.plan.funding.options, after.revolvingExtra, after.plan, after.debts);
   const odFundBefore = fundBefore.find(o => o.id === 'overdraft');
   const odFundAfter = fundAfter.find(o => o.id === 'overdraft');
   const recOpts = d => ({
@@ -155,9 +155,9 @@ console.log('\n=== B. overdraft — one edit of Chequing B ===');
   ok(near(u0.used, 200) && near(u0.available, 400)
     && near(u1.used, 300) && near(u1.available, 300),
     'when the overdraft still has room, used +$100 drops available $100');
-  const f0 = F.resolveFundingSources(roomy.plan.funding.options, roomy.revolvingExtra, roomy.plan)
+  const f0 = F.resolveFundingSources(roomy.plan.funding.options, roomy.revolvingExtra, roomy.plan, roomy.debts)
     .find(o => o.id === 'overdraft');
-  const f1 = F.resolveFundingSources(roomyDeeper.plan.funding.options, roomyDeeper.revolvingExtra, roomyDeeper.plan)
+  const f1 = F.resolveFundingSources(roomyDeeper.plan.funding.options, roomyDeeper.revolvingExtra, roomyDeeper.plan, roomyDeeper.debts)
     .find(o => o.id === 'overdraft');
   ok(near(f0.available, 400) && near(f1.available, 300),
     'and the funding-option view drops that same $100');
@@ -281,8 +281,8 @@ ok((data.income || []).some(r => r.perMonth === null && /One-off/i.test(r.stabil
   const odOpt = (data.plan.funding.options || []).find(o => o.id === 'overdraft');
   ok(odOpt && odOpt.cash === 'chequing-b' && typeof odOpt.available !== 'number',
     'overdraft funding option names Chequing B and stores no numeric availability');
-  ok((data.plan.funding.options || []).every(o => !o.cash || typeof o.available !== 'number'),
-    'no cash-linked funding option stores a numeric current availability');
+  ok((data.plan.funding.options || []).every(o => typeof o.available !== 'number'),
+    'no funding option stores a numeric current availability');
   ok(!JSON.stringify(data).includes('82.28'),
     'data.json stores no hard-coded $82.28 current overdraft availability');
 }

@@ -729,7 +729,7 @@ function movedAfter(inputs) {
 const OFF = ['burrard1', 'burrard2'];
 const ACTION_AMT_LIVE = plan.actions[0].amount;
 const FLOOR_LIVE = openingFloor(plan, asOf);
-const USABLE_LIVE = usableFunding(plan);
+const USABLE_LIVE = usableFunding(plan, data.revolvingExtra, data.debts);
 const RESTORED_BUF = Math.max(0, FLOOR_LIVE + ACTION_AMT_LIVE * 0.5);
 const PARTIAL_BUF = ACTION_AMT_LIVE + FLOOR_LIVE + 200;
 const UNFUNDED_BUF_LIVE = USABLE_LIVE + FLOOR_LIVE + 1000;

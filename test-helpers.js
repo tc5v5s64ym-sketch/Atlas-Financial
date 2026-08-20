@@ -102,14 +102,19 @@ function streamTotal(items, asOf, end, occurrences, opts) {
   }, 0);
 }
 
-function fundingById(plan) {
+function resolvedFunding(plan, extra, debts) {
+  return F.resolveFundingSources(
+    (plan && plan.funding && plan.funding.options) || [], extra, plan, debts);
+}
+
+function fundingById(plan, extra, debts) {
   const out = {};
-  for (const o of plan.funding && plan.funding.options || []) out[o.id] = o;
+  for (const o of resolvedFunding(plan, extra, debts)) out[o.id] = o;
   return out;
 }
 
-function usableFunding(plan) {
-  return (plan.funding && plan.funding.options || [])
+function usableFunding(plan, extra, debts) {
+  return resolvedFunding(plan, extra, debts)
     .filter(o => !o.unusable)
     .reduce((s, o) => s + Number(o.available || 0), 0);
 }

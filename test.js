@@ -52,6 +52,7 @@ const suites = [
   ['evidence-use register routing', 'test-evidence-use-register.js'],
   ['live household reconciliation', 'test-live-household.js'],
   ['duplicate live-fact cleanup (B93)', 'test-dedup-facts.js'],
+  ['current-balance conclusions are Forecast-derived', 'test-derive-current-headroom.js'],
   ['refresh isolation (B92)', 'test-refresh-isolation.js'],
   ['non-writing reconciliation (B91)', 'test-reconcile.js'],
   ['current-state cutover (B91)', 'test-cutover.js'],

@@ -948,7 +948,8 @@ function renderPlan(d, periods, history) {
   // subtracts the two for the uncovered remainder, or selects a different
   // outcome from the status verdict, the due date or the funding plan.
   const move = Forecast.nextMove(plan, advice,
-    { weeklyOverride: state.weeklyVariable, sim });
+    { weeklyOverride: state.weeklyVariable, sim, debts: state.debts,
+      extraFacilities: state.extraFacilities });
   if (move) {
     // The action the engine measured, so the head and the outcome below it
     // cannot describe different actions.
@@ -1430,8 +1431,11 @@ function renderPlan(d, periods, history) {
 
   /* ---- next actions ---- */
   // The first action is the next move and is rendered separately, above.
+  // Balance-dependent status (a debtId on the row) is Forecast-derived;
+  // owner-policy status stays on the stored row.
+  const actions = Forecast.resolveActions(plan, state.debts, state.extraFacilities);
   if (plan.actionsNote) $('actions-note').textContent = plan.actionsNote;
-  $('actions-list').innerHTML = plan.actions.slice(1, 5).map((a, i) => {
+  $('actions-list').innerHTML = actions.slice(1, 5).map((a, i) => {
     const overdue = a.due && a.due < asOf && a.status !== 'done';
     return `<div class="action ${a.status === 'done' ? 'done' : ''}">
       <div class="action-n">${i + 2}</div>

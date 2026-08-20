@@ -188,7 +188,7 @@ ok(near(expected.ending,
   ok((plan.groups || []).some(g => g.id === 'burrard' && g.atomic), 'and the pair is flagged atomic');
   const due = grp.reduce((s, c) => s + c.amount, 0);
   ok(near(due, burrardDue(plan)), 'the atomic pair totals the Burrard due on that day', due.toFixed(2));
-  const funding = F.resolveFundingSources(plan.funding.options, data.revolvingExtra, plan);
+  const funding = F.resolveFundingSources(plan.funding.options, data.revolvingExtra, plan, data.debts);
   const can = funding.filter(o => !o.unusable && o.available >= due).map(o => o.id).sort();
   ok(can.length >= 1, 'at least one usable source can cover the Burrard due', can.join(',') || 'none');
   ok(funding.filter(o => o.unusable).every(o => o.unusable === true),

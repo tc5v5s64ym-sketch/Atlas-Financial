@@ -235,24 +235,98 @@
     const used = (Number(facility.used) || 0) + (Number(facility.pending) || 0);
     return Math.max(0, facility.limit - used);
   }
-  // Funding-option availability is a view, not a second current-state
-  // balance. A cash-linked option (the Chequing B overdraft) takes
-  // `max(0, limit − used)` from the extra facility; Chequing B remains
-  // the usage authority and `revolvingExtra.limit` remains the limit.
-  // Synthetic options with no `cash` keep the available they declared.
-  function resolveFundingSources(sources, extra, plan) {
+  // Funding-option availability is a view of current cash / utilisation, not a
+  // second current-state balance stored on the option. A `cash` locator is an
+  // extra facility (overdraft: max(0, limit − used)). A held-elsewhere cash
+  // row is observational identity only: Q25 is OPEN, so the raw Amanda /
+  // TENNIS INCOME balance is not household `available`. Breakdown cash is
+  // overdraft usage, not a funding pot. A `debtId` locator is that facility's
+  // published utilisation available; stored `available` is ignored for
+  // locators when current state is supplied. A display-only option with
+  // neither locator (`unusable`, the cards aggregate) is the residual of
+  // unclaimed utilisation. A usable option with a declared planning available
+  // and no locator keeps that figure (fixtures, a counterfactual top-up).
+  // Chequing B remains the overdraft usage authority.
+  function resolveFundingSources(sources, extra, plan, debts) {
     extra = resolveExtraFacilities(extra, plan);
+    const list = sources || [];
     const byId = new Map();
     const byCash = new Map();
     for (const e of extra || []) {
       byId.set(e.id, e);
       if (e.cash) byCash.set(e.cash, e);
     }
-    return (sources || []).map(src => {
-      if (!src || !src.cash) return src;
-      const facility = byCash.get(src.cash) || byId.get(src.id);
-      if (!facility) return src;
-      return Object.assign({}, src, { available: extraFacilityAvailable(facility) });
+    const claimedDebt = new Set();
+    const claimedExtra = new Set();
+    for (const src of list) {
+      if (src && src.debtId) claimedDebt.add(src.debtId);
+      if (src && src.cash) {
+        const facility = byCash.get(src.cash) || byId.get(src.id);
+        if (facility && facility.id) claimedExtra.add(facility.id);
+      }
+    }
+    const util = debts ? utilisation(debts, extra, plan) : null;
+    function derivedAvailable(src) {
+      if (!src) return null;
+      if (src.cash) {
+        const facility = byCash.get(src.cash) || byId.get(src.id);
+        if (facility) return extraFacilityAvailable(facility);
+        const row = cashAccount(plan, src.cash);
+        const isBreakdown = ((plan && plan.startingCash && plan.startingCash.breakdown) || [])
+          .some(r => r && r.id === src.cash);
+        // Breakdown cash is overdraft usage, not a funding pot. Held-elsewhere
+        // cash (Amanda / TENNIS INCOME) is observational: Q25 is OPEN, and
+        // the raw balance is not household funding. An explicit owner-authorized
+        // `available` on the option may fund; otherwise 0. Missing extra
+        // facilities must not treat Chequing B as overdraft headroom.
+        if (row && !isBreakdown) {
+          return Number.isFinite(src.available) ? Number(src.available) : 0;
+        }
+        return src.available;
+      }
+      if (!util) return src.available;
+      if (src.debtId) {
+        const row = (util.rows || []).find(r => r.id === src.debtId);
+        if (!row) return 0;
+        return row.available;
+      }
+      // Usable options with a declared planning available (fixtures, a
+      // counterfactual top-up) keep that figure. The live cards aggregate is
+      // display-only (`unusable`) and has no locator — its headroom is the
+      // residual of unclaimed utilisation, including when a stale number was
+      // stored on the row.
+      if (src.unusable !== true && Number.isFinite(src.available)) return src.available;
+      let sum = 0;
+      for (const row of util.rows || []) {
+        if (!row || row.limit == null) continue;
+        if (claimedDebt.has(row.id) || claimedExtra.has(row.id)) continue;
+        if (row.available == null) continue;
+        sum += Number(row.available) || 0;
+      }
+      return sum;
+    }
+    return list.map(src => {
+      if (!src) return src;
+      const available = derivedAvailable(src);
+      return Object.assign({}, src, { available });
+    });
+  }
+
+  // Owner-policy action status stays on the row. A `debtId` means current
+  // over-limit / pending-unknown satisfaction is derived from utilisation:
+  // unknown pending or over-limit → open; otherwise done. Stored status is
+  // ignored for those rows.
+  function resolveActions(plan, debts, extra) {
+    const actions = ((plan && plan.actions) || []).slice();
+    if (!debts) return actions;
+    const util = utilisation(debts, extra, plan);
+    return actions.map(action => {
+      if (!action || !action.debtId) return action;
+      const row = (util.rows || []).find(r => r.id === action.debtId);
+      let status = action.status;
+      if (!row || row.pendingUnknown === true || row.overLimit === true) status = 'open';
+      else status = 'done';
+      return Object.assign({}, action, { status });
     });
   }
   function assetValue(asset, plan) {
@@ -1747,7 +1821,7 @@
     // `Forecast.counterfactuals` reads.
     if (base.fundingSources) {
       base.fundingSources = resolveFundingSources(
-        base.fundingSources, base.extraFacilities, plan);
+        base.fundingSources, base.extraFacilities, plan, base.debts);
     }
 
     const planOptions = Object.assign({}, base);
@@ -3729,7 +3803,7 @@
   // Money, dates and sentences are presentation and stay on the page, exactly
   // as they do for `mission` and `planStatus`.
   function nextMove(plan, advice, opts) {
-    const action = ((plan && plan.actions) || [])[0] || null;
+    const action = (resolveActions(plan, opts && opts.debts, opts && opts.extraFacilities)[0]) || null;
     if (!action) return null;
     const { gap, funding, weekly, recommended, sim, overrideBreaches }
       = planContext(advice, opts);
@@ -4326,7 +4400,7 @@
     projectDebts,
     nextDue, nextPaymentOut, unallocatedCash, compactSnapshot, publicationTotals, deepDive, publishedSpendType, rollupSpending, planStatus, mission, planPhases, nextMove, utilisation, renewal,
     payoffDebts, payoffModel,
-    paymentForMonths, startingCashAmount, resolveFundingSources, EPSILON, STEP };
+    paymentForMonths, startingCashAmount, resolveFundingSources, resolveActions, EPSILON, STEP };
   if (typeof module !== 'undefined' && module.exports) module.exports = Forecast;
   else root.Forecast = Forecast;
 

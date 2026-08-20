@@ -27,6 +27,8 @@ const read = p => sourceText(fs.readFileSync(path.join(__dirname, p), 'utf8'));
 
 const plan = data.plan;
 const asOf = data.meta.asOf;
+const liveFunding = () => F.resolveFundingSources(
+  plan.funding.options, data.revolvingExtra, plan, data.debts);
 
 console.log('=== cash classification ===');
 const cash = plan.startingCash;
@@ -273,30 +275,46 @@ ok(/fundingSources/.test(planJs2),
 ok(/advice\.funding/.test(planJs2), 'and reads the allocation back');
 {
   const SRC = { scenario: 'expected', incomeOverrides: {}, disabled: [], extraDebtMonthly: 0,
-    fundingSources: plan.funding.options };
-  const ranked = plan.funding.options.slice().sort((a, b) => a.rank - b.rank).filter(o => !o.unusable);
+    fundingSources: plan.funding.options, debts: data.debts, extraFacilities: data.revolvingExtra };
+  const amandaFund = liveFunding().find(o => o.id === 'amanda');
+  ok(amandaFund && near(amandaFund.available, 0)
+      && (cash.heldElsewhere || []).some(h => h.id === 'amanda-debt-payments' && h.value > 0),
+    'Amanda\'s held-elsewhere locator is not household funding while Q25 is OPEN',
+    amandaFund ? money(amandaFund.available) : 'missing');
+  const ranked = liveFunding().slice().sort((a, b) => a.rank - b.rank)
+    .filter(o => !o.unusable && o.available > 0);
   const usable = ranked.reduce((s, o) => s + o.available, 0);
   const floorNow = openingFloor(plan, asOf);
-  const combineBuf = ranked[0].available + ranked[1].available / 2 + floorNow;
   const unfundedBuf = usable + 2000 + floorNow;
   const defaultBuf = Math.max(plan.defaults.targetBuffer, Math.ceil(floorNow + 50));
 
-  // A buffer just above the floor: one source, nothing borrowed — while that gap still fits.
+  // A buffer just above the floor: one remaining usable source covers it.
+  // On this opening that source is the HELOC, because Q25 keeps Amanda at 0.
   const base = F.recommend(plan, asOf, Object.assign({}, SRC, { targetBuffer: defaultBuf }));
-  ok(base.funding && base.funding.feasible && base.funding.parts.length === 1 && base.funding.borrowed === 0,
-    'just above the floor one debt-free source covers the gap',
+  ok(base.funding && base.funding.feasible && base.funding.parts.length === 1,
+    'just above the floor one remaining usable source covers the gap',
     base.funding ? base.funding.parts.map(p => p.short).join(' + ') : 'no funding');
+  ok(base.funding.parts[0].id === 'heloc' && base.funding.borrowed > 0,
+    'and that source is the HELOC, not the held-elsewhere raw balance',
+    base.funding.parts.map(p => p.id).join(' + '));
 
-  // Raised buffer: the gap outruns the largest source but a COMBINATION works,
-  // and the borrowed part must land on the facility it is drawn from.
-  const big = F.recommend(plan, asOf, Object.assign({}, SRC, { targetBuffer: combineBuf }));
-  ok(big.gap.amount > ranked[0].available,
+  // Combination still works from an explicit planning available (no locator),
+  // not from the held-elsewhere raw balance.
+  const overlay = plan.funding.options.map(o =>
+    o.id === 'amanda' ? Object.assign({}, o, { cash: undefined, available: 800 }) : o);
+  const overlayRanked = F.resolveFundingSources(overlay, data.revolvingExtra, plan, data.debts)
+    .filter(o => !o.unusable && o.available > 0)
+    .sort((a, b) => a.rank - b.rank);
+  const combineBuf = overlayRanked[0].available + overlayRanked[1].available / 2 + floorNow;
+  const big = F.recommend(plan, asOf, Object.assign({}, SRC, {
+    fundingSources: overlay, targetBuffer: combineBuf }));
+  ok(big.gap.amount > overlayRanked[0].available,
     'at a combination-sized buffer the gap exceeds the largest single source',
-    `${money(big.gap.amount)} vs ${money(ranked[0].available)}`);
+    `${money(big.gap.amount)} vs ${money(overlayRanked[0].available)}`);
   ok(big.funding.feasible && big.funding.needsCombination,
     'but a combination reaches it, so the plan is feasible',
     big.funding.parts.map(p => `${p.short} ${money(p.amount)}`).join(' + '));
-  ok(near(big.funding.borrowed, Math.max(0, big.gap.amount - ranked[0].available)),
+  ok(near(big.funding.borrowed, Math.max(0, big.gap.amount - overlayRanked[0].available)),
     'and the shortfall against the free source is borrowed', money(big.funding.borrowed));
   const bigProj = F.projectDebts(plan, data.debts, asOf,
     Object.assign({}, big.simOptions, { weeklyVariable: big.weekly, extraFacilities: data.revolvingExtra }));
@@ -553,7 +571,7 @@ ok(/No weekly spending\s*\n?\s*figure fixes this/.test(planJs2),
   // A buffer no combination of sources can reach. Spending is not a remedy for
   // money that does not exist: at any weekly figure the floor stays under the
   // buffer, so no weekly figure may be instructed at all.
-  const usable = (plan.funding.options || []).filter(o => !o.unusable)
+  const usable = liveFunding().filter(o => !o.unusable)
     .reduce((s, o) => s + o.available, 0);
   const unfundedBuf = usable + 2000 + openingFloor(plan);
   const unreachable = F.recommend(plan, asOf, Object.assign({}, O, { targetBuffer: unfundedBuf }));
@@ -568,10 +586,14 @@ ok(/No weekly spending\s*\n?\s*figure fixes this/.test(planJs2),
 }
 // Split funding must not be measured half-applied.
 {
-  const ranked = plan.funding.options.slice().sort((a, b) => a.rank - b.rank).filter(o => !o.unusable);
+  const overlay = plan.funding.options.map(o =>
+    o.id === 'amanda' ? Object.assign({}, o, { cash: undefined, available: 800 }) : o);
+  const ranked = F.resolveFundingSources(overlay, data.revolvingExtra, plan, data.debts)
+    .slice().sort((a, b) => a.rank - b.rank).filter(o => !o.unusable && o.available > 0);
   const combineBuf = ranked[0].available + ranked[1].available / 2 + openingFloor(plan, asOf);
   const O = { scenario: 'expected', incomeOverrides: {}, disabled: [], extraDebtMonthly: 0,
-    targetBuffer: combineBuf, fundingSources: plan.funding.options };
+    targetBuffer: combineBuf, fundingSources: overlay, debts: data.debts,
+    extraFacilities: data.revolvingExtra };
   const adv = F.recommend(plan, asOf, O);
   const onDay = adv.sim.events.filter(e => e.date === adv.gap.date && e.kind === 'injection');
   ok(onDay.length === 1,
@@ -654,7 +676,7 @@ ok(/No weekly spending\s*\n?\s*figure fixes this/.test(planJs2),
   {
     const O = { scenario: 'expected', incomeOverrides: {}, disabled: [],
       extraDebtMonthly: 80000, targetBuffer: plan.defaults.targetBuffer,
-      fundingSources: plan.funding.options, extraDebtTarget: plan.nextDollar.target };
+      fundingSources: liveFunding(), extraDebtTarget: plan.nextDollar.target };
     const uncapped = F.recommend(plan, asOf, O);
     const capped = F.recommend(plan, asOf, Object.assign({}, O, { debts: data.debts }));
     const spent = s => s.sim.events.filter(e => e.kind === 'extra')

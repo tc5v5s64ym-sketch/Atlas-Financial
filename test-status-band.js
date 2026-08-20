@@ -232,12 +232,12 @@ const rankTrapStatus = F.planStatus(rankTrap, { weeklyOverride: null });
     'but it no longer claims no single source covers the gap',
     String(rankTrapStatus.noSingleSourceCovers));
 }
-// And the published combination case is unchanged: neither real source reaches
-// the gap alone, so the stronger sentence is still the true one.
+// And the published live sources no longer combine: Q25 keeps Amanda at $0,
+// so a mid-sized gap is a single HELOC cover, not a two-source plan.
 {
   const combineBuf = (() => {
-    const src = fundingById(data.plan);
-    return src.amanda.available + src.heloc.available / 2 + openingFloor(data.plan, data.meta.asOf);
+    const src = fundingById(data.plan, data.revolvingExtra, data.debts);
+    return src.heloc.available / 2 + openingFloor(data.plan, data.meta.asOf);
   })();
   const adv = F.recommend(data.plan, data.meta.asOf, Object.assign({
     scenario: data.plan.defaults.scenario, targetBuffer: combineBuf, extraDebtMonthly: 0,
@@ -246,8 +246,12 @@ const rankTrapStatus = F.planStatus(rankTrap, { weeklyOverride: null });
     extraFacilities: data.revolvingExtra,
   }, { fundingSources: data.plan.funding.options }));
   const s = F.planStatus(adv, { weeklyOverride: null });
-  ok(s.id === 'combination' && s.noSingleSourceCovers === true,
-    'on the published plan no single source does cover it, and the verdict still says so');
+  const amanda = (adv.funding.sources || []).find(x => x.id === 'amanda');
+  ok(s.id === 'gap' && s.noSingleSourceCovers !== true,
+    'on the published plan a mid-sized gap is a single HELOC cover while Q25 is OPEN');
+  ok(amanda && same(amanda.available, 0) && amanda.verdict === 'insufficient',
+    'Amanda\'s held-elsewhere locator contributes no funding capacity',
+    amanda ? `${amanda.verdict} ${amanda.available}` : 'missing');
 }
 
 console.log('\n=== 4. an ordinary opening gap ===');
@@ -355,21 +359,15 @@ ok(noBreachAtBoundary.id === 'gap',
   noBreachAtBoundary.id);
 
 console.log('\n=== 9. per-source funding verdicts, on the published plan ===');
-/* Hand-computed against the real declared sources. Amanda holds $2,691.85 and
- * the HELOC $1,067.84; the overdraft ($82.28) and the cards ($265.83) are
- * declared unusable and are excluded from the allocation entirely.
+/* Live sources while Q25 is OPEN: Amanda's held-elsewhere locator is $0
+ * available, so usable capacity is the HELOC only. Overdraft and cards stay
+ * unusable and are excluded from the allocation.
  *
- * At the $500 default the gap is $1,043.16:
- *   amanda    2691.85 ≥ 1043.16 → covers the whole gap
- *   heloc     1067.84 ≥ 1043.16 → covers it too, though the plan does not use it
- *   overdraft unusable → insufficient, short by 1043.16 − 82.28  = 960.88
- *   cards     unusable → insufficient, short by 1043.16 − 265.83 = 777.33
- *
- * At a $3,000 buffer the gap is $3,543.16 and no single source reaches it:
- *   amanda    contributes 2691.85, short by 3543.16 − 2691.85 =  851.31
- *   heloc     contributes  851.31, short by 3543.16 − 1067.84 = 2475.32
- *   overdraft insufficient, short by 3460.88
- *   cards     insufficient, short by 3277.33 */
+ * A just-above-floor gap is covered by the HELOC alone.
+ * A gap of HELOC/2 is still a single-source cover.
+ * A gap beyond HELOC room is unfunded. Combination of two positive sources
+ * is proved on the RANK_TRAP / COMBINATION fixtures above, not by treating
+ * the TENNIS INCOME raw balance as authorized household funding. */
 const plan = data.plan, asOf = data.meta.asOf;
 const OPTS = targetBuffer => ({
   scenario: plan.defaults.scenario, targetBuffer,
@@ -379,15 +377,20 @@ const OPTS = targetBuffer => ({
   extraFacilities: data.revolvingExtra,
 });
 const bySource = adv => Object.fromEntries((adv.funding && adv.funding.sources || []).map(s => [s.id, s]));
-const src = fundingById(plan);
+const src = fundingById(plan, data.revolvingExtra, data.debts);
 const odAvailable = F.resolveFundingSources(
-  plan.funding.options, data.revolvingExtra, plan
+  plan.funding.options, data.revolvingExtra, plan, data.debts
 ).find(o => o.id === 'overdraft').available;
 const floor = openingFloor(plan, asOf);
-const COMBINE_GAP = src.amanda.available + src.heloc.available / 2;
+const COMBINE_GAP = src.heloc.available / 2;
 const COMBINE_BUF = COMBINE_GAP + floor;
-const UNFUNDED_GAP = usableFunding(plan) + 1000;
+const CONTRIB_BUF = src.heloc.available * 1.25 + floor;
+const UNFUNDED_GAP = usableFunding(plan, data.revolvingExtra, data.debts) + 1000;
 const UNFUNDED_BUF = UNFUNDED_GAP + floor;
+const expectedVerdict = (available, gap) => {
+  if (!(Number(available) > 0.005)) return 'insufficient';
+  return available + 0.005 >= gap ? 'covers' : 'contributes';
+};
 
 {
   const buf = Math.max(plan.defaults.targetBuffer, Math.ceil(floor + 50));
@@ -395,10 +398,10 @@ const UNFUNDED_BUF = UNFUNDED_GAP + floor;
   const adv = F.recommend(plan, asOf, OPTS(buf));
   const s = bySource(adv);
   ok(adv.funding && same(adv.gap.amount, wantGap), 'a just-above-floor buffer sizes the gap from the floor', adv.gap ? String(adv.gap.amount) : 'none');
-  ok(s.amanda.verdict === (src.amanda.available + 0.005 >= wantGap ? 'covers' : 'contributes'),
-    'Amanda\'s verdict follows her available room against that gap', s.amanda.verdict);
-  ok(s.heloc.verdict === (src.heloc.available + 0.005 >= wantGap ? 'covers' : 'contributes'),
-    'and so does the HELOC, on room alone', s.heloc.verdict);
+  ok(same(src.amanda.available, 0) && s.amanda.verdict === expectedVerdict(src.amanda.available, wantGap),
+    'Amanda\'s held-elsewhere locator is not a cover or contribution while Q25 is OPEN', s.amanda.verdict);
+  ok(s.heloc.verdict === expectedVerdict(src.heloc.available, wantGap),
+    'the HELOC verdict follows its utilisation room against that gap', s.heloc.verdict);
   ok(s.overdraft.verdict === 'insufficient'
     && same(s.overdraft.shortBy, Math.max(0, wantGap - odAvailable)),
     'the overdraft is short by gap minus its room', String(s.overdraft.shortBy));
@@ -412,17 +415,15 @@ const UNFUNDED_BUF = UNFUNDED_GAP + floor;
   const adv = F.recommend(plan, asOf, OPTS(COMBINE_BUF));
   const s = bySource(adv);
   const wantGap = gapAtBuffer(plan, COMBINE_BUF, asOf);
-  ok(same(adv.gap.amount, wantGap), 'a gap between the largest source and usable total is sized from the floor', String(adv.gap.amount));
-  ok(s.amanda.verdict === 'contributes' && same(s.amanda.contributes, src.amanda.available),
-    'Amanda contributes her whole balance and no longer covers it alone',
+  ok(same(adv.gap.amount, wantGap), 'a mid-sized HELOC-only gap is sized from the floor', String(adv.gap.amount));
+  ok(s.amanda.verdict === 'insufficient' && same(s.amanda.contributes, 0),
+    'Amanda contributes nothing from the held-elsewhere raw balance',
     `${s.amanda.verdict} ${s.amanda.contributes}`);
-  ok(same(s.amanda.shortBy, wantGap - src.amanda.available), 'short by the remainder on her own', String(s.amanda.shortBy));
-  ok(s.heloc.verdict === 'contributes' && same(s.heloc.contributes, wantGap - src.amanda.available),
-    'the HELOC supplies the remainder, not its whole room',
+  ok(s.heloc.verdict === 'covers' && same(s.heloc.contributes, wantGap),
+    'the HELOC covers that mid-sized gap alone',
     `${s.heloc.verdict} ${s.heloc.contributes}`);
-  ok(same(s.heloc.shortBy, wantGap - src.heloc.available), 'and is short by gap minus its room on its own', String(s.heloc.shortBy));
   ok(s.overdraft.verdict === 'insufficient' && s.cards.verdict === 'insufficient',
-    'the unusable sources stay unused even when the gap needs a combination');
+    'the unusable sources stay unused');
   const contributed = adv.funding.sources.reduce((a, x) => a + x.contributes, 0);
   ok(same(contributed + adv.funding.shortfall, adv.gap.amount),
     'sum(contributions) + shortfall = the gap',
@@ -435,7 +436,7 @@ const UNFUNDED_BUF = UNFUNDED_GAP + floor;
   // identity still holds with a non-zero shortfall.
   const adv = F.recommend(plan, asOf, OPTS(UNFUNDED_BUF));
   const contributed = adv.funding.sources.reduce((a, x) => a + x.contributes, 0);
-  const usable = usableFunding(plan);
+  const usable = usableFunding(plan, data.revolvingExtra, data.debts);
   ok(!adv.funding.feasible && same(contributed, usable)
     && same(adv.funding.shortfall, gapAtBuffer(plan, UNFUNDED_BUF, asOf) - usable),
     'an unfundable gap allocates every usable source and leaves the rest',
@@ -563,8 +564,8 @@ const MUTATIONS = [
   { label: 'halving the coverage comparison makes a source that cannot cover the gap claim it can',
     from: '        const covers = !src.unusable && atLeast(src.available, gapAmount);',
     to: '        const covers = !src.unusable && atLeast(src.available, gapAmount / 2);',
-    check: m => bySource(m.recommend(plan, asOf, OPTS(COMBINE_BUF))).amanda.verdict === 'covers',
-    real: () => bySource(F.recommend(plan, asOf, OPTS(COMBINE_BUF))).amanda.verdict === 'contributes' },
+    check: m => bySource(m.recommend(plan, asOf, OPTS(CONTRIB_BUF))).heloc.verdict === 'covers',
+    real: () => bySource(F.recommend(plan, asOf, OPTS(CONTRIB_BUF))).heloc.verdict === 'contributes' },
 
   { label: 'dropping the unusable guard offers money the plan cannot spend',
     from: '        const covers = !src.unusable && atLeast(src.available, gapAmount);',
@@ -595,7 +596,7 @@ const MUTATIONS = [
     check: m => same(m.recommend(plan, asOf, OPTS(UNFUNDED_BUF)).funding.allocated,
       gapAtBuffer(plan, UNFUNDED_BUF, asOf)),
     real: () => same(F.recommend(plan, asOf, OPTS(UNFUNDED_BUF)).funding.allocated,
-      usableFunding(plan)) },
+      usableFunding(plan, data.revolvingExtra, data.debts)) },
 ];
 for (const m of MUTATIONS) {
   const built = mutant(m.from, m.to);
@@ -759,7 +760,7 @@ function legacyCards({ adv }) {
   const gap = adv.gap;
   if (!gap || !plan.funding) return '';
   const needed = gap.amount;
-  return F.resolveFundingSources(plan.funding.options, data.revolvingExtra, plan)
+  return F.resolveFundingSources(plan.funding.options, data.revolvingExtra, plan, data.debts)
     .slice().sort((a, b) => a.rank - b.rank)
     .map(o => {
       const enough = o.available >= needed;
@@ -810,8 +811,8 @@ const overWeekly = recWeekly + 500;
 const SETTINGS = [
   { what: 'the published default buffer, no override', targetBuffer: defBuf, weeklyVariable: null, expect: 'onPlan' },
   { what: 'default buffer, an over-cap weekly override', targetBuffer: defBuf, weeklyVariable: overWeekly, expect: 'negative' },
-  { what: 'a gap no single source covers, fully funded', targetBuffer: COMBINE_BUF, weeklyVariable: null, expect: 'combination' },
-  { what: 'that combination gap, an over-cap override', targetBuffer: COMBINE_BUF, weeklyVariable: overWeekly, expect: 'overrideBreach' },
+  { what: 'a mid-sized gap the HELOC covers alone', targetBuffer: COMBINE_BUF, weeklyVariable: null, expect: 'gap' },
+  { what: 'that mid-sized gap, an over-cap override', targetBuffer: COMBINE_BUF, weeklyVariable: overWeekly, expect: 'overrideBreach' },
   { what: 'a gap beyond every usable source', targetBuffer: UNFUNDED_BUF, weeklyVariable: null, expect: 'unfunded' },
   { what: 'that unfunded gap, an over-cap override', targetBuffer: UNFUNDED_BUF, weeklyVariable: overWeekly, expect: 'unfunded' },
 ];
@@ -832,11 +833,11 @@ for (const s of SETTINGS) {
     flat(legacyCards(inputs)) === flat(movedCards(inputs)) ? ''
       : `\n      old: ${flat(legacyCards(inputs))}\n      new: ${flat(movedCards(inputs))}`);
 }
-ok(['onPlan', 'negative', 'combination', 'overrideBreach', 'unfunded'].every(id => seen.has(id)),
+ok(['onPlan', 'negative', 'gap', 'overrideBreach', 'unfunded'].every(id => seen.has(id)),
   'the published data reaches five of the eight verdicts',
   [...seen].join(', '));
-ok(!seen.has('gap') && !seen.has('belowBuffer'),
-  'and the remaining two are proved on fixtures above');
+ok(!seen.has('combination') && !seen.has('belowBuffer'),
+  'combination is proved on fixtures above once Q25 keeps Amanda at $0; belowBuffer stays on fixtures');
 
 console.log('\n=== 12b. the band and the source card cannot contradict each other ===');
 /* The blocking review's counterexample, rendered. Both surfaces read one
@@ -864,13 +865,15 @@ console.log('\n=== 12b. the band and the source card cannot contradict each othe
     'and the band states what the allocation actually proves',
     flat(bandHtml).slice(0, 100));
 
-  // The published combination case keeps the stronger sentence, and there is no
-  // card claiming coverage beside it — so preserving the wording is honest.
+  // Live sources no longer combine: Amanda is $0 available, so a mid-sized
+  // gap is a HELOC cover. The stronger "no single source covers it" sentence
+  // stays on the RANK_TRAP / COMBINATION fixtures, not the Q25-open account.
   const real = published({ targetBuffer: COMBINE_BUF, weeklyVariable: null });
   const [, realBand] = movedBand(real);
-  ok(/no single source covers it/.test(realBand)
-    && !/Covers the whole/.test(movedCards(real)),
-  'the published $3,000 case keeps the stronger sentence, with no card contradicting it');
+  ok(/covers the whole/.test(movedCards(real)) || /Covers the whole/.test(movedCards(real)),
+    'the published mid-sized gap has a HELOC cover card');
+  ok(!/no single source covers it/.test(realBand),
+    'and the band does not claim no single source covers it');
 }
 
 console.log('\n=== 13. the real page, booted ===');
