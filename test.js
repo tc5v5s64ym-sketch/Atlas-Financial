@@ -21,6 +21,7 @@ const path = require('path');
 
 const suites = [
   ['static sanity', 'test-static.js'],
+  ['incumbent privacy guard (B77)', 'test-privacy-guard.js'],
   ['source line-ending independence', 'test-line-endings.js'],
   ['forecast engine + opening-gap regression', 'test-forecast.js'],
   ['quarterly recurrence (every 3 months)', 'test-quarterly-recurrence.js'],

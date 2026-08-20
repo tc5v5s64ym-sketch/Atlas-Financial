@@ -1424,21 +1424,23 @@ documentation line limit chosen without those is the gaming `CLAUDE.md` warns
 about, with extra steps. Carried forward from PR #4, which recorded it under an
 identifier since reused.
 
-**B77 · The GitHub connector bypasses the pre-commit hook** · *governance, small*
+**B77 · The GitHub connector bypasses the pre-commit hook** · **DONE 2026-08-20** · *governance, small*
 `.githooks/pre-commit` is described in `CONTEXT.md` as the safety net that catches
 content-level mistakes a `.gitignore` never could, and as something never
 bypassed. Commits authored through the ChatGPT GitHub connector are made through
 the GitHub API, so no local hook runs on them — the net simply does not see that
 path. Found when PR #5's two interview files, 466 lines of household detail
 committed through the connector, were run through the hook after the fact. **They
-passed**, so nothing is wrong in the repository today; the gap is structural and
-recurs on every connector-authored branch. Options include a CI job running the
-same content checks on every push, or a rule that connector-authored branches are
-verified locally before review. Either is a new hard control, so it goes through
-the governance-control lifecycle: name the demonstrated failure it would have
-caught, give it a deterministic predicate, prove that predicate fails on the
-mechanical defect, and state its retirement condition. This is governance, not
-product truth: it changes no figure and gates no product work.
+passed**, so nothing was wrong in the repository at the finding; the gap was
+structural and recurred on every connector-authored branch. Closed by keeping
+one identifier/secret engine (`scripts/privacy-guard.js`) as the hook's
+delegate and applying the trusted default-branch copy of that engine to every
+PR head (`privacy-guard.yml`). A connector-authored write the incumbent policy
+would reject now fails CI; a PR cannot weaken the copy that judges it. Generic
+card/SIN checks in `test-static.js` are not a second household-identifier list.
+Proved by `test-privacy-guard.js`. Permanent while GitHub write paths exist
+that skip local hooks. Adding the `privacy-guard` status to required checks on
+`main` remains an owner repository-setting action.
 
 **B82 · The figures comment claims a wider scope than it checks** · **DONE 2026-08-20** · *governance, small*
 `figures-review.yml` compares `scripts/figures-snapshot.js` output between base

@@ -1,0 +1,287 @@
+'use strict';
+/* B77: GitHub/API-authored commits must still face the incumbent privacy
+ * guard. `node test-privacy-guard.js`
+ *
+ * Synthetic fixtures only. This file must not contain household identifiers
+ * or secret assignment forms from the incumbent policy list.
+ */
+
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { execFileSync, spawnSync } = require('child_process');
+
+const ROOT = __dirname;
+const GUARD = path.join(ROOT, 'scripts', 'privacy-guard.js');
+const HOOK = path.join(ROOT, '.githooks', 'pre-commit');
+const WORKFLOW = path.join(ROOT, '.github', 'workflows', 'privacy-guard.yml');
+const SYNTHETIC = 'SYNTHETIC_B77_HOUSEHOLD_TOKEN';
+
+const guard = require(GUARD);
+
+let failures = 0;
+function ok(cond, label, detail = '') {
+  if (!cond) failures += 1;
+  console.log(`  ${cond ? 'PASS' : 'FAIL'}  ${label}${detail ? '  — ' + detail : ''}`);
+}
+
+function tmpDir() {
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-b77-'));
+}
+
+function write(dir, rel, body) {
+  const full = path.join(dir, rel);
+  fs.mkdirSync(path.dirname(full), { recursive: true });
+  fs.writeFileSync(full, body);
+}
+
+function git(dir, args, extra = {}) {
+  return execFileSync('git', args, {
+    cwd: dir,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    ...extra,
+  });
+}
+
+function initRepo() {
+  const dir = tmpDir();
+  git(dir, ['init', '-b', 'main']);
+  git(dir, ['config', 'user.email', 'b77-fixture@example.test']);
+  git(dir, ['config', 'user.name', 'B77 Fixture']);
+  git(dir, ['config', 'core.hooksPath', '/dev/null']);
+  return dir;
+}
+
+function commit(dir, message) {
+  git(dir, ['add', '-A']);
+  git(dir, ['commit', '-m', message]);
+  return git(dir, ['rev-parse', 'HEAD']).trim();
+}
+
+function runGuard(args, cwd = ROOT) {
+  return spawnSync(process.execPath, [GUARD, ...args], {
+    cwd,
+    encoding: 'utf8',
+  });
+}
+
+console.log('=== one policy file, no second list ===');
+const hookSrc = fs.readFileSync(HOOK, 'utf8');
+const guardSrc = fs.readFileSync(GUARD, 'utf8');
+const workflowSrc = fs.readFileSync(WORKFLOW, 'utf8');
+const staticSrc = fs.readFileSync(path.join(ROOT, 'test-static.js'), 'utf8');
+ok(/privacy-guard\.js" --staged/.test(hookSrc),
+  'local hook delegates to the sole engine');
+ok(!/CONTENT_PATTERNS/.test(hookSrc) && !/^patterns=/m.test(hookSrc),
+  'hook does not keep a second identifier list');
+ok(/const CONTENT_PATTERNS = /.test(guardSrc), 'engine declares the sole content-policy constant');
+ok(/LUNCHMONEY_ACCESS_TOKEN/.test(guardSrc)
+  && /SITE_PASSWORD/.test(guardSrc)
+  && /SESSION_SECRET/.test(guardSrc),
+  'engine still names the incumbent secret tokens');
+ok(!/CONTENT_PATTERNS/.test(workflowSrc), 'workflow does not embed the content-policy constant');
+ok(!/CONTENT_PATTERNS/.test(staticSrc), 'static suite does not copy the incumbent identifier list');
+
+console.log('\n=== tracked tree stays inside the incumbent policy ===');
+{
+  const tracked = execFileSync('git', ['ls-files'], { cwd: ROOT, encoding: 'utf8' })
+    .split('\n').map((s) => s.trim()).filter(Boolean);
+  const extra = [];
+  for (const file of tracked) {
+    if (guard.SKIP_CONTENT_RE.test(file)) continue;
+    const full = path.join(ROOT, file);
+    if (!fs.existsSync(full) || !fs.statSync(full).isFile()) continue;
+    const body = fs.readFileSync(full, 'utf8');
+    const hits = guard.scanFiles({
+      files: [file],
+      patterns: guard.CONTENT_PATTERNS,
+      readFile: () => body,
+    }).filter((f) => f.kind === 'content');
+    if (hits.length) extra.push(file);
+  }
+  ok(extra.length === 0,
+    'no tracked file outside the policy engine carries incumbent identifier/secret content',
+    extra.join(', ') || `${tracked.length} files`);
+}
+
+console.log('\n=== synthetic content and path policy ===');
+{
+  const patterns = SYNTHETIC;
+  const clean = guard.scanFiles({
+    files: ['notes.txt'],
+    patterns,
+    readFile: () => 'ordinary household documentation',
+  });
+  ok(clean.length === 0, 'clean text is accepted');
+
+  const dirty = guard.scanFiles({
+    files: ['interview.txt'],
+    patterns,
+    readFile: () => `line one\nleaked ${SYNTHETIC} here\nline three`,
+  });
+  ok(dirty.length === 1 && dirty[0].kind === 'content' && dirty[0].file === 'interview.txt',
+    'synthetic identifier in a .txt file is rejected');
+
+  const pdf = guard.scanFiles({
+    files: ['statement.pdf'],
+    patterns,
+    readFile: () => 'clean',
+  });
+  ok(pdf.length === 1 && pdf[0].kind === 'path', 'a .pdf path is rejected without reading content');
+
+  const raw = guard.scanFiles({
+    files: ['raw/export.csv'],
+    patterns,
+    readFile: () => 'clean',
+  });
+  ok(raw.length === 1 && raw[0].kind === 'path', 'a raw/ path is rejected');
+
+  const derived = guard.scanFiles({
+    files: ['derived/tmp.json'],
+    patterns,
+    readFile: () => 'clean',
+  });
+  ok(derived.length === 1 && derived[0].kind === 'path', 'a derived/ path is rejected');
+
+  const skipped = guard.scanFiles({
+    files: ['scripts/privacy-guard.js'],
+    patterns,
+    readFile: () => SYNTHETIC,
+  });
+  ok(skipped.length === 0, 'the policy engine file is not scanned against its own list');
+}
+
+console.log('\n=== CLI: staged hook path and changed-from CI path ===');
+{
+  const dir = initRepo();
+  const patternsFile = path.join(dir, 'synthetic.patterns');
+  fs.writeFileSync(patternsFile, `${SYNTHETIC}\n`);
+  write(dir, 'README.md', 'clean start\n');
+  const base = commit(dir, 'base');
+
+  write(dir, 'docs/note.txt', 'still clean\n');
+  git(dir, ['add', 'docs/note.txt']);
+  const cleanStaged = runGuard(['--staged', '--root', dir, '--patterns-file', patternsFile]);
+  ok(cleanStaged.status === 0, 'staged clean file exits 0', String(cleanStaged.status));
+
+  write(dir, 'docs/leak.txt', `connector paste ${SYNTHETIC}\n`);
+  git(dir, ['add', 'docs/leak.txt']);
+  const dirtyStaged = runGuard(['--staged', '--root', dir, '--patterns-file', patternsFile]);
+  ok(dirtyStaged.status === 1, 'staged synthetic identifier exits 1', String(dirtyStaged.status));
+  ok(/BLOCKED: docs\/leak\.txt/.test(dirtyStaged.stderr),
+    'staged rejection names the file');
+
+  git(dir, ['reset', 'HEAD', 'docs/leak.txt']);
+  fs.unlinkSync(path.join(dir, 'docs/leak.txt'));
+  const head = commit(dir, 'clean change');
+  ok(/^[0-9a-f]{40}$/.test(head), 'clean commit has a full SHA');
+
+  write(dir, 'notes.pdf', 'not a real statement');
+  commit(dir, 'add pdf');
+  const pdfCli = runGuard(['--root', dir, '--changed-from', base, '--patterns-file', patternsFile]);
+  ok(pdfCli.status === 1, 'changed-from rejects an added pdf', String(pdfCli.status));
+  ok(/BLOCKED: raw financial data/.test(pdfCli.stderr), 'path rejection uses the incumbent wording');
+
+  fs.rmSync(path.join(dir, 'notes.pdf'));
+  write(dir, 'docs/api-commit.txt', `GitHub API ${SYNTHETIC}\n`);
+  commit(dir, 'api authored leak');
+  const leakCli = runGuard(['--root', dir, '--changed-from', base, '--patterns-file', patternsFile]);
+  ok(leakCli.status === 1, 'changed-from rejects synthetic identifier content', String(leakCli.status));
+
+  const missingSha = runGuard(['--root', dir, '--changed-from', 'not-a-sha', '--patterns-file', patternsFile]);
+  ok(missingSha.status === 1, 'invalid changed-from SHA fails closed');
+
+  fs.rmSync(dir, { recursive: true, force: true });
+}
+
+console.log('\n=== quoted / non-ASCII pathnames cannot skip the scan ===');
+ok(/\['diff', '-z', '--cached'/.test(guardSrc),
+  'staged listing requests NUL-delimited git pathnames');
+ok(/\['diff', '-z', '--name-only'/.test(guardSrc),
+  'changed-from listing requests NUL-delimited git pathnames');
+{
+  const dir = initRepo();
+  const patternsFile = path.join(dir, 'synthetic.patterns');
+  fs.writeFileSync(patternsFile, `${SYNTHETIC}\n`);
+  write(dir, 'README.md', 'clean start\n');
+  const base = commit(dir, 'base');
+  const quotedRel = 'docs/résumé.txt';
+  write(dir, quotedRel, `connector paste ${SYNTHETIC}\n`);
+  git(dir, ['add', quotedRel]);
+
+  const quotedDiff = git(dir, ['diff', '--cached', '--name-only', '--diff-filter=ACMR']);
+  ok(/\\303\\251|"/.test(quotedDiff),
+    'independent proof: default git name-only output quotes the non-ASCII pathname',
+    JSON.stringify(quotedDiff));
+  ok(!fs.existsSync(path.join(dir, quotedDiff.trim())),
+    'the quoted git name is not a filesystem path');
+
+  const dirtyStaged = runGuard(['--staged', '--root', dir, '--patterns-file', patternsFile]);
+  ok(dirtyStaged.status === 1, 'staged non-ASCII pathname with blocked pattern exits 1',
+    String(dirtyStaged.status));
+  ok(dirtyStaged.stderr.includes(quotedRel),
+    'staged rejection names the real non-ASCII path');
+
+  const head = commit(dir, 'non-ascii leak');
+  ok(/^[0-9a-f]{40}$/.test(head), 'non-ASCII leak commit has a full SHA');
+  const dirtyChanged = runGuard(['--root', dir, '--changed-from', base, '--patterns-file', patternsFile]);
+  ok(dirtyChanged.status === 1, 'changed-from non-ASCII pathname with blocked pattern exits 1',
+    String(dirtyChanged.status));
+  ok(dirtyChanged.stderr.includes(quotedRel),
+    'changed-from rejection names the real non-ASCII path');
+
+  const zOut = git(dir, ['diff', '-z', '--name-only', '--diff-filter=ACMR', `${base}...HEAD`]);
+  ok(zOut.split('\0').filter(Boolean).includes(quotedRel),
+    'NUL-delimited git output carries the real pathname');
+
+  fs.rmSync(dir, { recursive: true, force: true });
+}
+
+console.log('\n=== a weakened incoming engine must not be the judge ===');
+{
+  const dir = initRepo();
+  const patternsFile = path.join(dir, 'synthetic.patterns');
+  fs.writeFileSync(patternsFile, `${SYNTHETIC}\n`);
+  write(dir, 'ok.md', 'clean\n');
+  const base = commit(dir, 'base');
+  write(dir, 'docs/leak.txt', `${SYNTHETIC}\n`);
+  write(dir, 'scripts/privacy-guard.js', "const CONTENT_PATTERNS = 'NEVER_MATCH';\n");
+  commit(dir, 'weaken guard and leak');
+
+  const trusted = runGuard(['--root', dir, '--changed-from', base, '--patterns-file', patternsFile]);
+  ok(trusted.status === 1, 'trusted patterns still reject the leak when the incoming engine is weakened');
+
+  const incomingEngine = spawnSync(process.execPath, ['-e', `
+    const assert = require('assert');
+    assert.strictEqual('NEVER_MATCH', 'NEVER_MATCH');
+  `], { encoding: 'utf8' });
+  ok(incomingEngine.status === 0, 'sanity: a weakened list can be constructed');
+  ok(/trusted\/scripts\/privacy-guard\.js/.test(workflowSrc)
+    && /--changed-from/.test(workflowSrc),
+    'CI runs the trusted engine, not the incoming copy');
+  ok(!/node incoming\//.test(workflowSrc) && !/incoming\/scripts\/privacy-guard/.test(workflowSrc),
+    'CI never executes incoming JavaScript');
+  ok(!/--patterns-file/.test(workflowSrc), 'CI cannot swap in a synthetic or empty pattern list');
+  fs.rmSync(dir, { recursive: true, force: true });
+}
+
+console.log('\n=== shipped workflow cannot be rewritten by the PR it judges ===');
+ok(/pull_request_target:/.test(workflowSrc), 'workflow runs from trusted default-branch pull_request_target');
+ok(/ref:\s*\$\{\{\s*github\.event\.repository\.default_branch\s*\}\}/.test(workflowSrc)
+  && /persist-credentials:\s*false/.test(workflowSrc),
+  'guard checkout is the default branch with credentials disabled');
+ok(/github\.event\.pull_request\.head\.sha/.test(workflowSrc)
+  && /github\.event\.pull_request\.head\.repo\.full_name/.test(workflowSrc),
+  'incoming checkout is the PR head, treated as data');
+ok(/path:\s*incoming/.test(workflowSrc) && /path:\s*trusted/.test(workflowSrc),
+  'trusted guard and incoming write are separate checkouts');
+ok(/context:\s*'privacy-guard'/.test(workflowSrc)
+  && /createCommitStatus/.test(workflowSrc),
+  'result is published onto the PR head, not the default-branch job SHA');
+ok(/if:\s*always\(\)/.test(workflowSrc), 'status publish is fail-closed');
+ok(!/CURSOR_API_KEY|OPENAI_API_KEY|ATLAS_AUTOMATION_TOKEN/.test(workflowSrc),
+  'privacy guard does not use repository secrets');
+
+console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
+process.exit(failures === 0 ? 0 : 1);

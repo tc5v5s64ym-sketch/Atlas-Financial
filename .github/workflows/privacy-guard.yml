@@ -1,0 +1,120 @@
+# B77: GitHub API / connector commits never run the local pre-commit hook.
+# This job applies the incumbent engine (`scripts/privacy-guard.js`) from the
+# trusted default branch to the incoming write. The PR cannot supply the
+# guard that judges it. The identifier/secret list lives only in that engine;
+# this workflow does not keep a second copy.
+#
+# Under pull_request_target the job SHA is the default-branch commit, so the
+# check that branch protection can require is the `privacy-guard` commit
+# status published onto the PR head. Adding that context to required checks
+# on `main` is an owner repository-setting action.
+name: Incumbent privacy guard
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: read
+  statuses: write
+
+concurrency:
+  group: privacy-guard-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  privacy-guard:
+    name: Incumbent privacy guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Mark the exact head pending
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.repos.createCommitStatus({
+              ...context.repo,
+              sha: context.payload.pull_request.head.sha,
+              state: 'pending',
+              context: 'privacy-guard',
+              description: 'Applying the incumbent raw-data / identifier / secret guard…',
+              target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
+
+      - name: Checkout trusted default-branch guard
+        if: always()
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+          path: trusted
+
+      - name: Checkout the write under test as data
+        if: always()
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+          path: incoming
+
+      - uses: actions/setup-node@v4
+        if: always()
+        with:
+          node-version: '20'
+
+      - name: Scan incoming files with the trusted guard
+        id: scan
+        if: always()
+        env:
+          EVENT_HEAD: ${{ github.event.pull_request.head.sha }}
+          EVENT_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          if [[ ! "${EVENT_NUMBER}" =~ ^[1-9][0-9]*$ ]]; then
+            echo "privacy-guard failed closed: event did not identify the pull request."
+            exit 1
+          fi
+          if [[ ! "${EVENT_HEAD}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "privacy-guard failed closed: event did not identify a 40-character head SHA."
+            exit 1
+          fi
+          if [[ ! "${BASE_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "privacy-guard failed closed: event did not identify a 40-character base SHA."
+            exit 1
+          fi
+          if [[ ! -f trusted/scripts/privacy-guard.js ]]; then
+            echo "privacy-guard failed closed: trusted default branch is missing scripts/privacy-guard.js."
+            exit 1
+          fi
+          if [[ ! -d incoming/.git ]]; then
+            echo "privacy-guard failed closed: incoming write was not checked out as data."
+            exit 1
+          fi
+          # Never execute incoming JS. The engine that judges the write is the
+          # trusted default-branch copy; incoming files are read as data.
+          node trusted/scripts/privacy-guard.js --root incoming --changed-from "${BASE_SHA}"
+
+      - name: Publish exact-head status
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const scan = '${{ steps.scan.outcome }}';
+            const state = scan === 'success' ? 'success' : 'failure';
+            const description = state === 'success'
+              ? 'Incumbent privacy guard accepted the write.'
+              : 'Incumbent privacy guard rejected the write or failed closed.';
+            await github.rest.repos.createCommitStatus({
+              ...context.repo,
+              sha: context.payload.pull_request.head.sha,
+              state,
+              context: 'privacy-guard',
+              description,
+              target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
+            if (state !== 'success') {
+              core.setFailed(description);
+            }
