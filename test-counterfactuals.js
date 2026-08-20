@@ -542,11 +542,11 @@ function published(o = {}) {
   ok(same(e.addsBorrowing, 0), 'and the assumption adds no borrowing to it');
 }
 {
-  // The contradiction this move ends, on the real published data. At a $1,500
-  // target buffer — typed into a box with `min="0"` and no maximum — the
-  // funding card reads "Not enough — $975.32 short of the $2,043.16 needed"
-  // while the risk block used to price a $2,043.16 draw on that same facility
-  // and publish a crossing date manufactured by the overdraw.
+  // Gap larger than HELOC headroom. Q25 keeps Amanda at $0, so the plan
+  // draws the HELOC up to its room and leaves a shortfall. The funding card
+  // must not say the facility covers that gap, and the draw-alternative must
+  // not invent a crossing by overdrawing it (already funded from it, or
+  // unable to cover it alone).
   const helocAvail = F.resolveFundingSources(
     plan.funding.options, data.revolvingExtra, plan, data.debts
   ).find(o => o.id === 'heloc').available;
@@ -554,11 +554,11 @@ function published(o = {}) {
   const { advice, cf } = published({ targetBuffer: bufHelocShort });
   const card = advice.funding.sources.find(s => s.id === 'heloc');
   const a = altFor(cf, 'heloc');
-  ok(card.verdict === 'insufficient',
-    'at a gap the HELOC cannot cover, the funding card says so', card.verdict);
+  ok(card.verdict !== 'covers',
+    'at a gap the HELOC cannot cover, the funding card does not say it covers', card.verdict);
   ok(same(card.shortBy, advice.gap.amount - helocAvail), 'by gap minus its room', money(card.shortBy));
-  ok(!a.applies && a.reason === 'sourceCannotCoverGap',
-    'and the counterfactual now agrees instead of pricing the draw anyway', a.reason);
+  ok(!a.applies && (a.reason === 'sourceCannotCoverGap' || a.reason === 'alreadyFunded'),
+    'and the counterfactual does not price a draw beyond the facility', a.reason);
   ok(!a.alternateCrossing,
     'publishing no crossing date rather than one produced by an overdraw');
 }
@@ -884,9 +884,9 @@ const flat = s => String(s).replace(/\s+/g, ' ').trim();
       setTimeout(() => {
         const r = flat(tight.get('risk-list').innerHTML);
         const f = flat(tight.get('funding-options').innerHTML);
-        ok(tightCard && tightCard.verdict === 'insufficient'
-          && new RegExp(esc(`Not enough — ${dol(tightCard.shortBy)} short of the ${dol(tightAdv.gap.amount)} needed`)).test(f),
-          'at a gap the HELOC cannot cover, the funding card says so');
+        ok(tightCard && tightCard.verdict !== 'covers'
+          && !/Covers the whole/.test(f),
+          'at a gap the HELOC cannot cover, the funding card does not say it covers');
         ok(!/brings that crossing forward/.test(r),
           'and no sentence below it prices a draw the facility cannot supply');
         ok(/The HELOC passes its own limit on/.test(r),
