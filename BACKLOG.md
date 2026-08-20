@@ -1440,26 +1440,26 @@ caught, give it a deterministic predicate, prove that predicate fails on the
 mechanical defect, and state its retirement condition. This is governance, not
 product truth: it changes no figure and gates no product work.
 
-**B82 · The figures comment claims a wider scope than it checks** · *governance, small*
+**B82 · The figures comment claims a wider scope than it checks** · **DONE 2026-08-20** · *governance, small*
 `figures-review.yml` compares `scripts/figures-snapshot.js` output between base
-and head, and on a clean run posts: *"Every one of the N figures the household
+and head, and on a clean run posted: *"Every one of the N figures the household
 can read off the Plan page is identical on this head and on `main`. Whatever this
 PR changes, it does not change what the household is told."* The first sentence
-is exactly right and names its scope. The second generalises past it — the
+is exactly right and names its scope. The second generalised past it — the
 snapshot's own rule is what the household reads off the **Plan page**, and the
 household is also told things on Deep Dive, Records and Modellers. A pull request
 that moves only a Deep Dive figure would draw that sentence unchanged.
 Found on PR #13, which moved the Deep Dive "Next due" selection: the comment
 reported 75/75 identical and was correct, but nothing it compared covered the
 tile the PR was about. Nothing is wrong in the repository today and no figure is
-misreported; the defect is that a true, narrow result is worded as a broad one,
+misreported; the defect was that a true, narrow result was worded as a broad one,
 which is the false-green shape this repository already has scar tissue for —
 `scripts/figures-snapshot.js`'s own header records an earlier conflation of
-"unchanged against the previous commit" with "unchanged against base". The
-cheapest honest fix is wording: say what was compared and stop. Anything more —
-extending the snapshot to the other three pages — is a real scope decision about
-what counts as a published figure, and belongs to the owner, not to a wording
-fix.
+"unchanged against the previous commit" with "unchanged against base". Closed by
+keeping the Plan-page sentence and stopping there. The moved-figure comment now
+names Plan-page rows rather than "something the household would read
+differently." Extending the snapshot to Deep Dive, Records, or Modellers remains
+an owner scope decision and is not this outcome. Proved by `test-figures-comment.js`.
 
 **Issue #57 remainder · Autonomous delivery loop** · *governance, not a new B-id*
 
