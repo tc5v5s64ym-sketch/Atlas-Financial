@@ -329,6 +329,51 @@ console.log('\n=== 14. same-day cutover does not double-count identified payroll
     'unidentified same-day mortgage is not guessed from amount and still fires');
 }
 
+console.log('\n=== 16. childBenefit identity is payee+Chequing B+date, not amount ===');
+{
+  const current = JSON.parse(fs.readFileSync(DATA, 'utf8'));
+  const ccbDate = '2026-08-20';
+  const extra = clone(payload);
+  extra.transactions = [{
+    id: 88060,
+    account_id: 3002,
+    date: ccbDate,
+    amount: -50,
+    payee: 'CHILD TAX BEN CCB',
+    is_pending: false,
+  }];
+  const report = observeWith(extra, { data: current, fetchedAt: '2026-08-20T18:00:00.000Z' });
+  const ccb = report.representedEventCandidates.find(c => c.id === 'childBenefit' && c.date === ccbDate);
+  ok(ccb && ccb.amountNotUsed === true && ccb.identity === 'payee+account+date',
+    'CHILD TAX BEN + chequing-b + scheduled date is an unambiguous represented candidate');
+
+  const amountOnly = clone(payload);
+  amountOnly.transactions = [{
+    id: 88061,
+    account_id: 3002,
+    date: ccbDate,
+    amount: -50,
+    payee: 'UNKNOWN DEPOSIT',
+    is_pending: false,
+  }];
+  const rejected = observeWith(amountOnly, { data: current, fetchedAt: '2026-08-20T18:00:00.000Z' });
+  ok(!rejected.representedEventCandidates.some(c => c.id === 'childBenefit'),
+    'same scheduled date and similar amount without CHILD TAX BEN payee is not child benefit');
+
+  const wrongAccount = clone(payload);
+  wrongAccount.transactions = [{
+    id: 88062,
+    account_id: 3001,
+    date: ccbDate,
+    amount: -50,
+    payee: 'CHILD TAX BEN CCB',
+    is_pending: false,
+  }];
+  const misplaced = observeWith(wrongAccount, { data: current, fetchedAt: '2026-08-20T18:00:00.000Z' });
+  ok(!misplaced.representedEventCandidates.some(c => c.id === 'childBenefit'),
+    'CHILD TAX BEN credit on Chequing A is not inferred as child benefit');
+}
+
 console.log('\n=== 15. existing Forecast consumes the 16 August opening ===');
 {
   const rec = F.recommend(data.plan, data.meta.asOf, {

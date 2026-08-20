@@ -30,6 +30,8 @@ const PAYDAY_AS_OF = '2026-08-28';
 const PURCHASE = 40;
 const CASH_PURCHASE = 30;
 const SYNTHETIC_PAYROLL = 1000;
+const SYNTHETIC_CCB = 50;
+const CCB_AS_OF = '2026-08-20';
 const ELAPSED_WEEKLY = 70;
 const UNPAID_INTERVENING = 100;
 const UNPAID_BILL_DATE = '2026-08-20';
@@ -832,6 +834,141 @@ console.log('\n=== 14. intervening unpaid joint-cash outflow stays reserved ==='
       Forecast.startingCashAmount(control.data.plan)),
     'starting cash is unchanged — the $100 is reserved, not subtracted from the live balance');
   filesUnchanged('intervening unpaid outflow');
+}
+
+console.log('\n=== 15. posted child benefit on Chequing B is represented, amount is not identity ===');
+{
+  const rule = (identity.rules || []).find(r => r && r.eventId === 'childBenefit');
+  ok(rule && rule.payeePattern === 'CHILD TAX BEN' && rule.atlasAccountId === 'chequing-b'
+    && rule.direction === 'credit',
+    'identity rule is CHILD TAX BEN + chequing-b + credit');
+
+  const canonical = clone(liveData);
+  const cheqBefore = cashValue(canonical, 'chequing-b');
+  const expectedCash = Math.round((cheqBefore + SYNTHETIC_CCB) * 100) / 100;
+  const histAsOf = canonical.plan.opening.asOf;
+  const ccbTx = {
+    id: 91020,
+    account_id: 3002,
+    date: CCB_AS_OF,
+    amount: -SYNTHETIC_CCB,
+    payee: 'CHILD TAX BEN CCB',
+    is_pending: false,
+    status: 'reviewed',
+  };
+  const result = overlay(canonical, {
+    fetchedAt: UNKNOWN_SAME_DAY_AT,
+    tweaks: {
+      'chequing-b': cheqBefore + SYNTHETIC_CCB,
+      cashAt: '2026-08-20T17:55:00.000Z',
+    },
+    transactions: [ccbTx],
+  });
+  ok(result.data.liveOverlay && result.data.liveOverlay.applied === true,
+    'Aug 20 overlay applies when CHILD TAX BEN CCB is posted on Chequing B');
+  ok(String(result.data.meta.asOf) === CCB_AS_OF,
+    'in-memory as-of is the child-benefit date');
+  ok((result.data.plan.opening.representedEvents || [])
+    .some(e => e.id === 'childBenefit' && e.date === CCB_AS_OF),
+    'posted child benefit is named on the in-memory live opening');
+  ok(near(cashValue(result.data, 'chequing-b'), expectedCash),
+    'Chequing B includes the synthetic credit by hand',
+    String(cashValue(result.data, 'chequing-b')));
+  ok(!Forecast.expandEvents(result.data.plan, CCB_AS_OF, CCB_AS_OF, {})
+    .some(e => e.id === 'childBenefit' && e.date === CCB_AS_OF),
+    'Forecast does not emit the posted child benefit again on the live as-of');
+  ok(Forecast.expandEvents(canonical.plan, histAsOf, CCB_AS_OF, {})
+    .some(e => e.id === 'childBenefit' && e.date === CCB_AS_OF),
+    'the dated opening would still have emitted that child benefit');
+
+  const observed = O.observe({
+    provider: 'lunchmoney',
+    payload: payloadFrom(canonical, {
+      fetchedAt: UNKNOWN_SAME_DAY_AT,
+      tweaks: { cashAt: '2026-08-20T17:55:00.000Z' },
+      transactions: [ccbTx],
+    }),
+    accountMap,
+    data: canonical,
+    identity,
+    fetchedAt: UNKNOWN_SAME_DAY_AT,
+  });
+  const hit = (observed.representedEventCandidates || [])
+    .find(c => c.id === 'childBenefit' && c.date === CCB_AS_OF);
+  ok(hit && hit.identity === 'payee+account+date' && hit.amountNotUsed === true,
+    'observer identity is payee+account+date, not amount');
+
+  function sameDayFails(transactions, label) {
+    let threw = null;
+    try {
+      overlay(clone(liveData), {
+        fetchedAt: UNKNOWN_SAME_DAY_AT,
+        tweaks: { cashAt: '2026-08-20T17:55:00.000Z' },
+        transactions,
+      });
+    } catch (err) {
+      threw = err;
+    }
+    ok(threw && /same-day-event-representation-unknown: childBenefit@2026-08-20/.test(threw.message),
+      label, threw && threw.message);
+  }
+  sameDayFails([{
+    id: 91021,
+    account_id: 3002,
+    date: CCB_AS_OF,
+    amount: -SYNTHETIC_CCB,
+    payee: 'UNKNOWN DEPOSIT',
+    is_pending: false,
+    status: 'reviewed',
+  }], 'same amount without CHILD TAX BEN payee is not child benefit');
+  sameDayFails([{
+    id: 91022,
+    account_id: 3001,
+    date: CCB_AS_OF,
+    amount: -SYNTHETIC_CCB,
+    payee: 'CHILD TAX BEN CCB',
+    is_pending: false,
+    status: 'reviewed',
+  }], 'CHILD TAX BEN credit on Chequing A is not child benefit');
+  sameDayFails([{
+    id: 91023,
+    account_id: 3002,
+    date: CCB_AS_OF,
+    amount: -SYNTHETIC_CCB,
+    payee: 'CHILD TAX BEN CCB',
+    is_pending: true,
+    status: 'unreviewed',
+  }], 'pending CHILD TAX BEN is not posting evidence');
+  sameDayFails([{
+    id: 91024,
+    account_id: 3002,
+    date: CCB_AS_OF,
+    amount: SYNTHETIC_CCB,
+    payee: 'CHILD TAX BEN CCB',
+    is_pending: false,
+    status: 'reviewed',
+  }], 'CHILD TAX BEN debit is not child benefit');
+  sameDayFails([
+    {
+      id: 91025,
+      account_id: 3002,
+      date: CCB_AS_OF,
+      amount: -SYNTHETIC_CCB,
+      payee: 'CHILD TAX BEN CCB',
+      is_pending: false,
+      status: 'reviewed',
+    },
+    {
+      id: 91026,
+      account_id: 3002,
+      date: CCB_AS_OF,
+      amount: -40,
+      payee: 'CHILD TAX BEN CCB',
+      is_pending: false,
+      status: 'reviewed',
+    },
+  ], 'two matching CHILD TAX BEN credits stay fail-closed');
+  filesUnchanged('posted child benefit identity');
 }
 
 console.log('\n' + '═'.repeat(60));

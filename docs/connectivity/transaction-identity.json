@@ -16,6 +16,13 @@
       "atlasAccountId": "chequing-a",
       "direction": "credit",
       "note": "Seaspan is already on the live payroll label. Do not match a same-day deposit by amount alone."
+    },
+    {
+      "eventId": "childBenefit",
+      "payeePattern": "CHILD TAX BEN",
+      "atlasAccountId": "chequing-b",
+      "direction": "credit",
+      "note": "Canada Child Benefit posts as CHILD TAX BEN CCB on Chequing B. Do not match a same-day deposit by amount alone."
     }
   ]
 }
