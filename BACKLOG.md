@@ -1493,19 +1493,19 @@ replaces the incumbent 91-day cash input with that average, tagged
 $4,264, routes `EMP-004` to `data.json` `/plan/income/0`, and leaves salary
 history, bonus, statutory engines, and pension forecasting unbuilt.
 
-**B84 · `ARCHITECTURE.md` keeps its own running count of B73's progress** · *documentation truth, small*
-Three counts of one fact live outside the file that owns it. The section
-below the incumbent table says the scan's page-side instances are the ones
+**B84 · `ARCHITECTURE.md` keeps its own running count of B73's progress** · **DONE 2026-08-20** · *documentation truth, small*
+Three counts of one fact lived outside the file that owns it. The section
+below the incumbent table said the scan's page-side instances are the ones
 `B73` records "and each is its own outcome to move. **Those first two have now
-moved** … **six remain**"; the next paragraph opens "Seven instances have been
-moved into the engine rather than argued away" and enumerates them; and the one
-after says `public/plan.js` "holds five now". `BACKLOG.md` owns work and
+moved** … **six remain**"; the next paragraph opened "Seven instances have been
+moved into the engine rather than argued away" and enumerated them; and the one
+after said `public/plan.js` "holds five now". `BACKLOG.md` owns work and
 findings — `CLAUDE.md` says so — and each of those three numbers was already
 wrong before this finding was written: items 3 and 4 had moved without any of
 them changing, so the true figures were four remaining, nine moved and three in
 `plan.js`. Item 5 moving makes them three, ten and two.
 
-This is the same shape as `B83`, and it wants the same fix: **remove the second
+This is the same shape as `B83`, and it wanted the same fix: **remove the second
 home, do not synchronise it.** The prose is worth keeping — the enumeration
 explains what each move actually was, which no count does — so what should go is
 the arithmetic, replaced by a pointer to `B73`. Found while adding the
@@ -1515,6 +1515,15 @@ engine against `public/plan.js`, and rewriting three paragraphs of migration
 narrative is its own outcome with its own acceptance condition — no count of
 `B73`'s progress survives outside `BACKLOG.md`, provable by grep. It changes no
 figure and gates nothing.
+
+The second home is **removed** rather than reconciled. Closing `B73` had
+already rewritten those three phrases into "have now all moved", "the recorded
+instances have been moved", and a historical "held seven of the eight" — still
+a running count, just a later one. `ARCHITECTURE.md` now keeps the enumeration
+of what each move was, states that a copy of the progress arithmetic lived
+there and drifted, and points at `B73` in this file as the sole work record.
+Closed by the pull request that removed the counts, because leaving this entry
+open would have left `BACKLOG.md` describing arithmetic that no longer exists.
 
 **B83 · `CONTEXT.md`'s suite table names five of twelve suites** · **DONE 2026-08-12**
 Both inventories are **removed** rather than reconciled, which is the fix this
