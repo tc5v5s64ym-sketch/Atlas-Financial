@@ -42,7 +42,9 @@ with itself:
   backticks). Presentation is normalized before the closed vocabulary
   is checked. Only those four values are valid;
 - the review decision opens `REQUIRED` or `NOT REQUIRED`;
-- a not-required review records `N/A` for head, reviewer, and outcome; and
+- a not-required review records `N/A` for head, reviewer, and outcome.
+  Plain text and ordinary Markdown inline code are both accepted, and a
+  short explanation may follow the closed value; and
 - card text is read from the live pull request (`pulls.get`), not the workflow
   event body. A closed PR, a non-`main` base, a PR or repository identity
   change, or a live head that is not the event head fails closed.
