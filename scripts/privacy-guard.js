@@ -60,17 +60,23 @@ function git(root, args) {
   });
 }
 
+// Git quotes unusual pathnames unless -z is used. A quoted name handed to
+// readTree / git show misses the real file and would skip its content.
+function splitNulPathnames(out) {
+  return String(out).split('\0').filter((s) => s.length > 0);
+}
+
 function listStaged(root) {
-  const out = git(root, ['diff', '--cached', '--name-only', '--diff-filter=ACMR']);
-  return out.split('\n').map((s) => s.trim()).filter(Boolean);
+  const out = git(root, ['diff', '-z', '--cached', '--name-only', '--diff-filter=ACMR']);
+  return splitNulPathnames(out);
 }
 
 function listChanged(root, fromSha) {
   if (!/^[0-9a-f]{40}$/i.test(String(fromSha || ''))) {
     throw new Error('changed-from must be a 40-character SHA');
   }
-  const out = git(root, ['diff', '--name-only', '--diff-filter=ACMR', `${fromSha}...HEAD`]);
-  return out.split('\n').map((s) => s.trim()).filter(Boolean);
+  const out = git(root, ['diff', '-z', '--name-only', '--diff-filter=ACMR', `${fromSha}...HEAD`]);
+  return splitNulPathnames(out);
 }
 
 function readStaged(root, file) {

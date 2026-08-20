@@ -195,6 +195,49 @@ console.log('\n=== CLI: staged hook path and changed-from CI path ===');
   fs.rmSync(dir, { recursive: true, force: true });
 }
 
+console.log('\n=== quoted / non-ASCII pathnames cannot skip the scan ===');
+ok(/\['diff', '-z', '--cached'/.test(guardSrc),
+  'staged listing requests NUL-delimited git pathnames');
+ok(/\['diff', '-z', '--name-only'/.test(guardSrc),
+  'changed-from listing requests NUL-delimited git pathnames');
+{
+  const dir = initRepo();
+  const patternsFile = path.join(dir, 'synthetic.patterns');
+  fs.writeFileSync(patternsFile, `${SYNTHETIC}\n`);
+  write(dir, 'README.md', 'clean start\n');
+  const base = commit(dir, 'base');
+  const quotedRel = 'docs/résumé.txt';
+  write(dir, quotedRel, `connector paste ${SYNTHETIC}\n`);
+  git(dir, ['add', quotedRel]);
+
+  const quotedDiff = git(dir, ['diff', '--cached', '--name-only', '--diff-filter=ACMR']);
+  ok(/\\303\\251|"/.test(quotedDiff),
+    'independent proof: default git name-only output quotes the non-ASCII pathname',
+    JSON.stringify(quotedDiff));
+  ok(!fs.existsSync(path.join(dir, quotedDiff.trim())),
+    'the quoted git name is not a filesystem path');
+
+  const dirtyStaged = runGuard(['--staged', '--root', dir, '--patterns-file', patternsFile]);
+  ok(dirtyStaged.status === 1, 'staged non-ASCII pathname with blocked pattern exits 1',
+    String(dirtyStaged.status));
+  ok(dirtyStaged.stderr.includes(quotedRel),
+    'staged rejection names the real non-ASCII path');
+
+  const head = commit(dir, 'non-ascii leak');
+  ok(/^[0-9a-f]{40}$/.test(head), 'non-ASCII leak commit has a full SHA');
+  const dirtyChanged = runGuard(['--root', dir, '--changed-from', base, '--patterns-file', patternsFile]);
+  ok(dirtyChanged.status === 1, 'changed-from non-ASCII pathname with blocked pattern exits 1',
+    String(dirtyChanged.status));
+  ok(dirtyChanged.stderr.includes(quotedRel),
+    'changed-from rejection names the real non-ASCII path');
+
+  const zOut = git(dir, ['diff', '-z', '--name-only', '--diff-filter=ACMR', `${base}...HEAD`]);
+  ok(zOut.split('\0').filter(Boolean).includes(quotedRel),
+    'NUL-delimited git output carries the real pathname');
+
+  fs.rmSync(dir, { recursive: true, force: true });
+}
+
 console.log('\n=== a weakened incoming engine must not be the judge ===');
 {
   const dir = initRepo();
