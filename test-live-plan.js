@@ -21,10 +21,16 @@ const MAP = path.join(ROOT, 'docs', 'connectivity', 'fixtures', 'b81-account-map
 const IDENTITY = path.join(ROOT, 'docs', 'connectivity', 'transaction-identity.json');
 const SCRIPT = path.join(ROOT, 'scripts', 'live-plan.js');
 const SNAPSHOT_DIR = path.join(ROOT, 'snapshots');
-const FETCHED_AT = '2026-08-20T18:00:00.000Z';
-const OBSERVED = '2026-08-20T17:55:00.000Z';
+const FETCHED_AT = '2026-08-21T18:00:00.000Z';
+const OBSERVED = '2026-08-21T17:55:00.000Z';
+const LIVE_AS_OF = '2026-08-21';
+const UNKNOWN_SAME_DAY_AT = '2026-08-20T18:00:00.000Z';
+const PAYDAY_AT = '2026-08-28T18:00:00.000Z';
+const PAYDAY_AS_OF = '2026-08-28';
 const PURCHASE = 40;
 const CASH_PURCHASE = 30;
+const SYNTHETIC_PAYROLL = 1000;
+const ELAPSED_WEEKLY = 70;
 
 let failures = 0;
 const ok = (cond, label, detail = '') => {
@@ -222,7 +228,7 @@ console.log('\n=== 2. pending purchase overlays utilisation, not the file ===');
     transactions: [{
       id: 91001,
       account_id: 3005,
-      date: '2026-08-20',
+      date: LIVE_AS_OF,
       amount: PURCHASE,
       payee: 'SYNTHETIC GROCER',
       is_pending: true,
@@ -235,10 +241,16 @@ console.log('\n=== 2. pending purchase overlays utilisation, not the file ===');
     'liveOverlay metadata marks the in-memory clone applied');
   ok(result.data.liveOverlay.writesCanonicalState === false,
     'metadata says writesCanonicalState false');
-  ok(String(result.data.meta.asOf) === String(canonical.meta.asOf),
-    'historical meta.asOf is unchanged');
-  ok(String(result.data.plan.opening.asOf) === String(canonical.plan.opening.asOf),
-    'historical plan.opening.asOf is unchanged');
+  ok(String(result.data.liveOverlay.historicalOpeningAsOf) === String(canonical.plan.opening.asOf),
+    'historical opening as-of is recorded on the overlay, not discarded');
+  ok(String(result.data.meta.asOf) === LIVE_AS_OF,
+    'in-memory meta.asOf is the observation household date');
+  ok(String(result.data.plan.opening.asOf) === LIVE_AS_OF,
+    'in-memory plan.opening.asOf is the live Forecast start');
+  ok(String(canonical.meta.asOf) === String(liveData.meta.asOf),
+    'the caller canonical clone is not rewritten');
+  ok(String(result.data.liveOverlay.effectiveAsOf) === LIVE_AS_OF,
+    'overlay metadata names the live effective as-of');
   ok(near(debt(result.data, 'cashback').pending, pendingBefore + PURCHASE),
     'Cash Back pending overlays the synthetic purchase',
     String(debt(result.data, 'cashback').pending));
@@ -272,8 +284,7 @@ console.log('\n=== 3. posted cash purchase moves starting cash and safe-to-spend
   const cashBefore = Forecast.startingCashAmount(canonical.plan);
   const cheqBefore = cashValue(canonical, 'chequing-a');
   const expectedCash = Math.round((cashBefore - CASH_PURCHASE) * 100) / 100;
-  const asOf = canonical.plan.opening.asOf;
-  const recBefore = Forecast.recommend(canonical.plan, asOf, {
+  const recBefore = Forecast.recommend(canonical.plan, canonical.plan.opening.asOf, {
     fundingSources: canonical.plan.funding && canonical.plan.funding.options,
     debts: canonical.debts,
     revolvingExtra: canonical.revolvingExtra,
@@ -284,7 +295,7 @@ console.log('\n=== 3. posted cash purchase moves starting cash and safe-to-spend
     transactions: [{
       id: 91002,
       account_id: 3001,
-      date: '2026-08-20',
+      date: LIVE_AS_OF,
       amount: CASH_PURCHASE,
       payee: 'SYNTHETIC STORE',
       is_pending: false,
@@ -303,7 +314,7 @@ console.log('\n=== 3. posted cash purchase moves starting cash and safe-to-spend
   ok(near(cashValue(liveData, 'chequing-a'), cheqBefore),
     'live data.json Chequing A is still the dated opening');
 
-  const recAfter = Forecast.recommend(result.data.plan, asOf, {
+  const recAfter = Forecast.recommend(result.data.plan, result.data.meta.asOf, {
     fundingSources: result.data.plan.funding && result.data.plan.funding.options,
     debts: result.data.debts,
     revolvingExtra: result.data.revolvingExtra,
@@ -319,6 +330,8 @@ console.log('\n=== 3. posted cash purchase moves starting cash and safe-to-spend
       'a cash purchase does not invent a newly feasible cap');
   }
   const figures = Live.forecastFrom(result.data);
+  ok(figures.asOf === LIVE_AS_OF,
+    'live-plan Forecast summary starts on the observation household date');
   ok(near(figures.startingCash, expectedCash),
     'live-plan Forecast summary uses the overlaid starting cash');
   filesUnchanged('cash purchase');
@@ -334,7 +347,7 @@ console.log('\n=== 4. available credit is never cash; transfers are not income =
     transactions: [{
       id: 91003,
       account_id: 3001,
-      date: '2026-08-20',
+      date: LIVE_AS_OF,
       amount: -200,
       payee: 'SEASPAN PAYROLL',
       is_pending: false,
@@ -435,6 +448,9 @@ console.log('\n=== 7. CLI fixture run is read-only and sanitized ===');
   const parsed = JSON.parse(stdout);
   ok(parsed.writesCanonicalState === false, 'CLI JSON says writesCanonicalState false');
   ok(parsed.overlayCount >= 1, 'CLI overlay applied the cash CHANGE');
+  ok(parsed.effectiveAsOf === LIVE_AS_OF, 'CLI reports the live effective as-of');
+  ok(parsed.forecast && parsed.forecast.asOf === LIVE_AS_OF,
+    'CLI Forecast starts on the observation household date');
   ok(parsed.forecast && near(parsed.forecast.startingCash,
     Forecast.startingCashAmount(canonical.plan) - CASH_PURCHASE),
     'CLI Forecast starting cash matches the independent purchase delta');
@@ -453,7 +469,7 @@ console.log('\n=== 8. server fixture overlay does not mutate the cached opening 
     transactions: [{
       id: 91004,
       account_id: 3005,
-      date: '2026-08-20',
+      date: LIVE_AS_OF,
       amount: PURCHASE,
       payee: 'SYNTHETIC GROCER',
       is_pending: true,
@@ -468,6 +484,10 @@ console.log('\n=== 8. server fixture overlay does not mutate the cached opening 
   ok(served !== canonical, 'server overlay returns a clone');
   ok(served.liveOverlay && served.liveOverlay.applied === true,
     'served payload carries liveOverlay metadata');
+  ok(String(served.meta.asOf) === LIVE_AS_OF,
+    'served clone Forecast start is the observation household date');
+  ok(String(canonical.meta.asOf) === String(liveData.meta.asOf),
+    'the cached canonical object keeps the dated opening as-of');
   ok(near(debt(served, 'cashback').pending, Number(debt(canonical, 'cashback').pending || 0) + PURCHASE),
     'served clone has the pending purchase');
   ok(near(debt(canonical, 'cashback').pending, Number(debt(liveData, 'cashback').pending || 0)),
@@ -475,6 +495,150 @@ console.log('\n=== 8. server fixture overlay does not mutate the cached opening 
   ok(near(cashValue(liveData, 'chequing-a'), cashValue(canonical, 'chequing-a')),
     'live data.json is still the dated opening after server overlay');
   filesUnchanged('server fixture overlay');
+}
+
+console.log('\n=== 9. unknown same-day scheduled events fail closed ===');
+{
+  const canonical = clone(liveData);
+  let threw = null;
+  try {
+    overlay(canonical, { fetchedAt: UNKNOWN_SAME_DAY_AT });
+  } catch (err) {
+    threw = err;
+  }
+  ok(threw && /same-day-event-representation-unknown/.test(threw.message),
+    'Aug 20 overlay fails closed without child-benefit posting evidence',
+    threw && threw.message);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-live-plan-sameday-'));
+  const fixture = path.join(dir, 'fixture.json');
+  fs.writeFileSync(fixture, `${JSON.stringify(payloadFrom(canonical, {
+    fetchedAt: UNKNOWN_SAME_DAY_AT,
+  }), null, 2)}\n`);
+  const served = Live.serveCanonicalOrFixture(canonical, {
+    ATLAS_LIVE_OVERLAY: 'fixture',
+    ATLAS_LIVE_OVERLAY_FIXTURE: fixture,
+    ATLAS_LIVE_OVERLAY_MAP: MAP,
+  });
+  ok(served.liveOverlay && served.liveOverlay.applied === false,
+    'server overlay returns the dated opening when same-day representation is unknown');
+  ok(/same-day-event-representation-unknown/.test(String(served.liveOverlay.reason || '')),
+    'failed overlay names the same-day representation blocker');
+  ok(String(served.meta.asOf) === String(canonical.meta.asOf),
+    'failed overlay does not move the served as-of');
+  ok(String(served.plan.opening.asOf) === String(canonical.plan.opening.asOf),
+    'failed overlay does not rewrite the served opening');
+  filesUnchanged('unknown same-day');
+}
+
+console.log('\n=== 10. posted payroll in the live balance is not emitted again ===');
+{
+  const canonical = clone(liveData);
+  canonical.plan = Object.assign({}, canonical.plan, {
+    income: [{
+      id: 'payroll',
+      label: 'Synthetic payroll',
+      frequency: 'biweekly',
+      anchor: '2026-08-14',
+      amount: SYNTHETIC_PAYROLL,
+      confidence: 'confirmed',
+    }],
+    bills: [],
+    obligations: [],
+    commitments: [],
+  });
+  const cheqBefore = cashValue(canonical, 'chequing-a');
+  const expectedCash = Math.round((cheqBefore + SYNTHETIC_PAYROLL) * 100) / 100;
+  const histAsOf = canonical.plan.opening.asOf;
+  const replayBeforeCutover = Forecast.expandEvents(canonical.plan, histAsOf, PAYDAY_AS_OF, {})
+    .filter(e => e.id === 'payroll' && e.date === PAYDAY_AS_OF);
+  ok(replayBeforeCutover.length === 1,
+    'dated opening from 19 Aug would still emit the 28 Aug payroll');
+  ok(near(replayBeforeCutover[0].amount, SYNTHETIC_PAYROLL),
+    'replayed payroll amount is the synthetic figure, not a live household cent');
+
+  const result = overlay(canonical, {
+    fetchedAt: PAYDAY_AT,
+    tweaks: {
+      'chequing-a': cheqBefore + SYNTHETIC_PAYROLL,
+      cashAt: '2026-08-28T17:55:00.000Z',
+    },
+    transactions: [{
+      id: 91028,
+      account_id: 3001,
+      date: PAYDAY_AS_OF,
+      amount: -SYNTHETIC_PAYROLL,
+      payee: 'SEASPAN PAYROLL',
+      is_pending: false,
+      status: 'reviewed',
+    }],
+  });
+
+  ok(result.data.liveOverlay && result.data.liveOverlay.applied === true,
+    'payday overlay applies when the posted payroll is identified');
+  ok(String(result.data.meta.asOf) === PAYDAY_AS_OF,
+    'in-memory as-of is payday');
+  ok((result.data.plan.opening.representedEvents || [])
+    .some(e => e.id === 'payroll' && e.date === PAYDAY_AS_OF),
+    'posted payroll is named on the in-memory live opening');
+  ok(near(cashValue(result.data, 'chequing-a'), expectedCash),
+    'Chequing A includes the synthetic payroll by hand',
+    String(cashValue(result.data, 'chequing-a')));
+
+  const liveEvents = Forecast.expandEvents(result.data.plan, PAYDAY_AS_OF, PAYDAY_AS_OF, {});
+  ok(!liveEvents.some(e => e.id === 'payroll' && e.date === PAYDAY_AS_OF),
+    'Forecast does not emit the posted payroll again on the live as-of');
+  const replay = Forecast.expandEvents(result.data.plan, histAsOf, PAYDAY_AS_OF, {});
+  ok(replay.some(e => e.id === 'payroll' && e.date === PAYDAY_AS_OF),
+    'starting from the historical opening would still replay payday — the cutover is what prevents it');
+  filesUnchanged('posted payroll');
+}
+
+console.log('\n=== 11. a later live purchase changes the plan without replaying elapsed days ===');
+{
+  const canonical = clone(liveData);
+  const cashBefore = Forecast.startingCashAmount(canonical.plan);
+  const expectedCash = Math.round((cashBefore - CASH_PURCHASE) * 100) / 100;
+  const histAsOf = canonical.plan.opening.asOf;
+  const result = overlay(canonical, {
+    tweaks: { 'chequing-a': cashValue(canonical, 'chequing-a') - CASH_PURCHASE },
+    transactions: [{
+      id: 91021,
+      account_id: 3001,
+      date: LIVE_AS_OF,
+      amount: CASH_PURCHASE,
+      payee: 'SYNTHETIC STORE',
+      is_pending: false,
+      status: 'reviewed',
+    }],
+  });
+  ok(near(Forecast.startingCashAmount(result.data.plan), expectedCash),
+    'live starting cash falls by the synthetic purchase');
+  ok(String(result.data.meta.asOf) === LIVE_AS_OF,
+    'Forecast start is the later observation date');
+
+  const elapsed = Forecast.diffDays(histAsOf, LIVE_AS_OF);
+  ok(elapsed > 0, 'observation is after the dated opening');
+  const expectedElapsedVariable = Math.round((ELAPSED_WEEKLY / 7) * elapsed * 100) / 100;
+  const replay = Forecast.simulate(result.data.plan, histAsOf, {
+    weeklyVariable: ELAPSED_WEEKLY, viewDays: 14, horizonDays: 14,
+  });
+  const coherent = Forecast.simulate(result.data.plan, LIVE_AS_OF, {
+    weeklyVariable: ELAPSED_WEEKLY, viewDays: 14, horizonDays: 14,
+  });
+  const replayElapsed = (replay.daily || []).filter(d => d.date < LIVE_AS_OF);
+  ok(replayElapsed.length === elapsed,
+    'historical start walks the elapsed days against already-live cash');
+  ok(near(replayElapsed.length * (ELAPSED_WEEKLY / 7), expectedElapsedVariable),
+    'elapsed variable spend is weekly/7 times elapsed days by hand');
+  ok((coherent.daily || []).every(d => d.date >= LIVE_AS_OF),
+    'live as-of does not replay elapsed calendar days');
+  ok(!Forecast.expandEvents(result.data.plan, LIVE_AS_OF, LIVE_AS_OF, {})
+    .some(e => e.id === 'childBenefit' && e.date === '2026-08-20'),
+    'intervening 20 Aug child benefit is not emitted on the live start');
+  ok(Forecast.expandEvents(canonical.plan, histAsOf, LIVE_AS_OF, {})
+    .some(e => e.id === 'childBenefit' && e.date === '2026-08-20'),
+    'the dated opening would still have emitted that intervening child benefit');
+  filesUnchanged('elapsed days');
 }
 
 console.log('\n' + '═'.repeat(60));

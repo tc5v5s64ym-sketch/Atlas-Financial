@@ -17,7 +17,9 @@ Forecast remains the sole deterministic planning and calculation authority.
 Lunch Money is evidence, not the planner and not canonical household policy.
 A new Lunch Money observation may overlay current posted balances and
 pending onto today's live plan in memory (`scripts/live-plan.js`) without
-rewriting historical openings or snapshots. Live read-only observation
+rewriting historical openings or snapshots. That clone uses the
+observation's household financial date as Forecast start; same-day
+scheduled cash events fail closed without posting evidence. Live read-only observation
 already exists and has been exercised; identity and idempotency of that
 path are proved (`B78` / T3). The file foundation has not demonstrably
 failed (`B79` / `AF-STORE-01`); no store is introduced. Owner-approved
@@ -176,7 +178,9 @@ build strategy. Do not invent a second list here.
 operating path is Lunch Money → Atlas observation + reconciliation →
 current in-memory account state → Forecast → the site. Today's live plan
 may overlay current posted balances and pending without rewriting
-historical openings or snapshots (`scripts/live-plan.js`). A new canonical
+historical openings or snapshots (`scripts/live-plan.js`). The in-memory
+clone starts Forecast on the observation's household financial date.
+A new canonical
 opening is still an explicit owner-approved `data.json` write; automatic
 production writes are not earned. File capture remains the
 fallback/backfill/direct-evidence path, not the monthly operational

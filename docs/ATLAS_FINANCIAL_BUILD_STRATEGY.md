@@ -1101,6 +1101,9 @@ writer. Unattended production writes remain reserved.
   `main` is the 2026-08-19 opening. Today's Forecast may overlay current
   posted/pending from a Lunch Money observation in memory
   (`scripts/live-plan.js`) without rewriting that opening or snapshots.
+  The in-memory clone starts Forecast on the observation's household
+  financial date; same-day scheduled events fail closed without posting
+  evidence.
   Unattended production writes, a Render token, and a newer live substitute
   opening remain reserved.
 - **Prompt** — *Do not apply the unused Chequing B $10, choose a Triangle

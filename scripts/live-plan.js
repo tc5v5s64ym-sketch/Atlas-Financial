@@ -9,12 +9,16 @@
  *   node scripts/live-plan.js --live
  *
  * Overlay is today's live plan only: posted household-cash and debt
- * balances, plus revolving pending. Owner policy, bills, income rules,
- * and commitments stay on canonical Atlas data. Same-day CHANGE may
- * overlay a current observation; that is not a canonical write.
- * Triangle/MBNA statement cadence may keep canonical posted values.
- * Unknown, stale, conflicting, unmapped, credit-capacity, and
- * transfer-as-income evidence fail closed.
+ * balances, plus revolving pending, plus an in-memory Forecast start
+ * equal to the observation's household financial date. Owner policy,
+ * bills, income rules, and commitments stay on canonical Atlas data.
+ * Same-day CHANGE may overlay a current observation; that is not a
+ * canonical write. Same-day scheduled cash events need posting /
+ * representation evidence or the overlay fails closed. Triangle/MBNA
+ * statement cadence may keep canonical posted values. Unknown, stale,
+ * conflicting, unmapped, credit-capacity, and transfer-as-income
+ * evidence fail closed. Historical data.json and snapshots stay
+ * byte-identical.
  *
  * Production /data.json stays the dated opening unless ATLAS_LIVE_OVERLAY
  * is explicitly `fixture` or `live`. A Render Lunch Money token is still
@@ -252,17 +256,6 @@ function proposeOverlay(report, canonicalAsOf) {
   for (const entry of (report && report.unmapped) || []) {
     refused.push(sanitizedUnmapped(entry));
   }
-  for (const candidate of (report && report.representedEventCandidates) || []) {
-    if (candidate && candidate.mustNotBackfillOpening !== false) {
-      refused.push({
-        locator: 'plan.opening.representedEvents',
-        fact: 'posting',
-        eventId: candidate.id || null,
-        evidenceDate: candidate.date || null,
-        reason: 'historical-opening-backfill',
-      });
-    }
-  }
   proposed.sort((a, b) => String(a.locator).localeCompare(String(b.locator))
     || String(a.field).localeCompare(String(b.field)));
   refused.sort((a, b) => String(a.locator || a.reason).localeCompare(String(b.locator || b.reason))
@@ -306,20 +299,126 @@ function applyPendingOverlay(data, change) {
   if (Object.prototype.hasOwnProperty.call(row, 'unknownPending')) row.unknownPending = false;
 }
 
-function assertPolicyUntouched(before, after) {
+function assertOwnerPolicyUntouched(before, after) {
   const keys = ['income', 'bills', 'obligations', 'commitments', 'budget', 'actions', 'nextDollar'];
   for (const key of keys) {
     if (JSON.stringify((before.plan || {})[key]) !== JSON.stringify((after.plan || {})[key])) {
       fail(`Live overlay must not rewrite plan.${key}.`);
     }
   }
-  if (String(after.meta && after.meta.asOf) !== String(before.meta && before.meta.asOf)) {
-    fail('Live overlay must not rewrite meta.asOf.');
+}
+
+function schedulePlan(plan) {
+  return {
+    income: (plan && plan.income) || [],
+    obligations: (plan && plan.obligations) || [],
+    bills: (plan && plan.bills) || [],
+    commitments: (plan && plan.commitments) || [],
+    startingCash: plan && plan.startingCash,
+    opening: plan && plan.opening,
+  };
+}
+
+function scheduledCashEventsOn(plan, date) {
+  if (!plan || !date) return [];
+  return Forecast.expandEvents(schedulePlan(plan), date, date, {})
+    .filter(event => event && event.date === date && event.kind !== 'noncash');
+}
+
+function liveAsOfFrom(report, historicalOpeningAsOf) {
+  const observed = Forecast.financialDate(report && report.fetchedAt)
+    || Forecast.financialDate(report && report.observedAsOf);
+  return observed || historicalOpeningAsOf || null;
+}
+
+function representedCandidatesFor(report, liveAsOf) {
+  return ((report && report.representedEventCandidates) || [])
+    .map(candidate => O.classifyRepresentedCandidate(candidate, liveAsOf))
+    .filter(candidate => candidate && candidate.id && candidate.date === liveAsOf
+      && candidate.currentOpeningImpact === true);
+}
+
+function sortRepresented(a, b) {
+  return String(a.date).localeCompare(String(b.date))
+    || String(a.id).localeCompare(String(b.id));
+}
+
+function mergeRepresented(existing, added) {
+  const out = [];
+  const seen = new Set();
+  for (const row of (existing || []).concat(added || [])) {
+    if (!row || !row.id || !row.date) continue;
+    const key = String(row.id) + '@' + String(row.date);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ id: row.id, date: row.date });
   }
-  if (JSON.stringify(after.plan && after.plan.opening)
-    !== JSON.stringify(before.plan && before.plan.opening)) {
-    fail('Live overlay must not rewrite plan.opening.');
+  out.sort(sortRepresented);
+  return out;
+}
+
+function refuseNonLiveRepresented(report, liveAsOf) {
+  const refused = [];
+  for (const candidate of (report && report.representedEventCandidates) || []) {
+    const classified = O.classifyRepresentedCandidate(candidate, liveAsOf);
+    if (classified.date === liveAsOf && classified.currentOpeningImpact === true) continue;
+    refused.push({
+      locator: 'plan.opening.representedEvents',
+      fact: 'posting',
+      eventId: classified.id || null,
+      evidenceDate: classified.date || null,
+      reason: classified.date && liveAsOf && classified.date < liveAsOf
+        ? 'historical-opening-backfill'
+        : 'not-live-as-of',
+    });
   }
+  return refused;
+}
+
+function applyLiveCutover(next, report, historicalOpeningAsOf) {
+  const liveAsOf = liveAsOfFrom(report, historicalOpeningAsOf);
+  if (!liveAsOf) fail('Live overlay is missing a household financial date.');
+  const sameDay = scheduledCashEventsOn(next.plan, liveAsOf)
+    .slice()
+    .sort((a, b) => String(a.id).localeCompare(String(b.id)));
+  const candidates = representedCandidatesFor(report, liveAsOf);
+  const represented = [];
+  const unknown = [];
+  for (const event of sameDay) {
+    const hit = candidates.find(candidate => candidate.id === event.id
+      && candidate.date === event.date);
+    if (hit) represented.push({ id: event.id, date: event.date });
+    else unknown.push(event);
+  }
+  represented.sort(sortRepresented);
+  const advances = !!(historicalOpeningAsOf && liveAsOf > historicalOpeningAsOf);
+  if (advances && unknown.length) {
+    const named = unknown.map(event => `${event.id}@${event.date}`).join(', ');
+    fail(`same-day-event-representation-unknown: ${named}`);
+  }
+  if (historicalOpeningAsOf && liveAsOf < historicalOpeningAsOf) {
+    return {
+      liveAsOf: historicalOpeningAsOf,
+      representedEvents: mergeRepresented(
+        (next.plan.opening && next.plan.opening.representedEvents) || [],
+        []
+      ),
+      advanced: false,
+    };
+  }
+  const existing = (next.plan.opening && next.plan.opening.representedEvents) || [];
+  const nextOpening = Object.assign({}, next.plan.opening || {}, {
+    asOf: liveAsOf,
+    representedEvents: advances ? represented : mergeRepresented(existing, represented),
+  });
+  next.plan.opening = nextOpening;
+  if (!next.meta) next.meta = {};
+  next.meta.asOf = liveAsOf;
+  return {
+    liveAsOf,
+    representedEvents: nextOpening.representedEvents,
+    advanced: advances,
+  };
 }
 
 function overlayMeta(opts) {
@@ -330,7 +429,9 @@ function overlayMeta(opts) {
     unattended: false,
     applied: opts.applied === true,
     historicalOpeningAsOf: opts.historicalOpeningAsOf || null,
+    effectiveAsOf: opts.effectiveAsOf || null,
     observedAsOf: opts.observedAsOf || null,
+    representedEvents: opts.representedEvents || [],
     overlays: opts.overlays || [],
     refused: opts.refused || [],
     source: 'provider-observe:lunchmoney',
@@ -347,19 +448,27 @@ function overlayLiveState(input) {
   if (report.writesCanonicalState !== false) fail('Observer must declare writesCanonicalState false.');
   const historicalOpeningAsOf = (data.plan.opening && data.plan.opening.asOf)
     || (data.meta && data.meta.asOf) || null;
+  const liveAsOf = liveAsOfFrom(report, historicalOpeningAsOf);
   const { proposed, refused } = proposeOverlay(report, historicalOpeningAsOf);
+  const postingRefused = refuseNonLiveRepresented(report, liveAsOf);
   const next = clone(data);
+  const cutover = applyLiveCutover(next, report, historicalOpeningAsOf);
   for (const change of proposed) {
     if (change.field === 'pending') applyPendingOverlay(next, change);
     else applyPostedOverlay(next, change);
   }
-  assertPolicyUntouched(data, next);
+  assertOwnerPolicyUntouched(data, next);
   const cash = Forecast.startingCashAmount(next.plan);
   if (!isFinite(cash)) fail('Forecast cannot consume the overlaid starting cash.');
+  const allRefused = refused.concat(postingRefused).sort((a, b) =>
+    String(a.locator || a.reason).localeCompare(String(b.locator || b.reason))
+    || String(a.reason).localeCompare(String(b.reason)));
   next.liveOverlay = overlayMeta({
     applied: true,
     historicalOpeningAsOf,
-    observedAsOf: Forecast.financialDate(report.fetchedAt) || historicalOpeningAsOf,
+    effectiveAsOf: cutover.liveAsOf,
+    observedAsOf: liveAsOf || historicalOpeningAsOf,
+    representedEvents: cutover.representedEvents,
     overlays: proposed.map(row => ({
       locator: row.locator,
       field: row.field,
@@ -368,7 +477,7 @@ function overlayLiveState(input) {
       evidenceDate: row.evidenceDate,
       reason: row.reason,
     })),
-    refused: refused.map(row => ({
+    refused: allRefused.map(row => ({
       locator: row.locator || null,
       fact: row.fact || null,
       reason: row.reason,
@@ -382,9 +491,10 @@ function overlayLiveState(input) {
   return {
     data: next,
     overlays: proposed,
-    refused,
+    refused: allRefused,
     writesCanonicalState: false,
     historicalOpeningAsOf,
+    effectiveAsOf: cutover.liveAsOf,
   };
 }
 
@@ -412,7 +522,9 @@ function fromObservation(opts) {
 
 function forecastFrom(data) {
   const plan = data && data.plan;
-  const asOf = (plan && plan.opening && plan.opening.asOf)
+  const asOf = (data && data.liveOverlay && data.liveOverlay.applied === true
+    && data.liveOverlay.effectiveAsOf)
+    || (plan && plan.opening && plan.opening.asOf)
     || (data && data.meta && data.meta.asOf);
   if (!plan || !asOf) fail('Overlaid data is missing a Forecast opening.');
   const advice = Forecast.recommend(plan, asOf, {
@@ -441,6 +553,8 @@ function failedOverlay(canonical, reason) {
     applied: false,
     historicalOpeningAsOf: (canonical.plan && canonical.plan.opening && canonical.plan.opening.asOf)
       || (canonical.meta && canonical.meta.asOf) || null,
+    effectiveAsOf: null,
+    representedEvents: [],
     overlays: [],
     refused: [],
     reason: String(reason || 'overlay-failed').slice(0, 200),
@@ -552,6 +666,9 @@ function summary(result) {
     schema: SCHEMA,
     writesCanonicalState: false,
     historicalOpeningAsOf: result.historicalOpeningAsOf,
+    effectiveAsOf: result.effectiveAsOf
+      || (result.data.liveOverlay && result.data.liveOverlay.effectiveAsOf)
+      || null,
     overlayCount: result.overlays.length,
     refusedCount: result.refused.length,
     overlays: result.data.liveOverlay && result.data.liveOverlay.overlays,
@@ -611,6 +728,8 @@ const api = {
   overlayLiveState,
   fromObservation,
   forecastFrom,
+  liveAsOfFrom,
+  scheduledCashEventsOn,
   serveCanonicalOrFixture,
   applyForServer,
   failedOverlay,
