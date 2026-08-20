@@ -65,6 +65,7 @@ const suites = [
   ['near-boundary payday output (B91 D11)', 'test-near-boundary.js'],
   ['B91 live current-state cutover', 'test-b91-cutover.js'],
   ['merge-card check behaviour', 'test-mergecard.js'],
+  ['figures comment Plan-page scope (B82)', 'test-figures-comment.js'],
   ['Codex Cursor repair gate', 'test-codex-cursor-repair.js'],
   ['Atlas review-block card sync', 'test-atlas-review-block.js'],
   ['instant Atlas API re-review', 'test-atlas-api-rereview.js'],
