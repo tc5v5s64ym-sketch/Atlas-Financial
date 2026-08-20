@@ -6,6 +6,8 @@
  *   node scripts/canonical-refresh.js --fixture <file> --cutover-as-of YYYY-MM-DD
  *   node scripts/canonical-refresh.js --fixture <file> --cutover-as-of YYYY-MM-DD --apply --approve-cutover <cutoverApprovalId>
  *   node scripts/canonical-refresh.js --fixture <file> --cutover-as-of YYYY-MM-DD --apply --approve-opening <openingApprovalId>
+ *   node scripts/canonical-refresh.js --fixture <file> --cutover-as-of YYYY-MM-DD --recover-opening-artifacts
+ *   node scripts/canonical-refresh.js --fixture <file> --cutover-as-of YYYY-MM-DD --recover-opening-artifacts --apply --approve-recovery <recoveryApprovalId>
  *
  * Default is a non-writing preview. --apply --approve updates only the
  * posted cash/debt fields listed in that preview. previewId cannot
@@ -30,6 +32,17 @@
  * and cutoverApprovalId cannot authorize that write. No approval = no
  * opening write.
  *
+ * --cutover-as-of --recover-opening-artifacts is a same-date diagnostic of an
+ * already-approved canonical opening whose Household positions and/or dated
+ * snapshot are missing. It never infers those artifacts from data.json alone.
+ * It requires a complete trustworthy same-date observation packet whose every
+ * required posted and pending value MATCHES the surviving opening.
+ * --apply --approve-recovery writes only the missing positions rows and
+ * snapshot after the approval binds those exact proposed bytes (and the
+ * expected artifact pre-state). It never writes data.json, never advances
+ * the opening, never POSTs Lunch Money, and cannot be authorized by
+ * previewId, cutoverApprovalId, or openingApprovalId.
+ *
  * Never writes without --apply and an exact matching approval.
  * Never POST/PUT/PATCH/DELETE Lunch Money. Never stores a token.
  * Unattended production writes are not this command.
@@ -53,6 +66,7 @@ const DEFAULT_IDENTITY = path.join(ROOT, 'docs', 'connectivity', 'transaction-id
 const SCHEMA = 'atlas-canonical-refresh-preview/v1';
 const CUTOVER_PENDING_SCHEMA = 'atlas-cutover-pending-approval/v1';
 const OPENING_CUTOVER_SCHEMA = 'atlas-opening-cutover-approval/v1';
+const ARTIFACT_RECOVERY_SCHEMA = 'atlas-opening-artifact-recovery-approval/v1';
 const SNAPSHOT_COMMAND = 'node scripts/snapshot-balances.js';
 const EPSILON = 0.005;
 const PENDING_ZERO_PROOF = 'is_pending-unbounded';
@@ -89,6 +103,8 @@ function parseArgs(argv) {
     approve: null,
     approveCutover: null,
     approveOpening: null,
+    approveRecovery: null,
+    recoverOpeningArtifacts: false,
     identity: DEFAULT_IDENTITY,
     cutoverAsOf: null,
     positions: null,
@@ -106,6 +122,8 @@ function parseArgs(argv) {
     else if (a === '--approve') out.approve = argv[++i];
     else if (a === '--approve-cutover') out.approveCutover = argv[++i];
     else if (a === '--approve-opening') out.approveOpening = argv[++i];
+    else if (a === '--approve-recovery') out.approveRecovery = argv[++i];
+    else if (a === '--recover-opening-artifacts') out.recoverOpeningArtifacts = true;
     else if (a === '--identity') out.identity = argv[++i];
     else if (a === '--cutover-as-of') out.cutoverAsOf = argv[++i];
     else if (a === '--positions') out.positions = argv[++i];
@@ -1134,11 +1152,554 @@ async function loadPayload(args) {
   return loadJson(args.fixture);
 }
 
+function sha256Bytes(buf) {
+  return crypto.createHash('sha256').update(buf).digest('hex').toUpperCase();
+}
+
+function canonicalFileSha256(dataPath, data) {
+  if (dataPath && fs.existsSync(dataPath)) return sha256Bytes(fs.readFileSync(dataPath));
+  return sha256Bytes(Buffer.from(encodeData(data), 'utf8'));
+}
+
+function normalizeNewlines(text) {
+  return String(text || '').replace(/\r\n?/g, '\n');
+}
+
+function postedStatesAllMatch(accountFreshness) {
+  if (!Array.isArray(accountFreshness) || !accountFreshness.length) return false;
+  return accountFreshness.every(row => (
+    row
+    && row.freshForRequestedAsOf === true
+    && row.reconcileStatus === 'MATCH'
+    && row.canonicalValue != null && isFinite(Number(row.canonicalValue))
+    && row.observedValue != null && isFinite(Number(row.observedValue))
+    && near(row.canonicalValue, row.observedValue)
+  ));
+}
+
+function pendingStatesAllMatch(cutover) {
+  const pending = (cutover && cutover.proposedOpening && cutover.proposedOpening.pending) || [];
+  return pending.every(row => (
+    row
+    && row.kind === 'match'
+    && row.proposedUnknown !== true
+    && row.currentUnknown !== true
+    && row.proposedValue != null && isFinite(Number(row.proposedValue))
+    && row.currentValue != null && isFinite(Number(row.currentValue))
+    && near(row.currentValue, row.proposedValue)
+  ));
+}
+
+function pendingCensusCompleteForRecovery(cutover, report) {
+  return pendingCoverageComplete(report)
+    && !unknownPendingBlocksOpening(cutover)
+    && !(cutover.pendingTransitions && cutover.pendingTransitions.length)
+    && !((cutover.warnings || []).some(item => item.code === 'pending-remains-unknown'));
+}
+
+function requiredPostedMappingGaps(proposedOpening, balanceMap) {
+  const excluded = Household.excludedLabels(balanceMap);
+  const missing = [];
+  for (const posted of (proposedOpening && proposedOpening.posted) || []) {
+    if (!posted || !posted.locator) {
+      missing.push({ locator: null, reason: 'missing-locator' });
+      continue;
+    }
+    const mapping = Household.mappingForLocator(balanceMap, posted.locator);
+    if (!mapping || !mapping.accountLabel) {
+      missing.push({ locator: posted.locator, reason: 'unmapped-required-account' });
+      continue;
+    }
+    if (excluded.has(mapping.accountLabel)) {
+      missing.push({ locator: posted.locator, reason: 'excluded-required-account' });
+    }
+  }
+  return missing;
+}
+
+function inspectSameDateHousehold(csvText, requestedAsOf, proposedOpening, balanceMap) {
+  const rows = S.parsePositions(csvText);
+  const household = rows.filter(row => row.entity === 'Household');
+  const missingIncumbent = [];
+  const missingSameDate = [];
+  const conflicting = [];
+  let matching = 0;
+  for (const posted of (proposedOpening && proposedOpening.posted) || []) {
+    const mapping = Household.mappingForLocator(balanceMap, posted.locator);
+    if (!mapping || !mapping.accountLabel) continue;
+    const pos = household.find(row => row.account_label === mapping.accountLabel);
+    if (!pos) {
+      missingIncumbent.push(mapping.accountLabel);
+      continue;
+    }
+    if (pos.as_of !== requestedAsOf) {
+      missingSameDate.push(mapping.accountLabel);
+      continue;
+    }
+    if (!near(Number(pos.balance), posted.proposedValue)) {
+      conflicting.push(mapping.accountLabel);
+      continue;
+    }
+    matching += 1;
+  }
+  return { matching, missingIncumbent, missingSameDate, conflicting };
+}
+
+function recoveryArtifactProposal(constructed, incumbentCsv, snapshotDir) {
+  if (!constructed || constructed.positionsText == null || !constructed.snapshot || !constructed.snapshot.asOf) {
+    return null;
+  }
+  const snapshotDest = snapshotDir ? path.join(snapshotDir, `${constructed.snapshot.asOf}.json`) : null;
+  return {
+    proposedPositionsSha256: sha256Bytes(Buffer.from(constructed.positionsText, 'utf8')),
+    proposedSnapshotSha256: sha256Bytes(Buffer.from(S.encodeSnapshot(constructed.snapshot), 'utf8')),
+    snapshotPreState: snapshotDest && fs.existsSync(snapshotDest) ? 'present' : 'absent',
+    positionsNeeded: normalizeNewlines(constructed.positionsText) !== normalizeNewlines(incumbentCsv),
+  };
+}
+
+function recoveryFingerprint(cutover, balanceMap, canonicalSha256, artifactProposal) {
+  const proposal = (cutover && cutover.proposedOpening) || {};
+  const artifacts = artifactProposal || {};
+  return {
+    schema: ARTIFACT_RECOVERY_SCHEMA,
+    requestedAsOf: cutover && cutover.requestedAsOf ? cutover.requestedAsOf : null,
+    currentMetaAsOf: cutover && cutover.currentMetaAsOf ? cutover.currentMetaAsOf : null,
+    currentOpeningAsOf: cutover && cutover.currentOpeningAsOf ? cutover.currentOpeningAsOf : null,
+    canonicalSha256: canonicalSha256 || null,
+    writesCanonicalState: false,
+    posted: (proposal.posted || []).slice().sort(sortByLocator).map(row => ({
+      locator: row.locator,
+      currentValue: row.currentValue,
+      observedValue: row.proposedValue,
+      evidenceDate: row.evidenceDate || null,
+      freshnessBasis: row.freshnessBasis || null,
+      reconcileStatus: row.reconcileStatus || null,
+    })),
+    pending: (proposal.pending || []).slice().sort(sortByLocator).map(row => ({
+      locator: row.locator,
+      currentValue: row.currentValue,
+      proposedValue: row.proposedValue,
+      evidenceDate: row.evidenceDate || null,
+      proof: row.proof || null,
+      kind: row.kind || null,
+    })),
+    representedEvents: (proposal.representedEvents || []).slice().sort(sortRepresented).map(row => ({
+      id: row.id,
+      date: row.date,
+    })),
+    routing: openingRoutingFingerprint(balanceMap),
+    artifacts: {
+      surfaces: ['positions.csv', 'snapshots/<date>.json'],
+      proposedPositionsSha256: artifacts.proposedPositionsSha256 || null,
+      proposedSnapshotSha256: artifacts.proposedSnapshotSha256 || null,
+      snapshotPreState: artifacts.snapshotPreState || null,
+      positionsNeeded: artifacts.positionsNeeded === true,
+    },
+  };
+}
+
+function recoveryApprovalIdFrom(cutover, balanceMap, canonicalSha256, artifactProposal) {
+  return crypto.createHash('sha256').update(JSON.stringify(recoveryFingerprint(cutover, balanceMap, canonicalSha256, artifactProposal))).digest('hex');
+}
+
+function blockedRecovery(cutover, extra) {
+  const recovery = Object.assign({
+    schema: ARTIFACT_RECOVERY_SCHEMA,
+    inspected: false,
+    sameDateOpening: false,
+    postedAllMatch: false,
+    pendingAllMatch: false,
+    pendingCensusComplete: false,
+    missingSameDateHousehold: false,
+    missingSnapshot: false,
+    positionsNeeded: false,
+    snapshotNeeded: false,
+    alreadyComplete: false,
+    supported: false,
+    recoveryApprovalId: null,
+    canonicalSha256: null,
+    status: 'BLOCKED',
+    blockers: [],
+    writesCanonicalState: false,
+  }, extra || {});
+  cutover.artifactRecovery = recovery;
+  return recovery;
+}
+
+function attachOpeningArtifactRecovery(cutover, data, report, opts) {
+  const blockers = [];
+  const sameDate = !!(cutover
+    && cutover.requestedAsOf
+    && cutover.currentOpeningAsOf
+    && cutover.currentMetaAsOf
+    && cutover.requestedAsOf === cutover.currentOpeningAsOf
+    && cutover.currentMetaAsOf === cutover.currentOpeningAsOf);
+  if (!sameDate) {
+    return blockedRecovery(cutover, {
+      inspected: true,
+      sameDateOpening: false,
+      status: 'NOT_APPLICABLE',
+      blockers: [issue(
+        'recovery-not-same-date-opening',
+        'Artifact recovery is only for an already-approved same-date canonical opening. It cannot advance or replace the opening.'
+      )],
+    });
+  }
+
+  const postedAllMatch = postedStatesAllMatch(cutover.accountFreshness);
+  const pendingAllMatch = pendingStatesAllMatch(cutover);
+  const censusComplete = pendingCensusCompleteForRecovery(cutover, report);
+  if ((cutover.blockers || []).length || cutover.status === 'BLOCKED') {
+    pushUnique(blockers, issue(
+      'recovery-opening-blocked',
+      'The same-date observation packet is not a clean MATCH diagnostic. Recovery cannot reconstruct artifacts from blocked evidence.'
+    ));
+  }
+  if (!postedAllMatch) {
+    pushUnique(blockers, issue(
+      'recovery-posted-not-match',
+      'Every required posted value must MATCH the surviving canonical opening before artifact recovery is allowed.'
+    ));
+  }
+  if (!pendingAllMatch || (cutover.pendingTransitions && cutover.pendingTransitions.length)) {
+    pushUnique(blockers, issue(
+      'recovery-pending-not-match',
+      'Every mapped revolving pending state must MATCH the surviving canonical opening. Recovery cannot write pending or invent UNKNOWN as zero.'
+    ));
+  }
+  if (!censusComplete) {
+    pushUnique(blockers, issue(
+      'recovery-pending-census-incomplete',
+      'Pending census is incomplete. Recovery requires proven candidate-date pending evidence, including is_pending-unbounded coverage for zero.'
+    ));
+  }
+  if (unknownPendingBlocksOpening(cutover)) {
+    pushUnique(blockers, issue(
+      'recovery-pending-unknown',
+      'UNKNOWN pending remains. Recovery cannot reconstruct Household pending evidence from an unknown census.'
+    ));
+  }
+
+  const balanceMap = opts && opts.balanceMap;
+  const mappingGaps = requiredPostedMappingGaps(cutover.proposedOpening, balanceMap);
+  for (const gap of mappingGaps) {
+    pushUnique(blockers, issue(
+      gap.reason === 'excluded-required-account' ? 'recovery-excluded-required-account' : 'unmapped-required-account',
+      `Required opening locator ${gap.locator || '(missing)'} has no usable Household mapping.`,
+      { locator: gap.locator }
+    ));
+  }
+
+  if (!opts || !opts.positionsPath || !opts.snapshotDir) {
+    pushUnique(blockers, issue(
+      'missing-recovery-artifact-paths',
+      'Recovery cannot inspect or write positions.csv and snapshots without explicit artifact paths. It does not infer those artifacts from data.json.'
+    ));
+    return blockedRecovery(cutover, {
+      inspected: false,
+      sameDateOpening: true,
+      postedAllMatch,
+      pendingAllMatch,
+      pendingCensusComplete: censusComplete,
+      blockers,
+    });
+  }
+
+  const canonicalSha256 = opts.canonicalSha256 || canonicalFileSha256(opts.dataPath, data);
+  let incumbentCsv;
+  try {
+    incumbentCsv = fs.readFileSync(opts.positionsPath, 'utf8');
+  } catch (err) {
+    pushUnique(blockers, issue(
+      'missing-recovery-positions',
+      `positions.csv is not readable: ${err.message}`
+    ));
+    return blockedRecovery(cutover, {
+      inspected: false,
+      sameDateOpening: true,
+      postedAllMatch,
+      pendingAllMatch,
+      pendingCensusComplete: censusComplete,
+      canonicalSha256,
+      blockers,
+    });
+  }
+
+  const householdState = inspectSameDateHousehold(
+    incumbentCsv,
+    cutover.requestedAsOf,
+    cutover.proposedOpening,
+    balanceMap
+  );
+  if (householdState.missingIncumbent.length) {
+    pushUnique(blockers, issue(
+      'missing-incumbent-household-row',
+      `No incumbent Household row for ${householdState.missingIncumbent.join(', ')}. Recovery updates captured rows; it does not invent accounts.`
+    ));
+  }
+  if (householdState.conflicting.length) {
+    pushUnique(blockers, issue(
+      'recovery-positions-conflict',
+      `Same-date Household rows already exist and disagree with the MATCH packet for ${householdState.conflicting.join(', ')}.`
+    ));
+  }
+
+  let constructed = null;
+  if (!blockers.length) {
+    try {
+      constructed = buildOpeningArtifacts(data, { openingCutover: cutover }, {
+        positionsPath: opts.positionsPath,
+        snapshotDir: opts.snapshotDir,
+        balanceMapPath: opts.balanceMapPath,
+        periodsPath: opts.periodsPath,
+      });
+    } catch (err) {
+      const message = String(err && err.message || err);
+      if (/already exists and disagrees/.test(message)) {
+        pushUnique(blockers, issue(
+          'recovery-snapshot-conflict',
+          `snapshot ${cutover.requestedAsOf} already exists and disagrees with the MATCH packet; refusing to rewrite history.`
+        ));
+      } else {
+        pushUnique(blockers, issue(
+          'recovery-construction-failed',
+          message
+        ));
+      }
+    }
+  }
+
+  const snapshotDest = path.join(opts.snapshotDir, `${cutover.requestedAsOf}.json`);
+  const snapshotExists = fs.existsSync(snapshotDest);
+  let snapshotAgrees = false;
+  if (snapshotExists && constructed) {
+    try {
+      snapshotAgrees = assertSnapshotInstallable(opts.snapshotDir, constructed.snapshot) === 'unchanged';
+    } catch (err) {
+      pushUnique(blockers, issue(
+        'recovery-snapshot-conflict',
+        String(err && err.message || err)
+      ));
+    }
+  }
+  const positionsNeeded = !!(constructed
+    && normalizeNewlines(constructed.positionsText) !== normalizeNewlines(incumbentCsv));
+  const snapshotNeeded = !snapshotExists;
+  const alreadyComplete = !!(constructed
+    && !positionsNeeded
+    && snapshotExists
+    && snapshotAgrees
+    && householdState.missingSameDate.length === 0
+    && householdState.conflicting.length === 0
+    && householdState.missingIncumbent.length === 0);
+
+  if (alreadyComplete) {
+    cutover.artifactRecovery = {
+      schema: ARTIFACT_RECOVERY_SCHEMA,
+      inspected: true,
+      sameDateOpening: true,
+      postedAllMatch,
+      pendingAllMatch,
+      pendingCensusComplete: censusComplete,
+      missingSameDateHousehold: false,
+      missingSnapshot: false,
+      positionsNeeded: false,
+      snapshotNeeded: false,
+      alreadyComplete: true,
+      supported: false,
+      recoveryApprovalId: null,
+      canonicalSha256,
+      status: 'ALREADY_COMPLETE',
+      blockers: [],
+      writesCanonicalState: false,
+    };
+    return cutover.artifactRecovery;
+  }
+
+  if (!positionsNeeded && !snapshotNeeded && constructed) {
+    pushUnique(blockers, issue(
+      'recovery-not-needed',
+      'Same-date positions and snapshot already agree with the MATCH packet. Recovery is not a rewrite.'
+    ));
+  }
+
+  const artifactProposal = constructed
+    ? recoveryArtifactProposal(constructed, incumbentCsv, opts.snapshotDir)
+    : null;
+  const supported = blockers.length === 0
+    && postedAllMatch
+    && pendingAllMatch
+    && censusComplete
+    && !!constructed
+    && !!artifactProposal
+    && !!artifactProposal.proposedPositionsSha256
+    && !!artifactProposal.proposedSnapshotSha256
+    && (positionsNeeded || snapshotNeeded);
+
+  cutover.artifactRecovery = {
+    schema: ARTIFACT_RECOVERY_SCHEMA,
+    inspected: true,
+    sameDateOpening: true,
+    postedAllMatch,
+    pendingAllMatch,
+    pendingCensusComplete: censusComplete,
+    missingSameDateHousehold: householdState.missingSameDate.length > 0,
+    missingSnapshot: snapshotNeeded,
+    positionsNeeded,
+    snapshotNeeded,
+    alreadyComplete: false,
+    supported,
+    recoveryApprovalId: supported
+      ? recoveryApprovalIdFrom(cutover, balanceMap, canonicalSha256, artifactProposal)
+      : null,
+    canonicalSha256,
+    status: supported ? 'READY_FOR_OWNER_REVIEW' : 'BLOCKED',
+    blockers,
+    writesCanonicalState: false,
+  };
+  return cutover.artifactRecovery;
+}
+
+function assertRecoveryMatchesCanonical(data, cutover) {
+  if (!cutover || !cutover.proposedOpening) fail('Recovery proposal is missing.');
+  if (String(data.meta && data.meta.asOf) !== String(cutover.requestedAsOf)
+    || String(data.plan && data.plan.opening && data.plan.opening.asOf) !== String(cutover.requestedAsOf)) {
+    fail('Recovery requires the surviving canonical opening to already equal the requested date. Canonical state was not written.');
+  }
+  for (const change of cutover.proposedOpening.posted || []) {
+    if (change.reconcileStatus !== 'MATCH' || !change.freshnessBasis) {
+      fail(`Recovery refused posted ${change.locator}: ${change.reconcileStatus || 'missing'} is not a fresh MATCH.`);
+    }
+    const current = readCurrent(data, change.locator);
+    if (!current.found || current.value == null || !near(current.value, change.proposedValue)) {
+      fail(`Recovery refused: canonical ${change.locator} does not MATCH observed ${change.proposedValue}.`);
+    }
+  }
+  for (const change of cutover.proposedOpening.pending || []) {
+    if (change.kind !== 'match' || change.proposedUnknown === true) {
+      fail(`Recovery refused pending ${change.locator}: not a MATCH against the surviving opening.`);
+    }
+    const current = readCanonicalPending(data, change.id);
+    if (!current.found || current.unknown || current.value == null || !near(current.value, change.proposedValue)) {
+      fail(`Recovery refused: canonical pending ${change.locator} does not MATCH observed ${change.proposedValue}.`);
+    }
+  }
+}
+
+function installRecoveryArtifacts(artifacts, opts) {
+  const originalPositions = fs.readFileSync(opts.positionsPath);
+  const snapshotDest = path.join(opts.snapshotDir, `${artifacts.snapshot.asOf}.json`);
+  const hadSnapshot = fs.existsSync(snapshotDest);
+  const originalSnapshot = hadSnapshot ? fs.readFileSync(snapshotDest) : null;
+  try {
+    if (opts.writePositions) {
+      replaceBytesAtomically(opts.positionsPath, artifacts.positionsText, 'text');
+    }
+    if (opts.writeSnapshot) {
+      S.writeSnapshot(artifacts.snapshot, opts.snapshotDir);
+    }
+  } catch (err) {
+    try { fs.writeFileSync(opts.positionsPath, originalPositions); } catch (_) { /* ignore */ }
+    if (hadSnapshot && originalSnapshot) {
+      try { fs.writeFileSync(snapshotDest, originalSnapshot); } catch (_) { /* ignore */ }
+    } else if (!hadSnapshot && fs.existsSync(snapshotDest)) {
+      try { fs.unlinkSync(snapshotDest); } catch (_) { /* ignore */ }
+    }
+    throw err;
+  }
+}
+
+function applyRecoveryPreview(data, preview, destPath, originalBytes, opts) {
+  const cutover = preview && preview.openingCutover;
+  const recovery = cutover && cutover.artifactRecovery;
+  if (!preview || preview.schema !== SCHEMA) fail('Preview schema is not the earned refresh preview.');
+  if (!cutover) fail('Opening cutover proposal is missing.');
+  if (!recovery) fail('Artifact recovery proposal is missing. Pass --recover-opening-artifacts. Canonical state was not written.');
+  if (recovery.alreadyComplete === true) {
+    fail('Opening artifacts already present and agree with the MATCH packet; recovery will not rewrite them.');
+  }
+  if (recovery.supported !== true || recovery.status !== 'READY_FOR_OWNER_REVIEW') {
+    fail('Artifact recovery is not supported. Canonical state was not written.');
+  }
+  if ((cutover.blockers || []).length || cutover.status === 'BLOCKED') {
+    fail('Same-date observation is blocked. Canonical state was not written.');
+  }
+  if ((recovery.blockers || []).length) {
+    fail('Artifact recovery is blocked. Canonical state was not written.');
+  }
+  if (!recovery.recoveryApprovalId) fail('Recovery approval is missing.');
+  if (!isIsoDate(cutover.requestedAsOf)) fail('Recovery request is missing an explicit YYYY-MM-DD date.');
+  if (cutover.requestedAsOf !== cutover.currentOpeningAsOf || cutover.requestedAsOf !== cutover.currentMetaAsOf) {
+    fail('Artifact recovery cannot advance or replace the canonical opening. Canonical state was not written.');
+  }
+  if (!opts || !opts.positionsPath || !opts.snapshotDir || !opts.balanceMapPath) {
+    fail('Recovery write requires positions.csv, snapshots directory, and balance-map paths. Canonical state was not written.');
+  }
+  const currentBalanceMap = loadJson(opts.balanceMapPath);
+  const canonicalSha256 = sha256Bytes(originalBytes);
+  if (recovery.canonicalSha256 && recovery.canonicalSha256 !== canonicalSha256) {
+    fail('Canonical data.json changed since the recovery preview. Canonical state was not written.');
+  }
+  assertRecoveryMatchesCanonical(data, cutover);
+  if (Buffer.compare(fs.readFileSync(destPath), originalBytes) !== 0) {
+    fail('Canonical data.json changed before recovery install. Canonical state was not written.');
+  }
+  const artifacts = buildOpeningArtifacts(data, preview, opts);
+  if (artifactsLeakSecrets(Buffer.from(originalBytes).toString('utf8'), artifacts.positionsText, artifacts.snapshot)) {
+    fail('Recovery artifacts are not sanitized. Canonical state was not written.');
+  }
+  const incumbentCsv = fs.readFileSync(opts.positionsPath, 'utf8');
+  const artifactProposal = recoveryArtifactProposal(artifacts, incumbentCsv, opts.snapshotDir);
+  const recomputed = recoveryApprovalIdFrom(cutover, currentBalanceMap, canonicalSha256, artifactProposal);
+  if (!artifactProposal
+    || String(recomputed) !== String(recovery.recoveryApprovalId)) {
+    fail('Recovery approval fingerprint does not match the surviving opening, MATCH packet, balance-map routing, or the exact proposed recovered artifacts. Canonical state was not written.');
+  }
+  const positionsNeeded = normalizeNewlines(artifacts.positionsText)
+    !== normalizeNewlines(incumbentCsv);
+  const snapshotState = assertSnapshotInstallable(opts.snapshotDir, artifacts.snapshot);
+  const snapshotNeeded = snapshotState === 'missing';
+  if (!positionsNeeded && !snapshotNeeded) {
+    fail('Opening artifacts already present and agree with the MATCH packet; recovery will not rewrite them.');
+  }
+  const installProposal = recoveryArtifactProposal(
+    artifacts,
+    fs.readFileSync(opts.positionsPath, 'utf8'),
+    opts.snapshotDir
+  );
+  if (!installProposal
+    || installProposal.proposedPositionsSha256 !== artifactProposal.proposedPositionsSha256
+    || installProposal.proposedSnapshotSha256 !== artifactProposal.proposedSnapshotSha256
+    || installProposal.snapshotPreState !== artifactProposal.snapshotPreState) {
+    fail('Recovered artifact bytes drifted before install. Canonical state was not written.');
+  }
+  installRecoveryArtifacts(artifacts, {
+    positionsPath: opts.positionsPath,
+    snapshotDir: opts.snapshotDir,
+    writePositions: positionsNeeded,
+    writeSnapshot: snapshotNeeded,
+  });
+  if (Buffer.compare(fs.readFileSync(destPath), originalBytes) !== 0) {
+    fail('Recovery modified data.json. Canonical state was not written.');
+  }
+  const cash = Forecast.startingCashAmount(data.plan);
+  if (!isFinite(cash)) fail('Forecast cannot consume the surviving starting cash.');
+  return {
+    positionsWritten: positionsNeeded,
+    snapshotWritten: snapshotNeeded,
+    updated: artifacts.updated,
+  };
+}
+
 function previewFrom(input, opts) {
   const report = O.observe(input);
   const preview = buildPreview(report);
   if (opts && opts.cutoverAsOf) {
     preview.openingCutover = buildOpeningCutover(input.data, report, opts.cutoverAsOf, opts.balanceMap);
+    if (opts.recoverOpeningArtifacts) {
+      attachOpeningArtifactRecovery(preview.openingCutover, input.data, report, opts);
+    }
   }
   preview.identityProofSanitized = identityProofLooksSanitized(preview);
   if (!preview.identityProofSanitized) fail('Preview is not sanitized.');
@@ -1703,17 +2264,26 @@ async function run(argv) {
       + '       node scripts/canonical-refresh.js --fixture <file> --cutover-as-of YYYY-MM-DD\n'
       + '       node scripts/canonical-refresh.js --fixture <file> --cutover-as-of YYYY-MM-DD --apply --approve-cutover <cutoverApprovalId> --data <file>\n'
       + '       node scripts/canonical-refresh.js --fixture <file> --cutover-as-of YYYY-MM-DD --apply --approve-opening <openingApprovalId> --data <file>\n'
+      + '       node scripts/canonical-refresh.js --fixture <file> --cutover-as-of YYYY-MM-DD --recover-opening-artifacts\n'
+      + '       node scripts/canonical-refresh.js --fixture <file> --cutover-as-of YYYY-MM-DD --recover-opening-artifacts --apply --approve-recovery <recoveryApprovalId> --data <file>\n'
       + 'Default is a non-writing preview. --apply --approve writes posted fields only.\n'
-      + '--cutover-as-of without an opening or pending approval is read-only.\n'
+      + '--cutover-as-of without an opening, pending, or recovery approval is read-only.\n'
       + 'previewId cannot authorize pending or an opening. cutoverApprovalId cannot authorize an opening.\n'
       + 'An approved opening also writes same-date Household positions and snapshots/<date>.json.\n'
+      + 'Recovery reconstructs missing same-date positions and snapshot only. It never writes data.json.\n'
     );
     return 0;
   }
   if (args.provider !== 'lunchmoney') fail('Only --provider lunchmoney is implemented.');
-  const approvalCount = [args.approve, args.approveCutover, args.approveOpening].filter(Boolean).length;
+  const approvalCount = [args.approve, args.approveCutover, args.approveOpening, args.approveRecovery].filter(Boolean).length;
   if (approvalCount > 1) {
-    fail('Posted, pending, and opening approvals cannot be combined. Canonical state was not written.');
+    fail('Posted, pending, opening, and recovery approvals cannot be combined. Canonical state was not written.');
+  }
+  if (args.approveRecovery && !args.recoverOpeningArtifacts) {
+    fail('--approve-recovery requires --recover-opening-artifacts. Canonical state was not written.');
+  }
+  if (args.recoverOpeningArtifacts && !args.cutoverAsOf) {
+    fail('--recover-opening-artifacts requires --cutover-as-of. Canonical state was not written.');
   }
   if (args.approveCutover && !args.cutoverAsOf) {
     fail('--approve-cutover requires --cutover-as-of. Canonical state was not written.');
@@ -1721,26 +2291,37 @@ async function run(argv) {
   if (args.approveOpening && !args.cutoverAsOf) {
     fail('--approve-opening requires --cutover-as-of. Canonical state was not written.');
   }
+  if (args.recoverOpeningArtifacts && args.approve) {
+    fail('Posted previewId cannot authorize artifact recovery. Canonical state was not written.');
+  }
+  if (args.recoverOpeningArtifacts && args.approveOpening) {
+    fail('Opening approval cannot authorize artifact recovery. Canonical state was not written.');
+  }
+  if (args.recoverOpeningArtifacts && args.approveCutover) {
+    fail('Pending cutoverApprovalId cannot authorize artifact recovery. Canonical state was not written.');
+  }
   if (args.cutoverAsOf && args.approve) {
     fail('--cutover-as-of is read-only for posted previewId. Combining it with --approve is refused. Canonical state was not written.');
   }
-  if (args.cutoverAsOf && args.apply && !args.approveCutover && !args.approveOpening) {
-    fail('--cutover-as-of is read-only without --approve-cutover or --approve-opening. Canonical state was not written.');
+  if (args.cutoverAsOf && args.apply && !args.approveCutover && !args.approveOpening && !args.approveRecovery) {
+    fail('--cutover-as-of is read-only without --approve-cutover, --approve-opening, or --approve-recovery. Canonical state was not written.');
   }
   if (args.cutoverAsOf && !isIsoDate(args.cutoverAsOf)) {
     fail('--cutover-as-of must be an explicit YYYY-MM-DD date. Do not infer it from fetchedAt.');
   }
-  if (args.apply && !args.approve && !args.approveCutover && !args.approveOpening) {
-    fail('No approval = no canonical write. Pass --approve <previewId>, --approve-cutover <cutoverApprovalId>, or --approve-opening <openingApprovalId>.');
+  if (args.apply && !args.approve && !args.approveCutover && !args.approveOpening && !args.approveRecovery) {
+    fail('No approval = no canonical write. Pass --approve <previewId>, --approve-cutover <cutoverApprovalId>, --approve-opening <openingApprovalId>, or --approve-recovery <recoveryApprovalId>.');
   }
-  const openingArtifactPaths = (args.apply && args.approveOpening && (
+  const needsArtifactPaths = args.recoverOpeningArtifacts
+    || (args.apply && args.approveOpening);
+  const openingArtifactPaths = (needsArtifactPaths && (
     sameResolvedPath(args.data, DEFAULT_DATA)
     || args.positions
     || args.snapshots
     || args.balanceMap
   ))
     ? resolveOpeningArtifactPaths(args)
-    : null;
+    : (args.recoverOpeningArtifacts ? resolveOpeningArtifactPaths(args) : null);
   const data = loadJson(args.data);
   const originalBytes = fs.readFileSync(args.data);
   const payload = await loadPayload(args);
@@ -1754,10 +2335,75 @@ async function run(argv) {
       balanceMap: openingArtifactPaths
         ? loadJson(openingArtifactPaths.balanceMapPath)
         : loadOpeningBalanceMap(args),
+      recoverOpeningArtifacts: args.recoverOpeningArtifacts === true,
+      positionsPath: openingArtifactPaths ? openingArtifactPaths.positionsPath : null,
+      snapshotDir: openingArtifactPaths ? openingArtifactPaths.snapshotDir : null,
+      balanceMapPath: openingArtifactPaths ? openingArtifactPaths.balanceMapPath : null,
+      dataPath: args.data,
+      canonicalSha256: sha256Bytes(originalBytes),
     } : undefined
   );
   if (!args.apply) {
     process.stdout.write(`${JSON.stringify(preview, null, 2)}\n`);
+    return 0;
+  }
+  if (args.approveRecovery) {
+    const cutover = preview.openingCutover;
+    const recovery = cutover && cutover.artifactRecovery;
+    if (recovery && recovery.alreadyComplete === true) {
+      fail('Opening artifacts already present and agree with the MATCH packet; recovery will not rewrite them.');
+    }
+    if (!recovery || !recovery.recoveryApprovalId) {
+      fail('No artifact-recovery proposal exists to approve. Canonical state was not written.');
+    }
+    if (String(args.approveRecovery) === String(preview.previewId)) {
+      fail('Posted previewId cannot authorize artifact recovery. Canonical state was not written.');
+    }
+    if (cutover.cutoverApprovalId && String(args.approveRecovery) === String(cutover.cutoverApprovalId)) {
+      fail('Pending cutoverApprovalId cannot authorize artifact recovery. Canonical state was not written.');
+    }
+    if (cutover.openingApprovalId && String(args.approveRecovery) === String(cutover.openingApprovalId)) {
+      fail('Opening approval cannot authorize artifact recovery. Canonical state was not written.');
+    }
+    if (String(args.approveRecovery) !== String(recovery.recoveryApprovalId)) {
+      fail('Recovery approval does not match the recomputed recovery proposal. Canonical state was not written.');
+    }
+    const applied = applyRecoveryPreview(
+      data,
+      preview,
+      args.data,
+      originalBytes,
+      openingArtifactPaths || resolveOpeningArtifactPaths(args)
+    );
+    const afterBytes = fs.readFileSync(args.data);
+    if (afterBytes.compare(originalBytes) !== 0) {
+      fail('Recovery modified data.json. Canonical state was not written.');
+    }
+    const result = {
+      schema: ARTIFACT_RECOVERY_SCHEMA,
+      writesCanonicalState: false,
+      canonicalWriteAuthorized: false,
+      writesOpening: false,
+      writesPositions: applied.positionsWritten === true,
+      writesSnapshot: applied.snapshotWritten === true,
+      artifactRecoverySupported: true,
+      unattended: false,
+      productionWrite: false,
+      previewId: preview.previewId,
+      cutoverApprovalId: cutover.cutoverApprovalId || null,
+      openingApprovalId: cutover.openingApprovalId || null,
+      recoveryApprovalId: recovery.recoveryApprovalId,
+      requestedAsOf: cutover.requestedAsOf,
+      canonicalSha256: recovery.canonicalSha256,
+      snapshotFollows: SNAPSHOT_COMMAND,
+      snapshotRequired: false,
+      snapshotWritten: applied.snapshotWritten === true,
+      snapshotAsOf: cutover.requestedAsOf,
+      byteChange: false,
+      note: 'Bounded owner-approved opening-artifact recovery. data.json was not modified. Same-date Household positions and snapshots/<date>.json were reconstructed from the MATCH observation packet. Forecast remains authority. Posted previewId, pending cutoverApprovalId, and openingApprovalId did not authorize this write.',
+    };
+    if (!identityProofLooksSanitized(result)) fail('Apply result is not sanitized.');
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     return 0;
   }
   if (args.approveOpening) {
@@ -1871,6 +2517,7 @@ const api = {
   SCHEMA,
   CUTOVER_PENDING_SCHEMA,
   OPENING_CUTOVER_SCHEMA,
+  ARTIFACT_RECOVERY_SCHEMA,
   DEFAULT_DATA,
   SNAPSHOT_COMMAND,
   DEFAULT_POSITIONS,
@@ -1908,6 +2555,11 @@ const api = {
   applyPreview,
   applyPendingPreview,
   applyOpeningPreview,
+  applyRecoveryPreview,
+  attachOpeningArtifactRecovery,
+  recoveryApprovalIdFrom,
+  recoveryFingerprint,
+  recoveryArtifactProposal,
   buildOpeningArtifacts,
   resolveOpeningArtifactPaths,
   run,
