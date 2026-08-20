@@ -236,7 +236,7 @@ const rankTrapStatus = F.planStatus(rankTrap, { weeklyOverride: null });
 // the gap alone, so the stronger sentence is still the true one.
 {
   const combineBuf = (() => {
-    const src = fundingById(data.plan);
+    const src = fundingById(data.plan, data.revolvingExtra, data.debts);
     return src.amanda.available + src.heloc.available / 2 + openingFloor(data.plan, data.meta.asOf);
   })();
   const adv = F.recommend(data.plan, data.meta.asOf, Object.assign({
@@ -379,14 +379,14 @@ const OPTS = targetBuffer => ({
   extraFacilities: data.revolvingExtra,
 });
 const bySource = adv => Object.fromEntries((adv.funding && adv.funding.sources || []).map(s => [s.id, s]));
-const src = fundingById(plan);
+const src = fundingById(plan, data.revolvingExtra, data.debts);
 const odAvailable = F.resolveFundingSources(
-  plan.funding.options, data.revolvingExtra, plan
+  plan.funding.options, data.revolvingExtra, plan, data.debts
 ).find(o => o.id === 'overdraft').available;
 const floor = openingFloor(plan, asOf);
 const COMBINE_GAP = src.amanda.available + src.heloc.available / 2;
 const COMBINE_BUF = COMBINE_GAP + floor;
-const UNFUNDED_GAP = usableFunding(plan) + 1000;
+const UNFUNDED_GAP = usableFunding(plan, data.revolvingExtra, data.debts) + 1000;
 const UNFUNDED_BUF = UNFUNDED_GAP + floor;
 
 {
@@ -435,7 +435,7 @@ const UNFUNDED_BUF = UNFUNDED_GAP + floor;
   // identity still holds with a non-zero shortfall.
   const adv = F.recommend(plan, asOf, OPTS(UNFUNDED_BUF));
   const contributed = adv.funding.sources.reduce((a, x) => a + x.contributes, 0);
-  const usable = usableFunding(plan);
+  const usable = usableFunding(plan, data.revolvingExtra, data.debts);
   ok(!adv.funding.feasible && same(contributed, usable)
     && same(adv.funding.shortfall, gapAtBuffer(plan, UNFUNDED_BUF, asOf) - usable),
     'an unfundable gap allocates every usable source and leaves the rest',
@@ -595,7 +595,7 @@ const MUTATIONS = [
     check: m => same(m.recommend(plan, asOf, OPTS(UNFUNDED_BUF)).funding.allocated,
       gapAtBuffer(plan, UNFUNDED_BUF, asOf)),
     real: () => same(F.recommend(plan, asOf, OPTS(UNFUNDED_BUF)).funding.allocated,
-      usableFunding(plan)) },
+      usableFunding(plan, data.revolvingExtra, data.debts)) },
 ];
 for (const m of MUTATIONS) {
   const built = mutant(m.from, m.to);
@@ -759,7 +759,7 @@ function legacyCards({ adv }) {
   const gap = adv.gap;
   if (!gap || !plan.funding) return '';
   const needed = gap.amount;
-  return F.resolveFundingSources(plan.funding.options, data.revolvingExtra, plan)
+  return F.resolveFundingSources(plan.funding.options, data.revolvingExtra, plan, data.debts)
     .slice().sort((a, b) => a.rank - b.rank)
     .map(o => {
       const enough = o.available >= needed;

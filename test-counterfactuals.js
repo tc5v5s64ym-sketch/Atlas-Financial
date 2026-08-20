@@ -124,7 +124,7 @@ const fixtureDebts = () => ([
 
 const opts = (o = {}) => Object.assign({
   scenario: 'expected', targetBuffer: 500, extraDebtMonthly: 0,
-  incomeOverrides: {}, disabled: [], debts: fixtureDebts(),
+  incomeOverrides: {}, disabled: [],
   fundingSources: fixture().funding.options,
 }, o);
 
@@ -507,9 +507,12 @@ function published(o = {}) {
       a.alternateCrossing.date);
     ok(same(a.draw, advice.gap.amount),
       'drawing the whole opening gap', money(a.draw));
-    ok(a.draw <= plan.funding.options.find(o => o.id === 'heloc').available + 0.005,
+    const helocRoom = F.resolveFundingSources(
+      plan.funding.options, data.revolvingExtra, plan, data.debts
+    ).find(o => o.id === 'heloc').available;
+    ok(a.draw <= helocRoom + 0.005,
       'which is inside the HELOC\'s own declared headroom',
-      `${money(a.draw)} <= ${money(plan.funding.options.find(o => o.id === 'heloc').available)}`);
+      `${money(a.draw)} <= ${money(helocRoom)}`);
     ok(a.displaces.join(' and ') === 'Amanda\'s transfer',
       'instead of the source the real allocation uses', a.displaces.join(' and '));
   } else {
@@ -530,8 +533,9 @@ function published(o = {}) {
   ok(cents(c.weekly) <= cents(e.weekly) && cents(e.weekly) <= cents(o.weekly),
     'weekly never falls as the income scenario improves',
     [c, e, o].map(x => money(x.weekly)).join(' / '));
-  const usable = (plan.funding.options || []).filter(s => !s.unusable)
-    .reduce((s, x) => s + x.available, 0);
+  const usable = F.resolveFundingSources(
+    plan.funding.options, data.revolvingExtra, plan, data.debts
+  ).filter(s => !s.unusable).reduce((s, x) => s + x.available, 0);
   ok(same(e.fundable, usable) && same(e.gapAmount, e.fundable + e.shortfall),
     'against the usable sources of that gap, with shortfall the remainder',
     `${money(e.fundable)} / ${money(e.gapAmount)}, short ${money(e.shortfall)}`);
@@ -543,7 +547,9 @@ function published(o = {}) {
   // funding card reads "Not enough — $975.32 short of the $2,043.16 needed"
   // while the risk block used to price a $2,043.16 draw on that same facility
   // and publish a crossing date manufactured by the overdraw.
-  const helocAvail = plan.funding.options.find(o => o.id === 'heloc').available;
+  const helocAvail = F.resolveFundingSources(
+    plan.funding.options, data.revolvingExtra, plan, data.debts
+  ).find(o => o.id === 'heloc').available;
   const bufHelocShort = helocAvail + openingFloor(plan, AS_OF) + 200;
   const { advice, cf } = published({ targetBuffer: bufHelocShort });
   const card = advice.funding.sources.find(s => s.id === 'heloc');
@@ -841,7 +847,9 @@ const flat = s => String(s).replace(/\s+/g, ' ').trim();
   const helocAlt = altFor(cfDef, 'heloc');
   const { cf: cf5k } = published({ targetBuffer: 8000 });
   const cover = cf5k.fullGapCoverage;
-  const helocAvail = plan.funding.options.find(o => o.id === 'heloc').available;
+  const helocAvail = F.resolveFundingSources(
+    plan.funding.options, data.revolvingExtra, plan, data.debts
+  ).find(o => o.id === 'heloc').available;
   const bufHelocShort = helocAvail + openingFloor(plan, AS_OF) + 200;
   const { advice: tightAdv } = published({ targetBuffer: bufHelocShort });
   const tightCard = tightAdv.funding.sources.find(s => s.id === 'heloc');

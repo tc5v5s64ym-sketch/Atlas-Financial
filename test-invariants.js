@@ -27,6 +27,8 @@ const read = p => sourceText(fs.readFileSync(path.join(__dirname, p), 'utf8'));
 
 const plan = data.plan;
 const asOf = data.meta.asOf;
+const liveFunding = () => F.resolveFundingSources(
+  plan.funding.options, data.revolvingExtra, plan, data.debts);
 
 console.log('=== cash classification ===');
 const cash = plan.startingCash;
@@ -273,8 +275,8 @@ ok(/fundingSources/.test(planJs2),
 ok(/advice\.funding/.test(planJs2), 'and reads the allocation back');
 {
   const SRC = { scenario: 'expected', incomeOverrides: {}, disabled: [], extraDebtMonthly: 0,
-    fundingSources: plan.funding.options };
-  const ranked = plan.funding.options.slice().sort((a, b) => a.rank - b.rank).filter(o => !o.unusable);
+    fundingSources: plan.funding.options, debts: data.debts, extraFacilities: data.revolvingExtra };
+  const ranked = liveFunding().slice().sort((a, b) => a.rank - b.rank).filter(o => !o.unusable);
   const usable = ranked.reduce((s, o) => s + o.available, 0);
   const floorNow = openingFloor(plan, asOf);
   const combineBuf = ranked[0].available + ranked[1].available / 2 + floorNow;
@@ -553,7 +555,7 @@ ok(/No weekly spending\s*\n?\s*figure fixes this/.test(planJs2),
   // A buffer no combination of sources can reach. Spending is not a remedy for
   // money that does not exist: at any weekly figure the floor stays under the
   // buffer, so no weekly figure may be instructed at all.
-  const usable = (plan.funding.options || []).filter(o => !o.unusable)
+  const usable = liveFunding().filter(o => !o.unusable)
     .reduce((s, o) => s + o.available, 0);
   const unfundedBuf = usable + 2000 + openingFloor(plan);
   const unreachable = F.recommend(plan, asOf, Object.assign({}, O, { targetBuffer: unfundedBuf }));
@@ -568,10 +570,11 @@ ok(/No weekly spending\s*\n?\s*figure fixes this/.test(planJs2),
 }
 // Split funding must not be measured half-applied.
 {
-  const ranked = plan.funding.options.slice().sort((a, b) => a.rank - b.rank).filter(o => !o.unusable);
+  const ranked = liveFunding().slice().sort((a, b) => a.rank - b.rank).filter(o => !o.unusable);
   const combineBuf = ranked[0].available + ranked[1].available / 2 + openingFloor(plan, asOf);
   const O = { scenario: 'expected', incomeOverrides: {}, disabled: [], extraDebtMonthly: 0,
-    targetBuffer: combineBuf, fundingSources: plan.funding.options };
+    targetBuffer: combineBuf, fundingSources: plan.funding.options, debts: data.debts,
+    extraFacilities: data.revolvingExtra };
   const adv = F.recommend(plan, asOf, O);
   const onDay = adv.sim.events.filter(e => e.date === adv.gap.date && e.kind === 'injection');
   ok(onDay.length === 1,
@@ -654,7 +657,7 @@ ok(/No weekly spending\s*\n?\s*figure fixes this/.test(planJs2),
   {
     const O = { scenario: 'expected', incomeOverrides: {}, disabled: [],
       extraDebtMonthly: 80000, targetBuffer: plan.defaults.targetBuffer,
-      fundingSources: plan.funding.options, extraDebtTarget: plan.nextDollar.target };
+      fundingSources: liveFunding(), extraDebtTarget: plan.nextDollar.target };
     const uncapped = F.recommend(plan, asOf, O);
     const capped = F.recommend(plan, asOf, Object.assign({}, O, { debts: data.debts }));
     const spent = s => s.sim.events.filter(e => e.kind === 'extra')

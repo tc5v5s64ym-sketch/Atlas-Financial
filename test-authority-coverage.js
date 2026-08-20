@@ -60,6 +60,7 @@ const FORECAST_NON_AUTHORITY = new Set([
   'STEP',
   'startingCashAmount',
   'resolveFundingSources',
+  'resolveActions',
 ]);
 
 function forecastExportsFrom(source) {

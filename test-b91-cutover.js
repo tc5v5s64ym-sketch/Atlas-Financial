@@ -311,12 +311,14 @@ console.log('\n=== G. Amanda / TENNIS INCOME is not spendable; card capacity is 
     'utilisation does not convert unknown Cash Back pending into $200.57 available');
   ok(!/household cash|spendable/.test(JSON.stringify(util.rows.map(r => r.available))),
     'utilisation does not relabel capacity as cash');
-  const cards = (live.plan.funding && live.plan.funding.options || [])
-    .find(o => o.id === 'cards');
+  const cards = F.resolveFundingSources(
+    live.plan.funding && live.plan.funding.options, live.revolvingExtra, live.plan, live.debts
+  ).find(o => o.id === 'cards');
   ok(cards && near(cards.available, 287.38 + 294.06),
     'the unusable cards funding option excludes unknown Cash Back headroom',
     String(cards && cards.available));
-  const cashAction = (live.plan.actions || []).find(a => /Cash Back Visa back under/i.test(a.what));
+  const cashAction = F.resolveActions(live.plan, live.debts, live.revolvingExtra)
+    .find(a => /Cash Back Visa back under/i.test(a.what));
   ok(cashAction && cashAction.status === 'open',
     'the Cash Back over-limit action stays open while pending is unknown');
 }

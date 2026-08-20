@@ -531,9 +531,9 @@
                 {
                     "id": "amanda",
                     "debtId": null,
+                    "cash": "amanda-debt-payments",
                     "label": "Amanda releases funds from her tennis account",
                     "short": "Amanda's transfer",
-                    "available": 2691.85,
                     "rate": null,
                     "rank": 1,
                     "note": "Last verified TENNIS INCOME balance $2,691.85 is the 2026-08-09 reading, not this cutover, and is not automatically spendable household cash (Q25). Coaches and pass-through obligations are paid from that account first. Do not treat the raw balance as a current funding source."
@@ -543,7 +543,6 @@
                     "debtId": "heloc",
                     "label": "Draw on the HELOC",
                     "short": "a HELOC draw",
-                    "available": 2167.84,
                     "rate": 4.9,
                     "rank": 2,
                     "note": "2026-08-16 posted HELOC $200,486.16 against the $202,654 limit leaves $2,167.84. Interest-only at 4.90%; a draw never amortises. The 14 August $1,100 payment is already inside the opening. Q19 ANSWERED: remaining August HELOC cash requirement is $0 additional. This is not permission to draw."
@@ -564,7 +563,6 @@
                     "debtId": null,
                     "label": "Credit cards",
                     "short": "the cards",
-                    "available": 581.44,
                     "rate": null,
                     "rank": 4,
                     "unusable": true,
@@ -890,6 +888,7 @@
                 "what": "Get the Cash Back Visa back under $5,000",
                 "amount": null,
                 "due": null,
+                "debtId": "cashback",
                 "why": "Posted $4,799.43 is under the $5,000 limit. Pending is unknown on this opening (Q26): the 14-day Lunch Money window is not a known-zero institution reading. Do not mark this action done or publish headroom until pending is observed.",
                 "status": "open",
                 "owner": "Dale"
