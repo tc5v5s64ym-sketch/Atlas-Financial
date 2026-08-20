@@ -207,10 +207,17 @@ jobs:
             const sectionAfter = (heading) => body
               .slice(heading.index + heading[0].length)
               .split(/\n[ \t]*#{1,6}[ \t]+/)[0];
-            const clean = (value) => value
-              .replace(/<!--[\s\S]*?-->/g, '')
-              .replace(/\*\*/g, '')
-              .trim();
+            const clean = (value) => {
+              const text = String(value == null ? '' : value)
+                .replace(/<!--[\s\S]*?-->/g, '')
+                .replace(/\*\*/g, '')
+                .replace(/\r/g, '')
+                .trim();
+              // Ordinary Markdown inline code around the opening token is
+              // presentation, not part of the closed value. Strip one wrapping
+              // pair, then re-trim. Do not strip every backtick.
+              return text.replace(/^`([^`\n]+)`/, '$1').trim();
+            };
 
             const cardHeading = /^[ \t]*#{1,4}[ \t]*.*Atlas Merge Card.*$/im.exec(body);
             if (!cardHeading) {
@@ -322,7 +329,7 @@ jobs:
               // would otherwise invalidate the card and hang the PR.
               if (notRequired) {
                 for (const label of ['Exact reviewed head', 'Reviewer', 'Review outcome']) {
-                  if (!/^N\/A$/i.test(review[label])) {
+                  if (!/^N\/A(?:\b|[ \t]*[—–:.-])/i.test(review[label])) {
                     problems.push(`A NOT REQUIRED review must record ${label}: N/A.`);
                   }
                 }
