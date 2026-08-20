@@ -1,6 +1,6 @@
 'use strict';
 /* Format the published-figures review comment from two snapshots.
- * `node scripts/figures-comment.js`
+ * `node scripts/figures-comment.js <base.json> <head.json> <baseRef>`
  *
  * The snapshot in `scripts/figures-snapshot.js` is Plan-page figures only.
  * This helper must not describe that comparison as covering Deep Dive,
@@ -8,7 +8,10 @@
  *
  * THIS MODULE DOES NOT COMPARE REVISIONS ITSELF. Callers pass already-loaded
  * `base` and `head` maps (or `base === null` when the base has no snapshot).
+ * The CLI reads those maps from JSON files and writes only the comment body.
  */
+
+const fs = require('fs');
 
 const MARKER = '<!-- atlas-figures-review -->';
 
@@ -78,10 +81,27 @@ function formatFiguresComment(base, head, baseRef) {
     `<sub>${keys.length - moved.length} other Plan-page figures unchanged.</sub>\n`;
 }
 
+function main(argv) {
+  const [, , basePath, headPath, baseRef] = argv;
+  if (!basePath || !headPath || argv.length !== 5) {
+    process.stderr.write(
+      'usage: node scripts/figures-comment.js <base.json> <head.json> <baseRef>\n'
+    );
+    return 1;
+  }
+  const base = JSON.parse(fs.readFileSync(basePath, 'utf8'));
+  const head = JSON.parse(fs.readFileSync(headPath, 'utf8'));
+  process.stdout.write(formatFiguresComment(base, head, baseRef));
+  return 0;
+}
+
+if (require.main === module) process.exit(main(process.argv));
+
 module.exports = {
   MARKER,
   formatFiguresComment,
   money,
   fmt,
   isCount,
+  main,
 };
