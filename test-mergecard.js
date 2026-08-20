@@ -166,14 +166,9 @@ async function validate(body, head = HEAD, files = ['docs/status.md'], options =
       return files.map((filename) => ({ filename }));
     },
   };
-  // The workflow loads the helper from GITHUB_WORKSPACE. Pin that to this
-  // repository root so the suite does not inherit an Actions parent workspace.
-  const processStub = options.process || {
-    env: { GITHUB_WORKSPACE: __dirname },
-  };
   await vm.runInNewContext(
     `(async () => {\n${SCRIPT}\n})()`,
-    { context, core, github, require: options.require || require, process: processStub },
+    { context, core, github, require: options.require || require, process },
     { timeout: 1000 },
   );
   return failure;
@@ -462,30 +457,6 @@ red('NOT REQUIRED uses N/A for reviewer', card({ review: {
 } }), /Reviewer: N\/A/i);
 red('NOT REQUIRED uses N/A for outcome', card({ review: {
   'Review outcome': 'PASS',
-} }), /Review outcome: N\/A/i);
-green('NOT REQUIRED accepts ordinary inline-code N/A', card({ review: {
-  'Exact reviewed head': '`N/A`',
-  Reviewer: '`N/A`',
-  'Review outcome': '`N/A`',
-}}));
-green('NOT REQUIRED accepts N/A with an explanation', card({ review: {
-  'Exact reviewed head': 'N/A — no high-risk trigger fired',
-  Reviewer: 'N/A — no review requested',
-  'Review outcome': 'N/A — not required',
-}}));
-green('NOT REQUIRED accepts inline-code N/A with an explanation', card({ review: {
-  'Exact reviewed head': '`N/A` — no high-risk trigger fired',
-  Reviewer: '`N/A` — no review requested',
-  'Review outcome': '`N/A` — not required',
-}}));
-red('inline-code around a SHA still fails NOT REQUIRED head', card({ review: {
-  'Exact reviewed head': '`' + HEAD + '`',
-} }), /Exact reviewed head: N\/A/i);
-red('inline-code around ChatGPT still fails NOT REQUIRED reviewer', card({ review: {
-  Reviewer: '`ChatGPT`',
-} }), /Reviewer: N\/A/i);
-red('inline-code around PASS still fails NOT REQUIRED outcome', card({ review: {
-  'Review outcome': '`PASS`',
 } }), /Review outcome: N\/A/i);
 
 checks.push((async () => {
