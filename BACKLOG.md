@@ -1572,13 +1572,26 @@ Build-strategy item `AF-LIVE-02`. Owner T4 pass:
 [`docs/connectivity/T4_OWNER_PASS_2026-08-17.md`](docs/connectivity/T4_OWNER_PASS_2026-08-17.md).
 The earned mechanism is `scripts/canonical-refresh.js`: incumbent observe
 → reconcile → sanitized preview → exact owner approval → bounded
-canonical write. Three distinct approval contracts exist: posted
-`previewId`, pending `cutoverApprovalId`, and opening `openingApprovalId`
-(`atlas-opening-cutover-approval/v1`). A clean `--cutover-as-of` preflight
-can propose one atomic canonical opening; only
-`--apply --approve-opening <openingApprovalId>` establishes it. Posted
-`previewId` and pending `cutoverApprovalId` cannot authorize an opening.
-Default remains non-writing.
+canonical write. Four distinct approval contracts exist: posted
+`previewId`, pending `cutoverApprovalId`, opening `openingApprovalId`
+(`atlas-opening-cutover-approval/v1`), and same-date artifact
+`recoveryApprovalId` (`atlas-opening-artifact-recovery-approval/v1`).
+A clean `--cutover-as-of` preflight can propose one atomic canonical
+opening; only `--apply --approve-opening <openingApprovalId>`
+establishes it. Posted `previewId` and pending `cutoverApprovalId`
+cannot authorize an opening. Default remains non-writing.
+
+If an already-approved canonical opening survived in `data.json` but
+same-date Household `positions.csv` rows and `snapshots/<date>.json`
+did not, `--recover-opening-artifacts` can reconstruct **only** those
+two missing surfaces from a complete trustworthy same-date MATCH
+packet. Recovery never writes `data.json`, never infers artifacts from
+`data.json` alone, preserves Triangle/MBNA cadence freshness, and
+refuses mismatch, conflict, missing evidence, unknown pending,
+incomplete pending census, unmapped required accounts, secret leakage,
+or an existing conflicting snapshot. Preview first; exact
+`--approve-recovery` before write. Atomic and fail-closed. No live
+Lunch Money write. Forecast remains authority.
 
 An approved opening is one coherent state transition. Before
 `data.json` is permanently mutated, the writer must prove that
@@ -1596,7 +1609,10 @@ The first owner-approved live `--cutover-as-of 2026-08-19` opening
 wrote `data.json` on the operator machine and then could not produce
 same-date Household rows or `snapshots/2026-08-19.json`, because the
 writer stopped at the canonical file. That integration defect is the
-reason this transition exists.
+reason the coherent opening transition exists. The bounded recovery
+path reconstructs those two missing surfaces when the surviving
+opening still MATCHES a complete same-date observation packet. This
+item does not apply that recovery to live `main`.
 
 Preservation (local only, not pushed): original detached SHA
 `6d1f3bb2ea8b253a1b529060c09bd37e16e45abf` is
@@ -1605,13 +1621,14 @@ Preservation (local only, not pushed): original detached SHA
 `refs/atlas/b81-remote-main-28d08a12`. The exact approved Aug. 19
 `data.json` bytes (SHA-256
 `C28D5D45609888C8871EC3D5CF43BCB1E8532C54F73FC33A68374FCB106D3E3D`)
-were not present in the implementation checkout, git objects, or
-stashes. The workspace `data.json` remained the 2026-08-16 opening
+later survived on the operator machine while `docs/positions.csv`
+still had no 2026-08-19 Household rows and `snapshots/2026-08-19.json`
+did not exist. Live `main` still publishes the 2026-08-16 opening
 `f9c47fcdd1a043198c693c7817bfd5d05be6d63434f5da5621a8646ab8f315c0`.
-This item does not invent replacement Aug. 19 Household evidence or
-fetch a newer live observation. Replay of the owner-approved opening
-through the repaired writer is blocked until those exact bytes and
-the observation/opening evidence that produced them are recoverable.
+This item does not invent replacement Aug. 19 Household evidence, does
+not fetch a newer live observation, and does not apply recovery to
+live `main`. Owner-approved recovery still requires the surviving
+bytes plus the same-date MATCH packet.
 
 Unattended production writes, scheduled refresh, and a Render Lunch
 Money token remain reserved. Do not apply the unused Chequing B $10,
