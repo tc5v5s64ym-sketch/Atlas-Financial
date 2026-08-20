@@ -414,8 +414,11 @@
   // shows are already inside the opening cash/debt state. Forecast remains
   // authority for what should occur; the list is authority for what has
   // already occurred. Cutover is opening-date only: an entry is used only
-  // when its date is the simulation start. plan.opening.representedEvents
-  // is used only when plan.opening.asOf is that same start. A future
+  // when its date is the simulation start, unless plan.opening.priorAsOf
+  // names the previous opening. Then representedEvents in
+  // (priorAsOf, asOf] also suppress replay so a posted intervening
+  // occurrence is not reserved again. plan.opening.representedEvents is
+  // used only when plan.opening.asOf is that same start. A future
   // represented date is ignored, not reinterpreted. This is not a
   // date-wide skip: an unrepresented same-day event still fires.
   //
@@ -425,11 +428,17 @@
   // requirement is already satisfied only when settledOn <= start.
   function representedKeySet(plan, opts, start) {
     const keys = new Set();
+    const opening = plan && plan.opening;
+    const prior = opening && opening.asOf === start && opening.priorAsOf
+      && opening.priorAsOf < start ? opening.priorAsOf : null;
     const take = item => {
-      if (item && item.id && item.date === start) keys.add(item.id + '@' + item.date);
+      if (!item || !item.id || !item.date) return;
+      if (item.date === start) keys.add(item.id + '@' + item.date);
+      else if (prior && item.date > prior && item.date < start) {
+        keys.add(item.id + '@' + item.date);
+      }
     };
     for (const item of (opts && opts.representedEvents) || []) take(item);
-    const opening = plan && plan.opening;
     if (opening && opening.asOf === start) {
       for (const item of opening.representedEvents || []) take(item);
     }
@@ -793,6 +802,36 @@
     return event && event.date;
   }
 
+  // Live overlay may advance as-of past scheduled recurring outflows.
+  // onceOutflowDates already keeps unresolved once cash on the plan.
+  // Recurring bills/obligations and dated commitments in
+  // (plan.opening.priorAsOf, start) are not in that helper; emit them
+  // here so cashWalkDate still reserves unrepresented joint-cash
+  // outflows at this opening. Represented names are omitted. Income is
+  // not invented. Nested expandEvents does not re-enter: inner start
+  // is not opening.asOf.
+  function carriedUnresolvedJointCashOutflows(plan, start, opts, already) {
+    const opening = plan && plan.opening;
+    if (!opening || opening.asOf !== start || !opening.priorAsOf) return [];
+    const prior = opening.priorAsOf;
+    if (prior >= start) return [];
+    const from = addDays(prior, 1);
+    const to = addDays(start, -1);
+    if (!from || from > to) return [];
+    const represented = representedKeySet(plan, opts, start);
+    const inner = expandEvents(plan, from, to, opts);
+    const extra = [];
+    for (const event of inner) {
+      if (!isJointCashOutflow(event)) continue;
+      if (event.date < from || event.date > to) continue;
+      const key = event.id + '@' + event.date;
+      if (represented.has(key)) continue;
+      if (already && already.has(key)) continue;
+      extra.push(event);
+    }
+    return extra;
+  }
+
   function streamAmount(stream, opts) {
     const override = opts.incomeOverrides && opts.incomeOverrides[stream.id];
     let monthly = null;
@@ -946,7 +985,14 @@
     // arranged on exactly that assumption. Sort: date, then income first.
     events.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 :
       (b.amount > 0 ? 1 : 0) - (a.amount > 0 ? 1 : 0));
-    return omitRepresented(events, plan, opts, start);
+    const kept = omitRepresented(events, plan, opts, start);
+    const already = new Set(kept.map(e => e.id + '@' + e.date));
+    const carried = carriedUnresolvedJointCashOutflows(plan, start, opts, already);
+    if (!carried.length) return kept;
+    const out = kept.concat(carried);
+    out.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 :
+      (b.amount > 0 ? 1 : 0) - (a.amount > 0 ? 1 : 0));
+    return out;
   }
 
   /* ------------------------------------------------------------- simulate */

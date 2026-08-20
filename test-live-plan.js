@@ -31,6 +31,8 @@ const PURCHASE = 40;
 const CASH_PURCHASE = 30;
 const SYNTHETIC_PAYROLL = 1000;
 const ELAPSED_WEEKLY = 70;
+const UNPAID_INTERVENING = 100;
+const UNPAID_BILL_DATE = '2026-08-20';
 
 let failures = 0;
 const ok = (cond, label, detail = '') => {
@@ -750,6 +752,86 @@ console.log('\n=== 13. unmapped required cash does not advance Forecast or skip 
     .some(e => e.id === 'childBenefit' && e.date === '2026-08-20'),
     'elapsed 20 Aug child benefit is not skipped when required cash is missing');
   filesUnchanged('unmapped required cash');
+}
+
+console.log('\n=== 14. intervening unpaid joint-cash outflow stays reserved ===');
+{
+  const unpaidBill = {
+    id: 'synthetic-unpaid-bill',
+    label: 'Synthetic intervening unpaid bill',
+    frequency: 'monthly',
+    day: 20,
+    amount: UNPAID_INTERVENING,
+    confidence: 'confirmed',
+    budgetCategory: 'household',
+  };
+  const enginePlan = {
+    income: [],
+    obligations: [],
+    bills: [unpaidBill],
+    commitments: [],
+    startingCash: { amount: 1000 },
+    opening: {
+      asOf: LIVE_AS_OF,
+      priorAsOf: liveData.plan.opening.asOf,
+      representedEvents: [],
+    },
+  };
+  const engineEvents = Forecast.expandEvents(enginePlan, LIVE_AS_OF, LIVE_AS_OF, {});
+  const engineHit = engineEvents.find(e => e.id === unpaidBill.id && e.date === UNPAID_BILL_DATE);
+  ok(engineHit && near(-engineHit.amount, UNPAID_INTERVENING),
+    'Forecast.expandEvents reserves the unpaid $100 from priorAsOf without overlayLiveState');
+  ok(!Forecast.expandEvents(Object.assign({}, enginePlan, {
+    opening: { asOf: LIVE_AS_OF, representedEvents: [] },
+  }), LIVE_AS_OF, LIVE_AS_OF, {}).some(e => e.id === unpaidBill.id),
+    'without priorAsOf the recurring intervening bill disappears — the overlay bug');
+  ok(!Forecast.expandEvents(Object.assign({}, enginePlan, {
+    opening: {
+      asOf: LIVE_AS_OF,
+      priorAsOf: liveData.plan.opening.asOf,
+      representedEvents: [{ id: unpaidBill.id, date: UNPAID_BILL_DATE }],
+    },
+  }), LIVE_AS_OF, LIVE_AS_OF, {}).some(e => e.id === unpaidBill.id),
+    'posting evidence on representedEvents does not reserve the $100 again');
+
+  const canonical = clone(liveData);
+  canonical.plan = Object.assign({}, canonical.plan, {
+    bills: (canonical.plan.bills || []).concat([unpaidBill]),
+  });
+  const histAsOf = canonical.plan.opening.asOf;
+  const control = overlay(clone(liveData), {});
+  const result = overlay(canonical, {});
+  ok(result.data.liveOverlay && result.data.liveOverlay.applied === true,
+    'Aug 21 overlay still applies with an unpaid 20 Aug bill');
+  ok(String(result.data.plan.opening.priorAsOf) === String(histAsOf),
+    'live opening records the historical as-of as priorAsOf');
+  ok(JSON.stringify(result.data.plan.bills) === JSON.stringify(canonical.plan.bills),
+    'overlay does not rewrite plan.bills to carry the unpaid occurrence');
+  ok(!(result.data.plan.opening.representedEvents || [])
+    .some(e => e.id === unpaidBill.id && e.date === UNPAID_BILL_DATE),
+    'unpaid intervening bill is not named represented');
+
+  const liveEvents = Forecast.expandEvents(result.data.plan, LIVE_AS_OF, LIVE_AS_OF, {});
+  const reserved = liveEvents.find(e => e.id === unpaidBill.id && e.date === UNPAID_BILL_DATE);
+  ok(reserved && near(-reserved.amount, UNPAID_INTERVENING),
+    'live overlay still emits the unpaid $100 on the live start',
+    reserved && String(reserved.amount));
+  ok(!Forecast.expandEvents(control.data.plan, LIVE_AS_OF, LIVE_AS_OF, {})
+    .some(e => e.id === unpaidBill.id),
+    'the control overlay without that bill does not invent it');
+
+  const simOpts = { weeklyVariable: 0, viewDays: 1, horizonDays: 1, targetBuffer: 0 };
+  const withBill = Forecast.simulate(result.data.plan, LIVE_AS_OF, simOpts);
+  const withoutBill = Forecast.simulate(control.data.plan, LIVE_AS_OF, simOpts);
+  ok(withBill.daily && withBill.daily[0] && withoutBill.daily && withoutBill.daily[0],
+    'both simulations produce the live as-of day');
+  ok(near(withoutBill.daily[0].balance - withBill.daily[0].balance, UNPAID_INTERVENING),
+    'first-day close falls by the unpaid $100 by hand, not by a live household cent',
+    String(withoutBill.daily[0].balance - withBill.daily[0].balance));
+  ok(near(Forecast.startingCashAmount(result.data.plan),
+      Forecast.startingCashAmount(control.data.plan)),
+    'starting cash is unchanged — the $100 is reserved, not subtracted from the live balance');
+  filesUnchanged('intervening unpaid outflow');
 }
 
 console.log('\n' + '═'.repeat(60));

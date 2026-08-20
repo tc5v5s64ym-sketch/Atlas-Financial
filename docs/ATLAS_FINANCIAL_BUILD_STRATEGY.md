@@ -1105,7 +1105,8 @@ writer. Unattended production writes remain reserved.
   financial date only when the live packet is freshness-qualified for
   that date; MATCH is not freshness, and an incomplete or stale packet
   fails closed. Same-day scheduled events fail closed without posting
-  evidence.
+  evidence. Unrepresented joint-cash outflows between the dated opening
+  and the live as-of stay reserved through `plan.opening.priorAsOf`.
   Unattended production writes, a Render token, and a newer live substitute
   opening remain reserved.
 - **Prompt** — *Do not apply the unused Chequing B $10, choose a Triangle

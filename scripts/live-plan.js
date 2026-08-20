@@ -17,8 +17,13 @@
  * overlay fails closed and keeps the dated opening. Owner policy,
  * bills, income rules, and commitments stay on canonical Atlas data.
  * Same-day CHANGE may overlay a current observation; that is not a
- * canonical write. Same-day scheduled cash events need posting /
- * representation evidence or the overlay fails closed. Triangle/MBNA
+ * canonical write. Scheduled joint-cash occurrences in
+ * (historicalOpeningAsOf, liveAsOf] are accounted for before as-of
+ * advances: posting/representation evidence names them on in-memory
+ * representedEvents; unrepresented joint-cash outflows stay reserved
+ * via plan.opening.priorAsOf so Forecast does not drop them. Same-day
+ * scheduled cash events still need posting / representation evidence
+ * or the overlay fails closed. Triangle/MBNA
  * statement cadence may keep canonical posted values. Unknown, stale,
  * conflicting, unmapped, credit-capacity, and transfer-as-income
  * evidence fail closed. Historical data.json and snapshots stay
@@ -429,17 +434,30 @@ function scheduledCashEventsOn(plan, date) {
     .filter(event => event && event.date === date && event.kind !== 'noncash');
 }
 
+function scheduledCashEventsIn(plan, afterExclusive, throughInclusive) {
+  if (!plan || !afterExclusive || !throughInclusive) return [];
+  if (throughInclusive <= afterExclusive) return [];
+  const from = Forecast.addDays(afterExclusive, 1);
+  if (!from || from > throughInclusive) return [];
+  return Forecast.expandEvents(schedulePlan(plan), from, throughInclusive, {})
+    .filter(event => event && event.date > afterExclusive
+      && event.date <= throughInclusive
+      && event.kind !== 'noncash');
+}
+
 function liveAsOfFrom(report, historicalOpeningAsOf) {
   const observed = Forecast.financialDate(report && report.fetchedAt)
     || Forecast.financialDate(report && report.observedAsOf);
   return observed || historicalOpeningAsOf || null;
 }
 
-function representedCandidatesFor(report, liveAsOf) {
+function representedCandidatesFor(report, historicalOpeningAsOf, liveAsOf) {
   return ((report && report.representedEventCandidates) || [])
     .map(candidate => O.classifyRepresentedCandidate(candidate, liveAsOf))
-    .filter(candidate => candidate && candidate.id && candidate.date === liveAsOf
-      && candidate.currentOpeningImpact === true);
+    .filter(candidate => candidate && candidate.id && candidate.date
+      && historicalOpeningAsOf
+      && candidate.date > historicalOpeningAsOf
+      && candidate.date <= liveAsOf);
 }
 
 function sortRepresented(a, b) {
@@ -461,17 +479,20 @@ function mergeRepresented(existing, added) {
   return out;
 }
 
-function refuseNonLiveRepresented(report, liveAsOf) {
+function refuseNonLiveRepresented(report, historicalOpeningAsOf, liveAsOf) {
   const refused = [];
   for (const candidate of (report && report.representedEventCandidates) || []) {
     const classified = O.classifyRepresentedCandidate(candidate, liveAsOf);
-    if (classified.date === liveAsOf && classified.currentOpeningImpact === true) continue;
+    if (classified.date && historicalOpeningAsOf
+        && classified.date > historicalOpeningAsOf
+        && classified.date <= liveAsOf) continue;
     refused.push({
       locator: 'plan.opening.representedEvents',
       fact: 'posting',
       eventId: classified.id || null,
       evidenceDate: classified.date || null,
-      reason: classified.date && liveAsOf && classified.date < liveAsOf
+      reason: classified.date && historicalOpeningAsOf
+        && classified.date <= historicalOpeningAsOf
         ? 'historical-opening-backfill'
         : 'not-live-as-of',
     });
@@ -482,22 +503,26 @@ function refuseNonLiveRepresented(report, liveAsOf) {
 function applyLiveCutover(next, report, historicalOpeningAsOf) {
   const liveAsOf = liveAsOfFrom(report, historicalOpeningAsOf);
   if (!liveAsOf) fail('Live overlay is missing a household financial date.');
-  const sameDay = scheduledCashEventsOn(next.plan, liveAsOf)
+  const windowEvents = scheduledCashEventsIn(next.plan, historicalOpeningAsOf, liveAsOf)
     .slice()
-    .sort((a, b) => String(a.id).localeCompare(String(b.id)));
-  const candidates = representedCandidatesFor(report, liveAsOf);
+    .sort((a, b) => String(a.date).localeCompare(String(b.date))
+      || String(a.id).localeCompare(String(b.id)));
+  const candidates = representedCandidatesFor(report, historicalOpeningAsOf, liveAsOf);
   const represented = [];
-  const unknown = [];
-  for (const event of sameDay) {
+  const unknownSameDay = [];
+  for (const event of windowEvents) {
     const hit = candidates.find(candidate => candidate.id === event.id
       && candidate.date === event.date);
-    if (hit) represented.push({ id: event.id, date: event.date });
-    else unknown.push(event);
+    if (hit) {
+      represented.push({ id: event.id, date: event.date });
+      continue;
+    }
+    if (event.date === liveAsOf) unknownSameDay.push(event);
   }
   represented.sort(sortRepresented);
   const advances = !!(historicalOpeningAsOf && liveAsOf > historicalOpeningAsOf);
-  if (advances && unknown.length) {
-    const named = unknown.map(event => `${event.id}@${event.date}`).join(', ');
+  if (advances && unknownSameDay.length) {
+    const named = unknownSameDay.map(event => `${event.id}@${event.date}`).join(', ');
     fail(`same-day-event-representation-unknown: ${named}`);
   }
   if (historicalOpeningAsOf && liveAsOf < historicalOpeningAsOf) {
@@ -515,6 +540,7 @@ function applyLiveCutover(next, report, historicalOpeningAsOf) {
     asOf: liveAsOf,
     representedEvents: advances ? represented : mergeRepresented(existing, represented),
   });
+  if (advances) nextOpening.priorAsOf = historicalOpeningAsOf;
   next.plan.opening = nextOpening;
   if (!next.meta) next.meta = {};
   next.meta.asOf = liveAsOf;
@@ -554,7 +580,7 @@ function overlayLiveState(input) {
     || (data.meta && data.meta.asOf) || null;
   const liveAsOf = liveAsOfFrom(report, historicalOpeningAsOf);
   const { proposed, refused } = proposeOverlay(report, historicalOpeningAsOf, liveAsOf);
-  const postingRefused = refuseNonLiveRepresented(report, liveAsOf);
+  const postingRefused = refuseNonLiveRepresented(report, historicalOpeningAsOf, liveAsOf);
   if (historicalOpeningAsOf && liveAsOf && liveAsOf > historicalOpeningAsOf) {
     assertFreshLivePacket(data, report, liveAsOf);
   }
