@@ -1081,7 +1081,8 @@ writer. Unattended production writes remain reserved.
   `ARCHITECTURE.md`'s absolute; any provider token handled under the secret
   boundary's configured-secret rule; no silent or unattended production
   writes.
-- **State** — **opening-cutover writer earned; live production cutover reserved.**
+- **State** — **opening-cutover writer earned; live production cutover reserved;
+  read-only in-memory overlay earned.**
   Preview / approve / bounded posted-field write is earned. Candidate-date
   pending writes are earned through a distinct `cutoverApprovalId`. A clean
   `--cutover-as-of` preflight can now propose one atomic opening through a
@@ -1097,10 +1098,17 @@ writer. Unattended production writes remain reserved.
   reconstructs only those two surfaces from a complete MATCH packet after
   exact `--approve-recovery`; it never writes `data.json` and never infers
   the missing rows from the surviving file alone. Live `data.json` on
-  `main` remains the 2026-08-16 opening until the exact owner-approved
-  2026-08-19 bytes can be recovered or replayed without inventing
-  Household evidence. Unattended production writes, a Render
-  token, and a newer live substitute opening remain reserved.
+  `main` is the 2026-08-19 opening. Today's Forecast may overlay current
+  posted/pending from a Lunch Money observation in memory
+  (`scripts/live-plan.js`) without rewriting that opening or snapshots.
+  The in-memory clone starts Forecast on the observation's household
+  financial date only when the live packet is freshness-qualified for
+  that date; MATCH is not freshness, and an incomplete or stale packet
+  fails closed. Same-day scheduled events fail closed without posting
+  evidence. Unrepresented joint-cash outflows between the dated opening
+  and the live as-of stay reserved through `plan.opening.priorAsOf`.
+  Unattended production writes, a Render token, and a newer live substitute
+  opening remain reserved.
 - **Prompt** — *Do not apply the unused Chequing B $10, choose a Triangle
   same-day winner, invent a pending→posted case, add a Render token,
   schedule refresh, or perform the first production opening cutover.*

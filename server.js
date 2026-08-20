@@ -14,6 +14,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const SnapshotBalances = require('./scripts/snapshot-balances.js');
+const LivePlan = require('./scripts/live-plan.js');
 
 const PASSWORD = process.env.SITE_PASSWORD;
 const SECRET = process.env.SESSION_SECRET;
@@ -173,7 +174,7 @@ app.use((req, res, next) => {
 // ---------------------------------------------------------------- data
 let cachedData = null;
 let cachedAt = 0;
-app.get('/data.json', (_req, res) => {
+app.get('/data.json', async (_req, res) => {
   const file = path.join(__dirname, 'data.json');
   try {
     const stat = fs.statSync(file);
@@ -181,7 +182,11 @@ app.get('/data.json', (_req, res) => {
       cachedData = JSON.parse(fs.readFileSync(file, 'utf8'));
       cachedAt = stat.mtimeMs;
     }
-    res.json(cachedData);
+    // Dated openings stay on disk. An explicit local overlay may replace
+    // posted/pending for today's live plan only. Default is the canonical
+    // file. A Render Lunch Money token is not this path.
+    const served = await LivePlan.applyForServer(cachedData, process.env);
+    res.json(served);
   } catch (err) {
     console.error('data.json could not be read:', err.message);
     res.status(500).json({ error: 'data unavailable' });

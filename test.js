@@ -83,6 +83,7 @@ const suites = [
   ['bounded opening-cutover writer (B81)', 'test-b81-opening-cutover.js'],
   ['opening state transition (B81)', 'test-b81-opening-state.js'],
   ['opening artifact recovery (B81)', 'test-b81-opening-recovery.js'],
+  ['live plan overlay without rewriting openings', 'test-live-plan.js'],
   ['Aug. 16 household evidence absorption', 'test-aug16-evidence.js'],
   ['telecom current-regime closeout', 'test-telecom-current-regime.js'],
   ['HELOC Q19 + Bell Q18 evidence closeout', 'test-q19-q18-closeout.js'],

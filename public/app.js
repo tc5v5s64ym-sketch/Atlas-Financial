@@ -271,6 +271,17 @@ const App = (() => {
         if (PERIODS && PERIODS.asOf && PERIODS.asOf !== d.meta.asOf) {
           text += ' · spending history as at ' + fmtDateLong(PERIODS.asOf);
         }
+        const overlay = d.liveOverlay;
+        if (overlay && overlay.applied) {
+          const observed = overlay.observedAsOf && overlay.observedAsOf !== d.meta.asOf
+            ? fmtDateLong(overlay.observedAsOf)
+            : null;
+          text += observed
+            ? ' · live balances observed ' + observed
+            : ' · live Lunch Money overlay';
+        } else if (overlay && overlay.applied === false) {
+          text += ' · live overlay not applied';
+        }
         asof.textContent = text;
       }
       for (const fn of onceHooks) fn(DATA, PERIODS, HISTORY);

@@ -1644,6 +1644,14 @@ not fetch a newer live observation, and does not apply recovery to
 live `main`. Owner-approved recovery still requires the surviving
 bytes plus the same-date MATCH packet.
 
+A later owner instruction added a read-only in-memory overlay so a new
+Lunch Money observation can change today's Forecast without rewriting
+the 2026-08-19 opening or snapshots (`scripts/live-plan.js`). That overlay
+is not a canonical write, not a second planner, and not a Render token.
+Unknown/stale/conflicting evidence still fails closed. Triangle/MBNA
+statement cadence still applies. Transfers are not income. Credit
+availability is not cash.
+
 Unattended production writes, scheduled refresh, and a Render Lunch
 Money token remain reserved. Do not apply the unused Chequing B $10,
 choose a Triangle same-day winner, invent a pending→posted case, or
