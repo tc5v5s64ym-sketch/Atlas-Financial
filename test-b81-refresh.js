@@ -317,7 +317,9 @@ console.log('\n=== J. live preview CLI does not write, and secrets stay out ==='
   ok(C.identityProofLooksSanitized(printed), 'CLI preview is sanitized');
   ok(hashFile(LIVE_DATA) === liveHash, 'preview CLI left live data.json untouched');
   const hook = fs.readFileSync(path.join(ROOT, '.githooks', 'pre-commit'), 'utf8');
-  ok(/LUNCHMONEY_ACCESS_TOKEN/.test(hook), 'pre-commit names LUNCHMONEY_ACCESS_TOKEN');
+  ok(/privacy-guard\.js/.test(hook), 'pre-commit delegates to the privacy-guard engine');
+  const privacyGuard = fs.readFileSync(path.join(ROOT, 'scripts', 'privacy-guard.js'), 'utf8');
+  ok(/LUNCHMONEY_ACCESS_TOKEN/.test(privacyGuard), 'privacy guard names LUNCHMONEY_ACCESS_TOKEN');
   const staticSrc = fs.readFileSync(path.join(ROOT, 'test-static.js'), 'utf8');
   ok(/LUNCHMONEY_ACCESS_TOKEN/.test(staticSrc), 'static scan names LUNCHMONEY_ACCESS_TOKEN');
   const render = fs.readFileSync(path.join(ROOT, 'render.yaml'), 'utf8');

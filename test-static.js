@@ -61,8 +61,9 @@ for (const [html, jsFiles] of pages) {
 }
 
 console.log('\n=== no secret or identifier has reached a tracked file ===');
-// The pre-commit hook is the real gate; this repeats the content scan so a
-// mistake fails in CI too, where no hook runs.
+// Generic card / SIN / quoted-secret shapes. The incumbent household
+// identifier list lives only in scripts/privacy-guard.js; CI applies that
+// engine from the trusted default branch (B77). Do not copy that list here.
 const tracked = [];
 const walk = dir => {
   for (const e of fs.readdirSync(path.join(__dirname, dir), { withFileTypes: true })) {
@@ -96,6 +97,12 @@ ok(!fs.existsSync(path.join(__dirname, 'raw')), 'no raw/ directory is present in
 ok(read('.gitignore').includes('raw/'), 'raw/ is gitignored');
 const hookPath = path.join(__dirname, '.githooks/pre-commit');
 ok(fs.existsSync(hookPath), 'the pre-commit hook is present');
+ok(/privacy-guard\.js/.test(read('.githooks/pre-commit')),
+  'and delegates to the sole privacy-guard engine');
+ok(!/^patterns=/m.test(read('.githooks/pre-commit')),
+  'and does not keep a second identifier list');
+ok(fs.existsSync(path.join(__dirname, 'scripts/privacy-guard.js')),
+  'the privacy-guard engine is present');
 // A hook without the executable bit is silently ignored by git — it prints a
 // hint and commits anyway. Windows does not expose POSIX execute bits in
 // fs.statSync, so use the executable mode recorded in Git's index there.

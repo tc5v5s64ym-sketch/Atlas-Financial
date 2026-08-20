@@ -108,6 +108,23 @@ credentials, secrets, PDFs, and protected security behavior out of tracked
 changes. These controls remain hard because the repository contains private
 household source material and previously lost its hook protection silently.
 
+### `privacy-guard`
+
+GitHub API / connector commits never run `.githooks/pre-commit`. The
+demonstrated failure is that structural bypass (B77 / PR #5): the local hook
+is not on that write path, so a connector-authored file the incumbent policy
+would reject can still reach review. `privacy-guard.yml` applies
+`scripts/privacy-guard.js` — the same engine the hook runs — from the trusted
+default branch to the incoming PR head, treated as data. The PR cannot
+weaken the copy that judges it. Generic card/SIN checks in `test-static.js`
+are not a second household-identifier list.
+
+The job publishes a `privacy-guard` commit status on the PR head because
+`pull_request_target` otherwise attaches to the default-branch SHA. Adding
+that context to required checks on `main` is an owner repository-setting
+action. The control is permanent while GitHub write paths exist that skip
+local hooks.
+
 ### Owner-reserved gates
 
 No workflow can authorize raw-data handling, credentials, security
@@ -204,8 +221,8 @@ reviews remain the surviving authorities.
 ## Setup
 
 The labels are created from `.github/labels.yml`. Add `tests`, `Merge card
-mechanical fields`, and `risk-label/primary` to branch protection's required
-status checks for `main`. The owner makes that repository-setting change; a
+mechanical fields`, `risk-label/primary`, and `privacy-guard` to branch
+protection's required status checks for `main`. The owner makes that repository-setting change; a
 workflow does not grant itself merge authority. Standing auto-merge of
 qualifying `auto-safe` pull requests is owner-granted as of 2026-08-16 and
 must not become operational until GitHub itself is enforcing those checks.

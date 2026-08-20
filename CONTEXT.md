@@ -91,13 +91,17 @@ the source has shrunk by more than 20% unless `-Force` is passed. Currently
 `.githooks/pre-commit` **refuses any commit** that stages a file under `raw/` or
 `derived/`, a `.pdf`, or — importantly — any file whose *content* contains a
 personal identifier, account number or secret. It catches content-level mistakes
-a `.gitignore` never could.
+a `.gitignore` never could. The identifier/secret list and the scan live in
+`scripts/privacy-guard.js`; the hook is the local install point. GitHub API /
+connector commits never run a local hook, so CI applies the same engine from
+the trusted default branch (`privacy-guard.yml`). A pull request cannot supply
+the copy of the guard that judges it.
 
 It is installed via `git config core.hooksPath .githooks`. If a fresh clone ever
 loses that setting, **run that command before committing anything.** Verify it
 works by staging a `raw/` file and confirming the commit is refused.
 
-Never bypass it with `--no-verify`.
+Never bypass it with `--no-verify`. The local bypass does not defeat CI.
 
 ## Read `docs/ACCOUNT_FACTS.md` before asking the owner anything
 

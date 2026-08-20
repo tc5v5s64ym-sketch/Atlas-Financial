@@ -36,6 +36,8 @@ security:
       - any-glob-to-any-file:
           - 'server.js'
           - '.githooks/**'
+          - 'scripts/privacy-guard.js'
+          - '.github/workflows/privacy-guard.yml'
           - '.gitignore'
           - 'render.yaml'
 

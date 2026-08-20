@@ -344,8 +344,10 @@ Then, unchanged in substance:
 
 - Stage only intended files. Never `.env`, credentials, raw statements, derived
   output, or unrelated drift.
-- The pre-commit hook is the safety net and it is never bypassed. If a fresh
-  clone lost `core.hooksPath`, restore it before committing anything.
+- The pre-commit hook is the safety net for local commits and it is never
+  bypassed. GitHub API writes are judged by the same engine from the trusted
+  default branch. If a fresh clone lost `core.hooksPath`, restore it before
+  committing anything.
 
 ### Fresh `main`, surface-neutral branches, and the stacking exception
 

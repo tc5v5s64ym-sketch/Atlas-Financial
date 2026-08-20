@@ -123,4 +123,5 @@ qualification and loan-to-value. Real decisions need a licensed professional.
 
 Raw bank exports and statement PDFs live in `raw/` on this machine only. They
 contain names, addresses and partial card numbers, are gitignored, and are
-additionally blocked by `.githooks/pre-commit`.
+additionally blocked by `.githooks/pre-commit` (local) and the incumbent
+privacy-guard CI job (GitHub API / connector writes).

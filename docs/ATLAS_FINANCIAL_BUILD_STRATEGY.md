@@ -1127,9 +1127,11 @@ would lose them.
   all. Carried forward from a superseded pull request under a fresh identifier,
   and narrowed since: scope is now explicitly a reviewer judgement rather than a
   card field.
-- **`B77` — the connector bypasses the pre-commit hook.** Commits authored through
-  the GitHub connector are made through the API, so no local hook runs on them.
-  Nothing is wrong in the repository today; the gap is structural.
+- **`B77` — the connector bypasses the pre-commit hook.** **DONE 2026-08-20.**
+  Commits authored through the GitHub connector are made through the API, so no
+  local hook runs on them. Closed by applying the incumbent
+  `scripts/privacy-guard.js` engine from the trusted default branch to every PR
+  head. Nothing in the repository was leaking; the gap was structural.
 - **Cheaper review lane for routine refresh.** Recorded, not solved. Hard
   boundaries stay. `AF-RECON-01` / `B91` should produce evidence about whether
   a figures-only evidence update needs the same architecture review as an

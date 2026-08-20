@@ -35,8 +35,11 @@ jobs:
       - name: Run the correctness suite
         run: npm test
 
-      # The hook is the primary guard against committing raw statements or an
-      # identifier. It does not run in CI, so the same content scan is repeated
-      # inside test-static.js; this step just proves the hook is still shipped.
-      - name: Confirm the pre-commit guard is still present
-        run: test -f .githooks/pre-commit
+      # Local commits run .githooks/pre-commit, which delegates to
+      # scripts/privacy-guard.js. GitHub API commits never run that hook.
+      # privacy-guard.yml applies the trusted default-branch copy of the same
+      # engine. This step only proves both files are still shipped.
+      # test-static.js keeps a generic card/SIN scan, not a second household
+      # identifier list.
+      - name: Confirm the privacy-guard engine is still present
+        run: test -f .githooks/pre-commit && test -f scripts/privacy-guard.js

@@ -195,7 +195,8 @@ When a statement file is the source:
 6. **Commit and push.** Render deploys within a couple of minutes.
 
 The pre-commit hook refuses file-path steps 1 and 3 from reaching git,
-whatever else goes wrong.
+whatever else goes wrong. GitHub API commits are judged by the same engine
+from the trusted default branch (`scripts/privacy-guard.js`).
 
 ---
 
