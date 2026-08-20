@@ -592,16 +592,16 @@ So the rule, not the enumeration, is what binds:
 
 **Page scripts broke that third rule in the instances `B73` recorded, and those
 instances have moved.** The scan for the ones nobody had named ran on
-2026-08-12. It read every browser file and found eight more — the largest being
-the status band at the top of the Plan page, which selects which of seven
-verdicts the household reads and picks two of the dates inside them. Seven of
-the eight were found by reading; the eighth, the funding-source cards a few
-lines below that same band, was found by the required review after the scan had
-called itself complete. `B73` is the work record for which they were, that they
-have now all moved, and that the item is closed. **None of those page-side
-defects was a row in the table above**: a page script that decides is an unnamed
-authority, which is a defect to close, not an incumbent to register. The rows
-the moves added name the engine functions that replaced them.
+2026-08-12. It read every browser file. The largest instance was the status
+band at the top of the Plan page, which selects which of seven verdicts the
+household reads and picks two of the dates inside them. The funding-source
+cards a few lines below that same band were found by the required review after
+the scan had called itself complete. [`BACKLOG.md`](BACKLOG.md) `B73` is the
+sole work record for which they were, that they moved, and that the item is
+closed. **None of those page-side defects was a row in the table above**: a
+page script that decides is an unnamed authority, which is a defect to close,
+not an incumbent to register. The rows the moves added name the engine
+functions that replaced them.
 
 The recorded instances have been moved into the engine rather than argued away.
 The Amanda-transfer deadline: `public/plan.js` re-ran the simulation with her
@@ -646,17 +646,15 @@ case the page renders the returned result and a focused test reconciles the move
 against a hand-computed case.
 
 **This section used to say "no page script is known to break it", and the scan is
-why it no longer does.** The count said *two* until a review found a third, in
-the same file as one of the renderers this section praises; it reached zero
-because five were moved, not because anything had audited what was left. Moving
-an authority out of a file does not clear the file — the payoff modeller was
-still deciding in `public/modellers.js` after the renewal moved out of it, and
-`public/plan.js` held seven of the eight instances the scan found, having
-already had two moved out of it — and one of those seven was missed by the scan
-itself and caught by the review. The recorded `plan.js` and `deepdive.js`
-instances have since moved; `B73` is the work record, now closed. The absence
-of a known instance was never evidence that none existed, and searching is what
-settled the recorded set.
+why it no longer does.** A running count of moved, remaining, and page-side
+items used to live here and drifted every time an instance moved, which is why
+it is gone rather than updated — [`BACKLOG.md`](BACKLOG.md) `B73` owns that
+record. Moving an authority out of a file does not clear the file — the payoff
+modeller was still deciding in `public/modellers.js` after the renewal moved
+out of it, and a `public/plan.js` instance was missed by the scan itself and
+caught by the review. The recorded `plan.js` and `deepdive.js` instances moved.
+The absence of a known instance was never evidence that none existed, and
+searching is what settled the recorded set.
 
 Anything not named above belongs to one of those three rules, or is that defect.
 If it is genuinely unclear which, that is a question for the required review —
