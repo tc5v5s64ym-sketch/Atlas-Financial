@@ -200,6 +200,12 @@ console.log('\n=== 6. a held-elsewhere raw-balance change does not increase hous
     'and the opening gap does not consume the held-elsewhere account');
   ok(JSON.stringify(after.plan.funding.options) === JSON.stringify(before.plan.funding.options),
     'plan.funding.options bytes are unchanged');
+
+  const authorized = clone(after);
+  authorized.plan.funding.options.find(o => o.id === 'amanda').available = 250;
+  ok(near(fundingOf(authorized).find(o => o.id === 'amanda').available, 250),
+    'an explicit owner-authorized amount is household funding, not the 8000 raw balance',
+    String(fundingOf(authorized).find(o => o.id === 'amanda').available));
 }
 
 console.log('\n' + (failures ? `${failures} failure(s)` : 'All current-headroom derivation checks passed'));

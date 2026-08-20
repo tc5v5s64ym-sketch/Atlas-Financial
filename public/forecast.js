@@ -276,10 +276,12 @@
           .some(r => r && r.id === src.cash);
         // Breakdown cash is overdraft usage, not a funding pot. Held-elsewhere
         // cash (Amanda / TENNIS INCOME) is observational: Q25 is OPEN, and
-        // only an actual household transfer or an explicit owner-authorized
-        // remainder can fund. Missing extra facilities must not treat
-        // Chequing B as overdraft headroom.
-        if (row && !isBreakdown) return 0;
+        // the raw balance is not household funding. An explicit owner-authorized
+        // `available` on the option may fund; otherwise 0. Missing extra
+        // facilities must not treat Chequing B as overdraft headroom.
+        if (row && !isBreakdown) {
+          return Number.isFinite(src.available) ? Number(src.available) : 0;
+        }
         return src.available;
       }
       if (!util) return src.available;
