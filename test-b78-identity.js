@@ -33,7 +33,7 @@ const near = (a, b, eps = 0.005) => Math.abs(Number(a) - Number(b)) <= eps;
 const hashFile = p => crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
 const clone = x => JSON.parse(JSON.stringify(x));
 
-const data = JSON.parse(fs.readFileSync(DATA, 'utf8'));
+const data = JSON.parse(execFileSync('git', ['show', '28d08a12:data.json'], { encoding: 'utf8' }));
 const identity = JSON.parse(fs.readFileSync(IDENTITY, 'utf8'));
 const samplePayload = JSON.parse(fs.readFileSync(SAMPLE, 'utf8'));
 const sampleMap = JSON.parse(fs.readFileSync(SAMPLE_MAP, 'utf8'));

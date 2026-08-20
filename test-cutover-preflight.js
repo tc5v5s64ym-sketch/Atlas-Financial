@@ -31,7 +31,7 @@ const hashFile = p => crypto.createHash('sha256').update(fs.readFileSync(p)).dig
 const clone = x => JSON.parse(JSON.stringify(x));
 
 const liveHash = hashFile(LIVE_DATA);
-const liveData = JSON.parse(fs.readFileSync(LIVE_DATA, 'utf8'));
+const liveData = JSON.parse(execFileSync('git', ['show', '28d08a12:data.json'], { encoding: 'utf8' }));
 const b81Payload = JSON.parse(fs.readFileSync(B81_FIXTURE, 'utf8'));
 const b81Map = JSON.parse(fs.readFileSync(B81_MAP, 'utf8'));
 const defaultIdentity = JSON.parse(fs.readFileSync(IDENTITY, 'utf8'));

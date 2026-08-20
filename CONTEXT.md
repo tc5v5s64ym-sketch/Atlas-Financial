@@ -27,7 +27,8 @@ is owned by [`docs/01_OPEN_QUESTIONS.md`](docs/01_OPEN_QUESTIONS.md); Deep Dive
 cannot close a question on its own. The master-forecast direction already
 lives in [`ARCHITECTURE.md`](ARCHITECTURE.md). Known major future costs
 already live on `plan.commitments` (`B95` / PR #82). The published Forecast
-opening is 2026-08-16 (`B91` / `AF-RECON-01`). Forecast is the one
+opening is 2026-08-19. The 2026-08-16 opening remains dated evidence
+(`B91` / `AF-RECON-01`). Forecast is the one
 master plan (`B94` / `AF-PLAN-01`): the 91-day Plan display is a view
 of a ≥12-month knowledge horizon. The household payday answer is
 composed from that Forecast (`B96` / `AF-PLAN-02`). Dated account-balance
@@ -115,21 +116,22 @@ and `data.json`.
 | `CREDIT_CARD_DEEP_DIVE.md` | The TD card penalty rate and its 12-month clock |
 | `dashboard.html` | The original local dashboard, superseded by the deployed site |
 
-## Current state as at 2026-08-16
+## Current state as at 2026-08-19
 
 This is the product picture a new session should start from. It is **not** the
-9 August first-pass capture this file used to open on.
+9 August first-pass capture this file used to open on, and it is **not** the
+16 August dated opening.
 
-**Published Forecast opening is 2026-08-16.** `data.json` `meta.asOf` and
+**Published Forecast opening is 2026-08-19.** `data.json` `meta.asOf` and
 `plan.opening.asOf` are that cutover. Spendable cash is the independently
-summed Lunch Money mapped balances (Chequing A $1,320.13 + Chequing B
-$932.05 + Savings $0.58 = $2,252.76). The 14 August payday cluster is
+summed Lunch Money mapped balances (Chequing A $629.27 + Chequing B
+$309.77 + Savings $0.58 = $939.62). The 14 August payday cluster is
 already inside those snapshots and is not replayed. Amanda / TENNIS INCOME
 is still held-elsewhere. Q19 is ANSWERED (remaining August HELOC cash
 requirement is $0 additional after the 14 August $1,100). `B91` is done. Dated
-balance openings for 2026-08-09 and 2026-08-16 live in `snapshots/`;
-`B20` is done. TENNIS INCOME and SAVINGS-DONT TOUCH still have only
-the 2026-08-09 reading.
+balance openings for 2026-08-09, 2026-08-16, and 2026-08-19 live in
+`snapshots/`; `B20` is done. TENNIS INCOME and SAVINGS-DONT TOUCH still
+have only the 2026-08-09 reading.
 
 **Captured (broader than the old 11-account / 4,222-transaction picture):**
 `data.json` `meta` currently records TD (15 accounts) · Triangle Mastercard ·
@@ -152,11 +154,14 @@ accounts (Q6); where the $46,657 of "credit card" transfers go (Q2). Q5 (why
 the monthly spousal transfer stopped after May 2026) is **ANSWERED** — the
 garage/lab income ended.
 
-**Do not carry these 9 August conclusions forward as current truth.** The
-2026-08-16 opening replaced them: spendable cash is $2,252.76; Burrards
-registrations are settled; Triangle posted is the screenshot $13,197.00
-plus $15.62 pending. The HELOC crossing on this opening is a later
-charge-date fact, not the 31 August registration-draw story.
+**Do not carry these 9 August or 16 August conclusions forward as current
+truth.** The 2026-08-19 opening replaced them: spendable cash is $939.62;
+Burrards registrations remain settled; Triangle posted is $13,495.32 with
+pending $0.00; MBNA posted is $7,875.99 with pending $0.00. The 2026-08-16
+opening (spendable $2,252.76; Triangle $13,197.00 + $15.62 pending) remains
+dated evidence in `snapshots/2026-08-16.json`. The HELOC crossing on this
+opening is a later charge-date fact, not the 31 August registration-draw
+story.
 
 Household questions live in `01_OPEN_QUESTIONS.md`. Sequencing lives in the
 build strategy. Do not invent a second list here.

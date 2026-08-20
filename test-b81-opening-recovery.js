@@ -5,8 +5,8 @@
  * same-date Household positions and snapshot did not, can reconstruct ONLY
  * those two surfaces from a complete MATCH observation packet.
  *
- * Synthetic surviving-opening fixtures only. Does not write live data.json,
- * live positions.csv, or invent a live 2026-08-19 snapshot.
+ * Synthetic surviving-opening fixtures only. Does not write live data.json
+ * or live positions.csv, and does not rewrite committed snapshots.
  */
 const fs = require('fs');
 const path = require('path');
@@ -39,6 +39,8 @@ const debtOf = (data, id) => data.debts.find(d => d.id === id);
 const liveHash = hashFile(LIVE_DATA);
 const livePosHash = hashFile(LIVE_POSITIONS);
 const liveSnap16Hash = hashFile(path.join(LIVE_SNAPSHOTS, '2026-08-16.json'));
+const liveSnap19Path = path.join(LIVE_SNAPSHOTS, '2026-08-19.json');
+const liveSnap19Hash = fs.existsSync(liveSnap19Path) ? hashFile(liveSnap19Path) : null;
 
 function tempDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-opening-recovery-'));
@@ -814,8 +816,10 @@ console.log('\n=== 12. live canonical files were not used as the write target ==
   ok(hashFile(LIVE_POSITIONS) === livePosHash, 'live positions.csv is unchanged');
   ok(hashFile(path.join(LIVE_SNAPSHOTS, '2026-08-16.json')) === liveSnap16Hash,
     'live 2026-08-16 snapshot history is unchanged');
-  ok(!fs.existsSync(path.join(LIVE_SNAPSHOTS, '2026-08-19.json')),
-    'this suite did not invent a live 2026-08-19 snapshot');
+  ok(liveSnap19Hash
+    ? hashFile(liveSnap19Path) === liveSnap19Hash
+    : !fs.existsSync(liveSnap19Path),
+    'this suite did not rewrite a live 2026-08-19 snapshot');
 }
 
 console.log('\n' + (failures ? `${failures} failure(s)` : 'All B81 opening-artifact recovery checks passed'));

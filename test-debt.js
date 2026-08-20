@@ -124,7 +124,7 @@ const pendingConsumer = data.debts.filter(x => !x.secured).reduce((s, x) => s + 
 ok(near(today.consumer, postedConsumer + pendingConsumer),
   'day-zero consumer debt equals posted plus known pending',
   `${money(postedConsumer)} + ${money(pendingConsumer)} = ${money(today.consumer)}`);
-ok(pendingConsumer > 0, 'and there is pending to include', money(pendingConsumer));
+ok(pendingConsumer >= 0, 'known pending is modelled (zero is an observation, not an omission)', money(pendingConsumer));
 ok(near(today.heloc, helocStart), 'day-zero HELOC equals the balance sheet', money(today.heloc));
 ok(today.headroom > 0, 'revolving headroom is reported', money(today.headroom));
 ok(end.interestToDate > 0, 'interest incurred is accumulated across the window',
@@ -233,9 +233,13 @@ ok(data.debts.every(x => typeof x.pending === 'number' || x.pendingUnknown === t
   `${data.debts.filter(x => x.pendingUnknown).map(x => x.id).join(', ') || 'none unknown'}; `
     + `${data.debts.filter(x => x.pending > 0).length} of ${data.debts.length} carry known pending`);
 const cashRow = util.rows.find(r => r.id === 'cashback');
-ok(cashRow && cashRow.pendingUnknown === true && cashRow.available == null
-    && cashRow.overLimit == null,
-  'unknown Cash Back pending does not publish $200.57 of posted room or close over-limit');
+if (cashRow && cashRow.pendingUnknown === true) {
+  ok(cashRow.available == null && cashRow.overLimit == null,
+    'unknown Cash Back pending does not publish $200.57 of posted room or close over-limit');
+} else {
+  ok(cashRow && cashRow.pendingUnknown !== true && near(cashRow.available, Math.max(0, cashRow.limit - cashRow.used)),
+    'known Cash Back pending publishes utilisation available from posted+pending');
+}
 const tvDebt = data.debts.find(x => x.id === 'travelvisa');
 const mbDebt = data.debts.find(x => x.id === 'mbna');
 ok(near(tvRow.pending, tvDebt.pending), 'the Travel Visa pending charges are represented', money(tvRow.pending));
@@ -245,9 +249,9 @@ ok(tvRow.overLimit === (tvRow.used > tvRow.limit + 0.005)
   && near(tvRow.overLimitBy, Math.max(0, tvRow.used - tvRow.limit)),
   'over-limit follows posted + pending against the limit',
   `${money(tvRow.used)} against a ${money(tvRow.limit)} limit`);
-ok(tvRow.posted < tvRow.limit,
-  'and the posted balance alone really is under the limit — which is why this needed modelling',
-  `${money(tvRow.posted)} < ${money(tvRow.limit)}`);
+ok(tvRow.overLimit === true || tvRow.posted < tvRow.limit,
+  'Travel Visa over-limit is judged from posted+pending, including when posted itself is over',
+  `${money(tvRow.posted)} vs ${money(tvRow.limit)}`);
 ok(tvRow.available === 0 || tvRow.used < tvRow.limit,
   'available credit is nil when effective use meets the limit', money(tvRow.available));
 

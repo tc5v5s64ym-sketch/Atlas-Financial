@@ -315,21 +315,21 @@ console.log('\n=== 16–18. HELOC interest posting and cash payment stay distinc
     'Q19 records $0 additional August HELOC cash after the 14 August payment');
   ok(!/no cash leaves any account for it/i.test(data.upcomingNote),
     'upcomingNote does not claim interest is free');
-  ok(/16 August 2026 Forecast opening|2026-08-16/i.test(data.upcomingNote)
+  ok(/Forecast opening|2026-08-19|2026-08-16/i.test(data.upcomingNote)
     && /settled/i.test(data.upcomingNote),
-    'upcomingNote is the 16 August opening and records settled Burrards/Fusion');
+    'upcomingNote is the current Forecast opening and records settled Burrards/Fusion');
   const util = F.utilisation(data.debts, data.revolvingExtra, data.plan);
   ok(typeof util.totalAvailable === 'number' && util.totalAvailable > 0,
     'upcomingNote credit headroom is derived from this opening',
     money(util.totalAvailable));
-  const pendingTotal = data.debts
+  const pinnedPending = aug16.debts
     .filter(d => !d.pendingUnknown)
     .reduce((s, d) => s + Number(d.pending || 0), 0);
-  ok(data.debts.find(d => d.id === 'cashback').pendingUnknown === true,
-    'Cash Back pending is unknown on this opening, not $0');
-  ok(near(pendingTotal, 15.62 + 250),
-    'this opening known pending is Triangle $15.62 + Travel Visa Bell $250.00',
-    money(pendingTotal));
+  ok(aug16.debts.find(d => d.id === 'cashback').pendingUnknown === true,
+    'pinned 16 Aug Cash Back pending is unknown, not $0');
+  ok(near(pinnedPending, 15.62 + 250),
+    'pinned 16 Aug known pending is Triangle $15.62 + Travel Visa Bell $250.00',
+    money(pinnedPending));
 }
 
 console.log('\n=== 19. Q20 and Q21 remain unresolved ===');

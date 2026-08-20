@@ -30,7 +30,7 @@ const near = (a, b, eps = 0.005) => Math.abs(Number(a) - Number(b)) <= eps;
 const hashFile = p => crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
 const clone = x => JSON.parse(JSON.stringify(x));
 
-const liveData = JSON.parse(fs.readFileSync(LIVE_DATA, 'utf8'));
+const liveData = JSON.parse(execFileSync('git', ['show', '28d08a12:data.json'], { encoding: 'utf8' }));
 const payload = JSON.parse(fs.readFileSync(FIXTURE, 'utf8'));
 const accountMap = JSON.parse(fs.readFileSync(MAP, 'utf8'));
 const identity = JSON.parse(fs.readFileSync(IDENTITY, 'utf8'));

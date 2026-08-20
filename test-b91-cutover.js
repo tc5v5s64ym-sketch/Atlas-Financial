@@ -300,27 +300,36 @@ console.log('\n=== G. Amanda / TENNIS INCOME is not spendable; card capacity is 
     'the $213.79 / $220 Hydro debit is not scheduled again');
   ok(!(live.plan.bills || []).some(b => /bell/i.test(b.id + b.label)),
     'Bell is not dated as a joint-cash bill beside the $250 pending');
-  const util = F.utilisation(live.debts, live.revolvingExtra, live.plan);
-  const cashRow = util.rows.find(r => r.id === 'cashback');
-  ok(util.rows.every(r => r.available == null || r.available >= 0),
+  const pinnedUtil = F.utilisation(aug16Pinned.debts, aug16Pinned.revolvingExtra, aug16Pinned.plan);
+  const pinnedCash = pinnedUtil.rows.find(r => r.id === 'cashback');
+  ok(pinnedUtil.rows.every(r => r.available == null || r.available >= 0),
     'utilisation available figures are non-negative');
-  ok(cashRow && cashRow.pendingUnknown === true && cashRow.pending == null
-    && cashRow.available == null && cashRow.overLimit == null,
-    'Cash Back posted room is not published as $200.57 available, and over-limit is not closed');
-  ok(!util.rows.some(r => r.id === 'cashback' && near(r.available, 200.57)),
+  ok(pinnedCash && pinnedCash.pendingUnknown === true && pinnedCash.pending == null
+    && pinnedCash.available == null && pinnedCash.overLimit == null,
+    'pinned 16 Aug Cash Back posted room is not published as $200.57 available, and over-limit is not closed');
+  ok(!pinnedUtil.rows.some(r => r.id === 'cashback' && near(r.available, 200.57)),
     'utilisation does not convert unknown Cash Back pending into $200.57 available');
-  ok(!/household cash|spendable/.test(JSON.stringify(util.rows.map(r => r.available))),
+  ok(!/household cash|spendable/.test(JSON.stringify(pinnedUtil.rows.map(r => r.available))),
     'utilisation does not relabel capacity as cash');
-  const cards = F.resolveFundingSources(
-    live.plan.funding && live.plan.funding.options, live.revolvingExtra, live.plan, live.debts
+  const pinnedCards = F.resolveFundingSources(
+    aug16Pinned.plan.funding && aug16Pinned.plan.funding.options, aug16Pinned.revolvingExtra,
+    aug16Pinned.plan, aug16Pinned.debts
   ).find(o => o.id === 'cards');
-  ok(cards && near(cards.available, 287.38 + 294.06),
-    'the unusable cards funding option excludes unknown Cash Back headroom',
-    String(cards && cards.available));
-  const cashAction = F.resolveActions(live.plan, live.debts, live.revolvingExtra)
+  ok(pinnedCards && near(pinnedCards.available, 287.38 + 294.06),
+    'the unusable cards funding option excludes unknown Cash Back headroom on the 16 Aug pin',
+    String(pinnedCards && pinnedCards.available));
+  const pinnedAction = F.resolveActions(aug16Pinned.plan, aug16Pinned.debts, aug16Pinned.revolvingExtra)
     .find(a => /Cash Back Visa back under/i.test(a.what));
-  ok(cashAction && cashAction.status === 'open',
-    'the Cash Back over-limit action stays open while pending is unknown');
+  ok(pinnedAction && pinnedAction.status === 'open',
+    'the Cash Back over-limit action stays open while pending is unknown on the 16 Aug pin');
+
+  const liveCash = live.debts.find(x => x.id === 'cashback');
+  ok(liveCash && liveCash.pendingUnknown === false && near(liveCash.pending, 0),
+    'live 19 Aug Cash Back pending is the known $0.00 observation, not unknown');
+  const liveAction = F.resolveActions(live.plan, live.debts, live.revolvingExtra)
+    .find(a => /Cash Back Visa back under/i.test(a.what));
+  ok(liveAction && liveAction.status === 'done',
+    'live Cash Back under-limit action is Forecast-derived done from known pending');
 }
 
 console.log('\n=== H. Q19 is answered; remaining August cash is not a duplicate $814.18 ===');
@@ -446,21 +455,22 @@ console.log('\n=== remaining owner questions stay open ===');
     'Q4 does not keep the retired Aug. 9 Triangle $13,497 as the canonical opening');
   ok(!/9 August\s+opening remains posted \*\*\$7,855\.12\*\*/.test(md),
     'Q4 does not keep the retired Aug. 9 MBNA $7,855.12+$82.05 as the canonical opening');
-  ok(/Triangle[\s\S]*canonical Forecast opening[\s\S]*\$13,197\.00/.test(md)
-    && /MBNA[\s\S]*16 August canonical opening[\s\S]*\$8,003\.61/.test(md),
-    'Q4 records the 2026-08-16 Triangle and MBNA readings as the canonical opening');
+  ok(/Triangle[\s\S]*2026-08-19[\s\S]*\$13,495\.32/.test(md)
+    && /MBNA[\s\S]*2026-08-19[\s\S]*\$7,875\.99/.test(md),
+    'Q4 records the 2026-08-19 Triangle and MBNA readings as the canonical opening');
   ok(!/not a canonical write/.test(md),
     'Q26 does not call the now-canonical Travel Visa pair a non-write');
   ok(/Travel Visa posted \$862\.68[\s\S]*canonical opening/.test(md)
     && /pending was proven \*\*0\*\*/.test(md)
-    && /pendingUnknown` remains \*\*true\*\*/.test(md),
-    'Q26 keeps Travel Visa $862.68+$250 canonical, records the #106 Cash Back 0 census, and leaves canonical UNKNOWN unwritten');
+    && /pendingUnknown` is false/.test(md)
+    && /pending is \*\*\$0\.00\*\*/.test(md),
+    'Q26 keeps Travel Visa $862.68+$250 as the 16 Aug dated write, records the #106 Cash Back 0 census, and records the 19 Aug owner-authorized known-zero pending');
   const facts = fs.readFileSync(path.join(__dirname, 'docs', 'ACCOUNT_FACTS.md'), 'utf8');
   ok(!/Canonical opening remains posted \*\*\$13,497\.00\*\* \/ pending unknown/.test(facts),
     'ACCOUNT_FACTS does not keep the retired Aug. 9 Triangle $13,497 as the canonical opening');
-  ok(/Canonical Forecast opening is the B91 2026-08-16 `data\.json` record/.test(facts)
-    && /posted \*\*\$13,197\.00\*\*/.test(facts),
-    'ACCOUNT_FACTS agrees with the B91 data.json Triangle opening');
+  ok(/Canonical Forecast opening is the 2026-08-19/.test(facts)
+    && /\$13,495\.32/.test(facts),
+    'ACCOUNT_FACTS agrees with the live data.json Triangle opening');
 }
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);

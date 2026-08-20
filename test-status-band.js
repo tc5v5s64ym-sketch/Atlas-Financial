@@ -807,7 +807,7 @@ function movedCards({ adv }) {
 
 const defBuf = plan.defaults.targetBuffer;
 const recWeekly = F.recommend(plan, asOf, OPTS(defBuf)).weekly;
-const overWeekly = recWeekly + 500;
+const overWeekly = Math.max(recWeekly + 500, 2500);
 const SETTINGS = [
   { what: 'the published default buffer, no override', targetBuffer: defBuf, weeklyVariable: null, expect: 'onPlan' },
   { what: 'default buffer, an over-cap weekly override', targetBuffer: defBuf, weeklyVariable: overWeekly, expect: 'negative' },

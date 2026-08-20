@@ -200,11 +200,11 @@ const spendableSum = plan.startingCash.breakdown.reduce((s, b) => s + b.value, 0
 ok(near(F.startingCashAmount(plan), spendableSum),
   'forecast opening cash is the independently summed spendable accounts',
   F.startingCashAmount(plan).toFixed(2));
-const sameDayNet = expected.events
-  .filter(e => e.date === asOf && e.kind !== 'noncash' && e.jointCash !== false)
+const openingNet = expected.events
+  .filter(e => e.date <= asOf && e.kind !== 'noncash' && e.jointCash !== false)
   .reduce((s, e) => s + e.amount, 0);
-ok(near(expected.daily[0].balance, spendableSum + sameDayNet),
-  'day-0 close is opening cash plus same-day joint-cash events',
+ok(near(expected.daily[0].balance, spendableSum + openingNet),
+  'day-0 close is opening cash plus joint-cash events that bind at this opening',
   expected.daily[0].balance.toFixed(2));
 ok(!plan.income.some(s => /tennis bc/i.test(s.label)),
   'her gross Tennis BC pay is not counted as household income');
@@ -272,7 +272,7 @@ ok(near(expected.ending - extra.ending, 200 * extraDates.length),
 const buffer = plan.defaults.targetBuffer;
 const w = F.recommendWeekly(plan, asOf, { scenario: 'expected', targetBuffer: buffer });
 const zeroSim = F.simulate(plan, asOf, { scenario: 'expected', weeklyVariable: 0, targetBuffer: buffer });
-const floor = openingFloor(plan);
+const floor = openingFloor(plan, asOf);
 ok(zeroSim.min.balance < buffer ? w === 0 : w > 0,
   'returns $0 when even zero spending breaches the buffer; otherwise a real cap',
   `$${w}/week, floor ${zeroSim.min.balance.toFixed(2)}`);
