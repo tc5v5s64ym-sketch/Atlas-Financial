@@ -11,15 +11,18 @@ here until 2026-08-12 and had already drifted: it omitted two documents the
 router lists and still announced the build strategy as something that did not
 exist yet, months after it did.
 
-**Current product posture (2026-08-17).** Lunch Money is the household's
+**Current product posture (2026-08-20).** Lunch Money is the household's
 **normal operational financial update feed** (owner decision 2026-08-17).
 Forecast remains the sole deterministic planning and calculation authority.
 Lunch Money is evidence, not the planner and not canonical household policy.
-Live read-only observation already exists and has been exercised; identity
-and idempotency of that path are proved (`B78` / T3). The file
-foundation has not demonstrably failed (`B79` / `AF-STORE-01`); no store
-is introduced. Owner-approved preview/apply writes are earned (`B81` first slice).
-Unattended production writes are **not** approved. Owner-maintained Lunch Money account
+A new Lunch Money observation may overlay current posted balances and
+pending onto today's live plan in memory (`scripts/live-plan.js`) without
+rewriting historical openings or snapshots. Live read-only observation
+already exists and has been exercised; identity and idempotency of that
+path are proved (`B78` / T3). The file foundation has not demonstrably
+failed (`B79` / `AF-STORE-01`); no store is introduced. Owner-approved
+preview/apply writes are earned (`B81` first slice). Unattended production
+writes are **not** approved. Owner-maintained Lunch Money account
 freshness is accepted owner policy and does not block unrelated
 automatically refreshed accounts. The household cash schedule has one
 Plan owner (`Forecast.expandEvents`, PR #37). Question OPEN / ANSWERED status
@@ -33,7 +36,8 @@ master plan (`B94` / `AF-PLAN-01`): the 91-day Plan display is a view
 of a ≥12-month knowledge horizon. The household payday answer is
 composed from that Forecast (`B96` / `AF-PLAN-02`). Dated account-balance
 openings live in `snapshots/` (`B20` / `AF-HIST-01`); `data.json` remains
-current-state authority. Do not treat 9 August
+the dated canonical opening. Today's live plan may overlay current
+posted/pending in memory without rewriting that opening. Do not treat 9 August
 conclusions as today's household truth. The critical path lives
 in
 [`docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`](docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md).
@@ -170,12 +174,19 @@ build strategy. Do not invent a second list here.
 
 **Routine freshness is not a second statement download.** The intended
 operating path is Lunch Money → Atlas observation + reconciliation →
-canonical Atlas state → Forecast → the site. Today the canonical write is
-still an explicit `data.json` edit after that compare; automatic production
-writes are not earned. File capture remains the fallback/backfill/direct-
-evidence path, not the monthly operational requirement.
+current in-memory account state → Forecast → the site. Today's live plan
+may overlay current posted balances and pending without rewriting
+historical openings or snapshots (`scripts/live-plan.js`). A new canonical
+opening is still an explicit owner-approved `data.json` write; automatic
+production writes are not earned. File capture remains the
+fallback/backfill/direct-evidence path, not the monthly operational
+requirement.
 
-When a published figure does need to change:
+A local live overlay (`ATLAS_LIVE_OVERLAY=fixture` or `live`) serves today's
+plan from current Lunch Money observation without that write. Production
+without that flag still publishes the dated opening in `data.json`.
+
+When a published canonical figure does need to change:
 
 1. Edit `data.json` in this repo — every figure on the site comes from it
 2. **Check it renders** — see below
