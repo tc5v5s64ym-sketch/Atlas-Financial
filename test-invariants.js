@@ -861,6 +861,19 @@ const accountFacts = read('docs/ACCOUNT_FACTS.md');
 const master = read('docs/00_MASTER_PICTURE.md');
 const dataStr = JSON.stringify(data);
 
+// The exact HELOC crossing day is Forecast.projectDebts. A stored calendar
+// day in the assumptions (30 September on this opening) drifted from the
+// walk (31 October) and was published beside it.
+const helocCrossingAssumption = (plan.assumptions || [])
+  .find(a => /HELOC passes its own limit/.test(a));
+ok(!!helocCrossingAssumption,
+  'the HELOC-in-window assumption remains, without a stored crossing day');
+ok(helocCrossingAssumption
+  && !/30 September|31 October|2026-09-30|2026-10-31/.test(helocCrossingAssumption),
+  'plan assumptions do not store an exact HELOC crossing calendar day');
+ok(!/crosses \$202,654 on 30 September/.test(JSON.stringify(plan.nextDollar || {})),
+  'nextDollar does not store a September HELOC crossing date');
+
 // Amanda's pay cadence. ACCOUNT_FACTS once said both bi-weekly and
 // semi-monthly, in the same file, 236 lines apart.
 ok(/semi-monthly/i.test(accountFacts),

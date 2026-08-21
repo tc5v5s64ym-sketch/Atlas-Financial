@@ -909,7 +909,7 @@
             "The HELOC is interest-only and capitalises about $814 a month. The 14 August $1,100 payment is already inside the 2026-08-19 opening (posted $200,486.16). Do not invent a duplicate $814.18 chequing reserve.",
             "The recommended weekly budget is solved from the forecast: the largest weekly spend that keeps the projected balance above the target buffer on every single day of the window.",
             "Room for extra debt repayment is measured at the end of the window — cash projected above the buffer once every obligation and commitment has cleared. Paying it earlier than the low point would breach the buffer.",
-            "The HELOC passes its own limit inside this window with no new borrowing. It is 99.5% drawn, its interest capitalises onto the balance at about $814 a month, and nothing repays it — so the balance crosses $202,654 on 30 September on that alone. This is projected from the observed charge, not read from a statement, and it is why stopping HELOC growth ranks above extra card repayment in the next-dollar policy."
+            "The HELOC passes its own limit inside this window with no new borrowing. It is 99.5% drawn, its interest capitalises onto the balance at about $814 a month, and nothing repays it — so the balance crosses $202,654 on capitalised interest alone. This is projected from the observed charge, not read from a statement, and it is why stopping HELOC growth ranks above extra card repayment in the next-dollar policy. The exact crossing day is Forecast's debt projection, not a date stored here."
         ],
         "opening": {
             "asOf": "2026-08-19",

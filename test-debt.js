@@ -148,9 +148,10 @@ ok(/HELOC/.test(JSON.stringify(plan.nextDollar)),
    The two things review caught, and neither can come back quietly.
    ================================================================== */
 console.log('\n=== the crossing date is the day it happens, not the next snapshot ===');
-// The HELOC crosses on 30 September. The 30-day marks are 7 Sep, 7 Oct, 6 Nov,
-// so reading the breach off the marks reported OCTOBER — a different month, and
-// on the wrong side of the plan's own 30 September deadline.
+// The HELOC crossing is the day the capitalising charge first takes the
+// balance over the limit. The 30-day marks can fall after that day, so
+// reading the breach off the marks reports a later month and puts the
+// household on the wrong side of the plan's own deadline.
 const cross = proj.crossings.find(c => c.id === 'heloc' && !c.alreadyOver);
 ok(!!cross, 'the HELOC crossing is reported at all');
 const helocChargeDates = F.occurrences(helocObl, asOf, proj.end);
