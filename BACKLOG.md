@@ -1595,7 +1595,7 @@ provider-completeness (which product fields actually appear) is not a
 critical-path gate. The 2026-08-17 owner decision names Lunch Money as the
 normal operational feed; that does not reopen B80 and does not close `B81`.
 
-**B81 · Trusted canonical refresh from the live feed** · **DONE 2026-08-21** · *earned capability; production activation reserved*
+**B81 · Trusted canonical refresh from the live feed** · **DONE 2026-08-20** · *earned capability; production activation reserved*
 Build-strategy item `AF-LIVE-02`. Owner T4 pass:
 [`docs/connectivity/T4_OWNER_PASS_2026-08-17.md`](docs/connectivity/T4_OWNER_PASS_2026-08-17.md).
 The earned mechanism is `scripts/canonical-refresh.js`: incumbent observe

@@ -1089,7 +1089,7 @@ opening remain reserved.
   `ARCHITECTURE.md`'s absolute; any provider token handled under the secret
   boundary's configured-secret rule; no silent or unattended production
   writes.
-- **State** — **complete 2026-08-21 as the earned capability. Production
+- **State** — **complete 2026-08-20 as the earned capability. Production
   activation remains reserved.**
   Preview / approve / bounded posted-field write is earned. Candidate-date
   pending writes are earned through a distinct `cutoverApprovalId`. A clean
