@@ -37,7 +37,10 @@ facts PR; each needs its own independently provable outcome):
   is the undated current-regime $121.00/month (`$104.20 + $16.80`) on
   `plan.budget.categories` telecom `currentMonthly`. Forecast reserves
   that amount as daily cash on the master walk and does not also carry
-  it as a weekly-cap remainder. It is not a dated joint-chequing bill,
+  it as a weekly-cap remainder. Essential/required monthly totals and
+  coverage still include it; the walk tracks it on a reserved ledger
+  total, not in the weekly-cap Budget column. It is not a dated
+  joint-chequing bill,
   not the Aug. 1 $356.62 arrears/travel bill, not a second $15 watch
   line, and not the Travel Visa $250 payment or $17 minimum. Q18 stays
   OPEN for settlement state.

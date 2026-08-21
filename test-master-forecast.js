@@ -213,7 +213,7 @@ console.log('\n=== 7 / 91 / 365-day views share master knowledge and today\'s ca
     'the clipped week does not keep an out-of-range event from the original week');
   const implied = firstWeek.opening + firstWeek.confirmedIncome + firstWeek.estimatedIncome
     + firstWeek.injections - firstWeek.obligations - firstWeek.bills
-    - firstWeek.commitments - firstWeek.variable - firstWeek.extra;
+    - firstWeek.commitments - firstWeek.variable - (firstWeek.reserved || 0) - firstWeek.extra;
   ok(firstWeek && near(implied, firstWeek.closing, 0.02),
     'the recomputed partial week still reconciles opening + inflows − outflows to closing',
     firstWeek && `${implied.toFixed(2)} vs ${firstWeek.closing.toFixed(2)}`);

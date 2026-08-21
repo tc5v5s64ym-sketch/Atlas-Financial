@@ -110,8 +110,8 @@ ok(near(telecom.historical, historicalAvg),
   'engine historical still equals the independent YTD average');
 ok(near(telecom.dated, shaw.amount) && telecom.datedItems.length === 1,
   'engine dated is Shaw once');
-ok(near(telecom.gross, afterGross) && near(telecom.planned, 0),
-  'engine gross matches the independent AFTER reconstruction; planned is reserved off the cap');
+ok(near(telecom.gross, afterGross) && near(telecom.planned, 0) && near(telecom.reserved, undatedBell),
+  'engine gross matches the independent AFTER reconstruction; planned is reserved off the cap; reserved is Bell');
 
 console.log('\n=== exact delta is entirely the telecom correction ===');
 // BEFORE figures reproduced on main abcfd0dfd90dee6eea328af8bb518e7953ce0f79
@@ -121,14 +121,14 @@ const beforeEssential = 3523.23625;
 const remainderDelta = beforeRemainder - afterRemainder;
 ok(near(remainderDelta, 19.42625),
   'independent remainder delta vs stale historical is $19.43/month', money(remainderDelta));
-ok(near(budget.requiredMonthly, beforeRequired - remainderDelta - afterRemainder),
-  'AFTER requiredMonthly drops the stale remainder AND the reserved Bell amount',
+ok(near(budget.requiredMonthly, beforeRequired - remainderDelta),
+  'AFTER requiredMonthly drops the stale remainder and still includes reserved Bell',
   money(budget.requiredMonthly));
-ok(near(budget.essentialMonthly, beforeEssential - remainderDelta - afterRemainder),
-  'AFTER essentialMonthly drops the same amounts',
+ok(near(budget.essentialMonthly, beforeEssential - remainderDelta),
+  'AFTER essentialMonthly drops the same remainder and still includes reserved Bell',
   money(budget.essentialMonthly));
 const WEEKS = 365.25 / 12 / 7;
-ok(near(budget.cap.essentialWeekly, (beforeRequired - remainderDelta - afterRemainder) / WEEKS),
+ok(near(budget.cap.essentialWeekly, (beforeRequired - remainderDelta) / WEEKS),
   'required/week follows AFTER requiredMonthly from the calendar conversion');
 
 console.log('\n=== no double-count, no invented cash Bell, no Telus bill ===');

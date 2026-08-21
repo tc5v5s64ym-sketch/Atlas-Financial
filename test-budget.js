@@ -98,7 +98,7 @@ const bcaa = plan.bills.find(b => b.id === 'bcaa');
 const icbc = plan.bills.find(b => b.id === 'icbc');
 const fit = plan.bills.find(b => b.id === 'fit4less');
 ok(near(telecom.dated, shaw.amount), 'Shaw is subtracted from the telecom average', money(telecom.dated));
-ok(near(telecom.current, 121) && near(telecom.planned, 0),
+ok(near(telecom.current, 121) && near(telecom.planned, 0) && near(telecom.reserved, 121),
   'undated Bell is reserved current-regime cash, not a weekly-cap remainder', money(telecom.current));
 
 console.log('\n=== closed Telus is $0 forward; remainder is current-regime Bell ===');
@@ -122,7 +122,7 @@ ok(shaw && shaw.budgetCategory === 'telecom' && shaw.frequency === 'monthly',
 ok(near(telecom.historical, independentYtdAvg),
   'budgetBreakdown still reports the independent YTD historical average',
   money(independentYtdAvg));
-ok(near(telecom.current, 121) && near(telecom.planned, 0),
+ok(near(telecom.current, 121) && near(telecom.planned, 0) && near(telecom.reserved, 121),
   'forward Bell is the evidenced undated $121 current-regime amount, reserved out of the cap',
   money(telecom.current));
 ok(telecom.datedItems.length === 1 && telecom.datedItems[0].label === 'Shaw internet'
@@ -317,9 +317,12 @@ console.log('\n=== current-regime outranks historical and loses to owner target 
   ok(near(row.dated, 80), 'synthetic dated internet is $80');
   ok(near(row.current, 100) && row.source === 'current-regime',
     'current-regime source is labelled');
-  ok(near(row.gross, 180) && near(row.planned, 0),
+  ok(near(row.gross, 180) && near(row.planned, 0) && near(row.reserved, 100),
     'gross is current + dated; planned is 0 because current-regime is reserved cash',
     money(row.planned));
+  ok(near(regime.essentialMonthly, 100) && near(regime.requiredMonthly, 100),
+    'essential/required totals still include reserved current-regime spending',
+    money(regime.requiredMonthly));
   ok(near(row.current, 100) && !near(row.planned, 200 - 80),
     'planned is not the historical remainder');
 
@@ -327,7 +330,7 @@ console.log('\n=== current-regime outranks historical and loses to owner target 
   const ownerWins = F.budgetBreakdown(fixturePlan, fixturePeriods, {});
   const owned = ownerWins.categories[0];
   ok(owned.source === 'owner-target' && near(owned.gross, 250)
-    && near(owned.planned, 170),
+    && near(owned.planned, 170) && near(owned.reserved, 0),
     'owner target still beats current-regime', money(owned.planned));
 }
 

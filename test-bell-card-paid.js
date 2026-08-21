@@ -131,11 +131,38 @@ const cashDelta = simZero.ending - simBell.ending;
 ok(near(cashDelta, independent),
   'at weekly $0 over 365 days, currentMonthly $121 changes ending cash by the independent Bell total',
   `${money(cashDelta)} vs ${money(independent)}`);
-ok(near(simBell.totals.variable, independent),
-  'the reserved amount is the whole of variable spend at weekly $0',
-  money(simBell.totals.variable));
-ok(near(simZero.totals.variable, 0),
+ok(near(simBell.totals.reserved, independent) && near(simBell.totals.variable, 0),
+  'the reserved amount is its own ledger total, not the weekly-cap variable column',
+  money(simBell.totals.reserved));
+ok(near(simZero.totals.reserved, 0) && near(simZero.totals.variable, 0),
   'zeroing currentMonthly removes that reserved spend');
+
+{
+  const weekDays = 7;
+  const reservedPerWeek = BELL * weekDays / DAYS_PER_MONTH;
+  const first = simBell.weeks[0];
+  ok(near(first.variable, 0) && near(first.reserved, reservedPerWeek),
+    'a weekly-cap of $0 leaves Budget at $0 while Reserved holds the independent Bell week',
+    `${money(first.variable)} vs reserved ${money(first.reserved)}`);
+  const implied = first.opening + first.confirmedIncome + first.estimatedIncome + first.injections
+    - first.obligations - first.bills - first.commitments - first.variable - first.reserved - first.extra;
+  ok(near(implied, first.closing, 0.02),
+    'the week still reconciles once Reserved is its own outflow',
+    `${money(implied)} vs ${money(first.closing)}`);
+}
+
+{
+  const withCap = F.simulate(withBell, AS_OF, {
+    weeklyVariable: 70, targetBuffer: 0, horizonDays: 14, viewDays: 14,
+  });
+  const reservedPerWeek = BELL * 7 / DAYS_PER_MONTH;
+  ok(withCap.weeks.length === 2
+    && withCap.weeks.every(w => near(w.variable, 70) && near(w.reserved, reservedPerWeek)),
+    'Budget stays the selected weekly cap; Reserved is the independent Bell week',
+    withCap.weeks.map(w => `${money(w.variable)} + ${money(w.reserved)}`).join(' | '));
+  ok(withCap.weeks.every(w => w.variable + w.reserved > w.variable + 1),
+    'the Budget column is not the cap plus the Bell reserve');
+}
 
 const end = F.addDays(AS_OF, HORIZON - 1);
 const events = F.expandEvents(withBell, AS_OF, end, {});

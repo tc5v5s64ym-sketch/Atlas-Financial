@@ -180,6 +180,9 @@ ok(near(expected.ending,
   F.startingCashAmount(plan) + expected.totals.income - expected.totals.obligations
   - expected.totals.bills - expected.totals.commitments - reservedOverWindow),
   'ledger identity holds', expected.ending.toFixed(2));
+ok(near(expected.totals.reserved, reservedOverWindow) && near(expected.totals.variable, 0),
+  'undated current-regime is the reserved total, not the weekly-cap variable column',
+  expected.totals.reserved.toFixed(2));
 
 // The Burrard pair is atomic: same day, same amount, all or nothing. If a
 // future edit splits them across the payday the gap would vanish on paper.
@@ -437,7 +440,7 @@ ok(F.recommendWeekly(exact, '2026-01-01', { targetBuffer: 500 }) === 0 ||
 {
   const T = gapRec.sim.totals;
   const rows = F.startingCashAmount(plan) + T.confirmedIncome + T.estimatedIncome + T.injections
-    - T.obligations - T.bills - T.commitments - T.variable - T.extra;
+    - T.obligations - T.bills - T.commitments - T.variable - (T.reserved || 0) - T.extra;
   ok(near(rows, gapRec.sim.ending),
     'the ledger rows reconcile to the ending balance once gap funding is one of them',
     `${rows.toFixed(2)} = ${gapRec.sim.ending.toFixed(2)}`);
