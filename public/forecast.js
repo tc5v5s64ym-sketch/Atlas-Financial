@@ -313,6 +313,15 @@
     });
   }
 
+  // Opening-gap recovery may spend household cash the plan already owns.
+  // A debtId is borrowing capacity, not cash, and is not automatic permission
+  // to draw. Planned borrowing stays opt-in on Forecast.plannedDebt.
+  function canAutoCoverOpeningGap(src) {
+    if (!src || src.unusable === true) return false;
+    if (src.debtId) return false;
+    return Number(src.available) > 0;
+  }
+
   // Owner-policy action status stays on the row. A `debtId` means current
   // over-limit / pending-unknown satisfaction is derived from utilisation:
   // unknown pending or over-limit → open; otherwise done. Stored status is
@@ -1874,8 +1883,12 @@
   //
   //   openingGap  even zero spend breaches, because money is due before the
   //               first payday arrives. The fix is not a smaller budget, it is
-  //               a top-up. Size it, place it on the calendar as a one-off
-  //               injection on the day it is needed, and re-solve.
+  //               a top-up from non-debt cash the household already owns.
+  //               DebtId headroom is not that top-up. Size a cash recovery,
+  //               place it on the calendar as a one-off injection on the day
+  //               it is needed, and re-solve. If no cash source can reach
+  //               the gap, keep the shortfall: do not publish a
+  //               borrowing-enabled weekly cap as safe-to-spend.
   //
   // The opening-gap case is solved on the SAME window, by adding one event.
   // The previous implementation instead re-sliced the plan to start on the
@@ -1997,15 +2010,15 @@
     // does. The allocation lives here rather than in the page because it is
     // arithmetic against the gap, and the gap is only known at this point.
     //
-    // Sources are filled in rank order until the gap is met. One source is the
-    // common case, but it is not the only one: raise the buffer and the gap can
-    // outrun the largest single source while still being reachable by two.
-    // Modelling it as one debt-free injection then records a transfer that
-    // cannot happen and a HELOC draw that does — and the scoreboard shows the
-    // crossing a month later than it would really be.
-    const sources = (base.fundingSources || []).slice()
+    // Cash sources are filled in rank order until the gap is met. A debtId
+    // option is visible capacity, not automatic recovery: unapproved
+    // borrowing cannot repair an otherwise-infeasible opening. Planned
+    // borrowing stays on Forecast.plannedDebt. Raise the buffer and two cash
+    // sources can still combine; HELOC headroom is not one of those sources.
+    const declared = (base.fundingSources || []).slice();
+    const sources = declared
       .sort((a, b) => (a.rank || 0) - (b.rank || 0))
-      .filter(x => !x.unusable && x.available > 0);
+      .filter(canAutoCoverOpeningGap);
     const parts = [];
     let unmet = gapAmount;
     for (const src of sources) {
@@ -2016,11 +2029,19 @@
         amount: take, debtId: src.debtId || null });
       unmet -= take;
     }
-    // No sources declared at all: fall back to one unattributed injection, which
-    // is what a caller that has not told us anything is implicitly asking for.
-    if (!sources.length) {
+    // No sources declared at all: fall back to one unattributed cash
+    // injection, which is what a caller that has not told us anything is
+    // implicitly asking for. A declared list that is only debt or unusable
+    // is not that case — it is an unfunded shortfall.
+    //
+    // Legacy fundingDebtId is a facility hint, not authorization to borrow.
+    // Attaching it here used to convert HELOC capacity into opening-gap cash
+    // while plannedDebt.permitted stayed false. Unapproved borrowing cannot
+    // repair an opening gap (B70). Fail that path closed: no injection.
+    // Planned borrowing stays on Forecast.plannedDebt.
+    if (!declared.length && !base.fundingDebtId) {
       parts.push({ id: 'gapFunding', label: base.fundingLabel || 'Gap funding — transfer or draw',
-        short: 'gap funding', amount: gapAmount, debtId: base.fundingDebtId || null });
+        short: 'gap funding', amount: gapAmount, debtId: null });
       unmet = 0;
     }
     const shortfall = Math.max(0, unmet);
@@ -2046,16 +2067,19 @@
     const sourceVerdicts = (base.fundingSources || []).slice()
       .sort((a, b) => (a.rank || 0) - (b.rank || 0))
       .map(src => {
-        const covers = !src.unusable && atLeast(src.available, gapAmount);
+        const covers = canAutoCoverOpeningGap(src) && atLeast(src.available, gapAmount);
         const part = parts.find(p => p.id === src.id) || null;
         return {
           id: src.id, available: src.available, unusable: !!src.unusable,
           // What the household is told about this source, and nothing else
           // decides it: it covers the gap alone, it is one leg of the selected
-          // combination, or it cannot reach the gap and is not used.
+          // combination, or it cannot reach the gap and is not used. A debtId
+          // facility never covers an opening gap merely because it has room.
           verdict: covers ? 'covers' : part ? 'contributes' : 'insufficient',
           contributes: part ? part.amount : 0,
-          shortBy: Math.max(0, gapAmount - src.available),
+          shortBy: src.debtId && !src.unusable
+            ? gapAmount
+            : Math.max(0, gapAmount - src.available),
         };
       });
     const funding = {
@@ -2329,6 +2353,15 @@
       // "brings the crossing forward" is not a thing that can be said about it.
       if (!current) return no('noCurrentCrossing');
       const currentCrossing = { date: current.date, day: current.day };
+      // Debt capacity is not automatic opening-gap cash. Re-entering
+      // recommend() with only this facility used to auto-draw it — the same
+      // unapproved-borrowing path B70 forbids. Planned borrowing stays
+      // opt-in on Forecast.plannedDebt.
+      if (option.debtId) {
+        return no('borrowing-not-automatic', {
+          currentCrossing, gapAmount: gap.amount, available: option.available,
+        });
+      }
 
       // The facility funds the gap through its own declared headroom, so an
       // alternative it cannot actually supply is reported as one, not priced.

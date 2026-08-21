@@ -171,9 +171,12 @@ ok(already.includes('Amazon.ca Rewards Mastercard (MBNA)')
   'a facility over its limit today is flagged as already-over, not as a future crossing',
   already.join(', '));
 
-console.log('\n=== how the gap is funded changes the debt, not just the cash ===');
-// A generic positive injection made the cash line right and the debt line
-// wrong: the scoreboard modelled the free source no matter which was chosen.
+console.log('\n=== a fundingDebtId hint cannot convert an opening gap into a HELOC draw ===');
+// This file still exercises the legacy recommend() calling convention.
+// B70: a facility hint is not authorization. Opening-gap recovery must
+// fail that path closed rather than attach the HELOC and publish a
+// borrowing-enabled weekly cap. Independent arithmetic for the gap case
+// lives in test-opening-gap-no-auto-borrow.js.
 const freeAdvice = F.recommend(plan, asOf, Object.assign({}, BASE, { fundingDebtId: null }));
 const freeProj = F.projectDebts(plan, data.debts, asOf,
   Object.assign({}, freeAdvice.simOptions, { weeklyVariable: freeAdvice.weekly }));
@@ -183,30 +186,20 @@ const drawProj = F.projectDebts(plan, data.debts, asOf,
 
 ok(freeProj.byId.heloc.drawn === 0,
   'funding from an account the household owns adds nothing to the HELOC');
-if (freeAdvice.gap) {
-  ok(near(drawProj.byId.heloc.drawn, freeAdvice.gap.amount),
-    'funding from the HELOC adds exactly the gap to it',
-    money(drawProj.byId.heloc.drawn));
-  ok(drawProj.byId.heloc.balance > freeProj.byId.heloc.balance,
-    'so the projected balance is higher',
-    `${money(drawProj.byId.heloc.balance)} vs ${money(freeProj.byId.heloc.balance)}`);
-  const drawCross = drawProj.crossings.find(c => c.id === 'heloc' && !c.alreadyOver);
-  ok(drawCross.date <= cross.date, 'drawing the gap does not delay the crossing',
-    `${drawCross.date} vs ${cross.date}`);
-  ok(drawAdvice.gap.amount + 0.005 < helocObl.amount || drawCross.date < cross.date,
-    'a draw at least one capitalised charge pulls the crossing strictly sooner',
-    `${drawCross.date} vs ${cross.date}`);
-} else {
-  ok(drawProj.byId.heloc.drawn === 0,
-    'with no opening gap a HELOC funding choice draws nothing');
+ok(drawAdvice.plannedDebt && drawAdvice.plannedDebt.permitted === false,
+  'plannedDebt stays unpermitted when only fundingDebtId is supplied');
+ok(!(drawAdvice.simOptions.injections || []).some(i => i.debtId),
+  'the legacy hint does not inject a HELOC draw');
+ok(near((drawAdvice.funding && drawAdvice.funding.borrowed) || 0, 0),
+  'and records no borrowed opening-gap cash');
+ok(drawProj.byId.heloc.drawn === 0,
+  'so the HELOC walk draws nothing from the hint');
+if (drawAdvice.gap) {
+  ok(drawAdvice.funding && drawAdvice.funding.feasible === false,
+    'an opening gap with only a debt hint stays unfunded');
+  ok(drawAdvice.weekly === 0,
+    'and no borrowing-enabled weekly cap is published', `$${drawAdvice.weekly}/week`);
 }
-// The cash side must be identical either way — the gap is the same amount of
-// money arriving on the same day; only its cost differs.
-ok(near(freeAdvice.sim.ending, drawAdvice.sim.ending),
-  'the cash projection is unchanged by the source — only the debt moves',
-  money(freeAdvice.sim.ending));
-ok(freeAdvice.weekly === drawAdvice.weekly,
-  'and so is the weekly cap', `$${freeAdvice.weekly}`);
 
 // Every funding option must declare whether taking it is borrowing.
 for (const o of plan.funding.options) {

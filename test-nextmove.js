@@ -408,6 +408,11 @@ const OPTS = (targetBuffer, o) => Object.assign({
   disabled: [], debts: data.debts, extraDebtTarget: plan.nextDollar.target,
   fundingSources: plan.funding.options,
 }, o);
+const CASH_FUNDING = plan.funding.options.map(o =>
+  o.id === 'amanda' ? Object.assign({}, o, { cash: undefined, available: 20000 }) : o);
+const CASH_OPTS = (targetBuffer, o) => OPTS(targetBuffer, Object.assign({
+  fundingSources: CASH_FUNDING,
+}, o || {}));
 const ACTION_AMT = plan.actions[0].amount;
 const SHORT_BUF = ACTION_AMT + openingFloor(plan, asOf) + 200;
 const SHORT_REMAINDER = gapAtBuffer(plan, SHORT_BUF, asOf) - ACTION_AMT;
@@ -448,12 +453,10 @@ const DEFAULT_GAP = gapAtBuffer(plan, plan.defaults.targetBuffer, asOf);
   };
   ok(covered.id === (gap500 > 0 ? (coversAt(500, actionAmt) ? 'restored' : 'partial') : 'windowEnding'),
     'the authored action is judged against the $500-buffer gap, or the window when there is none', covered.id);
-  ok(short1000.id === (gap1000 > 0 ? (coversAt(1000, actionAmt) ? 'restored' : 'partial') : 'windowEnding')
-    && same(remOf(short1000), Math.max(0, gap1000 > 0 ? gap1000 - actionAmt : 0)),
-    'at a $1,000 buffer the remainder is gap minus the same action, or none',
+  ok(short1000.id === (gap1000 > 0 ? 'unfunded' : 'windowEnding'),
+    'at a $1,000 buffer HELOC capacity does not fund the gap',
     `${short1000.id} / ${short1000.remainder}`);
-  ok(short1500.id === (gap1500 > 0 ? (coversAt(1500, actionAmt) ? 'restored' : 'partial') : 'windowEnding')
-    && same(remOf(short1500), Math.max(0, gap1500 > 0 ? gap1500 - actionAmt : 0)),
+  ok(short1500.id === (gap1500 > 0 ? 'unfunded' : 'windowEnding'),
     'and at a $1,500 buffer', `${short1500.id} / ${short1500.remainder}`);
 }
 
@@ -512,7 +515,7 @@ function mutant(from, to) {
   return { engine: sandbox.module.exports };
 }
 const publishedAt = (m, buffer, o) =>
-  m.nextMove(plan, m.recommend(plan, asOf, OPTS(buffer, o)), { weeklyOverride: null });
+  m.nextMove(plan, m.recommend(plan, asOf, CASH_OPTS(buffer, o)), { weeklyOverride: null });
 
 const MUTATIONS = [
   // B73's own mutation, moved. On the published plan at a $1,500 buffer the
@@ -780,9 +783,8 @@ for (const s of SETTINGS) {
       `${m.actionAmount} + ${m.remainder} = ${m.gapAmount}`);
   }
 }
-ok(['restored', 'overrideBreach', 'partial', 'unfunded', 'windowEnding']
-  .every(id => seen.has(id)),
-'the published plan reaches all five outcomes through the page\'s own wording',
+ok(['unfunded', 'windowEnding'].every(id => seen.has(id)),
+'the published plan reaches unfunded and windowEnding without auto-drawing the HELOC',
 [...seen].join(', '));
 
 /* WHY THE EQUIVALENCE SURVIVES THE TIMING FIX. Gating the two restoring

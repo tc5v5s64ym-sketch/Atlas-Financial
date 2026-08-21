@@ -233,7 +233,7 @@ const rankTrapStatus = F.planStatus(rankTrap, { weeklyOverride: null });
     String(rankTrapStatus.noSingleSourceCovers));
 }
 // And the published live sources no longer combine: Q25 keeps Amanda at $0,
-// so a mid-sized gap is a single HELOC cover, not a two-source plan.
+// and HELOC capacity is not automatic opening-gap cash.
 {
   const combineBuf = (() => {
     const src = fundingById(data.plan, data.revolvingExtra, data.debts);
@@ -247,8 +247,8 @@ const rankTrapStatus = F.planStatus(rankTrap, { weeklyOverride: null });
   }, { fundingSources: data.plan.funding.options }));
   const s = F.planStatus(adv, { weeklyOverride: null });
   const amanda = (adv.funding.sources || []).find(x => x.id === 'amanda');
-  ok(s.id === 'gap' && s.noSingleSourceCovers !== true,
-    'on the published plan a mid-sized gap is a single HELOC cover while Q25 is OPEN');
+  ok(s.id === 'unfunded',
+    'on the published plan a mid-sized gap is unfunded while Q25 is OPEN and HELOC is not auto-drawn');
   ok(amanda && same(amanda.available, 0) && amanda.verdict === 'insufficient',
     'Amanda\'s held-elsewhere locator contributes no funding capacity',
     amanda ? `${amanda.verdict} ${amanda.available}` : 'missing');
@@ -382,9 +382,9 @@ const odAvailable = F.resolveFundingSources(
   plan.funding.options, data.revolvingExtra, plan, data.debts
 ).find(o => o.id === 'overdraft').available;
 const floor = openingFloor(plan, asOf);
-const COMBINE_GAP = src.heloc.available / 2;
+const COMBINE_GAP = 800;
 const COMBINE_BUF = COMBINE_GAP + floor;
-const CONTRIB_BUF = src.heloc.available * 1.25 + floor;
+const CONTRIB_BUF = 900 + floor;
 const UNFUNDED_GAP = usableFunding(plan, data.revolvingExtra, data.debts) + 1000;
 const UNFUNDED_BUF = UNFUNDED_GAP + floor;
 const expectedVerdict = (available, gap) => {
@@ -400,8 +400,8 @@ const expectedVerdict = (available, gap) => {
   ok(adv.funding && same(adv.gap.amount, wantGap), 'a just-above-floor buffer sizes the gap from the floor', adv.gap ? String(adv.gap.amount) : 'none');
   ok(same(src.amanda.available, 0) && s.amanda.verdict === expectedVerdict(src.amanda.available, wantGap),
     'Amanda\'s held-elsewhere locator is not a cover or contribution while Q25 is OPEN', s.amanda.verdict);
-  ok(s.heloc.verdict === expectedVerdict(src.heloc.available, wantGap),
-    'the HELOC verdict follows its utilisation room against that gap', s.heloc.verdict);
+  ok(s.heloc.verdict === 'insufficient' && same(s.heloc.contributes, 0),
+    'HELOC capacity is visible but does not cover an opening gap', s.heloc.verdict);
   ok(s.overdraft.verdict === 'insufficient'
     && same(s.overdraft.shortBy, Math.max(0, wantGap - odAvailable)),
     'the overdraft is short by gap minus its room', String(s.overdraft.shortBy));
@@ -415,13 +415,15 @@ const expectedVerdict = (available, gap) => {
   const adv = F.recommend(plan, asOf, OPTS(COMBINE_BUF));
   const s = bySource(adv);
   const wantGap = gapAtBuffer(plan, COMBINE_BUF, asOf);
-  ok(same(adv.gap.amount, wantGap), 'a mid-sized HELOC-only gap is sized from the floor', String(adv.gap.amount));
+  ok(same(adv.gap.amount, wantGap), 'a mid-sized cash-only gap is sized from the floor', String(adv.gap.amount));
   ok(s.amanda.verdict === 'insufficient' && same(s.amanda.contributes, 0),
     'Amanda contributes nothing from the held-elsewhere raw balance',
     `${s.amanda.verdict} ${s.amanda.contributes}`);
-  ok(s.heloc.verdict === 'covers' && same(s.heloc.contributes, wantGap),
-    'the HELOC covers that mid-sized gap alone',
+  ok(s.heloc.verdict === 'insufficient' && same(s.heloc.contributes, 0),
+    'the HELOC does not auto-cover that mid-sized gap',
     `${s.heloc.verdict} ${s.heloc.contributes}`);
+  ok(adv.funding && adv.funding.feasible === false && same(adv.funding.shortfall, wantGap),
+    'without a cash source the gap remains unfunded', String(adv.funding && adv.funding.shortfall));
   ok(s.overdraft.verdict === 'insufficient' && s.cards.verdict === 'insufficient',
     'the unusable sources stay unused');
   const contributed = adv.funding.sources.reduce((a, x) => a + x.contributes, 0);
@@ -459,8 +461,10 @@ const expectedVerdict = (available, gap) => {
   ok(s.overdraft && s.overdraft.verdict === 'insufficient' && same(s.overdraft.shortBy, 0),
     'an unusable source with more than enough is still not a cover',
     s.overdraft ? `${s.overdraft.verdict} ${s.overdraft.shortBy}` : 'missing');
-  ok(adv.funding && same(adv.funding.allocated, gapAtBuffer(plan, buf, asOf)) && adv.funding.feasible,
-    'and it is left out of the allocation');
+  ok(!(adv.funding.parts || []).some(p => p.id === 'overdraft'),
+    'and the unusable overdraft is left out of the allocation');
+  ok(adv.funding && adv.funding.feasible === false,
+    'HELOC capacity does not silently replace it');
 }
 {
   // The coverage comparison uses the engine's own epsilon, so it cannot
@@ -562,14 +566,24 @@ const MUTATIONS = [
     real: () => rankTrapStatus.noSingleSourceCovers === false },
 
   { label: 'halving the coverage comparison makes a source that cannot cover the gap claim it can',
-    from: '        const covers = !src.unusable && atLeast(src.available, gapAmount);',
-    to: '        const covers = !src.unusable && atLeast(src.available, gapAmount / 2);',
-    check: m => bySource(m.recommend(plan, asOf, OPTS(CONTRIB_BUF))).heloc.verdict === 'covers',
-    real: () => bySource(F.recommend(plan, asOf, OPTS(CONTRIB_BUF))).heloc.verdict === 'contributes' },
+    from: '        const covers = canAutoCoverOpeningGap(src) && atLeast(src.available, gapAmount);',
+    to: '        const covers = canAutoCoverOpeningGap(src) && atLeast(src.available, gapAmount / 2);',
+    check: m => {
+      const overlay = plan.funding.options.map(o =>
+        o.id === 'amanda' ? Object.assign({}, o, { cash: undefined, available: 800 }) : o);
+      return bySource(m.recommend(plan, asOf,
+        Object.assign(OPTS(CONTRIB_BUF), { fundingSources: overlay }))).amanda.verdict === 'covers';
+    },
+    real: () => {
+      const overlay = plan.funding.options.map(o =>
+        o.id === 'amanda' ? Object.assign({}, o, { cash: undefined, available: 800 }) : o);
+      return bySource(F.recommend(plan, asOf,
+        Object.assign(OPTS(CONTRIB_BUF), { fundingSources: overlay }))).amanda.verdict === 'contributes';
+    } },
 
   { label: 'dropping the unusable guard offers money the plan cannot spend',
-    from: '        const covers = !src.unusable && atLeast(src.available, gapAmount);',
-    to: '        const covers = atLeast(src.available, gapAmount);',
+    from: '    if (!src || src.unusable === true) return false;',
+    to: '    if (!src) return false;',
     check: m => {
       const rich = plan.funding.options.map(o =>
         o.id === 'overdraft' ? Object.assign({}, o, { available: 999999, cash: undefined }) : o);
@@ -584,8 +598,8 @@ const MUTATIONS = [
     } },
 
   { label: 'reversing the per-source shortfall reports the wrong figure short',
-    from: '          shortBy: Math.max(0, gapAmount - src.available),',
-    to: '          shortBy: Math.max(0, src.available - gapAmount),',
+    from: '          shortBy: src.debtId && !src.unusable\n            ? gapAmount\n            : Math.max(0, gapAmount - src.available),',
+    to: '          shortBy: src.debtId && !src.unusable\n            ? gapAmount\n            : Math.max(0, src.available - gapAmount),',
     check: m => cents(bySource(m.recommend(plan, asOf, OPTS(COMBINE_BUF))).overdraft.shortBy) === 0,
     real: () => same(bySource(F.recommend(plan, asOf, OPTS(COMBINE_BUF))).overdraft.shortBy,
       Math.max(0, gapAtBuffer(plan, COMBINE_BUF, asOf) - odAvailable)) },
@@ -763,7 +777,8 @@ function legacyCards({ adv }) {
   return F.resolveFundingSources(plan.funding.options, data.revolvingExtra, plan, data.debts)
     .slice().sort((a, b) => a.rank - b.rank)
     .map(o => {
-      const enough = o.available >= needed;
+      const cashAvail = o.debtId ? 0 : o.available;
+      const enough = !o.unusable && !o.debtId && o.available >= needed;
       const part = fundingPlan && fundingPlan.parts.find(p => p.id === o.id);
       return `<div class="fund ${o.unusable || !enough ? 'fund-no' : 'fund-yes'}">
           <div class="fund-top">
@@ -774,7 +789,7 @@ function legacyCards({ adv }) {
         ? `<span class="ok">Covers the whole ${money(needed)}</span>`
         : part
           ? `<span class="ok">Covers ${money2(part.amount)} of the ${money(needed)}</span> <span class="mutedtext">— used in the plan, with the rest from elsewhere</span>`
-          : `<span class="no">Not enough — ${money(Math.max(0, needed - o.available))} short of the ${money(needed)} needed</span>`}</div>
+          : `<span class="no">Not enough — ${money(Math.max(0, needed - cashAvail))} short of the ${money(needed)} needed</span>`}</div>
           <p class="fund-note">${o.note}</p>
         </div>`;
     }).join('');
@@ -811,8 +826,8 @@ const overWeekly = Math.max(recWeekly + 500, 2500);
 const SETTINGS = [
   { what: 'the published default buffer, no override', targetBuffer: defBuf, weeklyVariable: null, expect: 'onPlan' },
   { what: 'default buffer, an over-cap weekly override', targetBuffer: defBuf, weeklyVariable: overWeekly, expect: 'negative' },
-  { what: 'a mid-sized gap the HELOC covers alone', targetBuffer: COMBINE_BUF, weeklyVariable: null, expect: 'gap' },
-  { what: 'that mid-sized gap, an over-cap override', targetBuffer: COMBINE_BUF, weeklyVariable: overWeekly, expect: 'overrideBreach' },
+  { what: 'a mid-sized gap HELOC capacity cannot auto-cover', targetBuffer: COMBINE_BUF, weeklyVariable: null, expect: 'unfunded' },
+  { what: 'that mid-sized gap, an over-cap override', targetBuffer: COMBINE_BUF, weeklyVariable: overWeekly, expect: 'unfunded' },
   { what: 'a gap beyond every usable source', targetBuffer: UNFUNDED_BUF, weeklyVariable: null, expect: 'unfunded' },
   { what: 'that unfunded gap, an over-cap override', targetBuffer: UNFUNDED_BUF, weeklyVariable: overWeekly, expect: 'unfunded' },
 ];
@@ -833,8 +848,8 @@ for (const s of SETTINGS) {
     flat(legacyCards(inputs)) === flat(movedCards(inputs)) ? ''
       : `\n      old: ${flat(legacyCards(inputs))}\n      new: ${flat(movedCards(inputs))}`);
 }
-ok(['onPlan', 'negative', 'gap', 'overrideBreach', 'unfunded'].every(id => seen.has(id)),
-  'the published data reaches five of the eight verdicts',
+ok(['onPlan', 'negative', 'unfunded'].every(id => seen.has(id)),
+  'the published data reaches onPlan, negative, and unfunded without auto-drawing the HELOC',
   [...seen].join(', '));
 ok(!seen.has('combination') && !seen.has('belowBuffer'),
   'combination is proved on fixtures above once Q25 keeps Amanda at $0; belowBuffer stays on fixtures');
@@ -865,13 +880,12 @@ console.log('\n=== 12b. the band and the source card cannot contradict each othe
     'and the band states what the allocation actually proves',
     flat(bandHtml).slice(0, 100));
 
-  // Live sources no longer combine: Amanda is $0 available, so a mid-sized
-  // gap is a HELOC cover. The stronger "no single source covers it" sentence
-  // stays on the RANK_TRAP / COMBINATION fixtures, not the Q25-open account.
+  // Live sources no longer auto-draw the HELOC: Amanda is $0 available, so a
+  // mid-sized gap is unfunded. The HELOC cover card stays off.
   const real = published({ targetBuffer: COMBINE_BUF, weeklyVariable: null });
   const [, realBand] = movedBand(real);
-  ok(/covers the whole/.test(movedCards(real)) || /Covers the whole/.test(movedCards(real)),
-    'the published mid-sized gap has a HELOC cover card');
+  ok(!/Covers the whole/.test(movedCards(real)),
+    'the published mid-sized gap has no HELOC cover card');
   ok(!/no single source covers it/.test(realBand),
     'and the band does not claim no single source covers it');
 }

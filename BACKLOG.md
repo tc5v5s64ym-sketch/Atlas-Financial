@@ -113,7 +113,13 @@ separate cash obligation or fee. Forecast already implements this:
 `facilityCapacity()` returns bounded non-negative headroom,
 `pendingUnknown()` is zero usable capacity, planned borrowing is opt-in
 and purpose-capped, and `projectDebts` / `plannedDebt` reject an interim
-limit crossing. Direct regression proofs live in `test-master-forecast.js`.
+limit crossing. Opening-gap recovery does not auto-inject a `debtId`
+source merely because it has headroom: unapproved borrowing cannot
+repair an otherwise-infeasible opening or raise safe-to-spend.
+A legacy `fundingDebtId` hint without declared sources is the same
+facility hint, not permission; that path fails closed.
+Direct regression proofs live in `test-master-forecast.js` and
+`test-opening-gap-no-auto-borrow.js`.
 
 **B71 · Triangle Mastercard limit risk on the B91 opening** · **DONE / RESOLVED 2026-08-18** · *stale "over every month" claim retired*
 
