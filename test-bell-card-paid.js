@@ -253,5 +253,43 @@ ok(near(liveOff.ending - liveBell.ending, liveIndependent),
 ok(!near(liveOff.ending - liveWatch.ending, liveIndependent),
   'live plan: adding the $15 watch line again is not the $121 identity');
 
+console.log('\n=== partial-week slice reserved uses retained days, not a full week ===');
+{
+  const reservedDaily = BELL / DAYS_PER_MONTH;
+  const oneDay = F.simulate(withBell, AS_OF, {
+    weeklyVariable: 0, targetBuffer: 0, horizonDays: HORIZON, viewDays: 1,
+  });
+  const wantOne = reservedDaily * 1;
+  const fullWeek = reservedDaily * 7;
+  ok(oneDay.daily.length === 1 && oneDay.weeks.length === 1,
+    'a 1-day as-of slice keeps one day and one truncated week');
+  ok(oneDay.weeks[0].end === AS_OF,
+    'the truncated week ends on the retained day, not the original week end',
+    oneDay.weeks[0].end);
+  ok(near(oneDay.weeks[0].reserved, wantOne),
+    'the truncated week reserved is 1 independent Bell day, not 7',
+    `${money(oneDay.weeks[0].reserved)} vs ${money(wantOne)}`);
+  ok(near(oneDay.totals.reserved, wantOne) && !near(oneDay.totals.reserved, fullWeek),
+    'the 1-day slice total is the retained-day identity, not a full-week amount',
+    `${money(oneDay.totals.reserved)} vs ${money(wantOne)}`);
+
+  const monthDays = 30;
+  const monthSlice = F.simulate(withBell, AS_OF, {
+    weeklyVariable: 0, targetBuffer: 0, horizonDays: HORIZON, viewDays: monthDays,
+  });
+  const truncated = monthSlice.weeks[monthSlice.weeks.length - 1];
+  const retained = monthSlice.daily.filter(d => d.date >= truncated.start && d.date <= truncated.end).length;
+  ok(monthSlice.daily.length === monthDays && retained > 0 && retained < 7,
+    'a 30-day slice ends on a partial week',
+    String(retained));
+  ok(near(truncated.reserved, reservedDaily * retained),
+    'that partial week reserved uses the retained day count',
+    `${money(truncated.reserved)} vs ${money(reservedDaily * retained)}`);
+  ok(near(monthSlice.totals.reserved, reservedDaily * monthDays)
+    && !near(monthSlice.totals.reserved, reservedDaily * 7 * monthSlice.weeks.length),
+    'the 30-day reserved total is 30 independent days, not five full weeks',
+    `${money(monthSlice.totals.reserved)} vs ${money(reservedDaily * monthDays)}`);
+}
+
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
 process.exit(failures === 0 ? 0 : 1);

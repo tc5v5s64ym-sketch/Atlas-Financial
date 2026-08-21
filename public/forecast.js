@@ -741,6 +741,10 @@
         const closingRow = daily[daily.length - 1];
         copy.end = end;
         copy.closing = closingRow ? closingRow.balance : copy.closing;
+        // Same retained-day identity as sliceSimulationFrom: a midweek
+        // 1-day/month/payday/custom cut must not keep a full 7-day reserve.
+        const weekDays = daily.filter(d => d.date >= copy.start && d.date <= copy.end);
+        copy.reserved = currentRegimeMonthly(plan) * 12 / 365.25 * weekDays.length;
       }
       return copy;
     });
