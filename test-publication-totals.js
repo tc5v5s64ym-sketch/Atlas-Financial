@@ -157,7 +157,7 @@ const rowLax = ((data.lacrosse && data.lacrosse.sources) || [])
 const rowIncomeMonthly = Math.round(rowIncome / data.incomeCaptureMonths);
 
 ok(data.debts.length === 7, 'seven posted debt rows');
-ok(data.assets.length === 9, 'nine asset rows');
+ok(data.assets.length === 10, 'ten asset rows, including Cash Back Dollars');
 ok((data.income || []).length === 5, 'five income-line rows');
 
 const live = F.publicationTotals(data);
@@ -326,6 +326,114 @@ const extraPlan = {
 const afterCommit = F.publicationTotals(Object.assign({}, data, extraPlan));
 ok(afterCommit.commitmentsTotal === rowCommit + 150,
   'an extra $150 plan.commitments row moves the published total');
+
+console.log('\n=== B28: dollar Cash Back rewards enter assets; points do not ===');
+/* ACCOUNT_FACTS is the source of the $47.21. The hand arithmetic below uses
+ * that literal plus the existing FIX totals — not publicationTotals reading
+ * itself. Points stay out of every dollar total. */
+const FACTS = read('docs/ACCOUNT_FACTS.md');
+const CASH_BACK_DOLLARS = 47.21;
+const TD_REWARDS_POINTS = 57968;
+ok(/\| Cash Back Dollars \| \$47\.21 \|/.test(FACTS),
+  'ACCOUNT_FACTS records TD Cash Back Visa Cash Back Dollars = $47.21');
+ok(/\| TD Rewards points \| 57,968 \|/.test(FACTS),
+  'ACCOUNT_FACTS records 57,968 TD Rewards points on the Travel Visa');
+ok(sameCents(CASH_BACK_DOLLARS, 47 + 21 / 100),
+  'the dollar reward is independently $47 + 21 cents');
+
+const HAND_ASSETS_WITH_REWARD = HAND_ASSETS + CASH_BACK_DOLLARS;
+ok(sameCents(HAND_ASSETS_WITH_REWARD, 1250 + 47.21),
+  'FIX assets $1,250 plus $47.21 is $1,297.21 by hand',
+  money2(HAND_ASSETS_WITH_REWARD));
+
+const fixWithReward = Object.assign({}, FIX, {
+  assets: FIX.assets.concat([{ label: 'Cash Back Dollars', value: CASH_BACK_DOLLARS }]),
+});
+const pubWithReward = F.publicationTotals(fixWithReward);
+const pubWithoutReward = F.publicationTotals(FIX);
+ok(sameCents(pubWithReward.assets, HAND_ASSETS_WITH_REWARD)
+  && sameCents(pubWithReward.assets - pubWithoutReward.assets, CASH_BACK_DOLLARS),
+  'adding the dollar reward raises published assets by exactly $47.21');
+ok(sameCents(pubWithReward.financialAccountsOnly - pubWithoutReward.financialAccountsOnly,
+  CASH_BACK_DOLLARS),
+  'and financial-account net worth by the same $47.21');
+ok(same(pubWithReward.totalDebt, pubWithoutReward.totalDebt)
+  && same(pubWithReward.creditLeft, pubWithoutReward.creditLeft)
+  && same(pubWithReward.annualInterest, pubWithoutReward.annualInterest),
+  'debt totals, credit left, and interest are unchanged');
+
+const pubRewardRemoved = F.publicationTotals(Object.assign({}, FIX, { assets: FIX.assets }));
+ok(sameCents(pubRewardRemoved.assets, HAND_ASSETS)
+  && sameCents(pubWithReward.assets - pubRewardRemoved.assets, CASH_BACK_DOLLARS),
+  'removing that reward drops the published total by the same $47.21');
+
+const pubRewardChanged = F.publicationTotals(Object.assign({}, FIX, {
+  assets: FIX.assets.concat([{ label: 'Cash Back Dollars', value: 40 }]),
+}));
+ok(sameCents(pubRewardChanged.assets, HAND_ASSETS + 40)
+  && sameCents(pubWithReward.assets - pubRewardChanged.assets, CASH_BACK_DOLLARS - 40),
+  'changing the reward to $40 moves the published total by the $7.21 difference');
+
+const pubWithPointsField = F.publicationTotals(Object.assign({}, FIX, {
+  assets: FIX.assets.concat([
+    { label: 'Cash Back Dollars', value: CASH_BACK_DOLLARS },
+    { label: 'TD Rewards points', points: TD_REWARDS_POINTS },
+  ]),
+}));
+ok(sameCents(pubWithPointsField.assets, HAND_ASSETS_WITH_REWARD),
+  'a points field does not enter the dollar asset total');
+ok(!sameCents(pubWithPointsField.assets, HAND_ASSETS + TD_REWARDS_POINTS)
+  && !sameCents(pubWithPointsField.assets, HAND_ASSETS_WITH_REWARD + TD_REWARDS_POINTS),
+  'and 57,968 is not treated as dollars');
+
+const liveReward = (data.assets || []).find(a => a.label === 'TD Cash Back Dollars');
+ok(liveReward && liveReward.cash == null && sameCents(liveReward.value, CASH_BACK_DOLLARS),
+  'live data.json carries the ACCOUNT_FACTS $47.21 as a non-cash asset row');
+ok(!(data.assets || []).some(a => a.value === TD_REWARDS_POINTS || a.points === TD_REWARDS_POINTS),
+  'live assets do not carry 57,968 as a dollar value or a valued points field');
+const liveWithoutReward = F.publicationTotals(Object.assign({}, data, {
+  assets: (data.assets || []).filter(a => a.label !== 'TD Cash Back Dollars'),
+}));
+ok(sameCents(live.assets - liveWithoutReward.assets, CASH_BACK_DOLLARS)
+  && sameCents(live.financialAccountsOnly - liveWithoutReward.financialAccountsOnly,
+    CASH_BACK_DOLLARS),
+  'removing the live Cash Back Dollars row drops published net-worth assets by $47.21');
+ok(sameCents(live.totalDebt, liveWithoutReward.totalDebt)
+  && same(live.creditLeft, liveWithoutReward.creditLeft),
+  'live debt total and funding-capacity headroom do not move with that row');
+
+const spendable = F.startingCashAmount(data.plan);
+const spendableHand = (data.plan.startingCash.breakdown || [])
+  .reduce((s, b) => s + (Number(b.value) || 0), 0);
+ok(sameCents(spendable, spendableHand),
+  'spendable cash is still the household cash-register sum, independently of assets');
+ok(!(data.plan.startingCash.breakdown || []).concat(data.plan.startingCash.heldElsewhere || [])
+  .some(b => /cash back dollars/i.test(String(b.label || b.id || ''))),
+  'Cash Back Dollars is not a cash-register identity');
+ok(!JSON.stringify(data.plan.startingCash).includes('47.21'),
+  'the cash register does not carry the $47.21 rewards balance');
+
+const recOpts = {
+  scenario: data.plan.defaults.scenario,
+  incomeOverrides: {}, disabled: [],
+  extraDebtMonthly: data.plan.defaults.extraDebtMonthly,
+  targetBuffer: data.plan.defaults.targetBuffer,
+  debts: data.debts,
+  extraDebtTarget: data.plan.nextDollar && data.plan.nextDollar.target,
+  fundingSources: data.plan.funding && data.plan.funding.options,
+  extraFacilities: data.revolvingExtra,
+};
+const advice = F.recommend(data.plan, data.meta.asOf, recOpts);
+ok(advice && advice.weekly != null,
+  'Forecast.recommend still returns a weekly cap on this plan');
+const forecastSrc = read('public/forecast.js');
+const recMark = 'function recommend(plan, asOf, opts)';
+const recStart = forecastSrc.indexOf(recMark);
+const recEnd = forecastSrc.indexOf('function incomeDeadline(', recStart);
+const recommendSrc = recStart >= 0 && recEnd > recStart
+  ? forecastSrc.slice(recStart, recEnd) : '';
+ok(recommendSrc.indexOf(recMark) === 0 && !/\bassets\b/.test(recommendSrc),
+  'recommend does not read the assets list, so safe-to-spend cannot move with this row');
 
 console.log('\n=== mutation: breaking the engine formula fails ===');
 const FORECAST_SRC = read('public/forecast.js');
