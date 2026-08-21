@@ -294,8 +294,8 @@ ok((live.risks || []).filter(r => r.id === 'facilityCrossing')
     .map(r => r.debtId).join(',')
   === (liveDebt.crossings || []).filter(c => !c.alreadyOver && c.id !== 'heloc').map(c => c.id).join(','),
   'live later crossings follow the debt projection, excluding already-over cards and the HELOC');
-ok(risk(live, 'telecomUnrouted') && risk(live, 'telecomUnrouted').planned > 0,
-  'live telecom remainder risk is present (card-paid Bell, not a live Telus bill)');
+ok(!risk(live, 'telecomUnrouted'),
+  'live telecom remainder risk is gone — card-paid Bell is reserved on the cash walk');
 
 const liveMission = F.mission(liveAdvice, liveDebt, { sim: liveSim });
 ok(!!liveMission.parts.find(p => p.id === 'overLimit') === (live.phases[1].titleId === 'overLimit'),

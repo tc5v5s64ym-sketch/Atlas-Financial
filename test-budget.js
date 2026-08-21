@@ -98,8 +98,8 @@ const bcaa = plan.bills.find(b => b.id === 'bcaa');
 const icbc = plan.bills.find(b => b.id === 'icbc');
 const fit = plan.bills.find(b => b.id === 'fit4less');
 ok(near(telecom.dated, shaw.amount), 'Shaw is subtracted from the telecom average', money(telecom.dated));
-ok(near(telecom.planned, telecom.current),
-  'so telecom planned is the current-regime undated amount, not historical − Shaw', money(telecom.planned));
+ok(near(telecom.current, 121) && near(telecom.planned, 0),
+  'undated Bell is reserved current-regime cash, not a weekly-cap remainder', money(telecom.current));
 
 console.log('\n=== closed Telus is $0 forward; remainder is current-regime Bell ===');
 // Independent of Forecast.budgetBreakdown: category totals in generated
@@ -122,9 +122,9 @@ ok(shaw && shaw.budgetCategory === 'telecom' && shaw.frequency === 'monthly',
 ok(near(telecom.historical, independentYtdAvg),
   'budgetBreakdown still reports the independent YTD historical average',
   money(independentYtdAvg));
-ok(near(telecom.planned, 121) && near(telecom.current, 121),
-  'forward remainder is the evidenced undated Bell total, not YTD − Shaw',
-  money(telecom.planned));
+ok(near(telecom.current, 121) && near(telecom.planned, 0),
+  'forward Bell is the evidenced undated $121 current-regime amount, reserved out of the cap',
+  money(telecom.current));
 ok(telecom.datedItems.length === 1 && telecom.datedItems[0].label === 'Shaw internet'
   && near(telecom.datedItems[0].amount, shaw.amount),
   'Shaw is counted once — the only dated telecom item');
@@ -317,10 +317,10 @@ console.log('\n=== current-regime outranks historical and loses to owner target 
   ok(near(row.dated, 80), 'synthetic dated internet is $80');
   ok(near(row.current, 100) && row.source === 'current-regime',
     'current-regime source is labelled');
-  ok(near(row.gross, 180) && near(row.planned, 100),
-    'gross is current + dated; planned is the undated current amount',
+  ok(near(row.gross, 180) && near(row.planned, 0),
+    'gross is current + dated; planned is 0 because current-regime is reserved cash',
     money(row.planned));
-  ok(near(row.planned, 100) && !near(row.planned, 200 - 80),
+  ok(near(row.current, 100) && !near(row.planned, 200 - 80),
     'planned is not the historical remainder');
 
   fixturePlan.budget.categories[0].plannedMonthly = 250;

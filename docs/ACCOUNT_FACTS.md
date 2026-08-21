@@ -124,6 +124,8 @@ Current evidenced active services:
 - **Telus** — **$0** forward.
 
 Forward undated Bell telecom is therefore **$104.20 + $16.80 = $121.00/month**.
+Forecast reserves that $121.00 as undated current-regime cash on the master
+walk. It is not a dated joint-chequing bill and does not invent a due day.
 
 There is no remaining Telus planning question and no need to quantify how much
 historical Telus spending appears inside old category averages. A generic

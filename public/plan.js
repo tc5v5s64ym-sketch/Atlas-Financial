@@ -1405,7 +1405,8 @@ function renderPlan(d, periods, history) {
         <span class="cat-hist">${c.target != null
           ? `budgeted ${money(c.target)}, has been ${money(c.historical)}`
           : `has been ${money(c.historical)}`}/mo${c.dated > 0
-          ? ` · ${money(c.dated)} dated` : ''}${c.sinking > 0
+          ? ` · ${money(c.dated)} dated` : ''}${c.current != null && c.current > 0
+          ? ` · ${money(c.current)} current-regime` : ''}${c.sinking > 0
           ? ` · ${money(c.sinking)} saved for separately` : ''}</span>
       </div>`).join('');
 

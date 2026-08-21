@@ -33,14 +33,14 @@ facts PR; each needs its own independently provable outcome):
   services (Shaw $78.40 dated + main Bell $104.20 card-paid June baseline +
   second Bell/watch CSV $16.80). The stale closed-Telus remainder-split
   planning blocker is removed. Q18 is only Bell settlement-state.
-- **Bell baseline vs card-paid current bill** — do not date $356.62,
-  ~$104.20, or $16.80 as joint cash. The valid $250 pending Travel Visa
-  payment is observation. The $15 watch line is on the same main Bell
-  account; do not invent a second bill for that $15 line. The second
-  account is a separate $16.80/month CSV cadence, not that $15 line and
-  not that account's arrears. Q18 stays OPEN for the pending/posting
-  residual only. A later PR may model Bell as a card-paid obligation
-  without double-counting.
+- **Bell baseline vs card-paid current bill** — **DONE.** Forward Bell
+  is the undated current-regime $121.00/month (`$104.20 + $16.80`) on
+  `plan.budget.categories` telecom `currentMonthly`. Forecast reserves
+  that amount as daily cash on the master walk and does not also carry
+  it as a weekly-cap remainder. It is not a dated joint-chequing bill,
+  not the Aug. 1 $356.62 arrears/travel bill, not a second $15 watch
+  line, and not the Travel Visa $250 payment or $17 minimum. Q18 stays
+  OPEN for settlement state.
 - **Unresolved once cash obligations across a later Forecast start** —
   owner instruction 2026-08-18. A known unresolved cash obligation still
   on the plan must remain binding when Forecast start advances past the

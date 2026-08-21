@@ -10,8 +10,9 @@
 
    Every event carries the confidence it arrived with ('confirmed' or
    'estimated') so the UI can keep the two visually apart. The engine never
-   invents an amount: it only expands the recurrences declared in data.json's
-   `plan` block and simulates the ledger day by day. */
+   invents an amount: it expands the recurrences declared in data.json's
+   `plan` block, reserves undated current-regime monthly amounts as daily
+   cash, and simulates the ledger day by day. */
 
 (function (root) {
 
@@ -611,6 +612,18 @@
     return plan.windowDays || 91;
   }
 
+  // Undated current-regime recurring cost. Owner targets beat it and stay
+  // cap remainders. This is not a due date, a second bill engine, or a
+  // card-charge router: simulate reserves the monthly amount as daily cash
+  // so a card-paid service still has gravity without a fabricated day.
+  function currentRegimeMonthly(plan) {
+    return ((plan && plan.budget && plan.budget.categories) || []).reduce((sum, c) => {
+      if (!c || c.plannedMonthly != null || c.currentMonthly == null) return sum;
+      const n = Number(c.currentMonthly);
+      return isFinite(n) ? sum + n : sum;
+    }, 0);
+  }
+
   function sliceSimulationFrom(full, asOf, viewStart, viewDays, plan, opts) {
     const startIdx = full.daily.findIndex(d => d.date >= viewStart);
     if (startIdx < 0) return full;
@@ -1016,6 +1029,8 @@
     const end = addDays(asOf, days - 1);
     const events = expandEvents(plan, start, end, opts);
     const dailyVariable = (opts.weeklyVariable || 0) / 7;
+    // Calendar month, the same 365.25/12 identity budgetBreakdown uses.
+    const reservedDaily = currentRegimeMonthly(plan) * 12 / 365.25;
     const variableFrom = opts.variableFrom || start;
     const measureFrom = opts.measureFrom || start;
 
@@ -1089,6 +1104,13 @@
         // even when the day closes fine. Income sorts first, so this is the
         // cautious reading of the day.
         if (measured && balance < min.balance) min = { date, balance };
+      }
+      // Undated current-regime is an obligation, not optional variable: it
+      // still drains during an opening squeeze. It shares the variable
+      // ledger column so week opening + inflows − outflows still close.
+      if (reservedDaily) {
+        balance -= reservedDaily;
+        week.variable += reservedDaily;
       }
       if (date >= variableFrom) {
         balance -= dailyVariable;
@@ -2360,7 +2382,10 @@
   //               real date. Already in the forecast as an event. NOT part of
   //               the weekly cap.
   //   ESSENTIAL   normal life that has no reliable date — groceries, fuel,
-  //               phones. Comes out of the weekly cap FIRST.
+  //               phones. Owner-target and historical essential remainders
+  //               come out of the weekly cap FIRST. Undated current-regime
+  //               (card-paid Bell) is reserved on the cash walk instead.
+
   //   DISCRETIONARY  dining, shopping, entertainment. What is left of the cap.
   //
   // Amounts are derived from the generated spending history in periods.json,
@@ -2437,12 +2462,15 @@
       const target = c.plannedMonthly != null ? c.plannedMonthly : null;
       // currentMonthly is the undated current-regime amount — services
       // already on the calendar stay in dated and are not added again.
-      // This is not a spending-intent target and not a second bill engine.
+      // simulate() reserves that amount as daily cash, so it is accounted
+      // and does not also sit in the weekly-cap remainder. This is not a
+      // spending-intent target and not a second bill engine.
       const current = c.currentMonthly != null ? c.currentMonthly : null;
       const gross = target != null ? target
         : current != null ? current + dated.total
         : historical;
-      const planned = Math.max(0, gross - dated.total);
+      const reserved = target == null && current != null ? current : 0;
+      const planned = Math.max(0, gross - dated.total - reserved);
       const sinkingHere = sinking.items.filter(s => s.category === c.id)
         .reduce((a, s) => a + s.amount, 0);
       return Object.assign({}, c, {
@@ -2450,8 +2478,9 @@
         current,
         // gross is the pre-dated monthly amount — owner target if one exists,
         // else current-regime (undated current + dated), else the historical
-        // average. planned is that amount after dated items are netted off,
-        // and is what the weekly cap consumes.
+        // average. planned is that amount after dated items and reserved
+        // current-regime cash are netted off, and is what the weekly cap
+        // consumes.
         gross, planned,
         // Dated commitments saved for separately. Reported, never netted off
         // the recurring line for the same category.
