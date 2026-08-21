@@ -361,8 +361,9 @@ spot. One look at the LeagueApps payment history closes it.
 Travel Visa **57,968 TD Rewards points**; Cash Back **$47.21**.
 The dollar-denominated Cash Back Dollars **$47.21** now sit on `data.json`
 `assets` and enter household asset / net-worth presentation through
-`Forecast.publicationTotals`. They are not spendable cash and not a funding
-source.
+`Forecast.publicationTotals`. That figure is the **2026-08-09** account
+reading, not the 2026-08-19 opening; `docs/positions.csv` holds the dated
+Household evidence. They are not spendable cash and not a funding source.
 **Still open:** the 57,968 TD Rewards points have no single valuation basis
 in current repository authority and are **not** assigned a dollar value. Do
 not invent cents-per-point, a redemption method, or a rewards engine.

@@ -1166,7 +1166,7 @@
             "value": 47.21
         }
     ],
-    "assetsNote": "Spendable cash rows derive from plan.startingCash as of 2026-08-19. TENNIS INCOME, SAVINGS-DONT TOUCH, Wise, silver and RESP are not this cutover's spendable opening. TD Cash Back Dollars $47.21 is the dollar-denominated Cash Back Visa rewards balance recorded in ACCOUNT_FACTS; it is not spendable household cash and is not a funding source. Travel Visa TD Rewards points are not valued. The TENNIS INCOME $2,691.85 is the last 2026-08-09 reading and is not automatically spendable (Q25).",
+    "assetsNote": "Spendable cash rows derive from plan.startingCash as of 2026-08-19. TENNIS INCOME, SAVINGS-DONT TOUCH, Wise, silver and RESP are not this cutover's spendable opening. TD Cash Back Dollars $47.21 is the last 2026-08-09 account reading, not this 2026-08-19 cutover; it is not spendable household cash and is not a funding source. Travel Visa TD Rewards points are not valued. The TENNIS INCOME $2,691.85 is the last 2026-08-09 reading and is not automatically spendable (Q25).",
     "netWorth": {
         "caveat": "Household net worth is now estimable. At the owner's estimate of $1.1m-$1.4m for the home, it is the financial accounts plus the home less all debt [ESTIMATE]. Loan-to-value on the mortgage and HELOC together ($745674.46) uses this 2026-08-19 opening. This is an owner's estimate, not an appraisal, and a lender will use its own. Vehicles, pensions and the business are still excluded."
     },
