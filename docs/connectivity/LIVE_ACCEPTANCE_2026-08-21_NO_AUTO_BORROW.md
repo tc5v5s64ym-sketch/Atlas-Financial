@@ -18,8 +18,10 @@ live acceptance after PR #128.
 
 **Verdict.** ALREADY FIXED on that head. The live overlay still produces the
 previously observed $747.81 spendable cash and $104.89 pre-payday buffer gap.
-Forecast no longer auto-injects a HELOC draw. Weekly safe-to-spend is $0, not
-the prior borrowing-enabled $990.
+Forecast no longer auto-injects a HELOC draw. The household answer is
+**unfunded** (`planStatus` / `nextMove`); raw `advice.weekly` is the $0
+failure sentinel, not a feasible $0/week cap, and not the prior
+borrowing-enabled $990.
 
 **Evidence, before any repository edit.** `node scripts/live-plan.js --live`
 then an independent `Forecast.recommend` on that in-memory clone. Canonical
@@ -106,8 +108,9 @@ Engine `advice.gap.amount` is $104.89 on 2026-08-27. `allocated + shortfall
 | Injections with a `debtId` | **none** |
 | `plannedDebt.permitted` | **false** |
 | `plannedDebt.borrowed` | $0.00 |
-| Mathematical weekly safe-to-spend | **$0** |
-| CLI `forecast.weekly` | $0 (same) |
+| Raw `advice.weekly` | **$0** — failure sentinel on an unfunded opening gap, not a feasible cap |
+| CLI `forecast.weekly` | $0 (same raw field) |
+| Household weekly answer | **unfunded** — no feasible weekly cap; `planStatus` / `nextMove` `unfunded`; mission `fundingShortfall` |
 | Lowest projected cash | **$395.11 on 2026-08-27** (zero-spend, knowledge, and view walks agree) |
 | Next material obligation | RESP 15 August outstanding $100.00, scheduled 2026-08-16, walked at live as-of 2026-08-21 |
 | `nextMove` | `unfunded`, shortfall $104.89 |
@@ -125,7 +128,8 @@ Funding-source card (visible capacity, not automatic cash):
 HELOC headroom is independently $202,654.00 − $200,486.16 = **$2,167.84**.
 It remains visible capacity. Forecast did **not** inject a HELOC draw.
 The gap remains unfunded. Atlas does **not** publish the prior
-borrowing-enabled $990/week as safe-to-spend.
+borrowing-enabled $990/week as safe-to-spend, and does **not** publish the
+raw weekly sentinel as a feasible $0/week cap.
 
 ## Critical acceptance
 
@@ -139,7 +143,9 @@ pre-payday buffer gap. All six required holds:
 3. `funding.borrowed` is **$0**.
 4. `plannedDebt.permitted` is **false** without explicit authorization.
 5. The $104.89 gap remains unfunded (`funding.feasible === false`).
-6. Weekly safe-to-spend is **$0**, not $990.
+6. The household weekly answer is **unfunded** (no feasible cap). Raw
+   `advice.weekly` is the $0 sentinel. The prior borrowing-enabled $990/week
+   is not published as safe-to-spend.
 
 The synthetic $747.81 / $104.89 fixture in
 `test-opening-gap-no-auto-borrow.js` was not required as a substitute: live
