@@ -97,6 +97,7 @@ function loadPaydayComposer() {
     grab(planSrc, /^const MISSION_PART = \{[\s\S]*?^\};$/m, 'MISSION_PART'),
     grab(planSrc, /^const NEXT_MOVE = \{[\s\S]*?^\};$/m, 'NEXT_MOVE'),
     grab(planSrc, /^function paydayPlanMargin\([\s\S]*?\n\}$/m, 'paydayPlanMargin'),
+    grab(planSrc, /^function weeklyCapView\([\s\S]*?\n\}$/m, 'weeklyCapView'),
     grab(planSrc, /^function paydayAnswerHtml\([\s\S]*?\n\}$/m, 'paydayAnswerHtml'),
   ].join('\n');
   return vm.runInNewContext(
@@ -131,6 +132,7 @@ function composeLive(plan, extra) {
     nextDue: F.nextDue(sim.events, asOf),
     unallocated: F.unallocatedCash(sim, budget, plan),
     budget, creditAvailable: revolving, weekly, recommended: advice.weekly,
+    weeklyOverride: opts.weeklyVariable,
     debts: opts.debts || live.debts,
   });
   return { advice, status, sim, budget, revolving, html, weekly };
@@ -518,6 +520,20 @@ console.log('\n=== L. unfunded opening-gap sentinel is not a $0/week cap ===');
     'it does not label the sentinel as a master-plan cap');
   ok(!/\$0\/week/.test(unfundedCell),
     'and does not publish $0/week as safe to spend');
+
+  const unfundedOverride = composeLive(unfundedPlan,
+    Object.assign({}, unfundedOpts, { weeklyVariable: 75 }));
+  ok(unfundedOverride.advice.funding && unfundedOverride.advice.funding.feasible === false
+    && unfundedOverride.status.id === 'unfunded',
+    'an unfunded gap stays unfunded when the household types a weekly override');
+  const overrideCell = safeCell(unfundedOverride.html);
+  ok(/no feasible weekly cap/i.test(overrideCell)
+    && /protected shortfall is solved/.test(overrideCell),
+    'Safe to spend still refuses a cap under that override');
+  ok(!/Master-plan cap/.test(overrideCell),
+    'and does not label the override as a master-plan cap');
+  ok(!/forecast supports/.test(overrideCell),
+    'and does not call the override Forecast-supported');
 
   const fatPlan = {
     windowDays: 21,

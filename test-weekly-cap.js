@@ -514,7 +514,9 @@ console.log('\n=== 10. the real page, booted, on both sides of the sentence ==='
  * booted TWICE: once at the recommendation, and once with a stored $1,800/week
  * override, which is what a household can type into the weekly box and is the
  * setting the blocking review found publishing a negative shortfall. */
-function bootPage(storedKnobs) {
+function bootPage(storedKnobs, payload, periodsOverride) {
+  const body = payload || data;
+  const per = periodsOverride || periods;
   const els = new Map();
   const makeEl = id => {
     const el = {
@@ -550,7 +552,8 @@ function bootPage(storedKnobs) {
     getComputedStyle: () => ({ getPropertyValue: () => '' }),
     requestAnimationFrame() {}, innerWidth: 1200, innerHeight: 800, scrollY: 0, console,
     fetch: url => Promise.resolve({ status: 200, ok: true,
-      json: () => (String(url).includes('periods') ? periods : data) }),
+      json: () => (String(url).includes('periods') ? per
+        : String(url).includes('balance-history') ? null : body) }),
   };
   sandbox.window = sandbox; sandbox.globalThis = sandbox;
   vm.createContext(sandbox);
@@ -644,6 +647,181 @@ const settle = () => new Promise(r => setTimeout(r, 0));
     ok(!/undefined|NaN|\[object/.test(html),
       `${name} contains no undefined, NaN or [object Object]`);
   }
+
+  console.log('\n=== 11. unfunded sentinel is not a household cap on the Plan page ===');
+  /* Same page harness as section 10, on synthetic fixtures so live cents
+   * cannot become the specification (L-006). Independent gap = buffer − cash. */
+  const envelope = plan => ({
+    meta: { asOf: '2026-08-16' },
+    debts: [], revolvingExtra: [], paypal: null, helocHistory: [],
+    plan: Object.assign({
+      obligations: [], bills: [], commitments: [], actions: [],
+      budget: FIXTURE_PLAN.budget,
+    }, plan, {
+      defaults: Object.assign(
+        { scenario: 'expected', extraDebtMonthly: 0, targetBuffer: 0 },
+        plan.defaults || {}),
+    }),
+  });
+  const rec = (payload, extra) => F.recommend(payload.plan, payload.meta.asOf, Object.assign({
+    scenario: 'expected', incomeOverrides: {}, disabled: [], extraDebtMonthly: 0,
+    targetBuffer: payload.plan.defaults.targetBuffer,
+    fundingSources: payload.plan.funding && payload.plan.funding.options,
+    debts: [], extraFacilities: [], extraDebtTarget: null,
+  }, extra || {}));
+  const capSurfaces = page => ({
+    tiles: flat(page.get('hero-tiles').innerHTML),
+    headline: flat(page.get('cap-headline').innerHTML),
+    split: flat(page.get('cap-split').innerHTML),
+    basis: flat(page.get('cap-basis').innerHTML),
+    budgetOut: flat(page.get('budget-out').innerHTML),
+    budgetBasis: String(page.get('budget-basis').textContent || ''),
+    payday: flat(page.get('payday-answer-body').innerHTML),
+  });
+  const capTile = html => {
+    const m = /Weekly household cap<\/div> <div class="val">([^<]*)<\/div> <div class="note">(.*?)<\/div>/.exec(html);
+    return m ? { val: m[1].trim(), note: m[2].trim() } : { val: '', note: '' };
+  };
+  const capAmt = html => {
+    const m = /cap-amt">([^<]*)/.exec(html);
+    return m ? m[1].trim() : '';
+  };
+  const splitTotal = html => {
+    const m = /cap-part-lab">Total<\/div> <div class="cap-part-amt">([\s\S]*?)<\/div>/.exec(html);
+    return m ? m[1].replace(/<[^>]+>/g, '').trim() : '';
+  };
+
+  const UNFUNDED_BUFFER = 400;
+  const UNFUNDED_CASH = 150;
+  const unfundedPayload = envelope({
+    windowDays: 21,
+    defaults: { targetBuffer: UNFUNDED_BUFFER },
+    startingCash: { amount: UNFUNDED_CASH, note: '' },
+    income: [{
+      id: 'later-pay', label: 'Later pay', frequency: 'once',
+      date: '2026-08-30', amount: 3000, confidence: 'confirmed',
+    }],
+    funding: {
+      heading: 'Cover the gap', note: '',
+      options: [{ id: 'empty', label: 'Empty pot', short: 'empty', available: 0, rank: 1 }],
+    },
+  });
+  const unfundedAdvice = rec(unfundedPayload);
+  const unfundedStatus = F.planStatus(unfundedAdvice, { weeklyOverride: null, sim: unfundedAdvice.sim });
+  const independentGap = UNFUNDED_BUFFER - UNFUNDED_CASH;
+  ok(unfundedAdvice.mode === 'openingGap' && unfundedAdvice.weekly === 0
+    && unfundedAdvice.funding && unfundedAdvice.funding.feasible === false
+    && unfundedStatus.id === 'unfunded',
+    'synthetic thin cash is an unfunded opening gap with a zero weekly sentinel',
+    `${unfundedAdvice.mode} weekly=${unfundedAdvice.weekly} status=${unfundedStatus.id}`);
+  ok(near(independentGap, unfundedAdvice.gap.amount)
+    && near(independentGap, unfundedAdvice.funding.shortfall),
+    'engine shortfall equals independent buffer minus cash',
+    `${independentGap} vs ${unfundedAdvice.funding.shortfall}`);
+
+  const unfundedPage = bootPage(null, unfundedPayload, FIXTURE_PERIODS);
+  await settle();
+  const u = capSurfaces(unfundedPage);
+  const uTile = capTile(u.tiles);
+  ok(uTile.val === 'unavailable',
+    'hero Weekly household cap is unavailable, not $0/wk', uTile.val);
+  ok(!/\$0\/wk/.test(uTile.val),
+    'hero cap value does not claim $0/wk');
+  ok(/no feasible weekly cap/i.test(uTile.note) && /protected shortfall is solved/.test(uTile.note),
+    'hero note says the funding shortfall must be solved first');
+  ok(!/forecast supports/.test(uTile.note),
+    'and does not claim Forecast supports a cap');
+  ok(capAmt(u.headline) === 'unavailable' && !/\$0/.test(capAmt(u.headline)),
+    'large cap headline is unavailable, not $0', capAmt(u.headline));
+  ok(splitTotal(u.split) === 'unavailable' && !/\$0\/wk/.test(splitTotal(u.split)),
+    'cap-split Total is unavailable, not $0/wk', splitTotal(u.split));
+  ok(!/largest weekly spend/.test(u.basis) && /protected funding shortfall is solved/.test(u.basis),
+    'cap-basis does not call zero the largest safe weekly spend');
+  ok(/unavailable/.test(u.budgetOut) && !/<b>\$0 \/ week<\/b>/.test(u.budgetOut),
+    'budget ledger does not publish $0 / week as the household cap');
+  ok(!/largest weekly spend/.test(u.budgetBasis) && /protected funding shortfall is solved/.test(u.budgetBasis),
+    'budget-basis does not call zero the largest safe weekly spend');
+  ok(/no feasible weekly cap/i.test(u.payday) && !/\$0\/week/.test(u.payday),
+    'payday Safe to spend still refuses the sentinel');
+  ok(u.tiles.includes(String(independentGap)) || u.headline.includes('250.00') || /\$250/.test(u.tiles + u.headline),
+    'the independent $250 shortfall remains visible on the cap surfaces');
+
+  const overridePage = bootPage({
+    scenario: 'expected', targetBuffer: UNFUNDED_BUFFER,
+    extraDebtMonthly: 0, weeklyVariable: 75, incomeOverrides: {}, disabled: [],
+  }, unfundedPayload, FIXTURE_PERIODS);
+  await settle();
+  const ovr = capSurfaces(overridePage);
+  const oTile = capTile(ovr.tiles);
+  ok(oTile.val === 'unavailable',
+    'with a typed override the hero cap is still unavailable', oTile.val);
+  ok(/your setting is \$75\/wk/.test(oTile.note),
+    'the override is visible as the user setting', oTile.note.slice(0, 160));
+  ok(/not a supported weekly cap/.test(oTile.note) && !/forecast supports/.test(oTile.note),
+    'and is not presented as Forecast-supported or safe');
+  ok(capAmt(ovr.headline) === 'unavailable' && !/\$75/.test(capAmt(ovr.headline)),
+    'the override is not the large cap headline');
+  ok(/protected funding shortfall is solved/.test(oTile.note + ovr.headline + ovr.basis),
+    'the unresolved gap remains the controlling message');
+  ok(!/Master-plan cap/.test(ovr.payday) && /no feasible weekly cap/i.test(ovr.payday),
+    'payday still refuses to treat the override as a cap');
+
+  const fatPayload = envelope({
+    windowDays: 21,
+    defaults: { targetBuffer: 200 },
+    startingCash: { amount: 5000, note: '' },
+    income: [{
+      id: 'pay', label: 'Pay', frequency: 'once',
+      date: '2026-08-30', amount: 2000, confidence: 'confirmed',
+    }],
+    bills: [{
+      id: 'bill', label: 'Small bill', frequency: 'once',
+      date: '2026-08-20', amount: 100, confidence: 'confirmed',
+    }],
+  });
+  const fatAdvice = rec(fatPayload);
+  const leftover = 5000 - 100 - 200;
+  ok(leftover > 0 && fatAdvice.weekly > 0 && fatAdvice.mode === 'normal'
+    && !(fatAdvice.funding && fatAdvice.funding.feasible === false),
+    'surplus after bill and buffer independently implies a positive feasible cap',
+    `leftover ${leftover} weekly $${fatAdvice.weekly}`);
+  const fatPage = bootPage(null, fatPayload, FIXTURE_PERIODS);
+  await settle();
+  const f = capSurfaces(fatPage);
+  const fTile = capTile(f.tiles);
+  const fatLabel = '$' + Math.round(Math.abs(fatAdvice.weekly)).toLocaleString('en-CA') + '/wk';
+  ok(fTile.val === fatLabel,
+    'a feasible positive cap still renders as dollar/wk on the hero tile', fTile.val);
+  ok(capAmt(f.headline) === '$' + Math.round(Math.abs(fatAdvice.weekly)).toLocaleString('en-CA'),
+    'and as the large cap headline', capAmt(f.headline));
+  ok(!/unavailable/.test(fTile.val + capAmt(f.headline) + splitTotal(f.split)),
+    'and does not borrow the unfunded unavailable wording');
+  ok(/largest weekly spend/.test(f.basis),
+    'feasible-cap basis copy is unchanged');
+
+  const tightPayload = envelope({
+    windowDays: 14,
+    defaults: { targetBuffer: 800 },
+    startingCash: { amount: 800, note: '' },
+    income: [],
+  });
+  const tightAdvice = rec(tightPayload);
+  ok(tightAdvice.mode === 'normal' && tightAdvice.weekly === 0
+    && !(tightAdvice.funding && tightAdvice.funding.feasible === false),
+    'cash equal to the buffer with no outflows is a feasible $0 cap',
+    `${tightAdvice.mode} weekly=${tightAdvice.weekly}`);
+  const tightPage = bootPage(null, tightPayload, FIXTURE_PERIODS);
+  await settle();
+  const t = capSurfaces(tightPage);
+  const tTile = capTile(t.tiles);
+  ok(tTile.val === '$0/wk',
+    'a genuine feasible-zero cap still renders as $0/wk', tTile.val);
+  ok(capAmt(t.headline) === '$0',
+    'and the large headline is $0');
+  ok(splitTotal(t.split).indexOf('$0') !== -1,
+    'and the cap-split Total is $0/wk', splitTotal(t.split));
+  ok(!/no feasible weekly cap/i.test(tTile.note + t.headline + t.basis + t.payday),
+    'and is not described as an unfunded gap');
 
   console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
   process.exit(failures === 0 ? 0 : 1);
