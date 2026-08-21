@@ -119,7 +119,13 @@ repair an otherwise-infeasible opening or raise safe-to-spend.
 A legacy `fundingDebtId` hint without declared sources is the same
 facility hint, not permission; that path fails closed.
 Direct regression proofs live in `test-master-forecast.js` and
-`test-opening-gap-no-auto-borrow.js`.
+`test-opening-gap-no-auto-borrow.js`. The 2026-08-21 read-only live
+acceptance after PR #128 confirmed the same invariant on the real overlay:
+spendable $747.81, gap $104.89, HELOC room $2,167.84 visible as capacity,
+`funding.borrowed` $0, `plannedDebt.permitted` false, household answer
+unfunded (raw `advice.weekly` $0 is the failure sentinel, not a feasible
+cap). Proof:
+[`docs/connectivity/LIVE_ACCEPTANCE_2026-08-21_NO_AUTO_BORROW.md`](docs/connectivity/LIVE_ACCEPTANCE_2026-08-21_NO_AUTO_BORROW.md).
 
 **B71 · Triangle Mastercard limit risk on the B91 opening** · **DONE / RESOLVED 2026-08-18** · *stale "over every month" claim retired*
 
