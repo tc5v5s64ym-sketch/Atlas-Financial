@@ -710,6 +710,9 @@ function paydayAnswerHtml(ctx) {
     ? `There is no feasible weekly cap. ${fail.label || 'A protected constraint'} fails${
       fail.date ? ` on ${fmtDateLong(fail.date)}` : ''} by ${money2(fail.shortfall)}; a weekly spending
           figure does not fix this.`
+    : fundingBlocked
+    ? `There is no feasible weekly cap. ${money2(advice.funding.shortfall)} stays unfunded after every usable source.
+          No safe-to-spend figure exists until that protected shortfall is solved.`
     : `Master-plan cap <b>${money(recommended)}/week</b>${
       weekly !== recommended ? ` — your setting is ${money(weekly)}/week` : ''}.
           ${cap ? `Discretionary room inside that cap is ${money(cap.discretionaryRoomWeekly)}/week.` : ''}

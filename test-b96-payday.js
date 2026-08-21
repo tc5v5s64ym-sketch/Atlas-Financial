@@ -458,6 +458,116 @@ console.log('\n=== K. explicit INFEASIBLE when the protected plan cannot work ==
     'Safe to spend says there is no feasible weekly cap');
 }
 
+console.log('\n=== L. unfunded opening-gap sentinel is not a $0/week cap ===');
+{
+  const safeCell = html => {
+    const m = /payday-lab">Safe to spend<\/span>\s*<span class="payday-val">([\s\S]*?)<\/span><\/div>/.exec(html);
+    return m ? m[1] : '';
+  };
+  const noEngine = {
+    fundingSources: [], debts: [], extraFacilities: [], extraDebtTarget: null,
+  };
+
+  const BUFFER = 400;
+  const CASH = 150;
+  const unfundedPlan = {
+    windowDays: 21,
+    defaults: { targetBuffer: BUFFER },
+    startingCash: { amount: CASH },
+    income: [{
+      id: 'later-pay', label: 'Later pay', frequency: 'once',
+      date: '2026-08-30', amount: 3000, confidence: 'confirmed',
+    }],
+    obligations: [],
+    bills: [],
+    commitments: [],
+    actions: [{ what: 'Cover the gap', amount: 50, due: '2026-08-16', status: 'open' }],
+  };
+  const unfundedOpts = {
+    targetBuffer: BUFFER,
+    fundingSources: [{ id: 'empty', label: 'Empty pot', short: 'empty', available: 0, rank: 1 }],
+    debts: [], extraFacilities: [], extraDebtTarget: null,
+  };
+  const unfunded = composeLive(unfundedPlan, unfundedOpts);
+  const independentGap = BUFFER - CASH;
+  ok(unfunded.advice.mode === 'openingGap',
+    'thin cash against the buffer is an opening gap', unfunded.advice.mode);
+  ok(unfunded.advice.weekly === 0,
+    'raw weekly is the zero sentinel, independently of the composer');
+  ok(unfunded.advice.funding && unfunded.advice.funding.feasible === false,
+    'Forecast.funding.feasible is false — a declared empty source cannot cover');
+  ok(near(independentGap, unfunded.advice.gap.amount)
+    && near(independentGap, unfunded.advice.funding.shortfall),
+    'engine shortfall equals the independent buffer minus cash',
+    `${independentGap} vs gap ${unfunded.advice.gap.amount} / shortfall ${unfunded.advice.funding.shortfall}`);
+  ok(unfunded.status.id === 'unfunded',
+    'planStatus is unfunded, not onPlan at $0', unfunded.status.id);
+  const unfundedMission = F.mission(unfunded.advice, { marks: [] }, { sim: unfunded.sim });
+  ok(unfundedMission.parts.some(p => p.id === 'fundingShortfall')
+    && !unfundedMission.parts.some(p => p.id === 'holdSpending'),
+    'mission is fundingShortfall rather than holdSpending at $0',
+    unfundedMission.parts.map(p => p.id).join(' → '));
+  const unfundedCell = safeCell(unfunded.html);
+  ok(/no feasible weekly cap/i.test(unfundedCell),
+    'Safe to spend says there is no feasible weekly cap');
+  ok(/unfunded/i.test(unfundedCell) && /protected shortfall is solved/.test(unfundedCell),
+    'and names the unresolved funding gap rather than a cap');
+  ok(unfundedCell.includes(money2(independentGap)),
+    'and carries the independent shortfall', money2(independentGap));
+  ok(!/Master-plan cap/.test(unfundedCell),
+    'it does not label the sentinel as a master-plan cap');
+  ok(!/\$0\/week/.test(unfundedCell),
+    'and does not publish $0/week as safe to spend');
+
+  const fatPlan = {
+    windowDays: 21,
+    defaults: { targetBuffer: 200 },
+    startingCash: { amount: 5000 },
+    income: [{
+      id: 'pay', label: 'Pay', frequency: 'once',
+      date: '2026-08-30', amount: 2000, confidence: 'confirmed',
+    }],
+    obligations: [],
+    bills: [{
+      id: 'bill', label: 'Small bill', frequency: 'once',
+      date: '2026-08-20', amount: 100, confidence: 'confirmed',
+    }],
+    commitments: [],
+  };
+  const fat = composeLive(fatPlan, Object.assign({ targetBuffer: 200 }, noEngine));
+  const leftover = 5000 - 100 - 200;
+  ok(leftover > 0 && fat.advice.weekly > 0 && fat.advice.mode === 'normal'
+    && !(fat.advice.funding && fat.advice.funding.feasible === false),
+    'surplus after bill and buffer independently implies a positive feasible cap',
+    `leftover ${leftover} weekly $${fat.advice.weekly} mode ${fat.advice.mode}`);
+  const fatCell = safeCell(fat.html);
+  ok(fatCell.includes(`Master-plan cap <b>$${fat.advice.weekly}/week</b>`),
+    'a feasible positive cap still renders as dollar/week',
+    `$${fat.advice.weekly}/week`);
+  ok(!/no feasible weekly cap/i.test(fatCell),
+    'and does not borrow the unfunded wording');
+
+  const tightPlan = {
+    windowDays: 14,
+    defaults: { targetBuffer: 800 },
+    startingCash: { amount: 800 },
+    income: [],
+    obligations: [],
+    bills: [],
+    commitments: [],
+  };
+  const tight = composeLive(tightPlan, Object.assign({ targetBuffer: 800 }, noEngine));
+  ok(tight.advice.mode === 'normal' && tight.advice.weekly === 0
+    && !(tight.advice.funding && tight.advice.funding.feasible === false),
+    'cash equal to the buffer with no outflows is a feasible $0 cap',
+    `${tight.advice.mode} weekly=${tight.advice.weekly}`);
+  const tightCell = safeCell(tight.html);
+  ok(tightCell.includes('Master-plan cap <b>$0/week</b>'),
+    'a genuine feasible-zero cap still renders honestly as $0/week');
+  ok(!/no feasible weekly cap/i.test(tightCell),
+    'and is not described as an unfunded gap');
+}
+
 if (failures) {
   console.error(`\n${failures} check(s) failed`);
   process.exit(1);
