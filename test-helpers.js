@@ -128,7 +128,7 @@ function fundingById(plan, extra, debts) {
 
 function usableFunding(plan, extra, debts) {
   return resolvedFunding(plan, extra, debts)
-    .filter(o => !o.unusable)
+    .filter(o => !o.unusable && !o.debtId)
     .reduce((s, o) => s + Number(o.available || 0), 0);
 }
 

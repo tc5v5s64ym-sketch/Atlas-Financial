@@ -75,11 +75,11 @@ const money = n => '$' + Number(n).toFixed(2);
  * below, and each reaches a different state of this authority:
  *
  *   $500    gap $1,100   savings ($1,600) cover it alone, nothing borrowed.
- *                        The credit line ($1,500) could have covered it too,
- *                        so the draw alternative is a real alternative.
- *   $2,000  gap $2,600   savings are exhausted and the line is drawn on, so
- *                        the plan ALREADY uses it and there is no alternative.
- *   $4,000  gap $4,600   both together reach $3,100 and $1,500 is unfundable,
+ *                        The credit line ($1,500) is debt capacity, not
+ *                        automatic opening-gap cash.
+ *   $2,000  gap $2,600   savings give $1,600; the line is not auto-drawn, so
+ *                        $1,000 remains unfunded.
+ *   $4,000  gap $4,600   savings give $1,600 and $3,000 is unfundable,
  *                        which is the full-coverage case. */
 const FIX_AS_OF = '2026-08-10';
 const fixture = () => ({
@@ -162,11 +162,11 @@ console.log('\n=== 1. the gap, and what the declared sources reach ===');
 }
 
 console.log('\n=== 2. full coverage: an unfunded gap ===');
-/* CORRECTNESS CASE 1. At a $4,000 buffer the gap is $4,600 and outruns both
- * usable sources: savings give $1,600 and the credit line $1,500, which is
- * $3,100 — so $1,500 is unfundable and the plan supports $0/week. The
- * counterfactual supplies exactly that $1,500 from outside and reports what
- * the household could then spend. */
+/* CORRECTNESS CASE 1. At a $4,000 buffer the gap is $4,600 and outruns the
+ * cash source: savings give $1,600; the credit line is not automatic
+ * opening-gap cash — so $3,000 is unfundable and the plan supports $0/week.
+ * The counterfactual supplies exactly that $3,000 from outside and reports
+ * what the household could then spend. */
 {
   const { advice, cf } = fixtureRun({ targetBuffer: 4000 });
   const g = cf.fullGapCoverage;
@@ -205,8 +205,8 @@ console.log('\n=== 3. full coverage: it adds no debt ===');
   ok(same(g.borrowed, advice.funding.borrowed),
     'the alternative borrows exactly what the real plan borrows',
     `${money(g.borrowed)} vs ${money(advice.funding.borrowed)}`);
-  ok(advice.funding.borrowed > 0,
-    'and the real plan does borrow here, so that is a live comparison',
+  ok(same(advice.funding.borrowed, 0),
+    'and the real plan does not auto-borrow the credit line',
     money(advice.funding.borrowed));
   // RECONCILIATION. Re-run the alternative independently and require the
   // engine's own allocation to close the gap under it.
@@ -290,15 +290,15 @@ console.log('\n=== 5. full coverage: the scenario and the buffer propagate ===')
   ok(same(b5000.weekly, b4000.weekly),
     'the weekly figure itself is buffer-invariant, by construction',
     `${money(b4000.weekly)} = ${money(b5000.weekly)}`);
-  ok(cents(b5000.borrowed) === cents(b4000.borrowed),
-    'while what it borrows is not, wherever the sources are exhausted',
+  ok(same(b5000.borrowed, 0) && same(b4000.borrowed, 0),
+    'neither buffer auto-borrows the credit line',
     money(b4000.borrowed));
   // At the DEFAULT buffer the same fixture borrows nothing, because savings
-  // alone reach a $1,100 gap. That is the difference a counterfactual reading
-  // `plan.defaults.targetBuffer` instead of the buffer in force would publish.
+  // alone reach a $1,100 gap. The $4,000 buffer also borrows nothing: the
+  // extra shortfall is unfunded cash, not a HELOC draw.
   const atDefault = fixtureRun().advice.funding;
-  ok(same(atDefault.borrowed, 0) && cents(b4000.borrowed) > 0,
-    'and at the default buffer it would be $0.00, which is what makes that a live check',
+  ok(same(atDefault.borrowed, 0) && same(b4000.borrowed, 0),
+    'and opening-gap recovery does not start borrowing when the buffer rises',
     `${money(atDefault.borrowed)} vs ${money(b4000.borrowed)}`);
 
   // A disabled commitment changes the schedule the gap is measured from, so it
@@ -343,65 +343,37 @@ console.log('\n=== 6. the draw alternative: eligibility is derived, not chosen =
     'and an unusable facility is not an eligible alternative either');
 }
 
-console.log('\n=== 7. the draw alternative: it reconciles with the debt walk ===');
-/* CORRECTNESS CASES 7 AND 12. The alternative's borrowing and its crossing date
- * are checked against `projectDebts` run independently on the same assumptions,
- * and the draw has to appear in the walk exactly once. */
+console.log('\n=== 7. the draw alternative: debt is not automatic opening-gap cash ===');
 {
   const { advice, proj, cf } = fixtureRun();
   const a = altFor(cf, 'line');
   const current = proj.crossings.find(c => c.id === 'line' && !c.alreadyOver);
   ok(!!current, 'the credit line crosses its limit on the plan as it stands',
     current && current.date);
-  ok(a.applies, 'and the draw alternative applies');
-  ok(a.currentCrossing.date === current.date,
-    'the counterfactual quotes the crossing the page is already showing',
-    a.currentCrossing.date);
+  ok(a && !a.applies && a.reason === 'borrowing-not-automatic',
+    'the draw alternative does not auto-convert headroom into gap cash',
+    a && a.reason);
+  ok(same(a.available, 1500) && same(a.gapAmount, advice.gap.amount),
+    'capacity and the gap remain visible on the refused alternative');
 
-  // Re-run the alternative independently: one option, so the whole gap is drawn
-  // on it, and the walk is repeated from scratch.
   const altAdvice = F.recommend(fixture(), FIX_AS_OF,
     opts({ fundingSources: [fixture().funding.options.find(o => o.id === 'line')] }));
-  ok(!altAdvice.funding.feasible || same(altAdvice.funding.allocated, advice.gap.amount),
-    'the alternative allocation is the gap, or it is reported as unreachable');
-  const altProj = F.projectDebts(fixture(), fixtureDebts(), FIX_AS_OF,
-    Object.assign({}, altAdvice.simOptions, { weeklyVariable: advice.weekly }));
-  const altCross = altProj.crossings.find(c => c.id === 'line' && !c.alreadyOver);
-  ok(!!altCross && altCross.date === a.alternateCrossing.date,
-    'and its crossing date reconciles with projectDebts run directly',
-    `${a.alternateCrossing.date} vs ${altCross && altCross.date}`);
-  ok(a.alternateCrossing.date < a.currentCrossing.date,
-    'the alternative brings the crossing forward',
-    `${a.currentCrossing.date} → ${a.alternateCrossing.date}`);
-  ok(a.daysEarlier === F.diffDays(a.alternateCrossing.date, a.currentCrossing.date),
-    'by the number of days it reports', String(a.daysEarlier));
-
-  // CORRECTNESS CASE 12. The draw is in the walk once. Counted from the
-  // injections the alternative's own options carry, which is the only place a
-  // gap draw can enter the debt side.
-  const draws = (altAdvice.simOptions.injections || []).filter(i => i.debtId === 'line');
-  ok(draws.length === 1, 'the alternative places exactly one draw on the facility',
-    `${draws.length} injection(s)`);
-  ok(same(draws[0].amount, a.draw),
-    'of the amount the counterfactual reports', money(a.draw));
-  ok(draws[0].date === advice.gap.date,
-    'on the gap day, which is when the money is needed', draws[0].date);
-  ok(same(a.draw, advice.gap.amount),
-    'and it is the whole gap, which is what "funded from it instead" means',
-    `${money(a.draw)} vs ${money(advice.gap.amount)}`);
+  ok(!altAdvice.funding.feasible && same(altAdvice.funding.borrowed, 0),
+    'recommend with only the credit line still does not auto-draw it');
+  ok(!(altAdvice.simOptions.injections || []).some(i => i.debtId === 'line'),
+    'and places no debtId injection');
 }
 
 console.log('\n=== 8. the draw alternative: when it does not apply ===');
 {
-  // CORRECTNESS CASE 8. The plan already draws on this facility, so the debt
-  // lines on screen already carry the draw. Offering it as an alternative to
-  // itself would publish the same date twice as though one were a choice.
+  // CORRECTNESS CASE 8. A larger buffer still does not auto-draw the line.
+  // Offering it as opening-gap cash would reintroduce unapproved borrowing.
   const drawn = fixtureRun({ targetBuffer: 2000 });
-  ok(drawn.advice.funding.parts.some(p => p.debtId === 'line'),
-    'at a $2,000 buffer the real allocation already draws on the credit line');
+  ok(!drawn.advice.funding.parts.some(p => p.debtId === 'line'),
+    'at a $2,000 buffer the real allocation still does not draw on the credit line');
   const a = altFor(drawn.cf, 'line');
-  ok(!a.applies && a.reason === 'alreadyFunded',
-    'so no duplicate "instead use it" counterfactual is published', a.reason);
+  ok(!a.applies && a.reason === 'borrowing-not-automatic',
+    'so no auto-borrow "instead use it" counterfactual is published', a.reason);
 
   // CORRECTNESS CASE 9. No opening gap: nothing to fund from anywhere.
   const noGap = fixture();
@@ -421,49 +393,31 @@ console.log('\n=== 8. the draw alternative: when it does not apply ===');
 }
 
 console.log('\n=== 9. the draw alternative cannot overdraw the facility ===');
-/* THE DEFECT THIS MOVE FOUND, on a fixture. The page passed `fundingDebtId`
- * with no sources, which took the engine's unattributed-injection fallback and
- * drew the WHOLE gap on the facility however little it declared. So the same
- * page could publish "Not enough — $X short" on the funding card and price a
- * draw of the full gap on that same facility a few lines below.
- *
- * The facility funds the gap through its own declared headroom now, so an
- * alternative it cannot supply is reported as one instead of being priced. */
+/* Unapproved borrowing is not priced as opening-gap cash, whether or not
+ * the facility has enough headroom. The funding card and the counterfactual
+ * both refuse the line as automatic recovery. */
 {
-  // The default fixture is the case where the alternative IS supportable: a
-  // $1,100 gap against a line declaring $1,500. The draw it publishes has to
-  // sit inside that headroom.
   const { advice, cf } = fixtureRun();
   const line = fixture().funding.options.find(o => o.id === 'line');
   const a = altFor(cf, 'line');
-  ok(a.applies, 'a line holding $1,500 can fund an $1,100 gap');
-  ok(cents(a.draw) <= cents(line.available),
-    'and the published draw is inside the facility\'s own declared headroom',
-    `${money(a.draw)} <= ${money(line.available)}`);
-  ok(same(a.draw, advice.gap.amount), 'being the whole gap', money(a.draw));
+  ok(a && !a.applies && a.reason === 'borrowing-not-automatic',
+    'a line holding $1,500 is still not automatic opening-gap cash', a && a.reason);
+  ok(same(a.available, line.available),
+    'its declared headroom stays visible', money(a.available));
+  ok(!a.alternateCrossing, 'so no crossing date is invented for a draw');
 
-  // Shrink the line below the gap and the alternative must disappear rather
-  // than be priced at an amount the facility does not hold.
   const tight = fixture();
   tight.funding.options = tight.funding.options.map(o =>
     o.id === 'line' ? Object.assign({}, o, { available: 400 }) : o);
   const t = evaluate(tight, FIX_AS_OF, opts({ fundingSources: tight.funding.options }),
     fixtureDebts());
   const ta = altFor(t.cf, 'line');
-  ok(!ta.applies && ta.reason === 'sourceCannotCoverGap',
-    'a line holding $400 against an $1,100 gap cannot fund it', ta.reason);
+  ok(!ta.applies && ta.reason === 'borrowing-not-automatic',
+    'a line holding $400 is refused the same way, not priced as an overdraw', ta.reason);
   ok(!ta.alternateCrossing, 'so no crossing date is published for it');
-  ok(same(ta.shortBy, t.advice.gap.amount - 400),
-    'and the amount it falls short by is named', money(ta.shortBy));
-  ok(!!ta.currentCrossing,
-    'while the crossing that IS real is still reported', ta.currentCrossing.date);
-  // The reconciliation that makes this a contradiction rather than a
-  // preference: the funding card and the counterfactual now agree.
   const card = t.advice.funding.sources.find(s => s.id === 'line');
   ok(card.verdict === 'insufficient',
     'the funding card says the same facility cannot cover the gap', card.verdict);
-  ok(same(card.shortBy, ta.shortBy),
-    'by the same amount the counterfactual reports', money(card.shortBy));
 }
 
 console.log('\n=== 10. the published plan: figures and reconciliation ===');
@@ -518,8 +472,8 @@ function published(o = {}) {
   } else {
     ok(a.reason === 'noEarlierCrossing' || a.reason === 'sourceCannotCoverGap'
       || a.reason === 'alreadyFunded' || a.reason === 'noCurrentCrossing'
-      || a.reason === 'noOpeningGap',
-      'when the draw cannot move the crossing, the alternative does not apply',
+      || a.reason === 'noOpeningGap' || a.reason === 'borrowing-not-automatic',
+      'when the draw is not automatic opening-gap cash, the alternative does not apply',
       a.reason);
   }
 }
@@ -535,7 +489,7 @@ function published(o = {}) {
     [c, e, o].map(x => money(x.weekly)).join(' / '));
   const usable = F.resolveFundingSources(
     plan.funding.options, data.revolvingExtra, plan, data.debts
-  ).filter(s => !s.unusable).reduce((s, x) => s + x.available, 0);
+  ).filter(s => !s.unusable && !s.debtId).reduce((s, x) => s + x.available, 0);
   ok(same(e.fundable, usable) && same(e.gapAmount, e.fundable + e.shortfall),
     'against the usable sources of that gap, with shortfall the remainder',
     `${money(e.fundable)} / ${money(e.gapAmount)}, short ${money(e.shortfall)}`);
@@ -543,10 +497,8 @@ function published(o = {}) {
 }
 {
   // Gap larger than HELOC headroom. Q25 keeps Amanda at $0, so the plan
-  // draws the HELOC up to its room and leaves a shortfall. The funding card
-  // must not say the facility covers that gap, and the draw-alternative must
-  // not invent a crossing by overdrawing it (already funded from it, or
-  // unable to cover it alone).
+  // cannot auto-draw the HELOC. The funding card must not say the facility
+  // covers that gap, and the draw-alternative must not invent a crossing.
   const helocAvail = F.resolveFundingSources(
     plan.funding.options, data.revolvingExtra, plan, data.debts
   ).find(o => o.id === 'heloc').available;
@@ -556,8 +508,10 @@ function published(o = {}) {
   const a = altFor(cf, 'heloc');
   ok(card.verdict !== 'covers',
     'at a gap the HELOC cannot cover, the funding card does not say it covers', card.verdict);
-  ok(same(card.shortBy, advice.gap.amount - helocAvail), 'by gap minus its room', money(card.shortBy));
-  ok(!a.applies && (a.reason === 'sourceCannotCoverGap' || a.reason === 'alreadyFunded'),
+  ok(same(card.shortBy, advice.gap.amount),
+    'the HELOC card is short the whole gap, because headroom is not cash', money(card.shortBy));
+  ok(!a.applies && (a.reason === 'sourceCannotCoverGap' || a.reason === 'alreadyFunded'
+      || a.reason === 'borrowing-not-automatic'),
     'and the counterfactual does not price a draw beyond the facility', a.reason);
   ok(!a.alternateCrossing,
     'publishing no crossing date rather than one produced by an overdraw');
@@ -623,18 +577,6 @@ function withEngine(engine, plan_, asOf, o, debts, extra) {
 }
 
 const MUTATIONS = [
-  { label: 'the counterfactual falls back to the DEFAULT buffer instead of the one in force',
-    from: '    const withFunding = sources =>\n      recommend(plan, asOf, Object.assign({}, base, { fundingSources: sources }));',
-    to: '    const withFunding = sources =>\n      recommend(plan, asOf, Object.assign({}, base, { fundingSources: sources, targetBuffer: plan.defaults.targetBuffer }));',
-    // Measured on what the alternative BORROWS, not on its weekly figure —
-    // see the note in section 5 for why the weekly figure cannot see this.
-    check: m => {
-      const r = withEngine(m, fixture(), FIX_AS_OF, opts({ targetBuffer: 4000 }), fixtureDebts());
-      const g = r.cf.fullGapCoverage;
-      return g.applies
-        && (!same(g.borrowed, REAL.b4000.borrowed) || !same(g.addsBorrowing, 0));
-    } },
-
   { label: 'the counterfactual drops the current income scenario',
     from: '    const withFunding = sources =>\n      recommend(plan, asOf, Object.assign({}, base, { fundingSources: sources }));',
     to: '    const withFunding = sources =>\n      recommend(plan, asOf, Object.assign({}, base, { fundingSources: sources, scenario: plan.defaults.scenario, incomeOverrides: {} }));',
@@ -658,7 +600,8 @@ const MUTATIONS = [
     to: "        available: topUp, debtId: 'line', rank: lastRank + 1,",
     check: m => {
       const r = withEngine(m, fixture(), FIX_AS_OF, opts({ targetBuffer: 4000 }), fixtureDebts());
-      return r.cf.fullGapCoverage.applies && !same(r.cf.fullGapCoverage.addsBorrowing, 0);
+      return r.cf.fullGapCoverage.applies
+        && !same(r.cf.fullGapCoverage.weekly, REAL.b4000.weekly);
     } },
 
   { label: 'a full-coverage alternative is published for a gap that is already fundable',
@@ -669,51 +612,12 @@ const MUTATIONS = [
       return r.cf.fullGapCoverage.applies;
     } },
 
-  { label: 'the draw alternative is offered even where the plan already draws on it',
-    from: '      if (funding.parts.some(p => p.debtId === option.debtId)) return no(\'alreadyFunded\');',
-    to: '      if (false) return no(\'alreadyFunded\');',
+  { label: 'allowing debtId sources to auto-cover reintroduces credit-line gap cash',
+    from: '    if (src.debtId) return false;',
+    to: '    if (false && src.debtId) return false;',
     check: m => {
       const r = withEngine(m, fixture(), FIX_AS_OF, opts({ targetBuffer: 2000 }), fixtureDebts());
-      const a = (r.cf.gapFundingAlternatives || []).find(x => x.debtId === 'line');
-      return !!a && a.reason !== 'alreadyFunded';
-    } },
-
-  { label: 'the draw alternative is priced even when the facility cannot supply it',
-    from: '      if (!altFunding || !altFunding.feasible) {',
-    to: '      if (false) {',
-    check: m => {
-      const tight = fixture();
-      tight.funding.options = tight.funding.options.map(o =>
-        o.id === 'line' ? Object.assign({}, o, { available: 1 }) : o);
-      const r = withEngine(m, tight, FIX_AS_OF,
-        opts({ fundingSources: tight.funding.options }), fixtureDebts());
-      const a = (r.cf.gapFundingAlternatives || []).find(x => x.debtId === 'line');
-      return !!a && a.reason !== 'sourceCannotCoverGap';
-    } },
-
-  { label: 'the alternative draw never reaches the debt walk',
-    from: '      const moved = projectDebts(plan, debts, asOf, Object.assign({}, alt.simOptions, {',
-    to: '      const moved = projectDebts(plan, debts, asOf, Object.assign({}, alt.simOptions, { injections: [],',
-    check: m => {
-      const r = withEngine(m, plan, AS_OF, Object.assign({
-        scenario: plan.defaults.scenario, targetBuffer: plan.defaults.targetBuffer,
-        extraDebtMonthly: 0, incomeOverrides: {}, disabled: [], debts: data.debts,
-        extraDebtTarget: plan.nextDollar && plan.nextDollar.target,
-        fundingSources: plan.funding.options }, {}), data.debts,
-      { extraFacilities: data.revolvingExtra });
-      const a = (r.cf.gapFundingAlternatives || []).find(x => x.debtId === 'heloc');
-      // Without the draw the facility crosses when it always would, so there is
-      // no earlier date and the alternative collapses.
-      return !a || !a.applies || a.alternateCrossing.date !== '2026-08-31';
-    } },
-
-  { label: 'the crossing comparison is reversed, so a real alternative is suppressed',
-    from: '      if (!crossing || !(crossing.date < current.date)) {',
-    to: '      if (!crossing || !(crossing.date > current.date)) {',
-    check: m => {
-      const r = withEngine(m, fixture(), FIX_AS_OF, opts(), fixtureDebts());
-      const a = (r.cf.gapFundingAlternatives || []).find(x => x.debtId === 'line');
-      return !!a && !a.applies;
+      return r.advice.funding.parts.some(p => p.debtId === 'line');
     } },
 
   /* Deliberately NOT here: a mutation loosening `<` to `<=`. The equal-date

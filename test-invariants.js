@@ -282,51 +282,46 @@ ok(/advice\.funding/.test(planJs2), 'and reads the allocation back');
     'Amanda\'s held-elsewhere locator is not household funding while Q25 is OPEN',
     amandaFund ? money(amandaFund.available) : 'missing');
   const ranked = liveFunding().slice().sort((a, b) => a.rank - b.rank)
-    .filter(o => !o.unusable && o.available > 0);
+    .filter(o => !o.unusable && !o.debtId && o.available > 0);
   const usable = ranked.reduce((s, o) => s + o.available, 0);
   const floorNow = openingFloor(plan, asOf);
   const unfundedBuf = usable + 2000 + floorNow;
   const defaultBuf = Math.max(plan.defaults.targetBuffer, Math.ceil(floorNow + 50));
 
-  // A buffer just above the floor: one remaining usable source covers it.
-  // On this opening that source is the HELOC, because Q25 keeps Amanda at 0.
+  // A buffer just above the floor: Q25 keeps Amanda at 0, so no cash source
+  // remains. HELOC headroom is not automatic permission to draw.
   const base = F.recommend(plan, asOf, Object.assign({}, SRC, { targetBuffer: defaultBuf }));
-  ok(base.funding && base.funding.feasible && base.funding.parts.length === 1,
-    'just above the floor one remaining usable source covers the gap',
-    base.funding ? base.funding.parts.map(p => p.short).join(' + ') : 'no funding');
-  ok(base.funding.parts[0].id === 'heloc' && base.funding.borrowed > 0,
-    'and that source is the HELOC, not the held-elsewhere raw balance',
-    base.funding.parts.map(p => p.id).join(' + '));
+  ok(base.funding && base.funding.feasible === false && base.funding.borrowed === 0,
+    'just above the floor, HELOC capacity alone does not fund the gap',
+    base.funding ? `shortfall ${money(base.funding.shortfall)}` : 'no funding');
+  ok(!(base.funding.parts || []).some(p => p.id === 'heloc' || p.debtId),
+    'and no debtId source is injected',
+    (base.funding.parts || []).map(p => p.id).join(' + ') || 'none');
 
-  // Combination still works from an explicit planning available (no locator),
-  // not from the held-elsewhere raw balance.
-  const overlay = plan.funding.options.map(o =>
-    o.id === 'amanda' ? Object.assign({}, o, { cash: undefined, available: 800 }) : o);
+  // Combination still works from explicit non-debt planning available.
+  const overlay = plan.funding.options.map(o => {
+    if (o.id === 'amanda') return Object.assign({}, o, { cash: undefined, available: 800 });
+    if (o.id === 'heloc') return Object.assign({}, o, { debtId: null, available: 900 });
+    return o;
+  });
   const overlayRanked = F.resolveFundingSources(overlay, data.revolvingExtra, plan, data.debts)
-    .filter(o => !o.unusable && o.available > 0)
+    .filter(o => !o.unusable && !o.debtId && o.available > 0)
     .sort((a, b) => a.rank - b.rank);
   const combineBuf = overlayRanked[0].available + overlayRanked[1].available / 2 + floorNow;
   const big = F.recommend(plan, asOf, Object.assign({}, SRC, {
     fundingSources: overlay, targetBuffer: combineBuf }));
   ok(big.gap.amount > overlayRanked[0].available,
-    'at a combination-sized buffer the gap exceeds the largest single source',
+    'at a combination-sized buffer the gap exceeds the largest single cash source',
     `${money(big.gap.amount)} vs ${money(overlayRanked[0].available)}`);
   ok(big.funding.feasible && big.funding.needsCombination,
-    'but a combination reaches it, so the plan is feasible',
+    'but two cash sources reach it, so the plan is feasible',
     big.funding.parts.map(p => `${p.short} ${money(p.amount)}`).join(' + '));
-  ok(near(big.funding.borrowed, Math.max(0, big.gap.amount - overlayRanked[0].available)),
-    'and the shortfall against the free source is borrowed', money(big.funding.borrowed));
+  ok(near(big.funding.borrowed, 0),
+    'and none of that combination is borrowed', money(big.funding.borrowed));
   const bigProj = F.projectDebts(plan, data.debts, asOf,
     Object.assign({}, big.simOptions, { weeklyVariable: big.weekly, extraFacilities: data.revolvingExtra }));
-  ok(near(bigProj.byId.heloc.drawn, big.funding.borrowed),
-    'the debt projection records that draw against the HELOC', money(bigProj.byId.heloc.drawn));
-  const cross = bigProj.crossings.find(c => c.id === 'heloc' && !c.alreadyOver);
-  const freeCross = F.projectDebts(plan, data.debts, asOf,
-    Object.assign({}, base.simOptions, { weeklyVariable: base.weekly, extraFacilities: data.revolvingExtra }))
-    .crossings.find(c => c.id === 'heloc' && !c.alreadyOver);
-  ok(cross && freeCross && cross.date <= freeCross.date,
-    'the HELOC crossing does not move later when the gap is borrowed',
-    cross && freeCross ? `${cross.date} vs ${freeCross.date}` : 'none');
+  ok(near(bigProj.byId.heloc.drawn, 0),
+    'the debt projection records no HELOC draw for a cash combination', money(bigProj.byId.heloc.drawn));
 
   // Beyond every source combined: infeasible, and modelled as such.
   const huge = F.recommend(plan, asOf, Object.assign({}, SRC, { targetBuffer: unfundedBuf }));
@@ -576,7 +571,7 @@ ok(/No weekly spending\s*\n?\s*figure fixes this/.test(planJs2),
   // A buffer no combination of sources can reach. Spending is not a remedy for
   // money that does not exist: at any weekly figure the floor stays under the
   // buffer, so no weekly figure may be instructed at all.
-  const usable = liveFunding().filter(o => !o.unusable)
+  const usable = liveFunding().filter(o => !o.unusable && !o.debtId)
     .reduce((s, o) => s + o.available, 0);
   const unfundedBuf = usable + 2000 + openingFloor(plan);
   const unreachable = F.recommend(plan, asOf, Object.assign({}, O, { targetBuffer: unfundedBuf }));
@@ -591,10 +586,13 @@ ok(/No weekly spending\s*\n?\s*figure fixes this/.test(planJs2),
 }
 // Split funding must not be measured half-applied.
 {
-  const overlay = plan.funding.options.map(o =>
-    o.id === 'amanda' ? Object.assign({}, o, { cash: undefined, available: 800 }) : o);
+  const overlay = plan.funding.options.map(o => {
+    if (o.id === 'amanda') return Object.assign({}, o, { cash: undefined, available: 800 });
+    if (o.id === 'heloc') return Object.assign({}, o, { debtId: null, available: 900 });
+    return o;
+  });
   const ranked = F.resolveFundingSources(overlay, data.revolvingExtra, plan, data.debts)
-    .slice().sort((a, b) => a.rank - b.rank).filter(o => !o.unusable && o.available > 0);
+    .slice().sort((a, b) => a.rank - b.rank).filter(o => !o.unusable && !o.debtId && o.available > 0);
   const combineBuf = ranked[0].available + ranked[1].available / 2 + openingFloor(plan, asOf);
   const O = { scenario: 'expected', incomeOverrides: {}, disabled: [], extraDebtMonthly: 0,
     targetBuffer: combineBuf, fundingSources: overlay, debts: data.debts,
@@ -602,9 +600,9 @@ ok(/No weekly spending\s*\n?\s*figure fixes this/.test(planJs2),
   const adv = F.recommend(plan, asOf, O);
   const onDay = adv.sim.events.filter(e => e.date === adv.gap.date && e.kind === 'injection');
   ok(onDay.length === 1,
-    'a top-up drawn from two sources is ONE cash event', `${onDay.length} injection event(s)`);
+    'a top-up drawn from two cash sources is ONE cash event', `${onDay.length} injection event(s)`);
   ok(onDay[0].parts && onDay[0].parts.length === 2,
-    'while still carrying both origins for debt attribution',
+    'while still carrying both cash origins',
     onDay[0].parts.map(p => p.debtId || 'cash').join(' + '));
   ok(adv.holds && adv.weekly >= 0,
     'so the day closes on the buffer and the cap survives the split',
@@ -614,8 +612,8 @@ ok(/No weekly spending\s*\n?\s*figure fixes this/.test(planJs2),
     money(adv.sim.min.balance));
   const pr = F.projectDebts(plan, data.debts, asOf,
     Object.assign({}, adv.simOptions, { weeklyVariable: adv.weekly, extraFacilities: data.revolvingExtra }));
-  ok(near(pr.byId.heloc.drawn, adv.funding.borrowed),
-    'and the borrowed portion still lands on the HELOC', money(pr.byId.heloc.drawn));
+  ok(near(pr.byId.heloc.drawn, 0) && near(adv.funding.borrowed, 0),
+    'a cash combination does not land a HELOC draw', money(pr.byId.heloc.drawn));
 }
 
 // Money paid toward debt has to arrive somewhere. simulate() takes the whole
