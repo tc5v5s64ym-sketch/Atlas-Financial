@@ -2491,6 +2491,8 @@
         // current-regime cash are netted off, and is what the weekly cap
         // consumes. reserved stays in essential/required totals and coverage
         // so a card-paid service is not published as if it cost nothing.
+        // Cap comparison uses planned only; counting reserved there would
+        // overstate the essential need / shortfall against the cap.
         gross, planned, reserved,
         // Dated commitments saved for separately. Reported, never netted off
         // the recurring line for the same category.
@@ -2509,10 +2511,16 @@
     const sum = (pred, field) => categories.filter(pred)
       .reduce((s, c) => s + (field ? c[field] : spend(c)), 0);
     const isClass = k => c => c.class === k;
+    const isRequired = c => c.class === 'essential' || c.class === 'unknown';
 
     const discretionaryMonthly = sum(isClass('discretionary'));
-    // What the cap must cover before anything optional happens.
-    const requiredMonthly = sum(c => c.class === 'essential' || c.class === 'unknown');
+    // Coverage: essentials + unknown, including reserved current-regime.
+    const requiredMonthly = sum(isRequired);
+    // What the weekly cap must cover before anything optional happens.
+    // Reserved cash is already walked on its own ledger; counting it here
+    // overstates the essential need / shortfall against the cap.
+    const inCapRequiredMonthly = sum(isRequired, 'planned');
+    const inCapDiscretionaryMonthly = sum(isClass('discretionary'), 'planned');
 
     return {
       basis, basisLabel: window.label, months: window.months, categories,
@@ -2528,10 +2536,11 @@
       sinkingItems: sinking.items,
       ownerTargetCount: categories.filter(c => c.target != null).length,
       requiredMonthly,
-      // The weekly cap measured against all of that, when a caller says which
-      // cap is on screen. Null when none was given — a caller that has not
-      // named a cap is asking about the categories, not for a verdict on one.
-      cap: againstCap(categories, requiredMonthly, discretionaryMonthly, opts),
+      // The weekly cap measured against the in-cap planned remainder, when a
+      // caller says which cap is on screen. Null when none was given — a
+      // caller that has not named a cap is asking about the categories, not
+      // for a verdict on one.
+      cap: againstCap(categories, inCapRequiredMonthly, inCapDiscretionaryMonthly, opts),
     };
   }
 

@@ -1425,7 +1425,7 @@ function renderPlan(d, periods, history) {
       `The right-hand figure is what each category has averaged; the amount before it is what has to come out of the ` +
       `weekly cap once anything already dated on the calendar is removed. Those add to ${money(cap.inCapMonthly)}/month against a ` +
       `cap of ${money(cap.monthly)}/month, so ${money(cap.overCapMonthly)}/month has to come off — and it ` +
-      `cannot come off the essential rows, which are ${money(budget.requiredMonthly)}/month on their own. ` +
+      `cannot come off the essential rows, which are ${money(cap.essentialMonthly)}/month on their own. ` +
       (fullyDatedNames.length
         ? `${fullyDatedNames.join(' and ')} show${fullyDatedNames.length === 1 ? 's' : ''} $0 because ` +
           `${fullyDatedNames.length === 1 ? 'it is' : 'they are'} fully dated on the calendar, not because ` +

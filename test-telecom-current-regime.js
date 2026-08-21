@@ -128,8 +128,19 @@ ok(near(budget.essentialMonthly, beforeEssential - remainderDelta),
   'AFTER essentialMonthly drops the same remainder and still includes reserved Bell',
   money(budget.essentialMonthly));
 const WEEKS = 365.25 / 12 / 7;
-ok(near(budget.cap.essentialWeekly, (beforeRequired - remainderDelta) / WEEKS),
-  'required/week follows AFTER requiredMonthly from the calendar conversion');
+const independentInCapRequired = (beforeRequired - remainderDelta) - undatedBell;
+ok(near(budget.requiredMonthly - independentInCapRequired, undatedBell),
+  'coverage minus the in-cap remainder is independently the $121 Bell reserve');
+ok(near(budget.cap.essentialMonthly, independentInCapRequired),
+  'cap essential monthly excludes reserved Bell',
+  money(budget.cap.essentialMonthly));
+ok(near(budget.cap.essentialWeekly, independentInCapRequired / WEEKS),
+  'cap essential/week excludes reserved Bell',
+  money(budget.cap.essentialWeekly));
+ok(near(budget.cap.essentialShortfallMonthly,
+    Math.max(0, independentInCapRequired - budget.cap.monthly)),
+  'cap shortfall is against the in-cap remainder, not coverage including Bell',
+  money(budget.cap.essentialShortfallMonthly));
 
 console.log('\n=== no double-count, no invented cash Bell, no Telus bill ===');
 ok(!(plan.bills || []).some(b => /telus/i.test(b.id + ' ' + b.label)),

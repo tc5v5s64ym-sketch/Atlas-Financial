@@ -198,9 +198,18 @@ ok(capMonthly > 0, 'the cap converts to a positive monthly figure', money(capMon
 ok(capMonthly > 0,
   'the cap is a positive monthly figure',
   `${money(budget.requiredMonthly)} required vs ${money(capMonthly)} cap`);
-const discretionaryRoom = Math.max(0, capMonthly - budget.requiredMonthly);
+const inCapRequired = budget.categories
+  .filter(c => c.class === 'essential' || c.class === 'unknown')
+  .reduce((s, c) => s + (c.planned || 0), 0);
+const reservedRequired = budget.categories
+  .filter(c => c.class === 'essential' || c.class === 'unknown')
+  .reduce((s, c) => s + (c.reserved || 0), 0);
+ok(near(budget.requiredMonthly, inCapRequired + reservedRequired),
+  'coverage required is the in-cap planned remainder plus reserved current-regime',
+  `${money(inCapRequired)} + ${money(reservedRequired)}`);
+const discretionaryRoom = Math.max(0, capMonthly - inCapRequired);
 ok(discretionaryRoom >= 0, 'published discretionary room is never negative',
-  `${money(capMonthly - budget.requiredMonthly)}/month raw`);
+  `${money(capMonthly - inCapRequired)}/month raw`);
 ok(discretionaryRoom < budget.discretionaryMonthly,
   'and is far less than discretionary spending has actually been running at',
   `${money(discretionaryRoom)} allowed vs ${money(budget.discretionaryMonthly)} historical`);
@@ -219,8 +228,8 @@ ok(near(engineCap.monthly, capMonthly, 0.005),
 ok(near(engineCap.discretionaryRoomMonthly, discretionaryRoom, 0.005),
   'and reaches the same floored discretionary room',
   `${money(engineCap.discretionaryRoomMonthly)} vs ${money(discretionaryRoom)}`);
-ok(near(engineCap.essentialWeekly, budget.requiredMonthly / WEEKS_PER_MONTH, 0.005),
-  'and the same weekly essential need', money(engineCap.essentialWeekly));
+ok(near(engineCap.essentialWeekly, inCapRequired / WEEKS_PER_MONTH, 0.005),
+  'and the same weekly essential need against the in-cap remainder', money(engineCap.essentialWeekly));
 ok(engineCap.hasDiscretionaryRoom === (discretionaryRoom > 0),
   'and the same verdict about whether there is any room at all');
 
@@ -325,6 +334,71 @@ console.log('\n=== current-regime outranks historical and loses to owner target 
     money(regime.requiredMonthly));
   ok(near(row.current, 100) && !near(row.planned, 200 - 80),
     'planned is not the historical remainder');
+
+  {
+    // Independent split: $200 owner-target groceries stay in the cap;
+    // $100 reserved phones stay in coverage and out of the cap. A $250/month
+    // cap sits between those two figures, so using coverage as the cap load
+    // would invent a $50 shortfall.
+    const WEEKS = 365.25 / 12 / 7;
+    const monthlyCap = 250;
+    const weeklyCap = monthlyCap / WEEKS;
+    const splitPlan = {
+      windowDays: 91,
+      bills: [{
+        id: 'net', label: 'Internet', frequency: 'monthly', amount: 80,
+        budgetCategory: 'phones',
+      }],
+      commitments: [],
+      budget: {
+        basis: 'ytd',
+        categories: [
+          {
+            id: 'phones', label: 'Phones', class: 'essential',
+            from: ['Phones'], plannedMonthly: null, currentMonthly: 100,
+          },
+          {
+            id: 'groceries', label: 'Groceries', class: 'essential',
+            from: ['Groceries'], plannedMonthly: 200,
+          },
+        ],
+      },
+    };
+    const splitPeriods = {
+      periods: {
+        ytd: {
+          label: 'YTD',
+          months: 4,
+          spending: [
+            { label: 'Phones', total: 800 },
+            { label: 'Groceries', total: 0 },
+          ],
+        },
+      },
+    };
+    const independentInCap = 200;
+    const independentReserved = 100;
+    const independentCoverage = independentInCap + independentReserved;
+    const split = F.budgetBreakdown(splitPlan, splitPeriods, { weeklyCap });
+    ok(near(split.requiredMonthly, independentCoverage)
+      && near(split.essentialMonthly, independentCoverage),
+      'coverage still includes reserved $100 plus in-cap $200',
+      money(split.requiredMonthly));
+    ok(near(split.cap.essentialMonthly, independentInCap)
+      && near(split.cap.essentialWeekly, independentInCap / WEEKS),
+      'cap essential need is the in-cap remainder only',
+      money(split.cap.essentialMonthly));
+    ok(split.cap.hasDiscretionaryRoom === true
+      && near(split.cap.essentialShortfallMonthly, 0)
+      && near(split.cap.discretionaryRoomMonthly, monthlyCap - independentInCap),
+      'a $250/month cap covers $200 in-cap essential; room is $50, not a $50 shortfall',
+      money(split.cap.discretionaryRoomMonthly));
+    ok(near(split.cap.inCapMonthly, independentInCap),
+      'in-cap total excludes reserved', money(split.cap.inCapMonthly));
+    ok(!near(split.cap.essentialMonthly, independentCoverage)
+      && near(independentCoverage - split.cap.essentialMonthly, independentReserved),
+      'the gap between coverage and cap essential is independently the reserved $100');
+  }
 
   fixturePlan.budget.categories[0].plannedMonthly = 250;
   const ownerWins = F.budgetBreakdown(fixturePlan, fixturePeriods, {});
