@@ -157,7 +157,7 @@ const rowLax = ((data.lacrosse && data.lacrosse.sources) || [])
 const rowIncomeMonthly = Math.round(rowIncome / data.incomeCaptureMonths);
 
 ok(data.debts.length === 7, 'seven posted debt rows');
-ok(data.assets.length === 9, 'nine asset rows');
+ok(data.assets.length === 10, 'ten asset rows, including Cash Back Dollars');
 ok((data.income || []).length === 5, 'five income-line rows');
 
 const live = F.publicationTotals(data);
@@ -326,6 +326,134 @@ const extraPlan = {
 const afterCommit = F.publicationTotals(Object.assign({}, data, extraPlan));
 ok(afterCommit.commitmentsTotal === rowCommit + 150,
   'an extra $150 plan.commitments row moves the published total');
+
+console.log('\n=== B28: dollar Cash Back rewards enter assets; points do not ===');
+/* Synthetic $47.21 is a fixture for publication arithmetic — not a live
+ * ACCOUNT_FACTS pin. The live row is reconciled to the dated positions.csv
+ * Household evidence (2026-08-09), not treated as a 2026-08-19 opening
+ * balance. Points stay out of every dollar total. */
+const CASH_BACK_DOLLARS = 47.21;
+const TD_REWARDS_POINTS = 57968;
+ok(sameCents(CASH_BACK_DOLLARS, 47 + 21 / 100),
+  'the dollar reward fixture is independently $47 + 21 cents');
+
+const HAND_ASSETS_WITH_REWARD = HAND_ASSETS + CASH_BACK_DOLLARS;
+ok(sameCents(HAND_ASSETS_WITH_REWARD, 1250 + 47.21),
+  'FIX assets $1,250 plus $47.21 is $1,297.21 by hand',
+  money2(HAND_ASSETS_WITH_REWARD));
+
+const fixWithReward = Object.assign({}, FIX, {
+  assets: FIX.assets.concat([{ label: 'Cash Back Dollars', value: CASH_BACK_DOLLARS }]),
+});
+const pubWithReward = F.publicationTotals(fixWithReward);
+const pubWithoutReward = F.publicationTotals(FIX);
+ok(sameCents(pubWithReward.assets, HAND_ASSETS_WITH_REWARD)
+  && sameCents(pubWithReward.assets - pubWithoutReward.assets, CASH_BACK_DOLLARS),
+  'adding the dollar reward raises published assets by exactly $47.21');
+ok(sameCents(pubWithReward.financialAccountsOnly - pubWithoutReward.financialAccountsOnly,
+  CASH_BACK_DOLLARS),
+  'and financial-account net worth by the same $47.21');
+ok(same(pubWithReward.totalDebt, pubWithoutReward.totalDebt)
+  && same(pubWithReward.creditLeft, pubWithoutReward.creditLeft)
+  && same(pubWithReward.annualInterest, pubWithoutReward.annualInterest),
+  'debt totals, credit left, and interest are unchanged');
+
+const pubRewardRemoved = F.publicationTotals(Object.assign({}, FIX, { assets: FIX.assets }));
+ok(sameCents(pubRewardRemoved.assets, HAND_ASSETS)
+  && sameCents(pubWithReward.assets - pubRewardRemoved.assets, CASH_BACK_DOLLARS),
+  'removing that reward drops the published total by the same $47.21');
+
+const pubRewardChanged = F.publicationTotals(Object.assign({}, FIX, {
+  assets: FIX.assets.concat([{ label: 'Cash Back Dollars', value: 40 }]),
+}));
+ok(sameCents(pubRewardChanged.assets, HAND_ASSETS + 40)
+  && sameCents(pubWithReward.assets - pubRewardChanged.assets, CASH_BACK_DOLLARS - 40),
+  'changing the reward to $40 moves the published total by the $7.21 difference');
+
+const pubWithPointsField = F.publicationTotals(Object.assign({}, FIX, {
+  assets: FIX.assets.concat([
+    { label: 'Cash Back Dollars', value: CASH_BACK_DOLLARS },
+    { label: 'TD Rewards points', points: TD_REWARDS_POINTS },
+  ]),
+}));
+ok(sameCents(pubWithPointsField.assets, HAND_ASSETS_WITH_REWARD),
+  'a points field does not enter the dollar asset total');
+ok(!sameCents(pubWithPointsField.assets, HAND_ASSETS + TD_REWARDS_POINTS)
+  && !sameCents(pubWithPointsField.assets, HAND_ASSETS_WITH_REWARD + TD_REWARDS_POINTS),
+  'and 57,968 is not treated as dollars');
+
+function parseCsvLine(r) {
+  const out = []; let cur = '', q = false;
+  for (let i = 0; i < r.length; i++) {
+    const c = r[i];
+    if (c === '"') { if (q && r[i + 1] === '"') { cur += '"'; i++; } else q = !q; continue; }
+    if (c === ',' && !q) { out.push(cur); cur = ''; continue; }
+    cur += c;
+  }
+  out.push(cur); return out;
+}
+const posReward = read('docs/positions.csv').split(/\r?\n/).map(parseCsvLine)
+  .find(c => c[0] === 'Household' && c[2] === 'Cash Back Dollars');
+const liveReward = (data.assets || []).find(a => a.label === 'TD Cash Back Dollars');
+const liveRewardCents = liveReward ? Number(liveReward.value) : NaN;
+ok(posReward && posReward[19] === '2026-08-09',
+  'positions.csv dates Cash Back Dollars to the 2026-08-09 account reading');
+ok(posReward && posReward[19] !== asOf,
+  'that evidence date is not the current opening as-of');
+ok(/^VERIFIED/.test(String(posReward && posReward[18] || '')),
+  'the dated row keeps verified-account confidence, not an opening observation');
+ok(liveReward && liveReward.cash == null && sameCents(liveRewardCents, Number(posReward[6])),
+  'live data.json matches the dated positions.csv Cash Back Dollars row');
+ok(new RegExp(posReward[19].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).test(data.assetsNote)
+  && new RegExp('not this ' + String(asOf).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).test(data.assetsNote),
+  'assetsNote labels the live row as that dated reading, not this cutover');
+ok(!/ACCOUNT_FACTS/.test(data.assetsNote),
+  'assetsNote does not treat ACCOUNT_FACTS as the current-balance authority');
+ok(!(data.assets || []).some(a => /rewards points/i.test(String(a.label || '')) && a.value),
+  'live assets do not assign a dollar value to TD Rewards points');
+ok(!(data.assets || []).some(a => a.points != null),
+  'live assets do not carry a valued points field');
+const liveWithoutReward = F.publicationTotals(Object.assign({}, data, {
+  assets: (data.assets || []).filter(a => a.label !== 'TD Cash Back Dollars'),
+}));
+ok(sameCents(live.assets - liveWithoutReward.assets, liveRewardCents)
+  && sameCents(live.financialAccountsOnly - liveWithoutReward.financialAccountsOnly,
+    liveRewardCents),
+  'removing the live Cash Back Dollars row drops published net-worth assets by that dated balance');
+ok(sameCents(live.totalDebt, liveWithoutReward.totalDebt)
+  && same(live.creditLeft, liveWithoutReward.creditLeft),
+  'live debt total and funding-capacity headroom do not move with that row');
+
+const spendable = F.startingCashAmount(data.plan);
+const spendableHand = (data.plan.startingCash.breakdown || [])
+  .reduce((s, b) => s + (Number(b.value) || 0), 0);
+ok(sameCents(spendable, spendableHand),
+  'spendable cash is still the household cash-register sum, independently of assets');
+ok(!(data.plan.startingCash.breakdown || []).concat(data.plan.startingCash.heldElsewhere || [])
+  .some(b => /cash back dollars/i.test(String(b.label || b.id || ''))),
+  'Cash Back Dollars is not a cash-register identity');
+
+const recOpts = {
+  scenario: data.plan.defaults.scenario,
+  incomeOverrides: {}, disabled: [],
+  extraDebtMonthly: data.plan.defaults.extraDebtMonthly,
+  targetBuffer: data.plan.defaults.targetBuffer,
+  debts: data.debts,
+  extraDebtTarget: data.plan.nextDollar && data.plan.nextDollar.target,
+  fundingSources: data.plan.funding && data.plan.funding.options,
+  extraFacilities: data.revolvingExtra,
+};
+const advice = F.recommend(data.plan, data.meta.asOf, recOpts);
+ok(advice && advice.weekly != null,
+  'Forecast.recommend still returns a weekly cap on this plan');
+const forecastSrc = read('public/forecast.js');
+const recMark = 'function recommend(plan, asOf, opts)';
+const recStart = forecastSrc.indexOf(recMark);
+const recEnd = forecastSrc.indexOf('function incomeDeadline(', recStart);
+const recommendSrc = recStart >= 0 && recEnd > recStart
+  ? forecastSrc.slice(recStart, recEnd) : '';
+ok(recommendSrc.indexOf(recMark) === 0 && !/\bassets\b/.test(recommendSrc),
+  'recommend does not read the assets list, so safe-to-spend cannot move with this row');
 
 console.log('\n=== mutation: breaking the engine formula fails ===');
 const FORECAST_SRC = read('public/forecast.js');
