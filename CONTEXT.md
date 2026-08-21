@@ -24,7 +24,8 @@ reserved; same-day scheduled cash events fail closed without posting evidence. L
 already exists and has been exercised; identity and idempotency of that
 path are proved (`B78` / T3). The file foundation has not demonstrably
 failed (`B79` / `AF-STORE-01`); no store is introduced. Owner-approved
-preview/apply writes are earned (`B81` first slice). Unattended production
+preview/apply writes, the 2026-08-19 canonical opening, and the
+read-only live overlay are earned (`B81` / `AF-LIVE-02`). Unattended production
 writes are **not** approved. Owner-maintained Lunch Money account
 freshness is accepted owner policy and does not block unrelated
 automatically refreshed accounts. The household cash schedule has one

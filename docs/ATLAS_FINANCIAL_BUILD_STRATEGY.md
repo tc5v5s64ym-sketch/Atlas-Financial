@@ -34,9 +34,10 @@ milestones. Owner decision **2026-08-17**: Lunch Money is
 the household's **normal operational financial update feed**. Forecast
 remains the planner. Unattended production writes are **not** approved.
 T3 is **met**. The store gate is **not** met: files remain the
-foundation. **T4 passed 2026-08-17.** `B81` / `AF-LIVE-02` first slice is
-the earned preview / approve / bounded writer. Unattended production
-writes and a Render token remain reserved. Do **not** wait for a second
+foundation. **T4 passed 2026-08-17.** `B81` / `AF-LIVE-02` is **done** as the
+earned preview / approve / bounded writer, the published 2026-08-19
+canonical opening, and the read-only live overlay. Unattended production
+writes, a Render token, and a newer live substitute opening remain reserved. Do **not** wait for a second
 month of routine statement files. Provider-completeness, broad historical
 forensics, old categorisation cleanup, and file-statement backfill are
 **not** critical-path gates unless they expose a demonstrated material
@@ -289,8 +290,10 @@ B79 / AF-STORE-01  the store question, answered by evidence
        proof in docs/STORE_QUESTION_B79.md; store gate stays closed
   ↓
 B81 / AF-LIVE-02  trusted canonical refresh
-     ← T4 passed 2026-08-17; preview/approve writer earned;
-       unattended production WRITE is not approved
+     ← DONE; preview/approve/opening/recovery writers earned;
+       published opening is 2026-08-19; read-only live overlay earned;
+       unattended production WRITE, Render token, and a newer live
+       substitute opening remain reserved
 ```
 
 Not critical-path gates unless they expose a demonstrated material source
@@ -1032,19 +1035,24 @@ canonical writer.
 
 `ARCHITECTURE.md` still owns the connectivity gate. **Live read-only Lunch
 Money observation already exists and has already been exercised.** Do not
-write as though Atlas has never touched live Lunch Money. T4 / `B81` are
-the remaining gate for **trusted canonical refresh** — automatic or
-unrestricted writes from that live feed into canonical Atlas state. The
-2026-08-17 owner decision establishes product direction (Lunch Money is the
-normal feed). It does **not** authorize bank credentials, money movement,
-autonomous institution changes, silent production writes, bypassing
-reconciliation, or treating unknown/stale values as current.
+write as though Atlas has never touched live Lunch Money. T4 passed and
+`B81` / `AF-LIVE-02` is the earned trusted canonical-refresh capability:
+preview / approve / bounded writes, the published 2026-08-19 opening, and
+the read-only live overlay. Automatic or unrestricted production writes
+from that live feed remain **owner-reserved**, not an unfinished B81
+implementation slice. The 2026-08-17 owner decision establishes product
+direction (Lunch Money is the normal feed). It does **not** authorize bank
+credentials, money movement, autonomous institution changes, silent
+production writes, bypassing reconciliation, or treating unknown/stale
+values as current.
 
 The owner recorded condition 1 and authorised the B80 evaluation plus the
 observe seam. That evaluation and the live Lunch Money **read** test are
 **done**. Remaining provider-completeness work is not a critical-path gate.
-**T4 passed 2026-08-17.** `B81` first slice is the earned preview/approve
-writer. Unattended production writes remain reserved.
+**T4 passed 2026-08-17.** `B81` is **done** as the earned preview/approve
+writer, the 2026-08-19 canonical opening, and the read-only overlay.
+Unattended production writes, a Render token, and a newer live substitute
+opening remain reserved.
 
 ### AF-LIVE-01 · Evaluate providers, point nothing live
 
@@ -1081,11 +1089,11 @@ writer. Unattended production writes remain reserved.
   `ARCHITECTURE.md`'s absolute; any provider token handled under the secret
   boundary's configured-secret rule; no silent or unattended production
   writes.
-- **State** — **opening-cutover writer earned; live production cutover reserved;
-  read-only in-memory overlay earned.**
+- **State** — **complete 2026-08-20 as the earned capability. Production
+  activation remains reserved.**
   Preview / approve / bounded posted-field write is earned. Candidate-date
   pending writes are earned through a distinct `cutoverApprovalId`. A clean
-  `--cutover-as-of` preflight can now propose one atomic opening through a
+  `--cutover-as-of` preflight can propose one atomic opening through a
   distinct `openingApprovalId` (`atlas-opening-cutover-approval/v1`).
   `previewId` and `cutoverApprovalId` cannot authorize that opening. MATCH
   is not freshness. An approved opening write is one coherent transition:
@@ -1108,10 +1116,10 @@ writer. Unattended production writes remain reserved.
   evidence. Unrepresented joint-cash outflows between the dated opening
   and the live as-of stay reserved through `plan.opening.priorAsOf`.
   Unattended production writes, a Render token, and a newer live substitute
-  opening remain reserved.
+  opening remain reserved. They do not keep this item unfinished.
 - **Prompt** — *Do not apply the unused Chequing B $10, choose a Triangle
   same-day winner, invent a pending→posted case, add a Render token,
-  schedule refresh, or perform the first production opening cutover.*
+  schedule refresh, or invent a newer live substitute opening.*
 
 ---
 
@@ -1221,7 +1229,7 @@ resurrect it.
 | End-to-end payday proof | **ACTIVE** | `AF-PLAN-02` / `B96`, after `B94`. **Complete 2026-08-16.** Household payday answer is composed from incumbent Forecast results on the 2026-08-16 opening. | Already sequenced. Prove fresh evidence → canonical state → Forecast → household answer. Not a second payday engine. |
 | Prove the normal Lunch Money refresh path | **ACTIVE** | Phase 2 `AF-INTAKE-01` / `B21`. **Complete 2026-08-17.** Later live observation through existing observe → reconcile. Proof: `docs/connectivity/LUNCH_MONEY_REFRESH_PROOF_2026-08-17.md`. | Already sequenced. Do not reopen to apply the unused $10 Chequing B change or to invent a pending→posted case. |
 | Improved ingestion | **ACTIVE** | Phase 3 `AF-INGEST-01` / `B78`, to T3. **Complete 2026-08-17.** Identity-stable idempotent Lunch Money observation/import on real household data; existing provider IDs; no new identity system; no store. Proof: `docs/connectivity/LUNCH_MONEY_IDENTITY_PROOF_B78.md`. | Already sequenced. T3 met. `AF-STORE-01` / `B79` is complete; store gate stays closed. |
-| Automated financial-data connectivity / trusted canonical refresh | **ACTIVE** (`B81`) | `ARCHITECTURE.md` connectivity gate. Live **read** observation (`AF-LIVE-01` / `B80` + GET) is **complete**. T4 **passed 2026-08-17**. `AF-LIVE-02` earned posted, pending, and opening-cutover writers in `scripts/canonical-refresh.js`, plus same-date artifact recovery for an already-approved opening whose positions/snapshot are missing. An approved opening is one coherent canonical + positions + snapshot transition. Live `main` still publishes the 2026-08-16 opening until the exact owner-approved 2026-08-19 bytes can be recovered or replayed. | Unattended production writes, a Render token, and a newer live substitute opening remain reserved. Obtain no credential in git. Do not apply the unused $10 or choose a Triangle winner. Do not recover live 2026-08-19 artifacts in this mechanism PR. |
+| Automated financial-data connectivity / trusted canonical refresh | **ACTIVE** (`B81`) | `ARCHITECTURE.md` connectivity gate. Live **read** observation (`AF-LIVE-01` / `B80` + GET) is **complete**. T4 **passed 2026-08-17**. `AF-LIVE-02` / `B81` is **complete** as the earned capability: posted, pending, opening-cutover, and same-date artifact-recovery writers in `scripts/canonical-refresh.js`; the published 2026-08-19 canonical opening; and the read-only in-memory live overlay (`scripts/live-plan.js`) consumed by `/data.json` and disclosed in the UI. An approved opening is one coherent canonical + positions + snapshot transition. Live `main` publishes the 2026-08-19 opening. The 2026-08-16 opening remains dated evidence. | Unattended production writes, a Render token, and a newer live substitute opening remain reserved. Obtain no credential in git. Do not apply the unused $10 or choose a Triangle winner. Do not treat those reservations as a missing B81 implementation slice. |
 | Richer payroll / bonus / pension-contribution modelling | **PARKED** | The 91-day plan consumes estimated net pay. A statutory payroll engine (`EMP-006`) is excluded. Optional pension cash is already inside that net. No bonus cash event is on the live plan. | A named consumer that current net cannot serve — a window that includes a CPP/EI reset, or an owner-supplied bonus or pension cash event, or an owner-supplied horizon that needs statutory seasonality. Do not build a payroll engine in order to absorb a net `Forecast` already consumes. |
 | Retirement planning | **PARKED** | `ARCHITECTURE.md` destination names pension and investments. Live published net worth excludes pensions. There is no `Forecast` retirement function. The advisory copilot "retirement engine" is not adopted. | An owner decision to include pensions in a published window, or to earn a retirement span on the one plan. Not a second planner. |
 | Goals and sinking funds | **PARKED** | `ARCHITECTURE.md` destination names sinking funds. Known major future costs already live on `plan.commitments` (`B95`); property tax stays the existing reserve. That is one Plan home, not a goals engine and not a second planner. ON TRACK / AT RISK / FUNDING GAP is `Forecast.majorPlans` and applies only to those major plans. | Owner-promoted shared targets, or a product-exit gap that the existing plan/commitment path cannot answer. Do not stand up a goals engine beside `Forecast`. Do not create one ticket per purchase. |
