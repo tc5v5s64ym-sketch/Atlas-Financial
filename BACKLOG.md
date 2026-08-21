@@ -116,6 +116,8 @@ and purpose-capped, and `projectDebts` / `plannedDebt` reject an interim
 limit crossing. Opening-gap recovery does not auto-inject a `debtId`
 source merely because it has headroom: unapproved borrowing cannot
 repair an otherwise-infeasible opening or raise safe-to-spend.
+A legacy `fundingDebtId` hint without declared sources is the same
+facility hint, not permission; that path fails closed.
 Direct regression proofs live in `test-master-forecast.js` and
 `test-opening-gap-no-auto-borrow.js`.
 

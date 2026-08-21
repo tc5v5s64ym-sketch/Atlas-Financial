@@ -139,6 +139,35 @@ console.log('\n=== HELOC headroom does not auto-fund the opening gap ===');
     'the mission does not instruct a weekly spend while the gap is unfunded');
 }
 
+console.log('\n=== legacy fundingDebtId cannot authorize an opening-gap draw ===');
+{
+  const data = fixture();
+  const rec = F.recommend(data.plan, AS_OF, {
+    debts: data.debts,
+    extraFacilities: data.extraFacilities,
+    targetBuffer: BUFFER,
+    fundingDebtId: 'heloc',
+  });
+  ok(rec.mode === 'openingGap', 'mode stays openingGap', rec.mode);
+  ok(near(rec.gap.amount, GAP), 'the independent $104.89 gap is preserved',
+    String(rec.gap && rec.gap.amount));
+  ok(rec.plannedDebt && rec.plannedDebt.permitted === false
+    && rec.plannedDebt.borrowed === 0,
+    'plannedDebt stays unpermitted when only fundingDebtId is supplied');
+  ok(rec.funding && rec.funding.feasible === false,
+    'the hint does not make the gap feasible');
+  ok(near(rec.funding.shortfall, GAP),
+    'the unfunded shortfall remains the independent $104.89',
+    String(rec.funding && rec.funding.shortfall));
+  ok(near(rec.funding.borrowed, 0) && (rec.funding.parts || []).every(p => !p.debtId),
+    'no debt injection is created', JSON.stringify(rec.funding && rec.funding.parts));
+  ok(!(rec.simOptions.injections || []).some(i => i.debtId),
+    'recovery injections carry no HELOC draw');
+  ok(rec.weekly === 0,
+    'no borrowing-enabled weekly cap is published as safe-to-spend',
+    `$${rec.weekly}/week`);
+}
+
 console.log('\n=== a usable non-debt cash source may still cover the gap ===');
 {
   const data = fixture({

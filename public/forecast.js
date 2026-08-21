@@ -2029,13 +2029,19 @@
         amount: take, debtId: src.debtId || null });
       unmet -= take;
     }
-    // No sources declared at all: fall back to one unattributed injection,
-    // which is what a caller that has not told us anything is implicitly
-    // asking for. A declared list that is only debt or unusable is not
-    // that case — it is an unfunded shortfall.
-    if (!declared.length) {
+    // No sources declared at all: fall back to one unattributed cash
+    // injection, which is what a caller that has not told us anything is
+    // implicitly asking for. A declared list that is only debt or unusable
+    // is not that case — it is an unfunded shortfall.
+    //
+    // Legacy fundingDebtId is a facility hint, not authorization to borrow.
+    // Attaching it here used to convert HELOC capacity into opening-gap cash
+    // while plannedDebt.permitted stayed false. Unapproved borrowing cannot
+    // repair an opening gap (B70). Fail that path closed: no injection.
+    // Planned borrowing stays on Forecast.plannedDebt.
+    if (!declared.length && !base.fundingDebtId) {
       parts.push({ id: 'gapFunding', label: base.fundingLabel || 'Gap funding — transfer or draw',
-        short: 'gap funding', amount: gapAmount, debtId: base.fundingDebtId || null });
+        short: 'gap funding', amount: gapAmount, debtId: null });
       unmet = 0;
     }
     const shortfall = Math.max(0, unmet);
