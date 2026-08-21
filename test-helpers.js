@@ -22,13 +22,26 @@ function burrardDue(plan, asOf) {
     .reduce((s, c) => s + Number(c.amount || 0), 0);
 }
 
+// Undated current-regime monthly cost, reconstructed from Plan inputs — not
+// from Forecast.simulate. Owner targets beat it. Calendar month is 365.25/12.
+function currentRegimeReservedDaily(plan) {
+  const cats = (plan && plan.budget && plan.budget.categories) || [];
+  let monthly = 0;
+  for (const c of cats) {
+    if (!c || c.plannedMonthly != null || c.currentMonthly == null) continue;
+    const n = Number(c.currentMonthly);
+    if (isFinite(n)) monthly += n;
+  }
+  return monthly * 12 / 365.25;
+}
+
 function openingFloor(plan, asOf) {
   const cash = F.startingCashAmount(plan);
   if (!asOf) return cash - burrardDue(plan);
   const openingOut = (F.expandEvents(plan, asOf, asOf, {}) || [])
     .filter(e => e.date <= asOf && e.amount < 0 && e.kind !== 'noncash' && e.jointCash !== false)
     .reduce((s, e) => s + e.amount, 0);
-  return cash + openingOut;
+  return cash + openingOut - currentRegimeReservedDaily(plan);
 }
 
 function gapAtBuffer(plan, buffer, asOf) {
@@ -122,6 +135,7 @@ function usableFunding(plan, extra, debts) {
 module.exports = {
   clone,
   burrardDue,
+  currentRegimeReservedDaily,
   openingFloor,
   gapAtBuffer,
   cashOnDate,

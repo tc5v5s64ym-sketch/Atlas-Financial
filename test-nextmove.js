@@ -417,7 +417,7 @@ const DEFAULT_GAP = gapAtBuffer(plan, plan.defaults.targetBuffer, asOf);
   const cash = F.startingCashAmount(plan);
   const floor = openingFloor(plan, asOf);
   ok(floor <= cash && cash - floor >= 0,
-    'the published floor is opening cash after same-day joint-cash outflows',
+    'the published floor is opening cash after same-day joint-cash outflows and reserved current-regime daily cash',
     `${cash} → ${floor}`);
   const actionAmt = plan.actions[0].amount;
   ok(actionAmt != null && actionAmt > 0,
