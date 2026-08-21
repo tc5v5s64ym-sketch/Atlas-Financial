@@ -221,3 +221,15 @@ Byte-identical.
 | `snapshots/2026-08-19.json` | `4525ab6b0391c9551a3c51b4fc0d68df3df434de6eae9e84d30a4bb00d8d6a2d` |
 
 `writesCanonicalState` on the CLI summary is `false`.
+
+## `npm test`
+
+On this documentation head, after the live GET:
+
+```text
+npm test
+```
+
+**ALL 75 SUITES PASSED**, including `test-opening-gap-no-auto-borrow.js` and
+`test-live-plan.js`. Canonical hashes above were still identical after the
+suite.
