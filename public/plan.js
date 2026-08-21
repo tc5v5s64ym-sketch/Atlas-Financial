@@ -1265,6 +1265,9 @@ function renderPlan(d, periods, history) {
     row('Recurring bills — utilities, insurance, gym', '− ' + money2(T.bills), 'out') +
     row('Committed expenses', '− ' + money2(T.commitments), 'out') +
     row('Variable-spending budget', '− ' + money2(T.variable), 'out', ' <span class="chip">budget</span>') +
+    (T.reserved > 0
+      ? row('Reserved current-regime', '− ' + money2(T.reserved), 'out', ' <span class="chip">reserved</span>')
+      : '') +
     (T.extra > 0 ? row('Planned extra debt payments', '− ' + money2(T.extra), 'out', ' <span class="chip">planned</span>') : '') +
     (T.noncash ? row('HELOC interest — capitalised, not paid',
       money2(T.noncash) + ' <span class="mutedtext">added to the balance</span>', '', ' <span class="chip">non-cash</span>') : '') +
@@ -1289,6 +1292,7 @@ function renderPlan(d, periods, history) {
 
   /* ---- weekly table (desktop) and cards (mobile) ---- */
   const anyInjection = sim.weeks.some(w => w.injections > 0);
+  const anyReserved = sim.weeks.some(w => w.reserved > 0);
   const wkRow = w => {
     const cls = w.negative ? 'wk-neg' : w.belowBuffer ? 'wk-low' : '';
     const fixed = w.obligations + w.bills;
@@ -1302,6 +1306,7 @@ function renderPlan(d, periods, history) {
       <td class="num">${fixed ? money(fixed) : '—'}</td>
       <td class="num">${w.commitments ? money(w.commitments) : '—'}</td>
       <td class="num">${money(w.variable)}</td>
+      ${anyReserved ? `<td class="num">${w.reserved ? money(w.reserved) : '—'}</td>` : ''}
       ${w.extra ? `<td class="num">${money(w.extra)}</td>` : (sim.totals.extra > 0 ? '<td class="num">—</td>' : '')}
       <td class="num ${w.closing < 0 ? 'neg' : ''}"><b>${money(w.closing)}</b>` +
       `<div class="mutedtext ${w.closing < w.requiredClosing ? 'neg' : ''}">keep ≥ ${money(w.requiredClosing)}</div>` +
@@ -1313,9 +1318,10 @@ function renderPlan(d, periods, history) {
   // $1,695.58 close and it displays $2,738.74 — the same unreconcilable gap
   // the aggregate ledger had, one level down.
   const fundCol = anyInjection ? '<th class="num">Gap funding</th>' : '';
+  const reservedCol = anyReserved ? '<th class="num">Reserved</th>' : '';
   $('wk-table').innerHTML = `<thead><tr>
       <th>Week</th><th class="num">Opening</th><th class="num">Confirmed in</th><th class="num">Estimated in</th>${fundCol}
-      <th class="num">Bills &amp; minimums</th><th class="num">Committed</th><th class="num">Budget</th>${extraCol}<th class="num">Closing</th>
+      <th class="num">Bills &amp; minimums</th><th class="num">Committed</th><th class="num">Budget</th>${reservedCol}${extraCol}<th class="num">Closing</th>
     </tr></thead><tbody>${sim.weeks.map(wkRow).join('')}</tbody>`;
 
   /* ---- the calendar ---- */
@@ -1335,6 +1341,7 @@ function renderPlan(d, periods, history) {
         <span>In ${money(w.confirmedIncome)}${w.estimatedIncome ? ` <span class="est">+ ≈${money(w.estimatedIncome).slice(1)}</span>` : ''}${w.injections ? ` + ${money(w.injections)} funding` : ''}</span>
         <span>Out ${money(w.obligations + w.bills + w.commitments + w.extra)}</span>
         <span>Budget ${money(w.variable)}</span>
+        ${w.reserved ? `<span>Reserved ${money(w.reserved)}</span>` : ''}
       </div>
       <div class="wk-track ${w.closing < w.requiredClosing ? 'neg' : ''}">Keep ≥ ${money(w.requiredClosing)} to stay on plan</div>
       ${w.belowBuffer ? `<div class="wk-flag ${w.negative ? 'neg' : ''}">${w.negative ? 'Goes negative' : 'Dips below the buffer'} — low ${money(w.low)}</div>` : ''}
@@ -1405,7 +1412,8 @@ function renderPlan(d, periods, history) {
         <span class="cat-hist">${c.target != null
           ? `budgeted ${money(c.target)}, has been ${money(c.historical)}`
           : `has been ${money(c.historical)}`}/mo${c.dated > 0
-          ? ` · ${money(c.dated)} dated` : ''}${c.sinking > 0
+          ? ` · ${money(c.dated)} dated` : ''}${c.current != null && c.current > 0
+          ? ` · ${money(c.current)} current-regime` : ''}${c.sinking > 0
           ? ` · ${money(c.sinking)} saved for separately` : ''}</span>
       </div>`).join('');
 
@@ -1417,7 +1425,7 @@ function renderPlan(d, periods, history) {
       `The right-hand figure is what each category has averaged; the amount before it is what has to come out of the ` +
       `weekly cap once anything already dated on the calendar is removed. Those add to ${money(cap.inCapMonthly)}/month against a ` +
       `cap of ${money(cap.monthly)}/month, so ${money(cap.overCapMonthly)}/month has to come off — and it ` +
-      `cannot come off the essential rows, which are ${money(budget.requiredMonthly)}/month on their own. ` +
+      `cannot come off the essential rows, which are ${money(cap.essentialMonthly)}/month on their own. ` +
       (fullyDatedNames.length
         ? `${fullyDatedNames.join(' and ')} show${fullyDatedNames.length === 1 ? 's' : ''} $0 because ` +
           `${fullyDatedNames.length === 1 ? 'it is' : 'they are'} fully dated on the calendar, not because ` +

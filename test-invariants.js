@@ -509,6 +509,11 @@ ok(!/Insurance and children's sports show \$0/.test(planJs2),
 // The ledger has to add up on the page, not just in the engine.
 ok(/T\.injections > 0/.test(planJs2),
   'gap funding appears as its own ledger row so the rows reconcile');
+ok(/T\.reserved > 0/.test(planJs2) && /anyReserved/.test(planJs2),
+  'reserved current-regime is its own ledger row and weekly column, not the Budget cap');
+ok(/Reserved current-regime/.test(planJs2) && /Budget \$\{money\(w\.variable\)\}/.test(planJs2)
+  && /Reserved \$\{money\(w\.reserved\)\}/.test(planJs2),
+  'the page labels Budget as the cap and Reserved as the undated drain');
 // And in the weekly table and the mobile cards, which had the same problem one
 // level down: week 1 opened at $79.84, its visible rows implied $1,695.58 and
 // it displayed $2,738.74.
@@ -521,7 +526,7 @@ ok(/w\.injections \? ` \+ \$\{money\(w\.injections\)\} funding`/.test(planJs2),
   const adv = F.recommend(plan, asOf, O);
   for (const w of adv.sim.weeks) {
     const implied = w.opening + w.confirmedIncome + w.estimatedIncome + w.injections
-      - w.obligations - w.bills - w.commitments - w.variable - w.extra;
+      - w.obligations - w.bills - w.commitments - w.variable - (w.reserved || 0) - w.extra;
     if (!near(implied, w.closing, 0.02)) {
       ok(false, `week ${w.n} reconciles from its displayed columns`,
         `${implied.toFixed(2)} vs ${w.closing.toFixed(2)}`);

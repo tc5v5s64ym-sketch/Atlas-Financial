@@ -10,8 +10,9 @@
 
    Every event carries the confidence it arrived with ('confirmed' or
    'estimated') so the UI can keep the two visually apart. The engine never
-   invents an amount: it only expands the recurrences declared in data.json's
-   `plan` block and simulates the ledger day by day. */
+   invents an amount: it expands the recurrences declared in data.json's
+   `plan` block, reserves undated current-regime monthly amounts as daily
+   cash, and simulates the ledger day by day. */
 
 (function (root) {
 
@@ -611,6 +612,18 @@
     return plan.windowDays || 91;
   }
 
+  // Undated current-regime recurring cost. Owner targets beat it and stay
+  // cap remainders. This is not a due date, a second bill engine, or a
+  // card-charge router: simulate reserves the monthly amount as daily cash
+  // so a card-paid service still has gravity without a fabricated day.
+  function currentRegimeMonthly(plan) {
+    return ((plan && plan.budget && plan.budget.categories) || []).reduce((sum, c) => {
+      if (!c || c.plannedMonthly != null || c.currentMonthly == null) return sum;
+      const n = Number(c.currentMonthly);
+      return isFinite(n) ? sum + n : sum;
+    }, 0);
+  }
+
   function sliceSimulationFrom(full, asOf, viewStart, viewDays, plan, opts) {
     const startIdx = full.daily.findIndex(d => d.date >= viewStart);
     if (startIdx < 0) return full;
@@ -650,12 +663,16 @@
       const fullIdx = full.daily.findIndex(d => d.date === copy.start);
       copy.opening = fullIdx > 0 ? full.daily[fullIdx - 1].balance : startingCashAmount(plan);
       copy.closing = weekDays.length ? weekDays[weekDays.length - 1].balance : copy.closing;
-      copy.variable = weekDays.reduce((s, p, i) => {
+      const residual = weekDays.reduce((s, p, i) => {
         const prev = i ? weekDays[i - 1].balance : copy.opening;
         const eventNet = weekEvents.filter(e => cashWalkDate(e, walkStart) === p.date && e.kind !== 'noncash' && e.jointCash !== false)
           .reduce((n, e) => n + e.amount, 0);
         return s + Math.max(0, prev + eventNet - p.balance);
       }, 0);
+      // Residual is weekly-cap variable plus undated current-regime reserve.
+      // Keep them apart so a sliced Budget column is still the cap.
+      copy.reserved = currentRegimeMonthly(plan) * 12 / 365.25 * weekDays.length;
+      copy.variable = Math.max(0, residual - copy.reserved);
       const low = Math.min(copy.opening, ...weekDays.map(d => d.balance));
       copy.low = low;
       copy.belowBuffer = low < full.buffer;
@@ -682,16 +699,19 @@
       noncash: events.filter(e => e.kind === 'noncash').reduce((s, e) => s + -e.amount, 0),
       commitments: events.filter(e => e.kind === 'commitment').reduce((s, e) => s + -e.amount, 0),
       variable: 0,
+      reserved: 0,
       extra: events.filter(e => e.kind === 'extra' || e.kind === 'planned-debt')
         .reduce((s, e) => s + -e.amount, 0),
     };
     const opening = startIdx > 0 ? full.daily[startIdx - 1].balance : startingCashAmount(plan);
-    totals.variable = daily.reduce((s, p, i) => {
+    const residual = daily.reduce((s, p, i) => {
       const prev = i ? daily[i - 1].balance : opening;
       const eventNet = events.filter(e => cashWalkDate(e, walkStart) === p.date && e.kind !== 'noncash' && e.jointCash !== false)
         .reduce((n, e) => n + e.amount, 0);
       return s + Math.max(0, prev + eventNet - p.balance);
     }, 0);
+    totals.reserved = currentRegimeMonthly(plan) * 12 / 365.25 * daily.length;
+    totals.variable = Math.max(0, residual - totals.reserved);
     totals.income = totals.confirmedIncome + totals.estimatedIncome;
     const ending = daily[daily.length - 1].balance;
     return Object.assign({}, full, {
@@ -721,6 +741,10 @@
         const closingRow = daily[daily.length - 1];
         copy.end = end;
         copy.closing = closingRow ? closingRow.balance : copy.closing;
+        // Same retained-day identity as sliceSimulationFrom: a midweek
+        // 1-day/month/payday/custom cut must not keep a full 7-day reserve.
+        const weekDays = daily.filter(d => d.date >= copy.start && d.date <= copy.end);
+        copy.reserved = currentRegimeMonthly(plan) * 12 / 365.25 * weekDays.length;
       }
       return copy;
     });
@@ -740,6 +764,7 @@
       noncash: weeks.reduce((s, w) => s + w.noncash, 0),
       commitments: weeks.reduce((s, w) => s + w.commitments, 0),
       variable: weeks.reduce((s, w) => s + w.variable, 0),
+      reserved: weeks.reduce((s, w) => s + (w.reserved || 0), 0),
       extra: weeks.reduce((s, w) => s + w.extra, 0),
     };
     totals.income = totals.confirmedIncome + totals.estimatedIncome;
@@ -1016,6 +1041,8 @@
     const end = addDays(asOf, days - 1);
     const events = expandEvents(plan, start, end, opts);
     const dailyVariable = (opts.weeklyVariable || 0) / 7;
+    // Calendar month, the same 365.25/12 identity budgetBreakdown uses.
+    const reservedDaily = currentRegimeMonthly(plan) * 12 / 365.25;
     const variableFrom = opts.variableFrom || start;
     const measureFrom = opts.measureFrom || start;
 
@@ -1047,7 +1074,7 @@
         week = {
           n: weeks.length + 1, start: date, end: addDays(date, 6),
           opening: balance, confirmedIncome: 0, estimatedIncome: 0,
-          obligations: 0, bills: 0, commitments: 0, variable: 0, extra: 0, noncash: 0,
+          obligations: 0, bills: 0, commitments: 0, variable: 0, reserved: 0, extra: 0, noncash: 0,
           injections: 0, closing: balance, events: [], belowBuffer: false, negative: false,
         };
         weeks.push(week);
@@ -1089,6 +1116,13 @@
         // even when the day closes fine. Income sorts first, so this is the
         // cautious reading of the day.
         if (measured && balance < min.balance) min = { date, balance };
+      }
+      // Undated current-regime is an obligation, not optional variable: it
+      // still drains during an opening squeeze. It has its own reserved
+      // ledger total so the Budget / weekly-cap column stays the cap.
+      if (reservedDaily) {
+        balance -= reservedDaily;
+        week.reserved += reservedDaily;
       }
       if (date >= variableFrom) {
         balance -= dailyVariable;
@@ -1133,6 +1167,7 @@
       noncash: weeks.reduce((s, w) => s + w.noncash, 0),
       commitments: weeks.reduce((s, w) => s + w.commitments, 0),
       variable: weeks.reduce((s, w) => s + w.variable, 0),
+      reserved: weeks.reduce((s, w) => s + w.reserved, 0),
       extra: weeks.reduce((s, w) => s + w.extra, 0),
     };
     totals.income = totals.confirmedIncome + totals.estimatedIncome;
@@ -2360,7 +2395,10 @@
   //               real date. Already in the forecast as an event. NOT part of
   //               the weekly cap.
   //   ESSENTIAL   normal life that has no reliable date — groceries, fuel,
-  //               phones. Comes out of the weekly cap FIRST.
+  //               phones. Owner-target and historical essential remainders
+  //               come out of the weekly cap FIRST. Undated current-regime
+  //               (card-paid Bell) is reserved on the cash walk instead.
+
   //   DISCRETIONARY  dining, shopping, entertainment. What is left of the cap.
   //
   // Amounts are derived from the generated spending history in periods.json,
@@ -2437,12 +2475,15 @@
       const target = c.plannedMonthly != null ? c.plannedMonthly : null;
       // currentMonthly is the undated current-regime amount — services
       // already on the calendar stay in dated and are not added again.
-      // This is not a spending-intent target and not a second bill engine.
+      // simulate() reserves that amount as daily cash, so it is accounted
+      // and does not also sit in the weekly-cap remainder. This is not a
+      // spending-intent target and not a second bill engine.
       const current = c.currentMonthly != null ? c.currentMonthly : null;
       const gross = target != null ? target
         : current != null ? current + dated.total
         : historical;
-      const planned = Math.max(0, gross - dated.total);
+      const reserved = target == null && current != null ? current : 0;
+      const planned = Math.max(0, gross - dated.total - reserved);
       const sinkingHere = sinking.items.filter(s => s.category === c.id)
         .reduce((a, s) => a + s.amount, 0);
       return Object.assign({}, c, {
@@ -2450,9 +2491,13 @@
         current,
         // gross is the pre-dated monthly amount — owner target if one exists,
         // else current-regime (undated current + dated), else the historical
-        // average. planned is that amount after dated items are netted off,
-        // and is what the weekly cap consumes.
-        gross, planned,
+        // average. planned is that amount after dated items and reserved
+        // current-regime cash are netted off, and is what the weekly cap
+        // consumes. reserved stays in essential/required totals and coverage
+        // so a card-paid service is not published as if it cost nothing.
+        // Cap comparison uses planned only; counting reserved there would
+        // overstate the essential need / shortfall against the cap.
+        gross, planned, reserved,
         // Dated commitments saved for separately. Reported, never netted off
         // the recurring line for the same category.
         sinking: sinkingHere,
@@ -2466,13 +2511,20 @@
       });
     });
 
+    const spend = c => (c.planned || 0) + (c.reserved || 0);
     const sum = (pred, field) => categories.filter(pred)
-      .reduce((s, c) => s + c[field || 'planned'], 0);
+      .reduce((s, c) => s + (field ? c[field] : spend(c)), 0);
     const isClass = k => c => c.class === k;
+    const isRequired = c => c.class === 'essential' || c.class === 'unknown';
 
     const discretionaryMonthly = sum(isClass('discretionary'));
-    // What the cap must cover before anything optional happens.
-    const requiredMonthly = sum(c => c.class === 'essential' || c.class === 'unknown');
+    // Coverage: essentials + unknown, including reserved current-regime.
+    const requiredMonthly = sum(isRequired);
+    // What the weekly cap must cover before anything optional happens.
+    // Reserved cash is already walked on its own ledger; counting it here
+    // overstates the essential need / shortfall against the cap.
+    const inCapRequiredMonthly = sum(isRequired, 'planned');
+    const inCapDiscretionaryMonthly = sum(isClass('discretionary'), 'planned');
 
     return {
       basis, basisLabel: window.label, months: window.months, categories,
@@ -2488,10 +2540,11 @@
       sinkingItems: sinking.items,
       ownerTargetCount: categories.filter(c => c.target != null).length,
       requiredMonthly,
-      // The weekly cap measured against all of that, when a caller says which
-      // cap is on screen. Null when none was given — a caller that has not
-      // named a cap is asking about the categories, not for a verdict on one.
-      cap: againstCap(categories, requiredMonthly, discretionaryMonthly, opts),
+      // The weekly cap measured against the in-cap planned remainder, when a
+      // caller says which cap is on screen. Null when none was given — a
+      // caller that has not named a cap is asking about the categories, not
+      // for a verdict on one.
+      cap: againstCap(categories, inCapRequiredMonthly, inCapDiscretionaryMonthly, opts),
     };
   }
 

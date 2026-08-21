@@ -110,34 +110,36 @@ ok(near(telecom.historical, historicalAvg),
   'engine historical still equals the independent YTD average');
 ok(near(telecom.dated, shaw.amount) && telecom.datedItems.length === 1,
   'engine dated is Shaw once');
-ok(near(telecom.gross, afterGross) && near(telecom.planned, afterRemainder),
-  'engine gross/planned match the independent AFTER reconstruction');
+ok(near(telecom.gross, afterGross) && near(telecom.planned, 0) && near(telecom.reserved, undatedBell),
+  'engine gross matches the independent AFTER reconstruction; planned is reserved off the cap; reserved is Bell');
 
 console.log('\n=== exact delta is entirely the telecom correction ===');
 // BEFORE figures reproduced on main abcfd0dfd90dee6eea328af8bb518e7953ce0f79
-// from periods.json + recommend + budgetBreakdown, before this change.
+// from periods.json + budgetBreakdown, before current-regime closeout.
 const beforeRequired = 4039.53375;
 const beforeEssential = 3523.23625;
-const beforeShortfall = 39.17660714285739;
-const delta = beforeRemainder - afterRemainder;
-ok(near(delta, 19.42625),
-  'independent remainder delta is $19.43/month', money(delta));
-ok(advice.weekly === 920,
-  'weekly cap is unchanged at $920 — recommend does not read the remainder',
-  String(advice.weekly));
-ok(near(advice.sim.ending, 6683.34999999999, 0.01),
-  'ending cash is unchanged — dated cash events did not move');
-ok(near(budget.requiredMonthly, beforeRequired - delta),
-  'AFTER requiredMonthly is BEFORE required minus the independent remainder delta',
+const remainderDelta = beforeRemainder - afterRemainder;
+ok(near(remainderDelta, 19.42625),
+  'independent remainder delta vs stale historical is $19.43/month', money(remainderDelta));
+ok(near(budget.requiredMonthly, beforeRequired - remainderDelta),
+  'AFTER requiredMonthly drops the stale remainder and still includes reserved Bell',
   money(budget.requiredMonthly));
-ok(near(budget.essentialMonthly, beforeEssential - delta),
-  'AFTER essentialMonthly is BEFORE essential minus the same delta',
+ok(near(budget.essentialMonthly, beforeEssential - remainderDelta),
+  'AFTER essentialMonthly drops the same remainder and still includes reserved Bell',
   money(budget.essentialMonthly));
 const WEEKS = 365.25 / 12 / 7;
-ok(near(budget.cap.essentialWeekly, (beforeRequired - delta) / WEEKS),
-  'required/week follows AFTER requiredMonthly from the calendar conversion');
-ok(near(budget.cap.essentialShortfallMonthly, beforeShortfall - delta),
-  'essential shortfall shrank by exactly the independent remainder delta',
+const independentInCapRequired = (beforeRequired - remainderDelta) - undatedBell;
+ok(near(budget.requiredMonthly - independentInCapRequired, undatedBell),
+  'coverage minus the in-cap remainder is independently the $121 Bell reserve');
+ok(near(budget.cap.essentialMonthly, independentInCapRequired),
+  'cap essential monthly excludes reserved Bell',
+  money(budget.cap.essentialMonthly));
+ok(near(budget.cap.essentialWeekly, independentInCapRequired / WEEKS),
+  'cap essential/week excludes reserved Bell',
+  money(budget.cap.essentialWeekly));
+ok(near(budget.cap.essentialShortfallMonthly,
+    Math.max(0, independentInCapRequired - budget.cap.monthly)),
+  'cap shortfall is against the in-cap remainder, not coverage including Bell',
   money(budget.cap.essentialShortfallMonthly));
 
 console.log('\n=== no double-count, no invented cash Bell, no Telus bill ===');
@@ -146,10 +148,10 @@ ok(!(plan.bills || []).some(b => /telus/i.test(b.id + ' ' + b.label)),
 ok(!(plan.bills || []).some(b => /bell|watch/i.test(b.id + ' ' + b.label)),
   'Bell / watch are not invented as joint-cash bills');
 ok(!near(telecom.planned, 104.20 + 15) && !near(telecom.planned, 121 + 15)
-  && !near(telecom.planned, 121 + 78.4),
-  'main-account watch line and Shaw are not added on top of the $121 remainder');
-ok(!near(telecom.planned, 104.20 + 250) && !near(telecom.planned, 121 + 250)
-  && !near(telecom.planned, 356.62),
+  && !near(telecom.planned, 121 + 78.4) && near(telecom.planned, 0),
+  'main-account watch line and Shaw are not added on top of reserved Bell');
+ok(!near(telecom.current, 104.20 + 250) && !near(telecom.current, 121 + 250)
+  && !near(telecom.current, 356.62),
   'card repayment and the exceptional August bill are not the baseline');
 ok(plan.budget.categories.find(c => c.id === 'telecom').currentMonthly === 121,
   'published currentMonthly is $121.00, not $356.62 or $250');

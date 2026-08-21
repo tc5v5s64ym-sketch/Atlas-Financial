@@ -88,6 +88,7 @@ const suites = [
   ['live plan overlay without rewriting openings', 'test-live-plan.js'],
   ['Aug. 16 household evidence absorption', 'test-aug16-evidence.js'],
   ['telecom current-regime closeout', 'test-telecom-current-regime.js'],
+  ['Bell card-paid baseline gravity', 'test-bell-card-paid.js'],
   ['HELOC Q19 + Bell Q18 evidence closeout', 'test-q19-q18-closeout.js'],
   ['major future costs on the master plan', 'test-major-future-costs.js'],
   ['master forecast engine (B94 / AF-PLAN-01)', 'test-master-forecast.js'],

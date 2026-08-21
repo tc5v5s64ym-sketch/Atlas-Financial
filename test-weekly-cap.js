@@ -287,11 +287,23 @@ console.log('\n=== 7. the published plan reconciles ===');
     weeklyCap: adv.weekly, recommendedWeekly: adv.weekly,
   });
   const c = b.cap;
+  const inCapRequired = b.categories
+    .filter(cat => cat.class === 'essential' || cat.class === 'unknown')
+    .reduce((s, cat) => s + (cat.planned || 0), 0);
+  const inCapDisc = b.categories
+    .filter(cat => cat.class === 'discretionary')
+    .reduce((s, cat) => s + (cat.planned || 0), 0);
+  const reservedRequired = b.categories
+    .filter(cat => cat.class === 'essential' || cat.class === 'unknown')
+    .reduce((s, cat) => s + (cat.reserved || 0), 0);
   ok(near(c.monthly, adv.weekly * WEEKS),
     `the published $${adv.weekly}/week cap is $${c.monthly.toFixed(2)}/month`);
-  ok(near(c.essentialWeekly, b.requiredMonthly / WEEKS),
-    'the published weekly essential need divides the monthly one',
-    `${b.requiredMonthly.toFixed(2)} → ${c.essentialWeekly.toFixed(2)}`);
+  ok(near(b.requiredMonthly, inCapRequired + reservedRequired),
+    'coverage required still includes reserved current-regime',
+    `${b.requiredMonthly.toFixed(2)} = ${inCapRequired.toFixed(2)} + ${reservedRequired.toFixed(2)}`);
+  ok(near(c.essentialWeekly, inCapRequired / WEEKS),
+    'the published weekly essential need divides the in-cap monthly remainder',
+    `${inCapRequired.toFixed(2)} → ${c.essentialWeekly.toFixed(2)}`);
   ok(c.discretionaryRoomWeekly >= 0, 'discretionary room is never published negative');
   ok(c.essentialWeekly + 0.005 >= adv.weekly
     ? c.discretionaryRoomWeekly === 0
@@ -302,10 +314,10 @@ console.log('\n=== 7. the published plan reconciles ===');
     ? c.discretionaryRoomMonthly === 0
     : near(c.essentialMonthly + c.discretionaryRoomMonthly, c.monthly, 1e-9),
     'and the same identity holds in months');
-  ok(near(c.inCapMonthly, b.requiredMonthly + b.discretionaryMonthly),
-    'the in-cap total is the essential need plus the household discretionary budget');
-  ok(near(c.overCapMonthly, c.inCapMonthly - c.monthly, 1e-9),
-    'and the overrun is the difference between in-cap spend and the monthly cap',
+  ok(near(c.inCapMonthly, inCapRequired + inCapDisc),
+    'the in-cap total is the planned remainder, not coverage including reserved');
+  ok(near(c.overCapMonthly, Math.max(0, c.inCapMonthly - c.monthly), 1e-9),
+    'and the overrun is the floored difference between in-cap spend and the monthly cap',
     `$${c.overCapMonthly.toFixed(2)}/month`);
 }
 
@@ -603,6 +615,8 @@ const settle = () => new Promise(r => setTimeout(r, 0));
     'the tiles carry the weekly need and its food-and-fuel share');
   ok(new RegExp(`${esc(dol(cap.inCapMonthly))}/month against a cap of ${esc(dol(cap.monthly))}/month`).test(catsNote),
     'and the category note reconciles against the monthly cap');
+  ok(new RegExp(`essential rows, which are ${esc(dol(cap.essentialMonthly))}/month`).test(catsNote),
+    'and names the in-cap essential remainder, not coverage including reserved');
 
   /* --- at a $1,800/week override: the state the review found --- */
   const overCap = F.budgetBreakdown(plan, periods, {

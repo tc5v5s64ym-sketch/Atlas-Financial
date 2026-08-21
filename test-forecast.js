@@ -4,7 +4,7 @@
 const F = require('./public/forecast.js');
 const data = require('./data.json');
 const {
-  burrardDue, openingFloor, gapAtBuffer, cashOnDate, streamTotal,
+  burrardDue, currentRegimeReservedDaily, openingFloor, gapAtBuffer, cashOnDate, streamTotal,
 } = require('./test-helpers');
 
 let failures = 0;
@@ -175,10 +175,14 @@ const wantCommit = (plan.commitments || [])
   .reduce((s, c) => s + c.amount, 0);
 ok(near(expected.totals.commitments, wantCommit), '90-day commitments', expected.totals.commitments.toFixed(2));
 ok(expected.weeks.length === 13, '13 weeks');
+const reservedOverWindow = currentRegimeReservedDaily(plan) * expected.daily.length;
 ok(near(expected.ending,
   F.startingCashAmount(plan) + expected.totals.income - expected.totals.obligations
-  - expected.totals.bills - expected.totals.commitments),
+  - expected.totals.bills - expected.totals.commitments - reservedOverWindow),
   'ledger identity holds', expected.ending.toFixed(2));
+ok(near(expected.totals.reserved, reservedOverWindow) && near(expected.totals.variable, 0),
+  'undated current-regime is the reserved total, not the weekly-cap variable column',
+  expected.totals.reserved.toFixed(2));
 
 // The Burrard pair is atomic: same day, same amount, all or nothing. If a
 // future edit splits them across the payday the gap would vanish on paper.
@@ -203,8 +207,9 @@ ok(near(F.startingCashAmount(plan), spendableSum),
 const openingNet = expected.events
   .filter(e => e.date <= asOf && e.kind !== 'noncash' && e.jointCash !== false)
   .reduce((s, e) => s + e.amount, 0);
-ok(near(expected.daily[0].balance, spendableSum + openingNet),
-  'day-0 close is opening cash plus joint-cash events that bind at this opening',
+ok(near(expected.daily[0].balance,
+  spendableSum + openingNet - currentRegimeReservedDaily(plan)),
+  'day-0 close is opening cash plus joint-cash events that bind at this opening, minus reserved current-regime daily cash',
   expected.daily[0].balance.toFixed(2));
 ok(!plan.income.some(s => /tennis bc/i.test(s.label)),
   'her gross Tennis BC pay is not counted as household income');
@@ -435,7 +440,7 @@ ok(F.recommendWeekly(exact, '2026-01-01', { targetBuffer: 500 }) === 0 ||
 {
   const T = gapRec.sim.totals;
   const rows = F.startingCashAmount(plan) + T.confirmedIncome + T.estimatedIncome + T.injections
-    - T.obligations - T.bills - T.commitments - T.variable - T.extra;
+    - T.obligations - T.bills - T.commitments - T.variable - (T.reserved || 0) - T.extra;
   ok(near(rows, gapRec.sim.ending),
     'the ledger rows reconcile to the ending balance once gap funding is one of them',
     `${rows.toFixed(2)} = ${gapRec.sim.ending.toFixed(2)}`);
