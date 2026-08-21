@@ -116,6 +116,7 @@ No new permission system. Repository review already enforces this.
 `AGENTS.md` is the one portable router. Vendor files are adapters:
 
 - `CLAUDE.md` — historical filename; binds every surface equally
+- `CHATGPT.md` — thin ChatGPT cold-start adapter
 - `.github/copilot-instructions.md` — thin Copilot router
 - `.claude/` — tooling only; no independent authority
 
