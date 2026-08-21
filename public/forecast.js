@@ -2748,10 +2748,10 @@
         interestByEvent: !!x.interestByEvent, principalShare: x.principalShare,
         interest: 0, paid: 0, capitalised: 0, drawn: 0,
         // The day the balance actually crosses the limit. Tracked on the daily
-        // walk, not read off the 30-day snapshots — the HELOC crosses on
-        // 30 September and the next snapshot is 7 October, so reporting the
-        // snapshot puts the breach in the wrong month and on the wrong side of
-        // the plan's own deadline.
+        // walk, not read off the 30-day snapshots — a month-end capitalisation
+        // can fall between marks, so reporting the next snapshot puts the
+        // breach in the wrong month and on the wrong side of the plan's own
+        // deadline.
         firstOver: null,
       };
       byId[x.id] = s;
@@ -3661,9 +3661,9 @@
     return (opening ? opening.debts : []).filter(x => x.overLimit);
   }
   // The day the HELOC actually crosses. Reading this off the 30-day marks
-  // reported 7 October for a crossing that happens on 30 September — a
-  // different month, and on the wrong side of the plan's own deadline. A
-  // facility already over its limit at the start is a different fact.
+  // reports the next snapshot after a month-end capitalisation — a different
+  // month, and on the wrong side of the plan's own deadline. A facility
+  // already over its limit at the start is a different fact.
   function helocLimitCrossing(debtProj) {
     return ((debtProj && debtProj.crossings) || [])
       .find(c => c.id === 'heloc' && !c.alreadyOver) || null;

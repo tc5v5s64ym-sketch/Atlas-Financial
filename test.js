@@ -49,6 +49,7 @@ const suites = [
   ['Deep Dive derived totals', 'test-deepdive.js'],
   ['HELOC Deep Dive current-opening agreement (B19)', 'test-heloc-deepdive.js'],
   ['coupled cash and debt', 'test-debt.js'],
+  ['HELOC crossing-date authority', 'test-heloc-crossing-authority.js'],
   ['authority invariants', 'test-invariants.js'],
   ['authority surface coverage', 'test-authority-coverage.js'],
   ['evidence-use register routing', 'test-evidence-use-register.js'],

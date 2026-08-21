@@ -12,6 +12,10 @@ const fs = require('fs');
 const path = require('path');
 const F = require('./public/forecast.js');
 const { sourceText } = require('./test-source-text');
+const {
+  containsCalendarDay,
+  storedCrossingClaims,
+} = require('./test-heloc-crossing-guard');
 const data = require('./data.json');
 const { openingFloor, gapAtBuffer, fundingById } = require('./test-helpers');
 const periods = require('./public/periods.json');
@@ -860,6 +864,18 @@ console.log('\n=== one authority per contested fact ===');
 const accountFacts = read('docs/ACCOUNT_FACTS.md');
 const master = read('docs/00_MASTER_PICTURE.md');
 const dataStr = JSON.stringify(data);
+
+// The exact HELOC crossing day is Forecast.projectDebts. A stored calendar
+// day in the assumptions (30 September on this opening) drifted from the
+// walk (31 October) and was published beside it.
+const helocCrossingAssumption = (plan.assumptions || [])
+  .find(a => /HELOC passes its own limit/.test(a));
+ok(!!helocCrossingAssumption,
+  'the HELOC-in-window assumption remains, without a stored crossing day');
+ok(helocCrossingAssumption && !containsCalendarDay(helocCrossingAssumption),
+  'plan assumptions do not store an exact HELOC crossing calendar day');
+ok(storedCrossingClaims({ nextDollar: plan.nextDollar }).length === 0,
+  'nextDollar does not store an exact HELOC crossing calendar day');
 
 // Amanda's pay cadence. ACCOUNT_FACTS once said both bi-weekly and
 // semi-monthly, in the same file, 236 lines apart.
