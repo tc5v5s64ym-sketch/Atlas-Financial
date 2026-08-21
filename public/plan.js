@@ -592,6 +592,40 @@ function paydayPlanMargin(p) {
   return p.margin >= 0 ? `margin ${money2(p.margin)}` : `gap ${money2(-p.margin)}`;
 }
 
+/* Weekly-cap presentation. Forecast.recommend remains the decision:
+ * `mode === 'infeasible'` or `funding.feasible === false` means there is no
+ * feasible weekly cap. This formats that existing verdict; it does not
+ * invent a second feasibility test. */
+function weeklyCapView(advice, weeklyOverride) {
+  advice = advice || {};
+  const recommended = advice.weekly;
+  const override = weeklyOverride != null ? weeklyOverride : null;
+  const weekly = override != null ? override : recommended;
+  const fail = advice.infeasible;
+  const funding = advice.funding || null;
+  const fundingBlocked = !!(funding && funding.feasible === false);
+  const infeasible = advice.mode === 'infeasible' && !!fail;
+  const hasFeasibleCap = !infeasible && !fundingBlocked;
+  let reason = '';
+  if (infeasible) {
+    reason = `There is no feasible weekly cap. ${fail.label || 'A protected constraint'} fails${
+      fail.date ? ` on ${fmtDateLong(fail.date)}` : ''} by ${money2(fail.shortfall)}; a weekly spending
+          figure does not fix this.`;
+  } else if (fundingBlocked) {
+    reason = `There is no feasible weekly cap. ${money2(funding.shortfall)} stays unfunded after every usable source.
+          No safe-to-spend figure exists until that protected shortfall is solved.`;
+  }
+  const settingLine = override != null
+    ? `your setting is ${money(override)}/wk — not a supported weekly cap.`
+    : '';
+  return {
+    hasFeasibleCap, infeasible, fundingBlocked,
+    weekly, recommended, override, fail,
+    shortfall: fundingBlocked ? funding.shortfall : null,
+    reason, settingLine,
+  };
+}
+
 function paydayAnswerHtml(ctx) {
   const plan = ctx.plan;
   const advice = ctx.advice;
@@ -619,6 +653,7 @@ function paydayAnswerHtml(ctx) {
   const weekly = ctx.weekly != null ? ctx.weekly : advice.weekly;
   const recommended = ctx.recommended != null ? ctx.recommended : advice.weekly;
   const fail = advice.infeasible;
+  const capView = ctx.capView || weeklyCapView(advice, ctx.weeklyOverride);
 
   const doToday = nextMove
     ? `<b>${nextMove.action.what}</b>${nextMove.action.amount != null ? ` (${money2(nextMove.action.amount)})` : ''}.
@@ -642,7 +677,7 @@ function paydayAnswerHtml(ctx) {
     }).join('')}</ul>`
     : '<p>No unsettled major future plans on this opening.</p>';
 
-  const fundingBlocked = advice.funding && advice.funding.feasible === false;
+  const fundingBlocked = capView.fundingBlocked;
   const feasibility = (advice.mode === 'infeasible' && fail)
     ? `<p class="payday-head payday-infeasible"><b>INFEASIBLE.</b> The protected plan cannot work —
        ${fail.label || 'a protected constraint'} fails${fail.date ? ` on ${fmtDateLong(fail.date)}` : ''}
@@ -706,13 +741,8 @@ function paydayAnswerHtml(ctx) {
           Near-boundary on ${near.payday ? fmtDateLong(near.payday) : 'the next payday'} through the following day:
           ${nearItems}${near.total ? ` (Forecast total ${money2(near.total)})` : ''}.</span></div>
       <div class="payday-row"><span class="payday-lab">Safe to spend</span>
-        <span class="payday-val">${(advice.mode === 'infeasible' && fail)
-    ? `There is no feasible weekly cap. ${fail.label || 'A protected constraint'} fails${
-      fail.date ? ` on ${fmtDateLong(fail.date)}` : ''} by ${money2(fail.shortfall)}; a weekly spending
-          figure does not fix this.`
-    : fundingBlocked
-    ? `There is no feasible weekly cap. ${money2(advice.funding.shortfall)} stays unfunded after every usable source.
-          No safe-to-spend figure exists until that protected shortfall is solved.`
+        <span class="payday-val">${!capView.hasFeasibleCap
+    ? capView.reason
     : `Master-plan cap <b>${money(recommended)}/week</b>${
       weekly !== recommended ? ` — your setting is ${money(weekly)}/week` : ''}.
           ${cap ? `Discretionary room inside that cap is ${money(cap.discretionaryRoomWeekly)}/week.` : ''}
@@ -783,6 +813,7 @@ function renderPlan(d, periods, history) {
   const fundingPlan = advice.funding || null;
   const recommended = advice.weekly;
   const weekly = state.weeklyVariable != null ? state.weeklyVariable : recommended;
+  const capView = weeklyCapView(advice, state.weeklyVariable);
   // The plan being drawn is the recovery path: gap covered, spending from the
   // first payday. Overriding the weekly figure re-simulates on those same
   // assumptions rather than inventing a second set.
@@ -1000,12 +1031,16 @@ function renderPlan(d, periods, history) {
     (nextOut ? { lab: 'Next cash-out total', val: money(nextOut.amount),
       note: `${nextOut.label} on ${fmtDateLong(nextOut.date)} — all cash leaving household accounts that day`,
       tone: nextOut.date <= addDays(asOf, 3) ? 'warn' : '' } : null),
-    { lab: 'Weekly household cap', val: money(weekly) + '/wk', tone: gap ? 'warn' : '',
-      note: state.weeklyVariable != null && state.weeklyVariable !== recommended
-        ? `your setting — the forecast supports ${money(recommended)}/wk`
-        : gap
-          ? `${capQualifier}. Food and fuel come out of this first.`
-          : `≈ ${money(capMonthly)} a month. Food and fuel come out of this first.` },
+    (capView.hasFeasibleCap
+      ? { lab: 'Weekly household cap', val: money(weekly) + '/wk', tone: gap ? 'warn' : '',
+          note: state.weeklyVariable != null && state.weeklyVariable !== recommended
+            ? `your setting — the forecast supports ${money(recommended)}/wk`
+            : gap
+              ? `${capQualifier}. Food and fuel come out of this first.`
+              : `≈ ${money(capMonthly)} a month. Food and fuel come out of this first.` }
+      : { lab: 'Weekly household cap', val: 'unavailable', tone: 'alert',
+          note: [capView.settingLine, capView.reason, ifCovered.applies ? capQualifier : '']
+            .filter(Boolean).join(' ') }),
     { lab: 'Essential variable need', val: money(budget ? budget.cap.essentialWeekly : 0) + '/wk', tone: '',
       note: `groceries, fuel, phones and medical — ${money(budget
         ? budget.cap.foodFuelPlannedWeekly : 0)}/wk of it food and fuel` },
@@ -1033,9 +1068,12 @@ function renderPlan(d, periods, history) {
     // situation — not for a covered gap. Saying "once the gap is covered"
     // beside it attached the condition of one simulation to the answer of
     // another, so the full-coverage figure is computed and shown separately.
-    $('cap-headline').innerHTML =
-      `<span class="cap-amt">${money(weekly)}</span><span class="cap-per">/ week</span>
-       <span class="cap-qual">${capQualifier}</span>`;
+    $('cap-headline').innerHTML = capView.hasFeasibleCap
+      ? `<span class="cap-amt">${money(weekly)}</span><span class="cap-per">/ week</span>
+       <span class="cap-qual">${capQualifier}</span>`
+      : `<span class="cap-amt">unavailable</span>
+       <span class="cap-qual">${[capView.settingLine, capView.reason, ifCovered.applies ? capQualifier : '']
+         .filter(Boolean).join(' ')}</span>`;
     // Every amount here arrives per week from the engine. The page adds the
     // dollar sign and the /wk label and divides nothing.
     const part = (lab, weeklyAmount, kind, note) => `
@@ -1044,32 +1082,44 @@ function renderPlan(d, periods, history) {
         <div class="cap-part-amt">${est(money(weeklyAmount))}<span>/wk</span></div>
         <div class="cap-part-note">${note}</div>
       </div>`;
+    const capTotal = capView.hasFeasibleCap
+      ? `<div class="cap-part total">
+        <div class="cap-part-lab">Total</div>
+        <div class="cap-part-amt">${money(weekly)}<span>/wk</span></div>
+        <div class="cap-part-note">≈ ${money(cap.monthly)} a month</div>
+      </div>`
+      : `<div class="cap-part total">
+        <div class="cap-part-lab">Total</div>
+        <div class="cap-part-amt">unavailable</div>
+        <div class="cap-part-note">No feasible weekly cap until the protected funding shortfall is solved.</div>
+      </div>`;
     $('cap-split').innerHTML =
       part('Essential variable need', cap.essentialWeekly, 'essential',
         `Groceries ${money(cap.groceriesPlannedWeekly)}, fuel ${money(cap.fuelPlannedWeekly)}` +
         `${cap.groceriesHasOwnerTarget ? ' <span class="chip v">owner budget</span>' : ''}, plus phones, ` +
         `household supplies, medical and the uncategorised remainder. <b>This comes out first.</b>`) +
-      part('Discretionary room', cap.discretionaryRoomWeekly, 'optional',
-        !cap.hasDiscretionaryRoom
-          ? `<b class="neg">Nothing.</b> The cap is below what normal life costs.`
-          : `Everything else — dining out, personal, subscriptions, sports and online spending. The household's ` +
-            `own budget for those comes to ${money(cap.householdDiscretionaryWeekly)}/wk, ` +
-            ROOM_VERSUS_HOUSEHOLD[cap.roomVersusHousehold.verdict](cap.roomVersusHousehold)) +
-      `<div class="cap-part total">
-        <div class="cap-part-lab">Total</div>
-        <div class="cap-part-amt">${money(weekly)}<span>/wk</span></div>
-        <div class="cap-part-note">≈ ${money(cap.monthly)} a month</div>
-      </div>`;
+      (capView.hasFeasibleCap
+        ? part('Discretionary room', cap.discretionaryRoomWeekly, 'optional',
+          !cap.hasDiscretionaryRoom
+            ? `<b class="neg">Nothing.</b> The cap is below what normal life costs.`
+            : `Everything else — dining out, personal, subscriptions, sports and online spending. The household's ` +
+              `own budget for those comes to ${money(cap.householdDiscretionaryWeekly)}/wk, ` +
+              ROOM_VERSUS_HOUSEHOLD[cap.roomVersusHousehold.verdict](cap.roomVersusHousehold))
+        : '') +
+      capTotal;
     const owned = budget.ownerTargetCount;
-    $('cap-basis').innerHTML =
-      `Solved from the forecast: the largest weekly spend that keeps every day at or above the ${money(sim.buffer)} ` +
+    $('cap-basis').innerHTML = capView.hasFeasibleCap
+      ? `Solved from the forecast: the largest weekly spend that keeps every day at or above the ${money(sim.buffer)} ` +
       `buffer. The split below it uses the <b>household's own budget targets</b> for ${owned} categories — ` +
       `groceries, fuel, dining, personal, subscriptions, dog food, sports, household and medical — and ` +
       `${budget.months} months of actual spending for the rest, with anything already dated on the calendar ` +
       `removed from its own category. <b>Food and fuel come out of this number first</b>: the household budgets ` +
       `${money(cap.groceriesMonthly)} and ${money(cap.fuelMonthly)} a month for them. ` +
       `The ${money(budget.sinkingMonthly)}/month of lacrosse fees is dated on the calendar and saved for separately, ` +
-      `so it is not inside this cap and does not reduce the ordinary sports line.`;
+      `so it is not inside this cap and does not reduce the ordinary sports line.`
+      : `No feasible weekly cap until the protected funding shortfall is solved. The essential line above is ` +
+      `the household's own budget need, not a supported weekly spend. Food and fuel still have to be funded ` +
+      `from somewhere: the household budgets ${money(cap.groceriesMonthly)} and ${money(cap.fuelMonthly)} a month for them.`;
   }
 
   /* ---- major future plans — verdicts from Forecast, wording only ---- */
@@ -1177,9 +1227,14 @@ function renderPlan(d, periods, history) {
       (fundingPlan.shortfall > 0
         ? `. ${money2(fundingPlan.shortfall)} of it could not be funded at all, so these figures are the best
            case available rather than a plan that holds` : '') + `. ` : '') +
-    `Cash is <b>projected</b> under the ${state.scenario} scenario at ${money(weekly)}/week; debt balances are ` +
-    `projected from today's rates with minimums paid and <b>no new card spending</b> — the cap is a cash instruction, ` +
-    `and these lines only fall if it is honoured in cash. None of these is a target: no aspirational payoff figure ` +
+    (capView.hasFeasibleCap
+      ? `Cash is <b>projected</b> under the ${state.scenario} scenario at ${money(weekly)}/week; debt balances are ` +
+        `projected from today's rates with minimums paid and <b>no new card spending</b> — the cap is a cash instruction, ` +
+        `and these lines only fall if it is honoured in cash. `
+      : `Cash is <b>projected</b> under the ${state.scenario} scenario at ${money(weekly)}/week of variable spending; debt balances are ` +
+        `projected from today's rates with minimums paid and <b>no new card spending</b>. That weekly figure is a simulation assumption, ` +
+        `not a supported household cap — no feasible weekly cap exists until the protected funding shortfall is solved. `) +
+    `None of these is a target: no aspirational payoff figure ` +
     `is assumed anywhere. Interest incurred is cumulative across every debt including the mortgage.`;
 
   /* ---- the three phases, derived from what the numbers do ---- */
@@ -1358,35 +1413,45 @@ function renderPlan(d, periods, history) {
   // household will read it as spending money.
   if (budget) {
     $('budget-out').innerHTML =
-      row('<b>Weekly household cap</b>', `<b>${money(weekly)} / week</b>`) +
-      row('&nbsp;&nbsp;— as a monthly figure', `${money(cap.monthly)} / month`) +
+      row('<b>Weekly household cap</b>',
+        capView.hasFeasibleCap ? `<b>${money(weekly)} / week</b>` : '<b>unavailable</b>') +
+      (capView.hasFeasibleCap
+        ? row('&nbsp;&nbsp;— as a monthly figure', `${money(cap.monthly)} / month`)
+        : (capView.settingLine ? row('&nbsp;&nbsp;— your setting', capView.settingLine) : '')) +
       row('Essential variable need <span class="mutedtext">groceries, fuel, phones, medical</span>',
         est(money(cap.essentialWeekly) + ' / week'), 'out', chipE) +
-      row(cap.hasDiscretionaryRoom ? 'Discretionary room' : '<b class="neg">Discretionary room</b>',
-        cap.hasDiscretionaryRoom
-          ? money(cap.discretionaryRoomWeekly) + ' / week'
-          : '<b class="neg">nothing left</b>') +
+      (capView.hasFeasibleCap
+        ? row(cap.hasDiscretionaryRoom ? 'Discretionary room' : '<b class="neg">Discretionary room</b>',
+          cap.hasDiscretionaryRoom
+            ? money(cap.discretionaryRoomWeekly) + ' / week'
+            : '<b class="neg">nothing left</b>')
+        : '') +
       row('&nbsp;&nbsp;— of which groceries and fuel',
         est(money(cap.foodFuelPlannedWeekly) + ' / week'), '', chipE) +
       row('Planned extra debt payment', money(state.extraDebtMonthly) + ' / month') +
       row('Required buffer at the end', money(sim.buffer)) +
-      (!cap.hasDiscretionaryRoom
-        ? `<p class="warnline">The cap is ${money(cap.essentialShortfallWeekly)}/week <b>below</b> what normal life has been costing.
+      (!capView.hasFeasibleCap
+        ? `<p class="warnline">No feasible weekly cap until the protected funding shortfall is solved.
+           The essential need above is the household's own budget, not a supported weekly spend.</p>`
+        : (!cap.hasDiscretionaryRoom
+          ? `<p class="warnline">The cap is ${money(cap.essentialShortfallWeekly)}/week <b>below</b> what normal life has been costing.
            Groceries and fuel alone have run ${money(cap.foodFuelHistoricalWeekly)}/week. At this income the
            window only works by cutting essentials, moving a commitment, or borrowing — that is the real message of this number.</p>`
-        : `<p class="warnline">Read this as: <b>${money(cap.essentialWeekly)}/week is spoken for</b> before anything optional —
+          : `<p class="warnline">Read this as: <b>${money(cap.essentialWeekly)}/week is spoken for</b> before anything optional —
            ${money(cap.foodFuelPlannedWeekly)} of it groceries and fuel. The remaining
            ${money(cap.discretionaryRoomWeekly)}/week is the whole of dining out, shopping, entertainment and online spending, against the
-           ${money(cap.householdDiscretionaryWeekly)}/week those have actually been running at.</p>`);
+           ${money(cap.householdDiscretionaryWeekly)}/week those have actually been running at.</p>`));
 
-    $('budget-basis').textContent =
-      `Solved from the forecast, not from a category template: the largest weekly spend that keeps every day of the ` +
+    $('budget-basis').textContent = capView.hasFeasibleCap
+      ? `Solved from the forecast, not from a category template: the largest weekly spend that keeps every day of the ` +
       `projection at or above the ${money(sim.buffer)} buffer under the ${state.scenario} income scenario. ` +
       `The split below it comes from ${budget.basisLabel.toLowerCase()} of actual spending — ` +
       `${budget.months} months — with the ${money(budget.datedMonthly)}/month of bills and commitments that already sit ` +
       `on the calendar subtracted from their own categories, so nothing is counted twice. ` +
       `${budget.ownerTargetCount} of these categories use the household's own budget target and the rest are ` +
-      `historical actuals; each row shows which, and the average it is being measured against.`;
+      `historical actuals; each row shows which, and the average it is being measured against.`
+      : `No feasible weekly cap until the protected funding shortfall is solved. The category split below is ` +
+      `the household's own budget need, not a supported weekly spend.`;
   }
 
   /* ---- category breakdown ---- */
@@ -1424,8 +1489,8 @@ function renderPlan(d, periods, history) {
     // children's sports", and sports stopped being $0 when sinking funds were
     // separated out.
     const fullyDatedNames = budget.categories.filter(c => c.fullyDated).map(c => c.label);
-    $('budget-cats-note').textContent =
-      `The right-hand figure is what each category has averaged; the amount before it is what has to come out of the ` +
+    $('budget-cats-note').textContent = capView.hasFeasibleCap
+      ? `The right-hand figure is what each category has averaged; the amount before it is what has to come out of the ` +
       `weekly cap once anything already dated on the calendar is removed. Those add to ${money(cap.inCapMonthly)}/month against a ` +
       `cap of ${money(cap.monthly)}/month, so ${money(cap.overCapMonthly)}/month has to come off — and it ` +
       `cannot come off the essential rows, which are ${money(cap.essentialMonthly)}/month on their own. ` +
@@ -1434,6 +1499,12 @@ function renderPlan(d, periods, history) {
           `${fullyDatedNames.length === 1 ? 'it is' : 'they are'} fully dated on the calendar, not because ` +
           `${fullyDatedNames.length === 1 ? 'it is' : 'they are'} free.`
         : '') +
+      (budget.sinkingMonthly > 0
+        ? ` The ${money(budget.sinkingMonthly)}/month of season fees is saved for separately and is not ` +
+          `netted off the ordinary sports line, which still carries its own budget.`
+        : '')
+      : `The right-hand figure is what each category has averaged. There is no feasible weekly cap until the ` +
+      `protected funding shortfall is solved, so these amounts are household budget need, not a supported cap split.` +
       (budget.sinkingMonthly > 0
         ? ` The ${money(budget.sinkingMonthly)}/month of season fees is saved for separately and is not ` +
           `netted off the ordinary sports line, which still carries its own budget.`
@@ -1509,6 +1580,8 @@ function renderPlan(d, periods, history) {
       creditAvailable: revolving,
       weekly,
       recommended,
+      weeklyOverride: state.weeklyVariable,
+      capView,
       debts: d.debts,
     });
   }
@@ -1610,5 +1683,5 @@ if (typeof App !== 'undefined') {
   App.boot({ periods: true, history: true });
 }
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { paydayAnswerHtml, MISSION_PART, NEXT_MOVE, STATUS_BAND };
+  module.exports = { paydayAnswerHtml, weeklyCapView, MISSION_PART, NEXT_MOVE, STATUS_BAND };
 }
