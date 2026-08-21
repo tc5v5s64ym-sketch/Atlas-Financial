@@ -76,9 +76,14 @@ one. `CLAUDE.md` holds the rule.
 
 ## Branches, handoff, and scope
 
-New work starts from current `main` on `agent/<outcome>`, regardless of surface.
-Existing `claude/*` branches remain valid historical branches; do not rename or
-reinterpret them as current work.
+New work starts from current `main`. Prefer `agent/<outcome>` when the approved
+surface permits a custom branch name. If an approved hosted surface enforces its
+own branch namespace and cannot create `agent/*`, its platform-generated branch
+is valid when it was created from current `main` for this one outcome and the
+merge card records the platform constraint. Do not rebranch, reopen, or rerun a
+review solely to normalize a platform-enforced prefix. `docs/BUILDER_PORTABILITY.md`
+owns the exact compatibility rule. Existing `claude/*` branches remain valid
+historical branches; do not rename or reinterpret them as current work.
 
 Use **one independently provable outcome per pull request** — not one topic.
 `CLAUDE.md` owns the outcome rule, scope tripwires, atomicity exception and
@@ -96,13 +101,14 @@ This is the one launcher. Do not write a second one.
 > Read `AGENTS.md`, then take the owner's explicit instruction if there is one;
 > otherwise select work as `docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md` directs — it
 > owns eligibility, order and interruption, and this launcher restates none of
-> it. Verify current repository state
-> before editing. Use a fresh `agent/<outcome>` branch from current `main`.
-> One independently provable outcome, merge card filled, findings
-> dispositioned. Stop only for an owner-reserved item. Merge on green
-> tests and a complete card when no high-risk trigger fired. When a
-> high-risk trigger has fired, merge also waits for Atlas Contract /
-> Systems Review `PASS` on the current exact head.
+> it. Verify current repository state before editing. Start from current `main`;
+> prefer a fresh `agent/<outcome>` branch, but an approved surface's enforced
+> namespace is allowed exactly as `docs/BUILDER_PORTABILITY.md` defines. One
+> independently provable outcome, merge card filled, findings dispositioned.
+> Stop only for an owner-reserved item. Merge on green tests and a complete card
+> when no high-risk trigger fired. When a high-risk trigger has fired, merge
+> also waits for Atlas Contract / Systems Review `PASS` on the current exact
+> head.
 
 Before implementing, report only: the source/item, the current-state verdict,
 whether code is actually required, and any owner gate. Then go.
