@@ -46,8 +46,10 @@ brief. The filename does not make Claude the owner of the workflow.
   active.
 - **“Codex review/comments are advisory”** means **independent agent review is
   advisory**. Any agent that is not the active builder may fill that role.
-- Existing **`claude/*` branches** are historical and remain valid records. New
-  branches use **`agent/<outcome>`** on every surface.
+- Existing **`claude/*` branches** are historical and remain valid records.
+  For new work, `agent/<outcome>` is the preferred portable branch form; the
+  compatibility exception below applies when an approved hosted surface
+  enforces its own namespace.
 - Surface-specific configuration such as `.claude/` may exist for tooling. It
   carries no independent product, financial, safety, sequencing, review, or
   merge authority unless a canonical document explicitly says otherwise.
@@ -56,6 +58,34 @@ If legacy wording and a current canonical rule disagree, follow the current
 canonical rule and fix the stale wording in the smallest appropriate governance
 pull request. Do not invent a compatibility interpretation that weakens a hard
 boundary.
+
+## Branch naming compatibility
+
+The invariant is **fresh current `main` + one outcome**, not a cosmetic prefix.
+Use `agent/<outcome>` whenever the approved surface permits the agent to choose a
+custom branch name.
+
+Some approved hosted surfaces create the working branch themselves and enforce
+a provider-specific namespace. When the surface genuinely cannot create or use
+`agent/*`, that platform-generated branch is valid if all of these are true:
+
+1. it was created from the current `main` SHA verified before implementation;
+2. it carries exactly one independently provable outcome;
+3. the merge card records the enforced branch namespace / surface constraint;
+4. it is not stacked on another open implementation branch unless the existing
+   atomicity exception applies; and
+5. every normal test, review, owner-reserved, and merge rule remains unchanged.
+
+A provider-enforced prefix by itself is **not** a financial, security,
+authority, invariant, or product-trust defect. Do not close and recreate a safe
+pull request, copy an already-reviewed commit to another branch, or rerun a
+systems-review cycle solely to normalize that prefix. If the surface allows a
+custom branch, use `agent/<outcome>`; this exception is not permission for an
+agent to choose arbitrary names for convenience.
+
+This section owns the branch-name mechanism. Where `CLAUDE.md` uses
+`agent/<outcome>` as the generic branch form, read that as the preferred default
+subject to this hosted-surface compatibility exception.
 
 ## Repository-state handoff
 
@@ -81,8 +111,9 @@ After switching agents:
 2. Inspect current `main`, open pull requests, and relevant current code before
    assuming the next item is untouched.
 3. Report the Current-State Verification Gate verdict.
-4. Start a fresh `agent/<outcome>` branch from current `main` unless this is the
-   forced mid-PR handoff exception below.
+4. Start a fresh branch from current `main`: prefer `agent/<outcome>`, or use the
+   approved surface's enforced namespace only under **Branch naming
+   compatibility**, unless this is the forced mid-PR handoff exception below.
 5. Continue under the same financial, trust, review, and merge gates.
 6. Load a skill from `docs/skills/README.md` only when the work matches a
    catalog row. Search `docs/lessons/TECHNICAL.md` for terms related to the
@@ -149,7 +180,9 @@ The fresh agent reports all ten items:
    strategy defines it, which does not exclude an item merely because no phase
    names it;
 5. every owner-reserved stop relevant to that action;
-6. the required new-branch form (`agent/<outcome>`);
+6. the required new-branch rule: fresh current `main`, prefer
+   `agent/<outcome>`, with a provider-enforced namespace allowed only under
+   **Branch naming compatibility**;
 7. the applicable deterministic test commands named by current repository
    governance for that action;
 8. what independent proof is required if a household-facing financial figure is
