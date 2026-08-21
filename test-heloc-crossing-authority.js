@@ -11,6 +11,10 @@
  */
 const fs = require('fs');
 const { sourceText } = require('./test-source-text');
+const {
+  findCrossingDateClaims,
+  storedCrossingClaims,
+} = require('./test-heloc-crossing-guard');
 const F = require('./public/forecast.js');
 const data = require('./data.json');
 
@@ -68,18 +72,6 @@ function projectHeloc(plan, debts, asOf) {
 function helocCrossing(proj) {
   return ((proj && proj.crossings) || [])
     .find(c => c.id === 'heloc' && !c.alreadyOver) || null;
-}
-
-function storedCrossingClaims(plan) {
-  const blobs = [
-    ...(plan.assumptions || []),
-    JSON.stringify(plan.nextDollar || {}),
-    ...(plan.actions || []).map(a => `${a.why || ''} ${a.note || ''}`),
-    plan.actionsNote || '',
-  ].join('\n');
-  return blobs.match(
-    /\b(?:crosses|passes its own limit)\b[\s\S]{0,160}\b(?:30 September|31 October|2026-09-30|2026-10-31)\b/gi
-  ) || [];
 }
 
 const plan = data.plan;
@@ -156,10 +148,39 @@ const stored = storedCrossingClaims(plan);
 ok(stored.length === 0,
   'assumptions, nextDollar and actions do not store an exact HELOC crossing day',
   stored.join(' | ') || 'none');
-ok(!/30 September/.test(read('public/plan.js')),
-  'Plan page copy does not hardcode 30 September');
-ok(!/the HELOC crosses on\s+30 September/i.test(read('public/forecast.js')),
-  'Forecast comments no longer treat 30 September as the current crossing');
+const planSourceClaims = findCrossingDateClaims(read('public/plan.js'));
+ok(planSourceClaims.length === 0,
+  'Plan page copy does not hardcode a HELOC crossing calendar day',
+  planSourceClaims.join(' | ') || 'none');
+const forecastSourceClaims = findCrossingDateClaims(read('public/forecast.js'));
+ok(forecastSourceClaims.length === 0,
+  'Forecast source does not hardcode a HELOC crossing calendar day',
+  forecastSourceClaims.join(' | ') || 'none');
+
+console.log('\n=== stored-date guard fails closed on any calendar day ===');
+{
+  const november = storedCrossingClaims({
+    assumptions: ['The HELOC crosses its own limit on 30 November'],
+  });
+  ok(november.length > 0,
+    'a stored 30 November crossing claim fails closed',
+    november.join(' | '));
+  const novemberIso = storedCrossingClaims({
+    assumptions: ['The HELOC crosses its own limit on 2026-11-30'],
+  });
+  ok(novemberIso.length > 0,
+    'a stored ISO November crossing claim fails closed',
+    novemberIso.join(' | '));
+  const pageNovember = findCrossingDateClaims(
+    'The HELOC passes its own limit on 30 November with no new borrowing');
+  ok(pageNovember.length > 0,
+    'page copy that hardcodes 30 November fails closed',
+    pageNovember.join(' | '));
+  ok(storedCrossingClaims({
+    assumptions: ['The HELOC passes its own limit inside this window with no new borrowing.'],
+  }).length === 0,
+    'a crossing claim with no calendar day is still allowed');
+}
 
 console.log('\n=== mutating opening or capitalisation moves the derived crossing ===');
 {

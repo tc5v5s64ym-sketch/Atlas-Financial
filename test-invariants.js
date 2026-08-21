@@ -12,6 +12,10 @@ const fs = require('fs');
 const path = require('path');
 const F = require('./public/forecast.js');
 const { sourceText } = require('./test-source-text');
+const {
+  containsCalendarDay,
+  storedCrossingClaims,
+} = require('./test-heloc-crossing-guard');
 const data = require('./data.json');
 const { openingFloor, gapAtBuffer, fundingById } = require('./test-helpers');
 const periods = require('./public/periods.json');
@@ -868,11 +872,10 @@ const helocCrossingAssumption = (plan.assumptions || [])
   .find(a => /HELOC passes its own limit/.test(a));
 ok(!!helocCrossingAssumption,
   'the HELOC-in-window assumption remains, without a stored crossing day');
-ok(helocCrossingAssumption
-  && !/30 September|31 October|2026-09-30|2026-10-31/.test(helocCrossingAssumption),
+ok(helocCrossingAssumption && !containsCalendarDay(helocCrossingAssumption),
   'plan assumptions do not store an exact HELOC crossing calendar day');
-ok(!/crosses \$202,654 on 30 September/.test(JSON.stringify(plan.nextDollar || {})),
-  'nextDollar does not store a September HELOC crossing date');
+ok(storedCrossingClaims({ nextDollar: plan.nextDollar }).length === 0,
+  'nextDollar does not store an exact HELOC crossing calendar day');
 
 // Amanda's pay cadence. ACCOUNT_FACTS once said both bi-weekly and
 // semi-monthly, in the same file, 236 lines apart.
