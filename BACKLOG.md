@@ -61,7 +61,10 @@ unattended production writes are **not** approved. `B21` / `AF-INTAKE-01` is
 [`docs/connectivity/LUNCH_MONEY_REFRESH_PROOF_2026-08-17.md`](docs/connectivity/LUNCH_MONEY_REFRESH_PROOF_2026-08-17.md).
 `B78` / `AF-INGEST-01` / T3 is **DONE**. `B79` / `AF-STORE-01` is
 **DONE** — file foundation has not demonstrably failed; store gate stays
-closed. `B81` / `AF-LIVE-02` first slice is the earned writer. Do **not** wait for a second month of
+closed. `B81` / `AF-LIVE-02` is **DONE** as the earned preview/approve
+writer, the published 2026-08-19 canonical opening, and the read-only
+live overlay. Unattended production writes, a Render token, and a
+newer live substitute opening remain reserved. Do **not** wait for a second month of
 routine statement files. Provider-completeness, broad historical forensics,
 old categorisation cleanup, and file-statement backfill are not
 critical-path gates unless they expose a demonstrated material source or
@@ -1592,7 +1595,7 @@ provider-completeness (which product fields actually appear) is not a
 critical-path gate. The 2026-08-17 owner decision names Lunch Money as the
 normal operational feed; that does not reopen B80 and does not close `B81`.
 
-**B81 · Trusted canonical refresh from the live feed** · `IN PROGRESS` · *T4 passed 2026-08-17*
+**B81 · Trusted canonical refresh from the live feed** · **DONE 2026-08-21** · *earned capability; production activation reserved*
 Build-strategy item `AF-LIVE-02`. Owner T4 pass:
 [`docs/connectivity/T4_OWNER_PASS_2026-08-17.md`](docs/connectivity/T4_OWNER_PASS_2026-08-17.md).
 The earned mechanism is `scripts/canonical-refresh.js`: incumbent observe
@@ -1637,36 +1640,34 @@ writer stopped at the canonical file. That integration defect is the
 reason the coherent opening transition exists. The bounded recovery
 path reconstructs those two missing surfaces when the surviving
 opening still MATCHES a complete same-date observation packet. This
-item does not apply that recovery to live `main`.
+item did not itself apply that recovery to live `main`.
 
-Preservation (local only, not pushed): original detached SHA
-`6d1f3bb2ea8b253a1b529060c09bd37e16e45abf` is
-`refs/atlas/b81-original-detached-6d1f3bb`; current remote main
-`28d08a12a18691f34c32bc839d22cd526fc75111` is
-`refs/atlas/b81-remote-main-28d08a12`. The exact approved Aug. 19
-`data.json` bytes (SHA-256
-`C28D5D45609888C8871EC3D5CF43BCB1E8532C54F73FC33A68374FCB106D3E3D`)
-later survived on the operator machine while `docs/positions.csv`
-still had no 2026-08-19 Household rows and `snapshots/2026-08-19.json`
-did not exist. Live `main` still publishes the 2026-08-16 opening
-`f9c47fcdd1a043198c693c7817bfd5d05be6d63434f5da5621a8646ab8f315c0`.
-This item does not invent replacement Aug. 19 Household evidence, does
-not fetch a newer live observation, and does not apply recovery to
-live `main`. Owner-approved recovery still requires the surviving
-bytes plus the same-date MATCH packet.
+That integration gap is historical. PR #116 landed the owner-approved
+2026-08-19 opening on `main` (`6d44590`). Current `data.json`
+`meta.asOf` and `plan.opening.asOf` are **2026-08-19**; same-date
+Household rows exist in `docs/positions.csv`; `snapshots/2026-08-19.json`
+exists. The 2026-08-16 opening remains dated evidence in
+`snapshots/2026-08-16.json`. Preservation refs from the recovery
+episode (`refs/atlas/b81-original-detached-6d1f3bb`,
+`refs/atlas/b81-remote-main-28d08a12`) are bookmarks, not current
+`main`. A newer live substitute opening remains reserved.
 
 A later owner instruction added a read-only in-memory overlay so a new
 Lunch Money observation can change today's Forecast without rewriting
-the 2026-08-19 opening or snapshots (`scripts/live-plan.js`). That overlay
-is not a canonical write, not a second planner, and not a Render token.
-Unknown/stale/conflicting evidence still fails closed. Triangle/MBNA
-statement cadence still applies. Transfers are not income. Credit
-availability is not cash.
+the 2026-08-19 opening or snapshots (`scripts/live-plan.js`). Server
+`/data.json` may consume that overlay when `ATLAS_LIVE_OVERLAY` is
+explicitly `fixture` or `live`; the UI discloses whether it applied.
+That overlay is not a canonical write, not a second planner, and not a
+Render token. Unknown/stale/conflicting evidence still fails closed.
+Triangle/MBNA statement cadence still applies. Transfers are not
+income. Credit availability is not cash.
 
-Unattended production writes, scheduled refresh, and a Render Lunch
-Money token remain reserved. Do not apply the unused Chequing B $10,
-choose a Triangle same-day winner, invent a pending→posted case, or
-infer endpoint origin.
+This item is closed as the earned capability. Unattended production
+writes, scheduled refresh, a Render Lunch Money token, and a newer
+live substitute opening remain owner-reserved. They are not a missing
+B81 implementation slice and do not keep this item `IN PROGRESS`. Do
+not apply the unused Chequing B $10, choose a Triangle same-day
+winner, invent a pending→posted case, or infer endpoint origin.
 
 The first successful live `--cutover-as-of 2026-08-18` preflight fetched at
 `2026-08-19T01:06:40.929Z` — still 18 August in America/Vancouver — and

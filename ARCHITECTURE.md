@@ -349,9 +349,11 @@ defect `B73` exists to close, arriving through a new door. The **normal**
 refresh chain is Lunch Money → observation + reconciliation → canonical Atlas
 state → Forecast → those three surfaces. `B91` is done. Lunch Money is the
 evidence/update feed, not a second planner. Owner-approved preview/apply
-writes are earned (`B81` first slice). Unattended production writes are
-not. Sequencing of remaining production-reservation work lives in
-[`docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`](docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md).
+writes, the published 2026-08-19 canonical opening, and the read-only
+live overlay are earned (`B81` / `AF-LIVE-02`). Unattended production
+writes, a Render Lunch Money token, and a newer live substitute opening
+remain owner-reserved. Those reservations are not a missing B81
+implementation slice.
 
 **What the plan is expected to cover, as each capability is earned:** material
 income and compensation, debts, bills, spending and budget, known dated
@@ -903,8 +905,10 @@ preview/approve writer:
 Condition 5 is about trusted writes, not about building the foundation, and
 not about the existing read-only GET: the foundation may be built first, and
 doing so satisfies one condition rather than opening the gate. The existing
-live Lunch Money GET is an incumbent. Future trusted canonical refresh is
-the remaining capability to earn.
+live Lunch Money GET is an incumbent. Trusted canonical refresh through
+explicit owner approval is earned (`B81` / `AF-LIVE-02`). Unattended
+production writes, a Render Lunch Money token, and a newer live substitute
+opening remain owner-reserved.
 
 **Current seam.** Owner instruction 2026-08-16 recorded condition 1 and
 authorised a fixture-first observe path. The 2026-08-17 feed direction
