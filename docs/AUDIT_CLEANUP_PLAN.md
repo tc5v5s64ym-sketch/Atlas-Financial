@@ -32,7 +32,7 @@ When the owner says **"action the audit cleanup plan"**:
 ## Progress summary
 
 Baseline findings: **P0 = 0 · P1 = 5 · P2 = 11 · P3 = 2**.  
-Current progress: **14 / 18 findings dispositioned**.
+Current progress: **15 / 18 findings dispositioned**.
 
 Status vocabulary:
 
@@ -62,15 +62,15 @@ Status vocabulary:
 | 12 | **F-12** | `CLAUDE.md`, PR template, and mechanical merge-card token use one vocabulary for the stale/superseded verdict. | **DONE — PR #147** | CLAUDE.md now documents `STALE-SUPERSEDED`, matching the PR template and mechanical merge-card check; test-mergecard.js guards the vocabulary against drift. |
 | 13 | **F-13** | B72 is closed if current main still proves the bad commit fixture is gone; do not create code for an already-fixed item. | **DONE — PR #148** | B72 was already fixed; test-mergecard.js uses synthetic `const HEAD = 'a'.repeat(40);`; no code change was needed. |
 | 14 | **F-14** | Resolve whether a midpoint home value / point household net worth may be published at all; then make `positions.csv` / derived summaries follow that owner decision without inventing policy. | **DONE — PR #150** | Owner-estimated $1.3M home value now drives the existing ESTIMATE net-worth/equity/LTV reporting path. Q3 remains OPEN for verified market value. |
-| 15 | **F-15** | Separate Amanda's continuing Tennis BC / household-transfer stream from the stopped garage/lab-funded stream so Deep Dive and the forward plan do not contradict each other. | **IN PR #151** | Deep Dive incomeNote now names Q5's ended garage/lab stream separately from modelled `amandaTransfer`. `positions.csv` 2026-08-09 $21,700 row left as dated anti-double-count aggregate. |
-| 16 | **F-16** | New-session orientation records the dated 2026-08-21 live acceptance result without moving the canonical opening. A newer canonical cutover remains a separate owner-reserved decision. | **TODO** | Explicit non-goal: do not promote 2026-08-21 to canonical opening in this finding. |
+| 15 | **F-15** | Separate Amanda's continuing Tennis BC / household-transfer stream from the stopped garage/lab-funded stream so Deep Dive and the forward plan do not contradict each other. | **DONE — PR #151** | Deep Dive incomeNote now names Q5's ended garage/lab stream separately from modelled `amandaTransfer`; current scenario values and `firstDue` were preserved and no Forecast arithmetic moved. |
+| 16 | **F-16** | New-session orientation records the dated 2026-08-21 live acceptance result without moving the canonical opening. A newer canonical cutover remains a separate owner-reserved decision. | **IN PR #152** | `CONTEXT.md` now records the dated read-only $747.81 cash / $104.89 gap acceptance, zero borrowing, and unfunded/no-feasible-cap result while explicitly keeping 2026-08-19 canonical. |
 | 17 | **F-17** | Historical suite-count comments stop masquerading as current when their files are next honestly touched. | **DEFERRED** | Opportunistic only; not worth a dedicated PR unless current state raises severity. |
 | 18 | **F-18** | The unnumbered outbound-e-transfer question has one question-authority home: fold into Q1 or assign a proper Q id without creating a duplicate question. | **TODO** | |
 
 ## Priority and batching
 
 - **F-01 → F-04 are first.** They are the baseline audit's P1 household-facing correctness / contradiction work that does not require an owner answer.
-- **F-05 is DONE — PR #149.** **F-14 is DONE — PR #150.** Owner-estimated $1.3M home value now drives the ESTIMATE net-worth/equity/LTV path; Q3 stays OPEN for verified market value. F-15 is **IN PR #151**.
+- **F-05 is DONE — PR #149.** **F-14 is DONE — PR #150.** **F-15 is DONE — PR #151.** Owner-estimated $1.3M home value now drives the ESTIMATE net-worth/equity/LTV path; Q3 stays OPEN for verified market value. F-16 is **IN PR #152**.
 - Default to **one finding per PR**. If current evidence proves two findings share one root cause and one acceptance condition, current governance may permit one PR; record why in the merge card. Do not batch merely because both are documentation.
 - F-17 stays deferred unless an honest touch to one of those files makes the cleanup in-scope.
 - The audit's recommendations are dated advice, not an override of current repository governance. Reproduce each finding before acting.
@@ -646,7 +646,7 @@ current-state verdict to be one of "... STALE / SUPERSEDED ...", while
 .github/PULL_REQUEST_TEMPLATE.md:23 uses STALE-SUPERSEDED. Confirm that a card
 written verbatim to CLAUDE.md therefore fails the "Merge card mechanical
 fields" check, and that a failed merge-card check is a workflow_run trigger for
-atlas-test-repair.yml. Record the verdict and evidence.
+atlas-test-repair.yml. Record the verdict.
 
 ONE OUTCOME: a merge card written verbatim from CLAUDE.md's stated vocabulary
 passes the Merge card mechanical fields check.
