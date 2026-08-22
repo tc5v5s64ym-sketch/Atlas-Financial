@@ -711,9 +711,15 @@ function paydayCashNote(alloc, liveOverlay) {
 function paydayObligationNote(item, asOf) {
   if (!item) return '';
   const when = item.date ? fmtDate(item.date) : '';
+  const reserved = item.allocated != null
+    && Number(item.allocated) > 0
+    && Math.abs(Number(item.allocated) - Number(item.amount)) <= 0.02;
   if (item.settlement === 'unverified') {
     const opening = asOf ? ` on the ${fmtDate(asOf)} opening` : '';
-    return `${when ? when + ' · ' : ''}settlement unverified${opening}. Reserved until current evidence confirms posting.`;
+    const reserveClause = reserved
+      ? ' Reserved until current evidence confirms posting.'
+      : '';
+    return `${when ? when + ' · ' : ''}settlement unverified${opening}.${reserveClause}`;
   }
   if (item.date) return `Due ${fmtDate(item.date)}.`;
   return '';
@@ -737,12 +743,20 @@ function paydayAnswerHtml(ctx) {
   const weekly = ctx.weekly != null ? ctx.weekly : advice.weekly;
   const capView = ctx.capView || weeklyCapView(advice, ctx.weeklyOverride);
   const asOf = ctx.asOf || (alloc && alloc.asOf);
-  const paydayDate = near.payday || null;
-  const periodLine = paydayDate
-    ? `Now → ${fmtDateLong(paydayDate)}`
-    : (asOf
-      ? `Now → ${fmtDateLong(asOf)}`
-      : 'Planning span is not available on this opening.');
+  const paydayDate = near.payday || (alloc && alloc.payday) || null;
+  const liveOverlay = ctx.liveOverlay || null;
+  const basisAsOf = alloc && alloc.cashBasis && alloc.cashBasis.asOf
+    ? alloc.cashBasis.asOf
+    : asOf;
+  const overlayOn = !!(liveOverlay && liveOverlay.applied === true);
+  const periodEndLabel = paydayDate
+    ? fmtDateLong(paydayDate)
+    : (basisAsOf ? fmtDateLong(basisAsOf) : '');
+  const periodLine = !basisAsOf
+    ? 'Planning span is not available on this opening.'
+    : overlayOn
+      ? `Live as at ${fmtDateLong(basisAsOf)} → ${periodEndLabel}`
+      : `As at ${fmtDateLong(basisAsOf)} → ${periodEndLabel}`;
 
   const obligationItems = (alloc && alloc.obligations && alloc.obligations.items) || [];
   const essentialItems = (alloc && alloc.essentials && alloc.essentials.items) || [];
@@ -766,10 +780,17 @@ function paydayAnswerHtml(ctx) {
   const billsReserved = alloc && alloc.obligations ? alloc.obligations.allocated : 0;
   const billsWanted = alloc && alloc.obligations ? alloc.obligations.wanted : 0;
   const billsShort = alloc && alloc.obligations ? alloc.obligations.shortfall : 0;
+  const billsAttribution = alloc && alloc.obligations
+    ? alloc.obligations.fundingAttribution
+    : null;
   const billsTotal = obligationItems.length
     ? `<p class="payday-qual">Bills currently reserved: ${money2(billsReserved)}${
         billsShort > 0 ? ` · shortfall ${money2(billsShort)} of ${money2(billsWanted)} required` : ''
-      }</p>`
+      }</p>${
+        billsAttribution === 'unattributed'
+          ? '<p class="payday-qual">Atlas does not choose which required bill is underfunded.</p>'
+          : ''
+      }`
     : '';
 
   const essentialSheet = paydaySheet(
@@ -801,9 +822,12 @@ function paydayAnswerHtml(ctx) {
       }`;
   }
   const periodEnd = alloc && alloc.periodEnd;
-  const essentialHeading = periodEnd
-    ? `Essential costs until ${fmtDate(periodEnd)}`
-    : 'Essential costs until next payday';
+  const periodStart = alloc && (alloc.periodStart || alloc.asOf || asOf);
+  const essentialHeading = periodStart && periodEnd
+    ? `Essential costs from ${fmtDate(periodStart)} through ${fmtDate(periodEnd)}`
+    : periodEnd
+      ? `Essential costs through ${fmtDate(periodEnd)}`
+      : 'Essential costs until next payday';
 
   const otherSheet = paydaySheet(
     ['Action', 'Amount'],

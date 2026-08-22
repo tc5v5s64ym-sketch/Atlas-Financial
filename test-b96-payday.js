@@ -665,8 +665,13 @@ console.log('\n=== M. homepage leads with the compact payday worksheet ===');
     'the verbose PR #157 groups are no longer the primary surface');
   const paydayDate = liveRun.advice.nearBoundary && liveRun.advice.nearBoundary.payday;
   if (paydayDate) {
-    ok(/Now → /.test(liveRun.html),
-      'front door names the Now → next-payday span');
+    const asOfLong = new Date(live.meta.asOf + 'T00:00:00').toLocaleDateString('en-CA', {
+      day: 'numeric', month: 'long',
+    });
+    ok(!/Now →/.test(liveRun.html),
+      'dated live opening is not labelled Now');
+    ok(liveRun.html.includes(`As at ${asOfLong}`),
+      'front door names the dated as-of', asOfLong);
     ok(liveRun.html.includes(paydayDate.slice(8)) || liveRun.html.includes(paydayDate),
       'front door names Forecast.nearBoundary.payday', paydayDate);
   }

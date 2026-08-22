@@ -155,6 +155,8 @@ console.log('=== A. itemized obligation reconciliation ===');
     `${itemAlloc} vs ${alloc.obligations.allocated}`);
   ok(near(alloc.obligations.wanted, alloc.obligations.allocated),
     'this fixture fully funds the bills reserve');
+  ok(alloc.obligations.fundingAttribution === 'complete',
+    'a fully funded bills bucket may attribute each item its required amount');
 }
 
 console.log('\n=== B. unverified past-due is reserved, not called unpaid ===');
@@ -362,6 +364,12 @@ console.log('\n=== H. freshness fails closed ===');
       id: 'bcaa', label: 'BCAA insurance', frequency: 'once',
       date: '2026-09-05', amount: 50, confidence: 'confirmed',
     }],
+    budget: {
+      categories: [{
+        id: 'groceries', label: 'Groceries', class: 'essential',
+        plannedMonthly: 300, from: ['Groceries'],
+      }],
+    },
   });
   const alloc = F.paydayAllocation(plan, AS_OF, o());
   ok(alloc.cashBasis && alloc.cashBasis.datedOpening === true
@@ -383,6 +391,32 @@ console.log('\n=== H. freshness fails closed ===');
   });
   ok(/dated opening/.test(failed) && /Live overlay not applied/.test(failed),
     'a failed overlay is reported rather than faked');
+  const asOfLong = new Date(AS_OF + 'T00:00:00').toLocaleDateString('en-CA', {
+    day: 'numeric', month: 'long',
+  });
+  const asOfShort = new Date(AS_OF + 'T00:00:00').toLocaleDateString('en-CA', {
+    day: 'numeric', month: 'short',
+  });
+  const periodEndShort = new Date(alloc.periodEnd + 'T00:00:00').toLocaleDateString('en-CA', {
+    day: 'numeric', month: 'short',
+  });
+  ok(!/Now →/.test(html) && !/Now →/.test(failed),
+    'a dated opening is not labelled Now');
+  ok(html.includes(`As at ${asOfLong}`),
+    'the period line names the dated as-of', asOfLong);
+  ok(html.includes(`Essential costs from ${asOfShort} through ${periodEndShort}`),
+    'essential wording names the Forecast period, not wall-clock now',
+    `Essential costs from ${asOfShort} through ${periodEndShort}`);
+  const liveHtml = composed.paydayAnswerHtml({
+    plan, asOf: AS_OF,
+    advice: { weekly: 180, paydayAllocation: alloc, mode: 'normal' },
+    recommended: 180, weekly: 180,
+    liveOverlay: { applied: true },
+  });
+  ok(!/Now →/.test(liveHtml),
+    'a live overlay does not invent wall-clock Now');
+  ok(liveHtml.includes(`Live as at ${asOfLong}`),
+    'live overlay wording uses the authoritative financial date');
 }
 
 console.log('\n=== I. complete render — no truncation ===');
@@ -474,6 +508,73 @@ console.log('\n=== J. dollar reconciliation — no dollar twice ===');
     'a nextPaymentOut without an id is still not a second reserve');
 }
 
+console.log('\n=== K. partial bill funding is unattributed — no invented priority ===');
+{
+  const first = {
+    id: 'first', label: 'First bill', frequency: 'once',
+    date: '2026-09-12', amount: 80, confidence: 'confirmed',
+  };
+  const second = {
+    id: 'second', label: 'Second bill', frequency: 'once',
+    date: '2026-09-18', amount: 70, confidence: 'confirmed',
+  };
+  const cash = 90;
+  const run = bills => {
+    const plan = basePlan({
+      startingCash: { amount: cash },
+      bills,
+      budget: { categories: [] },
+    });
+    return { plan, alloc: F.paydayAllocation(plan, AS_OF, o({ weeklyVariable: 0 })) };
+  };
+  const forward = run([first, second]);
+  const reversed = run([second, first]);
+  const wanted = first.amount + second.amount;
+  ok(near(forward.alloc.obligations.wanted, wanted)
+    && forward.alloc.obligations.allocated > 0
+    && forward.alloc.obligations.allocated + 0.02 < wanted,
+    'cash covers some but not all required bills',
+    `${forward.alloc.obligations.allocated} of ${forward.alloc.obligations.wanted}`);
+  ok(forward.alloc.obligations.fundingAttribution === 'unattributed'
+    && reversed.alloc.obligations.fundingAttribution === 'unattributed',
+    'partial bill funding is unattributed — no invented payment priority');
+  ok((forward.alloc.obligations.items || []).every(i => i.allocated == null)
+    && (reversed.alloc.obligations.items || []).every(i => i.allocated == null),
+    'no item is assigned reserved cash by array or calendar order');
+  ok(near(forward.alloc.obligations.allocated, reversed.alloc.obligations.allocated)
+    && near(forward.alloc.obligations.wanted, reversed.alloc.obligations.wanted),
+    'reversing bill order does not change the reserved pool');
+  const firstFwd = (forward.alloc.obligations.items || []).find(i => i.id === 'first');
+  const firstRev = (reversed.alloc.obligations.items || []).find(i => i.id === 'first');
+  ok(firstFwd && firstRev && firstFwd.allocated === firstRev.allocated,
+    'the same bill does not receive different reserved cash because it appeared first');
+  const { html } = htmlOf(forward.plan, forward.alloc);
+  ok(/First bill/.test(html) && /Second bill/.test(html),
+    'both required bills remain visible as required amounts');
+  ok(/Bills currently reserved/.test(html) && /shortfall/.test(html),
+    'the page publishes the aggregate reserved cash and shortfall');
+  ok(/does not choose which required bill is underfunded/.test(html),
+    'and does not invent a bill-level cut');
+  ok(!/Reserved until current evidence confirms posting/.test(html),
+    'no row claims an individual bill is reserved when attribution is unattributed');
+  const empty = run([first, second]);
+  empty.alloc = F.paydayAllocation(basePlan({
+    startingCash: { amount: 0 },
+    bills: [first, second],
+    budget: { categories: [] },
+  }), AS_OF, o({ weeklyVariable: 0 }));
+  ok(empty.alloc.obligations.fundingAttribution === 'none'
+    && (empty.alloc.obligations.items || []).every(i => i.allocated === 0),
+    'an unfunded bills bucket may mark every item zero without inventing order');
+  const { html: noneHtml } = htmlOf(basePlan({
+    startingCash: { amount: 0 },
+    bills: [first, second],
+    budget: { categories: [] },
+  }), empty.alloc);
+  ok(!/Reserved until current evidence confirms posting/.test(noneHtml),
+    'an unfunded bucket does not claim any bill is reserved');
+}
+
 console.log('\n=== live opening observation (not a specification) ===');
 {
   const live = require('./data.json');
@@ -510,6 +611,11 @@ console.log('\n=== live opening observation (not a specification) ===');
   const { html } = htmlOf(live.plan, alloc, { liveOverlay: live.liveOverlay || null });
   ok(/dated opening/.test(html),
     'live composed HTML names the dated opening');
+  const liveAsOfLong = new Date(asOf + 'T00:00:00').toLocaleDateString('en-CA', {
+    day: 'numeric', month: 'long',
+  });
+  ok(!/Now →/.test(html) && html.includes(`As at ${liveAsOfLong}`),
+    'live dated opening is labelled from as-of, not Now');
   ok((alloc.obligations.items || []).every(i => html.includes(i.label)),
     'every live obligation item is rendered');
   ok((alloc.essentials.items || []).every(i => html.includes(i.label)),

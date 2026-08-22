@@ -2059,15 +2059,22 @@
     const allocatedEssentials = take(essentialsWanted);
     const leftoverAfterOE = remaining;
 
-    // Cash assigned in the existing expandEvents order so item allocations
-    // sum to the aggregate. That order is the calendar stream, not a new
-    // bill-priority policy; the page publishes each item's required amount
-    // and the aggregate reserved / shortfall.
-    let obligationCash = allocatedObligations;
+    // Per-item reserved cash is authoritative only when the whole required
+    // bucket is funded or none of it is. Partial funding is an unattributed
+    // pool: expandEvents order is a calendar stream, not an owner-approved
+    // bill-priority rule, so no item is marked reserved by array position.
+    let obligationsAttribution = 'complete';
+    if (allocatedObligations + EPSILON < obligationsWanted) {
+      obligationsAttribution = allocatedObligations > EPSILON ? 'unattributed' : 'none';
+    }
     for (const item of obligationItems) {
-      const got = roundCent(Math.min(Math.max(0, item.amount), Math.max(0, obligationCash)));
-      item.allocated = got;
-      obligationCash = roundCent(obligationCash - got);
+      if (obligationsAttribution === 'complete') {
+        item.allocated = item.amount;
+      } else if (obligationsAttribution === 'none') {
+        item.allocated = 0;
+      } else {
+        item.allocated = null;
+      }
     }
 
     const essentialItems = [];
@@ -2340,6 +2347,8 @@
         wanted: roundCent(obligationsWanted),
         allocated: allocatedObligations,
         shortfall: roundCent(Math.max(0, obligationsWanted - allocatedObligations)),
+        fundingAttribution: obligationsAttribution,
+        fundedPool: obligationsAttribution === 'unattributed' ? allocatedObligations : 0,
         items: obligationItems,
       },
       essentials: {
