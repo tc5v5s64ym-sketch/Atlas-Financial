@@ -1640,7 +1640,8 @@ case (fixture collapse remains supporting coverage). Endpoint origin was
 not fabricated. Triangle same-day winner still not chosen. Fresh Chequing
 B from B21 remains unused. A new live GET was not available in the
 builder shell (token unset) and is not required to reopen this outcome
-unless a later pull shows a new identity defect. T4 / `B81` stay closed.
+unless a later pull shows a new identity defect. T4 passed 2026-08-17;
+`B81` completed 2026-08-20.
 
 **B79 · The store question, answered by evidence** · **DONE 2026-08-18** · *owner-reserved gate stays closed*
 Build-strategy item `AF-STORE-01`. Written answer:
@@ -1651,7 +1652,7 @@ freshness, unused Chequing B $10, no real pending→posted, endpoint
 origin) are not store semantics. Stay with `data.json`,
 `public/periods.json`, observation/reconciliation files, `snapshots/`,
 and git. No store implemented. Gate remains closed. Owner action is not
-required to keep files. T4 / `B81` stays closed.
+required to keep files. T4 passed 2026-08-17; `B81` completed 2026-08-20.
 
 **B80 · Evaluate connectivity providers, point nothing live** · **DONE 2026-08-16** · *owner brought this forward*
 Build-strategy item `AF-LIVE-01`. Owner instruction 2026-08-16: manual
