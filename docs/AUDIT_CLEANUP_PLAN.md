@@ -48,7 +48,7 @@ Status vocabulary:
 
 | Order | Finding | Target outcome | Status | Completion / proof record |
 |---:|---|---|---|---|
-| 1 | **F-01** | Records renders commitment ranges / undated commitments through the authoritative Forecast publication view; no `$0.00` for a range-only amount and no `Invalid Date`. | **IN PR** | Records Commitments block takes unsettled rows from `Forecast.publicationTotals().commitmentItems` (ranges and `when` intact) and keeps settled rows from `plan.commitments`. Independent proof in `test-major-future-costs.js`. |
+| 1 | **F-01** | Records renders commitment ranges / undated commitments through the authoritative Forecast publication view; no `$0.00` for a range-only amount and no `Invalid Date`. | **IN PR #136** | Records Commitments block takes unsettled rows from `Forecast.publicationTotals().commitmentItems` (ranges and `when` intact) and keeps settled rows from `plan.commitments`. Independent proof in `test-major-future-costs.js`. |
 | 2 | **F-02** | Reconcile TD Cash Back Visa and Travel Visa standing-facts prose to the canonical 2026-08-19 state, removing stale balance/minimum/limit claims from the wrong home. | **TODO** | |
 | 3 | **F-04** | Re-derive B71 Triangle limit-risk conclusion from the current canonical opening / `Forecast.projectDebts`; no stale “remains under” claim presented as current. | **TODO** | |
 | 4 | **F-03** | One authoritative coaching-income overstatement answer reaches both Deep Dive surfaces; no `$650` vs `$1,650` contradiction. | **TODO** | |
