@@ -145,6 +145,17 @@ balance openings for 2026-08-09, 2026-08-16, and 2026-08-19 live in
 `snapshots/`; `B20` is done. TENNIS INCOME and SAVINGS-DONT TOUCH still
 have only the 2026-08-09 reading.
 
+**Dated live acceptance — 2026-08-21 (read-only; not a canonical opening).**
+The committed live-acceptance proof records $747.81 of spendable household cash
+on the real 2026-08-21 Lunch Money overlay, a $104.89 opening gap on
+2026-08-27, `funding.borrowed = 0`, and `plannedDebt.permitted = false`.
+Forecast's household answer was **unfunded** with no feasible weekly cap; HELOC
+headroom remained visible capacity and did not become cash. See
+[`docs/connectivity/LIVE_ACCEPTANCE_2026-08-21_NO_AUTO_BORROW.md`](docs/connectivity/LIVE_ACCEPTANCE_2026-08-21_NO_AUTO_BORROW.md).
+This is newer committed observation evidence, not a cutover: the published and
+canonical opening remains 2026-08-19, production still publishes that dated
+opening, and any newer canonical opening remains an owner-reserved decision.
+
 **Captured (broader than the old 11-account / 4,222-transaction picture):**
 `data.json` `meta` currently records TD (15 accounts) · Triangle Mastercard ·
 MBNA · PayPal ×2 · Wise ×2; 4,762 transactions; 48 statements. Mortgage and
