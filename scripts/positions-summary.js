@@ -69,7 +69,15 @@ function regenerateComputedRows(data, csvText, opts) {
 
   const rows = String(csvText).split(/\r?\n/);
   const homeRow = rows.find(r => parse(r)[2] === 'Home');
-  const homeValue = homeRow ? Number(parse(homeRow)[6]) : null;
+  const homeCols = homeRow ? parse(homeRow) : null;
+  const homeValue = homeCols ? Number(homeCols[6]) : null;
+  const homeAsOf = homeCols ? String(homeCols[19] || '') : '';
+  const laterIsoDate = (a, b) => {
+    if (!a) return b || '';
+    if (!b) return a;
+    return a >= b ? a : b;
+  };
+  const homeDerivedAsOf = laterIsoDate(data.meta.asOf, homeAsOf);
 
   const periods = opts.periods !== undefined ? opts.periods : loadPeriods(opts.periodsPath);
   const budget = periods ? F.budgetBreakdown(data.plan, periods,
@@ -80,7 +88,9 @@ function regenerateComputedRows(data, csvText, opts) {
   const W = (type, label, side, ccy, value, extra) => {
     const c = new Array(21).fill('');
     c[0] = type; c[2] = label; c[4] = side; c[5] = ccy; c[6] = value;
-    c[18] = extra.confidence || 'CALCULATED'; c[19] = data.meta.asOf; c[20] = extra.note || '';
+    c[18] = extra.confidence || 'CALCULATED';
+    c[19] = extra.asOf || data.meta.asOf;
+    c[20] = extra.note || '';
     if (extra.annualInterest) c[17] = extra.annualInterest;
     if (extra.renewal) c[16] = extra.renewal;
     return c;
@@ -124,17 +134,23 @@ function regenerateComputedRows(data, csvText, opts) {
         + (util.rows.some(r => r.pendingUnknown) ? '; facilities with unknown pending contribute no published headroom' : '') }));
 
   if (householdNetWorth != null) {
+    const homeInputDates = `Financial-account opening ${data.meta.asOf}; home planning estimate ${homeAsOf || 'missing'}.`;
     put('Household net worth', W('SUMMARY', 'Household net worth', 'Net', 'CAD', n2(householdNetWorth), {
       confidence: 'ESTIMATE',
+      asOf: homeDerivedAsOf,
       note: `Derived: financial assets ${n2(assets)} plus the owner-estimated home planning value `
-        + `${n2(homeValue)} less all debt ${n2(debts)}; not an appraisal or verified market valuation` }));
+        + `${n2(homeValue)} less all debt ${n2(debts)}; not an appraisal or verified market valuation. `
+        + homeInputDates }));
     put('Home equity', W('SUMMARY', 'Home equity', 'Net', 'CAD', n2(homeValue - secured), {
       confidence: 'ESTIMATE',
-      note: `Derived: owner-estimated home ${n2(homeValue)} less secured debt ${n2(secured)}` }));
+      asOf: homeDerivedAsOf,
+      note: `Derived: owner-estimated home ${n2(homeValue)} less secured debt ${n2(secured)}. `
+        + homeInputDates }));
     const ltv = (secured / homeValue) * 100;
     put('Loan-to-value', Object.assign(W('SUMMARY', 'Loan-to-value', 'Net', '', (Math.round(ltv * 10) / 10).toFixed(1), {
-      confidence: 'ESTIMATE', renewal: '2027-05-01',
-      note: `Derived: ${n2(secured)} secured against the owner-estimated home planning value ${n2(homeValue)}; under the 80% that matters at renewal` })));
+      confidence: 'ESTIMATE', asOf: homeDerivedAsOf, renewal: '2027-05-01',
+      note: `Derived: ${n2(secured)} secured against the owner-estimated home planning value ${n2(homeValue)}; under the 80% that matters at renewal. `
+        + homeInputDates })));
   }
 
   put('Immediate liquidity total', W('LIQUIDITY', 'Immediate liquidity total', 'Net', 'CAD',

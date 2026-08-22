@@ -289,6 +289,43 @@ ok(near(csvVal('Loan-to-value'), independentLtv, 0.05),
   `${independentLtvPct.toFixed(2)}% → ${independentLtv}`);
 ok(/owner-estimated home planning value/i.test(csvNote('Household net worth')),
   'generated household net worth names an owner-estimated planning value');
+const csvAsOf = label => {
+  const row = csv.find(c => c[2] === label);
+  return row ? String(row[19] || '') : '';
+};
+ok(csvAsOf('Household net worth') >= homeRow[19],
+  'household net-worth as-of is not earlier than the home estimate',
+  csvAsOf('Household net worth'));
+ok(csvAsOf('Home equity') >= homeRow[19],
+  'home-equity as-of is not earlier than the home estimate',
+  csvAsOf('Home equity'));
+ok(csvAsOf('Loan-to-value') >= homeRow[19],
+  'loan-to-value as-of is not earlier than the home estimate',
+  csvAsOf('Loan-to-value'));
+ok(csvAsOf('Financial-account net worth') === data.meta.asOf,
+  'financial-account net worth keeps the opening as-of',
+  csvAsOf('Financial-account net worth'));
+ok(/2026-08-19/.test(csvNote('Household net worth'))
+  && /2026-08-21/.test(csvNote('Household net worth')),
+  'household net-worth notes preserve both input dates');
+{
+  const q3 = (/### Q3\.[\s\S]*?(?=\n### |\n## )/.exec(read('docs/01_OPEN_QUESTIONS.md')) || [''])[0];
+  ok(!/currently unstateable/i.test(q3),
+    'Q3 does not say household net worth is currently unstateable');
+  ok(/planning estimate/i.test(q3) && /appraisal/i.test(q3),
+    'Q3 distinguishes the planning estimate from the verified-value question');
+  ok(/\*\*Status:\*\*\s*OPEN/.test(q3),
+    'Q3 remains OPEN for a comparable sale or appraisal');
+}
+{
+  const caveat = String((data.netWorth && data.netWorth.caveat) || '');
+  ok(/positions reporting path/i.test(caveat) && /2026-08-21/.test(caveat),
+    'Records caveat routes the current point figure to the 2026-08-21 positions path');
+  ok(/historical/i.test(caveat) && /1\.1m/.test(caveat),
+    'Records caveat keeps the $1.1m–$1.4m range as historical only');
+  ok(!/At the owner's estimate of \$1\.1m/i.test(caveat),
+    'Records caveat does not present the old range as the current estimate');
+}
 ok(csvVal('Silver bullion') != null,
   'the silver has a position row — its absence was the drift',
   money(csvVal('Silver bullion') || 0));
