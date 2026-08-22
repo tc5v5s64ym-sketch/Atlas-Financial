@@ -30,7 +30,7 @@ code.
 | **17th** | TD credit card minimum | ~$94 | TD |
 | **21st** | HELOC contractual minimum (interest only) | ~$814 | TD — **see note** |
 | **31st / month end** | **Amazon.ca Rewards Mastercard minimum** | **$158.27** | MBNA |
-| **1st** | TD Cash Back Visa minimum | $762.36 | TD |
+| **1st** | TD Cash Back Visa minimum | ~$170 | TD — **see note** |
 | **26th** | Travel Visa minimum | $17.00 | TD |
 
 Statement close dates: **TD card ~23rd** · **Triangle 17th** ·
@@ -58,6 +58,13 @@ $1,100 payment already inside the 2026-08-16 opening satisfies the $814.18
 August minimum, so remaining August HELOC cash requirement is **$0
 additional**. That is not a claim that interest is free, and it does not
 state that an Aug. 1 PAD occurred.
+
+**Cash Back Visa 1st.** The $762.36 September over-limit minimum is
+retired. The 14 August $763 payment satisfied that once row. Next
+minimum is estimated at about $170, firstDue 2026-10-01. The $762.36
+figure remains in the Cash Back statement-period history as dated
+8 Jul – 7 Aug 2026 evidence; it is not the current recurring calendar
+amount.
 
 ### The 12 August Burrard registrations are paid
 
@@ -527,32 +534,36 @@ cards $2,818.50 · outgoing e-transfers $2,800 · fees $10.
 
 Interest earned across 18 months: **$0.11.**
 
-### TD Cash Back Visa *(…0726)* — **the household's second-largest card**
+### TD Cash Back Visa *(…0726)* — **the household's second-largest card** *(standing terms 2026-08-09; current canonical opening 2026-08-19)*
 
 | | |
 |---|---|
 | **Rate** | **26.99% purchases / 27.99% cash advances** — from the statement rate table |
 | Credit limit | **$5,000.00** |
-| Balance | $5,682.43 — **$682.43 OVER the limit** |
-| Available credit | **$0.00** |
-| Minimum payment | **$762.36**, due **1 Sep 2026** |
 | Statement cycle | 8th to 7th |
-| Recent charges | Interest **$158.55/month**, plus a **$29.00 over-limit fee** |
+| Due | 1st, monthly |
 | Cash Back Dollars | $47.21 |
+
+**Canonical Forecast opening is the 2026-08-19 `data.json` record**,
+not the 9 August snapshot. Posted **$4,799.43**, pending **$0.00**,
+available credit is Forecast-derived (not household cash). Posted is
+under the $5,000 limit; the card is not over limit on this opening.
+The 14 August Chequing A $763 payment is inside this opening
+(5,612.43 − 50.00 Aug. 13 − 763.00 Aug. 14 = 4,799.43) and satisfies
+the previous over-limit September spike of $762.36; that once row was
+removed. Future statement minimums are estimated at about **$170**,
+firstDue 2026-10-01.
+
+The 9 August account reading remains dated evidence: balance
+**$5,682.43** ($682.43 over the $5,000 limit), then **~$5,612.43**
+after the $70.00 9 August payment, available credit **$0.00** then
+**$70.00**, minimum **$762.36 due 1 Sep 2026**, pending **$0.00**,
+and a **$29.00/month over-limit fee accruing** on that dated
+over-limit state. That $762.36 is retired as a current recurring
+minimum.
 
 An amount of **$69.93 was flagged as due immediately** on 9 Aug 2026, separate
 from the September minimum. **$70.00 was paid on 9 Aug 2026** (owner-confirmed).
-
-**Position after that payment:**
-
-| | |
-|---|---|
-| Balance | **~$5,612.43** [calculated, $5,682.43 − $70.00] |
-| Credit limit | $5,000.00 |
-| **Still over the limit by** | **~$612.43** |
-| Over-limit fee | **$29.00/month, still accruing** until the balance is under $5,000 |
-| Next minimum | **$762.36, due 1 Sep 2026** — unaffected by this payment |
-| Interest | **$158.55/month at 26.99%**, unaffected |
 
 ### The freeze question — **resolved from the account, 9 Aug 2026**
 
@@ -633,13 +644,11 @@ interest line on this card, in all twelve statements, is headed
 **RETAIL INTEREST**. There is no cash-advance bucket and never has been, so the
 27.99% rate was never part of it.
 
-### Travel Visa *(…0870)* — **a Business Visa**
+### Travel Visa *(…0870)* — **a Business Visa** *(standing terms 2026-08-09; current canonical opening 2026-08-19)*
 
 | | |
 |---|---|
 | **Rate** | **19.99% purchases / 22.99% cash** — the lowest card rate in the household |
-| Balance | $1,078.31 · pending $165.13 |
-| Available credit | **$0.00** |
 | **Credit limit** | **$1,100.00** *(verified 2026-08-09 from the Manage tab)* |
 | Minimum payment | $17.00, due **26 Aug 2026** |
 | Statement cycle | 6th/7th to 5th/6th |
@@ -649,14 +658,21 @@ interest line on this card, in all twelve statements, is headed
 TD's own footnote confirms this is excluded from the consolidated card balance
 because it is a **business** card.
 
-**The limit is $1,100.00 — by far the smallest in the household**, and the card
-is at **98.0%** of it with $0.00 available. **The $165.13 of pending charges will
-take it over.** $1,078.31 + $165.13 = **$1,243.44 against a $1,100 limit**, or
-**$143.44 over** [calculated]. On the evidence of the Cash Back Visa, going over
+**Canonical Forecast opening is the 2026-08-19 `data.json` record**,
+not the 9 August snapshot. Posted **$1,205.33**, pending **$0.00**.
+The posted balance itself is over the $1,100 limit; available credit
+is Forecast-derived (not household cash). The Aug. 9 **$165.13**
+Amazon pending is historical and is not carried into this opening.
+
+The 9 August account reading remains dated evidence: posted
+**$1,078.31**, pending **$165.13**, available credit **$0.00**,
+**98.0%** of the $1,100 limit. On that dated evidence the $165.13
+of pending charges would have taken it to **$1,243.44**, or
+**$143.44 over**. On the evidence of the Cash Back Visa, going over
 triggers an over-limit fee and makes the excess immediately due, turning a $17.00
 minimum into something far larger.
 
-The pending charges are **four `AMZN Mktp CA` purchases** dated 6–8 Aug 2026 —
+The pending charges on that 9 August reading are **four `AMZN Mktp CA` purchases** dated 6–8 Aug 2026 —
 Amazon spending on the card TD designates as a *business* card. Worth resolving
 under the business question: either it is genuine inventory, or personal
 purchases are landing on the business card.
@@ -1802,8 +1818,9 @@ nothing.**
    largest interest cost, and the only one where the fix is behavioural
 4. Then MBNA, then the Travel Visa
 
-**Consolidation into the HELOC is not available.** It is 99.5% drawn with
-$1,067.84 left. That option requires repaying something first.
+**Consolidation into the HELOC is not available.** On the current
+2026-08-19 opening it has $2,167.84 left (the 9 August snapshot had
+$1,067.84). That option requires repaying something first.
 
 ## The home *(owner estimate, 2026-08-09)*
 
