@@ -2213,6 +2213,41 @@
     };
   }
 
+  // Amanda's owner-confirmed Tennis BC salary is two monthly streams.
+  // The Plan page still has one household-income deadline, so this
+  // composer zeros every Amanda salary stream and reports their combined
+  // monthly amount. It does not invent a cadence. Coaching is not a
+  // salary stream. The retired amandaTransfer id is not household salary.
+  function isAmandaSalaryStream(stream) {
+    if (!stream || stream.id === 'amandaTransfer') return false;
+    return /tennis\s*bc|amandaSalary|amanda-salary|amandaEmployment|amanda-employment|amanda.?pay/i
+      .test(`${stream.id || ''} ${stream.label || ''}`);
+  }
+
+  function amandaHouseholdIncomeDeadline(plan, asOf, opts) {
+    const base = Object.assign({}, opts || {});
+    const streams = ((plan && plan.income) || []).filter(isAmandaSalaryStream);
+    const amount = Math.round(streams.reduce((sum, stream) =>
+      sum + (streamAmount(stream, base) || 0), 0) * 100) / 100;
+    const buffer = base.targetBuffer != null
+      ? base.targetBuffer : ((plan && plan.defaults && plan.defaults.targetBuffer) || 0);
+    if (!streams.length || !(amount > 0)) {
+      return {
+        incomeId: null, amount: 0, neededBy: null, buffer,
+        breachesWithout: false, endingWithout: null,
+      };
+    }
+    const overrides = Object.assign({}, base.incomeOverrides || {});
+    for (const stream of streams.slice(1)) overrides[stream.id] = 0;
+    const dep = incomeDeadline(plan, asOf, streams[0].id, Object.assign({}, base, {
+      incomeOverrides: overrides,
+    }));
+    return Object.assign({}, dep, {
+      incomeId: streams.map(s => s.id).join(','),
+      amount,
+    });
+  }
+
   // How much of a funding allocation is drawn on one facility. The page used
   // this to decide whether the HELOC risk names a draw; the HELOC alternative
   // uses the same sum to price the counterfactual. One helper, both callers.
@@ -3740,16 +3775,16 @@
   //
   // This is a coordinator, not a second debt walk or a second deadline.
   // Over-limit-today and the HELOC crossing are the same helpers the
-  // mission already uses. The Amanda figure is `incomeDeadline`'s amount
-  // and `neededBy`; the three-month impact is the page's `amount * 3`,
-  // which on the published 91-day window equals the already-computed
+  // mission already uses. The Amanda figure is `amandaHouseholdIncomeDeadline`'s
+  // combined salary amount and `neededBy`; the three-month impact is the page's
+  // `amount * 3`, which on the published 91-day window equals the already-computed
   // `ending - endingWithout`. The HELOC draw is `drawnOn(funding, 'heloc')`,
   // the same sum the HELOC alternative prices. Telecom `planned` is the
   // category `budgetBreakdown` already built. The page formats; it does
   // not compare.
   //
-  // `opts.transfer` is the `incomeDeadline` result the page already ran
-  // (with `notBefore` set to the gap date). `opts.alternatives` is the
+  // `opts.transfer` is the `amandaHouseholdIncomeDeadline` result the page
+  // already ran (with `notBefore` set to the gap date). `opts.alternatives` is the
   // `counterfactuals` result already on screen. Re-running either here
   // would be a second decision system.
   function planPhases(plan, advice, debtProj, opts) {
@@ -4527,7 +4562,7 @@
 
   const Forecast = { HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, billIsHouseholdObligation, billAffectsJointCash, expandEvents, simulate,
     knowledgeHorizon, viewRange, commitmentNeed, fundingSequence, majorPlans, plannedDebt,
-    recommendWeekly, recommend, incomeDeadline, counterfactuals,
+    recommendWeekly, recommend, incomeDeadline, amandaHouseholdIncomeDeadline, counterfactuals,
     budgetBreakdown, monthlyFromWeekly,
     projectDebts,
     nextDue, nextPaymentOut, unallocatedCash, compactSnapshot, publicationTotals, deepDive, publishedSpendType, rollupSpending, planStatus, mission, planPhases, nextMove, utilisation, renewal,

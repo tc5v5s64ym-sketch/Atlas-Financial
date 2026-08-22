@@ -296,8 +296,8 @@ const PHASE_BODY = {
 // them. This map is how each one reads. The cash-not-cards line is always
 // shown: it is copy, not a comparison.
 const RISK_WHAT = {
-  amandaRequired: r => `Amanda's transfers — ${money(r.amount)}/month is an estimate, not a commitment`,
-  amandaOptional: r => `Amanda's transfers — ${money(r.amount)}/month is an estimate, not a commitment`,
+  amandaRequired: r => `Amanda's Tennis BC salary — ${money(r.amount)}/month is owner-confirmed (15th and month-end)`,
+  amandaOptional: r => `Amanda's Tennis BC salary — ${money(r.amount)}/month is owner-confirmed (15th and month-end)`,
   estimatedCommitments: r => `${r.count} commitments totalling ${money(r.total)} are estimates`,
   helocDrawn: r => `The HELOC passes its own limit on ${fmtDateLong(r.date)}, and this plan draws ${money(r.drawn)} on it`,
   helocNoDraw: r => `The HELOC passes its own limit on ${fmtDateLong(r.date)} with no new borrowing`,
@@ -799,7 +799,7 @@ function renderPlan(d, periods, history) {
   // The engine owns the counterfactual deadline. The page only renders the
   // amount and date it is given; it no longer runs a second simulation or
   // decides which short day becomes a household deadline.
-  const transferDependency = Forecast.incomeDeadline(plan, asOf, 'amandaTransfer',
+  const transferDependency = Forecast.amandaHouseholdIncomeDeadline(plan, asOf,
     Object.assign({}, advice.simOptions, {
       weeklyVariable: weekly,
       incomeOverrides: state.incomeOverrides,
@@ -876,19 +876,19 @@ function renderPlan(d, periods, history) {
     fund.hidden = true;
   }
 
-  /* ---- the tennis-transfer deadline ---- */
+  /* ---- the Amanda salary deadline ---- */
   const tn = $('transfer-note');
   if (transferMonthly > 0) {
     tn.hidden = false;
     tn.innerHTML = neededBy
-      ? `The plan leans on Amanda moving <span class="est">≈ ${money(transferMonthly)}/month</span> across from her account.
-         Without it the balance slips under the buffer on <b>${fmtDateLong(neededBy)}</b> — that is the date her transfer
+      ? `The plan counts Amanda's Tennis BC salary of <b>${money(transferMonthly)}/month</b> (15th and month-end).
+         Without those deposits the balance slips under the buffer on <b>${fmtDateLong(neededBy)}</b> — that is the date her next salary
          has to land by, marked on the calendar below.`
-      : `At this spending level the window stays above the buffer <b>even if Amanda transfers nothing</b> —
-         her ≈ ${money(transferMonthly)}/month is counted mid-month, but nothing depends on its timing.`;
+      : `At this spending level the window stays above the buffer <b>even without Amanda's Tennis BC salary</b> —
+         her ${money(transferMonthly)}/month (15th and month-end) is counted, but nothing depends on its timing.`;
   } else {
     tn.hidden = false;
-    tn.innerHTML = `No transfer from Amanda is counted in this scenario — the plan stands on the confirmed income alone.`;
+    tn.innerHTML = `No Amanda Tennis BC salary is counted in this scenario — the plan stands on the remaining income.`;
   }
 
   /* ---- cash and debt, walked together ---- */

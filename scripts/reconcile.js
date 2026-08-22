@@ -21,7 +21,9 @@
  * docs/reconciliation/amanda-income-observations.json distinguish
  * Tennis BC salary deposits, coaching/business inflows, business
  * obligations, household transfers, and household-available remainder.
- * They do not write data.json and do not promote salary into Forecast.
+ * They do not write data.json. Owner-confirmed 2026-08-22: the two
+ * fixed Tennis BC salary deposits match canonical Forecast income.
+ * Coaching is not promoted. The raw TENNIS INCOME balance is not spendable.
  *
  * D8 card-state slice: observations in
  * docs/reconciliation/card-state-observations.json distinguish posted
@@ -43,7 +45,8 @@
  * remains a separate explicit action. Evidence that a commitment was
  * paid does not mutate the commitment. Hydro observations do not
  * promote Aug. 14 amounts into live canonical state. Amanda salary
- * evidence does not become a Forecast income stream. Card observations
+ * observations match the owner-confirmed canonical salary streams; they
+ * do not invent coaching income or a spendable mixed-account remainder. Card observations
  * are not a second financial authority. Posting evidence does not
  * write representedEvents.
  *
@@ -292,17 +295,57 @@ function amandaHouseholdAvailable(input) {
   };
 }
 
+function matchingAmandaSalaryStream(row, data) {
+  const streams = incomeStreams(data).filter(isAmandaSalaryStream);
+  const hint = row && row.cadenceHint;
+  if (hint === 'semi-monthly-15th') {
+    return streams.find(s => Number(s.day) === 15) || null;
+  }
+  if (hint === 'semi-monthly-month-end') {
+    return streams.find(s => Number(s.day) === 31) || null;
+  }
+  if (row && row.evidenceValue != null && isFinite(Number(row.evidenceValue))) {
+    return streams.find(s => near(Number(s.amount), Number(row.evidenceValue))) || null;
+  }
+  return null;
+}
+
 function amandaTransferAuthorityContext(data) {
   const transfer = amandaTransferStream(data);
-  const expected = transfer && transfer.scenarioMonthly && transfer.scenarioMonthly.expected != null
+  const salary = incomeStreams(data).filter(isAmandaSalaryStream);
+  const doubleCount = forecastHasAmandaDoubleCount(data);
+  const salaryTotal = salary.reduce((sum, s) => {
+    const v = s.scenarioMonthly && s.scenarioMonthly.expected != null
+      ? Number(s.scenarioMonthly.expected)
+      : Number(s.amount);
+    return sum + (finiteNumber(v) ? v : 0);
+  }, 0);
+  const transferExpected = transfer && transfer.scenarioMonthly && transfer.scenarioMonthly.expected != null
     ? Number(transfer.scenarioMonthly.expected)
     : (transfer && transfer.amount != null ? Number(transfer.amount) : null);
+  const present = salary.length > 0;
   return {
-    present: !!transfer,
-    locator: transfer ? `income:${AMANDA_TRANSFER_ID}` : null,
-    canonicalExpected: finiteNumber(expected) ? expected : null,
-    independentlyVerifiedByPaydayEvidence: false,
-    note: 'Incumbent Forecast household-cash authority. The Aug. 14 session did not independently observe or verify its scenarioMonthly values.',
+    present,
+    transferPresent: !!transfer,
+    salaryPresent: salary.length > 0,
+    doubleCount,
+    locator: salary.length
+      ? salary.map(s => `income:${s.id}`).join(',')
+      : (transfer ? `income:${AMANDA_TRANSFER_ID}` : null),
+    streams: salary.map(s => ({
+      id: s.id,
+      day: s.day == null ? null : Number(s.day),
+      amount: finiteNumber(Number(s.amount)) ? Number(s.amount) : null,
+    })),
+    canonicalExpected: salary.length
+      ? round2(salaryTotal)
+      : (finiteNumber(transferExpected) ? transferExpected : null),
+    independentlyVerifiedByPaydayEvidence: salary.length > 0 && !doubleCount && !transfer,
+    note: doubleCount
+      ? 'Salary plus amandaTransfer would double-count household income.'
+      : (salary.length
+        ? 'Owner-confirmed Tennis BC salary is Forecast household income. Coaching surplus is not forecast. The retired amandaTransfer stream is not a second income line.'
+        : 'Incumbent Forecast household-cash authority. The Aug. 14 session did not independently observe or verify its scenarioMonthly values.'),
   };
 }
 
@@ -606,21 +649,38 @@ function compareEmploymentDeposit(row, data) {
   const transfer = amandaTransferStream(data);
   const salaryStreams = incomeStreams(data).filter(isAmandaSalaryStream);
   const doubleCount = forecastHasAmandaDoubleCount(data);
+  const match = matchingAmandaSalaryStream(row, data);
+  const canonicalValue = match
+    ? (match.scenarioMonthly && match.scenarioMonthly.expected != null
+      ? Number(match.scenarioMonthly.expected)
+      : Number(match.amount))
+    : null;
+  const evidence = row.evidenceValue != null && isFinite(Number(row.evidenceValue))
+    ? Number(row.evidenceValue) : null;
   let status;
-  if (doubleCount || salaryStreams.length) status = 'CONFLICT';
+  if (doubleCount) status = 'CONFLICT';
+  else if (match && evidence != null && finiteNumber(canonicalValue) && near(evidence, canonicalValue)) {
+    status = 'MATCH';
+  } else if (match && evidence != null && finiteNumber(canonicalValue)) {
+    status = 'CHANGE';
+  } else if (match) status = 'MISSING';
   else status = 'MISSING';
   return {
     observationId: row.observationId,
     fact: 'employment-deposit',
     accountLabel: row.accountLabel,
-    evidenceValue: row.evidenceValue,
+    evidenceValue: evidence,
     evidenceDate: row.evidenceDate,
     landingAccount: row.landingAccount || AMANDA_OPERATING_ID,
-    canonicalValue: null,
-    canonicalTarget: salaryStreams.length
-      ? `income:${salaryStreams.map(s => s.id).join(',')}`
-      : '(no canonical salary fact)',
-    difference: null,
+    canonicalValue: finiteNumber(canonicalValue) ? canonicalValue : null,
+    canonicalTarget: match
+      ? `income:${match.id}`
+      : (salaryStreams.length
+        ? `income:${salaryStreams.map(s => s.id).join(',')}`
+        : '(no canonical salary fact)'),
+    difference: match && evidence != null && finiteNumber(canonicalValue)
+      ? round2(evidence - canonicalValue)
+      : null,
     status,
     representation: salaryStreams.length
       ? 'forecast-salary-stream'
@@ -630,9 +690,11 @@ function compareEmploymentDeposit(row, data) {
     householdTransferAuthority: transfer ? `income:${AMANDA_TRANSFER_ID}` : null,
     note: row.note || (doubleCount
       ? 'salary stream plus amandaTransfer would double-count household income'
-      : (salaryStreams.length
-        ? 'Tennis BC salary must not become a Forecast income stream beside amandaTransfer'
-        : 'observed Amanda operating income; no canonical salary fact; intentionally not promoted. Owner evidence insufficient for canonical salary replacement')),
+      : (match && status === 'MATCH'
+        ? 'observed Tennis BC salary matches the owner-confirmed canonical Forecast stream'
+        : (salaryStreams.length
+          ? 'Tennis BC salary observation does not match a canonical salary stream'
+          : 'observed Amanda operating income; no canonical salary fact'))),
   };
 }
 
@@ -1673,11 +1735,15 @@ function formatReport(result) {
     for (const row of amanda) {
       const bits = [`  ${row.observationId}: ${row.fact}`];
       if (row.fact === 'employment-deposit') {
-        bits.push('observed Amanda operating income');
+        bits.push('observed Amanda Tennis BC salary');
         if (row.status === 'CONFLICT') {
           bits.push('CONFLICT — salary plus transfer would double-count');
+        } else if (row.status === 'MATCH') {
+          bits.push(`MATCH against ${row.canonicalTarget}`);
+        } else if (row.intentionallyNotPromoted) {
+          bits.push('no canonical salary fact');
         } else {
-          bits.push('no canonical salary fact — intentionally not promoted');
+          bits.push(row.status);
         }
       }
       if (row.fact === 'household-transfer') {
@@ -1760,15 +1826,24 @@ function formatReport(result) {
   const auth = result.amandaTransferAuthority;
   if (auth) {
     lines.push('');
-    lines.push('Amanda household-cash Forecast authority (canonical context, not Aug. 14 evidence):');
-    if (auth.present) {
-      lines.push(`  ${auth.locator} — incumbent Forecast household-cash authority`);
+    lines.push('Amanda household-income Forecast authority (canonical context):');
+    if (auth.doubleCount) {
+      lines.push('  CONFLICT — salary plus amandaTransfer would double-count household income');
+    }
+    if (auth.salaryPresent) {
+      lines.push(`  ${auth.locator} — owner-confirmed Tennis BC salary is Forecast household income`);
+      if (auth.canonicalExpected != null) {
+        lines.push(`  canonical monthly salary total: ${n2(auth.canonicalExpected)}`);
+      }
+      lines.push('  coaching surplus is not forecast; raw TENNIS INCOME balance is not spendable');
+    } else if (auth.transferPresent) {
+      lines.push(`  ${auth.locator} — incumbent estimated household-cash authority`);
       if (auth.canonicalExpected != null) {
         lines.push(`  canonical expected (from data.json, not this evidence record): ${n2(auth.canonicalExpected)}`);
       }
       lines.push('  Aug. 14 session did not independently observe or verify the canonical scenarioMonthly values');
     } else {
-      lines.push('  income:amandaTransfer — canonical missing');
+      lines.push('  no canonical Amanda salary or transfer stream');
     }
   }
   lines.push('');
@@ -1823,6 +1898,7 @@ const api = {
   amandaTransferAuthorityContext,
   forecastHasAmandaDoubleCount,
   isAmandaSalaryStream,
+  matchingAmandaSalaryStream,
   readCanonical,
   reconcile,
   formatReport,

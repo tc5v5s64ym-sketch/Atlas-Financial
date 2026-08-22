@@ -2,7 +2,7 @@
   "schema": "atlas-amanda-income-observations/v1",
   "source": "docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md",
   "owns": "B91 D2 Amanda employment / coaching / transfer observations against plan.income and held-elsewhere cash. Not a payroll engine, business ledger, transfer engine, or second Forecast.",
-  "does_not_own": "Permission to write data.json, promote Tennis BC salary into Forecast income, replace amandaTransfer, or invent a household-available remainder.",
+  "does_not_own": "Permission to write data.json, invent a household-available remainder, or forecast coaching surplus. The two owner-confirmed Tennis BC salary deposits are compared to canonical Forecast income; they are not a second writer.",
   "asOf": "2026-08-14",
   "observations": [
     {
@@ -14,7 +14,7 @@
       "landingAccount": "amanda-debt-payments",
       "observedAsOf": "2026-08-14",
       "source": "docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md",
-      "note": "Observed Amanda operating income into DEBT&PAYMENTS. No canonical salary fact. Intentionally not promoted into Forecast. Owner evidence is insufficient for a canonical salary replacement. Counting this deposit and amandaTransfer as two household inflows would double-count the same dollars."
+      "note": "Observed Amanda Tennis BC net around the 15th. Owner-confirmed 2026-08-22 as Forecast household income. Matches the canonical 15th salary stream. Counting this deposit and a household-transfer of the same dollars as two Forecast inflows would double-count."
     },
     {
       "observationId": "payday-amanda-salary-monthend",
@@ -25,7 +25,7 @@
       "landingAccount": "amanda-debt-payments",
       "observedAsOf": "2026-08-14",
       "source": "docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md",
-      "note": "Observed Amanda operating income into DEBT&PAYMENTS. No canonical salary fact. Intentionally not promoted into Forecast. Owner evidence is insufficient for a canonical salary replacement."
+      "note": "Observed Amanda Tennis BC net around month-end. Owner-confirmed 2026-08-22 as Forecast household income. Matches the canonical month-end salary stream. Counting this deposit and a household-transfer of the same dollars as two Forecast inflows would double-count."
     },
     {
       "observationId": "payday-amanda-coaching-receipt",
@@ -57,7 +57,7 @@
       "landingAccount": "amanda-debt-payments",
       "observedAsOf": "2026-08-14",
       "source": "docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md",
-      "note": "Cannot establish a household-available remainder. The Aug. 14 DEBT&PAYMENTS balance is not spendable household cash. Do not compute salary minus guessed coaching costs. Q25 remains OPEN."
+      "note": "Cannot establish a household-available remainder from the mixed operating-account balance. The Aug. 14 DEBT&PAYMENTS balance is not spendable household cash. Owner-confirmed Tennis BC salary is Forecast income separately; Q25 remains OPEN only for the uncertain coaching/business remainder. Do not treat the raw balance as spendable."
     }
   ]
 }

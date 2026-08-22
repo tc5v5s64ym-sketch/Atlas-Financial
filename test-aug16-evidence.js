@@ -65,8 +65,12 @@ console.log('\n=== 2. old garage/lab transfer is not forecast as ongoing income 
   ok(!ids.includes('garageRent') && !ids.includes('labRent') && !ids.includes('garageLab'),
     'no garage/lab income stream exists on the plan');
   const hay = JSON.stringify(plan.income);
-  ok(!/1,?100/.test(hay) || ids.includes('amandaTransfer'),
-    'amandaTransfer remains the household-crossing estimate, not the ended rent');
+  ok(!/1,?100/.test(hay),
+    'no $1,100 garage/lab rent figure lives on plan.income');
+  ok(ids.includes('amandaSalary15') && ids.includes('amandaSalaryMonthEnd'),
+    'Amanda household income is the two Tennis BC salary streams');
+  ok(!ids.includes('amandaTransfer'),
+    'retired amandaTransfer stream is not the garage/lab stand-in');
   ok(/^ANSWERED\b/.test(statusOf('Q5')), 'Q5 is ANSWERED', statusOf('Q5'));
   ok(!plan.income.some(s => /garage|lab rent/i.test(s.label + (s.note || ''))),
     'no income row is labelled as garage/lab rent');

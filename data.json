@@ -43,7 +43,7 @@
                     "label": "TENNIS INCOME — Amanda's account",
                     "value": 2691.85,
                     "class": "operational",
-                    "note": "Owner-renamed from DEBT&PAYMENTS; same canonical account identity. Last verified balance $2,691.85 is the 2026-08-09 reading, not this 2026-08-19 cutover — Lunch Money leaves the account unmapped and Q25 remains OPEN. Tennis BC salary and coaching land here; coaches, business and pass-through amounts are paid first; only an actual transfer into BILLS ACCOUNT is household money. The raw balance is not automatically spendable household cash. Do not estimate how much of the current balance is household-available."
+                    "note": "Owner-renamed from DEBT&PAYMENTS; same canonical account identity. Last verified balance $2,691.85 is the 2026-08-09 reading, not this 2026-08-19 cutover — Lunch Money leaves the account unmapped and Q25 remains OPEN for the mixed-account coaching/business remainder only. Tennis BC salary and coaching land here; coaches, business and pass-through amounts are paid first. Owner-confirmed 2026-08-22: the two fixed Tennis BC salary deposits are Forecast household income; the raw mixed balance is not automatically spendable household cash. Do not estimate how much of the current balance is household-available."
                 },
                 {
                     "id": "savings-dont-touch",
@@ -60,7 +60,7 @@
                     "note": "US-dollar holiday accounts."
                 }
             ],
-            "note": "The household spending accounts only — Chequing A, Chequing B and Savings — as observed 2026-08-19. Amanda's TENNIS INCOME account (id amanda-debt-payments) is deliberately excluded: her Tennis BC pay and coaching income land there, coaches and pass-through obligations are paid first, and only what she actually transfers into BILLS ACCOUNT is household money (owner-stated 2026-08-16). The $2,691.85 held-elsewhere figure is the last 2026-08-09 reading, not this cutover. Wise, the silver and the RESP are excluded too."
+            "note": "The household spending accounts only — Chequing A, Chequing B and Savings — as observed 2026-08-19. Amanda's TENNIS INCOME account (id amanda-debt-payments) is deliberately excluded: her Tennis BC pay and coaching income land there, coaches and pass-through obligations are paid first, and the raw mixed balance is not spendable starting cash (owner-stated 2026-08-16; restated 2026-08-22). Owner-confirmed 2026-08-22: the two fixed Tennis BC salary deposits are Forecast household income; Q25 stays OPEN only for the uncertain coaching/business remainder. The $2,691.85 held-elsewhere figure is the last 2026-08-09 reading, not this cutover. Wise, the silver and the RESP are excluded too."
         },
         "income": [
             {
@@ -82,18 +82,23 @@
                 "note": "Eighteen consecutive months observed. The amount is fixed; the day of month is approximate."
             },
             {
-                "id": "amandaTransfer",
-                "label": "Amanda's transfers to the household",
+                "id": "amandaSalary15",
+                "label": "Amanda salary — Tennis BC — 15th",
                 "frequency": "monthly",
-                "day": 20,
-                "scenarioMonthly": {
-                    "conservative": 930,
-                    "expected": 2182,
-                    "optimistic": 2400
-                },
-                "confidence": "estimated",
-                "note": "What actually crosses into the household accounts, measured from the transfer record rather than from her gross pay. The 2026-08-19 opening already contains the August crossings that posted on or before this as-of, including the 14 August $2,168 and $790 transfers from TENNIS INCOME into BILLS ACCOUNT and the 14 August Tennis BC net $2,168.85 into TENNIS INCOME. firstDue 2026-09-20 so August is not replayed. Expected is the 12-month mean ($2,182/mo); conservative is the lowest full month in that year ($930, November 2025); optimistic is the recent 5-month mean ($2,400). Modelled mid-month as one figure because the real pattern is many small transfers. Tennis BC salary is NOT counted as household income — it lands in her own account. Q25 remains OPEN.",
-                "firstDue": "2026-09-20"
+                "day": 15,
+                "amount": 2168.85,
+                "confidence": "confirmed",
+                "note": "Owner-confirmed 2026-08-22: fixed Tennis BC net of exactly $2,168.85 deposits on the 15th of every month. This is Forecast household income. The 2026-08-19 opening already contains the 14 August $2,168.85 Tennis BC net into TENNIS INCOME and the same-day $2,168 transfer into BILLS ACCOUNT; firstDue 2026-09-15 so that occurrence is not replayed. Coaching/business receipts are not this stream. Transfers of these salary dollars between household-controlled accounts are not a second income line.",
+                "firstDue": "2026-09-15"
+            },
+            {
+                "id": "amandaSalaryMonthEnd",
+                "label": "Amanda salary — Tennis BC — month end",
+                "frequency": "monthly",
+                "day": 31,
+                "amount": 2387.99,
+                "confidence": "confirmed",
+                "note": "Owner-confirmed 2026-08-22: fixed Tennis BC net of exactly $2,387.99 deposits on the last calendar day of every month (day 31 clamps to 28/29/30). This is Forecast household income. As-of 2026-08-19 is before August month-end, so the 31 August occurrence is in-window and is not an opening replay. Coaching/business receipts are not this stream. Transfers of these salary dollars between household-controlled accounts are not a second income line."
             }
         ],
         "obligations": [
@@ -850,7 +855,7 @@
                 "what": "Agree a standing transfer from Amanda's account",
                 "amount": 1100,
                 "due": "2026-08-15",
-                "why": "August crossings already inside this opening were still ad hoc. A fixed amount on a fixed day after her 15th and month-end pay would make the plan predictable. TENNIS INCOME is not automatically spendable (Q25).",
+                "why": "August crossings already inside this opening were still ad hoc. Forecast now counts the two owner-confirmed Tennis BC salary deposits as household income; this action is the operational movement, not a second income stream. TENNIS INCOME raw balance is not automatically spendable (Q25).",
                 "status": "open",
                 "owner": "Both"
             },
@@ -894,7 +899,7 @@
                 "owner": "Dale"
             }
         ],
-        "actionsNote": "The 12 August Burrards registrations, the Fusion camp, and the August TD-card minimum are done on this opening. Posted Cash Back $4,799.43 is under the $5,000 limit and pending is proven $0.00 on this opening. Remaining open actions are a standing Amanda transfer and CMAW dues cancellation.",
+        "actionsNote": "The 12 August Burrards registrations, the Fusion camp, and the August TD-card minimum are done on this opening. Posted Cash Back $4,799.43 is under the $5,000 limit and pending is proven $0.00 on this opening. Remaining open actions are a standing Amanda transfer and CMAW dues cancellation. Forecast household income now uses Amanda's two owner-confirmed Tennis BC salary deposits rather than an estimated transfer stream.",
         "assumptions": [
             "The window is the 13 weeks (91 days) starting on the as-of date. Every date in the projection is derived from that date — nothing is hardcoded to a calendar month.",
             "Deposits are assumed to land before payments due the same day. The 14 August payday cluster is already inside this opening and is not replayed.",
@@ -902,8 +907,8 @@
             "Future card statement minimums are estimates carried at the current level; real minimums move with the balance.",
             "Named recurring bills — FortisBC, Shaw, BCAA, ICBC, the children's RESP contribution, CMAW Local 1995 union dues, Fit4Less, the TD account fees, and Noble Disposal garbage ($95.85 every 3 months on the 18th, firstDue 2026-09-18) — are dated on the calendar. The 15 August BCAA, ICBC, RESP and union-dues occurrences remain unknown in posting and are reserved as once rows dated 2026-08-16; the monthly rows resume 15 September. The 1 September BC Hydro $237.45 due is a household obligation paid from Amanda / TENNIS INCOME: it is dated, it does not reduce joint cash, and it is not subtracted from household averages. TELUS IS CLOSED. The variable budget covers everything else: groceries, fuel, phones, streaming, PayPal and the rest.",
             "TELUS IS CLOSED (owner-confirmed 2026-08-16) and is not forecast as an active household bill. The old BC Hydro arrears are settled and are not a future obligation; the 1 September $237.45 Hydro due remains. A Bc Hydro $220 debit from BILLS ACCOUNT on 14 August is already inside opening cash. Bell's Aug. 1 $356.62 bill is arrears plus travel usage, not the normal ~$104.20 monthly baseline, and is not dated as a joint-cash bill. A valid $250 Bell payment was pending on Travel Visa on the 2026-08-16 opening; Travel Visa pending on this opening is $0.00.",
-            "The plan is the HOUSEHOLD SPENDING ACCOUNTS ONLY — Chequing A, Chequing B and Savings as of 2026-08-19. Amanda's TENNIS INCOME account is a separate pot. The $2,691.85 held-elsewhere figure is the last 2026-08-09 reading, not this cutover, and is not automatically spendable (Q25).",
-            "The plan is the HOUSEHOLD SPENDING ACCOUNTS ONLY — Chequing A, Chequing B and Savings. Amanda's TENNIS INCOME account (id amanda-debt-payments) is a separate pot: Tennis BC salary and coaching income land there, coaches and pass-through obligations are paid from it, and only the remainder actually transferred into BILLS ACCOUNT is household money. Neither its raw balance nor her gross pay is counted as household cash; only her actual transfers are, measured from the transfer record. Internal transfers between household accounts are excluded throughout.",
+            "The plan is the HOUSEHOLD SPENDING ACCOUNTS ONLY — Chequing A, Chequing B and Savings as of 2026-08-19. Amanda's TENNIS INCOME account is a separate pot. The $2,691.85 held-elsewhere figure is the last 2026-08-09 reading, not this cutover, and is not automatically spendable. Q25 stays OPEN only for the uncertain coaching/business remainder of that mixed account, not for Amanda's fixed Tennis BC salary.",
+            "The plan is the HOUSEHOLD SPENDING ACCOUNTS ONLY — Chequing A, Chequing B and Savings. Amanda's TENNIS INCOME account (id amanda-debt-payments) is a separate pot: Tennis BC salary and coaching income land there, and coaches and pass-through obligations are paid from it. Owner-confirmed 2026-08-22: the two fixed Tennis BC salary deposits ($2,168.85 on the 15th and $2,387.99 on month-end) are Forecast household income. Coaching/business receipts are not forecast. The raw mixed-account balance is not spendable starting cash. Transfers of those same salary dollars between household-controlled accounts are not a second income stream. Internal transfers between household accounts are excluded throughout.",
             "Because her account is excluded, so is most of what it pays. She settles BC Hydro, part of the MBNA minimum and some card payments direct from it — roughly $940/month that does not reduce joint cash. The 1 September Hydro $237.45 due is dated as an external household obligation for that reason. Every card minimum is nonetheless charged to the household here, which is the cautious reading: if she keeps paying a share, the household finishes better than shown.",
             "HELOC interest is capitalised, not paid from joint cash as a Forecast outflow. Statements show the regular minimum tracking monthly interest, due the 21st, with a PAD mechanism around the 1st, and manual payments that satisfy the minimum rather than causing a second full cash collection. Q19 ANSWERED 2026-08-18: the 14 August $1,100 already inside this opening satisfies the $814.18 August minimum, so remaining August HELOC cash requirement is $0 additional. Do not invent a duplicate $814.18 chequing reserve. Interest is not free. This assumption does not state that the Aug. 1 PAD occurred.",
             "The HELOC is interest-only and capitalises about $814 a month. The 14 August $1,100 payment is already inside the 2026-08-19 opening (posted $200,486.16). Do not invent a duplicate $814.18 chequing reserve.",
@@ -1402,7 +1407,7 @@
     ],
     "incomeCaptureMonths": 18,
     "incomeWarning": "The coaching line is gross revenue — coaches are paid out of it. Her tracking sheets now give the split: $23,070 of class revenue against $6,397.50 of coach payroll, so coaches take about 27.7% and roughly 72% is retained. Applied to the $42,395 of large receipts that implies about $11,700 owed onward and $30,700 retained — roughly $1,700/month of real coaching income rather than the $2,355 the gross suggests. So this total is overstated by about $650/month, not the $1,650 previously feared. The sheets cover $23,070 against $42,395 received, so they are a subset of the window and the share is indicative rather than audited.",
-    "incomeNote": "Her Tennis BC employment — 43 deposits, $63,129.47 over 18 months into DEBT&PAYMENTS — was absent from the earlier picture entirely, which saw only the $21,700 she transferred across. That $21,700 has been removed as an income line: it is an internal movement out of this income, and counting both would double it. Tennis BC salary itself is not counted again as household income merely because it lands in Amanda's account. Two remaining Tennis BC cautions: at least $1,639.10 marked EXP is expense reimbursement rather than pay, and a further $2,846.58 marked AP is unresolved. Two transfer streams must not be mixed. Q5 (ANSWERED): the historical garage/lab-funded ~$1,000–$1,100/month stream ended after May 2026 and is not forecast. Separately, plan.income.amandaTransfer is a current household-funding stream derived from actual transfers into household accounts and remains modelled at the existing scenario values. Do not read the ended garage/lab stream as a claim that Amanda's modelled household transfers stopped after May 2026.",
+    "incomeNote": "Owner-confirmed 2026-08-22: Amanda's two fixed Tennis BC salary deposits are Forecast household income — $2,168.85 on the 15th and $2,387.99 on the last calendar day of each month, totalling $4,556.84/month. They replace the previous estimated amandaTransfer household-crossing stream. Transfers of those same salary dollars between household-controlled accounts are not a second income line. Coaching/business receipts are not forecast; coaches and pass-through obligations are paid first, and only an actually established household surplus may be recorded as observed income. The raw TENNIS INCOME balance remains non-spendable (Q25 stays OPEN for that mixed-account remainder only). Two remaining Tennis BC cautions on the historical series: at least $1,639.10 marked EXP is expense reimbursement rather than pay, and a further $2,846.58 marked AP is unresolved. Q5 (ANSWERED): the historical garage/lab-funded ~$1,000–$1,100/month stream ended after May 2026 and is not forecast. Do not read the ended garage/lab stream as a claim that Amanda's modelled household income stopped after May 2026.",
     "interestCheck": {
         "charge": 158.55,
         "naive": 115,

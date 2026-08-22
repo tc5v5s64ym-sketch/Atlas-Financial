@@ -127,27 +127,31 @@ const asOf = data.meta.asOf;
 const windowEnd = F.addDays(asOf, plan.windowDays - 1);
 const payroll = plan.income.find(s => s.id === 'payroll');
 const childBenefit = plan.income.find(s => s.id === 'childBenefit');
-const amanda = plan.income.find(s => s.id === 'amandaTransfer');
+const amanda15 = plan.income.find(s => s.id === 'amandaSalary15');
+const amandaEom = plan.income.find(s => s.id === 'amandaSalaryMonthEnd');
 ok(payroll === plan.income[0], 'payroll is plan.income[0], the EMP-004 routing target');
 ok(payroll.confidence === 'estimated',
   'tagged estimated — observed average, not a repeating exact cheque', payroll.confidence);
+ok(amanda15 && amandaEom && amanda15.confidence === 'confirmed' && amandaEom.confidence === 'confirmed',
+  'Amanda Tennis BC salary streams are confirmed');
+ok(!plan.income.some(s => s.id === 'amandaTransfer'),
+  'retired amandaTransfer stream is gone');
 const expected = F.simulate(plan, asOf, {
   scenario: 'expected', weeklyVariable: 0, targetBuffer: plan.defaults.targetBuffer,
 });
 
-// Confirmed income: child benefit only. Payroll is the expected-regime average, not a confirmed repeating cheque.
+// Confirmed income: child benefit plus owner-confirmed Amanda Tennis BC salary.
+// Payroll is the expected-regime average, not a confirmed repeating cheque.
 const paydays = F.occurrences(payroll, asOf, windowEnd);
 ok(paydays.length >= 6 && paydays.every(d => d >= asOf),
   'the 91-day window contains the remaining payroll dates on or after as-of',
   paydays.join(', '));
-const wantConfirmed = streamTotal([childBenefit], asOf, windowEnd, F.occurrences);
-ok(near(expected.totals.confirmedIncome, wantConfirmed), '90-day confirmed income is child benefit only',
+const wantConfirmed = streamTotal([childBenefit, amanda15, amandaEom], asOf, windowEnd, F.occurrences);
+ok(near(expected.totals.confirmedIncome, wantConfirmed), '90-day confirmed income is child benefit plus Amanda salary',
   expected.totals.confirmedIncome.toFixed(2));
-const amandaDates = F.occurrences(amanda, asOf, windowEnd);
-const wantEstimated = paydays.length * payroll.amount
-  + amandaDates.length * amanda.scenarioMonthly.expected;
+const wantEstimated = paydays.length * payroll.amount;
 ok(near(expected.totals.estimatedIncome, wantEstimated, 0.05),
-  '90-day estimated income includes payroll plus Amanda transfers',
+  '90-day estimated income is payroll only — Amanda salary is confirmed, not an estimated transfer',
   expected.totals.estimatedIncome.toFixed(2));
 const wantObl = streamTotal(plan.obligations, asOf, windowEnd, F.occurrences, { onceOutflowsBind: true });
 ok(near(expected.totals.obligations, wantObl), '90-day cash obligations', expected.totals.obligations.toFixed(2));
@@ -211,8 +215,11 @@ ok(near(expected.daily[0].balance,
   spendableSum + openingNet - currentRegimeReservedDaily(plan)),
   'day-0 close is opening cash plus joint-cash events that bind at this opening, minus reserved current-regime daily cash',
   expected.daily[0].balance.toFixed(2));
-ok(!plan.income.some(s => /tennis bc/i.test(s.label)),
-  'her gross Tennis BC pay is not counted as household income');
+ok(plan.income.filter(s => /tennis bc/i.test(s.label)).map(s => s.id).sort().join(',')
+    === 'amandaSalary15,amandaSalaryMonthEnd',
+  'owner-confirmed Tennis BC salary nets are household income');
+ok(!plan.income.some(s => /coach/i.test(s.label + (s.id || ''))),
+  'coaching/business receipts are not counted as household income');
 
 // Scenario ordering: conservative ≤ expected ≤ optimistic on every day.
 const cons = F.simulate(plan, asOf, { scenario: 'conservative', weeklyVariable: 0 });

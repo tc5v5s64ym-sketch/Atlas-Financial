@@ -410,9 +410,12 @@ console.log('\n=== L. live Fusion / Hydro / Amanda / weekly policy ===');
     'live Hydro canonical bills include only the 1 September dated due');
   ok(!hydro.some(b => b.id === 'hydro-due-now'),
     'the 14 August Hydro due was not invented as still unpaid');
-  const amanda = live.plan.income.find(s => s.id === 'amandaTransfer');
-  ok(amanda && amanda.scenarioMonthly && amanda.scenarioMonthly.expected === 2182,
-    'Amanda transfer authority is untouched');
+  const amanda15 = live.plan.income.find(s => s.id === 'amandaSalary15');
+  const amandaEom = live.plan.income.find(s => s.id === 'amandaSalaryMonthEnd');
+  ok(amanda15 && near(amanda15.amount, 2168.85) && amandaEom && near(amandaEom.amount, 2387.99),
+    'Amanda Tennis BC salary streams are the owner-confirmed pair');
+  ok(!live.plan.income.some(s => s.id === 'amandaTransfer'),
+    'retired amandaTransfer stream is absent');
   const cloneLive = clone(live);
   ok(JSON.stringify(cloneLive) === JSON.stringify(live),
     'the live object was not mutated by the posting compare');

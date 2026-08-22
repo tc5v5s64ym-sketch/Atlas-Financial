@@ -126,11 +126,19 @@ console.log('\n=== C. same-day / already-posted income and transfers are not rep
     '16 August Forecast does not replay 14 August payroll — the date is before as-of');
   ok(events16.some(e => e.id === 'payroll' && e.date === NEXT_PAY),
     'the next payroll on 28 August still fires');
-  const amanda = live.plan.income.find(s => s.id === 'amandaTransfer');
-  ok(amanda && amanda.firstDue === '2026-09-20',
-    'amandaTransfer firstDue is 2026-09-20 so August crossings already in cash are not replayed');
-  ok(!events16.some(e => e.id === 'amandaTransfer' && e.date < '2026-09-20'),
-    'no August amandaTransfer cash event is emitted from this opening');
+  const amanda15 = live.plan.income.find(s => s.id === 'amandaSalary15');
+  const amandaEom = live.plan.income.find(s => s.id === 'amandaSalaryMonthEnd');
+  const liveEvents = F.expandEvents(live.plan, live.meta.asOf, windowEnd(live.meta.asOf), {});
+  ok(amanda15 && amanda15.firstDue === '2026-09-15',
+    '15th salary firstDue is 2026-09-15 so the August 15 occurrence already in cash is not replayed');
+  ok(!liveEvents.some(e => e.id === 'amandaSalary15' && e.date < '2026-09-15'),
+    'no August 15th salary cash event is emitted from this opening');
+  ok(amandaEom && amandaEom.day === 31 && near(amandaEom.amount, 2387.99),
+    'month-end salary is the $2,387.99 last-day stream');
+  ok(liveEvents.some(e => e.id === 'amandaSalaryMonthEnd' && e.date === '2026-08-31'),
+    'August 31 salary is in-window and is not an opening replay');
+  ok(!live.plan.income.some(s => s.id === 'amandaTransfer'),
+    'retired amandaTransfer stream is not replayed as Forecast income');
 }
 
 console.log('\n=== D. posted 14 August obligations are not reserved again ===');
