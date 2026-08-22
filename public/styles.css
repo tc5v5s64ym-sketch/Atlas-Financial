@@ -292,6 +292,7 @@ footer { margin-top:56px; padding-top:18px; border-top:1px solid var(--grid);
 .payday-sheet tr:last-child td { border-bottom:none; }
 .payday-sheet td:last-child { font-variant-numeric:tabular-nums; font-weight:650; white-space:nowrap; }
 .payday-when { color:var(--text-secondary); font-weight:500; }
+.payday-item-note { margin-top:4px; font-size:.82rem; font-weight:500; color:var(--text-secondary); line-height:1.35; }
 .payday-risk td { color:var(--critical); }
 @media (max-width:640px) {
   .payday-card { padding:18px 16px; }
