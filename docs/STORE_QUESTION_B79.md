@@ -3,11 +3,34 @@
 Written answer to whether Atlas’s current file foundation can still provide
 the invariant, identity, and idempotency guarantees the work actually
 needs. This is the Phase 3 store-gate record. It does not introduce a
-store, does not write canonical state, and does not open T4 / `B81`.
+store, does not write canonical state, and did not itself open T4 / `B81`.
 
 `ARCHITECTURE.md` owns the gate. Passing it is an owner decision,
 recorded. This file records the evidence answer. It does not pass the
 gate.
+
+> **Dated supersession — T4 / B81, not the store verdict.** This file is
+> the B79 / AF-STORE-01 store-gate record. Its store verdict remains
+> current: **the file foundation has not demonstrably failed. Atlas
+> should stay with files.** Files remain the incumbent storage
+> foundation unless a required guarantee later fails on real household
+> data. This note does **not** reopen the store question.
+>
+> Later events supersede this document's statements that T4 / `B81`
+> remains closed:
+>
+> - **T4 PASSED 2026-08-17.** Owner decision in
+>   [`docs/connectivity/T4_OWNER_PASS_2026-08-17.md`](connectivity/T4_OWNER_PASS_2026-08-17.md):
+>   permission to start `B81` / `AF-LIVE-02`. No authorization for
+>   unattended production writes.
+> - **`B81` / `AF-LIVE-02` completed 2026-08-20.** The earned path is
+>   observe → reconcile → preview → explicit owner approval → bounded
+>   write. Unattended production writes and a production Render token
+>   remain unauthorized.
+>
+> Bounded owner-approved canonical refresh is earned. Unattended
+> production writing is not. Do not read the historical T4 / B81-closed
+> lines below as current Atlas capability status.
 
 ## Question
 
@@ -59,11 +82,11 @@ collapse, and none of them is cured by SQLite or another store.
 |---|---|
 | B21 historical payroll CHANGE rows | A current-opening classification miss. B78 closed it in the incumbent observer. |
 | Triangle same-day +$112.70 | Missing intraday freshness, not a missing unique key. A store would still have two same-day facts and no winner. |
-| Unused Chequing B $10 | An unauthorized canonical update, not an identity failure. T4 / `B81` remains closed. |
+| Unused Chequing B $10 | An unauthorized canonical update, not an identity failure. T4 / `B81` remained closed **at this B79 record** (historical; later superseded — see the note above). |
 | No real pending→posted case | Evidence absence. Fixture collapse already exists. Not a uniqueness failure. |
 | Endpoint origin not preserved | Observer report completeness. Not a storage-engine defect. |
 | Token / local map required for live GET | Owner-supplied secret and gitignored map. Expected. |
-| Automatic canonical writes not earned | Connectivity gate / T4. A store is not that writer. |
+| Automatic canonical writes not earned | Connectivity gate / T4. A store is not that writer. Unattended production writes remain unauthorized. T4 later passed for the bounded preview/approve writer only. |
 
 ## Verdict
 
@@ -77,7 +100,8 @@ authorization, and missing provider evidence. Those are not store
 semantics.
 
 Do **not** introduce SQLite, Postgres, or any other store on this record.
-Do **not** treat T4 / `B81` as opened.
+Do **not** treat T4 / `B81` as opened **by this B79 record** (historical;
+T4 later passed 2026-08-17 and B81 completed — see the note above).
 
 ## Owner-decision point
 
@@ -92,4 +116,7 @@ idempotency guarantee the work then actually needs. That pass is a
 separate recorded decision. Tidiness, convention, and a later capability
 wanting a database remain insufficient.
 
-T4 / `B81` is a different gate and stays closed.
+T4 / `B81` is a different gate. **At this B79 record it stayed closed**
+(historical). T4 later passed 2026-08-17; B81 completed as the earned
+bounded owner-approved writer. Unattended production writes remain
+unauthorized.
