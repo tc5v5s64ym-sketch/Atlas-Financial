@@ -1798,14 +1798,17 @@ double-counting.
 
 **B40 · Fold Instacart and delivery in** *(on B38)* · *medium*
 
-**B19 · Refresh the mortgage and HELOC deep dive** · **DONE 2026-08-17** · *small*
-Written before the spouse's accounts were known. The Deep Dive
-`helocHistory` August point was still $201,586.16 (the 2026-08-09 /
-pre-payment reading) while live `debts.heloc` was the 2026-08-16
-$200,486.16 opening. Closed by composing the published current endpoint
-from `debts.heloc` and keeping `helocHistory` as monthly historical
-observations only. Mortgage current figures already came from
-`debts.mortgage` and needed no repair. Q19 stays OPEN. Not B21 and not B78.
+**B19 · Compose the Deep Dive page `helocHistory` current endpoint from live `debts.heloc`** · **DONE 2026-08-17** · *small*
+This item closed the Deep Dive **page** endpoint, not the historical
+`docs/MORTGAGE_HELOC_DEEP_DIVE.md` statement analysis (that file remains
+the 2026-08-09 capture). The page's `helocHistory` August point was still
+$201,586.16 (the 2026-08-09 / pre-payment reading) while live `debts.heloc`
+was the 2026-08-16 $200,486.16 opening. Closed by composing the published
+current endpoint from `debts.heloc` and keeping `helocHistory` as monthly
+historical observations only. Mortgage current figures already came from
+`debts.mortgage` and needed no repair. **At B19 close, Q19 was still OPEN**;
+it is now **ANSWERED 2026-08-18**. Not B21 and not B78. The historical
+mortgage/HELOC deep-dive document was not refreshed by this item.
 
 **B20 · `snapshots/<date>.json` and trend charts** · **DONE 2026-08-17** · *history as a refresh by-product*
 Build-strategy item `AF-HIST-01`. After `B91`. Two independently

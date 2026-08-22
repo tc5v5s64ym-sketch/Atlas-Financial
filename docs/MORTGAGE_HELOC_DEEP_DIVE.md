@@ -1,7 +1,11 @@
 # Mortgage and HELOC — Deep Dive
 
-**Captured 2026-08-09 from TD EasyWeb, read-only.** Tags: **[TD]** read directly
-from TD · **[CALC]** my arithmetic · **[EST]** inference · **[CONFIRM]** needs you.
+**Captured 2026-08-09 from TD EasyWeb, read-only.** Dated statement
+analysis, not current Atlas financial state. Current posted balances,
+HELOC headroom, and remaining August HELOC cash live in `data.json`,
+Forecast, and Q19 in `docs/01_OPEN_QUESTIONS.md`. Tags: **[TD]** read
+directly from TD · **[CALC]** my arithmetic · **[EST]** inference ·
+**[CONFIRM]** needs you.
 
 Not professional financial, tax, legal, or mortgage advice.
 
@@ -112,8 +116,8 @@ Both assume the rate and payment hold for the full amortization.
 
 | Field | Value |
 |---|---|
-| Revolving portion balance | $201,586.16 |
-| **Available credit** | **$1,067.84** |
+| Revolving portion balance | $201,586.16 (as at 2026-08-09) |
+| **Available credit** | **$1,067.84** (as at 2026-08-09) |
 | **Credit limit** | **$202,654.00** [CALC] |
 | **Utilization** | **99.5%** [CALC] |
 | **Interest rate** | **4.90% variable** |
@@ -226,10 +230,11 @@ the tax treatment of some of the interest. **This needs your confirmation.**
 
 ### The emergency backstop is gone
 
-A HELOC is usually the fallback when something breaks. With **$1,067.84**
-available, plus $82.28 of overdraft headroom and $200.00 of card credit, total
-accessible credit is roughly **$1,350**. There is no meaningful reserve behind
-your household.
+A HELOC is usually the fallback when something breaks. **As at 2026-08-09**,
+with **$1,067.84** available, plus $82.28 of overdraft headroom and $200.00
+of card credit, total accessible credit was roughly **$1,350**. There is no
+meaningful reserve behind your household on that dated picture. Those
+leftovers are not current Atlas liquidity.
 
 ---
 
@@ -325,9 +330,15 @@ Questions worth having answered **before** you are in the renewal conversation:
 
 ### Sequencing suggestion
 
-- **Now → Aug 21:** cover the HELOC minimum ($814.18) and the card minimum
-  ($94.03 by Aug 17). Stop new HELOC draws if at all possible — there is
-  $1,067.84 left and no backstop behind it.
+The 2026-08-09 sequencing below is dated analysis, not today's action list.
+
+- **Now → Aug 21 (dated 2026-08-09; HELOC cash cover superseded):** cover
+  the HELOC minimum ($814.18) and the card minimum ($94.03 by Aug 17). Stop
+  new HELOC draws if at all possible — there is $1,067.84 left and no
+  backstop behind it. **Q19 ANSWERED 2026-08-18:** remaining August HELOC
+  cash requirement is **$0 additional** after the 14 August $1,100. Do not
+  follow the $814.18 cash-cover as a current action. The $1,067.84 leftover
+  is the 2026-08-09 reading, not current headroom.
 - **Next 30 days:** confirm the resale/inventory question, the two unidentified
   accounts, and the balances and rates on the three non-TD debts. You cannot
   rank debts you cannot see.
