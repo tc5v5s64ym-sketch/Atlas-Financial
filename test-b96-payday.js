@@ -96,8 +96,10 @@ function loadPaydayComposer() {
   const maps = [
     grab(planSrc, /^const MISSION_PART = \{[\s\S]*?^\};$/m, 'MISSION_PART'),
     grab(planSrc, /^const NEXT_MOVE = \{[\s\S]*?^\};$/m, 'NEXT_MOVE'),
-    grab(planSrc, /^function paydayPlanMargin\([\s\S]*?\n\}$/m, 'paydayPlanMargin'),
     grab(planSrc, /^function weeklyCapView\([\s\S]*?\n\}$/m, 'weeklyCapView'),
+    grab(planSrc, /^function paydayActionRows\([\s\S]*?\n\}$/m, 'paydayActionRows'),
+    grab(planSrc, /^function paydayComingRows\([\s\S]*?\n\}$/m, 'paydayComingRows'),
+    grab(planSrc, /^function paydaySheet\([\s\S]*?\n\}$/m, 'paydaySheet'),
     grab(planSrc, /^function paydayAnswerHtml\([\s\S]*?\n\}$/m, 'paydayAnswerHtml'),
   ].join('\n');
   return vm.runInNewContext(
@@ -260,8 +262,8 @@ console.log('\n=== E. funded/settled money redirects; encumbered principal stays
   ok(after.weekly < none.weekly || (after.knowledge.encumbered > 0),
     'settling one item does not treat remaining encumbered principal as free spend');
   const html = composeLive(afterPlan).html;
-  ok(html.includes(second.label),
-    'the payday answer names the redirected next funding target');
+  ok(!/saved|already funded/i.test(html),
+    'redirected capacity is not presented as already saved or funded');
 }
 
 console.log('\n=== F. overdue obligations cannot be rescued by later income ===');
@@ -317,10 +319,12 @@ console.log('\n=== G. credit is not cash or safe-to-spend ===');
     String(liveRun.revolving));
   ok(!near(cash, cash + liveRun.revolving),
     'adding credit headroom would disagree with spendable cash');
-  ok(liveRun.html.includes(money2(cash)) || liveRun.html.includes('$' + money2(cash)),
+  ok(liveRun.html.includes(money2(cash)),
     'payday HTML publishes the independent spendable cash');
-  ok(/not<\/b> cash|not cash/i.test(liveRun.html),
-    'payday HTML says credit is not cash');
+  ok(/not credit/i.test(liveRun.html),
+    'payday HTML says the cash figure is not credit');
+  ok(!liveRun.html.includes(money2(liveRun.revolving)),
+    'payday worksheet does not publish revolving headroom next to cash');
   ok(!near(liveRun.advice.weekly, liveRun.advice.weekly + liveRun.revolving / 13),
     'safe-to-spend is not inflated by dividing credit across the view');
 }
@@ -336,21 +340,26 @@ console.log('\n=== H. Q19 / Q26 ANSWERED; Q20 / Q25 stay visible and fail-closed
   const liveRun = composeLive(live.plan);
   ok(!/Q19 HELOC August cash impact stays OPEN/i.test(liveRun.html),
     'payday HTML does not keep Q19 as unresolved');
-  ok(/Q20/.test(liveRun.html) && /model buffer/i.test(liveRun.html),
-    'payday HTML does not relabel the $500 buffer as a Q20 emergency reserve');
-  ok(/Q25/.test(liveRun.html) && /TENNIS INCOME/.test(liveRun.html),
-    'payday HTML keeps TENNIS INCOME out of spendable cash (Q25)');
+  ok(!/Q20/.test(liveRun.html) && !/emergency reserve/i.test(liveRun.html),
+    'payday worksheet does not relabel the model buffer as a Q20 emergency reserve');
+  const tennisHeld = (live.plan.startingCash.heldElsewhere || [])
+    .find(h => h.id === 'amanda-debt-payments');
+  ok(tennisHeld && !near(independentSpendable(live.plan),
+    independentSpendable(live.plan) + tennisHeld.value),
+    'TENNIS INCOME is still excluded from the spendable cash figure (Q25)');
+  ok(!liveRun.html.includes(money2(tennisHeld.value)),
+    'payday worksheet does not publish TENNIS INCOME as available cash');
   const cashback = live.debts.find(d => d.id === 'cashback');
   if (cashback && cashback.pendingUnknown === true) {
-    ok(/Q26/.test(liveRun.html) && /UNKNOWN/i.test(liveRun.html) && /not treated as \$0/i.test(liveRun.html),
-      'payday HTML keeps canonical Cash Back pending UNKNOWN and fail-closed (Q26)');
     ok(cashback.pending == null, 'canonical Cash Back pending is unknown, not $0');
+    ok(!/treated as \$0/i.test(liveRun.html),
+      'payday worksheet does not treat unknown pending as $0');
   } else {
     ok(cashback && cashback.pendingUnknown !== true && Number.isFinite(Number(cashback.pending)),
       'live Cash Back pending is a known observation, not silently omitted');
-    ok(/Q26/.test(liveRun.html) || /pending/i.test(liveRun.html),
-      'payday HTML still names the pending question');
   }
+  ok(!/Q25/.test(liveRun.html) && !/Q26/.test(liveRun.html),
+    'payday worksheet does not narrate Q25/Q26; those stay on Outlook and the questions file');
   const heloc = (live.plan.obligations || []).find(o => o.id === 'heloc');
   ok(heloc && heloc.nonCash === true && near(heloc.amount, 814.18)
     && /cashPayment remains \$0/i.test(heloc.note || ''),
@@ -367,19 +376,25 @@ console.log('\n=== I. household-facing composed answer agrees with Forecast ==='
   ok(!/function paydayEngine|Forecast\.paydayPlan/.test(read('public/plan.js') + read('public/forecast.js')),
     'no second payday planner exists');
   const first = (advice.fundingSequence || [])[0];
-  if (first) ok(liveRun.html.includes(first.label),
-    'HTML names the Forecast.fundingSequence head', first.label);
-  for (const p of (advice.majorPlans || []).slice(0, 3)) {
-    ok(liveRun.html.includes(p.label) && liveRun.html.includes(p.verdict),
-      `HTML carries ${p.label} ${p.verdict}`);
+  const firstPlan = (advice.majorPlans || []).find(p => first && p.id === first.id);
+  const firstApplies = first && firstPlan && (
+    (firstPlan.remaining != null && firstPlan.remaining > 0)
+    || firstPlan.verdict === 'FUNDING GAP'
+    || firstPlan.verdict === 'AT RISK');
+  if (firstApplies) {
+    ok(liveRun.html.includes(first.label),
+      'HTML names the Forecast.fundingSequence head when it is a current set-aside', first.label);
+    ok(/Set aside for/.test(liveRun.html),
+      'and words it as set-aside, not already funded');
+  } else if (first) {
+    ok(!liveRun.html.includes(first.label),
+      'ON TRACK remaining-0 sequence head is not a payday worksheet action', first.label);
   }
-  if (advice.knowledge && advice.knowledge.min) {
-    ok(liveRun.html.includes(advice.knowledge.min.date)
-      || liveRun.html.includes(advice.knowledge.min.date.slice(5))
-      || liveRun.html.includes(money2(advice.knowledge.min.balance))
-      || liveRun.html.includes(String(Math.round(advice.knowledge.min.balance))),
-      'HTML carries the master-plan low');
-  }
+  const rosterHits = (advice.majorPlans || []).filter(p => liveRun.html.includes(p.label)).length;
+  ok(rosterHits <= 1,
+    'payday worksheet does not reprint the major-plans roster', String(rosterHits));
+  ok(!/ON TRACK|AT RISK|FUNDING GAP/.test(liveRun.html),
+    'major-plan verdicts stay in Outlook, not the worksheet');
   ok(liveRun.status.id === (advice.mode === 'infeasible' ? 'infeasible' : liveRun.status.id),
     'status band does not contradict recommend.mode');
   if (advice.mode === 'infeasible') {
@@ -390,8 +405,9 @@ console.log('\n=== I. household-facing composed answer agrees with Forecast ==='
   }
   const nextOut = F.nextPaymentOut(liveRun.sim.events, live.meta.asOf);
   if (nextOut) {
-    ok(liveRun.html.includes(nextOut.date.slice(8)) || liveRun.html.includes(nextOut.label.split(' ')[0]),
-      'HTML names the Forecast.nextPaymentOut day');
+    ok(liveRun.html.includes(nextOut.label),
+      'HTML names the Forecast.nextPaymentOut item in Coming before next payday',
+      nextOut.label);
   }
 }
 
@@ -401,7 +417,8 @@ console.log('\n=== J. page layer does not re-decide the payday figures ===');
   const fn = /function paydayAnswerHtml\([\s\S]*?\n\}/.exec(planJs);
   ok(!!fn, 'paydayAnswerHtml is a dedicated composition function');
   const body = fn ? fn[0] : '';
-  ok(/advice\.weekly|advice\.fundingSequence|advice\.majorPlans|advice\.plannedDebt|advice\.nearBoundary|advice\.infeasible|advice\.knowledge/.test(body),
+  ok(/advice\.weekly|advice\.nearBoundary/.test(body)
+    && /fundingSequence|plannedDebt|majorPlans/.test(planJs),
     'the composer reads incumbent Forecast result fields');
   ok(!/recommendWeekly\(|protectedPlanCheck\(|allocateToSequence\(/.test(body),
     'the composer does not call a second weekly search or allocator');
@@ -466,8 +483,8 @@ console.log('\n=== K. explicit INFEASIBLE when the protected plan cannot work ==
 
 console.log('\n=== L. unfunded opening-gap sentinel is not a $0/week cap ===');
 {
-  const safeCell = html => {
-    const m = /payday-lab">Safe to spend<\/span>\s*<span class="payday-val">([\s\S]*?)<\/span><\/div>/.exec(html);
+  const spendCell = html => {
+    const m = /<div class="payday-spend">([\s\S]*?)<\/div>/.exec(html);
     return m ? m[1] : '';
   };
   const noEngine = {
@@ -513,9 +530,9 @@ console.log('\n=== L. unfunded opening-gap sentinel is not a $0/week cap ===');
     && !unfundedMission.parts.some(p => p.id === 'holdSpending'),
     'mission is fundingShortfall rather than holdSpending at $0',
     unfundedMission.parts.map(p => p.id).join(' → '));
-  const unfundedCell = safeCell(unfunded.html);
+  const unfundedCell = spendCell(unfunded.html);
   ok(/no feasible weekly cap/i.test(unfundedCell),
-    'Safe to spend says there is no feasible weekly cap');
+    'Household spending says there is no feasible weekly cap');
   ok(/unfunded/i.test(unfundedCell) && /protected shortfall is solved/.test(unfundedCell),
     'and names the unresolved funding gap rather than a cap');
   ok(unfundedCell.includes(money2(independentGap)),
@@ -530,10 +547,10 @@ console.log('\n=== L. unfunded opening-gap sentinel is not a $0/week cap ===');
   ok(unfundedOverride.advice.funding && unfundedOverride.advice.funding.feasible === false
     && unfundedOverride.status.id === 'unfunded',
     'an unfunded gap stays unfunded when the household types a weekly override');
-  const overrideCell = safeCell(unfundedOverride.html);
+  const overrideCell = spendCell(unfundedOverride.html);
   ok(/no feasible weekly cap/i.test(overrideCell)
     && /protected shortfall is solved/.test(overrideCell),
-    'Safe to spend still refuses a cap under that override');
+    'Household spending still refuses a cap under that override');
   ok(!/Master-plan cap/.test(overrideCell),
     'and does not label the override as a master-plan cap');
   ok(!/forecast supports/.test(overrideCell),
@@ -560,10 +577,12 @@ console.log('\n=== L. unfunded opening-gap sentinel is not a $0/week cap ===');
     && !(fat.advice.funding && fat.advice.funding.feasible === false),
     'surplus after bill and buffer independently implies a positive feasible cap',
     `leftover ${leftover} weekly $${fat.advice.weekly} mode ${fat.advice.mode}`);
-  const fatCell = safeCell(fat.html);
-  ok(fatCell.includes(`Master-plan cap <b>$${fat.advice.weekly}/week</b>`),
+  const fatCell = spendCell(fat.html);
+  ok(/payday-hero/.test(fatCell) && /\/ week/.test(fatCell) && fat.advice.weekly > 0,
     'a feasible positive cap still renders as dollar/week',
     `$${fat.advice.weekly}/week`);
+  ok(/Stay under this and the protected plan holds/.test(fatCell),
+    'and restates the existing protected-plan meaning of that cap');
   ok(!/no feasible weekly cap/i.test(fatCell),
     'and does not borrow the unfunded wording');
 
@@ -581,20 +600,22 @@ console.log('\n=== L. unfunded opening-gap sentinel is not a $0/week cap ===');
     && !(tight.advice.funding && tight.advice.funding.feasible === false),
     'cash equal to the buffer with no outflows is a feasible $0 cap',
     `${tight.advice.mode} weekly=${tight.advice.weekly}`);
-  const tightCell = safeCell(tight.html);
-  ok(tightCell.includes('Master-plan cap <b>$0/week</b>'),
+  const tightCell = spendCell(tight.html);
+  ok(/\$0/.test(tightCell) && /\/ week/.test(tightCell),
     'a genuine feasible-zero cap still renders honestly as $0/week');
   ok(!/no feasible weekly cap/i.test(tightCell),
     'and is not described as an unfunded gap');
 }
 
-console.log('\n=== M. homepage leads with the payday answer ===');
+console.log('\n=== M. homepage leads with the compact payday worksheet ===');
 {
   const index = read('public/index.html');
   const paydayAt = index.indexOf('id="payday-answer"');
   const plan90At = index.indexOf('id="plan90"');
   const outlookAt = index.indexOf('id="outlook"');
   const h1At = index.indexOf('<h1>');
+  const paydaySection = /<section id="payday-answer">[\s\S]*?<\/section>/.exec(index);
+  const outlookSection = /<section id="outlook">[\s\S]*?<\/section>/.exec(index);
   const paydayH1 = /<section id="payday-answer">[\s\S]*?<h1>[\s\S]*?<\/h1>/.exec(index);
   ok(paydayAt >= 0 && plan90At > paydayAt,
     'payday-answer precedes the 90-day outlook in index.html');
@@ -602,40 +623,94 @@ console.log('\n=== M. homepage leads with the payday answer ===');
     'Outlook heading sits between the payday answer and the 90-day material');
   ok(h1At > paydayAt && h1At < plan90At,
     'the page h1 is inside the payday front door, not the 90-day report');
-  ok(paydayH1 && /What to do with the money/.test(paydayH1[0]),
-    'the payday section holds the household question as h1');
+  ok(paydayH1 && /Now → next payday/.test(paydayH1[0]),
+    'the payday section names the planning span as h1');
   ok((index.match(/<h1>/g) || []).length === 1,
     'there is exactly one h1 on the Plan page');
+  ok(paydaySection && !/id="status-band"/.test(paydaySection[0]),
+    'the status band is not inside the compact Payday Plan');
+  ok(outlookSection && /id="status-band"/.test(outlookSection[0]),
+    'the status band lives in Outlook as evidence');
   ok(/id="plan-mission"/.test(index) && /id="cap-headline"/.test(index)
     && /id="agenda-14"/.test(index) && /id="c-forecast"/.test(index)
-    && /id="budget-cats"/.test(index) && /id="score-table"/.test(index),
+    && /id="budget-cats"/.test(index) && /id="score-table"/.test(index)
+    && /id="major-plans-list"/.test(index) && /id="nextmove-card"/.test(index),
     'existing Outlook mounts remain on the page');
+  ok(!/class="lede"/.test(paydaySection[0]),
+    'the payday front door has no report-style lede before the worksheet');
   const liveRun = composeLive(live.plan);
   ok(/payday-group/.test(liveRun.html)
     && /Money available/.test(liveRun.html)
-    && /Do this \/ protect this/.test(liveRun.html)
+    && /What to do/.test(liveRun.html)
     && /Household spending/.test(liveRun.html)
-    && /What happens next/.test(liveRun.html),
-    'composed payday HTML uses the worksheet groups');
+    && /Coming before next payday/.test(liveRun.html),
+    'composed payday HTML uses the compact worksheet groups');
   const moneyAt = liveRun.html.indexOf('Money available');
-  const protectAt = liveRun.html.indexOf('Do this / protect this');
+  const doAt = liveRun.html.indexOf('What to do');
   const spendAt = liveRun.html.indexOf('Household spending');
-  const nextAt = liveRun.html.indexOf('What happens next');
-  ok(moneyAt >= 0 && protectAt > moneyAt && spendAt > protectAt && nextAt > spendAt,
-    'worksheet groups are money → protect → spending → next');
+  const comingAt = liveRun.html.indexOf('Coming before next payday');
+  ok(moneyAt >= 0 && doAt > moneyAt && spendAt > doAt && comingAt > spendAt,
+    'worksheet groups are money → what to do → spending → coming');
+  ok(!/What happens next/.test(liveRun.html) && !/Do this \/ protect this/.test(liveRun.html),
+    'the verbose PR #157 groups are no longer the primary surface');
   const paydayDate = liveRun.advice.nearBoundary && liveRun.advice.nearBoundary.payday;
   if (paydayDate) {
+    ok(/Now → /.test(liveRun.html),
+      'front door names the Now → next-payday span');
     ok(liveRun.html.includes(paydayDate.slice(8)) || liveRun.html.includes(paydayDate),
       'front door names Forecast.nearBoundary.payday', paydayDate);
   }
-  const incomeEvents = (liveRun.advice.sim.events || []).filter(e =>
-    e.kind === 'income' && e.date >= live.meta.asOf && paydayDate && e.date <= paydayDate);
-  for (const e of incomeEvents) {
-    ok(liveRun.html.includes(e.label),
-      `front door lists Forecast income event ${e.id}`, e.label);
-  }
   ok(!/function paydayEngine|Forecast\.paydayPlan/.test(read('public/plan.js') + read('public/forecast.js')),
     'front-door work did not add a second payday planner');
+}
+
+console.log('\n=== N. compact worksheet density, hierarchy, and fail-closed ===');
+{
+  /* PR #157 live composed payday text was 3862 characters / 13 rows on this
+   * opening. Density is proved by structure and a length ceiling, not by
+   * copying live cents (L-006). */
+  const PR157_LIVE_TEXT_CHARS = 3862;
+  const liveRun = composeLive(live.plan);
+  const html = liveRun.html;
+  const text = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  const actionRows = (html.match(/class="payday-action"/g) || []).length;
+  const comingRows = (html.match(/class="payday-coming-row"/g) || []).length;
+  const spendable = independentSpendable(live.plan);
+  ok(text.length < PR157_LIVE_TEXT_CHARS * 0.55,
+    'primary Payday Plan text is materially shorter than PR #157',
+    `${text.length} chars vs ${PR157_LIVE_TEXT_CHARS}`);
+  ok(actionRows >= 1 && actionRows <= 5,
+    'live What to do shows 1–5 action rows', String(actionRows));
+  ok(comingRows >= 1 && comingRows <= 5,
+    'live Coming before next payday stays short', String(comingRows));
+  ok((html.match(/data-fig="spendable"/g) || []).length === 1,
+    'usable cash is published once, as the money-available hero');
+  ok(html.includes(money2(spendable)),
+    'that hero is the independent spendable cash', money2(spendable));
+  ok((html.match(/class="payday-hero"/g) || []).length === 2,
+    'two prominent numbers only: cash and household spending');
+  ok(!/payday-plans|missionSentence|Q20|Q25|Q26|Master-plan leftover|Credit left everywhere/.test(html),
+    'secondary Forecast explanation is not inside the worksheet');
+  ok(!/\bsaved\b|\balready funded\b|\bfunded savings\b/i.test(html),
+    'planned future-cost money is not presented as already funded or saved');
+  const cashHero = /data-fig="spendable">([^<]+)/.exec(html);
+  ok(cashHero && cashHero[1] === money2(spendable),
+    'money available is Forecast.startingCashAmount, not cash plus credit');
+  ok(!html.includes(money2(liveRun.revolving)),
+    'HELOC/card headroom is not on the worksheet as cash');
+  const styles = read('public/styles.css');
+  ok(/\.payday-hero \{[^}]*font-size:2\.25rem/.test(styles),
+    'primary numbers are large, not cramped');
+  ok(/@media \(max-width:640px\) \{[\s\S]*?\.payday-hero \{ font-size:2rem; \}/.test(styles),
+    'narrow width keeps the hero at 2rem, not tiny text');
+  ok(/\.payday-sheet td \{[^}]*font-size:1\.05rem/.test(styles),
+    'action rows stay at reading size');
+  ok(!/startingCashAmount\(plan\)\s*[-+]/.test(read('public/plan.js')),
+    'the page still does not invent spendable as cash minus bills');
+  const planJs = read('public/plan.js');
+  const forecastJs = read('public/forecast.js');
+  ok(!/function paydayEngine|Forecast\.paydayPlan/.test(planJs + forecastJs),
+    'no second payday planner was added for the compact worksheet');
 }
 
 if (failures) {
