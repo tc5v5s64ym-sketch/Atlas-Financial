@@ -584,13 +584,10 @@ function renderCalendar(sim, neededBy, plan) {
 }
 
 /* ------------------------------------------- payday answer, in words */
-// Household-readable payday composition. Every figure is handed in from an
-// existing Forecast authority. This function formats; it does not recommend,
-// sequence, grade, or invent a second payday plan.
-function paydayPlanMargin(p) {
-  if (p.margin == null) return 'no dollar margin on this row';
-  return p.margin >= 0 ? `margin ${money2(p.margin)}` : `gap ${money2(-p.margin)}`;
-}
+// Household-readable payday worksheet. Every figure is handed in from an
+// existing Forecast authority. This formats and selects which existing
+// outputs appear above the fold; it does not recommend, sequence, grade,
+// sum a payday budget, or invent a second payday plan.
 
 /* Weekly-cap presentation. Forecast.recommend remains the decision:
  * `mode === 'infeasible'` or `funding.feasible === false` means there is no
@@ -626,175 +623,129 @@ function weeklyCapView(advice, weeklyOverride) {
   };
 }
 
+function paydayActionRows(ctx) {
+  const rows = [];
+  const seen = new Set();
+  const add = (key, label, amount) => {
+    if (!label || rows.length >= 5) return;
+    if (amount != null && !(Number(amount) > 0)) return;
+    if (seen.has(key)) return;
+    seen.add(key);
+    rows.push({ key, label, amount });
+  };
+
+  const action = ctx.nextMove && ctx.nextMove.action;
+  if (action && action.status !== 'done') {
+    add('next-move', action.what, action.amount);
+  }
+
+  const debt = (ctx.advice && ctx.advice.plannedDebt) || {};
+  if (debt.permitted && Number(debt.borrowed) > 0) {
+    const where = debt.facilityId ? ` on ${debt.facilityId}` : '';
+    add('planned-debt', `Authorised planned borrow${where}`, debt.borrowed);
+  }
+
+  const nextFund = ((ctx.advice && ctx.advice.fundingSequence) || [])[0] || null;
+  if (nextFund) {
+    const planRow = ((ctx.advice && ctx.advice.majorPlans) || [])
+      .find(p => p.id === nextFund.id);
+    const remaining = planRow && planRow.remaining;
+    const verdict = planRow && planRow.verdict;
+    const applies = (remaining != null && remaining > 0)
+      || verdict === 'FUNDING GAP'
+      || verdict === 'AT RISK';
+    if (applies) {
+      const amt = (remaining != null && remaining > 0) ? remaining : nextFund.need;
+      add('set-aside', `Set aside for ${nextFund.label}`, amt);
+    }
+  }
+  return rows;
+}
+
+function paydayComingRows(ctx) {
+  const near = (ctx.advice && ctx.advice.nearBoundary) || { items: [] };
+  const rows = [];
+  const seen = new Set();
+  const add = (key, label, date, amount) => {
+    if (!label || amount == null || !(Number(amount) > 0)) return;
+    if (seen.has(key)) return;
+    seen.add(key);
+    rows.push({ key, label, date, amount });
+  };
+  for (const item of near.items || []) {
+    add(item.id || `${item.label}:${item.date}`, item.label, item.date, item.amount);
+  }
+  const nextOut = ctx.nextOut;
+  if (nextOut) {
+    const already = (near.items || []).some(i =>
+      i.date === nextOut.date && i.label === nextOut.label);
+    if (!already) {
+      add('next-out:' + nextOut.date + ':' + nextOut.label,
+        nextOut.label, nextOut.date, nextOut.amount);
+    }
+  }
+  rows.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  return rows.slice(0, 5);
+}
+
+function paydaySheet(headers, rowClass, rows, cell) {
+  if (!rows.length) return '';
+  const head = headers
+    ? `<thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead>`
+    : '';
+  return `<table class="payday-sheet">${head}
+    <tbody>${rows.map(r => `<tr class="${rowClass}">${cell(r)}</tr>`).join('')}</tbody>
+  </table>`;
+}
+
 function paydayAnswerHtml(ctx) {
   const plan = ctx.plan;
   const advice = ctx.advice;
-  const status = ctx.status;
-  const mission = ctx.mission;
-  const nextMove = ctx.nextMove;
-  const nextOut = ctx.nextOut;
-  const nextDue = ctx.nextDue;
-  const unallocated = ctx.unallocated;
-  const budget = ctx.budget;
   const spendable = Forecast.startingCashAmount(plan);
-  const tennis = ((plan.startingCash && plan.startingCash.heldElsewhere) || [])
-    .find(h => h.id === 'amanda-debt-payments');
-  const cashback = (ctx.debts || []).find(d => d.id === 'cashback') || null;
-  const seq = advice.fundingSequence || [];
-  const nextFund = seq[0] || null;
-  const afterFund = seq[1] || null;
-  const plans = advice.majorPlans || [];
-  const debt = advice.plannedDebt || { permitted: false, borrowed: 0 };
-  const knowledge = advice.knowledge || {};
-  const knowledgeMin = knowledge.min;
-  const viewMin = advice.sim && advice.sim.min;
-  const near = advice.nearBoundary || { items: [], total: 0, payday: null };
-  const cap = budget && budget.cap;
-  const weekly = ctx.weekly != null ? ctx.weekly : advice.weekly;
+  const near = (advice && advice.nearBoundary) || { items: [], payday: null };
   const recommended = ctx.recommended != null ? ctx.recommended : advice.weekly;
-  const fail = advice.infeasible;
+  const weekly = ctx.weekly != null ? ctx.weekly : advice.weekly;
   const capView = ctx.capView || weeklyCapView(advice, ctx.weeklyOverride);
-
-  const doToday = nextMove
-    ? `<b>${nextMove.action.what}</b>${nextMove.action.amount != null ? ` (${money2(nextMove.action.amount)})` : ''}.
-       ${NEXT_MOVE[nextMove.id] ? NEXT_MOVE[nextMove.id](nextMove) : ''}`
-    : 'No next-move action is on this plan.';
-  const missionSentence = (mission && mission.parts || [])
-    .map(p => MISSION_PART[p.id](p)).join(', ')
-    .replace(/^./, c => c.toUpperCase()) + '.';
-
-  const nearItems = (near.items || []).length
-    ? (near.items || []).map(x => `${x.label} (${money2(x.amount)})`).join(', ')
-    : 'none named';
-  const planItems = plans.length
-    ? `<ul class="payday-plans">${plans.map(p => {
-      const need = p.need != null ? money2(p.need)
-        : (p.amountMin != null && p.amountMax != null)
-          ? `${money2(p.amountMin)}–${money2(p.amountMax)}` : 'range';
-      const remaining = p.remaining == null ? 'range' : money2(p.remaining);
-      return `<li><b>${p.label}</b> — ${p.verdict}${p.date ? ` on ${fmtDate(p.date)}` : ''}.
-        Need ${need}; ${paydayPlanMargin(p)}; remaining ${remaining}.</li>`;
-    }).join('')}</ul>`
-    : '<p>No unsettled major future plans on this opening.</p>';
-
-  const fundingBlocked = capView.fundingBlocked;
-  const feasibility = (advice.mode === 'infeasible' && fail)
-    ? `<p class="payday-head payday-infeasible"><b>INFEASIBLE.</b> The protected plan cannot work —
-       ${fail.label || 'a protected constraint'} fails${fail.date ? ` on ${fmtDateLong(fail.date)}` : ''}
-       by ${money2(fail.shortfall)} (${fail.kind}).</p>`
-    : fundingBlocked
-      ? `<p class="payday-head payday-infeasible"><b>INFEASIBLE.</b> The protected plan cannot work at the
-         ${money(advice.buffer)} buffer — ${money2(advice.funding.shortfall)} stays unfunded after every usable source.</p>`
-      : `<p class="payday-head">The protected plan is feasible at the ${money(advice.buffer)} model buffer.</p>`;
-
-  const redirect = nextFund
-    ? (afterFund
-      ? `When ${nextFund.label} is funded or settled, remaining sequence capacity goes to
-         <b>${afterFund.label}</b> — it does not automatically become safe-to-spend.`
-      : `When ${nextFund.label} is funded or settled, there is no later sequenced item.
-         Released capacity stays on the master plan; it is not automatically safe-to-spend.`)
-    : 'No sequenced funding target is open on this opening.';
-
-  const encumbered = knowledge.encumbered;
-  const freeCash = knowledge.freeCash;
-  const surplus = encumbered != null && freeCash != null
-    ? (freeCash > 0
-      ? `Master-plan leftover after the buffer and still-encumbered principal
-         (${money2(encumbered)}) is ${money2(freeCash)}. That leftover is still claimed by the
-         funding sequence — it is not automatically safe-to-spend.`
-      : `There is no free surplus on the master plan. Encumbered principal is
-         ${money2(encumbered)}; leftover after that is ${money2(freeCash)}.`)
-    : (unallocated
-      ? (unallocated.id === 'none'
-        ? `There is no free surplus. What looks leftover is the ${money2(unallocated.buffer)} buffer and money
-           already needed by costs outside this view.`
-        : `Unallocated ${money2(unallocated.amount)} is not spending money — it is leftover after the buffer
-           and reserves, and the master plan still has first claim.`)
-      : 'Unallocated cash was not computed for this view.');
-
-  const debtLine = debt.permitted
-    ? `Planned borrowing is explicitly permitted: ${money2(debt.borrowed)} on ${debt.facilityId || 'the named facility'}${
-      debt.repayment ? ` — ${debt.repayment.path}` : ''}.`
-    : 'Borrowing is not authorised on this plan. Credit capacity is not cash and is not in safe-to-spend.';
-
   const asOf = ctx.asOf;
   const paydayDate = near.payday || null;
-  const incomeItems = ((advice.sim && advice.sim.events) || []).filter(e =>
-    e.kind === 'income' && asOf && paydayDate && e.date >= asOf && e.date <= paydayDate);
-  const incomeLine = !paydayDate
-    ? 'Forecast has no next payday on this opening, so no pay-period income list is shown.'
-    : (incomeItems.length
-      ? incomeItems.map(e => `${e.label} ${money2(e.amount)} on ${fmtDate(e.date)} (${e.confidence})`).join('; ')
-      : 'No Forecast income event is dated in this span.');
   const periodLine = paydayDate
-    ? `From ${fmtDateLong(asOf)} through next payday ${fmtDateLong(paydayDate)}. The weekly cap is the master-plan figure, not a leftover until payday.`
+    ? `Now → ${fmtDateLong(paydayDate)}`
     : (asOf
-      ? `From ${fmtDateLong(asOf)}. Forecast has no next payday on this opening.`
+      ? `Now → ${fmtDateLong(asOf)}`
       : 'Planning span is not available on this opening.');
 
-  return `${feasibility}
-    <p class="payday-span">${periodLine}</p>
+  const actionRows = paydayActionRows(ctx);
+  const comingRows = paydayComingRows(ctx);
+
+  const actionSheet = paydaySheet(
+    ['Action', 'Amount'],
+    'payday-action',
+    actionRows,
+    r => `<td>${r.label}</td><td>${r.amount != null ? money2(r.amount) : '—'}</td>`);
+
+  const comingSheet = paydaySheet(
+    null,
+    'payday-coming-row',
+    comingRows,
+    r => `<td>${r.label}${r.date ? ` <span class="payday-when">${fmtDate(r.date)}</span>` : ''}</td>
+      <td>${money2(r.amount)}</td>`);
+
+  const spendInner = !capView.hasFeasibleCap
+    ? `<p class="payday-refuse">${capView.infeasible ? '<b>INFEASIBLE. </b>' : ''}${capView.reason}</p>`
+    : `<p class="payday-hero">${money(recommended)}<span class="payday-hero-unit">/ week</span></p>
+       <p class="payday-qual">Stay under this and the protected plan holds.${
+         weekly !== recommended ? ` ${capView.settingLine}` : ''
+       }</p>`;
+
+  return `<p class="payday-span">${periodLine}</p>
     <div class="payday-list">
       <div class="payday-group">Money available</div>
-      <div class="payday-row"><span class="payday-lab">Spendable household cash</span>
-        <span class="payday-val"><b>${money2(spendable)}</b> in Chequing A, Chequing B and Savings.
-          ${tennis ? `${tennis.label} holds ${money2(tennis.value)} and is <b>not</b> household-available cash (Q25).` : ''}
-          Credit left everywhere is ${money2(ctx.creditAvailable || 0)} and is <b>not</b> cash.</span></div>
-      <div class="payday-row"><span class="payday-lab">Income in this span</span>
-        <span class="payday-val">${incomeLine}</span></div>
-      <div class="payday-group">Do this / protect this</div>
-      <div class="payday-row"><span class="payday-lab">Do with the cash today</span>
-        <span class="payday-val">${doToday}<br>${missionSentence}</span></div>
-      <div class="payday-row"><span class="payday-lab">Through next payday</span>
-        <span class="payday-val">${nextDue
-    ? `Next household obligation: ${nextDue.what} ${money2(nextDue.amount)} on ${fmtDateLong(nextDue.due)}.`
-    : 'No remaining dated household obligation.'}
-          Near-boundary on ${near.payday ? fmtDateLong(near.payday) : 'the next payday'} through the following day:
-          ${nearItems}${near.total ? ` (Forecast total ${money2(near.total)})` : ''}.</span></div>
-      <div class="payday-row"><span class="payday-lab">Already spoken for</span>
-        <span class="payday-val">${encumbered != null
-    ? `Still-encumbered protected principal on the master plan is <b>${money2(encumbered)}</b>.`
-    : ''}
-          ${nextOut
-    ? `Next cash leaving household accounts: <b>${money2(nextOut.amount)}</b> on ${fmtDateLong(nextOut.date)} — ${nextOut.label}.`
-    : 'No further joint-cash outflow is dated on this view.'}
-          ${cap ? `${money(cap.essentialWeekly)}/week of the cap is spoken for as essential variable need before anything optional.` : ''}
-          This is not opening cash minus the next bills.</span></div>
-      <div class="payday-row"><span class="payday-lab">Fund next</span>
-        <span class="payday-val">${nextFund
-    ? `Next sequenced requirement is <b>${nextFund.label}</b>${nextFund.need != null ? ` (${money2(nextFund.need)})` : ''}${
-      nextFund.date ? ` on ${fmtDateLong(nextFund.date)}` : ''} — Forecast.fundingSequence rank ${nextFund.rank}. Planned set-aside is not a funded savings transfer.`
-    : 'No open sequenced funding target.'}</span></div>
-      <div class="payday-row"><span class="payday-lab">Debt on this path</span>
-        <span class="payday-val">${debtLine}</span></div>
+      <p class="payday-hero" data-fig="spendable">${money2(spendable)}</p>
+      <p class="payday-qual">Spendable cash. Not credit.</p>
+      ${actionSheet ? `<div class="payday-group">What to do</div>${actionSheet}` : ''}
       <div class="payday-group">Household spending</div>
-      <div class="payday-row"><span class="payday-lab">Safe to spend</span>
-        <span class="payday-val">${!capView.hasFeasibleCap
-    ? capView.reason
-    : `Master-plan cap <b>${money(recommended)}/week</b>${
-      weekly !== recommended ? ` — your setting is ${money(weekly)}/week` : ''}.
-          ${cap ? `Discretionary room inside that cap is ${money(cap.discretionaryRoomWeekly)}/week.` : ''}
-          Bound by the ≥12-month knowledge horizon, not by cash minus bills until the next payday. This is not a category split and not a 14-day leftover.`}</span></div>
-      <div class="payday-group">What happens next</div>
-      <div class="payday-row"><span class="payday-lab">Major future plans</span>
-        <span class="payday-val">ON TRACK / AT RISK / FUNDING GAP with dollar margin or gap, from Forecast.majorPlans. Remaining is Forecast pressure, not money already moved to savings.
-          ${planItems}</span></div>
-      <div class="payday-row"><span class="payday-lab">When that is funded</span>
-        <span class="payday-val">${redirect}</span></div>
-      <div class="payday-row"><span class="payday-lab">Is surplus free?</span>
-        <span class="payday-val">${surplus}</span></div>
-      <div class="payday-row"><span class="payday-lab">Lowest projected cash</span>
-        <span class="payday-val">${knowledgeMin
-    ? `<b>${money2(knowledgeMin.balance)}</b> on ${fmtDateLong(knowledgeMin.date)} on the master plan.`
-    : ''}${viewMin && knowledgeMin && (viewMin.date !== knowledgeMin.date || viewMin.balance !== knowledgeMin.balance)
-    ? ` The 91-day view low is ${money2(viewMin.balance)} on ${fmtDateLong(viewMin.date)}.`
-    : ''}</span></div>
-      <div class="payday-row"><span class="payday-lab">Still unresolved</span>
-        <span class="payday-val">The ${money(advice.buffer)} figure is the model buffer, not a Q20 emergency reserve (Q20 stays OPEN).
-          ${tennis ? 'Q25 TENNIS INCOME household-available remainder stays OPEN.' : ''}
-          ${cashback && cashback.pendingUnknown
-    ? 'Q26 Cash Back pending is answered as proven 0 by the completed Lunch Money pending census; canonical pending remains UNKNOWN and is not treated as $0.'
-    : 'Q26 Cash Back pending census proved 0.'}</span></div>
+      <div class="payday-spend">${spendInner}</div>
+      ${comingSheet ? `<div class="payday-group">Coming before next payday</div>${comingSheet}` : ''}
     </div>`;
 }
 
@@ -1705,5 +1656,8 @@ if (typeof App !== 'undefined') {
   App.boot({ periods: true, history: true });
 }
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { paydayAnswerHtml, weeklyCapView, MISSION_PART, NEXT_MOVE, STATUS_BAND };
+  module.exports = {
+    paydayAnswerHtml, paydayActionRows, paydayComingRows,
+    weeklyCapView, MISSION_PART, NEXT_MOVE, STATUS_BAND,
+  };
 }
