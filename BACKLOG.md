@@ -1764,8 +1764,11 @@ so none of this is time-sensitive.
 ## Queued behind the above
 
 **B15 · Rebuild the income picture** *(on B63)* · *medium*
-Coaching is gross. Until the coach split is confirmed, income is overstated by
-roughly **$650/month** on current estimates.
+Coaching is gross. The current derived estimate is roughly **$650/month** of
+household-income overstatement (`data.json` `incomeWarning`), not the
+**$1,650/month** earlier upper-bound fear. The tracking sheets cover only a
+subset of the window; the share is indicative. Until the coach split is
+confirmed in the books, every conclusion resting on income stays provisional.
 
 **B16 · Finish the spending picture** *(on B34, B40)* · *medium*
 Cards and chequing are both categorised. Remaining: merge the windows (12 months

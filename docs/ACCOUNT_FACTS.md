@@ -786,15 +786,17 @@ window:
 clean repeating pattern — the most common amounts are $100 (×8) and $60 (×7),
 which is family-sized, not payroll-sized. The bank data alone cannot do it.
 
-**Bounds, pending her books:** coach payments are somewhere between **$0 and
-$29,762** over 18 months, so household income is overstated by up to
-**~$1,650/month**. That is wide enough to matter to every conclusion that rests
-on income, and it should be treated as the largest open uncertainty in the
-picture — larger now than any remaining unexplained flow.
+**Bounds as of 2026-08-09, pending her books:** coach payments were then
+somewhere between **$0 and $29,762** over 18 months, so household income
+looked overstated by up to **~$1,650/month**. That 9 August upper bound is
+the earlier fear, not a competing current answer. The tracking-sheet
+derivation later in this file, and `data.json` `incomeWarning` on Deep Dive,
+are the current estimate. Bank data alone still cannot separate coach wages
+from personal transfers.
 
-**Amanda's bookkeeping is the fix**, and the owner has offered to get it. What
-is needed: coaching revenue, coach payments, and any other business costs, so
-gross can be separated from net.
+**Amanda's bookkeeping is still the confirmation path.** What is needed:
+coaching revenue, coach payments, and any other business costs, so gross can
+be separated from net. The sheets narrowed the bound; they did not audit it.
 
 **So there are two businesses, not one**, and the project has been conflating
 them:
