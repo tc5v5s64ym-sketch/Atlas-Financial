@@ -250,7 +250,82 @@ ok(near(csvVal('Total visible assets'), assetTotal),
 ok(near(csvVal('Total known debt'), debtTotal),
   'and the debt total', money(csvVal('Total known debt')));
 ok(near(csvVal('Financial-account net worth'), assetTotal - debtTotal),
-  'and financial-account net worth', money(csvVal('Financial-account net worth')));
+  'and financial-account net worth, which still excludes the home',
+  money(csvVal('Financial-account net worth')));
+const csvNote = label => {
+  const row = csv.find(c => c[2] === label);
+  return row ? String(row[20] || '') : '';
+};
+const homeEstimate = csvVal('Home');
+ok(near(homeEstimate, 1300000),
+  'Home detail is the 2026-08-21 owner planning estimate', money(homeEstimate));
+const homeRow = csv.find(c => c[2] === 'Home') || [];
+ok(homeRow[19] === '2026-08-21',
+  'Home as-of is the owner-decision date', homeRow[19] || 'missing');
+ok(/2026-08-21/.test(csvNote('Home')) && /planning estimate/i.test(csvNote('Home')),
+  'Home notes name the dated owner planning estimate');
+ok(/not an appraisal/i.test(csvNote('Home'))
+  && /independently verified market value/i.test(csvNote('Home')),
+  'Home notes refuse appraisal and verified-market claims');
+ok(/1\.1m/.test(csvNote('Home')) && /historical/i.test(csvNote('Home')),
+  'the older $1.1m–$1.4m range is kept only as dated historical evidence');
+ok(!/midpoint/i.test(csvNote('Home') + csvNote('Household net worth')
+  + csvNote('Home equity') + csvNote('Loan-to-value')),
+  'positions notes do not call the current home value a midpoint');
+// Independent of scripts/positions-summary.js. Do not re-run regenerateComputedRows
+// and assert its own output. Canonical assets/debts/secured come from data.json;
+// the Home detail row is the owner planning estimate.
+const independentHousehold = assetTotal + homeEstimate - debtTotal;
+ok(near(csvVal('Household net worth'), independentHousehold),
+  'Household net worth = owner home estimate + canonical assets − canonical debt',
+  money(csvVal('Household net worth')));
+ok(near(csvVal('Home equity'), homeEstimate - secured),
+  'Home equity = owner home estimate − canonical secured debt',
+  money(csvVal('Home equity')));
+const independentLtvPct = (secured / homeEstimate) * 100;
+const independentLtv = Math.round(independentLtvPct * 10) / 10;
+ok(near(csvVal('Loan-to-value'), independentLtv, 0.05),
+  'Loan-to-value = canonical secured debt / owner home estimate',
+  `${independentLtvPct.toFixed(2)}% → ${independentLtv}`);
+ok(/owner-estimated home planning value/i.test(csvNote('Household net worth')),
+  'generated household net worth names an owner-estimated planning value');
+const csvAsOf = label => {
+  const row = csv.find(c => c[2] === label);
+  return row ? String(row[19] || '') : '';
+};
+ok(csvAsOf('Household net worth') >= homeRow[19],
+  'household net-worth as-of is not earlier than the home estimate',
+  csvAsOf('Household net worth'));
+ok(csvAsOf('Home equity') >= homeRow[19],
+  'home-equity as-of is not earlier than the home estimate',
+  csvAsOf('Home equity'));
+ok(csvAsOf('Loan-to-value') >= homeRow[19],
+  'loan-to-value as-of is not earlier than the home estimate',
+  csvAsOf('Loan-to-value'));
+ok(csvAsOf('Financial-account net worth') === data.meta.asOf,
+  'financial-account net worth keeps the opening as-of',
+  csvAsOf('Financial-account net worth'));
+ok(/2026-08-19/.test(csvNote('Household net worth'))
+  && /2026-08-21/.test(csvNote('Household net worth')),
+  'household net-worth notes preserve both input dates');
+{
+  const q3 = (/### Q3\.[\s\S]*?(?=\n### |\n## )/.exec(read('docs/01_OPEN_QUESTIONS.md')) || [''])[0];
+  ok(!/currently unstateable/i.test(q3),
+    'Q3 does not say household net worth is currently unstateable');
+  ok(/planning estimate/i.test(q3) && /appraisal/i.test(q3),
+    'Q3 distinguishes the planning estimate from the verified-value question');
+  ok(/\*\*Status:\*\*\s*OPEN/.test(q3),
+    'Q3 remains OPEN for a comparable sale or appraisal');
+}
+{
+  const caveat = String((data.netWorth && data.netWorth.caveat) || '');
+  ok(/positions reporting path/i.test(caveat) && /2026-08-21/.test(caveat),
+    'Records caveat routes the current point figure to the 2026-08-21 positions path');
+  ok(/historical/i.test(caveat) && /1\.1m/.test(caveat),
+    'Records caveat keeps the $1.1m–$1.4m range as historical only');
+  ok(!/At the owner's estimate of \$1\.1m/i.test(caveat),
+    'Records caveat does not present the old range as the current estimate');
+}
 ok(csvVal('Silver bullion') != null,
   'the silver has a position row — its absence was the drift',
   money(csvVal('Silver bullion') || 0));
