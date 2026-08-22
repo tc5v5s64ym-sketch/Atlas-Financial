@@ -1,7 +1,13 @@
 # Household Financial Picture
 
-**As at 9 August 2026.** Source: TD EasyWeb, read-only. All TD accounts reviewed;
+**As at 9 August 2026.** Dated snapshot / analysis, not current Atlas
+financial state. Source: TD EasyWeb, read-only. All TD accounts reviewed;
 18 months of transaction history where TD makes it available.
+
+Current balances, obligations, question status, and planning actions must
+come from `data.json`, Forecast, and the current authority documents
+(`docs/ACCOUNT_FACTS.md`, `docs/01_OPEN_QUESTIONS.md`, `docs/positions.csv`).
+Do not use this file as today's household picture.
 
 **Written for four readers:** Dale, his wife, an accountant, and a mortgage
 advisor. Sections 8–10 are addressed to the last three specifically.
@@ -31,14 +37,29 @@ strong income and a structural problem, which is a solvable combination.
 
 ---
 
-> **This document is being rebuilt (B17).** Sections 1 onward were written
-> before the spouse's accounts and the MBNA card were captured, and their
-> headline figures are superseded. **`docs/positions.csv` and `data.json` are
-> current; this narrative is not.** Section 0 below has been brought up to date
-> because it is the actionable part. The debt ranking in section 6 and the
-> action list in section 12 are the ones most affected.
+> **Dated 2026-08-09 historical evidence — not current Atlas truth.** This
+> whole file is the 9 August 2026 first-pass picture. It is useful dated
+> analysis. It is not today's balances, obligations, question status, or
+> action list. Current household state lives in `data.json` and Forecast.
+> Standing facts live in `docs/ACCOUNT_FACTS.md`. Question status lives in
+> `docs/01_OPEN_QUESTIONS.md`. `docs/positions.csv` is the dated account-row
+> snapshot. Do not plan from this file.
+>
+> Sections 1 onward were written before the spouse's accounts and the MBNA
+> card were captured; their headline figures are superseded. **Section 0 is
+> also historical.** It is the 9 August "read first" action list. It has
+> **not** been brought up to date. Do not use it as today's actions. The
+> debt ranking in section 6 and the action list in section 11/12 remain
+> the most obviously stale parts of that same dated picture.
+>
+> B17 (payoff ranking / net-worth range in this dated picture) is already
+> **complete**. This document is not being rebuilt.
 
-## 0. Time-sensitive — read first
+## 0. Time-sensitive as at 9 August 2026 — historical; not today's action list
+
+The figures and "now" language in this section are the 2026-08-09 picture.
+They are retained as dated evidence. They are not current Atlas financial
+state.
 
 **Triangle Mastercard — resolved 9 August 2026.** The $253.57 minimum was due
 7 August and had not posted as at that morning. **A payment of $300.00 was made
