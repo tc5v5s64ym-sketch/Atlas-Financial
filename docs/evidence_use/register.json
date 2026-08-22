@@ -430,9 +430,11 @@
     {
       "id": "HH-014",
       "source": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
-      "disposition": "PROPOSED",
-      "evidence_home": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
-      "owner_gate": "Joint household decision required before promotion into data.json plan or Forecast inputs. Attributed speech is not automatically joint policy."
+      "disposition": "CONSUMED",
+      "routed_to": {
+        "path": "data.json",
+        "json_pointer": "/plan/commitments/15"
+      }
     },
     {
       "id": "HH-015",
@@ -479,16 +481,20 @@
     {
       "id": "HH-021",
       "source": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
-      "disposition": "PROPOSED",
-      "evidence_home": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
-      "owner_gate": "Joint household decision required before promotion into data.json plan or Forecast inputs. Attributed speech is not automatically joint policy."
+      "disposition": "CONSUMED",
+      "routed_to": {
+        "path": "data.json",
+        "json_pointer": "/plan/commitments/11"
+      }
     },
     {
       "id": "HH-022",
       "source": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
-      "disposition": "PROPOSED",
-      "evidence_home": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
-      "owner_gate": "Joint household decision required before promotion into data.json plan or Forecast inputs. Attributed speech is not automatically joint policy."
+      "disposition": "CONSUMED",
+      "routed_to": {
+        "path": "data.json",
+        "json_pointer": "/plan/commitments/10"
+      }
     },
     {
       "id": "HH-023",
@@ -528,9 +534,11 @@
     {
       "id": "TRAVEL-002",
       "source": "docs/household_interviews/AMANDA_2026-08-10_PARTIAL.md",
-      "disposition": "PROPOSED",
-      "evidence_home": "docs/household_interviews/AMANDA_2026-08-10_PARTIAL.md",
-      "owner_gate": "Joint household decision required before promotion into data.json plan or Forecast inputs. Attributed speech is not automatically joint policy."
+      "disposition": "CONSUMED",
+      "routed_to": {
+        "path": "data.json",
+        "json_pointer": "/plan/commitments/12"
+      }
     },
     {
       "id": "TRAVEL-003",
@@ -553,16 +561,20 @@
     {
       "id": "COMMIT-002",
       "source": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
-      "disposition": "PROPOSED",
-      "evidence_home": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
-      "owner_gate": "Joint household decision required before promotion into data.json plan or Forecast inputs. Attributed speech is not automatically joint policy."
+      "disposition": "CONSUMED",
+      "routed_to": {
+        "path": "data.json",
+        "json_pointer": "/plan/commitments/4"
+      }
     },
     {
       "id": "COMMIT-003",
       "source": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
-      "disposition": "PROPOSED",
-      "evidence_home": "docs/household_interviews/AMANDA_2026-08-12_CONTINUATION.md",
-      "owner_gate": "Joint household decision required before promotion into data.json plan or Forecast inputs. Attributed speech is not automatically joint policy."
+      "disposition": "CONSUMED",
+      "routed_to": {
+        "path": "data.json",
+        "json_pointer": "/plan/commitments/5"
+      }
     },
     {
       "id": "COMMIT-004",
