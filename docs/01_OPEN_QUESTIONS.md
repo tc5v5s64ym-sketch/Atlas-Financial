@@ -42,10 +42,12 @@ transfer he or his wife set up.
 
 ### Q3. What is the home worth?
 **Status:** OPEN · **Owner:** Dale
-**What we know:** $747,612.74 of debt is secured against it. Original mortgage
-$648,000 in May 2022.
+**What we know:** $745,674.46 of debt is secured against it on the 2026-08-19
+published opening (mortgage $545,188.30 + HELOC $200,486.16). Original mortgage
+$648,000 in May 2022. The 2026-08-09 review figure was $747,612.74.
 **What the answer changes:** Household net worth is currently unstateable — the
-−$717,407 figure is only the financial-account fragment. Loan-to-value also
+−$730,394.82 figure is only the financial-account fragment on that opening.
+The 2026-08-09 review fragment was −$717,407. Loan-to-value also
 determines what is possible at the May 2027 renewal, including whether HELOC
 consolidation is available at all.
 **How to answer:** A recent comparable sale or an appraisal. Municipal assessment
