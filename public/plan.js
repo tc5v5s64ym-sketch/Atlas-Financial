@@ -717,14 +717,40 @@ function paydayAnswerHtml(ctx) {
       debt.repayment ? ` — ${debt.repayment.path}` : ''}.`
     : 'Borrowing is not authorised on this plan. Credit capacity is not cash and is not in safe-to-spend.';
 
+  const asOf = ctx.asOf;
+  const paydayDate = near.payday || null;
+  const incomeItems = ((advice.sim && advice.sim.events) || []).filter(e =>
+    e.kind === 'income' && asOf && paydayDate && e.date >= asOf && e.date <= paydayDate);
+  const incomeLine = !paydayDate
+    ? 'Forecast has no next payday on this opening, so no pay-period income list is shown.'
+    : (incomeItems.length
+      ? incomeItems.map(e => `${e.label} ${money2(e.amount)} on ${fmtDate(e.date)} (${e.confidence})`).join('; ')
+      : 'No Forecast income event is dated in this span.');
+  const periodLine = paydayDate
+    ? `From ${fmtDateLong(asOf)} through next payday ${fmtDateLong(paydayDate)}. The weekly cap is the master-plan figure, not a leftover until payday.`
+    : (asOf
+      ? `From ${fmtDateLong(asOf)}. Forecast has no next payday on this opening.`
+      : 'Planning span is not available on this opening.');
+
   return `${feasibility}
+    <p class="payday-span">${periodLine}</p>
     <div class="payday-list">
-      <div class="payday-row"><span class="payday-lab">Do with the cash today</span>
-        <span class="payday-val">${doToday}<br>${missionSentence}</span></div>
+      <div class="payday-group">Money available</div>
       <div class="payday-row"><span class="payday-lab">Spendable household cash</span>
         <span class="payday-val"><b>${money2(spendable)}</b> in Chequing A, Chequing B and Savings.
           ${tennis ? `${tennis.label} holds ${money2(tennis.value)} and is <b>not</b> household-available cash (Q25).` : ''}
           Credit left everywhere is ${money2(ctx.creditAvailable || 0)} and is <b>not</b> cash.</span></div>
+      <div class="payday-row"><span class="payday-lab">Income in this span</span>
+        <span class="payday-val">${incomeLine}</span></div>
+      <div class="payday-group">Do this / protect this</div>
+      <div class="payday-row"><span class="payday-lab">Do with the cash today</span>
+        <span class="payday-val">${doToday}<br>${missionSentence}</span></div>
+      <div class="payday-row"><span class="payday-lab">Through next payday</span>
+        <span class="payday-val">${nextDue
+    ? `Next household obligation: ${nextDue.what} ${money2(nextDue.amount)} on ${fmtDateLong(nextDue.due)}.`
+    : 'No remaining dated household obligation.'}
+          Near-boundary on ${near.payday ? fmtDateLong(near.payday) : 'the next payday'} through the following day:
+          ${nearItems}${near.total ? ` (Forecast total ${money2(near.total)})` : ''}.</span></div>
       <div class="payday-row"><span class="payday-lab">Already spoken for</span>
         <span class="payday-val">${encumbered != null
     ? `Still-encumbered protected principal on the master plan is <b>${money2(encumbered)}</b>.`
@@ -734,39 +760,35 @@ function paydayAnswerHtml(ctx) {
     : 'No further joint-cash outflow is dated on this view.'}
           ${cap ? `${money(cap.essentialWeekly)}/week of the cap is spoken for as essential variable need before anything optional.` : ''}
           This is not opening cash minus the next bills.</span></div>
-      <div class="payday-row"><span class="payday-lab">Through next payday</span>
-        <span class="payday-val">${nextDue
-    ? `Next household obligation: ${nextDue.what} ${money2(nextDue.amount)} on ${fmtDateLong(nextDue.due)}.`
-    : 'No remaining dated household obligation.'}
-          Near-boundary on ${near.payday ? fmtDateLong(near.payday) : 'the next payday'} through the following day:
-          ${nearItems}${near.total ? ` (Forecast total ${money2(near.total)})` : ''}.</span></div>
+      <div class="payday-row"><span class="payday-lab">Fund next</span>
+        <span class="payday-val">${nextFund
+    ? `Next sequenced requirement is <b>${nextFund.label}</b>${nextFund.need != null ? ` (${money2(nextFund.need)})` : ''}${
+      nextFund.date ? ` on ${fmtDateLong(nextFund.date)}` : ''} — Forecast.fundingSequence rank ${nextFund.rank}. Planned set-aside is not a funded savings transfer.`
+    : 'No open sequenced funding target.'}</span></div>
+      <div class="payday-row"><span class="payday-lab">Debt on this path</span>
+        <span class="payday-val">${debtLine}</span></div>
+      <div class="payday-group">Household spending</div>
       <div class="payday-row"><span class="payday-lab">Safe to spend</span>
         <span class="payday-val">${!capView.hasFeasibleCap
     ? capView.reason
     : `Master-plan cap <b>${money(recommended)}/week</b>${
       weekly !== recommended ? ` — your setting is ${money(weekly)}/week` : ''}.
           ${cap ? `Discretionary room inside that cap is ${money(cap.discretionaryRoomWeekly)}/week.` : ''}
-          Bound by the ≥12-month knowledge horizon, not by cash minus bills until the next payday.`}</span></div>
+          Bound by the ≥12-month knowledge horizon, not by cash minus bills until the next payday. This is not a category split and not a 14-day leftover.`}</span></div>
+      <div class="payday-group">What happens next</div>
+      <div class="payday-row"><span class="payday-lab">Major future plans</span>
+        <span class="payday-val">ON TRACK / AT RISK / FUNDING GAP with dollar margin or gap, from Forecast.majorPlans. Remaining is Forecast pressure, not money already moved to savings.
+          ${planItems}</span></div>
+      <div class="payday-row"><span class="payday-lab">When that is funded</span>
+        <span class="payday-val">${redirect}</span></div>
+      <div class="payday-row"><span class="payday-lab">Is surplus free?</span>
+        <span class="payday-val">${surplus}</span></div>
       <div class="payday-row"><span class="payday-lab">Lowest projected cash</span>
         <span class="payday-val">${knowledgeMin
     ? `<b>${money2(knowledgeMin.balance)}</b> on ${fmtDateLong(knowledgeMin.date)} on the master plan.`
     : ''}${viewMin && knowledgeMin && (viewMin.date !== knowledgeMin.date || viewMin.balance !== knowledgeMin.balance)
     ? ` The 91-day view low is ${money2(viewMin.balance)} on ${fmtDateLong(viewMin.date)}.`
     : ''}</span></div>
-      <div class="payday-row"><span class="payday-lab">Major future plans</span>
-        <span class="payday-val">ON TRACK / AT RISK / FUNDING GAP with dollar margin or gap, from Forecast.majorPlans.
-          ${planItems}</span></div>
-      <div class="payday-row"><span class="payday-lab">Fund next</span>
-        <span class="payday-val">${nextFund
-    ? `Next sequenced requirement is <b>${nextFund.label}</b>${nextFund.need != null ? ` (${money2(nextFund.need)})` : ''}${
-      nextFund.date ? ` on ${fmtDateLong(nextFund.date)}` : ''} — Forecast.fundingSequence rank ${nextFund.rank}.`
-    : 'No open sequenced funding target.'}</span></div>
-      <div class="payday-row"><span class="payday-lab">When that is funded</span>
-        <span class="payday-val">${redirect}</span></div>
-      <div class="payday-row"><span class="payday-lab">Is surplus free?</span>
-        <span class="payday-val">${surplus}</span></div>
-      <div class="payday-row"><span class="payday-lab">Debt on this path</span>
-        <span class="payday-val">${debtLine}</span></div>
       <div class="payday-row"><span class="payday-lab">Still unresolved</span>
         <span class="payday-val">The ${money(advice.buffer)} figure is the model buffer, not a Q20 emergency reserve (Q20 stays OPEN).
           ${tennis ? 'Q25 TENNIS INCOME household-available remainder stays OPEN.' : ''}
