@@ -646,7 +646,7 @@ current-state verdict to be one of "... STALE / SUPERSEDED ...", while
 .github/PULL_REQUEST_TEMPLATE.md:23 uses STALE-SUPERSEDED. Confirm that a card
 written verbatim to CLAUDE.md therefore fails the "Merge card mechanical
 fields" check, and that a failed merge-card check is a workflow_run trigger for
-atlas-test-repair.yml. Record the verdict.
+atlas-test-repair.yml. Record the verdict and evidence.
 
 ONE OUTCOME: a merge card written verbatim from CLAUDE.md's stated vocabulary
 passes the Merge card mechanical fields check.
