@@ -963,6 +963,21 @@ ok(!/Seaspan and Tennis BC both land the same day/i.test(dataStr),
 ok(!/\$?3,507/.test(master),
   'the stale $3,507/month Tennis BC figure is gone from the master picture');
 
+// F-15: Q5's ended garage/lab stream is not Amanda's modelled household
+// transfers. Deep Dive must not make "the transfers stopped after May"
+// sound like plan.income.amandaTransfer.
+{
+  const amandaTransfer = (plan.income || []).find(s => s.id === 'amandaTransfer');
+  const note = data.incomeNote || '';
+  ok(amandaTransfer && amandaTransfer.scenarioMonthly
+      && amandaTransfer.scenarioMonthly.expected > 0,
+    'amandaTransfer remains a non-zero forward household-funding stream');
+  ok(!/the transfers stopped after May 2026 while the income did not/.test(dataStr),
+    'published data.json no longer claims the transfers stopped after May while the income did not');
+  ok(/garage\/lab/i.test(note) && /amandaTransfer/.test(note),
+    'incomeNote names both the ended garage/lab stream and the continuing amandaTransfer stream');
+}
+
 // BC Hydro. Three files disagreed about whether it still had a household route.
 ok(!/no current route through chequing:\*\* BC Hydro/i.test(accountFacts),
   'ACCOUNT_FACTS no longer lists BC Hydro as an unknown route');
