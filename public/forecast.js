@@ -2084,11 +2084,16 @@
       const share = shares.get(row.id) || { requiredNow: 0 };
       const got = take(share.requiredNow);
       const planRow = row.plan;
-      const gapFromPlan = planRow && planRow.verdict === 'FUNDING GAP'
-        ? Math.max(0, Number(planRow.remaining) || 0) : 0;
-      const shortfall = roundCent(Math.max(0, share.requiredNow - got, gapFromPlan));
-      const verdict = shortfall > EPSILON ? 'FUNDING GAP'
-        : (planRow && planRow.verdict) || 'ON TRACK';
+      const planVerdict = (planRow && planRow.verdict) || 'ON TRACK';
+      const planRemaining = planRow ? Math.max(0, Number(planRow.remaining) || 0) : 0;
+      // By-deadline projection is the incumbent majorPlans/master-walk
+      // result, not this payday's set-aside. A FUNDING GAP remaining is
+      // the authoritative shortfall; ON TRACK / AT RISK keep the base
+      // target as fully projected. requiredNow − allocated is current
+      // payday split, not a deadline gap.
+      const shortfall = planVerdict === 'FUNDING GAP' ? roundCent(planRemaining) : 0;
+      const projectedByDeadline = roundCent(Math.max(0, row.need - shortfall));
+      const verdict = shortfall > EPSILON ? 'FUNDING GAP' : planVerdict;
       futureAllocations.push({
         id: row.id,
         label: row.label,
@@ -2097,7 +2102,7 @@
         stillNeeded: roundCent(row.need),
         requiredNow: share.requiredNow,
         allocated: got,
-        projectedByDeadline: got,
+        projectedByDeadline,
         shortfall,
         verdict,
         reason: shortfall > EPSILON
@@ -2249,7 +2254,9 @@
       optional: optionalAllocations,
       lines,
       risks,
-      supportedAllowance: allocatedEssentials,
+      // Spend permission from the incumbent weekly cap, not the essential
+      // cash hold. Those amounts may differ; the hold is a reserve.
+      supportedAllowance: spendPermission,
       unallocated,
       allocatedTotal,
       remainder: unallocated,

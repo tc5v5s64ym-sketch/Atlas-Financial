@@ -139,6 +139,21 @@ function assertMasterWalk(plan, asOf, o, alloc, label) {
   ok(recon(alloc), `${label} reconciles`);
 }
 
+function deadlineReconciles(row, label) {
+  ok(!!row, `${label} exists`);
+  if (!row) return;
+  ok(near(row.need, (row.projectedByDeadline || 0) + (row.shortfall || 0)),
+    `${label}: need = projectedByDeadline + shortfall`,
+    `${row.need} vs ${row.projectedByDeadline} + ${row.shortfall}`);
+  if (row.verdict === 'ON TRACK') {
+    ok(near(row.shortfall, 0) && near(row.projectedByDeadline, row.need),
+      `${label}: ON TRACK projects the full target by the deadline`);
+  }
+  if (row.verdict === 'FUNDING GAP') {
+    ok(row.shortfall > 0, `${label}: FUNDING GAP has a positive shortfall`);
+  }
+}
+
 console.log('=== A. master walk agreement ===');
 {
   const fixtures = [
@@ -262,6 +277,15 @@ console.log('\n=== D. nearer small / later large ===');
     later && String(later.allocated));
   ok(oct.allocated + later.allocated < leftover || near(alloc.unallocated, leftover - octNow - laterNow),
     'cash is not exhausted on the nearer item');
+  deadlineReconciles(oct, 'October ON TRACK');
+  deadlineReconciles(later, 'later ON TRACK');
+  ok(oct && oct.verdict === 'ON TRACK' && !near(oct.projectedByDeadline, oct.allocated),
+    'October projected-by-deadline is not this payday\'s $140 set-aside',
+    oct && `${oct.projectedByDeadline} vs allocated ${oct.allocated}`);
+  ok(later && later.verdict === 'ON TRACK' && near(later.projectedByDeadline, 5500)
+    && !near(later.projectedByDeadline, later.allocated),
+    'later projected-by-deadline is the $5,500 target, not the $300 set-aside',
+    later && `${later.projectedByDeadline} vs allocated ${later.allocated}`);
   assertMasterWalk(plan, AS_OF, o, alloc, 'nearer/later');
 }
 
@@ -355,6 +379,21 @@ console.log('\n=== H. no auto-borrow ===');
     'the cash shortfall remains a funding gap');
   ok(!(alloc.lines || []).some(l => /heloc|borrow/i.test(l.label)),
     'no allocation line is an automatic HELOC draw');
+  const later = future(alloc, 'later');
+  const plans = F.majorPlans(broke, AS_OF, opts({ debts: HELOC, weeklyVariable: 0 }));
+  const laterPlan = (plans || []).find(p => p.id === 'later');
+  const independentGap = laterPlan ? Math.max(0, Number(laterPlan.remaining) || 0) : 0;
+  ok(later && later.verdict === 'FUNDING GAP' && independentGap > 0,
+    'later commitment is a master-walk FUNDING GAP',
+    later && `${later.verdict} remaining ${independentGap}`);
+  deadlineReconciles(later, 'later FUNDING GAP');
+  ok(later && !near(later.projectedByDeadline, later.allocated),
+    'FUNDING GAP projected-by-deadline is not this payday\'s current allocation',
+    later && `projected ${later.projectedByDeadline} allocated ${later.allocated}`);
+  ok(later && near(later.shortfall, independentGap)
+    && near(later.projectedByDeadline, later.need - independentGap),
+    'projected-by-deadline is the majorPlans target minus the authoritative gap',
+    later && `${later.projectedByDeadline} vs ${later.need} − ${independentGap}`);
   ok(recon(alloc), 'H reconciles');
 }
 
@@ -400,6 +439,13 @@ console.log('\n=== I. essential hold vs spending permission ===');
     String(alloc.essentials.allocated));
   ok(alloc.essentials.allocated > alloc.spendPermission,
     'the hold can exceed the weekly-cap permission without becoming a second spend figure');
+  ok(near(alloc.supportedAllowance, spendPermission)
+    && near(alloc.supportedAllowance, alloc.spendPermission)
+    && !near(alloc.supportedAllowance, alloc.essentials.allocated),
+    'supportedAllowance is the weekly-cap permission, not the essential reserve',
+    `${alloc.supportedAllowance} vs permission ${alloc.spendPermission} reserve ${alloc.essentials.allocated}`);
+  ok(alloc.essentials.role === 'reserve',
+    'the essential bucket remains a reserve, not a second allowance');
   const essLine = line(alloc, 'essentials');
   ok(essLine && /hold/i.test(essLine.label) && !/household spending/i.test(essLine.label),
     'the essentials line is labeled as a hold, not household spending');
