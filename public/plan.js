@@ -585,9 +585,10 @@ function renderCalendar(sim, neededBy, plan) {
 
 /* ------------------------------------------- payday answer, in words */
 // Household-readable payday worksheet. Every figure is handed in from an
-// existing Forecast authority. This formats and selects which existing
-// outputs appear above the fold; it does not recommend, sequence, grade,
-// sum a payday budget, or invent a second payday plan.
+// existing Forecast authority. Forecast.paydayAllocation (attached on
+// recommend) is the payday waterfall; this formats it. It does not
+// recommend, sequence, grade, sum a payday budget, or invent a second
+// payday plan.
 
 /* Weekly-cap presentation. Forecast.recommend remains the decision:
  * `mode === 'infeasible'` or `funding.feasible === false` means there is no
@@ -624,42 +625,12 @@ function weeklyCapView(advice, weeklyOverride) {
 }
 
 function paydayActionRows(ctx) {
-  const rows = [];
-  const seen = new Set();
-  const add = (key, label, amount) => {
-    if (!label || rows.length >= 5) return;
-    if (amount != null && !(Number(amount) > 0)) return;
-    if (seen.has(key)) return;
-    seen.add(key);
-    rows.push({ key, label, amount });
-  };
-
-  const action = ctx.nextMove && ctx.nextMove.action;
-  if (action && action.status !== 'done') {
-    add('next-move', action.what, action.amount);
-  }
-
-  const debt = (ctx.advice && ctx.advice.plannedDebt) || {};
-  if (debt.permitted && Number(debt.borrowed) > 0) {
-    const where = debt.facilityId ? ` on ${debt.facilityId}` : '';
-    add('planned-debt', `Authorised planned borrow${where}`, debt.borrowed);
-  }
-
-  const nextFund = ((ctx.advice && ctx.advice.fundingSequence) || [])[0] || null;
-  if (nextFund) {
-    const planRow = ((ctx.advice && ctx.advice.majorPlans) || [])
-      .find(p => p.id === nextFund.id);
-    const remaining = planRow && planRow.remaining;
-    const verdict = planRow && planRow.verdict;
-    const applies = (remaining != null && remaining > 0)
-      || verdict === 'FUNDING GAP'
-      || verdict === 'AT RISK';
-    if (applies) {
-      const amt = (remaining != null && remaining > 0) ? remaining : nextFund.need;
-      add('set-aside', `Set aside for ${nextFund.label}`, amt);
-    }
-  }
-  return rows;
+  const alloc = ctx.advice && ctx.advice.paydayAllocation;
+  if (!alloc || !Array.isArray(alloc.lines)) return [];
+  return alloc.lines
+    .filter(line => Number(line.amount) > 0 && line.label)
+    .slice(0, 5)
+    .map(line => ({ key: line.key, label: line.label, amount: line.amount }));
 }
 
 function paydayComingRows(ctx) {
@@ -701,7 +672,10 @@ function paydaySheet(headers, rowClass, rows, cell) {
 function paydayAnswerHtml(ctx) {
   const plan = ctx.plan;
   const advice = ctx.advice;
-  const spendable = Forecast.startingCashAmount(plan);
+  const alloc = advice && advice.paydayAllocation;
+  const spendable = alloc && alloc.available != null
+    ? alloc.available
+    : Forecast.startingCashAmount(plan);
   const near = (advice && advice.nearBoundary) || { items: [], payday: null };
   const recommended = ctx.recommended != null ? ctx.recommended : advice.weekly;
   const weekly = ctx.weekly != null ? ctx.weekly : advice.weekly;
@@ -730,6 +704,15 @@ function paydayAnswerHtml(ctx) {
     r => `<td>${r.label}${r.date ? ` <span class="payday-when">${fmtDate(r.date)}</span>` : ''}</td>
       <td>${money2(r.amount)}</td>`);
 
+  const riskRows = ((advice && advice.paydayAllocation && advice.paydayAllocation.risks) || [])
+    .filter(r => r && (r.verdict === 'FUNDING GAP' || Number(r.shortfall) > 0));
+  const riskSheet = paydaySheet(
+    ['Risk', 'Gap'],
+    'payday-risk',
+    riskRows.slice(0, 5),
+    r => `<td>${r.label}${r.date ? ` <span class="payday-when">${fmtDate(r.date)}</span>` : ''}</td>
+      <td>${money2(r.shortfall)}</td>`);
+
   const spendInner = !capView.hasFeasibleCap
     ? `<p class="payday-refuse">${capView.infeasible ? '<b>INFEASIBLE. </b>' : ''}${capView.reason}</p>`
     : `<p class="payday-hero">${money(recommended)}<span class="payday-hero-unit">/ week</span></p>
@@ -742,10 +725,11 @@ function paydayAnswerHtml(ctx) {
       <div class="payday-group">Money available</div>
       <p class="payday-hero" data-fig="spendable">${money2(spendable)}</p>
       <p class="payday-qual">Spendable cash. Not credit.</p>
-      ${actionSheet ? `<div class="payday-group">What to do</div>${actionSheet}` : ''}
+      ${actionSheet ? `<div class="payday-group">What to do with this paycheque</div>${actionSheet}` : ''}
       <div class="payday-group">Household spending</div>
       <div class="payday-spend">${spendInner}</div>
       ${comingSheet ? `<div class="payday-group">Coming before next payday</div>${comingSheet}` : ''}
+      ${riskSheet ? `<div class="payday-group">Funding risks</div>${riskSheet}` : ''}
     </div>`;
 }
 
@@ -782,7 +766,10 @@ function renderPlan(d, periods, history) {
   // The engine allocates the gap across the ranked sources and tells us what
   // that costs. Choosing a single source here and passing only its debtId
   // modelled the whole gap as debt-free even when no source could reach it.
-  const advice = Forecast.recommend(plan, asOf, simOpts({ fundingSources: plan.funding && plan.funding.options }));
+  const advice = Forecast.recommend(plan, asOf, simOpts({
+    fundingSources: plan.funding && plan.funding.options,
+    periods,
+  }));
   const fundingPlan = advice.funding || null;
   const recommended = advice.weekly;
   const weekly = state.weeklyVariable != null ? state.weeklyVariable : recommended;
