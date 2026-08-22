@@ -15,18 +15,23 @@ the site may hold evidence about a question. They do not close it.
 
 ### Q1. Does the business make money?
 **Status:** OPEN · **Owner:** Dale + wife + accountant
-**What we know:** $54,213 of inbound e-transfers over 18 months (~$3,012/month)
-described as sale proceeds. $23,200 of outbound e-transfers, $13,062 of it drawn
-directly from the HELOC at 4.90%. Heavy retail purchasing currently classified as
-household spending. A CRA balance paid from the HELOC.
+**What we know:** Of the existing $23,200 of outbound e-transfers, a
+**CALCULATED $3,500** is traced to the Wise holiday accounts, leaving a
+**CALCULATED $19,700** without a matched destination; $13,062 of the outbound
+stream was drawn directly from the HELOC at 4.90%. Separately, $54,213 of
+inbound e-transfers over 18 months (~$3,012/month) are described as sale
+proceeds. Heavy retail purchasing is currently classified as household spending.
+A CRA balance was paid from the HELOC. The Deep Dive's question about where the
+remaining $19,700 goes is this Q1 sub-part, not a separate household question.
 **What the answer changes:** Everything. If receipts exceed true cost of goods,
 the household is running a financed but viable side business. If they do not, the
 activity is consuming HELOC capacity and generating tax liability while producing
 little — which would explain why the HELOC grows despite $78,177 of repayments.
 It also determines whether household "spending" of $7,551/month is overstated.
 **How to answer:** Set the $54,213 of receipts against inventory purchases —
-e-transfers out plus whichever retail purchases were for resale. Even a rough
-month of tracking would settle it.
+including the still-unmatched $19,700 of outbound e-transfers after the $3,500
+Wise transfer is excluded, plus whichever retail purchases were for resale. Even
+a rough month of tracking would settle it.
 
 ### Q2. Where do the "TFR-TO C/C" transfers go?
 **Status:** OPEN · **Owner:** Dale
