@@ -5,10 +5,14 @@
  * docs/01_OPEN_QUESTIONS.md owns status. Household-facing Deep Dive /
  * data.json.questions may explain evidence; they may not independently close
  * a question, including by overloading tier 0 as "answered".
+ * docs/positions.csv and BACKLOG.md may record evidence or completed
+ * investigation; they may not claim RESOLVED / ANSWERED / CLOSED for a
+ * question the canonical file still has OPEN.
  *
  * Q2 and Q20 are the live proving cases. The suite must fail if a publication
  * copy independently marks either ANSWERED while the canonical file still
- * has it OPEN — and the reverse on a proving fixture.
+ * has it OPEN — and the reverse on a proving fixture. Extra-surface proving
+ * case: a positions.csv / BACKLOG Q2 close while Q2 is OPEN.
  */
 const fs = require('fs');
 const path = require('path');
@@ -60,9 +64,105 @@ function parseCanonicalQuestions(markdown) {
     } else if (/\bANSWERED\b/i.test(match[2])) {
       status = 'ANSWERED';
     }
-    questions.push({ id, title, status });
+    questions.push({ id, title, status, body });
   }
   return questions;
+}
+
+const CLOSED_STATUSES = new Set(['RESOLVED', 'ANSWERED', 'CLOSED']);
+
+function distinctiveAmount(canonical) {
+  const know = /\*\*What we know:\*\*\s*([^\n]+)/.exec(canonical.body || '');
+  if (!know) return null;
+  const m = /\$([0-9]{1,3}(?:,[0-9]{3})+)/.exec(know[1]);
+  return m ? m[1].replace(/,/g, '') : null;
+}
+
+function matchesSurface(unit, canonical) {
+  if (matchesCanonical({ q: unit, title: unit, detail: unit, changes: unit }, canonical)) {
+    return true;
+  }
+  const n = normalize(unit);
+  if (n.split(/\s+/).includes(canonical.id.toLowerCase())) return true;
+  const amount = distinctiveAmount(canonical);
+  if (amount && amount.length >= 5 && String(unit).replace(/,/g, '').includes(amount)) {
+    return true;
+  }
+  return false;
+}
+
+function explicitStatusBindings(unit) {
+  const map = new Map();
+  const spans = [];
+  const groupRe = /\b(Q\d+[a-zA-Z]?(?:\s*\/\s*Q\d+[a-zA-Z]?)*)\b(?:\s+(?:stayed|remains|still|stays|stay|is|are|was|were)(?:\s+later)?)*\s+(OPEN|ASKED|ANSWERED|BLOCKED|CLOSED|RESOLVED)\b/gi;
+  let match;
+  while ((match = groupRe.exec(unit))) {
+    const ids = match[1].match(/Q\d+[a-zA-Z]?/gi) || [];
+    const status = match[2].toUpperCase();
+    for (const id of ids) map.set(id.toUpperCase(), status);
+    spans.push({ start: match.index, end: match.index + match[0].length });
+  }
+  return { map, spans };
+}
+
+function closedStatusClaims(unit) {
+  const out = [];
+  const re = /\b(RESOLVED|ANSWERED|CLOSED)\b/gi;
+  let match;
+  while ((match = re.exec(unit))) {
+    const token = match[1].toUpperCase();
+    const start = match.index;
+    if (token === 'CLOSED') {
+      const prev = start > 0 ? unit[start - 1] : '';
+      if (prev === '/' || prev === '-') continue;
+    }
+    const before = unit.slice(Math.max(0, start - 56), start);
+    const negated = /\b(not|never|without)\b[\s\S]*$/i.test(before);
+    const prefix = unit.slice(0, start);
+    const inTicks = (prefix.split('`').length % 2) === 0;
+    out.push({ token, index: start, negated, inTicks });
+  }
+  return out;
+}
+
+function extraSurfaceDefects(canonical, extraSurfaces) {
+  const defects = [];
+  for (const surface of extraSurfaces || []) {
+    const rel = surface.path || 'unknown';
+    const units = String(surface.text || '').split('\n');
+    units.forEach((unit, idx) => {
+      if (!unit.trim()) return;
+      const { map: bindings, spans } = explicitStatusBindings(unit);
+      const claims = closedStatusClaims(unit).filter(c => {
+        if (c.negated || c.inTicks) return false;
+        return !spans.some(s => c.index >= s.start && c.index < s.end);
+      });
+      for (const q of canonical) {
+        if (q.status !== 'OPEN' && q.status !== 'ASKED' && q.status !== 'BLOCKED') continue;
+        const bound = bindings.get(q.id);
+        if (bound) {
+          if (CLOSED_STATUSES.has(bound)) {
+            defects.push({
+              code: 'open-marked-answered',
+              message: `canonical ${q.id} is ${q.status}, but ${rel}:${idx + 1} marks it ${bound}`,
+              id: q.id,
+              path: rel,
+            });
+          }
+          continue;
+        }
+        if (!claims.length) continue;
+        if (!matchesSurface(unit, q)) continue;
+        defects.push({
+          code: 'open-marked-answered',
+          message: `canonical ${q.id} is ${q.status}, but ${rel}:${idx + 1} marks it ${claims[0].token}`,
+          id: q.id,
+          path: rel,
+        });
+      }
+    });
+  }
+  return defects;
 }
 
 function encodesAnswered(question) {
@@ -127,7 +227,7 @@ function rendererIndependentlyMarksAnswered(source) {
   return false;
 }
 
-function findQuestionStatusDefects({ markdown, publishedQuestions, rendererSource }) {
+function findQuestionStatusDefects({ markdown, publishedQuestions, rendererSource, extraSurfaces }) {
   const defects = [];
   const canonical = parseCanonicalQuestions(markdown);
   const byId = new Map(canonical.map(q => [q.id, q]));
@@ -173,11 +273,13 @@ function findQuestionStatusDefects({ markdown, publishedQuestions, rendererSourc
     }
   }
 
+  defects.push(...extraSurfaceDefects(canonical, extraSurfaces));
+
   return { canonical, byId, defects };
 }
 
 function assertQuestionStatusAuthority(input) {
-  const result = findQuestionStatusDefects(input);
+  const result = findQuestionStatusDefects({ extraSurfaces, ...input });
   if (result.defects.length) {
     const err = new Error(result.defects.map(d => d.message).join('\n'));
     err.defects = result.defects;
@@ -189,8 +291,12 @@ function assertQuestionStatusAuthority(input) {
 const markdown = read('docs/01_OPEN_QUESTIONS.md');
 const rendererSource = read('public/deepdive.js');
 const published = data.questions;
+const extraSurfaces = [
+  { path: 'docs/positions.csv', text: read('docs/positions.csv') },
+  { path: 'BACKLOG.md', text: read('BACKLOG.md') },
+];
 const live = findQuestionStatusDefects({
-  markdown, publishedQuestions: published, rendererSource,
+  markdown, publishedQuestions: published, rendererSource, extraSurfaces,
 });
 
 console.log('=== canonical authority parses ===');
@@ -217,7 +323,7 @@ console.log('=== canonical authority parses ===');
 console.log('\n=== live publication cannot contradict canonical status ===');
 {
   ok(live.defects.length === 0,
-    'live Deep Dive / data.json.questions does not contradict 01_OPEN_QUESTIONS.md',
+    'live Deep Dive / data.json.questions / positions.csv / BACKLOG.md do not contradict 01_OPEN_QUESTIONS.md',
     live.defects.map(d => d.message).join('; ') || 'clean');
   ok(!published.some(q => q.tier === 0 || q.tier === '0'),
     'no published question uses tier 0 as an answered bit');
@@ -240,6 +346,10 @@ console.log('\n=== live publication cannot contradict canonical status ===');
   const q9pub = published.filter(q => matchesCanonical(q, live.byId.get('Q9')));
   ok(q9pub.length === 0 || q9pub.every(q => encodesAnswered(q)),
     'canonical-ANSWERED Q9 is not independently presented as OPEN');
+  const extraDefects = extraSurfaceDefects(live.canonical, extraSurfaces);
+  ok(extraDefects.length === 0,
+    'live positions.csv and BACKLOG.md do not close a canonical-OPEN question',
+    extraDefects.map(d => d.message).join('; ') || 'clean');
 }
 
 console.log('\n=== mutation recreates the old defect ===');
@@ -357,6 +467,52 @@ console.log('\n=== renderer mutation ===');
   ok(!!renderErr && /renderer/i.test(renderErr.message),
     'restoring tier === 0 as an answered/done bit fails',
     renderErr ? renderErr.message.split('\n')[0] : 'suite stayed green');
+}
+
+console.log('\n=== extra-surface mutation recreates the Q2 close ===');
+{
+  const OLD_POSITIONS_Q2_ROW = 'RESOLVED,,TFR-TO C-C destination,,Outflow,CAD,0.00,,,,,,Answered,,,,,,VERIFIED,2026-08-09,RESOLVED - the transfers went to the cards; over the 12-month statement window the cards received 55178.02 (Travel Visa 33696.18 + Cash Back 11879.50 + personal Visa 6632.34 + MBNA 2970.00) against 39875.43 of TFR-TO C-C leaving; cards received 15302.59 MORE than the transfers sent with the rest arriving via direct HELOC payments; it looked unexplained only because just one of five cards was visible and it took only 6632.34; NO undisclosed card and no leakage';
+  const OLD_B18 = '- **B18** The **$46,657** resolved — it paid the cards. Nothing was hiding';
+  const SYNTHETIC_Q2_CLOSE = 'RESOLVED — Q2. The TFR-TO C/C transfers are ANSWERED.';
+
+  const withOldPositions = extraSurfaces.map(s => s.path === 'docs/positions.csv'
+    ? { ...s, text: `${s.text.replace(/\n$/, '')}\n${OLD_POSITIONS_Q2_ROW}\n` }
+    : s);
+  const withOldB18 = extraSurfaces.map(s => s.path === 'BACKLOG.md'
+    ? { ...s, text: `${s.text.replace(/\n$/, '')}\n${OLD_B18}\n` }
+    : s);
+  const withSynthetic = extraSurfaces.map(s => s.path === 'BACKLOG.md'
+    ? { ...s, text: `${s.text.replace(/\n$/, '')}\n${SYNTHETIC_Q2_CLOSE}\n` }
+    : s);
+
+  let positionsErr = null;
+  let b18Err = null;
+  let syntheticErr = null;
+  try {
+    assertQuestionStatusAuthority({
+      markdown, publishedQuestions: published, rendererSource, extraSurfaces: withOldPositions,
+    });
+  } catch (err) { positionsErr = err; }
+  try {
+    assertQuestionStatusAuthority({
+      markdown, publishedQuestions: published, rendererSource, extraSurfaces: withOldB18,
+    });
+  } catch (err) { b18Err = err; }
+  try {
+    assertQuestionStatusAuthority({
+      markdown, publishedQuestions: published, rendererSource, extraSurfaces: withSynthetic,
+    });
+  } catch (err) { syntheticErr = err; }
+
+  ok(!!positionsErr && /Q2/i.test(positionsErr.message) && /positions\.csv/i.test(positionsErr.message),
+    'reintroducing the pre-change RESOLVED TFR-TO C-C positions.csv row fails while Q2 is OPEN',
+    positionsErr ? positionsErr.message.split('\n')[0] : 'suite stayed green');
+  ok(!!b18Err && /Q2/i.test(b18Err.message) && /BACKLOG/i.test(b18Err.message),
+    'reintroducing the pre-change B18 "$46,657 resolved" claim fails while Q2 is OPEN',
+    b18Err ? b18Err.message.split('\n')[0] : 'suite stayed green');
+  ok(!!syntheticErr && /Q2/i.test(syntheticErr.message) && /ANSWERED|RESOLVED/i.test(syntheticErr.message),
+    'a synthetic RESOLVED/ANSWERED Q2 claim outside the authority fails',
+    syntheticErr ? syntheticErr.message.split('\n')[0] : 'suite stayed green');
 }
 
 console.log('\n=== live authority holds after mutations of copies ===');
