@@ -272,6 +272,9 @@ ok(/1\.1m/.test(csvNote('Home')) && /historical/i.test(csvNote('Home')),
 ok(!/midpoint/i.test(csvNote('Home') + csvNote('Household net worth')
   + csvNote('Home equity') + csvNote('Loan-to-value')),
   'positions notes do not call the current home value a midpoint');
+// Independent of scripts/positions-summary.js. Do not re-run regenerateComputedRows
+// and assert its own output. Canonical assets/debts/secured come from data.json;
+// the Home detail row is the owner planning estimate.
 const independentHousehold = assetTotal + homeEstimate - debtTotal;
 ok(near(csvVal('Household net worth'), independentHousehold),
   'Household net worth = owner home estimate + canonical assets − canonical debt',
@@ -279,10 +282,11 @@ ok(near(csvVal('Household net worth'), independentHousehold),
 ok(near(csvVal('Home equity'), homeEstimate - secured),
   'Home equity = owner home estimate − canonical secured debt',
   money(csvVal('Home equity')));
-const independentLtv = Math.round((secured / homeEstimate) * 1000) / 10;
+const independentLtvPct = (secured / homeEstimate) * 100;
+const independentLtv = Math.round(independentLtvPct * 10) / 10;
 ok(near(csvVal('Loan-to-value'), independentLtv, 0.05),
   'Loan-to-value = canonical secured debt / owner home estimate',
-  String(csvVal('Loan-to-value')));
+  `${independentLtvPct.toFixed(2)}% → ${independentLtv}`);
 ok(/owner-estimated home planning value/i.test(csvNote('Household net worth')),
   'generated household net worth names an owner-estimated planning value');
 ok(csvVal('Silver bullion') != null,
