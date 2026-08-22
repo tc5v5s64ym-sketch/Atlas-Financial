@@ -1850,111 +1850,82 @@
     return absorbable;
   }
 
-  // Signed residual of each future payday after obligations and essential
-  // spend in that payday's interval. Income amounts can differ; this is not
-  // remaining÷paycheques. Commitments are the use of leftover surplus, not a
-  // deduction from the residual. A later deficit consumes earlier surplus
-  // before any commitment can claim that same dollar.
-  function futurePaydayCaps(plan, asOf, opts, futureDates, horizonEnd, essentialMonthly) {
-    const caps = [];
-    for (let i = 0; i < futureDates.length; i++) {
-      const date = futureDates[i];
-      const next = futureDates[i + 1] || addDays(horizonEnd, 1);
-      const last = addDays(next, -1);
-      if (last < date) continue;
-      const days = Math.max(1, diffDays(date, last) + 1);
-      const events = expandEvents(plan, date, last, opts);
-      let income = 0;
-      let out = 0;
-      for (const e of events) {
-        if (e.kind === 'income' && e.date === date) income += e.amount;
-        else if (isJointCashOutflow(e)
-          && e.kind !== 'commitment'
-          && e.kind !== 'extra'
-          && e.kind !== 'injection'
-          && e.kind !== 'planned-debt') {
-          out += -e.amount;
-        }
-      }
-      const ess = essentialMonthly * days / CALENDAR_MONTH_DAYS;
-      const residual = income - out - ess;
-      caps.push({
-        date,
-        next,
-        days,
-        residual,
-        cap: residual,
-      });
-    }
-    return settleFuturePaydayDeficits(caps);
-  }
-
-  // Carry a later household deficit onto earlier leftover surplus, nearest
-  // first. Clipping each interval at zero would invent capacity the master
-  // walk does not have: the same earlier dollar cannot both cover a later
-  // required outflow and fund a later commitment. A remaining deficit after
-  // earlier surplus is exhausted is current path pressure — dropping it
-  // would release cash the household path still needs.
-  function settleFuturePaydayDeficits(caps) {
-    const out = (caps || []).map(c => Object.assign({}, c, { cap: c.residual }));
-    let uncovered = 0;
-    for (let i = 0; i < out.length; i++) {
-      if (!(out[i].cap < -EPSILON)) continue;
-      let need = -out[i].cap;
-      for (let j = i - 1; j >= 0 && need > EPSILON; j--) {
-        if (!(out[j].cap > EPSILON)) continue;
-        const take = Math.min(out[j].cap, need);
-        out[j].cap -= take;
-        need -= take;
-      }
-      out[i].cap = 0;
-      if (need > EPSILON) uncovered += need;
-    }
-    for (const slot of out) slot.cap = Math.max(0, slot.cap);
-    return { slots: out, uncoveredDeficit: roundCent(uncovered) };
-  }
-
-  // Minimum current allocation so protected dated commitments remain jointly
-  // feasible given modeled future income. Earliest-deadline commitments claim
-  // future capacity first (latest-fit inside each window). Current leftover
-  // is not future capacity. Undated rows are not given a fabricated schedule.
-  function requiredNowByCommitment(protectedRows, caps) {
-    const remainingCaps = caps.map(c => Object.assign({}, c));
-    return protectedRows.map(row => {
-      const need = row.need;
-      let still = need;
-      let futureTaken = 0;
-      if (row.date) {
-        for (let i = remainingCaps.length - 1; i >= 0; i--) {
-          const slot = remainingCaps[i];
-          if (slot.date >= row.date) continue;
-          if (!(still > EPSILON) || !(slot.cap > EPSILON)) continue;
-          const take = Math.min(still, slot.cap);
-          slot.cap -= take;
-          still -= take;
-          futureTaken += take;
-        }
-      }
-      const requiredNow = Math.max(0, still);
-      return Object.assign({}, row, {
-        futureTaken: roundCent(futureTaken),
-        requiredNow: roundCent(requiredNow),
-        projectedByDeadline: roundCent(futureTaken),
-      });
+  // Probe the incumbent protected-feasibility predicate by moving cash on
+  // as-of. Positive X is a same-day surplus outflow; negative X is a
+  // same-day injection. This is not a second cash-path model: simulate and
+  // protectedPlanCheck remain the only authorities.
+  const PAYDAY_PROBE_ID = 'payday-surplus-probe';
+  function paydayMasterOpts(plan, asOf, opts, weeklyCap, horizon) {
+    return Object.assign({}, opts, {
+      weeklyVariable: weeklyCap,
+      horizonDays: horizon.days,
+      viewDays: horizon.days,
+      targetBuffer: opts.targetBuffer != null ? opts.targetBuffer
+        : ((plan.defaults && plan.defaults.targetBuffer) || 0),
     });
+  }
+  function paydayProbeOpts(masterOpts, asOf, removeAmount, extraDisabled) {
+    const probe = Object.assign({}, masterOpts, {
+      disabled: (masterOpts.disabled || []).concat(extraDisabled || []),
+    });
+    delete probe.seq;
+    delete probe.sim;
+    delete probe.majorPlans;
+    delete probe.plannedDebt;
+    const amt = roundCent(removeAmount);
+    if (amt > EPSILON) {
+      probe.plannedFlows = (masterOpts.plannedFlows || []).concat([{
+        date: asOf, amount: -amt, id: PAYDAY_PROBE_ID, label: 'Payday surplus probe',
+      }]);
+    } else if (amt < -EPSILON) {
+      probe.injections = (masterOpts.injections || []).concat([{
+        date: asOf, amount: -amt, id: PAYDAY_PROBE_ID, label: 'Payday gap probe',
+      }]);
+    }
+    return probe;
+  }
+  function paydayPlanFits(plan, asOf, masterOpts, removeAmount, extraDisabled) {
+    return protectedPlanCheck(plan, asOf,
+      paydayProbeOpts(masterOpts, asOf, removeAmount, extraDisabled)).feasible;
+  }
+  // Largest same-day removal at which protectedPlanCheck still holds.
+  // Negative means that much cash must be added before the protected plan
+  // holds. Monotonic in the removal, so the cent search is exact.
+  function maxFeasiblePaydayRemoval(plan, asOf, masterOpts, loBound, hiBound, extraDisabled) {
+    const fits = cents => paydayPlanFits(plan, asOf, masterOpts, cents / 100, extraDisabled);
+    let loC = Math.round(roundCent(loBound) * 100);
+    let hiC = Math.round(roundCent(hiBound) * 100);
+    if (hiC < loC) hiC = loC;
+    if (fits(hiC)) return roundCent(hiC / 100);
+    if (!fits(loC)) {
+      let add = Math.max(100, Math.abs(loC) || 100);
+      while (add < 1e9 && !fits(-add)) add *= 2;
+      loC = -add;
+      if (!fits(loC)) return roundCent(loC / 100);
+      if (fits(hiC)) return roundCent(hiC / 100);
+    }
+    while (loC + 1 < hiC) {
+      const mid = loC + Math.floor((hiC - loC) / 2);
+      if (fits(mid)) loC = mid;
+      else hiC = mid;
+    }
+    return roundCent(loC / 100);
   }
 
   /* ------------------------------------------- payday allocation waterfall */
   // What current household cash must do. Forecast remains the only planner.
-  // Waterfall: required obligations → essential household hold → dynamic
-  // liquidity from the near-term cash path → required future-cost pressure
-  // (including an uncovered later household deficit) → extra debt
-  // (incumbent cascade) → owner-marked optional residual.
-  // Required or bounded-flex undated items stay unresolved and hold leftover
-  // cash: they do not fabricate a contribution, and they do not release
-  // residual to extra debt or optional residual. Credit is not cash.
-  // Q20 is not resolved here: the model buffer is the existing feasibility
-  // floor, not a newly invented emergency-fund line.
+  // Waterfall: required obligations → essential household hold → protected
+  // future-path cash from the incumbent master walk → required dated
+  // future-cost attribution from that same walk → extra debt (incumbent
+  // cascade) → owner-marked optional residual.
+  // Protected current cash is the leftover that cannot be removed today
+  // while protectedPlanCheck still holds. Extra debt and optional residual
+  // receive only that proven surplus. Required or bounded-flex undated
+  // items stay unresolved and hold leftover cash: they do not fabricate a
+  // contribution, and they do not release residual to extra debt or
+  // optional residual. Credit is not cash. Q20 is not resolved here: the
+  // model buffer is the existing feasibility floor, not a newly invented
+  // emergency-fund line.
   function paydayAllocation(plan, asOf, opts) {
     opts = opts || {};
     const buffer = opts.targetBuffer != null ? opts.targetBuffer
@@ -2029,25 +2000,7 @@
 
     const allocatedObligations = take(obligationsWanted);
     const allocatedEssentials = take(essentialsWanted);
-
-    const essentialWeekly = essentialMonthly * 12 / 365.25 * 7;
-    const liqDays = Math.max(1, diffDays(asOf, liquidityUntil) + 1);
-    const liqSim = simulate(plan, asOf, Object.assign({}, opts, {
-      weeklyVariable: essentialWeekly,
-      extraDebtMonthly: 0,
-      horizonDays: liqDays,
-      viewDays: liqDays,
-    }));
-    const minBal = liqSim.min ? liqSim.min.balance : 0;
-    const maxOnward = Math.max(0, minBal - buffer);
-    const leftoverAfterOE = Math.max(0, available - allocatedObligations - allocatedEssentials);
-    const liquidityWanted = Math.max(0, leftoverAfterOE - maxOnward);
-    const allocatedLiquidity = take(liquidityWanted);
-
-    const futureDates = paydayDates.filter(d => d > asOf);
-    const futureCaps = futurePaydayCaps(plan, asOf, opts, futureDates, horizon.end, essentialMonthly);
-    const caps = futureCaps.slots;
-    const uncoveredDeficit = futureCaps.uncoveredDeficit;
+    const leftoverAfterOE = remaining;
 
     const weeklyCap = opts.weeklyVariable != null ? Number(opts.weeklyVariable) || 0 : 0;
     const spendPermission = roundCent(weeklyCap * periodDays / 7);
@@ -2079,12 +2032,33 @@
       if (item.date >= asOf && item.date <= periodLast && item.need != null) continue;
       protectedFuture.push(row);
     }
-    const pressure = requiredNowByCommitment(protectedFuture, caps);
 
-    // Liquidity already reserved the overlapping near-term slice of the
-    // first future interval. Remaining uncovered later deficit is current
-    // path pressure and must be taken before extra debt or optional residual.
-    const pathWanted = Math.max(0, uncoveredDeficit - allocatedLiquidity);
+    const masterOpts = paydayMasterOpts(plan, asOf, opts, weeklyCap, horizon);
+    let loBound = 0;
+    for (const row of protectedFuture) loBound -= Math.max(0, row.need || 0);
+    loBound -= Math.max(0, buffer) + leftoverAfterOE + 1;
+    const hiBound = leftoverAfterOE;
+    const deltaAll = maxFeasiblePaydayRemoval(
+      plan, asOf, masterOpts, loBound, hiBound, []);
+    const movable = roundCent(Math.max(0, Math.min(leftoverAfterOE, deltaAll)));
+
+    const shares = new Map();
+    const latestFirst = protectedFuture.slice().sort((a, b) => {
+      if (a.date === b.date) return 0;
+      return a.date < b.date ? 1 : -1;
+    });
+    let currentDisabled = [];
+    let currentDelta = deltaAll;
+    for (const row of latestFirst) {
+      currentDisabled = currentDisabled.concat([row.id]);
+      const deltaWithout = maxFeasiblePaydayRemoval(
+        plan, asOf, masterOpts, loBound, hiBound, currentDisabled);
+      shares.set(row.id, {
+        requiredNow: roundCent(Math.max(0, deltaWithout - currentDelta)),
+      });
+      currentDelta = deltaWithout;
+    }
+    const pathWanted = roundCent(Math.max(0, leftoverAfterOE - Math.max(0, currentDelta)));
     const allocatedPath = take(pathWanted);
     const pathShortfall = Math.max(0, roundCent(pathWanted - allocatedPath));
 
@@ -2092,7 +2066,7 @@
     if (pathWanted > EPSILON) {
       futureAllocations.push({
         id: 'household-path',
-        label: 'Later household costs',
+        label: 'Future cash path',
         date: null,
         need: roundCent(pathWanted),
         stillNeeded: roundCent(pathWanted),
@@ -2103,14 +2077,16 @@
         verdict: pathShortfall > EPSILON ? 'FUNDING GAP' : 'ON TRACK',
         reason: pathShortfall > EPSILON
           ? `Current plan implies a $${pathShortfall.toFixed(2)} funding gap.`
-          : 'Required current funding pressure is met.',
+          : 'Required current funding from the master Forecast is met.',
       });
     }
-    for (const row of pressure) {
-      const got = take(row.requiredNow);
-      const projected = roundCent(got + row.futureTaken);
-      const shortfall = Math.max(0, roundCent(row.need - projected));
+    for (const row of protectedFuture) {
+      const share = shares.get(row.id) || { requiredNow: 0 };
+      const got = take(share.requiredNow);
       const planRow = row.plan;
+      const gapFromPlan = planRow && planRow.verdict === 'FUNDING GAP'
+        ? Math.max(0, Number(planRow.remaining) || 0) : 0;
+      const shortfall = roundCent(Math.max(0, share.requiredNow - got, gapFromPlan));
       const verdict = shortfall > EPSILON ? 'FUNDING GAP'
         : (planRow && planRow.verdict) || 'ON TRACK';
       futureAllocations.push({
@@ -2119,21 +2095,22 @@
         date: row.date,
         need: roundCent(row.need),
         stillNeeded: roundCent(row.need),
-        requiredNow: row.requiredNow,
+        requiredNow: share.requiredNow,
         allocated: got,
-        projectedByDeadline: projected,
+        projectedByDeadline: got,
         shortfall,
         verdict,
         reason: shortfall > EPSILON
           ? `Current plan implies a $${shortfall.toFixed(2)} funding gap.`
           : (verdict === 'AT RISK'
             ? 'Base case remains feasible; a protected uncertainty case is not.'
-            : 'Required current funding pressure is met.'),
+            : 'Required current funding from the master Forecast is met.'),
       });
     }
 
     const holdForUnresolved = unresolvedRows.some(r => r.flexibility !== 'optional');
-    const extraWanted = holdForUnresolved ? 0 : Math.min(remaining, paydayExtraDebtAbsorbable(opts));
+    const extraWanted = holdForUnresolved ? 0
+      : Math.min(remaining, movable, paydayExtraDebtAbsorbable(opts));
     const allocatedExtraDebt = take(extraWanted);
 
     const optionalAllocations = [];
@@ -2168,11 +2145,10 @@
       weeklyCap,
       spendPermission,
     });
-    pushLine('liquidity', 'liquidity', 'Keep liquid', allocatedLiquidity);
+    pushLine('future-path', 'future-path', 'Keep for future cash path', allocatedPath);
     for (const row of futureAllocations) {
-      const pathHold = row.id === 'household-path';
-      pushLine(pathHold ? 'path' : 'future:' + row.id, 'future-cost',
-        pathHold ? 'Hold for later household costs' : 'Set aside — ' + row.label,
+      if (row.id === 'household-path') continue;
+      pushLine('future:' + row.id, 'future-cost', 'Set aside — ' + row.label,
         row.allocated, { id: row.id, date: row.date });
     }
     pushLine('extra-debt', 'extra-debt', 'Extra debt', allocatedExtraDebt);
@@ -2258,17 +2234,17 @@
         reason: 'Required, but no exact date — no payday contribution assigned; leftover cash is not released to extra debt.',
       })),
       liquidity: {
-        wanted: roundCent(liquidityWanted),
-        allocated: allocatedLiquidity,
-        minBalance: roundCent(minBal),
-        until: liquidityUntil,
-      },
-      pathPressure: {
         wanted: roundCent(pathWanted),
         allocated: allocatedPath,
-        uncoveredDeficit,
+        until: liquidityUntil,
       },
-      futureCosts: futureAllocations,
+      protectedPath: {
+        wanted: roundCent(pathWanted),
+        allocated: allocatedPath,
+        movable: roundCent(movable),
+      },
+      movable: roundCent(movable),
+      futureCosts: futureAllocations.filter(r => r.id !== 'household-path'),
       extraDebt: { allocated: allocatedExtraDebt, absorbable: roundCent(paydayExtraDebtAbsorbable(opts)) },
       optional: optionalAllocations,
       lines,
