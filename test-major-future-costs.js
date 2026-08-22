@@ -4,8 +4,10 @@
  * become cash events and are not smeared across the 91-day sinking line.
  * They do encumber protected principal on the B94 master walk.
  *
- * Amounts below are the owner estimates from the 2026-08-16 instruction,
- * written as literals — not read back from the rows they prove.
+ * Amounts below are the current owner estimates, written as literals —
+ * not read back from the rows they prove. Christmas 2026 is the
+ * 2026-08-22 owner decision ($4,000); other point amounts remain the
+ * 2026-08-16 estimates.
  */
 const fs = require('fs');
 const path = require('path');
@@ -44,7 +46,7 @@ const POINT = {
   'burrards-team-fees': 700,
   'seattle-nov': 1200,
   'seattle-dec': 1200,
-  'christmas-2026': 3500,
+  'christmas-2026': 4000,
   'downstairs-couch': 1700,
   'provincials': 1000,
   'home-insurance': 3131.76,
@@ -137,10 +139,10 @@ ok(!(budget.sinkingItems || []).some(s =>
 
 console.log('\n=== published point-estimate total is independently summed ===');
 const preexistingPoints = 800;
-const absorbedPoints = 2000 + 700 + 1200 + 1200 + 3500 + 1700 + 1000 + 3131.76 + 2400;
+const absorbedPoints = 2000 + 700 + 1200 + 1200 + 4000 + 1700 + 1000 + 3131.76 + 2400;
 const HAND_TOTAL = preexistingPoints + absorbedPoints;
-ok(near(preexistingPoints, 800) && near(absorbedPoints, 16831.76)
-  && near(HAND_TOTAL, 17631.76),
+ok(near(preexistingPoints, 800) && near(absorbedPoints, 17331.76)
+  && near(HAND_TOTAL, 18131.76),
   'hand total is unsettled Warriors $800 plus the absorbed point estimates; settled rows are excluded');
 ok(near(pub.commitmentsTotal, HAND_TOTAL),
   'publicationTotals matches that independent sum',

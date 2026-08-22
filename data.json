@@ -447,12 +447,12 @@
             {
                 "id": "christmas-2026",
                 "label": "Christmas 2026",
-                "amount": 3500,
+                "amount": 4000,
                 "when": "by Christmas 2026",
                 "budgetCategory": null,
                 "confidence": "estimated",
                 "sinkingFund": true,
-                "note": "Owner estimate $3,500 by Christmas 2026. Amanda's 10 August interview $5,000–$6,000/year remains interview evidence, not this row. No day is invented."
+                "note": "Owner decision 2026-08-22: $4,000 by Christmas 2026, superseding the prior $3,500 owner estimate. Amanda's 10 August interview $5,000–$6,000/year remains interview evidence, not this row. No day is invented."
             },
             {
                 "id": "downstairs-couch",

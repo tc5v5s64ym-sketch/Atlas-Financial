@@ -201,8 +201,8 @@ console.log('\n=== C. future financial gravity affects today; the payday window 
   xmasRow.settledOn = liveAsOf;
   const xmasAfter = F.recommend(xmas.plan, liveAsOf, recOpts());
   ok(xmasAfter.knowledge.encumbered < encBefore
-    && near(encBefore - xmasAfter.knowledge.encumbered, 3500),
-    'settling Christmas releases that encumbered principal independently ($3,500)',
+    && near(encBefore - xmasAfter.knowledge.encumbered, 4000),
+    'settling Christmas releases that encumbered principal independently ($4,000)',
     `${encBefore.toFixed(2)} → ${xmasAfter.knowledge.encumbered.toFixed(2)}`);
   ok(xmasAfter.weekly === base.advice.weekly,
     'that released principal does not automatically become a higher weekly cap',
