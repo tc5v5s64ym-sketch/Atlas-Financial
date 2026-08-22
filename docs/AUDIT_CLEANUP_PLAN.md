@@ -32,7 +32,7 @@ When the owner says **"action the audit cleanup plan"**:
 ## Progress summary
 
 Baseline findings: **P0 = 0 · P1 = 5 · P2 = 11 · P3 = 2**.  
-Current progress: **12 / 18 findings dispositioned**.
+Current progress: **13 / 18 findings dispositioned**.
 
 Status vocabulary:
 
@@ -52,7 +52,7 @@ Status vocabulary:
 | 2 | **F-02** | Reconcile TD Cash Back Visa and Travel Visa standing-facts prose to the canonical 2026-08-19 state, removing stale balance/minimum/limit claims from the wrong home. | **DONE — PR #137** | Cash Back and Travel Visa current-voice route revolving state to `data.json` / `Forecast.utilisation` / `positions.csv` and do not copy current posted, available, or over-limit figures. Calendar retires `$762.36` without pinning a replacement amount. HELOC leftover is not copied. Invariant proves no competing current-state copy. |
 | 3 | **F-04** | Re-derive B71 Triangle limit-risk conclusion from the current canonical opening / `Forecast.projectDebts`; no stale “remains under” claim presented as current. | **DONE — PR #139** | B71 rewritten from live `Forecast.projectDebts` on the 2026-08-19 opening: Triangle `firstOver` 2026-08-19, day 0, `alreadyOver` false; utilisation available $4.68 (~99.97% used). 2026-08-16 under-limit figures labelled retired. B71 reopened because the 2026-08-18 remains-under resolution is false on this opening. |
 | 4 | **F-03** | One authoritative coaching-income overstatement answer reaches both Deep Dive surfaces; no `$650` vs `$1,650` contradiction. | **DONE — PR #140** | `questions[0].changes` routes to `incomeWarning` (~$650/month, indicative) and labels $1,650 as the earlier upper-bound fear. B93 uniqueness in `test-dedup-facts.js` fails if published `data.json` strings again state different current monthly overstatement figures. |
-| 5 | **F-05** | Reconcile Evidence-Use Register dispositions for the six interview-derived commitments with the owner gate and the values already live in `plan.commitments`; add only a guard justified by the resolved authority state. | **IN PR #149** | Owner decision 2026-08-21 America/Vancouver: exterior painting $700–$1,200, downstairs couch $1,700, Indio $5,260–$5,460, Warriors $800, Fusion season $2,000, and vehicle maintenance $2,400 are authorized as current Forecast planning estimates (flexible; not immutable). Consumption of those six register rows is this PR; planned-expense UI is follow-up, not a blocker. |
+| 5 | **F-05** | Reconcile Evidence-Use Register dispositions for the six interview-derived commitments with the owner gate and the values already live in `plan.commitments`; add only a guard justified by the resolved authority state. | **DONE — PR #149** | Six owner-approved planning estimates are CONSUMED to live `plan.commitments`; owner_gate removed; no amount lock; planned-expense UI remains follow-up. |
 | 6 | **F-06** | Q2 status claims outside `01_OPEN_QUESTIONS.md` cannot contradict the sole question-status authority; correct current conflicts and add the narrow deterministic guard if current governance still calls for it. | **DONE — PR #141** | `positions.csv` and B18 record TFR-TO C/C payment-matching as destination evidence only; Q2 stays OPEN. `test-question-status.js` fails if either file claims RESOLVED/ANSWERED/CLOSED for a canonical-OPEN question. |
 | 7 | **F-07** | Q3's secured-debt and financial-account-net-worth fragment are current or explicitly dated historical figures, not stale-as-current. | **DONE — PR #142** | Q3 now carries current secured debt $745,674.46 and financial-account fragment -$730,394.82 while remaining OPEN. |
 | 8 | **F-08** | B91's completed record clearly labels the 2026-08-16 block historical and no longer asserts that superseded opening / Q19 state as current. | **DONE — PR #143** | B91 preserves the 2026-08-16 opening, $2,252.76, $920/week and then-OPEN Q19 only as dated historical evidence; current opening remains 2026-08-19 and Q19 is ANSWERED. |
@@ -70,7 +70,7 @@ Status vocabulary:
 ## Priority and batching
 
 - **F-01 → F-04 are first.** They are the baseline audit's P1 household-facing correctness / contradiction work that does not require an owner answer.
-- **F-05 owner decision received 2026-08-21** (six planning estimates authorized). F-14 owner decision received 2026-08-21 ($1,300,000 owner-estimated home); implementation is a later PR.
+- **F-05 is DONE — PR #149.** F-14 owner decision received 2026-08-21 ($1,300,000 owner-estimated home); this PR implements that reporting path.
 - Default to **one finding per PR**. If current evidence proves two findings share one root cause and one acceptance condition, current governance may permit one PR; record why in the merge card. Do not batch merely because both are documentation.
 - F-17 stays deferred unless an honest touch to one of those files makes the cleanup in-scope.
 - The audit's recommendations are dated advice, not an override of current repository governance. Reproduce each finding before acting.
@@ -749,7 +749,7 @@ is unchanged.
 
 ## Items deliberately not given dedicated Opus prompts
 
-- **F-14 midpoint net worth:** owner decision received 2026-08-21 — $1,300,000 home planning estimate, labelled owner-estimated rather than appraised/verified. Not implemented in F-05. Later implementation must not invent an appraisal.
+- **F-14 midpoint net worth:** owner decision received 2026-08-21 — $1,300,000 home planning estimate, labelled owner-estimated rather than appraised/verified. Implementation is this PR; must not invent an appraisal.
 - **F-16 newer canonical opening:** waits on Owner decision C and is separate from PR 13 above.
 - **F-17 stale suite-count comments:** opportunistic only; clean them when those files are honestly touched.
 - **F-18 outbound-e-transfer question:** low-value deferred cleanup; fold into a future Q1 refresh or assign one canonical question id without duplicating the question.

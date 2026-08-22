@@ -126,15 +126,15 @@ function regenerateComputedRows(data, csvText, opts) {
   if (householdNetWorth != null) {
     put('Household net worth', W('SUMMARY', 'Household net worth', 'Net', 'CAD', n2(householdNetWorth), {
       confidence: 'ESTIMATE',
-      note: `Derived: financial assets ${n2(assets)} plus the home at the ${n2(homeValue)} midpoint `
-        + `less all debt ${n2(debts)}; the home figure is an owner estimate, not an appraisal` }));
+      note: `Derived: financial assets ${n2(assets)} plus the owner-estimated home planning value `
+        + `${n2(homeValue)} less all debt ${n2(debts)}; not an appraisal or verified market valuation` }));
     put('Home equity', W('SUMMARY', 'Home equity', 'Net', 'CAD', n2(homeValue - secured), {
       confidence: 'ESTIMATE',
-      note: `Derived: home ${n2(homeValue)} less secured debt ${n2(secured)}` }));
+      note: `Derived: owner-estimated home ${n2(homeValue)} less secured debt ${n2(secured)}` }));
     const ltv = (secured / homeValue) * 100;
     put('Loan-to-value', Object.assign(W('SUMMARY', 'Loan-to-value', 'Net', '', (Math.round(ltv * 10) / 10).toFixed(1), {
       confidence: 'ESTIMATE', renewal: '2027-05-01',
-      note: `Derived: ${n2(secured)} secured against a ${n2(homeValue)} valuation; under the 80% that matters at renewal` })));
+      note: `Derived: ${n2(secured)} secured against the owner-estimated home planning value ${n2(homeValue)}; under the 80% that matters at renewal` })));
   }
 
   put('Immediate liquidity total', W('LIQUIDITY', 'Immediate liquidity total', 'Net', 'CAD',

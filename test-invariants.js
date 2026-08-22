@@ -250,7 +250,41 @@ ok(near(csvVal('Total visible assets'), assetTotal),
 ok(near(csvVal('Total known debt'), debtTotal),
   'and the debt total', money(csvVal('Total known debt')));
 ok(near(csvVal('Financial-account net worth'), assetTotal - debtTotal),
-  'and financial-account net worth', money(csvVal('Financial-account net worth')));
+  'and financial-account net worth, which still excludes the home',
+  money(csvVal('Financial-account net worth')));
+const csvNote = label => {
+  const row = csv.find(c => c[2] === label);
+  return row ? String(row[20] || '') : '';
+};
+const homeEstimate = csvVal('Home');
+ok(near(homeEstimate, 1300000),
+  'Home detail is the 2026-08-21 owner planning estimate', money(homeEstimate));
+const homeRow = csv.find(c => c[2] === 'Home') || [];
+ok(homeRow[19] === '2026-08-21',
+  'Home as-of is the owner-decision date', homeRow[19] || 'missing');
+ok(/2026-08-21/.test(csvNote('Home')) && /planning estimate/i.test(csvNote('Home')),
+  'Home notes name the dated owner planning estimate');
+ok(/not an appraisal/i.test(csvNote('Home'))
+  && /independently verified market value/i.test(csvNote('Home')),
+  'Home notes refuse appraisal and verified-market claims');
+ok(/1\.1m/.test(csvNote('Home')) && /historical/i.test(csvNote('Home')),
+  'the older $1.1m–$1.4m range is kept only as dated historical evidence');
+ok(!/midpoint/i.test(csvNote('Home') + csvNote('Household net worth')
+  + csvNote('Home equity') + csvNote('Loan-to-value')),
+  'positions notes do not call the current home value a midpoint');
+const independentHousehold = assetTotal + homeEstimate - debtTotal;
+ok(near(csvVal('Household net worth'), independentHousehold),
+  'Household net worth = owner home estimate + canonical assets − canonical debt',
+  money(csvVal('Household net worth')));
+ok(near(csvVal('Home equity'), homeEstimate - secured),
+  'Home equity = owner home estimate − canonical secured debt',
+  money(csvVal('Home equity')));
+const independentLtv = Math.round((secured / homeEstimate) * 1000) / 10;
+ok(near(csvVal('Loan-to-value'), independentLtv, 0.05),
+  'Loan-to-value = canonical secured debt / owner home estimate',
+  String(csvVal('Loan-to-value')));
+ok(/owner-estimated home planning value/i.test(csvNote('Household net worth')),
+  'generated household net worth names an owner-estimated planning value');
 ok(csvVal('Silver bullion') != null,
   'the silver has a position row — its absence was the drift',
   money(csvVal('Silver bullion') || 0));
