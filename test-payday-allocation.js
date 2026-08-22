@@ -233,12 +233,12 @@ console.log('\n=== G. unknown deadline ===');
   ok(!(alloc.lines || []).some(l => l.id === 'undated' && l.kind === 'future-cost'),
     'no mandatory set-aside is fabricated for the undated commitment');
   const undatedLine = (alloc.lines || []).find(l => l.id === 'undated');
-  if (undatedLine) {
-    ok(undatedLine.kind === 'optional',
-      'undated residual, if any, uses optional residual semantics', undatedLine.kind);
-  } else {
-    ok(true, 'undated commitment received no payday contribution');
-  }
+  ok(!undatedLine,
+    'required-undated is not given a payday contribution line');
+  ok((alloc.unresolved || []).some(r => r.id === 'undated' && r.flexibility === 'required' && !r.date),
+    'required-undated stays unresolved, with no fabricated date');
+  ok(!(alloc.optional || []).some(r => r.id === 'undated'),
+    'required-undated is not demoted into optional residual');
   ok(!(alloc.futureCosts || []).some(r => r.id === 'undated' && r.date),
     'no date was invented for the undated commitment');
   const oct = future(alloc, 'oct');
@@ -324,6 +324,171 @@ console.log('\n=== J. variable future income ===');
   ok(recon(alloc), 'J reconciles');
 }
 
+console.log('\n=== K. later deficit consumes earlier surplus ===');
+{
+  // Independent: future pay #1 residual +$2,000; pay #2 is $1,000 income
+  // minus a $2,500 required bill = −$1,500. Net future capacity that
+  // survives the deficit is $500, so a later $2,000 commitment needs $1,500
+  // now. Clipping each payday at zero would invent $2,000 of capacity and
+  // report $0 required now.
+  const pay1 = 2000;
+  const pay2 = 1000;
+  const laterBill = 2500;
+  const laterNeed = 2000;
+  const signedNet = pay1 + pay2 - laterBill;
+  const requiredNow = laterNeed - signedNet;
+  ok(signedNet === 500 && requiredNow === 1500,
+    'independent walk: later deficit leaves $500, so $1,500 is required now');
+
+  const fixture = {
+    windowDays: 200,
+    defaults: { targetBuffer: 0 },
+    startingCash: { amount: 2000 },
+    income: [
+      { id: 'p1', label: 'Pay 1', frequency: 'once', date: '2026-09-15', amount: pay1, confidence: 'confirmed' },
+      { id: 'p2', label: 'Pay 2', frequency: 'once', date: '2026-10-15', amount: pay2, confidence: 'confirmed' },
+    ],
+    obligations: [],
+    bills: [{ id: 'heavy', label: 'Heavy', frequency: 'once', date: '2026-10-16', amount: laterBill, confidence: 'confirmed' }],
+    commitments: [{ id: 'later', label: 'Later cost', date: '2026-11-20', amount: laterNeed, confidence: 'confirmed' }],
+  };
+  const alloc = F.paydayAllocation(fixture, AS_OF, opts());
+  const later = future(alloc, 'later');
+  ok(later && near(later.requiredNow, requiredNow) && near(later.allocated, requiredNow),
+    'required now carries the intervening deficit instead of clipping it',
+    later && `${later.requiredNow} allocated ${later.allocated}`);
+  ok(!near(later.requiredNow, 0),
+    'a clipped non-negative bucket would have reported $0 required now');
+  ok(recon(alloc), 'K reconciles');
+}
+
+console.log('\n=== L. required-undated is not optional residual ===');
+{
+  const leftoverAfterOct = 500 - 140;
+  const fixture = planA({
+    commitments: [
+      { id: 'undated', label: 'Undated required', amount: 5000, confidence: 'confirmed' },
+      { id: 'oct', label: 'October cost', date: '2026-10-10', amount: 700, confidence: 'confirmed' },
+    ],
+  });
+  const withDebt = F.paydayAllocation(fixture, AS_OF, opts({ debts: CARD }));
+  const unresolved = (withDebt.unresolved || []).find(r => r.id === 'undated');
+  ok(unresolved && unresolved.flexibility === 'required' && unresolved.date == null,
+    'fundingSequence-required undated stays unresolved');
+  ok(!(withDebt.lines || []).some(l => l.id === 'undated'),
+    'it receives no optional or mandatory payday line');
+  ok(near(withDebt.extraDebt.allocated, leftoverAfterOct),
+    'leftover after dated pressure goes to extra debt, not the undated item',
+    String(withDebt.extraDebt.allocated));
+  ok(near(future(withDebt, 'oct').allocated, 140),
+    'the dated October row is unchanged');
+
+  const noDebt = F.paydayAllocation(fixture, AS_OF, opts());
+  ok(near(noDebt.unallocated, leftoverAfterOct),
+    'without absorbable debt, leftover stays unallocated rather than becoming an undated set-aside',
+    String(noDebt.unallocated));
+  ok(recon(withDebt) && recon(noDebt), 'L reconciles');
+}
+
+console.log('\n=== M. rendered instructions keep every line and the weekly cap ===');
+{
+  const fs = require('fs');
+  const path = require('path');
+  const vm = require('vm');
+  const DAYS = F.diffDays(AS_OF, '2026-09-14') + 1;
+  const WEEKLY = 100;
+  const ESSENTIAL_MONTHLY = 2000;
+  const essWanted = ESSENTIAL_MONTHLY * DAYS / MONTH;
+  const spendPermission = WEEKLY * DAYS / 7;
+  ok(essWanted > spendPermission,
+    'fixture essential hold exceeds the weekly-cap permission',
+    `${essWanted.toFixed(2)} vs ${spendPermission.toFixed(2)}`);
+
+  const fixture = {
+    windowDays: 200,
+    defaults: { targetBuffer: 0 },
+    startingCash: { amount: 8000 },
+    income: [
+      { id: 'p1', label: 'Pay 1', frequency: 'once', date: '2026-09-15', amount: 400, confidence: 'confirmed' },
+    ],
+    obligations: [],
+    bills: [
+      { id: 'rent', label: 'Rent', frequency: 'once', date: '2026-09-05', amount: 300, confidence: 'confirmed' },
+      { id: 'later-bill', label: 'Later bill', frequency: 'once', date: '2026-09-16', amount: 900, confidence: 'confirmed' },
+    ],
+    budget: { categories: [{ id: 'groc', label: 'Groceries', class: 'essential', plannedMonthly: ESSENTIAL_MONTHLY }] },
+    commitments: [
+      { id: 'oct', label: 'October cost', date: '2026-10-10', amount: 700, confidence: 'confirmed' },
+      { id: 'nov', label: 'November cost', date: '2026-11-10', amount: 700, confidence: 'confirmed' },
+      { id: 'undated', label: 'Undated required', amount: 4000, confidence: 'confirmed' },
+    ],
+  };
+  const alloc = F.paydayAllocation(fixture, AS_OF, opts({
+    weeklyVariable: WEEKLY,
+    debts: CARD,
+  }));
+  const rec = { weekly: WEEKLY, paydayAllocation: alloc, mode: 'normal' };
+  const material = (alloc.lines || []).filter(l => Number(l.amount) > 0 && l.label);
+  ok(material.length > 5,
+    'the allocator produced more than five material lines',
+    String(material.length));
+  ok(near(alloc.weeklyCap, WEEKLY) && near(alloc.spendPermission, spendPermission),
+    'the weekly cap remains the spend permission',
+    `${alloc.weeklyCap} / ${alloc.spendPermission}`);
+  ok(near(alloc.essentials.wanted, essWanted) && alloc.essentials.role === 'reserve',
+    'essential cash is a hold, independently the period essential need',
+    String(alloc.essentials.allocated));
+  ok(alloc.essentials.allocated > alloc.spendPermission,
+    'the hold can exceed the weekly-cap permission without becoming a second spend figure');
+  const essLine = line(alloc, 'essentials');
+  ok(essLine && /hold/i.test(essLine.label) && !/household spending/i.test(essLine.label),
+    'the essentials line is labeled as a hold, not household spending');
+  ok((alloc.unresolved || []).some(r => r.id === 'undated'),
+    'required-undated is visible as unresolved on the same result');
+
+  const appSrc = fs.readFileSync(path.join(__dirname, 'public', 'app.js'), 'utf8');
+  const planSrc = fs.readFileSync(path.join(__dirname, 'public', 'plan.js'), 'utf8');
+  const grab = (src, re, label) => {
+    const m = re.exec(src);
+    if (!m) throw new Error('missing ' + label);
+    return m[0];
+  };
+  const composed = vm.runInNewContext(
+    [
+      grab(appSrc, /^const money = .*$/m, 'money'),
+      grab(appSrc, /^const money2 = .*$/m, 'money2'),
+      grab(appSrc, /^const fmtDate = .*$/m, 'fmtDate'),
+      grab(appSrc, /^const fmtDateLong = .*$/m, 'fmtDateLong'),
+      grab(planSrc, /^const fmtMonth = .*$/m, 'fmtMonth'),
+      grab(planSrc, /^function weeklyCapView\([\s\S]*?\n\}$/m, 'weeklyCapView'),
+      grab(planSrc, /^function paydayActionRows\([\s\S]*?\n\}$/m, 'paydayActionRows'),
+      grab(planSrc, /^function paydayComingRows\([\s\S]*?\n\}$/m, 'paydayComingRows'),
+      grab(planSrc, /^function paydaySheet\([\s\S]*?\n\}$/m, 'paydaySheet'),
+      grab(planSrc, /^function paydayAnswerHtml\([\s\S]*?\n\}$/m, 'paydayAnswerHtml'),
+      '({ paydayActionRows, paydayAnswerHtml, money2 })',
+    ].join('\n'),
+    { Forecast: F }
+  );
+  const rows = composed.paydayActionRows({ advice: rec });
+  ok(rows.length === material.length,
+    'the page renders every material allocation line',
+    `${rows.length} vs ${material.length}`);
+  const html = composed.paydayAnswerHtml({
+    plan: fixture,
+    asOf: AS_OF,
+    advice: rec,
+    recommended: WEEKLY,
+    weekly: WEEKLY,
+  });
+  ok(material.every(l => html.includes(composed.money2(l.amount))),
+    'composed HTML contains every material allocation amount');
+  ok(/Household spending/.test(html) && html.includes(String(WEEKLY)),
+    'composed HTML still publishes the weekly cap as the spend instruction');
+  ok(/Hold for essential costs/.test(html) && /no exact date stay unresolved/.test(html),
+    'the hold and unresolved-required note are both visible');
+  ok(recon(alloc), 'M reconciles');
+}
+
 console.log('\n=== recommend attaches the same result ===');
 {
   const rec = F.recommend(planA(), AS_OF, opts());
@@ -353,6 +518,8 @@ console.log('\n=== page renders Forecast lines in waterfall order ===');
   const body = fn ? fn[0] : '';
   ok(/alloc\.lines/.test(body),
     'the composer reads Forecast.paydayAllocation.lines');
+  ok(!/\.slice\(\s*0\s*,\s*5\s*\)/.test(body),
+    'it does not drop allocation lines after the fifth');
   ok(!/coreKind|extra-debt.: 3/.test(body),
     'it does not reorder extra debt ahead of future-cost set-asides');
   ok(!/b\.amount - a\.amount/.test(body),

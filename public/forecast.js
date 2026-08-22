@@ -1850,10 +1850,11 @@
     return absorbable;
   }
 
-  // Residual capacity of each future payday after obligations and essential
+  // Signed residual of each future payday after obligations and essential
   // spend in that payday's interval. Income amounts can differ; this is not
-  // remaining÷paycheques. Commitments are the use of that capacity, not a
-  // deduction from it.
+  // remaining÷paycheques. Commitments are the use of leftover surplus, not a
+  // deduction from the residual. A later deficit consumes earlier surplus
+  // before any commitment can claim that same dollar.
   function futurePaydayCaps(plan, asOf, opts, futureDates, horizonEnd, essentialMonthly) {
     const caps = [];
     for (let i = 0; i < futureDates.length; i++) {
@@ -1876,14 +1877,37 @@
         }
       }
       const ess = essentialMonthly * days / CALENDAR_MONTH_DAYS;
+      const residual = income - out - ess;
       caps.push({
         date,
         next,
         days,
-        cap: Math.max(0, income - out - ess),
+        residual,
+        cap: residual,
       });
     }
-    return caps;
+    return settleFuturePaydayDeficits(caps);
+  }
+
+  // Carry a later household deficit onto earlier leftover surplus, nearest
+  // first. Clipping each interval at zero would invent capacity the master
+  // walk does not have: the same earlier dollar cannot both cover a later
+  // required outflow and fund a later commitment.
+  function settleFuturePaydayDeficits(caps) {
+    const out = (caps || []).map(c => Object.assign({}, c, { cap: c.residual }));
+    for (let i = 0; i < out.length; i++) {
+      if (!(out[i].cap < -EPSILON)) continue;
+      let need = -out[i].cap;
+      for (let j = i - 1; j >= 0 && need > EPSILON; j--) {
+        if (!(out[j].cap > EPSILON)) continue;
+        const take = Math.min(out[j].cap, need);
+        out[j].cap -= take;
+        need -= take;
+      }
+      out[i].cap = 0;
+    }
+    for (const slot of out) slot.cap = Math.max(0, slot.cap);
+    return out;
   }
 
   // Minimum current allocation so protected dated commitments remain jointly
@@ -1918,9 +1942,10 @@
 
   /* ------------------------------------------- payday allocation waterfall */
   // What current household cash must do. Forecast remains the only planner.
-  // Waterfall: required obligations → essential household costs → dynamic
+  // Waterfall: required obligations → essential household hold → dynamic
   // liquidity from the near-term cash path → required future-cost pressure →
-  // extra debt (incumbent cascade) → optional residual. Credit is not cash.
+  // extra debt (incumbent cascade) → owner-marked optional residual.
+  // Required undated items stay unresolved. Credit is not cash.
   // Q20 is not resolved here: the model buffer is the existing feasibility
   // floor, not a newly invented emergency-fund line.
   function paydayAllocation(plan, asOf, opts) {
@@ -2015,8 +2040,12 @@
     const futureDates = paydayDates.filter(d => d > asOf);
     const caps = futurePaydayCaps(plan, asOf, opts, futureDates, horizon.end, essentialMonthly);
 
+    const weeklyCap = opts.weeklyVariable != null ? Number(opts.weeklyVariable) || 0 : 0;
+    const spendPermission = roundCent(weeklyCap * periodDays / 7);
+
     const protectedFuture = [];
     const optionalRows = [];
+    const unresolvedRows = [];
     for (const item of seq) {
       const planRow = plans.find(p => p.id === item.id) || null;
       const floor = item.need != null ? item.need
@@ -2029,8 +2058,12 @@
         flexibility: item.flexibility,
         plan: planRow,
       };
-      if (item.flexibility === 'optional' || !item.date) {
+      if (item.flexibility === 'optional') {
         optionalRows.push(row);
+        continue;
+      }
+      if (!item.date) {
+        unresolvedRows.push(row);
         continue;
       }
       if (obligationKeys.has(item.id)) continue;
@@ -2094,7 +2127,11 @@
       lines.push(Object.assign({ key, kind, label, amount: roundCent(amount) }, extra || {}));
     };
     pushLine('obligations', 'obligations', 'Keep for bills', allocatedObligations);
-    pushLine('essentials', 'essentials', 'Household spending', allocatedEssentials);
+    pushLine('essentials', 'essentials', 'Hold for essential costs', allocatedEssentials, {
+      role: 'reserve',
+      weeklyCap,
+      spendPermission,
+    });
     pushLine('liquidity', 'liquidity', 'Keep liquid', allocatedLiquidity);
     for (const row of futureAllocations) {
       pushLine('future:' + row.id, 'future-cost', 'Set aside — ' + row.label,
@@ -2168,7 +2205,20 @@
         monthly: roundCent(essentialMonthly),
         wanted: roundCent(essentialsWanted),
         allocated: allocatedEssentials,
+        role: 'reserve',
+        weeklyCap,
+        spendPermission,
       },
+      weeklyCap,
+      spendPermission,
+      unresolved: unresolvedRows.map(row => ({
+        id: row.id,
+        label: row.label,
+        date: null,
+        need: roundCent(row.need || 0),
+        flexibility: row.flexibility,
+        reason: 'Required, but no exact date — no payday contribution assigned.',
+      })),
       liquidity: {
         wanted: roundCent(liquidityWanted),
         allocated: allocatedLiquidity,

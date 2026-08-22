@@ -629,7 +629,6 @@ function paydayActionRows(ctx) {
   if (!alloc || !Array.isArray(alloc.lines)) return [];
   return alloc.lines
     .filter(line => Number(line.amount) > 0 && line.label)
-    .slice(0, 5)
     .map(line => ({ key: line.key, label: line.label, amount: line.amount }));
 }
 
@@ -690,6 +689,11 @@ function paydayAnswerHtml(ctx) {
 
   const actionRows = paydayActionRows(ctx);
   const comingRows = paydayComingRows(ctx);
+  const unresolvedCount = ((alloc && alloc.unresolved) || [])
+    .filter(r => r && r.flexibility !== 'optional').length;
+  const unresolvedNote = unresolvedCount
+    ? '<p class="payday-qual">Required future costs with no exact date stay unresolved — this payday assigns them no contribution.</p>'
+    : '';
 
   const actionSheet = paydaySheet(
     ['Action', 'Amount'],
@@ -726,6 +730,7 @@ function paydayAnswerHtml(ctx) {
       <p class="payday-hero" data-fig="spendable">${money2(spendable)}</p>
       <p class="payday-qual">Spendable cash. Not credit.</p>
       ${actionSheet ? `<div class="payday-group">What to do with this paycheque</div>${actionSheet}` : ''}
+      ${unresolvedNote}
       <div class="payday-group">Household spending</div>
       <div class="payday-spend">${spendInner}</div>
       ${comingSheet ? `<div class="payday-group">Coming before next payday</div>${comingSheet}` : ''}
