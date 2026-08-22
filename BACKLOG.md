@@ -1910,7 +1910,7 @@ wrong, and wrong because the evidence had been deleted. See B63.
 - **B54** Card spending categorised — **$44,344.58**, 65% discretionary
 - **B34** Merchant library seeded — 273 patterns
 - **B17** Payoff ranking settled; net worth **$357k–$657k**
-- **B18** The **$46,657** resolved — it paid the cards. Nothing was hiding
+- **B18** The **$46,657** payment-matching investigation completed — captured cards received more than the labelled TFR-TO C/C transfers in the 12-month window. Destination evidence only; Q2 remains OPEN
 - **B52** The $10,000 Ivoclar charge — a funded pass-through, not household money
 - **B53** `Head Canada` — a coaching business expense Amanda absorbs
 - **B12** Home valued at $1.1m–$1.4m [ESTIMATE]

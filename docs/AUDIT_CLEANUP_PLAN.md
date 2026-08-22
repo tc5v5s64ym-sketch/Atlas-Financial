@@ -32,7 +32,7 @@ When the owner says **"action the audit cleanup plan"**:
 ## Progress summary
 
 Baseline findings: **P0 = 0 · P1 = 5 · P2 = 11 · P3 = 2**.  
-Current progress: **3 / 18 findings dispositioned**.
+Current progress: **4 / 18 findings dispositioned**.
 
 Status vocabulary:
 
@@ -51,9 +51,9 @@ Status vocabulary:
 | 1 | **F-01** | Records renders commitment ranges / undated commitments through the authoritative Forecast publication view; no `$0.00` for a range-only amount and no `Invalid Date`. | **DONE — PR #136** | Records Commitments block takes unsettled rows from `Forecast.publicationTotals().commitmentItems` (ranges and `when` intact) and keeps settled rows from `plan.commitments`. Independent proof in `test-major-future-costs.js`. |
 | 2 | **F-02** | Reconcile TD Cash Back Visa and Travel Visa standing-facts prose to the canonical 2026-08-19 state, removing stale balance/minimum/limit claims from the wrong home. | **DONE — PR #137** | Cash Back and Travel Visa current-voice route revolving state to `data.json` / `Forecast.utilisation` / `positions.csv` and do not copy current posted, available, or over-limit figures. Calendar retires `$762.36` without pinning a replacement amount. HELOC leftover is not copied. Invariant proves no competing current-state copy. |
 | 3 | **F-04** | Re-derive B71 Triangle limit-risk conclusion from the current canonical opening / `Forecast.projectDebts`; no stale “remains under” claim presented as current. | **DONE — PR #139** | B71 rewritten from live `Forecast.projectDebts` on the 2026-08-19 opening: Triangle `firstOver` 2026-08-19, day 0, `alreadyOver` false; utilisation available $4.68 (~99.97% used). 2026-08-16 under-limit figures labelled retired. B71 reopened because the 2026-08-18 remains-under resolution is false on this opening. |
-| 4 | **F-03** | One authoritative coaching-income overstatement answer reaches both Deep Dive surfaces; no `$650` vs `$1,650` contradiction. | **IN PR #140** | `questions[0].changes` routes to `incomeWarning` (~$650/month, indicative) and labels $1,650 as the earlier upper-bound fear. B93 uniqueness in `test-dedup-facts.js` fails if published `data.json` strings again state different current monthly overstatement figures. |
+| 4 | **F-03** | One authoritative coaching-income overstatement answer reaches both Deep Dive surfaces; no `$650` vs `$1,650` contradiction. | **DONE — PR #140** | `questions[0].changes` routes to `incomeWarning` (~$650/month, indicative) and labels $1,650 as the earlier upper-bound fear. B93 uniqueness in `test-dedup-facts.js` fails if published `data.json` strings again state different current monthly overstatement figures. |
 | 5 | **F-05** | Reconcile Evidence-Use Register dispositions for the six interview-derived commitments with the owner gate and the values already live in `plan.commitments`; add only a guard justified by the resolved authority state. | **WAITING OWNER** | Owner must confirm whether the 2026-08-16 absorption satisfied the joint-household promotion gate for HH-021, HH-022, TRAVEL-002, COMMIT-002, COMMIT-003 and HH-014. |
-| 6 | **F-06** | Q2 status claims outside `01_OPEN_QUESTIONS.md` cannot contradict the sole question-status authority; correct current conflicts and add the narrow deterministic guard if current governance still calls for it. | **TODO** | |
+| 6 | **F-06** | Q2 status claims outside `01_OPEN_QUESTIONS.md` cannot contradict the sole question-status authority; correct current conflicts and add the narrow deterministic guard if current governance still calls for it. | **IN PR** | |
 | 7 | **F-07** | Q3's secured-debt and financial-account-net-worth fragment are current or explicitly dated historical figures, not stale-as-current. | **TODO** | |
 | 8 | **F-08** | B91's completed record clearly labels the 2026-08-16 block historical and no longer asserts that superseded opening / Q19 state as current. | **TODO** | |
 | 9 | **F-09** | `00_MASTER_PICTURE.md` no longer labels its 2026-08-09 actionable section current; new-session orientation does not route a reader to stale actions as today's truth. | **TODO** | |
