@@ -264,7 +264,64 @@ console.log('\n=== F. pending charges still apply exactly once ===');
     `${settle.length} matching events`);
 }
 
-console.log('\n=== G. duplicate authorities cannot quietly return ===');
+console.log('\n=== G. published coaching-income overstatement is one current monthly figure ===');
+{
+  // B93: one live fact, one home. incomeWarning is the incumbent derived
+  // answer. A second published data.json string must not state a different
+  // current monthly overstatement (the Deep Dive $1,650 vs $650 defect).
+  // "$1,650 previously feared" / "not the $X" is historical, not current.
+  function walkStrings(value, out) {
+    if (typeof value === 'string') out.push(value);
+    else if (Array.isArray(value)) value.forEach(v => walkStrings(v, out));
+    else if (value && typeof value === 'object') {
+      Object.values(value).forEach(v => walkStrings(v, out));
+    }
+  }
+  const OVERSTATEMENT = /overstated by (?:up to |about |roughly )?(?:~)?\$([\d,]+)(?:\.\d+)?\/month/gi;
+  function isHistoricalOverstatement(s, matchIndex, matchText) {
+    const before = s.slice(Math.max(0, matchIndex - 16), matchIndex);
+    if (/not the\s*$/i.test(before)) return true;
+    const after = s.slice(matchIndex + matchText.length, matchIndex + matchText.length + 48);
+    return /^\s*,?\s*(previously feared|upper bound(?: feared)?)/i.test(after);
+  }
+  function currentOverstatementMonthlies(d) {
+    const strings = [];
+    walkStrings(d, strings);
+    const amounts = [];
+    for (const s of strings) {
+      OVERSTATEMENT.lastIndex = 0;
+      let m;
+      while ((m = OVERSTATEMENT.exec(s))) {
+        if (isHistoricalOverstatement(s, m.index, m[0])) continue;
+        amounts.push(Number(m[1].replace(/,/g, '')));
+      }
+    }
+    return amounts;
+  }
+
+  const warningAmounts = currentOverstatementMonthlies({ incomeWarning: data.incomeWarning });
+  const published = currentOverstatementMonthlies(data);
+  const unique = [...new Set(published)];
+  ok(warningAmounts.length === 1,
+    'incomeWarning states one current monthly coaching-income overstatement',
+    warningAmounts.join(','));
+  ok(unique.length === 1,
+    'published data.json strings state one current monthly coaching-income overstatement',
+    published.join(','));
+  ok(published.every(n => n === warningAmounts[0]),
+    'no published data.json string states a competing current monthly overstatement',
+    `warning ${warningAmounts[0]} vs published ${published.join(',')}`);
+
+  const staleQ = clone(data);
+  staleQ.questions[0].changes =
+    'Household income is currently overstated by up to $1,650/month. Every conclusion resting on income is provisional until this is split. Amanda\'s bookkeeping settles it.';
+  const stalePublished = currentOverstatementMonthlies(staleQ);
+  ok(new Set(stalePublished).size > 1,
+    'a competing current $1,650/month on questions[0].changes still fails this check',
+    stalePublished.join(','));
+}
+
+console.log('\n=== H. duplicate authorities cannot quietly return ===');
 ok(data.debts.every(d => d.postedBalance == null),
   'no debt stores postedBalance beside balance');
 ok((data.revolvingExtra || []).every(e => e.used == null && e.cash),
