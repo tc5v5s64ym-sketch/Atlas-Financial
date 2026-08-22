@@ -22,8 +22,10 @@
  * Tennis BC salary deposits, coaching/business inflows, business
  * obligations, household transfers, and household-available remainder.
  * They do not write data.json. Owner-confirmed 2026-08-22: the two
- * fixed Tennis BC salary deposits match canonical Forecast income.
- * Coaching is not promoted. The raw TENNIS INCOME balance is not spendable.
+ * fixed Tennis BC salary deposits land in household accounts and match
+ * canonical Forecast income. A later transfer of those same dollars is
+ * not a second income line. Coaching is not promoted. The raw TENNIS
+ * INCOME balance is not spendable coaching/business remainder.
  *
  * D8 card-state slice: observations in
  * docs/reconciliation/card-state-observations.json distinguish posted
@@ -46,7 +48,8 @@
  * paid does not mutate the commitment. Hydro observations do not
  * promote Aug. 14 amounts into live canonical state. Amanda salary
  * observations match the owner-confirmed canonical salary streams; they
- * do not invent coaching income or a spendable mixed-account remainder. Card observations
+ * do not invent coaching income, a standing salary transfer, or a
+ * spendable mixed-account remainder. Card observations
  * are not a second financial authority. Posting evidence does not
  * write representedEvents.
  *
@@ -247,7 +250,9 @@ function classifyAmandaMovement(m) {
     newIncome: 0,
   };
   if (fact === 'employment-deposit') {
-    return Object.assign({}, base, { amandaOperatingIncome: amount });
+    // Owner-confirmed: fixed Tennis BC salary lands in household accounts.
+    // It is household income now, not mixed-account operating income.
+    return Object.assign({}, base, { newIncome: amount, householdCashInflow: amount });
   }
   if (fact === 'coaching-receipt') {
     return Object.assign({}, base, { coachingInflow: amount });
@@ -257,7 +262,9 @@ function classifyAmandaMovement(m) {
   }
   if (fact === 'internal-transfer') return base;
   if (fact === 'household-transfer') {
-    return Object.assign({}, base, { householdCashInflow: amount });
+    // Movement of already-counted salary, or of unforecast coaching surplus.
+    // Neither is a second Forecast income line.
+    return base;
   }
   return base;
 }
@@ -290,7 +297,7 @@ function amandaHouseholdAvailable(input) {
   }
   return {
     established: true,
-    amount: round2(input.employment + input.coaching - input.obligations),
+    amount: round2(input.coaching - input.obligations),
     reason: null,
   };
 }
@@ -344,7 +351,7 @@ function amandaTransferAuthorityContext(data) {
     note: doubleCount
       ? 'Salary plus amandaTransfer would double-count household income.'
       : (salary.length
-        ? 'Owner-confirmed Tennis BC salary is Forecast household income. Coaching surplus is not forecast. The retired amandaTransfer stream is not a second income line.'
+        ? 'Owner-confirmed Tennis BC salary lands in household accounts and is Forecast household income. Later transfers of those dollars are not a second income line. Coaching surplus is not forecast. The retired amandaTransfer stream is not a second income line.'
         : 'Incumbent Forecast household-cash authority. The Aug. 14 session did not independently observe or verify its scenarioMonthly values.'),
   };
 }
@@ -671,7 +678,7 @@ function compareEmploymentDeposit(row, data) {
     accountLabel: row.accountLabel,
     evidenceValue: evidence,
     evidenceDate: row.evidenceDate,
-    landingAccount: row.landingAccount || AMANDA_OPERATING_ID,
+    landingAccount: row.landingAccount || null,
     canonicalValue: finiteNumber(canonicalValue) ? canonicalValue : null,
     canonicalTarget: match
       ? `income:${match.id}`
@@ -694,7 +701,7 @@ function compareEmploymentDeposit(row, data) {
         ? 'observed Tennis BC salary matches the owner-confirmed canonical Forecast stream'
         : (salaryStreams.length
           ? 'Tennis BC salary observation does not match a canonical salary stream'
-          : 'observed Amanda operating income; no canonical salary fact'))),
+          : 'observed Tennis BC salary; no canonical salary fact'))),
   };
 }
 
@@ -740,7 +747,7 @@ function compareHouseholdTransfer(row, data) {
     note: row.note || (doubleCount
       ? 'amandaTransfer plus a salary stream would double-count household income'
       : (independent
-        ? 'household transfer is movement of existing money, not new employment income'
+        ? 'household transfer is movement of existing money, not a second salary line'
         : 'incumbent Forecast household-cash authority; not independently observed by this evidence record')),
   };
 }
@@ -1835,7 +1842,7 @@ function formatReport(result) {
       if (auth.canonicalExpected != null) {
         lines.push(`  canonical monthly salary total: ${n2(auth.canonicalExpected)}`);
       }
-      lines.push('  coaching surplus is not forecast; raw TENNIS INCOME balance is not spendable');
+      lines.push('  coaching surplus is not forecast; later salary transfers are not a second income line; raw TENNIS INCOME balance is not spendable');
     } else if (auth.transferPresent) {
       lines.push(`  ${auth.locator} — incumbent estimated household-cash authority`);
       if (auth.canonicalExpected != null) {

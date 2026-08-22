@@ -11,10 +11,9 @@
       "label": "Tennis BC net around the 15th",
       "amount": 2168.85,
       "cadenceHint": "semi-monthly-15th",
-      "landingAccount": "amanda-debt-payments",
       "observedAsOf": "2026-08-14",
       "source": "docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md",
-      "note": "Observed Amanda Tennis BC net around the 15th. Owner-confirmed 2026-08-22 as Forecast household income. Matches the canonical 15th salary stream. Counting this deposit and a household-transfer of the same dollars as two Forecast inflows would double-count."
+      "note": "Observed Amanda Tennis BC net around the 15th. Owner-confirmed 2026-08-22 as Forecast household income that lands in household accounts. Matches the canonical 15th salary stream. A later internal or household transfer of these same dollars is not a second Forecast inflow."
     },
     {
       "observationId": "payday-amanda-salary-monthend",
@@ -22,10 +21,9 @@
       "label": "Tennis BC net around month-end",
       "amount": 2387.99,
       "cadenceHint": "semi-monthly-month-end",
-      "landingAccount": "amanda-debt-payments",
       "observedAsOf": "2026-08-14",
       "source": "docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md",
-      "note": "Observed Amanda Tennis BC net around month-end. Owner-confirmed 2026-08-22 as Forecast household income. Matches the canonical month-end salary stream. Counting this deposit and a household-transfer of the same dollars as two Forecast inflows would double-count."
+      "note": "Observed Amanda Tennis BC net around month-end. Owner-confirmed 2026-08-22 as Forecast household income that lands in household accounts. Matches the canonical month-end salary stream. A later internal or household transfer of these same dollars is not a second Forecast inflow."
     },
     {
       "observationId": "payday-amanda-coaching-receipt",

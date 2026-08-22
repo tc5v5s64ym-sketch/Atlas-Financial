@@ -800,12 +800,16 @@ Tennis BC salary deposits, coaching/business inflows, business
 obligations, household transfers, and household-available remainder.
 Owner-confirmed 2026-08-22: the two fixed Tennis BC salary deposits
 (`plan.income.amandaSalary15` $2,168.85 on the 15th and
-`plan.income.amandaSalaryMonthEnd` $2,387.99 on month-end) are Forecast
-household income. The retired `amandaTransfer` estimate is not a second
-income line. Coaching/business receipts are not forecast. Unknown
+`plan.income.amandaSalaryMonthEnd` $2,387.99 on month-end) land in
+household accounts and are Forecast household income. The retired
+`amandaTransfer` estimate is not a second income line. A later internal
+or household transfer of those same salary dollars is not a second
+Forecast inflow. Coaching/business receipts are not forecast. Unknown
 business obligations fail closed and do not invent a remainder. The raw
-TENNIS INCOME balance remains non-spendable (Q25). Live Amanda income
-canonical state uses those two salary streams. The D8 slice adds card-state
+TENNIS INCOME balance remains non-spendable coaching/business remainder
+(Q25). Live Amanda income canonical state uses those two salary streams.
+The retired $1,100 standing Amanda-transfer action is not a live
+household instruction. The D8 slice adds card-state
 observations (`docs/reconciliation/card-state-observations.json`) that
 distinguish posted balance, pending, limit, available credit, and
 confirmed payment. Limit and available credit are never household cash.
