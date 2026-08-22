@@ -1,6 +1,6 @@
 # Atlas Repository Truth Audit Cleanup Plan
 
-**Status:** ACTIVE  
+**Status:** COMPLETE — final deletion pending  
 **Owner instruction:** 2026-08-21  
 **Baseline audit:** [`docs/advisory/REPOSITORY_TRUTH_AUDIT_2026-08-21.md`](advisory/REPOSITORY_TRUTH_AUDIT_2026-08-21.md)  
 **Baseline audited main:** `baff0376a1a2084417add564f60fba388a2cfb0f`  
@@ -32,7 +32,7 @@ When the owner says **"action the audit cleanup plan"**:
 ## Progress summary
 
 Baseline findings: **P0 = 0 · P1 = 5 · P2 = 11 · P3 = 2**.  
-Current progress: **17 / 18 findings dispositioned**.
+Current progress: **18 / 18 findings terminally dispositioned**.
 
 Status vocabulary:
 
@@ -64,17 +64,31 @@ Status vocabulary:
 | 14 | **F-14** | Resolve whether a midpoint home value / point household net worth may be published at all; then make `positions.csv` / derived summaries follow that owner decision without inventing policy. | **DONE — PR #150** | Owner-estimated $1.3M home value now drives the existing ESTIMATE net-worth/equity/LTV reporting path. Q3 remains OPEN for verified market value. |
 | 15 | **F-15** | Separate Amanda's continuing Tennis BC / household-transfer stream from the stopped garage/lab-funded stream so Deep Dive and the forward plan do not contradict each other. | **DONE — PR #151** | Deep Dive incomeNote now names Q5's ended garage/lab stream separately from modelled `amandaTransfer`; current scenario values and `firstDue` were preserved and no Forecast arithmetic moved. |
 | 16 | **F-16** | New-session orientation records the dated 2026-08-21 live acceptance result without moving the canonical opening. A newer canonical cutover remains a separate owner-reserved decision. | **DONE — PR #152** | `CONTEXT.md` records CALCULATED $747.81 spendable cash from freshness-qualified Lunch Money observations and the CALCULATED $104.89 Forecast gap, with zero borrowing and an unfunded/no-feasible-cap result; canonical opening remains 2026-08-19. |
-| 17 | **F-17** | Historical suite-count comments stop masquerading as current when their files are next honestly touched. | **DEFERRED** | Opportunistic only; not worth a dedicated PR unless current state raises severity. |
-| 18 | **F-18** | The unnumbered outbound-e-transfer question has one question-authority home: fold into Q1 or assign a proper Q id without creating a duplicate question. | **DONE — PR #153** | Q1 now explicitly owns the CALCULATED $19,700 unmatched remainder after the CALCULATED $3,500 Wise trace; no new question, status, or financial model was created. |
+| 17 | **F-17** | Historical suite-count comments stop masquerading as current when their files are next honestly touched. | **DEFERRED** | Opportunistic only; the comments remain historical prose, no affected implementation file was honestly touched by the closing campaign work, and current truth did not raise severity. |
+| 18 | **F-18** | The unnumbered outbound-e-transfer question has one question-authority home: fold into Q1 or assign a proper Q id without creating a duplicate question. | **DONE — PR #153** | Q1 explicitly owns the CALCULATED $19,700 unmatched remainder after the CALCULATED $3,500 Wise trace and states the Deep Dive follow-up is a Q1 sub-part; no new question, status, or financial model was created. |
 
 ## Priority and batching
 
 - **F-01 → F-04 are first.** They are the baseline audit's P1 household-facing correctness / contradiction work that does not require an owner answer.
 - **F-05 is DONE — PR #149.** **F-14 is DONE — PR #150.** **F-15 is DONE — PR #151.** **F-16 is DONE — PR #152.** **F-18 is DONE — PR #153.** Owner-estimated $1.3M home value now drives the ESTIMATE net-worth/equity/LTV path; Q3 stays OPEN for verified market value.
-- **Routed B79 remainder is IN PR #154.** Only the stale BACKLOG capability wording is being corrected: T4 passed 2026-08-17 and B81 completed 2026-08-20. The file-store verdict remains closed and unchanged.
+- **Routed B79 remainder is DONE — PR #154.** BACKLOG now records T4 passed 2026-08-17 and B81 completed 2026-08-20; the file-store verdict remains closed and unchanged.
 - Default to **one finding per PR**. If current evidence proves two findings share one root cause and one acceptance condition, current governance may permit one PR; record why in the merge card. Do not batch merely because both are documentation.
 - F-17 stays deferred unless an honest touch to one of those files makes the cleanup in-scope.
 - The audit's recommendations are dated advice, not an override of current repository governance. Reproduce each finding before acting.
+
+## Final light reconciliation — 2026-08-21
+
+Performed against current `main` after PR #154. This was intentionally **not** another repository audit.
+
+- All F-01…F-18 rows now have truthful terminal dispositions; F-17 remains DEFERRED by owner-directed campaign policy.
+- No open pull request remains before the final closeout branch.
+- F-15 still distinguishes the ended garage/lab-funded stream from the continuing `plan.income.amandaTransfer` stream; scenario amounts/dates and anti-double-counting remain unchanged.
+- F-16 still records the dated 2026-08-21 read-only acceptance while keeping the canonical/published opening at 2026-08-19.
+- F-18 has one question-authority home: Q1 explicitly owns the $19,700 Deep Dive sub-question; Q1 remains OPEN.
+- The known B79 BACKLOG remainder is closed by PR #154; T4 and B81 are recorded as completed capabilities, while the B79 file-store verdict remains unchanged.
+- No contradiction found on the campaign surfaces rechecked above. No new cleanup finding was created.
+
+The campaign is ready for its required self-delete. After deletion, normal sequencing returns to `docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`.
 
 ## Required update in every campaign PR
 
