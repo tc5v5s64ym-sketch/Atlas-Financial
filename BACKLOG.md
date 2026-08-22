@@ -1282,38 +1282,59 @@ unchanged: no second horizon, no new payday engine, no `$600/week`
 policy. Live household financial facts are unchanged. Do not mark this
 item DONE.
 
-**Current-state cutover — complete 2026-08-16.** The published Forecast
-opening is 2026-08-16 from the Lunch Money observation fetched
-2026-08-16T20:57Z plus the same-day Triangle/MBNA screenshots. Spendable
-cash is independently $2,252.76. Friday 14 August payroll, mortgage, Shaw,
-Fit4Less, the $220 Hydro debit, the $94.03 TD-card minimum, and the $763
-Cash Back payment are inside the snapshots and are not replayed.
-`representedEvents` is empty because nothing scheduled on 16 August is
-inside the observation. Unposted 15 August BCAA / ICBC / RESP / union dues
-are reserved as once rows on this opening. Triangle posted/pending come
-from the owner screenshot, not Lunch Money's last-statement figure.
-Amanda / TENNIS INCOME stays held-elsewhere. Q19 stays OPEN. $600/week is
-not encoded. Observation files remain evidence; the reconciler remains
-non-writing. The Aug. 14 corpus stays the distinction checklist.
+**Current-state cutover — complete 2026-08-16 (historical / retired dated evidence).**
+This block is the 2026-08-16 cutover record. It is not current Atlas
+truth. The live published opening is now **2026-08-19**; this 2026-08-16
+opening remains dated evidence in `snapshots/2026-08-16.json` and the
+pinned `28d08a12` proof. The $2,252.76 cash, 2026-08-16 opening, and
+then-OPEN Q19 statements below describe that dated cutover only.
+
+On that 2026-08-16 cutover, the published Forecast opening was
+2026-08-16 from the Lunch Money observation fetched 2026-08-16T20:57Z
+plus the same-day Triangle/MBNA screenshots. Spendable cash on that
+opening was independently $2,252.76. Friday 14 August payroll, mortgage,
+Shaw, Fit4Less, the $220 Hydro debit, the $94.03 TD-card minimum, and
+the $763 Cash Back payment are inside those snapshots and are not
+replayed. `representedEvents` is empty because nothing scheduled on 16
+August is inside the observation. Unposted 15 August BCAA / ICBC / RESP
+/ union dues are reserved as once rows on that opening. Triangle
+posted/pending come from the owner screenshot, not Lunch Money's
+last-statement figure. Amanda / TENNIS INCOME stayed held-elsewhere.
+**At that cutover, Q19 was still OPEN.** $600/week is not encoded.
+Observation files remain evidence; the reconciler remains non-writing.
+The Aug. 14 corpus stays the distinction checklist. Q19 was later
+**ANSWERED 2026-08-18** by the HELOC closeout (remaining August cash
+requirement $0 additional). Do not read this dated OPEN state as
+current question status.
 
 **Outcome (whole item, closed 2026-08-16):** a small **non-writing**
 reconciliation report over existing observation records: evidence
 value/date, current Atlas value, MATCH / CHANGE / CONFLICT / MISSING,
 unresolved item. One canonical pointer into `data.json`. Owner-approved
-edits land there and Forecast consumes them. The live opening is
-2026-08-16. Same-day income already inside that observation is not
-replayed. Existing Forecast produces the household payday plan from this
-opening (mode `normal`, weekly $920, not $600 policy). The Aug. 14 corpus
-remains the distinction checklist. Q19 stays OPEN and fail-closed. B20
-history and a universal STALE threshold were not B91 closers.
+edits land there and Forecast consumes them. B91 closed on the
+2026-08-16 cutover; that dated opening remains preserved evidence, not
+the live published opening (now **2026-08-19**). Same-day income already
+inside that 2026-08-16 observation is not replayed. Existing Forecast
+produced the household payday plan from that dated opening (mode
+`normal`, weekly $920, not $600 policy). Those $920/week and
+2026-08-16-opening statements describe that dated cutover only. The
+Aug. 14 corpus remains the distinction checklist. **At close, Q19 was
+still OPEN and fail-closed**; it is now **ANSWERED 2026-08-18** and is
+not reopened by this completed record. B20 history and a universal
+STALE threshold were not B91 closers.
 
 **B91 must also consume these payday distinctions:** schedule ≠ posted;
 paid commitments stop reserving cash; account balance ≠ amount currently
 due; household obligation ≠ paying account; posted vs pending vs limit vs
 available credit; account balance ≠ spendable cash; Amanda salary, coaching,
 and transfers as separate authorities; near-boundary obligations visible
-from existing Forecast. Q19 HELOC cash impact stays unresolved — do not
-claim confident zero household cash impact.
+from existing Forecast. **At B91 close, Q19 HELOC cash impact was still
+unresolved** — the 2026-08-16 record correctly refused a confident zero
+household cash impact. That question is now **ANSWERED 2026-08-18**: the
+14 August $1,100 already inside the 2026-08-16 opening satisfies the
+August minimum, so remaining August HELOC cash requirement is $0
+additional. Do not read the dated unresolved warning as current Q19
+status.
 
 **Do not build:** a database; a second canonical store; a generic fact
 schema; a workflow engine; event sourcing; a classification registry; a
