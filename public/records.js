@@ -36,6 +36,11 @@ function renderRecords(d) {
       : s.frequency === 'once' ? 'one-time'
       : s.frequency === 'quarterly' ? 'every 3 months'
       : 'monthly';
+    const shownAmount = i => i.amount != null ? money(i.amount)
+      : (i.amountMin != null && i.amountMax != null)
+        ? `${money(i.amountMin)}–${money(i.amountMax)}` : '';
+    const settledCommitments = (d.plan.commitments || [])
+      .filter(c => Forecast.commitmentStatus(c) === 'settled');
     $('derivations').innerHTML =
       '<h3>Income streams</h3>' +
       d.plan.income.map(s => li(s.label,
@@ -48,11 +53,11 @@ function renderRecords(d) {
       (d.plan.bills || []).map(b => li(b.label, money2(b.amount), freqWord(b), b.confidence, b.note)).join('') +
       (d.plan.billsNote ? `<p class="deriv-note">${d.plan.billsNote}</p>` : '') +
       '<h3>Commitments</h3>' +
-      d.plan.commitments.map(c => li(`${c.label} — ${fmtDate(c.date)}`, money2(c.amount),
-        Forecast.commitmentStatus(c) === 'settled'
-          ? 'settled'
-          : (c.adjustable ? 'optional' : 'one-time'),
-        c.confidence, c.note)).join('');
+      settledCommitments.map(c => li(`${c.label} — ${fmtDate(c.date)}`, money2(c.amount),
+        'settled', c.confidence, c.note)).join('') +
+      (pub.commitmentItems || []).map(i => li(`${i.what} — ${i.when}`, shownAmount(i),
+        i.adjustable ? 'optional' : 'one-time',
+        i.confidence, i.note)).join('');
   }
 }
 
