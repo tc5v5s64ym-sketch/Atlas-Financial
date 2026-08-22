@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<title>Household finances — the plan</title>
+<title>Household finances — payday plan</title>
 <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
@@ -29,23 +29,26 @@
 
 <div class="wrap">
 
-  <!-- DECISION FIRST. Everything above the first <details> answers: what do we
-       do next, can we afford it, and where does that leave us. The evidence is
-       preserved below and behind disclosures, not deleted. -->
-  <section id="plan90">
-    <div class="kicker">The plan</div>
-    <h1>The next 90 days</h1>
-    <p class="mission" id="plan-mission"></p>
-    <p class="sub" id="plan-window"></p>
-
+  <!-- PAYDAY FIRST. The first section is the Forecast payday answer. Outlook
+       below is the same plan's reasoning, not a second planner. -->
+  <section id="payday-answer">
+    <div class="kicker">Payday plan</div>
+    <h1>What to do with the money</h1>
+    <p class="lede">Composed from the master Forecast — not a second calculator. Credit is not cash. The $500 figure is the model buffer, not an emergency-reserve target.</p>
     <div class="statusband" id="status-band" role="status">Working out the projection…</div>
+    <div class="card payday-card" id="payday-answer-body"></div>
   </section>
 
-  <section id="payday-answer">
-    <div class="kicker">After payday</div>
-    <h2>What to do with the cash</h2>
-    <p class="lede">The household payday answer, composed from the master Forecast — not a second calculator. Credit is not cash. The $500 figure is the model buffer, not an emergency-reserve target.</p>
-    <div class="card" id="payday-answer-body"></div>
+  <section id="outlook">
+    <div class="kicker">Outlook</div>
+    <h2>Why this plan</h2>
+    <p class="lede">The same Forecast. Scroll for the 90-day view, the weekly-cap split, bills, future-plan pressure, and assumptions.</p>
+  </section>
+
+  <section id="plan90">
+    <h2>The next 90 days</h2>
+    <p class="mission" id="plan-mission"></p>
+    <p class="sub" id="plan-window"></p>
   </section>
 
   <section id="nextmove">

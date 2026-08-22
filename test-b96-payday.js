@@ -413,6 +413,10 @@ console.log('\n=== J. page layer does not re-decide the payday figures ===');
     'index.html has the household payday section');
   ok(!/verdict\s*=\s*['"]ON TRACK['"]/.test(body),
     'the composer does not assign ON TRACK itself');
+  ok(/near\.payday/.test(body),
+    'the composer reads Forecast.nearBoundary.payday rather than inventing a span');
+  ok(!/\*\s*14\b|\*\s*7\b|\/\s*14\b/.test(body),
+    'the composer does not turn the weekly cap into a 7- or 14-day leftover');
 }
 
 console.log('\n=== K. explicit INFEASIBLE when the protected plan cannot work ===');
@@ -582,6 +586,56 @@ console.log('\n=== L. unfunded opening-gap sentinel is not a $0/week cap ===');
     'a genuine feasible-zero cap still renders honestly as $0/week');
   ok(!/no feasible weekly cap/i.test(tightCell),
     'and is not described as an unfunded gap');
+}
+
+console.log('\n=== M. homepage leads with the payday answer ===');
+{
+  const index = read('public/index.html');
+  const paydayAt = index.indexOf('id="payday-answer"');
+  const plan90At = index.indexOf('id="plan90"');
+  const outlookAt = index.indexOf('id="outlook"');
+  const h1At = index.indexOf('<h1>');
+  const paydayH1 = /<section id="payday-answer">[\s\S]*?<h1>[\s\S]*?<\/h1>/.exec(index);
+  ok(paydayAt >= 0 && plan90At > paydayAt,
+    'payday-answer precedes the 90-day outlook in index.html');
+  ok(outlookAt > paydayAt && outlookAt < plan90At,
+    'Outlook heading sits between the payday answer and the 90-day material');
+  ok(h1At > paydayAt && h1At < plan90At,
+    'the page h1 is inside the payday front door, not the 90-day report');
+  ok(paydayH1 && /What to do with the money/.test(paydayH1[0]),
+    'the payday section holds the household question as h1');
+  ok((index.match(/<h1>/g) || []).length === 1,
+    'there is exactly one h1 on the Plan page');
+  ok(/id="plan-mission"/.test(index) && /id="cap-headline"/.test(index)
+    && /id="agenda-14"/.test(index) && /id="c-forecast"/.test(index)
+    && /id="budget-cats"/.test(index) && /id="score-table"/.test(index),
+    'existing Outlook mounts remain on the page');
+  const liveRun = composeLive(live.plan);
+  ok(/payday-group/.test(liveRun.html)
+    && /Money available/.test(liveRun.html)
+    && /Do this \/ protect this/.test(liveRun.html)
+    && /Household spending/.test(liveRun.html)
+    && /What happens next/.test(liveRun.html),
+    'composed payday HTML uses the worksheet groups');
+  const moneyAt = liveRun.html.indexOf('Money available');
+  const protectAt = liveRun.html.indexOf('Do this / protect this');
+  const spendAt = liveRun.html.indexOf('Household spending');
+  const nextAt = liveRun.html.indexOf('What happens next');
+  ok(moneyAt >= 0 && protectAt > moneyAt && spendAt > protectAt && nextAt > spendAt,
+    'worksheet groups are money → protect → spending → next');
+  const paydayDate = liveRun.advice.nearBoundary && liveRun.advice.nearBoundary.payday;
+  if (paydayDate) {
+    ok(liveRun.html.includes(paydayDate.slice(8)) || liveRun.html.includes(paydayDate),
+      'front door names Forecast.nearBoundary.payday', paydayDate);
+  }
+  const incomeEvents = (liveRun.advice.sim.events || []).filter(e =>
+    e.kind === 'income' && e.date >= live.meta.asOf && paydayDate && e.date <= paydayDate);
+  for (const e of incomeEvents) {
+    ok(liveRun.html.includes(e.label),
+      `front door lists Forecast income event ${e.id}`, e.label);
+  }
+  ok(!/function paydayEngine|Forecast\.paydayPlan/.test(read('public/plan.js') + read('public/forecast.js')),
+    'front-door work did not add a second payday planner');
 }
 
 if (failures) {
