@@ -1,7 +1,10 @@
 # Credit Card — Deep Dive from Statements
 
-**Source:** 11 unique TD Visa statements, September 2025 → July 2026, downloaded
-as encrypted PDFs from TD EasyWeb and decrypted locally. Tags: **[TD]** read from
+**Captured 2026-08-09 from TD EasyWeb statements, read-only.** Dated
+statement analysis, not current Atlas financial state. Source: 11 unique
+TD Visa statements, September 2025 → July 2026, downloaded as encrypted
+PDFs from TD EasyWeb and decrypted locally. Current posted balances and
+liquidity live in `data.json` and Forecast. Tags: **[TD]** read from
 TD · **[CALC]** my arithmetic · **[EST]** inference · **[CONFIRM]** needs you.
 
 Not professional financial, tax, or legal advice.
@@ -59,8 +62,9 @@ you have missed twice more:
 - **April 2026** — count resets
 - **July 2026** — count resets again
 
-**You are currently at zero of twelve**, restarting from the August 2026
-statement [EST, based on TD's stated rule and the observed misses].
+**As of the July 2026 statement you were at zero of twelve**, restarting
+from the August 2026 statement [EST, based on TD's stated rule and the
+observed misses].
 
 ---
 
@@ -68,7 +72,7 @@ statement [EST, based on TD's stated rule and the observed misses].
 
 | | |
 |---|---|
-| Balance | $1,899.97 (Jul statement) / $1,799.97 (today) [TD] |
+| Balance | $1,899.97 (Jul statement) / $1,799.97 (as at 2026-08-09) [TD] |
 | Penalty rate | 24.99% purchases, 27.99% cash advances [TD] |
 | Normal rate | 17.20% (TD Prime 4.45% + 12.75%) [CALC] |
 | **Rate premium you are paying** | **7.79 percentage points** |
@@ -84,9 +88,10 @@ is small. **That is not the real prize.** The real prize is three-fold:
 1. **The payment history itself.** Four missed minimums in twelve months is what
    drives repricing and shows up in credit reporting. Fixing the habit matters
    more than the $140.
-2. **Restoring $2,000 of emergency credit.** With $1,067.84 left on the HELOC
-   and $82.28 of overdraft headroom, this card is a meaningful part of your
-   remaining buffer.
+2. **Restoring $2,000 of emergency credit.** As at 2026-08-09, with $1,067.84
+   left on the HELOC and $82.28 of overdraft headroom, this card was a
+   meaningful part of that dated remaining buffer. Those leftovers are not
+   current Atlas liquidity.
 3. **It is nearly free to fix.** The minimum is $94.03/month. You are already
    supposed to be paying it.
 
@@ -128,13 +133,13 @@ single largest unexplained flow in the entire review** [CONFIRM].
 
 ---
 
-## 6. What to do, in order
+## 6. What to do, in order — 9 August 2026 dated actions, not today's plan
 
 **1. Pay $94.03 by August 17, 2026, and never miss again.**
 This is the whole strategy. Automate it if at all possible — the evidence is that
 manual payment has failed four times in twelve months. An automatic minimum
-payment from Chequing A (which holds a balance) rather than Chequing B (which is
-overdrawn) would remove the failure mode.
+payment from Chequing A (which holds a balance) rather than Chequing B (which
+was overdrawn as at 2026-08-09) would remove the failure mode.
 
 **2. Call TD and confirm the count.**
 Ask exactly which statement period starts the 12-consecutive sequence, and
