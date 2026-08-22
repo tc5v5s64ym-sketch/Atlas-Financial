@@ -32,7 +32,7 @@ When the owner says **"action the audit cleanup plan"**:
 ## Progress summary
 
 Baseline findings: **P0 = 0 · P1 = 5 · P2 = 11 · P3 = 2**.  
-Current progress: **15 / 18 findings dispositioned**.
+Current progress: **16 / 18 findings dispositioned**.
 
 Status vocabulary:
 
@@ -63,14 +63,14 @@ Status vocabulary:
 | 13 | **F-13** | B72 is closed if current main still proves the bad commit fixture is gone; do not create code for an already-fixed item. | **DONE — PR #148** | B72 was already fixed; test-mergecard.js uses synthetic `const HEAD = 'a'.repeat(40);`; no code change was needed. |
 | 14 | **F-14** | Resolve whether a midpoint home value / point household net worth may be published at all; then make `positions.csv` / derived summaries follow that owner decision without inventing policy. | **DONE — PR #150** | Owner-estimated $1.3M home value now drives the existing ESTIMATE net-worth/equity/LTV reporting path. Q3 remains OPEN for verified market value. |
 | 15 | **F-15** | Separate Amanda's continuing Tennis BC / household-transfer stream from the stopped garage/lab-funded stream so Deep Dive and the forward plan do not contradict each other. | **DONE — PR #151** | Deep Dive incomeNote now names Q5's ended garage/lab stream separately from modelled `amandaTransfer`; current scenario values and `firstDue` were preserved and no Forecast arithmetic moved. |
-| 16 | **F-16** | New-session orientation records the dated 2026-08-21 live acceptance result without moving the canonical opening. A newer canonical cutover remains a separate owner-reserved decision. | **IN PR #152** | `CONTEXT.md` now records the dated read-only $747.81 cash / $104.89 gap acceptance, zero borrowing, and unfunded/no-feasible-cap result while explicitly keeping 2026-08-19 canonical. |
+| 16 | **F-16** | New-session orientation records the dated 2026-08-21 live acceptance result without moving the canonical opening. A newer canonical cutover remains a separate owner-reserved decision. | **DONE — PR #152** | `CONTEXT.md` records CALCULATED $747.81 spendable cash from freshness-qualified Lunch Money observations and the CALCULATED $104.89 Forecast gap, with zero borrowing and an unfunded/no-feasible-cap result; canonical opening remains 2026-08-19. |
 | 17 | **F-17** | Historical suite-count comments stop masquerading as current when their files are next honestly touched. | **DEFERRED** | Opportunistic only; not worth a dedicated PR unless current state raises severity. |
-| 18 | **F-18** | The unnumbered outbound-e-transfer question has one question-authority home: fold into Q1 or assign a proper Q id without creating a duplicate question. | **TODO** | |
+| 18 | **F-18** | The unnumbered outbound-e-transfer question has one question-authority home: fold into Q1 or assign a proper Q id without creating a duplicate question. | **IN PR #153** | Q1 now explicitly owns the CALCULATED $19,700 unmatched remainder after the CALCULATED $3,500 Wise trace; no new question, status, or financial model was created. |
 
 ## Priority and batching
 
 - **F-01 → F-04 are first.** They are the baseline audit's P1 household-facing correctness / contradiction work that does not require an owner answer.
-- **F-05 is DONE — PR #149.** **F-14 is DONE — PR #150.** **F-15 is DONE — PR #151.** Owner-estimated $1.3M home value now drives the ESTIMATE net-worth/equity/LTV path; Q3 stays OPEN for verified market value. F-16 is **IN PR #152**.
+- **F-05 is DONE — PR #149.** **F-14 is DONE — PR #150.** **F-15 is DONE — PR #151.** **F-16 is DONE — PR #152.** Owner-estimated $1.3M home value now drives the ESTIMATE net-worth/equity/LTV path; Q3 stays OPEN for verified market value. F-18 is **IN PR #153**.
 - Default to **one finding per PR**. If current evidence proves two findings share one root cause and one acceptance condition, current governance may permit one PR; record why in the merge card. Do not batch merely because both are documentation.
 - F-17 stays deferred unless an honest touch to one of those files makes the cleanup in-scope.
 - The audit's recommendations are dated advice, not an override of current repository governance. Reproduce each finding before acting.
