@@ -391,13 +391,20 @@ Household evidence. They are not spendable cash and not a funding source.
 in current repository authority and are **not** assigned a dollar value. Do
 not invent cents-per-point, a redemption method, or a rewards engine.
 
-**B72 · `test-mergecard.js` names a commit that no branch holds** · *housekeeping*
-The `HEAD` fixture is `b85274ce…`, with a comment calling it "a real commit on
-this branch". PR #2's rebase removed that commit from every branch, so the
-comment is false. Harmless to behaviour — the fixture only needs 40 hex
+**B72 · `test-mergecard.js` names a commit that no branch holds** · **DONE 2026-08-22** · *housekeeping*
+The `HEAD` fixture was `b85274ce…`, with a comment calling it "a real commit on
+this branch". PR #2's rebase had removed that commit from every branch, so the
+comment was false. Harmless to behaviour — the fixture only needs 40 hex
 characters — but a comment asserting something untrue is the class of defect
-this repository treats as real. Fix it in passing, whenever a pull request has
-honest reason to touch that file; it does not justify one of its own.
+this repository treats as real.
+
+**CLOSED.** The implementation defect is already gone. Current
+`test-mergecard.js` uses the synthetic 40-character value
+`const HEAD = 'a'.repeat(40);`. No code change was required because current
+`main` already satisfies the intended outcome. PR #147 later touched
+`test-mergecard.js` for F-12 and left that synthetic fixture intact. The
+string `b85274ce` survives only in historical, audit, and planning prose,
+including this closed record.
 
 **B73 · Financial decisions made inside page scripts** · **DONE 2026-08-14**
 `CONTEXT.md` states the rule: the engine owns the answers, the pages render them

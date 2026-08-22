@@ -32,7 +32,7 @@ When the owner says **"action the audit cleanup plan"**:
 ## Progress summary
 
 Baseline findings: **P0 = 0 · P1 = 5 · P2 = 11 · P3 = 2**.  
-Current progress: **10 / 18 findings dispositioned**.
+Current progress: **11 / 18 findings dispositioned**.
 
 Status vocabulary:
 
@@ -59,8 +59,8 @@ Status vocabulary:
 | 9 | **F-09** | `00_MASTER_PICTURE.md` no longer labels its 2026-08-09 actionable section current; new-session orientation does not route a reader to stale actions as today's truth. | **DONE — PR #144** | 00_MASTER_PICTURE.md is now explicitly a 2026-08-09 historical snapshot; Section 0 is not today's action list and CONTEXT no longer calls it the canonical written summary. |
 | 10 | **F-10** | B19's closure accurately says what was refreshed, and deep-dive documents do not present superseded liquidity / “now” actions without a date. | **DONE — PR #145** | Both deep-dive documents now date superseded liquidity/action claims and B19 accurately names the helocHistory endpoint work; Q19 remains ANSWERED. |
 | 11 | **F-11** | `STORE_QUESTION_B79.md` carries a dated supersession note for T4/B81 while preserving the still-valid store verdict. | **DONE — PR #146** | STORE_QUESTION_B79 preserves the file-foundation verdict while T4 PASS 2026-08-17 and B81 completion 2026-08-20 now explicitly supersede its old T4/B81-closed statements; unattended production writes remain unauthorized. |
-| 12 | **F-12** | `CLAUDE.md`, PR template, and mechanical merge-card token use one vocabulary for the stale/superseded verdict. | **IN PR #147** | |
-| 13 | **F-13** | B72 is closed if current main still proves the bad commit fixture is gone; do not create code for an already-fixed item. | **TODO** | |
+| 12 | **F-12** | `CLAUDE.md`, PR template, and mechanical merge-card token use one vocabulary for the stale/superseded verdict. | **DONE — PR #147** | CLAUDE.md now documents `STALE-SUPERSEDED`, matching the PR template and mechanical merge-card check; test-mergecard.js guards the vocabulary against drift. |
+| 13 | **F-13** | B72 is closed if current main still proves the bad commit fixture is gone; do not create code for an already-fixed item. | **IN PR #148** | |
 | 14 | **F-14** | Resolve whether a midpoint home value / point household net worth may be published at all; then make `positions.csv` / derived summaries follow that owner decision without inventing policy. | **WAITING OWNER** | Owner decision required: range-only presentation vs permission for midpoint estimate. |
 | 15 | **F-15** | Separate Amanda's continuing Tennis BC / household-transfer stream from the stopped garage/lab-funded stream so Deep Dive and the forward plan do not contradict each other. | **TODO** | |
 | 16 | **F-16** | New-session orientation records the dated 2026-08-21 live acceptance result without moving the canonical opening. A newer canonical cutover remains a separate owner-reserved decision. | **TODO** | Explicit non-goal: do not promote 2026-08-21 to canonical opening in this finding. |
