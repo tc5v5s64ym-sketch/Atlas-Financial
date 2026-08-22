@@ -306,7 +306,7 @@ State, in the merge card:
 1. **Source** — the backlog item, open question, or owner instruction behind
    this work.
 2. **Verdict** — exactly one of `STILL BROKEN` · `ALREADY FIXED` ·
-   `PARTIALLY FIXED` · `FIXED BUT UNTESTED` · `STALE / SUPERSEDED` ·
+   `PARTIALLY FIXED` · `FIXED BUT UNTESTED` · `STALE-SUPERSEDED` ·
    `NEEDS OWNER ANSWER`.
 3. **Evidence** — the exact file, function, figure or test, and how it was
    checked *on current `main`, before any change*.
