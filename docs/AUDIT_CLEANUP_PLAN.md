@@ -32,7 +32,7 @@ When the owner says **"action the audit cleanup plan"**:
 ## Progress summary
 
 Baseline findings: **P0 = 0 · P1 = 5 · P2 = 11 · P3 = 2**.  
-Current progress: **5 / 18 findings dispositioned**.
+Current progress: **6 / 18 findings dispositioned**.
 
 Status vocabulary:
 
@@ -54,7 +54,7 @@ Status vocabulary:
 | 4 | **F-03** | One authoritative coaching-income overstatement answer reaches both Deep Dive surfaces; no `$650` vs `$1,650` contradiction. | **DONE — PR #140** | `questions[0].changes` routes to `incomeWarning` (~$650/month, indicative) and labels $1,650 as the earlier upper-bound fear. B93 uniqueness in `test-dedup-facts.js` fails if published `data.json` strings again state different current monthly overstatement figures. |
 | 5 | **F-05** | Reconcile Evidence-Use Register dispositions for the six interview-derived commitments with the owner gate and the values already live in `plan.commitments`; add only a guard justified by the resolved authority state. | **WAITING OWNER** | Owner must confirm whether the 2026-08-16 absorption satisfied the joint-household promotion gate for HH-021, HH-022, TRAVEL-002, COMMIT-002, COMMIT-003 and HH-014. |
 | 6 | **F-06** | Q2 status claims outside `01_OPEN_QUESTIONS.md` cannot contradict the sole question-status authority; correct current conflicts and add the narrow deterministic guard if current governance still calls for it. | **DONE — PR #141** | `positions.csv` and B18 record TFR-TO C/C payment-matching as destination evidence only; Q2 stays OPEN. `test-question-status.js` fails if either file claims RESOLVED/ANSWERED/CLOSED for a canonical-OPEN question. |
-| 7 | **F-07** | Q3's secured-debt and financial-account-net-worth fragment are current or explicitly dated historical figures, not stale-as-current. | **IN PR #142** | |
+| 7 | **F-07** | Q3's secured-debt and financial-account-net-worth fragment are current or explicitly dated historical figures, not stale-as-current. | **DONE — PR #142** | Q3 now carries current secured debt $745,674.46 and financial-account fragment -$730,394.82 while remaining OPEN. |
 | 8 | **F-08** | B91's completed record clearly labels the 2026-08-16 block historical and no longer asserts that superseded opening / Q19 state as current. | **TODO** | |
 | 9 | **F-09** | `00_MASTER_PICTURE.md` no longer labels its 2026-08-09 actionable section current; new-session orientation does not route a reader to stale actions as today's truth. | **TODO** | |
 | 10 | **F-10** | B19's closure accurately says what was refreshed, and deep-dive documents do not present superseded liquidity / “now” actions without a date. | **TODO** | |
