@@ -95,6 +95,7 @@ const suites = [
   ['major future costs on the master plan', 'test-major-future-costs.js'],
   ['master forecast engine (B94 / AF-PLAN-01)', 'test-master-forecast.js'],
   ['end-to-end payday proof (B96 / AF-PLAN-02)', 'test-b96-payday.js'],
+  ['payday allocation waterfall', 'test-payday-allocation.js'],
   ['balance history as a refresh by-product (B20 / AF-HIST-01)', 'test-b20-history.js'],
 ];
 

@@ -122,6 +122,17 @@ if (advice.gap) {
   put('plan.gapDate', advice.gap.date);
   put('plan.gapDueThatDay', advice.gap.dueOnGapDay);
 }
+if (advice.paydayAllocation) {
+  const pa = advice.paydayAllocation;
+  put('payday.available', pa.available);
+  put('payday.obligations', pa.obligations && pa.obligations.allocated);
+  put('payday.essentials', pa.essentials && pa.essentials.allocated);
+  put('payday.liquidity', pa.liquidity && pa.liquidity.allocated);
+  put('payday.futureCosts', (pa.futureCosts || []).reduce((s, r) => s + (r.allocated || 0), 0));
+  put('payday.extraDebt', pa.extraDebt && pa.extraDebt.allocated);
+  put('payday.unallocated', pa.unallocated);
+  put('payday.riskShortfall', (pa.risks || []).reduce((s, r) => s + (r.shortfall || 0), 0));
+}
 
 const T = advice.sim.totals;
 put('totals.confirmedIncome', T.confirmedIncome);
