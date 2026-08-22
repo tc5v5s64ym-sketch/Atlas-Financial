@@ -120,7 +120,7 @@ and `data.json`.
 |---|---|
 | `ACCOUNT_FACTS.md` | **Standing facts — rates, limits, due dates, renewal. Read first** |
 | `ATLAS_FINANCIAL_BUILD_STRATEGY.md` | **Sequencing** — what to build next, subordinate to `ARCHITECTURE.md` |
-| `00_MASTER_PICTURE.md` | The canonical written summary |
+| `00_MASTER_PICTURE.md` | Dated 2026-08-09 written summary — historical evidence, not current state |
 | `01_OPEN_QUESTIONS.md` | The working agenda, ranked by what an answer would change |
 | `evidence_use/register.json` | **Evidence-Use Register — routed or parked, for declared IDs only. Owns no financial value** |
 | `positions.csv` | Data spine — one row per account, fixed schema |
