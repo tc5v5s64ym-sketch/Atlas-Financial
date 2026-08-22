@@ -6,7 +6,10 @@
  * a PR on a review SHA, PASS/PENDING, or ChatGPT identity. It also proves
  * the check reads the live PR body, not the workflow event body, and fails
  * closed when the live PR is closed, retargeted, or no longer the event head.
- * It deliberately does not test the meaning of prose.
+ * It proves CLAUDE.md's documented current-state verdict vocabulary matches
+ * the workflow CURRENT_STATE list, so a builder following CLAUDE.md verbatim
+ * can write a verdict the mechanical check accepts. It deliberately does not
+ * test the meaning of prose.
  */
 
 const fs = require('fs');
@@ -43,6 +46,25 @@ function extractScript() {
 }
 
 const SCRIPT = extractScript();
+
+function workflowCurrentStateValues() {
+  const match = /const CURRENT_STATE = \[([\s\S]*?)\];/.exec(SCRIPT);
+  if (!match) throw new Error('merge-card-check.yml CURRENT_STATE list not found');
+  const tokens = [...match[1].matchAll(/'([^']+)'/g)].map((entry) => entry[1]);
+  if (tokens.length === 0) throw new Error('merge-card-check.yml CURRENT_STATE values missing');
+  return tokens;
+}
+
+function claudeCurrentStateVerdicts() {
+  const text = fs.readFileSync(path.join(__dirname, 'CLAUDE.md'), 'utf8');
+  const gate = /## Before editing — the Current-State Verification Gate[\s\S]*?(?=\n## )/.exec(text);
+  if (!gate) throw new Error('CLAUDE.md Current-State Verification Gate section not found');
+  const verdict = /\*\*Verdict\*\*[\s\S]*?exactly one of([\s\S]*?\.)/.exec(gate[0]);
+  if (!verdict) throw new Error('CLAUDE.md Current-State verdict vocabulary not found');
+  const tokens = [...verdict[1].matchAll(/`([^`]+)`/g)].map((entry) => entry[1]);
+  if (tokens.length === 0) throw new Error('CLAUDE.md Current-State verdict tokens missing');
+  return tokens;
+}
 
 const FIELDS = {
   Title: 'Simplify review governance',
@@ -197,6 +219,30 @@ for (const label of Object.keys(FIELDS)) {
 
 red('a retained HTML placeholder is blank', card({ fields: { Tests: '<!-- exact command -->' } }), /Tests.*blank/i);
 red('the current-state verdict uses a closed opening', card({ fields: { 'Current-state verdict': 'NOT CHECKED' } }), /must open/i);
+
+const documentedVerdicts = claudeCurrentStateVerdicts();
+const mechanicalVerdicts = workflowCurrentStateValues();
+ok(
+  JSON.stringify(documentedVerdicts) === JSON.stringify(mechanicalVerdicts),
+  'CLAUDE.md current-state verdicts match merge-card-check CURRENT_STATE',
+  `claude=${JSON.stringify(documentedVerdicts)} workflow=${JSON.stringify(mechanicalVerdicts)}`,
+);
+ok(
+  documentedVerdicts.includes('STALE-SUPERSEDED')
+    && !documentedVerdicts.includes('STALE / SUPERSEDED'),
+  'CLAUDE.md documents STALE-SUPERSEDED rather than STALE / SUPERSEDED',
+);
+for (const token of documentedVerdicts) {
+  green(
+    `a builder following CLAUDE.md can open with ${token}`,
+    card({ fields: { 'Current-state verdict': `${token} — vocabulary proof` } }),
+  );
+}
+red(
+  'the pre-alignment slash form STALE / SUPERSEDED fails the mechanical check',
+  card({ fields: { 'Current-state verdict': 'STALE / SUPERSEDED — vocabulary proof' } }),
+  /must open/i,
+);
 
 // Prose meaning is intentionally outside CI. The closed opening is mechanical;
 // a reviewer decides whether the rest is honest.
