@@ -239,7 +239,7 @@ const liveBudget = F.budgetBreakdown(plan, periods, {
   paypalPerMonth: data.paypal ? data.paypal.perMonth : 0,
   disabled: [], weeklyCap: liveAdvice.weekly, recommendedWeekly: liveAdvice.weekly,
 });
-const liveTransfer = F.incomeDeadline(plan, asOf, 'amandaTransfer',
+const liveTransfer = F.amandaHouseholdIncomeDeadline(plan, asOf,
   Object.assign({}, liveAdvice.simOptions, {
     weeklyVariable: liveAdvice.weekly, incomeOverrides: {},
     notBefore: liveAdvice.gap ? liveAdvice.gap.date : asOf,
@@ -262,15 +262,19 @@ ok(liveOver.length >= 1,
   'live comparisons: at least one facility is over today');
 ok(liveHeloc && liveHeloc.date >= asOf,
   'live HELOC crossing is inside the window', liveHeloc && liveHeloc.date);
-const amandaAmt = (plan.income.find(s => s.id === 'amandaTransfer') || {}).scenarioMonthly.expected;
+const amanda15 = plan.income.find(s => s.id === 'amandaSalary15');
+const amandaEom = plan.income.find(s => s.id === 'amandaSalaryMonthEnd');
+const amandaAmt = amanda15 && amandaEom
+  ? Math.round((amanda15.amount + amandaEom.amount) * 100) / 100
+  : 0;
 ok(same(liveTransfer.amount, amandaAmt),
-  'live Amanda transfer is the expected-scenario monthly amount',
+  'live Amanda household income is the combined Tennis BC salary monthly amount',
   liveTransfer ? `$${liveTransfer.amount}` : 'none');
 ok(!liveTransfer.neededBy || liveTransfer.neededBy >= asOf,
   'a published needed-by date, when there is one, is in-window',
   liveTransfer.neededBy || 'optional on this opening');
 ok(liveTransfer && typeof liveTransfer.endingWithout === 'number',
-  'Amanda deadline still reports the no-transfer ending');
+  'Amanda deadline still reports the no-salary ending');
 
 const live = F.planPhases(plan, liveAdvice, liveDebt, {
   sim: liveSim, budget: liveBudget, transfer: liveTransfer, alternatives: liveAlt, disabled: [],
@@ -282,7 +286,7 @@ ok(live.phases[1].titleId === 'overLimit',
   'live 31–60 is the over-limit phase');
 const amandaRisk = risk(live, 'amandaRequired') || risk(live, 'amandaOptional');
 ok(amandaRisk && same(amandaRisk.windowImpact, amandaAmt * 3),
-  'live Amanda risk is three months of the expected transfer',
+  'live Amanda risk is three months of the combined Tennis BC salary',
   amandaRisk && amandaRisk.id);
 ok(!!risk(live, 'amandaRequired') === !!liveTransfer.neededBy,
   'required vs optional follows whether a needed-by date exists');

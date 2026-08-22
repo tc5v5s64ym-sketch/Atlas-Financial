@@ -239,15 +239,18 @@ A later estimate change is an edit to the existing `plan.commitments` row
 **Status:** OPEN · **Owner:** Dale + Amanda
 **What we know:** The account (id `amanda-debt-payments`, display name
 TENNIS INCOME, previously labelled DEBT&PAYMENTS) is already excluded from
-spendable `plan.startingCash`. Tennis BC salary and coaching income land
-there; coaches/business/pass-through amounts are paid first; remainder is
-transferred into BILLS ACCOUNT. Money becomes household-available when it
-is actually transferred. The Aug. 14 payday session observed $798.37 in
-that account. A fresh balance is not automatically spendable starting cash.
-Do not estimate how much of the current balance is household-available.
-**What the answer changes:** How much, if any, of that balance can enter
-household available cash after a refresh. B91 must preserve held/pass-through
-semantics rather than guessing.
+spendable `plan.startingCash`. Coaching/business receipts land there;
+coaches/business/pass-through amounts are paid first. Owner-confirmed
+2026-08-22: the two fixed Tennis BC salary deposits ($2,168.85 on the 15th
+and $2,387.99 on month-end) land in household accounts and are Forecast
+household income; that fact is not what this question is for. Q25 is only
+the uncertain coaching/business remainder of the mixed operating-account
+balance. The Aug. 14 payday session observed $798.37 in that account. A
+fresh balance is not automatically spendable starting cash. Do not estimate
+how much of the current remainder is household-available.
+**What the answer changes:** How much, if any, of that mixed-account
+remainder can enter household available cash after a refresh. B91 must
+preserve held/pass-through semantics rather than guessing.
 
 ---
 

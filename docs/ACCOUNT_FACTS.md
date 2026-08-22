@@ -447,19 +447,26 @@ five appear on both and are the same accounts:
 ### TENNIS INCOME chequing *(…6458934)* — previously nicknamed DEBT&PAYMENTS
 Balance $2,691.85, **no overdraft facility**. Charges a **$3.95 monthly account
 fee**, plus withdrawal and cheque-return fees — the other chequing accounts do
-not. This is where her employment income lands and where many household debt
-payments originate.
+not. This is the coaching/business operating account, and where many household
+debt payments originate. It is not the current landing account for her fixed
+Tennis BC salary.
 
 **This balance is not household spendable cash** *(owner-stated 2026-08-09;
 operating semantics restated 2026-08-16)*. The owner renamed the account
-**TENNIS INCOME**; the canonical id remains `amanda-debt-payments`. Amanda's
-Tennis BC salary lands here and is transferred promptly into BILLS ACCOUNT.
-Coaching income also lands here. Coaches/business/pass-through amounts are
-paid from this account first. Whatever remains after coaching obligations
-is transferred into BILLS ACCOUNT. Money becomes household-available when
-it is actually transferred into the household cash pool. The raw balance is
-NOT automatically spendable household cash. Do not estimate how much of the
-current balance is household-available (Q25).
+**TENNIS INCOME**; the canonical id remains `amanda-debt-payments`.
+Owner-confirmed 2026-08-22: the two fixed Tennis BC net deposits —
+**$2,168.85 on the 15th** and **$2,387.99 on the last calendar day of the
+month** — land in household accounts and are Forecast household income
+(`plan.income.amandaSalary15` and `plan.income.amandaSalaryMonthEnd`).
+Coaching income lands here. Coaches/business/pass-through amounts are paid
+from this account first. Coaching surplus is not forecast and is transferred
+only after those obligations are paid. Later transfers of already-counted
+salary dollars between household-controlled accounts are not a second income
+stream. Whatever mixed remainder is left after coaching obligations may
+become household-available only when that surplus is actually established.
+The raw balance is NOT automatically spendable household cash. Do not
+estimate how much of the current remainder is household-available (Q25 stays
+OPEN only for that coaching/business remainder).
 
 **Her Tennis BC pay is semi-monthly, not bi-weekly** — the **15th and the last
 day of the month**, verified across all 18 months. Recent: $2,168.85 on 15 Jul,

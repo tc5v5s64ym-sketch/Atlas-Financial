@@ -175,21 +175,14 @@ considered.
 
 ## Blocked on the household
 
-**B70 · Agree a standing transfer from Amanda's account** · *small, high value*
-**The 9 August shortfall is historical, not current truth.** Spendable
-household cash of **$79.84** against the 12 August Burrard registrations
-of $623 was the 2026-08-09 opening. Those registrations are owner-confirmed
-**PAID** (2026-08-16). Do not keep this item urgent because that specific
-gap is still open — it is not.
-
-The standing-transfer policy question remains. Transfers across are ad hoc
-— 127 of them over 18 months, mostly $100–$350, ranging from $930 to
-$3,750 in a month — and **$2,691.85** sat in TENNIS INCOME / DEBT&PAYMENTS
-on that opening, which is still not spendable household cash (Q25). A
-fixed amount on a fixed day, timed after her 15th and month-end pay, would
-remove the class of problem. Needs a household decision on the amount —
-the 12-month mean is $2,182/month. Re-size it from the next coherent
-opening, not from the Aug. 9 $79.84.
+**B70 · Agree a standing transfer from Amanda's account** · **CLOSED 2026-08-22** · *small, high value*
+Owner-confirmed 2026-08-22: the two fixed Tennis BC salaries land in
+household accounts and are already Forecast household income. Coaching
+surplus is transferred only after coaches/business obligations are paid
+and is not a base-plan transfer. The live `$1,100` standing-transfer
+action is retired. Do not put a fixed Amanda-transfer instruction back on
+`plan.actions`. Historical ad-hoc crossings remain dated evidence; Q25
+stays OPEN only for the coaching/business remainder.
 
 **B13 · Business records — revenue and cost of goods** · *large*
 The Tier 1 question. Now **two** businesses, which must be separated first (B56).

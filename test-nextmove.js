@@ -414,9 +414,10 @@ const CASH_OPTS = (targetBuffer, o) => OPTS(targetBuffer, Object.assign({
   fundingSources: CASH_FUNDING,
 }, o || {}));
 const ACTION_AMT = plan.actions[0].amount;
-const SHORT_BUF = ACTION_AMT + openingFloor(plan, asOf) + 200;
+const SHORT_BUF = openingFloor(plan, asOf) + ACTION_AMT * 1.5;
 const SHORT_REMAINDER = gapAtBuffer(plan, SHORT_BUF, asOf) - ACTION_AMT;
 const DEFAULT_GAP = gapAtBuffer(plan, plan.defaults.targetBuffer, asOf);
+const SHORT_COVERS_ID = plan.actions[0].due ? 'restored' : 'windowEnding';
 
 {
   const cash = F.startingCashAmount(plan);
@@ -524,7 +525,7 @@ const MUTATIONS = [
   { label: 'halving the coverage comparison lets a short action claim it restores the buffer',
     from: '    const covers = !!gap && amount != null && atLeast(amount, gapAmount);',
     to: '    const covers = !!gap && amount != null && atLeast(amount, gapAmount / 2);',
-    check: m => publishedAt(m, SHORT_BUF).id === 'restored',
+    check: m => publishedAt(m, SHORT_BUF).id === SHORT_COVERS_ID,
     real: () => publishedAt(F, SHORT_BUF).id === 'partial' },
 
   { label: 'judging the action against the default buffer ignores the buffer in force',
@@ -532,13 +533,13 @@ const MUTATIONS = [
     const amount = action.amount != null ? action.amount : null;`,
     to: `    const gapAmount = gap ? ${DEFAULT_GAP} : 0;
     const amount = action.amount != null ? action.amount : null;`,
-    check: m => publishedAt(m, SHORT_BUF).id === 'restored',
+    check: m => publishedAt(m, SHORT_BUF).id === SHORT_COVERS_ID,
     real: () => publishedAt(F, SHORT_BUF).id === 'partial' },
 
   { label: 'treating the existence of a funding plan as coverage skips the comparison',
     from: '    const covers = !!gap && amount != null && atLeast(amount, gapAmount);',
     to: '    const covers = !!gap && !!(funding && funding.feasible);',
-    check: m => publishedAt(m, SHORT_BUF).id === 'restored',
+    check: m => publishedAt(m, SHORT_BUF).id === SHORT_COVERS_ID,
     real: () => publishedAt(F, SHORT_BUF).id === 'partial' },
 
   { label: 'reversing the remainder reports the wrong figure still to find',
@@ -740,6 +741,8 @@ function expectMove(s) {
   const disabled = s.disabled || [];
   const floor = openingFloor(plan, asOf);
   const gapAmt = s.targetBuffer - floor;
+  const covers = ACTION_AMT_LIVE != null && ACTION_AMT_LIVE + 0.005 >= gapAmt;
+  const inTime = !!(plan.actions[0] && plan.actions[0].due);
   if (gapAmt <= 0.005) return 'windowEnding';
   if (USABLE_LIVE + 0.005 < gapAmt) return 'unfunded';
   if (s.weeklyVariable != null) {
@@ -748,10 +751,10 @@ function expectMove(s) {
       targetBuffer: s.targetBuffer, disabled, incomeOverrides: {}, extraDebtMonthly: 0,
     });
     if (sim.min.balance < s.targetBuffer - 0.005) {
-      return ACTION_AMT_LIVE + 0.005 >= gapAmt ? 'overrideBreach' : 'partial';
+      return covers && inTime ? 'overrideBreach' : (covers ? 'windowEnding' : 'partial');
     }
   }
-  return ACTION_AMT_LIVE + 0.005 >= gapAmt ? 'restored' : 'partial';
+  return covers && inTime ? 'restored' : (covers ? 'windowEnding' : 'partial');
 }
 const SETTINGS = [
   { what: 'a buffer the authored action covers', targetBuffer: RESTORED_BUF, weeklyVariable: null },
@@ -789,17 +792,22 @@ ok(['unfunded', 'windowEnding'].every(id => seen.has(id)),
 
 /* WHY THE EQUIVALENCE SURVIVES THE TIMING FIX. Gating the two restoring
  * outcomes on the due date as well as the amount is a deliberate divergence
- * from the expression `public/plan.js` ran at 098f90b — and every setting above
- * still matches it, because `data.json` dates the first action 11 August and
- * the gap always falls on 12 August. The states the fix changes are exactly the
- * ones the published data cannot reach, which is why they are proved on
- * hand-computed fixtures in section 5b instead. */
+ * from the expression `public/plan.js` ran at 098f90b. When the published
+ * first action has a due date on or before the gap, the live settings still
+ * match. When it has no due date, nextMove cannot treat it as an in-time
+ * restoration — the same rule the late-action fixtures prove in 5b. */
 for (const s of SETTINGS) {
   const { adv } = published(s);
   if (!adv.gap) continue;
-  ok(plan.actions[0].due <= adv.gap.date,
-    `the published action is due in time — ${s.what}`,
-    `${plan.actions[0].due} <= ${adv.gap.date}`);
+  if (plan.actions[0].due) {
+    ok(plan.actions[0].due <= adv.gap.date,
+      `the published action is due in time — ${s.what}`,
+      `${plan.actions[0].due} <= ${adv.gap.date}`);
+  } else {
+    ok(expectMove(s) !== 'restored' && expectMove(s) !== 'overrideBreach',
+      `a first action with no due date cannot restore the gap in time — ${s.what}`,
+      expectMove(s));
+  }
 }
 
 console.log('\n=== 13. the card and the band cannot contradict each other ===');

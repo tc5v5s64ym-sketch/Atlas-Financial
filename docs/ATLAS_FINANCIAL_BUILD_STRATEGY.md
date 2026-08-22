@@ -773,10 +773,12 @@ exist.
   obligation. The old arrears are settled (Q17 ANSWERED).
   **D2 slice — not completion.** Amanda-income observations distinguish
   Tennis BC salary, coaching/business inflows, obligations, household
-  transfers, and household-available remainder. Observed salary is not
-  promoted into Forecast. `amandaTransfer` remains the household-cash
-  authority. Unknown business obligations fail closed. Live Amanda
-  income canonical state is unchanged.
+  transfers, and household-available remainder. Owner-confirmed
+  2026-08-22: the two fixed Tennis BC salary deposits land in household
+  accounts and are Forecast household income. Later transfers of those
+  same dollars are not a second income line. Coaching surplus is not
+  forecast. Unknown business obligations fail closed. The raw TENNIS
+  INCOME balance remains non-spendable coaching/business remainder.
   **D8 slice — not completion.** Card-state observations distinguish
   posted balance, pending, limit, available credit, and confirmed
   payment. Unknown pending is not $0. Limit and available credit are

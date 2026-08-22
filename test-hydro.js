@@ -529,9 +529,12 @@ console.log('\n=== live Fusion / Amanda / HELOC / card surfaces ===');
   ok(instalments.length === 0,
     'the three stale $500 Fusion season instalments are gone',
     String(instalments.length));
-  const amanda = live.plan.income.find(s => s.id === 'amandaTransfer');
-  ok(amanda && amanda.scenarioMonthly && amanda.scenarioMonthly.expected === 2182,
-    'Amanda income authority is untouched');
+  const amanda15 = live.plan.income.find(s => s.id === 'amandaSalary15');
+  const amandaEom = live.plan.income.find(s => s.id === 'amandaSalaryMonthEnd');
+  ok(amanda15 && near(amanda15.amount, 2168.85) && amandaEom && near(amandaEom.amount, 2387.99),
+    'Amanda Tennis BC salary streams are the owner-confirmed pair');
+  ok(!live.plan.income.some(s => s.id === 'amandaTransfer'),
+    'retired amandaTransfer stream is absent');
 }
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);

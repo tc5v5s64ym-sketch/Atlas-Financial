@@ -1,12 +1,16 @@
 'use strict';
-/* B91 D2 — Amanda salary vs coaching/business vs household transfers.
+/* Amanda salary vs coaching/business vs household transfers.
  *
  * Acceptance corpus: docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md
- * Live amandaTransfer / DEBT&PAYMENTS / HELOC / cards stay unchanged.
- * Fusion settlement and the Hydro September dated due are the B91
- * current-state cutover, not this D2 split. This suite proves the
- * semantic split on classified movements plus existing
- * Forecast.expandEvents. It is not a second income engine.
+ * Owner-confirmed 2026-08-22: the two fixed Tennis BC salary deposits land
+ * in household accounts and are Forecast household income. A later transfer
+ * of those dollars is not a second income line. Coaching surplus is not
+ * forecast. The raw TENNIS INCOME balance remains non-spendable. Fusion
+ * settlement and the
+ * Hydro September dated due stay the B91 current-state cutover, not this
+ * income-model outcome. This suite proves the semantic split on classified
+ * movements plus existing Forecast.expandEvents. It is not a second income
+ * engine.
  *
  * Independent proof: hand addition of named classified amounts. That is
  * not a second call to expandEvents or simulate.
@@ -33,6 +37,7 @@ const END = F.addDays(START, 27);
 const OPENING = 2000;
 const SALARY = 2168.85;
 const MONTH_END = 2387.99;
+const SALARY_MONTHLY = 4556.84;
 const TRANSFER = 2168.85;
 const WRONG = 4337.70;
 const COACHING = 4000;
@@ -84,6 +89,28 @@ function salaryStream(amount) {
   };
 }
 
+function salary15(amount) {
+  return {
+    id: 'amandaSalary15',
+    label: 'Amanda salary — Tennis BC — 15th',
+    frequency: 'monthly',
+    day: 15,
+    amount: amount == null ? SALARY : amount,
+    confidence: 'confirmed',
+  };
+}
+
+function salaryEom(amount) {
+  return {
+    id: 'amandaSalaryMonthEnd',
+    label: 'Amanda salary — Tennis BC — month end',
+    frequency: 'monthly',
+    day: 31,
+    amount: amount == null ? MONTH_END : amount,
+    confidence: 'confirmed',
+  };
+}
+
 function incomeSum(plan) {
   return F.expandEvents(plan, START, END, {})
     .filter(e => e.kind === 'income')
@@ -105,8 +132,11 @@ console.log('=== independent classified-movement identity ===');
 ok(near(SALARY + TRANSFER, WRONG),
   'independent: $2,168.85 + $2,168.85 = $4,337.70',
   money(SALARY + TRANSFER));
-ok(near(SALARY + KNOWN_COACHING - KNOWN_OBLIGATION, 2268.85),
-  'independent: known remainder is $2,168.85 + $400 − $300 = $2,268.85');
+ok(near(SALARY + MONTH_END, SALARY_MONTHLY),
+  'independent: $2,168.85 + $2,387.99 = $4,556.84/month',
+  money(SALARY + MONTH_END));
+ok(near(KNOWN_COACHING - KNOWN_OBLIGATION, 100),
+  'independent: Q25 coaching remainder is $400 − $300 = $100');
 
 console.log('\n=== 1. salary + transfer is not $4,337.70 household income ===');
 {
@@ -115,14 +145,18 @@ console.log('\n=== 1. salary + transfer is not $4,337.70 household income ===');
     { fact: 'household-transfer', amount: TRANSFER },
   ];
   const classified = R.householdCashFromAmandaMovements(movements);
-  ok(near(classified, TRANSFER),
-    'classified household-cash inflow is the transfer only',
+  ok(near(classified, SALARY),
+    'classified household-cash inflow is the salary once',
     money(classified));
   ok(!near(classified, WRONG),
     'classified household-cash inflow is not the naive $4,337.70 sum');
-  ok(near(R.classifyAmandaMovement(movements[0]).amandaOperatingIncome, SALARY)
-    && near(R.classifyAmandaMovement(movements[0]).householdCashInflow, 0),
-    'salary is Amanda operating income, not household cash');
+  ok(near(R.classifyAmandaMovement(movements[0]).newIncome, SALARY)
+    && near(R.classifyAmandaMovement(movements[0]).householdCashInflow, SALARY)
+    && near(R.classifyAmandaMovement(movements[0]).amandaOperatingIncome, 0),
+    'salary is household income, not TENNIS INCOME operating income');
+  ok(near(R.classifyAmandaMovement(movements[1]).householdCashInflow, 0)
+    && near(R.classifyAmandaMovement(movements[1]).newIncome, 0),
+    'a later household-transfer of the same dollars is $0 additional income');
 
   const plan = cashFixture([transferStream(TRANSFER)]);
   ok(near(incomeSum(plan), TRANSFER),
@@ -158,9 +192,9 @@ console.log('\n=== 1. salary + transfer is not $4,337.70 household income ===');
     'A. salary is not MATCH while only amandaTransfer is present');
   ok(salaryRows.every(r => r.intentionallyNotPromoted)
     && salaryRows.every(r => r.representation === 'observed-not-promoted'),
-    'B. salary is observed but intentionally not promoted');
-  ok(salaryRows.every(r => /intentionally not promoted/i.test(r.note || '')),
-    'B. the note says intentionally not promoted');
+    'B. transfer-only plan still has no canonical salary fact');
+  ok(salaryRows.every(r => r.canonicalTarget === '(no canonical salary fact)'),
+    'B. salary canonical target is no salary fact while only amandaTransfer is present');
   const badRows = runAmanda(both);
   ok(badRows.rows.filter(r => r.fact === 'employment-deposit').every(r => r.status === 'CONFLICT')
     && badRows.rows.filter(r => r.fact === 'employment-deposit').every(r => r.doubleCount),
@@ -170,10 +204,23 @@ console.log('\n=== 1. salary + transfer is not $4,337.70 household income ===');
   ok(noTransferSalary.length === 2 && noTransferSalary.every(r => r.status === 'MISSING')
     && noTransferSalary.every(r => r.status !== 'MATCH'),
     'D. removing amandaTransfer does not make the salary observation MATCH');
-  const salaryOnly = runAmanda(cashFixture([salaryStream(SALARY)]));
-  ok(salaryOnly.rows.filter(r => r.fact === 'employment-deposit').every(r => r.status === 'CONFLICT')
-    && salaryOnly.rows.filter(r => r.fact === 'employment-deposit').every(r => r.status !== 'MATCH'),
-    'D. a salary stream without amandaTransfer is still not MATCH');
+  const salaryOnlyOnce = runAmanda(cashFixture([salaryStream(SALARY)]));
+  ok(salaryOnlyOnce.rows.filter(r => r.fact === 'employment-deposit').every(r => r.status !== 'MATCH'),
+    'D. a once salary stream without 15th/month-end cadence is still not MATCH');
+  const canonical = runAmanda(cashFixture([salary15(), salaryEom()]));
+  const canonicalSalary = canonical.rows.filter(r => r.fact === 'employment-deposit');
+  const mid = canonicalSalary.find(r => r.observationId === 'payday-amanda-salary-midmonth');
+  const eom = canonicalSalary.find(r => r.observationId === 'payday-amanda-salary-monthend');
+  ok(mid && mid.status === 'MATCH' && near(mid.evidenceValue, SALARY)
+    && mid.canonicalTarget === 'income:amandaSalary15' && near(mid.canonicalValue, SALARY)
+    && mid.landingAccount !== AMANDA,
+    'E. $2,168.85 / 15th observation MATCHES the canonical 15th salary stream without a TENNIS INCOME landing');
+  ok(eom && eom.status === 'MATCH' && near(eom.evidenceValue, MONTH_END)
+    && eom.canonicalTarget === 'income:amandaSalaryMonthEnd' && near(eom.canonicalValue, MONTH_END)
+    && eom.landingAccount !== AMANDA,
+    'E. $2,387.99 / month-end observation MATCHES the canonical month-end salary stream without a TENNIS INCOME landing');
+  ok(!R.forecastHasAmandaDoubleCount({ plan: cashFixture([salary15(), salaryEom()]) }),
+    'E. the two salary streams without amandaTransfer are not a double-count');
 }
 
 console.log('\n=== 2. internal Amanda transfer creates $0 new income ===');
@@ -221,22 +268,22 @@ console.log('\n=== 2. internal Amanda transfer creates $0 new income ===');
     'an internal transfer modelled as Forecast income is CONFLICT');
 }
 
-console.log('\n=== 3. Amanda→joint transfer creates joint-cash inflow once ===');
+console.log('\n=== 3. Amanda→joint transfer is not a second salary line ===');
 {
   const movements = [{ fact: 'household-transfer', amount: TRANSFER }];
-  ok(near(R.householdCashFromAmandaMovements(movements), TRANSFER),
-    'classified household-cash inflow is $2,168.85 once');
+  ok(near(R.householdCashFromAmandaMovements(movements), 0),
+    'classified household-cash inflow from a transfer-only movement is $0');
   const plan = cashFixture([transferStream(TRANSFER)]);
   const events = F.expandEvents(plan, START, END, {})
     .filter(e => e.id === 'amandaTransfer');
   ok(events.length === 1 && near(events[0].amount, TRANSFER),
-    'Forecast.expandEvents emits exactly one amandaTransfer inflow');
+    'Forecast WOULD emit amandaTransfer if that retired stream were restored — that is the defect');
   const sim = F.simulate(plan, START, { weeklyVariable: 0 });
   ok(near(sim.ending, OPENING + TRANSFER),
-    'simulate ending rises by the transfer once',
+    'simulate ending would rise by the restored transfer stream',
     money(sim.ending));
   ok(near(sim.totals.income, TRANSFER),
-    'simulate income total is the transfer once');
+    'simulate income total would count the restored transfer stream');
 }
 
 console.log('\n=== 4. coaching/business revenue alone is $0 household cash ===');
@@ -286,22 +333,24 @@ console.log('\n=== 5. known business obligation reduces available remainder ==='
     obligations: KNOWN_OBLIGATION,
     obligationsKnown: true,
   });
-  const independent = SALARY + KNOWN_COACHING - KNOWN_OBLIGATION;
+  const independent = KNOWN_COACHING - KNOWN_OBLIGATION;
   ok(remainder.established === true && near(remainder.amount, independent),
-    'known obligations yield remainder $2,268.85',
+    'known obligations yield Q25 coaching remainder $100',
     money(remainder.amount));
-  ok(remainder.amount < SALARY + KNOWN_COACHING,
-    'the obligation reduced the remainder before household use');
+  ok(remainder.amount < KNOWN_COACHING,
+    'the obligation reduced the coaching remainder before household use');
+  ok(!near(remainder.amount, SALARY + KNOWN_COACHING - KNOWN_OBLIGATION),
+    'salary is not mixed into the TENNIS INCOME remainder');
   const movements = [
     { fact: 'employment-deposit', amount: SALARY },
     { fact: 'coaching-receipt', amount: KNOWN_COACHING },
     { fact: 'business-obligation', amount: KNOWN_OBLIGATION },
     { fact: 'household-transfer', amount: independent },
   ];
-  ok(near(R.householdCashFromAmandaMovements(movements), independent),
-    'household cash is the post-obligation remainder, not gross inflows');
-  ok(!near(R.householdCashFromAmandaMovements(movements), SALARY + KNOWN_COACHING),
-    'gross salary plus coaching is not household cash');
+  ok(near(R.householdCashFromAmandaMovements(movements), SALARY),
+    'household cash is the direct salary, not salary plus a later transfer');
+  ok(!near(R.householdCashFromAmandaMovements(movements), SALARY + independent),
+    'later transfer of coaching remainder is not a second income line');
 }
 
 console.log('\n=== remainder inputs fail closed unless every value is explicitly finite ===');
@@ -339,8 +388,8 @@ console.log('\n=== remainder inputs fail closed unless every value is explicitly
   const valid = closed({
     employment: SALARY, coaching: KNOWN_COACHING, obligations: KNOWN_OBLIGATION,
   });
-  ok(valid.established === true && near(valid.amount, 2268.85),
-    'all three explicit finite numbers calculate employment + coaching − obligations');
+  ok(valid.established === true && near(valid.amount, 100),
+    'all three explicit finite numbers calculate coaching − obligations, not salary');
   const unknown = R.amandaHouseholdAvailable({
     obligationsKnown: false, employment: SALARY, coaching: 0, obligations: 0,
   });
@@ -516,38 +565,75 @@ console.log('\n=== established remainder state is preserved ===');
     'established remainder stays established even when no observed balance can be compared');
 }
 
-console.log('\n=== 7. live amandaTransfer Forecast behaviour is unchanged ===');
+console.log('\n=== 7. live Tennis BC salary Forecast behaviour ===');
 {
-  const stream = live.plan.income.find(s => s.id === 'amandaTransfer');
-  ok(stream && stream.scenarioMonthly
-    && stream.scenarioMonthly.conservative === 930
-    && stream.scenarioMonthly.expected === 2182
-    && stream.scenarioMonthly.optimistic === 2400,
-    'live amandaTransfer scenarioMonthly is still 930 / 2,182 / 2,400');
-  ok(live.plan.income.filter(s => s.id === 'amandaTransfer').length === 1,
-    'exactly one amandaTransfer income stream');
-  ok(!live.plan.income.some(s => R.isAmandaSalaryStream(s)),
-    'live plan.income has no Tennis BC salary stream');
+  ok(!live.plan.income.some(s => s.id === 'amandaTransfer'),
+    'live plan.income has no amandaTransfer stream');
+  const mid = live.plan.income.find(s => s.id === 'amandaSalary15');
+  const eom = live.plan.income.find(s => s.id === 'amandaSalaryMonthEnd');
+  ok(mid && mid.frequency === 'monthly' && mid.day === 15 && near(mid.amount, SALARY)
+    && mid.confidence === 'confirmed' && mid.firstDue === '2026-09-15',
+    'live 15th salary is $2,168.85 confirmed monthly on day 15, firstDue 2026-09-15');
+  ok(eom && eom.frequency === 'monthly' && eom.day === 31 && near(eom.amount, MONTH_END)
+    && eom.confidence === 'confirmed' && !eom.firstDue,
+    'live month-end salary is $2,387.99 confirmed monthly on day 31');
+  ok(near(mid.amount + eom.amount, SALARY_MONTHLY),
+    'live fixed Amanda monthly salary is $4,556.84',
+    money(mid.amount + eom.amount));
+  ok(!live.plan.income.some(s => /coach|business.?receipt/i.test(`${s.id || ''} ${s.label || ''}`)),
+    'live Forecast base income includes no coaching stream');
   ok(!R.forecastHasAmandaDoubleCount(live),
     'live data does not double-count salary plus transfer');
+  ok(!(live.plan.actions || []).some(a => /standing transfer/i.test(a.what || '')),
+    'live plan has no standing Amanda-transfer action');
+  ok(!(live.plan.actions || []).some(a => a.amount === 1100 && /Amanda/i.test(a.what || '')),
+    'retired $1,100 Amanda standing-transfer action is absent');
+  ok(amanda.observations.filter(o => o.fact === 'employment-deposit')
+    .every(o => o.landingAccount !== AMANDA),
+    'salary observations do not name TENNIS INCOME as the landing account');
 
   const asOf = live.meta.asOf;
   const windowEnd = F.addDays(asOf, live.plan.windowDays - 1);
-  const dates = F.occurrences(stream, asOf, windowEnd);
-  const independent = dates.length * stream.scenarioMonthly.expected;
-  const events = F.expandEvents(live.plan, asOf, windowEnd, { scenario: 'expected' })
-    .filter(e => e.id === 'amandaTransfer');
-  ok(events.length === dates.length,
-    'live expandEvents emits one amandaTransfer event per occurrence',
-    String(events.length));
-  ok(near(events.reduce((s, e) => s + e.amount, 0), independent),
-    'live amandaTransfer total equals occurrences × $2,182',
+  const midDates = F.occurrences(mid, asOf, windowEnd);
+  const eomDates = F.occurrences(eom, asOf, windowEnd);
+  ok(midDates.every(d => d.slice(-2) === '15'),
+    'every 15th-salary occurrence is on a 15th');
+  ok(midDates.every(d => d >= '2026-09-15'),
+    'August 15 salary is not replayed after firstDue 2026-09-15');
+  ok(!midDates.some(d => d < asOf),
+    'no 15th-salary event is before as-of');
+  const eomEvents = F.expandEvents(live.plan, asOf, windowEnd, { scenario: 'expected' })
+    .filter(e => e.id === 'amandaSalaryMonthEnd');
+  const midEvents = F.expandEvents(live.plan, asOf, windowEnd, { scenario: 'expected' })
+    .filter(e => e.id === 'amandaSalary15');
+  ok(midEvents.length === midDates.length && midEvents.every(e => near(e.amount, SALARY)),
+    'Forecast emits one $2,168.85 event on each in-window 15th');
+  ok(eomEvents.length === eomDates.length && eomEvents.every(e => near(e.amount, MONTH_END)),
+    'Forecast emits one $2,387.99 event on each in-window month-end');
+  ok(eomDates.includes('2026-08-31'),
+    'August month-end salary is in-window on this 2026-08-19 opening');
+  const independent = midDates.length * SALARY + eomDates.length * MONTH_END;
+  const emitted = midEvents.concat(eomEvents).reduce((s, e) => s + e.amount, 0);
+  ok(near(emitted, independent),
+    'live Amanda salary total equals occurrences × the two fixed nets',
     money(independent));
+
+  const feb = F.occurrences(eom, '2026-02-01', '2026-02-28');
+  const apr = F.occurrences(eom, '2026-04-01', '2026-04-30');
+  const jan = F.occurrences(eom, '2026-01-01', '2026-01-31');
+  ok(feb.length === 1 && feb[0] === '2026-02-28',
+    'February month-end salary lands on 28 February 2026');
+  ok(apr.length === 1 && apr[0] === '2026-04-30',
+    'April month-end salary lands on 30 April');
+  ok(jan.length === 1 && jan[0] === '2026-01-31',
+    'January month-end salary lands on 31 January');
 
   const held = (live.plan.startingCash.heldElsewhere || [])
     .find(r => r.id === AMANDA);
   ok(held && held.class === 'operational' && near(held.value, CANONICAL_HELD),
     'live DEBT&PAYMENTS is still operational $2,691.85, not spendable');
+  ok(near(F.startingCashAmount(live.plan), 629.27 + 309.77 + 0.58),
+    'Amanda operating-account balance is excluded from spendable starting cash');
 }
 
 console.log('\n=== circular transfer observation is not copied canonical evidence ===');
@@ -580,11 +666,11 @@ console.log('\n=== circular transfer observation is not copied canonical evidenc
     'canonical expected $2,182 does not create an Aug. 14 MATCH of copied evidence');
   ok(!at9999.rows.some(copiedMatch),
     'changing canonical expected to $9,999 does not leave a copied $2,182 MATCH');
-  ok(at2182.amandaTransferAuthority && at2182.amandaTransferAuthority.present
+  ok(at2182.amandaTransferAuthority && at2182.amandaTransferAuthority.transferPresent
     && at2182.amandaTransferAuthority.locator === 'income:amandaTransfer'
     && near(at2182.amandaTransferAuthority.canonicalExpected, 2182)
     && at2182.amandaTransferAuthority.independentlyVerifiedByPaydayEvidence === false,
-    'report still names income:amandaTransfer as incumbent canonical context at $2,182');
+    'report still names income:amandaTransfer as incumbent canonical context at $2,182 when only the transfer stream is present');
   ok(at9999.amandaTransferAuthority && near(at9999.amandaTransferAuthority.canonicalExpected, 9999)
     && at9999.amandaTransferAuthority.independentlyVerifiedByPaydayEvidence === false,
     'canonical context follows the mutated expected amount and is still not payday-verified');
@@ -628,20 +714,27 @@ console.log('\n=== 8. reconciliation performs no writes ===');
   const coaching = result.rows.find(r => r.observationId === 'payday-amanda-coaching-receipt');
   const obligation = result.rows.find(r => r.observationId === 'payday-amanda-business-obligation');
   const available = result.rows.find(r => r.observationId === 'payday-amanda-household-available');
-  ok(salaryMid && salaryMid.status === 'MISSING' && near(salaryMid.evidenceValue, SALARY)
-    && salaryMid.intentionallyNotPromoted
-    && salaryMid.canonicalTarget === '(no canonical salary fact)',
-    'live mid-month $2,168.85 is observed, MISSING as a salary fact, not MATCH to amandaTransfer');
-  ok(salaryEnd && salaryEnd.status === 'MISSING' && near(salaryEnd.evidenceValue, MONTH_END)
-    && salaryEnd.intentionallyNotPromoted,
-    'live month-end $2,387.99 is observed and intentionally not promoted');
+  ok(salaryMid && salaryMid.status === 'MATCH' && near(salaryMid.evidenceValue, SALARY)
+    && salaryMid.canonicalTarget === 'income:amandaSalary15'
+    && near(salaryMid.canonicalValue, SALARY)
+    && salaryMid.intentionallyNotPromoted === false
+    && salaryMid.landingAccount !== AMANDA,
+    'live mid-month $2,168.85 MATCHES the canonical 15th salary stream without a TENNIS INCOME landing');
+  ok(salaryEnd && salaryEnd.status === 'MATCH' && near(salaryEnd.evidenceValue, MONTH_END)
+    && salaryEnd.canonicalTarget === 'income:amandaSalaryMonthEnd'
+    && near(salaryEnd.canonicalValue, MONTH_END)
+    && salaryEnd.intentionallyNotPromoted === false
+    && salaryEnd.landingAccount !== AMANDA,
+    'live month-end $2,387.99 MATCHES the canonical month-end salary stream without a TENNIS INCOME landing');
   ok(!transfer,
     'Aug. 14 file has no household-transfer observation that copies canonical amounts');
-  ok(result.amandaTransferAuthority && result.amandaTransferAuthority.present
-    && result.amandaTransferAuthority.locator === 'income:amandaTransfer'
-    && near(result.amandaTransferAuthority.canonicalExpected, 2182)
-    && result.amandaTransferAuthority.independentlyVerifiedByPaydayEvidence === false,
-    'live amandaTransfer is reported as unverified canonical context, not MATCH evidence');
+  ok(result.amandaTransferAuthority && result.amandaTransferAuthority.salaryPresent
+    && result.amandaTransferAuthority.transferPresent === false
+    && /amandaSalary15/.test(result.amandaTransferAuthority.locator)
+    && /amandaSalaryMonthEnd/.test(result.amandaTransferAuthority.locator)
+    && near(result.amandaTransferAuthority.canonicalExpected, SALARY_MONTHLY)
+    && result.amandaTransferAuthority.independentlyVerifiedByPaydayEvidence === true,
+    'live authority is the two salary streams at $4,556.84, payday-verified');
   ok(coaching && coaching.status === 'MISSING' && coaching.status !== 'MATCH'
     && coaching.unknown && coaching.representation === 'business-inflow',
     'live coaching receipt is unresolved MISSING, not MATCH, and still a business inflow');
@@ -669,12 +762,16 @@ console.log('\n=== 8. reconciliation performs no writes ===');
     'CLI report repeats the no-write contract');
   ok(/Amanda income \/ coaching \/ transfer distinctions/.test(out),
     'CLI names the Amanda income split');
-  ok(/no canonical salary fact — intentionally not promoted/.test(out),
-    'CLI reports salary as observed and intentionally not promoted');
-  ok(/incumbent Forecast household-cash authority/.test(out),
-    'CLI reports amandaTransfer as the incumbent household-cash authority');
-  ok(/did not independently observe or verify/.test(out),
-    'CLI says Aug. 14 did not independently verify amandaTransfer amounts');
+  ok(/no canonical salary fact/.test(out) === false
+    || /MATCH against income:amandaSalary/.test(out),
+    'CLI reports salary as MATCH against canonical salary streams');
+  ok(/MATCH against income:amandaSalary15/.test(out)
+    && /MATCH against income:amandaSalaryMonthEnd/.test(out),
+    'CLI MATCHES both salary observations to their canonical rows');
+  ok(/owner-confirmed Tennis BC salary is Forecast household income/.test(out),
+    'CLI reports the two salary streams as Forecast household income');
+  ok(!/intentionally not promoted/.test(out),
+    'CLI no longer says salary is intentionally not promoted');
   ok(/remainder unresolved/.test(out),
     'CLI reports household-available remainder as unresolved');
   ok(/798\.37/.test(out) && /2691\.85/.test(out),

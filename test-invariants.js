@@ -964,18 +964,23 @@ ok(!/\$?3,507/.test(master),
   'the stale $3,507/month Tennis BC figure is gone from the master picture');
 
 // F-15: Q5's ended garage/lab stream is not Amanda's modelled household
-// transfers. Deep Dive must not make "the transfers stopped after May"
-// sound like plan.income.amandaTransfer.
+// salary. Deep Dive must not make "the transfers stopped after May"
+// sound like the owner-confirmed Tennis BC salary streams.
 {
-  const amandaTransfer = (plan.income || []).find(s => s.id === 'amandaTransfer');
+  const amanda15 = (plan.income || []).find(s => s.id === 'amandaSalary15');
+  const amandaEom = (plan.income || []).find(s => s.id === 'amandaSalaryMonthEnd');
   const note = data.incomeNote || '';
-  ok(amandaTransfer && amandaTransfer.scenarioMonthly
-      && amandaTransfer.scenarioMonthly.expected > 0,
-    'amandaTransfer remains a non-zero forward household-funding stream');
+  ok(!plan.income.some(s => s.id === 'amandaTransfer'),
+    'retired amandaTransfer stream is not live household income');
+  ok(amanda15 && amandaEom
+      && Math.round((amanda15.amount + amandaEom.amount) * 100) === 455684,
+    'the two Tennis BC salary streams total $4,556.84/month');
   ok(!/the transfers stopped after May 2026 while the income did not/.test(dataStr),
     'published data.json no longer claims the transfers stopped after May while the income did not');
-  ok(/garage\/lab/i.test(note) && /amandaTransfer/.test(note),
-    'incomeNote names both the ended garage/lab stream and the continuing amandaTransfer stream');
+  ok(/garage\/lab/i.test(note) && /amandaSalary15/.test(note) === false,
+    'incomeNote still names the ended garage/lab stream');
+  ok(/4,556\.84/.test(note) && /Tennis BC salary/.test(note),
+    'incomeNote names the owner-confirmed Tennis BC salary total');
 }
 
 // BC Hydro. Three files disagreed about whether it still had a household route.

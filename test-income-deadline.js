@@ -63,25 +63,30 @@ const opts = {
 const advice = F.recommend(plan, asOf, opts);
 const weekly = advice.weekly;
 const notBefore = advice.gap ? advice.gap.date : asOf;
-const legacyNoTransfer = F.simulate(plan, asOf, Object.assign({}, advice.simOptions, {
+const legacyNoAmanda = F.simulate(plan, asOf, Object.assign({}, advice.simOptions, {
   weeklyVariable: weekly,
-  incomeOverrides: { amandaTransfer: 0 },
+  incomeOverrides: { amandaSalary15: 0, amandaSalaryMonthEnd: 0 },
 }));
-const legacyFirstShort = legacyNoTransfer.daily.find(p =>
-  p.date >= notBefore && p.balance < legacyNoTransfer.buffer - F.EPSILON);
-const moved = F.incomeDeadline(plan, asOf, 'amandaTransfer', Object.assign({}, advice.simOptions, {
+const legacyFirstShort = legacyNoAmanda.daily.find(p =>
+  p.date >= notBefore && p.balance < legacyNoAmanda.buffer - F.EPSILON);
+const moved = F.amandaHouseholdIncomeDeadline(plan, asOf, Object.assign({}, advice.simOptions, {
   weeklyVariable: weekly,
   incomeOverrides: {},
   notBefore,
 }));
+ok(near(moved.amount, 2168.85 + 2387.99),
+  'Amanda household-income deadline reports the combined salary monthly amount',
+  String(moved.amount));
 ok(moved.neededBy === (legacyFirstShort ? legacyFirstShort.date : null),
-  'the engine-owned deadline preserves the previous real-plan answer',
+  'the engine-owned deadline preserves the no-Amanda-salary real-plan answer',
   `${moved.neededBy || 'none'} vs ${legacyFirstShort ? legacyFirstShort.date : 'none'}`);
 
 console.log('\n=== page is a renderer ===');
 const page = fs.readFileSync('public/plan.js', 'utf8');
-ok(/Forecast\.incomeDeadline\(/.test(page),
-  'Plan reads the deadline from Forecast.incomeDeadline');
+ok(/Forecast\.amandaHouseholdIncomeDeadline\(/.test(page),
+  'Plan reads the Amanda deadline from Forecast.amandaHouseholdIncomeDeadline');
+ok(!/Forecast\.incomeDeadline\(plan,\s*asOf,\s*'amandaTransfer'/.test(page),
+  'Plan no longer binds the deadline to the retired amandaTransfer stream');
 ok(!/const\s+noTransfer\s*=\s*Forecast\.simulate/.test(page),
   'Plan no longer runs its own no-transfer simulation');
 ok(!/firstShort\s*=\s*noTransfer\.daily\.find/.test(page),
