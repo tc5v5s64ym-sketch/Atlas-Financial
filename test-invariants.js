@@ -904,10 +904,11 @@ ok(!require('./scripts/calendar-ics.js').buildHouseholdCalendar(plan, asOf)
   'and derived ICS payments do not reintroduce one');
 
 // Card-section current-state claims vs Forecast.utilisation / canonical
-// opening. F-02: ACCOUNT_FACTS published an over-limit Cash Back Visa, a
-// retired $762.36 minimum, and a Travel Visa that had "not yet" gone over,
-// while the 2026-08-19 opening said otherwise. Dated historical evidence
-// may still mention those figures. A present-tense card section may not.
+// opening. F-02: ACCOUNT_FACTS must not publish a competing current-state
+// copy. Dated historical evidence may still mention those figures. Current
+// posted / available / over-limit / leftover live in data.json,
+// Forecast.utilisation, and positions.csv. Making copied cents agree
+// today is not the proof.
 const util = F.utilisation(data.debts, data.revolvingExtra, data.plan);
 const utilById = Object.fromEntries(util.rows.map(r => [r.id, r]));
 const obligationByDebt = {};
@@ -1027,7 +1028,15 @@ function cardSectionConflicts(section, row, obligation) {
   return conflicts;
 }
 
-function leftoverConflicts(facts, heloc) {
+function moneyPattern(amount) {
+  const n = Number(amount);
+  if (!Number.isFinite(n)) return null;
+  const [whole, frac] = n.toFixed(2).split('.');
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return new RegExp('\\$?' + grouped.replace(/,/g, ',?') + '\\.' + frac);
+}
+
+function leftoverCopies(facts, heloc) {
   const conflicts = [];
   const re = /\$([0-9,.]+)\s+left/gi;
   let m;
@@ -1037,8 +1046,54 @@ function leftoverConflicts(facts, heloc) {
     if (!/HELOC/i.test(local)) continue;
     if (!/drawn|headroom|opening it has/i.test(local)) continue;
     if (/9 August snapshot had|historical Aug|2026-08-09/i.test(local)) continue;
-    if (amt != null && Math.abs(amt - Number(heloc.available || 0)) > 0.01) {
-      conflicts.push(`HELOC leftover ${amt} vs utilisation ${heloc.available}`);
+    conflicts.push(`present-tense HELOC leftover ${amt} is a current-state copy`);
+  }
+  const copied = moneyPattern(heloc && heloc.available);
+  if (copied && copied.test(facts)) {
+    conflicts.push(
+      `ACCOUNT_FACTS copies current HELOC leftover ${heloc.available}`
+    );
+  }
+  return conflicts;
+}
+
+function competingCurrentState(section, row) {
+  const conflicts = [];
+  if (!section) {
+    conflicts.push(`${row.id}: missing ACCOUNT_FACTS section`);
+    return conflicts;
+  }
+  const lead = currentLead(section);
+  if (!/data\.json/i.test(lead)
+      || !/Forecast\.utilisation/i.test(lead)
+      || !/positions\.csv/i.test(lead)) {
+    conflicts.push(
+      `${row.id}: current-voice does not route revolving state to data.json / Forecast.utilisation / positions.csv`
+    );
+  }
+  const postedRe = moneyPattern(row.posted);
+  if (postedRe && postedRe.test(lead)) {
+    conflicts.push(`${row.id}: current-voice copies posted ${row.posted}`);
+  }
+  if (row.available != null && Number(row.available) !== 0) {
+    const availRe = moneyPattern(row.available);
+    if (availRe && availRe.test(lead)) {
+      conflicts.push(`${row.id}: current-voice copies available ${row.available}`);
+    }
+  }
+  if (/will\s+take it over|approaching (?:its |the )?limit/i.test(lead)
+      || /still over the limit/i.test(lead)
+      || /posted balance itself is over|posted is over the/i.test(lead)
+      || /(?:posted is under|not over limit|the card is not over)/i.test(lead)) {
+    conflicts.push(`${row.id}: current-voice asserts a current over/under-limit conclusion`);
+  }
+  for (const table of markdownTables(lead)) {
+    if (tableValue(table, 'Balance')) {
+      conflicts.push(`${row.id}: current-voice table publishes Balance`);
+    }
+    const avail = tableValue(table, 'Available credit');
+    if (avail && parseFactsMoney(avail) != null) {
+      conflicts.push(`${row.id}: current-voice table publishes Available credit`);
     }
   }
   return conflicts;
@@ -1052,16 +1107,30 @@ const CARD_SECTIONS = [
   { id: 'tdcc', heading: /^## TD credit card/ },
 ];
 
+const F02_SECTIONS = CARD_SECTIONS.filter(s => s.id === 'cashback' || s.id === 'travelvisa');
+const OTHER_CARD_SECTIONS = CARD_SECTIONS.filter(s => s.id !== 'cashback' && s.id !== 'travelvisa');
+
+const liveCopyConflicts = [];
+for (const spec of F02_SECTIONS) {
+  const row = utilById[spec.id];
+  if (!row) continue;
+  const section = extractCardSection(accountFacts, spec.heading);
+  liveCopyConflicts.push(...competingCurrentState(section, row));
+}
+ok(liveCopyConflicts.length === 0,
+  'Cash Back and Travel Visa current-voice do not publish a competing current-state copy',
+  liveCopyConflicts.join('; ') || 'cashback + travelvisa route to utilisation');
+
 const liveCardConflicts = [];
-for (const spec of CARD_SECTIONS) {
+for (const spec of OTHER_CARD_SECTIONS) {
   const row = utilById[spec.id];
   if (!row) continue;
   const section = extractCardSection(accountFacts, spec.heading);
   liveCardConflicts.push(...cardSectionConflicts(section, row, obligationByDebt[spec.id]));
 }
 ok(liveCardConflicts.length === 0,
-  'no ACCOUNT_FACTS card section asserts over-limit or available-credit state that Forecast.utilisation contradicts',
-  liveCardConflicts.join('; ') || 'all five card sections');
+  'no other ACCOUNT_FACTS card section asserts over-limit or available-credit state that Forecast.utilisation contradicts',
+  liveCardConflicts.join('; ') || 'triangle / mbna / tdcc');
 
 const paymentCal = (accountFacts.match(/## Payment calendar[\s\S]*?(?=\n## )/) || [''])[0];
 const cashbackCalRow = paymentCal.split('\n').find(l => /TD Cash Back Visa minimum/.test(l)) || '';
@@ -1070,11 +1139,15 @@ ok(!/\$762\.36/.test(cashbackCalRow),
   'the retired $762.36 is not the current Cash Back calendar amount');
 ok(/see note/i.test(cashbackCalRow),
   'the Cash Back calendar row uses the existing see-note pattern');
+ok(!/\$\s*[\d,]/.test(cashbackCalRow),
+  'the Cash Back calendar row does not pin a replacement monthly dollar amount');
+ok(/plan\.obligations/i.test(cashbackCalRow),
+  'the Cash Back calendar row points at plan.obligations for the current amount');
 
-const helocLive = leftoverConflicts(accountFacts, utilById.heloc);
+const helocLive = leftoverCopies(accountFacts, utilById.heloc);
 ok(helocLive.length === 0,
-  'present-tense HELOC leftover in ACCOUNT_FACTS matches Forecast.utilisation headroom',
-  helocLive.join('; ') || money(utilById.heloc.available));
+  'ACCOUNT_FACTS does not copy current HELOC leftover from Forecast.utilisation',
+  helocLive.join('; ') || 'dated 9 August leftover only');
 
 // Bite proof: the pre-change current-voice text must fail these same checks.
 const STALE_CASHBACK_LEAD = [
@@ -1117,23 +1190,51 @@ const STALE_TRAVEL_LEAD = [
   'take it over.** $1,078.31 + $165.13 = **$1,243.44 against a $1,100 limit**, or',
   '**$143.44 over** [calculated].',
 ].join('\n');
-const staleCashbackHits = cardSectionConflicts(
-  STALE_CASHBACK_LEAD, utilById.cashback, obligationByDebt.cashback);
-const staleTravelHits = cardSectionConflicts(
-  STALE_TRAVEL_LEAD, utilById.travelvisa, obligationByDebt.travelvisa);
+const staleCashbackHits = competingCurrentState(
+  STALE_CASHBACK_LEAD, utilById.cashback);
+const staleTravelHits = competingCurrentState(
+  STALE_TRAVEL_LEAD, utilById.travelvisa);
 ok(staleCashbackHits.length > 0,
-  'stale Cash Back over-limit / $0 available / $762.36 minimum prose fails against current utilisation',
+  'stale Cash Back over-limit / $0 available / $762.36 minimum prose is a competing current-state copy',
   staleCashbackHits.join('; '));
 ok(staleTravelHits.length > 0,
-  'stale Travel Visa pending-will-take-it-over prose fails against current utilisation',
+  'stale Travel Visa pending-will-take-it-over prose is a competing current-state copy',
   staleTravelHits.join('; '));
-ok(leftoverConflicts(
+
+const COPIED_CURRENT_CASHBACK = [
+  '### TD Cash Back Visa *(…0726)* — **the household\'s second-largest card**',
+  '',
+  '| | |',
+  '|---|---|',
+  '| **Rate** | **26.99% purchases / 27.99% cash advances** — from the statement rate table |',
+  '| Credit limit | **$5,000.00** |',
+  '| Statement cycle | 8th to 7th |',
+  '| Due | 1st, monthly |',
+  '',
+  '**Canonical Forecast opening is the 2026-08-19 `data.json` record**,',
+  `not the 9 August snapshot. Posted **${money(utilById.cashback.posted)}**, pending **$0.00**,`,
+  'available credit is Forecast-derived (not household cash). Posted is',
+  'under the $5,000 limit; the card is not over limit on this opening.',
+].join('\n');
+const copiedCurrentHits = competingCurrentState(
+  COPIED_CURRENT_CASHBACK, utilById.cashback);
+ok(copiedCurrentHits.length > 0,
+  'copying today\'s matching posted cents is still a competing current-state copy',
+  copiedCurrentHits.join('; '));
+ok(leftoverCopies(
   'Consolidation into the HELOC is not available. It is 99.5% drawn with $1,067.84 left.',
   utilById.heloc
 ).length > 0,
-  'stale present-tense HELOC $1,067.84 leftover fails against current headroom');
+  'stale present-tense HELOC $1,067.84 leftover is a current-state copy');
+ok(leftoverCopies(
+  `On the current 2026-08-19 opening it has ${money(utilById.heloc.available)} left (the 9 August snapshot had $1,067.84).`,
+  utilById.heloc
+).length > 0,
+  'copying today\'s matching HELOC leftover is still a current-state copy');
 ok(/\$762\.36/.test('| **1st** | TD Cash Back Visa minimum | $762.36 | TD |'),
   'the stale payment-calendar $762.36 row is the shape the live-row check would catch');
+ok(/\$\s*[\d,]/.test('| **1st** | TD Cash Back Visa minimum | ~$170 | TD — **see note** |'),
+  'a replacement Cash Back calendar dollar amount is the shape the live-row check would catch');
 
 console.log('\n=== no financial event appears twice ===');
 const window = F.simulate(plan, asOf, { scenario: 'expected', weeklyVariable: 0, targetBuffer: 500 });

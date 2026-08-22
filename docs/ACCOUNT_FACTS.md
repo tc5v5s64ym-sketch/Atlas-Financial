@@ -30,7 +30,7 @@ code.
 | **17th** | TD credit card minimum | ~$94 | TD |
 | **21st** | HELOC contractual minimum (interest only) | ~$814 | TD — **see note** |
 | **31st / month end** | **Amazon.ca Rewards Mastercard minimum** | **$158.27** | MBNA |
-| **1st** | TD Cash Back Visa minimum | ~$170 | TD — **see note** |
+| **1st** | TD Cash Back Visa minimum | see `plan.obligations` | TD — **see note** |
 | **26th** | Travel Visa minimum | $17.00 | TD |
 
 Statement close dates: **TD card ~23rd** · **Triangle 17th** ·
@@ -60,11 +60,10 @@ additional**. That is not a claim that interest is free, and it does not
 state that an Aug. 1 PAD occurred.
 
 **Cash Back Visa 1st.** The $762.36 September over-limit minimum is
-retired. The 14 August $763 payment satisfied that once row. Next
-minimum is estimated at about $170, firstDue 2026-10-01. The $762.36
-figure remains in the Cash Back statement-period history as dated
-8 Jul – 7 Aug 2026 evidence; it is not the current recurring calendar
-amount.
+retired. The 14 August $763 payment satisfied that once row. The
+current recurring amount lives in `plan.obligations` (`cashback`);
+do not copy it here. The $762.36 figure remains in the Cash Back
+statement-period history as dated 8 Jul – 7 Aug 2026 evidence.
 
 ### The 12 August Burrard registrations are paid
 
@@ -534,7 +533,7 @@ cards $2,818.50 · outgoing e-transfers $2,800 · fees $10.
 
 Interest earned across 18 months: **$0.11.**
 
-### TD Cash Back Visa *(…0726)* — **the household's second-largest card** *(standing terms 2026-08-09; current canonical opening 2026-08-19)*
+### TD Cash Back Visa *(…0726)* — **the household's second-largest card** *(standing terms 2026-08-09)*
 
 | | |
 |---|---|
@@ -544,15 +543,13 @@ Interest earned across 18 months: **$0.11.**
 | Due | 1st, monthly |
 | Cash Back Dollars | $47.21 |
 
-**Canonical Forecast opening is the 2026-08-19 `data.json` record**,
-not the 9 August snapshot. Posted **$4,799.43**, pending **$0.00**,
-available credit is Forecast-derived (not household cash). Posted is
-under the $5,000 limit; the card is not over limit on this opening.
-The 14 August Chequing A $763 payment is inside this opening
-(5,612.43 − 50.00 Aug. 13 − 763.00 Aug. 14 = 4,799.43) and satisfies
-the previous over-limit September spike of $762.36; that once row was
-removed. Future statement minimums are estimated at about **$170**,
-firstDue 2026-10-01.
+**Current posted balance, pending, available credit, and over-limit
+state live in `data.json`, `Forecast.utilisation`, and
+`docs/positions.csv`.** They change and are not repeated here. The
+14 August Chequing A $763 payment is inside the 2026-08-19 canonical
+opening and satisfies the previous over-limit September spike of
+$762.36; that once row was removed. Future statement minimums live
+in `plan.obligations` (`cashback`), not in this file.
 
 The 9 August account reading remains dated evidence: balance
 **$5,682.43** ($682.43 over the $5,000 limit), then **~$5,612.43**
@@ -644,7 +641,7 @@ interest line on this card, in all twelve statements, is headed
 **RETAIL INTEREST**. There is no cash-advance bucket and never has been, so the
 27.99% rate was never part of it.
 
-### Travel Visa *(…0870)* — **a Business Visa** *(standing terms 2026-08-09; current canonical opening 2026-08-19)*
+### Travel Visa *(…0870)* — **a Business Visa** *(standing terms 2026-08-09)*
 
 | | |
 |---|---|
@@ -658,11 +655,11 @@ interest line on this card, in all twelve statements, is headed
 TD's own footnote confirms this is excluded from the consolidated card balance
 because it is a **business** card.
 
-**Canonical Forecast opening is the 2026-08-19 `data.json` record**,
-not the 9 August snapshot. Posted **$1,205.33**, pending **$0.00**.
-The posted balance itself is over the $1,100 limit; available credit
-is Forecast-derived (not household cash). The Aug. 9 **$165.13**
-Amazon pending is historical and is not carried into this opening.
+**Current posted balance, pending, available credit, and over-limit
+state live in `data.json`, `Forecast.utilisation`, and
+`docs/positions.csv`.** They change and are not repeated here. The
+Aug. 9 **$165.13** Amazon pending is historical and is not carried
+into the 2026-08-19 canonical opening.
 
 The 9 August account reading remains dated evidence: posted
 **$1,078.31**, pending **$165.13**, available credit **$0.00**,
@@ -1818,9 +1815,10 @@ nothing.**
    largest interest cost, and the only one where the fix is behavioural
 4. Then MBNA, then the Travel Visa
 
-**Consolidation into the HELOC is not available.** On the current
-2026-08-19 opening it has $2,167.84 left (the 9 August snapshot had
-$1,067.84). That option requires repaying something first.
+**Consolidation into the HELOC is not available.** Current leftover
+headroom lives in `Forecast.utilisation` / `data.json` /
+`docs/positions.csv`, not here. The 9 August snapshot had $1,067.84.
+That option requires repaying something first.
 
 ## The home *(owner estimate, 2026-08-09)*
 
