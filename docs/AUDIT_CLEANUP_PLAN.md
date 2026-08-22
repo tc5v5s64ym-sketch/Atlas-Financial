@@ -32,7 +32,7 @@ When the owner says **"action the audit cleanup plan"**:
 ## Progress summary
 
 Baseline findings: **P0 = 0 · P1 = 5 · P2 = 11 · P3 = 2**.  
-Current progress: **0 / 18 findings dispositioned**.
+Current progress: **1 / 18 findings dispositioned**.
 
 Status vocabulary:
 
@@ -48,8 +48,8 @@ Status vocabulary:
 
 | Order | Finding | Target outcome | Status | Completion / proof record |
 |---:|---|---|---|---|
-| 1 | **F-01** | Records renders commitment ranges / undated commitments through the authoritative Forecast publication view; no `$0.00` for a range-only amount and no `Invalid Date`. | **IN PR #136** | Records Commitments block takes unsettled rows from `Forecast.publicationTotals().commitmentItems` (ranges and `when` intact) and keeps settled rows from `plan.commitments`. Independent proof in `test-major-future-costs.js`. |
-| 2 | **F-02** | Reconcile TD Cash Back Visa and Travel Visa standing-facts prose to the canonical 2026-08-19 state, removing stale balance/minimum/limit claims from the wrong home. | **TODO** | |
+| 1 | **F-01** | Records renders commitment ranges / undated commitments through the authoritative Forecast publication view; no `$0.00` for a range-only amount and no `Invalid Date`. | **DONE — PR #136** | Records Commitments block takes unsettled rows from `Forecast.publicationTotals().commitmentItems` (ranges and `when` intact) and keeps settled rows from `plan.commitments`. Independent proof in `test-major-future-costs.js`. |
+| 2 | **F-02** | Reconcile TD Cash Back Visa and Travel Visa standing-facts prose to the canonical 2026-08-19 state, removing stale balance/minimum/limit claims from the wrong home. | **IN PR #137** | Cash Back and Travel Visa now carry dated 2026-08-19 canonical openings; calendar `$762.36` is retired with see-note; HELOC leftover is current `$2,167.84`. `test-invariants.js` one-authority checks fail on the stale pre-change text. |
 | 3 | **F-04** | Re-derive B71 Triangle limit-risk conclusion from the current canonical opening / `Forecast.projectDebts`; no stale “remains under” claim presented as current. | **TODO** | |
 | 4 | **F-03** | One authoritative coaching-income overstatement answer reaches both Deep Dive surfaces; no `$650` vs `$1,650` contradiction. | **TODO** | |
 | 5 | **F-05** | Reconcile Evidence-Use Register dispositions for the six interview-derived commitments with the owner gate and the values already live in `plan.commitments`; add only a guard justified by the resolved authority state. | **WAITING OWNER** | Owner must confirm whether the 2026-08-16 absorption satisfied the joint-household promotion gate for HH-021, HH-022, TRAVEL-002, COMMIT-002, COMMIT-003 and HH-014. |
