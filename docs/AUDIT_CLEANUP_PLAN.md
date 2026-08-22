@@ -32,7 +32,7 @@ When the owner says **"action the audit cleanup plan"**:
 ## Progress summary
 
 Baseline findings: **P0 = 0 · P1 = 5 · P2 = 11 · P3 = 2**.  
-Current progress: **13 / 18 findings dispositioned**.
+Current progress: **14 / 18 findings dispositioned**.
 
 Status vocabulary:
 
@@ -61,8 +61,8 @@ Status vocabulary:
 | 11 | **F-11** | `STORE_QUESTION_B79.md` carries a dated supersession note for T4/B81 while preserving the still-valid store verdict. | **DONE — PR #146** | STORE_QUESTION_B79 preserves the file-foundation verdict while T4 PASS 2026-08-17 and B81 completion 2026-08-20 now explicitly supersede its old T4/B81-closed statements; unattended production writes remain unauthorized. |
 | 12 | **F-12** | `CLAUDE.md`, PR template, and mechanical merge-card token use one vocabulary for the stale/superseded verdict. | **DONE — PR #147** | CLAUDE.md now documents `STALE-SUPERSEDED`, matching the PR template and mechanical merge-card check; test-mergecard.js guards the vocabulary against drift. |
 | 13 | **F-13** | B72 is closed if current main still proves the bad commit fixture is gone; do not create code for an already-fixed item. | **DONE — PR #148** | B72 was already fixed; test-mergecard.js uses synthetic `const HEAD = 'a'.repeat(40);`; no code change was needed. |
-| 14 | **F-14** | Resolve whether a midpoint home value / point household net worth may be published at all; then make `positions.csv` / derived summaries follow that owner decision without inventing policy. | **IN PR #150** | Owner decision received 2026-08-21: $1,300,000 home planning estimate, labelled owner-estimated rather than appraised/verified. Systems Review BLOCKING on `f4ff3a0741c4502f363c2cda9be929bce242cd94` required Q3/Records/date-provenance trust consistency; this PR repairs those named blockers. |
-| 15 | **F-15** | Separate Amanda's continuing Tennis BC / household-transfer stream from the stopped garage/lab-funded stream so Deep Dive and the forward plan do not contradict each other. | **TODO** | |
+| 14 | **F-14** | Resolve whether a midpoint home value / point household net worth may be published at all; then make `positions.csv` / derived summaries follow that owner decision without inventing policy. | **DONE — PR #150** | Owner-estimated $1.3M home value now drives the existing ESTIMATE net-worth/equity/LTV reporting path. Q3 remains OPEN for verified market value. |
+| 15 | **F-15** | Separate Amanda's continuing Tennis BC / household-transfer stream from the stopped garage/lab-funded stream so Deep Dive and the forward plan do not contradict each other. | **IN PR #151** | Deep Dive incomeNote now names Q5's ended garage/lab stream separately from modelled `amandaTransfer`. `positions.csv` 2026-08-09 $21,700 row left as dated anti-double-count aggregate. |
 | 16 | **F-16** | New-session orientation records the dated 2026-08-21 live acceptance result without moving the canonical opening. A newer canonical cutover remains a separate owner-reserved decision. | **TODO** | Explicit non-goal: do not promote 2026-08-21 to canonical opening in this finding. |
 | 17 | **F-17** | Historical suite-count comments stop masquerading as current when their files are next honestly touched. | **DEFERRED** | Opportunistic only; not worth a dedicated PR unless current state raises severity. |
 | 18 | **F-18** | The unnumbered outbound-e-transfer question has one question-authority home: fold into Q1 or assign a proper Q id without creating a duplicate question. | **TODO** | |
@@ -70,7 +70,7 @@ Status vocabulary:
 ## Priority and batching
 
 - **F-01 → F-04 are first.** They are the baseline audit's P1 household-facing correctness / contradiction work that does not require an owner answer.
-- **F-05 is DONE — PR #149.** F-14 owner decision received 2026-08-21 ($1,300,000 owner-estimated home); this PR implements that reporting path.
+- **F-05 is DONE — PR #149.** **F-14 is DONE — PR #150.** Owner-estimated $1.3M home value now drives the ESTIMATE net-worth/equity/LTV path; Q3 stays OPEN for verified market value. F-15 is **IN PR #151**.
 - Default to **one finding per PR**. If current evidence proves two findings share one root cause and one acceptance condition, current governance may permit one PR; record why in the merge card. Do not batch merely because both are documentation.
 - F-17 stays deferred unless an honest touch to one of those files makes the cleanup in-scope.
 - The audit's recommendations are dated advice, not an override of current repository governance. Reproduce each finding before acting.
@@ -749,7 +749,7 @@ is unchanged.
 
 ## Items deliberately not given dedicated Opus prompts
 
-- **F-14 midpoint net worth:** owner decision received 2026-08-21 — $1,300,000 home planning estimate, labelled owner-estimated rather than appraised/verified. Implementation is this PR; must not invent an appraisal.
+- **F-14 midpoint net worth:** **DONE — PR #150.** Owner-estimated $1,300,000 home value now drives the existing ESTIMATE net-worth/equity/LTV reporting path; Q3 remains OPEN for verified market value.
 - **F-16 newer canonical opening:** waits on Owner decision C and is separate from PR 13 above.
 - **F-17 stale suite-count comments:** opportunistic only; clean them when those files are honestly touched.
 - **F-18 outbound-e-transfer question:** low-value deferred cleanup; fold into a future Q1 refresh or assign one canonical question id without duplicating the question.
