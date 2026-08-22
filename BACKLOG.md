@@ -127,37 +127,60 @@ unfunded (raw `advice.weekly` $0 is the failure sentinel, not a feasible
 cap). Proof:
 [`docs/connectivity/LIVE_ACCEPTANCE_2026-08-21_NO_AUTO_BORROW.md`](docs/connectivity/LIVE_ACCEPTANCE_2026-08-21_NO_AUTO_BORROW.md).
 
-**B71 · Triangle Mastercard limit risk on the B91 opening** · **DONE / RESOLVED 2026-08-18** · *stale "over every month" claim retired*
+**B71 · Triangle Mastercard limit risk on the published 2026-08-19 opening** · **REOPENED 2026-08-21** · *Forecast.projectDebts crosses $13,500 on day 0; 2026-08-16 under-limit result retired*
 
-**KNOWN.** Canonical B91 2026-08-16 opening in `data.json`: posted
-**$13,197.00** + pending **$15.62** = exposure **$13,212.62** against a
-**$13,500.00** limit. Headroom **$287.38**. Purchase APR **21.99%** / cash
-**22.99%**. Next modelled minimum **$253.57**, `firstDue` **2026-09-07**,
-confidence **estimated**. The Aug. 10 **$300** payment is already inside
-the opening (independent identity: 13,497.00 − 300.00 = 13,197.00). That
-headroom is **credit, not household cash**. B70 remains the planning
-boundary: it never increases safe-to-spend; $0 headroom would mean $0
-additional borrowing capacity.
+**Reopened, not an engine defect.** The 2026-08-18 resolution was that
+Triangle **remains under** the $13,500 limit on the then-canonical B91
+2026-08-16 opening (`firstOver` null). The published opening is now
+2026-08-19. `Forecast.projectDebts` on that opening returns a Triangle
+crossing on **2026-08-19 at day 0**. Forecast and the Plan page already
+publish that crossing; this entry was the stale copy. B71 is a live
+recorded risk until a later opening or payment changes the deterministic
+result. No Forecast, `data.json`, or Plan-page change is required.
+
+**KNOWN.** Canonical 2026-08-19 opening in `data.json`: posted
+**$13,495.32** + pending **$0.00** = exposure **$13,495.32** against a
+**$13,500.00** limit. Headroom **$4.68**. `Forecast.utilisation` reports
+available **$4.68**, **99.97%** used, `overLimit` false at the opening
+mark (the walk is under at the snapshot; interest takes it over the
+same calendar day). Purchase APR **21.99%** / cash **22.99%**. Next
+modelled minimum **$253.57**, `firstDue` **2026-09-07**, confidence
+**estimated**. That headroom is **credit, not household cash**. B70
+remains the planning boundary: it never increases safe-to-spend; $0
+headroom would mean $0 additional borrowing capacity.
+
+The 2026-08-16 opening — posted $13,197.00 + pending $15.62 = exposure
+$13,212.62, headroom $287.38; `projectDebts` `firstOver` null; peak
+$13,388.86 on 2026-09-06 ($111.14 of headroom); 91-day ending $13,178.74;
+Aug. 10 $300 already inside that posted (independent identity:
+13,497.00 − 300.00 = 13,197.00) — is retired dated evidence, not current
+truth.
 
 The 2026-08-09 opening — posted $13,497.00, $3.00 of headroom, day-90
-$227.71 over-limit projection — is retired evidence, not current truth.
+$227.71 over-limit projection — is also retired evidence, not current
+truth.
 
-**Deterministic Forecast result (current plan; no invented purchases).**
-On both the 91-day view and the 365-day knowledge horizon, Triangle
-**remains under** the $13,500 limit. `projectDebts` reports `firstOver`
-null. Peak modelled exposure is **$13,388.86 on 2026-09-06**, the day
-before the first modelled $253.57 payment, leaving **$111.14** of
-headroom. 91-day ending balance **$13,178.74**. An independent daily
-ledger — opening posted+pending, 21.99%/365 interest, modelled 7th-of-month
-payments from `firstDue` — agrees with Forecast to the cent. The stale
-claim that the card is over its limit between payments every month is
-**not proven** on this opening and is retired.
+**Deterministic Forecast result (current 2026-08-19 plan; no invented purchases).**
+On both the 91-day view and the 365-day knowledge horizon,
+`projectDebts` reports Triangle `firstOver` **2026-08-19**, `day` **0**,
+`alreadyOver` **false**. Opening used is under the limit; same-day
+interest takes it over. 91-day ending balance **$13,475.95**. An
+independent daily ledger — opening posted+pending, 21.99%/365 interest,
+modelled 7th-of-month payments from `firstDue` — agrees with Forecast to
+the cent: day-0 interest **$8.13** lifts the balance to **$13,503.45**;
+peak modelled exposure is **$13,650.64 on 2026-09-06**, the day before
+the first modelled $253.57 payment ($150.64 over). `Forecast.planPhases`
+already emits `facilityCrossing` for Triangle on 2026-08-19;
+`public/plan.js` renders that risk. The 2026-08-18 claim that the card
+**remains under** the limit is **not** current and is retired with the
+16 August opening.
 
-**RISK.** Interest still consumes headroom (~$8/day at this balance;
-roughly $243/month against the estimated $253.57 minimum). Thin room
-before the September payment is real. Additional real-world purchases
-are not on the deterministic path and Atlas does not invent them; they
-could produce a different result.
+**RISK.** Interest consumes the remaining headroom (~$8/day at this
+balance; roughly $243/month against the estimated $253.57 minimum). Thin
+room before the September payment is real: on this opening it is already
+the day-0 crossing. Additional real-world purchases are not on the
+deterministic path and Atlas does not invent them; they could produce a
+worse result.
 
 **UNKNOWN.** Issuer-specific over-limit treatment or fee. No Triangle
 over-limit fee is observed in available committed evidence. That is not

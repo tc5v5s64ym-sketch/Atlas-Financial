@@ -32,7 +32,7 @@ When the owner says **"action the audit cleanup plan"**:
 ## Progress summary
 
 Baseline findings: **P0 = 0 · P1 = 5 · P2 = 11 · P3 = 2**.  
-Current progress: **1 / 18 findings dispositioned**.
+Current progress: **2 / 18 findings dispositioned**.
 
 Status vocabulary:
 
@@ -49,8 +49,8 @@ Status vocabulary:
 | Order | Finding | Target outcome | Status | Completion / proof record |
 |---:|---|---|---|---|
 | 1 | **F-01** | Records renders commitment ranges / undated commitments through the authoritative Forecast publication view; no `$0.00` for a range-only amount and no `Invalid Date`. | **DONE — PR #136** | Records Commitments block takes unsettled rows from `Forecast.publicationTotals().commitmentItems` (ranges and `when` intact) and keeps settled rows from `plan.commitments`. Independent proof in `test-major-future-costs.js`. |
-| 2 | **F-02** | Reconcile TD Cash Back Visa and Travel Visa standing-facts prose to the canonical 2026-08-19 state, removing stale balance/minimum/limit claims from the wrong home. | **IN PR #137** | Cash Back and Travel Visa current-voice route revolving state to `data.json` / `Forecast.utilisation` / `positions.csv` and do not copy current posted, available, or over-limit figures. Calendar retires `$762.36` without pinning a replacement amount. HELOC leftover is not copied. Invariant proves no competing current-state copy. |
-| 3 | **F-04** | Re-derive B71 Triangle limit-risk conclusion from the current canonical opening / `Forecast.projectDebts`; no stale “remains under” claim presented as current. | **TODO** | |
+| 2 | **F-02** | Reconcile TD Cash Back Visa and Travel Visa standing-facts prose to the canonical 2026-08-19 state, removing stale balance/minimum/limit claims from the wrong home. | **DONE — PR #137** | Cash Back and Travel Visa current-voice route revolving state to `data.json` / `Forecast.utilisation` / `positions.csv` and do not copy current posted, available, or over-limit figures. Calendar retires `$762.36` without pinning a replacement amount. HELOC leftover is not copied. Invariant proves no competing current-state copy. |
+| 3 | **F-04** | Re-derive B71 Triangle limit-risk conclusion from the current canonical opening / `Forecast.projectDebts`; no stale “remains under” claim presented as current. | **IN PR #139** | B71 rewritten from live `Forecast.projectDebts` on the 2026-08-19 opening: Triangle `firstOver` 2026-08-19, day 0, `alreadyOver` false; utilisation available $4.68 (~99.97% used). 2026-08-16 under-limit figures labelled retired. B71 reopened because the 2026-08-18 remains-under resolution is false on this opening. |
 | 4 | **F-03** | One authoritative coaching-income overstatement answer reaches both Deep Dive surfaces; no `$650` vs `$1,650` contradiction. | **TODO** | |
 | 5 | **F-05** | Reconcile Evidence-Use Register dispositions for the six interview-derived commitments with the owner gate and the values already live in `plan.commitments`; add only a guard justified by the resolved authority state. | **WAITING OWNER** | Owner must confirm whether the 2026-08-16 absorption satisfied the joint-household promotion gate for HH-021, HH-022, TRAVEL-002, COMMIT-002, COMMIT-003 and HH-014. |
 | 6 | **F-06** | Q2 status claims outside `01_OPEN_QUESTIONS.md` cannot contradict the sole question-status authority; correct current conflicts and add the narrow deterministic guard if current governance still calls for it. | **TODO** | |
