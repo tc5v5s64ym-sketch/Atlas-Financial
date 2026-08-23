@@ -506,13 +506,20 @@ function liveAsOfFrom(report, historicalOpeningAsOf) {
   return observed || historicalOpeningAsOf || null;
 }
 
-function representedCandidatesFor(report, historicalOpeningAsOf, liveAsOf) {
+function representedCandidateAllowed(candidate, historicalOpeningAsOf, liveAsOf, plan) {
+  if (!candidate || !candidate.id || !candidate.date || !liveAsOf) return false;
+  const inLiveWindow = !!(historicalOpeningAsOf
+    && candidate.date > historicalOpeningAsOf
+    && candidate.date <= liveAsOf);
+  return inLiveWindow
+    || Forecast.carriedOnceJointCashOutflow(plan, candidate.id, candidate.date, liveAsOf);
+}
+
+function representedCandidatesFor(report, historicalOpeningAsOf, liveAsOf, plan) {
   return ((report && report.representedEventCandidates) || [])
     .map(candidate => O.classifyRepresentedCandidate(candidate, liveAsOf))
-    .filter(candidate => candidate && candidate.id && candidate.date
-      && historicalOpeningAsOf
-      && candidate.date > historicalOpeningAsOf
-      && candidate.date <= liveAsOf);
+    .filter(candidate => representedCandidateAllowed(
+      candidate, historicalOpeningAsOf, liveAsOf, plan));
 }
 
 function sortRepresented(a, b) {
@@ -534,13 +541,11 @@ function mergeRepresented(existing, added) {
   return out;
 }
 
-function refuseNonLiveRepresented(report, historicalOpeningAsOf, liveAsOf) {
+function refuseNonLiveRepresented(report, historicalOpeningAsOf, liveAsOf, plan) {
   const refused = [];
   for (const candidate of (report && report.representedEventCandidates) || []) {
     const classified = O.classifyRepresentedCandidate(candidate, liveAsOf);
-    if (classified.date && historicalOpeningAsOf
-        && classified.date > historicalOpeningAsOf
-        && classified.date <= liveAsOf) continue;
+    if (representedCandidateAllowed(classified, historicalOpeningAsOf, liveAsOf, plan)) continue;
     refused.push({
       locator: 'plan.opening.representedEvents',
       fact: 'posting',
@@ -562,9 +567,16 @@ function applyLiveCutover(next, report, historicalOpeningAsOf) {
     .slice()
     .sort((a, b) => String(a.date).localeCompare(String(b.date))
       || String(a.id).localeCompare(String(b.id)));
-  const candidates = representedCandidatesFor(report, historicalOpeningAsOf, liveAsOf);
+  const candidates = representedCandidatesFor(
+    report, historicalOpeningAsOf, liveAsOf, next.plan);
   const represented = [];
   const unknownSameDay = [];
+  for (const candidate of candidates) {
+    if (Forecast.carriedOnceJointCashOutflow(
+      next.plan, candidate.id, candidate.date, liveAsOf)) {
+      represented.push({ id: candidate.id, date: candidate.date });
+    }
+  }
   for (const event of windowEvents) {
     const hit = candidates.find(candidate => candidate.id === event.id
       && candidate.date === event.date);
@@ -574,7 +586,7 @@ function applyLiveCutover(next, report, historicalOpeningAsOf) {
     }
     if (event.date === liveAsOf) unknownSameDay.push(event);
   }
-  represented.sort(sortRepresented);
+  const uniqueRepresented = mergeRepresented([], represented);
   const advances = !!(historicalOpeningAsOf && liveAsOf > historicalOpeningAsOf);
   if (advances && unknownSameDay.length) {
     const named = unknownSameDay.map(event => `${event.id}@${event.date}`).join(', ');
@@ -593,7 +605,9 @@ function applyLiveCutover(next, report, historicalOpeningAsOf) {
   const existing = (next.plan.opening && next.plan.opening.representedEvents) || [];
   const nextOpening = Object.assign({}, next.plan.opening || {}, {
     asOf: liveAsOf,
-    representedEvents: advances ? represented : mergeRepresented(existing, represented),
+    representedEvents: advances
+      ? uniqueRepresented
+      : mergeRepresented(existing, uniqueRepresented),
   });
   if (advances) nextOpening.priorAsOf = historicalOpeningAsOf;
   next.plan.opening = nextOpening;
@@ -636,7 +650,8 @@ function overlayLiveState(input) {
     || (data.meta && data.meta.asOf) || null;
   const liveAsOf = liveAsOfFrom(report, historicalOpeningAsOf);
   const { proposed, refused } = proposeOverlay(report, historicalOpeningAsOf, liveAsOf);
-  const postingRefused = refuseNonLiveRepresented(report, historicalOpeningAsOf, liveAsOf);
+  const postingRefused = refuseNonLiveRepresented(
+    report, historicalOpeningAsOf, liveAsOf, data.plan);
   if (historicalOpeningAsOf && liveAsOf && liveAsOf > historicalOpeningAsOf) {
     assertFreshLivePacket(data, report, liveAsOf);
   }

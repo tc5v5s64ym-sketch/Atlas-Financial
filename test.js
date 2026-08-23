@@ -102,6 +102,7 @@ const suites = [
   ['payday allocation waterfall', 'test-payday-allocation.js'],
   ['payday reserve itemization', 'test-payday-reserve-detail.js'],
   ['current-period actuals action plan', 'test-current-period-actuals.js'],
+  ['automatic-payment settlement reconciliation', 'test-automatic-payment-settlement.js'],
   ['balance history as a refresh by-product (B20 / AF-HIST-01)', 'test-b20-history.js'],
 ];
 
