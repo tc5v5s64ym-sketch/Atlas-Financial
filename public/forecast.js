@@ -2124,6 +2124,8 @@
     if (pendingStatus === 'complete') {
       return {
         status: 'current',
+        // Provider/account coverage completeness, not named-category remaining
+        // precision. Unclassified household spend is a separate claim.
         remainingClaim: 'precise',
         pendingStatus,
         observationAsOf,
@@ -2141,6 +2143,24 @@
       coverageThrough,
       reason: 'Pending coverage is not complete. Observed pending still constrains remaining; additional unknown pending may exist.',
     };
+  }
+
+  // Named-category remaining precision. Provider coverage can be complete
+  // while household spending is still unclassified; that must not publish a
+  // precise named-remaining claim. Transfers, card payments, income,
+  // business-excluded, and household-external amounts never reach
+  // `unclassified` and do not degrade this claim.
+  function categoryRemainingClaimFrom(coverageClaim, unclassified) {
+    if (coverageClaim !== 'precise' && coverageClaim !== 'posted-only') {
+      return 'unavailable';
+    }
+    const count = unclassified && Number(unclassified.count) || 0;
+    const posted = unclassified && Number(unclassified.posted) || 0;
+    const pending = unclassified && Number(unclassified.pending) || 0;
+    if (count > 0 || Math.abs(posted) > EPSILON || Math.abs(pending) > EPSILON) {
+      return 'classified-incomplete';
+    }
+    return coverageClaim;
   }
 
   function emptyCategoryActuals() {
@@ -2368,6 +2388,8 @@
       noMovementToday: !cal.todayIsPayday && !moneyMovementRequired,
       currentShortfall,
       remainingClaim: coverage.remainingClaim,
+      categoryRemainingClaim: categoryRemainingClaimFrom(
+        coverage.remainingClaim, actuals.unclassified),
     };
   }
 
