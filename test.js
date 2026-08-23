@@ -13,6 +13,9 @@
  * Not run here, because they need something this process does not have:
  *   node test-local.js    needs TEST_PASSWORD and a running server
  *   node verify-live.js   needs the deployed site
+ *
+ * `test-production-live-overlay.js` starts a local server.js with synthetic
+ * SITE_PASSWORD / SESSION_SECRET. Those are not production secrets.
  */
 
 const { execFileSync } = require('child_process');
@@ -88,6 +91,7 @@ const suites = [
   ['opening state transition (B81)', 'test-b81-opening-state.js'],
   ['opening artifact recovery (B81)', 'test-b81-opening-recovery.js'],
   ['live plan overlay without rewriting openings', 'test-live-plan.js'],
+  ['production read-only live overlay boundary', 'test-production-live-overlay.js'],
   ['Aug. 16 household evidence absorption', 'test-aug16-evidence.js'],
   ['telecom current-regime closeout', 'test-telecom-current-regime.js'],
   ['Bell card-paid baseline gravity', 'test-bell-card-paid.js'],

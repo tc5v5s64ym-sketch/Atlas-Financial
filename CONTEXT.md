@@ -25,8 +25,9 @@ already exists and has been exercised; identity and idempotency of that
 path are proved (`B78` / T3). The file foundation has not demonstrably
 failed (`B79` / `AF-STORE-01`); no store is introduced. Owner-approved
 preview/apply writes, the 2026-08-19 canonical opening, and the
-read-only live overlay are earned (`B81` / `AF-LIVE-02`). Unattended production
-writes are **not** approved. Owner-maintained Lunch Money account
+read-only live overlay are earned (`B81` / `AF-LIVE-02`). Production
+on-demand GET-only Lunch Money access is owner-authorized 2026-08-23.
+Unattended production writes are **not** approved. Owner-maintained Lunch Money account
 freshness is accepted owner policy and does not block unrelated
 automatically refreshed accounts. The household cash schedule has one
 Plan owner (`Forecast.expandEvents`, PR #37). Question OPEN / ANSWERED status
@@ -206,9 +207,12 @@ production writes are not earned. File capture remains the
 fallback/backfill/direct-evidence path, not the monthly operational
 requirement.
 
-A local live overlay (`ATLAS_LIVE_OVERLAY=fixture` or `live`) serves today's
+A live overlay (`ATLAS_LIVE_OVERLAY=fixture` or `live`) serves today's
 plan from current Lunch Money observation without that write. Production
-without that flag still publishes the dated opening in `data.json`.
+is configured for `live` with owner-supplied Render secrets. Without those
+secrets, or if live evidence cannot be trusted, Atlas publishes the dated
+opening in `data.json` and says so. Unattended canonical writes remain
+unauthorized.
 
 When a published canonical figure does need to change:
 

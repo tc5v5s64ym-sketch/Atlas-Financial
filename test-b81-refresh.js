@@ -323,7 +323,11 @@ console.log('\n=== J. live preview CLI does not write, and secrets stay out ==='
   const staticSrc = fs.readFileSync(path.join(ROOT, 'test-static.js'), 'utf8');
   ok(/LUNCHMONEY_ACCESS_TOKEN/.test(staticSrc), 'static scan names LUNCHMONEY_ACCESS_TOKEN');
   const render = fs.readFileSync(path.join(ROOT, 'render.yaml'), 'utf8');
-  ok(!/LUNCHMONEY_ACCESS_TOKEN/.test(render), 'Render still has no Lunch Money token');
+  ok(/LUNCHMONEY_ACCESS_TOKEN/.test(render), 'Render declares the Lunch Money token name');
+  ok(/key:\s*LUNCHMONEY_ACCESS_TOKEN[\s\S]*?sync:\s*false/.test(render),
+    'Render Lunch Money token is owner-supplied');
+  ok(!/key:\s*LUNCHMONEY_ACCESS_TOKEN[\s\S]*?value:/.test(render),
+    'Render still has no Lunch Money token value');
   const observe = fs.readFileSync(path.join(ROOT, 'scripts', 'provider-observe.js'), 'utf8');
   ok(/method:\s*'GET'/.test(observe), 'observer remains GET-only');
   ok(!/method:\s*'(POST|PUT|PATCH|DELETE)'/.test(fs.readFileSync(SCRIPT, 'utf8')),

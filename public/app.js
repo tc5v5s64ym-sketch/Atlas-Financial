@@ -280,7 +280,10 @@ const App = (() => {
             ? ' · live balances observed ' + observed
             : ' · live Lunch Money overlay';
         } else if (overlay && overlay.applied === false) {
-          text += ' · live overlay not applied';
+          const opening = overlay.historicalOpeningAsOf || d.meta.asOf;
+          text += opening
+            ? ' · live overlay not applied · using the ' + fmtDateLong(opening) + ' opening'
+            : ' · live overlay not applied';
         }
         asof.textContent = text;
       }

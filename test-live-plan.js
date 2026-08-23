@@ -208,10 +208,16 @@ console.log('=== 1. overlay defaults off and does not write ===');
   const render = fs.existsSync(path.join(ROOT, 'render.yaml'))
     ? fs.readFileSync(path.join(ROOT, 'render.yaml'), 'utf8')
     : '';
-  ok(!/ATLAS_LIVE_OVERLAY\s*[:=].*live/.test(render),
-    'Render config does not enable live overlay');
-  ok(!/LUNCHMONEY_ACCESS_TOKEN/.test(render),
-    'Render config still has no Lunch Money token');
+  ok(/key:\s*ATLAS_LIVE_OVERLAY[\s\S]*?value:\s*"live"/.test(render),
+    'Render enables the incumbent live overlay');
+  ok(/key:\s*LUNCHMONEY_ACCESS_TOKEN[\s\S]*?sync:\s*false/.test(render),
+    'Render declares Lunch Money token as owner-supplied');
+  ok(!/key:\s*LUNCHMONEY_ACCESS_TOKEN[\s\S]*?value:/.test(render),
+    'Render does not assign a Lunch Money token value');
+  ok(/key:\s*ATLAS_PROVIDER_ACCOUNT_MAP_JSON[\s\S]*?sync:\s*false/.test(render),
+    'Render declares private account-map JSON as owner-supplied');
+  ok(!/key:\s*ATLAS_PROVIDER_ACCOUNT_MAP_JSON[\s\S]*?value:/.test(render),
+    'Render does not assign account-map JSON');
   const served = Live.serveCanonicalOrFixture(liveData, {});
   ok(served === liveData || served.liveOverlay == null,
     'server overlay off returns the dated opening');

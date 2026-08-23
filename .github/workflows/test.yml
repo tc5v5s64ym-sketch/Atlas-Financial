@@ -1,9 +1,8 @@
 # The financial publication correctness suite.
 #
-# No secrets are used or needed. Everything here runs against the tracked
-# repository alone: the password gate and the live-site checks are deliberately
-# excluded because they need SITE_PASSWORD and a deployed instance, and putting
-# either into CI would mean putting a secret somewhere new.
+# No production secrets are used or needed. Synthetic SITE_PASSWORD /
+# SESSION_SECRET values exist only in the local production-boundary suite so
+# authenticated `/data.json` can be proved without a deployed instance.
 name: tests
 
 on:
@@ -30,8 +29,11 @@ jobs:
         with:
           node-version: '20'
 
-      # No dependencies are needed to run the suite — it is plain Node — so the
-      # install is skipped rather than pulling express in to sit unused.
+      # express is the production server runtime. The production-boundary
+      # suite starts server.js locally with synthetic secrets.
+      - name: Install runtime dependencies
+        run: npm ci --omit=dev
+
       - name: Run the correctness suite
         run: npm test
 

@@ -54,8 +54,9 @@ Official: https://lunchmoney.dev/ and https://lunchmoney.dev/v2/docs
   current forecasting only** (`confidence: inferred`). Historical provider
   status stays pending. That is not a universal STALE threshold.
 - Real live `providerAccountId` values stay in gitignored
-  `docs/connectivity/provider-account-map.local.json`. They are stable
-  household account identifiers and are not committed. Copy
+  `docs/connectivity/provider-account-map.local.json`, or in production in
+  the owner-supplied `ATLAS_PROVIDER_ACCOUNT_MAP_JSON` Render secret. They
+  are stable household account identifiers and are not committed. Copy
   `provider-account-map.local.example.json`. Leave DEBT&PAYMENTS and
   SAVINGS-DONT TOUCH unmapped.
 - Dale connects institutions **inside Lunch Money**. Atlas holds only the

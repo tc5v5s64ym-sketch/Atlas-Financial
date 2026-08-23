@@ -9,7 +9,7 @@ services:
     healthCheckPath: /healthz
     autoDeploy: true
     envVars:
-      # Both are required. The server refuses to start without them, so a
+      # SITE_PASSWORD is required. The server refuses to start without it, so a
       # misconfigured deploy can never serve the data publicly.
       - key: SITE_PASSWORD
         sync: false          # set by hand in the Render dashboard
@@ -17,3 +17,12 @@ services:
         generateValue: true  # Render generates and stores a random value
       - key: NODE_VERSION
         value: "20"
+      # On-demand read-only live overlay. No scheduler. No canonical write.
+      - key: ATLAS_LIVE_OVERLAY
+        value: "live"
+      # Owner-supplied Lunch Money GET-only token. Never commit a value.
+      - key: LUNCHMONEY_ACCESS_TOKEN
+        sync: false
+      # Owner-supplied atlas-provider-account-map/v1 JSON. Never commit a value.
+      - key: ATLAS_PROVIDER_ACCOUNT_MAP_JSON
+        sync: false

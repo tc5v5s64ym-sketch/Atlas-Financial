@@ -78,6 +78,7 @@ const PATTERNS = [
   [/\bSITE_PASSWORD\s*[:=]\s*['"][^'"]+['"]/, 'a literal SITE_PASSWORD'],
   [/\bSESSION_SECRET\s*[:=]\s*['"][^'"]+['"]/, 'a literal SESSION_SECRET'],
   [/\bLUNCHMONEY_ACCESS_TOKEN\s*=\s*['"][^'"]+['"]/, 'a literal LUNCHMONEY_ACCESS_TOKEN'],
+  [/\bATLAS_PROVIDER_ACCOUNT_MAP_JSON\s*=\s*['"][^'"]+['"]/, 'a literal ATLAS_PROVIDER_ACCOUNT_MAP_JSON'],
   [/\b\d{4}[ -]?\d{4}[ -]?\d{4}[ -]?\d{4}\b/, 'a 16-digit card number'],
   [/\b\d{3}[ -]\d{3}[ -]\d{3}\b/, 'a SIN-shaped number'],
 ];
