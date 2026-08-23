@@ -125,16 +125,19 @@ function requestLibFor(url) {
   return url.protocol === 'http:' ? http : https;
 }
 
-function knownCanonicalIds(data) {
-  const ids = new Set();
+function knownCanonicalIdsByCollection(data) {
+  const byCollection = {
+    cash: new Set(),
+    debts: new Set(),
+  };
   const cash = (data && data.plan && data.plan.startingCash) || {};
   for (const row of [].concat(cash.breakdown || [], cash.heldElsewhere || [])) {
-    if (row && row.id) ids.add(String(row.id));
+    if (row && row.id) byCollection.cash.add(String(row.id));
   }
   for (const row of (data && data.debts) || []) {
-    if (row && row.id) ids.add(String(row.id));
+    if (row && row.id) byCollection.debts.add(String(row.id));
   }
-  return ids;
+  return byCollection;
 }
 
 function assertLiveMap(mapDoc, opts) {
@@ -151,7 +154,7 @@ function assertLiveMap(mapDoc, opts) {
   const providerIds = new Set();
   const atlasKeys = new Set();
   const cashIds = new Set();
-  const known = opts && opts.data ? knownCanonicalIds(opts.data) : null;
+  const known = opts && opts.data ? knownCanonicalIdsByCollection(opts.data) : null;
   for (const mapping of mappings) {
     if (!mapping || mapping.providerAccountId == null || mapping.providerAccountId === '') {
       fail('live-account-map-invalid');
@@ -168,7 +171,10 @@ function assertLiveMap(mapDoc, opts) {
     const atlasKey = collection + ':' + String(atlasId);
     if (atlasKeys.has(atlasKey)) fail('live-account-map-invalid');
     atlasKeys.add(atlasKey);
-    if (known && !known.has(String(atlasId))) fail('invalid-atlas-account-id');
+    if (known) {
+      const ids = known[collection];
+      if (!ids || !ids.has(String(atlasId))) fail('invalid-atlas-account-id');
+    }
     if (role === 'household-cash' && collection === 'cash') cashIds.add(String(atlasId));
   }
   for (const id of REQUIRED_LIVE_CASH_IDS) {

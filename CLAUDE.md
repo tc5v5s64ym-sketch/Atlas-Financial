@@ -605,8 +605,9 @@ refresh from live financial-data connectivity. The store is wanted and not
 authorised. Live **read-only** Lunch Money observation already exists and
 has been exercised. T4 passed 2026-08-17 for the earned preview/approve
 writer (`scripts/canonical-refresh.js`). Automatic or unrestricted
-production **writes**, scheduled refresh, and a Render Lunch Money token
-remain **not** authorised.
+production **writes** and scheduled refresh remain **not** authorised.
+A production Lunch Money token is authorised only for on-demand GET-only
+observation as of 2026-08-23.
 [`ARCHITECTURE.md`](ARCHITECTURE.md) holds the exact gate for each. A capability
 is started when its gate is met and Dale says so, not when a plan reaches that
 line. Owner-reserved stop 5 is unchanged. The 2026-08-17 Lunch Money feed

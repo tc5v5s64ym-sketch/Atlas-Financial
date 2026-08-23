@@ -462,6 +462,31 @@ function independentGroceryRemaining(plan, asOf) {
       'missing cash mapping is named', data.liveOverlay.reason);
     ok(mock.calls.length === 0, 'incomplete mapping does not fetch provider data');
   });
+  await withAtlas({
+    ATLAS_LIVE_OVERLAY: 'live',
+    [O.TOKEN_ENV]: SYNTHETIC_TOKEN,
+    [O.MAP_JSON_ENV]: JSON.stringify({
+      schema: 'atlas-provider-account-map/v1',
+      provider: 'lunchmoney',
+      scope: 'live',
+      mappings: [
+        { providerAccountId: '3001', canonical: { collection: 'cash', id: 'chequing-a' }, atlasRole: 'household-cash' },
+        { providerAccountId: '3002', canonical: { collection: 'cash', id: 'chequing-b' }, atlasRole: 'household-cash' },
+        { providerAccountId: '3003', canonical: { collection: 'cash', id: 'savings' }, atlasRole: 'household-cash' },
+        { providerAccountId: '3999', canonical: { collection: 'debts', id: 'savings' }, atlasRole: 'revolving-credit' },
+      ],
+    }),
+  }, 'ok', async ({ base, mock }) => {
+    const auth = await login(base);
+    const data = await (await fetch(`${base}/data.json`, { headers: { cookie: auth.cookie } })).json();
+    ok(data.liveOverlay && data.liveOverlay.applied === false,
+      'cross-collection Atlas id fails closed on /data.json');
+    ok(data.liveOverlay.reason === 'invalid-atlas-account-id',
+      'wrong-collection id is named', data.liveOverlay.reason);
+    ok(mock.calls.length === 0, 'wrong-collection mapping does not call the provider');
+    ok(String(data.meta.asOf) === String(liveData.meta.asOf),
+      'dated opening is served for wrong-collection mapping');
+  });
   {
     let threw = false;
     try {
@@ -501,6 +526,27 @@ function independentGroceryRemaining(plan, asOf) {
       threw = /unsupported-atlas-role/.test(err.message);
     }
     ok(threw, 'unsupported roles fail closed');
+  }
+  {
+    let threw = false;
+    try {
+      O.loadLiveAccountMap({
+        [O.MAP_JSON_ENV]: JSON.stringify({
+          schema: 'atlas-provider-account-map/v1',
+          provider: 'lunchmoney',
+          scope: 'live',
+          mappings: [
+            { providerAccountId: '3001', canonical: { collection: 'cash', id: 'chequing-a' }, atlasRole: 'household-cash' },
+            { providerAccountId: '3002', canonical: { collection: 'cash', id: 'chequing-b' }, atlasRole: 'household-cash' },
+            { providerAccountId: '3003', canonical: { collection: 'cash', id: 'savings' }, atlasRole: 'household-cash' },
+            { providerAccountId: '3999', canonical: { collection: 'debts', id: 'savings' }, atlasRole: 'revolving-credit' },
+          ],
+        }),
+      }, liveData);
+    } catch (err) {
+      threw = /invalid-atlas-account-id/.test(err.message);
+    }
+    ok(threw, 'cash id mapped into debts fails closed');
   }
 
   console.log('\n=== G. secrets and provider ids never reach the browser ===');

@@ -362,9 +362,10 @@ refresh chain is Lunch Money → observation + reconciliation → canonical Atla
 state → Forecast → those three surfaces. `B91` is done. Lunch Money is the
 evidence/update feed, not a second planner. Owner-approved preview/apply
 writes, the published 2026-08-19 canonical opening, and the read-only
-live overlay are earned (`B81` / `AF-LIVE-02`). Unattended production
-writes, a Render Lunch Money token, and a newer live substitute opening
-remain owner-reserved. Those reservations are not a missing B81
+live overlay are earned (`B81` / `AF-LIVE-02`). A production Lunch Money
+token is authorized for on-demand GET-only observation (2026-08-23).
+Unattended production writes and a newer live substitute opening remain
+owner-reserved. Those reservations are not a missing B81
 implementation slice.
 
 **What the plan is expected to cover, as each capability is earned:** material
