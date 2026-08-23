@@ -86,6 +86,15 @@ function overlayModeFromEnv(env) {
   return 'off';
 }
 
+function actualsPacketLooksSanitized(packet) {
+  const blob = JSON.stringify(packet == null ? {} : packet);
+  return !/"payee"\s*:/.test(blob)
+    && !/"providerTransactionId"\s*:/.test(blob)
+    && !/"providerAccountId"\s*:/.test(blob)
+    && !/"original_name"\s*:/.test(blob)
+    && !/Bearer\s+\S+/.test(blob);
+}
+
 function reconRows(report) {
   return (report && report.reconciliation && report.reconciliation.rows) || [];
 }
@@ -567,6 +576,7 @@ function overlayMeta(opts) {
     source: 'provider-observe:lunchmoney',
     note: opts.note || 'In-memory overlay for today\'s live plan. Dated openings and snapshots are unchanged.',
     reason: opts.reason || null,
+    currentPeriodActuals: opts.currentPeriodActuals || null,
   };
 }
 
@@ -616,10 +626,15 @@ function overlayLiveState(input) {
       reason: row.reason,
       evidenceDate: row.evidenceDate || null,
     })),
+    currentPeriodActuals: report.currentPeriodActuals || null,
   });
   if (!C.identityProofLooksSanitized(next.liveOverlay)
     || !O.identityProofLooksSanitized(next.liveOverlay)) {
     fail('Live overlay metadata is not sanitized.');
+  }
+  if (next.liveOverlay.currentPeriodActuals
+    && !actualsPacketLooksSanitized(next.liveOverlay.currentPeriodActuals)) {
+    fail('Current-period actuals packet is not sanitized.');
   }
   return {
     data: next,
@@ -653,6 +668,12 @@ function fromObservation(opts) {
   return Object.assign({ report }, overlaid);
 }
 
+function loadPeriods() {
+  const file = path.join(ROOT, 'public', 'periods.json');
+  if (!fs.existsSync(file)) return null;
+  return loadJson(file);
+}
+
 function forecastFrom(data) {
   const plan = data && data.plan;
   const asOf = (data && data.liveOverlay && data.liveOverlay.applied === true
@@ -660,12 +681,19 @@ function forecastFrom(data) {
     || (plan && plan.opening && plan.opening.asOf)
     || (data && data.meta && data.meta.asOf);
   if (!plan || !asOf) fail('Overlaid data is missing a Forecast opening.');
+  const overlay = data && data.liveOverlay;
+  const actuals = overlay && overlay.applied === true
+    ? overlay.currentPeriodActuals
+    : null;
   const advice = Forecast.recommend(plan, asOf, {
     fundingSources: plan.funding && plan.funding.options,
     debts: data.debts,
     revolvingExtra: data.revolvingExtra,
+    periods: loadPeriods(),
+    currentPeriodActuals: actuals,
   });
   const used = Forecast.utilisation(data.debts, data.revolvingExtra, plan);
+  const action = advice && advice.currentPeriodAction;
   return {
     asOf,
     startingCash: Forecast.startingCashAmount(plan),
@@ -677,6 +705,13 @@ function forecastFrom(data) {
       overLimitCount: used.overLimitCount,
     },
     writesCanonicalState: false,
+    currentPeriod: action ? {
+      mode: action.mode,
+      remainingClaim: action.remainingClaim,
+      nextPayday: action.nextPayday,
+      noMovementToday: action.noMovementToday,
+      coverage: action.coverage,
+    } : null,
   };
 }
 

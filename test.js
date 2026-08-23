@@ -97,6 +97,7 @@ const suites = [
   ['end-to-end payday proof (B96 / AF-PLAN-02)', 'test-b96-payday.js'],
   ['payday allocation waterfall', 'test-payday-allocation.js'],
   ['payday reserve itemization', 'test-payday-reserve-detail.js'],
+  ['current-period actuals action plan', 'test-current-period-actuals.js'],
   ['balance history as a refresh by-product (B20 / AF-HIST-01)', 'test-b20-history.js'],
 ];
 
