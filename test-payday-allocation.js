@@ -139,6 +139,37 @@ function assertMasterWalk(plan, asOf, o, alloc, label) {
   ok(recon(alloc), `${label} reconciles`);
 }
 
+function paydayComposer() {
+  const appSrc = fs.readFileSync(path.join(__dirname, 'public', 'app.js'), 'utf8');
+  const planSrc = fs.readFileSync(path.join(__dirname, 'public', 'plan.js'), 'utf8');
+  const grab = (src, re, label) => {
+    const m = re.exec(src);
+    if (!m) throw new Error('missing ' + label);
+    return m[0];
+  };
+  return vm.runInNewContext(
+    [
+      grab(appSrc, /^const money = .*$/m, 'money'),
+      grab(appSrc, /^const money2 = .*$/m, 'money2'),
+      grab(appSrc, /^const fmtDate = .*$/m, 'fmtDate'),
+      grab(appSrc, /^const fmtDateLong = .*$/m, 'fmtDateLong'),
+      grab(planSrc, /^const fmtMonth = .*$/m, 'fmtMonth'),
+      grab(planSrc, /^function weeklyCapView\([\s\S]*?\n\}$/m, 'weeklyCapView'),
+      grab(planSrc, /^function paydayActionRows\([\s\S]*?\n\}$/m, 'paydayActionRows'),
+      grab(planSrc, /^function paydayOtherActionRows\([\s\S]*?\n\}$/m, 'paydayOtherActionRows'),
+      grab(planSrc, /^function paydayReservedIds\([\s\S]*?\n\}$/m, 'paydayReservedIds'),
+      grab(planSrc, /^function paydayComingRows\([\s\S]*?\n\}$/m, 'paydayComingRows'),
+      grab(planSrc, /^function paydaySheet\([\s\S]*?\n\}$/m, 'paydaySheet'),
+      grab(planSrc, /^function paydayCashNote\([\s\S]*?\n\}$/m, 'paydayCashNote'),
+      grab(planSrc, /^function paydayObligationNote\([\s\S]*?\n\}$/m, 'paydayObligationNote'),
+      grab(planSrc, /^function paydayAmountCell\([\s\S]*?\n\}$/m, 'paydayAmountCell'),
+      grab(planSrc, /^function paydayAnswerHtml\([\s\S]*?\n\}$/m, 'paydayAnswerHtml'),
+      '({ paydayActionRows, paydayOtherActionRows, paydayComingRows, paydayAnswerHtml, paydayCashNote, money2 })',
+    ].join('\n'),
+    { Forecast: F }
+  );
+}
+
 function deadlineReconciles(row, label) {
   ok(!!row, `${label} exists`);
   if (!row) return;
@@ -454,32 +485,10 @@ console.log('\n=== I. essential hold vs spending permission ===');
   ok((alloc.unresolved || []).some(r => r.id === 'undated'),
     'required-undated is visible as unresolved');
 
-  const appSrc = fs.readFileSync(path.join(__dirname, 'public', 'app.js'), 'utf8');
-  const planSrc = fs.readFileSync(path.join(__dirname, 'public', 'plan.js'), 'utf8');
-  const grab = (src, re, label) => {
-    const m = re.exec(src);
-    if (!m) throw new Error('missing ' + label);
-    return m[0];
-  };
-  const composed = vm.runInNewContext(
-    [
-      grab(appSrc, /^const money = .*$/m, 'money'),
-      grab(appSrc, /^const money2 = .*$/m, 'money2'),
-      grab(appSrc, /^const fmtDate = .*$/m, 'fmtDate'),
-      grab(appSrc, /^const fmtDateLong = .*$/m, 'fmtDateLong'),
-      grab(planSrc, /^const fmtMonth = .*$/m, 'fmtMonth'),
-      grab(planSrc, /^function weeklyCapView\([\s\S]*?\n\}$/m, 'weeklyCapView'),
-      grab(planSrc, /^function paydayActionRows\([\s\S]*?\n\}$/m, 'paydayActionRows'),
-      grab(planSrc, /^function paydayComingRows\([\s\S]*?\n\}$/m, 'paydayComingRows'),
-      grab(planSrc, /^function paydaySheet\([\s\S]*?\n\}$/m, 'paydaySheet'),
-      grab(planSrc, /^function paydayAnswerHtml\([\s\S]*?\n\}$/m, 'paydayAnswerHtml'),
-      '({ paydayActionRows, paydayAnswerHtml, money2 })',
-    ].join('\n'),
-    { Forecast: F }
-  );
+  const composed = paydayComposer();
   const rows = composed.paydayActionRows({ advice: rec });
   ok(rows.length === material.length,
-    'the page renders every material allocation line',
+    'paydayActionRows still surfaces every material allocation line',
     `${rows.length} vs ${material.length}`);
   const html = composed.paydayAnswerHtml({
     plan: fixture,
@@ -490,10 +499,14 @@ console.log('\n=== I. essential hold vs spending permission ===');
   });
   ok(material.every(l => html.includes(composed.money2(l.amount))),
     'composed HTML contains every material allocation amount');
-  ok(/Household spending/.test(html) && html.includes(String(WEEKLY)),
+  ok(/Household spending permission/.test(html) && html.includes(String(WEEKLY)),
     'composed HTML still publishes the weekly cap as the spend instruction');
-  ok(/Hold for essential costs/.test(html) && /no exact date stay unresolved/.test(html),
-    'the hold and unresolved-required note are both visible');
+  ok(/Groceries/.test(html) && /Required for period/.test(html)
+    && /Cash available for essentials/.test(html)
+    && /no exact date stay unresolved/.test(html),
+    'the essential category, period need, funded cash, and unresolved-required note are visible');
+  ok(!/Keep for bills/.test(html) && !/Hold for essential costs/.test(html),
+    'collapsed Keep-for-bills / Hold-for-essential-costs labels are not the household surface');
   ok(recon(alloc), 'I reconciles');
 }
 
@@ -503,28 +516,7 @@ console.log('\n=== J. complete render ===');
     key: 'k' + i, label: 'Line ' + i, amount: 10 * i,
   }));
   const planSrc = fs.readFileSync(path.join(__dirname, 'public', 'plan.js'), 'utf8');
-  const appSrc = fs.readFileSync(path.join(__dirname, 'public', 'app.js'), 'utf8');
-  const grab = (src, re, label) => {
-    const m = re.exec(src);
-    if (!m) throw new Error('missing ' + label);
-    return m[0];
-  };
-  const composed = vm.runInNewContext(
-    [
-      grab(appSrc, /^const money = .*$/m, 'money'),
-      grab(appSrc, /^const money2 = .*$/m, 'money2'),
-      grab(appSrc, /^const fmtDate = .*$/m, 'fmtDate'),
-      grab(appSrc, /^const fmtDateLong = .*$/m, 'fmtDateLong'),
-      grab(planSrc, /^const fmtMonth = .*$/m, 'fmtMonth'),
-      grab(planSrc, /^function weeklyCapView\([\s\S]*?\n\}$/m, 'weeklyCapView'),
-      grab(planSrc, /^function paydayActionRows\([\s\S]*?\n\}$/m, 'paydayActionRows'),
-      grab(planSrc, /^function paydayComingRows\([\s\S]*?\n\}$/m, 'paydayComingRows'),
-      grab(planSrc, /^function paydaySheet\([\s\S]*?\n\}$/m, 'paydaySheet'),
-      grab(planSrc, /^function paydayAnswerHtml\([\s\S]*?\n\}$/m, 'paydayAnswerHtml'),
-      '({ paydayActionRows })',
-    ].join('\n'),
-    { Forecast: F }
-  );
+  const composed = paydayComposer();
   const manyRows = composed.paydayActionRows({
     advice: { weekly: 100, paydayAllocation: { lines: manyLines } },
   });

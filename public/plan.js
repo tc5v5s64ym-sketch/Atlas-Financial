@@ -632,18 +632,38 @@ function paydayActionRows(ctx) {
     .map(line => ({ key: line.key, label: line.label, amount: line.amount }));
 }
 
+function paydayOtherActionRows(ctx) {
+  return paydayActionRows(ctx).filter(row =>
+    row.key !== 'obligations' && row.key !== 'essentials');
+}
+
+function paydayReservedIds(alloc) {
+  const ids = new Set();
+  const datedLabels = new Set();
+  for (const item of (alloc && alloc.obligations && alloc.obligations.items) || []) {
+    if (item && item.id) ids.add(item.id);
+    if (item && item.label && item.date) datedLabels.add(item.label + '@' + item.date);
+  }
+  return { ids, datedLabels };
+}
+
 function paydayComingRows(ctx) {
   const near = (ctx.advice && ctx.advice.nearBoundary) || { items: [] };
+  const alloc = ctx.advice && ctx.advice.paydayAllocation;
+  const reserved = paydayReservedIds(alloc);
   const rows = [];
   const seen = new Set();
-  const add = (key, label, date, amount) => {
+  const add = (key, label, date, amount, id) => {
     if (!label || amount == null || !(Number(amount) > 0)) return;
+    if (id && reserved.ids.has(id)) return;
+    if (label && date && reserved.datedLabels.has(label + '@' + date)) return;
+    if (reserved.ids.has(key)) return;
     if (seen.has(key)) return;
     seen.add(key);
     rows.push({ key, label, date, amount });
   };
   for (const item of near.items || []) {
-    add(item.id || `${item.label}:${item.date}`, item.label, item.date, item.amount);
+    add(item.id || `${item.label}:${item.date}`, item.label, item.date, item.amount, item.id);
   }
   const nextOut = ctx.nextOut;
   if (nextOut) {
@@ -651,7 +671,7 @@ function paydayComingRows(ctx) {
       i.date === nextOut.date && i.label === nextOut.label);
     if (!already) {
       add('next-out:' + nextOut.date + ':' + nextOut.label,
-        nextOut.label, nextOut.date, nextOut.amount);
+        nextOut.label, nextOut.date, nextOut.amount, nextOut.id);
     }
   }
   rows.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
@@ -668,6 +688,49 @@ function paydaySheet(headers, rowClass, rows, cell) {
   </table>`;
 }
 
+function paydayCashNote(alloc, liveOverlay) {
+  const asOf = alloc && (alloc.cashBasis && alloc.cashBasis.asOf || alloc.asOf);
+  if (!asOf) return 'Spendable cash. Not credit.';
+  const basis = alloc.cashBasis || {};
+  const overlayOn = !!(liveOverlay && liveOverlay.applied === true);
+  let source;
+  if (overlayOn && basis.liveAdvanced && basis.priorAsOf) {
+    source = `live overlay from the ${fmtDate(basis.priorAsOf)} opening`;
+  } else if (overlayOn) {
+    source = 'live Lunch Money overlay';
+  } else {
+    source = 'dated opening';
+  }
+  let note = `Spendable cash. Not credit. As at ${fmtDate(asOf)} — ${source}.`;
+  if (liveOverlay && liveOverlay.applied === false) {
+    note += ' Live overlay not applied.';
+  }
+  return note;
+}
+
+function paydayObligationNote(item, asOf) {
+  if (!item) return '';
+  const when = item.date ? fmtDate(item.date) : '';
+  const reserved = item.allocated != null
+    && Number(item.allocated) > 0
+    && Math.abs(Number(item.allocated) - Number(item.amount)) <= 0.02;
+  if (item.settlement === 'unverified') {
+    const opening = asOf ? ` on the ${fmtDate(asOf)} opening` : '';
+    const reserveClause = reserved
+      ? ' Reserved until current evidence confirms posting.'
+      : '';
+    return `${when ? when + ' · ' : ''}settlement unverified${opening}.${reserveClause}`;
+  }
+  if (item.date) return `Due ${fmtDate(item.date)}.`;
+  return '';
+}
+
+function paydayAmountCell(amount, confidence) {
+  const value = amount != null ? money2(amount) : '—';
+  if (confidence === 'estimated') return `<span class="est">${value}</span>`;
+  return value;
+}
+
 function paydayAnswerHtml(ctx) {
   const plan = ctx.plan;
   const advice = ctx.advice;
@@ -679,15 +742,25 @@ function paydayAnswerHtml(ctx) {
   const recommended = ctx.recommended != null ? ctx.recommended : advice.weekly;
   const weekly = ctx.weekly != null ? ctx.weekly : advice.weekly;
   const capView = ctx.capView || weeklyCapView(advice, ctx.weeklyOverride);
-  const asOf = ctx.asOf;
-  const paydayDate = near.payday || null;
-  const periodLine = paydayDate
-    ? `Now → ${fmtDateLong(paydayDate)}`
-    : (asOf
-      ? `Now → ${fmtDateLong(asOf)}`
-      : 'Planning span is not available on this opening.');
+  const asOf = ctx.asOf || (alloc && alloc.asOf);
+  const paydayDate = near.payday || (alloc && alloc.payday) || null;
+  const liveOverlay = ctx.liveOverlay || null;
+  const basisAsOf = alloc && alloc.cashBasis && alloc.cashBasis.asOf
+    ? alloc.cashBasis.asOf
+    : asOf;
+  const overlayOn = !!(liveOverlay && liveOverlay.applied === true);
+  const periodEndLabel = paydayDate
+    ? fmtDateLong(paydayDate)
+    : (basisAsOf ? fmtDateLong(basisAsOf) : '');
+  const periodLine = !basisAsOf
+    ? 'Planning span is not available on this opening.'
+    : overlayOn
+      ? `Live as at ${fmtDateLong(basisAsOf)} → ${periodEndLabel}`
+      : `As at ${fmtDateLong(basisAsOf)} → ${periodEndLabel}`;
 
-  const actionRows = paydayActionRows(ctx);
+  const obligationItems = (alloc && alloc.obligations && alloc.obligations.items) || [];
+  const essentialItems = (alloc && alloc.essentials && alloc.essentials.items) || [];
+  const otherRows = paydayOtherActionRows(ctx);
   const comingRows = paydayComingRows(ctx);
   const unresolvedCount = ((alloc && alloc.unresolved) || [])
     .filter(r => r && r.flexibility !== 'optional').length;
@@ -695,10 +768,71 @@ function paydayAnswerHtml(ctx) {
     ? '<p class="payday-qual">Required future costs with no exact date stay unresolved — this payday assigns them no contribution.</p>'
     : '';
 
-  const actionSheet = paydaySheet(
+  const obligationSheet = paydaySheet(
+    ['Bill', 'Amount'],
+    'payday-obligation',
+    obligationItems.filter(r => r && Number(r.amount) > 0),
+    r => `<td><div>${r.label}</div>${
+      paydayObligationNote(r, asOf)
+        ? `<div class="payday-item-note">${paydayObligationNote(r, asOf)}</div>`
+        : ''
+    }</td><td>${paydayAmountCell(r.amount, r.confidence)}</td>`);
+  const billsReserved = alloc && alloc.obligations ? alloc.obligations.allocated : 0;
+  const billsWanted = alloc && alloc.obligations ? alloc.obligations.wanted : 0;
+  const billsShort = alloc && alloc.obligations ? alloc.obligations.shortfall : 0;
+  const billsAttribution = alloc && alloc.obligations
+    ? alloc.obligations.fundingAttribution
+    : null;
+  const billsTotal = obligationItems.length
+    ? `<p class="payday-qual">Bills currently reserved: ${money2(billsReserved)}${
+        billsShort > 0 ? ` · shortfall ${money2(billsShort)} of ${money2(billsWanted)} required` : ''
+      }</p>${
+        billsAttribution === 'unattributed'
+          ? '<p class="payday-qual">Atlas does not choose which required bill is underfunded.</p>'
+          : ''
+      }`
+    : '';
+
+  const essentialSheet = paydaySheet(
+    ['Category', 'Period need'],
+    'payday-essential',
+    essentialItems.filter(r => r && Number(r.required) > 0),
+    r => `<td>${r.label}${
+      r.source ? `<div class="payday-item-note">${
+        r.source === 'owner-target' ? 'Owner target'
+          : r.source === 'current-regime' ? 'Current-regime'
+            : r.source === 'historical-actual' ? 'Historical actual'
+              : r.source
+      } · ${money2(r.monthly)}/month</div>` : ''
+    }</td><td>${money2(r.required)}</td>`);
+  const ess = alloc && alloc.essentials;
+  let essentialSummary = '';
+  if (ess && (Number(ess.wanted) > 0 || essentialItems.length)) {
+    const short = Number(ess.shortfall) || 0;
+    const attributed = ess.fundingAttribution;
+    essentialSummary = `<p class="payday-qual">Required for period: ${money2(ess.wanted)}</p>
+      <p class="payday-qual">Cash available for essentials: ${money2(ess.allocated)}</p>${
+        short > 0
+          ? `<p class="payday-qual">Essential shortfall: ${money2(short)}. This is not the full amount needed, and it is not a spending allowance.</p>`
+          : ''
+      }${
+        attributed === 'unattributed'
+          ? '<p class="payday-qual">Atlas does not choose which essential category is underfunded.</p>'
+          : ''
+      }`;
+  }
+  const periodEnd = alloc && alloc.periodEnd;
+  const periodStart = alloc && (alloc.periodStart || alloc.asOf || asOf);
+  const essentialHeading = periodStart && periodEnd
+    ? `Essential costs from ${fmtDate(periodStart)} through ${fmtDate(periodEnd)}`
+    : periodEnd
+      ? `Essential costs through ${fmtDate(periodEnd)}`
+      : 'Essential costs until next payday';
+
+  const otherSheet = paydaySheet(
     ['Action', 'Amount'],
     'payday-action',
-    actionRows,
+    otherRows,
     r => `<td>${r.label}</td><td>${r.amount != null ? money2(r.amount) : '—'}</td>`);
 
   const comingSheet = paydaySheet(
@@ -713,25 +847,38 @@ function paydayAnswerHtml(ctx) {
   const riskSheet = paydaySheet(
     ['Risk', 'Gap'],
     'payday-risk',
-    riskRows.slice(0, 5),
+    riskRows,
     r => `<td>${r.label}${r.date ? ` <span class="payday-when">${fmtDate(r.date)}</span>` : ''}</td>
       <td>${money2(r.shortfall)}</td>`);
 
   const spendInner = !capView.hasFeasibleCap
     ? `<p class="payday-refuse">${capView.infeasible ? '<b>INFEASIBLE. </b>' : ''}${capView.reason}</p>`
     : `<p class="payday-hero">${money(recommended)}<span class="payday-hero-unit">/ week</span></p>
-       <p class="payday-qual">Stay under this and the protected plan holds.${
+       <p class="payday-qual">Stay under this and the protected plan holds. This is the spending permission, not the essential cash reserve.${
          weekly !== recommended ? ` ${capView.settingLine}` : ''
        }</p>`;
+
+  const billsBlock = obligationSheet
+    ? `<div class="payday-group">Bills / required payments</div>${obligationSheet}${billsTotal}`
+    : '';
+  const essentialsBlock = (essentialSheet || essentialSummary)
+    ? `<div class="payday-group">${essentialHeading}</div>${essentialSheet}${essentialSummary}`
+    : '';
+  const otherBlock = otherSheet
+    ? `<div class="payday-group">What else this paycheque funds</div>${otherSheet}`
+    : '';
 
   return `<p class="payday-span">${periodLine}</p>
     <div class="payday-list">
       <div class="payday-group">Money available</div>
       <p class="payday-hero" data-fig="spendable">${money2(spendable)}</p>
-      <p class="payday-qual">Spendable cash. Not credit.</p>
-      ${actionSheet ? `<div class="payday-group">What to do with this paycheque</div>${actionSheet}` : ''}
+      <p class="payday-qual">${paydayCashNote(alloc, ctx.liveOverlay)}</p>
+      <div class="payday-group">What to do with this paycheque</div>
+      ${billsBlock}
+      ${essentialsBlock}
+      ${otherBlock}
       ${unresolvedNote}
-      <div class="payday-group">Household spending</div>
+      <div class="payday-group">Household spending permission</div>
       <div class="payday-spend">${spendInner}</div>
       ${comingSheet ? `<div class="payday-group">Coming before next payday</div>${comingSheet}` : ''}
       ${riskSheet ? `<div class="payday-group">Funding risks</div>${riskSheet}` : ''}
@@ -1548,6 +1695,7 @@ function renderPlan(d, periods, history) {
       weeklyOverride: state.weeklyVariable,
       capView,
       debts: d.debts,
+      liveOverlay: d.liveOverlay || null,
     });
   }
 }
@@ -1649,7 +1797,7 @@ if (typeof App !== 'undefined') {
 }
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
-    paydayAnswerHtml, paydayActionRows, paydayComingRows,
-    weeklyCapView, MISSION_PART, NEXT_MOVE, STATUS_BAND,
+    paydayAnswerHtml, paydayActionRows, paydayOtherActionRows, paydayComingRows,
+    paydayCashNote, weeklyCapView, MISSION_PART, NEXT_MOVE, STATUS_BAND,
   };
 }

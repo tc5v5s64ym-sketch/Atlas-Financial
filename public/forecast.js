@@ -1809,18 +1809,59 @@
   // Essential monthly need from incumbent budget classifications. Owner
   // target wins, then current-regime, matching budgetBreakdown. Dated bills
   // are not included — they sit in required obligations. No new taxonomy.
-  function essentialMonthlyNeed(plan, periods, opts) {
+  // Categories with nothing left after dated netting are omitted: they are
+  // not a second copy of a bill already reserved as an obligation.
+  function essentialNeedBreakdown(plan, periods, opts) {
+    const items = [];
     if (periods) {
       const bd = budgetBreakdown(plan, periods, opts || {});
-      if (bd && bd.essentialMonthly != null) return Number(bd.essentialMonthly) || 0;
+      if (bd && Array.isArray(bd.categories)) {
+        for (const c of bd.categories) {
+          if (!c || c.class !== 'essential') continue;
+          const monthly = roundCent((Number(c.planned) || 0) + (Number(c.reserved) || 0));
+          if (!(monthly > EPSILON)) continue;
+          items.push({
+            id: c.id,
+            label: c.label,
+            monthly,
+            source: c.source || null,
+          });
+        }
+        return {
+          monthly: Number(bd.essentialMonthly) || 0,
+          items,
+        };
+      }
     }
     let monthly = 0;
     for (const c of (plan.budget && plan.budget.categories) || []) {
       if (!c || c.class !== 'essential') continue;
-      if (c.plannedMonthly != null) monthly += Number(c.plannedMonthly) || 0;
-      else if (c.currentMonthly != null) monthly += Number(c.currentMonthly) || 0;
+      let amount = 0;
+      let source = null;
+      if (c.plannedMonthly != null) {
+        amount = Number(c.plannedMonthly) || 0;
+        source = 'owner-target';
+      } else if (c.currentMonthly != null) {
+        amount = Number(c.currentMonthly) || 0;
+        source = 'current-regime';
+      }
+      if (!(amount > EPSILON)) continue;
+      monthly += amount;
+      items.push({
+        id: c.id,
+        label: c.label,
+        monthly: roundCent(amount),
+        source,
+      });
     }
-    return monthly;
+    return { monthly, items };
+  }
+  function essentialMonthlyNeed(plan, periods, opts) {
+    return essentialNeedBreakdown(plan, periods, opts).monthly;
+  }
+  function paydaySettlementState(date, asOf) {
+    if (date && asOf && date >= asOf) return 'upcoming';
+    return 'unverified';
   }
 
   function uniquePaydayDates(events, asOf, floor) {
@@ -1960,7 +2001,8 @@
     const periodDays = Math.max(1, diffDays(asOf, periodLast) + 1);
     const liquidityUntil = subsequent ? addDays(subsequent, 1) : periodLast;
 
-    const essentialMonthly = essentialMonthlyNeed(plan, opts.periods, opts);
+    const essentialNeed = essentialNeedBreakdown(plan, opts.periods, opts);
+    const essentialMonthly = essentialNeed.monthly;
     const essentialsWanted = essentialMonthly * periodDays / CALENDAR_MONTH_DAYS;
 
     let obligationsWanted = 0;
@@ -1975,7 +2017,16 @@
       if (!(amt > EPSILON)) continue;
       obligationsWanted += amt;
       obligationItems.push({
-        id: e.id, label: e.label, kind: e.kind, date: e.date, amount: roundCent(amt),
+        id: e.id,
+        label: e.label,
+        kind: e.kind,
+        date: e.date,
+        amount: roundCent(amt),
+        confidence: e.confidence || null,
+        // Settlement is expandEvents / representedEvents: a represented
+        // occurrence is omitted above, not labelled unpaid. A past scheduled
+        // date without that evidence is unverified, not confirmed unpaid.
+        settlement: paydaySettlementState(e.date, asOf),
       });
       if (e.id) obligationKeys.add(e.id);
     }
@@ -1986,7 +2037,13 @@
       if (!(floor > EPSILON)) continue;
       obligationsWanted += floor;
       obligationItems.push({
-        id: item.id, label: item.label, kind: 'overdue', date: item.date, amount: roundCent(floor),
+        id: item.id,
+        label: item.label,
+        kind: 'overdue',
+        date: item.date,
+        amount: roundCent(floor),
+        confidence: item.confidence || null,
+        settlement: paydaySettlementState(item.date, asOf),
       });
       obligationKeys.add(item.id);
     }
@@ -2001,6 +2058,65 @@
     const allocatedObligations = take(obligationsWanted);
     const allocatedEssentials = take(essentialsWanted);
     const leftoverAfterOE = remaining;
+
+    // Per-item reserved cash is authoritative only when the whole required
+    // bucket is funded or none of it is. Partial funding is an unattributed
+    // pool: expandEvents order is a calendar stream, not an owner-approved
+    // bill-priority rule, so no item is marked reserved by array position.
+    let obligationsAttribution = 'complete';
+    if (allocatedObligations + EPSILON < obligationsWanted) {
+      obligationsAttribution = allocatedObligations > EPSILON ? 'unattributed' : 'none';
+    }
+    for (const item of obligationItems) {
+      if (obligationsAttribution === 'complete') {
+        item.allocated = item.amount;
+      } else if (obligationsAttribution === 'none') {
+        item.allocated = 0;
+      } else {
+        item.allocated = null;
+      }
+    }
+
+    const essentialItems = [];
+    const periodScale = periodDays / CALENDAR_MONTH_DAYS;
+    let requiredSum = 0;
+    for (const row of essentialNeed.items) {
+      const required = roundCent(row.monthly * periodScale);
+      if (!(required > EPSILON) && !(row.monthly > EPSILON)) continue;
+      requiredSum = roundCent(requiredSum + required);
+      essentialItems.push({
+        id: row.id,
+        label: row.label,
+        monthly: roundCent(row.monthly),
+        required,
+        source: row.source,
+        funded: null,
+        unfunded: null,
+      });
+    }
+    const wantedRounded = roundCent(essentialsWanted);
+    const residual = roundCent(wantedRounded - requiredSum);
+    if (essentialItems.length && residual !== 0) {
+      const last = essentialItems[essentialItems.length - 1];
+      last.required = roundCent(last.required + residual);
+    }
+    const essentialsShortfall = roundCent(Math.max(0, wantedRounded - allocatedEssentials));
+    let essentialsAttribution = 'complete';
+    if (allocatedEssentials + EPSILON < wantedRounded) {
+      essentialsAttribution = allocatedEssentials > EPSILON ? 'unattributed' : 'none';
+    }
+    for (const row of essentialItems) {
+      if (essentialsAttribution === 'complete') {
+        row.funded = row.required;
+        row.unfunded = 0;
+      } else if (essentialsAttribution === 'none') {
+        row.funded = 0;
+        row.unfunded = row.required;
+      } else {
+        row.funded = null;
+        row.unfunded = null;
+      }
+    }
 
     const weeklyCap = opts.weeklyVariable != null ? Number(opts.weeklyVariable) || 0 : 0;
     const spendPermission = roundCent(weeklyCap * periodDays / 7);
@@ -2205,6 +2321,11 @@
       });
     }
 
+    const openingRow = plan && plan.opening;
+    const priorAsOf = openingRow && openingRow.asOf === asOf && openingRow.priorAsOf
+      && openingRow.priorAsOf < asOf ? openingRow.priorAsOf : null;
+    const represented = representedKeySet(plan, opts, asOf);
+
     return {
       asOf,
       payday: subsequent,
@@ -2215,18 +2336,32 @@
       opening,
       todayIncome: roundCent(todayIncome),
       buffer,
+      cashBasis: {
+        asOf,
+        priorAsOf,
+        liveAdvanced: !!priorAsOf,
+        datedOpening: !priorAsOf,
+        representedCount: represented.size,
+      },
       obligations: {
         wanted: roundCent(obligationsWanted),
         allocated: allocatedObligations,
+        shortfall: roundCent(Math.max(0, obligationsWanted - allocatedObligations)),
+        fundingAttribution: obligationsAttribution,
+        fundedPool: obligationsAttribution === 'unattributed' ? allocatedObligations : 0,
         items: obligationItems,
       },
       essentials: {
         monthly: roundCent(essentialMonthly),
-        wanted: roundCent(essentialsWanted),
+        wanted: wantedRounded,
         allocated: allocatedEssentials,
+        shortfall: essentialsShortfall,
         role: 'reserve',
         weeklyCap,
         spendPermission,
+        fundingAttribution: essentialsAttribution,
+        fundedPool: essentialsAttribution === 'unattributed' ? allocatedEssentials : 0,
+        items: essentialItems,
       },
       weeklyCap,
       spendPermission,

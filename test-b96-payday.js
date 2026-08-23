@@ -45,6 +45,8 @@ function recOpts(extra) {
     debts: live.debts,
     extraFacilities: live.revolvingExtra,
     extraDebtTarget: live.plan.nextDollar && live.plan.nextDollar.target,
+    periods,
+    paypalPerMonth: live.paypal && live.paypal.perMonth,
   }, extra || {});
 }
 
@@ -98,8 +100,13 @@ function loadPaydayComposer() {
     grab(planSrc, /^const NEXT_MOVE = \{[\s\S]*?^\};$/m, 'NEXT_MOVE'),
     grab(planSrc, /^function weeklyCapView\([\s\S]*?\n\}$/m, 'weeklyCapView'),
     grab(planSrc, /^function paydayActionRows\([\s\S]*?\n\}$/m, 'paydayActionRows'),
+    grab(planSrc, /^function paydayOtherActionRows\([\s\S]*?\n\}$/m, 'paydayOtherActionRows'),
+    grab(planSrc, /^function paydayReservedIds\([\s\S]*?\n\}$/m, 'paydayReservedIds'),
     grab(planSrc, /^function paydayComingRows\([\s\S]*?\n\}$/m, 'paydayComingRows'),
     grab(planSrc, /^function paydaySheet\([\s\S]*?\n\}$/m, 'paydaySheet'),
+    grab(planSrc, /^function paydayCashNote\([\s\S]*?\n\}$/m, 'paydayCashNote'),
+    grab(planSrc, /^function paydayObligationNote\([\s\S]*?\n\}$/m, 'paydayObligationNote'),
+    grab(planSrc, /^function paydayAmountCell\([\s\S]*?\n\}$/m, 'paydayAmountCell'),
     grab(planSrc, /^function paydayAnswerHtml\([\s\S]*?\n\}$/m, 'paydayAnswerHtml'),
   ].join('\n');
   return vm.runInNewContext(
@@ -136,6 +143,9 @@ function composeLive(plan, extra) {
     budget, creditAvailable: revolving, weekly, recommended: advice.weekly,
     weeklyOverride: opts.weeklyVariable,
     debts: opts.debts || live.debts,
+    liveOverlay: extra && extra.liveOverlay !== undefined
+      ? extra.liveOverlay
+      : (plan === live.plan ? live.liveOverlay : null),
   });
   return { advice, status, sim, budget, revolving, html, weekly };
 }
@@ -655,8 +665,13 @@ console.log('\n=== M. homepage leads with the compact payday worksheet ===');
     'the verbose PR #157 groups are no longer the primary surface');
   const paydayDate = liveRun.advice.nearBoundary && liveRun.advice.nearBoundary.payday;
   if (paydayDate) {
-    ok(/Now → /.test(liveRun.html),
-      'front door names the Now → next-payday span');
+    const asOfLong = new Date(live.meta.asOf + 'T00:00:00').toLocaleDateString('en-CA', {
+      day: 'numeric', month: 'long',
+    });
+    ok(!/Now →/.test(liveRun.html),
+      'dated live opening is not labelled Now');
+    ok(liveRun.html.includes(`As at ${asOfLong}`),
+      'front door names the dated as-of', asOfLong);
     ok(liveRun.html.includes(paydayDate.slice(8)) || liveRun.html.includes(paydayDate),
       'front door names Forecast.nearBoundary.payday', paydayDate);
   }
@@ -664,23 +679,27 @@ console.log('\n=== M. homepage leads with the compact payday worksheet ===');
     'front-door work did not add a second payday planner');
 }
 
-console.log('\n=== N. compact worksheet density, hierarchy, and fail-closed ===');
+console.log('\n=== N. worksheet hierarchy, itemization, and fail-closed ===');
 {
-  /* PR #157 live composed payday text was 3862 characters / 13 rows on this
-   * opening. Density is proved by structure and a length ceiling, not by
-   * copying live cents (L-006). */
-  const PR157_LIVE_TEXT_CHARS = 3862;
   const liveRun = composeLive(live.plan);
   const html = liveRun.html;
-  const text = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-  const actionRows = (html.match(/class="payday-action"/g) || []).length;
+  const alloc = liveRun.advice.paydayAllocation;
   const comingRows = (html.match(/class="payday-coming-row"/g) || []).length;
   const spendable = independentSpendable(live.plan);
-  ok(text.length < PR157_LIVE_TEXT_CHARS * 0.55,
-    'primary Payday Plan text is materially shorter than PR #157',
-    `${text.length} chars vs ${PR157_LIVE_TEXT_CHARS}`);
-  ok(actionRows >= 1 && actionRows <= 5,
-    'live What to do shows 1–5 action rows', String(actionRows));
+  const obligationRows = (html.match(/class="payday-obligation"/g) || []).length;
+  const essentialRows = (html.match(/class="payday-essential"/g) || []).length;
+  ok(alloc && (alloc.obligations.items || []).length > 0,
+    'live paydayAllocation returns obligation items');
+  ok(obligationRows === (alloc.obligations.items || []).length,
+    'every live obligation item is rendered',
+    `${obligationRows} vs ${alloc.obligations.items.length}`);
+  ok(essentialRows === (alloc.essentials.items || []).length,
+    'every live essential requirement is rendered',
+    `${essentialRows} vs ${alloc.essentials.items.length}`);
+  ok(!/Keep for bills/.test(html) && !/Hold for essential costs/.test(html),
+    'collapsed bill/essential totals are not the household-facing lines');
+  ok(/dated opening/.test(html) && /settlement unverified/.test(html),
+    'the dated opening and unverified settlement state are visible');
   ok(comingRows >= 1 && comingRows <= 5,
     'live Coming before next payday stays short', String(comingRows));
   ok((html.match(/data-fig="spendable"/g) || []).length === 1,
