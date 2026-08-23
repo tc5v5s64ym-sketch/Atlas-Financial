@@ -86,9 +86,9 @@ function sanitizeLiveFailureReason(message) {
   if (/missing-required-cash-mapping|live-account-map-missing/.test(raw)) {
     return 'missing-required-cash-mapping';
   }
-  if (/unsupported-atlas-role|invalid-atlas-account-id|live-account-map-invalid/.test(raw)) {
-    return 'live-account-map-invalid';
-  }
+  if (/unsupported-atlas-role/.test(raw)) return 'unsupported-atlas-role';
+  if (/invalid-atlas-account-id/.test(raw)) return 'invalid-atlas-account-id';
+  if (/live-account-map-invalid/.test(raw)) return 'live-account-map-invalid';
   if (/Fixture account map/.test(raw)) return 'fixture-map-not-live';
   if (/rejected the access token|HTTP 401|HTTP 403|is not set/i.test(raw)) {
     return 'live-observation-unavailable';
