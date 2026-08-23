@@ -625,6 +625,50 @@ console.log('\n=== P. truncated posted-transaction page cannot claim precise rem
     'no precise remaining is published from an incomplete posted page');
 }
 
+console.log('\n=== P2. unmapped current-period account cannot claim precise remaining ===');
+{
+  const txs = [
+    { date: PAYDAY, amount: 40, pending: false, categoryLabel: 'Groceries', accountRole: 'unmapped' },
+  ];
+  const plan = basePlan();
+  const unmappedCls = F.classifyCurrentPeriodTransaction(txs[0], plan);
+  ok(unmappedCls.kind === 'unmapped' && unmappedCls.householdSpending === true,
+    'unmapped is not classified as household-external');
+  const action = F.currentPeriodAction(plan, PAYDAY, opts({
+    currentPeriodActuals: packet(txs, { transactionCoverage: 'complete', pendingCoverage: 'complete' }),
+  }));
+  const groceries = cat(action, 'groceries');
+  ok(action.remainingClaim === 'unavailable' && action.coverage.status === 'incomplete',
+    'unmapped account fails remaining closed even if the packet claims complete coverage');
+  ok(groceries && groceries.remaining == null,
+    'no precise remaining is published from an unresolved account');
+}
+
+console.log('\n=== P3. explicit household-external stays excluded without blocking remaining ===');
+{
+  const txs = [
+    { date: PAYDAY, amount: 40, pending: false, categoryLabel: 'Groceries', accountRole: 'revolving-credit' },
+    { date: PAYDAY, amount: 99, pending: false, categoryLabel: 'Groceries', accountRole: 'household-external' },
+  ];
+  const plan = basePlan();
+  const externalCls = F.classifyCurrentPeriodTransaction(txs[1], plan);
+  ok(externalCls.kind === 'external' && externalCls.householdSpending === false,
+    'explicit household-external is non-household spend');
+  const origin = PAYDAY;
+  const independent = independentSpend([txs[0]], plan, PAYDAY, origin);
+  const planned = plannedNeed(1800, origin, PERIOD_LAST);
+  const action = F.currentPeriodAction(plan, PAYDAY, opts({
+    currentPeriodActuals: packet(txs, { pendingCoverage: 'complete' }),
+  }));
+  const groceries = cat(action, 'groceries');
+  ok(action.remainingClaim === 'precise' || action.remainingClaim === 'posted-only',
+    'explicit exclusion keeps remaining available', action.remainingClaim);
+  ok(groceries && near(groceries.committed, independent.byId.groceries.posted),
+    'only the household grocery counts');
+  ok(groceries && near(groceries.remaining, planned - independent.byId.groceries.posted),
+    'excluded grocery does not reduce remaining');
+}
+
 console.log('\n=== Q. represented bill actual is observed amount, never the schedule ===');
 {
   const plan = basePlan({

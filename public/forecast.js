@@ -1940,10 +1940,16 @@
       return { kind: 'unclassified', categoryId: null, householdSpending: false, reason: 'missing' };
     }
     const role = tx.accountRole || null;
-    if (role === 'household-external' || role === 'unmapped') {
+    if (role === 'household-external') {
       return {
         kind: 'external', categoryId: null, householdSpending: false,
         reason: 'account-not-household',
+      };
+    }
+    if (role === 'unmapped') {
+      return {
+        kind: 'unmapped', categoryId: null, householdSpending: true,
+        reason: 'unmapped-account',
       };
     }
     if (tx.isIncome === true) {
@@ -2029,6 +2035,12 @@
     return 'complete';
   }
 
+  function hasUnresolvedAccountActuals(packet) {
+    const txs = packet && packet.transactions;
+    if (!Array.isArray(txs)) return false;
+    return txs.some(tx => tx && tx.accountRole === 'unmapped');
+  }
+
   function actualsCoverageState(asOf, periodStart, opts) {
     const packet = currentPeriodActualsPacket(opts);
     if (!packet) {
@@ -2066,6 +2078,17 @@
         coverageStart,
         coverageThrough,
         reason: 'Transaction coverage starts after the current period origin.',
+      };
+    }
+    if (hasUnresolvedAccountActuals(packet)) {
+      return {
+        status: 'incomplete',
+        remainingClaim: 'unavailable',
+        pendingStatus,
+        observationAsOf,
+        coverageStart,
+        coverageThrough,
+        reason: 'Current-period transactions include an unresolved provider account. Remaining amounts unavailable.',
       };
     }
     if (transactionCoverageStatus(packet) === 'truncated') {
@@ -2134,6 +2157,10 @@
       if (cls.kind === 'income') { out.excluded.income = roundCent(out.excluded.income + amt); continue; }
       if (cls.kind === 'business') { out.excluded.business = roundCent(out.excluded.business + amt); continue; }
       if (cls.kind === 'external') { out.excluded.external = roundCent(out.excluded.external + amt); continue; }
+      if (cls.kind === 'unmapped') {
+        out.unclassified.count += 1;
+        continue;
+      }
       const catId = cls.categoryId || 'uncategorised';
       if (!out.byId.has(catId)) out.byId.set(catId, { posted: 0, pending: 0, count: 0 });
       const row = out.byId.get(catId);

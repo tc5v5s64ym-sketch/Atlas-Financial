@@ -96,6 +96,21 @@ function syntheticLiveMap() {
   };
 }
 
+function cashOnlyLiveMap() {
+  return {
+    schema: 'atlas-provider-account-map/v1',
+    owns: 'Synthetic cash-only map for unresolved-account remaining proof.',
+    does_not_own: 'Financial values, permission to write data.json, Forecast, or live owner-observed IDs.',
+    provider: 'lunchmoney',
+    scope: 'live',
+    mappings: [
+      { providerAccountId: '3001', canonical: { collection: 'cash', id: 'chequing-a' }, atlasRole: 'household-cash' },
+      { providerAccountId: '3002', canonical: { collection: 'cash', id: 'chequing-b' }, atlasRole: 'household-cash' },
+      { providerAccountId: '3003', canonical: { collection: 'cash', id: 'savings' }, atlasRole: 'household-cash' },
+    ],
+  };
+}
+
 function matchingAccounts() {
   return [
     { id: 3001, name: 'BILLS ACCOUNT', type: 'cash', subtype: 'checking', balance: cashValue('chequing-a'), updated_at: OBSERVED, currency: 'cad', institution_name: 'TD Canada Trust' },
@@ -139,6 +154,10 @@ function freePort() {
 }
 
 function startMockProvider(mode) {
+  const cfg = mode && typeof mode === 'object' ? mode : { name: mode };
+  const modeName = cfg.name || 'ok';
+  const extraAccounts = cfg.extraAccounts || [];
+  const extraTransactions = cfg.extraTransactions || [];
   const calls = [];
   const server = http.createServer((req, res) => {
     calls.push({
@@ -153,14 +172,14 @@ function startMockProvider(mode) {
       res.setHeader('content-type', 'application/json');
       res.end(JSON.stringify(body));
     };
-    if (mode === 'unauthorized') {
+    if (modeName === 'unauthorized') {
       send(401, { error: 'invalid token SECRET-SHOULD-NOT-LEAK', token: SYNTHETIC_TOKEN });
       return;
     }
-    if (mode === 'hang') return;
+    if (modeName === 'hang') return;
     if (url.pathname === '/v2/me') { send(200, { user_id: 1 }); return; }
     if (url.pathname === '/v2/plaid_accounts') {
-      send(200, { plaid_accounts: matchingAccounts() });
+      send(200, { plaid_accounts: matchingAccounts().concat(extraAccounts) });
       return;
     }
     if (url.pathname === '/v2/manual_accounts' || url.pathname === '/v2/assets') {
@@ -177,12 +196,13 @@ function startMockProvider(mode) {
     if (url.pathname === '/v2/transactions') {
       const pendingUniverse = url.searchParams.get('is_pending') === 'true';
       const offset = Number(url.searchParams.get('offset') || 0);
+      const txs = currentPeriodTransactions().concat(extraTransactions);
       if (pendingUniverse) {
-        const pending = currentPeriodTransactions().filter(tx => tx.is_pending === true);
+        const pending = txs.filter(tx => tx.is_pending === true);
         send(200, { has_more: false, transactions: pending });
         return;
       }
-      if (mode === 'truncated') {
+      if (modeName === 'truncated') {
         send(200, {
           has_more: true,
           transactions: [{
@@ -197,7 +217,7 @@ function startMockProvider(mode) {
         });
         return;
       }
-      send(200, { has_more: false, transactions: currentPeriodTransactions() });
+      send(200, { has_more: false, transactions: txs });
       return;
     }
     send(404, {});
@@ -548,6 +568,46 @@ function independentGroceryRemaining(plan, asOf) {
     }
     ok(threw, 'cash id mapped into debts fails closed');
   }
+  {
+    let threw = false;
+    try {
+      O.loadLiveAccountMap({
+        [O.MAP_JSON_ENV]: JSON.stringify({
+          schema: 'atlas-provider-account-map/v1',
+          provider: 'lunchmoney',
+          scope: 'live',
+          mappings: cashOnlyLiveMap().mappings.concat([
+            { providerAccountId: '3099', atlasRole: 'household-external' },
+          ]),
+        }),
+      }, liveData);
+    } catch (err) {
+      threw = true;
+    }
+    ok(!threw, 'explicit household-external mapping is accepted');
+  }
+  {
+    let threw = false;
+    try {
+      O.loadLiveAccountMap({
+        [O.MAP_JSON_ENV]: JSON.stringify({
+          schema: 'atlas-provider-account-map/v1',
+          provider: 'lunchmoney',
+          scope: 'live',
+          mappings: cashOnlyLiveMap().mappings.concat([
+            {
+              providerAccountId: '3099',
+              canonical: { collection: 'cash', id: 'chequing-a' },
+              atlasRole: 'household-external',
+            },
+          ]),
+        }),
+      }, liveData);
+    } catch (err) {
+      threw = /live-account-map-invalid/.test(err.message);
+    }
+    ok(threw, 'household-external cannot claim a canonical household identity');
+  }
 
   console.log('\n=== G. secrets and provider ids never reach the browser ===');
   await withAtlas({
@@ -698,6 +758,99 @@ function independentGroceryRemaining(plan, asOf) {
     ok(mock.calls.length === before,
       'unauthenticated /data.json does not observe Lunch Money');
     ok(!secretLeak(body), '401 body has no secrets');
+  });
+
+  console.log('\n=== M. unresolved current-period account cannot claim precise remaining ===');
+  await withAtlas({
+    ATLAS_LIVE_OVERLAY: 'live',
+    [O.TOKEN_ENV]: SYNTHETIC_TOKEN,
+    [O.MAP_JSON_ENV]: JSON.stringify(cashOnlyLiveMap()),
+  }, 'ok', async ({ base }) => {
+    const auth = await login(base);
+    const data = await (await fetch(`${base}/data.json`, { headers: { cookie: auth.cookie } })).json();
+    ok(cashOnlyLiveMap().mappings.length === 3, 'three required cash mappings are present');
+    ok(!(cashOnlyLiveMap().mappings || []).some(m => String(m.providerAccountId) === '3005'),
+      'household credit-card provider account 3005 is omitted from the map');
+    const actuals = data.liveOverlay && data.liveOverlay.currentPeriodActuals;
+    const groceryTx = ((actuals && actuals.transactions) || []).find(tx =>
+      tx.categoryLabel === 'Groceries' && tx.pending !== true && Number(tx.amount) === GROCERY_POSTED);
+    ok(groceryTx && groceryTx.accountRole === 'unmapped',
+      'grocery on the omitted credit card is unresolved, not household-external');
+    ok(actuals && actuals.transactionCoverage === 'incomplete',
+      'unmapped current-period account makes posted coverage incomplete');
+    const asOf = (data.liveOverlay && data.liveOverlay.effectiveAsOf)
+      || (data.meta && data.meta.asOf);
+    const action = Forecast.currentPeriodAction(data.plan, asOf, {
+      debts: data.debts,
+      revolvingExtra: data.revolvingExtra,
+      paydayFloor: 1000,
+      currentPeriodActuals: actuals,
+    });
+    const grocery = (action.categories || []).find(row => row.id === 'groceries');
+    ok(action.remainingClaim === 'unavailable',
+      'Forecast will not claim precise remaining that ignores the omitted card',
+      action.remainingClaim);
+    ok(grocery && grocery.remaining == null,
+      'no precise grocery remaining is published from an unresolved account');
+  });
+
+  const EXTERNAL_GROCERY = 99;
+  const explicitExternalMap = {
+    schema: 'atlas-provider-account-map/v1',
+    owns: 'Synthetic map with an explicit non-household account.',
+    does_not_own: 'Financial values, permission to write data.json, Forecast, or live owner-observed IDs.',
+    provider: 'lunchmoney',
+    scope: 'live',
+    mappings: syntheticLiveMap().mappings.concat([
+      { providerAccountId: '3099', atlasRole: 'household-external' },
+    ]),
+  };
+  await withAtlas({
+    ATLAS_LIVE_OVERLAY: 'live',
+    [O.TOKEN_ENV]: SYNTHETIC_TOKEN,
+    [O.MAP_JSON_ENV]: JSON.stringify(explicitExternalMap),
+  }, {
+    name: 'ok',
+    extraAccounts: [{
+      id: 3099, name: 'SYNTHETIC NON-HOUSEHOLD', type: 'cash', subtype: 'checking',
+      balance: 10, updated_at: OBSERVED, currency: 'cad',
+    }],
+    extraTransactions: [{
+      id: 91999, account_id: 3099, date: LIVE_AS_OF, amount: EXTERNAL_GROCERY,
+      category_id: 11, is_pending: false, payee: 'SYNTHETIC EXTERNAL GROCER',
+    }],
+  }, async ({ base }) => {
+    const auth = await login(base);
+    const data = await (await fetch(`${base}/data.json`, { headers: { cookie: auth.cookie } })).json();
+    ok(data.liveOverlay && data.liveOverlay.applied === true,
+      'explicit household-external does not block the overlay');
+    const actuals = data.liveOverlay.currentPeriodActuals;
+    const externalTx = ((actuals && actuals.transactions) || []).find(tx =>
+      Number(tx.amount) === EXTERNAL_GROCERY);
+    ok(externalTx && externalTx.accountRole === 'household-external',
+      'deliberately excluded account is household-external, not unmapped');
+    ok(actuals && actuals.transactionCoverage === 'complete',
+      'explicit exclusion keeps posted coverage complete');
+    const asOf = data.liveOverlay.effectiveAsOf;
+    const expected = independentGroceryRemaining(data.plan, asOf);
+    const action = Forecast.currentPeriodAction(data.plan, asOf, {
+      debts: data.debts,
+      revolvingExtra: data.revolvingExtra,
+      paydayFloor: 1000,
+      currentPeriodActuals: actuals,
+    });
+    const grocery = (action.categories || []).find(row => row.id === 'groceries');
+    ok(action.remainingClaim === 'precise' || action.remainingClaim === 'posted-only',
+      'explicit exclusion does not remove remaining claim',
+      action.remainingClaim);
+    ok(grocery && near(grocery.committed, expected.committed),
+      'excluded grocery is not counted as household spend',
+      `${grocery && grocery.committed} vs ${expected.committed}`);
+    ok(grocery && near(grocery.remaining, expected.remaining),
+      'household grocery remaining ignores the excluded account',
+      `${grocery && grocery.remaining} vs ${expected.remaining}`);
+    ok(!near(grocery.committed, expected.committed + EXTERNAL_GROCERY),
+      'the $99 excluded grocery is not absorbed into committed');
   });
 
   console.log('\n=== Render blueprint has no secret values ===');

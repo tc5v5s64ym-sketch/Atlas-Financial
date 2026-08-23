@@ -7,7 +7,9 @@
  *
  * Live mode resolves a Lunch Money token from LUNCHMONEY_ACCESS_TOKEN, or
  * on Windows from the local CurrentUser DPAPI store. It never
- * writes data.json. Unknown provider account IDs stay unmapped. Synthetic
+ * writes data.json. Unknown provider account IDs stay unmapped and cannot
+ * authorize a precise current-period remaining figure. Deliberate
+ * non-household accounts use atlasRole household-external. Synthetic
  * fixture mappings cannot authorize a live canonical mapping. Historical
  * represented-event candidates are not current-opening corrections.
  * Account timestamps stay distinct: balance_as_of, updated_at,
@@ -37,6 +39,7 @@ const REQUEST_TIMEOUT_MS = 8000;
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1']);
 const CASH_ROLES = new Set(['household-cash']);
 const CREDIT_ROLES = new Set(['revolving-credit']);
+const EXTERNAL_LIVE_ROLE = 'household-external';
 const SUPPORTED_LIVE_ROLES = {
   'household-cash': 'cash',
   'revolving-credit': 'debts',
@@ -165,6 +168,10 @@ function assertLiveMap(mapDoc, opts) {
     const role = mapping.atlasRole;
     const collection = mapping.canonical && mapping.canonical.collection;
     const atlasId = mapping.canonical && mapping.canonical.id;
+    if (role === EXTERNAL_LIVE_ROLE) {
+      if (collection || atlasId) fail('live-account-map-invalid');
+      continue;
+    }
     if (!role || !SUPPORTED_LIVE_ROLES[role]) fail('unsupported-atlas-role');
     if (!collection || !atlasId) fail('live-account-map-invalid');
     if (SUPPORTED_LIVE_ROLES[role] !== collection) fail('live-account-map-invalid');
@@ -1234,6 +1241,16 @@ function observe(input) {
   const limitByCard = new Map();
   for (const account of normalized.accounts) {
     const mapping = mappingFor(mapDoc, account.providerAccountId);
+    if (mapping && mapping.atlasRole === EXTERNAL_LIVE_ROLE) {
+      mapped.push({
+        providerAccountId: account.providerAccountId,
+        displayName: account.displayName,
+        atlasId: null,
+        collection: null,
+        atlasRole: EXTERNAL_LIVE_ROLE,
+      });
+      continue;
+    }
     if (!mapping || !mapping.canonical || !mapping.canonical.id) {
       unmapped.push({
         providerAccountId: account.providerAccountId,
@@ -1341,7 +1358,8 @@ function atlasAccountRole(mapping) {
   if (mapping.atlasRole === 'household-cash') return 'household-cash';
   if (CREDIT_ROLES.has(mapping.atlasRole)) return 'revolving-credit';
   if (mapping.atlasRole === 'heloc' || mapping.atlasRole === 'mortgage') return mapping.atlasRole;
-  return 'household-external';
+  if (mapping.atlasRole === EXTERNAL_LIVE_ROLE) return EXTERNAL_LIVE_ROLE;
+  return 'unmapped';
 }
 
 function kindHintFromTransaction(tx) {
@@ -1389,6 +1407,8 @@ function sanitizedCurrentPeriodActuals(report, opts) {
   let transactionCoverage = 'complete';
   if (window.truncated === true || window.complete === false || window.hasMore === true) {
     transactionCoverage = 'truncated';
+  } else if (txs.some(tx => tx && tx.accountRole === 'unmapped')) {
+    transactionCoverage = 'incomplete';
   }
   const representedActuals = [];
   for (const candidate of (report && report.representedEventCandidates) || []) {
@@ -1492,6 +1512,7 @@ const api = {
   PENDING_COVERAGE_BASIS,
   PENDING_COVERAGE_REQUIRED_EVIDENCE,
   REQUIRED_LIVE_CASH_IDS,
+  EXTERNAL_LIVE_ROLE,
   parseArgs,
   historyDaysFromArgs,
   resolveMapPath,
