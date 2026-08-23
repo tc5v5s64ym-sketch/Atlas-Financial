@@ -37,7 +37,7 @@ T3 is **met**. The store gate is **not** met: files remain the
 foundation. **T4 passed 2026-08-17.** `B81` / `AF-LIVE-02` is **done** as the
 earned preview / approve / bounded writer, the published 2026-08-19
 canonical opening, and the read-only live overlay. Unattended production
-writes, a Render token, and a newer live substitute opening remain reserved. Do **not** wait for a second
+writes, scheduled refresh, and a newer live substitute opening remain reserved. A production Lunch Money token is authorized for on-demand GET-only observation (2026-08-23), not for canonical writes. Do **not** wait for a second
 month of routine statement files. Provider-completeness, broad historical
 forensics, old categorisation cleanup, and file-statement backfill are
 **not** critical-path gates unless they expose a demonstrated material
@@ -292,7 +292,8 @@ B79 / AF-STORE-01  the store question, answered by evidence
 B81 / AF-LIVE-02  trusted canonical refresh
      ← DONE; preview/approve/opening/recovery writers earned;
        published opening is 2026-08-19; read-only live overlay earned;
-       unattended production WRITE, Render token, and a newer live
+       production GET-only token authorized 2026-08-23;
+       unattended production WRITE and a newer live
        substitute opening remain reserved
 ```
 
@@ -1053,8 +1054,8 @@ observe seam. That evaluation and the live Lunch Money **read** test are
 **done**. Remaining provider-completeness work is not a critical-path gate.
 **T4 passed 2026-08-17.** `B81` is **done** as the earned preview/approve
 writer, the 2026-08-19 canonical opening, and the read-only overlay.
-Unattended production writes, a Render token, and a newer live substitute
-opening remain reserved.
+Unattended production writes and a newer live substitute
+opening remain reserved. A production GET-only token is authorized 2026-08-23.
 
 ### AF-LIVE-01 · Evaluate providers, point nothing live
 
@@ -1117,10 +1118,11 @@ opening remain reserved.
   fails closed. Same-day scheduled events fail closed without posting
   evidence. Unrepresented joint-cash outflows between the dated opening
   and the live as-of stay reserved through `plan.opening.priorAsOf`.
-  Unattended production writes, a Render token, and a newer live substitute
-  opening remain reserved. They do not keep this item unfinished.
+  Unattended production writes and a newer live substitute
+  opening remain reserved. A production GET-only token is authorized 2026-08-23.
+  They do not keep this item unfinished.
 - **Prompt** — *Do not apply the unused Chequing B $10, choose a Triangle
-  same-day winner, invent a pending→posted case, add a Render token,
+  same-day winner, invent a pending→posted case,
   schedule refresh, or invent a newer live substitute opening.*
 
 ---
@@ -1171,9 +1173,9 @@ be scheduled as though it did.
   reaching `AF-RECON-01`. Permanent manual synchronisation between duplicate
   facts is the defect, not a fix. Google Sheet is not an authority.
 - **Anything behind a closed gate.** A canonical store remains gated.
-  Unattended production writes and a Render Lunch Money token remain
-  reserved after the T4 pass. Live read-only observation already exists.
-  `ARCHITECTURE.md` holds the remaining reservations.
+  Unattended production writes remain reserved after the T4 pass. Production
+  GET-only observation is owner-authorized 2026-08-23. Live read-only
+  observation already exists. `ARCHITECTURE.md` holds the remaining reservations.
 - **A forensic cleanup of the historical ledger.** Old unknown transactions stay
   in total spending and may stay categorically unresolved unless they are large
   enough to materially change the plan. The forward ledger gets cleaner as fresh
@@ -1231,7 +1233,7 @@ resurrect it.
 | End-to-end payday proof | **ACTIVE** | `AF-PLAN-02` / `B96`, after `B94`. **Complete 2026-08-16.** Household payday answer is composed from incumbent Forecast results on the 2026-08-16 opening. | Already sequenced. Prove fresh evidence → canonical state → Forecast → household answer. Not a second payday engine. |
 | Prove the normal Lunch Money refresh path | **ACTIVE** | Phase 2 `AF-INTAKE-01` / `B21`. **Complete 2026-08-17.** Later live observation through existing observe → reconcile. Proof: `docs/connectivity/LUNCH_MONEY_REFRESH_PROOF_2026-08-17.md`. | Already sequenced. Do not reopen to apply the unused $10 Chequing B change or to invent a pending→posted case. |
 | Improved ingestion | **ACTIVE** | Phase 3 `AF-INGEST-01` / `B78`, to T3. **Complete 2026-08-17.** Identity-stable idempotent Lunch Money observation/import on real household data; existing provider IDs; no new identity system; no store. Proof: `docs/connectivity/LUNCH_MONEY_IDENTITY_PROOF_B78.md`. | Already sequenced. T3 met. `AF-STORE-01` / `B79` is complete; store gate stays closed. |
-| Automated financial-data connectivity / trusted canonical refresh | **ACTIVE** (`B81`) | `ARCHITECTURE.md` connectivity gate. Live **read** observation (`AF-LIVE-01` / `B80` + GET) is **complete**. T4 **passed 2026-08-17**. `AF-LIVE-02` / `B81` is **complete** as the earned capability: posted, pending, opening-cutover, and same-date artifact-recovery writers in `scripts/canonical-refresh.js`; the published 2026-08-19 canonical opening; and the read-only in-memory live overlay (`scripts/live-plan.js`) consumed by `/data.json` and disclosed in the UI. An approved opening is one coherent canonical + positions + snapshot transition. Live `main` publishes the 2026-08-19 opening. The 2026-08-16 opening remains dated evidence. | Unattended production writes, a Render token, and a newer live substitute opening remain reserved. Obtain no credential in git. Do not apply the unused $10 or choose a Triangle winner. Do not treat those reservations as a missing B81 implementation slice. |
+| Automated financial-data connectivity / trusted canonical refresh | **ACTIVE** (`B81`) | `ARCHITECTURE.md` connectivity gate. Live **read** observation (`AF-LIVE-01` / `B80` + GET) is **complete**. T4 **passed 2026-08-17**. `AF-LIVE-02` / `B81` is **complete** as the earned capability: posted, pending, opening-cutover, and same-date artifact-recovery writers in `scripts/canonical-refresh.js`; the published 2026-08-19 canonical opening; and the read-only in-memory live overlay (`scripts/live-plan.js`) consumed by `/data.json` and disclosed in the UI. An approved opening is one coherent canonical + positions + snapshot transition. Live `main` publishes the 2026-08-19 opening. The 2026-08-16 opening remains dated evidence. | Unattended production writes and a newer live substitute opening remain reserved. A production GET-only token is authorized 2026-08-23. Obtain no credential value in git. Do not apply the unused $10 or choose a Triangle winner. Do not treat those reservations as a missing B81 implementation slice. |
 | Richer payroll / bonus / pension-contribution modelling | **PARKED** | The 91-day plan consumes estimated net pay. A statutory payroll engine (`EMP-006`) is excluded. Optional pension cash is already inside that net. No bonus cash event is on the live plan. | A named consumer that current net cannot serve — a window that includes a CPP/EI reset, or an owner-supplied bonus or pension cash event, or an owner-supplied horizon that needs statutory seasonality. Do not build a payroll engine in order to absorb a net `Forecast` already consumes. |
 | Retirement planning | **PARKED** | `ARCHITECTURE.md` destination names pension and investments. Live published net worth excludes pensions. There is no `Forecast` retirement function. The advisory copilot "retirement engine" is not adopted. | An owner decision to include pensions in a published window, or to earn a retirement span on the one plan. Not a second planner. |
 | Goals and sinking funds | **PARKED** | `ARCHITECTURE.md` destination names sinking funds. Known major future costs already live on `plan.commitments` (`B95`); property tax stays the existing reserve. That is one Plan home, not a goals engine and not a second planner. ON TRACK / AT RISK / FUNDING GAP is `Forecast.majorPlans` and applies only to those major plans. | Owner-promoted shared targets, or a product-exit gap that the existing plan/commitment path cannot answer. Do not stand up a goals engine beside `Forecast`. Do not create one ticket per purchase. |

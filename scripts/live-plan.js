@@ -30,8 +30,9 @@
  * byte-identical.
  *
  * Production /data.json stays the dated opening unless ATLAS_LIVE_OVERLAY
- * is explicitly `fixture` or `live`. A Render Lunch Money token is still
- * not authorised.
+ * is explicitly `fixture` or `live`. Owner-authorized production read-only
+ * Lunch Money access uses ATLAS_LIVE_OVERLAY=live plus owner-supplied
+ * Render secrets. Unattended canonical writes remain unauthorized.
  */
 
 const fs = require('fs');
@@ -76,6 +77,51 @@ function round2(value) {
 
 function loadJson(file) {
   return JSON.parse(fs.readFileSync(file, 'utf8'));
+}
+
+function sanitizeLiveFailureReason(message) {
+  const raw = String(message || 'overlay-failed');
+  if (/timeout/i.test(raw)) return 'provider-request-timeout';
+  if (/duplicate-provider-account-id/.test(raw)) return 'duplicate-provider-account-id';
+  if (/missing-required-cash-mapping|live-account-map-missing/.test(raw)) {
+    return 'missing-required-cash-mapping';
+  }
+  if (/unsupported-atlas-role/.test(raw)) return 'unsupported-atlas-role';
+  if (/invalid-atlas-account-id/.test(raw)) return 'invalid-atlas-account-id';
+  if (/live-account-map-invalid/.test(raw)) return 'live-account-map-invalid';
+  if (/Fixture account map/.test(raw)) return 'fixture-map-not-live';
+  if (/rejected the access token|HTTP 401|HTTP 403|is not set/i.test(raw)) {
+    return 'live-observation-unavailable';
+  }
+  if (/HTTP \d+|request failed|ENOTFOUND|ECONNREFUSED|provider unavailable/i.test(raw)) {
+    return 'provider-unavailable';
+  }
+  const known = raw.match(/^(missing-live-cash-evidence|stale-live-cash-evidence|pending-freshness-unproven|same-day-event-representation-unknown)(?::|\s|$)/);
+  if (known) return known[1];
+  if (/token|Bearer|LUNCHMONEY|Authorization|ATLAS_PROVIDER_ACCOUNT_MAP_JSON/i.test(raw)) {
+    return 'live-observation-unavailable';
+  }
+  return raw.replace(/\b\d{4,}\b/g, '[id]').slice(0, 200);
+}
+
+function logLiveFailure(reason) {
+  console.error('live overlay failed:', reason);
+}
+
+function observationNow(env) {
+  const source = env || process.env;
+  const pinned = source && source.ATLAS_LIVE_OVERLAY_NOW;
+  if (pinned == null || String(pinned).trim() === '') return new Date().toISOString();
+  try {
+    O.lunchMoneyApiBase(source);
+  } catch (e) {
+    fail('ATLAS_LIVE_OVERLAY_NOW is only valid with a loopback Lunch Money API base.');
+  }
+  const base = source[O.API_BASE_ENV];
+  if (base == null || String(base).trim() === '') {
+    fail('ATLAS_LIVE_OVERLAY_NOW is only valid with a loopback Lunch Money API base.');
+  }
+  return String(pinned).trim();
 }
 
 function overlayModeFromEnv(env) {
@@ -716,6 +762,8 @@ function forecastFrom(data) {
 }
 
 function failedOverlay(canonical, reason) {
+  const sanitized = sanitizeLiveFailureReason(reason);
+  logLiveFailure(sanitized);
   const next = clone(canonical);
   next.liveOverlay = overlayMeta({
     applied: false,
@@ -725,7 +773,7 @@ function failedOverlay(canonical, reason) {
     representedEvents: [],
     overlays: [],
     refused: [],
-    reason: String(reason || 'overlay-failed').slice(0, 200),
+    reason: sanitized,
     note: 'Live overlay failed closed. Dated opening is unchanged.',
   });
   return next;
@@ -775,15 +823,12 @@ async function applyForServer(canonical, env) {
     return serveCanonicalOrFixture(canonical, env);
   }
   try {
-    const mapPath = (env && env.ATLAS_LIVE_OVERLAY_MAP)
-      || process.env.ATLAS_LIVE_OVERLAY_MAP
-      || (fs.existsSync(O.LOCAL_MAP) ? O.LOCAL_MAP : O.DEFAULT_MAP);
-    const accountMap = loadJson(mapPath);
-    O.assertLiveMap(accountMap);
+    const accountMap = O.loadLiveAccountMap(env || process.env, canonical);
     const payload = await O.fetchLunchMoneyLive(
-      await O.resolveLiveToken(),
-      new Date().toISOString(),
-      O.CURRENT_STATE_HISTORY_DAYS
+      await O.resolveLiveToken({ env: env || process.env }),
+      observationNow(env || process.env),
+      O.CURRENT_STATE_HISTORY_DAYS,
+      { env: env || process.env }
     );
     const result = fromObservation({
       data: canonical,
@@ -794,9 +839,6 @@ async function applyForServer(canonical, env) {
     return result.data;
   } catch (err) {
     const message = err && err.message ? err.message : 'overlay-failed';
-    if (/token|Bearer|LUNCHMONEY/i.test(message)) {
-      return failedOverlay(canonical, 'live-observation-unavailable');
-    }
     return failedOverlay(canonical, message);
   }
 }
@@ -892,6 +934,7 @@ const api = {
   SCHEMA,
   POSTED_CASH,
   overlayModeFromEnv,
+  sanitizeLiveFailureReason,
   proposeOverlay,
   overlayLiveState,
   fromObservation,

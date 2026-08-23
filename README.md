@@ -87,7 +87,11 @@ node test-local.js
    `render.yaml`).
 3. Set **`SITE_PASSWORD`** by hand to a strong shared password.
 4. Let Render generate **`SESSION_SECRET`**.
-5. Deploy. Every push to the default branch redeploys automatically.
+5. After the 2026-08-23 read-only pass, also set **`LUNCHMONEY_ACCESS_TOKEN`**
+   and **`ATLAS_PROVIDER_ACCOUNT_MAP_JSON`** by hand in Render. Never put
+   those values in git. `ATLAS_LIVE_OVERLAY=live` is declared in
+   `render.yaml`. `/healthz` does not depend on Lunch Money.
+6. Deploy. Every push to the default branch redeploys automatically.
 
 The free plan sleeps after inactivity, so the first visit in a while takes about
 thirty seconds to wake. For a couple of check-ins a week that is fine.

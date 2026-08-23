@@ -17,7 +17,7 @@ const path = require('path');
 
 // Incumbent content policy, moved here from `.githooks/pre-commit` so the
 // hook and CI share one list. Household identifiers stay in this file only.
-const CONTENT_PATTERNS = "NAUDI|CUTLER PL|V2X8R1|dnaudi@|privaterelay\\.appleid|6355425|6012135|6353074|1650429|3225135|9107573|9107595|452005|5446 ?12|14J2W4V|214JL|SITE_PASSWORD *= *[\"']|SESSION_SECRET *= *[\"']|LUNCHMONEY_ACCESS_TOKEN *= *[\"']";
+const CONTENT_PATTERNS = "NAUDI|CUTLER PL|V2X8R1|dnaudi@|privaterelay\\.appleid|6355425|6012135|6353074|1650429|3225135|9107573|9107595|452005|5446 ?12|14J2W4V|214JL|SITE_PASSWORD *= *[\"']|SESSION_SECRET *= *[\"']|LUNCHMONEY_ACCESS_TOKEN *= *[\"']|ATLAS_PROVIDER_ACCOUNT_MAP_JSON *= *[\"']";
 
 const PATH_BLOCK_RE = /^(raw|derived)\/|\.pdf$|^statements/i;
 const SKIP_CONTENT_RE = /^scripts\/privacy-guard\.js$/;

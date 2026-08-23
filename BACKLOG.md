@@ -33,8 +33,10 @@ facts PR; each needs its own independently provable outcome):
 **Critical path** is owned by
 [`docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md`](docs/ATLAS_FINANCIAL_BUILD_STRATEGY.md),
 not by this file. Forecast-critical work through `B96`, plus `B20`, `B21`,
-`B78`, `B79`, `B80`, and `B81`, is **done**. Unattended production writes, a
-Render token, and a newer live substitute opening remain reserved. Do **not**
+`B78`, `B79`, `B80`, and `B81`, is **done**. Unattended production writes,
+scheduled refresh, and a newer live substitute opening remain reserved. A
+production Lunch Money token is authorized for on-demand GET-only
+observation (2026-08-23), not for canonical writes. Do **not**
 wait for a second month of routine statement files. Provider-completeness,
 broad historical forensics, old categorisation cleanup, and file-statement
 backfill are not critical-path gates unless they expose a demonstrated
@@ -417,7 +419,7 @@ The file foundation has not demonstrably failed. No store implemented. Gate rema
 First provider for a personal read-only test: Lunch Money. Written evaluation: [`docs/connectivity/PROVIDER_COVERAGE.md`](docs/connectivity/PROVIDER_COVERAGE.md).
 
 **B81 · Trusted canonical refresh from the live feed** · **DONE 2026-08-20** · *earned capability; production activation reserved*
-Earned preview/approve writer, published 2026-08-19 canonical opening, and read-only live overlay. Unattended production writes, scheduled refresh, a Render Lunch Money token, and a newer live substitute opening remain owner-reserved. They are not a missing B81 implementation slice and do not keep this item `IN PROGRESS`.
+Earned preview/approve writer, published 2026-08-19 canonical opening, and read-only live overlay. Production on-demand GET-only Lunch Money access is owner-authorized 2026-08-23. Unattended production writes, scheduled refresh, and a newer live substitute opening remain owner-reserved. They are not a missing B81 implementation slice and do not keep this item `IN PROGRESS`.
 
 ---
 

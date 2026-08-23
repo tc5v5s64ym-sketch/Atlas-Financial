@@ -7,7 +7,9 @@
  *
  * Live mode resolves a Lunch Money token from LUNCHMONEY_ACCESS_TOKEN, or
  * on Windows from the local CurrentUser DPAPI store. It never
- * writes data.json. Unknown provider account IDs stay unmapped. Synthetic
+ * writes data.json. Unknown provider account IDs stay unmapped and cannot
+ * authorize a precise current-period remaining figure. Deliberate
+ * non-household accounts use atlasRole household-external. Synthetic
  * fixture mappings cannot authorize a live canonical mapping. Historical
  * represented-event candidates are not current-opening corrections.
  * Account timestamps stay distinct: balance_as_of, updated_at,
@@ -16,6 +18,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const http = require('http');
 const https = require('https');
 const R = require('./reconcile.js');
 const Credentials = require('./local-credentials.js');
@@ -28,8 +31,22 @@ const DEFAULT_IDENTITY = path.join(ROOT, 'docs', 'connectivity', 'transaction-id
 const DEFAULT_DATA = path.join(ROOT, 'data.json');
 const LIVE_BASE = 'https://api.lunchmoney.dev/v2';
 const TOKEN_ENV = 'LUNCHMONEY_ACCESS_TOKEN';
+const MAP_JSON_ENV = 'ATLAS_PROVIDER_ACCOUNT_MAP_JSON';
+const MAP_PATH_ENV = 'ATLAS_LIVE_OVERLAY_MAP';
+const API_BASE_ENV = 'ATLAS_LUNCHMONEY_API_BASE';
+const LIVE_MAP_SCHEMA = 'atlas-provider-account-map/v1';
+const REQUEST_TIMEOUT_MS = 8000;
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1']);
 const CASH_ROLES = new Set(['household-cash']);
 const CREDIT_ROLES = new Set(['revolving-credit']);
+const EXTERNAL_LIVE_ROLE = 'household-external';
+const SUPPORTED_LIVE_ROLES = {
+  'household-cash': 'cash',
+  'revolving-credit': 'debts',
+  heloc: 'debts',
+  mortgage: 'debts',
+};
+const REQUIRED_LIVE_CASH_IDS = Object.freeze(['chequing-a', 'chequing-b', 'savings']);
 const CURRENT_STATE_HISTORY_DAYS = 14;
 const RECONCILE_HISTORY_DAYS = 120;
 const BILL_PAYMENT_PENDING_DAYS = 90;
@@ -84,11 +101,123 @@ function resolveMapPath(args) {
   return FIXTURE_MAP;
 }
 
-function assertLiveMap(mapDoc) {
-  if (!mapDoc || mapDoc.provider !== 'lunchmoney') fail('Account map is missing or is not a lunchmoney map.');
+function isLoopbackHost(hostname) {
+  return LOOPBACK_HOSTS.has(String(hostname || ''));
+}
+
+function lunchMoneyApiBase(env) {
+  const source = env || process.env;
+  const raw = source && source[API_BASE_ENV];
+  if (raw == null || String(raw).trim() === '') return LIVE_BASE;
+  let parsed;
+  try {
+    parsed = new URL(String(raw).trim());
+  } catch (e) {
+    fail('ATLAS_LUNCHMONEY_API_BASE is not a URL.');
+  }
+  if (!isLoopbackHost(parsed.hostname)) {
+    fail('ATLAS_LUNCHMONEY_API_BASE may only point at a loopback host.');
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    fail('ATLAS_LUNCHMONEY_API_BASE must be http or https.');
+  }
+  return String(raw).trim().replace(/\/$/, '');
+}
+
+function requestLibFor(url) {
+  return url.protocol === 'http:' ? http : https;
+}
+
+function knownCanonicalIdsByCollection(data) {
+  const byCollection = {
+    cash: new Set(),
+    debts: new Set(),
+  };
+  const cash = (data && data.plan && data.plan.startingCash) || {};
+  for (const row of [].concat(cash.breakdown || [], cash.heldElsewhere || [])) {
+    if (row && row.id) byCollection.cash.add(String(row.id));
+  }
+  for (const row of (data && data.debts) || []) {
+    if (row && row.id) byCollection.debts.add(String(row.id));
+  }
+  return byCollection;
+}
+
+function assertLiveMap(mapDoc, opts) {
+  if (!mapDoc || typeof mapDoc !== 'object' || Array.isArray(mapDoc)) {
+    fail('live-account-map-invalid');
+  }
+  if (mapDoc.provider !== 'lunchmoney') fail('Account map is missing or is not a lunchmoney map.');
   if (mapDoc.scope === 'fixture') {
     fail('Fixture account map cannot authorize a live canonical mapping.');
   }
+  if (mapDoc.schema !== LIVE_MAP_SCHEMA) fail('live-account-map-invalid');
+  const mappings = mapDoc.mappings;
+  if (!Array.isArray(mappings)) fail('live-account-map-invalid');
+  const providerIds = new Set();
+  const atlasKeys = new Set();
+  const cashIds = new Set();
+  const known = opts && opts.data ? knownCanonicalIdsByCollection(opts.data) : null;
+  for (const mapping of mappings) {
+    if (!mapping || mapping.providerAccountId == null || mapping.providerAccountId === '') {
+      fail('live-account-map-invalid');
+    }
+    const providerId = String(mapping.providerAccountId);
+    if (providerIds.has(providerId)) fail('duplicate-provider-account-id');
+    providerIds.add(providerId);
+    const role = mapping.atlasRole;
+    const collection = mapping.canonical && mapping.canonical.collection;
+    const atlasId = mapping.canonical && mapping.canonical.id;
+    if (role === EXTERNAL_LIVE_ROLE) {
+      if (collection || atlasId) fail('live-account-map-invalid');
+      continue;
+    }
+    if (!role || !SUPPORTED_LIVE_ROLES[role]) fail('unsupported-atlas-role');
+    if (!collection || !atlasId) fail('live-account-map-invalid');
+    if (SUPPORTED_LIVE_ROLES[role] !== collection) fail('live-account-map-invalid');
+    const atlasKey = collection + ':' + String(atlasId);
+    if (atlasKeys.has(atlasKey)) fail('live-account-map-invalid');
+    atlasKeys.add(atlasKey);
+    if (known) {
+      const ids = known[collection];
+      if (!ids || !ids.has(String(atlasId))) fail('invalid-atlas-account-id');
+    }
+    if (role === 'household-cash' && collection === 'cash') cashIds.add(String(atlasId));
+  }
+  for (const id of REQUIRED_LIVE_CASH_IDS) {
+    if (!cashIds.has(id)) fail('missing-required-cash-mapping');
+  }
+}
+
+function parseAccountMapJson(raw) {
+  let parsed;
+  try {
+    parsed = JSON.parse(String(raw));
+  } catch (e) {
+    fail('live-account-map-invalid');
+  }
+  return parsed;
+}
+
+function loadLiveAccountMap(env, data) {
+  const source = env || process.env;
+  const json = source && source[MAP_JSON_ENV];
+  if (json != null && String(json).trim() !== '') {
+    const mapDoc = parseAccountMapJson(json);
+    assertLiveMap(mapDoc, { data });
+    return mapDoc;
+  }
+  const mapPath = (source && source[MAP_PATH_ENV])
+    || (fs.existsSync(LOCAL_MAP) ? LOCAL_MAP : null);
+  if (!mapPath) fail('live-account-map-missing');
+  let mapDoc;
+  try {
+    mapDoc = loadJson(mapPath);
+  } catch (e) {
+    fail('live-account-map-invalid');
+  }
+  assertLiveMap(mapDoc, { data });
+  return mapDoc;
 }
 
 function loadJson(file) {
@@ -248,7 +377,15 @@ function normalizeLunchMoneyPayload(payload, fetchedAt) {
 
 function httpsGetJson(url, token) {
   return new Promise((resolve, reject) => {
-    const req = https.request(url, {
+    let settled = false;
+    const done = (err, value) => {
+      if (settled) return;
+      settled = true;
+      if (err) reject(err);
+      else resolve(value);
+    };
+    const lib = requestLibFor(url);
+    const req = lib.request(url, {
       method: 'GET',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -260,18 +397,26 @@ function httpsGetJson(url, token) {
       res.on('end', () => {
         const body = Buffer.concat(chunks).toString('utf8');
         if (res.statusCode === 401 || res.statusCode === 403) {
-          reject(new Error('Lunch Money rejected the access token. Token value is not logged.'));
+          done(new Error('Lunch Money rejected the access token. Token value is not logged.'));
           return;
         }
         if (res.statusCode < 200 || res.statusCode >= 300) {
-          reject(new Error(`Lunch Money GET ${url.pathname} failed with HTTP ${res.statusCode}.`));
+          done(new Error(`Lunch Money GET ${url.pathname} failed with HTTP ${res.statusCode}.`));
           return;
         }
-        try { resolve(JSON.parse(body || '{}')); }
-        catch (e) { reject(new Error('Lunch Money response was not JSON.')); }
+        try { done(null, JSON.parse(body || '{}')); }
+        catch (e) { done(new Error('Lunch Money response was not JSON.')); }
       });
     });
-    req.on('error', reject);
+    if (typeof req.setTimeout === 'function') {
+      req.setTimeout(REQUEST_TIMEOUT_MS, () => {
+        if (typeof req.destroy === 'function') req.destroy();
+        done(new Error('Lunch Money request timeout.'));
+      });
+    }
+    req.on('error', () => {
+      done(new Error('Lunch Money request failed.'));
+    });
     req.end();
   });
 }
@@ -292,10 +437,10 @@ function accountsFromLivePayloads(plaid, manuals) {
   );
 }
 
-function lunchMoneyTransactionsUrl(now, historyDays) {
+function lunchMoneyTransactionsUrl(now, historyDays, base) {
   const days = historyDays == null ? CURRENT_STATE_HISTORY_DAYS : Number(historyDays);
   const span = isFinite(days) && days > 0 ? Math.floor(days) : CURRENT_STATE_HISTORY_DAYS;
-  const txUrl = new URL(`${LIVE_BASE}/transactions`);
+  const txUrl = new URL(`${base || LIVE_BASE}/transactions`);
   const end = dateOnly(now);
   if (!end) fail('Transaction history range needs a parseable fetch instant.');
   const startMs = Date.parse(now);
@@ -311,8 +456,8 @@ function lunchMoneyTransactionsUrl(now, historyDays) {
   return txUrl;
 }
 
-function lunchMoneyPendingUniverseUrl() {
-  const txUrl = new URL(`${LIVE_BASE}/transactions`);
+function lunchMoneyPendingUniverseUrl(base) {
+  const txUrl = new URL(`${base || LIVE_BASE}/transactions`);
   txUrl.searchParams.set('is_pending', 'true');
   return txUrl;
 }
@@ -458,17 +603,19 @@ async function resolveLiveCredential(options) {
   return Credentials.resolveLunchMoneyAccessToken(options);
 }
 
-async function fetchLunchMoneyLive(token, now, historyDays) {
+async function fetchLunchMoneyLive(token, now, historyDays, options) {
   if (!token) fail('Live observation has no Lunch Money credential.');
-  const txUrl = lunchMoneyTransactionsUrl(now, historyDays);
-  await httpsGetJson(new URL(`${LIVE_BASE}/me`), token);
-  const plaid = await tryGetJson(new URL(`${LIVE_BASE}/plaid_accounts`), token);
-  let manuals = await tryGetJson(new URL(`${LIVE_BASE}/manual_accounts`), token);
-  if (!manuals) manuals = await tryGetJson(new URL(`${LIVE_BASE}/assets`), token);
-  const categoriesPayload = await tryGetJson(new URL(`${LIVE_BASE}/categories`), token);
+  const env = options && options.env ? options.env : process.env;
+  const base = lunchMoneyApiBase(env);
+  const txUrl = lunchMoneyTransactionsUrl(now, historyDays, base);
+  await httpsGetJson(new URL(`${base}/me`), token);
+  const plaid = await tryGetJson(new URL(`${base}/plaid_accounts`), token);
+  let manuals = await tryGetJson(new URL(`${base}/manual_accounts`), token);
+  if (!manuals) manuals = await tryGetJson(new URL(`${base}/assets`), token);
+  const categoriesPayload = await tryGetJson(new URL(`${base}/categories`), token);
   const txPage = await fetchLunchMoneyTransactionsPaged(txUrl, token);
   const pendingPage = await fetchLunchMoneyTransactionsPaged(
-    lunchMoneyPendingUniverseUrl(),
+    lunchMoneyPendingUniverseUrl(base),
     token
   );
   return {
@@ -1094,6 +1241,16 @@ function observe(input) {
   const limitByCard = new Map();
   for (const account of normalized.accounts) {
     const mapping = mappingFor(mapDoc, account.providerAccountId);
+    if (mapping && mapping.atlasRole === EXTERNAL_LIVE_ROLE) {
+      mapped.push({
+        providerAccountId: account.providerAccountId,
+        displayName: account.displayName,
+        atlasId: null,
+        collection: null,
+        atlasRole: EXTERNAL_LIVE_ROLE,
+      });
+      continue;
+    }
     if (!mapping || !mapping.canonical || !mapping.canonical.id) {
       unmapped.push({
         providerAccountId: account.providerAccountId,
@@ -1201,7 +1358,8 @@ function atlasAccountRole(mapping) {
   if (mapping.atlasRole === 'household-cash') return 'household-cash';
   if (CREDIT_ROLES.has(mapping.atlasRole)) return 'revolving-credit';
   if (mapping.atlasRole === 'heloc' || mapping.atlasRole === 'mortgage') return mapping.atlasRole;
-  return 'household-external';
+  if (mapping.atlasRole === EXTERNAL_LIVE_ROLE) return EXTERNAL_LIVE_ROLE;
+  return 'unmapped';
 }
 
 function kindHintFromTransaction(tx) {
@@ -1249,6 +1407,8 @@ function sanitizedCurrentPeriodActuals(report, opts) {
   let transactionCoverage = 'complete';
   if (window.truncated === true || window.complete === false || window.hasMore === true) {
     transactionCoverage = 'truncated';
+  } else if (txs.some(tx => tx && tx.accountRole === 'unmapped')) {
+    transactionCoverage = 'incomplete';
   }
   const representedActuals = [];
   for (const candidate of (report && report.representedEventCandidates) || []) {
@@ -1303,9 +1463,12 @@ async function run(argv) {
   if (args.mode && args.mode !== 'current-state' && args.mode !== 'reconcile') {
     fail('Mode must be current-state or reconcile.');
   }
-  const accountMap = loadJson(resolveMapPath(args));
-  if (args.live) assertLiveMap(accountMap);
   const data = loadJson(args.data);
+  const accountMap = loadJson(resolveMapPath(args));
+  if (args.live) {
+    await resolveLiveToken();
+    assertLiveMap(accountMap, { data });
+  }
   const identity = loadIdentity(DEFAULT_IDENTITY);
   const historyDays = historyDaysFromArgs(args);
   let payload;
@@ -1333,6 +1496,11 @@ async function run(argv) {
 
 const api = {
   TOKEN_ENV,
+  MAP_JSON_ENV,
+  MAP_PATH_ENV,
+  API_BASE_ENV,
+  LIVE_MAP_SCHEMA,
+  REQUEST_TIMEOUT_MS,
   LIVE_BASE,
   DEFAULT_MAP,
   LOCAL_MAP,
@@ -1343,9 +1511,13 @@ const api = {
   BILL_PAYMENT_PENDING_DAYS,
   PENDING_COVERAGE_BASIS,
   PENDING_COVERAGE_REQUIRED_EVIDENCE,
+  REQUIRED_LIVE_CASH_IDS,
+  EXTERNAL_LIVE_ROLE,
   parseArgs,
   historyDaysFromArgs,
   resolveMapPath,
+  lunchMoneyApiBase,
+  loadLiveAccountMap,
   assertLiveMap,
   mappingFor,
   lunchMoneyTransactionsUrl,

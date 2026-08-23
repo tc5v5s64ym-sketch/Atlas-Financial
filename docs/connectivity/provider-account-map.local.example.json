@@ -8,7 +8,8 @@
   "notes": [
     "Identity is providerAccountId, never the display name.",
     "Mapping does not authorize a canonical write.",
-    "Leave DEBT&PAYMENTS and SAVINGS-DONT TOUCH unmapped. Do not give them atlasRole household-cash."
+    "Map non-household provider accounts as atlasRole household-external. Do not leave a current-period account unmapped: unresolved accounts cannot authorize a precise remaining figure.",
+    "DEBT&PAYMENTS and SAVINGS-DONT TOUCH are non-household. Give them household-external, not household-cash, and do not omit them if they still produce transactions."
   ],
   "mappings": [
     {
@@ -50,6 +51,14 @@
       "providerAccountId": "YOUR_MORTGAGE_ID",
       "canonical": { "collection": "debts", "id": "mortgage" },
       "atlasRole": "mortgage"
+    },
+    {
+      "providerAccountId": "YOUR_DEBT_PAYMENTS_ID",
+      "atlasRole": "household-external"
+    },
+    {
+      "providerAccountId": "YOUR_SAVINGS_DONT_TOUCH_ID",
+      "atlasRole": "household-external"
     }
   ]
 }

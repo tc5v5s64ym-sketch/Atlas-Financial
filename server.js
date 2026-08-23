@@ -182,9 +182,10 @@ app.get('/data.json', async (_req, res) => {
       cachedData = JSON.parse(fs.readFileSync(file, 'utf8'));
       cachedAt = stat.mtimeMs;
     }
-    // Dated openings stay on disk. An explicit local overlay may replace
-    // posted/pending for today's live plan only. Default is the canonical
-    // file. A Render Lunch Money token is not this path.
+    // Dated openings stay on disk. An explicit overlay (ATLAS_LIVE_OVERLAY=
+    // fixture|live) may replace posted/pending for today's live plan only.
+    // Production read-only Lunch Money uses live mode plus owner-supplied
+    // secrets. Default without that flag remains the canonical file.
     const served = await LivePlan.applyForServer(cachedData, process.env);
     res.json(served);
   } catch (err) {

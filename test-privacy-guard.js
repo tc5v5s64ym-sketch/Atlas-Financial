@@ -77,6 +77,7 @@ ok(!/CONTENT_PATTERNS/.test(hookSrc) && !/^patterns=/m.test(hookSrc),
   'hook does not keep a second identifier list');
 ok(/const CONTENT_PATTERNS = /.test(guardSrc), 'engine declares the sole content-policy constant');
 ok(/LUNCHMONEY_ACCESS_TOKEN/.test(guardSrc)
+  && /ATLAS_PROVIDER_ACCOUNT_MAP_JSON/.test(guardSrc)
   && /SITE_PASSWORD/.test(guardSrc)
   && /SESSION_SECRET/.test(guardSrc),
   'engine still names the incumbent secret tokens');
