@@ -933,6 +933,38 @@ function payeeMatches(payee, pattern) {
   return String(payee).toLowerCase().includes(String(pattern).toLowerCase());
 }
 
+const WEEKEND_NEXT_BUSINESS_DAY = 'same-day-or-weekend-next-business-day';
+
+function rulePayeePatterns(rule) {
+  const values = [].concat((rule && rule.payeePatterns) || [],
+    rule && rule.payeePattern ? [rule.payeePattern] : []);
+  return Array.from(new Set(values.map(value => String(value).trim()).filter(Boolean)));
+}
+
+function postingDateRelation(scheduledDate, postingDate, rule) {
+  const scheduled = parseIsoDate(scheduledDate);
+  const posted = parseIsoDate(postingDate);
+  if (!scheduled || !posted) return null;
+  if (scheduled === posted) return 'same-day';
+  if (!rule || rule.postingDateRule !== WEEKEND_NEXT_BUSINESS_DAY) return null;
+  const weekday = new Date(`${scheduled}T00:00:00Z`).getUTCDay();
+  const nextBusinessDay = weekday === 6
+    ? Forecast.addDays(scheduled, 2)
+    : weekday === 0 ? Forecast.addDays(scheduled, 1) : null;
+  return nextBusinessDay === posted ? 'weekend-next-business-day' : null;
+}
+
+function scheduledDatesForPosting(postingDate, rule) {
+  const posted = parseIsoDate(postingDate);
+  if (!posted) return [];
+  const dates = [posted];
+  if (rule && rule.postingDateRule === WEEKEND_NEXT_BUSINESS_DAY) {
+    dates.push(Forecast.addDays(posted, -1), Forecast.addDays(posted, -2));
+  }
+  return dates.filter((date, index) => date && dates.indexOf(date) === index
+    && postingDateRelation(date, posted, rule));
+}
+
 function scheduledEventsOn(plan, date) {
   if (!plan || !date) return [];
   const slim = {
@@ -979,7 +1011,7 @@ function postingObservationFromCandidate(candidate, fetchedAt) {
     evidenceDate: dateOnly(fetchedAt),
     canonical: { collection: 'representedEvents', id: candidate.id, date: candidate.date },
     source: 'provider-observe:lunchmoney-transactions',
-    note: 'Identity is payee + mapped account + scheduled date. Amount similarity was not used. Historical candidates are not current-opening corrections.',
+    note: 'Identity is explicit payee alias + mapped account + direction + allowed scheduled/posting-date relation. Amount similarity was not used. Historical candidates are not current-opening posting comparisons.',
     currentOpeningImpact: candidate.currentOpeningImpact === true,
     mustNotBackfillOpening: candidate.mustNotBackfillOpening !== false,
     openingRelevance: candidate.openingRelevance || 'incomparable',
@@ -1108,38 +1140,47 @@ function compareIdentityFingerprints(a, b) {
 }
 
 function representedEventCandidates(input) {
-  const rules = (input.identityRules || []).filter(r => r && r.eventId && r.payeePattern);
+  if (input.transactionWindow && input.transactionWindow.complete === false) return [];
+  const rules = (input.identityRules || [])
+    .filter(r => r && r.eventId && rulePayeePatterns(r).length);
   if (!rules.length) return [];
   const mapDoc = input.accountMap;
   const candidates = [];
   const seenEvent = new Set();
   const eventHits = new Map();
   for (const tx of input.transactions || []) {
-    if (tx.pending === true) continue;
+    if (tx.pending === true || tx.contradictoryEvidence === true) continue;
     const mapping = mappingFor(mapDoc, tx.providerAccountId);
     if (!mapping || !mapping.canonical || !mapping.canonical.id) continue;
     const amount = lunchMoneyDebitAmount(tx.amount);
     for (const rule of rules) {
       if (rule.atlasAccountId && mapping.canonical.id !== rule.atlasAccountId) continue;
-      if (!payeeMatches(tx.payee, rule.payeePattern)) continue;
+      if (!rulePayeePatterns(rule).some(pattern => payeeMatches(tx.payee, pattern))) continue;
       if (rule.direction === 'credit' && !(amount < 0)) continue;
       if (rule.direction === 'debit' && !(amount > 0)) continue;
-      const scheduled = scheduledEventsOn(input.plan, tx.date)
-        .filter(e => e.id === rule.eventId && e.date === tx.date);
-      if (scheduled.length !== 1) continue;
-      const key = rule.eventId + '@' + tx.date;
-      const list = eventHits.get(key) || [];
-      list.push({
-        id: rule.eventId,
-        date: tx.date,
-        providerTransactionId: tx.providerTransactionId,
-        providerAccountId: tx.providerAccountId,
-        payee: tx.payee,
-        identity: 'payee+account+date',
-        amountNotUsed: true,
-        observedAmount: amount,
-      });
-      eventHits.set(key, list);
+      for (const scheduledDate of scheduledDatesForPosting(tx.date, rule)) {
+        const scheduled = scheduledEventsOn(input.plan, scheduledDate)
+          .filter(e => e.id === rule.eventId && e.date === scheduledDate);
+        if (scheduled.length !== 1) continue;
+        const relation = postingDateRelation(scheduledDate, tx.date, rule);
+        if (!relation) continue;
+        const key = rule.eventId + '@' + scheduledDate;
+        const list = eventHits.get(key) || [];
+        list.push({
+          id: rule.eventId,
+          date: scheduledDate,
+          postingDate: tx.date,
+          postingDateRelation: relation,
+          direction: rule.direction || null,
+          providerTransactionId: tx.providerTransactionId,
+          providerAccountId: tx.providerAccountId,
+          payee: tx.payee,
+          identity: 'payee+account+date',
+          amountNotUsed: true,
+          observedAmount: amount,
+        });
+        eventHits.set(key, list);
+      }
     }
   }
   for (const [key, hits] of eventHits) {
@@ -1308,9 +1349,11 @@ function observe(input) {
     accountMap: mapDoc,
     plan: input.data && input.data.plan,
     identityRules,
+    transactionWindow: normalized.transactionWindow,
   }).map(c => classifyRepresentedCandidate(c, openingAsOf));
-  // Historical payee+account+date hits are evidence, not current-opening
-  // representedEvents corrections. They must not enter the current compare.
+  // Historical transaction-identity hits are evidence, not current-opening
+  // posting comparisons. The live overlay may consume one only for an exact
+  // once joint-cash outflow that Forecast is still carrying.
   const postingObservations = represented
     .filter(c => c.currentOpeningImpact)
     .map(c => postingObservationFromCandidate(c, normalized.fetchedAt));

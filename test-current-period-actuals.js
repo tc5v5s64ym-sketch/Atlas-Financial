@@ -694,7 +694,7 @@ console.log('\n=== Q. represented bill actual is observed amount, never the sche
     'planned and observed amounts may differ without inventing equality');
 }
 
-console.log('\n=== R. BCAA / ICBC identity is payee+account+date; RESP / CMAW stay gated ===');
+console.log('\n=== R. automatic-payment identity uses explicit payee+account+date rules ===');
 {
   const identity = JSON.parse(fs.readFileSync(
     path.join(__dirname, 'docs', 'connectivity', 'transaction-identity.json'), 'utf8'));
@@ -710,8 +710,12 @@ console.log('\n=== R. BCAA / ICBC identity is payee+account+date; RESP / CMAW st
   ok(icbcRule && icbcRule.payeePattern === 'ICBC INS' && icbcRule.atlasAccountId === 'chequing-a'
     && icbcRule.direction === 'debit',
     'ICBC outstanding uses documented payee+Chequing A debit identity');
-  ok(!respRule && !duesRule,
-    'RESP and CMAW have no payee rule — amount or transfer label is not identity');
+  ok(respRule && respRule.payeePattern === 'TD WATERHOUSE I REP'
+    && respRule.atlasAccountId === 'chequing-a' && respRule.direction === 'debit',
+    'RESP uses its explicit provider alias + Chequing A debit identity');
+  ok(duesRule && duesRule.payeePattern === 'CMAWLOCAL1995 FEE'
+    && duesRule.atlasAccountId === 'chequing-a' && duesRule.direction === 'debit',
+    'CMAW uses its explicit provider alias + Chequing A debit identity');
 
   const data = JSON.parse(fs.readFileSync(path.join(__dirname, 'data.json'), 'utf8'));
   const outstandingBills = (data.plan.bills || []).filter(b => [
@@ -754,7 +758,7 @@ console.log('\n=== R. BCAA / ICBC identity is payee+account+date; RESP / CMAW st
     'ICBC matches payee+account+date');
   ok(!report.representedEventCandidates.some(c => c.id === 'resp-aug15-outstanding'
     || c.id === 'uniondues-aug15-outstanding'),
-    'RESP transfer label and CMAW amount+date do not become represented');
+    'unauthorized RESP and CMAW labels do not become represented by amount+date');
 
   const amountOnly = JSON.parse(JSON.stringify(payload));
   amountOnly.transactions = [
@@ -806,7 +810,7 @@ console.log('\n=== R. BCAA / ICBC identity is payee+account+date; RESP / CMAW st
     && near(bcaaBill.remaining, 0),
     'identified BCAA publishes observed actual, not the $82.96 schedule');
   ok(respBill && respBill.settlement !== 'represented' && near(respBill.remaining, 100),
-    'RESP without a payee rule is not marked paid');
+    'RESP without its explicit provider alias is not marked paid');
   ok(!/"payee"\s*:/.test(JSON.stringify(report.currentPeriodActuals)),
     'sanitized represented actuals still drop payee');
 }

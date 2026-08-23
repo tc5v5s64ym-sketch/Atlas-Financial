@@ -423,14 +423,14 @@
   // Represented events are SCHEDULED occurrences that settlement evidence
   // shows are already inside the opening cash/debt state. Forecast remains
   // authority for what should occur; the list is authority for what has
-  // already occurred. Cutover is opening-date only: an entry is used only
-  // when its date is the simulation start, unless plan.opening.priorAsOf
-  // names the previous opening. Then representedEvents in
-  // (priorAsOf, asOf] also suppress replay so a posted intervening
-  // occurrence is not reserved again. plan.opening.representedEvents is
-  // used only when plan.opening.asOf is that same start. A future
-  // represented date is ignored, not reinterpreted. This is not a
-  // date-wide skip: an unrepresented same-day event still fires.
+  // already occurred. Cutover normally uses only the opening date, or the
+  // (priorAsOf, asOf] interval when plan.opening.priorAsOf names the previous
+  // opening. One narrow historical case is also valid: an exact represented
+  // id+date may settle a past once joint-cash outflow that Forecast is still
+  // carrying at this start. It cannot settle income, a recurring event, a
+  // non-cash charge, or an event that is merely similar. A future represented
+  // date is ignored, not reinterpreted. This is not a date-wide skip: an
+  // unrepresented same-day event still fires.
   //
   // A future-dated commitment paid on a known date is a different fact.
   // That lives on the commitment as settledOn and is not expressed
@@ -445,6 +445,8 @@
       if (!item || !item.id || !item.date) return;
       if (item.date === start) keys.add(item.id + '@' + item.date);
       else if (prior && item.date > prior && item.date < start) {
+        keys.add(item.id + '@' + item.date);
+      } else if (carriedOnceJointCashOutflow(plan, item.id, item.date, start)) {
         keys.add(item.id + '@' + item.date);
       }
     };
@@ -821,6 +823,23 @@
     if ((cash.breakdown || []).some(r => r.id === bill.payingAccount)) return true;
     if ((cash.heldElsewhere || []).some(r => r.id === bill.payingAccount)) return false;
     return true;
+  }
+
+  // A later trusted posting may resolve an exact once outflow that remains
+  // deliberately carried after its scheduled date. Keep this predicate small
+  // and shared by Forecast and the live overlay: recurring events, income,
+  // non-cash obligations, held-elsewhere bills, and non-exact ids/dates all
+  // fail closed.
+  function carriedOnceJointCashOutflow(plan, id, date, start) {
+    if (!plan || !id || !date || !start || date >= start) return false;
+    const obligation = (plan.obligations || []).find(item => item && item.id === id
+      && item.frequency === 'once' && item.date === date
+      && item.nonCash !== true && Number(item.amount) > 0);
+    if (obligation) return true;
+    const bill = (plan.bills || []).find(item => item && item.id === id
+      && item.frequency === 'once' && item.date === date
+      && Number(item.amount) > 0);
+    return !!(bill && billAffectsJointCash(bill, plan));
   }
 
   function isJointCashOutflow(event) {
@@ -5676,7 +5695,7 @@
     };
   }
 
-  const Forecast = { HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, billIsHouseholdObligation, billAffectsJointCash, expandEvents, simulate,
+  const Forecast = { HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, billIsHouseholdObligation, billAffectsJointCash, carriedOnceJointCashOutflow, expandEvents, simulate,
     knowledgeHorizon, viewRange, commitmentNeed, fundingSequence, majorPlans, plannedDebt, paydayAllocation,
     classifyCurrentPeriodTransaction, currentPeriodAction,
     recommendWeekly, recommend, incomeDeadline, amandaHouseholdIncomeDeadline, counterfactuals,

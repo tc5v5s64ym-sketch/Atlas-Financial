@@ -1,6 +1,6 @@
 {
   "schema": "atlas-provider-transaction-identity/v1",
-  "owns": "Unambiguous provider-transaction to Forecast-event identity. A match requires payee pattern + mapped Atlas account + scheduled date. Amount similarity is not identity.",
+  "owns": "Unambiguous provider-transaction to Forecast-event identity. A match requires an explicit payee alias + mapped Atlas account + direction + an allowed scheduled/posting-date relation. Same-day is the default; named automatic payments may opt into weekend-to-next-business-day. Amount similarity is not identity.",
   "does_not_own": "Permission to write plan.opening or representedEvents onto data.json, pending-to-posted proof, or a second event engine.",
   "billPaymentPayees": [
     "Bell Mobility",
@@ -27,30 +27,74 @@
     {
       "eventId": "bcaa",
       "payeePattern": "BCAA-AdvAutoIns",
+      "payeePatterns": ["BCAA-AdvAutoIns", "Bcaa-adv"],
       "atlasAccountId": "chequing-a",
       "direction": "debit",
-      "note": "ACCOUNT_FACTS payee BCAA-AdvAutoIns INS on Chequing A. Amount is not identity."
+      "postingDateRule": "same-day-or-weekend-next-business-day",
+      "note": "Explicit BCAA automatic-payment aliases on Chequing A. Weekend occurrences may post on the next business day. Amount is not identity."
     },
     {
       "eventId": "bcaa-aug15-outstanding",
       "payeePattern": "BCAA-AdvAutoIns",
+      "payeePatterns": ["BCAA-AdvAutoIns", "Bcaa-adv"],
       "atlasAccountId": "chequing-a",
       "direction": "debit",
-      "note": "Same BCAA payee+account contract for the reserved 15 August occurrence dated 2026-08-16. Amount is not identity."
+      "postingDateRule": "same-day-or-weekend-next-business-day",
+      "note": "Same explicit BCAA identity contract for the reserved occurrence dated 2026-08-16. Amount is not identity."
     },
     {
       "eventId": "icbc",
       "payeePattern": "ICBC INS",
+      "payeePatterns": ["ICBC INS", "Icbc"],
       "atlasAccountId": "chequing-a",
       "direction": "debit",
-      "note": "ACCOUNT_FACTS payee ICBC INS on Chequing A. Amount is not identity."
+      "postingDateRule": "same-day-or-weekend-next-business-day",
+      "note": "Explicit ICBC automatic-payment aliases on Chequing A. Weekend occurrences may post on the next business day. Amount is not identity."
     },
     {
       "eventId": "icbc-aug15-outstanding",
       "payeePattern": "ICBC INS",
+      "payeePatterns": ["ICBC INS", "Icbc"],
       "atlasAccountId": "chequing-a",
       "direction": "debit",
-      "note": "Same ICBC payee+account contract for the reserved 15 August occurrence dated 2026-08-16. Amount is not identity."
+      "postingDateRule": "same-day-or-weekend-next-business-day",
+      "note": "Same explicit ICBC identity contract for the reserved occurrence dated 2026-08-16. Amount is not identity."
+    },
+    {
+      "eventId": "resp",
+      "payeePattern": "TD WATERHOUSE I REP",
+      "payeePatterns": ["TD WATERHOUSE I REP"],
+      "atlasAccountId": "chequing-a",
+      "direction": "debit",
+      "postingDateRule": "same-day-or-weekend-next-business-day",
+      "note": "Explicit RESP automatic-contribution alias on Chequing A. Weekend occurrences may post on the next business day. Amount is not identity."
+    },
+    {
+      "eventId": "resp-aug15-outstanding",
+      "payeePattern": "TD WATERHOUSE I REP",
+      "payeePatterns": ["TD WATERHOUSE I REP"],
+      "atlasAccountId": "chequing-a",
+      "direction": "debit",
+      "postingDateRule": "same-day-or-weekend-next-business-day",
+      "note": "Same explicit RESP identity contract for the reserved occurrence dated 2026-08-16. Amount is not identity."
+    },
+    {
+      "eventId": "uniondues",
+      "payeePattern": "CMAWLOCAL1995 FEE",
+      "payeePatterns": ["CMAWLOCAL1995 FEE"],
+      "atlasAccountId": "chequing-a",
+      "direction": "debit",
+      "postingDateRule": "same-day-or-weekend-next-business-day",
+      "note": "Explicit CMAW Local 1995 fee alias on Chequing A. Weekend occurrences may post on the next business day. Amount is not identity."
+    },
+    {
+      "eventId": "uniondues-aug15-outstanding",
+      "payeePattern": "CMAWLOCAL1995 FEE",
+      "payeePatterns": ["CMAWLOCAL1995 FEE"],
+      "atlasAccountId": "chequing-a",
+      "direction": "debit",
+      "postingDateRule": "same-day-or-weekend-next-business-day",
+      "note": "Same explicit CMAW identity contract for the reserved occurrence dated 2026-08-16. Amount is not identity."
     }
   ]
 }
