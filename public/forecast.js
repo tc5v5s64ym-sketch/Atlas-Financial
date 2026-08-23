@@ -455,6 +455,7 @@
     return keys;
   }
   function omitRepresented(events, plan, opts, start) {
+    if (opts && opts.keepRepresented) return events;
     const represented = representedKeySet(plan, opts, start);
     if (!represented.size) return events;
     return events.filter(e => !represented.has(e.id + '@' + e.date));
@@ -1876,6 +1877,454 @@
     return out;
   }
 
+  // Closed labels from provider category identity, not merchant guessing.
+  // Lunch Money's transfer/payment category and equivalent names are
+  // account-to-account movement, not household category spending.
+  const TRANSFER_CATEGORY_LABELS = new Set([
+    'transfer',
+    'payment',
+    'payment, transfer',
+    'credit card payment',
+    'cc payment',
+  ]);
+
+  function paydayCalendar(plan, asOf, opts) {
+    opts = opts || {};
+    const payFloor = opts.paydayFloor != null ? opts.paydayFloor : 1000;
+    const horizon = knowledgeHorizon(plan, asOf, opts);
+    const allEvents = expandEvents(plan, asOf, horizon.end, opts);
+    const paydayDates = uniquePaydayDates(allEvents, asOf, payFloor);
+    const todayIsPayday = paydayDates[0] === asOf;
+    const subsequent = todayIsPayday ? (paydayDates[1] || null) : (paydayDates[0] || null);
+    const periodEndExclusive = subsequent || addDays(asOf, 1);
+    const periodLast = addDays(periodEndExclusive, -1);
+    return {
+      todayIsPayday,
+      mode: todayIsPayday ? 'payday' : 'between-paydays',
+      subsequent,
+      paydayDates,
+      periodLast,
+      periodEndExclusive,
+    };
+  }
+
+  // Between paydays, a live overlay that advanced as-of keeps the original
+  // opening as the plan-period origin so elapsed actuals are subtracted from
+  // that plan rather than from a remaining-days reslice that would double-count.
+  function periodOriginDate(plan, asOf, todayIsPayday) {
+    if (todayIsPayday) return asOf;
+    const opening = plan && plan.opening;
+    if (opening && opening.asOf === asOf && opening.priorAsOf && opening.priorAsOf < asOf) {
+      return opening.priorAsOf;
+    }
+    return asOf;
+  }
+
+  function normalizeCategoryLabel(value) {
+    return String(value == null ? '' : value).trim().toLowerCase();
+  }
+
+  function transactionPendingState(tx) {
+    if (!tx || tx.pending !== true) return 'posted';
+    const treatment = tx.pendingTreatment;
+    if (treatment === 'confirmed-settled'
+      || treatment === 'presumed-settled-for-current-forecast') return 'posted';
+    return 'pending';
+  }
+
+  // Provider-neutral classification. Uses incumbent budget `from` / label / id
+  // aliases, budget.excluded, and provider category identity (income / transfer
+  // / payment). Does not read a payee or merchant name.
+  function classifyCurrentPeriodTransaction(tx, plan) {
+    if (!tx) {
+      return { kind: 'unclassified', categoryId: null, householdSpending: false, reason: 'missing' };
+    }
+    const role = tx.accountRole || null;
+    if (role === 'household-external' || role === 'unmapped') {
+      return {
+        kind: 'external', categoryId: null, householdSpending: false,
+        reason: 'account-not-household',
+      };
+    }
+    if (tx.isIncome === true) {
+      return { kind: 'income', categoryId: null, householdSpending: false, reason: null };
+    }
+    const hint = normalizeCategoryLabel(tx.kindHint);
+    if (hint === 'payment' || hint === 'card-payment' || hint === 'bill-payment') {
+      return { kind: 'card-payment', categoryId: null, householdSpending: false, reason: null };
+    }
+    if (hint === 'transfer' || hint === 'internal-transfer') {
+      return { kind: 'transfer', categoryId: null, householdSpending: false, reason: null };
+    }
+    const label = normalizeCategoryLabel(tx.categoryLabel);
+    if (TRANSFER_CATEGORY_LABELS.has(label)
+      || (tx.excludeFromTotals === true && TRANSFER_CATEGORY_LABELS.has(label))) {
+      return { kind: 'transfer', categoryId: null, householdSpending: false, reason: null };
+    }
+    const excluded = ((plan && plan.budget && plan.budget.excluded) || []);
+    for (const row of excluded) {
+      const from = normalizeCategoryLabel(row && (row.from || row.label));
+      if (from && from === label) {
+        return { kind: 'business', categoryId: null, householdSpending: false, reason: 'excluded' };
+      }
+    }
+    const cats = (plan && plan.budget && plan.budget.categories) || [];
+    let matched = null;
+    for (const c of cats) {
+      if (!c || !c.id) continue;
+      const aliases = [c.id, c.label].concat(c.from || []);
+      if (!aliases.some(a => normalizeCategoryLabel(a) === label)) continue;
+      if (matched && matched.id !== c.id) {
+        return {
+          kind: 'unclassified', categoryId: 'uncategorised', householdSpending: true,
+          reason: 'ambiguous-category',
+        };
+      }
+      matched = c;
+    }
+    if (matched) {
+      return { kind: 'spend', categoryId: matched.id, householdSpending: true, reason: null };
+    }
+    // Lunch Money (and equivalents) mark transfers/payments exclude-from-totals.
+    // That identity is not a merchant guess. An unmatched excluded row is not
+    // household category spending and is not silently dropped: it is counted
+    // as a transfer so the household can still see it was observed.
+    if (tx.excludeFromTotals === true) {
+      return {
+        kind: 'transfer', categoryId: null, householdSpending: false,
+        reason: 'exclude-from-totals',
+      };
+    }
+    return {
+      kind: 'unclassified',
+      categoryId: 'uncategorised',
+      householdSpending: true,
+      reason: label ? 'unmapped-label' : 'no-category',
+    };
+  }
+
+  function currentPeriodActualsPacket(opts) {
+    const raw = opts && opts.currentPeriodActuals;
+    return raw && typeof raw === 'object' ? raw : null;
+  }
+
+  function pendingCoverageStatus(packet) {
+    const cov = packet && packet.pendingCoverage;
+    if (cov === 'complete' || (cov && cov.complete === true && cov.status !== 'insufficient')) {
+      return 'complete';
+    }
+    if (cov === 'partial' || (cov && cov.status === 'bounded-window')) return 'partial';
+    if (cov === 'unknown' || cov == null) return 'unknown';
+    if (cov && cov.complete === false) return 'unknown';
+    return 'unknown';
+  }
+
+  function transactionCoverageStatus(packet) {
+    const cov = packet && packet.transactionCoverage;
+    if (cov === 'truncated' || cov === 'incomplete') return 'truncated';
+    if (cov && typeof cov === 'object'
+      && (cov.truncated === true || cov.complete === false)) {
+      return 'truncated';
+    }
+    return 'complete';
+  }
+
+  function actualsCoverageState(asOf, periodStart, opts) {
+    const packet = currentPeriodActualsPacket(opts);
+    if (!packet) {
+      return {
+        status: 'absent',
+        remainingClaim: 'unavailable',
+        pendingStatus: 'unknown',
+        observationAsOf: null,
+        coverageStart: null,
+        coverageThrough: null,
+        reason: 'No current-period transaction actuals were supplied.',
+      };
+    }
+    const coverageStart = packet.coverageStart || null;
+    const coverageThrough = packet.coverageThrough || null;
+    const observationAsOf = packet.observationAsOf || null;
+    const pendingStatus = pendingCoverageStatus(packet);
+    if (!coverageThrough || coverageThrough < asOf) {
+      return {
+        status: 'stale',
+        remainingClaim: 'unavailable',
+        pendingStatus,
+        observationAsOf,
+        coverageStart,
+        coverageThrough,
+        reason: 'Transaction actuals are not current through the financial as-of.',
+      };
+    }
+    if (coverageStart && periodStart && coverageStart > periodStart) {
+      return {
+        status: 'incomplete',
+        remainingClaim: 'unavailable',
+        pendingStatus,
+        observationAsOf,
+        coverageStart,
+        coverageThrough,
+        reason: 'Transaction coverage starts after the current period origin.',
+      };
+    }
+    if (transactionCoverageStatus(packet) === 'truncated') {
+      return {
+        status: 'incomplete',
+        remainingClaim: 'unavailable',
+        pendingStatus,
+        observationAsOf,
+        coverageStart,
+        coverageThrough,
+        reason: 'Posted transaction coverage is truncated. Current remaining amounts unavailable.',
+      };
+    }
+    if (pendingStatus === 'complete') {
+      return {
+        status: 'current',
+        remainingClaim: 'precise',
+        pendingStatus,
+        observationAsOf,
+        coverageStart,
+        coverageThrough,
+        reason: null,
+      };
+    }
+    return {
+      status: 'current',
+      remainingClaim: 'posted-only',
+      pendingStatus,
+      observationAsOf,
+      coverageStart,
+      coverageThrough,
+      reason: 'Pending coverage is not complete. Observed pending still constrains remaining; additional unknown pending may exist.',
+    };
+  }
+
+  function emptyCategoryActuals() {
+    return {
+      byId: new Map(),
+      unclassified: { posted: 0, pending: 0, count: 0 },
+      excluded: { transfers: 0, cardPayments: 0, income: 0, business: 0, external: 0 },
+    };
+  }
+
+  function sumCategoryActuals(plan, asOf, periodStart, opts) {
+    const out = emptyCategoryActuals();
+    const packet = currentPeriodActualsPacket(opts);
+    if (!packet || !Array.isArray(packet.transactions)) return out;
+    const add = (row, state, amt) => {
+      if (state === 'pending') row.pending = roundCent(row.pending + amt);
+      else row.posted = roundCent(row.posted + amt);
+    };
+    for (const tx of packet.transactions) {
+      if (!tx || !tx.date) continue;
+      if (periodStart && tx.date < periodStart) continue;
+      if (asOf && tx.date > asOf) continue;
+      const amt = Number(tx.amount);
+      if (!isFinite(amt) || amt === 0) {
+        const clsZero = classifyCurrentPeriodTransaction(tx, plan);
+        if (clsZero.kind === 'unclassified') out.unclassified.count += 1;
+        continue;
+      }
+      const cls = classifyCurrentPeriodTransaction(tx, plan);
+      const state = transactionPendingState(tx);
+      if (cls.kind === 'transfer') { out.excluded.transfers = roundCent(out.excluded.transfers + amt); continue; }
+      if (cls.kind === 'card-payment') { out.excluded.cardPayments = roundCent(out.excluded.cardPayments + amt); continue; }
+      if (cls.kind === 'income') { out.excluded.income = roundCent(out.excluded.income + amt); continue; }
+      if (cls.kind === 'business') { out.excluded.business = roundCent(out.excluded.business + amt); continue; }
+      if (cls.kind === 'external') { out.excluded.external = roundCent(out.excluded.external + amt); continue; }
+      const catId = cls.categoryId || 'uncategorised';
+      if (!out.byId.has(catId)) out.byId.set(catId, { posted: 0, pending: 0, count: 0 });
+      const row = out.byId.get(catId);
+      row.count += 1;
+      add(row, state, amt);
+      if (cls.kind === 'unclassified') {
+        out.unclassified.count += 1;
+        add(out.unclassified, state, amt);
+      }
+    }
+    return out;
+  }
+
+  function categoryCommittedActual(row) {
+    if (!row) return { posted: 0, pending: 0, committed: 0 };
+    const posted = roundCent(row.posted);
+    const pending = roundCent(row.pending);
+    return { posted, pending, committed: roundCent(posted + pending) };
+  }
+
+  function representedActualMap(opts) {
+    const packet = currentPeriodActualsPacket(opts);
+    const map = new Map();
+    const rows = packet && Array.isArray(packet.representedActuals)
+      ? packet.representedActuals : [];
+    for (const row of rows) {
+      if (!row || !row.id || !row.date) continue;
+      const amt = Number(row.actual);
+      if (!isFinite(amt)) continue;
+      map.set(row.id + '@' + row.date, roundCent(amt));
+    }
+    return map;
+  }
+
+  function currentPeriodBills(plan, asOf, origin, periodLast, opts) {
+    const represented = representedKeySet(plan, opts, asOf);
+    const observed = representedActualMap(opts);
+    const events = expandEvents(plan, origin, periodLast,
+      Object.assign({}, opts || {}, { keepRepresented: true }));
+    const items = [];
+    const seen = new Set();
+    for (const e of events) {
+      if (!isJointCashOutflow(e)) continue;
+      if (e.kind !== 'obligation' && e.kind !== 'bill' && e.kind !== 'commitment') continue;
+      const amt = -e.amount;
+      if (!(amt > EPSILON)) continue;
+      const key = (e.id || e.label) + '@' + e.date;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const paid = !!(e.id && represented.has(e.id + '@' + e.date));
+      let settlement;
+      let actual;
+      let remaining;
+      if (paid) {
+        settlement = 'represented';
+        actual = observed.has(e.id + '@' + e.date)
+          ? observed.get(e.id + '@' + e.date)
+          : null;
+        remaining = 0;
+      } else if (e.date >= asOf) {
+        settlement = 'upcoming';
+        actual = 0;
+        remaining = roundCent(amt);
+      } else {
+        settlement = 'unverified';
+        actual = null;
+        remaining = roundCent(amt);
+      }
+      items.push({
+        id: e.id,
+        label: e.label,
+        kind: e.kind,
+        date: e.date,
+        planned: roundCent(amt),
+        actual,
+        remaining,
+        settlement,
+        evidenceDate: paid ? e.date : null,
+        confidence: e.confidence || null,
+      });
+    }
+    return items;
+  }
+
+  function currentPeriodAction(plan, asOf, opts) {
+    opts = opts || {};
+    const cal = opts.paydayCalendar || paydayCalendar(plan, asOf, opts);
+    const origin = periodOriginDate(plan, asOf, cal.todayIsPayday);
+    const periodLast = cal.periodLast;
+    const coverage = actualsCoverageState(asOf, origin, opts);
+    const useActuals = coverage.remainingClaim === 'precise'
+      || coverage.remainingClaim === 'posted-only';
+    const alloc = opts.paydayAllocation || paydayAllocation(plan, asOf, opts);
+    const bills = currentPeriodBills(plan, asOf, origin, periodLast, opts);
+    const actuals = useActuals
+      ? sumCategoryActuals(plan, asOf, origin, opts)
+      : emptyCategoryActuals();
+    const needStart = useActuals ? origin : asOf;
+    const needDays = Math.max(1, diffDays(needStart, periodLast) + 1);
+    const essentialNeed = essentialNeedBreakdown(plan, opts.periods, opts);
+    const categories = [];
+    const seenCat = new Set();
+    const pushCategory = (row, monthly, source) => {
+      if (!row || !row.id || seenCat.has(row.id)) return;
+      seenCat.add(row.id);
+      const planned = roundCent(monthly * needDays / CALENDAR_MONTH_DAYS);
+      const act = categoryCommittedActual(actuals.byId.get(row.id), coverage.remainingClaim);
+      const remaining = useActuals ? roundCent(planned - act.committed) : null;
+      if (!(planned > EPSILON) && !(act.posted > EPSILON) && !(act.pending > EPSILON)
+        && !(act.committed > EPSILON)) return;
+      categories.push({
+        id: row.id,
+        label: row.label,
+        class: row.class || null,
+        planned: useActuals || planned > EPSILON ? planned : roundCent(monthly * needDays / CALENDAR_MONTH_DAYS),
+        posted: useActuals ? act.posted : null,
+        pending: useActuals ? act.pending : null,
+        committed: useActuals ? act.committed : null,
+        remaining,
+        overage: remaining != null && remaining < -EPSILON ? roundCent(-remaining) : 0,
+        source: source || row.source || null,
+      });
+    };
+    if (opts.periods) {
+      const bd = budgetBreakdown(plan, opts.periods, opts);
+      if (bd && Array.isArray(bd.categories)) {
+        for (const c of bd.categories) {
+          const monthly = roundCent((Number(c.planned) || 0) + (Number(c.reserved) || 0));
+          pushCategory(c, monthly, c.source);
+        }
+      }
+    } else {
+      for (const row of essentialNeed.items) {
+        pushCategory(row, row.monthly, row.source);
+      }
+    }
+    for (const [id, row] of actuals.byId) {
+      if (seenCat.has(id)) continue;
+      const cat = ((plan.budget && plan.budget.categories) || []).find(c => c.id === id);
+      pushCategory(cat || { id, label: id, class: id === 'uncategorised' ? 'unknown' : null }, 0, null);
+    }
+    const essentialRemaining = categories
+      .filter(c => c.class === 'essential' && c.remaining != null)
+      .reduce((s, c) => s + c.remaining, 0);
+    const todayActions = [];
+    for (const bill of bills) {
+      if (bill.settlement === 'upcoming' && bill.date === asOf) {
+        todayActions.push({
+          kind: 'pay',
+          id: bill.id,
+          label: bill.label,
+          amount: bill.remaining,
+          date: bill.date,
+        });
+      }
+    }
+    const moneyMovementRequired = cal.todayIsPayday
+      ? ((alloc.lines || []).some(l => Number(l.amount) > EPSILON))
+      : todayActions.length > 0;
+    // Unverified is reserved, not a shortfall. A current-period shortfall is
+    // overspent remaining, or a payday bucket that could not be funded.
+    const currentShortfall = categories.some(c => c.remaining != null && c.remaining < -EPSILON)
+      || (useActuals && essentialRemaining < -EPSILON)
+      || (Number(alloc.obligations && alloc.obligations.shortfall) > EPSILON)
+      || (Number(alloc.essentials && alloc.essentials.shortfall) > EPSILON);
+    return {
+      asOf,
+      mode: cal.mode,
+      periodStart: origin,
+      periodEnd: periodLast,
+      nextPayday: cal.subsequent,
+      coverage,
+      bills,
+      categories,
+      unclassified: {
+        posted: actuals.unclassified.posted,
+        pending: actuals.unclassified.pending,
+        count: actuals.unclassified.count,
+      },
+      excluded: actuals.excluded,
+      essentialRemaining: useActuals ? roundCent(essentialRemaining) : null,
+      spendPermission: alloc.spendPermission,
+      weeklyCap: alloc.weeklyCap,
+      moneyMovementRequired,
+      todayActions,
+      noMovementToday: !cal.todayIsPayday && !moneyMovementRequired,
+      currentShortfall,
+      remainingClaim: coverage.remainingClaim,
+    };
+  }
+
   function paydayExtraDebtAbsorbable(opts) {
     const debts = opts.debts || [];
     if (!debts.length) return 0;
@@ -1991,19 +2440,25 @@
     }
     const available = roundCent(opening + todayIncome);
 
-    const probeEnd = horizon.end;
-    const allEvents = expandEvents(plan, asOf, probeEnd, opts);
-    const paydayDates = uniquePaydayDates(allEvents, asOf, payFloor);
-    const todayIsPayday = paydayDates[0] === asOf;
-    const subsequent = todayIsPayday ? (paydayDates[1] || null) : (paydayDates[0] || null);
-    const periodEndExclusive = subsequent || addDays(asOf, 1);
-    const periodLast = addDays(periodEndExclusive, -1);
+    const cal = paydayCalendar(plan, asOf, opts);
+    const todayIsPayday = cal.todayIsPayday;
+    const subsequent = cal.subsequent;
+    const periodLast = cal.periodLast;
     const periodDays = Math.max(1, diffDays(asOf, periodLast) + 1);
     const liquidityUntil = subsequent ? addDays(subsequent, 1) : periodLast;
+    const origin = periodOriginDate(plan, asOf, todayIsPayday);
+    const coverage = actualsCoverageState(asOf, origin, opts);
+    const useActuals = coverage.remainingClaim === 'precise'
+      || coverage.remainingClaim === 'posted-only';
+    const needStart = useActuals ? origin : asOf;
+    const needDays = Math.max(1, diffDays(needStart, periodLast) + 1);
+    const categoryActuals = useActuals
+      ? sumCategoryActuals(plan, asOf, origin, opts)
+      : emptyCategoryActuals();
 
     const essentialNeed = essentialNeedBreakdown(plan, opts.periods, opts);
     const essentialMonthly = essentialNeed.monthly;
-    const essentialsWanted = essentialMonthly * periodDays / CALENDAR_MONTH_DAYS;
+    const essentialsWantedFull = essentialMonthly * needDays / CALENDAR_MONTH_DAYS;
 
     let obligationsWanted = 0;
     const obligationItems = [];
@@ -2056,8 +2511,6 @@
     };
 
     const allocatedObligations = take(obligationsWanted);
-    const allocatedEssentials = take(essentialsWanted);
-    const leftoverAfterOE = remaining;
 
     // Per-item reserved cash is authoritative only when the whole required
     // bucket is funded or none of it is. Partial funding is an unattributed
@@ -2078,28 +2531,42 @@
     }
 
     const essentialItems = [];
-    const periodScale = periodDays / CALENDAR_MONTH_DAYS;
+    const periodScale = needDays / CALENDAR_MONTH_DAYS;
     let requiredSum = 0;
     for (const row of essentialNeed.items) {
-      const required = roundCent(row.monthly * periodScale);
-      if (!(required > EPSILON) && !(row.monthly > EPSILON)) continue;
+      const planned = roundCent(row.monthly * periodScale);
+      const act = categoryCommittedActual(
+        categoryActuals.byId.get(row.id), coverage.remainingClaim);
+      const remainingNeed = useActuals ? roundCent(planned - act.committed) : planned;
+      const required = useActuals ? roundCent(Math.max(0, remainingNeed)) : planned;
+      if (!(planned > EPSILON) && !(row.monthly > EPSILON) && !(act.committed > EPSILON)) continue;
       requiredSum = roundCent(requiredSum + required);
       essentialItems.push({
         id: row.id,
         label: row.label,
         monthly: roundCent(row.monthly),
         required,
+        planned,
+        posted: useActuals ? act.posted : null,
+        pending: useActuals ? act.pending : null,
+        remaining: useActuals ? remainingNeed : planned,
         source: row.source,
         funded: null,
         unfunded: null,
       });
     }
-    const wantedRounded = roundCent(essentialsWanted);
-    const residual = roundCent(wantedRounded - requiredSum);
-    if (essentialItems.length && residual !== 0) {
-      const last = essentialItems[essentialItems.length - 1];
-      last.required = roundCent(last.required + residual);
+    let wantedRounded = useActuals ? roundCent(requiredSum) : roundCent(essentialsWantedFull);
+    if (!useActuals) {
+      const residual = roundCent(wantedRounded - requiredSum);
+      if (essentialItems.length && residual !== 0) {
+        const last = essentialItems[essentialItems.length - 1];
+        last.required = roundCent(last.required + residual);
+        last.remaining = last.required;
+        last.planned = last.required;
+      }
     }
+    const allocatedEssentials = take(wantedRounded);
+    const leftoverAfterOE = remaining;
     const essentialsShortfall = roundCent(Math.max(0, wantedRounded - allocatedEssentials));
     let essentialsAttribution = 'complete';
     if (allocatedEssentials + EPSILON < wantedRounded) {
@@ -2307,14 +2774,14 @@
         reason: 'This payday cannot cover required obligations in cash.',
       });
     }
-    if (allocatedEssentials + EPSILON < essentialsWanted) {
+    if (allocatedEssentials + EPSILON < wantedRounded) {
       risks.push({
         id: 'essentials',
         label: 'Essential household spending',
         date: asOf,
         verdict: 'FUNDING GAP',
-        shortfall: roundCent(essentialsWanted - allocatedEssentials),
-        need: roundCent(essentialsWanted),
+        shortfall: roundCent(wantedRounded - allocatedEssentials),
+        need: roundCent(wantedRounded),
         projectedByDeadline: allocatedEssentials,
         allocated: allocatedEssentials,
         reason: 'This payday cannot protect essential household spending in cash.',
@@ -2328,8 +2795,10 @@
 
     return {
       asOf,
+      mode: cal.mode,
       payday: subsequent,
       periodStart: asOf,
+      planPeriodStart: origin,
       periodEnd: periodLast,
       periodDays,
       available,
@@ -2397,6 +2866,7 @@
       remainder: unallocated,
       plannedDebt: { permitted: !!(debt && debt.permitted), borrowed: debt && debt.borrowed || 0 },
       identity: roundCent(allocatedTotal + unallocated),
+      actualsCoverage: coverage,
     };
   }
 
@@ -2742,6 +3212,17 @@
         weeklyVariable: weeklyCap, horizonDays: horizon.days, viewDays: horizon.days,
         seq: sequence, sim: knowledgeSim,
       }));
+      const paydayOpts = Object.assign({}, planOptions, {
+        weeklyVariable: weeklyCap,
+        periods: planOptions.periods || base.periods,
+        majorPlans: plans,
+        plannedDebt: debt,
+        injections: simOptions.injections,
+      });
+      const alloc = paydayAllocation(plan, asOf, paydayOpts);
+      const action = currentPeriodAction(plan, asOf, Object.assign({}, paydayOpts, {
+        paydayAllocation: alloc,
+      }));
       return {
         mode, weekly: weeklyCap, effectiveFrom, buffer, gap, sim: viewSim, zero: zeroSim,
         step: STEP,
@@ -2759,13 +3240,8 @@
         // payday and the following calendar day. Derived, not stored, and not
         // a second horizon: the weekly search and the balances are unchanged.
         nearBoundary: nearBoundaryObligations(zeroSim.events, asOf, payFloor),
-        paydayAllocation: paydayAllocation(plan, asOf, Object.assign({}, planOptions, {
-          weeklyVariable: weeklyCap,
-          periods: planOptions.periods || base.periods,
-          majorPlans: plans,
-          plannedDebt: debt,
-          injections: simOptions.injections,
-        })),
+        paydayAllocation: alloc,
+        currentPeriodAction: action,
         // The options behind `sim`, so a caller overriding the weekly figure
         // re-simulates under the same assumptions instead of inventing its own.
         // Horizon is included so a page override still walks the master plan.
@@ -5175,6 +5651,7 @@
 
   const Forecast = { HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, billIsHouseholdObligation, billAffectsJointCash, expandEvents, simulate,
     knowledgeHorizon, viewRange, commitmentNeed, fundingSequence, majorPlans, plannedDebt, paydayAllocation,
+    classifyCurrentPeriodTransaction, currentPeriodAction,
     recommendWeekly, recommend, incomeDeadline, amandaHouseholdIncomeDeadline, counterfactuals,
     budgetBreakdown, monthlyFromWeekly,
     projectDebts,

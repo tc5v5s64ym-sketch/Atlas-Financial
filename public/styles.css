@@ -293,7 +293,10 @@ footer { margin-top:56px; padding-top:18px; border-top:1px solid var(--grid);
 .payday-sheet td:last-child { font-variant-numeric:tabular-nums; font-weight:650; white-space:nowrap; }
 .payday-when { color:var(--text-secondary); font-weight:500; }
 .payday-item-note { margin-top:4px; font-size:.82rem; font-weight:500; color:var(--text-secondary); line-height:1.35; }
-.payday-risk td { color:var(--critical); }
+.payday-status { margin:0 0 16px; font-size:.95rem; color:var(--text-secondary); }
+.payday-status.warn { color:var(--critical); }
+.payday-done td { color:var(--text-secondary); }
+.payday-action-empty { margin:8px 0 0; font-size:1.05rem; }
 @media (max-width:640px) {
   .payday-card { padding:18px 16px; }
   .payday-hero { font-size:2rem; }

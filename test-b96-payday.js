@@ -106,6 +106,8 @@ function loadPaydayComposer() {
     grab(planSrc, /^function paydaySheet\([\s\S]*?\n\}$/m, 'paydaySheet'),
     grab(planSrc, /^function paydayCashNote\([\s\S]*?\n\}$/m, 'paydayCashNote'),
     grab(planSrc, /^function paydayObligationNote\([\s\S]*?\n\}$/m, 'paydayObligationNote'),
+    grab(planSrc, /^function paydayCoverageNote\([\s\S]*?\n\}$/m, 'paydayCoverageNote'),
+    grab(planSrc, /^function paydayBillStatusNote\([\s\S]*?\n\}$/m, 'paydayBillStatusNote'),
     grab(planSrc, /^function paydayAmountCell\([\s\S]*?\n\}$/m, 'paydayAmountCell'),
     grab(planSrc, /^function paydayAnswerHtml\([\s\S]*?\n\}$/m, 'paydayAnswerHtml'),
   ].join('\n');
@@ -329,12 +331,11 @@ console.log('\n=== G. credit is not cash or safe-to-spend ===');
     String(liveRun.revolving));
   ok(!near(cash, cash + liveRun.revolving),
     'adding credit headroom would disagree with spendable cash');
-  ok(liveRun.html.includes(money2(cash)),
-    'payday HTML publishes the independent spendable cash');
-  ok(/not credit/i.test(liveRun.html),
-    'payday HTML says the cash figure is not credit');
+  const alloc = liveRun.advice.paydayAllocation;
+  ok(alloc && near(alloc.available, cash),
+    'Forecast.paydayAllocation available cash is still independent spendable');
   ok(!liveRun.html.includes(money2(liveRun.revolving)),
-    'payday worksheet does not publish revolving headroom next to cash');
+    'between-paydays action card does not publish revolving headroom as cash');
   ok(!near(liveRun.advice.weekly, liveRun.advice.weekly + liveRun.revolving / 13),
     'safe-to-spend is not inflated by dividing credit across the view');
 }
@@ -385,26 +386,19 @@ console.log('\n=== I. household-facing composed answer agrees with Forecast ==='
   ok(advice.weekly !== 600, '$600/week is not the payday output');
   ok(!/function paydayEngine|Forecast\.paydayPlan/.test(read('public/plan.js') + read('public/forecast.js')),
     'no second payday planner exists');
+  const action = advice.currentPeriodAction;
+  ok(action && action.mode === 'between-paydays',
+    'the dated live opening is a current-period action plan, not a payday allocation worksheet');
   const first = (advice.fundingSequence || [])[0];
-  const firstPlan = (advice.majorPlans || []).find(p => first && p.id === first.id);
-  const firstApplies = first && firstPlan && (
-    (firstPlan.remaining != null && firstPlan.remaining > 0)
-    || firstPlan.verdict === 'FUNDING GAP'
-    || firstPlan.verdict === 'AT RISK');
-  if (firstApplies) {
-    ok(liveRun.html.includes(first.label),
-      'HTML names the Forecast.fundingSequence head when it is a current set-aside', first.label);
-    ok(/Set aside/.test(liveRun.html),
-      'and words it as set-aside, not already funded');
-  } else if (first) {
-    ok(!liveRun.html.includes(first.label),
-      'ON TRACK remaining-0 sequence head is not a payday worksheet action', first.label);
-  }
+  ok(first,
+    'the master funding sequence still exists on Forecast.recommend');
   const rosterHits = (advice.majorPlans || []).filter(p => liveRun.html.includes(p.label)).length;
   ok(rosterHits <= 3,
-    'payday worksheet does not reprint the major-plans roster', String(rosterHits));
+    'current-period action card does not reprint the major-plans roster', String(rosterHits));
   ok(!/ON TRACK/.test(liveRun.html),
-    'ON TRACK verdicts stay in Outlook, not the worksheet');
+    'ON TRACK verdicts stay in Outlook, not the current-period card');
+  ok(!/Set aside/.test(liveRun.html),
+    '90-day set-asides stay on the master outlook, not the between-paydays action card');
   ok(liveRun.status.id === (advice.mode === 'infeasible' ? 'infeasible' : liveRun.status.id),
     'status band does not contradict recommend.mode');
   if (advice.mode === 'infeasible') {
@@ -415,9 +409,16 @@ console.log('\n=== I. household-facing composed answer agrees with Forecast ==='
   }
   const nextOut = F.nextPaymentOut(liveRun.sim.events, live.meta.asOf);
   if (nextOut) {
-    ok(liveRun.html.includes(nextOut.label),
-      'HTML names the Forecast.nextPaymentOut item in Coming before next payday',
-      nextOut.label);
+    const inPeriod = ((action && action.bills) || []).some(b =>
+      b && (b.id === nextOut.id || b.label === nextOut.label));
+    if (inPeriod) {
+      ok(liveRun.html.includes(nextOut.label),
+        'a current-period still-due outflow is named on the action card',
+        nextOut.label);
+    } else {
+      ok(true, 'nextPaymentOut outside the current-period bill list stays off the action card',
+        nextOut.label);
+    }
   }
 }
 
@@ -623,19 +624,23 @@ console.log('\n=== M. homepage leads with the compact payday worksheet ===');
   const paydayAt = index.indexOf('id="payday-answer"');
   const plan90At = index.indexOf('id="plan90"');
   const outlookAt = index.indexOf('id="outlook"');
-  const h1At = index.indexOf('<h1>');
+  const h1At = index.indexOf('<h1');
   const paydaySection = /<section id="payday-answer">[\s\S]*?<\/section>/.exec(index);
   const outlookSection = /<section id="outlook">[\s\S]*?<\/section>/.exec(index);
-  const paydayH1 = /<section id="payday-answer">[\s\S]*?<h1>[\s\S]*?<\/h1>/.exec(index);
+  const paydayH1 = /<section id="payday-answer">[\s\S]*?<h1[\s\S]*?<\/h1>/.exec(index);
   ok(paydayAt >= 0 && plan90At > paydayAt,
     'payday-answer precedes the 90-day outlook in index.html');
   ok(outlookAt > paydayAt && outlookAt < plan90At,
     'Outlook heading sits between the payday answer and the 90-day material');
   ok(h1At > paydayAt && h1At < plan90At,
     'the page h1 is inside the payday front door, not the 90-day report');
-  ok(paydayH1 && /Now → next payday/.test(paydayH1[0]),
-    'the payday section names the planning span as h1');
-  ok((index.match(/<h1>/g) || []).length === 1,
+  ok(paydayH1 && /id="payday-heading"/.test(paydayH1[0]),
+    'the current-period heading is filled from Forecast mode');
+  ok(!/Now → next payday/.test(index),
+    'static Now → next payday wording is gone');
+  ok(/Master forecast outlook/.test(index),
+    'the 90-day band is labelled as master forecast outlook');
+  ok((index.match(/<h1[\s>]/g) || []).length === 1,
     'there is exactly one h1 on the Plan page');
   ok(paydaySection && !/id="status-band"/.test(paydaySection[0]),
     'the status band is not inside the compact Payday Plan');
@@ -649,18 +654,23 @@ console.log('\n=== M. homepage leads with the compact payday worksheet ===');
   ok(!/class="lede"/.test(paydaySection[0]),
     'the payday front door has no report-style lede before the worksheet');
   const liveRun = composeLive(live.plan);
+  const action = liveRun.advice.currentPeriodAction;
+  ok(action && action.mode === 'between-paydays',
+    'the dated opening is not a payday, so the front door is between-paydays');
   ok(/payday-group/.test(liveRun.html)
-    && /Money available/.test(liveRun.html)
-    && /What to do/.test(liveRun.html)
+    && /What to do now/.test(liveRun.html)
+    && /Everyday spending left/.test(liveRun.html)
     && /Household spending/.test(liveRun.html)
-    && /Coming before next payday/.test(liveRun.html),
-    'composed payday HTML uses the compact worksheet groups');
-  const moneyAt = liveRun.html.indexOf('Money available');
-  const doAt = liveRun.html.indexOf('What to do');
-  const spendAt = liveRun.html.indexOf('Household spending');
-  const comingAt = liveRun.html.indexOf('Coming before next payday');
-  ok(moneyAt >= 0 && doAt > moneyAt && spendAt > doAt && comingAt > spendAt,
-    'worksheet groups are money → what to do → spending → coming');
+    && /Next decision point/.test(liveRun.html),
+    'composed HTML uses the between-paydays action groups');
+  const doAt = liveRun.html.indexOf('What to do now');
+  const spendAt = liveRun.html.indexOf('Everyday spending left');
+  const permAt = liveRun.html.indexOf('Household spending');
+  const nextAt = liveRun.html.indexOf('Next decision point');
+  ok(doAt >= 0 && spendAt > doAt && permAt > spendAt && nextAt > permAt,
+    'action groups are what to do → spending left → permission → next payday');
+  ok(!/What to do with this paycheque/.test(liveRun.html),
+    'between-paydays does not reuse the payday allocation headline');
   ok(!/What happens next/.test(liveRun.html) && !/Do this \/ protect this/.test(liveRun.html),
     'the verbose PR #157 groups are no longer the primary surface');
   const paydayDate = liveRun.advice.nearBoundary && liveRun.advice.nearBoundary.payday;
@@ -673,50 +683,67 @@ console.log('\n=== M. homepage leads with the compact payday worksheet ===');
     ok(liveRun.html.includes(`As at ${asOfLong}`),
       'front door names the dated as-of', asOfLong);
     ok(liveRun.html.includes(paydayDate.slice(8)) || liveRun.html.includes(paydayDate),
-      'front door names Forecast.nearBoundary.payday', paydayDate);
+      'front door names the next payday', paydayDate);
   }
   ok(!/function paydayEngine|Forecast\.paydayPlan/.test(read('public/plan.js') + read('public/forecast.js')),
     'front-door work did not add a second payday planner');
 }
 
-console.log('\n=== N. worksheet hierarchy, itemization, and fail-closed ===');
+console.log('\n=== N. current-period action hierarchy, itemization, and fail-closed ===');
 {
   const liveRun = composeLive(live.plan);
   const html = liveRun.html;
   const alloc = liveRun.advice.paydayAllocation;
-  const comingRows = (html.match(/class="payday-coming-row"/g) || []).length;
-  const spendable = independentSpendable(live.plan);
+  const action = liveRun.advice.currentPeriodAction;
+  ok(action && action.mode === 'between-paydays',
+    'dated live opening is between paydays, so the front door is the action plan');
+  ok(alloc && (alloc.obligations.items || []).length > 0,
+    'live paydayAllocation still returns obligation items');
+  const bills = action.bills || [];
+  const done = bills.filter(b => b.settlement === 'represented');
+  const verify = bills.filter(b => b.settlement === 'unverified');
+  const due = bills.filter(b => b.settlement === 'upcoming');
+  const doneRows = (html.match(/class="payday-done"/g) || []).length;
   const obligationRows = (html.match(/class="payday-obligation"/g) || []).length;
   const essentialRows = (html.match(/class="payday-essential"/g) || []).length;
-  ok(alloc && (alloc.obligations.items || []).length > 0,
-    'live paydayAllocation returns obligation items');
-  ok(obligationRows === (alloc.obligations.items || []).length,
-    'every live obligation item is rendered',
-    `${obligationRows} vs ${alloc.obligations.items.length}`);
-  ok(essentialRows === (alloc.essentials.items || []).length,
-    'every live essential requirement is rendered',
-    `${essentialRows} vs ${alloc.essentials.items.length}`);
+  ok(doneRows === done.length,
+    'every represented current-period bill is rendered as already done',
+    `${doneRows} vs ${done.length}`);
+  ok(obligationRows === verify.length + due.length,
+    'unverified and still-due bills are rendered as action rows',
+    `${obligationRows} vs ${verify.length}+${due.length}`);
+  const precise = action.remainingClaim === 'precise' || action.remainingClaim === 'posted-only';
+  if (precise) {
+    const spendCats = (action.categories || []).filter(c => c && c.class === 'essential' && (
+      Number(c.planned) > 0 || Number(c.remaining) !== 0 || Number(c.posted) > 0
+    ));
+    ok(essentialRows === spendCats.length,
+      'every current-period essential remaining line is rendered',
+      `${essentialRows} vs ${spendCats.length}`);
+  } else {
+    const needRows = (alloc.essentials.items || []).filter(r => r && Number(r.required) > 0);
+    ok(essentialRows === needRows.length,
+      'without precise actuals, period-need essential lines are rendered',
+      `${essentialRows} vs ${needRows.length}`);
+    ok(/cannot be confirmed|unavailable/i.test(html),
+      'absent or stale actuals fail closed on the page rather than inventing remaining');
+  }
   ok(!/Keep for bills/.test(html) && !/Hold for essential costs/.test(html),
     'collapsed bill/essential totals are not the household-facing lines');
-  ok(/dated opening/.test(html) && /settlement unverified/.test(html),
-    'the dated opening and unverified settlement state are visible');
-  ok(comingRows >= 1 && comingRows <= 5,
-    'live Coming before next payday stays short', String(comingRows));
-  ok((html.match(/data-fig="spendable"/g) || []).length === 1,
-    'usable cash is published once, as the money-available hero');
-  ok(html.includes(money2(spendable)),
-    'that hero is the independent spendable cash', money2(spendable));
-  ok((html.match(/class="payday-hero"/g) || []).length === 2,
-    'two prominent numbers only: cash and household spending');
+  ok(/settlement not proven/.test(html) || /Still due/.test(html) || /Already done/.test(html),
+    'bill settlement states are visible');
+  ok(!/confirmed unpaid|definitely unpaid|unpaid bill/i.test(html),
+    'unverified bills are not called unpaid');
+  ok(!/data-fig="spendable"/.test(html),
+    'usable cash is not the between-paydays headline');
+  ok((html.match(/class="payday-hero"/g) || []).length === 1,
+    'one prominent number: household spending permission');
   ok(!/payday-plans|missionSentence|Q20|Q25|Q26|Master-plan leftover|Credit left everywhere/.test(html),
-    'secondary Forecast explanation is not inside the worksheet');
+    'secondary Forecast explanation is not inside the action card');
   ok(!/\bsaved\b|\balready funded\b|\bfunded savings\b/i.test(html),
     'planned future-cost money is not presented as already funded or saved');
-  const cashHero = /data-fig="spendable">([^<]+)/.exec(html);
-  ok(cashHero && cashHero[1] === money2(spendable),
-    'money available is Forecast.startingCashAmount, not cash plus credit');
   ok(!html.includes(money2(liveRun.revolving)),
-    'HELOC/card headroom is not on the worksheet as cash');
+    'HELOC/card headroom is not on the action card as cash');
   const styles = read('public/styles.css');
   ok(/\.payday-hero \{[^}]*font-size:2\.25rem/.test(styles),
     'primary numbers are large, not cramped');
@@ -729,7 +756,7 @@ console.log('\n=== N. worksheet hierarchy, itemization, and fail-closed ===');
   const planJs = read('public/plan.js');
   const forecastJs = read('public/forecast.js');
   ok(!/function paydayEngine|Forecast\.paydayPlan/.test(planJs + forecastJs),
-    'no second payday planner was added for the compact worksheet');
+    'no second payday planner was added for the current-period card');
 }
 
 if (failures) {

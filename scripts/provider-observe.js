@@ -146,11 +146,45 @@ function genericAccountEvidenceInstant(account) {
   return account.updatedAt || account.balanceAsOf || account.dateLastFetched || null;
 }
 
-function normalizeLunchMoneyTransaction(raw) {
+function normalizeLunchMoneyCategory(raw) {
+  if (!raw || raw.id == null) return null;
+  return {
+    id: String(raw.id),
+    name: raw.name || raw.display_name || null,
+    isIncome: raw.is_income === true,
+    excludeFromTotals: raw.exclude_from_totals === true,
+    excludeFromBudget: raw.exclude_from_budget === true,
+    isGroup: raw.is_group === true || raw.is_group_parent === true,
+  };
+}
+
+function categoryIndexFromPayload(payload) {
+  const byId = new Map();
+  const add = raw => {
+    const cat = normalizeLunchMoneyCategory(raw);
+    if (!cat) return;
+    byId.set(cat.id, cat);
+    for (const child of raw.children || []) add(child);
+  };
+  for (const raw of payload && payload.categories || []) add(raw);
+  return byId;
+}
+
+function normalizeLunchMoneyTransaction(raw, categoriesById) {
   if (!raw || raw.id == null) fail('Lunch Money transaction is missing a stable id.');
   const accountId = raw.account_id != null ? raw.account_id
     : raw.plaid_account_id != null ? raw.plaid_account_id
     : raw.manual_account_id;
+  const categoryId = raw.category_id != null ? String(raw.category_id) : null;
+  const fromIndex = categoryId && categoriesById ? categoriesById.get(categoryId) : null;
+  const categoryName = raw.category_name || raw.categoryName
+    || (fromIndex && fromIndex.name) || null;
+  const isIncome = raw.is_income === true
+    || (fromIndex && fromIndex.isIncome === true);
+  const excludeFromTotals = raw.exclude_from_totals === true
+    || (fromIndex && fromIndex.excludeFromTotals === true);
+  const excludeFromBudget = raw.exclude_from_budget === true
+    || (fromIndex && fromIndex.excludeFromBudget === true);
   return {
     provider: 'lunchmoney',
     providerTransactionId: String(raw.id),
@@ -161,6 +195,11 @@ function normalizeLunchMoneyTransaction(raw) {
     pending: raw.is_pending === true,
     status: raw.status || null,
     kind: raw.kind || null,
+    categoryId,
+    categoryLabel: categoryName,
+    isIncome,
+    excludeFromTotals,
+    excludeFromBudget,
     contradictoryEvidence: raw.contradictoryEvidence === true,
     confirmedSettlement: raw.confirmedSettlement === true,
   };
@@ -177,12 +216,33 @@ function collectLunchMoneyAccounts(payload) {
 
 function normalizeLunchMoneyPayload(payload, fetchedAt) {
   if (!payload || typeof payload !== 'object') fail('Lunch Money payload is not an object.');
+  const categoriesById = categoryIndexFromPayload(payload);
+  const txWindow = payload.transactionWindow || payload.transaction_window || null;
   return {
     provider: 'lunchmoney',
     fetchedAt: payload.fetchedAt || fetchedAt,
     accounts: collectLunchMoneyAccounts(payload).map(normalizeLunchMoneyAccount),
-    transactions: (payload.transactions || []).map(normalizeLunchMoneyTransaction),
+    transactions: (payload.transactions || []).map(tx =>
+      normalizeLunchMoneyTransaction(tx, categoriesById)),
     pendingCoverage: classifyPendingCoverage(payload),
+    transactionWindow: {
+      startDate: (txWindow && (txWindow.startDate || txWindow.start_date)) || null,
+      endDate: (txWindow && (txWindow.endDate || txWindow.end_date)) || null,
+      complete: txWindow && txWindow.complete === true
+        ? true
+        : txWindow && (txWindow.complete === false
+          || txWindow.truncated === true
+          || txWindow.hasMore === true
+          || txWindow.has_more === true)
+          ? false
+          : null,
+      hasMore: txWindow && (txWindow.hasMore === true || txWindow.has_more === true)
+        ? true
+        : txWindow && (txWindow.hasMore === false || txWindow.has_more === false)
+          ? false
+          : null,
+      truncated: !!(txWindow && txWindow.truncated === true),
+    },
   };
 }
 
@@ -246,6 +306,8 @@ function lunchMoneyTransactionsUrl(now, historyDays) {
   txUrl.searchParams.set('start_date', start);
   txUrl.searchParams.set('end_date', end);
   txUrl.searchParams.set('include_pending', 'true');
+  txUrl.startDate = start;
+  txUrl.endDate = end;
   return txUrl;
 }
 
@@ -403,7 +465,8 @@ async function fetchLunchMoneyLive(token, now, historyDays) {
   const plaid = await tryGetJson(new URL(`${LIVE_BASE}/plaid_accounts`), token);
   let manuals = await tryGetJson(new URL(`${LIVE_BASE}/manual_accounts`), token);
   if (!manuals) manuals = await tryGetJson(new URL(`${LIVE_BASE}/assets`), token);
-  const txPayload = await httpsGetJson(txUrl, token);
+  const categoriesPayload = await tryGetJson(new URL(`${LIVE_BASE}/categories`), token);
+  const txPage = await fetchLunchMoneyTransactionsPaged(txUrl, token);
   const pendingPage = await fetchLunchMoneyTransactionsPaged(
     lunchMoneyPendingUniverseUrl(),
     token
@@ -412,10 +475,18 @@ async function fetchLunchMoneyLive(token, now, historyDays) {
     provider: 'lunchmoney',
     fetchedAt: now,
     accounts: accountsFromLivePayloads(plaid, manuals),
+    categories: (categoriesPayload && (categoriesPayload.categories || categoriesPayload)) || [],
     transactions: mergeTransactionsById(
-      (txPayload && txPayload.transactions) || [],
+      txPage.transactions,
       pendingPage.transactions
     ),
+    transactionWindow: {
+      startDate: txUrl.startDate,
+      endDate: txUrl.endDate,
+      complete: txPage.complete === true,
+      hasMore: txPage.hasMore,
+      truncated: txPage.truncated === true,
+    },
     pendingCoverage: {
       complete: pendingPage.complete === true,
       basis: PENDING_COVERAGE_BASIS,
@@ -919,6 +990,7 @@ function representedEventCandidates(input) {
         payee: tx.payee,
         identity: 'payee+account+date',
         amountNotUsed: true,
+        observedAmount: amount,
       });
       eventHits.set(key, list);
     }
@@ -1100,6 +1172,7 @@ function observe(input) {
     provider: 'lunchmoney',
     fetchedAt: normalized.fetchedAt,
     pendingCoverage: normalized.pendingCoverage,
+    transactionWindow: normalized.transactionWindow,
     mapped,
     unmapped,
     transactions: normalized.transactions,
@@ -1114,7 +1187,99 @@ function observe(input) {
     reconciliation: result,
   };
   assembled.identityProof = identityFingerprint(assembled);
+  assembled.currentPeriodActuals = sanitizedCurrentPeriodActuals(assembled, {
+    accountMap: mapDoc,
+    plan: input.data && input.data.plan,
+    billPaymentPayees,
+    asOf: dateOnly(normalized.fetchedAt),
+  });
   return assembled;
+}
+
+function atlasAccountRole(mapping) {
+  if (!mapping || !mapping.atlasRole) return 'unmapped';
+  if (mapping.atlasRole === 'household-cash') return 'household-cash';
+  if (CREDIT_ROLES.has(mapping.atlasRole)) return 'revolving-credit';
+  if (mapping.atlasRole === 'heloc' || mapping.atlasRole === 'mortgage') return mapping.atlasRole;
+  return 'household-external';
+}
+
+function kindHintFromTransaction(tx) {
+  const raw = tx && tx.kind ? String(tx.kind).toLowerCase() : '';
+  if (raw === 'payment' || raw === 'bill-payment' || raw === 'card-payment') return 'payment';
+  if (raw === 'transfer' || raw === 'internal-transfer') return 'transfer';
+  return null;
+}
+
+function sanitizedCurrentPeriodActuals(report, opts) {
+  opts = opts || {};
+  const asOf = dateOnly(opts.asOf || (report && report.fetchedAt));
+  const window = (report && report.transactionWindow) || {};
+  const collapsed = (report && report.collapsedTransactions)
+    || (report && report.transactions)
+    || [];
+  const mapDoc = opts.accountMap;
+  const txs = [];
+  for (const tx of collapsed) {
+    if (!tx || !tx.date) continue;
+    const amount = lunchMoneyDebitAmount(tx.amount);
+    if (amount == null) continue;
+    const mapping = mapDoc ? mappingFor(mapDoc, tx.providerAccountId) : null;
+    const treatment = pendingForecastTreatment(tx, asOf, {
+      plan: opts.plan,
+      billPaymentPayees: opts.billPaymentPayees,
+    });
+    txs.push({
+      date: tx.date,
+      amount,
+      pending: tx.pending === true,
+      pendingTreatment: treatment.treatment,
+      categoryLabel: tx.categoryLabel || null,
+      isIncome: tx.isIncome === true,
+      excludeFromTotals: tx.excludeFromTotals === true,
+      excludeFromBudget: tx.excludeFromBudget === true,
+      accountRole: atlasAccountRole(mapping),
+      kindHint: kindHintFromTransaction(tx),
+    });
+  }
+  const pending = report && report.pendingCoverage;
+  let pendingCoverage = 'unknown';
+  if (pending && pending.complete === true) pendingCoverage = 'complete';
+  else if (pending && pending.status === 'bounded-window') pendingCoverage = 'partial';
+  let transactionCoverage = 'complete';
+  if (window.truncated === true || window.complete === false || window.hasMore === true) {
+    transactionCoverage = 'truncated';
+  }
+  const representedActuals = [];
+  for (const candidate of (report && report.representedEventCandidates) || []) {
+    if (!candidate || !candidate.id || !candidate.date) continue;
+    const amt = Number(candidate.observedAmount);
+    if (!isFinite(amt)) continue;
+    representedActuals.push({
+      id: candidate.id,
+      date: candidate.date,
+      actual: Math.round(amt * 100) / 100,
+    });
+  }
+  let coverageStart = window.startDate || null;
+  let coverageThrough = window.endDate || null;
+  if (!coverageStart || !coverageThrough) {
+    for (const tx of txs) {
+      if (!tx || !tx.date) continue;
+      if (!coverageStart || tx.date < coverageStart) coverageStart = tx.date;
+      if (!coverageThrough || tx.date > coverageThrough) coverageThrough = tx.date;
+    }
+  }
+  return {
+    schema: 'atlas-current-period-actuals/v1',
+    observationAsOf: asOf,
+    coverageStart,
+    coverageThrough,
+    pendingCoverage,
+    transactionCoverage,
+    representedActuals,
+    transactions: txs,
+  };
 }
 
 function loadIdentity(file) {
@@ -1185,6 +1350,7 @@ const api = {
   mappingFor,
   lunchMoneyTransactionsUrl,
   lunchMoneyPendingUniverseUrl,
+  fetchLunchMoneyTransactionsPaged,
   classifyPendingCoverage,
   lunchMoneyDebitAmount,
   calendarDaysBetween,
@@ -1209,6 +1375,7 @@ const api = {
   normalizeLunchMoneyPayload,
   observationsFromMappedAccount,
   spendableCashFromObservations,
+  sanitizedCurrentPeriodActuals,
   observe,
   fetchLunchMoneyLive,
   resolveLiveToken,
