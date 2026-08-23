@@ -2019,6 +2019,16 @@
     return 'unknown';
   }
 
+  function transactionCoverageStatus(packet) {
+    const cov = packet && packet.transactionCoverage;
+    if (cov === 'truncated' || cov === 'incomplete') return 'truncated';
+    if (cov && typeof cov === 'object'
+      && (cov.truncated === true || cov.complete === false)) {
+      return 'truncated';
+    }
+    return 'complete';
+  }
+
   function actualsCoverageState(asOf, periodStart, opts) {
     const packet = currentPeriodActualsPacket(opts);
     if (!packet) {
@@ -2058,6 +2068,17 @@
         reason: 'Transaction coverage starts after the current period origin.',
       };
     }
+    if (transactionCoverageStatus(packet) === 'truncated') {
+      return {
+        status: 'incomplete',
+        remainingClaim: 'unavailable',
+        pendingStatus,
+        observationAsOf,
+        coverageStart,
+        coverageThrough,
+        reason: 'Posted transaction coverage is truncated. Current remaining amounts unavailable.',
+      };
+    }
     if (pendingStatus === 'complete') {
       return {
         status: 'current',
@@ -2076,7 +2097,7 @@
       observationAsOf,
       coverageStart,
       coverageThrough,
-      reason: 'Pending coverage is not complete. Committed remaining is not claimed as precise.',
+      reason: 'Pending coverage is not complete. Observed pending still constrains remaining; additional unknown pending may exist.',
     };
   }
 
@@ -2126,16 +2147,30 @@
     return out;
   }
 
-  function categoryCommittedActual(row, remainingClaim) {
+  function categoryCommittedActual(row) {
     if (!row) return { posted: 0, pending: 0, committed: 0 };
     const posted = roundCent(row.posted);
     const pending = roundCent(row.pending);
-    const committed = remainingClaim === 'precise' ? roundCent(posted + pending) : posted;
-    return { posted, pending, committed };
+    return { posted, pending, committed: roundCent(posted + pending) };
+  }
+
+  function representedActualMap(opts) {
+    const packet = currentPeriodActualsPacket(opts);
+    const map = new Map();
+    const rows = packet && Array.isArray(packet.representedActuals)
+      ? packet.representedActuals : [];
+    for (const row of rows) {
+      if (!row || !row.id || !row.date) continue;
+      const amt = Number(row.actual);
+      if (!isFinite(amt)) continue;
+      map.set(row.id + '@' + row.date, roundCent(amt));
+    }
+    return map;
   }
 
   function currentPeriodBills(plan, asOf, origin, periodLast, opts) {
     const represented = representedKeySet(plan, opts, asOf);
+    const observed = representedActualMap(opts);
     const events = expandEvents(plan, origin, periodLast,
       Object.assign({}, opts || {}, { keepRepresented: true }));
     const items = [];
@@ -2154,7 +2189,9 @@
       let remaining;
       if (paid) {
         settlement = 'represented';
-        actual = roundCent(amt);
+        actual = observed.has(e.id + '@' + e.date)
+          ? observed.get(e.id + '@' + e.date)
+          : null;
         remaining = 0;
       } else if (e.date >= asOf) {
         settlement = 'upcoming';

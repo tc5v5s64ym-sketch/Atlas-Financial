@@ -176,8 +176,8 @@ console.log('=== A. paid bill via representedEvents ===');
   const row = bill(action, 'bcaa');
   const events = F.expandEvents(plan, PAYDAY, PERIOD_LAST, {});
   ok(row && near(row.planned, 82.96), 'planned amount exists', row && row.planned);
-  ok(row && near(row.actual, 82.96) && near(row.remaining, 0),
-    'represented actual equals planned and remaining is 0');
+  ok(row && row.actual == null && near(row.remaining, 0),
+    'represented remaining is 0; schedule amount is not fabricated as actual');
   ok(row && row.settlement === 'represented', 'status is represented / paid');
   ok(!events.some(e => e.id === 'bcaa'),
     'expandEvents omits the represented occurrence — no second reserve');
@@ -571,6 +571,200 @@ console.log('\n=== observer category identity passes through ===');
     'transfer category identity is preserved');
   ok(!report.currentPeriodActuals.transactions.some(t => t.payee),
     'sanitized actuals dropped the fixture payee');
+}
+
+console.log('\n=== O. known pending still constrains remaining when pending coverage is incomplete ===');
+{
+  const txs = [
+    {
+      date: PAYDAY, amount: 18.40, pending: true,
+      pendingTreatment: 'unresolved', categoryLabel: 'Groceries',
+      accountRole: 'revolving-credit',
+    },
+  ];
+  const plan = basePlan();
+  const planned = plannedNeed(1800, PAYDAY, PERIOD_LAST);
+  const action = F.currentPeriodAction(plan, PAYDAY, opts({
+    currentPeriodActuals: packet(txs, { pendingCoverage: 'partial' }),
+  }));
+  const row = cat(action, 'groceries');
+  const html = paydayComposer().paydayAnswerHtml({
+    plan, asOf: PAYDAY,
+    advice: {
+      weekly: 180, mode: 'normal',
+      paydayAllocation: F.paydayAllocation(plan, PAYDAY, opts({
+        currentPeriodActuals: packet(txs, { pendingCoverage: 'partial' }),
+      })),
+      currentPeriodAction: action,
+    },
+    recommended: 180, weekly: 180,
+  });
+  ok(action.remainingClaim === 'posted-only',
+    'incomplete pending universe is qualified, not claimed as precise');
+  ok(row && near(row.posted, 0) && near(row.pending, 18.40),
+    'known pending is labelled pending, not posted');
+  ok(row && near(row.committed, 18.40) && near(row.remaining, planned - 18.40),
+    'observed pending still reduces available grocery room');
+  ok(/pending \$18\.40/.test(html) && /additional unknown pending may exist/.test(html),
+    'page shows the pending gravity and the qualified coverage');
+}
+
+console.log('\n=== P. truncated posted-transaction page cannot claim precise remaining ===');
+{
+  const txs = [
+    { date: PAYDAY, amount: 40, pending: false, categoryLabel: 'Groceries', accountRole: 'household-cash' },
+  ];
+  const plan = basePlan();
+  const action = F.currentPeriodAction(plan, PAYDAY, opts({
+    currentPeriodActuals: packet(txs, { transactionCoverage: 'truncated' }),
+  }));
+  const groceries = cat(action, 'groceries');
+  ok(action.remainingClaim === 'unavailable' && action.coverage.status === 'incomplete',
+    'truncated posted coverage fails closed');
+  ok(groceries && groceries.remaining == null,
+    'no precise remaining is published from an incomplete posted page');
+}
+
+console.log('\n=== Q. represented bill actual is observed amount, never the schedule ===');
+{
+  const plan = basePlan({
+    bills: [
+      { id: 'bcaa', label: 'BCAA', frequency: 'once', date: PAYDAY, amount: 82.96, confidence: 'confirmed' },
+    ],
+    opening: { asOf: PAYDAY, representedEvents: [{ id: 'bcaa', date: PAYDAY }] },
+  });
+  const withoutAmount = F.currentPeriodAction(plan, PAYDAY, opts());
+  ok(bill(withoutAmount, 'bcaa') && bill(withoutAmount, 'bcaa').actual == null
+    && near(bill(withoutAmount, 'bcaa').remaining, 0),
+    'identity without an observed amount publishes actual unavailable and remaining 0');
+  const withObserved = F.currentPeriodAction(plan, PAYDAY, opts({
+    currentPeriodActuals: packet([], {
+      representedActuals: [{ id: 'bcaa', date: PAYDAY, actual: 103 }],
+    }),
+  }));
+  const row = bill(withObserved, 'bcaa');
+  ok(row && near(row.planned, 82.96) && near(row.actual, 103) && near(row.remaining, 0),
+    'observed $103 is actual; planned $82.96 is not copied',
+    row && `${row.actual} vs planned ${row.planned}`);
+  ok(row && row.settlement === 'represented' && !near(row.actual, row.planned),
+    'planned and observed amounts may differ without inventing equality');
+}
+
+console.log('\n=== R. BCAA / ICBC identity is payee+account+date; RESP / CMAW stay gated ===');
+{
+  const identity = JSON.parse(fs.readFileSync(
+    path.join(__dirname, 'docs', 'connectivity', 'transaction-identity.json'), 'utf8'));
+  const map = JSON.parse(fs.readFileSync(
+    path.join(__dirname, 'docs', 'connectivity', 'fixtures', 'provider-account-map.json'), 'utf8'));
+  const bcaaRule = (identity.rules || []).find(r => r.eventId === 'bcaa-aug15-outstanding');
+  const icbcRule = (identity.rules || []).find(r => r.eventId === 'icbc-aug15-outstanding');
+  const respRule = (identity.rules || []).find(r => r.eventId === 'resp' || r.eventId === 'resp-aug15-outstanding');
+  const duesRule = (identity.rules || []).find(r => r.eventId === 'uniondues' || r.eventId === 'uniondues-aug15-outstanding');
+  ok(bcaaRule && bcaaRule.payeePattern === 'BCAA-AdvAutoIns' && bcaaRule.atlasAccountId === 'chequing-a'
+    && bcaaRule.direction === 'debit',
+    'BCAA outstanding uses documented payee+Chequing A debit identity');
+  ok(icbcRule && icbcRule.payeePattern === 'ICBC INS' && icbcRule.atlasAccountId === 'chequing-a'
+    && icbcRule.direction === 'debit',
+    'ICBC outstanding uses documented payee+Chequing A debit identity');
+  ok(!respRule && !duesRule,
+    'RESP and CMAW have no payee rule — amount or transfer label is not identity');
+
+  const data = JSON.parse(fs.readFileSync(path.join(__dirname, 'data.json'), 'utf8'));
+  const outstandingBills = (data.plan.bills || []).filter(b => [
+    'bcaa-aug15-outstanding', 'icbc-aug15-outstanding',
+    'resp-aug15-outstanding', 'uniondues-aug15-outstanding',
+  ].includes(b.id));
+  ok(outstandingBills.length === 4,
+    'canonical plan still names the four 15 August reserved occurrences');
+  const payload = {
+    provider: 'lunchmoney',
+    fetchedAt: '2026-08-16T18:00:00.000Z',
+    transactionWindow: { startDate: '2026-08-09', endDate: '2026-08-16', complete: true },
+    pendingCoverage: {
+      complete: true, basis: O.PENDING_COVERAGE_BASIS, hasMore: false, truncated: false,
+    },
+    accounts: [{
+      id: 1001, name: 'Cheq A', type: 'cash', balance: 100,
+      updated_at: '2026-08-16T17:00:00.000Z',
+    }, {
+      id: 1002, name: 'Cheq B', type: 'cash', balance: 50,
+      updated_at: '2026-08-16T17:00:00.000Z',
+    }],
+    categories: [{ id: 11, name: 'Insurance', is_income: false, exclude_from_totals: false }],
+    transactions: [
+      { id: 1, account_id: 1001, date: '2026-08-16', amount: 103, category_id: 11, is_pending: false, payee: 'BCAA-AdvAutoIns INS' },
+      { id: 2, account_id: 1001, date: '2026-08-16', amount: 99.91, category_id: 11, is_pending: false, payee: 'ICBC INS' },
+      { id: 3, account_id: 1001, date: '2026-08-16', amount: 100, category_id: 11, is_pending: false, payee: 'INTERNAL TRANSFER RESP' },
+      { id: 4, account_id: 1001, date: '2026-08-16', amount: 25, category_id: 11, is_pending: false, payee: 'CMAW LOCAL 1995' },
+    ],
+  };
+  const report = O.observe({
+    provider: 'lunchmoney', payload, accountMap: map, data, identity,
+  });
+  const bcaa = report.representedEventCandidates.find(c => c.id === 'bcaa-aug15-outstanding');
+  const icbc = report.representedEventCandidates.find(c => c.id === 'icbc-aug15-outstanding');
+  ok(bcaa && bcaa.amountNotUsed === true && bcaa.identity === 'payee+account+date'
+    && near(bcaa.observedAmount, 103),
+    'BCAA matches payee+account+date; $103 is carried after identity, not used as identity');
+  ok(icbc && icbc.amountNotUsed === true,
+    'ICBC matches payee+account+date');
+  ok(!report.representedEventCandidates.some(c => c.id === 'resp-aug15-outstanding'
+    || c.id === 'uniondues-aug15-outstanding'),
+    'RESP transfer label and CMAW amount+date do not become represented');
+
+  const amountOnly = JSON.parse(JSON.stringify(payload));
+  amountOnly.transactions = [
+    { id: 5, account_id: 1001, date: '2026-08-16', amount: 82.96, is_pending: false, payee: 'UNKNOWN DEBIT' },
+  ];
+  const rejected = O.observe({
+    provider: 'lunchmoney', payload: amountOnly, accountMap: map, data, identity,
+  });
+  ok(!rejected.representedEventCandidates.some(c => String(c.id).indexOf('bcaa') === 0),
+    'same scheduled date and BCAA amount without the documented payee stays unverified');
+
+  const wrongAccount = JSON.parse(JSON.stringify(payload));
+  wrongAccount.transactions = [
+    { id: 6, account_id: 1002, date: '2026-08-16', amount: 82.96, is_pending: false, payee: 'BCAA-AdvAutoIns INS' },
+  ];
+  const misplaced = O.observe({
+    provider: 'lunchmoney', payload: wrongAccount, accountMap: map, data, identity,
+  });
+  ok(!misplaced.representedEventCandidates.some(c => String(c.id).indexOf('bcaa') === 0),
+    'documented BCAA payee on Chequing B is not inferred as the Chequing A bill');
+
+  const wrongDate = JSON.parse(JSON.stringify(payload));
+  wrongDate.transactions = [
+    { id: 7, account_id: 1001, date: '2026-08-15', amount: 82.96, is_pending: false, payee: 'BCAA-AdvAutoIns INS' },
+  ];
+  const dated = O.observe({
+    provider: 'lunchmoney', payload: wrongDate, accountMap: map, data, identity,
+  });
+  ok(!dated.representedEventCandidates.some(c => String(c.id).indexOf('bcaa') === 0),
+    'BCAA on 15 August is not stretched onto the 16 August scheduled occurrence');
+
+  const forecastPlan = basePlan({
+    opening: {
+      asOf: '2026-08-16',
+      representedEvents: report.representedEventCandidates.map(c => ({ id: c.id, date: c.date })),
+    },
+    income: [{
+      id: 'pay', label: 'Pay', frequency: 'once', date: '2026-08-28',
+      amount: 2500, confidence: 'confirmed',
+    }],
+    bills: outstandingBills,
+  });
+  const action = F.currentPeriodAction(forecastPlan, '2026-08-16', opts({
+    currentPeriodActuals: report.currentPeriodActuals,
+  }));
+  const bcaaBill = bill(action, 'bcaa-aug15-outstanding');
+  const respBill = bill(action, 'resp-aug15-outstanding');
+  ok(bcaaBill && bcaaBill.settlement === 'represented' && near(bcaaBill.actual, 103)
+    && near(bcaaBill.remaining, 0),
+    'identified BCAA publishes observed actual, not the $82.96 schedule');
+  ok(respBill && respBill.settlement !== 'represented' && near(respBill.remaining, 100),
+    'RESP without a payee rule is not marked paid');
+  ok(!/"payee"\s*:/.test(JSON.stringify(report.currentPeriodActuals)),
+    'sanitized represented actuals still drop payee');
 }
 
 if (failures) {

@@ -23,6 +23,34 @@
       "atlasAccountId": "chequing-b",
       "direction": "credit",
       "note": "Canada Child Benefit posts as CHILD TAX BEN CCB on Chequing B. Do not match a same-day deposit by amount alone."
+    },
+    {
+      "eventId": "bcaa",
+      "payeePattern": "BCAA-AdvAutoIns",
+      "atlasAccountId": "chequing-a",
+      "direction": "debit",
+      "note": "ACCOUNT_FACTS payee BCAA-AdvAutoIns INS on Chequing A. Amount is not identity."
+    },
+    {
+      "eventId": "bcaa-aug15-outstanding",
+      "payeePattern": "BCAA-AdvAutoIns",
+      "atlasAccountId": "chequing-a",
+      "direction": "debit",
+      "note": "Same BCAA payee+account contract for the reserved 15 August occurrence dated 2026-08-16. Amount is not identity."
+    },
+    {
+      "eventId": "icbc",
+      "payeePattern": "ICBC INS",
+      "atlasAccountId": "chequing-a",
+      "direction": "debit",
+      "note": "ACCOUNT_FACTS payee ICBC INS on Chequing A. Amount is not identity."
+    },
+    {
+      "eventId": "icbc-aug15-outstanding",
+      "payeePattern": "ICBC INS",
+      "atlasAccountId": "chequing-a",
+      "direction": "debit",
+      "note": "Same ICBC payee+account contract for the reserved 15 August occurrence dated 2026-08-16. Amount is not identity."
     }
   ]
 }

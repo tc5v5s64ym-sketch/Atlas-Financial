@@ -228,6 +228,20 @@ function normalizeLunchMoneyPayload(payload, fetchedAt) {
     transactionWindow: {
       startDate: (txWindow && (txWindow.startDate || txWindow.start_date)) || null,
       endDate: (txWindow && (txWindow.endDate || txWindow.end_date)) || null,
+      complete: txWindow && txWindow.complete === true
+        ? true
+        : txWindow && (txWindow.complete === false
+          || txWindow.truncated === true
+          || txWindow.hasMore === true
+          || txWindow.has_more === true)
+          ? false
+          : null,
+      hasMore: txWindow && (txWindow.hasMore === true || txWindow.has_more === true)
+        ? true
+        : txWindow && (txWindow.hasMore === false || txWindow.has_more === false)
+          ? false
+          : null,
+      truncated: !!(txWindow && txWindow.truncated === true),
     },
   };
 }
@@ -452,7 +466,7 @@ async function fetchLunchMoneyLive(token, now, historyDays) {
   let manuals = await tryGetJson(new URL(`${LIVE_BASE}/manual_accounts`), token);
   if (!manuals) manuals = await tryGetJson(new URL(`${LIVE_BASE}/assets`), token);
   const categoriesPayload = await tryGetJson(new URL(`${LIVE_BASE}/categories`), token);
-  const txPayload = await httpsGetJson(txUrl, token);
+  const txPage = await fetchLunchMoneyTransactionsPaged(txUrl, token);
   const pendingPage = await fetchLunchMoneyTransactionsPaged(
     lunchMoneyPendingUniverseUrl(),
     token
@@ -463,12 +477,15 @@ async function fetchLunchMoneyLive(token, now, historyDays) {
     accounts: accountsFromLivePayloads(plaid, manuals),
     categories: (categoriesPayload && (categoriesPayload.categories || categoriesPayload)) || [],
     transactions: mergeTransactionsById(
-      (txPayload && txPayload.transactions) || [],
+      txPage.transactions,
       pendingPage.transactions
     ),
     transactionWindow: {
       startDate: txUrl.startDate,
       endDate: txUrl.endDate,
+      complete: txPage.complete === true,
+      hasMore: txPage.hasMore,
+      truncated: txPage.truncated === true,
     },
     pendingCoverage: {
       complete: pendingPage.complete === true,
@@ -973,6 +990,7 @@ function representedEventCandidates(input) {
         payee: tx.payee,
         identity: 'payee+account+date',
         amountNotUsed: true,
+        observedAmount: amount,
       });
       eventHits.set(key, list);
     }
@@ -1228,6 +1246,21 @@ function sanitizedCurrentPeriodActuals(report, opts) {
   let pendingCoverage = 'unknown';
   if (pending && pending.complete === true) pendingCoverage = 'complete';
   else if (pending && pending.status === 'bounded-window') pendingCoverage = 'partial';
+  let transactionCoverage = 'complete';
+  if (window.truncated === true || window.complete === false || window.hasMore === true) {
+    transactionCoverage = 'truncated';
+  }
+  const representedActuals = [];
+  for (const candidate of (report && report.representedEventCandidates) || []) {
+    if (!candidate || !candidate.id || !candidate.date) continue;
+    const amt = Number(candidate.observedAmount);
+    if (!isFinite(amt)) continue;
+    representedActuals.push({
+      id: candidate.id,
+      date: candidate.date,
+      actual: Math.round(amt * 100) / 100,
+    });
+  }
   let coverageStart = window.startDate || null;
   let coverageThrough = window.endDate || null;
   if (!coverageStart || !coverageThrough) {
@@ -1243,6 +1276,8 @@ function sanitizedCurrentPeriodActuals(report, opts) {
     coverageStart,
     coverageThrough,
     pendingCoverage,
+    transactionCoverage,
+    representedActuals,
     transactions: txs,
   };
 }
@@ -1315,6 +1350,7 @@ const api = {
   mappingFor,
   lunchMoneyTransactionsUrl,
   lunchMoneyPendingUniverseUrl,
+  fetchLunchMoneyTransactionsPaged,
   classifyPendingCoverage,
   lunchMoneyDebitAmount,
   calendarDaysBetween,

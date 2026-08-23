@@ -745,8 +745,8 @@ function paydayCoverageNote(action) {
   }
   if (cov.remainingClaim === 'posted-only') {
     return through
-      ? `Posted spending through ${through}. Pending coverage is not complete.`
-      : 'Posted spending is current. Pending coverage is not complete.';
+      ? `Posted and observed pending through ${through}. Pending coverage is not complete, so additional unknown pending may exist.`
+      : 'Observed pending still constrains remaining. Pending coverage is not complete, so additional unknown pending may exist.';
   }
   return through
     ? `Actual spending through ${through}.`
