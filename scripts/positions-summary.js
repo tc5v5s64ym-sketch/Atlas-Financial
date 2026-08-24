@@ -115,7 +115,8 @@ function regenerateComputedRows(data, csvText, opts) {
 
   put('Total known debt', W('SUMMARY', 'Total known debt', 'Liability', 'CAD', n2(debts), {
     annualInterest: n2((data.debts || []).reduce((s, x) => s + (x.annualInterest || 0), 0)),
-    note: 'Derived from data.json debts; Flexiti closed at zero; Amex closed' }));
+    note: 'Derived from data.json verified debt balances; Affirm final 32.53 cash obligation is scheduled '
+      + 'in Forecast but excluded here because its contractual balance is not independently known; Amex closed' }));
 
   put('Total credit-card debt', W('SUMMARY', 'Total credit-card debt', 'Liability', 'CAD', n2(cards), {
     annualInterest: n2((data.debts || []).filter(x => !x.secured).reduce((s, x) => s + (x.annualInterest || 0), 0)),

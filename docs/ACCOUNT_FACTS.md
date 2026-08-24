@@ -1964,10 +1964,13 @@ account shows a complete picture of any event.
 A **ChatGPT subscription** (US$22.40) also bills here, which is not in any
 subscription list captured so far.
 
-**Flexiti — PAID OFF AND CLOSED** *(owner-confirmed 2026-08-09)*.
-$2,654.28 was paid across the window: single payments of $1,354.28 and
-$1,000.00, plus $300.00 instalments, all from DEBT&PAYMENTS. No balance, no
-rate, no due date. **Excluded from the debt list and from net worth.**
+**Affirm/Flexiti — FINAL PAYMENT PENDING** *(owner-confirmed 2026-08-23)*.
+One final **$32.53** payment is due **2026-09-21**, with no recurrence after
+it. $2,654.28 was paid earlier across the window: single payments of $1,354.28
+and $1,000.00, plus $300.00 of instalments. The current contractual balance and
+rate are not independently known and are not inferred from the payment. The
+$32.53 cash obligation is scheduled once in Forecast; Affirm stays outside the
+verified debt-balance and net-worth totals until that payment settles.
 
 ---
 

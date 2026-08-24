@@ -520,7 +520,8 @@ The 30 June coaching remittance was re-traced and a coach was paid out of it —
 - **B52** The $10,000 Ivoclar charge — a funded pass-through, not household money
 - **B53** `Head Canada` — a coaching business expense Amanda absorbs
 - **B12** Home valued at $1.1m–$1.4m [ESTIMATE]
-- **B37 / B11** Amex closed; Flexiti paid off and closed
+- **B37 / B11** Amex closed; corrected 2026-08-23: Affirm/Flexiti has one final
+  $32.53 payment due 2026-09-21, then no recurrence
 - **B5 / B35 / B41 / B33** Earlier verifications
 
 ---
