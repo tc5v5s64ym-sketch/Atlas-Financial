@@ -352,6 +352,55 @@ footer { margin-top:56px; padding-top:18px; border-top:1px solid var(--grid);
   color:var(--text-secondary); font-size:.8rem; line-height:1.4;
 }
 .allocation-unavailable { margin-top:10px; padding:12px; border:1px solid var(--border); border-radius:10px; }
+.current-period-card { margin-top:2px; }
+.current-period-meta {
+  display:flex; justify-content:space-between; gap:16px; align-items:baseline;
+  padding:12px 14px; border-radius:11px; background:var(--plane);
+}
+.current-period-meta span, .current-period-quick-item > span {
+  color:var(--muted); font-size:.75rem; font-weight:750; letter-spacing:.06em; text-transform:uppercase;
+}
+.current-period-meta b { text-align:right; font-size:.92rem; }
+.current-period-quick { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px; }
+.current-period-quick-item { padding:11px 13px; border:1px solid var(--grid); border-radius:10px; }
+.current-period-quick-item > span { display:block; margin-bottom:4px; }
+.current-period-quick-item b { font-size:.94rem; }
+.current-period-quick-item .operating-amount { margin:0; font-size:1.35rem; }
+.current-period-quick-item .payday-refuse { font-size:.88rem; }
+.current-period-block { margin-top:16px; }
+.current-period-block h3 {
+  margin:0 0 6px; color:var(--muted); font-size:.75rem; font-weight:750;
+  letter-spacing:.06em; text-transform:uppercase;
+}
+.current-period-row {
+  display:grid; grid-template-columns:minmax(0,1fr) auto; gap:16px; align-items:start;
+  padding:10px 0; border-bottom:1px solid var(--grid); font-size:.9rem;
+}
+.current-period-row > div:first-child > span,
+.current-period-values span,
+.current-period-category > div > span {
+  display:block; margin-top:3px; color:var(--text-secondary); font-size:.77rem; line-height:1.35;
+}
+.current-period-values { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.current-period-values span:first-child { margin-top:0; color:var(--text-primary); font-weight:650; }
+.current-period-empty { margin:7px 0 0; color:var(--text-secondary); font-size:.84rem; }
+.current-period-category-head, .current-period-category {
+  display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:14px; align-items:baseline;
+}
+.current-period-category-head {
+  padding:7px 0; color:var(--muted); font-size:.7rem; font-weight:750;
+  letter-spacing:.05em; text-transform:uppercase;
+}
+.current-period-category {
+  padding:9px 0; border-bottom:1px solid var(--grid); font-size:.88rem;
+  font-variant-numeric:tabular-nums;
+}
+.current-period-category > span { min-width:78px; text-align:right; }
+.current-period-withheld {
+  margin:7px 0; color:var(--critical); font-size:.82rem; line-height:1.4;
+}
+.current-period-category .current-period-withheld { margin:0; }
+.current-period-unavailable { padding:12px; border:1px solid var(--border); border-radius:10px; }
 .secondary-section { margin-top:24px; }
 .secondary-disclose > summary { background:var(--surface-1); }
 .secondary-body { padding-top:2px; }
@@ -364,6 +413,12 @@ footer { margin-top:56px; padding-top:18px; border-top:1px solid var(--grid);
   .allocation-available b { font-size:1.45rem; }
   .allocation-reconcile { display:block; }
   .allocation-reconcile span { display:block; margin-top:3px; }
+  .current-period-meta { display:block; }
+  .current-period-meta b { display:block; margin-top:4px; text-align:left; }
+  .current-period-row { grid-template-columns:1fr; gap:6px; }
+  .current-period-values { text-align:left; }
+  .current-period-category-head, .current-period-category { grid-template-columns:minmax(0,1fr) auto auto; gap:8px; }
+  .current-period-category > span { min-width:58px; }
 }
 
 .payday-card { padding:22px 24px; }

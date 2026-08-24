@@ -49,6 +49,7 @@ const suites = [
   ['Lunch Money historical actuals authority (AF-OPERATE-01)', 'test-periods-lunchmoney.js'],
   ['decision-first payday operating surface (AF-OPERATE-02)', 'test-operating-surface.js'],
   ['ordered payday action sheet (AF-OPERATE-03)', 'test-operate-payday-action-sheet.js'],
+  ['between-paydays operating view (AF-OPERATE-04)', 'test-operate-between-paydays.js'],
   ['weekly cap conversion + discretionary room', 'test-weekly-cap.js'],
   ['food and fuel monthly figures', 'test-food-fuel.js'],
   ['phase titles and risk list', 'test-plan-phases.js'],
