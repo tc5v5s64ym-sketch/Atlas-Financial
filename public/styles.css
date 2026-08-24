@@ -311,6 +311,7 @@ footer { margin-top:56px; padding-top:18px; border-top:1px solid var(--grid);
   margin:0 0 7px; color:var(--muted); font-size:.72rem; font-weight:750;
   letter-spacing:.06em; text-transform:uppercase;
 }
+.future-gravity-optional { margin-top:14px; }
 .future-gravity { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px; }
 .future-gravity-row {
   min-width:0; padding:12px 13px; border:1px solid var(--grid); border-radius:11px;

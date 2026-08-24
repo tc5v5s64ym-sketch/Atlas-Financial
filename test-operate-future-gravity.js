@@ -38,8 +38,33 @@ function loadRenderer() {
 
 function card(html, id) {
   const escaped = id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const match = new RegExp(`<div class="future-gravity-row [^"]*" data-future-gravity-id="${escaped}">([\\s\\S]*?)<\\/div>\\s*(?=<div class="future-gravity-row|<\\/div><p class="future-gravity-note")`).exec(html);
-  return match ? match[0] : '';
+  const start = html.search(new RegExp(`<div class="future-gravity-row [^"]*" data-future-gravity-id="${escaped}">`));
+  if (start < 0) return '';
+  let depth = 0;
+  for (let i = start; i < html.length; i++) {
+    if (html.startsWith('<div', i)) depth++;
+    else if (html.startsWith('</div>', i)) {
+      depth--;
+      if (depth === 0) return html.slice(start, i + 6);
+    }
+  }
+  return '';
+}
+
+function shapingSlice(html) {
+  const start = html.indexOf('Future costs shaping today');
+  if (start < 0) return '';
+  const residual = html.indexOf("does not constrain today's safe-to-spend");
+  const note = html.indexOf('class="future-gravity-note"');
+  const end = residual >= 0 ? residual : (note >= 0 ? note : html.length);
+  return html.slice(start, end);
+}
+
+function residualSlice(html) {
+  const start = html.indexOf("does not constrain today's safe-to-spend");
+  if (start < 0) return '';
+  const note = html.indexOf('class="future-gravity-note"', start);
+  return html.slice(start, note >= 0 ? note : html.length);
 }
 
 function barePlan(extra) {
@@ -104,6 +129,15 @@ console.log('=== verdicts, remaining amounts and payday set-asides are direct ou
   ok(optional.includes('$12.34') && optional.includes('Set aside this payday')
     && optional.includes('OPTIONAL'),
   'an optional set-aside comes from Forecast.paydayAllocation without becoming required');
+  const shaping = shapingSlice(html);
+  const residual = residualSlice(html);
+  ok(shaping.includes('data-future-gravity-id="track"') && shaping.includes('data-future-gravity-id="risk"')
+    && shaping.includes('data-future-gravity-id="gap"')
+    && !shaping.includes('data-future-gravity-id="optional"'),
+    'required and bounded-flex rows stay in the shaping-today group');
+  ok(residual.includes('data-future-gravity-id="optional"') && residual.includes('$12.34')
+    && !residual.includes('Protected'),
+    'an optional payday set-aside stays residual and is not labelled protected');
   ok(html.includes('487-day master plan') && html.includes('beyond the short display window'),
     'the surface names the incumbent master horizon rather than the short view');
 }
@@ -165,6 +199,69 @@ console.log('\n=== a protected cost outside the short view remains visible and b
   ok(row && html.includes(row.label) && html.includes(row.verdict)
     && html.includes(renderer.money2(row.remaining)),
   'the same incumbent major-plan row remains visible on the operating surface');
+}
+
+console.log('\n=== a zero-allocated optional item is not presented as shaping or protecting today ===');
+{
+  const asOf = '2026-08-19';
+  const due = '2027-01-15';
+  const start = 8000;
+  const buffer = 500;
+  const cost = 2000;
+  const requiredOnly = barePlan({
+    startingCash: { amount: start }, defaults: { targetBuffer: buffer },
+    commitments: [{ id: 'long-horizon', label: 'Long-horizon protected cost',
+      date: due, amount: cost, confidence: 'confirmed' }],
+  });
+  const both = barePlan({
+    startingCash: { amount: start }, defaults: { targetBuffer: buffer },
+    commitments: [
+      { id: 'long-horizon', label: 'Long-horizon protected cost',
+        date: due, amount: cost, confidence: 'confirmed' },
+      { id: 'optional-zero', label: 'Optional residual purchase',
+        amount: 1500, optional: true, confidence: 'estimated' },
+    ],
+  });
+  const withoutOptional = F.recommend(requiredOnly, asOf, recOpts({ targetBuffer: buffer, viewDays: 14 }));
+  const advice = F.recommend(both, asOf, recOpts({ targetBuffer: buffer, viewDays: 14 }));
+  const days = F.knowledgeHorizon(both, asOf, {}).days;
+  const hand = Math.floor((((start - cost - buffer) * 7 / days) / 5)) * 5;
+  const requiredRow = (advice.majorPlans || []).find(item => item.id === 'long-horizon');
+  const optionalRow = (advice.majorPlans || []).find(item => item.id === 'optional-zero');
+
+  const rendered = {
+    knowledge: advice.knowledge,
+    majorPlans: advice.majorPlans,
+    paydayAllocation: {
+      futureCosts: (advice.paydayAllocation && advice.paydayAllocation.futureCosts) || [],
+      optional: [{ id: 'optional-zero', allocated: 0 }],
+      unresolved: (advice.paydayAllocation && advice.paydayAllocation.unresolved) || [],
+    },
+  };
+  const html = renderer.futureGravityHtml(rendered);
+  const shaping = shapingSlice(html);
+  const residual = residualSlice(html);
+  const optionalCard = card(html, 'optional-zero');
+
+  ok(F.diffDays(asOf, due) >= 14,
+    'fixture commitment is outside the 14-day display window', `${F.diffDays(asOf, due)} days away`);
+  ok(advice.weekly === hand && advice.weekly === withoutOptional.weekly,
+    'independent cash drain proves only the required long-horizon cost constrains today',
+    `$${advice.weekly} vs hand $${hand}; required-only $${withoutOptional.weekly}`);
+  ok(requiredRow && shaping.includes(requiredRow.label) && shaping.includes(requiredRow.verdict)
+    && shaping.includes(renderer.money2(requiredRow.remaining))
+    && shaping.includes('data-future-gravity-id="long-horizon"'),
+    'the required long-horizon commitment remains visible in the protected shaping-today group');
+  ok(optionalRow && optionalRow.flexibility === 'optional',
+    'Forecast still exposes the optional residual as optional, not required');
+  ok(!shaping.includes('data-future-gravity-id="optional-zero"')
+    && !shaping.includes('Optional residual purchase'),
+    'a zero-allocated optional item is absent from the shaping-today / protected group');
+  ok(residual.includes('data-future-gravity-id="optional-zero"')
+    && residual.includes("does not constrain today's safe-to-spend")
+    && optionalCard.includes('$0.00') && optionalCard.includes('OPTIONAL')
+    && !optionalCard.includes('Protected'),
+    'the zero optional set-aside stays in a separate residual section and is not labelled protected');
 }
 
 console.log('\n=== approximate timing travels through Forecast; the page stays a renderer ===');

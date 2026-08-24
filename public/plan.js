@@ -1060,10 +1060,11 @@ function betweenPaydaysOperatingHtml(action, capView) {
 }
 
 /* Compact future-cost publication. Forecast.majorPlans owns every verdict,
- * requirement, range, timing qualifier and remaining amount. The matching
- * Forecast.paydayAllocation row owns any current-payday set-aside. This page
- * only formats those outputs; it does not read plan.commitments, rank costs,
- * compare dollars, or decide whether an item is funded. */
+ * requirement, range, timing qualifier, remaining amount and flexibility.
+ * The matching Forecast.paydayAllocation row owns any current-payday set-aside.
+ * This page only formats those outputs; it does not read plan.commitments,
+ * rank costs, compare dollars, or decide whether an item is funded. Optional
+ * rows stay a residual group because Forecast already marked them optional. */
 const FUTURE_PLAN_VERDICT = {
   'ON TRACK': { cls: 'on-track', chip: 'v', remaining: 'Funding gap' },
   'AT RISK': { cls: 'at-risk', chip: 'w', remaining: 'At-risk amount' },
@@ -1102,7 +1103,9 @@ function futureGravityHtml(advice) {
     return '<p class="operating-lead">No unsettled major future costs are available from Forecast on this opening.</p>';
   }
 
-  const cards = plans.map(row => {
+  const shapingCards = [];
+  const residualCards = [];
+  for (const row of plans) {
     const state = FUTURE_PLAN_VERDICT[row.verdict] || { cls: '', chip: 'e', remaining: 'Forecast remaining' };
     const requirement = futurePlanRequirement(row);
     const payday = paydayCosts.find(item => item.id === row.id)
@@ -1116,7 +1119,11 @@ function futureGravityHtml(advice) {
       : timingUnresolved
         ? '<div><b>Not assigned</b><small>Exact-date payday set-aside unresolved</small></div>'
         : '';
-    return `<div class="future-gravity-row ${state.cls}" data-future-gravity-id="${row.id}">
+    const paydayNote = !payday ? ''
+      : row.flexibility === 'optional'
+        ? '<p>Allocated is not evidence that a payment or transfer occurred.</p>'
+        : '<p>Protected / allocated is not evidence that a payment or transfer occurred.</p>';
+    const card = `<div class="future-gravity-row ${state.cls}" data-future-gravity-id="${row.id}">
       <div class="future-gravity-head">
         <b>${row.label}</b>
         <span class="chip ${state.chip}">${row.verdict || 'VERDICT UNAVAILABLE'}</span>
@@ -1132,13 +1139,22 @@ function futureGravityHtml(advice) {
         <span class="chip e">${flexibility}</span>
         ${timingUnresolved ? '<span class="chip w">EXACT DATE UNRESOLVED</span>' : ''}
       </div>
-      ${payday ? '<p>Protected / allocated is not evidence that a payment or transfer occurred.</p>' : ''}
+      ${paydayNote}
     </div>`;
-  }).join('');
+    if (row.flexibility === 'optional') residualCards.push(card);
+    else shapingCards.push(card);
+  }
+
+  const shaping = shapingCards.length
+    ? `<div class="future-gravity-heading">Future costs shaping today</div><div class="future-gravity" data-future-gravity-shaping>${shapingCards.join('')}</div>`
+    : '';
+  const residual = residualCards.length
+    ? `<div class="future-gravity-optional"><div class="future-gravity-heading">Optional residual — does not constrain today's safe-to-spend</div><div class="future-gravity" data-future-gravity-optional>${residualCards.join('')}</div></div>`
+    : '';
   const horizon = advice.knowledge && advice.knowledge.days != null
     ? `<p class="future-gravity-note">These are Forecast.majorPlans verdicts across the ${advice.knowledge.days}-day master plan, including costs beyond the short display window.</p>`
     : '';
-  return `<div class="future-gravity" data-future-gravity>${cards}</div>${horizon}`;
+  return `${shaping}${residual}${horizon}`;
 }
 
 /* The homepage's decision-first summary. Every financial value and verdict is
@@ -1198,7 +1214,7 @@ function operatingSurfaceHtml(ctx) {
   const currentProtection = protectionRows.length
     ? `<div class="future-gravity-current"><h3>Protected in the current period</h3>${lineList(protectionRows)}</div>`
     : '';
-  const protecting = `${currentProtection}<div class="future-gravity-heading">Future costs shaping today</div>${futureGravityHtml(advice)}`;
+  const protecting = `${currentProtection}${futureGravityHtml(advice)}`;
 
   let debt;
   if (extraDebt != null && Number(extraDebt) > 0) {
