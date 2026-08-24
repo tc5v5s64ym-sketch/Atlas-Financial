@@ -807,10 +807,23 @@ const PAYDAY_ACTION_KIND = {
 function paydayAllocationTrustNote(line, alloc) {
   const notes = ['Calculated by Forecast.paydayAllocation.'];
   if (line && line.kind === 'obligations') {
-    const uncertain = ((alloc && alloc.obligations && alloc.obligations.items) || [])
+    const obligations = (alloc && alloc.obligations) || {};
+    const items = obligations.items || [];
+    const uncertain = items
       .filter(item => item && item.confidence && item.confidence !== 'confirmed')
       .map(item => `${item.label} · ${item.confidence}`);
     if (uncertain.length) notes.push(`Input trust retained: ${uncertain.join('; ')}.`);
+    const unverified = items
+      .filter(item => item && item.settlement === 'unverified')
+      .map(item => item.label);
+    if (unverified.length) notes.push(`Settlement unverified: ${unverified.join('; ')}.`);
+    if (obligations.fundingAttribution === 'unattributed') {
+      notes.push('This is an unattributed reserve pool; no individual bill priority is implied.');
+    }
+  }
+  if (line && line.kind === 'essentials' && alloc && alloc.essentials
+      && alloc.essentials.fundingAttribution === 'unattributed') {
+    notes.push('This is an unattributed essential-spending hold; no category-level funding claim is implied.');
   }
   return notes.join(' ');
 }

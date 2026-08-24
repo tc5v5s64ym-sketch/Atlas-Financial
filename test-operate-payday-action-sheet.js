@@ -90,6 +90,15 @@ console.log('\n=== allocation lines preserve Forecast order and amounts ===');
   }
   ok((html.match(/data-allocation-key=/g) || []).length === alloc.lines.length,
     'the sheet adds no allocation line outside Forecast.paydayAllocation.lines');
+  const unverified = alloc.obligations.items.filter(item => item.settlement === 'unverified');
+  for (const item of unverified) {
+    ok(html.includes(item.label) && /Settlement unverified:/.test(html),
+      `bill reserve retains Forecast settlement state for ${item.id}`);
+  }
+  if (alloc.essentials.fundingAttribution === 'unattributed') {
+    ok(/unattributed essential-spending hold/.test(html),
+      'a partial essential pool does not imply category-level funding');
+  }
 }
 
 console.log('\n=== displayed totals reconcile independently ===');
@@ -135,10 +144,11 @@ console.log('\n=== trust, unresolved and unavailable states fail closed ===');
     remainder: 0,
     identity: 100,
     lines: [{ key: 'obligations', kind: 'obligations', label: 'Keep for bills', amount: 100 }],
-    obligations: { items: [
-      { label: 'Estimated minimum', confidence: 'estimated' },
+    obligations: { fundingAttribution: 'unattributed', items: [
+      { label: 'Estimated minimum', confidence: 'estimated', settlement: 'unverified' },
       { label: 'Unknown settlement', confidence: 'unknown' },
     ] },
+    essentials: { fundingAttribution: 'complete' },
     protectedPath: { allocated: 0 },
     futureCosts: [],
     extraDebt: { allocated: 0 },
@@ -148,6 +158,9 @@ console.log('\n=== trust, unresolved and unavailable states fail closed ===');
   const html = sheet.paydayAllocationSheetHtml(synthetic);
   ok(/Estimated minimum · estimated/.test(html) && /Unknown settlement · unknown/.test(html),
     'estimated and unknown obligation inputs keep their trust treatment');
+  ok(/Settlement unverified: Estimated minimum/.test(html)
+    && /unattributed reserve pool/.test(html),
+  'settlement and partial-pool attribution stay qualified rather than implying a bill priority');
   ok(/Undated required cost/.test(html) && /unresolved; no payday allocation/.test(html),
     'an unresolved future cost is not fabricated into an allocation');
   ok(/\$0\.00/.test(html) && /No extra debt payment is allocated/.test(html),
