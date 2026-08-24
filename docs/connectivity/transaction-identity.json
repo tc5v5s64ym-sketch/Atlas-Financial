@@ -25,6 +25,14 @@
       "note": "Canada Child Benefit posts as CHILD TAX BEN CCB on Chequing B. Do not match a same-day deposit by amount alone."
     },
     {
+      "eventId": "affirm-final",
+      "payeePattern": "AFFIRM CANADA",
+      "payeePatterns": ["AFFIRM CANADA", "Affirm"],
+      "atlasAccountId": "chequing-b",
+      "direction": "debit",
+      "note": "Owner-confirmed final Affirm instalment on Chequing B. Exact payee identity and scheduled date establish settlement; amount is not identity."
+    },
+    {
       "eventId": "bcaa",
       "payeePattern": "BCAA-AdvAutoIns",
       "payeePatterns": ["BCAA-AdvAutoIns", "Bcaa-adv"],

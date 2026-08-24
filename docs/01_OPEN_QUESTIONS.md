@@ -333,7 +333,10 @@ $7,855.12, minimum **$158.27**, due **2026-08-31**, purchase APR **21.74%**,
 cash advance / BT APR **22.99%**, statement interest $148.27. Do not round a
 dated opening back to the statement amount.
 
-Affirm/Flexiti remains owner-confirmed paid off and closed.
+Affirm/Flexiti is not yet closed. Owner correction 2026-08-23: one final
+**$32.53 payment is due 2026-09-21**, with no recurrence after it. Forecast
+schedules that cash obligation once. The current contractual balance and rate
+remain unverified and are not invented from the payment amount.
 
 ### Q4b. Was the Triangle payment due 7 August actually made? — ANSWERED 2026-08-16
 **Status:** ANSWERED · **Owner:** Dale

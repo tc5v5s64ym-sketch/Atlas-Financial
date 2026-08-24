@@ -343,9 +343,19 @@
                 "confidence": "confirmed",
                 "budgetCategory": "household",
                 "note": "Primary invoice AUG16-004: 3 Month Subscription — Package A: 2 cans. Total $95.85 every 3 months on the 18th, repeats indefinitely. A March 18 2026 payment of $95.85 is the observed cadence phase (anchor), not a forecast event. firstDue 2026-09-18 is the next forward due; June 18 is not invented as unpaid arrears. Do not infer the paying card from a Visa 0870 mask."
+            },
+            {
+                "id": "affirm-final",
+                "label": "Affirm — final payment",
+                "frequency": "once",
+                "date": "2026-09-21",
+                "amount": 32.53,
+                "confidence": "confirmed",
+                "budgetCategory": null,
+                "note": "Owner-confirmed 2026-08-23: one final Affirm payment of $32.53 is due 2026-09-21. This is debt service, not variable household spending. No recurring occurrence follows it. Current contractual balance and rate are not inferred from the payment."
             }
         ],
-        "billsNote": "Extracted from the transaction history, not guessed: only bills still active in the last three months are dated here, and every one of them is paid from Chequing A except the 1 September BC Hydro. The 15 August BCAA, ICBC, RESP and union-dues occurrences remain unknown in posting (not a confirmed unposted fact) and are reserved as once rows on this opening; the monthly rows resume 15 September. The children's RESP contribution is included as a hard $100 monthly bill. CMAW Local 1995 union dues ($25) remain dated because they are still on the statement; the owner intends to cancel them, but cancellation is not yet confirmed. BC Hydro remains a household obligation paid from Amanda's TENNIS INCOME account for the 1 September $237.45 dated due; a $220 Hydro debit from BILLS ACCOUNT on 14 August is already inside opening cash and is not scheduled again. Owner-confirmed 2026-08-16: the old Hydro arrears are settled and are not scheduled. Noble Disposal Services is the household garbage bill: $95.85 every 3 months on the 18th (anchor 2026-03-18, firstDue 2026-09-18). TELUS IS CLOSED — do not forecast Telus as an active household bill. Streaming is Amazon Channels — several small charges on scattered days, left inside the variable budget. There is no Netflix anywhere in the data.",
+        "billsNote": "Extracted from the transaction history and owner evidence, not guessed: only bills still active in the last three months are dated here, and every one of them is paid from Chequing A except the 1 September BC Hydro. The 15 August BCAA, ICBC, RESP and union-dues occurrences remain unknown in posting (not a confirmed unposted fact) and are reserved as once rows on this opening; the monthly rows resume 15 September. The children's RESP contribution is included as a hard $100 monthly bill. CMAW Local 1995 union dues ($25) remain dated because they are still on the statement; the owner intends to cancel them, but cancellation is not yet confirmed. BC Hydro remains a household obligation paid from Amanda's TENNIS INCOME account for the 1 September $237.45 dated due; a $220 Hydro debit from BILLS ACCOUNT on 14 August is already inside opening cash and is not scheduled again. Owner-confirmed 2026-08-16: the old Hydro arrears are settled and are not scheduled. Noble Disposal Services is the household garbage bill: $95.85 every 3 months on the 18th (anchor 2026-03-18, firstDue 2026-09-18). Owner-confirmed 2026-08-23: Affirm has one final $32.53 payment due 2026-09-21 and no recurrence after it. TELUS IS CLOSED — do not forecast Telus as an active household bill. Streaming is Amazon Channels — several small charges on scattered days, left inside the variable budget. There is no Netflix anywhere in the data.",
         "commitments": [
             {
                 "id": "burrard1",
@@ -1118,7 +1128,7 @@
             "pendingUnknown": false
         }
     ],
-    "debtsNote": "Affirm/Flexiti is gone: owner-confirmed paid off and closed, $2,654.28 across the window. Every card, mortgage and HELOC posted balance here is the 2026-08-19 cutover. Triangle posted $13,495.32 and MBNA posted $7,875.99 MATCH under owner-approved monthly statement cadence (evidence 2026-08-18); pending on both is proven $0.00. The 2026-08-16 Triangle screenshot and Lunch Money's older last-statement figure are not this posted opening. Mapped revolving pending on this opening is proven $0.00 (is_pending-unbounded). Available credit is never household cash.",
+    "debtsNote": "Affirm/Flexiti is not an ongoing debt after one owner-confirmed final $32.53 payment due 2026-09-21. That cash obligation is scheduled once in plan.bills; no contractual balance or rate is invented, so Affirm remains outside the verified debt-balance list until the final payment settles. $2,654.28 was paid across the historical window before this last instalment. Every card, mortgage and HELOC posted balance here is the 2026-08-19 cutover. Triangle posted $13,495.32 and MBNA posted $7,875.99 MATCH under owner-approved monthly statement cadence (evidence 2026-08-18); pending on both is proven $0.00. The 2026-08-16 Triangle screenshot and Lunch Money's older last-statement figure are not this posted opening. Mapped revolving pending on this opening is proven $0.00 (is_pending-unbounded). Available credit is never household cash.",
     "utilisationNote": "Derived from the debt records plus the Chequing B overdraft — there is no second list of balances to drift. Available credit is never household cash. Cash Back pending is proven $0.00. Travel Visa is over on posted $1,205.33 against the $1,100 limit; MBNA posted $7,875.99 is under the $8,000 limit; Triangle pending $0.00 is kept separate from posted $13,495.32.",
     "assets": [
         {

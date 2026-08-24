@@ -1906,6 +1906,9 @@
     'credit card payment',
     'cc payment',
   ]);
+  const DEBT_PAYMENT_CATEGORY_LABELS = new Set([
+    'personal loan payment',
+  ]);
 
   function paydayCalendar(plan, asOf, opts) {
     opts = opts || {};
@@ -1982,6 +1985,9 @@
       return { kind: 'transfer', categoryId: null, householdSpending: false, reason: null };
     }
     const label = normalizeCategoryLabel(tx.categoryLabel);
+    if (DEBT_PAYMENT_CATEGORY_LABELS.has(label)) {
+      return { kind: 'card-payment', categoryId: null, householdSpending: false, reason: null };
+    }
     if (TRANSFER_CATEGORY_LABELS.has(label)
       || (tx.excludeFromTotals === true && TRANSFER_CATEGORY_LABELS.has(label))) {
       return { kind: 'transfer', categoryId: null, householdSpending: false, reason: null };
