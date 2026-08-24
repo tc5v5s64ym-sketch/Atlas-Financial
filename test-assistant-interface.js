@@ -511,6 +511,29 @@ console.log('\n=== HTTP fail-closed without assistant token ===');
       'fatal message names the assistant token without printing it');
     ok(!/too-short/.test(result.stderr), 'the weak token value is not logged');
   }
+  {
+    const shared = 'shared-secret-must-not-be-reused-32!';
+    const reusedPassword = await expectExit({
+      SITE_PASSWORD: shared,
+      ATLAS_ASSISTANT_TOKEN: shared,
+    });
+    ok(reusedPassword.code !== 0,
+      'reusing SITE_PASSWORD as ATLAS_ASSISTANT_TOKEN is fatal',
+      `exit ${reusedPassword.code}`);
+    ok(/SITE_PASSWORD/.test(reusedPassword.stderr),
+      'reuse-of-password fatal names SITE_PASSWORD');
+    ok(!/shared-secret-must-not-be-reused/.test(reusedPassword.stderr),
+      'the reused password value is not logged');
+    const reusedSession = await expectExit({
+      SESSION_SECRET: shared,
+      ATLAS_ASSISTANT_TOKEN: shared,
+    });
+    ok(reusedSession.code !== 0,
+      'reusing SESSION_SECRET as ATLAS_ASSISTANT_TOKEN is fatal',
+      `exit ${reusedSession.code}`);
+    ok(/SESSION_SECRET/.test(reusedSession.stderr),
+      'reuse-of-session fatal names SESSION_SECRET');
+  }
 
   console.log('\n=== source does not recompute financial answers ===');
   {

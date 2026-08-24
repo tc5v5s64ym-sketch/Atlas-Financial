@@ -540,9 +540,12 @@ function looksSanitized(packet) {
   const blob = JSON.stringify(packet == null ? {} : packet);
   if (/"providerAccountId"\s*:/.test(blob)) return false;
   if (/"providerTransactionId"\s*:/.test(blob)) return false;
+  if (/"accountId"\s*:/.test(blob)) return false;
   if (/"payee"\s*:/.test(blob)) return false;
   if (/"original_name"\s*:/.test(blob)) return false;
   if (/"account_id"\s*:/.test(blob)) return false;
+  if (/"plaid_account_id"\s*:/.test(blob)) return false;
+  if (/"transactions"\s*:\s*\[/.test(blob)) return false;
   if (/Bearer\s+\S+/.test(blob)) return false;
   if (/LUNCHMONEY_ACCESS_TOKEN/.test(blob)) return false;
   if (/SITE_PASSWORD/.test(blob)) return false;

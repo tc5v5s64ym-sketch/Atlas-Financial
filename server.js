@@ -34,8 +34,23 @@ if (!SECRET || SECRET.length < 16) {
   console.error('FATAL: SESSION_SECRET is not set, or is shorter than 16 characters.');
   process.exit(1);
 }
+function sameSecret(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string' || !a || !b) return false;
+  const left = Buffer.from(a);
+  const right = Buffer.from(b);
+  if (left.length !== right.length) return false;
+  return crypto.timingSafeEqual(left, right);
+}
 if (ASSISTANT_TOKEN && ASSISTANT_TOKEN.length < Assistant.TOKEN_MIN_LENGTH) {
   console.error('FATAL: ATLAS_ASSISTANT_TOKEN is set but shorter than 32 characters.');
+  process.exit(1);
+}
+if (ASSISTANT_TOKEN && sameSecret(ASSISTANT_TOKEN, PASSWORD)) {
+  console.error('FATAL: ATLAS_ASSISTANT_TOKEN must not reuse SITE_PASSWORD.');
+  process.exit(1);
+}
+if (ASSISTANT_TOKEN && sameSecret(ASSISTANT_TOKEN, SECRET)) {
+  console.error('FATAL: ATLAS_ASSISTANT_TOKEN must not reuse SESSION_SECRET.');
   process.exit(1);
 }
 
