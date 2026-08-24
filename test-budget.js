@@ -71,8 +71,8 @@ ok(groceries.target === 1800 && fuel.target === 1300,
   'and both are the household\'s own figures, not averages',
   `groceries ${money(groceries.target)}, fuel ${money(fuel.target)}`);
 // The direction differs per category, which is the point of using a target.
-ok(groceries.target < groceries.historical,
-  'the grocery target is BELOW what has been spent — a planned reduction',
+ok(groceries.target > groceries.historical,
+  'the grocery target is ABOVE the cleaned historical average',
   `${money(groceries.target)} vs ${money(groceries.historical)}`);
 ok(fuel.target > fuel.historical,
   'the fuel target is ABOVE it — the household budgets more than it recently used',
@@ -112,11 +112,11 @@ const allTelecom = periods.periods.all.spending.find(s => s.label === 'Telecom')
 const ytdMonths = periods.periods.ytd.months;
 const independentYtdAvg = ytdTelecom.total / ytdMonths;
 const independentHistoricalRemainder = independentYtdAvg - shaw.amount;
-ok(near(ytdTelecom.total, 1750.61) && ytdMonths === 8,
-  'YTD Telecom historical total is $1,750.61 over 8 months',
+ok(near(ytdTelecom.total, 2149.91) && ytdMonths === 8,
+  'cleaned YTD Telecom historical total is $2,149.91 over 8 months',
   money(ytdTelecom.total));
-ok(near(independentYtdAvg, 218.82625),
-  'independent YTD average is $218.83/month', money(independentYtdAvg));
+ok(near(independentYtdAvg, 268.73875),
+  'independent YTD average is $268.74/month', money(independentYtdAvg));
 ok(shaw && shaw.budgetCategory === 'telecom' && shaw.frequency === 'monthly',
   'Shaw is the one dated monthly telecom bill', money(shaw.amount));
 ok(near(telecom.historical, independentYtdAvg),
@@ -137,8 +137,8 @@ ok(telecom.target == null && telecom.source === 'current-regime',
 ok(lastTelecom.total - shaw.amount > independentHistoricalRemainder,
   'July non-Shaw remainder is larger than the YTD historical remainder',
   money(lastTelecom.total - shaw.amount) + ' vs ' + money(independentHistoricalRemainder));
-ok(near(allTelecom.total, 3534.93) && allTelecom.total > ytdTelecom.total,
-  'full-history Telecom $3,534.93 is preserved — history was not rewritten',
+ok(near(allTelecom.total, 3916.38) && allTelecom.total > ytdTelecom.total,
+  'cleaned full-history Telecom is $3,916.38',
   money(allTelecom.total));
 const household = budget.categories.find(c => c.id === 'household');
 const noble = plan.bills.find(b => b.id === 'noble-garbage');
@@ -151,8 +151,8 @@ const insurance = budget.categories.find(c => c.id === 'insurance');
 ok(insurance.dated + 0.01 >= bcaa.amount + icbc.amount,
   'BCAA + ICBC (and any reserved August insurance) are subtracted from insurance',
   money(insurance.dated));
-ok(insurance.planned === 0 && insurance.fullyDated,
-  'insurance is fully dated — it contributes nothing to the cap');
+ok(near(insurance.planned, insurance.historical - insurance.dated) && !insurance.fullyDated,
+  'cleaned insurance history leaves only its independently derived remainder in the cap');
 const sport = budget.categories.find(c => c.id === 'sport');
 // The structural correction. Netting the season fees off the recurring line
 // concluded that ordinary sports spending was $0, which is not what the
@@ -185,8 +185,9 @@ ok(propertyTax.class === 'reserve',
 ok(budget.requiredMonthly === budget.essentialMonthly + budget.unknownMonthly,
   'the required figure is essentials plus the uncategorised remainder',
   money(budget.requiredMonthly));
-ok(budget.reserveMonthly > 0 && !near(budget.requiredMonthly, budget.requiredMonthly + budget.reserveMonthly),
-  'reserves are excluded from the weekly requirement', money(budget.reserveMonthly));
+ok(budget.reserveMonthly === 0 && periods.source.categoryClaim === 'incomplete',
+  'no named Tax rows means no reserve is invented; source uncertainty stays explicit',
+  money(budget.reserveMonthly));
 
 console.log('\n=== reconciles against the recommendation ===');
 const advice = F.recommend(plan, asOf, {

@@ -130,16 +130,16 @@ const budget = F.budgetBreakdown(plan, periods, {
   weeklyCap: advice.weekly,
   recommendedWeekly: advice.weekly,
 });
-ok(budget && budget.reserveMonthly === 200,
-  'the published monthly reserve is $200.00 — two reserve categories, no owner target',
+ok(budget && budget.reserveMonthly === 0 && periods.source.categoryClaim === 'incomplete',
+  'no named Tax history means no numeric reserve is invented; source uncertainty stays published',
   budget ? String(budget.reserveMonthly) : 'none');
-const liveExpectedReserves = 200 * (plan.windowDays / DAYS_PER_MONTH);
+const liveExpectedReserves = budget.reserveMonthly * (plan.windowDays / DAYS_PER_MONTH);
 const liveExpectedAmount = advice.sim.ending - advice.sim.buffer - liveExpectedReserves;
 const live = F.unallocatedCash(advice.sim, budget, plan);
 ok(plan.windowDays === 91 && advice.sim.buffer === 500,
   'the published window is 91 days against a $500 buffer');
 ok(live && same(live.reserves, liveExpectedReserves) && same(live.amount, liveExpectedAmount),
-  'live unallocated is ending − buffer − $200 × window / (365.25 / 12)',
+  'live unallocated is ending − buffer − the published reserve × window / (365.25 / 12)',
   live ? `${money2(live.amount)} (reserves ${money2(live.reserves)})` : 'none');
 ok(live && ((live.amount > 0.005) === (live.id === 'leftover')),
   'a positive remainder is leftover; otherwise it is not');

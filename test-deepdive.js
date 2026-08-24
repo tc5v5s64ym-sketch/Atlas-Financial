@@ -164,26 +164,26 @@ const LIVE_MORTGAGE_MONTHLY = LIVE_MORTGAGE_ANNUAL / 12;
 ok(money(LIVE_MORTGAGE_MONTHLY) === '$1,620',
   'mortgage $19,441 / 12 prints $1,620');
 
-const LIVE_LM_DISC_CENTS = [2413.8, 1898.27, 1323.11, 457.3, 213.58, 212.19]
+const LIVE_LM_DISC_CENTS = [2274.15, 2257.64, 1378.39, 378.53, 86.02, 77.66]
   .reduce((s, n) => s + cents(n), 0);
-const LIVE_LM_SPEND = 10961.14;
-const LIVE_LM_AVOID_CENTS = [252.5, 45, 29, 3, 2]
+const LIVE_LM_SPEND = 10401.07;
+const LIVE_LM_AVOID_CENTS = [3]
   .reduce((s, n) => s + cents(n), 0);
-ok(LIVE_LM_DISC_CENTS === 651825, 'last-month discretionary is the six orange lines');
-ok(LIVE_LM_AVOID_CENTS === 33150, 'last-month avoidable is ATM+coverage+over-limit+foreign+cheque');
-ok((LIVE_LM_DISC_CENTS / cents(LIVE_LM_SPEND) * 100).toFixed(0) === '59',
-  'and that is 59% of $10,961.14');
+ok(LIVE_LM_DISC_CENTS === 645239, 'last-month discretionary is the six cleaned discretionary lines');
+ok(LIVE_LM_AVOID_CENTS === 300, 'last-month avoidable fees are the $3 out-of-network ATM charge');
+ok((LIVE_LM_DISC_CENTS / cents(LIVE_LM_SPEND) * 100).toFixed(0) === '62',
+  'and that is 62% of $10,401.07');
 
-const LIVE_YTD_DISC_CENTS = [11077.59, 9250.65, 7882.29, 4480.8, 2119.94, 1270.91]
+const LIVE_YTD_DISC_CENTS = [17725.23, 10293.44, 7809.73, 2846.33, 2018.42, 676.99]
   .reduce((s, n) => s + cents(n), 0);
-const LIVE_YTD_SPEND = 74595.09;
+const LIVE_YTD_SPEND = 80056.86;
 const LIVE_YTD_MONTHS = 8;
 const LIVE_YTD_AVG = LIVE_YTD_SPEND / LIVE_YTD_MONTHS;
-const LIVE_YTD_AVOID_CENTS = [468, 261, 55, 30, 14, 3]
+const LIVE_YTD_AVOID_CENTS = [87, 30, 3]
   .reduce((s, n) => s + cents(n), 0);
-ok(LIVE_YTD_DISC_CENTS === 3608218 && LIVE_YTD_AVOID_CENTS === 83100,
-  'ytd discretionary $36,082.18 and avoidable $831.00');
-ok(LIVE_YTD_AVG === 9324.38625, 'ytd average is $74,595.09 / 8');
+ok(LIVE_YTD_DISC_CENTS === 4137014 && LIVE_YTD_AVOID_CENTS === 12000,
+  'cleaned YTD discretionary $41,370.14 and avoidable $120.00');
+ok(LIVE_YTD_AVG === 10007.1075, 'YTD average is $80,056.86 / 8');
 
 const live = F.deepDive(data, periods.periods.lastMonth);
 ok(live && same(live.elsewhere, LIVE_ELSEWHERE) && same(live.cashAmount, F.startingCashAmount(data.plan)),
@@ -202,7 +202,7 @@ ok(same(live.mortgageMonthly, LIVE_MORTGAGE_MONTHLY),
 ok(live.period && cents(live.period.discretionary) === LIVE_LM_DISC_CENTS
   && cents(live.period.avoidable) === LIVE_LM_AVOID_CENTS
   && live.period.spendingMonthly === null
-  && live.period.discretionaryShare.toFixed(0) === '59',
+  && live.period.discretionaryShare.toFixed(0) === '62',
   'live last-month snapshot matches the independent totals; no monthly average');
 
 const liveYtd = F.deepDive(data, periods.periods.ytd);

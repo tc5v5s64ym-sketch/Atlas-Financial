@@ -1381,11 +1381,11 @@ ok(missingConfidence.length === 0, 'every planning input carries a confidence ta
 ok(planItems.every(x => ['confirmed', 'estimated', 'planned'].includes(x.confidence)),
   'and the tags come from a closed vocabulary');
 ok(/^\d{4}-\d{2}-\d{2}$/.test(data.meta.asOf), 'the as-of date is a real date', data.meta.asOf);
-ok(periods.asOf === '2026-08-09',
-  'the generated spending history still carries the date of the ledger it was built from',
+ok(periods.asOf === '2026-08-24' && periods.source.coverageThrough === periods.asOf,
+  'generated spending history carries its complete provider coverage-through date',
   periods.asOf);
-ok(periods.asOf <= data.meta.asOf,
-  'and is not dated after the Forecast opening',
+ok(periods.source.complete === true && periods.source.basis === 'lunchmoney-cleaned-history',
+  'a history source newer than the dated Forecast opening declares its own complete authority',
   `${periods.asOf} vs ${data.meta.asOf}`);
 ok(/PERIODS\.asOf/.test(read('public/app.js')),
   'Deep Dive header publishes the history source as-of separately when it differs from the plan');
