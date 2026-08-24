@@ -46,6 +46,7 @@ const suites = [
   ['household budget reconciliation', 'test-budget.js'],
   ['workbook evidence cannot overwrite owner policy', 'test-workbook-authority.js'],
   ['spending classification reconciliation', 'test-classification.js'],
+  ['Lunch Money historical actuals authority (AF-OPERATE-01)', 'test-periods-lunchmoney.js'],
   ['weekly cap conversion + discretionary room', 'test-weekly-cap.js'],
   ['food and fuel monthly figures', 'test-food-fuel.js'],
   ['phase titles and risk list', 'test-plan-phases.js'],

@@ -162,15 +162,24 @@ function regenerateComputedRows(data, csvText, opts) {
         + `summed all five TD accounts. Most of what is left is borrowed` }));
 
   if (essentialsMonthly != null) {
+    const periodsAsOf = periods && (periods.source && periods.source.coverageThrough || periods.asOf) || '';
+    const essentialsAsOf = laterIsoDate(data.meta.asOf, periodsAsOf);
+    const mixedInputs = periodsAsOf && periodsAsOf !== data.meta.asOf
+      ? ` Financial-account opening ${data.meta.asOf}; historical actuals through ${periodsAsOf}.`
+      : '';
     put('Essential spending estimate', W('LIQUIDITY', 'Essential spending estimate', 'Net', 'CAD',
       n2(essentialsMonthly), {
+        asOf: essentialsAsOf,
         note: 'Derived from plan.budget by Forecast.budgetBreakdown: essential categories plus the '
           + 'uncategorised remainder, with anything already dated on the calendar removed from its own '
-          + 'category. Replaces the retired essentialsPerMonth scalar' }));
+          + 'category. Replaces the retired essentialsPerMonth scalar.'
+          + mixedInputs }));
     put('Weeks of essentials covered', W('LIQUIDITY', 'Weeks of essentials covered', 'Net', '',
       (Math.round((immediateLiquidity / (essentialsMonthly * 12 / 52)) * 10) / 10).toFixed(1), {
+        asOf: essentialsAsOf,
         note: `Derived: immediate liquidity ${n2(immediateLiquidity)} over essentials of `
-          + `${n2(essentialsMonthly * 12 / 52)} a week` }));
+          + `${n2(essentialsMonthly * 12 / 52)} a week.`
+          + mixedInputs }));
   }
 
   const SILVER = (data.assets || []).find(a => /silver/i.test(a.label));

@@ -287,22 +287,29 @@ node -e "const d=require('./data.json'),fs=require('fs');const a=['app','forecas
 | `data.json` | **by hand** | balances, rates, notes, questions, coverage |
 | `public/periods.json` | **generated** | monthly spending, interest and fees series |
 
-**Rebuild the generated one after any new spending capture**, or the period
-selector goes stale while the rest of the page updates:
+**Rebuild the generated one after the cleaned Lunch Money history changes**, or
+the period selector goes stale while the rest of the page updates:
 
 ```bash
-node scripts/periods.js . 2026-08-16
+node scripts/periods.js . 2026-08-24
 ```
 
-**Run it from the main checkout, not a worktree** — `raw/` and `derived/` are
-local-only, so a worktree root has no source data. From a worktree, pass the
-main checkout's path as the first argument instead of `.`. The script refuses
-to write when it finds zero events (that mistake once shipped a dashboard of
-$0.00s), so getting this wrong now fails at the prompt rather than on the site.
+The default source is the authorized GET-only Lunch Money feed. It maps cleaned
+provider categories into the incumbent Atlas categories and uses local derived
+card evidence only before each mapped card's provider history begins. Mapped
+HELOC interest is required: empty provider HELOC history keeps known local
+HELOC interest for uncovered months, or generation fails closed. Lunch Money
+Pets is not mapped; GET-only validation found that category materially
+misclassified. Pass `--source local` only for the explicit file-evidence
+fallback. That fallback must run where the gitignored `raw/` and `derived/`
+inputs exist. The script refuses incomplete provider coverage, refuses a
+mapped HELOC with no interest evidence, and refuses to publish zero events.
 
 Pass today's date — it decides what "this month", "last month" and "year to
-date" mean. It writes `derived/periods.json` and `public/periods.json`, and both
-are read from the same auth-gated path as `data.json`.
+date" mean. It writes aggregate-only `derived/periods.json` and
+`public/periods.json`; no payees, provider account IDs, transaction IDs, or raw
+transactions are published. The public aggregate is read from the same
+auth-gated path as `data.json`.
 
 ### Preview locally before deploying
 

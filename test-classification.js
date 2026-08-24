@@ -312,9 +312,11 @@ ok(healthLib.size === 2 && healthLib.has('essential') && healthLib.has('discreti
   [...healthLib].sort().join(','));
 ok(health && health.disposition === 'SOURCE-SEMANTIC AMBIGUITY',
   'Health mixed source types are surfaced as source-semantic ambiguity, not AGREE');
-ok(one(periodTypes(periods, 'Health')) === 'unknown',
-  'published periods.json Health type is unknown, not a collapsed essential class',
-  one(periodTypes(periods, 'Health')));
+const allHealth = periods.periods.all.spending.find(row => row.label === 'Health');
+ok(allHealth && allHealth.type === 'unknown'
+  && (allHealth.types || []).slice().sort().join(',') === 'discretionary,essential',
+  'all-history Health publishes the mixed source types, not a collapsed essential class',
+  allHealth ? `${allHealth.type}:${(allHealth.types || []).join(',')}` : 'missing');
 ok(health && health.forward === 'essential' && health.disposition !== 'AGREE',
   'forward Medical & health being essential does not make mixed Health a clean agreement');
 

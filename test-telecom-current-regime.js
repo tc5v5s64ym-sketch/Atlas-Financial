@@ -29,14 +29,14 @@ const facts = sourceText(fs.readFileSync(path.join(__dirname, 'docs/ACCOUNT_FACT
 const evidence = sourceText(fs.readFileSync(
   path.join(__dirname, 'docs/source_intake/HOUSEHOLD_EVIDENCE_2026-08-16.md'), 'utf8'));
 
-console.log('=== historical Telecom totals are unchanged ===');
+console.log('=== cleaned historical Telecom totals ===');
 const ytd = periods.periods.ytd.spending.find(s => s.label === 'Telecom');
 const last = periods.periods.lastMonth.spending.find(s => s.label === 'Telecom');
 const all = periods.periods.all.spending.find(s => s.label === 'Telecom');
-ok(near(ytd.total, 1750.61) && periods.periods.ytd.months === 8,
-  'YTD Telecom $1,750.61 over 8 months is preserved');
-ok(near(all.total, 3534.93) && periods.periods.all.months === 19,
-  'full-history Telecom $3,534.93 over 19 months is preserved');
+ok(near(ytd.total, 2149.91) && periods.periods.ytd.months === 8,
+  'cleaned YTD Telecom is $2,149.91 over 8 months');
+ok(near(all.total, 3916.38) && periods.periods.all.months === 19,
+  'cleaned full-history Telecom is $3,916.38 over 19 months');
 ok(near(last.total, 328.40),
   'July 2026 Telecom $328.40 is preserved');
 
@@ -44,13 +44,13 @@ console.log('\n=== independent BEFORE historical remainder ===');
 const shaw = (plan.bills || []).find(b => b.id === 'shaw');
 const historicalAvg = ytd.total / periods.periods.ytd.months;
 const beforeRemainder = historicalAvg - shaw.amount;
-ok(near(historicalAvg, 218.82625),
-  'BEFORE historical monthly assumption is independently $218.83',
+ok(near(historicalAvg, 268.73875),
+  'BEFORE historical monthly assumption is independently $268.74',
   money(historicalAvg));
 ok(shaw && near(shaw.amount, 78.4) && shaw.budgetCategory === 'telecom',
   'dated/explicit Shaw is $78.40 once');
-ok(near(beforeRemainder, 140.42625),
-  'BEFORE stale remainder is independently YTD − Shaw = $140.43',
+ok(near(beforeRemainder, 190.33875),
+  'BEFORE stale remainder is independently YTD − Shaw = $190.34',
   money(beforeRemainder));
 ok(near(last.total, shaw.amount + 250),
   'July independently equals Shaw + $250 Bell payment, not a second Shaw');
@@ -116,11 +116,11 @@ ok(near(telecom.gross, afterGross) && near(telecom.planned, 0) && near(telecom.r
 console.log('\n=== exact delta is entirely the telecom correction ===');
 // BEFORE figures reproduced on main abcfd0dfd90dee6eea328af8bb518e7953ce0f79
 // from periods.json + budgetBreakdown, before current-regime closeout.
-const beforeRequired = 4039.53375;
-const beforeEssential = 3523.23625;
+const beforeRequired = 4347.076504120879;
+const beforeEssential = 3557.007754120879;
 const remainderDelta = beforeRemainder - afterRemainder;
-ok(near(remainderDelta, 19.42625),
-  'independent remainder delta vs stale historical is $19.43/month', money(remainderDelta));
+ok(near(remainderDelta, 69.33875),
+  'independent remainder delta vs cleaned historical is $69.34/month', money(remainderDelta));
 ok(near(budget.requiredMonthly, beforeRequired - remainderDelta),
   'AFTER requiredMonthly drops the stale remainder and still includes reserved Bell',
   money(budget.requiredMonthly));

@@ -111,8 +111,9 @@ Telus charges remain legitimate historical spending and must not be deleted,
 rewritten, or recategorized merely because the service is closed.
 
 Forward telecom planning uses the evidenced active services, not the YTD
-blended Telecom average. Committed `periods.json` still rolls merchants into
-Telecom — that is historical truth, not the current requirement. July 2026,
+blended Telecom average. Generated `periods.json` still rolls cleaned historical
+transactions into Telecom — that is historical truth, not the current
+requirement. July 2026,
 after Telus last appears in captured history (March 2026), is Telecom
 **$328.40** = Shaw **$78.40** + **$250.00** non-Shaw (the Bell Mobility card
 payment). That identity is history. It does not set the forward remainder.

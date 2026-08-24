@@ -305,6 +305,14 @@ ok(csvAsOf('Loan-to-value') >= homeRow[19],
 ok(csvAsOf('Financial-account net worth') === data.meta.asOf,
   'financial-account net worth keeps the opening as-of',
   csvAsOf('Financial-account net worth'));
+ok(csvAsOf('Essential spending estimate') >= (periods.source && periods.source.coverageThrough || periods.asOf),
+  'essential-spending as-of is not earlier than historical actuals',
+  csvAsOf('Essential spending estimate'));
+ok(csvAsOf('Weeks of essentials covered') >= (periods.source && periods.source.coverageThrough || periods.asOf),
+  'weeks-of-essentials as-of is not earlier than historical actuals',
+  csvAsOf('Weeks of essentials covered'));
+ok(/historical actuals through 2026-08-24/.test(csvNote('Essential spending estimate')),
+  'essential-spending notes the later historical-actuals input');
 ok(/2026-08-19/.test(csvNote('Household net worth'))
   && /2026-08-21/.test(csvNote('Household net worth')),
   'household net-worth notes preserve both input dates');
@@ -1381,12 +1389,33 @@ ok(missingConfidence.length === 0, 'every planning input carries a confidence ta
 ok(planItems.every(x => ['confirmed', 'estimated', 'planned'].includes(x.confidence)),
   'and the tags come from a closed vocabulary');
 ok(/^\d{4}-\d{2}-\d{2}$/.test(data.meta.asOf), 'the as-of date is a real date', data.meta.asOf);
-ok(periods.asOf === '2026-08-09',
-  'the generated spending history still carries the date of the ledger it was built from',
+ok(periods.asOf === '2026-08-24' && periods.source.coverageThrough === periods.asOf,
+  'generated spending history carries its complete provider coverage-through date',
   periods.asOf);
-ok(periods.asOf <= data.meta.asOf,
-  'and is not dated after the Forecast opening',
+ok(periods.source.complete === true && periods.source.basis === 'lunchmoney-cleaned-history',
+  'a history source newer than the dated Forecast opening declares its own complete authority',
   `${periods.asOf} vs ${data.meta.asOf}`);
+{
+  const helocFact = (data.helocUse || []).find(row => /interest charged/i.test(row.label));
+  const publishedHeloc = ((periods.periods.all && periods.periods.all.interest) || [])
+    .find(row => row.label === 'HELOC');
+  ok(helocFact && publishedHeloc && near(publishedHeloc.total, helocFact.amount),
+    'published HELOC interest matches the independent helocUse interest-charged fact',
+    publishedHeloc && helocFact
+      ? `${money(publishedHeloc.total)} vs ${money(helocFact.amount)}`
+      : 'missing');
+  ok((periods.source.fallbackHelocEvents || 0) > 0 || (periods.source.helocPostedCount || 0) > 0,
+    'HELOC coverage is proven by provider history or fallback events',
+    `fallback=${periods.source.fallbackHelocEvents} posted=${periods.source.helocPostedCount}`);
+  ok(!(periods.periods.all.spending || []).some(row => row.label === 'Pets' && row.total > 0),
+    'Lunch Money Pets is not canonized after failed GET-only validation');
+  ok(Array.isArray(periods.source.accountCoverage)
+    && periods.source.accountCoverage.some(row => row.role === 'heloc' || row.canonicalId === 'heloc'),
+    'generated history publishes per-account coverage including HELOC');
+  const coverageJson = JSON.stringify(periods.source.accountCoverage || []);
+  ok(!/"providerAccountId"/i.test(coverageJson),
+    'per-account coverage does not publish provider account ids');
+}
 ok(/PERIODS\.asOf/.test(read('public/app.js')),
   'Deep Dive header publishes the history source as-of separately when it differs from the plan');
 ok(plan.budget.ownerTargets && plan.budget.ownerTargets.status,

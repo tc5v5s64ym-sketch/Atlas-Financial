@@ -151,18 +151,18 @@ ok(dated.cap && same(dated.cap.groceriesMonthly, datedG.gross)
 console.log('\n=== live plan: owner-target literals, not the averages ===');
 const LIVE_GROCERIES = 1800;
 const LIVE_FUEL = 1300;
-const LIVE_GROCERIES_HIST = 14717.26 / 8;
-const LIVE_FUEL_HIST = 7913.03 / 8;
+const LIVE_GROCERIES_HIST = 11380.12 / 8;
+const LIVE_FUEL_HIST = 6517.05 / 8;
 ok(data.plan.budget.categories.find(c => c.id === 'groceries').plannedMonthly === LIVE_GROCERIES,
   'data.json grocery target is $1,800');
 ok(data.plan.budget.categories.find(c => c.id === 'fuel').plannedMonthly === LIVE_FUEL,
   'data.json fuel target is $1,300');
 ok(periods.periods.ytd.months === 8
-  && periods.periods.ytd.spending.find(s => s.label === 'Groceries').total === 14717.26
-  && periods.periods.ytd.spending.find(s => s.label === 'Fuel & transport').total === 7913.03,
-  'ytd grocery/fuel totals are $14,717.26 and $7,913.03 over 8 months');
+  && periods.periods.ytd.spending.find(s => s.label === 'Groceries').total === 11380.12
+  && periods.periods.ytd.spending.find(s => s.label === 'Fuel & transport').total === 6517.05,
+  'cleaned YTD grocery/fuel totals are $11,380.12 and $6,517.05 over 8 months');
 ok(LIVE_GROCERIES !== LIVE_GROCERIES_HIST && LIVE_FUEL !== LIVE_FUEL_HIST,
-  'those averages are $1,839.66 and $989.13 — not the published monthly figures');
+  'those averages are $1,422.52 and $814.63 — not the published monthly figures');
 
 const liveAdv = F.recommend(data.plan, data.meta.asOf, {
   scenario: data.plan.defaults.scenario, targetBuffer: data.plan.defaults.targetBuffer,
