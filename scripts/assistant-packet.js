@@ -137,6 +137,66 @@ function trustFor(value) {
   return 'calculated';
 }
 
+const SOURCE_CONFIDENCE = new Set(['confirmed', 'estimated', 'planned']);
+const CONFIDENCE_RANK = {
+  unknown: 0,
+  planned: 1,
+  estimated: 2,
+  confirmed: 3,
+};
+
+function sourceConfidence(event) {
+  const tag = event && event.confidence;
+  return SOURCE_CONFIDENCE.has(tag) ? tag : 'unknown';
+}
+
+function conservativeConfidence(tags) {
+  const list = Array.isArray(tags) ? tags : [];
+  if (!list.length) return 'unknown';
+  let weakest = Infinity;
+  for (const tag of list) {
+    const normalized = SOURCE_CONFIDENCE.has(tag) ? tag : 'unknown';
+    const rank = CONFIDENCE_RANK[normalized];
+    if (rank < weakest) weakest = rank;
+  }
+  if (weakest === CONFIDENCE_RANK.unknown) return 'unknown';
+  if (weakest === CONFIDENCE_RANK.planned) return 'planned';
+  if (weakest === CONFIDENCE_RANK.estimated) return 'estimated';
+  return 'confirmed';
+}
+
+function isNamedOutflow(event) {
+  return !!(event && event.amount < 0 && event.kind !== 'noncash');
+}
+
+function isJointCashOutflow(event) {
+  return isNamedOutflow(event) && event.jointCash !== false;
+}
+
+function earliestNamedOutflow(events, asOf) {
+  let best = null;
+  for (const event of events || []) {
+    if (!isNamedOutflow(event) || event.date < asOf) continue;
+    if (!best || event.date < best.date) best = event;
+  }
+  return best;
+}
+
+function sameDayJointCashOutflows(events, asOf, date) {
+  if (!date) return [];
+  return (events || []).filter(event =>
+    isJointCashOutflow(event) && event.date >= asOf && event.date === date
+  );
+}
+
+function eventByIdDate(events, id, date) {
+  if (id == null || date == null) return null;
+  for (const event of events || []) {
+    if (event && event.id === id && event.date === date) return event;
+  }
+  return null;
+}
+
 function forecastAdvice(data, periods) {
   const plan = data && data.plan;
   const asOf = effectiveAsOf(data);
@@ -237,6 +297,30 @@ function currentBlock(data, asOf, advice, used) {
   const pendingUnknownCount = rows
     ? rows.filter(row => row.pendingUnknown).length
     : 0;
+  const nextDueSource = earliestNamedOutflow(events, asOf);
+  const nextDueConfidence = nextDue && nextDueSource
+    && nextDueSource.date === nextDue.due
+    && nextDueSource.label === nextDue.what
+    ? sourceConfidence(nextDueSource)
+    : (nextDue ? 'unknown' : null);
+  const nextOutConfidence = nextOut
+    ? conservativeConfidence(
+      sameDayJointCashOutflows(events, asOf, nextOut.date).map(sourceConfidence)
+    )
+    : null;
+  const nearBoundaryItems = advice && advice.nearBoundary
+    && Array.isArray(advice.nearBoundary.items)
+    ? advice.nearBoundary.items.map(item => {
+      const source = eventByIdDate(events, item.id, item.date);
+      return {
+        date: item.date || null,
+        id: item.id || null,
+        label: item.label || null,
+        amount: money(item.amount),
+        confidence: sourceConfidence(source),
+      };
+    })
+    : null;
   return {
     spendableHouseholdCash: Number.isFinite(spendable)
       ? {
@@ -276,6 +360,7 @@ function currentBlock(data, asOf, advice, used) {
           label: nextDue.what,
           amount: money(nextDue.amount),
           daysUntil: nextDue.daysUntil,
+          confidence: nextDueConfidence,
         } : null,
         nextPaymentOut: nextOut ? {
           date: nextOut.date,
@@ -283,18 +368,15 @@ function currentBlock(data, asOf, advice, used) {
           amount: money(nextOut.amount),
           count: nextOut.count,
           daysUntil: nextOut.daysUntil,
+          confidence: nextOutConfidence,
         } : null,
-        nearBoundary: advice && advice.nearBoundary && Array.isArray(advice.nearBoundary.items)
+        nearBoundary: nearBoundaryItems
           ? {
             payday: advice.nearBoundary.payday || null,
             until: advice.nearBoundary.until || null,
             total: money(advice.nearBoundary.total),
-            items: advice.nearBoundary.items.map(item => ({
-              date: item.date || null,
-              id: item.id || null,
-              label: item.label || null,
-              amount: money(item.amount),
-            })),
+            confidence: conservativeConfidence(nearBoundaryItems.map(item => item.confidence)),
+            items: nearBoundaryItems,
           }
           : null,
       }

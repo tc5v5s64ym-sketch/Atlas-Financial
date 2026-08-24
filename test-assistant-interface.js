@@ -70,6 +70,53 @@ function independentSpendable(plan) {
     .reduce((sum, row) => sum + (Number(row.value) || 0), 0);
 }
 
+function syntheticObligationData(planPatch) {
+  const asOf = '2026-08-24';
+  return {
+    plan: Object.assign({
+      windowDays: 21,
+      opening: { asOf },
+      defaults: { targetBuffer: 0 },
+      startingCash: {
+        amount: 8000,
+        breakdown: [{ id: 'cheq', label: 'Chequing', value: 8000 }],
+      },
+      income: [{
+        id: 'pay',
+        label: 'Payroll',
+        frequency: 'once',
+        date: '2026-08-28',
+        amount: 2500,
+        confidence: 'confirmed',
+      }],
+      obligations: [],
+      bills: [],
+      commitments: [],
+    }, planPatch || {}),
+    debts: [],
+    meta: { asOf },
+  };
+}
+
+function earliestNamedOutflow(events, asOf) {
+  let best = null;
+  for (const event of events || []) {
+    if (!(event.amount < 0) || event.kind === 'noncash' || event.date < asOf) continue;
+    if (!best || event.date < best.date) best = event;
+  }
+  return best;
+}
+
+function sameDayJointCashOutflows(events, asOf, date) {
+  return (events || []).filter(event =>
+    event.amount < 0
+    && event.kind !== 'noncash'
+    && event.jointCash !== false
+    && event.date >= asOf
+    && event.date === date
+  );
+}
+
 function forbiddenBlob(value) {
   const text = JSON.stringify(value == null ? {} : value);
   return /"providerAccountId"\s*:/.test(text)
@@ -288,6 +335,184 @@ console.log('=== packet builder consumes Forecast, not a second planner ===');
     'owner questions come from 01_OPEN_QUESTIONS.md (Q2 stays OPEN)');
   ok(packet.metadata.version.gitSha === '72567904bef9f5d4341a80a211db64d1411691cd',
     'version identifier is the supplied git SHA when present');
+  const liveAsOf = (liveData.liveOverlay && liveData.liveOverlay.applied === true
+    && liveData.liveOverlay.effectiveAsOf)
+    || (liveData.plan && liveData.plan.opening && liveData.plan.opening.asOf)
+    || (liveData.meta && liveData.meta.asOf);
+  const liveEvents = advice.sim && advice.sim.events;
+  const liveNextDue = liveEvents ? Forecast.nextDue(liveEvents, liveAsOf) : null;
+  const liveNextSource = earliestNamedOutflow(liveEvents, liveAsOf);
+  if (liveNextDue && liveNextSource) {
+    ok(packet.current.nextSignificantObligations.nextDue.confidence === liveNextSource.confidence,
+      'live nextDue confidence matches the source Forecast event',
+      `${packet.current.nextSignificantObligations.nextDue.confidence} vs ${liveNextSource.confidence}`);
+  }
+  const liveNextOut = liveEvents ? Forecast.nextPaymentOut(liveEvents, liveAsOf) : null;
+  if (liveNextOut) {
+    const dayEvents = sameDayJointCashOutflows(liveEvents, liveAsOf, liveNextOut.date);
+    const dayHasEstimated = dayEvents.some(event => event.confidence === 'estimated');
+    const packetOut = packet.current.nextSignificantObligations.nextPaymentOut;
+    if (dayHasEstimated) {
+      ok(packetOut && packetOut.confidence === 'estimated',
+        'live grouped nextPaymentOut stays estimated when a constituent is estimated',
+        packetOut && packetOut.confidence);
+    }
+    ok(packetOut && packetOut.confidence !== 'confirmed' || !dayHasEstimated,
+      'live grouped nextPaymentOut is not promoted to confirmed when a constituent is estimated');
+  }
+}
+
+console.log('\n=== projected obligations keep source confidence ===');
+{
+  const estimatedData = syntheticObligationData({
+    bills: [{
+      id: 'est-hydro',
+      label: 'Estimated hydro',
+      frequency: 'once',
+      date: '2026-08-26',
+      amount: 120,
+      confidence: 'estimated',
+    }],
+  });
+  const estimatedPacket = Assistant.buildPacket({
+    data: estimatedData,
+    periods: null,
+    questionsMarkdown: '',
+    now: '2026-08-24T12:00:00.000Z',
+    env: {},
+  });
+  const estimatedAdvice = adviceFor(estimatedData, null);
+  const estimatedAsOf = estimatedData.plan.opening.asOf;
+  const estimatedEvents = estimatedAdvice.sim.events;
+  const estimatedSource = earliestNamedOutflow(estimatedEvents, estimatedAsOf);
+  const packetDue = estimatedPacket.current.nextSignificantObligations.nextDue;
+  const packetOut = estimatedPacket.current.nextSignificantObligations.nextPaymentOut;
+  ok(estimatedSource && estimatedSource.confidence === 'estimated',
+    'independent Forecast event for the synthetic next due is estimated',
+    estimatedSource && estimatedSource.confidence);
+  ok(packetDue && packetDue.confidence === 'estimated',
+    'estimated nextDue remains estimated in the packet',
+    packetDue && packetDue.confidence);
+  ok(packetDue.confidence !== 'confirmed',
+    'projection does not promote estimated nextDue to confirmed');
+  ok(packetOut && packetOut.confidence === 'estimated',
+    'estimated nextPaymentOut remains estimated in the packet',
+    packetOut && packetOut.confidence);
+
+  const mixedData = syntheticObligationData({
+    bills: [
+      {
+        id: 'est-bill',
+        label: 'Estimated bill',
+        frequency: 'once',
+        date: '2026-08-26',
+        amount: 80,
+        confidence: 'estimated',
+      },
+      {
+        id: 'conf-bill',
+        label: 'Confirmed bill',
+        frequency: 'once',
+        date: '2026-08-26',
+        amount: 40,
+        confidence: 'confirmed',
+      },
+    ],
+  });
+  const mixedPacket = Assistant.buildPacket({
+    data: mixedData,
+    periods: null,
+    questionsMarkdown: '',
+    now: '2026-08-24T12:00:00.000Z',
+    env: {},
+  });
+  const mixedAdvice = adviceFor(mixedData, null);
+  const mixedAsOf = mixedData.plan.opening.asOf;
+  const mixedOut = Forecast.nextPaymentOut(mixedAdvice.sim.events, mixedAsOf);
+  const mixedDay = sameDayJointCashOutflows(mixedAdvice.sim.events, mixedAsOf, mixedOut.date);
+  ok(mixedDay.some(event => event.confidence === 'estimated')
+    && mixedDay.some(event => event.confidence === 'confirmed'),
+    'independent same-day stream mixes estimated and confirmed outflows');
+  ok(mixedPacket.current.nextSignificantObligations.nextPaymentOut.confidence === 'estimated',
+    'grouped nextPaymentOut uses the weaker estimated confidence',
+    mixedPacket.current.nextSignificantObligations.nextPaymentOut.confidence);
+  ok(mixedPacket.current.nextSignificantObligations.nextPaymentOut.confidence !== 'confirmed',
+    'grouped projection cannot promote an estimated constituent to confirmed');
+
+  const confirmedData = syntheticObligationData({
+    bills: [{
+      id: 'conf-hydro',
+      label: 'Confirmed hydro',
+      frequency: 'once',
+      date: '2026-08-26',
+      amount: 90,
+      confidence: 'confirmed',
+    }],
+  });
+  const confirmedPacket = Assistant.buildPacket({
+    data: confirmedData,
+    periods: null,
+    questionsMarkdown: '',
+    now: '2026-08-24T12:00:00.000Z',
+    env: {},
+  });
+  const confirmedAdvice = adviceFor(confirmedData, null);
+  const confirmedSource = earliestNamedOutflow(
+    confirmedAdvice.sim.events,
+    confirmedData.plan.opening.asOf
+  );
+  ok(confirmedSource && confirmedSource.confidence === 'confirmed',
+    'independent Forecast event for the confirmed fixture is confirmed');
+  ok(confirmedPacket.current.nextSignificantObligations.nextDue.confidence === 'confirmed',
+    'confirmed nextDue stays confirmed rather than being forced to estimated',
+    confirmedPacket.current.nextSignificantObligations.nextDue.confidence);
+
+  const boundaryData = syntheticObligationData({
+    bills: [
+      {
+        id: 'est-boundary',
+        label: 'Estimated boundary bill',
+        frequency: 'once',
+        date: '2026-08-29',
+        amount: 110,
+        confidence: 'estimated',
+      },
+      {
+        id: 'conf-boundary',
+        label: 'Confirmed boundary bill',
+        frequency: 'once',
+        date: '2026-08-29',
+        amount: 55,
+        confidence: 'confirmed',
+      },
+    ],
+  });
+  const boundaryPacket = Assistant.buildPacket({
+    data: boundaryData,
+    periods: null,
+    questionsMarkdown: '',
+    now: '2026-08-24T12:00:00.000Z',
+    env: {},
+  });
+  const boundaryAdvice = adviceFor(boundaryData, null);
+  const nb = boundaryPacket.current.nextSignificantObligations.nearBoundary;
+  const estItem = (nb && nb.items || []).find(item => item.id === 'est-boundary');
+  const confItem = (nb && nb.items || []).find(item => item.id === 'conf-boundary');
+  const sourceEst = (boundaryAdvice.sim.events || []).find(event =>
+    event.id === 'est-boundary' && event.date === '2026-08-29');
+  ok(sourceEst && sourceEst.confidence === 'estimated',
+    'independent Forecast near-boundary event is estimated');
+  ok(estItem && estItem.confidence === 'estimated',
+    'estimated near-boundary item remains estimated in the packet',
+    estItem && estItem.confidence);
+  ok(confItem && confItem.confidence === 'confirmed',
+    'confirmed near-boundary item keeps confirmed',
+    confItem && confItem.confidence);
+  ok(nb && nb.confidence === 'estimated',
+    'grouped near-boundary total uses the weaker estimated confidence',
+    nb && nb.confidence);
+  ok(nb.confidence !== 'confirmed',
+    'grouped near-boundary total is not promoted to confirmed');
 }
 
 console.log('\n=== unavailable answers stay unavailable ===');
