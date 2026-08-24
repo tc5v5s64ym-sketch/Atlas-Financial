@@ -618,32 +618,35 @@ console.log('\n=== L. unfunded opening-gap sentinel is not a $0/week cap ===');
     'and is not described as an unfunded gap');
 }
 
-console.log('\n=== M. homepage leads with the compact payday worksheet ===');
+console.log('\n=== M. homepage leads with the decision-first operating surface ===');
 {
   const index = read('public/index.html');
+  const operatingAt = index.indexOf('id="operating-surface"');
   const paydayAt = index.indexOf('id="payday-answer"');
   const plan90At = index.indexOf('id="plan90"');
   const outlookAt = index.indexOf('id="outlook"');
   const h1At = index.indexOf('<h1');
-  const paydaySection = /<section id="payday-answer">[\s\S]*?<\/section>/.exec(index);
+  const operatingSection = /<section id="operating-surface">[\s\S]*?<\/section>/.exec(index);
+  const paydaySection = /<section id="payday-answer"[\s\S]*?<\/section>/.exec(index);
   const outlookSection = /<section id="outlook">[\s\S]*?<\/section>/.exec(index);
-  const paydayH1 = /<section id="payday-answer">[\s\S]*?<h1[\s\S]*?<\/h1>/.exec(index);
-  ok(paydayAt >= 0 && plan90At > paydayAt,
-    'payday-answer precedes the 90-day outlook in index.html');
+  ok(operatingAt >= 0 && paydayAt > operatingAt && plan90At > paydayAt,
+    'the operating surface leads and the detailed payday worksheet precedes the 90-day outlook');
   ok(outlookAt > paydayAt && outlookAt < plan90At,
-    'Outlook heading sits between the payday answer and the 90-day material');
-  ok(h1At > paydayAt && h1At < plan90At,
-    'the page h1 is inside the payday front door, not the 90-day report');
-  ok(paydayH1 && /id="payday-heading"/.test(paydayH1[0]),
-    'the current-period heading is filled from Forecast mode');
+    'the secondary Outlook heading sits between the detailed worksheet and 90-day material');
+  ok(h1At > operatingAt && h1At < paydayAt,
+    'the page h1 is inside the decision-first operating surface');
+  ok(operatingSection && /id="operating-surface-body"/.test(operatingSection[0]),
+    'the operating surface has a dedicated Forecast-result mount');
+  ok(paydaySection && /id="payday-heading"/.test(paydaySection[0]),
+    'the secondary current-period heading remains available for Forecast mode');
   ok(!/Now → next payday/.test(index),
     'static Now → next payday wording is gone');
-  ok(/Master forecast outlook/.test(index),
+  ok(/Master forecast outlook/i.test(index),
     'the 90-day band is labelled as master forecast outlook');
   ok((index.match(/<h1[\s>]/g) || []).length === 1,
     'there is exactly one h1 on the Plan page');
   ok(paydaySection && !/id="status-band"/.test(paydaySection[0]),
-    'the status band is not inside the compact Payday Plan');
+    'the status band is not inside the secondary current-period worksheet');
   ok(outlookSection && /id="status-band"/.test(outlookSection[0]),
     'the status band lives in Outlook as evidence');
   ok(/id="plan-mission"/.test(index) && /id="cap-headline"/.test(index)
@@ -651,8 +654,9 @@ console.log('\n=== M. homepage leads with the compact payday worksheet ===');
     && /id="budget-cats"/.test(index) && /id="score-table"/.test(index)
     && /id="major-plans-list"/.test(index) && /id="nextmove-card"/.test(index),
     'existing Outlook mounts remain on the page');
-  ok(!/class="lede"/.test(paydaySection[0]),
-    'the payday front door has no report-style lede before the worksheet');
+  ok(paydaySection && /<details class="disclose secondary-disclose">/.test(paydaySection[0])
+    && !/<details[^>]*\sopen(?:\s|>)/.test(paydaySection[0]),
+    'the incumbent worksheet remains available in a closed secondary disclosure');
   const liveRun = composeLive(live.plan);
   const action = liveRun.advice.currentPeriodAction;
   ok(action && action.mode === 'between-paydays',
