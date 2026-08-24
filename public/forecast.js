@@ -2147,7 +2147,9 @@
 
   // Named-category remaining precision. Provider coverage can be complete
   // while household spending is still unclassified; that must not publish a
-  // precise named-remaining claim. Transfers, card payments, income,
+  // precise named-remaining claim. The incumbent `uncategorised` remainder
+  // bucket is not a trusted named Atlas category, so spend assigned there
+  // is also classification-incomplete. Transfers, card payments, income,
   // business-excluded, and household-external amounts never reach
   // `unclassified` and do not degrade this claim.
   function categoryRemainingClaimFrom(coverageClaim, unclassified) {
@@ -2171,6 +2173,15 @@
     };
   }
 
+  // Confidence only. Category amount accounting still uses `byId`.
+  // Canonical `uncategorised` is a remainder bucket, not a trusted named
+  // category, so spend assigned there is classification-incomplete.
+  function classificationIncompleteHouseholdSpend(cls) {
+    if (!cls) return false;
+    if (cls.kind === 'unclassified' || cls.kind === 'unmapped') return true;
+    return cls.kind === 'spend' && (cls.categoryId || 'uncategorised') === 'uncategorised';
+  }
+
   function sumCategoryActuals(plan, asOf, periodStart, opts) {
     const out = emptyCategoryActuals();
     const packet = currentPeriodActualsPacket(opts);
@@ -2186,7 +2197,7 @@
       const amt = Number(tx.amount);
       if (!isFinite(amt) || amt === 0) {
         const clsZero = classifyCurrentPeriodTransaction(tx, plan);
-        if (clsZero.kind === 'unclassified') out.unclassified.count += 1;
+        if (classificationIncompleteHouseholdSpend(clsZero)) out.unclassified.count += 1;
         continue;
       }
       const cls = classifyCurrentPeriodTransaction(tx, plan);
@@ -2205,7 +2216,7 @@
       const row = out.byId.get(catId);
       row.count += 1;
       add(row, state, amt);
-      if (cls.kind === 'unclassified') {
+      if (classificationIncompleteHouseholdSpend(cls)) {
         out.unclassified.count += 1;
         add(out.unclassified, state, amt);
       }

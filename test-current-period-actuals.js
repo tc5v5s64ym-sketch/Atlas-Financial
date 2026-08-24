@@ -1063,6 +1063,49 @@ console.log('\n=== S. named remaining is not precise while household spend is un
     ok(!/remaining is precise|precise remaining/i.test(html),
       'page copy does not call named remaining precise');
   }
+
+  console.log('  --- S6. explicit Uncategorised household spend is classification-incomplete ---');
+  {
+    const uncategorisedTxs = [{
+      date: PAYDAY, amount: 22, pending: false,
+      categoryLabel: 'Uncategorised', accountRole: 'household-cash',
+    }];
+    const txs = [namedTxs[0]].concat(uncategorisedTxs);
+    const plan = basePlan();
+    const uncatCls = F.classifyCurrentPeriodTransaction(uncategorisedTxs[0], plan);
+    ok(uncatCls.kind === 'spend' && uncatCls.categoryId === 'uncategorised',
+      'independent classifier: provider Uncategorised matches the incumbent remainder category as spend');
+    const inv = independentInventory(txs, plan, PAYDAY, PAYDAY);
+    ok(inv.named === 1 && inv.unclassified === 1 && inv.namedById.groceries === 1 && !inv.namedById.uncategorised,
+      'independent inventory counts explicit Uncategorised as unclassified remainder, not a trusted named category',
+      JSON.stringify(inv));
+    const actionOpts = opts({
+      currentPeriodActuals: packet(txs, { pendingCoverage: 'complete' }),
+    });
+    const action = F.currentPeriodAction(plan, PAYDAY, actionOpts);
+    const uncat = cat(action, 'uncategorised');
+    ok(action.remainingClaim === 'precise',
+      'provider coverage remainingClaim stays precise');
+    ok(action.categoryRemainingClaim === 'classified-incomplete',
+      'named remaining is not precise while household spend sits in the uncategorised bucket');
+    ok(uncat && near(uncat.posted, 22),
+      'the Uncategorised amount remains visible on the uncategorised row');
+    ok(action.unclassified.count === 1 && near(action.unclassified.posted, 22),
+      'confidence accumulator treats canonical uncategorised spend as classification-incomplete');
+    const html = paydayComposer().paydayAnswerHtml({
+      plan, asOf: PAYDAY,
+      advice: {
+        weekly: 180, mode: 'normal',
+        paydayAllocation: F.paydayAllocation(plan, PAYDAY, actionOpts),
+        currentPeriodAction: action,
+      },
+      recommended: 180, weekly: 180,
+    });
+    ok(/Observed remaining/.test(html),
+      'Plan renders Observed remaining for explicit Uncategorised household spend');
+    ok(/Category allocation incomplete/.test(html),
+      'Plan does not present named remaining as precise while the remainder bucket has spend');
+  }
 }
 
 if (failures) {
