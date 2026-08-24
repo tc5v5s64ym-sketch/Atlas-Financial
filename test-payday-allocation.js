@@ -574,6 +574,51 @@ console.log('\n=== L. input independence ===');
   ok(recon(a) && recon(b), 'L reconciles');
 }
 
+console.log('\n=== future-cost confidence is retained ===');
+{
+  const datedCommitment = {
+    id: 'oct', label: 'October cost', date: '2026-10-10', amount: 700, confidence: 'estimated',
+  };
+  const undatedCommitment = {
+    id: 'undated', label: 'Undated required', amount: 5000, confidence: 'estimated',
+  };
+  const fixture = planA({
+    commitments: [datedCommitment, undatedCommitment],
+  });
+  const seq = F.fundingSequence(fixture, AS_OF, opts());
+  const datedSeq = seq.find(r => r.id === datedCommitment.id);
+  const undatedSeq = seq.find(r => r.id === undatedCommitment.id);
+  ok(datedSeq && datedSeq.confidence === datedCommitment.confidence,
+    'fundingSequence keeps the dated commitment\'s estimated confidence');
+  ok(undatedSeq && undatedSeq.confidence === undatedCommitment.confidence && !undatedSeq.date,
+    'fundingSequence keeps the undated commitment\'s estimated confidence and invents no date');
+
+  const alloc = F.paydayAllocation(fixture, AS_OF, opts());
+  const dated = future(alloc, datedCommitment.id);
+  const datedLine = (alloc.lines || []).find(l =>
+    l.key === 'future:' + datedCommitment.id || l.id === datedCommitment.id);
+  const unresolved = (alloc.unresolved || []).find(r => r.id === undatedCommitment.id);
+
+  ok(dated && dated.confidence === datedCommitment.confidence
+    && dated.confidence === datedSeq.confidence,
+    'futureCosts retains the plan commitment confidence, not a paydayAllocation invention');
+  ok(dated && dated.date === datedCommitment.date,
+    'the estimated dated commitment keeps its incumbent date');
+  if (dated && dated.allocated > EPS) {
+    ok(datedLine && datedLine.kind === 'future-cost'
+      && datedLine.confidence === datedCommitment.confidence
+      && datedLine.date === datedCommitment.date,
+      'a positive future-cost line keeps the incumbent estimated date and confidence');
+  } else {
+    ok(dated && dated.confidence === datedCommitment.confidence,
+      'a zero future-cost allocation still keeps the incumbent estimated confidence');
+  }
+  ok(unresolved && unresolved.confidence === undatedCommitment.confidence
+    && unresolved.date == null,
+    'unresolved retains estimated confidence and does not fabricate a date');
+  ok(recon(alloc), 'estimated future-cost fixture still reconciles');
+}
+
 console.log('\n=== recommend attaches the same result ===');
 {
   const rec = F.recommend(planA(), AS_OF, opts());

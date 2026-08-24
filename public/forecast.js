@@ -2687,6 +2687,7 @@
         need: floor,
         flexibility: item.flexibility,
         plan: planRow,
+        confidence: item.confidence || null,
       };
       if (item.flexibility === 'optional') {
         optionalRows.push(row);
@@ -2773,6 +2774,7 @@
         projectedByDeadline,
         shortfall,
         verdict,
+        confidence: row.confidence || null,
         reason: shortfall > EPSILON
           ? `Current plan implies a $${shortfall.toFixed(2)} funding gap.`
           : (verdict === 'AT RISK'
@@ -2822,7 +2824,7 @@
     for (const row of futureAllocations) {
       if (row.id === 'household-path') continue;
       pushLine('future:' + row.id, 'future-cost', 'Set aside — ' + row.label,
-        row.allocated, { id: row.id, date: row.date });
+        row.allocated, { id: row.id, date: row.date, confidence: row.confidence || null });
     }
     pushLine('extra-debt', 'extra-debt', 'Extra debt', allocatedExtraDebt);
     for (const row of optionalAllocations) {
@@ -2925,6 +2927,7 @@
         date: null,
         need: roundCent(row.need || 0),
         flexibility: row.flexibility,
+        confidence: row.confidence || null,
         reason: 'Required, but no exact date — no payday contribution assigned; leftover cash is not released to extra debt.',
       })),
       liquidity: {
