@@ -2124,6 +2124,8 @@
     if (pendingStatus === 'complete') {
       return {
         status: 'current',
+        // Provider/account coverage completeness, not named-category remaining
+        // precision. Unclassified household spend is a separate claim.
         remainingClaim: 'precise',
         pendingStatus,
         observationAsOf,
@@ -2143,12 +2145,41 @@
     };
   }
 
+  // Named-category remaining precision. Provider coverage can be complete
+  // while household spending is still unclassified; that must not publish a
+  // precise named-remaining claim. The incumbent `uncategorised` remainder
+  // bucket is not a trusted named Atlas category, so spend assigned there
+  // is also classification-incomplete. Transfers, card payments, income,
+  // business-excluded, and household-external amounts never reach
+  // `unclassified` and do not degrade this claim.
+  function categoryRemainingClaimFrom(coverageClaim, unclassified) {
+    if (coverageClaim !== 'precise' && coverageClaim !== 'posted-only') {
+      return 'unavailable';
+    }
+    const count = unclassified && Number(unclassified.count) || 0;
+    const posted = unclassified && Number(unclassified.posted) || 0;
+    const pending = unclassified && Number(unclassified.pending) || 0;
+    if (count > 0 || Math.abs(posted) > EPSILON || Math.abs(pending) > EPSILON) {
+      return 'classified-incomplete';
+    }
+    return coverageClaim;
+  }
+
   function emptyCategoryActuals() {
     return {
       byId: new Map(),
       unclassified: { posted: 0, pending: 0, count: 0 },
       excluded: { transfers: 0, cardPayments: 0, income: 0, business: 0, external: 0 },
     };
+  }
+
+  // Confidence only. Category amount accounting still uses `byId`.
+  // Canonical `uncategorised` is a remainder bucket, not a trusted named
+  // category, so spend assigned there is classification-incomplete.
+  function classificationIncompleteHouseholdSpend(cls) {
+    if (!cls) return false;
+    if (cls.kind === 'unclassified' || cls.kind === 'unmapped') return true;
+    return cls.kind === 'spend' && (cls.categoryId || 'uncategorised') === 'uncategorised';
   }
 
   function sumCategoryActuals(plan, asOf, periodStart, opts) {
@@ -2166,7 +2197,7 @@
       const amt = Number(tx.amount);
       if (!isFinite(amt) || amt === 0) {
         const clsZero = classifyCurrentPeriodTransaction(tx, plan);
-        if (clsZero.kind === 'unclassified') out.unclassified.count += 1;
+        if (classificationIncompleteHouseholdSpend(clsZero)) out.unclassified.count += 1;
         continue;
       }
       const cls = classifyCurrentPeriodTransaction(tx, plan);
@@ -2185,7 +2216,7 @@
       const row = out.byId.get(catId);
       row.count += 1;
       add(row, state, amt);
-      if (cls.kind === 'unclassified') {
+      if (classificationIncompleteHouseholdSpend(cls)) {
         out.unclassified.count += 1;
         add(out.unclassified, state, amt);
       }
@@ -2368,6 +2399,8 @@
       noMovementToday: !cal.todayIsPayday && !moneyMovementRequired,
       currentShortfall,
       remainingClaim: coverage.remainingClaim,
+      categoryRemainingClaim: categoryRemainingClaimFrom(
+        coverage.remainingClaim, actuals.unclassified),
     };
   }
 

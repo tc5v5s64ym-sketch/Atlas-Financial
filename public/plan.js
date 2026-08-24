@@ -743,10 +743,20 @@ function paydayCoverageNote(action) {
     }
     return cov.reason || 'Current remaining spend cannot be confirmed.';
   }
+  const classifiedIncomplete = action.categoryRemainingClaim === 'classified-incomplete';
   if (cov.remainingClaim === 'posted-only') {
-    return through
+    const pendingNote = through
       ? `Posted and observed pending through ${through}. Pending coverage is not complete, so additional unknown pending may exist.`
       : 'Observed pending still constrains remaining. Pending coverage is not complete, so additional unknown pending may exist.';
+    return classifiedIncomplete
+      ? pendingNote.replace(/\.$/, '')
+        + '. Category allocation incomplete — remaining shown with uncategorised spending outstanding.'
+      : pendingNote;
+  }
+  if (classifiedIncomplete) {
+    return through
+      ? `Transaction coverage complete through ${through}. Category allocation incomplete — remaining shown with uncategorised spending outstanding.`
+      : 'Transaction coverage complete; category allocation incomplete. Remaining shown with uncategorised spending outstanding.';
   }
   return through
     ? `Actual spending through ${through}.`
@@ -818,10 +828,25 @@ function paydayAnswerHtml(ctx) {
       : `As at ${fmtDateLong(basisAsOf)} → ${periodEndLabel}`;
   const coverageNote = paydayCoverageNote(action);
   const remainingClaim = action && action.remainingClaim;
-  const preciseRemaining = remainingClaim === 'precise' || remainingClaim === 'posted-only';
+  const categoryClaim = action && action.categoryRemainingClaim;
+  const hasRemaining = remainingClaim === 'precise' || remainingClaim === 'posted-only';
+  const remainingLabel = !hasRemaining
+    ? 'Period need'
+    : (categoryClaim === 'classified-incomplete' ? 'Observed remaining' : 'Remaining');
   const coverageClass = remainingClaim === 'unavailable' || !action
     ? 'payday-status warn'
     : 'payday-status';
+  const unclassifiedNote = action && action.unclassified && Number(action.unclassified.count) > 0
+    ? `<p class="payday-qual">${action.unclassified.count} transaction${
+        action.unclassified.count === 1 ? '' : 's'
+      } could not be classified and ${
+        hasRemaining
+          ? `are counted as uncategorised (${money2(
+              (Number(action.unclassified.posted) || 0) + (Number(action.unclassified.pending) || 0)
+            )})`
+          : 'were not guessed into a spending category'
+      }.</p>`
+    : '';
 
   const obligationItems = (alloc && alloc.obligations && alloc.obligations.items) || [];
   const essentialItems = (alloc && alloc.essentials && alloc.essentials.items) || [];
@@ -876,9 +901,9 @@ function paydayAnswerHtml(ctx) {
       .filter(c => c && c.class === 'essential' && (
         Number(c.planned) > 0 || Number(c.remaining) !== 0 || Number(c.posted) > 0
       ));
-    const spendSheet = preciseRemaining
+    const spendSheet = hasRemaining
       ? paydaySheet(
-        ['Category', 'Remaining'],
+        ['Category', remainingLabel],
         'payday-essential',
         spendCats,
         r => `<td>${r.label}${
@@ -890,24 +915,18 @@ function paydayAnswerHtml(ctx) {
         }${r.overage > 0 ? `<div class="payday-item-note">Overage ${money2(r.overage)}</div>` : ''}
         </td><td>${r.remaining != null ? money2(r.remaining) : '—'}</td>`)
       : paydaySheet(
-        ['Category', 'Period need'],
+        ['Category', remainingLabel],
         'payday-essential',
         essentialItems.filter(r => r && Number(r.required) > 0),
         r => `<td>${r.label}</td><td>${money2(r.required)}</td>`);
-    const essentialTotal = preciseRemaining && action.essentialRemaining != null
-      ? `<p class="payday-qual">Total essential room remaining: ${money2(action.essentialRemaining)}</p>`
+    const essentialTotal = hasRemaining && action.essentialRemaining != null
+      ? `<p class="payday-qual">Total essential room remaining: ${money2(action.essentialRemaining)}${
+          categoryClaim === 'classified-incomplete'
+            ? ' — observed; uncategorised spending outstanding'
+            : ''
+        }</p>`
       : '';
-    const unclassified = action && action.unclassified && Number(action.unclassified.count) > 0
-      ? `<p class="payday-qual">${action.unclassified.count} transaction${
-          action.unclassified.count === 1 ? '' : 's'
-        } could not be classified and ${
-          preciseRemaining
-            ? `are counted as uncategorised (${money2(
-                (Number(action.unclassified.posted) || 0) + (Number(action.unclassified.pending) || 0)
-              )})`
-            : 'were not guessed into a spending category'
-        }.</p>`
-      : '';
+    const unclassified = unclassifiedNote;
     const movement = action && action.noMovementToday
       ? '<p class="payday-action-empty">No money movement is required today.</p>'
       : '';
@@ -929,7 +948,7 @@ function paydayAnswerHtml(ctx) {
         ${dueSheet}
         <div class="payday-group">Everyday spending left</div>
         ${spendSheet}${essentialTotal}${unclassified}
-        ${!preciseRemaining ? `<p class="payday-qual">${coverageNote}</p>` : ''}
+        ${!hasRemaining ? `<p class="payday-qual">${coverageNote}</p>` : ''}
         <div class="payday-group">Household spending permission</div>
         <div class="payday-spend">${spendInner}</div>
         ${nextPoint}
@@ -963,7 +982,7 @@ function paydayAnswerHtml(ctx) {
     : '';
 
   const essentialSheet = paydaySheet(
-    ['Category', preciseRemaining ? 'Remaining' : 'Period need'],
+    ['Category', remainingLabel],
     'payday-essential',
     essentialItems.filter(r => r && (
       Number(r.required) > 0 || Number(r.remaining) < 0 || Number(r.planned) > 0
@@ -976,12 +995,12 @@ function paydayAnswerHtml(ctx) {
               : r.source
       } · ${money2(r.monthly)}/month</div>` : ''
     }${
-      preciseRemaining && r.posted != null
+      hasRemaining && r.posted != null
         ? `<div class="payday-item-note">Posted ${money2(r.posted)}${
             Number(r.pending) > 0 ? ` · pending ${money2(r.pending)}` : ''
           }</div>`
         : ''
-    }</td><td>${money2(preciseRemaining && r.remaining != null ? r.remaining : r.required)}</td>`);
+    }</td><td>${money2(hasRemaining && r.remaining != null ? r.remaining : r.required)}</td>`);
   const ess = alloc && alloc.essentials;
   let essentialSummary = '';
   if (ess && (Number(ess.wanted) > 0 || essentialItems.length)) {
@@ -1000,7 +1019,7 @@ function paydayAnswerHtml(ctx) {
   }
   const periodEnd = alloc && alloc.periodEnd;
   const periodStart = alloc && (
-    (preciseRemaining && alloc.planPeriodStart) || alloc.periodStart || alloc.asOf || asOf
+    (hasRemaining && alloc.planPeriodStart) || alloc.periodStart || alloc.asOf || asOf
   );
   const essentialHeading = periodStart && periodEnd
     ? `Essential costs from ${fmtDate(periodStart)} through ${fmtDate(periodEnd)}`
@@ -1040,6 +1059,7 @@ function paydayAnswerHtml(ctx) {
       <div class="payday-group">What to do with this paycheque</div>
       ${billsBlock}
       ${essentialsBlock}
+      ${unclassifiedNote}
       ${otherBlock}
       ${unresolvedNote}
       <div class="payday-group">Household spending permission</div>
