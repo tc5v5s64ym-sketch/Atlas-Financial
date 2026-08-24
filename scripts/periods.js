@@ -64,7 +64,11 @@ mapLabels(
 );
 mapLabels(['Telephone', 'Phone', 'Internet and cable'], 'Telecom', 'essential');
 mapLabels(['AI'], 'Subscriptions', 'discretionary');
-mapLabels(['Pets', 'Pet supplies'], 'Pets', 'essential');
+// Lunch Money Pets / Pet supplies is not mapped. GET-only validation showed
+// that category is materially misclassified (debt payments and unrelated
+// merchants). Do not canonize it. Recategorizing the provider is a write and
+// is not authorized here; those rows stay Uncategorised or are excluded by
+// the incumbent debt-payment rules.
 mapLabels(['Tax payment'], 'Tax', 'essential');
 mapLabels(['Childcare'], 'School & clubs', 'essential');
 mapLabels(['Union Dues'], 'Union dues', 'essential');
@@ -290,6 +294,100 @@ function interestLabel(mapping, data) {
   return 'Interest';
 }
 
+function providerEventSource(mapping) {
+  if (mapping && mapping.atlasRole === 'heloc') return 'lunchmoney-heloc';
+  if (mapping && mapping.atlasRole === 'revolving-credit') return 'lunchmoney-card';
+  return 'lunchmoney-cash';
+}
+
+function helocFallbackEventsFromFile(root) {
+  const file = path.join(root, 'raw', 'heloc_18mo.csv');
+  if (!file || !fs.existsSync(file)) return [];
+  const events = [];
+  for (const line of fs.readFileSync(file, 'utf8').split(/\r?\n/).filter(value => value.trim())) {
+    const cols = splitCsv(line);
+    const date = (cols[0] || '').trim();
+    const description = (cols[1] || '').trim().replace(/\s+_[A-Z]$/, '').trim();
+    const withdrawal = parseFloat(cols[2]) || 0;
+    if (!date || withdrawal <= 0) continue;
+    const interest = localInterestKind(description, 'HELOC');
+    if (!interest) continue;
+    events.push({
+      month: date.slice(0, 7),
+      kind: 'interest',
+      category: 'HELOC',
+      type: 'structural',
+      amount: withdrawal,
+      source: 'heloc-fallback',
+    });
+  }
+  return events;
+}
+
+function addFallbackHelocEvents(events, options) {
+  const opts = options || {};
+  const providerMonths = new Set(
+    (events || [])
+      .filter(event => event.kind === 'interest' && event.source === 'lunchmoney-heloc')
+      .map(event => event.month)
+  );
+  const label = opts.helocLabel || 'HELOC';
+  for (const row of opts.helocFallbackEvents || []) {
+    const month = row.month || (row.date && String(row.date).slice(0, 7));
+    const amount = Number(row.amount) || 0;
+    if (!month || amount <= 0 || providerMonths.has(month)) continue;
+    events.push({
+      month,
+      kind: 'interest',
+      category: label,
+      type: 'structural',
+      amount,
+      source: 'heloc-fallback',
+    });
+  }
+}
+
+function mappedHeloc(accountMap) {
+  return ((accountMap && accountMap.mappings) || []).some(mapping => (
+    mapping.atlasRole === 'heloc' || (mapping.canonical && mapping.canonical.id === 'heloc')
+  ));
+}
+
+function assertHelocCoverage(accountMap, events) {
+  if (!mappedHeloc(accountMap)) return;
+  const helocInterest = (events || []).filter(event => (
+    event.kind === 'interest'
+    && (event.source === 'lunchmoney-heloc' || event.source === 'heloc-fallback')
+  ));
+  const total = round2(helocInterest.reduce((sum, event) => sum + event.amount, 0));
+  if (!helocInterest.length || total <= 0) {
+    throw new Error('HELOC historical interest is missing; refusing to publish an incomplete series as complete.');
+  }
+}
+
+function buildAccountCoverage(accountMap, posted) {
+  const rows = [];
+  for (const mapping of (accountMap && accountMap.mappings) || []) {
+    if (mapping.atlasRole === Provider.EXTERNAL_LIVE_ROLE) continue;
+    const txns = (posted || []).filter(transaction => (
+      String(transaction.providerAccountId) === String(mapping.providerAccountId)
+    ));
+    const dates = txns.map(transaction => transaction.date).filter(Boolean).sort();
+    rows.push({
+      role: mapping.atlasRole,
+      canonicalId: mapping.canonical && mapping.canonical.id || null,
+      postedCount: txns.length,
+      coverageStart: dates[0] || null,
+      coverageThrough: dates[dates.length - 1] || null,
+    });
+  }
+  rows.sort((left, right) => (
+    String(left.role).localeCompare(String(right.role))
+    || String(left.canonicalId || '').localeCompare(String(right.canonicalId || ''))
+  ));
+  return rows;
+}
+
 function addFallbackCardEvents(events, options) {
   const opts = options || {};
   const starts = opts.providerStartByCard || new Map();
@@ -370,6 +468,7 @@ function buildLunchMoneyEvents(options) {
     paypalFunding: 0,
     householdExternal: 0,
     reversal: 0,
+    helocNonInterest: 0,
   };
   let uncategorisedCount = 0;
   let uncategorisedNet = 0;
@@ -406,8 +505,13 @@ function buildLunchMoneyEvents(options) {
       excluded.paypalFunding += 1;
       continue;
     }
+    if (DEBT.test(String(transaction.payee || ''))) {
+      excluded.debtPayment += 1;
+      continue;
+    }
 
     const month = transaction.date.slice(0, 7);
+    const source = providerEventSource(mapping);
     if (label === 'interest charge') {
       if (amount < 0) { excluded.reversal += 1; continue; }
       events.push({
@@ -416,9 +520,13 @@ function buildLunchMoneyEvents(options) {
         category: interestLabel(mapping, data),
         type: 'structural',
         amount,
-        source: mapping.atlasRole === 'revolving-credit' ? 'lunchmoney-card' : 'lunchmoney-cash',
+        source,
       });
       classifiedProviderNet += amount;
+      continue;
+    }
+    if (mapping.atlasRole === 'heloc') {
+      excluded.helocNonInterest += 1;
       continue;
     }
     if (FEE_CATEGORIES.has(label)) {
@@ -430,7 +538,7 @@ function buildLunchMoneyEvents(options) {
         category,
         type,
         amount,
-        source: mapping.atlasRole === 'revolving-credit' ? 'lunchmoney-card' : 'lunchmoney-cash',
+        source,
       });
       classifiedProviderNet += amount;
       continue;
@@ -449,7 +557,7 @@ function buildLunchMoneyEvents(options) {
       category,
       type,
       amount,
-      source: mapping.atlasRole === 'revolving-credit' ? 'lunchmoney-card' : 'lunchmoney-cash',
+      source,
     });
     classifiedProviderNet += amount;
   }
@@ -460,6 +568,13 @@ function buildLunchMoneyEvents(options) {
     providerStartByCard,
     data,
   });
+  const helocFallbackEvents = opts.helocFallbackEvents
+    || (opts.root ? helocFallbackEventsFromFile(opts.root) : []);
+  addFallbackHelocEvents(events, {
+    helocFallbackEvents,
+    helocLabel: canonicalDebtLabel(data, 'heloc'),
+  });
+  assertHelocCoverage(accountMap, events);
 
   const providerEvents = events.filter(event => event.source.startsWith('lunchmoney-'));
   const providerEventNet = round2(providerEvents.reduce((sum, event) => sum + event.amount, 0));
@@ -467,17 +582,27 @@ function buildLunchMoneyEvents(options) {
     throw new Error('Lunch Money event reconciliation failed.');
   }
 
+  const accountCoverage = buildAccountCoverage(accountMap, posted);
+  const fallbackHelocEvents = events.filter(event => event.source === 'heloc-fallback').length;
+  const helocCoverage = accountCoverage.find(row => row.role === 'heloc' || row.canonicalId === 'heloc');
+  const helocCovered = !mappedHeloc(accountMap)
+    || events.some(event => event.kind === 'interest'
+      && (event.source === 'lunchmoney-heloc' || event.source === 'heloc-fallback'));
+
   return {
     events,
     metadata: {
       basis: 'lunchmoney-cleaned-history',
-      complete: true,
+      complete: window.complete === true && helocCovered,
       coverageStart: posted.map(transaction => transaction.date).filter(Boolean).sort()[0] || null,
       coverageThrough: window.endDate,
       queryWindowStart: window.startDate,
       postedTransactions: posted.length,
       providerEventNet,
       fallbackCardEvents: events.filter(event => event.source === 'card-fallback').length,
+      fallbackHelocEvents,
+      accountCoverage,
+      helocPostedCount: helocCoverage ? helocCoverage.postedCount : 0,
       categoryClaim: uncategorisedCount ? 'incomplete' : 'precise',
       uncategorisedTransactions: uncategorisedCount,
       uncategorisedNet: round2(uncategorisedNet),
@@ -610,6 +735,7 @@ async function liveLunchMoneyEvents(root, historyDays) {
     fetchedAt,
     accountMap,
     data,
+    root,
     spendingRows: readCsv(path.join(derivedDir, 'card-spending.csv')),
     transactionRows: readCsv(path.join(derivedDir, 'card-transactions.csv')),
   });
@@ -642,6 +768,10 @@ const api = {
   buildLocalEvents,
   buildLunchMoneyEvents,
   addFallbackCardEvents,
+  addFallbackHelocEvents,
+  helocFallbackEventsFromFile,
+  assertHelocCoverage,
+  buildAccountCoverage,
   buildPeriods,
   writePeriods,
   liveLunchMoneyEvents,

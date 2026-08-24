@@ -296,10 +296,14 @@ node scripts/periods.js . 2026-08-24
 
 The default source is the authorized GET-only Lunch Money feed. It maps cleaned
 provider categories into the incumbent Atlas categories and uses local derived
-card evidence only before each mapped card's provider history begins. Pass
-`--source local` only for the explicit file-evidence fallback. That fallback
-must run where the gitignored `raw/` and `derived/` inputs exist. The script
-refuses incomplete provider coverage and refuses to publish zero events.
+card evidence only before each mapped card's provider history begins. Mapped
+HELOC interest is required: empty provider HELOC history keeps known local
+HELOC interest for uncovered months, or generation fails closed. Lunch Money
+Pets is not mapped; GET-only validation found that category materially
+misclassified. Pass `--source local` only for the explicit file-evidence
+fallback. That fallback must run where the gitignored `raw/` and `derived/`
+inputs exist. The script refuses incomplete provider coverage, refuses a
+mapped HELOC with no interest evidence, and refuses to publish zero events.
 
 Pass today's date — it decides what "this month", "last month" and "year to
 date" mean. It writes aggregate-only `derived/periods.json` and

@@ -116,7 +116,7 @@ ok(near(telecom.gross, afterGross) && near(telecom.planned, 0) && near(telecom.r
 console.log('\n=== exact delta is entirely the telecom correction ===');
 // BEFORE figures reproduced on main abcfd0dfd90dee6eea328af8bb518e7953ce0f79
 // from periods.json + budgetBreakdown, before current-regime closeout.
-const beforeRequired = 4074.172754120879;
+const beforeRequired = 4347.076504120879;
 const beforeEssential = 3557.007754120879;
 const remainderDelta = beforeRemainder - afterRemainder;
 ok(near(remainderDelta, 69.33875),

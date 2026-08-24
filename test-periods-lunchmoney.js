@@ -116,6 +116,7 @@ assert.deepStrictEqual(built.metadata.excluded, {
   paypalFunding: 1,
   householdExternal: 1,
   reversal: 1,
+  helocNonInterest: 0,
 });
 
 const output = Periods.buildPeriods(built.events, '2026-08-24', built.metadata);
@@ -130,6 +131,16 @@ assert.strictEqual(output.monthly.find(row => row.m === '2025-08').cardsCovered,
 const published = JSON.stringify(output);
 for (const secret of ['cash-a-secret', 'card-secret', 'grocery-id', 'Market Secret', 'PAYPAL Merchant Secret']) {
   assert(!published.includes(secret), `aggregate output leaked provider evidence: ${secret}`);
+}
+assert(!Periods.LUNCH_MONEY_CATEGORY_MAP.has('pets')
+  && !Periods.LUNCH_MONEY_CATEGORY_MAP.has('pet supplies'),
+  'Lunch Money Pets is not a mapped historical category');
+for (const row of built.metadata.accountCoverage) {
+  const encoded = JSON.stringify(row);
+  for (const secret of ['cash-a-secret', 'card-secret', 'mbna-secret', 'external-secret']) {
+    assert(!encoded.includes(secret), `account coverage leaked ${secret}`);
+  }
+  assert.strictEqual(Object.prototype.hasOwnProperty.call(row, 'providerAccountId'), false);
 }
 
 assert.throws(() => Periods.buildLunchMoneyEvents({
@@ -152,5 +163,82 @@ assert.throws(() => Periods.buildLunchMoneyEvents({
   accountMap,
   data,
 }), /unmapped provider account/);
+
+const helocData = {
+  ...data,
+  debts: data.debts.concat([{ id: 'heloc', label: 'HELOC' }]),
+};
+const helocMap = {
+  ...accountMap,
+  mappings: accountMap.mappings.concat([{
+    providerAccountId: 'heloc-secret',
+    atlasRole: 'heloc',
+    canonical: { collection: 'debts', id: 'heloc' },
+  }]),
+};
+
+assert.throws(() => Periods.buildLunchMoneyEvents({
+  normalized,
+  accountMap: helocMap,
+  data: helocData,
+}), /HELOC historical interest is missing/);
+
+// Independent hand-sum: $80 + $70 fallback HELOC. Provider interest stays 16.
+const helocFallbackEvents = [
+  { month: '2025-07', amount: 80 },
+  { month: '2026-07', amount: 70 },
+];
+const withHeloc = Periods.buildLunchMoneyEvents({
+  normalized,
+  accountMap: helocMap,
+  data: helocData,
+  spendingRows,
+  transactionRows,
+  helocFallbackEvents,
+});
+assert.strictEqual(80 + 70, 150);
+assert.strictEqual(withHeloc.metadata.fallbackHelocEvents, 2);
+assert.strictEqual(withHeloc.metadata.helocPostedCount, 0);
+assert.strictEqual(withHeloc.metadata.complete, true);
+const helocOut = Periods.buildPeriods(withHeloc.events, '2026-08-24', withHeloc.metadata);
+assert.strictEqual(helocOut.periods.all.interest.find(row => row.label === 'HELOC').total, 150);
+assert.strictEqual(helocOut.periods.lastMonth.interest.find(row => row.label === 'HELOC').total, 70);
+assert.strictEqual(helocOut.periods.all.interestTotal, expectedInterest + 150);
+assert.strictEqual(JSON.stringify(helocOut).includes('heloc-secret'), false);
+
+const overlapHeloc = Periods.buildLunchMoneyEvents({
+  normalized: {
+    ...normalized,
+    transactions: transactions.concat([
+      tx('heloc-int-id', 'heloc-secret', '2026-07-31', 70, 'Interest Charge'),
+    ]),
+  },
+  accountMap: helocMap,
+  data: helocData,
+  helocFallbackEvents,
+});
+assert.strictEqual(overlapHeloc.events.filter(event => event.source === 'heloc-fallback'
+  && event.month === '2026-07').length, 0, 'provider HELOC interest retires that month of fallback');
+assert.strictEqual(overlapHeloc.events.filter(event => event.source === 'heloc-fallback'
+  && event.month === '2025-07').length, 1);
+
+const petsBuilt = Periods.buildLunchMoneyEvents({
+  normalized: {
+    ...normalized,
+    transactions: [
+      tx('triangle-pay-id', 'cash-a-secret', '2026-02-14', 400, 'Pets', { payee: 'CAN TIRE MC' }),
+      tx('marks-id', 'cash-a-secret', '2026-02-15', 50, 'Pets', { payee: 'MARKS Work Wearhouse' }),
+    ],
+  },
+  accountMap,
+  data,
+});
+assert.strictEqual(petsBuilt.metadata.excluded.debtPayment, 1);
+assert.strictEqual(petsBuilt.events.filter(event => event.category === 'Pets').length, 0);
+assert.strictEqual(petsBuilt.events.find(event => event.kind === 'spend').category, 'Uncategorised');
+assert.strictEqual(petsBuilt.events.find(event => event.kind === 'spend').amount, 50);
+const petsOut = Periods.buildPeriods(petsBuilt.events, '2026-08-24', petsBuilt.metadata);
+assert.strictEqual(petsOut.periods.all.spendingTotal, 50);
+assert.ok(!petsOut.periods.all.spending.some(row => row.label === 'Pets'));
 
 console.log('Lunch Money historical actuals adapter reconciles independently and preserves boundaries');
