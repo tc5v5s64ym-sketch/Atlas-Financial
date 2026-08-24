@@ -265,6 +265,10 @@ Inferred personal from its transactions, not verified.
 
 ## Ready — analysis, nothing blocking
 
+**B97 · Read-only assistant access to Atlas** · **IN PROGRESS 2026-08-24** · *owner instruction; first slice*
+
+Owner instruction 2026-08-24: expose one secure, read-only, sanitized assistant data surface backed by the incumbent live Atlas/Forecast authorities. `GET /assistant/current` via `scripts/assistant-packet.js`. Dedicated `ATLAS_ASSISTANT_TOKEN` Bearer secret. Not a ChatGPT financial planner, not a second Forecast, not a transaction store. ChatGPT App / MCP connection is a later PR.
+
 **B66 · Stop deleting the Interac notifications** · **owner action** · *small*
 **The single cheapest fix in this file.** Interac's confirmation emails are the
 only record of who is on the other end of an e-transfer, and both mailboxes are
