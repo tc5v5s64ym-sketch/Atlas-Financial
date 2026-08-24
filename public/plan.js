@@ -795,6 +795,102 @@ function paydayAmountCell(amount, confidence) {
   return value;
 }
 
+const PAYDAY_ACTION_KIND = {
+  obligations: 'Bills',
+  essentials: 'Essentials',
+  'future-path': 'Future cash',
+  'future-cost': 'Future cost',
+  'extra-debt': 'Debt',
+  optional: 'Optional',
+};
+
+function paydayAllocationTrustNote(line, alloc) {
+  const notes = ['Calculated by Forecast.paydayAllocation.'];
+  if (line && line.kind === 'obligations') {
+    const uncertain = ((alloc && alloc.obligations && alloc.obligations.items) || [])
+      .filter(item => item && item.confidence && item.confidence !== 'confirmed')
+      .map(item => `${item.label} · ${item.confidence}`);
+    if (uncertain.length) notes.push(`Input trust retained: ${uncertain.join('; ')}.`);
+  }
+  return notes.join(' ');
+}
+
+/* Ordered action sheet for the default operating surface. Forecast has already
+ * selected, ordered and totalled every allocation line. This function prints
+ * those fields and the engine's reconciliation identity; it does not allocate,
+ * sum, choose a debt target, or infer that any money movement occurred. */
+function paydayAllocationSheetHtml(alloc) {
+  if (!alloc || !Array.isArray(alloc.lines)) {
+    return `<div class="allocation-unavailable">
+      <p class="operating-lead">Payday allocation unavailable.</p>
+      <p class="operating-note">No payment, transfer, debt action or other money movement is implied.</p>
+    </div>`;
+  }
+
+  const lines = alloc.lines.map((line, index) => `
+    <div class="allocation-line" data-allocation-key="${line.key}" data-allocation-order="${index + 1}">
+      <div class="allocation-step">${index + 1}</div>
+      <div class="allocation-copy">
+        <div class="allocation-label"><span class="allocation-action">${PAYDAY_ACTION_KIND[line.kind] || 'Allocate'}</span>${line.label}${line.date ? ` <span class="payday-when">${fmtDate(line.date)}</span>` : ''}</div>
+        <div class="allocation-trust">${paydayAllocationTrustNote(line, alloc)}</div>
+      </div>
+      <div class="allocation-value">${money2(line.amount)}</div>
+    </div>`).join('');
+
+  const futureZero = (alloc.futureCosts || [])
+    .filter(row => row && Number(row.allocated) === 0)
+    .map(row => `<div class="allocation-state" data-allocation-state="future:${row.id}">
+      <span><b>Set aside — ${row.label}</b>${row.date ? ` by ${fmtDate(row.date)}` : ''}<small>${row.reason || row.verdict || ''}</small></span>
+      <span>${money2(row.allocated)}</span>
+    </div>`).join('');
+
+  const unresolved = (alloc.unresolved || []).map(row => `
+    <li data-allocation-unresolved="${row.id}"><b>${row.label}</b> — unresolved; no payday allocation.
+      <span>${row.reason}</span></li>`).join('');
+
+  const protectedAmount = alloc.protectedPath && alloc.protectedPath.allocated != null
+    ? alloc.protectedPath.allocated : null;
+  const protectedLine = alloc.lines.find(line => line && line.kind === 'future-path');
+  const protectedState = protectedLine ? '' : `<div class="allocation-state" data-allocation-state="untouched">
+    <span><b>Leave untouched for the future cash path</b><small>Forecast requires no separate future-path cash hold on this opening.</small></span>
+    <span>${protectedAmount != null ? money2(protectedAmount) : '—'}</span>
+  </div>`;
+
+  const extraLine = alloc.lines.find(line => line && line.kind === 'extra-debt');
+  const extraAmount = alloc.extraDebt && alloc.extraDebt.allocated != null
+    ? alloc.extraDebt.allocated : null;
+  const extraState = extraLine ? '' : `<div class="allocation-state" data-allocation-state="extra-debt">
+    <span><b>Extra debt allocation</b><small>${extraAmount == null
+      ? 'Unavailable; no debt action is instructed.'
+      : 'No extra debt payment is allocated on this opening.'}</small></span>
+    <span>${extraAmount != null ? money2(extraAmount) : '—'}</span>
+  </div>`;
+
+  const remainder = alloc.remainder != null ? alloc.remainder : alloc.unallocated;
+  const remainderLabel = (alloc.unresolved || []).length
+    ? 'Unallocated remainder · keep unassigned'
+    : 'Unallocated / optional remainder';
+
+  return `<div class="allocation-sheet">
+    <div class="allocation-available">
+      <span>Money available</span>
+      <b data-allocation-available>${money2(alloc.available)}</b>
+    </div>
+    <p class="operating-note">Spendable cash only. Credit and unapproved borrowing are excluded.</p>
+    <div class="allocation-list">${lines || `<p class="allocation-empty">No allocation lines. Forecast allocated ${money2(alloc.allocatedTotal)}; no movement is implied.</p>`}</div>
+    ${futureZero}${protectedState}${extraState}
+    <div class="allocation-remainder" data-allocation-remainder>
+      <span>${remainderLabel}</span><b>${remainder != null ? money2(remainder) : '—'}</b>
+    </div>
+    <div class="allocation-reconcile" data-allocation-reconcile>
+      <span>Forecast reconciliation</span>
+      <span>${money2(alloc.allocatedTotal)} allocated + ${remainder != null ? money2(remainder) : '—'} remainder = ${money2(alloc.available)} available resources</span>
+    </div>
+    ${unresolved ? `<details class="allocation-unresolved"><summary>${alloc.unresolved.length} future cost${alloc.unresolved.length === 1 ? '' : 's'} unresolved</summary><ul>${unresolved}</ul></details>` : ''}
+    <p class="allocation-safety">Actionable does not mean executed. This sheet records Forecast allocations only; it does not prove or initiate a payment, transfer or card action.</p>
+  </div>`;
+}
+
 /* The homepage's decision-first summary. Every financial value and verdict is
  * already present on the incumbent Forecast result passed in by renderPlan.
  * This function formats those fields only: it does not call Forecast, add an
@@ -826,14 +922,14 @@ function operatingSurfaceHtml(ctx) {
       <div class="operating-answer">${answer}</div>
     </div>`;
 
-  let nowLead = 'Use the protected allocations below as the current plan.';
-  if (action && action.noMovementToday) nowLead = 'No money movement is required today.';
-  if (todayActions.length) nowLead = 'Complete the current-day actions below.';
+  let nowLead = 'Use the ordered Forecast allocation below as the current payday plan.';
+  if (action && action.noMovementToday) nowLead = 'No money movement is required today; keep the allocation below intact.';
+  if (todayActions.length) nowLead = 'Complete only the current-day actions already identified by Forecast, then keep the allocation below intact.';
   const nowRows = todayActions.map(row => ({ label: row.label, amount: row.amount }));
   const now = `<p class="operating-lead">${nowLead}</p>
     ${lineList(nowRows)}
-    <span class="operating-amount">${available} available</span>
-    <p class="operating-note">${paydayCashNote(alloc, ctx.liveOverlay)}</p>`;
+    ${paydayAllocationSheetHtml(alloc)}
+    <p class="operating-note">${available} available · ${paydayCashNote(alloc, ctx.liveOverlay)}</p>`;
 
   const spend = capView.hasFeasibleCap
     ? `<span class="operating-amount">${money(advice.weekly)} / week</span>
