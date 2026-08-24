@@ -845,9 +845,20 @@ function operatingSurfaceHtml(ctx) {
       ? `<p class="operating-note">${unresolved[0].reason}</p>` : ''}`
     : '<p class="operating-lead">No current protected allocation is available on this opening.</p>';
 
-  const debt = `<p class="operating-lead">${debtTarget ? debtTarget.label : 'No named debt target available'}</p>
-    <span class="operating-amount">${extraDebt != null ? money2(extraDebt) : '—'} extra</span>
-    <p class="operating-note">This period's extra-debt allocation from Forecast.paydayAllocation. Required debt payments are kept separate.</p>`;
+  let debt;
+  if (extraDebt != null && Number(extraDebt) > 0) {
+    debt = `<p class="operating-lead">${debtTarget
+      ? debtTarget.label
+      : 'Forecast allocated extra debt, but no incumbent debt target is available.'}</p>
+      <span class="operating-amount">${money2(extraDebt)} extra</span>
+      <p class="operating-note">This period's extra-debt allocation from Forecast.paydayAllocation. Required debt payments are kept separate.</p>`;
+  } else if (extraDebt != null && Number(extraDebt) === 0) {
+    debt = `<p class="operating-lead">No debt is receiving surplus this period.</p>
+      <span class="operating-amount">${money2(extraDebt)} extra debt allocated</span>
+      <p class="operating-note">Forecast.paydayAllocation assigned no extra debt on this opening. A policy target alone is not a payment.</p>`;
+  } else {
+    debt = '<p class="operating-lead">No extra-debt allocation is available on this opening.</p>';
+  }
 
   const limits = [`<p class="operating-limit${!action || action.remainingClaim === 'unavailable' ? ' warn' : ''}">${coverage}</p>`]
     .concat(risks.map(r => `<p class="operating-limit warn">${r.reason}${r.shortfall != null

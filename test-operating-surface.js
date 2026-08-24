@@ -138,10 +138,17 @@ console.log('\n=== every displayed financial answer traces to incumbents ===');
       `protected allocation renders incumbent line ${row.key}`);
   }
   const extra = advice.paydayAllocation.extraDebt.allocated;
-  ok(rendered.includes(composer.money2(extra) + ' extra'),
-    'the displayed extra-debt amount is Forecast.paydayAllocation.extraDebt');
-  ok(target && rendered.includes(target.label),
-    'the displayed surplus recipient is the debt row from the incumbent Forecast debt projection');
+  if (extra > 0) {
+    ok(rendered.includes(composer.money2(extra) + ' extra'),
+      'the displayed extra-debt amount is Forecast.paydayAllocation.extraDebt');
+    ok(target && rendered.includes(target.label),
+      'a positive allocation names the debt row from the incumbent Forecast debt projection');
+  } else {
+    ok(rendered.includes('No debt is receiving surplus this period.'),
+      'a zero incumbent allocation publishes that no debt receives surplus');
+    ok(!target || !rendered.includes(target.label),
+      'a policy target is not presented as a payment when Forecast allocated zero');
+  }
   const coverageCopy = composer.paydayCoverageNote(advice.currentPeriodAction);
   ok(rendered.includes(coverageCopy),
   'the limitations answer carries the incumbent current-period coverage state');
@@ -149,6 +156,32 @@ console.log('\n=== every displayed financial answer traces to incumbents ===');
     ok(rendered.includes(risk.reason) && rendered.includes(composer.money2(risk.shortfall)),
       `funding limitation renders incumbent risk ${risk.id}`);
   }
+}
+
+console.log('\n=== Q4 follows the incumbent extra-debt allocation ===');
+{
+  const { advice } = currentResult();
+  const composer = loadComposer();
+  const target = { label: 'Synthetic incumbent debt target' };
+  const zeroAdvice = JSON.parse(JSON.stringify(advice));
+  zeroAdvice.paydayAllocation.extraDebt.allocated = 0;
+  const zero = composer.operatingSurfaceHtml({
+    advice: zeroAdvice, liveOverlay: data.liveOverlay, extraDebtTarget: target,
+  });
+  ok(zero.includes('No debt is receiving surplus this period.'),
+    'zero allocation explicitly says no debt receives surplus');
+  ok(zero.includes('$0.00 extra debt allocated'),
+    'zero allocation is rendered from the incumbent amount');
+  ok(!zero.includes(target.label),
+    'zero allocation does not turn the existence of a policy target into a payment');
+
+  const positiveAdvice = JSON.parse(JSON.stringify(advice));
+  positiveAdvice.paydayAllocation.extraDebt.allocated = 25;
+  const positive = composer.operatingSurfaceHtml({
+    advice: positiveAdvice, liveOverlay: data.liveOverlay, extraDebtTarget: target,
+  });
+  ok(positive.includes(target.label) && positive.includes('$25.00 extra'),
+    'positive allocation names the incumbent target and allocated amount');
 }
 
 console.log('\n=== page remains a renderer, not a financial authority ===');
