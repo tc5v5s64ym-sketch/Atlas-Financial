@@ -26,3 +26,7 @@ services:
       # Owner-supplied atlas-provider-account-map/v1 JSON. Never commit a value.
       - key: ATLAS_PROVIDER_ACCOUNT_MAP_JSON
         sync: false
+      # Dedicated read-only assistant Bearer secret. Never the browser password.
+      # Unset → GET /assistant/current returns 503. Never commit a value.
+      - key: ATLAS_ASSISTANT_TOKEN
+        sync: false

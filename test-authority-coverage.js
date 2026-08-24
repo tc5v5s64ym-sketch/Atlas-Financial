@@ -11,8 +11,9 @@
  *   2. data.json plan policy keys — actions, nextDollar and budget.
  *   3. the calculators that used to live in public/app.js, the shared page core:
  *      each must be defined in the engine and absent from the page.
- *   4. the two artifact-writing scripts already named as financial authorities:
- *      periods.js and calendar-ics.js.
+ *   4. the named artifact-writing scripts already named as financial
+ *      authorities: periods.js, calendar-ics.js, snapshot-balances.js.
+ *   5. the named read-only assistant projection: assistant-packet.js.
  *
  * Page scripts that decide rather than render remain the B73 review class because
  * there is no closed mechanical signature for them. This guard does not pretend
@@ -178,6 +179,17 @@ for (const script of ['scripts/periods.js', 'scripts/calendar-ics.js', 'scripts/
   const short = path.basename(script);
   ok(incumbentTable.includes(script) || incumbentTable.includes(short),
     `${script} is named in the incumbent authority table`);
+}
+
+console.log('\n=== read-only assistant projection coverage ===');
+{
+  const script = 'scripts/assistant-packet.js';
+  ok(fs.existsSync(path.join(__dirname, script)), `${script} exists`);
+  ok(incumbentTable.includes(script) || incumbentTable.includes('assistant-packet.js'),
+    `${script} is named in the incumbent authority table`);
+  const src = read(script);
+  ok(!/writeFileSync|writeFile\(/.test(src),
+    'assistant-packet.js does not write files');
 }
 
 console.log('\n=== hard-gate protection ===');

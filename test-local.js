@@ -22,6 +22,11 @@ async function main() {
   r = await fetch(`${BASE}/data.json`, { redirect: 'manual' });
   ok(r.status === 401, 'GET /data.json is blocked', `status ${r.status}`);
 
+  r = await fetch(`${BASE}/assistant/current`, { redirect: 'manual' });
+  ok(r.status === 401 || r.status === 503,
+    'GET /assistant/current is blocked without the assistant Bearer',
+    `status ${r.status}`);
+
   r = await fetch(`${BASE}/balance-history.json`, { redirect: 'manual' });
   ok(r.status === 401, 'GET /balance-history.json is blocked', `status ${r.status}`);
 

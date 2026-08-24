@@ -8,6 +8,9 @@
 //    sensitive sits in the static directory.
 //  * Sessions are stateless: an HMAC-signed cookie, so a restart (Render free
 //    tier sleeps) does not force a re-login mid-session.
+//  * GET /assistant/current is a separate read-only consumer. It is not unlocked
+//    by the browser session and requires ATLAS_ASSISTANT_TOKEN as a Bearer
+//    secret. Unset token → 503. It never writes.
 
 const express = require('express');
 const crypto = require('crypto');
@@ -15,9 +18,11 @@ const fs = require('fs');
 const path = require('path');
 const SnapshotBalances = require('./scripts/snapshot-balances.js');
 const LivePlan = require('./scripts/live-plan.js');
+const Assistant = require('./scripts/assistant-packet.js');
 
 const PASSWORD = process.env.SITE_PASSWORD;
 const SECRET = process.env.SESSION_SECRET;
+const ASSISTANT_TOKEN = process.env.ATLAS_ASSISTANT_TOKEN || '';
 const PORT = process.env.PORT || 3000;
 const SESSION_HOURS = 24 * 14;
 
@@ -27,6 +32,25 @@ if (!PASSWORD || PASSWORD.length < 8) {
 }
 if (!SECRET || SECRET.length < 16) {
   console.error('FATAL: SESSION_SECRET is not set, or is shorter than 16 characters.');
+  process.exit(1);
+}
+function sameSecret(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string' || !a || !b) return false;
+  const left = Buffer.from(a);
+  const right = Buffer.from(b);
+  if (left.length !== right.length) return false;
+  return crypto.timingSafeEqual(left, right);
+}
+if (ASSISTANT_TOKEN && ASSISTANT_TOKEN.length < Assistant.TOKEN_MIN_LENGTH) {
+  console.error('FATAL: ATLAS_ASSISTANT_TOKEN is set but shorter than 32 characters.');
+  process.exit(1);
+}
+if (ASSISTANT_TOKEN && sameSecret(ASSISTANT_TOKEN, PASSWORD)) {
+  console.error('FATAL: ATLAS_ASSISTANT_TOKEN must not reuse SITE_PASSWORD.');
+  process.exit(1);
+}
+if (ASSISTANT_TOKEN && sameSecret(ASSISTANT_TOKEN, SECRET)) {
+  console.error('FATAL: ATLAS_ASSISTANT_TOKEN must not reuse SESSION_SECRET.');
   process.exit(1);
 }
 
@@ -85,6 +109,23 @@ function readCookie(req, name) {
 }
 function authed(req) {
   return verify(readCookie(req, 'hfd_session')) !== null;
+}
+function assistantConfigured() {
+  return Assistant.tokenConfigured({ ATLAS_ASSISTANT_TOKEN: ASSISTANT_TOKEN });
+}
+function readBearer(req) {
+  const header = req.get('authorization') || '';
+  const match = /^Bearer\s+(\S+)$/.exec(header);
+  return match ? match[1] : null;
+}
+function assistantAuthed(req) {
+  if (!assistantConfigured()) return false;
+  const suppliedRaw = readBearer(req);
+  if (typeof suppliedRaw !== 'string') return false;
+  const supplied = Buffer.from(suppliedRaw);
+  const actual = Buffer.from(ASSISTANT_TOKEN);
+  if (supplied.length !== actual.length) return false;
+  return crypto.timingSafeEqual(supplied, actual);
 }
 // Secure is mandatory in production (Render is always HTTPS) but must be
 // omitted over plain http, or a local test session can never be sent back.
@@ -159,11 +200,68 @@ app.post('/logout', (req, res) => {
 // literal string "ok" and reads nothing, so this widens no data surface.
 app.get('/healthz', (_req, res) => res.type('text/plain').send('ok'));
 
+// ---------------------------------------------------------------- data cache
+// Shared by the browser /data.json session route and the assistant packet.
+// Overlay is on-demand GET-only; this never writes canonical state.
+let cachedData = null;
+let cachedAt = 0;
+function loadCanonicalData() {
+  const file = path.join(__dirname, 'data.json');
+  const stat = fs.statSync(file);
+  if (!cachedData || stat.mtimeMs > cachedAt) {
+    cachedData = JSON.parse(fs.readFileSync(file, 'utf8'));
+    cachedAt = stat.mtimeMs;
+  }
+  return cachedData;
+}
+async function servedAtlasData() {
+  return LivePlan.applyForServer(loadCanonicalData(), process.env);
+}
+
+// ---------------------------------------------------------------- assistant (dedicated auth; not the browser session)
+function assistantUnauthorized(res) {
+  res.set('WWW-Authenticate', 'Bearer realm="atlas-assistant"');
+  return res.status(401).json({ error: 'not authenticated' });
+}
+app.get('/assistant/current', async (req, res) => {
+  const ip = req.ip || 'unknown';
+  if (!assistantConfigured()) {
+    return res.status(503).json({ error: 'assistant unavailable' });
+  }
+  if (tooManyAttempts(ip)) {
+    return res.status(429).json({ error: 'too many attempts' });
+  }
+  if (!assistantAuthed(req)) {
+    noteAttempt(ip);
+    return assistantUnauthorized(res);
+  }
+  try {
+    const served = await servedAtlasData();
+    const packet = Assistant.buildPacket({
+      data: served,
+      env: process.env,
+      now: new Date().toISOString(),
+    });
+    res.json(packet);
+  } catch (err) {
+    console.error('assistant packet could not be built:', err.message);
+    res.status(500).json({ error: 'assistant unavailable' });
+  }
+});
+app.all('/assistant/current', (_req, res) => {
+  res.set('Allow', 'GET');
+  return res.status(405).json({ error: 'method not allowed' });
+});
+
 // ---------------------------------------------------------------- gate
 // styles.css is needed by the login page, so it stays public. Everything else
-// requires a session.
+// requires a session. The assistant route has its own Bearer gate above and
+// is not unlocked by a browser cookie.
 app.use((req, res, next) => {
   if (req.path === '/login' || req.path === '/styles.css' || req.path === '/robots.txt') return next();
+  if (req.path === '/assistant/current') {
+    return res.status(401).json({ error: 'not authenticated' });
+  }
   if (authed(req)) return next();
   if (req.path === '/data.json' || req.path === '/balance-history.json') {
     return res.status(401).json({ error: 'not authenticated' });
@@ -172,21 +270,13 @@ app.use((req, res, next) => {
 });
 
 // ---------------------------------------------------------------- data
-let cachedData = null;
-let cachedAt = 0;
 app.get('/data.json', async (_req, res) => {
-  const file = path.join(__dirname, 'data.json');
   try {
-    const stat = fs.statSync(file);
-    if (!cachedData || stat.mtimeMs > cachedAt) {
-      cachedData = JSON.parse(fs.readFileSync(file, 'utf8'));
-      cachedAt = stat.mtimeMs;
-    }
     // Dated openings stay on disk. An explicit overlay (ATLAS_LIVE_OVERLAY=
     // fixture|live) may replace posted/pending for today's live plan only.
     // Production read-only Lunch Money uses live mode plus owner-supplied
     // secrets. Default without that flag remains the canonical file.
-    const served = await LivePlan.applyForServer(cachedData, process.env);
+    const served = await servedAtlasData();
     res.json(served);
   } catch (err) {
     console.error('data.json could not be read:', err.message);

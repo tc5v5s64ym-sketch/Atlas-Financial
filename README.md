@@ -14,7 +14,7 @@ is still the whole financial picture of two people.
 
 | Path | Purpose |
 |---|---|
-| `server.js` | Express app: password gate, security headers, serves the data |
+| `server.js` | Express app: password gate, assistant Bearer gate, security headers, serves the data |
 | `data.json` | **Every figure on the site**, including the `plan` block the forecast runs on |
 | `public/index.html` + `plan.js` | **Plan** — the homepage: 90-day forecast, budget, next actions |
 | `public/forecast.js` | The 13-week projection engine — pure, DOM-free, node-testable |
@@ -33,18 +33,21 @@ is still the whole financial picture of two people.
   refuses to start, so a misconfigured deploy cannot serve the data publicly.
 - `data.json` is served **only** to an authenticated session. It is not in the
   static directory.
+- `GET /assistant/current` is a separate read-only consumer. It is not unlocked
+  by the browser session. It requires `ATLAS_ASSISTANT_TOKEN` as
+  `Authorization: Bearer`. Unset → 503. It never writes.
 - Sessions are stateless HMAC-signed cookies — HttpOnly, SameSite=Lax, and
   Secure whenever the request is HTTPS. A tampered cookie is rejected.
 - Login attempts are throttled to 8 per 15 minutes per IP.
 - `noindex` headers plus a `robots.txt` that disallows everything.
 - A strict Content-Security-Policy; no inline scripts, no third-party requests.
 
-**`SITE_PASSWORD` and `SESSION_SECRET` live in Render environment variables in
-production, and in your own shell's environment variables when running locally.**
-Never commit them, never put them in `data.json`, never send them to the browser,
-and never write them to a log. [`ARCHITECTURE.md`](ARCHITECTURE.md) holds the
-rule for every secret Atlas may legitimately hold, and is the one home for it —
-this is what it permits for these two, not a narrower rule of its own.
+**`SITE_PASSWORD`, `SESSION_SECRET`, and `ATLAS_ASSISTANT_TOKEN` live in Render
+environment variables in production, and in your own shell's environment
+variables when running locally.** Never commit them, never put them in
+`data.json`, never send them to the browser, and never write them to a log.
+[`ARCHITECTURE.md`](ARCHITECTURE.md) holds the rule for every secret Atlas may
+legitimately hold, and is the one home for it.
 
 ## Running it locally
 
@@ -91,7 +94,10 @@ node test-local.js
    and **`ATLAS_PROVIDER_ACCOUNT_MAP_JSON`** by hand in Render. Never put
    those values in git. `ATLAS_LIVE_OVERLAY=live` is declared in
    `render.yaml`. `/healthz` does not depend on Lunch Money.
-6. Deploy. Every push to the default branch redeploys automatically.
+6. To enable read-only assistant access, set **`ATLAS_ASSISTANT_TOKEN`** by
+   hand in Render to a dedicated secret of at least 32 characters. Do not reuse
+   `SITE_PASSWORD`. Unset → `GET /assistant/current` returns 503.
+7. Deploy. Every push to the default branch redeploys automatically.
 
 The free plan sleeps after inactivity, so the first visit in a while takes about
 thirty seconds to wake. For a couple of check-ins a week that is fine.

@@ -39,7 +39,9 @@ opening is 2026-08-19. The 2026-08-16 opening remains dated evidence
 (`B91` / `AF-RECON-01`). Forecast is the one
 master plan (`B94` / `AF-PLAN-01`): the 91-day Plan display is a view
 of a ≥12-month knowledge horizon. The household payday answer is
-composed from that Forecast (`B96` / `AF-PLAN-02`). Dated account-balance
+composed from that Forecast (`B96` / `AF-PLAN-02`). Read-only assistant
+access to Atlas is `GET /assistant/current` (`B97`); it consumes Forecast
+and is not a second planner. Dated account-balance
 openings live in `snapshots/` (`B20` / `AF-HIST-01`); `data.json` remains
 the dated canonical opening. Today's live plan may overlay current
 posted/pending in memory without rewriting that opening. Do not treat 9 August
@@ -342,13 +344,13 @@ is visible without a password.
 - **Tag every figure** verified / calculated / estimated / unknown. An estimate
   is never presented as a verified fact.
 - **Secrets live only where `ARCHITECTURE.md` permits**, and that file is the one
-  home for the rule — do not restate a narrower version of it here. Today the two
-  secrets that exist are supplied as Render environment secrets in production and
-  as environment variables in your own shell when running locally.
-  `SITE_PASSWORD` and `SESSION_SECRET` are never in this repo, never in
-  `data.json`, never in a log, never in any conversation, and never delivered to
-  or persisted in the browser. Typing the shared password into the sign-in form is
-  the secret being *used*, not stored, and is not an exception to that.
+  home for the rule — do not restate a narrower version of it here. Configured
+  secrets are supplied as Render environment secrets in production and as
+  environment variables in your own shell when running locally. They are never
+  in this repo, never in `data.json`, never in a log, never in any conversation,
+  and never delivered to or persisted in the browser. Typing the shared password
+  into the sign-in form is the secret being *used*, not stored, and is not an
+  exception to that.
 
 ## Live
 
