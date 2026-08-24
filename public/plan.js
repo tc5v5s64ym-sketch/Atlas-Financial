@@ -795,6 +795,75 @@ function paydayAmountCell(amount, confidence) {
   return value;
 }
 
+/* The homepage's decision-first summary. Every financial value and verdict is
+ * already present on the incumbent Forecast result passed in by renderPlan.
+ * This function formats those fields only: it does not call Forecast, add an
+ * allocation, choose a debt target, total a bucket, or decide feasibility. */
+function operatingSurfaceHtml(ctx) {
+  const advice = ctx.advice || {};
+  const alloc = advice.paydayAllocation || null;
+  const action = advice.currentPeriodAction || null;
+  const capView = ctx.capView || weeklyCapView(advice, ctx.weeklyOverride);
+  const available = alloc && alloc.available != null ? money2(alloc.available) : '—';
+  const todayActions = (action && action.todayActions) || [];
+  const protectionRows = paydayActionRows(ctx).filter(row =>
+    row.key !== 'extra-debt' && !String(row.key || '').startsWith('optional:'));
+  const extraDebt = alloc && alloc.extraDebt ? alloc.extraDebt.allocated : null;
+  const debtTarget = ctx.extraDebtTarget || null;
+  const coverage = paydayCoverageNote(action);
+  const risks = (alloc && alloc.risks) || [];
+  const unresolved = (alloc && alloc.unresolved) || [];
+
+  const lineList = rows => rows.length
+    ? `<div class="operating-lines">${rows.map(row => `
+        <div class="operating-line"><span>${row.label}</span><span>${money2(row.amount)}</span></div>`).join('')}
+      </div>`
+    : '';
+  const question = (number, prompt, answer) => `
+    <div class="operating-question" data-operating-question="${number}">
+      <div class="operating-number">${number}</div>
+      <h2 class="operating-prompt">${prompt}</h2>
+      <div class="operating-answer">${answer}</div>
+    </div>`;
+
+  let nowLead = 'Use the protected allocations below as the current plan.';
+  if (action && action.noMovementToday) nowLead = 'No money movement is required today.';
+  if (todayActions.length) nowLead = 'Complete the current-day actions below.';
+  const nowRows = todayActions.map(row => ({ label: row.label, amount: row.amount }));
+  const now = `<p class="operating-lead">${nowLead}</p>
+    ${lineList(nowRows)}
+    <span class="operating-amount">${available} available</span>
+    <p class="operating-note">${paydayCashNote(alloc, ctx.liveOverlay)}</p>`;
+
+  const spend = capView.hasFeasibleCap
+    ? `<span class="operating-amount">${money(advice.weekly)} / week</span>
+       <p class="operating-note">Forecast.recommend's supported household cap through the next payday. Essential costs come out of it first.</p>`
+    : `<p class="payday-refuse">${capView.infeasible ? '<b>INFEASIBLE. </b>' : ''}${capView.reason}</p>`;
+
+  const protecting = protectionRows.length
+    ? `${lineList(protectionRows)}${unresolved.length
+      ? `<p class="operating-note">${unresolved[0].reason}</p>` : ''}`
+    : '<p class="operating-lead">No current protected allocation is available on this opening.</p>';
+
+  const debt = `<p class="operating-lead">${debtTarget ? debtTarget.label : 'No named debt target available'}</p>
+    <span class="operating-amount">${extraDebt != null ? money2(extraDebt) : '—'} extra</span>
+    <p class="operating-note">This period's extra-debt allocation from Forecast.paydayAllocation. Required debt payments are kept separate.</p>`;
+
+  const limits = [`<p class="operating-limit${!action || action.remainingClaim === 'unavailable' ? ' warn' : ''}">${coverage}</p>`]
+    .concat(risks.map(r => `<p class="operating-limit warn">${r.reason}${r.shortfall != null
+      ? ` Gap ${money2(r.shortfall)}.` : ''}</p>`))
+    .concat(unresolved.length
+      ? ['<p class="operating-limit">Required future costs without exact dates remain unresolved; Forecast assigns no payday contribution to them.</p>']
+      : [])
+    .join('');
+
+  return question('01', 'What do I do now?', now)
+    + question('02', 'What can we spend until next payday?', spend)
+    + question('03', "What is today's money protecting?", protecting)
+    + question('04', 'What debt is receiving surplus?', debt)
+    + question('05', 'What could make this answer wrong?', limits);
+}
+
 function paydayAnswerHtml(ctx) {
   const plan = ctx.plan;
   const advice = ctx.advice;
@@ -1867,6 +1936,17 @@ function renderPlan(d, periods, history) {
   renderBalanceHistory(history);
 
   /* ---- payday answer: format existing Forecast results, decide nothing ---- */
+  const operatingMount = $('operating-surface-body');
+  if (operatingMount) {
+    operatingMount.innerHTML = operatingSurfaceHtml({
+      plan, asOf, advice, status, mission: missionResult, nextMove: move,
+      nextOut, nextDue: Forecast.nextDue(sim.events, asOf),
+      unallocated: free, budget, creditAvailable: revolving,
+      weekly, recommended, weeklyOverride: state.weeklyVariable,
+      capView, debts: state.debts, liveOverlay: d.liveOverlay,
+      extraDebtTarget: debtProj.byId && debtProj.byId[state.extraDebtTarget],
+    });
+  }
   const paydayMount = $('payday-answer-body');
   if (paydayMount) {
     applyPaydayHeading(advice.currentPeriodAction);
@@ -1986,7 +2066,7 @@ if (typeof App !== 'undefined') {
 }
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
-    paydayAnswerHtml, paydayActionRows, paydayOtherActionRows, paydayComingRows,
+    operatingSurfaceHtml, paydayAnswerHtml, paydayActionRows, paydayOtherActionRows, paydayComingRows,
     paydayCashNote, weeklyCapView, MISSION_PART, NEXT_MOVE, STATUS_BAND,
   };
 }

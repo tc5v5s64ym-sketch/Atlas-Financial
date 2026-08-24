@@ -29,17 +29,30 @@
 
 <div class="wrap">
 
-  <!-- CURRENT-PERIOD ACTION. Compact worksheet of Forecast outputs.
-       Outlook below is the same plan's longer-horizon reasoning, not a second planner. -->
-  <section id="payday-answer">
-    <div class="kicker" id="payday-kicker">Current period</div>
-    <h1 id="payday-heading">Current-period action plan</h1>
-    <div class="card payday-card" id="payday-answer-body"></div>
+  <!-- DECISION-FIRST OPERATING SURFACE. Every answer is formatted from the
+       incumbent Forecast result. The detailed worksheet and outlook remain
+       available below; they are not competing headline answers. -->
+  <section id="operating-surface">
+    <div class="kicker">Payday operating surface</div>
+    <h1>What the plan says to do</h1>
+    <p class="lede">Five answers first. The full current-period worksheet and longer Forecast outlook remain below for inspection.</p>
+    <div class="operating-card" id="operating-surface-body" aria-live="polite"></div>
+  </section>
+
+  <section id="payday-answer" class="secondary-section">
+    <details class="disclose secondary-disclose">
+      <summary>View full current-period worksheet</summary>
+      <div class="secondary-body">
+        <div class="kicker" id="payday-kicker">Current period</div>
+        <h2 id="payday-heading">Current-period action plan</h2>
+        <div class="card payday-card" id="payday-answer-body"></div>
+      </div>
+    </details>
   </section>
 
   <section id="outlook">
-    <div class="kicker">Master forecast outlook</div>
-    <h2>Why this plan</h2>
+    <div class="kicker">Master forecast outlook · diagnostics</div>
+    <h2>Why this plan holds — or does not</h2>
     <div class="statusband" id="status-band" role="status">Working out the projection…</div>
     <p class="lede">The same Forecast. Scroll for the 90-day view, the weekly-cap split, bills, future-plan pressure, and assumptions.</p>
   </section>

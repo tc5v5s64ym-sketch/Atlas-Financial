@@ -270,6 +270,54 @@ footer { margin-top:56px; padding-top:18px; border-top:1px solid var(--grid);
   background:color-mix(in srgb, var(--critical) 5%, var(--surface-1)); }
 .statusband.crit b { color:var(--critical); }
 
+/* Decision-first homepage surface. The five answers are presentation of the
+   incumbent Forecast result; the detailed worksheet stays secondary below. */
+.operating-card {
+  background:var(--surface-1); border:1px solid var(--border); border-radius:18px;
+  box-shadow:0 8px 30px rgba(0,0,0,.06); overflow:hidden;
+}
+.operating-question {
+  display:grid; grid-template-columns:38px minmax(180px,.72fr) minmax(0,1.45fr);
+  gap:14px; align-items:start; padding:22px 24px; border-bottom:1px solid var(--grid);
+}
+.operating-question:last-child { border-bottom:none; }
+.operating-question:first-child {
+  background:color-mix(in srgb, var(--s1) 5%, var(--surface-1));
+}
+.operating-number {
+  display:grid; place-items:center; width:30px; height:30px; border-radius:50%;
+  background:var(--plane); border:1px solid var(--border); color:var(--s1);
+  font-size:.72rem; font-weight:750; font-variant-numeric:tabular-nums;
+}
+.operating-prompt { margin:3px 0 0; font-size:1rem; line-height:1.3; }
+.operating-answer { min-width:0; }
+.operating-answer > :first-child { margin-top:0; }
+.operating-answer > :last-child { margin-bottom:0; }
+.operating-lead { margin:0; font-size:1.08rem; font-weight:650; line-height:1.4; }
+.operating-amount {
+  display:block; margin-top:4px; font-size:1.9rem; font-weight:750;
+  letter-spacing:-.025em; font-variant-numeric:tabular-nums;
+}
+.operating-note { margin:7px 0 0; color:var(--text-secondary); font-size:.88rem; }
+.operating-lines { margin:8px 0 0; }
+.operating-line {
+  display:flex; justify-content:space-between; gap:16px; padding:7px 0;
+  border-bottom:1px solid var(--grid); font-size:.91rem;
+}
+.operating-line:last-child { border-bottom:none; }
+.operating-line span:last-child { font-weight:650; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.operating-limit { margin:7px 0 0; color:var(--text-secondary); font-size:.88rem; }
+.operating-limit.warn { color:var(--critical); }
+.secondary-section { margin-top:24px; }
+.secondary-disclose > summary { background:var(--surface-1); }
+.secondary-body { padding-top:2px; }
+.secondary-body .kicker { margin-top:28px; }
+@media (max-width:700px) {
+  .operating-question { grid-template-columns:34px 1fr; gap:10px 12px; padding:19px 16px; }
+  .operating-answer { grid-column:2; }
+  .operating-amount { font-size:1.75rem; }
+}
+
 .payday-card { padding:22px 24px; }
 .payday-span { margin:0 0 20px; font-size:1.05rem; color:var(--text-secondary); }
 .payday-list { display:flex; flex-direction:column; gap:0; margin:0; }
