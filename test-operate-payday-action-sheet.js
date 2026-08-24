@@ -172,6 +172,78 @@ console.log('\n=== trust, unresolved and unavailable states fail closed ===');
     'the actionable sheet explicitly remains non-executable');
 }
 
+console.log('\n=== estimated future-cost timing stays qualified ===');
+{
+  const sheet = loadSheet();
+  const dated = {
+    id: 'camp',
+    label: 'Estimated camp',
+    date: '2026-09-15',
+    allocated: 40,
+    confidence: 'estimated',
+    reason: 'Required current funding from the master Forecast is met.',
+  };
+  const zeroDated = {
+    id: 'later',
+    label: 'Estimated later cost',
+    date: '2026-11-01',
+    allocated: 0,
+    confidence: 'estimated',
+    reason: 'Required current funding from the master Forecast is met.',
+  };
+  const undated = {
+    id: 'undated',
+    label: 'Estimated undated cost',
+    date: null,
+    confidence: 'estimated',
+    reason: 'Required, but no exact date — no payday contribution assigned.',
+  };
+  const html = sheet.paydayAllocationSheetHtml({
+    available: 40,
+    allocatedTotal: 40,
+    remainder: 0,
+    identity: 40,
+    lines: [{
+      key: 'future:camp',
+      kind: 'future-cost',
+      label: 'Set aside — Estimated camp',
+      amount: 40,
+      id: dated.id,
+      date: dated.date,
+      confidence: dated.confidence,
+    }],
+    obligations: { items: [] },
+    essentials: { fundingAttribution: 'complete' },
+    protectedPath: { allocated: 0 },
+    futureCosts: [dated, zeroDated],
+    extraDebt: { allocated: 0 },
+    unresolved: [undated],
+  });
+  ok(/Sep 15 · estimated/.test(html) && /Input trust retained: estimated/.test(html),
+    'a positive future-cost line does not present an estimated date as confirmed');
+  ok(!/>Sep 15</.test(html),
+    'the estimated dated line does not print an unqualified exact date');
+  ok(/by Nov 1 · estimated/.test(html),
+    'a zero future-cost state keeps estimated timing on the printed date');
+  ok(!/by Nov 1</.test(html),
+    'the estimated zero-state date is not printed as an unqualified deadline');
+  ok(/Estimated undated cost/.test(html) && /unresolved; no payday allocation · estimated/.test(html),
+    'an estimated undated commitment stays unresolved and visibly estimated');
+
+  const alloc = currentAllocation();
+  const liveHtml = sheet.paydayAllocationSheetHtml(alloc);
+  for (const row of alloc.futureCosts || []) {
+    if (!(row && row.confidence && row.confidence !== 'confirmed')) continue;
+    ok(liveHtml.includes(row.label) && liveHtml.includes(` · ${row.confidence}`),
+      `live future-cost ${row.id} keeps Forecast ${row.confidence} visible`);
+  }
+  for (const row of alloc.unresolved || []) {
+    if (!(row && row.confidence && row.confidence !== 'confirmed')) continue;
+    ok(liveHtml.includes(row.label) && liveHtml.includes(` · ${row.confidence}`),
+      `live unresolved ${row.id} keeps Forecast ${row.confidence} visible`);
+  }
+}
+
 console.log('\n=== the page remains a renderer, not a calculator ===');
 {
   const src = read('public/plan.js');

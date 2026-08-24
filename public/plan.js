@@ -825,6 +825,9 @@ function paydayAllocationTrustNote(line, alloc) {
       && alloc.essentials.fundingAttribution === 'unattributed') {
     notes.push('This is an unattributed essential-spending hold; no category-level funding claim is implied.');
   }
+  if (line && line.kind === 'future-cost' && line.confidence && line.confidence !== 'confirmed') {
+    notes.push(`Input trust retained: ${line.confidence}.`);
+  }
   return notes.join(' ');
 }
 
@@ -844,7 +847,7 @@ function paydayAllocationSheetHtml(alloc) {
     <div class="allocation-line" data-allocation-key="${line.key}" data-allocation-order="${index + 1}">
       <div class="allocation-step">${index + 1}</div>
       <div class="allocation-copy">
-        <div class="allocation-label"><span class="allocation-action">${PAYDAY_ACTION_KIND[line.kind] || 'Allocate'}</span>${line.label}${line.date ? ` <span class="payday-when">${fmtDate(line.date)}</span>` : ''}</div>
+        <div class="allocation-label"><span class="allocation-action">${PAYDAY_ACTION_KIND[line.kind] || 'Allocate'}</span>${line.label}${line.date ? ` <span class="payday-when${line.confidence && line.confidence !== 'confirmed' ? ' est' : ''}">${fmtDate(line.date)}${line.confidence && line.confidence !== 'confirmed' ? ` · ${line.confidence}` : ''}</span>` : ''}</div>
         <div class="allocation-trust">${paydayAllocationTrustNote(line, alloc)}</div>
       </div>
       <div class="allocation-value">${money2(line.amount)}</div>
@@ -853,12 +856,12 @@ function paydayAllocationSheetHtml(alloc) {
   const futureZero = (alloc.futureCosts || [])
     .filter(row => row && Number(row.allocated) === 0)
     .map(row => `<div class="allocation-state" data-allocation-state="future:${row.id}">
-      <span><b>Set aside — ${row.label}</b>${row.date ? ` by ${fmtDate(row.date)}` : ''}<small>${row.reason || row.verdict || ''}</small></span>
+      <span><b>Set aside — ${row.label}</b>${row.date ? ` by ${fmtDate(row.date)}${row.confidence && row.confidence !== 'confirmed' ? ` · ${row.confidence}` : ''}` : (row.confidence && row.confidence !== 'confirmed' ? ` · ${row.confidence}` : '')}<small>${row.reason || row.verdict || ''}</small></span>
       <span>${money2(row.allocated)}</span>
     </div>`).join('');
 
   const unresolved = (alloc.unresolved || []).map(row => `
-    <li data-allocation-unresolved="${row.id}"><b>${row.label}</b> — unresolved; no payday allocation.
+    <li data-allocation-unresolved="${row.id}"><b>${row.label}</b> — unresolved; no payday allocation${row.confidence && row.confidence !== 'confirmed' ? ` · ${row.confidence}` : ''}.
       <span>${row.reason}</span></li>`).join('');
 
   const protectedAmount = alloc.protectedPath && alloc.protectedPath.allocated != null
