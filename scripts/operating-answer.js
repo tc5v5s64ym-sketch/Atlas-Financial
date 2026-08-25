@@ -83,12 +83,16 @@ function actualsFrom(data, opts) {
 
 function recommendOpts(data, opts) {
   const plan = data && data.plan;
+  const targetBuffer = plan && plan.defaults && plan.defaults.targetBuffer != null
+    ? plan.defaults.targetBuffer
+    : 0;
   return {
     fundingSources: plan && plan.funding && plan.funding.options,
     debts: data && data.debts,
     revolvingExtra: data && data.revolvingExtra,
     periods: loadPeriods(),
     currentPeriodActuals: actualsFrom(data, opts),
+    targetBuffer,
   };
 }
 
