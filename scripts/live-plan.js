@@ -31,6 +31,10 @@
  * operating answer from Forecast.recommend; it does not recalculate those
  * values. A fail-closed overlay keeps the dated opening and cannot raise
  * remaining-claim precision. Zero/no-change is a valid Forecast result.
+ * Served data also carries a sanitized household refresh-trust packet
+ * copied from incumbent observation, reconciliation, canonical-preview,
+ * overlay, and Forecast remaining-claim results. The page renders that
+ * packet; this module does not invent freshness or settlement.
  *
  * Production /data.json stays the dated opening unless ATLAS_LIVE_OVERLAY
  * is explicitly `fixture` or `live`. Owner-authorized production read-only
@@ -43,6 +47,7 @@ const path = require('path');
 const O = require('./provider-observe.js');
 const C = require('./canonical-refresh.js');
 const OA = require('./operating-answer.js');
+const RT = require('./refresh-trust.js');
 const Forecast = require('../public/forecast.js');
 
 const ROOT = path.join(__dirname, '..');
@@ -701,6 +706,8 @@ function overlayLiveState(input) {
     && !actualsPacketLooksSanitized(next.liveOverlay.currentPeriodActuals)) {
     fail('Current-period actuals packet is not sanitized.');
   }
+  RT.attachTo(next, { report, canonical: data });
+  if (!RT.looksSanitized(next.refreshTrust)) fail('Refresh-trust packet is not sanitized.');
   return {
     data: next,
     overlays: proposed,
@@ -766,7 +773,7 @@ function forecastFrom(data, opts) {
   };
 }
 
-function failedOverlay(canonical, reason) {
+function failedOverlay(canonical, reason, extra) {
   const sanitized = sanitizeLiveFailureReason(reason);
   logLiveFailure(sanitized);
   const next = clone(canonical);
@@ -780,6 +787,10 @@ function failedOverlay(canonical, reason) {
     refused: [],
     reason: sanitized,
     note: 'Live overlay failed closed. Dated opening is unchanged.',
+  });
+  RT.attachTo(next, {
+    canonical,
+    report: extra && extra.report,
   });
   return next;
 }
@@ -798,21 +809,37 @@ function fixturePathsFromEnv(env) {
   return { fixture, mapPath };
 }
 
+function observeForOverlay(canonical, payload, accountMap) {
+  return O.observe(observeInput({
+    data: canonical,
+    payload,
+    accountMap,
+    identity: loadIdentity(),
+  }));
+}
+
+function applyObservedOverlay(canonical, report) {
+  try {
+    return overlayLiveState({ data: canonical, report }).data;
+  } catch (err) {
+    const message = err && err.message ? err.message : 'overlay-failed';
+    return failedOverlay(canonical, message, { report });
+  }
+}
+
 function applyFixtureOverlay(canonical, env) {
   const { fixture, mapPath } = fixturePathsFromEnv(env);
   if (!fixture) fail('ATLAS_LIVE_OVERLAY=fixture requires ATLAS_LIVE_OVERLAY_FIXTURE.');
-  const result = fromObservation({
-    data: canonical,
-    payload: loadJson(fixture),
-    accountMap: loadJson(mapPath),
-    identity: loadIdentity(),
-  });
-  return result.data;
+  const report = observeForOverlay(canonical, loadJson(fixture), loadJson(mapPath));
+  return applyObservedOverlay(canonical, report);
 }
 
 function serveCanonicalOrFixture(canonical, env) {
   const mode = overlayModeFromEnv(env);
-  if (mode === 'off') return canonical;
+  if (mode === 'off') {
+    const next = clone(canonical);
+    return RT.attachTo(next, { canonical: next });
+  }
   if (mode !== 'fixture') fail('serveCanonicalOrFixture handles fixture overlay only.');
   try {
     return applyFixtureOverlay(canonical, env);
@@ -835,13 +862,8 @@ async function applyForServer(canonical, env) {
       O.CURRENT_STATE_HISTORY_DAYS,
       { env: env || process.env }
     );
-    const result = fromObservation({
-      data: canonical,
-      payload,
-      accountMap,
-      identity: loadIdentity(),
-    });
-    return result.data;
+    const report = observeForOverlay(canonical, payload, accountMap);
+    return applyObservedOverlay(canonical, report);
   } catch (err) {
     const message = err && err.message ? err.message : 'overlay-failed';
     return failedOverlay(canonical, message);

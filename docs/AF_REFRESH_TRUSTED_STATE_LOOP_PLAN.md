@@ -1,9 +1,9 @@
 # AF-REFRESH — Trusted State Refresh Loop
 
-**Status:** ACTIVE CAMPAIGN — owner-approved 2026-08-24; AF-REFRESH-01 through AF-REFRESH-04 merged
+**Status:** ACTIVE CAMPAIGN — owner-approved 2026-08-24; AF-REFRESH-01 through AF-REFRESH-05 merged
 
-**AF-REFRESH-05 is DONE.** The next eligible slice is AF-REFRESH-06. Do not start
-AF-REFRESH-06 in this pull request.
+**AF-REFRESH-06 is DONE.** The next eligible slice is AF-REFRESH-07. Do not start
+AF-REFRESH-07 in this pull request.
 
 This file is a temporary execution plan, not a new authority. It exists so a
 fresh builder can move directly from the completed Payday Operating Surface
@@ -409,6 +409,14 @@ Compactly show, using incumbent trust results:
 distinctly, and exact household-actionable figures remain suppressed whenever
 the incumbent trust contract says they are unavailable.
 
+**State:** DONE. The household operating surface renders a compact refresh-trust
+strip from `scripts/refresh-trust.js`, which copies incumbent observation,
+reconciliation, canonical-preview, overlay, and Forecast remaining-claim
+results. Current / partially current / attention-needed stay distinct. Exact
+remaining figures stay withheld when remaining is unavailable. A canonical
+proposal is shown only when mechanically provable rows exist; no owner
+question is invented when none exists. Next eligible slice is AF-REFRESH-07.
+
 ---
 
 ### AF-REFRESH-07 — Live closed-loop acceptance and cleanup
@@ -485,15 +493,15 @@ remaining problem and current repository governance permits them.
 
 ## Handoff from AF-OPERATE
 
-AF-OPERATE-07 and AF-REFRESH-01 through AF-REFRESH-05 have merged. AF-REFRESH
-is the active campaign. After AF-REFRESH-05 merges, a fresh builder should:
+AF-OPERATE-07 and AF-REFRESH-01 through AF-REFRESH-06 have merged. AF-REFRESH
+is the active campaign. After AF-REFRESH-06 merges, a fresh builder should:
 
 1. re-fetch current `main` and open PRs;
 2. read `AGENTS.md` and the normal authority chain;
 3. read this file;
 4. verify that its incumbent seams still exist and that current repository
    authority has not superseded the plan; and
-5. execute **AF-REFRESH-06 only**.
+5. execute **AF-REFRESH-07 only**.
 
 The activation instruction is therefore simple:
 

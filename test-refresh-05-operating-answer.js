@@ -663,12 +663,11 @@ console.log('\n=== I. live-plan CLI prints the operating answer and does not wri
   filesUnchanged('live-plan CLI');
 }
 
-console.log('\n=== J. incumbents remain; AF-REFRESH-06 is not started ===');
+console.log('\n=== J. incumbents remain ===');
 {
   const liveSrc = fs.readFileSync(LIVE_SCRIPT, 'utf8');
   const refreshSrc = fs.readFileSync(CANONICAL_SCRIPT, 'utf8');
   const planSrc = fs.readFileSync(path.join(ROOT, 'docs', 'AF_REFRESH_TRUSTED_STATE_LOOP_PLAN.md'), 'utf8');
-  const pageSrc = fs.readFileSync(path.join(ROOT, 'public', 'plan.js'), 'utf8');
   ok(/function fromObservation/.test(liveSrc), 'live overlay seam remains');
   ok(/previewId|approve/.test(refreshSrc), 'canonical preview/approve writer remains');
   ok(!/method:\s*'(POST|PUT|PATCH|DELETE)'/.test(refreshSrc)
@@ -677,11 +676,8 @@ console.log('\n=== J. incumbents remain; AF-REFRESH-06 is not started ===');
   ok(!/setInterval|node-cron|cron\.schedule/.test(refreshSrc)
     && !/setInterval|node-cron|cron\.schedule/.test(liveSrc),
     'neither refresh script adds a scheduler');
-  ok(/AF-REFRESH-05 is DONE/.test(planSrc), 'campaign plan records AF-REFRESH-05 done');
-  ok(/next eligible slice is AF-REFRESH-06/i.test(planSrc),
-    'campaign plan names AF-REFRESH-06 as next and not started here');
-  ok(!/operatingAnswer/.test(pageSrc),
-    'homepage is unchanged; AF-REFRESH-06 surface work is not in this PR');
+  ok(/### AF-REFRESH-05[\s\S]*?\*\*State:\*\* DONE/.test(planSrc),
+    'campaign plan still records AF-REFRESH-05 done');
 }
 
 const afterTree = hashTree();
