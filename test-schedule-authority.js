@@ -159,42 +159,44 @@ console.log('\n=== RESP joins the real cash path exactly once ===');
     'the ICS script no longer hardcodes an RESP payment literal');
 }
 
-console.log('\n=== union dues stay reserved until cancellation is confirmed ===');
+console.log('\n=== cancelled CMAW recurrence no longer creates future dues ===');
 {
   const dues = (plan.bills || []).find(b => b.id === 'uniondues');
-  ok(!!dues && same(dues.amount, 25) && dues.day === 15
-    && dues.frequency === 'monthly' && dues.budgetCategory === null,
-    'union dues are a canonical $25 monthly bill on the 15th, not a spending category');
+  ok(!dues, 'the monthly uniondues bill is retired after owner-confirmed cancellation');
   ok(!(plan.obligations || []).some(o => /union|cmaw/i.test(o.id + o.label)),
-    'and they are a bill, not a second obligation');
+    'and they are not moved into a second obligation');
+  const outstanding = (plan.bills || []).find(b => b.id === 'uniondues-aug15-outstanding');
+  ok(!!outstanding && same(outstanding.amount, 25) && outstanding.frequency === 'once'
+    && outstanding.date === '2026-08-16',
+    'the 15 August posting-unknown occurrence remains a $25 once row');
   const windowStream = F.expandEvents(plan, asOf, windowEnd);
   const duesEvents = windowStream.filter(e => e.id === 'uniondues' || e.id === 'uniondues-aug15-outstanding');
   ok(duesEvents.some(e => e.id === 'uniondues-aug15-outstanding' && e.date <= asOf),
-    'the unposted 15 August dues are reserved on this opening');
-  ok(duesEvents.filter(e => e.id === 'uniondues').every(e => e.date >= '2026-09-15'),
-    'the monthly dues resume in September',
+    'the unposted 15 August dues are still reserved on this opening');
+  ok(duesEvents.every(e => e.id !== 'uniondues'),
+    'no monthly uniondues occurrence is created in the Plan window',
     duesEvents.filter(e => e.id === 'uniondues').map(e => e.date).join(','));
   ok(duesEvents.every(e => same(-e.amount, 25) && e.kind === 'bill'),
-    'each is a $25 bill, so the forecast still reserves the cash');
+    'the remaining reserved occurrence is still a $25 bill');
   const built = icsMod.buildHouseholdCalendar(plan, asOf, icsEnd);
   const icsDues = built.payments.filter(p => p.sourceId === 'uniondues');
-  ok(icsDues.length > 0 && icsDues.every(p => same(p.amount, 25) && p.start.endsWith('-15')),
-    'ICS payment VEVENTs for dues come from the Plan, not a second literal',
+  ok(icsDues.length === 0,
+    'ICS payment VEVENTs no longer expand a monthly CMAW recurrence',
     `${icsDues.length} occurrences`);
   ok(!/Union dues \(CMAW Local 1995\)/.test(read('scripts/calendar-ics.js')),
-    'the ICS script no longer hardcodes the $25 dues literal');
+    'the ICS script still does not hardcode the $25 dues literal');
   const cancel = (plan.actions || []).find(a => /CMAW Local 1995/i.test(a.what));
-  ok(!!cancel && cancel.status === 'open' && same(cancel.amount, 25),
-    'the cancel-dues action stays open until cancellation is confirmed',
-    cancel ? cancel.what : 'missing');
-  ok(/until cancellation is actually confirmed/i.test(cancel.why),
-    'and the action still says the $25 is reserved until then');
+  ok(!!cancel && cancel.status === 'done' && same(cancel.amount, 25),
+    'the cancel-dues action is done after owner-confirmed cancellation',
+    cancel ? cancel.status : 'missing');
+  ok(/posting is still unknown/i.test(cancel.why),
+    'and the action still refuses to treat cancellation as August settlement');
   const tax = plan.budget.categories.find(c => c.id === 'tax');
   ok(tax && !/union dues/i.test(tax.label),
     'the CRA reserve is not labelled as if it included union dues',
     tax ? tax.label : 'missing');
-  ok(/id uniondues/i.test(tax.why),
-    'and the reserve note points at the dated bill rather than absorbing it');
+  ok(/uniondues-aug15-outstanding/i.test(tax.why),
+    'and the reserve note points at the remaining once row rather than absorbing it');
 }
 
 console.log('\n=== next due / next payment out, same stream ===');

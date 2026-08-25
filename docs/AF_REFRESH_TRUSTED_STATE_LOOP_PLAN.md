@@ -1,8 +1,9 @@
 # AF-REFRESH — Trusted State Refresh Loop
 
-**Status:** QUEUED SUCCESSOR CAMPAIGN — owner-approved 2026-08-24
+**Status:** ACTIVE CAMPAIGN — owner-approved 2026-08-24; AF-OPERATE-07 merged
 
-**Do not execute implementation slices until AF-OPERATE-07 has merged.**
+**AF-REFRESH-01 is the first implementation slice.** Do not start AF-REFRESH-02
+while AF-REFRESH-01 is open.
 
 This file is a temporary execution plan, not a new authority. It exists so a
 fresh builder can move directly from the completed Payday Operating Surface
@@ -167,6 +168,10 @@ It must retire the future recurrence without inventing whether a current-cycle
 occurrence already posted or is still unsettled; current-cycle settlement must
 be reconciled from actual evidence.
 
+**AF-REFRESH-01 consumption:** the owner statement above is the cancellation
+authority. The monthly Plan bill is retired. The 15 August once row remains
+because incumbent posting evidence still records that occurrence as unknown.
+
 If more owner facts arrive before AF-REFRESH begins, do not silently bundle them
 into AF-REFRESH-01. Each still has to satisfy the one-independently-provable-
 outcome rule or be routed through an existing evidence intake mechanism.
@@ -218,6 +223,10 @@ unchanged, and any current-cycle settlement classification is independently
 traced to actual evidence.
 
 **Likely risk:** figures may move; use current governance at implementation time.
+
+**State:** DONE. Monthly `uniondues` row removed. `uniondues-aug15-outstanding`
+retained because posting remains unknown. Historical `periods.json` Union dues
+actuals unchanged. Next eligible slice is AF-REFRESH-02.
 
 ---
 
@@ -445,18 +454,16 @@ remaining problem and current repository governance permits them.
 
 ## Handoff from AF-OPERATE
 
-AF-OPERATE remains the active campaign until AF-OPERATE-07 is complete.
-AF-REFRESH implementation must not begin merely because this plan is merged.
-
-When AF-OPERATE-07 reaches its finish line and deletes its temporary plan, the
-next owner-approved campaign is this one. A fresh builder should:
+AF-OPERATE-07 has merged. AF-REFRESH is the active campaign. AF-REFRESH-01
+retires the cancelled CMAW recurrence. After that slice merges, a fresh
+builder should:
 
 1. re-fetch current `main` and open PRs;
 2. read `AGENTS.md` and the normal authority chain;
 3. read this file;
 4. verify that its incumbent seams still exist and that current repository
    authority has not superseded the plan; and
-5. execute **AF-REFRESH-01 only**.
+5. execute **AF-REFRESH-02 only**.
 
 The activation instruction is therefore simple:
 

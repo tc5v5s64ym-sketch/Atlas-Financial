@@ -324,7 +324,7 @@ CLOSED. Current `test-mergecard.js` uses `const HEAD = 'a'.repeat(40);`. No code
 Every recorded page-script financial decision moved into Forecast. The item is closed on that recorded set; a new page-side decision, if one appears, is a new finding.
 
 **B74 · Two calendars, and nothing notices when they disagree** · **DONE 2026-08-14**
-PR #37. One authoritative household cash schedule: `data.json` `plan` → `Forecast.expandEvents`. CMAW Local 1995 dues remain a Plan bill until cancellation is confirmed.
+PR #37. One authoritative household cash schedule: `data.json` `plan` → `Forecast.expandEvents`. Owner-confirmed 2026-08-24: the recurring CMAW Local 1995 $25/month payment is cancelled; AF-REFRESH-01 retires the monthly Plan bill and keeps the 15 August posting-unknown once row.
 
 **B87 · One authority for question OPEN / ANSWERED status** · **DONE 2026-08-14**
 `docs/01_OPEN_QUESTIONS.md` is the sole OPEN / ASKED / ANSWERED / BLOCKED authority. Q2 stayed OPEN in that PR. Proved by `test-question-status.js`.
