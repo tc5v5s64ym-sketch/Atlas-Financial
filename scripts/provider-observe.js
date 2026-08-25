@@ -20,6 +20,7 @@ const fs = require('fs');
 const path = require('path');
 const http = require('http');
 const https = require('https');
+const crypto = require('crypto');
 const R = require('./reconcile.js');
 const Credentials = require('./local-credentials.js');
 
@@ -35,6 +36,7 @@ const MAP_JSON_ENV = 'ATLAS_PROVIDER_ACCOUNT_MAP_JSON';
 const MAP_PATH_ENV = 'ATLAS_LIVE_OVERLAY_MAP';
 const API_BASE_ENV = 'ATLAS_LUNCHMONEY_API_BASE';
 const LIVE_MAP_SCHEMA = 'atlas-provider-account-map/v1';
+const RECEIPT_SCHEMA = 'atlas-observation-receipt/v1';
 const REQUEST_TIMEOUT_MS = 8000;
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1']);
 const CASH_ROLES = new Set(['household-cash']);
@@ -68,6 +70,7 @@ function parseArgs(argv) {
     provider: null, fixture: null, live: false, map: null,
     data: DEFAULT_DATA, mode: 'current-state', historyDays: null,
     identityProof: false,
+    receipt: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -79,6 +82,7 @@ function parseArgs(argv) {
     else if (a === '--mode') out.mode = argv[++i];
     else if (a === '--history-days') out.historyDays = Number(argv[++i]);
     else if (a === '--identity-proof') out.identityProof = true;
+    else if (a === '--receipt') out.receipt = true;
     else if (a === '--help' || a === '-h') out.help = true;
   }
   return out;
@@ -1139,6 +1143,212 @@ function compareIdentityFingerprints(a, b) {
   };
 }
 
+function postedWindowIsComplete(window) {
+  if (!window || typeof window !== 'object') return false;
+  return window.complete === true
+    && window.truncated !== true
+    && window.hasMore !== true;
+}
+
+function pendingCoverageIsComplete(coverage) {
+  return !!(coverage
+    && coverage.complete === true
+    && coverage.status === 'complete'
+    && coverage.basis === PENDING_COVERAGE_BASIS);
+}
+
+function expectedHouseholdIdentities(mapDoc) {
+  const ids = [];
+  const seen = new Set();
+  for (const mapping of (mapDoc && mapDoc.mappings) || []) {
+    if (!mapping || mapping.atlasRole === EXTERNAL_LIVE_ROLE) continue;
+    const id = mapping.canonical && mapping.canonical.id;
+    if (!id) continue;
+    const key = String(id);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    ids.push(key);
+  }
+  ids.sort();
+  return ids;
+}
+
+function mappedHouseholdIdentities(mapped) {
+  const ids = [];
+  const seen = new Set();
+  for (const row of mapped || []) {
+    if (!row || !row.atlasId || row.atlasRole === EXTERNAL_LIVE_ROLE) continue;
+    const key = String(row.atlasId);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    ids.push(key);
+  }
+  ids.sort();
+  return ids;
+}
+
+function requiredCashObserved(identities) {
+  const have = new Set(identities || []);
+  return REQUIRED_LIVE_CASH_IDS.filter(id => have.has(id));
+}
+
+function requiredCashMissingFrom(identities) {
+  const have = new Set(identities || []);
+  return REQUIRED_LIVE_CASH_IDS.filter(id => !have.has(id));
+}
+
+function datedRequiredCash(observations) {
+  const dated = [];
+  for (const id of REQUIRED_LIVE_CASH_IDS) {
+    const obs = (observations || []).find(o =>
+      o
+      && o.canonical
+      && o.canonical.collection === 'cash'
+      && String(o.canonical.id) === id
+      && (o.evidenceDate || o.observedAsOf)
+      && o.evidenceValue != null
+      && isFinite(Number(o.evidenceValue)));
+    if (obs) dated.push(id);
+  }
+  return dated;
+}
+
+function observationReceiptLooksSanitized(receipt) {
+  const blob = JSON.stringify(receipt == null ? {} : receipt);
+  return identityProofLooksSanitized(receipt)
+    && !/"payee"\s*:/.test(blob)
+    && !/"original_name"\s*:/.test(blob)
+    && !/"observationId"\s*:/.test(blob)
+    && !/"status"\s*:\s*"(MATCH|CHANGE|CONFLICT|MISSING|STALE)"/.test(blob)
+    && !/"evidenceValue"\s*:/.test(blob)
+    && !/"reconciliation"\s*:/.test(blob)
+    && !/"recommend"\s*:/.test(blob)
+    && !/"safeToSpend"\s*:/.test(blob);
+}
+
+function observationFingerprintFromParts(parts) {
+  return {
+    schema: RECEIPT_SCHEMA,
+    provider: 'lunchmoney',
+    observedAt: parts.observedAt || null,
+    householdDate: parts.householdDate || null,
+    writesCanonicalState: parts.writesCanonicalState === true,
+    canonicalStateChanged: false,
+    mappedHouseholdIdentities: parts.mappedHouseholdIdentities || [],
+    unmappedCount: Number(parts.unmappedCount) || 0,
+    missingExpectedIdentities: parts.missingExpectedIdentities || [],
+    requiredCashMissing: parts.requiredCashMissing || [],
+    requiredCashBalanceMissing: parts.requiredCashBalanceMissing || [],
+    postedComplete: parts.postedComplete === true,
+    pendingComplete: parts.pendingComplete === true,
+    pendingToPostedTransitions: Number(parts.pendingToPostedTransitions) || 0,
+    readyForReconciliation: parts.readyForReconciliation === true,
+  };
+}
+
+function observationFingerprintDigest(fingerprint) {
+  return crypto.createHash('sha256').update(JSON.stringify(fingerprint)).digest('hex');
+}
+
+function observationReceipt(report, opts) {
+  opts = opts || {};
+  const fetchedAt = (report && report.fetchedAt) || null;
+  const householdDate = dateOnly(fetchedAt);
+  const pending = (report && report.pendingCoverage) || classifyPendingCoverage({});
+  const window = (report && report.transactionWindow) || {};
+  const mappedIds = mappedHouseholdIdentities(report && report.mapped);
+  const expected = expectedHouseholdIdentities(opts.accountMap);
+  const missingExpected = expected.filter(id => mappedIds.indexOf(id) === -1);
+  const unmappedCount = ((report && report.unmapped) || []).length;
+  const cashMissing = requiredCashMissingFrom(mappedIds);
+  const cashDated = datedRequiredCash(report && report.observations);
+  const cashDatedMissing = REQUIRED_LIVE_CASH_IDS.filter(id => cashDated.indexOf(id) === -1);
+  const cashBalanceMissing = cashDatedMissing.filter(id => cashMissing.indexOf(id) === -1);
+  const postedComplete = postedWindowIsComplete(window);
+  const pendingComplete = pendingCoverageIsComplete(pending);
+  const pendingToPosted = ((report && report.identityEvidence) || [])
+    .filter(e => e && e.transition === 'pending-to-posted').length;
+  const writeClaimed = !!(report && report.writesCanonicalState === true);
+  const failClosedReasons = [];
+  if (!postedComplete) {
+    failClosedReasons.push(window.truncated === true
+      ? 'posted-window-truncated'
+      : 'posted-window-unproven');
+  }
+  if (!pendingComplete) {
+    failClosedReasons.push(pending.status === 'bounded-window'
+      ? 'pending-coverage-bounded-window'
+      : 'pending-coverage-unproven');
+  }
+  if (cashMissing.length) failClosedReasons.push('required-cash-unobserved');
+  if (cashBalanceMissing.length) failClosedReasons.push('required-cash-balance-unproven');
+  if (missingExpected.length) failClosedReasons.push('expected-mapped-identity-missing');
+  if (writeClaimed) failClosedReasons.push('canonical-write-claimed');
+  const ready = failClosedReasons.length === 0;
+  const fingerprint = observationFingerprintFromParts({
+    observedAt: fetchedAt,
+    householdDate,
+    writesCanonicalState: writeClaimed,
+    mappedHouseholdIdentities: mappedIds,
+    unmappedCount,
+    missingExpectedIdentities: missingExpected,
+    requiredCashMissing: cashMissing,
+    requiredCashBalanceMissing: cashBalanceMissing,
+    postedComplete,
+    pendingComplete,
+    pendingToPostedTransitions: pendingToPosted,
+    readyForReconciliation: ready,
+  });
+  return {
+    schema: RECEIPT_SCHEMA,
+    provider: 'lunchmoney',
+    observedAt: fetchedAt,
+    householdDate,
+    writesCanonicalState: writeClaimed,
+    canonicalStateChanged: false,
+    accountCoverage: {
+      status: (cashMissing.length || missingExpected.length) ? 'incomplete' : 'required-cash-observed',
+      mappedHouseholdIdentities: mappedIds,
+      unmappedCount,
+      expectedMappedCount: expected.length,
+      missingExpectedIdentities: missingExpected,
+      requiredCashObserved: requiredCashObserved(mappedIds),
+      requiredCashMissing: cashMissing,
+    },
+    balanceCoverage: {
+      status: cashDatedMissing.length ? 'incomplete' : 'required-cash-dated',
+      requiredCashWithDatedBalance: cashDated,
+      requiredCashMissingDatedBalance: cashDatedMissing,
+      freshnessVerdict: 'not-claimed',
+      freshnessNote: 'Dated balance evidence is not a current/freshness verdict. MATCH is not freshness.',
+    },
+    postedTransactionCoverage: {
+      complete: postedComplete,
+      truncated: window.truncated === true,
+      hasMore: window.hasMore === true,
+      status: postedComplete ? 'complete' : (window.truncated === true ? 'truncated' : 'unproven'),
+    },
+    pendingTransactionCoverage: {
+      complete: pendingComplete,
+      status: pending.status || 'insufficient',
+      reason: pendingComplete
+        ? null
+        : (pending.reason || 'Pending coverage is not the completed unbounded is_pending query.'),
+    },
+    identity: {
+      mappingBy: 'provider-account-id',
+      displayNameIsLabelOnly: true,
+      pendingToPostedTransitions: pendingToPosted,
+      vsPriorObservation: 'not-claimed',
+      vsPriorObservationNote: 'No authorized previous-observation store. Intra-payload pending-to-posted and account-map coverage are the incumbent identity evidence.',
+    },
+    readyForReconciliation: ready,
+    failClosedReasons,
+    fingerprint,
+    fingerprintDigest: observationFingerprintDigest(fingerprint),
+  };
+}
+
 function representedEventCandidates(input) {
   if (input.transactionWindow && input.transactionWindow.complete === false) return [];
   const rules = (input.identityRules || [])
@@ -1387,6 +1597,7 @@ function observe(input) {
     reconciliation: result,
   };
   assembled.identityProof = identityFingerprint(assembled);
+  assembled.observationReceipt = observationReceipt(assembled, { accountMap: mapDoc });
   assembled.currentPeriodActuals = sanitizedCurrentPeriodActuals(assembled, {
     accountMap: mapDoc,
     plan: input.data && input.data.plan,
@@ -1496,13 +1707,14 @@ async function run(argv) {
     process.stdout.write(
       'Usage: node scripts/provider-observe.js --provider lunchmoney --fixture <file>\n'
       + '       node scripts/provider-observe.js --provider lunchmoney --live [--mode current-state|reconcile] [--history-days N]\n'
-      + '       [--identity-proof]\n'
+      + '       [--identity-proof | --receipt]\n'
     );
     return 0;
   }
   if (args.provider !== 'lunchmoney') fail('Only --provider lunchmoney is implemented in this spike.');
   if (args.live && args.fixture) fail('Use either --fixture or --live, not both.');
   if (!args.live && !args.fixture) fail('Pass --fixture <file> or --live.');
+  if (args.identityProof && args.receipt) fail('Use either --identity-proof or --receipt, not both.');
   if (args.mode && args.mode !== 'current-state' && args.mode !== 'reconcile') {
     fail('Mode must be current-state or reconcile.');
   }
@@ -1532,7 +1744,9 @@ async function run(argv) {
     identity,
     fetchedAt: payload.fetchedAt,
   });
-  const printed = args.identityProof ? report.identityProof : report;
+  const printed = args.receipt
+    ? report.observationReceipt
+    : (args.identityProof ? report.identityProof : report);
   process.stdout.write(JSON.stringify(printed, null, 2) + '\n');
   return 0;
 }
@@ -1543,6 +1757,7 @@ const api = {
   MAP_PATH_ENV,
   API_BASE_ENV,
   LIVE_MAP_SCHEMA,
+  RECEIPT_SCHEMA,
   REQUEST_TIMEOUT_MS,
   LIVE_BASE,
   DEFAULT_MAP,
@@ -1583,6 +1798,12 @@ const api = {
   identityFingerprint,
   identityProofLooksSanitized,
   compareIdentityFingerprints,
+  postedWindowIsComplete,
+  pendingCoverageIsComplete,
+  observationReceiptLooksSanitized,
+  observationFingerprintFromParts,
+  observationFingerprintDigest,
+  observationReceipt,
   normalizeLunchMoneyAccount,
   postedBalanceEvidenceInstant,
   genericAccountEvidenceInstant,
