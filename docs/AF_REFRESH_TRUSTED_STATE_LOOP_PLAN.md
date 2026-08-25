@@ -1,9 +1,9 @@
 # AF-REFRESH — Trusted State Refresh Loop
 
-**Status:** ACTIVE CAMPAIGN — owner-approved 2026-08-24; AF-REFRESH-01 merged
+**Status:** ACTIVE CAMPAIGN — owner-approved 2026-08-24; AF-REFRESH-01 and AF-REFRESH-02 merged
 
-**AF-REFRESH-02 is the current implementation slice.** Do not start AF-REFRESH-03
-while AF-REFRESH-02 is open.
+**AF-REFRESH-03 is DONE.** The next eligible slice is AF-REFRESH-04. Do not start
+AF-REFRESH-04 in this pull request.
 
 This file is a temporary execution plan, not a new authority. It exists so a
 fresh builder can move directly from the completed Payday Operating Surface
@@ -295,6 +295,14 @@ For modeled current-period obligations, keep these states distinct:
 represented occurrence consumes one compatible live transaction at most once,
 and known unverified cases remain unverified.
 
+**State:** DONE. `scripts/provider-observe.js --reconciliation-receipt` prints
+one sanitized obligation-reconciliation receipt gated on the AF-REFRESH-02
+observation receipt. Not-ready packets fail closed without a trusted
+classification. Ready packets consume the incumbent `representedEventCandidates`
+matcher and `Forecast.currentPeriodObligationStates`. CMAW
+`uniondues-aug15-outstanding` stays unverified without identity-complete
+evidence. Canonical state is unchanged. Next eligible slice is AF-REFRESH-04.
+
 ---
 
 ### AF-REFRESH-04 — Turn reconciliation into a bounded canonical refresh proposal
@@ -460,15 +468,15 @@ remaining problem and current repository governance permits them.
 
 ## Handoff from AF-OPERATE
 
-AF-OPERATE-07 and AF-REFRESH-01 have merged. AF-REFRESH is the active
-campaign. After AF-REFRESH-02 merges, a fresh builder should:
+AF-OPERATE-07 and AF-REFRESH-01 through AF-REFRESH-03 have merged. AF-REFRESH
+is the active campaign. After AF-REFRESH-03 merges, a fresh builder should:
 
 1. re-fetch current `main` and open PRs;
 2. read `AGENTS.md` and the normal authority chain;
 3. read this file;
 4. verify that its incumbent seams still exist and that current repository
    authority has not superseded the plan; and
-5. execute **AF-REFRESH-03 only**.
+5. execute **AF-REFRESH-04 only**.
 
 The activation instruction is therefore simple:
 

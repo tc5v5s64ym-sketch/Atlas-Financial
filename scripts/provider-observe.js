@@ -4,6 +4,8 @@
  *   node scripts/provider-observe.js --provider lunchmoney --fixture <file>
  *   node scripts/provider-observe.js --provider lunchmoney --live
  *   node scripts/provider-observe.js --provider lunchmoney --live --identity-proof
+ *   node scripts/provider-observe.js --provider lunchmoney --fixture <file> --receipt
+ *   node scripts/provider-observe.js --provider lunchmoney --fixture <file> --reconciliation-receipt
  *
  * Live mode resolves a Lunch Money token from LUNCHMONEY_ACCESS_TOKEN, or
  * on Windows from the local CurrentUser DPAPI store. It never
@@ -37,6 +39,7 @@ const MAP_PATH_ENV = 'ATLAS_LIVE_OVERLAY_MAP';
 const API_BASE_ENV = 'ATLAS_LUNCHMONEY_API_BASE';
 const LIVE_MAP_SCHEMA = 'atlas-provider-account-map/v1';
 const RECEIPT_SCHEMA = 'atlas-observation-receipt/v1';
+const RECONCILIATION_RECEIPT_SCHEMA = 'atlas-obligation-reconciliation-receipt/v1';
 const REQUEST_TIMEOUT_MS = 8000;
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1']);
 const CASH_ROLES = new Set(['household-cash']);
@@ -71,6 +74,7 @@ function parseArgs(argv) {
     data: DEFAULT_DATA, mode: 'current-state', historyDays: null,
     identityProof: false,
     receipt: false,
+    reconciliationReceipt: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -83,6 +87,7 @@ function parseArgs(argv) {
     else if (a === '--history-days') out.historyDays = Number(argv[++i]);
     else if (a === '--identity-proof') out.identityProof = true;
     else if (a === '--receipt') out.receipt = true;
+    else if (a === '--reconciliation-receipt') out.reconciliationReceipt = true;
     else if (a === '--help' || a === '-h') out.help = true;
   }
   return out;
@@ -1349,14 +1354,13 @@ function observationReceipt(report, opts) {
   };
 }
 
-function representedEventCandidates(input) {
-  if (input.transactionWindow && input.transactionWindow.complete === false) return [];
+function representedEventHitGroups(input) {
+  const empty = { unique: [], ambiguous: [] };
+  if (input.transactionWindow && input.transactionWindow.complete === false) return empty;
   const rules = (input.identityRules || [])
     .filter(r => r && r.eventId && rulePayeePatterns(r).length);
-  if (!rules.length) return [];
+  if (!rules.length) return empty;
   const mapDoc = input.accountMap;
-  const candidates = [];
-  const seenEvent = new Set();
   const eventHits = new Map();
   for (const tx of input.transactions || []) {
     if (tx.pending === true || tx.contradictoryEvidence === true) continue;
@@ -1388,18 +1392,457 @@ function representedEventCandidates(input) {
           identity: 'payee+account+date',
           amountNotUsed: true,
           observedAmount: amount,
+          atlasAccountId: mapping.canonical.id,
         });
         eventHits.set(key, list);
       }
     }
   }
+  const unique = [];
+  const ambiguous = [];
   for (const [key, hits] of eventHits) {
-    if (hits.length !== 1) continue;
-    if (seenEvent.has(key)) continue;
-    seenEvent.add(key);
-    candidates.push(hits[0]);
+    if (hits.length !== 1) {
+      ambiguous.push({
+        key,
+        id: hits[0] && hits[0].id,
+        date: hits[0] && hits[0].date,
+        hits,
+        reason: 'multiple-compatible-candidates',
+      });
+      continue;
+    }
+    unique.push(hits[0]);
   }
-  return candidates;
+  const byTx = new Map();
+  for (const hit of unique) {
+    const txId = hit && hit.providerTransactionId;
+    if (txId == null) continue;
+    const list = byTx.get(String(txId)) || [];
+    list.push(hit);
+    byTx.set(String(txId), list);
+  }
+  const uniqueOnce = [];
+  const consumedTwice = new Set();
+  for (const hit of unique) {
+    const txId = hit && hit.providerTransactionId != null
+      ? String(hit.providerTransactionId) : null;
+    const siblings = txId ? byTx.get(txId) : null;
+    if (txId && siblings && siblings.length > 1) {
+      if (!consumedTwice.has(txId)) {
+        consumedTwice.add(txId);
+        ambiguous.push({
+          key: siblings.map(s => s.id + '@' + s.date).sort().join(','),
+          id: null,
+          date: null,
+          hits: siblings,
+          reason: 'transaction-consumed-twice',
+        });
+      }
+      continue;
+    }
+    uniqueOnce.push(hit);
+  }
+  return { unique: uniqueOnce, ambiguous };
+}
+
+function representedEventCandidates(input) {
+  return representedEventHitGroups(input).unique;
+}
+
+function sanitizedEvidenceFingerprint(providerTransactionId) {
+  if (providerTransactionId == null || providerTransactionId === '') return null;
+  return crypto.createHash('sha256')
+    .update('atlas-evidence:lunchmoney:tx:' + String(providerTransactionId))
+    .digest('hex');
+}
+
+function emptyReconciliationCounts() {
+  return {
+    coveredModeledOccurrences: 0,
+    represented: 0,
+    upcoming: 0,
+    unverified: 0,
+    ambiguous: 0,
+    outsideCoverage: 0,
+    unmatchedCashEvidence: 0,
+  };
+}
+
+function allowedPostingDatesFor(scheduledDate, rule) {
+  const scheduled = parseIsoDate(scheduledDate);
+  if (!scheduled) return [];
+  const dates = [scheduled];
+  if (rule && rule.postingDateRule === WEEKEND_NEXT_BUSINESS_DAY) {
+    const weekday = new Date(`${scheduled}T00:00:00Z`).getUTCDay();
+    if (weekday === 6) dates.push(Forecast.addDays(scheduled, 2));
+    if (weekday === 0) dates.push(Forecast.addDays(scheduled, 1));
+  }
+  return dates.filter((date, index) => date && dates.indexOf(date) === index);
+}
+
+function occurrenceInsideObservationWindow(scheduledDate, window, rules) {
+  const start = window && window.startDate;
+  const end = window && window.endDate;
+  if (!start || !end || !scheduledDate) return false;
+  const applicable = (rules && rules.length) ? rules : [{}];
+  for (const rule of applicable) {
+    for (const postingDate of allowedPostingDatesFor(scheduledDate, rule)) {
+      if (postingDate >= start && postingDate <= end) return true;
+    }
+  }
+  return false;
+}
+
+function ambiguousGroupFor(id, date, groups) {
+  for (const group of groups || []) {
+    if (group.reason === 'multiple-compatible-candidates'
+      && group.id === id && group.date === date) return group;
+    if (group.reason === 'transaction-consumed-twice'
+      && (group.hits || []).some(hit => hit && hit.id === id && hit.date === date)) {
+      return group;
+    }
+  }
+  return null;
+}
+
+function unmatchedHouseholdCash(report, opts, consumedTxIds) {
+  const collapsed = (report && report.collapsedTransactions)
+    || (report && report.transactions)
+    || [];
+  const mapDoc = opts.accountMap;
+  const plan = opts.data && opts.data.plan;
+  const window = (report && report.transactionWindow) || {};
+  const start = window.startDate || null;
+  const end = window.endDate || null;
+  const unmatched = [];
+  for (const tx of collapsed) {
+    if (!tx || !tx.date || tx.pending === true || tx.contradictoryEvidence === true) continue;
+    if (consumedTxIds.has(String(tx.providerTransactionId))) continue;
+    if (start && tx.date < start) continue;
+    if (end && tx.date > end) continue;
+    const mapping = mapDoc ? mappingFor(mapDoc, tx.providerAccountId) : null;
+    if (atlasAccountRole(mapping) !== 'household-cash') continue;
+    const amount = lunchMoneyDebitAmount(tx.amount);
+    if (amount == null || amount === 0) continue;
+    const cls = Forecast.classifyCurrentPeriodTransaction({
+      date: tx.date,
+      amount,
+      pending: false,
+      categoryLabel: tx.categoryLabel || null,
+      isIncome: tx.isIncome === true,
+      excludeFromTotals: tx.excludeFromTotals === true,
+      excludeFromBudget: tx.excludeFromBudget === true,
+      accountRole: 'household-cash',
+      kindHint: kindHintFromTransaction(tx),
+    }, plan);
+    if (cls.kind === 'transfer' || cls.kind === 'card-payment'
+      || cls.kind === 'business' || cls.kind === 'external') continue;
+    if (cls.kind === 'income') continue;
+    unmatched.push({
+      date: tx.date,
+      amount: Math.round(amount * 100) / 100,
+      accountRole: 'household-cash',
+      kind: cls.kind || 'unclassified',
+      evidenceFingerprint: sanitizedEvidenceFingerprint(tx.providerTransactionId),
+    });
+  }
+  unmatched.sort((a, b) => String(a.date).localeCompare(String(b.date))
+    || String(a.evidenceFingerprint).localeCompare(String(b.evidenceFingerprint)));
+  return unmatched;
+}
+
+function reconciliationReceiptLooksSanitized(receipt) {
+  const blob = JSON.stringify(receipt == null ? {} : receipt);
+  return identityProofLooksSanitized(receipt)
+    && !/"payee"\s*:/.test(blob)
+    && !/"original_name"\s*:/.test(blob)
+    && !/"observationId"\s*:/.test(blob)
+    && !/"status"\s*:\s*"(MATCH|CHANGE|CONFLICT|MISSING|STALE)"/.test(blob)
+    && !/"recommend"\s*:/.test(blob)
+    && !/"safeToSpend"\s*:/.test(blob)
+    && !/"paydayAllocation"\s*:/.test(blob)
+    && !/"weeklyCap"\s*:/.test(blob)
+    && !/"spendPermission"\s*:/.test(blob);
+}
+
+function emptyObligationReconciliationReceipt(parts) {
+  return {
+    schema: RECONCILIATION_RECEIPT_SCHEMA,
+    observationSchema: RECEIPT_SCHEMA,
+    observationFingerprintDigest: parts.observationFingerprintDigest || null,
+    observedAt: parts.observedAt || null,
+    householdDate: parts.householdDate || null,
+    asOf: parts.asOf || parts.householdDate || null,
+    writesCanonicalState: false,
+    canonicalStateChanged: false,
+    forecastPlannerInvoked: false,
+    trusted: false,
+    observationReadyForReconciliation: parts.observationReadyForReconciliation === true,
+    failClosedKind: parts.failClosedKind || null,
+    failClosedReasons: parts.failClosedReasons || [],
+    counts: emptyReconciliationCounts(),
+    oneOccurrenceOneTransaction: true,
+    noTransactionConsumedTwice: true,
+    occurrences: [],
+    unmatchedCashEvidence: [],
+  };
+}
+
+function reconciliationReceipt(report, opts) {
+  opts = opts || {};
+  const observation = report && report.observationReceipt;
+  const householdDate = (observation && observation.householdDate)
+    || dateOnly(report && report.fetchedAt);
+  const baseParts = {
+    observationFingerprintDigest: observation && observation.fingerprintDigest || null,
+    observedAt: (observation && observation.observedAt) || (report && report.fetchedAt) || null,
+    householdDate,
+    asOf: householdDate,
+    observationReadyForReconciliation: !!(observation && observation.readyForReconciliation === true),
+  };
+  if (!observation || observation.readyForReconciliation !== true) {
+    return emptyObligationReconciliationReceipt(Object.assign({}, baseParts, {
+      failClosedKind: 'observation-not-ready',
+      failClosedReasons: (observation && observation.failClosedReasons && observation.failClosedReasons.length)
+        ? observation.failClosedReasons.slice()
+        : ['observation-receipt-missing'],
+    }));
+  }
+
+  const data = opts.data;
+  const plan = data && data.plan;
+  const identityRules = opts.identityRules
+    || ((opts.identity && opts.identity.rules) || []);
+  const mapDoc = opts.accountMap;
+  const collapsed = (report && report.collapsedTransactions)
+    || (report && report.transactions)
+    || [];
+  const groups = representedEventHitGroups({
+    transactions: collapsed,
+    accountMap: mapDoc,
+    plan,
+    identityRules,
+    transactionWindow: report && report.transactionWindow,
+  });
+  const uniqueByKey = new Map();
+  for (const candidate of groups.unique) {
+    if (!candidate || !candidate.id || !candidate.date) continue;
+    uniqueByKey.set(candidate.id + '@' + candidate.date, candidate);
+  }
+  const representedActuals = [];
+  for (const candidate of groups.unique) {
+    const amt = Number(candidate.observedAmount);
+    if (!candidate.id || !candidate.date || !isFinite(amt)) continue;
+    representedActuals.push({
+      id: candidate.id,
+      date: candidate.date,
+      actual: Math.round(amt * 100) / 100,
+    });
+  }
+  const paydayOrigin = Forecast.paydayPeriodOrigin(plan, householdDate);
+  const states = Forecast.currentPeriodObligationStates(plan, householdDate, {
+    periodOrigin: paydayOrigin,
+    preservePaydayPeriodOrigin: true,
+    representedEvents: groups.unique.map(c => ({ id: c.id, date: c.date })),
+    currentPeriodActuals: {
+      schema: 'atlas-current-period-actuals/v1',
+      representedActuals,
+      transactions: [],
+    },
+  });
+  const rulesByEvent = new Map();
+  for (const rule of identityRules) {
+    if (!rule || !rule.eventId) continue;
+    const list = rulesByEvent.get(rule.eventId) || [];
+    list.push(rule);
+    rulesByEvent.set(rule.eventId, list);
+  }
+  const window = (report && report.transactionWindow) || {};
+  const occurrences = [];
+  const usedEvidence = new Set();
+  let oneOccurrenceOneTransaction = true;
+  let noTransactionConsumedTwice = groups.ambiguous
+    .every(group => group.reason !== 'transaction-consumed-twice');
+  for (const bill of states.bills || []) {
+    if (!bill || !bill.id || !bill.date) continue;
+    const key = bill.id + '@' + bill.date;
+    const ambiguous = ambiguousGroupFor(bill.id, bill.date, groups.ambiguous);
+    const candidate = uniqueByKey.get(key);
+    let settlement = bill.settlement;
+    let evidenceFingerprint = null;
+    let evidenceFingerprints = null;
+    let postingDateRelationValue = null;
+    let atlasAccountId = null;
+    let observedAmount = bill.actual;
+    let candidateCount = 0;
+    if (ambiguous) {
+      settlement = 'ambiguous';
+      candidateCount = (ambiguous.hits || []).length;
+      evidenceFingerprints = (ambiguous.hits || [])
+        .map(hit => sanitizedEvidenceFingerprint(hit && hit.providerTransactionId))
+        .filter(Boolean)
+        .sort();
+      observedAmount = null;
+    } else if (candidate) {
+      settlement = 'represented';
+      evidenceFingerprint = sanitizedEvidenceFingerprint(candidate.providerTransactionId);
+      postingDateRelationValue = candidate.postingDateRelation || null;
+      atlasAccountId = candidate.atlasAccountId || null;
+      const amt = Number(candidate.observedAmount);
+      observedAmount = isFinite(amt) ? Math.round(amt * 100) / 100 : null;
+      if (evidenceFingerprint) {
+        if (usedEvidence.has(evidenceFingerprint)) {
+          oneOccurrenceOneTransaction = false;
+          noTransactionConsumedTwice = false;
+        }
+        usedEvidence.add(evidenceFingerprint);
+      }
+    } else if (bill.settlement === 'upcoming') {
+      settlement = 'upcoming';
+      observedAmount = 0;
+    } else if (!occurrenceInsideObservationWindow(bill.date, window, rulesByEvent.get(bill.id))) {
+      settlement = 'outside-coverage';
+      observedAmount = null;
+    } else {
+      settlement = 'unverified';
+      observedAmount = null;
+    }
+    const row = {
+      id: bill.id,
+      date: bill.date,
+      kind: bill.kind || null,
+      settlement,
+      plannedAmount: bill.planned,
+      observedAmount,
+    };
+    if (evidenceFingerprint) row.evidenceFingerprint = evidenceFingerprint;
+    if (evidenceFingerprints && evidenceFingerprints.length) {
+      row.evidenceFingerprints = evidenceFingerprints;
+    }
+    if (candidateCount) row.candidateCount = candidateCount;
+    if (postingDateRelationValue) row.postingDateRelation = postingDateRelationValue;
+    if (atlasAccountId) row.atlasAccountId = atlasAccountId;
+    occurrences.push(row);
+  }
+  const listedKeys = new Set(occurrences.map(row => row.id + '@' + row.date));
+  const periodStart = states.periodStart;
+  const periodEnd = states.periodEnd;
+  const inPaydayPeriod = (date) => date && periodStart && periodEnd
+    && date >= periodStart && date <= periodEnd;
+  for (const candidate of groups.unique) {
+    if (!candidate || !candidate.id || !candidate.date) continue;
+    if (!inPaydayPeriod(candidate.date)) continue;
+    const key = candidate.id + '@' + candidate.date;
+    if (listedKeys.has(key)) continue;
+    const scheduled = scheduledEventsOn(plan, candidate.date)
+      .filter(e => e && e.id === candidate.id);
+    if (scheduled.length !== 1) continue;
+    const kind = scheduled[0].kind;
+    if (kind !== 'obligation' && kind !== 'bill' && kind !== 'commitment') continue;
+    const planned = isFinite(-scheduled[0].amount)
+      ? Math.round((-scheduled[0].amount) * 100) / 100 : null;
+    const evidenceFingerprint = sanitizedEvidenceFingerprint(candidate.providerTransactionId);
+    const amt = Number(candidate.observedAmount);
+    const row = {
+      id: candidate.id,
+      date: candidate.date,
+      kind: (scheduled[0] && scheduled[0].kind) || null,
+      settlement: 'represented',
+      plannedAmount: planned,
+      observedAmount: isFinite(amt) ? Math.round(amt * 100) / 100 : null,
+    };
+    if (evidenceFingerprint) {
+      row.evidenceFingerprint = evidenceFingerprint;
+      if (usedEvidence.has(evidenceFingerprint)) {
+        oneOccurrenceOneTransaction = false;
+        noTransactionConsumedTwice = false;
+      }
+      usedEvidence.add(evidenceFingerprint);
+    }
+    if (candidate.postingDateRelation) row.postingDateRelation = candidate.postingDateRelation;
+    if (candidate.atlasAccountId) row.atlasAccountId = candidate.atlasAccountId;
+    occurrences.push(row);
+    listedKeys.add(key);
+  }
+  for (const group of groups.ambiguous || []) {
+    const hits = group && group.hits || [];
+    const targets = group && group.reason === 'transaction-consumed-twice'
+      ? hits
+      : (group && group.id && group.date ? [{ id: group.id, date: group.date, hits }] : []);
+    for (const target of targets) {
+      if (!target || !target.id || !target.date || !inPaydayPeriod(target.date)) continue;
+      const key = target.id + '@' + target.date;
+      if (listedKeys.has(key)) continue;
+      const scheduled = scheduledEventsOn(plan, target.date)
+        .filter(e => e && e.id === target.id);
+      if (scheduled.length !== 1) continue;
+      const kind = scheduled[0].kind;
+      if (kind !== 'obligation' && kind !== 'bill' && kind !== 'commitment') continue;
+      const planned = isFinite(-scheduled[0].amount)
+        ? Math.round((-scheduled[0].amount) * 100) / 100 : null;
+      const groupHits = target.hits || hits;
+      occurrences.push({
+        id: target.id,
+        date: target.date,
+        kind: (scheduled[0] && scheduled[0].kind) || null,
+        settlement: 'ambiguous',
+        plannedAmount: planned,
+        observedAmount: null,
+        candidateCount: groupHits.length,
+        evidenceFingerprints: groupHits
+          .map(hit => sanitizedEvidenceFingerprint(hit && hit.providerTransactionId))
+          .filter(Boolean)
+          .sort(),
+      });
+      listedKeys.add(key);
+    }
+  }
+  occurrences.sort((a, b) => String(a.date).localeCompare(String(b.date))
+    || String(a.id).localeCompare(String(b.id)));
+  const consumedTxIds = new Set();
+  for (const candidate of groups.unique) {
+    if (!candidate || candidate.providerTransactionId == null) continue;
+    const key = candidate.id + '@' + candidate.date;
+    const listed = listedKeys.has(key);
+    if (inPaydayPeriod(candidate.date) && !listed) {
+      const scheduled = scheduledEventsOn(plan, candidate.date)
+        .filter(e => e && e.id === candidate.id);
+      const kind = scheduled[0] && scheduled[0].kind;
+      if (kind === 'obligation' || kind === 'bill' || kind === 'commitment') continue;
+    }
+    consumedTxIds.add(String(candidate.providerTransactionId));
+  }
+  const unmatched = unmatchedHouseholdCash(report, opts, consumedTxIds);
+  const counts = emptyReconciliationCounts();
+  counts.coveredModeledOccurrences = occurrences.length;
+  for (const row of occurrences) {
+    if (row.settlement === 'represented') counts.represented += 1;
+    else if (row.settlement === 'upcoming') counts.upcoming += 1;
+    else if (row.settlement === 'unverified') counts.unverified += 1;
+    else if (row.settlement === 'ambiguous') counts.ambiguous += 1;
+    else if (row.settlement === 'outside-coverage') counts.outsideCoverage += 1;
+  }
+  counts.unmatchedCashEvidence = unmatched.length;
+  return {
+    schema: RECONCILIATION_RECEIPT_SCHEMA,
+    observationSchema: RECEIPT_SCHEMA,
+    observationFingerprintDigest: baseParts.observationFingerprintDigest,
+    observedAt: baseParts.observedAt,
+    householdDate,
+    asOf: householdDate,
+    writesCanonicalState: false,
+    canonicalStateChanged: false,
+    forecastPlannerInvoked: false,
+    trusted: true,
+    observationReadyForReconciliation: true,
+    failClosedKind: null,
+    failClosedReasons: [],
+    counts,
+    oneOccurrenceOneTransaction,
+    noTransactionConsumedTwice,
+    occurrences,
+    unmatchedCashEvidence: unmatched,
+  };
 }
 
 function observationsFromMappedAccount(account, mapping, fetchedAt) {
@@ -1598,6 +2041,11 @@ function observe(input) {
   };
   assembled.identityProof = identityFingerprint(assembled);
   assembled.observationReceipt = observationReceipt(assembled, { accountMap: mapDoc });
+  assembled.obligationReconciliationReceipt = reconciliationReceipt(assembled, {
+    data: input.data,
+    accountMap: mapDoc,
+    identityRules,
+  });
   assembled.currentPeriodActuals = sanitizedCurrentPeriodActuals(assembled, {
     accountMap: mapDoc,
     plan: input.data && input.data.plan,
@@ -1707,14 +2155,16 @@ async function run(argv) {
     process.stdout.write(
       'Usage: node scripts/provider-observe.js --provider lunchmoney --fixture <file>\n'
       + '       node scripts/provider-observe.js --provider lunchmoney --live [--mode current-state|reconcile] [--history-days N]\n'
-      + '       [--identity-proof | --receipt]\n'
+      + '       [--identity-proof | --receipt | --reconciliation-receipt]\n'
     );
     return 0;
   }
   if (args.provider !== 'lunchmoney') fail('Only --provider lunchmoney is implemented in this spike.');
   if (args.live && args.fixture) fail('Use either --fixture or --live, not both.');
   if (!args.live && !args.fixture) fail('Pass --fixture <file> or --live.');
-  if (args.identityProof && args.receipt) fail('Use either --identity-proof or --receipt, not both.');
+  if ([args.identityProof, args.receipt, args.reconciliationReceipt].filter(Boolean).length > 1) {
+    fail('Use only one of --identity-proof, --receipt, or --reconciliation-receipt.');
+  }
   if (args.mode && args.mode !== 'current-state' && args.mode !== 'reconcile') {
     fail('Mode must be current-state or reconcile.');
   }
@@ -1744,9 +2194,11 @@ async function run(argv) {
     identity,
     fetchedAt: payload.fetchedAt,
   });
-  const printed = args.receipt
-    ? report.observationReceipt
-    : (args.identityProof ? report.identityProof : report);
+  const printed = args.reconciliationReceipt
+    ? report.obligationReconciliationReceipt
+    : (args.receipt
+      ? report.observationReceipt
+      : (args.identityProof ? report.identityProof : report));
   process.stdout.write(JSON.stringify(printed, null, 2) + '\n');
   return 0;
 }
@@ -1758,6 +2210,7 @@ const api = {
   API_BASE_ENV,
   LIVE_MAP_SCHEMA,
   RECEIPT_SCHEMA,
+  RECONCILIATION_RECEIPT_SCHEMA,
   REQUEST_TIMEOUT_MS,
   LIVE_BASE,
   DEFAULT_MAP,
@@ -1789,6 +2242,7 @@ const api = {
   collapseByProviderTransactionId,
   pendingObservationsFromTransactions,
   inferredCardState,
+  representedEventHitGroups,
   representedEventCandidates,
   openingAsOfFromData,
   classifyRepresentedCandidate,
@@ -1804,6 +2258,9 @@ const api = {
   observationFingerprintFromParts,
   observationFingerprintDigest,
   observationReceipt,
+  sanitizedEvidenceFingerprint,
+  reconciliationReceiptLooksSanitized,
+  reconciliationReceipt,
   normalizeLunchMoneyAccount,
   postedBalanceEvidenceInstant,
   genericAccountEvidenceInstant,

@@ -566,6 +566,32 @@
     return hit ? hit.date : null;
   }
 
+  function previousPaydayDate(plan, asOf, opts) {
+    opts = opts || {};
+    const floor = opts.paydayFloor != null ? opts.paydayFloor : 1000;
+    const probeStart = addDays(asOf, -Math.max(60, (plan.windowDays || 91) - 1));
+    if (!probeStart || probeStart >= asOf) return null;
+    const events = expandEvents(plan, probeStart, addDays(asOf, -1), opts);
+    let hit = null;
+    for (const e of events || []) {
+      if (e.kind !== 'income' || !(e.amount >= floor) || e.date >= asOf) continue;
+      if (!hit || e.date > hit) hit = e.date;
+    }
+    return hit;
+  }
+
+  // Current payday-period start: this payday, else the previous payday.
+  // Distinct from periodOriginDate, which stays as-of unless a live overlay
+  // named priorAsOf. Observation reconciliation uses this so a recurring
+  // bill due earlier in the payday period cannot fall out of the bill list.
+  function paydayPeriodOrigin(plan, asOf, opts) {
+    opts = opts || {};
+    const cal = opts.paydayCalendar || paydayCalendar(plan, asOf, opts);
+    if (cal.todayIsPayday) return asOf;
+    return previousPaydayDate(plan, asOf, opts)
+      || periodOriginDate(plan, asOf, cal.todayIsPayday);
+  }
+
   function viewRange(plan, asOf, spec, opts) {
     opts = opts || {};
     const knowledge = knowledgeHorizon(plan, asOf, opts);
@@ -2307,16 +2333,39 @@
     return items;
   }
 
+  // Settlement classification only: represented / upcoming / unverified for
+  // current-period joint-cash bills. Does not compute recommend, weekly cap,
+  // or paydayAllocation. currentPeriodAction remains the household action
+  // surface and consumes this same bill list.
+  function currentPeriodObligationStates(plan, asOf, opts) {
+    opts = opts || {};
+    const cal = opts.paydayCalendar || paydayCalendar(plan, asOf, opts);
+    const origin = opts.periodOrigin
+      || (opts.preservePaydayPeriodOrigin
+        ? paydayPeriodOrigin(plan, asOf, Object.assign({}, opts, { paydayCalendar: cal }))
+        : periodOriginDate(plan, asOf, cal.todayIsPayday));
+    return {
+      asOf,
+      mode: cal.mode,
+      periodStart: origin,
+      periodEnd: cal.periodLast,
+      nextPayday: cal.subsequent,
+      bills: currentPeriodBills(plan, asOf, origin, cal.periodLast, opts),
+    };
+  }
+
   function currentPeriodAction(plan, asOf, opts) {
     opts = opts || {};
     const cal = opts.paydayCalendar || paydayCalendar(plan, asOf, opts);
-    const origin = periodOriginDate(plan, asOf, cal.todayIsPayday);
-    const periodLast = cal.periodLast;
+    const obligationStates = currentPeriodObligationStates(
+      plan, asOf, Object.assign({}, opts, { paydayCalendar: cal }));
+    const origin = obligationStates.periodStart;
+    const periodLast = obligationStates.periodEnd;
     const coverage = actualsCoverageState(asOf, origin, opts);
     const useActuals = coverage.remainingClaim === 'precise'
       || coverage.remainingClaim === 'posted-only';
     const alloc = opts.paydayAllocation || paydayAllocation(plan, asOf, opts);
-    const bills = currentPeriodBills(plan, asOf, origin, periodLast, opts);
+    const bills = obligationStates.bills;
     const actuals = useActuals
       ? sumCategoryActuals(plan, asOf, origin, opts)
       : emptyCategoryActuals();
@@ -5902,7 +5951,7 @@
 
   const Forecast = { HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, billIsHouseholdObligation, billAffectsJointCash, carriedOnceJointCashOutflow, expandEvents, simulate,
     knowledgeHorizon, viewRange, commitmentNeed, fundingSequence, majorPlans, plannedDebt, debtPriority, paydayAllocation,
-    classifyCurrentPeriodTransaction, currentPeriodAction,
+    classifyCurrentPeriodTransaction, paydayPeriodOrigin, currentPeriodObligationStates, currentPeriodAction,
     recommendWeekly, recommend, incomeDeadline, amandaHouseholdIncomeDeadline, counterfactuals,
     budgetBreakdown, monthlyFromWeekly,
     projectDebts,
