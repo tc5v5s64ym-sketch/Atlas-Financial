@@ -250,17 +250,6 @@
                 "firstDue": "2026-09-15"
             },
             {
-                "id": "uniondues",
-                "label": "CMAW Local 1995 union dues",
-                "frequency": "monthly",
-                "day": 15,
-                "amount": 25,
-                "confidence": "confirmed",
-                "budgetCategory": null,
-                "note": "Still active on the RBC chequing statement ($25 on the 15th). The 15 August occurrence is the once row uniondues-aug15-outstanding because posting remains unknown. firstDue 2026-09-15. Owner intends to cancel (open action: Cancel CMAW Local 1995 dues). Reserved as a cash outflow until cancellation is actually confirmed.",
-                "firstDue": "2026-09-15"
-            },
-            {
                 "id": "fit4less",
                 "label": "Fit4Less membership",
                 "frequency": "biweekly",
@@ -318,7 +307,7 @@
                 "amount": 25,
                 "confidence": "confirmed",
                 "budgetCategory": null,
-                "note": "Monthly union dues are due the 15th. Posting remains unknown. Fail closed: reserve the scheduled amount on this opening until cancellation is confirmed. The monthly row remains for 15 September onward."
+                "note": "Monthly union dues were due the 15th. Owner-confirmed 2026-08-24: the recurring $25/month CMAW Local 1995 payment has been cancelled, so there is no September-onward monthly row. This 15 August occurrence stays reserved: posting remains unknown, and cancellation is not settlement evidence. Unknown posting is not posted and is not unposted."
             },
             {
                 "id": "hydro-due-sep1",
@@ -355,7 +344,7 @@
                 "note": "Owner-confirmed 2026-08-23: one final Affirm payment of $32.53 is due 2026-09-21. This is debt service, not variable household spending. No recurring occurrence follows it. Current contractual balance and rate are not inferred from the payment."
             }
         ],
-        "billsNote": "Extracted from the transaction history and owner evidence, not guessed: only bills still active in the last three months are dated here, and every one of them is paid from Chequing A except the 1 September BC Hydro. The 15 August BCAA, ICBC, RESP and union-dues occurrences remain unknown in posting (not a confirmed unposted fact) and are reserved as once rows on this opening; the monthly rows resume 15 September. The children's RESP contribution is included as a hard $100 monthly bill. CMAW Local 1995 union dues ($25) remain dated because they are still on the statement; the owner intends to cancel them, but cancellation is not yet confirmed. BC Hydro remains a household obligation paid from Amanda's TENNIS INCOME account for the 1 September $237.45 dated due; a $220 Hydro debit from BILLS ACCOUNT on 14 August is already inside opening cash and is not scheduled again. Owner-confirmed 2026-08-16: the old Hydro arrears are settled and are not scheduled. Noble Disposal Services is the household garbage bill: $95.85 every 3 months on the 18th (anchor 2026-03-18, firstDue 2026-09-18). Owner-confirmed 2026-08-23: Affirm has one final $32.53 payment due 2026-09-21 and no recurrence after it. TELUS IS CLOSED — do not forecast Telus as an active household bill. Streaming is Amazon Channels — several small charges on scattered days, left inside the variable budget. There is no Netflix anywhere in the data.",
+        "billsNote": "Extracted from the transaction history and owner evidence, not guessed: only bills still active in the last three months are dated here, and every one of them is paid from Chequing A except the 1 September BC Hydro. The 15 August BCAA, ICBC, RESP and union-dues occurrences remain unknown in posting (not a confirmed unposted fact) and are reserved as once rows on this opening; the BCAA, ICBC and RESP monthly rows resume 15 September. The children's RESP contribution is included as a hard $100 monthly bill. Owner-confirmed 2026-08-24: the recurring $25/month CMAW Local 1995 union-dues payment has been cancelled. Historical Union dues actuals stay in periods.json. The 15 August occurrence remains the once row uniondues-aug15-outstanding because posting is still unknown; cancellation does not prove it settled. BC Hydro remains a household obligation paid from Amanda's TENNIS INCOME account for the 1 September $237.45 dated due; a $220 Hydro debit from BILLS ACCOUNT on 14 August is already inside opening cash and is not scheduled again. Owner-confirmed 2026-08-16: the old Hydro arrears are settled and are not scheduled. Noble Disposal Services is the household garbage bill: $95.85 every 3 months on the 18th (anchor 2026-03-18, firstDue 2026-09-18). Owner-confirmed 2026-08-23: Affirm has one final $32.53 payment due 2026-09-21 and no recurrence after it. TELUS IS CLOSED — do not forecast Telus as an active household bill. Streaming is Amazon Channels — several small charges on scattered days, left inside the variable budget. There is no Netflix anywhere in the data.",
         "commitments": [
             {
                 "id": "burrard1",
@@ -707,7 +696,7 @@
                         "Tax"
                     ],
                     "plannedMonthly": null,
-                    "why": "CRA instalments, some settled from Amanda's account. Same treatment as property tax: real, but not a dated household cash cost inside this window. Union dues are not in this reserve: the historical Tax series is CRA, and the $25/month CMAW Local 1995 charge is a dated Plan bill (id uniondues) until cancellation is confirmed."
+                    "why": "CRA instalments, some settled from Amanda's account. Same treatment as property tax: real, but not a dated household cash cost inside this window. Union dues are not in this reserve: the historical Tax series is CRA. Owner-confirmed 2026-08-24: the recurring $25/month CMAW Local 1995 charge is cancelled. The 15 August occurrence remains the once row uniondues-aug15-outstanding because posting is still unknown."
                 },
                 {
                     "id": "restaurants",
@@ -828,8 +817,8 @@
                 "what": "Cancel CMAW Local 1995 dues",
                 "amount": 25,
                 "due": null,
-                "why": "Still reserved as a cash outflow until cancellation is actually confirmed. The 15 August occurrence remains unknown in posting and is reserved on this opening. Do not guess an effective end date.",
-                "status": "open",
+                "why": "Owner-confirmed 2026-08-24: the recurring $25/month CMAW Local 1995 payment has been cancelled. The monthly Plan bill is retired. The 15 August occurrence remains reserved as uniondues-aug15-outstanding because posting is still unknown; cancellation is not settlement.",
+                "status": "done",
                 "owner": "Dale"
             },
             {
@@ -864,13 +853,13 @@
                 "owner": "Dale"
             }
         ],
-        "actionsNote": "The 12 August Burrards registrations, the Fusion camp, and the August TD-card minimum are done on this opening. Posted Cash Back $4,799.43 is under the $5,000 limit and pending is proven $0.00 on this opening. The $1,100 standing Amanda-transfer action is retired: owner-confirmed Tennis BC salary already lands in household accounts, and coaching surplus is not a forecast transfer. Remaining open action is CMAW dues cancellation.",
+        "actionsNote": "The 12 August Burrards registrations, the Fusion camp, the August TD-card minimum, and CMAW Local 1995 dues cancellation are done on this opening. Posted Cash Back $4,799.43 is under the $5,000 limit and pending is proven $0.00 on this opening. The $1,100 standing Amanda-transfer action is retired: owner-confirmed Tennis BC salary already lands in household accounts, and coaching surplus is not a forecast transfer. Remaining open action is Cash Back Visa under $5,000.",
         "assumptions": [
             "The window is the 13 weeks (91 days) starting on the as-of date. Every date in the projection is derived from that date — nothing is hardcoded to a calendar month.",
             "Deposits are assumed to land before payments due the same day. The 14 August payday cluster is already inside this opening and is not replayed.",
             "Every figure is tagged. Confirmed means the institution or a long observed history states it; estimated means it is modelled and shown in amber with a ≈ mark throughout.",
             "Future card statement minimums are estimates carried at the current level; real minimums move with the balance.",
-            "Named recurring bills — FortisBC, Shaw, BCAA, ICBC, the children's RESP contribution, CMAW Local 1995 union dues, Fit4Less, the TD account fees, and Noble Disposal garbage ($95.85 every 3 months on the 18th, firstDue 2026-09-18) — are dated on the calendar. The 15 August BCAA, ICBC, RESP and union-dues occurrences remain unknown in posting and are reserved as once rows dated 2026-08-16; the monthly rows resume 15 September. The 1 September BC Hydro $237.45 due is a household obligation paid from Amanda / TENNIS INCOME: it is dated, it does not reduce joint cash, and it is not subtracted from household averages. TELUS IS CLOSED. The variable budget covers everything else: groceries, fuel, phones, streaming, PayPal and the rest.",
+            "Named recurring bills — FortisBC, Shaw, BCAA, ICBC, the children's RESP contribution, Fit4Less, the TD account fees, and Noble Disposal garbage ($95.85 every 3 months on the 18th, firstDue 2026-09-18) — are dated on the calendar. The 15 August BCAA, ICBC, RESP and union-dues occurrences remain unknown in posting and are reserved as once rows dated 2026-08-16; the BCAA, ICBC and RESP monthly rows resume 15 September. Owner-confirmed 2026-08-24: the recurring $25/month CMAW Local 1995 union-dues payment has been cancelled and does not resume. The 1 September BC Hydro $237.45 due is a household obligation paid from Amanda / TENNIS INCOME: it is dated, it does not reduce joint cash, and it is not subtracted from household averages. TELUS IS CLOSED. The variable budget covers everything else: groceries, fuel, phones, streaming, PayPal and the rest.",
             "TELUS IS CLOSED (owner-confirmed 2026-08-16) and is not forecast as an active household bill. The old BC Hydro arrears are settled and are not a future obligation; the 1 September $237.45 Hydro due remains. A Bc Hydro $220 debit from BILLS ACCOUNT on 14 August is already inside opening cash. Bell's Aug. 1 $356.62 bill is arrears plus travel usage, not the normal ~$104.20 monthly baseline, and is not dated as a joint-cash bill. A valid $250 Bell payment was pending on Travel Visa on the 2026-08-16 opening; Travel Visa pending on this opening is $0.00.",
             "The plan is the HOUSEHOLD SPENDING ACCOUNTS ONLY — Chequing A, Chequing B and Savings as of 2026-08-19. Amanda's TENNIS INCOME account is a separate pot. The $2,691.85 held-elsewhere figure is the last 2026-08-09 reading, not this cutover, and is not automatically spendable. Q25 stays OPEN only for the uncertain coaching/business remainder of that mixed account, not for Amanda's fixed Tennis BC salary.",
             "The plan is the HOUSEHOLD SPENDING ACCOUNTS ONLY — Chequing A, Chequing B and Savings. Amanda's TENNIS INCOME account (id amanda-debt-payments) is a separate pot for coaching/business receipts; coaches and pass-through obligations are paid from it. Owner-confirmed 2026-08-22: the two fixed Tennis BC salary deposits ($2,168.85 on the 15th and $2,387.99 on month-end) land in household accounts and are Forecast household income. Coaching/business receipts are not forecast. The raw mixed-account balance is not spendable starting cash. Later transfers of those same salary dollars between household-controlled accounts are not a second income stream. Internal transfers between household accounts are excluded throughout.",

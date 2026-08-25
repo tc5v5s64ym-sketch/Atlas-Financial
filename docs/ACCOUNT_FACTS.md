@@ -186,11 +186,15 @@ question. Absence of the second account from the supplied main-account
 PDFs and from committed category rollups (July Telecom = Shaw + the $250
 main-account payment) is not a retraction of the owner confirmation.
 
-**CMAW Local 1995 union dues ($25/month on the 15th) remain a standing Plan
-bill until cancellation is actually confirmed.** They still appear in the
-chequing history. The owner intends to cancel them, and that intent is an open
-action, but the $25 stays reserved as household cash until evidence closes the
-action. Do not guess an effective end date. They are not inside the CRA
+**CMAW Local 1995 union dues — recurring $25/month payment cancelled
+(owner-confirmed 2026-08-24).** The monthly Plan bill is retired. Historical
+Union dues actuals remain in `public/periods.json` (August 2026 still shows
+$25; July $25; YTD $200; all-history $475) and must not be deleted or
+rewritten because the recurrence ended. The 15 August occurrence remains the
+once row `uniondues-aug15-outstanding` because posting is still unknown at the
+incumbent posting/settlement authority; cancellation is not proof it settled.
+The next scheduled monthly occurrence would have been 2026-09-15, after the
+owner confirmation, and is not reserved. They are not inside the CRA
 instalment reserve.
 
 **BC Hydro is not one of them.** It moved to Amanda's TENNIS INCOME account
