@@ -667,7 +667,6 @@ console.log('\n=== J. incumbents remain ===');
 {
   const liveSrc = fs.readFileSync(LIVE_SCRIPT, 'utf8');
   const refreshSrc = fs.readFileSync(CANONICAL_SCRIPT, 'utf8');
-  const planSrc = fs.readFileSync(path.join(ROOT, 'docs', 'AF_REFRESH_TRUSTED_STATE_LOOP_PLAN.md'), 'utf8');
   ok(/function fromObservation/.test(liveSrc), 'live overlay seam remains');
   ok(/previewId|approve/.test(refreshSrc), 'canonical preview/approve writer remains');
   ok(!/method:\s*'(POST|PUT|PATCH|DELETE)'/.test(refreshSrc)
@@ -676,8 +675,8 @@ console.log('\n=== J. incumbents remain ===');
   ok(!/setInterval|node-cron|cron\.schedule/.test(refreshSrc)
     && !/setInterval|node-cron|cron\.schedule/.test(liveSrc),
     'neither refresh script adds a scheduler');
-  ok(/### AF-REFRESH-05[\s\S]*?\*\*State:\*\* DONE/.test(planSrc),
-    'campaign plan still records AF-REFRESH-05 done');
+  ok(!fs.existsSync(path.join(ROOT, 'docs', 'AF_REFRESH_TRUSTED_STATE_LOOP_PLAN.md')),
+    'temporary AF-REFRESH campaign plan is retired after closed-loop acceptance');
 }
 
 const afterTree = hashTree();

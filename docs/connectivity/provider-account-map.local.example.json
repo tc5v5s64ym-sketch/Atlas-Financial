@@ -9,7 +9,8 @@
     "Identity is providerAccountId, never the display name.",
     "Mapping does not authorize a canonical write.",
     "Map non-household provider accounts as atlasRole household-external. Do not leave a current-period account unmapped: unresolved accounts cannot authorize a precise remaining figure.",
-    "DEBT&PAYMENTS and SAVINGS-DONT TOUCH are non-household. Give them household-external, not household-cash, and do not omit them if they still produce transactions."
+    "DEBT&PAYMENTS / TENNIS INCOME and SAVINGS-DONT TOUCH are non-household. Give them household-external, not household-cash, and do not omit them if they still produce transactions.",
+    "Live Lunch Money display names used for local reconstruction include Amazon MBNA Credit Card for atlas id mbna. Identity remains providerAccountId."
   ],
   "mappings": [
     {

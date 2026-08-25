@@ -134,8 +134,8 @@ console.log('=== campaign closeout and prior-slice proofs remain ===');
     'the temporary AF-OPERATE campaign plan is deleted');
   ok(!exists('docs/.AF_OPERATE_07_DISPATCH.md'),
     'the temporary AF-OPERATE-07 dispatch file is deleted');
-  ok(exists('docs/AF_REFRESH_TRUSTED_STATE_LOOP_PLAN.md'),
-    'AF-REFRESH remains queued in repository state and is not executed here');
+  ok(!exists('docs/AF_REFRESH_TRUSTED_STATE_LOOP_PLAN.md'),
+    'the temporary AF-REFRESH campaign plan is deleted');
 }
 
 console.log('\n=== default homepage answers the operating questions first ===');

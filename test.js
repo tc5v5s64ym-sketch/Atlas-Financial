@@ -118,6 +118,7 @@ const suites = [
   ['bounded canonical refresh preview (AF-REFRESH-04)', 'test-refresh-04-canonical-preview.js'],
   ['recompute operating answer from refreshed state (AF-REFRESH-05)', 'test-refresh-05-operating-answer.js'],
   ['refresh trust on the operating surface (AF-REFRESH-06)', 'test-refresh-06-trust-surface.js'],
+  ['live closed-loop acceptance and cleanup (AF-REFRESH-07)', 'test-refresh-07-live-acceptance.js'],
   ['balance history as a refresh by-product (B20 / AF-HIST-01)', 'test-b20-history.js'],
 ];
 
