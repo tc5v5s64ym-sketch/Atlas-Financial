@@ -273,13 +273,16 @@ function readyTrustedPayload(opts) {
   }
   return out;
 }
-function alignMappedPosted(data, payload, map) {
-  const byProvider = new Map();
-  for (const account of payload.accounts || []) byProvider.set(account.id, account);
-  for (const row of map.accounts || []) {
-    if (!row || !POSTED_CASH.has(row.atlasId)) continue;
-    const observed = byProvider.get(row.providerAccountId);
-    if (observed && observed.balance != null) setCash(data, row.atlasId, observed.balance);
+function alignMappedPosted(data, payload, accountMap) {
+  for (const account of payload.accounts || []) {
+    const mapping = O.mappingFor(accountMap, account.id);
+    if (!mapping || !mapping.canonical || account.balance == null) continue;
+    if (mapping.canonical.collection === 'cash' && POSTED_CASH.has(mapping.canonical.id)) {
+      setCash(data, mapping.canonical.id, Number(account.balance));
+    } else if (mapping.canonical.collection === 'debts') {
+      const row = data.debts.find(d => d.id === mapping.canonical.id);
+      if (row) row.balance = Number(account.balance);
+    }
   }
 }
 function trustedCase() {
@@ -549,15 +552,18 @@ console.log('\n=== H. approved canonical apply projects Forecast on the written 
   assertCopiesForecast(printed.operatingAnswer, writtenAdvice, 'approved apply');
   ok(near(cashValue(written, 'chequing-b'), SYNTHETIC_OBSERVED),
     'written chequing-b is the independently previewed 390');
+  ok(near(cashValue(written, 'chequing-a'), cashValue(data, 'chequing-a')),
+    'approved apply left chequing-a unchanged');
+  ok(near(cashValue(written, 'savings'), cashValue(data, 'savings')),
+    'approved apply left savings unchanged');
   const expectedSpendable = independentSpendable(written.plan);
   ok(near(Forecast.startingCashAmount(written.plan), expectedSpendable),
     'written starting cash independently matches the sum of cash rows');
-  const beforeAvailable = directRecommend(data, { mode: 'canonical' }).paydayAllocation.available;
-  const afterAvailable = writtenAdvice.paydayAllocation.available;
-  ok(near(beforeAvailable - afterAvailable, SYNTHETIC_CURRENT - SYNTHETIC_OBSERVED)
-    || afterAvailable <= beforeAvailable + 0.005,
-    'Forecast available does not rise after the −$10 posted write');
-  ok(near(printed.operatingAnswer.moneyAvailable.value, afterAvailable),
+  ok(near(
+    Forecast.startingCashAmount(data.plan) - Forecast.startingCashAmount(written.plan),
+    SYNTHETIC_CURRENT - SYNTHETIC_OBSERVED
+  ), 'Forecast starting cash falls by the independently written $10');
+  ok(near(printed.operatingAnswer.moneyAvailable.value, writtenAdvice.paydayAllocation.available),
     'apply packet money available is that same Forecast available');
   ok(printed.operatingAnswer.change && typeof printed.operatingAnswer.change.changed === 'boolean',
     'apply packet reports whether Forecast fields changed');
