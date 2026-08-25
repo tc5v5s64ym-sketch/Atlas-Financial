@@ -9,7 +9,9 @@
  * Forecast authorities to "prove" themselves. It checks the composed
  * homepage contract that those slices left open: competing diagnostics are
  * collapsed, live overlay fail-closed is explicit, and the default surface
- * still renders incumbent answers without page-side arithmetic.
+ * still renders incumbent answers without page-side arithmetic. `$0`
+ * extra-debt allocation implies no extra-principal payment; it does not
+ * imply that required contractual `requiredDebtPayments` disappear.
  */
 const fs = require('fs');
 const path = require('path');
@@ -230,15 +232,19 @@ console.log('\n=== composed surface: cash, identity, debt, protection, limits ==
         `Q4 preserves the required-debt estimated trust state for ${item.id}`);
     }
   }
+  ok(requiredItems.length >= 1,
+    'Forecast still exposes requiredDebtPayments separately from extra principal');
   const extraAllocated = Number(alloc.extraDebt.allocated);
   ok((extraAllocated === 0 && !extraLine)
     || (extraLine && near(extraLine.amount, extraAllocated)),
     'zero extra principal adds no extra-debt line; a positive extra line equals Forecast.extraDebt.allocated');
-  if (Number(alloc.extraDebt.allocated) === 0) {
+  if (extraAllocated === 0) {
     ok(q4.includes('No surplus is going to debt this period.')
       && q4.includes('$0.00 extra principal allocated this payday')
       && !/starts this period's extra principal with/.test(q4),
-    'zero extra principal is explicit and is not presented as a payment');
+    '$0 extra-debt allocation implies no extra-principal payment');
+    ok(!/Forecast has no required debt payment/.test(q4),
+      '$0 extra principal does not imply required contractual debt payments disappear');
   } else {
     ok(q4.includes(composer.money2(alloc.extraDebt.allocated) + ' extra principal')
       && alloc.extraDebt.target && q4.includes(alloc.extraDebt.target.label),
@@ -255,6 +261,33 @@ console.log('\n=== composed surface: cash, identity, debt, protection, limits ==
     'Q5 carries the incumbent between-paydays coverage limitation');
   ok(!data.liveOverlay,
     'the committed opening carries no applied live overlay to mistake for current live truth');
+}
+
+console.log('\n=== $0 extra-debt allocation does not erase required debt ===');
+{
+  const { advice } = currentAdvice();
+  const composer = loadComposer();
+  const required = ((advice.paydayAllocation.requiredDebtPayments
+    && advice.paydayAllocation.requiredDebtPayments.items) || [])
+    .filter(item => item && item.label && item.amount != null);
+  ok(required.length >= 1,
+    'the incumbent result still has requiredDebtPayments to preserve');
+  const zeroAdvice = JSON.parse(JSON.stringify(advice));
+  zeroAdvice.paydayAllocation.extraDebt.allocated = 0;
+  const q4 = question(composer.operatingSurfaceHtml({
+    advice: zeroAdvice, weekly: zeroAdvice.weekly, recommended: zeroAdvice.weekly,
+  }), '04');
+  for (const item of required) {
+    ok(q4.includes(item.label) && q4.includes(composer.money2(item.amount)),
+      `$0 extra principal still publishes required debt ${item.id}`);
+  }
+  ok(q4.includes('$0.00 extra principal allocated this payday')
+    && q4.includes('No surplus is going to debt this period.')
+    && !/starts this period's extra principal with/.test(q4),
+  '$0 extra-debt allocation implies no extra-principal payment');
+  ok(!/Forecast has no required debt payment/.test(q4)
+    && /Required debt payments/.test(q4),
+  '$0 extra principal leaves requiredDebtPayments visible and separate');
 }
 
 console.log('\n=== payday mode still uses the ordered allocation sheet ===');
