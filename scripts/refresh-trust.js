@@ -108,10 +108,10 @@ function planLabel(data, id) {
   return hit && hit.label ? String(hit.label) : null;
 }
 
-function canonicalAsOf(data) {
-  return (data && data.plan && data.plan.opening && data.plan.opening.asOf)
-    || (data && data.meta && data.meta.asOf)
-    || null;
+function observedAsOfFrom(observation, overlay) {
+  if (observation && observation.householdDate) return observation.householdDate;
+  if (overlay && overlay.observedAsOf) return overlay.observedAsOf;
+  return null;
 }
 
 function previewFromReport(report, canonical) {
@@ -330,9 +330,7 @@ function fromIncumbent(opts) {
     coverage: limits.coverage,
   };
   parts.unresolvedMaterial = unresolvedFrom(parts, data);
-  const observedAsOf = (observation && observation.householdDate)
-    || (overlay && overlay.observedAsOf)
-    || canonicalAsOf(data);
+  const observedAsOf = observedAsOfFrom(observation, overlay);
   const reconciledAsOf = (reconciliation && reconciliation.trusted === true
     && (reconciliation.asOf || reconciliation.householdDate))
     || null;

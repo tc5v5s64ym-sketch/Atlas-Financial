@@ -225,6 +225,13 @@ console.log('=== A. overlay-off remainingClaim is Forecast, not invented ===');
   ok(served.refreshTrust.canonicalProposalWaiting === false
     && !served.refreshTrust.ownerQuestion,
     'dated opening invents neither a waiting proposal nor an owner question');
+  ok(served.refreshTrust.observedAsOf == null,
+    'overlay-off does not publish the canonical opening as last-observed');
+  const overlayOffHtml = composer.refreshTrustHtml(served.refreshTrust);
+  ok(/Observation as-of is unavailable/.test(overlayOffHtml)
+    && /dated opening/.test(overlayOffHtml)
+    && !/Last observed/.test(overlayOffHtml),
+  'overlay-off HTML says observation as-of is unavailable, not Last observed');
   ok(RT.looksSanitized(served.refreshTrust), 'overlay-off packet is sanitized');
   filesUnchanged('overlay-off');
 }
@@ -372,7 +379,8 @@ console.log('\n=== F. HTML current / stale / incomplete / ambiguous render disti
     refreshTrust: trustPacket(),
     capView: cap,
   });
-  ok(/data-refresh-trust-state="current"/.test(currentHtml)
+  ok(/Last observed/.test(currentHtml)
+    && /data-refresh-trust-state="current"/.test(currentHtml)
     && /data-exact-figures="available"/.test(currentHtml)
     && />Current</.test(currentHtml),
   'current packet renders the Current household state');
@@ -482,9 +490,28 @@ console.log('\n=== G. proposal and owner question appear only when incumbent sup
   'the smallest incumbent owner question is shown when one exists');
 }
 
-console.log('\n=== H. projector and page do not invent settlement or leak provider details ===');
+console.log('\n=== H. live failure before an observation receipt does not fabricate Last observed ===');
+{
+  const failed = Live.failedOverlay(liveData, 'provider-unavailable');
+  ok(failed.liveOverlay && failed.liveOverlay.applied === false,
+    'failure-before-receipt keeps overlay unapplied');
+  ok(failed.refreshTrust && failed.refreshTrust.observedAsOf == null,
+    'failure-before-receipt does not copy the canonical opening into observedAsOf');
+  ok(failed.refreshTrust.displayState === RT.DISPLAY_ATTENTION,
+    'failure-before-receipt stays attention-needed');
+  const html = composer.refreshTrustHtml(failed.refreshTrust);
+  ok(/Observation as-of is unavailable/.test(html)
+    && !/Last observed/.test(html),
+  'failure-before-receipt HTML does not render a fabricated Last observed date');
+  filesUnchanged('failure-before-receipt');
+}
+
+console.log('\n=== I. projector and page do not invent settlement or leak provider details ===');
 {
   const src = read('scripts/refresh-trust.js');
+  ok(!/function canonicalAsOf/.test(src)
+    && !/observedAsOf[\s\S]{0,80}plan\.opening/,
+    'projector has no canonical-opening fallback for last-observed');
   ok(!/Forecast\.recommend/.test(src) || /OA\.fromRefreshedState/.test(src),
     'refresh-trust.js does not reimplement Forecast remaining-claim arithmetic');
   ok(!/displayState = 'current'/.test(src.replace(/DISPLAY_CURRENT = 'current'/, '')),
@@ -502,7 +529,7 @@ console.log('\n=== H. projector and page do not invent settlement or leak provid
   'household packet has no raw provider or proposed-value details');
 }
 
-console.log('\n=== I. homepage still leads with the operating surface ===');
+console.log('\n=== J. homepage still leads with the operating surface ===');
 {
   const html = read('public/index.html');
   ok(/id="operating-surface"/.test(html)

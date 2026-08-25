@@ -1223,7 +1223,7 @@ function refreshTrustHtml(trust) {
     : (trust.displayState === 'partially-current' ? ' caution' : '');
   const observed = trust.observedAsOf ? fmtDateLong(trust.observedAsOf) : null;
   const reconciled = trust.reconciledAsOf ? fmtDateLong(trust.reconciledAsOf) : null;
-  let asOfLine = 'Observation as-of is not available.';
+  let asOfLine = 'Observation as-of is unavailable.';
   if (observed && reconciled && observed !== reconciled) {
     asOfLine = `Last observed ${observed}. Reconciled as of ${reconciled}.`;
   } else if (observed && reconciled) {

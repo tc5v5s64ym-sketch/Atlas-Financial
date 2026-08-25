@@ -401,6 +401,8 @@ function independentGroceryRemaining(plan, asOf) {
     ok(data.refreshTrust.displayState === 'attention-needed'
       && data.refreshTrust.exactFiguresAvailable === false,
       'dated opening without actuals is attention-needed and withholds exact remaining');
+    ok(data.refreshTrust.observedAsOf == null,
+      'overlay-off does not publish a last-observed date');
     ok(String(data.meta.asOf) === String(liveData.meta.asOf),
       'dated opening as-of is unchanged');
     filesUnchanged('B overlay off');
@@ -421,6 +423,8 @@ function independentGroceryRemaining(plan, asOf) {
       'sanitized missing-token reason is published', data.liveOverlay.reason);
     ok(data.refreshTrust && data.refreshTrust.displayState === 'attention-needed',
       'fail-closed overlay publishes attention-needed trust');
+    ok(data.refreshTrust.observedAsOf == null,
+      'fail-closed before an observation receipt does not fabricate last-observed');
     ok(String(data.meta.asOf) === String(liveData.meta.asOf),
       'canonical opening as-of is served');
     ok(mock.calls.length === 0, 'no provider call without a token');
