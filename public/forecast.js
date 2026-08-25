@@ -2422,8 +2422,11 @@
   // states the household policy; this function applies it to current debt
   // facts. The page receives the answer and never compares rates itself.
   // Unknown or equal rates fail closed because the household supplied no
-  // tie-breaker. A balance with unknown pending also fails when the posted
-  // balance alone cannot prove that the facility still owes money.
+  // tie-breaker. Raw null, missing, or non-finite balances fail closed
+  // before numeric coercion — Number(null) is 0 and must not omit a debt.
+  // Unknown pending with no proven posted balance also fails. Unknown
+  // pending on a positive posted balance keeps the target but is not $0
+  // pending: leftover after that posted exposure is not true surplus.
   function debtPriority(plan, debts) {
     const policy = plan && plan.nextDollar;
     const unavailable = reason => ({
@@ -2440,10 +2443,13 @@
       (d.id === 'heloc' || (!d.secured && /^Revolving\b/i.test(d.structure || ''))));
     const owing = [];
     for (const d of eligible) {
-      const posted = Number(d.balance);
-      if (!isFinite(posted)) {
+      // Inspect the raw field first. Number(null) === 0, so a missing or
+      // null balance would otherwise look like a cleared facility and drop
+      // out of the owing set.
+      if (d.balance == null || !isFinite(Number(d.balance))) {
         return unavailable(`${d.label || d.id} has an unknown balance.`);
       }
+      const posted = Number(d.balance);
       if (pendingUnknown(d) && !(posted > EPSILON)) {
         return unavailable(`${d.label || d.id} may owe an unknown pending balance.`);
       }
@@ -2471,10 +2477,13 @@
     }));
     const target = order[0] || null;
     const nextTarget = order[1] || null;
+    const unknownPendingHold = !!(target && order.some(row => row.pendingUnknown));
     return {
       status: target ? 'ready' : 'clear',
       reason: target
-        ? 'Owner-stated policy sends true surplus to the highest-interest eligible revolving debt or HELOC.'
+        ? (unknownPendingHold
+          ? `${target.label || target.id} has unknown pending exposure; cash beyond the proven posted balance is not true surplus.`
+          : 'Owner-stated policy sends true surplus to the highest-interest eligible revolving debt or HELOC.')
         : 'No eligible revolving debt or HELOC has a known balance to receive surplus.',
       policy: policy.policy,
       provenance: policy.provenance,
@@ -2511,7 +2520,13 @@
       chain = [head, ...rest, byId.get('heloc')].filter(Boolean);
     }
     let absorbable = 0;
-    for (const d of chain) absorbable += Math.max(0, openingBalance(d));
+    for (const d of chain) {
+      absorbable += Math.max(0, openingBalance(d));
+      // Unknown pending is not $0. Proven posted may receive extra principal;
+      // anything after this debt — another target or leftover cash — is not
+      // proven true surplus until exposure is known.
+      if (pendingUnknown(d)) break;
+    }
     return absorbable;
   }
 
@@ -2893,9 +2908,12 @@
     const extraWanted = holdForUnresolved || (ownerPolicyApplies && priority.status !== 'ready') ? 0
       : Math.min(remaining, movable, extraAbsorbable);
     const allocatedExtraDebt = take(extraWanted);
+    const unknownPendingHold = ownerPolicyApplies
+      && priority.status === 'ready'
+      && (priority.order || []).some(row => row.pendingUnknown);
 
     const optionalAllocations = [];
-    if (!holdForUnresolved) {
+    if (!holdForUnresolved && !unknownPendingHold) {
       for (const row of optionalRows) {
         if (!(remaining > EPSILON)) break;
         const want = row.need;
@@ -2978,6 +2996,19 @@
         projectedByDeadline: allocatedEssentials,
         allocated: allocatedEssentials,
         reason: 'This payday cannot protect essential household spending in cash.',
+      });
+    }
+    if (unknownPendingHold) {
+      risks.push({
+        id: 'extra-debt-pending-unknown',
+        label: 'Extra-debt pending exposure',
+        date: asOf,
+        verdict: 'UNKNOWN',
+        shortfall: null,
+        need: null,
+        projectedByDeadline: allocatedExtraDebt,
+        allocated: allocatedExtraDebt,
+        reason: priority.reason,
       });
     }
 

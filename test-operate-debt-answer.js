@@ -157,6 +157,75 @@ ok(currentPriority.status === 'ready' && currentPriority.target.id === 'cashback
 ok(!currentPriority.order.some(row => row.pendingUnknown),
   'no current eligible balance has unknown pending state');
 
+console.log('\n=== null/missing eligible balances fail closed before coercion ===');
+ok(Number(null) === 0,
+  'Number(null) is 0 — the coercion trap that must not omit an eligible debt');
+const nullBalanceDebts = debts.map(d => Object.assign({}, d));
+nullBalanceDebts.find(d => d.id === 'high').balance = null;
+const independentlyOmitted = nullBalanceDebts.filter(d =>
+  (d.id === 'heloc' || (!d.secured && /^Revolving/.test(d.structure || '')))
+  && isFinite(Number(d.balance)) && Number(d.balance) > 0);
+ok(independentlyOmitted.some(d => d.id === 'low')
+  && independentlyOmitted.some(d => d.id === 'heloc')
+  && !independentlyOmitted.some(d => d.id === 'high'),
+  'coercing null to 0 would drop High card and leave Low card and HELOC owing');
+const nullPriority = F.debtPriority(fixture(300), nullBalanceDebts);
+ok(nullPriority.status === 'unavailable' && nullPriority.target === null
+  && /unknown balance/.test(nullPriority.reason),
+  'an eligible null balance names no target');
+const nullAlloc = F.paydayAllocation(fixture(300), '2026-09-01',
+  Object.assign({}, opts, { debts: nullBalanceDebts }));
+ok(near(nullAlloc.extraDebt.allocated, 0) && nullAlloc.extraDebt.target === null,
+  'null-balance fail-closed allocates no extra principal and names no target');
+ok(near(nullAlloc.identity, nullAlloc.available),
+  'the payday identity still reconciles when a null balance fails closed');
+const missingBalanceDebts = debts.map(d => Object.assign({}, d));
+delete missingBalanceDebts.find(d => d.id === 'high').balance;
+const missingPriority = F.debtPriority(fixture(300), missingBalanceDebts);
+ok(missingPriority.status === 'unavailable' && missingPriority.target === null
+  && /unknown balance/.test(missingPriority.reason),
+  'a missing eligible balance names no target');
+const nonFiniteDebts = debts.map(d => Object.assign({}, d));
+nonFiniteDebts.find(d => d.id === 'high').balance = Number.NaN;
+const nonFinitePriority = F.debtPriority(fixture(300), nonFiniteDebts);
+ok(nonFinitePriority.status === 'unavailable' && nonFinitePriority.target === null,
+  'a non-finite eligible balance names no target');
+
+console.log('\n=== unknown pending holds residual beyond proven posted exposure ===');
+const unknownPendingDebts = debts.map(d => Object.assign({}, d));
+const highCard = unknownPendingDebts.find(d => d.id === 'high');
+highCard.pendingUnknown = true;
+highCard.pending = null;
+const provenPosted = Number(highCard.balance); // 50 — pending is unknown, not $0
+const lowerPriorityPosted = unknownPendingDebts
+  .filter(d => d.id === 'low' || d.id === 'heloc')
+  .reduce((sum, d) => sum + Number(d.balance), 0); // 40 + 60
+const optionalNeed = 100;
+ok(provenPosted === 50 && lowerPriorityPosted === 100 && optionalNeed === 100,
+  'independent fixture: High posted $50; Low+HELOC $100; optional $100');
+const pendingPriority = F.debtPriority(fixture(300), unknownPendingDebts);
+ok(pendingPriority.status === 'ready' && pendingPriority.target.id === 'high'
+  && /unknown pending/.test(pendingPriority.reason),
+  'positive posted still names the highest-interest target and surfaces the trust reason');
+const pendingAlloc = F.paydayAllocation(fixture(300), '2026-09-01',
+  Object.assign({}, opts, { debts: unknownPendingDebts }));
+ok(near(pendingAlloc.extraDebt.allocated, provenPosted)
+  && pendingAlloc.extraDebt.target && pendingAlloc.extraDebt.target.id === 'high'
+  && pendingAlloc.extraDebt.target.id !== 'low',
+  'extra principal stops at proven posted exposure and does not assert a later target',
+  `extra ${pendingAlloc.extraDebt.allocated}; proven posted ${provenPosted}`);
+ok(!(pendingAlloc.optional || []).some(row => row.allocated > 0),
+  'unproven leftover is not released to optional residual');
+ok(near(pendingAlloc.unallocated,
+    alloc.unallocated + (alloc.extraDebt.allocated - provenPosted) + optionalNeed),
+  'the withheld lower-priority extra and optional residual remain unallocated',
+  `held ${pendingAlloc.unallocated}; baseline unallocated ${alloc.unallocated}`);
+ok(near(pendingAlloc.identity, pendingAlloc.available),
+  'the payday identity still reconciles when residual is held');
+ok((pendingAlloc.risks || []).some(row =>
+    row.id === 'extra-debt-pending-unknown' && /unknown pending/.test(row.reason)),
+  'the held residual surfaces the unknown-pending trust reason');
+
 if (failures) {
   console.error(`\n${failures} CHECK(S) FAILED`);
   process.exit(1);

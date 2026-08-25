@@ -569,7 +569,7 @@ closed: `Forecast.expandEvents` is the one cash calendar.
 | Mortgage rate conventions — what a quoted rate means | `RATE_BASIS` in `public/forecast.js`: fixed compounds semi-annually, variable monthly. `Forecast.renewal` requires the basis and has no default |
 | The next move the household is told to make | `plan.actions` in `data.json` for owner-policy rows (what, amount, due, owner). Current-limit satisfaction on a row with `debtId` is `Forecast.resolveActions` from utilisation (unknown pending or over-limit stays `open`; otherwise `done`). `public/plan.js` renders `Forecast.resolveActions` / `Forecast.nextMove` |
 | What the next move achieves — which of five outcomes the "What happens after" line publishes, and the figures inside it | `Forecast.nextMove`, from the `recommend` result, the simulation on screen and `plan.actions[0]`. The action's amount is a fixed figure sized for the default buffer, so coverage is judged against the **current** gap on the engine's own half-cent — and restoring that gap takes coverage **and** a due date on or before it, since money arriving after the day it is needed clears nothing on that day. `public/plan.js` holds the wording only |
-| Where the next surplus dollar goes | `plan.nextDollar` in `data.json` records the owner-stated policy only. `Forecast.debtPriority` applies it to current eligible revolving-card and HELOC facts, fails closed on equal or unavailable rates, and returns the current target, ordered cascade, and conditional next target. `Forecast.paydayAllocation` owns the amount; `Forecast.projectDebts` consumes the same order. Pages rank nothing |
+| Where the next surplus dollar goes | `plan.nextDollar` in `data.json` records the owner-stated policy only. `Forecast.debtPriority` applies it to current eligible revolving-card and HELOC facts, fails closed on equal or unavailable rates and on null/missing/non-finite balances, and returns the current target, ordered cascade, and conditional next target. Unknown pending is not $0: leftover after proven posted exposure is held, not sent to a later target or optional residual. `Forecast.paydayAllocation` owns the amount; `Forecast.projectDebts` consumes the same order. Pages rank nothing |
 | Payoff modelling — which debts may be modelled, what a payment does to one, and what clears it | `Forecast.payoffDebts`, `Forecast.payoffModel` and `Forecast.paymentForMonths`, from the debt records and `plan.obligations`; `public/modellers.js` holds the wording only |
 | Debt rate conventions — what a debt's quoted rate means per period, and how closely a monthly model reproduces it | `PAYOFF_RATE_BASIS` and `PAYOFF_BASIS_PRECISION` in `public/forecast.js`, from each debt record's `rateConvention`. A prime-linked facility is compounded monthly, so a monthly period is **exact**. A card charges a daily rate over the days in each statement cycle, so a monthly period is a **monthly-equivalent** average: exact over a year, and published with the cycle band for any single period. An undeclared convention throws |
 | What one debt costs the household in cash each month | `monthlyCashFor` in `public/forecast.js`, from `plan.obligations`; read by both `Forecast.renewal` and the payoff modeller |
@@ -860,7 +860,11 @@ costs are protected, true surplus goes to extra debt before optional future cost
 or additional discretionary cash accumulation. Among eligible revolving cards
 and the HELOC, highest known interest rate wins. `Forecast.debtPriority` applies
 that policy to current facts. Equal or unavailable rates publish no target until
-the owner supplies a tie-breaker; the page does not invent one.
+the owner supplies a tie-breaker; the page does not invent one. Null, missing,
+or non-finite eligible balances also publish no target — `Number(null)` is not a
+cleared facility. Unknown pending on a positive posted balance is not $0 pending:
+extra principal may use the proven posted exposure, and leftover cash is held
+rather than sent to a lower-priority target or optional residual.
 
 ---
 
