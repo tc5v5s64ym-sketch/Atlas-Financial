@@ -2307,16 +2307,36 @@
     return items;
   }
 
-  function currentPeriodAction(plan, asOf, opts) {
+  // Settlement classification only: represented / upcoming / unverified for
+  // current-period joint-cash bills. Does not compute recommend, weekly cap,
+  // or paydayAllocation. currentPeriodAction remains the household action
+  // surface and consumes this same bill list.
+  function currentPeriodObligationStates(plan, asOf, opts) {
     opts = opts || {};
     const cal = opts.paydayCalendar || paydayCalendar(plan, asOf, opts);
     const origin = periodOriginDate(plan, asOf, cal.todayIsPayday);
-    const periodLast = cal.periodLast;
+    return {
+      asOf,
+      mode: cal.mode,
+      periodStart: origin,
+      periodEnd: cal.periodLast,
+      nextPayday: cal.subsequent,
+      bills: currentPeriodBills(plan, asOf, origin, cal.periodLast, opts),
+    };
+  }
+
+  function currentPeriodAction(plan, asOf, opts) {
+    opts = opts || {};
+    const cal = opts.paydayCalendar || paydayCalendar(plan, asOf, opts);
+    const obligationStates = currentPeriodObligationStates(
+      plan, asOf, Object.assign({}, opts, { paydayCalendar: cal }));
+    const origin = obligationStates.periodStart;
+    const periodLast = obligationStates.periodEnd;
     const coverage = actualsCoverageState(asOf, origin, opts);
     const useActuals = coverage.remainingClaim === 'precise'
       || coverage.remainingClaim === 'posted-only';
     const alloc = opts.paydayAllocation || paydayAllocation(plan, asOf, opts);
-    const bills = currentPeriodBills(plan, asOf, origin, periodLast, opts);
+    const bills = obligationStates.bills;
     const actuals = useActuals
       ? sumCategoryActuals(plan, asOf, origin, opts)
       : emptyCategoryActuals();
@@ -5902,7 +5922,7 @@
 
   const Forecast = { HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, billIsHouseholdObligation, billAffectsJointCash, carriedOnceJointCashOutflow, expandEvents, simulate,
     knowledgeHorizon, viewRange, commitmentNeed, fundingSequence, majorPlans, plannedDebt, debtPriority, paydayAllocation,
-    classifyCurrentPeriodTransaction, currentPeriodAction,
+    classifyCurrentPeriodTransaction, currentPeriodObligationStates, currentPeriodAction,
     recommendWeekly, recommend, incomeDeadline, amandaHouseholdIncomeDeadline, counterfactuals,
     budgetBreakdown, monthlyFromWeekly,
     projectDebts,
