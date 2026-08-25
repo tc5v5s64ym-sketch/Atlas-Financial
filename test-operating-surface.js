@@ -46,6 +46,7 @@ function loadComposer() {
     grab(planSrc, /^function futurePlanRequirement\([\s\S]*?\n\}$/m, 'futurePlanRequirement'),
     grab(planSrc, /^function futurePlanTiming\([\s\S]*?\n\}$/m, 'futurePlanTiming'),
     grab(planSrc, /^function futureGravityHtml\([\s\S]*?\n\}$/m, 'futureGravityHtml'),
+    grab(planSrc, /^function operatingDebtAnswerHtml\([\s\S]*?\n\}$/m, 'operatingDebtAnswerHtml'),
     grab(planSrc, /^function operatingSurfaceHtml\([\s\S]*?\n\}$/m, 'operatingSurfaceHtml'),
   ].join('\n');
   return vm.runInNewContext(
@@ -103,10 +104,9 @@ console.log('\n=== five ordered household operating questions ===');
 {
   const { plan, asOf, advice, debtProjection } = currentResult();
   const composer = loadComposer();
-  const target = plan.nextDollar && debtProjection.byId[plan.nextDollar.target];
   const rendered = composer.operatingSurfaceHtml({
     plan, asOf, advice, weekly: advice.weekly, recommended: advice.weekly,
-    liveOverlay: data.liveOverlay, extraDebtTarget: target,
+    liveOverlay: data.liveOverlay,
   });
   const prompts = [
     'What do I do now?',
@@ -129,11 +129,10 @@ console.log('\n=== every displayed financial answer traces to incumbents ===');
 {
   const { plan, advice, debtProjection } = currentResult();
   const composer = loadComposer();
-  const target = plan.nextDollar && debtProjection.byId[plan.nextDollar.target];
+  const target = advice.paydayAllocation.extraDebt.target;
   const rendered = composer.operatingSurfaceHtml({
     plan, asOf: data.meta.asOf, advice, weekly: advice.weekly,
     recommended: advice.weekly, liveOverlay: data.liveOverlay,
-    extraDebtTarget: target,
   });
   const independentCash = (plan.startingCash.breakdown || [])
     .reduce((sum, row) => sum + Number(row.value || 0), 0);
@@ -156,10 +155,11 @@ console.log('\n=== every displayed financial answer traces to incumbents ===');
     ok(target && rendered.includes(target.label),
       'a positive allocation names the debt row from the incumbent Forecast debt projection');
   } else {
-    ok(rendered.includes('No debt is receiving surplus this period.'),
+    ok(rendered.includes('No surplus is going to debt this period.'),
       'a zero incumbent allocation publishes that no debt receives surplus');
-    ok(!target || !rendered.includes(target.label),
-      'a policy target is not presented as a payment when Forecast allocated zero');
+    ok(!target || (rendered.includes(target.label)
+      && !rendered.includes(`starts this period's extra principal with ${target.label}`)),
+    'a policy target is not presented as a payment when Forecast allocated zero');
   }
   const coverageCopy = composer.paydayCoverageNote(advice.currentPeriodAction);
   ok(rendered.includes(coverageCopy),
@@ -174,25 +174,29 @@ console.log('\n=== Q4 follows the incumbent extra-debt allocation ===');
 {
   const { advice } = currentResult();
   const composer = loadComposer();
-  const target = { label: 'Synthetic incumbent debt target' };
+  const target = { label: 'Synthetic incumbent debt target', confidence: 'verified' };
   const zeroAdvice = JSON.parse(JSON.stringify(advice));
   zeroAdvice.paydayAllocation.extraDebt.allocated = 0;
+  zeroAdvice.paydayAllocation.extraDebt.target = target;
   const zero = composer.operatingSurfaceHtml({
-    advice: zeroAdvice, liveOverlay: data.liveOverlay, extraDebtTarget: target,
+    advice: zeroAdvice, liveOverlay: data.liveOverlay,
   });
-  ok(zero.includes('No debt is receiving surplus this period.'),
+  ok(zero.includes('No surplus is going to debt this period.'),
     'zero allocation explicitly says no debt receives surplus');
-  ok(zero.includes('$0.00 extra debt allocated'),
+  ok(zero.includes('$0.00 extra principal allocated this payday'),
     'zero allocation is rendered from the incumbent amount');
-  ok(!zero.includes(target.label),
-    'zero allocation does not turn the existence of a policy target into a payment');
+  ok(zero.includes(target.label)
+    && !zero.includes(`starts this period's extra principal with ${target.label}`),
+    'zero allocation may name the current target but does not say it receives surplus');
 
   const positiveAdvice = JSON.parse(JSON.stringify(advice));
   positiveAdvice.paydayAllocation.extraDebt.allocated = 25;
+  positiveAdvice.paydayAllocation.extraDebt.target = target;
   const positive = composer.operatingSurfaceHtml({
-    advice: positiveAdvice, liveOverlay: data.liveOverlay, extraDebtTarget: target,
+    advice: positiveAdvice, liveOverlay: data.liveOverlay,
   });
-  ok(positive.includes(target.label) && positive.includes('$25.00 extra'),
+  ok(positive.includes(`starts this period's extra principal with ${target.label}`)
+    && positive.includes('$25.00 extra principal'),
     'positive allocation names the incumbent target and allocated amount');
 }
 
@@ -206,8 +210,8 @@ console.log('\n=== page remains a renderer, not a financial authority ===');
   ok(fn && !/\.reduce\(|monthlyFromWeekly|projectDebts|majorPlans|fundingSequence/.test(fn[0]),
     'the formatter contains no page-side totals, conversions, debt walk, or future-plan calculation');
   ok(/operatingSurfaceHtml\(\{[\s\S]*?advice/.test(planSrc)
-    && /extraDebtTarget: debtProj\.byId/.test(planSrc),
-  'renderPlan wires the incumbent recommendation and debt projection into the surface');
+    && !/extraDebtTarget: debtProj\.byId/.test(planSrc),
+  'renderPlan wires the incumbent recommendation directly and supplies no page-selected target');
 }
 
 if (failures) {

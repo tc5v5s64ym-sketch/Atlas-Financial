@@ -816,49 +816,12 @@
             ]
         },
         "nextDollar": {
-            "policy": "protect-then-highest-cost",
-            "provenance": "derived",
-            "provenanceNote": "DERIVED PLAN POLICY, not an owner instruction. Neither Dale nor Amanda has stated or approved this ordering; it was derived by the implementation from the current financial facts — the penalty-rate clock on the TD credit card, the over-limit fee on the Cash Back Visa, and the HELOC crossing its own limit inside the window. It was previously presented as a household decision, which no owner statement supported. The ordering is offered as a recommendation and remains open to the owner overriding it; if they adopt it, this would change this field to owner-stated with a dated reference.",
-            "target": "cashback",
-            "summary": "The next surplus dollar goes to the TD Cash Back Visa: it is the highest rate the household pays at 26.99%. Posted $4,799.43 is under the $5,000 limit; pending is proven $0.00 on this opening.",
-            "order": [
-                {
-                    "rank": 1,
-                    "rule": "Protect the required payments",
-                    "why": "Every dated minimum and the mortgage come first. A missed minimum on the TD credit card is the most expensive event available to this household — a fifth one restarts the 24.99% penalty rate for another twelve months."
-                },
-                {
-                    "rank": 2,
-                    "rule": "Cover the opening timing gap",
-                    "why": "The 12 August Burrards registrations are owner-confirmed paid and do not reserve cash on this opening. An opening timing gap, when one exists, still outranks everything else."
-                },
-                {
-                    "rank": 3,
-                    "rule": "Correct the over-limit conditions",
-                    "why": "Posted $4,799.43 is under the $5,000 limit and pending is proven $0.00 on this opening. Getting a card back inside its limit remains a guaranteed return when an over-limit condition is known to exist."
-                },
-                {
-                    "rank": 4,
-                    "rule": "Hold the $500 household buffer",
-                    "why": "Below that, an ordinary mistimed bill becomes an NSF fee and an overdraft charge, which is how the last twelve months produced $145/month of avoidable bank fees."
-                },
-                {
-                    "rank": 5,
-                    "rule": "Fund the essential variable spending",
-                    "why": "Groceries, fuel, phones and medical. Cutting these to service debt is how a plan gets abandoned in week three."
-                },
-                {
-                    "rank": 6,
-                    "rule": "Stop new HELOC and revolving growth",
-                    "why": "The HELOC is interest-only and capitalises about $814 a month. The 14 August $1,100 payment is already inside the 2026-08-19 opening. Any new draw still ranks above extra repayment because growth compounds against every future month. Q19 ANSWERED: remaining August cash requirement is $0 additional."
-                },
-                {
-                    "rank": 7,
-                    "rule": "Direct verified surplus to the highest effective-cost consumer debt",
-                    "why": "By rate that is the TD Cash Back Visa at 26.99%, then the TD credit card at its 24.99% penalty rate, then Triangle at 21.99%. Effective cost, not headline rate."
-                }
-            ],
-            "note": "Encoded explicitly so the plan cannot quietly apply a different one, and evaluated against current facts rather than applied blindly: the ordering puts stopping HELOC growth above extra card repayment specifically because the HELOC breaches its limit inside this window without anyone borrowing another dollar. See provenanceNote — this is Atlas's recommendation, not a household decision."
+            "policy": "true-surplus-highest-interest",
+            "eligibleDebts": "revolving-cards-and-heloc",
+            "provenance": "owner-stated",
+            "provenanceDate": "2026-08-24",
+            "provenanceNote": "Owner instruction for AF-OPERATE-06: after required payments, essential spending, incumbent liquidity protection, and required or known future costs are protected, true surplus goes to extra debt before optional future costs or additional discretionary cash accumulation. Among eligible revolving cards and the HELOC, the highest known interest rate wins. Equal or unavailable rates fail closed because no tie-breaker was supplied.",
+            "note": "This records policy only. Forecast.debtPriority applies it to current debt facts; this row stores no target, rate ranking, payment, transfer, cash capacity, or borrowing permission."
         },
         "actions": [
             {
