@@ -1,9 +1,15 @@
 # AF-REFRESH — Trusted State Refresh Loop
 
-**Status:** ACTIVE CAMPAIGN — owner-approved 2026-08-24; AF-REFRESH-01 through AF-REFRESH-05 merged
+**Status:** ACTIVE CAMPAIGN — owner-approved 2026-08-24; AF-REFRESH-01 through AF-REFRESH-06 merged
 
-**AF-REFRESH-06 is DONE.** The next eligible slice is AF-REFRESH-07. Do not start
-AF-REFRESH-07 in this pull request.
+**AF-REFRESH-07 is STOPPED** at the incumbent trusted account-map gate
+(2026-08-25). A Lunch Money GET-only token was present. The owner-supplied
+`ATLAS_PROVIDER_ACCOUNT_MAP_JSON` secret and the gitignored owner-observed
+`provider-account-map.local.json` were both absent. Live mapping is by
+`providerAccountId`, not display name. Do not reconstruct the map from Lunch
+Money labels. Do not close this campaign. Do not invent AF-REFRESH-08. When
+the owner supplies the incumbent provider-ID map through one of those two
+transports, rerun this same AF-REFRESH-07 live acceptance.
 
 This file is a temporary execution plan, not a new authority. It exists so a
 fresh builder can move directly from the completed Payday Operating Surface
@@ -448,6 +454,13 @@ and no credit-as-cash behavior.
 - remove temporary campaign-only routing/scaffolding;
 - keep reusable incumbent refresh/reconciliation functionality;
 - delete `docs/AF_REFRESH_TRUSTED_STATE_LOOP_PLAN.md` in the final cleanup PR.
+
+**State:** STOPPED 2026-08-25 at `live-account-map-missing`. Fixture composition
+of the closed-loop packet exists in `scripts/refresh-loop-acceptance.js` and is
+not a live household proof. `--live` fails closed before any provider GET unless
+the incumbent owner-verified `providerAccountId` map is present. Display names
+cannot reconstruct that map. Campaign scaffolding stays until a trusted-map live
+run passes. No successor campaign.
 
 ---
 
