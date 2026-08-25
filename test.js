@@ -113,6 +113,7 @@ const suites = [
   ['automatic-payment settlement reconciliation', 'test-automatic-payment-settlement.js'],
   ['final Affirm payment owner correction', 'test-affirm-final.js'],
   ['retire cancelled CMAW union-dues recurrence (AF-REFRESH-01)', 'test-refresh-01-union-dues.js'],
+  ['on-demand observation receipt (AF-REFRESH-02)', 'test-refresh-02-observation-receipt.js'],
   ['balance history as a refresh by-product (B20 / AF-HIST-01)', 'test-b20-history.js'],
 ];
 

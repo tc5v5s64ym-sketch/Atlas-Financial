@@ -1,9 +1,9 @@
 # AF-REFRESH — Trusted State Refresh Loop
 
-**Status:** ACTIVE CAMPAIGN — owner-approved 2026-08-24; AF-OPERATE-07 merged
+**Status:** ACTIVE CAMPAIGN — owner-approved 2026-08-24; AF-REFRESH-01 merged
 
-**AF-REFRESH-01 is the first implementation slice.** Do not start AF-REFRESH-02
-while AF-REFRESH-01 is open.
+**AF-REFRESH-02 is the current implementation slice.** Do not start AF-REFRESH-03
+while AF-REFRESH-02 is open.
 
 This file is a temporary execution plan, not a new authority. It exists so a
 fresh builder can move directly from the completed Payday Operating Surface
@@ -258,6 +258,12 @@ The receipt should expose only what is operationally useful, such as:
 sanitized fingerprint/receipt and zero canonical diff; truncated/incomplete
 coverage cannot report a false-current result.
 
+**State:** DONE. `scripts/provider-observe.js --receipt` prints one sanitized
+observation-coverage receipt from the incumbent GET-only seam. Identical
+evidence yields the same fingerprint; truncated/partial/unproven coverage
+cannot report ready; canonical files are unchanged. Next eligible slice is
+AF-REFRESH-03.
+
 ---
 
 ### AF-REFRESH-03 — Reconcile observed reality to modeled obligations
@@ -454,16 +460,15 @@ remaining problem and current repository governance permits them.
 
 ## Handoff from AF-OPERATE
 
-AF-OPERATE-07 has merged. AF-REFRESH is the active campaign. AF-REFRESH-01
-retires the cancelled CMAW recurrence. After that slice merges, a fresh
-builder should:
+AF-OPERATE-07 and AF-REFRESH-01 have merged. AF-REFRESH is the active
+campaign. After AF-REFRESH-02 merges, a fresh builder should:
 
 1. re-fetch current `main` and open PRs;
 2. read `AGENTS.md` and the normal authority chain;
 3. read this file;
 4. verify that its incumbent seams still exist and that current repository
    authority has not superseded the plan; and
-5. execute **AF-REFRESH-02 only**.
+5. execute **AF-REFRESH-03 only**.
 
 The activation instruction is therefore simple:
 
