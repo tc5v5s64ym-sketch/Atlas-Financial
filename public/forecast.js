@@ -566,6 +566,32 @@
     return hit ? hit.date : null;
   }
 
+  function previousPaydayDate(plan, asOf, opts) {
+    opts = opts || {};
+    const floor = opts.paydayFloor != null ? opts.paydayFloor : 1000;
+    const probeStart = addDays(asOf, -Math.max(60, (plan.windowDays || 91) - 1));
+    if (!probeStart || probeStart >= asOf) return null;
+    const events = expandEvents(plan, probeStart, addDays(asOf, -1), opts);
+    let hit = null;
+    for (const e of events || []) {
+      if (e.kind !== 'income' || !(e.amount >= floor) || e.date >= asOf) continue;
+      if (!hit || e.date > hit) hit = e.date;
+    }
+    return hit;
+  }
+
+  // Current payday-period start: this payday, else the previous payday.
+  // Distinct from periodOriginDate, which stays as-of unless a live overlay
+  // named priorAsOf. Observation reconciliation uses this so a recurring
+  // bill due earlier in the payday period cannot fall out of the bill list.
+  function paydayPeriodOrigin(plan, asOf, opts) {
+    opts = opts || {};
+    const cal = opts.paydayCalendar || paydayCalendar(plan, asOf, opts);
+    if (cal.todayIsPayday) return asOf;
+    return previousPaydayDate(plan, asOf, opts)
+      || periodOriginDate(plan, asOf, cal.todayIsPayday);
+  }
+
   function viewRange(plan, asOf, spec, opts) {
     opts = opts || {};
     const knowledge = knowledgeHorizon(plan, asOf, opts);
@@ -2314,7 +2340,10 @@
   function currentPeriodObligationStates(plan, asOf, opts) {
     opts = opts || {};
     const cal = opts.paydayCalendar || paydayCalendar(plan, asOf, opts);
-    const origin = periodOriginDate(plan, asOf, cal.todayIsPayday);
+    const origin = opts.periodOrigin
+      || (opts.preservePaydayPeriodOrigin
+        ? paydayPeriodOrigin(plan, asOf, Object.assign({}, opts, { paydayCalendar: cal }))
+        : periodOriginDate(plan, asOf, cal.todayIsPayday));
     return {
       asOf,
       mode: cal.mode,
@@ -5922,7 +5951,7 @@
 
   const Forecast = { HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, billIsHouseholdObligation, billAffectsJointCash, carriedOnceJointCashOutflow, expandEvents, simulate,
     knowledgeHorizon, viewRange, commitmentNeed, fundingSequence, majorPlans, plannedDebt, debtPriority, paydayAllocation,
-    classifyCurrentPeriodTransaction, currentPeriodObligationStates, currentPeriodAction,
+    classifyCurrentPeriodTransaction, paydayPeriodOrigin, currentPeriodObligationStates, currentPeriodAction,
     recommendWeekly, recommend, incomeDeadline, amandaHouseholdIncomeDeadline, counterfactuals,
     budgetBreakdown, monthlyFromWeekly,
     projectDebts,

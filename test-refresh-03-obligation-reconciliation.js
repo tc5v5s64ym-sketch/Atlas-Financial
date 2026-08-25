@@ -522,6 +522,8 @@ console.log('\n=== M. canonical files are unchanged; incumbents remain ===');
     'reconciliationReceipt does not call Forecast.recommend or paydayAllocation');
   ok(/currentPeriodObligationStates/.test(recSrc[0]),
     'reconciliationReceipt consumes Forecast.currentPeriodObligationStates');
+  ok(/paydayPeriodOrigin/.test(recSrc[0]),
+    'reconciliationReceipt preserves the current payday-period origin');
   ok(/function currentPeriodObligationStates/.test(forecastSrc),
     'Forecast.currentPeriodObligationStates exists');
   const obligationFn = /function currentPeriodObligationStates[\s\S]*?\n  function currentPeriodAction/.exec(forecastSrc);
@@ -543,6 +545,100 @@ console.log('\n=== N. ready packet count identity ===');
     'represented count matches occurrence rows');
   ok(receipt.counts.unmatchedCashEvidence === (receipt.unmatchedCashEvidence || []).length,
     'unmatched count matches unmatched rows');
+}
+
+console.log('\n=== O. payday-period origin keeps a late-posting recurring bill visible ===');
+{
+  const AS_OF = '2026-09-16';
+  const DUE = '2026-09-15';
+  const payrollAnchor = '2026-08-14';
+  function independentBiweekly(anchor, start, end) {
+    const dates = [];
+    let cursor = anchor;
+    while (cursor < start) cursor = addDays(cursor, 14);
+    while (cursor <= end) {
+      dates.push(cursor);
+      cursor = addDays(cursor, 14);
+    }
+    return dates;
+  }
+  function independentMonthlyDay(day, firstDue, start, end) {
+    const dates = [];
+    let cursor = start.slice(0, 8) + String(day).padStart(2, '0');
+    if (cursor < start) {
+      const [y, m] = start.split('-').map(Number);
+      const nextM = m === 12 ? 1 : m + 1;
+      const nextY = m === 12 ? y + 1 : y;
+      cursor = `${nextY}-${String(nextM).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    }
+    while (cursor <= end) {
+      if (!firstDue || cursor >= firstDue) dates.push(cursor);
+      const [y, m] = cursor.split('-').map(Number);
+      const nextM = m === 12 ? 1 : m + 1;
+      const nextY = m === 12 ? y + 1 : y;
+      cursor = `${nextY}-${String(nextM).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    }
+    return dates;
+  }
+  const lookbackStart = addDays(AS_OF, -60);
+  const paydayDates = []
+    .concat(independentBiweekly(payrollAnchor, lookbackStart, addDays(AS_OF, 40)))
+    .concat(independentMonthlyDay(15, '2026-09-15', lookbackStart, addDays(AS_OF, 40)))
+    .concat(independentMonthlyDay(31, null, lookbackStart, addDays(AS_OF, 40)));
+  const previousPayday = paydayDates.filter(d => d < AS_OF).sort().pop();
+  const nextPayday = paydayDates.filter(d => d >= AS_OF).sort()[0];
+  ok(previousPayday === DUE, 'independent last payday before 2026-09-16 is 2026-09-15',
+    previousPayday);
+  ok(nextPayday === '2026-09-25', 'independent next payday on/after 2026-09-16 is 2026-09-25',
+    nextPayday);
+  const bcaaRow = (data.plan.bills || []).find(b => b && b.id === 'bcaa');
+  ok(!!bcaaRow && bcaaRow.frequency === 'monthly' && Number(bcaaRow.day) === 15
+    && bcaaRow.firstDue === DUE,
+    'canonical BCAA is monthly on the 15th with firstDue 2026-09-15');
+  ok(DUE >= previousPayday && DUE < nextPayday,
+    'BCAA 2026-09-15 sits inside the current payday period');
+  const truncated = Forecast.currentPeriodObligationStates(data.plan, AS_OF, {
+    representedEvents: [{ id: 'bcaa', date: DUE }],
+  });
+  ok(!(truncated.bills || []).some(b => b && b.id === 'bcaa' && b.date === DUE),
+    'default obligation-state origin on the unchanged plan still omits 2026-09-15 BCAA');
+  const payload = withCompleteCoverage(pendingPayload, {
+    startDate: DUE,
+    endDate: AS_OF,
+  });
+  payload.fetchedAt = '2026-09-16T16:00:00.000Z';
+  payload.accounts = (payload.accounts || []).map(account => Object.assign({}, account, {
+    updated_at: '2026-09-16T15:55:00.000Z',
+  }));
+  payload.transactions = (payload.transactions || []).concat([{
+    id: 9101,
+    account_id: 3001,
+    date: DUE,
+    amount: 82.96,
+    is_pending: false,
+    payee: 'Bcaa-adv',
+  }]);
+  const report = observeWith(payload, pendingMap);
+  const receipt = report.obligationReconciliationReceipt;
+  const matrix = independentUnique(independentMatrix(payload, pendingMap, identity, data.plan));
+  const hit = matrix.unique.find(r => r.eventId === 'bcaa' && r.date === DUE);
+  const row = (receipt.occurrences || []).find(r => r && r.id === 'bcaa' && r.date === DUE);
+  const fp = evidenceFp('9101');
+  const unmatchedFp = ((receipt.unmatchedCashEvidence || [])
+    .map(item => item && item.evidenceFingerprint));
+  ok(report.observationReceipt && report.observationReceipt.readyForReconciliation === true,
+    'Sep 16 packet with required-cash coverage is ready for reconciliation');
+  ok(!!hit && hit.accountId === 'chequing-a' && hit.relation === 'same-day',
+    'independent matrix uniquely matches BCAA@2026-09-15 on chequing-a same-day');
+  ok(!!row && row.settlement === 'represented',
+    'receipt still lists the 2026-09-15 BCAA occurrence as represented',
+    row && row.settlement);
+  ok(row && row.evidenceFingerprint === fp,
+    'represented BCAA keeps the posting evidence fingerprint');
+  ok(unmatchedFp.indexOf(fp) === -1,
+    'represented BCAA evidence is not also listed as unmatched cash');
+  ok(!!row || unmatchedFp.indexOf(fp) !== -1,
+    'identity-complete BCAA evidence cannot vanish from both occurrence rows and unmatched evidence');
 }
 
 if (failures) {

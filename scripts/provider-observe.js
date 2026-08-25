@@ -1629,12 +1629,6 @@ function reconciliationReceipt(report, opts) {
     if (!candidate || !candidate.id || !candidate.date) continue;
     uniqueByKey.set(candidate.id + '@' + candidate.date, candidate);
   }
-  const consumedTxIds = new Set();
-  for (const candidate of groups.unique) {
-    if (candidate && candidate.providerTransactionId != null) {
-      consumedTxIds.add(String(candidate.providerTransactionId));
-    }
-  }
   const representedActuals = [];
   for (const candidate of groups.unique) {
     const amt = Number(candidate.observedAmount);
@@ -1645,7 +1639,10 @@ function reconciliationReceipt(report, opts) {
       actual: Math.round(amt * 100) / 100,
     });
   }
+  const paydayOrigin = Forecast.paydayPeriodOrigin(plan, householdDate);
   const states = Forecast.currentPeriodObligationStates(plan, householdDate, {
+    periodOrigin: paydayOrigin,
+    preservePaydayPeriodOrigin: true,
     representedEvents: groups.unique.map(c => ({ id: c.id, date: c.date })),
     currentPeriodActuals: {
       schema: 'atlas-current-period-actuals/v1',
@@ -1727,8 +1724,94 @@ function reconciliationReceipt(report, opts) {
     if (atlasAccountId) row.atlasAccountId = atlasAccountId;
     occurrences.push(row);
   }
+  const listedKeys = new Set(occurrences.map(row => row.id + '@' + row.date));
+  const periodStart = states.periodStart;
+  const periodEnd = states.periodEnd;
+  const inPaydayPeriod = (date) => date && periodStart && periodEnd
+    && date >= periodStart && date <= periodEnd;
+  for (const candidate of groups.unique) {
+    if (!candidate || !candidate.id || !candidate.date) continue;
+    if (!inPaydayPeriod(candidate.date)) continue;
+    const key = candidate.id + '@' + candidate.date;
+    if (listedKeys.has(key)) continue;
+    const scheduled = scheduledEventsOn(plan, candidate.date)
+      .filter(e => e && e.id === candidate.id);
+    if (scheduled.length !== 1) continue;
+    const kind = scheduled[0].kind;
+    if (kind !== 'obligation' && kind !== 'bill' && kind !== 'commitment') continue;
+    const planned = isFinite(-scheduled[0].amount)
+      ? Math.round((-scheduled[0].amount) * 100) / 100 : null;
+    const evidenceFingerprint = sanitizedEvidenceFingerprint(candidate.providerTransactionId);
+    const amt = Number(candidate.observedAmount);
+    const row = {
+      id: candidate.id,
+      date: candidate.date,
+      kind: (scheduled[0] && scheduled[0].kind) || null,
+      settlement: 'represented',
+      plannedAmount: planned,
+      observedAmount: isFinite(amt) ? Math.round(amt * 100) / 100 : null,
+    };
+    if (evidenceFingerprint) {
+      row.evidenceFingerprint = evidenceFingerprint;
+      if (usedEvidence.has(evidenceFingerprint)) {
+        oneOccurrenceOneTransaction = false;
+        noTransactionConsumedTwice = false;
+      }
+      usedEvidence.add(evidenceFingerprint);
+    }
+    if (candidate.postingDateRelation) row.postingDateRelation = candidate.postingDateRelation;
+    if (candidate.atlasAccountId) row.atlasAccountId = candidate.atlasAccountId;
+    occurrences.push(row);
+    listedKeys.add(key);
+  }
+  for (const group of groups.ambiguous || []) {
+    const hits = group && group.hits || [];
+    const targets = group && group.reason === 'transaction-consumed-twice'
+      ? hits
+      : (group && group.id && group.date ? [{ id: group.id, date: group.date, hits }] : []);
+    for (const target of targets) {
+      if (!target || !target.id || !target.date || !inPaydayPeriod(target.date)) continue;
+      const key = target.id + '@' + target.date;
+      if (listedKeys.has(key)) continue;
+      const scheduled = scheduledEventsOn(plan, target.date)
+        .filter(e => e && e.id === target.id);
+      if (scheduled.length !== 1) continue;
+      const kind = scheduled[0].kind;
+      if (kind !== 'obligation' && kind !== 'bill' && kind !== 'commitment') continue;
+      const planned = isFinite(-scheduled[0].amount)
+        ? Math.round((-scheduled[0].amount) * 100) / 100 : null;
+      const groupHits = target.hits || hits;
+      occurrences.push({
+        id: target.id,
+        date: target.date,
+        kind: (scheduled[0] && scheduled[0].kind) || null,
+        settlement: 'ambiguous',
+        plannedAmount: planned,
+        observedAmount: null,
+        candidateCount: groupHits.length,
+        evidenceFingerprints: groupHits
+          .map(hit => sanitizedEvidenceFingerprint(hit && hit.providerTransactionId))
+          .filter(Boolean)
+          .sort(),
+      });
+      listedKeys.add(key);
+    }
+  }
   occurrences.sort((a, b) => String(a.date).localeCompare(String(b.date))
     || String(a.id).localeCompare(String(b.id)));
+  const consumedTxIds = new Set();
+  for (const candidate of groups.unique) {
+    if (!candidate || candidate.providerTransactionId == null) continue;
+    const key = candidate.id + '@' + candidate.date;
+    const listed = listedKeys.has(key);
+    if (inPaydayPeriod(candidate.date) && !listed) {
+      const scheduled = scheduledEventsOn(plan, candidate.date)
+        .filter(e => e && e.id === candidate.id);
+      const kind = scheduled[0] && scheduled[0].kind;
+      if (kind === 'obligation' || kind === 'bill' || kind === 'commitment') continue;
+    }
+    consumedTxIds.add(String(candidate.providerTransactionId));
+  }
   const unmatched = unmatchedHouseholdCash(report, opts, consumedTxIds);
   const counts = emptyReconciliationCounts();
   counts.coveredModeledOccurrences = occurrences.length;
