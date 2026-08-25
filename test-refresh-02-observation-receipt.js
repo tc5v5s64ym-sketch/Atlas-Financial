@@ -127,9 +127,25 @@ function independentCoverage(payload, accountMap) {
     && pending.basis === O.PENDING_COVERAGE_BASIS;
   const requiredCashMissing = O.REQUIRED_LIVE_CASH_IDS.filter(id => observed.indexOf(id) === -1);
   const missingExpected = expected.filter(id => observed.indexOf(id) === -1);
+  const requiredCashBalanceMissing = [];
+  for (const id of O.REQUIRED_LIVE_CASH_IDS) {
+    if (observed.indexOf(id) === -1) continue;
+    let usable = false;
+    for (const account of normalized.accounts) {
+      const mapping = O.mappingFor(accountMap, account.providerAccountId);
+      if (!mapping || mapping.atlasRole !== 'household-cash') continue;
+      if (!mapping.canonical || String(mapping.canonical.id) !== id) continue;
+      if (account.balance != null && isFinite(Number(account.balance))) {
+        usable = true;
+        break;
+      }
+    }
+    if (!usable) requiredCashBalanceMissing.push(id);
+  }
   const ready = postedComplete
     && pendingComplete
     && requiredCashMissing.length === 0
+    && requiredCashBalanceMissing.length === 0
     && missingExpected.length === 0;
   return {
     observedAt: normalized.fetchedAt,
@@ -138,6 +154,7 @@ function independentCoverage(payload, accountMap) {
     unmappedCount,
     missingExpectedIdentities: missingExpected,
     requiredCashMissing,
+    requiredCashBalanceMissing,
     postedComplete,
     pendingComplete,
     pendingToPostedTransitions: pendingToPosted,
@@ -157,6 +174,7 @@ function independentDigest(parts) {
     unmappedCount: Number(parts.unmappedCount) || 0,
     missingExpectedIdentities: parts.missingExpectedIdentities || [],
     requiredCashMissing: parts.requiredCashMissing || [],
+    requiredCashBalanceMissing: parts.requiredCashBalanceMissing || [],
     postedComplete: parts.postedComplete === true,
     pendingComplete: parts.pendingComplete === true,
     pendingToPostedTransitions: Number(parts.pendingToPostedTransitions) || 0,
@@ -299,6 +317,37 @@ console.log('\n=== D. truncated or partial evidence cannot report ready/complete
     'independent reconstruction also reports savings missing');
   ok(sample.observationReceipt.identity.pendingToPostedTransitions === 1,
     'sample intra-payload pending-to-posted remains visible without claiming complete');
+}
+
+console.log('\n=== D2. mapped required cash with a null balance cannot report ready ===');
+{
+  const complete = withCompleteCoverage(pendingPayload);
+  const nullBalance = clone(complete);
+  nullBalance.accounts = nullBalance.accounts.map(a => (
+    a.id === 3003 ? Object.assign({}, a, { balance: null }) : a
+  ));
+  const rawSavings = nullBalance.accounts.find(a => a.id === 3003);
+  ok(rawSavings && rawSavings.balance === null,
+    'constructed fixture has mapped savings with a null balance');
+  const report = observeWith(nullBalance, pendingMap);
+  const receipt = report.observationReceipt;
+  const savingsCashObs = (report.observations || []).find(o =>
+    o && o.canonical && o.canonical.collection === 'cash' && o.canonical.id === 'savings');
+  ok(report.mapped.some(m => m.atlasId === 'savings'),
+    'null-balance savings remains a mapped household identity');
+  ok(!savingsCashObs,
+    'incumbent mapper emits no cash observation when the provider balance is null');
+  ok(receipt.accountCoverage.requiredCashMissing.indexOf('savings') === -1,
+    'account coverage still counts savings as observed');
+  ok(receipt.balanceCoverage.status === 'incomplete'
+    && receipt.balanceCoverage.requiredCashMissingDatedBalance.indexOf('savings') !== -1,
+    'balance coverage reports savings as missing dated/value evidence');
+  ok(receipt.readyForReconciliation === false,
+    'receipt is not ready for reconciliation');
+  ok(receipt.failClosedReasons.indexOf('required-cash-balance-unproven') !== -1,
+    'fail-closed reason names the unproven required-cash balance');
+  ok(receipt.fingerprint.requiredCashBalanceMissing.indexOf('savings') !== -1,
+    'fingerprint records mapped savings without a usable balance');
 }
 
 console.log('\n=== E. CLI --receipt is sanitized and does not leak provider detail ===');

@@ -1206,7 +1206,8 @@ function datedRequiredCash(observations) {
       && o.canonical.collection === 'cash'
       && String(o.canonical.id) === id
       && (o.evidenceDate || o.observedAsOf)
-      && o.evidenceValue != null);
+      && o.evidenceValue != null
+      && isFinite(Number(o.evidenceValue)));
     if (obs) dated.push(id);
   }
   return dated;
@@ -1237,6 +1238,7 @@ function observationFingerprintFromParts(parts) {
     unmappedCount: Number(parts.unmappedCount) || 0,
     missingExpectedIdentities: parts.missingExpectedIdentities || [],
     requiredCashMissing: parts.requiredCashMissing || [],
+    requiredCashBalanceMissing: parts.requiredCashBalanceMissing || [],
     postedComplete: parts.postedComplete === true,
     pendingComplete: parts.pendingComplete === true,
     pendingToPostedTransitions: Number(parts.pendingToPostedTransitions) || 0,
@@ -1261,6 +1263,7 @@ function observationReceipt(report, opts) {
   const cashMissing = requiredCashMissingFrom(mappedIds);
   const cashDated = datedRequiredCash(report && report.observations);
   const cashDatedMissing = REQUIRED_LIVE_CASH_IDS.filter(id => cashDated.indexOf(id) === -1);
+  const cashBalanceMissing = cashDatedMissing.filter(id => cashMissing.indexOf(id) === -1);
   const postedComplete = postedWindowIsComplete(window);
   const pendingComplete = pendingCoverageIsComplete(pending);
   const pendingToPosted = ((report && report.identityEvidence) || [])
@@ -1278,6 +1281,7 @@ function observationReceipt(report, opts) {
       : 'pending-coverage-unproven');
   }
   if (cashMissing.length) failClosedReasons.push('required-cash-unobserved');
+  if (cashBalanceMissing.length) failClosedReasons.push('required-cash-balance-unproven');
   if (missingExpected.length) failClosedReasons.push('expected-mapped-identity-missing');
   if (writeClaimed) failClosedReasons.push('canonical-write-claimed');
   const ready = failClosedReasons.length === 0;
@@ -1289,6 +1293,7 @@ function observationReceipt(report, opts) {
     unmappedCount,
     missingExpectedIdentities: missingExpected,
     requiredCashMissing: cashMissing,
+    requiredCashBalanceMissing: cashBalanceMissing,
     postedComplete,
     pendingComplete,
     pendingToPostedTransitions: pendingToPosted,
