@@ -219,5 +219,7 @@ of the full identity proof. Unchanged provider evidence kept identity
 | Auto-borrow | `funding.borrowed` $0; `plannedDebt.permitted` false |
 
 This is newer committed observation evidence, not a cutover. The published
-and canonical opening remains 2026-08-19. Any newer canonical opening
-remains an owner-reserved `previewId` approval.
+and canonical opening remains 2026-08-19. Posted `previewId` can authorize
+only the five posted rows above. It cannot authorize pending or an opening.
+Any newer canonical opening remains an owner-reserved `--approve-opening`
+`<openingApprovalId>` approval.

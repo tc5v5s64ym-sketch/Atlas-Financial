@@ -353,6 +353,11 @@ console.log('\n=== F. dated live proof is sanitized and independently summed ===
     && !/LUNCHMONEY_ACCESS_TOKEN/.test(proof)
     && !/Bearer /.test(proof),
     'proof omits provider IDs, the token name, and bearer secrets');
+  ok(/openingApprovalId/.test(proof)
+    && /cannot authorize pending or an opening/.test(proof),
+    'proof names openingApprovalId for a newer opening; posted previewId is not that gate');
+  ok(!/owner-reserved `previewId` approval/.test(proof),
+    'proof does not tell the owner that previewId authorizes an opening');
 }
 
 const afterTree = hashTree();
