@@ -226,8 +226,8 @@ console.log('\n=== the homepage selects the daily renderer without changing payd
   ok(html.indexOf('id="operating-surface"') < html.indexOf('id="payday-answer"')
     && /View full current-period worksheet/.test(html),
   'AF-OPERATE-02 hierarchy stays first and the deeper worksheet stays secondary');
-  ok(/return question\('01'[\s\S]*question\('02'[\s\S]*question\('03'[\s\S]*question\('04'[\s\S]*question\('05'/.test(src),
-    'all five decision-first questions remain in order');
+  ok(/return refreshTrustHtml\(ctx\.refreshTrust\)[\s\S]*question\('01'[\s\S]*question\('02'[\s\S]*question\('03'[\s\S]*question\('04'[\s\S]*question\('05'/.test(src),
+    'refresh-trust strip precedes the five decision-first questions, which remain in order');
 }
 
 console.log('\n=== the page remains a renderer, not a calculator ===');

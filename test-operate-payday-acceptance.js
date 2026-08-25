@@ -61,6 +61,8 @@ function loadComposer() {
     grab(planSrc, /^function futurePlanTiming\([\s\S]*?\n\}$/m, 'futurePlanTiming'),
     grab(planSrc, /^function futureGravityHtml\([\s\S]*?\n\}$/m, 'futureGravityHtml'),
     grab(planSrc, /^function operatingDebtAnswerHtml\([\s\S]*?\n\}$/m, 'operatingDebtAnswerHtml'),
+    grab(planSrc, /^const REFRESH_TRUST_STATE = \{[\s\S]*?^\};$/m, 'REFRESH_TRUST_STATE'),
+    grab(planSrc, /^function refreshTrustHtml\([\s\S]*?\n\}$/m, 'refreshTrustHtml'),
     grab(planSrc, /^function operatingSurfaceHtml\([\s\S]*?\n\}$/m, 'operatingSurfaceHtml'),
   ].join('\n');
   return vm.runInNewContext(
@@ -353,8 +355,8 @@ console.log('\n=== the composed page remains a renderer ===');
   ok(fn && !/\.reduce\(|monthlyFromWeekly|projectDebts|fundingSequence/.test(fn[0]),
     'the composed formatter contains no page-side totals, conversions, or debt walk');
   ok(/operatingSurfaceHtml\(\{[\s\S]*?advice/.test(planSrc)
-    && /liveOverlay: d\.liveOverlay/.test(planSrc),
-  'renderPlan still wires the one incumbent recommendation and overlay flag');
+    && /refreshTrust: d\.refreshTrust/.test(planSrc),
+  'renderPlan wires the incumbent recommendation and refresh-trust packet');
 }
 
 if (failures) {

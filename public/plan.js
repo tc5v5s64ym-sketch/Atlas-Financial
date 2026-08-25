@@ -1204,6 +1204,64 @@ function operatingDebtAnswerHtml(alloc) {
     ${targetAnswer}${consequence}`;
 }
 
+const REFRESH_TRUST_STATE = {
+  current: 'Current',
+  'partially-current': 'Partially current',
+  'attention-needed': 'Attention needed',
+};
+
+/* Household refresh-trust strip. Every verdict is a field on the incumbent
+ * refresh-trust packet copied from observation, reconciliation, canonical
+ * preview, overlay, and Forecast remaining-claim. This formats those fields
+ * only: it does not invent freshness, settle a bill, or ask a new owner
+ * question. */
+function refreshTrustHtml(trust) {
+  if (!trust || !trust.displayState) return '';
+  const state = REFRESH_TRUST_STATE[trust.displayState] || 'Attention needed';
+  const tone = trust.displayState === 'attention-needed' || trust.exactFiguresAvailable === false
+    ? ' warn'
+    : (trust.displayState === 'partially-current' ? ' caution' : '');
+  const observed = trust.observedAsOf ? fmtDateLong(trust.observedAsOf) : null;
+  const reconciled = trust.reconciledAsOf ? fmtDateLong(trust.reconciledAsOf) : null;
+  let asOfLine = 'Observation as-of is unavailable.';
+  if (observed && reconciled && observed !== reconciled) {
+    asOfLine = `Last observed ${observed}. Reconciled as of ${reconciled}.`;
+  } else if (observed && reconciled) {
+    asOfLine = `Last observed and reconciled ${observed}.`;
+  } else if (observed) {
+    asOfLine = `Last observed ${observed}.`;
+  }
+  const limits = (trust.coverageLimits || [])
+    .map(row => row && row.text)
+    .filter(Boolean);
+  const unresolved = (trust.unresolvedMaterial || [])
+    .map(row => row && row.text)
+    .filter(Boolean);
+  const proposal = trust.canonicalProposalWaiting === true
+    ? '<p class="refresh-trust-proposal" data-refresh-trust-proposal>A proven canonical update is waiting for explicit approval. Nothing is written until that approval.</p>'
+    : '';
+  const question = trust.ownerQuestion && trust.ownerQuestion.text
+    ? `<p class="refresh-trust-question" data-refresh-trust-owner-question>${trust.ownerQuestion.text}</p>`
+    : '';
+  const path = trust.refreshPath === 'on-demand-reload'
+    ? 'On-demand observation. Reload this page to observe again. No payment or provider write is implied.'
+    : 'This answer uses the dated opening. Live observation is not applied.';
+  const limitHtml = limits.length
+    ? `<ul class="refresh-trust-limits">${limits.map(text => `<li>${text}</li>`).join('')}</ul>`
+    : '';
+  const unresolvedHtml = unresolved.length
+    ? `<ul class="refresh-trust-unresolved">${unresolved.map(text => `<li>${text}</li>`).join('')}</ul>`
+    : '';
+  return `<aside class="refresh-trust${tone}" data-refresh-trust-state="${trust.displayState}" data-exact-figures="${
+    trust.exactFiguresAvailable === true ? 'available' : 'unavailable'
+  }">
+    <p class="refresh-trust-state">${state}</p>
+    <p class="refresh-trust-asof" data-refresh-trust-observed>${asOfLine}</p>
+    ${limitHtml}${unresolvedHtml}${proposal}${question}
+    <p class="refresh-trust-path">${path}</p>
+  </aside>`;
+}
+
 /* The homepage's decision-first summary. Every financial value and verdict is
  * already present on the incumbent Forecast result passed in by renderPlan.
  * This function formats those fields only: it does not call Forecast, add an
@@ -1220,6 +1278,9 @@ function operatingSurfaceHtml(ctx) {
   const coverage = paydayCoverageNote(action);
   const risks = (alloc && alloc.risks) || [];
   const unresolved = (alloc && alloc.unresolved) || [];
+  const remainingUnavailable = (ctx.refreshTrust && ctx.refreshTrust.exactFiguresAvailable === false)
+    || !action
+    || action.remainingClaim === 'unavailable';
 
   const lineList = rows => rows.length
     ? `<div class="operating-lines">${rows.map(row => `
@@ -1253,7 +1314,11 @@ function operatingSurfaceHtml(ctx) {
     : "Forecast.recommend's supported household cap through the next payday. Essential costs come out of it first.";
   const spend = capView.hasFeasibleCap && weeklyPermission != null
     ? `<span class="operating-amount">${money(weeklyPermission)} / week</span>
-       <p class="operating-note">${weeklyAuthority}</p>`
+       <p class="operating-note">${weeklyAuthority}${
+         remainingUnavailable
+           ? ' Current remaining spend cannot be confirmed from the incumbent trust contract.'
+           : ''
+       }</p>`
     : `<p class="payday-refuse">${capView.infeasible ? '<b>INFEASIBLE. </b>' : ''}${capView.reason}</p>`;
 
   const currentProtection = protectionRows.length
@@ -1263,7 +1328,7 @@ function operatingSurfaceHtml(ctx) {
 
   const debt = operatingDebtAnswerHtml(alloc);
 
-  const limits = [`<p class="operating-limit${!action || action.remainingClaim === 'unavailable' ? ' warn' : ''}">${coverage}</p>`]
+  const limits = [`<p class="operating-limit${remainingUnavailable ? ' warn' : ''}">${coverage}</p>`]
     .concat(risks.map(r => `<p class="operating-limit warn">${r.reason}${r.shortfall != null
       ? ` Gap ${money2(r.shortfall)}.` : ''}</p>`))
     .concat(unresolved.length
@@ -1271,7 +1336,8 @@ function operatingSurfaceHtml(ctx) {
       : [])
     .join('');
 
-  return question('01', 'What do I do now?', now)
+  return refreshTrustHtml(ctx.refreshTrust)
+    + question('01', 'What do I do now?', now)
     + question('02', 'What can we spend until next payday?', spend)
     + question('03', "What is today's money protecting?", protecting)
     + question('04', 'What debt is receiving surplus?', debt)
@@ -2357,6 +2423,7 @@ function renderPlan(d, periods, history) {
       unallocated: free, budget, creditAvailable: revolving,
       weekly, recommended, weeklyOverride: state.weeklyVariable,
       capView, debts: state.debts, liveOverlay: d.liveOverlay,
+      refreshTrust: d.refreshTrust,
     });
   }
   const paydayMount = $('payday-answer-body');
@@ -2481,6 +2548,7 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     operatingSurfaceHtml, betweenPaydaysOperatingHtml, paydayAnswerHtml, paydayActionRows, paydayOtherActionRows, paydayComingRows,
     paydayCashNote, weeklyCapView, futurePlanRequirement, futurePlanTiming, futureGravityHtml,
+    refreshTrustHtml,
     MISSION_PART, NEXT_MOVE, STATUS_BAND,
   };
 }

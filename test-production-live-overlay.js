@@ -13,6 +13,7 @@ const net = require('net');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
 const O = require('./scripts/provider-observe.js');
+const RT = require('./scripts/refresh-trust.js');
 const Forecast = require('./public/forecast.js');
 
 const ROOT = __dirname;
@@ -370,6 +371,19 @@ function independentGroceryRemaining(plan, asOf) {
       'response declares no canonical or production write');
     ok(String(data.liveOverlay.effectiveAsOf) === LIVE_AS_OF,
       'effective as-of is the pinned observation date');
+    ok(data.refreshTrust && data.refreshTrust.schema === RT.SCHEMA,
+      'live /data.json carries the household refresh-trust packet');
+    ok(RT.looksSanitized(data.refreshTrust), 'live refresh-trust packet is sanitized');
+    ok(data.refreshTrust.observedAsOf === LIVE_AS_OF,
+      'live packet last-observed as-of is the observation household date');
+    const liveAction = Forecast.currentPeriodAction(data.plan, data.liveOverlay.effectiveAsOf, {
+      debts: data.debts,
+      revolvingExtra: data.revolvingExtra,
+      paydayFloor: 1000,
+      currentPeriodActuals: data.liveOverlay.currentPeriodActuals,
+    });
+    ok(data.refreshTrust.remainingClaim === liveAction.remainingClaim,
+      'live packet remainingClaim copies Forecast.currentPeriodAction');
     filesUnchanged('A live success');
   });
 
@@ -382,6 +396,13 @@ function independentGroceryRemaining(plan, asOf) {
     ok(res.status === 200, 'canonical /data.json succeeds');
     ok(mock.calls.length === before, 'no provider call when overlay is off');
     ok(!data.liveOverlay, 'no liveOverlay metadata when overlay is off');
+    ok(data.refreshTrust && data.refreshTrust.refreshPath === 'dated-opening',
+      'overlay-off still publishes dated-opening trust');
+    ok(data.refreshTrust.displayState === 'attention-needed'
+      && data.refreshTrust.exactFiguresAvailable === false,
+      'dated opening without actuals is attention-needed and withholds exact remaining');
+    ok(data.refreshTrust.observedAsOf == null,
+      'overlay-off does not publish a last-observed date');
     ok(String(data.meta.asOf) === String(liveData.meta.asOf),
       'dated opening as-of is unchanged');
     filesUnchanged('B overlay off');
@@ -400,6 +421,10 @@ function independentGroceryRemaining(plan, asOf) {
       'overlay is not applied');
     ok(data.liveOverlay.reason === 'live-observation-unavailable',
       'sanitized missing-token reason is published', data.liveOverlay.reason);
+    ok(data.refreshTrust && data.refreshTrust.displayState === 'attention-needed',
+      'fail-closed overlay publishes attention-needed trust');
+    ok(data.refreshTrust.observedAsOf == null,
+      'fail-closed before an observation receipt does not fabricate last-observed');
     ok(String(data.meta.asOf) === String(liveData.meta.asOf),
       'canonical opening as-of is served');
     ok(mock.calls.length === 0, 'no provider call without a token');
@@ -740,6 +765,9 @@ function independentGroceryRemaining(plan, asOf) {
       ok(data.liveOverlay && data.liveOverlay.applied === false,
         'truncated paging may fail closed rather than mix partial live evidence');
     }
+    ok(data.refreshTrust && data.refreshTrust.exactFiguresAvailable === false
+      && data.refreshTrust.displayState === 'attention-needed',
+      'truncated remaining cannot look precise on the household trust strip');
     filesUnchanged('K truncated paging');
   });
 
