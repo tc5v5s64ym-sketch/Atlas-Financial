@@ -12,7 +12,9 @@
  * Default is a non-writing preview. --apply --approve updates only the
  * posted cash/debt fields listed in that preview. previewId cannot
  * authorize pending or an opening. Observe and reconcile remain the
- * incumbents. Forecast remains the planner.
+ * incumbents. Forecast remains the planner. An approved write result
+ * projects the household operating answer from Forecast.recommend on
+ * the written document. The preview does not publish that answer.
  *
  * The preview consumes the AF-REFRESH-03 obligation-reconciliation
  * receipt from the incumbent observer. It classifies mechanically
@@ -64,6 +66,7 @@ const path = require('path');
 const crypto = require('crypto');
 const O = require('./provider-observe.js');
 const Forecast = require('../public/forecast.js');
+const OA = require('./operating-answer.js');
 const S = require('./snapshot-balances.js');
 const POS = require('./positions-summary.js');
 const Household = require('./opening-household-rows.js');
@@ -1997,7 +2000,21 @@ function previewFrom(input, opts) {
   }
   preview.identityProofSanitized = identityProofLooksSanitized(preview);
   if (!preview.identityProofSanitized) fail('Preview is not sanitized.');
+  if (Object.prototype.hasOwnProperty.call(preview, 'operatingAnswer')
+    || Object.prototype.hasOwnProperty.call(preview, 'paydayAllocation')
+    || Object.prototype.hasOwnProperty.call(preview, 'recommend')) {
+    fail('Canonical preview must not publish the operating answer.');
+  }
   return { report, preview };
+}
+
+function attachOperatingAnswer(result, afterData, beforeData, extra) {
+  result.operatingAnswer = OA.fromRefreshedState(afterData, Object.assign({
+    mode: 'canonical',
+    baseline: beforeData,
+    writesCanonicalState: result.writesCanonicalState === true,
+  }, extra || {}));
+  return result;
 }
 
 function applyChange(data, change) {
@@ -2728,6 +2745,9 @@ async function run(argv) {
       byteChange: false,
       note: 'Bounded owner-approved opening-artifact recovery. data.json was not modified. Same-date Household positions and snapshots/<date>.json were reconstructed from the MATCH observation packet. Forecast remains authority. Posted previewId, pending cutoverApprovalId, and openingApprovalId did not authorize this write.',
     };
+    attachOperatingAnswer(result, data, data, {
+      trustedState: 'canonical-dated-opening',
+    });
     if (!identityProofLooksSanitized(result)) fail('Apply result is not sanitized.');
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     return 0;
@@ -2753,6 +2773,7 @@ async function run(argv) {
       openingArtifactPaths || resolveOpeningArtifactPaths(args)
     );
     const afterBytes = fs.readFileSync(args.data);
+    const written = loadJson(args.data);
     const result = {
       schema: OPENING_CUTOVER_SCHEMA,
       writesCanonicalState: true,
@@ -2780,8 +2801,9 @@ async function run(argv) {
       snapshotWritten: true,
       snapshotAsOf: cutover.requestedAsOf,
       byteChange: afterBytes.compare(originalBytes) !== 0,
-      note: 'Bounded owner-approved opening cutover. meta.asOf, plan.opening.asOf, same-date Household positions, derived position rows, and snapshots/<date>.json advanced together. Posted previewId and pending cutoverApprovalId did not authorize this write. The snapshot uses incumbent snapshot-balances semantics; previous dated files were not rewritten.',
+      note: 'Bounded owner-approved opening cutover. meta.asOf, plan.opening.asOf, same-date Household positions, derived position rows, and snapshots/<date>.json advanced together. Posted previewId and pending cutoverApprovalId did not authorize this write. The snapshot uses incumbent snapshot-balances semantics; previous dated files were not rewritten. Forecast.recommend on the written opening is the operating answer.',
     };
+    attachOperatingAnswer(result, written, data);
     if (!identityProofLooksSanitized(result)) fail('Apply result is not sanitized.');
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     return 0;
@@ -2799,6 +2821,7 @@ async function run(argv) {
     }
     applyPendingPreview(data, preview, args.data);
     const afterBytes = fs.readFileSync(args.data);
+    const written = loadJson(args.data);
     const result = {
       schema: CUTOVER_PENDING_SCHEMA,
       writesCanonicalState: true,
@@ -2811,8 +2834,9 @@ async function run(argv) {
       applied: cutover.pendingTransitions,
       snapshotFollows: SNAPSHOT_COMMAND,
       byteChange: afterBytes.compare(originalBytes) !== 0,
-      note: 'Bounded owner-approved pending write. Opening as-of was not advanced. Posted previewId did not authorize this write.',
+      note: 'Bounded owner-approved pending write. Opening as-of was not advanced. Posted previewId did not authorize this write. Forecast.recommend on the written document is the operating answer.',
     };
+    attachOperatingAnswer(result, written, data);
     if (!identityProofLooksSanitized(result)) fail('Apply result is not sanitized.');
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     return 0;
@@ -2822,6 +2846,7 @@ async function run(argv) {
   }
   applyPreview(data, preview, args.data);
   const afterBytes = fs.readFileSync(args.data);
+  const written = loadJson(args.data);
   const result = {
     schema: SCHEMA,
     writesCanonicalState: true,
@@ -2832,8 +2857,9 @@ async function run(argv) {
     applied: preview.proposed,
     snapshotFollows: SNAPSHOT_COMMAND,
     byteChange: afterBytes.compare(originalBytes) !== 0,
-    note: 'Bounded owner-approved write. Run node scripts/snapshot-balances.js only after a successful as-of cutover; this slice does not invent history.',
+    note: 'Bounded owner-approved write. Run node scripts/snapshot-balances.js only after a successful as-of cutover; this slice does not invent history. Forecast.recommend on the written document is the operating answer.',
   };
+  attachOperatingAnswer(result, written, data);
   if (!identityProofLooksSanitized(result)) fail('Apply result is not sanitized.');
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
   return 0;
@@ -2872,6 +2898,7 @@ const api = {
   buildOpeningCutover,
   buildPreview,
   previewFrom,
+  attachOperatingAnswer,
   applyChange,
   applyPendingChange,
   validateApplied,

@@ -27,7 +27,10 @@
  * statement cadence may keep canonical posted values. Unknown, stale,
  * conflicting, unmapped, credit-capacity, and transfer-as-income
  * evidence fail closed. Historical data.json and snapshots stay
- * byte-identical.
+ * byte-identical. After a trusted overlay, the CLI projects the household
+ * operating answer from Forecast.recommend; it does not recalculate those
+ * values. A fail-closed overlay keeps the dated opening and cannot raise
+ * remaining-claim precision. Zero/no-change is a valid Forecast result.
  *
  * Production /data.json stays the dated opening unless ATLAS_LIVE_OVERLAY
  * is explicitly `fixture` or `live`. Owner-authorized production read-only
@@ -39,6 +42,7 @@ const fs = require('fs');
 const path = require('path');
 const O = require('./provider-observe.js');
 const C = require('./canonical-refresh.js');
+const OA = require('./operating-answer.js');
 const Forecast = require('../public/forecast.js');
 
 const ROOT = path.join(__dirname, '..');
@@ -729,50 +733,36 @@ function fromObservation(opts) {
   return Object.assign({ report }, overlaid);
 }
 
-function loadPeriods() {
-  const file = path.join(ROOT, 'public', 'periods.json');
-  if (!fs.existsSync(file)) return null;
-  return loadJson(file);
-}
-
-function forecastFrom(data) {
+function forecastFrom(data, opts) {
   const plan = data && data.plan;
-  const asOf = (data && data.liveOverlay && data.liveOverlay.applied === true
-    && data.liveOverlay.effectiveAsOf)
-    || (plan && plan.opening && plan.opening.asOf)
-    || (data && data.meta && data.meta.asOf);
+  const operatingAnswer = OA.fromRefreshedState(data, Object.assign({
+    mode: 'live-overlay',
+    writesCanonicalState: false,
+  }, opts || {}));
+  const asOf = operatingAnswer.asOf;
   if (!plan || !asOf) fail('Overlaid data is missing a Forecast opening.');
-  const overlay = data && data.liveOverlay;
-  const actuals = overlay && overlay.applied === true
-    ? overlay.currentPeriodActuals
-    : null;
-  const advice = Forecast.recommend(plan, asOf, {
-    fundingSources: plan.funding && plan.funding.options,
-    debts: data.debts,
-    revolvingExtra: data.revolvingExtra,
-    periods: loadPeriods(),
-    currentPeriodActuals: actuals,
-  });
   const used = Forecast.utilisation(data.debts, data.revolvingExtra, plan);
-  const action = advice && advice.currentPeriodAction;
+  const permission = operatingAnswer.currentSpendingPermission || {};
+  const limits = operatingAnswer.limitations || {};
   return {
     asOf,
     startingCash: Forecast.startingCashAmount(plan),
-    weekly: advice && advice.weekly,
-    mode: advice && advice.mode,
+    weekly: permission.weekly,
+    mode: operatingAnswer.recommendMode || permission.mode,
     utilisation: {
       totalAvailable: used.totalAvailable,
       totalPending: used.totalPending,
       overLimitCount: used.overLimitCount,
     },
     writesCanonicalState: false,
-    currentPeriod: action ? {
-      mode: action.mode,
-      remainingClaim: action.remainingClaim,
-      nextPayday: action.nextPayday,
-      noMovementToday: action.noMovementToday,
-      coverage: action.coverage,
-    } : null,
+    currentPeriod: {
+      mode: permission.mode,
+      remainingClaim: limits.remainingClaim,
+      nextPayday: permission.nextPayday,
+      noMovementToday: permission.noMovementToday,
+      coverage: limits.coverage,
+    },
+    operatingAnswer,
   };
 }
 
@@ -885,8 +875,8 @@ function parseArgs(argv) {
   return args;
 }
 
-function summary(result) {
-  const figures = forecastFrom(result.data);
+function summary(result, baseline) {
+  const figures = forecastFrom(result.data, baseline ? { baseline } : {});
   return {
     schema: SCHEMA,
     writesCanonicalState: false,
@@ -899,6 +889,7 @@ function summary(result) {
     overlays: result.data.liveOverlay && result.data.liveOverlay.overlays,
     refused: result.data.liveOverlay && result.data.liveOverlay.refused,
     forecast: figures,
+    operatingAnswer: figures.operatingAnswer,
   };
 }
 
@@ -915,6 +906,7 @@ async function run(argv) {
   if (args.live && args.fixture) fail('Use either --fixture or --live, not both.');
   if (!args.live && !args.fixture) fail('Pass --fixture <file> or --live.');
   const data = loadJson(args.data);
+  const baseline = clone(data);
   const identity = loadIdentity();
   let result;
   if (args.live) {
@@ -937,7 +929,7 @@ async function run(argv) {
       identity,
     });
   }
-  const printed = summary(result);
+  const printed = summary(result, baseline);
   if (!C.identityProofLooksSanitized(printed) || !O.identityProofLooksSanitized(printed)) {
     fail('Live plan output is not sanitized.');
   }

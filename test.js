@@ -116,6 +116,7 @@ const suites = [
   ['on-demand observation receipt (AF-REFRESH-02)', 'test-refresh-02-observation-receipt.js'],
   ['obligation reconciliation receipt (AF-REFRESH-03)', 'test-refresh-03-obligation-reconciliation.js'],
   ['bounded canonical refresh preview (AF-REFRESH-04)', 'test-refresh-04-canonical-preview.js'],
+  ['recompute operating answer from refreshed state (AF-REFRESH-05)', 'test-refresh-05-operating-answer.js'],
   ['balance history as a refresh by-product (B20 / AF-HIST-01)', 'test-b20-history.js'],
 ];
 

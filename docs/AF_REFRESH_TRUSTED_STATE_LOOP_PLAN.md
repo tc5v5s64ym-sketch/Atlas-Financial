@@ -1,9 +1,9 @@
 # AF-REFRESH — Trusted State Refresh Loop
 
-**Status:** ACTIVE CAMPAIGN — owner-approved 2026-08-24; AF-REFRESH-01 through AF-REFRESH-03 merged
+**Status:** ACTIVE CAMPAIGN — owner-approved 2026-08-24; AF-REFRESH-01 through AF-REFRESH-04 merged
 
-**AF-REFRESH-04 is DONE.** The next eligible slice is AF-REFRESH-05. Do not start
-AF-REFRESH-05 in this pull request.
+**AF-REFRESH-05 is DONE.** The next eligible slice is AF-REFRESH-06. Do not start
+AF-REFRESH-06 in this pull request.
 
 This file is a temporary execution plan, not a new authority. It exists so a
 fresh builder can move directly from the completed Payday Operating Surface
@@ -373,6 +373,14 @@ in material ways, using incumbent Forecast fields, for example:
 produce the same operating values; the refresh/orchestration layer contributes
 no competing financial arithmetic.
 
+**State:** DONE. After a trusted live overlay or an approved canonical write,
+`scripts/operating-answer.js` projects the household operating answer from
+`Forecast.recommend` (`paydayAllocation` / `currentPeriodAction`) without
+recalculating those values. Live overlay and canonical apply name distinct
+provenance. Unapplied or truncated observation cannot raise remaining-claim
+precision. Canonical preview still does not publish the operating answer.
+Zero/no-change is a valid Forecast result. Next eligible slice is AF-REFRESH-06.
+
 ---
 
 ### AF-REFRESH-06 — Make refresh trust visible and low-friction
@@ -477,15 +485,15 @@ remaining problem and current repository governance permits them.
 
 ## Handoff from AF-OPERATE
 
-AF-OPERATE-07 and AF-REFRESH-01 through AF-REFRESH-04 have merged. AF-REFRESH
-is the active campaign. After AF-REFRESH-04 merges, a fresh builder should:
+AF-OPERATE-07 and AF-REFRESH-01 through AF-REFRESH-05 have merged. AF-REFRESH
+is the active campaign. After AF-REFRESH-05 merges, a fresh builder should:
 
 1. re-fetch current `main` and open PRs;
 2. read `AGENTS.md` and the normal authority chain;
 3. read this file;
 4. verify that its incumbent seams still exist and that current repository
    authority has not superseded the plan; and
-5. execute **AF-REFRESH-05 only**.
+5. execute **AF-REFRESH-06 only**.
 
 The activation instruction is therefore simple:
 
