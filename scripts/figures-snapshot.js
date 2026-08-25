@@ -171,8 +171,7 @@ if (budget) {
 /* ---- the debt side ------------------------------------------------------ */
 const proj = F.projectDebts(plan, data.debts, asOf,
   Object.assign({}, advice.simOptions, { weeklyVariable: advice.weekly,
-    extraFacilities: data.revolvingExtra,
-    extraDebtTarget: plan.nextDollar && plan.nextDollar.target }));
+    extraFacilities: data.revolvingExtra }));
 for (const m of proj.marks) {
   if (![0, 30, 60, 90].includes(m.day)) continue;
   const tag = m.day === 0 ? 'today' : 'day' + m.day;
@@ -224,6 +223,7 @@ if (first) {
   put('action.nextDue', first.due);
 }
 put('action.openCount', (plan.actions || []).filter(a => a.status !== 'done').length);
-if (plan.nextDollar) put('policy.nextDollarTarget', plan.nextDollar.target);
+const debtPriority = F.debtPriority(plan, data.debts);
+if (debtPriority.target) put('policy.nextDollarTarget', debtPriority.target.id);
 
 process.stdout.write(JSON.stringify(out, null, 2) + '\n');

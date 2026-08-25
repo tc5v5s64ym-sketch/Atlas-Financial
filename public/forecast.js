@@ -926,12 +926,14 @@
         // applies to it — it adds to a balance rather than reducing one.
         if (o.nonCash) {
           events.push({ date, amount: -o.amount, kind: 'noncash',
-            label: o.label, id: o.id, confidence: o.confidence });
+            label: o.label, id: o.id, confidence: o.confidence,
+            debtId: o.debtId || null, effect: o.effect || null });
           continue;
         }
         if (amount <= 0) continue;      // nothing left for this payment to pay
         events.push({ date, amount: -amount, kind: 'obligation',
-          label: o.label, id: o.id, confidence: o.confidence });
+          label: o.label, id: o.id, confidence: o.confidence,
+          debtId: o.debtId || null, effect: o.effect || null });
       }
     }
     for (const b of plan.bills || []) {
@@ -2414,16 +2416,100 @@
     };
   }
 
-  function paydayExtraDebtAbsorbable(opts) {
+  const OWNER_HIGHEST_INTEREST_POLICY = 'true-surplus-highest-interest';
+
+  // The sole authority for the current extra-debt target. `plan.nextDollar`
+  // states the household policy; this function applies it to current debt
+  // facts. The page receives the answer and never compares rates itself.
+  // Unknown or equal rates fail closed because the household supplied no
+  // tie-breaker. A balance with unknown pending also fails when the posted
+  // balance alone cannot prove that the facility still owes money.
+  function debtPriority(plan, debts) {
+    const policy = plan && plan.nextDollar;
+    const unavailable = reason => ({
+      status: 'unavailable', reason, policy: policy && policy.policy || null,
+      provenance: policy && policy.provenance || null,
+      target: null, nextTarget: null, order: [], consequence: null,
+    });
+    if (!policy || policy.policy !== OWNER_HIGHEST_INTEREST_POLICY
+      || policy.provenance !== 'owner-stated') {
+      return unavailable('No incumbent owner-stated extra-debt priority policy is available.');
+    }
+
+    const eligible = (debts || []).filter(d => d &&
+      (d.id === 'heloc' || (!d.secured && /^Revolving\b/i.test(d.structure || ''))));
+    const owing = [];
+    for (const d of eligible) {
+      const posted = Number(d.balance);
+      if (!isFinite(posted)) {
+        return unavailable(`${d.label || d.id} has an unknown balance.`);
+      }
+      if (pendingUnknown(d) && !(posted > EPSILON)) {
+        return unavailable(`${d.label || d.id} may owe an unknown pending balance.`);
+      }
+      if (openingBalance(d) > EPSILON) owing.push(d);
+    }
+    for (const d of owing) {
+      if (typeof d.rate !== 'number' || !isFinite(d.rate)) {
+        return unavailable(`${d.label || d.id} has an unknown interest rate.`);
+      }
+    }
+    for (let i = 0; i < owing.length; i++) {
+      for (let j = i + 1; j < owing.length; j++) {
+        if (owing[i].rate === owing[j].rate) {
+          return unavailable(`${owing[i].label || owing[i].id} and ${owing[j].label || owing[j].id} have equal interest rates; no owner tie-breaker is recorded.`);
+        }
+      }
+    }
+    const order = owing.slice().sort((a, b) => b.rate - a.rate).map(d => ({
+      id: d.id,
+      label: d.label,
+      rate: d.rate,
+      confidence: d.confidence || null,
+      balance: roundCent(openingBalance(d)),
+      pendingUnknown: pendingUnknown(d),
+    }));
+    const target = order[0] || null;
+    const nextTarget = order[1] || null;
+    return {
+      status: target ? 'ready' : 'clear',
+      reason: target
+        ? 'Owner-stated policy sends true surplus to the highest-interest eligible revolving debt or HELOC.'
+        : 'No eligible revolving debt or HELOC has a known balance to receive surplus.',
+      policy: policy.policy,
+      provenance: policy.provenance,
+      target,
+      nextTarget,
+      order,
+      consequence: target && nextTarget ? {
+        kind: 'next-target',
+        condition: 'after-current-target-clears',
+        target,
+        nextTarget,
+      } : null,
+    };
+  }
+
+  function paydayExtraDebtAbsorbable(opts, priority) {
     const debts = opts.debts || [];
     if (!debts.length) return 0;
-    const unsecured = debts.filter(d => d && !d.secured)
-      .sort((a, b) => (b.rate || 0) - (a.rate || 0));
-    const heloc = debts.find(d => d && d.id === 'heloc');
-    const chain = [];
-    const seen = new Set();
-    for (const d of unsecured) { chain.push(d); seen.add(d.id); }
-    if (heloc && !seen.has(heloc.id)) chain.push(heloc);
+    const byId = new Map(debts.map(d => [d.id, d]));
+    // Production policy uses debtPriority. The fallback preserves incumbent
+    // synthetic callers that predate this owner policy; it is not reachable
+    // from the published plan.
+    let chain = priority && priority.status === 'ready'
+      ? priority.order.map(row => byId.get(row.id)).filter(Boolean)
+      : [];
+    const ownerPolicyApplies = priority
+      && priority.policy === OWNER_HIGHEST_INTEREST_POLICY
+      && priority.provenance === 'owner-stated';
+    if (!chain.length && !ownerPolicyApplies) {
+      const unsecured = debts.filter(d => d && !d.secured)
+        .sort((a, b) => (b.rate || 0) - (a.rate || 0));
+      const head = opts.extraDebtTarget ? byId.get(opts.extraDebtTarget) : unsecured[0];
+      const rest = unsecured.filter(d => d !== head);
+      chain = [head, ...rest, byId.get('heloc')].filter(Boolean);
+    }
     let absorbable = 0;
     for (const d of chain) absorbable += Math.max(0, openingBalance(d));
     return absorbable;
@@ -2507,6 +2593,7 @@
   // emergency-fund line.
   function paydayAllocation(plan, asOf, opts) {
     opts = opts || {};
+    const priority = debtPriority(plan, opts.debts || []);
     const buffer = opts.targetBuffer != null ? opts.targetBuffer
       : ((plan.defaults && plan.defaults.targetBuffer) || 0);
     const payFloor = opts.paydayFloor != null ? opts.paydayFloor : 1000;
@@ -2564,6 +2651,8 @@
         id: e.id,
         label: e.label,
         kind: e.kind,
+        debtId: e.debtId || null,
+        effect: e.effect || null,
         date: e.date,
         amount: roundCent(amt),
         confidence: e.confidence || null,
@@ -2584,6 +2673,8 @@
         id: item.id,
         label: item.label,
         kind: 'overdue',
+        debtId: null,
+        effect: null,
         date: item.date,
         amount: roundCent(floor),
         confidence: item.confidence || null,
@@ -2618,6 +2709,12 @@
         item.allocated = null;
       }
     }
+    const requiredDebtItems = obligationItems
+      .filter(item => item.kind === 'obligation' && item.debtId && item.effect === 'payment')
+      .map(item => Object.assign({}, item));
+    const requiredDebtAllocated = obligationsAttribution === 'unattributed'
+      ? null
+      : roundCent(requiredDebtItems.reduce((sum, item) => sum + Number(item.allocated || 0), 0));
 
     const essentialItems = [];
     const periodScale = needDays / CALENDAR_MONTH_DAYS;
@@ -2790,8 +2887,11 @@
     }
 
     const holdForUnresolved = unresolvedRows.some(r => r.flexibility !== 'optional');
-    const extraWanted = holdForUnresolved ? 0
-      : Math.min(remaining, movable, paydayExtraDebtAbsorbable(opts));
+    const extraAbsorbable = paydayExtraDebtAbsorbable(opts, priority);
+    const ownerPolicyApplies = priority.policy === OWNER_HIGHEST_INTEREST_POLICY
+      && priority.provenance === 'owner-stated';
+    const extraWanted = holdForUnresolved || (ownerPolicyApplies && priority.status !== 'ready') ? 0
+      : Math.min(remaining, movable, extraAbsorbable);
     const allocatedExtraDebt = take(extraWanted);
 
     const optionalAllocations = [];
@@ -2913,6 +3013,12 @@
         fundedPool: obligationsAttribution === 'unattributed' ? allocatedObligations : 0,
         items: obligationItems,
       },
+      requiredDebtPayments: {
+        wanted: roundCent(requiredDebtItems.reduce((sum, item) => sum + item.amount, 0)),
+        allocated: requiredDebtAllocated,
+        fundingAttribution: obligationsAttribution,
+        items: requiredDebtItems,
+      },
       essentials: {
         monthly: roundCent(essentialMonthly),
         wanted: wantedRounded,
@@ -2949,7 +3055,17 @@
       },
       movable: roundCent(movable),
       futureCosts: futureAllocations.filter(r => r.id !== 'household-path'),
-      extraDebt: { allocated: allocatedExtraDebt, absorbable: roundCent(paydayExtraDebtAbsorbable(opts)) },
+      extraDebt: {
+        allocated: allocatedExtraDebt,
+        absorbable: roundCent(extraAbsorbable),
+        status: priority.status,
+        reason: priority.reason,
+        policy: priority.policy,
+        provenance: priority.provenance,
+        target: priority.target,
+        nextTarget: priority.nextTarget,
+        consequence: priority.consequence,
+      },
       optional: optionalAllocations,
       lines,
       risks,
@@ -3935,6 +4051,7 @@
   // instruction, and these balances only fall if it is honoured in cash.
   function projectDebts(plan, debts, asOf, opts) {
     opts = opts || {};
+    const priority = debtPriority(plan, debts || []);
     // Facilities that are not debt records but do carry revolving headroom —
     // the chequing overdraft. Held CONSTANT across the window on purpose: its
     // usage tracks the Chequing B balance, which the cash simulation already
@@ -3982,7 +4099,14 @@
       return o && o.debtId ? byId[o.debtId] : null;
     };
     // An extra payment must name its target, or it is not a debt payment.
-    const extraTarget = opts.extraDebtTarget ? byId[opts.extraDebtTarget] : null;
+    // Owner-policy plans receive that target from debtPriority. An explicit
+    // option remains only for older synthetic callers without that policy.
+    const priorityTargetId = priority.status === 'ready' && priority.target
+      ? priority.target.id : null;
+    const ownerPolicyApplies = priority.policy === OWNER_HIGHEST_INTEREST_POLICY
+      && priority.provenance === 'owner-stated';
+    const extraTarget = priorityTargetId ? byId[priorityTargetId]
+      : (!ownerPolicyApplies && opts.extraDebtTarget ? byId[opts.extraDebtTarget] : null);
 
     // Where a payment goes once the debt it names is gone.
     //
@@ -3995,14 +4119,14 @@
     // cleared the card early. Cash out and debt down are the same money seen
     // from two sides, which is the coupling this engine exists to hold.
     //
-    // The order is not invented here. `plan.nextDollar` rank 7 is "direct
-    // verified surplus to the highest effective-cost consumer debt", so the
-    // chain is the unsecured facilities by rate, the named target first. If
-    // every consumer debt is cleared the remainder falls to the HELOC — the
-    // only other revolving facility, and rank 6 is "stop new HELOC and
-    // revolving growth". Nothing is ever discarded, so the identity holds
-    // however large the payment is.
+    // The order is not invented here. Forecast.debtPriority applies the
+    // owner-stated highest-interest policy across eligible revolving cards and
+    // the HELOC. Nothing is ever discarded, so the identity holds however
+    // large the payment is.
     const chainFrom = head => {
+      if (priority.status === 'ready') {
+        return priority.order.map(row => byId[row.id]).filter(Boolean);
+      }
       const rest = state
         .filter(s => !s.secured && s !== head)
         .sort((a, b) => (b.rate || 0) - (a.rate || 0));
@@ -4151,6 +4275,7 @@
 
     return {
       marks, byId, end, unabsorbed, extraAbsorbed, obligationAbsorbed,
+      extraDebtPriority: priority,
       // Every facility that is over its limit at some point, on the day it
       // actually happens rather than at the next 30-day snapshot. A facility
       // already over the limit today is a different problem from one that
@@ -5745,7 +5870,7 @@
   }
 
   const Forecast = { HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, billIsHouseholdObligation, billAffectsJointCash, carriedOnceJointCashOutflow, expandEvents, simulate,
-    knowledgeHorizon, viewRange, commitmentNeed, fundingSequence, majorPlans, plannedDebt, paydayAllocation,
+    knowledgeHorizon, viewRange, commitmentNeed, fundingSequence, majorPlans, plannedDebt, debtPriority, paydayAllocation,
     classifyCurrentPeriodTransaction, currentPeriodAction,
     recommendWeekly, recommend, incomeDeadline, amandaHouseholdIncomeDeadline, counterfactuals,
     budgetBreakdown, monthlyFromWeekly,

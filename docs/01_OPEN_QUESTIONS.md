@@ -188,16 +188,21 @@ still needs a dated joint-cash row after the pending $250 posts. It does
 not reopen Telus, the main Bell June baseline, or the second-account
 recurring $16.80.
 
-### Q20. What emergency-reserve target, Amanda retirement/RESP intent, and Dale policy view should apply? How should true surplus be used?
+### Q20. What emergency-reserve target and Amanda retirement/RESP intent should apply?
 **Status:** OPEN · **Owner:** Dale + Amanda
 **What we know:** The August interviews did not capture these sufficiently.
-The Aug. 14 payday session asked the longer-term surplus question again:
-high-interest debt vs sports/travel reserves vs emergency reserve. Owner-
-confirmed 2026-08-16: the owner does **not** currently know what emergency
-cash target the household wants. Do not invent one. No session choice is
-household policy. `plan.nextDollar` remains derived, not owner-instructed.
-**What the answer changes:** Household policy. Nothing is promoted from silence
-or from one payday session.
+Owner-confirmed 2026-08-16: the owner does **not** currently know what emergency
+cash target the household wants. Do not invent one. Owner instruction
+2026-08-24 answered the true-surplus portion: after required payments,
+essential spending, incumbent liquidity protection, and required or known
+future costs are protected, true surplus goes to extra debt before optional
+future costs or additional discretionary cash accumulation. Among eligible
+revolving cards and the HELOC, highest known interest rate wins; equal or
+unavailable rates have no supplied tie-breaker and fail closed. This is recorded
+as owner-stated `plan.nextDollar` policy. Emergency-reserve target and Amanda
+retirement/RESP intent remain open.
+**What the answer changes:** The unanswered reserve and longer-term household
+policy only. The true-surplus debt ordering is no longer open.
 
 ### Q21. Should the disputed $527.80 Fusion/Burrards payment be counted once, twice, or not as a sports cost?
 **Status:** OPEN · **Owner:** Dale + Amanda

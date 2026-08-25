@@ -103,11 +103,13 @@ const extraTargetDebt = data.debts.find(x => x.id === 'cashback');
 ok(avoided > 0 && avoided < extraTotal * 0.1,
   'the excess is avoided interest, not phantom repayment',
   `${money(avoided)} avoided on ${money(extraTotal)} at ${extraTargetDebt.rate}%`);
-// And an untargeted one is flagged rather than silently vanishing into cash.
-const untargeted = F.projectDebts(plan, data.debts, asOf,
+// Owner-policy plans receive their target from Forecast even when the caller
+// does not pass one.
+const policyTargeted = F.projectDebts(plan, data.debts, asOf,
   Object.assign({}, runOpts, { extraDebtMonthly: 300 }));
-ok(untargeted.untargetedExtra === true,
-  'an extra payment with no target is reported, not silently absorbed');
+ok(policyTargeted.untargetedExtra === false
+  && policyTargeted.extraDebtPriority.target.id === 'cashback',
+  'Forecast supplies the owner-policy target without a page or caller target');
 
 console.log('\n=== the scoreboard the Plan shows ===');
 for (const day of [0, 30, 60, 90]) {
@@ -286,19 +288,22 @@ ok(data.debts.every(x => x.available === undefined),
 console.log('\n=== the next-dollar policy is explicit, not invented ===');
 const nd = plan.nextDollar;
 ok(!!nd && !!nd.policy, 'a policy is declared', nd && nd.policy);
-ok(data.debts.some(x => x.id === nd.target), 'its target is a real debt', nd.target);
-const target = data.debts.find(x => x.id === nd.target);
-const consumerRates = data.debts.filter(x => !x.secured).map(x => x.rate);
-ok(target.rate === Math.max(...consumerRates),
-  'and is the highest-rate consumer debt', `${target.label} at ${target.rate}%`);
+const priority = F.debtPriority(plan, data.debts);
+ok(priority.status === 'ready' && data.debts.some(x => x.id === priority.target.id),
+  'Forecast names a real eligible debt', priority.target && priority.target.id);
+const target = data.debts.find(x => x.id === priority.target.id);
+const eligibleRates = data.debts
+  .filter(x => x.id === 'heloc' || (!x.secured && /^Revolving\b/i.test(x.structure || '')))
+  .map(x => x.rate);
+ok(target.rate === Math.max(...eligibleRates),
+  'and selects the highest-rate eligible debt', `${target.label} at ${target.rate}%`);
 ok(target.rate === 26.99,
-  'which is still the Cash Back Visa at 26.99%, the highest consumer rate',
+  'which is the Cash Back Visa at 26.99%',
   `${target.label} ${money(target.balance)} / limit ${money(target.limit)}`);
-ok(Array.isArray(nd.order) && nd.order.length >= 5, 'the ordering is written down',
-  `${nd.order.length} rules`);
-ok(nd.order.every(r => r.rule && r.why), 'and every rule states its reason');
-ok(nd.order[0].rule.toLowerCase().includes('protect'),
-  'required payments come first', nd.order[0].rule);
+ok(nd.target === undefined && nd.order === undefined,
+  'the policy record stores no target or hand-ranked debt order');
+ok(priority.nextTarget && priority.nextTarget.id === 'tdcc',
+  'Forecast exposes the next authorized target', priority.nextTarget && priority.nextTarget.id);
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
 process.exit(failures === 0 ? 0 : 1);

@@ -756,8 +756,7 @@ ok(/No weekly spending\s*\n?\s*figure fixes this/.test(planJs2),
   ok(pr.byId.tdcc.balance < tdccOpen - 500,
     'and the overshoot moves to the next highest-rate consumer debt, not nowhere',
     `TD credit card ${money(tdccOpen)} → ${money(pr.byId.tdcc.balance)}`);
-  // The order must stay derived from rate, matching nextDollar rank 7, rather
-  // than becoming a second hand-written ranking that can drift from the policy.
+  // The order must stay inside Forecast rather than becoming a page ranking.
   // A payment cannot be larger than the debt left to receive it. Once the
   // cascade is exhausted the money must stay in the account — returning an
   // `unabsorbed` figure nobody reads does not make the projection right.
@@ -903,12 +902,15 @@ ok(/No weekly spending\s*\n?\s*figure fixes this/.test(planJs2),
     + 'supply its own balances for the plan to be built on');
 
   const forecastSrc = read('public/forecast.js');
-  ok(/plan\.nextDollar` rank 7/.test(forecastSrc) && /sort\(\(a, b\) => \(b\.rate \|\| 0\) - \(a\.rate \|\| 0\)\)/.test(forecastSrc),
-    'the cascade order is derived from rate and cites the policy that sets it');
-  const unsecured = data.debts.filter(d => !d.secured).sort((a, b) => b.rate - a.rate);
-  ok(unsecured[0].id === plan.nextDollar.target,
-    'and the policy target really is the highest-rate consumer debt',
-    `${unsecured[0].id} at ${unsecured[0].rate}%`);
+  ok(/function debtPriority\(/.test(forecastSrc) && /sort\(\(a, b\) => b\.rate - a\.rate\)/.test(forecastSrc),
+    'the cascade order is computed by Forecast.debtPriority');
+  const priority = F.debtPriority(plan, data.debts);
+  const eligible = data.debts
+    .filter(d => d.id === 'heloc' || (!d.secured && /^Revolving\b/i.test(d.structure || '')))
+    .sort((a, b) => b.rate - a.rate);
+  ok(priority.target.id === eligible[0].id,
+    'and Forecast selects the highest-rate eligible debt',
+    `${eligible[0].id} at ${eligible[0].rate}%`);
 }
 // This matched the page's own ternary selecting the override sentence. The
 // selection is `Forecast.nextMove`'s now, so what is asserted is that the
@@ -922,20 +924,16 @@ ok(/still to find before/.test(planJs2),
 
 console.log('\n=== provenance claims are supported ===');
 const nd = plan.nextDollar;
-ok(nd.provenance === 'derived',
-  'the next-dollar ordering is labelled derived, not owner-stated', nd.provenance);
-ok(!/household's stated policy|owner-stated/i.test(nd.note),
-  'and the note no longer claims the household stated it');
-ok(/DERIVED PLAN POLICY|not an owner instruction/i.test(nd.provenanceNote),
-  'the provenance note says plainly that no owner approved it');
-// The policy must not CLAIM owner authority. Explaining what would change if
-// the owner did approve it is not a claim, so the check looks for the claim
-// shapes rather than for any mention of the phrase.
-const CLAIMS_OWNER = /(is|the household's|as an?) owner[- ]stated|household's stated policy|owner[- ]approved/i;
-ok(!CLAIMS_OWNER.test(JSON.stringify(nd)),
-  'the next-dollar policy makes no claim of owner authority');
-ok(/would change this field to owner-stated/i.test(nd.provenanceNote),
-  'and says what evidence would be needed to earn one');
+ok(nd.provenance === 'owner-stated',
+  'the next-dollar policy is labelled owner-stated', nd.provenance);
+ok(nd.provenanceDate === '2026-08-24',
+  'the owner policy carries its decision date', nd.provenanceDate);
+ok(/after required payments, essential spending, incumbent liquidity protection/i.test(nd.provenanceNote),
+  'the policy preserves incumbent protections before true surplus');
+ok(/Equal or unavailable rates fail closed/i.test(nd.provenanceNote),
+  'the missing tie-breaker is explicit and fails closed');
+ok(nd.target === undefined && nd.order === undefined,
+  'the policy record does not store a target or duplicate rate order');
 // Where owner-stated IS used, it carries a date or a named source.
 const budgetTargets = plan.budget.categories.filter(c => c.targetSource);
 ok(budgetTargets.length > 0, 'the owner budget targets declare a source',

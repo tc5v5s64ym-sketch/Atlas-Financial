@@ -222,15 +222,16 @@ console.log('\n=== mutating opening or capitalisation moves the derived crossing
     'the live $814.18 capitalisation is unchanged by the fixture');
 }
 
-console.log('\n=== next-dollar ordering is unchanged ===');
-ok(plan.nextDollar && plan.nextDollar.policy === 'protect-then-highest-cost',
-  'next-dollar policy is still protect-then-highest-cost');
-ok(plan.nextDollar.target === 'cashback',
-  'target is still the Cash Back Visa');
-ok(plan.nextDollar.order[5] && /Stop new HELOC/.test(plan.nextDollar.order[5].rule),
-  'rank 6 is still stop new HELOC and revolving growth');
-ok(plan.nextDollar.order[6] && /highest effective-cost/.test(plan.nextDollar.order[6].rule),
-  'rank 7 is still surplus to highest effective-cost consumer debt');
+console.log('\n=== next-dollar ordering remains separate from crossing authority ===');
+const priority = F.debtPriority(plan, data.debts);
+ok(plan.nextDollar && plan.nextDollar.policy === 'true-surplus-highest-interest',
+  'owner-stated true-surplus policy is recorded');
+ok(priority.target && priority.target.id === 'cashback',
+  'Forecast independently selects the Cash Back Visa from current rates');
+ok(priority.order.some(row => row.id === 'heloc'),
+  'the HELOC is eligible in the same Forecast rate order');
+ok(!JSON.stringify(plan.nextDollar).includes('2026-10-31'),
+  'the debt policy still stores no HELOC crossing date');
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
 process.exit(failures === 0 ? 0 : 1);

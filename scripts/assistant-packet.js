@@ -220,7 +220,6 @@ function projectDebtsFromAdvice(data, asOf, advice) {
     advice.simOptions || {}, {
       weeklyVariable: advice.weekly,
       extraFacilities: data.revolvingExtra,
-      extraDebtTarget: data.plan && data.plan.nextDollar && data.plan.nextDollar.target,
     }));
 }
 

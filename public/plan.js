@@ -1157,6 +1157,53 @@ function futureGravityHtml(advice) {
   return `${shaping}${residual}${horizon}`;
 }
 
+function operatingDebtAnswerHtml(alloc) {
+  if (!alloc) return '<p class="operating-lead">No debt allocation answer is available on this opening.</p>';
+  const required = alloc.requiredDebtPayments || { items: [] };
+  const extra = alloc.extraDebt || {};
+  const requiredRows = (required.items || []).map(row => {
+    const confidence = row.confidence === 'estimated' ? ' · estimated' : '';
+    const settlement = row.settlement === 'unverified'
+      ? ' · settlement unresolved'
+      : row.settlement === 'upcoming' ? ' · upcoming' : '';
+    const when = row.date ? ` · ${fmtDate(row.date)}` : '';
+    return `<div class="operating-line"><span>${row.label}${when}${confidence}${settlement}</span><span>${money2(row.amount)}</span></div>`;
+  }).join('');
+  const requiredAnswer = requiredRows
+    ? `<div class="operating-lines">${requiredRows}</div>`
+    : '<p class="operating-note">Forecast has no required debt payment in this period.</p>';
+
+  const allocated = extra.allocated;
+  const target = extra.target || null;
+  let surplusAnswer;
+  if (allocated != null && Number(allocated) > 0 && target) {
+    surplusAnswer = `<p class="operating-lead">Forecast starts this period's extra principal with ${target.label}.</p>`;
+  } else if (allocated != null && Number(allocated) === 0) {
+    surplusAnswer = '<p class="operating-lead">No surplus is going to debt this period.</p>';
+  } else {
+    surplusAnswer = '<p class="operating-lead">No extra-debt allocation is available on this opening.</p>';
+  }
+  const amount = allocated != null
+    ? `<span class="operating-amount">${money2(allocated)} extra principal allocated this payday</span>`
+    : '';
+  const targetAnswer = target
+    ? `<p><b>Current extra-debt target:</b> ${target.label}${target.confidence === 'estimated' ? ' · estimated' : ''}.</p>
+       <p class="operating-note">Forecast named this target from owner-stated policy and current debt facts. A target or allocation is not proof that a payment occurred.</p>`
+    : `<p><b>Current extra-debt target:</b> unavailable.</p>
+       <p class="operating-note">${extra.reason || 'Forecast has no authorized target on this opening.'}</p>`;
+  const consequence = extra.consequence && extra.consequence.kind === 'next-target'
+    ? `<p><b>What happens next:</b> If ${extra.consequence.target.label} is cleared and true surplus remains, Forecast next targets ${extra.consequence.nextTarget.label}.</p>`
+    : '<p><b>What happens next:</b> Forecast exposes no further authorized debt consequence on this opening.</p>';
+
+  return `<h3>Required debt payments</h3>
+    ${requiredAnswer}
+    <p class="operating-note">These are contractual or modeled obligations from Forecast, not extra principal and not proof of payment.</p>
+    <h3>Extra debt</h3>
+    ${surplusAnswer}${amount}
+    <p class="operating-note">Only true surplus allocated by Forecast.paydayAllocation appears here.</p>
+    ${targetAnswer}${consequence}`;
+}
+
 /* The homepage's decision-first summary. Every financial value and verdict is
  * already present on the incumbent Forecast result passed in by renderPlan.
  * This function formats those fields only: it does not call Forecast, add an
@@ -1170,8 +1217,6 @@ function operatingSurfaceHtml(ctx) {
   const todayActions = (action && action.todayActions) || [];
   const protectionRows = paydayActionRows(ctx).filter(row =>
     row.key !== 'extra-debt' && !String(row.key || '').startsWith('optional:'));
-  const extraDebt = alloc && alloc.extraDebt ? alloc.extraDebt.allocated : null;
-  const debtTarget = ctx.extraDebtTarget || null;
   const coverage = paydayCoverageNote(action);
   const risks = (alloc && alloc.risks) || [];
   const unresolved = (alloc && alloc.unresolved) || [];
@@ -1216,20 +1261,7 @@ function operatingSurfaceHtml(ctx) {
     : '';
   const protecting = `${currentProtection}${futureGravityHtml(advice)}`;
 
-  let debt;
-  if (extraDebt != null && Number(extraDebt) > 0) {
-    debt = `<p class="operating-lead">${debtTarget
-      ? debtTarget.label
-      : 'Forecast allocated extra debt, but no incumbent debt target is available.'}</p>
-      <span class="operating-amount">${money2(extraDebt)} extra</span>
-      <p class="operating-note">This period's extra-debt allocation from Forecast.paydayAllocation. Required debt payments are kept separate.</p>`;
-  } else if (extraDebt != null && Number(extraDebt) === 0) {
-    debt = `<p class="operating-lead">No debt is receiving surplus this period.</p>
-      <span class="operating-amount">${money2(extraDebt)} extra debt allocated</span>
-      <p class="operating-note">Forecast.paydayAllocation assigned no extra debt on this opening. A policy target alone is not a payment.</p>`;
-  } else {
-    debt = '<p class="operating-lead">No extra-debt allocation is available on this opening.</p>';
-  }
+  const debt = operatingDebtAnswerHtml(alloc);
 
   const limits = [`<p class="operating-limit${!action || action.remainingClaim === 'unavailable' ? ' warn' : ''}">${coverage}</p>`]
     .concat(risks.map(r => `<p class="operating-limit warn">${r.reason}${r.shortfall != null
@@ -1674,8 +1706,7 @@ function renderPlan(d, periods, history) {
   // that leaves the chequing account has to arrive on a card.
   const debtProj = Forecast.projectDebts(plan, d.debts, asOf,
     Object.assign({}, advice.simOptions, { weeklyVariable: weekly,
-      extraFacilities: d.revolvingExtra,
-      extraDebtTarget: plan.nextDollar && plan.nextDollar.target }));
+      extraFacilities: d.revolvingExtra }));
 
   // The alternative assumptions, decided and evaluated by the engine. This page
   // used to build both: a funding source holding `available: Infinity` for "if
@@ -2326,7 +2357,6 @@ function renderPlan(d, periods, history) {
       unallocated: free, budget, creditAvailable: revolving,
       weekly, recommended, weeklyOverride: state.weeklyVariable,
       capView, debts: state.debts, liveOverlay: d.liveOverlay,
-      extraDebtTarget: debtProj.byId && debtProj.byId[state.extraDebtTarget],
     });
   }
   const paydayMount = $('payday-answer-body');
@@ -2359,7 +2389,8 @@ function wireControls(d) {
   // debt that exists. Set after loadKnobs so a stale localStorage payload
   // cannot supply its own idea of what the household owes.
   state.debts = d.debts;
-  state.extraDebtTarget = plan.nextDollar && plan.nextDollar.target;
+  const priority = Forecast.debtPriority(plan, d.debts);
+  state.extraDebtTarget = priority.target && priority.target.id;
   state.extraFacilities = d.revolvingExtra;
 
   // Scenario buttons
