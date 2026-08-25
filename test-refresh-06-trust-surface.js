@@ -510,7 +510,7 @@ console.log('\n=== I. projector and page do not invent settlement or leak provid
 {
   const src = read('scripts/refresh-trust.js');
   ok(!/function canonicalAsOf/.test(src)
-    && !/observedAsOf[\s\S]{0,80}plan\.opening/,
+    && !/observedAsOf[\s\S]{0,80}plan\.opening/.test(src),
     'projector has no canonical-opening fallback for last-observed');
   ok(!/Forecast\.recommend/.test(src) || /OA\.fromRefreshedState/.test(src),
     'refresh-trust.js does not reimplement Forecast remaining-claim arithmetic');
