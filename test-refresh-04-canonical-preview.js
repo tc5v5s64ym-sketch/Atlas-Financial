@@ -576,7 +576,60 @@ console.log('\n=== H. CLI preview is non-writing and incumbents remain ===');
     'refresh script does not add a scheduler');
 }
 
-console.log('\n=== I. live canonical files are unchanged ===');
+console.log('\n=== I. posted approval identity ignores volatile fetchedAt ===');
+{
+  const firstCase = trustedCase({ payload: { fetchedAt: '2026-08-20T16:00:00.000Z' } });
+  const laterCase = trustedCase({ payload: { fetchedAt: '2026-08-20T18:30:00.000Z' } });
+  const first = previewAt(firstCase.data, firstCase.payload, pendingMap);
+  const later = previewAt(laterCase.data, laterCase.payload, pendingMap);
+  ok(first.report.observationReceipt.observedAt !== later.report.observationReceipt.observedAt,
+    'the two observations have different fetch timestamps');
+  ok(first.preview.observationFingerprintDigest !== later.preview.observationFingerprintDigest,
+    'AF-REFRESH-02 observation digest still changes with fetchedAt');
+  ok(first.preview.previewId === later.preview.previewId,
+    'identical evidence at two same-day fetchedAt values shares the posted previewId');
+  ok(JSON.stringify(first.preview.proposed) === JSON.stringify(later.preview.proposed),
+    'the proposed write set is unchanged across those fetches');
+
+  const dir = tempDir();
+  const dest = writeTempData(dir, firstCase.data);
+  const laterFixture = writeTempJson(dir, 'later.json', laterCase.payload);
+  const applied = runCli([
+    '--fixture', laterFixture, '--map', PENDING_MAP, '--data', dest,
+    '--apply', '--approve', first.preview.previewId,
+  ]);
+  ok(applied.code === 0, 'the earlier previewId still approves a later same-day fetch of identical evidence',
+    applied.stderr.trim());
+  ok(near(cashValue(JSON.parse(fs.readFileSync(dest, 'utf8')), 'chequing-b'), SYNTHETIC_OBSERVED),
+    'that later-fetched approval wrote the independently previewed chequing-b');
+
+  const materialCase = trustedCase({
+    payload: { fetchedAt: '2026-08-20T18:30:00.000Z', chequingB: SYNTHETIC_OBSERVED - 7 },
+  });
+  const material = previewAt(materialCase.data, materialCase.payload, pendingMap);
+  ok(material.preview.previewId !== first.preview.previewId,
+    'a material observed-balance change changes the posted previewId');
+  ok(near(material.preview.proposed[0].proposedValue, SYNTHETIC_OBSERVED - 7),
+    'the changed observation independently proposes 383, not 390');
+
+  const staleDest = writeTempData(dir, firstCase.data);
+  const materialFixture = writeTempJson(dir, 'material.json', materialCase.payload);
+  const stale = runCli([
+    '--fixture', materialFixture, '--map', PENDING_MAP, '--data', staleDest,
+    '--apply', '--approve', first.preview.previewId,
+  ]);
+  ok(stale.code !== 0, 'the earlier previewId is refused when the observed evidence changed');
+  ok(/does not match/.test(stale.stderr), 'the refusal names the previewId mismatch');
+  ok(near(cashValue(JSON.parse(fs.readFileSync(staleDest, 'utf8')), 'chequing-b'), SYNTHETIC_CURRENT),
+    'the stale approval left canonical chequing-b unwritten');
+
+  const nextDay = trustedCase({ payload: { fetchedAt: '2026-08-21T16:00:00.000Z' } });
+  const nextPreview = previewAt(nextDay.data, nextDay.payload, pendingMap);
+  ok(nextPreview.preview.previewId !== first.preview.previewId,
+    'a different household observation date changes posted previewId');
+}
+
+console.log('\n=== J. live canonical files are unchanged ===');
 {
   const after = hashTree();
   ok(after.data === beforeTree.data, 'live data.json bytes unchanged');

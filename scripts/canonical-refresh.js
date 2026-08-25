@@ -21,6 +21,9 @@
  * unsupported targets. Untrusted reconciliation fail-closes those
  * obligation buckets and cannot invent writes. The earned posted
  * CHANGE allowlist remains the only mechanically provable write set.
+ * Posted previewId is the approval identity of that proposed and
+ * evidence state. It does not bind the volatile observation fetch
+ * timestamp from the AF-REFRESH-02 digest.
  *
  * --cutover-as-of without --apply is preflight. It does not write
  * data.json, meta.asOf, plan.opening, or snapshots. Combining it with
@@ -314,6 +317,35 @@ function proposeFromReport(report) {
   return { proposed, refused };
 }
 
+function approvalObservationIdentity(observation) {
+  const fingerprint = observation && observation.fingerprint;
+  if (!fingerprint || typeof fingerprint !== 'object') return null;
+  return {
+    schema: fingerprint.schema || null,
+    provider: fingerprint.provider || null,
+    householdDate: fingerprint.householdDate || null,
+    writesCanonicalState: fingerprint.writesCanonicalState === true,
+    canonicalStateChanged: fingerprint.canonicalStateChanged === true,
+    mappedHouseholdIdentities: Array.isArray(fingerprint.mappedHouseholdIdentities)
+      ? fingerprint.mappedHouseholdIdentities.slice()
+      : [],
+    unmappedCount: Number(fingerprint.unmappedCount) || 0,
+    missingExpectedIdentities: Array.isArray(fingerprint.missingExpectedIdentities)
+      ? fingerprint.missingExpectedIdentities.slice()
+      : [],
+    requiredCashMissing: Array.isArray(fingerprint.requiredCashMissing)
+      ? fingerprint.requiredCashMissing.slice()
+      : [],
+    requiredCashBalanceMissing: Array.isArray(fingerprint.requiredCashBalanceMissing)
+      ? fingerprint.requiredCashBalanceMissing.slice()
+      : [],
+    postedComplete: fingerprint.postedComplete === true,
+    pendingComplete: fingerprint.pendingComplete === true,
+    pendingToPostedTransitions: Number(fingerprint.pendingToPostedTransitions) || 0,
+    readyForReconciliation: fingerprint.readyForReconciliation === true,
+  };
+}
+
 function previewFingerprint(proposed, refused, classification) {
   const classified = classification || {};
   return {
@@ -331,7 +363,7 @@ function previewFingerprint(proposed, refused, classification) {
       evidenceDate: row.evidenceDate || null,
     })),
     reconciliationTrusted: classified.reconciliationTrusted === true,
-    observationFingerprintDigest: classified.observationFingerprintDigest || null,
+    approvalObservationIdentity: classified.approvalObservationIdentity || null,
     noops: (classified.noops || []).map(row => ({
       locator: row.locator || null,
       id: row.id || null,
@@ -562,6 +594,7 @@ function classifyRefreshPreview(report, proposed, refused, data) {
     observationFingerprintDigest: (observation && observation.fingerprintDigest)
       || receipt.observationFingerprintDigest
       || null,
+    approvalObservationIdentity: approvalObservationIdentity(observation),
     counts: receipt.counts || null,
     mechanicallyProvable: clone(proposed),
     noops: fromPostedMatch.concat(fromObligation.noops).sort(sortClassified),
