@@ -230,8 +230,10 @@ console.log('\n=== composed surface: cash, identity, debt, protection, limits ==
         `Q4 preserves the required-debt estimated trust state for ${item.id}`);
     }
   }
-  ok(extraLine && near(extraLine.amount, alloc.extraDebt.allocated),
-    'extra principal on the allocation line is Forecast.extraDebt.allocated, not required debt');
+  const extraAllocated = Number(alloc.extraDebt.allocated);
+  ok((extraAllocated === 0 && !extraLine)
+    || (extraLine && near(extraLine.amount, extraAllocated)),
+    'zero extra principal adds no extra-debt line; a positive extra line equals Forecast.extraDebt.allocated');
   if (Number(alloc.extraDebt.allocated) === 0) {
     ok(q4.includes('No surplus is going to debt this period.')
       && q4.includes('$0.00 extra principal allocated this payday')
