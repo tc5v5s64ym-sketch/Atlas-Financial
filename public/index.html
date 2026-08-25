@@ -30,12 +30,13 @@
 <div class="wrap">
 
   <!-- DECISION-FIRST OPERATING SURFACE. Every answer is formatted from the
-       incumbent Forecast result. The detailed worksheet and outlook remain
-       available below; they are not competing headline answers. -->
+       incumbent Forecast result. The detailed worksheet stays secondary.
+       Longer Forecast diagnostics stay in Why / Road ahead so they cannot
+       compete as a second default operating answer. -->
   <section id="operating-surface">
     <div class="kicker">Household operating surface</div>
     <h1>What the plan says to do</h1>
-    <p class="lede">Five answers first. Payday begins with the ordered action sheet; between paydays begins with the current-period operating answer. The full worksheet and longer Forecast outlook remain below for inspection.</p>
+    <p class="lede">Five answers first. Payday begins with the ordered action sheet; between paydays begins with the current-period operating answer. The full worksheet stays collapsed below. Why / Road ahead keeps the longer Forecast outlook available without competing as a second operating answer.</p>
     <div class="operating-card" id="operating-surface-body" aria-live="polite"></div>
   </section>
 
@@ -49,6 +50,11 @@
       </div>
     </details>
   </section>
+
+  <section id="road-ahead" class="secondary-section">
+    <details class="disclose secondary-disclose">
+      <summary>Why / Road ahead</summary>
+      <div class="secondary-body">
 
   <section id="outlook">
     <div class="kicker">Master forecast outlook · diagnostics</div>
@@ -249,6 +255,10 @@
     <h3>Dated account openings</h3>
     <p class="lede" id="balance-history-note">Stored openings from successful refreshes — not a forecast, not spending history, and not the 18-month HELOC monthly series. A larger liability is a larger balance owed, not an improvement. One opening is not a trend.</p>
     <div id="balance-history"></div>
+  </section>
+
+      </div>
+    </details>
   </section>
 
   <footer>
