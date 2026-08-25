@@ -297,13 +297,24 @@ async function loadPayload(args) {
 }
 
 function loadAccountMap(args, data) {
-  if (args.map) {
-    const mapDoc = loadJson(args.map);
-    if (args.live) O.assertLiveMap(mapDoc, { data });
-    return mapDoc;
+  try {
+    if (args.map) {
+      const mapDoc = loadJson(args.map);
+      if (args.live) O.assertLiveMap(mapDoc, { data });
+      return mapDoc;
+    }
+    if (args.live) return O.loadLiveAccountMap(process.env, data);
+    return loadJson(O.resolveMapPath({ fixture: args.fixture }));
+  } catch (err) {
+    if (args.live && String(err && err.message) === 'live-account-map-missing') {
+      fail(
+        'Trusted live account map is missing. Use ATLAS_PROVIDER_ACCOUNT_MAP_JSON '
+        + 'or the owner-observed gitignored local map keyed by providerAccountId. '
+        + 'Display names cannot reconstruct it.'
+      );
+    }
+    throw err;
   }
-  if (args.live) return O.loadLiveAccountMap(process.env, data);
-  return loadJson(O.resolveMapPath({ fixture: args.fixture }));
 }
 
 async function run(argv) {
@@ -326,8 +337,8 @@ async function run(argv) {
   };
   const before = hashTree(paths);
   const data = loadJson(args.data);
-  const payload = await loadPayload(args);
   const accountMap = loadAccountMap(args, data);
+  const payload = await loadPayload(args);
   const packet = fromIncumbents({
     data,
     payload,
