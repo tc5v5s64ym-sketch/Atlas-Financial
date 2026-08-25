@@ -306,6 +306,38 @@ footer { margin-top:56px; padding-top:18px; border-top:1px solid var(--grid);
 }
 .operating-line:last-child { border-bottom:none; }
 .operating-line span:last-child { font-weight:650; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.future-gravity-current { margin-bottom:14px; }
+.future-gravity-current h3, .future-gravity-heading {
+  margin:0 0 7px; color:var(--muted); font-size:.72rem; font-weight:750;
+  letter-spacing:.06em; text-transform:uppercase;
+}
+.future-gravity-optional { margin-top:14px; }
+.future-gravity { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px; }
+.future-gravity-row {
+  min-width:0; padding:12px 13px; border:1px solid var(--grid); border-radius:11px;
+  background:var(--plane);
+}
+.future-gravity-row.at-risk { border-left:3px solid var(--serious); }
+.future-gravity-row.funding-gap { border-left:3px solid var(--critical); }
+.future-gravity-head { display:flex; justify-content:space-between; align-items:start; gap:9px; }
+.future-gravity-head > b { font-size:.92rem; line-height:1.3; }
+.future-gravity-facts {
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(105px,1fr)); gap:8px;
+  margin-top:10px;
+}
+.future-gravity-facts > div { min-width:0; }
+.future-gravity-facts b {
+  display:block; font-size:.9rem; font-variant-numeric:tabular-nums; overflow-wrap:anywhere;
+}
+.future-gravity-facts small {
+  display:block; margin-top:2px; color:var(--muted); font-size:.7rem; line-height:1.25;
+}
+.future-gravity-meta { display:flex; align-items:center; gap:5px; flex-wrap:wrap; margin-top:10px; }
+.future-gravity-meta > span:first-child { margin-right:auto; color:var(--text-secondary); font-size:.78rem; }
+.future-gravity-row > p, .future-gravity-note {
+  margin:8px 0 0; color:var(--text-secondary); font-size:.72rem; line-height:1.35;
+}
+.future-gravity-note { font-size:.78rem; }
 .operating-limit { margin:7px 0 0; color:var(--text-secondary); font-size:.88rem; }
 .operating-limit.warn { color:var(--critical); }
 .allocation-sheet { margin-top:14px; }
@@ -408,6 +440,7 @@ footer { margin-top:56px; padding-top:18px; border-top:1px solid var(--grid);
 @media (max-width:700px) {
   .operating-question { grid-template-columns:34px 1fr; gap:10px 12px; padding:19px 16px; }
   .operating-answer { grid-column:2; }
+  .future-gravity { grid-template-columns:1fr; }
   .operating-amount { font-size:1.75rem; }
   .allocation-line { grid-template-columns:25px minmax(0,1fr) auto; gap:8px; }
   .allocation-available b { font-size:1.45rem; }

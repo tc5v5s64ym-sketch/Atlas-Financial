@@ -1059,6 +1059,104 @@ function betweenPaydaysOperatingHtml(action, capView) {
   </div>`;
 }
 
+/* Compact future-cost publication. Forecast.majorPlans owns every verdict,
+ * requirement, range, timing qualifier, remaining amount and flexibility.
+ * The matching Forecast.paydayAllocation row owns any current-payday set-aside.
+ * This page only formats those outputs; it does not read plan.commitments,
+ * rank costs, compare dollars, or decide whether an item is funded. Optional
+ * rows stay a residual group because Forecast already marked them optional. */
+const FUTURE_PLAN_VERDICT = {
+  'ON TRACK': { cls: 'on-track', chip: 'v', remaining: 'Funding gap' },
+  'AT RISK': { cls: 'at-risk', chip: 'w', remaining: 'At-risk amount' },
+  'FUNDING GAP': { cls: 'funding-gap', chip: 'c', remaining: 'Funding gap' },
+};
+const FUTURE_PLAN_FLEXIBILITY = {
+  required: 'REQUIRED',
+  'bounded-flex': 'FLEXIBLE',
+  optional: 'OPTIONAL',
+};
+
+function futurePlanRequirement(row) {
+  if (row.need != null) return { amount: money2(row.need), label: 'Cost still required' };
+  if (row.amountMin != null && row.amountMax != null) {
+    return { amount: `${money2(row.amountMin)}–${money2(row.amountMax)}`, label: 'Cost range' };
+  }
+  if (row.amountMin != null) return { amount: `From ${money2(row.amountMin)}`, label: 'Cost range' };
+  if (row.amountMax != null) return { amount: `Up to ${money2(row.amountMax)}`, label: 'Cost range' };
+  return { amount: 'Unresolved', label: 'Cost amount' };
+}
+
+function futurePlanTiming(row) {
+  if (row.when) return row.when;
+  if (row.date) return fmtDateLong(row.date);
+  return 'Timing unresolved';
+}
+
+function futureGravityHtml(advice) {
+  advice = advice || {};
+  const plans = Array.isArray(advice.majorPlans) ? advice.majorPlans : [];
+  const alloc = advice.paydayAllocation || {};
+  const paydayCosts = Array.isArray(alloc.futureCosts) ? alloc.futureCosts : [];
+  const paydayOptional = Array.isArray(alloc.optional) ? alloc.optional : [];
+  const unresolved = Array.isArray(alloc.unresolved) ? alloc.unresolved : [];
+  if (!plans.length) {
+    return '<p class="operating-lead">No unsettled major future costs are available from Forecast on this opening.</p>';
+  }
+
+  const shapingCards = [];
+  const residualCards = [];
+  for (const row of plans) {
+    const state = FUTURE_PLAN_VERDICT[row.verdict] || { cls: '', chip: 'e', remaining: 'Forecast remaining' };
+    const requirement = futurePlanRequirement(row);
+    const payday = paydayCosts.find(item => item.id === row.id)
+      || paydayOptional.find(item => item.id === row.id) || null;
+    const timingUnresolved = unresolved.find(item => item.id === row.id) || null;
+    const confidence = row.confidence || 'unknown';
+    const confidenceClass = confidence === 'confirmed' ? 'v' : confidence === 'estimated' ? 'w' : 'e';
+    const flexibility = FUTURE_PLAN_FLEXIBILITY[row.flexibility] || String(row.flexibility || 'UNRESOLVED').toUpperCase();
+    const paydayFact = payday
+      ? `<div><b>${money2(payday.allocated)}</b><small>Set aside this payday</small></div>`
+      : timingUnresolved
+        ? '<div><b>Not assigned</b><small>Exact-date payday set-aside unresolved</small></div>'
+        : '';
+    const paydayNote = !payday ? ''
+      : row.flexibility === 'optional'
+        ? '<p>Allocated is not evidence that a payment or transfer occurred.</p>'
+        : '<p>Protected / allocated is not evidence that a payment or transfer occurred.</p>';
+    const card = `<div class="future-gravity-row ${state.cls}" data-future-gravity-id="${row.id}">
+      <div class="future-gravity-head">
+        <b>${row.label}</b>
+        <span class="chip ${state.chip}">${row.verdict || 'VERDICT UNAVAILABLE'}</span>
+      </div>
+      <div class="future-gravity-facts">
+        <div><b>${requirement.amount}</b><small>${requirement.label}</small></div>
+        <div><b>${money2(row.remaining)}</b><small>${state.remaining}</small></div>
+        ${paydayFact}
+      </div>
+      <div class="future-gravity-meta">
+        <span>${futurePlanTiming(row)}</span>
+        <span class="chip ${confidenceClass}">${confidence.toUpperCase()}</span>
+        <span class="chip e">${flexibility}</span>
+        ${timingUnresolved ? '<span class="chip w">EXACT DATE UNRESOLVED</span>' : ''}
+      </div>
+      ${paydayNote}
+    </div>`;
+    if (row.flexibility === 'optional') residualCards.push(card);
+    else shapingCards.push(card);
+  }
+
+  const shaping = shapingCards.length
+    ? `<div class="future-gravity-heading">Future costs shaping today</div><div class="future-gravity" data-future-gravity-shaping>${shapingCards.join('')}</div>`
+    : '';
+  const residual = residualCards.length
+    ? `<div class="future-gravity-optional"><div class="future-gravity-heading">Optional residual — does not constrain today's safe-to-spend</div><div class="future-gravity" data-future-gravity-optional>${residualCards.join('')}</div></div>`
+    : '';
+  const horizon = advice.knowledge && advice.knowledge.days != null
+    ? `<p class="future-gravity-note">These are Forecast.majorPlans verdicts across the ${advice.knowledge.days}-day master plan, including costs beyond the short display window.</p>`
+    : '';
+  return `${shaping}${residual}${horizon}`;
+}
+
 /* The homepage's decision-first summary. Every financial value and verdict is
  * already present on the incumbent Forecast result passed in by renderPlan.
  * This function formats those fields only: it does not call Forecast, add an
@@ -1113,10 +1211,10 @@ function operatingSurfaceHtml(ctx) {
        <p class="operating-note">${weeklyAuthority}</p>`
     : `<p class="payday-refuse">${capView.infeasible ? '<b>INFEASIBLE. </b>' : ''}${capView.reason}</p>`;
 
-  const protecting = protectionRows.length
-    ? `${lineList(protectionRows)}${unresolved.length
-      ? `<p class="operating-note">${unresolved[0].reason}</p>` : ''}`
-    : '<p class="operating-lead">No current protected allocation is available on this opening.</p>';
+  const currentProtection = protectionRows.length
+    ? `<div class="future-gravity-current"><h3>Protected in the current period</h3>${lineList(protectionRows)}</div>`
+    : '';
+  const protecting = `${currentProtection}${futureGravityHtml(advice)}`;
 
   let debt;
   if (extraDebt != null && Number(extraDebt) > 0) {
@@ -2351,6 +2449,7 @@ if (typeof App !== 'undefined') {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     operatingSurfaceHtml, betweenPaydaysOperatingHtml, paydayAnswerHtml, paydayActionRows, paydayOtherActionRows, paydayComingRows,
-    paydayCashNote, weeklyCapView, MISSION_PART, NEXT_MOVE, STATUS_BAND,
+    paydayCashNote, weeklyCapView, futurePlanRequirement, futurePlanTiming, futureGravityHtml,
+    MISSION_PART, NEXT_MOVE, STATUS_BAND,
   };
 }
