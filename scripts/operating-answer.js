@@ -44,6 +44,7 @@ const COMPARE_FIELDS = Object.freeze([
   ['futureCostProtection.protectedPath.allocated', 'futureCostProtection.protectedPath.allocated'],
   ['extraDebtAllocation.allocated', 'extraDebtAllocation.allocated'],
   ['extraDebtAllocation.status', 'extraDebtAllocation.status'],
+  ['extraDebtAllocation.target', 'extraDebtAllocation.target.id'],
   ['limitations.remainingClaim', 'limitations.remainingClaim'],
 ]);
 
@@ -255,8 +256,11 @@ function fromRefreshedState(data, opts) {
   const { asOf, advice } = recommendFrom(data, opts);
   const packet = projectFromAdvice(advice, data, opts, asOf);
   if (opts.baseline) {
-    const baselineOpts = Object.assign({}, opts, { baseline: null });
-    if (opts.baselineMode) baselineOpts.mode = opts.baselineMode;
+    const baselineOpts = {
+      mode: opts.baselineMode || opts.mode,
+      writesCanonicalState: false,
+      baseline: null,
+    };
     const before = fromRefreshedState(opts.baseline, baselineOpts);
     packet.change = changeFrom(before, packet);
     packet.baselineProvenance = before.provenance;

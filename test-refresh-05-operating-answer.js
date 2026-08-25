@@ -502,6 +502,65 @@ console.log('\n=== F. zero/no-change is a valid Forecast result ===');
     'every compared Forecast field is unchanged');
 }
 
+console.log('\n=== F2. extra-debt target change is visible; baseline is not the write ===');
+{
+  const asOf = '2026-08-24';
+  function mini(debts) {
+    return {
+      meta: { asOf },
+      plan: {
+        windowDays: 21,
+        opening: { asOf },
+        defaults: { targetBuffer: 0 },
+        startingCash: { breakdown: [{ id: 'chequing-a', value: 5000 }] },
+        nextDollar: { policy: 'true-surplus-highest-interest', provenance: 'owner-stated' },
+        income: [],
+        obligations: [],
+        bills: [],
+        commitments: [],
+      },
+      debts,
+    };
+  }
+  const higher = {
+    id: 'cashback', label: 'Cash Back', balance: 100, rate: 0.1999,
+    limit: 5000, pending: 0, pendingUnknown: false, secured: false,
+    structure: 'Revolving credit',
+  };
+  const lower = {
+    id: 'tdcc', label: 'TD Personal', balance: 50, rate: 0.1299,
+    limit: 5000, pending: 0, pendingUnknown: false, secured: false,
+    structure: 'Revolving credit',
+  };
+  const before = mini([clone(higher), clone(lower)]);
+  const after = mini([Object.assign(clone(higher), { balance: 0 }), clone(lower)]);
+  const beforeTarget = directRecommend(before, { mode: 'canonical' }).paydayAllocation.extraDebt.target;
+  const afterTarget = directRecommend(after, { mode: 'canonical' }).paydayAllocation.extraDebt.target;
+  ok(beforeTarget && beforeTarget.id === 'cashback',
+    'direct Forecast targets the higher-rate revolving debt');
+  ok(afterTarget && afterTarget.id === 'tdcc',
+    'direct Forecast retargets after the higher-rate debt is cleared');
+  const packet = OA.fromRefreshedState(after, {
+    mode: 'canonical',
+    baseline: before,
+    writesCanonicalState: true,
+  });
+  ok(packet.provenance.writesCanonicalState === true
+    && packet.provenance.trustedState === 'canonical-approved-write',
+    'after-state provenance is the approved write');
+  ok(packet.baselineProvenance
+    && packet.baselineProvenance.writesCanonicalState === false
+    && packet.baselineProvenance.trustedState !== 'canonical-approved-write',
+    'baseline provenance is not claimed as the approved write');
+  const targetField = (packet.change.fields || []).find(row =>
+    row.field === 'extraDebtAllocation.target');
+  ok(packet.change && packet.change.changed === true,
+    'clearing the extra-debt target is a Forecast change');
+  ok(targetField && targetField.changed === true
+    && targetField.before === 'cashback' && targetField.after === 'tdcc',
+    'the extra-debt target participates in the comparison');
+}
+
 console.log('\n=== G. canonical preview still does not publish the operating answer ===');
 {
   const { payload, data } = trustedCase();
@@ -567,6 +626,10 @@ console.log('\n=== H. approved canonical apply projects Forecast on the written 
     'apply packet money available is that same Forecast available');
   ok(printed.operatingAnswer.change && typeof printed.operatingAnswer.change.changed === 'boolean',
     'apply packet reports whether Forecast fields changed');
+  ok(printed.operatingAnswer.baselineProvenance
+    && printed.operatingAnswer.baselineProvenance.writesCanonicalState === false
+    && printed.operatingAnswer.baselineProvenance.trustedState !== 'canonical-approved-write',
+    'apply packet does not label the pre-write baseline as the approved write');
   ok(C.identityProofLooksSanitized(printed), 'apply operating answer is sanitized');
   ok(!/"payee"\s*:/.test(applied.stdout) && !/"providerAccountId"\s*:/.test(applied.stdout),
     'apply stdout has no payee or provider account id');
