@@ -14,6 +14,17 @@
  * authorize pending or an opening. Observe and reconcile remain the
  * incumbents. Forecast remains the planner.
  *
+ * The preview consumes the AF-REFRESH-03 obligation-reconciliation
+ * receipt from the incumbent observer. It classifies mechanically
+ * provable posted updates, no-op/replayed evidence, owner-fact
+ * questions, ambiguous/unresolved evidence that must not write, and
+ * unsupported targets. Untrusted reconciliation fail-closes those
+ * obligation buckets and cannot invent writes. The earned posted
+ * CHANGE allowlist remains the only mechanically provable write set.
+ * Posted previewId is the approval identity of that proposed and
+ * evidence state. It does not bind the volatile observation fetch
+ * timestamp from the AF-REFRESH-02 digest.
+ *
  * --cutover-as-of without --apply is preflight. It does not write
  * data.json, meta.asOf, plan.opening, or snapshots. Combining it with
  * --apply --approve <previewId> is refused: posted approval is not a
@@ -85,6 +96,11 @@ const CREDIT_REFUSE_FACTS = new Set([
 ]);
 const BACKFILL_FACTS = new Set(['posting']);
 const ISO_DATE = /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
+const UNRESOLVED_REFUSE_REASONS = new Set([
+  'unresolved-pending',
+  'unknown-value',
+  'conflicting-observations',
+]);
 
 function fail(message) {
   const err = new Error(message);
@@ -301,7 +317,37 @@ function proposeFromReport(report) {
   return { proposed, refused };
 }
 
-function previewFingerprint(proposed, refused) {
+function approvalObservationIdentity(observation) {
+  const fingerprint = observation && observation.fingerprint;
+  if (!fingerprint || typeof fingerprint !== 'object') return null;
+  return {
+    schema: fingerprint.schema || null,
+    provider: fingerprint.provider || null,
+    householdDate: fingerprint.householdDate || null,
+    writesCanonicalState: fingerprint.writesCanonicalState === true,
+    canonicalStateChanged: fingerprint.canonicalStateChanged === true,
+    mappedHouseholdIdentities: Array.isArray(fingerprint.mappedHouseholdIdentities)
+      ? fingerprint.mappedHouseholdIdentities.slice()
+      : [],
+    unmappedCount: Number(fingerprint.unmappedCount) || 0,
+    missingExpectedIdentities: Array.isArray(fingerprint.missingExpectedIdentities)
+      ? fingerprint.missingExpectedIdentities.slice()
+      : [],
+    requiredCashMissing: Array.isArray(fingerprint.requiredCashMissing)
+      ? fingerprint.requiredCashMissing.slice()
+      : [],
+    requiredCashBalanceMissing: Array.isArray(fingerprint.requiredCashBalanceMissing)
+      ? fingerprint.requiredCashBalanceMissing.slice()
+      : [],
+    postedComplete: fingerprint.postedComplete === true,
+    pendingComplete: fingerprint.pendingComplete === true,
+    pendingToPostedTransitions: Number(fingerprint.pendingToPostedTransitions) || 0,
+    readyForReconciliation: fingerprint.readyForReconciliation === true,
+  };
+}
+
+function previewFingerprint(proposed, refused, classification) {
+  const classified = classification || {};
   return {
     proposed: (proposed || []).map(row => ({
       locator: row.locator,
@@ -316,12 +362,247 @@ function previewFingerprint(proposed, refused) {
       reason: row.reason,
       evidenceDate: row.evidenceDate || null,
     })),
+    reconciliationTrusted: classified.reconciliationTrusted === true,
+    approvalObservationIdentity: classified.approvalObservationIdentity || null,
+    noops: (classified.noops || []).map(row => ({
+      locator: row.locator || null,
+      id: row.id || null,
+      reason: row.reason,
+      evidenceDate: row.evidenceDate || row.date || null,
+    })),
+    unresolved: (classified.unresolved || []).map(row => ({
+      locator: row.locator || null,
+      id: row.id || null,
+      evidenceFingerprint: row.evidenceFingerprint || null,
+      reason: row.reason,
+    })),
+    ownerQuestions: (classified.ownerQuestions || []).map(row => ({
+      id: row.id || null,
+      date: row.date || null,
+      reason: row.reason,
+    })),
+    unsupported: (classified.unsupported || []).map(row => ({
+      locator: row.locator || null,
+      id: row.id || null,
+      reason: row.reason,
+    })),
+    downstreamArtifacts: (classified.downstreamArtifacts || []).map(row => ({
+      kind: row.kind,
+      wouldChange: row.wouldChange === true,
+    })),
   };
 }
 
-function previewIdFrom(proposed, refused) {
-  const body = JSON.stringify(previewFingerprint(proposed, refused));
+function previewIdFrom(proposed, refused, classification) {
+  const body = JSON.stringify(previewFingerprint(proposed, refused, classification));
   return crypto.createHash('sha256').update(body).digest('hex');
+}
+
+function sortClassified(a, b) {
+  return String(a.locator || a.id || a.evidenceFingerprint || '')
+    .localeCompare(String(b.locator || b.id || b.evidenceFingerprint || ''))
+    || String(a.date || '').localeCompare(String(b.date || ''))
+    || String(a.reason || '').localeCompare(String(b.reason || ''));
+}
+
+function obligationReceiptFrom(report) {
+  const receipt = report && report.obligationReconciliationReceipt;
+  if (receipt && receipt.schema === O.RECONCILIATION_RECEIPT_SCHEMA) return receipt;
+  return {
+    schema: O.RECONCILIATION_RECEIPT_SCHEMA,
+    trusted: false,
+    observationReadyForReconciliation: false,
+    failClosedKind: 'reconciliation-receipt-missing',
+    failClosedReasons: ['reconciliation-receipt-missing'],
+    observationFingerprintDigest: (report && report.observationReceipt
+      && report.observationReceipt.fingerprintDigest) || null,
+    counts: {
+      coveredModeledOccurrences: 0,
+      represented: 0,
+      upcoming: 0,
+      unverified: 0,
+      ambiguous: 0,
+      outsideCoverage: 0,
+      unmatchedCashEvidence: 0,
+    },
+    occurrences: [],
+    unmatchedCashEvidence: [],
+  };
+}
+
+function postedMatchNoops(report) {
+  const noops = [];
+  const seen = new Set();
+  for (const row of (report && report.reconciliation && report.reconciliation.rows) || []) {
+    if (!row || row.status !== 'MATCH') continue;
+    if (!eligiblePosted(row)) continue;
+    const locator = row.canonicalTarget;
+    if (!locator || seen.has(locator)) continue;
+    seen.add(locator);
+    noops.push({
+      locator,
+      fact: row.fact || null,
+      currentValue: row.canonicalValue,
+      observedValue: row.evidenceValue,
+      evidenceDate: row.evidenceDate || row.observedAsOf || null,
+      reason: 'replay-match',
+    });
+  }
+  return noops;
+}
+
+function classifyFromObligationReceipt(receipt) {
+  const noops = [];
+  const unresolved = [];
+  const ownerQuestions = [];
+  const unsupported = [];
+  if (!receipt || receipt.trusted !== true) {
+    unsupported.push({
+      locator: null,
+      reason: 'obligation-reconciliation-not-trusted',
+      failClosedKind: (receipt && receipt.failClosedKind) || 'reconciliation-receipt-missing',
+    });
+    return { noops, unresolved, ownerQuestions, unsupported };
+  }
+  for (const row of receipt.occurrences || []) {
+    if (!row || !row.id) continue;
+    const base = {
+      id: row.id,
+      date: row.date || null,
+      kind: row.kind || null,
+      settlement: row.settlement || null,
+    };
+    if (row.settlement === 'represented') {
+      noops.push(Object.assign({}, base, {
+        reason: 'obligation-represented-replay',
+        evidenceFingerprint: row.evidenceFingerprint || null,
+      }));
+    } else if (row.settlement === 'upcoming') {
+      noops.push(Object.assign({}, base, { reason: 'obligation-upcoming-not-a-write' }));
+    } else if (row.settlement === 'unverified') {
+      ownerQuestions.push(Object.assign({}, base, {
+        reason: 'unverified-settlement-owner-fact',
+      }));
+    } else if (row.settlement === 'ambiguous') {
+      unresolved.push(Object.assign({}, base, {
+        reason: 'ambiguous-evidence-must-not-write',
+        candidateCount: row.candidateCount || null,
+      }));
+    } else if (row.settlement === 'outside-coverage') {
+      unsupported.push(Object.assign({}, base, {
+        reason: 'outside-observation-window',
+      }));
+    } else {
+      unsupported.push(Object.assign({}, base, {
+        reason: 'unsupported-obligation-settlement',
+      }));
+    }
+  }
+  for (const row of receipt.unmatchedCashEvidence || []) {
+    unresolved.push({
+      date: row.date || null,
+      amount: row.amount,
+      accountRole: row.accountRole || null,
+      kind: row.kind || null,
+      evidenceFingerprint: row.evidenceFingerprint || null,
+      reason: 'unmatched-household-cash-must-not-write',
+    });
+  }
+  return { noops, unresolved, ownerQuestions, unsupported };
+}
+
+function classifyRefused(refused) {
+  const unresolved = [];
+  const unsupported = [];
+  for (const row of refused || []) {
+    const classified = {
+      locator: row && row.locator || null,
+      fact: row && row.fact || null,
+      reason: row && row.reason,
+      evidenceDate: row && row.evidenceDate || null,
+      eventId: row && row.eventId || null,
+    };
+    if (row && UNRESOLVED_REFUSE_REASONS.has(row.reason)) unresolved.push(classified);
+    else unsupported.push(classified);
+  }
+  return { unresolved, unsupported };
+}
+
+function downstreamArtifactsFrom(data, proposed) {
+  const artifacts = [];
+  const cashProposed = (proposed || []).filter(row => row && row.collection === 'cash');
+  if (data && data.plan && cashProposed.length) {
+    const next = clone(data);
+    let applied = true;
+    try {
+      for (const change of cashProposed) applyChange(next, change);
+    } catch (err) {
+      applied = false;
+    }
+    if (applied) {
+      const before = Forecast.startingCashAmount(data.plan);
+      const after = Forecast.startingCashAmount(next.plan);
+      artifacts.push({
+        kind: 'forecast-starting-cash',
+        wouldChange: !near(before, after),
+        independentDelta: round2(after - before),
+        note: 'Forecast consumes the written document after approval. This preview does not publish the operating answer.',
+      });
+    } else {
+      artifacts.push({
+        kind: 'forecast-starting-cash',
+        wouldChange: false,
+        independentDelta: 0,
+        note: 'Posted cash proposal could not be applied in memory; no Forecast starting-cash consequence is claimed.',
+      });
+    }
+  } else {
+    artifacts.push({
+      kind: 'forecast-starting-cash',
+      wouldChange: false,
+      independentDelta: 0,
+      note: 'No posted cash write is proposed. Forecast starting cash would not change from this preview.',
+    });
+  }
+  artifacts.push({
+    kind: 'snapshot-balances',
+    wouldChange: false,
+    note: 'Posted previewId does not invent history. Snapshot remains scripts/snapshot-balances.js after a successful as-of cutover.',
+  });
+  artifacts.push({
+    kind: 'opening-represented-events',
+    wouldChange: false,
+    note: 'Posted previewId cannot authorize representedEvents. Opening cutover remains a separate approval contract.',
+  });
+  return artifacts;
+}
+
+function classifyRefreshPreview(report, proposed, refused, data) {
+  const receipt = obligationReceiptFrom(report);
+  const observation = report && report.observationReceipt;
+  const fromPostedMatch = postedMatchNoops(report);
+  const fromObligation = classifyFromObligationReceipt(receipt);
+  const fromRefused = classifyRefused(refused);
+  return {
+    reconciliationTrusted: receipt.trusted === true,
+    observationReadyForReconciliation: !!(observation && observation.readyForReconciliation === true)
+      || receipt.observationReadyForReconciliation === true,
+    failClosedKind: receipt.trusted === true
+      ? null
+      : (receipt.failClosedKind || 'reconciliation-receipt-missing'),
+    failClosedReasons: receipt.trusted === true ? [] : (receipt.failClosedReasons || []).slice(),
+    observationFingerprintDigest: (observation && observation.fingerprintDigest)
+      || receipt.observationFingerprintDigest
+      || null,
+    approvalObservationIdentity: approvalObservationIdentity(observation),
+    counts: receipt.counts || null,
+    mechanicallyProvable: clone(proposed),
+    noops: fromPostedMatch.concat(fromObligation.noops).sort(sortClassified),
+    unresolved: fromRefused.unresolved.concat(fromObligation.unresolved).sort(sortClassified),
+    ownerQuestions: fromObligation.ownerQuestions.sort(sortClassified),
+    unsupported: fromRefused.unsupported.concat(fromObligation.unsupported).sort(sortClassified),
+    downstreamArtifacts: downstreamArtifactsFrom(data, proposed),
+  };
 }
 
 function identityProofLooksSanitized(doc) {
@@ -1104,7 +1385,8 @@ function buildOpeningCutover(data, report, requestedAsOf, balanceMap) {
 
 function buildPreview(report, opts) {
   const { proposed, refused } = proposeFromReport(report);
-  const previewId = previewIdFrom(proposed, refused);
+  const classified = classifyRefreshPreview(report, proposed, refused, opts && opts.data);
+  const previewId = previewIdFrom(proposed, refused, classified);
   return {
     schema: SCHEMA,
     writesCanonicalState: false,
@@ -1116,6 +1398,18 @@ function buildPreview(report, opts) {
     fetchedAt: report && report.fetchedAt ? report.fetchedAt : null,
     proposed,
     refused,
+    mechanicallyProvable: classified.mechanicallyProvable,
+    noops: classified.noops,
+    unresolved: classified.unresolved,
+    ownerQuestions: classified.ownerQuestions,
+    unsupported: classified.unsupported,
+    downstreamArtifacts: classified.downstreamArtifacts,
+    reconciliationTrusted: classified.reconciliationTrusted,
+    observationReadyForReconciliation: classified.observationReadyForReconciliation,
+    failClosedKind: classified.failClosedKind,
+    failClosedReasons: classified.failClosedReasons,
+    observationFingerprintDigest: classified.observationFingerprintDigest,
+    reconciliationCounts: classified.counts,
     unmappedCount: (report && report.unmapped ? report.unmapped.length : 0),
     cardCapacityIsCash: report && report.cardCapacityIsCash === 0
       ? 0
@@ -1123,7 +1417,7 @@ function buildPreview(report, opts) {
     snapshotFollows: SNAPSHOT_COMMAND,
     identityProofSanitized: true,
     note: (opts && opts.note)
-      || 'Preview only. No approval means no canonical write. Opening as-of is not a new cutover.',
+      || 'Preview only. No approval means no canonical write. Unresolved, owner-fact, and unsupported rows cannot write. Opening as-of is not a new cutover.',
   };
 }
 
@@ -1694,7 +1988,7 @@ function applyRecoveryPreview(data, preview, destPath, originalBytes, opts) {
 
 function previewFrom(input, opts) {
   const report = O.observe(input);
-  const preview = buildPreview(report);
+  const preview = buildPreview(report, { data: input && input.data });
   if (opts && opts.cutoverAsOf) {
     preview.openingCutover = buildOpeningCutover(input.data, report, opts.cutoverAsOf, opts.balanceMap);
     if (opts.recoverOpeningArtifacts) {
@@ -2235,6 +2529,35 @@ function applyOpeningPreview(data, preview, destPath, opts) {
   return written;
 }
 
+function assertProposedWritable(preview) {
+  const proposed = preview && preview.proposed || [];
+  const mechanical = preview && preview.mechanicallyProvable
+    ? preview.mechanicallyProvable
+    : proposed;
+  if (JSON.stringify(proposed) !== JSON.stringify(mechanical)) {
+    fail('Proposed writes must equal the mechanically provable set. Canonical state was not written.');
+  }
+  const blocked = new Set();
+  for (const row of [].concat(
+    (preview && preview.unresolved) || [],
+    (preview && preview.ownerQuestions) || [],
+    (preview && preview.unsupported) || []
+  )) {
+    if (row && row.locator) blocked.add(row.locator);
+  }
+  for (const change of proposed) {
+    if (change && change.locator && blocked.has(change.locator)) {
+      fail(`Unresolved or unsupported locator cannot write: ${change.locator}. Canonical state was not written.`);
+    }
+    if (change && (
+      change.field === 'representedEvents'
+      || /representedEvents/.test(String(change.locator || ''))
+    )) {
+      fail('Posted preview cannot authorize representedEvents. Canonical state was not written.');
+    }
+  }
+}
+
 function applyPreview(data, preview, destPath) {
   if (!preview || preview.schema !== SCHEMA) fail('Preview schema is not the earned refresh preview.');
   if (!preview.previewId) fail('Preview is missing previewId.');
@@ -2244,6 +2567,7 @@ function applyPreview(data, preview, destPath) {
   if (!Array.isArray(preview.proposed) || !preview.proposed.length) {
     fail('Empty preview cannot authorize a canonical write.');
   }
+  assertProposedWritable(preview);
   const next = clone(data);
   for (const change of preview.proposed) applyChange(next, change);
   validateApplied(data, next, preview);
@@ -2267,6 +2591,8 @@ async function run(argv) {
       + '       node scripts/canonical-refresh.js --fixture <file> --cutover-as-of YYYY-MM-DD --recover-opening-artifacts\n'
       + '       node scripts/canonical-refresh.js --fixture <file> --cutover-as-of YYYY-MM-DD --recover-opening-artifacts --apply --approve-recovery <recoveryApprovalId> --data <file>\n'
       + 'Default is a non-writing preview. --apply --approve writes posted fields only.\n'
+      + 'The preview consumes the trusted obligation-reconciliation receipt when present.\n'
+      + 'Unresolved, owner-fact, and unsupported rows cannot write.\n'
       + '--cutover-as-of without an opening, pending, or recovery approval is read-only.\n'
       + 'previewId cannot authorize pending or an opening. cutoverApprovalId cannot authorize an opening.\n'
       + 'An approved opening also writes same-date Household positions and snapshots/<date>.json.\n'
