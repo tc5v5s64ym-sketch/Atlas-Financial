@@ -73,8 +73,8 @@ console.log('\n=== the readability layer does not become a financial authority =
 
 console.log('\n=== current values are copied, not recalculated ===');
 {
-  ok(H.cashValueFromNote('Current spendable cash: -$92.17 · Spendable cash. Not credit.') === '-$92.17',
-    'cash display copies the already-rendered value');
+  ok(H.cashValueFromNote('Current spendable cash: $123.45 · Spendable cash. Not credit.') === '$123.45',
+    'cash display copies a synthetic already-rendered value');
   ok(H.cashValueFromNote('No cash value here') === null,
     'missing rendered cash does not invent one');
 }
