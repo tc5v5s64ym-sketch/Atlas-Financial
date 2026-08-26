@@ -69,6 +69,22 @@ console.log('\n=== the readability layer does not become a financial authority =
   ok(/No safe spending amount right now\./.test(src)
     && /No money movement needed today\./.test(src),
     'the first-screen action language is direct and household-readable');
+  ok(/Spendable cash · not credit/.test(src),
+    'the compact cash fact preserves the credit-is-not-cash boundary');
+}
+
+console.log('\n=== trust caveats are translated, not deleted ===');
+{
+  const normal = H.friendlySpendingNote(
+    "Forecast.recommend's supported household cap through the next payday. Essential costs come out of it first."
+  );
+  ok(normal === 'This is the household spending limit until the next payday. Essential costs come out of it first.',
+    'essential-cost ordering survives the plain-language rewrite');
+  const limited = H.friendlySpendingNote(
+    "Forecast.currentPeriodAction's current weekly permission through the next payday. Current remaining spend cannot be confirmed from the incumbent trust contract."
+  );
+  ok(limited === 'This is the household spending limit until the next payday. Current remaining spend is not confirmed.',
+    'an unavailable remaining-spend claim stays visible in ordinary language');
 }
 
 console.log('\n=== current values are copied, not recalculated ===');
