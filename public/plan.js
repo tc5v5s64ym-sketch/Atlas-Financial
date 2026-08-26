@@ -1066,7 +1066,7 @@ function betweenPaydaysOperatingHtml(action, capView) {
  * rank costs, compare dollars, or decide whether an item is funded. Optional
  * rows stay a residual group because Forecast already marked them optional. */
 const FUTURE_PLAN_VERDICT = {
-  'ON TRACK': { cls: 'on-track', chip: 'v', remaining: 'Funding gap' },
+  'ON TRACK': { cls: 'on-track', chip: 'v', remaining: 'Covered in the plan', remainingOpen: 'Still unfunded in the plan' },
   'AT RISK': { cls: 'at-risk', chip: 'w', remaining: 'At-risk amount' },
   'FUNDING GAP': { cls: 'funding-gap', chip: 'c', remaining: 'Funding gap' },
 };
@@ -1075,6 +1075,32 @@ const FUTURE_PLAN_FLEXIBILITY = {
   'bounded-flex': 'FLEXIBLE',
   optional: 'OPTIONAL',
 };
+
+function futureCostNeedsAttention(row, payday) {
+  if (!row || row.flexibility === 'optional') return false;
+  if (row.verdict === 'AT RISK' || row.verdict === 'FUNDING GAP') return true;
+  return !!(payday && Number(payday.allocated) > 0);
+}
+
+function futurePlanRemainingLabel(row, state) {
+  if (row && row.verdict === 'ON TRACK' && Number(row.remaining) > 0) {
+    return state.remainingOpen || state.remaining;
+  }
+  return state.remaining;
+}
+
+function futurePlanMeaning(row, payday, timingUnresolved) {
+  const bits = [];
+  if (row && row.verdict === 'ON TRACK' && (!payday || !(Number(payday.allocated) > 0))) {
+    bits.push('No set-aside this payday. Still required. Forecast expects later cash to cover it.');
+  } else if (row && row.verdict === 'AT RISK') {
+    bits.push('The base plan still holds, but the high end of this cost is not covered.');
+  } else if (row && row.verdict === 'FUNDING GAP') {
+    bits.push('Forecast cannot fully cover this cost on the current path.');
+  }
+  if (timingUnresolved) bits.push('Exact date is not set yet, so this payday assigns no contribution.');
+  return bits.join(' ');
+}
 
 function futurePlanRequirement(row) {
   if (row.need != null) return { amount: money2(row.need), label: 'Cost still required' };
@@ -1092,6 +1118,43 @@ function futurePlanTiming(row) {
   return 'Timing unresolved';
 }
 
+function futurePlanCardHtml(row, payday, timingUnresolved) {
+  const state = FUTURE_PLAN_VERDICT[row.verdict] || { cls: '', chip: 'e', remaining: 'Forecast remaining' };
+  const requirement = futurePlanRequirement(row);
+  const confidence = row.confidence || 'unknown';
+  const confidenceClass = confidence === 'confirmed' ? 'v' : confidence === 'estimated' ? 'w' : 'e';
+  const flexibility = FUTURE_PLAN_FLEXIBILITY[row.flexibility] || String(row.flexibility || 'UNRESOLVED').toUpperCase();
+  const paydayFact = payday
+    ? `<div><b>${money2(payday.allocated)}</b><small>Set aside this payday</small></div>`
+    : timingUnresolved
+      ? '<div><b>Not assigned</b><small>Exact date not set</small></div>'
+      : '';
+  const meaning = futurePlanMeaning(row, payday, timingUnresolved);
+  const paydayNote = !payday ? ''
+    : row.flexibility === 'optional'
+      ? '<p>Allocated is not evidence that a payment or transfer occurred.</p>'
+      : '<p>Protected / allocated is not evidence that a payment or transfer occurred.</p>';
+  return `<div class="future-gravity-row ${state.cls}" data-future-gravity-id="${row.id}">
+      <div class="future-gravity-head">
+        <b>${row.label}</b>
+        <span class="chip ${state.chip}">${row.verdict || 'VERDICT UNAVAILABLE'}</span>
+      </div>
+      <div class="future-gravity-facts">
+        <div><b>${requirement.amount}</b><small>${requirement.label}</small></div>
+        <div><b>${money2(row.remaining)}</b><small>${futurePlanRemainingLabel(row, state)}</small></div>
+        ${paydayFact}
+      </div>
+      <div class="future-gravity-meta">
+        <span>${futurePlanTiming(row)}</span>
+        <span class="chip ${confidenceClass}">${confidence.toUpperCase()}</span>
+        <span class="chip e">${flexibility}</span>
+        ${timingUnresolved ? '<span class="chip w">EXACT DATE UNRESOLVED</span>' : ''}
+      </div>
+      ${meaning ? `<p class="future-gravity-meaning">${meaning}</p>` : ''}
+      ${paydayNote}
+    </div>`;
+}
+
 function futureGravityHtml(advice) {
   advice = advice || {};
   const plans = Array.isArray(advice.majorPlans) ? advice.majorPlans : [];
@@ -1103,48 +1166,44 @@ function futureGravityHtml(advice) {
     return '<p class="operating-lead">No unsettled major future costs are available from Forecast on this opening.</p>';
   }
 
+  const attentionItems = [];
+  const onTrackItems = [];
   const shapingCards = [];
   const residualCards = [];
   for (const row of plans) {
-    const state = FUTURE_PLAN_VERDICT[row.verdict] || { cls: '', chip: 'e', remaining: 'Forecast remaining' };
-    const requirement = futurePlanRequirement(row);
     const payday = paydayCosts.find(item => item.id === row.id)
       || paydayOptional.find(item => item.id === row.id) || null;
     const timingUnresolved = unresolved.find(item => item.id === row.id) || null;
-    const confidence = row.confidence || 'unknown';
-    const confidenceClass = confidence === 'confirmed' ? 'v' : confidence === 'estimated' ? 'w' : 'e';
-    const flexibility = FUTURE_PLAN_FLEXIBILITY[row.flexibility] || String(row.flexibility || 'UNRESOLVED').toUpperCase();
-    const paydayFact = payday
-      ? `<div><b>${money2(payday.allocated)}</b><small>Set aside this payday</small></div>`
-      : timingUnresolved
-        ? '<div><b>Not assigned</b><small>Exact-date payday set-aside unresolved</small></div>'
-        : '';
-    const paydayNote = !payday ? ''
-      : row.flexibility === 'optional'
-        ? '<p>Allocated is not evidence that a payment or transfer occurred.</p>'
-        : '<p>Protected / allocated is not evidence that a payment or transfer occurred.</p>';
-    const card = `<div class="future-gravity-row ${state.cls}" data-future-gravity-id="${row.id}">
-      <div class="future-gravity-head">
-        <b>${row.label}</b>
-        <span class="chip ${state.chip}">${row.verdict || 'VERDICT UNAVAILABLE'}</span>
-      </div>
-      <div class="future-gravity-facts">
-        <div><b>${requirement.amount}</b><small>${requirement.label}</small></div>
-        <div><b>${money2(row.remaining)}</b><small>${state.remaining}</small></div>
-        ${paydayFact}
-      </div>
-      <div class="future-gravity-meta">
-        <span>${futurePlanTiming(row)}</span>
-        <span class="chip ${confidenceClass}">${confidence.toUpperCase()}</span>
-        <span class="chip e">${flexibility}</span>
-        ${timingUnresolved ? '<span class="chip w">EXACT DATE UNRESOLVED</span>' : ''}
-      </div>
-      ${paydayNote}
-    </div>`;
-    if (row.flexibility === 'optional') residualCards.push(card);
-    else shapingCards.push(card);
+    const card = futurePlanCardHtml(row, payday, timingUnresolved);
+    if (row.flexibility === 'optional') {
+      residualCards.push(card);
+      continue;
+    }
+    shapingCards.push(card);
+    if (futureCostNeedsAttention(row, payday)) attentionItems.push({ row, payday, timingUnresolved });
+    else onTrackItems.push(row);
   }
 
+  const attention = attentionItems.length
+    ? `<div class="future-gravity-heading">Needs attention now</div>
+      <div class="future-gravity-attention" data-future-gravity-attention>${attentionItems.map(item => {
+        const requirement = futurePlanRequirement(item.row);
+        const allocated = item.payday ? money2(item.payday.allocated) : (item.timingUnresolved ? 'Not assigned' : '—');
+        return `<div class="operating-line" data-future-gravity-id="${item.row.id}" data-future-gravity-compact="attention">
+          <span><b>${item.row.label}</b> · ${item.row.verdict || 'VERDICT UNAVAILABLE'} · ${futurePlanTiming(item.row)}</span>
+          <span>${requirement.amount} still required · ${allocated} this payday</span>
+        </div>`;
+      }).join('')}</div>`
+    : '';
+  const onTrack = onTrackItems.length
+    ? `<div class="future-gravity-on-track" data-future-gravity-on-track>
+        <p class="operating-lead">${onTrackItems.length} required cost${onTrackItems.length === 1 ? ' is' : 's are'} on track.</p>
+        <p class="operating-note">No set-aside this payday. Forecast still treats ${onTrackItems.length === 1 ? 'it' : 'them'} as required and expects later cash to cover ${onTrackItems.length === 1 ? 'it' : 'them'}.</p>
+        <ul class="future-gravity-on-track-list">${onTrackItems.map(row =>
+          `<li data-future-gravity-id="${row.id}" data-future-gravity-compact="on-track">${row.label}${row.verdict ? ` · ${row.verdict}` : ''}</li>`
+        ).join('')}</ul>
+      </div>`
+    : '';
   const shaping = shapingCards.length
     ? `<div class="future-gravity-heading">Future costs shaping today</div><div class="future-gravity" data-future-gravity-shaping>${shapingCards.join('')}</div>`
     : '';
@@ -1154,7 +1213,11 @@ function futureGravityHtml(advice) {
   const horizon = advice.knowledge && advice.knowledge.days != null
     ? `<p class="future-gravity-note">These are Forecast.majorPlans verdicts across the ${advice.knowledge.days}-day master plan, including costs beyond the short display window.</p>`
     : '';
-  return `${shaping}${residual}${horizon}`;
+  const inventory = `${shaping}${residual}${horizon}`;
+  const details = inventory
+    ? `<details class="household-inline-details household-future-details"><summary>See all future costs</summary>${inventory}</details>`
+    : '';
+  return `${attention}${onTrack}${details || inventory}`;
 }
 
 function operatingDebtAnswerHtml(alloc) {
@@ -1171,37 +1234,42 @@ function operatingDebtAnswerHtml(alloc) {
   }).join('');
   const requiredAnswer = requiredRows
     ? `<div class="operating-lines">${requiredRows}</div>`
-    : '<p class="operating-note">Forecast has no required debt payment in this period.</p>';
+    : '<p class="operating-note">No required debt payment is due in this period.</p>';
 
   const allocated = extra.allocated;
   const target = extra.target || null;
   let surplusAnswer;
   if (allocated != null && Number(allocated) > 0 && target) {
-    surplusAnswer = `<p class="operating-lead">Forecast starts this period's extra principal with ${target.label}.</p>`;
+    surplusAnswer = `<p class="operating-lead">Extra debt money this payday goes to ${target.label}.</p>`;
   } else if (allocated != null && Number(allocated) === 0) {
-    surplusAnswer = '<p class="operating-lead">No surplus is going to debt this period.</p>';
+    surplusAnswer = '<p class="operating-lead">No extra debt payment this payday.</p>';
   } else {
-    surplusAnswer = '<p class="operating-lead">No extra-debt allocation is available on this opening.</p>';
+    surplusAnswer = '<p class="operating-lead">Atlas can’t name an extra debt payment on this opening.</p>';
   }
   const amount = allocated != null
     ? `<span class="operating-amount">${money2(allocated)} extra principal allocated this payday</span>`
     : '';
   const targetAnswer = target
-    ? `<p><b>Current extra-debt target:</b> ${target.label}${target.confidence === 'estimated' ? ' · estimated' : ''}.</p>
-       <p class="operating-note">Forecast named this target from owner-stated policy and current debt facts. A target or allocation is not proof that a payment occurred.</p>`
-    : `<p><b>Current extra-debt target:</b> unavailable.</p>
+    ? `<p><b>Debt target:</b> ${target.label}${target.confidence === 'estimated' ? ' · estimated' : ''}.</p>`
+    : `<p><b>Debt target:</b> unavailable.</p>
        <p class="operating-note">${extra.reason || 'Forecast has no authorized target on this opening.'}</p>`;
   const consequence = extra.consequence && extra.consequence.kind === 'next-target'
-    ? `<p><b>What happens next:</b> If ${extra.consequence.target.label} is cleared and true surplus remains, Forecast next targets ${extra.consequence.nextTarget.label}.</p>`
-    : '<p><b>What happens next:</b> Forecast exposes no further authorized debt consequence on this opening.</p>';
+    ? `<p><b>After that:</b> If ${extra.consequence.target.label} is cleared, extra money would next go to ${extra.consequence.nextTarget.label}.</p>`
+    : '<p><b>After that:</b> Forecast names no further debt target on this opening.</p>';
 
-  return `<h3>Required debt payments</h3>
+  return `<h3>Required payments</h3>
     ${requiredAnswer}
-    <p class="operating-note">These are contractual or modeled obligations from Forecast, not extra principal and not proof of payment.</p>
-    <h3>Extra debt</h3>
+    <h3>Extra this payday</h3>
     ${surplusAnswer}${amount}
-    <p class="operating-note">Only true surplus allocated by Forecast.paydayAllocation appears here.</p>
-    ${targetAnswer}${consequence}`;
+    ${targetAnswer}${consequence}
+    <details class="household-inline-details">
+      <summary>Debt details</summary>
+      <p class="operating-note">Required rows are contractual or modeled obligations from Forecast, not extra principal and not proof of payment.</p>
+      <p class="operating-note">Only true surplus allocated by Forecast.paydayAllocation appears as extra principal. A target or allocation is not proof that a payment occurred.</p>
+      ${target
+        ? '<p class="operating-note">Forecast named this target from owner-stated policy and current debt facts.</p>'
+        : ''}
+    </details>`;
 }
 
 const REFRESH_TRUST_STATE = {
@@ -1262,6 +1330,176 @@ function refreshTrustHtml(trust) {
   </aside>`;
 }
 
+function cashUnsafe(action, capView, alloc) {
+  const noSafe = !!(capView && !capView.hasFeasibleCap);
+  const currentShortfall = !!(action && action.currentShortfall);
+  const obligationShort = !!(alloc && alloc.obligations && Number(alloc.obligations.shortfall) > 0);
+  const essentialShort = !!(alloc && alloc.essentials && Number(alloc.essentials.shortfall) > 0);
+  const negativeCash = !!(alloc && alloc.available != null && Number(alloc.available) < 0);
+  return !!(noSafe || currentShortfall || obligationShort || essentialShort || negativeCash);
+}
+
+function todayActionRowsHtml(rows, attr) {
+  if (!rows || !rows.length) return '';
+  return rows.map(row => `
+          <div class="current-period-row" ${attr}="${row.id}">
+            <div><b>${row.label}</b><span>${row.date ? fmtDate(row.date) : 'Date unavailable'}</span></div>
+            <div class="current-period-values"><span${row.confidence === 'estimated' ? ' class="est"' : ''}>${
+              row.amount != null ? money2(row.amount) : '—'
+            }${currentPeriodConfidence(row)}</span></div>
+          </div>`).join('');
+}
+
+function todayDecisionHtml(action, capView, alloc, liveOverlay) {
+  const todayActions = (action && action.todayActions) || [];
+  const upcoming = ((action && action.bills) || []).filter(row => row && row.settlement === 'upcoming');
+  const payday = action && action.nextPayday ? fmtDateLong(action.nextPayday) : null;
+  const unsafe = cashUnsafe(action, capView, alloc);
+  const available = alloc && alloc.available != null ? money2(alloc.available) : null;
+  let kind = 'none';
+  let headline = 'No action required today.';
+  if (todayActions.length === 1) {
+    const row = todayActions[0];
+    kind = 'pay-today';
+    headline = row.date
+      ? `Pay the ${row.amount != null ? money2(row.amount) : ''} ${row.label} by ${fmtDate(row.date)}.`.replace(/\s+/g, ' ').trim()
+      : `Pay the ${row.amount != null ? money2(row.amount) : ''} ${row.label} today.`.replace(/\s+/g, ' ').trim();
+  } else if (todayActions.length > 1) {
+    kind = 'pay-today';
+    headline = 'Do these today.';
+  } else if (upcoming.length === 1) {
+    const row = upcoming[0];
+    kind = 'due-soon';
+    headline = row.date
+      ? `${row.label} of ${row.remaining != null ? money2(row.remaining) : (row.amount != null ? money2(row.amount) : '')} is due ${fmtDate(row.date)}.`
+        .replace(/\s+/g, ' ').trim()
+      : `${row.label} is still due before payday.`;
+  } else if (upcoming.length > 1) {
+    kind = 'due-soon';
+    headline = 'These are due before payday.';
+  } else if (unsafe) {
+    kind = 'hold';
+    headline = payday
+      ? `Hold discretionary spending until ${payday}.`
+      : 'Hold discretionary spending until payday.';
+  }
+
+  if (unsafe && kind !== 'hold') {
+    headline = payday
+      ? `${headline} Hold discretionary spending until ${payday}.`
+      : `${headline} Hold discretionary spending.`;
+  }
+
+  const warnings = [];
+  if (unsafe && action && action.noMovementToday && !todayActions.length) {
+    warnings.push('No payment or transfer is required today. Protected cash needs are still unfunded.');
+  }
+  if (capView && capView.shortfall != null && Number(capView.shortfall) > 0) {
+    warnings.push(`Protected shortfall ${money2(capView.shortfall)}.`);
+  }
+  if (alloc && alloc.obligations && Number(alloc.obligations.shortfall) > 0) {
+    warnings.push(`Required bills are short ${money2(alloc.obligations.shortfall)}.`);
+  }
+  if (alloc && alloc.essentials && Number(alloc.essentials.shortfall) > 0) {
+    warnings.push(`Everyday essentials are short ${money2(alloc.essentials.shortfall)}.`);
+  }
+  if (alloc && alloc.available != null && Number(alloc.available) < 0) {
+    warnings.push(`Spendable cash is ${money2(alloc.available)}. Credit is not cash.`);
+  }
+
+  const facts = [];
+  if (available) {
+    facts.push(`<div class="household-fact"><span>Spendable cash · not credit</span><b>${available}</b></div>`);
+  }
+  if (payday) {
+    facts.push(`<div class="household-fact"><span>Next payday</span><b>${payday}</b></div>`);
+  }
+
+  const extraActions = todayActions.length > 1
+    ? `<div class="household-today-actions">${todayActionRowsHtml(todayActions, 'data-current-today-action')}</div>`
+    : (todayActions.length === 1
+      ? `<div class="household-today-actions">${todayActionRowsHtml(todayActions, 'data-current-today-action')}</div>`
+      : '');
+  const upcomingList = !todayActions.length && upcoming.length
+    ? `<div class="household-today-actions">${todayActionRowsHtml(upcoming, 'data-current-upcoming-bill')}</div>`
+    : '';
+
+  return `<div class="decision-today" data-today-decision="${kind}">
+    <p class="household-primary${unsafe ? ' household-tight' : ''}" data-today-headline>${headline}</p>
+    ${extraActions}${upcomingList}
+    ${warnings.map(text => `<p class="operating-limit warn">${text}</p>`).join('')}
+    ${facts.length ? `<div class="household-facts">${facts.join('')}</div>` : ''}
+    <p class="operating-note">Current spendable cash: ${available || '—'} · ${paydayCashNote(alloc, liveOverlay)}</p>
+  </div>`;
+}
+
+function spendDecisionHtml(capView, weeklyPermission, remainingUnavailable, weeklyAuthority, action) {
+  const payday = action && action.nextPayday ? fmtDateLong(action.nextPayday) : 'payday';
+  if (capView.hasFeasibleCap && weeklyPermission != null) {
+    return `<span class="operating-amount" data-spend-decision="amount">${money(weeklyPermission)} / week</span>
+       <p class="operating-note">${weeklyAuthority}${
+         remainingUnavailable
+           ? ' Current remaining spend cannot be confirmed from the incumbent trust contract.'
+           : ''
+       }</p>`;
+  }
+  const short = capView.fundingBlocked
+    ? `No safe spending amount until ${payday}.`
+    : 'No safe spending amount.';
+  return `<p class="household-primary household-tight" data-spend-decision="none">${short}</p>
+    <p class="operating-note">Protected cash needs are still unfunded.</p>
+    <details class="household-inline-details">
+      <summary>Why?</summary>
+      <p class="payday-refuse">${capView.infeasible ? '<b>INFEASIBLE. </b>' : ''}${capView.reason}</p>
+    </details>`;
+}
+
+function paydayBucketRow(label, allocated, wanted, shortfall) {
+  const bits = [];
+  if (allocated != null) bits.push(money2(allocated));
+  if (wanted != null && (allocated == null || Number(allocated) !== Number(wanted))) {
+    bits.push(`of ${money2(wanted)}`);
+  }
+  if (shortfall != null && Number(shortfall) > 0) bits.push(`short ${money2(shortfall)}`);
+  return `<div class="operating-line"><span>${label}</span><span>${bits.join(' · ') || '—'}</span></div>`;
+}
+
+function paydayAllocationSummaryHtml(alloc, action) {
+  if (!alloc || !Array.isArray(alloc.lines)) {
+    return `<div class="allocation-unavailable">
+      <p class="operating-lead">Payday allocation unavailable.</p>
+      <p class="operating-note">Forecast does not name transfers or account movements here.</p>
+    </div>`;
+  }
+  const payday = (action && action.nextPayday) || alloc.payday;
+  const paydayLabel = payday ? fmtDateLong(payday) : 'the next payday';
+  const between = (action && action.mode === 'between-paydays') || alloc.mode === 'between-paydays';
+  const lead = between
+    ? `Forecast does not yet name transfers for ${paydayLabel}. Until then, current spendable cash is reserved like this.`
+    : `This payday, current spendable cash is reserved in this order.`;
+  const obligations = alloc.obligations || {};
+  const essentials = alloc.essentials || {};
+  const extra = alloc.extraDebt || {};
+  const futureRows = (alloc.futureCosts || []).filter(row => row && Number(row.allocated) > 0)
+    .map(row => paydayBucketRow(row.label, row.allocated, row.need, row.shortfall)).join('');
+  const remainder = alloc.remainder != null ? alloc.remainder : alloc.unallocated;
+  return `<div class="payday-decision" data-payday-decision>
+    <p class="operating-lead">${lead}</p>
+    <p class="operating-note">Atlas names the amounts, not the account to move them from.</p>
+    <div class="operating-lines">
+      ${paydayBucketRow('Required bills', obligations.allocated, obligations.wanted, obligations.shortfall)}
+      ${paydayBucketRow('Everyday essentials', essentials.allocated, essentials.wanted, essentials.shortfall)}
+      ${futureRows}
+      ${paydayBucketRow('Extra debt', extra.allocated, null, null)}
+      ${paydayBucketRow('Left after that', remainder, null, null)}
+    </div>
+    <details class="household-inline-details">
+      <summary>See how payday is allocated</summary>
+      ${paydayAllocationSheetHtml(alloc)}
+    </details>
+  </div>`;
+}
+
 /* The homepage's decision-first summary. Every financial value and verdict is
  * already present on the incumbent Forecast result passed in by renderPlan.
  * This function formats those fields only: it does not call Forecast, add an
@@ -1271,8 +1509,6 @@ function operatingSurfaceHtml(ctx) {
   const alloc = advice.paydayAllocation || null;
   const action = advice.currentPeriodAction || null;
   const capView = ctx.capView || weeklyCapView(advice, ctx.weeklyOverride);
-  const available = alloc && alloc.available != null ? money2(alloc.available) : '—';
-  const todayActions = (action && action.todayActions) || [];
   const protectionRows = paydayActionRows(ctx).filter(row =>
     row.key !== 'extra-debt' && !String(row.key || '').startsWith('optional:'));
   const coverage = paydayCoverageNote(action);
@@ -1294,17 +1530,14 @@ function operatingSurfaceHtml(ctx) {
       <div class="operating-answer">${answer}</div>
     </div>`;
 
-  let nowLead = 'Use the ordered Forecast allocation below as the current payday plan.';
-  if (action && action.noMovementToday) nowLead = 'No money movement is required today; keep the allocation below intact.';
-  if (todayActions.length) nowLead = 'Complete only the current-day actions already identified by Forecast, then keep the allocation below intact.';
-  const nowRows = todayActions.map(row => ({ label: row.label, amount: row.amount }));
-  const now = action && action.mode === 'between-paydays'
-    ? `${betweenPaydaysOperatingHtml(action, capView)}
-       <p class="operating-note">Current spendable cash: ${available} · ${paydayCashNote(alloc, ctx.liveOverlay)}</p>`
-    : `<p class="operating-lead">${nowLead}</p>
-       ${lineList(nowRows)}
-       ${paydayAllocationSheetHtml(alloc)}
-       <p class="operating-note">${available} available · ${paydayCashNote(alloc, ctx.liveOverlay)}</p>`;
+  const today = todayDecisionHtml(action, capView, alloc, ctx.liveOverlay);
+  const periodDetails = action && action.mode === 'between-paydays'
+    ? `<details class="household-inline-details household-period-details">
+        <summary>See current-period details</summary>
+        ${betweenPaydaysOperatingHtml(action, capView)}
+      </details>`
+    : '';
+  const now = `${today}${periodDetails}`;
 
   const weeklyPermission = action && action.mode === 'between-paydays'
     ? action.weeklyCap
@@ -1312,17 +1545,12 @@ function operatingSurfaceHtml(ctx) {
   const weeklyAuthority = action && action.mode === 'between-paydays'
     ? "Forecast.currentPeriodAction's current weekly permission through the next payday."
     : "Forecast.recommend's supported household cap through the next payday. Essential costs come out of it first.";
-  const spend = capView.hasFeasibleCap && weeklyPermission != null
-    ? `<span class="operating-amount">${money(weeklyPermission)} / week</span>
-       <p class="operating-note">${weeklyAuthority}${
-         remainingUnavailable
-           ? ' Current remaining spend cannot be confirmed from the incumbent trust contract.'
-           : ''
-       }</p>`
-    : `<p class="payday-refuse">${capView.infeasible ? '<b>INFEASIBLE. </b>' : ''}${capView.reason}</p>`;
+  const spend = spendDecisionHtml(capView, weeklyPermission, remainingUnavailable, weeklyAuthority, action);
+
+  const nextPayday = paydayAllocationSummaryHtml(alloc, action);
 
   const currentProtection = protectionRows.length
-    ? `<div class="future-gravity-current"><h3>Protected in the current period</h3>${lineList(protectionRows)}</div>`
+    ? `<div class="future-gravity-current"><h3>Still to cover before payday</h3>${lineList(protectionRows)}</div>`
     : '';
   const protecting = `${currentProtection}${futureGravityHtml(advice)}`;
 
@@ -1337,11 +1565,12 @@ function operatingSurfaceHtml(ctx) {
     .join('');
 
   return refreshTrustHtml(ctx.refreshTrust)
-    + question('01', 'What do I do now?', now)
-    + question('02', 'What can we spend until next payday?', spend)
-    + question('03', "What is today's money protecting?", protecting)
-    + question('04', 'What debt is receiving surplus?', debt)
-    + question('05', 'What could make this answer wrong?', limits);
+    + question('01', 'What should I do today?', now)
+    + question('02', 'What can I spend until payday?', spend)
+    + question('03', 'What happens on the next payday?', nextPayday)
+    + question('04', 'What future costs affect today?', protecting)
+    + question('05', 'What are we doing with debt?', debt)
+    + `<div class="operating-certainty" data-operating-certainty>${limits}</div>`;
 }
 
 function paydayAnswerHtml(ctx) {
