@@ -1,0 +1,202 @@
+/* Plain-language household presentation overrides.
+ * No financial meaning lives here; public/plan.js still renders the source
+ * answer and public/household-view.js only rearranges that rendered content.
+ */
+
+#operating-surface .kicker {
+  letter-spacing: .08em;
+}
+
+#operating-surface .lede {
+  max-width: 44rem;
+}
+
+#operating-surface-body.household-view-ready {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.household-view-ready .operating-question {
+  margin: 0;
+  padding: 1.15rem 1.2rem;
+  border: 1px solid var(--grid);
+  border-radius: 18px;
+  background: var(--surface-1);
+}
+
+.household-view-ready .operating-number {
+  display: none;
+}
+
+.household-view-ready .operating-prompt {
+  margin: 0 0 .7rem;
+  font-size: 1rem;
+  line-height: 1.25;
+  color: var(--muted);
+  letter-spacing: .01em;
+}
+
+.household-view-ready .operating-answer {
+  margin: 0;
+}
+
+.household-primary {
+  margin: 0;
+  font-size: 1.45rem;
+  line-height: 1.2;
+  font-weight: 760;
+  color: var(--text-primary);
+}
+
+.household-primary.household-tight {
+  color: var(--critical);
+}
+
+.household-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .7rem;
+  margin-top: 1rem;
+}
+
+.household-fact {
+  min-width: 0;
+  padding: .8rem .85rem;
+  border: 1px solid var(--grid);
+  border-radius: 14px;
+  background: var(--plane);
+}
+
+.household-fact span,
+.household-fact b {
+  display: block;
+}
+
+.household-fact span {
+  margin-bottom: .25rem;
+  color: var(--muted);
+  font-size: .78rem;
+  text-transform: uppercase;
+  letter-spacing: .055em;
+  font-weight: 700;
+}
+
+.household-fact b {
+  font-size: 1.1rem;
+  line-height: 1.2;
+}
+
+.household-today-actions {
+  margin-top: .9rem;
+}
+
+.household-inline-details,
+.household-trust-details {
+  margin-top: .9rem;
+}
+
+.household-inline-details > summary,
+.household-trust-details > summary {
+  cursor: pointer;
+  color: var(--s1);
+  font-weight: 700;
+  list-style-position: inside;
+}
+
+.household-inline-details[open] > summary,
+.household-trust-details[open] > summary {
+  margin-bottom: .7rem;
+}
+
+.household-future-details .future-gravity-heading:first-of-type {
+  margin-top: .35rem;
+}
+
+.household-period-details .current-period-card {
+  margin-top: 0;
+}
+
+.household-view-ready .refresh-trust {
+  margin: .1rem 0 0;
+  padding: .85rem 1rem;
+  border-radius: 14px;
+}
+
+.household-view-ready .refresh-trust-state {
+  margin: 0;
+  font-size: .9rem;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 760;
+}
+
+.household-view-ready .refresh-trust-asof {
+  margin: .2rem 0 0;
+  font-size: .9rem;
+}
+
+.household-view-ready .household-trust-details ul {
+  margin-top: .7rem;
+}
+
+.household-view-ready .household-trust-details li + li {
+  margin-top: .45rem;
+}
+
+.household-view-ready .operating-question[data-operating-question="04"] .operating-note {
+  margin-top: .5rem;
+}
+
+@media (max-width: 700px) {
+  #operating-surface {
+    padding-top: 1.25rem;
+  }
+
+  #operating-surface h1 {
+    font-size: clamp(2rem, 10vw, 2.7rem);
+    line-height: 1.02;
+  }
+
+  #operating-surface .lede {
+    font-size: 1rem;
+    line-height: 1.45;
+  }
+
+  #operating-surface-body.household-view-ready {
+    gap: .8rem;
+  }
+
+  .household-view-ready .operating-question {
+    padding: 1rem;
+    border-radius: 16px;
+  }
+
+  .household-primary {
+    font-size: 1.3rem;
+  }
+
+  .household-facts {
+    grid-template-columns: 1fr 1fr;
+    gap: .55rem;
+  }
+
+  .household-fact {
+    padding: .72rem;
+  }
+
+  .household-view-ready .operating-lines {
+    margin-top: .55rem;
+  }
+
+  .household-view-ready .future-gravity-current h3,
+  .household-view-ready .operating-answer > h3 {
+    font-size: .92rem;
+  }
+}
+
+@media (max-width: 420px) {
+  .household-facts {
+    grid-template-columns: 1fr;
+  }
+}
