@@ -88,12 +88,23 @@ console.log('\n=== waterfall model copies figures instead of recalculating them 
     'income and future-cost values are passed through unchanged');
   ok(model.scheduledOutflows.length === 1
       && model.scheduledOutflows[0].label === 'Synthetic mortgage',
-    'a debt minimum already broken out below is not duplicated in the bills schedule');
+    'a debt minimum already broken out below is not duplicated in the calendar context');
   ok(model.historicalNorms[0].value === '$654.32 / month'
       && model.historicalNorms[1].value === '$234.56 / month',
     'historical norms remain labelled monthly reference values');
   ok(model.debtTarget === 'Synthetic high-rate card.',
     'debt target is copied rather than selected by the presentation layer');
+
+  const sections = W.waterfallSections(model);
+  const reconciledText = JSON.stringify(sections.reconciled);
+  ok(sections.reconciled.currentCash.value === '$1,234.56'
+      && sections.reconciled.leftover.value === '$66.66',
+    'reconciled waterfall starts from current spendable cash and ends at incumbent LEFT OVER');
+  ok(!reconciledText.includes('Synthetic payroll') && !reconciledText.includes('$4,321.09'),
+    'next-payday income cannot enter the reconciled current-cash waterfall');
+  ok(sections.calendarContext.income[0].label === 'Synthetic payroll'
+      && sections.calendarContext.income[0].value === '$4,321.09',
+    'future payroll remains available only as separate timing context');
 }
 
 console.log('\n=== runtime stays downstream of financial authority ===');
@@ -108,6 +119,10 @@ console.log('\n=== runtime stays downstream of financial authority ===');
     'does not recreate or invoke an allocation/planning authority');
   ok(/Recent historical actuals are a starting norm, not a spending target or permission\./.test(src),
     'historical actuals are explicitly kept below owner-policy authority');
+  ok(/Future paydays are not included\./.test(src),
+    'current-cash resource pool explicitly excludes future paydays');
+  ok(/They are not inputs to LEFT OVER\./.test(src),
+    '14-day calendar rows explicitly declare they are outside LEFT OVER');
   ok(/Copied from Forecast after the current protected allocations above\./.test(src),
     'LEFT OVER declares that it is copied from the incumbent authority');
   ok(/See full Atlas detail/.test(src),
