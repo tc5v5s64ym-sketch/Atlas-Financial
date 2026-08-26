@@ -57,6 +57,18 @@
     return match ? clean(match[1]) : null;
   }
 
+  function friendlySpendingNote(value) {
+    const source = clean(value);
+    let out = 'This is the household spending limit until the next payday.';
+    if (/Essential costs come out of it first\./i.test(source)) {
+      out += ' Essential costs come out of it first.';
+    }
+    if (/Current remaining spend cannot be confirmed/i.test(source)) {
+      out += ' Current remaining spend is not confirmed.';
+    }
+    return out;
+  }
+
   function firstDirectChild(parent, predicate) {
     return Array.from((parent && parent.children) || []).find(predicate) || null;
   }
@@ -113,7 +125,7 @@
     if (cash || payday) {
       const facts = doc.createElement('div');
       facts.className = 'household-facts';
-      if (cash) facts.appendChild(makeFact(doc, 'Spendable cash', cash));
+      if (cash) facts.appendChild(makeFact(doc, 'Spendable cash · not credit', cash));
       if (payday) facts.appendChild(makeFact(doc, 'Next payday', payday));
       summary.appendChild(facts);
     }
@@ -152,7 +164,7 @@
     if (amount) {
       const notes = answer.querySelectorAll('.operating-note');
       for (const note of notes) {
-        note.textContent = 'This is the household spending limit until the next payday.';
+        note.textContent = friendlySpendingNote(note.textContent);
       }
       return true;
     }
@@ -303,6 +315,7 @@
     aggregateTexts,
     friendlyDiagnostic,
     cashValueFromNote,
+    friendlySpendingNote,
     enhance,
     boot,
   };
