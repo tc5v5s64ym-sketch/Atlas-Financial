@@ -65,7 +65,7 @@
   padding: .8rem .85rem;
   border: 1px solid var(--grid);
   border-radius: 14px;
-  background: var(--surface-2);
+  background: var(--plane);
 }
 
 .household-fact span,
