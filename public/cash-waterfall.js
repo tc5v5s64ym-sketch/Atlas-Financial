@@ -3,8 +3,8 @@
  *
  * This layer owns no financial arithmetic. It reads only values that the
  * incumbent Plan renderer has already published from Forecast, then arranges
- * those values in the owner's household order: money in, bills, household,
- * debt minimums, future-cost set-asides, extra debt, and left over.
+ * one current-cash allocation basis in household order. The separate 14-day
+ * agenda is timing context only and never participates in LEFT OVER.
  * Historical category actuals are shown only as labelled reference norms.
  * They are never promoted into a target, permission, allocation, or policy.
  */
@@ -63,6 +63,32 @@
       leftover: copyRows(source.leftover)[0] || null,
       dataStatus: clean(source.dataStatus),
       dataAsOf: clean(source.dataAsOf),
+    };
+  }
+
+  function waterfallSections(model) {
+    const currentCash = {
+      label: 'Current spendable cash',
+      value: clean(model && model.spendableCash),
+      date: '',
+      meta: 'not credit',
+    };
+    return {
+      reconciled: {
+        currentCash,
+        requiredBills: model && model.requiredBills,
+        household: model && model.household,
+        historicalNorms: copyRows(model && model.historicalNorms),
+        debtMinimums: copyRows(model && model.debtMinimums),
+        futureAllocations: copyRows(model && model.futureAllocations),
+        extraDebt: model && model.extraDebt,
+        debtTarget: clean(model && model.debtTarget),
+        leftover: model && model.leftover,
+      },
+      calendarContext: {
+        income: copyRows(model && model.scheduledIncome),
+        outflows: copyRows(model && model.scheduledOutflows),
+      },
     };
   }
 
@@ -248,6 +274,24 @@
     return waterfall;
   }
 
+  function renderCalendarContext(doc, model) {
+    const context = waterfallSections(model).calendarContext;
+    if (!context.income.length && !context.outflows.length) return null;
+    const details = node(doc, 'details', 'cash-waterfall-atlas-detail cash-flow-calendar-context');
+    details.appendChild(node(doc, 'summary', '', 'Upcoming calendar · timing only'));
+    details.appendChild(node(doc, 'p', 'cash-flow-note',
+      'These 14-day income and outflow rows are timing context only. They are not inputs to LEFT OVER.'));
+    if (context.income.length) {
+      details.appendChild(sectionBlock(doc, 'Income coming up', null, context.income,
+        'Future income stays outside the current-cash waterfall until Forecast includes it in that allocation basis.'));
+    }
+    if (context.outflows.length) {
+      details.appendChild(sectionBlock(doc, 'Cash outflows coming up', null, context.outflows,
+        'Calendar rows show timing only; the required-bills amount above remains the reconciled allocation figure.'));
+    }
+    return details;
+  }
+
   function render(doc, waterfall, model) {
     waterfall.replaceChildren();
     waterfall.appendChild(node(doc, 'div', 'kicker', 'HOUSEHOLD MONEY PLAN'));
@@ -266,27 +310,32 @@
     top.append(cash, payday);
     waterfall.appendChild(top);
 
+    const sections = waterfallSections(model);
+    const current = sections.reconciled;
     const flow = node(doc, 'div', 'cash-flow-card');
 
-    const incomeNote = model.scheduledIncome.length
-      ? 'Scheduled income shown from the incumbent Forecast calendar.'
-      : 'No upcoming income row is currently shown in the 14-day Forecast calendar.';
-    flow.appendChild(sectionBlock(doc, 'Money in', null, model.scheduledIncome, incomeNote));
+    flow.appendChild(sectionBlock(
+      doc,
+      'Money available now',
+      current.currentCash,
+      null,
+      'This is the current spendable-cash resource pool for the allocation below. Future paydays are not included.'
+    ));
 
     flow.appendChild(sectionBlock(
       doc,
       'Bills & fixed costs',
-      model.requiredBills,
-      model.scheduledOutflows,
-      'Upcoming non-debt cash outflows are shown from the Forecast calendar. Debt minimums are broken out below.'
+      current.requiredBills,
+      null,
+      'Current Forecast allocation for required bills through the next payday. Calendar timing is shown separately below.'
     ));
 
     const household = sectionBlock(
       doc,
       'Household',
-      model.household,
-      model.historicalNorms,
-      model.historicalNorms.length
+      current.household,
+      current.historicalNorms,
+      current.historicalNorms.length
         ? 'Recent historical actuals are a starting norm, not a spending target or permission.'
         : 'Historical category norms are not available on this view.'
     );
@@ -298,7 +347,7 @@
       doc,
       'Debt minimums',
       null,
-      model.debtMinimums,
+      current.debtMinimums,
       'Shown separately for clarity. Where due, these required payments are already inside the Forecast required-bills allocation.'
     ));
 
@@ -306,28 +355,31 @@
       doc,
       'Savings & future costs',
       null,
-      model.futureAllocations,
-      model.futureAllocations.length
+      current.futureAllocations,
+      current.futureAllocations.length
         ? 'Only set-asides the current Forecast allocation actually names are shown here.'
         : 'No separate future-cost set-aside is named in the current allocation.'
     ));
 
-    const extraRows = model.debtTarget ? [{ label: 'Debt target', value: model.debtTarget, date: '', meta: '' }] : [];
+    const extraRows = current.debtTarget ? [{ label: 'Debt target', value: current.debtTarget, date: '', meta: '' }] : [];
     flow.appendChild(sectionBlock(
       doc,
       'Extra debt payoff',
-      model.extraDebt,
+      current.extraDebt,
       extraRows,
       'This is extra principal only; required debt payments are above.'
     ));
 
     const leftover = node(doc, 'div', 'cash-flow-leftover');
     leftover.appendChild(node(doc, 'span', '', 'LEFT OVER'));
-    leftover.appendChild(node(doc, 'strong', '', model.leftover ? model.leftover.value : '—'));
+    leftover.appendChild(node(doc, 'strong', '', current.leftover ? current.leftover.value : '—'));
     leftover.appendChild(node(doc, 'small', '', 'Copied from Forecast after the current protected allocations above.'));
     flow.appendChild(leftover);
 
     waterfall.appendChild(flow);
+
+    const calendar = renderCalendarContext(doc, model);
+    if (calendar) waterfall.appendChild(calendar);
 
     const status = node(doc, 'div', 'cash-flow-status');
     status.appendChild(node(doc, 'b', '', model.dataStatus || 'Data status unavailable'));
@@ -361,6 +413,7 @@
     historicalNormFromText,
     displayAmount,
     buildModel,
+    waterfallSections,
     extractSource,
     enhance,
     boot,
