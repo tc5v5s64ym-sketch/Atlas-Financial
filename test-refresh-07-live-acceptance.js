@@ -1,10 +1,12 @@
 'use strict';
-/* AF-REFRESH-07 — live closed-loop acceptance stopped at the trusted
- * account-map gate. Fixture proofs cover composition, sanitization,
- * Forecast identity, same-payload idempotency, no canonical write, and
- * security source bounds. The dated proof document is a gate-stop
- * record, not trusted household cents (L-006). Independent spendable
- * cash is the three posted household-cash rows.
+/* AF-REFRESH-07 — live closed-loop acceptance and campaign cleanup.
+ *
+ * Fixture proofs cover composition, sanitization, Forecast identity,
+ * same-payload idempotency, no canonical write, and security source
+ * bounds. Live cents in the dated proof document are not engine
+ * specifications (L-006). Independent spendable cash is the three
+ * posted household-cash rows. --live still fails closed when the
+ * owner-verified account-id map is missing.
  */
 const fs = require('fs');
 const path = require('path');
@@ -171,17 +173,14 @@ console.log('=== campaign closeout and prior-slice proofs remain ===');
     ok(exists(file), `${id} independent proof ${file} remains as regression`);
     ok(registry.includes(file), `${id} stays registered in npm test`);
   }
-  const plan = read('docs/AF_REFRESH_TRUSTED_STATE_LOOP_PLAN.md');
-  ok(exists('docs/AF_REFRESH_TRUSTED_STATE_LOOP_PLAN.md'),
-    'the temporary AF-REFRESH campaign plan remains because live acceptance stopped');
-  ok(/AF-REFRESH-07 is STOPPED/.test(plan) && /live-account-map-missing/.test(plan),
-    'campaign plan records the trusted-map gate stop');
-  ok(!/### AF-REFRESH-08/.test(plan) && !exists('docs/.AF_REFRESH_07_DISPATCH.md'),
-    'no successor campaign was invented');
+  ok(!exists('docs/AF_REFRESH_TRUSTED_STATE_LOOP_PLAN.md'),
+    'the temporary AF-REFRESH campaign plan is deleted');
+  ok(!exists('docs/.AF_REFRESH_07_DISPATCH.md'),
+    'no successor campaign dispatch file was invented');
   ok(!exists('docs/AF_OPERATE_PAYDAY_OPERATING_SURFACE_PLAN.md'),
     'the temporary AF-OPERATE campaign plan stays deleted');
   ok(exists('docs/connectivity/LIVE_ACCEPTANCE_AF_REFRESH_07_2026-08-25.md'),
-    'the dated gate-stop record is committed');
+    'the dated live closed-loop proof is committed');
 }
 
 console.log('\n=== A. fixture closed loop answers the seven acceptance questions ===');
@@ -338,6 +337,7 @@ console.log('\n=== E. security source bounds still hold ===');
   const liveEnv = Object.assign({}, process.env);
   delete liveEnv.ATLAS_PROVIDER_ACCOUNT_MAP_JSON;
   delete liveEnv.ATLAS_PROVIDER_ACCOUNT_MAP_PATH;
+  delete liveEnv.ATLAS_LIVE_OVERLAY_MAP;
   let liveDenied = false;
   let liveErr = '';
   try {
@@ -355,27 +355,35 @@ console.log('\n=== E. security source bounds still hold ===');
   ok(liveDenied, '--live fails closed when the owner-verified map is missing', liveErr);
 }
 
-console.log('\n=== F. dated proof is a sanitized gate-stop, not trusted live cents ===');
+console.log('\n=== F. dated live proof is sanitized and independently summed ===');
 {
   const proof = fs.readFileSync(LIVE_PROOF, 'utf8');
-  ok(/gate-stop/.test(proof) && /STOPPED/.test(proof),
-    'proof records the trusted-map gate stop');
-  ok(/Reconstructing a map from Lunch Money\s+labels is not that authority/.test(proof)
-    && /Display-name map reconstruction/.test(proof),
-    'proof refuses display-name reconstruction');
-  ok(/this repair issued no live GET/.test(proof),
-    'repair did not issue a provider GET without the trusted map');
-  ok(!/\$429\.27/.test(proof) && !/\$92\.17/.test(proof),
-    'untrusted overlay cents are not restated as household acceptance');
+  ok(/2026-08-26T01:04:11\.798Z/.test(proof), 'proof records the live fetch instant');
+  ok(/\$429\.27 \+ \(-\$522\.02\) \+ \$0\.58 = \*\*-\$92\.17\*\*/.test(proof),
+    'proof independently sums posted household cash');
+  ok(/\*\*-\$92\.17\*\*/.test(proof), 'independent spendable is recorded');
+  ok(/owner-supplied production account-map secret/.test(proof)
+    && /Display-name reconstruction was not\s+used/.test(proof),
+    'proof used the owner-verified account-id map, not display names');
+  ok(/Canonical write \| false|canonical write/.test(proof.toLowerCase()),
+    'proof states that canonical state was not written');
+  ok(/cardCapacityIsCash: \*\*0\*\*/.test(proof)
+    && /Credit capacity is not household cash/.test(proof),
+    'proof states credit is not cash');
+  ok(/funding\.borrowed: \*\*\$0\*\*/.test(proof),
+    'proof states no auto-borrow');
+  ok(/Identity keys equal \| \*\*true\*\*/.test(proof),
+    'second live GET kept identity keys equal');
   ok(/openingApprovalId/.test(proof)
     && /cannot authorize pending or an\s+opening/.test(proof),
     'proof names openingApprovalId for a newer opening; posted previewId is not that gate');
   ok(!/owner-reserved `previewId` approval/.test(proof),
     'proof does not tell the owner that previewId authorizes an opening');
   ok(!/"providerAccountId"/.test(proof)
+    && !/providerAccountId/.test(proof)
     && !/LUNCHMONEY_ACCESS_TOKEN/.test(proof)
     && !/Bearer /.test(proof),
-    'proof omits quoted provider IDs, the token name, and bearer secrets');
+    'proof omits provider IDs, the token name, and bearer secrets');
 }
 
 const afterTree = hashTree();

@@ -160,12 +160,20 @@ This is newer committed observation evidence, not a cutover: the published and
 canonical opening remains 2026-08-19, production still publishes that dated
 opening, and any newer canonical opening remains an owner-reserved decision.
 
-**AF-REFRESH-07 live acceptance — 2026-08-25 (stopped; campaign still active).**
-A Lunch Money GET-only token was present in the builder environment. The
-incumbent owner-verified `providerAccountId` map was not
-(`ATLAS_PROVIDER_ACCOUNT_MAP_JSON` absent; gitignored local map absent).
-Display-name reconstruction is not that map. Campaign scaffolding remains.
-See [`docs/connectivity/LIVE_ACCEPTANCE_AF_REFRESH_07_2026-08-25.md`](docs/connectivity/LIVE_ACCEPTANCE_AF_REFRESH_07_2026-08-25.md).
+**Dated live closed-loop acceptance — 2026-08-25 (read-only; AF-REFRESH closed).**
+The on-demand refresh loop was proved against a real Lunch Money GET using
+the owner-supplied production account-map secret: observation ready, overlay
+applied at household date 2026-08-25, trusted obligation reconciliation,
+preview-only canonical proposal, Forecast copied not recalculated,
+same-payload replay a no-op, second GET identity keys equal. Independently
+summed spendable cash is **CALCULATED** −$92.17
+($429.27 + (−$522.02) + $0.58). `funding.borrowed = 0`. Credit is not cash.
+Canonical state was not written. See
+[`docs/connectivity/LIVE_ACCEPTANCE_AF_REFRESH_07_2026-08-25.md`](docs/connectivity/LIVE_ACCEPTANCE_AF_REFRESH_07_2026-08-25.md).
+The published opening remains 2026-08-19. AF-REFRESH campaign scaffolding is
+retired; reusable observation, reconciliation, preview/approve, overlay,
+operating-answer, and refresh-trust seams remain. `--live` still fails closed
+without the owner-verified account-id map.
 
 **Captured (broader than the old 11-account / 4,222-transaction picture):**
 `data.json` `meta` currently records TD (15 accounts) · Triangle Mastercard ·
