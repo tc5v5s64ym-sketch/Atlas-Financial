@@ -102,9 +102,12 @@ console.log('\n=== waterfall model copies figures instead of recalculating them 
     'reconciled waterfall starts from current spendable cash and ends at incumbent LEFT OVER');
   ok(!reconciledText.includes('Synthetic payroll') && !reconciledText.includes('$4,321.09'),
     'next-payday income cannot enter the reconciled current-cash waterfall');
+  ok(!reconciledText.includes('Synthetic mortgage') && !reconciledText.includes('$765.43'),
+    '14-day calendar outflows cannot enter the reconciled current-cash waterfall');
   ok(sections.calendarContext.income[0].label === 'Synthetic payroll'
-      && sections.calendarContext.income[0].value === '$4,321.09',
-    'future payroll remains available only as separate timing context');
+      && sections.calendarContext.income[0].value === '$4,321.09'
+      && sections.calendarContext.outflows[0].label === 'Synthetic mortgage',
+    'future calendar rows remain available only as separate timing context');
 }
 
 console.log('\n=== runtime stays downstream of financial authority ===');
