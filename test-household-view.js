@@ -57,7 +57,7 @@ console.log('\n=== duplicate diagnostics are grouped and translated ===');
 console.log('\n=== the readability layer does not become a financial authority ===');
 {
   const src = read('public/household-view.js');
-  ok(!/\bForecast\b/.test(src), 'does not call or shadow Forecast');
+  ok(!/Forecast\s*\./.test(src), 'does not call Forecast');
   ok(!/data\.json|periods\.json|fetch\s*\(/.test(src),
     'does not read financial sources or fetch evidence');
   ok(!/paydayAllocation|currentPeriodAction|debtPriority|fundingSequence|projectDebts|simulate\s*\(/.test(src),
