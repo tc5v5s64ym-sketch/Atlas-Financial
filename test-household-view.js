@@ -22,8 +22,9 @@ console.log('=== default homepage speaks to the household first ===');
   const html = read('public/index.html');
   ok(/<div class="kicker">Today<\/div>/.test(html),
     'the first surface is labelled Today, not an internal operating-surface term');
-  ok(/The useful answer first: what to do today, what you can spend/.test(html),
-    'the intro says what the page is for in ordinary language');
+  ok(/The useful answer first: what to do today, what you can spend/.test(html)
+    && /current enough to act on/.test(html),
+    'the intro says what the page is for in ordinary language and still names trust');
   const planAt = html.indexOf('<script src="/plan.js"></script>');
   const householdAt = html.indexOf('<script src="/household-view.js"></script>');
   ok(planAt >= 0 && householdAt > planAt,

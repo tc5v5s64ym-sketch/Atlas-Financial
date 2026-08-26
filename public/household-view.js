@@ -5,8 +5,9 @@
  * that public/plan.js already rendered from Forecast and makes that same
  * answer easier to scan on a phone: the action first, details collapsed,
  * duplicate diagnostics grouped, and system vocabulary translated into
- * ordinary household language. It never reads data.json, calls Forecast,
- * fetches evidence, totals money, settles an obligation, or changes a plan.
+ * ordinary household language. It never reads canonical current-state
+ * files, calls Forecast, fetches evidence, totals money, settles an
+ * obligation, or changes a plan.
  */
 
 (function init(factory) {
