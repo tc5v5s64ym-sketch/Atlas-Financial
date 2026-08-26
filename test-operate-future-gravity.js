@@ -29,8 +29,12 @@ function loadRenderer() {
     grab(appSrc, /^const fmtDateLong = .*$/m, 'fmtDateLong'),
     grab(planSrc, /^const FUTURE_PLAN_VERDICT = \{[\s\S]*?^\};$/m, 'FUTURE_PLAN_VERDICT'),
     grab(planSrc, /^const FUTURE_PLAN_FLEXIBILITY = \{[\s\S]*?^\};$/m, 'FUTURE_PLAN_FLEXIBILITY'),
+    grab(planSrc, /^function futureCostNeedsAttention\([\s\S]*?\n\}$/m, 'futureCostNeedsAttention'),
+    grab(planSrc, /^function futurePlanRemainingLabel\([\s\S]*?\n\}$/m, 'futurePlanRemainingLabel'),
+    grab(planSrc, /^function futurePlanMeaning\([\s\S]*?\n\}$/m, 'futurePlanMeaning'),
     grab(planSrc, /^function futurePlanRequirement\([\s\S]*?\n\}$/m, 'futurePlanRequirement'),
     grab(planSrc, /^function futurePlanTiming\([\s\S]*?\n\}$/m, 'futurePlanTiming'),
+    grab(planSrc, /^function futurePlanCardHtml\([\s\S]*?\n\}$/m, 'futurePlanCardHtml'),
     grab(planSrc, /^function futureGravityHtml\([\s\S]*?\n\}$/m, 'futureGravityHtml'),
   ].join('\n');
   return vm.runInNewContext(`${source}\n({ futureGravityHtml, money2 });`);
@@ -118,8 +122,10 @@ console.log('=== verdicts, remaining amounts and payday set-asides are direct ou
   const gap = card(html, 'gap');
   const optional = card(html, 'optional');
 
-  ok(track.includes('ON TRACK') && track.includes('$0.00') && track.includes('Funding gap'),
+  ok(track.includes('ON TRACK') && track.includes('$0.00') && track.includes('Covered in the plan'),
     'ON TRACK and its exact Forecast remaining amount stay together');
+  ok(track.includes('No set-aside this payday. Still required. Forecast expects later cash to cover it.'),
+    'ON TRACK with no payday contribution is explained in household language');
   ok(risk.includes('AT RISK') && risk.includes('$333.33') && risk.includes('At-risk amount'),
     'AT RISK remains distinct with the incumbent uncertainty amount');
   ok(gap.includes('FUNDING GAP') && gap.includes('$444.44') && gap.includes('Funding gap'),
@@ -281,8 +287,8 @@ console.log('\n=== approximate timing travels through Forecast; the page stays a
   ok(helper && !/plan\.commitments|Forecast\.[A-Za-z]+\s*\(|\.reduce\(|Math\./.test(helper[0]),
     'futureGravityHtml performs no future-cost arithmetic or Forecast decision');
   ok(/futureGravityHtml\(advice\)/.test(planSrc)
-    && /question\('03', "What is today's money protecting\?", protecting\)/.test(planSrc),
-    'question 03 consumes the one incumbent recommendation result');
+    && /question\('04', 'What future costs affect today\?', protecting\)/.test(planSrc),
+    'question 04 consumes the one incumbent recommendation result');
 }
 
 if (failures) {

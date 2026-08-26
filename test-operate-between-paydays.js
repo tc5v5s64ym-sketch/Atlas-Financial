@@ -219,8 +219,9 @@ console.log('\n=== weekly permission, dates and limitations are incumbent output
 console.log('\n=== the homepage selects the daily renderer without changing payday ===');
 {
   const src = read('public/plan.js');
-  const nowBranch = /const now = action && action\.mode === 'between-paydays'[\s\S]*?: `<p class="operating-lead">\$\{nowLead\}<\/p>[\s\S]*?paydayAllocationSheetHtml\(alloc\)/.test(src);
-  ok(nowBranch,
+  ok(/betweenPaydaysOperatingHtml\(action, capView\)/.test(src)
+    && /paydayAllocationSummaryHtml\(alloc, action\)/.test(src)
+    && /paydayAllocationSheetHtml\(alloc\)/.test(src),
     'between paydays selects currentPeriodAction; payday still selects the ordered allocation sheet');
   const html = read('public/index.html');
   ok(html.indexOf('id="operating-surface"') < html.indexOf('id="payday-answer"')

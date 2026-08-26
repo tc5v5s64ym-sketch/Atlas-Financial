@@ -125,19 +125,19 @@ const zeroHtml = composer.operatingDebtAnswerHtml(zero);
 ok(zeroHtml.includes('Mortgage payment') && zeroHtml.includes('$25.00')
   && zeroHtml.includes('estimated'),
   'displayed required debt amount and trust state come from Forecast');
-ok(zeroHtml.includes('No surplus is going to debt this period.')
+ok(zeroHtml.includes('No extra debt payment this payday.')
   && zeroHtml.includes('$0.00 extra principal allocated this payday'),
   'zero extra allocation is explicit');
-ok(zeroHtml.includes('Current extra-debt target:</b> High card')
-  && !zeroHtml.includes('starts this period\'s extra principal with High card'),
+ok(zeroHtml.includes('Debt target:</b> High card')
+  && !zeroHtml.includes('Extra debt money this payday goes to High card'),
   'a zero allocation may show the authorized target but never says it received surplus');
 const positiveHtml = composer.operatingDebtAnswerHtml(alloc);
-ok(positiveHtml.includes('starts this period\'s extra principal with High card')
-  && !positiveHtml.includes('starts this period\'s extra principal with Low card'),
+ok(positiveHtml.includes('Extra debt money this payday goes to High card')
+  && !positiveHtml.includes('Extra debt money this payday goes to Low card'),
   'a positive allocation names only Forecast\'s authorized target as receiving surplus');
 ok(positiveHtml.includes('$150.00 extra principal allocated this payday'),
   'amount this payday is the direct Forecast.paydayAllocation value');
-ok(positiveHtml.includes('Forecast next targets Low card'),
+ok(positiveHtml.includes('extra money would next go to Low card'),
   'the displayed next consequence is the one Forecast returned');
 ok(/not proof that a payment occurred/.test(positiveHtml),
   'allocation and target do not imply a payment occurred');

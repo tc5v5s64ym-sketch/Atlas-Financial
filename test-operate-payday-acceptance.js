@@ -57,12 +57,22 @@ function loadComposer() {
     grab(planSrc, /^function betweenPaydaysOperatingHtml\([\s\S]*?\n\}$/m, 'betweenPaydaysOperatingHtml'),
     grab(planSrc, /^const FUTURE_PLAN_VERDICT = \{[\s\S]*?^\};$/m, 'FUTURE_PLAN_VERDICT'),
     grab(planSrc, /^const FUTURE_PLAN_FLEXIBILITY = \{[\s\S]*?^\};$/m, 'FUTURE_PLAN_FLEXIBILITY'),
+    grab(planSrc, /^function futureCostNeedsAttention\([\s\S]*?\n\}$/m, 'futureCostNeedsAttention'),
+    grab(planSrc, /^function futurePlanRemainingLabel\([\s\S]*?\n\}$/m, 'futurePlanRemainingLabel'),
+    grab(planSrc, /^function futurePlanMeaning\([\s\S]*?\n\}$/m, 'futurePlanMeaning'),
     grab(planSrc, /^function futurePlanRequirement\([\s\S]*?\n\}$/m, 'futurePlanRequirement'),
     grab(planSrc, /^function futurePlanTiming\([\s\S]*?\n\}$/m, 'futurePlanTiming'),
+    grab(planSrc, /^function futurePlanCardHtml\([\s\S]*?\n\}$/m, 'futurePlanCardHtml'),
     grab(planSrc, /^function futureGravityHtml\([\s\S]*?\n\}$/m, 'futureGravityHtml'),
     grab(planSrc, /^function operatingDebtAnswerHtml\([\s\S]*?\n\}$/m, 'operatingDebtAnswerHtml'),
     grab(planSrc, /^const REFRESH_TRUST_STATE = \{[\s\S]*?^\};$/m, 'REFRESH_TRUST_STATE'),
     grab(planSrc, /^function refreshTrustHtml\([\s\S]*?\n\}$/m, 'refreshTrustHtml'),
+    grab(planSrc, /^function cashUnsafe\([\s\S]*?\n\}$/m, 'cashUnsafe'),
+    grab(planSrc, /^function todayActionRowsHtml\([\s\S]*?\n\}$/m, 'todayActionRowsHtml'),
+    grab(planSrc, /^function todayDecisionHtml\([\s\S]*?\n\}$/m, 'todayDecisionHtml'),
+    grab(planSrc, /^function spendDecisionHtml\([\s\S]*?\n\}$/m, 'spendDecisionHtml'),
+    grab(planSrc, /^function paydayBucketRow\([\s\S]*?\n\}$/m, 'paydayBucketRow'),
+    grab(planSrc, /^function paydayAllocationSummaryHtml\([\s\S]*?\n\}$/m, 'paydayAllocationSummaryHtml'),
     grab(planSrc, /^function operatingSurfaceHtml\([\s\S]*?\n\}$/m, 'operatingSurfaceHtml'),
   ].join('\n');
   return vm.runInNewContext(
@@ -150,7 +160,7 @@ console.log('\n=== default homepage answers the operating questions first ===');
   const road = html.slice(roadAt, footerAt);
   ok(operatingAt >= 0 && worksheetAt > operatingAt && roadAt > worksheetAt && footerAt > roadAt,
     'operating surface, then the collapsed worksheet, then Why / Road ahead');
-  ok(/<h1>What the plan says to do<\/h1>/.test(defaultSurface)
+  ok(/<h1>What to do now<\/h1>/.test(defaultSurface)
     && (html.match(/<h1[\s>]/g) || []).length === 1,
   'the only page h1 is the operating-surface question');
   const worksheet = section(html, 'payday-answer');
@@ -202,6 +212,8 @@ console.log('\n=== composed surface: cash, identity, debt, protection, limits ==
     'the dated opening is between paydays, so the default Q1 is the daily operating view');
   ok(/data-current-period-action/.test(q1) && !/data-allocation-available/.test(q1),
     'between-paydays Q1 renders currentPeriodAction rather than a second payday sheet');
+  ok(/data-payday-decision/.test(q3) && /data-allocation-available/.test(q3),
+    'Q3 publishes the incumbent payday allocation as the next-payday answer');
   ok(near(independentCash, alloc.available),
     'available cash independently equals spendable opening plus same-day income');
   ok(creditHeadroom > 0 && alloc.available + 0.005 < independentCash + creditHeadroom,
@@ -217,21 +229,21 @@ console.log('\n=== composed surface: cash, identity, debt, protection, limits ==
   ok(q2.includes(`${composer.money(action.weeklyCap)} / week`)
     && near(action.weeklyCap, advice.weekly),
   'Q2 spend permission is currentPeriodAction.weeklyCap from the same recommend result');
-  ok(/future-gravity|Protected in the current period|No unsettled major future costs/.test(q3),
-    "Q3 publishes today's protected future-cost answer from incumbent Forecast outputs");
-  const protectionEnd = q3.indexOf("does not constrain today's safe-to-spend");
-  const protectionBlock = q3.slice(0, protectionEnd < 0 ? q3.length : protectionEnd);
+  ok(/future-gravity|Still to cover before payday|No unsettled major future costs/.test(q4),
+    "Q4 publishes today's protected future-cost answer from incumbent Forecast outputs");
+  const protectionEnd = q4.indexOf("does not constrain today's safe-to-spend");
+  const protectionBlock = q4.slice(0, protectionEnd < 0 ? q4.length : protectionEnd);
   for (const row of alloc.optional || []) {
     if (!row || !row.label || Number(row.allocated) > 0) continue;
     ok(!protectionBlock.includes(row.label),
       `zero optional residual ${row.id} is not labelled as protected current-period money`);
   }
   for (const item of requiredItems) {
-    ok(q4.includes(item.label) && q4.includes(composer.money2(item.amount)),
-      `Q4 required debt ${item.id} is the Forecast required item, not extra principal`);
+    ok(q5.includes(item.label) && q5.includes(composer.money2(item.amount)),
+      `Q5 required debt ${item.id} is the Forecast required item, not extra principal`);
     if (item.confidence === 'estimated') {
-      ok(q4.includes(' · estimated'),
-        `Q4 preserves the required-debt estimated trust state for ${item.id}`);
+      ok(q5.includes(' · estimated'),
+        `Q5 preserves the required-debt estimated trust state for ${item.id}`);
     }
   }
   ok(requiredItems.length >= 1,
@@ -241,26 +253,27 @@ console.log('\n=== composed surface: cash, identity, debt, protection, limits ==
     || (extraLine && near(extraLine.amount, extraAllocated)),
     'zero extra principal adds no extra-debt line; a positive extra line equals Forecast.extraDebt.allocated');
   if (extraAllocated === 0) {
-    ok(q4.includes('No surplus is going to debt this period.')
-      && q4.includes('$0.00 extra principal allocated this payday')
-      && !/starts this period's extra principal with/.test(q4),
+    ok(q5.includes('No extra debt payment this payday.')
+      && q5.includes('$0.00 extra principal allocated this payday')
+      && !/Extra debt money this payday goes to/.test(q5),
     '$0 extra-debt allocation implies no extra-principal payment');
     ok(!/Forecast has no required debt payment/.test(q4),
       '$0 extra principal does not imply required contractual debt payments disappear');
   } else {
-    ok(q4.includes(composer.money2(alloc.extraDebt.allocated) + ' extra principal')
-      && alloc.extraDebt.target && q4.includes(alloc.extraDebt.target.label),
+    ok(q5.includes(composer.money2(alloc.extraDebt.allocated) + ' extra principal')
+      && alloc.extraDebt.target && q5.includes(alloc.extraDebt.target.label),
     'positive extra principal names the Forecast-authorized target and amount');
   }
   ok(priority.status === 'ready' && priority.target
     && plan.nextDollar && plan.nextDollar.policy === 'true-surplus-highest-interest'
     && plan.nextDollar.target == null,
   'debt target comes from Forecast.debtPriority plus recorded owner policy, not a stored rank');
-  ok(q4.includes(priority.target.label),
-    'Q4 names the Forecast/owner-policy target');
+  ok(q5.includes(priority.target.label),
+    'Q5 names the Forecast/owner-policy target');
   const coverage = composer.paydayCoverageNote(action);
-  ok(q5.includes(coverage) && /Transaction actuals were not supplied|unavailable|through/.test(coverage),
-    'Q5 carries the incumbent between-paydays coverage limitation');
+  ok(/data-operating-certainty/.test(rendered) && rendered.includes(coverage)
+    && /Transaction actuals were not supplied|unavailable|through/.test(coverage),
+    'certainty block carries the incumbent between-paydays coverage limitation');
   ok(!data.liveOverlay,
     'the committed opening carries no applied live overlay to mistake for current live truth');
 }
@@ -276,19 +289,19 @@ console.log('\n=== $0 extra-debt allocation does not erase required debt ===');
     'the incumbent result still has requiredDebtPayments to preserve');
   const zeroAdvice = JSON.parse(JSON.stringify(advice));
   zeroAdvice.paydayAllocation.extraDebt.allocated = 0;
-  const q4 = question(composer.operatingSurfaceHtml({
+  const q5 = question(composer.operatingSurfaceHtml({
     advice: zeroAdvice, weekly: zeroAdvice.weekly, recommended: zeroAdvice.weekly,
-  }), '04');
+  }), '05');
   for (const item of required) {
-    ok(q4.includes(item.label) && q4.includes(composer.money2(item.amount)),
+    ok(q5.includes(item.label) && q5.includes(composer.money2(item.amount)),
       `$0 extra principal still publishes required debt ${item.id}`);
   }
-  ok(q4.includes('$0.00 extra principal allocated this payday')
-    && q4.includes('No surplus is going to debt this period.')
-    && !/starts this period's extra principal with/.test(q4),
+  ok(q5.includes('$0.00 extra principal allocated this payday')
+    && q5.includes('No extra debt payment this payday.')
+    && !/Extra debt money this payday goes to/.test(q5),
   '$0 extra-debt allocation implies no extra-principal payment');
-  ok(!/Forecast has no required debt payment/.test(q4)
-    && /Required debt payments/.test(q4),
+  ok(!/No required debt payment is due in this period/.test(q5)
+    && /Required payments/.test(q5),
   '$0 extra principal leaves requiredDebtPayments visible and separate');
 }
 
@@ -306,12 +319,15 @@ console.log('\n=== payday mode still uses the ordered allocation sheet ===');
     advice: paydayAdvice, weekly: paydayAdvice.weekly, recommended: paydayAdvice.weekly,
   });
   const q1 = question(html, '01');
-  ok(/data-allocation-available/.test(q1) && !/data-current-period-action/.test(q1),
-    'a payday-mode result renders the ordered allocation sheet in Q1');
-  ok(/What do I do now\?/.test(html) && /What can we spend until next payday\?/.test(html)
-    && /What is today's money protecting\?/.test(html)
-    && /What debt is receiving surplus\?/.test(html)
-    && /What could make this answer wrong\?/.test(html),
+  const q3 = question(html, '03');
+  ok(!/data-allocation-available/.test(q1),
+    'payday-mode Q1 stays the today decision, not the allocation sheet');
+  ok(/data-allocation-available/.test(q3) && !/data-current-period-action/.test(q3),
+    'a payday-mode result renders the ordered allocation sheet in Q3');
+  ok(/What should I do today\?/.test(html) && /What can I spend until payday\?/.test(html)
+    && /What happens on the next payday\?/.test(html)
+    && /What future costs affect today\?/.test(html)
+    && /What are we doing with debt\?/.test(html),
   'payday mode still answers the five operating questions in order');
 }
 
