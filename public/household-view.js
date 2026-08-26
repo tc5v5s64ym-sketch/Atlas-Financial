@@ -131,7 +131,14 @@
       summary.appendChild(facts);
     }
 
-    answer.replaceChildren(summary);
+    const kept = Array.from(answer.children);
+    const details = doc.createElement('details');
+    details.className = 'household-inline-details household-period-details';
+    const detailsSummary = doc.createElement('summary');
+    detailsSummary.textContent = 'See current-period details';
+    details.appendChild(detailsSummary);
+    for (const node of kept) details.appendChild(node);
+    answer.replaceChildren(summary, details);
     const prompt = q.querySelector('.operating-prompt');
     if (prompt) prompt.textContent = 'What should I do today?';
     return true;

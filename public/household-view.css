@@ -113,6 +113,10 @@
   margin-top: .35rem;
 }
 
+.household-period-details .current-period-card {
+  margin-top: 0;
+}
+
 .household-view-ready .refresh-trust {
   margin: .1rem 0 0;
   padding: .85rem 1rem;
