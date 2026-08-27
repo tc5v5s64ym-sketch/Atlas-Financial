@@ -179,8 +179,15 @@ ok(beforeOther.every(key => {
   'every pre-existing non-CMAW bill identity/amount/cadence is unchanged');
 ok(JSON.stringify(before.plan.obligations) === JSON.stringify(plan.obligations),
   'plan.obligations are unchanged');
-ok(JSON.stringify(before.plan.commitments) === JSON.stringify(plan.commitments),
-  'plan.commitments are unchanged');
+function commitmentKey(row) {
+  const copy = Object.assign({}, row);
+  if (copy.id === 'home-insurance') delete copy.note;
+  return JSON.stringify(copy);
+}
+ok((before.plan.commitments || []).length === (plan.commitments || []).length
+    && (before.plan.commitments || []).every((row, i) =>
+      commitmentKey(row) === commitmentKey(plan.commitments[i])),
+  'pre-existing commitments keep identity and amounts (home-insurance note may record the $3,000-not-$6,000 correction)');
 ok(JSON.stringify(before.plan.income) === JSON.stringify(plan.income),
   'plan.income is unchanged');
 ok(JSON.stringify(before.debts) === JSON.stringify(data.debts),
