@@ -156,6 +156,12 @@ ChatGPT reviews a candidate for merge, not the first implementation attempt.
 Optional advisory suggestions need not all be fixed. Correct-but-improvable
 work may proceed to systems review.
 
+The builder must deliver the review request directly to the active ChatGPT
+decision-desk session with the pull request number and current full head SHA.
+A GitHub review, comment, label, or workflow run is evidence only: it cannot
+wake ChatGPT and does not start or satisfy this review. Paid OpenAI reviewer
+workflows are retired. Do not wait for them.
+
 #### Bounded review protocol
 
 The blocking question is one sentence:
@@ -246,7 +252,7 @@ When no high-risk trigger has fired, the systems review is not required.
 Decision-desk advice from ChatGPT remains optional help. `auto-safe` work may
 still merge on green.
 
-Do not invent a generic owner-approval ceremony, and do not treat the parked
+Do not invent a generic owner-approval ceremony, and do not treat the retired
 paid OpenAI reviewer as this review.
 
 Failed `tests` or merge-card completeness checks start one automatic Cursor

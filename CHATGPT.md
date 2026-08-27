@@ -113,6 +113,22 @@ Reminders only. The governing documents remain the owners.
 - High-risk PR review must follow the current exact-head procedure in
   repository governance (`CLAUDE.md`).
 
+## Required review handoff
+
+When the current merge candidate is stable and `CLAUDE.md` says Atlas Contract
+/ Systems Review is required, send the request directly to the active ChatGPT
+decision-desk session. Include the pull request number, current full head SHA,
+deterministic gate state, and any prior blocking finding that bounds a
+re-review. Do not treat a GitHub review, comment, label, or successful workflow
+as a request to ChatGPT; those artifacts cannot wake this session.
+
+ChatGPT reviews that exact head independently of the active builder. After a
+`PASS`, record the exact reviewed SHA, `Reviewer: ChatGPT`, outcome, and finding
+closure in the Merge Card, then re-run the applicable deterministic gates. If
+the head moves, request review again on the new full SHA. Paid OpenAI reviewer
+workflows are retired; never wait for them and do not add API spend to perform
+this manual review.
+
 Standing facts are in [`docs/ACCOUNT_FACTS.md`](docs/ACCOUNT_FACTS.md).
 Questions only the household can answer are in
 [`docs/01_OPEN_QUESTIONS.md`](docs/01_OPEN_QUESTIONS.md). Do not guess.

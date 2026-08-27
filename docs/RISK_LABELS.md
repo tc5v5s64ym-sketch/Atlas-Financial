@@ -164,11 +164,14 @@ bounded re-review of that new exact head. If a repair itself introduces
 another genuine high-risk blocker, one bounded repair is reasonable. Further
 blocker-after-blocker churn stops and returns to the decision desk.
 
-### Parked paid OpenAI first-review / re-review
+### Retired paid OpenAI first-review / re-review
 
-Paid OpenAI first-review and re-review stay parked. That parked automation is
-not the Atlas Contract / Systems Review. Parking it does not make the manual
-ChatGPT review optional, and it does not add API spend.
+The paid OpenAI first-review and re-review workflows are retired. Their parked
+versions exited successfully without performing a review, so their green runs
+could be mistaken for progress. Required Atlas Contract / Systems Review is
+requested directly in the active ChatGPT decision-desk session with the pull
+request number and exact head SHA. GitHub handoff artifacts are evidence only;
+they do not wake ChatGPT, satisfy the review, or add API spend.
 
 ### Cursor repair of failed tests
 
