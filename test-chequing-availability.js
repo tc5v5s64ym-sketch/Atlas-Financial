@@ -82,7 +82,10 @@ console.log('\n=== household wording preserves cash-versus-borrowing boundary ==
   ok(model.available === '$1,539.04' && model.chequingBalance === '$939.04',
     'presentation formats authority values without recalculating them');
   const ui = read('public/chequing-headline.js');
-  ok(/Available in chequing/.test(ui), 'headline says available in chequing, not cash');
+  ok(/Available in chequing · Calculated/.test(ui),
+    'headline explicitly tags the derived household figure as calculated');
+  ok(/Calculated from chequing balances/.test(ui),
+    'explanatory note repeats the calculated trust status');
   ok(/Using overdraft is borrowing\./.test(ui), 'borrowed capacity is explicit');
   ok(/never includes the overdraft above/.test(ui) && /not cash and is not LEFT OVER/.test(ui),
     'Forecast cash allocation stays visibly separate from overdraft capacity');
