@@ -49,7 +49,7 @@
     if (fact) {
       const label = fact.querySelector('span');
       const value = fact.querySelector('strong');
-      setText(label, 'Available in chequing');
+      setText(label, 'Available in chequing · Calculated');
       setText(value, model.available);
 
       let note = fact.querySelector('.chequing-capacity-note');
@@ -59,7 +59,7 @@
         fact.appendChild(note);
       }
       setText(note,
-        `Chequing balances ${model.chequingBalance} + ${model.overdraftLimit} overdraft limit. ` +
+        `Calculated from chequing balances ${model.chequingBalance} + ${model.overdraftLimit} overdraft limit. ` +
         `Using overdraft is borrowing. ${model.overdraftRemaining} remains available on the overdraft.`);
     }
 
