@@ -14,6 +14,7 @@ const { execFileSync } = require('child_process');
 const O = require('./scripts/provider-observe.js');
 const Live = require('./scripts/live-plan.js');
 const Forecast = require('./public/forecast.js');
+const Chequing = require('./public/forecast-chequing.js');
 
 const ROOT = __dirname;
 const DATA = path.join(ROOT, 'data.json');
@@ -975,6 +976,82 @@ console.log('\n=== 15. posted child benefit on Chequing B is represented, amount
     },
   ], 'two matching CHILD TAX BEN credits stay fail-closed');
   filesUnchanged('posted child benefit identity');
+}
+
+console.log('\n=== 16. fail-closed overlay still reports current observed chequing ===');
+{
+  const OWNER_A = 217.69;
+  const OWNER_B = -591;
+  const OWNER_SAVINGS = 0.58;
+  const LIMIT = 600;
+  const independentNet = Math.round((OWNER_A + OWNER_B) * 100) / 100;
+  const independentUsed = Math.max(0, -OWNER_B);
+  const independentUnused = Math.max(0, LIMIT - independentUsed);
+  const independentAvailable = Math.round(
+    (Math.max(0, OWNER_A) + Math.max(0, OWNER_B) + independentUnused) * 100) / 100;
+  ok(near(independentNet, -373.31) && near(independentUnused, 9)
+      && near(independentAvailable, 226.69),
+    'independent owner identity is net −$373.31, unused $9, available $226.69');
+
+  const canonical = clone(liveData);
+  const staleA = cashValue(canonical, 'chequing-a');
+  const staleB = cashValue(canonical, 'chequing-b');
+  const staleSavings = cashValue(canonical, 'savings');
+  const staleCash = Forecast.startingCashAmount(canonical.plan);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-live-plan-chequing-'));
+  const fixture = path.join(dir, 'fixture.json');
+  fs.writeFileSync(fixture, `${JSON.stringify(payloadFrom(canonical, {
+    pendingCoverage: null,
+    tweaks: {
+      'chequing-a': OWNER_A,
+      'chequing-b': OWNER_B,
+      savings: OWNER_SAVINGS,
+    },
+  }), null, 2)}\n`);
+  const served = Live.serveCanonicalOrFixture(canonical, {
+    ATLAS_LIVE_OVERLAY: 'fixture',
+    ATLAS_LIVE_OVERLAY_FIXTURE: fixture,
+    ATLAS_LIVE_OVERLAY_MAP: MAP,
+  });
+  ok(served.liveOverlay && served.liveOverlay.applied === false,
+    'Forecast overlay still fails closed when pending freshness is unproven');
+  ok(near(cashValue(served, 'chequing-a'), staleA)
+      && near(cashValue(served, 'chequing-b'), staleB)
+      && near(Forecast.startingCashAmount(served.plan), staleCash),
+    'fail-closed overlay does not rewrite the Forecast cash opening');
+  const observed = served.liveOverlay && served.liveOverlay.observedCash;
+  ok(observed && observed.complete === true,
+    'freshness-qualified posted cash is still attached as observedCash');
+  const observedA = (observed.accounts || []).find(row => row.id === 'chequing-a');
+  const observedB = (observed.accounts || []).find(row => row.id === 'chequing-b');
+  const observedSavings = (observed.accounts || []).find(row => row.id === 'savings');
+  ok(observedA && near(observedA.value, OWNER_A)
+      && observedB && near(observedB.value, OWNER_B)
+      && observedSavings && near(observedSavings.value, OWNER_SAVINGS),
+    'observedCash carries current Chequing A, Chequing B, and Savings');
+  const summary = Chequing.chequingAvailability(served.plan, served.revolvingExtra, served.liveOverlay);
+  ok(summary.cashSource === 'observed-cash' && near(summary.chequingBalance, independentNet),
+    'chequing availability reads observed cash, not the stale opening');
+  ok(near(summary.overdraftUsed, independentUsed) && near(summary.overdraftRemaining, independentUnused),
+    'unused overdraft is $9, not the full $600 limit');
+  ok(near(summary.available, independentAvailable),
+    'available in chequing is the independent $226.69 identity',
+    String(summary.available));
+  ok(!near(summary.available, staleA + staleB + LIMIT),
+    'stale $939.04 opening plus $600 cannot produce the headline');
+  ok(!near(summary.available, OWNER_A + LIMIT),
+    'the full $600 overdraft is not added after $591 has already been consumed');
+  ok(!near(summary.available, independentAvailable + OWNER_SAVINGS),
+    'savings is excluded from available-in-chequing');
+  const util = Forecast.utilisation(served.debts, served.revolvingExtra, served.plan);
+  ok(util.totalAvailable > summary.available + 1000,
+    'card and HELOC utilisation remain a separate revolving total');
+  ok(!near(summary.available, util.totalAvailable)
+      && !near(summary.available, independentAvailable + Number((served.debts.find(d => d.id === 'heloc') || {}).limit || 0)),
+    'no credit-card or HELOC capacity enters available-in-chequing');
+  ok(near(staleA, 629.27) && near(staleB, 309.77) && near(staleSavings, 0.58),
+    'canonical opening used as the stale baseline remains the Aug 19 cash rows');
+  filesUnchanged('observed chequing on fail-closed overlay');
 }
 
 console.log('\n' + '═'.repeat(60));

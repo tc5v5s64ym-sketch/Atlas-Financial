@@ -25,7 +25,6 @@
     return {
       available: money2(summary.available),
       chequingBalance: money2(summary.chequingBalance),
-      overdraftLimit: money2(summary.overdraftLimit),
       overdraftRemaining: money2(summary.overdraftRemaining),
       includesBorrowing: summary.includesBorrowing === true,
       asOf: summary.asOf || null,
@@ -38,7 +37,7 @@
 
   function apply(doc, data, forecast) {
     if (!doc || !data || !forecast || typeof forecast.chequingAvailability !== 'function') return false;
-    const summary = forecast.chequingAvailability(data.plan, data.revolvingExtra);
+    const summary = forecast.chequingAvailability(data.plan, data.revolvingExtra, data.liveOverlay);
     const model = headlineModel(summary);
     if (!model) return false;
 
@@ -59,8 +58,7 @@
         fact.appendChild(note);
       }
       setText(note,
-        `Calculated from chequing balances ${model.chequingBalance} + ${model.overdraftLimit} overdraft limit. ` +
-        `Using overdraft is borrowing. ${model.overdraftRemaining} remains available on the overdraft.`);
+        `Actual chequing balances ${model.chequingBalance}. Unused overdraft ${model.overdraftRemaining} remains; using overdraft is borrowing, not cash. Available in chequing ${model.available}.`);
     }
 
     const firstBlock = waterfall.querySelector('.cash-flow-card .cash-flow-block');
