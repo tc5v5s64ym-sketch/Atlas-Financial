@@ -35,6 +35,7 @@ function renderRecords(d) {
     const freqWord = s => s.frequency === 'biweekly' ? 'bi-weekly'
       : s.frequency === 'once' ? 'one-time'
       : s.frequency === 'quarterly' ? 'every 3 months'
+      : s.frequency === 'yearly' ? 'yearly'
       : 'monthly';
     const shownAmount = i => i.amount != null ? money(i.amount)
       : (i.amountMin != null && i.amountMax != null)

@@ -169,11 +169,14 @@ function billKey(bill) {
 const beforeOther = (before.plan.bills || [])
   .filter(bill => bill.id !== 'uniondues' && bill.id !== outstandingId)
   .map(billKey);
-const afterOther = (plan.bills || [])
+const afterById = new Map((plan.bills || [])
   .filter(bill => bill.id !== outstandingId)
-  .map(billKey);
-ok(JSON.stringify(beforeOther) === JSON.stringify(afterOther),
-  'every non-CMAW bill identity/amount/cadence is unchanged');
+  .map(bill => [bill.id, billKey(bill)]));
+ok(beforeOther.every(key => {
+  const id = JSON.parse(key).id;
+  return afterById.get(id) === key;
+}),
+  'every pre-existing non-CMAW bill identity/amount/cadence is unchanged');
 ok(JSON.stringify(before.plan.obligations) === JSON.stringify(plan.obligations),
   'plan.obligations are unchanged');
 ok(JSON.stringify(before.plan.commitments) === JSON.stringify(plan.commitments),

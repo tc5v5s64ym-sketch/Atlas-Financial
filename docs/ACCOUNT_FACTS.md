@@ -147,8 +147,21 @@ observed cadence phase. Canonical `plan.bills` row `noble-garbage` is the
 Forecast quarterly recurrence (`day` 18, `anchor` 2026-03-18, `firstDue`
 2026-09-18). Do not infer the paying card from a Visa 0870 mask.
 
-Netflix does not exist anywhere in the data; the streaming spend is Amazon
-Channels, several small charges on scattered days.
+**Owner-confirmed recurring subscriptions** *(owner-confirmed 2026-08-27)*.
+These are current household bills on `plan.bills`. Paying account is not
+stated. Historical cleaned capture that did not show a Netflix merchant does
+not omit the owner-confirmed current Netflix bill. Amazon Channels and other
+scattered streaming actuals remain historical spending, not a reason to drop
+these dated rows.
+
+| Bill | Cadence | Amount | Trust |
+|---|---|---|---|
+| Netflix | monthly, 17th | $26 | confirmed |
+| Ultimate Guitar | yearly, May 8 | $50 | confirmed |
+| iCloud Storage | monthly, 14th | $13 | confirmed |
+| YouTube Premium | monthly, 2nd | $17 | confirmed |
+| ChatGPT Plus — Dale | monthly, 14th | $28 CAD planning amount | **estimated** — intentionally approximate web-subscription planning amount, not an institution-verified CAD charge |
+| ChatGPT Plus — Amanda | monthly, 14th | $24.99 | confirmed — iOS subscription |
 
 ### Bell Mobility — main account and second watch account *(absorbed 2026-08-16)*
 
@@ -1966,8 +1979,11 @@ hotels on the Travel Visa. **One trip, split across three cards** — worth
 remembering when the travel spend is totalled, and a reminder that no single
 account shows a complete picture of any event.
 
-A **ChatGPT subscription** (US$22.40) also bills here, which is not in any
-subscription list captured so far.
+A **ChatGPT subscription** (US$22.40) also bills here historically. That USD
+observation is not the current CAD planning amount. Owner-confirmed
+2026-08-27 planning lives on `plan.bills`: Dale's web ChatGPT Plus is the
+estimated $28/month CAD planning amount on the 14th; Amanda's iOS ChatGPT
+Plus is the confirmed $24.99/month charge on the 14th.
 
 **Affirm/Flexiti — FINAL PAYMENT PENDING** *(owner-confirmed 2026-08-23)*.
 One final **$32.53** payment is due **2026-09-21**, with no recurrence after

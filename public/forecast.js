@@ -119,6 +119,28 @@
     }
     return out;
   }
+  // Once a year on `month`/`day`. Month is 1-based. The month+day pair is the
+  // cadence, the same way monthly uses only `day`. Missing or non-integer
+  // month/day fails closed rather than inventing 1 January or the caller's
+  // start. `firstDue` is a filter, not a rewrite of the calendar day.
+  function yearlyDates(month, day, start, end, firstDue) {
+    const m = Number(month);
+    const requestedDay = Number(day);
+    if (!Number.isInteger(m) || m < 1 || m > 12) return [];
+    if (!Number.isInteger(requestedDay) || requestedDay < 1 || requestedDay > 31) return [];
+    const out = [];
+    let y = Number(String(start).slice(0, 4)) - 1;
+    const endYear = Number(String(end).slice(0, 4));
+    if (!Number.isInteger(y) || !Number.isInteger(endYear)) return [];
+    while (y <= endYear + 1) {
+      const d = Math.min(requestedDay, daysInMonth(y, m));
+      const iso = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      if (iso > end) break;
+      if (iso >= start && (!firstDue || iso >= firstDue)) out.push(iso);
+      y++;
+    }
+    return out;
+  }
 
   function occurrences(item, start, end) {
     if (item.frequency === 'once') {
@@ -133,6 +155,9 @@
     }
     if (item.frequency === 'quarterly') {
       return quarterlyDates(item.day, start, end, item.firstDue, item.anchor);
+    }
+    if (item.frequency === 'yearly') {
+      return yearlyDates(item.month, item.day, start, end, item.firstDue);
     }
     return [];
   }
@@ -3874,6 +3899,7 @@
     const monthsInWindow = (plan.windowDays || 91) / (365.25 / 12);
     const billMonthly = b => b.frequency === 'biweekly' ? b.amount * 26 / 12
       : b.frequency === 'quarterly' ? b.amount / 3
+      : b.frequency === 'yearly' ? b.amount / 12
       : b.frequency === 'once' ? b.amount / monthsInWindow : b.amount;
 
     // Dated items declare which variable category they would otherwise sit in.
