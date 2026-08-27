@@ -93,6 +93,12 @@ console.log('=== live rows carry the owner-confirmed cadence ===');
     'Amanda ChatGPT Plus is the confirmed iOS amount');
   ok(!(plan.bills || []).some(b => /pay period/i.test(JSON.stringify(b))),
     'no bill row names a Pay Period 1 / Pay Period 2 owner');
+  ok(/non-subscription bill rows are paid from Chequing A except the 1 September BC Hydro/i
+    .test(plan.billsNote)
+      && /paying accounts for the six subscription rows are unknown/i.test(plan.billsNote),
+    'bill note limits the Chequing A attribution and keeps all six subscription accounts unknown');
+  ok(!/(?:every|all)[^.]*paid from Chequing A/i.test(plan.billsNote),
+    'bill note cannot blanket-assign the six subscriptions to Chequing A');
 }
 
 console.log('\n=== hand-computed calendar dates through expandEvents ===');
