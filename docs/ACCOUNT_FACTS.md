@@ -148,20 +148,36 @@ Forecast quarterly recurrence (`day` 18, `anchor` 2026-03-18, `firstDue`
 2026-09-18). Do not infer the paying card from a Visa 0870 mask.
 
 **Owner-confirmed recurring subscriptions** *(owner-confirmed 2026-08-27)*.
-These are current household bills on `plan.bills`. Paying account is not
-stated. Historical cleaned capture that did not show a Netflix merchant does
-not omit the owner-confirmed current Netflix bill. Amazon Channels and other
-scattered streaming actuals remain historical spending, not a reason to drop
-these dated rows.
+These are current household bills on `plan.bills`. Specific paying account is
+not named. Netflix, Spotify, and the named Google subscriptions moved off
+PayPal onto the household debit/bills path. Instacart and Uber are **not**
+recorded as moved. Historical cleaned capture that missed a Netflix merchant
+does not omit the current Netflix bill.
 
 | Bill | Cadence | Amount | Trust |
 |---|---|---|---|
-| Netflix | monthly, 17th | $26 | confirmed |
+| Netflix | monthly, 17th | $26.87 | confirmed — moved off PayPal |
+| Spotify | monthly, 17th | $26.87 | confirmed — moved off PayPal |
+| Google storage / 100 GB | monthly, around month-end | $3.13 | confirmed — Forecast uses last calendar day; moved off PayPal |
 | Ultimate Guitar | yearly, May 8 | $50 | confirmed |
 | iCloud Storage | monthly, 14th | $13 | confirmed |
-| YouTube Premium | monthly, 2nd | $17 | confirmed |
-| ChatGPT Plus — Dale | monthly, 14th | $28 CAD planning amount | **estimated** — intentionally approximate web-subscription planning amount, not an institution-verified CAD charge |
+| YouTube Premium | monthly, 2nd | $17 | confirmed — moved off PayPal with the Google subscriptions |
+| ChatGPT Plus — Dale | monthly, 14th | $28 CAD planning amount | **estimated** — intentionally approximate web-subscription planning amount |
 | ChatGPT Plus — Amanda | monthly, 14th | $24.99 | confirmed — iOS subscription |
+
+**Cancelled / not renewing** *(owner-confirmed 2026-08-27)*. No forward
+`plan.bills` recurrence. Historical transactions stay in history.
+
+| Service | Forward plan |
+|---|---|
+| Canva | cancelled |
+| Mailchimp | cancelled |
+| Guitar Tabs monthly | cancelled — distinct from Ultimate Guitar yearly $50 on May 8 |
+| GitHub annual | will not renew |
+
+**Instacart** transactions are **Groceries**, not restaurants or a delivery
+category. **PayPal is a payment rail**, not itself a merchant or spending
+category; provider PayPal pulls remain funding/rail evidence.
 
 ### Bell Mobility — main account and second watch account *(absorbed 2026-08-16)*
 
@@ -416,7 +432,7 @@ it is a phone call worth making [ASK].
 |---|---|
 | Insurer | **Square One**, policy **#5157890** |
 | Renews | **10 February, automatically** |
-| Premium | **$3,131.76**, paid 10 Feb 2026 — **the whole year in one payment** |
+| Premium | **$3,131.76**, paid 10 Feb 2026 — **the whole year in one payment**. Owner-confirmed 2026-08-27: planning amount is approximately **$3,000/year, not $6,000/year**. $6,000/year is property tax, not Square One. |
 | History | $2,730.36 (Jan 2024) → $2,675.88 (Jan 2025) → $3,131.76 (Feb 2026), **about +17% in a year** |
 
 **Three things matter here.**

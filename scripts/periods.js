@@ -545,8 +545,14 @@ function buildLunchMoneyEvents(options) {
     }
 
     const mapped = LUNCH_MONEY_CATEGORY_MAP.get(label);
-    const category = mapped ? mapped.category : 'Uncategorised';
-    const type = mapped ? mapped.type : 'unknown';
+    let category = mapped ? mapped.category : 'Uncategorised';
+    let type = mapped ? mapped.type : 'unknown';
+    // Owner-confirmed 2026-08-27: Instacart is Groceries, even when the
+    // provider labels it Food Delivery / Restaurants.
+    if (/INSTACART/i.test(String(transaction.payee || ''))) {
+      category = 'Groceries';
+      type = 'essential';
+    }
     if (!mapped) {
       uncategorisedCount += 1;
       uncategorisedNet += amount;

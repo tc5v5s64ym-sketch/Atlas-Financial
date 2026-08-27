@@ -60,6 +60,7 @@ const transactions = [
   tx('fee-reversal-id', 'cash-b-secret', '2026-02-12', -3, 'Other Bank Fees'),
   tx('card-spend-id', 'card-secret', '2026-02-10', 30, 'Shopping'),
   tx('pending-id', 'card-secret', '2026-02-13', 999, 'Shopping', { pending: true }),
+  tx('instacart-id', 'cash-a-secret', '2026-02-14', 40, 'Food Delivery', { payee: 'Instacart' }),
 ];
 
 const normalized = {
@@ -93,18 +94,18 @@ const built = Periods.buildLunchMoneyEvents({
 });
 
 // Independent fixture arithmetic: accepted provider spending is
-// 100 - 10 + 50 + 20 + 30; pre-provider card evidence adds 40 + 25.
+// 100 - 10 + 50 + 20 + 30 + 40; pre-provider card evidence adds 40 + 25.
 // Interest is 5 + 7 + 4 and fees are 3. The deliberately huge overlapping
 // rows must never appear.
-const expectedSpend = (100 - 10 + 50 + 20 + 30) + (40 + 25);
+const expectedSpend = (100 - 10 + 50 + 20 + 30 + 40) + (40 + 25);
 const expectedInterest = 5 + 7 + 4;
 const expectedFees = 3;
-assert.strictEqual(expectedSpend, 255);
+assert.strictEqual(expectedSpend, 295);
 assert.strictEqual(expectedInterest, 16);
 assert.strictEqual(expectedFees, 3);
 
-assert.strictEqual(built.metadata.postedTransactions, 13, 'pending rows are not posted history');
-assert.strictEqual(built.metadata.providerEventNet, 198, 'provider net must reconcile before fallback');
+assert.strictEqual(built.metadata.postedTransactions, 14, 'pending rows are not posted history');
+assert.strictEqual(built.metadata.providerEventNet, 238, 'provider net must reconcile before fallback');
 assert.strictEqual(built.metadata.fallbackCardEvents, 4, 'only pre-provider or uncovered-card evidence survives');
 assert.strictEqual(built.metadata.categoryClaim, 'incomplete', 'unknown cleaned labels preserve uncertainty');
 assert.strictEqual(built.metadata.uncategorisedTransactions, 1);
@@ -125,6 +126,12 @@ assert.strictEqual(output.periods.all.interestTotal, expectedInterest);
 assert.strictEqual(output.periods.all.feesTotal, expectedFees);
 assert.strictEqual(output.periods.all.spending.find(row => row.label === 'Travel').total, 50,
   'travel must stay outside Fuel & transport');
+assert.strictEqual(output.periods.all.spending.find(row => row.label === 'Groceries').total, 130,
+  'Instacart is Groceries even when the provider category is Food Delivery');
+assert.strictEqual(
+  (output.periods.all.spending.find(row => row.label === 'Restaurants') || { total: 0 }).total,
+  0,
+  'Instacart must not land in Restaurants');
 assert.strictEqual(output.periods.all.spending.find(row => row.label === 'Uncategorised').type, 'unknown');
 assert.strictEqual(output.monthly.find(row => row.m === '2025-08').cardsCovered, true);
 
