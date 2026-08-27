@@ -14,7 +14,10 @@
  * does not advance that start. MATCH is not freshness: required
  * spendable cash identities need acceptable evidence for the live
  * date, and required revolving pending must be known/current, or the
- * overlay fails closed and keeps the dated opening. Owner policy,
+ * overlay fails closed and keeps the dated opening. Freshness-qualified
+ * posted cash is still attached as sanitized liveOverlay.observedCash
+ * so current chequing availability can report without rewriting the
+ * Forecast opening. Owner policy,
  * bills, income rules, and commitments stay on canonical Atlas data.
  * Same-day CHANGE may overlay a current observation; that is not a
  * canonical write. Scheduled joint-cash occurrences in
@@ -629,6 +632,31 @@ function applyLiveCutover(next, report, historicalOpeningAsOf) {
   };
 }
 
+function collectObservedCash(report, liveAsOf) {
+  const accounts = [];
+  if (!report || !liveAsOf) {
+    return { complete: false, asOf: liveAsOf || null, accounts };
+  }
+  for (const id of POSTED_CASH) {
+    const locator = `cash:${id}`;
+    const rows = postedRowsForLocator(report, locator);
+    const fresh = rows.find(row =>
+      trustworthyNumeric(row) && liveEvidenceDate(row) === liveAsOf);
+    if (!fresh) continue;
+    accounts.push({
+      id,
+      value: round2(fresh.evidenceValue),
+      evidenceDate: liveEvidenceDate(fresh),
+    });
+  }
+  return {
+    complete: accounts.some(row => row.id === 'chequing-a')
+      && accounts.some(row => row.id === 'chequing-b'),
+    asOf: liveAsOf,
+    accounts,
+  };
+}
+
 function overlayMeta(opts) {
   return {
     schema: SCHEMA,
@@ -646,6 +674,7 @@ function overlayMeta(opts) {
     note: opts.note || 'In-memory overlay for today\'s live plan. Dated openings and snapshots are unchanged.',
     reason: opts.reason || null,
     currentPeriodActuals: opts.currentPeriodActuals || null,
+    observedCash: opts.observedCash || null,
   };
 }
 
@@ -697,6 +726,7 @@ function overlayLiveState(input) {
       evidenceDate: row.evidenceDate || null,
     })),
     currentPeriodActuals: report.currentPeriodActuals || null,
+    observedCash: collectObservedCash(report, liveAsOf || cutover.liveAsOf),
   });
   if (!C.identityProofLooksSanitized(next.liveOverlay)
     || !O.identityProofLooksSanitized(next.liveOverlay)) {
@@ -777,16 +807,21 @@ function failedOverlay(canonical, reason, extra) {
   const sanitized = sanitizeLiveFailureReason(reason);
   logLiveFailure(sanitized);
   const next = clone(canonical);
+  const historicalOpeningAsOf = (canonical.plan && canonical.plan.opening && canonical.plan.opening.asOf)
+    || (canonical.meta && canonical.meta.asOf) || null;
+  const report = extra && extra.report;
+  const liveAsOf = report ? liveAsOfFrom(report, historicalOpeningAsOf) : null;
   next.liveOverlay = overlayMeta({
     applied: false,
-    historicalOpeningAsOf: (canonical.plan && canonical.plan.opening && canonical.plan.opening.asOf)
-      || (canonical.meta && canonical.meta.asOf) || null,
+    historicalOpeningAsOf,
     effectiveAsOf: null,
+    observedAsOf: liveAsOf,
     representedEvents: [],
     overlays: [],
     refused: [],
     reason: sanitized,
     note: 'Live overlay failed closed. Dated opening is unchanged.',
+    observedCash: report ? collectObservedCash(report, liveAsOf) : null,
   });
   RT.attachTo(next, {
     canonical,
@@ -966,6 +1001,7 @@ const api = {
   sanitizeLiveFailureReason,
   proposeOverlay,
   overlayLiveState,
+  collectObservedCash,
   fromObservation,
   forecastFrom,
   liveAsOfFrom,
