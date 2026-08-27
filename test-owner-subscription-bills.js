@@ -31,7 +31,9 @@ const horizon = F.knowledgeHorizon(plan, asOf);
 const viewEnd = F.addDays(asOf, (plan.windowDays || 91) - 1);
 
 const OWNER = {
-  netflix: { id: 'netflix', amount: 26, day: 17, frequency: 'monthly' },
+  netflix: { id: 'netflix', amount: 26.87, day: 17, frequency: 'monthly' },
+  spotify: { id: 'spotify', amount: 26.87, day: 17, frequency: 'monthly' },
+  'google-storage-100gb': { id: 'google-storage-100gb', amount: 3.13, day: 31, frequency: 'monthly' },
   'ultimate-guitar': { id: 'ultimate-guitar', amount: 50, month: 5, day: 8, frequency: 'yearly' },
   'icloud-storage': { id: 'icloud-storage', amount: 13, day: 14, frequency: 'monthly' },
   'youtube-premium': { id: 'youtube-premium', amount: 17, day: 2, frequency: 'monthly' },
@@ -42,6 +44,7 @@ const OWNER = {
     id: 'chatgpt-plus-amanda', amount: 24.99, day: 14, frequency: 'monthly',
   },
 };
+const CANCELLED = ['canva', 'mailchimp', 'guitar-tabs', 'github'];
 
 // Independent of Forecast.occurrences: next 17ths after 2026-08-19.
 const NETFLIX_91 = ['2026-09-17', '2026-10-17', '2026-11-17'];
@@ -95,10 +98,26 @@ console.log('=== live rows carry the owner-confirmed cadence ===');
     'no bill row names a Pay Period 1 / Pay Period 2 owner');
   ok(/non-subscription bill rows are paid from Chequing A except the 1 September BC Hydro/i
     .test(plan.billsNote)
-      && /paying accounts for the six subscription rows are unknown/i.test(plan.billsNote),
-    'bill note limits the Chequing A attribution and keeps all six subscription accounts unknown');
+      && /paying accounts for the subscription rows are unknown/i.test(plan.billsNote),
+    'bill note limits the Chequing A attribution and keeps subscription accounts unknown');
   ok(!/(?:every|all)[^.]*paid from Chequing A/i.test(plan.billsNote),
-    'bill note cannot blanket-assign the six subscriptions to Chequing A');
+    'bill note cannot blanket-assign the subscription rows to Chequing A');
+  for (const id of CANCELLED) {
+    ok(!(plan.bills || []).some(b => b.id === id),
+      `${id} has no forward plan.bills recurrence`);
+  }
+  ok(!(plan.bills || []).some(b => /canva|mailchimp|mail chimp|guitar tabs|github/i.test(b.label || '')),
+    'cancelled merchant names are not live bill labels');
+  ok(/Canva, Mailchimp, Guitar Tabs monthly, and GitHub annual have no forward recurrence/i
+    .test(plan.billsNote),
+    'cancelled services are recorded without deleting history');
+  ok(/Instacart and Uber are not recorded as moved/i.test(plan.billsNote),
+    'Instacart and Uber are not claimed as moved off PayPal');
+  const home = (plan.commitments || []).find(c => c.id === 'home-insurance');
+  ok(home && near(home.amount, 3131.76) && !near(home.amount, 6000),
+    'Square One planning stays the last verified ~$3,132, not $6,000');
+  ok(/not \$6,000\/year/i.test(home.note || ''),
+    'home-insurance note records the owner $3,000-not-$6,000 correction');
 }
 
 console.log('\n=== hand-computed calendar dates through expandEvents ===');
@@ -110,8 +129,14 @@ console.log('\n=== hand-computed calendar dates through expandEvents ===');
   const netflix = billEvents('netflix', asOf, viewEnd).map(e => e.date);
   ok(sameDates(netflix, NETFLIX_91),
     'Netflix expands on the 17th', netflix.join(', '));
-  ok(billEvents('netflix', asOf, viewEnd).every(e => near(-e.amount, 26) && e.kind === 'bill'),
-    'each Netflix cash event is −$26');
+  ok(billEvents('netflix', asOf, viewEnd).every(e => near(-e.amount, 26.87) && e.kind === 'bill'),
+    'each Netflix cash event is −$26.87');
+  const spotify = billEvents('spotify', asOf, viewEnd).map(e => e.date);
+  ok(sameDates(spotify, NETFLIX_91),
+    'Spotify expands on the same 17ths as Netflix', spotify.join(', '));
+  const google = billEvents('google-storage-100gb', asOf, viewEnd).map(e => e.date);
+  ok(sameDates(google, ['2026-08-31', '2026-09-30', '2026-10-31']),
+    'Google storage uses last calendar day', google.join(', '));
 
   const icloud = billEvents('icloud-storage', asOf, viewEnd).map(e => e.date);
   ok(sameDates(icloud, ICLOUD_91),
@@ -209,8 +234,12 @@ console.log('\n=== mid-month 14th–17th cluster follows incumbent payday window
     `${on15.mode} end ${on15.periodEnd} next ${on15.payday}`);
   const netflix = (on15.obligations.items || [])
     .find(row => row.id === 'netflix' && row.date === '2026-09-17');
-  ok(netflix && near(netflix.amount, 26),
+  const spotify = (on15.obligations.items || [])
+    .find(row => row.id === 'spotify' && row.date === '2026-09-17');
+  ok(netflix && near(netflix.amount, 26.87),
     'Netflix 17 Sep is reserved from the 15 Sep payday');
+  ok(spotify && near(spotify.amount, 26.87),
+    'Spotify 17 Sep is reserved from the 15 Sep payday');
   ok(!(on15.obligations.items || []).some(row =>
     Object.prototype.hasOwnProperty.call(CLUSTER_14, row.id) && row.date === '2026-09-14'),
     'the 14 Sep bills are not re-reserved on 15 Sep');
@@ -238,6 +267,10 @@ console.log('\n=== YouTube on the 2nd is reserved from the payday that covers 31
     .find(row => row.id === 'youtube-premium' && row.date === '2026-09-02');
   ok(youtube && near(youtube.amount, 17),
     'YouTube Premium 2 Sep is an obligation of the 31 Aug payday');
+  const google = (alloc.obligations.items || [])
+    .find(row => row.id === 'google-storage-100gb' && row.date === '2026-08-31');
+  ok(google && near(google.amount, 3.13),
+    'Google storage month-end due is reserved from the 31 Aug payday');
   ok(!(alloc.obligations.items || []).some(row =>
     (row.id === 'netflix' && row.date === '2026-09-17')
     || (Object.prototype.hasOwnProperty.call(CLUSTER_14, row.id) && row.date === '2026-09-14')),
@@ -257,9 +290,9 @@ console.log('\n=== dated subtraction uses yearly amount/12, not $50/month ===');
     asOf,
   });
   const subs = budget.categories.find(c => c.id === 'subscriptions');
-  const independentDated = 26 + 13 + 17 + 28 + 24.99 + (50 / 12);
+  const independentDated = 26.87 + 26.87 + 3.13 + 13 + 17 + 28 + 24.99 + (50 / 12);
   ok(subs && near(subs.dated, independentDated),
-    'subscriptions dated total is the six owner bills, yearly as amount/12',
+    'subscriptions dated total is the owner bills, yearly as amount/12',
     String(subs && subs.dated));
   ok(subs.datedItems.some(item => item.label === 'Ultimate Guitar'
       && near(item.amount, 50 / 12)),
