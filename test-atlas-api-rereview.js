@@ -136,58 +136,26 @@ result = helper.evaluateDispatchHandoff({ login: 'cursor', body: 'Looks ready to
 ok(!result.ok && result.code === 'not-handoff',
   'dispatcher rejects a Cursor review that is not the handoff marker');
 
-console.log('\n=== shipped workflow contract ===');
-const dispatchPath = path.join(__dirname, '.github/workflows/atlas-rereview-dispatch.yml');
-const reviewerPath = path.join(__dirname, '.github/workflows/atlas-rereview.yml');
-const dispatch = fs.readFileSync(dispatchPath, 'utf8');
-const reviewer = fs.readFileSync(reviewerPath, 'utf8');
-ok(/pull_request_review:\s*\n\s*types:\s*\[submitted\]/.test(dispatch), 'secret-free dispatcher listens to submitted PR reviews');
-ok(dispatch.includes("github.event.review.user.login == 'cursor'"),
-  'dispatcher YAML accepts the live Cursor Automation login');
-ok(dispatch.includes("github.event.review.user.login == 'cursor[bot]'"),
-  'dispatcher YAML still accepts the REST/App Cursor login');
-ok(/Atlas re-review requested\./.test(dispatch), 'dispatcher is scoped to the Cursor handoff marker');
-ok(!/startsWith\(github\.event\.review\.user\.login/.test(dispatch) && !/contains\(github\.event\.review\.user\.login/.test(dispatch),
-  'dispatcher does not broaden Cursor identity with prefix or contains matching');
-ok(!/secrets\./.test(dispatch) && !/write\b/.test((dispatch.match(/permissions:[\s\S]*?\n\n/) || [''])[0]), 'dispatcher carries no secrets or write permission');
-ok(/workflow_run:\s*\n\s*workflows:\s*\["Atlas re-review handoff dispatch"\]/.test(reviewer), 'secret-bearing reviewer is default-branch workflow_run');
-ok(/permissions:[\s\S]*?actions:\s*read[\s\S]*?checks:\s*read[\s\S]*?contents:\s*read[\s\S]*?pull-requests:\s*read/.test(reviewer), 'reviewer has only the read scopes needed for run jobs, checks, contents, and PR evidence');
-ok(!/permissions:[\s\S]*?\bwrite\b/.test((reviewer.match(/permissions:[\s\S]*?\n\n/) || [''])[0]), 'reviewer GITHUB_TOKEN has no repository write scope');
-ok(/validate-prior-review/.test(reviewer), 'reviewer independently validates the trusted Atlas review behind the Cursor handoff');
-ok(/compare\/\$\{prior_head\}\.\.\.\$\{head_sha\}/.test(reviewer) && /merge_base.*prior_head/.test(reviewer), 'reviewer proves the live repair head descends from the prior reviewed SHA');
-ok(/prior-review\.md/.test(reviewer) && /prior-comments\.json/.test(reviewer) && /repair\.diff/.test(reviewer), 'review context carries the named prior blocker record and the focused repair diff');
-ok(/reviews\/\$\{prior_review_id\}\/comments[\s\S]*select\(\.user\.login == "tc5v5s64ym-sketch"\)/.test(reviewer), 'only comments from the trusted prior reviewer enter the trusted closure record');
-ok(/for attempt in \$\(seq 1 24\)/.test(reviewer) && /sleep 5/.test(reviewer) && /120 seconds/.test(reviewer), 'reviewer waits boundedly for PENDING bookkeeping before API spend');
-ok(/Call owner-authorized OpenAI Atlas reviewer[\s\S]*?GH_TOKEN:\s*\$\{\{ github\.token \}\}/.test(reviewer), 'post-model PR and review reads use the read-only GITHUB_TOKEN');
-ok(/secrets\.OPENAI_API_KEY/.test(reviewer), 'reviewer uses the owner-approved OpenAI API key');
-ok(/secrets\.ATLAS_AUTOMATION_TOKEN/.test(reviewer), 'reviewer reuses the existing owner automation credential');
-ok(/gh api user/.test(reviewer) && /tc5v5s64ym-sketch/.test(reviewer), 'reviewer fails closed unless the automation token is the trusted reviewer identity');
-ok(/MODEL: gpt-5\.6/.test(reviewer) && /json_schema/.test(reviewer) && /store:\s*false/.test(reviewer), 'reviewer uses GPT-5.6 structured output without Responses application-state storage');
-ok(/canonical_contracts contains trusted policy text/.test(reviewer) && /prior_review_body[\s\S]*trusted/.test(reviewer), 'developer prompt trusts only default-branch policy and the validated prior Atlas blocker record');
-ok(/--rawfile portability docs\/BUILDER_PORTABILITY\.md/.test(reviewer)
-  && /--rawfile contextDoc CONTEXT\.md/.test(reviewer)
-  && /--rawfile accountFacts docs\/ACCOUNT_FACTS\.md/.test(reviewer)
-  && /--rawfile buildStrategy docs\/ATLAS_FINANCIAL_BUILD_STRATEGY\.md/.test(reviewer)
-  && /--rawfile backlog BACKLOG\.md/.test(reviewer)
-  && /--rawfile openQuestions docs\/01_OPEN_QUESTIONS\.md/.test(reviewer),
-  'follow-up trusted context includes the remaining AGENTS.md routed documents');
-ok(/builder_portability:\$portability/.test(reviewer)
-  && /account_facts:\$accountFacts/.test(reviewer)
-  && /build_strategy:\$buildStrategy/.test(reviewer)
-  && /backlog:\$backlog/.test(reviewer)
-  && /open_questions:\$openQuestions/.test(reviewer),
-  'follow-up canonical_contracts exposes those remaining documents to the API reviewer');
-ok(/bounded follow-up review/.test(reviewer) && /Do not reopen untouched work/.test(reviewer), 'review prompt follows the bounded repair re-review protocol');
-ok(/Queued or in-progress checks do not by themselves/.test(reviewer), 'review prompt does not turn ordinary CI timing into review churn');
-ok(/workflow_run\.pull_requests\[0\]\.head\.sha/.test(reviewer) && /evaluate-dispatch-head/.test(reviewer),
-  'reviewer derives the dispatch-time PR head from the associated pull head or merge parents');
-ok(!/head_sha\}" != "\$\{RUN_HEAD\}"/.test(reviewer) && !/head_sha != "\$\{RUN_HEAD\}"/.test(reviewer),
-  'reviewer does not equate workflow_run.head_sha to the live PR head');
-ok(/live_head.*HEAD_SHA/.test(reviewer) && /immediately before review post/.test(reviewer), 'reviewer rechecks the live exact head after the model call and immediately before posting');
-ok(/pulls\/\$\{PR_NUMBER\}\/reviews/.test(reviewer) && /event:\"COMMENT\"/.test(reviewer), 'reviewer posts a normal GitHub review on the exact commit');
-ok(!/gh pr merge|merge_pull_request|git push/.test(reviewer), 'instant reviewer cannot merge or push code');
-ok(/bash scripts\/atlas-openai-call\.sh/.test(reviewer), 'follow-up reviewer calls OpenAI through the shared retry helper');
-ok(!/curl -fsS https:\/\/api\.openai.com/.test(reviewer), 'follow-up reviewer does not fail-fast curl OpenAI');
+console.log('\n=== retired paid API re-review contract ===');
+const retiredWorkflowPaths = [
+  '.github/workflows/atlas-first-review-dispatch.yml',
+  '.github/workflows/atlas-first-review.yml',
+  '.github/workflows/atlas-rereview-dispatch.yml',
+  '.github/workflows/atlas-rereview.yml',
+];
+for (const retiredPath of retiredWorkflowPaths) {
+  ok(!fs.existsSync(path.join(__dirname, retiredPath)),
+    `retired API reviewer workflow is absent: ${retiredPath}`);
+}
+
+const claude = fs.readFileSync(path.join(__dirname, 'CLAUDE.md'), 'utf8');
+const chatgpt = fs.readFileSync(path.join(__dirname, 'CHATGPT.md'), 'utf8');
+ok(/If\s+the head moves, request review again on the new full SHA/.test(chatgpt),
+  'a moved repair head requires a new direct exact-head review request');
+ok(/any prior blocking finding that bounds a\s+re-review/.test(chatgpt),
+  'bounded re-review carries the prior blocking finding');
+ok(/A GitHub review, comment, label, or workflow run is evidence only/.test(claude),
+  'GitHub handoff artifacts remain evidence rather than dispatch authority');
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
 process.exit(failures === 0 ? 0 : 1);

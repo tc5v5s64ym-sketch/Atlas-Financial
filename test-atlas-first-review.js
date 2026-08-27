@@ -206,105 +206,40 @@ result = helper.evaluateFirstReviewEligibility({
 ok(!result.ok && result.action === 'fail' && result.code === 'malformed-live-head',
   'malformed live head fails closed rather than skipping as ineligible');
 
-console.log('\n=== shipped first-review workflow contract ===');
-const dispatchPath = path.join(__dirname, '.github/workflows/atlas-first-review-dispatch.yml');
-const reviewerPath = path.join(__dirname, '.github/workflows/atlas-first-review.yml');
-const followUpDispatchPath = path.join(__dirname, '.github/workflows/atlas-rereview-dispatch.yml');
-const followUpReviewerPath = path.join(__dirname, '.github/workflows/atlas-rereview.yml');
-const dispatch = fs.readFileSync(dispatchPath, 'utf8');
-const reviewer = fs.readFileSync(reviewerPath, 'utf8');
-const followUpDispatch = fs.readFileSync(followUpDispatchPath, 'utf8');
-const followUpReviewer = fs.readFileSync(followUpReviewerPath, 'utf8');
+console.log('\n=== manual systems-review handoff contract ===');
+const retiredWorkflowPaths = [
+  '.github/workflows/atlas-first-review-dispatch.yml',
+  '.github/workflows/atlas-first-review.yml',
+  '.github/workflows/atlas-rereview-dispatch.yml',
+  '.github/workflows/atlas-rereview.yml',
+];
+for (const retiredPath of retiredWorkflowPaths) {
+  ok(!fs.existsSync(path.join(__dirname, retiredPath)),
+    `retired paid reviewer workflow is absent: ${retiredPath}`);
+}
 
-ok(/pull_request:\s*\n\s*types:\s*\[[^\]]*opened[^\]]*reopened[^\]]*synchronize[^\]]*edited[^\]]*ready_for_review/.test(dispatch),
-  'secret-free dispatcher listens to new and updated pull requests');
-ok(/github\.event\.pull_request\.base\.ref == 'main'/.test(dispatch),
-  'dispatcher is scoped to pull requests targeting main');
-ok(/github\.event\.pull_request\.draft == false/.test(dispatch),
-  'dispatcher does not wake first review on drafts');
-ok(/^  note:/m.test(dispatch), 'dispatcher job is named note so the trusted reviewer can require it');
-ok(!/secrets\./.test(dispatch) && !/write\b/.test((dispatch.match(/permissions:[\s\S]*?\n\n/) || [''])[0]),
-  'dispatcher carries no secrets or write permission');
-ok(/workflow_run:\s*\n\s*workflows:\s*\["Atlas first-review dispatch"\]/.test(reviewer),
-  'secret-bearing first reviewer is default-branch workflow_run of that dispatcher');
-ok(/permissions:[\s\S]*?actions:\s*read[\s\S]*?checks:\s*read[\s\S]*?contents:\s*read[\s\S]*?pull-requests:\s*read/.test(reviewer),
-  'first reviewer has only the read scopes needed for run jobs, checks, contents, and PR evidence');
-ok(!/permissions:[\s\S]*?\bwrite\b/.test((reviewer.match(/permissions:[\s\S]*?\n\n/) || [''])[0]),
-  'first reviewer GITHUB_TOKEN has no repository write scope');
-ok(/evaluate-dispatch-head/.test(reviewer) && /workflow_run\.pull_requests\[0\]\.head\.sha/.test(reviewer),
-  'first reviewer derives the dispatch-time PR head from the associated pull head or merge parents');
-ok(!/head_sha\}" != "\$\{RUN_HEAD\}"/.test(reviewer) && !/head_sha != "\$\{RUN_HEAD\}"/.test(reviewer),
-  'first reviewer does not equate workflow_run.head_sha to the live PR head');
-ok(/evaluate-first-review/.test(reviewer),
-  'first reviewer uses the shared helper to read live Required, existing trusted verdicts, prior blockers, and repair handoffs');
-ok(!/parse-handoff/.test(reviewer) && !/validate-prior-review/.test(reviewer) && !/assert-pending/.test(reviewer),
-  'first reviewer does not require a Cursor handoff, prior blocker, or PENDING card');
-ok(!/repair_provenance/.test(reviewer) && !/prior-review\.md/.test(reviewer) && !/repair\.diff/.test(reviewer),
-  'first-review context has no repair provenance');
-ok(!/for attempt in \$\(seq 1 24\)/.test(reviewer) && !/120 seconds/.test(reviewer) && !/sleep 5/.test(reviewer),
-  'first reviewer does not wait for PENDING bookkeeping before API spend');
-ok(/initial blocking architecture review/.test(reviewer) && /This is not a bounded follow-up review/.test(reviewer),
-  'review prompt is the initial blockers-only protocol, not the repair follow-up');
-ok(!/bounded follow-up review after an automated repair/.test(reviewer),
-  'first-review prompt does not reuse the follow-up developer contract');
-ok(/Do not wait for a PENDING merge-card state/.test(reviewer),
-  'first-review prompt does not require PENDING before judging the head');
-ok(/Call owner-authorized OpenAI Atlas reviewer[\s\S]*?GH_TOKEN:\s*\$\{\{ github\.token \}\}/.test(reviewer),
-  'post-model PR and review reads use the read-only GITHUB_TOKEN');
-ok(/secrets\.OPENAI_API_KEY/.test(reviewer), 'first reviewer uses the owner-approved OpenAI API key');
-ok(/secrets\.ATLAS_AUTOMATION_TOKEN/.test(reviewer), 'first reviewer reuses the existing owner automation credential');
-ok(/gh api user/.test(reviewer) && /tc5v5s64ym-sketch/.test(reviewer),
-  'first reviewer fails closed unless the automation token is the trusted reviewer identity');
-ok(/MODEL: gpt-5\.6/.test(reviewer) && /json_schema/.test(reviewer) && /store:\s*false/.test(reviewer),
-  'first reviewer uses GPT-5.6 structured output without Responses application-state storage');
-ok(/canonical_contracts contains trusted policy text/.test(reviewer),
-  'developer prompt trusts only default-branch policy');
-ok(/--rawfile portability docs\/BUILDER_PORTABILITY\.md/.test(reviewer)
-  && /--rawfile contextDoc CONTEXT\.md/.test(reviewer)
-  && /--rawfile accountFacts docs\/ACCOUNT_FACTS\.md/.test(reviewer)
-  && /--rawfile buildStrategy docs\/ATLAS_FINANCIAL_BUILD_STRATEGY\.md/.test(reviewer)
-  && /--rawfile backlog BACKLOG\.md/.test(reviewer)
-  && /--rawfile openQuestions docs\/01_OPEN_QUESTIONS\.md/.test(reviewer),
-  'first-review trusted context includes the remaining AGENTS.md routed documents');
-ok(/builder_portability:\$portability/.test(reviewer)
-  && /account_facts:\$accountFacts/.test(reviewer)
-  && /build_strategy:\$buildStrategy/.test(reviewer)
-  && /backlog:\$backlog/.test(reviewer)
-  && /open_questions:\$openQuestions/.test(reviewer),
-  'first-review canonical_contracts exposes those remaining documents to the API reviewer');
-ok(/live_head.*HEAD_SHA/.test(reviewer) && /immediately before review post/.test(reviewer),
-  'first reviewer rechecks the live exact head after the model call and immediately before posting');
-ok(/evaluate-first-review[\s\S]*final-first-review\.json/.test(reviewer),
-  'first reviewer rechecks Required and duplicate SHA immediately before posting');
-ok(/pulls\/\$\{PR_NUMBER\}\/reviews/.test(reviewer) && /event:\"COMMENT\"/.test(reviewer),
-  'first reviewer posts a normal GitHub review on the exact commit');
-ok(!/gh pr merge|merge_pull_request|git push/.test(reviewer) && !/gh pr merge|merge_pull_request|git push/.test(dispatch),
-  'first reviewer cannot merge or push code');
-ok(/persist-credentials:\s*false/.test(reviewer),
-  'trusted first reviewer checks out default-branch code without credentials');
-ok(!/ref:\s*\$\{\{\s*github\.event\.workflow_run\.head_sha/.test(reviewer),
-  'trusted first reviewer does not check out the PR head');
-const openaiCall = fs.readFileSync(path.join(__dirname, 'scripts/atlas-openai-call.sh'), 'utf8');
-ok(/bash scripts\/atlas-openai-call\.sh/.test(reviewer),
-  'first reviewer calls OpenAI through the shared retry helper');
-ok(!/curl -fsS https:\/\/api\.openai.com/.test(reviewer),
-  'first reviewer does not fail-fast curl OpenAI');
-ok(/429/.test(openaiCall) && /backing off/.test(openaiCall) && /seq 1/.test(openaiCall),
-  'OpenAI helper retries 429 instead of exiting 22');
-ok(!/curl -[a-z]*f/.test(openaiCall),
-  'OpenAI helper does not use curl -f, which turns 429 into exit 22');
+const claude = fs.readFileSync(path.join(__dirname, 'CLAUDE.md'), 'utf8');
+const chatgpt = fs.readFileSync(path.join(__dirname, 'CHATGPT.md'), 'utf8');
+const riskLabels = fs.readFileSync(path.join(__dirname, 'docs/RISK_LABELS.md'), 'utf8');
 
-console.log('\n=== follow-up path is unchanged and separate ===');
-ok(/Atlas re-review requested\./.test(followUpDispatch),
-  'follow-up dispatcher is still scoped to the Cursor handoff marker');
-ok(/pull_request_review:/.test(followUpDispatch) && !/types:\s*\[[^\]]*opened/.test(followUpDispatch),
-  'follow-up dispatcher is still review-handoff, not new-PR opened');
-ok(/bounded follow-up review/.test(followUpReviewer) && /validate-prior-review/.test(followUpReviewer),
-  'follow-up reviewer still validates prior blockers');
-ok(/workflows:\s*\["Atlas re-review handoff dispatch"\]/.test(followUpReviewer),
-  'follow-up reviewer still listens only to the handoff dispatcher');
-ok(!/evaluate-first-review/.test(followUpReviewer) && !/Atlas first-review dispatch/.test(followUpReviewer),
-  'follow-up reviewer was not retargeted at the first-review dispatcher');
+ok(/deliver the review request directly to the active ChatGPT\s+decision-desk session/.test(claude),
+  'governance requires a direct handoff to the active ChatGPT decision desk');
+ok(/cannot\s+wake ChatGPT and does not start or satisfy this review/.test(claude),
+  'governance says GitHub artifacts cannot wake or satisfy ChatGPT review');
+ok(/Paid OpenAI reviewer\s+workflows are retired\. Do not wait for them\./.test(claude),
+  'governance retires the misleading paid reviewer wait');
+ok(/## Required review handoff/.test(chatgpt)
+  && /pull request number, current full head SHA/.test(chatgpt),
+  'the ChatGPT adapter requires PR number and exact head in the direct request');
+ok(/successful workflow\s+as a request to ChatGPT/.test(chatgpt)
+  && /cannot wake this session/.test(chatgpt),
+  'the ChatGPT adapter rejects a green workflow as a review request');
+ok(/After a\s+`PASS`[\s\S]*record the exact reviewed SHA/.test(chatgpt),
+  'the manual handoff records PASS on the exact reviewed head');
+ok(/Their parked\s+versions exited successfully without performing a review/.test(riskLabels),
+  'risk documentation records the demonstrated false-progress failure');
+ok(/do not wake ChatGPT, satisfy the review, or add API spend/.test(riskLabels),
+  'risk documentation keeps manual review required without API spend');
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
 process.exit(failures === 0 ? 0 : 1);

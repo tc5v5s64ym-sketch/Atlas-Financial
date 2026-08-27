@@ -29,11 +29,10 @@ Forecast, not a second authority. Rules:
 ## L-003. Exact-head means the pull request head, not `workflow_run.head_sha`
 
 - **Status:** active
-- **Evidence:** `.github/workflows/atlas-first-review.yml` and
-  `atlas-rereview.yml` comments; `test-github-pr-head-sync.js`;
-  `test-atlas-review-block.js`. `pull_request` dispatchers run on
-  `refs/pull/<n>/merge`, so `workflow_run.head_sha` is that synthetic
-  merge commit.
+- **Evidence:** `test-github-pr-head-sync.js` and
+  `test-atlas-review-block.js`; the retired paid-review workflow history.
+  `pull_request` dispatchers run on `refs/pull/<n>/merge`, so
+  `workflow_run.head_sha` is that synthetic merge commit.
 - **Lesson:** Compare review freshness to the associated PR head (or
   the merge commit's second parent). Do not equate
   `workflow_run.head_sha` to the live head.
