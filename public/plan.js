@@ -602,16 +602,19 @@ function weeklyCapView(advice, weeklyOverride) {
   const fail = advice.infeasible;
   const funding = advice.funding || null;
   const fundingBlocked = !!(funding && funding.feasible === false);
-  const infeasible = advice.mode === 'infeasible' && !!fail;
-  const hasFeasibleCap = !infeasible && !fundingBlocked;
+  const modeInfeasible = advice.mode === 'infeasible';
+  const infeasible = modeInfeasible;
+  const hasFeasibleCap = !modeInfeasible && !fundingBlocked;
   let reason = '';
-  if (infeasible) {
+  if (modeInfeasible && fail) {
     reason = `There is no feasible weekly cap. ${fail.label || 'A protected constraint'} fails${
       fail.date ? ` on ${fmtDateLong(fail.date)}` : ''} by ${money2(fail.shortfall)}; a weekly spending
           figure does not fix this.`;
   } else if (fundingBlocked) {
     reason = `There is no feasible weekly cap. ${money2(funding.shortfall)} stays unfunded after every usable source.
           No safe-to-spend figure exists until that protected shortfall is solved.`;
+  } else if (modeInfeasible) {
+    reason = 'There is no feasible weekly cap. Forecast.recommend returned infeasible; a weekly spending figure does not fix this.';
   }
   const settingLine = override != null
     ? `your setting is ${money(override)}/wk — not a supported weekly cap.`
@@ -1124,7 +1127,7 @@ function futurePlanCardHtml(row, payday, timingUnresolved) {
   const confidence = row.confidence || 'unknown';
   const confidenceClass = confidence === 'confirmed' ? 'v' : confidence === 'estimated' ? 'w' : 'e';
   const flexibility = FUTURE_PLAN_FLEXIBILITY[row.flexibility] || String(row.flexibility || 'UNRESOLVED').toUpperCase();
-  const paydayFact = payday
+  const paydayFact = payday && Number(payday.allocated) > 0
     ? `<div><b>${money2(payday.allocated)}</b><small>Set aside this payday</small></div>`
     : timingUnresolved
       ? '<div><b>Not assigned</b><small>Exact date not set</small></div>'
@@ -1227,7 +1230,7 @@ function operatingDebtAnswerHtml(alloc) {
   const requiredRows = (required.items || []).map(row => {
     const confidence = row.confidence === 'estimated' ? ' · estimated' : '';
     const settlement = row.settlement === 'unverified'
-      ? ' · settlement unresolved'
+      ? ' · unverified'
       : row.settlement === 'upcoming' ? ' · upcoming' : '';
     const when = row.date ? ` · ${fmtDate(row.date)}` : '';
     return `<div class="operating-line"><span>${row.label}${when}${confidence}${settlement}</span><span>${money2(row.amount)}</span></div>`;
@@ -1355,9 +1358,16 @@ function todayDecisionHtml(action, capView, alloc, liveOverlay) {
   const upcoming = ((action && action.bills) || []).filter(row => row && row.settlement === 'upcoming');
   const payday = action && action.nextPayday ? fmtDateLong(action.nextPayday) : null;
   const unsafe = cashUnsafe(action, capView, alloc);
-  const available = alloc && alloc.available != null ? money2(alloc.available) : null;
+  const extra = alloc && alloc.extraDebt || {};
+  const extraAmount = extra.allocated;
+  const extraTarget = extra.target;
+  const setAside = ((alloc && alloc.futureCosts) || [])
+    .find(row => row && Number(row.allocated) > 0);
+  const weekly = capView && capView.hasFeasibleCap ? capView.recommended : null;
   let kind = 'none';
-  let headline = 'No action required today.';
+  let headline = payday
+    ? `Hold until ${payday}. Forecast names no pay, extra-debt, or set-aside instruction on this opening.`
+    : 'Hold. Forecast names no pay, extra-debt, or set-aside instruction on this opening.';
   if (todayActions.length === 1) {
     const row = todayActions[0];
     kind = 'pay-today';
@@ -1367,6 +1377,9 @@ function todayDecisionHtml(action, capView, alloc, liveOverlay) {
   } else if (todayActions.length > 1) {
     kind = 'pay-today';
     headline = 'Do these today.';
+  } else if (extraAmount != null && Number(extraAmount) > 0 && extraTarget) {
+    kind = 'extra-debt';
+    headline = `Pay extra ${money2(extraAmount)} to ${extraTarget.label} this payday.`;
   } else if (upcoming.length === 1) {
     const row = upcoming[0];
     kind = 'due-soon';
@@ -1382,6 +1395,16 @@ function todayDecisionHtml(action, capView, alloc, liveOverlay) {
     headline = payday
       ? `Hold discretionary spending until ${payday}.`
       : 'Hold discretionary spending until payday.';
+  } else if (setAside) {
+    kind = 'set-aside';
+    headline = setAside.date
+      ? `Set aside ${money2(setAside.allocated)} for ${setAside.label} by ${fmtDate(setAside.date)}.`
+      : `Set aside ${money2(setAside.allocated)} for ${setAside.label} this payday.`;
+  } else if (weekly != null) {
+    kind = 'spend-cap';
+    headline = payday
+      ? `Spend at most ${money(weekly)}/week until ${payday}.`
+      : `Spend at most ${money(weekly)}/week.`;
   }
 
   if (unsafe && kind !== 'hold') {
@@ -1408,11 +1431,17 @@ function todayDecisionHtml(action, capView, alloc, liveOverlay) {
   }
 
   const facts = [];
-  if (available) {
-    facts.push(`<div class="household-fact"><span>Spendable cash · not credit</span><b>${available}</b></div>`);
-  }
   if (payday) {
     facts.push(`<div class="household-fact"><span>Next payday</span><b>${payday}</b></div>`);
+  }
+  if (kind === 'extra-debt' && extraAmount != null) {
+    facts.push(`<div class="household-fact"><span>Extra debt this payday</span><b>${money2(extraAmount)}</b></div>`);
+  }
+  if (kind === 'set-aside' && setAside) {
+    facts.push(`<div class="household-fact"><span>Set aside this payday</span><b>${money2(setAside.allocated)}</b></div>`);
+  }
+  if (kind === 'spend-cap' && weekly != null) {
+    facts.push(`<div class="household-fact"><span>Weekly cap · Forecast.recommend</span><b>${money(weekly)}/week</b></div>`);
   }
 
   const extraActions = todayActions.length > 1
@@ -1420,22 +1449,23 @@ function todayDecisionHtml(action, capView, alloc, liveOverlay) {
     : (todayActions.length === 1
       ? `<div class="household-today-actions">${todayActionRowsHtml(todayActions, 'data-current-today-action')}</div>`
       : '');
-  const upcomingList = !todayActions.length && upcoming.length
+  const upcomingList = !todayActions.length && upcoming.length && kind === 'due-soon'
     ? `<div class="household-today-actions">${todayActionRowsHtml(upcoming, 'data-current-upcoming-bill')}</div>`
     : '';
 
-  return `<div class="decision-today" data-today-decision="${kind}">
+  return `<div class="decision-today" data-today-decision="${kind}" data-payday-next-move>
     <p class="household-primary${unsafe ? ' household-tight' : ''}" data-today-headline>${headline}</p>
     ${extraActions}${upcomingList}
     ${warnings.map(text => `<p class="operating-limit warn">${text}</p>`).join('')}
     ${facts.length ? `<div class="household-facts">${facts.join('')}</div>` : ''}
-    <p class="operating-note">Current spendable cash: ${available || '—'} · ${paydayCashNote(alloc, liveOverlay)}</p>
+    <p class="operating-note">Copied from Forecast.recommend / paydayAllocation / currentPeriodAction. Remainder after allocation is not the next move.</p>
   </div>`;
 }
 
 function spendDecisionHtml(capView, weeklyPermission, remainingUnavailable, weeklyAuthority, action) {
   const payday = action && action.nextPayday ? fmtDateLong(action.nextPayday) : 'payday';
-  if (capView.hasFeasibleCap && weeklyPermission != null) {
+  // Infeasible weekly = 0 is a sentinel, not a supported $0/week yes.
+  if (capView.hasFeasibleCap && weeklyPermission != null && !capView.infeasible) {
     return `<span class="operating-amount" data-spend-decision="amount">${money(weeklyPermission)} / week</span>
        <p class="operating-note">${weeklyAuthority}${
          remainingUnavailable
@@ -1452,6 +1482,84 @@ function spendDecisionHtml(capView, weeklyPermission, remainingUnavailable, week
       <summary>Why?</summary>
       <p class="payday-refuse">${capView.infeasible ? '<b>INFEASIBLE. </b>' : ''}${capView.reason}</p>
     </details>`;
+}
+
+function cashGlanceHtml(alloc, liveOverlay) {
+  const available = alloc && alloc.available != null ? money2(alloc.available) : '—';
+  return `<div class="payday-cash" data-payday-cash data-spendable-cash="${available}">
+    <span class="operating-amount" data-spendable-cash-amount>${available}</span>
+    <p class="operating-note">${paydayCashNote(alloc, liveOverlay)}</p>
+    <p class="operating-note">One Forecast spendable figure — paydayAllocation.available. Overdraft and credit are not cash.</p>
+  </div>`;
+}
+
+function mustLeaveHtml(alloc) {
+  if (!alloc) {
+    return `<div class="payday-must-leave" data-payday-must-leave>
+      <p class="operating-lead">Required payday bills are unavailable.</p>
+    </div>`;
+  }
+  const obligations = alloc.obligations || {};
+  const items = obligations.items || [];
+  if (!items.length) {
+    return `<div class="payday-must-leave" data-payday-must-leave>
+      <p class="operating-lead">No required bills are reserved this payday.</p>
+    </div>`;
+  }
+  const rows = items.map(item => {
+    const bits = [];
+    if (item.date) bits.push(fmtDate(item.date));
+    if (item.settlement === 'unverified') bits.push('unverified');
+    else if (item.settlement === 'upcoming') bits.push('due');
+    if (item.confidence === 'estimated') bits.push('estimated');
+    const label = bits.length ? `${item.label} · ${bits.join(' · ')}` : item.label;
+    const amount = item.allocated != null ? item.allocated : item.amount;
+    return `<div class="operating-line"${item.settlement === 'unverified' ? ' data-unverified-bill="true"' : ''}>
+      <span>${label}</span><span>${amount != null ? money2(amount) : '—'}</span>
+    </div>`;
+  }).join('');
+  const short = Number(obligations.shortfall) > 0
+    ? `<p class="operating-limit warn">Required bills are short ${money2(obligations.shortfall)}.</p>`
+    : '';
+  const unattributed = obligations.fundingAttribution === 'unattributed'
+    ? '<p class="operating-note">This is an unattributed reserve pool; no individual bill priority is implied.</p>'
+    : '';
+  return `<div class="payday-must-leave" data-payday-must-leave>
+    <div class="operating-lines">${rows}</div>
+    ${paydayBucketRow('Reserved for bills', obligations.allocated, obligations.wanted, obligations.shortfall)}
+    ${short}${unattributed}
+    <p class="operating-note">Unverified means settlement is not proven. Atlas is not treating that as unpaid, and it does not invent a payment.</p>
+  </div>`;
+}
+
+function extraDebtGlanceHtml(alloc) {
+  const extra = (alloc && alloc.extraDebt) || {};
+  const allocated = extra.allocated;
+  if (allocated != null && Number(allocated) > 0 && extra.target) {
+    return `<div class="payday-extra-debt" data-payday-extra-debt="surplus">
+      <p class="operating-lead">Pay extra ${money2(allocated)} to ${extra.target.label} this payday.</p>
+      <span class="operating-amount">${money2(allocated)}</span>
+      <p class="operating-note">True surplus only. Forecast.paydayAllocation.extraDebt. Not a required minimum and not proof of payment.</p>
+    </div>`;
+  }
+  if (allocated != null && Number(allocated) === 0) {
+    const target = extra.target
+      ? `<details class="household-inline-details">
+          <summary>Current target if surplus appears</summary>
+          <p>Debt target: ${extra.target.label}${extra.target.confidence === 'estimated' ? ' · estimated' : ''}.</p>
+          <p class="operating-note">A named target is not a payment. Extra principal appears only when paydayAllocation allocates true surplus.</p>
+        </details>`
+      : '';
+    return `<div class="payday-extra-debt" data-payday-extra-debt="none">
+      <p class="operating-lead">No extra debt this payday.</p>
+      <p class="operating-note">Forecast found no true surplus for extra principal.</p>
+      ${target}
+    </div>`;
+  }
+  return `<div class="payday-extra-debt" data-payday-extra-debt="unavailable">
+    <p class="operating-lead">Atlas can’t name an extra debt payment on this opening.</p>
+    <p class="operating-note">${extra.reason || 'Forecast has no authorized extra-debt allocation on this opening.'}</p>
+  </div>`;
 }
 
 function paydayBucketRow(label, allocated, wanted, shortfall) {
@@ -1500,17 +1608,15 @@ function paydayAllocationSummaryHtml(alloc, action) {
   </div>`;
 }
 
-/* The homepage's decision-first summary. Every financial value and verdict is
- * already present on the incumbent Forecast result passed in by renderPlan.
- * This function formats those fields only: it does not call Forecast, add an
- * allocation, choose a debt target, total a bucket, or decide feasibility. */
+/* Payday operating sheet. Every financial value and verdict is already on the
+ * incumbent Forecast result passed in by renderPlan. This formats those
+ * fields only: it does not call Forecast, add an allocation, choose a debt
+ * target, total a bucket, invent freshness, or decide feasibility. */
 function operatingSurfaceHtml(ctx) {
   const advice = ctx.advice || {};
   const alloc = advice.paydayAllocation || null;
   const action = advice.currentPeriodAction || null;
   const capView = ctx.capView || weeklyCapView(advice, ctx.weeklyOverride);
-  const protectionRows = paydayActionRows(ctx).filter(row =>
-    row.key !== 'extra-debt' && !String(row.key || '').startsWith('optional:'));
   const coverage = paydayCoverageNote(action);
   const risks = (alloc && alloc.risks) || [];
   const unresolved = (alloc && alloc.unresolved) || [];
@@ -1518,11 +1624,6 @@ function operatingSurfaceHtml(ctx) {
     || !action
     || action.remainingClaim === 'unavailable';
 
-  const lineList = rows => rows.length
-    ? `<div class="operating-lines">${rows.map(row => `
-        <div class="operating-line"><span>${row.label}</span><span>${money2(row.amount)}</span></div>`).join('')}
-      </div>`
-    : '';
   const question = (number, prompt, answer) => `
     <div class="operating-question" data-operating-question="${number}">
       <div class="operating-number">${number}</div>
@@ -1530,31 +1631,26 @@ function operatingSurfaceHtml(ctx) {
       <div class="operating-answer">${answer}</div>
     </div>`;
 
-  const today = todayDecisionHtml(action, capView, alloc, ctx.liveOverlay);
+  const cash = cashGlanceHtml(alloc, ctx.liveOverlay);
+  const bills = mustLeaveHtml(alloc);
+  // Forecast.recommend is the weekly cap. currentPeriodAction.weeklyCap is
+  // the same recommend result on a between-paydays opening; do not treat
+  // infeasible weekly = 0 as a feasible yes.
+  const weeklyPermission = capView.hasFeasibleCap
+    ? (capView.recommended != null ? capView.recommended : advice.weekly)
+    : null;
+  const weeklyAuthority = "Forecast.recommend's supported household cap through the next payday. Essential costs come out of it first.";
+  const spend = spendDecisionHtml(capView, weeklyPermission, remainingUnavailable, weeklyAuthority, action);
+  const extra = extraDebtGlanceHtml(alloc);
+  const purchases = futureGravityHtml(advice);
+  const next = todayDecisionHtml(action, capView, alloc, ctx.liveOverlay);
   const periodDetails = action && action.mode === 'between-paydays'
     ? `<details class="household-inline-details household-period-details">
         <summary>See current-period details</summary>
         ${betweenPaydaysOperatingHtml(action, capView)}
       </details>`
     : '';
-  const now = `${today}${periodDetails}`;
-
-  const weeklyPermission = action && action.mode === 'between-paydays'
-    ? action.weeklyCap
-    : advice.weekly;
-  const weeklyAuthority = action && action.mode === 'between-paydays'
-    ? "Forecast.currentPeriodAction's current weekly permission through the next payday."
-    : "Forecast.recommend's supported household cap through the next payday. Essential costs come out of it first.";
-  const spend = spendDecisionHtml(capView, weeklyPermission, remainingUnavailable, weeklyAuthority, action);
-
-  const nextPayday = paydayAllocationSummaryHtml(alloc, action);
-
-  const currentProtection = protectionRows.length
-    ? `<div class="future-gravity-current"><h3>Still to cover before payday</h3>${lineList(protectionRows)}</div>`
-    : '';
-  const protecting = `${currentProtection}${futureGravityHtml(advice)}`;
-
-  const debt = operatingDebtAnswerHtml(alloc);
+  const allocation = paydayAllocationSummaryHtml(alloc, action);
 
   const limits = [`<p class="operating-limit${remainingUnavailable ? ' warn' : ''}">${coverage}</p>`]
     .concat(risks.map(r => `<p class="operating-limit warn">${r.reason}${r.shortfall != null
@@ -1564,13 +1660,20 @@ function operatingSurfaceHtml(ctx) {
       : [])
     .join('');
 
-  return refreshTrustHtml(ctx.refreshTrust)
-    + question('01', 'What should I do today?', now)
-    + question('02', 'What can I spend until payday?', spend)
-    + question('03', 'What happens on the next payday?', nextPayday)
-    + question('04', 'What future costs affect today?', protecting)
-    + question('05', 'What are we doing with debt?', debt)
-    + `<div class="operating-certainty" data-operating-certainty>${limits}</div>`;
+  return `<div class="payday-operating-sheet" data-payday-sheet>
+    ${refreshTrustHtml(ctx.refreshTrust)}
+    ${question('01', 'What cash is this?', cash)}
+    ${question('02', 'What must leave this payday?', bills)}
+    ${question('03', 'What can I spend this week?', spend)}
+    ${question('04', 'Extra debt this payday?', extra)}
+    ${question('05', 'Big purchases?', purchases)}
+    ${question('06', 'The next move?', `${next}${periodDetails}`)}
+    <details class="household-inline-details" data-payday-allocation-details>
+      <summary>See how payday is allocated</summary>
+      ${allocation}
+    </details>
+    <div class="operating-certainty" data-operating-certainty>${limits}</div>
+  </div>`;
 }
 
 function paydayAnswerHtml(ctx) {

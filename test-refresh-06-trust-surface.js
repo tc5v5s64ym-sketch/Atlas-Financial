@@ -147,6 +147,9 @@ function loadComposer() {
     grab(planSrc, /^function todayDecisionHtml\([\s\S]*?\n\}$/m, 'todayDecisionHtml'),
     grab(planSrc, /^function spendDecisionHtml\([\s\S]*?\n\}$/m, 'spendDecisionHtml'),
     grab(planSrc, /^function paydayBucketRow\([\s\S]*?\n\}$/m, 'paydayBucketRow'),
+    grab(planSrc, /^function cashGlanceHtml\([\s\S]*?\n\}$/m, 'cashGlanceHtml'),
+    grab(planSrc, /^function mustLeaveHtml\([\s\S]*?\n\}$/m, 'mustLeaveHtml'),
+    grab(planSrc, /^function extraDebtGlanceHtml\([\s\S]*?\n\}$/m, 'extraDebtGlanceHtml'),
     grab(planSrc, /^function paydayAllocationSummaryHtml\([\s\S]*?\n\}$/m, 'paydayAllocationSummaryHtml'),
     grab(planSrc, /^function operatingSurfaceHtml\([\s\S]*?\n\}$/m, 'operatingSurfaceHtml'),
   ].join('\n');
@@ -438,8 +441,8 @@ console.log('\n=== F. HTML current / stale / incomplete / ambiguous render disti
   ok(!staleHtml.includes(composer.money2(SENTINEL_USED))
     && !staleHtml.includes(composer.money2(SENTINEL_REMAINING)),
   'stale remaining cents are not presented as a precise answer');
-  ok(/Current remaining spend cannot be confirmed/.test(staleHtml),
-    'stale Q2 does not look like a confirmed remaining-spend answer');
+  ok(/Current remaining spend cannot be confirmed|current remaining amounts unavailable/.test(staleHtml),
+    'stale remaining-spend is not presented as a confirmed answer');
 
   const incompleteHtml = composer.refreshTrustHtml(trustPacket({
     displayState: 'attention-needed',
@@ -545,7 +548,8 @@ console.log('\n=== J. homepage still leads with the operating surface ===');
   ok(/id="operating-surface"/.test(html)
     && html.indexOf('id="operating-surface"') < html.indexOf('id="payday-answer"'),
   'the decision-first operating surface remains first');
-  ok(/current enough to act on/.test(html),
+  ok(/current enough to act on/.test(html)
+    && /Payday operating sheet/.test(html),
     'the household lede names trust without turning the page into diagnostics');
 }
 

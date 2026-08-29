@@ -270,8 +270,9 @@ footer { margin-top:56px; padding-top:18px; border-top:1px solid var(--grid);
   background:color-mix(in srgb, var(--critical) 5%, var(--surface-1)); }
 .statusband.crit b { color:var(--critical); }
 
-/* Decision-first homepage surface. The five answers are presentation of the
-   incumbent Forecast result; the detailed worksheet stays secondary below. */
+/* Decision-first homepage surface. The six payday-sheet answers are
+   presentation of the incumbent Forecast result; the detailed worksheet
+   stays secondary below. */
 .operating-card {
   background:var(--surface-1); border:1px solid var(--border); border-radius:18px;
   box-shadow:0 8px 30px rgba(0,0,0,.06); overflow:hidden;
@@ -309,6 +310,12 @@ footer { margin-top:56px; padding-top:18px; border-top:1px solid var(--grid);
 .operating-question:first-child {
   background:color-mix(in srgb, var(--s1) 5%, var(--surface-1));
 }
+.operating-question[data-operating-question="06"] {
+  background:color-mix(in srgb, var(--s1) 8%, var(--surface-1));
+}
+.payday-cash .operating-amount { margin-top:0; }
+.payday-must-leave .operating-line [data-unverified-bill],
+.operating-line[data-unverified-bill] span:first-child { color:var(--serious); }
 .operating-number {
   display:grid; place-items:center; width:30px; height:30px; border-radius:50%;
   background:var(--plane); border:1px solid var(--border); color:var(--s1);
