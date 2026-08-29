@@ -1,9 +1,10 @@
 'use strict';
 /* Read-only assistant interface.
  *
- * Proves GET /assistant/current is fail-closed, uses a dedicated Bearer
- * secret, projects incumbent Forecast / live-overlay / periods results,
- * never writes, and does not weaken browser session auth.
+ * Proves GET /assistant/current and POST /assistant/mcp are fail-closed,
+ * use a dedicated Bearer secret, project incumbent Forecast / live-overlay /
+ * periods results, never write, and do not weaken browser session auth.
+ * The MCP adapter is protocol only: one read-only tool over the same packet.
  *
  * Financial figures are reconciled against Forecast on the same served
  * data, plus an independent sum of spendable cash rows. Live household
@@ -18,6 +19,7 @@ const { spawn } = require('child_process');
 const Forecast = require('./public/forecast.js');
 const LivePlan = require('./scripts/live-plan.js');
 const Assistant = require('./scripts/assistant-packet.js');
+const AssistantMcp = require('./scripts/assistant-mcp.js');
 const O = require('./scripts/provider-observe.js');
 
 const ROOT = __dirname;
@@ -772,6 +774,11 @@ console.log('\n=== HTTP fail-closed without assistant token ===');
       'server serves the packet builder rather than inline maths');
     ok(/assistantAuthed/.test(serverSrc) && /hfd_session/.test(serverSrc),
       'assistant Bearer and browser session remain separate gates');
+    const mcpSrc = fs.readFileSync(path.join(ROOT, 'scripts', 'assistant-mcp.js'), 'utf8');
+    ok(!/Forecast\.recommend/.test(mcpSrc) && !/writeFileSync/.test(mcpSrc),
+      'MCP adapter does not recompute Forecast or write files');
+    ok(/AssistantMcp/.test(serverSrc) && /\/assistant\/mcp/.test(serverSrc),
+      'server mounts the MCP adapter on /assistant/mcp');
   }
 
   console.log('\n=== Render blueprint declares the assistant secret without a value ===');
@@ -782,6 +789,393 @@ console.log('\n=== HTTP fail-closed without assistant token ===');
     ok(!/key:\s*ATLAS_ASSISTANT_TOKEN[\s\S]*?value:/.test(render),
       'Render does not assign an assistant token value');
   }
+
+  console.log('\n=== MCP adapter is protocol-only over the incumbent packet ===');
+  {
+    ok(AssistantMcp.TOOL_NAME === 'get_current_state', 'one read-only tool name');
+    ok(AssistantMcp.TOOL.annotations.readOnlyHint === true
+      && AssistantMcp.TOOL.annotations.destructiveHint === false,
+      'tool is annotated read-only and non-destructive');
+    ok(/Forecast is the sole planner/.test(AssistantMcp.INSTRUCTIONS),
+      'MCP instructions keep Forecast as planner');
+    ok(AssistantMcp.originAllowed(undefined) && AssistantMcp.originAllowed(''),
+      'missing Origin is allowed for non-browser MCP clients');
+    ok(AssistantMcp.originAllowed('https://chatgpt.com'),
+      'ChatGPT https Origin is allowed');
+    ok(!AssistantMcp.originAllowed('http://evil.example'),
+      'foreign http Origin is refused (DNS-rebinding)');
+    ok(AssistantMcp.negotiateProtocolVersion('2025-06-18') === '2025-06-18',
+      'supported protocol version is echoed');
+    ok(AssistantMcp.negotiateProtocolVersion('not-a-version')
+      === AssistantMcp.PREFERRED_PROTOCOL_VERSION,
+      'unknown protocol version falls back to a supported revision');
+    const listed = AssistantMcp.listTools().tools;
+    ok(listed.length === 1 && listed[0].name === AssistantMcp.TOOL_NAME,
+      'tools/list exposes exactly one tool');
+    const init = await AssistantMcp.handleMessage({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'initialize',
+      params: {
+        protocolVersion: '2025-11-25',
+        capabilities: {},
+        clientInfo: { name: 'atlas-test', version: '1' },
+      },
+    });
+    ok(init.status === 200 && init.body.result.protocolVersion === '2025-11-25',
+      'initialize echoes 2025-11-25');
+    ok(!init.body.result.current && !init.body.result.forecast,
+      'initialize does not embed the financial packet');
+    const ping = await AssistantMcp.handleMessage({ jsonrpc: '2.0', id: 2, method: 'ping' });
+    ok(ping.status === 200 && ping.body.result && Object.keys(ping.body.result).length === 0,
+      'ping returns an empty result');
+    const unknown = await AssistantMcp.handleMessage({
+      jsonrpc: '2.0',
+      id: 3,
+      method: 'tools/call',
+      params: { name: 'transfer_funds', arguments: {} },
+    }, { getPacket: async () => { throw new Error('packet must not be built for unknown tools'); } });
+    ok(unknown.status === 200 && unknown.body.result.isError === true,
+      'unknown write-shaped tool name fails closed without building a packet');
+    const stubPacket = {
+      schema: Assistant.SCHEMA,
+      writesCanonicalState: false,
+      productionWrite: false,
+      current: { spendableHouseholdCash: { status: 'ok', value: 12.34 } },
+    };
+    const called = await AssistantMcp.handleMessage({
+      jsonrpc: '2.0',
+      id: 4,
+      method: 'tools/call',
+      params: { name: AssistantMcp.TOOL_NAME, arguments: {} },
+    }, { getPacket: async () => stubPacket });
+    ok(called.status === 200
+      && called.body.result.structuredContent.current.spendableHouseholdCash.value === 12.34,
+      'get_current_state returns the incumbent packet as structuredContent');
+    const notified = await AssistantMcp.handleMessage({
+      jsonrpc: '2.0',
+      method: 'notifications/initialized',
+    });
+    ok(notified.status === 202 && notified.body == null,
+      'initialized notification is 202 with no body');
+  }
+
+  console.log('\n=== HTTP MCP handshake retrieves the same sanitized packet ===');
+  await withAtlas({ ATLAS_ASSISTANT_TOKEN: ASSISTANT_TOKEN }, async ({ base }) => {
+    const mcpHeaders = extra => Object.assign({
+      authorization: `Bearer ${ASSISTANT_TOKEN}`,
+      'content-type': 'application/json',
+      accept: 'application/json, text/event-stream',
+    }, extra || {});
+    const mcpPost = (body, extra) => fetch(`${base}/assistant/mcp`, {
+      method: 'POST',
+      redirect: 'manual',
+      headers: mcpHeaders(extra),
+      body: JSON.stringify(body),
+    });
+
+    const none = await fetch(`${base}/assistant/mcp`, {
+      method: 'POST',
+      redirect: 'manual',
+      headers: {
+        'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
+      },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }),
+    });
+    ok(none.status === 401, 'MCP missing Bearer fails closed', `status ${none.status}`);
+    ok((none.headers.get('www-authenticate') || '').includes('Bearer'),
+      'MCP 401 advertises Bearer');
+
+    const wrong = await mcpPost({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }, {
+      authorization: `Bearer ${WRONG_TOKEN}`,
+    });
+    ok(wrong.status === 401, 'MCP wrong Bearer fails closed', `status ${wrong.status}`);
+
+    const query = await fetch(
+      `${base}/assistant/mcp?token=${encodeURIComponent(ASSISTANT_TOKEN)}`,
+      {
+        method: 'POST',
+        redirect: 'manual',
+        headers: {
+          'content-type': 'application/json',
+          accept: 'application/json, text/event-stream',
+        },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }),
+      }
+    );
+    ok(query.status === 401, 'MCP token in the query string is ignored', `status ${query.status}`);
+
+    const authed = await login(base);
+    const cookieOnly = await fetch(`${base}/assistant/mcp`, {
+      method: 'POST',
+      redirect: 'manual',
+      headers: {
+        cookie: authed.cookie,
+        'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
+      },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }),
+    });
+    ok(cookieOnly.status === 401,
+      'browser session cookie does not unlock /assistant/mcp',
+      `status ${cookieOnly.status}`);
+
+    const siteAsBearer = await mcpPost({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }, {
+      authorization: `Bearer ${PASS}`,
+    });
+    ok(siteAsBearer.status === 401, 'SITE_PASSWORD is not MCP authentication',
+      `status ${siteAsBearer.status}`);
+
+    const evilOrigin = await mcpPost({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }, {
+      origin: 'http://evil.example',
+    });
+    ok(evilOrigin.status === 403, 'MCP refuses a foreign Origin', `status ${evilOrigin.status}`);
+    const evilBody = await evilOrigin.json();
+    ok(!evilBody.result && !evilBody.current, 'refused Origin does not leak a packet');
+
+    const chatgptOrigin = await mcpPost({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'initialize',
+      params: {
+        protocolVersion: '2025-11-25',
+        capabilities: {},
+        clientInfo: { name: 'chatgpt-test', version: '1' },
+      },
+    }, { origin: 'https://chatgpt.com' });
+    ok(chatgptOrigin.status === 200, 'ChatGPT Origin may initialize',
+      `status ${chatgptOrigin.status}`);
+
+    const init = await mcpPost({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'initialize',
+      params: {
+        protocolVersion: '2025-11-25',
+        capabilities: {},
+        clientInfo: { name: 'atlas-test', version: '1' },
+      },
+    });
+    ok(init.status === 200, 'MCP initialize returns 200', `status ${init.status}`);
+    const initBody = await init.json();
+    ok(initBody.result && initBody.result.protocolVersion === '2025-11-25',
+      'MCP initialize negotiates 2025-11-25');
+    ok(initBody.result.capabilities && initBody.result.capabilities.tools,
+      'MCP initialize advertises tools only');
+    ok(!initBody.result.current && !initBody.result.forecast,
+      'MCP initialize has no financial packet');
+    ok(/Forecast is the sole planner/.test(initBody.result.instructions || ''),
+      'MCP instructions name Forecast as planner');
+
+    const initialized = await mcpPost({ jsonrpc: '2.0', method: 'notifications/initialized' });
+    ok(initialized.status === 202, 'initialized notification is 202',
+      `status ${initialized.status}`);
+
+    const listed = await mcpPost({ jsonrpc: '2.0', id: 2, method: 'tools/list' });
+    ok(listed.status === 200, 'tools/list returns 200', `status ${listed.status}`);
+    const listedBody = await listed.json();
+    const tools = listedBody.result && listedBody.result.tools;
+    ok(Array.isArray(tools) && tools.length === 1 && tools[0].name === AssistantMcp.TOOL_NAME,
+      'tools/list exposes only get_current_state');
+    ok(tools[0].annotations && tools[0].annotations.readOnlyHint === true,
+      'listed tool is read-only');
+
+    const called = await mcpPost({
+      jsonrpc: '2.0',
+      id: 3,
+      method: 'tools/call',
+      params: { name: AssistantMcp.TOOL_NAME, arguments: {} },
+    });
+    ok(called.status === 200, 'tools/call returns 200', `status ${called.status}`);
+    const calledBody = await called.json();
+    const packet = calledBody.result && calledBody.result.structuredContent;
+    ok(packet && packet.schema === Assistant.SCHEMA,
+      'MCP tool returns the sanitized assistant contract');
+    ok(Assistant.looksSanitized(packet) && !forbiddenBlob(packet)
+      && !forbiddenBlob(calledBody),
+      'MCP tool result contains no secrets/provider ids/raw transactions');
+    ok(packet.writesCanonicalState === false && packet.productionWrite === false,
+      'MCP packet still declares no writes');
+    ok(packet.authority && packet.authority.planner === 'Forecast',
+      'MCP packet keeps Forecast as planner');
+
+    const httpPacketRes = await fetch(`${base}/assistant/current`, {
+      headers: { authorization: `Bearer ${ASSISTANT_TOKEN}` },
+    });
+    const httpPacket = await httpPacketRes.json();
+    ok(near(packet.current.spendableHouseholdCash.value,
+      httpPacket.current.spendableHouseholdCash.value),
+      'MCP packet spendable matches GET /assistant/current');
+    ok(near(packet.forecast.recommendation.weekly,
+      httpPacket.forecast.recommendation.weekly),
+      'MCP packet weekly matches GET /assistant/current');
+    const periods = Assistant.loadPeriods();
+    const served = await LivePlan.applyForServer(clone(liveData), isolatedEnv({}));
+    const expected = Assistant.buildPacket({
+      data: served,
+      periods,
+      questionsMarkdown: fs.readFileSync(QUESTIONS, 'utf8'),
+      now: packet.metadata.generatedAt,
+      env: isolatedEnv({ ATLAS_ASSISTANT_TOKEN: ASSISTANT_TOKEN }),
+    });
+    ok(near(packet.current.spendableHouseholdCash.value,
+      expected.current.spendableHouseholdCash.value),
+      'MCP packet spendable matches the builder on the same served data');
+    ok(near(packet.forecast.recommendation.weekly,
+      expected.forecast.recommendation.weekly),
+      'MCP packet weekly matches Forecast via the builder');
+
+    const transfer = await mcpPost({
+      jsonrpc: '2.0',
+      id: 4,
+      method: 'tools/call',
+      params: { name: 'transfer_funds', arguments: { amount: 1 } },
+    });
+    const transferBody = await transfer.json();
+    ok(transfer.status === 200 && transferBody.result && transferBody.result.isError === true,
+      'MCP has no transfer tool');
+
+    const mcpGet = await fetch(`${base}/assistant/mcp`, {
+      headers: { authorization: `Bearer ${ASSISTANT_TOKEN}` },
+      redirect: 'manual',
+    });
+    ok(mcpGet.status === 405, 'GET /assistant/mcp does not open an SSE data stream',
+      `status ${mcpGet.status}`);
+
+    const mcpPut = await fetch(`${base}/assistant/mcp`, {
+      method: 'PUT',
+      headers: mcpHeaders(),
+      redirect: 'manual',
+      body: JSON.stringify({ jsonrpc: '2.0', id: 9, method: 'tools/call', params: { name: AssistantMcp.TOOL_NAME } }),
+    });
+    ok(mcpPut.status === 405, 'PUT /assistant/mcp is refused', `status ${mcpPut.status}`);
+
+    const badVersion = await mcpPost({ jsonrpc: '2.0', id: 5, method: 'ping' }, {
+      'mcp-protocol-version': 'nope',
+    });
+    ok(badVersion.status === 400, 'unsupported MCP-Protocol-Version is 400',
+      `status ${badVersion.status}`);
+  });
+  filesUnchanged('authenticated assistant MCP');
+
+  console.log('\n=== HTTP MCP fail-closed without assistant token ===');
+  await withAtlas({}, async ({ base }) => {
+    const res = await fetch(`${base}/assistant/mcp`, {
+      method: 'POST',
+      redirect: 'manual',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }),
+    });
+    ok(res.status === 503, 'unset ATLAS_ASSISTANT_TOKEN MCP returns 503', `status ${res.status}`);
+    const body = await res.json();
+    ok(body.error === 'assistant unavailable', 'MCP 503 body does not leak data');
+    ok(!body.result && !body.current, 'MCP 503 body has no financial packet');
+  });
+  filesUnchanged('no-token MCP requests');
+
+  console.log('\n=== provider mock stays GET-only through MCP ===');
+  {
+    const calls = [];
+    const mock = await new Promise((resolve, reject) => {
+      const server = http.createServer((req, res) => {
+        calls.push({ method: req.method, url: req.url });
+        res.statusCode = 401;
+        res.setHeader('content-type', 'application/json');
+        res.end(JSON.stringify({ error: 'unauthorized' }));
+      });
+      server.listen(0, '127.0.0.1', () => resolve({
+        server,
+        port: server.address().port,
+        close: () => new Promise(done => server.close(() => done())),
+      }));
+      server.on('error', reject);
+    });
+    try {
+      await withAtlas({
+        ATLAS_ASSISTANT_TOKEN: ASSISTANT_TOKEN,
+        ATLAS_LIVE_OVERLAY: 'live',
+        [O.API_BASE_ENV]: `http://127.0.0.1:${mock.port}/v2`,
+        LUNCHMONEY_ACCESS_TOKEN: 'synthetic-readonly-token-not-real',
+      }, async ({ base }) => {
+        const called = await fetch(`${base}/assistant/mcp`, {
+          method: 'POST',
+          headers: {
+            authorization: `Bearer ${ASSISTANT_TOKEN}`,
+            'content-type': 'application/json',
+            accept: 'application/json, text/event-stream',
+          },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 3,
+            method: 'tools/call',
+            params: { name: AssistantMcp.TOOL_NAME, arguments: {} },
+          }),
+        });
+        const calledBody = await called.json();
+        const packet = calledBody.result && calledBody.result.structuredContent;
+        ok(called.status === 200, 'unauthorized provider still fail-closes through MCP');
+        ok(packet && packet.metadata.freshness.liveOverlayApplied === false,
+          'MCP unauthorized provider does not apply a live overlay');
+        ok(calls.every(c => c.method === 'GET' || c.method === 'HEAD'),
+          'MCP tool call caused no provider POST/PUT/PATCH/DELETE',
+          calls.map(c => c.method).join(',') || 'no calls');
+      });
+    } finally {
+      await mock.close();
+    }
+    filesUnchanged('provider unauthorized through MCP');
+  }
+
+  console.log('\n=== assistant throttle is separate from login and ignores blank Bearer ===');
+  await withAtlas({ ATLAS_ASSISTANT_TOKEN: ASSISTANT_TOKEN }, async ({ base }) => {
+    for (let i = 0; i < 8; i++) {
+      await fetch(`${base}/login`, {
+        method: 'POST',
+        redirect: 'manual',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: 'password=definitely-not-it',
+      });
+    }
+    const afterLogin = await fetch(`${base}/assistant/mcp`, {
+      method: 'POST',
+      redirect: 'manual',
+      headers: {
+        authorization: `Bearer ${ASSISTANT_TOKEN}`,
+        'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
+      },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'ping' }),
+    });
+    ok(afterLogin.status === 200,
+      'login brute-force does not 429 a valid MCP Bearer',
+      `status ${afterLogin.status}`);
+
+    for (let i = 0; i < 8; i++) {
+      await fetch(`${base}/assistant/mcp`, {
+        method: 'POST',
+        redirect: 'manual',
+        headers: {
+          'content-type': 'application/json',
+          accept: 'application/json, text/event-stream',
+        },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'ping' }),
+      });
+    }
+    const afterMissing = await fetch(`${base}/assistant/mcp`, {
+      method: 'POST',
+      redirect: 'manual',
+      headers: {
+        authorization: `Bearer ${ASSISTANT_TOKEN}`,
+        'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
+      },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'ping' }),
+    });
+    ok(afterMissing.status === 200,
+      'unauthenticated MCP probes do not 429 a later valid Bearer',
+      `status ${afterMissing.status}`);
+  });
 
   filesUnchanged('end of suite');
   console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);

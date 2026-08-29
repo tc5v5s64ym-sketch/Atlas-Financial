@@ -8,9 +8,11 @@
 //    sensitive sits in the static directory.
 //  * Sessions are stateless: an HMAC-signed cookie, so a restart (Render free
 //    tier sleeps) does not force a re-login mid-session.
-//  * GET /assistant/current is a separate read-only consumer. It is not unlocked
-//    by the browser session and requires ATLAS_ASSISTANT_TOKEN as a Bearer
-//    secret. Unset token → 503. It never writes.
+//  * GET /assistant/current is a separate read-only consumer. POST
+//    /assistant/mcp is the Streamable HTTP MCP adapter over that same packet.
+//    Neither is unlocked by the browser session. Both require
+//    ATLAS_ASSISTANT_TOKEN as a Bearer secret. Unset token → 503. They never
+//    write.
 
 const express = require('express');
 const crypto = require('crypto');
@@ -19,6 +21,7 @@ const path = require('path');
 const SnapshotBalances = require('./scripts/snapshot-balances.js');
 const LivePlan = require('./scripts/live-plan.js');
 const Assistant = require('./scripts/assistant-packet.js');
+const AssistantMcp = require('./scripts/assistant-mcp.js');
 
 const PASSWORD = process.env.SITE_PASSWORD;
 const SECRET = process.env.SESSION_SECRET;
@@ -134,17 +137,38 @@ function secureFlag(req) {
 }
 
 // Simple in-memory throttle. Enough to stop guessing; resets on restart.
+// Login guesses and assistant Bearer guesses keep separate maps so a website
+// brute-force cannot 429 a later valid ChatGPT MCP handshake.
 const attempts = new Map();
-function tooManyAttempts(ip) {
-  const rec = attempts.get(ip);
+const assistantAttempts = new Map();
+function tooManyOn(map, ip) {
+  const rec = map.get(ip);
   if (!rec) return false;
-  if (Date.now() - rec.first > 15 * 60 * 1000) { attempts.delete(ip); return false; }
+  if (Date.now() - rec.first > 15 * 60 * 1000) { map.delete(ip); return false; }
   return rec.count >= 8;
 }
-function noteAttempt(ip) {
-  const rec = attempts.get(ip);
-  if (!rec || Date.now() - rec.first > 15 * 60 * 1000) attempts.set(ip, { count: 1, first: Date.now() });
+function noteOn(map, ip) {
+  const rec = map.get(ip);
+  if (!rec || Date.now() - rec.first > 15 * 60 * 1000) map.set(ip, { count: 1, first: Date.now() });
   else rec.count++;
+}
+function tooManyAttempts(ip) {
+  return tooManyOn(attempts, ip);
+}
+function noteAttempt(ip) {
+  noteOn(attempts, ip);
+}
+function tooManyAssistantAttempts(ip) {
+  return tooManyOn(assistantAttempts, ip);
+}
+function noteAssistantAttempt(ip) {
+  noteOn(assistantAttempts, ip);
+}
+function clearAssistantAttempts(ip) {
+  assistantAttempts.delete(ip);
+}
+function isAssistantPath(pathname) {
+  return pathname === '/assistant/current' || pathname === '/assistant/mcp';
 }
 
 // ---------------------------------------------------------------- login
@@ -223,26 +247,40 @@ function assistantUnauthorized(res) {
   res.set('WWW-Authenticate', 'Bearer realm="atlas-assistant"');
   return res.status(401).json({ error: 'not authenticated' });
 }
-app.get('/assistant/current', async (req, res) => {
+function assistantAuthGate(req, res, opts) {
   const ip = req.ip || 'unknown';
   if (!assistantConfigured()) {
-    return res.status(503).json({ error: 'assistant unavailable' });
+    res.status(503).json({ error: 'assistant unavailable' });
+    return false;
   }
-  if (tooManyAttempts(ip)) {
-    return res.status(429).json({ error: 'too many attempts' });
+  if (opts && opts.checkOrigin && !AssistantMcp.originAllowed(req.get('origin'))) {
+    res.status(403).json({ error: 'origin not allowed' });
+    return false;
+  }
+  if (tooManyAssistantAttempts(ip)) {
+    res.status(429).json({ error: 'too many attempts' });
+    return false;
   }
   if (!assistantAuthed(req)) {
-    noteAttempt(ip);
-    return assistantUnauthorized(res);
+    if (readBearer(req)) noteAssistantAttempt(ip);
+    assistantUnauthorized(res);
+    return false;
   }
+  clearAssistantAttempts(ip);
+  return true;
+}
+async function buildServedAssistantPacket() {
+  const served = await servedAtlasData();
+  return Assistant.buildPacket({
+    data: served,
+    env: process.env,
+    now: new Date().toISOString(),
+  });
+}
+app.get('/assistant/current', async (req, res) => {
+  if (!assistantAuthGate(req, res)) return;
   try {
-    const served = await servedAtlasData();
-    const packet = Assistant.buildPacket({
-      data: served,
-      env: process.env,
-      now: new Date().toISOString(),
-    });
-    res.json(packet);
+    res.json(await buildServedAssistantPacket());
   } catch (err) {
     console.error('assistant packet could not be built:', err.message);
     res.status(500).json({ error: 'assistant unavailable' });
@@ -253,13 +291,58 @@ app.all('/assistant/current', (_req, res) => {
   return res.status(405).json({ error: 'method not allowed' });
 });
 
+const mcpJson = express.json({ limit: '32kb' });
+app.post('/assistant/mcp', (req, res, next) => {
+  if (!assistantAuthGate(req, res, { checkOrigin: true })) return;
+  const protocolHeader = req.get('mcp-protocol-version');
+  if (!AssistantMcp.protocolVersionHeaderAllowed(protocolHeader)) {
+    return res.status(400).json({ error: 'unsupported protocol version' });
+  }
+  mcpJson(req, res, (err) => {
+    if (err) {
+      return res.status(400).json({
+        jsonrpc: '2.0',
+        id: null,
+        error: { code: -32700, message: 'Parse error' },
+      });
+    }
+    next();
+  });
+}, async (req, res) => {
+  try {
+    const handled = await AssistantMcp.handleMessage(req.body, {
+      getPacket: buildServedAssistantPacket,
+    });
+    if (handled.logMessage) {
+      console.error('assistant MCP handler:', handled.logMessage);
+    }
+    if (handled.status === 202 && handled.body == null) {
+      return res.status(202).end();
+    }
+    return res.status(handled.status).json(handled.body);
+  } catch (err) {
+    console.error('assistant MCP could not be served:', err.message);
+    return res.status(500).json({ error: 'assistant unavailable' });
+  }
+});
+app.get('/assistant/mcp', (req, res) => {
+  if (!assistantAuthGate(req, res, { checkOrigin: true })) return;
+  res.set('Allow', 'POST');
+  return res.status(405).json({ error: 'method not allowed' });
+});
+app.all('/assistant/mcp', (req, res) => {
+  if (!assistantAuthGate(req, res, { checkOrigin: true })) return;
+  res.set('Allow', 'POST');
+  return res.status(405).json({ error: 'method not allowed' });
+});
+
 // ---------------------------------------------------------------- gate
 // styles.css is needed by the login page, so it stays public. Everything else
 // requires a session. The assistant route has its own Bearer gate above and
 // is not unlocked by a browser cookie.
 app.use((req, res, next) => {
   if (req.path === '/login' || req.path === '/styles.css' || req.path === '/robots.txt') return next();
-  if (req.path === '/assistant/current') {
+  if (isAssistantPath(req.path)) {
     return res.status(401).json({ error: 'not authenticated' });
   }
   if (authed(req)) return next();

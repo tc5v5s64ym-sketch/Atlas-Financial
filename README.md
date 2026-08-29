@@ -14,7 +14,7 @@ is still the whole financial picture of two people.
 
 | Path | Purpose |
 |---|---|
-| `server.js` | Express app: password gate, assistant Bearer gate, security headers, serves the data |
+| `server.js` | Express app: password gate, assistant Bearer gate, MCP adapter, security headers, serves the data |
 | `data.json` | **Every figure on the site**, including the `plan` block the forecast runs on |
 | `public/index.html` + `plan.js` | **Plan** — the homepage: 90-day forecast, budget, next actions |
 | `public/forecast.js` | The 13-week projection engine — pure, DOM-free, node-testable |
@@ -36,6 +36,10 @@ is still the whole financial picture of two people.
 - `GET /assistant/current` is a separate read-only consumer. It is not unlocked
   by the browser session. It requires `ATLAS_ASSISTANT_TOKEN` as
   `Authorization: Bearer`. Unset → 503. It never writes.
+- `POST /assistant/mcp` is the Streamable HTTP MCP adapter over that same
+  packet. Same Bearer secret. One read-only tool, `get_current_state`. It never
+  writes. ChatGPT / Codex connects with that URL and a bearer-token environment
+  variable; it is not unlocked by the browser session.
 - Sessions are stateless HMAC-signed cookies — HttpOnly, SameSite=Lax, and
   Secure whenever the request is HTTPS. A tampered cookie is rejected.
 - Login attempts are throttled to 8 per 15 minutes per IP.
@@ -96,8 +100,13 @@ node test-local.js
    `render.yaml`. `/healthz` does not depend on Lunch Money.
 6. To enable read-only assistant access, set **`ATLAS_ASSISTANT_TOKEN`** by
    hand in Render to a dedicated secret of at least 32 characters. Do not reuse
-   `SITE_PASSWORD`. Unset → `GET /assistant/current` returns 503.
-7. Deploy. Every push to the default branch redeploys automatically.
+   `SITE_PASSWORD`. Unset → `GET /assistant/current` and `POST /assistant/mcp`
+   return 503.
+7. ChatGPT / Codex Streamable HTTP URL is
+   `https://<your-service>/assistant/mcp`. Supply the same token as
+   `Authorization: Bearer` (Codex: `bearer_token_env_var`). Do not put the
+   token in a query string or in git.
+8. Deploy. Every push to the default branch redeploys automatically.
 
 The free plan sleeps after inactivity, so the first visit in a while takes about
 thirty seconds to wake. For a couple of check-ins a week that is fine.

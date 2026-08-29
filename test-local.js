@@ -27,6 +27,16 @@ async function main() {
     'GET /assistant/current is blocked without the assistant Bearer',
     `status ${r.status}`);
 
+  r = await fetch(`${BASE}/assistant/mcp`, {
+    method: 'POST',
+    redirect: 'manual',
+    headers: { 'content-type': 'application/json' },
+    body: '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}',
+  });
+  ok(r.status === 401 || r.status === 503,
+    'POST /assistant/mcp is blocked without the assistant Bearer',
+    `status ${r.status}`);
+
   r = await fetch(`${BASE}/balance-history.json`, { redirect: 'manual' });
   ok(r.status === 401, 'GET /balance-history.json is blocked', `status ${r.status}`);
 

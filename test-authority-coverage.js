@@ -13,7 +13,8 @@
  *      each must be defined in the engine and absent from the page.
  *   4. the named artifact-writing scripts already named as financial
  *      authorities: periods.js, calendar-ics.js, snapshot-balances.js.
- *   5. the named read-only assistant projection: assistant-packet.js.
+ *   5. the named read-only assistant projection: assistant-packet.js,
+ *      plus the Streamable HTTP MCP adapter assistant-mcp.js.
  *
  * Page scripts that decide rather than render remain the B73 review class because
  * there is no closed mechanical signature for them. This guard does not pretend
@@ -190,6 +191,16 @@ console.log('\n=== read-only assistant projection coverage ===');
   const src = read(script);
   ok(!/writeFileSync|writeFile\(/.test(src),
     'assistant-packet.js does not write files');
+  const mcp = 'scripts/assistant-mcp.js';
+  ok(fs.existsSync(path.join(__dirname, mcp)), `${mcp} exists`);
+  ok(incumbentTable.includes(mcp) || incumbentTable.includes('assistant-mcp.js')
+    || /\/assistant\/mcp/.test(incumbentTable),
+    'assistant MCP adapter is named in the incumbent authority table');
+  const mcpSrc = read(mcp);
+  ok(!/writeFileSync|writeFile\(/.test(mcpSrc),
+    'assistant-mcp.js does not write files');
+  ok(!/Forecast\.recommend/.test(mcpSrc),
+    'assistant-mcp.js does not recompute Forecast answers');
 }
 
 console.log('\n=== hard-gate protection ===');
