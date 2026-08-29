@@ -90,7 +90,95 @@
     const answer = q && q.querySelector('.operating-answer');
     if (!q || !answer) return false;
     const prompt = q.querySelector('.operating-prompt');
-    if (prompt) prompt.textContent = 'What should I do today?';
+    if (prompt) prompt.textContent = 'What cash is this?';
+    return true;
+  }
+
+  function enhanceQuestionTwo(doc, body) {
+    const q = body.querySelector('[data-operating-question="02"]');
+    const answer = q && q.querySelector('.operating-answer');
+    if (!q || !answer) return false;
+    const prompt = q.querySelector('.operating-prompt');
+    if (prompt) prompt.textContent = 'What must leave this payday?';
+    return true;
+  }
+
+  function enhanceQuestionThree(doc, body) {
+    const q = body.querySelector('[data-operating-question="03"]');
+    const answer = q && q.querySelector('.operating-answer');
+    if (!q || !answer) return false;
+    const prompt = q.querySelector('.operating-prompt');
+    if (prompt) prompt.textContent = 'What can I spend this week?';
+    if (answer.querySelector('[data-spend-decision]')) {
+      const notes = answer.querySelectorAll('.operating-note');
+      for (const note of notes) {
+        if (/Forecast\.recommend|household spending limit|Current remaining spend/i.test(clean(note.textContent))) {
+          note.textContent = friendlySpendingNote(note.textContent);
+        }
+      }
+      const refusal = answer.querySelector('.payday-refuse');
+      if (refusal && !answer.querySelector('[data-spend-decision="none"]')) {
+        const reason = clean(refusal.textContent);
+        const primary = doc.createElement('p');
+        primary.className = 'household-primary household-tight';
+        primary.setAttribute('data-spend-decision', 'none');
+        primary.textContent = 'No safe spending amount.';
+        const details = doc.createElement('details');
+        details.className = 'household-inline-details';
+        const summary = doc.createElement('summary');
+        summary.textContent = 'Why?';
+        const explanation = doc.createElement('p');
+        explanation.textContent = reason;
+        details.append(summary, explanation);
+        answer.replaceChildren(primary, details);
+      }
+      return true;
+    }
+    return true;
+  }
+
+  function enhanceQuestionFour(doc, body) {
+    const q = body.querySelector('[data-operating-question="04"]');
+    const answer = q && q.querySelector('.operating-answer');
+    if (!q || !answer) return false;
+    const prompt = q.querySelector('.operating-prompt');
+    if (prompt) prompt.textContent = 'Extra debt this payday?';
+    return true;
+  }
+
+  function enhanceQuestionFive(doc, body) {
+    const q = body.querySelector('[data-operating-question="05"]');
+    const answer = q && q.querySelector('.operating-answer');
+    if (!q || !answer) return false;
+    const prompt = q.querySelector('.operating-prompt');
+    if (prompt) prompt.textContent = 'Big purchases?';
+
+    const current = answer.querySelector('.future-gravity-current');
+    const currentHeading = current && current.querySelector('h3');
+    if (currentHeading) currentHeading.textContent = 'Still to cover before payday';
+    if (answer.querySelector('.household-future-details')) return true;
+
+    const detailNodes = Array.from(answer.children).filter(node => node !== current);
+    if (!detailNodes.length) return true;
+    const details = doc.createElement('details');
+    details.className = 'household-inline-details household-future-details';
+    const summary = doc.createElement('summary');
+    summary.textContent = 'See all future costs';
+    details.appendChild(summary);
+    for (const node of detailNodes) details.appendChild(node);
+    answer.appendChild(details);
+    return true;
+  }
+
+  function enhanceQuestionSix(doc, body) {
+    const q = body.querySelector('[data-operating-question="06"]')
+      || body.querySelector('[data-operating-question="01"]');
+    const answer = q && q.querySelector('.operating-answer');
+    if (!q || !answer) return false;
+    const prompt = q.querySelector('.operating-prompt');
+    if (prompt && q.getAttribute('data-operating-question') === '06') {
+      prompt.textContent = 'The next move?';
+    }
     if (answer.querySelector('[data-today-decision]')) return true;
 
     const card = answer.querySelector('[data-current-period-action]');
@@ -167,123 +255,6 @@
     return true;
   }
 
-  function enhanceQuestionTwo(doc, body) {
-    const q = body.querySelector('[data-operating-question="02"]');
-    const answer = q && q.querySelector('.operating-answer');
-    if (!q || !answer) return false;
-    const prompt = q.querySelector('.operating-prompt');
-    if (prompt) prompt.textContent = 'What can I spend until payday?';
-    if (answer.querySelector('[data-spend-decision]')) return true;
-
-    const refusal = answer.querySelector('.payday-refuse');
-    if (refusal) {
-      const reason = clean(refusal.textContent);
-      const primary = doc.createElement('p');
-      primary.className = 'household-primary household-tight';
-      primary.setAttribute('data-spend-decision', 'none');
-      primary.textContent = 'No safe spending amount.';
-      const details = doc.createElement('details');
-      details.className = 'household-inline-details';
-      const summary = doc.createElement('summary');
-      summary.textContent = 'Why?';
-      const explanation = doc.createElement('p');
-      explanation.textContent = reason;
-      details.append(summary, explanation);
-      answer.replaceChildren(primary, details);
-      return true;
-    }
-
-    const amount = answer.querySelector('.operating-amount');
-    if (amount) {
-      const notes = answer.querySelectorAll('.operating-note');
-      for (const note of notes) {
-        note.textContent = friendlySpendingNote(note.textContent);
-      }
-      return true;
-    }
-    return false;
-  }
-
-  function enhanceQuestionThree(doc, body) {
-    const q = body.querySelector('[data-operating-question="03"]');
-    const answer = q && q.querySelector('.operating-answer');
-    if (!q || !answer) return false;
-    const prompt = q.querySelector('.operating-prompt');
-    if (prompt) prompt.textContent = 'What happens on the next payday?';
-    return true;
-  }
-
-  function enhanceQuestionFour(doc, body) {
-    const q = body.querySelector('[data-operating-question="04"]');
-    const answer = q && q.querySelector('.operating-answer');
-    if (!q || !answer) return false;
-    const prompt = q.querySelector('.operating-prompt');
-    if (prompt) prompt.textContent = 'What future costs affect today?';
-
-    const current = answer.querySelector('.future-gravity-current');
-    const currentHeading = current && current.querySelector('h3');
-    if (currentHeading) currentHeading.textContent = 'Still to cover before payday';
-    if (answer.querySelector('.household-future-details')) return true;
-
-    const detailNodes = Array.from(answer.children).filter(node => node !== current);
-    if (!detailNodes.length) return true;
-    const details = doc.createElement('details');
-    details.className = 'household-inline-details household-future-details';
-    const summary = doc.createElement('summary');
-    summary.textContent = 'See all future costs';
-    details.appendChild(summary);
-    for (const node of detailNodes) details.appendChild(node);
-    answer.appendChild(details);
-    return true;
-  }
-
-  function enhanceQuestionFive(doc, body) {
-    const q = body.querySelector('[data-operating-question="05"]');
-    const answer = q && q.querySelector('.operating-answer');
-    if (!q || !answer) return false;
-    const prompt = q.querySelector('.operating-prompt');
-    if (prompt) prompt.textContent = 'What are we doing with debt?';
-
-    const headings = answer.querySelectorAll('h3');
-    if (headings[0]) headings[0].textContent = 'Required payments';
-    if (headings[1]) headings[1].textContent = 'Extra this payday';
-
-    for (const lead of answer.querySelectorAll('.operating-lead')) {
-      const value = clean(lead.textContent);
-      if (value === 'No surplus is going to debt this period.'
-        || value === 'No extra debt payment this payday.') {
-        lead.textContent = 'No extra debt payment this payday.';
-      } else if (/^Forecast starts this period's extra principal with /i.test(value)) {
-        lead.textContent = value.replace(/^Forecast starts this period's extra principal with /i, 'Extra debt money this payday goes to ');
-      } else if (/^Extra debt money this payday goes to /i.test(value)) {
-        continue;
-      } else if (value === 'No extra-debt allocation is available on this opening.'
-        || value === 'Atlas can’t name an extra debt payment on this opening.') {
-        lead.textContent = 'Atlas can’t name an extra debt payment right now.';
-      }
-    }
-
-    for (const p of answer.querySelectorAll('p')) {
-      const b = p.querySelector('b');
-      if (!b) continue;
-      if (clean(b.textContent) === 'Current extra-debt target:') b.textContent = 'Debt target:';
-      if (clean(b.textContent) === 'What happens next:') b.textContent = 'After that:';
-    }
-
-    if (answer.querySelector('.household-inline-details')) return true;
-    const technical = Array.from(answer.querySelectorAll('p.operating-note'));
-    if (technical.length) {
-      const details = doc.createElement('details');
-      details.className = 'household-inline-details';
-      const summary = doc.createElement('summary');
-      summary.textContent = 'Debt details';
-      details.appendChild(summary);
-      for (const note of technical) details.appendChild(note);
-      answer.appendChild(details);
-    }
-    return true;
-  }
-
   function aggregateList(doc, list) {
     if (!list) return;
     const rows = aggregateTexts(Array.from(list.querySelectorAll('li')).map(li => li.textContent));
@@ -342,15 +313,18 @@
   function enhance(doc) {
     const body = doc && doc.getElementById && doc.getElementById('operating-surface-body');
     if (!body) return false;
-    const q1 = body.querySelector('[data-operating-question="01"]');
-    if (!q1 || q1.hasAttribute(APPLIED)) return false;
+    const gate = body.querySelector('[data-operating-question="01"]')
+      || body.querySelector('[data-operating-question="06"]')
+      || body.querySelector('[data-payday-sheet]');
+    if (!gate || gate.hasAttribute(APPLIED) || body.hasAttribute(APPLIED)) return false;
 
-    q1.setAttribute(APPLIED, 'true');
+    body.setAttribute(APPLIED, 'true');
     enhanceQuestionOne(doc, body);
     enhanceQuestionTwo(doc, body);
     enhanceQuestionThree(doc, body);
     enhanceQuestionFour(doc, body);
     enhanceQuestionFive(doc, body);
+    enhanceQuestionSix(doc, body);
     enhanceCertainty(doc, body);
     enhanceTrust(doc, body);
     body.classList.add('household-view-ready');

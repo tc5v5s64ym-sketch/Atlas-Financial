@@ -222,8 +222,8 @@ console.log('\n=== Forecast extension and load order ===');
   const headlineAt = html.indexOf('<script src="/chequing-headline.js"></script>');
   ok(forecastAt >= 0 && extensionAt > forecastAt && planAt > extensionAt,
     'chequing authority loads after Forecast and before Plan');
-  ok(waterfallAt >= 0 && headlineAt > waterfallAt,
-    'headline adapter runs after the incumbent waterfall renderer');
+  ok(waterfallAt < 0 && headlineAt < 0,
+    'Plan does not load the chequing-headline adapter that mixed overdraft into the cash number');
   const architecture = read('ARCHITECTURE.md');
   ok(/Forecast\.chequingAvailability/.test(architecture)
       && /liveOverlay\.observedCash/.test(architecture),

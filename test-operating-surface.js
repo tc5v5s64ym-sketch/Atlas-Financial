@@ -58,6 +58,9 @@ function loadComposer() {
     grab(planSrc, /^function todayDecisionHtml\([\s\S]*?\n\}$/m, 'todayDecisionHtml'),
     grab(planSrc, /^function spendDecisionHtml\([\s\S]*?\n\}$/m, 'spendDecisionHtml'),
     grab(planSrc, /^function paydayBucketRow\([\s\S]*?\n\}$/m, 'paydayBucketRow'),
+    grab(planSrc, /^function cashGlanceHtml\([\s\S]*?\n\}$/m, 'cashGlanceHtml'),
+    grab(planSrc, /^function mustLeaveHtml\([\s\S]*?\n\}$/m, 'mustLeaveHtml'),
+    grab(planSrc, /^function extraDebtGlanceHtml\([\s\S]*?\n\}$/m, 'extraDebtGlanceHtml'),
     grab(planSrc, /^function paydayAllocationSummaryHtml\([\s\S]*?\n\}$/m, 'paydayAllocationSummaryHtml'),
     grab(planSrc, /^function operatingSurfaceHtml\([\s\S]*?\n\}$/m, 'operatingSurfaceHtml'),
   ].join('\n');
@@ -112,7 +115,7 @@ console.log('=== homepage order and secondary detail ===');
   }
 }
 
-console.log('\n=== five ordered household operating questions ===');
+console.log('\n=== six ordered payday-sheet questions ===');
 {
   const { plan, asOf, advice, debtProjection } = currentResult();
   const composer = loadComposer();
@@ -121,11 +124,12 @@ console.log('\n=== five ordered household operating questions ===');
     liveOverlay: data.liveOverlay,
   });
   const prompts = [
-    'What should I do today?',
-    'What can I spend until payday?',
-    'What happens on the next payday?',
-    'What future costs affect today?',
-    'What are we doing with debt?',
+    'What cash is this?',
+    'What must leave this payday?',
+    'What can I spend this week?',
+    'Extra debt this payday?',
+    'Big purchases?',
+    'The next move?',
   ];
   let previous = -1;
   for (const prompt of prompts) {
@@ -133,8 +137,8 @@ console.log('\n=== five ordered household operating questions ===');
     ok(at > previous, `${prompt} appears in the required order`);
     previous = at;
   }
-  ok((rendered.match(/data-operating-question=/g) || []).length === 5,
-    'the default surface contains exactly five decision questions');
+  ok((rendered.match(/data-operating-question=/g) || []).length === 6,
+    'the default surface contains exactly six payday-sheet questions');
 }
 
 console.log('\n=== every displayed financial answer traces to incumbents ===');
@@ -167,10 +171,10 @@ console.log('\n=== every displayed financial answer traces to incumbents ===');
     ok(target && rendered.includes(target.label),
       'a positive allocation names the debt row from the incumbent Forecast debt projection');
   } else {
-    ok(rendered.includes('No extra debt payment this payday.'),
+    ok(rendered.includes('No extra debt this payday.'),
       'a zero incumbent allocation publishes that no debt receives surplus');
     ok(!target || (rendered.includes(target.label)
-      && !rendered.includes(`Extra debt money this payday goes to ${target.label}`)),
+      && !rendered.includes(`Pay extra`) && !rendered.includes(`Extra debt money this payday goes to ${target.label}`)),
     'a policy target is not presented as a payment when Forecast allocated zero');
   }
   const coverageCopy = composer.paydayCoverageNote(advice.currentPeriodAction);
@@ -193,12 +197,12 @@ console.log('\n=== Q4 follows the incumbent extra-debt allocation ===');
   const zero = composer.operatingSurfaceHtml({
     advice: zeroAdvice, liveOverlay: data.liveOverlay,
   });
-  ok(zero.includes('No extra debt payment this payday.'),
+  ok(zero.includes('No extra debt this payday.'),
     'zero allocation explicitly says no debt receives surplus');
-  ok(zero.includes('$0.00 extra principal allocated this payday'),
-    'zero allocation is rendered from the incumbent amount');
+  ok(!zero.includes('$0.00 extra principal allocated this payday'),
+    'zero surplus does not print a fake extra-principal payment amount on the glance');
   ok(zero.includes(target.label)
-    && !zero.includes(`Extra debt money this payday goes to ${target.label}`),
+    && !zero.includes(`Pay extra`) && !zero.includes(`Extra debt money this payday goes to ${target.label}`),
     'zero allocation may name the current target but does not say it receives surplus');
 
   const positiveAdvice = JSON.parse(JSON.stringify(advice));
@@ -207,8 +211,8 @@ console.log('\n=== Q4 follows the incumbent extra-debt allocation ===');
   const positive = composer.operatingSurfaceHtml({
     advice: positiveAdvice, liveOverlay: data.liveOverlay,
   });
-  ok(positive.includes(`Extra debt money this payday goes to ${target.label}`)
-    && positive.includes('$25.00 extra principal'),
+  ok(positive.includes(`Pay extra $25.00 to ${target.label} this payday`)
+    && positive.includes('$25.00'),
     'positive allocation names the incumbent target and allocated amount');
 }
 

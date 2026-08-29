@@ -22,10 +22,10 @@ const read = file => fs.readFileSync(path.join(__dirname, file), 'utf8');
 console.log('=== default homepage speaks to the household first ===');
 {
   const html = read('public/index.html');
-  ok(/<h1>What to do now<\/h1>/.test(html),
-    'the first surface is labelled as a decision, not an internal operating-surface term');
-  ok(/Action first: what to do today, what you can spend until payday/.test(html)
-    && /Open the details only when you want them/.test(html),
+  ok(/<h1>Payday operating sheet<\/h1>/.test(html),
+    'the first surface is labelled as the payday operating sheet');
+  ok(/In one glance: what cash this is, which bills must leave/.test(html)
+    && /The leftover after allocation is not the next move/.test(html),
     'the intro says what the page is for in ordinary language');
   const planAt = html.indexOf('<script src="/plan.js"></script>');
   const householdAt = html.indexOf('<script src="/household-view.js"></script>');
@@ -70,11 +70,11 @@ console.log('\n=== the readability layer does not become a financial authority =
   ok(/See data quality details/.test(src) && /See all future costs/.test(src)
     && /See current-period details/.test(src),
     'diagnostic depth remains available behind explicit details');
-  ok(/No safe spending amount\./.test(src)
-    && /Hold discretionary spending until/.test(src),
+  ok(/Hold discretionary spending until/.test(src)
+    && /No payment or transfer is required today/.test(src),
     'the first-screen action language is direct and household-readable');
-  ok(/Spendable cash · not credit/.test(src),
-    'the compact cash fact preserves the credit-is-not-cash boundary');
+  ok(/What cash is this\?/.test(src),
+    'the compact cash prompt is the spendable-cash question');
 }
 
 console.log('\n=== trust caveats are translated, not deleted ===');
@@ -99,7 +99,7 @@ console.log('\n=== current values are copied, not recalculated ===');
     'missing rendered cash does not invent one');
 }
 
-console.log('\n=== Q1 keeps the incumbent current-period card under a disclosure ===');
+console.log('\n=== Q6 keeps the incumbent current-period card under a disclosure ===');
 {
   const renderer = loadBetweenPaydaysRenderer();
   const input = {
@@ -150,8 +150,8 @@ console.log('\n=== Q1 keeps the incumbent current-period card under a disclosure
     hasFeasibleCap: true, infeasible: false, reason: '',
   });
   const doc = parseDocument(`<div id="operating-surface-body">
-    <div class="operating-question" data-operating-question="01">
-      <h2 class="operating-prompt">What now?</h2>
+    <div class="operating-question" data-operating-question="06">
+      <h2 class="operating-prompt">The next move?</h2>
       <div class="operating-answer">
         ${cardHtml}
         <p class="operating-note">Current spendable cash: $123.45 · Spendable cash. Not credit.</p>
@@ -168,14 +168,14 @@ console.log('\n=== Q1 keeps the incumbent current-period card under a disclosure
 
   H.enhance(doc);
 
-  const q1 = body.querySelector('[data-operating-question="01"]');
-  const answer = q1 && q1.querySelector('.operating-answer');
+  const q6 = body.querySelector('[data-operating-question="06"]');
+  const answer = q6 && q6.querySelector('.operating-answer');
   const now = firstChildByClass(answer, 'household-now');
   const details = Array.from((answer && answer.children) || [])
     .find(el => el.tagName === 'DETAILS');
   const cardAfter = body.querySelector('[data-current-period-action]');
   ok(now && /Hold discretionary spending until September 15/.test(now.textContent),
-    'plain-language Q1 summary leads with the unsafe spending decision');
+    'plain-language Q6 summary leads with the unsafe spending decision');
   ok(now && /No payment or transfer is required today/.test(now.textContent),
     'no-movement is explained as a distinct fact, not the reassuring headline');
   ok(cardAfter === cardBefore,

@@ -132,16 +132,20 @@ console.log('\n=== runtime stays downstream of financial authority ===');
     'the existing detailed operating surface remains available behind disclosure');
 }
 
-console.log('\n=== homepage loads the waterfall after incumbent renderers ===');
+console.log('\n=== Plan payday sheet is the homepage, not the leftover waterfall ===');
 {
   const html = read('public/index.html');
   const planAt = html.indexOf('<script src="/plan.js"></script>');
   const householdAt = html.indexOf('<script src="/household-view.js"></script>');
   const waterfallAt = html.indexOf('<script src="/cash-waterfall.js"></script>');
-  ok(planAt >= 0 && householdAt > planAt && waterfallAt > householdAt,
-    'waterfall runs only after Plan and the plain-language household layer');
-  ok(/<link rel="stylesheet" href="\/cash-waterfall\.css">/.test(html),
-    'cash-waterfall stylesheet is loaded');
+  ok(planAt >= 0 && householdAt > planAt,
+    'Plan and the plain-language household layer still load');
+  ok(waterfallAt < 0,
+    'the leftover waterfall is not the default Plan presentation');
+  ok(!/<link rel="stylesheet" href="\/cash-waterfall\.css">/.test(html),
+    'cash-waterfall stylesheet is not the Plan first-screen');
+  ok(/Payday operating sheet/.test(html),
+    'the homepage h1 is the payday operating sheet');
 }
 
 console.log('\n=== mobile layout keeps the answer compact ===');

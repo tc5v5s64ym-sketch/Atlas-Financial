@@ -287,8 +287,8 @@ console.log('\n=== approximate timing travels through Forecast; the page stays a
   ok(helper && !/plan\.commitments|Forecast\.[A-Za-z]+\s*\(|\.reduce\(|Math\./.test(helper[0]),
     'futureGravityHtml performs no future-cost arithmetic or Forecast decision');
   ok(/futureGravityHtml\(advice\)/.test(planSrc)
-    && /question\('04', 'What future costs affect today\?', protecting\)/.test(planSrc),
-    'question 04 consumes the one incumbent recommendation result');
+    && /question\('05', 'Big purchases\?', protecting\)/.test(planSrc),
+    'question 05 consumes the one incumbent recommendation result');
 }
 
 if (failures) {
