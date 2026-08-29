@@ -130,7 +130,8 @@ console.log('=== verdicts, remaining amounts and payday set-asides are direct ou
     'AT RISK remains distinct with the incumbent uncertainty amount');
   ok(gap.includes('FUNDING GAP') && gap.includes('$444.44') && gap.includes('Funding gap'),
     'FUNDING GAP remains distinct with the incumbent gap');
-  ok(gap.includes('$0.00') && gap.includes('Set aside this payday') && gap.includes('FUNDING GAP'),
+  ok(gap.includes('FUNDING GAP') && gap.includes('$444.44') && gap.includes('Funding gap')
+    && !gap.includes('Covered in the plan') && !gap.includes('Set aside this payday'),
     'a zero payday allocation does not turn a funding gap into funded/on-track');
   ok(optional.includes('$12.34') && optional.includes('Set aside this payday')
     && optional.includes('OPTIONAL'),
@@ -265,8 +266,9 @@ console.log('\n=== a zero-allocated optional item is not presented as shaping or
     'a zero-allocated optional item is absent from the shaping-today / protected group');
   ok(residual.includes('data-future-gravity-id="optional-zero"')
     && residual.includes("does not constrain today's safe-to-spend")
-    && optionalCard.includes('$0.00') && optionalCard.includes('OPTIONAL')
-    && !optionalCard.includes('Protected'),
+    && optionalCard.includes('OPTIONAL')
+    && !optionalCard.includes('Protected')
+    && !optionalCard.includes('Set aside this payday'),
     'the zero optional set-aside stays in a separate residual section and is not labelled protected');
 }
 
@@ -287,7 +289,7 @@ console.log('\n=== approximate timing travels through Forecast; the page stays a
   ok(helper && !/plan\.commitments|Forecast\.[A-Za-z]+\s*\(|\.reduce\(|Math\./.test(helper[0]),
     'futureGravityHtml performs no future-cost arithmetic or Forecast decision');
   ok(/futureGravityHtml\(advice\)/.test(planSrc)
-    && /question\('05', 'Big purchases\?', protecting\)/.test(planSrc),
+    && /question\('05', 'Big purchases\?', purchases\)/.test(planSrc),
     'question 05 consumes the one incumbent recommendation result');
 }
 

@@ -606,7 +606,7 @@ function weeklyCapView(advice, weeklyOverride) {
   const infeasible = modeInfeasible;
   const hasFeasibleCap = !modeInfeasible && !fundingBlocked;
   let reason = '';
-  if (infeasible) {
+  if (modeInfeasible && fail) {
     reason = `There is no feasible weekly cap. ${fail.label || 'A protected constraint'} fails${
       fail.date ? ` on ${fmtDateLong(fail.date)}` : ''} by ${money2(fail.shortfall)}; a weekly spending
           figure does not fix this.`;
