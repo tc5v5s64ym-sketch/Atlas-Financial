@@ -895,6 +895,79 @@ console.log('\n=== HTTP fail-closed without assistant token ===');
     });
     ok(insecure.configured === false && /HTTPS/.test(insecure.reason),
       'non-local HTTP issuer fails closed');
+
+    const issuerNoSlash = 'https://auth.example/realms/atlas';
+    const exactIssuer = AssistantOAuth.readConfig({
+      ATLAS_MCP_RESOURCE_URL: 'https://atlas.example/assistant/mcp',
+      ATLAS_OAUTH_ISSUER: issuerNoSlash,
+      ATLAS_OAUTH_JWKS_URI: 'https://auth.example/realms/atlas/jwks',
+    });
+    ok(exactIssuer.configured === true && exactIssuer.issuer === issuerNoSlash,
+      'configured issuer without a trailing slash is stored exactly');
+    ok(AssistantOAuth.protectedResourceMetadata(exactIssuer).authorization_servers[0]
+        === issuerNoSlash,
+      'protected-resource metadata advertises the exact configured issuer');
+
+    const originIssuer = 'https://auth.example';
+    const originConfig = AssistantOAuth.readConfig({
+      ATLAS_MCP_RESOURCE_URL: 'https://atlas.example/assistant/mcp',
+      ATLAS_OAUTH_ISSUER: originIssuer,
+      ATLAS_OAUTH_JWKS_URI: 'https://auth.example/jwks',
+    });
+    ok(originConfig.configured === true
+        && originConfig.issuer === originIssuer
+        && new URL(originIssuer).href === originIssuer + '/'
+        && AssistantOAuth.protectedResourceMetadata(originConfig).authorization_servers[0]
+          === originIssuer,
+      'origin-only issuer without a trailing slash is preserved exactly');
+  }
+
+  console.log('\n=== JWT verifier uses the exact issuer and rejects opaque tokens ===');
+  {
+    const jose = await import('jose');
+    const pair = await jose.generateKeyPair('RS256', { extractable: true });
+    const issuer = 'https://auth.example';
+    const resource = 'https://atlas.example/assistant/mcp';
+    const config = AssistantOAuth.readConfig({
+      ATLAS_MCP_RESOURCE_URL: resource,
+      ATLAS_OAUTH_ISSUER: issuer,
+      ATLAS_OAUTH_JWKS_URI: 'https://auth.example/jwks',
+    });
+    const verifier = AssistantOAuth.createTokenVerifier(config, {
+      jose,
+      jwks: pair.publicKey,
+    });
+    const now = Math.floor(Date.now() / 1000);
+    async function sign(iss) {
+      return new jose.SignJWT({
+        scope: AssistantMcp.REQUIRED_SCOPE,
+        client_id: 'atlas-jwt-proof',
+      })
+        .setProtectedHeader({ alg: 'RS256' })
+        .setIssuer(iss)
+        .setAudience(resource)
+        .setIssuedAt(now)
+        .setNotBefore(now - 1)
+        .setExpirationTime(now + 300)
+        .sign(pair.privateKey);
+    }
+    const exact = await verifier.verifyAccessToken(await sign(issuer));
+    ok(exact.scopes.includes(AssistantMcp.REQUIRED_SCOPE),
+      'JWT with the exact configured issuer verifies');
+    let slashRejected = false;
+    try {
+      await verifier.verifyAccessToken(await sign(`${issuer}/`));
+    } catch {
+      slashRejected = true;
+    }
+    ok(slashRejected, 'slash-mutated issuer identifier fails closed');
+    let opaqueRejected = false;
+    try {
+      await verifier.verifyAccessToken('opaque-access-token-not-a-jwt');
+    } catch {
+      opaqueRejected = true;
+    }
+    ok(opaqueRejected, 'opaque non-JWT access tokens fail closed');
   }
   await withAtlas({ ATLAS_ASSISTANT_TOKEN: ASSISTANT_TOKEN }, async ({ base }) => {
     const metadata = await fetch(`${base}${AssistantOAuth.METADATA_PATH}`);
@@ -1067,6 +1140,20 @@ console.log('\n=== HTTP fail-closed without assistant token ===');
         && /MCP_BEARER_AUTH/.test(serverSrc)
         && /hfd_session/.test(serverSrc),
       'static assistant, OAuth MCP, and browser session remain separate gates');
+    const oauthSrc = fs.readFileSync(path.join(ROOT, 'scripts', 'assistant-oauth.js'), 'utf8');
+    ok(/jwtVerify/.test(oauthSrc) && !/introspection_endpoint|token\/introspect/.test(oauthSrc),
+      'OAuth resource server verifies JWTs locally and has no introspection path');
+    ok(!/issuer:\s*config\.issuer\.href/.test(oauthSrc),
+      'JWT issuer verification does not use URL.href');
+    const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8');
+    const architecture = fs.readFileSync(path.join(ROOT, 'ARCHITECTURE.md'), 'utf8');
+    ok(/issuer-signed JWT access tokens/.test(readme)
+        && /Opaque access tokens are not supported/.test(readme)
+        && /does not introspect/.test(readme),
+      'README constrains the provider contract to issuer-signed JWT access tokens');
+    ok(/issuer-signed JWT access tokens/.test(architecture)
+        && /does not introspect opaque tokens/.test(architecture),
+      'ARCHITECTURE constrains MCP to issuer-signed JWT access tokens with no introspection');
   }
 
   console.log('\n=== Render blueprint declares assistant auth configuration without values ===');

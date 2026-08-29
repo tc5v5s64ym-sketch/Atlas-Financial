@@ -3,8 +3,10 @@
  *
  * Atlas is only the resource server. An external standards-compatible OAuth
  * authorization server owns login, consent, PKCE, client registration, token
- * issuance, and refresh. Atlas verifies every access token locally against the
- * configured issuer JWKS, audience/resource, expiry, and read scope.
+ * issuance, and refresh. Atlas verifies every issuer-signed JWT access token
+ * locally against the configured issuer JWKS, the exact configured issuer
+ * identifier, audience/resource, expiry, and read scope. Opaque tokens are
+ * not supported; there is no introspection path.
  */
 const {
   InvalidTokenError,
@@ -56,7 +58,10 @@ function readConfig(env) {
   }
   try {
     const resource = safeUrl('ATLAS_MCP_RESOURCE_URL', raw.resource);
-    const issuer = safeUrl('ATLAS_OAUTH_ISSUER', raw.issuer);
+    // Validate the issuer as a safe absolute HTTPS URL, but keep the
+    // configured identifier exactly. `URL.href` can append `/` and would
+    // then fail exact OAuth issuer comparison.
+    safeUrl('ATLAS_OAUTH_ISSUER', raw.issuer);
     const jwksUri = safeUrl('ATLAS_OAUTH_JWKS_URI', raw.jwksUri);
     if (resource.pathname !== '/assistant/mcp') {
       throw new Error('ATLAS_MCP_RESOURCE_URL must identify /assistant/mcp');
@@ -64,7 +69,7 @@ function readConfig(env) {
     return {
       configured: true,
       resource,
-      issuer,
+      issuer: raw.issuer,
       jwksUri,
       requiredScope: AssistantMcp.REQUIRED_SCOPE,
       metadataUrl: new URL(METADATA_PATH, resource).href,
@@ -78,7 +83,7 @@ function protectedResourceMetadata(config) {
   if (!config || !config.configured) throw new Error('OAuth is not configured');
   return {
     resource: config.resource.href,
-    authorization_servers: [config.issuer.href],
+    authorization_servers: [config.issuer],
     scopes_supported: [config.requiredScope],
     bearer_methods_supported: ['header'],
     resource_name: 'Atlas Financial read-only assistant',
@@ -114,7 +119,7 @@ function createTokenVerifier(config, deps) {
         const lib = await jose();
         if (!jwks) jwks = deps.jwks || lib.createRemoteJWKSet(config.jwksUri);
         const verified = await lib.jwtVerify(token, jwks, {
-          issuer: config.issuer.href,
+          issuer: config.issuer,
           audience: config.resource.href,
           algorithms: ASYMMETRIC_JWT_ALGORITHMS,
           requiredClaims: ['iss', 'aud', 'exp'],

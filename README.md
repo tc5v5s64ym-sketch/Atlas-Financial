@@ -37,12 +37,13 @@ is still the whole financial picture of two people.
   by the browser session. It requires `ATLAS_ASSISTANT_TOKEN` as
   `Authorization: Bearer`. Unset → 503. It never writes.
 - `POST /assistant/mcp` exposes that incumbent packet as exactly one MCP tool,
-  `get_atlas_current`. It accepts only OAuth access tokens issued for the exact
-  MCP resource with scope `atlas.current.read`; the static assistant token and
-  browser cookie do not work there. Atlas publishes OAuth protected-resource
-  metadata at `/.well-known/oauth-protected-resource`, verifies issuer,
-  signature/JWKS, audience, expiry/not-before, and scope on every request, and
-  has no write-capable MCP tool.
+  `get_atlas_current`. It accepts only issuer-signed JWT access tokens issued
+  for the exact MCP resource with scope `atlas.current.read`; the static
+  assistant token and browser cookie do not work there. Atlas publishes OAuth
+  protected-resource metadata at `/.well-known/oauth-protected-resource`,
+  verifies the exact configured issuer identifier, signature/JWKS, audience,
+  expiry/not-before, and scope on every request, and has no write-capable MCP
+  tool. Opaque access tokens are not supported.
 - OAuth login, consent, authorization-code + PKCE, client registration, token
   issuance, and refresh belong to the configured external standards-compatible
   authorization server. Atlas is only the resource server; it adds no user
@@ -115,11 +116,16 @@ node test-local.js
    `GET /assistant/current` returns 503.
 7. To connect ChatGPT, configure an external OAuth 2.1 authorization server
    that supports authorization code + PKCE S256 and ChatGPT client
-   registration, then set **`ATLAS_MCP_RESOURCE_URL`** to the public
-   `/assistant/mcp` URL, **`ATLAS_OAUTH_ISSUER`** to its exact issuer, and
-   **`ATLAS_OAUTH_JWKS_URI`** to its HTTPS JWKS. Missing or partial OAuth
-   configuration → MCP and its metadata return 503. Invalid, expired,
-   wrong-audience, or insufficient-scope tokens fail closed.
+   registration, and that issues issuer-signed JWT access tokens carrying
+   the exact configured issuer, the exact MCP resource audience, expiry, and
+   `atlas.current.read` scope. Opaque access tokens are not supported; Atlas
+   verifies JWTs locally against the issuer JWKS and does not introspect.
+   Then set **`ATLAS_MCP_RESOURCE_URL`** to the public `/assistant/mcp` URL,
+   **`ATLAS_OAUTH_ISSUER`** to that exact issuer identifier (do not add or
+   remove a trailing slash), and **`ATLAS_OAUTH_JWKS_URI`** to its HTTPS
+   JWKS. Missing or partial OAuth configuration → MCP and its metadata
+   return 503. Invalid, expired, wrong-audience, or insufficient-scope
+   tokens fail closed.
 8. Deploy. Every push to the default branch redeploys automatically.
 
 The free plan sleeps after inactivity, so the first visit in a while takes about
