@@ -14,7 +14,7 @@ is still the whole financial picture of two people.
 
 | Path | Purpose |
 |---|---|
-| `server.js` | Express app: password gate, assistant Bearer gate, security headers, serves the data |
+| `server.js` | Express app: browser gate, assistant auth boundaries, security headers, serves the data |
 | `data.json` | **Every figure on the site**, including the `plan` block the forecast runs on |
 | `public/index.html` + `plan.js` | **Plan** — the homepage: 90-day forecast, budget, next actions |
 | `public/forecast.js` | The 13-week projection engine — pure, DOM-free, node-testable |
@@ -36,8 +36,17 @@ is still the whole financial picture of two people.
 - `GET /assistant/current` is a separate read-only consumer. It is not unlocked
   by the browser session. It requires `ATLAS_ASSISTANT_TOKEN` as
   `Authorization: Bearer`. Unset → 503. It never writes.
-  `POST /assistant/mcp` is the same Bearer surface as one read-only MCP tool
-  (`get_atlas_current`) wrapping that GET.
+- `POST /assistant/mcp` exposes that incumbent packet as exactly one MCP tool,
+  `get_atlas_current`. It accepts only OAuth access tokens issued for the exact
+  MCP resource with scope `atlas.current.read`; the static assistant token and
+  browser cookie do not work there. Atlas publishes OAuth protected-resource
+  metadata at `/.well-known/oauth-protected-resource`, verifies issuer,
+  signature/JWKS, audience, expiry/not-before, and scope on every request, and
+  has no write-capable MCP tool.
+- OAuth login, consent, authorization-code + PKCE, client registration, token
+  issuance, and refresh belong to the configured external standards-compatible
+  authorization server. Atlas is only the resource server; it adds no user
+  database or second login platform.
 - Sessions are stateless HMAC-signed cookies — HttpOnly, SameSite=Lax, and
   Secure whenever the request is HTTPS. A tampered cookie is rejected.
 - Login attempts are throttled to 8 per 15 minutes per IP.
@@ -48,6 +57,10 @@ is still the whole financial picture of two people.
 environment variables in production, and in your own shell's environment
 variables when running locally.** Never commit them, never put them in
 `data.json`, never send them to the browser, and never write them to a log.
+`ATLAS_MCP_RESOURCE_URL`, `ATLAS_OAUTH_ISSUER`, and `ATLAS_OAUTH_JWKS_URI`
+are non-secret OAuth endpoint identifiers, also supplied through the deployment
+environment. OAuth access and refresh tokens are never Atlas configuration and
+are never exposed by the MCP response.
 [`ARCHITECTURE.md`](ARCHITECTURE.md) holds the rule for every secret Atlas may
 legitimately hold, and is the one home for it.
 
@@ -96,12 +109,18 @@ node test-local.js
    and **`ATLAS_PROVIDER_ACCOUNT_MAP_JSON`** by hand in Render. Never put
    those values in git. `ATLAS_LIVE_OVERLAY=live` is declared in
    `render.yaml`. `/healthz` does not depend on Lunch Money.
-6. To enable read-only assistant access, set **`ATLAS_ASSISTANT_TOKEN`** by
-   hand in Render to a dedicated secret of at least 32 characters. Do not reuse
-   `SITE_PASSWORD`. Unset → `GET /assistant/current` and `POST /assistant/mcp`
-   return 503. The MCP tool is `get_atlas_current`. ChatGPT Apps OAuth is not
-   this surface.
-7. Deploy. Every push to the default branch redeploys automatically.
+6. To enable the incumbent direct read-only surface, set
+   **`ATLAS_ASSISTANT_TOKEN`** by hand in Render to a dedicated secret of at
+   least 32 characters. Do not reuse `SITE_PASSWORD`. Unset →
+   `GET /assistant/current` returns 503.
+7. To connect ChatGPT, configure an external OAuth 2.1 authorization server
+   that supports authorization code + PKCE S256 and ChatGPT client
+   registration, then set **`ATLAS_MCP_RESOURCE_URL`** to the public
+   `/assistant/mcp` URL, **`ATLAS_OAUTH_ISSUER`** to its exact issuer, and
+   **`ATLAS_OAUTH_JWKS_URI`** to its HTTPS JWKS. Missing or partial OAuth
+   configuration → MCP and its metadata return 503. Invalid, expired,
+   wrong-audience, or insufficient-scope tokens fail closed.
+8. Deploy. Every push to the default branch redeploys automatically.
 
 The free plan sleeps after inactivity, so the first visit in a while takes about
 thirty seconds to wake. For a couple of check-ins a week that is fine.

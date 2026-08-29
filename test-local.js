@@ -34,7 +34,7 @@ async function main() {
     redirect: 'manual',
   });
   ok(r.status === 401 || r.status === 503,
-    'POST /assistant/mcp is blocked without the assistant Bearer',
+    'POST /assistant/mcp is blocked without OAuth authorization',
     `status ${r.status}`);
 
   r = await fetch(`${BASE}/balance-history.json`, { redirect: 'manual' });

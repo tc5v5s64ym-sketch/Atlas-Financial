@@ -265,9 +265,9 @@ Inferred personal from its transactions, not verified.
 
 ## Ready — analysis, nothing blocking
 
-**B97 · Read-only assistant access to Atlas** · **IN PROGRESS 2026-08-27** · *owner instruction; MCP wrap slice*
+**B97 · Read-only assistant access to Atlas** · **IN PROGRESS 2026-08-29** · *owner instruction; OAuth MCP connection slice*
 
-Owner instruction 2026-08-24: expose one secure, read-only, sanitized assistant data surface backed by the incumbent live Atlas/Forecast authorities. First slice earned: `GET /assistant/current` via `scripts/assistant-packet.js`, dedicated `ATLAS_ASSISTANT_TOKEN` Bearer secret. Current slice: `POST /assistant/mcp` wraps that same packet as one read-only MCP tool (`get_atlas_current`). Not a ChatGPT financial planner, not a second Forecast, not a transaction store. ChatGPT Apps SDK OAuth / in-product installation remains a later owner-operated slice.
+Owner instruction 2026-08-24: expose one secure, read-only, sanitized assistant data surface backed by the incumbent live Atlas/Forecast authorities. First slice earned: `GET /assistant/current` via `scripts/assistant-packet.js`, dedicated `ATLAS_ASSISTANT_TOKEN` Bearer secret. Owner decision 2026-08-29 authorises the OAuth infrastructure specifically required for ChatGPT. Current slice: `POST /assistant/mcp` exposes that same packet as exactly one read-only MCP tool (`get_atlas_current`) behind OAuth issuer/JWKS, exact-resource, expiry, and `atlas.current.read` validation. Atlas is only the resource server; the external authorization server owns login, consent, PKCE, client registration, token issue, and refresh. Browser, static-assistant, and OAuth credentials remain separate. Not a ChatGPT financial planner, not a second Forecast, not a transaction store, and no writes. Deployment-provider configuration and ChatGPT installation are owner-operated configuration of this boundary, not another Atlas financial capability.
 
 **B66 · Stop deleting the Interac notifications** · **owner action** · *small*
 **The single cheapest fix in this file.** Interac's confirmation emails are the

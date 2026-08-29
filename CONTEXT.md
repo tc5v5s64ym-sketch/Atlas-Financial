@@ -40,8 +40,10 @@ opening is 2026-08-19. The 2026-08-16 opening remains dated evidence
 master plan (`B94` / `AF-PLAN-01`): the 91-day Plan display is a view
 of a ≥12-month knowledge horizon. The household payday answer is
 composed from that Forecast (`B96` / `AF-PLAN-02`). Read-only assistant
-access to Atlas is `GET /assistant/current` (`B97`); it consumes Forecast
-and is not a second planner. Dated account-balance
+access to Atlas is the incumbent `GET /assistant/current` packet (`B97`);
+ChatGPT reaches that same projection through the one-tool OAuth-protected
+`POST /assistant/mcp` resource. It consumes Forecast and is not a second
+planner. Dated account-balance
 openings live in `snapshots/` (`B20` / `AF-HIST-01`); `data.json` remains
 the dated canonical opening. Today's live plan may overlay current
 posted/pending in memory without rewriting that opening. Do not treat 9 August

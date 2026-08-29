@@ -8,10 +8,10 @@
 //    sensitive sits in the static directory.
 //  * Sessions are stateless: an HMAC-signed cookie, so a restart (Render free
 //    tier sleeps) does not force a re-login mid-session.
-//  * GET /assistant/current is a separate read-only consumer. It is not unlocked
-//    by the browser session and requires ATLAS_ASSISTANT_TOKEN as a Bearer
-//    secret. Unset token → 503. It never writes. POST /assistant/mcp is the
-//    same Bearer surface wrapping that GET as one read-only MCP tool.
+//  * GET /assistant/current remains a dedicated static-Bearer consumer.
+//    POST /assistant/mcp is separate again: an OAuth-protected MCP resource
+//    exposing the same packet as one read-only tool. Browser, static assistant,
+//    and OAuth credentials do not unlock one another.
 
 const express = require('express');
 const crypto = require('crypto');
@@ -21,12 +21,17 @@ const SnapshotBalances = require('./scripts/snapshot-balances.js');
 const LivePlan = require('./scripts/live-plan.js');
 const Assistant = require('./scripts/assistant-packet.js');
 const AssistantMcp = require('./scripts/assistant-mcp.js');
+const AssistantOAuth = require('./scripts/assistant-oauth.js');
 
 const PASSWORD = process.env.SITE_PASSWORD;
 const SECRET = process.env.SESSION_SECRET;
 const ASSISTANT_TOKEN = process.env.ATLAS_ASSISTANT_TOKEN || '';
 const PORT = process.env.PORT || 3000;
 const SESSION_HOURS = 24 * 14;
+const MCP_OAUTH = AssistantOAuth.readConfig(process.env);
+const MCP_BEARER_AUTH = MCP_OAUTH.configured
+  ? AssistantOAuth.createBearerMiddleware(MCP_OAUTH)
+  : null;
 
 if (!PASSWORD || PASSWORD.length < 8) {
   console.error('FATAL: SITE_PASSWORD is not set, or is shorter than 8 characters.');
@@ -227,6 +232,18 @@ app.post('/logout', (req, res) => {
 // literal string "ok" and reads nothing, so this widens no data surface.
 app.get('/healthz', (_req, res) => res.type('text/plain').send('ok'));
 
+// OAuth protected-resource discovery is public metadata. It contains no token,
+// credential, or household data. The authorization server itself is external;
+// Atlas remains only the read-only resource server.
+function oauthMetadata(_req, res) {
+  if (!MCP_OAUTH.configured) {
+    return res.status(503).json({ error: 'assistant oauth unavailable' });
+  }
+  return res.json(AssistantOAuth.protectedResourceMetadata(MCP_OAUTH));
+}
+app.get(AssistantOAuth.METADATA_PATH, oauthMetadata);
+app.get(`${AssistantOAuth.METADATA_PATH}/assistant/mcp`, oauthMetadata);
+
 // ---------------------------------------------------------------- data cache
 // Shared by the browser /data.json session route and the assistant packet.
 // Overlay is on-demand GET-only; this never writes canonical state.
@@ -264,11 +281,18 @@ app.all('/assistant/current', (_req, res) => {
   return res.status(405).json({ error: 'method not allowed' });
 });
 
-app.post('/assistant/mcp', (req, res, next) => {
-  if (assistantHttpGuard(req, res)) return;
-  next();
-}, (req, res, next) => {
-  express.json({ limit: '32kb', type: 'application/json' })(req, res, (err) => {
+function mcpOAuthGate(req, res, next) {
+  if (!MCP_OAUTH.configured || !MCP_BEARER_AUTH) {
+    return res.status(503).json({ error: 'assistant oauth unavailable' });
+  }
+  if (!AssistantMcp.originAllowed(req.get('origin'))) {
+    return res.status(403).json({ error: 'origin not allowed' });
+  }
+  return MCP_BEARER_AUTH(req, res, next);
+}
+const mcpJson = express.json({ limit: '32kb', type: 'application/json' });
+app.post('/assistant/mcp', mcpOAuthGate, (req, res, next) => {
+  mcpJson(req, res, (err) => {
     if (!err) return next();
     return res.status(400).json({
       jsonrpc: '2.0',
@@ -277,30 +301,20 @@ app.post('/assistant/mcp', (req, res, next) => {
     });
   });
 }, async (req, res) => {
-  const message = req.body;
-  const needsPacket = message && message.method === 'tools/call'
-    && message.params && message.params.name === AssistantMcp.TOOL_NAME;
-  let packet = null;
-  if (needsPacket) {
-    try {
-      packet = await buildCurrentAssistantPacket();
-    } catch (err) {
-      console.error('assistant packet could not be built:', err.message);
-      const id = message && Object.prototype.hasOwnProperty.call(message, 'id')
-        ? message.id
-        : null;
+  try {
+    await AssistantMcp.handleHttp(req, res, { getPacket: buildCurrentAssistantPacket });
+  } catch (err) {
+    console.error('assistant MCP request failed');
+    if (!res.headersSent) {
       return res.status(500).json({
         jsonrpc: '2.0',
-        id,
+        id: null,
         error: { code: -32603, message: 'internal error' },
       });
     }
   }
-  const out = AssistantMcp.handle(message, { packet });
-  if (out.status === 204) return res.status(204).end();
-  return res.status(out.status).json(out.body);
 });
-app.all('/assistant/mcp', (_req, res) => {
+app.all('/assistant/mcp', mcpOAuthGate, (_req, res) => {
   res.set('Allow', 'POST');
   return res.status(405).json({ error: 'method not allowed' });
 });
@@ -308,7 +322,7 @@ app.all('/assistant/mcp', (_req, res) => {
 // ---------------------------------------------------------------- gate
 // styles.css is needed by the login page, so it stays public. Everything else
 // requires a session. The assistant route has its own Bearer gate above and
-// is not unlocked by a browser cookie.
+// is not unlocked by a browser cookie. MCP has its own OAuth gate above.
 app.use((req, res, next) => {
   if (req.path === '/login' || req.path === '/styles.css' || req.path === '/robots.txt') return next();
   if (req.path === '/assistant/current' || req.path === '/assistant/mcp') {
