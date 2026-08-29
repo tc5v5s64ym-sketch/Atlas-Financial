@@ -10,7 +10,8 @@
 //    tier sleeps) does not force a re-login mid-session.
 //  * GET /assistant/current is a separate read-only consumer. It is not unlocked
 //    by the browser session and requires ATLAS_ASSISTANT_TOKEN as a Bearer
-//    secret. Unset token → 503. It never writes.
+//    secret. Unset token → 503. It never writes. POST /assistant/mcp is the
+//    same Bearer surface wrapping that GET as one read-only MCP tool.
 
 const express = require('express');
 const crypto = require('crypto');
@@ -19,6 +20,7 @@ const path = require('path');
 const SnapshotBalances = require('./scripts/snapshot-balances.js');
 const LivePlan = require('./scripts/live-plan.js');
 const Assistant = require('./scripts/assistant-packet.js');
+const AssistantMcp = require('./scripts/assistant-mcp.js');
 
 const PASSWORD = process.env.SITE_PASSWORD;
 const SECRET = process.env.SESSION_SECRET;
@@ -127,6 +129,31 @@ function assistantAuthed(req) {
   if (supplied.length !== actual.length) return false;
   return crypto.timingSafeEqual(supplied, actual);
 }
+function assistantHttpGuard(req, res) {
+  const ip = req.ip || 'unknown';
+  if (!assistantConfigured()) {
+    res.status(503).json({ error: 'assistant unavailable' });
+    return true;
+  }
+  if (tooManyAttempts(ip)) {
+    res.status(429).json({ error: 'too many attempts' });
+    return true;
+  }
+  if (!assistantAuthed(req)) {
+    noteAttempt(ip);
+    assistantUnauthorized(res);
+    return true;
+  }
+  return false;
+}
+async function buildCurrentAssistantPacket() {
+  const served = await servedAtlasData();
+  return Assistant.buildPacket({
+    data: served,
+    env: process.env,
+    now: new Date().toISOString(),
+  });
+}
 // Secure is mandatory in production (Render is always HTTPS) but must be
 // omitted over plain http, or a local test session can never be sent back.
 function secureFlag(req) {
@@ -224,25 +251,9 @@ function assistantUnauthorized(res) {
   return res.status(401).json({ error: 'not authenticated' });
 }
 app.get('/assistant/current', async (req, res) => {
-  const ip = req.ip || 'unknown';
-  if (!assistantConfigured()) {
-    return res.status(503).json({ error: 'assistant unavailable' });
-  }
-  if (tooManyAttempts(ip)) {
-    return res.status(429).json({ error: 'too many attempts' });
-  }
-  if (!assistantAuthed(req)) {
-    noteAttempt(ip);
-    return assistantUnauthorized(res);
-  }
+  if (assistantHttpGuard(req, res)) return;
   try {
-    const served = await servedAtlasData();
-    const packet = Assistant.buildPacket({
-      data: served,
-      env: process.env,
-      now: new Date().toISOString(),
-    });
-    res.json(packet);
+    res.json(await buildCurrentAssistantPacket());
   } catch (err) {
     console.error('assistant packet could not be built:', err.message);
     res.status(500).json({ error: 'assistant unavailable' });
@@ -253,13 +264,54 @@ app.all('/assistant/current', (_req, res) => {
   return res.status(405).json({ error: 'method not allowed' });
 });
 
+app.post('/assistant/mcp', (req, res, next) => {
+  if (assistantHttpGuard(req, res)) return;
+  next();
+}, (req, res, next) => {
+  express.json({ limit: '32kb', type: 'application/json' })(req, res, (err) => {
+    if (!err) return next();
+    return res.status(400).json({
+      jsonrpc: '2.0',
+      id: null,
+      error: { code: -32700, message: 'parse error' },
+    });
+  });
+}, async (req, res) => {
+  const message = req.body;
+  const needsPacket = message && message.method === 'tools/call'
+    && message.params && message.params.name === AssistantMcp.TOOL_NAME;
+  let packet = null;
+  if (needsPacket) {
+    try {
+      packet = await buildCurrentAssistantPacket();
+    } catch (err) {
+      console.error('assistant packet could not be built:', err.message);
+      const id = message && Object.prototype.hasOwnProperty.call(message, 'id')
+        ? message.id
+        : null;
+      return res.status(500).json({
+        jsonrpc: '2.0',
+        id,
+        error: { code: -32603, message: 'internal error' },
+      });
+    }
+  }
+  const out = AssistantMcp.handle(message, { packet });
+  if (out.status === 204) return res.status(204).end();
+  return res.status(out.status).json(out.body);
+});
+app.all('/assistant/mcp', (_req, res) => {
+  res.set('Allow', 'POST');
+  return res.status(405).json({ error: 'method not allowed' });
+});
+
 // ---------------------------------------------------------------- gate
 // styles.css is needed by the login page, so it stays public. Everything else
 // requires a session. The assistant route has its own Bearer gate above and
 // is not unlocked by a browser cookie.
 app.use((req, res, next) => {
   if (req.path === '/login' || req.path === '/styles.css' || req.path === '/robots.txt') return next();
-  if (req.path === '/assistant/current') {
+  if (req.path === '/assistant/current' || req.path === '/assistant/mcp') {
     return res.status(401).json({ error: 'not authenticated' });
   }
   if (authed(req)) return next();

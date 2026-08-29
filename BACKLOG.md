@@ -265,9 +265,9 @@ Inferred personal from its transactions, not verified.
 
 ## Ready — analysis, nothing blocking
 
-**B97 · Read-only assistant access to Atlas** · **IN PROGRESS 2026-08-24** · *owner instruction; first slice*
+**B97 · Read-only assistant access to Atlas** · **IN PROGRESS 2026-08-27** · *owner instruction; MCP wrap slice*
 
-Owner instruction 2026-08-24: expose one secure, read-only, sanitized assistant data surface backed by the incumbent live Atlas/Forecast authorities. `GET /assistant/current` via `scripts/assistant-packet.js`. Dedicated `ATLAS_ASSISTANT_TOKEN` Bearer secret. Not a ChatGPT financial planner, not a second Forecast, not a transaction store. ChatGPT App / MCP connection is a later PR.
+Owner instruction 2026-08-24: expose one secure, read-only, sanitized assistant data surface backed by the incumbent live Atlas/Forecast authorities. First slice earned: `GET /assistant/current` via `scripts/assistant-packet.js`, dedicated `ATLAS_ASSISTANT_TOKEN` Bearer secret. Current slice: `POST /assistant/mcp` wraps that same packet as one read-only MCP tool (`get_atlas_current`). Not a ChatGPT financial planner, not a second Forecast, not a transaction store. ChatGPT Apps SDK OAuth / in-product installation remains a later owner-operated slice.
 
 **B66 · Stop deleting the Interac notifications** · **owner action** · *small*
 **The single cheapest fix in this file.** Interac's confirmation emails are the

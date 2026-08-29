@@ -12,9 +12,9 @@
  * records unavailable/unknown. It never writes.
  *
  * HTTP consumer: GET /assistant/current (Bearer ATLAS_ASSISTANT_TOKEN).
- * Next PR may wrap that route as one read-only MCP tool without changing
- * financial authority. ChatGPT Apps SDK OAuth is that later adapter, not
- * this outcome. Do not import an Apps SDK scaffold here.
+ * POST /assistant/mcp wraps that same packet as one read-only MCP tool.
+ * ChatGPT Apps SDK OAuth is a later adapter. Do not import an Apps SDK
+ * scaffold here.
  */
 
 const fs = require('fs');
