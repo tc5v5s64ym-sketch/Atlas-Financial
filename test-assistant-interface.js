@@ -1,9 +1,10 @@
 'use strict';
 /* Read-only assistant interface.
  *
- * Proves GET /assistant/current is fail-closed, uses a dedicated Bearer
- * secret, projects incumbent Forecast / live-overlay / periods results,
- * never writes, and does not weaken browser session auth.
+ * Proves GET /assistant/current keeps its dedicated static Bearer boundary and
+ * POST /assistant/mcp uses a separate OAuth protected-resource boundary over
+ * the same incumbent Forecast / live-overlay / periods packet. Both fail
+ * closed, never write, and do not weaken browser session auth.
  *
  * Financial figures are reconciled against Forecast on the same served
  * data, plus an independent sum of spendable cash rows. Live household
@@ -19,6 +20,11 @@ const Forecast = require('./public/forecast.js');
 const LivePlan = require('./scripts/live-plan.js');
 const Assistant = require('./scripts/assistant-packet.js');
 const AssistantMcp = require('./scripts/assistant-mcp.js');
+const AssistantOAuth = require('./scripts/assistant-oauth.js');
+const { Client } = require('@modelcontextprotocol/sdk/client/index.js');
+const {
+  StreamableHTTPClientTransport,
+} = require('@modelcontextprotocol/sdk/client/streamableHttp.js');
 const O = require('./scripts/provider-observe.js');
 
 const ROOT = __dirname;
@@ -130,6 +136,8 @@ function forbiddenBlob(value) {
     || /SESSION_SECRET/.test(text)
     || /ATLAS_ASSISTANT_TOKEN/.test(text)
     || /ATLAS_PROVIDER_ACCOUNT_MAP_JSON/.test(text)
+    || /synthetic-site-password/.test(text)
+    || /synthetic-session-secret/.test(text)
     || /synthetic-assistant-token/.test(text)
     || /synthetic-readonly-token/.test(text);
 }
@@ -222,6 +230,86 @@ async function withAtlas(envExtra, fn) {
     });
   } finally {
     await atlas.stop();
+  }
+}
+
+async function startOAuthIssuer() {
+  const jose = await import('jose');
+  const pair = await jose.generateKeyPair('RS256', { extractable: true });
+  const publicJwk = await jose.exportJWK(pair.publicKey);
+  publicJwk.kid = 'atlas-test-key';
+  publicJwk.alg = 'RS256';
+  publicJwk.use = 'sig';
+  const otherPair = await jose.generateKeyPair('RS256', { extractable: true });
+  let issuer;
+  const server = http.createServer((req, res) => {
+    res.setHeader('content-type', 'application/json');
+    if (req.url === '/.well-known/oauth-authorization-server') {
+      return res.end(JSON.stringify({
+        issuer,
+        authorization_endpoint: `${issuer}authorize`,
+        token_endpoint: `${issuer}token`,
+        jwks_uri: `${issuer}jwks`,
+        response_types_supported: ['code'],
+        grant_types_supported: ['authorization_code', 'refresh_token'],
+        code_challenge_methods_supported: ['S256'],
+        scopes_supported: [AssistantMcp.REQUIRED_SCOPE],
+      }));
+    }
+    if (req.url === '/jwks') return res.end(JSON.stringify({ keys: [publicJwk] }));
+    res.statusCode = 404;
+    return res.end(JSON.stringify({ error: 'not found' }));
+  });
+  await new Promise((resolve, reject) => {
+    server.listen(0, '127.0.0.1', resolve);
+    server.on('error', reject);
+  });
+  issuer = `http://127.0.0.1:${server.address().port}/`;
+  async function sign(resource, overrides) {
+    overrides = overrides || {};
+    const now = Math.floor(Date.now() / 1000);
+    const key = overrides.key || pair.privateKey;
+    return new jose.SignJWT({
+      scope: overrides.scope === undefined ? AssistantMcp.REQUIRED_SCOPE : overrides.scope,
+      client_id: 'chatgpt-test-client',
+      sub: 'atlas-owner-test',
+    })
+      .setProtectedHeader({ alg: 'RS256', kid: 'atlas-test-key' })
+      .setIssuer(overrides.issuer || issuer)
+      .setAudience(overrides.audience || resource)
+      .setIssuedAt(now)
+      .setNotBefore(overrides.notBefore === undefined ? now - 1 : overrides.notBefore)
+      .setExpirationTime(overrides.expiresAt === undefined ? now + 300 : overrides.expiresAt)
+      .sign(key);
+  }
+  return {
+    issuer,
+    jwksUri: `${issuer}jwks`,
+    otherPrivateKey: otherPair.privateKey,
+    sign,
+    close: () => new Promise(done => server.close(() => done())),
+  };
+}
+
+async function withOAuthAtlas(fn) {
+  const oauth = await startOAuthIssuer();
+  const port = await freePort();
+  const base = `http://127.0.0.1:${port}`;
+  const resource = `${base}/assistant/mcp`;
+  const atlas = await startAtlas(isolatedEnv({
+    SITE_PASSWORD: PASS,
+    SESSION_SECRET: SECRET,
+    ATLAS_ASSISTANT_TOKEN: ASSISTANT_TOKEN,
+    ATLAS_MCP_RESOURCE_URL: resource,
+    ATLAS_OAUTH_ISSUER: oauth.issuer,
+    ATLAS_OAUTH_JWKS_URI: oauth.jwksUri,
+    PORT: String(port),
+  }));
+  try {
+    await fn({ base, resource, oauth, atlas });
+  } finally {
+    await atlas.stop();
+    await oauth.close();
   }
 }
 
@@ -761,8 +849,20 @@ console.log('\n=== HTTP fail-closed without assistant token ===');
       'reuse-of-session fatal names SESSION_SECRET');
   }
 
-  console.log('\n=== MCP adapter is transport only ===');
+  console.log('\n=== MCP adapter is one OAuth-declared read-only transport ===');
   {
+    const descriptor = AssistantMcp.toolDescriptor();
+    ok(descriptor.name === AssistantMcp.TOOL_NAME,
+      'the sole descriptor is get_atlas_current');
+    ok(descriptor.annotations.readOnlyHint === true
+        && descriptor.annotations.destructiveHint === false
+        && descriptor.annotations.openWorldHint === false,
+      'tool annotations declare the closed read-only boundary');
+    ok(descriptor._meta.securitySchemes.length === 1
+        && descriptor._meta.securitySchemes[0].type === 'oauth2'
+        && descriptor._meta.securitySchemes[0].scopes.length === 1
+        && descriptor._meta.securitySchemes[0].scopes[0] === AssistantMcp.REQUIRED_SCOPE,
+      'tool metadata declares only atlas.current.read OAuth');
     const packet = Assistant.buildPacket({
       data: clone(liveData),
       periods: Assistant.loadPeriods(),
@@ -770,169 +870,259 @@ console.log('\n=== HTTP fail-closed without assistant token ===');
       now: '2026-08-24T12:00:00.000Z',
       env: {},
     });
-    const init = AssistantMcp.handle({
-      jsonrpc: '2.0', id: 1, method: 'initialize',
-      params: { protocolVersion: AssistantMcp.PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: 'test', version: '1' } },
-    });
-    ok(init.status === 200 && init.body.result.protocolVersion === AssistantMcp.PROTOCOL_VERSION,
-      'initialize returns the MCP protocol version Atlas speaks');
-    ok(init.body.result.serverInfo && init.body.result.serverInfo.name === AssistantMcp.SERVER_NAME,
-      'initialize names the Atlas assistant MCP server');
-    const listed = AssistantMcp.handle({ jsonrpc: '2.0', id: 2, method: 'tools/list' });
-    ok(listed.body.result.tools.length === 1
-        && listed.body.result.tools[0].name === AssistantMcp.TOOL_NAME,
-      'tools/list exposes exactly one read-only tool');
-    const called = AssistantMcp.handle({
-      jsonrpc: '2.0', id: 3, method: 'tools/call',
-      params: { name: AssistantMcp.TOOL_NAME, arguments: {} },
-    }, { packet });
-    ok(called.status === 200 && called.body.result.isError === false,
-      'tools/call get_atlas_current succeeds on a sanitized packet');
-    const wrapped = JSON.parse(called.body.result.content[0].text);
-    ok(wrapped.schema === Assistant.SCHEMA
-        && near(wrapped.current.spendableHouseholdCash.value, packet.current.spendableHouseholdCash.value),
-      'MCP content is the incumbent assistant packet, not a second figure');
-    ok(Assistant.looksSanitized(called.body) && !forbiddenBlob(called.body),
-      'MCP envelope stays sanitized');
-    const unknownTool = AssistantMcp.handle({
-      jsonrpc: '2.0', id: 4, method: 'tools/call',
-      params: { name: 'canonical-refresh', arguments: {} },
-    }, { packet });
-    ok(unknownTool.body.error && unknownTool.body.error.code === -32602,
-      'unknown tools including write names are refused');
-    const extraArgs = AssistantMcp.handle({
-      jsonrpc: '2.0', id: 5, method: 'tools/call',
-      params: { name: AssistantMcp.TOOL_NAME, arguments: { weekly: 999 } },
-    }, { packet });
-    ok(extraArgs.body.error && extraArgs.body.error.code === -32602,
-      'get_atlas_current rejects arguments rather than accepting a planner override');
-    const missingMethod = AssistantMcp.handle({
-      jsonrpc: '2.0', id: 6, method: 'resources/list',
-    });
-    ok(missingMethod.body.error && missingMethod.body.error.code === -32601,
-      'non-tool MCP methods are not invented');
-    const ping = AssistantMcp.handle({ jsonrpc: '2.0', id: 7, method: 'ping' });
-    ok(ping.status === 200 && ping.body.result && typeof ping.body.result === 'object',
-      'ping is accepted without building a packet');
-    const note = AssistantMcp.handle({ jsonrpc: '2.0', method: 'notifications/initialized' });
-    ok(note.status === 204 && note.body == null, 'initialized notification is acknowledged without a body');
-    const batch = AssistantMcp.handle([{ jsonrpc: '2.0', id: 8, method: 'tools/list' }]);
-    ok(batch.status === 400 && batch.body.error && batch.body.error.code === -32600,
-      'JSON-RPC batches fail closed');
+    const result = AssistantMcp.packetResult(packet);
+    ok(result.isError === false && result.structuredContent === packet,
+      'tool result is the incumbent packet object');
+    ok(!forbiddenBlob(result), 'tool result remains sanitized');
     const mcpSrc = fs.readFileSync(path.join(ROOT, 'scripts', 'assistant-mcp.js'), 'utf8');
     ok(!/Forecast\.recommend/.test(mcpSrc) && !/startingCashAmount/.test(mcpSrc),
-      'MCP adapter does not call Forecast or recompute cash');
+      'MCP transport does not call Forecast or recompute cash');
     ok(/assistant-packet/.test(mcpSrc) && /looksSanitized/.test(mcpSrc),
-      'MCP adapter consumes the incumbent packet sanitizer');
+      'MCP transport consumes the incumbent packet sanitizer');
   }
 
-  console.log('\n=== HTTP MCP wrap uses the same Bearer gate as GET /assistant/current ===');
-  await withAtlas({}, async ({ base }) => {
+  console.log('\n=== OAuth MCP fails closed when configuration is absent ===');
+  {
+    const partial = AssistantOAuth.readConfig({
+      ATLAS_MCP_RESOURCE_URL: 'https://atlas.example/assistant/mcp',
+    });
+    ok(partial.configured === false && partial.reason === 'oauth-configuration-incomplete',
+      'partial OAuth configuration fails closed');
+    const insecure = AssistantOAuth.readConfig({
+      ATLAS_MCP_RESOURCE_URL: 'https://atlas.example/assistant/mcp',
+      ATLAS_OAUTH_ISSUER: 'http://issuer.example/',
+      ATLAS_OAUTH_JWKS_URI: 'https://issuer.example/jwks',
+    });
+    ok(insecure.configured === false && /HTTPS/.test(insecure.reason),
+      'non-local HTTP issuer fails closed');
+
+    const issuerNoSlash = 'https://auth.example/realms/atlas';
+    const exactIssuer = AssistantOAuth.readConfig({
+      ATLAS_MCP_RESOURCE_URL: 'https://atlas.example/assistant/mcp',
+      ATLAS_OAUTH_ISSUER: issuerNoSlash,
+      ATLAS_OAUTH_JWKS_URI: 'https://auth.example/realms/atlas/jwks',
+    });
+    ok(exactIssuer.configured === true && exactIssuer.issuer === issuerNoSlash,
+      'configured issuer without a trailing slash is stored exactly');
+    ok(AssistantOAuth.protectedResourceMetadata(exactIssuer).authorization_servers[0]
+        === issuerNoSlash,
+      'protected-resource metadata advertises the exact configured issuer');
+
+    const originIssuer = 'https://auth.example';
+    const originConfig = AssistantOAuth.readConfig({
+      ATLAS_MCP_RESOURCE_URL: 'https://atlas.example/assistant/mcp',
+      ATLAS_OAUTH_ISSUER: originIssuer,
+      ATLAS_OAUTH_JWKS_URI: 'https://auth.example/jwks',
+    });
+    ok(originConfig.configured === true
+        && originConfig.issuer === originIssuer
+        && new URL(originIssuer).href === originIssuer + '/'
+        && AssistantOAuth.protectedResourceMetadata(originConfig).authorization_servers[0]
+          === originIssuer,
+      'origin-only issuer without a trailing slash is preserved exactly');
+  }
+
+  console.log('\n=== JWT verifier uses the exact issuer and rejects opaque tokens ===');
+  {
+    const jose = await import('jose');
+    const pair = await jose.generateKeyPair('RS256', { extractable: true });
+    const issuer = 'https://auth.example';
+    const resource = 'https://atlas.example/assistant/mcp';
+    const config = AssistantOAuth.readConfig({
+      ATLAS_MCP_RESOURCE_URL: resource,
+      ATLAS_OAUTH_ISSUER: issuer,
+      ATLAS_OAUTH_JWKS_URI: 'https://auth.example/jwks',
+    });
+    const verifier = AssistantOAuth.createTokenVerifier(config, {
+      jose,
+      jwks: pair.publicKey,
+    });
+    const now = Math.floor(Date.now() / 1000);
+    async function sign(iss) {
+      return new jose.SignJWT({
+        scope: AssistantMcp.REQUIRED_SCOPE,
+        client_id: 'atlas-jwt-proof',
+      })
+        .setProtectedHeader({ alg: 'RS256' })
+        .setIssuer(iss)
+        .setAudience(resource)
+        .setIssuedAt(now)
+        .setNotBefore(now - 1)
+        .setExpirationTime(now + 300)
+        .sign(pair.privateKey);
+    }
+    const exact = await verifier.verifyAccessToken(await sign(issuer));
+    ok(exact.scopes.includes(AssistantMcp.REQUIRED_SCOPE),
+      'JWT with the exact configured issuer verifies');
+    let slashRejected = false;
+    try {
+      await verifier.verifyAccessToken(await sign(`${issuer}/`));
+    } catch {
+      slashRejected = true;
+    }
+    ok(slashRejected, 'slash-mutated issuer identifier fails closed');
+    let opaqueRejected = false;
+    try {
+      await verifier.verifyAccessToken('opaque-access-token-not-a-jwt');
+    } catch {
+      opaqueRejected = true;
+    }
+    ok(opaqueRejected, 'opaque non-JWT access tokens fail closed');
+  }
+  await withAtlas({ ATLAS_ASSISTANT_TOKEN: ASSISTANT_TOKEN }, async ({ base }) => {
+    const metadata = await fetch(`${base}${AssistantOAuth.METADATA_PATH}`);
+    ok(metadata.status === 503, 'missing OAuth configuration withholds protected-resource metadata');
     const res = await fetch(`${base}/assistant/mcp`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize' }),
       redirect: 'manual',
     });
-    ok(res.status === 503, 'unset ATLAS_ASSISTANT_TOKEN returns 503 on MCP', `status ${res.status}`);
+    ok(res.status === 503, 'missing OAuth configuration withholds MCP', `status ${res.status}`);
     const body = await res.json();
-    ok(body.error === 'assistant unavailable' && !body.result, '503 MCP body does not leak a packet');
+    ok(body.error === 'assistant oauth unavailable' && !body.result,
+      'unconfigured MCP response contains no packet');
   });
-  await withAtlas({ ATLAS_ASSISTANT_TOKEN: ASSISTANT_TOKEN }, async ({ base }) => {
+
+  console.log('\n=== standards-compatible OAuth protects the one MCP tool ===');
+  await withOAuthAtlas(async ({ base, resource, oauth }) => {
     async function mcp(headers, body) {
-      return fetch(`${base}/assistant/mcp`, {
+      return fetch(resource, {
         method: 'POST',
-        headers: Object.assign({ 'content-type': 'application/json' }, headers || {}),
+        headers: Object.assign({
+          accept: 'application/json, text/event-stream',
+          'content-type': 'application/json',
+        }, headers || {}),
         body: JSON.stringify(body),
         redirect: 'manual',
       });
     }
-    const none = await mcp({}, { jsonrpc: '2.0', id: 1, method: 'initialize' });
-    ok(none.status === 401, 'MCP missing Bearer fails closed', `status ${none.status}`);
-    ok((none.headers.get('www-authenticate') || '').includes('Bearer'),
-      'MCP 401 advertises Bearer');
+    const initialize = {
+      jsonrpc: '2.0', id: 1, method: 'initialize',
+      params: {
+        protocolVersion: '2025-03-26',
+        capabilities: {},
+        clientInfo: { name: 'atlas-oauth-test', version: '1' },
+      },
+    };
+    const metadataRes = await fetch(`${base}${AssistantOAuth.METADATA_PATH}`);
+    const metadata = await metadataRes.json();
+    ok(metadataRes.status === 200
+        && metadata.resource === resource
+        && metadata.authorization_servers.length === 1
+        && metadata.authorization_servers[0] === oauth.issuer,
+      'protected-resource metadata binds the MCP resource to one external issuer');
+    ok(metadata.scopes_supported.length === 1
+        && metadata.scopes_supported[0] === AssistantMcp.REQUIRED_SCOPE,
+      'protected-resource metadata advertises only atlas.current.read');
 
-    const wrong = await mcp(
-      { authorization: `Bearer ${WRONG_TOKEN}` },
-      { jsonrpc: '2.0', id: 1, method: 'initialize' }
-    );
-    ok(wrong.status === 401, 'MCP wrong Bearer fails closed', `status ${wrong.status}`);
+    const none = await mcp({}, initialize);
+    const challenge = none.headers.get('www-authenticate') || '';
+    ok(none.status === 401, 'unauthenticated MCP access is denied', `status ${none.status}`);
+    ok(challenge.includes(`resource_metadata=\"${base}${AssistantOAuth.METADATA_PATH}\"`)
+        && challenge.includes(`scope=\"${AssistantMcp.REQUIRED_SCOPE}\"`),
+      '401 challenge advertises OAuth metadata and the read scope');
 
-    const query = await fetch(
-      `${base}/assistant/mcp?token=${encodeURIComponent(ASSISTANT_TOKEN)}`,
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize' }),
-        redirect: 'manual',
-      }
-    );
-    ok(query.status === 401, 'MCP token in the query string is ignored', `status ${query.status}`);
+    const malformed = await mcp({ authorization: 'Basic invalid' }, initialize);
+    ok(malformed.status === 401, 'malformed authorization fails closed', `status ${malformed.status}`);
+    const opaque = await mcp({ authorization: `Bearer ${ASSISTANT_TOKEN}` }, initialize);
+    ok(opaque.status === 401,
+      'the incumbent static assistant token cannot authenticate MCP', `status ${opaque.status}`);
 
-    const authed = await login(base);
-    const cookieOnly = await mcp(
-      { cookie: authed.cookie },
-      { jsonrpc: '2.0', id: 1, method: 'initialize' }
-    );
+    const now = Math.floor(Date.now() / 1000);
+    const expiredToken = await oauth.sign(resource, { expiresAt: now - 30 });
+    const expired = await mcp({ authorization: `Bearer ${expiredToken}` }, initialize);
+    ok(expired.status === 401, 'expired OAuth access token fails closed', `status ${expired.status}`);
+    const futureToken = await oauth.sign(resource, { notBefore: now + 300 });
+    const future = await mcp({ authorization: `Bearer ${futureToken}` }, initialize);
+    ok(future.status === 401, 'not-yet-valid OAuth access token fails closed', `status ${future.status}`);
+    const wrongAudienceToken = await oauth.sign(resource, { audience: `${base}/not-atlas` });
+    const wrongAudience = await mcp({ authorization: `Bearer ${wrongAudienceToken}` }, initialize);
+    ok(wrongAudience.status === 401, 'wrong-resource token fails closed', `status ${wrongAudience.status}`);
+    const wrongSignatureToken = await oauth.sign(resource, { key: oauth.otherPrivateKey });
+    const wrongSignature = await mcp({ authorization: `Bearer ${wrongSignatureToken}` }, initialize);
+    ok(wrongSignature.status === 401, 'invalid signature fails closed', `status ${wrongSignature.status}`);
+    const noScopeToken = await oauth.sign(resource, { scope: 'profile' });
+    const noScope = await mcp({ authorization: `Bearer ${noScopeToken}` }, initialize);
+    ok(noScope.status === 403, 'missing atlas.current.read scope fails closed', `status ${noScope.status}`);
+
+    const browser = await login(base);
+    const cookieOnly = await mcp({ cookie: browser.cookie }, initialize);
     ok(cookieOnly.status === 401, 'browser session cookie does not unlock MCP',
       `status ${cookieOnly.status}`);
+    const browserData = await fetch(`${base}/data.json`, { headers: { cookie: browser.cookie } });
+    ok(browserData.status === 200, 'browser login still unlocks only the browser data route');
 
-    const headers = { authorization: `Bearer ${ASSISTANT_TOKEN}` };
-    const listed = await mcp(headers, { jsonrpc: '2.0', id: 2, method: 'tools/list' });
-    ok(listed.status === 200, 'authenticated MCP tools/list returns 200', `status ${listed.status}`);
-    const listedBody = await listed.json();
-    ok(listedBody.result.tools.length === 1
-        && listedBody.result.tools[0].name === AssistantMcp.TOOL_NAME,
-      'HTTP MCP lists only get_atlas_current');
-
-    const getPacket = await fetch(`${base}/assistant/current`, { headers });
-    ok(getPacket.status === 200, 'GET /assistant/current still works beside MCP');
-    const direct = await getPacket.json();
-    const called = await mcp(headers, {
-      jsonrpc: '2.0', id: 3, method: 'tools/call',
-      params: { name: AssistantMcp.TOOL_NAME, arguments: {} },
+    const accessToken = await oauth.sign(resource);
+    const oauthOnCurrent = await fetch(`${base}/assistant/current`, {
+      headers: { authorization: `Bearer ${accessToken}` }, redirect: 'manual',
     });
-    ok(called.status === 200, 'authenticated MCP tools/call returns 200', `status ${called.status}`);
-    const calledBody = await called.json();
-    const wrapped = JSON.parse(calledBody.result.content[0].text);
-    ok(wrapped.schema === Assistant.SCHEMA && Assistant.looksSanitized(wrapped),
-      'MCP tool result is the sanitized assistant schema');
-    ok(near(wrapped.current.spendableHouseholdCash.value,
-      direct.current.spendableHouseholdCash.value),
-      'MCP spendable matches GET /assistant/current on the same server');
-    ok(near(wrapped.forecast.recommendation.weekly,
-      direct.forecast.recommendation.weekly),
-      'MCP weekly matches GET /assistant/current, not a second planner');
-    ok(!forbiddenBlob(calledBody), 'HTTP MCP result contains no secrets or raw transactions');
-    ok(wrapped.writesCanonicalState === false && wrapped.productionWrite === false,
-      'MCP packet still declares no writes');
-
-    const writeName = await mcp(headers, {
-      jsonrpc: '2.0', id: 4, method: 'tools/call',
-      params: { name: 'canonical-refresh', arguments: { apply: true } },
+    ok(oauthOnCurrent.status === 401,
+      'OAuth MCP token does not replace the incumbent /assistant/current token');
+    const directRes = await fetch(`${base}/assistant/current`, {
+      headers: { authorization: `Bearer ${ASSISTANT_TOKEN}` },
     });
-    const writeBody = await writeName.json();
-    ok(writeBody.error && writeBody.error.code === -32602,
-      'MCP refuses a write-shaped tool name');
+    const direct = await directRes.json();
+    ok(directRes.status === 200 && direct.schema === Assistant.SCHEMA,
+      'incumbent /assistant/current remains independently authenticated');
 
-    const getMcp = await fetch(`${base}/assistant/mcp`, {
-      headers, redirect: 'manual',
+    const client = new Client({ name: 'atlas-oauth-proof', version: '1.0.0' });
+    const transport = new StreamableHTTPClientTransport(new URL(resource), {
+      requestInit: { headers: { authorization: `Bearer ${accessToken}` } },
     });
-    ok(getMcp.status === 405, 'GET /assistant/mcp is not a second packet URL',
+    try {
+      await client.connect(transport);
+      const listed = await client.listTools();
+      ok(listed.tools.length === 1 && listed.tools[0].name === AssistantMcp.TOOL_NAME,
+        'official MCP client sees exactly one Atlas tool');
+      const listedTool = listed.tools[0];
+      ok(listedTool.annotations.readOnlyHint === true
+          && listedTool.annotations.destructiveHint === false
+          && listedTool._meta.securitySchemes[0].scopes[0] === AssistantMcp.REQUIRED_SCOPE,
+        'official MCP client receives read-only and OAuth tool metadata');
+      const called = await client.callTool({ name: AssistantMcp.TOOL_NAME, arguments: {} });
+      const wrapped = called.structuredContent;
+      ok(called.isError === false && wrapped.schema === Assistant.SCHEMA,
+        'authorized official MCP client invokes the incumbent current-state tool');
+      ok(Assistant.looksSanitized(wrapped) && !forbiddenBlob(called)
+          && !JSON.stringify(called).includes(accessToken),
+        'MCP response contains no secrets, access token, provider ids, or raw transactions');
+      ok(near(wrapped.current.spendableHouseholdCash.value,
+        direct.current.spendableHouseholdCash.value),
+      'MCP spendable matches incumbent /assistant/current');
+      ok(near(wrapped.forecast.recommendation.weekly,
+        direct.forecast.recommendation.weekly),
+      'MCP weekly answer matches incumbent Forecast-backed packet');
+      ok(wrapped.authority.planner === 'Forecast'
+          && wrapped.writesCanonicalState === false
+          && wrapped.productionWrite === false,
+        'MCP packet preserves Forecast authority and declares no writes');
+      let refused = false;
+      try {
+        const writeAttempt = await client.callTool({
+          name: 'canonical-refresh', arguments: { apply: true },
+        });
+        refused = writeAttempt.isError === true;
+      } catch {
+        refused = true;
+      }
+      ok(refused, 'a write-shaped MCP tool name does not exist');
+    } finally {
+      await client.close().catch(() => {});
+    }
+
+    const getMcp = await fetch(resource, {
+      headers: { authorization: `Bearer ${accessToken}` }, redirect: 'manual',
+    });
+    ok(getMcp.status === 405, 'GET cannot retrieve a second MCP packet URL',
       `status ${getMcp.status}`);
-
-    const malformed = await fetch(`${base}/assistant/mcp`, {
-      method: 'POST',
-      headers: Object.assign({ 'content-type': 'application/json' }, headers),
-      body: '{',
-      redirect: 'manual',
-    });
-    ok(malformed.status === 400, 'malformed MCP JSON fails closed', `status ${malformed.status}`);
-    const malformedBody = await malformed.json();
-    ok(malformedBody.error && malformedBody.error.code === -32700,
-      'malformed MCP JSON is a JSON-RPC parse error');
+    const badOrigin = await mcp({
+      authorization: `Bearer ${accessToken}`,
+      origin: 'https://attacker.example',
+    }, initialize);
+    ok(badOrigin.status === 403, 'untrusted browser origin is rejected');
   });
-  filesUnchanged('authenticated assistant MCP');
+  filesUnchanged('authenticated OAuth MCP');
 
   console.log('\n=== source does not recompute financial answers ===');
   {
@@ -944,19 +1134,39 @@ console.log('\n=== HTTP fail-closed without assistant token ===');
     const serverSrc = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
     ok(/Assistant\.buildPacket/.test(serverSrc),
       'server serves the packet builder rather than inline maths');
-    ok(/AssistantMcp\.handle/.test(serverSrc) && /\/assistant\/mcp/.test(serverSrc),
-      'server MCP route delegates to the adapter rather than inventing figures');
-    ok(/assistantAuthed/.test(serverSrc) && /hfd_session/.test(serverSrc),
-      'assistant Bearer and browser session remain separate gates');
+    ok(/AssistantMcp\.handleHttp/.test(serverSrc) && /\/assistant\/mcp/.test(serverSrc),
+      'server MCP route delegates to the SDK adapter rather than inventing figures');
+    ok(/assistantAuthed/.test(serverSrc)
+        && /MCP_BEARER_AUTH/.test(serverSrc)
+        && /hfd_session/.test(serverSrc),
+      'static assistant, OAuth MCP, and browser session remain separate gates');
+    const oauthSrc = fs.readFileSync(path.join(ROOT, 'scripts', 'assistant-oauth.js'), 'utf8');
+    ok(/jwtVerify/.test(oauthSrc) && !/introspection_endpoint|token\/introspect/.test(oauthSrc),
+      'OAuth resource server verifies JWTs locally and has no introspection path');
+    ok(!/issuer:\s*config\.issuer\.href/.test(oauthSrc),
+      'JWT issuer verification does not use URL.href');
+    const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8');
+    const architecture = fs.readFileSync(path.join(ROOT, 'ARCHITECTURE.md'), 'utf8');
+    ok(/issuer-signed JWT access tokens/.test(readme)
+        && /Opaque access tokens are not supported/.test(readme)
+        && /does not introspect/.test(readme),
+      'README constrains the provider contract to issuer-signed JWT access tokens');
+    ok(/issuer-signed JWT access tokens/.test(architecture)
+        && /does not introspect opaque tokens/.test(architecture),
+      'ARCHITECTURE constrains MCP to issuer-signed JWT access tokens with no introspection');
   }
 
-  console.log('\n=== Render blueprint declares the assistant secret without a value ===');
+  console.log('\n=== Render blueprint declares assistant auth configuration without values ===');
   {
     const render = fs.readFileSync(path.join(ROOT, 'render.yaml'), 'utf8');
     ok(/key:\s*ATLAS_ASSISTANT_TOKEN[\s\S]*?sync:\s*false/.test(render),
       'Render declares ATLAS_ASSISTANT_TOKEN as owner-supplied');
     ok(!/key:\s*ATLAS_ASSISTANT_TOKEN[\s\S]*?value:/.test(render),
       'Render does not assign an assistant token value');
+    for (const key of ['ATLAS_MCP_RESOURCE_URL', 'ATLAS_OAUTH_ISSUER', 'ATLAS_OAUTH_JWKS_URI']) {
+      ok(new RegExp(`key:\\s*${key}[\\s\\S]*?sync:\\s*false`).test(render),
+        `Render declares ${key} as owner-supplied`);
+    }
   }
 
   filesUnchanged('end of suite');

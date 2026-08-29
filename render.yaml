@@ -30,3 +30,12 @@ services:
       # Unset → GET /assistant/current returns 503. Never commit a value.
       - key: ATLAS_ASSISTANT_TOKEN
         sync: false
+      # OAuth protected-resource configuration for POST /assistant/mcp.
+      # Values come from the chosen external OAuth authorization server; Atlas
+      # does not store users, issue tokens, or run a second login system.
+      - key: ATLAS_MCP_RESOURCE_URL
+        sync: false
+      - key: ATLAS_OAUTH_ISSUER
+        sync: false
+      - key: ATLAS_OAUTH_JWKS_URI
+        sync: false

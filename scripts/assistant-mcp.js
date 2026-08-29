@@ -1,27 +1,43 @@
 'use strict';
-/* Read-only MCP adapter for GET /assistant/current.
+/* Standards-compatible MCP transport for the incumbent Atlas assistant packet.
  *
- * Transport only. It does not compute household figures, does not write, and
- * is not a second packet builder. tools/call get_atlas_current returns the
- * incumbent sanitized atlas-assistant-packet/v1 produced by
- * scripts/assistant-packet.js. ChatGPT Apps SDK OAuth remains a later slice.
+ * This module is transport only. It registers one read-only tool whose result
+ * is produced by scripts/assistant-packet.js. It does not calculate financial
+ * figures, authenticate users, call providers, or write Atlas state.
  */
+const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');
+const {
+  StreamableHTTPServerTransport,
+} = require('@modelcontextprotocol/sdk/server/streamableHttp.js');
+const z = require('zod/v4');
 const Assistant = require('./assistant-packet.js');
 
-const PROTOCOL_VERSION = '2025-03-26';
 const TOOL_NAME = 'get_atlas_current';
 const SERVER_NAME = 'atlas-financial-assistant';
+const SERVER_VERSION = '1.0.0';
+const REQUIRED_SCOPE = 'atlas.current.read';
+const ALLOWED_ORIGINS = Object.freeze([
+  'https://chatgpt.com',
+  'https://chat.openai.com',
+]);
+const SECURITY_SCHEMES = Object.freeze([
+  Object.freeze({ type: 'oauth2', scopes: Object.freeze([REQUIRED_SCOPE]) }),
+]);
+const ANNOTATIONS = Object.freeze({
+  readOnlyHint: true,
+  destructiveHint: false,
+  idempotentHint: true,
+  openWorldHint: false,
+});
+const INSTRUCTIONS = [
+  'Use get_atlas_current to retrieve the sanitized Atlas current-state packet.',
+  'Forecast is the sole financial planner and calculation authority.',
+  'This server cannot write Atlas or provider state and cannot move money.',
+].join(' ');
 
-function jsonRpcError(id, code, message) {
-  return {
-    jsonrpc: '2.0',
-    id: id === undefined ? null : id,
-    error: { code, message },
-  };
-}
-
-function jsonRpcResult(id, result) {
-  return { jsonrpc: '2.0', id, result };
+function originAllowed(origin) {
+  if (origin == null || origin === '') return true;
+  return ALLOWED_ORIGINS.includes(String(origin));
 }
 
 function toolDescriptor() {
@@ -29,100 +45,77 @@ function toolDescriptor() {
     name: TOOL_NAME,
     title: 'Atlas current state',
     description:
-      'Return the sanitized read-only Atlas current-state packet. Forecast remains the planner. This tool never writes, never pays, and never refreshes canonical state.',
+      'Return the incumbent sanitized Atlas current-state packet. Forecast remains the planner. This tool never writes, pays, transfers, or refreshes canonical state.',
     inputSchema: {
       type: 'object',
       properties: {},
       additionalProperties: false,
     },
+    annotations: ANNOTATIONS,
+    _meta: { securitySchemes: SECURITY_SCHEMES },
   };
 }
 
-function hasId(message) {
-  return !!(message && Object.prototype.hasOwnProperty.call(message, 'id'));
+function packetResult(packet) {
+  if (!packet || packet.schema !== Assistant.SCHEMA || !Assistant.looksSanitized(packet)) {
+    return {
+      content: [{ type: 'text', text: 'Assistant packet unavailable.' }],
+      isError: true,
+    };
+  }
+  return {
+    content: [{ type: 'text', text: JSON.stringify(packet) }],
+    structuredContent: packet,
+    isError: false,
+  };
 }
 
-function emptyArgs(value) {
-  if (value == null) return true;
-  if (typeof value !== 'object' || Array.isArray(value)) return false;
-  return Object.keys(value).length === 0;
+function createServer(getPacket) {
+  if (typeof getPacket !== 'function') throw new Error('getPacket is required');
+  const server = new McpServer({
+    name: SERVER_NAME,
+    version: SERVER_VERSION,
+  }, {
+    instructions: INSTRUCTIONS,
+  });
+  const descriptor = toolDescriptor();
+  server.registerTool(TOOL_NAME, {
+    title: descriptor.title,
+    description: descriptor.description,
+    inputSchema: z.object({}).strict(),
+    annotations: descriptor.annotations,
+    _meta: descriptor._meta,
+  }, async () => packetResult(await getPacket()));
+  return server;
 }
 
-function handle(message, opts) {
-  opts = opts || {};
-  if (message == null || typeof message !== 'object' || Array.isArray(message)) {
-    return { status: 400, body: jsonRpcError(null, -32600, 'invalid request') };
+async function handleHttp(req, res, opts) {
+  const server = createServer(opts && opts.getPacket);
+  const transport = new StreamableHTTPServerTransport({
+    sessionIdGenerator: undefined,
+    enableJsonResponse: true,
+  });
+  try {
+    await server.connect(transport);
+    await transport.handleRequest(req, res, req.body);
+  } finally {
+    await transport.close().catch(() => {});
+    await server.close().catch(() => {});
   }
-  if (message.jsonrpc !== '2.0' || typeof message.method !== 'string' || !message.method) {
-    return {
-      status: 400,
-      body: jsonRpcError(hasId(message) ? message.id : null, -32600, 'invalid request'),
-    };
-  }
-
-  const notification = !hasId(message);
-  const id = notification ? undefined : message.id;
-  const method = message.method;
-
-  if (method.indexOf('notifications/') === 0) {
-    return { status: 204, body: null };
-  }
-  if (notification) return { status: 204, body: null };
-
-  if (method === 'initialize') {
-    return {
-      status: 200,
-      body: jsonRpcResult(id, {
-        protocolVersion: PROTOCOL_VERSION,
-        capabilities: { tools: { listChanged: false } },
-        serverInfo: { name: SERVER_NAME, version: '1' },
-        instructions:
-          'Call get_atlas_current for the sanitized Atlas packet. This server is not a planner.',
-      }),
-    };
-  }
-  if (method === 'ping') {
-    return { status: 200, body: jsonRpcResult(id, {}) };
-  }
-  if (method === 'tools/list') {
-    return { status: 200, body: jsonRpcResult(id, { tools: [toolDescriptor()] }) };
-  }
-  if (method === 'tools/call') {
-    const params = message.params && typeof message.params === 'object' && !Array.isArray(message.params)
-      ? message.params
-      : null;
-    if (!params || params.name !== TOOL_NAME) {
-      return { status: 200, body: jsonRpcError(id, -32602, 'unknown tool') };
-    }
-    if (!emptyArgs(params.arguments)) {
-      return { status: 200, body: jsonRpcError(id, -32602, 'get_atlas_current takes no arguments') };
-    }
-    const packet = opts.packet;
-    if (!packet || packet.schema !== Assistant.SCHEMA || !Assistant.looksSanitized(packet)) {
-      return {
-        status: 200,
-        body: jsonRpcResult(id, {
-          content: [{ type: 'text', text: 'Assistant packet unavailable.' }],
-          isError: true,
-        }),
-      };
-    }
-    return {
-      status: 200,
-      body: jsonRpcResult(id, {
-        content: [{ type: 'text', text: JSON.stringify(packet) }],
-        isError: false,
-      }),
-    };
-  }
-
-  return { status: 200, body: jsonRpcError(id, -32601, 'method not found') };
 }
 
 module.exports = {
-  PROTOCOL_VERSION,
   TOOL_NAME,
   SERVER_NAME,
-  handle,
+  SERVER_VERSION,
+  REQUIRED_SCOPE,
+  ALLOWED_ORIGINS,
+  SECURITY_SCHEMES,
+  ANNOTATIONS,
+  INSTRUCTIONS,
+  originAllowed,
   toolDescriptor,
+  packetResult,
+  createServer,
+  handleHttp,
 };
