@@ -89,8 +89,17 @@ function question(html, number) {
   return html.slice(start, stop);
 }
 
+function withPaydayNextMove(advice) {
+  advice.paydayNextMove = F.paydayNextMove(
+    advice.currentPeriodAction,
+    advice.paydayAllocation,
+    { weekly: advice.weekly, mode: advice.mode, funding: advice.funding }
+  );
+  return advice;
+}
+
 function healthyAdvice() {
-  return {
+  return withPaydayNextMove({
     weekly: 85,
     mode: 'ok',
     infeasible: null,
@@ -143,7 +152,7 @@ function healthyAdvice() {
         confidence: 'estimated', flexibility: 'required',
       },
     ],
-  };
+  });
 }
 
 const composer = loadComposer();
@@ -184,6 +193,7 @@ console.log('\n=== 2. no safe spending / protected shortfall ===');
     { id: 'obligations', reason: 'This payday cannot cover required obligations in cash.', shortfall: 40.5 },
     { id: 'essentials', reason: 'This payday cannot protect essential household spending in cash.', shortfall: 80.25 },
   ];
+  withPaydayNextMove(advice);
   const html = composer.operatingSurfaceHtml({
     advice, weekly: advice.weekly, recommended: advice.weekly,
   });
@@ -216,6 +226,7 @@ console.log('\n=== 3. immediate required payment due today ===');
     id: 'travel-visa', label: 'Travel Visa minimum', amount: 17.44,
     date: '2026-09-08', remaining: 17.44, confidence: 'confirmed',
   }];
+  withPaydayNextMove(advice);
   const html = composer.operatingSurfaceHtml({
     advice, weekly: advice.weekly, recommended: advice.weekly,
   });

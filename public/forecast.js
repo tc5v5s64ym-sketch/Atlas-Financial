@@ -2490,6 +2490,62 @@
     };
   }
 
+  // The one next-move instruction on the payday operating sheet. Pages format
+  // this result; they do not choose among extra debt, due-soon, hold,
+  // set-aside, or the weekly cap. Distinct from nextMove / plan.actions.
+  function paydayNextMove(action, alloc, weeklyVerdict) {
+    weeklyVerdict = weeklyVerdict || {};
+    const todayActions = (action && action.todayActions) || [];
+    const upcoming = ((action && action.bills) || [])
+      .filter(row => row && row.settlement === 'upcoming');
+    const extra = (alloc && alloc.extraDebt) || {};
+    const extraAllocated = extra.allocated;
+    const extraTarget = extra.target || null;
+    const setAsideRow = ((alloc && alloc.futureCosts) || [])
+      .find(row => row && Number(row.allocated) > 0) || null;
+    const modeInfeasible = weeklyVerdict.mode === 'infeasible';
+    const funding = weeklyVerdict.funding || null;
+    const fundingBlocked = !!(funding && funding.feasible === false);
+    const hasFeasibleCap = !modeInfeasible && !fundingBlocked;
+    const weekly = hasFeasibleCap && weeklyVerdict.weekly != null
+      ? weeklyVerdict.weekly : null;
+    const currentShortfall = !!(action && action.currentShortfall);
+    const obligationShort = !!(alloc && alloc.obligations
+      && Number(alloc.obligations.shortfall) > 0);
+    const essentialShort = !!(alloc && alloc.essentials
+      && Number(alloc.essentials.shortfall) > 0);
+    const negativeCash = !!(alloc && alloc.available != null
+      && Number(alloc.available) < 0);
+    const unsafe = !hasFeasibleCap || currentShortfall || obligationShort
+      || essentialShort || negativeCash;
+
+    let kind = 'none';
+    if (todayActions.length > 0) kind = 'pay-today';
+    else if (extraAllocated != null && Number(extraAllocated) > 0 && extraTarget) {
+      kind = 'extra-debt';
+    } else if (upcoming.length > 0) kind = 'due-soon';
+    else if (unsafe) kind = 'hold';
+    else if (setAsideRow) kind = 'set-aside';
+    else if (weekly != null) kind = 'spend-cap';
+
+    return {
+      kind,
+      unsafe,
+      nextPayday: action && action.nextPayday || null,
+      todayActions,
+      upcoming,
+      extraDebt: extraAllocated != null && Number(extraAllocated) > 0 && extraTarget
+        ? { allocated: extraAllocated, target: extraTarget } : null,
+      setAside: setAsideRow ? {
+        allocated: setAsideRow.allocated,
+        label: setAsideRow.label,
+        date: setAsideRow.date || null,
+      } : null,
+      weekly,
+      noMovementToday: !!(action && action.noMovementToday),
+    };
+  }
+
   const OWNER_HIGHEST_INTEREST_POLICY = 'true-surplus-highest-interest';
 
   // The sole authority for the current extra-debt target. `plan.nextDollar`
@@ -3499,6 +3555,11 @@
       { amount: gapAmount, date: gapDate, dueOnGapDay, preIncomeOut,
         floor: zero.min.balance, floorDate: zero.min.date }, zero);
     result.funding = funding;
+    result.paydayNextMove = paydayNextMove(result.currentPeriodAction, result.paydayAllocation, {
+      weekly: result.weekly,
+      mode: result.mode,
+      funding,
+    });
     return result;
 
     // Build the result, and prove the answer is actually binding: one step up
@@ -3539,7 +3600,7 @@
       const action = currentPeriodAction(plan, asOf, Object.assign({}, paydayOpts, {
         paydayAllocation: alloc,
       }));
-      return {
+      const result = {
         mode, weekly: weeklyCap, effectiveFrom, buffer, gap, sim: viewSim, zero: zeroSim,
         step: STEP,
         knowledge: {
@@ -3574,6 +3635,12 @@
         bindingIsReal: below(next.min.balance, buffer),
         holds: protectedAtCap.feasible,
       };
+      result.paydayNextMove = paydayNextMove(action, alloc, {
+        weekly: weeklyCap,
+        mode,
+        funding: result.funding || null,
+      });
+      return result;
     }
   }
 
@@ -5977,7 +6044,7 @@
 
   const Forecast = { HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, billIsHouseholdObligation, billAffectsJointCash, carriedOnceJointCashOutflow, expandEvents, simulate,
     knowledgeHorizon, viewRange, commitmentNeed, fundingSequence, majorPlans, plannedDebt, debtPriority, paydayAllocation,
-    classifyCurrentPeriodTransaction, paydayPeriodOrigin, currentPeriodObligationStates, currentPeriodAction,
+    classifyCurrentPeriodTransaction, paydayPeriodOrigin, currentPeriodObligationStates, currentPeriodAction, paydayNextMove,
     recommendWeekly, recommend, incomeDeadline, amandaHouseholdIncomeDeadline, counterfactuals,
     budgetBreakdown, monthlyFromWeekly,
     projectDebts,

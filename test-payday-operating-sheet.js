@@ -291,10 +291,19 @@ console.log('\n=== 6. operating-answer copies Forecast; page does not recalculat
     'the payday sheet does not total, convert, or walk debts');
 }
 
+function withPaydayNextMove(advice) {
+  advice.paydayNextMove = F.paydayNextMove(
+    advice.currentPeriodAction,
+    advice.paydayAllocation,
+    { weekly: advice.weekly, mode: advice.mode, funding: advice.funding }
+  );
+  return advice;
+}
+
 console.log('\n=== leftover remainder is not the next move ===');
 {
   const html = composer.operatingSurfaceHtml({
-    advice: {
+    advice: withPaydayNextMove({
       weekly: 90,
       mode: 'ok',
       currentPeriodAction: {
@@ -307,7 +316,7 @@ console.log('\n=== leftover remainder is not the next move ===');
         obligations: { items: [] }, futureCosts: [], unresolved: [], risks: [],
       },
       majorPlans: [],
-    },
+    }),
     weekly: 90, recommended: 90,
   });
   const q6 = question(html, '06');
@@ -315,6 +324,84 @@ console.log('\n=== leftover remainder is not the next move ===');
     'with no pay/extra/set-aside, the next move is the recommend weekly cap');
   ok(!/\$1\.14/.test(q6) && !/LEFT OVER/.test(q6),
     'allocation remainder is not the next-move instruction');
+}
+
+console.log('\n=== 7. page cannot reorder Forecast.paydayNextMove ===');
+{
+  const action = {
+    todayActions: [],
+    bills: [{
+      id: 'bill', label: 'Due bill', settlement: 'upcoming',
+      remaining: 25, amount: 25, date: '2026-09-10',
+    }],
+    nextPayday: '2026-09-15',
+    noMovementToday: true,
+    currentShortfall: false,
+  };
+  const alloc = {
+    extraDebt: { allocated: 40, target: { id: 'high', label: 'Synthetic high card' } },
+    futureCosts: [{ id: 'now', allocated: 88.5, label: 'Near purchase', date: '2026-09-20' }],
+    available: 100,
+    obligations: { shortfall: 0, items: [] },
+    essentials: { shortfall: 0 },
+  };
+  const extraOverDueSoon = F.paydayNextMove(action, alloc, { weekly: 90, mode: 'ok' });
+  ok(extraOverDueSoon.kind === 'extra-debt',
+    'Forecast chooses extra-debt over due-soon and set-aside when surplus exists');
+
+  const noExtra = F.paydayNextMove(action, Object.assign({}, alloc, {
+    extraDebt: { allocated: 0, target: { id: 'high', label: 'Synthetic high card' } },
+  }), { weekly: 90, mode: 'ok' });
+  ok(noExtra.kind === 'due-soon',
+    'Forecast chooses due-soon over set-aside when extra-debt allocated is $0');
+
+  const holdOverSetAside = F.paydayNextMove({
+    todayActions: [], bills: [], nextPayday: '2026-09-15',
+    noMovementToday: true, currentShortfall: true,
+  }, {
+    extraDebt: { allocated: 0 },
+    futureCosts: [{ id: 'now', allocated: 88.5, label: 'Near purchase' }],
+    available: 100,
+    obligations: { shortfall: 0 }, essentials: { shortfall: 0 },
+  }, { weekly: 90, mode: 'ok' });
+  ok(holdOverSetAside.kind === 'hold',
+    'Forecast chooses hold over set-aside when cash is unsafe');
+
+  const forcedDueSoon = Object.assign({}, extraOverDueSoon, { kind: 'due-soon' });
+  const html = composer.operatingSurfaceHtml({
+    advice: {
+      weekly: 90, mode: 'ok',
+      paydayNextMove: forcedDueSoon,
+      currentPeriodAction: action,
+      paydayAllocation: alloc,
+      majorPlans: [],
+    },
+    weekly: 90, recommended: 90,
+  });
+  const q6 = question(html, '06');
+  ok(/data-today-decision="due-soon"/.test(q6)
+    && /Due bill of \$25\.00 is due Sep 10/.test(q6),
+    'page publishes the Forecast kind even when extra-debt surplus is present');
+  ok(!/data-today-decision="extra-debt"/.test(q6) && !/Pay extra \$40\.00/.test(q6),
+    'page does not promote extra-debt over a Forecast due-soon verdict');
+
+  const planSrc = read('public/plan.js');
+  const fn = /function todayDecisionHtml\([\s\S]*?\n\}/.exec(planSrc);
+  ok(fn && !/kind = 'extra-debt'|kind = 'due-soon'|kind = 'hold'|kind = 'set-aside'/.test(fn[0]),
+    'todayDecisionHtml does not assign extra-debt, due-soon, hold, or set-aside itself');
+  ok(fn && /decision\.kind/.test(fn[0]) && !/else if \(extraAmount/.test(fn[0])
+    && !/else if \(upcoming\.length/.test(fn[0]) && !/else if \(unsafe\)/.test(fn[0])
+    && !/else if \(setAside\)/.test(fn[0]),
+    'todayDecisionHtml formats Forecast.paydayNextMove.kind and has no competing-amount ladder');
+
+  const { advice } = currentAdvice();
+  ok(advice.paydayNextMove && advice.paydayNextMove.kind,
+    'Forecast.recommend attaches paydayNextMove');
+  ok(advice.paydayNextMove.kind === F.paydayNextMove(
+    advice.currentPeriodAction, advice.paydayAllocation,
+    { weekly: advice.weekly, mode: advice.mode, funding: advice.funding }
+  ).kind,
+    'attached paydayNextMove matches a direct Forecast.paydayNextMove call');
 }
 
 if (failures) {
