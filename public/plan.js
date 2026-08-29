@@ -1353,55 +1353,46 @@ function todayActionRowsHtml(rows, attr) {
           </div>`).join('');
 }
 
-function todayDecisionHtml(action, capView, alloc, liveOverlay) {
-  const todayActions = (action && action.todayActions) || [];
-  const upcoming = ((action && action.bills) || []).filter(row => row && row.settlement === 'upcoming');
-  const payday = action && action.nextPayday ? fmtDateLong(action.nextPayday) : null;
-  const unsafe = cashUnsafe(action, capView, alloc);
-  const extra = alloc && alloc.extraDebt || {};
+function todayDecisionHtml(decision, capView, alloc) {
+  const kind = (decision && decision.kind) || 'none';
+  const todayActions = (decision && decision.todayActions) || [];
+  const upcoming = (decision && decision.upcoming) || [];
+  const payday = decision && decision.nextPayday ? fmtDateLong(decision.nextPayday) : null;
+  const unsafe = !!(decision && decision.unsafe);
+  const extra = (decision && decision.extraDebt) || {};
   const extraAmount = extra.allocated;
   const extraTarget = extra.target;
-  const setAside = ((alloc && alloc.futureCosts) || [])
-    .find(row => row && Number(row.allocated) > 0);
-  const weekly = capView && capView.hasFeasibleCap ? capView.recommended : null;
-  let kind = 'none';
+  const setAside = decision && decision.setAside;
+  const weekly = decision && decision.weekly;
   let headline = payday
     ? `Hold until ${payday}. Forecast names no pay, extra-debt, or set-aside instruction on this opening.`
     : 'Hold. Forecast names no pay, extra-debt, or set-aside instruction on this opening.';
-  if (todayActions.length === 1) {
+  if (kind === 'pay-today' && todayActions.length === 1) {
     const row = todayActions[0];
-    kind = 'pay-today';
     headline = row.date
       ? `Pay the ${row.amount != null ? money2(row.amount) : ''} ${row.label} by ${fmtDate(row.date)}.`.replace(/\s+/g, ' ').trim()
       : `Pay the ${row.amount != null ? money2(row.amount) : ''} ${row.label} today.`.replace(/\s+/g, ' ').trim();
-  } else if (todayActions.length > 1) {
-    kind = 'pay-today';
+  } else if (kind === 'pay-today') {
     headline = 'Do these today.';
-  } else if (extraAmount != null && Number(extraAmount) > 0 && extraTarget) {
-    kind = 'extra-debt';
+  } else if (kind === 'extra-debt' && extraAmount != null && extraTarget) {
     headline = `Pay extra ${money2(extraAmount)} to ${extraTarget.label} this payday.`;
-  } else if (upcoming.length === 1) {
+  } else if (kind === 'due-soon' && upcoming.length === 1) {
     const row = upcoming[0];
-    kind = 'due-soon';
     headline = row.date
       ? `${row.label} of ${row.remaining != null ? money2(row.remaining) : (row.amount != null ? money2(row.amount) : '')} is due ${fmtDate(row.date)}.`
         .replace(/\s+/g, ' ').trim()
       : `${row.label} is still due before payday.`;
-  } else if (upcoming.length > 1) {
-    kind = 'due-soon';
+  } else if (kind === 'due-soon') {
     headline = 'These are due before payday.';
-  } else if (unsafe) {
-    kind = 'hold';
+  } else if (kind === 'hold') {
     headline = payday
       ? `Hold discretionary spending until ${payday}.`
       : 'Hold discretionary spending until payday.';
-  } else if (setAside) {
-    kind = 'set-aside';
+  } else if (kind === 'set-aside' && setAside) {
     headline = setAside.date
       ? `Set aside ${money2(setAside.allocated)} for ${setAside.label} by ${fmtDate(setAside.date)}.`
       : `Set aside ${money2(setAside.allocated)} for ${setAside.label} this payday.`;
-  } else if (weekly != null) {
-    kind = 'spend-cap';
+  } else if (kind === 'spend-cap' && weekly != null) {
     headline = payday
       ? `Spend at most ${money(weekly)}/week until ${payday}.`
       : `Spend at most ${money(weekly)}/week.`;
@@ -1414,7 +1405,7 @@ function todayDecisionHtml(action, capView, alloc, liveOverlay) {
   }
 
   const warnings = [];
-  if (unsafe && action && action.noMovementToday && !todayActions.length) {
+  if (unsafe && decision && decision.noMovementToday && !todayActions.length) {
     warnings.push('No payment or transfer is required today. Protected cash needs are still unfunded.');
   }
   if (capView && capView.shortfall != null && Number(capView.shortfall) > 0) {
@@ -1444,12 +1435,10 @@ function todayDecisionHtml(action, capView, alloc, liveOverlay) {
     facts.push(`<div class="household-fact"><span>Weekly cap · Forecast.recommend</span><b>${money(weekly)}/week</b></div>`);
   }
 
-  const extraActions = todayActions.length > 1
+  const extraActions = todayActions.length
     ? `<div class="household-today-actions">${todayActionRowsHtml(todayActions, 'data-current-today-action')}</div>`
-    : (todayActions.length === 1
-      ? `<div class="household-today-actions">${todayActionRowsHtml(todayActions, 'data-current-today-action')}</div>`
-      : '');
-  const upcomingList = !todayActions.length && upcoming.length && kind === 'due-soon'
+    : '';
+  const upcomingList = kind === 'due-soon' && upcoming.length
     ? `<div class="household-today-actions">${todayActionRowsHtml(upcoming, 'data-current-upcoming-bill')}</div>`
     : '';
 
@@ -1458,7 +1447,7 @@ function todayDecisionHtml(action, capView, alloc, liveOverlay) {
     ${extraActions}${upcomingList}
     ${warnings.map(text => `<p class="operating-limit warn">${text}</p>`).join('')}
     ${facts.length ? `<div class="household-facts">${facts.join('')}</div>` : ''}
-    <p class="operating-note">Copied from Forecast.recommend / paydayAllocation / currentPeriodAction. Remainder after allocation is not the next move.</p>
+    <p class="operating-note">Copied from Forecast.paydayNextMove. Remainder after allocation is not the next move.</p>
   </div>`;
 }
 
@@ -1611,7 +1600,8 @@ function paydayAllocationSummaryHtml(alloc, action) {
 /* Payday operating sheet. Every financial value and verdict is already on the
  * incumbent Forecast result passed in by renderPlan. This formats those
  * fields only: it does not call Forecast, add an allocation, choose a debt
- * target, total a bucket, invent freshness, or decide feasibility. */
+ * target, total a bucket, invent freshness, decide feasibility, or choose
+ * the next-move kind — that kind is Forecast.paydayNextMove. */
 function operatingSurfaceHtml(ctx) {
   const advice = ctx.advice || {};
   const alloc = advice.paydayAllocation || null;
@@ -1643,7 +1633,7 @@ function operatingSurfaceHtml(ctx) {
   const spend = spendDecisionHtml(capView, weeklyPermission, remainingUnavailable, weeklyAuthority, action);
   const extra = extraDebtGlanceHtml(alloc);
   const purchases = futureGravityHtml(advice);
-  const next = todayDecisionHtml(action, capView, alloc, ctx.liveOverlay);
+  const next = todayDecisionHtml(advice.paydayNextMove, capView, alloc);
   const periodDetails = action && action.mode === 'between-paydays'
     ? `<details class="household-inline-details household-period-details">
         <summary>See current-period details</summary>
