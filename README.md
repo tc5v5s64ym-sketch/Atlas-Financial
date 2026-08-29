@@ -36,6 +36,8 @@ is still the whole financial picture of two people.
 - `GET /assistant/current` is a separate read-only consumer. It is not unlocked
   by the browser session. It requires `ATLAS_ASSISTANT_TOKEN` as
   `Authorization: Bearer`. Unset → 503. It never writes.
+  `POST /assistant/mcp` is the same Bearer surface as one read-only MCP tool
+  (`get_atlas_current`) wrapping that GET.
 - Sessions are stateless HMAC-signed cookies — HttpOnly, SameSite=Lax, and
   Secure whenever the request is HTTPS. A tampered cookie is rejected.
 - Login attempts are throttled to 8 per 15 minutes per IP.
@@ -96,7 +98,9 @@ node test-local.js
    `render.yaml`. `/healthz` does not depend on Lunch Money.
 6. To enable read-only assistant access, set **`ATLAS_ASSISTANT_TOKEN`** by
    hand in Render to a dedicated secret of at least 32 characters. Do not reuse
-   `SITE_PASSWORD`. Unset → `GET /assistant/current` returns 503.
+   `SITE_PASSWORD`. Unset → `GET /assistant/current` and `POST /assistant/mcp`
+   return 503. The MCP tool is `get_atlas_current`. ChatGPT Apps OAuth is not
+   this surface.
 7. Deploy. Every push to the default branch redeploys automatically.
 
 The free plan sleeps after inactivity, so the first visit in a while takes about

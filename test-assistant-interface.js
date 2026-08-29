@@ -18,6 +18,7 @@ const { spawn } = require('child_process');
 const Forecast = require('./public/forecast.js');
 const LivePlan = require('./scripts/live-plan.js');
 const Assistant = require('./scripts/assistant-packet.js');
+const AssistantMcp = require('./scripts/assistant-mcp.js');
 const O = require('./scripts/provider-observe.js');
 
 const ROOT = __dirname;
@@ -760,6 +761,179 @@ console.log('\n=== HTTP fail-closed without assistant token ===');
       'reuse-of-session fatal names SESSION_SECRET');
   }
 
+  console.log('\n=== MCP adapter is transport only ===');
+  {
+    const packet = Assistant.buildPacket({
+      data: clone(liveData),
+      periods: Assistant.loadPeriods(),
+      questionsMarkdown: '',
+      now: '2026-08-24T12:00:00.000Z',
+      env: {},
+    });
+    const init = AssistantMcp.handle({
+      jsonrpc: '2.0', id: 1, method: 'initialize',
+      params: { protocolVersion: AssistantMcp.PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: 'test', version: '1' } },
+    });
+    ok(init.status === 200 && init.body.result.protocolVersion === AssistantMcp.PROTOCOL_VERSION,
+      'initialize returns the MCP protocol version Atlas speaks');
+    ok(init.body.result.serverInfo && init.body.result.serverInfo.name === AssistantMcp.SERVER_NAME,
+      'initialize names the Atlas assistant MCP server');
+    const listed = AssistantMcp.handle({ jsonrpc: '2.0', id: 2, method: 'tools/list' });
+    ok(listed.body.result.tools.length === 1
+        && listed.body.result.tools[0].name === AssistantMcp.TOOL_NAME,
+      'tools/list exposes exactly one read-only tool');
+    const called = AssistantMcp.handle({
+      jsonrpc: '2.0', id: 3, method: 'tools/call',
+      params: { name: AssistantMcp.TOOL_NAME, arguments: {} },
+    }, { packet });
+    ok(called.status === 200 && called.body.result.isError === false,
+      'tools/call get_atlas_current succeeds on a sanitized packet');
+    const wrapped = JSON.parse(called.body.result.content[0].text);
+    ok(wrapped.schema === Assistant.SCHEMA
+        && near(wrapped.current.spendableHouseholdCash.value, packet.current.spendableHouseholdCash.value),
+      'MCP content is the incumbent assistant packet, not a second figure');
+    ok(Assistant.looksSanitized(called.body) && !forbiddenBlob(called.body),
+      'MCP envelope stays sanitized');
+    const unknownTool = AssistantMcp.handle({
+      jsonrpc: '2.0', id: 4, method: 'tools/call',
+      params: { name: 'canonical-refresh', arguments: {} },
+    }, { packet });
+    ok(unknownTool.body.error && unknownTool.body.error.code === -32602,
+      'unknown tools including write names are refused');
+    const extraArgs = AssistantMcp.handle({
+      jsonrpc: '2.0', id: 5, method: 'tools/call',
+      params: { name: AssistantMcp.TOOL_NAME, arguments: { weekly: 999 } },
+    }, { packet });
+    ok(extraArgs.body.error && extraArgs.body.error.code === -32602,
+      'get_atlas_current rejects arguments rather than accepting a planner override');
+    const missingMethod = AssistantMcp.handle({
+      jsonrpc: '2.0', id: 6, method: 'resources/list',
+    });
+    ok(missingMethod.body.error && missingMethod.body.error.code === -32601,
+      'non-tool MCP methods are not invented');
+    const ping = AssistantMcp.handle({ jsonrpc: '2.0', id: 7, method: 'ping' });
+    ok(ping.status === 200 && ping.body.result && typeof ping.body.result === 'object',
+      'ping is accepted without building a packet');
+    const note = AssistantMcp.handle({ jsonrpc: '2.0', method: 'notifications/initialized' });
+    ok(note.status === 204 && note.body == null, 'initialized notification is acknowledged without a body');
+    const batch = AssistantMcp.handle([{ jsonrpc: '2.0', id: 8, method: 'tools/list' }]);
+    ok(batch.status === 400 && batch.body.error && batch.body.error.code === -32600,
+      'JSON-RPC batches fail closed');
+    const mcpSrc = fs.readFileSync(path.join(ROOT, 'scripts', 'assistant-mcp.js'), 'utf8');
+    ok(!/Forecast\.recommend/.test(mcpSrc) && !/startingCashAmount/.test(mcpSrc),
+      'MCP adapter does not call Forecast or recompute cash');
+    ok(/assistant-packet/.test(mcpSrc) && /looksSanitized/.test(mcpSrc),
+      'MCP adapter consumes the incumbent packet sanitizer');
+  }
+
+  console.log('\n=== HTTP MCP wrap uses the same Bearer gate as GET /assistant/current ===');
+  await withAtlas({}, async ({ base }) => {
+    const res = await fetch(`${base}/assistant/mcp`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize' }),
+      redirect: 'manual',
+    });
+    ok(res.status === 503, 'unset ATLAS_ASSISTANT_TOKEN returns 503 on MCP', `status ${res.status}`);
+    const body = await res.json();
+    ok(body.error === 'assistant unavailable' && !body.result, '503 MCP body does not leak a packet');
+  });
+  await withAtlas({ ATLAS_ASSISTANT_TOKEN: ASSISTANT_TOKEN }, async ({ base }) => {
+    async function mcp(headers, body) {
+      return fetch(`${base}/assistant/mcp`, {
+        method: 'POST',
+        headers: Object.assign({ 'content-type': 'application/json' }, headers || {}),
+        body: JSON.stringify(body),
+        redirect: 'manual',
+      });
+    }
+    const none = await mcp({}, { jsonrpc: '2.0', id: 1, method: 'initialize' });
+    ok(none.status === 401, 'MCP missing Bearer fails closed', `status ${none.status}`);
+    ok((none.headers.get('www-authenticate') || '').includes('Bearer'),
+      'MCP 401 advertises Bearer');
+
+    const wrong = await mcp(
+      { authorization: `Bearer ${WRONG_TOKEN}` },
+      { jsonrpc: '2.0', id: 1, method: 'initialize' }
+    );
+    ok(wrong.status === 401, 'MCP wrong Bearer fails closed', `status ${wrong.status}`);
+
+    const query = await fetch(
+      `${base}/assistant/mcp?token=${encodeURIComponent(ASSISTANT_TOKEN)}`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize' }),
+        redirect: 'manual',
+      }
+    );
+    ok(query.status === 401, 'MCP token in the query string is ignored', `status ${query.status}`);
+
+    const authed = await login(base);
+    const cookieOnly = await mcp(
+      { cookie: authed.cookie },
+      { jsonrpc: '2.0', id: 1, method: 'initialize' }
+    );
+    ok(cookieOnly.status === 401, 'browser session cookie does not unlock MCP',
+      `status ${cookieOnly.status}`);
+
+    const headers = { authorization: `Bearer ${ASSISTANT_TOKEN}` };
+    const listed = await mcp(headers, { jsonrpc: '2.0', id: 2, method: 'tools/list' });
+    ok(listed.status === 200, 'authenticated MCP tools/list returns 200', `status ${listed.status}`);
+    const listedBody = await listed.json();
+    ok(listedBody.result.tools.length === 1
+        && listedBody.result.tools[0].name === AssistantMcp.TOOL_NAME,
+      'HTTP MCP lists only get_atlas_current');
+
+    const getPacket = await fetch(`${base}/assistant/current`, { headers });
+    ok(getPacket.status === 200, 'GET /assistant/current still works beside MCP');
+    const direct = await getPacket.json();
+    const called = await mcp(headers, {
+      jsonrpc: '2.0', id: 3, method: 'tools/call',
+      params: { name: AssistantMcp.TOOL_NAME, arguments: {} },
+    });
+    ok(called.status === 200, 'authenticated MCP tools/call returns 200', `status ${called.status}`);
+    const calledBody = await called.json();
+    const wrapped = JSON.parse(calledBody.result.content[0].text);
+    ok(wrapped.schema === Assistant.SCHEMA && Assistant.looksSanitized(wrapped),
+      'MCP tool result is the sanitized assistant schema');
+    ok(near(wrapped.current.spendableHouseholdCash.value,
+      direct.current.spendableHouseholdCash.value),
+      'MCP spendable matches GET /assistant/current on the same server');
+    ok(near(wrapped.forecast.recommendation.weekly,
+      direct.forecast.recommendation.weekly),
+      'MCP weekly matches GET /assistant/current, not a second planner');
+    ok(!forbiddenBlob(calledBody), 'HTTP MCP result contains no secrets or raw transactions');
+    ok(wrapped.writesCanonicalState === false && wrapped.productionWrite === false,
+      'MCP packet still declares no writes');
+
+    const writeName = await mcp(headers, {
+      jsonrpc: '2.0', id: 4, method: 'tools/call',
+      params: { name: 'canonical-refresh', arguments: { apply: true } },
+    });
+    const writeBody = await writeName.json();
+    ok(writeBody.error && writeBody.error.code === -32602,
+      'MCP refuses a write-shaped tool name');
+
+    const getMcp = await fetch(`${base}/assistant/mcp`, {
+      headers, redirect: 'manual',
+    });
+    ok(getMcp.status === 405, 'GET /assistant/mcp is not a second packet URL',
+      `status ${getMcp.status}`);
+
+    const malformed = await fetch(`${base}/assistant/mcp`, {
+      method: 'POST',
+      headers: Object.assign({ 'content-type': 'application/json' }, headers),
+      body: '{',
+      redirect: 'manual',
+    });
+    ok(malformed.status === 400, 'malformed MCP JSON fails closed', `status ${malformed.status}`);
+    const malformedBody = await malformed.json();
+    ok(malformedBody.error && malformedBody.error.code === -32700,
+      'malformed MCP JSON is a JSON-RPC parse error');
+  });
+  filesUnchanged('authenticated assistant MCP');
+
   console.log('\n=== source does not recompute financial answers ===');
   {
     const src = fs.readFileSync(path.join(ROOT, 'scripts', 'assistant-packet.js'), 'utf8');
@@ -770,6 +944,8 @@ console.log('\n=== HTTP fail-closed without assistant token ===');
     const serverSrc = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
     ok(/Assistant\.buildPacket/.test(serverSrc),
       'server serves the packet builder rather than inline maths');
+    ok(/AssistantMcp\.handle/.test(serverSrc) && /\/assistant\/mcp/.test(serverSrc),
+      'server MCP route delegates to the adapter rather than inventing figures');
     ok(/assistantAuthed/.test(serverSrc) && /hfd_session/.test(serverSrc),
       'assistant Bearer and browser session remain separate gates');
   }
