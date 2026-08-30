@@ -1115,8 +1115,9 @@ opening remain reserved. A production GET-only token is authorized 2026-08-23.
   The in-memory clone starts Forecast on the observation's household
   financial date only when the live packet is freshness-qualified for
   that date; MATCH is not freshness, and an incomplete or stale packet
-  fails closed. Same-day scheduled events fail closed without posting
-  evidence. Unrepresented joint-cash outflows between the dated opening
+  fails closed. Same-day scheduled income or other inbound cash fails
+  closed without posting evidence. Same-day unposted joint-cash bills
+  stay still due. Unrepresented joint-cash outflows between the dated opening
   and the live as-of stay reserved through `plan.opening.priorAsOf`.
   Unattended production writes and a newer live substitute
   opening remain reserved. A production GET-only token is authorized 2026-08-23.

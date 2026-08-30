@@ -25,8 +25,10 @@
  * advances: posting/representation evidence names them on in-memory
  * representedEvents; unrepresented joint-cash outflows stay reserved
  * via plan.opening.priorAsOf so Forecast does not drop them. Same-day
- * scheduled cash events still need posting / representation evidence
- * or the overlay fails closed. Triangle/MBNA
+ * scheduled income or other inbound cash still needs posting /
+ * representation evidence or the overlay fails closed, so that cash is
+ * not counted twice. Same-day unposted joint-cash bills stay still due
+ * and do not fail the overlay. Triangle/MBNA
  * statement cadence may keep canonical posted values. Unknown, stale,
  * conflicting, unmapped, credit-capacity, and transfer-as-income
  * evidence fail closed. Historical data.json and snapshots stay
@@ -512,6 +514,16 @@ function scheduledCashEventsIn(plan, afterExclusive, throughInclusive) {
       && event.kind !== 'noncash');
 }
 
+// Unrepresented same-day inbound cash would double-count if Forecast
+// still added it on top of live posted balances. Unposted same-day
+// bills do not: live cash does not include them, and Forecast keeps
+// them still due because they are not named on representedEvents.
+function sameDayUnrepresentedWouldDoubleCount(event) {
+  if (!event || event.kind === 'noncash') return false;
+  if (event.kind === 'income') return true;
+  return Number(event.amount) > 0;
+}
+
 function liveAsOfFrom(report, historicalOpeningAsOf) {
   const observed = Forecast.financialDate(report && report.fetchedAt)
     || Forecast.financialDate(report && report.observedAsOf);
@@ -596,7 +608,9 @@ function applyLiveCutover(next, report, historicalOpeningAsOf) {
       represented.push({ id: event.id, date: event.date });
       continue;
     }
-    if (event.date === liveAsOf) unknownSameDay.push(event);
+    if (event.date === liveAsOf && sameDayUnrepresentedWouldDoubleCount(event)) {
+      unknownSameDay.push(event);
+    }
   }
   const uniqueRepresented = mergeRepresented([], represented);
   const advances = !!(historicalOpeningAsOf && liveAsOf > historicalOpeningAsOf);

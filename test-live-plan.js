@@ -542,7 +542,7 @@ console.log('\n=== 8. server fixture overlay does not mutate the cached opening 
   filesUnchanged('server fixture overlay');
 }
 
-console.log('\n=== 9. unknown same-day scheduled events fail closed ===');
+console.log('\n=== 9. unknown same-day income fails closed ===');
 {
   const canonical = clone(liveData);
   let threw = null;
@@ -557,6 +557,8 @@ console.log('\n=== 9. unknown same-day scheduled events fail closed ===');
   ok(threw && /same-day-event-representation-unknown/.test(threw.message),
     'Aug 20 overlay fails closed without child-benefit posting evidence',
     threw && threw.message);
+  ok(/childBenefit@2026-08-20/.test(threw && threw.message || ''),
+    'unknown same-day income names the unrepresented child benefit');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-live-plan-sameday-'));
   const fixture = path.join(dir, 'fixture.json');
   fs.writeFileSync(fixture, `${JSON.stringify(payloadFrom(canonical, {
@@ -1332,6 +1334,182 @@ console.log('\n=== 17. posted payday-window mortgage and Fit4less Msp are repres
     question && `${question.id} ${question.reason}`);
   filesUnchanged('posted payday-window mortgage');
 }
+
+console.log('\n=== 18. complete live cash plus missing same-day unposted bill still overlays ===');
+{
+  const FEE_DAY_AT = '2026-08-30T18:00:00.000Z';
+  const FEE_DAY_AS_OF = '2026-08-30';
+  const SYNTHETIC_LIVE_A = 410.11;
+  const SYNTHETIC_LIVE_B = -80.07;
+  const SYNTHETIC_LIVE_SAVINGS = 1.33;
+  const independentLeftover = Math.round(
+    (SYNTHETIC_LIVE_A + SYNTHETIC_LIVE_B + SYNTHETIC_LIVE_SAVINGS) * 100
+  ) / 100;
+  const canonical = clone(liveData);
+  const openingCash = Forecast.startingCashAmount(canonical.plan);
+  const scheduledFees = Number((canonical.plan.bills || [])
+    .find(row => row && row.id === 'tdfees').amount);
+  ok(scheduledFees > 0, 'plan still names the month-end TD fees amount');
+  ok(!(identity.rules || []).some(r => r && (r.eventId === 'travel' || r.eventId === 'tdfees')),
+    'Travel Visa and TD fees have no invented payee identity');
+  ok(!near(independentLeftover, openingCash),
+    'synthetic live cash is not the dated opening leftover');
+
+  const paydayTxs = [
+    {
+      id: 93028,
+      account_id: 3001,
+      date: PAYDAY_AS_OF,
+      amount: -SYNTHETIC_PAYROLL,
+      payee: 'SEASPAN PAYROLL',
+      category_id: 21,
+      is_pending: false,
+      status: 'reviewed',
+    },
+    {
+      id: 93029,
+      account_id: 3001,
+      date: PAYDAY_AS_OF,
+      amount: SYNTHETIC_MORTGAGE_OBSERVED,
+      payee: 'TD MORTGAGE',
+      category_id: 22,
+      is_pending: false,
+      status: 'reviewed',
+    },
+    {
+      id: 93030,
+      account_id: 3001,
+      date: PAYDAY_AS_OF,
+      amount: SYNTHETIC_FIT_OBSERVED,
+      payee: 'Fit4less Msp',
+      category_id: 23,
+      is_pending: false,
+      status: 'reviewed',
+    },
+  ];
+  const extra = {
+    fetchedAt: FEE_DAY_AT,
+    categories: [
+      { id: 21, name: 'Income', is_income: true, exclude_from_totals: false },
+      { id: 22, name: 'Mortgage', is_income: false, exclude_from_totals: false },
+      { id: 23, name: 'Personal Care', is_income: false, exclude_from_totals: false },
+    ],
+    transactionWindow: {
+      startDate: '2026-08-16',
+      endDate: FEE_DAY_AS_OF,
+      complete: true,
+      hasMore: false,
+      truncated: false,
+    },
+    tweaks: {
+      'chequing-a': SYNTHETIC_LIVE_A,
+      'chequing-b': SYNTHETIC_LIVE_B,
+      savings: SYNTHETIC_LIVE_SAVINGS,
+      cashAt: '2026-08-30T17:55:00.000Z',
+    },
+    transactions: paydayTxs,
+  };
+
+  const result = overlay(clone(canonical), extra);
+  ok(result.data.liveOverlay && result.data.liveOverlay.applied === true,
+    'Aug 30 overlay applies when Friday payday is represented and TD fees are unposted');
+  ok(String(result.data.meta.asOf) === FEE_DAY_AS_OF,
+    'in-memory as-of is the morning household date');
+  const represented = result.data.plan.opening.representedEvents || [];
+  ok(represented.length > 0, 'representedEvents are not emptied by the unposted same-day bill');
+  ok(represented.some(e => e.id === 'payroll' && e.date === PAYDAY_AS_OF),
+    'Friday Seaspan stays represented');
+  ok(represented.some(e => e.id === 'mortgage' && e.date === PAYDAY_AS_OF),
+    'Friday mortgage stays represented');
+  ok(represented.some(e => e.id === 'fit4less' && e.date === PAYDAY_AS_OF),
+    'Friday Fit4Less stays represented');
+  ok(!represented.some(e => e.id === 'tdfees'),
+    'unposted TD fees are not invented onto representedEvents');
+  ok(!represented.some(e => e.id === 'travel'),
+    'Travel Visa is not invented onto representedEvents');
+
+  ok(near(cashValue(result.data, 'chequing-a'), SYNTHETIC_LIVE_A)
+      && near(cashValue(result.data, 'chequing-b'), SYNTHETIC_LIVE_B)
+      && near(cashValue(result.data, 'savings'), SYNTHETIC_LIVE_SAVINGS),
+    'posted cash overlays the complete live observation');
+  const liveCash = Forecast.startingCashAmount(result.data.plan);
+  ok(near(liveCash, independentLeftover),
+    'leftover cash is the independent live posted sum',
+    String(liveCash));
+  ok(!near(liveCash, openingCash),
+    'leftover cash is not the dated opening');
+
+  ok(Forecast.expandEvents(result.data.plan, FEE_DAY_AS_OF, FEE_DAY_AS_OF, {})
+      .some(e => e.id === 'tdfees' && e.date === FEE_DAY_AS_OF),
+    'Forecast still emits unposted TD fees on the live as-of');
+  ok(!Forecast.expandEvents(result.data.plan, FEE_DAY_AS_OF, FEE_DAY_AS_OF, {})
+      .some(e => e.id === 'payroll' && e.date === PAYDAY_AS_OF),
+    'Forecast does not replay Friday Seaspan onto the live as-of');
+
+  const advice = Forecast.recommend(result.data.plan, FEE_DAY_AS_OF, {
+    currentPeriodActuals: result.data.liveOverlay.currentPeriodActuals,
+    debts: result.data.debts,
+    revolvingExtra: result.data.revolvingExtra,
+    targetBuffer: canonical.plan.defaults.targetBuffer,
+  });
+  ok(near(advice.paydayAllocation.available, independentLeftover),
+    'payday leftover copies live posted cash, not the dated opening');
+  const due = (advice.currentPeriodAction && advice.currentPeriodAction.thisPaydayDue) || [];
+  const paid = (advice.currentPeriodAction && advice.currentPeriodAction.thisPaydayPaid) || {};
+  ok(due.some(row => row.id === 'tdfees' && row.date === FEE_DAY_AS_OF),
+    'still due can list TD fees');
+  ok(due.some(row => row.id === 'travel' || /Travel Visa/i.test(String(row.label || ''))),
+    'Travel Visa min stays still due with no invented payee');
+  ok((paid.inflows || []).some(row => row.id === 'payroll' && row.date === PAYDAY_AS_OF),
+    'already paid keeps Friday Seaspan in');
+  ok((paid.bills || []).some(row => row.id === 'mortgage' && row.date === PAYDAY_AS_OF),
+    'already paid keeps Friday mortgage');
+  ok((paid.bills || []).some(row => row.id === 'fit4less' && row.date === PAYDAY_AS_OF),
+    'already paid keeps Friday Fit4Less');
+  const actuals = result.data.liveOverlay.currentPeriodActuals;
+  ok(actuals && Array.isArray(actuals.transactions) && actuals.transactions.length > 0,
+    'applied overlay keeps current-period actuals');
+  ok(!(result.report.representedEventCandidates || []).some(c => c.id === 'tdfees'),
+    'observer does not invent a TD fees candidate');
+
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-live-plan-fees-'));
+  const fixture = path.join(dir, 'fixture.json');
+  fs.writeFileSync(fixture, `${JSON.stringify(payloadFrom(canonical, extra), null, 2)}\n`);
+  const served = Live.serveCanonicalOrFixture(canonical, {
+    ATLAS_LIVE_OVERLAY: 'fixture',
+    ATLAS_LIVE_OVERLAY_FIXTURE: fixture,
+    ATLAS_LIVE_OVERLAY_MAP: MAP,
+  });
+  ok(served.liveOverlay && served.liveOverlay.applied === true,
+    'server overlay still applies on the unposted same-day bill');
+  ok((served.plan.opening.representedEvents || []).length > 0,
+    'server representedEvents are not emptied');
+  ok(near(Forecast.startingCashAmount(served.plan), independentLeftover),
+    'served leftover stays the live posted sum');
+
+  const withUnknownIncome = clone(canonical);
+  withUnknownIncome.plan = Object.assign({}, withUnknownIncome.plan, {
+    income: (withUnknownIncome.plan.income || []).concat([{
+      id: 'same-day-unknown-income',
+      label: 'Synthetic same-day income',
+      frequency: 'once',
+      date: FEE_DAY_AS_OF,
+      amount: 50,
+      confidence: 'confirmed',
+    }]),
+  });
+  let threw = null;
+  try {
+    overlay(withUnknownIncome, extra);
+  } catch (err) {
+    threw = err;
+  }
+  ok(threw && /same-day-event-representation-unknown: same-day-unknown-income@2026-08-30/.test(threw.message),
+    'unknown same-day income still refuses the overlay',
+    threw && threw.message);
+  filesUnchanged('unposted same-day bill overlay');
+}
+
 console.log('\n' + '═'.repeat(60));
 if (failures) {
   console.log(`FAILED — ${failures} live-plan check(s)`);
