@@ -258,40 +258,39 @@ console.log('\n=== default glance prints that set in kitchen-counter language ==
   });
   const glance = defaultGlance(html);
   const text = glance.replace(/<[^>]+>/g, ' ');
-  ok(/Bills/.test(html) && /PAID/.test(glance),
-    'the heading is bills this pay period, with paid still listed');
+  ok(/Bills/.test(html) && /Pay Period 1/.test(glance) && /Pay Period 2/.test(glance),
+    'the bills heading is Bills, printed as two calendar halves');
   ok(/data-payday-period-bills/.test(html),
     'period bills are one default-view list');
-  ok(/Payroll — Seaspan · Aug 28 · in/.test(glance)
-      && /Mortgage · Aug 28 · PAID/.test(glance)
+  ok(/Mortgage · Aug 28 · PAID/.test(glance)
       && /Fit4Less membership · Aug 28 · PAID/.test(glance),
-    'default glance already paid is Seaspan in, mortgage PAID, Fit4Less PAID');
-  ok(glance.includes('+' + composer.money2(PAYROLL))
-      && glance.includes('−' + composer.money2(MORTGAGE))
+    'August Pay Period 2 still lists the payday mortgage and Fit4Less as PAID');
+  ok(glance.includes('−' + composer.money2(MORTGAGE))
       && glance.includes('−' + composer.money2(FIT)),
-    'already paid prints money in as + and money out as −');
-  ok(!glance.includes('−' + composer.money2(PAYROLL)),
-    'Seaspan in is not printed as a negative');
+    'those paid bills print as money out');
+  ok(!/Payroll — Seaspan/.test(glance) && !glance.includes('+' + composer.money2(PAYROLL))
+      && !glance.includes('−' + composer.money2(PAYROLL)),
+    'Seaspan income is not printed as a bill row');
   ok(/Current Balance/.test(html) && !/Leftover cash/.test(html)
       && !/Current cash flow/.test(html),
     'the leftover number is labelled Current Balance');
-  ok(!/Canada child benefit/.test(glance) && !/BCAA/.test(glance)
-      && !/ICBC/.test(glance) && !/RESP/.test(glance) && !/CMAW/.test(glance)
+  ok(!/Canada child benefit/.test(glance) && !/ICBC/.test(glance)
+      && !/RESP/.test(glance) && !/CMAW/.test(glance)
       && !/union dues/i.test(glance),
-    'default glance omits Aug 15/16 stubs and Aug 20 child benefit');
+    'default glance omits income dates and cancelled CMAW; BCAA stays in its August half');
+  ok(/BCAA insurance · Aug 16/.test(glance) && !/posting unknown/i.test(text),
+    'the August once BCAA row prints in Pay Period 2 without posting-unknown wording');
   ok(/Travel Visa minimum/.test(glance) && /TD account fees/.test(glance)
       && /still due/.test(glance)
       && glance.includes('−' + composer.money2(TRAVEL))
       && glance.includes('−' + composer.money2(FEES)),
     'Travel Visa min and TD fees stay still due as money out, without an invented payee');
-  ok(!/posting unknown/i.test(text),
-    'default glance does not print posting unknown');
   ok(!/unverified-settlement|\boverlay\b|\bForecast\b|\bAtlas\b|\bunverified\b|\brepresented\b/.test(text),
     'default glance stays kitchen-counter language');
   const q2 = html.slice(html.indexOf('data-operating-question="02"'),
     html.indexOf('data-operating-question="03"'));
-  ok(/still due/.test(q2) && /PAID/.test(q2) && / · in/.test(q2),
-    'bills this pay period lists PAID and still due together');
+  ok(/still due/.test(q2) && /PAID/.test(q2) && /Pay Period 2/.test(q2),
+    'the calendar bills list keeps PAID and still due together');
   ok(/Mortgage · Aug 28 · PAID/.test(q2) && /Travel Visa minimum/.test(q2),
     'paid mortgage stays listed beside still-due Travel Visa');
 }
@@ -350,9 +349,9 @@ console.log('\n=== identified extra card payment on payday settles the min ===')
   const glance = defaultGlance(composer.operatingSurfaceHtml({
     advice, weekly: advice.weekly, recommended: advice.weekly,
   }));
-  ok(/Travel Visa minimum · Aug 28 · PAID/.test(glance)
+  ok(/Travel Visa minimum · Aug 26 · PAID/.test(glance)
       && glance.includes('−' + composer.money2(EXTRA)),
-    'default glance already paid names the extra payment on the transaction date');
+    'calendar bills show the covered min on its due date as PAID at the observed amount');
   ok(!/Travel Visa minimum · Aug 26 · still due/.test(glance),
     'covered min is not still due on the default glance');
 }

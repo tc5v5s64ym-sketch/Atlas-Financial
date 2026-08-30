@@ -307,9 +307,13 @@ console.log('\n=== G. Amanda / TENNIS INCOME is not spendable; card capacity is 
     'held-elsewhere is not inside Forecast opening cash');
   ok(hydroSep && hydroSep.payingAccount === 'chequing-a' && hydroSep.householdObligation === true,
     'Hydro Sept. 1 is a household obligation planned from BILLS ACCOUNT');
-  const hydroEv = events16.find(e => e.id === 'hydro-due-sep1');
-  ok(hydroEv && hydroEv.jointCash !== false && near(hydroEv.amount, -HYDRO_SEP),
-    'Hydro Sept. 1 is on the schedule and reduces joint cash');
+  const liveHydroEv = F.expandEvents(live.plan, live.meta.asOf, windowEnd(live.meta.asOf), {})
+    .find(e => e.id === 'hydro-due-sep1');
+  ok(liveHydroEv && liveHydroEv.jointCash !== false && near(liveHydroEv.amount, -HYDRO_SEP),
+    'Hydro Sept. 1 is on the live schedule and reduces joint cash');
+  const pinnedHydro = (aug16Pinned.plan.bills || []).find(b => b.id === 'hydro-due-sep1');
+  ok(pinnedHydro && pinnedHydro.payingAccount === AMANDA,
+    'the 16 Aug pin still records historical TENNIS INCOME Hydro and is not rewritten');
   ok(!hydroNow && !events16.some(e => e.id === 'hydro-due-now' || near(e.amount, -213.79)),
     'the $213.79 / $220 Hydro debit is not scheduled again');
   ok((live.plan.bills || []).some(b => b.id === 'bell' && b.needsDate === true && b.day == null),

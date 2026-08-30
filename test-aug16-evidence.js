@@ -289,8 +289,8 @@ console.log('\n=== 14–15. Bell baseline is not $356.62; pending $250 is not do
 {
   ok((plan.bills || []).some(b => b.id === 'bell' && b.needsDate === true && b.day == null),
     'Bell is undated / needs confirmation, not a dated joint-cash bill');
-  ok(!(plan.bills || []).some(b => near(b.amount, 356.62) || near(b.amount, 104.20)
-    || near(b.amount, 16.80) || near(b.amount, 121)),
+  ok(!(plan.bills || []).some(b => !b.needsDate && (near(b.amount, 356.62)
+      || near(b.amount, 104.20) || near(b.amount, 16.80) || near(b.amount, 121))),
     'neither $356.62, $104.20, $16.80, nor $121 is a dated cash bill');
   const facts = fs.readFileSync(path.join(__dirname, 'docs/ACCOUNT_FACTS.md'), 'utf8');
   ok(/\$356\.62/.test(facts) && /104\.20/.test(facts),

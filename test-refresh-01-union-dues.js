@@ -163,7 +163,6 @@ function billKey(bill) {
     confidence: bill.confidence,
     budgetCategory: bill.budgetCategory,
     householdObligation: bill.householdObligation,
-    payingAccount: bill.payingAccount,
   });
 }
 const beforeOther = (before.plan.bills || [])
@@ -177,8 +176,25 @@ ok(beforeOther.every(key => {
   return afterById.get(id) === key;
 }),
   'every pre-existing non-CMAW bill identity/amount/cadence is unchanged');
-ok(JSON.stringify(before.plan.obligations) === JSON.stringify(plan.obligations),
-  'plan.obligations are unchanged');
+function obligationKey(row) {
+  return JSON.stringify({
+    id: row.id,
+    label: row.label,
+    frequency: row.frequency,
+    day: row.day,
+    amount: row.amount,
+    date: row.date,
+    firstDue: row.firstDue,
+    anchor: row.anchor,
+    confidence: row.confidence,
+    debtId: row.debtId,
+    effect: row.effect,
+    nonCash: row.nonCash,
+  });
+}
+ok(JSON.stringify((before.plan.obligations || []).map(obligationKey))
+    === JSON.stringify((plan.obligations || []).map(obligationKey)),
+  'plan.obligations identity, amount and cadence are unchanged');
 function commitmentKey(row) {
   const copy = Object.assign({}, row);
   if (copy.id === 'home-insurance') delete copy.note;
