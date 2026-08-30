@@ -3058,6 +3058,10 @@
       if (event.kind !== 'obligation' && event.kind !== 'bill') continue;
       if (event.kind === 'obligation' && event.effect === 'capitalise') continue;
       if (event.jointCash === false) continue;
+      // expandEvents may carry an unpaid once row into a later window.
+      // The printed halves use the actual due date's calendar month only,
+      // so an August once row cannot appear beside its September monthly.
+      if (event.date < month.start || event.date > month.end) continue;
       const half = billCalendarHalf(event.date);
       if (!half) continue;
       const key = (event.id || event.label || '') + '@' + event.date;
