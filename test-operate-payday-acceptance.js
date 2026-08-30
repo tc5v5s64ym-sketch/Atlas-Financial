@@ -74,6 +74,7 @@ function loadComposer() {
     grab(planSrc, /^function spendDecisionHtml\([\s\S]*?\n\}$/m, 'spendDecisionHtml'),
     grab(planSrc, /^function paydayBucketRow\([\s\S]*?\n\}$/m, 'paydayBucketRow'),
     grab(planSrc, /^function postedThisPeriodHtml\([\s\S]*?\n\}$/m, 'postedThisPeriodHtml'),
+    grab(planSrc, /^function glanceSignedMoney\([\s\S]*?\n\}$/m, 'glanceSignedMoney'),
     grab(planSrc, /^function glanceMoney\([\s\S]*?\n\}$/m, 'glanceMoney'),
     grab(planSrc, /^function glanceLineLabel\([\s\S]*?\n\}$/m, 'glanceLineLabel'),
     grab(planSrc, /^function alreadyPaidRowsHtml\([\s\S]*?\n\}$/m, 'alreadyPaidRowsHtml'),
@@ -227,7 +228,7 @@ console.log('\n=== composed surface: cash, identity, debt, protection, limits ==
 
   ok(action && action.mode === 'between-paydays',
     'the dated opening is between paydays, so current-period details stay folded');
-  ok(/data-payday-cash/.test(q1) && /Leftover cash\. Not credit\./.test(q1),
+  ok(/data-payday-cash/.test(q1) && /Current cash flow\. Not credit\./.test(q1),
     'Q1 is leftover cash, not credit');
   ok(/data-payday-still-due/.test(q2),
     'Q2 publishes bills still due this payday');
@@ -244,7 +245,7 @@ console.log('\n=== composed surface: cash, identity, debt, protection, limits ==
   ok(creditHeadroom > 0 && alloc.available + 0.005 < independentCash + creditHeadroom,
     'available credit is not treated as household cash');
   ok(q1.includes(composer.money2(independentCash))
-    && /Leftover cash\. Not credit\./.test(q1)
+    && /Current cash flow\. Not credit\./.test(q1)
     && !/live Lunch Money overlay/.test(q1)
     && !/Available in chequing/.test(q1),
   'Q1 publishes that independent cash figure as leftover cash, not credit, not an available-in-chequing headline, and not live overlay');
@@ -352,7 +353,7 @@ console.log('\n=== payday mode still uses the ordered allocation sheet ===');
     'payday-mode Q4 is this week\'s spend');
   ok(/data-today-decision/.test(q6) && /data-allocation-available/.test(html),
     'a payday-mode result still renders the next move and keeps the ordered allocation sheet');
-  ok(/Leftover cash/.test(html) && /This week's spend/.test(html)
+  ok(/Current cash flow/.test(html) && /This week's spend/.test(html)
     && /Already paid/.test(html)
     && /Next move/.test(html),
   'payday mode still answers leftover cash, still due, already paid, this week\'s spend, and next move');
@@ -378,7 +379,7 @@ console.log('\n=== live overlay cannot be authorized from committed git state ==
   const note = composer.paydayGlanceCashNote({
     available: 100, asOf: data.meta.asOf, cashBasis: { asOf: data.meta.asOf },
   });
-  ok(/Leftover cash\. Not credit\./.test(note)
+  ok(/Current cash flow\. Not credit\./.test(note)
     && !/live Lunch Money overlay/.test(note)
     && !/dated opening/.test(note),
   'absent overlay evidence is leftover cash, not current live truth');
@@ -396,7 +397,7 @@ console.log('\n=== live overlay cannot be authorized from committed git state ==
     liveOverlay: { applied: false, reason: 'stale-live-cash-evidence' },
   });
   const q1 = question(glance, '01');
-  ok(/Leftover cash\. Not credit\./.test(q1) && !/overlay/.test(q1),
+  ok(/Current cash flow\. Not credit\./.test(q1) && !/overlay/.test(q1),
     'a refused overlay does not leak overlay jargon onto leftover cash');
 }
 

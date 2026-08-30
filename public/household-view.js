@@ -90,7 +90,7 @@
     const answer = q && q.querySelector('.operating-answer');
     if (!q || !answer) return false;
     const prompt = q.querySelector('.operating-prompt');
-    if (prompt) prompt.textContent = 'Leftover cash';
+    if (prompt) prompt.textContent = 'Current cash flow';
     return true;
   }
 

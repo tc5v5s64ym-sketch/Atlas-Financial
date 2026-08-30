@@ -943,6 +943,10 @@ function payeeMatches(payee, pattern) {
 }
 
 const WEEKEND_NEXT_BUSINESS_DAY = 'same-day-or-weekend-next-business-day';
+const COVER_DUE_ON_OR_BEFORE_POSTING = 'covers-due-on-or-before-posting';
+const SETTLES_WHEN_AMOUNT_AT_LEAST = 'amount-at-least';
+const COVER_DUE_LOOKBACK_DAYS = 62;
+const IDENTITY_AMOUNT_EPSILON = 0.005;
 
 function rulePayeePatterns(rule) {
   const values = [].concat((rule && rule.payeePatterns) || [],
@@ -955,12 +959,33 @@ function postingDateRelation(scheduledDate, postingDate, rule) {
   const posted = parseIsoDate(postingDate);
   if (!scheduled || !posted) return null;
   if (scheduled === posted) return 'same-day';
+  if (rule && rule.postingDateRule === COVER_DUE_ON_OR_BEFORE_POSTING
+    && scheduled < posted) {
+    return COVER_DUE_ON_OR_BEFORE_POSTING;
+  }
   if (!rule || rule.postingDateRule !== WEEKEND_NEXT_BUSINESS_DAY) return null;
   const weekday = new Date(`${scheduled}T00:00:00Z`).getUTCDay();
   const nextBusinessDay = weekday === 6
     ? Forecast.addDays(scheduled, 2)
     : weekday === 0 ? Forecast.addDays(scheduled, 1) : null;
   return nextBusinessDay === posted ? 'weekend-next-business-day' : null;
+}
+
+function coveringScheduledDates(plan, rule, postingDate) {
+  const posted = parseIsoDate(postingDate);
+  if (!plan || !rule || !rule.eventId || !posted) return [];
+  if (rule.postingDateRule !== COVER_DUE_ON_OR_BEFORE_POSTING) {
+    return scheduledDatesForPosting(posted, rule);
+  }
+  const from = Forecast.addDays(posted, -COVER_DUE_LOOKBACK_DAYS);
+  if (!from) return [];
+  const events = scheduledEventsOnRange(plan, from, posted)
+    .filter(e => e && e.id === rule.eventId && e.date <= posted);
+  if (!events.length) return [];
+  events.sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  const latest = events[0].date;
+  if (events.filter(e => e.date === latest).length !== 1) return [];
+  return [latest];
 }
 
 function scheduledDatesForPosting(postingDate, rule) {
@@ -974,16 +999,26 @@ function scheduledDatesForPosting(postingDate, rule) {
     && postingDateRelation(date, posted, rule));
 }
 
+function schedulePlan(plan) {
+  return {
+    income: (plan && plan.income) || [],
+    obligations: (plan && plan.obligations) || [],
+    bills: (plan && plan.bills) || [],
+    commitments: (plan && plan.commitments) || [],
+    startingCash: plan && plan.startingCash,
+  };
+}
+
 function scheduledEventsOn(plan, date) {
   if (!plan || !date) return [];
-  const slim = {
-    income: plan.income || [],
-    obligations: plan.obligations || [],
-    bills: plan.bills || [],
-    commitments: plan.commitments || [],
-    startingCash: plan.startingCash,
-  };
-  return Forecast.expandEvents(slim, date, date, {}).filter(e => e && e.kind !== 'noncash');
+  return Forecast.expandEvents(schedulePlan(plan), date, date, {})
+    .filter(e => e && e.kind !== 'noncash');
+}
+
+function scheduledEventsOnRange(plan, from, to) {
+  if (!plan || !from || !to || to < from) return [];
+  return Forecast.expandEvents(schedulePlan(plan), from, to, {})
+    .filter(e => e && e.kind !== 'noncash' && e.date >= from && e.date <= to);
 }
 
 function openingAsOfFromData(data) {
@@ -1372,12 +1407,16 @@ function representedEventHitGroups(input) {
       if (!rulePayeePatterns(rule).some(pattern => payeeMatches(tx.payee, pattern))) continue;
       if (rule.direction === 'credit' && !(amount < 0)) continue;
       if (rule.direction === 'debit' && !(amount > 0)) continue;
-      for (const scheduledDate of scheduledDatesForPosting(tx.date, rule)) {
+      for (const scheduledDate of coveringScheduledDates(input.plan, rule, tx.date)) {
         const scheduled = scheduledEventsOn(input.plan, scheduledDate)
           .filter(e => e.id === rule.eventId && e.date === scheduledDate);
         if (scheduled.length !== 1) continue;
         const relation = postingDateRelation(scheduledDate, tx.date, rule);
         if (!relation) continue;
+        if (rule.settlesWhen === SETTLES_WHEN_AMOUNT_AT_LEAST) {
+          const need = Math.abs(Number(scheduled[0].amount));
+          if (!(Math.abs(amount) + IDENTITY_AMOUNT_EPSILON >= need)) continue;
+        }
         const key = rule.eventId + '@' + scheduledDate;
         const list = eventHits.get(key) || [];
         list.push({
@@ -1637,6 +1676,7 @@ function reconciliationReceipt(report, opts) {
       id: candidate.id,
       date: candidate.date,
       actual: Math.round(amt * 100) / 100,
+      postedOn: candidate.postingDate || candidate.date,
     });
   }
   const paydayOrigin = Forecast.paydayPeriodOrigin(plan, householdDate);
@@ -2121,6 +2161,7 @@ function sanitizedCurrentPeriodActuals(report, opts) {
       id: candidate.id,
       date: candidate.date,
       actual: Math.round(amt * 100) / 100,
+      postedOn: candidate.postingDate || candidate.date,
     });
   }
   let coverageStart = window.startDate || null;

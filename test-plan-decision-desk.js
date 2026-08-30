@@ -66,6 +66,7 @@ function loadComposer() {
     grab(planSrc, /^function spendDecisionHtml\([\s\S]*?\n\}$/m, 'spendDecisionHtml'),
     grab(planSrc, /^function paydayBucketRow\([\s\S]*?\n\}$/m, 'paydayBucketRow'),
     grab(planSrc, /^function postedThisPeriodHtml\([\s\S]*?\n\}$/m, 'postedThisPeriodHtml'),
+    grab(planSrc, /^function glanceSignedMoney\([\s\S]*?\n\}$/m, 'glanceSignedMoney'),
     grab(planSrc, /^function glanceMoney\([\s\S]*?\n\}$/m, 'glanceMoney'),
     grab(planSrc, /^function glanceLineLabel\([\s\S]*?\n\}$/m, 'glanceLineLabel'),
     grab(planSrc, /^function alreadyPaidRowsHtml\([\s\S]*?\n\}$/m, 'alreadyPaidRowsHtml'),
@@ -171,7 +172,7 @@ console.log('=== 1. healthy / actionable safe-to-spend ===');
   ok(/data-spend-decision="amount"/.test(q4)
     && q4.includes(`${composer.money(85)} / week`),
     'healthy state shows this week\'s spend prominently');
-  ok(/\$412\.30/.test(q1) && /data-payday-cash/.test(q1) && /Leftover cash\. Not credit/.test(q1),
+  ok(/\$412\.30/.test(q1) && /data-payday-cash/.test(q1) && /Current cash flow\. Not credit/.test(q1),
     'leftover cash is copied from Forecast.paydayAllocation.available');
   ok(!/LEFT OVER/.test(html),
     'LEFT OVER is not the payday-sheet next move');

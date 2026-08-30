@@ -727,8 +727,16 @@ console.log('\n=== R. automatic-payment identity uses explicit payee+account+dat
   ok(fitRule && fitRule.payeePattern === 'Fit4less Msp' && fitRule.atlasAccountId === 'chequing-a'
     && fitRule.direction === 'debit',
     'Fit4Less uses documented Fit4less Msp + Chequing A debit identity');
-  ok(!(identity.rules || []).some(r => r && (r.eventId === 'travel' || r.eventId === 'tdfees')),
-    'Travel Visa and TD fees have no invented payee identity');
+  ok(!(identity.rules || []).some(r => r && r.eventId === 'tdfees'),
+    'TD fees have no invented payee identity');
+  const travelRule = (identity.rules || []).find(r => r && r.eventId === 'travel');
+  ok(travelRule && travelRule.atlasAccountId === 'travelvisa'
+    && travelRule.direction === 'credit'
+    && travelRule.payeePattern === 'TFR-TO C/C'
+    && travelRule.postingDateRule === 'covers-due-on-or-before-posting'
+    && travelRule.settlesWhen === 'amount-at-least'
+    && !(travelRule.payeePatterns || []).some(p => /travel visa/i.test(p)),
+    'Travel Visa min identity is a payment onto the mapped card, not an invented chequing payee');
 
   const data = JSON.parse(fs.readFileSync(path.join(__dirname, 'data.json'), 'utf8'));
   const outstandingBills = (data.plan.bills || []).filter(b => [

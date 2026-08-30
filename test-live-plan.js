@@ -1087,8 +1087,14 @@ console.log('\n=== 17. posted payday-window mortgage and Fit4less Msp are repres
   ok(fitRule && fitRule.payeePattern === 'Fit4less Msp'
     && fitRule.atlasAccountId === 'chequing-a' && fitRule.direction === 'debit',
     'Fit4Less identity is documented Fit4less Msp + Chequing A debit');
-  ok(!(identity.rules || []).some(r => r && (r.eventId === 'travel' || r.eventId === 'tdfees')),
-    'Travel Visa and TD fees have no invented payee identity');
+  ok(!(identity.rules || []).some(r => r && r.eventId === 'tdfees'),
+    'TD fees have no invented payee identity');
+  const travelRule = (identity.rules || []).find(r => r && r.eventId === 'travel');
+  ok(travelRule && travelRule.atlasAccountId === 'travelvisa'
+    && travelRule.direction === 'credit'
+    && travelRule.payeePattern === 'TFR-TO C/C'
+    && !(travelRule.payeePatterns || []).some(p => /travel visa/i.test(p)),
+    'Travel Visa min identity is a payment onto the mapped card, not an invented chequing payee');
 
   const categories = [
     { id: 21, name: 'Income', is_income: true, exclude_from_totals: false },
@@ -1350,8 +1356,14 @@ console.log('\n=== 18. complete live cash plus missing same-day unposted bill st
   const scheduledFees = Number((canonical.plan.bills || [])
     .find(row => row && row.id === 'tdfees').amount);
   ok(scheduledFees > 0, 'plan still names the month-end TD fees amount');
-  ok(!(identity.rules || []).some(r => r && (r.eventId === 'travel' || r.eventId === 'tdfees')),
-    'Travel Visa and TD fees have no invented payee identity');
+  ok(!(identity.rules || []).some(r => r && r.eventId === 'tdfees'),
+    'TD fees have no invented payee identity');
+  const travelRule = (identity.rules || []).find(r => r && r.eventId === 'travel');
+  ok(travelRule && travelRule.atlasAccountId === 'travelvisa'
+    && travelRule.direction === 'credit'
+    && travelRule.payeePattern === 'TFR-TO C/C'
+    && !(travelRule.payeePatterns || []).some(p => /travel visa/i.test(p)),
+    'Travel Visa min identity is a payment onto the mapped card, not an invented chequing payee');
   ok(!near(independentLeftover, openingCash),
     'synthetic live cash is not the dated opening leftover');
 
@@ -1508,6 +1520,118 @@ console.log('\n=== 18. complete live cash plus missing same-day unposted bill st
     'unknown same-day income still refuses the overlay',
     threw && threw.message);
   filesUnchanged('unposted same-day bill overlay');
+}
+
+console.log('\n=== 19. extra payment onto a mapped card covers that card min; chequing TFR-TO C/C does not ===');
+{
+  const SYNTHETIC_CARD_PAY = 40.4;
+  const SYNTHETIC_SHORT = 5.05;
+  const canonical = clone(liveData);
+  const scheduledTravel = Number((canonical.plan.obligations || [])
+    .find(row => row && row.id === 'travel').amount);
+  ok(scheduledTravel > 0, 'plan still names the Travel Visa minimum');
+  ok(SYNTHETIC_CARD_PAY + 0.005 >= scheduledTravel && !near(SYNTHETIC_CARD_PAY, scheduledTravel),
+    'identified extra payment covers the min and is not the scheduled $');
+  ok(SYNTHETIC_SHORT + 0.005 < scheduledTravel,
+    'short card credit is independently below the min');
+
+  const paydayTxs = [
+    {
+      id: 94028, account_id: 3001, date: PAYDAY_AS_OF, amount: -SYNTHETIC_PAYROLL,
+      payee: 'SEASPAN PAYROLL', category_id: 21, is_pending: false, status: 'reviewed',
+    },
+    {
+      id: 94029, account_id: 3001, date: PAYDAY_AS_OF, amount: SYNTHETIC_MORTGAGE_OBSERVED,
+      payee: 'TD MORTGAGE', category_id: 22, is_pending: false, status: 'reviewed',
+    },
+    {
+      id: 94030, account_id: 3001, date: PAYDAY_AS_OF, amount: SYNTHETIC_FIT_OBSERVED,
+      payee: 'Fit4less Msp', category_id: 23, is_pending: false, status: 'reviewed',
+    },
+  ];
+  const window = {
+    startDate: '2026-08-16',
+    endDate: NEXT_DAY_AS_OF,
+    complete: true,
+    hasMore: false,
+    truncated: false,
+  };
+  const categories = [
+    { id: 21, name: 'Income', is_income: true, exclude_from_totals: false },
+    { id: 22, name: 'Mortgage', is_income: false, exclude_from_totals: false },
+    { id: 23, name: 'Personal Care', is_income: false, exclude_from_totals: false },
+    { id: 24, name: 'Payment/Transfer', is_income: false, exclude_from_totals: true },
+  ];
+  const extraFor = (cardTx) => ({
+    fetchedAt: NEXT_DAY_AT,
+    categories,
+    transactionWindow: window,
+    tweaks: {
+      'chequing-a': cashValue(canonical, 'chequing-a')
+        + SYNTHETIC_PAYROLL - SYNTHETIC_MORTGAGE_OBSERVED - SYNTHETIC_FIT_OBSERVED,
+      cashAt: '2026-08-29T17:55:00.000Z',
+    },
+    transactions: paydayTxs.concat(cardTx || []),
+  });
+
+  const chequingOnly = overlay(clone(canonical), extraFor([{
+    id: 94031, account_id: 3001, date: PAYDAY_AS_OF, amount: SYNTHETIC_CARD_PAY,
+    payee: 'TFR-TO C/C', category_id: 24, exclude_from_totals: true,
+    is_pending: false, status: 'reviewed',
+  }]));
+  const shortCard = overlay(clone(canonical), extraFor([{
+    id: 94032, account_id: 3006, date: PAYDAY_AS_OF, amount: -SYNTHETIC_SHORT,
+    payee: 'TFR-TO C/C', is_pending: false, status: 'reviewed',
+  }]));
+  const identified = overlay(clone(canonical), extraFor([{
+    id: 94033, account_id: 3006, date: PAYDAY_AS_OF, amount: -SYNTHETIC_CARD_PAY,
+    payee: 'TFR-TO C/C', is_pending: false, status: 'reviewed',
+  }]));
+
+  ok(chequingOnly.data.liveOverlay && chequingOnly.data.liveOverlay.applied === true,
+    'chequing TFR-TO C/C overlay still applies');
+  ok(identified.data.liveOverlay && identified.data.liveOverlay.applied === true,
+    'card-account extra payment overlay applies');
+  ok(!(chequingOnly.report.representedEventCandidates || []).some(c => c.id === 'travel'),
+    'TFR-TO C/C leaving chequing is not Travel Visa identity');
+  ok(!(shortCard.report.representedEventCandidates || []).some(c => c.id === 'travel'),
+    'identified card credit below the min does not settle it');
+  const hit = (identified.report.representedEventCandidates || [])
+    .find(c => c.id === 'travel');
+  ok(hit && hit.date === '2026-08-26' && hit.postingDate === PAYDAY_AS_OF
+      && hit.identity === 'payee+account+date' && hit.amountNotUsed === true
+      && near(hit.observedAmount, -SYNTHETIC_CARD_PAY),
+    'Travel Visa identity is payee + mapped card + credit covering Aug 26, not the $17');
+  ok((identified.data.plan.opening.representedEvents || [])
+      .some(e => e.id === 'travel' && e.date === '2026-08-26'),
+    'in-memory opening names the covered min on its scheduled date');
+
+  const advice = Forecast.recommend(identified.data.plan, NEXT_DAY_AS_OF, {
+    currentPeriodActuals: identified.data.liveOverlay.currentPeriodActuals,
+    debts: identified.data.debts,
+    revolvingExtra: identified.data.revolvingExtra,
+    targetBuffer: canonical.plan.defaults.targetBuffer,
+  });
+  const controlAdvice = Forecast.recommend(chequingOnly.data.plan, NEXT_DAY_AS_OF, {
+    currentPeriodActuals: chequingOnly.data.liveOverlay.currentPeriodActuals,
+    debts: chequingOnly.data.debts,
+    revolvingExtra: chequingOnly.data.revolvingExtra,
+    targetBuffer: canonical.plan.defaults.targetBuffer,
+  });
+  const paid = (advice.currentPeriodAction && advice.currentPeriodAction.thisPaydayPaid) || {};
+  const due = (advice.currentPeriodAction && advice.currentPeriodAction.thisPaydayDue) || [];
+  const controlDue = (controlAdvice.currentPeriodAction
+    && controlAdvice.currentPeriodAction.thisPaydayDue) || [];
+  ok((paid.bills || []).some(row => row.id === 'travel' && row.date === PAYDAY_AS_OF
+      && near(row.movement, -SYNTHETIC_CARD_PAY)),
+    'already paid this payday shows the extra card payment as money out');
+  ok(!due.some(row => row.id === 'travel'),
+    'covered Travel Visa min is not still due');
+  ok(controlDue.some(row => row.id === 'travel'),
+    'chequing TFR-TO C/C leaves the min still due');
+  ok(due.some(row => row.id === 'tdfees') || controlDue.some(row => row.id === 'tdfees'),
+    'TD fees are not invented away');
+  filesUnchanged('extra payment onto mapped card');
 }
 
 console.log('\n' + '═'.repeat(60));
