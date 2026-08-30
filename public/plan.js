@@ -1493,7 +1493,23 @@ function cashGlanceHtml(alloc, liveOverlay) {
   </div>`;
 }
 
-function mustLeaveHtml(alloc) {
+function postedThisPeriodHtml(action) {
+  const bills = ((action && action.bills) || [])
+    .filter(row => row && row.settlement === 'represented');
+  if (!bills.length) return '';
+  const rows = bills.map(row => paydayBucketRow(
+    `${row.label}${row.date ? ` · ${fmtDate(row.date)}` : ''} · posted`,
+    row.actual != null ? row.actual : row.planned,
+    null,
+    null
+  )).join('');
+  return `<div class="payday-posted-actuals" data-payday-posted-actuals>
+    <p class="operating-note">Already posted this payday period. Copied from Forecast.currentPeriodAction. Not a second spend list.</p>
+    <div class="operating-lines">${rows}</div>
+  </div>`;
+}
+
+function mustLeaveHtml(alloc, action) {
   if (!alloc) {
     return `<div class="payday-must-leave" data-payday-must-leave>
       <p class="operating-lead">Required payday bills are unavailable.</p>
@@ -1501,9 +1517,11 @@ function mustLeaveHtml(alloc) {
   }
   const obligations = alloc.obligations || {};
   const items = obligations.items || [];
+  const posted = postedThisPeriodHtml(action);
   if (!items.length) {
     return `<div class="payday-must-leave" data-payday-must-leave>
       <p class="operating-lead">No required bills are reserved this payday.</p>
+      ${posted}
     </div>`;
   }
   const rows = items.map(item => {
@@ -1525,6 +1543,7 @@ function mustLeaveHtml(alloc) {
     ? '<p class="operating-note">This is an unattributed reserve pool; no individual bill priority is implied.</p>'
     : '';
   return `<div class="payday-must-leave" data-payday-must-leave>
+    ${posted}
     <div class="operating-lines">${rows}</div>
     ${paydayBucketRow('Reserved for bills', obligations.allocated, obligations.wanted, obligations.shortfall)}
     ${short}${unattributed}
@@ -1599,6 +1618,7 @@ function paydayAllocationSummaryHtml(alloc, action) {
       ${paydayBucketRow('Everyday essentials', essentials.allocated, essentials.wanted, essentials.shortfall)}
       ${futureRows}
       ${paydayBucketRow('Extra debt', extra.allocated, null, null)}
+      ${postedThisPeriodHtml(action)}
       ${paydayBucketRow('Left after that', remainder, null, null)}
     </div>
     <details class="household-inline-details">
@@ -1632,7 +1652,7 @@ function operatingSurfaceHtml(ctx) {
     </div>`;
 
   const cash = cashGlanceHtml(alloc, ctx.liveOverlay);
-  const bills = mustLeaveHtml(alloc);
+  const bills = mustLeaveHtml(alloc, action);
   // Forecast.recommend is the weekly cap. currentPeriodAction.weeklyCap is
   // the same recommend result on a between-paydays opening; do not treat
   // infeasible weekly = 0 as a feasible yes.

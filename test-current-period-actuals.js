@@ -719,9 +719,12 @@ console.log('\n=== R. automatic-payment identity uses explicit payee+account+dat
   ok(respRule && respRule.payeePattern === 'TD WATERHOUSE I REP'
     && respRule.atlasAccountId === 'chequing-a' && respRule.direction === 'debit',
     'RESP uses its explicit provider alias + Chequing A debit identity');
-  ok(duesRule && duesRule.payeePattern === 'CMAWLOCAL1995 FEE'
-    && duesRule.atlasAccountId === 'chequing-a' && duesRule.direction === 'debit',
-    'CMAW uses its explicit provider alias + Chequing A debit identity');
+  const mortgageRule = (identity.rules || []).find(r => r.eventId === 'mortgage');
+  ok(mortgageRule && mortgageRule.payeePattern === 'TD MORTGAGE' && mortgageRule.atlasAccountId === 'chequing-a'
+    && mortgageRule.direction === 'debit',
+    'mortgage uses documented TD MORTGAGE + Chequing A debit identity');
+  ok(!(identity.rules || []).some(r => r && r.eventId === 'fit4less'),
+    'Fit4Less has no identity rule and is not amount-matched');
 
   const data = JSON.parse(fs.readFileSync(path.join(__dirname, 'data.json'), 'utf8'));
   const outstandingBills = (data.plan.bills || []).filter(b => [

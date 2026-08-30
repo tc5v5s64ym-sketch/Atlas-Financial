@@ -18,6 +18,14 @@
       "note": "Seaspan is already on the live payroll label. Do not match a same-day deposit by amount alone."
     },
     {
+      "eventId": "mortgage",
+      "payeePattern": "TD MORTGAGE",
+      "payeePatterns": ["TD MORTGAGE"],
+      "atlasAccountId": "chequing-a",
+      "direction": "debit",
+      "note": "Explicit TD MORTGAGE alias on Chequing A (BILLS ACCOUNT), already documented on the mortgage obligation and posting observations. Amount similarity is not identity. Fit4Less has no such rule and stays an owner-fact gate."
+    },
+    {
       "eventId": "childBenefit",
       "payeePattern": "CHILD TAX BEN",
       "atlasAccountId": "chequing-b",

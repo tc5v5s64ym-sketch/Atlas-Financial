@@ -65,6 +65,7 @@ function loadComposer() {
     grab(planSrc, /^function todayDecisionHtml\([\s\S]*?\n\}$/m, 'todayDecisionHtml'),
     grab(planSrc, /^function spendDecisionHtml\([\s\S]*?\n\}$/m, 'spendDecisionHtml'),
     grab(planSrc, /^function paydayBucketRow\([\s\S]*?\n\}$/m, 'paydayBucketRow'),
+    grab(planSrc, /^function postedThisPeriodHtml\([\s\S]*?\n\}$/m, 'postedThisPeriodHtml'),
     grab(planSrc, /^function cashGlanceHtml\([\s\S]*?\n\}$/m, 'cashGlanceHtml'),
     grab(planSrc, /^function mustLeaveHtml\([\s\S]*?\n\}$/m, 'mustLeaveHtml'),
     grab(planSrc, /^function extraDebtGlanceHtml\([\s\S]*?\n\}$/m, 'extraDebtGlanceHtml'),
@@ -72,7 +73,7 @@ function loadComposer() {
     grab(planSrc, /^function operatingSurfaceHtml\([\s\S]*?\n\}$/m, 'operatingSurfaceHtml'),
   ].join('\n');
   return vm.runInNewContext(
-    `${source}\n({ operatingSurfaceHtml, mustLeaveHtml, futureGravityHtml, money, money2 });`,
+    `${source}\n({ operatingSurfaceHtml, mustLeaveHtml, paydayAllocationSummaryHtml, futureGravityHtml, money, money2 });`,
     { Forecast: F }
   );
 }
@@ -262,6 +263,56 @@ console.log('\n=== 5. unverified bills labelled unverified ===');
     'upcoming required bills stay due, not unverified');
   ok(/settlement is not proven/.test(html),
     'unverified is not treated as unpaid');
+}
+
+console.log('\n=== 5b. leftover lists earned posted actuals, not an invented spend list ===');
+{
+  const action = {
+    mode: 'between-paydays',
+    bills: [
+      {
+        id: 'mortgage', label: 'Mortgage', date: '2026-08-28',
+        planned: 1600, actual: 1234.56, remaining: 0,
+        settlement: 'represented', confidence: 'confirmed',
+      },
+      {
+        id: 'fit4less', label: 'Fit4Less membership', date: '2026-08-28',
+        planned: 11.54, actual: null, remaining: 11.54,
+        settlement: 'unverified', confidence: 'confirmed',
+      },
+    ],
+  };
+  const leave = composer.mustLeaveHtml({
+    obligations: {
+      wanted: 11.54, allocated: 11.54, shortfall: 0, items: [
+        {
+          id: 'fit4less', label: 'Fit4Less membership', date: '2026-08-28',
+          amount: 11.54, allocated: 11.54, settlement: 'unverified', confidence: 'confirmed',
+        },
+      ],
+    },
+  }, action);
+  ok(/data-payday-posted-actuals/.test(leave) && /Mortgage · Aug 28 · posted/.test(leave),
+    'must-leave lists the represented mortgage from currentPeriodAction');
+  ok(/\$1,234\.56/.test(leave),
+    'posted mortgage uses Forecast actual, not a page-invented total');
+  ok(!/Fit4Less membership · Aug 28 · posted/.test(leave),
+    'unverified Fit4Less is not presented as posted');
+  const leftover = composer.paydayAllocationSummaryHtml({
+    lines: [{ key: 'obligations', kind: 'obligations', label: 'Bills', amount: 11.54 }],
+    remainder: 88.12,
+    obligations: { allocated: 11.54, wanted: 11.54, shortfall: 0, items: [] },
+    essentials: { allocated: 0, wanted: 0, shortfall: 0 },
+    extraDebt: { allocated: 0 },
+    futureCosts: [],
+    mode: 'between-paydays',
+    payday: '2026-09-11',
+  }, action);
+  ok(/Left after that/.test(leftover) && /data-payday-posted-actuals/.test(leftover)
+    && /Mortgage · Aug 28 · posted/.test(leftover),
+    'leftover lists earned posted actuals beside remainder');
+  ok(/Fit4Less membership · Aug 28 · unverified/.test(leave),
+    'Fit4Less stays unverified on the reserved-bills list');
 }
 
 console.log('\n=== 6. operating-answer copies Forecast; page does not recalculate ===');
