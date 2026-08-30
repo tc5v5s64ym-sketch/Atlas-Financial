@@ -111,7 +111,8 @@
                 "anchor": "2026-08-14",
                 "amount": 1600,
                 "confidence": "confirmed",
-                "note": "The 2026-08-14 $1,600.00 payment posted (Lunch Money TD MORTGAGE on BILLS ACCOUNT) and is already inside the 2026-08-19 cash and mortgage opening. Next occurrence is 2026-08-28."
+                "note": "The 2026-08-14 $1,600.00 payment posted (Lunch Money TD MORTGAGE on BILLS ACCOUNT) and is already inside the 2026-08-19 cash and mortgage opening. Next occurrence is 2026-08-28.",
+                "payingAccount": "chequing-a"
             },
             {
                 "id": "heloc",
@@ -123,7 +124,13 @@
                 "amount": 814.18,
                 "confidence": "confirmed",
                 "nonCash": true,
-                "note": "Charged on the last day of the month and capitalised onto the HELOC balance — it does not leave a chequing account, so it is shown on the calendar but never deducted from cash. Dec 2025-Jul 2026 statements: the displayed regular minimum equals that period's interest; overdue $0; contractual due date the 21st; a Pre-Authorized Debit Date around the 1st is shown. A $1,100.00 transfer left Chequing A on 2026-08-14 and the HELOC posted balance fell by exactly $1,100.00 to $200,486.16; that payment is already inside this opening and is not replayed. Q19 ANSWERED 2026-08-18: $1,100 satisfies the $814.18 August minimum under the demonstrated mechanics, so remaining August HELOC cash requirement is $0 additional. Do not invent another $814.18 chequing reserve. cashPayment remains $0. Interest is not free — the $814.18 July 31 posting capitalised onto the balance. This note does not state that an Aug. 1 PAD occurred."
+                "note": "Charged on the last day of the month and capitalised onto the HELOC balance. Dec 2025-Jul 2026 statements: the displayed regular minimum equals that period's interest; overdue $0; contractual due date the 21st; a Pre-Authorized Debit Date around the 1st is shown. A $1,100.00 transfer left Chequing A on 2026-08-14 and the HELOC posted balance fell by exactly $1,100.00 to $200,486.16; that payment is already inside this opening and is not replayed. Q19 ANSWERED 2026-08-18: $1,100 satisfies the $814.18 August minimum, so remaining August HELOC cash requirement is $0 additional. Owner 2026-08-30: from 2026-09-21 the planned cash minimum leaves BILLS ACCOUNT (Chequing A). The only proven amount is the $814.18 interest charge, so the cash minimum is that same figure, labeled estimated — not a second invented PAD amount. Interest-by-event math stays on the day-31 capitalise row; the bills list and cash walk count the 21st cash payment once. debts.heloc.cashPayment stays $0 because interest itself is still capitalised. This note does not state that an Aug. 1 PAD occurred.",
+                "payingAccount": "chequing-a",
+                "cashPayment": 814.18,
+                "cashDay": 21,
+                "cashFirstDue": "2026-09-21",
+                "cashLabel": "HELOC minimum",
+                "cashConfidence": "estimated"
             },
             {
                 "id": "triangle",
@@ -135,7 +142,8 @@
                 "firstDue": "2026-09-07",
                 "amount": 253.57,
                 "confidence": "estimated",
-                "note": "August is paid on this opening. A further $300 posted 2026-08-10 was already inside the 2026-08-16 screenshot posted $13,197.00 (13,497.00 - 300.00); that screenshot is not this opening's posted $13,495.32. Displayed due date on the 2026-08-16 screenshot was Aug. 7 with displayed minimum $0.00; on-time status and default-rate consequences are not proven. Future statement minimums are estimated at the current level. firstDue 2026-09-07."
+                "note": "August is paid on this opening. A further $300 posted 2026-08-10 was already inside the 2026-08-16 screenshot posted $13,197.00 (13,497.00 - 300.00); that screenshot is not this opening's posted $13,495.32. Displayed due date on the 2026-08-16 screenshot was Aug. 7 with displayed minimum $0.00; on-time status and default-rate consequences are not proven. Future statement minimums are estimated at the current level. firstDue 2026-09-07.",
+                "payingAccount": "chequing-a"
             },
             {
                 "id": "cashback",
@@ -147,7 +155,8 @@
                 "firstDue": "2026-10-01",
                 "amount": 170,
                 "confidence": "estimated",
-                "note": "The 2026-08-14 Chequing A TFR-TO C/C $763.00 posted against this card (posted fell $50 + $763 to $4,799.43, under the $5,000 limit). That payment satisfies the previous over-limit September spike of $762.36 (64 cents of rounding); the once row was removed so Forecast does not reserve it again. Future statement minimums are estimated at about $170. firstDue 2026-10-01."
+                "note": "The 2026-08-14 Chequing A TFR-TO C/C $763.00 posted against this card (posted fell $50 + $763 to $4,799.43, under the $5,000 limit). That payment satisfies the previous over-limit September spike of $762.36 (64 cents of rounding); the once row was removed so Forecast does not reserve it again. Future statement minimums are estimated at about $170. firstDue 2026-10-01.",
+                "payingAccount": "chequing-a"
             },
             {
                 "id": "mbna-aug31",
@@ -158,7 +167,8 @@
                 "date": "2026-08-31",
                 "amount": 158.27,
                 "confidence": "confirmed",
-                "note": "Statement authority for this statement only: minimum $158.27 due 2026-08-31. Purchase APR 21.74%; cash advance / BT 22.99%; statement balance $7,855.12; statement interest $148.27. Do not treat later repeated minimums as confirmed."
+                "note": "Statement authority for this statement only: minimum $158.27 due 2026-08-31. Purchase APR 21.74%; cash advance / BT 22.99%; statement balance $7,855.12; statement interest $148.27. Do not treat later repeated minimums as confirmed.",
+                "payingAccount": "chequing-a"
             },
             {
                 "id": "mbna",
@@ -170,7 +180,8 @@
                 "firstDue": "2026-09-30",
                 "amount": 158.27,
                 "confidence": "estimated",
-                "note": "Future statement minimums after the Aug. 31 confirmed row, estimated at the current level. Day clamps to shorter months. firstDue 2026-09-30 so August is not double-counted with mbna-aug31."
+                "note": "Future statement minimums after the Aug. 31 confirmed row, estimated at the current level. Day clamps to shorter months. firstDue 2026-09-30 so August is not double-counted with mbna-aug31.",
+                "payingAccount": "chequing-a"
             },
             {
                 "id": "tdcc",
@@ -182,7 +193,8 @@
                 "amount": 94.03,
                 "confidence": "estimated",
                 "note": "The 2026-08-14 Chequing A TFR-TO C/C $94.03 posted and the TD card posted balance fell by exactly $94.03 to $1,705.94. firstDue 2026-09-17 so August is not reserved again. A further miss would restart the 24.99% penalty-rate clock.",
-                "firstDue": "2026-09-17"
+                "firstDue": "2026-09-17",
+                "payingAccount": "chequing-a"
             },
             {
                 "id": "travel",
@@ -192,7 +204,8 @@
                 "frequency": "monthly",
                 "day": 26,
                 "amount": 17,
-                "confidence": "estimated"
+                "confidence": "estimated",
+                "payingAccount": "chequing-a"
             }
         ],
         "bills": [
@@ -204,7 +217,8 @@
                 "amount": 124,
                 "confidence": "confirmed",
                 "budgetCategory": "household",
-                "note": "Seventeen charges over fourteen months; $124.00 exactly in each of the last four, landing the 2nd–4th. August is already paid."
+                "note": "Seventeen charges over fourteen months; $124.00 exactly in each of the last four, landing the 2nd–4th. August is already paid.",
+                "payingAccount": "chequing-a"
             },
             {
                 "id": "shaw",
@@ -214,7 +228,8 @@
                 "amount": 78.4,
                 "confidence": "confirmed",
                 "budgetCategory": "telecom",
-                "note": "$78.40 on the 14th-15th, May through July. The 2026-08-14 Shaw Cable $78.40 posted on BILLS ACCOUNT and is already inside the 2026-08-19 opening. Next occurrence is 2026-09-14."
+                "note": "$78.40 on the 14th-15th, May through July. The 2026-08-14 Shaw Cable $78.40 posted on BILLS ACCOUNT and is already inside the 2026-08-19 opening. Next occurrence is 2026-09-14.",
+                "payingAccount": "chequing-a"
             },
             {
                 "id": "bcaa",
@@ -225,7 +240,8 @@
                 "confidence": "confirmed",
                 "budgetCategory": "insurance",
                 "note": "Eighteen consecutive months on the 15th; $82.96 in each of the last three. The 15 August occurrence is the once row bcaa-aug15-outstanding because posting remains unknown. firstDue 2026-09-15.",
-                "firstDue": "2026-09-15"
+                "firstDue": "2026-09-15",
+                "payingAccount": "chequing-a"
             },
             {
                 "id": "icbc",
@@ -236,7 +252,8 @@
                 "confidence": "confirmed",
                 "budgetCategory": "insurance",
                 "note": "$99.91 on the 15th, five consecutive months. The 15 August occurrence is the once row icbc-aug15-outstanding because posting remains unknown. firstDue 2026-09-15.",
-                "firstDue": "2026-09-15"
+                "firstDue": "2026-09-15",
+                "payingAccount": "chequing-a"
             },
             {
                 "id": "resp",
@@ -247,7 +264,8 @@
                 "confidence": "confirmed",
                 "budgetCategory": null,
                 "note": "Children's RESP contribution, $100 on the 15th. Owner-stated hard recurring household bill. The 15 August occurrence is the once row resp-aug15-outstanding because posting remains unknown. firstDue 2026-09-15. Classified as an internal transfer in the transaction history, so it is dated here and not subtracted from a spending category.",
-                "firstDue": "2026-09-15"
+                "firstDue": "2026-09-15",
+                "payingAccount": "chequing-a"
             },
             {
                 "id": "fit4less",
@@ -257,7 +275,8 @@
                 "amount": 11.54,
                 "confidence": "confirmed",
                 "budgetCategory": "sport",
-                "note": "$11.54 every two weeks, 18 months running. The 2026-08-14 Fit4less Msp $11.54 posted on BILLS ACCOUNT and is already inside the 2026-08-19 opening. Next occurrence is 2026-08-28. An annual $21.99 fee appears each July."
+                "note": "$11.54 every two weeks, 18 months running. The 2026-08-14 Fit4less Msp $11.54 posted on BILLS ACCOUNT and is already inside the 2026-08-19 opening. Next occurrence is 2026-08-28. An annual $21.99 fee appears each July.",
+                "payingAccount": "chequing-a"
             },
             {
                 "id": "tdfees",
@@ -267,7 +286,8 @@
                 "amount": 35.9,
                 "confidence": "confirmed",
                 "budgetCategory": null,
-                "note": "Two $17.95 monthly plan fees at month-end, every month captured."
+                "note": "Two $17.95 monthly plan fees at month-end, every month captured.",
+                "payingAccount": "chequing-a"
             },
             {
                 "id": "bcaa-aug15-outstanding",
@@ -277,7 +297,8 @@
                 "amount": 82.96,
                 "confidence": "confirmed",
                 "budgetCategory": "insurance",
-                "note": "Monthly BCAA is due the 15th. Posting remains unknown: the Aug. 14 corpus did not observe it, and unknown posting is not proof of unposted. Saturday 15 August fell inside the 14-day current-state window ending 2026-08-16 on the prior opening. Fail closed: reserve the scheduled amount on this opening. The monthly row remains for 15 September onward."
+                "note": "Monthly BCAA is due the 15th. Posting remains unknown: the Aug. 14 corpus did not observe it, and unknown posting is not proof of unposted. Saturday 15 August fell inside the 14-day current-state window ending 2026-08-16 on the prior opening. Fail closed: reserve the scheduled amount on this opening. The monthly row remains for 15 September onward.",
+                "payingAccount": "chequing-a"
             },
             {
                 "id": "icbc-aug15-outstanding",
@@ -287,7 +308,8 @@
                 "amount": 99.91,
                 "confidence": "confirmed",
                 "budgetCategory": "insurance",
-                "note": "Monthly ICBC is due the 15th. Posting remains unknown: the Aug. 14 corpus did not observe it, and unknown posting is not proof of unposted. Fail closed: reserve the scheduled amount on this opening. The monthly row remains for 15 September onward."
+                "note": "Monthly ICBC is due the 15th. Posting remains unknown: the Aug. 14 corpus did not observe it, and unknown posting is not proof of unposted. Fail closed: reserve the scheduled amount on this opening. The monthly row remains for 15 September onward.",
+                "payingAccount": "chequing-a"
             },
             {
                 "id": "resp-aug15-outstanding",
@@ -297,7 +319,8 @@
                 "amount": 100,
                 "confidence": "confirmed",
                 "budgetCategory": null,
-                "note": "Monthly RESP is due the 15th. Posting remains unknown: the Aug. 14 corpus did not observe it, and unknown posting is not proof of unposted. Fail closed: reserve the scheduled amount on this opening. The monthly row remains for 15 September onward."
+                "note": "Monthly RESP is due the 15th. Posting remains unknown: the Aug. 14 corpus did not observe it, and unknown posting is not proof of unposted. Fail closed: reserve the scheduled amount on this opening. The monthly row remains for 15 September onward.",
+                "payingAccount": "chequing-a"
             },
             {
                 "id": "hydro-due-sep1",
@@ -308,8 +331,8 @@
                 "confidence": "confirmed",
                 "budgetCategory": null,
                 "householdObligation": true,
-                "payingAccount": "amanda-debt-payments",
-                "note": "Aug. 14 payday evidence: $237.45 new charges due 1 September. Household obligation; Amanda / TENNIS INCOME (id amanda-debt-payments) pays it, so it does not reduce joint cash. A separate Bc Hydro $220.00 left BILLS ACCOUNT on 2026-08-14 and is already inside the opening cash; that is not this 1 September bill and is not scheduled again. Owner-confirmed 2026-08-16: the old questioned outstanding Hydro amount ($213.79 / $451.24 arrears) is SETTLED. The $451.24 account balance is not scheduled."
+                "payingAccount": "chequing-a",
+                "note": "Aug. 14 payday evidence: $237.45 new charges due 1 September. Owner 2026-08-30: future Hydro is planned from BILLS ACCOUNT (Chequing A), so this dated due reduces joint cash. A separate Bc Hydro $220.00 left BILLS ACCOUNT on 2026-08-14 and is already inside the opening cash; that is not this 1 September bill and is not scheduled again. Owner-confirmed 2026-08-16: the old questioned outstanding Hydro amount ($213.79 / $451.24 arrears) is SETTLED. The $451.24 account balance is not scheduled. Historical Lunch Money postings are not rewritten."
             },
             {
                 "id": "noble-garbage",
@@ -321,7 +344,8 @@
                 "amount": 95.85,
                 "confidence": "confirmed",
                 "budgetCategory": "household",
-                "note": "Primary invoice AUG16-004: 3 Month Subscription — Package A: 2 cans. Total $95.85 every 3 months on the 18th, repeats indefinitely. A March 18 2026 payment of $95.85 is the observed cadence phase (anchor), not a forecast event. firstDue 2026-09-18 is the next forward due; June 18 is not invented as unpaid arrears. Do not infer the paying card from a Visa 0870 mask."
+                "note": "Primary invoice AUG16-004: 3 Month Subscription — Package A: 2 cans. Total $95.85 every 3 months on the 18th, repeats indefinitely. A March 18 2026 payment of $95.85 is the observed cadence phase (anchor), not a forecast event. firstDue 2026-09-18 is the next forward due; June 18 is not invented as unpaid arrears. Do not infer the paying card from a Visa 0870 mask.",
+                "payingAccount": "chequing-a"
             },
             {
                 "id": "affirm-final",
@@ -331,7 +355,8 @@
                 "amount": 32.53,
                 "confidence": "confirmed",
                 "budgetCategory": null,
-                "note": "Owner-confirmed 2026-08-23: one final Affirm payment of $32.53 is due 2026-09-21. This is debt service, not variable household spending. No recurring occurrence follows it. Current contractual balance and rate are not inferred from the payment."
+                "note": "Owner-confirmed 2026-08-23: one final Affirm payment of $32.53 is due 2026-09-21. This is debt service, not variable household spending. No recurring occurrence follows it. Current contractual balance and rate are not inferred from the payment.",
+                "payingAccount": "chequing-a"
             },
             {
                 "id": "netflix",
@@ -341,7 +366,8 @@
                 "amount": 26.87,
                 "confidence": "confirmed",
                 "budgetCategory": "subscriptions",
-                "note": "Owner-confirmed 2026-08-27: $26.87/month billed on the 17th. Moved off PayPal onto the household debit/bills path; specific paying account is not named. Historical cleaned capture that missed Netflix does not omit this current bill."
+                "note": "Owner-confirmed 2026-08-27: $26.87/month billed on the 17th. Moved off PayPal onto the household debit/bills path; specific paying account is not named. Historical cleaned capture that missed Netflix does not omit this current bill.",
+                "payingAccount": "chequing-a"
             },
             {
                 "id": "spotify",
@@ -351,7 +377,8 @@
                 "amount": 26.87,
                 "confidence": "confirmed",
                 "budgetCategory": "subscriptions",
-                "note": "Owner-confirmed 2026-08-27: $26.87/month billed on the 17th. Moved off PayPal onto the household debit/bills path; specific paying account is not named."
+                "note": "Owner-confirmed 2026-08-27: $26.87/month billed on the 17th. Moved off PayPal onto the household debit/bills path; specific paying account is not named.",
+                "payingAccount": "chequing-a"
             },
             {
                 "id": "google-storage-100gb",
@@ -361,7 +388,8 @@
                 "amount": 3.13,
                 "confidence": "confirmed",
                 "budgetCategory": "subscriptions",
-                "note": "Owner-confirmed 2026-08-27: $3.13/month, billed around month-end. Forecast uses last calendar day (day 31 clamped). Moved off PayPal onto the household debit/bills path; specific paying account is not named. Dale's and Amanda's Google subscriptions both moved; this row is the named 100 GB storage bill, not a second Google product list."
+                "note": "Owner-confirmed 2026-08-27: $3.13/month, billed around month-end. Forecast uses last calendar day (day 31 clamped). Moved off PayPal onto the household debit/bills path; specific paying account is not named. Dale's and Amanda's Google subscriptions both moved; this row is the named 100 GB storage bill, not a second Google product list.",
+                "payingAccount": "chequing-a"
             },
             {
                 "id": "ultimate-guitar",
@@ -372,7 +400,8 @@
                 "amount": 50,
                 "confidence": "confirmed",
                 "budgetCategory": "subscriptions",
-                "note": "Owner-confirmed 2026-08-27: $50/year billed on May 8. Paying account is not stated. Cadence is yearly on month 5 day 8; no historical May 8 payment is invented as arrears."
+                "note": "Owner-confirmed 2026-08-27: $50/year billed on May 8. Paying account is not stated. Cadence is yearly on month 5 day 8; no historical May 8 payment is invented as arrears.",
+                "payingAccount": "chequing-a"
             },
             {
                 "id": "icloud-storage",
@@ -382,7 +411,8 @@
                 "amount": 13,
                 "confidence": "confirmed",
                 "budgetCategory": "subscriptions",
-                "note": "Owner-confirmed 2026-08-27: $13/month billed on the 14th. Paying account is not stated."
+                "note": "Owner-confirmed 2026-08-27: $13/month billed on the 14th. Paying account is not stated.",
+                "payingAccount": "chequing-a"
             },
             {
                 "id": "youtube-premium",
@@ -392,7 +422,8 @@
                 "amount": 17,
                 "confidence": "confirmed",
                 "budgetCategory": "subscriptions",
-                "note": "Owner-confirmed 2026-08-27: $17/month billed on the 2nd. Moved off PayPal onto the household debit/bills path with the other Google subscriptions; specific paying account is not named."
+                "note": "Owner-confirmed 2026-08-27: $17/month billed on the 2nd. Moved off PayPal onto the household debit/bills path with the other Google subscriptions; specific paying account is not named.",
+                "payingAccount": "chequing-a"
             },
             {
                 "id": "chatgpt-plus-dale",
@@ -402,7 +433,8 @@
                 "amount": 28,
                 "confidence": "estimated",
                 "budgetCategory": "subscriptions",
-                "note": "Owner-confirmed 2026-08-27: intentionally approximate $28/month CAD planning amount for the web subscription, billed on the 14th. Not an institution-verified CAD charge. Paying account is not stated."
+                "note": "Owner-confirmed 2026-08-27: intentionally approximate $28/month CAD planning amount for the web subscription, billed on the 14th. Not an institution-verified CAD charge. Paying account is not stated.",
+                "payingAccount": "chequing-a"
             },
             {
                 "id": "chatgpt-plus-amanda",
@@ -412,10 +444,22 @@
                 "amount": 24.99,
                 "confidence": "confirmed",
                 "budgetCategory": "subscriptions",
-                "note": "Owner-confirmed 2026-08-27: $24.99/month iOS subscription billed on the 14th. Paying account is not stated."
+                "note": "Owner-confirmed 2026-08-27: $24.99/month iOS subscription billed on the 14th. Paying account is not stated.",
+                "payingAccount": "chequing-a"
+            },
+            {
+                "id": "bell",
+                "label": "Bell",
+                "frequency": "monthly",
+                "amount": 121,
+                "confidence": "estimated",
+                "budgetCategory": "telecom",
+                "payingAccount": "chequing-a",
+                "needsDate": true,
+                "note": "No proven due day. Forward amount is the undated current-regime $121.00/month (June baseline $104.20 + second-account watch CSV $16.80). Live Lunch Money Jun–Aug 2026 Travel Visa hits of $250.00 (2026-07-17, 2026-08-14) and $69.15 (2026-08-16) are settlement/payment-route evidence, not a proven recurring bill amount and not a fabricated day 14. Shaw $78.40 on BILLS ACCOUNT around the 14th is a separate dated bill. Future Bell is planned from BILLS ACCOUNT. Printed as a bill that still needs a date. expandEvents does not invent a day. Cash gravity remains the telecom currentMonthly $121 reserve so this row is not a second calendar event."
             }
         ],
-        "billsNote": "Extracted from the transaction history and owner evidence, not guessed: only bills still active in the last three months are dated here. The non-subscription bill rows are paid from Chequing A except the 1 September BC Hydro; paying accounts for the subscription rows are unknown. The 15 August BCAA, ICBC and RESP occurrences remain unknown in posting (not a confirmed unposted fact) and are reserved as once rows on this opening; those monthly rows resume 15 September. The children's RESP contribution is included as a hard $100 monthly bill. Owner-confirmed 2026-08-24: the recurring $25/month CMAW Local 1995 union-dues payment has been cancelled. Owner 2026-08-30: stop tracking the cancelled dues — there is no August posting-unknown stub. Historical Union dues actuals stay in periods.json. BC Hydro remains a household obligation paid from Amanda's TENNIS INCOME account for the 1 September $237.45 dated due; a $220 Hydro debit from BILLS ACCOUNT on 14 August is already inside opening cash and is not scheduled again. Owner-confirmed 2026-08-16: the old Hydro arrears are settled and are not scheduled. Noble Disposal Services is the household garbage bill: $95.85 every 3 months on the 18th (anchor 2026-03-18, firstDue 2026-09-18). Owner-confirmed 2026-08-23: Affirm has one final $32.53 payment due 2026-09-21 and no recurrence after it. TELUS IS CLOSED — do not forecast Telus as an active household bill. Historical streaming actuals include Amazon Channels and other scattered charges; those remain inside historical spending. Owner-confirmed 2026-08-27 dated subscription bills: Netflix $26.87/month on the 17th; Spotify $26.87/month on the 17th; Google storage 100 GB $3.13/month around month-end (last calendar day); Ultimate Guitar $50/year on May 8; iCloud Storage $13/month on the 14th; YouTube Premium $17/month on the 2nd; ChatGPT Plus — Dale $28/month CAD planning amount on the 14th (estimated); ChatGPT Plus — Amanda $24.99/month iOS on the 14th. Netflix, Spotify, and the named Google subscriptions moved off PayPal onto the household debit/bills path; Instacart and Uber are not recorded as moved. Canva, Mailchimp, Guitar Tabs monthly, and GitHub annual have no forward recurrence; historical transactions stay in history. Paying account for the subscription rows is not stated, so Forecast treats them as household joint-cash obligations. They are not mapped onto a payday by a second table — expandEvents dates them, and paydayAllocation / currentPeriodAction consume that same schedule.",
+        "billsNote": "Extracted from the transaction history and owner evidence, not guessed: only bills still active in the last three months are dated here. Owner 2026-08-30: future planned payingAccount for dated bills, dated subscriptions, card minimums, HELOC cash minimum, and undated Bell is BILLS ACCOUNT (Chequing A, id chequing-a). Historical Lunch Money postings are not rewritten. The 15 August BCAA, ICBC and RESP occurrences remain unknown in posting (not a confirmed unposted fact) and are reserved as once rows on this opening; those monthly rows resume 15 September. The children's RESP contribution is included as a hard $100 monthly bill. Owner-confirmed 2026-08-24: the recurring $25/month CMAW Local 1995 union-dues payment has been cancelled. Owner 2026-08-30: stop tracking the cancelled dues — there is no August posting-unknown stub. Historical Union dues actuals stay in periods.json. BC Hydro 1 September $237.45 is a household obligation now planned from BILLS ACCOUNT; a $220 Hydro debit from BILLS ACCOUNT on 14 August is already inside opening cash and is not scheduled again. Owner-confirmed 2026-08-16: the old Hydro arrears are settled and are not scheduled. Noble Disposal Services is the household garbage bill: $95.85 every 3 months on the 18th (anchor 2026-03-18, firstDue 2026-09-18). Owner-confirmed 2026-08-23: Affirm has one final $32.53 payment due 2026-09-21 and no recurrence after it. TELUS IS CLOSED — do not forecast Telus as an active household bill. Historical streaming actuals include Amazon Channels and other scattered charges; those remain inside historical spending. Owner-confirmed 2026-08-27 dated subscription bills: Netflix $26.87/month on the 17th; Spotify $26.87/month on the 17th; Google storage 100 GB $3.13/month around month-end (last calendar day); Ultimate Guitar $50/year on May 8; iCloud Storage $13/month on the 14th; YouTube Premium $17/month on the 2nd; ChatGPT Plus — Dale $28/month CAD planning amount on the 14th (estimated); ChatGPT Plus — Amanda $24.99/month iOS on the 14th. Netflix, Spotify, and the named Google subscriptions moved off PayPal onto the household debit/bills path; Instacart and Uber are not recorded as moved. Canva, Mailchimp, Guitar Tabs monthly, and GitHub annual have no forward recurrence; historical transactions stay in history. Subscription rows are planned from BILLS ACCOUNT. They are not mapped onto a payday by a second table — expandEvents dates them, and paydayAllocation / currentPeriodAction consume that same schedule.",
         "commitments": [
             {
                 "id": "burrard1",
@@ -930,13 +974,13 @@
             "Deposits are assumed to land before payments due the same day. The 14 August payday cluster is already inside this opening and is not replayed.",
             "Every figure is tagged. Confirmed means the institution or a long observed history states it; estimated means it is modelled and shown in amber with a ≈ mark throughout.",
             "Future card statement minimums are estimates carried at the current level; real minimums move with the balance.",
-            "Named recurring bills — FortisBC, Shaw, BCAA, ICBC, the children's RESP contribution, Fit4Less, the TD account fees, and Noble Disposal garbage ($95.85 every 3 months on the 18th, firstDue 2026-09-18) — are dated on the calendar. The 15 August BCAA, ICBC and RESP occurrences remain unknown in posting and are reserved as once rows dated 2026-08-16; those monthly rows resume 15 September. Owner-confirmed 2026-08-24: the recurring $25/month CMAW Local 1995 union-dues payment has been cancelled and does not resume. Owner 2026-08-30: stop tracking the cancelled dues; there is no August posting-unknown stub. The 1 September BC Hydro $237.45 due is a household obligation paid from Amanda / TENNIS INCOME: it is dated, it does not reduce joint cash, and it is not subtracted from household averages. TELUS IS CLOSED. The variable budget covers everything else: groceries, fuel, phones, streaming, PayPal and the rest.",
+            "Named recurring bills — FortisBC, Shaw, BCAA, ICBC, the children's RESP contribution, Fit4Less, the TD account fees, and Noble Disposal garbage ($95.85 every 3 months on the 18th, firstDue 2026-09-18) — are dated on the calendar. The 15 August BCAA, ICBC and RESP occurrences remain unknown in posting and are reserved as once rows dated 2026-08-16; those monthly rows resume 15 September. Owner-confirmed 2026-08-24: the recurring $25/month CMAW Local 1995 union-dues payment has been cancelled and does not resume. Owner 2026-08-30: stop tracking the cancelled dues; there is no August posting-unknown stub. The 1 September BC Hydro $237.45 due is a household obligation planned from BILLS ACCOUNT (Chequing A): it is dated and reduces joint cash. Historical Hydro postings are not rewritten. TELUS IS CLOSED. The variable budget covers everything else: groceries, fuel, phones, streaming, PayPal and the rest.",
             "TELUS IS CLOSED (owner-confirmed 2026-08-16) and is not forecast as an active household bill. The old BC Hydro arrears are settled and are not a future obligation; the 1 September $237.45 Hydro due remains. A Bc Hydro $220 debit from BILLS ACCOUNT on 14 August is already inside opening cash. Bell's Aug. 1 $356.62 bill is arrears plus travel usage, not the normal ~$104.20 monthly baseline, and is not dated as a joint-cash bill. A valid $250 Bell payment was pending on Travel Visa on the 2026-08-16 opening; Travel Visa pending on this opening is $0.00.",
             "The plan is the HOUSEHOLD SPENDING ACCOUNTS ONLY — Chequing A, Chequing B and Savings as of 2026-08-19. Amanda's TENNIS INCOME account is a separate pot. The $2,691.85 held-elsewhere figure is the last 2026-08-09 reading, not this cutover, and is not automatically spendable. Q25 stays OPEN only for the uncertain coaching/business remainder of that mixed account, not for Amanda's fixed Tennis BC salary.",
             "The plan is the HOUSEHOLD SPENDING ACCOUNTS ONLY — Chequing A, Chequing B and Savings. Amanda's TENNIS INCOME account (id amanda-debt-payments) is a separate pot for coaching/business receipts; coaches and pass-through obligations are paid from it. Owner-confirmed 2026-08-22: the two fixed Tennis BC salary deposits ($2,168.85 on the 15th and $2,387.99 on month-end) land in household accounts and are Forecast household income. Coaching/business receipts are not forecast. Owner-stated 2026-08-29: leftover after coach pay is gravy when it actually arrives, not a recurring income line. The raw mixed-account balance is not spendable starting cash. Later transfers of those same salary dollars between household-controlled accounts are not a second income stream. Internal transfers between household accounts are excluded throughout.",
-            "Because her account is excluded, so is most of what it pays. She settles BC Hydro, part of the MBNA minimum and some card payments direct from it — roughly $940/month that does not reduce joint cash. The 1 September Hydro $237.45 due is dated as an external household obligation for that reason. Every card minimum is nonetheless charged to the household here, which is the cautious reading: if she keeps paying a share, the household finishes better than shown.",
-            "HELOC interest is capitalised, not paid from joint cash as a Forecast outflow. Statements show the regular minimum tracking monthly interest, due the 21st, with a PAD mechanism around the 1st, and manual payments that satisfy the minimum rather than causing a second full cash collection. Q19 ANSWERED 2026-08-18: the 14 August $1,100 already inside this opening satisfies the $814.18 August minimum, so remaining August HELOC cash requirement is $0 additional. Do not invent a duplicate $814.18 chequing reserve. Interest is not free. This assumption does not state that the Aug. 1 PAD occurred.",
-            "The HELOC is interest-only and capitalises about $814 a month. The 14 August $1,100 payment is already inside the 2026-08-19 opening (posted $200,486.16). Do not invent a duplicate $814.18 chequing reserve.",
+            "Because her account is excluded, so is most of what it pays from TENNIS INCOME. Owner 2026-08-30: the 1 September Hydro $237.45 due is planned from BILLS ACCOUNT and reduces joint cash. Every card minimum is charged to the household here, which is the cautious reading: if she keeps paying a share, the household finishes better than shown.",
+            "HELOC interest is capitalised onto the balance at month-end (day 31, nonCash). Owner 2026-08-30: from 2026-09-21 the planned cash minimum of $814.18 estimated leaves BILLS ACCOUNT (Chequing A) on the contractual 21st. That is the same proven interest figure, not a second invented PAD amount. The bills list and cash walk count that cash payment once; the capitalise row is not a second household cash obligation. Q19 ANSWERED 2026-08-18: remaining August HELOC cash is $0 additional after the 14 August $1,100. Do not invent an August duplicate. This assumption does not state that an Aug. 1 PAD occurred.",
+            "The HELOC is interest-only and capitalises about $814 a month. The 14 August $1,100 payment is already inside the 2026-08-19 opening (posted $200,486.16). Remaining August cash is $0 additional. From 2026-09-21 the planned BILLS ACCOUNT cash minimum is the estimated $814.18 contractual minimum.",
             "The recommended weekly budget is solved from the forecast: the largest weekly spend that keeps the projected balance above the target buffer on every single day of the window.",
             "Room for extra debt repayment is measured at the end of the window — cash projected above the buffer once every obligation and commitment has cleared. Paying it earlier than the low point would breach the buffer.",
             "The HELOC passes its own limit inside this window with no new borrowing. It is 99.5% drawn, its interest capitalises onto the balance at about $814 a month, and nothing repays it — so the balance crosses $202,654 on capitalised interest alone. This is projected from the observed charge, not read from a statement, and it is why stopping HELOC growth ranks above extra card repayment in the next-dollar policy. The exact crossing day is Forecast's debt projection, not a date stored here."
@@ -979,7 +1023,7 @@
             "note": "TFR-TO C/C $763.00 from Chequing A; posted fell to $4,799.43, under the $5,000 limit. Satisfies the previous $762.36 once row (64 cents of rounding)."
         }
     ],
-    "upcomingNote": "This note is the 19 August 2026 Forecast opening, not the 9 August snapshot. Spendable household cash is Chequing A $629.27 + Chequing B $309.77 + Savings $0.58 = $939.62. The 14 August Seaspan net $4,274.98, mortgage $1,600, Shaw $78.40, Fit4Less $11.54, Hydro $220, HELOC $1,100, TD-card $94.03 and Cash Back $763 are already inside that cash and are not replayed. Burrards registrations and Fusion camp/tryouts are settled and do not reserve cash. Amanda / TENNIS INCOME is not spendable. Revolving headroom is derived by Forecast.utilisation from these debt records (available credit is never cash). HELOC interest posting is capitalised onto the balance at month-end and is not a Forecast chequing outflow. Q19 ANSWERED: remaining August HELOC cash requirement is $0 additional after the 14 August $1,100; do not invent another $814.18 August cash event. Interest is not free. Dated payments below are derived from the Plan; the paid rows are a forensic overlay, not a second schedule.",
+    "upcomingNote": "This note is the 19 August 2026 Forecast opening, not the 9 August snapshot. Spendable household cash is Chequing A $629.27 + Chequing B $309.77 + Savings $0.58 = $939.62. The 14 August Seaspan net $4,274.98, mortgage $1,600, Shaw $78.40, Fit4Less $11.54, Hydro $220, HELOC $1,100, TD-card $94.03 and Cash Back $763 are already inside that cash and are not replayed. Burrards registrations and Fusion camp/tryouts are settled and do not reserve cash. Amanda / TENNIS INCOME is not spendable. Revolving headroom is derived by Forecast.utilisation from these debt records (available credit is never cash). HELOC interest posting is capitalised onto the balance at month-end. Q19 ANSWERED: remaining August HELOC cash requirement is $0 additional after the 14 August $1,100; do not invent another $814.18 August cash event. From 2026-09-21 the planned BILLS ACCOUNT cash minimum is the estimated $814.18 contractual minimum. Interest is not free. Dated payments below are derived from the Plan; the paid rows are a forensic overlay, not a second schedule.",
     "commitments": {
         "heading": "Known major costs on the master plan",
         "note": "Rendered from plan.commitments. Dated rows also appear on the Plan calendar; undated rows are known to the plan without a fabricated day. Ranges are not collapsed to a midpoint. ON TRACK / AT RISK / FUNDING GAP is not computed here — that waits on B94 and applies to major future plans, not to ordinary budget categories.",

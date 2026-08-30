@@ -305,15 +305,15 @@ console.log('\n=== G. Amanda / TENNIS INCOME is not spendable; card capacity is 
     'TENNIS INCOME last verified $2,691.85 remains held-elsewhere');
   ok(!near(F.startingCashAmount(live.plan), opening + held.value),
     'held-elsewhere is not inside Forecast opening cash');
-  ok(hydroSep && hydroSep.payingAccount === AMANDA && hydroSep.householdObligation === true,
-    'Hydro Sept. 1 is a household obligation paid from Amanda');
+  ok(hydroSep && hydroSep.payingAccount === 'chequing-a' && hydroSep.householdObligation === true,
+    'Hydro Sept. 1 is a household obligation planned from BILLS ACCOUNT');
   const hydroEv = events16.find(e => e.id === 'hydro-due-sep1');
-  ok(hydroEv && hydroEv.jointCash === false && near(hydroEv.amount, -HYDRO_SEP),
-    'Hydro Sept. 1 is on the schedule and does not reduce joint cash');
+  ok(hydroEv && hydroEv.jointCash !== false && near(hydroEv.amount, -HYDRO_SEP),
+    'Hydro Sept. 1 is on the schedule and reduces joint cash');
   ok(!hydroNow && !events16.some(e => e.id === 'hydro-due-now' || near(e.amount, -213.79)),
     'the $213.79 / $220 Hydro debit is not scheduled again');
-  ok(!(live.plan.bills || []).some(b => /bell/i.test(b.id + b.label)),
-    'Bell is not dated as a joint-cash bill beside the $250 pending');
+  ok((live.plan.bills || []).some(b => b.id === 'bell' && b.needsDate === true && b.day == null),
+    'Bell exists as an undated bill that still needs a date');
   const pinnedUtil = F.utilisation(aug16Pinned.debts, aug16Pinned.revolvingExtra, aug16Pinned.plan);
   const pinnedCash = pinnedUtil.rows.find(r => r.id === 'cashback');
   ok(pinnedUtil.rows.every(r => r.available == null || r.available >= 0),

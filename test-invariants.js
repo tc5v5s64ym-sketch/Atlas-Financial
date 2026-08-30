@@ -138,8 +138,17 @@ const withHeloc = F.simulate(plan, asOf, { scenario: 'expected', weeklyVariable:
 const stripped = JSON.parse(JSON.stringify(plan));
 stripped.obligations = stripped.obligations.filter(o => !o.nonCash);
 const without = F.simulate(stripped, asOf, { scenario: 'expected', weeklyVariable: 0, targetBuffer: 500 });
-ok(near(withHeloc.ending, without.ending),
-  'and it therefore moves no cash', `${money(withHeloc.ending)} either way`);
+const noCashMin = JSON.parse(JSON.stringify(plan));
+const helocRow = noCashMin.obligations.find(o => o.id === 'heloc');
+helocRow.cashPayment = 0;
+delete helocRow.cashDay;
+const withoutCashMin = F.simulate(noCashMin, asOf, { scenario: 'expected', weeklyVariable: 0, targetBuffer: 500 });
+ok(near(withoutCashMin.ending, without.ending),
+  'capitalised interest still moves no cash',
+  `${money(withoutCashMin.ending)} vs ${money(without.ending)}`);
+ok(withHeloc.ending + 0.005 < withoutCashMin.ending,
+  'the planned 21st cash minimum leaves household cash after August',
+  `${money(withHeloc.ending)} vs ${money(withoutCashMin.ending)}`);
 ok(withHeloc.totals.noncash > 0,
   'while still being tracked as a real economic cost', money(withHeloc.totals.noncash));
 // The economic cost has to appear on the debt side, or it is being hidden.

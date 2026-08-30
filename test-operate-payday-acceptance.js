@@ -85,6 +85,7 @@ function loadComposer() {
     grab(planSrc, /^function mustLeaveHtml\([\s\S]*?\n\}$/m, 'mustLeaveHtml'),
     grab(planSrc, /^function extraDebtGlanceHtml\([\s\S]*?\n\}$/m, 'extraDebtGlanceHtml'),
     grab(planSrc, /^function runningLeftoverHtml\([\s\S]*?\n\}$/m, 'runningLeftoverHtml'),
+    grab(planSrc, /^function periodBillLine\([\s\S]*?\n\}$/m, 'periodBillLine'),
     grab(planSrc, /^function periodBillsHtml\([\s\S]*?\n\}$/m, 'periodBillsHtml'),
     grab(planSrc, /^function householdBudgetHtml\([\s\S]*?\n\}$/m, 'householdBudgetHtml'),
     grab(planSrc, /^function budgetDigestHtml\([\s\S]*?\n\}$/m, 'budgetDigestHtml'),
@@ -362,7 +363,7 @@ console.log('\n=== payday mode still uses the ordered allocation sheet ===');
   ok(/data-payday-first-card/.test(q6) && /data-allocation-available/.test(html),
     'a payday-mode result still renders the first card and keeps the ordered allocation sheet');
   ok(/Current Balance/.test(html) && /Household budget/.test(html)
-    && /Bills this pay period/.test(html)
+    && />Bills</.test(html)
     && /Credit card to pay off first/.test(html),
   'payday mode still answers Current Balance, bills, budget, and first card');
 }

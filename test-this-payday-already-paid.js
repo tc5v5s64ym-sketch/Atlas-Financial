@@ -86,6 +86,7 @@ function loadComposer() {
     grab(planSrc, /^function mustLeaveHtml\([\s\S]*?\n\}$/m, 'mustLeaveHtml'),
     grab(planSrc, /^function extraDebtGlanceHtml\([\s\S]*?\n\}$/m, 'extraDebtGlanceHtml'),
     grab(planSrc, /^function runningLeftoverHtml\([\s\S]*?\n\}$/m, 'runningLeftoverHtml'),
+    grab(planSrc, /^function periodBillLine\([\s\S]*?\n\}$/m, 'periodBillLine'),
     grab(planSrc, /^function periodBillsHtml\([\s\S]*?\n\}$/m, 'periodBillsHtml'),
     grab(planSrc, /^function householdBudgetHtml\([\s\S]*?\n\}$/m, 'householdBudgetHtml'),
     grab(planSrc, /^function budgetDigestHtml\([\s\S]*?\n\}$/m, 'budgetDigestHtml'),
@@ -257,7 +258,7 @@ console.log('\n=== default glance prints that set in kitchen-counter language ==
   });
   const glance = defaultGlance(html);
   const text = glance.replace(/<[^>]+>/g, ' ');
-  ok(/Bills this pay period/.test(html) && /PAID/.test(glance),
+  ok(/Bills/.test(html) && /PAID/.test(glance),
     'the heading is bills this pay period, with paid still listed');
   ok(/data-payday-period-bills/.test(html),
     'period bills are one default-view list');

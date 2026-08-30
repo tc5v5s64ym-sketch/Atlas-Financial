@@ -425,12 +425,17 @@
     const unmodelled = [];
     const counted = [];
     const monthly = ((plan || {}).obligations || [])
-      .filter(o => o.debtId === debtId && !o.nonCash)
+      .filter(o => {
+        if (!o || o.debtId !== debtId) return false;
+        if (!o.nonCash) return true;
+        return Number(o.cashPayment) > 0;
+      })
       .reduce((sum, o) => {
+        const cashAmt = o.nonCash ? Number(o.cashPayment) : o.amount;
         const perYear = PAYMENTS_PER_YEAR[o.frequency];
         if (!perYear) { unmodelled.push(o.id); return sum; }
         counted.push(o);
-        return sum + o.amount * perYear / 12;
+        return sum + cashAmt * perYear / 12;
       }, 0);
     const confidence = counted.length
       ? (counted.every(o => o.confidence === 'confirmed') ? 'confirmed' : 'estimated')
@@ -984,13 +989,41 @@
         if (amount <= 0) continue;      // nothing left for this payment to pay
         events.push({ date, amount: -amount, kind: 'obligation',
           label: o.label, id: o.id, confidence: o.confidence,
-          debtId: o.debtId || null, effect: o.effect || null });
+          debtId: o.debtId || null, effect: o.effect || null,
+          payingAccount: o.payingAccount || null });
+      }
+      // A non-cash capitalisation may still have a planned cash minimum.
+      // That cash date is declared separately so interest-by-event math
+      // stays on the capitalise row and the bills list can show cash once.
+      const cashAmt = Number(o.cashPayment) || 0;
+      if (o.nonCash && cashAmt > EPSILON && o.cashDay != null) {
+        const cashDates = outflowDates({
+          frequency: o.frequency,
+          day: o.cashDay,
+          firstDue: o.cashFirstDue || o.firstDue || null,
+        }, start, end);
+        for (const date of cashDates) {
+          const cap = opts.obligationAbsorbed;
+          const amount = cap ? (cap[date + ':' + o.id] || 0) : cashAmt;
+          if (amount <= 0) continue;
+          events.push({
+            date, amount: -amount, kind: 'obligation',
+            label: o.cashLabel || o.label, id: o.id,
+            confidence: o.cashConfidence || o.confidence,
+            debtId: o.debtId || null, effect: 'payment',
+            payingAccount: o.payingAccount || null,
+            cashMinimum: true,
+          });
+        }
       }
     }
     for (const b of plan.bills || []) {
       // Paying account never erases household-obligation status. Only an
       // explicit householdObligation: false drops the bill from the schedule.
+      // A bill that still needs a date is printed by calendarBillSections;
+      // it is not given a fabricated day here.
       if (!billIsHouseholdObligation(b)) continue;
+      if (b.needsDate) continue;
       for (const date of outflowDates(b, start, end)) {
         const jointCash = billAffectsJointCash(b, plan);
         events.push({
@@ -2962,6 +2995,164 @@
     };
   }
 
+  const BILLS_ACCOUNT_ID = 'chequing-a';
+  const BILLS_ACCOUNT_LABEL = 'BILLS ACCOUNT (Chequing A)';
+
+  function plannedPayerLabel(payingAccount) {
+    if (payingAccount === BILLS_ACCOUNT_ID) return BILLS_ACCOUNT_LABEL;
+    return null;
+  }
+
+  // Calendar halves for the printed bills list only. These are not
+  // income-event boundaries and do not change leftover or payday math.
+  function calendarMonthSpan(iso) {
+    if (!iso || !ISO_CALENDAR_DATE.test(String(iso))) return null;
+    const [y, m] = String(iso).split('-').map(Number);
+    const last = daysInMonth(y, m);
+    const pad = n => String(n).padStart(2, '0');
+    return {
+      start: `${y}-${pad(m)}-01`,
+      mid: `${y}-${pad(m)}-15`,
+      secondStart: `${y}-${pad(m)}-16`,
+      end: `${y}-${pad(m)}-${pad(last)}`,
+      last,
+    };
+  }
+
+  function billCalendarHalf(iso) {
+    if (!iso || !ISO_CALENDAR_DATE.test(String(iso))) return null;
+    const day = Number(String(iso).slice(8, 10));
+    if (!(day >= 1)) return null;
+    return day <= 15 ? 1 : 2;
+  }
+
+  function calendarBillRowFromEvent(plan, event, asOf, represented, observed) {
+    const amt = -event.amount;
+    if (!(amt > EPSILON)) return null;
+    const paid = !!(event.id && represented.has(event.id + '@' + event.date));
+    let settlement;
+    let actual;
+    let remaining;
+    if (paid) {
+      settlement = 'represented';
+      actual = observedActual(observed, event.id, event.date);
+      remaining = 0;
+    } else if (event.date >= asOf) {
+      settlement = 'upcoming';
+      actual = 0;
+      remaining = roundCent(amt);
+    } else {
+      settlement = 'unverified';
+      actual = null;
+      remaining = roundCent(amt);
+    }
+    const raw = paid && actual != null ? actual : (remaining != null ? remaining : amt);
+    const status = glanceBillStatus(settlement, asOf, event.date);
+    const payingAccount = event.payingAccount || null;
+    return {
+      id: event.id,
+      label: event.label,
+      kind: event.kind,
+      date: event.date,
+      planned: roundCent(amt),
+      amount: roundCent(amt),
+      actual,
+      remaining,
+      settlement,
+      status,
+      glanceKind: status === 'PAID' ? 'paid' : 'still-due',
+      movement: householdMovement(raw, 'out'),
+      confidence: event.confidence || null,
+      payingAccount,
+      payerLabel: plannedPayerLabel(payingAccount),
+      needsDate: false,
+    };
+  }
+
+  function calendarBillSections(plan, asOf, opts) {
+    opts = opts || {};
+    const month = calendarMonthSpan(asOf);
+    if (!month) {
+      return { billSections: [], bills: [], undatedBills: [] };
+    }
+    const represented = representedKeySet(plan, opts, asOf);
+    const observed = representedActualMap(opts);
+    const events = expandEvents(plan, month.start, month.end,
+      Object.assign({}, opts, { keepRepresented: true }));
+    const seen = new Set();
+    const halves = { 1: [], 2: [] };
+    for (const event of events || []) {
+      if (!event || !event.date) continue;
+      if (event.kind === 'income' || event.kind === 'noncash') continue;
+      if (event.kind !== 'obligation' && event.kind !== 'bill') continue;
+      if (event.kind === 'obligation' && event.effect === 'capitalise'
+        && !event.cashMinimum) continue;
+      if (event.jointCash === false) continue;
+      const half = billCalendarHalf(event.date);
+      if (!half) continue;
+      const key = (event.id || event.label || '') + '@' + event.date;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const row = calendarBillRowFromEvent(plan, event, asOf, represented, observed);
+      if (row) halves[half].push(row);
+    }
+    const sortRows = rows => rows.sort((a, b) =>
+      String(a.date || '').localeCompare(String(b.date || ''))
+      || String(a.label || '').localeCompare(String(b.label || '')));
+    const section = (half, start, end, label) => {
+      const rows = sortRows(halves[half]);
+      const total = roundCent(rows.reduce((s, r) => {
+        const paid = r.status === 'PAID' && r.actual != null;
+        const raw = paid ? Math.abs(Number(r.actual))
+          : (r.remaining != null ? Math.abs(Number(r.remaining))
+            : Math.abs(Number(r.amount) || 0));
+        return s + raw;
+      }, 0));
+      return {
+        id: half === 1 ? 'calendar-1-15' : 'calendar-16-end',
+        label,
+        start,
+        end,
+        rows,
+        total,
+      };
+    };
+    const billSections = [
+      section(1, month.start, month.mid, 'Pay Period 1'),
+      section(2, month.secondStart, month.end, 'Pay Period 2'),
+    ];
+    const undatedBills = [];
+    for (const bill of (plan && plan.bills) || []) {
+      if (!bill || !bill.needsDate) continue;
+      if (!billIsHouseholdObligation(bill)) continue;
+      const payingAccount = bill.payingAccount || null;
+      undatedBills.push({
+        id: bill.id,
+        label: bill.label,
+        kind: 'bill',
+        date: null,
+        planned: roundCent(Number(bill.amount) || 0),
+        amount: roundCent(Number(bill.amount) || 0),
+        actual: null,
+        remaining: roundCent(Number(bill.amount) || 0),
+        settlement: null,
+        status: 'needs-date',
+        glanceKind: 'still-due',
+        movement: householdMovement(Number(bill.amount) || 0, 'out'),
+        confidence: bill.confidence || 'estimated',
+        payingAccount,
+        payerLabel: plannedPayerLabel(payingAccount),
+        needsDate: true,
+        dateNote: 'needs confirmation',
+      });
+    }
+    return {
+      billSections,
+      bills: billSections[0].rows.concat(billSections[1].rows),
+      undatedBills,
+    };
+  }
+
   function planDefaultView(plan, asOf, alloc, action, plans, debts, opts) {
     const leftover = (alloc && alloc.runningLeftover) || runningLeftoverFromAlloc(
       alloc && alloc.available,
@@ -2973,15 +3164,13 @@
     );
     const paydayDate = action && action.thisPayday;
     const periodLast = (action && action.periodEnd) || (alloc && alloc.periodEnd);
-    const bills = (action && action.thisPeriodGlance)
-      || thisPeriodGlanceFrom(plan, paydayDate, periodLast, asOf, alloc,
-        action && action.inflows, action && action.bills);
+    const calendar = calendarBillSections(plan, asOf, opts);
     const cards = revolvingCardsGlance(plan, debts, alloc && alloc.extraDebt);
     return {
       asOf: (alloc && alloc.cashBasis && alloc.cashBasis.asOf) || asOf,
       span: 'pay-period',
       title: 'This pay period',
-      billsHeading: 'Bills this pay period',
+      billsHeading: 'Bills',
       extraLabel: 'Extra this payday',
       cashNote: null,
       periodStart: paydayDate || null,
@@ -2991,7 +3180,9 @@
       afterHouseholdBudget: leftover.afterHouseholdBudget,
       afterDebtRepayment: leftover.afterDebtRepayment,
       afterBigPurchases: leftover.afterBigPurchases,
-      bills,
+      bills: calendar.bills,
+      billSections: calendar.billSections,
+      undatedBills: calendar.undatedBills,
       householdBudget: householdBudgetGlance(plan, alloc),
       budgetDigest: householdBudgetDigest(
         plan, asOf, paydayDate, periodLast, opts),
@@ -4634,6 +4825,7 @@
     };
     for (const b of plan.bills || []) {
       if (!billAffectsJointCash(b, plan)) continue;
+      if (b.needsDate) continue;
       addDated(b.budgetCategory, billMonthly(b), b.label, 'bill');
     }
     // A dated commitment is NOT automatically a draw against the recurring

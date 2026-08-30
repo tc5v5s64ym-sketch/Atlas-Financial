@@ -84,13 +84,17 @@ around the **1st**. Observed posting of the interest charge is a month-end
 debit on the HELOC itself. Manual payments at least equal to the minimum,
 made before the due date, satisfy that minimum rather than causing a second
 full cash collection. The live cash plan still does **not** invent a
-duplicate full $814.18 chequing outflow for the interest posting (`nonCash`
-/ `capitalise` on day 31). The household calendar keeps the 21st as a
-reminder-only look-point. Q19 is **ANSWERED 2026-08-18**: the 14 August
-$1,100 payment already inside the 2026-08-16 opening satisfies the $814.18
-August minimum, so remaining August HELOC cash requirement is **$0
-additional**. That is not a claim that interest is free, and it does not
-state that an Aug. 1 PAD occurred.
+duplicate full $814.18 chequing outflow for the August interest posting
+(`nonCash` / `capitalise` on day 31). Q19 is **ANSWERED 2026-08-18**: the
+14 August $1,100 payment already inside the 2026-08-16 opening satisfies
+the $814.18 August minimum, so remaining August HELOC cash requirement is
+**$0 additional**. Owner 2026-08-30: from **2026-09-21** the planned cash
+minimum leaves BILLS ACCOUNT (Chequing A). The only proven amount is the
+$814.18 interest charge, so that same figure is the estimated cash
+minimum — not a second invented PAD amount. Interest-by-event math stays
+on the day-31 capitalise row; the bills list and cash walk count the 21st
+cash payment once. That is not a claim that interest is free, and it does
+not state that an Aug. 1 PAD occurred.
 
 **Cash Back Visa 1st.** The $762.36 September over-limit minimum is
 retired. The 14 August $763 payment satisfied that once row. The
@@ -588,11 +592,12 @@ the demonstrated mechanics. Forecast still does not treat the interest charge
 as joint-cash. Remaining August HELOC cash requirement is $0 additional.
 This file does not state that the Aug. 1 PAD occurred.
 
-This matters two ways. For **cash flow**, the ~$814/month interest posting is
-not an automatic chequing outflow and must not be modelled as a duplicate
-full minimum after confirmed payments have already satisfied it. For
-**debt**, capitalised interest is why the balance can rise with nothing
-repaying it.
+This matters two ways. For **cash flow**, the ~$814/month interest posting
+is not itself the chequing outflow; August remaining cash is $0 after the
+confirmed $1,100. From September 2026 the planned BILLS ACCOUNT cash
+minimum is that same $814.18 estimated contractual amount on the 21st,
+counted once. For **debt**, capitalised interest is why the balance can
+rise with nothing repaying it.
 
 ### SAVINGS-DONT TOUCH *(…6478420)* — **a staging account, not savings**
 Balance $74.20. Despite the name, nothing is saved here. Money arrives from

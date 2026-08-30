@@ -101,11 +101,10 @@ console.log('\n=== ICS payments bijection with expandEvents ===');
     extra.slice(0, 5).join(', ') || `${fromIcs.size} matched`);
   ok(built.payments.every(p => p.kind === 'payment'),
     'derived payment entries are tagged payment');
-  ok(built.reminders.some(r => r.sourceId === 'hydro-due-sep1'
-      && /not joint cash/i.test(r.summary)),
-    'Hydro Sept. 1 is an ICS reminder, not a joint-cash payment');
-  ok(!built.payments.some(p => p.sourceId === 'hydro-due-sep1'),
-    'Hydro Sept. 1 has no ICS payment VEVENT');
+  ok(built.payments.some(p => p.sourceId === 'hydro-due-sep1'),
+    'Hydro Sept. 1 is an ICS payment from BILLS ACCOUNT');
+  ok(!built.reminders.some(r => r.sourceId === 'hydro-due-sep1'),
+    'Hydro Sept. 1 is no longer an external-cash reminder');
 }
 
 console.log('\n=== reminder separation ===');
@@ -248,26 +247,29 @@ console.log('\n=== HELOC: only evidenced cash semantics are encoded ===');
     'the Plan still models HELOC interest as month-end non-cash capitalisation');
   const stream = F.expandEvents(plan, asOf, windowEnd);
   const helocEvents = stream.filter(e => e.id === 'heloc');
-  ok(helocEvents.length === 3 && helocEvents.every(e => e.kind === 'noncash'),
-    'expandEvents emits HELOC as noncash, never as a chequing outflow',
-    helocEvents.map(e => `${e.date}:${e.kind}`).join(', '));
-  ok(helocEvents.every(e => e.date === '2026-08-31' || e.date === '2026-09-30' || e.date === '2026-10-31'),
-    'those charges land at month-end, matching the observed posting');
+  const capitalise = helocEvents.filter(e => e.kind === 'noncash');
+  const cashMin = helocEvents.filter(e => e.kind === 'obligation' && e.cashMinimum);
+  ok(capitalise.length === 3 && capitalise.every(e =>
+      e.date === '2026-08-31' || e.date === '2026-09-30' || e.date === '2026-10-31'),
+    'expandEvents still emits month-end capitalise events');
+  ok(cashMin.length === 2 && cashMin.every(e =>
+      e.date === '2026-09-21' || e.date === '2026-10-21'),
+    'planned HELOC cash minimum starts 2026-09-21, not August');
+  ok(!stream.some(e => e.id === 'heloc' && e.date === '2026-08-21' && e.kind !== 'noncash'),
+    'August 21 is not a HELOC chequing outflow');
   const due = F.nextDue(stream, asOf);
   const out = F.nextPaymentOut(stream, asOf);
-  ok(due && !/HELOC/i.test(due.what), 'nextDue does not name the capitalised charge');
-  ok(out && !/HELOC/i.test(out.label), 'nextPaymentOut does not include it in the cash-out total');
+  ok(due && !/HELOC interest/i.test(due.what || ''),
+    'nextDue does not name the capitalised interest charge');
   const built = icsMod.buildHouseholdCalendar(plan, asOf, icsEnd);
-  ok(!built.payments.some(p => /HELOC/i.test(p.summary) || p.sourceId === 'heloc'),
-    'ICS has no HELOC cash-payment VEVENT');
+  ok(built.payments.some(p => p.sourceId === 'heloc' && p.start === '2026-09-21'),
+    'ICS carries the September 21 HELOC cash minimum as a payment');
   ok(built.reminders.some(r => r.sourceId === 'heloc' && /no cash leaves/i.test(r.summary)),
-    'ICS carries month-end capitalisation as a derived non-cash reminder');
+    'ICS still carries month-end capitalisation as a derived non-cash reminder');
   const due21 = built.reminders.find(r => r.sourceId === 'heloc-contractual-due');
   ok(!!due21 && due21.kind === 'reminder' && due21.start === '2026-08-21'
-    && /BYMONTHDAY=21/.test(due21.rrule || '') && /not a chequing outflow/i.test(due21.summary),
-    'ICS keeps the 21st as a reminder-only contractual due date');
-  ok(!built.payments.some(p => p.start.endsWith('-21') && /HELOC/i.test(p.summary)),
-    'the 21st is not encoded as a chequing outflow');
+    && !due21.rrule,
+    'ICS keeps the August 21 look-point only, with no monthly recurrence');
 }
 
 console.log('\n=== upcoming is no longer a schedule authority ===');

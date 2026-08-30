@@ -60,6 +60,7 @@ const suites = [
   ['payday operating-surface acceptance (AF-OPERATE-07)', 'test-operate-payday-acceptance.js'],
   ['payday operating sheet six glance answers', 'test-payday-operating-sheet.js'],
   ['Plan default view layout', 'test-plan-default-view.js'],
+  ['Plan calendar bill sections', 'test-plan-bill-calendar-periods.js'],
   ['Plan next-period lookahead and week picker', 'test-plan-lookahead-week.js'],
   ['Plan actual vs budget digest', 'test-plan-budget-digest.js'],
   ['weekly cap conversion + discretionary room', 'test-weekly-cap.js'],
