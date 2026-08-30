@@ -711,10 +711,29 @@ function paydayCashNote(alloc, liveOverlay) {
   return note;
 }
 
-function paydayGlanceCashNote(alloc) {
+function paydayGlanceCashNote(alloc, liveOverlay) {
   const asOf = alloc && (alloc.cashBasis && alloc.cashBasis.asOf || alloc.asOf);
-  if (!asOf) return 'Current cash flow. Not credit.';
-  return `Current cash flow. Not credit. From ${fmtDate(asOf)}.`;
+  return glanceUpdatedNote(asOf, liveOverlay);
+}
+
+function glanceUpdatedNote(asOf, liveOverlay) {
+  const instant = liveOverlay && (liveOverlay.fetchedAt || liveOverlay.observedAt);
+  const tz = (typeof Forecast !== 'undefined' && Forecast.HOUSEHOLD_TIMEZONE)
+    ? Forecast.HOUSEHOLD_TIMEZONE : 'America/Vancouver';
+  if (instant) {
+    const d = new Date(instant);
+    if (!Number.isNaN(d.getTime())) {
+      const date = d.toLocaleDateString('en-CA', {
+        timeZone: tz, day: 'numeric', month: 'short',
+      });
+      const time = d.toLocaleTimeString('en-CA', {
+        timeZone: tz, hour: 'numeric', minute: '2-digit',
+      });
+      return `Current Balance. Not credit. Updated ${date}, ${time}.`;
+    }
+  }
+  if (!asOf) return 'Current Balance. Not credit.';
+  return `Current Balance. Not credit. Updated ${fmtDate(asOf)}.`;
 }
 
 function paydayObligationNote(item, asOf) {
@@ -1431,7 +1450,7 @@ function cashGlanceHtml(alloc, liveOverlay) {
   const available = alloc && alloc.available != null ? money2(alloc.available) : '—';
   return `<div class="payday-cash" data-payday-cash data-spendable-cash="${available}">
     <span class="operating-amount" data-spendable-cash-amount>${available}</span>
-    <p class="operating-note">${paydayGlanceCashNote(alloc)}</p>
+    <p class="operating-note">${paydayGlanceCashNote(alloc, liveOverlay)}</p>
   </div>`;
 }
 
@@ -1567,6 +1586,121 @@ function extraDebtGlanceHtml(alloc) {
   return '';
 }
 
+function runningLeftoverHtml(amount) {
+  return `<div class="payday-leftover" data-running-leftover>
+    <span class="operating-amount">${amount != null && isFinite(Number(amount)) ? money2(amount) : '—'}</span>
+  </div>`;
+}
+
+function periodBillsHtml(view) {
+  const rows = (view && view.bills) || [];
+  if (!rows.length) {
+    return `<div class="payday-period-bills" data-payday-period-bills>
+      <p class="operating-lead">No bills this pay period.</p>
+    </div>`;
+  }
+  const lines = rows.map(row => {
+    const kind = row.glanceKind || (row.status === 'in' ? 'in'
+      : (row.status === 'PAID' ? 'paid' : 'still-due'));
+    const status = row.status === 'in' ? 'in'
+      : row.status === 'PAID' ? 'PAID'
+      : row.status === 'pending' ? 'pending'
+      : 'still due';
+    const amount = glanceSignedMoney(glanceMoney(row, kind));
+    const about = row.confidence === 'estimated' && amount != null ? 'about ' : '';
+    return `<div class="operating-line" data-period-bill="${row.id || ''}" data-bill-status="${status}">
+      <span>${glanceLineLabel(row, status)}</span><span>${amount != null ? about + amount : '—'}</span>
+    </div>`;
+  }).join('');
+  return `<div class="payday-period-bills" data-payday-period-bills>
+    <div class="operating-lines">${lines}</div>
+  </div>`;
+}
+
+function householdBudgetHtml(view) {
+  const rows = (view && view.householdBudget) || [];
+  if (!rows.length) {
+    return `<div class="payday-household-budget" data-payday-household-budget>
+      <p class="operating-lead">No household budget lines on this plan.</p>
+    </div>`;
+  }
+  const lines = rows.map(row => paydayBucketRow(
+    row.label,
+    glanceSignedMoney(row.amount != null ? -Math.abs(Number(row.amount)) : null),
+    null,
+    null,
+    { preformatted: true }
+  )).join('');
+  return `<div class="payday-household-budget" data-payday-household-budget>
+    <div class="operating-lines">${lines}</div>
+  </div>`;
+}
+
+function firstCardHtml(view) {
+  const card = view && view.firstCard;
+  if (!card) {
+    return `<div class="payday-first-card" data-payday-first-card>
+      <p class="operating-lead">No revolving card is next for extra payment.</p>
+    </div>`;
+  }
+  const extra = card.extraThisPayday != null ? Number(card.extraThisPayday) : 0;
+  const extraLine = extra > 0
+    ? `Extra this payday ${money2(extra)}.`
+    : 'Extra this payday $0.00.';
+  const bits = [];
+  if (card.balance != null) bits.push(`Balance ${money2(card.balance)}`);
+  if (card.rate != null && isFinite(Number(card.rate))) bits.push(`${Number(card.rate).toFixed(2)}%`);
+  return `<div class="payday-first-card" data-payday-first-card data-first-card="${card.id || ''}">
+    <p class="operating-lead">${card.label}</p>
+    <p class="operating-note">${bits.join(' · ')}</p>
+    <p class="operating-note">${extraLine}</p>
+  </div>`;
+}
+
+function otherCardsHtml(view) {
+  const rows = (view && view.otherCards) || [];
+  if (!rows.length) {
+    return `<div class="payday-other-cards" data-payday-other-cards>
+      <p class="operating-lead">No other revolving cards.</p>
+    </div>`;
+  }
+  const lines = rows.map(row => {
+    const bits = [];
+    if (row.balance != null) bits.push(money2(row.balance));
+    if (row.rate != null && isFinite(Number(row.rate))) bits.push(`${Number(row.rate).toFixed(2)}%`);
+    if (row.minimum != null) bits.push(`min ${money2(row.minimum)}`);
+    return paydayBucketRow(row.label, bits.join(' · ') || '—', null, null, { preformatted: true });
+  }).join('');
+  return `<div class="payday-other-cards" data-payday-other-cards>
+    <div class="operating-lines">${lines}</div>
+  </div>`;
+}
+
+function bigPurchasesHtml(view) {
+  const rows = (view && view.bigPurchases) || [];
+  if (!rows.length) {
+    return `<div class="payday-big-purchases" data-payday-big-purchases>
+      <p class="operating-lead">No big purchases on the horizon.</p>
+    </div>`;
+  }
+  const lines = rows.map(row => {
+    const when = row.date ? fmtDate(row.date) : (row.when || 'date unset');
+    const cost = row.cost != null ? money2(row.cost) : '—';
+    const saved = money2(row.savedSoFar != null ? row.savedSoFar : 0);
+    const setAside = Number(row.setAsideThisPayday) > 0
+      ? ` · set aside this payday ${money2(row.setAsideThisPayday)}`
+      : '';
+    return paydayBucketRow(
+      `${row.label} · ${when}`,
+      `cost ${cost} · saved ${saved}${setAside}`,
+      null, null, { preformatted: true }
+    );
+  }).join('');
+  return `<div class="payday-big-purchases" data-payday-big-purchases>
+    <div class="operating-lines">${lines}</div>
+  </div>`;
+}
+
 function paydayBucketRow(label, allocated, wanted, shortfall, opts) {
   const bits = [];
   const preformatted = !!(opts && opts.preformatted);
@@ -1638,11 +1772,16 @@ function operatingSurfaceHtml(ctx) {
       <div class="operating-answer">${answer}</div>
     </div>`;
 
-  const cash = cashGlanceHtml(alloc, ctx.liveOverlay);
-  const bills = mustLeaveHtml(alloc, action);
-  const alreadyPaid = alreadyPaidHtml(action);
+  const view = advice.defaultView || {};
+  const cashAlloc = {
+    available: view.currentBalance != null ? view.currentBalance : (alloc && alloc.available),
+    cashBasis: alloc && alloc.cashBasis,
+    asOf: view.asOf || (alloc && alloc.asOf),
+  };
+  const cash = cashGlanceHtml(cashAlloc, ctx.liveOverlay);
+  const bills = periodBillsHtml(view);
   // Weekly permission copies the recommend weekly field. Infeasible weekly = 0
-  // is not a supported $0/week yes.
+  // is not a supported $0/week yes. Folded off the default view.
   const weeklyPermission = capView.hasFeasibleCap
     ? (capView.recommended != null ? capView.recommended : advice.weekly)
     : null;
@@ -1672,15 +1811,22 @@ function operatingSurfaceHtml(ctx) {
 
   return `<div class="payday-operating-sheet" data-payday-sheet>
     ${refreshTrustHtml(ctx.refreshTrust)}
-    ${question('01', 'Current cash flow', cash)}
-    ${question('02', 'Still due', bills)}
-    ${question('03', 'Already paid', alreadyPaid)}
-    ${question('04', "This week's spend", spend)}
-    ${extra ? question('05', 'Extra on the cards', extra) : ''}
-    ${question('06', 'Next move', next)}
+    ${question('01', 'Current Balance', cash)}
+    ${question('02', 'Bills this pay period', bills)}
+    ${question('03', 'Balance after bills', runningLeftoverHtml(view.afterBills))}
+    ${question('04', 'Household budget', householdBudgetHtml(view))}
+    ${question('05', 'Balance after household budget', runningLeftoverHtml(view.afterHouseholdBudget))}
+    ${question('06', 'Credit card to pay off first', firstCardHtml(view))}
+    ${question('07', 'Other credit cards', otherCardsHtml(view))}
+    ${question('08', 'Balance after debt repayment', runningLeftoverHtml(view.afterDebtRepayment))}
+    ${question('09', 'Big purchases on the horizon', bigPurchasesHtml(view))}
+    ${question('10', 'Balance after big purchase allocation', runningLeftoverHtml(view.afterBigPurchases))}
     <details class="household-inline-details" data-payday-allocation-details>
       <summary>See how payday is reserved</summary>
       ${allocation}
+      ${spend}
+      ${extra}
+      ${next}
     </details>
     <details class="household-inline-details household-future-details">
       <summary>See later bills and big purchases</summary>

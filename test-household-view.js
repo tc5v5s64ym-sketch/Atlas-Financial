@@ -24,8 +24,8 @@ console.log('=== default homepage speaks to the household first ===');
   const html = read('public/index.html');
   ok(/<h1>This payday<\/h1>/.test(html),
     'the first surface is labelled this payday');
-  ok(/Current cash flow, what is still due, what is already paid/.test(html)
-    && /extra on the cards only if leftover after bills/.test(html),
+  ok(/Current Balance, bills this pay period/.test(html)
+    && /household budget/.test(html),
     'the intro says what the page is for in ordinary language');
   const planAt = html.indexOf('<script src="/plan.js"></script>');
   const householdAt = html.indexOf('<script src="/household-view.js"></script>');
@@ -72,8 +72,8 @@ console.log('\n=== the readability layer does not become a financial authority =
   ok(/Hold this week's spend until/.test(src)
     && !/No payment or transfer is required today/.test(src),
     'the first-screen action language is one coherent next move');
-  ok(/Current cash flow/.test(src),
-    'the compact cash prompt is current cash flow');
+  ok(/Current Balance/.test(src),
+    'the compact cash prompt is Current Balance');
 }
 
 console.log('\n=== trust caveats are translated, not deleted ===');
@@ -207,6 +207,29 @@ console.log('\n=== Q6 keeps the incumbent current-period card under a disclosure
     'category-spending state remains accessible');
   ok(/Category spending this period/.test(cardAfter.textContent),
     'the category-spending heading remains on the kept card');
+}
+
+console.log('\n=== default-view prompts survive household-view enhance ===');
+{
+  const doc = parseDocument(`<div id="operating-surface-body">
+    <div class="operating-question" data-operating-question="05">
+      <h2 class="operating-prompt">Balance after household budget</h2>
+      <div class="operating-answer"><div data-running-leftover>$1.00</div></div>
+    </div>
+    <div class="operating-question" data-operating-question="06">
+      <h2 class="operating-prompt">Credit card to pay off first</h2>
+      <div class="operating-answer"><div data-payday-first-card><p class="operating-lead">Card</p></div></div>
+    </div>
+  </div>`);
+  H.enhance(doc);
+  const q5 = doc.querySelector('[data-operating-question="05"]');
+  const q6 = doc.querySelector('[data-operating-question="06"]');
+  const p5 = q5 && q5.querySelector('.operating-prompt');
+  const p6 = q6 && q6.querySelector('.operating-prompt');
+  ok(p5 && p5.textContent === 'Balance after household budget',
+    'Q05 stays Balance after household budget after enhance');
+  ok(p6 && p6.textContent === 'Credit card to pay off first',
+    'Q06 stays Credit card to pay off first after enhance');
 }
 
 if (failures) {

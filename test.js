@@ -59,6 +59,7 @@ const suites = [
   ['required and extra debt answer (AF-OPERATE-06)', 'test-operate-debt-answer.js'],
   ['payday operating-surface acceptance (AF-OPERATE-07)', 'test-operate-payday-acceptance.js'],
   ['payday operating sheet six glance answers', 'test-payday-operating-sheet.js'],
+  ['Plan default view layout', 'test-plan-default-view.js'],
   ['weekly cap conversion + discretionary room', 'test-weekly-cap.js'],
   ['food and fuel monthly figures', 'test-food-fuel.js'],
   ['phase titles and risk list', 'test-plan-phases.js'],

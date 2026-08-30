@@ -689,6 +689,8 @@ function overlayMeta(opts) {
     reason: opts.reason || null,
     currentPeriodActuals: opts.currentPeriodActuals || null,
     observedCash: opts.observedCash || null,
+    fetchedAt: opts.fetchedAt || null,
+    observedAt: opts.observedAt || opts.fetchedAt || null,
   };
 }
 
@@ -741,6 +743,8 @@ function overlayLiveState(input) {
     })),
     currentPeriodActuals: report.currentPeriodActuals || null,
     observedCash: collectObservedCash(report, liveAsOf || cutover.liveAsOf),
+    fetchedAt: report.fetchedAt || null,
+    observedAt: report.fetchedAt || null,
   });
   if (!C.identityProofLooksSanitized(next.liveOverlay)
     || !O.identityProofLooksSanitized(next.liveOverlay)) {
@@ -836,6 +840,8 @@ function failedOverlay(canonical, reason, extra) {
     reason: sanitized,
     note: 'Live overlay failed closed. Dated opening is unchanged.',
     observedCash: report ? collectObservedCash(report, liveAsOf) : null,
+    fetchedAt: report && report.fetchedAt || null,
+    observedAt: report && report.fetchedAt || null,
   });
   RT.attachTo(next, {
     canonical,
