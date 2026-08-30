@@ -48,6 +48,7 @@ function loadComposer() {
     grab(planSrc, /^function weeklyCapView\([\s\S]*?\n\}$/m, 'weeklyCapView'),
     grab(planSrc, /^function paydayActionRows\([\s\S]*?\n\}$/m, 'paydayActionRows'),
     grab(planSrc, /^function paydayCashNote\([\s\S]*?\n\}$/m, 'paydayCashNote'),
+    grab(planSrc, /^function paydayGlanceCashNote\([\s\S]*?\n\}$/m, 'paydayGlanceCashNote'),
     grab(planSrc, /^function paydayCoverageNote\([\s\S]*?\n\}$/m, 'paydayCoverageNote'),
     grab(planSrc, /^const PAYDAY_ACTION_KIND = \{[\s\S]*?^\};$/m, 'PAYDAY_ACTION_KIND'),
     grab(planSrc, /^function paydayAllocationTrustNote\([\s\S]*?\n\}$/m, 'paydayAllocationTrustNote'),
@@ -73,6 +74,11 @@ function loadComposer() {
     grab(planSrc, /^function spendDecisionHtml\([\s\S]*?\n\}$/m, 'spendDecisionHtml'),
     grab(planSrc, /^function paydayBucketRow\([\s\S]*?\n\}$/m, 'paydayBucketRow'),
     grab(planSrc, /^function postedThisPeriodHtml\([\s\S]*?\n\}$/m, 'postedThisPeriodHtml'),
+    grab(planSrc, /^function glanceMoney\([\s\S]*?\n\}$/m, 'glanceMoney'),
+    grab(planSrc, /^function glanceLineLabel\([\s\S]*?\n\}$/m, 'glanceLineLabel'),
+    grab(planSrc, /^function alreadyLeftRowsHtml\([\s\S]*?\n\}$/m, 'alreadyLeftRowsHtml'),
+    grab(planSrc, /^function alreadyLeftHtml\([\s\S]*?\n\}$/m, 'alreadyLeftHtml'),
+    grab(planSrc, /^function stillDueItems\([\s\S]*?\n\}$/m, 'stillDueItems'),
     grab(planSrc, /^function cashGlanceHtml\([\s\S]*?\n\}$/m, 'cashGlanceHtml'),
     grab(planSrc, /^function mustLeaveHtml\([\s\S]*?\n\}$/m, 'mustLeaveHtml'),
     grab(planSrc, /^function extraDebtGlanceHtml\([\s\S]*?\n\}$/m, 'extraDebtGlanceHtml'),
@@ -80,7 +86,7 @@ function loadComposer() {
     grab(planSrc, /^function operatingSurfaceHtml\([\s\S]*?\n\}$/m, 'operatingSurfaceHtml'),
   ].join('\n');
   return vm.runInNewContext(
-    `${source}\n({ operatingSurfaceHtml, paydayCashNote, paydayCoverageNote, money, money2 });`,
+    `${source}\n({ operatingSurfaceHtml, paydayCashNote, paydayGlanceCashNote, paydayCoverageNote, money, money2 });`,
     { Forecast: F }
   );
 }
@@ -170,9 +176,9 @@ console.log('\n=== default homepage answers the operating questions first ===');
   const road = html.slice(roadAt, footerAt);
   ok(operatingAt >= 0 && worksheetAt > operatingAt && roadAt > worksheetAt && footerAt > roadAt,
     'operating surface, then the collapsed worksheet, then Why / Road ahead');
-  ok(/<h1>Payday operating sheet<\/h1>/.test(defaultSurface)
+  ok(/<h1>This payday<\/h1>/.test(defaultSurface)
     && (html.match(/<h1[\s>]/g) || []).length === 1,
-  'the only page h1 is the payday operating sheet');
+  'the only page h1 is this payday');
   const worksheet = section(html, 'payday-answer');
   ok(worksheet && /<details class="disclose secondary-disclose">/.test(worksheet)
     && !/<details[^>]*\sopen(?:\s|>)/.test(worksheet)
@@ -220,56 +226,45 @@ console.log('\n=== composed surface: cash, identity, debt, protection, limits ==
   const q6 = question(rendered, '06');
 
   ok(action && action.mode === 'between-paydays',
-    'the dated opening is between paydays, so current-period details stay behind Q6');
-  ok(/data-payday-cash/.test(q1) && /Spendable cash\. Not credit\./.test(q1),
-    'Q1 is the one Forecast spendable cash figure');
-  ok(/data-payday-must-leave/.test(q2),
-    'Q2 publishes required payday bills from paydayAllocation.obligations');
-  ok(/data-spend-decision/.test(q3),
-    'Q3 publishes Forecast.recommend weekly cap');
-  ok(/data-payday-extra-debt/.test(q4),
-    'Q4 publishes extra-debt only from paydayAllocation.extraDebt');
+    'the dated opening is between paydays, so current-period details stay folded');
+  ok(/data-payday-cash/.test(q1) && /Leftover cash\. Not credit\./.test(q1),
+    'Q1 is leftover cash, not credit');
+  ok(/data-payday-still-due/.test(q2),
+    'Q2 publishes bills still due this payday');
+  ok(/data-payday-already-left/.test(q3),
+    'Q3 publishes what already left this payday');
+  ok(/data-spend-decision/.test(q4),
+    'Q4 publishes this week\'s spend');
   ok(/data-payday-decision/.test(rendered) && /data-allocation-available/.test(rendered),
     'the incumbent payday allocation remains available in the allocation disclosure');
-  ok(/data-current-period-action/.test(q6),
-    'between-paydays currentPeriodAction stays under the next-move details');
+  ok(/data-current-period-action/.test(rendered) && !/data-current-period-action/.test(q6),
+    'between-paydays details stay folded, not inside the next move');
   ok(near(independentCash, alloc.available),
     'available cash independently equals spendable opening plus same-day income');
   ok(creditHeadroom > 0 && alloc.available + 0.005 < independentCash + creditHeadroom,
     'available credit is not treated as household cash');
   ok(q1.includes(composer.money2(independentCash))
-    && /Spendable cash\. Not credit\./.test(q1)
-    && /dated opening/.test(q1)
+    && /Leftover cash\. Not credit\./.test(q1)
     && !/live Lunch Money overlay/.test(q1)
-    && !/Available in chequing/.test(q1)
-    && /Overdraft and credit are not cash/.test(q1),
-  'Q1 publishes that independent cash figure as dated-opening spendable cash, not credit, not an available-in-chequing headline, and not live overlay');
+    && !/Available in chequing/.test(q1),
+  'Q1 publishes that independent cash figure as leftover cash, not credit, not an available-in-chequing headline, and not live overlay');
   ok(near(lineSum, alloc.allocatedTotal)
     && near(lineSum + Number(alloc.remainder), alloc.available),
   'independent allocation-line sum plus remainder equals available resources');
-  ok(q3.includes(`${composer.money(action.weeklyCap)} / week`)
+  ok(q4.includes(`${composer.money(action.weeklyCap)} / week`)
     && near(action.weeklyCap, advice.weekly),
-  'Q3 spend permission is Forecast.recommend.weekly from the same recommend result');
-  ok(/future-gravity|Still to cover before payday|No unsettled major future costs/.test(q5),
-    "Q5 publishes today's protected future-cost answer from incumbent Forecast outputs");
-  const protectionEnd = q5.indexOf("does not constrain today's safe-to-spend");
-  const protectionBlock = q5.slice(0, protectionEnd < 0 ? q5.length : protectionEnd);
-  for (const row of alloc.optional || []) {
-    if (!row || !row.label || Number(row.allocated) > 0) continue;
-    ok(!protectionBlock.includes(row.label),
-      `zero optional residual ${row.id} is not labelled as protected current-period money`);
-  }
+  'Q4 this week\'s spend is Forecast.recommend.weekly from the same recommend result');
+  ok(/See later bills and big purchases/.test(rendered),
+    'later bills stay behind disclosure');
   for (const item of requiredItems) {
     ok(q2.includes(item.label) && q2.includes(composer.money2(item.amount)),
       `Q2 required debt ${item.id} is the Forecast required item, not extra principal`);
     if (item.confidence === 'estimated') {
-      ok(q2.includes('estimated'),
-        `Q2 preserves the required-debt estimated trust state for ${item.id}`);
+      ok(/about /.test(q2),
+        `Q2 marks estimated ${item.id} as about`);
     }
-    if (item.settlement === 'unverified') {
-      ok(q2.includes('unverified'),
-        `Q2 labels unverified ${item.id} as unverified`);
-    }
+    ok(!/unverified/.test(q2),
+      `Q2 does not print settlement code words for ${item.id}`);
   }
   ok(requiredItems.length >= 1,
     'Forecast still exposes requiredDebtPayments separately from extra principal');
@@ -278,23 +273,23 @@ console.log('\n=== composed surface: cash, identity, debt, protection, limits ==
     || (extraLine && near(extraLine.amount, extraAllocated)),
     'zero extra principal adds no extra-debt line; a positive extra line equals Forecast.extraDebt.allocated');
   if (extraAllocated === 0) {
-    ok(q4.includes('No extra debt this payday.')
-      && !/Pay extra/.test(q4)
-      && !/Extra debt money this payday goes to/.test(q4),
-    '$0 extra-debt allocation implies no extra-principal payment');
-    ok(!/Forecast has no required debt payment/.test(q5),
-      '$0 extra principal does not imply required contractual debt payments disappear');
+    ok(!q5 && !/data-operating-question="05"/.test(rendered)
+      && !/Pay extra/.test(rendered)
+      && !/Extra debt money this payday goes to/.test(rendered),
+    '$0 extra-debt allocation omits extra on the cards');
   } else {
-    ok(q4.includes(composer.money2(alloc.extraDebt.allocated))
-      && alloc.extraDebt.target && q4.includes(alloc.extraDebt.target.label),
+    ok(q5.includes(composer.money2(alloc.extraDebt.allocated))
+      && alloc.extraDebt.target && q5.includes(alloc.extraDebt.target.label),
     'positive extra principal names the Forecast-authorized target and amount');
   }
   ok(priority.status === 'ready' && priority.target
     && plan.nextDollar && plan.nextDollar.policy === 'true-surplus-highest-interest'
     && plan.nextDollar.target == null,
   'debt target comes from Forecast.debtPriority plus recorded owner policy, not a stored rank');
-  ok(q4.includes(priority.target.label),
-    'Q4 names the Forecast/owner-policy target');
+  if (extraAllocated > 0) {
+    ok(q5.includes(priority.target.label),
+      'extra on the cards names the Forecast/owner-policy target');
+  }
   const coverage = composer.paydayCoverageNote(action);
   ok(/data-operating-certainty/.test(rendered) && rendered.includes(coverage)
     && /Transaction actuals were not supplied|unavailable|through/.test(coverage),
@@ -324,13 +319,15 @@ console.log('\n=== $0 extra-debt allocation does not erase required debt ===');
     ok(q2.includes(item.label) && q2.includes(composer.money2(item.amount)),
       `$0 extra principal still publishes required debt ${item.id}`);
   }
-  ok(q4.includes('No extra debt this payday.')
-    && !/Pay extra/.test(q4)
+  ok(!q4.includes('No extra debt this payday.')
+    && /data-spend-decision/.test(q4),
+  '$0 extra-debt allocation does not replace this week\'s spend');
+  ok(!/Pay extra/.test(q4)
     && !/Extra debt money this payday goes to/.test(q4),
   '$0 extra-debt allocation implies no extra-principal payment');
-  ok(!/No required bills are reserved this payday/.test(q2)
-    && /data-payday-must-leave/.test(q2),
-  '$0 extra principal leaves requiredDebtPayments visible and separate');
+  ok(!/Nothing else has to leave this payday/.test(q2)
+    && /data-payday-still-due/.test(q2),
+  '$0 extra principal leaves still-due bills visible and separate');
 }
 
 console.log('\n=== payday mode still uses the ordered allocation sheet ===');
@@ -347,19 +344,18 @@ console.log('\n=== payday mode still uses the ordered allocation sheet ===');
     advice: paydayAdvice, weekly: paydayAdvice.weekly, recommended: paydayAdvice.weekly,
   });
   const q1 = question(html, '01');
-  const q3 = question(html, '03');
+  const q4 = question(html, '04');
   const q6 = question(html, '06');
   ok(/data-payday-cash/.test(q1) && !/data-allocation-available/.test(q1),
-    'payday-mode Q1 stays the one spendable cash figure, not the allocation sheet');
-  ok(/data-spend-decision/.test(q3),
-    'payday-mode Q3 is the weekly cap');
+    'payday-mode Q1 stays leftover cash, not the allocation sheet');
+  ok(/data-spend-decision/.test(q4),
+    'payday-mode Q4 is this week\'s spend');
   ok(/data-today-decision/.test(q6) && /data-allocation-available/.test(html),
     'a payday-mode result still renders the next move and keeps the ordered allocation sheet');
-  ok(/What cash is this\?/.test(html) && /What can I spend this week\?/.test(html)
-    && /Extra debt this payday\?/.test(html)
-    && /Big purchases\?/.test(html)
-    && /The next move\?/.test(html),
-  'payday mode still answers the six payday-sheet questions in order');
+  ok(/Leftover cash/.test(html) && /This week's spend/.test(html)
+    && /Already left this payday/.test(html)
+    && /Next move/.test(html),
+  'payday mode still answers leftover cash, still due, already left, this week\'s spend, and next move');
 }
 
 console.log('\n=== live overlay cannot be authorized from committed git state ===');
@@ -379,17 +375,29 @@ console.log('\n=== live overlay cannot be authorized from committed git state ==
   ok(!exists('docs/connectivity/provider-account-map.local.json'),
     'this checkout has no local live account map');
   const composer = loadComposer();
-  const note = composer.paydayCashNote({
+  const note = composer.paydayGlanceCashNote({
     available: 100, asOf: data.meta.asOf, cashBasis: { asOf: data.meta.asOf },
-  }, null);
-  ok(/dated opening/.test(note) && /Spendable cash\. Not credit\./.test(note)
-    && !/live Lunch Money overlay/.test(note),
-  'absent overlay evidence is labelled a dated opening, not current live truth');
-  const refused = composer.paydayCashNote({
-    available: 100, asOf: data.meta.asOf, cashBasis: { asOf: data.meta.asOf },
-  }, { applied: false });
-  ok(/Live overlay not applied/.test(refused) && /dated opening/.test(refused),
-    'a refused overlay stays visible as not applied');
+  });
+  ok(/Leftover cash\. Not credit\./.test(note)
+    && !/live Lunch Money overlay/.test(note)
+    && !/dated opening/.test(note),
+  'absent overlay evidence is leftover cash, not current live truth');
+  const glance = composer.operatingSurfaceHtml({
+    advice: {
+      weekly: 180,
+      paydayAllocation: {
+        available: 100, asOf: data.meta.asOf, cashBasis: { asOf: data.meta.asOf },
+        extraDebt: { allocated: 0 }, obligations: { items: [] },
+        futureCosts: [], unresolved: [], risks: [],
+      },
+      currentPeriodAction: { mode: 'between-paydays', nextPayday: '2026-09-11', bills: [], todayActions: [] },
+    },
+    weekly: 180, recommended: 180,
+    liveOverlay: { applied: false, reason: 'stale-live-cash-evidence' },
+  });
+  const q1 = question(glance, '01');
+  ok(/Leftover cash\. Not credit\./.test(q1) && !/overlay/.test(q1),
+    'a refused overlay does not leak overlay jargon onto leftover cash');
 }
 
 console.log('\n=== the composed page remains a renderer ===');

@@ -48,7 +48,7 @@
       return 'Some spending is still uncategorized, so category remaining amounts are not exact.';
     }
     if (value === 'A modeled item remains unverified. That is not a claim it is unpaid.') {
-      return `${n} bill${plural} still need${n === 1 ? 's' : ''} confirmation. Atlas is not treating ${n === 1 ? 'it' : 'them'} as unpaid.`;
+      return `${n} bill${plural} still need${n === 1 ? 's' : ''} confirmation. That is not a claim ${n === 1 ? 'it is' : 'they are'} unpaid.`;
     }
     return n === 1 ? value : `${n} items: ${value}`;
   }
@@ -60,12 +60,12 @@
 
   function friendlySpendingNote(value) {
     const source = clean(value);
-    let out = 'This is the household spending limit until the next payday.';
-    if (/Essential costs come out of it first\./i.test(source)) {
-      out += ' Essential costs come out of it first.';
+    let out = "This week's spend until the next payday.";
+    if (/Essential costs come out of it first\.|Everyday costs come out of it first\./i.test(source)) {
+      out += ' Everyday costs come out of it first.';
     }
-    if (/Current remaining spend cannot be confirmed/i.test(source)) {
-      out += ' Current remaining spend is not confirmed.';
+    if (/Current remaining spend cannot be confirmed|What is left to spend this week is not confirmed/i.test(source)) {
+      out += ' What is left to spend this week is not confirmed yet.';
     }
     return out;
   }
@@ -90,7 +90,7 @@
     const answer = q && q.querySelector('.operating-answer');
     if (!q || !answer) return false;
     const prompt = q.querySelector('.operating-prompt');
-    if (prompt) prompt.textContent = 'What cash is this?';
+    if (prompt) prompt.textContent = 'Leftover cash';
     return true;
   }
 
@@ -99,7 +99,7 @@
     const answer = q && q.querySelector('.operating-answer');
     if (!q || !answer) return false;
     const prompt = q.querySelector('.operating-prompt');
-    if (prompt) prompt.textContent = 'What must leave this payday?';
+    if (prompt) prompt.textContent = 'Still due';
     return true;
   }
 
@@ -108,11 +108,20 @@
     const answer = q && q.querySelector('.operating-answer');
     if (!q || !answer) return false;
     const prompt = q.querySelector('.operating-prompt');
-    if (prompt) prompt.textContent = 'What can I spend this week?';
+    if (prompt) prompt.textContent = 'Already left this payday';
+    return true;
+  }
+
+  function enhanceQuestionFour(doc, body) {
+    const q = body.querySelector('[data-operating-question="04"]');
+    const answer = q && q.querySelector('.operating-answer');
+    if (!q || !answer) return false;
+    const prompt = q.querySelector('.operating-prompt');
+    if (prompt) prompt.textContent = "This week's spend";
     if (answer.querySelector('[data-spend-decision]')) {
       const notes = answer.querySelectorAll('.operating-note');
       for (const note of notes) {
-        if (/Forecast\.recommend|household spending limit|Current remaining spend/i.test(clean(note.textContent))) {
+        if (/Forecast\.recommend|household spending limit|Current remaining spend|This week's spend/i.test(clean(note.textContent))) {
           note.textContent = friendlySpendingNote(note.textContent);
         }
       }
@@ -122,7 +131,7 @@
         const primary = doc.createElement('p');
         primary.className = 'household-primary household-tight';
         primary.setAttribute('data-spend-decision', 'none');
-        primary.textContent = 'No safe spending amount.';
+        primary.textContent = "No safe amount for this week's spend.";
         const details = doc.createElement('details');
         details.className = 'household-inline-details';
         const summary = doc.createElement('summary');
@@ -137,36 +146,12 @@
     return true;
   }
 
-  function enhanceQuestionFour(doc, body) {
-    const q = body.querySelector('[data-operating-question="04"]');
-    const answer = q && q.querySelector('.operating-answer');
-    if (!q || !answer) return false;
-    const prompt = q.querySelector('.operating-prompt');
-    if (prompt) prompt.textContent = 'Extra debt this payday?';
-    return true;
-  }
-
   function enhanceQuestionFive(doc, body) {
     const q = body.querySelector('[data-operating-question="05"]');
     const answer = q && q.querySelector('.operating-answer');
     if (!q || !answer) return false;
     const prompt = q.querySelector('.operating-prompt');
-    if (prompt) prompt.textContent = 'Big purchases?';
-
-    const current = answer.querySelector('.future-gravity-current');
-    const currentHeading = current && current.querySelector('h3');
-    if (currentHeading) currentHeading.textContent = 'Still to cover before payday';
-    if (answer.querySelector('.household-future-details')) return true;
-
-    const detailNodes = Array.from(answer.children).filter(node => node !== current);
-    if (!detailNodes.length) return true;
-    const details = doc.createElement('details');
-    details.className = 'household-inline-details household-future-details';
-    const summary = doc.createElement('summary');
-    summary.textContent = 'See all future costs';
-    details.appendChild(summary);
-    for (const node of detailNodes) details.appendChild(node);
-    answer.appendChild(details);
+    if (prompt) prompt.textContent = 'Extra on the cards';
     return true;
   }
 
@@ -177,7 +162,7 @@
     if (!q || !answer) return false;
     const prompt = q.querySelector('.operating-prompt');
     if (prompt && q.getAttribute('data-operating-question') === '06') {
-      prompt.textContent = 'The next move?';
+      prompt.textContent = 'Next move';
     }
     if (answer.querySelector('[data-today-decision]')) return true;
 
@@ -210,24 +195,19 @@
     lead.className = unsafe ? 'household-primary household-tight' : 'household-primary';
     const movementText = movement ? clean(movement.textContent) : '';
     if (todayRows.length) {
-      lead.textContent = 'Do these today.';
+      lead.textContent = 'Pay these today.';
     } else if (unsafe) {
       lead.textContent = payday
-        ? `Hold discretionary spending until ${payday}.`
-        : 'Hold discretionary spending until payday.';
+        ? `Hold this week's spend until ${payday}.`
+        : "Hold this week's spend.";
     } else if (movementText === 'No money movement is required today.') {
-      lead.textContent = 'No action required today.';
+      lead.textContent = payday
+        ? `This week's spend until ${payday}.`
+        : 'Nothing to pay today.';
     } else {
       lead.textContent = movementText || 'Today’s action is shown below.';
     }
     summary.appendChild(lead);
-
-    if (unsafe && movementText === 'No money movement is required today.') {
-      const warn = doc.createElement('p');
-      warn.className = 'operating-limit warn';
-      warn.textContent = 'No payment or transfer is required today. Protected cash needs are still unfunded.';
-      summary.appendChild(warn);
-    }
 
     if (todayRows.length) {
       const actions = doc.createElement('div');
@@ -280,8 +260,12 @@
     aggregateList(doc, trust.querySelector('.refresh-trust-unresolved'));
 
     const detailNodes = Array.from(trust.children).filter(node =>
-      node !== state && node !== asOf && !node.classList.contains('household-trust-details'));
-    if (detailNodes.length) {
+      node !== state && node !== asOf
+      && !node.classList.contains('household-trust-details')
+      && !node.classList.contains('refresh-trust-path'));
+    if (trust.querySelector('.household-trust-details')) {
+      /* plan.js already folded the notes; do not wrap them again. */
+    } else if (detailNodes.length) {
       const details = doc.createElement('details');
       details.className = 'household-trust-details';
       const summary = doc.createElement('summary');

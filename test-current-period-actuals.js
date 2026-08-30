@@ -723,8 +723,12 @@ console.log('\n=== R. automatic-payment identity uses explicit payee+account+dat
   ok(mortgageRule && mortgageRule.payeePattern === 'TD MORTGAGE' && mortgageRule.atlasAccountId === 'chequing-a'
     && mortgageRule.direction === 'debit',
     'mortgage uses documented TD MORTGAGE + Chequing A debit identity');
-  ok(!(identity.rules || []).some(r => r && r.eventId === 'fit4less'),
-    'Fit4Less has no identity rule and is not amount-matched');
+  const fitRule = (identity.rules || []).find(r => r && r.eventId === 'fit4less');
+  ok(fitRule && fitRule.payeePattern === 'Fit4less Msp' && fitRule.atlasAccountId === 'chequing-a'
+    && fitRule.direction === 'debit',
+    'Fit4Less uses documented Fit4less Msp + Chequing A debit identity');
+  ok(!(identity.rules || []).some(r => r && (r.eventId === 'travel' || r.eventId === 'tdfees')),
+    'Travel Visa and TD fees have no invented payee identity');
 
   const data = JSON.parse(fs.readFileSync(path.join(__dirname, 'data.json'), 'utf8'));
   const outstandingBills = (data.plan.bills || []).filter(b => [
