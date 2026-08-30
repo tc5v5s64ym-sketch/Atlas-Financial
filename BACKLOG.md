@@ -520,7 +520,7 @@ The 30 June coaching remittance was re-traced and a coach was paid out of it —
 - **B54** Card spending categorised — **$44,344.58**, 65% discretionary
 - **B34** Merchant library seeded — 273 patterns
 - **B17** Payoff ranking settled; net worth **$357k–$657k**
-- **B18** The **$46,657** payment-matching investigation completed — captured cards received more than the labelled TFR-TO C/C transfers in the 12-month window. Destination evidence only; Q2 remains OPEN
+- **B18** The **$46,657** payment-matching investigation completed — captured cards received more than the labelled TFR-TO C/C transfers in the 12-month window. Destination evidence only; owner closed Q2 2026-08-29 in `docs/01_OPEN_QUESTIONS.md` (three TD credit cards; not a missing fourth TD Visa; June HELOC TFR-TO C/C lines still lack per-card destinations)
 - **B52** The $10,000 Ivoclar charge — a funded pass-through, not household money
 - **B53** `Head Canada` — a coaching business expense Amanda absorbs
 - **B12** Home valued at $1.1m–$1.4m [ESTIMATE]

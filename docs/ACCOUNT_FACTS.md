@@ -1239,8 +1239,8 @@ guessed at.
 ### Analytical evidence — where the $46,657 of "TFR-TO C/C" went
 
 This section records payment-matching analysis. It is not the household
-question-status authority. Q2 remains OPEN in `docs/01_OPEN_QUESTIONS.md`
-until that file records it as ANSWERED.
+question-status authority. Q2 is ANSWERED 2026-08-29 in
+`docs/01_OPEN_QUESTIONS.md`.
 
 **The captured cards received more than those transfers sent.**
 
@@ -1270,8 +1270,18 @@ personal Visa took only $6,632 of it, which is exactly why the earlier analysis
 could not make the numbers work.
 
 On this matching, the captured cards absorb the labelled transfers rather than
-falling short of them. That is evidence against a missing-card leak; it is not
-an owner confirmation that Q2 is ANSWERED.
+falling short of them. That is dated evidence against a missing-card leak.
+
+**Owner close 2026-08-29.** Dale's EasyWeb Credit Cards screenshot shows only
+three TD credit cards: PERSONAL CREDIT CARD …5770 = Atlas `tdcc` / Emerald
+personal ••70; TD CASH BACK VISA …0726 = Atlas `cashback` ••26; TRAVEL VISA
+…0870 = Atlas `travelvisa` ••70. TFR-TO C/C is payments to the known cards,
+not a missing fourth TD Visa. “Two TD Visas” means Cash Back + Travel.
+Emerald/personal is the separate TD credit-card product whose balance
+barely moved in the original Q2 window. Individual June HELOC TFR-TO C/C
+lines still do not have per-card destinations; do not fabricate those.
+The screenshot balances are dated observations, not a `data.json` opening
+rewrite. MBNA in the table above is a known non-TD card, not a fourth TD Visa.
 
 ### Chequing spending rebuilt — and $25,490 of it was never spending
 
@@ -2120,7 +2130,9 @@ figure per pattern for exactly this reason.
 
 ## What only the household can answer
 
-Full detail in `01_OPEN_QUESTIONS.md`. In short: where $46,657 of "credit card"
-transfers actually go; what the two unidentified accounts are; why the monthly
-spousal transfer stopped after May 2026; and whether the business makes money
-after cost of goods.
+Full detail in `01_OPEN_QUESTIONS.md`. In short: what the two unidentified
+accounts are; whether the business makes money after cost of goods; and a
+verified home value. Q2 (TFR-TO C/C destination) is ANSWERED 2026-08-29:
+only three TD credit cards exist; the transfers are payments to the known
+cards, not a missing fourth TD Visa. Q5 (why the monthly spousal transfer
+stopped after May 2026) is ANSWERED — the garage/lab income ended.

@@ -194,7 +194,9 @@ reserve). Remaining unknowns are Q22. This is not a goals engine.
 **Still outstanding / owner-blocked:** the wife's business economics (Q1); a
 home valuation (Q3); WebBroker holdings (Q11 — needs an exchange-agreement
 acceptance, which is the account holder's decision); the two unidentified
-accounts (Q6); where the $46,657 of "credit card" transfers go (Q2). Q5 (why
+accounts (Q6). Q2 (where the $46,657 of TFR-TO C/C transfers go) is
+**ANSWERED 2026-08-29** — only three TD credit cards exist; TFR-TO C/C is
+payments to the known cards, not a missing fourth TD Visa. Q5 (why
 the monthly spousal transfer stopped after May 2026) is **ANSWERED** — the
 garage/lab income ended.
 
