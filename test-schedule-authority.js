@@ -101,11 +101,10 @@ console.log('\n=== ICS payments bijection with expandEvents ===');
     extra.slice(0, 5).join(', ') || `${fromIcs.size} matched`);
   ok(built.payments.every(p => p.kind === 'payment'),
     'derived payment entries are tagged payment');
-  ok(built.reminders.some(r => r.sourceId === 'hydro-due-sep1'
-      && /not joint cash/i.test(r.summary)),
-    'Hydro Sept. 1 is an ICS reminder, not a joint-cash payment');
-  ok(!built.payments.some(p => p.sourceId === 'hydro-due-sep1'),
-    'Hydro Sept. 1 has no ICS payment VEVENT');
+  ok(built.payments.some(p => p.sourceId === 'hydro-due-sep1'),
+    'Hydro Sept. 1 is an ICS payment from BILLS ACCOUNT');
+  ok(!built.reminders.some(r => r.sourceId === 'hydro-due-sep1'),
+    'Hydro Sept. 1 is no longer an external-cash reminder');
 }
 
 console.log('\n=== reminder separation ===');

@@ -373,8 +373,8 @@ console.log('\n=== H. Q19 / Q26 ANSWERED; Q20 / Q25 stay visible and fail-closed
     'payday worksheet does not narrate Q25/Q26; those stay on Outlook and the questions file');
   const heloc = (live.plan.obligations || []).find(o => o.id === 'heloc');
   ok(heloc && heloc.nonCash === true && near(heloc.amount, 814.18)
-    && /cashPayment remains \$0/i.test(heloc.note || ''),
-    'live HELOC remains non-cash capitalisation — not a claimed zero cash impact');
+    && /debts\.heloc\.cashPayment stays \$0/i.test(heloc.note || ''),
+    'live HELOC interest remains capitalised; debt cashPayment stays $0');
 }
 
 console.log('\n=== I. household-facing composed answer agrees with Forecast ===');

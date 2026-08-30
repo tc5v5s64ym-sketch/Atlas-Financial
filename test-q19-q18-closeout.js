@@ -108,8 +108,9 @@ console.log('\n=== Q19 recorded ANSWERED with the four-part closeout ===');
 
 console.log('\n=== Bell $15 watch line is not a second invented bill ===');
 {
-  ok(!(plan.bills || []).some(b => /bell|watch/i.test(b.id + b.label)),
-    'plan.bills does not invent a Bell or watch cash bill');
+  ok((plan.bills || []).some(b => b.id === 'bell' && b.needsDate === true && b.day == null)
+      && !(plan.bills || []).some(b => /watch/i.test(b.id + b.label)),
+    'Bell is undated / needs confirmation; no invented watch cash bill');
   ok(/^OPEN\b/.test(statusOf('Q18')),
     'Q18 stays OPEN for pending Bell posting residual',
     statusOf('Q18'));

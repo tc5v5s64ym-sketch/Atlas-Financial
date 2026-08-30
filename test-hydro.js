@@ -331,9 +331,9 @@ console.log('\n=== G. reconciliation remains non-writing ===');
   const liveHydro = (live.plan.bills || []).filter(b => /hydro/i.test(b.id + b.label));
   ok(liveHydro.length === 1 && liveHydro[0].id === 'hydro-due-sep1'
     && near(liveHydro[0].amount, DUE_SEP) && liveHydro[0].date === DUE_SEP_DATE
-    && liveHydro[0].payingAccount === AMANDA
+    && liveHydro[0].payingAccount === JOINT
     && liveHydro[0].householdObligation === true,
-    'live plan has the 1 September Hydro dated due, paid from Amanda, still a household obligation');
+    'live plan has the 1 September Hydro dated due, planned from BILLS ACCOUNT, still a household obligation');
   ok(!liveHydro.some(b => b.id === 'hydro-due-now'),
     'the 14 August Hydro due was not added — owner-confirmed settled');
 

@@ -85,8 +85,8 @@ console.log('=== live rows carry the owner-confirmed cadence ===');
       && near(row.amount, spec.amount)
       && (spec.month == null || row.month === spec.month)
       && row.budgetCategory === 'subscriptions'
-      && row.payingAccount == null,
-      `${spec.id} keeps owner cadence, subscriptions category, and no invented paying account`);
+      && row.payingAccount === 'chequing-a',
+      `${spec.id} keeps owner cadence, subscriptions category, and BILLS ACCOUNT payer`);
   }
   const dale = (plan.bills || []).find(b => b.id === 'chatgpt-plus-dale');
   ok(dale && dale.confidence === 'estimated',
@@ -96,12 +96,11 @@ console.log('=== live rows carry the owner-confirmed cadence ===');
     'Amanda ChatGPT Plus is the confirmed iOS amount');
   ok(!(plan.bills || []).some(b => /pay period/i.test(JSON.stringify(b))),
     'no bill row names a Pay Period 1 / Pay Period 2 owner');
-  ok(/non-subscription bill rows are paid from Chequing A except the 1 September BC Hydro/i
-    .test(plan.billsNote)
-      && /paying accounts for the subscription rows are unknown/i.test(plan.billsNote),
-    'bill note limits the Chequing A attribution and keeps subscription accounts unknown');
-  ok(!/(?:every|all)[^.]*paid from Chequing A/i.test(plan.billsNote),
-    'bill note cannot blanket-assign the subscription rows to Chequing A');
+  ok(/future planned payingAccount for dated bills, dated subscriptions, card minimums, HELOC cash minimum, and undated Bell is BILLS ACCOUNT/i
+    .test(plan.billsNote),
+    'bill note records the owner BILLS ACCOUNT paying-account remap');
+  ok(/Historical Lunch Money postings are not rewritten/i.test(plan.billsNote),
+    'bill note does not rewrite historical Lunch Money postings');
   for (const id of CANCELLED) {
     ok(!(plan.bills || []).some(b => b.id === id),
       `${id} has no forward plan.bills recurrence`);

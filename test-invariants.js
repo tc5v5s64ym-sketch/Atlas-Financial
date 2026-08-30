@@ -1016,9 +1016,9 @@ ok(!/They ride inside the variable budget's averages instead/.test(dataStr),
   'and BC Hydro is no longer said to ride inside the household variable budget');
 ok(!/summary: 'BC Hydro/.test(read('scripts/calendar-ics.js')),
   'the household calendar no longer emits a BC Hydro reminder');
-ok(!require('./scripts/calendar-ics.js').buildHouseholdCalendar(plan, asOf)
+ok(require('./scripts/calendar-ics.js').buildHouseholdCalendar(plan, asOf)
   .payments.some(p => /BC Hydro/i.test(p.summary)),
-  'and derived ICS payments do not reintroduce one');
+  'derived ICS payments include the BILLS ACCOUNT Hydro due');
 
 // Card-section current-state claims vs Forecast.utilisation / canonical
 // opening. F-02: ACCOUNT_FACTS must not publish a competing current-state

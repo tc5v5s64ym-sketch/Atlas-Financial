@@ -102,6 +102,7 @@ function streamTotal(items, asOf, end, occurrences, opts) {
   const onceOutflowsBind = !!(opts && opts.onceOutflowsBind);
   return (items || []).reduce((s, item) => {
     if (skipNonCash && item.nonCash) return s;
+    if (item.needsDate) return s;
     if (item.householdObligation === false) return s;
     if (opts && opts.plan && item.payingAccount) {
       const elsewhere = ((opts.plan.startingCash || {}).heldElsewhere || [])

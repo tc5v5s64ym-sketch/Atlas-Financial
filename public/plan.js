@@ -1496,8 +1496,10 @@ function glanceLineLabel(row, tag) {
   name = name.replace(/\s*[—–-]\s*[^—–-]*posting unknown\s*$/i, '').trim();
   name = name.replace(/\s*posting unknown\s*/ig, '').trim();
   const bits = [name || (row && row.label) || ''];
-  if (row && row.date) bits.push(fmtDate(row.date));
-  if (tag) bits.push(tag);
+  if (row && row.needsDate) bits.push(row.dateNote || 'needs confirmation');
+  else if (row && row.date) bits.push(fmtDate(row.date));
+  if (row && row.payerLabel) bits.push(row.payerLabel);
+  if (tag && tag !== 'needs-date') bits.push(tag);
   return bits.join(' · ');
 }
 
@@ -1593,7 +1595,48 @@ function runningLeftoverHtml(amount) {
   </div>`;
 }
 
+function periodBillLine(row) {
+  const kind = row.glanceKind || (row.status === 'in' ? 'in'
+    : (row.status === 'PAID' ? 'paid' : 'still-due'));
+  const status = row.status === 'in' ? 'in'
+    : row.status === 'PAID' ? 'PAID'
+    : row.status === 'pending' ? 'pending'
+    : row.status === 'needs-date' ? 'needs confirmation'
+    : 'still due';
+  const amount = glanceSignedMoney(glanceMoney(row, kind));
+  const about = row.confidence === 'estimated' && amount != null ? 'about ' : '';
+  return `<div class="operating-line" data-period-bill="${row.id || ''}" data-bill-status="${status}">
+    <span>${glanceLineLabel(row, status)}</span><span>${amount != null ? about + amount : '—'}</span>
+  </div>`;
+}
+
 function periodBillsHtml(view) {
+  const sections = (view && view.billSections) || [];
+  const undated = (view && view.undatedBills) || [];
+  if (sections.length) {
+    const blocks = sections.map(section => {
+      const lines = (section.rows || []).map(periodBillLine).join('');
+      const body = lines
+        ? `<div class="operating-lines">${lines}</div>`
+        : '<p class="operating-lead">No bills in this period.</p>';
+      const total = section.total != null && isFinite(Number(section.total))
+        ? `<p class="payday-qual">${section.label} total ${money2(section.total)}</p>`
+        : '';
+      return `<div data-bill-section="${section.id || ''}">
+        <div class="payday-group">${section.label}</div>
+        ${body}
+        ${total}
+      </div>`;
+    }).join('');
+    const undatedLines = undated.map(periodBillLine).join('');
+    const undatedBlock = undatedLines
+      ? `<div data-bill-section="needs-date"><div class="operating-lines">${undatedLines}</div></div>`
+      : '';
+    return `<div class="payday-period-bills" data-payday-period-bills>
+      ${blocks}
+      ${undatedBlock}
+    </div>`;
+  }
   const rows = (view && view.bills) || [];
   const empty = view && view.billsHeading === 'Bills this week'
     ? 'No bills this week.'
@@ -1603,19 +1646,7 @@ function periodBillsHtml(view) {
       <p class="operating-lead">${empty}</p>
     </div>`;
   }
-  const lines = rows.map(row => {
-    const kind = row.glanceKind || (row.status === 'in' ? 'in'
-      : (row.status === 'PAID' ? 'paid' : 'still-due'));
-    const status = row.status === 'in' ? 'in'
-      : row.status === 'PAID' ? 'PAID'
-      : row.status === 'pending' ? 'pending'
-      : 'still due';
-    const amount = glanceSignedMoney(glanceMoney(row, kind));
-    const about = row.confidence === 'estimated' && amount != null ? 'about ' : '';
-    return `<div class="operating-line" data-period-bill="${row.id || ''}" data-bill-status="${status}">
-      <span>${glanceLineLabel(row, status)}</span><span>${amount != null ? about + amount : '—'}</span>
-    </div>`;
-  }).join('');
+  const lines = rows.map(periodBillLine).join('');
   return `<div class="payday-period-bills" data-payday-period-bills>
     <div class="operating-lines">${lines}</div>
   </div>`;
@@ -1827,7 +1858,7 @@ function operatingSurfaceHtml(ctx) {
     </div>`;
 
   const view = ctx.planView || advice.defaultView || {};
-  const billsHeading = view.billsHeading || 'Bills this pay period';
+  const billsHeading = view.billsHeading || 'Bills';
   const look = ctx.planLook || 'this-period';
   const option = (value, label) =>
     `<option value="${value}"${look === value ? ' selected' : ''}>${label}</option>`;

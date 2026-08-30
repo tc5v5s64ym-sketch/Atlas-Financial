@@ -73,6 +73,7 @@ function loadComposer() {
     grab(planSrc, /^function mustLeaveHtml\([\s\S]*?\n\}$/m, 'mustLeaveHtml'),
     grab(planSrc, /^function extraDebtGlanceHtml\([\s\S]*?\n\}$/m, 'extraDebtGlanceHtml'),
     grab(planSrc, /^function runningLeftoverHtml\([\s\S]*?\n\}$/m, 'runningLeftoverHtml'),
+    grab(planSrc, /^function periodBillLine\([\s\S]*?\n\}$/m, 'periodBillLine'),
     grab(planSrc, /^function periodBillsHtml\([\s\S]*?\n\}$/m, 'periodBillsHtml'),
     grab(planSrc, /^function householdBudgetHtml\([\s\S]*?\n\}$/m, 'householdBudgetHtml'),
     grab(planSrc, /^function budgetDigestHtml\([\s\S]*?\n\}$/m, 'budgetDigestHtml'),
@@ -271,7 +272,7 @@ console.log('\n=== 2. default view order and kitchen-counter labels ===');
   const glance = defaultGlance(html);
   const prompts = [
     'Current Balance',
-    'Bills this pay period',
+    'Bills',
     'Balance after bills',
     'Household budget',
     'Balance after household budget',
@@ -308,8 +309,8 @@ console.log('\n=== 3. bills this pay period: paid stay listed, history stays off
     'paid mortgage and gym stay on the period-bill list');
   ok(ids.includes('tdfees') && ids.includes('travel'),
     'still-due TD fees and Travel Visa min stay on the list');
-  ok(!ids.includes('childBenefit') && !ids.includes('bcaa-aug15-outstanding'),
-    'Aug 20 child benefit and Aug 16 BCAA are not this-period glance bills');
+  ok(!ids.includes('childBenefit') && ids.includes('bcaa-aug15-outstanding'),
+    'income stays off the bills list; Aug 16 BCAA is in the calendar month');
   const html = composer.operatingSurfaceHtml({
     advice, weekly: advice.weekly, recommended: advice.weekly,
   });
@@ -318,13 +319,12 @@ console.log('\n=== 3. bills this pay period: paid stay listed, history stays off
       && /Fit4Less membership · Aug 28 · PAID/.test(glance),
     'paid bills print PAID rather than being hidden');
   ok(/TD account fees \(two accounts\) · Aug 30 · still due/.test(glance),
-    'later-in-period bills stay still due');
-  ok(!/Canada child benefit/.test(glance) && !/BCAA/.test(glance)
-      && !/Rogers/.test(glance) && !/Bell/.test(glance) && !/CMAW/.test(glance),
-    'glance does not invent bills or dump previous-cycle stubs');
-  ok(glance.includes('+' + composer.money2(PAYROLL))
-      && glance.includes('−' + composer.money2(MORTGAGE)),
-    'movements print money in as + and money out as −');
+    'later-in-month bills stay still due');
+  ok(!/Canada child benefit/.test(glance)
+      && !/Rogers/.test(glance) && !/CMAW/.test(glance),
+    'glance does not invent bills or print income as a bill');
+  ok(glance.includes('−' + composer.money2(MORTGAGE)),
+    'bill movements print money out as −');
 }
 
 console.log('\n=== 4. household budget prints existing owner targets only ===');

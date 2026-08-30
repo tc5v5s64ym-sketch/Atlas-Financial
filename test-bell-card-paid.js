@@ -220,8 +220,10 @@ ok(q18 && /^OPEN\b/.test(q18[1].trim()),
 const telecom = (live.plan.budget.categories || []).find(c => c.id === 'telecom');
 ok(telecom && telecom.currentMonthly === 121 && telecom.plannedMonthly == null,
   'live currentMonthly is $121.00, the one Bell amount');
-ok(!(live.plan.bills || []).some(b => /bell|watch|telus/i.test(`${b.id} ${b.label}`)),
-  'live plan.bills has no Bell, watch, or Telus row');
+ok((live.plan.bills || []).some(b => b.id === 'bell' && b.needsDate === true && b.day == null),
+  'live Bell is undated / needs confirmation, not a fabricated cash day');
+ok(!(live.plan.bills || []).some(b => /telus|watch/i.test(`${b.id} ${b.label}`) && b.id !== 'bell'),
+  'live plan.bills has no Telus or invented watch row');
 const travel = (live.plan.obligations || []).find(o => o.id === 'travel');
 ok(travel && travel.debtId === 'travelvisa' && travel.effect === 'payment'
   && near(travel.amount, TRAVEL_MIN),
