@@ -251,10 +251,12 @@ Balance $31,555.85 known; holdings, book value and contribution room are not.
 Access needs OTC Markets and CME/S&P exchange agreements — **an owner decision,
 never an agent's**.
 
-**B51 · Narrow the home valuation** · *small*
-$1.1m–$1.4m is a $300k spread and net worth swings 84% across it. A realtor's
-opinion or a recent comparable would tighten it cheaply. A lender orders its own
-appraisal regardless.
+**B51 · Narrow the home valuation** · *small* · planning set 2026-08-29; verified value remains Q3
+Owner decision 2026-08-29: planning estimate **$1,200,000**; **$1,300,000** is
+optimistic high only, not the plan. The 2026-08-09 $1.1m–$1.4m range and the
+2026-08-21 $1.3m planning figure are dated evidence. Q3 stays OPEN until a
+comparable the owner accepts as verified, a municipal assessment, or an
+appraisal. A lender orders its own appraisal regardless.
 
 **B43 · PayPal #2 — confirm account type** · *small*
 Inferred personal from its transactions, not verified.
