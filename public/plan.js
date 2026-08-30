@@ -1436,7 +1436,7 @@ function cashGlanceHtml(alloc, liveOverlay) {
 }
 
 function postedThisPeriodHtml(action) {
-  return alreadyLeftRowsHtml(action, 'posted-only');
+  return alreadyPaidRowsHtml(action);
 }
 
 function glanceMoney(row, kind) {
@@ -1459,47 +1459,49 @@ function glanceMoney(row, kind) {
 }
 
 function glanceLineLabel(row, tag) {
-  const bits = [row.label];
-  if (row.date) bits.push(fmtDate(row.date));
+  let name = String(row && row.label || '').replace(/\s+/g, ' ').trim();
+  name = name.replace(/\s*[—–-]\s*[^—–-]*posting unknown\s*$/i, '').trim();
+  name = name.replace(/\s*posting unknown\s*/ig, '').trim();
+  const bits = [name || (row && row.label) || ''];
+  if (row && row.date) bits.push(fmtDate(row.date));
   if (tag) bits.push(tag);
   return bits.join(' · ');
 }
 
-function alreadyLeftRowsHtml(action) {
-  const inflows = ((action && action.inflows) || []);
-  const paid = ((action && action.bills) || [])
-    .filter(row => row && row.settlement === 'represented');
-  if (!inflows.length && !paid.length) return '';
+function alreadyPaidRowsHtml(action) {
+  const paid = action && action.thisPaydayPaid;
+  const inflows = (paid && paid.inflows) || [];
+  const bills = (paid && paid.bills) || [];
+  if (!inflows.length && !bills.length) return '';
   const rows = inflows.map(row => paydayBucketRow(
     glanceLineLabel(row, 'in'),
     glanceMoney(row, 'in'),
     null,
     null
-  )).concat(paid.map(row => paydayBucketRow(
+  )).concat(bills.map(row => paydayBucketRow(
     glanceLineLabel(row, 'paid'),
     glanceMoney(row, 'paid'),
     null,
     null
   ))).join('');
-  return `<div class="operating-lines">${rows}</div>`;
+  return `<div class="operating-lines payday-already-paid-lines">${rows}</div>`;
 }
 
-function alreadyLeftHtml(action) {
-  const rows = alreadyLeftRowsHtml(action);
+function alreadyPaidHtml(action) {
+  const rows = alreadyPaidRowsHtml(action);
   if (!rows) {
-    return `<div class="payday-already-left" data-payday-already-left>
-      <p class="operating-lead">Nothing has left this payday yet.</p>
+    return `<div class="payday-already-paid" data-payday-already-paid>
+      <p class="operating-lead">Nothing paid this payday yet.</p>
     </div>`;
   }
-  return `<div class="payday-already-left" data-payday-already-left data-payday-posted-actuals>
+  return `<div class="payday-already-paid" data-payday-already-paid data-payday-posted-actuals>
+    <p class="operating-lead">Already paid from this payday.</p>
     ${rows}
   </div>`;
 }
 
 function stillDueItems(alloc, action) {
-  const fromAction = ((action && action.bills) || [])
-    .filter(row => row && row.settlement && row.settlement !== 'represented');
-  if (fromAction.length) return fromAction;
+  if (action && Array.isArray(action.thisPaydayDue)) return action.thisPaydayDue;
   return ((alloc && alloc.obligations && alloc.obligations.items) || [])
     .filter(item => item && item.settlement !== 'represented');
 }
@@ -1531,7 +1533,8 @@ function mustLeaveHtml(alloc, action) {
     ? paydayBucketRow('Kept for these bills', obligations.allocated, obligations.wanted, obligations.shortfall)
     : '';
   return `<div class="payday-must-leave payday-still-due" data-payday-must-leave data-payday-still-due>
-    <div class="operating-lines">${rows}</div>
+    <p class="operating-lead">Still needs to leave.</p>
+    <div class="operating-lines payday-still-due-lines">${rows}</div>
     ${kept}
     ${short}
   </div>`;
@@ -1621,7 +1624,7 @@ function operatingSurfaceHtml(ctx) {
 
   const cash = cashGlanceHtml(alloc, ctx.liveOverlay);
   const bills = mustLeaveHtml(alloc, action);
-  const alreadyLeft = alreadyLeftHtml(action);
+  const alreadyPaid = alreadyPaidHtml(action);
   // Weekly permission copies the recommend weekly field. Infeasible weekly = 0
   // is not a supported $0/week yes.
   const weeklyPermission = capView.hasFeasibleCap
@@ -1655,7 +1658,7 @@ function operatingSurfaceHtml(ctx) {
     ${refreshTrustHtml(ctx.refreshTrust)}
     ${question('01', 'Leftover cash', cash)}
     ${question('02', 'Still due', bills)}
-    ${question('03', 'Already left this payday', alreadyLeft)}
+    ${question('03', 'Already paid', alreadyPaid)}
     ${question('04', "This week's spend", spend)}
     ${extra ? question('05', 'Extra on the cards', extra) : ''}
     ${question('06', 'Next move', next)}

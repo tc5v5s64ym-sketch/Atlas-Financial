@@ -20,9 +20,8 @@ const IDS = [
   'bcaa-aug15-outstanding',
   'icbc-aug15-outstanding',
   'resp-aug15-outstanding',
-  'uniondues-aug15-outstanding',
 ];
-const EXPECTED = 307.87;
+const EXPECTED = 282.87;
 let failures = 0;
 
 function clone(value) {
@@ -84,10 +83,10 @@ const result = Live.overlayLiveState({ data: canonical, report });
 const afterReserve = relevantReserve(result.data.plan);
 
 ok(near(beforeReserve, EXPECTED),
-  'the four unresolved occurrences reserve $307.87 before trusted posting evidence',
+  'the three unresolved occurrences reserve $282.87 before trusted posting evidence',
   String(beforeReserve));
-ok(candidates.length === 4 && IDS.every(id => candidates.some(candidate => candidate.id === id)),
-  'all four sanitized posted transactions identify their exact reserved occurrence',
+ok(candidates.length === 3 && IDS.every(id => candidates.some(candidate => candidate.id === id)),
+  'all three sanitized posted transactions identify their exact reserved occurrence',
   candidates.map(candidate => candidate.id).join(', '));
 ok(candidates.every(candidate => candidate.date === '2026-08-16'
     && candidate.postingDate === '2026-08-17'
@@ -96,7 +95,7 @@ ok(candidates.every(candidate => candidate.date === '2026-08-16'
     && candidate.amountNotUsed === true),
   'each identity uses debit direction and the bounded weekend-to-next-business-day relation');
 ok(near(afterReserve, 0) && near(beforeReserve - afterReserve, EXPECTED),
-  'the live Forecast releases exactly $307.87 and does not reserve the four obligations again',
+  'the live Forecast releases exactly $282.87 and does not reserve the three obligations again',
   `${beforeReserve} -> ${afterReserve}`);
 ok(IDS.every(id => (result.data.plan.opening.representedEvents || [])
     .some(item => item.id === id && item.date === '2026-08-16')),
@@ -111,7 +110,6 @@ const expectedById = new Map([
   ['bcaa-aug15-outstanding', 82.96],
   ['icbc-aug15-outstanding', 99.91],
   ['resp-aug15-outstanding', 100],
-  ['uniondues-aug15-outstanding', 25],
 ]);
 for (const eventId of IDS) {
   const canonicalBill = canonical.plan.bills.find(bill => bill.id === eventId);

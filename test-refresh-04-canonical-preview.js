@@ -325,9 +325,8 @@ console.log('\n=== B. trusted preview distinguishes the five candidate classes =
     'matching posted chequing-a is classified as a replay no-op');
   ok((preview.noops || []).some(row => row.id === BCAA_ID && row.reason === 'obligation-represented-replay'),
     'represented BCAA is replayed evidence, not a posted write');
-  ok((preview.ownerQuestions || []).some(row => row.id === CMAW_ID
-    && row.reason === 'unverified-settlement-owner-fact'),
-    'unverified CMAW is an owner-fact question');
+  ok(!(preview.ownerQuestions || []).some(row => row.id === CMAW_ID),
+    'cancelled CMAW dues are not an owner-fact question');
   ok((preview.unresolved || []).some(row => row.reason === 'unmatched-household-cash-must-not-write'),
     'unmatched household cash is unresolved and must not write');
   ok((preview.unsupported || []).some(row => row.reason === 'unmapped-provider-account'
@@ -445,7 +444,8 @@ console.log('\n=== E. exact approval writes only independently previewed targets
     'representedEvents were not written by posted previewId');
   const cmawBefore = JSON.stringify((data.plan.bills || []).find(b => b.id === CMAW_ID) || null);
   const cmawAfter = JSON.stringify((after.plan.bills || []).find(b => b.id === CMAW_ID) || null);
-  ok(cmawBefore === cmawAfter, 'unverified CMAW bill row is unchanged');
+  ok(cmawBefore === cmawAfter && cmawBefore === 'null',
+    'cancelled CMAW bill remains absent');
   ok(after.meta.asOf === data.meta.asOf, 'opening as-of is not rewritten');
 }
 

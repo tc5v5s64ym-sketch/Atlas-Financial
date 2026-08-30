@@ -24,7 +24,7 @@ console.log('=== default homepage speaks to the household first ===');
   const html = read('public/index.html');
   ok(/<h1>This payday<\/h1>/.test(html),
     'the first surface is labelled this payday');
-  ok(/Leftover cash, what is still due, what already left/.test(html)
+  ok(/Leftover cash, what is still due, what is already paid/.test(html)
     && /extra on the cards only if leftover after bills/.test(html),
     'the intro says what the page is for in ordinary language');
   const planAt = html.indexOf('<script src="/plan.js"></script>');

@@ -69,8 +69,8 @@ function loadComposer() {
     grab(planSrc, /^function postedThisPeriodHtml\([\s\S]*?\n\}$/m, 'postedThisPeriodHtml'),
     grab(planSrc, /^function glanceMoney\([\s\S]*?\n\}$/m, 'glanceMoney'),
     grab(planSrc, /^function glanceLineLabel\([\s\S]*?\n\}$/m, 'glanceLineLabel'),
-    grab(planSrc, /^function alreadyLeftRowsHtml\([\s\S]*?\n\}$/m, 'alreadyLeftRowsHtml'),
-    grab(planSrc, /^function alreadyLeftHtml\([\s\S]*?\n\}$/m, 'alreadyLeftHtml'),
+    grab(planSrc, /^function alreadyPaidRowsHtml\([\s\S]*?\n\}$/m, 'alreadyPaidRowsHtml'),
+    grab(planSrc, /^function alreadyPaidHtml\([\s\S]*?\n\}$/m, 'alreadyPaidHtml'),
     grab(planSrc, /^function stillDueItems\([\s\S]*?\n\}$/m, 'stillDueItems'),
     grab(planSrc, /^function cashGlanceHtml\([\s\S]*?\n\}$/m, 'cashGlanceHtml'),
     grab(planSrc, /^function mustLeaveHtml\([\s\S]*?\n\}$/m, 'mustLeaveHtml'),
@@ -79,7 +79,7 @@ function loadComposer() {
     grab(planSrc, /^function operatingSurfaceHtml\([\s\S]*?\n\}$/m, 'operatingSurfaceHtml'),
   ].join('\n');
   return vm.runInNewContext(
-    `${source}\n({ operatingSurfaceHtml, mustLeaveHtml, alreadyLeftHtml, paydayAllocationSummaryHtml, futureGravityHtml, money, money2 });`,
+    `${source}\n({ operatingSurfaceHtml, mustLeaveHtml, alreadyPaidHtml, paydayAllocationSummaryHtml, futureGravityHtml, money, money2 });`,
     { Forecast: F }
   );
 }
@@ -119,6 +119,7 @@ function bannedOnGlance(html) {
   const text = defaultGlance(html).replace(/<[^>]+>/g, ' ');
   return /paydayAllocation|currentPeriodAction|Forecast\.recommend|representedEvents|unverified-settlement|true surplus|owner-fact/.exec(text)
     || /\bunverified\b|\brepresented\b|\boverlay\b|\bForecast\b|\bAtlas\b/i.exec(text)
+    || /posting unknown/i.exec(text)
     || /(?<![A-Za-z])asOf(?![A-Za-z])/.exec(text);
 }
 
@@ -346,6 +347,25 @@ console.log('\n=== 5b. leftover lists earned posted actuals, not an invented spe
 {
   const action = {
     mode: 'between-paydays',
+    thisPayday: '2026-08-28',
+    thisPaydayPaid: {
+      payday: '2026-08-28',
+      inflows: [],
+      bills: [
+        {
+          id: 'mortgage', label: 'Mortgage', date: '2026-08-28',
+          planned: 1600, actual: 1234.56, remaining: 0,
+          settlement: 'represented', confidence: 'confirmed',
+        },
+      ],
+    },
+    thisPaydayDue: [
+      {
+        id: 'fit4less', label: 'Fit4Less membership', date: '2026-08-28',
+        planned: 11.54, amount: 11.54, remaining: 11.54,
+        settlement: 'unverified', confidence: 'confirmed',
+      },
+    ],
     bills: [
       {
         id: 'mortgage', label: 'Mortgage', date: '2026-08-28',
@@ -372,27 +392,37 @@ console.log('\n=== 5b. leftover lists earned posted actuals, not an invented spe
   ok(/Fit4Less membership · Aug 28 · still due/.test(leave)
     && !/Mortgage/.test(leave),
     'still due lists unposted Fit4Less and not the paid mortgage');
-  const already = composer.alreadyLeftHtml(action);
-  ok(/data-payday-already-left/.test(already) && /Mortgage · Aug 28 · paid/.test(already),
-    'already left lists the paid mortgage from currentPeriodAction');
+  ok(/Still needs to leave/.test(leave) && /data-payday-still-due/.test(leave),
+    'still due is labelled as money that still needs to leave');
+  const already = composer.alreadyPaidHtml(action);
+  ok(/data-payday-already-paid/.test(already) && /Mortgage · Aug 28 · paid/.test(already),
+    'already paid lists the paid mortgage from thisPaydayPaid');
+  ok(/Already paid from this payday/.test(already),
+    'already paid is labelled paid, not leftover to pay');
   ok(/\$1,234\.56/.test(already),
     'paid mortgage uses Forecast actual, not a page-invented total');
   ok(!/Fit4Less membership · Aug 28 · paid/.test(already),
     'unposted Fit4Less is not presented as paid');
-  ok(/Payroll — Seaspan/.test(composer.alreadyLeftHtml({
-    inflows: [{
-      id: 'payroll', label: 'Payroll — Seaspan', date: '2026-08-28',
-      planned: 1000, actual: 1000, settlement: 'represented',
-    }],
-    bills: action.bills,
-  })) && /Payroll — Seaspan · Aug 28 · in/.test(composer.alreadyLeftHtml({
-    inflows: [{
-      id: 'payroll', label: 'Payroll — Seaspan', date: '2026-08-28',
-      planned: 1000, actual: 1000, settlement: 'represented',
-    }],
-    bills: [],
+  ok(/Payroll — Seaspan/.test(composer.alreadyPaidHtml({
+    thisPaydayPaid: {
+      payday: '2026-08-28',
+      inflows: [{
+        id: 'payroll', label: 'Payroll — Seaspan', date: '2026-08-28',
+        planned: 1000, actual: 1000, settlement: 'represented',
+      }],
+      bills: action.thisPaydayPaid.bills,
+    },
+  })) && /Payroll — Seaspan · Aug 28 · in/.test(composer.alreadyPaidHtml({
+    thisPaydayPaid: {
+      payday: '2026-08-28',
+      inflows: [{
+        id: 'payroll', label: 'Payroll — Seaspan', date: '2026-08-28',
+        planned: 1000, actual: 1000, settlement: 'represented',
+      }],
+      bills: [],
+    },
   })),
-    'already left prints represented payday income as in');
+    'already paid prints represented payday income as in');
   const leftover = composer.paydayAllocationSummaryHtml({
     lines: [{ key: 'obligations', kind: 'obligations', label: 'Bills', amount: 11.54 }],
     remainder: 88.12,

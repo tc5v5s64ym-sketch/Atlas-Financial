@@ -164,19 +164,25 @@ console.log('\n=== D. posted 14 August obligations are not reserved again ===');
 
 console.log('\n=== E. unposted 15 August bills remain reserved; unknown posting is not guessed ===');
 {
-  const unknownIds = ['bcaa', 'icbc', 'resp', 'uniondues'];
+  const unknownIds = ['bcaa', 'icbc', 'resp'];
   ok(unknownIds.every(id => posting.observations.some(o => o.eventId === id && o.unknown === true)),
-    'BCAA / ICBC / RESP / union dues remain unknown in posting observations');
+    'BCAA / ICBC / RESP remain unknown in posting observations');
+  ok(posting.observations.some(o => o.eventId === 'uniondues' && o.unknown === true),
+    'historical CMAW posting observation remains unknown evidence, not a Forecast bill');
   for (const id of ['bcaa-aug15-outstanding', 'icbc-aug15-outstanding',
     'resp-aug15-outstanding', 'uniondues-aug15-outstanding']) {
     ok(events16.some(e => e.id === id && e.date === AUG16),
-      `${id} is reserved on the 16 August opening`);
+      `${id} is reserved on the pinned 16 August opening`);
   }
   const independentMidMonth = 82.96 + 99.91 + 100 + 25;
   const reserved = events16.filter(e => /aug15-outstanding/.test(e.id))
     .reduce((s, e) => s + (-e.amount), 0);
   ok(near(reserved, independentMidMonth),
-    'independent 15 August unposted reserve is $307.87', money(reserved));
+    'independent pinned 15 August unposted reserve is $307.87', money(reserved));
+  const liveEvents = F.expandEvents(live.plan, live.meta.asOf, windowEnd(live.meta.asOf), {});
+  ok(!(live.plan.bills || []).some(b => b.id === 'uniondues-aug15-outstanding' || b.id === 'uniondues')
+      && !liveEvents.some(e => e.id === 'uniondues-aug15-outstanding' || e.id === 'uniondues'),
+    'current opening no longer reserves cancelled CMAW dues');
   ok(!live.plan.opening.representedEvents.some(e => unknownIds.includes(e.id)),
     'unknown posting was not written onto representedEvents');
   const bcaa = (live.plan.bills || []).find(b => b.id === 'bcaa-aug15-outstanding');

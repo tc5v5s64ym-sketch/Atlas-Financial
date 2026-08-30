@@ -2360,7 +2360,9 @@
 
   // Represented income already inside this pay period. Same keepRepresented
   // walk as currentPeriodBills; this is not a second calendar. Upcoming
-  // income is not "already left" and is omitted.
+  // income is not already paid and is omitted. The default glance does not
+  // print this whole period set: currentPeriodAction.thisPaydayPaid keeps
+  // only the payday date.
   function currentPeriodInflows(plan, asOf, origin, periodLast, opts) {
     const represented = representedKeySet(plan, opts, asOf);
     const observed = representedActualMap(opts);
@@ -2413,6 +2415,76 @@
       nextPayday: cal.subsequent,
       bills: currentPeriodBills(plan, asOf, origin, cal.periodLast, opts),
     };
+  }
+
+  // The payday whose cheque is in play: as-of when today is payday,
+  // otherwise the previous payday. Distinct from periodOriginDate, which
+  // may reach back through a live overlay priorAsOf so elapsed actuals
+  // still subtract from that opening.
+  function thisPaydayDate(plan, asOf, opts, cal) {
+    cal = cal || paydayCalendar(plan, asOf, opts);
+    if (cal.todayIsPayday) return asOf;
+    return previousPaydayDate(plan, asOf, opts) || asOf;
+  }
+
+  function onceBillIdsBeforePayday(plan, paydayDate) {
+    const ids = new Set();
+    for (const bill of (plan && plan.bills) || []) {
+      if (bill && bill.frequency === 'once' && bill.id && bill.date
+        && bill.date < paydayDate) {
+        ids.add(bill.id);
+      }
+    }
+    return ids;
+  }
+
+  // Already paid from this payday's cheque: represented inflows and bills
+  // dated on the payday itself. Mid-period child benefit and previous-cycle
+  // once stubs are period history, not this payday.
+  function thisPaydayPaidFrom(inflows, bills, paydayDate) {
+    return {
+      payday: paydayDate,
+      inflows: (inflows || []).filter(row => row && row.date === paydayDate),
+      bills: (bills || []).filter(row => row
+        && row.settlement === 'represented'
+        && row.date === paydayDate),
+    };
+  }
+
+  // Still due from this payday's leftover cash. Drops carried once-rows
+  // dated before this payday (previous cheque / posting-unknown stubs).
+  // Keeps overdue recurring obligations (Travel Visa min) and bills due
+  // on or after this payday (TD fees). Amounts copy paydayAllocation /
+  // current-period remaining; this does not invent a payee.
+  function thisPaydayDueFrom(plan, paydayDate, alloc, bills) {
+    const skip = onceBillIdsBeforePayday(plan, paydayDate);
+    const byKey = new Map();
+    for (const row of bills || []) {
+      if (row && row.id && row.date) byKey.set(row.id + '@' + row.date, row);
+    }
+    const items = [];
+    for (const item of (alloc && alloc.obligations && alloc.obligations.items) || []) {
+      if (!item) continue;
+      if (item.settlement === 'represented') continue;
+      if (item.id && skip.has(item.id)) continue;
+      const bill = byKey.get((item.id || '') + '@' + item.date);
+      if (bill && bill.settlement === 'represented') continue;
+      const amount = roundCent(item.amount);
+      items.push({
+        id: item.id,
+        label: item.label,
+        kind: item.kind,
+        date: item.date,
+        planned: amount,
+        amount,
+        allocated: item.allocated != null ? item.allocated : null,
+        remaining: bill && bill.remaining != null ? bill.remaining : amount,
+        actual: bill && bill.actual != null ? bill.actual : null,
+        settlement: (bill && bill.settlement) || item.settlement,
+        confidence: item.confidence || (bill && bill.confidence) || null,
+      });
+    }
+    return items;
   }
 
   function currentPeriodAction(plan, asOf, opts) {
@@ -2500,12 +2572,18 @@
       || (useActuals && essentialRemaining < -EPSILON)
       || (Number(alloc.obligations && alloc.obligations.shortfall) > EPSILON)
       || (Number(alloc.essentials && alloc.essentials.shortfall) > EPSILON);
+    const paydayDate = thisPaydayDate(plan, asOf, opts, cal);
+    const thisPaydayPaid = thisPaydayPaidFrom(inflows, bills, paydayDate);
+    const thisPaydayDue = thisPaydayDueFrom(plan, paydayDate, alloc, bills);
     return {
       asOf,
       mode: cal.mode,
       periodStart: origin,
       periodEnd: periodLast,
       nextPayday: cal.subsequent,
+      thisPayday: paydayDate,
+      thisPaydayPaid,
+      thisPaydayDue,
       coverage,
       bills,
       inflows,

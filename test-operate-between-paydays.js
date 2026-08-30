@@ -230,10 +230,10 @@ console.log('\n=== the homepage selects the daily renderer without changing payd
   ok(/refreshTrustHtml\(ctx\.refreshTrust\)/.test(src)
     && /question\('01', 'Leftover cash'/.test(src)
     && /question\('02', 'Still due'/.test(src)
-    && /question\('03', 'Already left this payday'/.test(src)
+    && /question\('03', 'Already paid'/.test(src)
     && /question\('04', "This week's spend"/.test(src)
     && /question\('06', 'Next move'/.test(src),
-    'refresh-trust strip precedes leftover cash, still due, already left, this week\'s spend, and next move');
+    'refresh-trust strip precedes leftover cash, still due, already paid, this week\'s spend, and next move');
 }
 
 console.log('\n=== the page remains a renderer, not a calculator ===');

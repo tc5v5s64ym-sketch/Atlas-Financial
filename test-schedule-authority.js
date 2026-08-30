@@ -166,18 +166,16 @@ console.log('\n=== cancelled CMAW recurrence no longer creates future dues ===')
   ok(!(plan.obligations || []).some(o => /union|cmaw/i.test(o.id + o.label)),
     'and they are not moved into a second obligation');
   const outstanding = (plan.bills || []).find(b => b.id === 'uniondues-aug15-outstanding');
-  ok(!!outstanding && same(outstanding.amount, 25) && outstanding.frequency === 'once'
-    && outstanding.date === '2026-08-16',
-    'the 15 August posting-unknown occurrence remains a $25 once row');
+  ok(!outstanding,
+    'the 15 August posting-unknown occurrence is gone after owner stop-tracking');
   const windowStream = F.expandEvents(plan, asOf, windowEnd);
-  const duesEvents = windowStream.filter(e => e.id === 'uniondues' || e.id === 'uniondues-aug15-outstanding');
-  ok(duesEvents.some(e => e.id === 'uniondues-aug15-outstanding' && e.date <= asOf),
-    'the unposted 15 August dues are still reserved on this opening');
+  const duesEvents = windowStream.filter(e => e.id === 'uniondues' || e.id === 'uniondues-aug15-outstanding'
+    || /cmaw|union dues/i.test(e.label || ''));
+  ok(duesEvents.length === 0,
+    'cancelled CMAW dues are not reserved on this opening');
   ok(duesEvents.every(e => e.id !== 'uniondues'),
     'no monthly uniondues occurrence is created in the Plan window',
     duesEvents.filter(e => e.id === 'uniondues').map(e => e.date).join(','));
-  ok(duesEvents.every(e => same(-e.amount, 25) && e.kind === 'bill'),
-    'the remaining reserved occurrence is still a $25 bill');
   const built = icsMod.buildHouseholdCalendar(plan, asOf, icsEnd);
   const icsDues = built.payments.filter(p => p.sourceId === 'uniondues');
   ok(icsDues.length === 0,
@@ -189,14 +187,15 @@ console.log('\n=== cancelled CMAW recurrence no longer creates future dues ===')
   ok(!!cancel && cancel.status === 'done' && same(cancel.amount, 25),
     'the cancel-dues action is done after owner-confirmed cancellation',
     cancel ? cancel.status : 'missing');
-  ok(/posting is still unknown/i.test(cancel.why),
-    'and the action still refuses to treat cancellation as August settlement');
+  ok(/posting is still unknown|stop tracking/i.test(cancel.why),
+    'and the action records that cancelled dues are not a remaining Forecast bill');
   const tax = plan.budget.categories.find(c => c.id === 'tax');
   ok(tax && !/union dues/i.test(tax.label),
     'the CRA reserve is not labelled as if it included union dues',
     tax ? tax.label : 'missing');
-  ok(/uniondues-aug15-outstanding/i.test(tax.why),
-    'and the reserve note points at the remaining once row rather than absorbing it');
+  ok(!/uniondues-aug15-outstanding/i.test(tax.why)
+      && /not reserved/i.test(tax.why),
+    'the reserve note no longer points at a CMAW once row');
 }
 
 console.log('\n=== next due / next payment out, same stream ===');
