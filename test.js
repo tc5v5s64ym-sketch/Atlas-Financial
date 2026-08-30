@@ -61,6 +61,7 @@ const suites = [
   ['payday operating sheet six glance answers', 'test-payday-operating-sheet.js'],
   ['Plan default view layout', 'test-plan-default-view.js'],
   ['Plan next-period lookahead and week picker', 'test-plan-lookahead-week.js'],
+  ['Plan actual vs budget digest', 'test-plan-budget-digest.js'],
   ['weekly cap conversion + discretionary room', 'test-weekly-cap.js'],
   ['food and fuel monthly figures', 'test-food-fuel.js'],
   ['phase titles and risk list', 'test-plan-phases.js'],
