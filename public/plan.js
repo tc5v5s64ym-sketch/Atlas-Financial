@@ -25,6 +25,7 @@ const state = {
   debts: null,
   extraDebtTarget: null,
 };
+let planLook = 'this-period';
 // ONLY these are persisted or restored. `state` also carries the debt records
 // so the engine can size a payment against real balances, and serialising the
 // whole object would write account balances and credit limits into
@@ -1446,11 +1447,11 @@ function spendDecisionHtml(capView, weeklyPermission, remainingUnavailable, week
     </details>`;
 }
 
-function cashGlanceHtml(alloc, liveOverlay) {
+function cashGlanceHtml(alloc, liveOverlay, cashNote) {
   const available = alloc && alloc.available != null ? money2(alloc.available) : '—';
   return `<div class="payday-cash" data-payday-cash data-spendable-cash="${available}">
     <span class="operating-amount" data-spendable-cash-amount>${available}</span>
-    <p class="operating-note">${paydayGlanceCashNote(alloc, liveOverlay)}</p>
+    <p class="operating-note">${cashNote || paydayGlanceCashNote(alloc, liveOverlay)}</p>
   </div>`;
 }
 
@@ -1594,9 +1595,12 @@ function runningLeftoverHtml(amount) {
 
 function periodBillsHtml(view) {
   const rows = (view && view.bills) || [];
+  const empty = view && view.billsHeading === 'Bills this week'
+    ? 'No bills this week.'
+    : 'No bills this pay period.';
   if (!rows.length) {
     return `<div class="payday-period-bills" data-payday-period-bills>
-      <p class="operating-lead">No bills this pay period.</p>
+      <p class="operating-lead">${empty}</p>
     </div>`;
   }
   const lines = rows.map(row => {
@@ -1644,9 +1648,10 @@ function firstCardHtml(view) {
     </div>`;
   }
   const extra = card.extraThisPayday != null ? Number(card.extraThisPayday) : 0;
+  const extraLead = (view && view.extraLabel) || 'Extra this payday';
   const extraLine = extra > 0
-    ? `Extra this payday ${money2(extra)}.`
-    : 'Extra this payday $0.00.';
+    ? `${extraLead} ${money2(extra)}.`
+    : `${extraLead} $0.00.`;
   const bits = [];
   if (card.balance != null) bits.push(`Balance ${money2(card.balance)}`);
   if (card.rate != null && isFinite(Number(card.rate))) bits.push(`${Number(card.rate).toFixed(2)}%`);
@@ -1749,6 +1754,33 @@ function paydayAllocationSummaryHtml(alloc, action) {
   </div>`;
 }
 
+function selectedPlanView(advice, look) {
+  if (!advice) return null;
+  if (look === 'next-period') return advice.nextPeriodView || advice.defaultView || null;
+  if (look && look.slice(0, 5) === 'week:') {
+    const start = look.slice(5);
+    const found = (advice.weekViews || []).find(row => row && row.periodStart === start);
+    return found || advice.defaultView || null;
+  }
+  return advice.defaultView || null;
+}
+
+function wirePlanLookPicker(mount, ctx) {
+  if (!mount || typeof mount.querySelector !== 'function') return;
+  const sel = mount.querySelector('[data-plan-look]');
+  if (!sel) return;
+  sel.value = planLook;
+  sel.addEventListener('change', () => {
+    planLook = sel.value || 'this-period';
+    const nextCtx = Object.assign({}, ctx, {
+      planLook,
+      planView: selectedPlanView(ctx.advice, planLook),
+    });
+    mount.innerHTML = operatingSurfaceHtml(nextCtx);
+    wirePlanLookPicker(mount, nextCtx);
+  });
+}
+
 /* Payday operating sheet. Every financial value and verdict is already on the
  * incumbent Forecast result passed in by renderPlan. This formats those
  * fields only: it does not call Forecast, add an allocation, choose a debt
@@ -1766,19 +1798,44 @@ function operatingSurfaceHtml(ctx) {
     || action.remainingClaim === 'unavailable';
 
   const question = (number, prompt, answer) => `
-    <div class="operating-question" data-operating-question="${number}">
+    <div class="operating-question" data-operating-question="${number}" data-operating-prompt="${prompt}">
       <div class="operating-number">${number}</div>
       <h2 class="operating-prompt">${prompt}</h2>
       <div class="operating-answer">${answer}</div>
     </div>`;
 
-  const view = advice.defaultView || {};
+  const view = ctx.planView || advice.defaultView || {};
+  const billsHeading = view.billsHeading || 'Bills this pay period';
+  const look = ctx.planLook || 'this-period';
+  const option = (value, label) =>
+    `<option value="${value}"${look === value ? ' selected' : ''}>${label}</option>`;
+  const nextPeriod = advice.nextPeriodView;
+  const weekOpts = (advice.weekViews || []).map(row => {
+    if (!row || !row.periodStart) return '';
+    const value = 'week:' + row.periodStart;
+    const label = row.periodEnd
+      ? `Week of ${fmtDate(row.periodStart)} – ${fmtDate(row.periodEnd)}`
+      : `Week of ${fmtDate(row.periodStart)}`;
+    return option(value, label);
+  }).join('');
+  const picker = `<div data-plan-look-picker>
+    <p class="operating-lead">What to look at</p>
+    <select class="numin" data-plan-look>
+      ${option('this-period', 'This pay period')}
+      ${nextPeriod && nextPeriod.periodStart
+        ? option('next-period', nextPeriod.periodEnd
+          ? `Next pay period · ${fmtDate(nextPeriod.periodStart)} – ${fmtDate(nextPeriod.periodEnd)}`
+          : 'Next pay period')
+        : ''}
+      ${weekOpts}
+    </select>
+  </div>`;
   const cashAlloc = {
     available: view.currentBalance != null ? view.currentBalance : (alloc && alloc.available),
-    cashBasis: alloc && alloc.cashBasis,
+    cashBasis: view.cashNote ? null : (alloc && alloc.cashBasis),
     asOf: view.asOf || (alloc && alloc.asOf),
   };
-  const cash = cashGlanceHtml(cashAlloc, ctx.liveOverlay);
+  const cash = cashGlanceHtml(cashAlloc, view.cashNote ? null : ctx.liveOverlay, view.cashNote);
   const bills = periodBillsHtml(view);
   // Weekly permission copies the recommend weekly field. Infeasible weekly = 0
   // is not a supported $0/week yes. Folded off the default view.
@@ -1811,8 +1868,9 @@ function operatingSurfaceHtml(ctx) {
 
   return `<div class="payday-operating-sheet" data-payday-sheet>
     ${refreshTrustHtml(ctx.refreshTrust)}
+    ${picker}
     ${question('01', 'Current Balance', cash)}
-    ${question('02', 'Bills this pay period', bills)}
+    ${question('02', billsHeading, bills)}
     ${question('03', 'Balance after bills', runningLeftoverHtml(view.afterBills))}
     ${question('04', 'Household budget', householdBudgetHtml(view))}
     ${question('05', 'Balance after household budget', runningLeftoverHtml(view.afterHouseholdBudget))}
@@ -2913,14 +2971,24 @@ function renderPlan(d, periods, history) {
   /* ---- payday answer: format existing Forecast results, decide nothing ---- */
   const operatingMount = $('operating-surface-body');
   if (operatingMount) {
-    operatingMount.innerHTML = operatingSurfaceHtml({
+    if (planLook === 'next-period' && !advice.nextPeriodView) planLook = 'this-period';
+    if (planLook && planLook.slice(0, 5) === 'week:') {
+      const start = planLook.slice(5);
+      const found = (advice.weekViews || []).some(row => row && row.periodStart === start);
+      if (!found) planLook = 'this-period';
+    }
+    const planView = selectedPlanView(advice, planLook);
+    const surfaceCtx = {
       plan, asOf, advice, status, mission: missionResult, nextMove: move,
       nextOut, nextDue: Forecast.nextDue(sim.events, asOf),
       unallocated: free, budget, creditAvailable: revolving,
       weekly, recommended, weeklyOverride: state.weeklyVariable,
       capView, debts: state.debts, liveOverlay: d.liveOverlay,
       refreshTrust: d.refreshTrust,
-    });
+      planLook, planView,
+    };
+    operatingMount.innerHTML = operatingSurfaceHtml(surfaceCtx);
+    wirePlanLookPicker(operatingMount, surfaceCtx);
   }
   const paydayMount = $('payday-answer-body');
   if (paydayMount) {

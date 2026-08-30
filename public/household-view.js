@@ -99,7 +99,9 @@
     const answer = q && q.querySelector('.operating-answer');
     if (!q || !answer) return false;
     const prompt = q.querySelector('.operating-prompt');
-    if (prompt) prompt.textContent = 'Bills this pay period';
+    if (prompt) {
+      prompt.textContent = q.getAttribute('data-operating-prompt') || 'Bills this pay period';
+    }
     return true;
   }
 

@@ -417,7 +417,7 @@ console.log('\n=== the composed page remains a renderer ===');
     'the composed formatter calls no Forecast function');
   ok(fn && !/\.reduce\(|monthlyFromWeekly|projectDebts|fundingSequence/.test(fn[0]),
     'the composed formatter contains no page-side totals, conversions, or debt walk');
-  ok(/operatingSurfaceHtml\(\{[\s\S]*?advice/.test(planSrc)
+  ok(/operatingSurfaceHtml\(surfaceCtx\)/.test(planSrc)
     && /refreshTrust: d\.refreshTrust/.test(planSrc),
   'renderPlan wires the incumbent recommendation and refresh-trust packet');
 }

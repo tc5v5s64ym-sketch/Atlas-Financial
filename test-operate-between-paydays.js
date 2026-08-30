@@ -229,7 +229,7 @@ console.log('\n=== the homepage selects the daily renderer without changing payd
   'AF-OPERATE-02 hierarchy stays first and the deeper worksheet stays secondary');
   ok(/refreshTrustHtml\(ctx\.refreshTrust\)/.test(src)
     && /question\('01', 'Current Balance'/.test(src)
-    && /question\('02', 'Bills this pay period'/.test(src)
+    && /question\('02', billsHeading/.test(src)
     && /question\('03', 'Balance after bills'/.test(src)
     && /question\('04', 'Household budget'/.test(src)
     && /question\('10', 'Balance after big purchase allocation'/.test(src),

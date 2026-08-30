@@ -247,7 +247,8 @@ console.log('\n=== page remains a renderer, not a financial authority ===');
     'the formatter calls no Forecast function and consumes the one result passed to it');
   ok(fn && !/\.reduce\(|monthlyFromWeekly|projectDebts|majorPlans|fundingSequence/.test(fn[0]),
     'the formatter contains no page-side totals, conversions, debt walk, or future-plan calculation');
-  ok(/operatingSurfaceHtml\(\{[\s\S]*?advice/.test(planSrc)
+  ok(/operatingSurfaceHtml\(surfaceCtx\)/.test(planSrc)
+    && /advice,/.test(planSrc)
     && !/extraDebtTarget: debtProj\.byId/.test(planSrc),
   'renderPlan wires the incumbent recommendation directly and supplies no page-selected target');
 }
