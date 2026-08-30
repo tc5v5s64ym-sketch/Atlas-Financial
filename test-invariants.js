@@ -257,13 +257,17 @@ const csvNote = label => {
   return row ? String(row[20] || '') : '';
 };
 const homeEstimate = csvVal('Home');
-ok(near(homeEstimate, 1300000),
-  'Home detail is the 2026-08-21 owner planning estimate', money(homeEstimate));
+ok(near(homeEstimate, 1200000),
+  'Home detail is the 2026-08-29 owner planning estimate', money(homeEstimate));
+ok(!near(homeEstimate, 1300000),
+  'Home detail is not the $1.3m optimistic high', money(homeEstimate));
 const homeRow = csv.find(c => c[2] === 'Home') || [];
-ok(homeRow[19] === '2026-08-21',
+ok(homeRow[19] === '2026-08-29',
   'Home as-of is the owner-decision date', homeRow[19] || 'missing');
-ok(/2026-08-21/.test(csvNote('Home')) && /planning estimate/i.test(csvNote('Home')),
+ok(/2026-08-29/.test(csvNote('Home')) && /planning estimate/i.test(csvNote('Home')),
   'Home notes name the dated owner planning estimate');
+ok(/optimistic high/i.test(csvNote('Home')),
+  'Home notes label $1.3m as optimistic high only');
 ok(/not an appraisal/i.test(csvNote('Home'))
   && /independently verified market value/i.test(csvNote('Home')),
   'Home notes refuse appraisal and verified-market claims');
@@ -272,6 +276,8 @@ ok(/1\.1m/.test(csvNote('Home')) && /historical/i.test(csvNote('Home')),
 ok(!/midpoint/i.test(csvNote('Home') + csvNote('Household net worth')
   + csvNote('Home equity') + csvNote('Loan-to-value')),
   'positions notes do not call the current home value a midpoint');
+ok(csv.filter(c => c[2] === 'Home').length === 1,
+  'positions.csv has exactly one Home row — no second live optimistic number');
 // Independent of scripts/positions-summary.js. Do not re-run regenerateComputedRows
 // and assert its own output. Canonical assets/debts/secured come from data.json;
 // the Home detail row is the owner planning estimate.
@@ -314,7 +320,7 @@ ok(csvAsOf('Weeks of essentials covered') >= (periods.source && periods.source.c
 ok(/historical actuals through 2026-08-24/.test(csvNote('Essential spending estimate')),
   'essential-spending notes the later historical-actuals input');
 ok(/2026-08-19/.test(csvNote('Household net worth'))
-  && /2026-08-21/.test(csvNote('Household net worth')),
+  && /2026-08-29/.test(csvNote('Household net worth')),
   'household net-worth notes preserve both input dates');
 {
   const q3 = (/### Q3\.[\s\S]*?(?=\n### |\n## )/.exec(read('docs/01_OPEN_QUESTIONS.md')) || [''])[0];
@@ -324,11 +330,21 @@ ok(/2026-08-19/.test(csvNote('Household net worth'))
     'Q3 distinguishes the planning estimate from the verified-value question');
   ok(/\*\*Status:\*\*\s*OPEN/.test(q3),
     'Q3 remains OPEN for a comparable sale or appraisal');
+  ok(/1,200,000/.test(q3) && /2026-08-29/.test(q3),
+    'Q3 records the 2026-08-29 $1,200,000 planning estimate');
+  ok(/optimistic high/i.test(q3) && /1,300,000/.test(q3),
+    'Q3 keeps $1,300,000 as optimistic high only');
+  ok(/dated planning evidence/i.test(q3),
+    'the 2026-08-21 $1.3m figure is dated planning evidence, not current authority');
 }
 {
   const caveat = String((data.netWorth && data.netWorth.caveat) || '');
-  ok(/positions reporting path/i.test(caveat) && /2026-08-21/.test(caveat),
-    'Records caveat routes the current point figure to the 2026-08-21 positions path');
+  ok(/positions reporting path/i.test(caveat) && /2026-08-29/.test(caveat),
+    'Records caveat routes the current point figure to the 2026-08-29 positions path');
+  ok(/1,200,000/.test(caveat),
+    'Records caveat names the $1,200,000 planning estimate');
+  ok(/optimistic high/i.test(caveat) && /1,300,000/.test(caveat),
+    'Records caveat labels $1,300,000 as optimistic high only');
   ok(/historical/i.test(caveat) && /1\.1m/.test(caveat),
     'Records caveat keeps the $1.1m–$1.4m range as historical only');
   ok(!/At the owner's estimate of \$1\.1m/i.test(caveat),

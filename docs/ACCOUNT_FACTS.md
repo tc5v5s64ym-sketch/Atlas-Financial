@@ -282,10 +282,12 @@ to five months out and posts the offer letter about a month before maturity.
 **The live decision at renewal is whether to fold the HELOC in.** It is
 $201,586 at 4.90%, interest-only and 99.5% drawn; folding it into the mortgage
 forces principal repayment and lowers the rate, at the cost of a higher monthly
-payment. The site's renewal modeller runs that trade-off. Combined LTV is
-roughly 53–68% depending on the home valuation — under 80% at both ends, so it
-should renew conventionally on that measure, but a lender orders its own
-appraisal and will not take an owner's estimate.
+payment. The site's renewal modeller runs that trade-off. Combined LTV on the
+2026-08-19 opening secured debt against the 2026-08-29 **$1,200,000 planning
+estimate** is about **62%** — under 80%. About 57% at the **$1,300,000
+optimistic high**, which is not the plan. A lender orders its own appraisal
+and will not take an owner's estimate. Live derived LTV lives on
+`docs/positions.csv`.
 
 Sources: [TD renewal process](https://www.td.com/ca/en/personal-banking/products/mortgages/renew-refinance/how-to-renew) ·
 [early renewal windows](https://mortgagerenewalhub.ca/early-mortgage-renewal/)
@@ -1863,11 +1865,40 @@ headroom lives in `Forecast.utilisation` / `data.json` /
 `docs/positions.csv`, not here. The 9 August snapshot had $1,067.84.
 That option requires repaying something first.
 
-## The home *(owner estimate, 2026-08-09)*
+## The home *(planning estimate 2026-08-29; Q3 remains OPEN)*
 
-**Worth $1.1m – $1.4m** [ESTIMATE — the owner's figure, not an appraisal].
+**Planning estimate $1,200,000** [ESTIMATE — owner decision 2026-08-29; not an
+appraisal, not independently verified market value]. That figure is current
+planning authority for ESTIMATE household net worth, home equity, and LTV on
+the positions reporting path. Forecast does not consume it.
 
-This unblocks household net worth, which the analysis has carried as
+**Optimistic high $1,300,000** — retained, not planning authority, and not a
+second live positions or Forecast number.
+
+Current planning equity and LTV use the 2026-08-19 opening secured debt
+(mortgage $545,188.30 + HELOC $200,486.16 = $745,674.46) against the $1.20m
+planning value. Live derived rows live on `docs/positions.csv`, not here.
+
+| | Planning $1.20m | Optimistic high $1.30m *(not the plan)* |
+|---|---|---|
+| Home | $1,200,000 | $1,300,000 |
+| Home equity | $454,325.54 | $554,325.54 |
+| **Loan-to-value** | **62.1%** | **57.4%** |
+
+Both sit under the 80% that matters at the May 2027 renewal. **A lender will
+order its own appraisal** and will not take an owner's estimate. Q3 stays
+OPEN until a comparable the owner accepts as verified, a municipal
+assessment, or an appraisal replaces the estimate.
+
+The 2026-08-21 $1,300,000 figure is dated planning evidence, not current
+authority. The 2026-08-09 range below is dated historical evidence.
+
+## The home *(owner estimate, 2026-08-09 — historical)*
+
+**Worth $1.1m – $1.4m** [ESTIMATE — the then owner's figure, not an appraisal;
+superseded as planning authority on 2026-08-29 by $1,200,000].
+
+This unblocked household net worth, which the analysis had carried as
 "not calculable" throughout.
 
 | | At $1.1m | At $1.4m |
@@ -1889,12 +1920,11 @@ every revolving facility at or beyond its limit, and $36,546 a year of interest.
 Positive net worth and an inability to absorb a $500 surprise are entirely
 compatible, and both are true here.
 
-**For the May 2027 renewal, LTV is the number that matters.** Both ends of the
-range sit under 80%, so the mortgage should renew conventionally on this measure.
-**A lender will order its own appraisal** and will not take an owner's estimate,
-so treat this as planning information rather than a fact to rely on. Narrowing
-the $300,000 spread is worth doing before any renewal or refinancing conversation
-— a realtor's opinion or a recent comparable sale would tighten it cheaply.
+**For the May 2027 renewal, LTV is the number that matters.** Both ends of this
+2026-08-09 range sat under 80%. **A lender will order its own appraisal** and
+will not take an owner's estimate. That range is not current planning
+authority; current planning is the 2026-08-29 $1,200,000 estimate above. Q3
+stays OPEN for a verified comparable, assessment, or appraisal.
 
 ## Known non-TD debts
 

@@ -1,6 +1,6 @@
 # Open Questions — Working Agenda
 
-**Updated 2026-08-22.** Every unanswered question in one place, ranked by what
+**Updated 2026-08-29.** Every unanswered question in one place, ranked by what
 the answer would change. Add new questions here as accounts are reviewed; move
 answered ones to the bottom with the answer recorded.
 
@@ -49,24 +49,45 @@ transfer he or his wife set up.
 **Status:** OPEN · **Owner:** Dale
 **What we know:** $745,674.46 of debt is secured against it on the 2026-08-19
 published opening (mortgage $545,188.30 + HELOC $200,486.16). Original mortgage
-$648,000 in May 2022. The 2026-08-09 review figure was $747,612.74. On
-2026-08-21 the owner supplied a $1,300,000 planning estimate. That estimate
-is current planning authority for the published ESTIMATE household net worth,
-home equity, and loan-to-value on the positions reporting path; it is not an
-appraisal or independently verified market value. The 2026-08-09 $1.1m–$1.4m
-range is dated historical evidence only.
+$648,000 in May 2022. The 2026-08-09 review figure was $747,612.74.
+
+On **2026-08-29** the owner set the **planning estimate at $1,200,000**. That
+estimate is current planning authority for the published ESTIMATE household
+net worth, home equity, and loan-to-value on the positions reporting path; it
+is not an appraisal or independently verified market value. **$1,300,000 is
+an optimistic high only** and is not current planning authority. Forecast does
+not consume either figure.
+
+Evidence for that planning figure, not a verified market value: JCR Design
+drawings issued for permit Mar 2024 — existing main 1,381 sqft, proposed
+upper addition 300 sqft, basement living 481 sqft, garage 430, crawl 717;
+lot 7,205.90 sqft RS-1, SW Maple Ridge. Finished living ~2,160 sqft if
+basement counts. Best same-street sold: 21238 Cutler, $1,130,000, Mar 2026
+(MLS ~4 bed / 3 bath / ~2,518–2,631 sqft, lot ~7,675), listed ~$1,099,900.
+Owner judgement: this house may be slightly better than that sale, which
+supports ~$1.18–1.22m, not a $170k jump to $1.3m. Nearby 2026: Manor $1.15m,
+220th $1.18m, Stonehouse $1.295m, Glenwood $1.35m. Maple Ridge typical 2026
+SFH assessment ~$1,183,000 (−3% YoY) — a municipal typical, not a
+property-level 2026 figure for this house. Next street: 21125 Cook Ave sold
+$1,300,000 in 2025 (2,087 sqft) — prior year, not a 2026 same-street
+comparable.
+
+The 2026-08-21 $1,300,000 figure is dated planning evidence, not current
+authority. The 2026-08-09 $1.1m–$1.4m range remains dated historical
+evidence only.
 **What the answer changes:** Verified market value remains unknown — that is
 why Q3 stays OPEN. A planning estimate is already published on the positions
 path; that ESTIMATE reporting does not close this verified-value question.
 The −$730,394.82 figure is only the financial-account fragment on the
 2026-08-19 opening. The 2026-08-09 review fragment was −$717,407. A
-comparable sale or appraisal would replace the planning estimate for
-trust-labelled household net worth and would determine what is possible at
-the May 2027 renewal, including whether HELOC consolidation is available at
-all.
-**How to answer:** A recent comparable sale or an appraisal. Municipal assessment
-is a weaker proxy but better than nothing. The 2026-08-21 $1,300,000 figure
-is a planning estimate only and does not close this question.
+comparable the owner accepts as verified, a municipal assessment, or an
+appraisal would replace the planning estimate for trust-labelled household
+net worth and would determine what is possible at the May 2027 renewal,
+including whether HELOC consolidation is available at all.
+**How to answer:** A recent comparable sale or an appraisal. Municipal
+assessment is a weaker proxy but better than nothing. The 2026-08-29
+$1,200,000 planning estimate and the $1,300,000 optimistic high do not close
+this question.
 
 ---
 

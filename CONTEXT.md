@@ -191,8 +191,10 @@ supported by Atlas evidence stay where they already live (home insurance and
 vehicle maintenance on `plan.commitments`; property tax as the existing
 reserve). Remaining unknowns are Q22. This is not a goals engine.
 
-**Still outstanding / owner-blocked:** the wife's business economics (Q1); a
-home valuation (Q3); WebBroker holdings (Q11 — needs an exchange-agreement
+**Still outstanding / owner-blocked:** the wife's business economics (Q1);
+verified home market value (Q3 — planning estimate is **$1,200,000** ESTIMATE
+as of 2026-08-29; **$1,300,000** is optimistic high only and not the plan;
+Q3 stays OPEN); WebBroker holdings (Q11 — needs an exchange-agreement
 acceptance, which is the account holder's decision); the two unidentified
 accounts (Q6); where the $46,657 of "credit card" transfers go (Q2). Q5 (why
 the monthly spousal transfer stopped after May 2026) is **ANSWERED** — the
