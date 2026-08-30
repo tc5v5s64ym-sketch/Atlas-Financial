@@ -130,8 +130,11 @@ ok(telecom.datedItems.length === 1 && telecom.datedItems[0].label === 'Shaw inte
   'Shaw is counted once — the only dated telecom item');
 ok(!(plan.bills || []).some(b => /telus/i.test(String(b.id) + ' ' + String(b.label))),
   'no Telus plan.bills row — current Telus recurrence is $0');
-ok(!(plan.bills || []).some(b => /bell/i.test(String(b.id) + ' ' + String(b.label))),
-  'no Bell cash bill was invented — card-paid Bell stays out of plan.bills');
+ok((plan.bills || []).some(b => b.id === 'bell' && b.needsDate === true && b.day == null),
+  'Bell is an undated needs-confirmation bill, not a fabricated cash day');
+ok(!F.expandEvents(plan, data.meta.asOf, F.addDays(data.meta.asOf, 90))
+    .some(e => e.id === 'bell'),
+  'expandEvents does not invent a Bell date');
 ok(telecom.target == null && telecom.source === 'current-regime',
   'telecom remainder is current-regime, not owner-target or historical-actual');
 ok(lastTelecom.total - shaw.amount > independentHistoricalRemainder,

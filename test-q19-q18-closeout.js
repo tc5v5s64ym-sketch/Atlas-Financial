@@ -63,14 +63,14 @@ console.log('\n=== HELOC interest stays nonCash; no duplicate August cash ===');
     'cashPayment stays $0; interest is capitalised');
   const events = F.expandEvents(plan, asOf, windowEnd, {});
   const helocEvents = events.filter(e => e.id === 'heloc');
-  ok(helocEvents.some(e => e.kind === 'noncash'),
-    'Forecast still emits HELOC interest as noncash');
-  ok(!events.some(e => e.id === 'heloc' && e.date === '2026-08-21' && e.kind !== 'noncash'),
-    'no $814.18 August cash event exists');
+  ok(helocEvents.length > 0 && helocEvents.every(e => e.kind === 'noncash'),
+    'Forecast emits HELOC as noncash only');
+  ok(!events.some(e => near(Math.abs(e.amount), 814.18) && e.kind !== 'noncash'),
+    'no $814.18 August (or later) cash event exists');
   ok(!events.some(e => e.id === 'heloc' && e.date === '2026-08-01'),
     'Aug. 1 PAD is not fabricated as a cash event');
-  ok(events.some(e => e.id === 'heloc' && e.date === '2026-09-21' && e.kind === 'obligation'),
-    'planned HELOC cash minimum starts 2026-09-21');
+  ok(!events.some(e => e.id === 'heloc' && e.date === '2026-08-21' && e.kind !== 'noncash'),
+    'Aug. 21 is not a HELOC chequing outflow');
 }
 
 console.log('\n=== Aug. 14 $1,100 is inside the opening and is not replayed ===');
@@ -108,8 +108,9 @@ console.log('\n=== Q19 recorded ANSWERED with the four-part closeout ===');
 
 console.log('\n=== Bell $15 watch line is not a second invented bill ===');
 {
-  ok(!(plan.bills || []).some(b => /bell|watch/i.test(b.id + b.label)),
-    'plan.bills does not invent a Bell or watch cash bill');
+  ok((plan.bills || []).some(b => b.id === 'bell' && b.needsDate === true && b.day == null)
+      && !(plan.bills || []).some(b => /watch/i.test(b.id + b.label)),
+    'Bell is undated / needs confirmation; no invented watch cash bill');
   ok(/^OPEN\b/.test(statusOf('Q18')),
     'Q18 stays OPEN for pending Bell posting residual',
     statusOf('Q18'));

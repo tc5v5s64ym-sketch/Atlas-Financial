@@ -425,17 +425,12 @@
     const unmodelled = [];
     const counted = [];
     const monthly = ((plan || {}).obligations || [])
-      .filter(o => {
-        if (!o || o.debtId !== debtId) return false;
-        if (!o.nonCash) return true;
-        return Number(o.cashPayment) > 0;
-      })
+      .filter(o => o.debtId === debtId && !o.nonCash)
       .reduce((sum, o) => {
-        const cashAmt = o.nonCash ? Number(o.cashPayment) : o.amount;
         const perYear = PAYMENTS_PER_YEAR[o.frequency];
         if (!perYear) { unmodelled.push(o.id); return sum; }
         counted.push(o);
-        return sum + cashAmt * perYear / 12;
+        return sum + o.amount * perYear / 12;
       }, 0);
     const confidence = counted.length
       ? (counted.every(o => o.confidence === 'confirmed') ? 'confirmed' : 'estimated')
@@ -991,30 +986,6 @@
           label: o.label, id: o.id, confidence: o.confidence,
           debtId: o.debtId || null, effect: o.effect || null,
           payingAccount: o.payingAccount || null });
-      }
-      // A non-cash capitalisation may still have a planned cash minimum.
-      // That cash date is declared separately so interest-by-event math
-      // stays on the capitalise row and the bills list can show cash once.
-      const cashAmt = Number(o.cashPayment) || 0;
-      if (o.nonCash && cashAmt > EPSILON && o.cashDay != null) {
-        const cashDates = outflowDates({
-          frequency: o.frequency,
-          day: o.cashDay,
-          firstDue: o.cashFirstDue || o.firstDue || null,
-        }, start, end);
-        for (const date of cashDates) {
-          const cap = opts.obligationAbsorbed;
-          const amount = cap ? (cap[date + ':' + o.id] || 0) : cashAmt;
-          if (amount <= 0) continue;
-          events.push({
-            date, amount: -amount, kind: 'obligation',
-            label: o.cashLabel || o.label, id: o.id,
-            confidence: o.cashConfidence || o.confidence,
-            debtId: o.debtId || null, effect: 'payment',
-            payingAccount: o.payingAccount || null,
-            cashMinimum: true,
-          });
-        }
       }
     }
     for (const b of plan.bills || []) {
@@ -3085,8 +3056,7 @@
       if (!event || !event.date) continue;
       if (event.kind === 'income' || event.kind === 'noncash') continue;
       if (event.kind !== 'obligation' && event.kind !== 'bill') continue;
-      if (event.kind === 'obligation' && event.effect === 'capitalise'
-        && !event.cashMinimum) continue;
+      if (event.kind === 'obligation' && event.effect === 'capitalise') continue;
       if (event.jointCash === false) continue;
       const half = billCalendarHalf(event.date);
       if (!half) continue;
@@ -3095,6 +3065,45 @@
       seen.add(key);
       const row = calendarBillRowFromEvent(plan, event, asOf, represented, observed);
       if (row) halves[half].push(row);
+    }
+    // Planned cash minimum for a capitalising obligation. Printed once on
+    // the bills list; not a second expandEvents cash event and not a
+    // second copy of the capitalise row.
+    for (const o of (plan && plan.obligations) || []) {
+      const cashAmt = Number(o && o.cashPayment) || 0;
+      if (!o || !o.nonCash || !(cashAmt > EPSILON) || o.cashDay == null) continue;
+      const dates = outflowDates({
+        frequency: o.frequency,
+        day: o.cashDay,
+        firstDue: o.cashFirstDue || o.firstDue || null,
+      }, month.start, month.end);
+      for (const date of dates) {
+        const half = billCalendarHalf(date);
+        if (!half) continue;
+        const key = (o.id || o.cashLabel || '') + '@' + date;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const payingAccount = o.payingAccount || null;
+        halves[half].push({
+          id: o.id,
+          label: o.cashLabel || o.label,
+          kind: 'obligation',
+          date,
+          planned: roundCent(cashAmt),
+          amount: roundCent(cashAmt),
+          actual: null,
+          remaining: roundCent(cashAmt),
+          settlement: paydaySettlementState(date, asOf),
+          status: glanceBillStatus(paydaySettlementState(date, asOf), asOf, date),
+          glanceKind: 'still-due',
+          movement: householdMovement(cashAmt, 'out'),
+          confidence: o.cashConfidence || o.confidence || 'estimated',
+          payingAccount,
+          payerLabel: plannedPayerLabel(payingAccount),
+          needsDate: false,
+          cashMinimum: true,
+        });
+      }
     }
     const sortRows = rows => rows.sort((a, b) =>
       String(a.date || '').localeCompare(String(b.date || ''))

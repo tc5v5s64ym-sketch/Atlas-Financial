@@ -287,8 +287,8 @@ console.log('\n=== 12–13. Burrards registrations settled; ~$700 team fees rema
 
 console.log('\n=== 14–15. Bell baseline is not $356.62; pending $250 is not double-counted ===');
 {
-  ok(!(plan.bills || []).some(b => /bell/i.test(b.id + b.label)),
-    'no Bell row is dated as a joint-cash bill');
+  ok((plan.bills || []).some(b => b.id === 'bell' && b.needsDate === true && b.day == null),
+    'Bell is undated / needs confirmation, not a dated joint-cash bill');
   ok(!(plan.bills || []).some(b => near(b.amount, 356.62) || near(b.amount, 104.20)
     || near(b.amount, 16.80) || near(b.amount, 121)),
     'neither $356.62, $104.20, $16.80, nor $121 is a dated cash bill');
@@ -310,8 +310,8 @@ console.log('\n=== 16–18. HELOC interest posting and cash payment stay distinc
   ok(debt && near(debt.cashPayment, 0) && debt.interestTreatment === 'capitalised',
     'cashPayment stays $0; interest is capitalised');
   const events = F.expandEvents(plan, asOf, windowEnd, {});
-  ok(!events.some(e => e.id === 'heloc' && e.date === '2026-08-21' && e.kind !== 'noncash'),
-    'no August HELOC chequing outflow was invented');
+  ok(!events.some(e => e.id === 'heloc' && e.kind !== 'noncash'),
+    'no HELOC chequing outflow was invented');
   ok(!events.some(e => e.id === 'heloc' && e.date === '2026-08-01'),
     'Aug. 1 PAD is not fabricated as a cash event');
   ok(/^ANSWERED\b/.test(statusOf('Q19')), 'Q19 is ANSWERED', statusOf('Q19'));

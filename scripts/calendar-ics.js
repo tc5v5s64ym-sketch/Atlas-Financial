@@ -142,11 +142,11 @@ function standingReminders(asOf) {
 
   events.push(
     { uid: 'atlas-reminder-heloc-due-21@household',
-      summary: 'Reminder — HELOC contractual due date (TD-stated 21st; August look-point only)',
-      start: '2026-08-21',
+      summary: 'Reminder — HELOC contractual due date (TD-stated 21st; not a chequing outflow)',
+      start: '2026-08-21', rrule: MONTHLY(21),
       kind: 'reminder',
       sourceId: 'heloc-contractual-due',
-      description: 'August 2026 look-point only. Q19 ANSWERED 2026-08-18: the 14 August $1,100 already inside the opening satisfies the $814.18 August minimum, so remaining August HELOC cash is $0 additional. From 2026-09-21 the planned BILLS ACCOUNT cash minimum is a Forecast payment event, not this reminder. Month-end interest still capitalises. This reminder does not state that an Aug. 1 PAD occurred.' + src },
+      description: 'TD Home Equity FlexLine contractual due date. Observed posting is month-end capitalisation into the HELOC balance (~$814), not a cash payment from chequing. The Plan bills list may show the planned BILLS ACCOUNT cash minimum once; that print is not a second expandEvents chequing outflow. Statements show a PAD around the 1st and that a manual payment at least equal to the minimum, made before the due date, satisfies that minimum rather than causing a second full cash collection. This reminder is a look-point only. Q19 ANSWERED 2026-08-18: the 14 August $1,100 already inside the 2026-08-16 opening satisfies the $814.18 August minimum, so remaining August HELOC cash requirement is $0 additional. Do not invent another $814.18 chequing outflow. Interest is not free. This reminder does not state that an Aug. 1 PAD occurred.' + src },
     { uid: 'atlas-reminder-property-tax@household',
       summary: 'Reminder — Maple Ridge property tax due', start: '2027-07-02', rrule: 'FREQ=YEARLY',
       kind: 'reminder',

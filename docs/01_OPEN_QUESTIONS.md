@@ -429,10 +429,11 @@ stream.
 **Answer:** Owner-confirmed 2026-08-16: the old BC Hydro amount previously
 questioned as outstanding has been **SETTLED**. It is not a future
 obligation. The known future Sep. 1 Hydro obligation of **$237.45**
-(`hydro-due-sep1`) remains a current valid bill, paid from Amanda / TENNIS
-INCOME, not deducted from joint cash. Settlement of the old amount does not
-cancel that future bill. The account balance is still not scheduled as a
-cash event.
+(`hydro-due-sep1`) remains a current valid bill. Owner 2026-08-30: future
+Hydro is planned from BILLS ACCOUNT (Chequing A) and reduces joint cash.
+Historical Lunch Money postings from TENNIS INCOME are not rewritten.
+Settlement of the old amount does not cancel that future bill. The account
+balance is still not scheduled as a cash event.
 
 ### Q23. How do the three live-plan $500 Fusion instalments relate to the travel-team or season fee, now that camp and tryouts are paid? — ANSWERED 2026-08-16
 **Status:** ANSWERED · **Owner:** Dale + Amanda

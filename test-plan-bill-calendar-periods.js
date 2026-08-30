@@ -310,11 +310,10 @@ console.log('\n=== 5. card mins once; HELOC cash vs capitalise; no extra income 
     'September HELOC cash prints once on the 21st, estimated');
   const events = F.expandEvents(plan, '2026-09-01', '2026-09-30');
   const helocEv = events.filter(e => e.id === 'heloc');
-  ok(helocEv.filter(e => e.kind === 'obligation' && e.cashMinimum).length === 1
-      && helocEv.filter(e => e.kind === 'noncash').length === 1,
-    'Forecast still emits one cash minimum and one capitalise event');
-  ok(!events.some(e => e.id === 'heloc' && e.date === '2026-08-21' && e.kind !== 'noncash'),
-    'August 21 is not a HELOC cash event');
+  ok(helocEv.length === 1 && helocEv[0].kind === 'noncash',
+    'expandEvents still emits only the capitalise event, not a second cash bill');
+  ok(!events.some(e => e.id === 'heloc' && e.kind !== 'noncash'),
+    'HELOC cash is not a second household cash event on the walk');
   ok(view.billSections.length === 2
       && !view.billSections.some(s => /Seaspan|Amanda|payroll|salary/i.test(s.label)),
     'income dates do not spawn extra bill sections');
@@ -339,6 +338,34 @@ console.log('\n=== 6. Bell has no invented date; historical LM txs are not rewri
     'live-plan.js does not write data.json');
   ok(!(live.plan.bills || []).some(b => b.id === 'bell' && b.day != null),
     'live Bell row does not invent a due day');
+}
+
+console.log('\n=== 7. live listed ids: BILLS ACCOUNT; Aug once vs Sep monthly ===');
+{
+  const live = require('./data.json');
+  const listed = [
+    'mortgage', 'fortis', 'hydro-due-sep1', 'shaw', 'bell', 'bcaa', 'icbc',
+    'resp', 'fit4less', 'tdfees', 'noble-garbage', 'affirm-final', 'netflix',
+    'spotify', 'google-storage-100gb', 'icloud-storage', 'youtube-premium',
+    'ultimate-guitar', 'chatgpt-plus-dale', 'chatgpt-plus-amanda', 'heloc',
+    'triangle', 'cashback', 'tdcc', 'travel', 'mbna', 'mbna-aug31',
+  ];
+  for (const id of listed) {
+    const row = (live.plan.bills || []).find(b => b.id === id)
+      || (live.plan.obligations || []).find(o => o.id === id);
+    ok(row && row.payingAccount === 'chequing-a',
+      `${id} future payingAccount is chequing-a`);
+  }
+  const augIds = (F.recommend(live.plan, '2026-08-19', { debts: live.debts })
+    .defaultView.bills || []).map(r => r.id);
+  const sepIds = (F.recommend(live.plan, '2026-09-10', { debts: live.debts })
+    .defaultView.bills || []).map(r => r.id);
+  const once = ['bcaa-aug15-outstanding', 'icbc-aug15-outstanding', 'resp-aug15-outstanding'];
+  const monthly = ['bcaa', 'icbc', 'resp'];
+  ok(once.every(id => augIds.includes(id)) && monthly.every(id => !augIds.includes(id)),
+    'August prints the once rows, not the September 15 monthly rows');
+  ok(monthly.every(id => sepIds.includes(id)) && once.every(id => !sepIds.includes(id)),
+    'September prints the monthly 15th rows once, not the August once rows');
 }
 
 if (failures) {
