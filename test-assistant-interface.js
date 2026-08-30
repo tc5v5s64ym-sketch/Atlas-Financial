@@ -420,8 +420,10 @@ console.log('=== packet builder consumes Forecast, not a second planner ===');
   ok(!Array.isArray(packet.actuals && packet.actuals.transactions),
     'packet does not include a raw transaction list');
   const q2 = (packet.uncertainty.ownerQuestions || []).find(q => q.id === 'Q2');
-  ok(q2 && q2.status === 'OPEN',
-    'owner questions come from 01_OPEN_QUESTIONS.md (Q2 stays OPEN)');
+  const q20 = (packet.uncertainty.ownerQuestions || []).find(q => q.id === 'Q20');
+  ok(!q2, 'Q2 is ANSWERED and is not in unresolved ownerQuestions');
+  ok(q20 && q20.status === 'OPEN',
+    'owner questions come from 01_OPEN_QUESTIONS.md (Q20 stays OPEN)');
   ok(packet.metadata.version.gitSha === '72567904bef9f5d4341a80a211db64d1411691cd',
     'version identifier is the supplied git SHA when present');
   const liveAsOf = (liveData.liveOverlay && liveData.liveOverlay.applied === true

@@ -9,10 +9,11 @@
  * investigation; they may not claim RESOLVED / ANSWERED / CLOSED for a
  * question the canonical file still has OPEN.
  *
- * Q2 and Q20 are the live proving cases. The suite must fail if a publication
- * copy independently marks either ANSWERED while the canonical file still
- * has it OPEN — and the reverse on a proving fixture. Extra-surface proving
- * case: a positions.csv / BACKLOG Q2 close while Q2 is OPEN.
+ * Q2 and Q20 are the live proving cases. Q2 is ANSWERED 2026-08-29; Q20
+ * remains OPEN. The suite must fail if a publication copy independently
+ * marks an OPEN question ANSWERED, or presents a canonical-ANSWERED
+ * question as still OPEN. Extra-surface proving case: a positions.csv /
+ * BACKLOG Q20 close while Q20 is OPEN.
  */
 const fs = require('fs');
 const path = require('path');
@@ -307,7 +308,7 @@ console.log('=== canonical authority parses ===');
   const q20 = live.byId.get('Q20');
   ok(live.canonical.length >= 10, 'canonical file yields household questions',
     String(live.canonical.length));
-  ok(q2 && q2.status === 'OPEN', 'canonical Q2 is OPEN',
+  ok(q2 && q2.status === 'ANSWERED', 'canonical Q2 is ANSWERED 2026-08-29',
     q2 ? `${q2.status} — ${q2.title}` : 'missing');
   ok(q20 && q20.status === 'OPEN', 'canonical Q20 is OPEN (emergency reserve remains unresolved)',
     q20 ? `${q20.status} — ${q20.title}` : 'missing');
@@ -334,8 +335,8 @@ console.log('\n=== live publication cannot contradict canonical status ===');
   const q2pub = published.filter(q => matchesCanonical(q, live.byId.get('Q2')));
   const q5pub = published.filter(q => matchesCanonical(q, live.byId.get('Q5')));
   const q20pub = published.filter(q => matchesCanonical(q, live.byId.get('Q20')));
-  ok(q2pub.length >= 1 && q2pub.every(q => !encodesAnswered(q)),
-    'household-facing Q2 is not marked ANSWERED',
+  ok(q2pub.length === 0 || q2pub.every(q => encodesAnswered(q)),
+    'canonical-ANSWERED Q2 is not independently presented as OPEN',
     q2pub.map(q => q.q).join(' | ') || 'absent');
   ok(q5pub.length === 0 || q5pub.every(q => encodesAnswered(q)),
     'canonical-ANSWERED Q5 is not independently presented as OPEN',
@@ -354,12 +355,13 @@ console.log('\n=== live publication cannot contradict canonical status ===');
 
 console.log('\n=== mutation recreates the old defect ===');
 {
-  const oldQ2 = {
-    tier: 0,
-    q: 'ANSWERED — the "credit card" transfers went to the cards',
-    detail: 'Across the twelve-month statement window the cards received payments against TFR-TO C/C leaving the accounts.',
-    changes: 'Nothing is hiding.',
-    owner: 'Closed 9 Aug 2026',
+  const oldQ2Open = {
+    id: 'Q2',
+    tier: 1,
+    q: 'Where do the "TFR-TO C/C" transfers go?',
+    detail: 'Independently presented as still open.',
+    changes: 'Must fail while Q2 is ANSWERED.',
+    owner: 'Dale',
   };
   const oldQ20 = {
     tier: 0,
@@ -368,18 +370,18 @@ console.log('\n=== mutation recreates the old defect ===');
     changes: 'Must fail while Q20 is OPEN.',
     owner: 'Closed 16 Aug 2026',
   };
-  const q2Mutant = clone(published).concat(oldQ2);
+  const q2OpenMutant = clone(published).map(q => (q.id === 'Q2' ? oldQ2Open : q));
   const q20Mutant = clone(published).concat(oldQ20);
   let q2Err = null;
   let q20Err = null;
   try {
-    assertQuestionStatusAuthority({ markdown, publishedQuestions: q2Mutant, rendererSource });
+    assertQuestionStatusAuthority({ markdown, publishedQuestions: q2OpenMutant, rendererSource });
   } catch (err) { q2Err = err; }
   try {
     assertQuestionStatusAuthority({ markdown, publishedQuestions: q20Mutant, rendererSource });
   } catch (err) { q20Err = err; }
-  ok(!!q2Err && /Q2|independently claims ANSWERED/i.test(q2Err.message),
-    'mutating publication to mark canonical-OPEN Q2 ANSWERED fails',
+  ok(!!q2Err && /Q2/i.test(q2Err.message),
+    'presenting canonical-ANSWERED Q2 as an open Deep Dive card fails',
     q2Err ? q2Err.message.split('\n')[0] : 'suite stayed green');
   ok(!!q20Err && /Q20/i.test(q20Err.message),
     'mutating publication to mark canonical-OPEN Q20 ANSWERED fails',
@@ -389,15 +391,15 @@ console.log('\n=== mutation recreates the old defect ===');
   const q2card = idMutant.find(q => q.id === 'Q2');
   ok(!!q2card, 'live publication still carries a Q2 pointer for the identity mutation');
   if (q2card) {
-    q2card.tier = 0;
-    q2card.q = 'ANSWERED — ' + q2card.q;
+    q2card.q = 'Where do the "TFR-TO C/C" transfers go?';
+    q2card.owner = 'Dale';
   }
   let idErr = null;
   try {
     assertQuestionStatusAuthority({ markdown, publishedQuestions: idMutant, rendererSource });
   } catch (err) { idErr = err; }
   ok(!!idErr && /Q2/i.test(idErr.message),
-    'setting tier 0 / ANSWERED on the live Q2 card fails while Q2 is OPEN',
+    'stripping ANSWERED encoding from the live Q2 card fails while Q2 is ANSWERED',
     idErr ? idErr.message.split('\n')[0] : 'suite stayed green');
 }
 
@@ -469,24 +471,24 @@ console.log('\n=== renderer mutation ===');
     renderErr ? renderErr.message.split('\n')[0] : 'suite stayed green');
 }
 
-console.log('\n=== extra-surface mutation recreates the Q2 close ===');
+console.log('\n=== extra-surface mutation recreates the Q20 close ===');
 {
-  const OLD_POSITIONS_Q2_ROW = 'RESOLVED,,TFR-TO C-C destination,,Outflow,CAD,0.00,,,,,,Answered,,,,,,VERIFIED,2026-08-09,RESOLVED - the transfers went to the cards; over the 12-month statement window the cards received 55178.02 (Travel Visa 33696.18 + Cash Back 11879.50 + personal Visa 6632.34 + MBNA 2970.00) against 39875.43 of TFR-TO C-C leaving; cards received 15302.59 MORE than the transfers sent with the rest arriving via direct HELOC payments; it looked unexplained only because just one of five cards was visible and it took only 6632.34; NO undisclosed card and no leakage';
-  const OLD_B18 = '- **B18** The **$46,657** resolved — it paid the cards. Nothing was hiding';
-  const SYNTHETIC_Q2_CLOSE = 'RESOLVED — Q2. The TFR-TO C/C transfers are ANSWERED.';
+  const OLD_POSITIONS_Q20_ROW = 'RESOLVED,,emergency reserve target,,Outflow,CAD,0.00,,,,,,Answered,,,,,,VERIFIED,2026-08-16,RESOLVED - Q20 emergency reserve is ANSWERED';
+  const OLD_B20 = '- **B20** Q20 emergency reserve is ANSWERED';
+  const SYNTHETIC_Q20_CLOSE = 'RESOLVED — Q20. The emergency reserve target is ANSWERED.';
 
   const withOldPositions = extraSurfaces.map(s => s.path === 'docs/positions.csv'
-    ? { ...s, text: `${s.text.replace(/\n$/, '')}\n${OLD_POSITIONS_Q2_ROW}\n` }
+    ? { ...s, text: `${s.text.replace(/\n$/, '')}\n${OLD_POSITIONS_Q20_ROW}\n` }
     : s);
-  const withOldB18 = extraSurfaces.map(s => s.path === 'BACKLOG.md'
-    ? { ...s, text: `${s.text.replace(/\n$/, '')}\n${OLD_B18}\n` }
+  const withOldB20 = extraSurfaces.map(s => s.path === 'BACKLOG.md'
+    ? { ...s, text: `${s.text.replace(/\n$/, '')}\n${OLD_B20}\n` }
     : s);
   const withSynthetic = extraSurfaces.map(s => s.path === 'BACKLOG.md'
-    ? { ...s, text: `${s.text.replace(/\n$/, '')}\n${SYNTHETIC_Q2_CLOSE}\n` }
+    ? { ...s, text: `${s.text.replace(/\n$/, '')}\n${SYNTHETIC_Q20_CLOSE}\n` }
     : s);
 
   let positionsErr = null;
-  let b18Err = null;
+  let b20Err = null;
   let syntheticErr = null;
   try {
     assertQuestionStatusAuthority({
@@ -495,23 +497,23 @@ console.log('\n=== extra-surface mutation recreates the Q2 close ===');
   } catch (err) { positionsErr = err; }
   try {
     assertQuestionStatusAuthority({
-      markdown, publishedQuestions: published, rendererSource, extraSurfaces: withOldB18,
+      markdown, publishedQuestions: published, rendererSource, extraSurfaces: withOldB20,
     });
-  } catch (err) { b18Err = err; }
+  } catch (err) { b20Err = err; }
   try {
     assertQuestionStatusAuthority({
       markdown, publishedQuestions: published, rendererSource, extraSurfaces: withSynthetic,
     });
   } catch (err) { syntheticErr = err; }
 
-  ok(!!positionsErr && /Q2/i.test(positionsErr.message) && /positions\.csv/i.test(positionsErr.message),
-    'reintroducing the pre-change RESOLVED TFR-TO C-C positions.csv row fails while Q2 is OPEN',
+  ok(!!positionsErr && /Q20/i.test(positionsErr.message) && /positions\.csv/i.test(positionsErr.message),
+    'reintroducing a RESOLVED Q20 positions.csv row fails while Q20 is OPEN',
     positionsErr ? positionsErr.message.split('\n')[0] : 'suite stayed green');
-  ok(!!b18Err && /Q2/i.test(b18Err.message) && /BACKLOG/i.test(b18Err.message),
-    'reintroducing the pre-change B18 "$46,657 resolved" claim fails while Q2 is OPEN',
-    b18Err ? b18Err.message.split('\n')[0] : 'suite stayed green');
-  ok(!!syntheticErr && /Q2/i.test(syntheticErr.message) && /ANSWERED|RESOLVED/i.test(syntheticErr.message),
-    'a synthetic RESOLVED/ANSWERED Q2 claim outside the authority fails',
+  ok(!!b20Err && /Q20/i.test(b20Err.message) && /BACKLOG/i.test(b20Err.message),
+    'reintroducing a BACKLOG claim that Q20 is ANSWERED fails while Q20 is OPEN',
+    b20Err ? b20Err.message.split('\n')[0] : 'suite stayed green');
+  ok(!!syntheticErr && /Q20/i.test(syntheticErr.message) && /ANSWERED|RESOLVED/i.test(syntheticErr.message),
+    'a synthetic RESOLVED/ANSWERED Q20 claim outside the authority fails',
     syntheticErr ? syntheticErr.message.split('\n')[0] : 'suite stayed green');
 }
 

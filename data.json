@@ -1692,10 +1692,10 @@
         {
             "id": "Q2",
             "tier": 1,
-            "q": "Where do the \"TFR-TO C/C\" transfers go?",
-            "detail": "$46,657 over 18 months labelled as credit-card payments. Payment-matching analysis of the captured cards exists in standing facts; it is evidence about destinations, not a closed household answer.",
-            "changes": "Could reveal a credit card with a significant balance absent from the debt ranking. At ~$2,600/month of servicing, a debt of real size is plausible.",
-            "owner": "Dale"
+            "q": "ANSWERED — Where do the \"TFR-TO C/C\" transfers go?",
+            "detail": "Owner-confirmed 2026-08-29: only three TD credit cards exist. TFR-TO C/C is payments to the known cards, not a missing fourth TD Visa. \"Two TD Visas\" = Cash Back + Travel. Emerald/personal is the separate TD credit-card product whose balance barely moved in the original Q2 window. Individual June HELOC TFR-TO C/C lines still do not have per-card destinations. Canonical status lives in docs/01_OPEN_QUESTIONS.md.",
+            "changes": "There is no missing fourth TD Visa to add to the debt ranking. Do not fabricate per-card destinations onto June HELOC TFR-TO C/C lines.",
+            "owner": "Answered 2026-08-29"
         },
         {
             "id": "Q5",

@@ -1,6 +1,6 @@
 # Open Questions — Working Agenda
 
-**Updated 2026-08-22.** Every unanswered question in one place, ranked by what
+**Updated 2026-08-29.** Every unanswered question in one place, ranked by what
 the answer would change. Add new questions here as accounts are reviewed; move
 answered ones to the bottom with the answer recorded.
 
@@ -34,16 +34,7 @@ Wise transfer is excluded, plus whichever retail purchases were for resale. Even
 a rough month of tracking would settle it.
 
 ### Q2. Where do the "TFR-TO C/C" transfers go?
-**Status:** OPEN · **Owner:** Dale
-**What we know:** $46,657 over 18 months — $24,818 from chequing, $22,230 from
-the HELOC — labelled as credit-card payments. The TD Visa's balance fell only
-$391 across that period and shows no purchases at all. The money is not arriving
-at that card.
-**What the answer changes:** Could reveal a credit card with a significant
-balance that is entirely absent from the debt ranking. At ~$2,600/month of
-servicing, a debt of real size is plausible.
-**How to answer:** Dale should recognise the destination immediately — it is a
-transfer he or his wife set up.
+**Status:** ANSWERED 2026-08-29 · see Answered section below.
 
 ### Q3. What is the home worth?
 **Status:** OPEN · **Owner:** Dale
@@ -268,6 +259,39 @@ preserve held/pass-through semantics rather than guessing.
 ---
 
 ## Answered
+
+### Q2. Where do the "TFR-TO C/C" transfers go? — ANSWERED 2026-08-29
+**Status:** ANSWERED · **Owner:** Dale
+**Answer:** Owner evidence 2026-08-29: Dale sent an EasyWeb Credit Cards
+screenshot. **Only three TD credit cards exist.** Do not invent a fourth.
+
+| EasyWeb label | Last four | Atlas identity | Screenshot balance 2026-08-29 |
+|---|---|---|---|
+| PERSONAL CREDIT CARD | …5770 | `tdcc` / Emerald personal ••70 | $1,769.87 |
+| TD CASH BACK VISA | …0726 | `cashback` ••26 | $5,040.01 |
+| TRAVEL VISA | …0870 | `travelvisa` ••70 | $1,216.52 |
+
+Those screenshot balances are **dated EasyWeb observations**, not a
+canonical opening rewrite. They do not replace the 2026-08-19 `data.json`
+cents. Forecast remains the only planner.
+
+What this answers:
+
+1. **TFR-TO C/C is payments to the known cards**, not a missing fourth TD
+   Visa. The original worry — a significant TD card absent from the debt
+   ranking because the personal/Emerald balance barely moved and showed no
+   purchases — is closed. Emerald/personal is the separate TD credit-card
+   product whose balance barely moved in the original Q2 window.
+2. **“Two TD Visas”** means Cash Back + Travel. Emerald/personal is the
+   third TD credit-card product, not a Visa-named fourth card and not
+   missing.
+3. **Individual June HELOC TFR-TO C/C lines still do not have per-card
+   destinations.** Do not fabricate those. The 12-month payment-matching
+   table in `docs/ACCOUNT_FACTS.md` remains dated analytical evidence that
+   captured cards received more than labelled TFR-TO C/C sent; it is not
+   a per-line allocation of June HELOC transfers.
+
+MBNA/Amazon is a known non-TD card (Q4 ANSWERED). It is not a fourth TD Visa.
 
 ### Q26. What are the current pending amounts on Cash Back Visa and Travel Visa when exact action is needed? — ANSWERED 2026-08-18
 **Status:** ANSWERED · **Owner:** Dale
