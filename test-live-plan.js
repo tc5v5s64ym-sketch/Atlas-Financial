@@ -12,6 +12,7 @@ const os = require('os');
 const crypto = require('crypto');
 const { execFileSync } = require('child_process');
 const O = require('./scripts/provider-observe.js');
+const C = require('./scripts/canonical-refresh.js');
 const Live = require('./scripts/live-plan.js');
 const Forecast = require('./public/forecast.js');
 const Chequing = require('./public/forecast-chequing.js');
@@ -28,9 +29,13 @@ const LIVE_AS_OF = '2026-08-21';
 const UNKNOWN_SAME_DAY_AT = '2026-08-20T18:00:00.000Z';
 const PAYDAY_AT = '2026-08-28T18:00:00.000Z';
 const PAYDAY_AS_OF = '2026-08-28';
+const NEXT_DAY_AT = '2026-08-29T18:00:00.000Z';
+const NEXT_DAY_AS_OF = '2026-08-29';
 const PURCHASE = 40;
 const CASH_PURCHASE = 30;
 const SYNTHETIC_PAYROLL = 1000;
+const SYNTHETIC_MORTGAGE_OBSERVED = 1234.56;
+const SYNTHETIC_TRANSFER = 19.03;
 const SYNTHETIC_CCB = 50;
 const CCB_AS_OF = '2026-08-20';
 const ELAPSED_WEEKLY = 70;
@@ -163,7 +168,7 @@ function matchingAccounts(data, tweaks) {
 
 function payloadFrom(data, extra) {
   const extraPayload = extra || {};
-  return {
+  const payload = {
     provider: 'lunchmoney',
     fetchedAt: extraPayload.fetchedAt || FETCHED_AT,
     source: 'Synthetic live-plan fixture. Not a live institution pull. Fixture IDs 3001–3010 are not live provider IDs.',
@@ -173,6 +178,9 @@ function payloadFrom(data, extra) {
     accounts: matchingAccounts(data, extraPayload.tweaks),
     transactions: extraPayload.transactions || [],
   };
+  if (extraPayload.categories) payload.categories = extraPayload.categories;
+  if (extraPayload.transactionWindow) payload.transactionWindow = extraPayload.transactionWindow;
+  return payload;
 }
 
 function overlay(data, extra) {
@@ -1052,6 +1060,218 @@ console.log('\n=== 16. fail-closed overlay still reports current observed chequi
   ok(near(staleA, 629.27) && near(staleB, 309.77) && near(staleSavings, 0.58),
     'canonical opening used as the stale baseline remains the Aug 19 cash rows');
   filesUnchanged('observed chequing on fail-closed overlay');
+}
+
+console.log('\n=== 17. posted payday-window mortgage is represented; Fit4Less stays an owner fact ===');
+{
+  const canonical = clone(liveData);
+  const scheduledMortgage = Number((canonical.plan.obligations || [])
+    .find(row => row && row.id === 'mortgage').amount);
+  const scheduledFit = Number((canonical.plan.bills || [])
+    .find(row => row && row.id === 'fit4less').amount);
+  ok(scheduledMortgage > 0 && scheduledFit > 0,
+    'plan still names the biweekly mortgage and Fit4Less amounts');
+  ok(!near(SYNTHETIC_MORTGAGE_OBSERVED, scheduledMortgage),
+    'observed mortgage debit is deliberately not the scheduled amount');
+
+  const mortgageRule = (identity.rules || []).find(r => r && r.eventId === 'mortgage');
+  ok(mortgageRule && mortgageRule.payeePattern === 'TD MORTGAGE'
+    && mortgageRule.atlasAccountId === 'chequing-a' && mortgageRule.direction === 'debit',
+    'mortgage identity is documented TD MORTGAGE + Chequing A debit');
+  ok(!(identity.rules || []).some(r => r && r.eventId === 'fit4less'),
+    'Fit4Less has no payee identity rule');
+
+  const categories = [
+    { id: 21, name: 'Income', is_income: true, exclude_from_totals: false },
+    { id: 22, name: 'Mortgage', is_income: false, exclude_from_totals: false },
+    { id: 23, name: 'Personal Care', is_income: false, exclude_from_totals: false },
+    { id: 24, name: 'Payment/Transfer', is_income: false, exclude_from_totals: true },
+  ];
+  const window = {
+    startDate: '2026-08-16',
+    endDate: NEXT_DAY_AS_OF,
+    complete: true,
+    hasMore: false,
+    truncated: false,
+  };
+  const sharedTx = [
+    {
+      id: 92028,
+      account_id: 3001,
+      date: PAYDAY_AS_OF,
+      amount: -SYNTHETIC_PAYROLL,
+      payee: 'SEASPAN PAYROLL',
+      category_id: 21,
+      is_pending: false,
+      status: 'reviewed',
+    },
+    {
+      id: 92029,
+      account_id: 3001,
+      date: PAYDAY_AS_OF,
+      amount: scheduledFit,
+      payee: 'GYM STORE',
+      category_id: 23,
+      is_pending: false,
+      status: 'reviewed',
+    },
+    {
+      id: 92030,
+      account_id: 3001,
+      date: PAYDAY_AS_OF,
+      amount: SYNTHETIC_TRANSFER,
+      payee: 'INTERNAL TRANSFER',
+      category_id: 24,
+      exclude_from_totals: true,
+      is_pending: false,
+      status: 'reviewed',
+    },
+  ];
+  const mortgageTx = payee => ({
+    id: 92031,
+    account_id: 3001,
+    date: PAYDAY_AS_OF,
+    amount: SYNTHETIC_MORTGAGE_OBSERVED,
+    payee,
+    category_id: 22,
+    is_pending: false,
+    status: 'reviewed',
+  });
+  const cashDelta = SYNTHETIC_PAYROLL - SYNTHETIC_MORTGAGE_OBSERVED
+    - scheduledFit - SYNTHETIC_TRANSFER;
+  const extra = payee => ({
+    fetchedAt: NEXT_DAY_AT,
+    categories,
+    transactionWindow: window,
+    tweaks: {
+      'chequing-a': cashValue(canonical, 'chequing-a') + cashDelta,
+      cashAt: '2026-08-29T17:55:00.000Z',
+    },
+    transactions: sharedTx.concat([mortgageTx(payee)]),
+  });
+
+  const control = overlay(clone(canonical), extra('UNKNOWN MORTGAGE PAYEE'));
+  const result = overlay(clone(canonical), extra('TD MORTGAGE'));
+  ok(control.data.liveOverlay && control.data.liveOverlay.applied === true,
+    'control overlay still applies without guessing the mortgage');
+  ok(result.data.liveOverlay && result.data.liveOverlay.applied === true,
+    'Aug 29 overlay applies when TD MORTGAGE is identified');
+  ok(String(result.data.meta.asOf) === NEXT_DAY_AS_OF,
+    'in-memory as-of is the day after payday');
+  ok(!(result.report.currentPeriodActuals.transactions || [])
+      .some(tx => tx && tx.date === NEXT_DAY_AS_OF),
+    'fixture has no transactions dated 2026-08-29');
+
+  const mortgageHit = (result.report.representedEventCandidates || [])
+    .find(c => c.id === 'mortgage' && c.date === PAYDAY_AS_OF);
+  ok(mortgageHit && mortgageHit.identity === 'payee+account+date'
+    && mortgageHit.amountNotUsed === true
+    && near(mortgageHit.observedAmount, SYNTHETIC_MORTGAGE_OBSERVED),
+    'mortgage identity is payee+account+date, not the scheduled $ amount');
+  ok(!(control.report.representedEventCandidates || [])
+      .some(c => c.id === 'mortgage'),
+    'amount and Mortgage category without TD MORTGAGE is not identity');
+  ok((result.data.plan.opening.representedEvents || [])
+      .some(e => e.id === 'mortgage' && e.date === PAYDAY_AS_OF),
+    'posted payday-window mortgage is named on the in-memory opening');
+  ok(!(result.data.plan.opening.representedEvents || [])
+      .some(e => e.id === 'fit4less'),
+    'Personal Care amount is not invented into Fit4Less representation');
+
+  const payrollHits = (result.data.plan.opening.representedEvents || [])
+    .filter(e => e.id === 'payroll' && e.date === PAYDAY_AS_OF);
+  ok(payrollHits.length === 1,
+    'Aug 28 payroll is represented once and not replayed onto representedEvents');
+  ok(!Forecast.expandEvents(result.data.plan, NEXT_DAY_AS_OF, NEXT_DAY_AS_OF, {})
+      .some(e => e.id === 'payroll' && e.date === PAYDAY_AS_OF),
+    'Forecast does not emit the posted Aug 28 payroll again');
+  ok(Forecast.expandEvents(canonical.plan, canonical.plan.opening.asOf, PAYDAY_AS_OF, {})
+      .some(e => e.id === 'payroll' && e.date === PAYDAY_AS_OF),
+    'the dated opening would still emit that payroll');
+
+  ok(!Forecast.expandEvents(result.data.plan, NEXT_DAY_AS_OF, NEXT_DAY_AS_OF, {})
+      .some(e => e.id === 'mortgage' && e.date === PAYDAY_AS_OF),
+    'Forecast does not reserve the posted mortgage again');
+  ok(Forecast.expandEvents(control.data.plan, NEXT_DAY_AS_OF, NEXT_DAY_AS_OF, {})
+      .some(e => e.id === 'mortgage' && e.date === PAYDAY_AS_OF),
+    'without TD MORTGAGE identity the mortgage remains reserved');
+  const controlReserved = Forecast.expandEvents(control.data.plan, NEXT_DAY_AS_OF, NEXT_DAY_AS_OF, {})
+    .find(e => e.id === 'mortgage' && e.date === PAYDAY_AS_OF);
+  ok(controlReserved && near(-controlReserved.amount, scheduledMortgage),
+    'independent reserved amount is the plan mortgage row, not the observed debit');
+
+  const fitReserved = Forecast.expandEvents(result.data.plan, NEXT_DAY_AS_OF, NEXT_DAY_AS_OF, {})
+    .find(e => e.id === 'fit4less' && e.date === PAYDAY_AS_OF);
+  ok(fitReserved && near(-fitReserved.amount, scheduledFit),
+    'Fit4Less stays reserved until an owner settlement fact exists');
+
+  const advice = Forecast.recommend(result.data.plan, NEXT_DAY_AS_OF, {
+    currentPeriodActuals: result.data.liveOverlay.currentPeriodActuals,
+    debts: result.data.debts,
+    revolvingExtra: result.data.revolvingExtra,
+    targetBuffer: canonical.plan.defaults.targetBuffer,
+  });
+  const controlAdvice = Forecast.recommend(control.data.plan, NEXT_DAY_AS_OF, {
+    currentPeriodActuals: control.data.liveOverlay.currentPeriodActuals,
+    debts: control.data.debts,
+    revolvingExtra: control.data.revolvingExtra,
+    targetBuffer: canonical.plan.defaults.targetBuffer,
+  });
+  const items = (advice.paydayAllocation && advice.paydayAllocation.obligations
+    && advice.paydayAllocation.obligations.items) || [];
+  const controlItems = (controlAdvice.paydayAllocation
+    && controlAdvice.paydayAllocation.obligations
+    && controlAdvice.paydayAllocation.obligations.items) || [];
+  ok(!items.some(row => row.id === 'mortgage' && row.date === PAYDAY_AS_OF),
+    'paydayAllocation does not treat the posted mortgage as still due');
+  ok(controlItems.some(row => row.id === 'mortgage' && row.date === PAYDAY_AS_OF
+      && row.settlement === 'unverified'),
+    'control still lists the unidentified mortgage as unverified');
+  ok(items.some(row => row.id === 'fit4less' && row.date === PAYDAY_AS_OF
+      && row.settlement === 'unverified'),
+    'paydayAllocation keeps Fit4Less unverified');
+  ok(near(
+    controlAdvice.paydayAllocation.obligations.wanted - advice.paydayAllocation.obligations.wanted,
+    scheduledMortgage
+  ), 'independent wanted delta is the scheduled mortgage, not the observed debit');
+
+  const bills = (advice.currentPeriodAction && advice.currentPeriodAction.bills) || [];
+  ok(bills.some(row => row.id === 'mortgage' && row.settlement === 'represented'
+      && near(row.actual, SYNTHETIC_MORTGAGE_OBSERVED)),
+    'currentPeriodAction names the mortgage represented with the observed actual');
+  ok(bills.some(row => row.id === 'fit4less' && row.settlement === 'unverified'),
+    'currentPeriodAction keeps Fit4Less unverified');
+
+  const transferActual = (result.report.currentPeriodActuals.transactions || [])
+    .find(tx => tx && tx.date === PAYDAY_AS_OF && near(tx.amount, SYNTHETIC_TRANSFER));
+  ok(transferActual && transferActual.excludeFromTotals === true
+      && transferActual.accountRole === 'household-cash',
+    'Aug 28 Payment/Transfer excludeFromTotals is observed household-cash');
+  const unmatched = (result.report.obligationReconciliationReceipt
+    && result.report.obligationReconciliationReceipt.unmatchedCashEvidence) || [];
+  ok(!unmatched.some(row => near(row.amount, SYNTHETIC_TRANSFER)),
+    'excludeFromTotals transfer is not unmatched household cash');
+  ok(result.writesCanonicalState === false
+      && result.data.liveOverlay.writesCanonicalState === false,
+    'live overlay still does not write canonical state');
+  const preview = C.buildPreview(result.report, { data: canonical });
+  ok(!(preview.proposed || []).some(row => near(row.proposedValue, SYNTHETIC_TRANSFER)
+      || near(row.currentValue, SYNTHETIC_TRANSFER)),
+    'canonical preview does not write the unmatched $ transfer');
+  ok(!(preview.unresolved || []).some(row =>
+      row.reason === 'unmatched-household-cash-must-not-write'
+      && near(row.amount, SYNTHETIC_TRANSFER)),
+    'excludeFromTotals transfer does not become an unmatched write row');
+  ok((preview.ownerQuestions || []).some(row => row.id === 'fit4less'
+      && row.reason === 'unverified-settlement-owner-fact'),
+    'Fit4Less remains an unverified-settlement owner question');
+  ok(!(preview.ownerQuestions || []).some(row => row.id === 'mortgage'),
+    'represented mortgage is not an owner settlement question');
+  const question = result.data.refreshTrust && result.data.refreshTrust.ownerQuestion;
+  ok(question && question.reason === 'unverified-settlement-owner-fact',
+    'refresh-trust still surfaces the unverified-settlement owner-fact gate',
+    question && `${question.id} ${question.reason}`);
+  filesUnchanged('posted payday-window mortgage');
 }
 
 console.log('\n' + '═'.repeat(60));
