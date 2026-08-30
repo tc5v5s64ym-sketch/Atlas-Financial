@@ -191,8 +191,11 @@ supported by Atlas evidence stay where they already live (home insurance and
 vehicle maintenance on `plan.commitments`; property tax as the existing
 reserve). Remaining unknowns are Q22. This is not a goals engine.
 
-**Still outstanding / owner-blocked:** the wife's business economics (Q1);
-verified home market value (Q3 — planning estimate is **$1,200,000** ESTIMATE
+**Still outstanding / owner-blocked:** historical coaching P&L (Q1 stays OPEN
+— owner-stated 2026-08-29: no shop/resale/inventory business; no other income
+besides known salaries and seasonal coaching; leftover after coach pay is
+gravy when it arrives, not a Forecast income line; do not invent a historical
+split); verified home market value (Q3 — planning estimate is **$1,200,000** ESTIMATE
 as of 2026-08-29; **$1,300,000** is optimistic high only and not the plan;
 Q3 stays OPEN); WebBroker holdings (Q11 — needs an exchange-agreement
 acceptance, which is the account holder's decision); the two unidentified
@@ -200,7 +203,8 @@ accounts (Q6). Q2 (where the $46,657 of TFR-TO C/C transfers go) is
 **ANSWERED 2026-08-29** — only three TD credit cards exist; TFR-TO C/C is
 payments to the known cards, not a missing fourth TD Visa. Q5 (why
 the monthly spousal transfer stopped after May 2026) is **ANSWERED** — the
-garage/lab income ended.
+garage/lab income ended. Q12 stays OPEN without a spending
+reclass. Q25 stays OPEN for the TENNIS INCOME mixed remainder.
 
 **Do not carry these 9 August or 16 August conclusions forward as current
 truth.** The 2026-08-19 opening replaced them: spendable cash is $939.62;

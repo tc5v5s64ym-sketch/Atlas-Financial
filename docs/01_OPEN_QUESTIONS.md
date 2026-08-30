@@ -1,6 +1,6 @@
 # Open Questions — Working Agenda
 
-**Updated 2026-08-29.** Every unanswered question in one place, ranked by what
+**Updated 2026-08-30.** Every unanswered question in one place, ranked by what
 the answer would change. Add new questions here as accounts are reviewed; move
 answered ones to the bottom with the answer recorded.
 
@@ -15,23 +15,41 @@ the site may hold evidence about a question. They do not close it.
 
 ### Q1. Does the business make money?
 **Status:** OPEN · **Owner:** Dale + wife + accountant
-**What we know:** Of the existing $23,200 of outbound e-transfers, a
-**CALCULATED $3,500** is traced to the Wise holiday accounts, leaving a
-**CALCULATED $19,700** without a matched destination; $13,062 of the outbound
-stream was drawn directly from the HELOC at 4.90%. Separately, $54,213 of
-inbound e-transfers over 18 months (~$3,012/month) are described as sale
-proceeds. Heavy retail purchasing is currently classified as household spending.
-A CRA balance was paid from the HELOC. The Deep Dive's question about where the
+**What we know:** This question is historical coaching P&L — receipts vs coach
+pay vs HELOC-funded outbound — not live Forecast income. Of the existing $23,200
+of outbound e-transfers, a **CALCULATED $3,500** is traced to the Wise holiday
+accounts, leaving a **CALCULATED $19,700** without a matched destination; $13,062
+of the outbound stream was drawn directly from the HELOC at 4.90%. Separately,
+**CALCULATED $54,213** of inbound e-transfers over 18 months (~$3,012/month) were
+described in the first pass as sale proceeds. Owner-confirmed 2026-08-09 those
+inbounds are coaching receipts, not resale. Owner-stated 2026-08-29: there is
+**no shop / resale / inventory business**, and no other income besides known
+salaries and seasonal coaching. Amanda does seasonal coaching, paid by
+e-transfer; she pays coaches from that inbound; whatever is left, the household
+keeps. He does not have exact historical numbers. The unmatched $19,700 **may be
+coach pay; that is not written as fact**. Heavy retail purchasing remains
+classified as household spending — do not reclassify it as inventory COGS. A CRA
+balance was paid from the HELOC. The Deep Dive's question about where the
 remaining $19,700 goes is this Q1 sub-part, not a separate household question.
-**What the answer changes:** Everything. If receipts exceed true cost of goods,
-the household is running a financed but viable side business. If they do not, the
-activity is consuming HELOC capacity and generating tax liability while producing
-little — which would explain why the HELOC grows despite $78,177 of repayments.
-It also determines whether household "spending" of $7,551/month is overstated.
-**How to answer:** Set the $54,213 of receipts against inventory purchases —
-including the still-unmatched $19,700 of outbound e-transfers after the $3,500
-Wise transfer is excluded, plus whichever retail purchases were for resale. Even
-a rough month of tracking would settle it.
+**Planning (owner-stated 2026-08-29, not a historical close):** Forecast already
+has the salaries. Do not add a coaching revenue line. Extra coaching leftover is
+gravy when it actually arrives, not a recurring income line. Going forward he
+will say coaching in/out when it happens. TENNIS INCOME stays excluded from
+spendable `plan.startingCash`. Tennis BC salary remains Forecast household
+income (owner-confirmed 2026-08-22). Q25 stays OPEN for the mixed remainder.
+**What the answer changes:** The historical net, if evidenced. If leftover
+exceeded coach pay and other evidenced coaching costs, the household kept a
+surplus; if HELOC-funded outbound subsidised the activity, that is a different
+historical picture. It does **not** change the live plan: coaching e-transfers
+are not Forecast household income. Do not invent a margin, COGS, or a split of
+the $54,213 inbound / $19,700 unmatched outbound. Planning settlement does not
+close this question.
+**How to answer:** Set the $54,213 of coaching receipts against evidenced coach
+pay and other evidenced coaching costs, including whether the unmatched $19,700
+(after the $3,500 Wise transfer) was coach pay. Do not invent a split. Do not
+treat currently classified household retail as inventory. Tracked coaching
+in/out would settle the historical picture; it would still not add a Forecast
+income line.
 
 ### Q2. Where do the "TFR-TO C/C" transfers go?
 **Status:** ANSWERED 2026-08-29 · see Answered section below.
@@ -139,7 +157,9 @@ from the overview; holdings, book value, and contribution room are not.
 ### Q12. How much of the 19% uncategorized spending is business inventory?
 **Status:** OPEN · **Owner:** Dale + wife
 $25,630 over 18 months could not be reliably categorized. Overlaps heavily with
-Q1 — separating the business would resolve much of it prospectively.
+Q1. Owner-stated 2026-08-29: there is **no inventory / resale / shop business
+going forward**. That planning fact does not reclassify historical retail and
+does not close this question without a spending reclass.
 
 ---
 
@@ -262,9 +282,11 @@ coaches/business/pass-through amounts are paid first. Owner-confirmed
 and $2,387.99 on month-end) land in household accounts and are Forecast
 household income; that fact is not what this question is for. Q25 is only
 the uncertain coaching/business remainder of the mixed operating-account
-balance. The Aug. 14 payday session observed $798.37 in that account. A
-fresh balance is not automatically spendable starting cash. Do not estimate
-how much of the current remainder is household-available.
+balance. Owner-stated 2026-08-29: extra coaching leftover is gravy when it
+actually arrives, not a budgeted inflow, and does not make this mixed remainder
+spendable starting cash. The Aug. 14 payday session observed $798.37 in that
+account. A fresh balance is not automatically spendable starting cash. Do not
+estimate how much of the current remainder is household-available.
 **What the answer changes:** How much, if any, of that mixed-account
 remainder can enter household available cash after a refresh. B91 must
 preserve held/pass-through semantics rather than guessing.

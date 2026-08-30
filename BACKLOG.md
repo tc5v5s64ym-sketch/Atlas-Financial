@@ -187,9 +187,17 @@ action is retired. Do not put a fixed Amanda-transfer instruction back on
 stays OPEN only for the coaching/business remainder.
 
 **B13 · Business records — revenue and cost of goods** · *large*
-The Tier 1 question. Now **two** businesses, which must be separated first (B56).
+Owner-stated 2026-08-29: no shop/resale/inventory business; seasonal coaching
+leftover is gravy, not Forecast income. Historical receipts vs coach pay vs
+HELOC-funded outbound remains Q1 OPEN. Do not invent a margin or split. Do
+not treat planning settlement as a Q1 close. Dental-lab rent ended (see Q5).
 
 **B56 · Separate the two businesses** · *medium*
+
+The 2026-08-09 split still stands as dated evidence: parents' dental lab
+(garage rent to May 2026) versus Amanda's seasonal coaching. Owner-stated
+2026-08-29: coaching is not a resale/inventory shop; leftover is gravy, not
+a Forecast income line. Historical coaching net remains Q1 OPEN.
 
 | | Whose | What |
 |---|---|---|
@@ -463,11 +471,11 @@ so none of this is time-sensitive.
 ## Queued behind the above
 
 **B15 · Rebuild the income picture** *(on B63)* · *medium*
-Coaching is gross. The current derived estimate is roughly **$650/month** of
-household-income overstatement (`data.json` `incomeWarning`), not the
-**$1,650/month** earlier upper-bound fear. The tracking sheets cover only a
-subset of the window; the share is indicative. Until the coach split is
-confirmed in the books, every conclusion resting on income stays provisional.
+Owner-stated 2026-08-29: do not add a coaching income line. Forecast uses
+salaries (Seaspan, Tennis BC) and the child benefit. Coaching leftover is
+gravy when it lands. Historical coach-pay net remains Q1 OPEN. The 2026-08-09
+tracking-sheet derivation is dated subset evidence, not a current monthly
+coaching-income figure. Do not invent a split.
 
 **B16 · Finish the spending picture** *(on B34, B40)* · *medium*
 Cards and chequing are both categorised. Remaining: merge the windows (12 months
@@ -534,9 +542,10 @@ The 30 June coaching remittance was re-traced and a coach was paid out of it —
 
 ## The three biggest numbers still uncertain
 
-1. **Coach payments** — income overstated by ~$650/month on current estimates,
-   settled by B63. One payment is now traced ($2,160.00, 6 Jul); the rest of the
-   route is not
+1. **Historical coaching P&L** — Q1 stays OPEN. Unmatched outbound $19,700
+   may be coach pay; that is not written as fact. One payment is traced
+   ($2,160.00, 6 Jul); the rest of the 2026 route is not. Planning does not
+   wait on this: leftover coaching is not Forecast income.
 2. **Two unidentified accounts** — $59,027, reachable via B64 and **only** via
    the e-transfer record: the internal-transfer data contains zero unidentified
    account numbers, so B31 cannot reach them
