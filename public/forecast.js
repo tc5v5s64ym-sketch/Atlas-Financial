@@ -2872,12 +2872,71 @@
     return items;
   }
 
+  // Owner-target hold for a named span: monthly target × span days /
+  // calendar month. Not leftover remaining-cap, not the unscaled monthly
+  // figure, not a second budget engine. Print every existing owner-target
+  // category; do not invent Dale/Amanda rows.
+  function ownerTargetHoldForSpan(plan, days) {
+    const scale = Math.max(0, Number(days) || 0) / CALENDAR_MONTH_DAYS;
+    const items = [];
+    for (const cat of (plan && plan.budget && plan.budget.categories) || []) {
+      if (!cat || !cat.id || cat.plannedMonthly == null) continue;
+      const monthly = roundCent(Number(cat.plannedMonthly) || 0);
+      items.push({
+        id: cat.id,
+        label: DEFAULT_VIEW_BUDGET_LABELS[cat.id] || cat.ownerLine || cat.label,
+        monthly,
+        planned: roundCent(monthly * scale),
+      });
+    }
+    return items;
+  }
+
+  // Planned vs spent for the selected Plan span. Spent is classified live
+  // overlay actuals in that span. Planned is the owner-target hold for the
+  // same days. Remaining-cap / leftover is not published here.
+  function householdBudgetDigest(plan, asOf, spanStart, spanEnd, opts) {
+    opts = opts || {};
+    const start = spanStart || null;
+    const end = spanEnd || null;
+    const days = start && end ? Math.max(1, diffDays(start, end) + 1) : 0;
+    const coverageOrigin = start && asOf && start <= asOf ? start : asOf;
+    const coverage = actualsCoverageState(asOf, coverageOrigin, opts);
+    const useActuals = coverage.remainingClaim === 'precise'
+      || coverage.remainingClaim === 'posted-only';
+    const through = end && asOf && end < asOf ? end : asOf;
+    const actuals = useActuals
+      ? sumCategoryActuals(plan, through, start, opts)
+      : emptyCategoryActuals();
+    const namedClaim = categoryRemainingClaimFrom(
+      coverage.remainingClaim, actuals.unclassified);
+    const historyAsOf = opts.periods && opts.periods.asOf ? opts.periods.asOf : null;
+    const historyStale = !!(historyAsOf && asOf && historyAsOf < asOf);
+    const rows = ownerTargetHoldForSpan(plan, days).map(row => {
+      const act = categoryCommittedActual(actuals.byId.get(row.id));
+      return {
+        id: row.id,
+        label: row.label,
+        planned: row.planned,
+        spent: useActuals ? act.committed : null,
+      };
+    });
+    return {
+      periodStart: start,
+      periodEnd: end,
+      spentReady: useActuals,
+      actualsIncomplete: !useActuals || namedClaim !== 'precise',
+      historyThrough: historyStale ? historyAsOf : null,
+      rows,
+    };
+  }
+
   function budgetAmountTotal(rows) {
     return roundCent((rows || []).reduce((s, r) => s + (Number(r && r.amount) || 0), 0));
   }
 
   function layoutViewFrom(plan, asOf, debts, leftover, bills, householdBudget,
-      extraDebt, plans, copy, purchaseRange) {
+      extraDebt, plans, copy, purchaseRange, opts) {
     const cards = revolvingCardsGlance(plan, debts, extraDebt);
     return {
       asOf: copy.asOf || asOf,
@@ -2895,13 +2954,15 @@
       afterBigPurchases: leftover.afterBigPurchases,
       bills: bills || [],
       householdBudget: householdBudget || [],
+      budgetDigest: householdBudgetDigest(
+        plan, asOf, copy.periodStart, copy.periodEnd, opts),
       firstCard: cards.firstCard,
       otherCards: cards.otherCards,
       bigPurchases: bigPurchasesGlance(plans, extraDebt, purchaseRange),
     };
   }
 
-  function planDefaultView(plan, asOf, alloc, action, plans, debts) {
+  function planDefaultView(plan, asOf, alloc, action, plans, debts, opts) {
     const leftover = (alloc && alloc.runningLeftover) || runningLeftoverFromAlloc(
       alloc && alloc.available,
       alloc && alloc.obligations && alloc.obligations.allocated,
@@ -2932,6 +2993,8 @@
       afterBigPurchases: leftover.afterBigPurchases,
       bills,
       householdBudget: householdBudgetGlance(plan, alloc),
+      budgetDigest: householdBudgetDigest(
+        plan, asOf, paydayDate, periodLast, opts),
       firstCard: cards.firstCard,
       otherCards: cards.otherCards,
       bigPurchases: bigPurchasesGlance(plans, alloc),
@@ -2971,7 +3034,8 @@
         periodStart: nextPayday,
         periodEnd: periodLast,
       },
-      { start: nextPayday, end: periodLast }
+      { start: nextPayday, end: periodLast },
+      opts
     );
   }
 
@@ -3003,7 +3067,8 @@
         periodStart: week.start,
         periodEnd: week.end,
       },
-      { start: week.start, end: week.end }
+      { start: week.start, end: week.end },
+      opts
     );
   }
 
@@ -4210,7 +4275,7 @@
         paydayAllocation: alloc,
         currentPeriodAction: action,
         defaultView: planDefaultView(plan, asOf, alloc, action, plans,
-          paydayOpts.debts || base.debts),
+          paydayOpts.debts || base.debts, paydayOpts),
         nextPeriodView: planNextPeriodView(plan, asOf, action, plans,
           paydayOpts.debts || base.debts, viewSim, paydayOpts),
         weekViews: planWeekViews(plan, asOf, plans,

@@ -338,6 +338,10 @@ footer { margin-top:56px; padding-top:18px; border-top:1px solid var(--grid);
 }
 .operating-line:last-child { border-bottom:none; }
 .operating-line span:last-child { font-weight:650; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.payday-budget-digest {
+  padding:22px 24px; border-bottom:1px solid var(--grid);
+}
+.payday-budget-digest .operating-lead { margin-bottom:4px; }
 .future-gravity-current { margin-bottom:14px; }
 .future-gravity-current h3, .future-gravity-heading {
   margin:0 0 7px; color:var(--muted); font-size:.72rem; font-weight:750;

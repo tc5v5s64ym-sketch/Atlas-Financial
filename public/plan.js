@@ -1640,6 +1640,28 @@ function householdBudgetHtml(view) {
   </div>`;
 }
 
+function budgetDigestHtml(digest) {
+  const rows = (digest && digest.rows) || [];
+  if (!rows.length) return '';
+  const notes = [];
+  if (digest.actualsIncomplete) notes.push('Not all spending is in yet.');
+  if (digest.historyThrough) {
+    notes.push(`Spending history only goes through ${fmtDate(digest.historyThrough)}.`);
+  }
+  const noteHtml = notes.map(text => `<p class="operating-note">${text}</p>`).join('');
+  const lines = rows.map(row => {
+    const amount = row.spent != null && row.planned != null
+      ? `spent ${money2(row.spent)} of ${money2(row.planned)}`
+      : (row.planned != null ? `planned ${money2(row.planned)}` : '—');
+    return paydayBucketRow(row.label, amount, null, null, { preformatted: true });
+  }).join('');
+  return `<div class="payday-budget-digest" data-payday-budget-digest>
+    <p class="operating-lead">Spent against the budget</p>
+    ${noteHtml}
+    <div class="operating-lines">${lines}</div>
+  </div>`;
+}
+
 function firstCardHtml(view) {
   const card = view && view.firstCard;
   if (!card) {
@@ -1879,6 +1901,7 @@ function operatingSurfaceHtml(ctx) {
     ${question('08', 'Balance after debt repayment', runningLeftoverHtml(view.afterDebtRepayment))}
     ${question('09', 'Big purchases on the horizon', bigPurchasesHtml(view))}
     ${question('10', 'Balance after big purchase allocation', runningLeftoverHtml(view.afterBigPurchases))}
+    ${budgetDigestHtml(view.budgetDigest)}
     <details class="household-inline-details" data-payday-allocation-details>
       <summary>See how payday is reserved</summary>
       ${allocation}

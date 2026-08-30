@@ -184,6 +184,14 @@
   margin-top: .5rem;
 }
 
+.household-view-ready .payday-budget-digest {
+  margin: 0;
+  padding: 1.15rem 1.2rem;
+  border: 1px solid var(--grid);
+  border-radius: 18px;
+  background: var(--surface-1);
+}
+
 .household-view-ready [data-payday-still-due] .operating-lead {
   font-weight: 700;
   color: var(--text-primary);
