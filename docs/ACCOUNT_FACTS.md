@@ -249,15 +249,14 @@ PDFs and from committed category rollups (July Telecom = Shaw + the $250
 main-account payment) is not a retraction of the owner confirmation.
 
 **CMAW Local 1995 union dues — recurring $25/month payment cancelled
-(owner-confirmed 2026-08-24).** The monthly Plan bill is retired. Historical
-Union dues actuals remain in `public/periods.json` (August 2026 still shows
-$25; July $25; YTD $200; all-history $475) and must not be deleted or
-rewritten because the recurrence ended. The 15 August occurrence remains the
-once row `uniondues-aug15-outstanding` because posting is still unknown at the
-incumbent posting/settlement authority; cancellation is not proof it settled.
-The next scheduled monthly occurrence would have been 2026-09-15, after the
-owner confirmation, and is not reserved. They are not inside the CRA
-instalment reserve.
+(owner-confirmed 2026-08-24; tracking stopped 2026-08-30).** The monthly Plan
+bill is retired. Historical Union dues actuals remain in `public/periods.json`
+(August 2026 still shows $25; July $25; YTD $200; all-history $475) and must
+not be deleted or rewritten because the recurrence ended. Owner 2026-08-30:
+stop tracking the cancelled dues. There is no `uniondues-aug15-outstanding`
+row and no posting-unknown stub. The next scheduled monthly occurrence would
+have been 2026-09-15, after the owner confirmation, and is not reserved. They
+are not inside the CRA instalment reserve.
 
 **BC Hydro is not one of them.** It moved to Amanda's TENNIS INCOME account
 (id `amanda-debt-payments`, previously nicknamed DEBT&PAYMENTS) — it moved

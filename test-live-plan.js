@@ -1294,7 +1294,7 @@ console.log('\n=== 17. posted payday-window mortgage and Fit4less Msp are repres
     'unknown Fit4Less payee stays unverified on currentPeriodAction');
   ok(identifiedBills.some(row => row.id === 'fit4less' && row.settlement === 'represented'
       && near(row.actual, SYNTHETIC_FIT_OBSERVED)),
-    'Fit4less Msp is already left with the observed actual, not the scheduled amount');
+    'Fit4less Msp is already paid with the observed actual, not the scheduled amount');
   ok(identifiedInflows.some(row => row.id === 'payroll' && row.date === PAYDAY_AS_OF),
     'represented Friday Seaspan is an inflow on currentPeriodAction');
 

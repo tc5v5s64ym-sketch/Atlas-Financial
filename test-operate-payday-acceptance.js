@@ -76,8 +76,8 @@ function loadComposer() {
     grab(planSrc, /^function postedThisPeriodHtml\([\s\S]*?\n\}$/m, 'postedThisPeriodHtml'),
     grab(planSrc, /^function glanceMoney\([\s\S]*?\n\}$/m, 'glanceMoney'),
     grab(planSrc, /^function glanceLineLabel\([\s\S]*?\n\}$/m, 'glanceLineLabel'),
-    grab(planSrc, /^function alreadyLeftRowsHtml\([\s\S]*?\n\}$/m, 'alreadyLeftRowsHtml'),
-    grab(planSrc, /^function alreadyLeftHtml\([\s\S]*?\n\}$/m, 'alreadyLeftHtml'),
+    grab(planSrc, /^function alreadyPaidRowsHtml\([\s\S]*?\n\}$/m, 'alreadyPaidRowsHtml'),
+    grab(planSrc, /^function alreadyPaidHtml\([\s\S]*?\n\}$/m, 'alreadyPaidHtml'),
     grab(planSrc, /^function stillDueItems\([\s\S]*?\n\}$/m, 'stillDueItems'),
     grab(planSrc, /^function cashGlanceHtml\([\s\S]*?\n\}$/m, 'cashGlanceHtml'),
     grab(planSrc, /^function mustLeaveHtml\([\s\S]*?\n\}$/m, 'mustLeaveHtml'),
@@ -231,8 +231,8 @@ console.log('\n=== composed surface: cash, identity, debt, protection, limits ==
     'Q1 is leftover cash, not credit');
   ok(/data-payday-still-due/.test(q2),
     'Q2 publishes bills still due this payday');
-  ok(/data-payday-already-left/.test(q3),
-    'Q3 publishes what already left this payday');
+  ok(/data-payday-already-paid/.test(q3),
+    'Q3 publishes what is already paid this payday');
   ok(/data-spend-decision/.test(q4),
     'Q4 publishes this week\'s spend');
   ok(/data-payday-decision/.test(rendered) && /data-allocation-available/.test(rendered),
@@ -353,9 +353,9 @@ console.log('\n=== payday mode still uses the ordered allocation sheet ===');
   ok(/data-today-decision/.test(q6) && /data-allocation-available/.test(html),
     'a payday-mode result still renders the next move and keeps the ordered allocation sheet');
   ok(/Leftover cash/.test(html) && /This week's spend/.test(html)
-    && /Already left this payday/.test(html)
+    && /Already paid/.test(html)
     && /Next move/.test(html),
-  'payday mode still answers leftover cash, still due, already left, this week\'s spend, and next move');
+  'payday mode still answers leftover cash, still due, already paid, this week\'s spend, and next move');
 }
 
 console.log('\n=== live overlay cannot be authorized from committed git state ===');

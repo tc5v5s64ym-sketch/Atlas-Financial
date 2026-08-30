@@ -733,10 +733,12 @@ console.log('\n=== R. automatic-payment identity uses explicit payee+account+dat
   const data = JSON.parse(fs.readFileSync(path.join(__dirname, 'data.json'), 'utf8'));
   const outstandingBills = (data.plan.bills || []).filter(b => [
     'bcaa-aug15-outstanding', 'icbc-aug15-outstanding',
-    'resp-aug15-outstanding', 'uniondues-aug15-outstanding',
+    'resp-aug15-outstanding',
   ].includes(b.id));
-  ok(outstandingBills.length === 4,
-    'canonical plan still names the four 15 August reserved occurrences');
+  ok(outstandingBills.length === 3,
+    'canonical plan still names the three 15 August reserved occurrences');
+  ok(!(data.plan.bills || []).some(b => b.id === 'uniondues-aug15-outstanding'),
+    'cancelled CMAW dues are not a reserved August occurrence');
   const payload = {
     provider: 'lunchmoney',
     fetchedAt: '2026-08-16T18:00:00.000Z',

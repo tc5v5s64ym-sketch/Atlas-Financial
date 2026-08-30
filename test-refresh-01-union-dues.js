@@ -68,14 +68,14 @@ const outstandingId = 'uniondues-aug15-outstanding';
 
 console.log('=== cancellation authority is the recorded owner statement ===');
 ok(/owner-confirmed 2026-08-24/i.test(facts)
-    && /recurring \$25\/month payment cancelled/i.test(facts),
-  'ACCOUNT_FACTS records owner-confirmed 2026-08-24 cancellation');
-ok(!(plan.bills || []).some(bill => bill.id === 'uniondues'),
-  'canonical plan no longer carries a monthly uniondues bill');
+    && /recurring \$25\/month payment cancelled/i.test(facts)
+    && /stop tracking/i.test(facts),
+  'ACCOUNT_FACTS records owner-confirmed cancellation and the 2026-08-30 stop-tracking instruction');
+ok(!(plan.bills || []).some(bill => bill.id === 'uniondues' || bill.id === outstandingId
+    || /cmaw/i.test(bill.label || '')),
+  'canonical plan no longer carries a monthly uniondues bill or an August posting-unknown stub');
 const outstanding = (plan.bills || []).find(bill => bill.id === outstandingId);
-ok(outstanding && outstanding.frequency === 'once' && outstanding.date === '2026-08-16'
-    && near(outstanding.amount, 25) && outstanding.confidence === 'confirmed',
-  'the 15 August posting-unknown once row remains $25 on 2026-08-16');
+ok(!outstanding, 'the 15 August posting-unknown once row is gone');
 const cancel = (plan.actions || []).find(action => /CMAW Local 1995/i.test(action.what));
 ok(cancel && cancel.status === 'done',
   'the cancel-dues action is done rather than left open');
@@ -99,9 +99,8 @@ ok(!cmawEvents.some(event => event.id === 'uniondues'),
 ok(!unauthorizedFifteenths.some(iso => cmawEvents.some(event => event.date === iso
       && near(-event.amount, 25))),
   'none of the independently listed 15ths is a $25 CMAW cash event');
-ok(cmawEvents.length === 1 && cmawEvents[0].id === outstandingId
-    && cmawEvents[0].date === '2026-08-16' && near(cmawEvents[0].amount, -25),
-  'the only remaining CMAW cash event is the reserved August occurrence');
+ok(cmawEvents.length === 0,
+  'Forecast emits no CMAW cash event, including August');
 const ics = icsMod.buildHouseholdCalendar(plan, asOf, icsMod.ICS_HORIZON_END);
 ok(!(ics.payments || []).some(payment => payment.sourceId === 'uniondues'),
   'ICS payment VEVENTs do not expand a monthly CMAW recurrence');
@@ -140,14 +139,15 @@ const postingRow = (posting.observations || [])
 ok(postingRow && postingRow.unknown === true && postingRow.posted !== true
     && postingRow.scheduledDate === '2026-08-15',
   'incumbent posting observation still records 15 August CMAW as unknown');
+ok(!/Reserved on the live plan as uniondues-aug15-outstanding/i.test(postingRow.note || ''),
+  'the historical observation no longer claims a live Forecast CMAW stub');
 ok(!(plan.opening.representedEvents || [])
     .some(row => row.id === 'uniondues' || row.id === outstandingId),
   'representedEvents still does not claim the August occurrence posted');
-ok(/posting remains unknown/i.test(outstanding.note)
-    && /cancellation is not settlement/i.test(outstanding.note),
-  'the once-row note refuses to treat cancellation as settlement');
+ok(!outstanding,
+  'there is no once-row note because the cancelled dues are not tracked');
 ok(near(afterUnion.thisMonth.total, 25) && postingRow.unknown === true,
-  'August historical $25 actuals exist and still do not settle the Forecast row');
+  'August historical $25 actuals exist and do not restore a Forecast CMAW row');
 
 console.log('\n=== no unrelated obligation or household policy changed ===');
 function billKey(bill) {

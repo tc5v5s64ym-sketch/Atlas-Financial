@@ -310,19 +310,21 @@ console.log('\n=== CASE 6 — live B91 unknown mid-month arithmetic still binds 
     'posting observations still record at least four UNKNOWN items');
   const reservedRows = (live.plan.bills || []).filter(b =>
     b.frequency === 'once' && b.date === OPENING);
-  ok(reservedRows.length === 4, 'four once bills remain reserved on the published opening');
-  const independent = 82.96 + 99.91 + 100 + 25;
-  ok(near(independent, 307.87), 'independent 82.96 + 99.91 + 100.00 + 25.00 = 307.87');
+  ok(reservedRows.length === 3, 'three once bills remain reserved on the published opening');
+  ok(!(live.plan.bills || []).some(b => b.id === 'uniondues-aug15-outstanding'),
+    'cancelled CMAW dues are not a reserved once bill');
+  const independent = 82.96 + 99.91 + 100;
+  ok(near(independent, 282.87), 'independent 82.96 + 99.91 + 100.00 = 282.87');
   const fromRows = reservedRows.reduce((s, b) => s + Number(b.amount), 0);
   ok(near(fromRows, independent),
-    'live once-row amounts independently total $307.87', money(fromRows));
+    'live once-row amounts independently total $282.87', money(fromRows));
   const laterEvents = F.expandEvents(live.plan, LATER, windowEnd(LATER), {});
   const laterReserved = laterEvents.filter(e => reservedRows.some(b => b.id === e.id));
-  ok(laterReserved.length === 4,
-    'all four unresolved live rows still emit at a 2026-08-18 diagnostic start');
+  ok(laterReserved.length === 3,
+    'all three unresolved live rows still emit at a 2026-08-18 diagnostic start');
   const laterTotal = laterReserved.reduce((s, e) => s + (-e.amount), 0);
   ok(near(laterTotal, independent),
-    'Forecast still reserves $307.87 when posting remains UNKNOWN',
+    'Forecast still reserves $282.87 when posting remains UNKNOWN',
     money(laterTotal));
   ok(laterReserved.every(e => e.date === OPENING),
     'the live reservation keeps 2026-08-16, not a rewritten diagnostic opening');
@@ -330,7 +332,7 @@ console.log('\n=== CASE 6 — live B91 unknown mid-month arithmetic still binds 
   const openingTotal = openingEvents.filter(e => reservedRows.some(b => b.id === e.id))
     .reduce((s, e) => s + (-e.amount), 0);
   ok(near(openingTotal, independent),
-    'the published 2026-08-16 path still reserves the same $307.87');
+    'the published 2026-08-16 path still reserves the same $282.87');
 }
 
 console.log('\n=== CASE 7 — advancing start alone must not manufacture weekly capacity ===');

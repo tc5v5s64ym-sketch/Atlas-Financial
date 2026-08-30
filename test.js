@@ -117,6 +117,7 @@ const suites = [
   ['payday allocation waterfall', 'test-payday-allocation.js'],
   ['payday reserve itemization', 'test-payday-reserve-detail.js'],
   ['current-period actuals action plan', 'test-current-period-actuals.js'],
+  ['this-payday already-paid set and cancelled CMAW drop', 'test-this-payday-already-paid.js'],
   ['automatic-payment settlement reconciliation', 'test-automatic-payment-settlement.js'],
   ['final Affirm payment owner correction', 'test-affirm-final.js'],
   ['retire cancelled CMAW union-dues recurrence (AF-REFRESH-01)', 'test-refresh-01-union-dues.js'],

@@ -36,7 +36,6 @@ const AUTO_IDS = [
   'bcaa-aug15-outstanding',
   'icbc-aug15-outstanding',
   'resp-aug15-outstanding',
-  CMAW_ID,
 ];
 
 let failures = 0;
@@ -215,6 +214,7 @@ function readyAutoPayPayload(opts) {
   out.fetchedAt = opts.fetchedAt || '2026-08-19T16:00:00.000Z';
   let extra = (autoPayPayload.transactions || []).map(remapAutoTx);
   if (opts.omitCmaw) extra = extra.filter(tx => tx.id !== 8104);
+  if (opts.omitBcaa) extra = extra.filter(tx => tx.id !== 8101);
   if (opts.omitUnmatched) extra = extra.filter(tx => tx.id !== 8199);
   if (opts.duplicateBcaa) {
     const bcaa = extra.find(tx => tx.id === 8101);
@@ -323,7 +323,7 @@ console.log('\n=== C. one occurrence consumes one transaction; no transaction se
     'independent unique auto-pay matches equal represented auto-pay rows');
 }
 
-console.log('\n=== D. CMAW stays unverified without identity-complete evidence ===');
+console.log('\n=== D. cancelled CMAW dues are not a modeled occurrence ===');
 {
   const payload = readyAutoPayPayload({ omitCmaw: true, unrelatedCmawLabel: true });
   const receipt = receiptOf(payload, pendingMap);
@@ -334,12 +334,11 @@ console.log('\n=== D. CMAW stays unverified without identity-complete evidence =
     'historical periods.json still contains Union dues actuals');
   ok(!matrix.unique.some(r => r.eventId === CMAW_ID),
     'independent matrix has no identity-complete CMAW match');
-  ok(cmaw && cmaw.settlement === 'unverified',
-    'CMAW current-cycle occurrence remains unverified',
-    cmaw && cmaw.settlement);
-  ok(cmaw && cmaw.settlement !== 'represented' && cmaw.settlement !== 'unpaid',
-    'cancellation, category totals, and lookalike payee do not settle CMAW');
-  ok(!cmaw.evidenceFingerprint, 'unverified CMAW has no chosen evidence fingerprint');
+  ok(!cmaw,
+    'cancelled CMAW dues are not a current-cycle occurrence');
+  ok(!(receipt.occurrences || []).some(row => row.id === CMAW_ID
+      || /cmaw|union dues/i.test(row.label || '')),
+    'lookalike payee and historical actuals do not invent a CMAW bill');
 }
 
 console.log('\n=== E. not-observed is never unpaid; unresolved is distinct from not-ready ===');
@@ -350,8 +349,8 @@ console.log('\n=== E. not-observed is never unpaid; unresolved is distinct from 
   ok(receipt.trusted === true, 'ready packet with unverified rows is still a trusted run');
   ok(settlements.indexOf('unpaid') === -1 && settlements.indexOf('paid') === -1,
     'receipt never uses a paid/unpaid boolean');
-  ok(rowById(receipt, CMAW_ID) && rowById(receipt, CMAW_ID).settlement === 'unverified',
-    'missing CMAW evidence is unverified, not unpaid');
+  ok(!rowById(receipt, CMAW_ID),
+    'cancelled CMAW dues are absent, not labelled unpaid');
   ok(receipt.failClosedKind == null && receipt.observationReadyForReconciliation === true,
     'unresolved obligations are not the observation-not-ready failure mode');
 }
@@ -452,14 +451,17 @@ console.log('\n=== J. outside-coverage is distinct from unverified ===');
 {
   const payload = readyAutoPayPayload({
     omitCmaw: true,
+    omitBcaa: true,
     omitUnmatched: true,
     window: { startDate: '2026-08-18', endDate: '2026-08-19' },
   });
   const receipt = receiptOf(payload, pendingMap);
-  const cmaw = rowById(receipt, CMAW_ID);
-  ok(cmaw && cmaw.settlement === 'outside-coverage',
-    'Aug 16 CMAW is outside an Aug 18–19 observation window',
-    cmaw && cmaw.settlement);
+  const bcaa = rowById(receipt, 'bcaa-aug15-outstanding');
+  ok(bcaa && bcaa.settlement === 'outside-coverage',
+    'Aug 16 BCAA is outside an Aug 18–19 observation window',
+    bcaa && bcaa.settlement);
+  ok(!rowById(receipt, CMAW_ID),
+    'cancelled CMAW dues are not an outside-coverage occurrence');
 }
 
 console.log('\n=== K. not-ready packet with matching txs still does not trust classification ===');
