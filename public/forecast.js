@@ -2303,9 +2303,31 @@
       if (!row || !row.id || !row.date) continue;
       const amt = Number(row.actual);
       if (!isFinite(amt)) continue;
-      map.set(row.id + '@' + row.date, roundCent(amt));
+      const postedOn = row.postedOn && ISO_CALENDAR_DATE.test(String(row.postedOn))
+        ? String(row.postedOn) : null;
+      map.set(row.id + '@' + row.date, {
+        actual: roundCent(amt),
+        postedOn,
+      });
     }
     return map;
+  }
+
+  function observedActual(observed, id, date) {
+    const row = observed && id && date ? observed.get(id + '@' + date) : null;
+    if (!row || row.actual == null) return null;
+    return row.actual;
+  }
+
+  function observedPostedOn(observed, id, date, fallback) {
+    const row = observed && id && date ? observed.get(id + '@' + date) : null;
+    return (row && row.postedOn) || fallback || null;
+  }
+
+  function householdMovement(amount, direction) {
+    const mag = Math.abs(Number(amount) || 0);
+    if (mag < EPSILON) return 0;
+    return direction === 'in' ? roundCent(mag) : roundCent(-mag);
   }
 
   function currentPeriodBills(plan, asOf, origin, periodLast, opts) {
@@ -2329,9 +2351,7 @@
       let remaining;
       if (paid) {
         settlement = 'represented';
-        actual = observed.has(e.id + '@' + e.date)
-          ? observed.get(e.id + '@' + e.date)
-          : null;
+        actual = observedActual(observed, e.id, e.date);
         remaining = 0;
       } else if (e.date >= asOf) {
         settlement = 'upcoming';
@@ -2351,7 +2371,7 @@
         actual,
         remaining,
         settlement,
-        evidenceDate: paid ? e.date : null,
+        evidenceDate: paid ? observedPostedOn(observed, e.id, e.date, e.date) : null,
         confidence: e.confidence || null,
       });
     }
@@ -2384,12 +2404,10 @@
         kind: 'income',
         date: e.date,
         planned: roundCent(amt),
-        actual: observed.has(e.id + '@' + e.date)
-          ? observed.get(e.id + '@' + e.date)
-          : null,
+        actual: observedActual(observed, e.id, e.date),
         remaining: 0,
         settlement: 'represented',
-        evidenceDate: e.date,
+        evidenceDate: observedPostedOn(observed, e.id, e.date, e.date),
         confidence: e.confidence || null,
       });
     }
@@ -2439,15 +2457,42 @@
   }
 
   // Already paid from this payday's cheque: represented inflows and bills
-  // dated on the payday itself. Mid-period child benefit and previous-cycle
+  // whose scheduled date or posting date is the payday itself. A card min
+  // due earlier in the period can land here when an identified extra
+  // payment posted on payday. Mid-period child benefit and previous-cycle
   // once stubs are period history, not this payday.
+  function glanceRowOnPayday(row, paydayDate) {
+    if (!row || !paydayDate) return false;
+    return row.date === paydayDate || row.evidenceDate === paydayDate;
+  }
+
   function thisPaydayPaidFrom(inflows, bills, paydayDate) {
+    const paidIn = (inflows || []).filter(row => glanceRowOnPayday(row, paydayDate))
+      .map(row => {
+        const displayDate = (row.evidenceDate && row.evidenceDate === paydayDate)
+          ? row.evidenceDate : (row.date || row.evidenceDate);
+        const raw = row.actual != null ? row.actual : row.planned;
+        return Object.assign({}, row, {
+          date: displayDate || row.date,
+          movement: householdMovement(raw, 'in'),
+        });
+      });
+    const paidOut = (bills || []).filter(row => row
+        && row.settlement === 'represented'
+        && glanceRowOnPayday(row, paydayDate))
+      .map(row => {
+        const displayDate = (row.evidenceDate && row.evidenceDate === paydayDate)
+          ? row.evidenceDate : (row.date || row.evidenceDate);
+        const raw = row.actual != null ? row.actual : row.planned;
+        return Object.assign({}, row, {
+          date: displayDate || row.date,
+          movement: householdMovement(raw, 'out'),
+        });
+      });
     return {
       payday: paydayDate,
-      inflows: (inflows || []).filter(row => row && row.date === paydayDate),
-      bills: (bills || []).filter(row => row
-        && row.settlement === 'represented'
-        && row.date === paydayDate),
+      inflows: paidIn,
+      bills: paidOut,
     };
   }
 
@@ -2455,7 +2500,8 @@
   // dated before this payday (previous cheque / posting-unknown stubs).
   // Keeps overdue recurring obligations (Travel Visa min) and bills due
   // on or after this payday (TD fees). Amounts copy paydayAllocation /
-  // current-period remaining; this does not invent a payee.
+  // current-period remaining; this does not invent a payee. Glance
+  // movement is money out (−) without flipping allocation math.
   function thisPaydayDueFrom(plan, paydayDate, alloc, bills) {
     const skip = onceBillIdsBeforePayday(plan, paydayDate);
     const byKey = new Map();
@@ -2470,6 +2516,7 @@
       const bill = byKey.get((item.id || '') + '@' + item.date);
       if (bill && bill.settlement === 'represented') continue;
       const amount = roundCent(item.amount);
+      const remaining = bill && bill.remaining != null ? bill.remaining : amount;
       items.push({
         id: item.id,
         label: item.label,
@@ -2478,10 +2525,11 @@
         planned: amount,
         amount,
         allocated: item.allocated != null ? item.allocated : null,
-        remaining: bill && bill.remaining != null ? bill.remaining : amount,
+        remaining,
         actual: bill && bill.actual != null ? bill.actual : null,
         settlement: (bill && bill.settlement) || item.settlement,
         confidence: item.confidence || (bill && bill.confidence) || null,
+        movement: householdMovement(remaining != null ? remaining : amount, 'out'),
       });
     }
     return items;

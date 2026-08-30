@@ -1,6 +1,6 @@
 {
   "schema": "atlas-provider-transaction-identity/v1",
-  "owns": "Unambiguous provider-transaction to Forecast-event identity. A match requires an explicit payee alias + mapped Atlas account + direction + an allowed scheduled/posting-date relation. Same-day is the default; named automatic payments may opt into weekend-to-next-business-day. Amount similarity is not identity.",
+  "owns": "Unambiguous provider-transaction to Forecast-event identity. A match requires an explicit payee alias + mapped Atlas account + direction + an allowed scheduled/posting-date relation. Same-day is the default; named automatic payments may opt into weekend-to-next-business-day; a payment onto a mapped card may cover the latest due on or before posting. Amount similarity is not identity. After that identity is unique, a card extra payment may settle the min only when the observed credit is at least the scheduled due.",
   "does_not_own": "Permission to write plan.opening or representedEvents onto data.json, pending-to-posted proof, or a second event engine.",
   "billPaymentPayees": [
     "Bell Mobility",
@@ -32,6 +32,36 @@
       "atlasAccountId": "chequing-a",
       "direction": "debit",
       "note": "Explicit Fit4less Msp alias on Chequing A (BILLS ACCOUNT). Same identity class as TD MORTGAGE: payee + account + direction + date. Amount similarity is not identity. Personal Care is not identity."
+    },
+    {
+      "eventId": "travel",
+      "payeePattern": "TFR-TO C/C",
+      "payeePatterns": ["TFR-TO C/C", "PAYMENT-THANKYOU", "PAYMENT THANK YOU"],
+      "atlasAccountId": "travelvisa",
+      "direction": "credit",
+      "postingDateRule": "covers-due-on-or-before-posting",
+      "settlesWhen": "amount-at-least",
+      "note": "Payment onto Travel Visa. Identity is payee + mapped card + credit + covers the latest due on or before posting. Amount is coverage after identity, not identity. A Chequing Payment/Transfer is not this card."
+    },
+    {
+      "eventId": "cashback",
+      "payeePattern": "TFR-TO C/C",
+      "payeePatterns": ["TFR-TO C/C", "PAYMENT-THANKYOU", "PAYMENT THANK YOU"],
+      "atlasAccountId": "cashback",
+      "direction": "credit",
+      "postingDateRule": "covers-due-on-or-before-posting",
+      "settlesWhen": "amount-at-least",
+      "note": "Payment onto Cash Back Visa. Same identity class as Travel Visa. Amount is coverage after identity, not identity."
+    },
+    {
+      "eventId": "tdcc",
+      "payeePattern": "TFR-TO C/C",
+      "payeePatterns": ["TFR-TO C/C", "PAYMENT-THANKYOU", "PAYMENT THANK YOU"],
+      "atlasAccountId": "tdcc",
+      "direction": "credit",
+      "postingDateRule": "covers-due-on-or-before-posting",
+      "settlesWhen": "amount-at-least",
+      "note": "Payment onto the TD personal card. Same identity class as Travel Visa. Amount is coverage after identity, not identity."
     },
     {
       "eventId": "childBenefit",

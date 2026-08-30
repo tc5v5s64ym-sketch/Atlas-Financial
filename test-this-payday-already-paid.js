@@ -75,6 +75,7 @@ function loadComposer() {
     grab(planSrc, /^function spendDecisionHtml\([\s\S]*?\n\}$/m, 'spendDecisionHtml'),
     grab(planSrc, /^function paydayBucketRow\([\s\S]*?\n\}$/m, 'paydayBucketRow'),
     grab(planSrc, /^function postedThisPeriodHtml\([\s\S]*?\n\}$/m, 'postedThisPeriodHtml'),
+    grab(planSrc, /^function glanceSignedMoney\([\s\S]*?\n\}$/m, 'glanceSignedMoney'),
     grab(planSrc, /^function glanceMoney\([\s\S]*?\n\}$/m, 'glanceMoney'),
     grab(planSrc, /^function glanceLineLabel\([\s\S]*?\n\}$/m, 'glanceLineLabel'),
     grab(planSrc, /^function alreadyPaidRowsHtml\([\s\S]*?\n\}$/m, 'alreadyPaidRowsHtml'),
@@ -258,13 +259,23 @@ console.log('\n=== default glance prints that set in kitchen-counter language ==
       && /Mortgage · Aug 28 · paid/.test(glance)
       && /Fit4Less membership · Aug 28 · paid/.test(glance),
     'default glance already paid is Seaspan in, mortgage paid, Fit4Less paid');
+  ok(glance.includes('+' + composer.money2(PAYROLL))
+      && glance.includes('−' + composer.money2(MORTGAGE))
+      && glance.includes('−' + composer.money2(FIT)),
+    'already paid prints money in as + and money out as −');
+  ok(!glance.includes('−' + composer.money2(PAYROLL)),
+    'Seaspan in is not printed as a negative');
+  ok(/Current cash flow/.test(html) && !/Leftover cash/.test(html),
+    'the leftover number is labelled current cash flow');
   ok(!/Canada child benefit/.test(glance) && !/BCAA/.test(glance)
       && !/ICBC/.test(glance) && !/RESP/.test(glance) && !/CMAW/.test(glance)
       && !/union dues/i.test(glance),
     'default glance omits Aug 15/16 stubs and Aug 20 child benefit');
   ok(/Travel Visa minimum/.test(glance) && /TD account fees/.test(glance)
-      && /still due/.test(glance),
-    'Travel Visa min and TD fees stay still due without an invented payee');
+      && /still due/.test(glance)
+      && glance.includes('−' + composer.money2(TRAVEL))
+      && glance.includes('−' + composer.money2(FEES)),
+    'Travel Visa min and TD fees stay still due as money out, without an invented payee');
   ok(!/posting unknown/i.test(text),
     'default glance does not print posting unknown');
   ok(!/unverified-settlement|\boverlay\b|\bForecast\b|\bAtlas\b|\bunverified\b|\brepresented\b/.test(text),
@@ -277,6 +288,67 @@ console.log('\n=== default glance prints that set in kitchen-counter language ==
     'still due does not reprint the already-paid list');
   ok(/ · paid/.test(q3) && / · in/.test(q3) && !/still due/.test(q3),
     'already paid does not reprint the still-due list');
+}
+
+console.log('\n=== identified extra card payment on payday settles the min ===');
+{
+  const EXTRA = 40.4;
+  const DUE = '2026-08-26';
+  const plan = syntheticPlan();
+  plan.opening.representedEvents = plan.opening.representedEvents.concat([
+    { id: 'travel', date: DUE },
+  ]);
+  const opts = {
+    targetBuffer: 0,
+    representedEvents: plan.opening.representedEvents,
+    currentPeriodActuals: {
+      representedActuals: [
+        { id: 'payroll', date: PAYDAY, actual: -PAYROLL, postedOn: PAYDAY },
+        { id: 'travel', date: DUE, actual: -EXTRA, postedOn: PAYDAY },
+      ],
+      transactions: [],
+      pendingCoverage: 'complete',
+      transactionCoverage: 'complete',
+    },
+  };
+  const events = F.expandEvents(plan, DUE, DUE, { keepRepresented: true });
+  const travelEvent = events.find(e => e.id === 'travel' && e.date === DUE);
+  ok(travelEvent && near(-travelEvent.amount, TRAVEL),
+    'independent schedule still has the Travel Visa min on Aug 26');
+  ok(EXTRA + 0.005 >= TRAVEL && !near(EXTRA, TRAVEL),
+    'observed card credit covers the min and is not the scheduled $');
+
+  const action = F.currentPeriodAction(plan, AS_OF, opts);
+  const paidTravel = (action.thisPaydayPaid.bills || [])
+    .find(r => r.id === 'travel');
+  ok(paidTravel && paidTravel.date === PAYDAY
+      && near(paidTravel.movement, -EXTRA),
+    'already paid shows the extra payment on the payday posting date as money out');
+  ok(!(action.thisPaydayDue || []).some(r => r.id === 'travel'),
+    'covered Travel Visa min leaves still due');
+  ok((action.thisPaydayPaid.inflows || []).some(r => r.id === 'payroll'
+      && near(r.movement, PAYROLL)),
+    'Seaspan glance movement is money in even when the packet actual is a credit-signed debit');
+  ok(!(action.thisPaydayPaid.inflows || []).some(r => r.id === 'childBenefit'),
+    'mid-period child benefit is still not dumped onto this payday');
+
+  const control = F.currentPeriodAction(syntheticPlan(), AS_OF, {
+    targetBuffer: 0,
+    representedEvents: syntheticPlan().opening.representedEvents,
+  });
+  ok((control.thisPaydayDue || []).some(r => r.id === 'travel'),
+    'without an identified card payment the min stays still due');
+
+  const composer = loadComposer();
+  const advice = F.recommend(plan, AS_OF, opts);
+  const glance = defaultGlance(composer.operatingSurfaceHtml({
+    advice, weekly: advice.weekly, recommended: advice.weekly,
+  }));
+  ok(/Travel Visa minimum · Aug 28 · paid/.test(glance)
+      && glance.includes('−' + composer.money2(EXTRA)),
+    'default glance already paid names the extra payment on the transaction date');
+  ok(!/Travel Visa minimum · Aug 26 · still due/.test(glance),
+    'covered min is not still due on the default glance');
 }
 
 console.log('\n=== page prints Forecast; it does not date-filter ===');

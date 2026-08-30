@@ -713,8 +713,8 @@ function paydayCashNote(alloc, liveOverlay) {
 
 function paydayGlanceCashNote(alloc) {
   const asOf = alloc && (alloc.cashBasis && alloc.cashBasis.asOf || alloc.asOf);
-  if (!asOf) return 'Leftover cash. Not credit.';
-  return `Leftover cash. Not credit. From ${fmtDate(asOf)}.`;
+  if (!asOf) return 'Current cash flow. Not credit.';
+  return `Current cash flow. Not credit. From ${fmtDate(asOf)}.`;
 }
 
 function paydayObligationNote(item, asOf) {
@@ -1439,23 +1439,36 @@ function postedThisPeriodHtml(action) {
   return alreadyPaidRowsHtml(action);
 }
 
+function glanceSignedMoney(n) {
+  if (n == null || !isFinite(Number(n))) return null;
+  const v = Number(n);
+  const abs = money2(Math.abs(v));
+  if (v > 0) return '+' + abs;
+  if (v < 0) return '−' + abs;
+  return abs;
+}
+
 function glanceMoney(row, kind) {
   if (!row) return null;
+  if (row.movement != null && isFinite(Number(row.movement))) return Number(row.movement);
+  let raw = null;
   if (kind === 'paid' || kind === 'in') {
-    if (row.actual != null) return row.actual;
-    if (row.planned != null) return row.planned;
-    if (row.amount != null) return row.amount;
-    return null;
-  }
-  if (row.remaining != null && Number(row.remaining) > 0) return row.remaining;
-  if (row.amount != null && Number(row.amount) > 0) return row.amount;
-  if (row.allocated != null && Number(row.allocated) > 0) return row.allocated;
-  if (row.planned != null && Number(row.planned) > 0) return row.planned;
-  if (row.remaining != null) return row.remaining;
-  if (row.amount != null) return row.amount;
-  if (row.allocated != null) return row.allocated;
-  if (row.planned != null) return row.planned;
-  return null;
+    if (row.actual != null) raw = row.actual;
+    else if (row.planned != null) raw = row.planned;
+    else if (row.amount != null) raw = row.amount;
+  } else if (row.remaining != null && Number(row.remaining) > 0) raw = row.remaining;
+  else if (row.amount != null && Number(row.amount) > 0) raw = row.amount;
+  else if (row.allocated != null && Number(row.allocated) > 0) raw = row.allocated;
+  else if (row.planned != null && Number(row.planned) > 0) raw = row.planned;
+  else if (row.remaining != null) raw = row.remaining;
+  else if (row.amount != null) raw = row.amount;
+  else if (row.allocated != null) raw = row.allocated;
+  else if (row.planned != null) raw = row.planned;
+  if (raw == null || !isFinite(Number(raw))) return null;
+  const mag = Math.abs(Number(raw));
+  if (kind === 'in') return mag;
+  if (kind === 'paid' || kind === 'still-due') return -mag;
+  return Number(raw);
 }
 
 function glanceLineLabel(row, tag) {
@@ -1475,14 +1488,16 @@ function alreadyPaidRowsHtml(action) {
   if (!inflows.length && !bills.length) return '';
   const rows = inflows.map(row => paydayBucketRow(
     glanceLineLabel(row, 'in'),
-    glanceMoney(row, 'in'),
+    glanceSignedMoney(glanceMoney(row, 'in')),
     null,
-    null
+    null,
+    { preformatted: true }
   )).concat(bills.map(row => paydayBucketRow(
     glanceLineLabel(row, 'paid'),
-    glanceMoney(row, 'paid'),
+    glanceSignedMoney(glanceMoney(row, 'paid')),
     null,
-    null
+    null,
+    { preformatted: true }
   ))).join('');
   return `<div class="operating-lines payday-already-paid-lines">${rows}</div>`;
 }
@@ -1519,10 +1534,10 @@ function mustLeaveHtml(alloc, action) {
     </div>`;
   }
   const rows = items.map(item => {
-    const amount = glanceMoney(item, 'still-due');
+    const amount = glanceSignedMoney(glanceMoney(item, 'still-due'));
     const about = item.confidence === 'estimated' ? 'about ' : '';
     return `<div class="operating-line" data-still-due-bill="${item.id || ''}">
-      <span>${glanceLineLabel(item, 'still due')}</span><span>${amount != null ? about + money2(amount) : '—'}</span>
+      <span>${glanceLineLabel(item, 'still due')}</span><span>${amount != null ? about + amount : '—'}</span>
     </div>`;
   }).join('');
   const obligations = (alloc && alloc.obligations) || {};
@@ -1552,9 +1567,10 @@ function extraDebtGlanceHtml(alloc) {
   return '';
 }
 
-function paydayBucketRow(label, allocated, wanted, shortfall) {
+function paydayBucketRow(label, allocated, wanted, shortfall, opts) {
   const bits = [];
-  if (allocated != null) bits.push(money2(allocated));
+  const preformatted = !!(opts && opts.preformatted);
+  if (allocated != null) bits.push(preformatted ? allocated : money2(allocated));
   if (wanted != null && (allocated == null || Number(allocated) !== Number(wanted))) {
     bits.push(`of ${money2(wanted)}`);
   }
@@ -1656,7 +1672,7 @@ function operatingSurfaceHtml(ctx) {
 
   return `<div class="payday-operating-sheet" data-payday-sheet>
     ${refreshTrustHtml(ctx.refreshTrust)}
-    ${question('01', 'Leftover cash', cash)}
+    ${question('01', 'Current cash flow', cash)}
     ${question('02', 'Still due', bills)}
     ${question('03', 'Already paid', alreadyPaid)}
     ${question('04', "This week's spend", spend)}
