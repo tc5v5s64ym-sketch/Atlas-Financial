@@ -1,5 +1,7 @@
-// Break down incoming e-transfers now that the owner has identified them as
-// (a) spouse income ~$1,000/month and (b) variable resale proceeds.
+// Break down incoming e-transfers. Dated first-pass labels treated the
+// residual as resale proceeds. Owner-stated 2026-08-29: there is no shop /
+// resale / inventory business; leftover coaching is not Forecast income.
+// This script does not invent a current planning split.
 const fs = require('fs');
 const path = require('path');
 const RAW = path.join(__dirname, '..', 'raw');
@@ -53,4 +55,4 @@ console.log(`\nMonths containing a $950-1050 item: ${withK.length} of ${months.l
 const spouseTotal = inbound.filter(r => r.dep >= 950 && r.dep <= 1050).reduce((s, r) => s + r.dep, 0);
 const spouseN = inbound.filter(r => r.dep >= 950 && r.dep <= 1050).length;
 console.log(`Those items: ${spouseN} totalling ${spouseTotal.toFixed(2)}`);
-console.log(`Residual (assumed resale/other): ${(inbound.reduce((s, r) => s + r.dep, 0) - spouseTotal).toFixed(2)}`);
+console.log(`Residual (not current resale planning; historical unmatched inbound): ${(inbound.reduce((s, r) => s + r.dep, 0) - spouseTotal).toFixed(2)}`);

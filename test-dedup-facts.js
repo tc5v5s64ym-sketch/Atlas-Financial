@@ -264,11 +264,13 @@ console.log('\n=== F. pending charges still apply exactly once ===');
     `${settle.length} matching events`);
 }
 
-console.log('\n=== G. published coaching-income overstatement is one current monthly figure ===');
+console.log('\n=== G. published coaching-income overstatement is not a current monthly figure ===');
 {
-  // B93: one live fact, one home. incomeWarning is the incumbent derived
-  // answer. A second published data.json string must not state a different
-  // current monthly overstatement (the Deep Dive $1,650 vs $650 defect).
+  // B93: one live fact, one home. The 2026-08-29 planning policy retired the
+  // Deep Dive current monthly coaching-net / overstatement. incomeWarning is
+  // the planning caveat. A second published data.json string must not invent
+  // a competing current monthly overstatement (the old Deep Dive $1,650 vs
+  // $650 defect) if a current figure is ever reintroduced.
   // "$1,650 previously feared" / "not the $X" is historical, not current.
   function walkStrings(value, out) {
     if (typeof value === 'string') out.push(value);
@@ -301,18 +303,22 @@ console.log('\n=== G. published coaching-income overstatement is one current mon
 
   const warningAmounts = currentOverstatementMonthlies({ incomeWarning: data.incomeWarning });
   const published = currentOverstatementMonthlies(data);
-  const unique = [...new Set(published)];
-  ok(warningAmounts.length === 1,
-    'incomeWarning states one current monthly coaching-income overstatement',
-    warningAmounts.join(','));
-  ok(unique.length === 1,
-    'published data.json strings state one current monthly coaching-income overstatement',
-    published.join(','));
-  ok(published.every(n => n === warningAmounts[0]),
-    'no published data.json string states a competing current monthly overstatement',
-    `warning ${warningAmounts[0]} vs published ${published.join(',')}`);
+  ok(warningAmounts.length === 0,
+    'incomeWarning does not state a current monthly coaching-income overstatement',
+    warningAmounts.join(',') || 'none');
+  ok(published.length === 0,
+    'published data.json strings do not state a current monthly coaching-income overstatement',
+    published.join(',') || 'none');
 
-  const staleQ = clone(data);
+  const restoredWarning = clone(data);
+  restoredWarning.incomeWarning =
+    'So this total is overstated by about $650/month, not the $1,650 previously feared.';
+  const restoredAmounts = currentOverstatementMonthlies({ incomeWarning: restoredWarning.incomeWarning });
+  ok(restoredAmounts.length === 1 && restoredAmounts[0] === 650,
+    'the detector still sees a restored current $650/month overstatement',
+    restoredAmounts.join(','));
+
+  const staleQ = clone(restoredWarning);
   staleQ.questions[0].changes =
     'Household income is currently overstated by up to $1,650/month. Every conclusion resting on income is provisional until this is split. Amanda\'s bookkeeping settles it.';
   const stalePublished = currentOverstatementMonthlies(staleQ);

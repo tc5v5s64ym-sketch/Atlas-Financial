@@ -21,6 +21,39 @@ is `Forecast.financialDate`. Do not slice a UTC timestamp into a calendar
 date, and do not scatter a second timezone through observation or cutover
 code.
 
+## Household income the plan uses *(owner-stated 2026-08-29)*
+
+Forecast is the only planner. The income `plan.income` may use is Dale's
+Seaspan payroll, Amanda's two fixed Tennis BC salary deposits
+(owner-confirmed 2026-08-22; `amandaSalary15` and `amandaSalaryMonthEnd`),
+and the child benefit.
+
+Owner-stated 2026-08-29:
+
+- There is **no other income** besides those known salaries and seasonal
+  coaching.
+- There is **no shop / resale / inventory business**.
+- Amanda does **seasonal coaching**, paid by e-transfer. She pays coaches
+  from that inbound. Whatever is left, the household keeps.
+- He does **not** have exact historical numbers. Do not invent a margin,
+  COGS, or a split of the $54,213 inbound / $19,700 unmatched outbound.
+- Going forward he will say coaching in/out when it happens. For planning
+  it should not matter: Forecast already has the salaries. Extra coaching
+  leftover is **gravy when it actually arrives**, not a recurring income
+  line.
+
+Do **not** add a coaching revenue stream to `plan.income`. TENNIS INCOME
+(`amanda-debt-payments`) stays excluded from spendable `plan.startingCash`.
+Tennis BC salary remains Forecast household income. Q1 stays OPEN for
+historical coaching P&L. Q12 stays OPEN — no inventory business going
+forward is not a spending reclass. Q25 stays OPEN for the mixed-account
+remainder.
+
+Attributed source: [`household_interviews/DALE_2026-08-29_COACHING_PLANNING.md`](household_interviews/DALE_2026-08-29_COACHING_PLANNING.md).
+The 2026-08-09 tracking-sheet 27.7% / ~$1,700/month retained figure later
+in this file is dated subset evidence. It is not Forecast income and does
+not close Q1.
+
 ## Payment calendar
 
 | Day of month | What | Amount | Account |
@@ -502,7 +535,9 @@ stream. Whatever mixed remainder is left after coaching obligations may
 become household-available only when that surplus is actually established.
 The raw balance is NOT automatically spendable household cash. Do not
 estimate how much of the current remainder is household-available (Q25 stays
-OPEN only for that coaching/business remainder).
+OPEN only for that coaching/business remainder). Owner-stated 2026-08-29:
+extra coaching leftover is gravy when it actually arrives, not a Forecast
+income line and not spendable starting cash.
 
 **Her Tennis BC pay is semi-monthly, not bi-weekly** — the **15th and the last
 day of the month**, verified across all 18 months. Recent: $2,168.85 on 15 Jul,
@@ -714,8 +749,10 @@ minimum into something far larger.
 
 The pending charges on that 9 August reading are **four `AMZN Mktp CA` purchases** dated 6–8 Aug 2026 —
 Amazon spending on the card TD designates as a *business* card. Worth resolving
-under the business question: either it is genuine inventory, or personal
-purchases are landing on the business card.
+under the historical coaching/business question: either it was genuine inventory,
+or personal purchases landed on the business-designated card. Owner-stated
+2026-08-29: there is no inventory business going forward. That does not
+reclassify these 9 August Amazon charges.
 
 Other figures verified from the account on 2026-08-09: last statement balance
 **$801.10** (7 Jul – 5 Aug), last payment **$100.00 on 7 Aug 2026**.
@@ -805,7 +842,12 @@ $3,312 to $7,245 — match the description of coaching income.
 **This relabels an income line that has been wrong throughout.** The picture
 carried **"Resale / business e-transfers — $54,213"**, described as "very
 irregular" and assumed to be buying and reselling goods. **There is no evidence
-of resale.** It is coaching revenue.
+of resale.** It is coaching revenue. Owner-stated 2026-08-29: there is no
+shop / resale / inventory business. That first-pass inventory theory is dead
+for current planning. Historical retail stays classified as household
+spending unless a later spending reclass exists. See **Household income the
+plan uses** above: leftover after coach pay is gravy when it arrives, not a
+Forecast income line. Historical net remains Q1 OPEN.
 
 ### ⚠ It is REVENUE, not income — and household income is overstated
 
@@ -1806,13 +1848,18 @@ do not track [ASK].
 
 ### What this means for household income
 
-Applying the 27.7% coach share to the $42,395 of large receipts implies roughly
-**$11,700 owed onward and $30,700 retained** over the window — about
-**$1,700/month** of genuine household income from coaching, not the $2,355/month
-the gross implied.
+*(Dated 2026-08-09 tracking-sheet derivation — not Forecast income, not a Q1
+close.)* Applying the 27.7% coach share to the $42,395 of large receipts
+implies roughly **$11,700 owed onward and $30,700 retained** over the window —
+about **$1,700/month** retained on that subset extrapolation, not the
+$2,355/month the gross implied. Owner-stated 2026-08-29: he does not have
+exact historical numbers; do not invent a margin or a split of the $54,213
+inbound / $19,700 unmatched outbound; do not put this $1,700/month on
+`plan.income`. Extra coaching leftover is gravy when it actually arrives.
 
-**Income was overstated by roughly $650/month**, not the $1,650 upper bound
-feared. The correction is real but far smaller than the uncertainty was.
+**On 9 August the Deep Dive warning treated income as overstated by roughly
+$650/month**, not the $1,650 upper bound feared. That was a dated publication
+correction, not a current Forecast income line and not a Q1 answer.
 
 ## The payoff ranking — settled *(2026-08-09)*
 
