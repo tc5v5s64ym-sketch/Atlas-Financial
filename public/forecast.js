@@ -2674,13 +2674,18 @@
     return { firstCard, otherCards };
   }
 
-  function bigPurchasesGlance(plans, alloc) {
+  function bigPurchasesGlance(plans, alloc, range) {
     const byId = new Map();
     for (const row of (alloc && alloc.futureCosts) || []) {
       if (row && row.id) byId.set(row.id, row);
     }
     return (plans || [])
-      .filter(row => row && row.flexibility !== 'optional')
+      .filter(row => {
+        if (!row || row.flexibility === 'optional') return false;
+        if (!range) return true;
+        if (!row.date) return false;
+        return row.date >= range.start && row.date <= range.end;
+      })
       .map(row => {
         const payday = byId.get(row.id);
         return {
@@ -2716,6 +2721,186 @@
     };
   }
 
+  // Start-of-day cash the existing walk already produced. First simulated
+  // day uses that week's opening (cash before that day's events). Later
+  // days use the previous close. Null when the walk does not cover the
+  // date — callers must not invent a second cash engine.
+  function startOfDayCash(sim, date) {
+    if (!sim || !date || !Array.isArray(sim.daily)) return null;
+    const idx = sim.daily.findIndex(d => d.date === date);
+    if (idx < 0) return null;
+    if (idx === 0) {
+      const week = (sim.weeks || []).find(w => w && w.start === date);
+      if (week && week.opening != null && isFinite(Number(week.opening))) {
+        return roundCent(week.opening);
+      }
+      return null;
+    }
+    const prev = sim.daily[idx - 1];
+    if (!prev || prev.balance == null || !isFinite(Number(prev.balance))) return null;
+    return roundCent(prev.balance);
+  }
+
+  function incomeOnDate(plan, date, opts) {
+    if (!date) return 0;
+    const events = expandEvents(plan, date, date, opts);
+    let sum = 0;
+    for (const e of events || []) {
+      if (!e || e.kind !== 'income' || e.date !== date) continue;
+      if (e.amount > EPSILON) sum += e.amount;
+    }
+    return roundCent(sum);
+  }
+
+  function unpaidJointCashInRange(plan, start, end, opts) {
+    if (!start || !end) return 0;
+    const events = expandEvents(plan, start, end, opts);
+    const skipOnce = onceBillIdsBeforePayday(plan, start);
+    let sum = 0;
+    for (const e of events || []) {
+      if (!e || !e.date || e.date < start || e.date > end) continue;
+      if (!isJointCashOutflow(e)) continue;
+      if (e.kind !== 'obligation' && e.kind !== 'bill' && e.kind !== 'commitment') continue;
+      if (e.id && skipOnce.has(e.id)) continue;
+      const amt = -e.amount;
+      if (amt > EPSILON) sum += amt;
+    }
+    return roundCent(sum);
+  }
+
+  // Planned bills and inflows for a span Forecast already owns. Settlement
+  // is judged against the live as-of, so a future span is still due / in.
+  // Date-clipped so a carried once stub cannot appear as that span's bill.
+  function layoutGlanceFrom(plan, start, end, asOf, opts) {
+    const represented = representedKeySet(plan, opts, asOf);
+    const observed = representedActualMap(opts);
+    const events = expandEvents(plan, start, end,
+      Object.assign({}, opts || {}, { keepRepresented: true }));
+    const skipOnce = onceBillIdsBeforePayday(plan, start);
+    const items = [];
+    const seen = new Set();
+    const push = row => {
+      if (!row) return;
+      const key = (row.id || row.label || '') + '@' + (row.date || '');
+      if (seen.has(key)) return;
+      seen.add(key);
+      items.push(row);
+    };
+    for (const e of events || []) {
+      if (!e || !e.date || e.date < start || e.date > end) continue;
+      if (e.kind === 'income') {
+        const amt = e.amount;
+        if (!(amt > EPSILON)) continue;
+        const paid = !!(e.id && represented.has(e.id + '@' + e.date));
+        const actual = paid ? observedActual(observed, e.id, e.date) : null;
+        const raw = actual != null ? actual : amt;
+        push({
+          id: e.id,
+          label: e.label,
+          kind: 'income',
+          date: e.date,
+          planned: roundCent(amt),
+          actual,
+          remaining: paid ? 0 : roundCent(amt),
+          settlement: paid ? 'represented' : paydaySettlementState(e.date, asOf),
+          status: 'in',
+          glanceKind: 'in',
+          movement: householdMovement(raw, 'in'),
+          confidence: e.confidence || null,
+        });
+        continue;
+      }
+      if (!isJointCashOutflow(e)) continue;
+      if (e.kind !== 'obligation' && e.kind !== 'bill' && e.kind !== 'commitment') continue;
+      if (e.id && skipOnce.has(e.id)) continue;
+      const amt = -e.amount;
+      if (!(amt > EPSILON)) continue;
+      const paid = !!(e.id && represented.has(e.id + '@' + e.date));
+      let settlement;
+      let actual;
+      let remaining;
+      if (paid) {
+        settlement = 'represented';
+        actual = observedActual(observed, e.id, e.date);
+        remaining = 0;
+      } else if (e.date >= asOf) {
+        settlement = 'upcoming';
+        actual = 0;
+        remaining = roundCent(amt);
+      } else {
+        settlement = 'unverified';
+        actual = null;
+        remaining = roundCent(amt);
+      }
+      const raw = paid && actual != null ? actual : (remaining != null ? remaining : amt);
+      const status = glanceBillStatus(settlement, asOf, e.date);
+      push({
+        id: e.id,
+        label: e.label,
+        kind: e.kind,
+        date: e.date,
+        planned: roundCent(amt),
+        actual,
+        remaining,
+        settlement,
+        status,
+        glanceKind: status === 'PAID' ? 'paid' : 'still-due',
+        movement: householdMovement(raw, 'out'),
+        confidence: e.confidence || null,
+      });
+    }
+    items.sort((a, b) => String(a.date || '').localeCompare(String(b.date || ''))
+      || String(a.label || '').localeCompare(String(b.label || '')));
+    return items;
+  }
+
+  function householdBudgetScaled(plan, days) {
+    const scale = Math.max(0, Number(days) || 0) / CALENDAR_MONTH_DAYS;
+    const items = [];
+    for (const cat of (plan && plan.budget && plan.budget.categories) || []) {
+      if (!cat || DEFAULT_VIEW_BUDGET_IDS.indexOf(cat.id) < 0) continue;
+      if (cat.plannedMonthly == null) continue;
+      const monthly = roundCent(Number(cat.plannedMonthly) || 0);
+      items.push({
+        id: cat.id,
+        label: DEFAULT_VIEW_BUDGET_LABELS[cat.id] || cat.ownerLine || cat.label,
+        amount: roundCent(monthly * scale),
+        monthly,
+        inEssentialHold: false,
+      });
+    }
+    return items;
+  }
+
+  function budgetAmountTotal(rows) {
+    return roundCent((rows || []).reduce((s, r) => s + (Number(r && r.amount) || 0), 0));
+  }
+
+  function layoutViewFrom(plan, asOf, debts, leftover, bills, householdBudget,
+      extraDebt, plans, copy, purchaseRange) {
+    const cards = revolvingCardsGlance(plan, debts, extraDebt);
+    return {
+      asOf: copy.asOf || asOf,
+      span: copy.span,
+      title: copy.title,
+      billsHeading: copy.billsHeading,
+      extraLabel: copy.extraLabel,
+      cashNote: copy.cashNote || null,
+      periodStart: copy.periodStart || null,
+      periodEnd: copy.periodEnd || null,
+      currentBalance: leftover.currentBalance,
+      afterBills: leftover.afterBills,
+      afterHouseholdBudget: leftover.afterHouseholdBudget,
+      afterDebtRepayment: leftover.afterDebtRepayment,
+      afterBigPurchases: leftover.afterBigPurchases,
+      bills: bills || [],
+      householdBudget: householdBudget || [],
+      firstCard: cards.firstCard,
+      otherCards: cards.otherCards,
+      bigPurchases: bigPurchasesGlance(plans, extraDebt, purchaseRange),
+    };
+  }
+
   function planDefaultView(plan, asOf, alloc, action, plans, debts) {
     const leftover = (alloc && alloc.runningLeftover) || runningLeftoverFromAlloc(
       alloc && alloc.available,
@@ -2733,6 +2918,13 @@
     const cards = revolvingCardsGlance(plan, debts, alloc && alloc.extraDebt);
     return {
       asOf: (alloc && alloc.cashBasis && alloc.cashBasis.asOf) || asOf,
+      span: 'pay-period',
+      title: 'This pay period',
+      billsHeading: 'Bills this pay period',
+      extraLabel: 'Extra this payday',
+      cashNote: null,
+      periodStart: paydayDate || null,
+      periodEnd: periodLast || null,
       currentBalance: leftover.currentBalance,
       afterBills: leftover.afterBills,
       afterHouseholdBudget: leftover.afterHouseholdBudget,
@@ -2744,6 +2936,80 @@
       otherCards: cards.otherCards,
       bigPurchases: bigPurchasesGlance(plans, alloc),
     };
+  }
+
+  // Same 10-block shape as defaultView, for the next Seaspan payday Forecast
+  // already named. Current Balance is the walk's start-of-day cash plus that
+  // payday's income — the paydayAllocation available identity, not a new
+  // cash engine. Extra and big-purchase set-aside are $0: those are this
+  // payday's surplus decisions, not a second future waterfall.
+  function planNextPeriodView(plan, asOf, action, plans, debts, sim, opts) {
+    const nextPayday = (action && action.nextPayday) || null;
+    if (!nextPayday) return null;
+    const nextCal = paydayCalendar(plan, nextPayday, opts);
+    const periodLast = nextCal && nextCal.periodLast;
+    if (!periodLast) return null;
+    const opening = startOfDayCash(sim, nextPayday);
+    if (opening == null) return null;
+    const available = roundCent(opening + incomeOnDate(plan, nextPayday, opts));
+    const unpaid = unpaidJointCashInRange(plan, nextPayday, periodLast, opts);
+    const days = Math.max(1, diffDays(nextPayday, periodLast) + 1);
+    const householdBudget = householdBudgetScaled(plan, days);
+    const leftover = runningLeftoverFromAlloc(
+      available, unpaid, budgetAmountTotal(householdBudget), 0, 0);
+    return layoutViewFrom(
+      plan, asOf, debts, leftover,
+      layoutGlanceFrom(plan, nextPayday, periodLast, asOf, opts),
+      householdBudget, { allocated: 0, futureCosts: [] }, plans,
+      {
+        asOf: nextPayday,
+        span: 'pay-period',
+        title: 'Next pay period',
+        billsHeading: 'Bills this pay period',
+        extraLabel: 'Extra this payday',
+        cashNote: 'Current Balance. Not credit. Opening this pay period.',
+        periodStart: nextPayday,
+        periodEnd: periodLast,
+      },
+      { start: nextPayday, end: periodLast }
+    );
+  }
+
+  // One Forecast-owned week from the already-run walk. Opening is that
+  // week's sim opening. Leftover subtracts that week's unpaid joint-cash
+  // bills and a 7-day owner-target hold. Extra and set-aside stay $0 —
+  // those are payday-period allocations, not a weekly leftover Forecast
+  // does not compute.
+  function planWeekView(plan, asOf, week, plans, debts, opts) {
+    if (!week || !week.start || !week.end) return null;
+    const opening = week.opening != null && isFinite(Number(week.opening))
+      ? roundCent(week.opening) : null;
+    if (opening == null) return null;
+    const unpaid = unpaidJointCashInRange(plan, week.start, week.end, opts);
+    const householdBudget = householdBudgetScaled(plan, 7);
+    const leftover = runningLeftoverFromAlloc(
+      opening, unpaid, budgetAmountTotal(householdBudget), 0, 0);
+    return layoutViewFrom(
+      plan, asOf, debts, leftover,
+      layoutGlanceFrom(plan, week.start, week.end, asOf, opts),
+      householdBudget, { allocated: 0, futureCosts: [] }, plans,
+      {
+        asOf: week.start,
+        span: 'week',
+        title: 'This week',
+        billsHeading: 'Bills this week',
+        extraLabel: 'Extra this week',
+        cashNote: 'Current Balance. Not credit. Opening this week.',
+        periodStart: week.start,
+        periodEnd: week.end,
+      },
+      { start: week.start, end: week.end }
+    );
+  }
+
+  function planWeekViews(plan, asOf, plans, debts, sim, opts) {
+    return ((sim && sim.weeks) || []).map(week =>
+      planWeekView(plan, asOf, week, plans, debts, opts)).filter(Boolean);
   }
 
   function currentPeriodAction(plan, asOf, opts) {
@@ -3945,6 +4211,10 @@
         currentPeriodAction: action,
         defaultView: planDefaultView(plan, asOf, alloc, action, plans,
           paydayOpts.debts || base.debts),
+        nextPeriodView: planNextPeriodView(plan, asOf, action, plans,
+          paydayOpts.debts || base.debts, viewSim, paydayOpts),
+        weekViews: planWeekViews(plan, asOf, plans,
+          paydayOpts.debts || base.debts, viewSim, paydayOpts),
         // The options behind `sim`, so a caller overriding the weekly figure
         // re-simulates under the same assumptions instead of inventing its own.
         // Horizon is included so a page override still walks the master plan.
