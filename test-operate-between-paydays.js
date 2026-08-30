@@ -228,13 +228,12 @@ console.log('\n=== the homepage selects the daily renderer without changing payd
     && /View full current-period worksheet/.test(html),
   'AF-OPERATE-02 hierarchy stays first and the deeper worksheet stays secondary');
   ok(/refreshTrustHtml\(ctx\.refreshTrust\)/.test(src)
-    && /question\('01', 'What cash is this\?'/.test(src)
-    && /question\('02', 'What must leave this payday\?'/.test(src)
-    && /question\('03', 'What can I spend this week\?'/.test(src)
-    && /question\('04', 'Extra debt this payday\?'/.test(src)
-    && /question\('05', 'Big purchases\?'/.test(src)
-    && /question\('06', 'The next move\?'/.test(src),
-    'refresh-trust strip precedes the six payday-sheet questions, which remain in order');
+    && /question\('01', 'Leftover cash'/.test(src)
+    && /question\('02', 'Still due'/.test(src)
+    && /question\('03', 'Already left this payday'/.test(src)
+    && /question\('04', "This week's spend"/.test(src)
+    && /question\('06', 'Next move'/.test(src),
+    'refresh-trust strip precedes leftover cash, still due, already left, this week\'s spend, and next move');
 }
 
 console.log('\n=== the page remains a renderer, not a calculator ===');

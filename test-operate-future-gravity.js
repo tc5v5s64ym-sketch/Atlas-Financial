@@ -145,7 +145,8 @@ console.log('=== verdicts, remaining amounts and payday set-asides are direct ou
   ok(residual.includes('data-future-gravity-id="optional"') && residual.includes('$12.34')
     && !residual.includes('Protected'),
     'an optional payday set-aside stays residual and is not labelled protected');
-  ok(html.includes('487-day master plan') && html.includes('beyond the short display window'),
+  ok(html.includes('Later bills across the 487-day plan')
+    && html.includes('including costs beyond the next few months'),
     'the surface names the incumbent master horizon rather than the short view');
 }
 
@@ -289,8 +290,8 @@ console.log('\n=== approximate timing travels through Forecast; the page stays a
   ok(helper && !/plan\.commitments|Forecast\.[A-Za-z]+\s*\(|\.reduce\(|Math\./.test(helper[0]),
     'futureGravityHtml performs no future-cost arithmetic or Forecast decision');
   ok(/futureGravityHtml\(advice\)/.test(planSrc)
-    && /question\('05', 'Big purchases\?', purchases\)/.test(planSrc),
-    'question 05 consumes the one incumbent recommendation result');
+    && /See later bills and big purchases/.test(planSrc),
+    'later bills consume the one incumbent recommendation result behind disclosure');
 }
 
 if (failures) {

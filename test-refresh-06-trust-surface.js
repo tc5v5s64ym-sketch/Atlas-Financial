@@ -123,6 +123,7 @@ function loadComposer() {
     grab(planSrc, /^function weeklyCapView\([\s\S]*?\n\}$/m, 'weeklyCapView'),
     grab(planSrc, /^function paydayActionRows\([\s\S]*?\n\}$/m, 'paydayActionRows'),
     grab(planSrc, /^function paydayCashNote\([\s\S]*?\n\}$/m, 'paydayCashNote'),
+    grab(planSrc, /^function paydayGlanceCashNote\([\s\S]*?\n\}$/m, 'paydayGlanceCashNote'),
     grab(planSrc, /^function paydayCoverageNote\([\s\S]*?\n\}$/m, 'paydayCoverageNote'),
     grab(planSrc, /^const PAYDAY_ACTION_KIND = \{[\s\S]*?^\};$/m, 'PAYDAY_ACTION_KIND'),
     grab(planSrc, /^function paydayAllocationTrustNote\([\s\S]*?\n\}$/m, 'paydayAllocationTrustNote'),
@@ -148,6 +149,11 @@ function loadComposer() {
     grab(planSrc, /^function spendDecisionHtml\([\s\S]*?\n\}$/m, 'spendDecisionHtml'),
     grab(planSrc, /^function paydayBucketRow\([\s\S]*?\n\}$/m, 'paydayBucketRow'),
     grab(planSrc, /^function postedThisPeriodHtml\([\s\S]*?\n\}$/m, 'postedThisPeriodHtml'),
+    grab(planSrc, /^function glanceMoney\([\s\S]*?\n\}$/m, 'glanceMoney'),
+    grab(planSrc, /^function glanceLineLabel\([\s\S]*?\n\}$/m, 'glanceLineLabel'),
+    grab(planSrc, /^function alreadyLeftRowsHtml\([\s\S]*?\n\}$/m, 'alreadyLeftRowsHtml'),
+    grab(planSrc, /^function alreadyLeftHtml\([\s\S]*?\n\}$/m, 'alreadyLeftHtml'),
+    grab(planSrc, /^function stillDueItems\([\s\S]*?\n\}$/m, 'stillDueItems'),
     grab(planSrc, /^function cashGlanceHtml\([\s\S]*?\n\}$/m, 'cashGlanceHtml'),
     grab(planSrc, /^function mustLeaveHtml\([\s\S]*?\n\}$/m, 'mustLeaveHtml'),
     grab(planSrc, /^function extraDebtGlanceHtml\([\s\S]*?\n\}$/m, 'extraDebtGlanceHtml'),
@@ -242,10 +248,10 @@ console.log('=== A. overlay-off remainingClaim is Forecast, not invented ===');
   ok(served.refreshTrust.observedAsOf == null,
     'overlay-off does not publish the canonical opening as last-observed');
   const overlayOffHtml = composer.refreshTrustHtml(served.refreshTrust);
-  ok(/Observation as-of is unavailable/.test(overlayOffHtml)
-    && /dated opening/.test(overlayOffHtml)
+  ok(/When this was last updated is unknown/.test(overlayOffHtml)
+    && /last saved picture of the accounts/.test(overlayOffHtml)
     && !/Last observed/.test(overlayOffHtml),
-  'overlay-off HTML says observation as-of is unavailable, not Last observed');
+  'overlay-off HTML says when this was last updated is unknown, not Last observed');
   ok(RT.looksSanitized(served.refreshTrust), 'overlay-off packet is sanitized');
   filesUnchanged('overlay-off');
 }
@@ -393,14 +399,14 @@ console.log('\n=== F. HTML current / stale / incomplete / ambiguous render disti
     refreshTrust: trustPacket(),
     capView: cap,
   });
-  ok(/Last observed/.test(currentHtml)
+  ok(/Updated /.test(currentHtml)
     && /data-refresh-trust-state="current"/.test(currentHtml)
     && /data-exact-figures="available"/.test(currentHtml)
     && />Current</.test(currentHtml),
   'current packet renders the Current household state');
   ok(currentHtml.includes(composer.money2(SENTINEL_REMAINING)),
     'current remaining cents remain visible');
-  ok(!/waiting for explicit approval/.test(currentHtml)
+  ok(!/waiting for approval/.test(currentHtml)
     && !/data-refresh-trust-owner-question/.test(currentHtml)
     && !/<dialog/.test(currentHtml)
     && !/Approve/.test(currentHtml),
@@ -468,7 +474,7 @@ console.log('\n=== F. HTML current / stale / incomplete / ambiguous render disti
   }));
   ok(/data-refresh-trust-state="attention-needed"/.test(ambiguousHtml)
     && /more than one matching observation/.test(ambiguousHtml)
-    && !/waiting for explicit approval/.test(ambiguousHtml)
+    && !/waiting for approval/.test(ambiguousHtml)
     && !/treated as settled\.</.test(ambiguousHtml.replace(/not treated as settled/, '')),
   'ambiguous HTML stays unresolved and does not open an approval ceremony');
 }
@@ -476,7 +482,7 @@ console.log('\n=== F. HTML current / stale / incomplete / ambiguous render disti
 console.log('\n=== G. proposal and owner question appear only when incumbent supplied them ===');
 {
   const none = composer.refreshTrustHtml(trustPacket());
-  ok(!/waiting for explicit approval/.test(none)
+  ok(!/waiting for approval/.test(none)
     && !/data-refresh-trust-owner-question/.test(none)
     && !/<button/.test(none),
   'nothing to approve means no approval UI');
@@ -486,7 +492,7 @@ console.log('\n=== G. proposal and owner question appear only when incumbent sup
     canonicalProposalCount: 1,
   }));
   ok(/data-refresh-trust-proposal/.test(waiting)
-    && /waiting for explicit approval/.test(waiting)
+    && /waiting for approval/.test(waiting)
     && !/<dialog/.test(waiting)
     && !/<form/.test(waiting),
   'a waiting proposal is named without a modal approval ceremony');
@@ -514,7 +520,7 @@ console.log('\n=== H. live failure before an observation receipt does not fabric
   ok(failed.refreshTrust.displayState === RT.DISPLAY_ATTENTION,
     'failure-before-receipt stays attention-needed');
   const html = composer.refreshTrustHtml(failed.refreshTrust);
-  ok(/Observation as-of is unavailable/.test(html)
+  ok(/When this was last updated is unknown/.test(html)
     && !/Last observed/.test(html),
   'failure-before-receipt HTML does not render a fabricated Last observed date');
   filesUnchanged('failure-before-receipt');
@@ -549,9 +555,9 @@ console.log('\n=== J. homepage still leads with the operating surface ===');
   ok(/id="operating-surface"/.test(html)
     && html.indexOf('id="operating-surface"') < html.indexOf('id="payday-answer"'),
   'the decision-first operating surface remains first');
-  ok(/current enough to act on/.test(html)
-    && /Payday operating sheet/.test(html),
-    'the household lede names trust without turning the page into diagnostics');
+  ok(/extra on the cards only if leftover after bills/.test(html)
+    && /<h1>This payday<\/h1>/.test(html),
+    'the household lede names leftover cash and next move without turning the page into diagnostics');
 }
 
 filesUnchanged('suite close');

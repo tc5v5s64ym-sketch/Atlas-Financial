@@ -2358,6 +2358,42 @@
     return items;
   }
 
+  // Represented income already inside this pay period. Same keepRepresented
+  // walk as currentPeriodBills; this is not a second calendar. Upcoming
+  // income is not "already left" and is omitted.
+  function currentPeriodInflows(plan, asOf, origin, periodLast, opts) {
+    const represented = representedKeySet(plan, opts, asOf);
+    const observed = representedActualMap(opts);
+    const events = expandEvents(plan, origin, periodLast,
+      Object.assign({}, opts || {}, { keepRepresented: true }));
+    const items = [];
+    const seen = new Set();
+    for (const e of events) {
+      if (!e || e.kind !== 'income') continue;
+      const amt = e.amount;
+      if (!(amt > EPSILON)) continue;
+      const key = (e.id || e.label) + '@' + e.date;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      if (!(e.id && represented.has(e.id + '@' + e.date))) continue;
+      items.push({
+        id: e.id,
+        label: e.label,
+        kind: 'income',
+        date: e.date,
+        planned: roundCent(amt),
+        actual: observed.has(e.id + '@' + e.date)
+          ? observed.get(e.id + '@' + e.date)
+          : null,
+        remaining: 0,
+        settlement: 'represented',
+        evidenceDate: e.date,
+        confidence: e.confidence || null,
+      });
+    }
+    return items;
+  }
+
   // Settlement classification only: represented / upcoming / unverified for
   // current-period joint-cash bills. Does not compute recommend, weekly cap,
   // or paydayAllocation. currentPeriodAction remains the household action
@@ -2391,6 +2427,8 @@
       || coverage.remainingClaim === 'posted-only';
     const alloc = opts.paydayAllocation || paydayAllocation(plan, asOf, opts);
     const bills = obligationStates.bills;
+    const inflows = currentPeriodInflows(
+      plan, asOf, origin, periodLast, opts);
     const actuals = useActuals
       ? sumCategoryActuals(plan, asOf, origin, opts)
       : emptyCategoryActuals();
@@ -2470,6 +2508,7 @@
       nextPayday: cal.subsequent,
       coverage,
       bills,
+      inflows,
       categories,
       unclassified: {
         posted: actuals.unclassified.posted,

@@ -23,7 +23,15 @@
       "payeePatterns": ["TD MORTGAGE"],
       "atlasAccountId": "chequing-a",
       "direction": "debit",
-      "note": "Explicit TD MORTGAGE alias on Chequing A (BILLS ACCOUNT), already documented on the mortgage obligation and posting observations. Amount similarity is not identity. Fit4Less has no such rule and stays an owner-fact gate."
+      "note": "Explicit TD MORTGAGE alias on Chequing A (BILLS ACCOUNT), already documented on the mortgage obligation and posting observations. Amount similarity is not identity."
+    },
+    {
+      "eventId": "fit4less",
+      "payeePattern": "Fit4less Msp",
+      "payeePatterns": ["Fit4less Msp"],
+      "atlasAccountId": "chequing-a",
+      "direction": "debit",
+      "note": "Explicit Fit4less Msp alias on Chequing A (BILLS ACCOUNT). Same identity class as TD MORTGAGE: payee + account + direction + date. Amount similarity is not identity. Personal Care is not identity."
     },
     {
       "eventId": "childBenefit",

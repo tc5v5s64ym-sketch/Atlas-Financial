@@ -22,10 +22,10 @@ const read = file => fs.readFileSync(path.join(__dirname, file), 'utf8');
 console.log('=== default homepage speaks to the household first ===');
 {
   const html = read('public/index.html');
-  ok(/<h1>Payday operating sheet<\/h1>/.test(html),
-    'the first surface is labelled as the payday operating sheet');
-  ok(/In one glance: what cash this is, which bills must leave/.test(html)
-    && /The leftover after allocation is not the next move/.test(html),
+  ok(/<h1>This payday<\/h1>/.test(html),
+    'the first surface is labelled this payday');
+  ok(/Leftover cash, what is still due, what already left/.test(html)
+    && /extra on the cards only if leftover after bills/.test(html),
     'the intro says what the page is for in ordinary language');
   const planAt = html.indexOf('<script src="/plan.js"></script>');
   const householdAt = html.indexOf('<script src="/household-view.js"></script>');
@@ -67,27 +67,26 @@ console.log('\n=== the readability layer does not become a financial authority =
     'does not recreate an engine or allocation authority');
   ok(/querySelector|textContent|cloneNode|replaceChildren/.test(src),
     'works only from already-rendered presentation content');
-  ok(/See data quality details/.test(src) && /See all future costs/.test(src)
-    && /See current-period details/.test(src),
+  ok(/See data quality details/.test(src) && /See current-period details/.test(src),
     'diagnostic depth remains available behind explicit details');
-  ok(/Hold discretionary spending until/.test(src)
-    && /No payment or transfer is required today/.test(src),
-    'the first-screen action language is direct and household-readable');
-  ok(/What cash is this\?/.test(src),
-    'the compact cash prompt is the spendable-cash question');
+  ok(/Hold this week's spend until/.test(src)
+    && !/No payment or transfer is required today/.test(src),
+    'the first-screen action language is one coherent next move');
+  ok(/Leftover cash/.test(src),
+    'the compact cash prompt is leftover cash');
 }
 
 console.log('\n=== trust caveats are translated, not deleted ===');
 {
   const normal = H.friendlySpendingNote(
-    "Forecast.recommend's supported household cap through the next payday. Essential costs come out of it first."
+    "This week's spend until the next payday. Everyday costs come out of it first."
   );
-  ok(normal === 'This is the household spending limit until the next payday. Essential costs come out of it first.',
-    'essential-cost ordering survives the plain-language rewrite');
+  ok(normal === "This week's spend until the next payday. Everyday costs come out of it first.",
+    'everyday-cost ordering survives the plain-language rewrite');
   const limited = H.friendlySpendingNote(
-    "Forecast.currentPeriodAction's current weekly permission through the next payday. Current remaining spend cannot be confirmed from the incumbent trust contract."
+    "This week's spend until the next payday. What is left to spend this week is not confirmed yet."
   );
-  ok(limited === 'This is the household spending limit until the next payday. Current remaining spend is not confirmed.',
+  ok(limited === "This week's spend until the next payday. What is left to spend this week is not confirmed yet.",
     'an unavailable remaining-spend claim stays visible in ordinary language');
 }
 
@@ -174,10 +173,10 @@ console.log('\n=== Q6 keeps the incumbent current-period card under a disclosure
   const details = Array.from((answer && answer.children) || [])
     .find(el => el.tagName === 'DETAILS');
   const cardAfter = body.querySelector('[data-current-period-action]');
-  ok(now && /Hold discretionary spending until September 15/.test(now.textContent),
-    'plain-language Q6 summary leads with the unsafe spending decision');
-  ok(now && /No payment or transfer is required today/.test(now.textContent),
-    'no-movement is explained as a distinct fact, not the reassuring headline');
+  ok(now && /Hold this week's spend until September 15/.test(now.textContent),
+    'plain-language Q6 summary leads with one hold instruction');
+  ok(now && !/No payment or transfer is required today/.test(now.textContent),
+    'next move does not also say no payment is required today');
   ok(cardAfter === cardBefore,
     'the original current-period card node is kept, not rebuilt');
   ok(details && /See current-period details/.test(cleanText(details.querySelector('summary'))),
