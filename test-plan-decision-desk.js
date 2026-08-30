@@ -41,6 +41,7 @@ function loadComposer() {
     grab(planSrc, /^function paydayActionRows\([\s\S]*?\n\}$/m, 'paydayActionRows'),
     grab(planSrc, /^function paydayCashNote\([\s\S]*?\n\}$/m, 'paydayCashNote'),
     grab(planSrc, /^function paydayGlanceCashNote\([\s\S]*?\n\}$/m, 'paydayGlanceCashNote'),
+    grab(planSrc, /^function glanceUpdatedNote\([\s\S]*?\n\}$/m, 'glanceUpdatedNote'),
     grab(planSrc, /^function paydayCoverageNote\([\s\S]*?\n\}$/m, 'paydayCoverageNote'),
     grab(planSrc, /^const PAYDAY_ACTION_KIND = \{[\s\S]*?^\};$/m, 'PAYDAY_ACTION_KIND'),
     grab(planSrc, /^function paydayAllocationTrustNote\([\s\S]*?\n\}$/m, 'paydayAllocationTrustNote'),
@@ -75,6 +76,12 @@ function loadComposer() {
     grab(planSrc, /^function cashGlanceHtml\([\s\S]*?\n\}$/m, 'cashGlanceHtml'),
     grab(planSrc, /^function mustLeaveHtml\([\s\S]*?\n\}$/m, 'mustLeaveHtml'),
     grab(planSrc, /^function extraDebtGlanceHtml\([\s\S]*?\n\}$/m, 'extraDebtGlanceHtml'),
+    grab(planSrc, /^function runningLeftoverHtml\([\s\S]*?\n\}$/m, 'runningLeftoverHtml'),
+    grab(planSrc, /^function periodBillsHtml\([\s\S]*?\n\}$/m, 'periodBillsHtml'),
+    grab(planSrc, /^function householdBudgetHtml\([\s\S]*?\n\}$/m, 'householdBudgetHtml'),
+    grab(planSrc, /^function firstCardHtml\([\s\S]*?\n\}$/m, 'firstCardHtml'),
+    grab(planSrc, /^function otherCardsHtml\([\s\S]*?\n\}$/m, 'otherCardsHtml'),
+    grab(planSrc, /^function bigPurchasesHtml\([\s\S]*?\n\}$/m, 'bigPurchasesHtml'),
     grab(planSrc, /^function paydayAllocationSummaryHtml\([\s\S]*?\n\}$/m, 'paydayAllocationSummaryHtml'),
     grab(planSrc, /^function operatingSurfaceHtml\([\s\S]*?\n\}$/m, 'operatingSurfaceHtml'),
   ].join('\n');
@@ -164,16 +171,15 @@ console.log('=== 1. healthy / actionable safe-to-spend ===');
   });
   const q1 = question(html, '01');
   const q4 = question(html, '04');
-  const q6 = question(html, '06');
-  ok(/data-today-decision="spend-cap"/.test(q6) && /This week's spend is \$85 until September 15/.test(q6),
-    'healthy state leads with this week\'s spend, not leftover cash as the next move');
-  ok(!/Hold this week's spend/.test(q6) && !/Hold discretionary spending/.test(q6),
+  ok(/data-today-decision="spend-cap"/.test(html) && /This week's spend is \$85 until September 15/.test(html),
+    'healthy state still publishes this week\'s spend, not leftover cash as the next move');
+  ok(!/Hold this week's spend/.test(html) && !/Hold discretionary spending/.test(html),
     'healthy state does not warn the owner to hold spending');
-  ok(/data-spend-decision="amount"/.test(q4)
-    && q4.includes(`${composer.money(85)} / week`),
-    'healthy state shows this week\'s spend prominently');
-  ok(/\$412\.30/.test(q1) && /data-payday-cash/.test(q1) && /Current cash flow\. Not credit/.test(q1),
-    'leftover cash is copied from Forecast.paydayAllocation.available');
+  ok(/data-spend-decision="amount"/.test(html)
+    && html.includes(`${composer.money(85)} / week`),
+    'healthy state still shows this week\'s spend behind disclosure');
+  ok(/\$412\.30/.test(q1) && /data-payday-cash/.test(q1) && /Current Balance\. Not credit/.test(q1),
+    'Current Balance is copied from Forecast.paydayAllocation.available');
   ok(!/LEFT OVER/.test(html),
     'LEFT OVER is not the payday-sheet next move');
 }
@@ -196,19 +202,18 @@ console.log('\n=== 2. no safe spending / protected shortfall ===');
     advice, weekly: advice.weekly, recommended: advice.weekly,
   });
   const q4 = question(html, '04');
-  const q6 = question(html, '06');
-  ok(/data-today-decision="hold"/.test(q6)
-    && /Hold this week's spend until September 15/.test(q6),
-    'protected shortfall leads with one hold instruction');
-  ok(!/No payment or transfer is required today/.test(q6),
-    'next move is not a due-date warning that also says do not pay');
-  ok(/data-spend-decision="none"/.test(q4)
-    && /No safe amount for this week's spend until September 15/.test(q4),
+  ok(/data-today-decision="hold"/.test(html)
+    && /Hold this week's spend until September 15/.test(html),
+    'protected shortfall still publishes one hold instruction');
+  ok(!/No payment or transfer is required today/.test(html),
+    'the hold instruction is not a due-date warning that also says do not pay');
+  ok(/data-spend-decision="none"/.test(html)
+    && /No safe amount for this week's spend until September 15/.test(html),
     'this week\'s spend states there is no safe amount');
-  ok(/Why\?/.test(q4) && /No safe-to-spend figure exists until that protected shortfall is solved/.test(q4),
+  ok(/Why\?/.test(html) && /No safe-to-spend figure exists until that protected shortfall is solved/.test(html),
     'the incumbent infeasibility reason remains behind disclosure');
-  ok(!/No action required today/.test(q6) && !/No money movement needed today/.test(q6)
-    && !/Spend at most \$0/.test(q4) && !/\$0 \/ week/.test(q4),
+  ok(!/No action required today/.test(html) && !/No money movement needed today/.test(html)
+    && !/Spend at most \$0/.test(html) && !/\$0 \/ week/.test(q4),
     'the unsafe surface does not lead with a no-action reassurance or a fake $0/week yes');
 }
 
@@ -223,11 +228,10 @@ console.log('\n=== 3. immediate required payment due today ===');
   const html = composer.operatingSurfaceHtml({
     advice, weekly: advice.weekly, recommended: advice.weekly,
   });
-  const q6 = question(html, '06');
-  ok(/data-today-decision="pay-today"/.test(q6)
-    && /Pay Travel Visa minimum \(\$17\.44\) by Sep 8/.test(q6),
-    'a Forecast todayAction becomes the primary decision');
-  ok(/data-current-today-action="travel-visa"/.test(q6),
+  ok(/data-today-decision="pay-today"/.test(html)
+    && /Pay Travel Visa minimum \(\$17\.44\) by Sep 8/.test(html),
+    'a Forecast todayAction remains the listed pay-today decision');
+  ok(/data-current-today-action="travel-visa"/.test(html),
     'the same incumbent today action remains listed with its amount');
 }
 
@@ -238,9 +242,9 @@ console.log('\n=== 4. $0 extra debt with a valid Forecast target ===');
     advice, weekly: advice.weekly, recommended: advice.weekly,
   });
   const q5 = question(html, '05');
-  ok(!q5 && !/data-operating-question="05"/.test(html) && !/Put \$/.test(html),
-    'zero extra principal omits extra on the cards');
-  ok(!/Debt target:/.test(html.replace(/<details[\s\S]*?<\/details>/g, ''))
+  ok(/data-operating-question="05"/.test(html) && /Balance after household budget/.test(q5),
+    'zero extra principal still publishes leftover after household budget');
+  ok(!/Put \$/.test(html.replace(/<details[\s\S]*?<\/details>/g, ''))
     && !/Pay extra/.test(html)
     && !/Extra debt money this payday goes to Synthetic high card/.test(html),
     'the Forecast target is not a pay instruction when allocated is $0');

@@ -228,12 +228,12 @@ console.log('\n=== the homepage selects the daily renderer without changing payd
     && /View full current-period worksheet/.test(html),
   'AF-OPERATE-02 hierarchy stays first and the deeper worksheet stays secondary');
   ok(/refreshTrustHtml\(ctx\.refreshTrust\)/.test(src)
-    && /question\('01', 'Current cash flow'/.test(src)
-    && /question\('02', 'Still due'/.test(src)
-    && /question\('03', 'Already paid'/.test(src)
-    && /question\('04', "This week's spend"/.test(src)
-    && /question\('06', 'Next move'/.test(src),
-    'refresh-trust strip precedes current cash flow, still due, already paid, this week\'s spend, and next move');
+    && /question\('01', 'Current Balance'/.test(src)
+    && /question\('02', 'Bills this pay period'/.test(src)
+    && /question\('03', 'Balance after bills'/.test(src)
+    && /question\('04', 'Household budget'/.test(src)
+    && /question\('10', 'Balance after big purchase allocation'/.test(src),
+    'refresh-trust strip precedes Current Balance and the ten-block default view');
 }
 
 console.log('\n=== the page remains a renderer, not a calculator ===');

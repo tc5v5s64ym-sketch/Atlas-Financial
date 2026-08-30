@@ -42,6 +42,7 @@ function loadComposer() {
     grab(planSrc, /^function paydayActionRows\([\s\S]*?\n\}$/m, 'paydayActionRows'),
     grab(planSrc, /^function paydayCashNote\([\s\S]*?\n\}$/m, 'paydayCashNote'),
     grab(planSrc, /^function paydayGlanceCashNote\([\s\S]*?\n\}$/m, 'paydayGlanceCashNote'),
+    grab(planSrc, /^function glanceUpdatedNote\([\s\S]*?\n\}$/m, 'glanceUpdatedNote'),
     grab(planSrc, /^function paydayCoverageNote\([\s\S]*?\n\}$/m, 'paydayCoverageNote'),
     grab(planSrc, /^const PAYDAY_ACTION_KIND = \{[\s\S]*?^\};$/m, 'PAYDAY_ACTION_KIND'),
     grab(planSrc, /^function paydayAllocationTrustNote\([\s\S]*?\n\}$/m, 'paydayAllocationTrustNote'),
@@ -76,6 +77,12 @@ function loadComposer() {
     grab(planSrc, /^function cashGlanceHtml\([\s\S]*?\n\}$/m, 'cashGlanceHtml'),
     grab(planSrc, /^function mustLeaveHtml\([\s\S]*?\n\}$/m, 'mustLeaveHtml'),
     grab(planSrc, /^function extraDebtGlanceHtml\([\s\S]*?\n\}$/m, 'extraDebtGlanceHtml'),
+    grab(planSrc, /^function runningLeftoverHtml\([\s\S]*?\n\}$/m, 'runningLeftoverHtml'),
+    grab(planSrc, /^function periodBillsHtml\([\s\S]*?\n\}$/m, 'periodBillsHtml'),
+    grab(planSrc, /^function householdBudgetHtml\([\s\S]*?\n\}$/m, 'householdBudgetHtml'),
+    grab(planSrc, /^function firstCardHtml\([\s\S]*?\n\}$/m, 'firstCardHtml'),
+    grab(planSrc, /^function otherCardsHtml\([\s\S]*?\n\}$/m, 'otherCardsHtml'),
+    grab(planSrc, /^function bigPurchasesHtml\([\s\S]*?\n\}$/m, 'bigPurchasesHtml'),
     grab(planSrc, /^function paydayAllocationSummaryHtml\([\s\S]*?\n\}$/m, 'paydayAllocationSummaryHtml'),
     grab(planSrc, /^function operatingSurfaceHtml\([\s\S]*?\n\}$/m, 'operatingSurfaceHtml'),
   ].join('\n');
@@ -180,8 +187,8 @@ console.log('=== 1. one spendable cash figure, no overdraft in the number ===');
     'Forecast.paydayAllocation.available independently equals spendable opening plus same-day income');
   ok(q1.includes(composer.money2(independent)),
     'Q1 cash number is that spendable figure');
-  ok(/data-payday-cash/.test(q1) && /Current cash flow\. Not credit/.test(q1),
-    'Q1 is labelled leftover cash, not credit');
+  ok(/data-payday-cash/.test(q1) && /Current Balance\. Not credit/.test(q1),
+    'Q1 is labelled Current Balance, not credit');
   ok(chequing.status === 'available' && !near(chequing.available, independent),
     'chequingAvailability (which includes unused overdraft) is a different number');
   ok(!q1.includes(composer.money2(chequing.available)),
@@ -200,9 +207,11 @@ console.log('\n=== 2. recommend weekly cap, never a fake $0/week yes ===');
     advice, weekly: advice.weekly, recommended: advice.weekly,
   });
   const q4 = question(healthy, '04');
-  ok(/data-spend-decision="amount"/.test(q4)
-    && q4.includes(`${composer.money(advice.weekly)} / week`),
-    'feasible recommend weekly is this week\'s spend amount');
+  ok(/Household budget/.test(q4),
+    'Q4 on the default view is household budget');
+  ok(/data-spend-decision="amount"/.test(healthy)
+    && healthy.includes(`${composer.money(advice.weekly)} / week`),
+    'feasible recommend weekly remains available behind disclosure');
 
   const blocked = JSON.parse(JSON.stringify(advice));
   blocked.mode = 'infeasible';
@@ -215,23 +224,25 @@ console.log('\n=== 2. recommend weekly cap, never a fake $0/week yes ===');
     advice: blocked, weekly: 0, recommended: 0,
   });
   const infeasibleQ4 = question(infeasibleHtml, '04');
-  ok(/data-spend-decision="none"/.test(infeasibleQ4),
+  ok(/Household budget/.test(infeasibleQ4),
+    'infeasible recommend does not replace household budget with a weekly yes');
+  ok(/data-spend-decision="none"/.test(infeasibleHtml),
     'infeasible recommend does not publish a weekly yes');
-  ok(!/\$0 \/ week/.test(infeasibleQ4) && !/Spend at most \$0/.test(infeasibleQ4),
+  ok(!/\$0 \/ week/.test(infeasibleHtml) && !/Spend at most \$0/.test(infeasibleHtml),
     'infeasible weekly = 0 is not a fake $0/week yes');
-  ok(/Synthetic protected cost/.test(infeasibleQ4)
-    && infeasibleQ4.includes(composer.money2(321.11)),
+  ok(/Synthetic protected cost/.test(infeasibleHtml)
+    && infeasibleHtml.includes(composer.money2(321.11)),
     'infeasible names the failing constraint and shortfall behind Why?');
 
   const modeOnly = JSON.parse(JSON.stringify(advice));
   modeOnly.mode = 'infeasible';
   modeOnly.weekly = 0;
   modeOnly.infeasible = null;
-  const modeOnlyQ4 = question(composer.operatingSurfaceHtml({
+  const modeOnlyHtml = composer.operatingSurfaceHtml({
     advice: modeOnly, weekly: 0, recommended: 0,
-  }), '04');
-  ok(/data-spend-decision="none"/.test(modeOnlyQ4)
-    && !/\$0 \/ week/.test(modeOnlyQ4),
+  });
+  ok(/data-spend-decision="none"/.test(modeOnlyHtml)
+    && !/\$0 \/ week/.test(modeOnlyHtml),
     'infeasible mode without a fail object still refuses a weekly yes');
 }
 
@@ -244,19 +255,24 @@ console.log('\n=== 3. extra debt only from paydayAllocation surplus ===');
   const zeroHtml = composer.operatingSurfaceHtml({
     advice: zeroAdvice, weekly: zeroAdvice.weekly, recommended: zeroAdvice.weekly,
   });
-  const zero = question(zeroHtml, '05');
-  ok(!zero && !/data-operating-question="05"/.test(zeroHtml),
-    'extra on the cards is omitted when there is no leftover after bills');
+  const zero = question(zeroHtml, '06');
+  ok(/Extra this payday \$0\.00/.test(zero) || /No revolving card/.test(zero),
+    'zero extra this payday is said so, not omitted as a fake payment');
   ok(!/Pay extra/.test(zeroHtml) && !/Put \$40/.test(zeroHtml),
     'a named target is not a pay instruction when allocated is $0');
 
   const plusAdvice = JSON.parse(JSON.stringify(advice));
   plusAdvice.paydayAllocation.extraDebt.allocated = 40;
   plusAdvice.paydayAllocation.extraDebt.target = { id: 'high', label: 'Synthetic high card' };
-  const plus = question(composer.operatingSurfaceHtml({
+  if (plusAdvice.defaultView && plusAdvice.defaultView.firstCard) {
+    plusAdvice.defaultView.firstCard.extraThisPayday = 40;
+    plusAdvice.defaultView.firstCard.label = 'Synthetic high card';
+  }
+  const plusHtml = composer.operatingSurfaceHtml({
     advice: plusAdvice, weekly: plusAdvice.weekly, recommended: plusAdvice.weekly,
-  }), '05');
-  ok(/Put \$40\.00 extra on Synthetic high card/.test(plus),
+  });
+  ok(/Put \$40\.00 extra on Synthetic high card/.test(plusHtml)
+      || /Extra this payday \$40\.00/.test(plusHtml),
     'positive leftover after bills names facility and amount from extraDebt');
 }
 
@@ -485,11 +501,11 @@ console.log('\n=== leftover remainder is not the next move ===');
     weekly: 90, recommended: 90,
   });
   const q6 = question(html, '06');
-  ok(/This week's spend is \$90 until September 15/.test(q6),
-    'with no pay/extra/set-aside, the next move is this week\'s spend');
+  ok(/This week's spend is \$90 until September 15/.test(html),
+    'with no pay/extra/set-aside, this week\'s spend remains available behind disclosure');
   ok(!/\$1\.14/.test(q6) && !/LEFT OVER/.test(q6),
-    'allocation remainder is not the next-move instruction');
-  ok(!/is due/.test(q6) || !/No payment or transfer is required today/.test(q6),
+    'allocation remainder is not the first-card instruction');
+  ok(!/is due/.test(html) || !/No payment or transfer is required today/.test(html),
     'next move is not a due-date warning that also says do not pay');
   const hit = bannedOnGlance(html);
   ok(!hit, 'default glance has no Forecast field names or settlement code words',

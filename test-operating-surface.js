@@ -35,6 +35,7 @@ function loadComposer() {
     grab(planSrc, /^function paydayActionRows\([\s\S]*?\n\}$/m, 'paydayActionRows'),
     grab(planSrc, /^function paydayCashNote\([\s\S]*?\n\}$/m, 'paydayCashNote'),
     grab(planSrc, /^function paydayGlanceCashNote\([\s\S]*?\n\}$/m, 'paydayGlanceCashNote'),
+    grab(planSrc, /^function glanceUpdatedNote\([\s\S]*?\n\}$/m, 'glanceUpdatedNote'),
     grab(planSrc, /^function paydayCoverageNote\([\s\S]*?\n\}$/m, 'paydayCoverageNote'),
     grab(planSrc, /^const PAYDAY_ACTION_KIND = \{[\s\S]*?^\};$/m, 'PAYDAY_ACTION_KIND'),
     grab(planSrc, /^function paydayAllocationTrustNote\([\s\S]*?\n\}$/m, 'paydayAllocationTrustNote'),
@@ -69,6 +70,12 @@ function loadComposer() {
     grab(planSrc, /^function cashGlanceHtml\([\s\S]*?\n\}$/m, 'cashGlanceHtml'),
     grab(planSrc, /^function mustLeaveHtml\([\s\S]*?\n\}$/m, 'mustLeaveHtml'),
     grab(planSrc, /^function extraDebtGlanceHtml\([\s\S]*?\n\}$/m, 'extraDebtGlanceHtml'),
+    grab(planSrc, /^function runningLeftoverHtml\([\s\S]*?\n\}$/m, 'runningLeftoverHtml'),
+    grab(planSrc, /^function periodBillsHtml\([\s\S]*?\n\}$/m, 'periodBillsHtml'),
+    grab(planSrc, /^function householdBudgetHtml\([\s\S]*?\n\}$/m, 'householdBudgetHtml'),
+    grab(planSrc, /^function firstCardHtml\([\s\S]*?\n\}$/m, 'firstCardHtml'),
+    grab(planSrc, /^function otherCardsHtml\([\s\S]*?\n\}$/m, 'otherCardsHtml'),
+    grab(planSrc, /^function bigPurchasesHtml\([\s\S]*?\n\}$/m, 'bigPurchasesHtml'),
     grab(planSrc, /^function paydayAllocationSummaryHtml\([\s\S]*?\n\}$/m, 'paydayAllocationSummaryHtml'),
     grab(planSrc, /^function operatingSurfaceHtml\([\s\S]*?\n\}$/m, 'operatingSurfaceHtml'),
   ].join('\n');
@@ -123,7 +130,7 @@ console.log('=== homepage order and secondary detail ===');
   }
 }
 
-console.log('\n=== six ordered payday-sheet questions ===');
+console.log('\n=== ten ordered payday-sheet questions ===');
 {
   const { plan, asOf, advice, debtProjection } = currentResult();
   const composer = loadComposer();
@@ -132,11 +139,16 @@ console.log('\n=== six ordered payday-sheet questions ===');
     liveOverlay: data.liveOverlay,
   });
   const prompts = [
-    'Current cash flow',
-    'Still due',
-    'Already paid',
-    "This week's spend",
-    'Next move',
+    'Current Balance',
+    'Bills this pay period',
+    'Balance after bills',
+    'Household budget',
+    'Balance after household budget',
+    'Credit card to pay off first',
+    'Other credit cards',
+    'Balance after debt repayment',
+    'Big purchases on the horizon',
+    'Balance after big purchase allocation',
   ];
   let previous = -1;
   for (const prompt of prompts) {
@@ -144,19 +156,8 @@ console.log('\n=== six ordered payday-sheet questions ===');
     ok(at > previous, `${prompt} appears in the required order`);
     previous = at;
   }
-  const extra = advice.paydayAllocation.extraDebt.allocated;
-  if (extra > 0) {
-    ok(rendered.indexOf('Extra on the cards') > rendered.indexOf("This week's spend")
-      && rendered.indexOf('Extra on the cards') < rendered.indexOf('Next move'),
-      'extra on the cards sits between this week\'s spend and the next move');
-    ok((rendered.match(/data-operating-question=/g) || []).length === 6,
-      'surplus leftover after bills adds the extra-on-the-cards question');
-  } else {
-    ok(!/Extra on the cards/.test(rendered),
-      'extra on the cards is omitted when there is no leftover after bills');
-    ok((rendered.match(/data-operating-question=/g) || []).length === 5,
-      'the default surface contains the five payday-sheet questions when extra is omitted');
-  }
+  ok((rendered.match(/data-operating-question=/g) || []).length === 10,
+    'the default surface contains the ten payday-sheet questions');
 }
 
 console.log('\n=== every displayed financial answer traces to incumbents ===');
@@ -189,8 +190,8 @@ console.log('\n=== every displayed financial answer traces to incumbents ===');
     ok(target && rendered.includes(target.label),
       'a positive allocation names the debt row from the incumbent Forecast debt projection');
   } else {
-    ok(!/Extra on the cards/.test(rendered) && !/No extra debt this payday/.test(rendered),
-      'a zero incumbent allocation omits extra on the cards from the glance');
+    ok(!/Put \$/.test(rendered) && !/Pay extra/.test(rendered),
+      'a zero incumbent allocation does not print a pay-extra instruction on the glance');
     ok(!rendered.includes(`Pay extra`) && !rendered.includes(`Extra debt money this payday goes to`),
     'a policy target is not presented as a payment when Forecast allocated zero');
   }
@@ -215,8 +216,8 @@ console.log('\n=== Q4 follows the incumbent extra-debt allocation ===');
     advice: zeroAdvice, liveOverlay: data.liveOverlay,
   });
   ok(!zero.includes('No extra debt this payday.')
-    && !/data-operating-question="05"/.test(zero),
-    'zero allocation omits extra on the cards from the glance');
+    && /data-operating-question="05"/.test(zero),
+    'zero extra still keeps the leftover-after-budget question');
   ok(!zero.includes('$0.00 extra principal allocated this payday'),
     'zero leftover after bills does not print a fake extra-principal payment amount on the glance');
   ok(!zero.includes(`Pay extra`) && !zero.includes(`Extra debt money this payday goes to ${target.label}`),
@@ -225,6 +226,10 @@ console.log('\n=== Q4 follows the incumbent extra-debt allocation ===');
   const positiveAdvice = JSON.parse(JSON.stringify(advice));
   positiveAdvice.paydayAllocation.extraDebt.allocated = 25;
   positiveAdvice.paydayAllocation.extraDebt.target = target;
+  if (positiveAdvice.defaultView && positiveAdvice.defaultView.firstCard) {
+    positiveAdvice.defaultView.firstCard.extraThisPayday = 25;
+    positiveAdvice.defaultView.firstCard.label = target.label;
+  }
   const positive = composer.operatingSurfaceHtml({
     advice: positiveAdvice, liveOverlay: data.liveOverlay,
   });

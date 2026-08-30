@@ -90,7 +90,7 @@
     const answer = q && q.querySelector('.operating-answer');
     if (!q || !answer) return false;
     const prompt = q.querySelector('.operating-prompt');
-    if (prompt) prompt.textContent = 'Current cash flow';
+    if (prompt) prompt.textContent = 'Current Balance';
     return true;
   }
 
@@ -99,7 +99,7 @@
     const answer = q && q.querySelector('.operating-answer');
     if (!q || !answer) return false;
     const prompt = q.querySelector('.operating-prompt');
-    if (prompt) prompt.textContent = 'Still due';
+    if (prompt) prompt.textContent = 'Bills this pay period';
     return true;
   }
 
@@ -108,7 +108,7 @@
     const answer = q && q.querySelector('.operating-answer');
     if (!q || !answer) return false;
     const prompt = q.querySelector('.operating-prompt');
-    if (prompt) prompt.textContent = 'Already paid';
+    if (prompt) prompt.textContent = 'Balance after bills';
     return true;
   }
 
@@ -117,7 +117,7 @@
     const answer = q && q.querySelector('.operating-answer');
     if (!q || !answer) return false;
     const prompt = q.querySelector('.operating-prompt');
-    if (prompt) prompt.textContent = "This week's spend";
+    if (prompt) prompt.textContent = 'Household budget';
     if (answer.querySelector('[data-spend-decision]')) {
       const notes = answer.querySelectorAll('.operating-note');
       for (const note of notes) {
@@ -151,7 +151,7 @@
     const answer = q && q.querySelector('.operating-answer');
     if (!q || !answer) return false;
     const prompt = q.querySelector('.operating-prompt');
-    if (prompt) prompt.textContent = 'Extra on the cards';
+    if (prompt) prompt.textContent = 'Balance after household budget';
     return true;
   }
 
@@ -162,7 +162,7 @@
     if (!q || !answer) return false;
     const prompt = q.querySelector('.operating-prompt');
     if (prompt && q.getAttribute('data-operating-question') === '06') {
-      prompt.textContent = 'Next move';
+      prompt.textContent = 'Credit card to pay off first';
     }
     if (answer.querySelector('[data-today-decision]')) return true;
 

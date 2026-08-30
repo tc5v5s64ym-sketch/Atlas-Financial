@@ -50,6 +50,7 @@ function loadComposer() {
     grab(planSrc, /^function paydayActionRows\([\s\S]*?\n\}$/m, 'paydayActionRows'),
     grab(planSrc, /^function paydayCashNote\([\s\S]*?\n\}$/m, 'paydayCashNote'),
     grab(planSrc, /^function paydayGlanceCashNote\([\s\S]*?\n\}$/m, 'paydayGlanceCashNote'),
+    grab(planSrc, /^function glanceUpdatedNote\([\s\S]*?\n\}$/m, 'glanceUpdatedNote'),
     grab(planSrc, /^function paydayCoverageNote\([\s\S]*?\n\}$/m, 'paydayCoverageNote'),
     grab(planSrc, /^const PAYDAY_ACTION_KIND = \{[\s\S]*?^\};$/m, 'PAYDAY_ACTION_KIND'),
     grab(planSrc, /^function paydayAllocationTrustNote\([\s\S]*?\n\}$/m, 'paydayAllocationTrustNote'),
@@ -84,6 +85,12 @@ function loadComposer() {
     grab(planSrc, /^function cashGlanceHtml\([\s\S]*?\n\}$/m, 'cashGlanceHtml'),
     grab(planSrc, /^function mustLeaveHtml\([\s\S]*?\n\}$/m, 'mustLeaveHtml'),
     grab(planSrc, /^function extraDebtGlanceHtml\([\s\S]*?\n\}$/m, 'extraDebtGlanceHtml'),
+    grab(planSrc, /^function runningLeftoverHtml\([\s\S]*?\n\}$/m, 'runningLeftoverHtml'),
+    grab(planSrc, /^function periodBillsHtml\([\s\S]*?\n\}$/m, 'periodBillsHtml'),
+    grab(planSrc, /^function householdBudgetHtml\([\s\S]*?\n\}$/m, 'householdBudgetHtml'),
+    grab(planSrc, /^function firstCardHtml\([\s\S]*?\n\}$/m, 'firstCardHtml'),
+    grab(planSrc, /^function otherCardsHtml\([\s\S]*?\n\}$/m, 'otherCardsHtml'),
+    grab(planSrc, /^function bigPurchasesHtml\([\s\S]*?\n\}$/m, 'bigPurchasesHtml'),
     grab(planSrc, /^function paydayAllocationSummaryHtml\([\s\S]*?\n\}$/m, 'paydayAllocationSummaryHtml'),
     grab(planSrc, /^function operatingSurfaceHtml\([\s\S]*?\n\}$/m, 'operatingSurfaceHtml'),
   ].join('\n');
@@ -249,24 +256,23 @@ console.log('\n=== default glance prints that set in kitchen-counter language ==
   });
   const glance = defaultGlance(html);
   const text = glance.replace(/<[^>]+>/g, ' ');
-  ok(/Already paid/.test(html) && !/Already left this payday/.test(html),
-    'the heading is already paid, not already left');
-  ok(/data-payday-already-paid/.test(html) && /data-payday-still-due/.test(html),
-    'still due and already paid are distinct blocks');
-  ok(/Still needs to leave/.test(html) && /Already paid from this payday/.test(html),
-    'the two lists do not share the same leftover-to-pay wording');
+  ok(/Bills this pay period/.test(html) && /PAID/.test(glance),
+    'the heading is bills this pay period, with paid still listed');
+  ok(/data-payday-period-bills/.test(html),
+    'period bills are one default-view list');
   ok(/Payroll — Seaspan · Aug 28 · in/.test(glance)
-      && /Mortgage · Aug 28 · paid/.test(glance)
-      && /Fit4Less membership · Aug 28 · paid/.test(glance),
-    'default glance already paid is Seaspan in, mortgage paid, Fit4Less paid');
+      && /Mortgage · Aug 28 · PAID/.test(glance)
+      && /Fit4Less membership · Aug 28 · PAID/.test(glance),
+    'default glance already paid is Seaspan in, mortgage PAID, Fit4Less PAID');
   ok(glance.includes('+' + composer.money2(PAYROLL))
       && glance.includes('−' + composer.money2(MORTGAGE))
       && glance.includes('−' + composer.money2(FIT)),
     'already paid prints money in as + and money out as −');
   ok(!glance.includes('−' + composer.money2(PAYROLL)),
     'Seaspan in is not printed as a negative');
-  ok(/Current cash flow/.test(html) && !/Leftover cash/.test(html),
-    'the leftover number is labelled current cash flow');
+  ok(/Current Balance/.test(html) && !/Leftover cash/.test(html)
+      && !/Current cash flow/.test(html),
+    'the leftover number is labelled Current Balance');
   ok(!/Canada child benefit/.test(glance) && !/BCAA/.test(glance)
       && !/ICBC/.test(glance) && !/RESP/.test(glance) && !/CMAW/.test(glance)
       && !/union dues/i.test(glance),
@@ -282,12 +288,10 @@ console.log('\n=== default glance prints that set in kitchen-counter language ==
     'default glance stays kitchen-counter language');
   const q2 = html.slice(html.indexOf('data-operating-question="02"'),
     html.indexOf('data-operating-question="03"'));
-  const q3 = html.slice(html.indexOf('data-operating-question="03"'),
-    html.indexOf('data-operating-question="04"'));
-  ok(/still due/.test(q2) && !/ · paid/.test(q2) && !/ · in/.test(q2),
-    'still due does not reprint the already-paid list');
-  ok(/ · paid/.test(q3) && / · in/.test(q3) && !/still due/.test(q3),
-    'already paid does not reprint the still-due list');
+  ok(/still due/.test(q2) && /PAID/.test(q2) && / · in/.test(q2),
+    'bills this pay period lists PAID and still due together');
+  ok(/Mortgage · Aug 28 · PAID/.test(q2) && /Travel Visa minimum/.test(q2),
+    'paid mortgage stays listed beside still-due Travel Visa');
 }
 
 console.log('\n=== identified extra card payment on payday settles the min ===');
@@ -344,7 +348,7 @@ console.log('\n=== identified extra card payment on payday settles the min ===')
   const glance = defaultGlance(composer.operatingSurfaceHtml({
     advice, weekly: advice.weekly, recommended: advice.weekly,
   }));
-  ok(/Travel Visa minimum · Aug 28 · paid/.test(glance)
+  ok(/Travel Visa minimum · Aug 28 · PAID/.test(glance)
       && glance.includes('−' + composer.money2(EXTRA)),
     'default glance already paid names the extra payment on the transaction date');
   ok(!/Travel Visa minimum · Aug 26 · still due/.test(glance),

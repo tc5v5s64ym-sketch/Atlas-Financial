@@ -2330,6 +2330,26 @@
     return direction === 'in' ? roundCent(mag) : roundCent(-mag);
   }
 
+  // Kitchen-counter bill status for the default Plan view. Represented is
+  // PAID. Same-day upcoming is pending. Everything else still due. The
+  // page must not print settlement code words.
+  function glanceBillStatus(settlement, asOf, date) {
+    if (settlement === 'represented') return 'PAID';
+    if (settlement === 'upcoming' && date && asOf && date === asOf) return 'pending';
+    return 'still due';
+  }
+
+  // Owner-target household lines Dale asked the default view to print.
+  // Print only categories that already exist as Atlas plan.budget owner
+  // targets. Do not invent Dale/Amanda spending rows.
+  const DEFAULT_VIEW_BUDGET_IDS = ['groceries', 'fuel', 'pets', 'restaurants'];
+  const DEFAULT_VIEW_BUDGET_LABELS = {
+    groceries: 'Groceries',
+    fuel: 'Fuel',
+    pets: 'Dog food',
+    restaurants: 'Eating out',
+  };
+
   function currentPeriodBills(plan, asOf, origin, periodLast, opts) {
     const represented = representedKeySet(plan, opts, asOf);
     const observed = representedActualMap(opts);
@@ -2535,6 +2555,197 @@
     return items;
   }
 
+  // Bills this pay period for the default glance: from this payday date
+  // through this pay period's bills. Paid stay listed. Previous-cycle
+  // once stubs and mid-period inflows before this payday stay off the
+  // glance. Combines thisPaydayPaid + thisPaydayDue plus later-in-period
+  // represented bills; it does not dump current-period history.
+  function thisPeriodGlanceFrom(plan, paydayDate, periodLast, asOf, alloc, inflows, bills) {
+    const paid = thisPaydayPaidFrom(inflows, bills, paydayDate);
+    const due = thisPaydayDueFrom(plan, paydayDate, alloc, bills);
+    const skip = onceBillIdsBeforePayday(plan, paydayDate);
+    const seen = new Set();
+    const items = [];
+    const push = row => {
+      if (!row) return;
+      const key = (row.id || row.label || '') + '@' + (row.date || '');
+      if (seen.has(key)) return;
+      seen.add(key);
+      items.push(row);
+    };
+    for (const row of paid.inflows || []) {
+      push(Object.assign({}, row, {
+        status: 'in',
+        glanceKind: 'in',
+      }));
+    }
+    for (const row of paid.bills || []) {
+      push(Object.assign({}, row, {
+        status: 'PAID',
+        glanceKind: 'paid',
+      }));
+    }
+    for (const row of bills || []) {
+      if (!row || row.settlement !== 'represented') continue;
+      if (row.id && skip.has(row.id)) continue;
+      if (!(row.date && paydayDate && row.date > paydayDate && periodLast
+          && row.date <= periodLast)) continue;
+      const raw = row.actual != null ? row.actual : row.planned;
+      push(Object.assign({}, row, {
+        status: 'PAID',
+        glanceKind: 'paid',
+        movement: householdMovement(raw, 'out'),
+      }));
+    }
+    for (const row of due) {
+      push(Object.assign({}, row, {
+        status: glanceBillStatus(row.settlement, asOf, row.date),
+        glanceKind: 'still-due',
+      }));
+    }
+    items.sort((a, b) => String(a.date || '').localeCompare(String(b.date || ''))
+      || String(a.label || '').localeCompare(String(b.label || '')));
+    return items;
+  }
+
+  function householdBudgetGlance(plan, alloc) {
+    const byId = new Map();
+    for (const row of ((alloc && alloc.essentials && alloc.essentials.items) || [])) {
+      if (row && row.id) byId.set(row.id, row);
+    }
+    const items = [];
+    for (const cat of (plan && plan.budget && plan.budget.categories) || []) {
+      if (!cat || DEFAULT_VIEW_BUDGET_IDS.indexOf(cat.id) < 0) continue;
+      if (cat.plannedMonthly == null && !cat.ownerLine) continue;
+      const hold = byId.get(cat.id);
+      const amount = hold && hold.required != null
+        ? hold.required
+        : (cat.plannedMonthly != null ? roundCent(Number(cat.plannedMonthly) || 0) : null);
+      if (amount == null) continue;
+      items.push({
+        id: cat.id,
+        label: DEFAULT_VIEW_BUDGET_LABELS[cat.id] || cat.ownerLine || cat.label,
+        amount: roundCent(amount),
+        monthly: cat.plannedMonthly != null
+          ? roundCent(Number(cat.plannedMonthly) || 0)
+          : (hold && hold.monthly != null ? hold.monthly : null),
+        inEssentialHold: !!hold,
+      });
+    }
+    return items;
+  }
+
+  function revolvingCardsGlance(plan, debts, extraDebt) {
+    const priority = debtPriority(plan, debts || []);
+    const byId = new Map((debts || []).map(d => [d.id, d]));
+    const revolving = (priority.order || []).filter(row => {
+      if (!row || row.id === 'heloc' || row.id === 'mortgage') return false;
+      const d = byId.get(row.id);
+      return d && !d.secured;
+    });
+    const extra = extraDebt || {};
+    const targetId = extra.target && extra.target.id;
+    const first = (targetId && revolving.find(row => row.id === targetId))
+      || revolving[0]
+      || null;
+    const firstDebt = first ? byId.get(first.id) : null;
+    const extraAmount = extra.allocated != null ? Number(extra.allocated) || 0 : 0;
+    const firstCard = first ? {
+      id: first.id,
+      label: first.label,
+      balance: first.balance,
+      rate: first.rate,
+      minimum: firstDebt && firstDebt.payment != null
+        ? roundCent(firstDebt.payment) : null,
+      extraThisPayday: roundCent(extraAmount),
+    } : null;
+    const otherCards = revolving
+      .filter(row => !first || row.id !== first.id)
+      .map(row => {
+        const d = byId.get(row.id);
+        return {
+          id: row.id,
+          label: row.label,
+          balance: row.balance,
+          rate: row.rate,
+          minimum: d && d.payment != null ? roundCent(d.payment) : null,
+        };
+      });
+    return { firstCard, otherCards };
+  }
+
+  function bigPurchasesGlance(plans, alloc) {
+    const byId = new Map();
+    for (const row of (alloc && alloc.futureCosts) || []) {
+      if (row && row.id) byId.set(row.id, row);
+    }
+    return (plans || [])
+      .filter(row => row && row.flexibility !== 'optional')
+      .map(row => {
+        const payday = byId.get(row.id);
+        return {
+          id: row.id,
+          label: row.label,
+          date: row.date || null,
+          when: row.when || null,
+          cost: row.need != null ? roundCent(row.need) : null,
+          savedSoFar: 0,
+          setAsideThisPayday: payday && payday.allocated != null
+            ? roundCent(payday.allocated) : 0,
+        };
+      });
+  }
+
+  // Presentation leftover after the default-view consuming blocks, from
+  // already-allocated paydayAllocation amounts. Does not re-run the
+  // waterfall or flip leftover math. Protected-path cash stays inside
+  // leftover because that block is not on the default view.
+  function runningLeftoverFromAlloc(available, allocatedObligations, allocatedEssentials,
+      allocatedExtraDebt, futureTaken) {
+    const currentBalance = roundCent(available);
+    const afterBills = roundCent(currentBalance - (Number(allocatedObligations) || 0));
+    const afterHouseholdBudget = roundCent(afterBills - (Number(allocatedEssentials) || 0));
+    const afterDebtRepayment = roundCent(afterHouseholdBudget - (Number(allocatedExtraDebt) || 0));
+    const afterBigPurchases = roundCent(afterDebtRepayment - (Number(futureTaken) || 0));
+    return {
+      currentBalance,
+      afterBills,
+      afterHouseholdBudget,
+      afterDebtRepayment,
+      afterBigPurchases,
+    };
+  }
+
+  function planDefaultView(plan, asOf, alloc, action, plans, debts) {
+    const leftover = (alloc && alloc.runningLeftover) || runningLeftoverFromAlloc(
+      alloc && alloc.available,
+      alloc && alloc.obligations && alloc.obligations.allocated,
+      alloc && alloc.essentials && alloc.essentials.allocated,
+      alloc && alloc.extraDebt && alloc.extraDebt.allocated,
+      ((alloc && alloc.futureCosts) || [])
+        .reduce((s, r) => s + (Number(r && r.allocated) || 0), 0)
+    );
+    const paydayDate = action && action.thisPayday;
+    const periodLast = (action && action.periodEnd) || (alloc && alloc.periodEnd);
+    const bills = (action && action.thisPeriodGlance)
+      || thisPeriodGlanceFrom(plan, paydayDate, periodLast, asOf, alloc,
+        action && action.inflows, action && action.bills);
+    const cards = revolvingCardsGlance(plan, debts, alloc && alloc.extraDebt);
+    return {
+      asOf: (alloc && alloc.cashBasis && alloc.cashBasis.asOf) || asOf,
+      currentBalance: leftover.currentBalance,
+      afterBills: leftover.afterBills,
+      afterHouseholdBudget: leftover.afterHouseholdBudget,
+      afterDebtRepayment: leftover.afterDebtRepayment,
+      afterBigPurchases: leftover.afterBigPurchases,
+      bills,
+      householdBudget: householdBudgetGlance(plan, alloc),
+      firstCard: cards.firstCard,
+      otherCards: cards.otherCards,
+      bigPurchases: bigPurchasesGlance(plans, alloc),
+    };
+  }
+
   function currentPeriodAction(plan, asOf, opts) {
     opts = opts || {};
     const cal = opts.paydayCalendar || paydayCalendar(plan, asOf, opts);
@@ -2623,6 +2834,8 @@
     const paydayDate = thisPaydayDate(plan, asOf, opts, cal);
     const thisPaydayPaid = thisPaydayPaidFrom(inflows, bills, paydayDate);
     const thisPaydayDue = thisPaydayDueFrom(plan, paydayDate, alloc, bills);
+    const thisPeriodGlance = thisPeriodGlanceFrom(
+      plan, paydayDate, periodLast, asOf, alloc, inflows, bills);
     return {
       asOf,
       mode: cal.mode,
@@ -2632,6 +2845,7 @@
       thisPayday: paydayDate,
       thisPaydayPaid,
       thisPaydayDue,
+      thisPeriodGlance,
       coverage,
       bills,
       inflows,
@@ -3172,6 +3386,11 @@
     }
 
     const unallocated = roundCent(Math.max(0, remaining));
+    const futureTaken = roundCent(futureAllocations
+      .filter(row => row && row.id !== 'household-path')
+      .reduce((s, row) => s + (Number(row.allocated) || 0), 0));
+    const runningLeftover = runningLeftoverFromAlloc(
+      available, allocatedObligations, allocatedEssentials, allocatedExtraDebt, futureTaken);
     const lines = [];
     const pushLine = (key, kind, label, amount, extra) => {
       if (!(amount > EPSILON)) return;
@@ -3345,6 +3564,7 @@
       unallocated,
       allocatedTotal,
       remainder: unallocated,
+      runningLeftover,
       plannedDebt: { permitted: !!(debt && debt.permitted), borrowed: debt && debt.borrowed || 0 },
       identity: roundCent(allocatedTotal + unallocated),
       actualsCoverage: coverage,
@@ -3723,6 +3943,8 @@
         nearBoundary: nearBoundaryObligations(zeroSim.events, asOf, payFloor),
         paydayAllocation: alloc,
         currentPeriodAction: action,
+        defaultView: planDefaultView(plan, asOf, alloc, action, plans,
+          paydayOpts.debts || base.debts),
         // The options behind `sim`, so a caller overriding the weekly figure
         // re-simulates under the same assumptions instead of inventing its own.
         // Horizon is included so a page override still walks the master plan.

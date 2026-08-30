@@ -49,6 +49,7 @@ function loadComposer() {
     grab(planSrc, /^function paydayActionRows\([\s\S]*?\n\}$/m, 'paydayActionRows'),
     grab(planSrc, /^function paydayCashNote\([\s\S]*?\n\}$/m, 'paydayCashNote'),
     grab(planSrc, /^function paydayGlanceCashNote\([\s\S]*?\n\}$/m, 'paydayGlanceCashNote'),
+    grab(planSrc, /^function glanceUpdatedNote\([\s\S]*?\n\}$/m, 'glanceUpdatedNote'),
     grab(planSrc, /^function paydayCoverageNote\([\s\S]*?\n\}$/m, 'paydayCoverageNote'),
     grab(planSrc, /^const PAYDAY_ACTION_KIND = \{[\s\S]*?^\};$/m, 'PAYDAY_ACTION_KIND'),
     grab(planSrc, /^function paydayAllocationTrustNote\([\s\S]*?\n\}$/m, 'paydayAllocationTrustNote'),
@@ -83,6 +84,12 @@ function loadComposer() {
     grab(planSrc, /^function cashGlanceHtml\([\s\S]*?\n\}$/m, 'cashGlanceHtml'),
     grab(planSrc, /^function mustLeaveHtml\([\s\S]*?\n\}$/m, 'mustLeaveHtml'),
     grab(planSrc, /^function extraDebtGlanceHtml\([\s\S]*?\n\}$/m, 'extraDebtGlanceHtml'),
+    grab(planSrc, /^function runningLeftoverHtml\([\s\S]*?\n\}$/m, 'runningLeftoverHtml'),
+    grab(planSrc, /^function periodBillsHtml\([\s\S]*?\n\}$/m, 'periodBillsHtml'),
+    grab(planSrc, /^function householdBudgetHtml\([\s\S]*?\n\}$/m, 'householdBudgetHtml'),
+    grab(planSrc, /^function firstCardHtml\([\s\S]*?\n\}$/m, 'firstCardHtml'),
+    grab(planSrc, /^function otherCardsHtml\([\s\S]*?\n\}$/m, 'otherCardsHtml'),
+    grab(planSrc, /^function bigPurchasesHtml\([\s\S]*?\n\}$/m, 'bigPurchasesHtml'),
     grab(planSrc, /^function paydayAllocationSummaryHtml\([\s\S]*?\n\}$/m, 'paydayAllocationSummaryHtml'),
     grab(planSrc, /^function operatingSurfaceHtml\([\s\S]*?\n\}$/m, 'operatingSurfaceHtml'),
   ].join('\n');
@@ -228,14 +235,14 @@ console.log('\n=== composed surface: cash, identity, debt, protection, limits ==
 
   ok(action && action.mode === 'between-paydays',
     'the dated opening is between paydays, so current-period details stay folded');
-  ok(/data-payday-cash/.test(q1) && /Current cash flow\. Not credit\./.test(q1),
-    'Q1 is leftover cash, not credit');
-  ok(/data-payday-still-due/.test(q2),
-    'Q2 publishes bills still due this payday');
-  ok(/data-payday-already-paid/.test(q3),
-    'Q3 publishes what is already paid this payday');
-  ok(/data-spend-decision/.test(q4),
-    'Q4 publishes this week\'s spend');
+  ok(/data-payday-cash/.test(q1) && /Current Balance\. Not credit\./.test(q1),
+    'Q1 is Current Balance, not credit');
+  ok(/data-payday-period-bills/.test(q2),
+    'Q2 publishes bills this pay period');
+  ok(/data-running-leftover/.test(q3),
+    'Q3 publishes Forecast leftover after bills');
+  ok(/data-payday-household-budget/.test(q4) || /Household budget/.test(q4),
+    'Q4 publishes household budget');
   ok(/data-payday-decision/.test(rendered) && /data-allocation-available/.test(rendered),
     'the incumbent payday allocation remains available in the allocation disclosure');
   ok(/data-current-period-action/.test(rendered) && !/data-current-period-action/.test(q6),
@@ -245,16 +252,16 @@ console.log('\n=== composed surface: cash, identity, debt, protection, limits ==
   ok(creditHeadroom > 0 && alloc.available + 0.005 < independentCash + creditHeadroom,
     'available credit is not treated as household cash');
   ok(q1.includes(composer.money2(independentCash))
-    && /Current cash flow\. Not credit\./.test(q1)
+    && /Current Balance\. Not credit\./.test(q1)
     && !/live Lunch Money overlay/.test(q1)
     && !/Available in chequing/.test(q1),
-  'Q1 publishes that independent cash figure as leftover cash, not credit, not an available-in-chequing headline, and not live overlay');
+  'Q1 publishes that independent cash figure as Current Balance, not credit, not an available-in-chequing headline, and not live overlay');
   ok(near(lineSum, alloc.allocatedTotal)
     && near(lineSum + Number(alloc.remainder), alloc.available),
   'independent allocation-line sum plus remainder equals available resources');
-  ok(q4.includes(`${composer.money(action.weeklyCap)} / week`)
-    && near(action.weeklyCap, advice.weekly),
-  'Q4 this week\'s spend is Forecast.recommend.weekly from the same recommend result');
+  ok(near(action.weeklyCap, advice.weekly)
+    && rendered.includes(`${composer.money(action.weeklyCap)} / week`),
+  'this week\'s spend is Forecast.recommend.weekly from the same recommend result, behind disclosure');
   ok(/See later bills and big purchases/.test(rendered),
     'later bills stay behind disclosure');
   for (const item of requiredItems) {
@@ -274,13 +281,14 @@ console.log('\n=== composed surface: cash, identity, debt, protection, limits ==
     || (extraLine && near(extraLine.amount, extraAllocated)),
     'zero extra principal adds no extra-debt line; a positive extra line equals Forecast.extraDebt.allocated');
   if (extraAllocated === 0) {
-    ok(!q5 && !/data-operating-question="05"/.test(rendered)
+    ok(/data-operating-question="05"/.test(rendered)
       && !/Pay extra/.test(rendered)
       && !/Extra debt money this payday goes to/.test(rendered),
-    '$0 extra-debt allocation omits extra on the cards');
+    '$0 extra-debt allocation does not print a pay-extra instruction');
   } else {
-    ok(q5.includes(composer.money2(alloc.extraDebt.allocated))
-      && alloc.extraDebt.target && q5.includes(alloc.extraDebt.target.label),
+    ok((q6.includes(composer.money2(alloc.extraDebt.allocated))
+        || rendered.includes(composer.money2(alloc.extraDebt.allocated)))
+      && alloc.extraDebt.target && rendered.includes(alloc.extraDebt.target.label),
     'positive extra principal names the Forecast-authorized target and amount');
   }
   ok(priority.status === 'ready' && priority.target
@@ -288,7 +296,7 @@ console.log('\n=== composed surface: cash, identity, debt, protection, limits ==
     && plan.nextDollar.target == null,
   'debt target comes from Forecast.debtPriority plus recorded owner policy, not a stored rank');
   if (extraAllocated > 0) {
-    ok(q5.includes(priority.target.label),
+    ok(q6.includes(priority.target.label) || rendered.includes(priority.target.label),
       'extra on the cards names the Forecast/owner-policy target');
   }
   const coverage = composer.paydayCoverageNote(action);
@@ -320,15 +328,14 @@ console.log('\n=== $0 extra-debt allocation does not erase required debt ===');
     ok(q2.includes(item.label) && q2.includes(composer.money2(item.amount)),
       `$0 extra principal still publishes required debt ${item.id}`);
   }
-  ok(!q4.includes('No extra debt this payday.')
-    && /data-spend-decision/.test(q4),
-  '$0 extra-debt allocation does not replace this week\'s spend');
+  ok(!q4.includes('No extra debt this payday.'),
+  '$0 extra-debt allocation does not replace household budget');
   ok(!/Pay extra/.test(q4)
     && !/Extra debt money this payday goes to/.test(q4),
   '$0 extra-debt allocation implies no extra-principal payment');
   ok(!/Nothing else has to leave this payday/.test(q2)
-    && /data-payday-still-due/.test(q2),
-  '$0 extra principal leaves still-due bills visible and separate');
+    && /data-payday-period-bills/.test(q2),
+  '$0 extra principal leaves this-period bills visible');
 }
 
 console.log('\n=== payday mode still uses the ordered allocation sheet ===');
@@ -348,15 +355,15 @@ console.log('\n=== payday mode still uses the ordered allocation sheet ===');
   const q4 = question(html, '04');
   const q6 = question(html, '06');
   ok(/data-payday-cash/.test(q1) && !/data-allocation-available/.test(q1),
-    'payday-mode Q1 stays leftover cash, not the allocation sheet');
-  ok(/data-spend-decision/.test(q4),
-    'payday-mode Q4 is this week\'s spend');
-  ok(/data-today-decision/.test(q6) && /data-allocation-available/.test(html),
-    'a payday-mode result still renders the next move and keeps the ordered allocation sheet');
-  ok(/Current cash flow/.test(html) && /This week's spend/.test(html)
-    && /Already paid/.test(html)
-    && /Next move/.test(html),
-  'payday mode still answers leftover cash, still due, already paid, this week\'s spend, and next move');
+    'payday-mode Q1 stays Current Balance, not the allocation sheet');
+  ok(/data-payday-household-budget/.test(q4) || /Household budget/.test(q4),
+    'payday-mode Q4 is household budget');
+  ok(/data-payday-first-card/.test(q6) && /data-allocation-available/.test(html),
+    'a payday-mode result still renders the first card and keeps the ordered allocation sheet');
+  ok(/Current Balance/.test(html) && /Household budget/.test(html)
+    && /Bills this pay period/.test(html)
+    && /Credit card to pay off first/.test(html),
+  'payday mode still answers Current Balance, bills, budget, and first card');
 }
 
 console.log('\n=== live overlay cannot be authorized from committed git state ===');
@@ -379,10 +386,10 @@ console.log('\n=== live overlay cannot be authorized from committed git state ==
   const note = composer.paydayGlanceCashNote({
     available: 100, asOf: data.meta.asOf, cashBasis: { asOf: data.meta.asOf },
   });
-  ok(/Current cash flow\. Not credit\./.test(note)
+  ok(/Current Balance\. Not credit\./.test(note)
     && !/live Lunch Money overlay/.test(note)
     && !/dated opening/.test(note),
-  'absent overlay evidence is leftover cash, not current live truth');
+  'absent overlay evidence is Current Balance, not current live truth');
   const glance = composer.operatingSurfaceHtml({
     advice: {
       weekly: 180,
@@ -397,8 +404,8 @@ console.log('\n=== live overlay cannot be authorized from committed git state ==
     liveOverlay: { applied: false, reason: 'stale-live-cash-evidence' },
   });
   const q1 = question(glance, '01');
-  ok(/Current cash flow\. Not credit\./.test(q1) && !/overlay/.test(q1),
-    'a refused overlay does not leak overlay jargon onto leftover cash');
+  ok(/Current Balance\. Not credit\./.test(q1) && !/overlay/.test(q1),
+    'a refused overlay does not leak overlay jargon onto Current Balance');
 }
 
 console.log('\n=== the composed page remains a renderer ===');
