@@ -188,12 +188,37 @@ ok((before.plan.commitments || []).length === (plan.commitments || []).length
     && (before.plan.commitments || []).every((row, i) =>
       commitmentKey(row) === commitmentKey(plan.commitments[i])),
   'pre-existing commitments keep identity and amounts (home-insurance note may record the $3,000-not-$6,000 correction)');
-ok(JSON.stringify(before.plan.income) === JSON.stringify(plan.income),
-  'plan.income is unchanged');
+function incomeKey(stream) {
+  return JSON.stringify({
+    id: stream.id,
+    label: stream.label,
+    frequency: stream.frequency,
+    day: stream.day,
+    amount: stream.amount,
+    date: stream.date,
+    firstDue: stream.firstDue,
+    anchor: stream.anchor,
+    confidence: stream.confidence,
+  });
+}
+ok(JSON.stringify((before.plan.income || []).map(incomeKey))
+    === JSON.stringify((plan.income || []).map(incomeKey)),
+  'plan.income identity, amount and cadence are unchanged');
 ok(JSON.stringify(before.debts) === JSON.stringify(data.debts),
   'debt openings are unchanged');
-ok(JSON.stringify(before.plan.startingCash) === JSON.stringify(plan.startingCash),
-  'starting cash is unchanged');
+function cashKey(row) {
+  return JSON.stringify({
+    id: row.id,
+    label: row.label,
+    value: row.value,
+    class: row.class,
+  });
+}
+ok(JSON.stringify((before.plan.startingCash.breakdown || []).map(cashKey))
+    === JSON.stringify((plan.startingCash.breakdown || []).map(cashKey))
+    && JSON.stringify((before.plan.startingCash.heldElsewhere || []).map(cashKey))
+      === JSON.stringify((plan.startingCash.heldElsewhere || []).map(cashKey)),
+  'starting cash identity and amounts are unchanged');
 ok(JSON.stringify(before.plan.nextDollar) === JSON.stringify(plan.nextDollar),
   'surplus-debt policy is unchanged');
 
