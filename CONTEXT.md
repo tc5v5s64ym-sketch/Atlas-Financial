@@ -20,7 +20,7 @@ pending onto today's live plan in memory (`scripts/live-plan.js`) without
 rewriting historical openings or snapshots. That clone uses the
 observation's household financial date as Forecast start; unrepresented
 joint-cash outflows between the dated opening and that live start stay
-reserved; same-day scheduled cash events fail closed without posting evidence. Live read-only observation
+reserved; same-day scheduled income or other inbound cash fails closed without posting evidence; same-day unposted joint-cash bills stay still due. Live read-only observation
 already exists and has been exercised; identity and idempotency of that
 path are proved (`B78` / T3). The file foundation has not demonstrably
 failed (`B79` / `AF-STORE-01`); no store is introduced. Owner-approved
