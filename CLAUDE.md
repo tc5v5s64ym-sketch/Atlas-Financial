@@ -581,9 +581,9 @@ request is ready to merge.
 npm test
 ```
 
-Then whatever the change actually touches: `node test-forecast.js` after any
-change to the `plan` block, `node test-local.js` after `server.js`,
-`node test-mergecard.js` after the merge card check or the pull request
+Then whatever the change actually touches: `node test/test-forecast.js` after any
+change to the `plan` block, `node test/test-local.js` after `server.js`,
+`node test/test-mergecard.js` after the merge card check or the pull request
 template, and `node verify-live.js` against the deployed site for the security
 behaviour visible without a password.
 

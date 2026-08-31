@@ -268,7 +268,7 @@ household-budget split, and the weekly-cap recommendation. It is pure and
 DOM-free, so the node suite exercises exactly what the browser runs.
 
 **Run `npm test` after any change to `data.json` or to a page script.**
-[`test.js`](test.js) is the suite registry: it names every suite and the
+[`test/test.js`](test/test.js) is the suite registry: it names every suite and the
 dependency order they run in, and running it is the only honest way to know what
 the suite currently is. This file keeps no copy of that list — a hand-maintained
 inventory drifts the first time a suite is added, and then confidently describes
@@ -287,7 +287,7 @@ contradiction between two files fails the build.
 itself is worse than no plan, because it still looks authoritative.
 
 Two things the suite deliberately cannot cover, because they need something CI
-does not have: `node test-local.js` (needs `TEST_PASSWORD` and a running
+does not have: `node test/test-local.js` (needs `TEST_PASSWORD` and a running
 server) and `node verify-live.js` (needs the deployed site).
 
 ### The engine owns the answers; the pages render them
@@ -347,7 +347,7 @@ Stages `public/` and `data.json` into one directory and serves them at
 so a broken change fails at the prompt rather than as a blank page.
 
 **Rendering check only** — the password gate and security behaviour are not
-exercised. For those, `node test-local.js` with the password, and
+exercised. For those, `node test/test-local.js` with the password, and
 `node verify-live.js` against the deployed site.
 
 Adding an account means an entry in `debts` (and `revolvingExtra` if it is an
@@ -359,7 +359,7 @@ matching copy. Add any new questions to `01_OPEN_QUESTIONS.md`, and a row to
 After changing `server.js`, run the smoke test:
 
 ```bash
-TEST_PASSWORD=<the password> node test-local.js
+TEST_PASSWORD=<the password> node test/test-local.js
 ```
 
 Against the live site, `node verify-live.js` checks the security behaviour that
