@@ -2347,9 +2347,11 @@
   // Print only categories that already exist as Atlas plan.budget owner
   // targets. Do not invent Dale/Amanda spending rows.
   const DEFAULT_VIEW_BUDGET_IDS = ['groceries', 'fuel', 'pets', 'restaurants'];
+  // Variable owner-target lines the calendar waterfall holds. Subscriptions
+  // are already itemized as bills and are not a second hold.
   const CALENDAR_PERIOD_BUDGET_IDS = [
     'groceries', 'fuel', 'pets', 'restaurants', 'shopping',
-    'household', 'health', 'sport', 'subscriptions',
+    'household', 'health', 'sport',
   ];
   const DEFAULT_VIEW_BUDGET_LABELS = {
     groceries: 'Groceries',
@@ -3367,8 +3369,29 @@
     return 'future';
   }
 
+  // Named calendar halves of one as-of month share that month's owner
+  // target. Split by that month's real day counts (1st–15th vs 16th–last
+  // day) so the two planned amounts add back to plannedMonthly in cents.
+  // Leftover cents sit on Period 2. paydayAllocation.essentials /
+  // ownerTargetHoldForSpan still scale a payday span against
+  // CALENDAR_MONTH_DAYS; that leftover-hold math is not this split.
+  function calendarHalfPlanned(monthly, half, month) {
+    const days = month && month.last ? month.last : 0;
+    if (!(days > 0)) return 0;
+    const first = roundCent(Number(monthly) * 15 / days);
+    if (half === 1) return first;
+    return roundCent(Number(monthly) - first);
+  }
+
+  function calendarHalfThrough(asOf, end) {
+    if (end && asOf) return asOf < end ? asOf : end;
+    return end || asOf || null;
+  }
+
   function calendarHouseholdBudget(plan, asOf, start, end, role, opts) {
     opts = opts || {};
+    const month = calendarMonthSpan(start || asOf);
+    const half = billCalendarHalf(start) || (end && billCalendarHalf(end)) || 1;
     const useActuals = role === 'active' || role === 'lookback';
     const coverageOrigin = start && asOf && start <= asOf ? start : asOf;
     const coverage = useActuals
@@ -3376,16 +3399,34 @@
       : { remainingClaim: 'unavailable' };
     const actualsReady = useActuals && (coverage.remainingClaim === 'precise'
       || coverage.remainingClaim === 'posted-only');
-    const through = end && asOf && end < asOf ? end : asOf;
+    const through = calendarHalfThrough(asOf, end);
     const actuals = actualsReady
       ? sumCategoryActuals(plan, through, start, opts)
       : emptyCategoryActuals();
     const items = [];
     for (const cat of (plan && plan.budget && plan.budget.categories) || []) {
-      if (!cat || CALENDAR_PERIOD_BUDGET_IDS.indexOf(cat.id) < 0) continue;
+      if (!cat || !cat.id) continue;
+      if (cat.id === 'subscriptions') {
+        if (cat.plannedMonthly == null && !cat.ownerLine) continue;
+        items.push({
+          id: cat.id,
+          label: DEFAULT_VIEW_BUDGET_LABELS[cat.id] || cat.ownerLine || cat.label,
+          monthly: cat.plannedMonthly != null
+            ? roundCent(Number(cat.plannedMonthly) || 0) : null,
+          planned: null,
+          spent: null,
+          remaining: null,
+          hold: 0,
+          informational: true,
+          note: 'included in Bills, remaining not deducted',
+          projected: role === 'future',
+        });
+        continue;
+      }
+      if (CALENDAR_PERIOD_BUDGET_IDS.indexOf(cat.id) < 0) continue;
       if (cat.plannedMonthly == null) continue;
       const monthly = roundCent(Number(cat.plannedMonthly) || 0);
-      const planned = roundCent(monthly / 2);
+      const planned = calendarHalfPlanned(monthly, half, month);
       const act = categoryCommittedActual(actuals.byId.get(cat.id));
       const spent = actualsReady ? act.committed : null;
       const remaining = spent != null ? roundCent(planned - spent) : planned;
