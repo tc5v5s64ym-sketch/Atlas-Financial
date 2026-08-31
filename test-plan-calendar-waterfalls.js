@@ -1,0 +1,485 @@
+'use strict';
+/* Two calendar-half waterfalls: opening chain, paid bills, income, HELOC
+ * cash once, card mins once, current-cash identity, Bell outside remaining.
+ *
+ * Dates and totals are hand-computed from cadence and the calendar, then
+ * Forecast is asked whether it reproduced them (L-002 / L-006).
+ *
+ * `node test-plan-calendar-waterfalls.js`
+ */
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+const F = require('./public/forecast.js');
+const { sourceText } = require('./test-source-text');
+
+let failures = 0;
+const ok = (cond, label, detail = '') => {
+  if (!cond) failures++;
+  console.log(`  ${cond ? 'PASS' : 'FAIL'}  ${label}${detail ? ' — ' + detail : ''}`);
+};
+const near = (a, b, eps = 0.005) => Math.abs(Number(a) - Number(b)) <= eps;
+const read = file => sourceText(fs.readFileSync(path.join(__dirname, file), 'utf8'));
+
+function grab(src, re, label) {
+  const match = re.exec(src);
+  if (!match) throw new Error('missing ' + label);
+  return match[0];
+}
+
+function loadComposer() {
+  const appSrc = read('public/app.js');
+  const planSrc = read('public/plan.js');
+  const source = [
+    grab(appSrc, /^const money = .*$/m, 'money'),
+    grab(appSrc, /^const money2 = .*$/m, 'money2'),
+    grab(appSrc, /^const fmtDate = .*$/m, 'fmtDate'),
+    grab(appSrc, /^const fmtDateLong = .*$/m, 'fmtDateLong'),
+    grab(planSrc, /^function weeklyCapView\([\s\S]*?\n\}$/m, 'weeklyCapView'),
+    grab(planSrc, /^function paydayActionRows\([\s\S]*?\n\}$/m, 'paydayActionRows'),
+    grab(planSrc, /^function paydayCashNote\([\s\S]*?\n\}$/m, 'paydayCashNote'),
+    grab(planSrc, /^function paydayGlanceCashNote\([\s\S]*?\n\}$/m, 'paydayGlanceCashNote'),
+    grab(planSrc, /^function glanceUpdatedNote\([\s\S]*?\n\}$/m, 'glanceUpdatedNote'),
+    grab(planSrc, /^function paydayCoverageNote\([\s\S]*?\n\}$/m, 'paydayCoverageNote'),
+    grab(planSrc, /^const PAYDAY_ACTION_KIND = \{[\s\S]*?^\};$/m, 'PAYDAY_ACTION_KIND'),
+    grab(planSrc, /^function paydayAllocationTrustNote\([\s\S]*?\n\}$/m, 'paydayAllocationTrustNote'),
+    grab(planSrc, /^function paydayAllocationSheetHtml\([\s\S]*?\n\}$/m, 'paydayAllocationSheetHtml'),
+    grab(planSrc, /^function currentPeriodConfidence\([\s\S]*?\n\}$/m, 'currentPeriodConfidence'),
+    grab(planSrc, /^function currentPeriodBillGroup\([\s\S]*?\n\}$/m, 'currentPeriodBillGroup'),
+    grab(planSrc, /^function betweenPaydaysOperatingHtml\([\s\S]*?\n\}$/m, 'betweenPaydaysOperatingHtml'),
+    grab(planSrc, /^const FUTURE_PLAN_VERDICT = \{[\s\S]*?^\};$/m, 'FUTURE_PLAN_VERDICT'),
+    grab(planSrc, /^const FUTURE_PLAN_FLEXIBILITY = \{[\s\S]*?^\};$/m, 'FUTURE_PLAN_FLEXIBILITY'),
+    grab(planSrc, /^function futureCostNeedsAttention\([\s\S]*?\n\}$/m, 'futureCostNeedsAttention'),
+    grab(planSrc, /^function futurePlanRemainingLabel\([\s\S]*?\n\}$/m, 'futurePlanRemainingLabel'),
+    grab(planSrc, /^function futurePlanMeaning\([\s\S]*?\n\}$/m, 'futurePlanMeaning'),
+    grab(planSrc, /^function futurePlanRequirement\([\s\S]*?\n\}$/m, 'futurePlanRequirement'),
+    grab(planSrc, /^function futurePlanTiming\([\s\S]*?\n\}$/m, 'futurePlanTiming'),
+    grab(planSrc, /^function futurePlanCardHtml\([\s\S]*?\n\}$/m, 'futurePlanCardHtml'),
+    grab(planSrc, /^function futureGravityHtml\([\s\S]*?\n\}$/m, 'futureGravityHtml'),
+    grab(planSrc, /^function operatingDebtAnswerHtml\([\s\S]*?\n\}$/m, 'operatingDebtAnswerHtml'),
+    grab(planSrc, /^const REFRESH_TRUST_STATE = \{[\s\S]*?^\};$/m, 'REFRESH_TRUST_STATE'),
+    grab(planSrc, /^function refreshTrustHtml\([\s\S]*?\n\}$/m, 'refreshTrustHtml'),
+    grab(planSrc, /^function cashUnsafe\([\s\S]*?\n\}$/m, 'cashUnsafe'),
+    grab(planSrc, /^function todayActionRowsHtml\([\s\S]*?\n\}$/m, 'todayActionRowsHtml'),
+    grab(planSrc, /^function todayDecisionHtml\([\s\S]*?\n\}$/m, 'todayDecisionHtml'),
+    grab(planSrc, /^function spendDecisionHtml\([\s\S]*?\n\}$/m, 'spendDecisionHtml'),
+    grab(planSrc, /^function paydayBucketRow\([\s\S]*?\n\}$/m, 'paydayBucketRow'),
+    grab(planSrc, /^function postedThisPeriodHtml\([\s\S]*?\n\}$/m, 'postedThisPeriodHtml'),
+    grab(planSrc, /^function glanceSignedMoney\([\s\S]*?\n\}$/m, 'glanceSignedMoney'),
+    grab(planSrc, /^function glanceMoney\([\s\S]*?\n\}$/m, 'glanceMoney'),
+    grab(planSrc, /^function glanceLineLabel\([\s\S]*?\n\}$/m, 'glanceLineLabel'),
+    grab(planSrc, /^function alreadyPaidRowsHtml\([\s\S]*?\n\}$/m, 'alreadyPaidRowsHtml'),
+    grab(planSrc, /^function alreadyPaidHtml\([\s\S]*?\n\}$/m, 'alreadyPaidHtml'),
+    grab(planSrc, /^function stillDueItems\([\s\S]*?\n\}$/m, 'stillDueItems'),
+    grab(planSrc, /^function cashGlanceHtml\([\s\S]*?\n\}$/m, 'cashGlanceHtml'),
+    grab(planSrc, /^function mustLeaveHtml\([\s\S]*?\n\}$/m, 'mustLeaveHtml'),
+    grab(planSrc, /^function extraDebtGlanceHtml\([\s\S]*?\n\}$/m, 'extraDebtGlanceHtml'),
+    grab(planSrc, /^function runningLeftoverHtml\([\s\S]*?\n\}$/m, 'runningLeftoverHtml'),
+    grab(planSrc, /^function periodBillLine\([\s\S]*?\n\}$/m, 'periodBillLine'),
+    grab(planSrc, /^function calendarIncomeHtml\([\s\S]*?\n\}$/m, 'calendarIncomeHtml'),
+    grab(planSrc, /^function calendarBudgetHtml\([\s\S]*?\n\}$/m, 'calendarBudgetHtml'),
+    grab(planSrc, /^function calendarPeriodBillsHtml\([\s\S]*?\n\}$/m, 'calendarPeriodBillsHtml'),
+    grab(planSrc, /^function extraRepaymentHtml\([\s\S]*?\n\}$/m, 'extraRepaymentHtml'),
+    grab(planSrc, /^function calendarWaterfallHtml\([\s\S]*?\n\}$/m, 'calendarWaterfallHtml'),
+    grab(planSrc, /^function calendarPickerHtml\([\s\S]*?\n\}$/m, 'calendarPickerHtml'),
+    grab(planSrc, /^function calendarWaterfallsHtml\([\s\S]*?\n\}$/m, 'calendarWaterfallsHtml'),
+    grab(planSrc, /^function periodBillsHtml\([\s\S]*?\n\}$/m, 'periodBillsHtml'),
+    grab(planSrc, /^function householdBudgetHtml\([\s\S]*?\n\}$/m, 'householdBudgetHtml'),
+    grab(planSrc, /^function budgetDigestHtml\([\s\S]*?\n\}$/m, 'budgetDigestHtml'),
+    grab(planSrc, /^function firstCardHtml\([\s\S]*?\n\}$/m, 'firstCardHtml'),
+    grab(planSrc, /^function otherCardsHtml\([\s\S]*?\n\}$/m, 'otherCardsHtml'),
+    grab(planSrc, /^function bigPurchasesHtml\([\s\S]*?\n\}$/m, 'bigPurchasesHtml'),
+    grab(planSrc, /^function paydayAllocationSummaryHtml\([\s\S]*?\n\}$/m, 'paydayAllocationSummaryHtml'),
+    grab(planSrc, /^function operatingSurfaceHtml\([\s\S]*?\n\}$/m, 'operatingSurfaceHtml'),
+  ].join('\n');
+  return vm.runInNewContext(
+    `${source}\n({ operatingSurfaceHtml, money2 });`,
+    { Forecast: F }
+  );
+}
+
+function period(view, id) {
+  return ((view && view.calendarPeriods) || []).find(p => p.id === id);
+}
+function billsOf(p) {
+  return (p && p.bills) || [];
+}
+function incomeOf(p) {
+  return (p && p.income) || [];
+}
+
+function syntheticPlan() {
+  return {
+    defaults: { targetBuffer: 500 },
+    startingCash: {
+      breakdown: [{ id: 'chequing-a', label: 'BILLS ACCOUNT', value: 8000 }],
+    },
+    opening: { asOf: '2026-08-30' },
+    nextDollar: { policy: 'true-surplus-highest-interest', provenance: 'owner-stated' },
+    income: [
+      {
+        id: 'payroll', label: 'Payroll — Seaspan', frequency: 'biweekly',
+        anchor: '2026-08-14', amount: 2000, confidence: 'confirmed',
+      },
+      {
+        id: 'amanda15', label: 'Amanda salary 15th', frequency: 'monthly',
+        day: 15, amount: 2100, confidence: 'confirmed',
+      },
+      {
+        id: 'amandaEnd', label: 'Amanda salary month-end', frequency: 'monthly',
+        day: 31, amount: 2300, confidence: 'confirmed',
+      },
+    ],
+    obligations: [
+      {
+        id: 'mortgage', label: 'Mortgage', frequency: 'biweekly',
+        anchor: '2026-08-14', amount: 1600, confidence: 'confirmed',
+        debtId: 'mortgage', effect: 'payment', payingAccount: 'chequing-a',
+      },
+      {
+        id: 'heloc', label: 'HELOC interest', frequency: 'monthly',
+        day: 31, amount: 80, confidence: 'confirmed',
+        debtId: 'heloc', effect: 'capitalise', nonCash: true,
+        cashPayment: 80, cashDay: 21, cashFirstDue: '2026-09-21',
+        cashLabel: 'HELOC minimum', cashConfidence: 'estimated',
+        payingAccount: 'chequing-a',
+      },
+      {
+        id: 'triangle', label: 'Triangle Mastercard minimum', frequency: 'monthly',
+        day: 7, firstDue: '2026-09-07', amount: 250, confidence: 'estimated',
+        debtId: 'triangle', effect: 'payment', payingAccount: 'chequing-a',
+      },
+      {
+        id: 'cashback', label: 'TD Cash Back Visa minimum', frequency: 'monthly',
+        day: 1, firstDue: '2026-10-01', amount: 170, confidence: 'estimated',
+        debtId: 'cashback', effect: 'payment', payingAccount: 'chequing-a',
+      },
+      {
+        id: 'tdcc', label: 'TD credit card minimum', frequency: 'monthly',
+        day: 17, firstDue: '2026-09-17', amount: 94.03, confidence: 'estimated',
+        debtId: 'tdcc', effect: 'payment', payingAccount: 'chequing-a',
+      },
+      {
+        id: 'mbna-aug31', label: 'Amazon.ca Mastercard — August statement minimum',
+        frequency: 'once', date: '2026-08-31', amount: 158.27, confidence: 'confirmed',
+        debtId: 'mbna', effect: 'payment', payingAccount: 'chequing-a',
+      },
+      {
+        id: 'mbna', label: 'Amazon.ca Mastercard minimum', frequency: 'monthly',
+        day: 31, firstDue: '2026-09-30', amount: 158.27, confidence: 'estimated',
+        debtId: 'mbna', effect: 'payment', payingAccount: 'chequing-a',
+      },
+      {
+        id: 'travel', label: 'Travel Visa minimum', frequency: 'monthly',
+        day: 26, amount: 17, confidence: 'estimated',
+        debtId: 'travelvisa', effect: 'payment', payingAccount: 'chequing-a',
+      },
+    ],
+    bills: [
+      {
+        id: 'day15', label: 'Day 15 bill', frequency: 'monthly',
+        day: 15, amount: 15, confidence: 'confirmed', payingAccount: 'chequing-a',
+      },
+      {
+        id: 'netflix', label: 'Netflix', frequency: 'monthly',
+        day: 17, amount: 26.87, confidence: 'confirmed',
+        budgetCategory: 'subscriptions', payingAccount: 'chequing-a',
+      },
+      {
+        id: 'bell', label: 'Bell', frequency: 'monthly',
+        amount: 121, confidence: 'estimated', needsDate: true,
+        budgetCategory: 'telecom', payingAccount: 'chequing-a',
+      },
+    ],
+    commitments: [
+      {
+        id: 'seattle-nov', label: 'Seattle tournament #1', amount: 1200,
+        when: 'Nov 2026', flexibility: 'required', confidence: 'estimated',
+      },
+    ],
+    budget: {
+      categories: [
+        { id: 'groceries', label: 'Groceries', class: 'essential', plannedMonthly: 1800, ownerLine: 'Groceries' },
+        { id: 'fuel', label: 'Fuel', class: 'essential', plannedMonthly: 1300, ownerLine: 'Transportation / Gas' },
+        { id: 'pets', label: 'Pets', class: 'essential', plannedMonthly: 110, ownerLine: 'Dog food' },
+        { id: 'restaurants', label: 'Dining', class: 'discretionary', plannedMonthly: 800, ownerLine: 'Restaurants / Takeout' },
+        { id: 'shopping', label: 'Shopping', class: 'discretionary', plannedMonthly: 600, ownerLine: 'Personal' },
+        { id: 'household', label: 'Household', class: 'essential', plannedMonthly: 150, ownerLine: 'Household' },
+        { id: 'health', label: 'Health', class: 'essential', plannedMonthly: 100, ownerLine: 'Medical' },
+        { id: 'sport', label: 'Sport', class: 'discretionary', plannedMonthly: 250, ownerLine: 'Sports / Activities' },
+        { id: 'subscriptions', label: 'Subscriptions', class: 'discretionary', plannedMonthly: 300, ownerLine: 'Subscriptions' },
+      ],
+    },
+  };
+}
+
+const debts = [
+  { id: 'triangle', label: 'Triangle', secured: false, structure: 'Revolving', balance: 100, rate: 21.99, payment: 250, pending: 0 },
+  { id: 'cashback', label: 'Cash Back', secured: false, structure: 'Revolving', balance: 200, rate: 26.99, payment: 170, pending: 0 },
+  { id: 'tdcc', label: 'TD personal Visa', secured: false, structure: 'Revolving', balance: 90, rate: 24.99, payment: 94.03, pending: 0 },
+  { id: 'mbna', label: 'Amazon.ca Mastercard', secured: false, structure: 'Revolving', balance: 150, rate: 21.74, payment: 158.27, pending: 0 },
+  { id: 'travelvisa', label: 'Travel Visa', secured: false, structure: 'Revolving', balance: 80, rate: 19.99, payment: 17, pending: 0 },
+  { id: 'heloc', label: 'HELOC', secured: true, structure: 'Interest-only revolving', balance: 1000, rate: 4.9, payment: 0, pending: 0, cashPayment: 0, interestTreatment: 'capitalised' },
+  { id: 'mortgage', label: 'Mortgage', secured: true, structure: 'Amortising', balance: 5000, rate: 3.64, payment: 1600, pending: 0 },
+];
+
+const composer = loadComposer();
+
+function defaultGlance(html) {
+  let out = String(html || '');
+  const openRe = /<details\b/i;
+  while (openRe.test(out)) {
+    const start = out.search(openRe);
+    const openMatch = out.slice(start).match(/<details\b[^>]*>/i);
+    if (!openMatch) break;
+    let i = start + openMatch[0].length;
+    let depth = 1;
+    while (i < out.length && depth > 0) {
+      const rest = out.slice(i);
+      const nextOpen = rest.search(/<details\b/i);
+      const nextClose = rest.search(/<\/details>/i);
+      if (nextClose < 0) { i = out.length; break; }
+      if (nextOpen >= 0 && nextOpen < nextClose) {
+        const nested = rest.slice(nextOpen).match(/<details\b[^>]*>/i);
+        depth++;
+        i += nextOpen + (nested ? nested[0].length : 8);
+      } else {
+        depth--;
+        i += nextClose + 10;
+      }
+    }
+    out = out.slice(0, start) + out.slice(i);
+  }
+  return out;
+}
+
+console.log('=== 1. Period 1 projected ending flows into Period 2 opening ===');
+{
+  const plan = syntheticPlan();
+  const advice = F.recommend(plan, '2026-08-10', { targetBuffer: 500, debts });
+  const view = advice.defaultView;
+  const p1 = period(view, 'calendar-1-15');
+  const p2 = period(view, 'calendar-16-end');
+  ok(p1 && p1.role === 'active' && p2 && p2.role === 'future',
+    'as-of Aug 10: Period 1 is live, Period 2 is future');
+  ok(p1.openingKnown && near(p1.opening, advice.paydayAllocation.available),
+    'Period 1 opens from existing Forecast current cash');
+  ok(p2.openingKnown && near(p2.opening, p1.projectedEnding),
+    'Period 2 opening equals Period 1 projected ending',
+    p2 && p1 && `${p2.opening} vs ${p1.projectedEnding}`);
+  ok(!near(p2.opening, advice.paydayAllocation.available)
+      || near(p1.projectedEnding, advice.paydayAllocation.available),
+    'Period 2 does not reuse today\'s current balance as its own opening');
+  const p2Income = incomeOf(p2).reduce((s, r) => s + (Number(r.amount) || 0), 0);
+  ok(p2.available != null && near(p2.available, p2.opening + p2.incomeAdded)
+      && near(p2.incomeAdded, p2Income),
+    'future Period 2 adds all of that period\'s income after the inherited opening');
+}
+
+console.log('\n=== 2. Paid bills are not deducted twice ===');
+{
+  const plan = syntheticPlan();
+  const advice = F.recommend(plan, '2026-08-20', {
+    targetBuffer: 500, debts,
+    representedEvents: [{ id: 'netflix', date: '2026-08-17' }],
+  });
+  const p2 = period(advice.defaultView, 'calendar-16-end');
+  const netflix = billsOf(p2).find(r => r.id === 'netflix');
+  ok(netflix && netflix.status === 'PAID' && near(netflix.remaining, 0),
+    'represented Netflix stays visible as PAID with remaining $0');
+  const remainingIds = billsOf(p2).filter(r => r.status !== 'PAID').map(r => r.id);
+  ok(!remainingIds.includes('netflix'),
+    'PAID Netflix is omitted from remaining-bills');
+  const independentRemaining = billsOf(p2)
+    .filter(r => r.status !== 'PAID')
+    .reduce((s, r) => s + (Number(r.remaining) || 0), 0);
+  ok(near(p2.remainingBills, independentRemaining),
+    'remaining-bills equals the unpaid rows only',
+    `${p2.remainingBills} vs ${independentRemaining}`);
+  ok(p2.available != null && near(p2.afterRemainingBills, p2.available - p2.remainingBills),
+    'leftover after remaining bills subtracts unpaid rows once');
+}
+
+console.log('\n=== 3. Income never lands in remaining-bills ===');
+{
+  const plan = syntheticPlan();
+  const view = F.recommend(plan, '2026-08-20', { targetBuffer: 500, debts }).defaultView;
+  for (const p of view.calendarPeriods) {
+    ok(!(p.bills || []).some(r => r.kind === 'income'),
+      `${p.label} bills list has no income rows`);
+    ok((p.income || []).every(r => r.kind === 'income'),
+      `${p.label} income sits in its own block`);
+  }
+  ok(view.billSections.length === 2
+      && !view.billSections.some(s => /Seaspan|Amanda|payroll|salary/i.test(s.label)),
+    'income dates do not spawn extra bill sections');
+}
+
+console.log('\n=== 4. HELOC cash is not double-counted with capitalised interest ===');
+{
+  const plan = syntheticPlan();
+  const aug = F.recommend(plan, '2026-08-30', { targetBuffer: 500, debts }).defaultView;
+  const augHeloc = (aug.bills || []).filter(r => r.id === 'heloc' || r.cashMinimum);
+  ok(augHeloc.length === 0,
+    'August has no remaining HELOC cash row (cashFirstDue 2026-09-21)');
+  const sep = F.recommend(plan, '2026-09-10', { targetBuffer: 500, debts }).defaultView;
+  const p2 = period(sep, 'calendar-16-end');
+  const heloc = billsOf(p2).filter(r => r.id === 'heloc');
+  ok(heloc.length === 1 && heloc[0].date === '2026-09-21' && near(heloc[0].amount, 80),
+    'September HELOC cash min prints once in Period 2 on the 21st');
+  const events = F.expandEvents(plan, '2026-09-01', '2026-09-30');
+  ok(events.filter(e => e.id === 'heloc').every(e => e.kind === 'noncash'),
+    'expandEvents still emits only the capitalise event');
+  ok(!events.some(e => e.id === 'heloc' && e.kind !== 'noncash'),
+    'HELOC cash is not a second household cash event on the walk');
+}
+
+console.log('\n=== 5. Each active card min appears once, including paid ===');
+{
+  const plan = syntheticPlan();
+  const view = F.recommend(plan, '2026-08-30', { targetBuffer: 500, debts }).defaultView;
+  const p1 = period(view, 'calendar-1-15');
+  const p2 = period(view, 'calendar-16-end');
+  const triangle = billsOf(p1).filter(r => r.id === 'triangle');
+  const cashback = billsOf(p1).filter(r => r.id === 'cashback');
+  const tdcc = billsOf(p2).filter(r => r.id === 'tdcc');
+  const travel = billsOf(p2).filter(r => r.id === 'travel');
+  const amazonOnce = billsOf(p2).filter(r => r.id === 'mbna-aug31');
+  const amazonMonthly = billsOf(p2).filter(r => r.id === 'mbna');
+  ok(triangle.length === 1 && triangle[0].date === '2026-08-07'
+      && near(triangle[0].amount, 250) && triangle[0].status === 'PAID',
+    'Triangle min day 7 prints once in Period 1 as PAID');
+  ok(cashback.length === 1 && cashback[0].date === '2026-08-01'
+      && near(cashback[0].amount, 170) && cashback[0].status === 'PAID',
+    'Cash Back min day 1 prints once in Period 1 as PAID');
+  ok(tdcc.length === 1 && tdcc[0].date === '2026-08-17'
+      && near(tdcc[0].amount, 94.03) && tdcc[0].status === 'PAID',
+    'tdcc min $94.03 Aug 17 prints once in Period 2 as PAID');
+  ok(travel.length === 1 && travel[0].date === '2026-08-26',
+    'Travel Visa min day 26 prints once in Period 2');
+  ok(amazonOnce.length === 1 && amazonOnce[0].date === '2026-08-31'
+      && amazonMonthly.length === 0,
+    'August Amazon min is the once row, not also the monthly row');
+}
+
+console.log('\n=== 6. Current cash identity; no BILLS-minus-spend rewrite ===');
+{
+  const plan = syntheticPlan();
+  const advice = F.recommend(plan, '2026-08-30', { targetBuffer: 500, debts });
+  const view = advice.defaultView;
+  const p2 = period(view, 'calendar-16-end');
+  const p1 = period(view, 'calendar-1-15');
+  ok(p2 && p2.role === 'active' && p1 && p1.role === 'lookback',
+    'as-of Aug 30: Period 1 is lookback, Period 2 is the live waterfall');
+  ok(near(p2.opening, advice.paydayAllocation.available)
+      && near(p2.opening, F.startingCashAmount(plan)),
+    'live Period 2 opening matches paydayAllocation.available / starting cash',
+    p2 && `${p2.opening} vs ${advice.paydayAllocation.available}`);
+  ok(p1.lookback && p1.opening !== advice.paydayAllocation.available,
+    'lookback Period 1 does not reuse today\'s current balance');
+  const src = read('public/forecast.js');
+  ok(!/chequing-a[\s\S]{0,80}minus[\s\S]{0,40}spend|BILLS ACCOUNT[\s\S]{0,80}- posted/i.test(src),
+    'Forecast does not redefine current cash as BILLS ACCOUNT minus posted spend');
+}
+
+console.log('\n=== 7. Bell undated is visible and excluded from remaining ===');
+{
+  const plan = syntheticPlan();
+  const view = F.recommend(plan, '2026-08-30', { targetBuffer: 500, debts }).defaultView;
+  const bell = (view.undatedBills || []).find(r => r.id === 'bell');
+  ok(bell && bell.needsDate && bell.date == null && near(bell.amount, 121),
+    'Bell prints as needs-date with no fabricated day');
+  for (const p of view.calendarPeriods) {
+    ok(!(p.bills || []).some(r => r.id === 'bell'),
+      `${p.label} remaining-bills does not include undated Bell`);
+  }
+  const html = composer.operatingSurfaceHtml({
+    advice: { defaultView: view, paydayAllocation: { available: view.calendarPeriods[1].opening, cashBasis: { asOf: '2026-08-30' } } },
+    weekly: 0, recommended: 0,
+  });
+  ok(/needs confirmation/i.test(html) && /Not included in either period's remaining bills/.test(html),
+    'page prints Bell outside both period remaining totals');
+}
+
+console.log('\n=== 8. Extra debt never takes leftover below the $500 floor ===');
+{
+  const plan = syntheticPlan();
+  const advice = F.recommend(plan, '2026-08-10', { targetBuffer: 500, debts });
+  for (const p of advice.defaultView.calendarPeriods) {
+    if (p.afterHouseholdBudget == null) continue;
+    if (p.afterHouseholdBudget >= 500) {
+      ok(p.projectedEnding + 0.005 >= 500,
+        `${p.label} ending stays at or above the $500 floor when leftover could`);
+    } else {
+      ok(near(p.extraDebt.allocated, 0),
+        `${p.label} extra is $0 when leftover is already under the floor`);
+    }
+  }
+}
+
+console.log('\n=== 9. Live August 30 sheet: lookback P1, live P2, card mins, HELOC ===');
+{
+  const live = require('./data.json');
+  const advice = F.recommend(live.plan, '2026-08-30', {
+    targetBuffer: live.plan.defaults.targetBuffer, debts: live.debts,
+  });
+  const view = advice.defaultView;
+  const p1 = period(view, 'calendar-1-15');
+  const p2 = period(view, 'calendar-16-end');
+  ok(p1 && p1.role === 'lookback' && p2 && p2.role === 'active',
+    'live Aug 30: Period 1 lookback, Period 2 live');
+  ok(near(p2.opening, advice.paydayAllocation.available),
+    'live Period 2 opening is existing Forecast current cash');
+  const ids = (p, id) => billsOf(p).filter(r => r.id === id);
+  ok(ids(p1, 'triangle').length === 1 && ids(p1, 'triangle')[0].status === 'PAID',
+    'live Triangle min appears once in Period 1, paid');
+  ok(ids(p1, 'cashback').length === 1 && ids(p1, 'cashback')[0].status === 'PAID',
+    'live Cash Back min appears once in Period 1, paid');
+  ok(ids(p2, 'tdcc').length === 1 && near(ids(p2, 'tdcc')[0].amount, 94.03)
+      && ids(p2, 'tdcc')[0].status === 'PAID',
+    'live tdcc $94.03 Aug 17 appears once in Period 2, paid');
+  ok(ids(p2, 'travel').length === 1,
+    'live Travel Visa min appears once in Period 2');
+  ok(ids(p2, 'mbna-aug31').length === 1 && ids(p2, 'mbna').length === 0,
+    'live August Amazon min is the once row only');
+  ok(ids(p1, 'heloc').length === 0 && ids(p2, 'heloc').length === 0,
+    'live August has no HELOC cash row');
+  const sep = F.recommend(live.plan, '2026-09-10', {
+    targetBuffer: live.plan.defaults.targetBuffer, debts: live.debts,
+  }).defaultView;
+  const sepHeloc = billsOf(period(sep, 'calendar-16-end')).filter(r => r.id === 'heloc');
+  ok(sepHeloc.length === 1 && sepHeloc[0].date === '2026-09-21',
+    'next HELOC cash min is 2026-09-21 in Period 2');
+  const seattle = (p2.bigPurchases || []).filter(r => /seattle/i.test(r.id + r.label));
+  ok(seattle.every(r => near(r.cost, 1200)),
+    'Seattle tournament amounts are the $1,200 plan.commitments facts');
+  const html = composer.operatingSurfaceHtml({
+    advice, weekly: advice.weekly, recommended: advice.weekly,
+  });
+  const glance = defaultGlance(html);
+  ok(/Pay Period 1/.test(html) && /Pay Period 2/.test(html),
+    'page names the two calendar waterfalls');
+  ok(/data-calendar-waterfall="calendar-16-end"/.test(html),
+    'default print shows the active Period 2 waterfall');
+  ok(!/\bForecast\b|\bAtlas\b|\brepresented\b|\bunverified\b|\basOf\b/.test(glance),
+    'default glance has no Forecast/Atlas jargon or settlement code words');
+  ok(!/CMAW|Pixieset|Mailchimp/i.test(glance),
+    'cancelled CMAW / Pixieset / Mailchimp are not tracked on the sheet');
+}
+
+console.log('\n=== 10. page prints Forecast; leftover is not computed in plan.js ===');
+{
+  const planSrc = read('public/plan.js');
+  const fn = /function operatingSurfaceHtml\([\s\S]*?\n\}/.exec(planSrc);
+  ok(fn && !/\bForecast\.[A-Za-z]+\s*\(/.test(fn[0]),
+    'operatingSurfaceHtml calls no Forecast function');
+  const liveSrc = fs.readFileSync(path.join(__dirname, 'scripts', 'live-plan.js'), 'utf8');
+  ok(!/fs\.writeFileSync/.test(liveSrc),
+    'live-plan.js still does not write data.json');
+}
+
+if (failures) {
+  console.error(`\n${failures} CHECK(S) FAILED`);
+  process.exit(1);
+}
+console.log('\nALL CHECKS PASSED');

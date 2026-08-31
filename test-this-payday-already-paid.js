@@ -87,6 +87,13 @@ function loadComposer() {
     grab(planSrc, /^function extraDebtGlanceHtml\([\s\S]*?\n\}$/m, 'extraDebtGlanceHtml'),
     grab(planSrc, /^function runningLeftoverHtml\([\s\S]*?\n\}$/m, 'runningLeftoverHtml'),
     grab(planSrc, /^function periodBillLine\([\s\S]*?\n\}$/m, 'periodBillLine'),
+    grab(planSrc, /^function calendarIncomeHtml\([\s\S]*?\n\}$/m, 'calendarIncomeHtml'),
+    grab(planSrc, /^function calendarBudgetHtml\([\s\S]*?\n\}$/m, 'calendarBudgetHtml'),
+    grab(planSrc, /^function calendarPeriodBillsHtml\([\s\S]*?\n\}$/m, 'calendarPeriodBillsHtml'),
+    grab(planSrc, /^function extraRepaymentHtml\([\s\S]*?\n\}$/m, 'extraRepaymentHtml'),
+    grab(planSrc, /^function calendarWaterfallHtml\([\s\S]*?\n\}$/m, 'calendarWaterfallHtml'),
+    grab(planSrc, /^function calendarPickerHtml\([\s\S]*?\n\}$/m, 'calendarPickerHtml'),
+    grab(planSrc, /^function calendarWaterfallsHtml\([\s\S]*?\n\}$/m, 'calendarWaterfallsHtml'),
     grab(planSrc, /^function periodBillsHtml\([\s\S]*?\n\}$/m, 'periodBillsHtml'),
     grab(planSrc, /^function householdBudgetHtml\([\s\S]*?\n\}$/m, 'householdBudgetHtml'),
     grab(planSrc, /^function budgetDigestHtml\([\s\S]*?\n\}$/m, 'budgetDigestHtml'),
@@ -268,16 +275,21 @@ console.log('\n=== default glance prints that set in kitchen-counter language ==
   ok(glance.includes('−' + composer.money2(MORTGAGE))
       && glance.includes('−' + composer.money2(FIT)),
     'those paid bills print as money out');
-  ok(!/Payroll — Seaspan/.test(glance) && !glance.includes('+' + composer.money2(PAYROLL))
-      && !glance.includes('−' + composer.money2(PAYROLL)),
-    'Seaspan income is not printed as a bill row');
+  const q2 = html.slice(html.indexOf('data-operating-question="02"'),
+    html.indexOf('data-operating-question="03"'));
+  const q4 = html.slice(html.indexOf('data-operating-question="04"'),
+    html.indexOf('data-operating-question="05"'));
+  ok(/Payroll — Seaspan/.test(q2) && !/Payroll — Seaspan/.test(q4),
+    'Seaspan income sits in the income block, not as a bill row');
+  ok(/Canada child benefit/.test(q2) && !/Canada child benefit/.test(q4),
+    'Aug 20 child benefit prints as period income, not as a bill');
   ok(/Current Balance/.test(html) && !/Leftover cash/.test(html)
       && !/Current cash flow/.test(html),
     'the leftover number is labelled Current Balance');
-  ok(!/Canada child benefit/.test(glance) && !/ICBC/.test(glance)
+  ok(!/ICBC/.test(glance)
       && !/RESP/.test(glance) && !/CMAW/.test(glance)
       && !/union dues/i.test(glance),
-    'default glance omits income dates and cancelled CMAW; BCAA stays in its August half');
+    'default glance omits cancelled CMAW; BCAA stays in its August half');
   ok(/BCAA insurance · Aug 16/.test(glance) && !/posting unknown/i.test(text),
     'the August once BCAA row prints in Pay Period 2 without posting-unknown wording');
   ok(/Travel Visa minimum/.test(glance) && /TD account fees/.test(glance)
@@ -287,11 +299,9 @@ console.log('\n=== default glance prints that set in kitchen-counter language ==
     'Travel Visa min and TD fees stay still due as money out, without an invented payee');
   ok(!/unverified-settlement|\boverlay\b|\bForecast\b|\bAtlas\b|\bunverified\b|\brepresented\b/.test(text),
     'default glance stays kitchen-counter language');
-  const q2 = html.slice(html.indexOf('data-operating-question="02"'),
-    html.indexOf('data-operating-question="03"'));
-  ok(/still due/.test(q2) && /PAID/.test(q2) && /Pay Period 2/.test(q2),
+  ok(/still due/.test(q4) && /PAID/.test(q4) && /Pay Period 2/.test(html),
     'the calendar bills list keeps PAID and still due together');
-  ok(/Mortgage · Aug 28 · PAID/.test(q2) && /Travel Visa minimum/.test(q2),
+  ok(/Mortgage · Aug 28 · PAID/.test(q4) && /Travel Visa minimum/.test(q4),
     'paid mortgage stays listed beside still-due Travel Visa');
 }
 

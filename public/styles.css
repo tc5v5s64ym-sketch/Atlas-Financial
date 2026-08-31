@@ -502,6 +502,22 @@ footer { margin-top:56px; padding-top:18px; border-top:1px solid var(--grid);
 .payday-group { font-size:.78rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase;
                 color:var(--muted); margin:22px 0 8px; padding-top:16px; border-top:1px solid var(--grid); }
 .payday-group:first-child { margin-top:0; padding-top:0; border-top:none; }
+.calendar-waterfalls { display:flex; flex-direction:column; gap:22px; }
+.calendar-period-picker { display:flex; flex-wrap:wrap; align-items:center; gap:8px;
+  padding:18px 24px 0; }
+.calendar-period-picker .operating-lead { flex:1 1 100%; margin:0; }
+.calendar-period-btn {
+  font-family:inherit; font-size:.86rem; padding:6px 12px; border-radius:999px; cursor:pointer;
+  border:1px solid var(--border); background:none; color:var(--text-secondary);
+}
+.calendar-period-btn[aria-pressed="true"] { border-color:var(--s1); color:var(--s1); }
+.calendar-waterfall {
+  border:1px solid var(--grid); border-radius:16px; overflow:hidden;
+  background:var(--surface-1);
+}
+.calendar-waterfall .payday-group { margin:0; padding:16px 24px 0; border-top:none; }
+.calendar-waterfall .operating-question:last-child { border-bottom:none; }
+.calendar-undated { padding:8px 24px 18px; }
 .payday-hero { margin:0; font-size:2.25rem; font-weight:750; line-height:1.15;
                font-variant-numeric:tabular-nums; letter-spacing:-0.02em; color:var(--text-primary); }
 .payday-hero-unit { font-size:1.1rem; font-weight:650; margin-left:6px; color:var(--text-secondary); }

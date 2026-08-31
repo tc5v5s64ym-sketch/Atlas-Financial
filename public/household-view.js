@@ -305,12 +305,14 @@
     if (!gate || gate.hasAttribute(APPLIED) || body.hasAttribute(APPLIED)) return false;
 
     body.setAttribute(APPLIED, 'true');
-    enhanceQuestionOne(doc, body);
-    enhanceQuestionTwo(doc, body);
-    enhanceQuestionThree(doc, body);
-    enhanceQuestionFour(doc, body);
-    enhanceQuestionFive(doc, body);
-    enhanceQuestionSix(doc, body);
+    if (!body.querySelector('[data-calendar-waterfalls]')) {
+      enhanceQuestionOne(doc, body);
+      enhanceQuestionTwo(doc, body);
+      enhanceQuestionThree(doc, body);
+      enhanceQuestionFour(doc, body);
+      enhanceQuestionFive(doc, body);
+      enhanceQuestionSix(doc, body);
+    }
     enhanceCertainty(doc, body);
     enhanceTrust(doc, body);
     body.classList.add('household-view-ready');
