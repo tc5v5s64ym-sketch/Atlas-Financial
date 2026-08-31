@@ -1657,7 +1657,7 @@ function calendarBudgetHtml(period) {
     }
     const bits = [];
     if (row.planned != null) bits.push(`planned ${money2(row.planned)}`);
-    if (row.spent != null) bits.push(`spent ${money2(row.spent)}`);
+    if (row.spent != null) bits.push(`spent this period ${money2(row.spent)}`);
     if (row.remaining != null) {
       bits.push(row.projected
         ? `remaining ${money2(row.remaining)} projected`
@@ -1678,12 +1678,16 @@ function calendarPeriodBillsHtml(period) {
     </div>`;
   }
   const lines = rows.map(periodBillLine).join('');
-  const remaining = period && period.remainingBills != null
-    ? `<p class="payday-qual">Remaining bills ${money2(period.remainingBills)}</p>`
-    : '';
+  const totals = [];
+  if (period && period.totalBillsThisPeriod != null) {
+    totals.push(`<p class="payday-qual">Total bills this period ${money2(period.totalBillsThisPeriod)}</p>`);
+  }
+  if (period && period.remainingBills != null) {
+    totals.push(`<p class="payday-qual">Remaining bills to pay ${money2(period.remainingBills)}</p>`);
+  }
   return `<div class="payday-period-bills" data-payday-period-bills>
     <div class="operating-lines">${lines}</div>
-    ${remaining}
+    ${totals.join('')}
   </div>`;
 }
 

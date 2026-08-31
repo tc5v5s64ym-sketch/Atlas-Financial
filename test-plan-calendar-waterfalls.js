@@ -1,7 +1,8 @@
 'use strict';
 /* Two calendar-half waterfalls: opening chain, paid bills, income, HELOC
  * cash once, card mins once, current-cash identity, Bell outside remaining,
- * period-specific household budget, subscriptions not held twice.
+ * equal-half household budget, scheduled-due bill assignment, two bill
+ * totals, subscriptions not held twice.
  *
  * Dates and totals are hand-computed from cadence and the calendar, then
  * Forecast is asked whether it reproduced them (L-002 / L-006).
@@ -114,14 +115,10 @@ function budgetRow(p, id) {
 function roundCent(n) {
   return Math.round((Number(n) || 0) * 100) / 100;
 }
-function daysInMonth(iso) {
-  const [y, m] = String(iso).split('-').map(Number);
-  return new Date(Date.UTC(y, m, 0)).getUTCDate();
-}
-// Independent of Forecast.calendarHalfPlanned: first half is 15 days,
-// leftover cents sit on Period 2 so the two sides add back to monthly.
-function halfPlanned(monthly, half, monthDays) {
-  const first = roundCent(Number(monthly) * 15 / monthDays);
+// Independent of Forecast.calendarHalfPlanned: equal split, leftover
+// cents on Period 2 so the two sides add back to monthly. Not 15/daysInMonth.
+function halfPlanned(monthly, half) {
+  const first = roundCent(Number(monthly) / 2);
   return half === 1 ? first : roundCent(Number(monthly) - first);
 }
 function spendOn(txs, label, start, through) {
@@ -551,8 +548,30 @@ console.log('\n=== 10. grocery actuals stay in their calendar half ===');
   const fn = /function calendarHouseholdBudget\([\s\S]*?\n  \}/.exec(src);
   ok(fn && /sumCategoryActuals\(plan, through, start, opts\)/.test(fn[0])
       && /calendarHalfThrough\(asOf, end\)/.test(fn[0])
-      && !/plannedMonthly\s*\/\s*2|monthly\s*\/\s*2/.test(fn[0]),
+      && /actualsReady && start/.test(fn[0]),
     'waterfall actuals call sumCategoryActuals with that half\'s start and a through no later than half end or as-of');
+  const mtd = spendOn(txs, 'Groceries', '2026-08-01', asOf);
+  ok(groc1 && groc2 && near(roundCent(groc1.spent + groc2.spent), mtd)
+      && near(mtd, 40.10 + 55.20),
+    'P1 spent + P2 spent through asOf equals month-to-asOf groceries',
+    groc1 && groc2 && `${groc1.spent} + ${groc2.spent} vs ${mtd}`);
+  const withIncome = JSON.parse(JSON.stringify(plan));
+  withIncome.income.push({
+    id: 'bonus16', label: 'One-off deposit 16th', frequency: 'once',
+    date: '2026-08-16', amount: 400, confidence: 'confirmed',
+  });
+  const viewInc = F.recommend(withIncome, asOf, {
+    targetBuffer: 500, debts,
+    currentPeriodActuals: actualsPacket(txs, asOf),
+  }).defaultView;
+  ok((viewInc.calendarPeriods || []).length === 2
+      && !(viewInc.calendarPeriods || []).some(p => /bonus|deposit/i.test(p.label)),
+    'income on the 16th does not open a third bill-planning window');
+  const p1i = period(viewInc, 'calendar-1-15');
+  const p2i = period(viewInc, 'calendar-16-end');
+  ok(budgetRow(p1i, 'groceries') && near(budgetRow(p1i, 'groceries').spent, expectP1)
+      && budgetRow(p2i, 'groceries') && near(budgetRow(p2i, 'groceries').spent, expectP2),
+    'income on the 16th does not dump P1 grocery spend into P2');
 }
 
 console.log('\n=== 11. each half\'s planned adds back to the monthly target ===');
@@ -561,23 +580,34 @@ console.log('\n=== 11. each half\'s planned adds back to the monthly target ==='
   const view = F.recommend(plan, '2026-08-20', { targetBuffer: 500, debts }).defaultView;
   const p1 = period(view, 'calendar-1-15');
   const p2 = period(view, 'calendar-16-end');
-  const monthDays = daysInMonth('2026-08-01');
-  ok(monthDays === 31, 'August 2026 has 31 days');
+  const dayCountP1 = roundCent(1800 * 15 / 31);
+  const dayCountP2 = roundCent(1800 - dayCountP1);
   for (const id of HOLD_IDS) {
     const cat = plan.budget.categories.find(c => c.id === id);
     const monthly = roundCent(cat.plannedMonthly);
     const r1 = budgetRow(p1, id);
     const r2 = budgetRow(p2, id);
-    const expect1 = halfPlanned(monthly, 1, monthDays);
-    const expect2 = halfPlanned(monthly, 2, monthDays);
+    const expect1 = halfPlanned(monthly, 1);
+    const expect2 = halfPlanned(monthly, 2);
     ok(r1 && r2 && near(r1.planned, expect1) && near(r2.planned, expect2)
         && near(roundCent(r1.planned + r2.planned), monthly),
       `${id}: P1 planned + P2 planned equals plannedMonthly`,
       r1 && r2 && `${r1.planned} + ${r2.planned} vs ${monthly}`);
-    ok(r1 && r2 && !near(r1.planned, monthly) && !near(r2.planned, monthly)
-        && !near(r1.planned, roundCent(monthly / 2)),
-      `${id}: waterfall planned is the period share, not full-month or monthly/2`);
+    ok(r1 && r2 && !near(r1.planned, monthly) && !near(r2.planned, monthly),
+      `${id}: waterfall planned is the period share, not full-month`);
   }
+  const g1 = budgetRow(p1, 'groceries');
+  const g2 = budgetRow(p2, 'groceries');
+  ok(g1 && g2 && near(g1.planned, 900) && near(g2.planned, 900)
+      && !near(g1.planned, dayCountP1) && !near(g2.planned, dayCountP2),
+    'groceries 1800 splits 900 / 900, not 15/31 leftover on Period 2',
+    g1 && g2 && `${g1.planned} / ${g2.planned}`);
+  const src = read('public/forecast.js');
+  const plannedFn = /function calendarHalfPlanned\([\s\S]*?\n  \}/.exec(src);
+  ok(plannedFn && /monthly\)\s*\/\s*2/.test(plannedFn[0])
+      && !/15\s*\/\s*days/.test(plannedFn[0])
+      && !/CALENDAR_MONTH_DAYS/.test(plannedFn[0]),
+    'calendarHalfPlanned is monthly/2, not 15/daysInMonth or CALENDAR_MONTH_DAYS');
   ok(!(p1.householdBudget || []).some(r => /Dale|Amanda/i.test(r.label))
       && (p1.householdBudget || []).filter(r => r.id === 'shopping').length === 1,
     'Personal stays one shopping row; no Dale/Amanda split');
@@ -599,13 +629,12 @@ console.log('\n=== 12. subscriptions bills are not a second household-budget hol
       && /included in Bills/.test(sub.note)
       && /remaining not deducted/.test(sub.note),
     'subscriptions line is informational and not a leftover hold');
-  const monthDays = daysInMonth(p2.start);
   const independentHold = HOLD_IDS.reduce((sum, id) => {
     const cat = plan.budget.categories.find(c => c.id === id);
-    const planned = halfPlanned(cat.plannedMonthly, 2, monthDays);
+    const planned = halfPlanned(cat.plannedMonthly, 2);
     return roundCent(sum + Math.max(0, planned));
   }, 0);
-  const subPlanned = halfPlanned(300, 2, monthDays);
+  const subPlanned = halfPlanned(300, 2);
   ok(near(p2.budgetHold, independentHold) && !near(p2.budgetHold, independentHold + subPlanned)
       && !near(p2.budgetHold, independentHold + 300),
     'leftover hold omits the subscriptions target that remaining-bills already has',
@@ -636,8 +665,7 @@ console.log('\n=== 13. overspend remaining is negative; leftover does not take t
   });
   const p2 = period(advice.defaultView, 'calendar-16-end');
   const groc = budgetRow(p2, 'groceries');
-  const monthDays = daysInMonth(p2.start);
-  const planned = halfPlanned(1800, 2, monthDays);
+  const planned = halfPlanned(1800, 2);
   const spent = spendOn(txs, 'Groceries', p2.start, asOf);
   const remaining = roundCent(planned - spent);
   ok(groc && near(groc.planned, planned) && near(groc.spent, spent)
@@ -648,7 +676,7 @@ console.log('\n=== 13. overspend remaining is negative; leftover does not take t
     'overspent groceries hold used in leftover is $0, not the negative remaining');
   const independentHold = HOLD_IDS.reduce((sum, id) => {
     const cat = plan.budget.categories.find(c => c.id === id);
-    const rowPlanned = halfPlanned(cat.plannedMonthly, 2, monthDays);
+    const rowPlanned = halfPlanned(cat.plannedMonthly, 2);
     const rowSpent = id === 'groceries' ? spent : 0;
     const rowRemaining = roundCent(rowPlanned - rowSpent);
     return roundCent(sum + Math.max(0, rowRemaining));
@@ -674,6 +702,243 @@ console.log('\n=== 14. page prints Forecast; leftover is not computed in plan.js
   const liveSrc = fs.readFileSync(path.join(__dirname, 'scripts', 'live-plan.js'), 'utf8');
   ok(!/fs\.writeFileSync/.test(liveSrc),
     'live-plan.js still does not write data.json');
+}
+
+function displayedAbs(row) {
+  if (!row) return 0;
+  if (row.movement != null && isFinite(Number(row.movement))) {
+    return Math.abs(Number(row.movement));
+  }
+  return Math.abs(Number(row.amount) || 0);
+}
+
+function independentScheduleDate(plan, id, eventDate) {
+  const recs = (plan.bills || []).concat(plan.obligations || []);
+  const row = recs.find(r => r && r.id === id);
+  if (!row || row.frequency !== 'once') return eventDate;
+  let sibling = null;
+  for (const rec of recs) {
+    if (!rec || rec.frequency === 'once' || rec.day == null) continue;
+    if (id !== rec.id && id.startsWith(rec.id + '-')
+        && (!sibling || rec.id.length > sibling.id.length)) sibling = rec;
+  }
+  if (!sibling) return eventDate;
+  const [y, m, postedDay] = String(eventDate).split('-').map(Number);
+  let year = y;
+  let month = m;
+  if (postedDay < Number(sibling.day)) {
+    month -= 1;
+    if (month < 1) { month = 12; year -= 1; }
+  }
+  const dim = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const due = Math.min(Number(sibling.day), dim);
+  return `${year}-${String(month).padStart(2, '0')}-${String(due).padStart(2, '0')}`;
+}
+
+function weekendReservePlan() {
+  const plan = syntheticPlan();
+  plan.bills.push(
+    {
+      id: 'bcaa', label: 'BCAA insurance', frequency: 'monthly',
+      day: 15, firstDue: '2026-09-15', amount: 82.96, confidence: 'confirmed',
+      payingAccount: 'chequing-a',
+    },
+    {
+      id: 'bcaa-aug15-outstanding',
+      label: 'BCAA insurance — 15 August posting unknown',
+      frequency: 'once', date: '2026-08-16', amount: 82.96,
+      confidence: 'confirmed', payingAccount: 'chequing-a',
+    },
+    {
+      id: 'icbc', label: 'ICBC insurance', frequency: 'monthly',
+      day: 15, firstDue: '2026-09-15', amount: 99.91, confidence: 'confirmed',
+      payingAccount: 'chequing-a',
+    },
+    {
+      id: 'icbc-aug15-outstanding',
+      label: 'ICBC insurance — 15 August posting unknown',
+      frequency: 'once', date: '2026-08-16', amount: 99.91,
+      confidence: 'confirmed', payingAccount: 'chequing-a',
+    },
+    {
+      id: 'resp', label: 'RESP contribution', frequency: 'monthly',
+      day: 15, firstDue: '2026-09-15', amount: 100, confidence: 'confirmed',
+      payingAccount: 'chequing-a',
+    },
+    {
+      id: 'resp-aug15-outstanding',
+      label: 'RESP contribution — 15 August posting unknown',
+      frequency: 'once', date: '2026-08-16', amount: 100,
+      confidence: 'confirmed', payingAccount: 'chequing-a',
+    }
+  );
+  return plan;
+}
+
+const WEEKEND_IDS = [
+  'bcaa-aug15-outstanding', 'icbc-aug15-outstanding', 'resp-aug15-outstanding',
+];
+
+console.log('\n=== 15. weekend posting keeps 15 August bills in Period 1, paid ===');
+{
+  const asOf = '2026-08-20';
+  const plan = weekendReservePlan();
+  const representedEvents = [
+    { id: 'bcaa-aug15-outstanding', date: '2026-08-16' },
+    { id: 'icbc-aug15-outstanding', date: '2026-08-16' },
+    { id: 'resp-aug15-outstanding', date: '2026-08-16' },
+    { id: 'day15', date: '2026-08-15' },
+    { id: 'netflix', date: '2026-08-17' },
+  ];
+  const representedActuals = [
+    { id: 'bcaa-aug15-outstanding', date: '2026-08-16', actual: 82.96, postedOn: '2026-08-16' },
+    { id: 'icbc-aug15-outstanding', date: '2026-08-16', actual: 99.91, postedOn: '2026-08-16' },
+    { id: 'resp-aug15-outstanding', date: '2026-08-16', actual: 100, postedOn: '2026-08-16' },
+    { id: 'day15', date: '2026-08-15', actual: 15, postedOn: '2026-08-16' },
+    { id: 'netflix', date: '2026-08-17', actual: 26.87, postedOn: '2026-08-18' },
+  ];
+  const advice = F.recommend(plan, asOf, {
+    targetBuffer: 500, debts,
+    representedEvents,
+    currentPeriodActuals: {
+      schema: 'atlas-current-period-actuals/v1',
+      observationAsOf: asOf,
+      coverageStart: '2026-08-01',
+      coverageThrough: asOf,
+      pendingCoverage: 'complete',
+      representedActuals,
+      transactions: [],
+    },
+  });
+  const p1 = period(advice.defaultView, 'calendar-1-15');
+  const p2 = period(advice.defaultView, 'calendar-16-end');
+  const three = 82.96 + 99.91 + 100;
+  for (const id of WEEKEND_IDS) {
+    const row = billsOf(p1).find(r => r.id === id);
+    ok(row && row.status === 'PAID' && row.date === '2026-08-15',
+      `${id} is Period 1 PAID on scheduled 15 August, not the 16th post date`,
+      row && `${row.status} ${row.date}`);
+    ok(!billsOf(p2).some(r => r.id === id),
+      `${id} is absent from Period 2`);
+  }
+  const p2RemainingIds = billsOf(p2).filter(r => r.status !== 'PAID').map(r => r.id);
+  ok(WEEKEND_IDS.every(id => !p2RemainingIds.includes(id)),
+    'BCAA / ICBC / RESP are absent from Period 2 remaining bills to pay');
+  ok(p2.role === 'active' && near(p2.opening, advice.paydayAllocation.available),
+    'Period 2 current cash stays paydayAllocation.available');
+  const ifDeductedAgain = roundCent(p2.available - p2.remainingBills - three);
+  ok(p2.afterRemainingBills != null
+      && near(p2.afterRemainingBills, p2.available - p2.remainingBills)
+      && !near(p2.afterRemainingBills, ifDeductedAgain),
+    'Period 2 leftover does not deduct the three paid 15 August bills from current cash');
+  const live = require('./data.json');
+  const liveView = F.recommend(live.plan, '2026-08-30', {
+    targetBuffer: live.plan.defaults.targetBuffer, debts: live.debts,
+  }).defaultView;
+  const liveP1 = period(liveView, 'calendar-1-15');
+  const liveP2 = period(liveView, 'calendar-16-end');
+  for (const id of WEEKEND_IDS) {
+    ok(billsOf(liveP1).some(r => r.id === id) && !billsOf(liveP2).some(r => r.id === id),
+      `live ${id} sits in Pay Period 1, not Period 2`);
+  }
+}
+
+console.log('\n=== 16. paid bills use scheduled due, not post date ===');
+{
+  const asOf = '2026-08-20';
+  const plan = weekendReservePlan();
+  const representedEvents = [
+    { id: 'bcaa-aug15-outstanding', date: '2026-08-16' },
+    { id: 'icbc-aug15-outstanding', date: '2026-08-16' },
+    { id: 'resp-aug15-outstanding', date: '2026-08-16' },
+    { id: 'day15', date: '2026-08-15' },
+    { id: 'netflix', date: '2026-08-17' },
+  ];
+  const view = F.recommend(plan, asOf, {
+    targetBuffer: 500, debts, representedEvents,
+    currentPeriodActuals: {
+      schema: 'atlas-current-period-actuals/v1',
+      observationAsOf: asOf,
+      coverageStart: '2026-08-01',
+      coverageThrough: asOf,
+      pendingCoverage: 'complete',
+      representedActuals: [
+        { id: 'bcaa-aug15-outstanding', date: '2026-08-16', actual: 82.96, postedOn: '2026-08-16' },
+        { id: 'icbc-aug15-outstanding', date: '2026-08-16', actual: 99.91, postedOn: '2026-08-16' },
+        { id: 'resp-aug15-outstanding', date: '2026-08-16', actual: 100, postedOn: '2026-08-16' },
+        { id: 'day15', date: '2026-08-15', actual: 15, postedOn: '2026-08-16' },
+        { id: 'netflix', date: '2026-08-17', actual: 26.87, postedOn: '2026-08-18' },
+      ],
+      transactions: [],
+    },
+  }).defaultView;
+  const paid = [];
+  for (const p of view.calendarPeriods) {
+    for (const row of billsOf(p)) {
+      if (row.status === 'PAID') paid.push({ period: p.id, row });
+    }
+  }
+  ok(paid.length > 0, 'fixture has paid bills to assign');
+  const recs = (plan.bills || []).concat(plan.obligations || []);
+  for (const { period: periodId, row } of paid) {
+    const planRow = recs.find(r => r && r.id === row.id);
+    const seedDate = (planRow && planRow.date) || row.date;
+    const due = independentScheduleDate(plan, row.id, seedDate);
+    const expectHalf = Number(String(due).slice(8, 10)) <= 15
+      ? 'calendar-1-15' : 'calendar-16-end';
+    ok(periodId === expectHalf,
+      `${row.id} paid bill sits in the scheduled-due half ${expectHalf}`,
+      `${periodId} vs ${expectHalf} due ${due}`);
+    ok(row.date !== '2026-08-16' || expectHalf === 'calendar-16-end',
+      `${row.id} is not parked in Period 2 solely because Lunch Money posted the 16th`);
+  }
+  const day15 = paid.find(x => x.row.id === 'day15');
+  ok(day15 && day15.period === 'calendar-1-15' && day15.row.date === '2026-08-15',
+    'monthly day-15 bill posted the 16th stays Period 1 on the 15th');
+}
+
+console.log('\n=== 17. bills block totals: this period vs remaining to pay ===');
+{
+  const asOf = '2026-08-20';
+  const plan = weekendReservePlan();
+  const advice = F.recommend(plan, asOf, {
+    targetBuffer: 500, debts,
+    representedEvents: [
+      { id: 'bcaa-aug15-outstanding', date: '2026-08-16' },
+      { id: 'netflix', date: '2026-08-17' },
+    ],
+  });
+  const view = advice.defaultView;
+  for (const p of view.calendarPeriods) {
+    const rows = billsOf(p);
+    const independentTotal = roundCent(rows.reduce((s, r) => s + displayedAbs(r), 0));
+    const stillDue = rows.filter(r => r.status !== 'PAID' && !r.needsDate);
+    const independentRemaining = roundCent(stillDue.reduce((s, r) => (
+      s + Math.abs(Number(r.remaining != null ? r.remaining : r.amount) || 0)
+    ), 0));
+    ok(near(p.totalBillsThisPeriod, independentTotal),
+      `${p.label} total bills this period equals sum of displayed rows`,
+      `${p.totalBillsThisPeriod} vs ${independentTotal}`);
+    ok(near(p.remainingBills, independentRemaining),
+      `${p.label} remaining bills to pay equals still-due rows`,
+      `${p.remainingBills} vs ${independentRemaining}`);
+    if (p.available != null) {
+      ok(near(p.afterRemainingBills, roundCent(p.available - p.remainingBills)),
+        `${p.label} after remaining bills is available minus remaining, not total`);
+      if (!near(independentTotal, independentRemaining)) {
+        ok(!near(p.afterRemainingBills, roundCent(p.available - p.totalBillsThisPeriod)),
+          `${p.label} leftover is not available minus the paid-inclusive total`);
+      }
+    }
+  }
+  const html = composer.operatingSurfaceHtml({
+    advice, weekly: advice.weekly, recommended: advice.weekly,
+    planCalendarShow: 'both',
+  });
+  ok(/Total bills this period/.test(html) && /Remaining bills to pay/.test(html),
+    'page prints both bill totals in plain language');
+  ok(!/>Remaining bills </.test(html),
+    'old remaining-only label is gone');
 }
 
 if (failures) {

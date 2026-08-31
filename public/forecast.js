@@ -3008,6 +3008,49 @@
     return day <= 15 ? 1 : 2;
   }
 
+  function planCashRowById(plan, id) {
+    if (!id) return null;
+    const bill = ((plan && plan.bills) || []).find(b => b && b.id === id);
+    if (bill) return bill;
+    return ((plan && plan.obligations) || []).find(o => o && o.id === id) || null;
+  }
+
+  // Once-rows that reserve a skipped monthly occurrence keep the posting
+  // window on `date`. Calendar halves use that monthly `day` as the
+  // scheduled due, not the window date and not the bank post date.
+  function monthlyCadenceSibling(plan, row) {
+    if (!row || row.frequency !== 'once' || !row.id) return null;
+    const recs = ((plan && plan.bills) || []).concat((plan && plan.obligations) || []);
+    let best = null;
+    for (const rec of recs) {
+      if (!rec || !rec.id || rec.frequency === 'once' || rec.day == null) continue;
+      if (row.id === rec.id) continue;
+      if (row.id.startsWith(rec.id + '-')
+          && (!best || rec.id.length > best.id.length)) best = rec;
+    }
+    return best;
+  }
+
+  function calendarBillScheduleDate(plan, event) {
+    if (!event || !event.date) return event && event.date || null;
+    const row = planCashRowById(plan, event.id);
+    if (!row || row.frequency !== 'once') return event.date;
+    const sibling = monthlyCadenceSibling(plan, row);
+    if (!sibling || sibling.day == null) return event.date;
+    const [y, m, postedDay] = String(event.date).split('-').map(Number);
+    if (!(y > 0) || !(m >= 1) || !(postedDay >= 1)) return event.date;
+    const dueDay = Number(sibling.day);
+    if (!(dueDay >= 1)) return event.date;
+    let year = y;
+    let month = m;
+    if (postedDay < dueDay) {
+      month -= 1;
+      if (month < 1) { month = 12; year -= 1; }
+    }
+    const d = Math.min(dueDay, daysInMonth(year, month));
+    return `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  }
+
   function cashSnapshotDate(plan, asOf) {
     const opening = plan && plan.opening;
     if (opening && opening.asOf && ISO_CALENDAR_DATE.test(String(opening.asOf))) {
@@ -3033,11 +3076,12 @@
     return !rowIsOnceItem(plan, event.id);
   }
 
-  function calendarBillRowFromEvent(plan, event, asOf, represented, observed, cashAsOf) {
+  function calendarBillRowFromEvent(plan, event, asOf, represented, observed, cashAsOf, scheduleDate) {
     const amt = -event.amount;
     if (!(amt > EPSILON)) return null;
     const paid = !!(event.id && represented.has(event.id + '@' + event.date));
     const inside = recurringInsideOpening(plan, event, cashAsOf);
+    const due = scheduleDate || event.date;
     let settlement;
     let actual;
     let remaining;
@@ -3049,7 +3093,7 @@
       settlement = 'opening';
       actual = null;
       remaining = 0;
-    } else if (event.date >= asOf) {
+    } else if (due >= asOf) {
       settlement = 'upcoming';
       actual = 0;
       remaining = roundCent(amt);
@@ -3061,13 +3105,13 @@
     const display = paid && actual != null ? Math.abs(Number(actual)) : amt;
     const status = (paid || inside)
       ? 'PAID'
-      : glanceBillStatus(settlement, asOf, event.date);
+      : glanceBillStatus(settlement, asOf, due);
     const payingAccount = event.payingAccount || null;
     return {
       id: event.id,
       label: event.label,
       kind: event.kind,
-      date: event.date,
+      date: due,
       planned: roundCent(amt),
       amount: roundCent(amt),
       actual,
@@ -3103,16 +3147,18 @@
       if (event.kind === 'obligation' && event.effect === 'capitalise') continue;
       if (event.jointCash === false) continue;
       // expandEvents may carry an unpaid once row into a later window.
-      // The printed halves use the actual due date's calendar month only,
-      // so an August once row cannot appear beside its September monthly.
-      if (event.date < month.start || event.date > month.end) continue;
-      const half = billCalendarHalf(event.date);
+      // Printed halves use the scheduled due, not the posting-window date,
+      // so a 15 August bill reserved on the 16th stays in Period 1.
+      const scheduleDate = calendarBillScheduleDate(plan, event);
+      const due = scheduleDate || event.date;
+      if (!due || due < month.start || due > month.end) continue;
+      const half = billCalendarHalf(due);
       if (!half) continue;
       const key = (event.id || event.label || '') + '@' + event.date;
       if (seen.has(key)) continue;
       seen.add(key);
       const row = calendarBillRowFromEvent(
-        plan, event, asOf, represented, observed, cashAsOf);
+        plan, event, asOf, represented, observed, cashAsOf, due);
       if (row) halves[half].push(row);
     }
     // Planned cash minimum for a capitalising obligation. Printed once on
@@ -3219,15 +3265,23 @@
     const sortRows = rows => rows.sort((a, b) =>
       String(a.date || '').localeCompare(String(b.date || ''))
       || String(a.label || '').localeCompare(String(b.label || '')));
+    const displayedBillAbs = r => {
+      if (!r) return 0;
+      if (r.movement != null && isFinite(Number(r.movement))) {
+        return Math.abs(Number(r.movement));
+      }
+      if (r.status === 'PAID') {
+        const raw = r.actual != null ? r.actual
+          : (r.amount != null ? r.amount : r.planned);
+        return Math.abs(Number(raw) || 0);
+      }
+      const raw = r.remaining != null ? r.remaining
+        : (r.amount != null ? r.amount : r.planned);
+      return Math.abs(Number(raw) || 0);
+    };
     const section = (half, start, end, label) => {
       const rows = sortRows(halves[half]);
-      const total = roundCent(rows.reduce((s, r) => {
-        const paid = r.status === 'PAID' && r.actual != null;
-        const raw = paid ? Math.abs(Number(r.actual))
-          : (r.remaining != null ? Math.abs(Number(r.remaining))
-            : Math.abs(Number(r.amount) || 0));
-        return s + raw;
-      }, 0));
+      const total = roundCent(rows.reduce((s, r) => s + displayedBillAbs(r), 0));
       const remainingTotal = roundCent(rows.reduce((s, r) => {
         if (!r || r.status === 'PAID' || r.needsDate) return s;
         const raw = r.remaining != null ? Math.abs(Number(r.remaining))
@@ -3370,15 +3424,13 @@
   }
 
   // Named calendar halves of one as-of month share that month's owner
-  // target. Split by that month's real day counts (1st–15th vs 16th–last
-  // day) so the two planned amounts add back to plannedMonthly in cents.
-  // Leftover cents sit on Period 2. paydayAllocation.essentials /
-  // ownerTargetHoldForSpan still scale a payday span against
-  // CALENDAR_MONTH_DAYS; that leftover-hold math is not this split.
-  function calendarHalfPlanned(monthly, half, month) {
-    const days = month && month.last ? month.last : 0;
-    if (!(days > 0)) return 0;
-    const first = roundCent(Number(monthly) * 15 / days);
+  // target. Equal split: Period 1 is roundCent(monthly / 2); leftover
+  // cents sit on Period 2 so the two sides add back to plannedMonthly.
+  // This is not 15/daysInMonth and not payday CALENDAR_MONTH_DAYS
+  // leftover-hold math. No period1/period2 field exists on plan.budget
+  // today; if one is added later, use it and still prove P1+P2 = monthly.
+  function calendarHalfPlanned(monthly, half) {
+    const first = roundCent(Number(monthly) / 2);
     if (half === 1) return first;
     return roundCent(Number(monthly) - first);
   }
@@ -3390,7 +3442,6 @@
 
   function calendarHouseholdBudget(plan, asOf, start, end, role, opts) {
     opts = opts || {};
-    const month = calendarMonthSpan(start || asOf);
     const half = billCalendarHalf(start) || (end && billCalendarHalf(end)) || 1;
     const useActuals = role === 'active' || role === 'lookback';
     const coverageOrigin = start && asOf && start <= asOf ? start : asOf;
@@ -3400,7 +3451,9 @@
     const actualsReady = useActuals && (coverage.remainingClaim === 'precise'
       || coverage.remainingClaim === 'posted-only');
     const through = calendarHalfThrough(asOf, end);
-    const actuals = actualsReady
+    // Fail closed: without this half's start, do not publish month-to-date
+    // spend as that half's actuals.
+    const actuals = actualsReady && start
       ? sumCategoryActuals(plan, through, start, opts)
       : emptyCategoryActuals();
     const items = [];
@@ -3426,7 +3479,7 @@
       if (CALENDAR_PERIOD_BUDGET_IDS.indexOf(cat.id) < 0) continue;
       if (cat.plannedMonthly == null) continue;
       const monthly = roundCent(Number(cat.plannedMonthly) || 0);
-      const planned = calendarHalfPlanned(monthly, half, month);
+      const planned = calendarHalfPlanned(monthly, half);
       const act = categoryCommittedActual(actuals.byId.get(cat.id));
       const spent = actualsReady ? act.committed : null;
       const remaining = spent != null ? roundCent(planned - spent) : planned;
@@ -3514,6 +3567,15 @@
           return s + (r.remaining != null ? Math.abs(Number(r.remaining))
             : Math.abs(Number(r.amount) || 0));
         }, 0));
+      const totalBillsThisPeriod = section.total != null
+        ? section.total
+        : roundCent(bills.reduce((s, r) => {
+          if (!r || r.needsDate) return s;
+          if (r.movement != null && isFinite(Number(r.movement))) {
+            return s + Math.abs(Number(r.movement));
+          }
+          return s + Math.abs(Number(r.amount) || 0);
+        }, 0));
       const budget = calendarHouseholdBudget(
         plan, asOf, section.start, section.end, role, opts);
       let opening = null;
@@ -3588,6 +3650,7 @@
         incomeAdded,
         available,
         bills,
+        totalBillsThisPeriod,
         remainingBills,
         afterRemainingBills,
         afterBills: afterRemainingBills,
