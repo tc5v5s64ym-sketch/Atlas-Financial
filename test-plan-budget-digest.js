@@ -362,7 +362,9 @@ console.log('\n=== 5. page prints spent $X of $Y; does not subtract; no invented
   });
   const glance = defaultGlance(html);
   ok(eatingCal && glance.includes(`planned ${composer.money2(eatingCal.planned)}`)
-      && (eatingCal.spent == null || glance.includes(`spent ${composer.money2(eatingCal.spent)}`)),
+      && (eatingCal.spent == null
+        || glance.includes(`spent this period ${composer.money2(eatingCal.spent)}`)
+        || glance.includes(`spent ${composer.money2(eatingCal.spent)}`)),
     'this-period waterfall prints planned and spent from the calendar half');
   ok((html.match(/data-operating-question=/g) || []).length === 11,
     'the default calendar waterfall has eleven questions, not a digest after a ten-block');
