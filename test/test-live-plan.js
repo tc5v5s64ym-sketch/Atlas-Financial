@@ -1667,6 +1667,112 @@ function serveFixtureOverlay(canonical, extra) {
   });
 }
 
+function independentMonthDate(year, month, day) {
+  const last = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const d = Math.min(Number(day), last);
+  return `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
+function independentBiweeklyDates(anchor, after, through) {
+  const dates = [];
+  if (!anchor) return dates;
+  let t = Date.parse(anchor + 'T12:00:00Z');
+  const end = Date.parse(through + 'T12:00:00Z');
+  const start = Date.parse(after + 'T12:00:00Z');
+  const step = 14 * 86400000;
+  if (!isFinite(t) || !isFinite(end) || !isFinite(start)) return dates;
+  while (t <= end) {
+    if (t > start) dates.push(new Date(t).toISOString().slice(0, 10));
+    t += step;
+  }
+  return dates;
+}
+
+function independentLaterIncome(plan, openingAsOf, through) {
+  const rows = [];
+  const year = Number(openingAsOf.slice(0, 4));
+  const month = Number(openingAsOf.slice(5, 7));
+  for (const stream of (plan && plan.income) || []) {
+    if (!stream) continue;
+    if (stream.frequency === 'monthly' && stream.day != null) {
+      const date = independentMonthDate(year, month, stream.day);
+      if (stream.firstDue && date < stream.firstDue) continue;
+      if (date > openingAsOf && date <= through) {
+        rows.push({
+          id: stream.id,
+          label: stream.label,
+          date,
+          amount: Math.round((Number(stream.amount) || 0) * 100) / 100,
+        });
+      }
+    } else if (stream.frequency === 'biweekly') {
+      for (const date of independentBiweeklyDates(stream.anchor, openingAsOf, through)) {
+        rows.push({
+          id: stream.id,
+          label: stream.label,
+          date,
+          amount: Math.round((Number(stream.amount) || 0) * 100) / 100,
+        });
+      }
+    }
+  }
+  return rows;
+}
+
+function independentDatedCash(plan) {
+  const rows = (plan && plan.startingCash && plan.startingCash.breakdown) || [];
+  return Math.round(rows.reduce((s, r) => s + (Number(r && r.value) || 0), 0) * 100) / 100;
+}
+
+function money2en(n) {
+  return '$' + Math.abs(Number(n)).toLocaleString('en-CA', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function observedCashNet(packet) {
+  const accounts = packet && packet.accounts;
+  if (!Array.isArray(accounts) || !accounts.length) return null;
+  return Math.round(accounts.reduce((s, r) => s + (Number(r && r.value) || 0), 0) * 100) / 100;
+}
+
+function calendarWaterfallComposer() {
+  const appSrc = sourceText(fs.readFileSync(path.join(ROOT, 'public', 'app.js'), 'utf8'));
+  const planSrc = sourceText(fs.readFileSync(path.join(ROOT, 'public', 'plan.js'), 'utf8'));
+  const grab = (src, re, label) => {
+    const m = re.exec(src);
+    if (!m) throw new Error('missing ' + label);
+    return m[0];
+  };
+  return vm.runInNewContext([
+    grab(appSrc, /^const money = .*$/m, 'money'),
+    grab(appSrc, /^const money2 = .*$/m, 'money2'),
+    grab(appSrc, /^const fmtDate = .*$/m, 'fmtDate'),
+    grab(planSrc, /^function liveOperatingPlanUnavailable\([\s\S]*?\n\}$/m, 'liveOperatingPlanUnavailable'),
+    grab(planSrc, /^function liveOperatingPlanNote\([\s\S]*?\n\}$/m, 'liveOperatingPlanNote'),
+    grab(planSrc, /^function paydayGlanceCashNote\([\s\S]*?\n\}$/m, 'paydayGlanceCashNote'),
+    grab(planSrc, /^function glanceUpdatedNote\([\s\S]*?\n\}$/m, 'glanceUpdatedNote'),
+    grab(planSrc, /^function cashGlanceHtml\([\s\S]*?\n\}$/m, 'cashGlanceHtml'),
+    grab(planSrc, /^function glanceSignedMoney\([\s\S]*?\n\}$/m, 'glanceSignedMoney'),
+    grab(planSrc, /^function glanceMoney\([\s\S]*?\n\}$/m, 'glanceMoney'),
+    grab(planSrc, /^function glanceLineLabel\([\s\S]*?\n\}$/m, 'glanceLineLabel'),
+    grab(planSrc, /^function runningLeftoverHtml\([\s\S]*?\n\}$/m, 'runningLeftoverHtml'),
+    grab(planSrc, /^function periodBillLine\([\s\S]*?\n\}$/m, 'periodBillLine'),
+    grab(planSrc, /^function calendarCurrentUnavailableHtml\([\s\S]*?\n\}$/m, 'calendarCurrentUnavailableHtml'),
+    grab(planSrc, /^function calendarIncomeHtml\([\s\S]*?\n\}$/m, 'calendarIncomeHtml'),
+    grab(planSrc, /^function paydayBucketRow\([\s\S]*?\n\}$/m, 'paydayBucketRow'),
+    grab(planSrc, /^function calendarBudgetHtml\([\s\S]*?\n\}$/m, 'calendarBudgetHtml'),
+    grab(planSrc, /^function calendarPeriodBillsHtml\([\s\S]*?\n\}$/m, 'calendarPeriodBillsHtml'),
+    grab(planSrc, /^function extraRepaymentHtml\([\s\S]*?\n\}$/m, 'extraRepaymentHtml'),
+    grab(planSrc, /^function firstCardHtml\([\s\S]*?\n\}$/m, 'firstCardHtml'),
+    grab(planSrc, /^function otherCardsHtml\([\s\S]*?\n\}$/m, 'otherCardsHtml'),
+    grab(planSrc, /^function bigPurchasesHtml\([\s\S]*?\n\}$/m, 'bigPurchasesHtml'),
+    grab(planSrc, /^function calendarWaterfallHtml\([\s\S]*?\n\}$/m, 'calendarWaterfallHtml'),
+    '({ calendarWaterfallHtml, glanceUpdatedNote, cashGlanceHtml, money2 })',
+  ].join('\n'), { Forecast });
+}
+
 function browserPlanComposer() {
   const appSrc = sourceText(fs.readFileSync(path.join(ROOT, 'public', 'app.js'), 'utf8'));
   const planSrc = sourceText(fs.readFileSync(path.join(ROOT, 'public', 'plan.js'), 'utf8'));
@@ -1728,8 +1834,9 @@ console.log('\n=== 20. same-day inbound fail-closed does not publish a stale cyc
       && engineLive.end === independentLive.end,
     'spendingCycle for a trusted Aug 31 as-of is Aug 28–Sep 10');
 
+  const GLANCE_FETCHED_AT = '2026-08-31T12:11:00.000Z';
   const extra = {
-    fetchedAt: LIVE_FAILURE_AT,
+    fetchedAt: GLANCE_FETCHED_AT,
     tweaks: {
       cashAt: '2026-08-31T17:55:00.000Z',
       cardAt: '2026-08-31T17:55:00.000Z',
@@ -1796,6 +1903,69 @@ console.log('\n=== 20. same-day inbound fail-closed does not publish a stale cyc
     'Forecast withholds extra-debt instruction while operatingPlan is unavailable');
   ok(staleAdvice.funding == null,
     'Forecast does not publish opening-gap funding as a current claim while operatingPlan is unavailable');
+
+  const datedCash = independentDatedCash(served.plan);
+  const laterIncome = independentLaterIncome(served.plan, openingAsOf, LIVE_FAILURE_AS_OF);
+  const laterSum = Math.round(laterIncome.reduce((s, r) => s + r.amount, 0) * 100) / 100;
+  const mixedAvailable = Math.round((datedCash + laterSum) * 100) / 100;
+  ok(near(datedCash, independentDatedCash(canonical.plan)),
+    'fail-closed overlay leaves dated opening cash untouched');
+  ok(laterIncome.some(r => r.id === 'childBenefit' && r.date === '2026-08-20')
+      && laterIncome.some(r => r.id === 'payroll' && r.date === '2026-08-28')
+      && laterIncome.some(r => r.id === 'amandaSalaryMonthEnd' && r.date === '2026-08-31'),
+    'independent calendar: child benefit Aug 20, Seaspan Aug 28, Amanda Aug 31 are after the dated opening');
+  ok(laterSum > 0 && mixedAvailable > datedCash && !near(mixedAvailable, datedCash),
+    'dated cash plus those later paychecks is a different current-looking Available mix');
+  ok(near(active.currentBalance, datedCash) && active.openingKnown === true,
+    'active waterfall opening is the dated opening cash, not a later invented balance');
+  ok(active.incomeAdded == null && active.available == null
+      && (!active.income || active.income.length === 0),
+    'Forecast does not add later-dated income as arriving or publish Available as dated cash plus arriving');
+  ok(active.afterRemainingBills == null
+      && active.afterHouseholdBudget == null
+      && (active.householdBudget || []).length === 0
+      && active.budgetHold == null,
+    'Forecast does not publish Household Budget planned dollars or leftover as the current waterfall');
+  const observedNet = observedCashNet(served.liveOverlay && served.liveOverlay.observedCash);
+  ok(near(active.currentBalance, datedCash)
+      && (observedNet == null || near(observedNet, datedCash)
+        || !near(active.currentBalance, observedNet)),
+    'Forecast does not mix live observedCash into the dated opening');
+
+  const waterfall = calendarWaterfallComposer();
+  const glanceNote = waterfall.glanceUpdatedNote(openingAsOf, served.liveOverlay);
+  ok(!/Updated Aug 31/.test(glanceNote)
+      && !/5:11/.test(glanceNote)
+      && !/12:11/.test(glanceNote),
+    'Current Balance glance does not stamp unapplied overlay fetchedAt as Updated now');
+  ok(/Aug 19/.test(glanceNote) || /unavailable/.test(glanceNote) || /stale/.test(glanceNote)
+      || /Current Balance/.test(glanceNote),
+    'unapplied glance stays on the dated opening, not wall-clock freshness');
+  const waterfallHtml = waterfall.calendarWaterfallHtml(
+    active, served.liveOverlay, staleAdvice.paydayAllocation);
+  ok(/data-operating-plan="unavailable"/.test(waterfallHtml)
+      && /data-current-waterfall="unavailable"/.test(waterfallHtml)
+      && /unavailable/.test(waterfallHtml)
+      && /stale/.test(waterfallHtml),
+    'active calendar waterfall copy is explicit unavailable/stale');
+  ok(!/Updated Aug 31/.test(waterfallHtml) && !/5:11/.test(waterfallHtml),
+    'Current Balance glance on the active waterfall does not stamp fetchedAt onto dated-opening cash');
+  ok(!/arriving/.test(waterfallHtml)
+      && !/Still arriving/.test(waterfallHtml)
+      && !/data-income-status="arriving"/.test(waterfallHtml)
+      && !/Child benefit/.test(waterfallHtml)
+      && !/Payroll — Seaspan/.test(waterfallHtml)
+      && !/Amanda salary/.test(waterfallHtml),
+    'already-dated later income is not listed as arriving on the current waterfall');
+  ok(!waterfallHtml.includes(money2en(mixedAvailable))
+      && !waterfallHtml.includes(waterfall.money2(mixedAvailable)),
+    'Available is not published as dated cash plus arriving Aug 20/28/31 paychecks');
+  ok(waterfallHtml.includes(waterfall.money2(datedCash)),
+    'dated opening cash may still print as lookback Current Balance');
+  ok(!/Spending cycle:/.test(waterfallHtml)
+      && !/planned this period/.test(waterfallHtml)
+      && !/plannedPayday/.test(waterfallHtml),
+    'Household Budget planned payday dollars are not printed as the current operating waterfall');
 
   const operating = OA.fromRefreshedState(served, { mode: 'live-overlay' });
   ok(operating.provenance.operatingPlan === Live.OPERATING_PLAN_UNAVAILABLE,
@@ -2047,12 +2217,36 @@ console.log('\n=== 20. same-day inbound fail-closed does not publish a stale cyc
   ok(trustedDebtTile && trustedDebtTile.val !== 'unavailable'
       && /\$/.test(String(trustedDebtTile.val)),
     'trusted control still publishes numeric Consumer debt');
+  const trustedGlance = waterfall.glanceUpdatedNote(
+    trustedServed.meta.asOf, trustedServed.liveOverlay);
+  ok(/Updated Aug 31/.test(trustedGlance),
+    'trusted applied overlay still stamps Current Balance from fetchedAt');
+  const trustedWaterfallHtml = waterfall.calendarWaterfallHtml(
+    trustedActive, trustedServed.liveOverlay, trustedAdvice.paydayAllocation);
+  ok(!/data-current-waterfall="unavailable"/.test(trustedWaterfallHtml)
+      && trustedActive.operatingPlanUnavailable !== true
+      && trustedActive.available != null,
+    'trusted control still publishes a current calendar waterfall');
 
   const budgetFn = /function calendarBudgetHtml\([\s\S]*?\n\}/.exec(planSrc);
+  const unavailableFn = /function calendarCurrentUnavailableHtml\([\s\S]*?\n\}/.exec(planSrc);
+  const waterfallFn = /function calendarWaterfallHtml\([\s\S]*?\n\}/.exec(planSrc);
+  const glanceFn = /function glanceUpdatedNote\([\s\S]*?\n\}/.exec(planSrc);
   ok(budgetFn && /operatingPlanUnavailable/.test(budgetFn[0])
-      && /data-operating-plan="unavailable"/.test(budgetFn[0])
+      && /calendarCurrentUnavailableHtml/.test(budgetFn[0])
       && !/Date\.now/.test(budgetFn[0]),
     'plan.js prints Forecast operatingPlanUnavailable; it does not invent a cycle or wall-clock as-of');
+  ok(unavailableFn && /data-current-waterfall="unavailable"/.test(unavailableFn[0])
+      && /stale/.test(unavailableFn[0]),
+    'calendarCurrentUnavailableHtml is the current-waterfall unavailable copy');
+  ok(waterfallFn && /planUnavailable/.test(waterfallFn[0])
+      && /calendarCurrentUnavailableHtml/.test(waterfallFn[0])
+      && !/Date\.now/.test(waterfallFn[0]),
+    'calendarWaterfallHtml withholds arriving / Available / leftover as current when unavailable');
+  ok(glanceFn && /applied === true/.test(glanceFn[0])
+      && /fetchedAt/.test(glanceFn[0])
+      && !/Date\.now/.test(glanceFn[0]),
+    'glanceUpdatedNote uses fetchedAt only on a trusted applied overlay');
   const fromFn = /function operatingPlanFromOverlay\([\s\S]*?\n\}/.exec(
     fs.readFileSync(path.join(ROOT, 'scripts', 'live-plan.js'), 'utf8'));
   ok(fromFn && /liveAsOf > historicalOpeningAsOf/.test(fromFn[0]) && !/Date\.now/.test(fromFn[0]),

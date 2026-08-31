@@ -4122,6 +4122,7 @@
       Object.assign({}, opts, { debts: debts || opts.debts || [] }), priority);
     const periods = [];
     let previousEnding = null;
+    let unavailableOpeningLost = false;
     const heldCycleStarts = new Set();
     for (const section of calendar.billSections || []) {
       const half = section.id === 'calendar-1-15' ? 1 : 2;
@@ -4147,13 +4148,19 @@
           return s + Math.abs(Number(r.amount) || 0);
         }, 0));
       const budgetOpts = Object.assign({}, opts);
-      const planUnavailable = opts.operatingPlan === 'unavailable' && role === 'active';
+      // Dated opening is not the current operating plan. Role stays
+      // anchored to that dated as-of; do not invent a later opening or
+      // wall-clock as-of. A later calendar half whose opening was the
+      // unavailable current period's ending is also not a normal
+      // current-looking / future waterfall.
+      const planUnavailable = opts.operatingPlan === 'unavailable'
+        && (role === 'active' || (role === 'future' && unavailableOpeningLost));
       if (role !== 'lookback') {
         if (planUnavailable) {
-          // Dated opening is not the current operating plan. Keep the
-          // Household Budget reserve fail-closed; do not publish this
-          // as-of's spending cycle as today, and do not invent a later one.
-          budgetOpts.unresolvedCycle = true;
+          // Dated opening is not the current operating plan. Do not publish
+          // this as-of's spending cycle, planned payday dollars, or reserve
+          // hold as today's waterfall, and do not invent a later cycle.
+          budgetOpts.skipHold = true;
         } else {
           const seedAsOf = role === 'future' ? section.start : asOf;
           const picked = uniqueSpendingCycle(plan, seedAsOf, heldCycleStarts);
@@ -4188,6 +4195,7 @@
       let incomeAdded = 0;
       for (const row of income) {
         if (liveOpening && row.date === asOf) row.alreadyInCash = true;
+        if (planUnavailable) continue;
         if (role === 'future') {
           row.alreadyInCash = false;
           incomeAdded += Number(row.amount) || 0;
@@ -4195,8 +4203,12 @@
           incomeAdded += Number(row.remaining != null ? row.remaining : row.amount) || 0;
         }
       }
-      incomeAdded = roundCent(incomeAdded);
-      const available = openingKnown ? roundCent(opening + incomeAdded) : null;
+      // Dated opening cash is not today's operating plan. Do not add
+      // later-dated income as arriving-to-spend, and do not publish a
+      // leftover chain from that mix.
+      incomeAdded = planUnavailable ? null : roundCent(incomeAdded);
+      const available = planUnavailable || !openingKnown
+        ? null : roundCent(opening + incomeAdded);
       const afterRemainingBills = available != null
         ? roundCent(available - remainingBills) : null;
       const afterHouseholdBudget = afterRemainingBills != null
@@ -4238,7 +4250,10 @@
         afterDebtRepayment,
         afterBigPurchases,
       };
-      if (role === 'active' || (role === 'future' && openingKnown)) {
+      if (planUnavailable) {
+        previousEnding = null;
+        unavailableOpeningLost = true;
+      } else if (role === 'active' || (role === 'future' && openingKnown)) {
         previousEnding = afterBigPurchases;
       } else {
         previousEnding = null;
@@ -4254,16 +4269,16 @@
         openingKnown,
         opening,
         currentBalance: opening,
-        income,
+        income: planUnavailable ? [] : income,
         incomeAdded,
         available,
-        bills,
-        totalBillsThisPeriod,
-        remainingBills,
+        bills: planUnavailable ? [] : bills,
+        totalBillsThisPeriod: planUnavailable ? null : totalBillsThisPeriod,
+        remainingBills: planUnavailable ? null : remainingBills,
         afterRemainingBills,
         afterBills: afterRemainingBills,
-        householdBudget: budget.items,
-        budgetHold: budget.hold,
+        householdBudget: planUnavailable ? [] : budget.items,
+        budgetHold: planUnavailable ? null : budget.hold,
         spendingCycleLabel,
         spendingCycle: role === 'lookback' || planUnavailable ? null : budget.spendingCycle,
         cycleUnresolved: budget.cycleUnresolved === true,
@@ -4284,9 +4299,12 @@
         leftover,
         cashNote: lookback
           ? 'Lookback. Not today\'s balance.'
-          : (projected
-            ? 'Projected opening. Not today\'s balance.'
-            : null),
+          : (planUnavailable
+            ? (opts.operatingPlanNote
+              || 'Current plan unavailable. The dated opening is stale.')
+            : (projected
+              ? 'Projected opening. Not today\'s balance.'
+              : null)),
       });
     }
     const active = periods.find(p => p.role === 'active') || periods[0] || null;
@@ -5345,8 +5363,12 @@
   // When the live overlay marks the current operating plan unavailable, keep
   // the dated-opening walk (do not invent a later as-of) but withhold the
   // current/actionable claims: weekly spend permission, current-period action,
-  // and extra-debt instruction. Dated-opening facts stay on the result when
-  // they are not published as today's plan.
+  // extra-debt instruction, the active calendar leftover chain (later income
+  // as arriving, Available as dated cash plus that income, Household Budget /
+  // bills / extra-debt leftover as today's waterfall), and any later calendar
+  // half whose opening was lost because that current period was unavailable.
+  // Dated-opening cash may remain as lookback. Do not mix live observedCash
+  // into this walk.
   function withholdCurrentOperatingClaims(result, opts) {
     if (!result || !opts || opts.operatingPlan !== 'unavailable') return result;
     const note = opts.operatingPlanNote
