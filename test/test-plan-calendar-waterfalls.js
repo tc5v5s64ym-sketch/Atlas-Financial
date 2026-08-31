@@ -83,6 +83,7 @@ function loadComposer() {
     grab(planSrc, /^function extraDebtGlanceHtml\([\s\S]*?\n\}$/m, 'extraDebtGlanceHtml'),
     grab(planSrc, /^function runningLeftoverHtml\([\s\S]*?\n\}$/m, 'runningLeftoverHtml'),
     grab(planSrc, /^function periodBillLine\([\s\S]*?\n\}$/m, 'periodBillLine'),
+    grab(planSrc, /^function calendarCurrentUnavailableHtml\([\s\S]*?\n\}$/m, 'calendarCurrentUnavailableHtml'),
     grab(planSrc, /^function calendarIncomeHtml\([\s\S]*?\n\}$/m, 'calendarIncomeHtml'),
     grab(planSrc, /^function calendarBudgetHtml\([\s\S]*?\n\}$/m, 'calendarBudgetHtml'),
     grab(planSrc, /^function calendarPeriodBillsHtml\([\s\S]*?\n\}$/m, 'calendarPeriodBillsHtml'),
@@ -1591,6 +1592,147 @@ console.log('\n=== 17. a monthly-backed payday row stays $3,600/year, not $3,900
       && !near(Number(row.planned) * 26, independentAnnual, 2),
     'calendar-annualized payday planned is ~$3,600/year, not $3,900',
     row && String(roundCent(Number(row.planned) * (365.25 / 14))));
+}
+
+console.log('\n=== 18. unavailable current half fail-closes the dependent later half ===');
+{
+  // Independent of Forecast.calendarPeriodWaterfalls / billCalendarHalf:
+  // calendar halves are days 1–15 vs 16–end. Do not use wall-clock as-of.
+  const independentHalf = iso => {
+    const day = Number(String(iso).slice(8, 10));
+    return day <= 15 ? 1 : 2;
+  };
+  const independentAddDays = (iso, days) => {
+    const ms = Date.parse(String(iso) + 'T00:00:00Z') + days * 86400000;
+    return new Date(ms).toISOString().slice(0, 10);
+  };
+  const openingAsOf = '2026-08-10';
+  const laterObservation = '2026-08-31';
+  ok(independentHalf(openingAsOf) === 1 && independentHalf(laterObservation) === 2,
+    'independent calendar: dated opening is days 1–15; later observation is days 16–end');
+
+  const plan = syntheticPlan();
+  plan.opening.asOf = openingAsOf;
+  const laterHalfIncome = [];
+  const seaspan = plan.income.find(r => r && r.id === 'payroll');
+  let payday = seaspan.anchor;
+  while (payday.slice(0, 7) === '2026-08') {
+    if (independentHalf(payday) === 2) {
+      laterHalfIncome.push({ id: seaspan.id, date: payday, amount: seaspan.amount, label: seaspan.label });
+    }
+    payday = independentAddDays(payday, 14);
+  }
+  const amandaEnd = plan.income.find(r => r && r.id === 'amandaEnd');
+  const augustLast = String(new Date(Date.UTC(2026, 8, 0)).getUTCDate());
+  const amandaEndDate = `2026-08-${augustLast.padStart(2, '0')}`;
+  ok(independentHalf(amandaEndDate) === 2,
+    'independent calendar: Amanda month-end lands in days 16–end');
+  laterHalfIncome.push({
+    id: amandaEnd.id, date: amandaEndDate, amount: amandaEnd.amount, label: amandaEnd.label,
+  });
+  const laterIncomeSum = roundCent(laterHalfIncome.reduce((s, r) => s + r.amount, 0));
+  ok(laterHalfIncome.some(r => r.id === 'payroll' && r.date === '2026-08-28' && near(r.amount, 2000))
+      && laterHalfIncome.some(r => r.id === 'amandaEnd' && r.date === '2026-08-31' && near(r.amount, 2300))
+      && near(laterIncomeSum, 2000 + 2300),
+    'independent later half has Seaspan Aug 28 and Amanda Aug 31, totaling $4,300');
+  const netflix = plan.bills.find(r => r && r.id === 'netflix');
+  const netflixDate = `2026-08-${String(netflix.day).padStart(2, '0')}`;
+  ok(independentHalf(netflixDate) === 2 && near(netflix.amount, 26.87),
+    'independent later half includes the Netflix day-17 bill');
+
+  const unavailable = F.recommend(plan, openingAsOf, {
+    targetBuffer: 500, debts,
+    operatingPlan: 'unavailable',
+    operatingPlanNote: 'Current plan unavailable. The dated opening is stale.',
+  });
+  const unView = unavailable.defaultView;
+  const unP1 = period(unView, 'calendar-1-15');
+  const unP2 = period(unView, 'calendar-16-end');
+  ok(unView.asOf === openingAsOf,
+    'unavailable walk keeps the dated opening as-of; it does not invent Aug 31');
+  ok(unP1 && unP1.role === 'active' && unP1.operatingPlanUnavailable === true,
+    'days 1–15 stay the dated-opening active half and are unavailable');
+  ok(unP2 && unP2.role === 'future' && unP2.operatingPlanUnavailable === true,
+    'days 16–end stay future (role still from the dated opening) and inherit unavailable');
+  ok(unP2.openingKnown !== true && unP2.opening == null && unP2.currentBalance == null,
+    'later half does not invent an opening after the unavailable current period');
+  ok((unP2.income || []).length === 0 && unP2.incomeAdded == null && unP2.available == null,
+    'later half does not publish arriving income or Available/leftover');
+  ok((unP2.bills || []).length === 0
+      && unP2.remainingBills == null
+      && unP2.totalBillsThisPeriod == null
+      && (unP2.householdBudget || []).length === 0
+      && unP2.budgetHold == null
+      && unP2.spendingCycle == null
+      && unP2.afterRemainingBills == null
+      && unP2.afterHouseholdBudget == null
+      && unP2.afterDebtRepayment == null
+      && unP2.projectedEnding == null,
+    'later half does not publish bills, Household Budget, or leftover chain');
+  ok(!(unP2.income || []).some(r => r.id === 'payroll' || r.id === 'amandaEnd')
+      && !(unP2.bills || []).some(r => r.id === 'netflix'),
+    'later half does not list the independent Aug 28/31 income or Netflix bill');
+
+  const unHtml = composer.operatingSurfaceHtml({
+    advice: unavailable,
+    weekly: unavailable.weekly,
+    recommended: unavailable.weekly,
+    planCalendarShow: 'calendar-16-end',
+  });
+  ok(/data-calendar-waterfall="calendar-16-end"/.test(unHtml)
+      && /data-operating-plan="unavailable"/.test(unHtml)
+      && /data-current-waterfall="unavailable"/.test(unHtml)
+      && /unavailable/.test(unHtml)
+      && /stale/.test(unHtml),
+    'printed later half is explicit unavailable/stale, not a normal future waterfall');
+  ok(!/arriving/.test(unHtml)
+      && !/Still arriving/.test(unHtml)
+      && !/data-income-status="arriving"/.test(unHtml)
+      && !/Payroll — Seaspan/.test(unHtml)
+      && !/Amanda salary month-end/.test(unHtml)
+      && !/Netflix/.test(unHtml)
+      && !/planned this period/.test(unHtml)
+      && !/Spending cycle:/.test(unHtml),
+    'printed later half does not list arriving income, Netflix, or Household Budget planned dollars');
+  ok(!unHtml.includes(composer.money2(laterIncomeSum))
+      && !unHtml.includes(composer.money2(netflix.amount)),
+    'printed later half does not publish the independent later-half income total or Netflix amount');
+
+  const trusted = F.recommend(plan, openingAsOf, { targetBuffer: 500, debts });
+  const liveP1 = period(trusted.defaultView, 'calendar-1-15');
+  const liveP2 = period(trusted.defaultView, 'calendar-16-end');
+  ok(trusted.operatingPlanUnavailable !== true
+      && liveP1 && liveP1.role === 'active' && liveP1.operatingPlanUnavailable !== true
+      && liveP2 && liveP2.role === 'future' && liveP2.operatingPlanUnavailable !== true
+      && liveP2.openingKnown === true && liveP2.available != null,
+    'trusted control on the same dated opening still publishes a normal future later half');
+  ok((liveP2.income || []).some(r => r.id === 'payroll' && r.date === '2026-08-28')
+      && (liveP2.income || []).some(r => r.id === 'amandaEnd' && r.date === '2026-08-31')
+      && near(liveP2.incomeAdded, laterIncomeSum)
+      && (liveP2.bills || []).some(r => r.id === 'netflix')
+      && (liveP2.householdBudget || []).length > 0
+      && liveP2.budgetHold != null,
+    'trusted later half still lists the independent Aug 28/31 income, Netflix, and Household Budget');
+  const liveHtml = composer.operatingSurfaceHtml({
+    advice: trusted,
+    weekly: trusted.weekly,
+    recommended: trusted.weekly,
+    planCalendarShow: 'calendar-16-end',
+  });
+  ok(/Payroll — Seaspan/.test(liveHtml)
+      && /Amanda salary month-end/.test(liveHtml)
+      && /Netflix/.test(liveHtml)
+      && /planned this period/.test(liveHtml)
+      && !/data-operating-plan="unavailable"/.test(liveHtml),
+    'trusted printed later half still publishes arriving income, bills, and Household Budget');
+
+  const src = read('public/forecast.js');
+  const waterfallFn = /function calendarPeriodWaterfalls\([\s\S]*?\n  \}/.exec(src);
+  ok(waterfallFn && /unavailableOpeningLost/.test(waterfallFn[0])
+      && /role === 'future' && unavailableOpeningLost/.test(waterfallFn[0])
+      && !/operatingPlan === 'unavailable' && role === 'active';/.test(waterfallFn[0])
+      && !/Date\.now/.test(waterfallFn[0]),
+    'calendarPeriodWaterfalls fail-closes dependent future halves from the dated opening, not wall-clock as-of');
 }
 
 if (failures) {

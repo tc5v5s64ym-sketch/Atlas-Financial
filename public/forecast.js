@@ -4122,6 +4122,7 @@
       Object.assign({}, opts, { debts: debts || opts.debts || [] }), priority);
     const periods = [];
     let previousEnding = null;
+    let unavailableOpeningLost = false;
     const heldCycleStarts = new Set();
     for (const section of calendar.billSections || []) {
       const half = section.id === 'calendar-1-15' ? 1 : 2;
@@ -4147,7 +4148,13 @@
           return s + Math.abs(Number(r.amount) || 0);
         }, 0));
       const budgetOpts = Object.assign({}, opts);
-      const planUnavailable = opts.operatingPlan === 'unavailable' && role === 'active';
+      // Dated opening is not the current operating plan. Role stays
+      // anchored to that dated as-of; do not invent a later opening or
+      // wall-clock as-of. A later calendar half whose opening was the
+      // unavailable current period's ending is also not a normal
+      // current-looking / future waterfall.
+      const planUnavailable = opts.operatingPlan === 'unavailable'
+        && (role === 'active' || (role === 'future' && unavailableOpeningLost));
       if (role !== 'lookback') {
         if (planUnavailable) {
           // Dated opening is not the current operating plan. Do not publish
@@ -4245,6 +4252,7 @@
       };
       if (planUnavailable) {
         previousEnding = null;
+        unavailableOpeningLost = true;
       } else if (role === 'active' || (role === 'future' && openingKnown)) {
         previousEnding = afterBigPurchases;
       } else {
@@ -5355,10 +5363,12 @@
   // When the live overlay marks the current operating plan unavailable, keep
   // the dated-opening walk (do not invent a later as-of) but withhold the
   // current/actionable claims: weekly spend permission, current-period action,
-  // extra-debt instruction, and the active calendar leftover chain (later
-  // income as arriving, Available as dated cash plus that income, Household
-  // Budget / bills / extra-debt leftover as today's waterfall). Dated-opening
-  // cash may remain as lookback. Do not mix live observedCash into this walk.
+  // extra-debt instruction, the active calendar leftover chain (later income
+  // as arriving, Available as dated cash plus that income, Household Budget /
+  // bills / extra-debt leftover as today's waterfall), and any later calendar
+  // half whose opening was lost because that current period was unavailable.
+  // Dated-opening cash may remain as lookback. Do not mix live observedCash
+  // into this walk.
   function withholdCurrentOperatingClaims(result, opts) {
     if (!result || !opts || opts.operatingPlan !== 'unavailable') return result;
     const note = opts.operatingPlanNote
