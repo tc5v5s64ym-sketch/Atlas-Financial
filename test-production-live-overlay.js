@@ -652,10 +652,15 @@ function independentGroceryRemaining(plan, asOf) {
     const actuals = data.liveOverlay && data.liveOverlay.currentPeriodActuals;
     ok(actuals && actuals.schema === 'atlas-current-period-actuals/v1',
       'sanitized current-period packet is published');
-    ok(!(actuals.transactions || []).some(tx => tx.payee || tx.providerTransactionId || tx.providerAccountId || tx.original_name),
-      'actuals rows dropped payee keys and provider ids');
-    ok((actuals.transactions || []).some(tx => tx.displayedPayee || tx.originalMerchant),
-      'actuals rows keep displayedPayee/originalMerchant for Forecast recon');
+    ok(!(actuals.transactions || []).some(tx =>
+      tx.payee || tx.providerTransactionId || tx.providerAccountId || tx.original_name
+      || tx.displayedPayee || tx.originalMerchant || tx.notes || tx.tags
+      || tx.note || tx.tag || tx.merchant || tx.merchantName),
+      'actuals rows dropped payee, original merchant, notes, tags, provider ids, and renamed equivalents');
+    ok((actuals.transactions || []).some(tx =>
+      tx.merchantKnown === true || tx.dogFood === true || tx.representedBill === true
+      || tx.categoryLabel),
+      'actuals rows keep derived classifications, not raw merchant text');
   });
 
   console.log('\n=== H. live /data.json does not write canonical files ===');

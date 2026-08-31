@@ -2113,14 +2113,17 @@
   }
 
   function txHasMerchantIdentity(tx) {
+    if (tx && tx.merchantKnown === true) return true;
     return txMerchantExact(tx) !== '';
   }
 
   function isConvenienceStoreMerchant(tx) {
+    if (tx && tx.convenienceStore === true) return true;
     return CONVENIENCE_STORE_RE.test(txTextBlob(tx));
   }
 
   function hasExplicitFuelEvidence(tx) {
+    if (tx && tx.fuelEvidence === true) return true;
     const hint = normalizeCategoryLabel(tx && tx.kindHint);
     if (hint === 'gas' || hint === 'fuel' || hint === 'petrol') return true;
     const mcc = String((tx && tx.mcc) || '');
@@ -2136,7 +2139,18 @@
   }
 
   function isUncertainGroceryMerchant(tx) {
+    if (tx && tx.groceryUncertain === true) return true;
     return GROCERY_UNCERTAIN_MERCHANT_RE.test(txTextBlob(tx));
+  }
+
+  function hasGroceryMixedEvidence(tx) {
+    if (tx && tx.groceryMixed === true) return true;
+    const noteBlob = [tx && tx.note, tx && tx.notes, tx && tx.tag, tx && tx.tags]
+      .map(v => String(v || '')).join(' ');
+    if (!/\b(split|mixed|household|restaurants?|eating\s*out)\b/i.test(noteBlob)) {
+      return false;
+    }
+    return !/save-?on/i.test(txTextBlob(tx));
   }
 
   function normalizeMerchantKey(value) {
@@ -2153,19 +2167,24 @@
   }
 
   function isCanadianTireMerchant(tx) {
+    if (tx && tx.canadianTire === true) return true;
     return CANADIAN_TIRE_RE.test(txTextBlob(tx));
   }
 
+  // Unique local id only. Date-plus-amount is not identity: a grocery with
+  // the same date and amount as a represented bill stays Groceries.
+  // Ambiguous or missing linkage fails closed (not a bill).
   function txMatchesRepresentedBill(tx, opts) {
+    if (!tx) return false;
+    if (tx.representedBill === true) return true;
     const packet = opts && opts.currentPeriodActuals
       ? opts.currentPeriodActuals
       : (opts && opts.packet);
     const rows = packet && Array.isArray(packet.representedActuals)
       ? packet.representedActuals : [];
-    if (!tx || !tx.date || !rows.length) return false;
-    const amt = roundCent(Number(tx.amount) || 0);
-    return rows.some(row => row && row.date === tx.date
-      && roundCent(Number(row.actual) || 0) === amt);
+    const id = tx.id;
+    if (!id || !rows.length) return false;
+    return rows.some(row => row && row.transactionId && row.transactionId === id);
   }
 
   function confirmationResult(reason, includeReason) {
@@ -2307,10 +2326,7 @@
       if (isUncertainGroceryMerchant(tx)) {
         return confirmationResult('grocery-merchant-unconfirmed', 'grocery-merchant-unconfirmed');
       }
-      const contrary = txTextBlob(tx);
-      if (/\b(split|mixed|household|restaurants?|eating\s*out)\b/i.test(
-        [tx.note, tx.notes, tx.tag, tx.tags].map(v => String(v || '')).join(' ')
-      ) && !/save-?on/i.test(contrary)) {
+      if (hasGroceryMixedEvidence(tx)) {
         return confirmationResult('grocery-mixed-evidence', 'grocery-mixed-evidence');
       }
       return spendResult('groceries', 'groceries-category');
@@ -3810,6 +3826,10 @@
   // No evidence, or both names, fails closed to unassigned.
   function personalSpendOwner(tx) {
     if (!tx) return null;
+    if (tx.personalOwner === 'dale' || tx.personalOwner === 'amanda'
+      || tx.personalOwner === 'excluded') {
+      return tx.personalOwner;
+    }
     const accountText = personalAccountText(tx);
     if (isTennisIncomeAccount(accountText)) return 'excluded';
     const accountEvidence = isWeeklySpendingAccount(accountText) ? '' : accountText;
@@ -3831,17 +3851,40 @@
     return null;
   }
 
+  // Classify merchant-sensitive facts before publication. The served packet
+  // carries these flags instead of payee, original merchant, notes, or tags.
+  function derivedTransactionFlags(tx) {
+    const empty = {
+      dogFood: false,
+      convenienceStore: false,
+      canadianTire: false,
+      groceryUncertain: false,
+      groceryMixed: false,
+      merchantKnown: false,
+      fuelEvidence: false,
+      personalOwner: null,
+    };
+    if (!tx) return empty;
+    return {
+      dogFood: isDogFoodMerchant(tx),
+      convenienceStore: isConvenienceStoreMerchant(tx),
+      canadianTire: isCanadianTireMerchant(tx),
+      groceryUncertain: isUncertainGroceryMerchant(tx),
+      groceryMixed: hasGroceryMixedEvidence(tx),
+      merchantKnown: txHasMerchantIdentity(tx),
+      fuelEvidence: hasExplicitFuelEvidence(tx),
+      personalOwner: personalSpendOwner(tx),
+    };
+  }
+
   function reconTxFrom(tx, cls) {
     const pending = transactionPendingState(tx) === 'pending';
     return {
+      id: tx.id || null,
       date: tx.date || null,
-      displayedPayee: tx.displayedPayee || tx.payee || null,
-      originalMerchant: tx.originalMerchant || null,
-      account: tx.account || tx.accountLabel || tx.atlasAccountId || tx.accountId || null,
+      account: tx.account || tx.atlasAccountId || null,
       amount: roundCent(Number(tx.amount) || 0),
       categoryLabel: tx.categoryLabel || null,
-      tags: tx.tags || tx.tag || null,
-      notes: tx.notes || tx.note || null,
       atlasRow: (cls && (cls.atlasRow || cls.categoryId)) || null,
       includeReason: (cls && (cls.includeReason || cls.reason)) || null,
       pending,
@@ -3853,7 +3896,7 @@
     if (role === 'lookback') {
       return { items: [], hold: 0, spentReady: false, spendingCycle: null };
     }
-    const cycle = spendingCycle(plan, role === 'future' && start ? start : asOf);
+    const cycle = opts.cycle || spendingCycle(plan, role === 'future' && start ? start : asOf);
     const useActuals = role === 'active';
     const coverageOrigin = cycle && cycle.start && asOf && cycle.start <= asOf
       ? cycle.start : asOf;
@@ -3984,6 +4027,24 @@
   // not rewrite current cash. The active half opens from
   // paydayAllocation.available. A future half opens from the previous
   // half's projected ending. A lookback half does not reuse today's cash.
+  // Walk P1 then P2. Each Seaspan cycle is held once across the chain.
+  // If a future half's seed cycle is already held, advance to the next
+  // payday cycle rather than deducting the same $1,862.50 twice.
+  function uniqueSpendingCycle(plan, seedAsOf, heldStarts) {
+    let cycle = spendingCycle(plan, seedAsOf);
+    if (!cycle || !cycle.start) return { cycle: null, alreadyHeld: false };
+    let guard = 0;
+    while (heldStarts.has(cycle.start) && cycle.nextPayday && guard < 24) {
+      const next = spendingCycle(plan, cycle.nextPayday);
+      if (!next || !next.start || next.start === cycle.start) break;
+      cycle = next;
+      guard += 1;
+    }
+    if (heldStarts.has(cycle.start)) return { cycle, alreadyHeld: true };
+    heldStarts.add(cycle.start);
+    return { cycle, alreadyHeld: false };
+  }
+
   function calendarPeriodWaterfalls(plan, asOf, alloc, plans, debts, opts) {
     opts = opts || {};
     const month = calendarMonthSpan(asOf);
@@ -4000,6 +4061,7 @@
       Object.assign({}, opts, { debts: debts || opts.debts || [] }), priority);
     const periods = [];
     let previousEnding = null;
+    const heldCycleStarts = new Set();
     for (const section of calendar.billSections || []) {
       const half = section.id === 'calendar-1-15' ? 1 : 2;
       const role = calendarPeriodRole(asOfHalf, half);
@@ -4023,8 +4085,20 @@
           }
           return s + Math.abs(Number(r.amount) || 0);
         }, 0));
-      const budget = calendarHouseholdBudget(
-        plan, asOf, section.start, section.end, role, opts);
+      const budgetOpts = Object.assign({}, opts);
+      if (role !== 'lookback') {
+        const seedAsOf = role === 'future' ? section.start : asOf;
+        const picked = uniqueSpendingCycle(plan, seedAsOf, heldCycleStarts);
+        if (picked.alreadyHeld || !picked.cycle) {
+          budgetOpts.skipHold = true;
+        } else {
+          budgetOpts.cycle = picked.cycle;
+        }
+      }
+      const budget = budgetOpts.skipHold
+        ? { items: [], hold: 0, spentReady: false, spendingCycle: null }
+        : calendarHouseholdBudget(
+          plan, asOf, section.start, section.end, role, budgetOpts);
       const spendingCycleLabel = (role === 'active' && budget.spendingCycle)
         ? budget.spendingCycle.label : null;
       let opening = null;
@@ -4106,7 +4180,7 @@
         householdBudget: budget.items,
         budgetHold: budget.hold,
         spendingCycleLabel,
-        spendingCycle: role === 'active' ? budget.spendingCycle : null,
+        spendingCycle: role === 'lookback' ? null : budget.spendingCycle,
         afterHouseholdBudget,
         extraDebt,
         firstCard: cards.firstCard,
@@ -7877,7 +7951,7 @@
   const Forecast = { HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, billIsHouseholdObligation, billAffectsJointCash, carriedOnceJointCashOutflow, expandEvents, simulate,
     knowledgeHorizon, viewRange, commitmentNeed, fundingSequence, majorPlans, plannedDebt, debtPriority, paydayAllocation,
     classifyCurrentPeriodTransaction, paydayPeriodOrigin, currentPeriodObligationStates, currentPeriodAction,
-    spendingCycle,
+    spendingCycle, derivedTransactionFlags,
     recommendWeekly, recommend, incomeDeadline, amandaHouseholdIncomeDeadline, counterfactuals,
     budgetBreakdown, monthlyFromWeekly,
     projectDebts,

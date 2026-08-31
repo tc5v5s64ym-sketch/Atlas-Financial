@@ -2102,6 +2102,58 @@ function observe(input) {
   return assembled;
 }
 
+const RAW_TX_METADATA_KEYS = [
+  'payee',
+  'original_name',
+  'originalName',
+  'displayedPayee',
+  'originalMerchant',
+  'original_merchant',
+  'displayed_payee',
+  'notes',
+  'note',
+  'tags',
+  'tag',
+  'providerTransactionId',
+  'providerAccountId',
+  'provider_transaction_id',
+  'provider_account_id',
+  'merchant',
+  'merchantName',
+  'merchant_name',
+];
+const RAW_TX_METADATA_KEY_RE = new RegExp(
+  '"(' + RAW_TX_METADATA_KEYS.join('|') + ')"\\s*:'
+);
+
+function stripRawTransactionMetadata(tx) {
+  if (!tx || typeof tx !== 'object') return tx;
+  for (const key of RAW_TX_METADATA_KEYS) {
+    if (Object.prototype.hasOwnProperty.call(tx, key)) delete tx[key];
+  }
+  return tx;
+}
+
+function transactionLooksSanitized(tx) {
+  if (!tx || typeof tx !== 'object') return false;
+  for (const key of RAW_TX_METADATA_KEYS) {
+    if (Object.prototype.hasOwnProperty.call(tx, key)) return false;
+  }
+  return !RAW_TX_METADATA_KEY_RE.test(JSON.stringify(tx));
+}
+
+function currentPeriodActualsLooksSanitized(packet) {
+  if (packet == null) return true;
+  const blob = JSON.stringify(packet);
+  if (RAW_TX_METADATA_KEY_RE.test(blob)) return false;
+  if (/Bearer\s+\S+/.test(blob)) return false;
+  const txs = packet.transactions;
+  if (Array.isArray(txs) && txs.some(tx => tx && !transactionLooksSanitized(tx))) {
+    return false;
+  }
+  return true;
+}
+
 function atlasAccountRole(mapping) {
   if (!mapping || !mapping.atlasRole) return 'unmapped';
   if (mapping.atlasRole === 'household-cash') return 'household-cash';
@@ -2117,15 +2169,6 @@ function kindHintFromTransaction(tx) {
   if (raw === 'transfer' || raw === 'internal-transfer') return 'transfer';
   if (raw === 'gas' || raw === 'fuel' || raw === 'petrol') return 'gas';
   return null;
-}
-
-function isSurreyMeatName(value) {
-  const key = String(value == null ? '' : value)
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  return /\bSURREY MEAT\b/.test(key);
 }
 
 function sanitizedCurrentPeriodActuals(report, opts) {
@@ -2147,6 +2190,10 @@ function sanitizedCurrentPeriodActuals(report, opts) {
     localByProvider.set(key, local);
     return local;
   };
+  const existingLocalId = providerId => {
+    if (providerId == null || providerId === '') return null;
+    return localByProvider.get(String(providerId)) || null;
+  };
   const txs = [];
   for (const tx of collapsed) {
     if (!tx || !tx.date) continue;
@@ -2160,8 +2207,27 @@ function sanitizedCurrentPeriodActuals(report, opts) {
     const atlasAccountId = mapping && mapping.canonical && mapping.canonical.id
       ? mapping.canonical.id : null;
     const kindHint = kindHintFromTransaction(tx);
+    const flags = Forecast.derivedTransactionFlags({
+      payee: tx.payee,
+      original_name: tx.originalName,
+      originalName: tx.originalName,
+      displayedPayee: tx.payee,
+      originalMerchant: tx.originalName || tx.payee,
+      notes: tx.notes,
+      note: tx.notes,
+      tags: tx.tags,
+      tag: tx.tags,
+      kindHint,
+      kind: tx.kind,
+      mcc: tx.mcc,
+      categoryLabel: tx.categoryLabel,
+      atlasAccountId,
+      account: atlasAccountId,
+      accountId: atlasAccountId,
+    });
+    const localId = localIdFor(tx.providerTransactionId);
     txs.push({
-      id: localIdFor(tx.providerTransactionId),
+      id: localId,
       date: tx.date,
       amount,
       pending: tx.pending === true,
@@ -2174,14 +2240,41 @@ function sanitizedCurrentPeriodActuals(report, opts) {
       atlasAccountId,
       account: atlasAccountId,
       kindHint,
-      displayedPayee: tx.payee || null,
-      originalMerchant: tx.originalName || tx.payee || null,
-      dogFood: isSurreyMeatName(tx.originalName || tx.payee),
-      tags: tx.tags || null,
-      notes: tx.notes || null,
+      dogFood: flags.dogFood,
+      convenienceStore: flags.convenienceStore,
+      canadianTire: flags.canadianTire,
+      groceryUncertain: flags.groceryUncertain,
+      groceryMixed: flags.groceryMixed,
+      merchantKnown: flags.merchantKnown,
+      fuelEvidence: flags.fuelEvidence,
+      personalOwner: flags.personalOwner,
       isGroup: tx.isGroup === true,
       parentId: localIdFor(tx.parentId),
     });
+  }
+  const representedActuals = [];
+  const linkedLocalIds = new Set();
+  for (const candidate of (report && report.representedEventCandidates) || []) {
+    if (!candidate || !candidate.id || !candidate.date) continue;
+    const amt = Number(candidate.observedAmount);
+    if (!isFinite(amt)) continue;
+    const row = {
+      id: candidate.id,
+      date: candidate.date,
+      actual: Math.round(amt * 100) / 100,
+      postedOn: candidate.postingDate || candidate.date,
+    };
+    const localId = existingLocalId(candidate.providerTransactionId);
+    if (localId) {
+      row.transactionId = localId;
+      linkedLocalIds.add(localId);
+    }
+    representedActuals.push(row);
+  }
+  for (const tx of txs) {
+    if (tx && linkedLocalIds.has(tx.id)) tx.representedBill = true;
+    else if (tx) tx.representedBill = false;
+    stripRawTransactionMetadata(tx);
   }
   const pending = report && report.pendingCoverage;
   let pendingCoverage = 'unknown';
@@ -2193,18 +2286,6 @@ function sanitizedCurrentPeriodActuals(report, opts) {
   } else if (txs.some(tx => tx && tx.accountRole === 'unmapped')) {
     transactionCoverage = 'incomplete';
   }
-  const representedActuals = [];
-  for (const candidate of (report && report.representedEventCandidates) || []) {
-    if (!candidate || !candidate.id || !candidate.date) continue;
-    const amt = Number(candidate.observedAmount);
-    if (!isFinite(amt)) continue;
-    representedActuals.push({
-      id: candidate.id,
-      date: candidate.date,
-      actual: Math.round(amt * 100) / 100,
-      postedOn: candidate.postingDate || candidate.date,
-    });
-  }
   let coverageStart = window.startDate || null;
   let coverageThrough = window.endDate || null;
   if (!coverageStart || !coverageThrough) {
@@ -2214,7 +2295,7 @@ function sanitizedCurrentPeriodActuals(report, opts) {
       if (!coverageThrough || tx.date > coverageThrough) coverageThrough = tx.date;
     }
   }
-  return {
+  const packet = {
     schema: 'atlas-current-period-actuals/v1',
     observationAsOf: asOf,
     coverageStart,
@@ -2224,6 +2305,18 @@ function sanitizedCurrentPeriodActuals(report, opts) {
     representedActuals,
     transactions: txs,
   };
+  if (!currentPeriodActualsLooksSanitized(packet)) {
+    packet.transactions = [];
+    packet.representedActuals = representedActuals.map(row => ({
+      id: row.id,
+      date: row.date,
+      actual: row.actual,
+      postedOn: row.postedOn,
+      transactionId: row.transactionId || undefined,
+    }));
+    packet.transactionCoverage = 'incomplete';
+  }
+  return packet;
 }
 
 function loadIdentity(file) {
@@ -2351,6 +2444,8 @@ const api = {
   observationsFromMappedAccount,
   spendableCashFromObservations,
   sanitizedCurrentPeriodActuals,
+  currentPeriodActualsLooksSanitized,
+  transactionLooksSanitized,
   observe,
   fetchLunchMoneyLive,
   resolveLiveToken,

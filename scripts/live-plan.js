@@ -147,12 +147,7 @@ function overlayModeFromEnv(env) {
 }
 
 function actualsPacketLooksSanitized(packet) {
-  const blob = JSON.stringify(packet == null ? {} : packet);
-  return !/"payee"\s*:/.test(blob)
-    && !/"providerTransactionId"\s*:/.test(blob)
-    && !/"providerAccountId"\s*:/.test(blob)
-    && !/"original_name"\s*:/.test(blob)
-    && !/Bearer\s+\S+/.test(blob);
+  return O.currentPeriodActualsLooksSanitized(packet);
 }
 
 function reconRows(report) {

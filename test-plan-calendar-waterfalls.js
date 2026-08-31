@@ -784,6 +784,54 @@ console.log('\n=== 12. subscriptions exist only under Bills, never as a househol
     'Pixieset / Mailchimp / CMAW stay off the sheet');
 }
 
+console.log('\n=== 12b. Aug 14 and Aug 15 hold the Aug 14–27 cycle exactly once ===');
+{
+  function cycleStarts(view) {
+    return (view.calendarPeriods || [])
+      .map(p => p && p.spendingCycle && p.spendingCycle.start)
+      .filter(Boolean);
+  }
+  function holdForStart(view, start) {
+    const rows = (view.calendarPeriods || []).filter(p =>
+      p && p.spendingCycle && p.spendingCycle.start === start);
+    return roundCent(rows.reduce((s, p) => s + (Number(p.budgetHold) || 0), 0));
+  }
+  for (const asOf of ['2026-08-14', '2026-08-15']) {
+    const plan = syntheticPlan();
+    plan.opening.asOf = asOf;
+    const view = F.recommend(plan, asOf, { targetBuffer: 500, debts }).defaultView;
+    const p1 = period(view, 'calendar-1-15');
+    const p2 = period(view, 'calendar-16-end');
+    const expected = paydayCycleWindow(asOf);
+    ok(expected.start === '2026-08-14' && expected.end === '2026-08-27',
+      `independent as-of ${asOf} cycle is Aug 14–27`);
+    const starts = cycleStarts(view);
+    const aug14 = starts.filter(s => s === '2026-08-14');
+    ok(aug14.length === 1,
+      `as-of ${asOf}: Aug 14–27 appears once across both waterfalls`,
+      starts.join(','));
+    ok(near(holdForStart(view, '2026-08-14'), CYCLE_PLANNED_TOTAL),
+      `as-of ${asOf}: Aug 14–27 $1,862.50 is held exactly once`,
+      String(holdForStart(view, '2026-08-14')));
+    ok(p1 && p1.role === 'active' && p1.spendingCycle && p1.spendingCycle.start === '2026-08-14'
+        && p1.spendingCycle.end === '2026-08-27'
+        && p1.spendingCycleLabel === expected.label,
+      `as-of ${asOf}: active Period 1 holds and labels Aug 14–27`);
+    ok(p2 && p2.role === 'future' && p2.spendingCycleLabel == null,
+      `as-of ${asOf}: future Period 2 does not print the active cycle label`);
+    ok(!(p2.spendingCycle && p2.spendingCycle.start === '2026-08-14'),
+      `as-of ${asOf}: future Period 2 does not hold the same Aug 14–27 cycle again`);
+  }
+  const aug10 = syntheticPlan();
+  aug10.opening.asOf = '2026-08-10';
+  const view10 = F.recommend(aug10, '2026-08-10', { targetBuffer: 500, debts }).defaultView;
+  const starts10 = cycleStarts(view10);
+  ok(starts10.filter(s => s === '2026-08-14').length === 1
+      && starts10.filter(s => s === paydayCycleWindow('2026-08-10').start).length === 1
+      && starts10[0] !== starts10[1],
+    'as-of Aug 10 still holds two distinct cycles (current then Aug 14–27)');
+}
+
 console.log('\n=== 13. overspend remaining is negative; leftover does not take the overshoot ===');
 {
   const asOf = '2026-08-30';
