@@ -4147,15 +4147,23 @@
           return s + Math.abs(Number(r.amount) || 0);
         }, 0));
       const budgetOpts = Object.assign({}, opts);
+      const planUnavailable = opts.operatingPlan === 'unavailable' && role === 'active';
       if (role !== 'lookback') {
-        const seedAsOf = role === 'future' ? section.start : asOf;
-        const picked = uniqueSpendingCycle(plan, seedAsOf, heldCycleStarts);
-        if (picked.alreadyHeld) {
-          budgetOpts.skipHold = true;
-        } else if (picked.unresolved || !picked.cycle) {
+        if (planUnavailable) {
+          // Dated opening is not the current operating plan. Keep the
+          // Household Budget reserve fail-closed; do not publish this
+          // as-of's spending cycle as today, and do not invent a later one.
           budgetOpts.unresolvedCycle = true;
         } else {
-          budgetOpts.cycle = picked.cycle;
+          const seedAsOf = role === 'future' ? section.start : asOf;
+          const picked = uniqueSpendingCycle(plan, seedAsOf, heldCycleStarts);
+          if (picked.alreadyHeld) {
+            budgetOpts.skipHold = true;
+          } else if (picked.unresolved || !picked.cycle) {
+            budgetOpts.unresolvedCycle = true;
+          } else {
+            budgetOpts.cycle = picked.cycle;
+          }
         }
       }
       const budget = budgetOpts.skipHold
@@ -4165,7 +4173,7 @@
         }
         : calendarHouseholdBudget(
           plan, asOf, section.start, section.end, role, budgetOpts);
-      const spendingCycleLabel = (role === 'active' && budget.spendingCycle)
+      const spendingCycleLabel = (role === 'active' && budget.spendingCycle && !planUnavailable)
         ? budget.spendingCycle.label : null;
       let opening = null;
       let openingKnown = false;
@@ -4246,8 +4254,13 @@
         householdBudget: budget.items,
         budgetHold: budget.hold,
         spendingCycleLabel,
-        spendingCycle: role === 'lookback' ? null : budget.spendingCycle,
+        spendingCycle: role === 'lookback' || planUnavailable ? null : budget.spendingCycle,
         cycleUnresolved: budget.cycleUnresolved === true,
+        operatingPlanUnavailable: planUnavailable,
+        operatingPlanNote: planUnavailable
+          ? (opts.operatingPlanNote
+            || 'Current plan unavailable. The dated opening is stale.')
+          : null,
         afterHouseholdBudget,
         extraDebt,
         firstCard: cards.firstCard,

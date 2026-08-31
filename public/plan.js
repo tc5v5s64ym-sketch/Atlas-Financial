@@ -707,7 +707,10 @@ function paydayCashNote(alloc, liveOverlay) {
     source = 'dated opening';
   }
   let note = `Spendable cash. Not credit. As at ${fmtDate(asOf)} — ${source}.`;
-  if (liveOverlay && liveOverlay.applied === false) {
+  if (liveOverlay && liveOverlay.operatingPlan === 'unavailable') {
+    note += ' ' + (liveOverlay.operatingPlanNote
+      || 'Current plan unavailable. The dated opening is stale.');
+  } else if (liveOverlay && liveOverlay.applied === false) {
     note += ' Live overlay not applied.';
   }
   return note;
@@ -1640,10 +1643,15 @@ function calendarIncomeHtml(period) {
 
 function calendarBudgetHtml(period) {
   const rows = (period && period.householdBudget) || [];
-  const cycle = period && period.cycleUnresolved
-    ? `<p class="operating-lead">Spending cycle unavailable. Household Budget reserve is held.</p>`
-    : (period && period.spendingCycleLabel
-      ? `<p class="operating-lead">${period.spendingCycleLabel}</p>` : '');
+  const cycle = period && period.operatingPlanUnavailable
+    ? `<p class="operating-lead" data-operating-plan="unavailable">${
+        period.operatingPlanNote
+          || 'Current plan unavailable. The dated opening is stale.'
+      }</p>`
+    : (period && period.cycleUnresolved
+      ? `<p class="operating-lead">Spending cycle unavailable. Household Budget reserve is held.</p>`
+      : (period && period.spendingCycleLabel
+        ? `<p class="operating-lead">${period.spendingCycleLabel}</p>` : ''));
   if (!rows.length) {
     return `<div class="payday-household-budget" data-payday-household-budget>
       ${cycle}
@@ -2515,6 +2523,8 @@ function renderPlan(d, periods, history) {
     fundingSources: plan.funding && plan.funding.options,
     periods,
     currentPeriodActuals: actuals,
+    operatingPlan: d.liveOverlay && d.liveOverlay.operatingPlan,
+    operatingPlanNote: d.liveOverlay && d.liveOverlay.operatingPlanNote,
   }));
   const fundingPlan = advice.funding || null;
   const recommended = advice.weekly;

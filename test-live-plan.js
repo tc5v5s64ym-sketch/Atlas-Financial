@@ -1634,6 +1634,166 @@ console.log('\n=== 19. extra payment onto a mapped card covers that card min; ch
   filesUnchanged('extra payment onto mapped card');
 }
 
+function independentSeaspanCycle(asOf) {
+  // Independent of Forecast.spendingCycle: 14-day steps from Friday 2026-08-14.
+  const dayMs = 24 * 60 * 60 * 1000;
+  const asOfMs = Date.parse(asOf + 'T00:00:00Z');
+  let startMs = Date.parse('2026-08-14T00:00:00Z');
+  while (startMs + 14 * dayMs <= asOfMs) startMs += 14 * dayMs;
+  while (startMs > asOfMs) startMs -= 14 * dayMs;
+  const nextMs = startMs + 14 * dayMs;
+  const iso = ms => new Date(ms).toISOString().slice(0, 10);
+  return { start: iso(startMs), end: iso(nextMs - dayMs), nextPayday: iso(nextMs) };
+}
+
+function activeCalendarPeriod(advice) {
+  const view = advice && advice.defaultView;
+  const periods = (view && view.calendarPeriods) || [];
+  return periods.find(p => p && p.role === 'active') || null;
+}
+
+function serveFixtureOverlay(canonical, extra) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-live-plan-asof-'));
+  const fixture = path.join(dir, 'fixture.json');
+  fs.writeFileSync(fixture, `${JSON.stringify(payloadFrom(canonical, extra), null, 2)}\n`);
+  return Live.serveCanonicalOrFixture(canonical, {
+    ATLAS_LIVE_OVERLAY: 'fixture',
+    ATLAS_LIVE_OVERLAY_FIXTURE: fixture,
+    ATLAS_LIVE_OVERLAY_MAP: MAP,
+  });
+}
+
+console.log('\n=== 20. same-day inbound fail-closed does not publish a stale cycle as current ===');
+{
+  const LIVE_FAILURE_AT = '2026-08-31T18:00:00.000Z';
+  const LIVE_FAILURE_AS_OF = '2026-08-31';
+  const openingAsOf = String(liveData.plan.opening.asOf);
+  ok(openingAsOf === '2026-08-19',
+    'canonical opening on this main is still 2026-08-19');
+  const independentOpening = independentSeaspanCycle(openingAsOf);
+  const independentLive = independentSeaspanCycle(LIVE_FAILURE_AS_OF);
+  ok(independentOpening.start === '2026-08-14' && independentOpening.end === '2026-08-27'
+      && independentOpening.nextPayday === '2026-08-28',
+    'independent 14-day steps from Aug 14: as-of Aug 19 is Aug 14–27');
+  ok(independentLive.start === '2026-08-28' && independentLive.end === '2026-09-10'
+      && independentLive.nextPayday === '2026-09-11',
+    'independent 14-day steps from Aug 14: as-of Aug 31 is Aug 28–Sep 10');
+  const engineOpening = Forecast.spendingCycle(liveData.plan, openingAsOf);
+  const engineLive = Forecast.spendingCycle(liveData.plan, LIVE_FAILURE_AS_OF);
+  ok(engineOpening && engineOpening.start === independentOpening.start
+      && engineOpening.end === independentOpening.end,
+    'spendingCycle stays faithful to the Aug 19 as-of it is given');
+  ok(engineLive && engineLive.start === independentLive.start
+      && engineLive.end === independentLive.end,
+    'spendingCycle for a trusted Aug 31 as-of is Aug 28–Sep 10');
+
+  const extra = {
+    fetchedAt: LIVE_FAILURE_AT,
+    tweaks: {
+      cashAt: '2026-08-31T17:55:00.000Z',
+      cardAt: '2026-08-31T17:55:00.000Z',
+      loanAt: '2026-08-31T17:55:00.000Z',
+      triangleAt: '2026-08-31T17:55:00.000Z',
+    },
+  };
+  const canonical = clone(liveData);
+  let threw = null;
+  try {
+    overlay(canonical, extra);
+  } catch (err) {
+    threw = err;
+  }
+  ok(threw && /same-day-event-representation-unknown/.test(threw.message),
+    'Aug 31 overlay fails closed without Amanda month-end posting evidence',
+    threw && threw.message);
+  ok(/amandaSalaryMonthEnd@2026-08-31/.test(threw && threw.message || ''),
+    'unknown same-day inbound names amandaSalaryMonthEnd, not unposted bills',
+    threw && threw.message);
+
+  const served = serveFixtureOverlay(canonical, extra);
+  ok(served.liveOverlay && served.liveOverlay.applied === false,
+    'server overlay fail-closes rather than applying a mixed Aug 31 / Aug 19 state');
+  ok(served.liveOverlay.operatingPlan === Live.OPERATING_PLAN_UNAVAILABLE,
+    'fail-closed later observation marks the current operating plan unavailable');
+  ok(/unavailable/.test(String(served.liveOverlay.operatingPlanNote || ''))
+      && /stale/.test(String(served.liveOverlay.operatingPlanNote || '')),
+    'fail-closed copy is explicit unavailable/stale');
+  ok(String(served.meta.asOf) === openingAsOf
+      && String(served.plan.opening.asOf) === openingAsOf,
+    'fail-closed overlay does not advance the served opening');
+  ok(served.liveOverlay.observedAsOf === LIVE_FAILURE_AS_OF,
+    'observed as-of is the observation household date, not Date.now');
+
+  const staleAdvice = Forecast.recommend(served.plan, served.meta.asOf, {
+    debts: served.debts,
+    revolvingExtra: served.revolvingExtra,
+    targetBuffer: served.plan.defaults.targetBuffer,
+    operatingPlan: served.liveOverlay.operatingPlan,
+    operatingPlanNote: served.liveOverlay.operatingPlanNote,
+  });
+  const active = activeCalendarPeriod(staleAdvice);
+  ok(active && active.operatingPlanUnavailable === true,
+    'Forecast withholds the current operating plan rather than publishing the dated cycle');
+  ok(active.spendingCycleLabel == null && active.spendingCycle == null,
+    'Household Budget does not print Spending cycle: Aug 14–Aug 27 as current');
+  ok(!/Aug 14/.test(String(active.operatingPlanNote || ''))
+      && !/Aug 28/.test(String(active.operatingPlanNote || '')),
+    'unavailable copy does not mix an Aug 31 cycle with an Aug 19 opening');
+  ok(/unavailable/.test(String(active.operatingPlanNote || ''))
+      && /stale/.test(String(active.operatingPlanNote || '')),
+    'Forecast note is explicit unavailable/stale');
+  const mixed = Forecast.recommend(served.plan, served.meta.asOf, {
+    debts: served.debts,
+    revolvingExtra: served.revolvingExtra,
+    targetBuffer: served.plan.defaults.targetBuffer,
+  });
+  const mixedActive = activeCalendarPeriod(mixed);
+  ok(mixedActive && mixedActive.spendingCycle && mixedActive.spendingCycle.start === '2026-08-14',
+    'without the overlay flag, Aug 19 as-of still computes Aug 14–27 (cycle math unchanged)');
+
+  const trusted = clone(liveData);
+  trusted.plan = Object.assign({}, trusted.plan, {
+    income: (trusted.plan.income || []).map(row => {
+      if (!row || row.id !== 'amandaSalaryMonthEnd') return row;
+      return Object.assign({}, row, { firstDue: '2026-09-30' });
+    }),
+  });
+  const trustedServed = serveFixtureOverlay(trusted, extra);
+  ok(trustedServed.liveOverlay && trustedServed.liveOverlay.applied === true,
+    'unposted same-day joint-cash bills do not fail the overlay when inbound is not in-window');
+  ok(trustedServed.liveOverlay.operatingPlan === Live.OPERATING_PLAN_LIVE,
+    'independently trusted current opening applies as live');
+  ok(String(trustedServed.plan.opening.asOf) === LIVE_FAILURE_AS_OF
+      && String(trustedServed.meta.asOf) === LIVE_FAILURE_AS_OF,
+    'trusted overlay advances as-of with the opening, not a mixed state');
+  const trustedAdvice = Forecast.recommend(trustedServed.plan, trustedServed.meta.asOf, {
+    debts: trustedServed.debts,
+    revolvingExtra: trustedServed.revolvingExtra,
+    targetBuffer: trustedServed.plan.defaults.targetBuffer,
+    operatingPlan: trustedServed.liveOverlay.operatingPlan,
+    operatingPlanNote: trustedServed.liveOverlay.operatingPlanNote,
+  });
+  const trustedActive = activeCalendarPeriod(trustedAdvice);
+  ok(trustedActive && trustedActive.spendingCycle
+      && trustedActive.spendingCycle.start === independentLive.start
+      && trustedActive.spendingCycle.end === independentLive.end
+      && trustedActive.spendingCycleLabel === engineLive.label
+      && trustedActive.operatingPlanUnavailable !== true,
+    'trusted Aug 31 as-of publishes Household Budget Aug 28–Sep 10');
+
+  const planSrc = fs.readFileSync(path.join(ROOT, 'public', 'plan.js'), 'utf8');
+  const budgetFn = /function calendarBudgetHtml\([\s\S]*?\n\}/.exec(planSrc);
+  ok(budgetFn && /operatingPlanUnavailable/.test(budgetFn[0])
+      && /data-operating-plan="unavailable"/.test(budgetFn[0])
+      && !/Date\.now/.test(budgetFn[0]),
+    'plan.js prints Forecast operatingPlanUnavailable; it does not invent a cycle or wall-clock as-of');
+  const fromFn = /function operatingPlanFromOverlay\([\s\S]*?\n\}/.exec(
+    fs.readFileSync(path.join(ROOT, 'scripts', 'live-plan.js'), 'utf8'));
+  ok(fromFn && /liveAsOf > historicalOpeningAsOf/.test(fromFn[0]) && !/Date\.now/.test(fromFn[0]),
+    'operatingPlan unavailable is later observed as-of vs dated opening, not wall-clock');
+  filesUnchanged('same-day inbound fail-closed stale cycle');
+}
+
 console.log('\n' + '═'.repeat(60));
 if (failures) {
   console.log(`FAILED — ${failures} live-plan check(s)`);

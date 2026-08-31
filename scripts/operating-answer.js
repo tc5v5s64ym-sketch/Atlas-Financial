@@ -18,7 +18,9 @@
  *
  * Live-overlay mode may pass sanitized overlay currentPeriodActuals into
  * Forecast only when the overlay applied. Canonical mode never does.
- * A fail-closed overlay keeps the dated opening. Zero/no-change is valid.
+ * A fail-closed overlay keeps the dated opening and, when the observation
+ * date is later, tells Forecast the current operating plan is unavailable.
+ * Zero/no-change is valid.
  */
 
 const fs = require('fs');
@@ -87,6 +89,7 @@ function recommendOpts(data, opts) {
   const targetBuffer = plan && plan.defaults && plan.defaults.targetBuffer != null
     ? plan.defaults.targetBuffer
     : 0;
+  const overlay = opts && opts.mode === 'canonical' ? null : overlayOf(data);
   return {
     fundingSources: plan && plan.funding && plan.funding.options,
     debts: data && data.debts,
@@ -94,6 +97,8 @@ function recommendOpts(data, opts) {
     periods: loadPeriods(),
     currentPeriodActuals: actualsFrom(data, opts),
     targetBuffer,
+    operatingPlan: overlay && overlay.operatingPlan,
+    operatingPlanNote: overlay && overlay.operatingPlanNote,
   };
 }
 

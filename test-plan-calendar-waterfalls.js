@@ -1184,8 +1184,10 @@ console.log('\n=== 14. page prints Forecast; leftover is not computed in plan.js
   const budgetFn = /function calendarBudgetHtml\([\s\S]*?\n\}/.exec(planSrc);
   ok(budgetFn && /spendingCycleLabel/.test(budgetFn[0])
       && /cycleUnresolved/.test(budgetFn[0])
+      && /operatingPlanUnavailable/.test(budgetFn[0])
+      && /operatingPlanNote/.test(budgetFn[0])
       && !/calendarHalfPlanned|sumCategoryActuals/.test(budgetFn[0]),
-    'calendarBudgetHtml prints Forecast spendingCycleLabel / cycleUnresolved and does not recompute planned');
+    'calendarBudgetHtml prints Forecast spendingCycleLabel / cycleUnresolved / operatingPlanUnavailable and does not recompute planned');
   const liveSrc = fs.readFileSync(path.join(__dirname, 'scripts', 'live-plan.js'), 'utf8');
   ok(!/fs\.writeFileSync/.test(liveSrc),
     'live-plan.js still does not write data.json');
