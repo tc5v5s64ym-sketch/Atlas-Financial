@@ -1,6 +1,6 @@
 {
   "schema": "atlas-provider-transaction-identity/v1",
-  "owns": "Unambiguous provider-transaction to Forecast-event identity. A match requires an explicit payee alias + mapped Atlas account + direction + an allowed scheduled/posting-date relation. Same-day is the default; named automatic payments may opt into weekend-to-next-business-day; a payment onto a mapped card may cover the latest due on or before posting. Amount similarity is not identity. After that identity is unique, a card extra payment may settle the min only when the observed credit is at least the scheduled due.",
+  "owns": "Unambiguous provider-transaction to Forecast-event identity. A match requires an explicit payee alias + mapped Atlas account + direction + an allowed scheduled/posting-date relation. Optional payeeExcludePatterns refuse a hit that also matches a reimbursement or other excluded alias. Same-day is the default; named automatic payments may opt into weekend-to-next-business-day; a payment onto a mapped card may cover the latest due on or before posting. Amount similarity is not identity. After that identity is unique, a card extra payment may settle the min only when the observed credit is at least the scheduled due.",
   "does_not_own": "Permission to write plan.opening or representedEvents onto data.json, pending-to-posted proof, or a second event engine.",
   "billPaymentPayees": [
     "Bell Mobility",
@@ -16,6 +16,42 @@
       "atlasAccountId": "chequing-a",
       "direction": "credit",
       "note": "Seaspan is already on the live payroll label. Do not match a same-day deposit by amount alone."
+    },
+    {
+      "eventId": "amandaSalary15",
+      "payeePattern": "TENNIS BC",
+      "payeePatterns": ["TENNIS BC", "TENNIS - BRITIS PAY", "TENNIS BRITIS MSP"],
+      "payeeExcludePatterns": ["TENNIS BC EXP", "TENNIS BRITISH AP"],
+      "atlasAccountId": "chequing-a",
+      "direction": "credit",
+      "note": "Owner-confirmed Tennis BC salary on the 15th. Payee identity, not amount. TENNIS BC EXP / AP are reimbursement, not this stream."
+    },
+    {
+      "eventId": "amandaSalary15",
+      "payeePattern": "TENNIS BC",
+      "payeePatterns": ["TENNIS BC", "TENNIS - BRITIS PAY", "TENNIS BRITIS MSP"],
+      "payeeExcludePatterns": ["TENNIS BC EXP", "TENNIS BRITISH AP"],
+      "atlasAccountId": "chequing-b",
+      "direction": "credit",
+      "note": "Same Tennis BC 15th identity on Chequing B. Household cash only, not TENNIS INCOME."
+    },
+    {
+      "eventId": "amandaSalaryMonthEnd",
+      "payeePattern": "TENNIS BC",
+      "payeePatterns": ["TENNIS BC", "TENNIS - BRITIS PAY", "TENNIS BRITIS MSP"],
+      "payeeExcludePatterns": ["TENNIS BC EXP", "TENNIS BRITISH AP"],
+      "atlasAccountId": "chequing-a",
+      "direction": "credit",
+      "note": "Owner-confirmed Tennis BC month-end salary. Payee identity, not amount. TENNIS BC EXP / AP are reimbursement, not this stream."
+    },
+    {
+      "eventId": "amandaSalaryMonthEnd",
+      "payeePattern": "TENNIS BC",
+      "payeePatterns": ["TENNIS BC", "TENNIS - BRITIS PAY", "TENNIS BRITIS MSP"],
+      "payeeExcludePatterns": ["TENNIS BC EXP", "TENNIS BRITISH AP"],
+      "atlasAccountId": "chequing-b",
+      "direction": "credit",
+      "note": "Same Tennis BC month-end identity on Chequing B. Household cash only, not TENNIS INCOME."
     },
     {
       "eventId": "mortgage",

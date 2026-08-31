@@ -961,6 +961,21 @@ function rulePayeePatterns(rule) {
   return Array.from(new Set(values.map(value => String(value).trim()).filter(Boolean)));
 }
 
+function rulePayeeExcludePatterns(rule) {
+  const values = [].concat((rule && rule.payeeExcludePatterns) || [],
+    rule && rule.payeeExcludePattern ? [rule.payeeExcludePattern] : []);
+  return Array.from(new Set(values.map(value => String(value).trim()).filter(Boolean)));
+}
+
+function payeeMatchesRule(tx, rule) {
+  if (!tx || !rule) return false;
+  if (!rulePayeePatterns(rule).some(pattern => payeeMatches(tx.payee, pattern))) return false;
+  if (rulePayeeExcludePatterns(rule).some(pattern => payeeMatches(tx.payee, pattern))) {
+    return false;
+  }
+  return true;
+}
+
 function postingDateRelation(scheduledDate, postingDate, rule) {
   const scheduled = parseIsoDate(scheduledDate);
   const posted = parseIsoDate(postingDate);
@@ -1411,7 +1426,7 @@ function representedEventHitGroups(input) {
     const amount = lunchMoneyDebitAmount(tx.amount);
     for (const rule of rules) {
       if (rule.atlasAccountId && mapping.canonical.id !== rule.atlasAccountId) continue;
-      if (!rulePayeePatterns(rule).some(pattern => payeeMatches(tx.payee, pattern))) continue;
+      if (!payeeMatchesRule(tx, rule)) continue;
       if (rule.direction === 'credit' && !(amount < 0)) continue;
       if (rule.direction === 'debit' && !(amount > 0)) continue;
       for (const scheduledDate of coveringScheduledDates(input.plan, rule, tx.date)) {
