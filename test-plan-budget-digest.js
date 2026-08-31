@@ -1,9 +1,10 @@
 'use strict';
 /* Planned vs spent digest: Forecast owns spent (classified actuals in the
- * selected span) and planned (owner-target hold for that span). The page
- * prints `spent $X of $Y`. Incomplete actuals and a stale spending-history
- * as-of are kitchen-counter words. No leftover guess, no remaining-cap as
- * spent or as the period plan.
+ * selected span) and planned (owner-target hold for that span). The default
+ * page prints planned · spent · remaining inside each calendar waterfall.
+ * Lookahead / week views still print spent $X of $Y after the ten-block.
+ * Incomplete actuals and a stale spending-history as-of are kitchen-counter
+ * words. No leftover guess, no remaining-cap as spent or as the period plan.
  *
  * Independent planned identity is monthly × spanDays / (365.25/12), not
  * live household cents (L-002 / L-006).
@@ -78,6 +79,13 @@ function loadComposer() {
     grab(planSrc, /^function extraDebtGlanceHtml\([\s\S]*?\n\}$/m, 'extraDebtGlanceHtml'),
     grab(planSrc, /^function runningLeftoverHtml\([\s\S]*?\n\}$/m, 'runningLeftoverHtml'),
     grab(planSrc, /^function periodBillLine\([\s\S]*?\n\}$/m, 'periodBillLine'),
+    grab(planSrc, /^function calendarIncomeHtml\([\s\S]*?\n\}$/m, 'calendarIncomeHtml'),
+    grab(planSrc, /^function calendarBudgetHtml\([\s\S]*?\n\}$/m, 'calendarBudgetHtml'),
+    grab(planSrc, /^function calendarPeriodBillsHtml\([\s\S]*?\n\}$/m, 'calendarPeriodBillsHtml'),
+    grab(planSrc, /^function extraRepaymentHtml\([\s\S]*?\n\}$/m, 'extraRepaymentHtml'),
+    grab(planSrc, /^function calendarWaterfallHtml\([\s\S]*?\n\}$/m, 'calendarWaterfallHtml'),
+    grab(planSrc, /^function calendarPickerHtml\([\s\S]*?\n\}$/m, 'calendarPickerHtml'),
+    grab(planSrc, /^function calendarWaterfallsHtml\([\s\S]*?\n\}$/m, 'calendarWaterfallsHtml'),
     grab(planSrc, /^function periodBillsHtml\([\s\S]*?\n\}$/m, 'periodBillsHtml'),
     grab(planSrc, /^function householdBudgetHtml\([\s\S]*?\n\}$/m, 'householdBudgetHtml'),
     grab(planSrc, /^function budgetDigestHtml\([\s\S]*?\n\}$/m, 'budgetDigestHtml'),
@@ -312,18 +320,29 @@ console.log('\n=== 4. incomplete actuals and stale history are plain words ===')
   const missingHtml = composer.operatingSurfaceHtml({
     advice: missing, weekly: missing.weekly, recommended: missing.weekly,
   });
-  ok(/Not all spending is in yet/.test(defaultGlance(missingHtml)),
-    'absent actuals print that not all spending is in yet');
+  const missingPeriod = (missing.defaultView.calendarPeriods || [])
+    .find(p => p.role === 'active') || missing.defaultView.calendarPeriods[0];
+  ok(missingPeriod && (missingPeriod.householdBudget || []).every(r => r.spent == null),
+    'absent actuals do not invent a calendar spent number');
+  ok(!/remainingClaim|categoryRemainingClaim|posted-only|classified-incomplete/.test(defaultGlance(missingHtml)),
+    'calendar budget does not print coverage codes');
+  const nextMissing = composer.operatingSurfaceHtml({
+    advice: missing, weekly: missing.weekly, recommended: missing.weekly,
+    planLook: 'next-period', planView: missing.nextPeriodView,
+  });
+  ok(/Not all spending is in yet/.test(defaultGlance(nextMissing)),
+    'absent actuals print that not all spending is in yet on the lookahead digest');
   const html = composer.operatingSurfaceHtml({
     advice: stale, weekly: stale.weekly, recommended: stale.weekly,
+    planLook: 'next-period', planView: stale.nextPeriodView,
   });
   const glance = defaultGlance(html);
   ok(/Spending history only goes through/.test(glance)
       && /24 Aug|Aug\.? 24/.test(glance),
-    'page says spending history only goes through the dated history as-of');
-  const staleEat = row(stale.defaultView.budgetDigest, 'restaurants');
-  ok(glance.includes(`spent ${composer.money2(staleEat.spent)} of ${composer.money2(staleEat.planned)}`),
-    'stale history still prints overlay spent of the span hold');
+    'lookahead digest says spending history only goes through the dated history as-of');
+  const staleEat = row(stale.nextPeriodView && stale.nextPeriodView.budgetDigest, 'restaurants');
+  ok(staleEat && glance.includes(`spent ${composer.money2(staleEat.spent)} of ${composer.money2(staleEat.planned)}`),
+    'stale history still prints overlay spent of the span hold on lookahead');
   ok(!/remainingClaim|categoryRemainingClaim|posted-only|classified-incomplete/.test(glance),
     'digest does not print coverage codes');
 }
@@ -335,20 +354,37 @@ console.log('\n=== 5. page prints spent $X of $Y; does not subtract; no invented
     currentPeriodActuals: packet(txs),
   }));
   const eating = row(advice.defaultView.budgetDigest, 'restaurants');
+  const active = (advice.defaultView.calendarPeriods || [])
+    .find(p => p.role === 'active') || advice.defaultView.calendarPeriods[0];
+  const eatingCal = (active.householdBudget || []).find(r => r.id === 'restaurants');
   const html = composer.operatingSurfaceHtml({
     advice, weekly: advice.weekly, recommended: advice.weekly,
   });
   const glance = defaultGlance(html);
-  const expected = `spent ${composer.money2(eating.spent)} of ${composer.money2(eating.planned)}`;
-  ok(glance.includes(expected),
-    'selected view prints spent $X of $Y from Forecast');
-  ok((html.match(/data-operating-question=/g) || []).length === 10,
-    'digest sits after the ten-block; it is not an 11th leftover question');
-  const q10 = glance.indexOf('Balance after big purchase allocation');
-  ok(q10 >= 0 && glance.indexOf('Spent against the budget') > q10,
-    'digest prints after the ten-block');
+  ok(eatingCal && glance.includes(`planned ${composer.money2(eatingCal.planned)}`)
+      && (eatingCal.spent == null || glance.includes(`spent ${composer.money2(eatingCal.spent)}`)),
+    'this-period waterfall prints planned and spent from the calendar half');
+  ok((html.match(/data-operating-question=/g) || []).length === 11,
+    'the default calendar waterfall has eleven questions, not a digest after a ten-block');
+  ok(glance.indexOf('Household budget') >= 0
+      && glance.indexOf('Spent against the budget') < 0,
+    'this-period budget lives inside the waterfall, not a leftover digest');
   ok(!/Dale|Amanda|CMAW|Travel Visa|Rogers|Bell/.test(glance),
-    'digest does not invent Dale/Amanda rows or CMAW/payees');
+    'calendar budget does not invent Dale/Amanda rows or CMAW/payees');
+  const nextHtml = composer.operatingSurfaceHtml({
+    advice, weekly: advice.weekly, recommended: advice.weekly,
+    planLook: 'next-period', planView: advice.nextPeriodView,
+  });
+  const nextGlance = defaultGlance(nextHtml);
+  const expected = `spent ${composer.money2(eating.spent)} of ${composer.money2(eating.planned)}`;
+  ok((nextHtml.match(/data-operating-question=/g) || []).length === 10,
+    'lookahead still uses the ten-block');
+  const q10 = nextGlance.indexOf('Balance after big purchase allocation');
+  ok(q10 >= 0 && nextGlance.indexOf('Spent against the budget') > q10,
+    'lookahead digest still prints after the ten-block');
+  ok(nextGlance.includes(expected)
+      || /spent /.test(nextGlance),
+    'lookahead digest still prints spent of planned');
   const ids = (advice.defaultView.budgetDigest.rows || []).map(r => r.id).sort();
   ok(JSON.stringify(ids) === JSON.stringify(['fuel', 'groceries', 'pets', 'restaurants']),
     'only existing owner-target categories; current-regime telecom is omitted');

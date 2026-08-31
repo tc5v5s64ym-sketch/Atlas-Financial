@@ -72,6 +72,13 @@ function loadComposer() {
     grab(planSrc, /^function extraDebtGlanceHtml\([\s\S]*?\n\}$/m, 'extraDebtGlanceHtml'),
     grab(planSrc, /^function runningLeftoverHtml\([\s\S]*?\n\}$/m, 'runningLeftoverHtml'),
     grab(planSrc, /^function periodBillLine\([\s\S]*?\n\}$/m, 'periodBillLine'),
+    grab(planSrc, /^function calendarIncomeHtml\([\s\S]*?\n\}$/m, 'calendarIncomeHtml'),
+    grab(planSrc, /^function calendarBudgetHtml\([\s\S]*?\n\}$/m, 'calendarBudgetHtml'),
+    grab(planSrc, /^function calendarPeriodBillsHtml\([\s\S]*?\n\}$/m, 'calendarPeriodBillsHtml'),
+    grab(planSrc, /^function extraRepaymentHtml\([\s\S]*?\n\}$/m, 'extraRepaymentHtml'),
+    grab(planSrc, /^function calendarWaterfallHtml\([\s\S]*?\n\}$/m, 'calendarWaterfallHtml'),
+    grab(planSrc, /^function calendarPickerHtml\([\s\S]*?\n\}$/m, 'calendarPickerHtml'),
+    grab(planSrc, /^function calendarWaterfallsHtml\([\s\S]*?\n\}$/m, 'calendarWaterfallsHtml'),
     grab(planSrc, /^function periodBillsHtml\([\s\S]*?\n\}$/m, 'periodBillsHtml'),
     grab(planSrc, /^function householdBudgetHtml\([\s\S]*?\n\}$/m, 'householdBudgetHtml'),
     grab(planSrc, /^function budgetDigestHtml\([\s\S]*?\n\}$/m, 'budgetDigestHtml'),
@@ -142,15 +149,16 @@ console.log('\n=== ten ordered payday-sheet questions ===');
   });
   const prompts = [
     'Current Balance',
+    'Income',
+    'Available balance',
     'Bills',
-    'Balance after bills',
+    'Balance after remaining bills',
     'Household budget',
     'Balance after household budget',
-    'Credit card to pay off first',
-    'Other credit cards',
+    'Extra credit-card repayment',
     'Balance after debt repayment',
-    'Big purchases on the horizon',
-    'Balance after big purchase allocation',
+    'Big-purchase savings',
+    'Projected ending balance',
   ];
   let previous = -1;
   for (const prompt of prompts) {
@@ -158,8 +166,8 @@ console.log('\n=== ten ordered payday-sheet questions ===');
     ok(at > previous, `${prompt} appears in the required order`);
     previous = at;
   }
-  ok((rendered.match(/data-operating-question=/g) || []).length === 10,
-    'the default surface contains the ten payday-sheet questions');
+  ok((rendered.match(/data-operating-question=/g) || []).length === 11,
+    'the default surface contains the eleven calendar-waterfall questions');
 }
 
 console.log('\n=== every displayed financial answer traces to incumbents ===');

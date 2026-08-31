@@ -79,6 +79,13 @@ function loadComposer() {
     grab(planSrc, /^function extraDebtGlanceHtml\([\s\S]*?\n\}$/m, 'extraDebtGlanceHtml'),
     grab(planSrc, /^function runningLeftoverHtml\([\s\S]*?\n\}$/m, 'runningLeftoverHtml'),
     grab(planSrc, /^function periodBillLine\([\s\S]*?\n\}$/m, 'periodBillLine'),
+    grab(planSrc, /^function calendarIncomeHtml\([\s\S]*?\n\}$/m, 'calendarIncomeHtml'),
+    grab(planSrc, /^function calendarBudgetHtml\([\s\S]*?\n\}$/m, 'calendarBudgetHtml'),
+    grab(planSrc, /^function calendarPeriodBillsHtml\([\s\S]*?\n\}$/m, 'calendarPeriodBillsHtml'),
+    grab(planSrc, /^function extraRepaymentHtml\([\s\S]*?\n\}$/m, 'extraRepaymentHtml'),
+    grab(planSrc, /^function calendarWaterfallHtml\([\s\S]*?\n\}$/m, 'calendarWaterfallHtml'),
+    grab(planSrc, /^function calendarPickerHtml\([\s\S]*?\n\}$/m, 'calendarPickerHtml'),
+    grab(planSrc, /^function calendarWaterfallsHtml\([\s\S]*?\n\}$/m, 'calendarWaterfallsHtml'),
     grab(planSrc, /^function periodBillsHtml\([\s\S]*?\n\}$/m, 'periodBillsHtml'),
     grab(planSrc, /^function householdBudgetHtml\([\s\S]*?\n\}$/m, 'householdBudgetHtml'),
     grab(planSrc, /^function budgetDigestHtml\([\s\S]*?\n\}$/m, 'budgetDigestHtml'),
@@ -209,8 +216,8 @@ console.log('\n=== 2. recommend weekly cap, never a fake $0/week yes ===');
     advice, weekly: advice.weekly, recommended: advice.weekly,
   });
   const q4 = question(healthy, '04');
-  ok(/Household budget/.test(q4),
-    'Q4 on the default view is household budget');
+  ok(/Bills/.test(q4) && /data-payday-period-bills/.test(q4),
+    'Q4 on the default view is bills');
   ok(/data-spend-decision="amount"/.test(healthy)
     && healthy.includes(`${composer.money(advice.weekly)} / week`),
     'feasible recommend weekly remains available behind disclosure');
@@ -225,8 +232,8 @@ console.log('\n=== 2. recommend weekly cap, never a fake $0/week yes ===');
   const infeasibleHtml = composer.operatingSurfaceHtml({
     advice: blocked, weekly: 0, recommended: 0,
   });
-  const infeasibleQ4 = question(infeasibleHtml, '04');
-  ok(/Household budget/.test(infeasibleQ4),
+  const infeasibleQ6 = question(infeasibleHtml, '06');
+  ok(/Household budget/.test(infeasibleQ6),
     'infeasible recommend does not replace household budget with a weekly yes');
   ok(/data-spend-decision="none"/.test(infeasibleHtml),
     'infeasible recommend does not publish a weekly yes');
@@ -254,11 +261,20 @@ console.log('\n=== 3. extra debt only from paydayAllocation surplus ===');
   const zeroAdvice = JSON.parse(JSON.stringify(advice));
   zeroAdvice.paydayAllocation.extraDebt.allocated = 0;
   zeroAdvice.paydayAllocation.extraDebt.target = { id: 'high', label: 'Synthetic high card' };
+  for (const period of (zeroAdvice.defaultView && zeroAdvice.defaultView.calendarPeriods) || []) {
+    if (!period) continue;
+    if (period.extraDebt) period.extraDebt.allocated = 0;
+    if (period.firstCard) period.firstCard.extraThisPayday = 0;
+  }
+  if (zeroAdvice.defaultView && zeroAdvice.defaultView.firstCard) {
+    zeroAdvice.defaultView.firstCard.extraThisPayday = 0;
+  }
   const zeroHtml = composer.operatingSurfaceHtml({
     advice: zeroAdvice, weekly: zeroAdvice.weekly, recommended: zeroAdvice.weekly,
   });
-  const zero = question(zeroHtml, '06');
-  ok(/Extra this payday \$0\.00/.test(zero) || /No revolving card/.test(zero),
+  const zero = question(zeroHtml, '08');
+  ok(/Extra this payday \$0\.00/.test(zero) || /Extra \$0\.00/.test(zero)
+      || /No revolving card/.test(zero) || /No extra credit-card repayment/.test(zero),
     'zero extra this payday is said so, not omitted as a fake payment');
   ok(!/Pay extra/.test(zeroHtml) && !/Put \$40/.test(zeroHtml),
     'a named target is not a pay instruction when allocated is $0');
@@ -270,11 +286,23 @@ console.log('\n=== 3. extra debt only from paydayAllocation surplus ===');
     plusAdvice.defaultView.firstCard.extraThisPayday = 40;
     plusAdvice.defaultView.firstCard.label = 'Synthetic high card';
   }
+  for (const period of (plusAdvice.defaultView && plusAdvice.defaultView.calendarPeriods) || []) {
+    if (!period) continue;
+    if (period.extraDebt) {
+      period.extraDebt.allocated = 40;
+      period.extraDebt.target = { id: 'high', label: 'Synthetic high card' };
+    }
+    if (period.firstCard) {
+      period.firstCard.extraThisPayday = 40;
+      period.firstCard.label = 'Synthetic high card';
+    }
+  }
   const plusHtml = composer.operatingSurfaceHtml({
     advice: plusAdvice, weekly: plusAdvice.weekly, recommended: plusAdvice.weekly,
   });
   ok(/Put \$40\.00 extra on Synthetic high card/.test(plusHtml)
-      || /Extra this payday \$40\.00/.test(plusHtml),
+      || /Extra this payday \$40\.00/.test(plusHtml)
+      || /Extra \$40\.00/.test(plusHtml),
     'positive leftover after bills names facility and amount from extraDebt');
 }
 

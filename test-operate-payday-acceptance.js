@@ -86,6 +86,13 @@ function loadComposer() {
     grab(planSrc, /^function extraDebtGlanceHtml\([\s\S]*?\n\}$/m, 'extraDebtGlanceHtml'),
     grab(planSrc, /^function runningLeftoverHtml\([\s\S]*?\n\}$/m, 'runningLeftoverHtml'),
     grab(planSrc, /^function periodBillLine\([\s\S]*?\n\}$/m, 'periodBillLine'),
+    grab(planSrc, /^function calendarIncomeHtml\([\s\S]*?\n\}$/m, 'calendarIncomeHtml'),
+    grab(planSrc, /^function calendarBudgetHtml\([\s\S]*?\n\}$/m, 'calendarBudgetHtml'),
+    grab(planSrc, /^function calendarPeriodBillsHtml\([\s\S]*?\n\}$/m, 'calendarPeriodBillsHtml'),
+    grab(planSrc, /^function extraRepaymentHtml\([\s\S]*?\n\}$/m, 'extraRepaymentHtml'),
+    grab(planSrc, /^function calendarWaterfallHtml\([\s\S]*?\n\}$/m, 'calendarWaterfallHtml'),
+    grab(planSrc, /^function calendarPickerHtml\([\s\S]*?\n\}$/m, 'calendarPickerHtml'),
+    grab(planSrc, /^function calendarWaterfallsHtml\([\s\S]*?\n\}$/m, 'calendarWaterfallsHtml'),
     grab(planSrc, /^function periodBillsHtml\([\s\S]*?\n\}$/m, 'periodBillsHtml'),
     grab(planSrc, /^function householdBudgetHtml\([\s\S]*?\n\}$/m, 'householdBudgetHtml'),
     grab(planSrc, /^function budgetDigestHtml\([\s\S]*?\n\}$/m, 'budgetDigestHtml'),
@@ -230,21 +237,21 @@ console.log('\n=== composed surface: cash, identity, debt, protection, limits ==
   const requiredItems = (alloc.requiredDebtPayments && alloc.requiredDebtPayments.items) || [];
   const q1 = question(rendered, '01');
   const q2 = question(rendered, '02');
-  const q3 = question(rendered, '03');
   const q4 = question(rendered, '04');
   const q5 = question(rendered, '05');
   const q6 = question(rendered, '06');
+  const q8 = question(rendered, '08');
 
   ok(action && action.mode === 'between-paydays',
     'the dated opening is between paydays, so current-period details stay folded');
   ok(/data-payday-cash/.test(q1) && /Current Balance\. Not credit\./.test(q1),
     'Q1 is Current Balance, not credit');
-  ok(/data-payday-period-bills/.test(q2),
-    'Q2 publishes bills this pay period');
-  ok(/data-running-leftover/.test(q3),
-    'Q3 publishes Forecast leftover after bills');
-  ok(/data-payday-household-budget/.test(q4) || /Household budget/.test(q4),
-    'Q4 publishes household budget');
+  ok(/data-payday-period-bills/.test(q4),
+    'Q4 publishes bills this pay period');
+  ok(/data-running-leftover/.test(q5),
+    'Q5 publishes leftover after remaining bills');
+  ok(/data-payday-household-budget/.test(q6) || /Household budget/.test(q6),
+    'Q6 publishes household budget');
   ok(/data-payday-decision/.test(rendered) && /data-allocation-available/.test(rendered),
     'the incumbent payday allocation remains available in the allocation disclosure');
   ok(/data-current-period-action/.test(rendered) && !/data-current-period-action/.test(q6),
@@ -267,14 +274,14 @@ console.log('\n=== composed surface: cash, identity, debt, protection, limits ==
   ok(/See later bills and big purchases/.test(rendered),
     'later bills stay behind disclosure');
   for (const item of requiredItems) {
-    ok(q2.includes(item.label) && q2.includes(composer.money2(item.amount)),
-      `Q2 required debt ${item.id} is the Forecast required item, not extra principal`);
+    ok(q4.includes(item.label) && q4.includes(composer.money2(item.amount)),
+      `Q4 required debt ${item.id} is the Forecast required item, not extra principal`);
     if (item.confidence === 'estimated') {
-      ok(/about /.test(q2),
-        `Q2 marks estimated ${item.id} as about`);
+      ok(/about /.test(q4),
+        `Q4 marks estimated ${item.id} as about`);
     }
-    ok(!/unverified/.test(q2),
-      `Q2 does not print settlement code words for ${item.id}`);
+    ok(!/unverified/.test(q4),
+      `Q4 does not print settlement code words for ${item.id}`);
   }
   ok(requiredItems.length >= 1,
     'Forecast still exposes requiredDebtPayments separately from extra principal');
@@ -283,12 +290,12 @@ console.log('\n=== composed surface: cash, identity, debt, protection, limits ==
     || (extraLine && near(extraLine.amount, extraAllocated)),
     'zero extra principal adds no extra-debt line; a positive extra line equals Forecast.extraDebt.allocated');
   if (extraAllocated === 0) {
-    ok(/data-operating-question="05"/.test(rendered)
+    ok(/data-operating-question="07"/.test(rendered)
       && !/Pay extra/.test(rendered)
       && !/Extra debt money this payday goes to/.test(rendered),
     '$0 extra-debt allocation does not print a pay-extra instruction');
   } else {
-    ok((q6.includes(composer.money2(alloc.extraDebt.allocated))
+    ok((q8.includes(composer.money2(alloc.extraDebt.allocated))
         || rendered.includes(composer.money2(alloc.extraDebt.allocated)))
       && alloc.extraDebt.target && rendered.includes(alloc.extraDebt.target.label),
     'positive extra principal names the Forecast-authorized target and amount');
@@ -298,7 +305,7 @@ console.log('\n=== composed surface: cash, identity, debt, protection, limits ==
     && plan.nextDollar.target == null,
   'debt target comes from Forecast.debtPriority plus recorded owner policy, not a stored rank');
   if (extraAllocated > 0) {
-    ok(q6.includes(priority.target.label) || rendered.includes(priority.target.label),
+    ok(q8.includes(priority.target.label) || rendered.includes(priority.target.label),
       'extra on the cards names the Forecast/owner-policy target');
   }
   const coverage = composer.paydayCoverageNote(action);
@@ -320,23 +327,23 @@ console.log('\n=== $0 extra-debt allocation does not erase required debt ===');
     'the incumbent result still has requiredDebtPayments to preserve');
   const zeroAdvice = JSON.parse(JSON.stringify(advice));
   zeroAdvice.paydayAllocation.extraDebt.allocated = 0;
-  const q2 = question(composer.operatingSurfaceHtml({
-    advice: zeroAdvice, weekly: zeroAdvice.weekly, recommended: zeroAdvice.weekly,
-  }), '02');
   const q4 = question(composer.operatingSurfaceHtml({
     advice: zeroAdvice, weekly: zeroAdvice.weekly, recommended: zeroAdvice.weekly,
   }), '04');
+  const q6 = question(composer.operatingSurfaceHtml({
+    advice: zeroAdvice, weekly: zeroAdvice.weekly, recommended: zeroAdvice.weekly,
+  }), '06');
   for (const item of required) {
-    ok(q2.includes(item.label) && q2.includes(composer.money2(item.amount)),
+    ok(q4.includes(item.label) && q4.includes(composer.money2(item.amount)),
       `$0 extra principal still publishes required debt ${item.id}`);
   }
-  ok(!q4.includes('No extra debt this payday.'),
+  ok(!q6.includes('No extra debt this payday.'),
   '$0 extra-debt allocation does not replace household budget');
-  ok(!/Pay extra/.test(q4)
-    && !/Extra debt money this payday goes to/.test(q4),
+  ok(!/Pay extra/.test(q6)
+    && !/Extra debt money this payday goes to/.test(q6),
   '$0 extra-debt allocation implies no extra-principal payment');
-  ok(!/Nothing else has to leave this payday/.test(q2)
-    && /data-payday-period-bills/.test(q2),
+  ok(!/Nothing else has to leave this payday/.test(q4)
+    && /data-payday-period-bills/.test(q4),
   '$0 extra principal leaves this-period bills visible');
 }
 
@@ -356,16 +363,19 @@ console.log('\n=== payday mode still uses the ordered allocation sheet ===');
   const q1 = question(html, '01');
   const q4 = question(html, '04');
   const q6 = question(html, '06');
+  const q8 = question(html, '08');
   ok(/data-payday-cash/.test(q1) && !/data-allocation-available/.test(q1),
     'payday-mode Q1 stays Current Balance, not the allocation sheet');
-  ok(/data-payday-household-budget/.test(q4) || /Household budget/.test(q4),
-    'payday-mode Q4 is household budget');
-  ok(/data-payday-first-card/.test(q6) && /data-allocation-available/.test(html),
+  ok(/data-payday-period-bills/.test(q4),
+    'payday-mode Q4 is bills');
+  ok(/data-payday-household-budget/.test(q6) || /Household budget/.test(q6),
+    'payday-mode Q6 is household budget');
+  ok(/data-payday-first-card/.test(q8) && /data-allocation-available/.test(html),
     'a payday-mode result still renders the first card and keeps the ordered allocation sheet');
   ok(/Current Balance/.test(html) && /Household budget/.test(html)
     && />Bills</.test(html)
-    && /Credit card to pay off first/.test(html),
-  'payday mode still answers Current Balance, bills, budget, and first card');
+    && /Extra credit-card repayment/.test(html),
+  'payday mode still answers Current Balance, bills, budget, and extra repayment');
 }
 
 console.log('\n=== live overlay cannot be authorized from committed git state ===');

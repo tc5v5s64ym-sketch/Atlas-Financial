@@ -74,6 +74,13 @@ function loadComposer() {
     grab(planSrc, /^function extraDebtGlanceHtml\([\s\S]*?\n\}$/m, 'extraDebtGlanceHtml'),
     grab(planSrc, /^function runningLeftoverHtml\([\s\S]*?\n\}$/m, 'runningLeftoverHtml'),
     grab(planSrc, /^function periodBillLine\([\s\S]*?\n\}$/m, 'periodBillLine'),
+    grab(planSrc, /^function calendarIncomeHtml\([\s\S]*?\n\}$/m, 'calendarIncomeHtml'),
+    grab(planSrc, /^function calendarBudgetHtml\([\s\S]*?\n\}$/m, 'calendarBudgetHtml'),
+    grab(planSrc, /^function calendarPeriodBillsHtml\([\s\S]*?\n\}$/m, 'calendarPeriodBillsHtml'),
+    grab(planSrc, /^function extraRepaymentHtml\([\s\S]*?\n\}$/m, 'extraRepaymentHtml'),
+    grab(planSrc, /^function calendarWaterfallHtml\([\s\S]*?\n\}$/m, 'calendarWaterfallHtml'),
+    grab(planSrc, /^function calendarPickerHtml\([\s\S]*?\n\}$/m, 'calendarPickerHtml'),
+    grab(planSrc, /^function calendarWaterfallsHtml\([\s\S]*?\n\}$/m, 'calendarWaterfallsHtml'),
     grab(planSrc, /^function periodBillsHtml\([\s\S]*?\n\}$/m, 'periodBillsHtml'),
     grab(planSrc, /^function householdBudgetHtml\([\s\S]*?\n\}$/m, 'householdBudgetHtml'),
     grab(planSrc, /^function budgetDigestHtml\([\s\S]*?\n\}$/m, 'budgetDigestHtml'),
@@ -272,15 +279,16 @@ console.log('\n=== 2. default view order and kitchen-counter labels ===');
   const glance = defaultGlance(html);
   const prompts = [
     'Current Balance',
+    'Income',
+    'Available balance',
     'Bills',
-    'Balance after bills',
+    'Balance after remaining bills',
     'Household budget',
     'Balance after household budget',
-    'Credit card to pay off first',
-    'Other credit cards',
+    'Extra credit-card repayment',
     'Balance after debt repayment',
-    'Big purchases on the horizon',
-    'Balance after big purchase allocation',
+    'Big-purchase savings',
+    'Projected ending balance',
   ];
   let previous = -1;
   for (const prompt of prompts) {
@@ -288,8 +296,8 @@ console.log('\n=== 2. default view order and kitchen-counter labels ===');
     ok(at > previous, `${prompt} appears on the default view in order`);
     previous = at;
   }
-  ok((html.match(/data-operating-question=/g) || []).length === 10,
-    'the default surface has the ten layout questions');
+  ok((html.match(/data-operating-question=/g) || []).length === 11,
+    'the default surface has the eleven waterfall questions');
   ok(/Current Balance\. Not credit/.test(glance) && !/leftover cash/i.test(glance)
       && !/current cash flow/i.test(glance),
     'cash is labelled Current Balance, not leftover or current cash flow');
@@ -320,9 +328,10 @@ console.log('\n=== 3. bills this pay period: paid stay listed, history stays off
     'paid bills print PAID rather than being hidden');
   ok(/TD account fees \(two accounts\) · Aug 30 · still due/.test(glance),
     'later-in-month bills stay still due');
-  ok(!/Canada child benefit/.test(glance)
-      && !/Rogers/.test(glance) && !/CMAW/.test(glance),
-    'glance does not invent bills or print income as a bill');
+  ok(/Canada child benefit/.test(glance),
+    'income prints in the income block, not as a bill row');
+  ok(!/Rogers/.test(glance) && !/CMAW/.test(glance),
+    'glance does not invent bills');
   ok(glance.includes('−' + composer.money2(MORTGAGE)),
     'bill movements print money out as −');
 }
@@ -365,11 +374,14 @@ console.log('\n=== 5. first card is revolving extra; HELOC stays off the card li
   const glance = defaultGlance(html);
   ok(/Synthetic high card/.test(glance) && /Synthetic other card/.test(glance),
     'card labels print on the default view');
-  const q6 = glance.slice(glance.indexOf('Credit card to pay off first'),
-    glance.indexOf('Other credit cards'));
-  const q7 = glance.slice(glance.indexOf('Other credit cards'),
-    glance.indexOf('Balance after debt repayment'));
-  ok(!/HELOC/.test(q6) && !/HELOC/.test(q7) && !/>Mortgage</.test(q7),
+  const extraRepay = glance.slice(glance.indexOf('Extra credit-card repayment'));
+  const otherCards = extraRepay.slice(extraRepay.indexOf('Other credit cards'));
+  ok(/data-card-id="cashback"/.test(extraRepay) || /data-first-card="cashback"/.test(extraRepay),
+    'extra repayment names the priority revolving card');
+  ok(!otherCards.includes('data-card-id="cashback"'),
+    'the priority card is not listed again under other cards');
+  ok(!/HELOC/.test(extraRepay.slice(0, extraRepay.indexOf('Balance after debt repayment')))
+      && !/>Mortgage</.test(otherCards),
     'HELOC and mortgage are not listed as credit cards');
 }
 
@@ -389,8 +401,10 @@ console.log('\n=== 6. big purchases print Forecast cost and $0 saved; page does 
   const html = composer.operatingSurfaceHtml({
     advice, weekly: advice.weekly, recommended: advice.weekly,
   });
-  ok(defaultGlance(html).includes(composer.money2(advice.defaultView.afterBills)),
-    'balance after bills prints the Forecast leftover');
+  ok(defaultGlance(html).includes(composer.money2(
+    (advice.defaultView.calendarPeriods.find(p => p.role === 'active')
+      || advice.defaultView.calendarPeriods[0]).afterRemainingBills)),
+    'balance after remaining bills prints the Forecast leftover');
 }
 
 if (failures) {
