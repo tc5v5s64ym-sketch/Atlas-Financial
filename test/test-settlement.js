@@ -10,6 +10,7 @@
  * second call to expandEvents or simulate.
  */
 const fs = require('fs');
+const path = require('path');
 const crypto = require('crypto');
 const { execFileSync } = require('child_process');
 const F = require('../public/forecast.js');
@@ -306,7 +307,7 @@ console.log('\n=== snapshot-equivalent budgetBreakdown follows settlement timing
   ok(!(onDay.sinkingItems || []).some(s => s.label === 'Fusion camp (synthetic)'),
     'B. budgetBreakdown asOf 2026-08-14 excludes the camp from sinking');
 
-  const snapSrc = fs.readFileSync(require('path').join(__dirname, 'scripts', 'figures-snapshot.js'), 'utf8');
+  const snapSrc = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'figures-snapshot.js'), 'utf8');
   ok(/F\.budgetBreakdown\(plan, periods, \{[\s\S]*?\basOf\b/.test(snapSrc),
     'C. figures-snapshot.js passes its canonical asOf into budgetBreakdown');
 

@@ -16,6 +16,7 @@
  * not a second call to expandEvents or simulate.
  */
 const fs = require('fs');
+const path = require('path');
 const crypto = require('crypto');
 const { execFileSync } = require('child_process');
 const F = require('../public/forecast.js');
@@ -693,7 +694,7 @@ console.log('\n=== circular transfer observation is not copied canonical evidenc
 console.log('\n=== 8. reconciliation performs no writes ===');
 {
   const before = hashFile(R.DEFAULT_DATA);
-  const src = fs.readFileSync(require('path').join(__dirname, 'scripts', 'reconcile.js'), 'utf8');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'reconcile.js'), 'utf8');
   ok(!/writeFileSync?\s*\(\s*DEFAULT_DATA/.test(src),
     'reconcile.js source does not write DEFAULT_DATA');
   ok(!/writeFileSync?\s*\([^)]*data\.json/.test(src),
@@ -782,7 +783,7 @@ console.log('\n=== 8. reconciliation performs no writes ===');
 
 console.log('\n=== Forecast.expandEvents remains the household-cash authority ===');
 {
-  const src = fs.readFileSync(require('path').join(__dirname, 'public', 'forecast.js'), 'utf8');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'forecast.js'), 'utf8');
   ok(/function expandEvents\(plan, start, end, opts\)/.test(src),
     'expandEvents is still the Plan schedule expander');
   ok(!/function expandAmanda|amandaLedger|amandaPayrollEngine/.test(src),

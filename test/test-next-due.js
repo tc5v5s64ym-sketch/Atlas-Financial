@@ -9,6 +9,7 @@
  * different question.
  */
 const fs = require('fs');
+const path = require('path');
 const { execFileSync } = require('child_process');
 const F = require('../public/forecast.js');
 const data = require('../data.json');

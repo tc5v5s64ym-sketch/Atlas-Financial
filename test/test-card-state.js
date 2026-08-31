@@ -10,6 +10,7 @@
  * That is not a second call to Forecast.openingBalance or utilisation.
  */
 const fs = require('fs');
+const path = require('path');
 const crypto = require('crypto');
 const { execFileSync } = require('child_process');
 const F = require('../public/forecast.js');
@@ -407,7 +408,7 @@ console.log('\n=== 8. same-time contradictions are CONFLICT, not a guessed ident
 
 console.log('\n=== 9. live Forecast still keeps posted and pending distinct ===');
 {
-  const forecastHash = hashFile(require('path').join(__dirname, 'public', 'forecast.js'));
+  const forecastHash = hashFile(path.join(__dirname, '..', 'public', 'forecast.js'));
   const dataHash = hashFile(R.DEFAULT_DATA);
   const travel = live.debts.find(d => d.id === 'travelvisa');
   const cashback = live.debts.find(d => d.id === 'cashback');
@@ -430,7 +431,7 @@ console.log('\n=== 9. live Forecast still keeps posted and pending distinct ==='
       && near(cashRow.available, Math.max(0, cashRow.limit - cashRow.used)),
       'known Cash Back pending publishes utilisation available from posted+pending');
   }
-  ok(hashFile(require('path').join(__dirname, 'public', 'forecast.js')) === forecastHash,
+  ok(hashFile(path.join(__dirname, '..', 'public', 'forecast.js')) === forecastHash,
     'this suite does not rewrite forecast.js');
   ok(hashFile(R.DEFAULT_DATA) === dataHash, 'this suite does not rewrite data.json');
 }
@@ -438,7 +439,7 @@ console.log('\n=== 9. live Forecast still keeps posted and pending distinct ==='
 console.log('\n=== 10. reconciler performs no writes ===');
 {
   const before = hashFile(R.DEFAULT_DATA);
-  const src = fs.readFileSync(require('path').join(__dirname, 'scripts', 'reconcile.js'), 'utf8');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'reconcile.js'), 'utf8');
   ok(!/writeFileSync?\s*\(\s*DEFAULT_DATA/.test(src),
     'reconcile.js source does not write DEFAULT_DATA');
   ok(!/writeFileSync?\s*\([^)]*data\.json/.test(src),

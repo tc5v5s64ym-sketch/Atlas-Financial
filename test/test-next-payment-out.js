@@ -10,6 +10,7 @@
  * left npm test green.
  */
 const fs = require('fs');
+const path = require('path');
 const vm = require('vm');
 const { execFileSync } = require('child_process');
 const { sourceText } = require('./test-source-text');

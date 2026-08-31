@@ -10,6 +10,7 @@
  * to expandEvents or simulate.
  */
 const fs = require('fs');
+const path = require('path');
 const crypto = require('crypto');
 const { execFileSync } = require('child_process');
 const F = require('../public/forecast.js');
@@ -384,7 +385,7 @@ console.log('\n=== G. reconciliation remains non-writing ===');
 
 console.log('\n=== Plan calendar and 14-day agenda: external vs cash outflow ===');
 {
-  const planSrc = fs.readFileSync(require('path').join(__dirname, 'public', 'plan.js'), 'utf8');
+  const planSrc = fs.readFileSync(path.join(__dirname, '..', 'public', 'plan.js'), 'utf8');
   const evHtml = /const evHtml = e => \{([\s\S]*?)\n  \};/.exec(planSrc);
   ok(!!evHtml, 'calendar evHtml helper is mechanically readable');
   const evBody = evHtml ? evHtml[1] : '';
@@ -425,7 +426,7 @@ console.log('\n=== Plan calendar and 14-day agenda: external vs cash outflow ===
 
 console.log('\n=== Deep Dive dated list: outflow vs external vs nonCash ===');
 {
-  const src = fs.readFileSync(require('path').join(__dirname, 'public', 'deepdive.js'), 'utf8');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'deepdive.js'), 'utf8');
   const dated = /const datedRows = dated\.map\(e => \{([\s\S]*?)\}\);/.exec(src);
   ok(!!dated, 'Deep Dive dated-row renderer is mechanically readable');
   const body = dated ? dated[1] : '';
@@ -503,7 +504,7 @@ console.log('\n=== paying-account report: one, shared, and conflicting payers ==
 
 console.log('\n=== H. Forecast.expandEvents remains the schedule authority ===');
 {
-  const src = fs.readFileSync(require('path').join(__dirname, 'public', 'forecast.js'), 'utf8');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'forecast.js'), 'utf8');
   ok(/function expandEvents\(plan, start, end, opts\)/.test(src),
     'expandEvents is still the Plan schedule expander');
   ok(/billAffectsJointCash\(b, plan\)/.test(src)
@@ -511,7 +512,7 @@ console.log('\n=== H. Forecast.expandEvents remains the schedule authority ===')
     'Hydro semantics are applied inside expandEvents, not a second calendar');
   ok(!/function expandHydro|hydroCalendar|utilityLedger/.test(src),
     'no second Hydro expander, calendar, or ledger was added');
-  const ics = fs.readFileSync(require('path').join(__dirname, 'scripts', 'calendar-ics.js'), 'utf8');
+  const ics = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'calendar-ics.js'), 'utf8');
   ok(/Forecast\.expandEvents/.test(ics),
     'the household calendar still derives from Forecast.expandEvents');
 }
