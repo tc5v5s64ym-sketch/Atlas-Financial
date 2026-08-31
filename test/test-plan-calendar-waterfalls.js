@@ -98,6 +98,7 @@ function loadComposer() {
     grab(planSrc, /^function otherCardsHtml\([\s\S]*?\n\}$/m, 'otherCardsHtml'),
     grab(planSrc, /^function bigPurchasesHtml\([\s\S]*?\n\}$/m, 'bigPurchasesHtml'),
     grab(planSrc, /^function paydayAllocationSummaryHtml\([\s\S]*?\n\}$/m, 'paydayAllocationSummaryHtml'),
+    grab(planSrc, /^function unavailableOperatingSurfaceHtml\([\s\S]*?\n\}$/m, 'unavailableOperatingSurfaceHtml'),
     grab(planSrc, /^function operatingSurfaceHtml\([\s\S]*?\n\}$/m, 'operatingSurfaceHtml'),
   ].join('\n');
   return vm.runInNewContext(
@@ -1679,12 +1680,16 @@ console.log('\n=== 18. unavailable current half fail-closes the dependent later 
     recommended: unavailable.weekly,
     planCalendarShow: 'calendar-16-end',
   });
-  ok(/data-calendar-waterfall="calendar-16-end"/.test(unHtml)
+  ok(/data-unavailable-primary/.test(unHtml)
+      && /data-current-operating="unavailable"/.test(unHtml)
       && /data-operating-plan="unavailable"/.test(unHtml)
-      && /data-current-waterfall="unavailable"/.test(unHtml)
       && /unavailable/.test(unHtml)
       && /stale/.test(unHtml),
-    'printed later half is explicit unavailable/stale, not a normal future waterfall');
+    'printed unavailable Plan surface is one compact unavailable/stale state');
+  ok(!/data-calendar-waterfall/.test(unHtml)
+      && !/data-calendar-period-picker/.test(unHtml)
+      && !/Current Balance/.test(unHtml),
+    'printed unavailable Plan surface does not render the current pay-period waterfall');
   ok(!/arriving/.test(unHtml)
       && !/Still arriving/.test(unHtml)
       && !/data-income-status="arriving"/.test(unHtml)
@@ -1693,10 +1698,10 @@ console.log('\n=== 18. unavailable current half fail-closes the dependent later 
       && !/Netflix/.test(unHtml)
       && !/planned this period/.test(unHtml)
       && !/Spending cycle:/.test(unHtml),
-    'printed later half does not list arriving income, Netflix, or Household Budget planned dollars');
+    'printed unavailable Plan surface does not list arriving income, Netflix, or Household Budget planned dollars');
   ok(!unHtml.includes(composer.money2(laterIncomeSum))
       && !unHtml.includes(composer.money2(netflix.amount)),
-    'printed later half does not publish the independent later-half income total or Netflix amount');
+    'printed unavailable Plan surface does not publish the independent later-half income total or Netflix amount');
 
   const trusted = F.recommend(plan, openingAsOf, { targetBuffer: 500, debts });
   const liveP1 = period(trusted.defaultView, 'calendar-1-15');
