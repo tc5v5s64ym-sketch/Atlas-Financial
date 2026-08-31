@@ -180,8 +180,10 @@ without the owner-verified account-id map.
 **Captured (broader than the old 11-account / 4,222-transaction picture):**
 `data.json` `meta` currently records TD (15 accounts) · Triangle Mastercard ·
 MBNA · PayPal ×2 · Wise ×2; 4,762 transactions; 48 statements. Mortgage and
-HELOC terms are in. MBNA is captured. Affirm/Flexiti is owner-confirmed paid
-off and closed. A live Lunch Money observation pull ran on 2026-08-16; that
+HELOC terms are in. MBNA is captured. Flexiti is owner-confirmed closed
+(2026-08-31): nothing remaining to pay. Affirm is a different obligation
+with one final $32.53 payment due 2026-09-21, not closed. A live Lunch Money
+observation pull ran on 2026-08-16; that
 pull stays out of git.
 
 **Known major future costs already have one Plan home** (`B95` / PR #82):

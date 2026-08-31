@@ -387,7 +387,8 @@ conclusion may be reopened. Do not invent such a transaction now.
 
 ### Q4. What are the balances and rates on the remaining non-TD debts? — ANSWERED 2026-08-16
 **Status:** ANSWERED · **Owner:** Dale + Amanda
-**Answer:** Triangle, MBNA, and Affirm/Flexiti are no longer unknown.
+**Answer:** Triangle, MBNA, Affirm, and Flexiti are no longer unknown. Affirm
+and Flexiti are different accounts and must not be combined.
 
 Triangle (current canonical Forecast opening is 2026-08-19): posted
 **$13,495.32**, pending **$0.00**, limit $13,500. Available credit is
@@ -405,8 +406,9 @@ $7,855.12, minimum **$158.27**, due **2026-08-31**, purchase APR **21.74%**,
 cash advance / BT APR **22.99%**, statement interest $148.27. Do not round a
 dated opening back to the statement amount.
 
-Affirm/Flexiti is not yet closed. Owner correction 2026-08-23: one final
-**$32.53 payment is due 2026-09-21**, with no recurrence after it. Forecast
+Flexiti is closed (owner-confirmed 2026-08-31): nothing remaining to pay. Affirm
+is not Flexiti and is not closed. Owner 2026-08-23, reconfirmed 2026-08-31: one
+final **$32.53 payment is due 2026-09-21**, with no recurrence after it. Forecast
 schedules that cash obligation once. The current contractual balance and rate
 remain unverified and are not invented from the payment amount.
 
