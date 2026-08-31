@@ -1965,14 +1965,9 @@
       if (!c || c.class !== 'essential') continue;
       let amount = 0;
       let source = null;
-      if (c.plannedWeekly != null) {
-        amount = Number(c.plannedWeekly) * CALENDAR_MONTH_DAYS / 7;
-        source = 'owner-target';
-      } else if (c.plannedPayday != null) {
-        amount = Number(c.plannedPayday) * CALENDAR_MONTH_DAYS / 14;
-        source = 'owner-target';
-      } else if (c.plannedMonthly != null) {
-        amount = Number(c.plannedMonthly) || 0;
+      const targetMonthly = ownerTargetMonthly(c);
+      if (targetMonthly != null) {
+        amount = targetMonthly;
         source = 'owner-target';
       } else if (c.currentMonthly != null) {
         amount = Number(c.currentMonthly) || 0;
@@ -3806,19 +3801,6 @@
     return 'future';
   }
 
-  // Named calendar halves of one as-of month share that month's owner
-  // target. Equal split: Period 1 is roundCent(monthly / 2); leftover
-  // cents sit on Period 2 so the two sides add back to plannedMonthly.
-  // This is not 15/daysInMonth and not payday CALENDAR_MONTH_DAYS
-  // leftover-hold math. Groceries are the exception: they use plannedWeekly
-  // × daysInThatHalf / 7, with leftover cents on Period 2 so P1+P2 equals
-  // roundCent(weekly × daysInMonth / 7).
-  function calendarHalfPlanned(monthly, half) {
-    const first = roundCent(Number(monthly) / 2);
-    if (half === 1) return first;
-    return roundCent(Number(monthly) - first);
-  }
-
   function ownerTargetMonthly(cat) {
     if (!cat) return null;
     if (cat.plannedWeekly != null) {
@@ -3831,21 +3813,18 @@
     return null;
   }
 
+  // 14-day Seaspan-cycle planned amount from the declared cadence. Monthly
+  // targets use the same calendar month as ownerTargetMonthly
+  // (365.25/12), not monthly/2. Halving would make $300/month × 26 =
+  // $3,900/year instead of $3,600.
   function paydayCyclePlanned(cat) {
     if (!cat) return null;
     if (cat.plannedWeekly != null) return roundCent(Number(cat.plannedWeekly) * 2);
     if (cat.plannedPayday != null) return roundCent(Number(cat.plannedPayday) || 0);
-    if (cat.plannedMonthly != null) return calendarHalfPlanned(Number(cat.plannedMonthly) || 0, 1);
+    if (cat.plannedMonthly != null) {
+      return roundCent(Number(cat.plannedMonthly) * 14 / CALENDAR_MONTH_DAYS);
+    }
     return null;
-  }
-
-  function calendarWeeklyHalfPlanned(weekly, half, daysInMonth) {
-    const rate = Number(weekly) || 0;
-    const dim = Number(daysInMonth) || 0;
-    const monthly = roundCent(rate * dim / 7);
-    const p1 = roundCent(rate * 15 / 7);
-    if (half === 1) return p1;
-    return roundCent(monthly - p1);
   }
 
   function calendarHalfThrough(asOf, end) {
@@ -6003,11 +5982,7 @@
       // services outrank a blended historical average. The household's
       // next 90 days are better described by what it intends to spend,
       // then by what it currently pays, than by the last eighteen months.
-      const target = c.plannedWeekly != null
-        ? roundCent(Number(c.plannedWeekly) * CALENDAR_MONTH_DAYS / 7)
-        : (c.plannedPayday != null
-          ? roundCent(Number(c.plannedPayday) * CALENDAR_MONTH_DAYS / 14)
-          : (c.plannedMonthly != null ? c.plannedMonthly : null));
+      const target = ownerTargetMonthly(c);
       // currentMonthly is the undated current-regime amount — services
       // already on the calendar stay in dated and are not added again.
       // simulate() reserves that amount as daily cash, so it is accounted

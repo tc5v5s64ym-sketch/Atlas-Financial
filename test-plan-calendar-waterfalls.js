@@ -1530,6 +1530,59 @@ console.log('\n=== 16. payday cadence annualizes with the master plan; week view
     `${paydayWeeks} payday / ${otherWeeks} other`);
 }
 
+console.log('\n=== 17. a monthly-backed payday row stays $3,600/year, not $3,900 ===');
+{
+  const MONTH_DAYS = 365.25 / 12;
+  const monthly = 300;
+  const independentAnnual = monthly * 12;
+  const independentPayday = roundCent(monthly * 14 / MONTH_DAYS);
+  const naiveHalf = 150;
+  const naiveBiweeklyAnnual = naiveHalf * 26;
+  ok(independentAnnual === 3600, 'independent $300/month annual is $3,600');
+  ok(naiveBiweeklyAnnual === 3900, 'halving then ×26 would be $3,900 — the defect');
+  ok(Math.abs((monthly * 14 / MONTH_DAYS) * (365.25 / 14) - independentAnnual) < 1e-9,
+    'unrounded calendar 14-day × 365.25/14 equals monthly × 12');
+  ok(!near(independentPayday, naiveHalf),
+    'calendar 14-day equivalent of $300/month is not $150',
+    String(independentPayday));
+
+  const plan = syntheticPlan();
+  plan.budget.categories = plan.budget.categories.map(c =>
+    c.id === 'restaurants'
+      ? {
+        id: 'restaurants', label: 'Dining', class: 'discretionary',
+        plannedMonthly: monthly, plannedPayday: null, ownerLine: 'Eating out',
+      }
+      : c);
+
+  const bd = F.budgetBreakdown(plan, {
+    asOf: '2026-08-30',
+    periods: { ytd: { label: 'YTD', months: 8, spending: [] } },
+  }, {});
+  const rest = (bd.categories || []).find(c => c.id === 'restaurants');
+  ok(rest && near(rest.target, monthly) && near(rest.target * 12, independentAnnual),
+    'master Forecast annual of a $300/month target is $3,600, not $3,900',
+    rest && `${rest.target} × 12 = ${roundCent(rest.target * 12)}`);
+  ok(rest && !near(rest.target * 12, naiveBiweeklyAnnual),
+    'Forecast annual is not 26 × $150');
+
+  const asOf = '2026-08-30';
+  const view = F.recommend(plan, asOf, { targetBuffer: 500, debts }).defaultView;
+  const p2 = period(view, 'calendar-16-end');
+  const row = budgetRow(p2, 'restaurants');
+  ok(row && near(row.planned, independentPayday) && !near(row.planned, naiveHalf),
+    'payday-cycle planned for $300/month uses the calendar identity, not half',
+    row && String(row.planned));
+  const naiveCycleAnnual = roundCent((Number(row && row.planned) || 0) * 26);
+  ok(row && !near(naiveCycleAnnual, independentAnnual)
+      && near(rest.target * 12, independentAnnual),
+    '26 × payday-cycle planned is not the Forecast annual; monthly × 12 is');
+  ok(row && near(Number(row.planned) * (365.25 / 14), independentAnnual, 2)
+      && !near(Number(row.planned) * 26, independentAnnual, 2),
+    'calendar-annualized payday planned is ~$3,600/year, not $3,900',
+    row && String(roundCent(Number(row.planned) * (365.25 / 14))));
+}
+
 if (failures) {
   console.error(`\n${failures} CHECK(S) FAILED`);
   process.exit(1);
