@@ -1964,12 +1964,13 @@ console.log('\n=== 20. same-day inbound fail-closed does not publish a stale cyc
     weekly: trustedAdvice.weekly,
     liveOverlay: trustedServed.liveOverlay,
   });
-  ok(/Money available/.test(trustedPayday)
-      && /What to do with this paycheque/.test(trustedPayday)
-      && /payday-hero/.test(trustedPayday)
+  ok(!/data-current-operating="unavailable"/.test(trustedPayday)
       && /\$/.test(trustedPayday)
-      && !/data-current-operating="unavailable"/.test(trustedPayday),
-    'trusted control paydayAnswerHtml still publishes current Money available and paycheque action');
+      && (/What to do now/.test(trustedPayday)
+          || /Money available/.test(trustedPayday))
+      && /Household spending permission/.test(trustedPayday)
+      && /payday-hero/.test(trustedPayday),
+    'trusted control paydayAnswerHtml still publishes a current operating answer');
   const trustedHero = browser.currentOperatingCashHeroTiles(
     trustedServed.plan,
     trustedServed.meta.asOf,
