@@ -755,7 +755,6 @@
                         "Health"
                     ],
                     "plannedMonthly": null,
-                    "targetSource": "retired-2026-08-31",
                     "why": "Not a household-budget hold. Owner-locked 2026-08-31: Medical / health is removed from the printed Household Budget. Lunch Money Health actuals still classify here so they are not dumped into Groceries, Fuel, or another planned row. The Aug. 10 $100 monthly target is retired."
                 },
                 {
@@ -833,7 +832,6 @@
                         "Personal"
                     ],
                     "plannedMonthly": null,
-                    "targetSource": "retired-2026-08-31",
                     "why": "Not a household-budget hold. Owner-locked 2026-08-31: combined Personal / shopping is removed from the printed Household Budget. Dale and Amanda guilt-free spending are the owner targets. Lunch Money Shopping/Personal actuals still classify here, then map to Dale or Amanda only with account, payee, note, or tag evidence; unassignable actuals print as needs confirmation with planned and hold $0. Chequing B / WEEKLY SPENDING is not Dale. TENNIS INCOME / amanda-debt-payments is not guilt-free spending. The Aug. 10 $600 Personal target is retired."
                 },
                 {
@@ -874,7 +872,6 @@
                         "Sport & fitness"
                     ],
                     "plannedMonthly": null,
-                    "targetSource": "retired-2026-08-31",
                     "why": "Not a household-budget hold. Owner-locked 2026-08-31: Children & sports is removed from the printed Household Budget. Fit4Less stays a dated bill, not a Household Budget row. Lunch Money Sport & fitness actuals still classify here so they are not dumped into Groceries, Fuel, or another planned row. Fusion/Burrards remain plan.commitments. The Aug. 10 $250 monthly target is retired."
                 },
                 {
@@ -895,7 +892,6 @@
                         "Subscriptions"
                     ],
                     "plannedMonthly": null,
-                    "targetSource": "retired-2026-08-31",
                     "why": "Not a household-budget hold. Owner-locked 2026-08-31: subscriptions appear only as individual Bills rows (amount, scheduled date, paying account, paid/still-due). Deducted once in remaining-bills, never as a household-budget hold. Netflix, Spotify, Google storage, Ultimate Guitar, iCloud, YouTube Premium, ChatGPT Plus Dale, and ChatGPT Plus Amanda stay itemized. Pixieset, Mailchimp, and CMAW stay off. The Aug. 10 $300 monthly target is retired."
                 },
                 {
