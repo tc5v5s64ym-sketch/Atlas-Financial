@@ -344,12 +344,12 @@ function syntheticPlan() {
     budget: {
       categories: [
         { id: 'groceries', label: 'Groceries', class: 'essential', plannedWeekly: 450, plannedMonthly: null, ownerLine: 'Groceries' },
-        { id: 'fuel', label: 'Fuel', class: 'essential', from: ['Fuel', 'Fuel & transport'], plannedMonthly: 650, ownerLine: 'Fuel' },
-        { id: 'household', label: 'Household', class: 'essential', plannedMonthly: 75, ownerLine: 'Household' },
+        { id: 'fuel', label: 'Fuel', class: 'essential', from: ['Fuel', 'Fuel & transport'], plannedPayday: 325, plannedMonthly: null, ownerLine: 'Fuel' },
+        { id: 'household', label: 'Household', class: 'essential', plannedPayday: 37.5, plannedMonthly: null, ownerLine: 'Household' },
         { id: 'pets', label: 'Pets', class: 'essential', plannedPayday: 100, plannedMonthly: null, ownerLine: 'Dog food' },
-        { id: 'restaurants', label: 'Dining', class: 'discretionary', from: ['Restaurants', 'Dining', 'Fast Food', 'Food Delivery'], plannedMonthly: 400, ownerLine: 'Eating out' },
-        { id: 'dale-guilt-free', label: 'Dale guilt-free spending', class: 'discretionary', plannedMonthly: 300, ownerLine: 'Dale guilt-free spending' },
-        { id: 'amanda-guilt-free', label: 'Amanda guilt-free spending', class: 'discretionary', plannedMonthly: 300, ownerLine: 'Amanda guilt-free spending' },
+        { id: 'restaurants', label: 'Dining', class: 'discretionary', from: ['Restaurants', 'Dining', 'Fast Food', 'Food Delivery'], plannedPayday: 200, plannedMonthly: null, ownerLine: 'Eating out' },
+        { id: 'dale-guilt-free', label: 'Dale guilt-free spending', class: 'discretionary', plannedPayday: 150, plannedMonthly: null, ownerLine: 'Dale guilt-free spending' },
+        { id: 'amanda-guilt-free', label: 'Amanda guilt-free spending', class: 'discretionary', plannedPayday: 150, plannedMonthly: null, ownerLine: 'Amanda guilt-free spending' },
         { id: 'shopping', label: 'Shopping', class: 'discretionary', from: ['Shopping', 'Personal'], plannedMonthly: null },
         { id: 'health', label: 'Health', class: 'essential', from: ['Health'], plannedMonthly: null },
         { id: 'sport', label: 'Sport', class: 'discretionary', from: ['Sport & fitness'], plannedMonthly: null },
@@ -1438,6 +1438,96 @@ console.log('\n=== 17. bills block totals: this period vs remaining to pay ===')
     'page prints both bill totals in plain language');
   ok(!/>Remaining bills </.test(html),
     'old remaining-only label is gone');
+}
+
+console.log('\n=== 16. payday cadence annualizes with the master plan; week views stay whole ===');
+{
+  const MONTH = 365.25 / 12;
+  const PAYDAY = {
+    fuel: 325,
+    household: 37.5,
+    pets: 100,
+    restaurants: 200,
+    'dale-guilt-free': 150,
+    'amanda-guilt-free': 150,
+  };
+  for (const [id, payday] of Object.entries(PAYDAY)) {
+    const annualFromCycles = payday * (365.25 / 14);
+    const annualFromMonths = 12 * (payday * MONTH / 14);
+    ok(Math.abs(annualFromCycles - annualFromMonths) < 1e-9,
+      `${id}: 365.25/14 cycles equal 12 calendar-month equivalents`);
+    ok(Math.abs(annualFromCycles - 12 * payday * 2) > 1,
+      `${id}: 24 half-months is not the payday annualization`);
+  }
+
+  const plan = syntheticPlan();
+  const bd = F.budgetBreakdown(plan, {
+    asOf: '2026-08-30',
+    periods: { ytd: { label: 'YTD', months: 8, spending: [] } },
+  }, {});
+  for (const [id, payday] of Object.entries(PAYDAY)) {
+    const cat = (bd.categories || []).find(c => c.id === id);
+    const monthly = Math.round(payday * MONTH / 14 * 100) / 100;
+    ok(cat && near(cat.target, monthly) && !near(cat.target, payday * 2),
+      `${id} master-plan target is payday × calendar-month-days / 14, not 2× payday`,
+      cat && String(cat.target));
+  }
+
+  const asOf = '2026-08-30';
+  const advice = F.recommend(plan, asOf, { targetBuffer: 500, debts });
+  const p2 = period(advice.defaultView, 'calendar-16-end');
+  for (const [id, payday] of Object.entries(PAYDAY)) {
+    const row = budgetRow(p2, id);
+    ok(row && near(row.planned, payday),
+      `${id} cycle planned stays the owner payday amount`,
+      row && String(row.planned));
+  }
+
+  function independentSeaspanDates(start, end) {
+    const out = [];
+    let t = SEASPAN_ANCHOR;
+    while (t > start) t = F.addDays(t, -14);
+    while (t <= end) {
+      if (t >= start) out.push(t);
+      t = F.addDays(t, 14);
+    }
+    return out;
+  }
+
+  const weeks = advice.weekViews || [];
+  ok(weeks.length > 1, 'week views exist to prove discrete payday holds');
+  let paydayWeeks = 0;
+  let otherWeeks = 0;
+  for (const week of weeks) {
+    const n = independentSeaspanDates(week.periodStart, week.periodEnd).length;
+    const pets = (week.householdBudget || []).find(r => r.id === 'pets');
+    const digestPets = ((week.budgetDigest && week.budgetDigest.rows) || [])
+      .find(r => r.id === 'pets');
+    ok(!pets || !near(pets.amount, 50),
+      `week ${week.periodStart} dog-food glance is not the $50 proration`,
+      pets && String(pets.amount));
+    ok(!digestPets || !near(digestPets.planned, 50),
+      `week ${week.periodStart} dog-food digest is not the $50 proration`,
+      digestPets && String(digestPets.planned));
+    if (n > 0) {
+      paydayWeeks += 1;
+      ok(pets && near(pets.amount, 100 * n),
+        `week ${week.periodStart} containing ${n} payday(s) holds whole dog food`,
+        pets && String(pets.amount));
+      ok(digestPets && near(digestPets.planned, 100 * n),
+        `week ${week.periodStart} digest holds whole dog food`,
+        digestPets && String(digestPets.planned));
+    } else {
+      otherWeeks += 1;
+      ok(!pets,
+        `week ${week.periodStart} with no payday omits dog food from the week hold`);
+      ok(!digestPets,
+        `week ${week.periodStart} with no payday omits dog food from the digest`);
+    }
+  }
+  ok(paydayWeeks > 0 && otherWeeks > 0,
+    'proof covers both a payday week and a week with no payday',
+    `${paydayWeeks} payday / ${otherWeeks} other`);
 }
 
 if (failures) {

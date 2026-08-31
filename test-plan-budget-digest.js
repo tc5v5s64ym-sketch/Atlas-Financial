@@ -410,10 +410,12 @@ console.log('\n=== 6. live this-period eating out is not the monthly $ target ==
     periods: { asOf: '2026-08-24', periods: { ytd: { label: 'YTD', months: 1, spending: [] } } },
   });
   const eating = row(advice.defaultView && advice.defaultView.budgetDigest, 'restaurants');
-  ok(monthly && monthly.plannedMonthly != null && eating,
-    'live plan has an eating-out owner target and a digest row');
-  ok(eating && eating.planned !== monthly.plannedMonthly,
-    'live this-period eating out planned is not the unscaled monthly owner target');
+  ok(monthly && monthly.plannedPayday === 200 && monthly.plannedMonthly == null,
+    'live plan has an eating-out plannedPayday 200, not a monthly 400');
+  ok(eating && eating.planned !== 400,
+    'this-period eating out is not the retired $400 monthly figure');
+  ok(eating && (eating.planned === 200 || eating.planned === 0),
+    'this-period eating out is whole-or-not-applicable, not a half-month smear');
 }
 
 if (failures) {

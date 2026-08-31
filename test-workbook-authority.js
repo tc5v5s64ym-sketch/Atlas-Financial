@@ -19,12 +19,12 @@ const ok = (cond, label, detail = '') => {
 };
 
 const OWNER_SOURCE = 'owner-stated-2026-08-31';
-const OWNER_TARGETS = {
-  fuel: 650,
-  household: 75,
-  restaurants: 400,
-  'dale-guilt-free': 300,
-  'amanda-guilt-free': 300,
+const OWNER_PAYDAY_TARGETS = {
+  fuel: 325,
+  household: 37.5,
+  restaurants: 200,
+  'dale-guilt-free': 150,
+  'amanda-guilt-free': 150,
 };
 const GROCERY_WEEKLY = 450;
 const DOG_FOOD_PAYDAY = 100;
@@ -44,11 +44,12 @@ const questions = fs.readFileSync(path.join(__dirname, 'docs', '01_OPEN_QUESTION
 const note = data.plan.budget.ownerTargets.note;
 
 console.log('=== 2026-08-31 owner period table is the live policy ===');
-for (const [id, amount] of Object.entries(OWNER_TARGETS)) {
+for (const [id, amount] of Object.entries(OWNER_PAYDAY_TARGETS)) {
   const c = byId(id);
   ok(!!c, `category ${id} exists`);
-  ok(c && c.plannedMonthly === amount, `${id} plannedMonthly stays $${amount}`,
-    c ? String(c.plannedMonthly) : 'missing');
+  ok(c && c.plannedPayday === amount && c.plannedMonthly == null,
+    `${id} plannedPayday stays $${amount}, not a plannedMonthly half-month encoding`,
+    c ? `${c.plannedPayday} / ${c.plannedMonthly}` : 'missing');
   ok(c && c.targetSource === OWNER_SOURCE,
     `${id} targetSource remains ${OWNER_SOURCE}`,
     c ? String(c.targetSource) : 'missing');
@@ -80,8 +81,9 @@ console.log('\n=== historical / advisory workbook values cannot overwrite that p
 ok(byId('groceries').plannedWeekly === GROCERY_WEEKLY
   && byId('groceries').plannedMonthly !== HISTORICAL_WORKBOOK_MONTHLY.groceries,
   'groceries is $450/week, not the historical workbook ~$1,200/month');
-ok(byId('fuel').plannedMonthly !== HISTORICAL_WORKBOOK_MONTHLY.fuel,
-  'fuel is not the historical workbook ~$400/month');
+ok(byId('fuel').plannedPayday === OWNER_PAYDAY_TARGETS.fuel
+  && byId('fuel').plannedMonthly !== HISTORICAL_WORKBOOK_MONTHLY.fuel,
+  'fuel is $325/payday, not the historical workbook ~$400/month');
 for (const c of cats) {
   if (c.plannedMonthly == null) continue;
   const src = String(c.targetSource || '');
@@ -106,10 +108,14 @@ const budget = F.budgetBreakdown(data.plan, periods, { paypalPerMonth: data.payp
 const groceries = budget.categories.find(c => c.id === 'groceries');
 const fuel = budget.categories.find(c => c.id === 'fuel');
 const groceryMonthly = Math.round(450 * (365.25 / 12) / 7 * 100) / 100;
-ok(groceries && Math.abs(groceries.target - groceryMonthly) < 0.01 && fuel && fuel.target === 650,
-  'engine grocery target is weekly 450 converted to calendar-month monthly; fuel stays $650');
-ok(Math.abs((groceries.planned + fuel.planned) - (groceryMonthly + 650)) < 0.01,
-  'food+fuel requirement is grocery weekly-equivalent plus $650 fuel');
+const fuelMonthly = Math.round(325 * (365.25 / 12) / 14 * 100) / 100;
+ok(groceries && Math.abs(groceries.target - groceryMonthly) < 0.01
+  && fuel && Math.abs(fuel.target - fuelMonthly) < 0.01 && fuel.target !== 650,
+  'engine grocery target is weekly 450 converted to calendar-month monthly; fuel is payday 325 annualized');
+ok(Math.abs((groceries.planned + fuel.planned) - (groceryMonthly + fuelMonthly)) < 0.01,
+  'food+fuel requirement is grocery weekly-equivalent plus payday-annualized fuel');
+ok(Math.abs(325 * (365.25 / 14) - 12 * (325 * (365.25 / 12) / 14)) < 1e-9,
+  'independent: fuel payday cycles and 12 calendar months are the same annual amount');
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
 process.exit(failures === 0 ? 0 : 1);

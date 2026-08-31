@@ -3183,20 +3183,64 @@
     return items;
   }
 
-  function householdBudgetScaled(plan, days) {
+  function seaspanPaydaysInSpan(plan, start, end) {
+    const from = financialDate(start);
+    const to = financialDate(end);
+    if (!from || !to) return [];
+    const stream = seaspanPayroll(plan);
+    const anchor = stream && financialDate(stream.anchor);
+    if (!anchor) return [];
+    return biweeklyDates(anchor, from, to);
+  }
+
+  // Discrete payday targets are whole-or-not-applicable. A 7-day week
+  // never receives half of $100. Missing dates on a non-14-day span
+  // omit the row rather than inventing a prorated half-target.
+  function paydayHoldForSpan(cat, plan, days, start, end) {
+    if (!cat || cat.plannedPayday == null) return null;
+    const payday = roundCent(Number(cat.plannedPayday) || 0);
+    if (start && end) {
+      const n = seaspanPaydaysInSpan(plan, start, end).length;
+      return n > 0 ? roundCent(payday * n) : null;
+    }
+    const d = Math.max(0, Number(days) || 0);
+    return d === 14 ? payday : null;
+  }
+
+  function householdBudgetScaled(plan, days, spanStart, spanEnd) {
     const scale = Math.max(0, Number(days) || 0) / CALENDAR_MONTH_DAYS;
     const items = [];
     for (const cat of (plan && plan.budget && plan.budget.categories) || []) {
       if (!cat || DEFAULT_VIEW_BUDGET_IDS.indexOf(cat.id) < 0) continue;
       const weekly = cat.plannedWeekly != null ? Number(cat.plannedWeekly) : null;
       const monthly = ownerTargetMonthly(cat);
+      if (weekly != null) {
+        items.push({
+          id: cat.id,
+          label: DEFAULT_VIEW_BUDGET_LABELS[cat.id] || cat.ownerLine || cat.label,
+          amount: roundCent(weekly * Math.max(0, Number(days) || 0) / 7),
+          monthly,
+          inEssentialHold: false,
+        });
+        continue;
+      }
+      if (cat.plannedPayday != null) {
+        const amount = paydayHoldForSpan(cat, plan, days, spanStart, spanEnd);
+        if (amount == null) continue;
+        items.push({
+          id: cat.id,
+          label: DEFAULT_VIEW_BUDGET_LABELS[cat.id] || cat.ownerLine || cat.label,
+          amount,
+          monthly,
+          inEssentialHold: false,
+        });
+        continue;
+      }
       if (monthly == null) continue;
       items.push({
         id: cat.id,
         label: DEFAULT_VIEW_BUDGET_LABELS[cat.id] || cat.ownerLine || cat.label,
-        amount: weekly != null
-          ? roundCent(weekly * Math.max(0, Number(days) || 0) / 7)
-          : roundCent(monthly * scale),
+        amount: roundCent(monthly * scale),
         monthly,
         inEssentialHold: false,
       });
@@ -3204,25 +3248,43 @@
     return items;
   }
 
-  // Owner-target hold for a named span: monthly target × span days /
-  // calendar month. Not leftover remaining-cap, not the unscaled monthly
-  // figure, not a second budget engine. Print existing owner-target
-  // categories; Dale/Amanda guilt-free rows are the two owner-target ids.
-  function ownerTargetHoldForSpan(plan, days) {
+  // Owner-target hold for a named span. Weekly targets use days/7.
+  // Payday targets are whole-or-not-applicable on the Seaspan dates in
+  // the span. Monthly targets use days / calendar month. Not leftover
+  // remaining-cap, not a second budget engine.
+  function ownerTargetHoldForSpan(plan, days, spanStart, spanEnd) {
     const scale = Math.max(0, Number(days) || 0) / CALENDAR_MONTH_DAYS;
     const items = [];
     for (const cat of (plan && plan.budget && plan.budget.categories) || []) {
       if (!cat || !cat.id) continue;
       const weekly = cat.plannedWeekly != null ? Number(cat.plannedWeekly) : null;
       const monthly = ownerTargetMonthly(cat);
+      if (weekly != null) {
+        items.push({
+          id: cat.id,
+          label: DEFAULT_VIEW_BUDGET_LABELS[cat.id] || cat.ownerLine || cat.label,
+          monthly,
+          planned: roundCent(weekly * Math.max(0, Number(days) || 0) / 7),
+        });
+        continue;
+      }
+      if (cat.plannedPayday != null) {
+        const planned = paydayHoldForSpan(cat, plan, days, spanStart, spanEnd);
+        if (planned == null) continue;
+        items.push({
+          id: cat.id,
+          label: DEFAULT_VIEW_BUDGET_LABELS[cat.id] || cat.ownerLine || cat.label,
+          monthly,
+          planned,
+        });
+        continue;
+      }
       if (monthly == null) continue;
       items.push({
         id: cat.id,
         label: DEFAULT_VIEW_BUDGET_LABELS[cat.id] || cat.ownerLine || cat.label,
         monthly,
-        planned: weekly != null
-          ? roundCent(weekly * Math.max(0, Number(days) || 0) / 7)
-          : roundCent(monthly * scale),
+        planned: roundCent(monthly * scale),
       });
     }
     return items;
@@ -3248,7 +3310,7 @@
       coverage.remainingClaim, actuals.unclassified);
     const historyAsOf = opts.periods && opts.periods.asOf ? opts.periods.asOf : null;
     const historyStale = !!(historyAsOf && asOf && historyAsOf < asOf);
-    const rows = ownerTargetHoldForSpan(plan, days).map(row => {
+    const rows = ownerTargetHoldForSpan(plan, days, start, end).map(row => {
       const act = categoryCommittedActual(actuals.byId.get(row.id));
       return {
         id: row.id,
@@ -4289,7 +4351,7 @@
     const available = roundCent(opening + incomeOnDate(plan, nextPayday, opts));
     const unpaid = unpaidJointCashInRange(plan, nextPayday, periodLast, opts);
     const days = Math.max(1, diffDays(nextPayday, periodLast) + 1);
-    const householdBudget = householdBudgetScaled(plan, days);
+    const householdBudget = householdBudgetScaled(plan, days, nextPayday, periodLast);
     const leftover = runningLeftoverFromAlloc(
       available, unpaid, budgetAmountTotal(householdBudget), 0, 0);
     return layoutViewFrom(
@@ -4322,7 +4384,7 @@
       ? roundCent(week.opening) : null;
     if (opening == null) return null;
     const unpaid = unpaidJointCashInRange(plan, week.start, week.end, opts);
-    const householdBudget = householdBudgetScaled(plan, 7);
+    const householdBudget = householdBudgetScaled(plan, 7, week.start, week.end);
     const leftover = runningLeftoverFromAlloc(
       opening, unpaid, budgetAmountTotal(householdBudget), 0, 0);
     return layoutViewFrom(

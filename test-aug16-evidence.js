@@ -348,12 +348,13 @@ console.log('\n=== 19. Q20 and Q21 remain unresolved ===');
 console.log('\n=== 2026-08-31 owner budget targets ===');
 {
   const want = {
-    fuel: 650, household: 75, restaurants: 400,
-    'dale-guilt-free': 300, 'amanda-guilt-free': 300,
+    fuel: 325, household: 37.5, restaurants: 200,
+    'dale-guilt-free': 150, 'amanda-guilt-free': 150,
   };
   for (const [id, amt] of Object.entries(want)) {
     const c = plan.budget.categories.find(x => x.id === id);
-    ok(c && near(c.plannedMonthly, amt), `${id} plannedMonthly still ${amt}`);
+    ok(c && near(c.plannedPayday, amt) && c.plannedMonthly == null,
+      `${id} plannedPayday still ${amt}`);
   }
   {
     const g = plan.budget.categories.find(x => x.id === 'groceries');

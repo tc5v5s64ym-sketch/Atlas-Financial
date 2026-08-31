@@ -738,7 +738,10 @@ function independentGroceryRemaining(plan, asOf) {
     const fuel = (action.categories || []).find(row => row.id === 'fuel');
     const fuelCat = ((data.plan.budget && data.plan.budget.categories) || [])
       .find(row => row && row.id === 'fuel');
-    const fuelPlanned = round2(Number(fuelCat.plannedMonthly)
+    const fuelMonthly = fuelCat && fuelCat.plannedPayday != null
+      ? Number(fuelCat.plannedPayday) * MONTH / 14
+      : Number(fuelCat && fuelCat.plannedMonthly);
+    const fuelPlanned = round2(fuelMonthly
       * (Forecast.diffDays(action.periodStart, action.periodEnd) + 1) / MONTH);
     ok(fuel && near(fuel.committed, FUEL_POSTED),
       'fuel committed is the fixture $22.10');

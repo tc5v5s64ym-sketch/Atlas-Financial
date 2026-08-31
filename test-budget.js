@@ -22,6 +22,7 @@ const plan = data.plan;
 const asOf = data.meta.asOf;
 const WEEKS_PER_MONTH = 365.25 / 12 / 7;
 const groceryWeeklyMonthly = Math.round(450 * (365.25 / 12) / 7 * 100) / 100;
+const fuelPaydayMonthly = Math.round(325 * (365.25 / 12) / 14 * 100) / 100;
 const budget = F.budgetBreakdown(plan, periods, { paypalPerMonth: data.paypal.perMonth });
 
 console.log('=== the budget block exists and is wired in ===');
@@ -68,8 +69,8 @@ ok(groceries.planned > 0 && fuel.planned > 0,
   'both carry a positive requirement into the cap',
   `${money(groceries.planned)} + ${money(fuel.planned)}`);
 const foodFuel = groceries.planned + fuel.planned;
-ok(near(foodFuel, groceryWeeklyMonthly + 650), 'groceries weekly-equivalent + fuel $650', money(foodFuel));
-ok(groceries.target != null && fuel.target === 650,
+ok(near(foodFuel, groceryWeeklyMonthly + fuelPaydayMonthly), 'groceries weekly-equivalent + payday-annualized fuel', money(foodFuel));
+ok(groceries.target != null && near(fuel.target, fuelPaydayMonthly) && fuel.target !== 650,
   'and both are the household\'s own figures, not averages',
   `groceries ${money(groceries.target)}, fuel ${money(fuel.target)}`);
 ok(near(groceries.target, groceryWeeklyMonthly),
