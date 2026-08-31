@@ -796,7 +796,11 @@ function paydayGlanceCashNote(alloc, liveOverlay) {
 }
 
 function glanceUpdatedNote(asOf, liveOverlay) {
-  const instant = liveOverlay && (liveOverlay.fetchedAt || liveOverlay.observedAt);
+  const overlayTrusted = !!(liveOverlay && liveOverlay.applied === true
+    && liveOverlay.operatingPlan !== 'unavailable');
+  const instant = overlayTrusted
+    ? (liveOverlay.fetchedAt || liveOverlay.observedAt)
+    : null;
   const tz = (typeof Forecast !== 'undefined' && Forecast.HOUSEHOLD_TIMEZONE)
     ? Forecast.HOUSEHOLD_TIMEZONE : 'America/Vancouver';
   if (instant) {
@@ -1688,7 +1692,18 @@ function periodBillLine(row) {
   </div>`;
 }
 
+function calendarCurrentUnavailableHtml(period) {
+  const note = (period && period.operatingPlanNote)
+    || 'Current plan unavailable. The dated opening is stale.';
+  return `<div data-operating-plan="unavailable" data-current-waterfall="unavailable">
+    <p class="operating-lead">${note}</p>
+  </div>`;
+}
+
 function calendarIncomeHtml(period) {
+  if (period && period.operatingPlanUnavailable) {
+    return calendarCurrentUnavailableHtml(period);
+  }
   const rows = (period && period.income) || [];
   if (!rows.length) {
     return `<div class="payday-period-income" data-calendar-income>
@@ -1716,16 +1731,16 @@ function calendarIncomeHtml(period) {
 }
 
 function calendarBudgetHtml(period) {
+  if (period && period.operatingPlanUnavailable) {
+    return `<div class="payday-household-budget" data-payday-household-budget>
+      ${calendarCurrentUnavailableHtml(period)}
+    </div>`;
+  }
   const rows = (period && period.householdBudget) || [];
-  const cycle = period && period.operatingPlanUnavailable
-    ? `<p class="operating-lead" data-operating-plan="unavailable">${
-        period.operatingPlanNote
-          || 'Current plan unavailable. The dated opening is stale.'
-      }</p>`
-    : (period && period.cycleUnresolved
+  const cycle = period && period.cycleUnresolved
       ? `<p class="operating-lead">Spending cycle unavailable. Household Budget reserve is held.</p>`
       : (period && period.spendingCycleLabel
-        ? `<p class="operating-lead">${period.spendingCycleLabel}</p>` : ''));
+        ? `<p class="operating-lead">${period.spendingCycleLabel}</p>` : '');
   if (!rows.length) {
     return `<div class="payday-household-budget" data-payday-household-budget>
       ${cycle}
@@ -1772,6 +1787,11 @@ function calendarBudgetHtml(period) {
 }
 
 function calendarPeriodBillsHtml(period) {
+  if (period && period.operatingPlanUnavailable) {
+    return `<div class="payday-period-bills" data-payday-period-bills>
+      ${calendarCurrentUnavailableHtml(period)}
+    </div>`;
+  }
   const rows = (period && period.bills) || [];
   if (!rows.length) {
     return `<div class="payday-period-bills" data-payday-period-bills>
@@ -1795,8 +1815,7 @@ function calendarPeriodBillsHtml(period) {
 function extraRepaymentHtml(period) {
   if (period && period.operatingPlanUnavailable) {
     return `<div class="payday-extra-repay" data-calendar-extra data-operating-plan="unavailable">
-      <p class="operating-lead">${period.operatingPlanNote
-        || 'Current plan unavailable. The dated opening is stale.'}</p>
+      ${calendarCurrentUnavailableHtml(period)}
     </div>`;
   }
   const extra = (period && period.extraDebt) || {};
@@ -1818,6 +1837,7 @@ function extraRepaymentHtml(period) {
 
 function calendarWaterfallHtml(period, liveOverlay, alloc) {
   if (!period) return '';
+  const planUnavailable = period.operatingPlanUnavailable === true;
   const openingPrompt = period.role === 'active' ? 'Current Balance'
     : 'Opening balance';
   const endingPrompt = 'Projected ending balance';
@@ -1833,6 +1853,7 @@ function calendarWaterfallHtml(period, liveOverlay, alloc) {
       <h2 class="operating-prompt">${prompt}</h2>
       <div class="operating-answer">${answer}</div>
     </div>`;
+  const unavailable = planUnavailable ? calendarCurrentUnavailableHtml(period) : null;
   let opening;
   if (period.role === 'active' && period.openingKnown) {
     const openingAlloc = {
@@ -1841,7 +1862,13 @@ function calendarWaterfallHtml(period, liveOverlay, alloc) {
       asOf: (alloc && alloc.cashBasis && alloc.cashBasis.asOf)
         || (alloc && alloc.asOf) || period.start,
     };
-    opening = cashGlanceHtml(openingAlloc, liveOverlay, null);
+    opening = cashGlanceHtml(
+      openingAlloc,
+      planUnavailable ? null : liveOverlay,
+      planUnavailable
+        ? (period.cashNote || liveOperatingPlanNote(null, liveOverlay))
+        : null
+    );
   } else if (period.openingKnown) {
     const openingAlloc = {
       available: period.currentBalance,
@@ -1854,23 +1881,23 @@ function calendarWaterfallHtml(period, liveOverlay, alloc) {
         <p class="operating-lead">${period.cashNote || 'Opening is not today\'s balance.'}</p>
       </div>`;
   }
-  return `<section class="calendar-waterfall" data-calendar-waterfall="${period.id || ''}" data-calendar-role="${period.role || ''}">
+  return `<section class="calendar-waterfall" data-calendar-waterfall="${period.id || ''}" data-calendar-role="${period.role || ''}"${planUnavailable ? ' data-operating-plan="unavailable"' : ''}>
     <div class="payday-group">${period.label}</div>
     ${lookbackNote}${projectedNote}
     ${q('01', openingPrompt, opening + (period.role === 'active' ? '' : openingNote))}
-    ${q('02', 'Income', calendarIncomeHtml(period))}
-    ${q('03', 'Available balance', runningLeftoverHtml(period.available))}
-    ${q('04', 'Bills', calendarPeriodBillsHtml(period))}
-    ${q('05', 'Balance after remaining bills', runningLeftoverHtml(period.afterRemainingBills))}
-    ${q('06', 'Household budget', calendarBudgetHtml(period))}
-    ${q('07', 'Balance after household budget', runningLeftoverHtml(period.afterHouseholdBudget))}
-    ${q('08', 'Extra credit-card repayment', firstCardHtml(period)
+    ${q('02', 'Income', planUnavailable ? unavailable : calendarIncomeHtml(period))}
+    ${q('03', 'Available balance', planUnavailable ? unavailable : runningLeftoverHtml(period.available))}
+    ${q('04', 'Bills', planUnavailable ? unavailable : calendarPeriodBillsHtml(period))}
+    ${q('05', 'Balance after remaining bills', planUnavailable ? unavailable : runningLeftoverHtml(period.afterRemainingBills))}
+    ${q('06', 'Household budget', planUnavailable ? unavailable : calendarBudgetHtml(period))}
+    ${q('07', 'Balance after household budget', planUnavailable ? unavailable : runningLeftoverHtml(period.afterHouseholdBudget))}
+    ${q('08', 'Extra credit-card repayment', planUnavailable ? unavailable : (firstCardHtml(period)
       + (period.otherCards && period.otherCards.length
         ? '<div class="payday-group">Other credit cards</div>' : '')
-      + otherCardsHtml(period))}
-    ${q('09', 'Balance after debt repayment', runningLeftoverHtml(period.afterDebtRepayment))}
-    ${q('10', 'Big-purchase savings', bigPurchasesHtml(period))}
-    ${q('11', endingPrompt, runningLeftoverHtml(period.projectedEnding))}
+      + otherCardsHtml(period)))}
+    ${q('09', 'Balance after debt repayment', planUnavailable ? unavailable : runningLeftoverHtml(period.afterDebtRepayment))}
+    ${q('10', 'Big-purchase savings', planUnavailable ? unavailable : bigPurchasesHtml(period))}
+    ${q('11', endingPrompt, planUnavailable ? unavailable : runningLeftoverHtml(period.projectedEnding))}
   </section>`;
 }
 
