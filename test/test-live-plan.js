@@ -1687,6 +1687,8 @@ function browserPlanComposer() {
     grab(planSrc, /^function liveOperatingPlanNote\([\s\S]*?\n\}$/m, 'liveOperatingPlanNote'),
     grab(planSrc, /^function currentOperatingUnavailableHtml\([\s\S]*?\n\}$/m, 'currentOperatingUnavailableHtml'),
     grab(planSrc, /^function currentOperatingCashHeroTiles\([\s\S]*?\n\}$/m, 'currentOperatingCashHeroTiles'),
+    grab(planSrc, /^function currentOperatingConsumerDebtHeroTile\([\s\S]*?\n\}$/m, 'currentOperatingConsumerDebtHeroTile'),
+    grab(planSrc, /^function currentOperatingTransferNoteHtml\([\s\S]*?\n\}$/m, 'currentOperatingTransferNoteHtml'),
     grab(planSrc, /^function paydayActionRows\([\s\S]*?\n\}$/m, 'paydayActionRows'),
     grab(planSrc, /^function paydayOtherActionRows\([\s\S]*?\n\}$/m, 'paydayOtherActionRows'),
     grab(planSrc, /^function paydayReservedIds\([\s\S]*?\n\}$/m, 'paydayReservedIds'),
@@ -1698,7 +1700,7 @@ function browserPlanComposer() {
     grab(planSrc, /^function paydayBillStatusNote\([\s\S]*?\n\}$/m, 'paydayBillStatusNote'),
     grab(planSrc, /^function paydayAmountCell\([\s\S]*?\n\}$/m, 'paydayAmountCell'),
     grab(planSrc, /^function paydayAnswerHtml\([\s\S]*?\n\}$/m, 'paydayAnswerHtml'),
-    '({ paydayAnswerHtml, currentOperatingCashHeroTiles })',
+    '({ paydayAnswerHtml, currentOperatingCashHeroTiles, currentOperatingConsumerDebtHeroTile, currentOperatingTransferNoteHtml })',
   ].join('\n'), { Forecast });
 }
 
@@ -1884,8 +1886,39 @@ console.log('\n=== 20. same-day inbound fail-closed does not publish a stale cyc
     'Plan hero tile does not publish numeric current Next cash-out total while unavailable');
   const renderFn = /function renderPlan\([\s\S]*?\n\}/.exec(planSrc);
   const paydayFn = /function paydayAnswerHtml\([\s\S]*?\n\}/.exec(planSrc);
-  ok(renderFn && /currentOperatingCashHeroTiles\(/.test(renderFn[0]),
-    'renderPlan prints currentOperatingCashHeroTiles rather than a parallel current-cash path');
+  ok((served.plan.income || []).some(row => row && row.id === 'amandaSalaryMonthEnd'),
+    'canonical plan still counts Amanda month-end salary on the dated opening');
+  const transferHtml = browser.currentOperatingTransferNoteHtml(
+    staleAdvice, served.liveOverlay, 1, served.meta.asOf);
+  ok(/data-operating-plan="unavailable"/.test(transferHtml)
+      && /unavailable/.test(transferHtml)
+      && /stale/.test(transferHtml)
+      && !/has to land by/.test(transferHtml)
+      && !/Tennis BC salary/.test(transferHtml)
+      && !/\$/.test(transferHtml),
+    'Amanda salary dependency block does not publish has-to-land-by from the dated opening');
+  const staleDebt = Forecast.projectDebts(served.plan, served.debts, served.meta.asOf, {
+    revolvingExtra: served.revolvingExtra,
+    targetBuffer: served.plan.defaults.targetBuffer,
+    weeklyVariable: staleAdvice.weekly,
+  });
+  const staleToday = (staleDebt.marks || []).find(m => m.day === 0)
+    || staleDebt.marks[staleDebt.marks.length - 1];
+  ok(staleToday && staleToday.consumer != null && Number(staleToday.consumer) !== 0,
+    'stale Aug 19 walk still has a numeric consumer-debt figure to withhold');
+  const debtTile = browser.currentOperatingConsumerDebtHeroTile(
+    staleAdvice, served.liveOverlay, staleToday);
+  ok(debtTile && debtTile.lab === 'Consumer debt'
+      && debtTile.val === 'unavailable'
+      && !/\$/.test(String(debtTile.val))
+      && !/\$/.test(String(debtTile.note))
+      && /unavailable/.test(String(debtTile.note))
+      && /stale/.test(String(debtTile.note)),
+    'Consumer debt hero tile does not publish numeric current debt/headroom from the dated opening');
+  ok(renderFn && /currentOperatingCashHeroTiles\(/.test(renderFn[0])
+      && /currentOperatingConsumerDebtHeroTile\(/.test(renderFn[0])
+      && /currentOperatingTransferNoteHtml\(/.test(renderFn[0]),
+    'renderPlan prints currentOperatingCashHeroTiles, Consumer debt, and Amanda salary helpers rather than a parallel current path');
   ok(paydayFn && /currentOperatingUnavailableHtml\(/.test(paydayFn[0])
       && /liveOperatingPlanUnavailable\(/.test(paydayFn[0]),
     'paydayAnswerHtml withholds the current payday block while operatingPlan is unavailable');
@@ -1984,6 +2017,36 @@ console.log('\n=== 20. same-day inbound fail-closed does not publish a stale cyc
     'trusted control still publishes numeric Spendable household cash');
   ok(!trustedOut || (trustedOut.val !== 'unavailable' && /\$/.test(String(trustedOut.val))),
     'trusted control still publishes numeric Next cash-out total when a cash-out exists');
+  const trustedDeadline = Forecast.amandaHouseholdIncomeDeadline(
+    trustedServed.plan, trustedServed.meta.asOf, {
+      debts: trustedServed.debts,
+      revolvingExtra: trustedServed.revolvingExtra,
+      targetBuffer: trustedServed.plan.defaults.targetBuffer,
+      weeklyVariable: trustedAdvice.weekly,
+      notBefore: trustedServed.meta.asOf,
+    });
+  const trustedTransfer = browser.currentOperatingTransferNoteHtml(
+    trustedAdvice, trustedServed.liveOverlay,
+    trustedDeadline && trustedDeadline.amount, trustedDeadline && trustedDeadline.neededBy);
+  ok(/Tennis BC salary/.test(trustedTransfer)
+      && !/data-operating-plan="unavailable"/.test(trustedTransfer)
+      && (trustedDeadline && trustedDeadline.neededBy
+        ? /has to land by/.test(trustedTransfer)
+        : true),
+    'trusted control still publishes the Amanda salary dependency');
+  const trustedDebtProj = Forecast.projectDebts(
+    trustedServed.plan, trustedServed.debts, trustedServed.meta.asOf, {
+      revolvingExtra: trustedServed.revolvingExtra,
+      targetBuffer: trustedServed.plan.defaults.targetBuffer,
+      weeklyVariable: trustedAdvice.weekly,
+    });
+  const trustedTodayMark = (trustedDebtProj.marks || []).find(m => m.day === 0)
+    || trustedDebtProj.marks[trustedDebtProj.marks.length - 1];
+  const trustedDebtTile = browser.currentOperatingConsumerDebtHeroTile(
+    trustedAdvice, trustedServed.liveOverlay, trustedTodayMark);
+  ok(trustedDebtTile && trustedDebtTile.val !== 'unavailable'
+      && /\$/.test(String(trustedDebtTile.val)),
+    'trusted control still publishes numeric Consumer debt');
 
   const budgetFn = /function calendarBudgetHtml\([\s\S]*?\n\}/.exec(planSrc);
   ok(budgetFn && /operatingPlanUnavailable/.test(budgetFn[0])

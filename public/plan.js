@@ -632,6 +632,40 @@ function currentOperatingCashHeroTiles(plan, asOf, sim, advice, liveOverlay) {
   ].filter(Boolean);
 }
 
+function currentOperatingConsumerDebtHeroTile(advice, liveOverlay, today) {
+  if (liveOperatingPlanUnavailable(advice, liveOverlay)) {
+    return {
+      lab: 'Consumer debt',
+      val: 'unavailable',
+      tone: 'alert',
+      note: liveOperatingPlanNote(advice, liveOverlay),
+    };
+  }
+  const overToday = ((today && today.debts) || []).filter(x => x.overLimit);
+  return {
+    lab: 'Consumer debt',
+    val: money(today.consumer),
+    tone: overToday.length ? 'alert' : 'warn',
+    note: `${money(today.headroom)} of credit left everywhere${overToday.length
+      ? ` — ${overToday.length} facility over its limit` : ''}`,
+  };
+}
+
+function currentOperatingTransferNoteHtml(advice, liveOverlay, transferMonthly, neededBy) {
+  if (liveOperatingPlanUnavailable(advice, liveOverlay)) {
+    return `<span data-operating-plan="unavailable">${liveOperatingPlanNote(advice, liveOverlay)}</span>`;
+  }
+  if (transferMonthly > 0) {
+    return neededBy
+      ? `The plan counts Amanda's Tennis BC salary of <b>${money(transferMonthly)}/month</b> (15th and month-end).
+         Without those deposits the balance slips under the buffer on <b>${fmtDateLong(neededBy)}</b> — that is the date her next salary
+         has to land by, marked on the calendar below.`
+      : `At this spending level the window stays above the buffer <b>even without Amanda's Tennis BC salary</b> —
+         her ${money(transferMonthly)}/month (15th and month-end) is counted, but nothing depends on its timing.`;
+  }
+  return `No Amanda Tennis BC salary is counted in this scenario — the plan stands on the remaining income.`;
+}
+
 function weeklyCapView(advice, weeklyOverride) {
   advice = advice || {};
   const recommended = advice.weekly;
@@ -2689,18 +2723,9 @@ function renderPlan(d, periods, history) {
 
   /* ---- the Amanda salary deadline ---- */
   const tn = $('transfer-note');
-  if (transferMonthly > 0) {
-    tn.hidden = false;
-    tn.innerHTML = neededBy
-      ? `The plan counts Amanda's Tennis BC salary of <b>${money(transferMonthly)}/month</b> (15th and month-end).
-         Without those deposits the balance slips under the buffer on <b>${fmtDateLong(neededBy)}</b> — that is the date her next salary
-         has to land by, marked on the calendar below.`
-      : `At this spending level the window stays above the buffer <b>even without Amanda's Tennis BC salary</b> —
-         her ${money(transferMonthly)}/month (15th and month-end) is counted, but nothing depends on its timing.`;
-  } else {
-    tn.hidden = false;
-    tn.innerHTML = `No Amanda Tennis BC salary is counted in this scenario — the plan stands on the remaining income.`;
-  }
+  tn.hidden = false;
+  tn.innerHTML = currentOperatingTransferNoteHtml(
+    advice, d.liveOverlay, transferMonthly, neededBy);
 
   /* ---- cash and debt, walked together ---- */
   // The same event stream that moves the cash moves the balances. A minimum
@@ -2740,11 +2765,6 @@ function renderPlan(d, periods, history) {
   });
   const cap = budget ? budget.cap : null;
   const capMonthly = Forecast.monthlyFromWeekly(weekly);
-
-  // Facilities over their limit today — read here for the debt-tile tone
-  // and count. Phase titles and the HELOC risk no longer select from this
-  // list: Forecast.planPhases uses the same helper as Forecast.mission.
-  const overToday = today.debts.filter(x => x.overLimit);
 
   /* ---- the mission, in one sentence ---- */
   // WHICH instructions apply, and in what order, is a financial decision and
@@ -2818,7 +2838,6 @@ function renderPlan(d, periods, history) {
   // label it is given. The 3-day chip is presentation: it moves no figure
   // and selects no day.
   const nextOut = Forecast.nextPaymentOut(sim.events, asOf);
-  const consumerNow = today.consumer;
   $('hero-tiles').innerHTML = [
     ...currentOperatingCashHeroTiles(plan, asOf, sim, advice, d.liveOverlay),
     (planUnavailable
@@ -2841,9 +2860,7 @@ function renderPlan(d, periods, history) {
         ? unavailableNote
         : `groceries, fuel, phones and medical — ${money(cap
         ? cap.foodFuelPlannedWeekly : 0)}/wk of it food and fuel` },
-    { lab: 'Consumer debt', val: money(consumerNow), tone: overToday.length ? 'alert' : 'warn',
-      note: `${money(today.headroom)} of credit left everywhere${overToday.length
-        ? ` — ${overToday.length} facility over its limit` : ''}` },
+    currentOperatingConsumerDebtHeroTile(advice, d.liveOverlay, today),
   ].filter(Boolean).map(t => `
     <div class="tile ${t.tone}">
       <div class="lab">${t.lab}</div>
