@@ -1,8 +1,10 @@
 'use strict';
 
 // Owner correction 2026-08-23: Affirm has one final $32.53 payment on
-// 2026-09-21. Prove the canonical cash event, provider settlement identity,
-// and debt-service classification independently of the live household cents.
+// 2026-09-21. Owner 2026-08-31: Flexiti is a different closed account.
+// Prove the canonical cash event, provider settlement identity, debt-service
+// classification, and the published Affirm/Flexiti split independently of
+// the live household cents.
 
 const fs = require('fs');
 const path = require('path');
@@ -17,6 +19,8 @@ const IDENTITY_PATH = path.join(ROOT, 'docs', 'connectivity',
   'transaction-identity.json');
 const POSITIONS_PATH = path.join(ROOT, 'docs', 'positions.csv');
 const FACTS_PATH = path.join(ROOT, 'docs', 'ACCOUNT_FACTS.md');
+const CONTEXT_PATH = path.join(ROOT, 'CONTEXT.md');
+const QUESTIONS_PATH = path.join(ROOT, 'docs', '01_OPEN_QUESTIONS.md');
 
 let failures = 0;
 function ok(condition, label, detail) {
@@ -28,9 +32,12 @@ function ok(condition, label, detail) {
   console.log(`\x1b[31m✗\x1b[0m ${label}${detail ? ` — ${detail}` : ''}`);
 }
 function load(file) { return JSON.parse(fs.readFileSync(file, 'utf8')); }
+function read(file) { return fs.readFileSync(file, 'utf8'); }
 function near(actual, expected) {
   return Math.abs(Number(actual) - Number(expected)) < 0.005;
 }
+
+const COMBINED = /Affirm\s*\/\s*Flexiti/i;
 
 const data = load(DATA_PATH);
 const bill = data.plan.bills.find(row => row.id === 'affirm-final');
@@ -101,12 +108,81 @@ ok(candidate && candidate.date === '2026-09-21'
   'exact payee, account, direction and date can settle the final occurrence',
   JSON.stringify(report.representedEventCandidates || []));
 
-const positions = fs.readFileSync(POSITIONS_PATH, 'utf8');
-const facts = fs.readFileSync(FACTS_PATH, 'utf8');
-ok(/Affirm\/Flexiti,BNPL[\s\S]*Final instalment,2026-09-21/.test(positions)
-    && /FINAL PAYMENT PENDING/.test(facts)
-    && !/Flexiti — PAID OFF AND CLOSED/.test(facts),
-  'durable account records no longer claim premature closure');
+const positions = read(POSITIONS_PATH);
+const facts = read(FACTS_PATH);
+const context = read(CONTEXT_PATH);
+const questions = read(QUESTIONS_PATH);
+const debtsNote = String(data.debtsNote || '');
+const coverage = Array.isArray(data.coverage) ? data.coverage : [];
+const flexitiCoverage = coverage.find(row => row.source === 'Flexiti');
+const affirmCoverage = coverage.find(row => row.source === 'Affirm');
+const combinedCoverage = coverage.find(row => COMBINED.test(String(row.source || '')));
+const positionLines = positions.split(/\r?\n/).filter(Boolean);
+const affirmPosition = positionLines.find(line => /^Household,Affirm,BNPL,/.test(line));
+const flexitiPosition = positionLines.find(line => /^Household,Flexiti,BNPL,/.test(line));
+const combinedPosition = positionLines.find(line => COMBINED.test(line.split(',')[1] || ''));
+
+ok(!combinedCoverage && !combinedPosition,
+  'current product records do not keep a combined Affirm/Flexiti row',
+  JSON.stringify({
+    combinedCoverage: combinedCoverage || null,
+    combinedPosition: combinedPosition || null,
+  }));
+ok(!COMBINED.test(debtsNote) && !COMBINED.test(facts)
+    && !COMBINED.test(context) && !COMBINED.test(questions),
+  'current product prose does not combine Affirm and Flexiti as one name');
+
+ok(flexitiCoverage
+    && /closed/i.test(flexitiCoverage.what)
+    && /nothing remaining/i.test(flexitiCoverage.what)
+    && !/32\.53/.test(flexitiCoverage.what)
+    && !/paid off and closed/i.test(flexitiCoverage.what),
+  'Records coverage publishes Flexiti as closed with nothing remaining',
+  JSON.stringify(flexitiCoverage || null));
+ok(flexitiCoverage && !/2,?654\.28/.test(flexitiCoverage.what),
+  'Flexiti coverage does not attach the historical $2,654.28 window total as current status',
+  JSON.stringify(flexitiCoverage || null));
+ok(affirmCoverage
+    && /32\.53/.test(affirmCoverage.what)
+    && /2026-09-21/.test(affirmCoverage.what)
+    && /not closed/i.test(affirmCoverage.what)
+    && !/paid off and closed/i.test(affirmCoverage.what)
+    && !/\bclosed\b/i.test(affirmCoverage.what.replace(/not closed/ig, '')),
+  'Records coverage publishes Affirm separately with the final $32.53 due 2026-09-21, not closed',
+  JSON.stringify(affirmCoverage || null));
+
+ok(affirmPosition
+    && /Final instalment,2026-09-21/.test(affirmPosition)
+    && /32\.53/.test(affirmPosition)
+    && /Not closed/i.test(affirmPosition)
+    && !/CLOSED/.test(affirmPosition),
+  'positions.csv has a separate Affirm row: final $32.53 due 2026-09-21, not closed');
+ok(flexitiPosition
+    && /Instalment - CLOSED/.test(flexitiPosition)
+    && /nothing remaining to pay/i.test(flexitiPosition)
+    && !/32\.53/.test(flexitiPosition)
+    && !/2026-09-21/.test(flexitiPosition),
+  'positions.csv has a separate Flexiti row: closed, nothing remaining');
+
+ok(/Flexiti — CLOSED/.test(facts)
+    && /nothing remaining to pay/i.test(facts)
+    && /Affirm — FINAL PAYMENT PENDING/.test(facts)
+    && !/Affirm\/Flexiti — FINAL PAYMENT PENDING/.test(facts)
+    && /Affirm is not closed/.test(facts)
+    && !/\*\*Affirm — CLOSED\*\*/.test(facts)
+    && !/Affirm[^\n]{0,40}paid off and closed/i.test(facts),
+  'ACCOUNT_FACTS records Flexiti closed and Affirm still pending, never combined');
+ok(/Flexiti is owner-confirmed closed/.test(context)
+    && /Affirm is a different obligation/.test(context)
+    && /\$32\.53 payment due 2026-09-21/.test(context)
+    && !/paid\s+off and closed/.test(context),
+  'CONTEXT.md no longer reports Affirm/Flexiti as paid off and closed');
+ok(/Flexiti is closed/.test(debtsNote)
+    && /Affirm is a different obligation/.test(debtsNote)
+    && /\$32\.53 payment due 2026-09-21/.test(debtsNote)
+    && /Affirm is not closed/.test(debtsNote)
+    && /2,654\.28 was paid across the historical BNPL window/.test(debtsNote),
+  'Deep Dive debtsNote separates Flexiti (closed) from Affirm (final payment) and keeps the window total as history');
 
 if (failures) {
   console.log(`\n${failures} failure(s)`);

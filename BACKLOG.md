@@ -279,6 +279,15 @@ Inferred personal from its transactions, not verified.
 
 Owner instruction 2026-08-24: expose one secure, read-only, sanitized assistant data surface backed by the incumbent live Atlas/Forecast authorities. First slice earned: `GET /assistant/current` via `scripts/assistant-packet.js`, dedicated `ATLAS_ASSISTANT_TOKEN` Bearer secret. Owner decision 2026-08-29 authorises the OAuth infrastructure specifically required for ChatGPT. Current slice: `POST /assistant/mcp` exposes that same packet as exactly one read-only MCP tool (`get_atlas_current`) behind OAuth issuer/JWKS, exact-resource, expiry, and `atlas.current.read` validation. Atlas is only the resource server; the external authorization server owns login, consent, PKCE, client registration, token issue, and refresh. Browser, static-assistant, and OAuth credentials remain separate. Not a ChatGPT financial planner, not a second Forecast, not a transaction store, and no writes. Deployment-provider configuration and ChatGPT installation are owner-operated configuration of this boundary, not another Atlas financial capability.
 
+**Dated 2026-08-09 BNPL reviews still combine Affirm and Flexiti** · **READY** · *docs only; not live current truth*
+
+Dated 2026-08-09 reviews still print `Affirm / Flexiti` as one unknown BNPL line:
+`docs/00_MASTER_PICTURE.md`, `docs/FINANCIAL_REVIEW_2026-08-09.md`,
+`docs/MORTGAGE_HELOC_DEEP_DIVE.md`, `docs/dashboard.html`,
+`docs/SANITIZED_SUMMARY_2026-08-09.csv`. They do not render as current on the live
+Records / Deep Dive path (those pages read `data.json`). Do not rewrite them as
+current truth. Owner instruction 2026-08-31 separated the live sources.
+
 **B66 · Stop deleting the Interac notifications** · **owner action** · *small*
 **The single cheapest fix in this file.** Interac's confirmation emails are the
 only record of who is on the other end of an e-transfer, and both mailboxes are
@@ -534,8 +543,9 @@ The 30 June coaching remittance was re-traced and a coach was paid out of it —
 - **B52** The $10,000 Ivoclar charge — a funded pass-through, not household money
 - **B53** `Head Canada` — a coaching business expense Amanda absorbs
 - **B12** Home valued at $1.1m–$1.4m [ESTIMATE]
-- **B37 / B11** Amex closed; corrected 2026-08-23: Affirm/Flexiti has one final
-  $32.53 payment due 2026-09-21, then no recurrence
+- **B37 / B11** Amex closed; Flexiti closed (owner 2026-08-31); Affirm has one
+  final $32.53 payment due 2026-09-21, then no recurrence. Do not combine Affirm
+  and Flexiti.
 - **B5 / B35 / B41 / B33** Earlier verifications
 
 ---

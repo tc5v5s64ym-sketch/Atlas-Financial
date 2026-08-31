@@ -956,7 +956,9 @@ stored credential, not evidence of a live account.
 
 **With this, every consumer debt in the household is now captured.** The debt
 picture is complete: mortgage, HELOC, five credit cards, and two closed accounts
-(Amex, Flexiti).
+(Amex, Flexiti). Owner 2026-08-31: Flexiti remains closed. Affirm is not Flexiti
+and is not closed — one final $32.53 payment is due 2026-09-21; see Affirm
+below.
 
 **Eight automatic payments**, and the mix is telling:
 
@@ -2096,13 +2098,24 @@ observation is not the current CAD planning amount. Owner-confirmed
 estimated $28/month CAD planning amount on the 14th; Amanda's iOS ChatGPT
 Plus is the confirmed $24.99/month charge on the 14th.
 
-**Affirm/Flexiti — FINAL PAYMENT PENDING** *(owner-confirmed 2026-08-23)*.
-One final **$32.53** payment is due **2026-09-21**, with no recurrence after
-it. $2,654.28 was paid earlier across the window: single payments of $1,354.28
-and $1,000.00, plus $300.00 of instalments. The current contractual balance and
-rate are not independently known and are not inferred from the payment. The
-$32.53 cash obligation is scheduled once in Forecast; Affirm stays outside the
-verified debt-balance and net-worth totals until that payment settles.
+**Flexiti — CLOSED** *(owner-confirmed 2026-08-31)*.
+Flexiti is closed. Nothing remaining to pay. No remaining balance. No remaining
+payment. Affirm is not another name for Flexiti. Never combine the names or
+statuses.
+
+**Affirm — FINAL PAYMENT PENDING** *(owner-confirmed 2026-08-31; amount and date
+owner-confirmed 2026-08-23)*.
+Affirm is a different obligation from Flexiti. One final **$32.53** payment is
+due **2026-09-21**, with no recurrence after it. The current contractual balance
+and rate are not independently known and are not inferred from the payment. The
+$32.53 cash obligation is scheduled once in Forecast as `plan.bills`
+`affirm-final`; Affirm stays outside the verified debt-balance and net-worth
+totals until that payment settles. Affirm is not closed.
+
+$2,654.28 was paid earlier across the historical BNPL window: single payments of
+$1,354.28 and $1,000.00, plus $300.00 of instalments. That total is already
+recorded history. It is not a current Flexiti obligation and is not evidence
+that Affirm is closed.
 
 ---
 

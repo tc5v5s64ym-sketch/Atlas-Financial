@@ -1217,7 +1217,7 @@
             "pendingUnknown": false
         }
     ],
-    "debtsNote": "Affirm/Flexiti is not an ongoing debt after one owner-confirmed final $32.53 payment due 2026-09-21. That cash obligation is scheduled once in plan.bills; no contractual balance or rate is invented, so Affirm remains outside the verified debt-balance list until the final payment settles. $2,654.28 was paid across the historical window before this last instalment. Every card, mortgage and HELOC posted balance here is the 2026-08-19 cutover. Triangle posted $13,495.32 and MBNA posted $7,875.99 MATCH under owner-approved monthly statement cadence (evidence 2026-08-18); pending on both is proven $0.00. The 2026-08-16 Triangle screenshot and Lunch Money's older last-statement figure are not this posted opening. Mapped revolving pending on this opening is proven $0.00 (is_pending-unbounded). Available credit is never household cash.",
+    "debtsNote": "Flexiti is closed — owner-confirmed 2026-08-31; nothing remaining to pay. Affirm is a different obligation, not another name for Flexiti, with one owner-confirmed final $32.53 payment due 2026-09-21. That cash obligation is scheduled once in plan.bills; no contractual balance or rate is invented, so Affirm remains outside the verified debt-balance list until the final payment settles. Affirm is not closed. $2,654.28 was paid across the historical BNPL window before this last instalment; that total is recorded history, not a current Flexiti balance and not evidence that Affirm is closed. Every card, mortgage and HELOC posted balance here is the 2026-08-19 cutover. Triangle posted $13,495.32 and MBNA posted $7,875.99 MATCH under owner-approved monthly statement cadence (evidence 2026-08-18); pending on both is proven $0.00. The 2026-08-16 Triangle screenshot and Lunch Money's older last-statement figure are not this posted opening. Mapped revolving pending on this opening is proven $0.00 (is_pending-unbounded). Available credit is never household cash.",
     "utilisationNote": "Derived from the debt records plus the Chequing B overdraft — there is no second list of balances to drift. Available credit is never household cash. Cash Back pending is proven $0.00. Travel Visa is over on posted $1,205.33 against the $1,100 limit; MBNA posted $7,875.99 is under the $8,000 limit; Triangle pending $0.00 is kept separate from posted $13,495.32.",
     "assets": [
         {
@@ -1794,8 +1794,13 @@
             "status": "complete"
         },
         {
-            "source": "Affirm / Flexiti",
-            "what": "Paid off and closed — $2,654.28 across the window",
+            "source": "Flexiti",
+            "what": "Closed — owner-confirmed 2026-08-31. Nothing remaining to pay",
+            "status": "complete"
+        },
+        {
+            "source": "Affirm",
+            "what": "One final $32.53 payment due 2026-09-21 — not closed",
             "status": "complete"
         },
         {
