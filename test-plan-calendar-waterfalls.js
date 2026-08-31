@@ -1,6 +1,7 @@
 'use strict';
 /* Two calendar-half waterfalls: opening chain, paid bills, income, HELOC
- * cash once, card mins once, current-cash identity, Bell outside remaining.
+ * cash once, card mins once, current-cash identity, Bell outside remaining,
+ * period-specific household budget, subscriptions not held twice.
  *
  * Dates and totals are hand-computed from cadence and the calendar, then
  * Forecast is asked whether it reproduced them (L-002 / L-006).
@@ -107,6 +108,47 @@ function billsOf(p) {
 function incomeOf(p) {
   return (p && p.income) || [];
 }
+function budgetRow(p, id) {
+  return ((p && p.householdBudget) || []).find(r => r.id === id) || null;
+}
+function roundCent(n) {
+  return Math.round((Number(n) || 0) * 100) / 100;
+}
+function daysInMonth(iso) {
+  const [y, m] = String(iso).split('-').map(Number);
+  return new Date(Date.UTC(y, m, 0)).getUTCDate();
+}
+// Independent of Forecast.calendarHalfPlanned: first half is 15 days,
+// leftover cents sit on Period 2 so the two sides add back to monthly.
+function halfPlanned(monthly, half, monthDays) {
+  const first = roundCent(Number(monthly) * 15 / monthDays);
+  return half === 1 ? first : roundCent(Number(monthly) - first);
+}
+function spendOn(txs, label, start, through) {
+  let spent = 0;
+  for (const tx of txs) {
+    if (!tx || !tx.date || tx.categoryLabel !== label) continue;
+    if (start && tx.date < start) continue;
+    if (through && tx.date > through) continue;
+    spent += Number(tx.amount) || 0;
+  }
+  return roundCent(spent);
+}
+function actualsPacket(txs, asOf) {
+  return {
+    schema: 'atlas-current-period-actuals/v1',
+    observationAsOf: asOf,
+    coverageStart: '2026-08-01',
+    coverageThrough: asOf,
+    pendingCoverage: 'complete',
+    transactions: txs,
+  };
+}
+
+const HOLD_IDS = [
+  'groceries', 'fuel', 'pets', 'restaurants', 'shopping',
+  'household', 'health', 'sport',
+];
 
 function syntheticPlan() {
   return {
@@ -467,7 +509,160 @@ console.log('\n=== 9. Live August 30 sheet: lookback P1, live P2, card mins, HEL
     'cancelled CMAW / Pixieset / Mailchimp are not tracked on the sheet');
 }
 
-console.log('\n=== 10. page prints Forecast; leftover is not computed in plan.js ===');
+console.log('\n=== 10. grocery actuals stay in their calendar half ===');
+{
+  const asOf = '2026-08-20';
+  const p1Start = '2026-08-01';
+  const p1End = '2026-08-15';
+  const p2Start = '2026-08-16';
+  const txs = [
+    { date: '2026-08-05', amount: 40.10, pending: false, categoryLabel: 'Groceries', accountRole: 'household-cash' },
+    { date: '2026-08-18', amount: 55.20, pending: false, categoryLabel: 'Groceries', accountRole: 'household-cash' },
+    { date: '2026-08-25', amount: 70.00, pending: false, categoryLabel: 'Groceries', accountRole: 'household-cash' },
+    { date: '2026-07-30', amount: 99.00, pending: false, categoryLabel: 'Groceries', accountRole: 'household-cash' },
+    { date: '2026-09-02', amount: 88.00, pending: false, categoryLabel: 'Groceries', accountRole: 'household-cash' },
+  ];
+  const plan = syntheticPlan();
+  const view = F.recommend(plan, asOf, {
+    targetBuffer: 500, debts,
+    currentPeriodActuals: actualsPacket(txs, asOf),
+  }).defaultView;
+  const p1 = period(view, 'calendar-1-15');
+  const p2 = period(view, 'calendar-16-end');
+  const groc1 = budgetRow(p1, 'groceries');
+  const groc2 = budgetRow(p2, 'groceries');
+  const expectP1 = spendOn(txs, 'Groceries', p1Start, p1End < asOf ? p1End : asOf);
+  const expectP2 = spendOn(txs, 'Groceries', p2Start, asOf);
+  ok(near(expectP1, 40.10) && near(expectP2, 55.20),
+    'independent window: 5 Aug in P1, 18 Aug in P2, 25 Aug after as-of and July/Sept outside');
+  ok(groc1 && near(groc1.spent, expectP1) && !near(groc1.spent, expectP2)
+      && !near(groc1.spent, 40.10 + 55.20),
+    'P1 groceries actual is the P1 tx only, not P2 and not full-month',
+    groc1 && String(groc1.spent));
+  ok(groc2 && near(groc2.spent, expectP2) && !near(groc2.spent, expectP1)
+      && !near(groc2.spent, 40.10 + 55.20 + 70),
+    'P2 groceries actual is the in-half, on-or-before as-of tx only',
+    groc2 && String(groc2.spent));
+  ok(groc1 && groc2 && !near(groc1.spent, 99) && !near(groc2.spent, 99)
+      && !near(groc1.spent, 88) && !near(groc2.spent, 88)
+      && !near(groc2.spent, 70),
+    'txs outside the month, and P2 dates after as-of, are in neither half');
+  const src = read('public/forecast.js');
+  const fn = /function calendarHouseholdBudget\([\s\S]*?\n  \}/.exec(src);
+  ok(fn && /sumCategoryActuals\(plan, through, start, opts\)/.test(fn[0])
+      && /calendarHalfThrough\(asOf, end\)/.test(fn[0])
+      && !/plannedMonthly\s*\/\s*2|monthly\s*\/\s*2/.test(fn[0]),
+    'waterfall actuals call sumCategoryActuals with that half\'s start and a through no later than half end or as-of');
+}
+
+console.log('\n=== 11. each half\'s planned adds back to the monthly target ===');
+{
+  const plan = syntheticPlan();
+  const view = F.recommend(plan, '2026-08-20', { targetBuffer: 500, debts }).defaultView;
+  const p1 = period(view, 'calendar-1-15');
+  const p2 = period(view, 'calendar-16-end');
+  const monthDays = daysInMonth('2026-08-01');
+  ok(monthDays === 31, 'August 2026 has 31 days');
+  for (const id of HOLD_IDS) {
+    const cat = plan.budget.categories.find(c => c.id === id);
+    const monthly = roundCent(cat.plannedMonthly);
+    const r1 = budgetRow(p1, id);
+    const r2 = budgetRow(p2, id);
+    const expect1 = halfPlanned(monthly, 1, monthDays);
+    const expect2 = halfPlanned(monthly, 2, monthDays);
+    ok(r1 && r2 && near(r1.planned, expect1) && near(r2.planned, expect2)
+        && near(roundCent(r1.planned + r2.planned), monthly),
+      `${id}: P1 planned + P2 planned equals plannedMonthly`,
+      r1 && r2 && `${r1.planned} + ${r2.planned} vs ${monthly}`);
+    ok(r1 && r2 && !near(r1.planned, monthly) && !near(r2.planned, monthly)
+        && !near(r1.planned, roundCent(monthly / 2)),
+      `${id}: waterfall planned is the period share, not full-month or monthly/2`);
+  }
+  ok(!(p1.householdBudget || []).some(r => /Dale|Amanda/i.test(r.label))
+      && (p1.householdBudget || []).filter(r => r.id === 'shopping').length === 1,
+    'Personal stays one shopping row; no Dale/Amanda split');
+}
+
+console.log('\n=== 12. subscriptions bills are not a second household-budget hold ===');
+{
+  const plan = syntheticPlan();
+  const advice = F.recommend(plan, '2026-08-20', { targetBuffer: 500, debts });
+  const p2 = period(advice.defaultView, 'calendar-16-end');
+  const netflix = billsOf(p2).find(r => r.id === 'netflix');
+  ok(netflix && netflix.status !== 'PAID' && near(netflix.remaining, 26.87),
+    'Netflix sits in Period 2 remaining-bills');
+  const sub = budgetRow(p2, 'subscriptions');
+  ok(sub && sub.informational && near(sub.hold, 0)
+      && /included in Bills/.test(sub.note)
+      && /remaining not deducted/.test(sub.note),
+    'subscriptions line is informational and not a leftover hold');
+  const monthDays = daysInMonth(p2.start);
+  const independentHold = HOLD_IDS.reduce((sum, id) => {
+    const cat = plan.budget.categories.find(c => c.id === id);
+    const planned = halfPlanned(cat.plannedMonthly, 2, monthDays);
+    return roundCent(sum + Math.max(0, planned));
+  }, 0);
+  const subPlanned = halfPlanned(300, 2, monthDays);
+  ok(near(p2.budgetHold, independentHold) && !near(p2.budgetHold, independentHold + subPlanned)
+      && !near(p2.budgetHold, independentHold + 300),
+    'leftover hold omits the subscriptions target that remaining-bills already has',
+    `${p2.budgetHold} vs ${independentHold} (not +${subPlanned})`);
+  ok(p2.afterRemainingBills != null && p2.afterHouseholdBudget != null
+      && near(p2.afterHouseholdBudget, roundCent(p2.afterRemainingBills - independentHold))
+      && !near(p2.afterHouseholdBudget,
+        roundCent(p2.afterRemainingBills - independentHold - netflix.remaining)),
+    'after household budget does not subtract the Netflix bill a second time');
+  const html = composer.operatingSurfaceHtml({
+    advice, weekly: advice.weekly, recommended: advice.weekly,
+    planCalendarShow: 'calendar-16-end',
+  });
+  ok(/Subscriptions/.test(html) && /included in Bills, remaining not deducted/.test(html),
+    'page labels subscriptions as included in Bills');
+}
+
+console.log('\n=== 13. overspend remaining is negative; leftover does not take the overshoot ===');
+{
+  const asOf = '2026-08-20';
+  const txs = [
+    { date: '2026-08-18', amount: 2000, pending: false, categoryLabel: 'Groceries', accountRole: 'household-cash' },
+  ];
+  const plan = syntheticPlan();
+  const advice = F.recommend(plan, asOf, {
+    targetBuffer: 500, debts,
+    currentPeriodActuals: actualsPacket(txs, asOf),
+  });
+  const p2 = period(advice.defaultView, 'calendar-16-end');
+  const groc = budgetRow(p2, 'groceries');
+  const monthDays = daysInMonth(p2.start);
+  const planned = halfPlanned(1800, 2, monthDays);
+  const spent = spendOn(txs, 'Groceries', p2.start, asOf);
+  const remaining = roundCent(planned - spent);
+  ok(groc && near(groc.planned, planned) && near(groc.spent, spent)
+      && near(groc.remaining, remaining) && remaining < 0,
+    'groceries remaining is negative after posted overspend',
+    groc && `${groc.remaining}`);
+  ok(groc && near(groc.hold, 0),
+    'overspent groceries hold used in leftover is $0, not the negative remaining');
+  const independentHold = HOLD_IDS.reduce((sum, id) => {
+    const cat = plan.budget.categories.find(c => c.id === id);
+    const rowPlanned = halfPlanned(cat.plannedMonthly, 2, monthDays);
+    const rowSpent = id === 'groceries' ? spent : 0;
+    const rowRemaining = roundCent(rowPlanned - rowSpent);
+    return roundCent(sum + Math.max(0, rowRemaining));
+  }, 0);
+  ok(near(p2.budgetHold, independentHold),
+    'hold total is unused period planned, not planned minus the overshoot');
+  ok(p2.afterRemainingBills != null && p2.afterHouseholdBudget != null
+      && near(p2.afterHouseholdBudget, roundCent(p2.afterRemainingBills - independentHold)),
+    'leftover after household budget does not subtract the already-posted overshoot');
+  const ifSpentAgain = roundCent(p2.afterRemainingBills - independentHold - spent);
+  const ifOvershootAgain = roundCent(p2.afterRemainingBills - independentHold - (spent - planned));
+  ok(!near(p2.afterHouseholdBudget, ifSpentAgain)
+      && !near(p2.afterHouseholdBudget, ifOvershootAgain),
+    'leftover is not opening-chain minus posted groceries a second time');
+}
+
+console.log('\n=== 14. page prints Forecast; leftover is not computed in plan.js ===');
 {
   const planSrc = read('public/plan.js');
   const fn = /function operatingSurfaceHtml\([\s\S]*?\n\}/.exec(planSrc);

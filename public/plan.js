@@ -1646,6 +1646,15 @@ function calendarBudgetHtml(period) {
     </div>`;
   }
   const lines = rows.map(row => {
+    if (row.informational) {
+      return paydayBucketRow(
+        row.label,
+        row.note || 'included in Bills, remaining not deducted',
+        null,
+        null,
+        { preformatted: true }
+      );
+    }
     const bits = [];
     if (row.planned != null) bits.push(`planned ${money2(row.planned)}`);
     if (row.spent != null) bits.push(`spent ${money2(row.spent)}`);
