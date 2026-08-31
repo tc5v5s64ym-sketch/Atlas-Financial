@@ -40,6 +40,9 @@ function loadComposer() {
     grab(appSrc, /^const fmtDate = .*$/m, 'fmtDate'),
     grab(appSrc, /^const fmtDateLong = .*$/m, 'fmtDateLong'),
     grab(planSrc, /^function weeklyCapView\([\s\S]*?\n\}$/m, 'weeklyCapView'),
+    grab(planSrc, /^function liveOperatingPlanUnavailable\([\s\S]*?\n\}$/m, 'liveOperatingPlanUnavailable'),
+    grab(planSrc, /^function liveOperatingPlanNote\([\s\S]*?\n\}$/m, 'liveOperatingPlanNote'),
+    grab(planSrc, /^function currentOperatingUnavailableHtml\([\s\S]*?\n\}$/m, 'currentOperatingUnavailableHtml'),
     grab(planSrc, /^function paydayActionRows\([\s\S]*?\n\}$/m, 'paydayActionRows'),
     grab(planSrc, /^function paydayCashNote\([\s\S]*?\n\}$/m, 'paydayCashNote'),
     grab(planSrc, /^function paydayGlanceCashNote\([\s\S]*?\n\}$/m, 'paydayGlanceCashNote'),
@@ -1184,8 +1187,10 @@ console.log('\n=== 14. page prints Forecast; leftover is not computed in plan.js
   const budgetFn = /function calendarBudgetHtml\([\s\S]*?\n\}/.exec(planSrc);
   ok(budgetFn && /spendingCycleLabel/.test(budgetFn[0])
       && /cycleUnresolved/.test(budgetFn[0])
+      && /operatingPlanUnavailable/.test(budgetFn[0])
+      && /operatingPlanNote/.test(budgetFn[0])
       && !/calendarHalfPlanned|sumCategoryActuals/.test(budgetFn[0]),
-    'calendarBudgetHtml prints Forecast spendingCycleLabel / cycleUnresolved and does not recompute planned');
+    'calendarBudgetHtml prints Forecast spendingCycleLabel / cycleUnresolved / operatingPlanUnavailable and does not recompute planned');
   const liveSrc = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'live-plan.js'), 'utf8');
   ok(!/fs\.writeFileSync/.test(liveSrc),
     'live-plan.js still does not write data.json');

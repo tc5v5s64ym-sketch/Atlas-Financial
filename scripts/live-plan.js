@@ -35,7 +35,13 @@
  * byte-identical. After a trusted overlay, the CLI projects the household
  * operating answer from Forecast.recommend; it does not recalculate those
  * values. A fail-closed overlay keeps the dated opening and cannot raise
- * remaining-claim precision. Zero/no-change is a valid Forecast result.
+ * remaining-claim precision. When the observation's household date is later
+ * than that opening, the dated sheet is not the current operating plan:
+ * liveOverlay.operatingPlan is unavailable so Forecast withholds current
+ * spend permission, current-period action, extra-debt instruction, and the
+ * current spending-cycle label rather than publishing the opening's cycle
+ * as today. Do not pair a later payday cycle with the unadvanced opening.
+ * Zero/no-change is a valid Forecast result.
  * Served data also carries a sanitized household refresh-trust packet
  * copied from incumbent observation, reconciliation, canonical-preview,
  * overlay, and Forecast remaining-claim results. The page renders that
@@ -70,6 +76,11 @@ const TRANSFER_INCOME_FACTS = new Set([
   'business-obligation', 'internal-transfer', 'household-available',
 ]);
 const BACKFILL_FACTS = new Set(['posting', 'settlement']);
+const OPERATING_PLAN_LIVE = 'live';
+const OPERATING_PLAN_DATED = 'dated-opening';
+const OPERATING_PLAN_UNAVAILABLE = 'unavailable';
+const OPERATING_PLAN_UNAVAILABLE_NOTE =
+  'Current plan unavailable. The dated opening is stale.';
 
 function fail(message) {
   const err = new Error(message);
@@ -666,7 +677,29 @@ function collectObservedCash(report, liveAsOf) {
   };
 }
 
+function operatingPlanFromOverlay(applied, historicalOpeningAsOf, liveAsOf) {
+  if (applied === true) return OPERATING_PLAN_LIVE;
+  // Observation household date, never wall-clock. A later observed date
+  // means the unadvanced opening is not the current operating plan.
+  if (historicalOpeningAsOf && liveAsOf && liveAsOf > historicalOpeningAsOf) {
+    return OPERATING_PLAN_UNAVAILABLE;
+  }
+  return OPERATING_PLAN_DATED;
+}
+
+function operatingPlanNoteFor(status) {
+  return status === OPERATING_PLAN_UNAVAILABLE
+    ? OPERATING_PLAN_UNAVAILABLE_NOTE
+    : null;
+}
+
 function overlayMeta(opts) {
+  const operatingPlan = opts.operatingPlan
+    || operatingPlanFromOverlay(
+      opts.applied === true,
+      opts.historicalOpeningAsOf,
+      opts.observedAsOf || opts.effectiveAsOf
+    );
   return {
     schema: SCHEMA,
     writesCanonicalState: false,
@@ -682,6 +715,10 @@ function overlayMeta(opts) {
     source: 'provider-observe:lunchmoney',
     note: opts.note || 'In-memory overlay for today\'s live plan. Dated openings and snapshots are unchanged.',
     reason: opts.reason || null,
+    operatingPlan,
+    operatingPlanNote: opts.operatingPlanNote !== undefined
+      ? opts.operatingPlanNote
+      : operatingPlanNoteFor(operatingPlan),
     currentPeriodActuals: opts.currentPeriodActuals || null,
     observedCash: opts.observedCash || null,
     fetchedAt: opts.fetchedAt || null,
@@ -824,6 +861,7 @@ function failedOverlay(canonical, reason, extra) {
     || (canonical.meta && canonical.meta.asOf) || null;
   const report = extra && extra.report;
   const liveAsOf = report ? liveAsOfFrom(report, historicalOpeningAsOf) : null;
+  const operatingPlan = operatingPlanFromOverlay(false, historicalOpeningAsOf, liveAsOf);
   next.liveOverlay = overlayMeta({
     applied: false,
     historicalOpeningAsOf,
@@ -833,7 +871,11 @@ function failedOverlay(canonical, reason, extra) {
     overlays: [],
     refused: [],
     reason: sanitized,
-    note: 'Live overlay failed closed. Dated opening is unchanged.',
+    operatingPlan,
+    operatingPlanNote: operatingPlanNoteFor(operatingPlan),
+    note: operatingPlan === OPERATING_PLAN_UNAVAILABLE
+      ? 'Live overlay failed closed. Current plan unavailable; dated opening is stale.'
+      : 'Live overlay failed closed. Dated opening is unchanged.',
     observedCash: report ? collectObservedCash(report, liveAsOf) : null,
     fetchedAt: report && report.fetchedAt || null,
     observedAt: report && report.fetchedAt || null,
@@ -1012,6 +1054,10 @@ async function run(argv) {
 const api = {
   SCHEMA,
   POSTED_CASH,
+  OPERATING_PLAN_LIVE,
+  OPERATING_PLAN_DATED,
+  OPERATING_PLAN_UNAVAILABLE,
+  OPERATING_PLAN_UNAVAILABLE_NOTE,
   overlayModeFromEnv,
   sanitizeLiveFailureReason,
   proposeOverlay,

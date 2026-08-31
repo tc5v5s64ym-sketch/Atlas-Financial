@@ -68,7 +68,7 @@ const FAIL_CLOSED_COPY = Object.freeze({
   'pending-freshness-unproven':
     'Pending freshness was unproven, so the dated opening was kept.',
   'same-day-event-representation-unknown':
-    'A same-day paycheck or deposit was not proven posted, so leftover stayed on the dated opening.',
+    'A same-day paycheck or deposit was not proven posted. Current plan is unavailable; the dated opening is stale.',
   'live-observation-unavailable':
     'Live observation was unavailable, so the dated opening was kept.',
   'provider-unavailable':

@@ -186,13 +186,7 @@ function directRecommend(data, opts) {
   opts = opts || {};
   const plan = data.plan;
   const asOf = OA.asOfFrom(data, opts);
-  return Forecast.recommend(plan, asOf, {
-    fundingSources: plan.funding && plan.funding.options,
-    debts: data.debts,
-    revolvingExtra: data.revolvingExtra,
-    periods,
-    currentPeriodActuals: OA.actualsFrom(data, opts),
-  });
+  return Forecast.recommend(plan, asOf, OA.recommendOpts(data, opts));
 }
 function filesUnchanged(label) {
   const now = hashTree();
@@ -301,10 +295,17 @@ function precisionRank(claim) {
 function assertCopiesForecast(packet, advice, label) {
   const alloc = advice.paydayAllocation || {};
   const action = advice.currentPeriodAction || {};
+  const planUnavailable = packet.provenance && packet.provenance.operatingPlan === 'unavailable';
   ok(packet.source === 'Forecast.recommend', `${label}: source is Forecast.recommend`);
-  ok(near(packet.moneyAvailable.value, alloc.available),
-    `${label}: money available is paydayAllocation.available`,
-    `${packet.moneyAvailable.value} vs ${alloc.available}`);
+  if (planUnavailable) {
+    ok(packet.moneyAvailable.value == null
+        && packet.moneyAvailable.status === 'unavailable',
+      `${label}: money available is withheld while the current operating plan is unavailable`);
+  } else {
+    ok(near(packet.moneyAvailable.value, alloc.available),
+      `${label}: money available is paydayAllocation.available`,
+      `${packet.moneyAvailable.value} vs ${alloc.available}`);
+  }
   ok(near(packet.protectedObligations.allocated, alloc.obligations.allocated)
     && near(packet.protectedObligations.wanted, alloc.obligations.wanted)
     && near(packet.protectedObligations.shortfall, alloc.obligations.shortfall),
@@ -312,8 +313,13 @@ function assertCopiesForecast(packet, advice, label) {
   ok(packet.currentSpendingPermission.weekly === advice.weekly,
     `${label}: weekly permission is Forecast.recommend.weekly`,
     `${packet.currentSpendingPermission.weekly} vs ${advice.weekly}`);
-  ok(near(packet.currentSpendingPermission.spendPermission, action.spendPermission),
-    `${label}: spend permission is currentPeriodAction.spendPermission`);
+  if (planUnavailable) {
+    ok(packet.currentSpendingPermission.spendPermission == null,
+      `${label}: spend permission is withheld`);
+  } else {
+    ok(near(packet.currentSpendingPermission.spendPermission, action.spendPermission),
+      `${label}: spend permission is currentPeriodAction.spendPermission`);
+  }
   ok(packet.currentSpendingPermission.remainingClaim === action.remainingClaim,
     `${label}: remainingClaim is copied from currentPeriodAction`);
   ok(near(packet.futureCostProtection.protectedPath.allocated, alloc.protectedPath.allocated),
@@ -414,13 +420,23 @@ console.log('\n=== C. fail-closed overlay cannot look more precise ===');
     'fail-closed overlay does not feed currentPeriodActuals into Forecast');
   ok(packet.provenance.trustedState === 'live-overlay-failed-closed',
     'fail-closed provenance is named');
-  ok(packet.limitations.remainingClaim === datedAdvice.currentPeriodAction.remainingClaim,
-    'fail-closed remainingClaim matches dated-opening Forecast');
   ok(precisionRank(packet.limitations.remainingClaim)
     <= precisionRank(datedAdvice.currentPeriodAction.remainingClaim),
     'fail-closed remainingClaim is not more precise than the dated opening');
-  ok(packet.change && packet.change.changed === false,
-    'fail-closed Forecast fields are a zero/no-change versus the dated opening');
+  if (served.liveOverlay.operatingPlan === 'unavailable') {
+    ok(packet.currentSpendingPermission.weekly == null
+        && packet.currentSpendingPermission.remainingClaim === 'unavailable'
+        && packet.extraDebtAllocation.status === 'unavailable'
+        && packet.moneyAvailable.value == null,
+      'later fail-closed overlay does not publish current spending permission, extra-debt, or money available');
+    ok(packet.change && packet.change.changed === true,
+      'withholding current claims from a stale opening is a Forecast-field change versus the dated opening');
+  } else {
+    ok(packet.limitations.remainingClaim === datedAdvice.currentPeriodAction.remainingClaim,
+      'fail-closed remainingClaim matches dated-opening Forecast');
+    ok(packet.change && packet.change.changed === false,
+      'fail-closed Forecast fields are a zero/no-change versus the dated opening');
+  }
   filesUnchanged('fail-closed overlay');
 }
 

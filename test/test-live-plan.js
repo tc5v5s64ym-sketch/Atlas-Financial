@@ -11,11 +11,15 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 const { execFileSync } = require('child_process');
+const vm = require('vm');
 const O = require('../scripts/provider-observe.js');
 const C = require('../scripts/canonical-refresh.js');
 const Live = require('../scripts/live-plan.js');
+const OA = require('../scripts/operating-answer.js');
+const Assistant = require('../scripts/assistant-packet.js');
 const Forecast = require('../public/forecast.js');
 const Chequing = require('../public/forecast-chequing.js');
+const { sourceText } = require('./test-source-text');
 
 const ROOT = path.join(__dirname, '..');
 const DATA = path.join(ROOT, 'data.json');
@@ -1632,6 +1636,428 @@ console.log('\n=== 19. extra payment onto a mapped card covers that card min; ch
   ok(due.some(row => row.id === 'tdfees') || controlDue.some(row => row.id === 'tdfees'),
     'TD fees are not invented away');
   filesUnchanged('extra payment onto mapped card');
+}
+
+function independentSeaspanCycle(asOf) {
+  // Independent of Forecast.spendingCycle: 14-day steps from Friday 2026-08-14.
+  const dayMs = 24 * 60 * 60 * 1000;
+  const asOfMs = Date.parse(asOf + 'T00:00:00Z');
+  let startMs = Date.parse('2026-08-14T00:00:00Z');
+  while (startMs + 14 * dayMs <= asOfMs) startMs += 14 * dayMs;
+  while (startMs > asOfMs) startMs -= 14 * dayMs;
+  const nextMs = startMs + 14 * dayMs;
+  const iso = ms => new Date(ms).toISOString().slice(0, 10);
+  return { start: iso(startMs), end: iso(nextMs - dayMs), nextPayday: iso(nextMs) };
+}
+
+function activeCalendarPeriod(advice) {
+  const view = advice && advice.defaultView;
+  const periods = (view && view.calendarPeriods) || [];
+  return periods.find(p => p && p.role === 'active') || null;
+}
+
+function serveFixtureOverlay(canonical, extra) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-live-plan-asof-'));
+  const fixture = path.join(dir, 'fixture.json');
+  fs.writeFileSync(fixture, `${JSON.stringify(payloadFrom(canonical, extra), null, 2)}\n`);
+  return Live.serveCanonicalOrFixture(canonical, {
+    ATLAS_LIVE_OVERLAY: 'fixture',
+    ATLAS_LIVE_OVERLAY_FIXTURE: fixture,
+    ATLAS_LIVE_OVERLAY_MAP: MAP,
+  });
+}
+
+function browserPlanComposer() {
+  const appSrc = sourceText(fs.readFileSync(path.join(ROOT, 'public', 'app.js'), 'utf8'));
+  const planSrc = sourceText(fs.readFileSync(path.join(ROOT, 'public', 'plan.js'), 'utf8'));
+  const grab = (src, re, label) => {
+    const m = re.exec(src);
+    if (!m) throw new Error('missing ' + label);
+    return m[0];
+  };
+  return vm.runInNewContext([
+    grab(appSrc, /^const money = .*$/m, 'money'),
+    grab(appSrc, /^const money2 = .*$/m, 'money2'),
+    grab(appSrc, /^const fmtDate = .*$/m, 'fmtDate'),
+    grab(appSrc, /^const fmtDateLong = .*$/m, 'fmtDateLong'),
+    grab(planSrc, /^const fmtMonth = .*$/m, 'fmtMonth'),
+    grab(planSrc, /^const addDays = .*$/m, 'addDays'),
+    grab(planSrc, /^function weeklyCapView\([\s\S]*?\n\}$/m, 'weeklyCapView'),
+    grab(planSrc, /^function liveOperatingPlanUnavailable\([\s\S]*?\n\}$/m, 'liveOperatingPlanUnavailable'),
+    grab(planSrc, /^function liveOperatingPlanNote\([\s\S]*?\n\}$/m, 'liveOperatingPlanNote'),
+    grab(planSrc, /^function currentOperatingUnavailableHtml\([\s\S]*?\n\}$/m, 'currentOperatingUnavailableHtml'),
+    grab(planSrc, /^function currentOperatingCashHeroTiles\([\s\S]*?\n\}$/m, 'currentOperatingCashHeroTiles'),
+    grab(planSrc, /^function currentOperatingConsumerDebtHeroTile\([\s\S]*?\n\}$/m, 'currentOperatingConsumerDebtHeroTile'),
+    grab(planSrc, /^function currentOperatingTransferNoteHtml\([\s\S]*?\n\}$/m, 'currentOperatingTransferNoteHtml'),
+    grab(planSrc, /^function paydayActionRows\([\s\S]*?\n\}$/m, 'paydayActionRows'),
+    grab(planSrc, /^function paydayOtherActionRows\([\s\S]*?\n\}$/m, 'paydayOtherActionRows'),
+    grab(planSrc, /^function paydayReservedIds\([\s\S]*?\n\}$/m, 'paydayReservedIds'),
+    grab(planSrc, /^function paydayComingRows\([\s\S]*?\n\}$/m, 'paydayComingRows'),
+    grab(planSrc, /^function paydaySheet\([\s\S]*?\n\}$/m, 'paydaySheet'),
+    grab(planSrc, /^function paydayCashNote\([\s\S]*?\n\}$/m, 'paydayCashNote'),
+    grab(planSrc, /^function paydayObligationNote\([\s\S]*?\n\}$/m, 'paydayObligationNote'),
+    grab(planSrc, /^function paydayCoverageNote\([\s\S]*?\n\}$/m, 'paydayCoverageNote'),
+    grab(planSrc, /^function paydayBillStatusNote\([\s\S]*?\n\}$/m, 'paydayBillStatusNote'),
+    grab(planSrc, /^function paydayAmountCell\([\s\S]*?\n\}$/m, 'paydayAmountCell'),
+    grab(planSrc, /^function paydayAnswerHtml\([\s\S]*?\n\}$/m, 'paydayAnswerHtml'),
+    '({ paydayAnswerHtml, currentOperatingCashHeroTiles, currentOperatingConsumerDebtHeroTile, currentOperatingTransferNoteHtml })',
+  ].join('\n'), { Forecast });
+}
+
+console.log('\n=== 20. same-day inbound fail-closed does not publish a stale cycle as current ===');
+{
+  const LIVE_FAILURE_AT = '2026-08-31T18:00:00.000Z';
+  const LIVE_FAILURE_AS_OF = '2026-08-31';
+  const openingAsOf = String(liveData.plan.opening.asOf);
+  ok(openingAsOf === '2026-08-19',
+    'canonical opening on this main is still 2026-08-19');
+  const independentOpening = independentSeaspanCycle(openingAsOf);
+  const independentLive = independentSeaspanCycle(LIVE_FAILURE_AS_OF);
+  ok(independentOpening.start === '2026-08-14' && independentOpening.end === '2026-08-27'
+      && independentOpening.nextPayday === '2026-08-28',
+    'independent 14-day steps from Aug 14: as-of Aug 19 is Aug 14–27');
+  ok(independentLive.start === '2026-08-28' && independentLive.end === '2026-09-10'
+      && independentLive.nextPayday === '2026-09-11',
+    'independent 14-day steps from Aug 14: as-of Aug 31 is Aug 28–Sep 10');
+  const engineOpening = Forecast.spendingCycle(liveData.plan, openingAsOf);
+  const engineLive = Forecast.spendingCycle(liveData.plan, LIVE_FAILURE_AS_OF);
+  ok(engineOpening && engineOpening.start === independentOpening.start
+      && engineOpening.end === independentOpening.end,
+    'spendingCycle stays faithful to the Aug 19 as-of it is given');
+  ok(engineLive && engineLive.start === independentLive.start
+      && engineLive.end === independentLive.end,
+    'spendingCycle for a trusted Aug 31 as-of is Aug 28–Sep 10');
+
+  const extra = {
+    fetchedAt: LIVE_FAILURE_AT,
+    tweaks: {
+      cashAt: '2026-08-31T17:55:00.000Z',
+      cardAt: '2026-08-31T17:55:00.000Z',
+      loanAt: '2026-08-31T17:55:00.000Z',
+      triangleAt: '2026-08-31T17:55:00.000Z',
+    },
+  };
+  const canonical = clone(liveData);
+  let threw = null;
+  try {
+    overlay(canonical, extra);
+  } catch (err) {
+    threw = err;
+  }
+  ok(threw && /same-day-event-representation-unknown/.test(threw.message),
+    'Aug 31 overlay fails closed without Amanda month-end posting evidence',
+    threw && threw.message);
+  ok(/amandaSalaryMonthEnd@2026-08-31/.test(threw && threw.message || ''),
+    'unknown same-day inbound names amandaSalaryMonthEnd, not unposted bills',
+    threw && threw.message);
+
+  const served = serveFixtureOverlay(canonical, extra);
+  ok(served.liveOverlay && served.liveOverlay.applied === false,
+    'server overlay fail-closes rather than applying a mixed Aug 31 / Aug 19 state');
+  ok(served.liveOverlay.operatingPlan === Live.OPERATING_PLAN_UNAVAILABLE,
+    'fail-closed later observation marks the current operating plan unavailable');
+  ok(/unavailable/.test(String(served.liveOverlay.operatingPlanNote || ''))
+      && /stale/.test(String(served.liveOverlay.operatingPlanNote || '')),
+    'fail-closed copy is explicit unavailable/stale');
+  ok(String(served.meta.asOf) === openingAsOf
+      && String(served.plan.opening.asOf) === openingAsOf,
+    'fail-closed overlay does not advance the served opening');
+  ok(served.liveOverlay.observedAsOf === LIVE_FAILURE_AS_OF,
+    'observed as-of is the observation household date, not Date.now');
+
+  const staleAdvice = Forecast.recommend(served.plan, served.meta.asOf, {
+    debts: served.debts,
+    revolvingExtra: served.revolvingExtra,
+    targetBuffer: served.plan.defaults.targetBuffer,
+    operatingPlan: served.liveOverlay.operatingPlan,
+    operatingPlanNote: served.liveOverlay.operatingPlanNote,
+  });
+  const active = activeCalendarPeriod(staleAdvice);
+  ok(active && active.operatingPlanUnavailable === true,
+    'Forecast withholds the current operating plan rather than publishing the dated cycle');
+  ok(active.spendingCycleLabel == null && active.spendingCycle == null,
+    'Household Budget does not print Spending cycle: Aug 14–Aug 27 as current');
+  ok(!/Aug 14/.test(String(active.operatingPlanNote || ''))
+      && !/Aug 28/.test(String(active.operatingPlanNote || '')),
+    'unavailable copy does not mix an Aug 31 cycle with an Aug 19 opening');
+  ok(/unavailable/.test(String(active.operatingPlanNote || ''))
+      && /stale/.test(String(active.operatingPlanNote || '')),
+    'Forecast note is explicit unavailable/stale');
+  ok(staleAdvice.operatingPlanUnavailable === true
+      && staleAdvice.weekly == null
+      && staleAdvice.currentPeriodAction
+      && staleAdvice.currentPeriodAction.unavailable === true
+      && staleAdvice.currentPeriodAction.remainingClaim === 'unavailable',
+    'Forecast withholds weekly permission and current-period action while operatingPlan is unavailable');
+  ok(!staleAdvice.paydayAllocation
+      || staleAdvice.paydayAllocation.extraDebt == null
+      || staleAdvice.paydayAllocation.extraDebt.status === 'unavailable'
+      || staleAdvice.paydayAllocation.extraDebt.allocated == null,
+    'Forecast withholds extra-debt instruction while operatingPlan is unavailable');
+  ok(staleAdvice.funding == null,
+    'Forecast does not publish opening-gap funding as a current claim while operatingPlan is unavailable');
+
+  const operating = OA.fromRefreshedState(served, { mode: 'live-overlay' });
+  ok(operating.provenance.operatingPlan === Live.OPERATING_PLAN_UNAVAILABLE,
+    'operating-answer provenance records operatingPlan unavailable');
+  ok(operating.moneyAvailable.value == null
+      && operating.moneyAvailable.status === 'unavailable'
+      && operating.currentSpendingPermission.weekly == null
+      && operating.currentSpendingPermission.remainingClaim === 'unavailable'
+      && operating.extraDebtAllocation.status === 'unavailable'
+      && operating.extraDebtAllocation.allocated == null,
+    'operating-answer does not copy money available, spend permission, or extra-debt as current from the stale opening');
+
+  const packet = Assistant.buildPacket({
+    data: served,
+    periods: Assistant.loadPeriods(),
+    questionsMarkdown: '',
+    now: LIVE_FAILURE_AT,
+    env: {},
+  });
+  ok(packet.current.spendableHouseholdCash.status !== 'ok'
+      && packet.current.spendableHouseholdCash.current === false,
+    'get_atlas_current does not publish dated opening cash as current');
+  ok(packet.forecast.status === 'unavailable'
+      && packet.forecast.recommendation.status === 'unavailable'
+      && packet.forecast.currentPeriodAction.status === 'unavailable',
+    'get_atlas_current does not emit a current recommendation or current-period action');
+  ok(!/\d+\s*\/\s*week/.test(JSON.stringify(packet.forecast.recommendation))
+      && packet.forecast.recommendation.weekly == null,
+    'assistant forecast recommendation does not carry a weekly spend permission');
+
+  const planSrc = sourceText(fs.readFileSync(path.join(ROOT, 'public', 'plan.js'), 'utf8'));
+  const helperSrc = [
+    /function liveOperatingPlanUnavailable\([\s\S]*?\n\}/.exec(planSrc),
+    /function liveOperatingPlanNote\([\s\S]*?\n\}/.exec(planSrc),
+    /function currentOperatingUnavailableHtml\([\s\S]*?\n\}/.exec(planSrc),
+  ];
+  ok(helperSrc.every(Boolean),
+    'plan.js names the current-operating unavailable helper');
+  const unavailableHtml = vm.runInNewContext(
+    `${helperSrc.map(m => m[0]).join('\n')}\ncurrentOperatingUnavailableHtml;`,
+    {}
+  )(staleAdvice, served.liveOverlay);
+  ok(/data-current-operating="unavailable"/.test(unavailableHtml)
+      && /data-operating-plan="unavailable"/.test(unavailableHtml)
+      && /unavailable/.test(unavailableHtml)
+      && /stale/.test(unavailableHtml)
+      && !/\$/.test(unavailableHtml),
+    'browser operating helper emits unavailable/stale and no spend amount');
+  const liveHtml = vm.runInNewContext(
+    `${helperSrc.map(m => m[0]).join('\n')}\ncurrentOperatingUnavailableHtml;`,
+    {}
+  )({ weekly: 400 }, { operatingPlan: 'live' });
+  ok(liveHtml == null, 'browser helper stays silent when the operating plan is live');
+  const browser = browserPlanComposer();
+  const paydayHtml = browser.paydayAnswerHtml({
+    plan: served.plan,
+    asOf: served.meta.asOf,
+    advice: staleAdvice,
+    recommended: staleAdvice.weekly,
+    weekly: staleAdvice.weekly,
+    liveOverlay: served.liveOverlay,
+  });
+  ok(/data-current-operating="unavailable"/.test(paydayHtml)
+      && /data-operating-plan="unavailable"/.test(paydayHtml)
+      && /unavailable/.test(paydayHtml)
+      && /stale/.test(paydayHtml)
+      && !/\$/.test(paydayHtml),
+    'paydayAnswerHtml fail-closes the current payday answer on the Aug 31 unavailable fixture');
+  ok(!/Money available/.test(paydayHtml)
+      && !/What to do with this paycheque/.test(paydayHtml)
+      && !/Bills \/ required payments/.test(paydayHtml)
+      && !/Coming before next payday/.test(paydayHtml)
+      && !/Funding risks/.test(paydayHtml)
+      && !/payday-hero/.test(paydayHtml),
+    'unavailable paydayAnswerHtml does not emit current Money available, paycheque action, or other current action from the Aug 19 opening');
+  const heroTiles = browser.currentOperatingCashHeroTiles(
+    served.plan,
+    served.meta.asOf,
+    staleAdvice.sim || { events: [] },
+    staleAdvice,
+    served.liveOverlay
+  );
+  const spendableTile = heroTiles.find(t => t.lab === 'Spendable household cash');
+  const cashOutTile = heroTiles.find(t => t.lab === 'Next cash-out total');
+  ok(spendableTile && spendableTile.val === 'unavailable' && !/\$/.test(String(spendableTile.val)),
+    'Plan hero tile does not publish numeric current Spendable household cash while unavailable');
+  ok(cashOutTile && cashOutTile.val === 'unavailable' && !/\$/.test(String(cashOutTile.val)),
+    'Plan hero tile does not publish numeric current Next cash-out total while unavailable');
+  const renderFn = /function renderPlan\([\s\S]*?\n\}/.exec(planSrc);
+  const paydayFn = /function paydayAnswerHtml\([\s\S]*?\n\}/.exec(planSrc);
+  ok((served.plan.income || []).some(row => row && row.id === 'amandaSalaryMonthEnd'),
+    'canonical plan still counts Amanda month-end salary on the dated opening');
+  const transferHtml = browser.currentOperatingTransferNoteHtml(
+    staleAdvice, served.liveOverlay, 1, served.meta.asOf);
+  ok(/data-operating-plan="unavailable"/.test(transferHtml)
+      && /unavailable/.test(transferHtml)
+      && /stale/.test(transferHtml)
+      && !/has to land by/.test(transferHtml)
+      && !/Tennis BC salary/.test(transferHtml)
+      && !/\$/.test(transferHtml),
+    'Amanda salary dependency block does not publish has-to-land-by from the dated opening');
+  const staleDebt = Forecast.projectDebts(served.plan, served.debts, served.meta.asOf, {
+    revolvingExtra: served.revolvingExtra,
+    targetBuffer: served.plan.defaults.targetBuffer,
+    weeklyVariable: staleAdvice.weekly,
+  });
+  const staleToday = (staleDebt.marks || []).find(m => m.day === 0)
+    || staleDebt.marks[staleDebt.marks.length - 1];
+  ok(staleToday && staleToday.consumer != null && Number(staleToday.consumer) !== 0,
+    'stale Aug 19 walk still has a numeric consumer-debt figure to withhold');
+  const debtTile = browser.currentOperatingConsumerDebtHeroTile(
+    staleAdvice, served.liveOverlay, staleToday);
+  ok(debtTile && debtTile.lab === 'Consumer debt'
+      && debtTile.val === 'unavailable'
+      && !/\$/.test(String(debtTile.val))
+      && !/\$/.test(String(debtTile.note))
+      && /unavailable/.test(String(debtTile.note))
+      && /stale/.test(String(debtTile.note)),
+    'Consumer debt hero tile does not publish numeric current debt/headroom from the dated opening');
+  ok(renderFn && /currentOperatingCashHeroTiles\(/.test(renderFn[0])
+      && /currentOperatingConsumerDebtHeroTile\(/.test(renderFn[0])
+      && /currentOperatingTransferNoteHtml\(/.test(renderFn[0]),
+    'renderPlan prints currentOperatingCashHeroTiles, Consumer debt, and Amanda salary helpers rather than a parallel current path');
+  ok(paydayFn && /currentOperatingUnavailableHtml\(/.test(paydayFn[0])
+      && /liveOperatingPlanUnavailable\(/.test(paydayFn[0]),
+    'paydayAnswerHtml withholds the current payday block while operatingPlan is unavailable');
+  const surfaceFn = /function operatingSurfaceHtml\([\s\S]*?\n\}/.exec(planSrc);
+  ok(surfaceFn && /currentOperatingUnavailableHtml/.test(surfaceFn[0])
+      && /data-today-decision="unavailable"/.test(surfaceFn[0]),
+    'operatingSurfaceHtml fail-closes spend permission, extra-debt, and today-action while operatingPlan is unavailable');
+  const extraFn = /function extraRepaymentHtml\([\s\S]*?\n\}/.exec(planSrc);
+  ok(extraFn && /operatingPlanUnavailable/.test(extraFn[0])
+      && /data-operating-plan="unavailable"/.test(extraFn[0]),
+    'calendar extra-debt instruction fail-closes on the active unavailable period');
+  const mixed = Forecast.recommend(served.plan, served.meta.asOf, {
+    debts: served.debts,
+    revolvingExtra: served.revolvingExtra,
+    targetBuffer: served.plan.defaults.targetBuffer,
+  });
+  const mixedActive = activeCalendarPeriod(mixed);
+  ok(mixedActive && mixedActive.spendingCycle && mixedActive.spendingCycle.start === '2026-08-14',
+    'without the overlay flag, Aug 19 as-of still computes Aug 14–27 (cycle math unchanged)');
+
+  const trusted = clone(liveData);
+  trusted.plan = Object.assign({}, trusted.plan, {
+    income: (trusted.plan.income || []).map(row => {
+      if (!row || row.id !== 'amandaSalaryMonthEnd') return row;
+      return Object.assign({}, row, { firstDue: '2026-09-30' });
+    }),
+  });
+  const trustedServed = serveFixtureOverlay(trusted, extra);
+  ok(trustedServed.liveOverlay && trustedServed.liveOverlay.applied === true,
+    'unposted same-day joint-cash bills do not fail the overlay when inbound is not in-window');
+  ok(trustedServed.liveOverlay.operatingPlan === Live.OPERATING_PLAN_LIVE,
+    'independently trusted current opening applies as live');
+  ok(String(trustedServed.plan.opening.asOf) === LIVE_FAILURE_AS_OF
+      && String(trustedServed.meta.asOf) === LIVE_FAILURE_AS_OF,
+    'trusted overlay advances as-of with the opening, not a mixed state');
+  const trustedAdvice = Forecast.recommend(trustedServed.plan, trustedServed.meta.asOf, {
+    debts: trustedServed.debts,
+    revolvingExtra: trustedServed.revolvingExtra,
+    targetBuffer: trustedServed.plan.defaults.targetBuffer,
+    operatingPlan: trustedServed.liveOverlay.operatingPlan,
+    operatingPlanNote: trustedServed.liveOverlay.operatingPlanNote,
+  });
+  const trustedActive = activeCalendarPeriod(trustedAdvice);
+  ok(trustedActive && trustedActive.spendingCycle
+      && trustedActive.spendingCycle.start === independentLive.start
+      && trustedActive.spendingCycle.end === independentLive.end
+      && trustedActive.spendingCycleLabel === engineLive.label
+      && trustedActive.operatingPlanUnavailable !== true,
+    'trusted Aug 31 as-of publishes Household Budget Aug 28–Sep 10');
+  ok(trustedAdvice.operatingPlanUnavailable !== true
+      && trustedAdvice.weekly != null
+      && !(trustedAdvice.currentPeriodAction && trustedAdvice.currentPeriodAction.unavailable),
+    'trusted control still publishes weekly permission and current-period action');
+  const trustedOperating = OA.fromRefreshedState(trustedServed, { mode: 'live-overlay' });
+  ok(trustedOperating.currentSpendingPermission.weekly != null
+      && trustedOperating.moneyAvailable.value != null
+      && trustedOperating.extraDebtAllocation.status !== 'unavailable',
+    'trusted operating-answer still publishes current money available and spend permission');
+  const trustedPacket = Assistant.buildPacket({
+    data: trustedServed,
+    periods: Assistant.loadPeriods(),
+    questionsMarkdown: '',
+    now: LIVE_FAILURE_AT,
+    env: {},
+  });
+  ok(trustedPacket.forecast.status === 'ok'
+      && trustedPacket.forecast.recommendation.weekly != null
+      && trustedPacket.forecast.currentPeriodAction.status === 'ok'
+      && trustedPacket.current.spendableHouseholdCash.status === 'ok',
+    'trusted get_atlas_current still publishes current cash, recommendation, and current-period action');
+  const trustedPayday = browser.paydayAnswerHtml({
+    plan: trustedServed.plan,
+    asOf: trustedServed.meta.asOf,
+    advice: trustedAdvice,
+    recommended: trustedAdvice.weekly,
+    weekly: trustedAdvice.weekly,
+    liveOverlay: trustedServed.liveOverlay,
+  });
+  ok(!/data-current-operating="unavailable"/.test(trustedPayday)
+      && /\$/.test(trustedPayday)
+      && (/What to do now/.test(trustedPayday)
+          || /Money available/.test(trustedPayday))
+      && /Household spending permission/.test(trustedPayday)
+      && /payday-hero/.test(trustedPayday),
+    'trusted control paydayAnswerHtml still publishes a current operating answer');
+  const trustedHero = browser.currentOperatingCashHeroTiles(
+    trustedServed.plan,
+    trustedServed.meta.asOf,
+    trustedAdvice.sim,
+    trustedAdvice,
+    trustedServed.liveOverlay
+  );
+  const trustedCash = trustedHero.find(t => t.lab === 'Spendable household cash');
+  const trustedOut = trustedHero.find(t => t.lab === 'Next cash-out total');
+  ok(trustedCash && trustedCash.val !== 'unavailable' && /\$/.test(String(trustedCash.val)),
+    'trusted control still publishes numeric Spendable household cash');
+  ok(!trustedOut || (trustedOut.val !== 'unavailable' && /\$/.test(String(trustedOut.val))),
+    'trusted control still publishes numeric Next cash-out total when a cash-out exists');
+  const trustedDeadline = Forecast.amandaHouseholdIncomeDeadline(
+    trustedServed.plan, trustedServed.meta.asOf, {
+      debts: trustedServed.debts,
+      revolvingExtra: trustedServed.revolvingExtra,
+      targetBuffer: trustedServed.plan.defaults.targetBuffer,
+      weeklyVariable: trustedAdvice.weekly,
+      notBefore: trustedServed.meta.asOf,
+    });
+  const trustedTransfer = browser.currentOperatingTransferNoteHtml(
+    trustedAdvice, trustedServed.liveOverlay,
+    trustedDeadline && trustedDeadline.amount, trustedDeadline && trustedDeadline.neededBy);
+  ok(/Tennis BC salary/.test(trustedTransfer)
+      && !/data-operating-plan="unavailable"/.test(trustedTransfer)
+      && (trustedDeadline && trustedDeadline.neededBy
+        ? /has to land by/.test(trustedTransfer)
+        : true),
+    'trusted control still publishes the Amanda salary dependency');
+  const trustedDebtProj = Forecast.projectDebts(
+    trustedServed.plan, trustedServed.debts, trustedServed.meta.asOf, {
+      revolvingExtra: trustedServed.revolvingExtra,
+      targetBuffer: trustedServed.plan.defaults.targetBuffer,
+      weeklyVariable: trustedAdvice.weekly,
+    });
+  const trustedTodayMark = (trustedDebtProj.marks || []).find(m => m.day === 0)
+    || trustedDebtProj.marks[trustedDebtProj.marks.length - 1];
+  const trustedDebtTile = browser.currentOperatingConsumerDebtHeroTile(
+    trustedAdvice, trustedServed.liveOverlay, trustedTodayMark);
+  ok(trustedDebtTile && trustedDebtTile.val !== 'unavailable'
+      && /\$/.test(String(trustedDebtTile.val)),
+    'trusted control still publishes numeric Consumer debt');
+
+  const budgetFn = /function calendarBudgetHtml\([\s\S]*?\n\}/.exec(planSrc);
+  ok(budgetFn && /operatingPlanUnavailable/.test(budgetFn[0])
+      && /data-operating-plan="unavailable"/.test(budgetFn[0])
+      && !/Date\.now/.test(budgetFn[0]),
+    'plan.js prints Forecast operatingPlanUnavailable; it does not invent a cycle or wall-clock as-of');
+  const fromFn = /function operatingPlanFromOverlay\([\s\S]*?\n\}/.exec(
+    fs.readFileSync(path.join(ROOT, 'scripts', 'live-plan.js'), 'utf8'));
+  ok(fromFn && /liveAsOf > historicalOpeningAsOf/.test(fromFn[0]) && !/Date\.now/.test(fromFn[0]),
+    'operatingPlan unavailable is later observed as-of vs dated opening, not wall-clock');
+  filesUnchanged('same-day inbound fail-closed stale cycle');
 }
 
 console.log('\n' + '═'.repeat(60));
