@@ -231,6 +231,7 @@ const txs = [
   {
     date: PAYDAY, amount: GROCERY_SPENT, pending: false,
     categoryLabel: 'Groceries', accountRole: 'household-cash',
+    displayedPayee: 'Save-On-Foods', originalMerchant: 'Save-On-Foods',
   },
   {
     date: '2026-08-16', amount: 99, pending: false,

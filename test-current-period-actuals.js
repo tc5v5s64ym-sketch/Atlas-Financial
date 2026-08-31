@@ -239,8 +239,8 @@ console.log('\n=== C. upcoming bill ===');
 console.log('\n=== D. groceries actual remaining ===');
 {
   const txs = [
-    { date: '2026-09-02', amount: 80.10, pending: false, categoryLabel: 'Groceries', accountRole: 'revolving-credit' },
-    { date: '2026-09-04', amount: 40.00, pending: false, categoryLabel: 'Groceries', accountRole: 'household-cash' },
+    { date: '2026-09-02', amount: 80.10, pending: false, categoryLabel: 'Groceries', accountRole: 'revolving-credit', displayedPayee: 'Save-On-Foods', originalMerchant: 'Save-On-Foods' },
+    { date: '2026-09-04', amount: 40.00, pending: false, categoryLabel: 'Groceries', accountRole: 'household-cash', displayedPayee: 'Save-On-Foods', originalMerchant: 'Save-On-Foods' },
   ];
   const plan = basePlan({
     opening: { asOf: MID, priorAsOf: PAYDAY, representedEvents: [] },
@@ -268,7 +268,7 @@ console.log('\n=== D. groceries actual remaining ===');
 console.log('\n=== E. credit-card purchase counted once ===');
 {
   const txs = [
-    { date: PAYDAY, amount: 40, pending: false, categoryLabel: 'Groceries', accountRole: 'revolving-credit' },
+    { date: PAYDAY, amount: 40, pending: false, categoryLabel: 'Groceries', accountRole: 'revolving-credit', displayedPayee: 'Save-On-Foods', originalMerchant: 'Save-On-Foods' },
     {
       date: PAYDAY, amount: 40, pending: false, categoryLabel: 'Transfer',
       accountRole: 'household-cash', excludeFromTotals: true, kindHint: 'payment',
@@ -315,6 +315,7 @@ console.log('\n=== G. pending purchase has gravity and is not posted ===');
       date: PAYDAY, amount: 18.40, pending: true,
       pendingTreatment: 'unresolved', categoryLabel: 'Groceries',
       accountRole: 'revolving-credit',
+      displayedPayee: 'Save-On-Foods', originalMerchant: 'Save-On-Foods',
     },
   ];
   const plan = basePlan();
@@ -332,7 +333,7 @@ console.log('\n=== G. pending purchase has gravity and is not posted ===');
 console.log('\n=== H. refund / credit reduces spending ===');
 {
   const txs = [
-    { date: PAYDAY, amount: 40, pending: false, categoryLabel: 'Groceries', accountRole: 'revolving-credit' },
+    { date: PAYDAY, amount: 40, pending: false, categoryLabel: 'Groceries', accountRole: 'revolving-credit', displayedPayee: 'Save-On-Foods', originalMerchant: 'Save-On-Foods' },
     { date: PAYDAY, amount: -12, pending: false, categoryLabel: 'Groceries', accountRole: 'revolving-credit' },
   ];
   const plan = basePlan();
@@ -341,8 +342,8 @@ console.log('\n=== H. refund / credit reduces spending ===');
     currentPeriodActuals: packet(txs),
   }));
   const row = cat(action, 'groceries');
-  ok(row && near(row.posted, 28), 'posted is purchase minus category credit');
-  ok(row && near(row.remaining, planned - 28), 'remaining uses the net posted amount');
+  ok(row && near(row.posted, 40), 'posted is the purchase; credits are excluded as refunds, not netted into groceries');
+  ok(row && near(row.remaining, planned - 40), 'remaining uses posted spend without the refund credit');
 }
 
 console.log('\n=== I. unclassified transaction is not dropped or guessed ===');
@@ -352,9 +353,17 @@ console.log('\n=== I. unclassified transaction is not dropped or guessed ===');
   ];
   const plan = basePlan();
   const src = fs.readFileSync(path.join(__dirname, 'public', 'forecast.js'), 'utf8');
-  ok(!/payee/.test(src.slice(src.indexOf('function classifyCurrentPeriodTransaction'),
-    src.indexOf('function currentPeriodActualsPacket'))),
-    'classifier source does not read a payee');
+  const helpers = src.slice(src.indexOf('function txMerchantExact'),
+    src.indexOf('function classifyCurrentPeriodTransaction'));
+  const slice = src.slice(src.indexOf('function classifyCurrentPeriodTransaction'),
+    src.indexOf('function currentPeriodActualsPacket'));
+  ok(/displayedPayee/.test(helpers) && /originalMerchant/.test(helpers)
+      && /function isDogFoodMerchant/.test(helpers),
+    'classifier helpers read displayedPayee and originalMerchant from the Forecast packet');
+  ok(/isDogFoodMerchant\(tx\)/.test(slice) && /isCanadianTireMerchant\(tx\)/.test(slice),
+    'classifier applies merchant identity before named-category mapping');
+  ok(!/\btx\.payee\b/.test(slice) || /txMerchantExact/.test(slice),
+    'classifier merchant identity prefers packet fields over a raw provider payee key');
   const cls = F.classifyCurrentPeriodTransaction(txs[0], plan);
   const action = F.currentPeriodAction(plan, PAYDAY, opts({
     currentPeriodActuals: packet(txs),
@@ -375,7 +384,7 @@ console.log('\n=== I. unclassified transaction is not dropped or guessed ===');
 console.log('\n=== J. stale actuals fail closed ===');
 {
   const txs = [
-    { date: '2026-08-20', amount: 200, pending: false, categoryLabel: 'Groceries', accountRole: 'household-cash' },
+    { date: '2026-08-20', amount: 200, pending: false, categoryLabel: 'Groceries', accountRole: 'household-cash', displayedPayee: 'Save-On-Foods', originalMerchant: 'Save-On-Foods' },
   ];
   const plan = basePlan({ opening: { asOf: PAYDAY, representedEvents: [] } });
   const action = F.currentPeriodAction(plan, PAYDAY, opts({
@@ -419,7 +428,7 @@ console.log('\n=== K. between-paydays action plan ===');
     ],
   });
   const txs = [
-    { date: '2026-09-03', amount: 50, pending: false, categoryLabel: 'Groceries', accountRole: 'household-cash' },
+    { date: '2026-09-03', amount: 50, pending: false, categoryLabel: 'Groceries', accountRole: 'household-cash', displayedPayee: 'Save-On-Foods', originalMerchant: 'Save-On-Foods' },
   ];
   const rec = F.recommend(plan, MID, opts({
     currentPeriodActuals: packet(txs, { asOf: MID, coverageStart: PAYDAY, coverageThrough: MID }),
@@ -452,7 +461,7 @@ console.log('\n=== L. payday mode keeps the allocator ===');
     ],
   });
   const txs = [
-    { date: PAYDAY, amount: 25, pending: false, categoryLabel: 'Groceries', accountRole: 'household-cash' },
+    { date: PAYDAY, amount: 25, pending: false, categoryLabel: 'Groceries', accountRole: 'household-cash', displayedPayee: 'Save-On-Foods', originalMerchant: 'Save-On-Foods' },
   ];
   const rec = F.recommend(plan, PAYDAY, opts({
     currentPeriodActuals: packet(txs),
@@ -477,9 +486,9 @@ console.log('\n=== L. payday mode keeps the allocator ===');
 console.log('\n=== M. dollar / category reconciliation ===');
 {
   const txs = [
-    { date: PAYDAY, amount: 40, pending: false, categoryLabel: 'Groceries', accountRole: 'revolving-credit' },
-    { date: PAYDAY, amount: 15, pending: false, categoryLabel: 'Fuel & transport', accountRole: 'household-cash' },
-    { date: PAYDAY, amount: 8, pending: true, pendingTreatment: 'unresolved', categoryLabel: 'Groceries', accountRole: 'revolving-credit' },
+    { date: PAYDAY, amount: 40, pending: false, categoryLabel: 'Groceries', accountRole: 'revolving-credit', displayedPayee: 'Save-On-Foods', originalMerchant: 'Save-On-Foods' },
+    { date: PAYDAY, amount: 15, pending: false, categoryLabel: 'Fuel & transport', accountRole: 'household-cash', displayedPayee: 'Shell', originalMerchant: 'Shell' },
+    { date: PAYDAY, amount: 8, pending: true, pendingTreatment: 'unresolved', categoryLabel: 'Groceries', accountRole: 'revolving-credit', displayedPayee: 'Save-On-Foods', originalMerchant: 'Save-On-Foods' },
     { date: PAYDAY, amount: 20, pending: false, categoryLabel: 'Transfer', accountRole: 'household-cash', kindHint: 'transfer', excludeFromTotals: true },
   ];
   const plan = basePlan();
@@ -517,8 +526,17 @@ console.log('\n=== N. privacy — no raw payloads in overlay or localStorage kno
   const blob = JSON.stringify(actuals);
   ok(actuals && actuals.schema === 'atlas-current-period-actuals/v1',
     'observer emits a sanitized current-period actuals packet');
-  ok(!/"payee"\s*:/.test(blob) && !/"providerTransactionId"\s*:/.test(blob),
-    'actuals packet has no payee or provider transaction id');
+  ok(!/"payee"\s*:/.test(blob) && !/"providerTransactionId"\s*:/.test(blob)
+      && !/"original_name"\s*:/.test(blob) && !/"providerAccountId"\s*:/.test(blob),
+    'actuals packet has no payee, original_name, or provider transaction/account id');
+  ok(Array.isArray(actuals.transactions) && actuals.transactions.some(tx =>
+      tx && (tx.displayedPayee || tx.originalMerchant)
+      && Object.prototype.hasOwnProperty.call(tx, 'tags')
+      && Object.prototype.hasOwnProperty.call(tx, 'notes')
+      && Object.prototype.hasOwnProperty.call(tx, 'isGroup')
+      && Object.prototype.hasOwnProperty.call(tx, 'parentId')
+      && (tx.account || tx.atlasAccountId)),
+    'Forecast actuals keep displayedPayee, originalMerchant, tags, notes, account, isGroup, parentId');
   const planSrc = fs.readFileSync(path.join(__dirname, 'public', 'plan.js'), 'utf8');
   ok(/const KNOBS = \['scenario'/.test(planSrc)
     && /localStorage\.setItem\(KNOB_KEY/.test(planSrc)
@@ -561,8 +579,10 @@ console.log('\n=== observer category identity passes through ===');
       { id: 82, name: 'Transfer', is_income: false, exclude_from_totals: true },
     ],
     transactions: [
-      { id: 1, account_id: 1001, date: '2026-09-02', amount: 12.5, category_id: 11, is_pending: false, payee: 'SYNTHETIC GROCER' },
+      { id: 1, account_id: 1001, date: '2026-09-02', amount: 12.5, category_id: 11, is_pending: false, payee: 'SYNTHETIC GROCER', original_name: 'SYNTHETIC GROCER', notes: 'weekly shop', tags: ['fixture'] },
       { id: 2, account_id: 1001, date: '2026-09-03', amount: 40, category_id: 82, is_pending: false, payee: 'SYNTHETIC TRANSFER' },
+      { id: 3, account_id: 1001, date: '2026-09-04', amount: 80, category_id: 11, is_pending: false, payee: 'SPLIT PARENT', is_group: true, has_children: true },
+      { id: 4, account_id: 1001, date: '2026-09-04', amount: 50, category_id: 11, is_pending: false, payee: 'SPLIT CHILD', parent_id: 3 },
     ],
   };
   const map = JSON.parse(fs.readFileSync(
@@ -577,6 +597,17 @@ console.log('\n=== observer category identity passes through ===');
     'transfer category identity is preserved');
   ok(!report.currentPeriodActuals.transactions.some(t => t.payee),
     'sanitized actuals dropped the fixture payee');
+  ok(grocery && grocery.displayedPayee === 'SYNTHETIC GROCER'
+      && grocery.originalMerchant === 'SYNTHETIC GROCER'
+      && grocery.notes === 'weekly shop'
+      && Array.isArray(grocery.tags)
+      && (grocery.account || grocery.atlasAccountId),
+    'Forecast packet keeps displayedPayee, originalMerchant, tags, notes, account');
+  const parent = report.currentPeriodActuals.transactions.find(t => t.amount === 80);
+  const child = report.currentPeriodActuals.transactions.find(t => t.amount === 50);
+  ok(parent && parent.isGroup === true && child && child.parentId === parent.id
+      && parent.id && !/^[0-9]+$/.test(String(parent.id)),
+    'packet keeps isGroup/parentId as local ids, not provider ids');
 }
 
 console.log('\n=== O. known pending still constrains remaining when pending coverage is incomplete ===');
@@ -586,6 +617,7 @@ console.log('\n=== O. known pending still constrains remaining when pending cove
       date: PAYDAY, amount: 18.40, pending: true,
       pendingTreatment: 'unresolved', categoryLabel: 'Groceries',
       accountRole: 'revolving-credit',
+      displayedPayee: 'Save-On-Foods', originalMerchant: 'Save-On-Foods',
     },
   ];
   const plan = basePlan();
@@ -618,7 +650,7 @@ console.log('\n=== O. known pending still constrains remaining when pending cove
 console.log('\n=== P. truncated posted-transaction page cannot claim precise remaining ===');
 {
   const txs = [
-    { date: PAYDAY, amount: 40, pending: false, categoryLabel: 'Groceries', accountRole: 'household-cash' },
+    { date: PAYDAY, amount: 40, pending: false, categoryLabel: 'Groceries', accountRole: 'household-cash', displayedPayee: 'Save-On-Foods', originalMerchant: 'Save-On-Foods' },
   ];
   const plan = basePlan();
   const action = F.currentPeriodAction(plan, PAYDAY, opts({
@@ -634,7 +666,7 @@ console.log('\n=== P. truncated posted-transaction page cannot claim precise rem
 console.log('\n=== P2. unmapped current-period account cannot claim precise remaining ===');
 {
   const txs = [
-    { date: PAYDAY, amount: 40, pending: false, categoryLabel: 'Groceries', accountRole: 'unmapped' },
+    { date: PAYDAY, amount: 40, pending: false, categoryLabel: 'Groceries', accountRole: 'unmapped', displayedPayee: 'Save-On-Foods', originalMerchant: 'Save-On-Foods' },
   ];
   const plan = basePlan();
   const unmappedCls = F.classifyCurrentPeriodTransaction(txs[0], plan);
@@ -653,8 +685,8 @@ console.log('\n=== P2. unmapped current-period account cannot claim precise rema
 console.log('\n=== P3. explicit household-external stays excluded without blocking remaining ===');
 {
   const txs = [
-    { date: PAYDAY, amount: 40, pending: false, categoryLabel: 'Groceries', accountRole: 'revolving-credit' },
-    { date: PAYDAY, amount: 99, pending: false, categoryLabel: 'Groceries', accountRole: 'household-external' },
+    { date: PAYDAY, amount: 40, pending: false, categoryLabel: 'Groceries', accountRole: 'revolving-credit', displayedPayee: 'Save-On-Foods', originalMerchant: 'Save-On-Foods' },
+    { date: PAYDAY, amount: 99, pending: false, categoryLabel: 'Groceries', accountRole: 'household-external', displayedPayee: 'Save-On-Foods', originalMerchant: 'Save-On-Foods' },
   ];
   const plan = basePlan();
   const externalCls = F.classifyCurrentPeriodTransaction(txs[1], plan);
@@ -865,11 +897,11 @@ function independentInventory(txs, plan, asOf, origin) {
 console.log('\n=== S. named remaining is not precise while household spend is unclassified ===');
 {
   const namedTxs = [
-    { date: PAYDAY, amount: 40, pending: false, categoryLabel: 'Groceries', accountRole: 'revolving-credit' },
-    { date: PAYDAY, amount: 15, pending: false, categoryLabel: 'Fuel & transport', accountRole: 'household-cash' },
+    { date: PAYDAY, amount: 40, pending: false, categoryLabel: 'Groceries', accountRole: 'revolving-credit', displayedPayee: 'Save-On-Foods', originalMerchant: 'Save-On-Foods' },
+    { date: PAYDAY, amount: 15, pending: false, categoryLabel: 'Fuel & transport', accountRole: 'household-cash', displayedPayee: 'Shell', originalMerchant: 'Shell' },
   ];
   const unclassifiedTxs = [
-    { date: PAYDAY, amount: 12.50, pending: false, categoryLabel: 'Fast Food', accountRole: 'household-cash' },
+    { date: PAYDAY, amount: 12.50, pending: false, categoryLabel: 'Gifts', accountRole: 'household-cash' },
   ];
   const excludedTxs = [
     {
@@ -891,12 +923,14 @@ console.log('\n=== S. named remaining is not precise while household spend is un
     {
       date: PAYDAY, amount: 99, pending: false, categoryLabel: 'Groceries',
       accountRole: 'household-external',
+      displayedPayee: 'Save-On-Foods', originalMerchant: 'Save-On-Foods',
     },
   ];
   const pendingNamed = [{
     date: PAYDAY, amount: 18.40, pending: true,
     pendingTreatment: 'unresolved', categoryLabel: 'Groceries',
     accountRole: 'revolving-credit',
+    displayedPayee: 'Save-On-Foods', originalMerchant: 'Save-On-Foods',
   }];
 
   console.log('  --- S1. fully classified period may claim precise named remaining ---');
@@ -960,15 +994,16 @@ console.log('\n=== S. named remaining is not precise while household spend is un
     ok(action.categoryRemainingClaim === 'classified-incomplete',
       'named remaining is not precise while unclassified household spend exists');
     ok(action.unclassified.count === 1 && near(action.unclassified.posted, 12.50),
-      'unclassified Fast Food remains visible in uncategorised with its dollar amount');
+      'unclassified Gifts remains visible in uncategorised with its dollar amount');
     const groceries = cat(action, 'groceries');
-    const uncat = cat(action, 'uncategorised');
     ok(groceries && near(groceries.posted, 40),
       'classified grocery actuals are still calculated');
     ok(groceries && groceries.remaining != null,
       'observed grocery remaining is still shown');
-    ok(uncat && near(uncat.posted, 12.50),
-      'unmapped Fast Food lands in uncategorised, not a guessed named category');
+    ok(!(action.categories || []).some(c => c.id !== 'uncategorised' && near(c.posted, 12.50)),
+      'unmapped Gifts is not guessed into a named household category');
+    ok(near(action.unclassified.posted, 12.50),
+      'unmapped Gifts stays in the unclassified remainder, not a named row');
     const html = paydayComposer().paydayAnswerHtml({
       plan, asOf: PAYDAY,
       advice: {
@@ -1041,7 +1076,7 @@ console.log('\n=== S. named remaining is not precise while household spend is un
     const plan = basePlan();
     const inv = independentInventory(txs, plan, PAYDAY, PAYDAY);
     ok(inv.named === 1 && inv.unclassified === 1 && inv.namedById.groceries === 1 && !inv.namedById.fuel,
-      'independent inventory: groceries classified, fuel has no classified txs, Fast Food unclassified',
+      'independent inventory: groceries classified, fuel has no classified txs, Gifts unclassified',
       JSON.stringify(inv));
     const actionOpts = opts({
       currentPeriodActuals: packet(txs, { pendingCoverage: 'complete' }),

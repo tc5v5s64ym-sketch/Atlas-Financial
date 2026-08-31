@@ -334,7 +334,11 @@ function independentGroceryRemaining(plan, asOf) {
   });
   const groceries = ((plan.budget && plan.budget.categories) || [])
     .find(row => row && row.id === 'groceries');
-  const monthly = Number(groceries && groceries.plannedMonthly);
+  const weekly = groceries && groceries.plannedWeekly != null
+    ? Number(groceries.plannedWeekly) : null;
+  const monthly = weekly != null
+    ? round2(weekly * MONTH / 7)
+    : Number(groceries && groceries.plannedMonthly);
   const needDays = Forecast.diffDays(actionProbe.periodStart, actionProbe.periodEnd) + 1;
   const planned = round2(monthly * needDays / MONTH);
   const committed = round2(GROCERY_POSTED + GROCERY_PENDING);
@@ -648,8 +652,10 @@ function independentGroceryRemaining(plan, asOf) {
     const actuals = data.liveOverlay && data.liveOverlay.currentPeriodActuals;
     ok(actuals && actuals.schema === 'atlas-current-period-actuals/v1',
       'sanitized current-period packet is published');
-    ok(!(actuals.transactions || []).some(tx => tx.payee || tx.providerTransactionId || tx.providerAccountId),
-      'actuals rows dropped payee and provider ids');
+    ok(!(actuals.transactions || []).some(tx => tx.payee || tx.providerTransactionId || tx.providerAccountId || tx.original_name),
+      'actuals rows dropped payee keys and provider ids');
+    ok((actuals.transactions || []).some(tx => tx.displayedPayee || tx.originalMerchant),
+      'actuals rows keep displayedPayee/originalMerchant for Forecast recon');
   });
 
   console.log('\n=== H. live /data.json does not write canonical files ===');

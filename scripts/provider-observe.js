@@ -329,10 +329,17 @@ function normalizeLunchMoneyTransaction(raw, categoriesById) {
     providerAccountId: accountId != null ? String(accountId) : null,
     date: raw.date || null,
     amount: raw.amount != null ? Number(raw.amount) : null,
-    payee: raw.payee || raw.original_name || null,
+    payee: raw.payee || null,
+    originalName: raw.original_name || raw.originalName || null,
+    notes: raw.notes || raw.note || null,
+    tags: raw.tags || null,
+    isGroup: raw.is_group === true || raw.is_group_parent === true
+      || raw.has_children === true,
+    parentId: raw.parent_id != null ? String(raw.parent_id) : null,
     pending: raw.is_pending === true,
     status: raw.status || null,
     kind: raw.kind || null,
+    mcc: raw.mcc || raw.plaid_mcc || null,
     categoryId,
     categoryLabel: categoryName,
     isIncome,
@@ -2108,7 +2115,17 @@ function kindHintFromTransaction(tx) {
   const raw = tx && tx.kind ? String(tx.kind).toLowerCase() : '';
   if (raw === 'payment' || raw === 'bill-payment' || raw === 'card-payment') return 'payment';
   if (raw === 'transfer' || raw === 'internal-transfer') return 'transfer';
+  if (raw === 'gas' || raw === 'fuel' || raw === 'petrol') return 'gas';
   return null;
+}
+
+function isSurreyMeatName(value) {
+  const key = String(value == null ? '' : value)
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return /\bSURREY MEAT\b/.test(key);
 }
 
 function sanitizedCurrentPeriodActuals(report, opts) {
@@ -2119,6 +2136,17 @@ function sanitizedCurrentPeriodActuals(report, opts) {
     || (report && report.transactions)
     || [];
   const mapDoc = opts.accountMap;
+  const localByProvider = new Map();
+  let localSeq = 0;
+  const localIdFor = providerId => {
+    if (providerId == null || providerId === '') return null;
+    const key = String(providerId);
+    if (localByProvider.has(key)) return localByProvider.get(key);
+    localSeq += 1;
+    const local = 'tx-' + localSeq;
+    localByProvider.set(key, local);
+    return local;
+  };
   const txs = [];
   for (const tx of collapsed) {
     if (!tx || !tx.date) continue;
@@ -2129,7 +2157,11 @@ function sanitizedCurrentPeriodActuals(report, opts) {
       plan: opts.plan,
       billPaymentPayees: opts.billPaymentPayees,
     });
+    const atlasAccountId = mapping && mapping.canonical && mapping.canonical.id
+      ? mapping.canonical.id : null;
+    const kindHint = kindHintFromTransaction(tx);
     txs.push({
+      id: localIdFor(tx.providerTransactionId),
       date: tx.date,
       amount,
       pending: tx.pending === true,
@@ -2139,7 +2171,16 @@ function sanitizedCurrentPeriodActuals(report, opts) {
       excludeFromTotals: tx.excludeFromTotals === true,
       excludeFromBudget: tx.excludeFromBudget === true,
       accountRole: atlasAccountRole(mapping),
-      kindHint: kindHintFromTransaction(tx),
+      atlasAccountId,
+      account: atlasAccountId,
+      kindHint,
+      displayedPayee: tx.payee || null,
+      originalMerchant: tx.originalName || tx.payee || null,
+      dogFood: isSurreyMeatName(tx.originalName || tx.payee),
+      tags: tx.tags || null,
+      notes: tx.notes || null,
+      isGroup: tx.isGroup === true,
+      parentId: localIdFor(tx.parentId),
     });
   }
   const pending = report && report.pendingCoverage;
