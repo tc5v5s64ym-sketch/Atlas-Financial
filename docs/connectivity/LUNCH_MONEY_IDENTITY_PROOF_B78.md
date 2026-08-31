@@ -103,7 +103,7 @@ identity. D7 static posting observations in
 
 ## Deterministic coverage
 
-`node test-b78-identity.js` (registered in `test.js`) proves the same
+`node test/test-b78-identity.js` (registered in `test/test.js`) proves the same
 invariants on committed fixtures: re-observe no-op, display-name
 stability, in-place amount correction, historical payroll excluded from
 the current-opening compare, same-day CHANGE chooses no winner, unmapped
