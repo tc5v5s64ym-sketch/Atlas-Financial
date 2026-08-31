@@ -1640,8 +1640,13 @@ function calendarIncomeHtml(period) {
 
 function calendarBudgetHtml(period) {
   const rows = (period && period.householdBudget) || [];
+  const cycle = period && period.cycleUnresolved
+    ? `<p class="operating-lead">Spending cycle unavailable. Household Budget reserve is held.</p>`
+    : (period && period.spendingCycleLabel
+      ? `<p class="operating-lead">${period.spendingCycleLabel}</p>` : '');
   if (!rows.length) {
     return `<div class="payday-household-budget" data-payday-household-budget>
+      ${cycle}
       <p class="operating-lead">No household budget lines on this plan.</p>
     </div>`;
   }
@@ -1661,6 +1666,13 @@ function calendarBudgetHtml(period) {
       bits.push('needs confirmation');
       return paydayBucketRow(row.label, bits.join(' · '), null, null, { preformatted: true });
     }
+    if (row.plannedWeekly != null) {
+      const bits = [`${money2(row.plannedWeekly)}/week`];
+      if (row.planned != null) bits.push(`planned this period ${money2(row.planned)}`);
+      if (row.spent != null) bits.push(`spent ${money2(row.spent)}`);
+      if (row.remaining != null) bits.push(`remaining ${money2(row.remaining)}`);
+      return paydayBucketRow(row.label, bits.join(' · '), null, null, { preformatted: true });
+    }
     const bits = [];
     if (row.planned != null) bits.push(`planned ${money2(row.planned)}`);
     if (row.spent != null) bits.push(`spent this period ${money2(row.spent)}`);
@@ -1672,6 +1684,7 @@ function calendarBudgetHtml(period) {
     return paydayBucketRow(row.label, bits.join(' · ') || '—', null, null, { preformatted: true });
   }).join('');
   return `<div class="payday-household-budget" data-payday-household-budget>
+    ${cycle}
     <div class="operating-lines">${lines}</div>
   </div>`;
 }

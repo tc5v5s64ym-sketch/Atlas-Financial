@@ -86,6 +86,52 @@
     }
     return out;
   }
+
+  const MONTH_SHORT = [
+    '', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+  // Seaspan payday cycle for Household Budget spent/planned. Not the
+  // calendar 1–15 / 16–end bill sections. Amanda salary and child benefit
+  // do not reset this cycle.
+  function seaspanPayroll(plan) {
+    const rows = (plan && plan.income) || [];
+    return rows.find(row => row && (row.id === 'payroll' || /seaspan/i.test(row.label || '')))
+      || null;
+  }
+  function formatSpendingCycleRange(start, end) {
+    if (!start || !end) return '';
+    const [ys, ms, ds] = String(start).split('-').map(Number);
+    const [ye, me, de] = String(end).split('-').map(Number);
+    const a = MONTH_SHORT[ms] + ' ' + ds;
+    const b = MONTH_SHORT[me] + ' ' + de;
+    return a + '–' + b;
+  }
+  function spendingCycle(plan, asOf) {
+    const stream = seaspanPayroll(plan);
+    const day = financialDate(asOf);
+    const anchor = stream && financialDate(stream.anchor);
+    if (!stream || !anchor || !day) return null;
+    const from = addDays(day, -42);
+    const to = addDays(day, 42);
+    const dates = biweeklyDates(anchor, from, to);
+    let start = null;
+    let next = null;
+    for (const d of dates) {
+      if (d <= day) start = d;
+      if (d > day && !next) next = d;
+    }
+    if (!start) return null;
+    if (!next) next = addDays(start, 14);
+    const end = addDays(next, -1);
+    return {
+      start,
+      end,
+      nextPayday: next,
+      days: diffDays(start, end) + 1,
+      label: 'Spending cycle: ' + formatSpendingCycleRange(start, end),
+    };
+  }
   // Shift `iso`'s month by `n`, keeping the requested day-of-month and
   // clamping to shorter months (31 January + 3 months → 30 April).
   function addCalendarMonths(iso, n, day) {
@@ -1919,8 +1965,9 @@
       if (!c || c.class !== 'essential') continue;
       let amount = 0;
       let source = null;
-      if (c.plannedMonthly != null) {
-        amount = Number(c.plannedMonthly) || 0;
+      const targetMonthly = ownerTargetMonthly(c);
+      if (targetMonthly != null) {
+        amount = targetMonthly;
         source = 'owner-target';
       } else if (c.currentMonthly != null) {
         amount = Number(c.currentMonthly) || 0;
@@ -2015,10 +2062,159 @@
     return 'pending';
   }
 
-  // Provider-neutral classification. Uses incumbent budget `from` / label / id
-  // aliases, budget.excluded, and provider category identity (income / transfer
-  // / payment). Does not read a payee or merchant name.
-  function classifyCurrentPeriodTransaction(tx, plan) {
+  const DOG_FOOD_MERCHANT_RE = /\bSURREY\s+MEAT\b/;
+  const CONVENIENCE_STORE_RE =
+    /7[\s-]*eleven|\b7-11\b|\b7eleven\b|circle\s*k|mac'?s\s*(convenience)?|on\s*the\s*run/i;
+  const FUEL_EVIDENCE_RE = /\b(fuel|gas|petrol|gasoline)\b/i;
+  const GROCERY_UNCERTAIN_MERCHANT_RE = /iron\s*butcher|meridian\s*farm/i;
+  const CANADIAN_TIRE_RE = /canadian\s*tire/i;
+  const EATING_OUT_LABELS = new Set(['restaurants', 'fast food', 'food delivery']);
+  const BILL_BUDGET_IDS = new Set(['subscriptions', 'insurance', 'telecom']);
+  const BILL_CATEGORY_LABELS = new Set([
+    'mortgage', 'bills', 'bill', 'subscription', 'subscriptions',
+    'insurance', 'telecom',
+  ]);
+  const REFUND_LABELS = new Set(['refund', 'refunds', 'reimbursement']);
+
+  function txTextBlob(tx) {
+    if (!tx) return '';
+    const parts = [
+      tx.displayedPayee, tx.originalMerchant, tx.payee,
+      tx.note, tx.notes, tx.tag, tx.tags, tx.kindHint, tx.mcc, tx.kind,
+    ];
+    return parts.map(value => {
+      if (value == null) return '';
+      if (Array.isArray(value)) {
+        return value.map(item => {
+          if (item == null) return '';
+          if (typeof item === 'string' || typeof item === 'number') return String(item);
+          return String(item.name || item.label || item.id || '');
+        }).join(' ');
+      }
+      return String(value);
+    }).join(' ');
+  }
+
+  function txMerchantExact(tx) {
+    if (!tx) return '';
+    if (tx.originalMerchant != null && String(tx.originalMerchant).trim() !== '') {
+      return String(tx.originalMerchant).trim();
+    }
+    if (tx.displayedPayee != null && String(tx.displayedPayee).trim() !== '') {
+      return String(tx.displayedPayee).trim();
+    }
+    if (tx.payee != null && String(tx.payee).trim() !== '') {
+      return String(tx.payee).trim();
+    }
+    return '';
+  }
+
+  function txHasMerchantIdentity(tx) {
+    if (tx && tx.merchantKnown === true) return true;
+    return txMerchantExact(tx) !== '';
+  }
+
+  function isConvenienceStoreMerchant(tx) {
+    if (tx && tx.convenienceStore === true) return true;
+    return CONVENIENCE_STORE_RE.test(txTextBlob(tx));
+  }
+
+  function hasExplicitFuelEvidence(tx) {
+    if (tx && tx.fuelEvidence === true) return true;
+    const hint = normalizeCategoryLabel(tx && tx.kindHint);
+    if (hint === 'gas' || hint === 'fuel' || hint === 'petrol') return true;
+    const mcc = String((tx && tx.mcc) || '');
+    if (mcc === '5541' || mcc === '5542') return true;
+    const blob = [
+      tx && tx.note, tx && tx.notes, tx.tag, tx && tx.tags,
+    ].map(v => {
+      if (v == null) return '';
+      if (Array.isArray(v)) return v.map(item => String(item && (item.name || item.label || item) || '')).join(' ');
+      return String(v);
+    }).join(' ');
+    return FUEL_EVIDENCE_RE.test(blob);
+  }
+
+  function isUncertainGroceryMerchant(tx) {
+    if (tx && tx.groceryUncertain === true) return true;
+    return GROCERY_UNCERTAIN_MERCHANT_RE.test(txTextBlob(tx));
+  }
+
+  function hasGroceryMixedEvidence(tx) {
+    if (tx && tx.groceryMixed === true) return true;
+    const noteBlob = [tx && tx.note, tx && tx.notes, tx && tx.tag, tx && tx.tags]
+      .map(v => String(v || '')).join(' ');
+    if (!/\b(split|mixed|household|restaurants?|eating\s*out)\b/i.test(noteBlob)) {
+      return false;
+    }
+    return !/save-?on/i.test(txTextBlob(tx));
+  }
+
+  function normalizeMerchantKey(value) {
+    return String(value == null ? '' : value)
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function isDogFoodMerchant(tx) {
+    if (tx && tx.dogFood === true) return true;
+    return DOG_FOOD_MERCHANT_RE.test(normalizeMerchantKey(txMerchantExact(tx)));
+  }
+
+  function isCanadianTireMerchant(tx) {
+    if (tx && tx.canadianTire === true) return true;
+    return CANADIAN_TIRE_RE.test(txTextBlob(tx));
+  }
+
+  // Unique local id only. Date-plus-amount is not identity: a grocery with
+  // the same date and amount as a represented bill stays Groceries.
+  // Ambiguous or missing linkage fails closed (not a bill).
+  function txMatchesRepresentedBill(tx, opts) {
+    if (!tx) return false;
+    if (tx.representedBill === true) return true;
+    const packet = opts && opts.currentPeriodActuals
+      ? opts.currentPeriodActuals
+      : (opts && opts.packet);
+    const rows = packet && Array.isArray(packet.representedActuals)
+      ? packet.representedActuals : [];
+    const id = tx.id;
+    if (!id || !rows.length) return false;
+    return rows.some(row => row && row.transactionId && row.transactionId === id);
+  }
+
+  function confirmationResult(reason, includeReason) {
+    return {
+      kind: 'unclassified',
+      categoryId: 'uncategorised',
+      householdSpending: true,
+      reason,
+      needsConfirmation: true,
+      includeReason: includeReason || reason,
+      atlasRow: null,
+    };
+  }
+
+  function spendResult(categoryId, includeReason) {
+    return {
+      kind: 'spend',
+      categoryId,
+      householdSpending: true,
+      reason: null,
+      needsConfirmation: false,
+      includeReason: includeReason || ('category:' + categoryId),
+      atlasRow: categoryId,
+    };
+  }
+
+  // Provider-neutral classification, then merchant-aware fail-closed
+  // overrides. Surrey Meat is Dog food, never Groceries. Eating out is
+  // Restaurants + Fast Food + Food Delivery. Canadian Tire is not
+  // Household. 7-Eleven is not confirmed Fuel without tx-level fuel
+  // evidence. Uncertain txs go to confirmation, not a named household-budget
+  // row.
+  function classifyCurrentPeriodTransaction(tx, plan, opts) {
     if (!tx) {
       return { kind: 'unclassified', categoryId: null, householdSpending: false, reason: 'missing' };
     }
@@ -2036,22 +2232,50 @@
       };
     }
     if (tx.isIncome === true) {
-      return { kind: 'income', categoryId: null, householdSpending: false, reason: null };
+      return { kind: 'income', categoryId: null, householdSpending: false, reason: 'income' };
+    }
+    const amt = Number(tx.amount);
+    if (isFinite(amt) && amt < 0) {
+      return { kind: 'refund', categoryId: null, householdSpending: false, reason: 'refund' };
     }
     const hint = normalizeCategoryLabel(tx.kindHint);
     if (hint === 'payment' || hint === 'card-payment' || hint === 'bill-payment') {
-      return { kind: 'card-payment', categoryId: null, householdSpending: false, reason: null };
+      return { kind: 'card-payment', categoryId: null, householdSpending: false, reason: 'kind-hint' };
     }
     if (hint === 'transfer' || hint === 'internal-transfer') {
-      return { kind: 'transfer', categoryId: null, householdSpending: false, reason: null };
+      return { kind: 'transfer', categoryId: null, householdSpending: false, reason: 'kind-hint' };
     }
     const label = normalizeCategoryLabel(tx.categoryLabel);
+    if (REFUND_LABELS.has(label)) {
+      return { kind: 'refund', categoryId: null, householdSpending: false, reason: 'refund-label' };
+    }
     if (DEBT_PAYMENT_CATEGORY_LABELS.has(label)) {
-      return { kind: 'card-payment', categoryId: null, householdSpending: false, reason: null };
+      return { kind: 'card-payment', categoryId: null, householdSpending: false, reason: 'debt-payment' };
     }
     if (TRANSFER_CATEGORY_LABELS.has(label)
       || (tx.excludeFromTotals === true && TRANSFER_CATEGORY_LABELS.has(label))) {
-      return { kind: 'transfer', categoryId: null, householdSpending: false, reason: null };
+      return { kind: 'transfer', categoryId: null, householdSpending: false, reason: 'transfer-label' };
+    }
+    if (txMatchesRepresentedBill(tx, opts || {})) {
+      return {
+        kind: 'bill', categoryId: null, householdSpending: false,
+        reason: 'represented-bill', includeReason: 'represented-bill',
+      };
+    }
+    if (BILL_CATEGORY_LABELS.has(label)) {
+      return {
+        kind: 'bill', categoryId: null, householdSpending: false,
+        reason: 'bill-label', includeReason: 'bill-label',
+      };
+    }
+    if (isDogFoodMerchant(tx)) {
+      return spendResult('pets', 'dog-food-merchant');
+    }
+    if (isCanadianTireMerchant(tx)) {
+      return confirmationResult('canadian-tire-unconfirmed', 'canadian-tire-unconfirmed');
+    }
+    if (EATING_OUT_LABELS.has(label)) {
+      return spendResult('restaurants', 'eating-out-category');
     }
     const excluded = ((plan && plan.budget && plan.budget.excluded) || []);
     for (const row of excluded) {
@@ -2067,15 +2291,73 @@
       const aliases = [c.id, c.label].concat(c.from || []);
       if (!aliases.some(a => normalizeCategoryLabel(a) === label)) continue;
       if (matched && matched.id !== c.id) {
-        return {
-          kind: 'unclassified', categoryId: 'uncategorised', householdSpending: true,
-          reason: 'ambiguous-category',
-        };
+        return confirmationResult('ambiguous-category', 'ambiguous-category');
       }
       matched = c;
     }
+    if (matched && BILL_BUDGET_IDS.has(matched.id)) {
+      return {
+        kind: 'bill', categoryId: matched.id, householdSpending: false,
+        reason: 'bills-only', includeReason: 'bills-only:' + matched.id,
+      };
+    }
+    if (matched && matched.id === 'fuel') {
+      if (isConvenienceStoreMerchant(tx) && !hasExplicitFuelEvidence(tx)) {
+        return confirmationResult(
+          'convenience-store-unconfirmed-fuel',
+          'convenience-store-unconfirmed-fuel'
+        );
+      }
+      if (!txHasMerchantIdentity(tx) && !hasExplicitFuelEvidence(tx)) {
+        return confirmationResult('fuel-merchant-missing', 'fuel-merchant-missing');
+      }
+      return spendResult('fuel', 'fuel-category');
+    }
+    if (matched && matched.id === 'groceries') {
+      if (isDogFoodMerchant(tx)) {
+        return spendResult('pets', 'dog-food-merchant');
+      }
+      if (!txHasMerchantIdentity(tx)) {
+        return confirmationResult('grocery-merchant-missing', 'grocery-merchant-missing');
+      }
+      if (isUncertainGroceryMerchant(tx)) {
+        return confirmationResult('grocery-merchant-unconfirmed', 'grocery-merchant-unconfirmed');
+      }
+      if (hasGroceryMixedEvidence(tx)) {
+        return confirmationResult('grocery-mixed-evidence', 'grocery-mixed-evidence');
+      }
+      return spendResult('groceries', 'groceries-category');
+    }
+    if (matched && matched.id === 'pets') {
+      if (!isDogFoodMerchant(tx)) {
+        return confirmationResult('pets-not-dog-food', 'pets-not-dog-food');
+      }
+      return spendResult('pets', 'dog-food-merchant');
+    }
+    if (matched && matched.id === PERSONAL_SHOPPING_ID) {
+      const owner = personalSpendOwner(tx);
+      if (owner === 'excluded') {
+        return {
+          kind: 'business', categoryId: null, householdSpending: false,
+          reason: 'personal-excluded', includeReason: 'personal-excluded',
+        };
+      }
+      if (owner === 'dale') return spendResult(DALE_GUILT_FREE_ID, 'owner-evidence-dale');
+      if (owner === 'amanda') return spendResult(AMANDA_GUILT_FREE_ID, 'owner-evidence-amanda');
+      return confirmationResult('personal-unassigned', 'personal-unassigned');
+    }
+    if (matched && matched.id === DALE_GUILT_FREE_ID) {
+      const owner = personalSpendOwner(tx);
+      if (owner === 'dale') return spendResult(DALE_GUILT_FREE_ID, 'owner-evidence-dale');
+      return confirmationResult('personal-unassigned', 'personal-unassigned');
+    }
+    if (matched && matched.id === AMANDA_GUILT_FREE_ID) {
+      const owner = personalSpendOwner(tx);
+      if (owner === 'amanda') return spendResult(AMANDA_GUILT_FREE_ID, 'owner-evidence-amanda');
+      return confirmationResult('personal-unassigned', 'personal-unassigned');
+    }
     if (matched) {
-      return { kind: 'spend', categoryId: matched.id, householdSpending: true, reason: null };
+      return spendResult(matched.id, 'category:' + matched.id);
     }
     // Lunch Money (and equivalents) mark transfers/payments exclude-from-totals.
     // That identity is not a merchant guess. An unmatched excluded row is not
@@ -2087,12 +2369,10 @@
         reason: 'exclude-from-totals',
       };
     }
-    return {
-      kind: 'unclassified',
-      categoryId: 'uncategorised',
-      householdSpending: true,
-      reason: label ? 'unmapped-label' : 'no-category',
-    };
+    return confirmationResult(
+      label ? 'unmapped-label' : 'no-category',
+      label ? 'unmapped-label' : 'no-category'
+    );
   }
 
   function currentPeriodActualsPacket(opts) {
@@ -2236,7 +2516,10 @@
     return {
       byId: new Map(),
       unclassified: { posted: 0, pending: 0, count: 0 },
-      excluded: { transfers: 0, cardPayments: 0, income: 0, business: 0, external: 0 },
+      excluded: {
+        transfers: 0, cardPayments: 0, income: 0, business: 0, external: 0,
+        bills: 0, refunds: 0,
+      },
     };
   }
 
@@ -2245,14 +2528,26 @@
   // category, so spend assigned there is classification-incomplete.
   function classificationIncompleteHouseholdSpend(cls) {
     if (!cls) return false;
+    if (cls.needsConfirmation) return true;
     if (cls.kind === 'unclassified' || cls.kind === 'unmapped') return true;
     return cls.kind === 'spend' && (cls.categoryId || 'uncategorised') === 'uncategorised';
+  }
+
+  function skipSplitParent(tx, packet) {
+    if (!tx || tx.isGroup !== true) return false;
+    const txs = packet && Array.isArray(packet.transactions) ? packet.transactions : [];
+    const id = tx.id != null ? String(tx.id) : null;
+    if (!id) {
+      return txs.some(child => child && child !== tx && child.parentId);
+    }
+    return txs.some(child => child && child.parentId != null && String(child.parentId) === id);
   }
 
   function sumCategoryActuals(plan, asOf, periodStart, opts) {
     const out = emptyCategoryActuals();
     const packet = currentPeriodActualsPacket(opts);
     if (!packet || !Array.isArray(packet.transactions)) return out;
+    const classifyOpts = Object.assign({}, opts || {}, { packet, currentPeriodActuals: packet });
     const add = (row, state, amt) => {
       if (state === 'pending') row.pending = roundCent(row.pending + amt);
       else row.posted = roundCent(row.posted + amt);
@@ -2261,21 +2556,29 @@
       if (!tx || !tx.date) continue;
       if (periodStart && tx.date < periodStart) continue;
       if (asOf && tx.date > asOf) continue;
+      if (skipSplitParent(tx, packet)) continue;
       const amt = Number(tx.amount);
       if (!isFinite(amt) || amt === 0) {
-        const clsZero = classifyCurrentPeriodTransaction(tx, plan);
+        const clsZero = classifyCurrentPeriodTransaction(tx, plan, classifyOpts);
         if (classificationIncompleteHouseholdSpend(clsZero)) out.unclassified.count += 1;
         continue;
       }
-      const cls = classifyCurrentPeriodTransaction(tx, plan);
+      const cls = classifyCurrentPeriodTransaction(tx, plan, classifyOpts);
       const state = transactionPendingState(tx);
       if (cls.kind === 'transfer') { out.excluded.transfers = roundCent(out.excluded.transfers + amt); continue; }
       if (cls.kind === 'card-payment') { out.excluded.cardPayments = roundCent(out.excluded.cardPayments + amt); continue; }
       if (cls.kind === 'income') { out.excluded.income = roundCent(out.excluded.income + amt); continue; }
       if (cls.kind === 'business') { out.excluded.business = roundCent(out.excluded.business + amt); continue; }
       if (cls.kind === 'external') { out.excluded.external = roundCent(out.excluded.external + amt); continue; }
+      if (cls.kind === 'bill') { out.excluded.bills = roundCent((out.excluded.bills || 0) + amt); continue; }
+      if (cls.kind === 'refund') { out.excluded.refunds = roundCent((out.excluded.refunds || 0) + amt); continue; }
       if (cls.kind === 'unmapped') {
         out.unclassified.count += 1;
+        continue;
+      }
+      if (cls.needsConfirmation) {
+        out.unclassified.count += 1;
+        add(out.unclassified, state, amt);
         continue;
       }
       const catId = cls.categoryId || 'uncategorised';
@@ -2635,18 +2938,20 @@
     const items = [];
     for (const cat of (plan && plan.budget && plan.budget.categories) || []) {
       if (!cat || DEFAULT_VIEW_BUDGET_IDS.indexOf(cat.id) < 0) continue;
-      if (cat.plannedMonthly == null && !cat.ownerLine) continue;
+      if (cat.plannedMonthly == null && cat.plannedWeekly == null
+        && cat.plannedPayday == null && !cat.ownerLine) continue;
       const hold = byId.get(cat.id);
+      const monthly = ownerTargetMonthly(cat);
       const amount = hold && hold.required != null
         ? hold.required
-        : (cat.plannedMonthly != null ? roundCent(Number(cat.plannedMonthly) || 0) : null);
+        : (monthly != null ? monthly : null);
       if (amount == null) continue;
       items.push({
         id: cat.id,
         label: DEFAULT_VIEW_BUDGET_LABELS[cat.id] || cat.ownerLine || cat.label,
         amount: roundCent(amount),
-        monthly: cat.plannedMonthly != null
-          ? roundCent(Number(cat.plannedMonthly) || 0)
+        monthly: monthly != null
+          ? monthly
           : (hold && hold.monthly != null ? hold.monthly : null),
         inEssentialHold: !!hold,
       });
@@ -2873,13 +3178,60 @@
     return items;
   }
 
-  function householdBudgetScaled(plan, days) {
+  function seaspanPaydaysInSpan(plan, start, end) {
+    const from = financialDate(start);
+    const to = financialDate(end);
+    if (!from || !to) return [];
+    const stream = seaspanPayroll(plan);
+    const anchor = stream && financialDate(stream.anchor);
+    if (!anchor) return [];
+    return biweeklyDates(anchor, from, to);
+  }
+
+  // Discrete payday targets are whole-or-not-applicable. A 7-day week
+  // never receives half of $100. Missing dates on a non-14-day span
+  // omit the row rather than inventing a prorated half-target.
+  function paydayHoldForSpan(cat, plan, days, start, end) {
+    if (!cat || cat.plannedPayday == null) return null;
+    const payday = roundCent(Number(cat.plannedPayday) || 0);
+    if (start && end) {
+      const n = seaspanPaydaysInSpan(plan, start, end).length;
+      return n > 0 ? roundCent(payday * n) : null;
+    }
+    const d = Math.max(0, Number(days) || 0);
+    return d === 14 ? payday : null;
+  }
+
+  function householdBudgetScaled(plan, days, spanStart, spanEnd) {
     const scale = Math.max(0, Number(days) || 0) / CALENDAR_MONTH_DAYS;
     const items = [];
     for (const cat of (plan && plan.budget && plan.budget.categories) || []) {
       if (!cat || DEFAULT_VIEW_BUDGET_IDS.indexOf(cat.id) < 0) continue;
-      if (cat.plannedMonthly == null) continue;
-      const monthly = roundCent(Number(cat.plannedMonthly) || 0);
+      const weekly = cat.plannedWeekly != null ? Number(cat.plannedWeekly) : null;
+      const monthly = ownerTargetMonthly(cat);
+      if (weekly != null) {
+        items.push({
+          id: cat.id,
+          label: DEFAULT_VIEW_BUDGET_LABELS[cat.id] || cat.ownerLine || cat.label,
+          amount: roundCent(weekly * Math.max(0, Number(days) || 0) / 7),
+          monthly,
+          inEssentialHold: false,
+        });
+        continue;
+      }
+      if (cat.plannedPayday != null) {
+        const amount = paydayHoldForSpan(cat, plan, days, spanStart, spanEnd);
+        if (amount == null) continue;
+        items.push({
+          id: cat.id,
+          label: DEFAULT_VIEW_BUDGET_LABELS[cat.id] || cat.ownerLine || cat.label,
+          amount,
+          monthly,
+          inEssentialHold: false,
+        });
+        continue;
+      }
+      if (monthly == null) continue;
       items.push({
         id: cat.id,
         label: DEFAULT_VIEW_BUDGET_LABELS[cat.id] || cat.ownerLine || cat.label,
@@ -2891,16 +3243,38 @@
     return items;
   }
 
-  // Owner-target hold for a named span: monthly target × span days /
-  // calendar month. Not leftover remaining-cap, not the unscaled monthly
-  // figure, not a second budget engine. Print existing owner-target
-  // categories; Dale/Amanda guilt-free rows are the two owner-target ids.
-  function ownerTargetHoldForSpan(plan, days) {
+  // Owner-target hold for a named span. Weekly targets use days/7.
+  // Payday targets are whole-or-not-applicable on the Seaspan dates in
+  // the span. Monthly targets use days / calendar month. Not leftover
+  // remaining-cap, not a second budget engine.
+  function ownerTargetHoldForSpan(plan, days, spanStart, spanEnd) {
     const scale = Math.max(0, Number(days) || 0) / CALENDAR_MONTH_DAYS;
     const items = [];
     for (const cat of (plan && plan.budget && plan.budget.categories) || []) {
-      if (!cat || !cat.id || cat.plannedMonthly == null) continue;
-      const monthly = roundCent(Number(cat.plannedMonthly) || 0);
+      if (!cat || !cat.id) continue;
+      const weekly = cat.plannedWeekly != null ? Number(cat.plannedWeekly) : null;
+      const monthly = ownerTargetMonthly(cat);
+      if (weekly != null) {
+        items.push({
+          id: cat.id,
+          label: DEFAULT_VIEW_BUDGET_LABELS[cat.id] || cat.ownerLine || cat.label,
+          monthly,
+          planned: roundCent(weekly * Math.max(0, Number(days) || 0) / 7),
+        });
+        continue;
+      }
+      if (cat.plannedPayday != null) {
+        const planned = paydayHoldForSpan(cat, plan, days, spanStart, spanEnd);
+        if (planned == null) continue;
+        items.push({
+          id: cat.id,
+          label: DEFAULT_VIEW_BUDGET_LABELS[cat.id] || cat.ownerLine || cat.label,
+          monthly,
+          planned,
+        });
+        continue;
+      }
+      if (monthly == null) continue;
       items.push({
         id: cat.id,
         label: DEFAULT_VIEW_BUDGET_LABELS[cat.id] || cat.ownerLine || cat.label,
@@ -2931,7 +3305,7 @@
       coverage.remainingClaim, actuals.unclassified);
     const historyAsOf = opts.periods && opts.periods.asOf ? opts.periods.asOf : null;
     const historyStale = !!(historyAsOf && asOf && historyAsOf < asOf);
-    const rows = ownerTargetHoldForSpan(plan, days).map(row => {
+    const rows = ownerTargetHoldForSpan(plan, days, start, end).map(row => {
       const act = categoryCommittedActual(actuals.byId.get(row.id));
       return {
         id: row.id,
@@ -3427,16 +3801,30 @@
     return 'future';
   }
 
-  // Named calendar halves of one as-of month share that month's owner
-  // target. Equal split: Period 1 is roundCent(monthly / 2); leftover
-  // cents sit on Period 2 so the two sides add back to plannedMonthly.
-  // This is not 15/daysInMonth and not payday CALENDAR_MONTH_DAYS
-  // leftover-hold math. No period1/period2 field exists on plan.budget
-  // today; if one is added later, use it and still prove P1+P2 = monthly.
-  function calendarHalfPlanned(monthly, half) {
-    const first = roundCent(Number(monthly) / 2);
-    if (half === 1) return first;
-    return roundCent(Number(monthly) - first);
+  function ownerTargetMonthly(cat) {
+    if (!cat) return null;
+    if (cat.plannedWeekly != null) {
+      return roundCent(Number(cat.plannedWeekly) * CALENDAR_MONTH_DAYS / 7);
+    }
+    if (cat.plannedPayday != null) {
+      return roundCent(Number(cat.plannedPayday) * CALENDAR_MONTH_DAYS / 14);
+    }
+    if (cat.plannedMonthly != null) return roundCent(Number(cat.plannedMonthly) || 0);
+    return null;
+  }
+
+  // 14-day Seaspan-cycle planned amount from the declared cadence. Monthly
+  // targets use the same calendar month as ownerTargetMonthly
+  // (365.25/12), not monthly/2. Halving would make $300/month × 26 =
+  // $3,900/year instead of $3,600.
+  function paydayCyclePlanned(cat) {
+    if (!cat) return null;
+    if (cat.plannedWeekly != null) return roundCent(Number(cat.plannedWeekly) * 2);
+    if (cat.plannedPayday != null) return roundCent(Number(cat.plannedPayday) || 0);
+    if (cat.plannedMonthly != null) {
+      return roundCent(Number(cat.plannedMonthly) * 14 / CALENDAR_MONTH_DAYS);
+    }
+    return null;
   }
 
   function calendarHalfThrough(asOf, end) {
@@ -3481,11 +3869,17 @@
   // No evidence, or both names, fails closed to unassigned.
   function personalSpendOwner(tx) {
     if (!tx) return null;
+    if (tx.personalOwner === 'dale' || tx.personalOwner === 'amanda'
+      || tx.personalOwner === 'excluded') {
+      return tx.personalOwner;
+    }
     const accountText = personalAccountText(tx);
     if (isTennisIncomeAccount(accountText)) return 'excluded';
     const accountEvidence = isWeeklySpendingAccount(accountText) ? '' : accountText;
     const blob = [
       accountEvidence,
+      evidenceBlob(tx.displayedPayee),
+      evidenceBlob(tx.originalMerchant),
       evidenceBlob(tx.payee),
       evidenceBlob(tx.note),
       evidenceBlob(tx.notes),
@@ -3500,52 +3894,104 @@
     return null;
   }
 
-  function personalActualsInWindow(plan, asOf, periodStart, opts) {
-    const out = { dale: 0, amanda: 0, unassigned: 0 };
-    const packet = currentPeriodActualsPacket(opts);
-    if (!packet || !Array.isArray(packet.transactions)) return out;
-    for (const tx of packet.transactions) {
-      if (!tx || !tx.date) continue;
-      if (periodStart && tx.date < periodStart) continue;
-      if (asOf && tx.date > asOf) continue;
-      const amt = Number(tx.amount);
-      if (!isFinite(amt) || amt === 0) continue;
-      const cls = classifyCurrentPeriodTransaction(tx, plan);
-      if (cls.kind !== 'spend' || cls.categoryId !== PERSONAL_SHOPPING_ID) continue;
-      const owner = personalSpendOwner(tx);
-      if (owner === 'excluded') continue;
-      if (owner === 'dale') out.dale = roundCent(out.dale + amt);
-      else if (owner === 'amanda') out.amanda = roundCent(out.amanda + amt);
-      else out.unassigned = roundCent(out.unassigned + amt);
-    }
-    return out;
+  // Classify merchant-sensitive facts before publication. The served packet
+  // carries these flags instead of payee, original merchant, notes, or tags.
+  function derivedTransactionFlags(tx) {
+    const empty = {
+      dogFood: false,
+      convenienceStore: false,
+      canadianTire: false,
+      groceryUncertain: false,
+      groceryMixed: false,
+      merchantKnown: false,
+      fuelEvidence: false,
+      personalOwner: null,
+    };
+    if (!tx) return empty;
+    return {
+      dogFood: isDogFoodMerchant(tx),
+      convenienceStore: isConvenienceStoreMerchant(tx),
+      canadianTire: isCanadianTireMerchant(tx),
+      groceryUncertain: isUncertainGroceryMerchant(tx),
+      groceryMixed: hasGroceryMixedEvidence(tx),
+      merchantKnown: txHasMerchantIdentity(tx),
+      fuelEvidence: hasExplicitFuelEvidence(tx),
+      personalOwner: personalSpendOwner(tx),
+    };
+  }
+
+  classifyCurrentPeriodTransaction.derivedFlags = derivedTransactionFlags;
+
+  function reconTxFrom(tx, cls) {
+    const pending = transactionPendingState(tx) === 'pending';
+    return {
+      id: tx.id || null,
+      date: tx.date || null,
+      account: tx.account || tx.atlasAccountId || null,
+      amount: roundCent(Number(tx.amount) || 0),
+      categoryLabel: tx.categoryLabel || null,
+      atlasRow: (cls && (cls.atlasRow || cls.categoryId)) || null,
+      includeReason: (cls && (cls.includeReason || cls.reason)) || null,
+      pending,
+    };
   }
 
   function calendarHouseholdBudget(plan, asOf, start, end, role, opts) {
     opts = opts || {};
-    const half = billCalendarHalf(start) || (end && billCalendarHalf(end)) || 1;
-    const useActuals = role === 'active' || role === 'lookback';
-    const coverageOrigin = start && asOf && start <= asOf ? start : asOf;
+    if (role === 'lookback') {
+      return {
+        items: [], hold: 0, spentReady: false,
+        spendingCycle: null, cycleUnresolved: false,
+      };
+    }
+    // Missing/malformed Seaspan must not invent a payday window or assign
+    // transactions. Keep the payday-cycle planned reserve fail-closed.
+    const unresolvedCycle = opts.unresolvedCycle === true;
+    const cycle = unresolvedCycle
+      ? null
+      : (opts.cycle || spendingCycle(plan, role === 'future' && start ? start : asOf));
+    const cycleResolved = !!(cycle && cycle.start);
+    const useActuals = role === 'active' && cycleResolved;
+    const coverageOrigin = cycle && cycle.start && asOf && cycle.start <= asOf
+      ? cycle.start : asOf;
     const coverage = useActuals
       ? actualsCoverageState(asOf, coverageOrigin, opts)
       : { remainingClaim: 'unavailable' };
     const actualsReady = useActuals && (coverage.remainingClaim === 'precise'
       || coverage.remainingClaim === 'posted-only');
-    const through = calendarHalfThrough(asOf, end);
-    // Fail closed: without this half's start, do not publish month-to-date
-    // spend as that half's actuals.
-    const actuals = actualsReady && start
-      ? sumCategoryActuals(plan, through, start, opts)
-      : emptyCategoryActuals();
-    const personal = actualsReady && start
-      ? personalActualsInWindow(plan, through, start, opts)
-      : { dale: 0, amanda: 0, unassigned: 0 };
-    const spentFor = catId => {
-      if (catId === DALE_GUILT_FREE_ID) return personal.dale;
-      if (catId === AMANDA_GUILT_FREE_ID) return personal.amanda;
-      const act = categoryCommittedActual(actuals.byId.get(catId));
-      return act.committed;
-    };
+    const windowStart = cycle && cycle.start;
+    const through = cycle && cycle.end && asOf && asOf < cycle.end ? asOf : (cycle && cycle.end);
+    const packet = currentPeriodActualsPacket(opts);
+    const classifyOpts = Object.assign({}, opts, { packet, currentPeriodActuals: packet });
+    const reconById = new Map();
+    const confirmationRecon = [];
+    let confirmationSpent = 0;
+    if (actualsReady && windowStart && packet && Array.isArray(packet.transactions)) {
+      for (const tx of packet.transactions) {
+        if (!tx || !tx.date) continue;
+        if (tx.date < windowStart) continue;
+        if (through && tx.date > through) continue;
+        if (skipSplitParent(tx, packet)) continue;
+        const amt = Number(tx.amount);
+        if (!isFinite(amt) || amt === 0) continue;
+        const cls = classifyCurrentPeriodTransaction(tx, plan, classifyOpts);
+        if (cls.kind === 'transfer' || cls.kind === 'card-payment' || cls.kind === 'income'
+          || cls.kind === 'business' || cls.kind === 'external' || cls.kind === 'bill'
+          || cls.kind === 'refund' || cls.kind === 'unmapped') continue;
+        const row = reconTxFrom(tx, cls);
+        if (cls.needsConfirmation || cls.kind === 'unclassified') {
+          confirmationRecon.push(row);
+          confirmationSpent = roundCent(confirmationSpent + amt);
+          continue;
+        }
+        const catId = cls.atlasRow || cls.categoryId;
+        if (catId && CALENDAR_PERIOD_BUDGET_IDS.indexOf(catId) >= 0) {
+          if (!reconById.has(catId)) reconById.set(catId, []);
+          reconById.get(catId).push(row);
+        }
+      }
+    }
+    const spentFromRecon = list => roundCent((list || []).reduce((s, r) => s + (Number(r.amount) || 0), 0));
     const byId = new Map();
     for (const cat of (plan && plan.budget && plan.budget.categories) || []) {
       if (cat && cat.id) byId.set(cat.id, cat);
@@ -3553,39 +3999,50 @@
     const items = [];
     for (const id of CALENDAR_PERIOD_BUDGET_IDS) {
       const cat = byId.get(id);
-      if (!cat || cat.plannedMonthly == null) continue;
-      const monthly = roundCent(Number(cat.plannedMonthly) || 0);
-      const planned = calendarHalfPlanned(monthly, half);
-      const spent = actualsReady ? spentFor(id) : null;
+      if (!cat) continue;
+      const planned = paydayCyclePlanned(cat);
+      if (planned == null) continue;
+      const weekly = cat.plannedWeekly != null ? roundCent(Number(cat.plannedWeekly)) : null;
+      const recon = reconById.get(id) || [];
+      const spent = actualsReady ? spentFromRecon(recon) : null;
       const remaining = spent != null ? roundCent(planned - spent) : planned;
+      const pendingRecon = recon.filter(r => r.pending === true);
       items.push({
         id,
         label: DEFAULT_VIEW_BUDGET_LABELS[id] || cat.ownerLine || cat.label,
-        monthly,
+        monthly: ownerTargetMonthly(cat),
+        plannedWeekly: weekly,
+        plannedPayday: cat.plannedPayday != null ? roundCent(Number(cat.plannedPayday)) : null,
         planned,
         spent,
         remaining,
         hold: roundCent(Math.max(0, remaining != null ? remaining : planned)),
         projected: role === 'future',
+        recon,
+        pendingRecon,
       });
     }
-    if (actualsReady && personal.unassigned > EPSILON) {
+    if (actualsReady && confirmationSpent > EPSILON) {
       items.push({
         id: PERSONAL_SHOPPING_ID,
         label: 'Personal spending — needs confirmation',
         monthly: 0,
         planned: 0,
-        spent: roundCent(personal.unassigned),
+        spent: confirmationSpent,
         remaining: null,
         hold: 0,
         needsConfirmation: true,
         projected: role === 'future',
+        recon: confirmationRecon,
+        pendingRecon: confirmationRecon.filter(r => r.pending === true),
       });
     }
     return {
       items,
       hold: roundCent(items.reduce((s, r) => s + (Number(r.hold) || 0), 0)),
       spentReady: actualsReady,
+      spendingCycle: cycleResolved ? cycle : null,
+      cycleUnresolved: !cycleResolved,
     };
   }
 
@@ -3625,6 +4082,30 @@
   // not rewrite current cash. The active half opens from
   // paydayAllocation.available. A future half opens from the previous
   // half's projected ending. A lookback half does not reuse today's cash.
+  // Walk P1 then P2. Each resolved Seaspan cycle is held once across the chain.
+  // If a future half's seed cycle is already held, advance to the next
+  // payday cycle rather than deducting the same $1,862.50 twice.
+  // alreadyHeld and unresolved are not equivalent: alreadyHeld skips a
+  // duplicate reserve; a missing cycle must fail closed and keep the hold.
+  function uniqueSpendingCycle(plan, seedAsOf, heldStarts) {
+    let cycle = spendingCycle(plan, seedAsOf);
+    if (!cycle || !cycle.start) {
+      return { cycle: null, alreadyHeld: false, unresolved: true };
+    }
+    let guard = 0;
+    while (heldStarts.has(cycle.start) && cycle.nextPayday && guard < 24) {
+      const next = spendingCycle(plan, cycle.nextPayday);
+      if (!next || !next.start || next.start === cycle.start) break;
+      cycle = next;
+      guard += 1;
+    }
+    if (heldStarts.has(cycle.start)) {
+      return { cycle, alreadyHeld: true, unresolved: false };
+    }
+    heldStarts.add(cycle.start);
+    return { cycle, alreadyHeld: false, unresolved: false };
+  }
+
   function calendarPeriodWaterfalls(plan, asOf, alloc, plans, debts, opts) {
     opts = opts || {};
     const month = calendarMonthSpan(asOf);
@@ -3641,6 +4122,7 @@
       Object.assign({}, opts, { debts: debts || opts.debts || [] }), priority);
     const periods = [];
     let previousEnding = null;
+    const heldCycleStarts = new Set();
     for (const section of calendar.billSections || []) {
       const half = section.id === 'calendar-1-15' ? 1 : 2;
       const role = calendarPeriodRole(asOfHalf, half);
@@ -3664,8 +4146,27 @@
           }
           return s + Math.abs(Number(r.amount) || 0);
         }, 0));
-      const budget = calendarHouseholdBudget(
-        plan, asOf, section.start, section.end, role, opts);
+      const budgetOpts = Object.assign({}, opts);
+      if (role !== 'lookback') {
+        const seedAsOf = role === 'future' ? section.start : asOf;
+        const picked = uniqueSpendingCycle(plan, seedAsOf, heldCycleStarts);
+        if (picked.alreadyHeld) {
+          budgetOpts.skipHold = true;
+        } else if (picked.unresolved || !picked.cycle) {
+          budgetOpts.unresolvedCycle = true;
+        } else {
+          budgetOpts.cycle = picked.cycle;
+        }
+      }
+      const budget = budgetOpts.skipHold
+        ? {
+          items: [], hold: 0, spentReady: false,
+          spendingCycle: null, cycleUnresolved: false,
+        }
+        : calendarHouseholdBudget(
+          plan, asOf, section.start, section.end, role, budgetOpts);
+      const spendingCycleLabel = (role === 'active' && budget.spendingCycle)
+        ? budget.spendingCycle.label : null;
       let opening = null;
       let openingKnown = false;
       if (role === 'active') {
@@ -3744,6 +4245,9 @@
         afterBills: afterRemainingBills,
         householdBudget: budget.items,
         budgetHold: budget.hold,
+        spendingCycleLabel,
+        spendingCycle: role === 'lookback' ? null : budget.spendingCycle,
+        cycleUnresolved: budget.cycleUnresolved === true,
         afterHouseholdBudget,
         extraDebt,
         firstCard: cards.firstCard,
@@ -3826,7 +4330,7 @@
     const available = roundCent(opening + incomeOnDate(plan, nextPayday, opts));
     const unpaid = unpaidJointCashInRange(plan, nextPayday, periodLast, opts);
     const days = Math.max(1, diffDays(nextPayday, periodLast) + 1);
-    const householdBudget = householdBudgetScaled(plan, days);
+    const householdBudget = householdBudgetScaled(plan, days, nextPayday, periodLast);
     const leftover = runningLeftoverFromAlloc(
       available, unpaid, budgetAmountTotal(householdBudget), 0, 0);
     return layoutViewFrom(
@@ -3859,7 +4363,7 @@
       ? roundCent(week.opening) : null;
     if (opening == null) return null;
     const unpaid = unpaidJointCashInRange(plan, week.start, week.end, opts);
-    const householdBudget = householdBudgetScaled(plan, 7);
+    const householdBudget = householdBudgetScaled(plan, 7, week.start, week.end);
     const leftover = runningLeftoverFromAlloc(
       opening, unpaid, budgetAmountTotal(householdBudget), 0, 0);
     return layoutViewFrom(
@@ -5478,7 +5982,7 @@
       // services outrank a blended historical average. The household's
       // next 90 days are better described by what it intends to spend,
       // then by what it currently pays, than by the last eighteen months.
-      const target = c.plannedMonthly != null ? c.plannedMonthly : null;
+      const target = ownerTargetMonthly(c);
       // currentMonthly is the undated current-regime amount — services
       // already on the calendar stay in dated and are not added again.
       // simulate() reserves that amount as daily cash, so it is accounted
@@ -7510,6 +8014,7 @@
   const Forecast = { HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, billIsHouseholdObligation, billAffectsJointCash, carriedOnceJointCashOutflow, expandEvents, simulate,
     knowledgeHorizon, viewRange, commitmentNeed, fundingSequence, majorPlans, plannedDebt, debtPriority, paydayAllocation,
     classifyCurrentPeriodTransaction, paydayPeriodOrigin, currentPeriodObligationStates, currentPeriodAction,
+    spendingCycle,
     recommendWeekly, recommend, incomeDeadline, amandaHouseholdIncomeDeadline, counterfactuals,
     budgetBreakdown, monthlyFromWeekly,
     projectDebts,

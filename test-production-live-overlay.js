@@ -334,7 +334,11 @@ function independentGroceryRemaining(plan, asOf) {
   });
   const groceries = ((plan.budget && plan.budget.categories) || [])
     .find(row => row && row.id === 'groceries');
-  const monthly = Number(groceries && groceries.plannedMonthly);
+  const weekly = groceries && groceries.plannedWeekly != null
+    ? Number(groceries.plannedWeekly) : null;
+  const monthly = weekly != null
+    ? round2(weekly * MONTH / 7)
+    : Number(groceries && groceries.plannedMonthly);
   const needDays = Forecast.diffDays(actionProbe.periodStart, actionProbe.periodEnd) + 1;
   const planned = round2(monthly * needDays / MONTH);
   const committed = round2(GROCERY_POSTED + GROCERY_PENDING);
@@ -648,8 +652,15 @@ function independentGroceryRemaining(plan, asOf) {
     const actuals = data.liveOverlay && data.liveOverlay.currentPeriodActuals;
     ok(actuals && actuals.schema === 'atlas-current-period-actuals/v1',
       'sanitized current-period packet is published');
-    ok(!(actuals.transactions || []).some(tx => tx.payee || tx.providerTransactionId || tx.providerAccountId),
-      'actuals rows dropped payee and provider ids');
+    ok(!(actuals.transactions || []).some(tx =>
+      tx.payee || tx.providerTransactionId || tx.providerAccountId || tx.original_name
+      || tx.displayedPayee || tx.originalMerchant || tx.notes || tx.tags
+      || tx.note || tx.tag || tx.merchant || tx.merchantName),
+      'actuals rows dropped payee, original merchant, notes, tags, provider ids, and renamed equivalents');
+    ok((actuals.transactions || []).some(tx =>
+      tx.merchantKnown === true || tx.dogFood === true || tx.representedBill === true
+      || tx.categoryLabel),
+      'actuals rows keep derived classifications, not raw merchant text');
   });
 
   console.log('\n=== H. live /data.json does not write canonical files ===');
@@ -727,7 +738,10 @@ function independentGroceryRemaining(plan, asOf) {
     const fuel = (action.categories || []).find(row => row.id === 'fuel');
     const fuelCat = ((data.plan.budget && data.plan.budget.categories) || [])
       .find(row => row && row.id === 'fuel');
-    const fuelPlanned = round2(Number(fuelCat.plannedMonthly)
+    const fuelMonthly = fuelCat && fuelCat.plannedPayday != null
+      ? Number(fuelCat.plannedPayday) * MONTH / 14
+      : Number(fuelCat && fuelCat.plannedMonthly);
+    const fuelPlanned = round2(fuelMonthly
       * (Forecast.diffDays(action.periodStart, action.periodEnd) + 1) / MONTH);
     ok(fuel && near(fuel.committed, FUEL_POSTED),
       'fuel committed is the fixture $22.10');

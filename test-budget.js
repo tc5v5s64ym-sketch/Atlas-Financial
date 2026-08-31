@@ -21,6 +21,8 @@ const money = n => '$' + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 const plan = data.plan;
 const asOf = data.meta.asOf;
 const WEEKS_PER_MONTH = 365.25 / 12 / 7;
+const groceryWeeklyMonthly = Math.round(450 * (365.25 / 12) / 7 * 100) / 100;
+const fuelPaydayMonthly = Math.round(325 * (365.25 / 12) / 14 * 100) / 100;
 const budget = F.budgetBreakdown(plan, periods, { paypalPerMonth: data.paypal.perMonth });
 
 console.log('=== the budget block exists and is wired in ===');
@@ -37,6 +39,8 @@ console.log('\n=== amounts are DERIVED, not duplicated ===');
 // typed into data.json, so it cannot drift from the generated history.
 for (const c of plan.budget.categories) {
   if (c.plannedMonthly != null) continue;
+  if (c.plannedWeekly != null) continue;
+  if (c.plannedPayday != null) continue;
   if (c.currentMonthly != null) continue;
   const declared = JSON.stringify(c);
   if (/\d{3,}\.\d\d/.test(declared.replace(/"why":"[^"]*"/, ''))) {
@@ -65,14 +69,16 @@ ok(groceries.planned > 0 && fuel.planned > 0,
   'both carry a positive requirement into the cap',
   `${money(groceries.planned)} + ${money(fuel.planned)}`);
 const foodFuel = groceries.planned + fuel.planned;
-ok(near(foodFuel, 1550), 'groceries + fuel = $1,550.00/month — both owner targets', money(foodFuel));
-ok(near(foodFuel / WEEKS_PER_MONTH, 356.47, 0.5), 'which is about $356/week', money(foodFuel / WEEKS_PER_MONTH));
-ok(groceries.target === 900 && fuel.target === 650,
+ok(near(foodFuel, groceryWeeklyMonthly + fuelPaydayMonthly), 'groceries weekly-equivalent + payday-annualized fuel', money(foodFuel));
+ok(groceries.target != null && near(fuel.target, fuelPaydayMonthly) && fuel.target !== 650,
   'and both are the household\'s own figures, not averages',
   `groceries ${money(groceries.target)}, fuel ${money(fuel.target)}`);
-ok(groceries.target < groceries.historical,
-  'the grocery target is BELOW the cleaned historical average',
-  `${money(groceries.target)} vs ${money(groceries.historical)}`);
+ok(near(groceries.target, groceryWeeklyMonthly),
+  'grocery owner target is the $450/week calendar-month equivalent, not a calendar-half split',
+  `${money(groceries.target)} vs ${money(groceryWeeklyMonthly)}`);
+ok(typeof groceries.historical === 'number' && groceries.historical > 0,
+  'grocery historical remains inspectable beside the weekly target',
+  `${money(groceries.target)} vs historical ${money(groceries.historical)}`);
 ok(fuel.target < fuel.historical,
   'the fuel target is BELOW it — the household budgets less than it recently used',
   `${money(fuel.target)} vs ${money(fuel.historical)}`);
@@ -252,7 +258,7 @@ ok(budget.categories.filter(c => c.source === 'current-regime').length === 1,
   'exactly one category uses current-regime');
 // A target must never be silently invented from an average.
 for (const c of plan.budget.categories) {
-  if (c.plannedMonthly != null) {
+  if (c.plannedMonthly != null || c.plannedWeekly != null || c.plannedPayday != null) {
     ok(!!c.targetSource && !!c.ownerLine,
       `owner target for "${c.id}" names its source and the owner's own line`,
       `${c.targetSource} · "${c.ownerLine}"`);

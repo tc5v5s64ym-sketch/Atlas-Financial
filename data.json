@@ -696,7 +696,7 @@
             "ownerTargets": {
                 "status": "partial",
                 "source": "owner-stated-2026-08-31",
-                "note": "Owner-stated current policy, not workbook-derived. Owner-locked 2026-08-31 household budget, equal split into Pay Period 1 and Pay Period 2: Groceries $450, Fuel $325, Household $37.50, Dog food $27.50, Eating out $200, Dale guilt-free spending $150, Amanda guilt-free spending $150 ($1,340 per period, $2,680 both). Implied monthlies are groceries 900, fuel 650, household 75, pets 55, restaurants 400, dale-guilt-free 300, amanda-guilt-free 300. These replace the Aug. 10 monthly targets. Medical/health, children/sports, subscriptions, and combined Personal/shopping are not household-budget holds. Subscriptions remain itemized bills. monthly_budget_tracker_template.xlsx and HOME BUDGET.xlsx stay classified in docs/source_intake/HOUSEHOLD_BUDGET_WORKBOOKS_2026-08-16.md and do not supersede this lock. Sinking-fund amounts remain unnamed as current targets (Q20). Every category without a target below is still a historical actual and is labelled as one.",
+                "note": "Owner-stated current policy, not workbook-derived. Owner-locked 2026-08-31 household budget on the Seaspan 14-day payday cycle (not Bill Period 1 / Period 2 calendar dates): Groceries $450/week = $900 per cycle; Fuel $325; Household $37.50; Dog food $100 every pay period (not prorated); Eating out $200; Dale guilt-free spending $150; Amanda guilt-free spending $150. Cycle total $1,862.50. Medical/health, children/sports, subscriptions, and combined Personal/shopping are not household-budget holds. Subscriptions remain itemized bills. monthly_budget_tracker_template.xlsx and HOME BUDGET.xlsx stay classified in docs/source_intake/HOUSEHOLD_BUDGET_WORKBOOKS_2026-08-16.md and do not supersede this lock. Sinking-fund amounts remain unnamed as current targets (Q20). Every category without a target below is still a historical actual and is labelled as one.",
                 "sinkingFundsNamed": [
                     "property tax",
                     "home insurance",
@@ -718,10 +718,11 @@
                     "from": [
                         "Groceries"
                     ],
-                    "plannedMonthly": 900,
+                    "plannedWeekly": 450,
+                    "plannedMonthly": null,
                     "ownerLine": "Groceries",
                     "targetSource": "owner-stated-2026-08-31",
-                    "why": "OWNER TARGET WINS. Locked 2026-08-31: $450 per pay period, $900/month. Equal split so Period 1 + Period 2 equals this monthly in cents. Replaces the Aug. 10 $1,800 monthly target."
+                    "why": "OWNER TARGET WINS. Locked 2026-08-31, restated 2026-08-31: $450 per week = $900 per 14-day Seaspan payday cycle. Print $450/week. Do not use calendar-day proration and do not split across Bill Period 1 / Period 2. Household Budget spent uses the Seaspan payday window, not the 1st–15th / 16th–month-end bill sections."
                 },
                 {
                     "id": "fuel",
@@ -730,10 +731,11 @@
                     "from": [
                         "Fuel & transport"
                     ],
-                    "plannedMonthly": 650,
+                    "plannedPayday": 325,
+                    "plannedMonthly": null,
                     "ownerLine": "Fuel",
                     "targetSource": "owner-stated-2026-08-31",
-                    "why": "OWNER TARGET WINS. Locked 2026-08-31: $325 per pay period, $650/month. Equal split so Period 1 + Period 2 equals this monthly in cents. Replaces the Aug. 10 $1,300 monthly target."
+                    "why": "OWNER TARGET WINS. Locked 2026-08-31: $325 per 14-day Seaspan payday cycle. Cadence authority is plannedPayday so the master-plan monthly equivalent is that payday amount annualized over the calendar year, not 24 half-months. Not a calendar-half split. A 7-Eleven / convenience-store payee with a general Fuel category is not confirmed Fuel without tx-level fuel evidence. Replaces the Aug. 10 $1,300 monthly target."
                 },
                 {
                     "id": "household",
@@ -742,10 +744,11 @@
                     "from": [
                         "Household"
                     ],
-                    "plannedMonthly": 75,
+                    "plannedPayday": 37.5,
+                    "plannedMonthly": null,
                     "ownerLine": "Household",
                     "targetSource": "owner-stated-2026-08-31",
-                    "why": "OWNER TARGET WINS. Locked 2026-08-31: $37.50 per pay period, $75/month for household supplies. Equal split so Period 1 + Period 2 equals this monthly in cents. FortisBC and Noble Disposal stay dated bills, not this row. Replaces the Aug. 10 $150 monthly target."
+                    "why": "OWNER TARGET WINS. Locked 2026-08-31: $37.50 per 14-day Seaspan payday cycle. Cadence authority is plannedPayday so the master-plan monthly equivalent is that payday amount annualized over the calendar year, not 24 half-months. FortisBC and Noble Disposal stay dated bills, not this row. Superstores / Canadian Tire are not this row. Replaces the Aug. 10 $150 monthly target."
                 },
                 {
                     "id": "health",
@@ -786,10 +789,11 @@
                     "from": [
                         "Pets"
                     ],
-                    "plannedMonthly": 55,
+                    "plannedPayday": 100,
+                    "plannedMonthly": null,
                     "ownerLine": "Dog food",
                     "targetSource": "owner-stated-2026-08-31",
-                    "why": "OWNER TARGET WINS. Locked 2026-08-31: $27.50 per pay period, $55/month for dog food. Equal split so Period 1 + Period 2 equals this monthly in cents. Replaces the Aug. 10 $110 monthly target."
+                    "why": "OWNER TARGET WINS. Owner-confirmed 2026-08-31: $100 every 14-day Seaspan payday cycle. Do not prorate, split, accrue, or roll. Spent includes only txs whose normalized original merchant contains SURREY MEAT (SURREY MEAT PKR _F, SURREY MEAT PKR, SURREY MEAT PAC _F). Never Groceries. Meridian Farm, Iron Butcher, other meat stores, and general pet merchants are not Dog food."
                 },
                 {
                     "id": "propertytax",
@@ -816,12 +820,15 @@
                     "label": "Dining out & takeaway",
                     "class": "discretionary",
                     "from": [
-                        "Restaurants"
+                        "Restaurants",
+                        "Fast Food",
+                        "Food Delivery"
                     ],
-                    "plannedMonthly": 400,
+                    "plannedPayday": 200,
+                    "plannedMonthly": null,
                     "ownerLine": "Eating out",
                     "targetSource": "owner-stated-2026-08-31",
-                    "why": "OWNER TARGET WINS. Locked 2026-08-31: $200 per pay period, $400/month for eating out. Equal split so Period 1 + Period 2 equals this monthly in cents. Replaces the Aug. 10 $800 monthly target."
+                    "why": "OWNER TARGET WINS. Locked 2026-08-31: $200 per 14-day Seaspan payday cycle. Cadence authority is plannedPayday so the master-plan monthly equivalent is that payday amount annualized over the calendar year, not 24 half-months. Spent is Lunch Money Restaurants + Fast Food + Food Delivery, each tx once. Superstores is not this row. Replaces the Aug. 10 $800 monthly target."
                 },
                 {
                     "id": "shopping",
@@ -839,20 +846,22 @@
                     "label": "Dale guilt-free spending",
                     "class": "discretionary",
                     "from": [],
-                    "plannedMonthly": 300,
+                    "plannedPayday": 150,
+                    "plannedMonthly": null,
                     "ownerLine": "Dale guilt-free spending",
                     "targetSource": "owner-stated-2026-08-31",
-                    "why": "OWNER TARGET WINS. Locked 2026-08-31: $150 per pay period, $300/month. Equal split so Period 1 + Period 2 equals this monthly in cents. Spent is Lunch Money personal/shopping txs in the selected pay period with Dale evidence on account, payee, note, or tag. Chequing B / WEEKLY SPENDING is not Dale evidence."
+                    "why": "OWNER TARGET WINS. Locked 2026-08-31: $150 per 14-day Seaspan payday cycle. Cadence authority is plannedPayday so the master-plan monthly equivalent is that payday amount annualized over the calendar year, not 24 half-months. Spent is Lunch Money personal/shopping txs in the selected pay period with Dale evidence on account, payee, note, or tag. Chequing B / WEEKLY SPENDING is not Dale evidence."
                 },
                 {
                     "id": "amanda-guilt-free",
                     "label": "Amanda guilt-free spending",
                     "class": "discretionary",
                     "from": [],
-                    "plannedMonthly": 300,
+                    "plannedPayday": 150,
+                    "plannedMonthly": null,
                     "ownerLine": "Amanda guilt-free spending",
                     "targetSource": "owner-stated-2026-08-31",
-                    "why": "OWNER TARGET WINS. Locked 2026-08-31: $150 per pay period, $300/month. Equal split so Period 1 + Period 2 equals this monthly in cents. Spent is Lunch Money personal/shopping txs in the selected pay period with Amanda evidence on account, payee, note, or tag. TENNIS INCOME / amanda-debt-payments is not guilt-free spending."
+                    "why": "OWNER TARGET WINS. Locked 2026-08-31: $150 per 14-day Seaspan payday cycle. Cadence authority is plannedPayday so the master-plan monthly equivalent is that payday amount annualized over the calendar year, not 24 half-months. Spent is Lunch Money personal/shopping txs in the selected pay period with Amanda evidence on account, payee, note, or tag. TENNIS INCOME / amanda-debt-payments is not guilt-free spending."
                 },
                 {
                     "id": "travel",
