@@ -952,6 +952,7 @@ function payeeMatches(payee, pattern) {
 const WEEKEND_NEXT_BUSINESS_DAY = 'same-day-or-weekend-next-business-day';
 const COVER_DUE_ON_OR_BEFORE_POSTING = 'covers-due-on-or-before-posting';
 const SETTLES_WHEN_AMOUNT_AT_LEAST = 'amount-at-least';
+const SETTLES_WHEN_EXACT_SCHEDULED_AMOUNT = 'exact-scheduled-amount';
 const COVER_DUE_LOOKBACK_DAYS = 62;
 const IDENTITY_AMOUNT_EPSILON = 0.005;
 
@@ -1438,6 +1439,13 @@ function representedEventHitGroups(input) {
         if (rule.settlesWhen === SETTLES_WHEN_AMOUNT_AT_LEAST) {
           const need = Math.abs(Number(scheduled[0].amount));
           if (!(Math.abs(amount) + IDENTITY_AMOUNT_EPSILON >= need)) continue;
+        }
+        if (rule.settlesWhen === SETTLES_WHEN_EXACT_SCHEDULED_AMOUNT) {
+          const need = Math.abs(Number(scheduled[0].amount));
+          if (!(isFinite(need) && isFinite(amount)
+            && Math.abs(Math.abs(amount) - need) <= IDENTITY_AMOUNT_EPSILON)) {
+            continue;
+          }
         }
         const key = rule.eventId + '@' + scheduledDate;
         const list = eventHits.get(key) || [];
