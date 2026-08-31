@@ -109,15 +109,17 @@
   }
   function spendingCycle(plan, asOf) {
     const stream = seaspanPayroll(plan);
-    if (!stream || !stream.anchor || !asOf) return null;
-    const from = addDays(asOf, -42);
-    const to = addDays(asOf, 42);
-    const dates = biweeklyDates(stream.anchor, from, to);
+    const day = financialDate(asOf);
+    const anchor = stream && financialDate(stream.anchor);
+    if (!stream || !anchor || !day) return null;
+    const from = addDays(day, -42);
+    const to = addDays(day, 42);
+    const dates = biweeklyDates(anchor, from, to);
     let start = null;
     let next = null;
     for (const d of dates) {
-      if (d <= asOf) start = d;
-      if (d > asOf && !next) next = d;
+      if (d <= day) start = d;
+      if (d > day && !next) next = d;
     }
     if (!start) return null;
     if (!next) next = addDays(start, 14);
@@ -3896,10 +3898,19 @@
   function calendarHouseholdBudget(plan, asOf, start, end, role, opts) {
     opts = opts || {};
     if (role === 'lookback') {
-      return { items: [], hold: 0, spentReady: false, spendingCycle: null };
+      return {
+        items: [], hold: 0, spentReady: false,
+        spendingCycle: null, cycleUnresolved: false,
+      };
     }
-    const cycle = opts.cycle || spendingCycle(plan, role === 'future' && start ? start : asOf);
-    const useActuals = role === 'active';
+    // Missing/malformed Seaspan must not invent a payday window or assign
+    // transactions. Keep the payday-cycle planned reserve fail-closed.
+    const unresolvedCycle = opts.unresolvedCycle === true;
+    const cycle = unresolvedCycle
+      ? null
+      : (opts.cycle || spendingCycle(plan, role === 'future' && start ? start : asOf));
+    const cycleResolved = !!(cycle && cycle.start);
+    const useActuals = role === 'active' && cycleResolved;
     const coverageOrigin = cycle && cycle.start && asOf && cycle.start <= asOf
       ? cycle.start : asOf;
     const coverage = useActuals
@@ -3989,7 +4000,8 @@
       items,
       hold: roundCent(items.reduce((s, r) => s + (Number(r.hold) || 0), 0)),
       spentReady: actualsReady,
-      spendingCycle: cycle,
+      spendingCycle: cycleResolved ? cycle : null,
+      cycleUnresolved: !cycleResolved,
     };
   }
 
@@ -4029,12 +4041,16 @@
   // not rewrite current cash. The active half opens from
   // paydayAllocation.available. A future half opens from the previous
   // half's projected ending. A lookback half does not reuse today's cash.
-  // Walk P1 then P2. Each Seaspan cycle is held once across the chain.
+  // Walk P1 then P2. Each resolved Seaspan cycle is held once across the chain.
   // If a future half's seed cycle is already held, advance to the next
   // payday cycle rather than deducting the same $1,862.50 twice.
+  // alreadyHeld and unresolved are not equivalent: alreadyHeld skips a
+  // duplicate reserve; a missing cycle must fail closed and keep the hold.
   function uniqueSpendingCycle(plan, seedAsOf, heldStarts) {
     let cycle = spendingCycle(plan, seedAsOf);
-    if (!cycle || !cycle.start) return { cycle: null, alreadyHeld: false };
+    if (!cycle || !cycle.start) {
+      return { cycle: null, alreadyHeld: false, unresolved: true };
+    }
     let guard = 0;
     while (heldStarts.has(cycle.start) && cycle.nextPayday && guard < 24) {
       const next = spendingCycle(plan, cycle.nextPayday);
@@ -4042,9 +4058,11 @@
       cycle = next;
       guard += 1;
     }
-    if (heldStarts.has(cycle.start)) return { cycle, alreadyHeld: true };
+    if (heldStarts.has(cycle.start)) {
+      return { cycle, alreadyHeld: true, unresolved: false };
+    }
     heldStarts.add(cycle.start);
-    return { cycle, alreadyHeld: false };
+    return { cycle, alreadyHeld: false, unresolved: false };
   }
 
   function calendarPeriodWaterfalls(plan, asOf, alloc, plans, debts, opts) {
@@ -4091,14 +4109,19 @@
       if (role !== 'lookback') {
         const seedAsOf = role === 'future' ? section.start : asOf;
         const picked = uniqueSpendingCycle(plan, seedAsOf, heldCycleStarts);
-        if (picked.alreadyHeld || !picked.cycle) {
+        if (picked.alreadyHeld) {
           budgetOpts.skipHold = true;
+        } else if (picked.unresolved || !picked.cycle) {
+          budgetOpts.unresolvedCycle = true;
         } else {
           budgetOpts.cycle = picked.cycle;
         }
       }
       const budget = budgetOpts.skipHold
-        ? { items: [], hold: 0, spentReady: false, spendingCycle: null }
+        ? {
+          items: [], hold: 0, spentReady: false,
+          spendingCycle: null, cycleUnresolved: false,
+        }
         : calendarHouseholdBudget(
           plan, asOf, section.start, section.end, role, budgetOpts);
       const spendingCycleLabel = (role === 'active' && budget.spendingCycle)
@@ -4183,6 +4206,7 @@
         budgetHold: budget.hold,
         spendingCycleLabel,
         spendingCycle: role === 'lookback' ? null : budget.spendingCycle,
+        cycleUnresolved: budget.cycleUnresolved === true,
         afterHouseholdBudget,
         extraDebt,
         firstCard: cards.firstCard,

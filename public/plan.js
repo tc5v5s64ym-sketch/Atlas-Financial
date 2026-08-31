@@ -1640,8 +1640,10 @@ function calendarIncomeHtml(period) {
 
 function calendarBudgetHtml(period) {
   const rows = (period && period.householdBudget) || [];
-  const cycle = period && period.spendingCycleLabel
-    ? `<p class="operating-lead">${period.spendingCycleLabel}</p>` : '';
+  const cycle = period && period.cycleUnresolved
+    ? `<p class="operating-lead">Spending cycle unavailable. Household Budget reserve is held.</p>`
+    : (period && period.spendingCycleLabel
+      ? `<p class="operating-lead">${period.spendingCycleLabel}</p>` : '');
   if (!rows.length) {
     return `<div class="payday-household-budget" data-payday-household-budget>
       ${cycle}

@@ -117,6 +117,26 @@ function budgetRow(p, id) {
 function roundCent(n) {
   return Math.round((Number(n) || 0) * 100) / 100;
 }
+function withoutSeaspan(plan) {
+  const copy = JSON.parse(JSON.stringify(plan));
+  copy.income = (copy.income || []).filter(row =>
+    row && row.id !== 'payroll' && !/seaspan/i.test(row.label || ''));
+  return copy;
+}
+function malformedSeaspan(plan, anchor) {
+  const copy = JSON.parse(JSON.stringify(plan));
+  const row = (copy.income || []).find(r => r && r.id === 'payroll');
+  if (row) {
+    if (anchor === undefined) delete row.anchor;
+    else row.anchor = anchor;
+  }
+  return copy;
+}
+function roomyDebts() {
+  return debts.map(d => d && d.secured
+    ? d
+    : Object.assign({}, d, { balance: 25000 }));
+}
 // Independent of Forecast.calendarHalfPlanned: equal split, leftover
 // cents on Period 2 so the two sides add back to monthly. Not 15/daysInMonth.
 function halfPlanned(monthly, half) {
@@ -821,6 +841,8 @@ console.log('\n=== 12b. Aug 14 and Aug 15 hold the Aug 14–27 cycle exactly onc
       `as-of ${asOf}: future Period 2 does not print the active cycle label`);
     ok(!(p2.spendingCycle && p2.spendingCycle.start === '2026-08-14'),
       `as-of ${asOf}: future Period 2 does not hold the same Aug 14–27 cycle again`);
+    ok(p1.cycleUnresolved !== true && p2.cycleUnresolved !== true,
+      `as-of ${asOf}: a resolved already-held cycle is not marked unresolved`);
   }
   const aug10 = syntheticPlan();
   aug10.opening.asOf = '2026-08-10';
@@ -830,6 +852,118 @@ console.log('\n=== 12b. Aug 14 and Aug 15 hold the Aug 14–27 cycle exactly onc
       && starts10.filter(s => s === paydayCycleWindow('2026-08-10').start).length === 1
       && starts10[0] !== starts10[1],
     'as-of Aug 10 still holds two distinct cycles (current then Aug 14–27)');
+}
+
+console.log('\n=== 12c. unresolved Seaspan cycle fails closed; alreadyHeld stays separate ===');
+{
+  const src = read('public/forecast.js');
+  ok(!/alreadyHeld\s*\|\|\s*!picked\.cycle/.test(src),
+    'alreadyHeld skip-hold is not OR-ed with a missing cycle');
+  ok(/picked\.alreadyHeld/.test(src) && /unresolvedCycle/.test(src),
+    'alreadyHeld skip-hold and unresolved-cycle fail-closed are separate branches');
+
+  const independentHold = roundCent(450 * 2 + 325 + 37.50 + 100 + 200 + 150 + 150);
+  ok(near(independentHold, CYCLE_PLANNED_TOTAL) && near(independentHold, 1862.50),
+    'independent payday-cycle reserve is $1,862.50');
+
+  const leakTxs = [
+    { date: '2026-08-16', amount: 200, pending: false, categoryLabel: 'Groceries', accountRole: 'household-cash' },
+    { date: '2026-08-28', amount: 80, pending: false, categoryLabel: 'Groceries', accountRole: 'household-cash' },
+  ];
+  const asOf = '2026-08-30';
+  const extraDebts = roomyDebts();
+  const baselinePlan = syntheticPlan();
+  const baseline = F.recommend(baselinePlan, asOf, {
+    targetBuffer: 500, debts: extraDebts,
+    currentPeriodActuals: actualsPacket(leakTxs, asOf),
+  });
+  const baseActive = period(baseline.defaultView, 'calendar-16-end');
+  ok(baseActive && near(baseActive.budgetHold, independentHold)
+      && Number(baseActive.extraDebt.allocated) > 0,
+    'resolved Aug 28 baseline holds $1,862.50 and has leftover-funded extra',
+    baseActive && `${baseActive.budgetHold} extra ${baseActive.extraDebt.allocated}`);
+
+  function assertFailClosed(plan, label, opts) {
+    const advice = F.recommend(plan, asOf, Object.assign({
+      targetBuffer: 500, debts: extraDebts,
+      currentPeriodActuals: actualsPacket(leakTxs, asOf),
+    }, opts || {}));
+    const p1 = period(advice.defaultView, 'calendar-1-15');
+    const p2 = period(advice.defaultView, 'calendar-16-end');
+    const engineCycle = F.spendingCycle(plan, asOf);
+    ok(engineCycle == null,
+      `${label}: spendingCycle does not invent a payday`,
+      engineCycle && JSON.stringify(engineCycle));
+    ok(p1 && p1.role === 'lookback' && (p1.householdBudget || []).length === 0
+        && near(p1.budgetHold, 0),
+      `${label}: lookback still does not hold Household Budget`);
+    ok(p2 && p2.role === 'active' && p2.cycleUnresolved === true
+        && p2.spendingCycle == null && p2.spendingCycleLabel == null
+        && !(p2.spendingCycle && p2.spendingCycle.start),
+      `${label}: active waterfall has no invented cycle dates`);
+    ok((p2.householdBudget || []).length >= HOLD_IDS.length,
+      `${label}: Household Budget rows stay visible`,
+      String((p2.householdBudget || []).length));
+    for (const id of HOLD_IDS) {
+      const row = budgetRow(p2, id);
+      ok(row && near(row.planned, CYCLE_PLANNED[id]) && row.spent == null
+          && near(row.remaining, CYCLE_PLANNED[id]) && near(row.hold, CYCLE_PLANNED[id]),
+        `${label}: ${id} keeps planned reserve; spent is unavailable, not assigned`,
+        row && `${row.planned} spent ${row.spent}`);
+    }
+    ok(near(p2.budgetHold, independentHold) && p2.budgetHold + 0.005 >= independentHold,
+      `${label}: protected hold is the full $1,862.50 reserve`,
+      String(p2.budgetHold));
+    ok(p2.extraDebt.allocated <= baseActive.extraDebt.allocated + 0.005,
+      `${label}: extra credit-card payment does not increase`,
+      `${p2.extraDebt.allocated} vs baseline ${baseActive.extraDebt.allocated}`);
+    ok(near(p2.afterHouseholdBudget,
+        roundCent(p2.afterRemainingBills - p2.budgetHold)),
+      `${label}: leftover still subtracts the held reserve`);
+    const html = composer.operatingSurfaceHtml({
+      advice, weekly: advice.weekly, recommended: advice.weekly,
+      planCalendarShow: 'calendar-16-end',
+    });
+    const budgetBlock = /data-payday-household-budget[\s\S]*?<\/div>\s*<\/div>/.exec(html);
+    ok(budgetBlock && /Spending cycle unavailable/.test(budgetBlock[0])
+        && /Household Budget reserve is held/.test(budgetBlock[0])
+        && !/No household budget lines/.test(budgetBlock[0])
+        && !/Spending cycle: Aug/.test(budgetBlock[0])
+        && /Groceries/.test(budgetBlock[0]),
+      `${label}: page keeps Household Budget visible as unavailable, not released`);
+    return p2;
+  }
+
+  assertFailClosed(withoutSeaspan(baselinePlan), 'missing Seaspan stream');
+  const unresolvableAnchor = malformedSeaspan(baselinePlan, 'not-a-date');
+  const payroll = (unresolvableAnchor.income || []).find(r => r && r.id === 'payroll');
+  if (payroll) {
+    payroll.frequency = 'once';
+    payroll.date = '2026-08-28';
+  }
+  assertFailClosed(unresolvableAnchor, 'unresolvable Seaspan anchor');
+  ok(F.spendingCycle(malformedSeaspan(baselinePlan, undefined), asOf) == null,
+    'payroll with no anchor does not invent a spending cycle');
+  ok(F.spendingCycle(malformedSeaspan(baselinePlan, 'not-a-date'), asOf) == null,
+    'malformed payroll anchor does not invent a spending cycle');
+  ok(F.spendingCycle(malformedSeaspan(baselinePlan, '2026-13-40'), asOf) == null,
+    'invalid ISO payroll anchor does not invent a spending cycle');
+
+  for (const asOfHeld of ['2026-08-14', '2026-08-15']) {
+    const plan = syntheticPlan();
+    plan.opening.asOf = asOfHeld;
+    const view = F.recommend(plan, asOfHeld, { targetBuffer: 500, debts }).defaultView;
+    const p1 = period(view, 'calendar-1-15');
+    const p2 = period(view, 'calendar-16-end');
+    const starts = (view.calendarPeriods || [])
+      .map(p => p && p.spendingCycle && p.spendingCycle.start)
+      .filter(Boolean);
+    ok(starts.filter(s => s === '2026-08-14').length === 1
+        && near(p1.budgetHold, CYCLE_PLANNED_TOTAL)
+        && !(p2.spendingCycle && p2.spendingCycle.start === '2026-08-14'),
+      `already-held as-of ${asOfHeld}: Aug 14–27 remains held once`,
+      starts.join(','));
+  }
 }
 
 console.log('\n=== 13. overspend remaining is negative; leftover does not take the overshoot ===');
@@ -1049,8 +1183,9 @@ console.log('\n=== 14. page prints Forecast; leftover is not computed in plan.js
     'operatingSurfaceHtml calls no Forecast function');
   const budgetFn = /function calendarBudgetHtml\([\s\S]*?\n\}/.exec(planSrc);
   ok(budgetFn && /spendingCycleLabel/.test(budgetFn[0])
+      && /cycleUnresolved/.test(budgetFn[0])
       && !/calendarHalfPlanned|sumCategoryActuals/.test(budgetFn[0]),
-    'calendarBudgetHtml prints Forecast spendingCycleLabel and does not recompute planned');
+    'calendarBudgetHtml prints Forecast spendingCycleLabel / cycleUnresolved and does not recompute planned');
   const liveSrc = fs.readFileSync(path.join(__dirname, 'scripts', 'live-plan.js'), 'utf8');
   ok(!/fs\.writeFileSync/.test(liveSrc),
     'live-plan.js still does not write data.json');
