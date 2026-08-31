@@ -1667,6 +1667,41 @@ function serveFixtureOverlay(canonical, extra) {
   });
 }
 
+function browserPlanComposer() {
+  const appSrc = sourceText(fs.readFileSync(path.join(ROOT, 'public', 'app.js'), 'utf8'));
+  const planSrc = sourceText(fs.readFileSync(path.join(ROOT, 'public', 'plan.js'), 'utf8'));
+  const grab = (src, re, label) => {
+    const m = re.exec(src);
+    if (!m) throw new Error('missing ' + label);
+    return m[0];
+  };
+  return vm.runInNewContext([
+    grab(appSrc, /^const money = .*$/m, 'money'),
+    grab(appSrc, /^const money2 = .*$/m, 'money2'),
+    grab(appSrc, /^const fmtDate = .*$/m, 'fmtDate'),
+    grab(appSrc, /^const fmtDateLong = .*$/m, 'fmtDateLong'),
+    grab(planSrc, /^const fmtMonth = .*$/m, 'fmtMonth'),
+    grab(planSrc, /^const addDays = .*$/m, 'addDays'),
+    grab(planSrc, /^function weeklyCapView\([\s\S]*?\n\}$/m, 'weeklyCapView'),
+    grab(planSrc, /^function liveOperatingPlanUnavailable\([\s\S]*?\n\}$/m, 'liveOperatingPlanUnavailable'),
+    grab(planSrc, /^function liveOperatingPlanNote\([\s\S]*?\n\}$/m, 'liveOperatingPlanNote'),
+    grab(planSrc, /^function currentOperatingUnavailableHtml\([\s\S]*?\n\}$/m, 'currentOperatingUnavailableHtml'),
+    grab(planSrc, /^function currentOperatingCashHeroTiles\([\s\S]*?\n\}$/m, 'currentOperatingCashHeroTiles'),
+    grab(planSrc, /^function paydayActionRows\([\s\S]*?\n\}$/m, 'paydayActionRows'),
+    grab(planSrc, /^function paydayOtherActionRows\([\s\S]*?\n\}$/m, 'paydayOtherActionRows'),
+    grab(planSrc, /^function paydayReservedIds\([\s\S]*?\n\}$/m, 'paydayReservedIds'),
+    grab(planSrc, /^function paydayComingRows\([\s\S]*?\n\}$/m, 'paydayComingRows'),
+    grab(planSrc, /^function paydaySheet\([\s\S]*?\n\}$/m, 'paydaySheet'),
+    grab(planSrc, /^function paydayCashNote\([\s\S]*?\n\}$/m, 'paydayCashNote'),
+    grab(planSrc, /^function paydayObligationNote\([\s\S]*?\n\}$/m, 'paydayObligationNote'),
+    grab(planSrc, /^function paydayCoverageNote\([\s\S]*?\n\}$/m, 'paydayCoverageNote'),
+    grab(planSrc, /^function paydayBillStatusNote\([\s\S]*?\n\}$/m, 'paydayBillStatusNote'),
+    grab(planSrc, /^function paydayAmountCell\([\s\S]*?\n\}$/m, 'paydayAmountCell'),
+    grab(planSrc, /^function paydayAnswerHtml\([\s\S]*?\n\}$/m, 'paydayAnswerHtml'),
+    '({ paydayAnswerHtml, currentOperatingCashHeroTiles })',
+  ].join('\n'), { Forecast });
+}
+
 console.log('\n=== 20. same-day inbound fail-closed does not publish a stale cycle as current ===');
 {
   const LIVE_FAILURE_AT = '2026-08-31T18:00:00.000Z';
@@ -1812,6 +1847,48 @@ console.log('\n=== 20. same-day inbound fail-closed does not publish a stale cyc
     {}
   )({ weekly: 400 }, { operatingPlan: 'live' });
   ok(liveHtml == null, 'browser helper stays silent when the operating plan is live');
+  const browser = browserPlanComposer();
+  const paydayHtml = browser.paydayAnswerHtml({
+    plan: served.plan,
+    asOf: served.meta.asOf,
+    advice: staleAdvice,
+    recommended: staleAdvice.weekly,
+    weekly: staleAdvice.weekly,
+    liveOverlay: served.liveOverlay,
+  });
+  ok(/data-current-operating="unavailable"/.test(paydayHtml)
+      && /data-operating-plan="unavailable"/.test(paydayHtml)
+      && /unavailable/.test(paydayHtml)
+      && /stale/.test(paydayHtml)
+      && !/\$/.test(paydayHtml),
+    'paydayAnswerHtml fail-closes the current payday answer on the Aug 31 unavailable fixture');
+  ok(!/Money available/.test(paydayHtml)
+      && !/What to do with this paycheque/.test(paydayHtml)
+      && !/Bills \/ required payments/.test(paydayHtml)
+      && !/Coming before next payday/.test(paydayHtml)
+      && !/Funding risks/.test(paydayHtml)
+      && !/payday-hero/.test(paydayHtml),
+    'unavailable paydayAnswerHtml does not emit current Money available, paycheque action, or other current action from the Aug 19 opening');
+  const heroTiles = browser.currentOperatingCashHeroTiles(
+    served.plan,
+    served.meta.asOf,
+    staleAdvice.sim || { events: [] },
+    staleAdvice,
+    served.liveOverlay
+  );
+  const spendableTile = heroTiles.find(t => t.lab === 'Spendable household cash');
+  const cashOutTile = heroTiles.find(t => t.lab === 'Next cash-out total');
+  ok(spendableTile && spendableTile.val === 'unavailable' && !/\$/.test(String(spendableTile.val)),
+    'Plan hero tile does not publish numeric current Spendable household cash while unavailable');
+  ok(cashOutTile && cashOutTile.val === 'unavailable' && !/\$/.test(String(cashOutTile.val)),
+    'Plan hero tile does not publish numeric current Next cash-out total while unavailable');
+  const renderFn = /function renderPlan\([\s\S]*?\n\}/.exec(planSrc);
+  const paydayFn = /function paydayAnswerHtml\([\s\S]*?\n\}/.exec(planSrc);
+  ok(renderFn && /currentOperatingCashHeroTiles\(/.test(renderFn[0]),
+    'renderPlan prints currentOperatingCashHeroTiles rather than a parallel current-cash path');
+  ok(paydayFn && /currentOperatingUnavailableHtml\(/.test(paydayFn[0])
+      && /liveOperatingPlanUnavailable\(/.test(paydayFn[0]),
+    'paydayAnswerHtml withholds the current payday block while operatingPlan is unavailable');
   const surfaceFn = /function operatingSurfaceHtml\([\s\S]*?\n\}/.exec(planSrc);
   ok(surfaceFn && /currentOperatingUnavailableHtml/.test(surfaceFn[0])
       && /data-today-decision="unavailable"/.test(surfaceFn[0]),
@@ -1879,6 +1956,33 @@ console.log('\n=== 20. same-day inbound fail-closed does not publish a stale cyc
       && trustedPacket.forecast.currentPeriodAction.status === 'ok'
       && trustedPacket.current.spendableHouseholdCash.status === 'ok',
     'trusted get_atlas_current still publishes current cash, recommendation, and current-period action');
+  const trustedPayday = browser.paydayAnswerHtml({
+    plan: trustedServed.plan,
+    asOf: trustedServed.meta.asOf,
+    advice: trustedAdvice,
+    recommended: trustedAdvice.weekly,
+    weekly: trustedAdvice.weekly,
+    liveOverlay: trustedServed.liveOverlay,
+  });
+  ok(/Money available/.test(trustedPayday)
+      && /What to do with this paycheque/.test(trustedPayday)
+      && /payday-hero/.test(trustedPayday)
+      && /\$/.test(trustedPayday)
+      && !/data-current-operating="unavailable"/.test(trustedPayday),
+    'trusted control paydayAnswerHtml still publishes current Money available and paycheque action');
+  const trustedHero = browser.currentOperatingCashHeroTiles(
+    trustedServed.plan,
+    trustedServed.meta.asOf,
+    trustedAdvice.sim,
+    trustedAdvice,
+    trustedServed.liveOverlay
+  );
+  const trustedCash = trustedHero.find(t => t.lab === 'Spendable household cash');
+  const trustedOut = trustedHero.find(t => t.lab === 'Next cash-out total');
+  ok(trustedCash && trustedCash.val !== 'unavailable' && /\$/.test(String(trustedCash.val)),
+    'trusted control still publishes numeric Spendable household cash');
+  ok(!trustedOut || (trustedOut.val !== 'unavailable' && /\$/.test(String(trustedOut.val))),
+    'trusted control still publishes numeric Next cash-out total when a cash-out exists');
 
   const budgetFn = /function calendarBudgetHtml\([\s\S]*?\n\}/.exec(planSrc);
   ok(budgetFn && /operatingPlanUnavailable/.test(budgetFn[0])

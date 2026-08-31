@@ -614,6 +614,24 @@ function currentOperatingUnavailableHtml(advice, liveOverlay) {
   </div>`;
 }
 
+function currentOperatingCashHeroTiles(plan, asOf, sim, advice, liveOverlay) {
+  if (liveOperatingPlanUnavailable(advice, liveOverlay)) {
+    const note = liveOperatingPlanNote(advice, liveOverlay);
+    return [
+      { lab: 'Spendable household cash', val: 'unavailable', tone: 'alert', note },
+      { lab: 'Next cash-out total', val: 'unavailable', tone: 'alert', note },
+    ];
+  }
+  const nextOut = Forecast.nextPaymentOut(sim && sim.events, asOf);
+  return [
+    { lab: 'Spendable household cash', val: money(Forecast.startingCashAmount(plan)), tone: 'alert',
+      note: 'Chequing A, B and Savings. Amanda’s account is a separate pot.' },
+    (nextOut ? { lab: 'Next cash-out total', val: money(nextOut.amount),
+      note: `${nextOut.label} on ${fmtDateLong(nextOut.date)} — all cash leaving household accounts that day`,
+      tone: nextOut.date <= addDays(asOf, 3) ? 'warn' : '' } : null),
+  ].filter(Boolean);
+}
+
 function weeklyCapView(advice, weeklyOverride) {
   advice = advice || {};
   const recommended = advice.weekly;
@@ -2245,8 +2263,12 @@ function operatingSurfaceHtml(ctx) {
 }
 
 function paydayAnswerHtml(ctx) {
-  const plan = ctx.plan;
   const advice = ctx.advice;
+  const liveOverlay = ctx.liveOverlay || null;
+  if (liveOperatingPlanUnavailable(advice, liveOverlay)) {
+    return currentOperatingUnavailableHtml(advice, liveOverlay);
+  }
+  const plan = ctx.plan;
   const alloc = advice && advice.paydayAllocation;
   const action = (advice && advice.currentPeriodAction) || null;
   const mode = (action && action.mode) || 'payday';
@@ -2262,7 +2284,6 @@ function paydayAnswerHtml(ctx) {
     || near.payday
     || (alloc && alloc.payday)
     || null;
-  const liveOverlay = ctx.liveOverlay || null;
   const basisAsOf = alloc && alloc.cashBasis && alloc.cashBasis.asOf
     ? alloc.cashBasis.asOf
     : asOf;
@@ -2799,11 +2820,7 @@ function renderPlan(d, periods, history) {
   const nextOut = Forecast.nextPaymentOut(sim.events, asOf);
   const consumerNow = today.consumer;
   $('hero-tiles').innerHTML = [
-    { lab: 'Spendable household cash', val: money(Forecast.startingCashAmount(plan)), tone: 'alert',
-      note: 'Chequing A, B and Savings. Amanda’s account is a separate pot.' },
-    (nextOut ? { lab: 'Next cash-out total', val: money(nextOut.amount),
-      note: `${nextOut.label} on ${fmtDateLong(nextOut.date)} — all cash leaving household accounts that day`,
-      tone: nextOut.date <= addDays(asOf, 3) ? 'warn' : '' } : null),
+    ...currentOperatingCashHeroTiles(plan, asOf, sim, advice, d.liveOverlay),
     (planUnavailable
       ? { lab: 'Weekly household cap', val: 'unavailable', tone: 'alert',
           note: unavailableNote }
