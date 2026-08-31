@@ -900,6 +900,49 @@ function applyPaydayHeading(action) {
   heading.textContent = 'Payday plan';
 }
 
+const OPERATING_SURFACE_LEDE = 'Current Balance, bills this pay period, household budget, the card to pay extra toward, other cards, and big purchases — each with leftover after that step.';
+
+function applyUnavailableOperatingChrome(unavailable, asOf, liveOverlay, doc) {
+  doc = doc || (typeof document !== 'undefined' ? document : null);
+  if (!doc || typeof doc.getElementById !== 'function') return;
+  const surface = doc.getElementById('operating-surface');
+  const openingAsOf = (liveOverlay && liveOverlay.historicalOpeningAsOf) || asOf || null;
+  if (surface && typeof surface.querySelector === 'function') {
+    const kicker = surface.querySelector('.kicker');
+    const heading = surface.querySelector('h1');
+    const lede = surface.querySelector('.lede');
+    if (unavailable) {
+      if (kicker) kicker.textContent = 'Current plan unavailable';
+      if (heading) heading.textContent = 'Current plan unavailable';
+      if (lede) {
+        let text = liveOperatingPlanNote(null, liveOverlay);
+        if (openingAsOf) {
+          text += ` Last trusted financial opening is ${fmtDateLong(openingAsOf)}.`;
+        }
+        if (liveOverlay && liveOverlay.applied === false) {
+          text += ' A later live refresh could not safely advance the operating plan.';
+        }
+        lede.textContent = text;
+      }
+    } else {
+      if (kicker) kicker.textContent = 'This payday';
+      if (heading) heading.textContent = 'This payday';
+      if (lede) lede.textContent = OPERATING_SURFACE_LEDE;
+    }
+  }
+  const paydaySection = doc.getElementById('payday-answer');
+  if (paydaySection && typeof paydaySection.querySelector === 'function') {
+    const summary = paydaySection.querySelector('summary');
+    if (summary) {
+      summary.textContent = unavailable
+        ? (openingAsOf
+          ? `View dated ${fmtDateLong(openingAsOf)} plan`
+          : 'View dated plan')
+        : 'View full current-period worksheet';
+    }
+  }
+}
+
 function paydayAmountCell(amount, confidence) {
   const value = amount != null ? money2(amount) : '—';
   if (confidence === 'estimated') return `<span class="est">${value}</span>`;
@@ -1389,7 +1432,11 @@ function refreshTrustHtml(trust) {
   const observed = trust.observedAsOf ? fmtDateLong(trust.observedAsOf) : null;
   const reconciled = trust.reconciledAsOf ? fmtDateLong(trust.reconciledAsOf) : null;
   let asOfLine = 'When this was last updated is unknown.';
-  if (observed && reconciled && observed !== reconciled) {
+  if (trust.overlayApplied === false && observed) {
+    asOfLine = reconciled && reconciled !== observed
+      ? `Later refresh observed ${observed} was not applied. Reconciled ${reconciled}.`
+      : `Later refresh observed ${observed} was not applied.`;
+  } else if (observed && reconciled && observed !== reconciled) {
     asOfLine = `Updated ${observed}. Reconciled ${reconciled}.`;
   } else if (observed && reconciled) {
     asOfLine = `Updated ${observed}.`;
@@ -2191,8 +2238,74 @@ function wirePlanLookPicker(mount, ctx) {
  * incumbent Forecast result passed in by renderPlan. This formats those
  * fields only: it does not call Forecast, add an allocation, choose a debt
  * target, total a bucket, invent freshness, or decide feasibility. */
+function unavailableOperatingSurfaceHtml(ctx) {
+  const advice = ctx.advice || {};
+  const liveOverlay = ctx.liveOverlay || null;
+  const view = ctx.planView || advice.defaultView || {};
+  const alloc = advice.paydayAllocation || null;
+  const note = liveOperatingPlanNote(advice, liveOverlay);
+  const openingAsOf = (liveOverlay && liveOverlay.historicalOpeningAsOf)
+    || view.asOf
+    || (alloc && ((alloc.cashBasis && alloc.cashBasis.asOf) || alloc.asOf))
+    || ctx.asOf
+    || null;
+  const datedCash = view.currentBalance != null
+    ? view.currentBalance
+    : (alloc && alloc.available != null ? alloc.available : null);
+  const observedAsOf = (liveOverlay && liveOverlay.observedAsOf)
+    || (ctx.refreshTrust && ctx.refreshTrust.observedAsOf)
+    || null;
+  let explanation = note;
+  if (openingAsOf) {
+    explanation += ` Last trusted financial opening is ${fmtDateLong(openingAsOf)}.`;
+  }
+  if (liveOverlay && liveOverlay.applied === false) {
+    if (observedAsOf && observedAsOf !== openingAsOf) {
+      explanation += ` A later live refresh on ${fmtDateLong(observedAsOf)} could not safely advance the operating plan.`;
+    } else {
+      explanation += ' A later live refresh could not safely advance the operating plan.';
+    }
+  }
+  const openingHtml = datedCash != null
+    ? `<div class="payday-cash" data-last-trusted-opening data-spendable-cash="${money2(datedCash)}">
+        <p class="operating-note">Last trusted opening</p>
+        <span data-last-trusted-opening-amount>${money2(datedCash)}</span>
+        <p class="operating-note">Dated balance — not current${openingAsOf ? `. As at ${fmtDateLong(openingAsOf)}` : ''}.</p>
+      </div>`
+    : '';
+  const undated = view.undatedBills || [];
+  let undatedLines = '';
+  for (let i = 0; i < undated.length; i++) undatedLines += periodBillLine(undated[i]);
+  const actionsHtml = undatedLines
+    ? `<div data-unavailable-actions data-bill-section="needs-date">
+        <p class="operating-lead">Still needs confirmation</p>
+        <div class="operating-lines">${undatedLines}</div>
+        <p class="operating-note">Not part of a current operating plan.</p>
+      </div>`
+    : '';
+  const datedAccess = openingAsOf
+    ? `<details class="household-inline-details" data-dated-plan>
+        <summary>View dated ${fmtDateLong(openingAsOf)} plan</summary>
+        <p class="operating-note">This is the last trusted dated opening, not today's operating plan.</p>
+      </details>`
+    : '';
+  return `<div class="payday-operating-sheet" data-payday-sheet data-operating-plan="unavailable" data-current-operating="unavailable">
+    ${refreshTrustHtml(ctx.refreshTrust)}
+    <div data-unavailable-primary>
+      <p class="operating-lead">Current plan unavailable</p>
+      <p class="operating-note">${explanation}</p>
+    </div>
+    ${openingHtml}
+    ${actionsHtml}
+    ${datedAccess}
+  </div>`;
+}
+
 function operatingSurfaceHtml(ctx) {
   const advice = ctx.advice || {};
+  if (liveOperatingPlanUnavailable(advice, ctx.liveOverlay)) {
+    return unavailableOperatingSurfaceHtml(ctx);
+  }
   const alloc = advice.paydayAllocation || null;
   const action = advice.currentPeriodAction || null;
   const capView = ctx.capView || weeklyCapView(advice, ctx.weeklyOverride);
@@ -2273,17 +2386,10 @@ function operatingSurfaceHtml(ctx) {
   const weeklyAuthority = nextPaydayLabel
     ? `This week's spend until ${nextPaydayLabel}. Everyday costs come out of it first.`
     : "This week's spend. Everyday costs come out of it first.";
-  const unavailableHtml = currentOperatingUnavailableHtml(advice, ctx.liveOverlay);
-  const spend = unavailableHtml
-    ? unavailableHtml
-    : spendDecisionHtml(capView, weeklyPermission, remainingUnavailable, weeklyAuthority, action);
-  const extra = unavailableHtml ? '' : extraDebtGlanceHtml(alloc);
+  const spend = spendDecisionHtml(capView, weeklyPermission, remainingUnavailable, weeklyAuthority, action);
+  const extra = extraDebtGlanceHtml(alloc);
   const purchases = futureGravityHtml(advice);
-  const next = unavailableHtml
-    ? `<div class="decision-today" data-today-decision="unavailable" data-operating-plan="unavailable">
-    <p class="household-primary" data-today-headline>${liveOperatingPlanNote(advice, ctx.liveOverlay)}</p>
-  </div>`
-    : todayDecisionHtml(action, capView, alloc);
+  const next = todayDecisionHtml(action, capView, alloc);
   const periodDetails = action && action.mode === 'between-paydays'
     ? `<details class="household-inline-details household-period-details">
         <summary>See current-period details</summary>
@@ -3430,6 +3536,7 @@ function renderPlan(d, periods, history) {
     };
     operatingMount.innerHTML = operatingSurfaceHtml(surfaceCtx);
     wirePlanLookPicker(operatingMount, surfaceCtx);
+    applyUnavailableOperatingChrome(planUnavailable, asOf, d.liveOverlay);
   }
   const paydayMount = $('payday-answer-body');
   if (paydayMount) {
@@ -3551,9 +3658,9 @@ if (typeof App !== 'undefined') {
 }
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
-    operatingSurfaceHtml, betweenPaydaysOperatingHtml, paydayAnswerHtml, paydayActionRows, paydayOtherActionRows, paydayComingRows,
+    operatingSurfaceHtml, unavailableOperatingSurfaceHtml, betweenPaydaysOperatingHtml, paydayAnswerHtml, paydayActionRows, paydayOtherActionRows, paydayComingRows,
     paydayCashNote, weeklyCapView, futurePlanRequirement, futurePlanTiming, futureGravityHtml,
-    refreshTrustHtml,
+    refreshTrustHtml, applyUnavailableOperatingChrome,
     MISSION_PART, NEXT_MOVE, STATUS_BAND,
   };
 }

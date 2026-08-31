@@ -1773,6 +1773,84 @@ function calendarWaterfallComposer() {
   ].join('\n'), { Forecast });
 }
 
+function operatingSurfaceComposer() {
+  const appSrc = sourceText(fs.readFileSync(path.join(ROOT, 'public', 'app.js'), 'utf8'));
+  const planSrc = sourceText(fs.readFileSync(path.join(ROOT, 'public', 'plan.js'), 'utf8'));
+  const grab = (src, re, label) => {
+    const m = re.exec(src);
+    if (!m) throw new Error('missing ' + label);
+    return m[0];
+  };
+  return vm.runInNewContext([
+    grab(appSrc, /^const money = .*$/m, 'money'),
+    grab(appSrc, /^const money2 = .*$/m, 'money2'),
+    grab(appSrc, /^const fmtDate = .*$/m, 'fmtDate'),
+    grab(appSrc, /^const fmtDateLong = .*$/m, 'fmtDateLong'),
+    grab(planSrc, /^function weeklyCapView\([\s\S]*?\n\}$/m, 'weeklyCapView'),
+    grab(planSrc, /^function liveOperatingPlanUnavailable\([\s\S]*?\n\}$/m, 'liveOperatingPlanUnavailable'),
+    grab(planSrc, /^function liveOperatingPlanNote\([\s\S]*?\n\}$/m, 'liveOperatingPlanNote'),
+    grab(planSrc, /^function currentOperatingUnavailableHtml\([\s\S]*?\n\}$/m, 'currentOperatingUnavailableHtml'),
+    grab(planSrc, /^function paydayActionRows\([\s\S]*?\n\}$/m, 'paydayActionRows'),
+    grab(planSrc, /^function paydayCashNote\([\s\S]*?\n\}$/m, 'paydayCashNote'),
+    grab(planSrc, /^function paydayGlanceCashNote\([\s\S]*?\n\}$/m, 'paydayGlanceCashNote'),
+    grab(planSrc, /^function glanceUpdatedNote\([\s\S]*?\n\}$/m, 'glanceUpdatedNote'),
+    grab(planSrc, /^function paydayCoverageNote\([\s\S]*?\n\}$/m, 'paydayCoverageNote'),
+    grab(planSrc, /^const PAYDAY_ACTION_KIND = \{[\s\S]*?^\};$/m, 'PAYDAY_ACTION_KIND'),
+    grab(planSrc, /^function paydayAllocationTrustNote\([\s\S]*?\n\}$/m, 'paydayAllocationTrustNote'),
+    grab(planSrc, /^function paydayAllocationSheetHtml\([\s\S]*?\n\}$/m, 'paydayAllocationSheetHtml'),
+    grab(planSrc, /^function currentPeriodConfidence\([\s\S]*?\n\}$/m, 'currentPeriodConfidence'),
+    grab(planSrc, /^function currentPeriodBillGroup\([\s\S]*?\n\}$/m, 'currentPeriodBillGroup'),
+    grab(planSrc, /^function betweenPaydaysOperatingHtml\([\s\S]*?\n\}$/m, 'betweenPaydaysOperatingHtml'),
+    grab(planSrc, /^const FUTURE_PLAN_VERDICT = \{[\s\S]*?^\};$/m, 'FUTURE_PLAN_VERDICT'),
+    grab(planSrc, /^const FUTURE_PLAN_FLEXIBILITY = \{[\s\S]*?^\};$/m, 'FUTURE_PLAN_FLEXIBILITY'),
+    grab(planSrc, /^function futureCostNeedsAttention\([\s\S]*?\n\}$/m, 'futureCostNeedsAttention'),
+    grab(planSrc, /^function futurePlanRemainingLabel\([\s\S]*?\n\}$/m, 'futurePlanRemainingLabel'),
+    grab(planSrc, /^function futurePlanMeaning\([\s\S]*?\n\}$/m, 'futurePlanMeaning'),
+    grab(planSrc, /^function futurePlanRequirement\([\s\S]*?\n\}$/m, 'futurePlanRequirement'),
+    grab(planSrc, /^function futurePlanTiming\([\s\S]*?\n\}$/m, 'futurePlanTiming'),
+    grab(planSrc, /^function futurePlanCardHtml\([\s\S]*?\n\}$/m, 'futurePlanCardHtml'),
+    grab(planSrc, /^function futureGravityHtml\([\s\S]*?\n\}$/m, 'futureGravityHtml'),
+    grab(planSrc, /^function operatingDebtAnswerHtml\([\s\S]*?\n\}$/m, 'operatingDebtAnswerHtml'),
+    grab(planSrc, /^const REFRESH_TRUST_STATE = \{[\s\S]*?^\};$/m, 'REFRESH_TRUST_STATE'),
+    grab(planSrc, /^function refreshTrustHtml\([\s\S]*?\n\}$/m, 'refreshTrustHtml'),
+    grab(planSrc, /^function cashUnsafe\([\s\S]*?\n\}$/m, 'cashUnsafe'),
+    grab(planSrc, /^function todayActionRowsHtml\([\s\S]*?\n\}$/m, 'todayActionRowsHtml'),
+    grab(planSrc, /^function todayDecisionHtml\([\s\S]*?\n\}$/m, 'todayDecisionHtml'),
+    grab(planSrc, /^function spendDecisionHtml\([\s\S]*?\n\}$/m, 'spendDecisionHtml'),
+    grab(planSrc, /^function paydayBucketRow\([\s\S]*?\n\}$/m, 'paydayBucketRow'),
+    grab(planSrc, /^function postedThisPeriodHtml\([\s\S]*?\n\}$/m, 'postedThisPeriodHtml'),
+    grab(planSrc, /^function glanceSignedMoney\([\s\S]*?\n\}$/m, 'glanceSignedMoney'),
+    grab(planSrc, /^function glanceMoney\([\s\S]*?\n\}$/m, 'glanceMoney'),
+    grab(planSrc, /^function glanceLineLabel\([\s\S]*?\n\}$/m, 'glanceLineLabel'),
+    grab(planSrc, /^function alreadyPaidRowsHtml\([\s\S]*?\n\}$/m, 'alreadyPaidRowsHtml'),
+    grab(planSrc, /^function alreadyPaidHtml\([\s\S]*?\n\}$/m, 'alreadyPaidHtml'),
+    grab(planSrc, /^function stillDueItems\([\s\S]*?\n\}$/m, 'stillDueItems'),
+    grab(planSrc, /^function cashGlanceHtml\([\s\S]*?\n\}$/m, 'cashGlanceHtml'),
+    grab(planSrc, /^function mustLeaveHtml\([\s\S]*?\n\}$/m, 'mustLeaveHtml'),
+    grab(planSrc, /^function extraDebtGlanceHtml\([\s\S]*?\n\}$/m, 'extraDebtGlanceHtml'),
+    grab(planSrc, /^function runningLeftoverHtml\([\s\S]*?\n\}$/m, 'runningLeftoverHtml'),
+    grab(planSrc, /^function periodBillLine\([\s\S]*?\n\}$/m, 'periodBillLine'),
+    grab(planSrc, /^function calendarCurrentUnavailableHtml\([\s\S]*?\n\}$/m, 'calendarCurrentUnavailableHtml'),
+    grab(planSrc, /^function calendarIncomeHtml\([\s\S]*?\n\}$/m, 'calendarIncomeHtml'),
+    grab(planSrc, /^function calendarBudgetHtml\([\s\S]*?\n\}$/m, 'calendarBudgetHtml'),
+    grab(planSrc, /^function calendarPeriodBillsHtml\([\s\S]*?\n\}$/m, 'calendarPeriodBillsHtml'),
+    grab(planSrc, /^function extraRepaymentHtml\([\s\S]*?\n\}$/m, 'extraRepaymentHtml'),
+    grab(planSrc, /^function firstCardHtml\([\s\S]*?\n\}$/m, 'firstCardHtml'),
+    grab(planSrc, /^function otherCardsHtml\([\s\S]*?\n\}$/m, 'otherCardsHtml'),
+    grab(planSrc, /^function bigPurchasesHtml\([\s\S]*?\n\}$/m, 'bigPurchasesHtml'),
+    grab(planSrc, /^function calendarWaterfallHtml\([\s\S]*?\n\}$/m, 'calendarWaterfallHtml'),
+    grab(planSrc, /^function calendarPickerHtml\([\s\S]*?\n\}$/m, 'calendarPickerHtml'),
+    grab(planSrc, /^function calendarWaterfallsHtml\([\s\S]*?\n\}$/m, 'calendarWaterfallsHtml'),
+    grab(planSrc, /^function periodBillsHtml\([\s\S]*?\n\}$/m, 'periodBillsHtml'),
+    grab(planSrc, /^function householdBudgetHtml\([\s\S]*?\n\}$/m, 'householdBudgetHtml'),
+    grab(planSrc, /^function budgetDigestHtml\([\s\S]*?\n\}$/m, 'budgetDigestHtml'),
+    grab(planSrc, /^function paydayAllocationSummaryHtml\([\s\S]*?\n\}$/m, 'paydayAllocationSummaryHtml'),
+    grab(planSrc, /^function unavailableOperatingSurfaceHtml\([\s\S]*?\n\}$/m, 'unavailableOperatingSurfaceHtml'),
+    grab(planSrc, /^function operatingSurfaceHtml\([\s\S]*?\n\}$/m, 'operatingSurfaceHtml'),
+    '({ operatingSurfaceHtml, money2 })',
+  ].join('\n'), { Forecast });
+}
+
 function browserPlanComposer() {
   const appSrc = sourceText(fs.readFileSync(path.join(ROOT, 'public', 'app.js'), 'utf8'));
   const planSrc = sourceText(fs.readFileSync(path.join(ROOT, 'public', 'plan.js'), 'utf8'));
@@ -1967,6 +2045,33 @@ console.log('\n=== 20. same-day inbound fail-closed does not publish a stale cyc
       && !/plannedPayday/.test(waterfallHtml),
     'Household Budget planned payday dollars are not printed as the current operating waterfall');
 
+  const surface = operatingSurfaceComposer();
+  const surfaceHtml = surface.operatingSurfaceHtml({
+    advice: staleAdvice,
+    weekly: staleAdvice.weekly,
+    recommended: staleAdvice.weekly,
+    liveOverlay: served.liveOverlay,
+    refreshTrust: served.refreshTrust,
+    asOf: served.meta.asOf,
+  });
+  ok(/data-unavailable-primary/.test(surfaceHtml)
+      && /data-current-operating="unavailable"/.test(surfaceHtml)
+      && /Last trusted opening/.test(surfaceHtml)
+      && /Dated balance — not current/.test(surfaceHtml)
+      && surfaceHtml.includes(surface.money2(datedCash)),
+    'Plan operating surface fail-closes at the page with one dated/non-current opening');
+  ok(!/Current Balance/.test(surfaceHtml)
+      && !/data-calendar-waterfall/.test(surfaceHtml)
+      && !/data-calendar-period-picker/.test(surfaceHtml)
+      && (surfaceHtml.match(/The dated opening is stale/g) || []).length === 1,
+    'Plan operating surface does not print Current Balance, the pay-period waterfall, or eleven stale notes');
+  ok(!/Updated August 31/.test(surfaceHtml)
+      && !/Updated Aug 31/.test(surfaceHtml)
+      && /Later refresh observed August 31 was not applied/.test(surfaceHtml),
+    'unapplied Aug 31 observation is not presented as the financial as-of');
+  ok(/Bell/.test(surfaceHtml) && /needs confirmation/.test(surfaceHtml),
+    'independently valid Bell needs-confirmation material remains on the unavailable surface');
+
   const operating = OA.fromRefreshedState(served, { mode: 'live-overlay' });
   ok(operating.provenance.operatingPlan === Live.OPERATING_PLAN_UNAVAILABLE,
     'operating-answer provenance records operatingPlan unavailable');
@@ -2093,9 +2198,9 @@ console.log('\n=== 20. same-day inbound fail-closed does not publish a stale cyc
       && /liveOperatingPlanUnavailable\(/.test(paydayFn[0]),
     'paydayAnswerHtml withholds the current payday block while operatingPlan is unavailable');
   const surfaceFn = /function operatingSurfaceHtml\([\s\S]*?\n\}/.exec(planSrc);
-  ok(surfaceFn && /currentOperatingUnavailableHtml/.test(surfaceFn[0])
-      && /data-today-decision="unavailable"/.test(surfaceFn[0]),
-    'operatingSurfaceHtml fail-closes spend permission, extra-debt, and today-action while operatingPlan is unavailable');
+  ok(surfaceFn && /liveOperatingPlanUnavailable/.test(surfaceFn[0])
+      && /unavailableOperatingSurfaceHtml/.test(surfaceFn[0]),
+    'operatingSurfaceHtml fail-closes at the page when operatingPlan is unavailable');
   const extraFn = /function extraRepaymentHtml\([\s\S]*?\n\}/.exec(planSrc);
   ok(extraFn && /operatingPlanUnavailable/.test(extraFn[0])
       && /data-operating-plan="unavailable"/.test(extraFn[0]),

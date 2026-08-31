@@ -314,6 +314,10 @@ footer { margin-top:56px; padding-top:18px; border-top:1px solid var(--grid);
   background:color-mix(in srgb, var(--s1) 8%, var(--surface-1));
 }
 .payday-cash .operating-amount { margin-top:0; }
+[data-last-trusted-opening] [data-last-trusted-opening-amount] {
+  display:block; margin-top:2px; font-size:1.15rem; font-weight:600;
+  font-variant-numeric:tabular-nums; color:var(--text-secondary);
+}
 .payday-must-leave .operating-line [data-unverified-bill],
 .operating-line[data-unverified-bill] span:first-child { color:var(--serious); }
 .operating-number {
