@@ -1,6 +1,6 @@
 {
   "schema": "atlas-provider-transaction-identity/v1",
-  "owns": "Unambiguous provider-transaction to Forecast-event identity. A match requires an explicit payee alias + mapped Atlas account + direction + an allowed scheduled/posting-date relation. Optional payeeExcludePatterns refuse a hit that also matches a reimbursement or other excluded alias. Same-day is the default; named automatic payments may opt into weekend-to-next-business-day; a payment onto a mapped card may cover the latest due on or before posting. Amount similarity is not identity. After that identity is unique, a card extra payment may settle the min only when the observed credit is at least the scheduled due. Named fixed salary streams may additionally require the exact scheduled amount as a necessary guard; that amount is not identity by itself, and an unresolved Tennis BC descriptor is not sufficient without it.",
+  "owns": "Unambiguous provider-transaction to Forecast-event identity. A match requires an explicit payee alias + mapped Atlas account + direction + an allowed scheduled/posting-date relation, or — for the named fixed Tennis BC salary streams only — a uniquely proven transfer credit into BILLS (chequing-a) + direction + an allowed scheduled/posting-date relation. Optional payeeExcludePatterns refuse a hit that also matches a reimbursement or other excluded alias. Same-day is the default; named automatic payments may opt into weekend-to-next-business-day; a payment onto a mapped card may cover the latest due on or before posting. Amount similarity is not identity. After that identity is unique, a card extra payment may settle the min only when the observed credit is at least the scheduled due. Named fixed salary streams additionally require the exact scheduled amount as a necessary guard; that amount is not identity by itself. A TENNIS BC payee credit on a household account is not salary identity. A TENNIS INCOME deposit or reimbursement is not household-cash posting proof. An unrelated household transfer is not salary identity.",
   "does_not_own": "Permission to write plan.opening or representedEvents onto data.json, pending-to-posted proof, or a second event engine.",
   "billPaymentPayees": [
     "Bell Mobility",
@@ -19,43 +19,19 @@
     },
     {
       "eventId": "amandaSalary15",
-      "payeePattern": "TENNIS BC",
-      "payeePatterns": ["TENNIS BC", "TENNIS - BRITIS PAY", "TENNIS BRITIS MSP"],
-      "payeeExcludePatterns": ["TENNIS BC EXP", "TENNIS BRITISH AP"],
+      "transactionKind": "transfer",
       "atlasAccountId": "chequing-a",
       "direction": "credit",
       "settlesWhen": "exact-scheduled-amount",
-      "note": "Owner-confirmed Tennis BC salary on the 15th. Payee plus the exact scheduled amount is required. Generic TENNIS BC or another unresolved descriptor is not sufficient by itself. Amount is not identity by itself. TENNIS BC EXP / AP are reimbursement, not this stream."
-    },
-    {
-      "eventId": "amandaSalary15",
-      "payeePattern": "TENNIS BC",
-      "payeePatterns": ["TENNIS BC", "TENNIS - BRITIS PAY", "TENNIS BRITIS MSP"],
-      "payeeExcludePatterns": ["TENNIS BC EXP", "TENNIS BRITISH AP"],
-      "atlasAccountId": "chequing-b",
-      "direction": "credit",
-      "settlesWhen": "exact-scheduled-amount",
-      "note": "Same Tennis BC 15th identity on Chequing B. Household cash only, not TENNIS INCOME. Exact scheduled amount is a necessary additional guard."
+      "note": "Owner-clarified 2026-08-31: Tennis BC salary first lands in TENNIS INCOME, which is not spendable household cash. Household-visible posting proof is the later transfer credit into BILLS (chequing-a). Identity is transfer-kind + BILLS + date. Exact scheduled amount is a necessary additional guard, not identity by itself. A TENNIS BC payee on BILLS/WEEKLY is not this identity. A TENNIS INCOME deposit or reimbursement is not household-cash posting proof. An unrelated household transfer is not this identity. Not a second income line."
     },
     {
       "eventId": "amandaSalaryMonthEnd",
-      "payeePattern": "TENNIS BC",
-      "payeePatterns": ["TENNIS BC", "TENNIS - BRITIS PAY", "TENNIS BRITIS MSP"],
-      "payeeExcludePatterns": ["TENNIS BC EXP", "TENNIS BRITISH AP"],
+      "transactionKind": "transfer",
       "atlasAccountId": "chequing-a",
       "direction": "credit",
       "settlesWhen": "exact-scheduled-amount",
-      "note": "Owner-confirmed Tennis BC month-end salary. Payee plus the exact scheduled amount is required. Generic TENNIS BC or another unresolved descriptor is not sufficient by itself. Amount is not identity by itself. TENNIS BC EXP / AP are reimbursement, not this stream."
-    },
-    {
-      "eventId": "amandaSalaryMonthEnd",
-      "payeePattern": "TENNIS BC",
-      "payeePatterns": ["TENNIS BC", "TENNIS - BRITIS PAY", "TENNIS BRITIS MSP"],
-      "payeeExcludePatterns": ["TENNIS BC EXP", "TENNIS BRITISH AP"],
-      "atlasAccountId": "chequing-b",
-      "direction": "credit",
-      "settlesWhen": "exact-scheduled-amount",
-      "note": "Same Tennis BC month-end identity on Chequing B. Household cash only, not TENNIS INCOME. Exact scheduled amount is a necessary additional guard."
+      "note": "Same BILLS-transfer identity for the month-end salary stream. Transfer-kind + BILLS + date, with the exact scheduled amount as a necessary additional guard. Direct household-account Tennis BC payee match must not exist."
     },
     {
       "eventId": "mortgage",

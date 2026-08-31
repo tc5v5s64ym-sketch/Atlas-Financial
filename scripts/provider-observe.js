@@ -977,6 +977,38 @@ function payeeMatchesRule(tx, rule) {
   return true;
 }
 
+function transactionIsTransfer(tx) {
+  if (!tx || tx.isIncome === true) return false;
+  const kind = String(tx.kind || '').toLowerCase();
+  if (kind === 'transfer' || kind === 'internal-transfer') return true;
+  if (tx.excludeFromTotals === true) return true;
+  return /transfer/i.test(String(tx.categoryLabel || ''));
+}
+
+function ruleHasIdentity(rule) {
+  if (!rule || !rule.eventId) return false;
+  if (rule.transactionKind === 'transfer') return true;
+  return rulePayeePatterns(rule).length > 0;
+}
+
+function ruleMatchesTransactionIdentity(tx, rule) {
+  if (!tx || !rule) return false;
+  if (rulePayeeExcludePatterns(rule).some(pattern => payeeMatches(tx.payee, pattern))) {
+    return false;
+  }
+  if (rule.transactionKind === 'transfer') {
+    if (!transactionIsTransfer(tx)) return false;
+    if (!rulePayeePatterns(rule).length) return true;
+  }
+  return payeeMatchesRule(tx, rule);
+}
+
+function ruleIdentityLabel(rule) {
+  return rule && rule.transactionKind === 'transfer'
+    ? 'transfer+account+date'
+    : 'payee+account+date';
+}
+
 function postingDateRelation(scheduledDate, postingDate, rule) {
   const scheduled = parseIsoDate(scheduledDate);
   const posted = parseIsoDate(postingDate);
@@ -1078,7 +1110,9 @@ function postingObservationFromCandidate(candidate, fetchedAt) {
     evidenceDate: dateOnly(fetchedAt),
     canonical: { collection: 'representedEvents', id: candidate.id, date: candidate.date },
     source: 'provider-observe:lunchmoney-transactions',
-    note: 'Identity is explicit payee alias + mapped account + direction + allowed scheduled/posting-date relation. Amount similarity was not used. Historical candidates are not current-opening posting comparisons.',
+    note: candidate && candidate.identity === 'transfer+account+date'
+      ? 'Identity is a uniquely proven transfer credit into the mapped BILLS account + direction + allowed scheduled/posting-date relation. Amount is a necessary guard, not identity. Historical candidates are not current-opening posting comparisons.'
+      : 'Identity is explicit payee alias + mapped account + direction + allowed scheduled/posting-date relation. Amount similarity was not used. Historical candidates are not current-opening posting comparisons.',
     currentOpeningImpact: candidate.currentOpeningImpact === true,
     mustNotBackfillOpening: candidate.mustNotBackfillOpening !== false,
     openingRelevance: candidate.openingRelevance || 'incomparable',
@@ -1415,8 +1449,7 @@ function observationReceipt(report, opts) {
 function representedEventHitGroups(input) {
   const empty = { unique: [], ambiguous: [] };
   if (input.transactionWindow && input.transactionWindow.complete === false) return empty;
-  const rules = (input.identityRules || [])
-    .filter(r => r && r.eventId && rulePayeePatterns(r).length);
+  const rules = (input.identityRules || []).filter(ruleHasIdentity);
   if (!rules.length) return empty;
   const mapDoc = input.accountMap;
   const eventHits = new Map();
@@ -1427,7 +1460,7 @@ function representedEventHitGroups(input) {
     const amount = lunchMoneyDebitAmount(tx.amount);
     for (const rule of rules) {
       if (rule.atlasAccountId && mapping.canonical.id !== rule.atlasAccountId) continue;
-      if (!payeeMatchesRule(tx, rule)) continue;
+      if (!ruleMatchesTransactionIdentity(tx, rule)) continue;
       if (rule.direction === 'credit' && !(amount < 0)) continue;
       if (rule.direction === 'debit' && !(amount > 0)) continue;
       for (const scheduledDate of coveringScheduledDates(input.plan, rule, tx.date)) {
@@ -1458,7 +1491,7 @@ function representedEventHitGroups(input) {
           providerTransactionId: tx.providerTransactionId,
           providerAccountId: tx.providerAccountId,
           payee: tx.payee,
-          identity: 'payee+account+date',
+          identity: ruleIdentityLabel(rule),
           amountNotUsed: true,
           observedAmount: amount,
           atlasAccountId: mapping.canonical.id,
@@ -2442,6 +2475,9 @@ const api = {
   inferredCardState,
   representedEventHitGroups,
   representedEventCandidates,
+  transactionIsTransfer,
+  ruleHasIdentity,
+  ruleMatchesTransactionIdentity,
   openingAsOfFromData,
   classifyRepresentedCandidate,
   postingObservationFromCandidate,

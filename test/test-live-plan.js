@@ -2363,21 +2363,28 @@ console.log('\n=== 21. named paycheck identity supplies actuals and applies when
 {
   const LIVE_AT = '2026-08-31T18:00:00.000Z';
   const LIVE_DAY = '2026-08-31';
-  // Owner-confirmed month-end net from ACCOUNT_FACTS / plan.income, not a
-  // guessed live payee amount. Used as an additional identity guard only.
+  // Owner-confirmed month-end net from ACCOUNT_FACTS / plan.income. Used as
+  // an additional identity guard on the BILLS transfer, not as identity.
   const OWNER_CONFIRMED_MONTH_END = 2387.99;
   const WRONG_AMOUNT_AMANDA = 81.17;
+  const UNRELATED_TRANSFER = 790;
   const SYNTHETIC_GROCER = 12.34;
   const SYNTHETIC_INOUT = 3000;
   const openingAsOf = String(liveData.plan.opening.asOf);
   const salaryRules = (identity.rules || []).filter(r =>
     r && (r.eventId === 'amandaSalary15' || r.eventId === 'amandaSalaryMonthEnd'));
-  ok(salaryRules.length === 4
-      && salaryRules.every(r => r.settlesWhen === 'exact-scheduled-amount'),
-    'both Tennis BC salary streams require exact scheduled amount as an additional guard');
-  ok(salaryRules.every(r => (r.payeeExcludePatterns || []).includes('TENNIS BC EXP')
-      && (r.payeeExcludePatterns || []).includes('TENNIS BRITISH AP')),
-    'reimbursement TENNIS BC EXP / AP remain excluded from salary identity');
+  ok(salaryRules.length === 2
+      && salaryRules.every(r => r.transactionKind === 'transfer'
+        && r.atlasAccountId === 'chequing-a'
+        && r.direction === 'credit'
+        && r.settlesWhen === 'exact-scheduled-amount'
+        && !r.payeePattern
+        && !(r.payeePatterns || []).length),
+    'salary identity is BILLS transfer + exact scheduled amount, not a Tennis BC payee');
+  ok(!(identity.rules || []).some(r =>
+      r && (r.eventId === 'amandaSalary15' || r.eventId === 'amandaSalaryMonthEnd')
+      && /tennis/i.test(JSON.stringify([r.payeePattern, r.payeePatterns]))),
+    'direct household-account Tennis BC payee match does not exist');
   const scheduledEom = (liveData.plan.income || [])
     .find(s => s && s.id === 'amandaSalaryMonthEnd');
   ok(scheduledEom && near(scheduledEom.amount, OWNER_CONFIRMED_MONTH_END),
@@ -2410,13 +2417,33 @@ console.log('\n=== 21. named paycheck identity supplies actuals and applies when
     id: 96028, account_id: 3001, date: PAYDAY_AS_OF, amount: -SYNTHETIC_PAYROLL,
     payee: 'SEASPAN PAYROLL', category_id: 21, is_pending: false, status: 'reviewed',
   };
-  const amandaTx = {
+  const billsTransferTx = {
     id: 96031, account_id: 3001, date: LIVE_DAY, amount: -OWNER_CONFIRMED_MONTH_END,
+    payee: 'INTERNAL TRANSFER', category_id: 24, exclude_from_totals: true,
+    is_pending: false, status: 'reviewed',
+  };
+  const tennisBcPayeeTx = {
+    id: 96038, account_id: 3001, date: LIVE_DAY, amount: -OWNER_CONFIRMED_MONTH_END,
     payee: 'TENNIS BC', category_id: 21, is_pending: false, status: 'reviewed',
   };
-  const wrongAmountAmandaTx = {
-    id: 96037, account_id: 3001, date: LIVE_DAY, amount: -WRONG_AMOUNT_AMANDA,
+  const tennisIncomeDepositTx = {
+    id: 96039, account_id: 3009, date: LIVE_DAY, amount: -OWNER_CONFIRMED_MONTH_END,
     payee: 'TENNIS BC', category_id: 21, is_pending: false, status: 'reviewed',
+  };
+  const unrelatedTransferTx = {
+    id: 96040, account_id: 3001, date: LIVE_DAY, amount: -UNRELATED_TRANSFER,
+    payee: 'INTERNAL TRANSFER', category_id: 24, exclude_from_totals: true,
+    is_pending: false, status: 'reviewed',
+  };
+  const weeklyTransferTx = {
+    id: 96041, account_id: 3002, date: LIVE_DAY, amount: -OWNER_CONFIRMED_MONTH_END,
+    payee: 'INTERNAL TRANSFER', category_id: 24, exclude_from_totals: true,
+    is_pending: false, status: 'reviewed',
+  };
+  const wrongAmountTransferTx = {
+    id: 96037, account_id: 3001, date: LIVE_DAY, amount: -WRONG_AMOUNT_AMANDA,
+    payee: 'INTERNAL TRANSFER', category_id: 24, exclude_from_totals: true,
+    is_pending: false, status: 'reviewed',
   };
   const expTx = {
     id: 96032, account_id: 3001, date: LIVE_DAY, amount: -40.4,
@@ -2460,16 +2487,20 @@ console.log('\n=== 21. named paycheck identity supplies actuals and applies when
     transactions,
   });
 
-  const provenTxs = [seaspanTx, amandaTx, expTx].concat(inOutTxs, [grocerTx]);
+  const provenTxs = [seaspanTx, billsTransferTx, expTx].concat(inOutTxs, [grocerTx]);
   const observed = overlay(canonical, extraFor(provenTxs));
   const amandaHit = (observed.report.representedEventCandidates || [])
     .find(c => c.id === 'amandaSalaryMonthEnd' && c.date === LIVE_DAY);
   const seaspanHit = (observed.report.representedEventCandidates || [])
     .find(c => c.id === 'payroll' && c.date === PAYDAY_AS_OF);
-  ok(amandaHit && amandaHit.identity === 'payee+account+date' && amandaHit.amountNotUsed === true,
-    'observer identity remains payee+account+date; amount is a guard, not identity');
-  ok(near(amandaHit.observedAmount, -OWNER_CONFIRMED_MONTH_END),
-    'matched Tennis BC actual is the exact scheduled month-end amount');
+  ok(amandaHit && amandaHit.identity === 'transfer+account+date' && amandaHit.amountNotUsed === true,
+    'observer identity-matches the BILLS transfer; amount is a guard, not identity');
+  ok(near(amandaHit.observedAmount, -OWNER_CONFIRMED_MONTH_END)
+      && amandaHit.atlasAccountId === 'chequing-a',
+    'matched salary actual is the exact scheduled transfer into BILLS');
+  ok((observed.report.representedEventCandidates || [])
+      .filter(c => c.id === 'amandaSalaryMonthEnd' && c.date === LIVE_DAY).length === 1,
+    'the scheduled salary is represented once');
   ok(seaspanHit && seaspanHit.identity === 'payee+account+date',
     'observer identity-matches in-window Seaspan by payee');
   ok(!(observed.report.representedEventCandidates || [])
@@ -2480,7 +2511,7 @@ console.log('\n=== 21. named paycheck identity supplies actuals and applies when
     'ignored $3000 in-and-out is not a named income candidate');
 
   ok(observed.data.liveOverlay && observed.data.liveOverlay.applied === true,
-    'overlay applies when named same-day Tennis BC is proven posted');
+    'overlay applies when the salary-to-BILLS transfer is uniquely proven');
   ok(observed.data.liveOverlay.operatingPlan === Live.OPERATING_PLAN_LIVE,
     'proven overlay is a current operating plan');
   ok(String(observed.data.meta.asOf) === LIVE_DAY
@@ -2488,7 +2519,7 @@ console.log('\n=== 21. named paycheck identity supplies actuals and applies when
     'proven overlay advances the in-memory Forecast start to the observation date');
   ok((observed.data.plan.opening.representedEvents || [])
       .some(e => e.id === 'amandaSalaryMonthEnd' && e.date === LIVE_DAY),
-    'proven Tennis BC is named on the in-memory live opening');
+    'proven BILLS transfer is named as amandaSalaryMonthEnd on the in-memory live opening');
   ok((observed.data.plan.opening.representedEvents || [])
       .some(e => e.id === 'payroll' && e.date === PAYDAY_AS_OF),
     'proven in-window Seaspan is named on the in-memory live opening');
@@ -2505,7 +2536,7 @@ console.log('\n=== 21. named paycheck identity supplies actuals and applies when
   ok((actuals.representedActuals || [])
       .some(row => row.id === 'amandaSalaryMonthEnd' && row.date === LIVE_DAY
         && near(row.actual, -OWNER_CONFIRMED_MONTH_END)),
-    'actuals packet links the proven Tennis BC credit to amandaSalaryMonthEnd');
+    'actuals packet links the proven BILLS transfer to amandaSalaryMonthEnd');
   ok((actuals.transactions || []).some(tx => near(tx.amount, SYNTHETIC_GROCER)
         && tx.excludeFromTotals !== true),
     'unmatched grocery actual remains in the packet');
@@ -2515,7 +2546,7 @@ console.log('\n=== 21. named paycheck identity supplies actuals and applies when
 
   ok(!Forecast.expandEvents(observed.data.plan, LIVE_DAY, LIVE_DAY, {})
       .some(e => e.id === 'amandaSalaryMonthEnd' && e.date === LIVE_DAY),
-    'Forecast does not emit the posted Tennis BC salary again on the live as-of');
+    'Forecast does not emit the posted salary again on the live as-of');
   ok(Forecast.expandEvents(canonical.plan, openingAsOf, LIVE_DAY, {})
       .some(e => e.id === 'amandaSalaryMonthEnd' && e.date === LIVE_DAY),
     'the dated opening would still have emitted that month-end salary');
@@ -2554,7 +2585,7 @@ console.log('\n=== 21. named paycheck identity supplies actuals and applies when
       .some(r => r.id === 'amandaSalaryMonthEnd'),
     'month-end Tennis BC is not dumped onto this payday');
   ok((action.inflows || []).some(r => r.id === 'amandaSalaryMonthEnd' && r.date === LIVE_DAY),
-    'proven Tennis BC is a current-period represented inflow');
+    'proven BILLS transfer is a current-period represented inflow');
   ok(!(action.inflows || []).some(r => near(Math.abs(Number(r.actual)), SYNTHETIC_INOUT)
       || near(Number(r.planned), SYNTHETIC_INOUT)),
     'ignored $3000 in-and-out is not current-period income');
@@ -2585,75 +2616,64 @@ console.log('\n=== 21. named paycheck identity supplies actuals and applies when
       && observed.data.liveOverlay.productionWrite === false,
     'proven overlay still does not write canonical state');
 
-  let amountOnlyThrew = null;
-  try {
-    overlay(canonical, extraFor([seaspanTx, amountOnlyTx, grocerTx].concat(inOutTxs)));
-  } catch (err) {
-    amountOnlyThrew = err;
+  function assertSalaryFailClosed(label, transactions, cashAdd) {
+    let threw = null;
+    try {
+      overlay(canonical, extraFor(transactions, cashAdd));
+    } catch (err) {
+      threw = err;
+    }
+    ok(threw && /same-day-event-representation-unknown/.test(threw.message)
+        && /amandaSalaryMonthEnd@2026-08-31/.test(threw.message),
+      label + ' stays fail-closed', threw && threw.message);
+    const seen = O.observe({
+      provider: 'lunchmoney',
+      payload: payloadFrom(canonical, extraFor(transactions, cashAdd)),
+      accountMap,
+      data: canonical,
+      identity,
+      fetchedAt: LIVE_AT,
+    });
+    ok(!(seen.representedEventCandidates || [])
+        .some(c => c.id === 'amandaSalaryMonthEnd' && c.date === LIVE_DAY),
+      label + ' does not represent the month-end salary');
+    const servedFail = serveFixtureOverlay(canonical, extraFor(transactions, cashAdd));
+    ok(servedFail.liveOverlay && servedFail.liveOverlay.applied === false,
+      label + ' does not apply the overlay');
+    ok(String(servedFail.plan.opening.asOf) === openingAsOf
+        && near(Forecast.startingCashAmount(servedFail.plan), datedCash),
+      label + ' does not mix Aug 31 cash into the dated opening');
+    ok(servedFail.liveOverlay.operatingPlan === Live.OPERATING_PLAN_UNAVAILABLE,
+      label + ' keeps the current operating plan unavailable');
   }
-  ok(amountOnlyThrew && /same-day-event-representation-unknown/.test(amountOnlyThrew.message)
-      && /amandaSalaryMonthEnd@2026-08-31/.test(amountOnlyThrew.message),
-    'same-day unknown payee still fail-closes even when the amount matches',
-    amountOnlyThrew && amountOnlyThrew.message);
-  const amountOnlyServed = serveFixtureOverlay(canonical, extraFor(
-    [seaspanTx, amountOnlyTx, grocerTx].concat(inOutTxs)));
-  ok(amountOnlyServed.liveOverlay && amountOnlyServed.liveOverlay.applied === false,
-    'unproven same-day Tennis BC still fail-closes');
-  ok(String(amountOnlyServed.plan.opening.asOf) === openingAsOf
-      && near(Forecast.startingCashAmount(amountOnlyServed.plan), datedCash),
-    'unproven overlay does not mix Aug 31 cash into the dated opening');
-  ok(amountOnlyServed.liveOverlay.operatingPlan === Live.OPERATING_PLAN_UNAVAILABLE,
-    'unproven later observation keeps the current operating plan unavailable');
 
-  let wrongAmountThrew = null;
-  try {
-    overlay(canonical, extraFor(
-      [seaspanTx, wrongAmountAmandaTx, expTx, grocerTx].concat(inOutTxs),
-      WRONG_AMOUNT_AMANDA + SYNTHETIC_PAYROLL));
-  } catch (err) {
-    wrongAmountThrew = err;
-  }
-  ok(wrongAmountThrew && /same-day-event-representation-unknown/.test(wrongAmountThrew.message)
-      && /amandaSalaryMonthEnd@2026-08-31/.test(wrongAmountThrew.message),
-    'same-day Tennis BC with the wrong amount stays fail-closed',
-    wrongAmountThrew && wrongAmountThrew.message);
-  const wrongAmountObserved = O.observe({
-    provider: 'lunchmoney',
-    payload: payloadFrom(canonical, extraFor(
-      [seaspanTx, wrongAmountAmandaTx, expTx, grocerTx].concat(inOutTxs),
-      WRONG_AMOUNT_AMANDA + SYNTHETIC_PAYROLL)),
-    accountMap,
-    data: canonical,
-    identity,
-    fetchedAt: LIVE_AT,
-  });
-  ok(!(wrongAmountObserved.representedEventCandidates || [])
-      .some(c => c.id === 'amandaSalaryMonthEnd' && c.date === LIVE_DAY),
-    'wrong-amount Tennis BC does not represent the month-end salary');
-  const wrongAmountServed = serveFixtureOverlay(canonical, extraFor(
-    [seaspanTx, wrongAmountAmandaTx, expTx, grocerTx].concat(inOutTxs),
-    WRONG_AMOUNT_AMANDA + SYNTHETIC_PAYROLL));
-  ok(wrongAmountServed.liveOverlay && wrongAmountServed.liveOverlay.applied === false,
-    'wrong-amount Tennis BC does not apply the overlay');
-  ok(String(wrongAmountServed.plan.opening.asOf) === openingAsOf
-      && near(Forecast.startingCashAmount(wrongAmountServed.plan), datedCash),
-    'wrong-amount Tennis BC does not advance the opening');
-  ok(wrongAmountServed.liveOverlay.operatingPlan === Live.OPERATING_PLAN_UNAVAILABLE,
-    'wrong-amount Tennis BC keeps the current operating plan unavailable');
-
-  let expOnlyThrew = null;
-  try {
-    overlay(canonical, extraFor([seaspanTx, expTx, grocerTx].concat(inOutTxs)));
-  } catch (err) {
-    expOnlyThrew = err;
-  }
-  ok(expOnlyThrew && /amandaSalaryMonthEnd@2026-08-31/.test(expOnlyThrew.message),
-    'TENNIS BC EXP alone does not prove month-end salary posted',
-    expOnlyThrew && expOnlyThrew.message);
+  assertSalaryFailClosed(
+    'same-day unknown payee even at the scheduled amount',
+    [seaspanTx, amountOnlyTx, grocerTx].concat(inOutTxs));
+  assertSalaryFailClosed(
+    'direct household TENNIS BC payee, even at the scheduled amount',
+    [seaspanTx, tennisBcPayeeTx, expTx, grocerTx].concat(inOutTxs));
+  assertSalaryFailClosed(
+    'TENNIS INCOME account deposit / reimbursement',
+    [seaspanTx, tennisIncomeDepositTx, expTx, grocerTx].concat(inOutTxs));
+  assertSalaryFailClosed(
+    'unrelated household transfer',
+    [seaspanTx, unrelatedTransferTx, grocerTx].concat(inOutTxs),
+    UNRELATED_TRANSFER + SYNTHETIC_PAYROLL);
+  assertSalaryFailClosed(
+    'exact-amount transfer into WEEKLY rather than BILLS',
+    [seaspanTx, weeklyTransferTx, grocerTx].concat(inOutTxs));
+  assertSalaryFailClosed(
+    'BILLS transfer with the wrong amount',
+    [seaspanTx, wrongAmountTransferTx, expTx, grocerTx].concat(inOutTxs),
+    WRONG_AMOUNT_AMANDA + SYNTHETIC_PAYROLL);
+  assertSalaryFailClosed(
+    'TENNIS BC EXP reimbursement alone',
+    [seaspanTx, expTx, grocerTx].concat(inOutTxs));
 
   const served = serveFixtureOverlay(canonical, extraFor(provenTxs));
   ok(served.liveOverlay && served.liveOverlay.applied === true,
-    'server overlay applies the proven Tennis BC identity');
+    'server overlay applies the uniquely proven salary-to-BILLS transfer');
   ok(served.liveOverlay.currentPeriodActuals
       && Array.isArray(served.liveOverlay.currentPeriodActuals.transactions)
       && served.liveOverlay.currentPeriodActuals.transactions.length > 0,
