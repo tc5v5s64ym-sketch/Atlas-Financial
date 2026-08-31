@@ -3877,6 +3877,8 @@
     };
   }
 
+  classifyCurrentPeriodTransaction.derivedFlags = derivedTransactionFlags;
+
   function reconTxFrom(tx, cls) {
     const pending = transactionPendingState(tx) === 'pending';
     return {
@@ -7951,7 +7953,7 @@
   const Forecast = { HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, billIsHouseholdObligation, billAffectsJointCash, carriedOnceJointCashOutflow, expandEvents, simulate,
     knowledgeHorizon, viewRange, commitmentNeed, fundingSequence, majorPlans, plannedDebt, debtPriority, paydayAllocation,
     classifyCurrentPeriodTransaction, paydayPeriodOrigin, currentPeriodObligationStates, currentPeriodAction,
-    spendingCycle, derivedTransactionFlags,
+    spendingCycle,
     recommendWeekly, recommend, incomeDeadline, amandaHouseholdIncomeDeadline, counterfactuals,
     budgetBreakdown, monthlyFromWeekly,
     projectDebts,

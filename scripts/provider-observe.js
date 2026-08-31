@@ -2207,7 +2207,7 @@ function sanitizedCurrentPeriodActuals(report, opts) {
     const atlasAccountId = mapping && mapping.canonical && mapping.canonical.id
       ? mapping.canonical.id : null;
     const kindHint = kindHintFromTransaction(tx);
-    const flags = Forecast.derivedTransactionFlags({
+    const flags = Forecast.classifyCurrentPeriodTransaction.derivedFlags({
       payee: tx.payee,
       original_name: tx.originalName,
       originalName: tx.originalName,
