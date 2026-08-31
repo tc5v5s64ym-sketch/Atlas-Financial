@@ -695,8 +695,8 @@
             "classNote": "ESSENTIAL is normal life with no reliable date — groceries, fuel, phones. It comes out of the weekly cap first. DISCRETIONARY is reducible. RESERVE is a real cost that does not fall inside this 90-day window and must be saved for rather than spent. DATED bills and commitments are already on the calendar as events and are subtracted from their category so nothing is paid twice.",
             "ownerTargets": {
                 "status": "partial",
-                "source": "owner-stated-2026-08-10",
-                "note": "Nine owner budget targets are incorporated, supplied directly by the owner on 2026-08-10 and recorded here with that provenance. They remain owner-stated current policy, not workbook-derived. monthly_budget_tracker_template.xlsx and HOME BUDGET.xlsx have been located and classified in docs/source_intake/HOUSEHOLD_BUDGET_WORKBOOKS_2026-08-16.md: HOME BUDGET.xlsx is historical per-paycheque planning and does not supersede these nine; the tracker's My Recommendation section is advisory, not owner policy. Three policy questions remain open, not missing files - (1) whether these nine are complete rather than a subset, (2) the current approved AMOUNTS of the sinking funds, which were named but not quantified as current targets, and (3) whether the owner's 'Personal' line maps to the transaction record's Shopping category. Every category without a target below is still a historical actual and is labelled as one.",
+                "source": "owner-stated-2026-08-31",
+                "note": "Owner-stated current policy, not workbook-derived. Owner-locked 2026-08-31 household budget, equal split into Pay Period 1 and Pay Period 2: Groceries $450, Fuel $325, Household $37.50, Dog food $27.50, Eating out $200, Dale guilt-free spending $150, Amanda guilt-free spending $150 ($1,340 per period, $2,680 both). Implied monthlies are groceries 900, fuel 650, household 75, pets 55, restaurants 400, dale-guilt-free 300, amanda-guilt-free 300. These replace the Aug. 10 monthly targets. Medical/health, children/sports, subscriptions, and combined Personal/shopping are not household-budget holds. Subscriptions remain itemized bills. monthly_budget_tracker_template.xlsx and HOME BUDGET.xlsx stay classified in docs/source_intake/HOUSEHOLD_BUDGET_WORKBOOKS_2026-08-16.md and do not supersede this lock. Sinking-fund amounts remain unnamed as current targets (Q20). Every category without a target below is still a historical actual and is labelled as one.",
                 "sinkingFundsNamed": [
                     "property tax",
                     "home insurance",
@@ -718,10 +718,10 @@
                     "from": [
                         "Groceries"
                     ],
-                    "plannedMonthly": 1800,
+                    "plannedMonthly": 900,
                     "ownerLine": "Groceries",
-                    "targetSource": "owner-stated-2026-08-10",
-                    "why": "OWNER TARGET WINS. $1,800 against an $1,839.66 historical average — the household has set a figure a little under what it has been spending, which is a decision about the next 90 days rather than a description of the last eighteen months."
+                    "targetSource": "owner-stated-2026-08-31",
+                    "why": "OWNER TARGET WINS. Locked 2026-08-31: $450 per pay period, $900/month. Equal split so Period 1 + Period 2 equals this monthly in cents. Replaces the Aug. 10 $1,800 monthly target."
                 },
                 {
                     "id": "fuel",
@@ -730,10 +730,10 @@
                     "from": [
                         "Fuel & transport"
                     ],
-                    "plannedMonthly": 1300,
-                    "ownerLine": "Transportation / Gas",
-                    "targetSource": "owner-stated-2026-08-10",
-                    "why": "OWNER TARGET WINS. $1,300 against $989.13 historical. The target is HIGHER than the average, so this is the household budgeting for more fuel than it has recently used, not less. Carried as stated."
+                    "plannedMonthly": 650,
+                    "ownerLine": "Fuel",
+                    "targetSource": "owner-stated-2026-08-31",
+                    "why": "OWNER TARGET WINS. Locked 2026-08-31: $325 per pay period, $650/month. Equal split so Period 1 + Period 2 equals this monthly in cents. Replaces the Aug. 10 $1,300 monthly target."
                 },
                 {
                     "id": "household",
@@ -742,10 +742,10 @@
                     "from": [
                         "Household"
                     ],
-                    "plannedMonthly": 150,
+                    "plannedMonthly": 75,
                     "ownerLine": "Household",
-                    "targetSource": "owner-stated-2026-08-10",
-                    "why": "OWNER TARGET WINS. $150 against $366.19 historical, which includes the $124 FortisBC bill now dated on the calendar. The target covers supplies only, so FortisBC is subtracted from it. Noble Disposal $95.85 every 3 months on the 18th is also dated (household garbage) and its monthly equivalent is subtracted so the quarterly invoice is not also inside the weekly cap. The $150 owner target amount itself is unchanged."
+                    "targetSource": "owner-stated-2026-08-31",
+                    "why": "OWNER TARGET WINS. Locked 2026-08-31: $37.50 per pay period, $75/month for household supplies. Equal split so Period 1 + Period 2 equals this monthly in cents. FortisBC and Noble Disposal stay dated bills, not this row. Replaces the Aug. 10 $150 monthly target."
                 },
                 {
                     "id": "health",
@@ -754,10 +754,9 @@
                     "from": [
                         "Health"
                     ],
-                    "plannedMonthly": 100,
-                    "ownerLine": "Medical",
-                    "targetSource": "owner-stated-2026-08-10",
-                    "why": "OWNER TARGET WINS. $100 against $347.23 historical. A large planned reduction on an irregular category — worth watching, because medical costs are not very compressible and the historical figure may reassert itself."
+                    "plannedMonthly": null,
+                    "targetSource": "retired-2026-08-31",
+                    "why": "Not a household-budget hold. Owner-locked 2026-08-31: Medical / health is removed from the printed Household Budget. Lunch Money Health actuals still classify here so they are not dumped into Groceries, Fuel, or another planned row. The Aug. 10 $100 monthly target is retired."
                 },
                 {
                     "id": "telecom",
@@ -788,10 +787,10 @@
                     "from": [
                         "Pets"
                     ],
-                    "plannedMonthly": 110,
+                    "plannedMonthly": 55,
                     "ownerLine": "Dog food",
-                    "targetSource": "owner-stated-2026-08-10",
-                    "why": "OWNER TARGET WINS DECISIVELY. $110 for dog food against $11.01 historical — the record is plainly not capturing pet spending, most likely because it is bought inside grocery shops and categorised as Groceries. The owner figure is the better fact."
+                    "targetSource": "owner-stated-2026-08-31",
+                    "why": "OWNER TARGET WINS. Locked 2026-08-31: $27.50 per pay period, $55/month for dog food. Equal split so Period 1 + Period 2 equals this monthly in cents. Replaces the Aug. 10 $110 monthly target."
                 },
                 {
                     "id": "propertytax",
@@ -820,22 +819,42 @@
                     "from": [
                         "Restaurants"
                     ],
-                    "plannedMonthly": 800,
-                    "ownerLine": "Restaurants / Takeout",
-                    "targetSource": "owner-stated-2026-08-10",
-                    "why": "OWNER TARGET WINS. $800 against $1,384.70 historical — the single largest planned reduction in the budget, and the main reason the discretionary line is affordable."
+                    "plannedMonthly": 400,
+                    "ownerLine": "Eating out",
+                    "targetSource": "owner-stated-2026-08-31",
+                    "why": "OWNER TARGET WINS. Locked 2026-08-31: $200 per pay period, $400/month for eating out. Equal split so Period 1 + Period 2 equals this monthly in cents. Replaces the Aug. 10 $800 monthly target."
                 },
                 {
                     "id": "shopping",
                     "label": "Shopping",
                     "class": "discretionary",
                     "from": [
-                        "Shopping"
+                        "Shopping",
+                        "Personal"
                     ],
-                    "plannedMonthly": 600,
-                    "ownerLine": "Personal",
-                    "targetSource": "owner-stated-2026-08-10",
-                    "why": "OWNER TARGET WINS, MAPPING NEEDS CONFIRMATION. The owner line is called 'Personal' at $600; the nearest thing in the transaction record is Shopping at $1,156.33. They may not be the same concept — 'Personal' often means per-adult spending money. Applied because ignoring an explicit target is worse than an imperfect mapping, but flagged for the owner to confirm."
+                    "plannedMonthly": null,
+                    "targetSource": "retired-2026-08-31",
+                    "why": "Not a household-budget hold. Owner-locked 2026-08-31: combined Personal / shopping is removed from the printed Household Budget. Dale and Amanda guilt-free spending are the owner targets. Lunch Money Shopping/Personal actuals still classify here, then map to Dale or Amanda only with account, payee, note, or tag evidence; unassignable actuals print as needs confirmation with planned and hold $0. Chequing B / WEEKLY SPENDING is not Dale. TENNIS INCOME / amanda-debt-payments is not guilt-free spending. The Aug. 10 $600 Personal target is retired."
+                },
+                {
+                    "id": "dale-guilt-free",
+                    "label": "Dale guilt-free spending",
+                    "class": "discretionary",
+                    "from": [],
+                    "plannedMonthly": 300,
+                    "ownerLine": "Dale guilt-free spending",
+                    "targetSource": "owner-stated-2026-08-31",
+                    "why": "OWNER TARGET WINS. Locked 2026-08-31: $150 per pay period, $300/month. Equal split so Period 1 + Period 2 equals this monthly in cents. Spent is Lunch Money personal/shopping txs in the selected pay period with Dale evidence on account, payee, note, or tag. Chequing B / WEEKLY SPENDING is not Dale evidence."
+                },
+                {
+                    "id": "amanda-guilt-free",
+                    "label": "Amanda guilt-free spending",
+                    "class": "discretionary",
+                    "from": [],
+                    "plannedMonthly": 300,
+                    "ownerLine": "Amanda guilt-free spending",
+                    "targetSource": "owner-stated-2026-08-31",
+                    "why": "OWNER TARGET WINS. Locked 2026-08-31: $150 per pay period, $300/month. Equal split so Period 1 + Period 2 equals this monthly in cents. Spent is Lunch Money personal/shopping txs in the selected pay period with Amanda evidence on account, payee, note, or tag. TENNIS INCOME / amanda-debt-payments is not guilt-free spending."
                 },
                 {
                     "id": "travel",
@@ -854,10 +873,9 @@
                     "from": [
                         "Sport & fitness"
                     ],
-                    "plannedMonthly": 250,
-                    "ownerLine": "Sports / Activities",
-                    "targetSource": "owner-stated-2026-08-10",
-                    "why": "OWNER TARGET WINS, AND IS KEPT SEPARATE FROM THE SEASON FEES. $250/month of ordinary sports and activities. Fusion camp and tryouts are dated settled sinking-fund items; Burrards registrations are settled as of 2026-08-16. Upcoming Fusion season, Burrards team fees, Warriors, Seattle tournaments and Provincials are separate plan.commitments rows, not this monthly line. Fit4Less at $25/month IS dated and recurring, so it is subtracted, leaving $225. The $250 owner target is unchanged."
+                    "plannedMonthly": null,
+                    "targetSource": "retired-2026-08-31",
+                    "why": "Not a household-budget hold. Owner-locked 2026-08-31: Children & sports is removed from the printed Household Budget. Fit4Less stays a dated bill, not a Household Budget row. Lunch Money Sport & fitness actuals still classify here so they are not dumped into Groceries, Fuel, or another planned row. Fusion/Burrards remain plan.commitments. The Aug. 10 $250 monthly target is retired."
                 },
                 {
                     "id": "entertainment",
@@ -876,10 +894,9 @@
                     "from": [
                         "Subscriptions"
                     ],
-                    "plannedMonthly": 300,
-                    "ownerLine": "Subscriptions",
-                    "targetSource": "owner-stated-2026-08-10",
-                    "why": "OWNER TARGET WINS. $300 against $158.86 historical. Higher than the average, which suggests the budget anticipates subscriptions the record has not yet caught. Carried as stated."
+                    "plannedMonthly": null,
+                    "targetSource": "retired-2026-08-31",
+                    "why": "Not a household-budget hold. Owner-locked 2026-08-31: subscriptions appear only as individual Bills rows (amount, scheduled date, paying account, paid/still-due). Deducted once in remaining-bills, never as a household-budget hold. Netflix, Spotify, Google storage, Ultimate Guitar, iCloud, YouTube Premium, ChatGPT Plus Dale, and ChatGPT Plus Amanda stay itemized. Pixieset, Mailchimp, and CMAW stay off. The Aug. 10 $300 monthly target is retired."
                 },
                 {
                     "id": "school",
@@ -889,7 +906,7 @@
                         "School & clubs"
                     ],
                     "plannedMonthly": null,
-                    "why": "Owner-confirmed 2026-08-16: School & clubs is ESSENTIAL for the household operating plan (Q24 ANSWERED). School fees and club dues outside the dated lacrosse commitments. No owner monthly target — the nine Aug. 10 plannedMonthly amounts are unchanged."
+                    "why": "Owner-confirmed 2026-08-16: School & clubs is ESSENTIAL for the household operating plan (Q24 ANSWERED). School fees and club dues outside the dated lacrosse commitments. No owner monthly target — the 2026-08-31 household-budget lock does not add one."
                 },
                 {
                     "id": "paypal",

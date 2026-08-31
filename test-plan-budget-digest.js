@@ -371,8 +371,8 @@ console.log('\n=== 5. page prints spent $X of $Y; does not subtract; no invented
   ok(glance.indexOf('Household budget') >= 0
       && glance.indexOf('Spent against the budget') < 0,
     'this-period budget lives inside the waterfall, not a leftover digest');
-  ok(!/Dale|Amanda|CMAW|Travel Visa|Rogers|Bell/.test(glance),
-    'calendar budget does not invent Dale/Amanda rows or CMAW/payees');
+  ok(!/CMAW|Travel Visa|Rogers|Bell/.test(glance),
+    'calendar budget does not invent CMAW/payees');
   const nextHtml = composer.operatingSurfaceHtml({
     advice, weekly: advice.weekly, recommended: advice.weekly,
     planLook: 'next-period', planView: advice.nextPeriodView,

@@ -149,14 +149,14 @@ ok(dated.cap && same(dated.cap.groceriesMonthly, datedG.gross)
   'the sentence still prints gross; the weekly pair uses planned');
 
 console.log('\n=== live plan: owner-target literals, not the averages ===');
-const LIVE_GROCERIES = 1800;
-const LIVE_FUEL = 1300;
+const LIVE_GROCERIES = 900;
+const LIVE_FUEL = 650;
 const LIVE_GROCERIES_HIST = 11380.12 / 8;
 const LIVE_FUEL_HIST = 6517.05 / 8;
 ok(data.plan.budget.categories.find(c => c.id === 'groceries').plannedMonthly === LIVE_GROCERIES,
-  'data.json grocery target is $1,800');
+  'data.json grocery target is $900');
 ok(data.plan.budget.categories.find(c => c.id === 'fuel').plannedMonthly === LIVE_FUEL,
-  'data.json fuel target is $1,300');
+  'data.json fuel target is $650');
 ok(periods.periods.ytd.months === 8
   && periods.periods.ytd.spending.find(s => s.label === 'Groceries').total === 11380.12
   && periods.periods.ytd.spending.find(s => s.label === 'Fuel & transport').total === 6517.05,
@@ -178,11 +178,11 @@ const liveF = liveB.categories.find(c => c.id === 'fuel');
 ok(liveG && liveF && same(liveG.gross, LIVE_GROCERIES) && same(liveF.gross, LIVE_FUEL)
   && liveG.dated === 0 && liveF.dated === 0
   && same(liveG.planned, LIVE_GROCERIES) && same(liveF.planned, LIVE_FUEL),
-  'live grocery/fuel gross are the $1,800 / $1,300 targets; nothing dated');
+  'live grocery/fuel gross are the $900 / $650 targets; nothing dated');
 ok(liveB.cap && same(liveB.cap.groceriesMonthly, liveG.gross)
   && same(liveB.cap.fuelMonthly, liveF.gross)
   && liveB.cap.groceriesHasOwnerTarget === true,
-  'live Plan sentence is $1,800 groceries and $1,300 fuel, both owner targets',
+  'live Plan sentence is $900 groceries and $650 fuel, both owner targets',
   liveB.cap ? `${liveB.cap.groceriesMonthly} / ${liveB.cap.fuelMonthly}` : 'none');
 ok(liveB.cap && same(liveB.cap.foodFuelPlannedMonthly, LIVE_GROCERIES + LIVE_FUEL),
   'and the already-owned weekly pair still sums those same two planned months',

@@ -2345,25 +2345,29 @@
 
   // Owner-target household lines Dale asked the default view to print.
   // Print only categories that already exist as Atlas plan.budget owner
-  // targets. Do not invent Dale/Amanda spending rows.
+  // targets. Dale/Amanda guilt-free rows exist only as the two owner-target
+  // ids on the calendar waterfall; do not invent further personal rows.
   const DEFAULT_VIEW_BUDGET_IDS = ['groceries', 'fuel', 'pets', 'restaurants'];
-  // Variable owner-target lines the calendar waterfall holds. Subscriptions
-  // are already itemized as bills and are not a second hold.
+  // Variable owner-target lines the calendar waterfall holds. Medical,
+  // children/sports, combined Personal/shopping, and subscriptions are not
+  // holds: subscriptions are itemized bills; shopping actuals map to the
+  // two guilt-free ids only with account/payee/note/tag evidence.
   const CALENDAR_PERIOD_BUDGET_IDS = [
-    'groceries', 'fuel', 'pets', 'restaurants', 'shopping',
-    'household', 'health', 'sport',
+    'groceries', 'fuel', 'household', 'pets', 'restaurants',
+    'dale-guilt-free', 'amanda-guilt-free',
   ];
   const DEFAULT_VIEW_BUDGET_LABELS = {
     groceries: 'Groceries',
     fuel: 'Fuel',
     pets: 'Dog food',
     restaurants: 'Eating out',
-    shopping: 'Personal',
     household: 'Household',
-    health: 'Medical',
-    sport: 'Children & sports',
-    subscriptions: 'Subscriptions',
+    'dale-guilt-free': 'Dale guilt-free spending',
+    'amanda-guilt-free': 'Amanda guilt-free spending',
   };
+  const DALE_GUILT_FREE_ID = 'dale-guilt-free';
+  const AMANDA_GUILT_FREE_ID = 'amanda-guilt-free';
+  const PERSONAL_SHOPPING_ID = 'shopping';
 
   function currentPeriodBills(plan, asOf, origin, periodLast, opts) {
     const represented = representedKeySet(plan, opts, asOf);
@@ -2889,8 +2893,8 @@
 
   // Owner-target hold for a named span: monthly target × span days /
   // calendar month. Not leftover remaining-cap, not the unscaled monthly
-  // figure, not a second budget engine. Print every existing owner-target
-  // category; do not invent Dale/Amanda rows.
+  // figure, not a second budget engine. Print existing owner-target
+  // categories; Dale/Amanda guilt-free rows are the two owner-target ids.
   function ownerTargetHoldForSpan(plan, days) {
     const scale = Math.max(0, Number(days) || 0) / CALENDAR_MONTH_DAYS;
     const items = [];
@@ -3440,6 +3444,83 @@
     return end || asOf || null;
   }
 
+  function evidenceBlob(value) {
+    if (value == null) return '';
+    if (Array.isArray(value)) {
+      return value.map(item => {
+        if (item == null) return '';
+        if (typeof item === 'string' || typeof item === 'number') return String(item);
+        return String(item.name || item.label || item.id || '');
+      }).join(' ');
+    }
+    if (typeof value === 'object') {
+      return String(value.name || value.label || value.id || '');
+    }
+    return String(value);
+  }
+
+  function personalAccountText(tx) {
+    if (!tx) return '';
+    return [
+      tx.atlasAccountId, tx.accountId, tx.account,
+      tx.accountLabel, tx.accountName, tx.payerLabel,
+    ].map(evidenceBlob).join(' ');
+  }
+
+  function isTennisIncomeAccount(text) {
+    return /amanda-debt-payments|tennis\s*income/i.test(text || '');
+  }
+
+  function isWeeklySpendingAccount(text) {
+    return /chequing-b|weekly\s*spending/i.test(text || '');
+  }
+
+  // Map a personal/shopping tx to Dale or Amanda only with account, payee,
+  // note, or tag evidence. Chequing B / WEEKLY SPENDING is not Dale.
+  // TENNIS INCOME / amanda-debt-payments is not guilt-free spending.
+  // No evidence, or both names, fails closed to unassigned.
+  function personalSpendOwner(tx) {
+    if (!tx) return null;
+    const accountText = personalAccountText(tx);
+    if (isTennisIncomeAccount(accountText)) return 'excluded';
+    const accountEvidence = isWeeklySpendingAccount(accountText) ? '' : accountText;
+    const blob = [
+      accountEvidence,
+      evidenceBlob(tx.payee),
+      evidenceBlob(tx.note),
+      evidenceBlob(tx.notes),
+      evidenceBlob(tx.tags),
+      evidenceBlob(tx.tag),
+    ].join(' ');
+    const dale = /\bdale\b/i.test(blob);
+    const amanda = /\bamanda\b/i.test(blob);
+    if (dale && amanda) return null;
+    if (dale) return 'dale';
+    if (amanda) return 'amanda';
+    return null;
+  }
+
+  function personalActualsInWindow(plan, asOf, periodStart, opts) {
+    const out = { dale: 0, amanda: 0, unassigned: 0 };
+    const packet = currentPeriodActualsPacket(opts);
+    if (!packet || !Array.isArray(packet.transactions)) return out;
+    for (const tx of packet.transactions) {
+      if (!tx || !tx.date) continue;
+      if (periodStart && tx.date < periodStart) continue;
+      if (asOf && tx.date > asOf) continue;
+      const amt = Number(tx.amount);
+      if (!isFinite(amt) || amt === 0) continue;
+      const cls = classifyCurrentPeriodTransaction(tx, plan);
+      if (cls.kind !== 'spend' || cls.categoryId !== PERSONAL_SHOPPING_ID) continue;
+      const owner = personalSpendOwner(tx);
+      if (owner === 'excluded') continue;
+      if (owner === 'dale') out.dale = roundCent(out.dale + amt);
+      else if (owner === 'amanda') out.amanda = roundCent(out.amanda + amt);
+      else out.unassigned = roundCent(out.unassigned + amt);
+    }
+    return out;
+  }
+
   function calendarHouseholdBudget(plan, asOf, start, end, role, opts) {
     opts = opts || {};
     const half = billCalendarHalf(start) || (end && billCalendarHalf(end)) || 1;
@@ -3456,41 +3537,48 @@
     const actuals = actualsReady && start
       ? sumCategoryActuals(plan, through, start, opts)
       : emptyCategoryActuals();
-    const items = [];
+    const personal = actualsReady && start
+      ? personalActualsInWindow(plan, through, start, opts)
+      : { dale: 0, amanda: 0, unassigned: 0 };
+    const spentFor = catId => {
+      if (catId === DALE_GUILT_FREE_ID) return personal.dale;
+      if (catId === AMANDA_GUILT_FREE_ID) return personal.amanda;
+      const act = categoryCommittedActual(actuals.byId.get(catId));
+      return act.committed;
+    };
+    const byId = new Map();
     for (const cat of (plan && plan.budget && plan.budget.categories) || []) {
-      if (!cat || !cat.id) continue;
-      if (cat.id === 'subscriptions') {
-        if (cat.plannedMonthly == null && !cat.ownerLine) continue;
-        items.push({
-          id: cat.id,
-          label: DEFAULT_VIEW_BUDGET_LABELS[cat.id] || cat.ownerLine || cat.label,
-          monthly: cat.plannedMonthly != null
-            ? roundCent(Number(cat.plannedMonthly) || 0) : null,
-          planned: null,
-          spent: null,
-          remaining: null,
-          hold: 0,
-          informational: true,
-          note: 'included in Bills, remaining not deducted',
-          projected: role === 'future',
-        });
-        continue;
-      }
-      if (CALENDAR_PERIOD_BUDGET_IDS.indexOf(cat.id) < 0) continue;
-      if (cat.plannedMonthly == null) continue;
+      if (cat && cat.id) byId.set(cat.id, cat);
+    }
+    const items = [];
+    for (const id of CALENDAR_PERIOD_BUDGET_IDS) {
+      const cat = byId.get(id);
+      if (!cat || cat.plannedMonthly == null) continue;
       const monthly = roundCent(Number(cat.plannedMonthly) || 0);
       const planned = calendarHalfPlanned(monthly, half);
-      const act = categoryCommittedActual(actuals.byId.get(cat.id));
-      const spent = actualsReady ? act.committed : null;
+      const spent = actualsReady ? spentFor(id) : null;
       const remaining = spent != null ? roundCent(planned - spent) : planned;
       items.push({
-        id: cat.id,
-        label: DEFAULT_VIEW_BUDGET_LABELS[cat.id] || cat.ownerLine || cat.label,
+        id,
+        label: DEFAULT_VIEW_BUDGET_LABELS[id] || cat.ownerLine || cat.label,
         monthly,
         planned,
         spent,
         remaining,
         hold: roundCent(Math.max(0, remaining != null ? remaining : planned)),
+        projected: role === 'future',
+      });
+    }
+    if (actualsReady && personal.unassigned > EPSILON) {
+      items.push({
+        id: PERSONAL_SHOPPING_ID,
+        label: 'Personal spending — needs confirmation',
+        monthly: 0,
+        planned: 0,
+        spent: roundCent(personal.unassigned),
+        remaining: null,
+        hold: 0,
+        needsConfirmation: true,
         projected: role === 'future',
       });
     }

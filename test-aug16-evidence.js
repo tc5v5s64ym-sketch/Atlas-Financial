@@ -85,7 +85,7 @@ console.log('\n=== 3. School & clubs is consistently ESSENTIAL ===');
   ok(/essential/i.test(statusOf('Q24') + questions),
     'canonical question records essential');
   const targets = plan.budget.categories.filter(c => c.plannedMonthly != null);
-  ok(targets.length === 9, 'nine Aug. 10 owner plannedMonthly targets unchanged in count');
+  ok(targets.length === 7, 'seven 2026-08-31 owner plannedMonthly targets');
   ok(school.plannedMonthly == null, 'school still has no owner monthly target');
 }
 
@@ -344,16 +344,19 @@ console.log('\n=== 19. Q20 and Q21 remain unresolved ===');
     'Q20 records that the owner does not know the emergency-cash target');
 }
 
-console.log('\n=== nine owner budget targets unchanged ===');
+console.log('\n=== 2026-08-31 owner budget targets ===');
 {
   const want = {
-    groceries: 1800, fuel: 1300, household: 150, health: 100,
-    pets: 110, sport: 250, subscriptions: 300,
-    restaurants: 800, shopping: 600,
+    groceries: 900, fuel: 650, household: 75, pets: 55, restaurants: 400,
+    'dale-guilt-free': 300, 'amanda-guilt-free': 300,
   };
   for (const [id, amt] of Object.entries(want)) {
     const c = plan.budget.categories.find(x => x.id === id);
     ok(c && near(c.plannedMonthly, amt), `${id} plannedMonthly still ${amt}`);
+  }
+  for (const id of ['health', 'sport', 'shopping', 'subscriptions']) {
+    const c = plan.budget.categories.find(x => x.id === id);
+    ok(c && c.plannedMonthly == null, `${id} is not a household-budget owner target`);
   }
 }
 

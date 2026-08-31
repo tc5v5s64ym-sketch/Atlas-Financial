@@ -65,17 +65,16 @@ ok(groceries.planned > 0 && fuel.planned > 0,
   'both carry a positive requirement into the cap',
   `${money(groceries.planned)} + ${money(fuel.planned)}`);
 const foodFuel = groceries.planned + fuel.planned;
-ok(near(foodFuel, 3100), 'groceries + fuel = $3,100.00/month — both owner targets', money(foodFuel));
-ok(near(foodFuel / WEEKS_PER_MONTH, 712.94, 0.5), 'which is about $713/week', money(foodFuel / WEEKS_PER_MONTH));
-ok(groceries.target === 1800 && fuel.target === 1300,
+ok(near(foodFuel, 1550), 'groceries + fuel = $1,550.00/month — both owner targets', money(foodFuel));
+ok(near(foodFuel / WEEKS_PER_MONTH, 356.47, 0.5), 'which is about $356/week', money(foodFuel / WEEKS_PER_MONTH));
+ok(groceries.target === 900 && fuel.target === 650,
   'and both are the household\'s own figures, not averages',
   `groceries ${money(groceries.target)}, fuel ${money(fuel.target)}`);
-// The direction differs per category, which is the point of using a target.
-ok(groceries.target > groceries.historical,
-  'the grocery target is ABOVE the cleaned historical average',
+ok(groceries.target < groceries.historical,
+  'the grocery target is BELOW the cleaned historical average',
   `${money(groceries.target)} vs ${money(groceries.historical)}`);
-ok(fuel.target > fuel.historical,
-  'the fuel target is ABOVE it — the household budgets more than it recently used',
+ok(fuel.target < fuel.historical,
+  'the fuel target is BELOW it — the household budgets less than it recently used',
   `${money(fuel.target)} vs ${money(fuel.historical)}`);
 
 console.log('\n=== nothing is counted twice ===');
@@ -157,13 +156,9 @@ ok(insurance.dated + 0.01 >= bcaa.amount + icbc.amount,
 ok(near(insurance.planned, insurance.historical - insurance.dated) && !insurance.fullyDated,
   'cleaned insurance history leaves only its independently derived remainder in the cap');
 const sport = budget.categories.find(c => c.id === 'sport');
-// The structural correction. Netting the season fees off the recurring line
-// concluded that ordinary sports spending was $0, which is not what the
-// household budgeted — it budgets $250/month AND saves for the seasons.
-ok(sport.target === 250, 'the recurring sports line carries the owner target', money(sport.target));
-ok(near(sport.dated, fit.amount * 26 / 12), 'only the recurring dated cost (Fit4Less) is subtracted', money(sport.dated));
-ok(near(sport.planned, sport.target - sport.dated), 'so the owner target less Fit4Less stays inside the cap', money(sport.planned));
-ok(!sport.fullyDated, 'and the category is NOT written off as fully dated');
+ok(sport.target == null, 'children/sports is not an owner household-budget target',
+  sport && String(sport.target));
+ok(near(sport.dated, fit.amount * 26 / 12), 'Fit4Less stays the dated sports bill', money(sport.dated));
 ok(sport.sinking > 0, 'the season fees are tracked as a sinking fund instead', money(sport.sinking));
 ok(near(sport.sinking, budget.sinkingMonthly),
   'and they are the whole of it', money(budget.sinkingMonthly));
@@ -241,7 +236,7 @@ console.log('\n=== owner targets are present, and honestly sourced ===');
 ok(plan.budget.ownerTargets.status === 'partial',
   'the budget records that owner targets are incorporated but incomplete',
   plan.budget.ownerTargets.status);
-ok(budget.ownerTargetCount === 9, 'nine categories carry an owner target', String(budget.ownerTargetCount));
+ok(budget.ownerTargetCount === 7, 'seven categories carry an owner target', String(budget.ownerTargetCount));
 for (const c of budget.categories) {
   const expected = c.target != null ? 'owner-target'
     : c.current != null ? 'current-regime'
@@ -251,8 +246,8 @@ for (const c of budget.categories) {
 ok(budget.categories.length >= 18,
   'every category is labelled owner-target, current-regime, or historical-actual to match what it holds',
   `${budget.categories.length} categories checked`);
-ok(budget.categories.filter(c => c.source === 'historical-actual').length === 8,
-  'the eight without a target or current-regime stay honestly historical');
+ok(budget.categories.filter(c => c.source === 'historical-actual').length === 12,
+  'the twelve without a target or current-regime stay honestly historical');
 ok(budget.categories.filter(c => c.source === 'current-regime').length === 1,
   'exactly one category uses current-regime');
 // A target must never be silently invented from an average.
