@@ -63,7 +63,7 @@ Confidence that the change is not junk is the job of `npm test`, the secret
 hook, and the figures comment. This check only stops an empty or malformed
 card.
 
-`test-mergecard.js` executes the real inline workflow script. It proves missing
+`test/test-mergecard.js` executes the real inline workflow script. It proves missing
 fields and invalid closed openings fail, and that review SHA / PASS / PENDING
 do not. It proves the check reads the live PR body rather than the workflow
 event body, and that a moved live head or a closed or retargeted PR fails
@@ -72,13 +72,13 @@ and fails closed on mismatch.
 
 ### `tests`
 
-`npm test` runs the suites registered in [`test.js`](../test.js), which is the
+`npm test` runs the suites registered in [`test/test.js`](../test/test.js), which is the
 registry. This file keeps no copy of that list: a second inventory drifts as
 soon as a suite is added, and a gate document that misstates what the gate runs
 is worse than one that does not enumerate it. One lived here until 2026-08-12
 claiming seven suites against a registry that held fifteen.
 
-What the suites are is `test.js`'s. **Why they block** is this file's, and each
+What the suites are is `test/test.js`'s. **Why they block** is this file's, and each
 one earns it against a demonstrated failure:
 
 - the weekly cap double-counted a payday;
@@ -116,7 +116,7 @@ is not on that write path, so a connector-authored file the incumbent policy
 would reject can still reach review. `privacy-guard.yml` applies
 `scripts/privacy-guard.js` — the same engine the hook runs — from the trusted
 default branch to the incoming PR head, treated as data. The PR cannot
-weaken the copy that judges it. Generic card/SIN checks in `test-static.js`
+weaken the copy that judges it. Generic card/SIN checks in `test/test-static.js`
 are not a second household-identifier list.
 
 The job publishes a `privacy-guard` commit status on the PR head because

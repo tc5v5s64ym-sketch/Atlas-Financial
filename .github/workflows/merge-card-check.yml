@@ -196,7 +196,7 @@ jobs:
               /^docs\/ACCOUNT_FACTS\.md$/i,
               /^\.github\/workflows\//i,
               /^\.githooks\//i,
-              /^test-(?:static|forecast|budget|debt|invariants|authority-coverage|mergecard)\.js$/i,
+              /^test\/test-(?:static|forecast|budget|debt|invariants|authority-coverage|mergecard)\.js$/i,
               /^scripts\/(?:figures-snapshot|positions-summary)\.js$/i,
             ];
             const mechanicallyHighRisk = files

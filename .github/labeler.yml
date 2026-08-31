@@ -44,7 +44,7 @@ security:
 tests:
   - changed-files:
       - any-glob-to-any-file:
-          - 'test*.js'
+          - 'test/**'
 
 evidence-only:
   - changed-files:
