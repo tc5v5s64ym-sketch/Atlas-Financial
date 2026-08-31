@@ -2,7 +2,8 @@
 /* Two calendar-half waterfalls: opening chain, paid bills, income, HELOC
  * cash once, card mins once, current-cash identity, Bell outside remaining,
  * equal-half household budget, scheduled-due bill assignment, two bill
- * totals, subscriptions not held twice.
+ * totals, subscriptions bills-only (not a household-budget hold),
+ * Dale/Amanda guilt-free actuals from evidenced shopping txs.
  *
  * Dates and totals are hand-computed from cadence and the calendar, then
  * Forecast is asked whether it reproduced them (L-002 / L-006).
@@ -143,8 +144,28 @@ function actualsPacket(txs, asOf) {
 }
 
 const HOLD_IDS = [
-  'groceries', 'fuel', 'pets', 'restaurants', 'shopping',
-  'household', 'health', 'sport',
+  'groceries', 'fuel', 'household', 'pets', 'restaurants',
+  'dale-guilt-free', 'amanda-guilt-free',
+];
+const PERIOD_PLANNED = {
+  groceries: 450,
+  fuel: 325,
+  household: 37.50,
+  pets: 27.50,
+  restaurants: 200,
+  'dale-guilt-free': 150,
+  'amanda-guilt-free': 150,
+};
+const PERIOD_PLANNED_TOTAL = 1340;
+const BOTH_PERIODS_PLANNED = 2680;
+const SUBSCRIPTION_BILLS = [
+  { id: 'youtube-premium', label: 'YouTube Premium', day: 2, amount: 17, half: 1 },
+  { id: 'icloud-storage', label: 'iCloud Storage', day: 14, amount: 13, half: 1 },
+  { id: 'chatgpt-plus-dale', label: 'ChatGPT Plus — Dale', day: 14, amount: 28, half: 1 },
+  { id: 'chatgpt-plus-amanda', label: 'ChatGPT Plus — Amanda', day: 14, amount: 24.99, half: 1 },
+  { id: 'netflix', label: 'Netflix', day: 17, amount: 26.87, half: 2 },
+  { id: 'spotify', label: 'Spotify', day: 17, amount: 26.87, half: 2 },
+  { id: 'google-storage-100gb', label: 'Google storage — 100 GB', day: 31, amount: 3.13, half: 2 },
 ];
 
 function syntheticPlan() {
@@ -225,6 +246,41 @@ function syntheticPlan() {
         budgetCategory: 'subscriptions', payingAccount: 'chequing-a',
       },
       {
+        id: 'spotify', label: 'Spotify', frequency: 'monthly',
+        day: 17, amount: 26.87, confidence: 'confirmed',
+        budgetCategory: 'subscriptions', payingAccount: 'chequing-a',
+      },
+      {
+        id: 'google-storage-100gb', label: 'Google storage — 100 GB',
+        frequency: 'monthly', day: 31, amount: 3.13, confidence: 'confirmed',
+        budgetCategory: 'subscriptions', payingAccount: 'chequing-a',
+      },
+      {
+        id: 'ultimate-guitar', label: 'Ultimate Guitar', frequency: 'yearly',
+        month: 5, day: 8, amount: 50, confidence: 'confirmed',
+        budgetCategory: 'subscriptions', payingAccount: 'chequing-a',
+      },
+      {
+        id: 'icloud-storage', label: 'iCloud Storage', frequency: 'monthly',
+        day: 14, amount: 13, confidence: 'confirmed',
+        budgetCategory: 'subscriptions', payingAccount: 'chequing-a',
+      },
+      {
+        id: 'youtube-premium', label: 'YouTube Premium', frequency: 'monthly',
+        day: 2, amount: 17, confidence: 'confirmed',
+        budgetCategory: 'subscriptions', payingAccount: 'chequing-a',
+      },
+      {
+        id: 'chatgpt-plus-dale', label: 'ChatGPT Plus — Dale', frequency: 'monthly',
+        day: 14, amount: 28, confidence: 'estimated',
+        budgetCategory: 'subscriptions', payingAccount: 'chequing-a',
+      },
+      {
+        id: 'chatgpt-plus-amanda', label: 'ChatGPT Plus — Amanda', frequency: 'monthly',
+        day: 14, amount: 24.99, confidence: 'confirmed',
+        budgetCategory: 'subscriptions', payingAccount: 'chequing-a',
+      },
+      {
         id: 'bell', label: 'Bell', frequency: 'monthly',
         amount: 121, confidence: 'estimated', needsDate: true,
         budgetCategory: 'telecom', payingAccount: 'chequing-a',
@@ -238,15 +294,17 @@ function syntheticPlan() {
     ],
     budget: {
       categories: [
-        { id: 'groceries', label: 'Groceries', class: 'essential', plannedMonthly: 1800, ownerLine: 'Groceries' },
-        { id: 'fuel', label: 'Fuel', class: 'essential', plannedMonthly: 1300, ownerLine: 'Transportation / Gas' },
-        { id: 'pets', label: 'Pets', class: 'essential', plannedMonthly: 110, ownerLine: 'Dog food' },
-        { id: 'restaurants', label: 'Dining', class: 'discretionary', plannedMonthly: 800, ownerLine: 'Restaurants / Takeout' },
-        { id: 'shopping', label: 'Shopping', class: 'discretionary', plannedMonthly: 600, ownerLine: 'Personal' },
-        { id: 'household', label: 'Household', class: 'essential', plannedMonthly: 150, ownerLine: 'Household' },
-        { id: 'health', label: 'Health', class: 'essential', plannedMonthly: 100, ownerLine: 'Medical' },
-        { id: 'sport', label: 'Sport', class: 'discretionary', plannedMonthly: 250, ownerLine: 'Sports / Activities' },
-        { id: 'subscriptions', label: 'Subscriptions', class: 'discretionary', plannedMonthly: 300, ownerLine: 'Subscriptions' },
+        { id: 'groceries', label: 'Groceries', class: 'essential', plannedMonthly: 900, ownerLine: 'Groceries' },
+        { id: 'fuel', label: 'Fuel', class: 'essential', plannedMonthly: 650, ownerLine: 'Fuel' },
+        { id: 'household', label: 'Household', class: 'essential', plannedMonthly: 75, ownerLine: 'Household' },
+        { id: 'pets', label: 'Pets', class: 'essential', plannedMonthly: 55, ownerLine: 'Dog food' },
+        { id: 'restaurants', label: 'Dining', class: 'discretionary', plannedMonthly: 400, ownerLine: 'Eating out' },
+        { id: 'dale-guilt-free', label: 'Dale guilt-free spending', class: 'discretionary', plannedMonthly: 300, ownerLine: 'Dale guilt-free spending' },
+        { id: 'amanda-guilt-free', label: 'Amanda guilt-free spending', class: 'discretionary', plannedMonthly: 300, ownerLine: 'Amanda guilt-free spending' },
+        { id: 'shopping', label: 'Shopping', class: 'discretionary', from: ['Shopping', 'Personal'], plannedMonthly: null },
+        { id: 'health', label: 'Health', class: 'essential', from: ['Health'], plannedMonthly: null },
+        { id: 'sport', label: 'Sport', class: 'discretionary', from: ['Sport & fitness'], plannedMonthly: null },
+        { id: 'subscriptions', label: 'Subscriptions', class: 'discretionary', plannedMonthly: null },
       ],
     },
   };
@@ -518,6 +576,14 @@ console.log('\n=== 10. grocery actuals stay in their calendar half ===');
     { date: '2026-08-25', amount: 70.00, pending: false, categoryLabel: 'Groceries', accountRole: 'household-cash' },
     { date: '2026-07-30', amount: 99.00, pending: false, categoryLabel: 'Groceries', accountRole: 'household-cash' },
     { date: '2026-09-02', amount: 88.00, pending: false, categoryLabel: 'Groceries', accountRole: 'household-cash' },
+    { date: '2026-08-04', amount: 11.00, pending: false, categoryLabel: 'Fuel', accountRole: 'household-cash' },
+    { date: '2026-08-17', amount: 14.00, pending: false, categoryLabel: 'Fuel', accountRole: 'household-cash' },
+    { date: '2026-08-03', amount: 5.00, pending: false, categoryLabel: 'Household', accountRole: 'household-cash' },
+    { date: '2026-08-19', amount: 6.00, pending: false, categoryLabel: 'Household', accountRole: 'household-cash' },
+    { date: '2026-08-06', amount: 3.00, pending: false, categoryLabel: 'Pets', accountRole: 'household-cash' },
+    { date: '2026-08-18', amount: 4.00, pending: false, categoryLabel: 'Pets', accountRole: 'household-cash' },
+    { date: '2026-08-07', amount: 8.00, pending: false, categoryLabel: 'Dining', accountRole: 'household-cash' },
+    { date: '2026-08-16', amount: 9.00, pending: false, categoryLabel: 'Dining', accountRole: 'household-cash' },
   ];
   const plan = syntheticPlan();
   const view = F.recommend(plan, asOf, {
@@ -555,6 +621,20 @@ console.log('\n=== 10. grocery actuals stay in their calendar half ===');
       && near(mtd, 40.10 + 55.20),
     'P1 spent + P2 spent through asOf equals month-to-asOf groceries',
     groc1 && groc2 && `${groc1.spent} + ${groc2.spent} vs ${mtd}`);
+  const remainingCats = [
+    ['fuel', 'Fuel', 11, 14],
+    ['household', 'Household', 5, 6],
+    ['pets', 'Pets', 3, 4],
+    ['restaurants', 'Dining', 8, 9],
+  ];
+  for (const [id, label, p1Amt, p2Amt] of remainingCats) {
+    const r1 = budgetRow(p1, id);
+    const r2 = budgetRow(p2, id);
+    ok(r1 && r2 && near(r1.spent, p1Amt) && near(r2.spent, p2Amt)
+        && !near(r1.spent, p1Amt + p2Amt) && !near(r2.spent, p1Amt + p2Amt),
+      `${id} actuals stay in their calendar half`,
+      r1 && r2 && `${r1.spent} / ${r2.spent}`);
+  }
   const withIncome = JSON.parse(JSON.stringify(plan));
   withIncome.income.push({
     id: 'bonus16', label: 'One-off deposit 16th', frequency: 'once',
@@ -574,14 +654,24 @@ console.log('\n=== 10. grocery actuals stay in their calendar half ===');
     'income on the 16th does not dump P1 grocery spend into P2');
 }
 
-console.log('\n=== 11. each half\'s planned adds back to the monthly target ===');
+console.log('\n=== 11. each half\'s planned is the locked owner period table ===');
 {
   const plan = syntheticPlan();
   const view = F.recommend(plan, '2026-08-20', { targetBuffer: 500, debts }).defaultView;
   const p1 = period(view, 'calendar-1-15');
   const p2 = period(view, 'calendar-16-end');
-  const dayCountP1 = roundCent(1800 * 15 / 31);
-  const dayCountP2 = roundCent(1800 - dayCountP1);
+  const dayCountP1 = roundCent(900 * 15 / 31);
+  const dayCountP2 = roundCent(900 - dayCountP1);
+  function plannedSum(p) {
+    return roundCent((p.householdBudget || [])
+      .filter(r => !r.needsConfirmation)
+      .reduce((s, r) => s + (Number(r.planned) || 0), 0));
+  }
+  ok(near(plannedSum(p1), PERIOD_PLANNED_TOTAL)
+      && near(plannedSum(p2), PERIOD_PLANNED_TOTAL)
+      && near(roundCent(plannedSum(p1) + plannedSum(p2)), BOTH_PERIODS_PLANNED),
+    'each half\'s planned rows sum to 1340; P1+P2 planned = 2680',
+    `${plannedSum(p1)} + ${plannedSum(p2)}`);
   for (const id of HOLD_IDS) {
     const cat = plan.budget.categories.find(c => c.id === id);
     const monthly = roundCent(cat.plannedMonthly);
@@ -590,17 +680,19 @@ console.log('\n=== 11. each half\'s planned adds back to the monthly target ==='
     const expect1 = halfPlanned(monthly, 1);
     const expect2 = halfPlanned(monthly, 2);
     ok(r1 && r2 && near(r1.planned, expect1) && near(r2.planned, expect2)
-        && near(roundCent(r1.planned + r2.planned), monthly),
-      `${id}: P1 planned + P2 planned equals plannedMonthly`,
+        && near(roundCent(r1.planned + r2.planned), monthly)
+        && near(r1.planned, PERIOD_PLANNED[id]) && near(r2.planned, PERIOD_PLANNED[id]),
+      `${id}: P1 planned + P2 planned equals plannedMonthly and the locked period amount`,
       r1 && r2 && `${r1.planned} + ${r2.planned} vs ${monthly}`);
     ok(r1 && r2 && !near(r1.planned, monthly) && !near(r2.planned, monthly),
       `${id}: waterfall planned is the period share, not full-month`);
   }
   const g1 = budgetRow(p1, 'groceries');
   const g2 = budgetRow(p2, 'groceries');
-  ok(g1 && g2 && near(g1.planned, 900) && near(g2.planned, 900)
-      && !near(g1.planned, dayCountP1) && !near(g2.planned, dayCountP2),
-    'groceries 1800 splits 900 / 900, not 15/31 leftover on Period 2',
+  ok(g1 && g2 && near(g1.planned, 450) && near(g2.planned, 450)
+      && !near(g1.planned, 900) && !near(g1.planned, dayCountP1)
+      && !near(g2.planned, dayCountP2),
+    'groceries 900 splits 450 / 450, not 15/31 leftover on Period 2',
     g1 && g2 && `${g1.planned} / ${g2.planned}`);
   const src = read('public/forecast.js');
   const plannedFn = /function calendarHalfPlanned\([\s\S]*?\n  \}/.exec(src);
@@ -608,48 +700,87 @@ console.log('\n=== 11. each half\'s planned adds back to the monthly target ==='
       && !/15\s*\/\s*days/.test(plannedFn[0])
       && !/CALENDAR_MONTH_DAYS/.test(plannedFn[0]),
     'calendarHalfPlanned is monthly/2, not 15/daysInMonth or CALENDAR_MONTH_DAYS');
-  ok(!(p1.householdBudget || []).some(r => /Dale|Amanda/i.test(r.label))
-      && (p1.householdBudget || []).filter(r => r.id === 'shopping').length === 1,
-    'Personal stays one shopping row; no Dale/Amanda split');
+  const labels = (p1.householdBudget || []).map(r => r.label);
+  ok(labels.includes('Groceries') && labels.includes('Fuel')
+      && labels.includes('Household') && labels.includes('Dog food')
+      && labels.includes('Eating out')
+      && labels.includes('Dale guilt-free spending')
+      && labels.includes('Amanda guilt-free spending'),
+    'printed labels are the locked plain-language names');
+  ok(!(p1.householdBudget || []).some(r => r.id === 'shopping' && !r.needsConfirmation)
+      && !(p1.householdBudget || []).some(r => /Personal$/.test(r.label) && !r.needsConfirmation),
+    'combined Personal / shopping is not a planned household-budget row');
 }
 
-console.log('\n=== 12. subscriptions bills are not a second household-budget hold ===');
+console.log('\n=== 12. subscriptions exist only under Bills, never as a household-budget hold ===');
 {
   const plan = syntheticPlan();
-  // Opening on the 10th so the 17th Netflix bill is still due, not swallowed
-  // as already inside the 19 Aug snapshot.
   plan.opening.asOf = '2026-08-10';
   const advice = F.recommend(plan, '2026-08-10', { targetBuffer: 500, debts });
+  const p1 = period(advice.defaultView, 'calendar-1-15');
   const p2 = period(advice.defaultView, 'calendar-16-end');
+  for (const p of [p1, p2]) {
+    ok(!(p.householdBudget || []).some(r => r.id === 'subscriptions'
+        || /subscriptions/i.test(r.label || '')),
+      `${p.label} householdBudget has no subscriptions row`);
+    ok(!(p.householdBudget || []).some(r => r.id === 'health' || /Medical/i.test(r.label || '')),
+      `${p.label} householdBudget has no Medical / health row`);
+    ok(!(p.householdBudget || []).some(r => r.id === 'sport' || /Children & sports/i.test(r.label || '')),
+      `${p.label} householdBudget has no Children & sports row`);
+  }
   const netflix = billsOf(p2).find(r => r.id === 'netflix');
-  ok(netflix && netflix.status !== 'PAID' && near(netflix.remaining, 26.87),
-    'Netflix sits in Period 2 remaining-bills');
-  const sub = budgetRow(p2, 'subscriptions');
-  ok(sub && sub.informational && near(sub.hold, 0)
-      && /included in Bills/.test(sub.note)
-      && /remaining not deducted/.test(sub.note),
-    'subscriptions line is informational and not a leftover hold');
+  ok(netflix && netflix.status !== 'PAID' && near(netflix.remaining, 26.87)
+      && netflix.date === '2026-08-17' && /BILLS ACCOUNT/i.test(netflix.payerLabel || ''),
+    'Netflix sits in Period 2 remaining-bills with amount, date, and paying account');
   const independentHold = HOLD_IDS.reduce((sum, id) => {
     const cat = plan.budget.categories.find(c => c.id === id);
     const planned = halfPlanned(cat.plannedMonthly, 2);
     return roundCent(sum + Math.max(0, planned));
   }, 0);
-  const subPlanned = halfPlanned(300, 2);
-  ok(near(p2.budgetHold, independentHold) && !near(p2.budgetHold, independentHold + subPlanned)
-      && !near(p2.budgetHold, independentHold + 300),
-    'leftover hold omits the subscriptions target that remaining-bills already has',
-    `${p2.budgetHold} vs ${independentHold} (not +${subPlanned})`);
+  ok(near(independentHold, PERIOD_PLANNED_TOTAL),
+    'independent P2 hold of the seven planned rows is 1340',
+    String(independentHold));
+  ok(near(p2.budgetHold, independentHold)
+      && !near(p2.budgetHold, independentHold + 300)
+      && !near(p2.budgetHold, independentHold + 150)
+      && !near(p2.budgetHold, PERIOD_PLANNED_TOTAL + 300),
+    'leftover hold omits the old $300 subscriptions target',
+    `${p2.budgetHold} vs ${independentHold}`);
   ok(p2.afterRemainingBills != null && p2.afterHouseholdBudget != null
       && near(p2.afterHouseholdBudget, roundCent(p2.afterRemainingBills - independentHold))
       && !near(p2.afterHouseholdBudget,
         roundCent(p2.afterRemainingBills - independentHold - netflix.remaining)),
     'after household budget does not subtract the Netflix bill a second time');
+  const halfId = half => half === 1 ? 'calendar-1-15' : 'calendar-16-end';
+  for (const spec of SUBSCRIPTION_BILLS) {
+    const host = spec.half === 1 ? p1 : p2;
+    const other = spec.half === 1 ? p2 : p1;
+    const row = billsOf(host).find(r => r.id === spec.id);
+    const copies = billsOf(p1).concat(billsOf(p2)).filter(r => r.id === spec.id);
+    ok(row && copies.length === 1 && near(row.amount, spec.amount)
+        && String(row.date).slice(8, 10) === String(spec.day).padStart(2, '0')
+        && /BILLS ACCOUNT/i.test(row.payerLabel || '')
+        && (row.status === 'PAID' || row.status === 'still due' || row.status === 'pending'),
+      `${spec.id} appears once in ${halfId(spec.half)} with amount, date, account, status`,
+      row && `${row.date} ${row.amount} ${row.status} ${row.payerLabel}`);
+    ok(!billsOf(other).some(r => r.id === spec.id),
+      `${spec.id} is absent from the other calendar half`);
+  }
+  const ug = billsOf(p1).concat(billsOf(p2)).find(r => r.id === 'ultimate-guitar');
+  ok(!ug, 'Ultimate Guitar yearly May 8 is not an August household-budget or August bill');
   const html = composer.operatingSurfaceHtml({
     advice, weekly: advice.weekly, recommended: advice.weekly,
     planCalendarShow: 'calendar-16-end',
   });
-  ok(/Subscriptions/.test(html) && /included in Bills, remaining not deducted/.test(html),
-    'page labels subscriptions as included in Bills');
+  const budgetBlock = /data-payday-household-budget[\s\S]*?<\/div>\s*<\/div>/.exec(html);
+  ok(budgetBlock && !/Subscriptions/i.test(budgetBlock[0])
+      && !/included in Bills, remaining not deducted/.test(budgetBlock[0]),
+    'Household Budget block does not print a subscriptions line');
+  ok(/data-period-bill="netflix"/.test(html) && /Netflix/.test(html)
+      && /BILLS ACCOUNT/.test(html),
+    'page prints Netflix as a Bills row with paying account');
+  ok(!/Pixieset|Mailchimp|CMAW/i.test(html),
+    'Pixieset / Mailchimp / CMAW stay off the sheet');
 }
 
 console.log('\n=== 13. overspend remaining is negative; leftover does not take the overshoot ===');
@@ -665,7 +796,7 @@ console.log('\n=== 13. overspend remaining is negative; leftover does not take t
   });
   const p2 = period(advice.defaultView, 'calendar-16-end');
   const groc = budgetRow(p2, 'groceries');
-  const planned = halfPlanned(1800, 2);
+  const planned = halfPlanned(900, 2);
   const spent = spendOn(txs, 'Groceries', p2.start, asOf);
   const remaining = roundCent(planned - spent);
   ok(groc && near(groc.planned, planned) && near(groc.spent, spent)
@@ -691,6 +822,102 @@ console.log('\n=== 13. overspend remaining is negative; leftover does not take t
   ok(!near(p2.afterHouseholdBudget, ifSpentAgain)
       && !near(p2.afterHouseholdBudget, ifOvershootAgain),
     'leftover is not opening-chain minus posted groceries a second time');
+}
+
+console.log('\n=== 13b. Dale/Amanda shopping actuals; unlabeled needs confirmation ===');
+{
+  const asOf = '2026-08-20';
+  const txs = [
+    {
+      date: '2026-08-18', amount: 40, pending: false, categoryLabel: 'Shopping',
+      accountRole: 'household-cash', tags: ['dale'],
+    },
+    {
+      date: '2026-08-19', amount: 25, pending: false, categoryLabel: 'Shopping',
+      accountRole: 'household-cash', note: 'Amanda',
+    },
+    {
+      date: '2026-08-19', amount: 12, pending: false, categoryLabel: 'Shopping',
+      accountRole: 'household-cash',
+    },
+    {
+      date: '2026-08-18', amount: 33, pending: false, categoryLabel: 'Shopping',
+      accountRole: 'household-cash', atlasAccountId: 'chequing-b',
+      accountLabel: 'WEEKLY SPENDING',
+    },
+    {
+      date: '2026-08-18', amount: 18, pending: false, categoryLabel: 'Shopping',
+      accountRole: 'household-cash', atlasAccountId: 'amanda-debt-payments',
+      accountLabel: 'TENNIS INCOME',
+    },
+    {
+      date: '2026-08-05', amount: 9, pending: false, categoryLabel: 'Shopping',
+      accountRole: 'household-cash', tags: ['dale'],
+    },
+    {
+      date: '2026-08-18', amount: 50, pending: false, categoryLabel: 'Health',
+      accountRole: 'household-cash',
+    },
+    {
+      date: '2026-08-18', amount: 22, pending: false, categoryLabel: 'Sport & fitness',
+      accountRole: 'household-cash',
+    },
+  ];
+  const plan = syntheticPlan();
+  const view = F.recommend(plan, asOf, {
+    targetBuffer: 500, debts,
+    currentPeriodActuals: actualsPacket(txs, asOf),
+  }).defaultView;
+  const p1 = period(view, 'calendar-1-15');
+  const p2 = period(view, 'calendar-16-end');
+  const dale2 = budgetRow(p2, 'dale-guilt-free');
+  const amanda2 = budgetRow(p2, 'amanda-guilt-free');
+  const unassigned2 = (p2.householdBudget || []).find(r => r.needsConfirmation);
+  const dale1 = budgetRow(p1, 'dale-guilt-free');
+  ok(dale2 && near(dale2.spent, 40) && near(dale2.planned, 150) && near(dale2.hold, 110),
+    'fixture shopping tx with Dale evidence lands on Dale in that period',
+    dale2 && String(dale2.spent));
+  ok(amanda2 && near(amanda2.spent, 25) && near(amanda2.planned, 150),
+    'fixture shopping tx with Amanda evidence lands on Amanda',
+    amanda2 && String(amanda2.spent));
+  ok(unassigned2 && unassigned2.needsConfirmation && near(unassigned2.planned, 0)
+      && near(unassigned2.hold, 0) && near(unassigned2.spent, 12 + 33)
+      && /needs confirmation/i.test(unassigned2.label),
+    'unlabeled shopping and WEEKLY SPENDING shopping are needs-confirmation, not attributed',
+    unassigned2 && String(unassigned2.spent));
+  ok(dale2 && !near(dale2.spent, 40 + 33) && !near(dale2.spent, 40 + 9),
+    'chequing-b / WEEKLY SPENDING is not Dale; P1 Dale tx stays in P1');
+  ok(amanda2 && !near(amanda2.spent, 25 + 18),
+    'TENNIS INCOME / amanda-debt-payments is not Amanda guilt-free spending');
+  ok(dale1 && near(dale1.spent, 9),
+    'period date windows still apply to Dale guilt-free actuals');
+  ok(!(p2.householdBudget || []).some(r => r.id === 'health' || /Medical/i.test(r.label || '')),
+    'medical Lunch Money txs do not reappear as a Household Budget row');
+  ok(!(p2.householdBudget || []).some(r => r.id === 'sport' || /Children & sports/i.test(r.label || '')),
+    'sports Lunch Money txs do not reappear as a Household Budget row');
+  const groc2 = budgetRow(p2, 'groceries');
+  const fuel2 = budgetRow(p2, 'fuel');
+  ok(groc2 && near(groc2.spent, 0) && fuel2 && near(fuel2.spent, 0),
+    'medical and sports txs are not dumped into Groceries or Fuel');
+  const holdWithoutUnassigned = HOLD_IDS.reduce((sum, id) => {
+    const cat = plan.budget.categories.find(c => c.id === id);
+    const rowPlanned = halfPlanned(cat.plannedMonthly, 2);
+    let rowSpent = 0;
+    if (id === 'dale-guilt-free') rowSpent = 40;
+    if (id === 'amanda-guilt-free') rowSpent = 25;
+    return roundCent(sum + Math.max(0, roundCent(rowPlanned - rowSpent)));
+  }, 0);
+  ok(near(p2.budgetHold, holdWithoutUnassigned)
+      && !near(p2.budgetHold, holdWithoutUnassigned + 12 + 33),
+    'leftover hold is the seven planned rows only; confirmation spent is not a hold');
+  const html = composer.operatingSurfaceHtml({
+    advice: { defaultView: view, paydayAllocation: { available: p2.opening, cashBasis: { asOf } } },
+    weekly: 0, recommended: 0, planCalendarShow: 'calendar-16-end',
+  });
+  ok(/Dale guilt-free spending/.test(html) && /Amanda guilt-free spending/.test(html)
+      && /needs confirmation/.test(html)
+      && !/calendarHalfPlanned|sumCategoryActuals/.test(html),
+    'page prints Dale/Amanda and the confirmation line in plain language');
 }
 
 console.log('\n=== 14. page prints Forecast; leftover is not computed in plan.js ===');

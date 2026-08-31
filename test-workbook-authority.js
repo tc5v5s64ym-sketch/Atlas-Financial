@@ -2,9 +2,9 @@
 /* Workbook evidence cannot silently become current owner policy.
  * `node test-workbook-authority.js`
  *
- * The nine Aug. 10 owner-stated targets win. A historical per-paycheque
+ * The 2026-08-31 owner-locked period table wins. A historical per-paycheque
  * workbook or a My Recommendation section does not replace them without an
- * explicit targetSource transition away from owner-stated-2026-08-10.
+ * explicit targetSource transition away from owner-stated-2026-08-31.
  */
 const fs = require('fs');
 const path = require('path');
@@ -18,18 +18,17 @@ const ok = (cond, label, detail = '') => {
   console.log(`  ${cond ? 'PASS' : 'FAIL'}  ${label}${detail ? '  — ' + detail : ''}`);
 };
 
-const OWNER_SOURCE = 'owner-stated-2026-08-10';
+const OWNER_SOURCE = 'owner-stated-2026-08-31';
 const OWNER_TARGETS = {
-  groceries: 1800,
-  fuel: 1300,
-  restaurants: 800,
-  shopping: 600,
-  subscriptions: 300,
-  pets: 110,
-  sport: 250,
-  household: 150,
-  health: 100,
+  groceries: 900,
+  fuel: 650,
+  household: 75,
+  pets: 55,
+  restaurants: 400,
+  'dale-guilt-free': 300,
+  'amanda-guilt-free': 300,
 };
+const RETIRED_HOLD_IDS = ['health', 'sport', 'shopping', 'subscriptions'];
 
 // Approximate monthly equivalents from HOME BUDGET.xlsx per-paycheque lines.
 // These are historical planning figures. They must not become plannedMonthly
@@ -44,7 +43,7 @@ const byId = id => cats.find(c => c.id === id);
 const questions = fs.readFileSync(path.join(__dirname, 'docs', '01_OPEN_QUESTIONS.md'), 'utf8');
 const note = data.plan.budget.ownerTargets.note;
 
-console.log('=== Aug. 10 owner targets remain the live policy ===');
+console.log('=== 2026-08-31 owner period table is the live policy ===');
 for (const [id, amount] of Object.entries(OWNER_TARGETS)) {
   const c = byId(id);
   ok(!!c, `category ${id} exists`);
@@ -53,6 +52,12 @@ for (const [id, amount] of Object.entries(OWNER_TARGETS)) {
   ok(c && c.targetSource === OWNER_SOURCE,
     `${id} targetSource remains ${OWNER_SOURCE}`,
     c ? String(c.targetSource) : 'missing');
+}
+for (const id of RETIRED_HOLD_IDS) {
+  const c = byId(id);
+  ok(!!c, `retired mapping category ${id} still exists`);
+  ok(c && c.plannedMonthly == null, `${id} has no household-budget plannedMonthly`,
+    c ? String(c.plannedMonthly) : 'missing');
 }
 
 console.log('\n=== historical / advisory workbook values cannot overwrite that policy ===');
@@ -79,14 +84,14 @@ ok(!/still absent|never supplied|never reached this repository|still not absorbe
 ok(/classified/.test(note) && /HOUSEHOLD_BUDGET_WORKBOOKS_2026-08-16/.test(note),
   'ownerTargets.note points at the classification record');
 
-console.log('\n=== Forecast still reads the Aug. 10 owner targets ===');
+console.log('\n=== Forecast still reads the 2026-08-31 owner targets ===');
 const budget = F.budgetBreakdown(data.plan, periods, { paypalPerMonth: data.paypal.perMonth });
 const groceries = budget.categories.find(c => c.id === 'groceries');
 const fuel = budget.categories.find(c => c.id === 'fuel');
-ok(groceries && groceries.target === 1800 && fuel && fuel.target === 1300,
-  'engine grocery/fuel targets are still $1,800 and $1,300');
-ok(Math.abs((groceries.planned + fuel.planned) - 3100) < 0.01,
-  'food+fuel requirement is still $3,100/month');
+ok(groceries && groceries.target === 900 && fuel && fuel.target === 650,
+  'engine grocery/fuel targets are still $900 and $650');
+ok(Math.abs((groceries.planned + fuel.planned) - 1550) < 0.01,
+  'food+fuel requirement is still $1,550/month');
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
 process.exit(failures === 0 ? 0 : 1);

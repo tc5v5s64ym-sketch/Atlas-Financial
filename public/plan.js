@@ -1655,6 +1655,12 @@ function calendarBudgetHtml(period) {
         { preformatted: true }
       );
     }
+    if (row.needsConfirmation) {
+      const bits = [];
+      if (row.spent != null) bits.push(`spent this period ${money2(row.spent)}`);
+      bits.push('needs confirmation');
+      return paydayBucketRow(row.label, bits.join(' · '), null, null, { preformatted: true });
+    }
     const bits = [];
     if (row.planned != null) bits.push(`planned ${money2(row.planned)}`);
     if (row.spent != null) bits.push(`spent this period ${money2(row.spent)}`);
