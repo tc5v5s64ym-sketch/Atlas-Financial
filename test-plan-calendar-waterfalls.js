@@ -586,7 +586,10 @@ console.log('\n=== 11. each half\'s planned adds back to the monthly target ==='
 console.log('\n=== 12. subscriptions bills are not a second household-budget hold ===');
 {
   const plan = syntheticPlan();
-  const advice = F.recommend(plan, '2026-08-20', { targetBuffer: 500, debts });
+  // Opening on the 10th so the 17th Netflix bill is still due, not swallowed
+  // as already inside the 19 Aug snapshot.
+  plan.opening.asOf = '2026-08-10';
+  const advice = F.recommend(plan, '2026-08-10', { targetBuffer: 500, debts });
   const p2 = period(advice.defaultView, 'calendar-16-end');
   const netflix = billsOf(p2).find(r => r.id === 'netflix');
   ok(netflix && netflix.status !== 'PAID' && near(netflix.remaining, 26.87),
