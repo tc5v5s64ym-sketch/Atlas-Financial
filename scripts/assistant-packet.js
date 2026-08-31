@@ -119,6 +119,19 @@ function effectiveAsOf(data) {
     || null;
 }
 
+function operatingPlanUnavailable(data, advice) {
+  const overlay = data && data.liveOverlay;
+  return (overlay && overlay.operatingPlan === 'unavailable')
+    || (advice && advice.operatingPlanUnavailable === true);
+}
+
+function operatingPlanNote(data, advice) {
+  const overlay = data && data.liveOverlay;
+  return (advice && advice.operatingPlanNote)
+    || (overlay && overlay.operatingPlanNote)
+    || 'Current plan unavailable. The dated opening is stale.';
+}
+
 function canonicalAsOf(data) {
   const overlay = data && data.liveOverlay;
   if (overlay && overlay.historicalOpeningAsOf) return overlay.historicalOpeningAsOf;
@@ -211,6 +224,8 @@ function forecastAdvice(data, periods) {
     revolvingExtra: data.revolvingExtra,
     periods: periods || null,
     currentPeriodActuals: actuals,
+    operatingPlan: overlay && overlay.operatingPlan,
+    operatingPlanNote: overlay && overlay.operatingPlanNote,
   });
 }
 
@@ -269,6 +284,8 @@ function currentBlock(data, asOf, advice, used) {
       nextSignificantObligations: unavailable('missing-opening'),
     };
   }
+  const planUnavailable = operatingPlanUnavailable(data, advice);
+  const unavailableReason = operatingPlanNote(data, advice);
   const spendable = Forecast.startingCashAmount(plan);
   const events = advice && advice.sim && advice.sim.events
     ? advice.sim.events
@@ -322,12 +339,22 @@ function currentBlock(data, asOf, advice, used) {
     : null;
   return {
     spendableHouseholdCash: Number.isFinite(spendable)
-      ? {
-        status: 'ok',
-        value: money(spendable),
-        trust: trustFor(spendable),
-        source: 'Forecast.startingCashAmount',
-      }
+      ? (planUnavailable
+        ? {
+          status: 'dated-opening',
+          current: false,
+          value: money(spendable),
+          asOf: canonicalAsOf(data),
+          trust: trustFor(spendable),
+          source: 'Forecast.startingCashAmount',
+          note: unavailableReason,
+        }
+        : {
+          status: 'ok',
+          value: money(spendable),
+          trust: trustFor(spendable),
+          source: 'Forecast.startingCashAmount',
+        })
       : unavailable('starting-cash-not-finite'),
     pending: used
       ? {
@@ -350,7 +377,9 @@ function currentBlock(data, asOf, advice, used) {
         facilities: rows,
       }
       : unavailable('utilisation-unavailable'),
-    nextSignificantObligations: events
+    nextSignificantObligations: planUnavailable
+      ? unavailable(unavailableReason)
+      : events
       ? {
         status: 'ok',
         source: 'Forecast.nextDue / Forecast.nextPaymentOut / Forecast.recommend.nearBoundary',
@@ -385,6 +414,21 @@ function currentBlock(data, asOf, advice, used) {
 
 function forecastBlock(data, asOf, advice, debtProj, periods) {
   if (!advice) return unavailable('forecast-unavailable');
+  if (operatingPlanUnavailable(data, advice)) {
+    const reason = operatingPlanNote(data, advice);
+    return {
+      status: 'unavailable',
+      reason,
+      source: 'Forecast.recommend',
+      recommendation: unavailable(reason),
+      horizon: unavailable(reason),
+      upcomingModeledCommitments: unavailable(reason),
+      facilityCrossings: unavailable(reason),
+      majorPlanFunding: unavailable(reason),
+      currentPeriodAction: unavailable(reason),
+      budgetCap: unavailable(reason),
+    };
+  }
   const horizon = advice.knowledge || Forecast.knowledgeHorizon(data.plan, asOf);
   const capMonthly = advice.weekly == null
     ? null

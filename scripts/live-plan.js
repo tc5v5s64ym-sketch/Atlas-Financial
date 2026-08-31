@@ -37,9 +37,10 @@
  * values. A fail-closed overlay keeps the dated opening and cannot raise
  * remaining-claim precision. When the observation's household date is later
  * than that opening, the dated sheet is not the current operating plan:
- * liveOverlay.operatingPlan is unavailable so Forecast withholds the current
- * spending-cycle label rather than publishing the opening's cycle as today.
- * Do not pair a later payday cycle with the unadvanced opening.
+ * liveOverlay.operatingPlan is unavailable so Forecast withholds current
+ * spend permission, current-period action, extra-debt instruction, and the
+ * current spending-cycle label rather than publishing the opening's cycle
+ * as today. Do not pair a later payday cycle with the unadvanced opening.
  * Zero/no-change is a valid Forecast result.
  * Served data also carries a sanitized household refresh-trust packet
  * copied from incumbent observation, reconciliation, canonical-preview,

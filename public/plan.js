@@ -596,6 +596,24 @@ function renderCalendar(sim, neededBy, plan) {
  * `mode === 'infeasible'` or `funding.feasible === false` means there is no
  * feasible weekly cap. This formats that existing verdict; it does not
  * invent a second feasibility test. */
+function liveOperatingPlanUnavailable(advice, liveOverlay) {
+  return (advice && advice.operatingPlanUnavailable === true)
+    || (liveOverlay && liveOverlay.operatingPlan === 'unavailable');
+}
+
+function liveOperatingPlanNote(advice, liveOverlay) {
+  return (advice && advice.operatingPlanNote)
+    || (liveOverlay && liveOverlay.operatingPlanNote)
+    || 'Current plan unavailable. The dated opening is stale.';
+}
+
+function currentOperatingUnavailableHtml(advice, liveOverlay) {
+  if (!liveOperatingPlanUnavailable(advice, liveOverlay)) return null;
+  return `<div data-operating-plan="unavailable" data-current-operating="unavailable">
+    <p class="operating-lead">${liveOperatingPlanNote(advice, liveOverlay)}</p>
+  </div>`;
+}
+
 function weeklyCapView(advice, weeklyOverride) {
   advice = advice || {};
   const recommended = advice.weekly;
@@ -605,10 +623,14 @@ function weeklyCapView(advice, weeklyOverride) {
   const funding = advice.funding || null;
   const fundingBlocked = !!(funding && funding.feasible === false);
   const modeInfeasible = advice.mode === 'infeasible';
+  const planUnavailable = advice.operatingPlanUnavailable === true;
   const infeasible = modeInfeasible;
-  const hasFeasibleCap = !modeInfeasible && !fundingBlocked;
+  const hasFeasibleCap = !planUnavailable && !modeInfeasible && !fundingBlocked;
   let reason = '';
-  if (modeInfeasible && fail) {
+  if (planUnavailable) {
+    reason = advice.operatingPlanNote
+      || 'Current plan unavailable. The dated opening is stale.';
+  } else if (modeInfeasible && fail) {
     reason = `There is no feasible weekly cap. ${fail.label || 'A protected constraint'} fails${
       fail.date ? ` on ${fmtDateLong(fail.date)}` : ''} by ${money2(fail.shortfall)}; a weekly spending
           figure does not fix this.`;
@@ -1719,6 +1741,12 @@ function calendarPeriodBillsHtml(period) {
 }
 
 function extraRepaymentHtml(period) {
+  if (period && period.operatingPlanUnavailable) {
+    return `<div class="payday-extra-repay" data-calendar-extra data-operating-plan="unavailable">
+      <p class="operating-lead">${period.operatingPlanNote
+        || 'Current plan unavailable. The dated opening is stale.'}</p>
+    </div>`;
+  }
   const extra = (period && period.extraDebt) || {};
   const card = period && period.firstCard;
   const allocated = extra.allocated != null ? Number(extra.allocated) : 0;
@@ -2166,10 +2194,17 @@ function operatingSurfaceHtml(ctx) {
   const weeklyAuthority = nextPaydayLabel
     ? `This week's spend until ${nextPaydayLabel}. Everyday costs come out of it first.`
     : "This week's spend. Everyday costs come out of it first.";
-  const spend = spendDecisionHtml(capView, weeklyPermission, remainingUnavailable, weeklyAuthority, action);
-  const extra = extraDebtGlanceHtml(alloc);
+  const unavailableHtml = currentOperatingUnavailableHtml(advice, ctx.liveOverlay);
+  const spend = unavailableHtml
+    ? unavailableHtml
+    : spendDecisionHtml(capView, weeklyPermission, remainingUnavailable, weeklyAuthority, action);
+  const extra = unavailableHtml ? '' : extraDebtGlanceHtml(alloc);
   const purchases = futureGravityHtml(advice);
-  const next = todayDecisionHtml(action, capView, alloc);
+  const next = unavailableHtml
+    ? `<div class="decision-today" data-today-decision="unavailable" data-operating-plan="unavailable">
+    <p class="household-primary" data-today-headline>${liveOperatingPlanNote(advice, ctx.liveOverlay)}</p>
+  </div>`
+    : todayDecisionHtml(action, capView, alloc);
   const periodDetails = action && action.mode === 'between-paydays'
     ? `<details class="household-inline-details household-period-details">
         <summary>See current-period details</summary>
@@ -2272,7 +2307,11 @@ function paydayAnswerHtml(ctx) {
     ? '<p class="payday-qual">Required future costs with no exact date stay unresolved — this payday assigns them no contribution.</p>'
     : '';
 
-  const spendInner = !capView.hasFeasibleCap
+  const spendInner = liveOperatingPlanUnavailable(advice, liveOverlay)
+    ? `<p class="payday-refuse" data-operating-plan="unavailable" data-spend-decision="unavailable">${
+        liveOperatingPlanNote(advice, liveOverlay)
+      }</p>`
+    : !capView.hasFeasibleCap
     ? `<p class="payday-refuse">${capView.infeasible ? '<b>INFEASIBLE. </b>' : ''}${capView.reason}</p>`
     : `<p class="payday-hero">${money(recommended)}<span class="payday-hero-unit">/ week</span></p>
        <p class="payday-qual">Stay under this and the protected plan holds. This is the spending permission, not the essential cash reserve.${
@@ -2563,18 +2602,26 @@ function renderPlan(d, periods, history) {
   // renders it. It no longer re-derives `fundingShort`, hand-copies the
   // engine's buffer comparison and epsilon, walks the daily balances for a
   // first-breach or first-negative date, or totals the funding parts.
-  const status = Forecast.planStatus(advice,
-    { weeklyOverride: state.weeklyVariable, sim });
+  const planUnavailable = liveOperatingPlanUnavailable(advice, d.liveOverlay);
+  const unavailableNote = liveOperatingPlanNote(advice, d.liveOverlay);
   const band = $('status-band');
-  band.className = 'statusband ' + STATUS_BAND[status.id].tone;
-  band.innerHTML = STATUS_BAND[status.id].text(status, plan);
+  const status = planUnavailable
+    ? null
+    : Forecast.planStatus(advice, { weeklyOverride: state.weeklyVariable, sim });
+  if (planUnavailable) {
+    band.className = 'statusband warn';
+    band.innerHTML = `<b>Current plan unavailable.</b> ${unavailableNote}`;
+  } else {
+    band.className = 'statusband ' + STATUS_BAND[status.id].tone;
+    band.innerHTML = STATUS_BAND[status.id].text(status, plan);
+  }
 
   /* ---- covering the gap ---- */
   // Only shown when there is one. The point is not "here are your options" but
   // "here is what can actually cover it" — a source that cannot reach the
   // amount needed on the day is not an option, and is shown struck out.
   const fund = $('funding');
-  if (gap && plan.funding) {
+  if (gap && plan.funding && !planUnavailable) {
     // What must be in the account on the worst day, not the gap to the buffer.
     const shortDate = gap.date;
     const dueThatDay = gap.dueOnGapDay;
@@ -2682,11 +2729,15 @@ function renderPlan(d, periods, history) {
   // WHICH instructions apply, and in what order, is a financial decision and
   // belongs to Forecast.mission — where the node suite can reach it. This page
   // renders the parts it is given, in the order it is given them.
-  const missionResult = Forecast.mission(advice, debtProj,
-    { weeklyOverride: state.weeklyVariable, sim });
-  $('plan-mission').textContent = missionResult.parts
-    .map(p => MISSION_PART[p.id](p)).join(', ')
-    .replace(/^./, c => c.toUpperCase()) + '.';
+  const missionResult = planUnavailable
+    ? { parts: [] }
+    : Forecast.mission(advice, debtProj,
+      { weeklyOverride: state.weeklyVariable, sim });
+  $('plan-mission').textContent = planUnavailable
+    ? unavailableNote
+    : missionResult.parts
+      .map(p => MISSION_PART[p.id](p)).join(', ')
+      .replace(/^./, c => c.toUpperCase()) + '.';
 
   /* ---- NEXT MOVE — the one thing to do ---- */
   // WHICH of the five outcomes the household reads under "What happens after",
@@ -2696,10 +2747,17 @@ function renderPlan(d, periods, history) {
   // against the current gap with its own copy of the engine's half-cent,
   // subtracts the two for the uncovered remainder, or selects a different
   // outcome from the status verdict, the due date or the funding plan.
-  const move = Forecast.nextMove(plan, advice,
-    { weeklyOverride: state.weeklyVariable, sim, debts: state.debts,
-      extraFacilities: state.extraFacilities });
-  if (move) {
+  const move = planUnavailable
+    ? null
+    : Forecast.nextMove(plan, advice,
+      { weeklyOverride: state.weeklyVariable, sim, debts: state.debts,
+        extraFacilities: state.extraFacilities });
+  if (planUnavailable) {
+    const nextmoveCard = $('nextmove-card');
+    if (nextmoveCard) {
+      nextmoveCard.innerHTML = `<p class="operating-lead" data-operating-plan="unavailable">${unavailableNote}</p>`;
+    }
+  } else if (move) {
     // The action the engine measured, so the head and the outcome below it
     // cannot describe different actions.
     const first = move.action;
@@ -2746,7 +2804,10 @@ function renderPlan(d, periods, history) {
     (nextOut ? { lab: 'Next cash-out total', val: money(nextOut.amount),
       note: `${nextOut.label} on ${fmtDateLong(nextOut.date)} — all cash leaving household accounts that day`,
       tone: nextOut.date <= addDays(asOf, 3) ? 'warn' : '' } : null),
-    (capView.hasFeasibleCap
+    (planUnavailable
+      ? { lab: 'Weekly household cap', val: 'unavailable', tone: 'alert',
+          note: unavailableNote }
+      : capView.hasFeasibleCap
       ? { lab: 'Weekly household cap', val: money(weekly) + '/wk', tone: gap ? 'warn' : '',
           note: state.weeklyVariable != null && state.weeklyVariable !== recommended
             ? `your setting — the forecast supports ${money(recommended)}/wk`
@@ -2756,9 +2817,13 @@ function renderPlan(d, periods, history) {
       : { lab: 'Weekly household cap', val: 'unavailable', tone: 'alert',
           note: [capView.settingLine, capView.reason, ifCovered.applies ? capQualifier : '']
             .filter(Boolean).join(' ') }),
-    { lab: 'Essential variable need', val: money(budget ? budget.cap.essentialWeekly : 0) + '/wk', tone: '',
-      note: `groceries, fuel, phones and medical — ${money(budget
-        ? budget.cap.foodFuelPlannedWeekly : 0)}/wk of it food and fuel` },
+    { lab: 'Essential variable need', val: planUnavailable
+      ? 'unavailable'
+      : money(cap ? cap.essentialWeekly : 0) + '/wk', tone: '',
+      note: planUnavailable
+        ? unavailableNote
+        : `groceries, fuel, phones and medical — ${money(cap
+        ? cap.foodFuelPlannedWeekly : 0)}/wk of it food and fuel` },
     { lab: 'Consumer debt', val: money(consumerNow), tone: overToday.length ? 'alert' : 'warn',
       note: `${money(today.headroom)} of credit left everywhere${overToday.length
         ? ` — ${overToday.length} facility over its limit` : ''}` },
@@ -2775,7 +2840,7 @@ function renderPlan(d, periods, history) {
   const chipE = ' <span class="chip w">estimated</span>';
 
   /* ---- the weekly household cap, broken into what it is actually for ---- */
-  if (budget) {
+  if (budget && cap) {
     // Monthly grocery and fuel figures, and whether the grocery line is an
     // owner target, are Forecast.budgetBreakdown's cap block. This page prints
     // them. The per-week split beside them already came from that block.
@@ -2838,8 +2903,10 @@ function renderPlan(d, periods, history) {
   }
 
   /* ---- major future plans — verdicts from Forecast, wording only ---- */
-  const major = Forecast.majorPlans(plan, asOf,
-    Object.assign({}, advice.planOptions || {}, { weeklyVariable: weekly }));
+  const major = planUnavailable
+    ? []
+    : Forecast.majorPlans(plan, asOf,
+      Object.assign({}, advice.planOptions || {}, { weeklyVariable: weekly }));
   const majorAmount = p => {
     if (p.need != null) return money2(p.need);
     if (p.amountMin != null && p.amountMax != null) return `${money2(p.amountMin)}–${money2(p.amountMax)}`;
@@ -3126,7 +3193,7 @@ function renderPlan(d, periods, history) {
   // The cap is one number, but it is not one kind of money. Food and fuel come
   // out of it before anything optional does, and the page has to say so or the
   // household will read it as spending money.
-  if (budget) {
+  if (budget && cap) {
     $('budget-out').innerHTML =
       row('<b>Weekly household cap</b>',
         capView.hasFeasibleCap ? `<b>${money(weekly)} / week</b>` : '<b>unavailable</b>') +

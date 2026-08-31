@@ -4202,16 +4202,27 @@
       const afterHouseholdBudget = afterRemainingBills != null
         ? roundCent(afterRemainingBills - budget.hold) : null;
       let extraAllocated = 0;
-      if (!lookback && afterHouseholdBudget != null) {
-        const room = roundCent(Math.max(0, afterHouseholdBudget - buffer));
-        extraAllocated = roundCent(Math.min(room, absorbable));
+      let extraDebt;
+      if (planUnavailable) {
+        extraDebt = {
+          allocated: null,
+          target: null,
+          status: 'unavailable',
+          reason: opts.operatingPlanNote
+            || 'Current plan unavailable. The dated opening is stale.',
+        };
+      } else {
+        if (!lookback && afterHouseholdBudget != null) {
+          const room = roundCent(Math.max(0, afterHouseholdBudget - buffer));
+          extraAllocated = roundCent(Math.min(room, absorbable));
+        }
+        extraDebt = {
+          allocated: extraAllocated,
+          target: priority.target,
+          status: priority.status,
+          reason: priority.reason,
+        };
       }
-      const extraDebt = {
-        allocated: extraAllocated,
-        target: priority.target,
-        status: priority.status,
-        reason: priority.reason,
-      };
       const afterDebtRepayment = afterHouseholdBudget != null
         ? roundCent(afterHouseholdBudget - extraAllocated) : null;
       const purchaseRoom = !lookback && afterDebtRepayment != null
@@ -5330,6 +5341,39 @@
   // then let the simulation replay that payday's income and bills — counting
   // the whole day twice and overstating the sustainable budget by a third.
   // Adding an event to one ledger pass cannot double-count by construction.
+  //
+  // When the live overlay marks the current operating plan unavailable, keep
+  // the dated-opening walk (do not invent a later as-of) but withhold the
+  // current/actionable claims: weekly spend permission, current-period action,
+  // and extra-debt instruction. Dated-opening facts stay on the result when
+  // they are not published as today's plan.
+  function withholdCurrentOperatingClaims(result, opts) {
+    if (!result || !opts || opts.operatingPlan !== 'unavailable') return result;
+    const note = opts.operatingPlanNote
+      || 'Current plan unavailable. The dated opening is stale.';
+    result.operatingPlanUnavailable = true;
+    result.operatingPlanNote = note;
+    result.weekly = null;
+    result.currentPeriodAction = {
+      unavailable: true,
+      remainingClaim: 'unavailable',
+      reason: note,
+    };
+    if (result.paydayAllocation) {
+      result.paydayAllocation.extraDebt = {
+        allocated: null,
+        absorbable: null,
+        status: 'unavailable',
+        reason: note,
+        target: null,
+        consequence: null,
+      };
+      result.paydayAllocation.spendPermission = null;
+      result.paydayAllocation.weeklyCap = null;
+    }
+    return result;
+  }
+
   function recommend(plan, asOf, opts) {
     const base = Object.assign({}, opts || {});
     const buffer = base.targetBuffer != null ? base.targetBuffer : (plan.defaults.targetBuffer || 0);
@@ -5540,7 +5584,7 @@
     const result = finish('openingGap', recovery, weekly, spendFrom,
       { amount: gapAmount, date: gapDate, dueOnGapDay, preIncomeOut,
         floor: zero.min.balance, floorDate: zero.min.date }, zero);
-    result.funding = funding;
+    if (!result.operatingPlanUnavailable) result.funding = funding;
     return result;
 
     // Build the result, and prove the answer is actually binding: one step up
@@ -5581,7 +5625,7 @@
       const action = currentPeriodAction(plan, asOf, Object.assign({}, paydayOpts, {
         paydayAllocation: alloc,
       }));
-      return {
+      return withholdCurrentOperatingClaims({
         mode, weekly: weeklyCap, effectiveFrom, buffer, gap, sim: viewSim, zero: zeroSim,
         step: STEP,
         knowledge: {
@@ -5621,7 +5665,7 @@
         binding: next.min,
         bindingIsReal: below(next.min.balance, buffer),
         holds: protectedAtCap.feasible,
-      };
+      }, planOptions);
     }
   }
 

@@ -11,11 +11,15 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 const { execFileSync } = require('child_process');
+const vm = require('vm');
 const O = require('./scripts/provider-observe.js');
 const C = require('./scripts/canonical-refresh.js');
 const Live = require('./scripts/live-plan.js');
+const OA = require('./scripts/operating-answer.js');
+const Assistant = require('./scripts/assistant-packet.js');
 const Forecast = require('./public/forecast.js');
 const Chequing = require('./public/forecast-chequing.js');
+const { sourceText } = require('./test-source-text');
 
 const ROOT = __dirname;
 const DATA = path.join(ROOT, 'data.json');
@@ -1742,6 +1746,80 @@ console.log('\n=== 20. same-day inbound fail-closed does not publish a stale cyc
   ok(/unavailable/.test(String(active.operatingPlanNote || ''))
       && /stale/.test(String(active.operatingPlanNote || '')),
     'Forecast note is explicit unavailable/stale');
+  ok(staleAdvice.operatingPlanUnavailable === true
+      && staleAdvice.weekly == null
+      && staleAdvice.currentPeriodAction
+      && staleAdvice.currentPeriodAction.unavailable === true
+      && staleAdvice.currentPeriodAction.remainingClaim === 'unavailable',
+    'Forecast withholds weekly permission and current-period action while operatingPlan is unavailable');
+  ok(!staleAdvice.paydayAllocation
+      || staleAdvice.paydayAllocation.extraDebt == null
+      || staleAdvice.paydayAllocation.extraDebt.status === 'unavailable'
+      || staleAdvice.paydayAllocation.extraDebt.allocated == null,
+    'Forecast withholds extra-debt instruction while operatingPlan is unavailable');
+  ok(staleAdvice.funding == null,
+    'Forecast does not publish opening-gap funding as a current claim while operatingPlan is unavailable');
+
+  const operating = OA.fromRefreshedState(served, { mode: 'live-overlay' });
+  ok(operating.provenance.operatingPlan === Live.OPERATING_PLAN_UNAVAILABLE,
+    'operating-answer provenance records operatingPlan unavailable');
+  ok(operating.moneyAvailable.value == null
+      && operating.moneyAvailable.status === 'unavailable'
+      && operating.currentSpendingPermission.weekly == null
+      && operating.currentSpendingPermission.remainingClaim === 'unavailable'
+      && operating.extraDebtAllocation.status === 'unavailable'
+      && operating.extraDebtAllocation.allocated == null,
+    'operating-answer does not copy money available, spend permission, or extra-debt as current from the stale opening');
+
+  const packet = Assistant.buildPacket({
+    data: served,
+    periods: Assistant.loadPeriods(),
+    questionsMarkdown: '',
+    now: LIVE_FAILURE_AT,
+    env: {},
+  });
+  ok(packet.current.spendableHouseholdCash.status !== 'ok'
+      && packet.current.spendableHouseholdCash.current === false,
+    'get_atlas_current does not publish dated opening cash as current');
+  ok(packet.forecast.status === 'unavailable'
+      && packet.forecast.recommendation.status === 'unavailable'
+      && packet.forecast.currentPeriodAction.status === 'unavailable',
+    'get_atlas_current does not emit a current recommendation or current-period action');
+  ok(!/\d+\s*\/\s*week/.test(JSON.stringify(packet.forecast.recommendation))
+      && packet.forecast.recommendation.weekly == null,
+    'assistant forecast recommendation does not carry a weekly spend permission');
+
+  const planSrc = sourceText(fs.readFileSync(path.join(ROOT, 'public', 'plan.js'), 'utf8'));
+  const helperSrc = [
+    /function liveOperatingPlanUnavailable\([\s\S]*?\n\}/.exec(planSrc),
+    /function liveOperatingPlanNote\([\s\S]*?\n\}/.exec(planSrc),
+    /function currentOperatingUnavailableHtml\([\s\S]*?\n\}/.exec(planSrc),
+  ];
+  ok(helperSrc.every(Boolean),
+    'plan.js names the current-operating unavailable helper');
+  const unavailableHtml = vm.runInNewContext(
+    `${helperSrc.map(m => m[0]).join('\n')}\ncurrentOperatingUnavailableHtml;`,
+    {}
+  )(staleAdvice, served.liveOverlay);
+  ok(/data-current-operating="unavailable"/.test(unavailableHtml)
+      && /data-operating-plan="unavailable"/.test(unavailableHtml)
+      && /unavailable/.test(unavailableHtml)
+      && /stale/.test(unavailableHtml)
+      && !/\$/.test(unavailableHtml),
+    'browser operating helper emits unavailable/stale and no spend amount');
+  const liveHtml = vm.runInNewContext(
+    `${helperSrc.map(m => m[0]).join('\n')}\ncurrentOperatingUnavailableHtml;`,
+    {}
+  )({ weekly: 400 }, { operatingPlan: 'live' });
+  ok(liveHtml == null, 'browser helper stays silent when the operating plan is live');
+  const surfaceFn = /function operatingSurfaceHtml\([\s\S]*?\n\}/.exec(planSrc);
+  ok(surfaceFn && /currentOperatingUnavailableHtml/.test(surfaceFn[0])
+      && /data-today-decision="unavailable"/.test(surfaceFn[0]),
+    'operatingSurfaceHtml fail-closes spend permission, extra-debt, and today-action while operatingPlan is unavailable');
+  const extraFn = /function extraRepaymentHtml\([\s\S]*?\n\}/.exec(planSrc);
+  ok(extraFn && /operatingPlanUnavailable/.test(extraFn[0])
+      && /data-operating-plan="unavailable"/.test(extraFn[0]),
+    'calendar extra-debt instruction fail-closes on the active unavailable period');
   const mixed = Forecast.recommend(served.plan, served.meta.asOf, {
     debts: served.debts,
     revolvingExtra: served.revolvingExtra,
@@ -1780,8 +1858,28 @@ console.log('\n=== 20. same-day inbound fail-closed does not publish a stale cyc
       && trustedActive.spendingCycleLabel === engineLive.label
       && trustedActive.operatingPlanUnavailable !== true,
     'trusted Aug 31 as-of publishes Household Budget Aug 28–Sep 10');
+  ok(trustedAdvice.operatingPlanUnavailable !== true
+      && trustedAdvice.weekly != null
+      && !(trustedAdvice.currentPeriodAction && trustedAdvice.currentPeriodAction.unavailable),
+    'trusted control still publishes weekly permission and current-period action');
+  const trustedOperating = OA.fromRefreshedState(trustedServed, { mode: 'live-overlay' });
+  ok(trustedOperating.currentSpendingPermission.weekly != null
+      && trustedOperating.moneyAvailable.value != null
+      && trustedOperating.extraDebtAllocation.status !== 'unavailable',
+    'trusted operating-answer still publishes current money available and spend permission');
+  const trustedPacket = Assistant.buildPacket({
+    data: trustedServed,
+    periods: Assistant.loadPeriods(),
+    questionsMarkdown: '',
+    now: LIVE_FAILURE_AT,
+    env: {},
+  });
+  ok(trustedPacket.forecast.status === 'ok'
+      && trustedPacket.forecast.recommendation.weekly != null
+      && trustedPacket.forecast.currentPeriodAction.status === 'ok'
+      && trustedPacket.current.spendableHouseholdCash.status === 'ok',
+    'trusted get_atlas_current still publishes current cash, recommendation, and current-period action');
 
-  const planSrc = fs.readFileSync(path.join(ROOT, 'public', 'plan.js'), 'utf8');
   const budgetFn = /function calendarBudgetHtml\([\s\S]*?\n\}/.exec(planSrc);
   ok(budgetFn && /operatingPlanUnavailable/.test(budgetFn[0])
       && /data-operating-plan="unavailable"/.test(budgetFn[0])

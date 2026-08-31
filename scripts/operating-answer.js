@@ -20,7 +20,9 @@
  * Forecast only when the overlay applied. Canonical mode never does.
  * A fail-closed overlay keeps the dated opening and, when the observation
  * date is later, tells Forecast the current operating plan is unavailable.
- * Zero/no-change is valid.
+ * Current/actionable fields (money available, spending permission, extra-debt)
+ * are then withheld rather than copied from that stale opening. Zero/no-change
+ * is valid when the dated opening is still the current plan.
  */
 
 const fs = require('fs');
@@ -192,6 +194,10 @@ function projectFromAdvice(advice, data, opts, asOf) {
   const remainingClaim = action.remainingClaim || 'unavailable';
   const mode = (opts && opts.mode) || 'live-overlay';
   const applied = overlayApplied(data, opts);
+  const planUnavailable = overlay && overlay.operatingPlan === 'unavailable';
+  const unavailableNote = (overlay && overlay.operatingPlanNote)
+    || (advice && advice.operatingPlanNote)
+    || 'Current plan unavailable. The dated opening is stale.';
   return {
     schema: SCHEMA,
     source: 'Forecast.recommend',
@@ -200,6 +206,7 @@ function projectFromAdvice(advice, data, opts, asOf) {
       trustedState: trustedStateFrom(data, opts),
       asOf,
       overlayApplied: applied,
+      operatingPlan: overlay && overlay.operatingPlan || null,
       writesCanonicalState: opts && opts.writesCanonicalState === true,
       remainingClaim,
       categoryRemainingClaim: action.categoryRemainingClaim || null,
@@ -207,10 +214,17 @@ function projectFromAdvice(advice, data, opts, asOf) {
     },
     asOf,
     recommendMode: advice && advice.mode || null,
-    moneyAvailable: {
-      source: 'Forecast.paydayAllocation.available',
-      value: Object.prototype.hasOwnProperty.call(alloc, 'available') ? alloc.available : null,
-    },
+    moneyAvailable: planUnavailable
+      ? {
+        source: 'Forecast.paydayAllocation.available',
+        value: null,
+        status: 'unavailable',
+        note: unavailableNote,
+      }
+      : {
+        source: 'Forecast.paydayAllocation.available',
+        value: Object.prototype.hasOwnProperty.call(alloc, 'available') ? alloc.available : null,
+      },
     protectedObligations: {
       source: 'Forecast.paydayAllocation.obligations',
       wanted: alloc.obligations ? alloc.obligations.wanted : null,
@@ -220,15 +234,18 @@ function projectFromAdvice(advice, data, opts, asOf) {
     },
     currentSpendingPermission: {
       source: 'Forecast.recommend.weekly / Forecast.currentPeriodAction',
-      weekly: advice && Object.prototype.hasOwnProperty.call(advice, 'weekly') ? advice.weekly : null,
-      weeklyCap: action.weeklyCap != null ? action.weeklyCap : (alloc.weeklyCap != null ? alloc.weeklyCap : null),
-      spendPermission: action.spendPermission != null
-        ? action.spendPermission
-        : (alloc.spendPermission != null ? alloc.spendPermission : null),
-      remainingClaim,
-      mode: action.mode || (advice && advice.mode) || null,
-      nextPayday: action.nextPayday || null,
-      noMovementToday: action.noMovementToday === true,
+      weekly: planUnavailable ? null
+        : (advice && Object.prototype.hasOwnProperty.call(advice, 'weekly') ? advice.weekly : null),
+      weeklyCap: planUnavailable ? null
+        : (action.weeklyCap != null ? action.weeklyCap : (alloc.weeklyCap != null ? alloc.weeklyCap : null)),
+      spendPermission: planUnavailable ? null
+        : (action.spendPermission != null
+          ? action.spendPermission
+          : (alloc.spendPermission != null ? alloc.spendPermission : null)),
+      remainingClaim: planUnavailable ? 'unavailable' : remainingClaim,
+      mode: planUnavailable ? null : (action.mode || (advice && advice.mode) || null),
+      nextPayday: planUnavailable ? null : (action.nextPayday || null),
+      noMovementToday: planUnavailable ? false : action.noMovementToday === true,
     },
     futureCostProtection: {
       source: 'Forecast.paydayAllocation.futureCosts / protectedPath',
@@ -238,17 +255,19 @@ function projectFromAdvice(advice, data, opts, asOf) {
     },
     extraDebtAllocation: {
       source: 'Forecast.paydayAllocation.extraDebt',
-      allocated: alloc.extraDebt ? alloc.extraDebt.allocated : null,
-      absorbable: alloc.extraDebt ? alloc.extraDebt.absorbable : null,
-      status: alloc.extraDebt ? alloc.extraDebt.status : null,
-      reason: alloc.extraDebt ? alloc.extraDebt.reason : null,
-      target: clone(alloc.extraDebt && alloc.extraDebt.target ? alloc.extraDebt.target : null),
-      consequence: clone(alloc.extraDebt && alloc.extraDebt.consequence ? alloc.extraDebt.consequence : null),
+      allocated: planUnavailable ? null : (alloc.extraDebt ? alloc.extraDebt.allocated : null),
+      absorbable: planUnavailable ? null : (alloc.extraDebt ? alloc.extraDebt.absorbable : null),
+      status: planUnavailable ? 'unavailable' : (alloc.extraDebt ? alloc.extraDebt.status : null),
+      reason: planUnavailable ? unavailableNote : (alloc.extraDebt ? alloc.extraDebt.reason : null),
+      target: planUnavailable ? null
+        : clone(alloc.extraDebt && alloc.extraDebt.target ? alloc.extraDebt.target : null),
+      consequence: planUnavailable ? null
+        : clone(alloc.extraDebt && alloc.extraDebt.consequence ? alloc.extraDebt.consequence : null),
     },
     limitations: {
       source: 'Forecast.currentPeriodAction / Forecast.paydayAllocation.risks',
-      remainingClaim,
-      categoryRemainingClaim: action.categoryRemainingClaim || null,
+      remainingClaim: planUnavailable ? 'unavailable' : remainingClaim,
+      categoryRemainingClaim: planUnavailable ? null : (action.categoryRemainingClaim || null),
       coverage: clone(action.coverage || alloc.actualsCoverage || null),
       risks: clone(alloc.risks || []),
       unresolved: clone(alloc.unresolved || []),
