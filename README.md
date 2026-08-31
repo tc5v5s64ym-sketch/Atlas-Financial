@@ -23,8 +23,8 @@ is still the whole financial picture of two people.
 | `public/records.html` + `.js` | **Records** — balance sheet, coverage, assumptions, privacy |
 | `public/app.js` | Shared core: helpers, charts, theme, navigation, boot |
 | `public/styles.css` | Styling, light and dark |
-| `test-local.js` | Smoke test for the auth gate — run it after any change to `server.js` |
-| `test-forecast.js` | Tests the forecast engine — run it after any change to the `plan` block |
+| `test/test-local.js` | Smoke test for the auth gate — run it after any change to `server.js` |
+| `test/test-forecast.js` | Tests the forecast engine — run it after any change to the `plan` block |
 | `render.yaml` | Render blueprint |
 
 ## Security model
@@ -96,7 +96,7 @@ dirty worktree.
 Run the smoke test against a running server:
 
 ```bash
-node test-local.js
+node test/test-local.js
 ```
 
 ## Deploying to Render

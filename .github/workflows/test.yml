@@ -41,7 +41,7 @@ jobs:
       # scripts/privacy-guard.js. GitHub API commits never run that hook.
       # privacy-guard.yml applies the trusted default-branch copy of the same
       # engine. This step only proves both files are still shipped.
-      # test-static.js keeps a generic card/SIN scan, not a second household
+      # test/test-static.js keeps a generic card/SIN scan, not a second household
       # identifier list.
       - name: Confirm the privacy-guard engine is still present
         run: test -f .githooks/pre-commit && test -f scripts/privacy-guard.js
