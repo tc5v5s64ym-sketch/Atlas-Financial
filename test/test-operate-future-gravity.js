@@ -289,9 +289,9 @@ console.log('\n=== approximate timing travels through Forecast; the page stays a
   const helper = /function futureGravityHtml\([\s\S]*?\n\}/m.exec(planSrc);
   ok(helper && !/plan\.commitments|Forecast\.[A-Za-z]+\s*\(|\.reduce\(|Math\./.test(helper[0]),
     'futureGravityHtml performs no future-cost arithmetic or Forecast decision');
-  ok(/futureGravityHtml\(advice\)/.test(planSrc)
-    && /See later bills and big purchases/.test(planSrc),
-    'later bills consume the one incumbent recommendation result behind disclosure');
+  ok(/function futureGravityHtml/.test(planSrc)
+    && !/See later bills and big purchases/.test(planSrc),
+    'later-bills inventory formatter remains; it is not mounted on the default Plan');
 }
 
 if (failures) {

@@ -930,17 +930,6 @@ function applyUnavailableOperatingChrome(unavailable, asOf, liveOverlay, doc) {
       if (lede) lede.textContent = OPERATING_SURFACE_LEDE;
     }
   }
-  const paydaySection = doc.getElementById('payday-answer');
-  if (paydaySection && typeof paydaySection.querySelector === 'function') {
-    const summary = paydaySection.querySelector('summary');
-    if (summary) {
-      summary.textContent = unavailable
-        ? (openingAsOf
-          ? `View dated ${fmtDateLong(openingAsOf)} plan`
-          : 'View dated plan')
-        : 'View full current-period worksheet';
-    }
-  }
 }
 
 function paydayAmountCell(amount, confidence) {
@@ -2318,7 +2307,6 @@ function operatingSurfaceHtml(ctx) {
   const capView = ctx.capView || weeklyCapView(advice, ctx.weeklyOverride);
   const coverage = paydayCoverageNote(action);
   const risks = (alloc && alloc.risks) || [];
-  const unresolved = (alloc && alloc.unresolved) || [];
   const remainingUnavailable = (ctx.refreshTrust && ctx.refreshTrust.exactFiguresAvailable === false)
     || !action
     || action.remainingClaim === 'unavailable';
@@ -2384,55 +2372,28 @@ function operatingSurfaceHtml(ctx) {
     ${question('09', 'Big purchases on the horizon', bigPurchasesHtml(view))}
     ${question('10', 'Balance after big purchase allocation', runningLeftoverHtml(view.afterBigPurchases))}
     ${budgetDigestHtml(view.budgetDigest)}`;
-  // Weekly permission copies the recommend weekly field. Infeasible weekly = 0
-  // is not a supported $0/week yes. Folded off the default view.
-  const weeklyPermission = capView.hasFeasibleCap
-    ? (capView.recommended != null ? capView.recommended : advice.weekly)
-    : null;
-  const nextPaydayLabel = action && action.nextPayday ? fmtDateLong(action.nextPayday) : null;
-  const weeklyAuthority = nextPaydayLabel
-    ? `This week's spend until ${nextPaydayLabel}. Everyday costs come out of it first.`
-    : "This week's spend. Everyday costs come out of it first.";
-  const spend = spendDecisionHtml(capView, weeklyPermission, remainingUnavailable, weeklyAuthority, action);
-  const extra = extraDebtGlanceHtml(alloc);
-  const purchases = futureGravityHtml(advice);
-  const next = todayDecisionHtml(action, capView, alloc);
-  const periodDetails = action && action.mode === 'between-paydays'
-    ? `<details class="household-inline-details household-period-details">
-        <summary>See current-period details</summary>
-        ${betweenPaydaysOperatingHtml(action, capView)}
-      </details>`
-    : '';
-  const allocation = paydayAllocationSummaryHtml(alloc, action);
 
-  const limits = [`<p class="operating-limit${remainingUnavailable ? ' warn' : ''}">${coverage}</p>`]
-    .concat(risks.map(r => `<p class="operating-limit warn">${r.reason}${r.shortfall != null
-      ? ` Gap ${money2(r.shortfall)}.` : ''}</p>`))
-    .concat(unresolved.length
-      ? ['<p class="operating-limit">Some later bills do not have exact dates yet, so nothing is set aside for them this payday.</p>']
-      : [])
-    .join('');
+  const warningLines = [];
+  if (remainingUnavailable) {
+    warningLines.push(`<p class="operating-limit warn">${coverage}</p>`);
+  }
+  if (capView && capView.hasFeasibleCap === false && capView.reason) {
+    warningLines.push(`<p class="operating-limit warn">${capView.reason}</p>`);
+  }
+  for (let i = 0; i < risks.length; i++) {
+    const risk = risks[i];
+    if (!risk || !risk.reason) continue;
+    warningLines.push(`<p class="operating-limit warn">${risk.reason}${risk.shortfall != null
+      ? ` Gap ${money2(risk.shortfall)}.` : ''}</p>`);
+  }
+  const warnings = warningLines.length
+    ? `<div data-operating-warnings>${warningLines.join('')}</div>`
+    : '';
 
   return `<div class="payday-operating-sheet" data-payday-sheet>
-    ${refreshTrustHtml(ctx.refreshTrust)}
     ${picker}
     ${defaultWaterfalls || tenBlock}
-    <details class="household-inline-details" data-payday-allocation-details>
-      <summary>See how payday is reserved</summary>
-      ${allocation}
-      ${spend}
-      ${extra}
-      ${next}
-    </details>
-    <details class="household-inline-details household-future-details">
-      <summary>See later bills and big purchases</summary>
-      ${purchases}
-    </details>
-    ${periodDetails}
-    <details class="household-inline-details" data-operating-certainty>
-      <summary>How sure is this?</summary>
-      ${limits}
-    </details>
+    ${warnings}
   </div>`;
 }
 

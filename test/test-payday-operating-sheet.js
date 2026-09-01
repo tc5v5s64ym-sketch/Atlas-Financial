@@ -221,9 +221,9 @@ console.log('\n=== 2. recommend weekly cap, never a fake $0/week yes ===');
   const q4 = question(healthy, '04');
   ok(/Bills/.test(q4) && /data-payday-period-bills/.test(q4),
     'Q4 on the default view is bills');
-  ok(/data-spend-decision="amount"/.test(healthy)
-    && healthy.includes(`${composer.money(advice.weekly)} / week`),
-    'feasible recommend weekly remains available behind disclosure');
+  ok(!/data-spend-decision="amount"/.test(healthy)
+    && !healthy.includes(`${composer.money(advice.weekly)} / week`),
+    'feasible recommend weekly is not dumped onto the default Plan');
 
   const blocked = JSON.parse(JSON.stringify(advice));
   blocked.mode = 'infeasible';
@@ -238,13 +238,13 @@ console.log('\n=== 2. recommend weekly cap, never a fake $0/week yes ===');
   const infeasibleQ6 = question(infeasibleHtml, '06');
   ok(/Household budget/.test(infeasibleQ6),
     'infeasible recommend does not replace household budget with a weekly yes');
-  ok(/data-spend-decision="none"/.test(infeasibleHtml),
+  ok(!/data-spend-decision="amount"/.test(infeasibleHtml),
     'infeasible recommend does not publish a weekly yes');
   ok(!/\$0 \/ week/.test(infeasibleHtml) && !/Spend at most \$0/.test(infeasibleHtml),
     'infeasible weekly = 0 is not a fake $0/week yes');
   ok(/Synthetic protected cost/.test(infeasibleHtml)
     && infeasibleHtml.includes(composer.money2(321.11)),
-    'infeasible names the failing constraint and shortfall behind Why?');
+    'infeasible names the failing constraint and shortfall as a compact warning');
 
   const modeOnly = JSON.parse(JSON.stringify(advice));
   modeOnly.mode = 'infeasible';
@@ -253,8 +253,8 @@ console.log('\n=== 2. recommend weekly cap, never a fake $0/week yes ===');
   const modeOnlyHtml = composer.operatingSurfaceHtml({
     advice: modeOnly, weekly: 0, recommended: 0,
   });
-  ok(/data-spend-decision="none"/.test(modeOnlyHtml)
-    && !/\$0 \/ week/.test(modeOnlyHtml),
+  ok(!/\$0 \/ week/.test(modeOnlyHtml)
+    && /no safe weekly spend/i.test(modeOnlyHtml),
     'infeasible mode without a fail object still refuses a weekly yes');
 }
 
@@ -364,9 +364,9 @@ console.log('\n=== 4. majorPlans set-aside this payday vs later ON TRACK ===');
   const glance = defaultGlance(sheet);
   ok(!/Later required cost · ON TRACK/.test(glance),
     'ON TRACK future costs are not a default-view dump');
-  ok(/See later bills and big purchases/.test(sheet) && /Later required cost/.test(sheet)
-    && /\$88\.50/.test(sheet) && /Near purchase/.test(sheet),
-    'later bills and a current set-aside remain available behind disclosure');
+  ok(!/See later bills and big purchases/.test(sheet)
+    && !/Later required cost/.test(sheet),
+    'later-bills inventory dump stays off the default Plan');
 }
 
 console.log('\n=== 5. still due uses kitchen-counter labels, not settlement code words ===');
@@ -534,8 +534,9 @@ console.log('\n=== leftover remainder is not the next move ===');
     weekly: 90, recommended: 90,
   });
   const q6 = question(html, '06');
-  ok(/This week's spend is \$90 until September 15/.test(html),
-    'with no pay/extra/set-aside, this week\'s spend remains available behind disclosure');
+  ok(!/This week's spend is \$90 until September 15/.test(html)
+      && !/data-spend-decision=/.test(html),
+    'with no pay/extra/set-aside, this week\'s spend is not dumped onto the default Plan');
   ok(!/\$1\.14/.test(q6) && !/LEFT OVER/.test(q6),
     'allocation remainder is not the first-card instruction');
   ok(!/is due/.test(html) || !/No payment or transfer is required today/.test(html),

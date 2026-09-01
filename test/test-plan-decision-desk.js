@@ -182,16 +182,13 @@ console.log('=== 1. healthy / actionable safe-to-spend ===');
     advice, weekly: advice.weekly, recommended: advice.weekly,
   });
   const q1 = question(html, '01');
-  const q4 = question(html, '04');
-  ok(/data-today-decision="spend-cap"/.test(html) && /This week's spend is \$85 until September 15/.test(html),
-    'healthy state still publishes this week\'s spend, not leftover cash as the next move');
-  ok(!/Hold this week's spend/.test(html) && !/Hold discretionary spending/.test(html),
-    'healthy state does not warn the owner to hold spending');
-  ok(/data-spend-decision="amount"/.test(html)
-    && html.includes(`${composer.money(85)} / week`),
-    'healthy state still shows this week\'s spend behind disclosure');
   ok(/\$412\.30/.test(q1) && /data-payday-cash/.test(q1) && /Current Balance\. Not credit/.test(q1),
     'Current Balance is copied from Forecast.paydayAllocation.available');
+  ok(!/data-today-decision/.test(html) && !/data-spend-decision/.test(html)
+      && !/This week's spend is \$85 until September 15/.test(html),
+    'healthy default Plan does not dump next-move or weekly-cap diagnostics');
+  ok(!/Hold this week's spend/.test(html) && !/Hold discretionary spending/.test(html),
+    'healthy state does not warn the owner to hold spending');
   ok(!/LEFT OVER/.test(html),
     'LEFT OVER is not the payday-sheet next move');
 }
@@ -214,16 +211,16 @@ console.log('\n=== 2. no safe spending / protected shortfall ===');
     advice, weekly: advice.weekly, recommended: advice.weekly,
   });
   const q4 = question(html, '04');
-  ok(/data-today-decision="hold"/.test(html)
-    && /Hold this week's spend until September 15/.test(html),
-    'protected shortfall still publishes one hold instruction');
+  ok(/This payday cannot cover required obligations in cash/.test(html)
+      && /This payday cannot protect essential household spending in cash/.test(html),
+    'protected shortfall still publishes compact funding warnings');
   ok(!/No payment or transfer is required today/.test(html),
     'the hold instruction is not a due-date warning that also says do not pay');
-  ok(/data-spend-decision="none"/.test(html)
-    && /No safe amount for this week's spend until September 15/.test(html),
-    'this week\'s spend states there is no safe amount');
-  ok(/Why\?/.test(html) && /No safe-to-spend figure exists until that protected shortfall is solved/.test(html),
-    'the incumbent infeasibility reason remains behind disclosure');
+  ok(!/data-spend-decision="amount"/.test(html)
+      && /No safe-to-spend figure exists until that protected shortfall is solved/.test(html),
+    'this week\'s spend states there is no safe amount as a compact warning');
+  ok(!/Why\?/.test(html) && !/data-today-decision="hold"/.test(html),
+    'infeasibility is not wrapped in Why? or hold-decision disclosures');
   ok(!/No action required today/.test(html) && !/No money movement needed today/.test(html)
     && !/Spend at most \$0/.test(html) && !/\$0 \/ week/.test(q4),
     'the unsafe surface does not lead with a no-action reassurance or a fake $0/week yes');
@@ -240,11 +237,11 @@ console.log('\n=== 3. immediate required payment due today ===');
   const html = composer.operatingSurfaceHtml({
     advice, weekly: advice.weekly, recommended: advice.weekly,
   });
-  ok(/data-today-decision="pay-today"/.test(html)
-    && /Pay Travel Visa minimum \(\$17\.44\) by Sep 8/.test(html),
-    'a Forecast todayAction remains the listed pay-today decision');
-  ok(/data-current-today-action="travel-visa"/.test(html),
-    'the same incumbent today action remains listed with its amount');
+  ok(!/data-today-decision="pay-today"/.test(html)
+      && !/Pay Travel Visa minimum \(\$17\.44\) by Sep 8/.test(html),
+    'a separate pay-today dump is not mounted on the default Plan');
+  ok(/function todayDecisionHtml/.test(read('public/plan.js')),
+    'the today-action formatter remains for diagnostic reuse');
 }
 
 console.log('\n=== 4. $0 extra debt with a valid Forecast target ===');
@@ -297,9 +294,9 @@ console.log('\n=== 5. on-track future cost with no current-payday contribution =
     'a FUNDING GAP row stays in the primary attention set');
   ok(!/ON TRACK/.test(glance) && !/FUNDING GAP/.test(glance),
     'ON TRACK and FUNDING GAP inventory stay off the default payday glance');
-  ok(/See later bills and big purchases/.test(sheet) && /Later required cost/.test(sheet)
+  ok(!/See later bills and big purchases/.test(sheet)
     && html.includes('Cost still required') && html.includes('$2,000.00'),
-    'the full inventory remains available behind disclosure');
+    'later-bills inventory stays off the default Plan; futureGravityHtml still formats the Forecast inventory');
   ok(/Exact date is not set yet/.test(html) && /EXACT DATE UNRESOLVED/.test(html),
     'unresolved exact date keeps its Forecast meaning in household language');
 }

@@ -130,11 +130,14 @@ console.log('=== homepage order and secondary detail ===');
     'the decision-first operating surface is the first homepage section');
   ok(html.indexOf('id="operating-surface"') < html.indexOf('id="payday-answer"')
     && html.indexOf('id="payday-answer"') < html.indexOf('id="outlook"'),
-  'the full worksheet and outlook follow the operating surface');
+  'diagnostic mounts follow the operating surface');
   const detail = /<section id="payday-answer"[\s\S]*?<\/section>/.exec(html);
-  ok(detail && /<details class="disclose secondary-disclose">/.test(detail[0])
-    && /View full current-period worksheet/.test(detail[0]),
-  'the incumbent detailed worksheet remains available in a closed secondary disclosure');
+  ok(detail && /hidden/.test(detail[0])
+    && !/View full current-period worksheet/.test(detail[0]),
+  'the current-period worksheet is not on the default Plan surface');
+  ok(!/Why \/ Road ahead/.test(html)
+    && /id="road-ahead"[^>]*hidden/.test(html),
+    'Why / Road ahead is not a default Plan disclosure');
   for (const id of ['payday-answer-body', 'status-band', 'nextmove-card', 'cap-headline',
     'major-plans-list', 'risk-list', 'hero-ledger', 'balance-history']) {
     ok((html.match(new RegExp(`id="${id}"`, 'g')) || []).length === 1,
@@ -188,17 +191,18 @@ console.log('\n=== every displayed financial answer traces to incumbents ===');
     'incumbent payday available reconciles to the independent spendable-account sum');
   ok(rendered.includes(composer.money2(independentCash)),
     'the displayed available amount is that reconciled Forecast payday amount');
-  ok(rendered.includes(`$${advice.weekly.toLocaleString('en-CA')} / week`),
-    'the displayed spending answer is Forecast.recommend.weekly');
-  const protectedLines = advice.paydayAllocation.lines.filter(row =>
-    row.key !== 'extra-debt' && !String(row.key || '').startsWith('optional:'));
-  for (const row of protectedLines) {
-    ok(rendered.includes(row.label) && rendered.includes(composer.money2(row.amount)),
-      `protected allocation renders incumbent line ${row.key}`);
-  }
+  ok(/Household budget/.test(rendered) && /Current Balance/.test(rendered)
+      && /Extra credit-card repayment/.test(rendered)
+      && /Projected ending balance/.test(rendered),
+    'the default waterfall still publishes the operating plan steps');
+  ok(!rendered.includes(`$${advice.weekly.toLocaleString('en-CA')} / week`),
+    'the weekly-cap diagnostic is not on the default operating surface');
+  ok(!/See how payday is reserved/.test(rendered)
+      && !/View full current-period worksheet/.test(rendered),
+    'allocation-sheet and worksheet disclosures stay off the default Plan');
   const extra = advice.paydayAllocation.extraDebt.allocated;
   if (extra > 0) {
-    ok(rendered.includes(composer.money2(extra) + ' extra'),
+    ok(rendered.includes(composer.money2(extra)),
       'the displayed extra-debt amount is Forecast.paydayAllocation.extraDebt');
     ok(target && rendered.includes(target.label),
       'a positive allocation names the debt row from the incumbent Forecast debt projection');
@@ -208,9 +212,13 @@ console.log('\n=== every displayed financial answer traces to incumbents ===');
     ok(!rendered.includes(`Pay extra`) && !rendered.includes(`Extra debt money this payday goes to`),
     'a policy target is not presented as a payment when Forecast allocated zero');
   }
+  const remainingUnavailable = !advice.currentPeriodAction
+    || advice.currentPeriodAction.remainingClaim === 'unavailable';
   const coverageCopy = composer.paydayCoverageNote(advice.currentPeriodAction);
-  ok(rendered.includes(coverageCopy),
-  'the limitations answer carries the incumbent current-period coverage state');
+  if (remainingUnavailable) {
+    ok(rendered.includes(coverageCopy),
+      'unavailable remaining keeps the incumbent coverage warning on the default Plan');
+  }
   for (const risk of advice.paydayAllocation.risks || []) {
     ok(rendered.includes(risk.reason) && rendered.includes(composer.money2(risk.shortfall)),
       `funding limitation renders incumbent risk ${risk.id}`);
@@ -243,12 +251,18 @@ console.log('\n=== Q4 follows the incumbent extra-debt allocation ===');
     positiveAdvice.defaultView.firstCard.extraThisPayday = 25;
     positiveAdvice.defaultView.firstCard.label = target.label;
   }
+  const periods = (positiveAdvice.defaultView && positiveAdvice.defaultView.calendarPeriods) || [];
+  for (const period of periods) {
+    if (period && period.firstCard) {
+      period.firstCard.extraThisPayday = 25;
+      period.firstCard.label = target.label;
+    }
+  }
   const positive = composer.operatingSurfaceHtml({
     advice: positiveAdvice, liveOverlay: data.liveOverlay,
   });
-  ok(positive.includes(`Put $25.00 extra on ${target.label}`)
-    && positive.includes('$25.00'),
-    'positive allocation names the incumbent target and allocated amount');
+  ok(positive.includes('$25.00') && positive.includes(target.label),
+    'positive extra repayment on the waterfall names the incumbent target and allocated amount');
 }
 
 console.log('\n=== page remains a renderer, not a financial authority ===');

@@ -307,8 +307,13 @@ console.log('\n=== 2. default view order and kitchen-counter labels ===');
   const banned = bannedOnGlance(html);
   ok(!banned, 'default glance has no Forecast field names or settlement code words',
     banned && banned[0]);
-  ok(/See how payday is reserved/.test(html) && !/See how payday is reserved/.test(glance),
-    'allocation diagnostics stay folded');
+  ok(!/See how payday is reserved/.test(html)
+      && !/See later bills and big purchases/.test(html)
+      && !/See current-period details/.test(html)
+      && !/Notes behind these numbers/.test(html)
+      && !/How sure is this\?/.test(html)
+      && !/data-refresh-trust-state=/.test(html),
+    'default usable Plan does not render explainer, worksheet, or routine trust-card clutter');
 }
 
 console.log('\n=== 3. bills this pay period: paid stay listed, history stays off ===');
@@ -408,6 +413,17 @@ console.log('\n=== 6. big purchases print Forecast cost and $0 saved; page does 
     (advice.defaultView.calendarPeriods.find(p => p.role === 'active')
       || advice.defaultView.calendarPeriods[0]).afterRemainingBills)),
     'balance after remaining bills prints the Forecast leftover');
+}
+
+console.log('\n=== 7. compact freshness remains; worksheet clutter is gone from the page ===');
+{
+  const page = read('public/index.html');
+  ok(/id="asof"/.test(page),
+    'the compact top as-of chip remains');
+  ok(/id="payday-answer" hidden/.test(page) && /id="road-ahead" hidden/.test(page),
+    'worksheet and road-ahead diagnostic mounts are hidden from the default Plan');
+  ok(!/View full current-period worksheet/.test(page) && !/Why \/ Road ahead/.test(page),
+    'View full current-period worksheet and Why / Road ahead are not default Plan copy');
 }
 
 if (failures) {

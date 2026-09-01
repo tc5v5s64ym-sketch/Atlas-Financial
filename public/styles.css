@@ -479,6 +479,8 @@ footer { margin-top:56px; padding-top:18px; border-top:1px solid var(--grid);
 }
 .current-period-category .current-period-withheld { margin:0; }
 .current-period-unavailable { padding:12px; border:1px solid var(--border); border-radius:10px; }
+#payday-answer[hidden],
+#road-ahead[hidden] { display:none !important; }
 .secondary-section { margin-top:24px; }
 .secondary-disclose > summary { background:var(--surface-1); }
 .secondary-body { padding-top:2px; }

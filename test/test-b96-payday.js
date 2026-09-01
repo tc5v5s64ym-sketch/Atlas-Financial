@@ -633,15 +633,19 @@ console.log('\n=== M. homepage leads with the decision-first operating surface =
   const paydaySection = /<section id="payday-answer"[\s\S]*?<\/section>/.exec(index);
   const outlookSection = /<section id="outlook">[\s\S]*?<\/section>/.exec(index);
   ok(operatingAt >= 0 && paydayAt > operatingAt && plan90At > paydayAt,
-    'the operating surface leads and the detailed payday worksheet precedes the 90-day outlook');
+    'the operating surface leads and diagnostic mounts remain after it');
   ok(outlookAt > paydayAt && outlookAt < plan90At,
-    'the secondary Outlook heading sits between the detailed worksheet and 90-day material');
+    'Outlook diagnostic heading still sits between the worksheet mount and 90-day material');
   ok(h1At > operatingAt && h1At < paydayAt,
     'the page h1 is inside the decision-first operating surface');
   ok(operatingSection && /id="operating-surface-body"/.test(operatingSection[0]),
     'the operating surface has a dedicated Forecast-result mount');
-  ok(paydaySection && /id="payday-heading"/.test(paydaySection[0]),
-    'the secondary current-period heading remains available for Forecast mode');
+  ok(paydaySection && /id="payday-heading"/.test(paydaySection[0])
+      && /hidden/.test(paydaySection[0])
+      && !/View full current-period worksheet/.test(paydaySection[0]),
+    'the current-period worksheet mount remains for renderPlan and is not on the default Plan');
+  ok(!/Why \/ Road ahead/.test(index),
+    'Why / Road ahead is not a default Plan disclosure');
   ok(!/Now → next payday/.test(index),
     'static Now → next payday wording is gone');
   ok(/Master forecast outlook/i.test(index),
@@ -657,9 +661,6 @@ console.log('\n=== M. homepage leads with the decision-first operating surface =
     && /id="budget-cats"/.test(index) && /id="score-table"/.test(index)
     && /id="major-plans-list"/.test(index) && /id="nextmove-card"/.test(index),
     'existing Outlook mounts remain on the page');
-  ok(paydaySection && /<details class="disclose secondary-disclose">/.test(paydaySection[0])
-    && !/<details[^>]*\sopen(?:\s|>)/.test(paydaySection[0]),
-    'the incumbent worksheet remains available in a closed secondary disclosure');
   const liveRun = composeLive(live.plan);
   const action = liveRun.advice.currentPeriodAction;
   ok(action && action.mode === 'between-paydays',

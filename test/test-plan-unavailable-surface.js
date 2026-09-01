@@ -294,13 +294,11 @@ console.log('\n=== 4. heading chrome distinguishes dated plan from current payda
       && /later live refresh could not safely advance/.test(doc.store.lede.textContent)
       && !/Current Balance/.test(doc.store.lede.textContent),
     'lede uses incumbent provenance and does not call dated cash Current Balance');
-  ok(doc.store.summary.textContent === 'View dated August 19 plan',
-    'worksheet disclosure is labelled as the dated plan');
 
   composer.applyUnavailableOperatingChrome(false, OPENING, { applied: true }, doc);
   ok(doc.store.heading.textContent === 'This payday'
-      && doc.store.summary.textContent === 'View full current-period worksheet',
-    'trusted chrome restores This payday and the current-period worksheet label');
+      && doc.store.kicker.textContent === 'This payday',
+    'trusted chrome restores This payday');
 
   const stubIds = {};
   const stubDoc = {
