@@ -266,6 +266,12 @@
 
   .household-view-ready .operating-lines {
     margin-top: .55rem;
+    min-width: 0;
+  }
+
+  .household-view-ready .operating-line,
+  .household-view-ready .operating-line > span {
+    min-width: 0;
   }
 
   .household-view-ready .future-gravity-current h3,
