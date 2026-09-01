@@ -1758,13 +1758,19 @@ function calendarIncomeHtml(period) {
     </div>`;
   }
   const lines = rows.map(row => {
-    const status = row.status === 'received' ? 'received'
+    const notRelied = row.notReliedUpon === true
+      || row.settlement === 'not-relied-upon'
+      || row.status === 'unresolved';
+    const status = notRelied ? 'not relied upon'
+      : row.status === 'received' ? 'received'
       : row.alreadyInCash ? 'already in balance' : 'arriving';
     const amount = glanceSignedMoney(glanceMoney(row, 'in'));
     const about = row.confidence === 'estimated' && amount != null ? 'about ' : '';
-    const note = row.alreadyInCash && row.status !== 'received' ? 'already in balance'
+    const note = notRelied ? 'not relied upon'
+      : row.alreadyInCash && row.status !== 'received' ? 'already in balance'
       : status;
-    return `<div class="operating-line" data-period-income="${row.id || ''}" data-income-status="${status}">
+    const statusAttr = notRelied ? 'not-relied-upon' : status;
+    return `<div class="operating-line" data-period-income="${row.id || ''}" data-income-status="${statusAttr}">
       <span>${glanceLineLabel(row, note)}</span><span>${amount != null ? about + amount : '—'}</span>
     </div>`;
   }).join('');

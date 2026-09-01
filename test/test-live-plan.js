@@ -546,23 +546,39 @@ console.log('\n=== 8. server fixture overlay does not mutate the cached opening 
   filesUnchanged('server fixture overlay');
 }
 
-console.log('\n=== 9. unknown same-day income fails closed ===');
+console.log('\n=== 9. unknown same-day income is not counted and does not discard cash ===');
 {
   const canonical = clone(liveData);
-  let threw = null;
-  try {
-    overlay(canonical, {
-      fetchedAt: UNKNOWN_SAME_DAY_AT,
-      tweaks: { cashAt: '2026-08-20T17:55:00.000Z' },
-    });
-  } catch (err) {
-    threw = err;
-  }
-  ok(threw && /same-day-event-representation-unknown/.test(threw.message),
-    'Aug 20 overlay fails closed without child-benefit posting evidence',
-    threw && threw.message);
-  ok(/childBenefit@2026-08-20/.test(threw && threw.message || ''),
-    'unknown same-day income names the unrepresented child benefit');
+  const independentCash = Math.round((
+    Number(cashValue(canonical, 'chequing-a')) +
+    Number(cashValue(canonical, 'chequing-b')) +
+    Number(cashValue(canonical, 'savings'))
+  ) * 100) / 100;
+  const result = overlay(canonical, {
+    fetchedAt: UNKNOWN_SAME_DAY_AT,
+    tweaks: { cashAt: '2026-08-20T17:55:00.000Z' },
+  });
+  ok(result.data.liveOverlay.applied === true,
+    'Aug 20 overlay keeps complete current cash when child benefit is unproven');
+  ok(result.data.liveOverlay.operatingPlan === Live.OPERATING_PLAN_LIVE,
+    'operating plan stays live on unproven same-day inbound');
+  ok(!(result.data.plan.opening.representedEvents || [])
+      .some(row => row.id === 'childBenefit' && row.date === CCB_AS_OF),
+    'unproven child benefit is not named represented');
+  const notRelied = (result.data.plan.opening.notReliedUponEvents || [])
+    .find(row => row.id === 'childBenefit' && row.date === CCB_AS_OF);
+  ok(notRelied && notRelied.reason === 'same-day-inbound-unproven',
+    'unproven child benefit is not-relied-upon rather than fail-closed');
+  ok(near(Forecast.startingCashAmount(result.data.plan), independentCash),
+    'Forecast opening is the observed household-cash sum');
+  const advice = Forecast.recommend(result.data.plan, CCB_AS_OF, {
+    debts: result.data.debts,
+    operatingPlan: result.data.liveOverlay.operatingPlan,
+  });
+  ok(advice.paydayAllocation && !near(advice.paydayAllocation.available,
+      independentCash + SYNTHETIC_CCB)
+      && near(advice.paydayAllocation.available, independentCash),
+    'unproven child benefit is not added on top of observed cash');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-live-plan-sameday-'));
   const fixture = path.join(dir, 'fixture.json');
   fs.writeFileSync(fixture, `${JSON.stringify(payloadFrom(canonical, {
@@ -574,14 +590,12 @@ console.log('\n=== 9. unknown same-day income fails closed ===');
     ATLAS_LIVE_OVERLAY_FIXTURE: fixture,
     ATLAS_LIVE_OVERLAY_MAP: MAP,
   });
-  ok(served.liveOverlay && served.liveOverlay.applied === false,
-    'server overlay returns the dated opening when same-day representation is unknown');
-  ok(/same-day-event-representation-unknown/.test(String(served.liveOverlay.reason || '')),
-    'failed overlay names the same-day representation blocker');
-  ok(String(served.meta.asOf) === String(canonical.meta.asOf),
-    'failed overlay does not move the served as-of');
-  ok(String(served.plan.opening.asOf) === String(canonical.plan.opening.asOf),
-    'failed overlay does not rewrite the served opening');
+  ok(served.liveOverlay && served.liveOverlay.applied === true,
+    'server overlay applies complete current cash when same-day inbound is unproven');
+  ok(String(served.meta.asOf) === CCB_AS_OF,
+    'applied overlay advances the served as-of');
+  ok(String(served.plan.opening.asOf) === CCB_AS_OF,
+    'applied overlay advances the served opening');
   filesUnchanged('unknown same-day');
 }
 
@@ -920,21 +934,21 @@ console.log('\n=== 15. posted child benefit on Chequing B is represented, amount
   ok(hit && hit.identity === 'payee+account+date' && hit.amountNotUsed === true,
     'observer identity is payee+account+date, not amount');
 
-  function sameDayFails(transactions, label) {
-    let threw = null;
-    try {
-      overlay(clone(liveData), {
-        fetchedAt: UNKNOWN_SAME_DAY_AT,
-        tweaks: { cashAt: '2026-08-20T17:55:00.000Z' },
-        transactions,
-      });
-    } catch (err) {
-      threw = err;
-    }
-    ok(threw && /same-day-event-representation-unknown: childBenefit@2026-08-20/.test(threw.message),
-      label, threw && threw.message);
+  function sameDayKeepsCash(transactions, label) {
+    const seen = overlay(clone(liveData), {
+      fetchedAt: UNKNOWN_SAME_DAY_AT,
+      tweaks: { cashAt: '2026-08-20T17:55:00.000Z' },
+      transactions,
+    });
+    ok(seen.data.liveOverlay.applied === true, label + ' still overlays trusted cash');
+    ok(!(seen.data.plan.opening.representedEvents || [])
+        .some(row => row.id === 'childBenefit' && row.date === CCB_AS_OF),
+      label);
+    ok((seen.data.plan.opening.notReliedUponEvents || [])
+        .some(row => row.id === 'childBenefit' && row.date === CCB_AS_OF),
+      label + ' leaves child benefit unresolved');
   }
-  sameDayFails([{
+  sameDayKeepsCash([{
     id: 91021,
     account_id: 3002,
     date: CCB_AS_OF,
@@ -943,7 +957,7 @@ console.log('\n=== 15. posted child benefit on Chequing B is represented, amount
     is_pending: false,
     status: 'reviewed',
   }], 'same amount without CHILD TAX BEN payee is not child benefit');
-  sameDayFails([{
+  sameDayKeepsCash([{
     id: 91022,
     account_id: 3001,
     date: CCB_AS_OF,
@@ -952,7 +966,7 @@ console.log('\n=== 15. posted child benefit on Chequing B is represented, amount
     is_pending: false,
     status: 'reviewed',
   }], 'CHILD TAX BEN credit on Chequing A is not child benefit');
-  sameDayFails([{
+  sameDayKeepsCash([{
     id: 91023,
     account_id: 3002,
     date: CCB_AS_OF,
@@ -961,7 +975,7 @@ console.log('\n=== 15. posted child benefit on Chequing B is represented, amount
     is_pending: true,
     status: 'unreviewed',
   }], 'pending CHILD TAX BEN is not posting evidence');
-  sameDayFails([{
+  sameDayKeepsCash([{
     id: 91024,
     account_id: 3002,
     date: CCB_AS_OF,
@@ -970,7 +984,7 @@ console.log('\n=== 15. posted child benefit on Chequing B is represented, amount
     is_pending: false,
     status: 'reviewed',
   }], 'CHILD TAX BEN debit is not child benefit');
-  sameDayFails([
+  sameDayKeepsCash([
     {
       id: 91025,
       account_id: 3002,
@@ -1514,15 +1528,17 @@ console.log('\n=== 18. complete live cash plus missing same-day unposted bill st
       confidence: 'confirmed',
     }]),
   });
-  let threw = null;
-  try {
-    overlay(withUnknownIncome, extra);
-  } catch (err) {
-    threw = err;
-  }
-  ok(threw && /same-day-event-representation-unknown: same-day-unknown-income@2026-08-30/.test(threw.message),
-    'unknown same-day income still refuses the overlay',
-    threw && threw.message);
+  const unknownIncome = overlay(withUnknownIncome, extra);
+  ok(unknownIncome.data.liveOverlay.applied === true,
+    'unknown same-day income does not refuse a complete live-cash overlay');
+  ok((unknownIncome.data.plan.opening.notReliedUponEvents || [])
+      .some(row => row.id === 'same-day-unknown-income' && row.date === FEE_DAY_AS_OF),
+    'synthetic same-day income is not-relied-upon');
+  ok(!(unknownIncome.data.plan.opening.representedEvents || [])
+      .some(row => row.id === 'same-day-unknown-income'),
+    'synthetic same-day income is not labelled represented');
+  ok(near(Forecast.startingCashAmount(unknownIncome.data.plan), independentLeftover),
+    'unresolved same-day income does not discard the live posted sum');
   filesUnchanged('unposted same-day bill overlay');
 }
 
@@ -1888,7 +1904,7 @@ function browserPlanComposer() {
   ].join('\n'), { Forecast });
 }
 
-console.log('\n=== 20. same-day inbound fail-closed does not publish a stale cycle as current ===');
+console.log('\n=== 20. incomplete current cash still withholds a stale cycle as current ===');
 {
   const LIVE_FAILURE_AT = '2026-08-31T18:00:00.000Z';
   const LIVE_FAILURE_AS_OF = '2026-08-31';
@@ -1922,21 +1938,22 @@ console.log('\n=== 20. same-day inbound fail-closed does not publish a stale cyc
       triangleAt: '2026-08-31T17:55:00.000Z',
     },
   };
+  const failExtra = {
+    fetchedAt: GLANCE_FETCHED_AT,
+    tweaks: Object.assign({ omitProviderIds: [3001] }, extra.tweaks),
+  };
   const canonical = clone(liveData);
   let threw = null;
   try {
-    overlay(canonical, extra);
+    overlay(canonical, failExtra);
   } catch (err) {
     threw = err;
   }
-  ok(threw && /same-day-event-representation-unknown/.test(threw.message),
-    'Aug 31 overlay fails closed without Amanda month-end posting evidence',
-    threw && threw.message);
-  ok(/amandaSalaryMonthEnd@2026-08-31/.test(threw && threw.message || ''),
-    'unknown same-day inbound names amandaSalaryMonthEnd, not unposted bills',
+  ok(threw && /missing-live-cash-evidence/.test(threw.message),
+    'Aug 31 overlay fails closed when required current cash is incomplete',
     threw && threw.message);
 
-  const served = serveFixtureOverlay(canonical, extra);
+  const served = serveFixtureOverlay(canonical, failExtra);
   ok(served.liveOverlay && served.liveOverlay.applied === false,
     'server overlay fail-closes rather than applying a mixed Aug 31 / Aug 19 state');
   ok(served.liveOverlay.operatingPlan === Live.OPERATING_PLAN_UNAVAILABLE,
@@ -2630,19 +2647,21 @@ console.log('\n=== 21. named paycheck identity supplies actuals and applies when
       && observed.data.liveOverlay.productionWrite === false,
     'proven overlay still does not write canonical state');
 
-  function assertSalaryFailClosed(label, transactions, cashAdd) {
-    let threw = null;
-    try {
-      overlay(canonical, extraFor(transactions, cashAdd));
-    } catch (err) {
-      threw = err;
-    }
-    ok(threw && /same-day-event-representation-unknown/.test(threw.message)
-        && /amandaSalaryMonthEnd@2026-08-31/.test(threw.message),
-      label + ' stays fail-closed', threw && threw.message);
+  function assertSalaryNotRepresented(label, transactions, cashAdd) {
+    const extra = extraFor(transactions, cashAdd);
+    const result = overlay(canonical, extra);
+    ok(result.data.liveOverlay.applied === true
+        && result.data.liveOverlay.operatingPlan === Live.OPERATING_PLAN_LIVE,
+      label + ' still applies trusted current cash');
+    ok(!(result.data.plan.opening.representedEvents || [])
+        .some(c => c.id === 'amandaSalaryMonthEnd' && c.date === LIVE_DAY),
+      label + ' does not represent the month-end salary');
+    ok((result.data.plan.opening.notReliedUponEvents || [])
+        .some(c => c.id === 'amandaSalaryMonthEnd' && c.date === LIVE_DAY),
+      label + ' leaves the month-end salary unresolved');
     const seen = O.observe({
       provider: 'lunchmoney',
-      payload: payloadFrom(canonical, extraFor(transactions, cashAdd)),
+      payload: payloadFrom(canonical, extra),
       accountMap,
       data: canonical,
       identity,
@@ -2650,47 +2669,58 @@ console.log('\n=== 21. named paycheck identity supplies actuals and applies when
     });
     ok(!(seen.representedEventCandidates || [])
         .some(c => c.id === 'amandaSalaryMonthEnd' && c.date === LIVE_DAY),
-      label + ' does not represent the month-end salary');
-    const servedFail = serveFixtureOverlay(canonical, extraFor(transactions, cashAdd));
-    ok(servedFail.liveOverlay && servedFail.liveOverlay.applied === false,
-      label + ' does not apply the overlay');
-    ok(String(servedFail.plan.opening.asOf) === openingAsOf
-        && near(Forecast.startingCashAmount(servedFail.plan), datedCash),
-      label + ' does not mix Aug 31 cash into the dated opening');
-    ok(servedFail.liveOverlay.operatingPlan === Live.OPERATING_PLAN_UNAVAILABLE,
-      label + ' keeps the current operating plan unavailable');
+      label + ' observer still does not represent the month-end salary');
+    const expectedCash = Math.round((
+      Number(extra.tweaks['chequing-a']) +
+      Number(cashValue(canonical, 'chequing-b')) +
+      Number(cashValue(canonical, 'savings'))
+    ) * 100) / 100;
+    ok(near(Forecast.startingCashAmount(result.data.plan), expectedCash),
+      label + ' opening is the observed household-cash sum');
+    const advice = Forecast.recommend(result.data.plan, LIVE_DAY, {
+      debts: result.data.debts,
+      operatingPlan: result.data.liveOverlay.operatingPlan,
+    });
+    ok(advice.paydayAllocation
+        && !near(advice.paydayAllocation.available, expectedCash + OWNER_CONFIRMED_MONTH_END),
+      label + ' does not add the unproven salary on top of observed cash');
+    const servedLive = serveFixtureOverlay(canonical, extra);
+    ok(servedLive.liveOverlay && servedLive.liveOverlay.applied === true,
+      label + ' served overlay remains live');
+    ok(String(servedLive.plan.opening.asOf) === LIVE_DAY,
+      label + ' served opening is the live as-of');
   }
 
-  assertSalaryFailClosed(
+  assertSalaryNotRepresented(
     'same-day unknown payee even at the scheduled amount',
     [seaspanTx, amountOnlyTx, grocerTx].concat(inOutTxs));
-  assertSalaryFailClosed(
+  assertSalaryNotRepresented(
     'direct household TENNIS BC payee, even at the scheduled amount',
     [seaspanTx, tennisBcPayeeTx, expTx, grocerTx].concat(inOutTxs));
-  assertSalaryFailClosed(
+  assertSalaryNotRepresented(
     'TENNIS INCOME account deposit / reimbursement',
     [seaspanTx, tennisIncomeDepositTx, expTx, grocerTx].concat(inOutTxs));
-  assertSalaryFailClosed(
+  assertSalaryNotRepresented(
     'unrelated household transfer',
     [seaspanTx, unrelatedTransferTx, grocerTx].concat(inOutTxs),
     UNRELATED_TRANSFER + SYNTHETIC_PAYROLL);
-  assertSalaryFailClosed(
+  assertSalaryNotRepresented(
     'unrelated exact-amount BILLS transfer without a TENNIS INCOME counterpart',
     [seaspanTx, billsTransferTx, grocerTx].concat(inOutTxs));
-  assertSalaryFailClosed(
+  assertSalaryNotRepresented(
     'exact-amount BILLS transfer sourced from WEEKLY, not TENNIS INCOME',
     [seaspanTx, billsTransferTx, weeklySourceCounterpartTx, grocerTx].concat(inOutTxs));
-  assertSalaryFailClosed(
+  assertSalaryNotRepresented(
     'BILLS transfer plus TENNIS INCOME deposit, without the opposite-leg debit',
     [seaspanTx, billsTransferTx, tennisIncomeDepositTx, grocerTx].concat(inOutTxs));
-  assertSalaryFailClosed(
+  assertSalaryNotRepresented(
     'exact-amount transfer into WEEKLY rather than BILLS',
     [seaspanTx, weeklyTransferTx, grocerTx].concat(inOutTxs));
-  assertSalaryFailClosed(
+  assertSalaryNotRepresented(
     'BILLS transfer with the wrong amount',
     [seaspanTx, wrongAmountTransferTx, expTx, grocerTx].concat(inOutTxs),
     WRONG_AMOUNT_AMANDA + SYNTHETIC_PAYROLL);
-  assertSalaryFailClosed(
+  assertSalaryNotRepresented(
     'TENNIS BC EXP reimbursement alone',
     [seaspanTx, expTx, grocerTx].concat(inOutTxs));
 

@@ -1000,9 +1000,9 @@ function amountsMatchExactly(left, right) {
     && Math.abs(Math.abs(Number(left)) - Math.abs(Number(right))) <= IDENTITY_AMOUNT_EPSILON;
 }
 
-function uniqueTransferCounterpart(tx, rule, input, amount) {
+function transferCounterpartMatches(tx, rule, input, amount) {
   const counterpartId = ruleCounterpartExternalId(rule);
-  if (!tx || !counterpartId) return null;
+  if (!tx || !counterpartId) return [];
   const mapDoc = input && input.accountMap;
   const matches = [];
   for (const other of (input && input.transactions) || []) {
@@ -1017,7 +1017,16 @@ function uniqueTransferCounterpart(tx, rule, input, amount) {
     if (!(otherAmount > 0) || !amountsMatchExactly(otherAmount, amount)) continue;
     matches.push(other);
   }
+  return matches;
+}
+
+function uniqueTransferCounterpart(tx, rule, input, amount) {
+  const matches = transferCounterpartMatches(tx, rule, input, amount);
   return matches.length === 1 ? matches[0] : null;
+}
+
+function countTransferCounterparts(tx, rule, input, amount) {
+  return transferCounterpartMatches(tx, rule, input, amount).length;
 }
 
 function ruleHasIdentity(rule) {
@@ -1494,6 +1503,7 @@ function representedEventHitGroups(input) {
   if (!rules.length) return empty;
   const mapDoc = input.accountMap;
   const eventHits = new Map();
+  const counterpartAmbiguous = new Map();
   for (const tx of input.transactions || []) {
     if (tx.pending === true || tx.contradictoryEvidence === true) continue;
     const mapping = mappingFor(mapDoc, tx.providerAccountId);
@@ -1521,8 +1531,20 @@ function representedEventHitGroups(input) {
             continue;
           }
         }
-        if (rule.transactionKind === 'transfer' && !uniqueTransferCounterpart(tx, rule, input, amount)) {
-          continue;
+        if (rule.transactionKind === 'transfer') {
+          const counterpartCount = countTransferCounterparts(tx, rule, input, amount);
+          if (counterpartCount !== 1) {
+            if (counterpartCount > 1) {
+              const ambKey = rule.eventId + '@' + scheduledDate;
+              const prior = counterpartAmbiguous.get(ambKey);
+              counterpartAmbiguous.set(ambKey, {
+                id: rule.eventId,
+                date: scheduledDate,
+                candidateCount: Math.max(counterpartCount, prior && prior.candidateCount || 0),
+              });
+            }
+            continue;
+          }
         }
         const key = rule.eventId + '@' + scheduledDate;
         const list = eventHits.get(key) || [];
@@ -1554,6 +1576,7 @@ function representedEventHitGroups(input) {
         date: hits[0] && hits[0].date,
         hits,
         reason: 'multiple-compatible-candidates',
+        candidateCount: hits.length,
       });
       continue;
     }
@@ -1588,7 +1611,33 @@ function representedEventHitGroups(input) {
     }
     uniqueOnce.push(hit);
   }
+  for (const [key, row] of counterpartAmbiguous) {
+    if (uniqueOnce.some(hit => hit && hit.id + '@' + hit.date === key)) continue;
+    if (ambiguous.some(group => group && (group.key === key
+      || (group.id === row.id && group.date === row.date)))) continue;
+    ambiguous.push({
+      key,
+      id: row.id,
+      date: row.date,
+      hits: [],
+      reason: 'multiple-compatible-candidates',
+      candidateCount: row.candidateCount,
+    });
+  }
   return { unique: uniqueOnce, ambiguous };
+}
+
+function sanitizedSameDayInboundAmbiguity(groups) {
+  return (groups || [])
+    .filter(group => group && group.id && group.date)
+    .map(group => ({
+      id: group.id,
+      date: group.date,
+      reason: group.reason || 'multiple-compatible-candidates',
+      candidateCount: Number(group.candidateCount) > 0
+        ? Number(group.candidateCount)
+        : ((group.hits || []).length || 0),
+    }));
 }
 
 function representedEventCandidates(input) {
@@ -2144,13 +2193,14 @@ function observe(input) {
     cardInferences.push(Object.assign({ cardId }, inferredCardState(posted, null, limitByCard.get(cardId))));
   }
   const openingAsOf = openingAsOfFromData(input.data);
-  const represented = representedEventCandidates({
+  const hitGroups = representedEventHitGroups({
     transactions: collapsed.transactions,
     accountMap: mapDoc,
     plan: input.data && input.data.plan,
     identityRules,
     transactionWindow: normalized.transactionWindow,
-  }).map(c => classifyRepresentedCandidate(c, openingAsOf));
+  });
+  const represented = hitGroups.unique.map(c => classifyRepresentedCandidate(c, openingAsOf));
   // Historical transaction-identity hits are evidence, not current-opening
   // posting comparisons. The live overlay may consume one only for an exact
   // once joint-cash outflow that Forecast is still carrying.
@@ -2183,6 +2233,7 @@ function observe(input) {
     cardCapacityIsCash: R.householdCashFromCardCapacity(),
     cardInferences,
     representedEventCandidates: represented,
+    sameDayInboundAmbiguity: sanitizedSameDayInboundAmbiguity(hitGroups.ambiguous),
     sameDayDiscrepancies: sameDay,
     reconciliation: result,
   };
@@ -2521,6 +2572,7 @@ const api = {
   representedEventCandidates,
   transactionIsTransfer,
   uniqueTransferCounterpart,
+  countTransferCounterparts,
   ruleHasIdentity,
   ruleMatchesTransactionIdentity,
   openingAsOfFromData,

@@ -24,11 +24,13 @@
  * (historicalOpeningAsOf, liveAsOf] are accounted for before as-of
  * advances: posting/representation evidence names them on in-memory
  * representedEvents; unrepresented joint-cash outflows stay reserved
- * via plan.opening.priorAsOf so Forecast does not drop them. Same-day
- * scheduled income or other inbound cash still needs posting /
- * representation evidence or the overlay fails closed, so that cash is
- * not counted twice. Same-day unposted joint-cash bills stay still due
- * and do not fail the overlay. Triangle/MBNA
+ * via plan.opening.priorAsOf so Forecast does not drop them. A complete
+ * freshness-qualified household-cash observation remains the Forecast
+ * opening when a same-day inbound is unproven or ambiguous: Forecast
+ * omits that inbound from actionable cash via in-memory
+ * opening.notReliedUponEvents without claiming it posted. Incomplete or
+ * untrusted current cash still fails closed. Same-day unposted
+ * joint-cash bills stay still due and do not fail the overlay. Triangle/MBNA
  * statement cadence may keep canonical posted values. Unknown, stale,
  * conflicting, unmapped, credit-capacity, and transfer-as-income
  * evidence fail closed. Historical data.json and snapshots stay
@@ -590,6 +592,11 @@ function refuseNonLiveRepresented(report, historicalOpeningAsOf, liveAsOf, plan)
   return refused;
 }
 
+function sameDayInboundAmbiguityFor(report, event) {
+  const rows = (report && report.sameDayInboundAmbiguity) || [];
+  return rows.find(row => row && row.id === event.id && row.date === event.date) || null;
+}
+
 function applyLiveCutover(next, report, historicalOpeningAsOf) {
   const liveAsOf = liveAsOfFrom(report, historicalOpeningAsOf);
   if (!liveAsOf) fail('Live overlay is missing a household financial date.');
@@ -600,7 +607,7 @@ function applyLiveCutover(next, report, historicalOpeningAsOf) {
   const candidates = representedCandidatesFor(
     report, historicalOpeningAsOf, liveAsOf, next.plan);
   const represented = [];
-  const unknownSameDay = [];
+  const notReliedUpon = [];
   for (const candidate of candidates) {
     if (Forecast.carriedOnceJointCashOutflow(
       next.plan, candidate.id, candidate.date, liveAsOf)) {
@@ -614,16 +621,19 @@ function applyLiveCutover(next, report, historicalOpeningAsOf) {
       represented.push({ id: event.id, date: event.date });
       continue;
     }
-    if (event.date === liveAsOf && sameDayUnrepresentedWouldDoubleCount(event)) {
-      unknownSameDay.push(event);
-    }
+    if (event.date !== liveAsOf || !sameDayUnrepresentedWouldDoubleCount(event)) continue;
+    const ambiguous = sameDayInboundAmbiguityFor(report, event);
+    notReliedUpon.push({
+      id: event.id,
+      date: event.date,
+      reason: ambiguous ? 'same-day-inbound-ambiguous' : 'same-day-inbound-unproven',
+      candidateCount: ambiguous && Number(ambiguous.candidateCount) > 0
+        ? Number(ambiguous.candidateCount)
+        : 0,
+    });
   }
   const uniqueRepresented = mergeRepresented([], represented);
   const advances = !!(historicalOpeningAsOf && liveAsOf > historicalOpeningAsOf);
-  if (advances && unknownSameDay.length) {
-    const named = unknownSameDay.map(event => `${event.id}@${event.date}`).join(', ');
-    fail(`same-day-event-representation-unknown: ${named}`);
-  }
   if (historicalOpeningAsOf && liveAsOf < historicalOpeningAsOf) {
     return {
       liveAsOf: historicalOpeningAsOf,
@@ -631,6 +641,7 @@ function applyLiveCutover(next, report, historicalOpeningAsOf) {
         (next.plan.opening && next.plan.opening.representedEvents) || [],
         []
       ),
+      notReliedUponEvents: [],
       advanced: false,
     };
   }
@@ -640,6 +651,7 @@ function applyLiveCutover(next, report, historicalOpeningAsOf) {
     representedEvents: advances
       ? uniqueRepresented
       : mergeRepresented(existing, uniqueRepresented),
+    notReliedUponEvents: advances ? notReliedUpon : [],
   });
   if (advances) nextOpening.priorAsOf = historicalOpeningAsOf;
   next.plan.opening = nextOpening;
@@ -648,6 +660,7 @@ function applyLiveCutover(next, report, historicalOpeningAsOf) {
   return {
     liveAsOf,
     representedEvents: nextOpening.representedEvents,
+    notReliedUponEvents: nextOpening.notReliedUponEvents,
     advanced: advances,
   };
 }
@@ -710,6 +723,7 @@ function overlayMeta(opts) {
     effectiveAsOf: opts.effectiveAsOf || null,
     observedAsOf: opts.observedAsOf || null,
     representedEvents: opts.representedEvents || [],
+    notReliedUponEvents: opts.notReliedUponEvents || [],
     overlays: opts.overlays || [],
     refused: opts.refused || [],
     source: 'provider-observe:lunchmoney',
@@ -759,6 +773,7 @@ function overlayLiveState(input) {
     effectiveAsOf: cutover.liveAsOf,
     observedAsOf: liveAsOf || historicalOpeningAsOf,
     representedEvents: cutover.representedEvents,
+    notReliedUponEvents: cutover.notReliedUponEvents || [],
     overlays: proposed.map(row => ({
       locator: row.locator,
       field: row.field,
@@ -868,6 +883,7 @@ function failedOverlay(canonical, reason, extra) {
     effectiveAsOf: null,
     observedAsOf: liveAsOf,
     representedEvents: [],
+    notReliedUponEvents: [],
     overlays: [],
     refused: [],
     reason: sanitized,

@@ -489,7 +489,10 @@
   //         injections: [{date, amount}] — one-off cash arriving from outside
   //         the plan, used to model covering an opening gap,
   //         representedEvents: [{id, date}] — dated occurrences already
-  //         inside the opening observation; those are not replayed }
+  //         inside the opening observation; those are not replayed,
+  //         notReliedUponEvents: [{id, date, reason}] — live-overlay
+  //         same-day inbound that is not proven represented; omitted from
+  //         the cash walk without claiming it posted }
   //
   // Represented events are SCHEDULED occurrences that settlement evidence
   // shows are already inside the opening cash/debt state. Forecast remains
@@ -502,6 +505,15 @@
   // non-cash charge, or an event that is merely similar. A future represented
   // date is ignored, not reinterpreted. This is not a date-wide skip: an
   // unrepresented same-day event still fires.
+  //
+  // notReliedUponEvents is a separate live-overlay → Forecast input. It is
+  // not representedEvents. An unproven or ambiguous same-day inbound must
+  // not be added on top of observed cash, and must not be labelled received.
+  // The occurrence is omitted from the cash walk and surfaced as
+  // unresolved / not relied upon. A future date on this list is ignored.
+  // Failure to find a transaction is not proof the inbound is still
+  // future. Incomplete current cash remains a live-overlay fail-closed
+  // condition, not this list.
   //
   // A future-dated commitment paid on a known date is a different fact.
   // That lives on the commitment as settledOn and is not expressed
@@ -527,11 +539,41 @@
     }
     return keys;
   }
+  // Same-day inbound the live overlay will not add to available cash, and
+  // will not call represented. Owned at plan.opening / opts, consumed here.
+  function notReliedUponKeySet(plan, opts, start) {
+    const keys = new Set();
+    const opening = plan && plan.opening;
+    const take = item => {
+      if (!item || !item.id || !item.date) return;
+      if (item.date === start) keys.add(item.id + '@' + item.date);
+    };
+    for (const item of (opts && opts.notReliedUponEvents) || []) take(item);
+    if (opening && opening.asOf === start) {
+      for (const item of opening.notReliedUponEvents || []) take(item);
+    }
+    return keys;
+  }
+  function notReliedUponReason(plan, opts, id, date) {
+    const want = item => item && item.id === id && item.date === date && item.reason;
+    for (const item of (opts && opts.notReliedUponEvents) || []) {
+      if (want(item)) return String(item.reason);
+    }
+    const opening = plan && plan.opening;
+    if (opening && opening.asOf) {
+      for (const item of opening.notReliedUponEvents || []) {
+        if (want(item)) return String(item.reason);
+      }
+    }
+    return 'same-day-inbound-unproven';
+  }
   function omitRepresented(events, plan, opts, start) {
     if (opts && opts.keepRepresented) return events;
     const represented = representedKeySet(plan, opts, start);
-    if (!represented.size) return events;
-    return events.filter(e => !represented.has(e.id + '@' + e.date));
+    const notRelied = notReliedUponKeySet(plan, opts, start);
+    if (!represented.size && !notRelied.size) return events;
+    return events.filter(e => !represented.has(e.id + '@' + e.date)
+      && !notRelied.has(e.id + '@' + e.date));
   }
 
   // Machine-readable settlement fact on a dated commitment. A valid
@@ -2727,6 +2769,7 @@
   // only the payday date.
   function currentPeriodInflows(plan, asOf, origin, periodLast, opts) {
     const represented = representedKeySet(plan, opts, asOf);
+    const notRelied = notReliedUponKeySet(plan, opts, asOf);
     const observed = representedActualMap(opts);
     const events = expandEvents(plan, origin, periodLast,
       Object.assign({}, opts || {}, { keepRepresented: true }));
@@ -2739,6 +2782,23 @@
       const key = (e.id || e.label) + '@' + e.date;
       if (seen.has(key)) continue;
       seen.add(key);
+      if (e.id && notRelied.has(e.id + '@' + e.date)) {
+        items.push({
+          id: e.id,
+          label: e.label,
+          kind: 'income',
+          date: e.date,
+          planned: roundCent(amt),
+          actual: null,
+          remaining: 0,
+          settlement: 'not-relied-upon',
+          evidenceDate: null,
+          confidence: e.confidence || null,
+          notReliedUpon: true,
+          notReliedUponReason: notReliedUponReason(plan, opts, e.id, e.date),
+        });
+        continue;
+      }
       if (!(e.id && represented.has(e.id + '@' + e.date))) continue;
       items.push({
         id: e.id,
@@ -2809,7 +2869,9 @@
   }
 
   function thisPaydayPaidFrom(inflows, bills, paydayDate) {
-    const paidIn = (inflows || []).filter(row => glanceRowOnPayday(row, paydayDate))
+    const paidIn = (inflows || []).filter(row => glanceRowOnPayday(row, paydayDate)
+      && row.settlement !== 'not-relied-upon'
+      && row.notReliedUpon !== true)
       .map(row => {
         const displayDate = (row.evidenceDate && row.evidenceDate === paydayDate)
           ? row.evidenceDate : (row.date || row.evidenceDate);
@@ -3712,10 +3774,31 @@
     };
   }
 
-  function calendarIncomeRowFromEvent(plan, event, asOf, represented, observed, cashAsOf) {
+  function calendarIncomeRowFromEvent(plan, event, asOf, represented, observed, cashAsOf, notRelied, opts) {
     const amt = event.amount;
     if (!(amt > EPSILON)) return null;
-    const paid = !!(event.id && represented.has(event.id + '@' + event.date));
+    const key = event.id + '@' + event.date;
+    if (event.id && notRelied && notRelied.has(key)) {
+      return {
+        id: event.id,
+        label: event.label,
+        kind: 'income',
+        date: event.date,
+        planned: roundCent(amt),
+        amount: roundCent(amt),
+        actual: null,
+        remaining: 0,
+        settlement: 'not-relied-upon',
+        status: 'unresolved',
+        glanceKind: 'in',
+        movement: householdMovement(amt, 'in'),
+        confidence: event.confidence || null,
+        alreadyInCash: false,
+        notReliedUpon: true,
+        notReliedUponReason: notReliedUponReason(plan, opts, event.id, event.date),
+      };
+    }
+    const paid = !!(event.id && represented.has(key));
     const inside = recurringInsideOpening(plan, event, cashAsOf);
     const received = paid || inside || (event.date && cashAsOf && event.date <= cashAsOf);
     return {
@@ -3738,6 +3821,7 @@
 
   function calendarIncomeSections(plan, asOf, month, opts) {
     const represented = representedKeySet(plan, opts, asOf);
+    const notRelied = notReliedUponKeySet(plan, opts, asOf);
     const observed = representedActualMap(opts);
     const cashAsOf = cashSnapshotDate(plan, asOf);
     const events = expandEvents(plan, month.start, month.end,
@@ -3755,7 +3839,7 @@
       if (!event || event.kind !== 'income' || !event.date) continue;
       if (event.date < month.start || event.date > month.end) continue;
       push(billCalendarHalf(event.date),
-        calendarIncomeRowFromEvent(plan, event, asOf, represented, observed, cashAsOf));
+        calendarIncomeRowFromEvent(plan, event, asOf, represented, observed, cashAsOf, notRelied, opts));
     }
     for (const stream of (plan && plan.income) || []) {
       if (!stream || !stream.firstDue || stream.frequency !== 'monthly' || stream.day == null) {
@@ -4194,8 +4278,14 @@
       const liveOpening = role === 'active';
       let incomeAdded = 0;
       for (const row of income) {
-        if (liveOpening && row.date === asOf) row.alreadyInCash = true;
+        if (row && (row.notReliedUpon === true || row.settlement === 'not-relied-upon')) {
+          row.alreadyInCash = false;
+          row.remaining = 0;
+        } else if (liveOpening && row.date === asOf) {
+          row.alreadyInCash = true;
+        }
         if (planUnavailable) continue;
+        if (row && (row.notReliedUpon === true || row.settlement === 'not-relied-upon')) continue;
         if (role === 'future') {
           row.alreadyInCash = false;
           incomeAdded += Number(row.amount) || 0;
