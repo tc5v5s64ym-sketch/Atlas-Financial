@@ -1,32 +1,44 @@
+/* Design tokens. Warm neutral page, white surfaces, one blue accent, and a
+   restrained status palette. Money is the loudest thing on every page, so
+   surfaces stay quiet: hairline borders, at most one soft shadow. */
 :root {
   color-scheme: light;
-  --surface-1:#fcfcfb; --plane:#f9f9f7;
-  --text-primary:#0b0b0b; --text-secondary:#52514e; --muted:#898781;
-  --grid:#e1e0d9; --axis:#c3c2b7; --border:rgba(11,11,11,0.10);
-  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a;
-  --good:#0ca30c; --warning:#fab219; --serious:#ec835a; --critical:#d03b3b;
-  --success-text:#006300;
-  --div-pos:#2a78d6; --div-neg:#d03b3b;
+  --surface-1:#ffffff; --plane:#f4f4f1;
+  --text-primary:#151513; --text-secondary:#5b5a55; --muted:#75746d;
+  --grid:#e7e6e0; --axis:#c9c8bf; --border:rgba(21,21,19,0.10);
+  --s1:#2a6fd0; --s2:#eb6834; --s3:#1baf7a;
+  --good:#1a9a4a; --warning:#e0a112; --serious:#d9773f; --critical:#c73737;
+  --success-text:#1b7a3d;
+  --div-pos:#2a6fd0; --div-neg:#c73737;
+  --raised:#ffffff;
+  --shadow-1:0 1px 2px rgba(21,21,19,.05), 0 1px 1px rgba(21,21,19,.03);
+  --radius-lg:16px; --radius-md:12px; --radius-sm:8px;
 }
 @media (prefers-color-scheme: dark) {
   :root:where(:not([data-theme="light"])) {
     color-scheme: dark;
-    --surface-1:#1a1a19; --plane:#0d0d0d;
-    --text-primary:#ffffff; --text-secondary:#c3c2b7; --muted:#898781;
-    --grid:#2c2c2a; --axis:#383835; --border:rgba(255,255,255,0.10);
-    --s1:#3987e5; --s2:#d95926; --s3:#199e70;
-    --success-text:#0ca30c;
-    --div-pos:#3987e5; --div-neg:#d03b3b;
+    --surface-1:#1b1b1a; --plane:#0e0e0d;
+    --text-primary:#f5f5f2; --text-secondary:#b9b8b1; --muted:#8f8e87;
+    --grid:#2c2c2a; --axis:#3d3d3a; --border:rgba(255,255,255,0.10);
+    --s1:#5a95ea; --s2:#d95926; --s3:#199e70;
+    --good:#34b35f; --serious:#e08a55; --critical:#e05252;
+    --success-text:#4cbf73;
+    --div-pos:#5a95ea; --div-neg:#e05252;
+    --raised:#3d3d39;
+    --shadow-1:0 1px 2px rgba(0,0,0,.35);
   }
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --surface-1:#1a1a19; --plane:#0d0d0d;
-  --text-primary:#ffffff; --text-secondary:#c3c2b7; --muted:#898781;
-  --grid:#2c2c2a; --axis:#383835; --border:rgba(255,255,255,0.10);
-  --s1:#3987e5; --s2:#d95926; --s3:#199e70;
-  --success-text:#0ca30c;
-  --div-pos:#3987e5; --div-neg:#d03b3b;
+  --surface-1:#1b1b1a; --plane:#0e0e0d;
+  --text-primary:#f5f5f2; --text-secondary:#b9b8b1; --muted:#8f8e87;
+  --grid:#2c2c2a; --axis:#3d3d3a; --border:rgba(255,255,255,0.10);
+  --s1:#5a95ea; --s2:#d95926; --s3:#199e70;
+  --good:#34b35f; --serious:#e08a55; --critical:#e05252;
+  --success-text:#4cbf73;
+  --div-pos:#5a95ea; --div-neg:#e05252;
+  --raised:#3d3d39;
+  --shadow-1:0 1px 2px rgba(0,0,0,.35);
 }
 
 * { box-sizing: border-box; }
@@ -78,6 +90,9 @@ section[id] { scroll-margin-top: 96px; }
 .brand { font-weight:650; font-size:.95rem; letter-spacing:-0.01em; }
 .spacer { flex:1; }
 .site-head-row form { margin:0; }
+/* The as-at chip carries a sentence on the live overlay; it wraps rather
+   than forcing the whole page to scroll sideways on a phone. */
+.site-head-row .chip { white-space:normal; max-width:100%; line-height:1.4; text-align:left; }
 .linkbtn {
   background:none; border:1px solid var(--border); color:var(--text-secondary);
   border-radius:999px; padding:5px 13px; font-size:.78rem; cursor:pointer; font-family:inherit;
@@ -270,13 +285,187 @@ footer { margin-top:56px; padding-top:18px; border-top:1px solid var(--grid);
   background:color-mix(in srgb, var(--critical) 5%, var(--surface-1)); }
 .statusband.crit b { color:var(--critical); }
 
-/* Decision-first homepage surface. The six payday-sheet answers are
-   presentation of the incumbent Forecast result; the detailed worksheet
-   stays secondary below. */
-.operating-card {
-  background:var(--surface-1); border:1px solid var(--border); border-radius:18px;
-  box-shadow:0 8px 30px rgba(0,0,0,.06); overflow:hidden;
+/* ---------------------------------------------------------------- Plan
+   The operating surface is one statement read top to bottom: Current
+   Balance, what still comes in, what has to go out, and what is left after
+   each step. One centred column at every width — the phone is the primary
+   target and the desktop is the same layout with more air, not a different
+   one. Presentation only: every figure is the incumbent Forecast result. */
+#operating-surface { max-width:44rem; margin:0 auto; }
+#operating-surface h1 { margin:28px 0 6px; font-size:1.85rem; letter-spacing:-.02em; line-height:1.15; }
+#operating-surface .lede { margin:0 0 20px; font-size:.95rem; max-width:none; }
+.operating-card { background:none; border:0; border-radius:0; box-shadow:none; overflow:visible; }
+.payday-operating-sheet { display:flex; flex-direction:column; gap:14px; }
+
+/* Secondary view picker: the week and next-period printouts stay one tap
+   away, without competing with the pay-period switch below it. */
+.plan-look { max-width:100%; font-size:.84rem; }
+.plan-look-summary {
+  display:inline-flex; align-items:center; gap:4px; cursor:pointer; list-style:none;
+  padding:8px 10px; min-height:44px; color:var(--text-secondary); font-weight:600;
+  border-radius:var(--radius-sm);
 }
+.plan-look-summary:hover { color:var(--text-primary); }
+.plan-look-summary::-webkit-details-marker { display:none; }
+.plan-look-summary::after { content:"▾"; font-size:.9em; }
+.plan-look[open] .plan-look-summary::after { content:"▴"; }
+.plan-look-field { display:flex; flex-direction:column; gap:6px; padding:6px 0 4px; min-width:16rem; }
+.plan-look-label {
+  font-size:.74rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
+  color:var(--text-secondary);
+}
+.plan-look .numin { width:100%; max-width:none; min-height:44px; }
+/* Inside the switch row the disclosure is one more quiet control; opened,
+   it takes its own line so the select has room. */
+.calendar-period-picker .plan-look { flex:0 0 auto; }
+.calendar-period-picker .plan-look[open] { flex:1 1 100%; }
+.payday-operating-sheet > .plan-look { align-self:stretch; }
+
+/* Pay-period switch: two planning windows, the current one obvious, the
+   dates on the button rather than in a caption. */
+.calendar-waterfalls { display:flex; flex-direction:column; gap:14px; }
+.calendar-period-picker { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; padding:0; }
+.calendar-period-label {
+  position:absolute; width:1px; height:1px; margin:-1px; padding:0; overflow:hidden;
+  clip:rect(0 0 0 0); clip-path:inset(50%); white-space:nowrap; border:0;
+}
+.calendar-period-switch {
+  flex:1 1 18rem; display:grid; grid-template-columns:1fr 1fr; gap:3px; padding:3px;
+  border-radius:14px; background:var(--grid);
+}
+.calendar-period-btn {
+  font-family:inherit; font-size:.9rem; padding:8px 12px; border-radius:11px; cursor:pointer;
+  border:0; background:none; color:var(--text-secondary); min-height:44px;
+}
+.calendar-period-switch .calendar-period-btn {
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px;
+  padding:8px 10px; min-height:54px; line-height:1.25;
+}
+.calendar-period-switch .calendar-period-btn[aria-pressed="true"] {
+  background:var(--raised); color:var(--text-primary); box-shadow:0 1px 3px rgba(21,21,19,.12);
+}
+.calendar-period-name { font-weight:650; font-size:.92rem; }
+.calendar-period-dates { font-size:.76rem; color:var(--text-secondary); font-variant-numeric:tabular-nums; }
+.calendar-period-both {
+  flex:0 0 auto; padding:8px 10px; font-size:.84rem; font-weight:600; color:var(--text-secondary);
+  text-decoration:underline; text-decoration-color:var(--axis); text-underline-offset:3px;
+}
+.calendar-period-both:hover { color:var(--text-primary); }
+.calendar-period-both[aria-pressed="true"] { color:var(--s1); text-decoration-color:currentColor; }
+
+/* The statement card. Sections are separated by hairlines, not nested cards. */
+.calendar-waterfall, .plan-sheet {
+  border:1px solid var(--border); border-radius:var(--radius-lg); overflow:hidden;
+  background:var(--surface-1); box-shadow:var(--shadow-1);
+}
+.calendar-waterfall .payday-group.calendar-waterfall-head {
+  margin:0; padding:16px 20px 0; border:0; text-transform:none; letter-spacing:0;
+  font-size:1.02rem; font-weight:650; color:var(--text-primary);
+}
+/* When the switch already names the one period on show, the card does not
+   repeat it. Both periods on show keep their captions. */
+.calendar-waterfalls:has(.calendar-period-switch):not(:has(.calendar-period-both[aria-pressed="true"]))
+  .calendar-waterfall-head { display:none; }
+/* "Projected." / "Lookback." — a trust caption on the card, not a sentence. */
+.calendar-waterfall > .operating-note {
+  margin:0; padding:12px 20px 0; font-size:.72rem; font-weight:700; letter-spacing:.08em;
+  text-transform:uppercase; color:var(--serious);
+}
+.calendar-waterfall > .payday-group + .operating-note { padding-top:4px; }
+.calendar-waterfall .operating-question:last-child { border-bottom:none; }
+
+/* Running-balance thread: every "balance after…" step is a tinted band with
+   the label and the amount on one line, so the eye can follow the money
+   down the page. The end state is stronger than the steps before it. */
+.operating-balance, .operating-ending {
+  display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:baseline;
+  column-gap:16px; padding:14px 20px; background:var(--plane);
+}
+.operating-balance .operating-prompt, .operating-ending .operating-prompt {
+  margin:0; text-transform:none; letter-spacing:0; font-size:.95rem; font-weight:600;
+  color:var(--text-primary); line-height:1.35;
+}
+.operating-balance .operating-answer, .operating-ending .operating-answer { justify-self:end; }
+.operating-balance .operating-amount { font-size:1.3rem; font-weight:700; margin:0; letter-spacing:-.015em; }
+.payday-leftover { text-align:right; }
+.payday-leftover[data-sign="negative"] .operating-amount { color:var(--critical); }
+.operating-ending {
+  background:color-mix(in srgb, var(--s1) 8%, var(--surface-1));
+  border-top:2px solid color-mix(in srgb, var(--s1) 40%, transparent);
+  padding:18px 20px 20px;
+}
+.operating-ending .operating-prompt { font-size:1rem; font-weight:650; }
+.operating-ending .operating-amount { font-size:1.9rem; font-weight:750; margin:0; letter-spacing:-.025em; }
+.operating-ending:has([data-sign="negative"]) {
+  background:color-mix(in srgb, var(--critical) 7%, var(--surface-1));
+  border-top-color:color-mix(in srgb, var(--critical) 40%, transparent);
+}
+
+/* The opening figure: the one number the household starts from. */
+.operating-opening .operating-amount {
+  font-size:2.5rem; font-weight:750; letter-spacing:-.03em; line-height:1.1; margin-top:2px;
+}
+.operating-opening .operating-note { margin-top:8px; }
+
+/* Row states. Text carries the meaning ("PAID", "still due", "arriving");
+   weight and colour only echo it, so nothing depends on colour alone. */
+.operating-line[data-bill-status="PAID"],
+.operating-line[data-bill-status="PAID"] span:last-child,
+.operating-line[data-income-status="received"],
+.operating-line[data-income-status="received"] span:last-child,
+.operating-line[data-income-status="already in balance"],
+.operating-line[data-income-status="already in balance"] span:last-child,
+.operating-line[data-income-status="not-relied-upon"],
+.operating-line[data-income-status="not-relied-upon"] span:last-child {
+  color:var(--text-secondary); font-weight:450;
+}
+.operating-line[data-income-status="not-relied-upon"] span:last-child { text-decoration:line-through; text-decoration-color:var(--axis); }
+.operating-line[data-bill-status="still due"] span:last-child,
+.operating-line[data-bill-status="pending"] span:last-child { font-weight:650; }
+.operating-line[data-income-status="arriving"] span:last-child { font-weight:650; color:var(--success-text); }
+.operating-line[data-bill-status="needs confirmation"] span:last-child { font-weight:600; }
+
+/* Totals under a list. */
+.payday-totals { margin-top:10px; padding-top:8px; border-top:1px solid var(--axis); }
+.payday-qual.payday-total {
+  display:flex; justify-content:space-between; align-items:baseline; gap:14px;
+  margin:0; padding:4px 0; font-size:.9rem; color:var(--text-secondary);
+}
+.payday-qual.payday-total span:last-child { font-variant-numeric:tabular-nums; font-weight:600; color:var(--text-primary); white-space:nowrap; }
+.payday-total-strong { color:var(--text-primary); font-weight:600; }
+.payday-total-strong span:last-child { font-weight:700; }
+.payday-period-income > .payday-total { margin-top:10px; padding-top:8px; border-top:1px solid var(--axis); }
+
+/* Extra repayment: the card, its terms, and the extra amount as the answer. */
+.payday-first-card .operating-lead { font-size:1rem; font-weight:650; }
+.payday-first-card .operating-note { margin-top:3px; }
+.payday-first-card .payday-extra-line {
+  margin-top:10px; font-size:1.05rem; font-weight:700; color:var(--text-primary);
+  font-variant-numeric:tabular-nums;
+}
+.payday-first-card[data-extra="zero"] .payday-extra-line { font-size:.9rem; font-weight:500; color:var(--text-secondary); }
+.calendar-waterfall .payday-group.payday-subgroup, .plan-sheet .payday-group.payday-subgroup {
+  margin:18px 0 2px; padding:0; border:0; font-size:.72rem; letter-spacing:.07em; color:var(--muted);
+}
+
+/* Bills that still need a date sit outside both periods, and look it. */
+.calendar-undated {
+  padding:14px 20px 16px; border:1px dashed var(--axis); border-radius:var(--radius-md);
+  background:var(--surface-1);
+}
+.calendar-undated .payday-group { margin:0 0 4px; padding:0; border:0; color:var(--serious); }
+.calendar-undated .operating-note { margin:8px 0 0; font-size:.84rem; }
+
+/* Warnings: calm callouts, not loose red paragraphs. */
+[data-operating-warnings] { display:flex; flex-direction:column; gap:8px; }
+[data-operating-warnings] .operating-limit.warn {
+  margin:0; padding:12px 16px; border-radius:var(--radius-md); color:var(--text-primary);
+  border:1px solid color-mix(in srgb, var(--critical) 35%, transparent);
+  background:color-mix(in srgb, var(--critical) 6%, var(--surface-1));
+  font-size:.92rem; line-height:1.45;
+}
+
+/* Refresh-trust strip (live overlay provenance), when present. */
 .refresh-trust {
   padding:16px 24px 14px; border-bottom:1px solid var(--grid);
   background:color-mix(in srgb, var(--s3) 6%, var(--surface-1));
@@ -303,16 +492,10 @@ footer { margin-top:56px; padding-top:18px; border-top:1px solid var(--grid);
 .refresh-trust.warn .refresh-trust-question { color:var(--critical); }
 .refresh-trust.caution .refresh-trust-state { color:var(--serious); }
 .operating-question {
-  display:grid; grid-template-columns:38px minmax(14rem,.42fr) minmax(0,1fr);
-  gap:14px; align-items:start; padding:22px 24px; border-bottom:1px solid var(--grid);
+  display:flex; flex-direction:column; gap:0; padding:18px 20px;
+  border-bottom:1px solid var(--grid); min-width:0;
 }
 .operating-question:last-child { border-bottom:none; }
-.operating-question:first-child {
-  background:color-mix(in srgb, var(--s1) 5%, var(--surface-1));
-}
-.operating-question[data-operating-question="06"] {
-  background:color-mix(in srgb, var(--s1) 8%, var(--surface-1));
-}
 .payday-cash .operating-amount { margin-top:0; }
 [data-last-trusted-opening] [data-last-trusted-opening-amount] {
   display:block; margin-top:2px; font-size:1.15rem; font-weight:600;
@@ -320,73 +503,91 @@ footer { margin-top:56px; padding-top:18px; border-top:1px solid var(--grid);
 }
 .payday-must-leave .operating-line [data-unverified-bill],
 .operating-line[data-unverified-bill] span:first-child { color:var(--serious); }
-.operating-number {
-  display:grid; place-items:center; width:30px; height:30px; border-radius:50%;
-  background:var(--plane); border:1px solid var(--border); color:var(--s1);
-  font-size:.72rem; font-weight:750; font-variant-numeric:tabular-nums;
+/* Step numbers were engineering scaffolding; the order is the page order. */
+.operating-number { display:none; }
+.operating-prompt {
+  margin:0 0 10px; font-size:.76rem; font-weight:700; letter-spacing:.07em;
+  text-transform:uppercase; color:var(--text-secondary); line-height:1.3;
 }
-.operating-prompt { margin:3px 0 0; font-size:1rem; line-height:1.3; }
 .operating-answer { min-width:0; }
 .operating-answer > :first-child { margin-top:0; }
 .operating-answer > :last-child { margin-bottom:0; }
-.operating-lead { margin:0; font-size:1.08rem; font-weight:650; line-height:1.4; overflow-wrap:anywhere; }
+.operating-lead { margin:0; font-size:1rem; font-weight:600; line-height:1.4; overflow-wrap:anywhere; }
 .operating-amount {
   display:block; margin-top:4px; font-size:1.9rem; font-weight:750;
-  letter-spacing:-.025em; font-variant-numeric:tabular-nums;
+  letter-spacing:-.025em; font-variant-numeric:tabular-nums; line-height:1.15;
 }
-.operating-note { margin:7px 0 0; color:var(--text-secondary); font-size:.88rem; }
-.operating-lines { margin:8px 0 0; }
+.operating-note { margin:6px 0 0; color:var(--text-secondary); font-size:.86rem; line-height:1.45; }
+.operating-lines { margin:0; }
+
+/* The financial row: what it is on the left, wrapping as it must; how much
+   on the right, in a tabular column that never moves. */
 .operating-line {
-  display:flex; justify-content:space-between; align-items:flex-start; gap:16px; padding:7px 0;
-  border-bottom:1px solid var(--grid); font-size:.91rem;
+  display:grid; grid-template-columns:minmax(0,1fr) fit-content(45%); column-gap:14px; align-items:baseline;
+  padding:9px 0; border-bottom:1px solid var(--grid); font-size:.95rem; line-height:1.4;
   min-width:0;
 }
 .operating-line:last-child { border-bottom:none; }
 .operating-line > span { min-width:0; }
 .operating-line span:first-child { overflow-wrap:anywhere; }
 .operating-line span:last-child {
-  font-weight:650; font-variant-numeric:tabular-nums; text-align:right;
+  font-weight:600; font-variant-numeric:tabular-nums; text-align:right;
   overflow-wrap:anywhere;
 }
+
+/* Secondary inventories (other cards, big purchases) stack their detail
+   under the name on a phone; the value is a description, not a decision. */
+.payday-other-cards .operating-line, .payday-big-purchases .operating-line {
+  grid-template-columns:minmax(0,1fr); row-gap:1px; padding:8px 0;
+}
+.payday-other-cards .operating-line span:last-child,
+.payday-big-purchases .operating-line span:last-child {
+  text-align:left; font-weight:500; color:var(--text-secondary); font-size:.88rem;
+}
+
+/* Household budget: name, its weekly basis, then Planned / Spent / Remaining
+   as a key-value grid with Remaining the easiest line to find. */
 .payday-household-budget { min-width:0; }
 .household-budget-cycle {
-  margin:0 0 10px; color:var(--text-secondary); font-size:.88rem; line-height:1.35;
+  margin:0 0 6px; color:var(--text-secondary); font-size:.86rem; line-height:1.35;
   overflow-wrap:anywhere;
 }
 .household-budget-list {
-  display:flex; flex-direction:column; gap:14px; margin:0; min-width:0;
+  display:grid; grid-template-columns:minmax(0,1fr); gap:0 28px; margin:0; min-width:0;
 }
 .household-budget-category,
 .household-budget-other {
-  min-width:0;
+  min-width:0; padding:12px 0; border-bottom:1px solid var(--grid);
 }
-.household-budget-other {
-  padding-top:14px; border-top:1px solid var(--grid);
-}
+.household-budget-category:last-child, .household-budget-other:last-child { border-bottom:none; padding-bottom:2px; }
+.household-budget-other { grid-column:1 / -1; }
 .household-budget-name {
-  margin:0; font-size:.95rem; font-weight:700; line-height:1.3;
+  margin:0; font-size:.97rem; font-weight:650; line-height:1.3;
   overflow-wrap:anywhere;
 }
 .household-budget-context {
-  margin:2px 0 0; color:var(--text-secondary); font-size:.8rem; line-height:1.35;
+  margin:1px 0 0; color:var(--text-secondary); font-size:.82rem; line-height:1.35;
   overflow-wrap:anywhere;
 }
 .household-budget-metrics {
-  display:grid; grid-template-columns:minmax(0,1fr) minmax(0,auto); gap:4px 12px;
-  margin:6px 0 0; min-width:0;
+  display:grid; grid-template-columns:minmax(0,1fr) minmax(0,auto); gap:2px 14px;
+  margin:8px 0 0; min-width:0;
 }
 .household-budget-metric { display:contents; }
 .household-budget-metrics dt {
-  margin:0; min-width:0; color:var(--text-secondary); font-size:.82rem; font-weight:500;
+  margin:0; min-width:0; color:var(--text-secondary); font-size:.88rem; font-weight:450;
   overflow-wrap:anywhere;
 }
 .household-budget-metrics dd {
-  margin:0; min-width:0; text-align:right; font-size:.88rem; font-weight:600;
-  font-variant-numeric:tabular-nums; overflow-wrap:anywhere;
+  margin:0; min-width:0; text-align:right; font-size:.92rem; font-weight:500;
+  font-variant-numeric:tabular-nums; overflow-wrap:anywhere; color:var(--text-secondary);
 }
-.household-budget-remaining dt { color:var(--text-primary); font-weight:650; }
+.household-budget-remaining dt { color:var(--text-primary); font-weight:650; padding-top:3px; }
 .household-budget-remaining dd {
-  font-weight:750; color:var(--text-primary);
+  font-weight:700; color:var(--text-primary); padding-top:3px;
+}
+@media (min-width:640px) {
+  .household-budget-list { grid-template-columns:repeat(2,minmax(0,1fr)); }
 }
 .payday-budget-digest {
   padding:22px 24px; border-bottom:1px solid var(--grid);
@@ -526,16 +727,27 @@ footer { margin-top:56px; padding-top:18px; border-top:1px solid var(--grid);
 .secondary-body { padding-top:2px; }
 .secondary-body .kicker { margin-top:28px; }
 @media (max-width:700px) {
+  /* One full-width column on a phone. Rows keep the amount on the right;
+     labels wrap; nothing is clipped and nothing scrolls sideways. */
   .operating-question {
     grid-template-columns:minmax(0,1fr);
-    gap:8px;
-    padding:19px 16px;
+    padding:16px 16px;
   }
   .operating-number { display:none; }
-  .operating-prompt { margin:0; }
+  .operating-prompt { margin:0 0 8px; }
   .operating-answer { grid-column:auto; min-width:0; }
   .future-gravity { grid-template-columns:1fr; }
   .operating-amount { font-size:1.75rem; }
+  .operating-opening .operating-amount { font-size:2.25rem; }
+  .operating-balance, .operating-ending { padding:13px 16px; }
+  .operating-ending { padding:16px 16px 18px; }
+  .operating-ending .operating-amount { font-size:1.7rem; }
+  .operating-balance .operating-amount { font-size:1.2rem; }
+  .calendar-waterfall .payday-group.calendar-waterfall-head { padding:12px 16px 0; }
+  .calendar-waterfall > .operating-note { padding-left:16px; padding-right:16px; }
+  .calendar-undated { padding:12px 16px 14px; }
+  .plan-look { align-self:stretch; }
+  .plan-look-field { min-width:0; }
   .allocation-line { grid-template-columns:25px minmax(0,1fr); gap:8px; }
   .allocation-value { grid-column:2; justify-self:start; text-align:left; }
   .allocation-available { flex-wrap:wrap; }
@@ -548,10 +760,7 @@ footer { margin-top:56px; padding-top:18px; border-top:1px solid var(--grid);
   .current-period-meta b { display:block; margin-top:4px; text-align:left; overflow-wrap:anywhere; }
   .current-period-row { grid-template-columns:minmax(0,1fr); gap:6px; }
   .current-period-values { text-align:left; }
-  .operating-line {
-    flex-direction:column; align-items:stretch; gap:4px;
-  }
-  .operating-line span:last-child { text-align:left; }
+  .operating-line { grid-template-columns:minmax(0,1fr) fit-content(38%); column-gap:12px; font-size:.92rem; }
   .current-period-category-head, .current-period-category {
     grid-template-columns:minmax(0,1fr) minmax(0,auto) minmax(0,auto); gap:8px;
   }
@@ -564,22 +773,6 @@ footer { margin-top:56px; padding-top:18px; border-top:1px solid var(--grid);
 .payday-group { font-size:.78rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase;
                 color:var(--muted); margin:22px 0 8px; padding-top:16px; border-top:1px solid var(--grid); }
 .payday-group:first-child { margin-top:0; padding-top:0; border-top:none; }
-.calendar-waterfalls { display:flex; flex-direction:column; gap:22px; }
-.calendar-period-picker { display:flex; flex-wrap:wrap; align-items:center; gap:8px;
-  padding:18px 24px 0; }
-.calendar-period-picker .operating-lead { flex:1 1 100%; margin:0; }
-.calendar-period-btn {
-  font-family:inherit; font-size:.86rem; padding:6px 12px; border-radius:999px; cursor:pointer;
-  border:1px solid var(--border); background:none; color:var(--text-secondary);
-}
-.calendar-period-btn[aria-pressed="true"] { border-color:var(--s1); color:var(--s1); }
-.calendar-waterfall {
-  border:1px solid var(--grid); border-radius:16px; overflow:hidden;
-  background:var(--surface-1);
-}
-.calendar-waterfall .payday-group { margin:0; padding:16px 24px 0; border-top:none; }
-.calendar-waterfall .operating-question:last-child { border-bottom:none; }
-.calendar-undated { padding:8px 24px 18px; }
 .payday-hero { margin:0; font-size:2.25rem; font-weight:750; line-height:1.15;
                font-variant-numeric:tabular-nums; letter-spacing:-0.02em; color:var(--text-primary); }
 .payday-hero-unit { font-size:1.1rem; font-weight:650; margin-left:6px; color:var(--text-secondary); }

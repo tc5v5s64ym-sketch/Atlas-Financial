@@ -335,9 +335,10 @@ console.log('\n=== 6b. mobile waterfall rows wrap instead of clipping ===');
   ok(lastChildRule && /overflow-wrap:\s*anywhere/.test(lastChildRule[0])
     && !/white-space:\s*nowrap/.test(lastChildRule[0]),
     'long value text such as planned this period is allowed to wrap');
-  ok(mobile && /flex-direction:\s*column/.test(mobile[0])
-    && /\.operating-line span:last-child \{ text-align:\s*left; \}/.test(mobile[0]),
-    'narrow screens stack the label above the details instead of clipping sideways');
+  ok(lineRule && /grid-template-columns:\s*minmax\(0,\s*1fr\)/.test(lineRule[0])
+    && !/white-space:\s*nowrap/.test(lineRule[0])
+    && /\.payday-other-cards \.operating-line, \.payday-big-purchases \.operating-line \{[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\);/.test(css),
+    'narrow screens keep the amount in its right-hand column while the label wraps; descriptive inventories stack instead of clipping sideways');
   ok(mobile && /\.current-period-row \{ grid-template-columns:\s*minmax\(0,\s*1fr\)/.test(mobile[0]),
     'current-period detail rows also collapse to one wrapping column');
   ok(!/\.operating-line[^\{]*\{[^}]*overflow-x:\s*hidden/.test(css),
