@@ -553,6 +553,12 @@ console.log('\n=== 7. Bell undated is visible and excluded from remaining ===');
     advice: { defaultView: view, paydayAllocation: { available: (view.calendarPeriods.find(p => p.role === 'active') || view.calendarPeriods[0]).opening, cashBasis: { asOf: '2026-08-30' } } },
     weekly: 0, recommended: 0,
   });
+  const bellLine = /data-period-bill="bell"[^>]*>\s*<span>([^<]*)<\/span>\s*<span>([^<]*)<\/span>/.exec(html);
+  ok(bellLine && bellLine[1] === 'Bell · needs confirmation'
+      && /about/.test(bellLine[2]) && /121/.test(bellLine[2])
+      && !/BILLS ACCOUNT/i.test(bellLine[1]),
+    'Needs a Date Bell is name · needs confirmation, no paying account',
+    bellLine && `${bellLine[1]} | ${bellLine[2]}`);
   ok(/needs confirmation/i.test(html) && /Not included in either period's remaining bills/.test(html)
       && /Needs a date/.test(html) && /data-bill-section="needs-date"/.test(html),
     'page prints Bell outside both period remaining totals');
@@ -761,7 +767,7 @@ console.log('\n=== 12. subscriptions exist only under Bills, never as a househol
   const netflix = billsOf(p2).find(r => r.id === 'netflix');
   ok(netflix && netflix.status !== 'PAID' && near(netflix.remaining, 26.87)
       && netflix.date === '2026-08-17' && /BILLS ACCOUNT/i.test(netflix.payerLabel || ''),
-    'Netflix sits in Period 2 remaining-bills with amount, date, and paying account');
+    'Netflix sits in Period 2 remaining-bills with amount, date, and Forecast paying account');
   ok(p1.role === 'active' && near(p1.budgetHold, CYCLE_PLANNED_TOTAL),
     'as-of Aug 10, bill Period 1 is the active payday-cycle hold of $1,862.50',
     String(p1.budgetHold));
@@ -785,7 +791,7 @@ console.log('\n=== 12. subscriptions exist only under Bills, never as a househol
         && String(row.date).slice(8, 10) === String(spec.day).padStart(2, '0')
         && /BILLS ACCOUNT/i.test(row.payerLabel || '')
         && (row.status === 'PAID' || row.status === 'still due' || row.status === 'pending'),
-      `${spec.id} appears once in ${halfId(spec)} with amount, date, account, status`,
+      `${spec.id} appears once in ${halfId(spec)} with amount, date, Forecast account, status`,
       row && `${row.date} ${row.amount} ${row.status} ${row.payerLabel}`);
     ok(!billsOf(other).some(r => r.id === spec.id),
       `${spec.id} is absent from the other payday window`);
@@ -800,9 +806,11 @@ console.log('\n=== 12. subscriptions exist only under Bills, never as a househol
   ok(budgetBlock && !/Subscriptions/i.test(budgetBlock[0])
       && !/included in Bills, remaining not deducted/.test(budgetBlock[0]),
     'Household Budget block does not print a subscriptions line');
-  ok(/data-period-bill="netflix"/.test(html) && /Netflix/.test(html)
-      && /BILLS ACCOUNT/.test(html),
-    'page prints Netflix as a Bills row with paying account');
+  const netflixLine = /data-period-bill="netflix"[^>]*>\s*<span>([^<]*)<\/span>/.exec(html);
+  ok(netflixLine && /Netflix/.test(netflixLine[1]) && / · (PAID|pending|still due)$/.test(netflixLine[1])
+      && !/BILLS ACCOUNT/i.test(netflixLine[1]),
+    'page prints Netflix as a Bills row without paying account',
+    netflixLine && netflixLine[1]);
   ok(!/Pixieset|Mailchimp|CMAW/i.test(html),
     'Pixieset / Mailchimp / CMAW stay off the sheet');
 }

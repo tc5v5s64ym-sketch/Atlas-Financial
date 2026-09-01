@@ -406,6 +406,8 @@ console.log('\n=== 5b. leftover lists earned posted actuals, not an invented spe
           id: 'mortgage', label: 'Mortgage', date: '2026-08-28',
           planned: 1600, actual: 1234.56, remaining: 0,
           settlement: 'represented', confidence: 'confirmed',
+          payingAccount: 'chequing-a',
+          payerLabel: 'BILLS ACCOUNT (Chequing A)',
         },
       ],
     },
@@ -414,6 +416,8 @@ console.log('\n=== 5b. leftover lists earned posted actuals, not an invented spe
         id: 'fit4less', label: 'Fit4Less membership', date: '2026-08-28',
         planned: 11.54, amount: 11.54, remaining: 11.54,
         settlement: 'unverified', confidence: 'confirmed',
+        payingAccount: 'chequing-a',
+        payerLabel: 'BILLS ACCOUNT (Chequing A)',
       },
     ],
     bills: [
@@ -440,13 +444,14 @@ console.log('\n=== 5b. leftover lists earned posted actuals, not an invented spe
     },
   }, action);
   ok(/Fit4Less membership · Aug 28 · still due/.test(leave)
-    && !/Mortgage/.test(leave),
-    'still due lists unposted Fit4Less and not the paid mortgage');
+    && !/Mortgage/.test(leave) && !/BILLS ACCOUNT/i.test(leave),
+    'still due lists unposted Fit4Less and not the paid mortgage or paying account');
   ok(/Still needs to leave/.test(leave) && /data-payday-still-due/.test(leave),
     'still due is labelled as money that still needs to leave');
   const already = composer.alreadyPaidHtml(action);
-  ok(/data-payday-already-paid/.test(already) && /Mortgage · Aug 28 · paid/.test(already),
-    'already paid lists the paid mortgage from thisPaydayPaid');
+  ok(/data-payday-already-paid/.test(already) && /Mortgage · Aug 28 · paid/.test(already)
+      && !/BILLS ACCOUNT/i.test(already),
+    'already paid lists the paid mortgage without paying account');
   ok(/Already paid from this payday/.test(already),
     'already paid is labelled paid, not leftover to pay');
   ok(/\$1,234\.56/.test(already),

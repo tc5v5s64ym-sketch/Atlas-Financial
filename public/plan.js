@@ -1614,10 +1614,13 @@ function glanceLineLabel(row, tag) {
   name = name.replace(/\s*[—–-]\s*[^—–-]*posting unknown\s*$/i, '').trim();
   name = name.replace(/\s*posting unknown\s*/ig, '').trim();
   const bits = [name || (row && row.label) || ''];
-  if (row && row.needsDate) bits.push(row.dateNote || 'needs confirmation');
-  else if (row && row.date) bits.push(fmtDate(row.date));
-  if (row && row.payerLabel) bits.push(row.payerLabel);
-  if (tag && tag !== 'needs-date') bits.push(tag);
+  // Forecast still owns payerLabel; default Plan bill rows do not print it.
+  if (row && row.needsDate) {
+    bits.push(row.dateNote || 'needs confirmation');
+  } else {
+    if (row && row.date) bits.push(fmtDate(row.date));
+    if (tag && tag !== 'needs-date') bits.push(tag);
+  }
   return bits.join(' · ');
 }
 
