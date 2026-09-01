@@ -112,6 +112,7 @@ const suites = [
   ['opening state transition (B81)', 'test-b81-opening-state.js'],
   ['opening artifact recovery (B81)', 'test-b81-opening-recovery.js'],
   ['live plan overlay without rewriting openings', 'test-live-plan.js'],
+  ['live overlay unresolved same-day inbound', 'test-live-unresolved-inbound.js'],
   ['production read-only live overlay boundary', 'test-production-live-overlay.js'],
   ['read-only assistant interface', 'test-assistant-interface.js'],
   ['Aug. 16 household evidence absorption', 'test-aug16-evidence.js'],
