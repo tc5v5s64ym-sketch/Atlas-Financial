@@ -54,12 +54,21 @@ remains Forecast income. Same-day unproven inbound is the live-overlay
 not-relied-upon case (PR #222); it does not mean “never forecast Amanda
 salary until a transfer is observed.”
 
-**Calendar Pay Periods** (Plan Pay Period 1 = 1st–15th; Pay Period 2 =
-16th–last calendar day) are operating windows. They are not assumptions
-about how many payroll deposits occur. They do not own payroll cadence.
-Each half consumes whatever Forecast income events actually fall inside
-its dates. January 2027 Pay Period 1 (1st–15th) contains two Seaspan
-paychecks (Jan 1 and Jan 15) plus Amanda's Jan 15 paycheck.
+**Operating Pay Periods** are Seaspan payday-to-payday windows, derived
+from the incumbent `plan.income.payroll` biweekly recurrence /
+`Forecast.spendingCycle`. This Pay Period starts on the current Seaspan
+payday and ends the calendar day before the next Seaspan payday. Next
+Pay Period starts on that next payday and ends the day before the
+following one. They are not calendar halves (1st–15th / 16th–month-end;
+that operating definition is superseded). They do not own payroll
+cadence and they do not start or end on Amanda's semi-monthly salary.
+Each window consumes whatever Forecast income events actually fall
+inside its dates. Amanda's 15th and month-end salary, and the child
+benefit, are income events inside whichever Seaspan cycle contains that
+date. Example: 2026-09-01 sits in Aug 28–Sep 10; Sep 11 Seaspan and
+Sep 15 Amanda belong to the next period (Sep 11–Sep 24). January 2027
+payday period Jan 1–14 contains Seaspan Jan 1 and neither Jan 15
+paycheck; Jan 15–28 contains Seaspan Jan 15 and Amanda Jan 15.
 
 Owner-stated 2026-08-29:
 

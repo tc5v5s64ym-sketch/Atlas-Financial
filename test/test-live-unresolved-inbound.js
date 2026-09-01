@@ -301,11 +301,11 @@ console.log('\n=== 2. August 31 proven Amanda TENNIS INCOME → BILLS transfer =
     'opening equals independent observed-cash sum');
   const advice = recommend(result.data, '2026-08-31');
   const p2 = activePeriod(advice);
-  ok(p2 && p2.role === 'active' && p2.start === '2026-08-16' && p2.end === '2026-08-31',
-    'Pay Period 2 is active on Aug 31');
+  ok(p2 && p2.role === 'active' && p2.start === '2026-08-28' && p2.end === '2026-09-10',
+    'This Pay Period is active on Aug 31');
   ok(near(p2.currentBalance, independentCash)
       || near(p2.currentBalance, advice.paydayAllocation.available),
-    'active Pay Period 2 starts from current cash, not dated opening');
+    'active This Pay Period starts from current cash, not dated opening');
   ok(!near(advice.paydayAllocation.available, independentCash + SALARY),
     'salary is not added again on top of observed cash');
   const row = incomeRow(advice, 'amandaSalaryMonthEnd');
@@ -592,26 +592,26 @@ console.log('\n=== 10. Active two-period calendar waterfall ===');
       }],
     },
   });
-  const p1 = periodByRole(advice, 'lookback');
-  const p2 = periodByRole(advice, 'active');
-  ok(p1 && p1.start === '2026-08-01' && p1.end === '2026-08-15',
-    'Pay Period 1 is 1st–15th lookback');
-  ok(p2 && p2.start === '2026-08-16' && p2.end === '2026-08-31',
-    'Pay Period 2 is 16th–31st active');
-  ok(p2.operatingPlanUnavailable !== true, 'active waterfall is not unavailable');
-  ok(near(p2.currentBalance, advice.paydayAllocation.available),
+  const thisP = periodByRole(advice, 'active');
+  const nextP = periodByRole(advice, 'future');
+  ok(thisP && thisP.start === '2026-08-28' && thisP.end === '2026-09-10',
+    'This Pay Period is the Aug 28–Sep 10 Seaspan window');
+  ok(nextP && nextP.start === '2026-09-11' && nextP.end === '2026-09-24',
+    'Next Pay Period is Sep 11–Sep 24');
+  ok(thisP.operatingPlanUnavailable !== true, 'active waterfall is not unavailable');
+  ok(near(thisP.currentBalance, advice.paydayAllocation.available),
     'active Current Balance is live leftover from current cash');
-  ok(p1.currentBalance == null || !near(p1.currentBalance, p2.currentBalance),
-    'lookback period does not reuse today\'s live cash as Current Balance');
-  ok(p2.remainingBills != null, 'active period shows remaining bills');
-  const groceries = (p2.householdBudget || []).find(row => row && row.id === 'groceries');
+  ok(near(nextP.opening, thisP.projectedEnding),
+    'next period opens from this period projected ending, not a second live cash');
+  ok(thisP.remainingBills != null, 'active period shows remaining bills');
+  const groceries = (thisP.householdBudget || []).find(row => row && row.id === 'groceries');
   ok(groceries && groceries.planned != null && groceries.spent != null
       && groceries.remaining != null,
     'Household Budget planned/actual/remaining are visible');
-  ok(near(p2.afterHouseholdBudget, round2(p2.afterRemainingBills - p2.budgetHold)),
+  ok(near(thisP.afterHouseholdBudget, round2(thisP.afterRemainingBills - thisP.budgetHold)),
     'only remaining Household Budget reduces the waterfall');
-  ok(p2.extraDebt && p2.extraDebt.allocated != null, 'extra debt allocation follows');
-  ok(p2.afterBigPurchases != null, 'big-purchase allocation follows');
+  ok(thisP.extraDebt && thisP.extraDebt.allocated != null, 'extra debt allocation follows');
+  ok(thisP.afterBigPurchases != null, 'big-purchase allocation follows');
 }
 
 console.log('\n=== 11. Failed-cash control withholds stale Current Balance ===');

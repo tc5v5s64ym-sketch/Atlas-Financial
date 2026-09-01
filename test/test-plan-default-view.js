@@ -318,10 +318,10 @@ console.log('\n=== 3. bills this pay period: paid stay listed, history stays off
   const ids = (advice.defaultView.bills || []).map(r => r.id);
   ok(ids.includes('mortgage') && ids.includes('fit4less'),
     'paid mortgage and gym stay on the period-bill list');
-  ok(ids.includes('tdfees') && ids.includes('travel'),
-    'still-due TD fees and Travel Visa min stay on the list');
-  ok(!ids.includes('childBenefit') && ids.includes('bcaa-aug15-outstanding'),
-    'income stays off the bills list; Aug 16 BCAA is in the calendar month');
+  ok(ids.includes('tdfees') && !ids.includes('travel'),
+    'still-due TD fees stay; Travel Visa day 26 is the previous payday cycle');
+  ok(!ids.includes('childBenefit') && !ids.includes('bcaa-aug15-outstanding'),
+    'income stays off the bills list; Aug 16 BCAA is the previous payday cycle');
   const html = composer.operatingSurfaceHtml({
     advice, weekly: advice.weekly, recommended: advice.weekly,
   });
@@ -330,9 +330,9 @@ console.log('\n=== 3. bills this pay period: paid stay listed, history stays off
       && /Fit4Less membership · Aug 28 · PAID/.test(glance),
     'paid bills print PAID rather than being hidden');
   ok(/TD account fees \(two accounts\) · Aug 30 · still due/.test(glance),
-    'later-in-month bills stay still due');
-  ok(/Canada child benefit/.test(glance),
-    'income prints in the income block, not as a bill row');
+    'later-in-window bills stay still due');
+  ok(/Payroll — Seaspan/.test(glance) && !/Canada child benefit/.test(glance),
+    'Seaspan prints in the income block; Aug 20 child benefit is previous cycle');
   ok(!/Rogers/.test(glance) && !/CMAW/.test(glance),
     'glance does not invent bills');
   ok(glance.includes('−' + composer.money2(MORTGAGE)),

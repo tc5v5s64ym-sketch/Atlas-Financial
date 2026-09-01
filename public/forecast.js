@@ -91,9 +91,10 @@
     '', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
     'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
   ];
-  // Seaspan payday cycle for Household Budget spent/planned. Not the
-  // calendar 1–15 / 16–end bill sections. Amanda salary and child benefit
-  // do not reset this cycle.
+  // Seaspan payday cycle: Dale's biweekly payroll is the operating-period
+  // boundary and the Household Budget spent/planned window. A cycle starts
+  // on a Seaspan payday and ends the calendar day before the next Seaspan
+  // payday. Amanda salary and child benefit do not reset this cycle.
   function seaspanPayroll(plan) {
     const rows = (plan && plan.income) || [];
     return rows.find(row => row && (row.id === 'payroll' || /seaspan/i.test(row.label || '')))
@@ -131,6 +132,54 @@
       days: diffDays(start, end) + 1,
       label: 'Spending cycle: ' + formatSpendingCycleRange(start, end),
     };
+  }
+  // Default Plan operating views: this Seaspan payday through the day
+  // before the next, then the following payday through the day before
+  // the one after that. Derived from spendingCycle; not calendar halves.
+  function operatingPayPeriodWindows(plan, asOf) {
+    const current = spendingCycle(plan, asOf);
+    if (!current || !current.start || !current.end) return [];
+    const windows = [{
+      id: 'this-pay-period',
+      label: 'This Pay Period',
+      rangeLabel: formatSpendingCycleRange(current.start, current.end),
+      start: current.start,
+      end: current.end,
+      cycle: current,
+      role: 'active',
+    }];
+    const next = current.nextPayday ? spendingCycle(plan, current.nextPayday) : null;
+    if (next && next.start && next.end && next.start !== current.start) {
+      windows.push({
+        id: 'next-pay-period',
+        label: 'Next Pay Period',
+        rangeLabel: formatSpendingCycleRange(next.start, next.end),
+        start: next.start,
+        end: next.end,
+        cycle: next,
+        role: 'future',
+      });
+    }
+    return windows;
+  }
+  function windowContainingDate(windows, date) {
+    if (!date) return null;
+    for (let i = 0; i < (windows || []).length; i++) {
+      const w = windows[i];
+      if (w && w.start && w.end && date >= w.start && date <= w.end) return w;
+    }
+    return null;
+  }
+  function coveringSpan(windows) {
+    let start = null;
+    let end = null;
+    for (let i = 0; i < (windows || []).length; i++) {
+      const w = windows[i];
+      if (!w || !w.start || !w.end) continue;
+      if (!start || w.start < start) start = w.start;
+      if (!end || w.end > end) end = w.end;
+    }
+    return start && end ? { start, end } : null;
   }
   // Shift `iso`'s month by `n`, keeping the requested day-of-month and
   // clamping to shorter months (31 January + 3 months → 30 April).
@@ -3428,8 +3477,8 @@
     return null;
   }
 
-  // Calendar halves for the printed bills list only. These are not
-  // income-event boundaries and do not change leftover or payday math.
+  // Calendar-month span for snapshot-month reconstruction of already-paid
+  // card minimums. Not the household operating Pay Period definition.
   function calendarMonthSpan(iso) {
     if (!iso || !ISO_CALENDAR_DATE.test(String(iso))) return null;
     const [y, m] = String(iso).split('-').map(Number);
@@ -3444,6 +3493,8 @@
     };
   }
 
+  // Calendar-month half (1st–15th vs 16th–end). Not the household operating
+  // Pay Period. Retained for non-operating calendar-month reporting.
   function billCalendarHalf(iso) {
     if (!iso || !ISO_CALENDAR_DATE.test(String(iso))) return null;
     const day = Number(String(iso).slice(8, 10));
@@ -3459,8 +3510,8 @@
   }
 
   // Once-rows that reserve a skipped monthly occurrence keep the posting
-  // window on `date`. Calendar halves use that monthly `day` as the
-  // scheduled due, not the window date and not the bank post date.
+  // window on `date`. Payday operating windows use that monthly `day` as
+  // the scheduled due, not the window date and not the bank post date.
   function monthlyCadenceSibling(plan, row) {
     if (!row || row.frequency !== 'once' || !row.id) return null;
     const recs = ((plan && plan.bills) || []).concat((plan && plan.obligations) || []);
@@ -3572,17 +3623,26 @@
 
   function calendarBillSections(plan, asOf, opts) {
     opts = opts || {};
-    const month = calendarMonthSpan(asOf);
-    if (!month) {
+    const windows = opts.periodWindows || operatingPayPeriodWindows(plan, asOf);
+    const span = coveringSpan(windows);
+    if (!span) {
       return { billSections: [], bills: [], undatedBills: [] };
     }
     const represented = representedKeySet(plan, opts, asOf);
     const observed = representedActualMap(opts);
     const cashAsOf = cashSnapshotDate(plan, asOf);
-    const events = expandEvents(plan, month.start, month.end,
+    const events = expandEvents(plan, span.start, span.end,
       Object.assign({}, opts, { keepRepresented: true }));
     const seen = new Set();
-    const halves = { 1: [], 2: [] };
+    const buckets = {};
+    for (let i = 0; i < windows.length; i++) {
+      buckets[windows[i].id] = [];
+    }
+    const pushRow = (due, row) => {
+      const window = windowContainingDate(windows, due);
+      if (!window || !row) return;
+      buckets[window.id].push(row);
+    };
     for (const event of events || []) {
       if (!event || !event.date) continue;
       if (event.kind === 'income' || event.kind === 'noncash') continue;
@@ -3590,19 +3650,17 @@
       if (event.kind === 'obligation' && event.effect === 'capitalise') continue;
       if (event.jointCash === false) continue;
       // expandEvents may carry an unpaid once row into a later window.
-      // Printed halves use the scheduled due, not the posting-window date,
-      // so a 15 August bill reserved on the 16th stays in Period 1.
+      // Printed payday windows use the scheduled due, not the posting-window
+      // date, so a 15 August bill reserved on the 16th stays on 15 August.
       const scheduleDate = calendarBillScheduleDate(plan, event);
       const due = scheduleDate || event.date;
-      if (!due || due < month.start || due > month.end) continue;
-      const half = billCalendarHalf(due);
-      if (!half) continue;
+      if (!due || due < span.start || due > span.end) continue;
       const key = (event.id || event.label || '') + '@' + event.date;
       if (seen.has(key)) continue;
       seen.add(key);
       const row = calendarBillRowFromEvent(
         plan, event, asOf, represented, observed, cashAsOf, due);
-      if (row) halves[half].push(row);
+      pushRow(due, row);
     }
     // Planned cash minimum for a capitalising obligation. Printed once on
     // the bills list; not a second expandEvents cash event and not a
@@ -3614,15 +3672,13 @@
         frequency: o.frequency,
         day: o.cashDay,
         firstDue: o.cashFirstDue || o.firstDue || null,
-      }, month.start, month.end);
+      }, span.start, span.end);
       for (const date of dates) {
-        const half = billCalendarHalf(date);
-        if (!half) continue;
         const key = (o.id || o.cashLabel || '') + '@' + date;
         if (seen.has(key)) continue;
         seen.add(key);
         const payingAccount = o.payingAccount || null;
-        halves[half].push({
+        pushRow(date, {
           id: o.id,
           label: o.cashLabel || o.label,
           kind: 'obligation',
@@ -3654,8 +3710,9 @@
       ? plan.opening.asOf : null;
     const snapMonth = openingAsOf ? calendarMonthSpan(openingAsOf) : calendarMonthSpan(cashAsOf);
     const debtDatesPrinted = new Set();
-    for (const half of [1, 2]) {
-      for (const row of halves[half]) {
+    for (let i = 0; i < windows.length; i++) {
+      const rows = buckets[windows[i].id] || [];
+      for (const row of rows) {
         if (!row) continue;
         if (row.id) debtDatesPrinted.add(row.id + '@' + row.date);
         const rec = ((plan.obligations || []).find(o => o && o.id === row.id))
@@ -3669,13 +3726,11 @@
       }
       if (!o.firstDue) continue;
       if (!openingAsOf || !snapMonth) continue;
-      const dates = monthlyDates(o.day, month.start, month.end, null);
+      const dates = monthlyDates(o.day, span.start, span.end, null);
       for (const date of dates) {
         if (date >= o.firstDue || date > asOf) continue;
         if (date < snapMonth.start || date > snapMonth.end) continue;
         if (date >= openingAsOf) continue;
-        const half = billCalendarHalf(date);
-        if (!half) continue;
         const key = (o.id || '') + '@' + date;
         if (seen.has(key)) continue;
         if (debtDatesPrinted.has(o.debtId + '@' + date)
@@ -3684,7 +3739,7 @@
         const payingAccount = o.payingAccount || null;
         const amt = roundCent(Number(o.amount) || 0);
         if (!(amt > EPSILON)) continue;
-        halves[half].push({
+        pushRow(date, {
           id: o.id,
           label: o.label,
           kind: 'obligation',
@@ -3722,8 +3777,8 @@
         : (r.amount != null ? r.amount : r.planned);
       return Math.abs(Number(raw) || 0);
     };
-    const section = (half, start, end, label) => {
-      const rows = sortRows(halves[half]);
+    const sectionFor = window => {
+      const rows = sortRows(buckets[window.id] || []);
       const total = roundCent(rows.reduce((s, r) => s + displayedBillAbs(r), 0));
       const remainingTotal = roundCent(rows.reduce((s, r) => {
         if (!r || r.status === 'PAID' || r.needsDate) return s;
@@ -3732,19 +3787,17 @@
         return s + raw;
       }, 0));
       return {
-        id: half === 1 ? 'calendar-1-15' : 'calendar-16-end',
-        label,
-        start,
-        end,
+        id: window.id,
+        label: window.label,
+        rangeLabel: window.rangeLabel || null,
+        start: window.start,
+        end: window.end,
         rows,
         total,
         remainingTotal,
       };
     };
-    const billSections = [
-      section(1, month.start, month.mid, 'Pay Period 1'),
-      section(2, month.secondStart, month.end, 'Pay Period 2'),
-    ];
+    const billSections = windows.map(sectionFor);
     const undatedBills = [];
     for (const bill of (plan && plan.bills) || []) {
       if (!bill || !bill.needsDate) continue;
@@ -3772,7 +3825,7 @@
     }
     return {
       billSections,
-      bills: billSections[0].rows.concat(billSections[1].rows),
+      bills: billSections.reduce((all, sec) => all.concat(sec.rows || []), []),
       undatedBills,
     };
   }
@@ -3822,39 +3875,45 @@
     };
   }
 
-  function calendarIncomeSections(plan, asOf, month, opts) {
+  function calendarIncomeSections(plan, asOf, windows, opts) {
+    const span = coveringSpan(windows);
+    if (!span) return {};
     const represented = representedKeySet(plan, opts, asOf);
     const notRelied = notReliedUponKeySet(plan, opts, asOf);
     const observed = representedActualMap(opts);
     const cashAsOf = cashSnapshotDate(plan, asOf);
-    const events = expandEvents(plan, month.start, month.end,
+    const events = expandEvents(plan, span.start, span.end,
       Object.assign({}, opts || {}, { keepRepresented: true }));
     const seen = new Set();
-    const halves = { 1: [], 2: [] };
-    const push = (half, row) => {
-      if (!row || !half) return;
+    const buckets = {};
+    for (let i = 0; i < (windows || []).length; i++) {
+      buckets[windows[i].id] = [];
+    }
+    const push = (window, row) => {
+      if (!row || !window) return;
       const key = (row.id || row.label || '') + '@' + (row.date || '');
       if (seen.has(key)) return;
       seen.add(key);
-      halves[half].push(row);
+      buckets[window.id].push(row);
     };
     for (const event of events || []) {
       if (!event || event.kind !== 'income' || !event.date) continue;
-      if (event.date < month.start || event.date > month.end) continue;
-      push(billCalendarHalf(event.date),
+      if (event.date < span.start || event.date > span.end) continue;
+      push(windowContainingDate(windows, event.date),
         calendarIncomeRowFromEvent(plan, event, asOf, represented, observed, cashAsOf, notRelied, opts));
     }
     for (const stream of (plan && plan.income) || []) {
       if (!stream || !stream.firstDue || stream.frequency !== 'monthly' || stream.day == null) {
         continue;
       }
-      const dates = monthlyDates(stream.day, month.start, month.end, null);
+      const dates = monthlyDates(stream.day, span.start, span.end, null);
       for (const date of dates) {
         if (date >= stream.firstDue || date > asOf) continue;
-        const half = billCalendarHalf(date);
+        const window = windowContainingDate(windows, date);
+        if (!window) continue;
         const amt = roundCent(Number(streamAmount(stream, opts)) || Number(stream.amount) || 0);
         if (!(amt > EPSILON)) continue;
-        push(half, {
+        push(window, {
           id: stream.id,
           label: stream.label,
           kind: 'income',
@@ -3875,10 +3934,12 @@
     const sortRows = rows => rows.sort((a, b) =>
       String(a.date || '').localeCompare(String(b.date || ''))
       || String(a.label || '').localeCompare(String(b.label || '')));
-    return {
-      1: sortRows(halves[1]),
-      2: sortRows(halves[2]),
-    };
+    const out = {};
+    for (let i = 0; i < (windows || []).length; i++) {
+      const id = windows[i].id;
+      out[id] = sortRows(buckets[id] || []);
+    }
+    return out;
   }
 
   function calendarPeriodRole(asOfHalf, half) {
@@ -4164,42 +4225,20 @@
     };
   }
 
-  // Two calendar-half waterfalls for the as-of month. Leftover is this
-  // printout's chain: it does not replace paydayAllocation, and it does
-  // not rewrite current cash. The active half opens from
-  // paydayAllocation.available. A future half opens from the previous
-  // half's projected ending. A lookback half does not reuse today's cash.
-  // Walk P1 then P2. Each resolved Seaspan cycle is held once across the chain.
-  // If a future half's seed cycle is already held, advance to the next
-  // payday cycle rather than deducting the same $1,862.50 twice.
-  // alreadyHeld and unresolved are not equivalent: alreadyHeld skips a
-  // duplicate reserve; a missing cycle must fail closed and keep the hold.
-  function uniqueSpendingCycle(plan, seedAsOf, heldStarts) {
-    let cycle = spendingCycle(plan, seedAsOf);
-    if (!cycle || !cycle.start) {
-      return { cycle: null, alreadyHeld: false, unresolved: true };
-    }
-    let guard = 0;
-    while (heldStarts.has(cycle.start) && cycle.nextPayday && guard < 24) {
-      const next = spendingCycle(plan, cycle.nextPayday);
-      if (!next || !next.start || next.start === cycle.start) break;
-      cycle = next;
-      guard += 1;
-    }
-    if (heldStarts.has(cycle.start)) {
-      return { cycle, alreadyHeld: true, unresolved: false };
-    }
-    heldStarts.add(cycle.start);
-    return { cycle, alreadyHeld: false, unresolved: false };
-  }
-
+  // Two payday-cycle waterfalls: this Seaspan payday through the day
+  // before the next, then the next payday through the day before the
+  // following one. Leftover is this printout's chain: it does not replace
+  // paydayAllocation, and it does not rewrite current cash. The active
+  // period opens from paydayAllocation.available. The next period opens
+  // from this period's projected ending, then adds that next payday's
+  // income once. Household Budget uses the same spendingCycle window.
   function calendarPeriodWaterfalls(plan, asOf, alloc, plans, debts, opts) {
     opts = opts || {};
-    const month = calendarMonthSpan(asOf);
-    if (!month) return { calendarPeriods: [], activeCalendarPeriodId: null };
-    const calendar = calendarBillSections(plan, asOf, opts);
-    const incomeHalves = calendarIncomeSections(plan, asOf, month, opts);
-    const asOfHalf = billCalendarHalf(asOf);
+    const windows = opts.periodWindows || operatingPayPeriodWindows(plan, asOf);
+    if (!windows.length) return { calendarPeriods: [], activeCalendarPeriodId: null };
+    const calendarOpts = Object.assign({}, opts, { periodWindows: windows });
+    const calendar = calendarBillSections(plan, asOf, calendarOpts);
+    const incomeByWindow = calendarIncomeSections(plan, asOf, windows, opts);
     const currentCash = alloc && alloc.available != null
       ? roundCent(alloc.available) : roundCent(startingCashAmount(plan));
     const buffer = opts.targetBuffer != null ? opts.targetBuffer
@@ -4211,12 +4250,19 @@
     let previousEnding = null;
     let unavailableOpeningLost = false;
     const heldCycleStarts = new Set();
+    const sectionById = {};
     for (const section of calendar.billSections || []) {
-      const half = section.id === 'calendar-1-15' ? 1 : 2;
-      const role = calendarPeriodRole(asOfHalf, half);
+      if (section && section.id) sectionById[section.id] = section;
+    }
+    for (const window of windows) {
+      const section = sectionById[window.id] || {
+        rows: [], remainingTotal: 0, total: 0,
+        start: window.start, end: window.end, id: window.id, label: window.label,
+      };
+      const role = window.role || 'future';
       const projected = role === 'future';
       const lookback = role === 'lookback';
-      const income = incomeHalves[half] || [];
+      const income = incomeByWindow[window.id] || [];
       const bills = section.rows || [];
       const remainingBills = section.remainingTotal != null
         ? section.remainingTotal
@@ -4237,7 +4283,7 @@
       const budgetOpts = Object.assign({}, opts);
       // Dated opening is not the current operating plan. Role stays
       // anchored to that dated as-of; do not invent a later opening or
-      // wall-clock as-of. A later calendar half whose opening was the
+      // wall-clock as-of. A later payday window whose opening was the
       // unavailable current period's ending is also not a normal
       // current-looking / future waterfall.
       const planUnavailable = opts.operatingPlan === 'unavailable'
@@ -4249,7 +4295,7 @@
           // hold as today's waterfall, and do not invent a later cycle.
           budgetOpts.skipHold = true;
         } else {
-          const seedAsOf = role === 'future' ? section.start : asOf;
+          const seedAsOf = role === 'future' ? window.start : asOf;
           const picked = uniqueSpendingCycle(plan, seedAsOf, heldCycleStarts);
           if (picked.alreadyHeld) {
             budgetOpts.skipHold = true;
@@ -4266,7 +4312,7 @@
           spendingCycle: null, cycleUnresolved: false,
         }
         : calendarHouseholdBudget(
-          plan, asOf, section.start, section.end, role, budgetOpts);
+          plan, asOf, window.start, window.end, role, budgetOpts);
       const spendingCycleLabel = (role === 'active' && budget.spendingCycle && !planUnavailable)
         ? budget.spendingCycle.label : null;
       let opening = null;
@@ -4352,10 +4398,11 @@
         previousEnding = null;
       }
       periods.push({
-        id: section.id,
-        label: section.label,
-        start: section.start,
-        end: section.end,
+        id: window.id,
+        label: window.label,
+        rangeLabel: window.rangeLabel || null,
+        start: window.start,
+        end: window.end,
         role,
         projected,
         lookback,
@@ -4406,6 +4453,24 @@
       activeCalendarPeriodId: active ? active.id : null,
     };
   }
+  function uniqueSpendingCycle(plan, seedAsOf, heldStarts) {
+    let cycle = spendingCycle(plan, seedAsOf);
+    if (!cycle || !cycle.start) {
+      return { cycle: null, alreadyHeld: false, unresolved: true };
+    }
+    let guard = 0;
+    while (heldStarts.has(cycle.start) && cycle.nextPayday && guard < 24) {
+      const next = spendingCycle(plan, cycle.nextPayday);
+      if (!next || !next.start || next.start === cycle.start) break;
+      cycle = next;
+      guard += 1;
+    }
+    if (heldStarts.has(cycle.start)) {
+      return { cycle, alreadyHeld: true, unresolved: false };
+    }
+    heldStarts.add(cycle.start);
+    return { cycle, alreadyHeld: false, unresolved: false };
+  }
 
   function planDefaultView(plan, asOf, alloc, action, plans, debts, opts) {
     const leftover = (alloc && alloc.runningLeftover) || runningLeftoverFromAlloc(
@@ -4418,8 +4483,13 @@
     );
     const paydayDate = action && action.thisPayday;
     const periodLast = (action && action.periodEnd) || (alloc && alloc.periodEnd);
-    const calendar = calendarBillSections(plan, asOf, opts);
-    const waterfalls = calendarPeriodWaterfalls(plan, asOf, alloc, plans, debts, opts);
+    const cycle = spendingCycle(plan, asOf);
+    const periodStart = (cycle && cycle.start) || paydayDate || null;
+    const cycleEnd = (cycle && cycle.end) || periodLast || null;
+    const windows = operatingPayPeriodWindows(plan, asOf);
+    const calendarOpts = Object.assign({}, opts, { periodWindows: windows });
+    const calendar = calendarBillSections(plan, asOf, calendarOpts);
+    const waterfalls = calendarPeriodWaterfalls(plan, asOf, alloc, plans, debts, calendarOpts);
     const cards = revolvingCardsGlance(plan, debts, alloc && alloc.extraDebt);
     return {
       asOf: (alloc && alloc.cashBasis && alloc.cashBasis.asOf) || asOf,
@@ -4428,8 +4498,8 @@
       billsHeading: 'Bills',
       extraLabel: 'Extra this payday',
       cashNote: null,
-      periodStart: paydayDate || null,
-      periodEnd: periodLast || null,
+      periodStart,
+      periodEnd: cycleEnd,
       currentBalance: leftover.currentBalance,
       afterBills: leftover.afterBills,
       afterHouseholdBudget: leftover.afterHouseholdBudget,
@@ -4442,7 +4512,7 @@
       activeCalendarPeriodId: waterfalls.activeCalendarPeriodId,
       householdBudget: householdBudgetGlance(plan, alloc),
       budgetDigest: householdBudgetDigest(
-        plan, asOf, paydayDate, periodLast, opts),
+        plan, asOf, periodStart, cycleEnd, opts),
       firstCard: cards.firstCard,
       otherCards: cards.otherCards,
       bigPurchases: bigPurchasesGlance(plans, alloc),

@@ -1,10 +1,10 @@
 'use strict';
-/* Two calendar-half waterfalls: opening chain, paid bills, income, HELOC
+/* Two payday-cycle waterfalls: opening chain, paid bills, income, HELOC
  * cash once, card mins once, current-cash identity, Bell outside remaining,
- * Household Budget on the Seaspan 14-day payday cycle (not bill-calendar
- * dates), scheduled-due bill assignment, two bill totals, subscriptions
- * bills-only (not a household-budget hold), Dale/Amanda guilt-free actuals
- * from evidenced shopping txs.
+ * Household Budget on the Seaspan 14-day payday cycle (now the same window
+ * as the operating Pay Period), scheduled-due bill assignment, two bill
+ * totals, subscriptions bills-only (not a household-budget hold),
+ * Dale/Amanda guilt-free actuals from evidenced shopping txs.
  *
  * Dates and totals are hand-computed from cadence and the calendar, then
  * Forecast is asked whether it reproduced them (L-002 / L-006).
@@ -213,13 +213,12 @@ function reconSum(row) {
   return roundCent(((row && row.recon) || []).reduce((s, r) => s + (Number(r.amount) || 0), 0));
 }
 const SUBSCRIPTION_BILLS = [
-  { id: 'youtube-premium', label: 'YouTube Premium', day: 2, amount: 17, half: 1 },
-  { id: 'icloud-storage', label: 'iCloud Storage', day: 14, amount: 13, half: 1 },
-  { id: 'chatgpt-plus-dale', label: 'ChatGPT Plus — Dale', day: 14, amount: 28, half: 1 },
-  { id: 'chatgpt-plus-amanda', label: 'ChatGPT Plus — Amanda', day: 14, amount: 24.99, half: 1 },
-  { id: 'netflix', label: 'Netflix', day: 17, amount: 26.87, half: 2 },
-  { id: 'spotify', label: 'Spotify', day: 17, amount: 26.87, half: 2 },
-  { id: 'google-storage-100gb', label: 'Google storage — 100 GB', day: 31, amount: 3.13, half: 2 },
+  { id: 'youtube-premium', label: 'YouTube Premium', day: 2, amount: 17, window: 'this' },
+  { id: 'icloud-storage', label: 'iCloud Storage', day: 14, amount: 13, window: 'next' },
+  { id: 'chatgpt-plus-dale', label: 'ChatGPT Plus — Dale', day: 14, amount: 28, window: 'next' },
+  { id: 'chatgpt-plus-amanda', label: 'ChatGPT Plus — Amanda', day: 14, amount: 24.99, window: 'next' },
+  { id: 'netflix', label: 'Netflix', day: 17, amount: 26.87, window: 'next' },
+  { id: 'spotify', label: 'Spotify', day: 17, amount: 26.87, window: 'next' },
 ];
 
 function syntheticPlan() {
@@ -411,8 +410,8 @@ console.log('=== 1. Period 1 projected ending flows into Period 2 opening ===');
   const plan = syntheticPlan();
   const advice = F.recommend(plan, '2026-08-10', { targetBuffer: 500, debts });
   const view = advice.defaultView;
-  const p1 = period(view, 'calendar-1-15');
-  const p2 = period(view, 'calendar-16-end');
+  const p1 = period(view, 'this-pay-period');
+  const p2 = period(view, 'next-pay-period');
   ok(p1 && p1.role === 'active' && p2 && p2.role === 'future',
     'as-of Aug 10: Period 1 is live, Period 2 is future');
   ok(p1.openingKnown && near(p1.opening, advice.paydayAllocation.available),
@@ -436,20 +435,20 @@ console.log('\n=== 2. Paid bills are not deducted twice ===');
     targetBuffer: 500, debts,
     representedEvents: [{ id: 'netflix', date: '2026-08-17' }],
   });
-  const p2 = period(advice.defaultView, 'calendar-16-end');
-  const netflix = billsOf(p2).find(r => r.id === 'netflix');
+  const p1 = period(advice.defaultView, 'this-pay-period');
+  const netflix = billsOf(p1).find(r => r.id === 'netflix');
   ok(netflix && netflix.status === 'PAID' && near(netflix.remaining, 0),
     'represented Netflix stays visible as PAID with remaining $0');
-  const remainingIds = billsOf(p2).filter(r => r.status !== 'PAID').map(r => r.id);
+  const remainingIds = billsOf(p1).filter(r => r.status !== 'PAID').map(r => r.id);
   ok(!remainingIds.includes('netflix'),
     'PAID Netflix is omitted from remaining-bills');
-  const independentRemaining = billsOf(p2)
+  const independentRemaining = billsOf(p1)
     .filter(r => r.status !== 'PAID')
     .reduce((s, r) => s + (Number(r.remaining) || 0), 0);
-  ok(near(p2.remainingBills, independentRemaining),
+  ok(near(p1.remainingBills, independentRemaining),
     'remaining-bills equals the unpaid rows only',
-    `${p2.remainingBills} vs ${independentRemaining}`);
-  ok(p2.available != null && near(p2.afterRemainingBills, p2.available - p2.remainingBills),
+    `${p1.remainingBills} vs ${independentRemaining}`);
+  ok(p1.available != null && near(p1.afterRemainingBills, p1.available - p1.remainingBills),
     'leftover after remaining bills subtracts unpaid rows once');
 }
 
@@ -472,11 +471,12 @@ console.log('\n=== 4. HELOC cash is not double-counted with capitalised interest
 {
   const plan = syntheticPlan();
   const aug = F.recommend(plan, '2026-08-30', { targetBuffer: 500, debts }).defaultView;
-  const augHeloc = (aug.bills || []).filter(r => r.id === 'heloc' || r.cashMinimum);
-  ok(augHeloc.length === 0,
-    'August has no remaining HELOC cash row (cashFirstDue 2026-09-21)');
+  const thisHeloc = billsOf(period(aug, 'this-pay-period'))
+    .filter(r => r.id === 'heloc' || r.cashMinimum);
+  ok(thisHeloc.length === 0,
+    'Aug 28–Sep 10 has no HELOC cash row (cashFirstDue 2026-09-21)');
   const sep = F.recommend(plan, '2026-09-10', { targetBuffer: 500, debts }).defaultView;
-  const p2 = period(sep, 'calendar-16-end');
+  const p2 = period(sep, 'next-pay-period');
   const heloc = billsOf(p2).filter(r => r.id === 'heloc');
   ok(heloc.length === 1 && heloc[0].date === '2026-09-21' && near(heloc[0].amount, 80),
     'September HELOC cash min prints once in Period 2 on the 21st');
@@ -490,26 +490,29 @@ console.log('\n=== 4. HELOC cash is not double-counted with capitalised interest
 console.log('\n=== 5. Each active card min appears once, including paid ===');
 {
   const plan = syntheticPlan();
-  const view = F.recommend(plan, '2026-08-30', { targetBuffer: 500, debts }).defaultView;
-  const p1 = period(view, 'calendar-1-15');
-  const p2 = period(view, 'calendar-16-end');
-  const triangle = billsOf(p1).filter(r => r.id === 'triangle');
-  const cashback = billsOf(p1).filter(r => r.id === 'cashback');
-  const tdcc = billsOf(p2).filter(r => r.id === 'tdcc');
-  const travel = billsOf(p2).filter(r => r.id === 'travel');
-  const amazonOnce = billsOf(p2).filter(r => r.id === 'mbna-aug31');
-  const amazonMonthly = billsOf(p2).filter(r => r.id === 'mbna');
+  const early = F.recommend(plan, '2026-08-10', { targetBuffer: 500, debts }).defaultView;
+  const mid = F.recommend(plan, '2026-08-20', { targetBuffer: 500, debts }).defaultView;
+  const late = F.recommend(plan, '2026-08-30', { targetBuffer: 500, debts }).defaultView;
+  const earlyThis = period(early, 'this-pay-period');
+  const midThis = period(mid, 'this-pay-period');
+  const lateThis = period(late, 'this-pay-period');
+  const triangle = billsOf(earlyThis).filter(r => r.id === 'triangle');
+  const cashback = billsOf(earlyThis).filter(r => r.id === 'cashback');
+  const tdcc = billsOf(midThis).filter(r => r.id === 'tdcc');
+  const travel = billsOf(midThis).filter(r => r.id === 'travel');
+  const amazonOnce = billsOf(lateThis).filter(r => r.id === 'mbna-aug31');
+  const amazonMonthly = billsOf(lateThis).filter(r => r.id === 'mbna');
   ok(triangle.length === 1 && triangle[0].date === '2026-08-07'
       && near(triangle[0].amount, 250) && triangle[0].status === 'PAID',
-    'Triangle min day 7 prints once in Period 1 as PAID');
+    'Triangle min day 7 prints once in the Jul 31–Aug 13 payday window as PAID');
   ok(cashback.length === 1 && cashback[0].date === '2026-08-01'
       && near(cashback[0].amount, 170) && cashback[0].status === 'PAID',
-    'Cash Back min day 1 prints once in Period 1 as PAID');
+    'Cash Back min day 1 prints once in the Jul 31–Aug 13 payday window as PAID');
   ok(tdcc.length === 1 && tdcc[0].date === '2026-08-17'
       && near(tdcc[0].amount, 94.03) && tdcc[0].status === 'PAID',
-    'tdcc min $94.03 Aug 17 prints once in Period 2 as PAID');
+    'tdcc min $94.03 Aug 17 prints once in the Aug 14–27 payday window as PAID');
   ok(travel.length === 1 && travel[0].date === '2026-08-26',
-    'Travel Visa min day 26 prints once in Period 2');
+    'Travel Visa min day 26 prints once in the Aug 14–27 payday window');
   ok(amazonOnce.length === 1 && amazonOnce[0].date === '2026-08-31'
       && amazonMonthly.length === 0,
     'August Amazon min is the once row, not also the monthly row');
@@ -520,16 +523,16 @@ console.log('\n=== 6. Current cash identity; no BILLS-minus-spend rewrite ===');
   const plan = syntheticPlan();
   const advice = F.recommend(plan, '2026-08-30', { targetBuffer: 500, debts });
   const view = advice.defaultView;
-  const p2 = period(view, 'calendar-16-end');
-  const p1 = period(view, 'calendar-1-15');
-  ok(p2 && p2.role === 'active' && p1 && p1.role === 'lookback',
-    'as-of Aug 30: Period 1 is lookback, Period 2 is the live waterfall');
-  ok(near(p2.opening, advice.paydayAllocation.available)
-      && near(p2.opening, F.startingCashAmount(plan)),
-    'live Period 2 opening matches paydayAllocation.available / starting cash',
-    p2 && `${p2.opening} vs ${advice.paydayAllocation.available}`);
-  ok(p1.lookback && p1.opening !== advice.paydayAllocation.available,
-    'lookback Period 1 does not reuse today\'s current balance');
+  const p2 = period(view, 'next-pay-period');
+  const p1 = period(view, 'this-pay-period');
+  ok(p1 && p1.role === 'active' && p2 && p2.role === 'future',
+    'as-of Aug 30: This Pay Period is live, Next is future');
+  ok(near(p1.opening, advice.paydayAllocation.available)
+      && near(p1.opening, F.startingCashAmount(plan)),
+    'live This Pay Period opening matches paydayAllocation.available / starting cash',
+    p1 && `${p1.opening} vs ${advice.paydayAllocation.available}`);
+  ok(p2.projected && near(p2.opening, p1.projectedEnding),
+    'Next Pay Period does not reuse today\'s current balance as its own opening');
   const src = read('public/forecast.js');
   ok(!/chequing-a[\s\S]{0,80}minus[\s\S]{0,40}spend|BILLS ACCOUNT[\s\S]{0,80}- posted/i.test(src),
     'Forecast does not redefine current cash as BILLS ACCOUNT minus posted spend');
@@ -547,7 +550,7 @@ console.log('\n=== 7. Bell undated is visible and excluded from remaining ===');
       `${p.label} remaining-bills does not include undated Bell`);
   }
   const html = composer.operatingSurfaceHtml({
-    advice: { defaultView: view, paydayAllocation: { available: view.calendarPeriods[1].opening, cashBasis: { asOf: '2026-08-30' } } },
+    advice: { defaultView: view, paydayAllocation: { available: (view.calendarPeriods.find(p => p.role === 'active') || view.calendarPeriods[0]).opening, cashBasis: { asOf: '2026-08-30' } } },
     weekly: 0, recommended: 0,
   });
   ok(/needs confirmation/i.test(html) && /Not included in either period's remaining bills/.test(html),
@@ -577,30 +580,21 @@ console.log('\n=== 9. Live August 30 sheet: lookback P1, live P2, card mins, HEL
     targetBuffer: live.plan.defaults.targetBuffer, debts: live.debts,
   });
   const view = advice.defaultView;
-  const p1 = period(view, 'calendar-1-15');
-  const p2 = period(view, 'calendar-16-end');
-  ok(p1 && p1.role === 'lookback' && p2 && p2.role === 'active',
-    'live Aug 30: Period 1 lookback, Period 2 live');
-  ok(near(p2.opening, advice.paydayAllocation.available),
-    'live Period 2 opening is existing Forecast current cash');
+  const p1 = period(view, 'this-pay-period');
+  const p2 = period(view, 'next-pay-period');
+  ok(p1 && p1.role === 'active' && p2 && p2.role === 'future',
+    'live Aug 30: This Pay Period live, Next future');
+  ok(near(p1.opening, advice.paydayAllocation.available),
+    'live This Pay Period opening is existing Forecast current cash');
   const ids = (p, id) => billsOf(p).filter(r => r.id === id);
-  ok(ids(p1, 'triangle').length === 1 && ids(p1, 'triangle')[0].status === 'PAID',
-    'live Triangle min appears once in Period 1, paid');
-  ok(ids(p1, 'cashback').length === 1 && ids(p1, 'cashback')[0].status === 'PAID',
-    'live Cash Back min appears once in Period 1, paid');
-  ok(ids(p2, 'tdcc').length === 1 && near(ids(p2, 'tdcc')[0].amount, 94.03)
-      && ids(p2, 'tdcc')[0].status === 'PAID',
-    'live tdcc $94.03 Aug 17 appears once in Period 2, paid');
-  ok(ids(p2, 'travel').length === 1,
-    'live Travel Visa min appears once in Period 2');
-  ok(ids(p2, 'mbna-aug31').length === 1 && ids(p2, 'mbna').length === 0,
-    'live August Amazon min is the once row only');
-  ok(ids(p1, 'heloc').length === 0 && ids(p2, 'heloc').length === 0,
-    'live August has no HELOC cash row');
+  ok(ids(p1, 'mbna-aug31').length === 1 && ids(p1, 'mbna').length === 0,
+    'live August Amazon min is the once row in the Aug 28–Sep 10 window');
+  ok(ids(p1, 'heloc').length === 0,
+    'live Aug 28–Sep 10 has no HELOC cash row');
   const sep = F.recommend(live.plan, '2026-09-10', {
     targetBuffer: live.plan.defaults.targetBuffer, debts: live.debts,
   }).defaultView;
-  const sepHeloc = billsOf(period(sep, 'calendar-16-end')).filter(r => r.id === 'heloc');
+  const sepHeloc = billsOf(period(sep, 'next-pay-period')).filter(r => r.id === 'heloc');
   ok(sepHeloc.length === 1 && sepHeloc[0].date === '2026-09-21',
     'next HELOC cash min is 2026-09-21 in Period 2');
   const seattle = (p2.bigPurchases || []).filter(r => /seattle/i.test(r.id + r.label));
@@ -610,10 +604,10 @@ console.log('\n=== 9. Live August 30 sheet: lookback P1, live P2, card mins, HEL
     advice, weekly: advice.weekly, recommended: advice.weekly,
   });
   const glance = defaultGlance(html);
-  ok(/Pay Period 1/.test(html) && /Pay Period 2/.test(html),
-    'page names the two calendar waterfalls');
-  ok(/data-calendar-waterfall="calendar-16-end"/.test(html),
-    'default print shows the active Period 2 waterfall');
+  ok(/This Pay Period/.test(html) && /Next Pay Period/.test(html),
+    'page names the two payday waterfalls');
+  ok(/data-calendar-waterfall="this-pay-period"/.test(html),
+    'default print shows the active This Pay Period waterfall');
   ok(!/\bForecast\b|\bAtlas\b|\brepresented\b|\bunverified\b|\basOf\b/.test(glance),
     'default glance has no Forecast/Atlas jargon or settlement code words');
   ok(!/CMAW|Pixieset|Mailchimp/i.test(glance),
@@ -657,31 +651,29 @@ console.log('\n=== 10. Household Budget uses the Seaspan payday cycle, not bill-
     targetBuffer: 500, debts,
     currentPeriodActuals: actualsPacket(leakTxs, asOf),
   }).defaultView;
-  const p1 = period(view, 'calendar-1-15');
-  const p2 = period(view, 'calendar-16-end');
-  ok(p1 && p1.role === 'lookback' && p2 && p2.role === 'active',
-    'as-of Aug 30: bill Period 1 is lookback, Period 2 is the live waterfall');
-  ok((p1.householdBudget || []).length === 0 && near(p1.budgetHold, 0),
-    'lookback bill Period 1 does not print or hold the payday-cycle Household Budget');
-  ok(p2.spendingCycleLabel === cycle.label && p2.spendingCycle
-      && p2.spendingCycle.start === cycle.start && p2.spendingCycle.end === cycle.end,
+  const p1 = period(view, 'this-pay-period');
+  const p2 = period(view, 'next-pay-period');
+  ok(p1 && p1.role === 'active' && p2 && p2.role === 'future',
+    'as-of Aug 30: This Pay Period is live, Next is future');
+  ok(p1.spendingCycleLabel === cycle.label && p1.spendingCycle
+      && p1.spendingCycle.start === cycle.start && p1.spendingCycle.end === cycle.end,
     'active waterfall labels Spending cycle: Aug 28–Sep 10');
   for (const id of HOLD_IDS) {
-    const row = budgetRow(p2, id);
+    const row = budgetRow(p1, id);
     ok(row && near(row.planned, CYCLE_PLANNED[id]) && near(row.spent, 0)
         && near(row.remaining, CYCLE_PLANNED[id]) && near(row.hold, CYCLE_PLANNED[id])
         && row.hold >= 0,
       `${id} planned is the payday-cycle amount with $0 spent from Aug 16–27`,
       row && `${row.planned} / spent ${row.spent}`);
   }
-  const groc = budgetRow(p2, 'groceries');
+  const groc = budgetRow(p1, 'groceries');
   ok(groc && near(groc.planned, 900) && near(groc.plannedWeekly, 450)
       && !near(groc.planned, 964.29) && !near(groc.planned, 1028.57),
     '14-day grocery plan is $900, not calendar-day proration');
-  ok(near(p2.budgetHold, CYCLE_PLANNED_TOTAL),
+  ok(near(p1.budgetHold, CYCLE_PLANNED_TOTAL),
     'active hold is the unused $1,862.50 cycle reserve',
-    String(p2.budgetHold));
-  ok(near(p2.opening, F.recommend(plan, asOf, { targetBuffer: 500, debts }).paydayAllocation.available),
+    String(p1.budgetHold));
+  ok(near(p1.opening, F.recommend(plan, asOf, { targetBuffer: 500, debts }).paydayAllocation.available),
     'current cash stays paydayAllocation.available');
   const withIncome = JSON.parse(JSON.stringify(plan));
   withIncome.income.push({
@@ -699,7 +691,7 @@ console.log('\n=== 10. Household Budget uses the Seaspan payday cycle, not bill-
   ok((viewInc.calendarPeriods || []).length === 2
       && !(viewInc.calendarPeriods || []).some(p => /bonus|deposit/i.test(p.label)),
     'income on the 15th or 16th does not open a third bill-planning window');
-  const activeInc = period(viewInc, 'calendar-16-end');
+  const activeInc = period(viewInc, 'this-pay-period');
   ok(activeInc && activeInc.spendingCycle && activeInc.spendingCycle.start === '2026-08-28'
       && near(budgetRow(activeInc, 'groceries').spent, 0),
     'Amanda income does not reset the Seaspan household-spending cycle');
@@ -722,7 +714,7 @@ console.log('\n=== 11. Aug 28–30 live actuals are $0; bills/income/transfers e
     targetBuffer: 500, debts,
     currentPeriodActuals: actualsPacket(txs, asOf),
   });
-  const p2 = period(advice.defaultView, 'calendar-16-end');
+  const p2 = period(advice.defaultView, 'this-pay-period');
   for (const id of HOLD_IDS) {
     const row = budgetRow(p2, id);
     ok(row && near(row.spent, 0) && near(reconSum(row), 0) && row.hold >= 0,
@@ -747,8 +739,8 @@ console.log('\n=== 12. subscriptions exist only under Bills, never as a househol
   const plan = syntheticPlan();
   plan.opening.asOf = '2026-08-10';
   const advice = F.recommend(plan, '2026-08-10', { targetBuffer: 500, debts });
-  const p1 = period(advice.defaultView, 'calendar-1-15');
-  const p2 = period(advice.defaultView, 'calendar-16-end');
+  const p1 = period(advice.defaultView, 'this-pay-period');
+  const p2 = period(advice.defaultView, 'next-pay-period');
   for (const p of [p1, p2]) {
     ok(!(p.householdBudget || []).some(r => r.id === 'subscriptions'
         || /subscriptions/i.test(r.label || '')),
@@ -777,26 +769,26 @@ console.log('\n=== 12. subscriptions exist only under Bills, never as a househol
       && !near(p2.afterHouseholdBudget,
         roundCent(p2.afterRemainingBills - CYCLE_PLANNED_TOTAL - netflix.remaining)),
     'after household budget does not subtract the Netflix bill a second time');
-  const halfId = half => half === 1 ? 'calendar-1-15' : 'calendar-16-end';
+  const halfId = spec => spec.window === 'this' ? 'this-pay-period' : 'next-pay-period';
   for (const spec of SUBSCRIPTION_BILLS) {
-    const host = spec.half === 1 ? p1 : p2;
-    const other = spec.half === 1 ? p2 : p1;
+    const host = spec.window === 'this' ? p1 : p2;
+    const other = spec.window === 'this' ? p2 : p1;
     const row = billsOf(host).find(r => r.id === spec.id);
     const copies = billsOf(p1).concat(billsOf(p2)).filter(r => r.id === spec.id);
     ok(row && copies.length === 1 && near(row.amount, spec.amount)
         && String(row.date).slice(8, 10) === String(spec.day).padStart(2, '0')
         && /BILLS ACCOUNT/i.test(row.payerLabel || '')
         && (row.status === 'PAID' || row.status === 'still due' || row.status === 'pending'),
-      `${spec.id} appears once in ${halfId(spec.half)} with amount, date, account, status`,
+      `${spec.id} appears once in ${halfId(spec)} with amount, date, account, status`,
       row && `${row.date} ${row.amount} ${row.status} ${row.payerLabel}`);
     ok(!billsOf(other).some(r => r.id === spec.id),
-      `${spec.id} is absent from the other calendar half`);
+      `${spec.id} is absent from the other payday window`);
   }
   const ug = billsOf(p1).concat(billsOf(p2)).find(r => r.id === 'ultimate-guitar');
   ok(!ug, 'Ultimate Guitar yearly May 8 is not an August household-budget or August bill');
   const html = composer.operatingSurfaceHtml({
     advice, weekly: advice.weekly, recommended: advice.weekly,
-    planCalendarShow: 'calendar-16-end',
+    planCalendarShow: 'next-pay-period',
   });
   const budgetBlock = /data-payday-household-budget[\s\S]*?<\/div>\s*<\/div>/.exec(html);
   ok(budgetBlock && !/Subscriptions/i.test(budgetBlock[0])
@@ -825,8 +817,8 @@ console.log('\n=== 12b. Aug 14 and Aug 15 hold the Aug 14–27 cycle exactly onc
     const plan = syntheticPlan();
     plan.opening.asOf = asOf;
     const view = F.recommend(plan, asOf, { targetBuffer: 500, debts }).defaultView;
-    const p1 = period(view, 'calendar-1-15');
-    const p2 = period(view, 'calendar-16-end');
+    const p1 = period(view, 'this-pay-period');
+    const p2 = period(view, 'next-pay-period');
     const expected = paydayCycleWindow(asOf);
     ok(expected.start === '2026-08-14' && expected.end === '2026-08-27',
       `independent as-of ${asOf} cycle is Aug 14–27`);
@@ -882,7 +874,7 @@ console.log('\n=== 12c. unresolved Seaspan cycle fails closed; alreadyHeld stays
     targetBuffer: 500, debts: extraDebts,
     currentPeriodActuals: actualsPacket(leakTxs, asOf),
   });
-  const baseActive = period(baseline.defaultView, 'calendar-16-end');
+  const baseActive = period(baseline.defaultView, 'this-pay-period');
   ok(baseActive && near(baseActive.budgetHold, independentHold)
       && Number(baseActive.extraDebt.allocated) > 0,
     'resolved Aug 28 baseline holds $1,862.50 and has leftover-funded extra',
@@ -893,50 +885,14 @@ console.log('\n=== 12c. unresolved Seaspan cycle fails closed; alreadyHeld stays
       targetBuffer: 500, debts: extraDebts,
       currentPeriodActuals: actualsPacket(leakTxs, asOf),
     }, opts || {}));
-    const p1 = period(advice.defaultView, 'calendar-1-15');
-    const p2 = period(advice.defaultView, 'calendar-16-end');
+    const periods = (advice.defaultView && advice.defaultView.calendarPeriods) || [];
     const engineCycle = F.spendingCycle(plan, asOf);
     ok(engineCycle == null,
       `${label}: spendingCycle does not invent a payday`,
       engineCycle && JSON.stringify(engineCycle));
-    ok(p1 && p1.role === 'lookback' && (p1.householdBudget || []).length === 0
-        && near(p1.budgetHold, 0),
-      `${label}: lookback still does not hold Household Budget`);
-    ok(p2 && p2.role === 'active' && p2.cycleUnresolved === true
-        && p2.spendingCycle == null && p2.spendingCycleLabel == null
-        && !(p2.spendingCycle && p2.spendingCycle.start),
-      `${label}: active waterfall has no invented cycle dates`);
-    ok((p2.householdBudget || []).length >= HOLD_IDS.length,
-      `${label}: Household Budget rows stay visible`,
-      String((p2.householdBudget || []).length));
-    for (const id of HOLD_IDS) {
-      const row = budgetRow(p2, id);
-      ok(row && near(row.planned, CYCLE_PLANNED[id]) && row.spent == null
-          && near(row.remaining, CYCLE_PLANNED[id]) && near(row.hold, CYCLE_PLANNED[id]),
-        `${label}: ${id} keeps planned reserve; spent is unavailable, not assigned`,
-        row && `${row.planned} spent ${row.spent}`);
-    }
-    ok(near(p2.budgetHold, independentHold) && p2.budgetHold + 0.005 >= independentHold,
-      `${label}: protected hold is the full $1,862.50 reserve`,
-      String(p2.budgetHold));
-    ok(p2.extraDebt.allocated <= baseActive.extraDebt.allocated + 0.005,
-      `${label}: extra credit-card payment does not increase`,
-      `${p2.extraDebt.allocated} vs baseline ${baseActive.extraDebt.allocated}`);
-    ok(near(p2.afterHouseholdBudget,
-        roundCent(p2.afterRemainingBills - p2.budgetHold)),
-      `${label}: leftover still subtracts the held reserve`);
-    const html = composer.operatingSurfaceHtml({
-      advice, weekly: advice.weekly, recommended: advice.weekly,
-      planCalendarShow: 'calendar-16-end',
-    });
-    const budgetBlock = /data-payday-household-budget[\s\S]*?<\/div>\s*<\/div>/.exec(html);
-    ok(budgetBlock && /Spending cycle unavailable/.test(budgetBlock[0])
-        && /Household Budget reserve is held/.test(budgetBlock[0])
-        && !/No household budget lines/.test(budgetBlock[0])
-        && !/Spending cycle: Aug/.test(budgetBlock[0])
-        && /Groceries/.test(budgetBlock[0]),
-      `${label}: page keeps Household Budget visible as unavailable, not released`);
-    return p2;
+    ok(periods.length === 0,
+      `${label}: missing Seaspan does not invent payday operating windows`);
+    return null;
   }
 
   assertFailClosed(withoutSeaspan(baselinePlan), 'missing Seaspan stream');
@@ -958,8 +914,8 @@ console.log('\n=== 12c. unresolved Seaspan cycle fails closed; alreadyHeld stays
     const plan = syntheticPlan();
     plan.opening.asOf = asOfHeld;
     const view = F.recommend(plan, asOfHeld, { targetBuffer: 500, debts }).defaultView;
-    const p1 = period(view, 'calendar-1-15');
-    const p2 = period(view, 'calendar-16-end');
+    const p1 = period(view, 'this-pay-period');
+    const p2 = period(view, 'next-pay-period');
     const starts = (view.calendarPeriods || [])
       .map(p => p && p.spendingCycle && p.spendingCycle.start)
       .filter(Boolean);
@@ -982,7 +938,7 @@ console.log('\n=== 13. overspend remaining is negative; leftover does not take t
     targetBuffer: 500, debts,
     currentPeriodActuals: actualsPacket(txs, asOf),
   });
-  const p2 = period(advice.defaultView, 'calendar-16-end');
+  const p2 = period(advice.defaultView, 'this-pay-period');
   const groc = budgetRow(p2, 'groceries');
   ok(groc && groc.remaining < 0 && near(groc.remaining, roundCent(900 - 2000))
       && near(groc.hold, 0) && groc.hold >= 0,
@@ -1043,10 +999,10 @@ console.log('\n=== 13b. Dale/Amanda guilt-free actuals need explicit evidence in
     targetBuffer: 500, debts,
     currentPeriodActuals: actualsPacket(txs, asOf),
   }).defaultView;
-  const p1 = period(view, 'calendar-1-15');
-  const p2 = period(view, 'calendar-16-end');
-  const dale = budgetRow(p2, 'dale-guilt-free');
-  const amanda = budgetRow(p2, 'amanda-guilt-free');
+  const p1 = period(view, 'this-pay-period');
+  const p2 = period(view, 'next-pay-period');
+  const dale = budgetRow(p1, 'dale-guilt-free');
+  const amanda = budgetRow(p1, 'amanda-guilt-free');
   ok(dale && near(dale.planned, 150) && near(dale.spent, 40)
       && near(reconSum(dale), 40),
     'Dale guilt-free planned $150 always shows; spent is the tagged Aug 28 tx');
@@ -1055,19 +1011,20 @@ console.log('\n=== 13b. Dale/Amanda guilt-free actuals need explicit evidence in
     'Amanda guilt-free planned $150 always shows; spent is the noted Aug 29 tx');
   ok(!near(dale.spent, 49) && !near(dale.spent, 9),
     'Dale actuals do not include the Aug 5 tx dated before the payday cycle');
-  const confirm = (p2.householdBudget || []).find(r => r.needsConfirmation);
+  const confirm = (p1.householdBudget || []).find(r => r.needsConfirmation);
   ok(confirm && near(confirm.spent, 12 + 33) && confirm.hold === 0,
     'unlabeled personal and WEEKLY SPENDING stay needs-confirmation, not a hold',
     confirm && String(confirm.spent));
   ok(!near(amanda.spent, 18) && !near(dale.spent, 18),
     'TENNIS INCOME is not Dale or Amanda guilt-free spending');
-  ok(!budgetRow(p2, 'health') && !budgetRow(p2, 'sport'),
+  ok(!budgetRow(p1, 'health') && !budgetRow(p1, 'sport'),
     'Health and sport txs are not Household Budget rows');
-  ok((p1.householdBudget || []).length === 0,
-    'lookback Period 1 does not print Dale/Amanda');
+  const nextDale = budgetRow(p2, 'dale-guilt-free');
+  ok(!nextDale || near(nextDale.spent, 0),
+    'Next Pay Period does not reuse this cycle\'s Dale/Amanda spent');
   const html = composer.operatingSurfaceHtml({
-    advice: { defaultView: view, paydayAllocation: { available: p2.opening, cashBasis: { asOf } } },
-    weekly: 0, recommended: 0, planCalendarShow: 'calendar-16-end',
+    advice: { defaultView: view, paydayAllocation: { available: p1.opening, cashBasis: { asOf } } },
+    weekly: 0, recommended: 0, planCalendarShow: 'this-pay-period',
   });
   ok(/Dale guilt-free spending/.test(html) && /Amanda guilt-free spending/.test(html)
       && /needs confirmation/.test(html),
@@ -1152,7 +1109,7 @@ console.log('\n=== 13c. classification: Surrey Meat, eating out, Canadian Tire, 
     targetBuffer: 500, debts,
     currentPeriodActuals: actualsPacket(txs, asOf),
   }).defaultView;
-  const p2 = period(view, 'calendar-16-end');
+  const p2 = period(view, 'this-pay-period');
   const pets = budgetRow(p2, 'pets');
   const groc = budgetRow(p2, 'groceries');
   const eatRow = budgetRow(p2, 'restaurants');
@@ -1205,7 +1162,7 @@ console.log('\n=== 14. page prints Forecast; leftover is not computed in plan.js
   const advice = F.recommend(plan, '2026-08-30', { targetBuffer: 500, debts });
   const html = composer.operatingSurfaceHtml({
     advice, weekly: advice.weekly, recommended: advice.weekly,
-    planCalendarShow: 'calendar-16-end',
+    planCalendarShow: 'this-pay-period',
   });
   ok(/Spending cycle: Aug 28–Sep 10/.test(html),
     'page prints Spending cycle: Aug 28–Sep 10');
@@ -1321,8 +1278,8 @@ console.log('\n=== 15. weekend posting keeps 15 August bills in Period 1, paid =
       transactions: [],
     },
   });
-  const p1 = period(advice.defaultView, 'calendar-1-15');
-  const p2 = period(advice.defaultView, 'calendar-16-end');
+  const p1 = period(advice.defaultView, 'this-pay-period');
+  const p2 = period(advice.defaultView, 'next-pay-period');
   const three = 82.96 + 99.91 + 100;
   for (const id of WEEKEND_IDS) {
     const row = billsOf(p1).find(r => r.id === id);
@@ -1335,22 +1292,22 @@ console.log('\n=== 15. weekend posting keeps 15 August bills in Period 1, paid =
   const p2RemainingIds = billsOf(p2).filter(r => r.status !== 'PAID').map(r => r.id);
   ok(WEEKEND_IDS.every(id => !p2RemainingIds.includes(id)),
     'BCAA / ICBC / RESP are absent from Period 2 remaining bills to pay');
-  ok(p2.role === 'active' && near(p2.opening, advice.paydayAllocation.available),
-    'Period 2 current cash stays paydayAllocation.available');
-  const ifDeductedAgain = roundCent(p2.available - p2.remainingBills - three);
-  ok(p2.afterRemainingBills != null
-      && near(p2.afterRemainingBills, p2.available - p2.remainingBills)
-      && !near(p2.afterRemainingBills, ifDeductedAgain),
-    'Period 2 leftover does not deduct the three paid 15 August bills from current cash');
+  ok(p1.role === 'active' && near(p1.opening, advice.paydayAllocation.available),
+    'This Pay Period current cash stays paydayAllocation.available');
+  const ifDeductedAgain = roundCent(p1.available - p1.remainingBills - three);
+  ok(p1.afterRemainingBills != null
+      && near(p1.afterRemainingBills, p1.available - p1.remainingBills)
+      && !near(p1.afterRemainingBills, ifDeductedAgain),
+    'This Pay Period leftover does not deduct the three paid 15 August bills from current cash');
   const live = require('../data.json');
-  const liveView = F.recommend(live.plan, '2026-08-30', {
+  const liveView = F.recommend(live.plan, '2026-08-20', {
     targetBuffer: live.plan.defaults.targetBuffer, debts: live.debts,
   }).defaultView;
-  const liveP1 = period(liveView, 'calendar-1-15');
-  const liveP2 = period(liveView, 'calendar-16-end');
+  const liveP1 = period(liveView, 'this-pay-period');
+  const liveP2 = period(liveView, 'next-pay-period');
   for (const id of WEEKEND_IDS) {
     ok(billsOf(liveP1).some(r => r.id === id) && !billsOf(liveP2).some(r => r.id === id),
-      `live ${id} sits in Pay Period 1, not Period 2`);
+      `live ${id} sits in This Pay Period (Aug 14–27), not Next`);
   }
 }
 
@@ -1395,16 +1352,16 @@ console.log('\n=== 16. paid bills use scheduled due, not post date ===');
     const planRow = recs.find(r => r && r.id === row.id);
     const seedDate = (planRow && planRow.date) || row.date;
     const due = independentScheduleDate(plan, row.id, seedDate);
-    const expectHalf = Number(String(due).slice(8, 10)) <= 15
-      ? 'calendar-1-15' : 'calendar-16-end';
-    ok(periodId === expectHalf,
-      `${row.id} paid bill sits in the scheduled-due half ${expectHalf}`,
-      `${periodId} vs ${expectHalf} due ${due}`);
-    ok(row.date !== '2026-08-16' || expectHalf === 'calendar-16-end',
-      `${row.id} is not parked in Period 2 solely because Lunch Money posted the 16th`);
+    const inThis = due >= '2026-08-14' && due <= '2026-08-27';
+    const expectId = inThis ? 'this-pay-period' : 'next-pay-period';
+    ok(periodId === expectId,
+      `${row.id} paid bill sits in the payday window that contains scheduled due ${due}`,
+      `${periodId} vs ${expectId} due ${due}`);
+    ok(row.date !== '2026-08-16' || due !== '2026-08-15' || periodId === 'this-pay-period',
+      `${row.id} is not parked in Next solely because Lunch Money posted the 16th`);
   }
   const day15 = paid.find(x => x.row.id === 'day15');
-  ok(day15 && day15.period === 'calendar-1-15' && day15.row.date === '2026-08-15',
+  ok(day15 && day15.period === 'this-pay-period' && day15.row.date === '2026-08-15',
     'monthly day-15 bill posted the 16th stays Period 1 on the 15th');
 }
 
@@ -1487,7 +1444,7 @@ console.log('\n=== 16. payday cadence annualizes with the master plan; week view
 
   const asOf = '2026-08-30';
   const advice = F.recommend(plan, asOf, { targetBuffer: 500, debts });
-  const p2 = period(advice.defaultView, 'calendar-16-end');
+  const p2 = period(advice.defaultView, 'next-pay-period');
   for (const [id, payday] of Object.entries(PAYDAY)) {
     const row = budgetRow(p2, id);
     ok(row && near(row.planned, payday),
@@ -1580,7 +1537,7 @@ console.log('\n=== 17. a monthly-backed payday row stays $3,600/year, not $3,900
 
   const asOf = '2026-08-30';
   const view = F.recommend(plan, asOf, { targetBuffer: 500, debts }).defaultView;
-  const p2 = period(view, 'calendar-16-end');
+  const p2 = period(view, 'next-pay-period');
   const row = budgetRow(p2, 'restaurants');
   ok(row && near(row.planned, independentPayday) && !near(row.planned, naiveHalf),
     'payday-cycle planned for $300/month uses the calendar identity, not half',
@@ -1595,51 +1552,37 @@ console.log('\n=== 17. a monthly-backed payday row stays $3,600/year, not $3,900
     row && String(roundCent(Number(row.planned) * (365.25 / 14))));
 }
 
-console.log('\n=== 18. unavailable current half fail-closes the dependent later half ===');
+console.log('\n=== 18. unavailable current period fail-closes the dependent next period ===');
 {
-  // Independent of Forecast.calendarPeriodWaterfalls / billCalendarHalf:
-  // calendar halves are days 1–15 vs 16–end. Do not use wall-clock as-of.
-  const independentHalf = iso => {
-    const day = Number(String(iso).slice(8, 10));
-    return day <= 15 ? 1 : 2;
-  };
   const independentAddDays = (iso, days) => {
     const ms = Date.parse(String(iso) + 'T00:00:00Z') + days * 86400000;
     return new Date(ms).toISOString().slice(0, 10);
   };
   const openingAsOf = '2026-08-10';
-  const laterObservation = '2026-08-31';
-  ok(independentHalf(openingAsOf) === 1 && independentHalf(laterObservation) === 2,
-    'independent calendar: dated opening is days 1–15; later observation is days 16–end');
+  const thisStart = '2026-07-31';
+  const thisEnd = '2026-08-13';
+  const nextStart = '2026-08-14';
+  const nextEnd = '2026-08-27';
+  ok(openingAsOf >= thisStart && openingAsOf <= thisEnd,
+    'independent +14 grid: dated Aug 10 sits in Jul 31–Aug 13');
+  ok(independentAddDays(nextStart, 13) === nextEnd,
+    'independent next window is Aug 14–27');
 
   const plan = syntheticPlan();
   plan.opening.asOf = openingAsOf;
-  const laterHalfIncome = [];
+  const nextIncome = [];
   const seaspan = plan.income.find(r => r && r.id === 'payroll');
-  let payday = seaspan.anchor;
-  while (payday.slice(0, 7) === '2026-08') {
-    if (independentHalf(payday) === 2) {
-      laterHalfIncome.push({ id: seaspan.id, date: payday, amount: seaspan.amount, label: seaspan.label });
-    }
-    payday = independentAddDays(payday, 14);
-  }
-  const amandaEnd = plan.income.find(r => r && r.id === 'amandaEnd');
-  const augustLast = String(new Date(Date.UTC(2026, 8, 0)).getUTCDate());
-  const amandaEndDate = `2026-08-${augustLast.padStart(2, '0')}`;
-  ok(independentHalf(amandaEndDate) === 2,
-    'independent calendar: Amanda month-end lands in days 16–end');
-  laterHalfIncome.push({
-    id: amandaEnd.id, date: amandaEndDate, amount: amandaEnd.amount, label: amandaEnd.label,
-  });
-  const laterIncomeSum = roundCent(laterHalfIncome.reduce((s, r) => s + r.amount, 0));
-  ok(laterHalfIncome.some(r => r.id === 'payroll' && r.date === '2026-08-28' && near(r.amount, 2000))
-      && laterHalfIncome.some(r => r.id === 'amandaEnd' && r.date === '2026-08-31' && near(r.amount, 2300))
-      && near(laterIncomeSum, 2000 + 2300),
-    'independent later half has Seaspan Aug 28 and Amanda Aug 31, totaling $4,300');
+  const amanda15 = plan.income.find(r => r && r.id === 'amanda15');
+  ok(seaspan && seaspan.anchor === '2026-08-14',
+    'synthetic Seaspan payday Aug 14 starts the next window');
+  nextIncome.push({ id: seaspan.id, date: '2026-08-14', amount: seaspan.amount, label: seaspan.label });
+  ok(amanda15 && '2026-08-15' >= nextStart && '2026-08-15' <= nextEnd,
+    'independent next window also contains Amanda 15th salary');
+  const laterIncomeSum = roundCent(seaspan.amount + amanda15.amount);
   const netflix = plan.bills.find(r => r && r.id === 'netflix');
   const netflixDate = `2026-08-${String(netflix.day).padStart(2, '0')}`;
-  ok(independentHalf(netflixDate) === 2 && near(netflix.amount, 26.87),
-    'independent later half includes the Netflix day-17 bill');
+  ok(netflixDate >= nextStart && netflixDate <= nextEnd && near(netflix.amount, 26.87),
+    'independent next window includes the Netflix day-17 bill');
 
   const unavailable = F.recommend(plan, openingAsOf, {
     targetBuffer: 500, debts,
@@ -1647,14 +1590,14 @@ console.log('\n=== 18. unavailable current half fail-closes the dependent later 
     operatingPlanNote: 'Current plan unavailable. The dated opening is stale.',
   });
   const unView = unavailable.defaultView;
-  const unP1 = period(unView, 'calendar-1-15');
-  const unP2 = period(unView, 'calendar-16-end');
+  const unP1 = period(unView, 'this-pay-period');
+  const unP2 = period(unView, 'next-pay-period');
   ok(unView.asOf === openingAsOf,
     'unavailable walk keeps the dated opening as-of; it does not invent Aug 31');
   ok(unP1 && unP1.role === 'active' && unP1.operatingPlanUnavailable === true,
-    'days 1–15 stay the dated-opening active half and are unavailable');
+    'This Pay Period stays the dated-opening active window and is unavailable');
   ok(unP2 && unP2.role === 'future' && unP2.operatingPlanUnavailable === true,
-    'days 16–end stay future (role still from the dated opening) and inherit unavailable');
+    'Next Pay Period stays future (role still from the dated opening) and inherits unavailable');
   ok(unP2.openingKnown !== true && unP2.opening == null && unP2.currentBalance == null,
     'later half does not invent an opening after the unavailable current period');
   ok((unP2.income || []).length === 0 && unP2.incomeAdded == null && unP2.available == null,
@@ -1678,7 +1621,7 @@ console.log('\n=== 18. unavailable current half fail-closes the dependent later 
     advice: unavailable,
     weekly: unavailable.weekly,
     recommended: unavailable.weekly,
-    planCalendarShow: 'calendar-16-end',
+    planCalendarShow: 'next-pay-period',
   });
   ok(/data-unavailable-primary/.test(unHtml)
       && /data-current-operating="unavailable"/.test(unHtml)
@@ -1704,32 +1647,34 @@ console.log('\n=== 18. unavailable current half fail-closes the dependent later 
     'printed unavailable Plan surface does not publish the independent later-half income total or Netflix amount');
 
   const trusted = F.recommend(plan, openingAsOf, { targetBuffer: 500, debts });
-  const liveP1 = period(trusted.defaultView, 'calendar-1-15');
-  const liveP2 = period(trusted.defaultView, 'calendar-16-end');
+  const liveP1 = period(trusted.defaultView, 'this-pay-period');
+  const liveP2 = period(trusted.defaultView, 'next-pay-period');
   ok(trusted.operatingPlanUnavailable !== true
       && liveP1 && liveP1.role === 'active' && liveP1.operatingPlanUnavailable !== true
       && liveP2 && liveP2.role === 'future' && liveP2.operatingPlanUnavailable !== true
       && liveP2.openingKnown === true && liveP2.available != null,
     'trusted control on the same dated opening still publishes a normal future later half');
-  ok((liveP2.income || []).some(r => r.id === 'payroll' && r.date === '2026-08-28')
-      && (liveP2.income || []).some(r => r.id === 'amandaEnd' && r.date === '2026-08-31')
+  ok((liveP2.income || []).some(r => r.id === 'payroll' && r.date === '2026-08-14')
+      && (liveP2.income || []).some(r => r.id === 'amanda15' && r.date === '2026-08-15')
+      && !(liveP2.income || []).some(r => r.date === '2026-08-28' || r.date === '2026-08-31')
       && near(liveP2.incomeAdded, laterIncomeSum)
       && (liveP2.bills || []).some(r => r.id === 'netflix')
       && (liveP2.householdBudget || []).length > 0
       && liveP2.budgetHold != null,
-    'trusted later half still lists the independent Aug 28/31 income, Netflix, and Household Budget');
+    'trusted next payday window lists independent Aug 14 Seaspan, Amanda 15th, Netflix, and Household Budget');
   const liveHtml = composer.operatingSurfaceHtml({
     advice: trusted,
     weekly: trusted.weekly,
     recommended: trusted.weekly,
-    planCalendarShow: 'calendar-16-end',
+    planCalendarShow: 'next-pay-period',
   });
   ok(/Payroll — Seaspan/.test(liveHtml)
-      && /Amanda salary month-end/.test(liveHtml)
+      && /Amanda salary 15th/.test(liveHtml)
+      && !/Amanda salary month-end/.test(liveHtml)
       && /Netflix/.test(liveHtml)
       && /planned this period/.test(liveHtml)
       && !/data-operating-plan="unavailable"/.test(liveHtml),
-    'trusted printed later half still publishes arriving income, bills, and Household Budget');
+    'trusted printed next payday window still publishes arriving Seaspan, Amanda 15th, bills, and Household Budget');
 
   const src = read('public/forecast.js');
   const waterfallFn = /function calendarPeriodWaterfalls\([\s\S]*?\n  \}/.exec(src);

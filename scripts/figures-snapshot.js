@@ -134,6 +134,26 @@ if (advice.paydayAllocation) {
   put('payday.riskShortfall', (pa.risks || []).reduce((s, r) => s + (r.shortfall || 0), 0));
 }
 
+const operating = (advice.defaultView && advice.defaultView.calendarPeriods) || [];
+const thisPeriod = operating.find(p => p && p.id === 'this-pay-period')
+  || operating.find(p => p && p.role === 'active');
+const nextPeriod = operating.find(p => p && p.id === 'next-pay-period')
+  || operating.find(p => p && p.role === 'future');
+if (thisPeriod) {
+  put('operating.this.start', thisPeriod.start);
+  put('operating.this.end', thisPeriod.end);
+  put('operating.this.available', thisPeriod.available);
+  put('operating.this.incomeAdded', thisPeriod.incomeAdded);
+  put('operating.this.projectedEnding', thisPeriod.projectedEnding);
+}
+if (nextPeriod) {
+  put('operating.next.start', nextPeriod.start);
+  put('operating.next.end', nextPeriod.end);
+  put('operating.next.available', nextPeriod.available);
+  put('operating.next.incomeAdded', nextPeriod.incomeAdded);
+  put('operating.next.projectedEnding', nextPeriod.projectedEnding);
+}
+
 const T = advice.sim.totals;
 put('totals.confirmedIncome', T.confirmedIncome);
 put('totals.estimatedIncome', T.estimatedIncome);
