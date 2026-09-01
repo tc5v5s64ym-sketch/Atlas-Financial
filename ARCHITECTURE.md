@@ -156,8 +156,13 @@ Routine use is:
    stamp an unapplied overlay `fetchedAt` onto dated-opening cash.
    Freshness-qualified posted cash is still attached as
    `liveOverlay.observedCash` for current chequing availability without
-   rewriting that opening. Same-day scheduled cash events need
-   posting/representation evidence or the overlay fails closed.
+   rewriting that opening. A complete trusted current-cash observation
+   remains the Forecast opening when a same-day inbound is unproven or
+   ambiguous: that inbound is not added on top of posted cash and is not
+   labelled represented (`plan.opening.notReliedUponEvents`). Incomplete
+   or untrusted current cash still fails closed. Same-day unposted
+   joint-cash bills stay still due and do not fail the overlay. A future
+   confirmed salary before its payday remains ordinary Forecast income.
    Scheduled joint-cash occurrences in `(historicalOpeningAsOf, liveAsOf]`
    are accounted for before as-of advances: represented names go on the
    in-memory opening, and unrepresented joint-cash outflows stay reserved
@@ -840,11 +845,13 @@ Tennis BC salary deposits, coaching/business inflows, business
 obligations, household transfers, and household-available remainder.
 Owner-confirmed 2026-08-22: the two fixed Tennis BC salary deposits
 (`plan.income.amandaSalary15` $2,168.85 on the 15th and
-`plan.income.amandaSalaryMonthEnd` $2,387.99 on month-end) land in
-household accounts and are Forecast household income. The retired
-`amandaTransfer` estimate is not a second income line. A later internal
-or household transfer of those same salary dollars is not a second
-Forecast inflow. Coaching/business receipts are not forecast. Unknown
+`plan.income.amandaSalaryMonthEnd` $2,387.99 on month-end) are Forecast
+household income. Owner-clarified 2026-08-31 / restated 2026-09-01: they
+first land in TENNIS INCOME, which is not Current Balance; household-visible
+posting proof is the later transfer into BILLS ACCOUNT. The retired
+`amandaTransfer` estimate is not a second income line. That BILLS transfer
+proves a posted occurrence and is not a second Forecast inflow.
+Coaching/business receipts are not forecast. Unknown
 business obligations fail closed and do not invent a remainder. The raw
 TENNIS INCOME balance remains non-spendable coaching/business remainder
 (Q25). Live Amanda income canonical state uses those two salary streams.

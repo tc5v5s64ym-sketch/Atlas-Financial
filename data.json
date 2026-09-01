@@ -70,7 +70,7 @@
                 "anchor": "2026-08-14",
                 "amount": 4264,
                 "confidence": "estimated",
-                "note": "Expected recurring net: observed average of current-regime deposits after 2026 CPP, CPP2 and EI completion and the current 1% optional pension deduction. Typical deposits $4,247.92-$4,274.98 from the August 2026 payroll-statement synthesis (EMP-004). The 2026-08-14 deposit actually landed at $4,274.98 and is already inside the 2026-08-19 Chequing A opening; Forecast must not replay that occurrence. Tagged estimated because future cheques are not individually confirmed at exactly $4,264. Not a statutory-engine output."
+                "note": "Expected recurring net: observed average of current-regime deposits after 2026 CPP, CPP2 and EI completion and the current 1% optional pension deduction. Typical deposits $4,247.92-$4,274.98 from the August 2026 payroll-statement synthesis (EMP-004). True 14-day biweekly cadence from the incumbent 2026-08-14 anchor; not twice per month. Calendar Pay Periods consume whichever occurrences actually fall inside their dates. The 2026-08-14 deposit actually landed at $4,274.98 and is already inside the 2026-08-19 Chequing A opening; Forecast must not replay that occurrence. Tagged estimated because future cheques are not individually confirmed at exactly $4,264. Not a statutory-engine output."
             },
             {
                 "id": "childBenefit",
@@ -88,7 +88,7 @@
                 "day": 15,
                 "amount": 2168.85,
                 "confidence": "confirmed",
-                "note": "Owner-confirmed 2026-08-22: fixed Tennis BC net of exactly $2,168.85 on the 15th of every month is Forecast household income. Owner-clarified 2026-08-31: the deposit first lands in TENNIS INCOME and is not spendable there; household-visible posting proof is the later transfer into BILLS ACCOUNT. The 2026-08-19 opening already contains the 14 August $2,168.85 occurrence in household cash (same-day $2,168 into BILLS ACCOUNT is inside this opening); firstDue 2026-09-15 so that occurrence is not replayed. Coaching/business receipts are not this stream. Owner-stated 2026-08-29: seasonal coaching leftover is gravy when it arrives, not this stream and not a recurring Forecast income line. A later transfer of these salary dollars is not a second income line.",
+                "note": "Owner-confirmed 2026-08-22: fixed Tennis BC net of exactly $2,168.85 on the 15th of every month is Forecast household income. Owner-clarified 2026-08-31 / restated 2026-09-01: the deposit first lands in TENNIS INCOME, which is not Current Balance; household-visible posting proof is the later transfer into BILLS ACCOUNT. A future confirmed occurrence before payday remains ordinary Forecast income. The 2026-08-19 opening already contains the 14 August $2,168.85 occurrence in household cash (same-day $2,168 into BILLS ACCOUNT is inside this opening); firstDue 2026-09-15 so that occurrence is not replayed. Coaching/business receipts are not this stream. Owner-stated 2026-08-29: seasonal coaching leftover is gravy when it arrives, not this stream and not a recurring Forecast income line. A later transfer of these salary dollars is not a second income line.",
                 "firstDue": "2026-09-15"
             },
             {
@@ -98,7 +98,7 @@
                 "day": 31,
                 "amount": 2387.99,
                 "confidence": "confirmed",
-                "note": "Owner-confirmed 2026-08-22: fixed Tennis BC net of exactly $2,387.99 on the last calendar day of every month (day 31 clamps to 28/29/30) is Forecast household income. Owner-clarified 2026-08-31: the deposit first lands in TENNIS INCOME and is not spendable there; household-visible posting proof is the later transfer into BILLS ACCOUNT. As-of 2026-08-19 is before August month-end, so the 31 August occurrence is in-window and is not an opening replay. Coaching/business receipts are not this stream. Owner-stated 2026-08-29: seasonal coaching leftover is gravy when it arrives, not this stream and not a recurring Forecast income line. A later transfer of these salary dollars is not a second income line."
+                "note": "Owner-confirmed 2026-08-22: fixed Tennis BC net of exactly $2,387.99 on the last calendar day of every month (day 31 clamps to 28/29/30) is Forecast household income. Owner-clarified 2026-08-31 / restated 2026-09-01: the deposit first lands in TENNIS INCOME, which is not Current Balance; household-visible posting proof is the later transfer into BILLS ACCOUNT. A future confirmed occurrence before payday remains ordinary Forecast income. As-of 2026-08-19 is before August month-end, so the 31 August occurrence is in-window and is not an opening replay. Coaching/business receipts are not this stream. Owner-stated 2026-08-29: seasonal coaching leftover is gravy when it arrives, not this stream and not a recurring Forecast income line. A later transfer of these salary dollars is not a second income line."
             }
         ],
         "obligations": [

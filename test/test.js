@@ -64,6 +64,7 @@ const suites = [
   ['Plan default view layout', 'test-plan-default-view.js'],
   ['Plan calendar bill sections', 'test-plan-bill-calendar-periods.js'],
   ['Plan calendar waterfalls', 'test-plan-calendar-waterfalls.js'],
+  ['salary recognition and payroll drift', 'test-salary-recognition-drift.js'],
   ['Plan unavailable operating state', 'test-plan-unavailable-surface.js'],
   ['Plan next-period lookahead and week picker', 'test-plan-lookahead-week.js'],
   ['Plan actual vs budget digest', 'test-plan-budget-digest.js'],

@@ -3,11 +3,12 @@
  *
  * Acceptance corpus: docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md
  * Owner-confirmed 2026-08-22: the two fixed Tennis BC salary deposits are
- * Forecast household income. Owner-clarified 2026-08-31: they first land
- * in TENNIS INCOME; household-visible posting proof is the later BILLS
- * transfer. A later transfer of those dollars is not a second income line.
- * Coaching surplus is not forecast. The raw TENNIS INCOME balance remains
- * non-spendable. Fusion
+ * Forecast household income. Owner-clarified 2026-08-31 / restated
+ * 2026-09-01: they first land in TENNIS INCOME, which is not Current
+ * Balance; household-visible posting proof is the later BILLS transfer.
+ * A later transfer of those dollars is not a second income line. Future
+ * confirmed salary remains Forecast income. Coaching surplus is not
+ * forecast. The raw TENNIS INCOME balance remains non-spendable. Fusion
  * settlement and the
  * Hydro September dated due stay the B91 current-state cutover, not this
  * income-model outcome. This suite proves the semantic split on classified
