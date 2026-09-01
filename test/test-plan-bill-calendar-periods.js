@@ -1,5 +1,5 @@
 'use strict';
-/* Homepage bills list: two calendar halves, BILLS ACCOUNT future payer,
+/* Homepage bills list: two Seaspan payday windows, BILLS ACCOUNT future payer,
  * Bell without an invented day, HELOC cash once, no subscription lump.
  *
  * Dates and totals below are hand-computed from cadence and the calendar,
@@ -213,30 +213,30 @@ const debts = [
 
 const composer = loadComposer();
 
-console.log('=== 1. calendar halves: day 15 / 16 / last day / Feb clamp ===');
+console.log('=== 1. payday windows: due date lands in the Seaspan cycle that contains it ===');
 {
   const plan = syntheticPlan();
   const aug = F.recommend(plan, '2026-08-20', { targetBuffer: 0, debts });
-  const p1 = section(aug.defaultView, 'calendar-1-15');
-  const p2 = section(aug.defaultView, 'calendar-16-end');
+  const p1 = section(aug.defaultView, 'this-pay-period');
+  const p2 = section(aug.defaultView, 'next-pay-period');
   ok(p1 && p2 && aug.defaultView.billSections.length === 2,
-    'default view publishes exactly two calendar bill sections');
-  ok(p1.start === '2026-08-01' && p1.end === '2026-08-15'
-      && p2.start === '2026-08-16' && p2.end === '2026-08-31',
-    'August halves are 1–15 and 16–31');
+    'default view publishes exactly two payday bill sections');
+  ok(p1.start === '2026-08-14' && p1.end === '2026-08-27'
+      && p2.start === '2026-08-28' && p2.end === '2026-09-10',
+    'Aug 20 windows are Aug 14–27 and Aug 28–Sep 10');
   ok(idsIn(p1).includes('day15') && !idsIn(p2).includes('day15'),
-    'day 15 lands in Pay Period 1');
-  ok(idsIn(p2).includes('day16') && !idsIn(p1).includes('day16'),
-    'day 16 lands in Pay Period 2');
+    'Aug 15 lands in This Pay Period');
+  ok(idsIn(p1).includes('day16') && !idsIn(p2).includes('day16'),
+    'Aug 16 lands in This Pay Period');
   ok(idsIn(p2).includes('monthEnd') && !idsIn(p1).includes('monthEnd'),
-    'last calendar day lands in Pay Period 2');
+    'Aug 31 lands in Next Pay Period');
   ok(idsIn(p1).includes('mortgage') && idsIn(p2).includes('mortgage'),
-    'biweekly mortgage appears in the half that contains each date');
-  const feb = F.recommend(plan, '2027-02-10', { targetBuffer: 0, debts });
-  const feb2 = section(feb.defaultView, 'calendar-16-end');
-  const last = rowIn(feb2, 'monthEnd');
+    'biweekly mortgage appears in the window that contains each date');
+  const feb = F.recommend(plan, '2027-02-26', { targetBuffer: 0, debts });
+  const febThis = section(feb.defaultView, 'this-pay-period');
+  const last = rowIn(febThis, 'monthEnd');
   ok(last && last.date === '2027-02-28',
-    'day 31 clamps to 28 Feb 2027 and stays in Pay Period 2',
+    'day 31 clamps to 28 Feb 2027 and stays in the payday window that contains it',
     last && last.date);
 }
 
@@ -245,20 +245,23 @@ console.log('\n=== 2. future payingAccount is BILLS ACCOUNT; page prints Forecas
   const plan = syntheticPlan();
   const advice = F.recommend(plan, '2026-09-10', { targetBuffer: 0, debts });
   const rows = (advice.defaultView.bills || []).concat(advice.defaultView.undatedBills || []);
-  const want = ['mortgage', 'heloc', 'travel', 'day15', 'day16', 'monthEnd', 'fit4less', 'netflix', 'bell'];
+  const want = ['mortgage', 'heloc', 'day15', 'day16', 'monthEnd', 'fit4less', 'netflix', 'bell'];
   for (const id of want) {
     const row = rows.find(r => r.id === id);
     ok(row && row.payingAccount === 'chequing-a'
         && row.payerLabel === 'BILLS ACCOUNT (Chequing A)',
       `${id} future row is BILLS ACCOUNT (Chequing A)`);
   }
+  const travel = (advice.defaultView.bills || []).find(r => r.id === 'travel');
+  ok(!travel,
+    'Travel Visa day 26 is Sep 26, which begins after Next (Sep 11–24) from as-of Sep 10');
   const cashback = (advice.defaultView.bills || []).find(r => r.id === 'cashback');
   ok(!cashback, 'Cash Back min firstDue 2026-10-01 is omitted from September');
   const html = composer.operatingSurfaceHtml({
     advice, weekly: advice.weekly, recommended: advice.weekly,
   });
-  ok(/Pay Period 1/.test(html) && /Pay Period 2/.test(html),
-    'plan.js prints the two Forecast section labels');
+  ok(/This Pay Period/.test(html) && /Next Pay Period/.test(html),
+    'plan.js prints the two Forecast payday-period labels');
   ok(/BILLS ACCOUNT \(Chequing A\)/.test(html),
     'plan.js prints the Forecast payer label');
   const fn = /function periodBillsHtml\([\s\S]*?\n\}/.exec(read('public/plan.js'));
@@ -271,11 +274,12 @@ console.log('\n=== 3. period totals equal the printed rows ===');
 {
   const plan = syntheticPlan();
   const view = F.recommend(plan, '2026-09-10', { targetBuffer: 0, debts }).defaultView;
-  // Independent of Forecast totals: biweekly from 2026-08-14 is 11 Sep and
-  // 25 Sep; monthly day 15 / 16 / 26 / 31; HELOC cash 21 Sep.
+  // Independent of Forecast totals: THIS is Aug 28–Sep 10 (Aug 28 mortgage
+  // and Fit4Less, Aug 31 last-day bill). NEXT is Sep 11–24 (Sep 11 mortgage
+  // and Fit4Less, Sep 15/16 bills, Netflix 17th, HELOC cash 21st).
   const want = {
-    'calendar-1-15': 1600 + 11.54 + 15,
-    'calendar-16-end': 1600 + 11.54 + 16 + 31 + 17 + 80 + 26.87,
+    'this-pay-period': 1600 + 11.54 + 31,
+    'next-pay-period': 1600 + 11.54 + 15 + 16 + 26.87 + 80,
   };
   for (const sec of view.billSections) {
     ok(near(sec.total, want[sec.id]),
@@ -309,10 +313,10 @@ console.log('\n=== 4. subscriptions are not a $300 lump and are not double-count
 console.log('\n=== 5. card mins once; HELOC cash vs capitalise; no extra income sections ===');
 {
   const plan = syntheticPlan();
-  const view = F.recommend(plan, '2026-09-10', { targetBuffer: 0, debts }).defaultView;
+  const view = F.recommend(plan, '2026-09-20', { targetBuffer: 0, debts }).defaultView;
   const travel = (view.bills || []).filter(r => r.id === 'travel');
   ok(travel.length === 1 && travel[0].date === '2026-09-26',
-    'Travel Visa min prints once in the half of its day');
+    'Travel Visa min prints once in the payday window of its day');
   const helocCash = (view.bills || []).filter(r => r.id === 'heloc');
   ok(helocCash.length === 1 && helocCash[0].date === '2026-09-21'
       && near(helocCash[0].amount, 80)
@@ -374,8 +378,10 @@ console.log('\n=== 7. live listed ids: BILLS ACCOUNT; Aug once vs Sep monthly ==
   const monthly = ['bcaa', 'icbc', 'resp'];
   ok(once.every(id => augIds.includes(id)) && monthly.every(id => !augIds.includes(id)),
     'August prints the once rows, not the September 15 monthly rows');
-  ok(monthly.every(id => sepIds.includes(id)) && once.every(id => !sepIds.includes(id)),
-    'September prints the monthly 15th rows once, not the August once rows');
+  ok(monthly.every(id => sepIds.includes(id)),
+    'as-of Sep 10 still prints the September 15 monthly rows in the covering payday windows');
+  ok(once.every(id => sepIds.includes(id)),
+    'unpaid August once cash still reserved after the Aug 28 payday until represented');
 }
 
 if (failures) {

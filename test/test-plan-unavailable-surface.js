@@ -250,7 +250,8 @@ console.log('\n=== 3. real Plan rendering path: compact unavailable state ===');
   ok(!/data-calendar-waterfall/.test(html)
       && !/data-calendar-period-picker/.test(html)
       && !/>This payday</.test(html)
-      && !/Pay periods this month/.test(html),
+      && !/Pay periods this month/.test(html)
+      && !/>Pay periods</.test(html),
     'normal active pay-period waterfall does not render as current');
   ok(!/data-operating-question=/.test(html)
       && !/data-operating-prompt="Income"/.test(html)
@@ -337,7 +338,7 @@ console.log('\n=== 5. trusted control keeps the normal This payday waterfall ===
   ok(trusted.operatingPlanUnavailable !== true
       && /data-calendar-waterfall/.test(html)
       && /Current Balance/.test(html)
-      && /Pay periods this month/.test(html)
+      && /Pay periods/.test(html)
       && !/data-unavailable-primary/.test(html)
       && !/data-last-trusted-opening/.test(html),
     'trusted operating plan still prints This payday / pay-period / waterfall experience');

@@ -268,13 +268,13 @@ console.log('\n=== default glance prints that set in kitchen-counter language ==
   });
   const glance = defaultGlance(html);
   const text = glance.replace(/<[^>]+>/g, ' ');
-  ok(/Bills/.test(html) && /Pay Period 1/.test(glance) && /Pay Period 2/.test(glance),
-    'the bills heading is Bills, printed as two calendar halves');
+  ok(/Bills/.test(html) && /This Pay Period/.test(html) && /Next Pay Period/.test(html),
+    'the bills heading is Bills, printed as This / Next Pay Period');
   ok(/data-payday-period-bills/.test(html),
     'period bills are one default-view list');
   ok(/Mortgage · Aug 28 · PAID/.test(glance)
       && /Fit4Less membership · Aug 28 · PAID/.test(glance),
-    'August Pay Period 2 still lists the payday mortgage and Fit4Less as PAID');
+    'This Pay Period still lists the payday mortgage and Fit4Less as PAID');
   ok(glance.includes('−' + composer.money2(MORTGAGE))
       && glance.includes('−' + composer.money2(FIT)),
     'those paid bills print as money out');
@@ -284,28 +284,28 @@ console.log('\n=== default glance prints that set in kitchen-counter language ==
     html.indexOf('data-operating-question="05"'));
   ok(/Payroll — Seaspan/.test(q2) && !/Payroll — Seaspan/.test(q4),
     'Seaspan income sits in the income block, not as a bill row');
-  ok(/Canada child benefit/.test(q2) && !/Canada child benefit/.test(q4),
-    'Aug 20 child benefit prints as period income, not as a bill');
+  ok(!/Canada child benefit/.test(q2) && !/Canada child benefit/.test(q4),
+    'Aug 20 child benefit is previous payday cycle, not this Aug 28–Sep 10 income');
   ok(/Current Balance/.test(html) && !/Leftover cash/.test(html)
       && !/Current cash flow/.test(html),
     'the leftover number is labelled Current Balance');
   ok(!/ICBC/.test(glance)
       && !/RESP/.test(glance) && !/CMAW/.test(glance)
       && !/union dues/i.test(glance),
-    'default glance omits cancelled CMAW; BCAA stays in its August half');
-  ok(/BCAA insurance · Aug 16/.test(glance) && !/posting unknown/i.test(text),
-    'the August once BCAA row prints in Pay Period 2 without posting-unknown wording');
-  ok(/Travel Visa minimum/.test(glance) && /TD account fees/.test(glance)
+    'default glance omits cancelled CMAW; previous-cycle BCAA stays off this window');
+  ok(!/BCAA insurance · Aug 16/.test(glance) && !/posting unknown/i.test(text),
+    'the August once BCAA row is previous payday cycle, not This Pay Period');
+  ok(/TD account fees/.test(glance)
       && /still due/.test(glance)
-      && glance.includes('−' + composer.money2(TRAVEL))
-      && glance.includes('−' + composer.money2(FEES)),
-    'Travel Visa min and TD fees stay still due as money out, without an invented payee');
+      && glance.includes('−' + composer.money2(FEES))
+      && !/Travel Visa minimum/.test(glance),
+    'TD fees stay still due in this window; Travel Visa day 26 is the previous cycle');
   ok(!/unverified-settlement|\boverlay\b|\bForecast\b|\bAtlas\b|\bunverified\b|\brepresented\b/.test(text),
     'default glance stays kitchen-counter language');
-  ok(/still due/.test(q4) && /PAID/.test(q4) && /Pay Period 2/.test(html),
-    'the calendar bills list keeps PAID and still due together');
-  ok(/Mortgage · Aug 28 · PAID/.test(q4) && /Travel Visa minimum/.test(q4),
-    'paid mortgage stays listed beside still-due Travel Visa');
+  ok(/still due/.test(q4) && /PAID/.test(q4) && /This Pay Period/.test(html),
+    'the payday-window bills list keeps PAID and still due together');
+  ok(/Mortgage · Aug 28 · PAID/.test(q4) && /TD account fees/.test(q4),
+    'paid mortgage stays listed beside still-due TD fees');
 }
 
 console.log('\n=== identified extra card payment on payday settles the min ===');
@@ -362,11 +362,10 @@ console.log('\n=== identified extra card payment on payday settles the min ===')
   const glance = defaultGlance(composer.operatingSurfaceHtml({
     advice, weekly: advice.weekly, recommended: advice.weekly,
   }));
-  ok(/Travel Visa minimum · Aug 26 · PAID/.test(glance)
-      && glance.includes('−' + composer.money2(EXTRA)),
-    'calendar bills show the covered min on its due date as PAID at the observed amount');
+  ok(!/Travel Visa minimum/.test(glance),
+    'payday-cycle waterfall does not list the previous-cycle Aug 26 Travel Visa min');
   ok(!/Travel Visa minimum · Aug 26 · still due/.test(glance),
-    'covered min is not still due on the default glance');
+    'covered previous-cycle min is not still due on this payday window');
 }
 
 console.log('\n=== page prints Forecast; it does not date-filter ===');

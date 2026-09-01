@@ -1935,7 +1935,7 @@ function calendarWaterfallHtml(period, liveOverlay, alloc) {
       </div>`;
   }
   return `<section class="calendar-waterfall" data-calendar-waterfall="${period.id || ''}" data-calendar-role="${period.role || ''}"${planUnavailable ? ' data-operating-plan="unavailable"' : ''}>
-    <div class="payday-group">${period.label}</div>
+    <div class="payday-group">${period.label}${period.rangeLabel ? ` · ${period.rangeLabel}` : ''}</div>
     ${lookbackNote}${projectedNote}
     ${q('01', openingPrompt, opening + (period.role === 'active' ? '' : openingNote))}
     ${q('02', 'Income', planUnavailable ? unavailable : calendarIncomeHtml(period))}
@@ -1963,10 +1963,11 @@ function calendarPickerHtml(view, show) {
     const on = current === value ? ' aria-pressed="true"' : ' aria-pressed="false"';
     return `<button type="button" class="calendar-period-btn" data-calendar-show="${value}"${on}>${label}</button>`;
   };
+  const caption = p => p.rangeLabel ? `${p.label} · ${p.rangeLabel}` : p.label;
   return `<div class="calendar-period-picker" data-calendar-period-picker>
-    <p class="operating-lead">Pay periods this month</p>
-    ${btn(periods[0].id, periods[0].label)}
-    ${btn(periods[1].id, periods[1].label)}
+    <p class="operating-lead">Pay periods</p>
+    ${btn(periods[0].id, caption(periods[0]))}
+    ${btn(periods[1].id, caption(periods[1]))}
     ${btn('both', 'Both')}
   </div>`;
 }

@@ -5,8 +5,8 @@
  * Forecast income; Amanda's Tennis BC salary is semi-monthly via the
  * incumbent 15th + month-end streams; TENNIS INCOME is not Current Balance;
  * a BILLS transfer proves a posted Amanda occurrence and is not a second
- * income line; calendar Pay Periods consume actual Forecast events and do
- * not own payroll cadence.
+ * income line; operating Pay Periods consume actual Forecast events inside
+ * Seaspan payday-to-payday windows and do not own payroll cadence.
  *
  * Expected dates are constructed independently of Forecast.occurrences /
  * biweeklyDates / monthlyDates (L-002). Synthetic current cash is used so
@@ -186,51 +186,42 @@ console.log('\n=== 2. Amanda 15th + month-end streams are last-calendar-day semi
     'September month-end is Sep 30, not Sep 31');
 }
 
-console.log('\n=== 3. January 2027 Pay Periods consume actual Forecast salary events ===');
+console.log('\n=== 3. January 2027 payday periods consume actual Forecast salary events ===');
 {
   const plan = salaryPlan();
   const advice = F.recommend(plan, AS_OF, { targetBuffer: 500, debts });
   const view = advice.defaultView;
-  const p1 = period(view, 'calendar-1-15');
-  const p2 = period(view, 'calendar-16-end');
-  ok(p1 && p1.start === '2027-01-01' && p1.end === '2027-01-15' && p1.label === 'Pay Period 1',
-    'Pay Period 1 is Jan 1–15');
-  ok(p2 && p2.start === '2027-01-16' && p2.end === '2027-01-31' && p2.label === 'Pay Period 2',
-    'Pay Period 2 is Jan 16–31');
+  const p1 = period(view, 'this-pay-period');
+  const p2 = period(view, 'next-pay-period');
+  ok(p1 && p1.start === '2027-01-01' && p1.end === '2027-01-14'
+      && p1.label === 'This Pay Period',
+    'This Pay Period is Jan 1–14');
+  ok(p2 && p2.start === '2027-01-15' && p2.end === '2027-01-28'
+      && p2.label === 'Next Pay Period',
+    'Next Pay Period is Jan 15–28');
   const p1Salary = salaryRows(p1);
   const p2Salary = salaryRows(p2);
-  const expectP1 = [
-    { id: 'payroll', date: '2027-01-01', amount: SEASPAN_AMT },
-    { id: 'payroll', date: '2027-01-15', amount: SEASPAN_AMT },
-    { id: 'amandaSalary15', date: '2027-01-15', amount: AMANDA_15_AMT },
-  ];
-  const expectP2 = [
-    { id: 'payroll', date: '2027-01-29', amount: SEASPAN_AMT },
-    { id: 'amandaSalaryMonthEnd', date: '2027-01-31', amount: AMANDA_END_AMT },
-  ];
-  ok(p1Salary.length === 3, 'January Pay Period 1 contains three salary occurrences',
+  ok(p1Salary.length === 1 && p1Salary[0].id === 'payroll' && p1Salary[0].date === '2027-01-01'
+      && near(p1Salary[0].amount, SEASPAN_AMT),
+    'Jan 1–14 contains Seaspan Jan 1 only',
     p1Salary.map(rowKey).join(', '));
-  ok(expectP1.every(exp => p1Salary.some(r =>
-      r.id === exp.id && r.date === exp.date && near(r.amount, exp.amount))),
-    'P1 salary rows match payroll Jan 1, payroll Jan 15, amandaSalary15 Jan 15',
-    p1Salary.map(rowKey).join(', '));
-  ok(p2Salary.length === 2, 'January Pay Period 2 contains two salary occurrences',
+  ok(p2Salary.some(r => r.id === 'payroll' && r.date === '2027-01-15' && near(r.amount, SEASPAN_AMT))
+      && p2Salary.some(r => r.id === 'amandaSalary15' && r.date === '2027-01-15'
+        && near(r.amount, AMANDA_15_AMT))
+      && !p2Salary.some(r => r.date === '2027-01-29'),
+    'Jan 15–28 contains Seaspan Jan 15 and Amanda Jan 15, not Jan 29',
     p2Salary.map(rowKey).join(', '));
-  ok(expectP2.every(exp => p2Salary.some(r =>
-      r.id === exp.id && r.date === exp.date && near(r.amount, exp.amount))),
-    'P2 salary rows match payroll Jan 29 and amandaSalaryMonthEnd Jan 31',
-    p2Salary.map(rowKey).join(', '));
-  ok(!p1Salary.some(r => r.id === 'amandaSalaryMonthEnd')
-      && !p2Salary.some(r => r.id === 'amandaSalary15'),
-    'the two calendar halves do not swap or invent the other stream');
+  ok(!p1Salary.some(r => r.id === 'amandaSalary15' || r.id === 'amandaSalaryMonthEnd')
+      && !p2Salary.some(r => r.id === 'amandaSalaryMonthEnd'),
+    'Amanda month-end does not leak into Jan 1–28 payday windows');
 }
 
 console.log('\n=== 4. Same-day Seaspan and Amanda 15th salaries are distinct events ===');
 {
   const plan = salaryPlan();
-  const p1 = period(F.recommend(plan, AS_OF, { targetBuffer: 500, debts }).defaultView,
-    'calendar-1-15');
-  const sameDay = salaryRows(p1).filter(r => r.date === '2027-01-15');
+  const p2 = period(F.recommend(plan, AS_OF, { targetBuffer: 500, debts }).defaultView,
+    'next-pay-period');
+  const sameDay = salaryRows(p2).filter(r => r.date === '2027-01-15');
   ok(sameDay.length === 2, 'Jan 15 has two salary rows', sameDay.map(rowKey).join(', '));
   ok(sameDay.some(r => r.id === 'payroll' && near(r.amount, SEASPAN_AMT))
       && sameDay.some(r => r.id === 'amandaSalary15' && near(r.amount, AMANDA_15_AMT)),
@@ -239,7 +230,7 @@ console.log('\n=== 4. Same-day Seaspan and Amanda 15th salaries are distinct eve
     'same calendar date does not collapse the two salaries into one id');
 }
 
-console.log('\n=== 5. Represented current paycheck adds $0; future salary in the same half still arrives ===');
+console.log('\n=== 5. Represented current paycheck adds $0; later-cycle salary is not added now ===');
 {
   const plan = salaryPlan();
   plan.opening.representedEvents = [{ id: 'payroll', date: '2027-01-01' }];
@@ -252,28 +243,30 @@ console.log('\n=== 5. Represented current paycheck adds $0; future salary in the
     targetBuffer: 500, debts,
     representedEvents: [{ id: 'payroll', date: '2027-01-01' }],
   });
-  const p1 = period(advice.defaultView, 'calendar-1-15');
+  const p1 = period(advice.defaultView, 'this-pay-period');
+  const p2 = period(advice.defaultView, 'next-pay-period');
   const jan1 = salaryRows(p1).find(r => r.id === 'payroll' && r.date === '2027-01-01');
-  const jan15Pay = salaryRows(p1).find(r => r.id === 'payroll' && r.date === '2027-01-15');
-  const jan15Amanda = salaryRows(p1).find(r => r.id === 'amandaSalary15' && r.date === '2027-01-15');
+  const jan15Pay = salaryRows(p2).find(r => r.id === 'payroll' && r.date === '2027-01-15');
+  const jan15Amanda = salaryRows(p2).find(r => r.id === 'amandaSalary15' && r.date === '2027-01-15');
   ok(jan1 && jan1.settlement === 'represented' && jan1.alreadyInCash === true
       && near(jan1.remaining, 0),
     'Jan 1 Seaspan is known represented / already in Current Balance and remaining $0',
     jan1 && `${jan1.settlement} remaining=${jan1.remaining}`);
   ok(near(p1.opening, advice.paydayAllocation.available)
       && near(p1.currentBalance, CURRENT_CASH),
-    'active Pay Period 1 opens from synthetic current cash, which already contains the represented paycheck');
+    'active period opens from synthetic current cash, which already contains the represented paycheck');
+  ok(!salaryRows(p1).some(r => r.date === '2027-01-15'),
+    'still-future Jan 15 salaries are absent from the Jan 1–14 waterfall');
   ok(jan15Pay && jan15Pay.alreadyInCash !== true && near(jan15Pay.remaining, SEASPAN_AMT),
-    'still-future Jan 15 Seaspan remains included at its full amount');
+    'still-future Jan 15 Seaspan remains in the next period at its full amount');
   ok(jan15Amanda && jan15Amanda.alreadyInCash !== true
       && near(jan15Amanda.remaining, AMANDA_15_AMT),
-    'still-future Jan 15 Amanda salary remains included at its full amount');
-  const expectedAdded = SEASPAN_AMT + AMANDA_15_AMT;
-  ok(near(p1.incomeAdded, expectedAdded),
-    'represented Jan 1 paycheck adds $0 again; the two future salaries still add',
-    `incomeAdded=${p1.incomeAdded} expected=${expectedAdded}`);
-  ok(near(p1.available, CURRENT_CASH + expectedAdded),
-    'Available is current cash plus still-future P1 salaries only');
+    'still-future Jan 15 Amanda salary remains in the next period at its full amount');
+  ok(near(p1.incomeAdded, 0),
+    'represented Jan 1 paycheck adds $0 again; later-cycle salaries are not added now',
+    `incomeAdded=${p1.incomeAdded}`);
+  ok(near(p1.available, CURRENT_CASH),
+    'Available is current cash only');
 }
 
 console.log('\n=== 6. Pay Periods do not own payroll cadence ===');
@@ -294,12 +287,12 @@ console.log('\n=== 6. Pay Periods do not own payroll cadence ===');
   ok(!forbidden.test(forecastSrc),
     'forecast.js does not encode a fixed paycheck count per calendar half');
   const incomeSection = /function calendarIncomeSections\([\s\S]*?\n  \}/.exec(forecastSrc);
-  ok(incomeSection && /expandEvents\(plan, month\.start, month\.end/.test(incomeSection[0]),
-    'calendar Pay Period income is enumerated from Forecast.expandEvents over the month');
+  ok(incomeSection && /expandEvents\(plan, span\.start, span\.end/.test(incomeSection[0]),
+    'operating Pay Period income is enumerated from Forecast.expandEvents over the payday span');
   ok(incomeSection && /const key = \(row\.id \|\| row\.label \|\| ''\) \+ '@' \+ \(row\.date \|\| ''\)/.test(incomeSection[0]),
     'income rows are keyed by id@date, so two salaries on one date both survive');
   ok(!/income\.length === 2|salaryRows\.length === 2|expectedIncomeCount/.test(incomeSection[0]),
-    'calendarIncomeSections does not assume two income deposits per half');
+    'calendarIncomeSections does not assume two income deposits per period');
 }
 
 console.log('\n=== current authority wording supersedes the Aug-9 tennis-cash reading ===');
@@ -313,9 +306,9 @@ console.log('\n=== current authority wording supersedes the Aug-9 tennis-cash re
     'ACCOUNT_FACTS current authority says TENNIS INCOME is not Current Balance');
   ok(/true 14-day|every 14 days/i.test(facts) && /not twice per month/i.test(facts),
     'ACCOUNT_FACTS states Seaspan is 14-day biweekly, not twice per month');
-  ok(/calendar Pay Periods|Pay Period 1/i.test(facts)
-      && /do not own payroll cadence|not assumptions about how many payroll/i.test(facts),
-    'ACCOUNT_FACTS states calendar Pay Periods consume actual events');
+  ok(/Operating Pay Periods|payday-to-payday/i.test(facts)
+      && /do not own payroll cadence|not calendar halves/i.test(facts),
+    'ACCOUNT_FACTS states operating Pay Periods consume actual events inside Seaspan windows');
   ok(!/Same-day scheduled cash events need\s+posting\/representation evidence or the overlay fails closed/.test(arch),
     'ARCHITECTURE no longer fail-closes the overlay on unresolved inbound');
   ok(/not added on top of a complete trusted current-cash observation/i.test(arch),

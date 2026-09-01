@@ -369,7 +369,7 @@ console.log('\n=== 5. page prints spent $X of $Y; does not subtract; no invented
       && (eatingCal.spent == null
         || glance.includes(`spent this period ${composer.money2(eatingCal.spent)}`)
         || glance.includes(`spent ${composer.money2(eatingCal.spent)}`)),
-    'this-period waterfall prints planned and spent from the calendar half');
+    'this-period waterfall prints planned and spent from the payday cycle');
   ok((html.match(/data-operating-question=/g) || []).length === 11,
     'the default calendar waterfall has eleven questions, not a digest after a ten-block');
   ok(glance.indexOf('Household budget') >= 0
