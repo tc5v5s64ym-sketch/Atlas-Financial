@@ -320,6 +320,35 @@ console.log('\n=== 6. mobile-responsive section headings stack above content ===
     'the collapsed-prompt left column is gone from both default and mobile grids');
 }
 
+console.log('\n=== 6b. mobile waterfall rows wrap instead of clipping ===');
+{
+  const css = raw('public/styles.css');
+  const planSrc = read('public/plan.js');
+  const lineRule = /\.operating-line \{[\s\S]*?\n\}/.exec(css);
+  const lastChildRule = /\.operating-line span:last-child \{[\s\S]*?\n\}/.exec(css);
+  const mobile = /@media \(max-width:700px\) \{[\s\S]*?\.current-period-category > span/.exec(css);
+  ok(lineRule && /min-width:\s*0/.test(lineRule[0]),
+    'operating-line can shrink inside a card instead of forcing overflow');
+  ok(/\.operating-line > span \{ min-width:\s*0; \}/.test(css)
+    && /\.operating-line span:first-child \{ overflow-wrap:\s*anywhere; \}/.test(css),
+    'row labels wrap; flex children are allowed to shrink');
+  ok(lastChildRule && /overflow-wrap:\s*anywhere/.test(lastChildRule[0])
+    && !/white-space:\s*nowrap/.test(lastChildRule[0]),
+    'long value text such as planned this period is allowed to wrap');
+  ok(mobile && /flex-direction:\s*column/.test(mobile[0])
+    && /\.operating-line span:last-child \{ text-align:\s*left; \}/.test(mobile[0]),
+    'narrow screens stack the label above the details instead of clipping sideways');
+  ok(mobile && /\.current-period-row \{ grid-template-columns:\s*minmax\(0,\s*1fr\)/.test(mobile[0]),
+    'current-period detail rows also collapse to one wrapping column');
+  ok(!/\.operating-line[^\{]*\{[^}]*overflow-x:\s*hidden/.test(css),
+    'operating-line does not hide overflow to mask a rigid row');
+  ok(/function paydayBucketRow/.test(planSrc)
+    && /class="operating-line"><span>\$\{label\}<\/span><span>\$\{bits\.join/.test(planSrc)
+    && /planned this period/.test(planSrc)
+    && /spent this period/.test(planSrc),
+    'row copy and figure formatting stay in the existing Plan renderer');
+}
+
 console.log('\n=== 7. authority boundaries remain intact ===');
 {
   const planSrc = read('public/plan.js');
