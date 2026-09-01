@@ -809,9 +809,11 @@ function glanceUpdatedNote(asOf, liveOverlay) {
       const date = d.toLocaleDateString('en-CA', {
         timeZone: tz, day: 'numeric', month: 'short',
       });
+      // en-CA renders "2:42 p.m."; drop its own full stop so the sentence
+      // does not end "p.m..".
       const time = d.toLocaleTimeString('en-CA', {
         timeZone: tz, hour: 'numeric', minute: '2-digit',
-      });
+      }).replace(/\.$/, '');
       return `Current Balance. Not credit. Updated ${date}, ${time}.`;
     }
   }
@@ -900,7 +902,7 @@ function applyPaydayHeading(action) {
   heading.textContent = 'Payday plan';
 }
 
-const OPERATING_SURFACE_LEDE = 'Current Balance, bills this pay period, household budget, the card to pay extra toward, other cards, and big purchases — each with leftover after that step.';
+const OPERATING_SURFACE_LEDE = 'Current Balance, bills this pay period, household budget, extra debt and big purchases — and what is left after each step.';
 
 function applyUnavailableOperatingChrome(unavailable, asOf, liveOverlay, doc) {
   doc = doc || (typeof document !== 'undefined' ? document : null);
@@ -1711,8 +1713,12 @@ function extraDebtGlanceHtml(alloc) {
 }
 
 function runningLeftoverHtml(amount) {
-  return `<div class="payday-leftover" data-running-leftover>
-    <span class="operating-amount">${amount != null && isFinite(Number(amount)) ? money2(amount) : '—'}</span>
+  const known = amount != null && isFinite(Number(amount));
+  // Sign is presentation only: the same Forecast figure, coloured so a
+  // negative running balance cannot be mistaken for a positive one.
+  const sign = !known ? 'unknown' : Number(amount) < 0 ? 'negative' : 'non-negative';
+  return `<div class="payday-leftover" data-running-leftover data-sign="${sign}">
+    <span class="operating-amount">${known ? money2(amount) : '—'}</span>
   </div>`;
 }
 
@@ -1767,7 +1773,7 @@ function calendarIncomeHtml(period) {
     </div>`;
   }).join('');
   const added = period && period.incomeAdded != null && Number(period.incomeAdded) > 0
-    ? `<p class="payday-qual">Still arriving ${money2(period.incomeAdded)}</p>`
+    ? `<p class="payday-qual payday-total"><span>Still arriving</span><span>${money2(period.incomeAdded)}</span></p>`
     : '';
   return `<div class="payday-period-income" data-calendar-income>
     <div class="operating-lines">${lines}</div>
@@ -1866,14 +1872,14 @@ function calendarPeriodBillsHtml(period) {
   const lines = rows.map(periodBillLine).join('');
   const totals = [];
   if (period && period.totalBillsThisPeriod != null) {
-    totals.push(`<p class="payday-qual">Total bills this period ${money2(period.totalBillsThisPeriod)}</p>`);
+    totals.push(`<p class="payday-qual payday-total"><span>Total bills this period</span><span>${money2(period.totalBillsThisPeriod)}</span></p>`);
   }
   if (period && period.remainingBills != null) {
-    totals.push(`<p class="payday-qual">Remaining bills to pay ${money2(period.remainingBills)}</p>`);
+    totals.push(`<p class="payday-qual payday-total payday-total-strong"><span>Remaining bills to pay</span><span>${money2(period.remainingBills)}</span></p>`);
   }
   return `<div class="payday-period-bills" data-payday-period-bills>
     <div class="operating-lines">${lines}</div>
-    ${totals.join('')}
+    ${totals.length ? `<div class="payday-totals">${totals.join('')}</div>` : ''}
   </div>`;
 }
 
@@ -1906,14 +1912,16 @@ function calendarWaterfallHtml(period, liveOverlay, alloc) {
   const openingPrompt = period.role === 'active' ? 'Current Balance'
     : 'Opening balance';
   const endingPrompt = 'Projected ending balance';
-  const openingNote = period.cashNote
-    ? `<p class="operating-note">${period.cashNote}</p>` : '';
+  // Every opening branch below already prints period.cashNote once (as the
+  // glance note or as the lead), so it is not appended a second time.
   const projectedNote = period.projected
     ? '<p class="operating-note">Projected.</p>' : '';
   const lookbackNote = period.lookback
     ? '<p class="operating-note">Lookback.</p>' : '';
-  const q = (number, prompt, answer) => `
-    <div class="operating-question" data-operating-question="${number}" data-operating-prompt="${prompt}">
+  // `kind` is a presentation hint only (opening / balance / ending) so the
+  // running-balance thread and the end state can be styled as one sequence.
+  const q = (number, prompt, answer, kind) => `
+    <div class="operating-question${kind ? ` operating-${kind}` : ''}" data-operating-question="${number}" data-operating-prompt="${prompt}">
       <div class="operating-number">${number}</div>
       <h2 class="operating-prompt">${prompt}</h2>
       <div class="operating-answer">${answer}</div>
@@ -1947,44 +1955,51 @@ function calendarWaterfallHtml(period, liveOverlay, alloc) {
       </div>`;
   }
   return `<section class="calendar-waterfall" data-calendar-waterfall="${period.id || ''}" data-calendar-role="${period.role || ''}"${planUnavailable ? ' data-operating-plan="unavailable"' : ''}>
-    <div class="payday-group">${period.label}${period.rangeLabel ? ` · ${period.rangeLabel}` : ''}</div>
+    <div class="payday-group calendar-waterfall-head">${period.label}${period.rangeLabel ? ` · ${period.rangeLabel}` : ''}</div>
     ${lookbackNote}${projectedNote}
-    ${q('01', openingPrompt, opening + (period.role === 'active' ? '' : openingNote))}
+    ${q('01', openingPrompt, opening, 'opening')}
     ${q('02', 'Income', planUnavailable ? unavailable : calendarIncomeHtml(period))}
-    ${q('03', 'Available balance', planUnavailable ? unavailable : runningLeftoverHtml(period.available))}
+    ${q('03', 'Available balance', planUnavailable ? unavailable : runningLeftoverHtml(period.available), 'balance')}
     ${q('04', 'Bills', planUnavailable ? unavailable : calendarPeriodBillsHtml(period))}
-    ${q('05', 'Balance after remaining bills', planUnavailable ? unavailable : runningLeftoverHtml(period.afterRemainingBills))}
+    ${q('05', 'Balance after remaining bills', planUnavailable ? unavailable : runningLeftoverHtml(period.afterRemainingBills), 'balance')}
     ${q('06', 'Household budget', planUnavailable ? unavailable : calendarBudgetHtml(period))}
-    ${q('07', 'Balance after household budget', planUnavailable ? unavailable : runningLeftoverHtml(period.afterHouseholdBudget))}
+    ${q('07', 'Balance after household budget', planUnavailable ? unavailable : runningLeftoverHtml(period.afterHouseholdBudget), 'balance')}
     ${q('08', 'Extra credit-card repayment', planUnavailable ? unavailable : (firstCardHtml(period)
       + (period.otherCards && period.otherCards.length
-        ? '<div class="payday-group">Other credit cards</div>' : '')
+        ? '<div class="payday-group payday-subgroup">Other credit cards</div>' : '')
       + otherCardsHtml(period)))}
-    ${q('09', 'Balance after debt repayment', planUnavailable ? unavailable : runningLeftoverHtml(period.afterDebtRepayment))}
+    ${q('09', 'Balance after debt repayment', planUnavailable ? unavailable : runningLeftoverHtml(period.afterDebtRepayment), 'balance')}
     ${q('10', 'Big-purchase savings', planUnavailable ? unavailable : bigPurchasesHtml(period))}
-    ${q('11', endingPrompt, planUnavailable ? unavailable : runningLeftoverHtml(period.projectedEnding))}
+    ${q('11', endingPrompt, planUnavailable ? unavailable : runningLeftoverHtml(period.projectedEnding), 'ending')}
   </section>`;
 }
 
-function calendarPickerHtml(view, show) {
+function calendarPickerHtml(view, show, extraControls) {
   const periods = (view && view.calendarPeriods) || [];
-  if (periods.length < 2) return '';
+  if (periods.length < 2) return extraControls || '';
   const activeId = (view && view.activeCalendarPeriodId) || (periods[0] && periods[0].id);
   const current = show || activeId;
-  const btn = (value, label) => {
+  const btn = (value, label, cls) => {
     const on = current === value ? ' aria-pressed="true"' : ' aria-pressed="false"';
-    return `<button type="button" class="calendar-period-btn" data-calendar-show="${value}"${on}>${label}</button>`;
+    return `<button type="button" class="calendar-period-btn${cls ? ` ${cls}` : ''}" data-calendar-show="${value}"${on}>${label}</button>`;
   };
-  const caption = p => p.rangeLabel ? `${p.label} · ${p.rangeLabel}` : p.label;
+  // Period name on one line, its dates on the next: the two planning windows
+  // read as a switch, and the range is visible without a caption.
+  const caption = p => p.rangeLabel
+    ? `<span class="calendar-period-name">${p.label}</span><span class="calendar-period-dates">${p.rangeLabel}</span>`
+    : `<span class="calendar-period-name">${p.label}</span>`;
   return `<div class="calendar-period-picker" data-calendar-period-picker>
-    <p class="operating-lead">Pay periods</p>
-    ${btn(periods[0].id, caption(periods[0]))}
-    ${btn(periods[1].id, caption(periods[1]))}
-    ${btn('both', 'Both')}
+    <p class="operating-lead calendar-period-label" id="calendar-period-label">Pay periods</p>
+    <div class="calendar-period-switch" role="group" aria-labelledby="calendar-period-label">
+      ${btn(periods[0].id, caption(periods[0]))}
+      ${btn(periods[1].id, caption(periods[1]))}
+    </div>
+    ${btn('both', 'Show both', 'calendar-period-both')}
+    ${extraControls || ''}
   </div>`;
 }
 
-function calendarWaterfallsHtml(view, show, liveOverlay, alloc) {
+function calendarWaterfallsHtml(view, show, liveOverlay, alloc, extraControls) {
   const periods = (view && view.calendarPeriods) || [];
   if (!periods.length) return '';
   const activeId = (view && view.activeCalendarPeriodId) || (periods[0] && periods[0].id);
@@ -2001,7 +2016,7 @@ function calendarWaterfallsHtml(view, show, liveOverlay, alloc) {
       </div>`
     : '';
   return `<div class="calendar-waterfalls" data-calendar-waterfalls>
-    ${calendarPickerHtml(view, pick)}
+    ${calendarPickerHtml(view, pick, extraControls)}
     ${shown.map(period => calendarWaterfallHtml(period, liveOverlay, alloc)).join('')}
     ${undatedBlock}
   </div>`;
@@ -2100,16 +2115,16 @@ function firstCardHtml(view) {
   const extra = card.extraThisPayday != null ? Number(card.extraThisPayday) : 0;
   const extraLead = (view && view.extraLabel) || 'Extra this payday';
   const extraLine = extra > 0
-    ? `${extraLead} ${money2(extra)}.`
-    : `${extraLead} $0.00.`;
+    ? `${extraLead} ${money2(extra)}`
+    : `${extraLead} $0.00`;
   const bits = [];
   if (card.balance != null) bits.push(`Balance ${money2(card.balance)}`);
   if (card.rate != null && isFinite(Number(card.rate))) bits.push(`${Number(card.rate).toFixed(2)}%`);
   if (card.minimum != null) bits.push(`min ${money2(card.minimum)}`);
-  return `<div class="payday-first-card" data-payday-first-card data-first-card="${card.id || ''}" data-card-id="${card.id || ''}">
+  return `<div class="payday-first-card" data-payday-first-card data-first-card="${card.id || ''}" data-card-id="${card.id || ''}" data-extra="${extra > 0 ? 'plus' : 'zero'}">
     <p class="operating-lead">${card.label}</p>
     <p class="operating-note">${bits.join(' · ')}</p>
-    <p class="operating-note">${extraLine}</p>
+    <p class="operating-note payday-extra-line">${extraLine}</p>
   </div>`;
 }
 
@@ -2334,8 +2349,8 @@ function operatingSurfaceHtml(ctx) {
     || !action
     || action.remainingClaim === 'unavailable';
 
-  const question = (number, prompt, answer) => `
-    <div class="operating-question" data-operating-question="${number}" data-operating-prompt="${prompt}">
+  const question = (number, prompt, answer, kind) => `
+    <div class="operating-question${kind ? ` operating-${kind}` : ''}" data-operating-question="${number}" data-operating-prompt="${prompt}">
       <div class="operating-number">${number}</div>
       <h2 class="operating-prompt">${prompt}</h2>
       <div class="operating-answer">${answer}</div>
@@ -2355,9 +2370,14 @@ function operatingSurfaceHtml(ctx) {
       : `Week of ${fmtDate(row.periodStart)}`;
     return option(value, label);
   }).join('');
-  const picker = `<div data-plan-look-picker>
-    <p class="operating-lead">What to look at</p>
-    <select class="numin" data-plan-look>
+  // The pay-period switch inside the sheet is the primary control. The week
+  // picker stays available behind a quiet disclosure, and is held open while
+  // a week or next-period view is the one being read.
+  const picker = `<details class="plan-look" data-plan-look-picker${look !== 'this-period' ? ' open' : ''}>
+    <summary class="plan-look-summary">More views</summary>
+    <label class="plan-look-field">
+      <span class="plan-look-label">What to look at</span>
+      <select class="numin" data-plan-look>
       ${option('this-period', 'This pay period')}
       ${nextPeriod && nextPeriod.periodStart
         ? option('next-period', nextPeriod.periodEnd
@@ -2365,8 +2385,9 @@ function operatingSurfaceHtml(ctx) {
           : 'Next pay period')
         : ''}
       ${weekOpts}
-    </select>
-  </div>`;
+      </select>
+    </label>
+  </details>`;
   const cashAlloc = {
     available: view.currentBalance != null ? view.currentBalance : (alloc && alloc.available),
     cashBasis: view.cashNote ? null : (alloc && alloc.cashBasis),
@@ -2380,20 +2401,21 @@ function operatingSurfaceHtml(ctx) {
       view,
       ctx.planCalendarShow,
       ctx.liveOverlay,
-      alloc
+      alloc,
+      picker
     )
     : '';
   const tenBlock = defaultWaterfalls ? '' : `
-    ${question('01', 'Current Balance', cash)}
+    ${question('01', 'Current Balance', cash, 'opening')}
     ${question('02', billsHeading, bills)}
-    ${question('03', 'Balance after bills', runningLeftoverHtml(view.afterBills))}
+    ${question('03', 'Balance after bills', runningLeftoverHtml(view.afterBills), 'balance')}
     ${question('04', 'Household budget', householdBudgetHtml(view))}
-    ${question('05', 'Balance after household budget', runningLeftoverHtml(view.afterHouseholdBudget))}
+    ${question('05', 'Balance after household budget', runningLeftoverHtml(view.afterHouseholdBudget), 'balance')}
     ${question('06', 'Credit card to pay off first', firstCardHtml(view))}
     ${question('07', 'Other credit cards', otherCardsHtml(view))}
-    ${question('08', 'Balance after debt repayment', runningLeftoverHtml(view.afterDebtRepayment))}
+    ${question('08', 'Balance after debt repayment', runningLeftoverHtml(view.afterDebtRepayment), 'balance')}
     ${question('09', 'Big purchases on the horizon', bigPurchasesHtml(view))}
-    ${question('10', 'Balance after big purchase allocation', runningLeftoverHtml(view.afterBigPurchases))}
+    ${question('10', 'Balance after big purchase allocation', runningLeftoverHtml(view.afterBigPurchases), 'ending')}
     ${budgetDigestHtml(view.budgetDigest)}`;
 
   const warningLines = [];
@@ -2434,9 +2456,10 @@ function operatingSurfaceHtml(ctx) {
     ? `<div data-operating-warnings>${warningLines.join('')}</div>`
     : '';
 
+  // In the default view the picker rides inside the pay-period switch row;
+  // the week and next-period printouts carry it at the top, held open.
   return `<div class="payday-operating-sheet" data-payday-sheet>
-    ${picker}
-    ${defaultWaterfalls || tenBlock}
+    ${defaultWaterfalls || `${picker}<div class="plan-sheet">${tenBlock}</div>`}
     ${warnings}
   </div>`;
 }
