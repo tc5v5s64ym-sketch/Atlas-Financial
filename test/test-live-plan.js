@@ -2364,7 +2364,8 @@ console.log('\n=== 21. named paycheck identity supplies actuals and applies when
   const LIVE_AT = '2026-08-31T18:00:00.000Z';
   const LIVE_DAY = '2026-08-31';
   // Owner-confirmed month-end net from ACCOUNT_FACTS / plan.income. Used as
-  // an additional identity guard on the BILLS transfer, not as identity.
+  // an additional identity guard on the uniquely paired TENNIS INCOME→BILLS
+  // transfer, not as identity.
   const OWNER_CONFIRMED_MONTH_END = 2387.99;
   const WRONG_AMOUNT_AMANDA = 81.17;
   const UNRELATED_TRANSFER = 790;
@@ -2377,10 +2378,11 @@ console.log('\n=== 21. named paycheck identity supplies actuals and applies when
       && salaryRules.every(r => r.transactionKind === 'transfer'
         && r.atlasAccountId === 'chequing-a'
         && r.direction === 'credit'
+        && r.counterpartExternalId === 'tennis-income'
         && r.settlesWhen === 'exact-scheduled-amount'
         && !r.payeePattern
         && !(r.payeePatterns || []).length),
-    'salary identity is BILLS transfer + exact scheduled amount, not a Tennis BC payee');
+    'salary identity is BILLS transfer uniquely paired to TENNIS INCOME, not amount alone');
   ok(!(identity.rules || []).some(r =>
       r && (r.eventId === 'amandaSalary15' || r.eventId === 'amandaSalaryMonthEnd')
       && /tennis/i.test(JSON.stringify([r.payeePattern, r.payeePatterns]))),
@@ -2419,6 +2421,16 @@ console.log('\n=== 21. named paycheck identity supplies actuals and applies when
   };
   const billsTransferTx = {
     id: 96031, account_id: 3001, date: LIVE_DAY, amount: -OWNER_CONFIRMED_MONTH_END,
+    payee: 'INTERNAL TRANSFER', category_id: 24, exclude_from_totals: true,
+    is_pending: false, status: 'reviewed',
+  };
+  const tennisIncomeCounterpartTx = {
+    id: 96042, account_id: 3009, date: LIVE_DAY, amount: OWNER_CONFIRMED_MONTH_END,
+    payee: 'INTERNAL TRANSFER', category_id: 24, exclude_from_totals: true,
+    is_pending: false, status: 'reviewed',
+  };
+  const weeklySourceCounterpartTx = {
+    id: 96043, account_id: 3002, date: LIVE_DAY, amount: OWNER_CONFIRMED_MONTH_END,
     payee: 'INTERNAL TRANSFER', category_id: 24, exclude_from_totals: true,
     is_pending: false, status: 'reviewed',
   };
@@ -2487,14 +2499,16 @@ console.log('\n=== 21. named paycheck identity supplies actuals and applies when
     transactions,
   });
 
-  const provenTxs = [seaspanTx, billsTransferTx, expTx].concat(inOutTxs, [grocerTx]);
+  const provenTxs = [seaspanTx, billsTransferTx, tennisIncomeCounterpartTx, expTx]
+    .concat(inOutTxs, [grocerTx]);
   const observed = overlay(canonical, extraFor(provenTxs));
   const amandaHit = (observed.report.representedEventCandidates || [])
     .find(c => c.id === 'amandaSalaryMonthEnd' && c.date === LIVE_DAY);
   const seaspanHit = (observed.report.representedEventCandidates || [])
     .find(c => c.id === 'payroll' && c.date === PAYDAY_AS_OF);
-  ok(amandaHit && amandaHit.identity === 'transfer+account+date' && amandaHit.amountNotUsed === true,
-    'observer identity-matches the BILLS transfer; amount is a guard, not identity');
+  ok(amandaHit && amandaHit.identity === 'transfer+counterpart+account+date'
+      && amandaHit.amountNotUsed === true,
+    'observer identity-matches the TENNIS INCOME→BILLS pair; amount is a guard, not identity');
   ok(near(amandaHit.observedAmount, -OWNER_CONFIRMED_MONTH_END)
       && amandaHit.atlasAccountId === 'chequing-a',
     'matched salary actual is the exact scheduled transfer into BILLS');
@@ -2660,6 +2674,15 @@ console.log('\n=== 21. named paycheck identity supplies actuals and applies when
     'unrelated household transfer',
     [seaspanTx, unrelatedTransferTx, grocerTx].concat(inOutTxs),
     UNRELATED_TRANSFER + SYNTHETIC_PAYROLL);
+  assertSalaryFailClosed(
+    'unrelated exact-amount BILLS transfer without a TENNIS INCOME counterpart',
+    [seaspanTx, billsTransferTx, grocerTx].concat(inOutTxs));
+  assertSalaryFailClosed(
+    'exact-amount BILLS transfer sourced from WEEKLY, not TENNIS INCOME',
+    [seaspanTx, billsTransferTx, weeklySourceCounterpartTx, grocerTx].concat(inOutTxs));
+  assertSalaryFailClosed(
+    'BILLS transfer plus TENNIS INCOME deposit, without the opposite-leg debit',
+    [seaspanTx, billsTransferTx, tennisIncomeDepositTx, grocerTx].concat(inOutTxs));
   assertSalaryFailClosed(
     'exact-amount transfer into WEEKLY rather than BILLS',
     [seaspanTx, weeklyTransferTx, grocerTx].concat(inOutTxs));

@@ -9,7 +9,8 @@
     "Identity is providerAccountId, never the display name.",
     "Mapping does not authorize a canonical write.",
     "Map non-household provider accounts as atlasRole household-external. Do not leave a current-period account unmapped: unresolved accounts cannot authorize a precise remaining figure.",
-    "DEBT&PAYMENTS and SAVINGS-DONT TOUCH are non-household. Give them household-external, not household-cash, and do not omit them if they still produce transactions."
+    "DEBT&PAYMENTS / TENNIS INCOME and SAVINGS-DONT TOUCH are non-household. Give them household-external, not household-cash, and do not omit them if they still produce transactions.",
+    "TENNIS INCOME must carry externalId tennis-income so a uniquely paired debit can prove a BILLS salary transfer. That label is not a household-cash identity. Without it, salary overlay fail-closes."
   ],
   "mappings": [
     {
@@ -54,7 +55,8 @@
     },
     {
       "providerAccountId": "YOUR_DEBT_PAYMENTS_ID",
-      "atlasRole": "household-external"
+      "atlasRole": "household-external",
+      "externalId": "tennis-income"
     },
     {
       "providerAccountId": "YOUR_SAVINGS_DONT_TOUCH_ID",

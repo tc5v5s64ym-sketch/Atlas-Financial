@@ -985,9 +985,44 @@ function transactionIsTransfer(tx) {
   return /transfer/i.test(String(tx.categoryLabel || ''));
 }
 
+function ruleCounterpartExternalId(rule) {
+  const value = rule && rule.counterpartExternalId;
+  return value != null && String(value).trim() !== '' ? String(value).trim() : '';
+}
+
+function mappingExternalId(mapping) {
+  const value = mapping && mapping.externalId;
+  return value != null && String(value).trim() !== '' ? String(value).trim() : '';
+}
+
+function amountsMatchExactly(left, right) {
+  return isFinite(left) && isFinite(right)
+    && Math.abs(Math.abs(Number(left)) - Math.abs(Number(right))) <= IDENTITY_AMOUNT_EPSILON;
+}
+
+function uniqueTransferCounterpart(tx, rule, input, amount) {
+  const counterpartId = ruleCounterpartExternalId(rule);
+  if (!tx || !counterpartId) return null;
+  const mapDoc = input && input.accountMap;
+  const matches = [];
+  for (const other of (input && input.transactions) || []) {
+    if (!other || other === tx) continue;
+    if (other.pending === true || other.contradictoryEvidence === true) continue;
+    if (String(other.date || '') !== String(tx.date || '')) continue;
+    if (!transactionIsTransfer(other)) continue;
+    const mapping = mappingFor(mapDoc, other.providerAccountId);
+    if (!mapping || mapping.atlasRole !== EXTERNAL_LIVE_ROLE) continue;
+    if (mappingExternalId(mapping) !== counterpartId) continue;
+    const otherAmount = lunchMoneyDebitAmount(other.amount);
+    if (!(otherAmount > 0) || !amountsMatchExactly(otherAmount, amount)) continue;
+    matches.push(other);
+  }
+  return matches.length === 1 ? matches[0] : null;
+}
+
 function ruleHasIdentity(rule) {
   if (!rule || !rule.eventId) return false;
-  if (rule.transactionKind === 'transfer') return true;
+  if (rule.transactionKind === 'transfer') return !!ruleCounterpartExternalId(rule);
   return rulePayeePatterns(rule).length > 0;
 }
 
@@ -998,15 +1033,19 @@ function ruleMatchesTransactionIdentity(tx, rule) {
   }
   if (rule.transactionKind === 'transfer') {
     if (!transactionIsTransfer(tx)) return false;
+    if (!ruleCounterpartExternalId(rule)) return false;
     if (!rulePayeePatterns(rule).length) return true;
   }
   return payeeMatchesRule(tx, rule);
 }
 
 function ruleIdentityLabel(rule) {
-  return rule && rule.transactionKind === 'transfer'
-    ? 'transfer+account+date'
-    : 'payee+account+date';
+  if (rule && rule.transactionKind === 'transfer') {
+    return ruleCounterpartExternalId(rule)
+      ? 'transfer+counterpart+account+date'
+      : 'transfer+account+date';
+  }
+  return 'payee+account+date';
 }
 
 function postingDateRelation(scheduledDate, postingDate, rule) {
@@ -1110,7 +1149,9 @@ function postingObservationFromCandidate(candidate, fetchedAt) {
     evidenceDate: dateOnly(fetchedAt),
     canonical: { collection: 'representedEvents', id: candidate.id, date: candidate.date },
     source: 'provider-observe:lunchmoney-transactions',
-    note: candidate && candidate.identity === 'transfer+account+date'
+    note: candidate && candidate.identity === 'transfer+counterpart+account+date'
+      ? 'Identity is a uniquely proven transfer credit into the mapped BILLS account paired to the TENNIS INCOME salary-flow counterpart + direction + allowed scheduled/posting-date relation. Amount is a necessary guard, not identity. Historical candidates are not current-opening posting comparisons.'
+      : candidate && candidate.identity === 'transfer+account+date'
       ? 'Identity is a uniquely proven transfer credit into the mapped BILLS account + direction + allowed scheduled/posting-date relation. Amount is a necessary guard, not identity. Historical candidates are not current-opening posting comparisons.'
       : 'Identity is explicit payee alias + mapped account + direction + allowed scheduled/posting-date relation. Amount similarity was not used. Historical candidates are not current-opening posting comparisons.',
     currentOpeningImpact: candidate.currentOpeningImpact === true,
@@ -1479,6 +1520,9 @@ function representedEventHitGroups(input) {
             && Math.abs(Math.abs(amount) - need) <= IDENTITY_AMOUNT_EPSILON)) {
             continue;
           }
+        }
+        if (rule.transactionKind === 'transfer' && !uniqueTransferCounterpart(tx, rule, input, amount)) {
+          continue;
         }
         const key = rule.eventId + '@' + scheduledDate;
         const list = eventHits.get(key) || [];
@@ -2476,6 +2520,7 @@ const api = {
   representedEventHitGroups,
   representedEventCandidates,
   transactionIsTransfer,
+  uniqueTransferCounterpart,
   ruleHasIdentity,
   ruleMatchesTransactionIdentity,
   openingAsOfFromData,
