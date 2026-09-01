@@ -82,6 +82,9 @@ function loadComposer() {
     grab(planSrc, /^function runningLeftoverHtml\([\s\S]*?\n\}$/m, 'runningLeftoverHtml'),
     grab(planSrc, /^function periodBillLine\([\s\S]*?\n\}$/m, 'periodBillLine'),
     grab(planSrc, /^function calendarIncomeHtml\([\s\S]*?\n\}$/m, 'calendarIncomeHtml'),
+    grab(planSrc, /^function householdBudgetCycleText\([\s\S]*?\n\}$/m, 'householdBudgetCycleText'),
+    grab(planSrc, /^function householdBudgetMetric\([\s\S]*?\n\}$/m, 'householdBudgetMetric'),
+    grab(planSrc, /^function householdBudgetCategoryHtml\([\s\S]*?\n\}$/m, 'householdBudgetCategoryHtml'),
     grab(planSrc, /^function calendarBudgetHtml\([\s\S]*?\n\}$/m, 'calendarBudgetHtml'),
     grab(planSrc, /^function calendarPeriodBillsHtml\([\s\S]*?\n\}$/m, 'calendarPeriodBillsHtml'),
     grab(planSrc, /^function extraRepaymentHtml\([\s\S]*?\n\}$/m, 'extraRepaymentHtml'),
@@ -340,10 +343,20 @@ console.log('\n=== 6b. mobile waterfall rows wrap instead of clipping ===');
   ok(!/\.operating-line[^\{]*\{[^}]*overflow-x:\s*hidden/.test(css),
     'operating-line does not hide overflow to mask a rigid row');
   ok(/function paydayBucketRow/.test(planSrc)
-    && /class="operating-line"><span>\$\{label\}<\/span><span>\$\{bits\.join/.test(planSrc)
-    && /planned this period/.test(planSrc)
-    && /spent this period/.test(planSrc),
-    'row copy and figure formatting stay in the existing Plan renderer');
+    && /class="operating-line"><span>\$\{label\}<\/span><span>\$\{bits\.join/.test(planSrc),
+    'non-budget waterfall rows stay in the existing Plan renderer');
+  ok(/household-budget-metrics/.test(planSrc)
+      && /householdBudgetMetric\('Planned'/.test(planSrc)
+      && /householdBudgetMetric\('Spent'/.test(planSrc)
+      && /householdBudgetMetric\('Remaining'/.test(planSrc)
+      && !/planned this period/.test(planSrc)
+      && !/spent this period/.test(planSrc),
+    'Household Budget uses structured Planned / Spent / Remaining, not sentence-dense rows');
+  ok(/household-budget-metrics/.test(css)
+      && /grid-template-columns:\s*minmax\(0,\s*1fr\) minmax\(0,\s*auto\)/.test(css)
+      && /household-budget-metrics dd[\s\S]*?tabular-nums/.test(css)
+      && /household-budget-metrics dd[\s\S]*?text-align:\s*right/.test(css),
+    'Household Budget metrics are a wrapping two-column key/value grid with tabular amounts');
 }
 
 console.log('\n=== 7. authority boundaries remain intact ===');

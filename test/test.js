@@ -64,6 +64,7 @@ const suites = [
   ['Plan default view layout', 'test-plan-default-view.js'],
   ['Plan calendar bill sections', 'test-plan-bill-calendar-periods.js'],
   ['Plan calendar waterfalls', 'test-plan-calendar-waterfalls.js'],
+  ['Household Budget Other spending residual', 'test-household-budget-other-spending.js'],
   ['salary recognition and payroll drift', 'test-salary-recognition-drift.js'],
   ['Plan payday operating periods', 'test-payday-operating-periods.js'],
   ['Plan unavailable operating state', 'test-plan-unavailable-surface.js'],

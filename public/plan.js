@@ -1775,6 +1775,58 @@ function calendarIncomeHtml(period) {
   </div>`;
 }
 
+function householdBudgetCycleText(period) {
+  if (!period) return '';
+  if (period.spendingCycle && period.spendingCycle.rangeLabel) {
+    return period.spendingCycle.rangeLabel;
+  }
+  const label = String(period.spendingCycleLabel || '');
+  return label.replace(/^Spending cycle:\s*/, '');
+}
+
+function householdBudgetMetric(label, amount, opts) {
+  const remaining = !!(opts && opts.remaining);
+  const cls = remaining
+    ? 'household-budget-metric household-budget-remaining'
+    : 'household-budget-metric';
+  return `<div class="${cls}"><dt>${label}</dt><dd>${money2(amount)}</dd></div>`;
+}
+
+function householdBudgetCategoryHtml(row) {
+  if (!row) return '';
+  if (row.informational) {
+    return paydayBucketRow(
+      row.label,
+      row.note || 'included in Bills, remaining not deducted',
+      null,
+      null,
+      { preformatted: true }
+    );
+  }
+  const other = row.otherSpending === true || row.needsConfirmation === true;
+  const name = row.label || '';
+  const context = other
+    ? (row.note || 'Not yet assigned to a budget category')
+    : (row.plannedWeekly != null ? `${money2(row.plannedWeekly)}/week` : '');
+  const contextHtml = context
+    ? `<p class="household-budget-context">${context}</p>` : '';
+  const metrics = [];
+  if (!other && row.planned != null) metrics.push(householdBudgetMetric('Planned', row.planned));
+  if (row.spent != null) metrics.push(householdBudgetMetric('Spent', row.spent));
+  if (!other && row.remaining != null) {
+    metrics.push(householdBudgetMetric('Remaining', row.remaining, { remaining: true }));
+  }
+  const kind = other ? 'other' : 'category';
+  const projected = !other && row.projected && row.remaining != null
+    ? '<p class="household-budget-context">Projected.</p>' : '';
+  return `<div class="household-budget-${kind}" data-budget-category="${row.id || ''}"${other ? ' data-other-spending' : ''}>
+    <h3 class="household-budget-name">${name}</h3>
+    ${contextHtml}
+    <dl class="household-budget-metrics">${metrics.join('')}</dl>
+    ${projected}
+  </div>`;
+}
+
 function calendarBudgetHtml(period) {
   if (period && period.operatingPlanUnavailable) {
     return `<div class="payday-household-budget" data-payday-household-budget>
@@ -1782,52 +1834,20 @@ function calendarBudgetHtml(period) {
     </div>`;
   }
   const rows = (period && period.householdBudget) || [];
+  const cycleText = householdBudgetCycleText(period);
   const cycle = period && period.cycleUnresolved
-      ? `<p class="operating-lead">Spending cycle unavailable. Household Budget reserve is held.</p>`
-      : (period && period.spendingCycleLabel
-        ? `<p class="operating-lead">${period.spendingCycleLabel}</p>` : '');
+      ? `<p class="household-budget-cycle">Spending cycle unavailable. Household Budget reserve is held.</p>`
+      : (cycleText ? `<p class="household-budget-cycle">${cycleText}</p>` : '');
   if (!rows.length) {
     return `<div class="payday-household-budget" data-payday-household-budget>
       ${cycle}
       <p class="operating-lead">No household budget lines on this plan.</p>
     </div>`;
   }
-  const lines = rows.map(row => {
-    if (row.informational) {
-      return paydayBucketRow(
-        row.label,
-        row.note || 'included in Bills, remaining not deducted',
-        null,
-        null,
-        { preformatted: true }
-      );
-    }
-    if (row.needsConfirmation) {
-      const bits = [];
-      if (row.spent != null) bits.push(`spent this period ${money2(row.spent)}`);
-      bits.push('needs confirmation');
-      return paydayBucketRow(row.label, bits.join(' · '), null, null, { preformatted: true });
-    }
-    if (row.plannedWeekly != null) {
-      const bits = [`${money2(row.plannedWeekly)}/week`];
-      if (row.planned != null) bits.push(`planned this period ${money2(row.planned)}`);
-      if (row.spent != null) bits.push(`spent ${money2(row.spent)}`);
-      if (row.remaining != null) bits.push(`remaining ${money2(row.remaining)}`);
-      return paydayBucketRow(row.label, bits.join(' · '), null, null, { preformatted: true });
-    }
-    const bits = [];
-    if (row.planned != null) bits.push(`planned ${money2(row.planned)}`);
-    if (row.spent != null) bits.push(`spent this period ${money2(row.spent)}`);
-    if (row.remaining != null) {
-      bits.push(row.projected
-        ? `remaining ${money2(row.remaining)} projected`
-        : `remaining ${money2(row.remaining)}`);
-    }
-    return paydayBucketRow(row.label, bits.join(' · ') || '—', null, null, { preformatted: true });
-  }).join('');
+  const blocks = rows.map(householdBudgetCategoryHtml).join('');
   return `<div class="payday-household-budget" data-payday-household-budget>
     ${cycle}
-    <div class="operating-lines">${lines}</div>
+    <div class="household-budget-list">${blocks}</div>
   </div>`;
 }
 

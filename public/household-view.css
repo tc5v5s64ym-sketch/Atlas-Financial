@@ -274,6 +274,19 @@
     min-width: 0;
   }
 
+  .household-view-ready .payday-household-budget,
+  .household-view-ready .household-budget-list,
+  .household-view-ready .household-budget-category,
+  .household-view-ready .household-budget-other,
+  .household-view-ready .household-budget-metrics {
+    min-width: 0;
+  }
+
+  .household-view-ready .household-budget-metrics dt,
+  .household-view-ready .household-budget-metrics dd {
+    overflow-wrap: anywhere;
+  }
+
   .household-view-ready .future-gravity-current h3,
   .household-view-ready .operating-answer > h3 {
     font-size: .92rem;

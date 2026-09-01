@@ -85,6 +85,9 @@ function loadComposer() {
     grab(planSrc, /^function periodBillLine\([\s\S]*?\n\}$/m, 'periodBillLine'),
     grab(planSrc, /^function calendarCurrentUnavailableHtml\([\s\S]*?\n\}$/m, 'calendarCurrentUnavailableHtml'),
     grab(planSrc, /^function calendarIncomeHtml\([\s\S]*?\n\}$/m, 'calendarIncomeHtml'),
+    grab(planSrc, /^function householdBudgetCycleText\([\s\S]*?\n\}$/m, 'householdBudgetCycleText'),
+    grab(planSrc, /^function householdBudgetMetric\([\s\S]*?\n\}$/m, 'householdBudgetMetric'),
+    grab(planSrc, /^function householdBudgetCategoryHtml\([\s\S]*?\n\}$/m, 'householdBudgetCategoryHtml'),
     grab(planSrc, /^function calendarBudgetHtml\([\s\S]*?\n\}$/m, 'calendarBudgetHtml'),
     grab(planSrc, /^function calendarPeriodBillsHtml\([\s\S]*?\n\}$/m, 'calendarPeriodBillsHtml'),
     grab(planSrc, /^function extraRepaymentHtml\([\s\S]*?\n\}$/m, 'extraRepaymentHtml'),
@@ -1026,13 +1029,19 @@ console.log('\n=== 13b. Dale/Amanda guilt-free actuals need explicit evidence in
   ok(!near(dale.spent, 49) && !near(dale.spent, 9),
     'Dale actuals do not include the Aug 5 tx dated before the payday cycle');
   const confirm = (p1.householdBudget || []).find(r => r.needsConfirmation);
-  ok(confirm && near(confirm.spent, 12 + 33) && confirm.hold === 0,
-    'unlabeled personal and WEEKLY SPENDING stay needs-confirmation, not a hold',
+  ok(confirm && confirm.id === 'other-spending' && confirm.otherSpending === true
+      && confirm.label === 'Other spending'
+      && confirm.note === 'Not yet assigned to a budget category'
+      && confirm.planned == null && confirm.remaining == null
+      && near(confirm.spent, 12 + 33) && confirm.hold === 0,
+    'unlabeled personal and WEEKLY SPENDING are Other spending, hold $0',
     confirm && String(confirm.spent));
   ok(!near(amanda.spent, 18) && !near(dale.spent, 18),
     'TENNIS INCOME is not Dale or Amanda guilt-free spending');
   ok(!budgetRow(p1, 'health') && !budgetRow(p1, 'sport'),
     'Health and sport txs are not Household Budget rows');
+  ok(confirm && !near(confirm.spent, 12 + 33 + 50 + 22),
+    'classified Health and sport spends are not absorbed into Other spending');
   const nextDale = budgetRow(p2, 'dale-guilt-free');
   ok(!nextDale || near(nextDale.spent, 0),
     'Next Pay Period does not reuse this cycle\'s Dale/Amanda spent');
@@ -1041,8 +1050,11 @@ console.log('\n=== 13b. Dale/Amanda guilt-free actuals need explicit evidence in
     weekly: 0, recommended: 0, planCalendarShow: 'this-pay-period',
   });
   ok(/Dale guilt-free spending/.test(html) && /Amanda guilt-free spending/.test(html)
-      && /needs confirmation/.test(html),
-    'page prints Dale/Amanda and the confirmation line in plain language');
+      && /Other spending/.test(html)
+      && /Not yet assigned to a budget category/.test(html)
+      && !/Spending outside the budget categories above/.test(html)
+      && !/Personal spending — needs confirmation/.test(html),
+    'page prints Dale/Amanda and unassigned Other spending, not a comprehensive outside-category total');
 }
 
 console.log('\n=== 13c. classification: Surrey Meat, eating out, Canadian Tire, bills ===');
@@ -1140,8 +1152,11 @@ console.log('\n=== 13c. classification: Surrey Meat, eating out, Canadian Tire, 
     'Canadian Tire is not Household spent');
   ok(fuel && near(fuel.spent, 55) && !near(fuel.spent, 55 + 40) && !near(fuel.spent, 55 + 100),
     'Fuel is the in-cycle evidenced Shell only; 7-Eleven and Aug 16 do not leak');
-  ok(confirm && near(confirm.spent, 78.38 + 96.30 + 40),
-    'Canadian Tire and unconfirmed 7-Eleven sit on the confirmation list',
+  ok(confirm && confirm.otherSpending === true && confirm.label === 'Other spending'
+      && confirm.note === 'Not yet assigned to a budget category'
+      && confirm.needsConfirmation === true
+      && near(confirm.spent, 78.38 + 96.30 + 40) && confirm.hold === 0,
+    'Canadian Tire and unconfirmed 7-Eleven sit on unassigned Other spending, not a hold',
     confirm && String(confirm.spent));
   ok(near(p2.budgetHold, roundCent(
     Math.max(0, 900 - 0) + Math.max(0, 325 - 55) + Math.max(0, 37.50 - 0)
@@ -1158,12 +1173,12 @@ console.log('\n=== 14. page prints Forecast; leftover is not computed in plan.js
   ok(fn && !/\bForecast\.[A-Za-z]+\s*\(/.test(fn[0]),
     'operatingSurfaceHtml calls no Forecast function');
   const budgetFn = /function calendarBudgetHtml\([\s\S]*?\n\}/.exec(planSrc);
-  ok(budgetFn && /spendingCycleLabel/.test(budgetFn[0])
+  ok(budgetFn && /householdBudgetCycleText/.test(budgetFn[0])
       && /cycleUnresolved/.test(budgetFn[0])
       && /operatingPlanUnavailable/.test(budgetFn[0])
       && /calendarCurrentUnavailableHtml/.test(budgetFn[0])
       && !/calendarHalfPlanned|sumCategoryActuals/.test(budgetFn[0]),
-    'calendarBudgetHtml prints Forecast spendingCycleLabel / cycleUnresolved / operatingPlanUnavailable and does not recompute planned');
+    'calendarBudgetHtml prints Forecast cycle text / cycleUnresolved / operatingPlanUnavailable and does not recompute planned');
   const unavailableFn = /function calendarCurrentUnavailableHtml\([\s\S]*?\n\}/.exec(planSrc);
   ok(unavailableFn && /operatingPlanNote/.test(unavailableFn[0])
       && /data-operating-plan="unavailable"/.test(unavailableFn[0])
@@ -1178,10 +1193,15 @@ console.log('\n=== 14. page prints Forecast; leftover is not computed in plan.js
     advice, weekly: advice.weekly, recommended: advice.weekly,
     planCalendarShow: 'this-pay-period',
   });
-  ok(/Spending cycle: Aug 28–Sep 10/.test(html),
-    'page prints Spending cycle: Aug 28–Sep 10');
-  ok(/\$450(?:\.00)?\/week/.test(html) && /planned this period/.test(html),
-    'page prints grocery $450/week and planned this period from Forecast');
+  ok(/Aug 28–Sep 10/.test(html) && !/Spending cycle:/.test(html),
+    'page prints Aug 28–Sep 10 without repeating Spending cycle:');
+  ok(/\$450(?:\.00)?\/week/.test(html)
+      && /<dt>Planned<\/dt>/.test(html)
+      && /<dt>Remaining<\/dt>/.test(html)
+      && /household-budget-metrics/.test(html)
+      && !/planned this period/.test(html)
+      && !/spent this period/.test(html),
+    'page prints grocery $450/week and structured Planned / Remaining');
   ok(/Dale guilt-free spending/.test(html) && /Amanda guilt-free spending/.test(html),
     'page always prints both guilt-free rows');
 }
@@ -1654,6 +1674,7 @@ console.log('\n=== 18. unavailable current period fail-closes the dependent next
       && !/Amanda salary month-end/.test(unHtml)
       && !/Netflix/.test(unHtml)
       && !/planned this period/.test(unHtml)
+      && !/household-budget-metrics/.test(unHtml)
       && !/Spending cycle:/.test(unHtml),
     'printed unavailable Plan surface does not list arriving income, Netflix, or Household Budget planned dollars');
   ok(!unHtml.includes(composer.money2(laterIncomeSum))
@@ -1686,7 +1707,8 @@ console.log('\n=== 18. unavailable current period fail-closes the dependent next
       && /Amanda salary 15th/.test(liveHtml)
       && !/Amanda salary month-end/.test(liveHtml)
       && /Netflix/.test(liveHtml)
-      && /planned this period/.test(liveHtml)
+      && /<dt>Planned<\/dt>/.test(liveHtml)
+      && /household-budget-metrics/.test(liveHtml)
       && !/data-operating-plan="unavailable"/.test(liveHtml),
     'trusted printed next payday window still publishes arriving Seaspan, Amanda 15th, bills, and Household Budget');
 

@@ -83,6 +83,9 @@ function loadComposer() {
     grab(planSrc, /^function runningLeftoverHtml\([\s\S]*?\n\}$/m, 'runningLeftoverHtml'),
     grab(planSrc, /^function periodBillLine\([\s\S]*?\n\}$/m, 'periodBillLine'),
     grab(planSrc, /^function calendarIncomeHtml\([\s\S]*?\n\}$/m, 'calendarIncomeHtml'),
+    grab(planSrc, /^function householdBudgetCycleText\([\s\S]*?\n\}$/m, 'householdBudgetCycleText'),
+    grab(planSrc, /^function householdBudgetMetric\([\s\S]*?\n\}$/m, 'householdBudgetMetric'),
+    grab(planSrc, /^function householdBudgetCategoryHtml\([\s\S]*?\n\}$/m, 'householdBudgetCategoryHtml'),
     grab(planSrc, /^function calendarBudgetHtml\([\s\S]*?\n\}$/m, 'calendarBudgetHtml'),
     grab(planSrc, /^function calendarPeriodBillsHtml\([\s\S]*?\n\}$/m, 'calendarPeriodBillsHtml'),
     grab(planSrc, /^function extraRepaymentHtml\([\s\S]*?\n\}$/m, 'extraRepaymentHtml'),
@@ -365,10 +368,10 @@ console.log('\n=== 5. page prints spent $X of $Y; does not subtract; no invented
     advice, weekly: advice.weekly, recommended: advice.weekly,
   });
   const glance = defaultGlance(html);
-  ok(eatingCal && glance.includes(`planned ${composer.money2(eatingCal.planned)}`)
+  ok(eatingCal && /<dt>Planned<\/dt>/.test(html)
+      && html.includes(composer.money2(eatingCal.planned))
       && (eatingCal.spent == null
-        || glance.includes(`spent this period ${composer.money2(eatingCal.spent)}`)
-        || glance.includes(`spent ${composer.money2(eatingCal.spent)}`)),
+        || (/<dt>Spent<\/dt>/.test(html) && html.includes(composer.money2(eatingCal.spent)))),
     'this-period waterfall prints planned and spent from the payday cycle');
   ok((html.match(/data-operating-question=/g) || []).length === 11,
     'the default calendar waterfall has eleven questions, not a digest after a ten-block');
