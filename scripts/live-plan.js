@@ -28,7 +28,10 @@
  * freshness-qualified household-cash observation remains the Forecast
  * opening when a same-day inbound is unproven or ambiguous: Forecast
  * omits that inbound from actionable cash via in-memory
- * opening.notReliedUponEvents without claiming it posted. Incomplete or
+ * opening.notReliedUponEvents without claiming it posted. A later
+ * same-date refresh of an already-current opening keeps that
+ * liveAsOf suppression; it does not require as-of to advance.
+ * Incomplete or
  * untrusted current cash still fails closed. Same-day unposted
  * joint-cash bills stay still due and do not fail the overlay. Triangle/MBNA
  * statement cadence may keep canonical posted values. Unknown, stale,
@@ -604,6 +607,16 @@ function applyLiveCutover(next, report, historicalOpeningAsOf) {
     .slice()
     .sort((a, b) => String(a.date).localeCompare(String(b.date))
       || String(a.id).localeCompare(String(b.id)));
+  // Same-date refresh: (historicalOpeningAsOf, liveAsOf] is empty, but
+  // liveAsOf scheduled inbounds still sit on top of observed cash.
+  const seenWindow = new Set(windowEvents.map(event =>
+    String(event.id) + '@' + String(event.date)));
+  for (const event of scheduledCashEventsOn(next.plan, liveAsOf)) {
+    const key = String(event.id) + '@' + String(event.date);
+    if (seenWindow.has(key)) continue;
+    windowEvents.push(event);
+    seenWindow.add(key);
+  }
   const candidates = representedCandidatesFor(
     report, historicalOpeningAsOf, liveAsOf, next.plan);
   const represented = [];
@@ -646,12 +659,17 @@ function applyLiveCutover(next, report, historicalOpeningAsOf) {
     };
   }
   const existing = (next.plan.opening && next.plan.opening.representedEvents) || [];
+  const nextRepresented = advances
+    ? uniqueRepresented
+    : mergeRepresented(existing, uniqueRepresented);
+  const representedKeys = new Set(nextRepresented.map(row =>
+    String(row.id) + '@' + String(row.date)));
+  const nextNotRelied = notReliedUpon.filter(row =>
+    !representedKeys.has(String(row.id) + '@' + String(row.date)));
   const nextOpening = Object.assign({}, next.plan.opening || {}, {
     asOf: liveAsOf,
-    representedEvents: advances
-      ? uniqueRepresented
-      : mergeRepresented(existing, uniqueRepresented),
-    notReliedUponEvents: advances ? notReliedUpon : [],
+    representedEvents: nextRepresented,
+    notReliedUponEvents: nextNotRelied,
   });
   if (advances) nextOpening.priorAsOf = historicalOpeningAsOf;
   next.plan.opening = nextOpening;

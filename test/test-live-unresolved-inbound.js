@@ -679,6 +679,66 @@ console.log('\n=== 12. Assistant / operating-answer consume Forecast, no second 
     'assistant packet stays fail closed when current cash is incomplete');
 }
 
+console.log('\n=== 13. Same-date refresh: opening already liveAsOf, inbound still unresolved ===');
+{
+  const A = 1744.44;
+  const B = 155.55;
+  const S = 4.01;
+  const independentCash = round2(A + B + S);
+  ok(near(independentCash, 1904), 'independent same-date cash is $1,904.00');
+  const canonical = clone(liveData);
+  canonical.meta = Object.assign({}, canonical.meta, { asOf: '2026-08-31' });
+  canonical.plan = Object.assign({}, canonical.plan, {
+    opening: Object.assign({}, canonical.plan.opening || {}, {
+      asOf: '2026-08-31',
+      representedEvents: (canonical.plan.opening && canonical.plan.opening.representedEvents) || [],
+    }),
+  });
+  ok(String(canonical.plan.opening.asOf) === '2026-08-31',
+    'starting/canonical opening is already the observation date');
+  const extra = {
+    fetchedAt: '2026-08-31T21:10:00.000Z',
+    categories: TRANSFER_CATS,
+    transactionWindow: AUG31_WINDOW,
+    tweaks: Object.assign({
+      'chequing-a': A, 'chequing-b': B, savings: S,
+    }, freshness('2026-08-31T21:05:00.000Z')),
+    transactions: [],
+  };
+  const result = overlay(canonical, extra);
+  ok(result.data.liveOverlay.applied === true
+      && result.data.liveOverlay.operatingPlan === Live.OPERATING_PLAN_LIVE,
+    'same-date complete cash still overlays as live');
+  ok(String(result.historicalOpeningAsOf) === '2026-08-31'
+      && String(result.data.plan.opening.asOf) === '2026-08-31',
+    'as-of does not advance on a same-date refresh');
+  ok(near(Forecast.startingCashAmount(result.data.plan), independentCash),
+    'Forecast opening equals the later same-day observed-cash sum');
+  ok(!represented(result.data.plan, 'amandaSalaryMonthEnd', '2026-08-31'),
+    'unproven same-date inbound is not labelled represented');
+  const unresolved = notRelied(result.data.plan, 'amandaSalaryMonthEnd', '2026-08-31');
+  ok(unresolved && unresolved.reason === 'same-day-inbound-unproven',
+    'same-date refresh still retains liveAsOf not-relied-upon suppression');
+  const representedKeys = new Set(((result.data.plan.opening.representedEvents) || [])
+    .map(row => String(row.id) + '@' + String(row.date)));
+  const notReliedKeys = new Set(((result.data.plan.opening.notReliedUponEvents) || [])
+    .map(row => String(row.id) + '@' + String(row.date)));
+  ok([...notReliedKeys].every(key => !representedKeys.has(key)),
+    'represented and not-relied-upon stay mutually exclusive');
+  const advice = recommend(result.data, '2026-08-31');
+  ok(near(advice.paydayAllocation.available, independentCash),
+    'Forecast available equals observed cash exactly');
+  const p2 = activePeriod(advice);
+  ok(p2 && near(p2.currentBalance, independentCash),
+    'current balance equals observed cash exactly');
+  ok(!near(advice.paydayAllocation.available, independentCash + SALARY),
+    'unproven same-date inbound contributes $0 additional cash');
+  const row = incomeRow(advice, 'amandaSalaryMonthEnd');
+  ok(row && row.notReliedUpon === true && row.settlement === 'not-relied-upon'
+      && row.status === 'unresolved' && row.alreadyInCash !== true,
+    'same-date salary stays unresolved / not represented');
+}
+
 console.log('\n' + '═'.repeat(60));
 if (failures) {
   console.log(`FAILED — ${failures} unresolved-inbound check(s)`);
