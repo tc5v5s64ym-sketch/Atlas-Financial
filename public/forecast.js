@@ -4183,15 +4183,17 @@
         pendingRecon,
       });
     }
-    // Informational residual of the same classification path: current-cycle
-    // household spend that cannot be assigned to a planned Household Budget
-    // category. Not an allowance, not a hold, not a second waterfall
-    // subtraction. Classifier reasons stay on recon.includeReason.
+    // Informational residual of the incumbent needsConfirmation /
+    // unclassified path. This is unassigned current-cycle household spend,
+    // not a total of every dollar outside the planned category rows
+    // (named non-calendar ids such as health/sport stay omitted).
+    // Not an allowance, not a hold, not a second waterfall subtraction.
+    // Classifier reasons stay on recon.includeReason.
     if (actualsReady && confirmationSpent > EPSILON) {
       items.push({
         id: OTHER_SPENDING_ID,
         label: 'Other spending',
-        note: 'Spending outside the budget categories above',
+        note: 'Not yet assigned to a budget category',
         monthly: null,
         planned: null,
         spent: confirmationSpent,

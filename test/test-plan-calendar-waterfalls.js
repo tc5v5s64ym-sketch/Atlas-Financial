@@ -1031,6 +1031,7 @@ console.log('\n=== 13b. Dale/Amanda guilt-free actuals need explicit evidence in
   const confirm = (p1.householdBudget || []).find(r => r.needsConfirmation);
   ok(confirm && confirm.id === 'other-spending' && confirm.otherSpending === true
       && confirm.label === 'Other spending'
+      && confirm.note === 'Not yet assigned to a budget category'
       && confirm.planned == null && confirm.remaining == null
       && near(confirm.spent, 12 + 33) && confirm.hold === 0,
     'unlabeled personal and WEEKLY SPENDING are Other spending, hold $0',
@@ -1039,6 +1040,8 @@ console.log('\n=== 13b. Dale/Amanda guilt-free actuals need explicit evidence in
     'TENNIS INCOME is not Dale or Amanda guilt-free spending');
   ok(!budgetRow(p1, 'health') && !budgetRow(p1, 'sport'),
     'Health and sport txs are not Household Budget rows');
+  ok(confirm && !near(confirm.spent, 12 + 33 + 50 + 22),
+    'classified Health and sport spends are not absorbed into Other spending');
   const nextDale = budgetRow(p2, 'dale-guilt-free');
   ok(!nextDale || near(nextDale.spent, 0),
     'Next Pay Period does not reuse this cycle\'s Dale/Amanda spent');
@@ -1048,9 +1051,10 @@ console.log('\n=== 13b. Dale/Amanda guilt-free actuals need explicit evidence in
   });
   ok(/Dale guilt-free spending/.test(html) && /Amanda guilt-free spending/.test(html)
       && /Other spending/.test(html)
-      && /Spending outside the budget categories above/.test(html)
+      && /Not yet assigned to a budget category/.test(html)
+      && !/Spending outside the budget categories above/.test(html)
       && !/Personal spending — needs confirmation/.test(html),
-    'page prints Dale/Amanda and Other spending, not a needs-confirmation personal row');
+    'page prints Dale/Amanda and unassigned Other spending, not a comprehensive outside-category total');
 }
 
 console.log('\n=== 13c. classification: Surrey Meat, eating out, Canadian Tire, bills ===');
@@ -1149,8 +1153,10 @@ console.log('\n=== 13c. classification: Surrey Meat, eating out, Canadian Tire, 
   ok(fuel && near(fuel.spent, 55) && !near(fuel.spent, 55 + 40) && !near(fuel.spent, 55 + 100),
     'Fuel is the in-cycle evidenced Shell only; 7-Eleven and Aug 16 do not leak');
   ok(confirm && confirm.otherSpending === true && confirm.label === 'Other spending'
+      && confirm.note === 'Not yet assigned to a budget category'
+      && confirm.needsConfirmation === true
       && near(confirm.spent, 78.38 + 96.30 + 40) && confirm.hold === 0,
-    'Canadian Tire and unconfirmed 7-Eleven sit on Other spending, not a hold',
+    'Canadian Tire and unconfirmed 7-Eleven sit on unassigned Other spending, not a hold',
     confirm && String(confirm.spent));
   ok(near(p2.budgetHold, roundCent(
     Math.max(0, 900 - 0) + Math.max(0, 325 - 55) + Math.max(0, 37.50 - 0)

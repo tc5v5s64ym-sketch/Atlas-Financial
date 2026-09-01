@@ -1,10 +1,10 @@
 'use strict';
 /* Other spending reuses the incumbent current-period residual.
  *
- * Path A: the calendar Household Budget `needsConfirmation` bucket already
- * is current-cycle household spend that cannot be assigned to a planned
- * category. This suite proves the owner-facing Other spending contract
- * independently of `calendarHouseholdBudget` (L-002 / L-006).
+ * The calendar Household Budget `needsConfirmation` bucket is unassigned
+ * current-cycle household spend. It is not a total of every dollar outside
+ * the planned category rows. This suite proves that contract independently
+ * of `calendarHouseholdBudget` (L-002 / L-006).
  *
  * `node test/test-household-budget-other-spending.js`
  */
@@ -78,6 +78,8 @@ function syntheticPlan() {
         { id: 'dale-guilt-free', label: 'Dale guilt-free spending', class: 'discretionary', plannedPayday: 150, ownerLine: 'Dale guilt-free spending' },
         { id: 'amanda-guilt-free', label: 'Amanda guilt-free spending', class: 'discretionary', plannedPayday: 150, ownerLine: 'Amanda guilt-free spending' },
         { id: 'shopping', label: 'Shopping', class: 'discretionary', from: ['Shopping', 'Personal'] },
+        { id: 'health', label: 'Health', class: 'essential', from: ['Health'] },
+        { id: 'sport', label: 'Sport', class: 'discretionary', from: ['Sport & fitness'] },
       ],
     },
   };
@@ -224,7 +226,7 @@ console.log('\n=== 2. calendar Household Budget publishes the constructed amount
   ok(fuel && near(fuel.spent, FUEL), 'Fuel spent is the constructed $50');
   ok(eating && near(eating.spent, EATING), 'Eating out spent is the constructed $25');
   ok(other && other.id === 'other-spending' && other.label === 'Other spending'
-      && other.note === 'Spending outside the budget categories above'
+      && other.note === 'Not yet assigned to a budget category'
       && other.planned == null && other.remaining == null
       && other.hold === 0 && other.needsConfirmation === true
       && near(other.spent, OTHER_TOTAL),
@@ -318,10 +320,16 @@ console.log('\n=== 5. page prints structured Planned / Spent / Remaining and Oth
     'Groceries is a scan block with weekly context and Planned / Spent / Remaining');
   ok(/data-other-spending/.test(html)
       && /Other spending/.test(html)
-      && /Spending outside the budget categories above/.test(html)
+      && /Not yet assigned to a budget category/.test(html)
+      && !/Spending outside the budget categories above/.test(html)
       && !/Personal spending — needs confirmation/.test(html)
       && !/needs confirmation/.test(html),
-    'Other spending is labelled observationally, not as personal confirmation');
+    'Other spending is labelled as unassigned, not as a total of spending outside the planned rows');
+  const planSrc = read('public/plan.js');
+  const engineSrc = read('public/forecast.js');
+  ok(!/Spending outside the budget categories above/.test(planSrc)
+      && !/Spending outside the budget categories above/.test(engineSrc),
+    'Plan and Forecast no longer publish the totality copy');
   ok(!/planned this period/.test(html) && !/spent this period/.test(html),
     'category rows are not sentence-dense this-period lines');
   const css = read('public/styles.css');
@@ -329,6 +337,53 @@ console.log('\n=== 5. page prints structured Planned / Spent / Remaining and Oth
       && /min-width:\s*0/.test(css)
       && /household-budget-metrics dd[\s\S]*tabular-nums/.test(css),
     'CSS keeps a wrapping two-column metric grid with tabular amounts');
+}
+
+console.log('\n=== 6. Other spending is not a total of spending outside planned rows ===');
+{
+  const HEALTH = 50;
+  const SPORT = 22;
+  const hidden = [
+    {
+      id: 'tx-health', date: '2026-08-28', amount: HEALTH, pending: false,
+      categoryLabel: 'Health', accountRole: 'household-cash',
+    },
+    {
+      id: 'tx-sport', date: '2026-08-29', amount: SPORT, pending: false,
+      categoryLabel: 'Sport & fitness', accountRole: 'household-cash',
+    },
+  ];
+  const plan = syntheticPlan();
+  const healthCls = F.classifyCurrentPeriodTransaction(hidden[0], plan);
+  const sportCls = F.classifyCurrentPeriodTransaction(hidden[1], plan);
+  ok(healthCls.kind === 'spend' && healthCls.categoryId === 'health'
+      && healthCls.needsConfirmation !== true,
+    'Health classifies as a named non-calendar spend, not the unassigned residual');
+  ok(sportCls.kind === 'spend' && sportCls.categoryId === 'sport'
+      && sportCls.needsConfirmation !== true,
+    'Sport classifies as a named non-calendar spend, not the unassigned residual');
+  const advice = recommend(fixtureTxs.concat(hidden));
+  const active = period(advice.defaultView, 'this-pay-period');
+  const other = (active.householdBudget || []).find(r => r.otherSpending);
+  const reconIds = [];
+  for (const row of active.householdBudget || []) {
+    for (const tx of row.recon || []) {
+      if (tx && tx.id) reconIds.push(tx.id);
+    }
+  }
+  const naiveOutside = roundCent(OTHER_TOTAL + HEALTH + SPORT);
+  ok(other && near(other.spent, OTHER_TOTAL) && !near(other.spent, naiveOutside),
+    'Other spending stays the unassigned $100; it is not $100 plus classified Health/sport',
+    other && String(other.spent));
+  ok(!reconIds.includes('tx-health') && !reconIds.includes('tx-sport')
+      && !budgetRow(active, 'health') && !budgetRow(active, 'sport'),
+    'Health and sport txs appear on neither a planned row nor Other spending');
+  const html = composer.calendarBudgetHtml(active);
+  ok(!/Spending outside the budget categories above/.test(html)
+      && !/all spending outside/.test(html)
+      && !/total (household )?spend(ing)? outside/.test(html)
+      && /Not yet assigned to a budget category/.test(html),
+    'printed copy does not claim a total of spending outside the planned categories');
 }
 
 if (failures) {

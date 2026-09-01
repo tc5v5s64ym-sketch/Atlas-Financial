@@ -1806,7 +1806,7 @@ function householdBudgetCategoryHtml(row) {
   const other = row.otherSpending === true || row.needsConfirmation === true;
   const name = row.label || '';
   const context = other
-    ? (row.note || 'Spending outside the budget categories above')
+    ? (row.note || 'Not yet assigned to a budget category')
     : (row.plannedWeekly != null ? `${money2(row.plannedWeekly)}/week` : '');
   const contextHtml = context
     ? `<p class="household-budget-context">${context}</p>` : '';
