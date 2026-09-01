@@ -2386,6 +2386,27 @@ function operatingSurfaceHtml(ctx) {
     warningLines.push(`<p class="operating-limit warn">${risk.reason}${risk.shortfall != null
       ? ` Gap ${money2(risk.shortfall)}.` : ''}</p>`);
   }
+  const trust = ctx.refreshTrust;
+  if (trust && trust.displayState === 'attention-needed') {
+    const attentionLines = [];
+    const unresolved = trust.unresolvedMaterial || [];
+    for (let i = 0; i < unresolved.length; i++) {
+      const text = unresolved[i] && unresolved[i].text;
+      if (text) attentionLines.push(text);
+    }
+    if (trust.ownerQuestion && trust.ownerQuestion.text) {
+      attentionLines.push(trust.ownerQuestion.text);
+    }
+    if (trust.canonicalProposalWaiting === true) {
+      attentionLines.push('A saved update is waiting for approval. Nothing is written until then.');
+    }
+    if (!attentionLines.length && !remainingUnavailable) {
+      attentionLines.push(REFRESH_TRUST_STATE['attention-needed']);
+    }
+    for (let i = 0; i < attentionLines.length; i++) {
+      warningLines.push(`<p class="operating-limit warn" data-refresh-attention>${attentionLines[i]}</p>`);
+    }
+  }
   const warnings = warningLines.length
     ? `<div data-operating-warnings>${warningLines.join('')}</div>`
     : '';
