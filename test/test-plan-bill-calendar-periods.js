@@ -97,7 +97,7 @@ function loadComposer() {
     grab(planSrc, /^function operatingSurfaceHtml\([\s\S]*?\n\}$/m, 'operatingSurfaceHtml'),
   ].join('\n');
   return vm.runInNewContext(
-    `${source}\n({ operatingSurfaceHtml, money2 });`,
+    `${source}\n({ operatingSurfaceHtml, money2, glanceLineLabel });`,
     { Forecast: F }
   );
 }
@@ -240,7 +240,7 @@ console.log('=== 1. payday windows: due date lands in the Seaspan cycle that con
     last && last.date);
 }
 
-console.log('\n=== 2. future payingAccount is BILLS ACCOUNT; page prints Forecast ===');
+console.log('\n=== 2. future payingAccount is BILLS ACCOUNT; page omits it from bill identity ===');
 {
   const plan = syntheticPlan();
   const advice = F.recommend(plan, '2026-09-10', { targetBuffer: 0, debts });
@@ -250,20 +250,55 @@ console.log('\n=== 2. future payingAccount is BILLS ACCOUNT; page prints Forecas
     const row = rows.find(r => r.id === id);
     ok(row && row.payingAccount === 'chequing-a'
         && row.payerLabel === 'BILLS ACCOUNT (Chequing A)',
-      `${id} future row is BILLS ACCOUNT (Chequing A)`);
+      `${id} Forecast row still carries BILLS ACCOUNT (Chequing A)`);
   }
   const travel = (advice.defaultView.bills || []).find(r => r.id === 'travel');
   ok(!travel,
     'Travel Visa day 26 is Sep 26, which begins after Next (Sep 11–24) from as-of Sep 10');
   const cashback = (advice.defaultView.bills || []).find(r => r.id === 'cashback');
   ok(!cashback, 'Cash Back min firstDue 2026-10-01 is omitted from September');
+  ok(composer.glanceLineLabel({
+    label: 'Mortgage',
+    date: '2026-08-28',
+    payingAccount: 'chequing-a',
+    payerLabel: 'BILLS ACCOUNT (Chequing A)',
+  }, 'PAID') === 'Mortgage · Aug 28 · PAID',
+    'dated bill identity is name · date · status, omitting paying account');
+  ok(composer.glanceLineLabel({
+    label: 'Bell',
+    needsDate: true,
+    dateNote: 'needs confirmation',
+    payingAccount: 'chequing-a',
+    payerLabel: 'BILLS ACCOUNT (Chequing A)',
+  }, 'needs confirmation') === 'Bell · needs confirmation',
+    'needs-date identity is name · needs confirmation, omitting paying account');
   const html = composer.operatingSurfaceHtml({
     advice, weekly: advice.weekly, recommended: advice.weekly,
+    planCalendarShow: 'both',
   });
   ok(/This Pay Period/.test(html) && /Next Pay Period/.test(html),
     'plan.js prints the two Forecast payday-period labels');
-  ok(/BILLS ACCOUNT \(Chequing A\)/.test(html),
-    'plan.js prints the Forecast payer label');
+  function billIdentity(id) {
+    const re = new RegExp('data-period-bill="' + id + '"[^>]*>\\s*<span>([^<]*)</span>');
+    const m = re.exec(html);
+    return m && m[1];
+  }
+  const mortgage = billIdentity('mortgage');
+  const netflix = billIdentity('netflix');
+  const bell = billIdentity('bell');
+  ok(mortgage && /^Mortgage · /.test(mortgage) && / · (PAID|pending|still due)$/.test(mortgage)
+      && !/BILLS ACCOUNT/i.test(mortgage) && !/Chequing/i.test(mortgage),
+    'This/Next Pay Period mortgage line omits paying account',
+    mortgage);
+  ok(netflix && /^Netflix · /.test(netflix) && / · (PAID|pending|still due)$/.test(netflix)
+      && !/BILLS ACCOUNT/i.test(netflix),
+    'subscription bill line omits paying account',
+    netflix);
+  ok(bell === 'Bell · needs confirmation',
+    'Needs a Date Bell is name · needs confirmation',
+    bell);
+  ok(!/BILLS ACCOUNT \(Chequing A\)/.test(html),
+    'plan.js does not print the Forecast payer label on the default Plan');
   const fn = /function periodBillsHtml\([\s\S]*?\n\}/.exec(read('public/plan.js'));
   ok(fn && !/\bForecast\.[A-Za-z]+\s*\(/.test(fn[0])
       && !/reduce\s*\(/.test(fn[0]),
