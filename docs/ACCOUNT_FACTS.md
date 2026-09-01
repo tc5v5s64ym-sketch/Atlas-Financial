@@ -21,12 +21,45 @@ is `Forecast.financialDate`. Do not slice a UTC timestamp into a calendar
 date, and do not scatter a second timezone through observation or cutover
 code.
 
-## Household income the plan uses *(owner-stated 2026-08-29)*
+## Household income the plan uses *(owner-stated 2026-08-29; salary recognition restated 2026-09-01)*
 
 Forecast is the only planner. The income `plan.income` may use is Dale's
 Seaspan payroll, Amanda's two fixed Tennis BC salary deposits
 (owner-confirmed 2026-08-22; `amandaSalary15` and `amandaSalaryMonthEnd`),
 and the child benefit.
+
+Three concepts stay distinct:
+
+1. **Future salary.** Confirmed ordinary salary is dependable Forecast
+   household income on its normal cadence, including before the next payday.
+2. **Current posted cash.** Current Balance is trusted balances in the
+   household cash accounts only. The TENNIS INCOME balance is not Current
+   Balance.
+3. **Posting / representation proof.** When an Amanda salary occurrence has
+   already transferred TENNIS INCOME → BILLS, that transfer identity proves
+   the occurrence is already inside Current Balance. The transfer is not a
+   second income line.
+
+**Dale / Seaspan.** `plan.income.payroll` is **biweekly, every 14 days**,
+incumbent anchor **2026-08-14**. This is a true 14-day cadence. It is **not
+twice per month**. Payday dates drift through the calendar, so a calendar
+half may contain one Seaspan paycheck or two.
+
+**Amanda / Tennis BC.** Semi-monthly in household terms: the 15th and the
+last calendar day. The incumbent representation is two monthly Forecast
+streams (`amandaSalary15` day 15; `amandaSalaryMonthEnd` day 31, which
+clamps to the last calendar day). Do not invent a third recurrence type
+while those streams produce the right dates. Future confirmed salary
+remains Forecast income. Same-day unproven inbound is the live-overlay
+not-relied-upon case (PR #222); it does not mean “never forecast Amanda
+salary until a transfer is observed.”
+
+**Calendar Pay Periods** (Plan Pay Period 1 = 1st–15th; Pay Period 2 =
+16th–last calendar day) are operating windows. They are not assumptions
+about how many payroll deposits occur. They do not own payroll cadence.
+Each half consumes whatever Forecast income events actually fall inside
+its dates. January 2027 Pay Period 1 (1st–15th) contains two Seaspan
+paychecks (Jan 1 and Jan 15) plus Amanda's Jan 15 paycheck.
 
 Owner-stated 2026-08-29:
 
@@ -116,6 +149,14 @@ current unpaid obligation.
 
 Against **$79.84** in the household spending accounts, only two sources can
 reach it on the day:
+
+> **SUPERSEDED for current spendable-cash authority (owner 2026-09-01).**
+> This Aug. 9 opening-gap scenario called Amanda's tennis account "already
+> the household's money." Keep it as historical scenario evidence. It is
+> not current authority. **TENNIS INCOME itself is not Current Balance.**
+> Amanda's confirmed Tennis BC salary remains future Forecast household
+> income. A TENNIS INCOME → BILLS transfer proves a posted occurrence and
+> is not a second income line. See "Household income the plan uses" above.
 
 | Source | Available | Cost |
 |---|---|---|
@@ -278,7 +319,9 @@ budget either, and a utility account balance must not be scheduled as a cash
 event — only dated amounts due are cash requirements. See "What she pays
 directly" below for the historical TENNIS INCOME list.
 
-Income: payroll **bi-weekly** (~$4,264 current recurring net after 2026 CPP/CPP2/EI completion), child benefit **monthly** (~$153.59).
+Income: payroll **bi-weekly, every 14 days** from the incumbent
+2026-08-14 anchor — **not twice per month** (~$4,264 current recurring net
+after 2026 CPP/CPP2/EI completion), child benefit **monthly** (~$153.59).
 Bonus or vacation pay has historically landed in **February and July**.
 **Amanda's Tennis BC pay is semi-monthly — the 15th and month-end — not
 bi-weekly**, and it does not land with the payroll. The detail and the evidence

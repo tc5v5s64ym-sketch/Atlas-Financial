@@ -1111,9 +1111,12 @@
         events.push({ date: c.date, amount: -c.amount, kind: 'commitment', label: c.label, id: c.id, confidence: c.confidence });
       }
     }
-    // Cash arriving from outside the plan — a transfer from Amanda's account or
-    // a HELOC draw covering an opening gap. Positive, so it sorts with income
-    // and lands before the payments it is there to cover.
+    // Cash arriving from outside the plan — modelled gap-funding injections,
+    // historically including a transfer from Amanda's account or a HELOC draw
+    // covering an opening gap. This injection path is not salary income.
+    // Confirmed Tennis BC salary is plan.income; a later BILLS transfer of
+    // those dollars is posting proof, not a second inflow. Positive, so it
+    // sorts with income and lands before the payments it is there to cover.
     // Grouped by date, so a top-up drawn from two sources is ONE cash movement.
     // Emitting them separately let the daily floor be measured half-way through
     // the transfer: at a $3,000 buffer the first $2,691.85 recorded a $2,771.69
