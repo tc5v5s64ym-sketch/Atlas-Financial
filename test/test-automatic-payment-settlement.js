@@ -178,6 +178,295 @@ ok(!(genericHistorical.data.plan.opening.representedEvents || [])
     && genericHistorical.refused.some(item => item.reason === 'historical-opening-backfill'),
   'generic historical recurring backfill remains refused');
 
+console.log('\n=== aged current-state window still settles a carried once bill ===');
+const NOW = '2026-09-01T23:00:00.000Z';
+const LIVE_AS_OF = '2026-09-01';
+const SCHEDULED = '2026-08-16';
+const POSTED = '2026-08-17';
+const SYNTHETIC_ID = 'synthetic-auto-aug15';
+const SYNTHETIC_AMOUNT = 40;
+const livePlanSrc = fs.readFileSync(path.join(ROOT, 'scripts', 'live-plan.js'), 'utf8');
+ok(!/CURRENT_STATE_HISTORY_DAYS/.test(livePlanSrc)
+    && /postedHistoryDaysForCarriedSettlement/.test(livePlanSrc)
+    && /livePostedHistoryDays/.test(livePlanSrc),
+  'production live overlay derives posted history from carried settlement, not a hardcoded 14-day fetch');
+
+// Independent window arithmetic. Do not ask postedHistoryDaysForCarriedSettlement
+// for the expected ordinary start: 2026-09-01T23:00:00.000Z is 16:00 in
+// America/Vancouver, and 14 * 86400000 ms earlier is 2026-08-18 16:00 there.
+const ordinaryStartMs = Date.parse(NOW) - 14 * 86400000;
+const ordinaryStart = Forecast.financialDate(new Date(ordinaryStartMs).toISOString());
+ok(ordinaryStart === '2026-08-18',
+  'hand-computed ordinary 14-day start on 1 Sep is 18 August', ordinaryStart);
+ok(POSTED < ordinaryStart,
+  'the 17 August posting is outside the ordinary 14-day current-state window');
+const ordinaryUrl = O.lunchMoneyTransactionsUrl(NOW, 14);
+ok(ordinaryUrl.startDate === ordinaryStart && ordinaryUrl.endDate === LIVE_AS_OF,
+  'incumbent 14-day URL helper agrees with the hand-computed start');
+
+// Sunday 16 August + weekend-next-business-day = Monday 17 August.
+// Earliest permitted posting is the scheduled date itself. 1 Sep minus
+// 16 Aug is 16 calendar days.
+ok(new Date(`${SCHEDULED}T00:00:00Z`).getUTCDay() === 0
+    && Forecast.addDays(SCHEDULED, 1) === POSTED
+    && Forecast.diffDays(SCHEDULED, LIVE_AS_OF) === 16,
+  'hand-computed weekend posting relation and 16-day lookup span');
+const repairedUrl = O.lunchMoneyTransactionsUrl(NOW, 16);
+ok(repairedUrl.startDate === SCHEDULED && repairedUrl.startDate <= POSTED,
+  'a 16-day posted window independently includes 16 and 17 August');
+
+const historicalOpening = clone(canonical);
+historicalOpening.meta.asOf = '2026-08-01';
+historicalOpening.plan.opening = Object.assign({}, historicalOpening.plan.opening, {
+  asOf: '2026-08-01',
+  representedEvents: [],
+});
+historicalOpening.plan.bills = (historicalOpening.plan.bills || [])
+  .filter(bill => !IDS.includes(bill.id))
+  .concat([{
+    id: SYNTHETIC_ID,
+    label: 'Synthetic automatic PAD — 15 August',
+    frequency: 'once',
+    date: SCHEDULED,
+    amount: SYNTHETIC_AMOUNT,
+    confidence: 'confirmed',
+    payingAccount: 'chequing-a',
+  }]);
+const syntheticIdentity = {
+  schema: identity.schema,
+  owns: identity.owns,
+  rules: (identity.rules || []).concat([{
+    eventId: SYNTHETIC_ID,
+    payeePattern: 'SYNTHETIC AUTO PAD',
+    payeePatterns: ['SYNTHETIC AUTO PAD'],
+    atlasAccountId: 'chequing-a',
+    direction: 'debit',
+    postingDateRule: 'same-day-or-weekend-next-business-day',
+    note: 'Synthetic weekend automatic-payment identity for aged-window settlement.',
+  }]),
+};
+ok(Forecast.carriedOnceJointCashOutflow(
+    historicalOpening.plan, SYNTHETIC_ID, SCHEDULED, LIVE_AS_OF),
+  'Forecast still carries the synthetic Aug 16 once bill on 1 Sep');
+ok(near(Forecast.expandEvents(historicalOpening.plan, LIVE_AS_OF, LIVE_AS_OF, {})
+    .filter(event => event.id === SYNTHETIC_ID)
+    .reduce((sum, event) => sum - Number(event.amount), 0), SYNTHETIC_AMOUNT),
+  'the carried synthetic reserve on 1 Sep is $40');
+
+const helperDays = O.postedHistoryDaysForCarriedSettlement({
+  now: NOW,
+  plan: historicalOpening.plan,
+  identity: syntheticIdentity,
+});
+ok(helperDays === 16,
+  'carried settlement lookup asks for the independently computed 16-day span',
+  String(helperDays));
+ok(Live.livePostedHistoryDays(historicalOpening, NOW, syntheticIdentity) === 16,
+  'live overlay uses that same carried-settlement span');
+const helperUrl = O.lunchMoneyTransactionsUrl(NOW, helperDays);
+ok(helperUrl.startDate === SCHEDULED && helperUrl.startDate <= POSTED,
+  'repaired observation path still considers the 17 August posting');
+
+const futureOnly = clone(historicalOpening);
+futureOnly.plan.bills = (futureOnly.plan.bills || [])
+  .filter(bill => bill.id !== SYNTHETIC_ID)
+  .concat([{
+    id: 'synthetic-future-once',
+    frequency: 'once',
+    date: '2026-09-15',
+    amount: 10,
+    payingAccount: 'chequing-a',
+  }]);
+ok(O.postedHistoryDaysForCarriedSettlement({
+    now: NOW,
+    plan: futureOnly.plan,
+    identity: syntheticIdentity,
+  }) === 14,
+  'ordinary 14-day current-state fetch is preserved when nothing old is carried');
+
+const ancient = clone(historicalOpening);
+ancient.plan.bills = (ancient.plan.bills || [])
+  .filter(bill => bill.id !== SYNTHETIC_ID)
+  .concat([{
+    id: SYNTHETIC_ID,
+    frequency: 'once',
+    date: '2025-12-01',
+    amount: SYNTHETIC_AMOUNT,
+    payingAccount: 'chequing-a',
+  }]);
+ok(O.postedHistoryDaysForCarriedSettlement({
+    now: NOW,
+    plan: ancient.plan,
+    identity: syntheticIdentity,
+  }) === 120,
+  'carried settlement lookup is capped at the incumbent 120-day reconcile horizon');
+
+const settlementMap = {
+  schema: 'atlas-provider-account-map/v1',
+  provider: 'lunchmoney',
+  scope: 'fixture',
+  mappings: [
+    {
+      providerAccountId: '1001',
+      canonical: { collection: 'cash', id: 'chequing-a' },
+      atlasRole: 'household-cash',
+    },
+    {
+      providerAccountId: '1002',
+      canonical: { collection: 'cash', id: 'chequing-b' },
+      atlasRole: 'household-cash',
+    },
+    {
+      providerAccountId: '1003',
+      canonical: { collection: 'cash', id: 'savings' },
+      atlasRole: 'household-cash',
+    },
+  ],
+};
+function agedPayload(transactions, windowStart) {
+  const cashAt = '2026-09-01T22:00:00.000Z';
+  return {
+    provider: 'lunchmoney',
+    fetchedAt: NOW,
+    transactionWindow: {
+      startDate: windowStart,
+      endDate: LIVE_AS_OF,
+      complete: true,
+      hasMore: false,
+      truncated: false,
+    },
+    pendingCoverage: {
+      complete: true,
+      basis: 'is_pending-unbounded',
+      hasMore: false,
+      truncated: false,
+    },
+    accounts: [
+      {
+        id: 1001, name: 'Fixture Chequing A', type: 'cash',
+        balance: 1000, updated_at: cashAt, balance_as_of: cashAt,
+      },
+      {
+        id: 1002, name: 'Fixture Chequing B', type: 'cash',
+        balance: 200, updated_at: cashAt, balance_as_of: cashAt,
+      },
+      {
+        id: 1003, name: 'Fixture Savings', type: 'cash',
+        balance: 300, updated_at: cashAt, balance_as_of: cashAt,
+      },
+    ],
+    transactions,
+  };
+}
+const syntheticTx = {
+  id: 9101,
+  account_id: 1001,
+  date: POSTED,
+  amount: SYNTHETIC_AMOUNT,
+  is_pending: false,
+  payee: 'SYNTHETIC AUTO PAD',
+};
+const unrelatedHistoricalTx = {
+  id: 9199,
+  account_id: 1001,
+  date: '2026-08-10',
+  amount: 25,
+  is_pending: false,
+  payee: 'Fixture unrelated historical debit',
+};
+
+function observeAged(payload) {
+  return O.observe({
+    provider: 'lunchmoney',
+    payload,
+    accountMap: settlementMap,
+    data: historicalOpening,
+    identity: syntheticIdentity,
+  });
+}
+
+const inWindowDecoy = {
+  id: 9102,
+  account_id: 1001,
+  date: '2026-08-20',
+  amount: SYNTHETIC_AMOUNT,
+  is_pending: false,
+  payee: 'SYNTHETIC AUTO PAD',
+};
+
+const missed = observeAged(agedPayload([inWindowDecoy], ordinaryStart));
+ok(!(missed.representedEventCandidates || []).some(candidate => candidate.id === SYNTHETIC_ID),
+  'the ordinary 14-day window alone does not discover the 17 August posting');
+
+const agedReport = observeAged(agedPayload(
+  [syntheticTx, unrelatedHistoricalTx], SCHEDULED));
+const agedHits = agedReport.representedEventCandidates || [];
+ok(agedHits.length === 1 && agedHits[0].id === SYNTHETIC_ID
+    && agedHits[0].date === SCHEDULED
+    && agedHits[0].postingDate === POSTED
+    && agedHits[0].postingDateRelation === 'weekend-next-business-day'
+    && agedHits[0].amountNotUsed === true,
+  'transaction identity names the exact carried occurrence from the aged posting');
+
+const historicalBeforeOverlay = JSON.stringify(historicalOpening);
+const agedResult = Live.overlayLiveState({ data: historicalOpening, report: agedReport });
+const agedReserve = Forecast.expandEvents(agedResult.data.plan, LIVE_AS_OF, LIVE_AS_OF, {})
+  .filter(event => event.id === SYNTHETIC_ID)
+  .reduce((sum, event) => sum - Number(event.amount), 0);
+ok(agedResult.data.liveOverlay && agedResult.data.liveOverlay.applied === true,
+  'aged-window overlay applies in memory');
+ok((agedResult.data.plan.opening.representedEvents || [])
+    .some(item => item.id === SYNTHETIC_ID && item.date === SCHEDULED),
+  'live overlay records the carried occurrence as represented in memory');
+ok(near(agedReserve, 0),
+  'the carried synthetic reserve becomes $0 after trusted settlement');
+ok(!Forecast.expandEvents(agedResult.data.plan, LIVE_AS_OF, LIVE_AS_OF, {})
+    .some(event => event.id === SYNTHETIC_ID),
+  'no second subtraction of the represented synthetic occurrence');
+ok(!(agedResult.data.plan.opening.representedEvents || [])
+    .some(item => item.date === '2026-08-10'),
+  'unrelated historical transactions do not backfill the opening');
+ok(JSON.stringify(historicalOpening) === historicalBeforeOverlay
+    && fs.readFileSync(DATA_PATH, 'utf8') === canonicalFileBefore
+    && JSON.stringify(canonical) === canonicalBefore,
+  'the aged-window path does not mutate canonical data.json');
+
+const productionDays = O.postedHistoryDaysForCarriedSettlement({
+  now: NOW,
+  plan: canonical.plan,
+  identity,
+});
+ok(productionDays === 16,
+  'production Aug 15 once bills also extend the 1 Sep lookup to 16 days',
+  String(productionDays));
+const ordinaryProduction = observe(Object.assign(clone(fixture), {
+  fetchedAt: NOW,
+  transactions: fixture.transactions.filter(tx => tx.date >= ordinaryStart),
+  transactionWindow: {
+    startDate: ordinaryStart,
+    endDate: LIVE_AS_OF,
+    complete: true,
+    hasMore: false,
+    truncated: false,
+  },
+})).representedEventCandidates || [];
+ok(!IDS.some(id => ordinaryProduction.some(candidate => candidate.id === id)),
+  'ordinary 14-day transactions alone cannot identify the three Aug 15 occurrences');
+const repairedProduction = observe(Object.assign(clone(fixture), {
+  fetchedAt: NOW,
+  transactionWindow: {
+    startDate: SCHEDULED,
+    endDate: LIVE_AS_OF,
+    complete: true,
+    hasMore: false,
+    truncated: false,
+  },
+})).representedEventCandidates || [];
+ok(IDS.every(id => repairedProduction.some(candidate => candidate.id === id
+    && candidate.date === SCHEDULED && candidate.postingDate === POSTED)),
+  'the repaired window still identifies BCAA, ICBC, and RESP from the 17 August postings');
+
+
 if (failures) {
   console.log(`\n${failures} failure(s)`);
   process.exit(1);
