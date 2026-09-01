@@ -523,21 +523,25 @@ five appear on both and are the same accounts:
 Balance $2,691.85, **no overdraft facility**. Charges a **$3.95 monthly account
 fee**, plus withdrawal and cheque-return fees — the other chequing accounts do
 not. This is the coaching/business operating account, and where many household
-debt payments originate. It is not the current landing account for her fixed
-Tennis BC salary.
+debt payments originate. Owner-clarified 2026-08-31: her fixed Tennis BC
+salary first lands here. Atlas must not treat this balance as spendable
+household cash. The household-visible posting evidence is the later money
+transfer into BILLS ACCOUNT (Chequing A).
 
 **This balance is not household spendable cash** *(owner-stated 2026-08-09;
 operating semantics restated 2026-08-16)*. The owner renamed the account
 **TENNIS INCOME**; the canonical id remains `amanda-debt-payments`.
 Owner-confirmed 2026-08-22: the two fixed Tennis BC net deposits —
 **$2,168.85 on the 15th** and **$2,387.99 on the last calendar day of the
-month** — land in household accounts and are Forecast household income
-(`plan.income.amandaSalary15` and `plan.income.amandaSalaryMonthEnd`).
-Coaching income lands here. Coaches/business/pass-through amounts are paid
-from this account first. Coaching surplus is not forecast and is transferred
-only after those obligations are paid. Later transfers of already-counted
-salary dollars between household-controlled accounts are not a second income
-stream. Whatever mixed remainder is left after coaching obligations may
+month** — are Forecast household income (`plan.income.amandaSalary15` and
+`plan.income.amandaSalaryMonthEnd`). Owner-clarified 2026-08-31: those
+deposits first land in this TENNIS INCOME account; they do not land
+directly in household BILLS/WEEKLY accounts. The household-visible
+posting/representation evidence is the later transfer into BILLS ACCOUNT.
+Coaching income also lands here. Coaches/business/pass-through amounts are
+paid from this account first. Coaching surplus is not forecast and is
+transferred only after those obligations are paid. A later transfer of
+already-counted salary dollars is not a second income stream. Whatever mixed remainder is left after coaching obligations may
 become household-available only when that surplus is actually established.
 The raw balance is NOT automatically spendable household cash. Do not
 estimate how much of the current remainder is household-available (Q25 stays

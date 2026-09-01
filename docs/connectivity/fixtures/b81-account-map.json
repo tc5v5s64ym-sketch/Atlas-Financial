@@ -46,6 +46,11 @@
       "atlasRole": "mortgage"
     },
     {
+      "providerAccountId": "3009",
+      "atlasRole": "household-external",
+      "externalId": "tennis-income"
+    },
+    {
       "providerAccountId": "3010",
       "canonical": { "collection": "debts", "id": "triangle" },
       "atlasRole": "revolving-credit"

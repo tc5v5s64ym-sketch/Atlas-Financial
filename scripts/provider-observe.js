@@ -952,6 +952,7 @@ function payeeMatches(payee, pattern) {
 const WEEKEND_NEXT_BUSINESS_DAY = 'same-day-or-weekend-next-business-day';
 const COVER_DUE_ON_OR_BEFORE_POSTING = 'covers-due-on-or-before-posting';
 const SETTLES_WHEN_AMOUNT_AT_LEAST = 'amount-at-least';
+const SETTLES_WHEN_EXACT_SCHEDULED_AMOUNT = 'exact-scheduled-amount';
 const COVER_DUE_LOOKBACK_DAYS = 62;
 const IDENTITY_AMOUNT_EPSILON = 0.005;
 
@@ -959,6 +960,92 @@ function rulePayeePatterns(rule) {
   const values = [].concat((rule && rule.payeePatterns) || [],
     rule && rule.payeePattern ? [rule.payeePattern] : []);
   return Array.from(new Set(values.map(value => String(value).trim()).filter(Boolean)));
+}
+
+function rulePayeeExcludePatterns(rule) {
+  const values = [].concat((rule && rule.payeeExcludePatterns) || [],
+    rule && rule.payeeExcludePattern ? [rule.payeeExcludePattern] : []);
+  return Array.from(new Set(values.map(value => String(value).trim()).filter(Boolean)));
+}
+
+function payeeMatchesRule(tx, rule) {
+  if (!tx || !rule) return false;
+  if (!rulePayeePatterns(rule).some(pattern => payeeMatches(tx.payee, pattern))) return false;
+  if (rulePayeeExcludePatterns(rule).some(pattern => payeeMatches(tx.payee, pattern))) {
+    return false;
+  }
+  return true;
+}
+
+function transactionIsTransfer(tx) {
+  if (!tx || tx.isIncome === true) return false;
+  const kind = String(tx.kind || '').toLowerCase();
+  if (kind === 'transfer' || kind === 'internal-transfer') return true;
+  if (tx.excludeFromTotals === true) return true;
+  return /transfer/i.test(String(tx.categoryLabel || ''));
+}
+
+function ruleCounterpartExternalId(rule) {
+  const value = rule && rule.counterpartExternalId;
+  return value != null && String(value).trim() !== '' ? String(value).trim() : '';
+}
+
+function mappingExternalId(mapping) {
+  const value = mapping && mapping.externalId;
+  return value != null && String(value).trim() !== '' ? String(value).trim() : '';
+}
+
+function amountsMatchExactly(left, right) {
+  return isFinite(left) && isFinite(right)
+    && Math.abs(Math.abs(Number(left)) - Math.abs(Number(right))) <= IDENTITY_AMOUNT_EPSILON;
+}
+
+function uniqueTransferCounterpart(tx, rule, input, amount) {
+  const counterpartId = ruleCounterpartExternalId(rule);
+  if (!tx || !counterpartId) return null;
+  const mapDoc = input && input.accountMap;
+  const matches = [];
+  for (const other of (input && input.transactions) || []) {
+    if (!other || other === tx) continue;
+    if (other.pending === true || other.contradictoryEvidence === true) continue;
+    if (String(other.date || '') !== String(tx.date || '')) continue;
+    if (!transactionIsTransfer(other)) continue;
+    const mapping = mappingFor(mapDoc, other.providerAccountId);
+    if (!mapping || mapping.atlasRole !== EXTERNAL_LIVE_ROLE) continue;
+    if (mappingExternalId(mapping) !== counterpartId) continue;
+    const otherAmount = lunchMoneyDebitAmount(other.amount);
+    if (!(otherAmount > 0) || !amountsMatchExactly(otherAmount, amount)) continue;
+    matches.push(other);
+  }
+  return matches.length === 1 ? matches[0] : null;
+}
+
+function ruleHasIdentity(rule) {
+  if (!rule || !rule.eventId) return false;
+  if (rule.transactionKind === 'transfer') return !!ruleCounterpartExternalId(rule);
+  return rulePayeePatterns(rule).length > 0;
+}
+
+function ruleMatchesTransactionIdentity(tx, rule) {
+  if (!tx || !rule) return false;
+  if (rulePayeeExcludePatterns(rule).some(pattern => payeeMatches(tx.payee, pattern))) {
+    return false;
+  }
+  if (rule.transactionKind === 'transfer') {
+    if (!transactionIsTransfer(tx)) return false;
+    if (!ruleCounterpartExternalId(rule)) return false;
+    if (!rulePayeePatterns(rule).length) return true;
+  }
+  return payeeMatchesRule(tx, rule);
+}
+
+function ruleIdentityLabel(rule) {
+  if (rule && rule.transactionKind === 'transfer') {
+    return ruleCounterpartExternalId(rule)
+      ? 'transfer+counterpart+account+date'
+      : 'transfer+account+date';
+  }
+  return 'payee+account+date';
 }
 
 function postingDateRelation(scheduledDate, postingDate, rule) {
@@ -1062,7 +1149,11 @@ function postingObservationFromCandidate(candidate, fetchedAt) {
     evidenceDate: dateOnly(fetchedAt),
     canonical: { collection: 'representedEvents', id: candidate.id, date: candidate.date },
     source: 'provider-observe:lunchmoney-transactions',
-    note: 'Identity is explicit payee alias + mapped account + direction + allowed scheduled/posting-date relation. Amount similarity was not used. Historical candidates are not current-opening posting comparisons.',
+    note: candidate && candidate.identity === 'transfer+counterpart+account+date'
+      ? 'Identity is a uniquely proven transfer credit into the mapped BILLS account paired to the TENNIS INCOME salary-flow counterpart + direction + allowed scheduled/posting-date relation. Amount is a necessary guard, not identity. Historical candidates are not current-opening posting comparisons.'
+      : candidate && candidate.identity === 'transfer+account+date'
+      ? 'Identity is a uniquely proven transfer credit into the mapped BILLS account + direction + allowed scheduled/posting-date relation. Amount is a necessary guard, not identity. Historical candidates are not current-opening posting comparisons.'
+      : 'Identity is explicit payee alias + mapped account + direction + allowed scheduled/posting-date relation. Amount similarity was not used. Historical candidates are not current-opening posting comparisons.',
     currentOpeningImpact: candidate.currentOpeningImpact === true,
     mustNotBackfillOpening: candidate.mustNotBackfillOpening !== false,
     openingRelevance: candidate.openingRelevance || 'incomparable',
@@ -1399,8 +1490,7 @@ function observationReceipt(report, opts) {
 function representedEventHitGroups(input) {
   const empty = { unique: [], ambiguous: [] };
   if (input.transactionWindow && input.transactionWindow.complete === false) return empty;
-  const rules = (input.identityRules || [])
-    .filter(r => r && r.eventId && rulePayeePatterns(r).length);
+  const rules = (input.identityRules || []).filter(ruleHasIdentity);
   if (!rules.length) return empty;
   const mapDoc = input.accountMap;
   const eventHits = new Map();
@@ -1411,7 +1501,7 @@ function representedEventHitGroups(input) {
     const amount = lunchMoneyDebitAmount(tx.amount);
     for (const rule of rules) {
       if (rule.atlasAccountId && mapping.canonical.id !== rule.atlasAccountId) continue;
-      if (!rulePayeePatterns(rule).some(pattern => payeeMatches(tx.payee, pattern))) continue;
+      if (!ruleMatchesTransactionIdentity(tx, rule)) continue;
       if (rule.direction === 'credit' && !(amount < 0)) continue;
       if (rule.direction === 'debit' && !(amount > 0)) continue;
       for (const scheduledDate of coveringScheduledDates(input.plan, rule, tx.date)) {
@@ -1424,6 +1514,16 @@ function representedEventHitGroups(input) {
           const need = Math.abs(Number(scheduled[0].amount));
           if (!(Math.abs(amount) + IDENTITY_AMOUNT_EPSILON >= need)) continue;
         }
+        if (rule.settlesWhen === SETTLES_WHEN_EXACT_SCHEDULED_AMOUNT) {
+          const need = Math.abs(Number(scheduled[0].amount));
+          if (!(isFinite(need) && isFinite(amount)
+            && Math.abs(Math.abs(amount) - need) <= IDENTITY_AMOUNT_EPSILON)) {
+            continue;
+          }
+        }
+        if (rule.transactionKind === 'transfer' && !uniqueTransferCounterpart(tx, rule, input, amount)) {
+          continue;
+        }
         const key = rule.eventId + '@' + scheduledDate;
         const list = eventHits.get(key) || [];
         list.push({
@@ -1435,7 +1535,7 @@ function representedEventHitGroups(input) {
           providerTransactionId: tx.providerTransactionId,
           providerAccountId: tx.providerAccountId,
           payee: tx.payee,
-          identity: 'payee+account+date',
+          identity: ruleIdentityLabel(rule),
           amountNotUsed: true,
           observedAmount: amount,
           atlasAccountId: mapping.canonical.id,
@@ -2419,6 +2519,10 @@ const api = {
   inferredCardState,
   representedEventHitGroups,
   representedEventCandidates,
+  transactionIsTransfer,
+  uniqueTransferCounterpart,
+  ruleHasIdentity,
+  ruleMatchesTransactionIdentity,
   openingAsOfFromData,
   classifyRepresentedCandidate,
   postingObservationFromCandidate,

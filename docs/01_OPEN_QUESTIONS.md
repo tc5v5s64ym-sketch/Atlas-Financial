@@ -279,8 +279,10 @@ TENNIS INCOME, previously labelled DEBT&PAYMENTS) is already excluded from
 spendable `plan.startingCash`. Coaching/business receipts land there;
 coaches/business/pass-through amounts are paid first. Owner-confirmed
 2026-08-22: the two fixed Tennis BC salary deposits ($2,168.85 on the 15th
-and $2,387.99 on month-end) land in household accounts and are Forecast
-household income; that fact is not what this question is for. Q25 is only
+and $2,387.99 on month-end) are Forecast household income. Owner-clarified
+2026-08-31: they first land in this TENNIS INCOME account and are not
+spendable there; household-visible posting proof is the later transfer into
+BILLS ACCOUNT. That path is not what this question is for. Q25 is only
 the uncertain coaching/business remainder of the mixed operating-account
 balance. Owner-stated 2026-08-29: extra coaching leftover is gravy when it
 actually arrives, not a budgeted inflow, and does not make this mixed remainder

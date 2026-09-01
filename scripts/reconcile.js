@@ -22,10 +22,12 @@
  * Tennis BC salary deposits, coaching/business inflows, business
  * obligations, household transfers, and household-available remainder.
  * They do not write data.json. Owner-confirmed 2026-08-22: the two
- * fixed Tennis BC salary deposits land in household accounts and match
- * canonical Forecast income. A later transfer of those same dollars is
- * not a second income line. Coaching is not promoted. The raw TENNIS
- * INCOME balance is not spendable coaching/business remainder.
+ * fixed Tennis BC salary deposits match canonical Forecast income.
+ * Owner-clarified 2026-08-31: they first land in TENNIS INCOME; the
+ * household-visible posting proof is the later BILLS transfer. A later
+ * transfer of those same dollars is not a second income line. Coaching
+ * is not promoted. The raw TENNIS INCOME balance is not spendable
+ * coaching/business remainder.
  *
  * D8 card-state slice: observations in
  * docs/reconciliation/card-state-observations.json distinguish posted
@@ -250,8 +252,10 @@ function classifyAmandaMovement(m) {
     newIncome: 0,
   };
   if (fact === 'employment-deposit') {
-    // Owner-confirmed: fixed Tennis BC salary lands in household accounts.
-    // It is household income now, not mixed-account operating income.
+    // Owner-confirmed: fixed Tennis BC salary is Forecast household income.
+    // First landing is TENNIS INCOME; household-visible proof is the BILLS
+    // transfer. It is not mixed-account operating income and not spendable
+    // TENNIS INCOME cash.
     return Object.assign({}, base, { newIncome: amount, householdCashInflow: amount });
   }
   if (fact === 'coaching-receipt') {
@@ -351,7 +355,7 @@ function amandaTransferAuthorityContext(data) {
     note: doubleCount
       ? 'Salary plus amandaTransfer would double-count household income.'
       : (salary.length
-        ? 'Owner-confirmed Tennis BC salary lands in household accounts and is Forecast household income. Later transfers of those dollars are not a second income line. Coaching surplus is not forecast. The retired amandaTransfer stream is not a second income line.'
+        ? 'Owner-confirmed Tennis BC salary is Forecast household income. It first lands in TENNIS INCOME; household-visible posting proof is the later BILLS transfer. Later transfers of those dollars are not a second income line. Coaching surplus is not forecast. The retired amandaTransfer stream is not a second income line.'
         : 'Incumbent Forecast household-cash authority. The Aug. 14 session did not independently observe or verify its scenarioMonthly values.'),
   };
 }

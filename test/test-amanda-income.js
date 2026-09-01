@@ -2,10 +2,12 @@
 /* Amanda salary vs coaching/business vs household transfers.
  *
  * Acceptance corpus: docs/source_intake/PAYDAY_ACCEPTANCE_2026-08-14.md
- * Owner-confirmed 2026-08-22: the two fixed Tennis BC salary deposits land
- * in household accounts and are Forecast household income. A later transfer
- * of those dollars is not a second income line. Coaching surplus is not
- * forecast. The raw TENNIS INCOME balance remains non-spendable. Fusion
+ * Owner-confirmed 2026-08-22: the two fixed Tennis BC salary deposits are
+ * Forecast household income. Owner-clarified 2026-08-31: they first land
+ * in TENNIS INCOME; household-visible posting proof is the later BILLS
+ * transfer. A later transfer of those dollars is not a second income line.
+ * Coaching surplus is not forecast. The raw TENNIS INCOME balance remains
+ * non-spendable. Fusion
  * settlement and the
  * Hydro September dated due stay the B91 current-state cutover, not this
  * income-model outcome. This suite proves the semantic split on classified
@@ -215,11 +217,11 @@ console.log('\n=== 1. salary + transfer is not $4,337.70 household income ===');
   ok(mid && mid.status === 'MATCH' && near(mid.evidenceValue, SALARY)
     && mid.canonicalTarget === 'income:amandaSalary15' && near(mid.canonicalValue, SALARY)
     && mid.landingAccount !== AMANDA,
-    'E. $2,168.85 / 15th observation MATCHES the canonical 15th salary stream without a TENNIS INCOME landing');
+    'E. $2,168.85 / 15th observation MATCHES the canonical 15th salary stream as Forecast income, not spendable TENNIS INCOME cash');
   ok(eom && eom.status === 'MATCH' && near(eom.evidenceValue, MONTH_END)
     && eom.canonicalTarget === 'income:amandaSalaryMonthEnd' && near(eom.canonicalValue, MONTH_END)
     && eom.landingAccount !== AMANDA,
-    'E. $2,387.99 / month-end observation MATCHES the canonical month-end salary stream without a TENNIS INCOME landing');
+    'E. $2,387.99 / month-end observation MATCHES the canonical month-end salary stream as Forecast income, not spendable TENNIS INCOME cash');
   ok(!R.forecastHasAmandaDoubleCount({ plan: cashFixture([salary15(), salaryEom()]) }),
     'E. the two salary streams without amandaTransfer are not a double-count');
 }
@@ -591,7 +593,7 @@ console.log('\n=== 7. live Tennis BC salary Forecast behaviour ===');
     'retired $1,100 Amanda standing-transfer action is absent');
   ok(amanda.observations.filter(o => o.fact === 'employment-deposit')
     .every(o => o.landingAccount !== AMANDA),
-    'salary observations do not name TENNIS INCOME as the landing account');
+    'D2 salary observations MATCH Forecast streams and do not treat TENNIS INCOME as spendable household cash');
 
   const asOf = live.meta.asOf;
   const windowEnd = F.addDays(asOf, live.plan.windowDays - 1);
@@ -720,13 +722,13 @@ console.log('\n=== 8. reconciliation performs no writes ===');
     && near(salaryMid.canonicalValue, SALARY)
     && salaryMid.intentionallyNotPromoted === false
     && salaryMid.landingAccount !== AMANDA,
-    'live mid-month $2,168.85 MATCHES the canonical 15th salary stream without a TENNIS INCOME landing');
+    'live mid-month $2,168.85 MATCHES the canonical 15th salary stream as Forecast income, not spendable TENNIS INCOME cash');
   ok(salaryEnd && salaryEnd.status === 'MATCH' && near(salaryEnd.evidenceValue, MONTH_END)
     && salaryEnd.canonicalTarget === 'income:amandaSalaryMonthEnd'
     && near(salaryEnd.canonicalValue, MONTH_END)
     && salaryEnd.intentionallyNotPromoted === false
     && salaryEnd.landingAccount !== AMANDA,
-    'live month-end $2,387.99 MATCHES the canonical month-end salary stream without a TENNIS INCOME landing');
+    'live month-end $2,387.99 MATCHES the canonical month-end salary stream as Forecast income, not spendable TENNIS INCOME cash');
   ok(!transfer,
     'Aug. 14 file has no household-transfer observation that copies canonical amounts');
   ok(result.amandaTransferAuthority && result.amandaTransferAuthority.salaryPresent
