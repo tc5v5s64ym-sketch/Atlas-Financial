@@ -31,23 +31,41 @@ const hideTip = () => { if (tip) tip.style.opacity = 0; };
 addEventListener('scroll', hideTip, { passive: true });
 
 /* ------------------------------------------------------------------ charts */
+// Every chart is an SVG scaled to its card. On a phone the card is half the
+// width the charts were drawn for, so a 760-unit drawing would shrink its
+// 13px labels to 6px. Below the phone breakpoint the charts redraw on a
+// 380-unit canvas — same data, same encoding, labels that stay legible — and
+// App re-renders when the viewport crosses that breakpoint.
+const PHONE_MQ = '(max-width:640px)';
+const isPhone = () => typeof matchMedia === 'function' && matchMedia(PHONE_MQ).matches;
+
 function hbar(mount, data, opts = {}) {
   if (!mount) return;
-  const W = 760, rowH = opts.rowH || 40, padL = opts.padL || 170, padR = 100, padT = 6;
-  const H = padT + data.length * rowH + 10;
+  const phone = isPhone();
+  const W = phone ? 380 : 760, padT = 6;
+  const rowH = phone ? 48 : (opts.rowH || 40);
+  // The label gutter grows to fit the longest label (≈7 units per character
+  // at 13px) so a long card name is never cut off at the card's left edge.
+  const longest = Math.max(0, ...data.map(d => String(d.label || '').length));
+  const padL = phone ? 0 : Math.max(opts.padL || 170, Math.min(300, longest * 7 + 14)), padR = phone ? 84 : 100;
+  const H = padT + data.length * rowH + (phone ? 2 : 10);
   const max = Math.max(...data.map(d => d.v), 1);
   const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img' });
   const plotW = W - padL - padR;
   data.forEach((d, i) => {
-    const y = padT + i * rowH, bh = Math.min(20, rowH - 16);
+    const y = padT + i * rowH;
+    const bh = phone ? 12 : Math.min(20, rowH - 16);
+    const barY = phone ? y + 22 : y;
     const w = Math.max(3, (d.v / max) * plotW);
-    const lab = el('text', { x: padL - 12, y: y + bh / 2 + 5, 'text-anchor': 'end', fill: css('--text-secondary'), 'font-size': '13' });
+    const lab = phone
+      ? el('text', { x: 0, y: y + 13, fill: css('--text-secondary'), 'font-size': '13' })
+      : el('text', { x: padL - 12, y: y + bh / 2 + 5, 'text-anchor': 'end', fill: css('--text-secondary'), 'font-size': '13' });
     lab.textContent = d.label; svg.appendChild(lab);
-    const bar = el('rect', { x: padL, y, width: w, height: bh, rx: 4, fill: d.colour || css('--s1') });
+    const bar = el('rect', { x: padL, y: barY, width: w, height: bh, rx: 4, fill: d.colour || css('--s1') });
     bar.addEventListener('mousemove', e => showTip(e, `<b>${d.label}</b><span class="m">${d.tip || money2(d.v)}</span>`));
     bar.addEventListener('mouseleave', hideTip);
     svg.appendChild(bar);
-    const val = el('text', { x: padL + w + 10, y: y + bh / 2 + 5, fill: css('--text-primary'), 'font-size': '13', 'font-weight': '600' });
+    const val = el('text', { x: padL + w + 10, y: barY + bh / 2 + 5, fill: css('--text-primary'), 'font-size': '13', 'font-weight': '600' });
     val.textContent = d.vlabel || money(d.v); svg.appendChild(val);
   });
   mount.innerHTML = ''; mount.appendChild(svg);
@@ -55,7 +73,9 @@ function hbar(mount, data, opts = {}) {
 
 function lineChart(mount, pts, limit) {
   if (!mount) return;
-  const W = 760, H = 300, padL = 62, padR = 14, padT = 16, padB = 40;
+  const phone = isPhone();
+  const W = phone ? 380 : 760, H = phone ? 240 : 300, padL = phone ? 52 : 62, padR = 14, padT = 16, padB = 40;
+  const labelEvery = phone ? 6 : 3;
   const plotW = W - padL - padR, plotH = H - padT - padB;
   const vals = pts.map(p => p.v);
   const lo = Math.min(...vals) * 0.985, hi = Math.max(limit || 0, ...vals) * 1.004;
@@ -81,7 +101,7 @@ function lineChart(mount, pts, limit) {
     hit.addEventListener('mousemove', e => showTip(e, `<b>${p.m}</b><span class="m">${money2(p.v)}${p.note ? '<br>' + p.note : ''}</span>`));
     hit.addEventListener('mouseleave', hideTip);
     svg.appendChild(hit);
-    if (i % 3 === 0 || i === pts.length - 1) {
+    if (i % labelEvery === 0 || i === pts.length - 1) {
       const t = el('text', { x: x(i), y: H - 14, 'text-anchor': 'middle', fill: css('--muted'), 'font-size': '11' });
       t.textContent = p.m; svg.appendChild(t);
     }
@@ -91,7 +111,9 @@ function lineChart(mount, pts, limit) {
 
 function diverge(mount, data) {
   if (!mount) return;
-  const W = 760, H = 300, padL = 58, padR = 10, padT = 14, padB = 44;
+  const phone = isPhone();
+  const W = phone ? 380 : 760, H = phone ? 240 : 300, padL = phone ? 50 : 58, padR = 10, padT = 14, padB = 44;
+  const labelEvery = phone ? 4 : 2;
   const plotW = W - padL - padR, plotH = H - padT - padB;
   const max = Math.max(...data.map(d => Math.abs(d.v))) * 1.06;
   const zero = padT + plotH / 2;
@@ -112,7 +134,7 @@ function diverge(mount, data) {
     bar.addEventListener('mousemove', e => showTip(e, `<b>${d.m}</b><span class="m">${d.v >= 0 ? 'Surplus ' : 'Deficit '}${money2(Math.abs(d.v))}${d.note ? '<br>' + d.note : ''}</span>`));
     bar.addEventListener('mouseleave', hideTip);
     svg.appendChild(bar);
-    if (i % 2 === 0) {
+    if (i % labelEvery === 0) {
       const t = el('text', { x: cx, y: H - 14, 'text-anchor': 'middle', fill: css('--muted'), 'font-size': '10' });
       t.textContent = d.m; svg.appendChild(t);
     }
@@ -123,12 +145,14 @@ function diverge(mount, data) {
 // Grouped bars: several series per month, on one baseline.
 function grouped(mount, rows, series) {
   if (!mount) return;
-  const W = 760, padL = 52, padR = 12, padT = 10, padB = 34, H = 250;
+  const phone = isPhone();
+  const W = phone ? 380 : 760, padL = phone ? 46 : 52, padR = 12, padT = 10, padB = 34, H = phone ? 220 : 250;
+  const labelEvery = phone ? 6 : 3;
   const plotW = W - padL - padR, plotH = H - padT - padB;
   const max = Math.max(1, ...rows.flatMap(r => series.map(s => r[s.key])));
   const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img' });
   const bw = plotW / rows.length;
-  const gw = Math.min(9, (bw - 6) / series.length);
+  const gw = Math.min(9, Math.max(2, (bw - (phone ? 3 : 6)) / series.length));
 
   [0, 0.5, 1].forEach(f => {
     const y = padT + plotH - f * plotH;
@@ -149,7 +173,7 @@ function grouped(mount, rows, series) {
       rect.addEventListener('mouseleave', hideTip);
       svg.appendChild(rect);
     });
-    if (i % 3 === 0) {
+    if (i % labelEvery === 0) {
       const t = el('text', { x: padL + i * bw + bw / 2, y: H - 12, 'text-anchor': 'middle', fill: css('--text-secondary'), 'font-size': '10' });
       t.textContent = r.m.slice(2); svg.appendChild(t);
     }
@@ -195,6 +219,40 @@ function applyTheme(mode) {
   if (btn) btn.textContent = 'Theme: ' + (mode === 'light' ? 'Light' : mode === 'dark' ? 'Dark' : 'Auto');
 }
 
+/* ------------------------------------------------------------------ tables */
+// A table with three or more columns cannot be read on a phone through a
+// sideways scroll. Give every body cell its column heading as `data-label`
+// and mark the table `stackable`; styles.css turns each row into a short
+// labelled block below 640px and ignores the attribute above it. Presentation
+// only: no cell text changes. Two-column tables already fit and are left alone.
+function labelStackableTables(root = document) {
+  for (const table of root.querySelectorAll('.scroll table')) {
+    if (table.classList.contains('wk-table') || table.classList.contains('cal')) continue;
+    const heads = [...table.querySelectorAll('thead th')].map(th => th.textContent.trim());
+    if (heads.length < 3) continue;
+    table.classList.add('stackable');
+    for (const tr of table.querySelectorAll('tbody tr')) {
+      let col = 0;
+      for (const td of tr.children) {
+        if (!td.hasAttribute('data-label') && heads[col]) td.setAttribute('data-label', heads[col]);
+        col += Math.max(1, Number(td.getAttribute('colspan')) || 1);
+      }
+    }
+  }
+}
+
+function watchStackableTables() {
+  if (!document.body || typeof document.querySelectorAll !== 'function') return;
+  labelStackableTables();
+  if (typeof MutationObserver === 'undefined') return;
+  const defer = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : fn => setTimeout(fn, 16);
+  let queued = false;
+  const run = () => { queued = false; labelStackableTables(); };
+  new MutationObserver(() => {
+    if (!queued) { queued = true; defer(run); }
+  }).observe(document.body, { childList: true, subtree: true });
+}
+
 /* ------------------------------------------------------------------ boot */
 // Pages register render callbacks; the core fetches the data, applies the
 // theme, and re-runs the callbacks whenever the theme changes.
@@ -221,6 +279,7 @@ const App = (() => {
       rerender();
     });
     matchMedia('(prefers-color-scheme: dark)').addEventListener('change', rerender);
+    matchMedia(PHONE_MQ).addEventListener('change', rerender);
   }
 
   // Scrollspy for in-page anchors, only where a nav asks for it.
@@ -251,6 +310,7 @@ const App = (() => {
   function boot(opts = {}) {
     setupTheme();
     setupSpy();
+    watchStackableTables();
     const wants = [fetch('/data.json', { credentials: 'same-origin' })
       .then(r => { if (r.status === 401) { location.href = '/login'; throw new Error('auth'); } return r.json(); })];
     wants.push(opts.periods
