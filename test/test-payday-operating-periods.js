@@ -389,6 +389,81 @@ console.log('\n=== 7. Active leftover identity and represented zeros ===');
     'represented income contribution is $0');
 }
 
+console.log('\n=== 8. Unpaid once cash before periodStart stays reserved after payday ===');
+{
+  const ONCE_AMT = 82.96;
+  const ONCE_POST = '2026-08-16';
+  const ONCE_DUE = '2026-08-15';
+  const ROLLOVER = '2026-08-29';
+  const thisWindow = periodFromPayday('2026-08-28');
+  ok(thisWindow.start === '2026-08-28' && thisWindow.end === '2026-09-10',
+    'independent rollover as-of still sits in Aug 28–Sep 10');
+  ok(ONCE_DUE < thisWindow.start,
+    'independent scheduled due is before this payday window');
+
+  function planWithOnce(extraBills) {
+    const plan = septemberPlan();
+    plan.opening.asOf = ROLLOVER;
+    plan.bills = (plan.bills || []).concat(extraBills || []);
+    return plan;
+  }
+  const monthly = {
+    id: 'bcaa', label: 'BCAA insurance', frequency: 'monthly',
+    day: 15, firstDue: '2026-09-15', amount: ONCE_AMT, confidence: 'confirmed',
+    payingAccount: 'chequing-a',
+  };
+  const onceRow = {
+    id: 'bcaa-aug15-outstanding',
+    label: 'BCAA insurance — 15 August posting unknown',
+    frequency: 'once', date: ONCE_POST, amount: ONCE_AMT, confidence: 'confirmed',
+    payingAccount: 'chequing-a',
+  };
+  const control = planWithOnce([monthly]);
+  const unpaid = planWithOnce([monthly, onceRow]);
+  ok(F.carriedOnceJointCashOutflow(unpaid, onceRow.id, ONCE_POST, thisWindow.start),
+    'incumbent carry predicate still names the unresolved once outflow');
+  const carried = F.expandEvents(unpaid, thisWindow.start, thisWindow.end)
+    .filter(e => e && e.id === onceRow.id);
+  ok(carried.length === 1 && carried[0].date === ONCE_POST
+      && near(-carried[0].amount, ONCE_AMT),
+    'expandEvents still emits the once outflow at its reservation date');
+
+  const controlView = F.recommend(control, ROLLOVER, { targetBuffer: 500, debts }).defaultView;
+  const unpaidAdvice = F.recommend(unpaid, ROLLOVER, { targetBuffer: 500, debts });
+  const unpaidView = unpaidAdvice.defaultView;
+  const controlActive = period(controlView, 'this-pay-period');
+  const unpaidActive = period(unpaidView, 'this-pay-period');
+  const unpaidNext = period(unpaidView, 'next-pay-period');
+  const row = (unpaidActive.bills || []).find(r => r.id === onceRow.id);
+  ok(unpaidActive && unpaidActive.start === thisWindow.start
+      && unpaidActive.end === thisWindow.end,
+    'active operating period is still Aug 28–Sep 10');
+  ok(row && row.date === ONCE_DUE && row.status !== 'PAID'
+      && near(row.remaining, ONCE_AMT) && near(row.amount, ONCE_AMT),
+    'unpaid once stays in This Pay Period with original scheduled due, not the new payday');
+  ok(!(unpaidNext.bills || []).some(r => r.id === onceRow.id),
+    'overdue once is not moved into Next Pay Period');
+  ok(near(unpaidActive.remainingBills, roundCent(controlActive.remainingBills + ONCE_AMT)),
+    'remaining bills independently rise by the unpaid once amount');
+  ok(near(unpaidActive.available, controlActive.available),
+    'Current Balance is unchanged; the once row is not reconstructed cash');
+  ok(near(unpaidActive.afterRemainingBills,
+      roundCent(unpaidActive.available - unpaidActive.remainingBills)),
+    'leftover subtracts the overdue once once');
+  ok(!near(unpaidActive.afterRemainingBills, controlActive.afterRemainingBills),
+    'dropping the overdue once would overstate surplus after bills');
+
+  const settled = F.recommend(unpaid, ROLLOVER, {
+    targetBuffer: 500, debts,
+    representedEvents: [{ id: onceRow.id, date: ONCE_POST }],
+  }).defaultView;
+  const settledActive = period(settled, 'this-pay-period');
+  ok(!(settledActive.bills || []).some(r => r.id === onceRow.id),
+    'the same once row disappears once represented/settled');
+  ok(near(settledActive.remainingBills, controlActive.remainingBills),
+    'represented once no longer reduces remaining bills');
+}
+
 if (failures) {
   console.log(`\n${failures} failure(s)`);
   process.exit(1);

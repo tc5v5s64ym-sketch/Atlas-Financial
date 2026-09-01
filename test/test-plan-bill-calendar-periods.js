@@ -378,8 +378,10 @@ console.log('\n=== 7. live listed ids: BILLS ACCOUNT; Aug once vs Sep monthly ==
   const monthly = ['bcaa', 'icbc', 'resp'];
   ok(once.every(id => augIds.includes(id)) && monthly.every(id => !augIds.includes(id)),
     'August prints the once rows, not the September 15 monthly rows');
-  ok(monthly.every(id => sepIds.includes(id)) && once.every(id => !sepIds.includes(id)),
-    'September prints the monthly 15th rows once, not the August once rows');
+  ok(monthly.every(id => sepIds.includes(id)),
+    'as-of Sep 10 still prints the September 15 monthly rows in the covering payday windows');
+  ok(once.every(id => sepIds.includes(id)),
+    'unpaid August once cash still reserved after the Aug 28 payday until represented');
 }
 
 if (failures) {

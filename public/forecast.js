@@ -3638,11 +3638,12 @@
     for (let i = 0; i < windows.length; i++) {
       buckets[windows[i].id] = [];
     }
-    const pushRow = (due, row) => {
-      const window = windowContainingDate(windows, due);
+    const pushRow = (due, row, hostWindow) => {
+      const window = hostWindow || windowContainingDate(windows, due);
       if (!window || !row) return;
       buckets[window.id].push(row);
     };
+    const activeWindow = windows.find(w => w && w.role === 'active') || windows[0];
     for (const event of events || []) {
       if (!event || !event.date) continue;
       if (event.kind === 'income' || event.kind === 'noncash') continue;
@@ -3654,13 +3655,22 @@
       // date, so a 15 August bill reserved on the 16th stays on 15 August.
       const scheduleDate = calendarBillScheduleDate(plan, event);
       const due = scheduleDate || event.date;
-      if (!due || due < span.start || due > span.end) continue;
+      if (!due || due > span.end) continue;
+      const overdueOnce = due < span.start
+        && carriedOnceJointCashOutflow(plan, event.id, event.date, span.start);
+      const paid = !!(event.id && represented.has(event.id + '@' + event.date));
+      // Passing payday does not drop an unresolved once cash obligation, and
+      // does not rewrite its due date onto the new payday. Represented /
+      // settled once rows disappear rather than remaining reserved.
+      if (due < span.start && !overdueOnce) continue;
+      if (overdueOnce && paid) continue;
       const key = (event.id || event.label || '') + '@' + event.date;
       if (seen.has(key)) continue;
       seen.add(key);
       const row = calendarBillRowFromEvent(
         plan, event, asOf, represented, observed, cashAsOf, due);
-      pushRow(due, row);
+      if (overdueOnce) pushRow(due, row, activeWindow);
+      else pushRow(due, row);
     }
     // Planned cash minimum for a capitalising obligation. Printed once on
     // the bills list; not a second expandEvents cash event and not a
