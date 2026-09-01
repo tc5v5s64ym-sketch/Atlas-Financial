@@ -420,8 +420,10 @@ console.log('\n=== F. HTML current / stale / incomplete / ambiguous render disti
     capView: cap,
   });
   ok(!/data-refresh-trust-state=/.test(currentHtml)
-      && !/Notes behind these numbers/.test(currentHtml),
-    'usable current Plan does not render the large Current status card');
+      && !/Notes behind these numbers/.test(currentHtml)
+      && !/data-refresh-attention/.test(currentHtml)
+      && !/data-operating-warnings/.test(currentHtml),
+    'usable current Plan does not render the large Current status card or an attention warning');
   ok(currentHtml.includes(composer.money2(100)),
     'usable current Plan still publishes the Forecast available-cash figure');
   const remainingHtml = composer.betweenPaydaysOperatingHtml(
@@ -465,7 +467,8 @@ console.log('\n=== F. HTML current / stale / incomplete / ambiguous render disti
   });
   ok(!/data-refresh-trust-state=/.test(staleHtml)
       && !/Attention needed/.test(staleHtml)
-      && !/Notes behind these numbers/.test(staleHtml),
+      && !/Notes behind these numbers/.test(staleHtml)
+      && !/data-refresh-attention/.test(staleHtml),
     'usable Plan does not render the large Attention needed card');
   ok(!staleHtml.includes(composer.money2(SENTINEL_USED))
     && !staleHtml.includes(composer.money2(SENTINEL_REMAINING)),
@@ -499,6 +502,68 @@ console.log('\n=== F. HTML current / stale / incomplete / ambiguous render disti
     && !/waiting for approval/.test(ambiguousHtml)
     && !/treated as settled\.</.test(ambiguousHtml.replace(/not treated as settled/, '')),
   'ambiguous HTML stays unresolved and does not open an approval ceremony');
+
+  const AMBIGUOUS_COPY = 'A modeled item has more than one matching observation and was not treated as settled.';
+  const ambiguousPlanHtml = composer.operatingSurfaceHtml({
+    advice: {
+      weekly: 180,
+      paydayAllocation: { available: 100, risks: [], unresolved: [], extraDebt: { allocated: 0 } },
+      currentPeriodAction: actionFrom({ categories: [sentinelCategory()] }),
+    },
+    refreshTrust: trustPacket({
+      displayState: 'attention-needed',
+      unresolvedMaterial: [{
+        kind: 'ambiguous-evidence-must-not-write',
+        text: AMBIGUOUS_COPY,
+      }],
+    }),
+    capView: cap,
+  });
+  ok(/data-operating-warnings/.test(ambiguousPlanHtml)
+      && /data-refresh-attention/.test(ambiguousPlanHtml)
+      && ambiguousPlanHtml.includes(AMBIGUOUS_COPY)
+      && !/data-refresh-trust-state=/.test(ambiguousPlanHtml)
+      && !/Notes behind these numbers/.test(ambiguousPlanHtml)
+      && !/waiting for approval/.test(ambiguousPlanHtml),
+    'attention-needed with exact remaining prints compact unresolved copy, not the large trust card');
+  ok(ambiguousPlanHtml.includes(composer.money2(100)),
+    'attention-needed with exact remaining still publishes Forecast available cash');
+
+  const emptyAttentionHtml = composer.operatingSurfaceHtml({
+    advice: {
+      weekly: 180,
+      paydayAllocation: { available: 100, risks: [], unresolved: [], extraDebt: { allocated: 0 } },
+      currentPeriodAction: actionFrom({ categories: [sentinelCategory()] }),
+    },
+    refreshTrust: trustPacket({ displayState: 'attention-needed' }),
+    capView: cap,
+  });
+  ok(/data-refresh-attention/.test(emptyAttentionHtml)
+      && />Attention needed</.test(emptyAttentionHtml)
+      && !/data-refresh-trust-state=/.test(emptyAttentionHtml),
+    'attention-needed with exact remaining and no extras still prints a compact Attention needed line');
+
+  const ownerQuestionCopy = 'Atlas still needs a household fact before treating this modeled item as settled.';
+  const askedPlanHtml = composer.operatingSurfaceHtml({
+    advice: {
+      weekly: 180,
+      paydayAllocation: { available: 100, risks: [], unresolved: [], extraDebt: { allocated: 0 } },
+      currentPeriodAction: actionFrom({ categories: [sentinelCategory()] }),
+    },
+    refreshTrust: trustPacket({
+      displayState: 'attention-needed',
+      ownerQuestion: {
+        id: 'uniondues-aug15-outstanding',
+        date: '2026-08-16',
+        text: ownerQuestionCopy,
+      },
+    }),
+    capView: cap,
+  });
+  ok(/data-refresh-attention/.test(askedPlanHtml)
+      && askedPlanHtml.includes(ownerQuestionCopy)
+      && !/data-refresh-trust-state=/.test(askedPlanHtml),
+    'attention-needed owner question prints as compact warning copy from the packet');
 }
 
 console.log('\n=== G. proposal and owner question appear only when incumbent supplied them ===');
