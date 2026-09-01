@@ -227,13 +227,8 @@
     }
 
     const kept = Array.from(answer.children);
-    const details = doc.createElement('details');
-    details.className = 'household-inline-details household-period-details';
-    const detailsSummary = doc.createElement('summary');
-    detailsSummary.textContent = 'See current-period details';
-    details.appendChild(detailsSummary);
-    for (const node of kept) details.appendChild(node);
-    answer.replaceChildren(summary, details);
+    answer.replaceChildren(summary);
+    for (const node of kept) answer.appendChild(node);
     return true;
   }
 
@@ -251,49 +246,16 @@
   function enhanceTrust(doc, body) {
     const trust = body.querySelector('.refresh-trust');
     if (!trust) return false;
-    const state = trust.querySelector('.refresh-trust-state');
-    if (state && !/^Data status:/i.test(clean(state.textContent))) {
-      state.textContent = `Data status: ${clean(state.textContent)}`;
-    }
     const asOf = trust.querySelector('.refresh-trust-asof');
     if (asOf) asOf.textContent = clean(asOf.textContent).replace(/^Last observed and reconciled /i, 'Updated ');
 
     aggregateList(doc, trust.querySelector('.refresh-trust-limits'));
     aggregateList(doc, trust.querySelector('.refresh-trust-unresolved'));
-
-    const detailNodes = Array.from(trust.children).filter(node =>
-      node !== state && node !== asOf
-      && !node.classList.contains('household-trust-details')
-      && !node.classList.contains('refresh-trust-path'));
-    if (trust.querySelector('.household-trust-details')) {
-      /* plan.js already folded the notes; do not wrap them again. */
-    } else if (detailNodes.length) {
-      const details = doc.createElement('details');
-      details.className = 'household-trust-details';
-      const summary = doc.createElement('summary');
-      summary.textContent = 'See data quality details';
-      details.appendChild(summary);
-      for (const node of detailNodes) details.appendChild(node);
-      trust.appendChild(details);
-    }
-
-    body.appendChild(trust);
     return true;
   }
 
-  function enhanceCertainty(doc, body) {
-    const block = body.querySelector('[data-operating-certainty]');
-    if (!block || block.querySelector('.household-inline-details')) return false;
-    const children = Array.from(block.children);
-    if (!children.length) return false;
-    const details = doc.createElement('details');
-    details.className = 'household-inline-details';
-    const summary = doc.createElement('summary');
-    summary.textContent = 'How certain is this?';
-    details.appendChild(summary);
-    for (const node of children) details.appendChild(node);
-    block.appendChild(details);
-    return true;
+  function enhanceCertainty() {
+    return false;
   }
 
   function enhance(doc) {

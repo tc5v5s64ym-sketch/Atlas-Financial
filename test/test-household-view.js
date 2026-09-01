@@ -33,6 +33,9 @@ console.log('=== default homepage speaks to the household first ===');
     'plain-language presentation runs after the incumbent plan renderer');
   ok(/<link rel="stylesheet" href="\/household-view\.css">/.test(html),
     'the mobile household presentation stylesheet is loaded');
+  ok(!/View full current-period worksheet/.test(html)
+    && !/Why \/ Road ahead/.test(html),
+    'worksheet and Why / Road ahead disclosures are not on the default Plan page');
 }
 
 console.log('\n=== duplicate diagnostics are grouped and translated ===');
@@ -67,8 +70,8 @@ console.log('\n=== the readability layer does not become a financial authority =
     'does not recreate an engine or allocation authority');
   ok(/querySelector|textContent|cloneNode|replaceChildren/.test(src),
     'works only from already-rendered presentation content');
-  ok(/See data quality details/.test(src) && /See current-period details/.test(src),
-    'diagnostic depth remains available behind explicit details');
+  ok(!/See data quality details/.test(src) && !/See current-period details/.test(src),
+    'the readability layer does not add leftover diagnostic disclosures to the default Plan');
   ok(/Hold this week's spend until/.test(src)
     && !/No payment or transfer is required today/.test(src),
     'the first-screen action language is one coherent next move');
@@ -170,8 +173,8 @@ console.log('\n=== Q6 keeps the incumbent current-period card under a disclosure
   const q6 = body.querySelector('[data-operating-question="06"]');
   const answer = q6 && q6.querySelector('.operating-answer');
   const now = firstChildByClass(answer, 'household-now');
-  const details = Array.from((answer && answer.children) || [])
-    .find(el => el.tagName === 'DETAILS');
+  const folded = Array.from((answer && answer.querySelectorAll('details')) || [])
+    .find(el => /See current-period details/.test(cleanText(el.querySelector('summary'))));
   const cardAfter = body.querySelector('[data-current-period-action]');
   ok(now && /Hold this week's spend until September 15/.test(now.textContent),
     'plain-language Q6 summary leads with one hold instruction');
@@ -179,12 +182,12 @@ console.log('\n=== Q6 keeps the incumbent current-period card under a disclosure
     'next move does not also say no payment is required today');
   ok(cardAfter === cardBefore,
     'the original current-period card node is kept, not rebuilt');
-  ok(details && /See current-period details/.test(cleanText(details.querySelector('summary'))),
-    'the original card sits under an explicit current-period disclosure');
-  ok(cardAfter && cardAfter.closest('details') === details,
-    'incumbent current-period details remain accessible inside that disclosure');
+  ok(!folded,
+    'enhance does not fold the current-period card behind See current-period details');
+  ok(cardAfter && cardAfter.closest('details') == null,
+    'incumbent current-period details remain visible rather than nested in a disclosure');
   ok(now && now.closest('details') == null,
-    'the compact household summary is not hidden inside the disclosure');
+    'the compact household summary is not hidden inside a disclosure');
   ok(cleanText(cardAfter.querySelector('[data-current-period-coverage]')) === coverageBefore,
     'coverage status is preserved rather than rewritten');
   ok(Array.from(cardAfter.querySelectorAll('p')).some(el =>

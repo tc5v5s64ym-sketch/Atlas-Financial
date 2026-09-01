@@ -225,15 +225,17 @@ console.log('\n=== the homepage selects the daily renderer without changing payd
     'between paydays selects currentPeriodAction; payday still selects the ordered allocation sheet');
   const html = read('public/index.html');
   ok(html.indexOf('id="operating-surface"') < html.indexOf('id="payday-answer"')
-    && /View full current-period worksheet/.test(html),
-  'AF-OPERATE-02 hierarchy stays first and the deeper worksheet stays secondary');
+    && /id="payday-answer" hidden/.test(html)
+    && !/View full current-period worksheet/.test(html),
+  'AF-OPERATE-02 hierarchy stays first and the deeper worksheet is not on the default Plan');
   ok(/refreshTrustHtml\(ctx\.refreshTrust\)/.test(src)
     && /question\('01', 'Current Balance'/.test(src)
     && /question\('02', billsHeading/.test(src)
     && /question\('03', 'Balance after bills'/.test(src)
     && /question\('04', 'Household budget'/.test(src)
-    && /question\('10', 'Balance after big purchase allocation'/.test(src),
-    'refresh-trust strip precedes Current Balance and the ten-block default view');
+    && /question\('10', 'Balance after big purchase allocation'/.test(src)
+    && /unavailableOperatingSurfaceHtml/.test(src),
+    'fail-closed trust HTML remains on the unavailable surface; ten-block fallback still exists');
 }
 
 console.log('\n=== the page remains a renderer, not a calculator ===');

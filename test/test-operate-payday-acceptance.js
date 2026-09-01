@@ -152,10 +152,12 @@ function question(html, number) {
   if (start < 0) return '';
   const end = html.indexOf('data-operating-question=', start + 1);
   const certainty = html.indexOf('data-operating-certainty', start + 1);
+  const warnings = html.indexOf('data-operating-warnings', start + 1);
   const allocation = html.indexOf('data-payday-allocation-details', start + 1);
   let stop = html.length;
   if (end >= 0) stop = end;
   if (certainty >= 0 && certainty < stop) stop = certainty;
+  if (warnings >= 0 && warnings < stop) stop = warnings;
   if (allocation >= 0 && allocation < stop) stop = allocation;
   return html.slice(start, stop);
 }
@@ -195,26 +197,24 @@ console.log('\n=== default homepage answers the operating questions first ===');
   const roadHead = html.slice(roadAt, html.indexOf('id="outlook"'));
   const road = html.slice(roadAt, footerAt);
   ok(operatingAt >= 0 && worksheetAt > operatingAt && roadAt > worksheetAt && footerAt > roadAt,
-    'operating surface, then the collapsed worksheet, then Why / Road ahead');
+    'operating surface leads; diagnostic mounts remain after it and before the footer');
   ok(/<h1>This payday<\/h1>/.test(defaultSurface)
     && (html.match(/<h1[\s>]/g) || []).length === 1,
   'the only page h1 is this payday');
   const worksheet = section(html, 'payday-answer');
-  ok(worksheet && /<details class="disclose secondary-disclose">/.test(worksheet)
-    && !/<details[^>]*\sopen(?:\s|>)/.test(worksheet)
-    && /View full current-period worksheet/.test(worksheet),
-  'the incumbent current-period worksheet stays a closed secondary disclosure');
-  ok(/<summary>Why \/ Road ahead<\/summary>/.test(roadHead)
-    && /<details class="disclose secondary-disclose">/.test(roadHead)
-    && !/\sopen(?:\s|>)/.test(roadHead),
-  'Why / Road ahead is a closed secondary disclosure');
+  ok(worksheet && /hidden/.test(worksheet)
+    && !/View full current-period worksheet/.test(worksheet),
+  'the current-period worksheet is not rendered on the default Plan page');
+  ok(!/<summary>Why \/ Road ahead<\/summary>/.test(html)
+    && /id="road-ahead"[^>]*hidden/.test(html),
+  'Why / Road ahead is not a default Plan disclosure');
   const competing = [
     'nextmove-card', 'hero-tiles', 'cap-headline', 'major-plans-list',
     'risk-list', 'plan-mission', 'snapshot-tiles',
   ];
   for (const id of competing) {
     ok(road.includes(`id="${id}"`) && !defaultSurface.includes(`id="${id}"`),
-      `competing diagnostic ${id} lives only inside closed Why / Road ahead`);
+      `competing diagnostic ${id} lives after the operating surface, not on the default Plan`);
   }
   ok(/Deep Dive/.test(html) && /Modellers/.test(html) && /Records/.test(html),
     'diagnostic pages that still serve a purpose remain linked');
@@ -246,7 +246,7 @@ console.log('\n=== composed surface: cash, identity, debt, protection, limits ==
   const q8 = question(rendered, '08');
 
   ok(action && action.mode === 'between-paydays',
-    'the dated opening is between paydays, so current-period details stay folded');
+    'the dated opening is between paydays');
   ok(/data-payday-cash/.test(q1) && /Current Balance\. Not credit\./.test(q1),
     'Q1 is Current Balance, not credit');
   ok(/data-payday-period-bills/.test(q4),
@@ -255,10 +255,11 @@ console.log('\n=== composed surface: cash, identity, debt, protection, limits ==
     'Q5 publishes leftover after remaining bills');
   ok(/data-payday-household-budget/.test(q6) || /Household budget/.test(q6),
     'Q6 publishes household budget');
-  ok(/data-payday-decision/.test(rendered) && /data-allocation-available/.test(rendered),
-    'the incumbent payday allocation remains available in the allocation disclosure');
-  ok(/data-current-period-action/.test(rendered) && !/data-current-period-action/.test(q6),
-    'between-paydays details stay folded, not inside the next move');
+  ok(!/data-payday-decision/.test(rendered) && !/See how payday is reserved/.test(rendered),
+    'the payday allocation disclosure is not on the default Plan');
+  ok(!/data-current-period-action/.test(rendered)
+      && !/See current-period details/.test(rendered),
+    'between-paydays worksheet details stay off the default Plan');
   ok(near(independentCash, alloc.available),
     'available cash independently equals spendable opening plus same-day income');
   ok(creditHeadroom > 0 && alloc.available + 0.005 < independentCash + creditHeadroom,
@@ -272,10 +273,11 @@ console.log('\n=== composed surface: cash, identity, debt, protection, limits ==
     && near(lineSum + Number(alloc.remainder), alloc.available),
   'independent allocation-line sum plus remainder equals available resources');
   ok(near(action.weeklyCap, advice.weekly)
-    && rendered.includes(`${composer.money(action.weeklyCap)} / week`),
-  'this week\'s spend is Forecast.recommend.weekly from the same recommend result, behind disclosure');
-  ok(/See later bills and big purchases/.test(rendered),
-    'later bills stay behind disclosure');
+    && !rendered.includes(`${composer.money(action.weeklyCap)} / week`),
+  'this week\'s spend stays Forecast.recommend.weekly and is not dumped onto the default Plan');
+  ok(!/See later bills and big purchases/.test(rendered)
+      && /Big-purchase savings/.test(rendered),
+    'later-bills inventory dump stays off the default Plan; waterfall big purchases remain');
   for (const item of requiredItems) {
     ok(q4.includes(item.label) && q4.includes(composer.money2(item.amount)),
       `Q4 required debt ${item.id} is the Forecast required item, not extra principal`);
@@ -312,9 +314,15 @@ console.log('\n=== composed surface: cash, identity, debt, protection, limits ==
       'extra on the cards names the Forecast/owner-policy target');
   }
   const coverage = composer.paydayCoverageNote(action);
-  ok(/data-operating-certainty/.test(rendered) && rendered.includes(coverage)
-    && /Transaction actuals were not supplied|unavailable|through/.test(coverage),
-    'certainty block carries the incumbent between-paydays coverage limitation');
+  const remainingUnavailable = !action || action.remainingClaim === 'unavailable';
+  ok(remainingUnavailable
+      && /data-operating-warnings/.test(rendered)
+      && rendered.includes(coverage)
+      && /Transaction actuals were not supplied|unavailable|through/.test(coverage),
+    'unavailable remaining keeps the incumbent coverage warning on the default Plan');
+  ok(!/data-operating-certainty/.test(rendered)
+      && !/How sure is this\?/.test(rendered),
+    'the generic certainty disclosure is not on the default Plan');
   ok(!data.liveOverlay,
     'the committed opening carries no applied live overlay to mistake for current live truth');
 }
@@ -373,8 +381,9 @@ console.log('\n=== payday mode still uses the ordered allocation sheet ===');
     'payday-mode Q4 is bills');
   ok(/data-payday-household-budget/.test(q6) || /Household budget/.test(q6),
     'payday-mode Q6 is household budget');
-  ok(/data-payday-first-card/.test(q8) && /data-allocation-available/.test(html),
-    'a payday-mode result still renders the first card and keeps the ordered allocation sheet');
+  ok(/data-payday-first-card/.test(q8) && !/data-allocation-available/.test(html)
+      && !/See how payday is reserved/.test(html),
+    'a payday-mode result still renders the first card and does not dump the allocation sheet onto the default Plan');
   ok(/Current Balance/.test(html) && /Household budget/.test(html)
     && />Bills</.test(html)
     && /Extra credit-card repayment/.test(html),

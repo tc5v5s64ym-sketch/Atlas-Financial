@@ -553,8 +553,14 @@ console.log('\n=== 7. Bell undated is visible and excluded from remaining ===');
     advice: { defaultView: view, paydayAllocation: { available: (view.calendarPeriods.find(p => p.role === 'active') || view.calendarPeriods[0]).opening, cashBasis: { asOf: '2026-08-30' } } },
     weekly: 0, recommended: 0,
   });
-  ok(/needs confirmation/i.test(html) && /Not included in either period's remaining bills/.test(html),
+  ok(/needs confirmation/i.test(html) && /Not included in either period's remaining bills/.test(html)
+      && /Needs a date/.test(html) && /data-bill-section="needs-date"/.test(html),
     'page prints Bell outside both period remaining totals');
+  ok(!/See how payday is reserved/.test(html)
+      && !/See later bills and big purchases/.test(html)
+      && !/Notes behind these numbers/.test(html)
+      && !/View full current-period worksheet/.test(html),
+    'Needs a Date remains without restoring secondary Plan clutter');
 }
 
 console.log('\n=== 8. Extra debt never takes leftover below the $500 floor ===');

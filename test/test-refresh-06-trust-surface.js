@@ -419,13 +419,15 @@ console.log('\n=== F. HTML current / stale / incomplete / ambiguous render disti
     refreshTrust: trustPacket(),
     capView: cap,
   });
-  ok(/Updated /.test(currentHtml)
-    && /data-refresh-trust-state="current"/.test(currentHtml)
-    && /data-exact-figures="available"/.test(currentHtml)
-    && />Current</.test(currentHtml),
-  'current packet renders the Current household state');
-  ok(currentHtml.includes(composer.money2(SENTINEL_REMAINING)),
-    'current remaining cents remain visible');
+  ok(!/data-refresh-trust-state=/.test(currentHtml)
+      && !/Notes behind these numbers/.test(currentHtml),
+    'usable current Plan does not render the large Current status card');
+  ok(currentHtml.includes(composer.money2(100)),
+    'usable current Plan still publishes the Forecast available-cash figure');
+  const remainingHtml = composer.betweenPaydaysOperatingHtml(
+    actionFrom({ categories: [sentinelCategory()] }), cap);
+  ok(remainingHtml.includes(composer.money2(SENTINEL_REMAINING)),
+    'current remaining cents remain available on the diagnostic between-paydays renderer');
   ok(!/waiting for approval/.test(currentHtml)
     && !/data-refresh-trust-owner-question/.test(currentHtml)
     && !/<dialog/.test(currentHtml)
@@ -461,15 +463,15 @@ console.log('\n=== F. HTML current / stale / incomplete / ambiguous render disti
     }),
     capView: cap,
   });
-  ok(/data-refresh-trust-state="attention-needed"/.test(staleHtml)
-    && /Attention needed/.test(staleHtml)
-    && /data-exact-figures="unavailable"/.test(staleHtml),
-  'stale packet renders Attention needed');
+  ok(!/data-refresh-trust-state=/.test(staleHtml)
+      && !/Attention needed/.test(staleHtml)
+      && !/Notes behind these numbers/.test(staleHtml),
+    'usable Plan does not render the large Attention needed card');
   ok(!staleHtml.includes(composer.money2(SENTINEL_USED))
     && !staleHtml.includes(composer.money2(SENTINEL_REMAINING)),
   'stale remaining cents are not presented as a precise answer');
   ok(/Current remaining spend cannot be confirmed|current remaining amounts unavailable/.test(staleHtml),
-    'stale remaining-spend is not presented as a confirmed answer');
+    'stale remaining-spend warning remains visible');
 
   const incompleteHtml = composer.refreshTrustHtml(trustPacket({
     displayState: 'attention-needed',
@@ -576,8 +578,10 @@ console.log('\n=== J. homepage still leads with the operating surface ===');
     && html.indexOf('id="operating-surface"') < html.indexOf('id="payday-answer"'),
   'the decision-first operating surface remains first');
   ok(/Current Balance, bills this pay period/.test(html)
-    && /<h1>This payday<\/h1>/.test(html),
-    'the household lede names the default view without turning the page into diagnostics');
+    && /<h1>This payday<\/h1>/.test(html)
+    && !/View full current-period worksheet/.test(html)
+    && !/Why \/ Road ahead/.test(html),
+    'the household lede names the default view without worksheet or Why / Road ahead clutter');
 }
 
 filesUnchanged('suite close');
