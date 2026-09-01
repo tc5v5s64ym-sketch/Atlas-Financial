@@ -14,6 +14,10 @@
  * non-household accounts use atlasRole household-external. Synthetic
  * fixture mappings cannot authorize a live canonical mapping. Historical
  * represented-event candidates are not current-opening corrections.
+ * A live current-state posted window stays 14 days unless Forecast still
+ * carries an unresolved once joint-cash occurrence whose permitted posting
+ * date is older; then the same GET extends back to that date, capped at
+ * 120 days, as settlement lookup only. Pending coverage is unchanged.
  * Account timestamps stay distinct: balance_as_of, updated_at,
  * date_last_fetched. Posted-balance evidence prefers balance_as_of.
  */
@@ -1675,6 +1679,70 @@ function allowedPostingDatesFor(scheduledDate, rule) {
   return dates.filter((date, index) => date && dates.indexOf(date) === index);
 }
 
+function identityRulesForEvent(identity, eventId) {
+  return ((identity && identity.rules) || []).filter(rule =>
+    rule && rule.eventId === eventId);
+}
+
+function earliestEligiblePostingDate(occurrence, identity) {
+  if (!occurrence || !occurrence.date) return null;
+  const dates = [occurrence.date];
+  for (const rule of identityRulesForEvent(identity, occurrence.id)) {
+    for (const postingDate of allowedPostingDatesFor(occurrence.date, rule)) {
+      if (postingDate) dates.push(postingDate);
+    }
+  }
+  dates.sort();
+  return dates[0] || null;
+}
+
+function carriedOnceJointCashOccurrences(plan, asOf) {
+  const out = [];
+  if (!plan || !asOf) return out;
+  const seen = new Set();
+  for (const item of [].concat(plan.obligations || [], plan.bills || [])) {
+    if (!item || !item.id || !item.date) continue;
+    if (!Forecast.carriedOnceJointCashOutflow(plan, item.id, item.date, asOf)) continue;
+    const key = String(item.id) + '@' + String(item.date);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ id: item.id, date: item.date });
+  }
+  return out;
+}
+
+// Ordinary current-state posted history stays 14 days. When Forecast still
+// carries an unresolved once joint-cash occurrence whose permitted posting
+// date is older than that window, extend the same GET /transactions start
+// just far enough to cover that date, capped at the incumbent 120-day
+// reconcile horizon. This is settlement lookup for currently carried
+// occurrences, not a second observer and not generic historical backfill.
+function postedHistoryDaysForCarriedSettlement(opts) {
+  const now = opts && opts.now;
+  const ordinary = CURRENT_STATE_HISTORY_DAYS;
+  const asOf = dateOnly(now);
+  if (!asOf) return ordinary;
+  const ordinaryStart = lunchMoneyTransactionsUrl(now, ordinary).startDate;
+  if (!ordinaryStart) return ordinary;
+  let earliest = null;
+  for (const occurrence of carriedOnceJointCashOccurrences(opts && opts.plan, asOf)) {
+    const postingDate = earliestEligiblePostingDate(occurrence, opts && opts.identity);
+    if (!postingDate || postingDate >= ordinaryStart) continue;
+    if (!earliest || postingDate < earliest) earliest = postingDate;
+  }
+  if (!earliest) return ordinary;
+  let span = calendarDaysBetween(earliest, asOf);
+  if (span == null || span < ordinary) span = ordinary;
+  let start = lunchMoneyTransactionsUrl(now, span).startDate;
+  while (start && start > earliest && span < RECONCILE_HISTORY_DAYS) {
+    span += 1;
+    start = lunchMoneyTransactionsUrl(now, span).startDate;
+  }
+  if (span < ordinary) return ordinary;
+  if (span > RECONCILE_HISTORY_DAYS) return RECONCILE_HISTORY_DAYS;
+  return span;
+}
+
 function occurrenceInsideObservationWindow(scheduledDate, window, rules) {
   const start = window && window.startDate;
   const end = window && window.endDate;
@@ -2501,12 +2569,20 @@ async function run(argv) {
     assertLiveMap(accountMap, { data });
   }
   const identity = loadIdentity(DEFAULT_IDENTITY);
-  const historyDays = historyDaysFromArgs(args);
+  const now = new Date().toISOString();
+  let historyDays = historyDaysFromArgs(args);
+  if (args.live && args.historyDays == null && args.mode !== 'reconcile') {
+    historyDays = postedHistoryDaysForCarriedSettlement({
+      now,
+      plan: data.plan,
+      identity,
+    });
+  }
   let payload;
   if (args.live) {
     payload = await fetchLunchMoneyLive(
       await resolveLiveToken(),
-      new Date().toISOString(),
+      now,
       historyDays
     );
   } else {
@@ -2552,6 +2628,7 @@ const api = {
   EXTERNAL_LIVE_ROLE,
   parseArgs,
   historyDaysFromArgs,
+  postedHistoryDaysForCarriedSettlement,
   resolveMapPath,
   lunchMoneyApiBase,
   loadLiveAccountMap,

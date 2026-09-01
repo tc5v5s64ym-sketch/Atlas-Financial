@@ -24,7 +24,16 @@
  * (historicalOpeningAsOf, liveAsOf] are accounted for before as-of
  * advances: posting/representation evidence names them on in-memory
  * representedEvents; unrepresented joint-cash outflows stay reserved
- * via plan.opening.priorAsOf so Forecast does not drop them. A complete
+ * via plan.opening.priorAsOf so Forecast does not drop them. Any once
+ * joint-cash occurrence still carried as unresolved remains eligible
+ * for identity-based settlement lookup even when its permitted posting
+ * date has aged out of the ordinary 14-day current-state transaction
+ * window; the live fetch then extends that same posted window back to
+ * the oldest still-carried occurrence plus its permitted posting-date
+ * relation, capped at the incumbent 120-day reconcile horizon. Wider
+ * historical evidence is settlement-only for currently carried
+ * occurrences and does not authorize generic historical opening
+ * backfill. A complete
  * freshness-qualified household-cash observation remains the Forecast
  * opening when a same-day inbound is unproven or ambiguous: Forecast
  * omits that inbound from actionable cash via in-memory
@@ -921,6 +930,14 @@ function failedOverlay(canonical, reason, extra) {
   return next;
 }
 
+function livePostedHistoryDays(canonical, now, identity) {
+  return O.postedHistoryDaysForCarriedSettlement({
+    now,
+    plan: canonical && canonical.plan,
+    identity: identity || loadIdentity(),
+  });
+}
+
 function loadIdentity() {
   if (!fs.existsSync(DEFAULT_IDENTITY)) return { rules: [], billPaymentPayees: [] };
   return loadJson(DEFAULT_IDENTITY);
@@ -982,10 +999,11 @@ async function applyForServer(canonical, env) {
   }
   try {
     const accountMap = O.loadLiveAccountMap(env || process.env, canonical);
+    const now = observationNow(env || process.env);
     const payload = await O.fetchLunchMoneyLive(
       await O.resolveLiveToken({ env: env || process.env }),
-      observationNow(env || process.env),
-      O.CURRENT_STATE_HISTORY_DAYS,
+      now,
+      livePostedHistoryDays(canonical, now),
       { env: env || process.env }
     );
     const report = observeForOverlay(canonical, payload, accountMap);
@@ -1062,10 +1080,11 @@ async function run(argv) {
       || (fs.existsSync(O.LOCAL_MAP) ? O.LOCAL_MAP : O.DEFAULT_MAP);
     const accountMap = loadJson(mapPath);
     O.assertLiveMap(accountMap);
+    const now = new Date().toISOString();
     const payload = await O.fetchLunchMoneyLive(
       await O.resolveLiveToken(),
-      new Date().toISOString(),
-      O.CURRENT_STATE_HISTORY_DAYS
+      now,
+      livePostedHistoryDays(data, now, identity)
     );
     result = fromObservation({ data, payload, accountMap, identity });
   } else {
@@ -1103,6 +1122,7 @@ const api = {
   scheduledCashEventsOn,
   serveCanonicalOrFixture,
   applyForServer,
+  livePostedHistoryDays,
   failedOverlay,
   snapshotPaths,
   parseArgs,

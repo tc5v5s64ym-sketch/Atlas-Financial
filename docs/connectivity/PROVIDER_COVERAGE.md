@@ -41,7 +41,13 @@ Official: https://lunchmoney.dev/ and https://lunchmoney.dev/v2/docs
 - Live GET `/transactions` is windowed: `--mode current-state` is 14 days;
   `--mode reconcile` is 120 days so the 90-day pending-bill rule can see
   aged rows. Override with `--history-days N`. Do not fetch two years on
-  every current-state call.
+  every current-state call. A live current-state overlay keeps the ordinary
+  14-day posted window unless Forecast still carries an unresolved once
+  joint-cash occurrence whose permitted posting date is older than that
+  window; then the same request starts at that oldest eligible date, capped
+  at 120 days. Wider history is settlement lookup for currently carried
+  occurrences only. Pending coverage stays the unbounded `is_pending`
+  query.
 - Official v2 also has `GET /transactions?is_pending=true`. That filter
   returns only pending transactions and takes precedence over
   `include_pending`. Omitting `start_date`/`end_date` and paging until
