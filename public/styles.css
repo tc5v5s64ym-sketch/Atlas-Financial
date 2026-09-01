@@ -348,6 +348,46 @@ footer { margin-top:56px; padding-top:18px; border-top:1px solid var(--grid);
   font-weight:650; font-variant-numeric:tabular-nums; text-align:right;
   overflow-wrap:anywhere;
 }
+.payday-household-budget { min-width:0; }
+.household-budget-cycle {
+  margin:0 0 10px; color:var(--text-secondary); font-size:.88rem; line-height:1.35;
+  overflow-wrap:anywhere;
+}
+.household-budget-list {
+  display:flex; flex-direction:column; gap:14px; margin:0; min-width:0;
+}
+.household-budget-category,
+.household-budget-other {
+  min-width:0;
+}
+.household-budget-other {
+  padding-top:14px; border-top:1px solid var(--grid);
+}
+.household-budget-name {
+  margin:0; font-size:.95rem; font-weight:700; line-height:1.3;
+  overflow-wrap:anywhere;
+}
+.household-budget-context {
+  margin:2px 0 0; color:var(--text-secondary); font-size:.8rem; line-height:1.35;
+  overflow-wrap:anywhere;
+}
+.household-budget-metrics {
+  display:grid; grid-template-columns:minmax(0,1fr) minmax(0,auto); gap:4px 12px;
+  margin:6px 0 0; min-width:0;
+}
+.household-budget-metric { display:contents; }
+.household-budget-metrics dt {
+  margin:0; min-width:0; color:var(--text-secondary); font-size:.82rem; font-weight:500;
+  overflow-wrap:anywhere;
+}
+.household-budget-metrics dd {
+  margin:0; min-width:0; text-align:right; font-size:.88rem; font-weight:600;
+  font-variant-numeric:tabular-nums; overflow-wrap:anywhere;
+}
+.household-budget-remaining dt { color:var(--text-primary); font-weight:650; }
+.household-budget-remaining dd {
+  font-weight:750; color:var(--text-primary);
+}
 .payday-budget-digest {
   padding:22px 24px; border-bottom:1px solid var(--grid);
 }

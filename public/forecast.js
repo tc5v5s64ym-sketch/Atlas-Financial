@@ -125,12 +125,14 @@
     if (!start) return null;
     if (!next) next = addDays(start, 14);
     const end = addDays(next, -1);
+    const rangeLabel = formatSpendingCycleRange(start, end);
     return {
       start,
       end,
       nextPayday: next,
       days: diffDays(start, end) + 1,
-      label: 'Spending cycle: ' + formatSpendingCycleRange(start, end),
+      rangeLabel,
+      label: 'Spending cycle: ' + rangeLabel,
     };
   }
   // Default Plan operating views: this Seaspan payday through the day
@@ -2765,6 +2767,7 @@
   const DALE_GUILT_FREE_ID = 'dale-guilt-free';
   const AMANDA_GUILT_FREE_ID = 'amanda-guilt-free';
   const PERSONAL_SHOPPING_ID = 'shopping';
+  const OTHER_SPENDING_ID = 'other-spending';
 
   function currentPeriodBills(plan, asOf, origin, periodLast, opts) {
     const represented = representedKeySet(plan, opts, asOf);
@@ -4180,16 +4183,22 @@
         pendingRecon,
       });
     }
+    // Informational residual of the same classification path: current-cycle
+    // household spend that cannot be assigned to a planned Household Budget
+    // category. Not an allowance, not a hold, not a second waterfall
+    // subtraction. Classifier reasons stay on recon.includeReason.
     if (actualsReady && confirmationSpent > EPSILON) {
       items.push({
-        id: PERSONAL_SHOPPING_ID,
-        label: 'Personal spending — needs confirmation',
-        monthly: 0,
-        planned: 0,
+        id: OTHER_SPENDING_ID,
+        label: 'Other spending',
+        note: 'Spending outside the budget categories above',
+        monthly: null,
+        planned: null,
         spent: confirmationSpent,
         remaining: null,
         hold: 0,
         needsConfirmation: true,
+        otherSpending: true,
         projected: role === 'future',
         recon: confirmationRecon,
         pendingRecon: confirmationRecon.filter(r => r.pending === true),
