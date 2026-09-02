@@ -2543,6 +2543,55 @@ function directedSettlementMate(posted, pending) {
   return ids.includes(want);
 }
 
+function settlementAccountId(tx, opts) {
+  const mapping = opts && opts.accountMap
+    ? mappingFor(opts.accountMap, tx && tx.providerAccountId) : null;
+  return mapping && mapping.canonical && mapping.canonical.id
+    ? mapping.canonical.id
+    : (tx && (tx.atlasAccountId || tx.account || tx.providerAccountId));
+}
+
+// Owner-confirmed 2026-09-02: this exact pending+posted pair is one Travel
+// Visa Shopify purchase (live overlay tx-103 → tx-113). Not a merchant-digit
+// heuristic and not a general date+account+amount+merchant rule.
+const OWNER_CONFIRMED_SHOPIFY_SETTLEMENT = Object.freeze({
+  date: '2026-08-31',
+  amount: '54.88',
+  originalMerchant: 'SHOPIFY INC/578523914',
+});
+
+function isTravelVisaAccount(accountId) {
+  if (accountId == null || accountId === '') return false;
+  return String(accountId).trim().toLowerCase().replace(/[\s_-]+/g, '') === 'travelvisa';
+}
+
+function ownerConfirmedShopifyMerchant(tx) {
+  if (!tx) return false;
+  const want = OWNER_CONFIRMED_SHOPIFY_SETTLEMENT.originalMerchant;
+  return [tx.originalMerchant, tx.originalName, tx.original_name]
+    .some(v => v === want);
+}
+
+function matchesOwnerConfirmedShopifySettlement(tx, accountId) {
+  if (!tx || tx.date !== OWNER_CONFIRMED_SHOPIFY_SETTLEMENT.date) return false;
+  if (!isTravelVisaAccount(accountId)) return false;
+  if (!ownerConfirmedShopifyMerchant(tx)) return false;
+  const amt = lunchMoneyDebitAmount(tx.amount);
+  return amt != null && Number(amt).toFixed(2) === OWNER_CONFIRMED_SHOPIFY_SETTLEMENT.amount;
+}
+
+function collapseOwnerConfirmedShopifySettlement(pending, posted, drop, opts) {
+  const confirmedPending = pending.filter(tx =>
+    !drop.has(tx) && matchesOwnerConfirmedShopifySettlement(tx, settlementAccountId(tx, opts)));
+  const confirmedPosted = posted.filter(tx =>
+    !drop.has(tx) && matchesOwnerConfirmedShopifySettlement(tx, settlementAccountId(tx, opts)));
+  // Exactly one unresolved pending and one confirmed-settled posted of this
+  // identity. Two such 4-tuples stay uncollapsed — that would be a general rule.
+  if (confirmedPending.length === 1 && confirmedPosted.length === 1) {
+    drop.add(confirmedPending[0]);
+  }
+}
+
 function collapsePendingPostedBySettlementIdentity(transactions, asOf, opts) {
   const list = (transactions || []).filter(tx => tx && tx.date);
   if (list.length < 2) return list;
@@ -2557,19 +2606,11 @@ function collapsePendingPostedBySettlementIdentity(transactions, asOf, opts) {
   if (!pending.length || !posted.length) return list;
   const drop = new Set();
   for (const pend of pending) {
-    const mapping = opts && opts.accountMap
-      ? mappingFor(opts.accountMap, pend.providerAccountId) : null;
-    const accountId = mapping && mapping.canonical && mapping.canonical.id
-      ? mapping.canonical.id
-      : (pend.atlasAccountId || pend.account || pend.providerAccountId);
+    const accountId = settlementAccountId(pend, opts);
     const amount = lunchMoneyDebitAmount(pend.amount);
     const mate = posted.some(post => {
       if (drop.has(post)) return false;
-      const postMap = opts && opts.accountMap
-        ? mappingFor(opts.accountMap, post.providerAccountId) : null;
-      const postAccount = postMap && postMap.canonical && postMap.canonical.id
-        ? postMap.canonical.id
-        : (post.atlasAccountId || post.account || post.providerAccountId);
+      const postAccount = settlementAccountId(post, opts);
       if (accountId != null && postAccount != null && String(accountId) !== String(postAccount)) {
         return false;
       }
@@ -2581,6 +2622,7 @@ function collapsePendingPostedBySettlementIdentity(transactions, asOf, opts) {
     });
     if (mate) drop.add(pend);
   }
+  collapseOwnerConfirmedShopifySettlement(pending, posted, drop, opts);
   if (!drop.size) return list;
   return list.filter(tx => !drop.has(tx));
 }

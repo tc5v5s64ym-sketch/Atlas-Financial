@@ -1034,7 +1034,61 @@ console.log('\n=== 10. Natural Gas / Other bank fees are bills; Amazon/Prime fai
     'pending→posted Shopify with explicit pendingTransactionId linkage counts once',
     JSON.stringify({ shopifyIds, spent: shopifyOther && shopifyOther.spent }));
 
-  const shopifyByRef = O.sanitizedCurrentPeriodActuals({
+  const SHOPIFY_ONCE_PLUS_OTHER = roundCent(SHOPIFY_AMT + OTHER_AMT);
+  ok(near(SHOPIFY_ONCE_PLUS_OTHER, 62.38)
+      && near(DISTINCT_SAME_DAY + OTHER_AMT, 117.26),
+    'independent fixture arithmetic: one Shopify $54.88+$7.50=$62.38; two $54.88+$54.88+$7.50=$117.26');
+
+  const observeSrc = sourceText(fs.readFileSync(path.join(__dirname, '..', 'scripts/provider-observe.js'), 'utf8'));
+  ok(observeSrc.includes('SHOPIFY INC/578523914'),
+    'observer names the owner-confirmed Shopify originalMerchant exactly');
+  ok(!/skipPendingPostedDuplicate|spendIdentityKey/.test(observeSrc),
+    'observer does not restore a general pending+posted 4-tuple identity key');
+
+  const shopifyByIdentity = O.sanitizedCurrentPeriodActuals({
+    fetchedAt: '2026-09-02T18:13:00.000Z',
+    transactionWindow: { startDate: '2026-08-28', endDate: '2026-09-02', complete: true },
+    pendingCoverage: {
+      complete: true, basis: O.PENDING_COVERAGE_BASIS, hasMore: false, truncated: false,
+    },
+    collapsedTransactions: [
+      {
+        date: '2026-08-31', amount: SHOPIFY_AMT, pending: true, categoryLabel: null,
+        payee: 'SHOPIFY INC/578523914', originalName: 'SHOPIFY INC/578523914',
+        providerAccountId: '3006', providerTransactionId: '103',
+      },
+      {
+        date: '2026-08-31', amount: SHOPIFY_AMT, pending: false, categoryLabel: null,
+        payee: 'SHOPIFY INC/578523914', originalName: 'SHOPIFY INC/578523914',
+        providerAccountId: '3006', providerTransactionId: '113',
+      },
+      {
+        date: '2026-08-31', amount: OTHER_AMT, pending: false, categoryLabel: 'Gifts',
+        payee: 'Gift Shop', originalName: 'Gift Shop',
+        providerAccountId: '1001', providerTransactionId: 'gift-identity',
+      },
+    ],
+    representedEventCandidates: [],
+  }, { asOf: AS_OF, plan, accountMap: map });
+  const identityTxs = shopifyByIdentity.transactions || [];
+  const identityShopify = identityTxs.filter(tx => near(tx.amount, SHOPIFY_AMT));
+  const identityPacket = actualsPacket(identityTxs);
+  const identityAdvice = recommend(identityPacket);
+  const identityPeriod = period(identityAdvice.defaultView, 'this-pay-period');
+  const identityOther = otherRow(identityPeriod);
+  ok(identityShopify.length === 1
+      && identityShopify[0].pending === false
+      && !identityTxs.some(tx => near(tx.amount, SHOPIFY_AMT) && tx.pending === true)
+      && identityOther && near(identityOther.spent, SHOPIFY_ONCE_PLUS_OTHER)
+      && near(reconSum(identityOther), SHOPIFY_ONCE_PLUS_OTHER)
+      && !near(identityOther.spent, roundCent(DISTINCT_SAME_DAY + OTHER_AMT)),
+    'owner-confirmed Shopify pending+posted pair without pendingTransactionId counts once',
+    JSON.stringify({
+      ids: identityShopify.map(tx => tx.id),
+      spent: identityOther && identityOther.spent,
+    }));
+
+  const otherShopify = O.sanitizedCurrentPeriodActuals({
     fetchedAt: '2026-09-02T18:13:00.000Z',
     transactionWindow: { startDate: '2026-08-28', endDate: '2026-09-02', complete: true },
     pendingCoverage: {
@@ -1043,23 +1097,87 @@ console.log('\n=== 10. Natural Gas / Other bank fees are bills; Amazon/Prime fai
     collapsedTransactions: [
       {
         date: '2026-08-31', amount: SHOPIFY_AMT, pending: true, categoryLabel: 'Shopping',
-        payee: 'SHOPIFY INC/578523914', originalName: 'SHOPIFY INC/578523914',
-        providerAccountId: '3006', providerTransactionId: 'shop-pend-ref',
+        payee: 'SHOPIFY INC/578523915', originalName: 'SHOPIFY INC/578523915',
+        providerAccountId: '3006', providerTransactionId: 'other-shop-pend',
       },
       {
         date: '2026-08-31', amount: SHOPIFY_AMT, pending: false, categoryLabel: 'Shopping',
-        payee: 'SHOPIFY INC/578523914', originalName: 'SHOPIFY INC/578523914',
-        providerAccountId: '3006', providerTransactionId: 'shop-post-ref',
+        payee: 'SHOPIFY INC/578523915', originalName: 'SHOPIFY INC/578523915',
+        providerAccountId: '3006', providerTransactionId: 'other-shop-post',
       },
     ],
     representedEventCandidates: [],
   }, { asOf: AS_OF, plan, accountMap: map });
-  const refTwins = (shopifyByRef.transactions || [])
+  const otherShopifyTwins = (otherShopify.transactions || [])
     .filter(tx => near(tx.amount, SHOPIFY_AMT));
-  ok(refTwins.length === 2
-      && refTwins.some(tx => tx.pending === true)
-      && refTwins.some(tx => tx.pending === false),
-    'Shopify original_name digits alone do not collapse pending+posted');
+  ok(otherShopifyTwins.length === 2
+      && otherShopifyTwins.some(tx => tx.pending === true)
+      && otherShopifyTwins.some(tx => tx.pending === false),
+    'a different Shopify originalMerchant still publishes both pending and posted');
+
+  const otherAmount = O.sanitizedCurrentPeriodActuals({
+    fetchedAt: '2026-09-02T18:13:00.000Z',
+    transactionWindow: { startDate: '2026-08-28', endDate: '2026-09-02', complete: true },
+    pendingCoverage: {
+      complete: true, basis: O.PENDING_COVERAGE_BASIS, hasMore: false, truncated: false,
+    },
+    collapsedTransactions: [
+      {
+        date: '2026-08-31', amount: 54.89, pending: true, categoryLabel: 'Shopping',
+        payee: 'SHOPIFY INC/578523914', originalName: 'SHOPIFY INC/578523914',
+        providerAccountId: '3006', providerTransactionId: 'amt-pend',
+      },
+      {
+        date: '2026-08-31', amount: 54.89, pending: false, categoryLabel: 'Shopping',
+        payee: 'SHOPIFY INC/578523914', originalName: 'SHOPIFY INC/578523914',
+        providerAccountId: '3006', providerTransactionId: 'amt-post',
+      },
+    ],
+    representedEventCandidates: [],
+  }, { asOf: AS_OF, plan, accountMap: map });
+  const otherAmountTwins = (otherAmount.transactions || [])
+    .filter(tx => near(tx.amount, 54.89));
+  ok(otherAmountTwins.length === 2
+      && otherAmountTwins.some(tx => tx.pending === true)
+      && otherAmountTwins.some(tx => tx.pending === false),
+    'the same Shopify merchant at a different amount still publishes both rows');
+
+  const twoExactPairs = O.sanitizedCurrentPeriodActuals({
+    fetchedAt: '2026-09-02T18:13:00.000Z',
+    transactionWindow: { startDate: '2026-08-28', endDate: '2026-09-02', complete: true },
+    pendingCoverage: {
+      complete: true, basis: O.PENDING_COVERAGE_BASIS, hasMore: false, truncated: false,
+    },
+    collapsedTransactions: [
+      {
+        date: '2026-08-31', amount: SHOPIFY_AMT, pending: true, categoryLabel: null,
+        payee: 'SHOPIFY INC/578523914', originalName: 'SHOPIFY INC/578523914',
+        providerAccountId: '3006', providerTransactionId: 'pair-a-pend',
+      },
+      {
+        date: '2026-08-31', amount: SHOPIFY_AMT, pending: false, categoryLabel: null,
+        payee: 'SHOPIFY INC/578523914', originalName: 'SHOPIFY INC/578523914',
+        providerAccountId: '3006', providerTransactionId: 'pair-a-post',
+      },
+      {
+        date: '2026-08-31', amount: SHOPIFY_AMT, pending: true, categoryLabel: null,
+        payee: 'SHOPIFY INC/578523914', originalName: 'SHOPIFY INC/578523914',
+        providerAccountId: '3006', providerTransactionId: 'pair-b-pend',
+      },
+      {
+        date: '2026-08-31', amount: SHOPIFY_AMT, pending: false, categoryLabel: null,
+        payee: 'SHOPIFY INC/578523914', originalName: 'SHOPIFY INC/578523914',
+        providerAccountId: '3006', providerTransactionId: 'pair-b-post',
+      },
+    ],
+    representedEventCandidates: [],
+  }, { asOf: AS_OF, plan, accountMap: map });
+  const twoPairTwins = (twoExactPairs.transactions || [])
+    .filter(tx => near(tx.amount, SHOPIFY_AMT));
+  ok(twoPairTwins.length === 4
+      && twoPairTwins.filter(tx => tx.pending === true).length === 2
+      && twoPairTwins.filter(tx => tx.pending === false).length === 2,
+    'two owner-confirmed 4-tuples stay uncollapsed; the exception is this one pair only');
 
   const digitTwin = O.sanitizedCurrentPeriodActuals({
     fetchedAt: '2026-09-02T18:13:00.000Z',
@@ -1111,6 +1229,32 @@ console.log('\n=== 10. Natural Gas / Other bank fees are bills; Amazon/Prime fai
     .filter(tx => near(tx.amount, 19.14));
   ok(genericTwins.length === 2,
     'date+account+amount+generic merchant alone does not collapse pending+posted');
+
+  const googlePetsOverlay = O.sanitizedCurrentPeriodActuals({
+    fetchedAt: '2026-09-02T18:13:00.000Z',
+    transactionWindow: { startDate: '2026-08-28', endDate: '2026-09-02', complete: true },
+    pendingCoverage: {
+      complete: true, basis: O.PENDING_COVERAGE_BASIS, hasMore: false, truncated: false,
+    },
+    collapsedTransactions: [
+      {
+        date: '2026-08-31', amount: GOOGLE_AMT, pending: false, categoryLabel: 'Pets',
+        payee: 'Google', originalName: 'Google',
+        providerAccountId: '1001', providerTransactionId: '83',
+      },
+    ],
+    representedEventCandidates: [],
+  }, { asOf: AS_OF, plan, accountMap: map });
+  const googlePetsTx = (googlePetsOverlay.transactions || [])
+    .find(tx => tx && near(tx.amount, GOOGLE_AMT));
+  const googlePetsOverlayCls = googlePetsTx
+    ? F.classifyCurrentPeriodTransaction(googlePetsTx, plan) : null;
+  ok(googlePetsTx && googlePetsOverlayCls
+      && googlePetsOverlayCls.kind !== 'bill'
+      && googlePetsOverlayCls.reason === 'pets-not-dog-food'
+      && googlePetsOverlayCls.householdSpending === true,
+    'Google Pets $3.13 overlay stays pets-not-dog-food, not google-storage-100gb',
+    JSON.stringify(googlePetsOverlayCls));
 }
 
 if (failures) {
