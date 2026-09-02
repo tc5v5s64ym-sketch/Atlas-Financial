@@ -66,6 +66,7 @@ const suites = [
   ['Plan calendar waterfalls', 'test-plan-calendar-waterfalls.js'],
   ['Household Budget Other spending residual', 'test-household-budget-other-spending.js'],
   ['Household Budget Spent transaction drill-down', 'test-household-budget-spent-drilldown.js'],
+  ['current-period Household Budget classification', 'test-current-period-household-budget-classification.js'],
   ['salary recognition and payroll drift', 'test-salary-recognition-drift.js'],
   ['Plan payday operating periods', 'test-payday-operating-periods.js'],
   ['Plan unavailable operating state', 'test-plan-unavailable-surface.js'],

@@ -167,6 +167,21 @@
       "direction": "debit",
       "postingDateRule": "same-day-or-weekend-next-business-day",
       "note": "Same explicit CMAW identity contract for the reserved occurrence dated 2026-08-16. Amount is not identity."
+    },
+    {
+      "eventId": "google-storage-100gb",
+      "payeePattern": "Google",
+      "payeePatterns": ["Google"],
+      "payeeExcludePatterns": [
+        "YouTube",
+        "Google TV",
+        "GOOGLETV",
+        "GOOGLETSN",
+        "Google Play"
+      ],
+      "atlasAccountId": "chequing-a",
+      "direction": "debit",
+      "note": "Owner-confirmed 2026-09-01: the current-period Google storage 100 GB debit on BILLS (chequing-a) uniquely represents that modeled bill. Identity is payee + mapped account + direction + allowed date. Amount is not identity. Other Google products are excluded aliases, not this bill."
     }
   ]
 }
