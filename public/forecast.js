@@ -2262,6 +2262,8 @@
   // Owner-confirmed grocery identity. Exact merchant keys only: WALMART /
   // WALMARTCA and MERIDIAN FARM. Not a generic "Farm" rule and not a
   // second categorizer. Surrey Meat stays Dog food via isDogFoodMerchant.
+  // Incumbent plan.budget.excluded / Business still wins: this helper
+  // identifies the merchant only.
   function isConfirmedGroceryMerchant(tx) {
     const key = normalizeMerchantKey(txMerchantExact(tx));
     if (!key) return false;
@@ -2318,12 +2320,14 @@
   }
 
   // Provider-neutral classification, then merchant-aware fail-closed
-  // overrides. Surrey Meat is Dog food, never Groceries. Walmart and
-  // Meridian Farm are Groceries. Iron Butcher stays unconfirmed. Eating
-  // out is Restaurants + Fast Food + Food Delivery. Canadian Tire is not
-  // Household. 7-Eleven is not confirmed Fuel without tx-level fuel
-  // evidence. Uncertain txs go to confirmation, not a named household-budget
-  // row.
+  // overrides. Surrey Meat is Dog food, never Groceries. The incumbent
+  // plan.budget.excluded / Business boundary stays ahead of the confirmed
+  // grocery merchant override: Walmart and Meridian Farm are Groceries
+  // only when otherwise eligible household spending. Iron Butcher stays
+  // unconfirmed. Eating out is Restaurants + Fast Food + Food Delivery.
+  // Canadian Tire is not Household. 7-Eleven is not confirmed Fuel without
+  // tx-level fuel evidence. Uncertain txs go to confirmation, not a named
+  // household-budget row.
   function classifyCurrentPeriodTransaction(tx, plan, opts) {
     if (!tx) {
       return { kind: 'unclassified', categoryId: null, householdSpending: false, reason: 'missing' };
@@ -2382,6 +2386,13 @@
       return spendResult('pets', 'dog-food-merchant');
     }
     if (isConfirmedGroceryMerchant(tx)) {
+      const excluded = ((plan && plan.budget && plan.budget.excluded) || []);
+      for (const row of excluded) {
+        const from = normalizeCategoryLabel(row && (row.from || row.label));
+        if (from && from === label) {
+          return { kind: 'business', categoryId: null, householdSpending: false, reason: 'excluded' };
+        }
+      }
       return spendResult('groceries', 'grocery-merchant');
     }
     if (isCanadianTireMerchant(tx)) {

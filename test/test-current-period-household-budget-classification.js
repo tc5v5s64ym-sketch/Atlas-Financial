@@ -24,7 +24,10 @@ const GOOGLE_AMT = 3.13;
 const WALMART_AMT = 41.17;
 const MERIDIAN_AMT = 19.44;
 const OTHER_AMT = 7.50;
+const BUSINESS_WALMART_AMT = 22.11;
+const BUSINESS_MERIDIAN_AMT = 14.07;
 const GROCERY_INDEPENDENT = roundCent(WALMART_AMT + MERIDIAN_AMT);
+const EXCLUDED_BUSINESS_INDEPENDENT = roundCent(BUSINESS_WALMART_AMT + BUSINESS_MERIDIAN_AMT);
 const SPENT_WITH_BILL = roundCent(GROCERY_INDEPENDENT + OTHER_AMT + GOOGLE_AMT);
 const SPENT_WITHOUT_BILL = roundCent(GROCERY_INDEPENDENT + OTHER_AMT);
 
@@ -63,6 +66,10 @@ function syntheticPlan() {
         { id: 'shopping', label: 'Shopping', class: 'discretionary', from: ['Shopping', 'Personal'] },
         { id: 'subscriptions', label: 'Subscriptions', class: 'essential', from: ['Subscriptions'] },
       ],
+      excluded: [{
+        from: 'Business',
+        why: 'Amanda coaching, not household',
+      }],
     },
   };
 }
@@ -126,8 +133,8 @@ function googleTx(extra) {
     representedBill: false,
   }, extra || {});
 }
-function walmartTx() {
-  return {
+function walmartTx(extra) {
+  return Object.assign({
     id: 'tx-walmart',
     date: '2026-08-31',
     amount: WALMART_AMT,
@@ -136,10 +143,10 @@ function walmartTx() {
     accountRole: 'household-cash',
     displayedPayee: 'Walmart',
     originalMerchant: 'Walmart',
-  };
+  }, extra || {});
 }
-function meridianTx() {
-  return {
+function meridianTx(extra) {
+  return Object.assign({
     id: 'tx-meridian',
     date: '2026-08-31',
     amount: MERIDIAN_AMT,
@@ -148,7 +155,7 @@ function meridianTx() {
     accountRole: 'household-cash',
     displayedPayee: 'Meridian Farm',
     originalMerchant: 'Meridian Farm',
-  };
+  }, extra || {});
 }
 function otherTx() {
   return {
@@ -527,6 +534,81 @@ console.log('\n=== 8. Iron Butcher and Surrey Meat policy is unchanged ===');
   }, plan);
   ok(surrey.kind === 'spend' && surrey.categoryId === 'pets',
     'Surrey Meat remains Dog food, never Groceries');
+}
+
+console.log('\n=== 9. excluded Business Walmart / Meridian Farm stay out of Household Budget ===');
+{
+  ok(near(BUSINESS_WALMART_AMT + BUSINESS_MERIDIAN_AMT, EXCLUDED_BUSINESS_INDEPENDENT)
+      && near(EXCLUDED_BUSINESS_INDEPENDENT, 36.18)
+      && near(SPENT_WITHOUT_BILL + EXCLUDED_BUSINESS_INDEPENDENT, 104.29),
+    'independent fixture arithmetic: excluded Business $22.11+$14.07=$36.18; leak would make Spent $104.29');
+  const plan = syntheticPlan();
+  ok((plan.budget.excluded || []).some(row => row && row.from === 'Business'),
+    'synthetic plan carries the incumbent excluded Business category');
+  const businessWalmart = walmartTx({
+    id: 'tx-walmart-business',
+    amount: BUSINESS_WALMART_AMT,
+    categoryLabel: 'Business',
+  });
+  const businessMeridian = meridianTx({
+    id: 'tx-meridian-business',
+    amount: BUSINESS_MERIDIAN_AMT,
+    categoryLabel: 'Business',
+  });
+  const householdWalmart = walmartTx();
+  const householdMeridian = meridianTx();
+  const walmartCls = F.classifyCurrentPeriodTransaction(businessWalmart, plan);
+  const meridianCls = F.classifyCurrentPeriodTransaction(businessMeridian, plan);
+  ok(walmartCls.kind === 'business' && walmartCls.householdSpending === false
+      && walmartCls.reason === 'excluded' && walmartCls.categoryId !== 'groceries',
+    'Business-category Walmart remains kind business, householdSpending false',
+    JSON.stringify(walmartCls));
+  ok(meridianCls.kind === 'business' && meridianCls.householdSpending === false
+      && meridianCls.reason === 'excluded' && meridianCls.categoryId !== 'groceries',
+    'Business-category Meridian Farm remains kind business, householdSpending false',
+    JSON.stringify(meridianCls));
+  const walmartCaBiz = F.classifyCurrentPeriodTransaction({
+    date: '2026-08-31', amount: BUSINESS_WALMART_AMT, categoryLabel: 'Business',
+    displayedPayee: 'WALMARTCA', originalMerchant: 'WALMARTCA',
+    accountRole: 'household-cash',
+  }, plan);
+  ok(walmartCaBiz.kind === 'business' && walmartCaBiz.householdSpending === false,
+    'Business-category WALMARTCA remains excluded non-household');
+  const eligibleWalmart = F.classifyCurrentPeriodTransaction(householdWalmart, plan);
+  const eligibleMeridian = F.classifyCurrentPeriodTransaction(householdMeridian, plan);
+  ok(eligibleWalmart.kind === 'spend' && eligibleWalmart.categoryId === 'groceries'
+      && eligibleWalmart.householdSpending === true && eligibleWalmart.needsConfirmation !== true,
+    'eligible household Walmart still classifies as Groceries',
+    JSON.stringify(eligibleWalmart));
+  ok(eligibleMeridian.kind === 'spend' && eligibleMeridian.categoryId === 'groceries'
+      && eligibleMeridian.householdSpending === true && eligibleMeridian.needsConfirmation !== true,
+    'eligible household Meridian Farm still classifies as Groceries',
+    JSON.stringify(eligibleMeridian));
+  const packet = actualsPacket([
+    businessWalmart,
+    businessMeridian,
+    householdWalmart,
+    householdMeridian,
+    otherTx(),
+  ]);
+  const advice = recommend(packet);
+  const active = period(advice.defaultView, 'this-pay-period');
+  const groceries = budgetRow(active, 'groceries');
+  const other = otherRow(active);
+  const ids = reconIds(active);
+  ok(groceries && near(groceries.spent, GROCERY_INDEPENDENT)
+      && near(reconSum(groceries), GROCERY_INDEPENDENT)
+      && (groceries.recon || []).some(row => row && row.id === 'tx-walmart')
+      && (groceries.recon || []).some(row => row && row.id === 'tx-meridian'),
+    'eligible household Walmart and Meridian Farm still enter Groceries recon');
+  ok(!ids.includes('tx-walmart-business') && !ids.includes('tx-meridian-business'),
+    'Business Walmart and Business Meridian Farm appear in no Household Budget recon row');
+  ok(!(groceries.recon || []).some(row => row && (row.id === 'tx-walmart-business' || row.id === 'tx-meridian-business'))
+      && !(other && (other.recon || []).some(row => row && (row.id === 'tx-walmart-business' || row.id === 'tx-meridian-business'))),
+    'Business grocery merchants are in neither Groceries nor Other spending');
+  ok(near(householdSpent(active), SPENT_WITHOUT_BILL)
+      && !near(householdSpent(active), roundCent(SPENT_WITHOUT_BILL + EXCLUDED_BUSINESS_INDEPENDENT)),
+    'Household Budget Spent stays $68.11; excluded $36.18 does not leak into spent');
 }
 
 if (failures) {
