@@ -211,6 +211,18 @@ function amazonTx(extra) {
     originalMerchant: 'Amazon',
   }, extra || {});
 }
+function amazonPrimeTx(extra) {
+  return Object.assign({
+    id: 'tx-amazon-prime',
+    date: '2026-08-31',
+    amount: 9.99,
+    pending: false,
+    categoryLabel: 'Shopping',
+    accountRole: 'revolving-credit',
+    displayedPayee: 'Amazon Prime',
+    originalMerchant: 'Amazon Prime',
+  }, extra || {});
+}
 
 function recommend(packet, extraPlan, extraOpts) {
   const plan = Object.assign(syntheticPlan(), extraPlan || {});
@@ -653,7 +665,7 @@ console.log('\n=== 9. excluded Business Walmart / Meridian Farm stay out of Hous
     'Household Budget Spent stays $68.11; excluded $36.18 does not leak into spent');
 }
 
-console.log('\n=== 10. owner-approved bill labels and Travel Visa Amazon ===');
+console.log('\n=== 10. owner-approved bill labels and Amazon owner-card shopping ===');
 {
   const forecastSrc = sourceText(fs.readFileSync(path.join(__dirname, '..', 'public/forecast.js'), 'utf8'));
   const billSetStart = forecastSrc.indexOf('const BILL_CATEGORY_LABELS = new Set([');
@@ -693,6 +705,15 @@ console.log('\n=== 10. owner-approved bill labels and Travel Visa Amazon ===');
     displayedPayee: 'AMZN Mktp CA', originalMerchant: 'AMZN Mktp CA',
     atlasAccountId: 'travelvisa', account: 'TRAVEL VISA',
   });
+  const amazonMbna = amazonTx({
+    id: 'tx-amazon-mbna',
+    atlasAccountId: 'mbna', account: 'mana',
+  });
+  const amazonTriangle = amazonTx({
+    id: 'tx-amazon-triangle',
+    displayedPayee: 'AMZN Mktp CA', originalMerchant: 'AMZN Mktp CA',
+    atlasAccountId: 'triangle', account: 'TRIANGLE MASTERCARD',
+  });
   const amazonCashback = amazonTx({
     id: 'tx-amazon-cashback',
     atlasAccountId: 'cashback', account: 'CASH BACK VISA',
@@ -705,25 +726,85 @@ console.log('\n=== 10. owner-approved bill labels and Travel Visa Amazon ===');
   const travelCls = F.classifyCurrentPeriodTransaction(amazonTravel, plan);
   const travelCaCls = F.classifyCurrentPeriodTransaction(amazonCaTravel, plan);
   const travelAmznCls = F.classifyCurrentPeriodTransaction(amznTravel, plan);
+  const mbnaCls = F.classifyCurrentPeriodTransaction(amazonMbna, plan);
+  const triangleCls = F.classifyCurrentPeriodTransaction(amazonTriangle, plan);
   const cashbackCls = F.classifyCurrentPeriodTransaction(amazonCashback, plan);
   const weeklyCls = F.classifyCurrentPeriodTransaction(amazonWeekly, plan);
   const travelFlags = F.classifyCurrentPeriodTransaction.derivedFlags(amazonTravel);
+  const mbnaFlags = F.classifyCurrentPeriodTransaction.derivedFlags(amazonMbna);
   const cashbackFlags = F.classifyCurrentPeriodTransaction.derivedFlags(amazonCashback);
   const weeklyFlags = F.classifyCurrentPeriodTransaction.derivedFlags(amazonWeekly);
   ok(travelCls.kind === 'spend' && travelCls.categoryId === 'amanda-guilt-free'
       && travelCls.householdSpending === true && travelCls.needsConfirmation !== true
       && travelCls.reason !== 'personal-unassigned' && travelFlags.personalOwner === 'amanda',
-    'Amazon on travelvisa is Amanda guilt-free, not Other',
+    'Amazon shopping on travelvisa is Amanda guilt-free, not Other',
     JSON.stringify(travelCls));
   ok(travelCaCls.categoryId === 'amanda-guilt-free' && travelAmznCls.categoryId === 'amanda-guilt-free',
-    'Amazon.ca and AMZN on travelvisa are Amanda guilt-free');
+    'Amazon.ca and AMZN shopping on travelvisa are Amanda guilt-free');
+  ok(mbnaCls.kind === 'spend' && mbnaCls.categoryId === 'amanda-guilt-free'
+      && mbnaCls.needsConfirmation !== true && mbnaFlags.personalOwner === 'amanda',
+    'Amazon purchase on MBNA / mana is Amanda guilt-free',
+    JSON.stringify(mbnaCls));
+  ok(triangleCls.kind === 'spend' && triangleCls.categoryId === 'amanda-guilt-free'
+      && triangleCls.needsConfirmation !== true,
+    'AMZN purchase on Triangle Mastercard is Amanda guilt-free',
+    JSON.stringify(triangleCls));
   ok(cashbackCls.reason === 'personal-unassigned' && cashbackCls.categoryId !== 'amanda-guilt-free'
       && cashbackFlags.personalOwner == null,
-    'Amazon on a non-Travel-Visa account does not gain Amanda from this rule',
+    'Amazon on Cash Back Visa does not gain Amanda from this rule',
     JSON.stringify(cashbackCls));
   ok(weeklyCls.reason === 'personal-unassigned' && weeklyCls.categoryId !== 'dale-guilt-free'
       && weeklyCls.categoryId !== 'amanda-guilt-free' && weeklyFlags.personalOwner == null,
     'Amazon on WEEKLY SPENDING / chequing-b is not Dale or Amanda from this rule');
+
+  const mbnaPayment = {
+    id: 'tx-mbna-payment', date: '2026-08-31', amount: 40,
+    kindHint: 'payment', categoryLabel: 'Credit Card Payment',
+    displayedPayee: 'PAYMENT THANK YOU', originalMerchant: 'PAYMENT THANK YOU',
+    atlasAccountId: 'mbna', account: 'mana', accountRole: 'revolving-credit',
+  };
+  const paymentCls = F.classifyCurrentPeriodTransaction(mbnaPayment, plan);
+  const paymentFlags = F.classifyCurrentPeriodTransaction.derivedFlags(mbnaPayment);
+  ok(paymentCls.kind === 'card-payment' && paymentCls.householdSpending === false
+      && paymentCls.categoryId !== 'amanda-guilt-free'
+      && paymentFlags.personalOwner !== 'amanda',
+    'payment to MBNA / mana is card-payment, not Amanda spend or Other',
+    JSON.stringify(paymentCls));
+
+  const primeTravel = amazonPrimeTx({ atlasAccountId: 'travelvisa', account: 'TRAVEL VISA' });
+  const primeCaTravel = amazonPrimeTx({
+    id: 'tx-prime-ca',
+    displayedPayee: 'Amazon.ca Prime', originalMerchant: 'Amazon.ca Prime',
+    atlasAccountId: 'travelvisa', account: 'TRAVEL VISA',
+  });
+  const primeVideoMbna = amazonPrimeTx({
+    id: 'tx-prime-video',
+    displayedPayee: 'Amazon Prime Video', originalMerchant: 'Amazon Prime Video',
+    atlasAccountId: 'mbna', account: 'mana',
+  });
+  const primeTriangle = amazonPrimeTx({
+    id: 'tx-prime-triangle',
+    displayedPayee: 'Amazon Prime', originalMerchant: 'Amazon Prime',
+    atlasAccountId: 'triangle', account: 'TRIANGLE MASTERCARD',
+  });
+  const primeTravelCls = F.classifyCurrentPeriodTransaction(primeTravel, plan);
+  const primeCaCls = F.classifyCurrentPeriodTransaction(primeCaTravel, plan);
+  const primeVideoCls = F.classifyCurrentPeriodTransaction(primeVideoMbna, plan);
+  const primeTriangleCls = F.classifyCurrentPeriodTransaction(primeTriangle, plan);
+  const primeTravelFlags = F.classifyCurrentPeriodTransaction.derivedFlags(primeTravel);
+  ok(primeTravelCls.kind === 'bill' && primeTravelCls.categoryId === 'subscriptions'
+      && primeTravelCls.householdSpending === false
+      && primeTravelCls.reason === 'amazon-prime-bill'
+      && primeTravelFlags.personalOwner !== 'amanda',
+    'Amazon Prime on travelvisa is a subscription bill, not Amanda',
+    JSON.stringify(primeTravelCls));
+  ok(primeCaCls.kind === 'bill' && primeCaCls.householdSpending === false,
+    'Amazon.ca Prime on travelvisa is a subscription bill');
+  ok(primeVideoCls.kind === 'bill' && primeVideoCls.householdSpending === false
+      && primeVideoCls.categoryId !== 'amanda-guilt-free',
+    'Amazon Prime Video on MBNA / mana is a subscription bill, not Amanda');
+  ok(primeTriangleCls.kind === 'bill' && primeTriangleCls.householdSpending === false,
+    'Amazon Prime on Triangle is a subscription bill, not Amanda');
 
   const interestCls = F.classifyCurrentPeriodTransaction({
     date: '2026-08-31', amount: 5, categoryLabel: 'Interest charge',
@@ -767,18 +848,26 @@ console.log('\n=== 10. owner-approved bill labels and Travel Visa Amazon ===');
       && !near(householdSpent(billPeriod), roundCent(OTHER_AMT + NATURAL_GAS_AMT + BANK_FEE_AMT)),
     'Household Budget Spent stays the $7.50 residual; $29.50 of bills does not leak');
 
-  const amazonPacket = actualsPacket([amazonTravel, amazonCashback, otherTx()]);
+  const amazonPacket = actualsPacket([
+    amazonTravel, amazonMbna, amazonCashback, primeTravel, mbnaPayment, otherTx(),
+  ]);
   const amazonAdvice = recommend(amazonPacket);
   const amazonPeriod = period(amazonAdvice.defaultView, 'this-pay-period');
   const amanda = budgetRow(amazonPeriod, 'amanda-guilt-free');
   const amazonOther = otherRow(amazonPeriod);
+  const amazonIds = reconIds(amazonPeriod);
   ok(amanda && (amanda.recon || []).some(row => row && row.id === 'tx-amazon')
-      && near(amanda.spent, AMAZON_AMT) && near(reconSum(amanda), AMAZON_AMT),
-    'Travel Visa Amazon enters Amanda guilt-free recon');
+      && (amanda.recon || []).some(row => row && row.id === 'tx-amazon-mbna')
+      && near(amanda.spent, roundCent(AMAZON_AMT + AMAZON_AMT))
+      && near(reconSum(amanda), roundCent(AMAZON_AMT + AMAZON_AMT)),
+    'Travel Visa and MBNA Amazon purchases enter Amanda guilt-free recon');
   ok(amazonOther && (amazonOther.recon || []).some(row => row && row.id === 'tx-amazon-cashback')
-      && !(amazonOther.recon || []).some(row => row && row.id === 'tx-amazon')
+      && !(amazonOther.recon || []).some(row => row && (row.id === 'tx-amazon' || row.id === 'tx-amazon-mbna'
+        || row.id === 'tx-amazon-prime' || row.id === 'tx-mbna-payment'))
       && near(amazonOther.spent, roundCent(AMAZON_AMT + OTHER_AMT)),
-    'non-Travel-Visa Amazon stays Other; Travel Visa Amazon does not');
+    'Cash Back Amazon stays Other; owner-card shopping, Prime, and card payment do not');
+  ok(!amazonIds.includes('tx-amazon-prime') && !amazonIds.includes('tx-mbna-payment'),
+    'Prime bill and MBNA payment appear in no Household Budget recon row');
 }
 
 if (failures) {

@@ -2280,10 +2280,24 @@
     return CANADIAN_TIRE_RE.test(txTextBlob(tx));
   }
 
-  // Owner-named Amazon identity only: Amazon / Amazon.ca / AMZN.
-  // Not Amazon Channels and not a second categorizer.
+  // Owner-named Amazon shopping identity only: Amazon / Amazon.ca / AMZN.
+  // Amazon Prime / Amazon.ca Prime / Amazon Prime Video are subscription
+  // bills, not shopping. Not Amazon Channels and not a second categorizer.
+  function amazonMerchantKey(tx) {
+    return normalizeMerchantKey(txMerchantExact(tx));
+  }
+
+  function isAmazonPrimeMerchant(tx) {
+    const key = amazonMerchantKey(tx);
+    if (!key) return false;
+    if (key === 'AMAZON PRIME' || key.startsWith('AMAZON PRIME ')) return true;
+    if (key === 'AMAZON CA PRIME' || key.startsWith('AMAZON CA PRIME ')) return true;
+    return key === 'AMAZONCA PRIME' || key.startsWith('AMAZONCA PRIME ');
+  }
+
   function isAmazonMerchant(tx) {
-    const key = normalizeMerchantKey(txMerchantExact(tx));
+    if (isAmazonPrimeMerchant(tx)) return false;
+    const key = amazonMerchantKey(tx);
     if (!key) return false;
     if (key === 'AMAZON' || key === 'AMAZON CA' || key === 'AMAZONCA'
         || key.startsWith('AMAZON CA ')) {
@@ -2395,10 +2409,19 @@
         reason: 'bill-label', includeReason: 'bill-label',
       };
     }
-    // Owner rule 2026-09-02: every Amazon charge on Travel Visa is
-    // Amanda guilt-free. Same classifier; not a second categorizer.
+    // Owner-named Prime payees are a subscription bill on any card,
+    // including Travel Visa and Triangle/MBNA. Not Amanda spend.
+    if (isAmazonPrimeMerchant(tx)) {
+      return {
+        kind: 'bill', categoryId: 'subscriptions', householdSpending: false,
+        reason: 'amazon-prime-bill', includeReason: 'amazon-prime-bill',
+      };
+    }
+    // Owner rule 2026-09-02: Amazon shopping on Travel Visa or Amazon
+    // MBNA / Triangle ("mana") is Amanda guilt-free. Payments to those
+    // cards already returned as card-payment / transfer above.
     // Incumbent plan.budget.excluded / Business still wins.
-    if (isAmazonMerchant(tx) && isTravelVisaAccount(personalAccountText(tx))) {
+    if (isAmazonMerchant(tx) && isAmandaAmazonShoppingAccount(personalAccountText(tx))) {
       const amazonExcluded = ((plan && plan.budget && plan.budget.excluded) || []);
       for (const row of amazonExcluded) {
         const from = normalizeCategoryLabel(row && (row.from || row.label));
@@ -2406,7 +2429,7 @@
           return { kind: 'business', categoryId: null, householdSpending: false, reason: 'excluded' };
         }
       }
-      return spendResult('amanda-guilt-free', 'amazon-travelvisa');
+      return spendResult('amanda-guilt-free', 'amazon-owner-card');
     }
     if (isDogFoodMerchant(tx)) {
       return spendResult('pets', 'dog-food-merchant');
@@ -4097,10 +4120,25 @@
     return /travelvisa|travel\s*visa/i.test(text || '');
   }
 
+  // Amazon MBNA / Triangle Mastercard. Owner nickname "mana".
+  // Not Travel Visa and not Cash Back.
+  function isAmazonMbnaOrTriangleAccount(text) {
+    const t = text || '';
+    if (/\bmana\b/i.test(t)) return true;
+    if (/\bmbna\b/i.test(t)) return true;
+    if (/\btriangle\b/i.test(t)) return true;
+    return false;
+  }
+
+  function isAmandaAmazonShoppingAccount(text) {
+    return isTravelVisaAccount(text) || isAmazonMbnaOrTriangleAccount(text);
+  }
+
   // Map a personal/shopping tx to Dale or Amanda only with account, payee,
   // note, or tag evidence. Chequing B / WEEKLY SPENDING is not Dale.
   // TENNIS INCOME / amanda-debt-payments is not guilt-free spending.
-  // Amazon on Travel Visa is Amanda (owner rule 2026-09-02).
+  // Amazon shopping on Travel Visa or Amazon MBNA / Triangle is Amanda.
+  // Prime is a subscription bill, not owner evidence.
   // No evidence, or both names, fails closed to unassigned.
   function personalSpendOwner(tx) {
     if (!tx) return null;
@@ -4110,7 +4148,9 @@
     }
     const accountText = personalAccountText(tx);
     if (isTennisIncomeAccount(accountText)) return 'excluded';
-    if (isTravelVisaAccount(accountText) && isAmazonMerchant(tx)) return 'amanda';
+    if (isAmandaAmazonShoppingAccount(accountText) && isAmazonMerchant(tx)) {
+      return 'amanda';
+    }
     const accountEvidence = isWeeklySpendingAccount(accountText) ? '' : accountText;
     const blob = [
       accountEvidence,
