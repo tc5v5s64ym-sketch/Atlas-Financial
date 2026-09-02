@@ -1026,10 +1026,38 @@ function rulePayeeExcludePatterns(rule) {
   return Array.from(new Set(values.map(value => String(value).trim()).filter(Boolean)));
 }
 
+function ruleOriginalNamePatterns(rule) {
+  const values = [].concat((rule && rule.originalNamePatterns) || [],
+    rule && rule.originalNamePattern ? [rule.originalNamePattern] : []);
+  return Array.from(new Set(values.map(value => String(value).trim()).filter(Boolean)));
+}
+
+function identityPayeeFields(tx) {
+  return [tx && tx.payee, tx && tx.displayedPayee];
+}
+
+function identityOriginalNameFields(tx) {
+  return [tx && tx.originalName, tx && tx.original_name, tx && tx.originalMerchant];
+}
+
+function anyIdentityFieldMatches(fields, pattern) {
+  return (fields || []).some(value => payeeMatches(value, pattern));
+}
+
 function payeeMatchesRule(tx, rule) {
   if (!tx || !rule) return false;
-  if (!rulePayeePatterns(rule).some(pattern => payeeMatches(tx.payee, pattern))) return false;
-  if (rulePayeeExcludePatterns(rule).some(pattern => payeeMatches(tx.payee, pattern))) {
+  const payeeFields = identityPayeeFields(tx);
+  const originalFields = identityOriginalNameFields(tx);
+  if (!rulePayeePatterns(rule).some(pattern => anyIdentityFieldMatches(payeeFields, pattern))) {
+    return false;
+  }
+  const originalPatterns = ruleOriginalNamePatterns(rule);
+  if (originalPatterns.length
+      && !originalPatterns.some(pattern => anyIdentityFieldMatches(originalFields, pattern))) {
+    return false;
+  }
+  if (rulePayeeExcludePatterns(rule).some(pattern =>
+    anyIdentityFieldMatches(payeeFields, pattern) || anyIdentityFieldMatches(originalFields, pattern))) {
     return false;
   }
   return true;
@@ -1095,7 +1123,9 @@ function ruleHasIdentity(rule) {
 
 function ruleMatchesTransactionIdentity(tx, rule) {
   if (!tx || !rule) return false;
-  if (rulePayeeExcludePatterns(rule).some(pattern => payeeMatches(tx.payee, pattern))) {
+  if (rulePayeeExcludePatterns(rule).some(pattern =>
+    anyIdentityFieldMatches(identityPayeeFields(tx), pattern)
+    || anyIdentityFieldMatches(identityOriginalNameFields(tx), pattern))) {
     return false;
   }
   if (rule.transactionKind === 'transfer') {
@@ -2543,6 +2573,55 @@ function directedSettlementMate(posted, pending) {
   return ids.includes(want);
 }
 
+function settlementAccountId(tx, opts) {
+  const mapping = opts && opts.accountMap
+    ? mappingFor(opts.accountMap, tx && tx.providerAccountId) : null;
+  return mapping && mapping.canonical && mapping.canonical.id
+    ? mapping.canonical.id
+    : (tx && (tx.atlasAccountId || tx.account || tx.providerAccountId));
+}
+
+// Owner-confirmed 2026-09-02: this exact pending+posted pair is one Travel
+// Visa Shopify purchase (live overlay tx-103 → tx-113). Not a merchant-digit
+// heuristic and not a general date+account+amount+merchant rule.
+const OWNER_CONFIRMED_SHOPIFY_SETTLEMENT = Object.freeze({
+  date: '2026-08-31',
+  amount: '54.88',
+  originalMerchant: 'SHOPIFY INC/578523914',
+});
+
+function isTravelVisaAccount(accountId) {
+  if (accountId == null || accountId === '') return false;
+  return String(accountId).trim().toLowerCase().replace(/[\s_-]+/g, '') === 'travelvisa';
+}
+
+function ownerConfirmedShopifyMerchant(tx) {
+  if (!tx) return false;
+  const want = OWNER_CONFIRMED_SHOPIFY_SETTLEMENT.originalMerchant;
+  return [tx.originalMerchant, tx.originalName, tx.original_name]
+    .some(v => v === want);
+}
+
+function matchesOwnerConfirmedShopifySettlement(tx, accountId) {
+  if (!tx || tx.date !== OWNER_CONFIRMED_SHOPIFY_SETTLEMENT.date) return false;
+  if (!isTravelVisaAccount(accountId)) return false;
+  if (!ownerConfirmedShopifyMerchant(tx)) return false;
+  const amt = lunchMoneyDebitAmount(tx.amount);
+  return amt != null && Number(amt).toFixed(2) === OWNER_CONFIRMED_SHOPIFY_SETTLEMENT.amount;
+}
+
+function collapseOwnerConfirmedShopifySettlement(pending, posted, drop, opts) {
+  const confirmedPending = pending.filter(tx =>
+    !drop.has(tx) && matchesOwnerConfirmedShopifySettlement(tx, settlementAccountId(tx, opts)));
+  const confirmedPosted = posted.filter(tx =>
+    !drop.has(tx) && matchesOwnerConfirmedShopifySettlement(tx, settlementAccountId(tx, opts)));
+  // Exactly one unresolved pending and one confirmed-settled posted of this
+  // identity. Two such 4-tuples stay uncollapsed — that would be a general rule.
+  if (confirmedPending.length === 1 && confirmedPosted.length === 1) {
+    drop.add(confirmedPending[0]);
+  }
+}
+
 function collapsePendingPostedBySettlementIdentity(transactions, asOf, opts) {
   const list = (transactions || []).filter(tx => tx && tx.date);
   if (list.length < 2) return list;
@@ -2557,19 +2636,11 @@ function collapsePendingPostedBySettlementIdentity(transactions, asOf, opts) {
   if (!pending.length || !posted.length) return list;
   const drop = new Set();
   for (const pend of pending) {
-    const mapping = opts && opts.accountMap
-      ? mappingFor(opts.accountMap, pend.providerAccountId) : null;
-    const accountId = mapping && mapping.canonical && mapping.canonical.id
-      ? mapping.canonical.id
-      : (pend.atlasAccountId || pend.account || pend.providerAccountId);
+    const accountId = settlementAccountId(pend, opts);
     const amount = lunchMoneyDebitAmount(pend.amount);
     const mate = posted.some(post => {
       if (drop.has(post)) return false;
-      const postMap = opts && opts.accountMap
-        ? mappingFor(opts.accountMap, post.providerAccountId) : null;
-      const postAccount = postMap && postMap.canonical && postMap.canonical.id
-        ? postMap.canonical.id
-        : (post.atlasAccountId || post.account || post.providerAccountId);
+      const postAccount = settlementAccountId(post, opts);
       if (accountId != null && postAccount != null && String(accountId) !== String(postAccount)) {
         return false;
       }
@@ -2581,8 +2652,48 @@ function collapsePendingPostedBySettlementIdentity(transactions, asOf, opts) {
     });
     if (mate) drop.add(pend);
   }
-  if (!drop.size) return list;
-  return list.filter(tx => !drop.has(tx));
+  collapseOwnerConfirmedShopifySettlement(pending, posted, drop, opts);
+  const remaining = drop.size ? list.filter(tx => !drop.has(tx)) : list;
+  flagUnresolvedPendingPostedDuplicates(remaining, asOf, opts);
+  return remaining;
+}
+
+function pendingPostedSurfaceKey(tx, opts) {
+  const accountId = settlementAccountId(tx, opts);
+  const amount = lunchMoneyDebitAmount(tx && tx.amount);
+  const merchant = [tx && tx.originalMerchant, tx && tx.originalName, tx && tx.original_name]
+    .find(v => v != null && String(v).trim() !== '');
+  if (!tx || !tx.date || accountId == null || accountId === '' || amount == null || !merchant) {
+    return null;
+  }
+  return [tx.date, String(accountId), Number(amount).toFixed(2), String(merchant)].join('|');
+}
+
+function flagUnresolvedPendingPostedDuplicates(transactions, asOf, opts) {
+  const treat = tx => pendingForecastTreatment(tx, asOf, opts);
+  const pendingByKey = new Map();
+  const postedByKey = new Map();
+  for (const tx of transactions || []) {
+    if (!tx) continue;
+    const key = pendingPostedSurfaceKey(tx, opts);
+    if (!key) continue;
+    const treatment = treat(tx);
+    if (tx.pending === true && treatment.treatment === 'unresolved') {
+      const list = pendingByKey.get(key) || [];
+      list.push(tx);
+      pendingByKey.set(key, list);
+    } else if (tx.pending !== true && treatment.treatment === 'confirmed-settled') {
+      const list = postedByKey.get(key) || [];
+      list.push(tx);
+      postedByKey.set(key, list);
+    }
+  }
+  for (const [key, pendings] of pendingByKey) {
+    const posted = postedByKey.get(key) || [];
+    if (pendings.length !== 1 || posted.length !== 1) continue;
+    pendings[0].pendingPostedDuplicate = true;
+    posted[0].pendingPostedDuplicate = true;
+  }
 }
 
 function sanitizedCurrentPeriodActuals(report, opts) {
@@ -2680,6 +2791,7 @@ function sanitizedCurrentPeriodActuals(report, opts) {
       personalOwner,
       isGroup: tx.isGroup === true,
       parentId: localIdFor(tx.parentId),
+      pendingPostedDuplicate: tx.pendingPostedDuplicate === true,
     });
   }
   const representedActuals = [];

@@ -494,10 +494,11 @@ console.log('\n=== 7. provider identity uniquely links Google storage; amount is
   const map = load('docs/connectivity/fixtures/provider-account-map.json');
   const data = load('data.json');
   const rule = (identity.rules || []).find(r => r && r.eventId === 'google-storage-100gb');
-  ok(rule && rule.atlasAccountId === 'chequing-a' && rule.direction === 'debit'
+  ok(rule && rule.atlasAccountId === 'chequing-b' && rule.direction === 'debit'
       && (rule.payeePatterns || []).includes('Google')
+      && (rule.originalNamePatterns || []).includes('SERVICE _V')
       && !rule.settlesWhen,
-    'Google storage identity is payee + BILLS + debit + date; amount is not identity');
+    'Google storage identity is payee + Chequing B + original SERVICE _V + date; amount is not identity');
   const payload = {
     provider: 'lunchmoney',
     fetchedAt: '2026-09-01T18:00:00.000Z',
@@ -508,22 +509,31 @@ console.log('\n=== 7. provider identity uniquely links Google storage; amount is
     pendingCoverage: {
       complete: true, basis: O.PENDING_COVERAGE_BASIS, hasMore: false, truncated: false,
     },
-    accounts: [{
-      id: 1001, name: 'Fixture Chequing A', type: 'cash', balance: 1000,
-      updated_at: '2026-09-01T17:55:00.000Z',
-    }],
+    accounts: [
+      {
+        id: 1001, name: 'Fixture Chequing A', type: 'cash', balance: 1000,
+        updated_at: '2026-09-01T17:55:00.000Z',
+      },
+      {
+        id: 1002, name: 'Fixture Chequing B', type: 'cash', balance: 400,
+        updated_at: '2026-09-01T17:55:00.000Z',
+      },
+    ],
     categories: [
       { id: 11, name: 'Shopping', is_income: false, exclude_from_totals: false },
       { id: 22, name: 'Groceries', is_income: false, exclude_from_totals: false },
+      { id: 33, name: 'Pets', is_income: false, exclude_from_totals: false },
     ],
     transactions: [
       {
-        id: 3101, account_id: 1001, date: '2026-08-31', amount: GOOGLE_AMT,
-        is_pending: false, payee: 'Google', category_id: 11,
+        id: 83, account_id: 1002, date: '2026-08-31', amount: GOOGLE_AMT,
+        is_pending: false, payee: 'Google', original_name: 'SERVICE _V',
+        category_id: 33,
       },
       {
-        id: 3102, account_id: 1001, date: '2026-08-31', amount: GOOGLE_AMT,
-        is_pending: false, payee: 'UNRELATED DEBIT', category_id: 11,
+        id: 3102, account_id: 1002, date: '2026-08-31', amount: GOOGLE_AMT,
+        is_pending: false, payee: 'UNRELATED DEBIT', original_name: 'UNRELATED DEBIT',
+        category_id: 11,
       },
     ],
   };
@@ -533,8 +543,9 @@ console.log('\n=== 7. provider identity uniquely links Google storage; amount is
   const candidates = report.representedEventCandidates || [];
   const googleHit = candidates.find(c => c.id === 'google-storage-100gb' && c.date === '2026-08-31');
   ok(googleHit && googleHit.amountNotUsed === true && googleHit.direction === 'debit'
-      && googleHit.providerTransactionId != null,
-    'unique Google payee on Chequing A settles the Aug 31 occurrence',
+      && googleHit.providerTransactionId != null
+      && googleHit.atlasAccountId === 'chequing-b',
+    'unique Google / SERVICE _V debit on Chequing B settles the Aug 31 occurrence',
     JSON.stringify(candidates));
   const packet = report.currentPeriodActuals;
   ok(packet && O.currentPeriodActualsLooksSanitized(packet),
@@ -555,21 +566,61 @@ console.log('\n=== 7. provider identity uniquely links Google storage; amount is
   const decoyCls = F.classifyCurrentPeriodTransaction(decoyTx, data.plan, {
     currentPeriodActuals: packet,
   });
-  ok(billCls.kind === 'bill' && billCls.householdSpending === false,
-    'observe-linked Google tx classifies as bill');
+  ok(billCls.kind === 'bill' && billCls.householdSpending === false
+      && billCls.reason === 'represented-bill'
+      && billCls.reason !== 'pets-not-dog-food',
+    'observe-linked Google / SERVICE _V on Chequing B classifies as represented bill, not Pets',
+    JSON.stringify(billCls));
   ok(decoyCls.kind !== 'bill' || decoyCls.reason !== 'represented-bill',
     'decoy does not inherit bill classification from date+amount');
+  const observeAdvice = recommend(packet, {
+    opening: {
+      asOf: AS_OF,
+      priorAsOf: '2026-08-28',
+      representedEvents: [{ id: 'google-storage-100gb', date: '2026-08-31' }],
+    },
+  });
+  const observePeriod = period(observeAdvice.defaultView, 'this-pay-period');
+  const observeOther = otherRow(observePeriod);
+  const observeIds = reconIds(observePeriod);
+  ok(!(observeOther && (observeOther.recon || []).some(row => row && row.id === billTx.id))
+      && !observeIds.includes(billTx.id),
+    'represented Google storage debit does not enter Other or Household Budget spend');
 
   const amountOnly = JSON.parse(JSON.stringify(payload));
   amountOnly.transactions = [{
-    id: 3103, account_id: 1001, date: '2026-08-31', amount: GOOGLE_AMT,
-    is_pending: false, payee: 'UNKNOWN DEBIT',
+    id: 3103, account_id: 1002, date: '2026-08-31', amount: GOOGLE_AMT,
+    is_pending: false, payee: 'UNKNOWN DEBIT', original_name: 'UNKNOWN DEBIT',
   }];
   const rejected = O.observe({
     provider: 'lunchmoney', payload: amountOnly, accountMap: map, data, identity,
   });
   ok(!(rejected.representedEventCandidates || []).some(c => c.id === 'google-storage-100gb'),
     'date + $3.13 without the Google payee does not settle the bill');
+
+  const chequingA = JSON.parse(JSON.stringify(payload));
+  chequingA.transactions = [{
+    id: 3104, account_id: 1001, date: '2026-08-31', amount: GOOGLE_AMT,
+    is_pending: false, payee: 'Google', original_name: 'SERVICE _V',
+    category_id: 33,
+  }];
+  const wrongAccount = O.observe({
+    provider: 'lunchmoney', payload: chequingA, accountMap: map, data, identity,
+  });
+  ok(!(wrongAccount.representedEventCandidates || []).some(c => c.id === 'google-storage-100gb'),
+    'same Google / SERVICE _V debit on Chequing A does not settle the bill');
+
+  const noOriginal = JSON.parse(JSON.stringify(payload));
+  noOriginal.transactions = [{
+    id: 3105, account_id: 1002, date: '2026-08-31', amount: GOOGLE_AMT,
+    is_pending: false, payee: 'Google', original_name: 'Google',
+    category_id: 33,
+  }];
+  const wrongOriginal = O.observe({
+    provider: 'lunchmoney', payload: noOriginal, accountMap: map, data, identity,
+  });
+  ok(!(wrongOriginal.representedEventCandidates || []).some(c => c.id === 'google-storage-100gb'),
+    'Chequing B Google without original SERVICE _V does not settle the bill');
 }
 
 console.log('\n=== 8. Iron Butcher and Surrey Meat policy is unchanged ===');
@@ -678,17 +729,19 @@ console.log('\n=== 10. Natural Gas / Other bank fees are bills; Amazon/Prime fai
     'BILL_CATEGORY_LABELS source does not add Interest charge / Overdraft fees / Google Pets');
   ok(!/isAmazonPrimeMerchant|isAmazonMerchant|amazon-prime-bill|amazon-owner-card/.test(forecastSrc),
     'Forecast source does not infer Amanda or bill status from Amazon merchant + card');
-  ok(!/skipPendingPostedDuplicate|spendIdentityKey/.test(forecastSrc),
-    'Forecast source does not collapse pending+posted by date/account/amount/merchant');
+  ok(!/skipPendingPostedDuplicate|spendIdentityKey|skipDuplicatePending|pendingPostedDuplicatePending/.test(forecastSrc),
+    'Forecast source does not collapse or uncount pending+posted by date/account/amount/merchant');
 
   const PRIME_AMT = 9.99;
   const SHOPIFY_AMT = 54.88;
   const AMAZON_WITHOUT_OWNER = roundCent(AMAZON_AMT + AMAZON_AMT + PRIME_AMT);
   const DISTINCT_SAME_DAY = roundCent(SHOPIFY_AMT + SHOPIFY_AMT);
+  const SHOPIFY_ONCE_PLUS_OTHER = roundCent(SHOPIFY_AMT + OTHER_AMT);
   ok(near(NATURAL_GAS_AMT + BANK_FEE_AMT, 29.5)
       && near(AMAZON_WITHOUT_OWNER + OTHER_AMT, 45.49)
-      && near(DISTINCT_SAME_DAY + OTHER_AMT, 117.26),
-    'independent fixture arithmetic: bills $29.50; Amazon/Prime+Other $45.49; two Shopify $54.88+$54.88+$7.50=$117.26');
+      && near(DISTINCT_SAME_DAY + OTHER_AMT, 117.26)
+      && near(SHOPIFY_ONCE_PLUS_OTHER, 62.38),
+    'independent fixture arithmetic: bills $29.50; Amazon/Prime+Other $45.49; two Shopify $117.26; one Shopify $62.38');
 
   const plan = syntheticPlan();
   const gas = naturalGasTx();
@@ -796,9 +849,11 @@ console.log('\n=== 10. Natural Gas / Other bank fees are bills; Amazon/Prime fai
   ok(overdraftCls.kind !== 'bill' && overdraftCls.reason === 'unmapped-label'
       && overdraftCls.householdSpending === true,
     'Overdraft fees remains unmapped-label, not a bill');
-  ok(googlePetsCls.kind !== 'bill' && googlePetsCls.reason === 'pets-not-dog-food'
+  ok(googlePetsCls.kind !== 'bill'
+      && googlePetsCls.reason === 'payee-category-contradiction'
+      && googlePetsCls.needsConfirmation === true
       && googlePetsCls.householdSpending === true,
-    'Google Pets remains pets-not-dog-food, not a bill');
+    'Google + Pets is a payee/category contradiction, not silent Pets');
 
   const billPacket = actualsPacket([gas, fee, otherTx()]);
   const billAdvice = recommend(billPacket);
@@ -860,11 +915,16 @@ console.log('\n=== 10. Natural Gas / Other bank fees are bills; Amazon/Prime fai
   const distinctOther = otherRow(distinctPeriod);
   const distinctIds = ((distinctOther && distinctOther.recon) || [])
     .filter(row => row && row.id).map(row => row.id);
+  const shopifyDupRows = ((distinctOther && distinctOther.recon) || [])
+    .filter(row => row && (row.id === 'tx-shopify-pending' || row.id === 'tx-shopify-posted'));
   ok(distinctOther && distinctIds.includes('tx-shopify-pending')
       && distinctIds.includes('tx-shopify-posted') && distinctIds.includes('tx-other')
+      && shopifyDupRows.length === 2
+      && shopifyDupRows.every(row => row.pendingPostedDuplicate === true)
       && near(distinctOther.spent, roundCent(DISTINCT_SAME_DAY + OTHER_AMT))
-      && near(reconSum(distinctOther), roundCent(DISTINCT_SAME_DAY + OTHER_AMT)),
-    'two distinct same-day same-account same-merchant same-amount purchases, one pending and one posted, both remain counted');
+      && near(reconSum(distinctOther), roundCent(DISTINCT_SAME_DAY + OTHER_AMT))
+      && !near(distinctOther.spent, SHOPIFY_ONCE_PLUS_OTHER),
+    'Forecast-only pending+posted 4-tuple keeps both rows, flags possible duplicate, and still counts both in Spent');
 
   const map = {
     schema: 'atlas-provider-account-map/v1',
@@ -1034,7 +1094,56 @@ console.log('\n=== 10. Natural Gas / Other bank fees are bills; Amazon/Prime fai
     'pending→posted Shopify with explicit pendingTransactionId linkage counts once',
     JSON.stringify({ shopifyIds, spent: shopifyOther && shopifyOther.spent }));
 
-  const shopifyByRef = O.sanitizedCurrentPeriodActuals({
+  const observeSrc = sourceText(fs.readFileSync(path.join(__dirname, '..', 'scripts/provider-observe.js'), 'utf8'));
+  ok(observeSrc.includes('SHOPIFY INC/578523914'),
+    'observer names the owner-confirmed Shopify originalMerchant exactly');
+  ok(!/skipPendingPostedDuplicate|spendIdentityKey/.test(observeSrc),
+    'observer does not restore a general pending+posted 4-tuple identity key');
+
+  const shopifyByIdentity = O.sanitizedCurrentPeriodActuals({
+    fetchedAt: '2026-09-02T18:13:00.000Z',
+    transactionWindow: { startDate: '2026-08-28', endDate: '2026-09-02', complete: true },
+    pendingCoverage: {
+      complete: true, basis: O.PENDING_COVERAGE_BASIS, hasMore: false, truncated: false,
+    },
+    collapsedTransactions: [
+      {
+        date: '2026-08-31', amount: SHOPIFY_AMT, pending: true, categoryLabel: null,
+        payee: 'SHOPIFY INC/578523914', originalName: 'SHOPIFY INC/578523914',
+        providerAccountId: '3006', providerTransactionId: '103',
+      },
+      {
+        date: '2026-08-31', amount: SHOPIFY_AMT, pending: false, categoryLabel: null,
+        payee: 'SHOPIFY INC/578523914', originalName: 'SHOPIFY INC/578523914',
+        providerAccountId: '3006', providerTransactionId: '113',
+      },
+      {
+        date: '2026-08-31', amount: OTHER_AMT, pending: false, categoryLabel: 'Gifts',
+        payee: 'Gift Shop', originalName: 'Gift Shop',
+        providerAccountId: '1001', providerTransactionId: 'gift-identity',
+      },
+    ],
+    representedEventCandidates: [],
+  }, { asOf: AS_OF, plan, accountMap: map });
+  const identityTxs = shopifyByIdentity.transactions || [];
+  const identityShopify = identityTxs.filter(tx => near(tx.amount, SHOPIFY_AMT));
+  const identityPacket = actualsPacket(identityTxs);
+  const identityAdvice = recommend(identityPacket);
+  const identityPeriod = period(identityAdvice.defaultView, 'this-pay-period');
+  const identityOther = otherRow(identityPeriod);
+  ok(identityShopify.length === 1
+      && identityShopify[0].pending === false
+      && !identityTxs.some(tx => near(tx.amount, SHOPIFY_AMT) && tx.pending === true)
+      && identityOther && near(identityOther.spent, SHOPIFY_ONCE_PLUS_OTHER)
+      && near(reconSum(identityOther), SHOPIFY_ONCE_PLUS_OTHER)
+      && !near(identityOther.spent, roundCent(DISTINCT_SAME_DAY + OTHER_AMT)),
+    'owner-confirmed Shopify pending+posted pair without pendingTransactionId counts once',
+    JSON.stringify({
+      ids: identityShopify.map(tx => tx.id),
+      spent: identityOther && identityOther.spent,
+    }));
+
+  const otherShopify = O.sanitizedCurrentPeriodActuals({
     fetchedAt: '2026-09-02T18:13:00.000Z',
     transactionWindow: { startDate: '2026-08-28', endDate: '2026-09-02', complete: true },
     pendingCoverage: {
@@ -1043,23 +1152,87 @@ console.log('\n=== 10. Natural Gas / Other bank fees are bills; Amazon/Prime fai
     collapsedTransactions: [
       {
         date: '2026-08-31', amount: SHOPIFY_AMT, pending: true, categoryLabel: 'Shopping',
-        payee: 'SHOPIFY INC/578523914', originalName: 'SHOPIFY INC/578523914',
-        providerAccountId: '3006', providerTransactionId: 'shop-pend-ref',
+        payee: 'SHOPIFY INC/578523915', originalName: 'SHOPIFY INC/578523915',
+        providerAccountId: '3006', providerTransactionId: 'other-shop-pend',
       },
       {
         date: '2026-08-31', amount: SHOPIFY_AMT, pending: false, categoryLabel: 'Shopping',
-        payee: 'SHOPIFY INC/578523914', originalName: 'SHOPIFY INC/578523914',
-        providerAccountId: '3006', providerTransactionId: 'shop-post-ref',
+        payee: 'SHOPIFY INC/578523915', originalName: 'SHOPIFY INC/578523915',
+        providerAccountId: '3006', providerTransactionId: 'other-shop-post',
       },
     ],
     representedEventCandidates: [],
   }, { asOf: AS_OF, plan, accountMap: map });
-  const refTwins = (shopifyByRef.transactions || [])
+  const otherShopifyTwins = (otherShopify.transactions || [])
     .filter(tx => near(tx.amount, SHOPIFY_AMT));
-  ok(refTwins.length === 2
-      && refTwins.some(tx => tx.pending === true)
-      && refTwins.some(tx => tx.pending === false),
-    'Shopify original_name digits alone do not collapse pending+posted');
+  ok(otherShopifyTwins.length === 2
+      && otherShopifyTwins.some(tx => tx.pending === true)
+      && otherShopifyTwins.some(tx => tx.pending === false),
+    'a different Shopify originalMerchant still publishes both pending and posted');
+
+  const otherAmount = O.sanitizedCurrentPeriodActuals({
+    fetchedAt: '2026-09-02T18:13:00.000Z',
+    transactionWindow: { startDate: '2026-08-28', endDate: '2026-09-02', complete: true },
+    pendingCoverage: {
+      complete: true, basis: O.PENDING_COVERAGE_BASIS, hasMore: false, truncated: false,
+    },
+    collapsedTransactions: [
+      {
+        date: '2026-08-31', amount: 54.89, pending: true, categoryLabel: 'Shopping',
+        payee: 'SHOPIFY INC/578523914', originalName: 'SHOPIFY INC/578523914',
+        providerAccountId: '3006', providerTransactionId: 'amt-pend',
+      },
+      {
+        date: '2026-08-31', amount: 54.89, pending: false, categoryLabel: 'Shopping',
+        payee: 'SHOPIFY INC/578523914', originalName: 'SHOPIFY INC/578523914',
+        providerAccountId: '3006', providerTransactionId: 'amt-post',
+      },
+    ],
+    representedEventCandidates: [],
+  }, { asOf: AS_OF, plan, accountMap: map });
+  const otherAmountTwins = (otherAmount.transactions || [])
+    .filter(tx => near(tx.amount, 54.89));
+  ok(otherAmountTwins.length === 2
+      && otherAmountTwins.some(tx => tx.pending === true)
+      && otherAmountTwins.some(tx => tx.pending === false),
+    'the same Shopify merchant at a different amount still publishes both rows');
+
+  const twoExactPairs = O.sanitizedCurrentPeriodActuals({
+    fetchedAt: '2026-09-02T18:13:00.000Z',
+    transactionWindow: { startDate: '2026-08-28', endDate: '2026-09-02', complete: true },
+    pendingCoverage: {
+      complete: true, basis: O.PENDING_COVERAGE_BASIS, hasMore: false, truncated: false,
+    },
+    collapsedTransactions: [
+      {
+        date: '2026-08-31', amount: SHOPIFY_AMT, pending: true, categoryLabel: null,
+        payee: 'SHOPIFY INC/578523914', originalName: 'SHOPIFY INC/578523914',
+        providerAccountId: '3006', providerTransactionId: 'pair-a-pend',
+      },
+      {
+        date: '2026-08-31', amount: SHOPIFY_AMT, pending: false, categoryLabel: null,
+        payee: 'SHOPIFY INC/578523914', originalName: 'SHOPIFY INC/578523914',
+        providerAccountId: '3006', providerTransactionId: 'pair-a-post',
+      },
+      {
+        date: '2026-08-31', amount: SHOPIFY_AMT, pending: true, categoryLabel: null,
+        payee: 'SHOPIFY INC/578523914', originalName: 'SHOPIFY INC/578523914',
+        providerAccountId: '3006', providerTransactionId: 'pair-b-pend',
+      },
+      {
+        date: '2026-08-31', amount: SHOPIFY_AMT, pending: false, categoryLabel: null,
+        payee: 'SHOPIFY INC/578523914', originalName: 'SHOPIFY INC/578523914',
+        providerAccountId: '3006', providerTransactionId: 'pair-b-post',
+      },
+    ],
+    representedEventCandidates: [],
+  }, { asOf: AS_OF, plan, accountMap: map });
+  const twoPairTwins = (twoExactPairs.transactions || [])
+    .filter(tx => near(tx.amount, SHOPIFY_AMT));
+  ok(twoPairTwins.length === 4
+      && twoPairTwins.filter(tx => tx.pending === true).length === 2
+      && twoPairTwins.filter(tx => tx.pending === false).length === 2,
+    'two owner-confirmed 4-tuples stay uncollapsed; the exception is this one pair only');
 
   const digitTwin = O.sanitizedCurrentPeriodActuals({
     fetchedAt: '2026-09-02T18:13:00.000Z',
@@ -1086,6 +1259,17 @@ console.log('\n=== 10. Natural Gas / Other bank fees are bills; Amazon/Prime fai
       && digitTwins.some(tx => tx.pending === true)
       && digitTwins.some(tx => tx.pending === false),
     'two same-account same-amount purchases with the same digit-bearing original_name both survive without a directed settlement link');
+  const digitPacket = actualsPacket(digitTwin.transactions || []);
+  const digitAdvice = recommend(digitPacket);
+  const digitPeriod = period(digitAdvice.defaultView, 'this-pay-period');
+  const digitOther = otherRow(digitPeriod);
+  const digitRecon = ((digitOther && digitOther.recon) || [])
+    .filter(row => row && near(row.amount, 19.14));
+  ok(digitRecon.length === 2
+      && digitRecon.every(row => row.pendingPostedDuplicate === true)
+      && digitOther && near(digitOther.spent, 38.28)
+      && near(reconSum(digitOther), 38.28),
+    'digit-bearing same 4-tuple is possible-duplicate only; Spent still counts both $19.14 rows');
 
   const genericTwin = O.sanitizedCurrentPeriodActuals({
     fetchedAt: '2026-09-02T18:13:00.000Z',
@@ -1109,8 +1293,103 @@ console.log('\n=== 10. Natural Gas / Other bank fees are bills; Amazon/Prime fai
   }, { asOf: AS_OF, plan, accountMap: map });
   const genericTwins = (genericTwin.transactions || [])
     .filter(tx => near(tx.amount, 19.14));
-  ok(genericTwins.length === 2,
-    'date+account+amount+generic merchant alone does not collapse pending+posted');
+  ok(genericTwins.length === 2
+      && genericTwins.every(tx => tx.pendingPostedDuplicate === true)
+      && genericTwins.some(tx => tx.pending === true)
+      && genericTwins.some(tx => tx.pending === false),
+    'pending+posted without pendingTransactionId keeps both rows and surfaces a duplicate');
+  const genericPacket = actualsPacket(genericTwin.transactions || []);
+  const genericAdvice = recommend(genericPacket);
+  const genericPeriod = period(genericAdvice.defaultView, 'this-pay-period');
+  const genericOther = otherRow(genericPeriod);
+  const genericRecon = ((genericOther && genericOther.recon) || [])
+    .filter(row => row && near(row.amount, 19.14));
+  ok(genericRecon.length === 2
+      && genericRecon.every(row => row.pendingPostedDuplicate === true)
+      && genericRecon.some(row => row.pending === true)
+      && genericRecon.some(row => row.pending === false)
+      && genericOther && near(genericOther.spent, 38.28)
+      && near(reconSum(genericOther), 38.28)
+      && !near(genericOther.spent, 19.14),
+    'posted $19.14 + pending $19.14 same 4-tuple stay visible, flagged possible duplicate, and Spent remains $38.28');
+
+  const twoPosted = actualsPacket([
+    {
+      id: 'tx-posted-a', date: '2026-08-31', amount: 19.14,
+      pending: false, pendingTreatment: 'confirmed-settled', categoryLabel: 'Shopping',
+      accountRole: 'revolving-credit', atlasAccountId: 'travelvisa', account: 'travelvisa',
+      displayedPayee: 'STORE A', originalMerchant: 'STORE A',
+    },
+    {
+      id: 'tx-posted-b', date: '2026-08-31', amount: 19.14,
+      pending: false, pendingTreatment: 'confirmed-settled', categoryLabel: 'Shopping',
+      accountRole: 'revolving-credit', atlasAccountId: 'travelvisa', account: 'travelvisa',
+      displayedPayee: 'STORE B', originalMerchant: 'STORE B',
+    },
+  ]);
+  const twoPostedAdvice = recommend(twoPosted);
+  const twoPostedPeriod = period(twoPostedAdvice.defaultView, 'this-pay-period');
+  const twoPostedOther = otherRow(twoPostedPeriod);
+  const twoPostedIds = ((twoPostedOther && twoPostedOther.recon) || [])
+    .filter(row => row && row.id).map(row => row.id);
+  ok(twoPostedOther && twoPostedIds.includes('tx-posted-a')
+      && twoPostedIds.includes('tx-posted-b')
+      && near(twoPostedOther.spent, 38.28)
+      && !((twoPostedOther.recon || []).some(row => row && row.pendingPostedDuplicate === true)),
+    'two genuine posted same-amount purchases both count');
+
+  const googlePetsOverlay = O.sanitizedCurrentPeriodActuals({
+    fetchedAt: '2026-09-02T18:13:00.000Z',
+    transactionWindow: { startDate: '2026-08-28', endDate: '2026-09-02', complete: true },
+    pendingCoverage: {
+      complete: true, basis: O.PENDING_COVERAGE_BASIS, hasMore: false, truncated: false,
+    },
+    collapsedTransactions: [
+      {
+        date: '2026-08-31', amount: GOOGLE_AMT, pending: false, categoryLabel: 'Pets',
+        payee: 'Google', originalName: 'Google',
+        providerAccountId: '1001', providerTransactionId: 'google-pets-not-storage',
+      },
+    ],
+    representedEventCandidates: [],
+  }, { asOf: AS_OF, plan, accountMap: map });
+  const googlePetsTx = (googlePetsOverlay.transactions || [])
+    .find(tx => tx && near(tx.amount, GOOGLE_AMT));
+  const googlePetsOverlayCls = googlePetsTx
+    ? F.classifyCurrentPeriodTransaction(googlePetsTx, plan) : null;
+  ok(googlePetsTx && googlePetsOverlayCls
+      && googlePetsOverlayCls.kind !== 'bill'
+      && googlePetsOverlayCls.reason === 'payee-category-contradiction'
+      && googlePetsOverlayCls.needsConfirmation === true
+      && googlePetsOverlayCls.householdSpending === true,
+    'Google + Pets without storage identity is confirmation, not silent Pets/Other-as-Pets',
+    JSON.stringify(googlePetsOverlayCls));
+
+  const otherPetsOverlay = O.sanitizedCurrentPeriodActuals({
+    fetchedAt: '2026-09-02T18:13:00.000Z',
+    transactionWindow: { startDate: '2026-08-28', endDate: '2026-09-02', complete: true },
+    pendingCoverage: {
+      complete: true, basis: O.PENDING_COVERAGE_BASIS, hasMore: false, truncated: false,
+    },
+    collapsedTransactions: [
+      {
+        date: '2026-08-31', amount: 12, pending: false, categoryLabel: 'Pets',
+        payee: 'PET VALU', originalName: 'PET VALU',
+        providerAccountId: '1001', providerTransactionId: 'pets-other',
+      },
+    ],
+    representedEventCandidates: [],
+  }, { asOf: AS_OF, plan, accountMap: map });
+  const otherPetsTx = (otherPetsOverlay.transactions || [])
+    .find(tx => tx && near(tx.amount, 12));
+  const otherPetsCls = otherPetsTx
+    ? F.classifyCurrentPeriodTransaction(otherPetsTx, plan) : null;
+  ok(otherPetsTx && otherPetsCls
+      && otherPetsCls.kind !== 'bill'
+      && otherPetsCls.reason === 'pets-not-dog-food'
+      && otherPetsCls.householdSpending === true,
+    'other Pets txs stay pets-not-dog-food; no Pets mapping was invented',
+    JSON.stringify(otherPetsCls));
 }
 
 if (failures) {
