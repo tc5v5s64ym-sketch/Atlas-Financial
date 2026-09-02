@@ -1026,10 +1026,38 @@ function rulePayeeExcludePatterns(rule) {
   return Array.from(new Set(values.map(value => String(value).trim()).filter(Boolean)));
 }
 
+function ruleOriginalNamePatterns(rule) {
+  const values = [].concat((rule && rule.originalNamePatterns) || [],
+    rule && rule.originalNamePattern ? [rule.originalNamePattern] : []);
+  return Array.from(new Set(values.map(value => String(value).trim()).filter(Boolean)));
+}
+
+function identityPayeeFields(tx) {
+  return [tx && tx.payee, tx && tx.displayedPayee];
+}
+
+function identityOriginalNameFields(tx) {
+  return [tx && tx.originalName, tx && tx.original_name, tx && tx.originalMerchant];
+}
+
+function anyIdentityFieldMatches(fields, pattern) {
+  return (fields || []).some(value => payeeMatches(value, pattern));
+}
+
 function payeeMatchesRule(tx, rule) {
   if (!tx || !rule) return false;
-  if (!rulePayeePatterns(rule).some(pattern => payeeMatches(tx.payee, pattern))) return false;
-  if (rulePayeeExcludePatterns(rule).some(pattern => payeeMatches(tx.payee, pattern))) {
+  const payeeFields = identityPayeeFields(tx);
+  const originalFields = identityOriginalNameFields(tx);
+  if (!rulePayeePatterns(rule).some(pattern => anyIdentityFieldMatches(payeeFields, pattern))) {
+    return false;
+  }
+  const originalPatterns = ruleOriginalNamePatterns(rule);
+  if (originalPatterns.length
+      && !originalPatterns.some(pattern => anyIdentityFieldMatches(originalFields, pattern))) {
+    return false;
+  }
+  if (rulePayeeExcludePatterns(rule).some(pattern =>
+    anyIdentityFieldMatches(payeeFields, pattern) || anyIdentityFieldMatches(originalFields, pattern))) {
     return false;
   }
   return true;
@@ -1095,7 +1123,9 @@ function ruleHasIdentity(rule) {
 
 function ruleMatchesTransactionIdentity(tx, rule) {
   if (!tx || !rule) return false;
-  if (rulePayeeExcludePatterns(rule).some(pattern => payeeMatches(tx.payee, pattern))) {
+  if (rulePayeeExcludePatterns(rule).some(pattern =>
+    anyIdentityFieldMatches(identityPayeeFields(tx), pattern)
+    || anyIdentityFieldMatches(identityOriginalNameFields(tx), pattern))) {
     return false;
   }
   if (rule.transactionKind === 'transfer') {

@@ -494,10 +494,11 @@ console.log('\n=== 7. provider identity uniquely links Google storage; amount is
   const map = load('docs/connectivity/fixtures/provider-account-map.json');
   const data = load('data.json');
   const rule = (identity.rules || []).find(r => r && r.eventId === 'google-storage-100gb');
-  ok(rule && rule.atlasAccountId === 'chequing-a' && rule.direction === 'debit'
+  ok(rule && rule.atlasAccountId === 'chequing-b' && rule.direction === 'debit'
       && (rule.payeePatterns || []).includes('Google')
+      && (rule.originalNamePatterns || []).includes('SERVICE _V')
       && !rule.settlesWhen,
-    'Google storage identity is payee + BILLS + debit + date; amount is not identity');
+    'Google storage identity is payee + Chequing B + original SERVICE _V + date; amount is not identity');
   const payload = {
     provider: 'lunchmoney',
     fetchedAt: '2026-09-01T18:00:00.000Z',
@@ -508,22 +509,31 @@ console.log('\n=== 7. provider identity uniquely links Google storage; amount is
     pendingCoverage: {
       complete: true, basis: O.PENDING_COVERAGE_BASIS, hasMore: false, truncated: false,
     },
-    accounts: [{
-      id: 1001, name: 'Fixture Chequing A', type: 'cash', balance: 1000,
-      updated_at: '2026-09-01T17:55:00.000Z',
-    }],
+    accounts: [
+      {
+        id: 1001, name: 'Fixture Chequing A', type: 'cash', balance: 1000,
+        updated_at: '2026-09-01T17:55:00.000Z',
+      },
+      {
+        id: 1002, name: 'Fixture Chequing B', type: 'cash', balance: 400,
+        updated_at: '2026-09-01T17:55:00.000Z',
+      },
+    ],
     categories: [
       { id: 11, name: 'Shopping', is_income: false, exclude_from_totals: false },
       { id: 22, name: 'Groceries', is_income: false, exclude_from_totals: false },
+      { id: 33, name: 'Pets', is_income: false, exclude_from_totals: false },
     ],
     transactions: [
       {
-        id: 3101, account_id: 1001, date: '2026-08-31', amount: GOOGLE_AMT,
-        is_pending: false, payee: 'Google', category_id: 11,
+        id: 83, account_id: 1002, date: '2026-08-31', amount: GOOGLE_AMT,
+        is_pending: false, payee: 'Google', original_name: 'SERVICE _V',
+        category_id: 33,
       },
       {
-        id: 3102, account_id: 1001, date: '2026-08-31', amount: GOOGLE_AMT,
-        is_pending: false, payee: 'UNRELATED DEBIT', category_id: 11,
+        id: 3102, account_id: 1002, date: '2026-08-31', amount: GOOGLE_AMT,
+        is_pending: false, payee: 'UNRELATED DEBIT', original_name: 'UNRELATED DEBIT',
+        category_id: 11,
       },
     ],
   };
@@ -533,8 +543,9 @@ console.log('\n=== 7. provider identity uniquely links Google storage; amount is
   const candidates = report.representedEventCandidates || [];
   const googleHit = candidates.find(c => c.id === 'google-storage-100gb' && c.date === '2026-08-31');
   ok(googleHit && googleHit.amountNotUsed === true && googleHit.direction === 'debit'
-      && googleHit.providerTransactionId != null,
-    'unique Google payee on Chequing A settles the Aug 31 occurrence',
+      && googleHit.providerTransactionId != null
+      && googleHit.atlasAccountId === 'chequing-b',
+    'unique Google / SERVICE _V debit on Chequing B settles the Aug 31 occurrence',
     JSON.stringify(candidates));
   const packet = report.currentPeriodActuals;
   ok(packet && O.currentPeriodActualsLooksSanitized(packet),
@@ -555,21 +566,61 @@ console.log('\n=== 7. provider identity uniquely links Google storage; amount is
   const decoyCls = F.classifyCurrentPeriodTransaction(decoyTx, data.plan, {
     currentPeriodActuals: packet,
   });
-  ok(billCls.kind === 'bill' && billCls.householdSpending === false,
-    'observe-linked Google tx classifies as bill');
+  ok(billCls.kind === 'bill' && billCls.householdSpending === false
+      && billCls.reason === 'represented-bill'
+      && billCls.reason !== 'pets-not-dog-food',
+    'observe-linked Google / SERVICE _V on Chequing B classifies as represented bill, not Pets',
+    JSON.stringify(billCls));
   ok(decoyCls.kind !== 'bill' || decoyCls.reason !== 'represented-bill',
     'decoy does not inherit bill classification from date+amount');
+  const observeAdvice = recommend(packet, {
+    opening: {
+      asOf: AS_OF,
+      priorAsOf: '2026-08-28',
+      representedEvents: [{ id: 'google-storage-100gb', date: '2026-08-31' }],
+    },
+  });
+  const observePeriod = period(observeAdvice.defaultView, 'this-pay-period');
+  const observeOther = otherRow(observePeriod);
+  const observeIds = reconIds(observePeriod);
+  ok(!(observeOther && (observeOther.recon || []).some(row => row && row.id === billTx.id))
+      && !observeIds.includes(billTx.id),
+    'represented Google storage debit does not enter Other or Household Budget spend');
 
   const amountOnly = JSON.parse(JSON.stringify(payload));
   amountOnly.transactions = [{
-    id: 3103, account_id: 1001, date: '2026-08-31', amount: GOOGLE_AMT,
-    is_pending: false, payee: 'UNKNOWN DEBIT',
+    id: 3103, account_id: 1002, date: '2026-08-31', amount: GOOGLE_AMT,
+    is_pending: false, payee: 'UNKNOWN DEBIT', original_name: 'UNKNOWN DEBIT',
   }];
   const rejected = O.observe({
     provider: 'lunchmoney', payload: amountOnly, accountMap: map, data, identity,
   });
   ok(!(rejected.representedEventCandidates || []).some(c => c.id === 'google-storage-100gb'),
     'date + $3.13 without the Google payee does not settle the bill');
+
+  const chequingA = JSON.parse(JSON.stringify(payload));
+  chequingA.transactions = [{
+    id: 3104, account_id: 1001, date: '2026-08-31', amount: GOOGLE_AMT,
+    is_pending: false, payee: 'Google', original_name: 'SERVICE _V',
+    category_id: 33,
+  }];
+  const wrongAccount = O.observe({
+    provider: 'lunchmoney', payload: chequingA, accountMap: map, data, identity,
+  });
+  ok(!(wrongAccount.representedEventCandidates || []).some(c => c.id === 'google-storage-100gb'),
+    'same Google / SERVICE _V debit on Chequing A does not settle the bill');
+
+  const noOriginal = JSON.parse(JSON.stringify(payload));
+  noOriginal.transactions = [{
+    id: 3105, account_id: 1002, date: '2026-08-31', amount: GOOGLE_AMT,
+    is_pending: false, payee: 'Google', original_name: 'Google',
+    category_id: 33,
+  }];
+  const wrongOriginal = O.observe({
+    provider: 'lunchmoney', payload: noOriginal, accountMap: map, data, identity,
+  });
+  ok(!(wrongOriginal.representedEventCandidates || []).some(c => c.id === 'google-storage-100gb'),
+    'Chequing B Google without original SERVICE _V does not settle the bill');
 }
 
 console.log('\n=== 8. Iron Butcher and Surrey Meat policy is unchanged ===');
@@ -1240,7 +1291,7 @@ console.log('\n=== 10. Natural Gas / Other bank fees are bills; Amazon/Prime fai
       {
         date: '2026-08-31', amount: GOOGLE_AMT, pending: false, categoryLabel: 'Pets',
         payee: 'Google', originalName: 'Google',
-        providerAccountId: '1001', providerTransactionId: '83',
+        providerAccountId: '1001', providerTransactionId: 'google-pets-not-storage',
       },
     ],
     representedEventCandidates: [],
@@ -1253,8 +1304,34 @@ console.log('\n=== 10. Natural Gas / Other bank fees are bills; Amazon/Prime fai
       && googlePetsOverlayCls.kind !== 'bill'
       && googlePetsOverlayCls.reason === 'pets-not-dog-food'
       && googlePetsOverlayCls.householdSpending === true,
-    'Google Pets $3.13 overlay stays pets-not-dog-food, not google-storage-100gb',
+    'Google Pets without Chequing B SERVICE _V identity stays pets-not-dog-food',
     JSON.stringify(googlePetsOverlayCls));
+
+  const otherPetsOverlay = O.sanitizedCurrentPeriodActuals({
+    fetchedAt: '2026-09-02T18:13:00.000Z',
+    transactionWindow: { startDate: '2026-08-28', endDate: '2026-09-02', complete: true },
+    pendingCoverage: {
+      complete: true, basis: O.PENDING_COVERAGE_BASIS, hasMore: false, truncated: false,
+    },
+    collapsedTransactions: [
+      {
+        date: '2026-08-31', amount: 12, pending: false, categoryLabel: 'Pets',
+        payee: 'PET VALU', originalName: 'PET VALU',
+        providerAccountId: '1001', providerTransactionId: 'pets-other',
+      },
+    ],
+    representedEventCandidates: [],
+  }, { asOf: AS_OF, plan, accountMap: map });
+  const otherPetsTx = (otherPetsOverlay.transactions || [])
+    .find(tx => tx && near(tx.amount, 12));
+  const otherPetsCls = otherPetsTx
+    ? F.classifyCurrentPeriodTransaction(otherPetsTx, plan) : null;
+  ok(otherPetsTx && otherPetsCls
+      && otherPetsCls.kind !== 'bill'
+      && otherPetsCls.reason === 'pets-not-dog-food'
+      && otherPetsCls.householdSpending === true,
+    'other Pets txs stay pets-not-dog-food; no Pets mapping was invented',
+    JSON.stringify(otherPetsCls));
 }
 
 if (failures) {

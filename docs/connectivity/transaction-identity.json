@@ -172,6 +172,8 @@
       "eventId": "google-storage-100gb",
       "payeePattern": "Google",
       "payeePatterns": ["Google"],
+      "originalNamePattern": "SERVICE _V",
+      "originalNamePatterns": ["SERVICE _V"],
       "payeeExcludePatterns": [
         "YouTube",
         "Google TV",
@@ -179,9 +181,9 @@
         "GOOGLETSN",
         "Google Play"
       ],
-      "atlasAccountId": "chequing-a",
+      "atlasAccountId": "chequing-b",
       "direction": "debit",
-      "note": "Owner-confirmed 2026-09-01: the current-period Google storage 100 GB debit on BILLS (chequing-a) uniquely represents that modeled bill. Identity is payee + mapped account + direction + allowed date. Amount is not identity. Other Google products are excluded aliases, not this bill."
+      "note": "Owner-confirmed 2026-09-02: the current-period Google storage 100 GB debit is displayed Google / original SERVICE _V on WEEKLY (chequing-b) dated 2026-08-31. Identity is payee + mapped account + direction + allowed date. Amount is not identity. Lunch Money Pets is not this bill and is not a Pets mapping. Other Google products remain excluded aliases, not this bill."
     }
   ]
 }
