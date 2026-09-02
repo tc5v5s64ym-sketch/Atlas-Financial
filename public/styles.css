@@ -666,6 +666,66 @@ footer strong { color:var(--text-secondary); font-weight:600; }
 .household-budget-remaining dd {
   font-weight:700; color:var(--text-primary); padding-top:3px;
 }
+.household-budget-spent-openable {
+  display:grid; grid-column:1 / -1; position:relative;
+  grid-template-columns:minmax(0,1fr) minmax(0,auto); gap:2px 14px;
+  align-items:start;
+}
+.household-budget-spent-openable > dt {
+  position:absolute; width:1px; height:1px; overflow:hidden;
+  clip:rect(0 0 0 0); clip-path:inset(50%); white-space:nowrap; border:0;
+}
+.household-budget-spent-openable > dd {
+  grid-column:1 / -1; margin:0; text-align:unset; font-weight:inherit; color:inherit;
+}
+.household-budget-spent-detail { min-width:0; }
+.household-budget-spent-summary {
+  display:grid; grid-template-columns:minmax(0,1fr) minmax(0,auto); gap:2px 14px;
+  align-items:center; cursor:pointer; list-style:none; min-height:44px;
+  color:inherit;
+}
+.household-budget-spent-summary::-webkit-details-marker { display:none; }
+.household-budget-spent-summary::marker { content:""; }
+.household-budget-spent-label {
+  min-width:0; color:var(--s1); font-size:.88rem; font-weight:650;
+  overflow-wrap:anywhere;
+}
+.household-budget-spent-amount {
+  min-width:0; text-align:right; font-size:.92rem; font-weight:650;
+  font-variant-numeric:tabular-nums; color:var(--s1);
+  text-decoration:underline; text-decoration-color:color-mix(in srgb, var(--s1) 45%, transparent);
+  text-underline-offset:3px; overflow-wrap:anywhere;
+}
+.household-budget-spent-summary:hover .household-budget-spent-label,
+.household-budget-spent-summary:hover .household-budget-spent-amount {
+  color:var(--text-primary);
+}
+.household-budget-breakdown {
+  margin:4px 0 2px; padding:8px 0 2px; border-top:1px solid var(--grid);
+}
+.household-budget-txs { list-style:none; margin:0; padding:0; min-width:0; }
+.household-budget-tx {
+  display:grid; grid-template-columns:auto minmax(0,1fr) auto; gap:2px 10px;
+  align-items:baseline; padding:7px 0; font-size:.86rem; min-width:0;
+}
+.household-budget-tx time {
+  color:var(--text-secondary); font-variant-numeric:tabular-nums; white-space:nowrap;
+}
+.household-budget-tx-payee { min-width:0; overflow-wrap:anywhere; }
+.household-budget-tx-pending {
+  margin-left:.35em; color:var(--text-secondary); font-size:.78rem; font-weight:500;
+}
+.household-budget-tx-amount {
+  font-variant-numeric:tabular-nums; text-align:right; font-weight:500; white-space:nowrap;
+}
+.household-budget-tx-total {
+  display:grid; grid-template-columns:minmax(0,1fr) minmax(0,auto); gap:2px 10px;
+  margin:4px 0 0; padding:8px 0 0; border-top:1px solid var(--grid);
+  font-size:.88rem; font-weight:650;
+}
+.household-budget-tx-total span:last-child {
+  text-align:right; font-variant-numeric:tabular-nums;
+}
 @media (min-width:640px) {
   .household-budget-list { grid-template-columns:repeat(2,minmax(0,1fr)); }
 }

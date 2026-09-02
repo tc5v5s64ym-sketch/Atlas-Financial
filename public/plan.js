@@ -1795,7 +1795,59 @@ function householdBudgetMetric(label, amount, opts) {
   const cls = remaining
     ? 'household-budget-metric household-budget-remaining'
     : 'household-budget-metric';
-  return `<div class="${cls}"><dt>${label}</dt><dd>${money2(amount)}</dd></div>`;
+  const value = money2(amount);
+  const recon = opts && Array.isArray(opts.recon) ? opts.recon : null;
+  if (label === 'Spent' && recon && recon.length) {
+    const esc = v => String(v == null ? '' : v)
+      .replace(/&/g, '\u0026amp;')
+      .replace(/</g, '\u0026lt;')
+      .replace(/>/g, '\u0026gt;')
+      .replace(/"/g, '\u0026quot;');
+    const txs = recon.filter(tx => tx).slice().sort((a, b) => {
+      const dateCmp = String(a.date || '').localeCompare(String(b.date || ''));
+      if (dateCmp) return dateCmp;
+      const aLabel = String(a.displayedPayee || a.categoryLabel || '');
+      const bLabel = String(b.displayedPayee || b.categoryLabel || '');
+      const labelCmp = aLabel.localeCompare(bLabel);
+      if (labelCmp) return labelCmp;
+      const amtCmp = (Number(a.amount) || 0) - (Number(b.amount) || 0);
+      if (amtCmp) return amtCmp;
+      return String(a.id || '').localeCompare(String(b.id || ''));
+    });
+    const lines = txs.map(tx => {
+      const payeeRaw = String(tx.displayedPayee || '').trim()
+        || String(tx.categoryLabel || '').trim()
+        || 'Transaction';
+      const pending = tx.pending === true
+        ? '<span class="household-budget-tx-pending">Pending</span>'
+        : '';
+      const dateAttr = tx.date ? ` datetime="${esc(tx.date)}"` : '';
+      const dateText = tx.date ? fmtDate(tx.date) : '—';
+      const idAttr = tx.id ? ` data-tx-id="${esc(tx.id)}"` : '';
+      return `<li class="household-budget-tx"${idAttr} data-tx-pending="${tx.pending === true ? 'true' : 'false'}">
+        <time${dateAttr}>${esc(dateText)}</time>
+        <span class="household-budget-tx-payee">${esc(payeeRaw)}${pending}</span>
+        <span class="household-budget-tx-amount">${money2(tx.amount)}</span>
+      </li>`;
+    }).join('');
+    const spentId = opts && opts.id ? esc(opts.id) : '';
+    return `<div class="${cls} household-budget-spent-openable">
+      <dt>Spent</dt>
+      <dd>
+        <details class="household-budget-spent-detail" data-budget-spent="${spentId}">
+          <summary class="household-budget-spent-summary">
+            <span class="household-budget-spent-label">Spent</span>
+            <span class="household-budget-spent-amount">${value}</span>
+          </summary>
+          <div class="household-budget-breakdown" data-budget-spent-detail>
+            <ul class="household-budget-txs">${lines}</ul>
+            <p class="household-budget-tx-total"><span>Total</span><span data-budget-spent-total="${spentId}">${value}</span></p>
+          </div>
+        </details>
+      </dd>
+    </div>`;
+  }
+  return `<div class="${cls}"><dt>${label}</dt><dd>${value}</dd></div>`;
 }
 
 function householdBudgetCategoryHtml(row) {
@@ -1818,7 +1870,9 @@ function householdBudgetCategoryHtml(row) {
     ? `<p class="household-budget-context">${context}</p>` : '';
   const metrics = [];
   if (!other && row.planned != null) metrics.push(householdBudgetMetric('Planned', row.planned));
-  if (row.spent != null) metrics.push(householdBudgetMetric('Spent', row.spent));
+  if (row.spent != null) {
+    metrics.push(householdBudgetMetric('Spent', row.spent, { recon: row.recon, id: row.id }));
+  }
   if (!other && row.remaining != null) {
     metrics.push(householdBudgetMetric('Remaining', row.remaining, { remaining: true }));
   }
