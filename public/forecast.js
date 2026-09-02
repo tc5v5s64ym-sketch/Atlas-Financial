@@ -2162,7 +2162,7 @@
   const CONVENIENCE_STORE_RE =
     /7[\s-]*eleven|\b7-11\b|\b7eleven\b|circle\s*k|mac'?s\s*(convenience)?|on\s*the\s*run/i;
   const FUEL_EVIDENCE_RE = /\b(fuel|gas|petrol|gasoline)\b/i;
-  const GROCERY_UNCERTAIN_MERCHANT_RE = /iron\s*butcher|meridian\s*farm/i;
+  const GROCERY_UNCERTAIN_MERCHANT_RE = /iron\s*butcher/i;
   const CANADIAN_TIRE_RE = /canadian\s*tire/i;
   const EATING_OUT_LABELS = new Set(['restaurants', 'fast food', 'food delivery']);
   const BILL_BUDGET_IDS = new Set(['subscriptions', 'insurance', 'telecom']);
@@ -2259,6 +2259,21 @@
     return DOG_FOOD_MERCHANT_RE.test(normalizeMerchantKey(txMerchantExact(tx)));
   }
 
+  // Owner-confirmed grocery identity. Exact merchant keys only: WALMART /
+  // WALMARTCA and MERIDIAN FARM. Not a generic "Farm" rule and not a
+  // second categorizer. Surrey Meat stays Dog food via isDogFoodMerchant.
+  // Incumbent plan.budget.excluded / Business still wins: this helper
+  // identifies the merchant only.
+  function isConfirmedGroceryMerchant(tx) {
+    const key = normalizeMerchantKey(txMerchantExact(tx));
+    if (!key) return false;
+    if (key === 'WALMART' || key === 'WALMARTCA' || key.startsWith('WALMART ')) {
+      return true;
+    }
+    return key === 'MERIDIAN FARM' || key === 'MERIDIANFARM'
+      || key.startsWith('MERIDIAN FARM ');
+  }
+
   function isCanadianTireMerchant(tx) {
     if (tx && tx.canadianTire === true) return true;
     return CANADIAN_TIRE_RE.test(txTextBlob(tx));
@@ -2305,11 +2320,14 @@
   }
 
   // Provider-neutral classification, then merchant-aware fail-closed
-  // overrides. Surrey Meat is Dog food, never Groceries. Eating out is
-  // Restaurants + Fast Food + Food Delivery. Canadian Tire is not
-  // Household. 7-Eleven is not confirmed Fuel without tx-level fuel
-  // evidence. Uncertain txs go to confirmation, not a named household-budget
-  // row.
+  // overrides. Surrey Meat is Dog food, never Groceries. The incumbent
+  // plan.budget.excluded / Business boundary stays ahead of the confirmed
+  // grocery merchant override: Walmart and Meridian Farm are Groceries
+  // only when otherwise eligible household spending. Iron Butcher stays
+  // unconfirmed. Eating out is Restaurants + Fast Food + Food Delivery.
+  // Canadian Tire is not Household. 7-Eleven is not confirmed Fuel without
+  // tx-level fuel evidence. Uncertain txs go to confirmation, not a named
+  // household-budget row.
   function classifyCurrentPeriodTransaction(tx, plan, opts) {
     if (!tx) {
       return { kind: 'unclassified', categoryId: null, householdSpending: false, reason: 'missing' };
@@ -2366,6 +2384,16 @@
     }
     if (isDogFoodMerchant(tx)) {
       return spendResult('pets', 'dog-food-merchant');
+    }
+    if (isConfirmedGroceryMerchant(tx)) {
+      const excluded = ((plan && plan.budget && plan.budget.excluded) || []);
+      for (const row of excluded) {
+        const from = normalizeCategoryLabel(row && (row.from || row.label));
+        if (from && from === label) {
+          return { kind: 'business', categoryId: null, householdSpending: false, reason: 'excluded' };
+        }
+      }
+      return spendResult('groceries', 'grocery-merchant');
     }
     if (isCanadianTireMerchant(tx)) {
       return confirmationResult('canadian-tire-unconfirmed', 'canadian-tire-unconfirmed');
