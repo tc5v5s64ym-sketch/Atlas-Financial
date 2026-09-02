@@ -2169,6 +2169,7 @@
   const BILL_CATEGORY_LABELS = new Set([
     'mortgage', 'bills', 'bill', 'subscription', 'subscriptions',
     'insurance', 'telecom',
+    'natural gas', 'other bank fees',
   ]);
   const REFUND_LABELS = new Set(['refund', 'refunds', 'reimbursement']);
 
@@ -2279,6 +2280,18 @@
     return CANADIAN_TIRE_RE.test(txTextBlob(tx));
   }
 
+  // Owner-named Amazon identity only: Amazon / Amazon.ca / AMZN.
+  // Not Amazon Channels and not a second categorizer.
+  function isAmazonMerchant(tx) {
+    const key = normalizeMerchantKey(txMerchantExact(tx));
+    if (!key) return false;
+    if (key === 'AMAZON' || key === 'AMAZON CA' || key === 'AMAZONCA'
+        || key.startsWith('AMAZON CA ')) {
+      return true;
+    }
+    return key === 'AMZN' || key.startsWith('AMZN ');
+  }
+
   // Unique local id only. Date-plus-amount is not identity: a grocery with
   // the same date and amount as a represented bill stays Groceries.
   // Ambiguous or missing linkage fails closed (not a bill).
@@ -2381,6 +2394,19 @@
         kind: 'bill', categoryId: null, householdSpending: false,
         reason: 'bill-label', includeReason: 'bill-label',
       };
+    }
+    // Owner rule 2026-09-02: every Amazon charge on Travel Visa is
+    // Amanda guilt-free. Same classifier; not a second categorizer.
+    // Incumbent plan.budget.excluded / Business still wins.
+    if (isAmazonMerchant(tx) && isTravelVisaAccount(personalAccountText(tx))) {
+      const amazonExcluded = ((plan && plan.budget && plan.budget.excluded) || []);
+      for (const row of amazonExcluded) {
+        const from = normalizeCategoryLabel(row && (row.from || row.label));
+        if (from && from === label) {
+          return { kind: 'business', categoryId: null, householdSpending: false, reason: 'excluded' };
+        }
+      }
+      return spendResult('amanda-guilt-free', 'amazon-travelvisa');
     }
     if (isDogFoodMerchant(tx)) {
       return spendResult('pets', 'dog-food-merchant');
@@ -4067,9 +4093,14 @@
     return /chequing-b|weekly\s*spending/i.test(text || '');
   }
 
+  function isTravelVisaAccount(text) {
+    return /travelvisa|travel\s*visa/i.test(text || '');
+  }
+
   // Map a personal/shopping tx to Dale or Amanda only with account, payee,
   // note, or tag evidence. Chequing B / WEEKLY SPENDING is not Dale.
   // TENNIS INCOME / amanda-debt-payments is not guilt-free spending.
+  // Amazon on Travel Visa is Amanda (owner rule 2026-09-02).
   // No evidence, or both names, fails closed to unassigned.
   function personalSpendOwner(tx) {
     if (!tx) return null;
@@ -4079,6 +4110,7 @@
     }
     const accountText = personalAccountText(tx);
     if (isTennisIncomeAccount(accountText)) return 'excluded';
+    if (isTravelVisaAccount(accountText) && isAmazonMerchant(tx)) return 'amanda';
     const accountEvidence = isWeeklySpendingAccount(accountText) ? '' : accountText;
     const blob = [
       accountEvidence,
