@@ -2278,9 +2278,11 @@
     return [tx.date, String(account), Number(amt).toFixed(2), merchant].join('|');
   }
 
-  // Surface a pending+posted twin. Do not drop a row. Only a 1:1 pair of the
-  // same date/account/amount/merchant is flagged so a real second purchase
-  // is not silently collapsed.
+  // Surface a pending+posted twin as a possible duplicate only. Do not drop
+  // a row and do not change Household Budget Spent. Date/account/amount/
+  // merchant is not financial identity: a legitimate second purchase can
+  // share those four fields. Only a directed pendingTransactionId or an
+  // owner-confirmed named pair may collapse/count once.
   function pendingPostedDuplicateIdSet(packet) {
     const flagged = new Set();
     const txs = packet && Array.isArray(packet.transactions) ? packet.transactions : [];
@@ -2306,13 +2308,6 @@
       }
     }
     return flagged;
-  }
-
-  function pendingPostedDuplicatePending(tx, packet) {
-    if (!tx || transactionPendingState(tx) !== 'pending') return false;
-    if (tx.pendingPostedDuplicate === true) return true;
-    if (tx.id == null) return false;
-    return pendingPostedDuplicateIdSet(packet).has(String(tx.id));
   }
 
   function isDogFoodMerchant(tx) {
@@ -2743,7 +2738,6 @@
       if (state === 'pending') row.pending = roundCent(row.pending + amt);
       else row.posted = roundCent(row.posted + amt);
     };
-    const duplicateIds = pendingPostedDuplicateIdSet(packet);
     for (const tx of packet.transactions) {
       if (!tx || !tx.date) continue;
       if (periodStart && tx.date < periodStart) continue;
@@ -2770,22 +2764,17 @@
       }
       if (cls.needsConfirmation) {
         out.unclassified.count += 1;
-        if (state === 'pending' && tx.id != null && duplicateIds.has(String(tx.id))) {
-          continue;
-        }
         add(out.unclassified, state, amt);
         continue;
       }
       const catId = cls.categoryId || 'uncategorised';
       if (!out.byId.has(catId)) out.byId.set(catId, { posted: 0, pending: 0, count: 0 });
       const row = out.byId.get(catId);
-      if (!(state === 'pending' && tx.id != null && duplicateIds.has(String(tx.id)))) {
-        row.count += 1;
-        add(row, state, amt);
-        if (classificationIncompleteHouseholdSpend(cls)) {
-          out.unclassified.count += 1;
-          add(out.unclassified, state, amt);
-        }
+      row.count += 1;
+      add(row, state, amt);
+      if (classificationIncompleteHouseholdSpend(cls)) {
+        out.unclassified.count += 1;
+        add(out.unclassified, state, amt);
       }
     }
     return out;
@@ -4273,11 +4262,10 @@
         const cls = classifyCurrentPeriodTransaction(tx, plan, classifyOpts);
         if (!householdBudgetSupportingSpendEligible(cls)) continue;
         const isDuplicate = tx.id != null && duplicateIds.has(String(tx.id));
-        const skipDuplicatePending = isDuplicate && transactionPendingState(tx) === 'pending';
         const row = reconTxFrom(tx, cls, { pendingPostedDuplicate: isDuplicate });
         if (cls.needsConfirmation || cls.kind === 'unclassified') {
           confirmationRecon.push(row);
-          if (!skipDuplicatePending) confirmationSpent = roundCent(confirmationSpent + amt);
+          confirmationSpent = roundCent(confirmationSpent + amt);
           continue;
         }
         const catId = cls.atlasRow || cls.categoryId;
@@ -4288,7 +4276,6 @@
       }
     }
     const spentFromRecon = list => roundCent((list || []).reduce((s, r) => {
-      if (r && r.pendingPostedDuplicate === true && r.pending === true) return s;
       return s + (Number(r && r.amount) || 0);
     }, 0));
     const byId = new Map();

@@ -729,8 +729,8 @@ console.log('\n=== 10. Natural Gas / Other bank fees are bills; Amazon/Prime fai
     'BILL_CATEGORY_LABELS source does not add Interest charge / Overdraft fees / Google Pets');
   ok(!/isAmazonPrimeMerchant|isAmazonMerchant|amazon-prime-bill|amazon-owner-card/.test(forecastSrc),
     'Forecast source does not infer Amanda or bill status from Amazon merchant + card');
-  ok(!/skipPendingPostedDuplicate|spendIdentityKey/.test(forecastSrc),
-    'Forecast source does not collapse pending+posted by date/account/amount/merchant');
+  ok(!/skipPendingPostedDuplicate|spendIdentityKey|skipDuplicatePending|pendingPostedDuplicatePending/.test(forecastSrc),
+    'Forecast source does not collapse or uncount pending+posted by date/account/amount/merchant');
 
   const PRIME_AMT = 9.99;
   const SHOPIFY_AMT = 54.88;
@@ -921,9 +921,10 @@ console.log('\n=== 10. Natural Gas / Other bank fees are bills; Amazon/Prime fai
       && distinctIds.includes('tx-shopify-posted') && distinctIds.includes('tx-other')
       && shopifyDupRows.length === 2
       && shopifyDupRows.every(row => row.pendingPostedDuplicate === true)
-      && near(distinctOther.spent, SHOPIFY_ONCE_PLUS_OTHER)
-      && !near(distinctOther.spent, roundCent(DISTINCT_SAME_DAY + OTHER_AMT)),
-    'pending+posted without pendingTransactionId keeps both rows, flags the duplicate, and does not silent-double Other');
+      && near(distinctOther.spent, roundCent(DISTINCT_SAME_DAY + OTHER_AMT))
+      && near(reconSum(distinctOther), roundCent(DISTINCT_SAME_DAY + OTHER_AMT))
+      && !near(distinctOther.spent, SHOPIFY_ONCE_PLUS_OTHER),
+    'Forecast-only pending+posted 4-tuple keeps both rows, flags possible duplicate, and still counts both in Spent');
 
   const map = {
     schema: 'atlas-provider-account-map/v1',
@@ -1258,6 +1259,17 @@ console.log('\n=== 10. Natural Gas / Other bank fees are bills; Amazon/Prime fai
       && digitTwins.some(tx => tx.pending === true)
       && digitTwins.some(tx => tx.pending === false),
     'two same-account same-amount purchases with the same digit-bearing original_name both survive without a directed settlement link');
+  const digitPacket = actualsPacket(digitTwin.transactions || []);
+  const digitAdvice = recommend(digitPacket);
+  const digitPeriod = period(digitAdvice.defaultView, 'this-pay-period');
+  const digitOther = otherRow(digitPeriod);
+  const digitRecon = ((digitOther && digitOther.recon) || [])
+    .filter(row => row && near(row.amount, 19.14));
+  ok(digitRecon.length === 2
+      && digitRecon.every(row => row.pendingPostedDuplicate === true)
+      && digitOther && near(digitOther.spent, 38.28)
+      && near(reconSum(digitOther), 38.28),
+    'digit-bearing same 4-tuple is possible-duplicate only; Spent still counts both $19.14 rows');
 
   const genericTwin = O.sanitizedCurrentPeriodActuals({
     fetchedAt: '2026-09-02T18:13:00.000Z',
@@ -1294,9 +1306,12 @@ console.log('\n=== 10. Natural Gas / Other bank fees are bills; Amazon/Prime fai
     .filter(row => row && near(row.amount, 19.14));
   ok(genericRecon.length === 2
       && genericRecon.every(row => row.pendingPostedDuplicate === true)
-      && genericOther && near(genericOther.spent, 19.14)
-      && !near(genericOther.spent, 38.28),
-    'general pending+posted without a directed link does not silent-double Other spent');
+      && genericRecon.some(row => row.pending === true)
+      && genericRecon.some(row => row.pending === false)
+      && genericOther && near(genericOther.spent, 38.28)
+      && near(reconSum(genericOther), 38.28)
+      && !near(genericOther.spent, 19.14),
+    'posted $19.14 + pending $19.14 same 4-tuple stay visible, flagged possible duplicate, and Spent remains $38.28');
 
   const twoPosted = actualsPacket([
     {
