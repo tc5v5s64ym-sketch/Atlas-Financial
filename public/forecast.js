@@ -2169,6 +2169,7 @@
   const BILL_CATEGORY_LABELS = new Set([
     'mortgage', 'bills', 'bill', 'subscription', 'subscriptions',
     'insurance', 'telecom',
+    'natural gas', 'other bank fees',
   ]);
   const REFUND_LABELS = new Set(['refund', 'refunds', 'reimbursement']);
 

@@ -7,6 +7,7 @@
  */
 const fs = require('fs');
 const path = require('path');
+const { sourceText } = require('./test-source-text');
 const F = require('../public/forecast.js');
 const O = require('../scripts/provider-observe.js');
 
@@ -24,6 +25,9 @@ const GOOGLE_AMT = 3.13;
 const WALMART_AMT = 41.17;
 const MERIDIAN_AMT = 19.44;
 const OTHER_AMT = 7.50;
+const NATURAL_GAS_AMT = 21;
+const BANK_FEE_AMT = 8.5;
+const AMAZON_AMT = 14;
 const BUSINESS_WALMART_AMT = 22.11;
 const BUSINESS_MERIDIAN_AMT = 14.07;
 const GROCERY_INDEPENDENT = roundCent(WALMART_AMT + MERIDIAN_AMT);
@@ -168,6 +172,56 @@ function otherTx() {
     displayedPayee: 'Gift Shop',
     originalMerchant: 'Gift Shop',
   };
+}
+function naturalGasTx(extra) {
+  return Object.assign({
+    id: 'tx-natural-gas',
+    date: '2026-09-01',
+    amount: NATURAL_GAS_AMT,
+    pending: false,
+    categoryLabel: 'Natural Gas',
+    accountRole: 'household-cash',
+    atlasAccountId: 'chequing-a',
+    displayedPayee: 'FortisBC Energy BPY',
+    originalMerchant: 'FortisBC Energy BPY',
+  }, extra || {});
+}
+function bankFeeTx(extra) {
+  return Object.assign({
+    id: 'tx-bank-fee',
+    date: '2026-08-31',
+    amount: BANK_FEE_AMT,
+    pending: false,
+    categoryLabel: 'Other bank fees',
+    accountRole: 'household-cash',
+    atlasAccountId: 'chequing-a',
+    displayedPayee: 'MONTHLY ACCOUNT FEE',
+    originalMerchant: 'MONTHLY ACCOUNT FEE',
+  }, extra || {});
+}
+function amazonTx(extra) {
+  return Object.assign({
+    id: 'tx-amazon',
+    date: '2026-08-31',
+    amount: AMAZON_AMT,
+    pending: false,
+    categoryLabel: 'Shopping',
+    accountRole: 'revolving-credit',
+    displayedPayee: 'Amazon',
+    originalMerchant: 'Amazon',
+  }, extra || {});
+}
+function amazonPrimeTx(extra) {
+  return Object.assign({
+    id: 'tx-amazon-prime',
+    date: '2026-08-31',
+    amount: 9.99,
+    pending: false,
+    categoryLabel: 'Shopping',
+    accountRole: 'revolving-credit',
+    displayedPayee: 'Amazon Prime',
+    originalMerchant: 'Amazon Prime',
+  }, extra || {});
 }
 
 function recommend(packet, extraPlan, extraOpts) {
@@ -609,6 +663,168 @@ console.log('\n=== 9. excluded Business Walmart / Meridian Farm stay out of Hous
   ok(near(householdSpent(active), SPENT_WITHOUT_BILL)
       && !near(householdSpent(active), roundCent(SPENT_WITHOUT_BILL + EXCLUDED_BUSINESS_INDEPENDENT)),
     'Household Budget Spent stays $68.11; excluded $36.18 does not leak into spent');
+}
+
+console.log('\n=== 10. Natural Gas / Other bank fees are bills; Amazon/Prime fail closed ===');
+{
+  const forecastSrc = sourceText(fs.readFileSync(path.join(__dirname, '..', 'public/forecast.js'), 'utf8'));
+  const billSetStart = forecastSrc.indexOf('const BILL_CATEGORY_LABELS = new Set([');
+  const billSetEnd = forecastSrc.indexOf(']);', billSetStart);
+  const billSet = forecastSrc.slice(billSetStart, billSetEnd + 3);
+  ok(/'natural gas'/.test(billSet) && /'other bank fees'/.test(billSet),
+    'BILL_CATEGORY_LABELS source includes Natural Gas and Other bank fees');
+  ok(!/'interest charge'/.test(billSet) && !/'overdraft fees'/.test(billSet)
+      && !/'google pets'/.test(billSet),
+    'BILL_CATEGORY_LABELS source does not add Interest charge / Overdraft fees / Google Pets');
+  ok(!/isAmazonPrimeMerchant|isAmazonMerchant|amazon-prime-bill|amazon-owner-card/.test(forecastSrc),
+    'Forecast source does not infer Amanda or bill status from Amazon merchant + card');
+
+  const PRIME_AMT = 9.99;
+  const AMAZON_WITHOUT_OWNER = roundCent(AMAZON_AMT + AMAZON_AMT + PRIME_AMT);
+  ok(near(NATURAL_GAS_AMT + BANK_FEE_AMT, 29.5)
+      && near(AMAZON_WITHOUT_OWNER + OTHER_AMT, 45.49),
+    'independent fixture arithmetic: bills $21+$8.50=$29.50; Amazon/Prime+Other $14+$14+$9.99+$7.50=$45.49');
+
+  const plan = syntheticPlan();
+  const gas = naturalGasTx();
+  const fee = bankFeeTx();
+  const gasCls = F.classifyCurrentPeriodTransaction(gas, plan);
+  const feeCls = F.classifyCurrentPeriodTransaction(fee, plan);
+  ok(gasCls.kind === 'bill' && gasCls.householdSpending === false
+      && gasCls.reason === 'bill-label' && gasCls.needsConfirmation !== true,
+    'Natural Gas classifies as bill, not household spending',
+    JSON.stringify(gasCls));
+  ok(feeCls.kind === 'bill' && feeCls.householdSpending === false
+      && feeCls.reason === 'bill-label' && feeCls.needsConfirmation !== true,
+    'Other bank fees classifies as bill, not Other spending',
+    JSON.stringify(feeCls));
+
+  function failClosedAmazon(cls, flags, label) {
+    ok(cls.kind !== 'bill' && cls.reason === 'personal-unassigned'
+        && cls.needsConfirmation === true && cls.householdSpending === true
+        && cls.categoryId !== 'amanda-guilt-free' && cls.categoryId !== 'dale-guilt-free'
+        && flags.personalOwner == null,
+      label,
+      JSON.stringify({ cls, personalOwner: flags.personalOwner }));
+  }
+
+  const amazonTravel = amazonTx({ atlasAccountId: 'travelvisa', account: 'TRAVEL VISA' });
+  const amazonMbna = amazonTx({
+    id: 'tx-amazon-mbna',
+    atlasAccountId: 'mbna', account: 'mana',
+  });
+  const amazonTriangle = amazonTx({
+    id: 'tx-amazon-triangle',
+    displayedPayee: 'AMZN Mktp CA', originalMerchant: 'AMZN Mktp CA',
+    atlasAccountId: 'triangle', account: 'TRIANGLE MASTERCARD',
+  });
+  const primeTravel = amazonPrimeTx({ atlasAccountId: 'travelvisa', account: 'TRAVEL VISA' });
+  const primeMbna = amazonPrimeTx({
+    id: 'tx-prime-video',
+    displayedPayee: 'Amazon Prime Video', originalMerchant: 'Amazon Prime Video',
+    atlasAccountId: 'mbna', account: 'mana',
+  });
+  const amazonWithAmanda = amazonTx({
+    id: 'tx-amazon-amanda-note',
+    atlasAccountId: 'travelvisa', account: 'TRAVEL VISA',
+    note: 'Amanda',
+  });
+
+  const travelCls = F.classifyCurrentPeriodTransaction(amazonTravel, plan);
+  const mbnaCls = F.classifyCurrentPeriodTransaction(amazonMbna, plan);
+  const triangleCls = F.classifyCurrentPeriodTransaction(amazonTriangle, plan);
+  const primeTravelCls = F.classifyCurrentPeriodTransaction(primeTravel, plan);
+  const primeMbnaCls = F.classifyCurrentPeriodTransaction(primeMbna, plan);
+  const amandaNoteCls = F.classifyCurrentPeriodTransaction(amazonWithAmanda, plan);
+  const travelFlags = F.classifyCurrentPeriodTransaction.derivedFlags(amazonTravel);
+  const mbnaFlags = F.classifyCurrentPeriodTransaction.derivedFlags(amazonMbna);
+  const triangleFlags = F.classifyCurrentPeriodTransaction.derivedFlags(amazonTriangle);
+  const primeTravelFlags = F.classifyCurrentPeriodTransaction.derivedFlags(primeTravel);
+  const primeMbnaFlags = F.classifyCurrentPeriodTransaction.derivedFlags(primeMbna);
+  const amandaNoteFlags = F.classifyCurrentPeriodTransaction.derivedFlags(amazonWithAmanda);
+
+  failClosedAmazon(travelCls, travelFlags,
+    'Amazon shopping on Travel Visa without owner evidence stays personal-unassigned');
+  failClosedAmazon(mbnaCls, mbnaFlags,
+    'Amazon shopping on MBNA without owner evidence stays personal-unassigned');
+  failClosedAmazon(triangleCls, triangleFlags,
+    'AMZN shopping on Triangle without owner evidence stays personal-unassigned');
+  failClosedAmazon(primeTravelCls, primeTravelFlags,
+    'Amazon Prime merchant string is not a bill and stays personal-unassigned');
+  failClosedAmazon(primeMbnaCls, primeMbnaFlags,
+    'Amazon Prime Video merchant string is not a bill and stays personal-unassigned');
+  ok(amandaNoteCls.kind === 'spend' && amandaNoteCls.categoryId === 'amanda-guilt-free'
+      && amandaNoteCls.includeReason === 'owner-evidence-amanda'
+      && amandaNoteFlags.personalOwner === 'amanda',
+    'explicit Amanda note still maps via incumbent owner evidence',
+    JSON.stringify(amandaNoteCls));
+
+  const interestCls = F.classifyCurrentPeriodTransaction({
+    date: '2026-08-31', amount: 5, categoryLabel: 'Interest charge',
+    displayedPayee: 'INTEREST CHARGE', originalMerchant: 'INTEREST CHARGE',
+    atlasAccountId: 'chequing-b', accountRole: 'household-cash',
+  }, plan);
+  const overdraftCls = F.classifyCurrentPeriodTransaction({
+    date: '2026-08-31', amount: 5, categoryLabel: 'Overdraft fees',
+    displayedPayee: 'OVERDRAFT FEE', originalMerchant: 'OVERDRAFT FEE',
+    atlasAccountId: 'chequing-b', accountRole: 'household-cash',
+  }, plan);
+  const googlePetsCls = F.classifyCurrentPeriodTransaction({
+    date: '2026-08-31', amount: 3.13, categoryLabel: 'Pets',
+    displayedPayee: 'Google', originalMerchant: 'Google',
+    atlasAccountId: 'chequing-a', accountRole: 'household-cash',
+  }, plan);
+  ok(interestCls.kind !== 'bill' && interestCls.reason === 'unmapped-label'
+      && interestCls.householdSpending === true,
+    'Interest charge remains unmapped-label, not a bill');
+  ok(overdraftCls.kind !== 'bill' && overdraftCls.reason === 'unmapped-label'
+      && overdraftCls.householdSpending === true,
+    'Overdraft fees remains unmapped-label, not a bill');
+  ok(googlePetsCls.kind !== 'bill' && googlePetsCls.reason === 'pets-not-dog-food'
+      && googlePetsCls.householdSpending === true,
+    'Google Pets remains pets-not-dog-food, not a bill');
+
+  const billPacket = actualsPacket([gas, fee, otherTx()]);
+  const billAdvice = recommend(billPacket);
+  const billPeriod = period(billAdvice.defaultView, 'this-pay-period');
+  const billOther = otherRow(billPeriod);
+  const billIds = reconIds(billPeriod);
+  const household = budgetRow(billPeriod, 'household');
+  ok(billOther && near(billOther.spent, OTHER_AMT) && near(reconSum(billOther), OTHER_AMT)
+      && !(billOther.recon || []).some(row => row && (row.id === 'tx-natural-gas' || row.id === 'tx-bank-fee')),
+    'Natural Gas and Other bank fees do not enter Other spending');
+  ok(!billIds.includes('tx-natural-gas') && !billIds.includes('tx-bank-fee'),
+    'bill-label txs appear in no Household Budget recon row');
+  ok(!(household && (household.recon || []).some(row => row && row.id === 'tx-natural-gas')),
+    'Natural Gas does not enter Household spend');
+  ok(near(householdSpent(billPeriod), OTHER_AMT)
+      && !near(householdSpent(billPeriod), roundCent(OTHER_AMT + NATURAL_GAS_AMT + BANK_FEE_AMT)),
+    'Household Budget Spent stays the $7.50 residual; $29.50 of bills does not leak');
+
+  const amazonPacket = actualsPacket([
+    amazonTravel, amazonMbna, primeTravel, otherTx(),
+  ]);
+  const amazonAdvice = recommend(amazonPacket);
+  const amazonPeriod = period(amazonAdvice.defaultView, 'this-pay-period');
+  const amanda = budgetRow(amazonPeriod, 'amanda-guilt-free');
+  const amazonOther = otherRow(amazonPeriod);
+  const amazonIds = reconIds(amazonPeriod);
+  const otherAmazonIds = (amazonOther && amazonOther.recon || [])
+    .filter(row => row && row.id)
+    .map(row => row.id);
+  ok(!(amanda && (amanda.recon || []).some(row => row && (
+    row.id === 'tx-amazon' || row.id === 'tx-amazon-mbna' || row.id === 'tx-amazon-prime'
+  ))),
+    'Amazon/Prime without owner evidence do not enter Amanda guilt-free recon');
+  ok(amazonOther && otherAmazonIds.includes('tx-amazon')
+      && otherAmazonIds.includes('tx-amazon-mbna')
+      && otherAmazonIds.includes('tx-amazon-prime')
+      && otherAmazonIds.includes('tx-other')
+      && near(amazonOther.spent, roundCent(AMAZON_WITHOUT_OWNER + OTHER_AMT))
+      && near(reconSum(amazonOther), roundCent(AMAZON_WITHOUT_OWNER + OTHER_AMT)),
+    'Amazon/Prime without owner evidence remain in Other spending with the $7.50 residual');
+  ok(amazonIds.includes('tx-amazon') && amazonIds.includes('tx-amazon-prime'),
+    'fail-closed Amazon/Prime still appear in Household Budget Other recon');
 }
 
 if (failures) {
