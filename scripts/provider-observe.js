@@ -2522,29 +2522,16 @@ function plaidPendingIdFromMetadata(meta) {
   return id == null || id === '' ? null : String(id);
 }
 
-function settlementLinkKey(tx) {
-  if (!tx) return null;
-  const ext = tx.externalId || tx.external_id;
-  if (ext != null && ext !== '') return 'ext:' + String(ext);
-  const plaid = tx.plaidId || tx.plaid_id;
-  if (plaid != null && plaid !== '') return 'plaid:' + String(plaid);
-  const meta = plaidPendingIdFromMetadata(tx.plaidMetadata || tx.plaid_metadata);
-  if (meta) return 'plaid-pending:' + meta;
-  return null;
-}
-
-function providerReferenceNameKey(tx, accountId, amount) {
-  const name = String((tx && (tx.originalName || tx.original_name || tx.payee)) || '').trim();
-  if (!name || !/\d{5,}/.test(name)) return null;
-  if (accountId == null || accountId === '') return null;
-  if (!isFinite(amount)) return null;
-  return 'orig-ref:' + String(accountId) + '|' + Number(amount).toFixed(2) + '|' + name.toUpperCase();
+function directedPendingId(posted) {
+  if (!posted) return null;
+  const direct = posted.pendingTransactionId || posted.pending_transaction_id;
+  if (direct != null && direct !== '') return String(direct);
+  return plaidPendingIdFromMetadata(posted.plaidMetadata || posted.plaid_metadata);
 }
 
 function directedSettlementMate(posted, pending) {
-  const target = posted && (posted.pendingTransactionId || posted.pending_transaction_id);
-  if (target == null || target === '') return false;
-  const want = String(target);
+  const want = directedPendingId(posted);
+  if (!want) return false;
   const ids = [
     pending && pending.providerTransactionId,
     pending && pending.id,
@@ -2576,8 +2563,6 @@ function collapsePendingPostedBySettlementIdentity(transactions, asOf, opts) {
       ? mapping.canonical.id
       : (pend.atlasAccountId || pend.account || pend.providerAccountId);
     const amount = lunchMoneyDebitAmount(pend.amount);
-    const pendKey = settlementLinkKey(pend);
-    const pendRef = providerReferenceNameKey(pend, accountId, amount);
     const mate = posted.some(post => {
       if (drop.has(post)) return false;
       const postMap = opts && opts.accountMap
@@ -2592,11 +2577,7 @@ function collapsePendingPostedBySettlementIdentity(transactions, asOf, opts) {
       if (amount != null && postAmt != null && Number(amount).toFixed(2) !== Number(postAmt).toFixed(2)) {
         return false;
       }
-      const postKey = settlementLinkKey(post);
-      if (pendKey && postKey && pendKey === postKey) return true;
-      if (directedSettlementMate(post, pend)) return true;
-      const postRef = providerReferenceNameKey(post, postAccount, postAmt);
-      return !!(pendRef && postRef && pendRef === postRef);
+      return directedSettlementMate(post, pend);
     });
     if (mate) drop.add(pend);
   }
@@ -2671,9 +2652,7 @@ function sanitizedCurrentPeriodActuals(report, opts) {
     };
     const explicitOwner = explicitPersonalOwnerFromTagsNotes(derivedInput);
     const flags = Forecast.classifyCurrentPeriodTransaction.derivedFlags(derivedInput);
-    const personalOwner = flags.subscriptionBill === true
-      ? null
-      : (explicitOwner || flags.personalOwner);
+    const personalOwner = explicitOwner || flags.personalOwner;
     const localId = localIdFor(tx.providerTransactionId);
     txs.push({
       id: localId,
@@ -2699,8 +2678,6 @@ function sanitizedCurrentPeriodActuals(report, opts) {
       merchantKnown: flags.merchantKnown,
       fuelEvidence: flags.fuelEvidence,
       personalOwner,
-      subscriptionBill: flags.subscriptionBill === true,
-      kind: flags.kind || null,
       isGroup: tx.isGroup === true,
       parentId: localIdFor(tx.parentId),
     });
