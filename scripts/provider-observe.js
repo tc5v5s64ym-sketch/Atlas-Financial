@@ -2503,6 +2503,18 @@ function sanitizedCurrentPeriodActuals(report, opts) {
     else if (tx) tx.representedBill = false;
     stripRawTransactionMetadata(tx);
   }
+  const classifyPacket = { transactions: txs, representedActuals };
+  for (const row of txs) {
+    if (!row) continue;
+    const cls = Forecast.classifyCurrentPeriodTransaction(row, opts.plan, {
+      packet: classifyPacket,
+      currentPeriodActuals: classifyPacket,
+    });
+    if (!Forecast.classifyCurrentPeriodTransaction.householdBudgetSupportingSpendEligible(cls)) {
+      delete row.displayedPayee;
+      delete row.originalMerchant;
+    }
+  }
   const pending = report && report.pendingCoverage;
   let pendingCoverage = 'unknown';
   if (pending && pending.complete === true) pendingCoverage = 'complete';

@@ -13,6 +13,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const F = require('../public/forecast.js');
+const O = require('../scripts/provider-observe.js');
 
 let failures = 0;
 const ok = (cond, label, detail = '') => {
@@ -430,6 +431,71 @@ console.log('\n=== 5b. Forecast recon originalMerchant fallback is independent o
       && !txPayees(groceriesHtml).includes('Groceries')
       && groceriesHtml.includes(composer.money2(18.56)),
     'rendered originalMerchant fallback is Safeway $18.56, not Groceries');
+}
+
+console.log('\n=== 5c. sanitizer omits merchant on excluded rows; eligible spend still renders ===');
+{
+  const plan = syntheticPlan();
+  plan.budget.excluded = [{ from: 'Business', why: 'not household' }];
+  const packet = O.sanitizedCurrentPeriodActuals({
+    fetchedAt: AS_OF + 'T18:00:00.000Z',
+    transactionWindow: { startDate: '2026-08-28', endDate: AS_OF, complete: true },
+    pendingCoverage: { complete: true, hasMore: false, truncated: false },
+    collapsedTransactions: [
+      {
+        date: '2026-08-31', amount: 18.56, pending: false, categoryLabel: 'Groceries',
+        payee: 'Save-On-Foods', originalName: 'Save-On-Foods',
+        providerAccountId: '1001', providerTransactionId: 'groc-render',
+      },
+      {
+        date: '2026-08-31', amount: 2500, pending: false, categoryLabel: 'Income',
+        payee: 'SEASPAN PAYROLL', originalName: 'SEASPAN PAYROLL',
+        isIncome: true, providerAccountId: '1001', providerTransactionId: 'inc-render',
+      },
+      {
+        date: '2026-08-31', amount: 80, pending: false, categoryLabel: 'Business',
+        payee: 'ACME CORP', originalName: 'ACME CORP',
+        providerAccountId: '1001', providerTransactionId: 'biz-render',
+      },
+    ],
+    representedEventCandidates: [],
+  }, {
+    asOf: AS_OF,
+    plan,
+    accountMap: {
+      mappings: [{
+        providerAccountId: '1001',
+        canonical: { collection: 'cash', id: 'chequing-a' },
+        atlasRole: 'household-cash',
+      }],
+    },
+  });
+  packet.coverageStart = '2026-07-01';
+  packet.coverageThrough = AS_OF;
+  packet.pendingCoverage = 'complete';
+  const grocery = (packet.transactions || []).find(tx => Number(tx.amount) === 18.56);
+  const income = (packet.transactions || []).find(tx => Number(tx.amount) === 2500);
+  const business = (packet.transactions || []).find(tx => Number(tx.amount) === 80);
+  ok(grocery && grocery.displayedPayee === 'Save-On-Foods',
+    'sanitizer keeps Save-On-Foods on the eligible grocery');
+  ok(income && income.displayedPayee == null && business && business.displayedPayee == null,
+    'sanitizer omits merchant identity on income and excluded business');
+  const advice = F.recommend(plan, AS_OF, {
+    targetBuffer: 500,
+    debts,
+    currentPeriodActuals: packet,
+  });
+  const active = period(advice.defaultView, 'this-pay-period');
+  const groceries = budgetRow(active, 'groceries');
+  ok(groceries && near(groceries.spent, 18.56) && groceries.recon.length === 1
+      && groceries.recon[0].displayedPayee === 'Save-On-Foods',
+    'Forecast Spent and recon still use the eligible grocery merchant');
+  const groceriesHtml = block(composer.calendarBudgetHtml(active), 'groceries');
+  ok(txPayees(groceriesHtml).includes('Save-On-Foods')
+      && !txPayees(groceriesHtml).includes('SEASPAN PAYROLL')
+      && !txPayees(groceriesHtml).includes('ACME CORP')
+      && !txPayees(groceriesHtml).includes('Groceries'),
+    'rendered Spent row is Aug 31 Save-On-Foods, not income/business counterparties');
 }
 
 console.log('\n=== 6. Planned, Remaining, and waterfall figures stay put ===');

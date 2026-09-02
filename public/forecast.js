@@ -2755,6 +2755,21 @@
     'groceries', 'fuel', 'household', 'pets', 'restaurants',
     'dale-guilt-free', 'amanda-guilt-free',
   ];
+
+  // Incumbent Household Budget supporting-row predicate. calendarHouseholdBudget
+  // and the overlay sanitizer share this so merchant identity is not a second
+  // membership authority.
+  function householdBudgetSupportingSpendEligible(cls) {
+    if (!cls) return false;
+    if (cls.kind === 'transfer' || cls.kind === 'card-payment' || cls.kind === 'income'
+      || cls.kind === 'business' || cls.kind === 'external' || cls.kind === 'bill'
+      || cls.kind === 'refund' || cls.kind === 'unmapped') {
+      return false;
+    }
+    if (cls.needsConfirmation || cls.kind === 'unclassified') return true;
+    const catId = cls.atlasRow || cls.categoryId;
+    return !!(catId && CALENDAR_PERIOD_BUDGET_IDS.indexOf(catId) >= 0);
+  }
   const DEFAULT_VIEW_BUDGET_LABELS = {
     groceries: 'Groceries',
     fuel: 'Fuel',
@@ -4084,6 +4099,8 @@
   }
 
   classifyCurrentPeriodTransaction.derivedFlags = derivedTransactionFlags;
+  classifyCurrentPeriodTransaction.householdBudgetSupportingSpendEligible =
+    householdBudgetSupportingSpendEligible;
 
   function reconIdentityField(value) {
     if (typeof value === 'number' && isFinite(value)) value = String(value);
@@ -4147,9 +4164,7 @@
         const amt = Number(tx.amount);
         if (!isFinite(amt) || amt === 0) continue;
         const cls = classifyCurrentPeriodTransaction(tx, plan, classifyOpts);
-        if (cls.kind === 'transfer' || cls.kind === 'card-payment' || cls.kind === 'income'
-          || cls.kind === 'business' || cls.kind === 'external' || cls.kind === 'bill'
-          || cls.kind === 'refund' || cls.kind === 'unmapped') continue;
+        if (!householdBudgetSupportingSpendEligible(cls)) continue;
         const row = reconTxFrom(tx, cls);
         if (cls.needsConfirmation || cls.kind === 'unclassified') {
           confirmationRecon.push(row);
