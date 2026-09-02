@@ -533,9 +533,10 @@ console.log('\n=== N. privacy — no raw payloads in overlay or localStorage kno
     'observer emits a sanitized current-period actuals packet');
   ok(!/"payee"\s*:/.test(blob) && !/"providerTransactionId"\s*:/.test(blob)
       && !/"original_name"\s*:/.test(blob) && !/"providerAccountId"\s*:/.test(blob)
-      && !/"displayedPayee"\s*:/.test(blob) && !/"originalMerchant"\s*:/.test(blob)
       && !/"notes"\s*:/.test(blob) && !/"tags"\s*:/.test(blob),
-    'actuals packet has no payee, original merchant, notes, tags, or provider ids');
+    'actuals packet has no raw payee, notes, tags, or provider ids');
+  ok(/"displayedPayee"\s*:/.test(blob) && /"originalMerchant"\s*:/.test(blob),
+    'actuals packet keeps sanitized displayedPayee / originalMerchant');
   ok(O.currentPeriodActualsLooksSanitized(actuals),
     'observer packet passes the sanitizer');
   ok(Array.isArray(actuals.transactions) && actuals.transactions.some(tx =>
@@ -603,15 +604,19 @@ console.log('\n=== observer category identity passes through ===');
     'Lunch Money category name is normalized without a merchant guess');
   ok(transfer && transfer.excludeFromTotals === true && transfer.categoryLabel === 'Transfer',
     'transfer category identity is preserved');
+  ok(transfer && transfer.displayedPayee == null && transfer.originalMerchant == null,
+    'excluded transfer does not publish merchant identity');
   ok(!report.currentPeriodActuals.transactions.some(t =>
-      t.payee || t.displayedPayee || t.originalMerchant || t.notes || t.tags
-      || t.providerTransactionId || t.providerAccountId),
-    'sanitized actuals dropped payee and renamed merchant/notes/tags/provider ids');
+      t.payee || t.notes || t.tags
+      || t.providerTransactionId || t.providerAccountId
+      || t.original_name || t.originalName),
+    'sanitized actuals dropped raw payee, notes, tags, and provider ids');
   ok(grocery && grocery.merchantKnown === true
       && grocery.dogFood === false
-      && grocery.displayedPayee == null
+      && grocery.displayedPayee === 'SYNTHETIC GROCER'
+      && grocery.originalMerchant === 'SYNTHETIC GROCER'
       && (grocery.account || grocery.atlasAccountId),
-    'Forecast packet keeps derived flags and canonical account, not payee');
+    'Forecast packet keeps sanitized merchant identity, derived flags, and canonical account, not raw payee');
   const parent = report.currentPeriodActuals.transactions.find(t => t.amount === 80);
   const child = report.currentPeriodActuals.transactions.find(t => t.amount === 50);
   ok(parent && parent.isGroup === true && child && child.parentId === parent.id
@@ -875,9 +880,11 @@ console.log('\n=== R. automatic-payment identity uses explicit payee+account+dat
     'identified BCAA publishes observed actual, not the $82.96 schedule');
   ok(respBill && respBill.settlement !== 'represented' && near(respBill.remaining, 100),
     'RESP without its explicit provider alias is not marked paid');
-  ok(!/"payee"\s*:/.test(JSON.stringify(report.currentPeriodActuals))
-      && !/"displayedPayee"\s*:/.test(JSON.stringify(report.currentPeriodActuals)),
-    'sanitized represented actuals still drop payee and renamed equivalents');
+  ok(!/"payee"\s*:/.test(JSON.stringify(report.currentPeriodActuals)),
+    'sanitized represented actuals still drop raw payee');
+  ok(!(report.currentPeriodActuals.transactions || []).some(tx =>
+      tx && (tx.displayedPayee || tx.originalMerchant)),
+    'represented bill and unmatched insurance rows do not publish merchant identity');
 }
 
 console.log('\n=== R2. grocery with the same date and amount as a represented bill stays Groceries ===');
@@ -952,10 +959,11 @@ console.log('\n=== R2. grocery with the same date and amount as a represented bi
 console.log('\n=== R3. sanitizer rejects renamed raw transaction metadata ===');
 {
   const renamed = [
-    'displayedPayee', 'originalMerchant', 'original_name', 'originalName',
+    'original_name', 'originalName',
     'payee', 'notes', 'note', 'tags', 'tag',
     'providerTransactionId', 'providerAccountId',
     'provider_transaction_id', 'merchant', 'merchantName',
+    'displayed_payee', 'original_merchant',
   ];
   for (const key of renamed) {
     const leaked = {
@@ -965,6 +973,16 @@ console.log('\n=== R3. sanitizer rejects renamed raw transaction metadata ===');
     ok(!O.currentPeriodActualsLooksSanitized(leaked),
       `sanitizer rejects renamed raw field ${key}`);
   }
+  const withIdentity = {
+    schema: 'atlas-current-period-actuals/v1',
+    transactions: [{
+      id: 'tx-1', date: '2026-08-15', amount: 12,
+      displayedPayee: 'SAFEWAY', originalMerchant: 'SAFEWAY',
+      merchantKnown: true, categoryLabel: 'Groceries',
+    }],
+  };
+  ok(O.currentPeriodActualsLooksSanitized(withIdentity),
+    'sanitizer allows displayedPayee and originalMerchant as identity fields');
   const clean = {
     schema: 'atlas-current-period-actuals/v1',
     representedActuals: [{
@@ -978,6 +996,137 @@ console.log('\n=== R3. sanitizer rejects renamed raw transaction metadata ===');
   };
   ok(O.currentPeriodActualsLooksSanitized(clean),
     'sanitizer allows derived flags and local transactionId references');
+}
+
+console.log('\n=== R4. merchant identity stays off excluded kinds and accounts ===');
+{
+  const plan = basePlan();
+  const map = {
+    schema: 'atlas-provider-account-map/v1',
+    mappings: [
+      {
+        providerAccountId: '1001',
+        canonical: { collection: 'cash', id: 'chequing-a' },
+        atlasRole: 'household-cash',
+      },
+      { providerAccountId: '9999', atlasRole: 'household-external' },
+    ],
+  };
+  const packet = O.sanitizedCurrentPeriodActuals({
+    fetchedAt: PAYDAY + 'T18:00:00.000Z',
+    transactionWindow: { startDate: PAYDAY, endDate: PAYDAY, complete: true },
+    pendingCoverage: {
+      complete: true, basis: O.PENDING_COVERAGE_BASIS, hasMore: false, truncated: false,
+    },
+    collapsedTransactions: [
+      {
+        date: PAYDAY, amount: 18.56, pending: false, categoryLabel: 'Groceries',
+        payee: 'Save-On-Foods', originalName: 'Save-On-Foods',
+        providerAccountId: '1001', providerTransactionId: 'groc-1',
+      },
+      {
+        date: PAYDAY, amount: 2500, pending: false, categoryLabel: 'Income',
+        payee: 'SEASPAN PAYROLL', originalName: 'SEASPAN PAYROLL',
+        isIncome: true, providerAccountId: '1001', providerTransactionId: 'inc-1',
+      },
+      {
+        date: PAYDAY, amount: 40, pending: false, categoryLabel: 'Transfer',
+        payee: 'INTERNAL TRANSFER', originalName: 'INTERNAL TRANSFER',
+        excludeFromTotals: true, kind: 'transfer',
+        providerAccountId: '1001', providerTransactionId: 'xfer-1',
+      },
+      {
+        date: PAYDAY, amount: 200, pending: false, categoryLabel: 'Payment',
+        payee: 'VISA PAYMENT', originalName: 'VISA PAYMENT',
+        excludeFromTotals: true, kind: 'payment',
+        providerAccountId: '1001', providerTransactionId: 'pay-1',
+      },
+      {
+        date: PAYDAY, amount: 103, pending: false, categoryLabel: 'Insurance',
+        payee: 'BCAA-AdvAutoIns INS', originalName: 'BCAA-AdvAutoIns INS',
+        providerAccountId: '1001', providerTransactionId: 'bill-1',
+      },
+      {
+        date: PAYDAY, amount: 80, pending: false, categoryLabel: 'Business',
+        payee: 'ACME CORP', originalName: 'ACME CORP',
+        providerAccountId: '1001', providerTransactionId: 'biz-1',
+      },
+      {
+        date: PAYDAY, amount: 99, pending: false, categoryLabel: 'Groceries',
+        payee: 'COSTCO', originalName: 'COSTCO',
+        providerAccountId: '9999', providerTransactionId: 'ext-1',
+      },
+      {
+        date: PAYDAY, amount: -12, pending: false, categoryLabel: 'Groceries',
+        payee: 'REFUND GROCER', originalName: 'REFUND GROCER',
+        providerAccountId: '1001', providerTransactionId: 'ref-1',
+      },
+    ],
+    representedEventCandidates: [{
+      id: 'bcaa', date: PAYDAY, observedAmount: 103,
+      providerTransactionId: 'bill-1', postingDate: PAYDAY,
+    }],
+  }, { asOf: PAYDAY, plan, accountMap: map });
+
+  function byAmount(amount) {
+    return (packet.transactions || []).find(tx => tx && Number(tx.amount) === amount) || null;
+  }
+  function noMerchant(tx) {
+    return !tx || (tx.displayedPayee == null && tx.originalMerchant == null
+      && !Object.prototype.hasOwnProperty.call(tx, 'displayedPayee')
+      && !Object.prototype.hasOwnProperty.call(tx, 'originalMerchant'));
+  }
+
+  const grocery = byAmount(18.56);
+  const income = byAmount(2500);
+  const transfer = byAmount(40);
+  const payment = byAmount(200);
+  const billTx = byAmount(103);
+  const business = byAmount(80);
+  const external = byAmount(99);
+  const refund = byAmount(-12);
+
+  ok(grocery && grocery.displayedPayee === 'Save-On-Foods'
+      && grocery.originalMerchant === 'Save-On-Foods',
+    'eligible Household Budget grocery keeps sanitized merchant identity');
+  ok(F.classifyCurrentPeriodTransaction.householdBudgetSupportingSpendEligible(
+      F.classifyCurrentPeriodTransaction(grocery, plan, { currentPeriodActuals: packet })) === true
+      && F.classifyCurrentPeriodTransaction(grocery, plan, { currentPeriodActuals: packet }).categoryId === 'groceries',
+    'eligible grocery still classifies as Groceries spend');
+  ok(income && F.classifyCurrentPeriodTransaction(income, plan, { currentPeriodActuals: packet }).kind === 'income'
+      && noMerchant(income),
+    'income publishes no merchant identity');
+  ok(transfer && F.classifyCurrentPeriodTransaction(transfer, plan, { currentPeriodActuals: packet }).kind === 'transfer'
+      && noMerchant(transfer),
+    'transfer publishes no merchant identity');
+  ok(payment && F.classifyCurrentPeriodTransaction(payment, plan, { currentPeriodActuals: packet }).kind === 'card-payment'
+      && noMerchant(payment),
+    'card payment publishes no merchant identity');
+  ok(billTx && billTx.representedBill === true
+      && F.classifyCurrentPeriodTransaction(billTx, plan, { currentPeriodActuals: packet }).kind === 'bill'
+      && noMerchant(billTx),
+    'represented bill publishes no merchant identity');
+  ok(business && F.classifyCurrentPeriodTransaction(business, plan, { currentPeriodActuals: packet }).kind === 'business'
+      && noMerchant(business),
+    'excluded business row publishes no merchant identity');
+  ok(external && external.accountRole === 'household-external'
+      && F.classifyCurrentPeriodTransaction(external, plan, { currentPeriodActuals: packet }).kind === 'external'
+      && noMerchant(external),
+    'household-external grocery publishes no merchant identity');
+  ok(refund && F.classifyCurrentPeriodTransaction(refund, plan, { currentPeriodActuals: packet }).kind === 'refund'
+      && noMerchant(refund),
+    'refund publishes no merchant identity');
+
+  const action = F.currentPeriodAction(plan, PAYDAY, opts({
+    currentPeriodActuals: packet,
+  }));
+  const groceries = cat(action, 'groceries');
+  const planned = plannedNeed(1800, PAYDAY, PERIOD_LAST);
+  ok(groceries && near(groceries.committed, 18.56) && near(groceries.remaining, planned - 18.56),
+    'Spent/Remaining still count only the eligible grocery, not excluded counterparties');
+  ok(!/"payee"\s*:/.test(JSON.stringify(packet))
+      && O.currentPeriodActualsLooksSanitized(packet),
+    'gated merchant packet still drops raw payee and passes the sanitizer');
 }
 
 function independentInventory(txs, plan, asOf, origin) {

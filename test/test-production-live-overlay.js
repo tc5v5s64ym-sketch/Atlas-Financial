@@ -654,13 +654,16 @@ function independentGroceryRemaining(plan, asOf) {
       'sanitized current-period packet is published');
     ok(!(actuals.transactions || []).some(tx =>
       tx.payee || tx.providerTransactionId || tx.providerAccountId || tx.original_name
-      || tx.displayedPayee || tx.originalMerchant || tx.notes || tx.tags
+      || tx.notes || tx.tags
       || tx.note || tx.tag || tx.merchant || tx.merchantName),
-      'actuals rows dropped payee, original merchant, notes, tags, provider ids, and renamed equivalents');
+      'actuals rows dropped raw payee, notes, tags, provider ids, and renamed equivalents');
+    ok((actuals.transactions || []).some(tx =>
+      tx.displayedPayee === 'SYNTHETIC GROCER' || tx.originalMerchant === 'SYNTHETIC GROCER'),
+      'actuals rows keep sanitized displayedPayee / originalMerchant');
     ok((actuals.transactions || []).some(tx =>
       tx.merchantKnown === true || tx.dogFood === true || tx.representedBill === true
       || tx.categoryLabel),
-      'actuals rows keep derived classifications, not raw merchant text');
+      'actuals rows keep derived classifications');
   });
 
   console.log('\n=== H. live /data.json does not write canonical files ===');

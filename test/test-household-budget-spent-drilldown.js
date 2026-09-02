@@ -13,6 +13,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const F = require('../public/forecast.js');
+const O = require('../scripts/provider-observe.js');
 
 let failures = 0;
 const ok = (cond, label, detail = '') => {
@@ -115,6 +116,9 @@ function block(html, id) {
 }
 function txIds(html) {
   return [...html.matchAll(/data-tx-id="([^"]+)"/g)].map(m => m[1]);
+}
+function txPayees(html) {
+  return [...html.matchAll(/household-budget-tx-payee">([^<]*)/g)].map(m => m[1]);
 }
 
 const AS_OF = '2026-09-01';
@@ -248,8 +252,14 @@ console.log('\n=== 2. Forecast row.recon is the membership the page must print =
       && near(reconSum(eating), eating.spent)
       && near(reconSum(other), other.spent),
     'each row.recon independently sums to that row.spent');
-  ok(!(groceries.recon || []).some(tx => tx.displayedPayee || tx.originalMerchant),
-    'Forecast recon does not carry stripped payee / merchant text');
+  ok(groceries.recon[0].displayedPayee === 'Save-On-Foods'
+      && groceries.recon[1].displayedPayee === 'Costco'
+      && groceries.recon[2].displayedPayee === 'Walmart'
+      && fuel.recon[0].displayedPayee === 'Shell',
+    'Forecast recon copies sanitized displayedPayee from the actuals packet');
+  ok(groceries.recon.every(tx => tx.categoryLabel === 'Groceries')
+      && groceries.recon.every(tx => tx.displayedPayee !== 'Groceries'),
+    'categoryLabel stays classification; it is not copied as merchant identity');
 }
 
 console.log('\n=== 3. rendered Spent is interactive only when recon exists ===');
@@ -316,8 +326,16 @@ console.log('\n=== 4. disclosed rows are exactly Forecast recon, summing to Spen
       && !allIds.includes('tx-transfer') && !allIds.includes('tx-income')
       && !allIds.includes('tx-before') && !allIds.includes('tx-after'),
     'bills, transfers, income, and outside-cycle txs are absent from every disclosure');
-  ok(!/Save-On-Foods|Costco|Walmart|Shell/.test(html),
-    'renderer consumes row.recon, so stripped payee text does not reappear');
+  ok(txPayees(groceriesHtml).includes('Save-On-Foods')
+      && txPayees(groceriesHtml).includes('Costco')
+      && txPayees(groceriesHtml).includes('Walmart')
+      && !txPayees(groceriesHtml).includes('Groceries'),
+    'Groceries detail identifies Save-On-Foods / Costco / Walmart, not Groceries');
+  ok(txPayees(fuelHtml).includes('Shell') && !txPayees(fuelHtml).includes('Fuel'),
+    'Fuel detail identifies Shell, not Fuel');
+  ok(txPayees(eatingHtml).includes('Merchant unavailable')
+      && !txPayees(eatingHtml).includes('Restaurants'),
+    'missing merchant identity is a neutral fallback, not the Restaurants label');
   ok(/datetime="2026-08-29"/.test(groceriesHtml) && /datetime="2026-08-30"/.test(groceriesHtml),
     'disclosed grocery rows keep their incumbent dates');
   const grocerySpent = composer.money2(groceries.spent);
@@ -325,24 +343,56 @@ console.log('\n=== 4. disclosed rows are exactly Forecast recon, summing to Spen
     'collapsed Spent control still shows the incumbent Groceries spent figure');
 }
 
-console.log('\n=== 5. renderer may format a supplied recon payee; it does not classify ===');
+console.log('\n=== 5. merchant identity uses displayedPayee, then originalMerchant ===');
 {
-  const html = composer.householdBudgetMetric('Spent', 10.00, {
+  const saveOn = composer.householdBudgetMetric('Spent', 18.56, {
     recon: [{
-      id: 'tx-supplied', date: '2026-08-29', amount: 10.00,
-      displayedPayee: 'Corner Store', categoryLabel: 'Groceries', pending: false,
+      id: 'tx-save-on', date: '2026-08-31', amount: 18.56,
+      displayedPayee: 'Save-On-Foods', originalMerchant: 'Save-On-Foods',
+      categoryLabel: 'Groceries', pending: false,
     }],
     id: 'groceries',
   });
-  ok(/Corner Store/.test(html) && /data-tx-id="tx-supplied"/.test(html)
-      && html.includes(composer.money2(10)),
-    'when recon already carries displayedPayee, the disclosure prints that label');
-  const fallback = composer.householdBudgetMetric('Spent', 5.00, {
+  ok(txPayees(saveOn).join() === 'Save-On-Foods'
+      && saveOn.includes(composer.money2(18.56))
+      && /datetime="2026-08-31"/.test(saveOn)
+      && !txPayees(saveOn).includes('Groceries')
+      && !/>Groceries</.test(saveOn.replace(/<h3[\s\S]*?<\/h3>/, '')),
+    'constructed Aug 31 Save-On-Foods $18.56; Groceries is not the transaction identity');
+
+  const displayedWins = composer.householdBudgetMetric('Spent', 22.00, {
+    recon: [{
+      id: 'tx-display-wins', date: '2026-08-31', amount: 22.00,
+      displayedPayee: 'Thrifty Foods', originalMerchant: 'THRIFTY FOODS #88',
+      categoryLabel: 'Groceries', pending: false,
+    }],
+    id: 'groceries',
+  });
+  ok(txPayees(displayedWins).join() === 'Thrifty Foods'
+      && !txPayees(displayedWins).includes('THRIFTY FOODS #88')
+      && !txPayees(displayedWins).includes('Groceries'),
+    'displayedPayee wins when both merchant fields are present');
+
+  const originalFallback = composer.householdBudgetMetric('Spent', 9.41, {
+    recon: [{
+      id: 'tx-original-only', date: '2026-08-30', amount: 9.41,
+      originalMerchant: 'Safeway', categoryLabel: 'Groceries', pending: false,
+    }],
+    id: 'groceries',
+  });
+  ok(txPayees(originalFallback).join() === 'Safeway'
+      && !txPayees(originalFallback).includes('Groceries'),
+    'originalMerchant is used when displayedPayee is unavailable');
+
+  const missing = composer.householdBudgetMetric('Spent', 5.00, {
     recon: [{ id: 'tx-label', date: '2026-08-30', amount: 5.00, categoryLabel: 'Fuel', pending: false }],
     id: 'fuel',
   });
-  ok(/>Fuel</.test(fallback) && !/Corner Store/.test(fallback),
-    'missing displayedPayee falls back to the recon categoryLabel');
+  ok(txPayees(missing).join() === 'Merchant unavailable'
+      && !txPayees(missing).includes('Fuel')
+      && !/>Fuel</.test(missing),
+    'missing merchant identity is Merchant unavailable; categoryLabel is not substituted');
+
   const empty = composer.householdBudgetMetric('Spent', 0, { recon: [], id: 'pets' });
   ok(!/<details/.test(empty) && /<dt>Spent<\/dt>/.test(empty),
     'empty recon is not an interactive breakdown');
@@ -351,8 +401,101 @@ console.log('\n=== 5. renderer may format a supplied recon payee; it does not cl
   const categorySrc = grab(planSrc, /^function householdBudgetCategoryHtml\([\s\S]*?\n\}$/m, 'householdBudgetCategoryHtml');
   ok(!/classifyCurrentPeriodTransaction/.test(metricSrc + categorySrc)
       && !/sumCategoryActuals/.test(metricSrc + categorySrc)
-      && /row\.recon/.test(categorySrc),
-    'Plan Household Budget renderer consumes row.recon and does not classify');
+      && /row\.recon/.test(categorySrc)
+      && /displayedPayee/.test(metricSrc)
+      && /originalMerchant/.test(metricSrc)
+      && /Merchant unavailable/.test(metricSrc)
+      && !/categoryLabel \|\|/.test(metricSrc),
+    'Plan Household Budget renderer consumes row.recon merchant fields and does not classify');
+}
+
+console.log('\n=== 5b. Forecast recon originalMerchant fallback is independent of the renderer ===');
+{
+  const txs = [{
+    id: 'tx-safeway-only', date: '2026-08-31', amount: 18.56, pending: false,
+    categoryLabel: 'Groceries', accountRole: 'household-cash',
+    originalMerchant: 'Safeway',
+  }];
+  const advice = recommend(txs);
+  const active = period(advice.defaultView, 'this-pay-period');
+  const groceries = budgetRow(active, 'groceries');
+  ok(groceries && groceries.recon && groceries.recon.length === 1
+      && groceries.recon[0].displayedPayee == null
+      && groceries.recon[0].originalMerchant === 'Safeway'
+      && groceries.recon[0].categoryLabel === 'Groceries'
+      && !Object.prototype.hasOwnProperty.call(groceries.recon[0], 'payee')
+      && near(groceries.spent, 18.56),
+    'Forecast recon keeps originalMerchant when displayedPayee is absent; membership and spent unchanged');
+  const groceriesHtml = block(composer.calendarBudgetHtml(active), 'groceries');
+  ok(txPayees(groceriesHtml).join() === 'Safeway'
+      && !txPayees(groceriesHtml).includes('Groceries')
+      && groceriesHtml.includes(composer.money2(18.56)),
+    'rendered originalMerchant fallback is Safeway $18.56, not Groceries');
+}
+
+console.log('\n=== 5c. sanitizer omits merchant on excluded rows; eligible spend still renders ===');
+{
+  const plan = syntheticPlan();
+  plan.budget.excluded = [{ from: 'Business', why: 'not household' }];
+  const packet = O.sanitizedCurrentPeriodActuals({
+    fetchedAt: AS_OF + 'T18:00:00.000Z',
+    transactionWindow: { startDate: '2026-08-28', endDate: AS_OF, complete: true },
+    pendingCoverage: { complete: true, hasMore: false, truncated: false },
+    collapsedTransactions: [
+      {
+        date: '2026-08-31', amount: 18.56, pending: false, categoryLabel: 'Groceries',
+        payee: 'Save-On-Foods', originalName: 'Save-On-Foods',
+        providerAccountId: '1001', providerTransactionId: 'groc-render',
+      },
+      {
+        date: '2026-08-31', amount: 2500, pending: false, categoryLabel: 'Income',
+        payee: 'SEASPAN PAYROLL', originalName: 'SEASPAN PAYROLL',
+        isIncome: true, providerAccountId: '1001', providerTransactionId: 'inc-render',
+      },
+      {
+        date: '2026-08-31', amount: 80, pending: false, categoryLabel: 'Business',
+        payee: 'ACME CORP', originalName: 'ACME CORP',
+        providerAccountId: '1001', providerTransactionId: 'biz-render',
+      },
+    ],
+    representedEventCandidates: [],
+  }, {
+    asOf: AS_OF,
+    plan,
+    accountMap: {
+      mappings: [{
+        providerAccountId: '1001',
+        canonical: { collection: 'cash', id: 'chequing-a' },
+        atlasRole: 'household-cash',
+      }],
+    },
+  });
+  packet.coverageStart = '2026-07-01';
+  packet.coverageThrough = AS_OF;
+  packet.pendingCoverage = 'complete';
+  const grocery = (packet.transactions || []).find(tx => Number(tx.amount) === 18.56);
+  const income = (packet.transactions || []).find(tx => Number(tx.amount) === 2500);
+  const business = (packet.transactions || []).find(tx => Number(tx.amount) === 80);
+  ok(grocery && grocery.displayedPayee === 'Save-On-Foods',
+    'sanitizer keeps Save-On-Foods on the eligible grocery');
+  ok(income && income.displayedPayee == null && business && business.displayedPayee == null,
+    'sanitizer omits merchant identity on income and excluded business');
+  const advice = F.recommend(plan, AS_OF, {
+    targetBuffer: 500,
+    debts,
+    currentPeriodActuals: packet,
+  });
+  const active = period(advice.defaultView, 'this-pay-period');
+  const groceries = budgetRow(active, 'groceries');
+  ok(groceries && near(groceries.spent, 18.56) && groceries.recon.length === 1
+      && groceries.recon[0].displayedPayee === 'Save-On-Foods',
+    'Forecast Spent and recon still use the eligible grocery merchant');
+  const groceriesHtml = block(composer.calendarBudgetHtml(active), 'groceries');
+  ok(txPayees(groceriesHtml).includes('Save-On-Foods')
+      && !txPayees(groceriesHtml).includes('SEASPAN PAYROLL')
+      && !txPayees(groceriesHtml).includes('ACME CORP')
+      && !txPayees(groceriesHtml).includes('Groceries'),
+    'rendered Spent row is Aug 31 Save-On-Foods, not income/business counterparties');
 }
 
 console.log('\n=== 6. Planned, Remaining, and waterfall figures stay put ===');
