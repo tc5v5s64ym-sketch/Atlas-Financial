@@ -2255,6 +2255,66 @@
       .trim();
   }
 
+  function payeeLooksLikePets(tx) {
+    if (isDogFoodMerchant(tx)) return true;
+    return /\bPET(?:S|VALU|SMART)?\b/i.test(txMerchantExact(tx));
+  }
+
+  // Payee and Lunch Money category disagree. The category must not silently
+  // win (Google + Pets must not become dog food or Other-as-Pets). Represented
+  // bills are already handled above this check.
+  function payeeDisagreesWithBudgetCategory(tx, categoryId) {
+    if (!txHasMerchantIdentity(tx) || !categoryId) return false;
+    if (categoryId === 'pets') return !payeeLooksLikePets(tx);
+    return false;
+  }
+
+  function spendDuplicateKey(tx) {
+    if (!tx || !tx.date) return null;
+    const account = tx.atlasAccountId || tx.account;
+    const amt = Number(tx.amount);
+    const merchant = normalizeMerchantKey(txMerchantExact(tx));
+    if (account == null || account === '' || !isFinite(amt) || !merchant) return null;
+    return [tx.date, String(account), Number(amt).toFixed(2), merchant].join('|');
+  }
+
+  // Surface a pending+posted twin. Do not drop a row. Only a 1:1 pair of the
+  // same date/account/amount/merchant is flagged so a real second purchase
+  // is not silently collapsed.
+  function pendingPostedDuplicateIdSet(packet) {
+    const flagged = new Set();
+    const txs = packet && Array.isArray(packet.transactions) ? packet.transactions : [];
+    const pendingByKey = new Map();
+    const postedByKey = new Map();
+    for (const tx of txs) {
+      if (!tx) continue;
+      if (tx.pendingPostedDuplicate === true && tx.id != null) {
+        flagged.add(String(tx.id));
+      }
+      const key = spendDuplicateKey(tx);
+      if (!key) continue;
+      const bucket = transactionPendingState(tx) === 'pending' ? pendingByKey : postedByKey;
+      const list = bucket.get(key) || [];
+      list.push(tx);
+      bucket.set(key, list);
+    }
+    for (const [key, pendings] of pendingByKey) {
+      const posted = postedByKey.get(key) || [];
+      if (pendings.length !== 1 || posted.length !== 1) continue;
+      for (const tx of pendings.concat(posted)) {
+        if (tx && tx.id != null) flagged.add(String(tx.id));
+      }
+    }
+    return flagged;
+  }
+
+  function pendingPostedDuplicatePending(tx, packet) {
+    if (!tx || transactionPendingState(tx) !== 'pending') return false;
+    if (tx.pendingPostedDuplicate === true) return true;
+    if (tx.id == null) return false;
+    return pendingPostedDuplicateIdSet(packet).has(String(tx.id));
+  }
+
   function isDogFoodMerchant(tx) {
     if (tx && tx.dogFood === true) return true;
     return DOG_FOOD_MERCHANT_RE.test(normalizeMerchantKey(txMerchantExact(tx)));
@@ -2425,6 +2485,12 @@
         kind: 'bill', categoryId: matched.id, householdSpending: false,
         reason: 'bills-only', includeReason: 'bills-only:' + matched.id,
       };
+    }
+    if (matched && payeeDisagreesWithBudgetCategory(tx, matched.id)) {
+      return confirmationResult(
+        'payee-category-contradiction',
+        'payee-category-contradiction'
+      );
     }
     if (matched && matched.id === 'fuel') {
       if (isConvenienceStoreMerchant(tx) && !hasExplicitFuelEvidence(tx)) {
@@ -2677,6 +2743,7 @@
       if (state === 'pending') row.pending = roundCent(row.pending + amt);
       else row.posted = roundCent(row.posted + amt);
     };
+    const duplicateIds = pendingPostedDuplicateIdSet(packet);
     for (const tx of packet.transactions) {
       if (!tx || !tx.date) continue;
       if (periodStart && tx.date < periodStart) continue;
@@ -2703,17 +2770,22 @@
       }
       if (cls.needsConfirmation) {
         out.unclassified.count += 1;
+        if (state === 'pending' && tx.id != null && duplicateIds.has(String(tx.id))) {
+          continue;
+        }
         add(out.unclassified, state, amt);
         continue;
       }
       const catId = cls.categoryId || 'uncategorised';
       if (!out.byId.has(catId)) out.byId.set(catId, { posted: 0, pending: 0, count: 0 });
       const row = out.byId.get(catId);
-      row.count += 1;
-      add(row, state, amt);
-      if (classificationIncompleteHouseholdSpend(cls)) {
-        out.unclassified.count += 1;
-        add(out.unclassified, state, amt);
+      if (!(state === 'pending' && tx.id != null && duplicateIds.has(String(tx.id)))) {
+        row.count += 1;
+        add(row, state, amt);
+        if (classificationIncompleteHouseholdSpend(cls)) {
+          out.unclassified.count += 1;
+          add(out.unclassified, state, amt);
+        }
       }
     }
     return out;
@@ -4139,8 +4211,9 @@
     return text || null;
   }
 
-  function reconTxFrom(tx, cls) {
+  function reconTxFrom(tx, cls, extra) {
     const pending = transactionPendingState(tx) === 'pending';
+    const duplicate = extra && extra.pendingPostedDuplicate === true;
     return {
       id: tx.id || null,
       date: tx.date || null,
@@ -4150,8 +4223,11 @@
       displayedPayee: reconIdentityField(tx.displayedPayee),
       originalMerchant: reconIdentityField(tx.originalMerchant),
       atlasRow: (cls && (cls.atlasRow || cls.categoryId)) || null,
-      includeReason: (cls && (cls.includeReason || cls.reason)) || null,
+      includeReason: duplicate
+        ? 'pending-posted-duplicate'
+        : ((cls && (cls.includeReason || cls.reason)) || null),
       pending,
+      pendingPostedDuplicate: duplicate,
     };
   }
 
@@ -4182,6 +4258,7 @@
     const through = cycle && cycle.end && asOf && asOf < cycle.end ? asOf : (cycle && cycle.end);
     const packet = currentPeriodActualsPacket(opts);
     const classifyOpts = Object.assign({}, opts, { packet, currentPeriodActuals: packet });
+    const duplicateIds = pendingPostedDuplicateIdSet(packet);
     const reconById = new Map();
     const confirmationRecon = [];
     let confirmationSpent = 0;
@@ -4195,10 +4272,12 @@
         if (!isFinite(amt) || amt === 0) continue;
         const cls = classifyCurrentPeriodTransaction(tx, plan, classifyOpts);
         if (!householdBudgetSupportingSpendEligible(cls)) continue;
-        const row = reconTxFrom(tx, cls);
+        const isDuplicate = tx.id != null && duplicateIds.has(String(tx.id));
+        const skipDuplicatePending = isDuplicate && transactionPendingState(tx) === 'pending';
+        const row = reconTxFrom(tx, cls, { pendingPostedDuplicate: isDuplicate });
         if (cls.needsConfirmation || cls.kind === 'unclassified') {
           confirmationRecon.push(row);
-          confirmationSpent = roundCent(confirmationSpent + amt);
+          if (!skipDuplicatePending) confirmationSpent = roundCent(confirmationSpent + amt);
           continue;
         }
         const catId = cls.atlasRow || cls.categoryId;
@@ -4208,7 +4287,10 @@
         }
       }
     }
-    const spentFromRecon = list => roundCent((list || []).reduce((s, r) => s + (Number(r.amount) || 0), 0));
+    const spentFromRecon = list => roundCent((list || []).reduce((s, r) => {
+      if (r && r.pendingPostedDuplicate === true && r.pending === true) return s;
+      return s + (Number(r && r.amount) || 0);
+    }, 0));
     const byId = new Map();
     for (const cat of (plan && plan.budget && plan.budget.categories) || []) {
       if (cat && cat.id) byId.set(cat.id, cat);

@@ -2653,8 +2653,47 @@ function collapsePendingPostedBySettlementIdentity(transactions, asOf, opts) {
     if (mate) drop.add(pend);
   }
   collapseOwnerConfirmedShopifySettlement(pending, posted, drop, opts);
-  if (!drop.size) return list;
-  return list.filter(tx => !drop.has(tx));
+  const remaining = drop.size ? list.filter(tx => !drop.has(tx)) : list;
+  flagUnresolvedPendingPostedDuplicates(remaining, asOf, opts);
+  return remaining;
+}
+
+function pendingPostedSurfaceKey(tx, opts) {
+  const accountId = settlementAccountId(tx, opts);
+  const amount = lunchMoneyDebitAmount(tx && tx.amount);
+  const merchant = [tx && tx.originalMerchant, tx && tx.originalName, tx && tx.original_name]
+    .find(v => v != null && String(v).trim() !== '');
+  if (!tx || !tx.date || accountId == null || accountId === '' || amount == null || !merchant) {
+    return null;
+  }
+  return [tx.date, String(accountId), Number(amount).toFixed(2), String(merchant)].join('|');
+}
+
+function flagUnresolvedPendingPostedDuplicates(transactions, asOf, opts) {
+  const treat = tx => pendingForecastTreatment(tx, asOf, opts);
+  const pendingByKey = new Map();
+  const postedByKey = new Map();
+  for (const tx of transactions || []) {
+    if (!tx) continue;
+    const key = pendingPostedSurfaceKey(tx, opts);
+    if (!key) continue;
+    const treatment = treat(tx);
+    if (tx.pending === true && treatment.treatment === 'unresolved') {
+      const list = pendingByKey.get(key) || [];
+      list.push(tx);
+      pendingByKey.set(key, list);
+    } else if (tx.pending !== true && treatment.treatment === 'confirmed-settled') {
+      const list = postedByKey.get(key) || [];
+      list.push(tx);
+      postedByKey.set(key, list);
+    }
+  }
+  for (const [key, pendings] of pendingByKey) {
+    const posted = postedByKey.get(key) || [];
+    if (pendings.length !== 1 || posted.length !== 1) continue;
+    pendings[0].pendingPostedDuplicate = true;
+    posted[0].pendingPostedDuplicate = true;
+  }
 }
 
 function sanitizedCurrentPeriodActuals(report, opts) {
@@ -2752,6 +2791,7 @@ function sanitizedCurrentPeriodActuals(report, opts) {
       personalOwner,
       isGroup: tx.isGroup === true,
       parentId: localIdFor(tx.parentId),
+      pendingPostedDuplicate: tx.pendingPostedDuplicate === true,
     });
   }
   const representedActuals = [];

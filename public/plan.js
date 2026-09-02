@@ -1821,12 +1821,15 @@ function householdBudgetMetric(label, amount, opts) {
       const pending = tx.pending === true
         ? '<span class="household-budget-tx-pending">Pending</span>'
         : '';
+      const duplicate = tx.pendingPostedDuplicate === true
+        ? '<span class="household-budget-tx-duplicate">Possible duplicate</span>'
+        : '';
       const dateAttr = tx.date ? ` datetime="${esc(tx.date)}"` : '';
       const dateText = tx.date ? fmtDate(tx.date) : '—';
       const idAttr = tx.id ? ` data-tx-id="${esc(tx.id)}"` : '';
       return `<li class="household-budget-tx"${idAttr} data-tx-pending="${tx.pending === true ? 'true' : 'false'}">
         <time${dateAttr}>${esc(dateText)}</time>
-        <span class="household-budget-tx-payee">${esc(payeeRaw)}${pending}</span>
+        <span class="household-budget-tx-payee">${esc(payeeRaw)}${pending}${duplicate}</span>
         <span class="household-budget-tx-amount">${money2(tx.amount)}</span>
       </li>`;
     }).join('');

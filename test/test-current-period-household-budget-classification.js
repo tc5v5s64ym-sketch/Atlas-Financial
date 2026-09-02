@@ -736,10 +736,12 @@ console.log('\n=== 10. Natural Gas / Other bank fees are bills; Amazon/Prime fai
   const SHOPIFY_AMT = 54.88;
   const AMAZON_WITHOUT_OWNER = roundCent(AMAZON_AMT + AMAZON_AMT + PRIME_AMT);
   const DISTINCT_SAME_DAY = roundCent(SHOPIFY_AMT + SHOPIFY_AMT);
+  const SHOPIFY_ONCE_PLUS_OTHER = roundCent(SHOPIFY_AMT + OTHER_AMT);
   ok(near(NATURAL_GAS_AMT + BANK_FEE_AMT, 29.5)
       && near(AMAZON_WITHOUT_OWNER + OTHER_AMT, 45.49)
-      && near(DISTINCT_SAME_DAY + OTHER_AMT, 117.26),
-    'independent fixture arithmetic: bills $29.50; Amazon/Prime+Other $45.49; two Shopify $54.88+$54.88+$7.50=$117.26');
+      && near(DISTINCT_SAME_DAY + OTHER_AMT, 117.26)
+      && near(SHOPIFY_ONCE_PLUS_OTHER, 62.38),
+    'independent fixture arithmetic: bills $29.50; Amazon/Prime+Other $45.49; two Shopify $117.26; one Shopify $62.38');
 
   const plan = syntheticPlan();
   const gas = naturalGasTx();
@@ -847,9 +849,11 @@ console.log('\n=== 10. Natural Gas / Other bank fees are bills; Amazon/Prime fai
   ok(overdraftCls.kind !== 'bill' && overdraftCls.reason === 'unmapped-label'
       && overdraftCls.householdSpending === true,
     'Overdraft fees remains unmapped-label, not a bill');
-  ok(googlePetsCls.kind !== 'bill' && googlePetsCls.reason === 'pets-not-dog-food'
+  ok(googlePetsCls.kind !== 'bill'
+      && googlePetsCls.reason === 'payee-category-contradiction'
+      && googlePetsCls.needsConfirmation === true
       && googlePetsCls.householdSpending === true,
-    'Google Pets remains pets-not-dog-food, not a bill');
+    'Google + Pets is a payee/category contradiction, not silent Pets');
 
   const billPacket = actualsPacket([gas, fee, otherTx()]);
   const billAdvice = recommend(billPacket);
@@ -911,11 +915,15 @@ console.log('\n=== 10. Natural Gas / Other bank fees are bills; Amazon/Prime fai
   const distinctOther = otherRow(distinctPeriod);
   const distinctIds = ((distinctOther && distinctOther.recon) || [])
     .filter(row => row && row.id).map(row => row.id);
+  const shopifyDupRows = ((distinctOther && distinctOther.recon) || [])
+    .filter(row => row && (row.id === 'tx-shopify-pending' || row.id === 'tx-shopify-posted'));
   ok(distinctOther && distinctIds.includes('tx-shopify-pending')
       && distinctIds.includes('tx-shopify-posted') && distinctIds.includes('tx-other')
-      && near(distinctOther.spent, roundCent(DISTINCT_SAME_DAY + OTHER_AMT))
-      && near(reconSum(distinctOther), roundCent(DISTINCT_SAME_DAY + OTHER_AMT)),
-    'two distinct same-day same-account same-merchant same-amount purchases, one pending and one posted, both remain counted');
+      && shopifyDupRows.length === 2
+      && shopifyDupRows.every(row => row.pendingPostedDuplicate === true)
+      && near(distinctOther.spent, SHOPIFY_ONCE_PLUS_OTHER)
+      && !near(distinctOther.spent, roundCent(DISTINCT_SAME_DAY + OTHER_AMT)),
+    'pending+posted without pendingTransactionId keeps both rows, flags the duplicate, and does not silent-double Other');
 
   const map = {
     schema: 'atlas-provider-account-map/v1',
@@ -1084,11 +1092,6 @@ console.log('\n=== 10. Natural Gas / Other bank fees are bills; Amazon/Prime fai
       && near(reconSum(shopifyOther), roundCent(SHOPIFY_AMT + OTHER_AMT)),
     'pending→posted Shopify with explicit pendingTransactionId linkage counts once',
     JSON.stringify({ shopifyIds, spent: shopifyOther && shopifyOther.spent }));
-
-  const SHOPIFY_ONCE_PLUS_OTHER = roundCent(SHOPIFY_AMT + OTHER_AMT);
-  ok(near(SHOPIFY_ONCE_PLUS_OTHER, 62.38)
-      && near(DISTINCT_SAME_DAY + OTHER_AMT, 117.26),
-    'independent fixture arithmetic: one Shopify $54.88+$7.50=$62.38; two $54.88+$54.88+$7.50=$117.26');
 
   const observeSrc = sourceText(fs.readFileSync(path.join(__dirname, '..', 'scripts/provider-observe.js'), 'utf8'));
   ok(observeSrc.includes('SHOPIFY INC/578523914'),
@@ -1278,8 +1281,47 @@ console.log('\n=== 10. Natural Gas / Other bank fees are bills; Amazon/Prime fai
   }, { asOf: AS_OF, plan, accountMap: map });
   const genericTwins = (genericTwin.transactions || [])
     .filter(tx => near(tx.amount, 19.14));
-  ok(genericTwins.length === 2,
-    'date+account+amount+generic merchant alone does not collapse pending+posted');
+  ok(genericTwins.length === 2
+      && genericTwins.every(tx => tx.pendingPostedDuplicate === true)
+      && genericTwins.some(tx => tx.pending === true)
+      && genericTwins.some(tx => tx.pending === false),
+    'pending+posted without pendingTransactionId keeps both rows and surfaces a duplicate');
+  const genericPacket = actualsPacket(genericTwin.transactions || []);
+  const genericAdvice = recommend(genericPacket);
+  const genericPeriod = period(genericAdvice.defaultView, 'this-pay-period');
+  const genericOther = otherRow(genericPeriod);
+  const genericRecon = ((genericOther && genericOther.recon) || [])
+    .filter(row => row && near(row.amount, 19.14));
+  ok(genericRecon.length === 2
+      && genericRecon.every(row => row.pendingPostedDuplicate === true)
+      && genericOther && near(genericOther.spent, 19.14)
+      && !near(genericOther.spent, 38.28),
+    'general pending+posted without a directed link does not silent-double Other spent');
+
+  const twoPosted = actualsPacket([
+    {
+      id: 'tx-posted-a', date: '2026-08-31', amount: 19.14,
+      pending: false, pendingTreatment: 'confirmed-settled', categoryLabel: 'Shopping',
+      accountRole: 'revolving-credit', atlasAccountId: 'travelvisa', account: 'travelvisa',
+      displayedPayee: 'STORE A', originalMerchant: 'STORE A',
+    },
+    {
+      id: 'tx-posted-b', date: '2026-08-31', amount: 19.14,
+      pending: false, pendingTreatment: 'confirmed-settled', categoryLabel: 'Shopping',
+      accountRole: 'revolving-credit', atlasAccountId: 'travelvisa', account: 'travelvisa',
+      displayedPayee: 'STORE B', originalMerchant: 'STORE B',
+    },
+  ]);
+  const twoPostedAdvice = recommend(twoPosted);
+  const twoPostedPeriod = period(twoPostedAdvice.defaultView, 'this-pay-period');
+  const twoPostedOther = otherRow(twoPostedPeriod);
+  const twoPostedIds = ((twoPostedOther && twoPostedOther.recon) || [])
+    .filter(row => row && row.id).map(row => row.id);
+  ok(twoPostedOther && twoPostedIds.includes('tx-posted-a')
+      && twoPostedIds.includes('tx-posted-b')
+      && near(twoPostedOther.spent, 38.28)
+      && !((twoPostedOther.recon || []).some(row => row && row.pendingPostedDuplicate === true)),
+    'two genuine posted same-amount purchases both count');
 
   const googlePetsOverlay = O.sanitizedCurrentPeriodActuals({
     fetchedAt: '2026-09-02T18:13:00.000Z',
@@ -1302,9 +1344,10 @@ console.log('\n=== 10. Natural Gas / Other bank fees are bills; Amazon/Prime fai
     ? F.classifyCurrentPeriodTransaction(googlePetsTx, plan) : null;
   ok(googlePetsTx && googlePetsOverlayCls
       && googlePetsOverlayCls.kind !== 'bill'
-      && googlePetsOverlayCls.reason === 'pets-not-dog-food'
+      && googlePetsOverlayCls.reason === 'payee-category-contradiction'
+      && googlePetsOverlayCls.needsConfirmation === true
       && googlePetsOverlayCls.householdSpending === true,
-    'Google Pets without Chequing B SERVICE _V identity stays pets-not-dog-food',
+    'Google + Pets without storage identity is confirmation, not silent Pets/Other-as-Pets',
     JSON.stringify(googlePetsOverlayCls));
 
   const otherPetsOverlay = O.sanitizedCurrentPeriodActuals({
