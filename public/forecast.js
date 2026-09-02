@@ -4071,7 +4071,8 @@
   // Map a personal/shopping tx to Dale or Amanda only with account, payee,
   // note, or tag evidence. Chequing B / WEEKLY SPENDING is not Dale.
   // TENNIS INCOME / amanda-debt-payments is not guilt-free spending.
-  // No evidence, or both names, fails closed to unassigned.
+  // Merchant + card is not owner evidence. No evidence, or both names,
+  // fails closed to unassigned.
   function personalSpendOwner(tx) {
     if (!tx) return null;
     if (tx.personalOwner === 'dale' || tx.personalOwner === 'amanda'

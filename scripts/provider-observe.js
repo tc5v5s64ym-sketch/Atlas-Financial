@@ -312,7 +312,54 @@ function categoryIndexFromPayload(payload) {
   return byId;
 }
 
-function normalizeLunchMoneyTransaction(raw, categoriesById) {
+function tagIndexFromPayload(payload) {
+  const byId = new Map();
+  const add = raw => {
+    if (!raw || raw.id == null) return;
+    byId.set(String(raw.id), {
+      id: String(raw.id),
+      name: raw.name || raw.label || null,
+    });
+  };
+  for (const raw of (payload && payload.tags) || []) add(raw);
+  return byId;
+}
+
+function resolveRawTags(raw, tagsById) {
+  const index = tagsById || new Map();
+  const fromObjects = [];
+  if (Array.isArray(raw && raw.tags)) {
+    for (const item of raw.tags) {
+      if (item == null) continue;
+      if (typeof item === 'object') {
+        const id = item.id != null ? String(item.id) : null;
+        const named = id && index.get(id);
+        fromObjects.push({
+          id,
+          name: item.name || item.label || (named && named.name) || null,
+        });
+        continue;
+      }
+      if (typeof item === 'number' || (typeof item === 'string' && /^\d+$/.test(item))) {
+        const id = String(item);
+        const named = index.get(id);
+        fromObjects.push({ id, name: (named && named.name) || null });
+        continue;
+      }
+      if (typeof item === 'string') fromObjects.push({ id: null, name: item });
+    }
+  }
+  if (fromObjects.length) return fromObjects;
+  const ids = (raw && (raw.tag_ids || raw.tagIds)) || [];
+  if (!Array.isArray(ids) || !ids.length) return raw && raw.tags ? raw.tags : null;
+  return ids.map(id => {
+    const key = String(id);
+    const named = index.get(key);
+    return { id: key, name: (named && named.name) || null };
+  });
+}
+
+function normalizeLunchMoneyTransaction(raw, categoriesById, tagsById) {
   if (!raw || raw.id == null) fail('Lunch Money transaction is missing a stable id.');
   const accountId = raw.account_id != null ? raw.account_id
     : raw.plaid_account_id != null ? raw.plaid_account_id
@@ -336,7 +383,11 @@ function normalizeLunchMoneyTransaction(raw, categoriesById) {
     payee: raw.payee || null,
     originalName: raw.original_name || raw.originalName || null,
     notes: raw.notes || raw.note || null,
-    tags: raw.tags || null,
+    tags: resolveRawTags(raw, tagsById),
+    externalId: raw.external_id || raw.externalId || null,
+    pendingTransactionId: raw.pending_transaction_id || raw.pendingTransactionId || null,
+    plaidId: raw.plaid_id || raw.plaidId || null,
+    plaidMetadata: raw.plaid_metadata || raw.plaidMetadata || null,
     isGroup: raw.is_group === true || raw.is_group_parent === true
       || raw.has_children === true,
     parentId: raw.parent_id != null ? String(raw.parent_id) : null,
@@ -366,13 +417,14 @@ function collectLunchMoneyAccounts(payload) {
 function normalizeLunchMoneyPayload(payload, fetchedAt) {
   if (!payload || typeof payload !== 'object') fail('Lunch Money payload is not an object.');
   const categoriesById = categoryIndexFromPayload(payload);
+  const tagsById = tagIndexFromPayload(payload);
   const txWindow = payload.transactionWindow || payload.transaction_window || null;
   return {
     provider: 'lunchmoney',
     fetchedAt: payload.fetchedAt || fetchedAt,
     accounts: collectLunchMoneyAccounts(payload).map(normalizeLunchMoneyAccount),
     transactions: (payload.transactions || []).map(tx =>
-      normalizeLunchMoneyTransaction(tx, categoriesById)),
+      normalizeLunchMoneyTransaction(tx, categoriesById, tagsById)),
     pendingCoverage: classifyPendingCoverage(payload),
     transactionWindow: {
       startDate: (txWindow && (txWindow.startDate || txWindow.start_date)) || null,
@@ -633,6 +685,7 @@ async function fetchLunchMoneyLive(token, now, historyDays, options) {
   let manuals = await tryGetJson(new URL(`${base}/manual_accounts`), token);
   if (!manuals) manuals = await tryGetJson(new URL(`${base}/assets`), token);
   const categoriesPayload = await tryGetJson(new URL(`${base}/categories`), token);
+  const tagsPayload = await tryGetJson(new URL(`${base}/tags`), token);
   const txPage = await fetchLunchMoneyTransactionsPaged(txUrl, token);
   const pendingPage = await fetchLunchMoneyTransactionsPaged(
     lunchMoneyPendingUniverseUrl(base),
@@ -643,6 +696,7 @@ async function fetchLunchMoneyLive(token, now, historyDays, options) {
     fetchedAt: now,
     accounts: accountsFromLivePayloads(plaid, manuals),
     categories: (categoriesPayload && (categoriesPayload.categories || categoriesPayload)) || [],
+    tags: (tagsPayload && (tagsPayload.tags || tagsPayload)) || [],
     transactions: mergeTransactionsById(
       txPage.transactions,
       pendingPage.transactions
@@ -2331,6 +2385,8 @@ const RAW_TX_METADATA_KEYS = [
   'note',
   'tags',
   'tag',
+  'tag_ids',
+  'tagIds',
   'providerTransactionId',
   'providerAccountId',
   'provider_transaction_id',
@@ -2338,6 +2394,15 @@ const RAW_TX_METADATA_KEYS = [
   'merchant',
   'merchantName',
   'merchant_name',
+  'external_id',
+  'externalId',
+  'pending_transaction_id',
+  'pendingTransactionId',
+  'plaid_id',
+  'plaidId',
+  'plaid_metadata',
+  'plaidMetadata',
+  'identity',
 ];
 const RAW_TX_METADATA_KEY_RE = new RegExp(
   '"(' + RAW_TX_METADATA_KEYS.join('|') + ')"\\s*:'
@@ -2396,13 +2461,146 @@ function kindHintFromTransaction(tx) {
   return null;
 }
 
+function explicitPersonalOwnerFromTagsNotes(tx) {
+  if (!tx) return null;
+  const parts = [];
+  const push = value => {
+    if (value == null || value === '') return;
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        if (item == null) continue;
+        if (typeof item === 'object') parts.push(item.name || item.label || '');
+        else parts.push(item);
+      }
+      return;
+    }
+    if (typeof value === 'object') {
+      parts.push(value.name || value.label || '');
+      return;
+    }
+    parts.push(value);
+  };
+  push(tx.notes);
+  push(tx.note);
+  push(tx.tags);
+  push(tx.tag);
+  const blob = parts.filter(Boolean).join(' ');
+  const dale = /\bdale\b/i.test(blob);
+  const amanda = /\bamanda\b/i.test(blob);
+  if (dale && amanda) return null;
+  if (dale) return 'dale';
+  if (amanda) return 'amanda';
+  return null;
+}
+
+function isMbnaCardPayment(tx) {
+  if (!tx) return false;
+  const payee = [tx.payee, tx.originalName, tx.displayedPayee]
+    .filter(Boolean).map(v => String(v)).join(' ');
+  if (!/\bmbna\b/i.test(payee)) return false;
+  if (/\bamazon\b|\bamzn\b/i.test(payee) && !/payment|pay\b|autopay|\bpmt\b/i.test(payee)) {
+    return false;
+  }
+  const label = String(tx.categoryLabel || tx.category_name || '').toLowerCase();
+  if (tx.excludeFromTotals === true) return true;
+  if (/payment|transfer/.test(label)) return true;
+  if (/payment|pay\b|autopay|\bpmt\b/i.test(payee)) return true;
+  return /^\s*mbna\s*$/i.test(payee);
+}
+
+function plaidPendingIdFromMetadata(meta) {
+  if (meta == null || meta === '') return null;
+  let obj = meta;
+  if (typeof meta === 'string') {
+    try { obj = JSON.parse(meta); }
+    catch (e) { return null; }
+  }
+  if (!obj || typeof obj !== 'object') return null;
+  const id = obj.pending_transaction_id || obj.pendingTransactionId
+    || (obj.transaction && (obj.transaction.pending_transaction_id
+      || obj.transaction.pendingTransactionId));
+  return id == null || id === '' ? null : String(id);
+}
+
+function directedPendingId(posted) {
+  if (!posted) return null;
+  const direct = posted.pendingTransactionId || posted.pending_transaction_id;
+  if (direct != null && direct !== '') return String(direct);
+  return plaidPendingIdFromMetadata(posted.plaidMetadata || posted.plaid_metadata);
+}
+
+function directedSettlementMate(posted, pending) {
+  const want = directedPendingId(posted);
+  if (!want) return false;
+  const ids = [
+    pending && pending.providerTransactionId,
+    pending && pending.id,
+    pending && pending.externalId,
+    pending && pending.external_id,
+    pending && pending.plaidId,
+    pending && pending.plaid_id,
+  ].filter(v => v != null && v !== '').map(String);
+  return ids.includes(want);
+}
+
+function collapsePendingPostedBySettlementIdentity(transactions, asOf, opts) {
+  const list = (transactions || []).filter(tx => tx && tx.date);
+  if (list.length < 2) return list;
+  const treat = tx => pendingForecastTreatment(tx, asOf, opts);
+  const pending = [];
+  const posted = [];
+  for (const tx of list) {
+    const treatment = treat(tx);
+    if (tx.pending === true && treatment.treatment === 'unresolved') pending.push(tx);
+    else if (tx.pending !== true && treatment.treatment === 'confirmed-settled') posted.push(tx);
+  }
+  if (!pending.length || !posted.length) return list;
+  const drop = new Set();
+  for (const pend of pending) {
+    const mapping = opts && opts.accountMap
+      ? mappingFor(opts.accountMap, pend.providerAccountId) : null;
+    const accountId = mapping && mapping.canonical && mapping.canonical.id
+      ? mapping.canonical.id
+      : (pend.atlasAccountId || pend.account || pend.providerAccountId);
+    const amount = lunchMoneyDebitAmount(pend.amount);
+    const mate = posted.some(post => {
+      if (drop.has(post)) return false;
+      const postMap = opts && opts.accountMap
+        ? mappingFor(opts.accountMap, post.providerAccountId) : null;
+      const postAccount = postMap && postMap.canonical && postMap.canonical.id
+        ? postMap.canonical.id
+        : (post.atlasAccountId || post.account || post.providerAccountId);
+      if (accountId != null && postAccount != null && String(accountId) !== String(postAccount)) {
+        return false;
+      }
+      const postAmt = lunchMoneyDebitAmount(post.amount);
+      if (amount != null && postAmt != null && Number(amount).toFixed(2) !== Number(postAmt).toFixed(2)) {
+        return false;
+      }
+      return directedSettlementMate(post, pend);
+    });
+    if (mate) drop.add(pend);
+  }
+  if (!drop.size) return list;
+  return list.filter(tx => !drop.has(tx));
+}
+
 function sanitizedCurrentPeriodActuals(report, opts) {
   opts = opts || {};
   const asOf = dateOnly(opts.asOf || (report && report.fetchedAt));
   const window = (report && report.transactionWindow) || {};
-  const collapsed = (report && report.collapsedTransactions)
-    || (report && report.transactions)
-    || [];
+  const collapsed = collapsePendingPostedBySettlementIdentity(
+    (report && report.collapsedTransactions)
+      || (report && report.transactions)
+      || [],
+    asOf,
+    {
+      plan: opts.plan,
+      billPaymentPayees: opts.billPaymentPayees,
+      accountMap: opts.accountMap,
+    }
+  );
+  const tagsById = tagIndexFromPayload(report);
   const mapDoc = opts.accountMap;
   const localByProvider = new Map();
   let localSeq = 0;
@@ -2431,17 +2629,19 @@ function sanitizedCurrentPeriodActuals(report, opts) {
     });
     const atlasAccountId = mapping && mapping.canonical && mapping.canonical.id
       ? mapping.canonical.id : null;
-    const kindHint = kindHintFromTransaction(tx);
-    const flags = Forecast.classifyCurrentPeriodTransaction.derivedFlags({
+    const resolvedTags = resolveRawTags(tx, tagsById);
+    let kindHint = kindHintFromTransaction(tx);
+    if (!kindHint && isMbnaCardPayment(tx)) kindHint = 'card-payment';
+    const derivedInput = {
       payee: tx.payee,
       original_name: tx.originalName,
       originalName: tx.originalName,
       displayedPayee: tx.payee,
       originalMerchant: tx.originalName || tx.payee,
       notes: tx.notes,
-      note: tx.notes,
-      tags: tx.tags,
-      tag: tx.tags,
+      note: tx.notes || tx.note,
+      tags: resolvedTags,
+      tag: resolvedTags,
       kindHint,
       kind: tx.kind,
       mcc: tx.mcc,
@@ -2449,7 +2649,10 @@ function sanitizedCurrentPeriodActuals(report, opts) {
       atlasAccountId,
       account: atlasAccountId,
       accountId: atlasAccountId,
-    });
+    };
+    const explicitOwner = explicitPersonalOwnerFromTagsNotes(derivedInput);
+    const flags = Forecast.classifyCurrentPeriodTransaction.derivedFlags(derivedInput);
+    const personalOwner = explicitOwner || flags.personalOwner;
     const localId = localIdFor(tx.providerTransactionId);
     txs.push({
       id: localId,
@@ -2474,7 +2677,7 @@ function sanitizedCurrentPeriodActuals(report, opts) {
       groceryMixed: flags.groceryMixed,
       merchantKnown: flags.merchantKnown,
       fuelEvidence: flags.fuelEvidence,
-      personalOwner: flags.personalOwner,
+      personalOwner,
       isGroup: tx.isGroup === true,
       parentId: localIdFor(tx.parentId),
     });
