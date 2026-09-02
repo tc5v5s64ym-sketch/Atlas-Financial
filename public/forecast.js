@@ -4056,7 +4056,9 @@
   }
 
   // Classify merchant-sensitive facts before publication. The served packet
-  // carries these flags instead of payee, original merchant, notes, or tags.
+  // still carries these flags instead of raw payee, notes, or tags. Sanitized
+  // displayedPayee / originalMerchant may also travel as household-facing
+  // merchant identity; they do not reclassify spend.
   function derivedTransactionFlags(tx) {
     const empty = {
       dogFood: false,
@@ -4083,6 +4085,13 @@
 
   classifyCurrentPeriodTransaction.derivedFlags = derivedTransactionFlags;
 
+  function reconIdentityField(value) {
+    if (typeof value === 'number' && isFinite(value)) value = String(value);
+    if (typeof value !== 'string') return null;
+    const text = value.trim();
+    return text || null;
+  }
+
   function reconTxFrom(tx, cls) {
     const pending = transactionPendingState(tx) === 'pending';
     return {
@@ -4091,6 +4100,8 @@
       account: tx.account || tx.atlasAccountId || null,
       amount: roundCent(Number(tx.amount) || 0),
       categoryLabel: tx.categoryLabel || null,
+      displayedPayee: reconIdentityField(tx.displayedPayee),
+      originalMerchant: reconIdentityField(tx.originalMerchant),
       atlasRow: (cls && (cls.atlasRow || cls.categoryId)) || null,
       includeReason: (cls && (cls.includeReason || cls.reason)) || null,
       pending,

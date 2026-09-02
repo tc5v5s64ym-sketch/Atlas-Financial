@@ -1806,8 +1806,8 @@ function householdBudgetMetric(label, amount, opts) {
     const txs = recon.filter(tx => tx).slice().sort((a, b) => {
       const dateCmp = String(a.date || '').localeCompare(String(b.date || ''));
       if (dateCmp) return dateCmp;
-      const aLabel = String(a.displayedPayee || a.categoryLabel || '');
-      const bLabel = String(b.displayedPayee || b.categoryLabel || '');
+      const aLabel = String(a.displayedPayee || a.originalMerchant || '');
+      const bLabel = String(b.displayedPayee || b.originalMerchant || '');
       const labelCmp = aLabel.localeCompare(bLabel);
       if (labelCmp) return labelCmp;
       const amtCmp = (Number(a.amount) || 0) - (Number(b.amount) || 0);
@@ -1815,9 +1815,9 @@ function householdBudgetMetric(label, amount, opts) {
       return String(a.id || '').localeCompare(String(b.id || ''));
     });
     const lines = txs.map(tx => {
-      const payeeRaw = String(tx.displayedPayee || '').trim()
-        || String(tx.categoryLabel || '').trim()
-        || 'Transaction';
+      const displayed = String(tx.displayedPayee || '').trim();
+      const original = String(tx.originalMerchant || '').trim();
+      const payeeRaw = displayed || original || 'Merchant unavailable';
       const pending = tx.pending === true
         ? '<span class="household-budget-tx-pending">Pending</span>'
         : '';

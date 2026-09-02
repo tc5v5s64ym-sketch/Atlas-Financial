@@ -533,9 +533,10 @@ console.log('\n=== N. privacy — no raw payloads in overlay or localStorage kno
     'observer emits a sanitized current-period actuals packet');
   ok(!/"payee"\s*:/.test(blob) && !/"providerTransactionId"\s*:/.test(blob)
       && !/"original_name"\s*:/.test(blob) && !/"providerAccountId"\s*:/.test(blob)
-      && !/"displayedPayee"\s*:/.test(blob) && !/"originalMerchant"\s*:/.test(blob)
       && !/"notes"\s*:/.test(blob) && !/"tags"\s*:/.test(blob),
-    'actuals packet has no payee, original merchant, notes, tags, or provider ids');
+    'actuals packet has no raw payee, notes, tags, or provider ids');
+  ok(/"displayedPayee"\s*:/.test(blob) && /"originalMerchant"\s*:/.test(blob),
+    'actuals packet keeps sanitized displayedPayee / originalMerchant');
   ok(O.currentPeriodActualsLooksSanitized(actuals),
     'observer packet passes the sanitizer');
   ok(Array.isArray(actuals.transactions) && actuals.transactions.some(tx =>
@@ -604,14 +605,16 @@ console.log('\n=== observer category identity passes through ===');
   ok(transfer && transfer.excludeFromTotals === true && transfer.categoryLabel === 'Transfer',
     'transfer category identity is preserved');
   ok(!report.currentPeriodActuals.transactions.some(t =>
-      t.payee || t.displayedPayee || t.originalMerchant || t.notes || t.tags
-      || t.providerTransactionId || t.providerAccountId),
-    'sanitized actuals dropped payee and renamed merchant/notes/tags/provider ids');
+      t.payee || t.notes || t.tags
+      || t.providerTransactionId || t.providerAccountId
+      || t.original_name || t.originalName),
+    'sanitized actuals dropped raw payee, notes, tags, and provider ids');
   ok(grocery && grocery.merchantKnown === true
       && grocery.dogFood === false
-      && grocery.displayedPayee == null
+      && grocery.displayedPayee === 'SYNTHETIC GROCER'
+      && grocery.originalMerchant === 'SYNTHETIC GROCER'
       && (grocery.account || grocery.atlasAccountId),
-    'Forecast packet keeps derived flags and canonical account, not payee');
+    'Forecast packet keeps sanitized merchant identity, derived flags, and canonical account, not raw payee');
   const parent = report.currentPeriodActuals.transactions.find(t => t.amount === 80);
   const child = report.currentPeriodActuals.transactions.find(t => t.amount === 50);
   ok(parent && parent.isGroup === true && child && child.parentId === parent.id
@@ -876,8 +879,8 @@ console.log('\n=== R. automatic-payment identity uses explicit payee+account+dat
   ok(respBill && respBill.settlement !== 'represented' && near(respBill.remaining, 100),
     'RESP without its explicit provider alias is not marked paid');
   ok(!/"payee"\s*:/.test(JSON.stringify(report.currentPeriodActuals))
-      && !/"displayedPayee"\s*:/.test(JSON.stringify(report.currentPeriodActuals)),
-    'sanitized represented actuals still drop payee and renamed equivalents');
+      && /"displayedPayee"\s*:/.test(JSON.stringify(report.currentPeriodActuals)),
+    'sanitized represented actuals still drop raw payee and keep displayedPayee');
 }
 
 console.log('\n=== R2. grocery with the same date and amount as a represented bill stays Groceries ===');
@@ -952,10 +955,11 @@ console.log('\n=== R2. grocery with the same date and amount as a represented bi
 console.log('\n=== R3. sanitizer rejects renamed raw transaction metadata ===');
 {
   const renamed = [
-    'displayedPayee', 'originalMerchant', 'original_name', 'originalName',
+    'original_name', 'originalName',
     'payee', 'notes', 'note', 'tags', 'tag',
     'providerTransactionId', 'providerAccountId',
     'provider_transaction_id', 'merchant', 'merchantName',
+    'displayed_payee', 'original_merchant',
   ];
   for (const key of renamed) {
     const leaked = {
@@ -965,6 +969,16 @@ console.log('\n=== R3. sanitizer rejects renamed raw transaction metadata ===');
     ok(!O.currentPeriodActualsLooksSanitized(leaked),
       `sanitizer rejects renamed raw field ${key}`);
   }
+  const withIdentity = {
+    schema: 'atlas-current-period-actuals/v1',
+    transactions: [{
+      id: 'tx-1', date: '2026-08-15', amount: 12,
+      displayedPayee: 'SAFEWAY', originalMerchant: 'SAFEWAY',
+      merchantKnown: true, categoryLabel: 'Groceries',
+    }],
+  };
+  ok(O.currentPeriodActualsLooksSanitized(withIdentity),
+    'sanitizer allows displayedPayee and originalMerchant as identity fields');
   const clean = {
     schema: 'atlas-current-period-actuals/v1',
     representedActuals: [{

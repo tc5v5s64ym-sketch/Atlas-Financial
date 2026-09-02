@@ -2325,8 +2325,6 @@ const RAW_TX_METADATA_KEYS = [
   'payee',
   'original_name',
   'originalName',
-  'displayedPayee',
-  'originalMerchant',
   'original_merchant',
   'displayed_payee',
   'notes',
@@ -2344,6 +2342,14 @@ const RAW_TX_METADATA_KEYS = [
 const RAW_TX_METADATA_KEY_RE = new RegExp(
   '"(' + RAW_TX_METADATA_KEYS.join('|') + ')"\\s*:'
 );
+
+function sanitizedMerchantIdentity(value) {
+  if (value == null) return null;
+  if (typeof value === 'number' && isFinite(value)) value = String(value);
+  if (typeof value !== 'string') return null;
+  const text = value.trim();
+  return text || null;
+}
 
 function stripRawTransactionMetadata(tx) {
   if (!tx || typeof tx !== 'object') return tx;
@@ -2452,6 +2458,8 @@ function sanitizedCurrentPeriodActuals(report, opts) {
       pending: tx.pending === true,
       pendingTreatment: treatment.treatment,
       categoryLabel: tx.categoryLabel || null,
+      displayedPayee: sanitizedMerchantIdentity(tx.payee),
+      originalMerchant: sanitizedMerchantIdentity(tx.originalName || tx.payee),
       isIncome: tx.isIncome === true,
       excludeFromTotals: tx.excludeFromTotals === true,
       excludeFromBudget: tx.excludeFromBudget === true,
