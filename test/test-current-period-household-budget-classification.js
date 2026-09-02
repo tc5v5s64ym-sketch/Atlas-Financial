@@ -678,12 +678,17 @@ console.log('\n=== 10. Natural Gas / Other bank fees are bills; Amazon/Prime fai
     'BILL_CATEGORY_LABELS source does not add Interest charge / Overdraft fees / Google Pets');
   ok(!/isAmazonPrimeMerchant|isAmazonMerchant|amazon-prime-bill|amazon-owner-card/.test(forecastSrc),
     'Forecast source does not infer Amanda or bill status from Amazon merchant + card');
+  ok(!/skipPendingPostedDuplicate|spendIdentityKey/.test(forecastSrc),
+    'Forecast source does not collapse pending+posted by date/account/amount/merchant');
 
   const PRIME_AMT = 9.99;
+  const SHOPIFY_AMT = 54.88;
   const AMAZON_WITHOUT_OWNER = roundCent(AMAZON_AMT + AMAZON_AMT + PRIME_AMT);
+  const DISTINCT_SAME_DAY = roundCent(SHOPIFY_AMT + SHOPIFY_AMT);
   ok(near(NATURAL_GAS_AMT + BANK_FEE_AMT, 29.5)
-      && near(AMAZON_WITHOUT_OWNER + OTHER_AMT, 45.49),
-    'independent fixture arithmetic: bills $21+$8.50=$29.50; Amazon/Prime+Other $14+$14+$9.99+$7.50=$45.49');
+      && near(AMAZON_WITHOUT_OWNER + OTHER_AMT, 45.49)
+      && near(DISTINCT_SAME_DAY + OTHER_AMT, 117.26),
+    'independent fixture arithmetic: bills $29.50; Amazon/Prime+Other $45.49; two Shopify $54.88+$54.88+$7.50=$117.26');
 
   const plan = syntheticPlan();
   const gas = naturalGasTx();
@@ -809,7 +814,7 @@ console.log('\n=== 10. Natural Gas / Other bank fees are bills; Amazon/Prime fai
   const amanda = budgetRow(amazonPeriod, 'amanda-guilt-free');
   const amazonOther = otherRow(amazonPeriod);
   const amazonIds = reconIds(amazonPeriod);
-  const otherAmazonIds = (amazonOther && amazonOther.recon || [])
+  const otherAmazonIds = ((amazonOther && amazonOther.recon) || [])
     .filter(row => row && row.id)
     .map(row => row.id);
   ok(!(amanda && (amanda.recon || []).some(row => row && (
@@ -825,6 +830,127 @@ console.log('\n=== 10. Natural Gas / Other bank fees are bills; Amazon/Prime fai
     'Amazon/Prime without owner evidence remain in Other spending with the $7.50 residual');
   ok(amazonIds.includes('tx-amazon') && amazonIds.includes('tx-amazon-prime'),
     'fail-closed Amazon/Prime still appear in Household Budget Other recon');
+
+  const shopifyPending = {
+    id: 'tx-shopify-pending', date: '2026-08-31', amount: SHOPIFY_AMT,
+    pending: true, pendingTreatment: 'unresolved', categoryLabel: null,
+    accountRole: 'revolving-credit', atlasAccountId: 'travelvisa', account: 'travelvisa',
+    displayedPayee: 'SHOPIFY INC/578523914', originalMerchant: 'SHOPIFY INC/578523914',
+  };
+  const shopifyPosted = {
+    id: 'tx-shopify-posted', date: '2026-08-31', amount: SHOPIFY_AMT,
+    pending: false, pendingTreatment: 'confirmed-settled', categoryLabel: null,
+    accountRole: 'revolving-credit', atlasAccountId: 'travelvisa', account: 'travelvisa',
+    displayedPayee: 'SHOPIFY INC/578523914', originalMerchant: 'SHOPIFY INC/578523914',
+  };
+  const distinctPacket = actualsPacket([shopifyPending, shopifyPosted, otherTx()]);
+  const distinctAdvice = recommend(distinctPacket);
+  const distinctPeriod = period(distinctAdvice.defaultView, 'this-pay-period');
+  const distinctOther = otherRow(distinctPeriod);
+  const distinctIds = ((distinctOther && distinctOther.recon) || [])
+    .filter(row => row && row.id).map(row => row.id);
+  ok(distinctOther && distinctIds.includes('tx-shopify-pending')
+      && distinctIds.includes('tx-shopify-posted') && distinctIds.includes('tx-other')
+      && near(distinctOther.spent, roundCent(DISTINCT_SAME_DAY + OTHER_AMT))
+      && near(reconSum(distinctOther), roundCent(DISTINCT_SAME_DAY + OTHER_AMT)),
+    'two distinct same-day same-account same-merchant same-amount purchases, one pending and one posted, both remain counted');
+
+  const map = {
+    schema: 'atlas-provider-account-map/v1',
+    mappings: [
+      {
+        providerAccountId: '3006',
+        canonical: { collection: 'debts', id: 'travelvisa' },
+        atlasRole: 'revolving-credit',
+      },
+      {
+        providerAccountId: '3007',
+        canonical: { collection: 'debts', id: 'mbna' },
+        atlasRole: 'revolving-credit',
+      },
+    ],
+  };
+  const published = O.sanitizedCurrentPeriodActuals({
+    fetchedAt: '2026-09-02T18:13:00.000Z',
+    transactionWindow: { startDate: '2026-08-28', endDate: '2026-09-02', complete: true },
+    pendingCoverage: {
+      complete: true, basis: O.PENDING_COVERAGE_BASIS, hasMore: false, truncated: false,
+    },
+    collapsedTransactions: [
+      {
+        date: '2026-09-01', amount: 19.14, pending: true, categoryLabel: 'Shopping',
+        payee: 'Amazon', originalName: 'Amazon',
+        providerAccountId: '3006', providerTransactionId: '126',
+      },
+      {
+        date: '2026-08-31', amount: 33.59, pending: true, categoryLabel: 'Shopping',
+        payee: 'Amazon', originalName: 'Amazon', notes: null,
+        tags: [{ name: 'Amanda' }],
+        providerAccountId: '3006', providerTransactionId: '125',
+      },
+      {
+        date: '2026-08-31', amount: PRIME_AMT, pending: false, categoryLabel: 'Shopping',
+        payee: 'Amazon Prime', originalName: 'Amazon Prime',
+        providerAccountId: '3006', providerTransactionId: 'prime-1',
+      },
+      {
+        date: '2026-08-31', amount: AMAZON_AMT, pending: false, categoryLabel: 'Shopping',
+        payee: 'Amazon', originalName: 'Amazon',
+        providerAccountId: '3007', providerTransactionId: 'mbna-amzn',
+      },
+    ],
+    representedEventCandidates: [],
+  }, { asOf: AS_OF, plan, accountMap: map });
+  const pubBlob = JSON.stringify(published);
+  ok(O.currentPeriodActualsLooksSanitized(published)
+      && !/"payee"\s*:/.test(pubBlob) && !/"notes"\s*:/.test(pubBlob)
+      && !/"tags"\s*:/.test(pubBlob) && !/"providerTransactionId"\s*:/.test(pubBlob),
+    'overlay packet keeps no raw payee, notes, tags, or provider ids');
+  const byAmt = amt => (published.transactions || []).find(tx => tx && near(tx.amount, amt));
+  const strippedTravel = byAmt(19.14);
+  const taggedTravel = byAmt(33.59);
+  const publishedPrime = byAmt(PRIME_AMT);
+  const publishedMbna = byAmt(AMAZON_AMT);
+  ok(strippedTravel && strippedTravel.personalOwner == null
+      && strippedTravel.atlasAccountId === 'travelvisa'
+      && !Object.prototype.hasOwnProperty.call(strippedTravel, 'tags')
+      && !Object.prototype.hasOwnProperty.call(strippedTravel, 'notes'),
+    'Travel Visa Amazon without LM owner evidence does not stamp personalOwner');
+  ok(taggedTravel && taggedTravel.personalOwner === 'amanda'
+      && !Object.prototype.hasOwnProperty.call(taggedTravel, 'tags'),
+    'LM Amanda tag is stamped onto personalOwner before tags are stripped');
+  const taggedCls = F.classifyCurrentPeriodTransaction({
+    id: taggedTravel.id, date: taggedTravel.date, amount: taggedTravel.amount,
+    pending: true, categoryLabel: 'Shopping', accountRole: 'revolving-credit',
+    atlasAccountId: 'travelvisa', personalOwner: taggedTravel.personalOwner,
+  }, plan);
+  ok(taggedCls.kind === 'spend' && taggedCls.categoryId === 'amanda-guilt-free'
+      && taggedCls.includeReason === 'owner-evidence-amanda',
+    'explicit Amanda tag that survived strip still classifies amanda-guilt-free',
+    JSON.stringify(taggedCls));
+  const strippedCls = F.classifyCurrentPeriodTransaction({
+    id: strippedTravel.id, date: strippedTravel.date, amount: strippedTravel.amount,
+    pending: true, categoryLabel: 'Shopping', accountRole: 'revolving-credit',
+    atlasAccountId: 'travelvisa', personalOwner: strippedTravel.personalOwner,
+  }, plan);
+  ok(strippedCls.reason === 'personal-unassigned' && strippedCls.categoryId !== 'amanda-guilt-free',
+    'Travel Visa Amazon with no surviving owner evidence stays personal-unassigned',
+    JSON.stringify(strippedCls));
+  ok(publishedPrime && publishedPrime.personalOwner == null
+      && publishedPrime.subscriptionBill !== true && publishedPrime.kind !== 'bill',
+    'Prime does not publish a derived bill flag from the merchant string');
+  const primeStrippedCls = F.classifyCurrentPeriodTransaction({
+    id: publishedPrime.id, date: publishedPrime.date, amount: publishedPrime.amount,
+    pending: false, categoryLabel: 'Shopping', accountRole: 'revolving-credit',
+    atlasAccountId: 'travelvisa', personalOwner: publishedPrime.personalOwner,
+  }, plan);
+  ok(primeStrippedCls.kind !== 'bill' && primeStrippedCls.reason === 'personal-unassigned'
+      && primeStrippedCls.categoryId !== 'amanda-guilt-free',
+    'Prime stays personal-unassigned after merchant/tags are stripped',
+    JSON.stringify(primeStrippedCls));
+  ok(publishedMbna && publishedMbna.personalOwner == null
+      && F.classifyCurrentPeriodTransaction(publishedMbna, plan).reason === 'personal-unassigned',
+    'MBNA Amazon without owner evidence does not stamp Amanda after overlay sanitizer');
 }
 
 if (failures) {
