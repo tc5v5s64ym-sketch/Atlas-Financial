@@ -2475,8 +2475,6 @@ function sanitizedCurrentPeriodActuals(report, opts) {
       merchantKnown: flags.merchantKnown,
       fuelEvidence: flags.fuelEvidence,
       personalOwner: flags.personalOwner,
-      subscriptionBill: flags.subscriptionBill === true,
-      kind: flags.kind || null,
       isGroup: tx.isGroup === true,
       parentId: localIdFor(tx.parentId),
     });
