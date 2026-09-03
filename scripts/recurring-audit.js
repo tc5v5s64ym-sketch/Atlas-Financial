@@ -110,26 +110,37 @@ const GENERIC_BILL_TOKENS = new Set([
   'MEMBERSHIP', 'PREMIUM', 'DISPOSAL', 'GARBAGE',
 ]);
 
-// Aliases keyed only by incumbent plan.bills ids. Not a second bill list.
-const BILL_ALIASES = Object.freeze({
-  fortis: ['FORTIS', 'FORTISBC'],
-  shaw: ['SHAW', 'SHAWCABLE'],
-  bcaa: ['BCAA'],
-  icbc: ['ICBC'],
-  resp: ['RESP'],
-  fit4less: ['FIT4LESS', 'FIT4LESSMSP'],
-  tdfees: ['TDFEES'],
-  'noble-garbage': ['NOBLE', 'NOBLEDISPOSAL'],
-  netflix: ['NETFLIX'],
-  spotify: ['SPOTIFY'],
-  'google-storage-100gb': ['GOOGLESTORAGE', 'GOOGLEONE'],
-  'ultimate-guitar': ['ULTIMATEGUITAR'],
-  'icloud-storage': ['ICLOUD'],
-  'youtube-premium': ['YOUTUBE', 'YOUTUBEPREMIUM'],
-  'chatgpt-plus-dale': ['CHATGPT', 'OPENAI'],
-  'chatgpt-plus-amanda': ['CHATGPT', 'OPENAI'],
-  bell: ['BELL', 'BELLMOBILITY', 'BELLCANADA'],
-});
+function loadDefaultIdentity() {
+  try {
+    return JSON.parse(fs.readFileSync(Provider.DEFAULT_IDENTITY, 'utf8'));
+  } catch (err) {
+    return { schema: null, rules: [] };
+  }
+}
+
+function resolveIdentity(identity) {
+  if (identity && Array.isArray(identity.rules)) return identity;
+  return loadDefaultIdentity();
+}
+
+function identityRules(identity) {
+  return ((identity && identity.rules) || []).filter(Provider.ruleHasIdentity);
+}
+
+function chargeAsIdentityTx(charge) {
+  const payee = charge && (charge.payee || charge.merchantLabel) || null;
+  const original = charge && (charge.originalName || charge.originalMerchant) || null;
+  return {
+    payee,
+    displayedPayee: payee,
+    originalName: original,
+    original_name: original,
+    originalMerchant: original || payee,
+    date: charge && charge.date || null,
+    amount: charge && charge.amount,
+    pending: false,
+  };
+}
 
 const RAW_LEAK_RE =
   /providerTransactionId|providerAccountId|provider_transaction_id|provider_account_id|"payee"\s*:|"notes"\s*:|"tags"\s*:|plaidId|plaid_id|externalId|external_id/i;
@@ -418,6 +429,8 @@ function chargesFromNormalized(options) {
       cardLabel: cardLabelFor(data, cardId),
       merchantLabel,
       merchantKey: family,
+      payee: tx.payee || merchantLabel,
+      originalName: tx.originalName || tx.original_name || null,
       amazonMerchant: isAmazonMerchantLabel(merchantLabel),
       amazonPrimeLike: isAmazonPrimeLikeLabel(merchantLabel),
     });
@@ -611,45 +624,89 @@ function recurringBills(plan) {
     bill && bill.id && bill.frequency && bill.frequency !== 'once');
 }
 
-function billSearchKeys(bill) {
+function billOverlapKeys(bill) {
   const keys = new Set();
-  const aliases = BILL_ALIASES[bill.id] || [];
-  for (const alias of aliases) keys.add(compactMerchantKey(alias));
   const compactId = compactMerchantKey(String(bill.id).replace(/-/g, ' '));
   if (compactId.length >= 5) keys.add(compactId);
+  const labelCompact = compactMerchantKey(bill.label || '');
+  if (labelCompact.length >= 5) keys.add(labelCompact);
   const tokens = normalizeMerchantKey(bill.label || '').split(' ').filter(Boolean);
   for (const token of tokens) {
     if (GENERIC_BILL_TOKENS.has(token)) continue;
     if (token.length >= 4) keys.add(token);
-    if (token.length >= 5) keys.add(compactMerchantKey(token));
   }
   return [...keys].filter(Boolean);
 }
 
-function matchKnownBills(merchantKey, merchantLabel, plan) {
+function merchantOverlapsBillText(merchantKey, merchantLabel, bill) {
   const compact = compactMerchantKey(merchantKey || merchantLabel);
   const labelCompact = compactMerchantKey(merchantLabel);
+  if (!compact && !labelCompact) return false;
+  for (const key of billOverlapKeys(bill)) {
+    if (!key || key.length <= 3) continue;
+    if (compact === key || labelCompact === key) return true;
+    if (key.length >= 5 && (compact.includes(key) || labelCompact.includes(key))) return true;
+  }
+  return false;
+}
+
+function identityProvesBill(charge, bill, identity) {
+  if (!charge || !bill || !bill.id) return null;
+  const tx = chargeAsIdentityTx(charge);
+  for (const rule of identityRules(identity)) {
+    if (rule.eventId !== bill.id) continue;
+    if (rule.atlasAccountId && String(rule.atlasAccountId) !== String(charge.cardId)) {
+      continue;
+    }
+    if (rule.direction && rule.direction !== 'debit') continue;
+    if (!Provider.ruleMatchesTransactionIdentity(tx, rule)) continue;
+    return {
+      id: bill.id,
+      label: bill.label,
+      frequency: bill.frequency,
+      identity: 'incumbent-payee+account+direction',
+    };
+  }
+  return null;
+}
+
+function identityPayeeOverlapsBill(charge, bill, identity) {
+  const tx = chargeAsIdentityTx(charge);
+  const payeeFields = [tx.payee, tx.displayedPayee, tx.originalName, tx.originalMerchant];
+  for (const rule of identityRules(identity)) {
+    if (rule.eventId !== bill.id) continue;
+    const patterns = [].concat(rule.payeePatterns || [],
+      rule.payeePattern ? [rule.payeePattern] : []);
+    if (patterns.some(pattern => payeeFields.some(value =>
+      value && String(value).toLowerCase().includes(String(pattern).toLowerCase())))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function matchKnownBills(charge, plan, identity) {
   const hits = [];
   for (const bill of recurringBills(plan)) {
-    const keys = billSearchKeys(bill);
-    let matched = false;
-    for (const key of keys) {
-      if (!key) continue;
-      if (key.length <= 3) continue;
-      if (compact === key || labelCompact === key) {
-        matched = true;
-        break;
-      }
-      if (key.length >= 5 && (compact.includes(key) || labelCompact.includes(key))) {
-        matched = true;
-        break;
-      }
-      if (key.length === 4 && (compact === key || compact.startsWith(key) || compact.endsWith(key))) {
-        matched = true;
-        break;
-      }
-    }
-    if (matched) hits.push({ id: bill.id, label: bill.label, frequency: bill.frequency });
+    const proven = identityProvesBill(charge, bill, identity);
+    if (proven) hits.push(proven);
+  }
+  hits.sort((a, b) => a.id.localeCompare(b.id));
+  return hits;
+}
+
+function overlappingPlannedBills(charge, plan, identity) {
+  const merchantKey = charge && charge.merchantKey;
+  const merchantLabel = charge && charge.merchantLabel;
+  const hits = [];
+  const seen = new Set();
+  for (const bill of recurringBills(plan)) {
+    if (identityProvesBill(charge, bill, identity)) continue;
+    const overlap = merchantOverlapsBillText(merchantKey, merchantLabel, bill)
+      || identityPayeeOverlapsBill(charge, bill, identity);
+    if (!overlap || seen.has(bill.id)) continue;
+    seen.add(bill.id);
+    hits.push({ id: bill.id, label: bill.label, frequency: bill.frequency });
   }
   hits.sort((a, b) => a.id.localeCompare(b.id));
   return hits;
@@ -685,6 +742,10 @@ function whyItMatters(row) {
   if (row.atlasStatus === 'known-planned') {
     return `Already represented as ${row.matchedBills.map(b => b.id).join(', ')}.`;
   }
+  if (row.atlasStatus === 'merchant-overlaps-planned-bill') {
+    const ids = (row.overlappingBills || []).map(b => b.id).join(', ');
+    return `Merchant text overlaps ${ids || 'a planned bill'}, but incumbent identity does not prove this card occurrence is that bill.`;
+  }
   if (row.amazonPrimeLike && row.atlasStatus === 'candidate-unplanned') {
     return 'Prime-style fixed sequence on a card; not promoted to a bill.';
   }
@@ -700,7 +761,7 @@ function whyItMatters(row) {
   return 'Review whether this is a household cost Atlas should plan.';
 }
 
-function classifyGroup(charges, plan) {
+function classifyGroup(charges, plan, identity) {
   const ordered = (charges || []).slice().sort((a, b) =>
     a.date.localeCompare(b.date) || a.amount - b.amount);
   const sample = ordered[ordered.length - 1];
@@ -708,7 +769,10 @@ function classifyGroup(charges, plan) {
   const amounts = ordered.map(c => c.amount);
   const cadence = classifyCadence(dates);
   const amount = classifyAmountPattern(amounts, cadence.cadence);
-  const matchedBills = matchKnownBills(sample.merchantKey, sample.merchantLabel, plan);
+  const matchedBills = matchKnownBills(sample, plan, identity);
+  const overlappingBills = matchedBills.length
+    ? []
+    : overlappingPlannedBills(sample, plan, identity);
   const amazonMerchant = ordered.every(c => c.amazonMerchant) || sample.amazonMerchant;
   const amazonPrimeLike = ordered.some(c => c.amazonPrimeLike);
   const amazonShopping = amazonMerchant && !amazonPrimeLike;
@@ -716,6 +780,8 @@ function classifyGroup(charges, plan) {
   let atlasStatus;
   if (matchedBills.length) {
     atlasStatus = 'known-planned';
+  } else if (overlappingBills.length) {
+    atlasStatus = 'merchant-overlaps-planned-bill';
   } else if (amazonShopping) {
     atlasStatus = 'repeating-not-bill';
   } else if (hasCadence && ordered.length >= (cadence.cadence === 'annual' ? 2 : 3)) {
@@ -724,6 +790,7 @@ function classifyGroup(charges, plan) {
     atlasStatus = 'repeating-not-bill';
   }
   const reviewWarranted = atlasStatus === 'candidate-unplanned'
+    || atlasStatus === 'merchant-overlaps-planned-bill'
     || (amazonPrimeLike && atlasStatus !== 'known-planned');
   const rules = ordered.map(standingRuleFor).filter(Boolean);
   const standingRule = rules[0] || null;
@@ -748,6 +815,7 @@ function classifyGroup(charges, plan) {
     amountMax: amount.amountMax,
     atlasStatus,
     matchedBills,
+    overlappingBills,
     standingRule,
     amazonMerchant,
     amazonPrimeLike,
@@ -757,6 +825,9 @@ function classifyGroup(charges, plan) {
 
 function sectionFor(row) {
   if (row.atlasStatus === 'known-planned') return 'known';
+  if (row.atlasStatus === 'merchant-overlaps-planned-bill') {
+    return row.cadenceConfidence === 'strong' ? 'strong' : 'possible';
+  }
   if (row.atlasStatus === 'candidate-unplanned' && row.cadenceConfidence === 'strong') {
     return 'strong';
   }
@@ -764,7 +835,7 @@ function sectionFor(row) {
   return 'repeatingNotBill';
 }
 
-function investigatePhoenix(charges, plan) {
+function investigatePhoenix(charges, plan, identity) {
   const hits = charges.filter(c =>
     /PHOENIX/.test(c.merchantKey) || /PHOENIX/.test(c.merchantLabel));
   if (!hits.length) {
@@ -783,7 +854,7 @@ function investigatePhoenix(charges, plan) {
       note: 'No card charge whose normalized merchant identity contains PHOENIX.',
     };
   }
-  const groups = [...groupCharges(hits).values()].map(g => classifyGroup(g, plan));
+  const groups = [...groupCharges(hits).values()].map(g => classifyGroup(g, plan, identity));
   groups.sort((a, b) => b.occurrenceCount - a.occurrenceCount || a.cardId.localeCompare(b.cardId));
   const around179 = hits.filter(c => Math.abs(c.amount - 179) <= 15);
   const primary = groups[0];
@@ -815,7 +886,7 @@ function investigatePhoenix(charges, plan) {
   };
 }
 
-function amazonAnalysis(charges, plan) {
+function amazonAnalysis(charges, plan, identity) {
   const amazon = charges.filter(c => c.amazonMerchant);
   const byCardMap = new Map();
   for (const charge of amazon) {
@@ -825,7 +896,7 @@ function amazonAnalysis(charges, plan) {
     byCardMap.get(charge.cardId).push(charge);
   }
   const byCard = [...byCardMap.entries()].map(([cardId, list]) => {
-    const classified = classifyGroup(list, plan);
+    const classified = classifyGroup(list, plan, identity);
     const standing = list.map(standingRuleFor).filter(Boolean)[0] || null;
     return {
       cardId,
@@ -845,7 +916,7 @@ function amazonAnalysis(charges, plan) {
   }).sort((a, b) => a.cardId.localeCompare(b.cardId));
 
   const primeCharges = amazon.filter(c => c.amazonPrimeLike);
-  const primeGroups = [...groupCharges(primeCharges).values()].map(g => classifyGroup(g, plan));
+  const primeGroups = [...groupCharges(primeCharges).values()].map(g => classifyGroup(g, plan, identity));
   primeGroups.sort((a, b) => a.cardId.localeCompare(b.cardId) || a.merchantKey.localeCompare(b.merchantKey));
 
   return {
@@ -875,6 +946,7 @@ function assertNoRawLeak(value, label) {
 function auditFromCharges(charges, options) {
   const opts = options || {};
   const plan = opts.plan || {};
+  const identity = resolveIdentity(opts.identity);
   const asOf = opts.asOf || null;
   const source = opts.source || 'charges';
   const ordered = (charges || []).slice().sort((a, b) =>
@@ -884,7 +956,7 @@ function auditFromCharges(charges, options) {
     || Number(a.amount) - Number(b.amount)
     || String(a.merchantLabel).localeCompare(String(b.merchantLabel)));
   const groups = [...groupCharges(ordered).values()]
-    .map(g => classifyGroup(g, plan))
+    .map(g => classifyGroup(g, plan, identity))
     .sort((a, b) => a.cardId.localeCompare(b.cardId) || a.merchantKey.localeCompare(b.merchantKey));
   for (const row of groups) {
     row.why = whyItMatters(row);
@@ -913,8 +985,8 @@ function auditFromCharges(charges, options) {
     skipped: opts.skipped || {},
     candidates: groups,
     sections,
-    phoenix: investigatePhoenix(ordered, plan),
-    amazon: amazonAnalysis(ordered, plan),
+    phoenix: investigatePhoenix(ordered, plan, identity),
+    amazon: amazonAnalysis(ordered, plan, identity),
   };
   assertNoRawLeak(report, 'audit report');
   return report;
@@ -924,6 +996,7 @@ function auditObservation(options) {
   const extracted = chargesFromNormalized(options);
   return auditFromCharges(extracted.charges, {
     plan: options.data && options.data.plan,
+    identity: options.identity,
     asOf: options.asOf || null,
     source: options.source || 'observation',
     coverageStart: extracted.coverageStart,
@@ -944,6 +1017,9 @@ function formatCandidate(row) {
   const matched = row.matchedBills.length
     ? row.matchedBills.map(b => b.id).join(', ')
     : 'none';
+  const overlap = (row.overlappingBills || []).length
+    ? row.overlappingBills.map(b => b.id).join(', ')
+    : 'none';
   return [
     `Merchant     ${row.merchantLabel}`,
     `Card         ${row.cardLabel} (${row.cardId})`,
@@ -951,7 +1027,7 @@ function formatCandidate(row) {
     `Recent amts  ${amounts}`,
     `Cadence      ${row.cadence} (${row.cadenceConfidence})  median ${row.medianIntervalDays == null ? 'n/a' : row.medianIntervalDays + 'd'}`,
     `Amount       ${row.amountPattern}  median ${row.amountMedian == null ? 'n/a' : money(row.amountMedian)}`,
-    `Atlas status ${row.atlasStatus}  known bill ${matched}  standing rule ${standing}`,
+    `Atlas status ${row.atlasStatus}  known bill ${matched}  overlap ${overlap}  standing rule ${standing}`,
     `Why          ${row.why}`,
   ].join('\n');
 }
@@ -1119,7 +1195,6 @@ const api = {
   SCHEMA,
   THRESHOLDS,
   DEFAULT_HISTORY_DAYS,
-  BILL_ALIASES,
   parseArgs,
   usage,
   normalizeMerchantKey,
@@ -1134,6 +1209,7 @@ const api = {
   classifyCadence,
   classifyAmountPattern,
   matchKnownBills,
+  overlappingPlannedBills,
   standingRuleFor,
   auditFromCharges,
   auditObservation,

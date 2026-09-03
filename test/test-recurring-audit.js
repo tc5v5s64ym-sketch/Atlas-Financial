@@ -265,7 +265,20 @@ console.log('\n=== 9. Prime-like sequence may be a candidate and is not a bill =
   ok(/not promoted/i.test(text), 'report says Prime is not promoted to a bill');
 }
 
-console.log('\n=== 10. existing known Atlas bills are already planned ===');
+function identityWithCardNetflix() {
+  const identity = JSON.parse(JSON.stringify(require('../docs/connectivity/transaction-identity.json')));
+  identity.rules.push({
+    eventId: 'netflix',
+    payeePattern: 'NETFLIX',
+    payeePatterns: ['NETFLIX'],
+    atlasAccountId: 'cashback',
+    direction: 'debit',
+    note: 'Synthetic identity for audit proof only. Not a household posting rule.',
+  });
+  return identity;
+}
+
+console.log('\n=== 10. merchant overlap alone is not known-planned ===');
 {
   const charges = [
     charge({ date: '2026-01-17', amount: 26.87, merchantLabel: 'NETFLIX COM', cardId: 'cashback' }),
@@ -274,14 +287,14 @@ console.log('\n=== 10. existing known Atlas bills are already planned ===');
   ];
   const report = Audit.auditFromCharges(charges, { plan: householdData.plan, source: 'fixture' });
   const row = findCandidate(report, 'NETFLIXCOM', 'cashback') || findCandidate(report, 'NETFLIX', 'cashback');
-  ok(row && row.atlasStatus === 'known-planned',
-    'Netflix card charges match the incumbent Netflix bill', row && row.atlasStatus);
-  ok(row && row.matchedBills.some(b => b.id === 'netflix'),
-    'matched bill id is netflix');
-  ok(report.sections.known.some(r => r.matchedBills.some(b => b.id === 'netflix')),
-    'known section lists the planned Netflix row');
-  ok(!report.sections.strong.some(r => /netflix/i.test(r.merchantLabel)),
-    'planned Netflix is not an undiscovered strong candidate');
+  ok(row && row.atlasStatus === 'merchant-overlaps-planned-bill',
+    'Netflix card charges without identity proof fail closed', row && row.atlasStatus);
+  ok(row && !(row.matchedBills || []).some(b => b.id === 'netflix'),
+    'merchant overlap does not claim the Netflix bill as known');
+  ok(row && (row.overlappingBills || []).some(b => b.id === 'netflix'),
+    'overlap is reported without promoting the row to known-planned');
+  ok(!report.sections.known.some(r => /netflix/i.test(r.merchantLabel)),
+    'unproven Netflix card charges are not in the known section');
 }
 
 console.log('\n=== 11. different cards for the same merchant are distinguishable ===');
@@ -487,6 +500,87 @@ console.log('\n=== Thresholds are conservative and documented ===');
     'monthly interval window allows month-length drift');
   ok(Audit.THRESHOLDS.isolatedPairMax === 2, 'two hits are the isolated-pair ceiling');
   ok(Audit.SCHEMA === 'atlas-recurring-card-audit/v1', 'schema id is stable');
+}
+
+console.log('\n=== 16. GOOGLE PLAY on a card is not google-storage-100gb ===');
+{
+  const charges = [
+    charge({ date: '2026-01-31', amount: 3.13, merchantLabel: 'GOOGLE PLAY', cardId: 'travelvisa' }),
+    charge({ date: '2026-02-28', amount: 3.13, merchantLabel: 'GOOGLE PLAY', cardId: 'travelvisa' }),
+    charge({ date: '2026-03-31', amount: 3.13, merchantLabel: 'GOOGLE PLAY', cardId: 'travelvisa' }),
+  ];
+  const report = Audit.auditFromCharges(charges, { plan: householdData.plan, source: 'fixture' });
+  const row = findCandidate(report, 'GOOGLEPLAY', 'travelvisa');
+  ok(row, 'GOOGLE PLAY recurring card charges are reported');
+  ok(row && row.atlasStatus !== 'known-planned',
+    'GOOGLE PLAY is not known-planned', row && row.atlasStatus);
+  ok(row && !(row.matchedBills || []).some(b => b.id === 'google-storage-100gb'),
+    'GOOGLE PLAY is not matched as google-storage-100gb');
+  ok(row && (row.overlappingBills || []).some(b => b.id === 'google-storage-100gb'),
+    'GOOGLE PLAY is surfaced as overlapping the storage bill, not hidden as known');
+  const googleIdentity = Audit.matchKnownBills(charges[2], householdData.plan);
+  ok(!(googleIdentity || []).some(b => b.id === 'google-storage-100gb'),
+    'incumbent identity refuses GOOGLE PLAY as google-storage-100gb');
+}
+
+console.log('\n=== 17. unexpected card/account is not the planned bill by merchant text ===');
+{
+  const identity = identityWithCardNetflix();
+  const charges = [
+    charge({ date: '2026-01-17', amount: 26.87, merchantLabel: 'NETFLIX COM', cardId: 'travelvisa' }),
+    charge({ date: '2026-02-17', amount: 26.87, merchantLabel: 'NETFLIX COM', cardId: 'travelvisa' }),
+    charge({ date: '2026-03-17', amount: 26.87, merchantLabel: 'NETFLIX COM', cardId: 'travelvisa' }),
+  ];
+  const report = Audit.auditFromCharges(charges, {
+    plan: householdData.plan, identity, source: 'fixture',
+  });
+  const row = findCandidate(report, 'NETFLIXCOM', 'travelvisa') || findCandidate(report, 'NETFLIX', 'travelvisa');
+  ok(row && row.atlasStatus !== 'known-planned',
+    'Netflix on Travel Visa is not the cashback-identity Netflix bill', row && row.atlasStatus);
+  ok(row && !(row.matchedBills || []).some(b => b.id === 'netflix'),
+    'wrong-card Netflix is not matched as known');
+  ok(row && row.atlasStatus === 'merchant-overlaps-planned-bill',
+    'wrong-card Netflix fails closed to merchant-overlaps-planned-bill');
+}
+
+console.log('\n=== 18. authority-backed identity can still report known ===');
+{
+  const identity = identityWithCardNetflix();
+  const charges = [
+    charge({ date: '2026-01-17', amount: 26.87, merchantLabel: 'NETFLIX COM', cardId: 'cashback' }),
+    charge({ date: '2026-02-17', amount: 26.87, merchantLabel: 'NETFLIX COM', cardId: 'cashback' }),
+    charge({ date: '2026-03-17', amount: 26.87, merchantLabel: 'NETFLIX COM', cardId: 'cashback' }),
+  ];
+  const report = Audit.auditFromCharges(charges, {
+    plan: householdData.plan, identity, source: 'fixture',
+  });
+  const row = findCandidate(report, 'NETFLIXCOM', 'cashback') || findCandidate(report, 'NETFLIX', 'cashback');
+  ok(row && row.atlasStatus === 'known-planned',
+    'cashback + NETFLIX identity proves the incumbent Netflix bill', row && row.atlasStatus);
+  ok(row && row.matchedBills.some(b => b.id === 'netflix'),
+    'matched bill id is netflix');
+  ok(report.sections.known.some(r => r.matchedBills.some(b => b.id === 'netflix')),
+    'known section lists the identity-backed Netflix row');
+  ok(!report.sections.strong.some(r => /netflix/i.test(r.merchantLabel)),
+    'identity-backed Netflix is not an undiscovered strong candidate');
+}
+
+console.log('\n=== 19. identity-backed known path still writes nothing ===');
+{
+  const before = hashFile(DATA_PATH);
+  const identity = identityWithCardNetflix();
+  const report = Audit.auditFromCharges([
+    charge({ date: '2026-01-17', amount: 26.87, merchantLabel: 'NETFLIX COM', cardId: 'cashback' }),
+    charge({ date: '2026-02-17', amount: 26.87, merchantLabel: 'NETFLIX COM', cardId: 'cashback' }),
+    charge({ date: '2026-03-17', amount: 26.87, merchantLabel: 'NETFLIX COM', cardId: 'cashback' }),
+    charge({ date: '2026-01-31', amount: 3.13, merchantLabel: 'GOOGLE PLAY', cardId: 'travelvisa' }),
+    charge({ date: '2026-02-28', amount: 3.13, merchantLabel: 'GOOGLE PLAY', cardId: 'travelvisa' }),
+    charge({ date: '2026-03-31', amount: 3.13, merchantLabel: 'GOOGLE PLAY', cardId: 'travelvisa' }),
+  ], { plan: householdData.plan, identity, source: 'fixture' });
+  ok(report.writesCanonicalState === false, 'identity-backed report still declares no canonical write');
+  ok(hashFile(DATA_PATH) === before, 'data.json hash unchanged after identity-backed audit');
+  ok(!/LUNCHMONEY|POST |PUT |PATCH |DELETE /i.test(JSON.stringify(report)),
+    'report does not describe a Lunch Money write');
 }
 
 if (failures) {
