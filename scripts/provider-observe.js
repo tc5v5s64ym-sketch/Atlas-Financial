@@ -2785,9 +2785,14 @@ function sanitizedCurrentPeriodActuals(report, opts) {
     const flags = Forecast.classifyCurrentPeriodTransaction.derivedFlags(derivedInput);
     // Dale 2026-09-02: Cursor merchant is Dale. Stamp before overlay strip
     // so an Amanda tag cannot reassign it after payee/tags are removed.
+    // Dale 2026-09-03: Amazon + travelvisa is Amanda. Stamp before strip so
+    // a Dale-style incidental tag cannot reassign it, and so Forecast can
+    // still apply the standing rule after raw merchant text is gone.
     const personalOwner = flags.daleGuiltFreeMerchant
       ? 'dale'
-      : (explicitOwner || flags.personalOwner);
+      : (flags.amazonMerchant && flags.personalOwner === 'amanda'
+        ? 'amanda'
+        : (explicitOwner || flags.personalOwner));
     const localId = localIdFor(tx.providerTransactionId);
     txs.push({
       id: localId,
@@ -2815,6 +2820,7 @@ function sanitizedCurrentPeriodActuals(report, opts) {
       confirmedGrocery: flags.confirmedGrocery,
       confirmedFuel: flags.confirmedFuel,
       daleGuiltFreeMerchant: flags.daleGuiltFreeMerchant,
+      amazonMerchant: flags.amazonMerchant,
       cardPaymentIdentity: flags.cardPaymentIdentity,
       personalOwner,
       isGroup: tx.isGroup === true,
