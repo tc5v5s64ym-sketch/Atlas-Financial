@@ -2371,6 +2371,44 @@
     return key === 'CURSOR' || key.startsWith('CURSOR ');
   }
 
+  // Established Amazon purchase identity. First merchant token AMAZON /
+  // AMZN / AMAZONCA / AMAZONCOM only (Dale 2026-09-03). Not a substring
+  // match, not "contains Amazon", and not Amazon.ca Rewards Mastercard /
+  // payment payees. Amazon Prime is Amazon merchant identity, not a bill.
+  function isAmazonMerchant(tx) {
+    if (tx && tx.amazonMerchant === true) return true;
+    const key = normalizeMerchantKey(txMerchantExact(tx));
+    if (!key) return false;
+    const first = key.split(' ')[0];
+    if (first !== 'AMAZON' && first !== 'AMZN'
+      && first !== 'AMAZONCA' && first !== 'AMAZONCOM') {
+      return false;
+    }
+    if (/\b(REWARDS|MASTERCARD|PAYMENT|PMT|AUTOPAY)\b/.test(key)) return false;
+    return true;
+  }
+
+  // Canonical Atlas account identity only. Display names are not a second
+  // Travel Visa detector: `travelvisa` / `TRAVEL VISA` normalize to the
+  // same id, and nothing else does.
+  function isTravelVisaAccount(tx) {
+    if (!tx) return false;
+    for (const value of [tx.atlasAccountId, tx.accountId, tx.account]) {
+      if (value == null || value === '') continue;
+      const norm = String(value).trim().toLowerCase().replace(/[\s_-]+/g, '');
+      if (norm === 'travelvisa') return true;
+    }
+    return false;
+  }
+
+  // Standing owner rule (Dale 2026-09-03): Amazon merchant identity AND
+  // canonical travelvisa → Amanda guilt-free. Not all Amazon, not all
+  // Travel Visa, not MBNA card branding, not Prime-as-bill.
+  function isAmandaAmazonTravelVisa(tx) {
+    if (!tx) return false;
+    return isAmazonMerchant(tx) && isTravelVisaAccount(tx);
+  }
+
   // Owner-confirmed Fuel identity. Exact merchant key PITT MEADOWS CE /
   // PITTMEADOWSCE only (Dale 2026-09-02; the same identity the historical
   // chequing library carries as Fuel & transport). Not a generic Pitt
@@ -2444,7 +2482,19 @@
     };
   }
 
-  // Provider-neutral classification, then merchant-aware overrides.
+  // Current-period classification contract (the "gatekeeper" wording is
+  // this admission order, not a second runtime). Forecast remains the
+  // sole classifier. Other spending is only the final fail-closed residual
+  // after incumbent known rules:
+  //   1. account / scope (household-external, unmapped)
+  //   2. non-consumption (income, refund, transfer, card/debt payment,
+  //      represented bill)
+  //   3. owner-confirmed merchant / financial identity (CAN TIRE MC,
+  //      Cursor, Fuel, Dog food, confirmed groceries)
+  //   4. owner account+merchant identity (Amazon + travelvisa → Amanda)
+  //   5. trusted incumbent budget-category mapping
+  //   6. contradiction / ambiguity fail-closed
+  //   7. needsConfirmation / Other
   // Surrey Meat is Dog food, never Groceries. The incumbent
   // plan.budget.excluded / Business boundary stays ahead of the confirmed
   // grocery merchant override: Walmart, Meridian Farm, and Iron Butcher
@@ -2452,10 +2502,13 @@
   // spending. Cursor (Dale 2026-09-02) is Dale guilt-free, never Amanda,
   // never Other. PITT MEADOWS CE (Dale 2026-09-02) is Fuel. CAN TIRE MC
   // (Dale 2026-09-02) is the Canadian Tire Mastercard payment: card-payment,
-  // never Household Budget, never Other. Eating out is Restaurants + Fast
-  // Food + Food Delivery. Ordinary Canadian Tire retail is not Household.
-  // 7-Eleven is not confirmed Fuel without tx-level fuel evidence.
-  // Uncertain txs go to confirmation, not a named household-budget row.
+  // never Household Budget, never Other. Amazon merchant + canonical
+  // travelvisa (Dale 2026-09-03) is Amanda guilt-free, never Other, never
+  // a Prime bill, and never Amanda merely because the card is MBNA.
+  // Eating out is Restaurants + Fast Food + Food Delivery. Ordinary
+  // Canadian Tire retail is not Household. 7-Eleven is not confirmed Fuel
+  // without tx-level fuel evidence. Uncertain txs go to confirmation, not
+  // a named household-budget row.
   function classifyCurrentPeriodTransaction(tx, plan, opts) {
     if (!tx) {
       return { kind: 'unclassified', categoryId: null, householdSpending: false, reason: 'missing' };
@@ -2521,6 +2574,19 @@
         }
       }
       return spendResult('dale-guilt-free', 'dale-guilt-free-merchant');
+    }
+    // Dale 2026-09-03: Amazon + travelvisa is Amanda guilt-free. Incidental
+    // Dale/Amanda provider labels do not override it. Incumbent
+    // plan.budget.excluded / Business still wins. Not a Prime bill.
+    if (isAmandaAmazonTravelVisa(tx)) {
+      const excluded = ((plan && plan.budget && plan.budget.excluded) || []);
+      for (const row of excluded) {
+        const from = normalizeCategoryLabel(row && (row.from || row.label));
+        if (from && from === label) {
+          return { kind: 'business', categoryId: null, householdSpending: false, reason: 'excluded' };
+        }
+      }
+      return spendResult('amanda-guilt-free', 'amanda-amazon-travelvisa');
     }
     // Dale 2026-09-02: PITT MEADOWS CE is Fuel. Provider bill/subscription
     // labels do not divert it. Incumbent plan.budget.excluded / Business
@@ -4226,14 +4292,17 @@
   }
 
   // Map a personal/shopping tx to Dale or Amanda only with account, payee,
-  // note, or tag evidence, or the Dale 2026-09-02 Cursor merchant identity.
+  // note, or tag evidence, the Dale 2026-09-02 Cursor merchant identity,
+  // or the Dale 2026-09-03 Amazon + travelvisa standing owner rule.
   // Chequing B / WEEKLY SPENDING is not Dale. TENNIS INCOME /
   // amanda-debt-payments is not guilt-free spending. Merchant + card is
-  // not owner evidence except that exact Cursor rule. No evidence, or
+  // not owner evidence except those exact standing rules. No evidence, or
   // both names, fails closed to unassigned. Cursor is never Amanda.
+  // Amazon on MBNA or another card is not Amanda.
   function personalSpendOwner(tx) {
     if (!tx) return null;
     if (isDaleGuiltFreeMerchant(tx)) return 'dale';
+    if (isAmandaAmazonTravelVisa(tx)) return 'amanda';
     if (tx.personalOwner === 'dale' || tx.personalOwner === 'amanda'
       || tx.personalOwner === 'excluded') {
       return tx.personalOwner;
@@ -4275,12 +4344,15 @@
       confirmedGrocery: false,
       confirmedFuel: false,
       daleGuiltFreeMerchant: false,
+      amazonMerchant: false,
       cardPaymentIdentity: false,
       personalOwner: null,
     };
     if (!tx) return empty;
     const daleGuiltFreeMerchant = isDaleGuiltFreeMerchant(tx);
+    const amazonMerchant = isAmazonMerchant(tx);
     const confirmedGrocery = isConfirmedGroceryMerchant(tx);
+    const amandaAmazonTravelVisa = amazonMerchant && isTravelVisaAccount(tx);
     return {
       dogFood: isDogFoodMerchant(tx),
       convenienceStore: isConvenienceStoreMerchant(tx),
@@ -4292,8 +4364,10 @@
       confirmedGrocery,
       confirmedFuel: isConfirmedFuelMerchant(tx),
       daleGuiltFreeMerchant,
+      amazonMerchant,
       cardPaymentIdentity: isCanadianTireMastercardPayment(tx),
-      personalOwner: daleGuiltFreeMerchant ? 'dale' : personalSpendOwner(tx),
+      personalOwner: daleGuiltFreeMerchant ? 'dale'
+        : (amandaAmazonTravelVisa ? 'amanda' : personalSpendOwner(tx)),
     };
   }
 

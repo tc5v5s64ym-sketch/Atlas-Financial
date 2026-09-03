@@ -818,6 +818,13 @@ or personal purchases landed on the business-designated card. Owner-stated
 2026-08-29: there is no inventory business going forward. That does not
 reclassify these 9 August Amazon charges.
 
+**Standing current-period rule (owner-stated 2026-09-03).** An established
+Amazon purchase on canonical Atlas account `travelvisa` is Amanda guilt-free
+spending. Both identities are required. This is not all Amazon, not all Travel
+Visa purchases, not Amazon on MBNA, not Amazon Prime as a recurring bill, and
+not all online purchases. Historical 9 August charges remain dated evidence
+and are not rewritten by this going-forward classification rule.
+
 Other figures verified from the account on 2026-08-09: last statement balance
 **$801.10** (7 Jul – 5 Aug), last payment **$100.00 on 7 Aug 2026**.
 
@@ -2057,7 +2064,10 @@ stays OPEN for a verified comparable, assessment, or appraisal.
 
 **The "MBNA Mastercard" and the "Amazon.ca Rewards Mastercard" are one card, not
 two.** The card surfaced from PayPal as `••••54` is this account. Backlog items
-B10 and B36 were the same debt counted twice.
+B10 and B36 were the same debt counted twice. Amazon purchases on canonical
+`mbna` are **not** Amanda guilt-free merely because the card is branded
+Amazon.ca Rewards Mastercard. The 2026-09-03 standing owner rule requires
+Amazon merchant identity **and** canonical `travelvisa`.
 
 **It is the household's largest credit-card debt by a wide margin.**
 
