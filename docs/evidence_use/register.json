@@ -775,6 +775,80 @@
         "path": "docs/01_OPEN_QUESTIONS.md",
         "heading": "Open Questions"
       }
+    },
+    {
+      "id": "CARD-001",
+      "source": "docs/source_intake/HOUSEHOLD_CARD_CHARGE_EVIDENCE_2026-09-03.md",
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "Dated ~7-month revolving-card coverage (2026-02-02 → 2026-09-03), including Triangle zero in range. Parked in source intake. Not routed into ACCOUNT_FACTS as a standing history-depth fact and not used to unplan bills. Absence is not evidence of absence.",
+      "no_review_reason": "Owner 2026-09-03: discovery is not authorization. This intake file is the home for the coverage caveat until a later owner-confirmed one-outcome PR."
+    },
+    {
+      "id": "CARD-002",
+      "source": "docs/source_intake/HOUSEHOLD_CARD_CHARGE_EVIDENCE_2026-09-03.md",
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "Phoenix Digital Health: two Travel Visa hits, amount moved $50, monthly unproven. Two hits are not a bill. Not routed into plan.bills.",
+      "no_review_reason": "Owner 2026-09-03: do not add plan.bills. Promotion would be a later one-outcome PR after owner confirmation, not a register correction."
+    },
+    {
+      "id": "CARD-003",
+      "source": "docs/source_intake/HOUSEHOLD_CARD_CHARGE_EVIDENCE_2026-09-03.md",
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "Amazon shopping on Travel Visa is repeating spending, not a subscription. Prime-like $11.19 day-19 hits are a flag only. MBNA Amazon is not Amanda by default. Not routed into plan.bills.",
+      "no_review_reason": "Standing Amazon + Travel Visa classification already lives in ACCOUNT_FACTS. This pack must not promote Prime or shopping cadence to a bill."
+    },
+    {
+      "id": "CARD-004",
+      "source": "docs/source_intake/HOUSEHOLD_CARD_CHARGE_EVIDENCE_2026-09-03.md",
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "Mailchimp, AICHATAPP, Calendly, Prime-like, and card INTEREST CHARGE hits are unplanned card candidates. AICHATAPP overlap vs ChatGPT Plus is not enough to call already planned. Interest is revolving-card interest, not a new bill.",
+      "no_review_reason": "Owner 2026-09-03: do not add plan.bills. Mailchimp already stays off subscriptions in plan.billsNote."
+    },
+    {
+      "id": "CARD-005",
+      "source": "docs/source_intake/HOUSEHOLD_CARD_CHARGE_EVIDENCE_2026-09-03.md",
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "Shopify amounts/cadence not clean; MBNA history insufficient; Personal Credit Card $25 annual fee is one observation. Not routed into plan.bills.",
+      "no_review_reason": "Owner 2026-09-03: do not invent recurrence. Two hits or one fee observation are not a bill."
+    },
+    {
+      "id": "CARD-006",
+      "source": "docs/source_intake/HOUSEHOLD_CARD_CHARGE_EVIDENCE_2026-09-03.md",
+      "disposition": "CONSUMED",
+      "routed_to": {
+        "path": "docs/ACCOUNT_FACTS.md",
+        "heading": "Bell Mobility — main account and second watch account"
+      }
+    },
+    {
+      "id": "CARD-007",
+      "source": "docs/source_intake/HOUSEHOLD_CARD_CHARGE_EVIDENCE_2026-09-03.md",
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "No revolving-card hits in this ~7-month window for several already-planned services. Absence on cards does not unplan chequing/BILLS ACCOUNT rows, closed Telus, cancelled CMAW, or the remaining Affirm once row.",
+      "no_review_reason": "Live schedule remains data.json plan.bills. This pack does not sunset those rows."
+    },
+    {
+      "id": "CARD-008",
+      "source": "docs/source_intake/HOUSEHOLD_CARD_CHARGE_EVIDENCE_2026-09-03.md",
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "Amazon shopping, Uber Eats, Instacart, Walmart/Costco/7-Eleven, lacrosse fees, and hotels repeat without being recurring bills. Not routed into plan.bills.",
+      "no_review_reason": "Owner 2026-09-03: repeating is not a subscription. No bill promotion from this pack."
+    },
+    {
+      "id": "CARD-009",
+      "source": "docs/source_intake/HOUSEHOLD_CARD_CHARGE_EVIDENCE_2026-09-03.md",
+      "disposition": "EXCLUDED",
+      "exclusion_reason": "Standing merchant rules are preserved, not duplicated into a second ACCOUNT_FACTS. This pack must not generalize Amazon, Iron Butcher, Cursor, CAN TIRE MC, PITT MEADOWS CE, 7-Eleven, Google $3.13, or IKEA.",
+      "no_review_reason": "Incumbent homes already exist in ACCOUNT_FACTS, data.json category why-text, and Forecast merchant identity. Recategorize is out of scope."
+    },
+    {
+      "id": "CARD-010",
+      "source": "docs/source_intake/HOUSEHOLD_CARD_CHARGE_EVIDENCE_2026-09-03.md",
+      "disposition": "CONSUMED",
+      "routed_to": {
+        "path": "data.json",
+        "json_pointer": "/plan/bills"
+      }
     }
   ]
 }

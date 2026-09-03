@@ -12,6 +12,15 @@ not closed
 Last reviewed **2026-08-17**. Phase: **analysis** — capture is essentially done.
 Lunch Money is the normal operational update feed; file capture is fallback.
 
+**Owner-provided 2026-09-03 card-charge evidence** (pasted 2026-09-03).
+Filed in
+[`docs/source_intake/HOUSEHOLD_CARD_CHARGE_EVIDENCE_2026-09-03.md`](docs/source_intake/HOUSEHOLD_CARD_CHARGE_EVIDENCE_2026-09-03.md).
+Coverage is ~7 months (2026-02-02 → 2026-09-03), not 18–24. Discovery is
+not authorization: Phoenix, Mailchimp, Calendly, AICHATAPP, Amazon Prime,
+Shopify, card interest, and repeating shopping were **not** added to
+`plan.bills`. Candidate promotion is a later owner-confirmed one-outcome
+PR, not a silent follow-on from this filing.
+
 **Owner-instructed recurring card-charge audit** (2026-09-03). Discovery
 only: `scripts/recurring-audit.js` inspects mapped revolving-credit Lunch
 Money history and reports repeating merchants. It does not create or
