@@ -735,7 +735,7 @@
                     "plannedMonthly": null,
                     "ownerLine": "Fuel",
                     "targetSource": "owner-stated-2026-08-31",
-                    "why": "OWNER TARGET WINS. Locked 2026-08-31: $325 per 14-day Seaspan payday cycle. Cadence authority is plannedPayday so the master-plan monthly equivalent is that payday amount annualized over the calendar year, not 24 half-months. Not a calendar-half split. A 7-Eleven / convenience-store payee with a general Fuel category is not confirmed Fuel without tx-level fuel evidence. Replaces the Aug. 10 $1,300 monthly target."
+                    "why": "OWNER TARGET WINS. Locked 2026-08-31: $325 per 14-day Seaspan payday cycle. Cadence authority is plannedPayday so the master-plan monthly equivalent is that payday amount annualized over the calendar year, not 24 half-months. Not a calendar-half split. A 7-Eleven / convenience-store payee with a general Fuel category is not confirmed Fuel without tx-level fuel evidence. Owner-stated 2026-09-02: every future tx whose established merchant identity is PITT MEADOWS CE / PITTMEADOWSCE is Fuel, included in Fuel Spent, never Other, and does not require confirmation. Not a generic Pitt Meadows rule; PITT MEADOWS AR stays Sport & fitness. The historical chequing library carries the same identity as Fuel & transport. Replaces the Aug. 10 $1,300 monthly target."
                 },
                 {
                     "id": "household",
