@@ -1823,8 +1823,10 @@ console.log('\n=== 13. Dale 2026-09-02 PITT MEADOWS CE is Fuel, never Other; oth
   const isFuel = cls => cls && cls.kind === 'spend' && cls.categoryId === 'fuel'
     && cls.householdSpending === true && cls.needsConfirmation !== true;
 
-  // 6. Identity -> Fuel regardless of the provider label.
-  for (const label of ['Sport & fitness', 'Shopping', 'Fuel', 'Groceries', null]) {
+  // 6. Identity -> Fuel regardless of the provider label, including
+  // bill/subscription labels that used to exit before this identity.
+  for (const label of ['Sport & fitness', 'Shopping', 'Fuel', 'Groceries',
+    'Bills', 'Subscriptions', 'Bill', null]) {
     const cls = F.classifyCurrentPeriodTransaction(
       pittMeadowsCeTx({ id: 'tx-pmce-' + String(label), categoryLabel: label }), plan);
     ok(isFuel(cls) && cls.includeReason === 'fuel-merchant',
@@ -1848,6 +1850,18 @@ console.log('\n=== 13. Dale 2026-09-02 PITT MEADOWS CE is Fuel, never Other; oth
   const arena = F.classifyCurrentPeriodTransaction(pittMeadowsArenaTx(), plan);
   ok(arena.categoryId !== 'fuel' && arena.includeReason !== 'fuel-merchant',
     'PITT MEADOWS AR does not inherit Fuel', JSON.stringify(arena));
+  const arenaBills = F.classifyCurrentPeriodTransaction(
+    pittMeadowsArenaTx({ id: 'tx-pmar-bills', categoryLabel: 'Bills' }), plan);
+  ok(arenaBills.kind === 'bill' && arenaBills.categoryId !== 'fuel'
+      && arenaBills.includeReason !== 'fuel-merchant',
+    'PITT MEADOWS AR labelled Bills stays a bill, not Fuel', JSON.stringify(arenaBills));
+  const gasBarSubs = F.classifyCurrentPeriodTransaction(pittMeadowsCeTx({
+    id: 'tx-pitt-meadows-gas-bar-subs', displayedPayee: 'Pitt Meadows Gas Bar',
+    originalMerchant: 'PITT MEADOWS GAS BAR', categoryLabel: 'Subscriptions',
+  }), plan);
+  ok(gasBarSubs.kind === 'bill' && gasBarSubs.categoryId !== 'fuel',
+    'an unrelated Pitt Meadows merchant labelled Subscriptions is not Fuel',
+    JSON.stringify(gasBarSubs));
   const generic = F.classifyCurrentPeriodTransaction(pittMeadowsCeTx({
     id: 'tx-pitt-meadows-generic', displayedPayee: 'Pitt Meadows Gas Bar',
     originalMerchant: 'PITT MEADOWS GAS BAR', categoryLabel: null,
@@ -1903,6 +1917,25 @@ console.log('\n=== 13. Dale 2026-09-02 PITT MEADOWS CE is Fuel, never Other; oth
   ok(other && (other.recon || []).some(r => r && r.id === 'tx-pitt-meadows-arena'),
     'PITT MEADOWS AR stays on Other / confirmation in this plan');
   ok(near(householdSpent(active), 178.67), 'Household Budget Spent totals the independent arithmetic');
+
+  // Bill-like provider labels still route exact PITT MEADOWS CE to Fuel.
+  ok(near(PITT_MEADOWS_CE_AMT, 100) && near(325 - PITT_MEADOWS_CE_AMT, 225),
+    'independent fixture arithmetic: Bills-labelled PITT MEADOWS CE is $100 Fuel; remaining $225');
+  const billAdvice = recommend(actualsPacket([
+    pittMeadowsCeTx({ id: 'tx-pmce-bills-packet', categoryLabel: 'Bills' }),
+    pittMeadowsArenaTx({ id: 'tx-pmar-subs-packet', categoryLabel: 'Subscriptions' }),
+  ]));
+  const billActive = period(billAdvice.defaultView, 'this-pay-period');
+  const billFuel = budgetRow(billActive, 'fuel');
+  const billOther = otherRow(billActive);
+  ok(billFuel && near(billFuel.spent, PITT_MEADOWS_CE_AMT)
+      && (billFuel.recon || []).some(r => r && r.id === 'tx-pmce-bills-packet'),
+    'Bills-labelled PITT MEADOWS CE still enters Fuel Spent');
+  ok(billFuel && near(billFuel.remaining, 225),
+    'Fuel remaining is the $325 payday target less the $100 Bills-labelled identity');
+  ok((!billOther || !(billOther.recon || []).some(r => r && r.id === 'tx-pmce-bills-packet'))
+      && !reconIds(billActive).includes('tx-pmar-subs-packet'),
+    'Bills-labelled PITT MEADOWS CE is absent from Other; Subscriptions-labelled AR is a bill, not a Household Budget row');
 }
 
 console.log('\n=== 14. historical authority agrees; preserved rules; one bucket per transaction; sanitized overlay ===');
@@ -2126,6 +2159,72 @@ console.log('\n=== 14. historical authority agrees; preserved rules; one bucket 
   const overlayIds = allReconRows(overlayActive).map(r => r.tx && r.tx.id);
   ok(overlayIds.length === new Set(overlayIds).size,
     'served overlay: each transaction appears in at most one Household Budget row');
+}
+
+console.log('\n=== 15. CAN TIRE MC card-payment identity reaches unmatched-household-cash reconciliation ===');
+{
+  const plan = syntheticPlan();
+  const map = {
+    schema: 'atlas-provider-account-map/v1',
+    mappings: [
+      { providerAccountId: '1001', canonical: { collection: 'cash', id: 'chequing-a' }, atlasRole: 'household-cash' },
+    ],
+  };
+  const unresolvedAmt = 12.34;
+  const observeSrc = sourceText(fs.readFileSync(path.join(__dirname, '..', 'scripts/provider-observe.js'), 'utf8'));
+  ok(/function unmatchedHouseholdCash[\s\S]*cardPaymentIdentity/.test(observeSrc),
+    'unmatchedHouseholdCash carries Forecast cardPaymentIdentity into classify');
+  const flags = F.classifyCurrentPeriodTransaction.derivedFlags(canTireMcTx());
+  const viaFlag = F.classifyCurrentPeriodTransaction({
+    date: '2026-08-31', amount: CAN_TIRE_MC_AMT, pending: false,
+    categoryLabel: 'Pets', accountRole: 'household-cash',
+    cardPaymentIdentity: flags.cardPaymentIdentity,
+  }, plan);
+  ok(flags.cardPaymentIdentity === true && viaFlag.kind === 'card-payment'
+      && viaFlag.householdSpending === false,
+    'independent Forecast authority: derived cardPaymentIdentity classifies the $271 fixture as card-payment');
+  const unresolvedCls = F.classifyCurrentPeriodTransaction({
+    date: '2026-08-31', amount: unresolvedAmt, pending: false,
+    categoryLabel: 'Gifts', accountRole: 'household-cash',
+    displayedPayee: 'Unknown Shop', originalMerchant: 'Unknown Shop',
+  }, plan);
+  ok(unresolvedCls.kind !== 'card-payment' && unresolvedCls.kind !== 'transfer'
+      && unresolvedCls.kind !== 'business' && unresolvedCls.kind !== 'income',
+    'independent Forecast authority: the unresolved household-cash debit is not a skipped kind',
+    JSON.stringify(unresolvedCls));
+
+  const receipt = O.reconciliationReceipt({
+    fetchedAt: '2026-09-02T18:13:00.000Z',
+    observationReceipt: {
+      readyForReconciliation: true,
+      fingerprintDigest: 'test-can-tire-mc-unmatched',
+      observedAt: '2026-09-02T18:13:00.000Z',
+      householdDate: '2026-09-02',
+    },
+    transactionWindow: { startDate: '2026-08-28', endDate: '2026-09-02', complete: true },
+    collapsedTransactions: [
+      {
+        date: '2026-08-31', amount: CAN_TIRE_MC_AMT, pending: false, categoryLabel: 'Pets',
+        payee: 'CAN TIRE MC', originalName: 'CAN TIRE MC',
+        providerAccountId: '1001', providerTransactionId: 'ctmc-unmatched-1',
+      },
+      {
+        date: '2026-08-31', amount: unresolvedAmt, pending: false, categoryLabel: 'Gifts',
+        payee: 'Unknown Shop', originalName: 'Unknown Shop',
+        providerAccountId: '1001', providerTransactionId: 'unresolved-cash-1',
+      },
+    ],
+  }, { data: { plan }, accountMap: map, identityRules: [] });
+  const unmatched = receipt.unmatchedCashEvidence || [];
+  ok(!unmatched.some(row => near(row.amount, CAN_TIRE_MC_AMT)),
+    'the $271 CAN TIRE MC fixture is not unmatched household cash',
+    JSON.stringify(unmatched));
+  ok(unmatched.some(row => near(row.amount, unresolvedAmt) && row.accountRole === 'household-cash'),
+    'an actually unresolved household-cash debit is still unmatched cash evidence',
+    JSON.stringify(unmatched));
+  ok(receipt.counts && receipt.counts.unmatchedCashEvidence === unmatched.length
+      && unmatched.length === 1,
+    'receipt unmatched count is exactly the one unresolved debit');
 }
 
 if (failures) {

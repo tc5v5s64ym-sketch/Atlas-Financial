@@ -2375,7 +2375,8 @@
   // PITTMEADOWSCE only (Dale 2026-09-02; the same identity the historical
   // chequing library carries as Fuel & transport). Not a generic Pitt
   // Meadows rule: PITT MEADOWS AR and other Pitt Meadows merchants do not
-  // inherit it. Incumbent plan.budget.excluded / Business still wins.
+  // inherit it. Provider bill/subscription labels do not divert it.
+  // Incumbent plan.budget.excluded / Business still wins.
   function isConfirmedFuelMerchant(tx) {
     if (tx && tx.confirmedFuel === true) return true;
     const key = normalizeMerchantKey(txMerchantExact(tx));
@@ -2521,6 +2522,19 @@
       }
       return spendResult('dale-guilt-free', 'dale-guilt-free-merchant');
     }
+    // Dale 2026-09-02: PITT MEADOWS CE is Fuel. Provider bill/subscription
+    // labels do not divert it. Incumbent plan.budget.excluded / Business
+    // still wins.
+    if (isConfirmedFuelMerchant(tx)) {
+      const excluded = ((plan && plan.budget && plan.budget.excluded) || []);
+      for (const row of excluded) {
+        const from = normalizeCategoryLabel(row && (row.from || row.label));
+        if (from && from === label) {
+          return { kind: 'business', categoryId: null, householdSpending: false, reason: 'excluded' };
+        }
+      }
+      return spendResult('fuel', 'fuel-merchant');
+    }
     if (BILL_CATEGORY_LABELS.has(label)) {
       return {
         kind: 'bill', categoryId: null, householdSpending: false,
@@ -2539,16 +2553,6 @@
         }
       }
       return spendResult('groceries', 'grocery-merchant');
-    }
-    if (isConfirmedFuelMerchant(tx)) {
-      const excluded = ((plan && plan.budget && plan.budget.excluded) || []);
-      for (const row of excluded) {
-        const from = normalizeCategoryLabel(row && (row.from || row.label));
-        if (from && from === label) {
-          return { kind: 'business', categoryId: null, householdSpending: false, reason: 'excluded' };
-        }
-      }
-      return spendResult('fuel', 'fuel-merchant');
     }
     if (isCanadianTireMerchant(tx)) {
       return confirmationResult('canadian-tire-unconfirmed', 'canadian-tire-unconfirmed');

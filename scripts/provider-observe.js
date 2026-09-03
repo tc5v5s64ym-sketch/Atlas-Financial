@@ -1871,6 +1871,25 @@ function unmatchedHouseholdCash(report, opts, consumedTxIds) {
     if (atlasAccountRole(mapping) !== 'household-cash') continue;
     const amount = lunchMoneyDebitAmount(tx.amount);
     if (amount == null || amount === 0) continue;
+    const kindHint = kindHintFromTransaction(tx);
+    // Forecast is the classification authority. Stamp the CAN TIRE MC
+    // card-payment identity here the same way the sanitized overlay does,
+    // because this path does not pass merchant text into the classifier.
+    const flags = Forecast.classifyCurrentPeriodTransaction.derivedFlags({
+      payee: tx.payee,
+      original_name: tx.originalName,
+      originalName: tx.originalName,
+      displayedPayee: tx.payee,
+      originalMerchant: tx.originalName || tx.payee,
+      notes: tx.notes,
+      note: tx.notes || tx.note,
+      tags: tx.tags,
+      tag: tx.tag || tx.tags,
+      kindHint,
+      kind: tx.kind,
+      mcc: tx.mcc,
+      categoryLabel: tx.categoryLabel,
+    });
     const cls = Forecast.classifyCurrentPeriodTransaction({
       date: tx.date,
       amount,
@@ -1880,7 +1899,8 @@ function unmatchedHouseholdCash(report, opts, consumedTxIds) {
       excludeFromTotals: tx.excludeFromTotals === true,
       excludeFromBudget: tx.excludeFromBudget === true,
       accountRole: 'household-cash',
-      kindHint: kindHintFromTransaction(tx),
+      kindHint,
+      cardPaymentIdentity: flags.cardPaymentIdentity,
     }, plan);
     if (cls.kind === 'transfer' || cls.kind === 'card-payment'
       || cls.kind === 'business' || cls.kind === 'external') continue;
