@@ -282,6 +282,31 @@
       : occurrences(item, start, end);
   }
 
+  // The household CASH minimum on a capitalising obligation (the HELOC).
+  // The interest itself is a non-cash `capitalise` event in expandEvents;
+  // the cash minimum is a separate planned outflow keyed by `cashDay` /
+  // `cashFirstDue`. One rule, read by the Plan bills list and by the Credit
+  // page, so the two can never print different dates or amounts. Empty when
+  // the obligation is not capitalising or declares no cash minimum.
+  function capitalisingCashMinimumOccurrences(o, start, end) {
+    const cashAmt = Number(o && o.cashPayment) || 0;
+    if (!o || !o.nonCash || !(cashAmt > EPSILON) || o.cashDay == null) return [];
+    const dates = outflowDates({
+      frequency: o.frequency,
+      day: o.cashDay,
+      firstDue: o.cashFirstDue || o.firstDue || null,
+    }, start, end);
+    return dates.map(date => ({
+      date,
+      amount: roundCent(cashAmt),
+      label: o.cashLabel || o.label,
+      confidence: o.cashConfidence || o.confidence || 'estimated',
+      payingAccount: o.payingAccount || null,
+      debtId: o.debtId || null,
+      id: o.id,
+    }));
+  }
+
   /* --------------------------------------------------------------- money */
   // Half a cent. Balances are built by adding and subtracting floats, so a
   // figure that is exactly the buffer can land at 499.9999999999999. Comparing
@@ -3784,32 +3809,25 @@
     // the bills list; not a second expandEvents cash event and not a
     // second copy of the capitalise row.
     for (const o of (plan && plan.obligations) || []) {
-      const cashAmt = Number(o && o.cashPayment) || 0;
-      if (!o || !o.nonCash || !(cashAmt > EPSILON) || o.cashDay == null) continue;
-      const dates = outflowDates({
-        frequency: o.frequency,
-        day: o.cashDay,
-        firstDue: o.cashFirstDue || o.firstDue || null,
-      }, span.start, span.end);
-      for (const date of dates) {
-        const key = (o.id || o.cashLabel || '') + '@' + date;
+      for (const occ of capitalisingCashMinimumOccurrences(o, span.start, span.end)) {
+        const key = (o.id || o.cashLabel || '') + '@' + occ.date;
         if (seen.has(key)) continue;
         seen.add(key);
-        const payingAccount = o.payingAccount || null;
-        pushRow(date, {
+        const payingAccount = occ.payingAccount;
+        pushRow(occ.date, {
           id: o.id,
-          label: o.cashLabel || o.label,
+          label: occ.label,
           kind: 'obligation',
-          date,
-          planned: roundCent(cashAmt),
-          amount: roundCent(cashAmt),
+          date: occ.date,
+          planned: occ.amount,
+          amount: occ.amount,
           actual: null,
-          remaining: roundCent(cashAmt),
-          settlement: paydaySettlementState(date, asOf),
-          status: glanceBillStatus(paydaySettlementState(date, asOf), asOf, date),
+          remaining: occ.amount,
+          settlement: paydaySettlementState(occ.date, asOf),
+          status: glanceBillStatus(paydaySettlementState(occ.date, asOf), asOf, occ.date),
           glanceKind: 'still-due',
-          movement: householdMovement(cashAmt, 'out'),
-          confidence: o.cashConfidence || o.confidence || 'estimated',
+          movement: householdMovement(occ.amount, 'out'),
+          confidence: occ.confidence,
           payingAccount,
           payerLabel: plannedPayerLabel(payingAccount),
           needsDate: false,
@@ -7945,6 +7963,114 @@
     };
   }
 
+  /* ------------------------------------------------- credit page accounts */
+  // "What do we owe?" — one debt record composed with the two incumbent
+  // authorities the Credit page needs beside it: headroom from `utilisation`
+  // (pending exposure included, unknown pending not $0) and the next
+  // required payment from the same `expandEvents` stream the Plan calendar
+  // reads, taken on or after the financial as-of. A stored `nextDue` on the
+  // debt record is a dated fact about the opening, not the schedule; once
+  // the schedule has moved past it the page must print the schedule.
+  //
+  // Nothing here is decided: ordering is by record shape (secured term debt,
+  // then secured revolving, then unsecured cards, data order within each),
+  // amounts are copied, and an absent fact stays null rather than becoming
+  // $0, 0% or "nothing due". No payoff order, strategy or permission.
+  //
+  // For a capitalising facility the interest charge is `nextCapitalise` —
+  // a balance increase, not household cash — and the household cash minimum
+  // is `nextCashMinimum`, from the same rule the Plan bills list prints.
+  // They are two different facts and are never merged into one "payment".
+  function creditAccounts(plan, debts, asOf, opts) {
+    opts = opts || {};
+    const extra = opts.extraFacilities || null;
+    const util = utilisation(debts || [], extra, plan);
+    const utilById = new Map((util.rows || []).map(r => [r.id, r]));
+    const horizon = knowledgeHorizon(plan, asOf, opts);
+    const events = expandEvents(plan, asOf, horizon.end, opts);
+    const obligations = (plan && plan.obligations) || [];
+
+    const firstEvent = (debtId, predicate) => {
+      let best = null;
+      for (const e of events || []) {
+        if (!e || e.debtId !== debtId || e.date < asOf) continue;
+        if (!predicate(e)) continue;
+        if (!best || e.date < best.date) best = e;
+      }
+      return best;
+    };
+    const paymentFact = e => e ? {
+      id: e.id || null,
+      label: e.label,
+      date: e.date,
+      amount: roundCent(-e.amount),
+      confidence: e.confidence || null,
+      payingAccount: e.payingAccount || null,
+    } : null;
+
+    const shape = d => d.secured ? (d.limit == null ? 'secured-term' : 'secured-revolving') : 'card';
+    const SHAPE_ORDER = { 'secured-term': 0, 'secured-revolving': 1, card: 2 };
+    const rows = (debts || []).map((d, index) => {
+      const u = utilById.get(d.id) || null;
+      const unknownPending = pendingUnknown(d);
+      const nextPayment = paymentFact(firstEvent(d.id, e => e.kind === 'obligation' && e.effect === 'payment'));
+      const capEvent = firstEvent(d.id, e => e.kind === 'noncash' && e.effect === 'capitalise');
+      let nextCashMinimum = null;
+      for (const o of obligations) {
+        if (!o || o.debtId !== d.id) continue;
+        for (const occ of capitalisingCashMinimumOccurrences(o, asOf, horizon.end)) {
+          if (!nextCashMinimum || occ.date < nextCashMinimum.date) {
+            nextCashMinimum = {
+              id: occ.id, label: occ.label, date: occ.date, amount: occ.amount,
+              confidence: occ.confidence, payingAccount: occ.payingAccount,
+            };
+          }
+        }
+      }
+      return {
+        id: d.id,
+        label: d.label,
+        institution: d.institution || null,
+        shape: shape(d),
+        secured: d.secured === true,
+        confidence: d.confidence || null,
+        structure: d.structure || null,
+        balance: d.balance != null && isFinite(Number(d.balance)) ? Number(d.balance) : null,
+        pending: unknownPending ? null : (d.pending != null ? Number(d.pending) || 0 : 0),
+        pendingUnknown: unknownPending,
+        limit: d.limit != null && isFinite(Number(d.limit)) ? Number(d.limit) : null,
+        available: u ? u.available : null,
+        used: u ? u.used : null,
+        overLimit: u ? u.overLimit : false,
+        overLimitBy: u ? u.overLimitBy : 0,
+        pct: u ? u.pct : null,
+        rate: d.rate != null && isFinite(Number(d.rate)) ? Number(d.rate) : null,
+        rateBasis: d.rateBasis || null,
+        rateConvention: d.rateConvention || null,
+        regularPayment: d.payment != null && isFinite(Number(d.payment)) ? roundCent(d.payment) : null,
+        frequency: d.frequency || null,
+        interestTreatment: d.interestTreatment || null,
+        monthlyInterest: d.monthlyInterest != null && isFinite(Number(d.monthlyInterest))
+          ? roundCent(d.monthlyInterest) : null,
+        nextPayment,
+        nextCapitalise: capEvent ? {
+          id: capEvent.id || null, label: capEvent.label, date: capEvent.date,
+          amount: roundCent(-capEvent.amount), confidence: capEvent.confidence || null,
+        } : null,
+        nextCashMinimum,
+        index,
+      };
+    });
+    rows.sort((a, b) => (SHAPE_ORDER[a.shape] - SHAPE_ORDER[b.shape]) || (a.index - b.index));
+    for (const r of rows) delete r.index;
+    return {
+      asOf,
+      horizonEnd: horizon.end,
+      secured: rows.filter(r => r.secured),
+      cards: rows.filter(r => !r.secured),
+    };
+  }
+
   /* ------------------------------------------------- the May 2027 renewal */
   // Canada's two mortgage rate conventions, and the MONTHLY periodic rate each
   // one implies. A rate quoted under one convention may not be priced under the
@@ -8406,7 +8532,7 @@
     recommendWeekly, recommend, incomeDeadline, amandaHouseholdIncomeDeadline, counterfactuals,
     budgetBreakdown, monthlyFromWeekly,
     projectDebts,
-    nextDue, nextPaymentOut, unallocatedCash, compactSnapshot, publicationTotals, deepDive, publishedSpendType, rollupSpending, planStatus, mission, planPhases, nextMove, utilisation, renewal,
+    nextDue, nextPaymentOut, unallocatedCash, compactSnapshot, publicationTotals, deepDive, publishedSpendType, rollupSpending, planStatus, mission, planPhases, nextMove, utilisation, creditAccounts, capitalisingCashMinimumOccurrences, renewal,
     payoffDebts, payoffModel,
     paymentForMonths, startingCashAmount, resolveFundingSources, resolveActions, EPSILON, STEP };
   if (typeof module !== 'undefined' && module.exports) module.exports = Forecast;
