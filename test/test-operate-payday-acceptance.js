@@ -219,8 +219,12 @@ console.log('\n=== default homepage answers the operating questions first ===');
     ok(road.includes(`id="${id}"`) && !defaultSurface.includes(`id="${id}"`),
       `competing diagnostic ${id} lives after the operating surface, not on the default Plan`);
   }
-  ok(/Deep Dive/.test(html) && /Modellers/.test(html) && /Records/.test(html),
-    'diagnostic pages that still serve a purpose remain linked');
+  const nav = /<nav class="sitenav" aria-label="Pages">[\s\S]*?<\/nav>/.exec(html);
+  ok(nav && !/Deep Dive|Modellers|Records/.test(nav[0]),
+    'diagnostic pages are not in the household nav');
+  for (const page of ['modellers.html', 'deepdive.html', 'records.html']) {
+    ok(exists(path.join('public', page)), `${page} remains routable even though it left the household nav`);
+  }
 }
 
 console.log('\n=== composed surface: cash, identity, debt, protection, limits ===');
