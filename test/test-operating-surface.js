@@ -148,7 +148,7 @@ console.log('=== homepage order and secondary detail ===');
   }
 }
 
-console.log('\n=== ten ordered payday-sheet questions ===');
+console.log('\n=== seven ordered payday-sheet questions ===');
 {
   const { plan, asOf, advice, debtProjection } = currentResult();
   const composer = loadComposer();
@@ -164,10 +164,6 @@ console.log('\n=== ten ordered payday-sheet questions ===');
     'Balance after remaining bills',
     'Household budget',
     'Balance after household budget',
-    'Extra credit-card repayment',
-    'Balance after debt repayment',
-    'Big-purchase savings',
-    'Projected ending balance',
   ];
   let previous = -1;
   for (const prompt of prompts) {
@@ -175,8 +171,10 @@ console.log('\n=== ten ordered payday-sheet questions ===');
     ok(at > previous, `${prompt} appears in the required order`);
     previous = at;
   }
-  ok((rendered.match(/data-operating-question=/g) || []).length === 11,
-    'the default surface contains the eleven calendar-waterfall questions');
+  ok((rendered.match(/data-operating-question=/g) || []).length === 7,
+    'the default surface contains the seven calendar-waterfall questions');
+  ok(!/Extra credit-card repayment|Balance after debt repayment|Big-purchase savings|Projected ending balance/.test(rendered),
+    'the default surface stops at Balance after household budget');
 }
 
 console.log('\n=== every displayed financial answer traces to incumbents ===');
@@ -195,26 +193,23 @@ console.log('\n=== every displayed financial answer traces to incumbents ===');
   ok(rendered.includes(composer.money2(independentCash)),
     'the displayed available amount is that reconciled Forecast payday amount');
   ok(/Household budget/.test(rendered) && /Current Balance/.test(rendered)
-      && /Extra credit-card repayment/.test(rendered)
-      && /Projected ending balance/.test(rendered),
-    'the default waterfall still publishes the operating plan steps');
+      && /Balance after household budget/.test(rendered)
+      && !/Extra credit-card repayment/.test(rendered)
+      && !/Projected ending balance/.test(rendered),
+    'the default waterfall publishes the operating plan steps through Balance after household budget');
   ok(!rendered.includes(`$${advice.weekly.toLocaleString('en-CA')} / week`),
     'the weekly-cap diagnostic is not on the default operating surface');
   ok(!/See how payday is reserved/.test(rendered)
       && !/View full current-period worksheet/.test(rendered),
     'allocation-sheet and worksheet disclosures stay off the default Plan');
   const extra = advice.paydayAllocation.extraDebt.allocated;
-  if (extra > 0) {
-    ok(rendered.includes(composer.money2(extra)),
-      'the displayed extra-debt amount is Forecast.paydayAllocation.extraDebt');
-    ok(target && rendered.includes(target.label),
-      'a positive allocation names the debt row from the incumbent Forecast debt projection');
-  } else {
-    ok(!/Put \$/.test(rendered) && !/Pay extra/.test(rendered),
-      'a zero incumbent allocation does not print a pay-extra instruction on the glance');
-    ok(!rendered.includes(`Pay extra`) && !rendered.includes(`Extra debt money this payday goes to`),
-    'a policy target is not presented as a payment when Forecast allocated zero');
-  }
+  ok(typeof extra === 'number' && isFinite(extra)
+      && (extra === 0 || (target && target.label)),
+    'Forecast.paydayAllocation.extraDebt still decides the extra-debt amount and target');
+  ok(!/Put \$/.test(rendered) && !/Pay extra/.test(rendered)
+      && !rendered.includes('Extra debt money this payday goes to')
+      && !/data-payday-first-card/.test(rendered),
+    'the default Plan prints no extra-repayment instruction or card row after the household-budget boundary');
   const remainingUnavailable = !advice.currentPeriodAction
     || advice.currentPeriodAction.remainingClaim === 'unavailable';
   const coverageCopy = composer.paydayCoverageNote(advice.currentPeriodAction);
@@ -264,8 +259,13 @@ console.log('\n=== Q4 follows the incumbent extra-debt allocation ===');
   const positive = composer.operatingSurfaceHtml({
     advice: positiveAdvice, liveOverlay: data.liveOverlay,
   });
-  ok(positive.includes('$25.00') && positive.includes(target.label),
-    'positive extra repayment on the waterfall names the incumbent target and allocated amount');
+  ok(!positive.includes(target.label) && !/data-payday-first-card/.test(positive),
+    'positive extra repayment stays a Forecast decision and is not printed on the default Plan');
+  const positiveActive = periods.find(p => p && p.role === 'active');
+  ok(positiveActive && positiveActive.firstCard
+      && positiveActive.firstCard.extraThisPayday === 25
+      && positiveActive.firstCard.label === target.label,
+    'the incumbent target and allocated amount remain on the Forecast period the page reads');
 }
 
 console.log('\n=== page remains a renderer, not a financial authority ===');

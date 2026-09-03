@@ -291,10 +291,6 @@ console.log('\n=== 2. default view order and kitchen-counter labels ===');
     'Balance after remaining bills',
     'Household budget',
     'Balance after household budget',
-    'Extra credit-card repayment',
-    'Balance after debt repayment',
-    'Big-purchase savings',
-    'Projected ending balance',
   ];
   let previous = -1;
   for (const prompt of prompts) {
@@ -302,8 +298,10 @@ console.log('\n=== 2. default view order and kitchen-counter labels ===');
     ok(at > previous, `${prompt} appears on the default view in order`);
     previous = at;
   }
-  ok((html.match(/data-operating-question=/g) || []).length === 11,
-    'the default surface has the eleven waterfall questions');
+  ok((html.match(/data-operating-question=/g) || []).length === 7,
+    'the default surface has the seven waterfall questions');
+  ok(!/Extra credit-card repayment|Balance after debt repayment|Big-purchase savings|Projected ending balance/.test(html),
+    'the default surface stops at Balance after household budget');
   ok(/Current Balance\. Not credit/.test(glance) && !/leftover cash/i.test(glance)
       && !/current cash flow/i.test(glance),
     'cash is labelled Current Balance, not leftover or current cash flow');
@@ -383,16 +381,24 @@ console.log('\n=== 5. first card is revolving extra; HELOC stays off the card li
   const html = composer.operatingSurfaceHtml({
     advice, weekly: advice.weekly, recommended: advice.weekly,
   });
-  const glance = defaultGlance(html);
-  ok(/Synthetic high card/.test(glance) && /Synthetic other card/.test(glance),
-    'card labels print on the default view');
-  const extraRepay = glance.slice(glance.indexOf('Extra credit-card repayment'));
-  const otherCards = extraRepay.slice(extraRepay.indexOf('Other credit cards'));
-  ok(/data-card-id="cashback"/.test(extraRepay) || /data-first-card="cashback"/.test(extraRepay),
-    'extra repayment names the priority revolving card');
+  ok(!/data-payday-first-card/.test(html) && !/data-card-id=/.test(html),
+    'the default Plan waterfall prints no card rows after the household-budget boundary');
+  // The card glance still renders where a lookahead view prints it, so the
+  // card-list rules stay proved through a real render path.
+  const nextHtml = composer.operatingSurfaceHtml({
+    advice, weekly: advice.weekly, recommended: advice.weekly,
+    planLook: 'next-period', planView: advice.nextPeriodView,
+  });
+  const nextGlance = defaultGlance(nextHtml);
+  ok(/Synthetic high card/.test(nextGlance) && /Synthetic other card/.test(nextGlance),
+    'card labels print on the next-period lookahead view');
+  const firstCard = nextGlance.slice(nextGlance.indexOf('Credit card to pay off first'));
+  const otherCards = firstCard.slice(firstCard.indexOf('Other credit cards'));
+  ok(/data-card-id="cashback"/.test(firstCard) || /data-first-card="cashback"/.test(firstCard),
+    'the first-card row names the priority revolving card');
   ok(!otherCards.includes('data-card-id="cashback"'),
     'the priority card is not listed again under other cards');
-  ok(!/HELOC/.test(extraRepay.slice(0, extraRepay.indexOf('Balance after debt repayment')))
+  ok(!/HELOC/.test(firstCard.slice(0, firstCard.indexOf('Balance after debt repayment')))
       && !/>Mortgage</.test(otherCards),
     'HELOC and mortgage are not listed as credit cards');
 }

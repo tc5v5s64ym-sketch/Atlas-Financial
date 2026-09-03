@@ -278,10 +278,8 @@ console.log('\n=== 3. extra debt only from paydayAllocation surplus ===');
   const zeroHtml = composer.operatingSurfaceHtml({
     advice: zeroAdvice, weekly: zeroAdvice.weekly, recommended: zeroAdvice.weekly,
   });
-  const zero = question(zeroHtml, '08');
-  ok(/Extra this payday \$0\.00/.test(zero) || /Extra \$0\.00/.test(zero)
-      || /No revolving card/.test(zero) || /No extra credit-card repayment/.test(zero),
-    'zero extra this payday is said so, not omitted as a fake payment');
+  ok(!question(zeroHtml, '08') && !/data-payday-first-card/.test(zeroHtml),
+    'the default Plan prints no extra-repayment row after Balance after household budget');
   ok(!/Pay extra/.test(zeroHtml) && !/Put \$40/.test(zeroHtml),
     'a named target is not a pay instruction when allocated is $0');
 
@@ -306,10 +304,14 @@ console.log('\n=== 3. extra debt only from paydayAllocation surplus ===');
   const plusHtml = composer.operatingSurfaceHtml({
     advice: plusAdvice, weekly: plusAdvice.weekly, recommended: plusAdvice.weekly,
   });
-  ok(/Put \$40\.00 extra on Synthetic high card/.test(plusHtml)
-      || /Extra this payday \$40\.00/.test(plusHtml)
-      || /Extra \$40\.00/.test(plusHtml),
-    'positive leftover after bills names facility and amount from extraDebt');
+  ok(!/Synthetic high card/.test(plusHtml)
+      && !/Put \$40\.00 extra|Extra this payday \$40\.00|Extra \$40\.00/.test(plusHtml),
+    'a positive extraDebt allocation stays a Forecast decision and is not printed on the default Plan');
+  const activePeriod = ((plusAdvice.defaultView && plusAdvice.defaultView.calendarPeriods) || [])
+    .find(p => p && p.role === 'active');
+  ok(activePeriod && activePeriod.extraDebt && near(activePeriod.extraDebt.allocated, 40)
+      && activePeriod.extraDebt.target && activePeriod.extraDebt.target.label === 'Synthetic high card',
+    'the extraDebt facility and amount remain on the Forecast period the page reads');
 }
 
 console.log('\n=== 4. majorPlans set-aside this payday vs later ON TRACK ===');

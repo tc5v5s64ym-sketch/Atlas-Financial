@@ -283,8 +283,9 @@ console.log('\n=== composed surface: cash, identity, debt, protection, limits ==
     && !rendered.includes(`${composer.money(action.weeklyCap)} / week`),
   'this week\'s spend stays Forecast.recommend.weekly and is not dumped onto the default Plan');
   ok(!/See later bills and big purchases/.test(rendered)
-      && /Big-purchase savings/.test(rendered),
-    'later-bills inventory dump stays off the default Plan; waterfall big purchases remain');
+      && !/Big-purchase savings/.test(rendered)
+      && !/data-payday-big-purchases/.test(rendered),
+    'later-bills inventory dump and the big-purchase row stay off the default Plan');
   for (const item of requiredItems) {
     ok(q4.includes(item.label) && q4.includes(composer.money2(item.amount)),
       `Q4 required debt ${item.id} is the Forecast required item, not extra principal`);
@@ -301,25 +302,20 @@ console.log('\n=== composed surface: cash, identity, debt, protection, limits ==
   ok((extraAllocated === 0 && !extraLine)
     || (extraLine && near(extraLine.amount, extraAllocated)),
     'zero extra principal adds no extra-debt line; a positive extra line equals Forecast.extraDebt.allocated');
-  if (extraAllocated === 0) {
-    ok(/data-operating-question="07"/.test(rendered)
-      && !/Pay extra/.test(rendered)
-      && !/Extra debt money this payday goes to/.test(rendered),
-    '$0 extra-debt allocation does not print a pay-extra instruction');
-  } else {
-    ok((q8.includes(composer.money2(alloc.extraDebt.allocated))
-        || rendered.includes(composer.money2(alloc.extraDebt.allocated)))
-      && alloc.extraDebt.target && rendered.includes(alloc.extraDebt.target.label),
-    'positive extra principal names the Forecast-authorized target and amount');
+  ok(/data-operating-question="07"/.test(rendered)
+    && !q8
+    && !/Pay extra/.test(rendered)
+    && !/Extra debt money this payday goes to/.test(rendered),
+  'the default Plan ends at Q7 and prints no extra-repayment instruction');
+  if (extraAllocated > 0) {
+    ok(alloc.extraDebt.target && alloc.extraDebt.target.label
+      && !rendered.includes(alloc.extraDebt.target.label),
+    'positive extra principal stays a Forecast decision and is not printed on the default Plan');
   }
   ok(priority.status === 'ready' && priority.target
     && plan.nextDollar && plan.nextDollar.policy === 'true-surplus-highest-interest'
     && plan.nextDollar.target == null,
   'debt target comes from Forecast.debtPriority plus recorded owner policy, not a stored rank');
-  if (extraAllocated > 0) {
-    ok(q8.includes(priority.target.label) || rendered.includes(priority.target.label),
-      'extra on the cards names the Forecast/owner-policy target');
-  }
   const coverage = composer.paydayCoverageNote(action);
   const remainingUnavailable = !action || action.remainingClaim === 'unavailable';
   ok(remainingUnavailable
@@ -388,13 +384,14 @@ console.log('\n=== payday mode still uses the ordered allocation sheet ===');
     'payday-mode Q4 is bills');
   ok(/data-payday-household-budget/.test(q6) || /Household budget/.test(q6),
     'payday-mode Q6 is household budget');
-  ok(/data-payday-first-card/.test(q8) && !/data-allocation-available/.test(html)
+  ok(!q8 && !/data-payday-first-card/.test(html) && !/data-allocation-available/.test(html)
       && !/See how payday is reserved/.test(html),
-    'a payday-mode result still renders the first card and does not dump the allocation sheet onto the default Plan');
+    'a payday-mode result stops at the household-budget boundary and does not dump the allocation sheet onto the default Plan');
   ok(/Current Balance/.test(html) && /Household budget/.test(html)
     && />Bills</.test(html)
-    && /Extra credit-card repayment/.test(html),
-  'payday mode still answers Current Balance, bills, budget, and extra repayment');
+    && /Balance after household budget/.test(html)
+    && !/Extra credit-card repayment/.test(html),
+  'payday mode still answers Current Balance, bills, budget, and balance after household budget');
 }
 
 console.log('\n=== live overlay cannot be authorized from committed git state ===');
