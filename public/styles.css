@@ -1298,3 +1298,69 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
   .score-table-wrap { display: none; }
   .score-cards { display: block; }
 }
+
+/* ---------------------------------------------------------------- credit page */
+/* "What do we owe?" — one card per account, mobile-first: a single column of
+   accounts, facts stacked two-up. Secured debt uses the tile treatment (top
+   rule, larger balance); cards are the same card at a smaller scale. Every
+   figure is Forecast/data output; these rules only place it. */
+.credit-list { display:flex; flex-direction:column; gap:12px; margin:18px 0 0; }
+.credit-list-cards { margin-top:8px; }
+.credit-section-head { margin-top:36px; }
+.credit-account {
+  position:relative; overflow:hidden; min-width:0;
+  background:var(--surface-1); border:1px solid var(--border); border-radius:var(--radius-lg);
+  padding:16px 18px 15px; box-shadow:var(--shadow-1);
+}
+.credit-account::before { content:""; position:absolute; top:0; left:0; right:0; height:3px; background:var(--axis); }
+.credit-secured-term::before, .credit-secured-revolving::before { background:var(--s1); }
+.credit-head { display:flex; justify-content:space-between; align-items:baseline; gap:10px; }
+.credit-head h2, .credit-head h3 { margin:0; font-size:1.05rem; line-height:1.3; letter-spacing:-0.01em; }
+.credit-secured-term .credit-head h2, .credit-secured-revolving .credit-head h2 { font-size:1.2rem; }
+.credit-balance { margin:8px 0 4px; }
+.credit-balance .lab { display:block; font-size:.72rem; color:var(--text-secondary); text-transform:uppercase; letter-spacing:.06em; font-weight:700; }
+.credit-balance b { display:block; font-size:1.55rem; font-weight:700; margin:4px 0 0; letter-spacing:-0.02em; font-variant-numeric:tabular-nums; }
+.credit-secured-term .credit-balance b, .credit-secured-revolving .credit-balance b { font-size:1.85rem; }
+.credit-pending { margin-top:2px; font-size:.82rem; color:var(--serious); font-variant-numeric:tabular-nums; }
+.credit-facts {
+  display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px 14px;
+  margin:12px 0 0; padding:12px 0 0; border-top:1px solid var(--grid);
+}
+.credit-fact { min-width:0; }
+.credit-fact dt { font-size:.7rem; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; font-weight:700; }
+.credit-fact dd { margin:3px 0 0; font-size:.98rem; font-weight:650; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+.credit-fact dd small { display:block; margin-top:2px; font-size:.74rem; font-weight:400; color:var(--text-secondary); line-height:1.3; }
+.credit-fact[data-credit-noncash="true"] dd { color:var(--text-secondary); }
+.credit-fact[data-credit-over-limit="true"] dd { color:var(--critical); }
+.credit-unknown { color:var(--muted); font-weight:600; }
+.credit-structure { margin:12px 0 0; font-size:.8rem; color:var(--muted); line-height:1.4; }
+@media (min-width:641px) {
+  .credit-facts { grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .credit-list-cards { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .credit-list-cards .credit-facts { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+
+/* -------------------------------------------------------------- planning page */
+/* One Forecast.majorPlans row per card, in Forecast's funding order. The
+   verdict colours mirror the Plan page's future-cost rows so the two pages
+   read the same. Ranges and approximate timing are printed as text. */
+.planning-list { display:flex; flex-direction:column; gap:10px; margin:16px 0 0; }
+.planning-row {
+  min-width:0; padding:14px 15px; border:1px solid var(--border); border-radius:var(--radius-lg);
+  background:var(--surface-1); box-shadow:var(--shadow-1);
+}
+.planning-row.at-risk { border-left:3px solid var(--serious); }
+.planning-row.funding-gap { border-left:3px solid var(--critical); }
+.planning-head { display:flex; justify-content:space-between; align-items:start; gap:9px; }
+.planning-head h2 { margin:0; font-size:1rem; line-height:1.3; letter-spacing:-0.01em; }
+.planning-facts {
+  display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px 14px; margin-top:10px;
+}
+.planning-facts > div { min-width:0; }
+.planning-facts b { display:block; font-size:.98rem; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+.planning-facts small { display:block; margin-top:2px; color:var(--muted); font-size:.7rem; line-height:1.25; }
+.planning-meta { display:flex; align-items:center; gap:5px; flex-wrap:wrap; margin-top:10px; }
+.planning-meta > span:first-child { margin-right:auto; color:var(--text-secondary); font-size:.82rem; }
+@media (min-width:641px) {
+  .planning-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
+}

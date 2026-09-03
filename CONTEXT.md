@@ -263,8 +263,8 @@ routable at their URLs but are no longer linked from that nav:
 | Page | HTML | Script | What it shows |
 |---|---|---|---|
 | Plan (homepage) | `index.html` | `plan.js` + `forecast.js` | The payday waterfall through Balance after household budget; forecast diagnostics below |
-| Credit | `credit.html` | `credit.js` | Routable shell on the incumbent header — not yet populated |
-| Planning | `planning.html` | `planning.js` | Routable shell on the incumbent header — not yet populated |
+| Credit | `credit.html` | `credit.js` + `forecast.js` | What the household owes: mortgage, HELOC, then every active card — balances, limits, Forecast.utilisation headroom, rates, next required payment from the Forecast schedule (`Forecast.creditAccounts`) |
+| Planning | `planning.html` | `planning.js` + `forecast.js` | Known future costs: `Forecast.majorPlans` verdicts, ranges, timing and any Forecast payday set-aside, in Forecast order |
 | Modellers | `modellers.html` | `modellers.js` + `forecast.js` | Payoff and renewal modelling |
 | Deep Dive | `deepdive.html` | `deepdive.js` | Debt, HELOC, flows, lacrosse, questions |
 | Records | `records.html` | `records.js` | Balance sheet, coverage, assumptions |
@@ -308,7 +308,7 @@ script.** If a page needs a number that does not exist yet, add it to
 Check for orphans before pushing (scans every page script):
 
 ```bash
-node -e "const d=require('./data.json'),fs=require('fs');const a=['app','forecast','plan','modellers','deepdive','records'].map(f=>fs.readFileSync('public/'+f+'.js','utf8')).join('\n');for(const k of Object.keys(d))if(!new RegExp('\\\\.'+k+'\\\\b').test(a))console.log('orphaned:',k)"
+node -e "const d=require('./data.json'),fs=require('fs');const a=['app','forecast','plan','credit','planning','modellers','deepdive','records'].map(f=>fs.readFileSync('public/'+f+'.js','utf8')).join('\n');for(const k of Object.keys(d))if(!new RegExp('\\\\.'+k+'\\\\b').test(a))console.log('orphaned:',k)"
 ```
 
 ### Two data files, and one of them is generated

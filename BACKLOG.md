@@ -298,6 +298,17 @@ Modellers | Deep Dive | Records. Their future (household nav, a diagnostics
 nav, or retirement) is owner direction; do not delete them on an agent's
 initiative.
 
+**B100 · Figures snapshot does not cover the Credit and Planning surfaces** · **READY** · *governance; found 2026-09-03*
+
+`scripts/figures-snapshot.js` snapshots what the household can read off the
+Plan page. The Credit page now publishes per-account balances, limits,
+Forecast.utilisation headroom, next minimums and due dates, and the Planning
+page publishes `Forecast.majorPlans` verdicts, ranges and remaining amounts.
+Most of those figures already sit on Plan or are derived from Plan inputs, but
+a change to a card's published headroom or a future cost's verdict would not
+appear in the figures comment today. Add stable keys for both surfaces so the
+figures review sees them. Not a Forecast change.
+
 **Dated 2026-08-09 BNPL reviews still combine Affirm and Flexiti** · **READY** · *docs only; not live current truth*
 
 Dated 2026-08-09 reviews still print `Affirm / Flexiti` as one unknown BNPL line:

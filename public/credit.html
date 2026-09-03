@@ -31,7 +31,17 @@
   <section id="credit" data-page-shell="credit">
     <div class="kicker">Credit</div>
     <h1>Credit</h1>
-    <p class="sub">This page is not populated yet. The payday plan is on <a href="/">Plan</a>.</p>
+    <p class="sub">What the household owes: balances, limits, rates and the next required payment on each account. Facts, not strategy — the payday plan is on <a href="/">Plan</a>.</p>
+
+    <div id="credit-secured" class="credit-list credit-list-secured" aria-label="Secured debt">
+      <p class="lede">Loading the served opening…</p>
+    </div>
+
+    <h2 class="credit-section-head">Credit cards</h2>
+    <p class="lede" id="credit-cards-lede"></p>
+    <div id="credit-cards" class="credit-list credit-list-cards" aria-label="Active credit cards"></div>
+
+    <p class="lede footnote" id="credit-note"></p>
   </section>
 
   <footer>
@@ -41,6 +51,7 @@
 </div>
 <div class="tip" id="tip"></div>
 <script src="/app.js"></script>
+<script src="/forecast.js"></script>
 <script src="/credit.js"></script>
 </body>
 </html>
