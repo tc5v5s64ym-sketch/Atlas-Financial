@@ -125,6 +125,7 @@ const suites = [
   ['production read-only live overlay boundary', 'test-production-live-overlay.js'],
   ['read-only assistant interface', 'test-assistant-interface.js'],
   ['Aug. 16 household evidence absorption', 'test-aug16-evidence.js'],
+  ['2026-09-03 card-charge evidence intake', 'test-card-charge-evidence-2026-09-03.js'],
   ['telecom current-regime closeout', 'test-telecom-current-regime.js'],
   ['Bell card-paid baseline gravity', 'test-bell-card-paid.js'],
   ['HELOC Q19 + Bell Q18 evidence closeout', 'test-q19-q18-closeout.js'],
