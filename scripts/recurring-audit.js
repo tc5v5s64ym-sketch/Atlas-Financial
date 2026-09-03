@@ -877,7 +877,13 @@ function auditFromCharges(charges, options) {
   const plan = opts.plan || {};
   const asOf = opts.asOf || null;
   const source = opts.source || 'charges';
-  const groups = [...groupCharges(charges).values()]
+  const ordered = (charges || []).slice().sort((a, b) =>
+    String(a.date).localeCompare(String(b.date))
+    || String(a.cardId).localeCompare(String(b.cardId))
+    || String(a.merchantKey).localeCompare(String(b.merchantKey))
+    || Number(a.amount) - Number(b.amount)
+    || String(a.merchantLabel).localeCompare(String(b.merchantLabel)));
+  const groups = [...groupCharges(ordered).values()]
     .map(g => classifyGroup(g, plan))
     .sort((a, b) => a.cardId.localeCompare(b.cardId) || a.merchantKey.localeCompare(b.merchantKey));
   for (const row of groups) {
@@ -896,10 +902,10 @@ function auditFromCharges(charges, options) {
     synthetic: source !== 'live',
     asOf,
     coverage: {
-      start: opts.coverageStart || (charges[0] && charges[0].date) || null,
-      end: opts.coverageEnd || (charges.length ? charges[charges.length - 1].date : null),
-      postedCharges: charges.length,
-      cards: opts.cards || [...new Map(charges.map(c => [c.cardId, {
+      start: opts.coverageStart || (ordered[0] && ordered[0].date) || null,
+      end: opts.coverageEnd || (ordered.length ? ordered[ordered.length - 1].date : null),
+      postedCharges: ordered.length,
+      cards: opts.cards || [...new Map(ordered.map(c => [c.cardId, {
         cardId: c.cardId,
         cardLabel: c.cardLabel,
       }])).values()],
@@ -907,8 +913,8 @@ function auditFromCharges(charges, options) {
     skipped: opts.skipped || {},
     candidates: groups,
     sections,
-    phoenix: investigatePhoenix(charges, plan),
-    amazon: amazonAnalysis(charges, plan),
+    phoenix: investigatePhoenix(ordered, plan),
+    amazon: amazonAnalysis(ordered, plan),
   };
   assertNoRawLeak(report, 'audit report');
   return report;
