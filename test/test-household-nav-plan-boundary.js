@@ -1,6 +1,7 @@
 'use strict';
 /* Household information architecture: nav Plan | Credit | Planning, routable
- * Credit / Planning shells on the incumbent header, and a Plan waterfall that
+ * Credit / Planning pages on the incumbent header (content proved in
+ * test-credit-page.js and test-planning-page.js), and a Plan waterfall that
  * ends at Balance after household budget.
  *
  * Presentation only. Forecast still computes the extra-debt / big-purchase
@@ -196,15 +197,15 @@ for (const [page, label, id] of [['credit.html', 'Credit', 'credit'], ['planning
       && /<meta name="robots" content="noindex, nofollow">/.test(html),
     `${page} uses the incumbent header: brand, as-of chip, theme, sign out, stylesheet, noindex`);
   ok(/<script src="\/app.js"><\/script>/.test(html)
+      && /<script src="\/forecast.js"><\/script>/.test(html)
       && new RegExp(`<script src="/${id}.js"></script>`).test(html)
       && !/<script>/.test(html),
-    `${page} loads the shared core plus its own page script and no inline script (CSP)`);
+    `${page} loads the shared core, the Forecast engine and its own page script, and no inline script (CSP)`);
   const pageScript = read(`public/${id}.js`);
-  ok(/App\.boot\(\)/.test(pageScript) && !/Forecast\./.test(pageScript)
-      && !/App\.register\(/.test(pageScript) && !/\$\(/.test(pageScript),
-    `${id}.js boots the shared core and renders nothing`);
+  ok(/App\.boot\(/.test(pageScript) && /App\.register\(/.test(pageScript),
+    `${id}.js boots the shared core and renders through the shared data hook (served /data.json, one as-of chip)`);
   ok(!/\$\d|\d\.\d\d\b|%/.test(html.replace(/<meta[^>]*>/g, '')),
-    `${page} prints no figure`);
+    `${page} hardcodes no figure — every figure arrives through the shared boot`);
   for (const href of [...html.matchAll(/href="(\/[^"#]*)"/g)].map(m => m[1])) {
     const target = href === '/' ? 'public/index.html' : 'public' + href;
     ok(exists(target), `${page} link ${href} resolves to a file`);

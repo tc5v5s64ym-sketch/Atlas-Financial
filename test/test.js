@@ -63,6 +63,8 @@ const suites = [
   ['payday operating sheet six glance answers', 'test-payday-operating-sheet.js'],
   ['Plan default view layout', 'test-plan-default-view.js'],
   ['household nav and Plan waterfall boundary', 'test-household-nav-plan-boundary.js'],
+  ['Credit page — what do we owe (Forecast.creditAccounts)', 'test-credit-page.js'],
+  ['Planning page — Forecast.majorPlans rendered', 'test-planning-page.js'],
   ['Plan calendar bill sections', 'test-plan-bill-calendar-periods.js'],
   ['Plan calendar waterfalls', 'test-plan-calendar-waterfalls.js'],
   ['Household Budget Other spending residual', 'test-household-budget-other-spending.js'],
