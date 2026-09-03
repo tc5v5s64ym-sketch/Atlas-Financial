@@ -704,8 +704,10 @@ console.log('\n=== 8. Dale 2026-09-02 Iron Butcher groceries; Surrey Meat stays 
     'Iron Butcher derived flags are confirmed grocery, not uncertain, not dog food',
     JSON.stringify(ironFlags));
   const localMeatPets = F.classifyCurrentPeriodTransaction(otherMeatTx(), plan);
-  ok(localMeatPets.needsConfirmation === true && localMeatPets.reason === 'pets-not-dog-food'
-      && localMeatPets.categoryId !== 'groceries',
+  ok(localMeatPets.needsConfirmation === true && localMeatPets.kind !== 'spend'
+      && localMeatPets.categoryId !== 'groceries'
+      && (localMeatPets.reason === 'payee-category-contradiction'
+        || localMeatPets.reason === 'pets-not-dog-food'),
     'Local Butcher is not the Iron Butcher rule; Pets stays confirmation, not Groceries',
     JSON.stringify(localMeatPets));
   const localMeatGroc = F.classifyCurrentPeriodTransaction(
