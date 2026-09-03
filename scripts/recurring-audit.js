@@ -650,24 +650,51 @@ function merchantOverlapsBillText(merchantKey, merchantLabel, bill) {
   return false;
 }
 
-function identityProvesBill(charge, bill, identity) {
+function chargeAsRepresentedInput(charge, plan, identity) {
+  const cardId = charge && charge.cardId != null ? String(charge.cardId) : '';
+  if (!charge || !cardId || !charge.date) return null;
+  const providerAccountId = `atlas-audit-account:${cardId}`;
+  const payee = charge.payee || charge.merchantLabel || null;
+  const original = charge.originalName || charge.originalMerchant || charge.merchantLabel || null;
+  return {
+    plan: plan || {},
+    identityRules: identityRules(identity),
+    accountMap: {
+      mappings: [{
+        providerAccountId,
+        atlasRole: 'revolving-credit',
+        canonical: { collection: 'debts', id: cardId },
+      }],
+    },
+    transactions: [{
+      providerTransactionId: `atlas-audit-tx:${cardId}:${charge.date}`,
+      providerAccountId,
+      date: charge.date,
+      amount: Number(charge.amount),
+      payee,
+      displayedPayee: payee,
+      originalName: original,
+      original_name: original,
+      originalMerchant: original,
+      pending: false,
+    }],
+    transactionWindow: { complete: true },
+  };
+}
+
+function identityProvesBill(charge, bill, plan, identity) {
   if (!charge || !bill || !bill.id) return null;
-  const tx = chargeAsIdentityTx(charge);
-  for (const rule of identityRules(identity)) {
-    if (rule.eventId !== bill.id) continue;
-    if (rule.atlasAccountId && String(rule.atlasAccountId) !== String(charge.cardId)) {
-      continue;
-    }
-    if (rule.direction && rule.direction !== 'debit') continue;
-    if (!Provider.ruleMatchesTransactionIdentity(tx, rule)) continue;
-    return {
-      id: bill.id,
-      label: bill.label,
-      frequency: bill.frequency,
-      identity: 'incumbent-payee+account+direction',
-    };
-  }
-  return null;
+  const input = chargeAsRepresentedInput(charge, plan, identity);
+  if (!input || !input.identityRules.length) return null;
+  const proven = (Provider.representedEventCandidates(input) || [])
+    .find(hit => hit && hit.id === bill.id);
+  if (!proven) return null;
+  return {
+    id: bill.id,
+    label: bill.label,
+    frequency: bill.frequency,
+    identity: proven.identity || 'payee+account+date',
+  };
 }
 
 function identityPayeeOverlapsBill(charge, bill, identity) {
@@ -688,7 +715,7 @@ function identityPayeeOverlapsBill(charge, bill, identity) {
 function matchKnownBills(charge, plan, identity) {
   const hits = [];
   for (const bill of recurringBills(plan)) {
-    const proven = identityProvesBill(charge, bill, identity);
+    const proven = identityProvesBill(charge, bill, plan, identity);
     if (proven) hits.push(proven);
   }
   hits.sort((a, b) => a.id.localeCompare(b.id));
@@ -701,7 +728,7 @@ function overlappingPlannedBills(charge, plan, identity) {
   const hits = [];
   const seen = new Set();
   for (const bill of recurringBills(plan)) {
-    if (identityProvesBill(charge, bill, identity)) continue;
+    if (identityProvesBill(charge, bill, plan, identity)) continue;
     const overlap = merchantOverlapsBillText(merchantKey, merchantLabel, bill)
       || identityPayeeOverlapsBill(charge, bill, identity);
     if (!overlap || seen.has(bill.id)) continue;

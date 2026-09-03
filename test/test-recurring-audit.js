@@ -556,7 +556,8 @@ console.log('\n=== 18. authority-backed identity can still report known ===');
   });
   const row = findCandidate(report, 'NETFLIXCOM', 'cashback') || findCandidate(report, 'NETFLIX', 'cashback');
   ok(row && row.atlasStatus === 'known-planned',
-    'cashback + NETFLIX identity proves the incumbent Netflix bill', row && row.atlasStatus);
+    'cashback + NETFLIX + scheduled/posting date proves the incumbent Netflix bill',
+    row && row.atlasStatus);
   ok(row && row.matchedBills.some(b => b.id === 'netflix'),
     'matched bill id is netflix');
   ok(report.sections.known.some(r => r.matchedBills.some(b => b.id === 'netflix')),
@@ -581,6 +582,50 @@ console.log('\n=== 19. identity-backed known path still writes nothing ===');
   ok(hashFile(DATA_PATH) === before, 'data.json hash unchanged after identity-backed audit');
   ok(!/LUNCHMONEY|POST |PUT |PATCH |DELETE /i.test(JSON.stringify(report)),
     'report does not describe a Lunch Money write');
+}
+
+console.log('\n=== 20. same merchant + correct card + wrong bill date is not known-planned ===');
+{
+  const identity = identityWithCardNetflix();
+  const charges = [
+    charge({ date: '2026-01-05', amount: 26.87, merchantLabel: 'NETFLIX COM', cardId: 'cashback' }),
+    charge({ date: '2026-02-05', amount: 26.87, merchantLabel: 'NETFLIX COM', cardId: 'cashback' }),
+    charge({ date: '2026-03-05', amount: 26.87, merchantLabel: 'NETFLIX COM', cardId: 'cashback' }),
+  ];
+  const report = Audit.auditFromCharges(charges, {
+    plan: householdData.plan, identity, source: 'fixture',
+  });
+  const row = findCandidate(report, 'NETFLIXCOM', 'cashback') || findCandidate(report, 'NETFLIX', 'cashback');
+  ok(row && row.atlasStatus !== 'known-planned',
+    'Netflix on cashback dated the 5th is not the day-17 Netflix bill', row && row.atlasStatus);
+  ok(row && !(row.matchedBills || []).some(b => b.id === 'netflix'),
+    'wrong-date Netflix is not matched as known');
+  ok(row && row.atlasStatus === 'merchant-overlaps-planned-bill',
+    'wrong-date Netflix fails closed to merchant-overlaps-planned-bill');
+  ok(row && (row.overlappingBills || []).some(b => b.id === 'netflix'),
+    'wrong-date Netflix is surfaced as overlapping, not hidden as known');
+  ok(!report.sections.known.some(r => /netflix/i.test(r.merchantLabel)),
+    'wrong-date Netflix is not in the known section');
+}
+
+console.log('\n=== 21. same merchant + correct card + allowed date may be known-planned ===');
+{
+  const identity = identityWithCardNetflix();
+  const charges = [
+    charge({ date: '2026-01-17', amount: 26.87, merchantLabel: 'NETFLIX COM', cardId: 'cashback' }),
+    charge({ date: '2026-02-17', amount: 26.87, merchantLabel: 'NETFLIX COM', cardId: 'cashback' }),
+    charge({ date: '2026-03-17', amount: 26.87, merchantLabel: 'NETFLIX COM', cardId: 'cashback' }),
+  ];
+  const report = Audit.auditFromCharges(charges, {
+    plan: householdData.plan, identity, source: 'fixture',
+  });
+  const row = findCandidate(report, 'NETFLIXCOM', 'cashback') || findCandidate(report, 'NETFLIX', 'cashback');
+  ok(row && row.atlasStatus === 'known-planned',
+    'Netflix on cashback dated the 17th is known when incumbent identity proves that occurrence',
+    row && row.atlasStatus);
+  ok(row && row.matchedBills.some(b => b.id === 'netflix' && b.identity === 'payee+account+date'),
+    'known match uses the incumbent payee+account+date identity label');
+  ok(report.writesCanonicalState === false, 'allowed-date known path still declares no canonical write');
 }
 
 if (failures) {
