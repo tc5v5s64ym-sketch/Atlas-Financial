@@ -2,7 +2,9 @@
 /* Current-period Household Budget classification: represented bills are
  * bills only, and owner-confirmed Walmart / Meridian Farm / Iron Butcher
  * purchases are Groceries. Cursor is Dale guilt-free (Dale 2026-09-02).
- * Synthetic fixtures and independent arithmetic (L-002 / L-006).
+ * CAN TIRE MC is the Canadian Tire Mastercard payment and PITT MEADOWS CE
+ * is Fuel (Dale 2026-09-02). Synthetic fixtures and independent arithmetic
+ * (L-002 / L-006).
  *
  * `node test/test-current-period-household-budget-classification.js`
  */
@@ -35,6 +37,13 @@ const IRON_BUTCHER_AMT = 18.40;
 const OTHER_MEAT_AMT = 11.25;
 const CURSOR_AMT = 20.00;
 const OTHER_AI_AMT = 16.00;
+// Dale 2026-09-02 screenshot-style fixtures. The amounts are regression
+// fixtures only; neither identity rule reads amount or date.
+const CAN_TIRE_MC_AMT = 271.00;
+const CANADIAN_TIRE_RETAIL_AMT = 78.38;
+const PITT_MEADOWS_CE_AMT = 100.00;
+const PITT_MEADOWS_ARENA_AMT = 30.00;
+const SURREY_MEAT_AMT = 45.00;
 const GROCERY_INDEPENDENT = roundCent(WALMART_AMT + MERIDIAN_AMT);
 const GROCERY_WITH_IRON = roundCent(GROCERY_INDEPENDENT + IRON_BUTCHER_AMT);
 const EXCLUDED_BUSINESS_INDEPENDENT = roundCent(BUSINESS_WALMART_AMT + BUSINESS_MERIDIAN_AMT);
@@ -276,6 +285,79 @@ function amazonPrimeTx(extra) {
     displayedPayee: 'Amazon Prime',
     originalMerchant: 'Amazon Prime',
   }, extra || {});
+}
+
+function canTireMcTx(extra) {
+  return Object.assign({
+    id: 'tx-can-tire-mc',
+    date: '2026-08-31',
+    amount: CAN_TIRE_MC_AMT,
+    pending: false,
+    // Lunch Money's Pets label is the known misclassification on this payee.
+    categoryLabel: 'Pets',
+    accountRole: 'household-cash',
+    atlasAccountId: 'chequing-a',
+    displayedPayee: 'CAN TIRE MC',
+    originalMerchant: 'CAN TIRE MC',
+  }, extra || {});
+}
+function canadianTireRetailTx(extra) {
+  return Object.assign({
+    id: 'tx-canadian-tire-retail',
+    date: '2026-08-31',
+    amount: CANADIAN_TIRE_RETAIL_AMT,
+    pending: false,
+    categoryLabel: 'Household',
+    accountRole: 'household-cash',
+    displayedPayee: 'Canadian Tire',
+    originalMerchant: 'CANADIAN TIRE #322',
+  }, extra || {});
+}
+function pittMeadowsCeTx(extra) {
+  return Object.assign({
+    id: 'tx-pitt-meadows-ce',
+    date: '2026-08-31',
+    amount: PITT_MEADOWS_CE_AMT,
+    pending: false,
+    // The wrong historical label; the synthetic plan has no sport row, so
+    // on main this fails closed to Other.
+    categoryLabel: 'Sport & fitness',
+    accountRole: 'household-cash',
+    atlasAccountId: 'chequing-a',
+    displayedPayee: 'PITT MEADOWS CE',
+    originalMerchant: 'PITT MEADOWS CE',
+  }, extra || {});
+}
+function pittMeadowsArenaTx(extra) {
+  return Object.assign({
+    id: 'tx-pitt-meadows-arena',
+    date: '2026-08-31',
+    amount: PITT_MEADOWS_ARENA_AMT,
+    pending: false,
+    categoryLabel: 'Sport & fitness',
+    accountRole: 'household-cash',
+    displayedPayee: 'PITT MEADOWS AR',
+    originalMerchant: 'PITT MEADOWS AR',
+  }, extra || {});
+}
+function surreyMeatTx(extra) {
+  return Object.assign({
+    id: 'tx-surrey-meat',
+    date: '2026-08-31',
+    amount: SURREY_MEAT_AMT,
+    pending: false,
+    categoryLabel: 'Groceries',
+    accountRole: 'household-cash',
+    displayedPayee: 'Surrey Meat',
+    originalMerchant: 'SURREY MEAT MARKET',
+  }, extra || {});
+}
+function allReconRows(p) {
+  const rows = [];
+  for (const row of (p && p.householdBudget) || []) {
+    for (const tx of row.recon || []) rows.push({ rowId: row.id, tx });
+  }
+  return rows;
 }
 
 function recommend(packet, extraPlan, extraOpts) {
@@ -1644,6 +1726,406 @@ console.log('\n=== 11. Dale 2026-09-02 Cursor is Dale guilt-free; other AI is no
   ok(openaiPub && openaiPub.personalOwner == null
       && openaiPub.daleGuiltFreeMerchant !== true,
     'overlay does not stamp Dale onto OpenAI');
+}
+
+console.log('\n=== 12. Dale 2026-09-02 CAN TIRE MC is the Canadian Tire Mastercard payment, never Household Budget ===');
+{
+  const plan = syntheticPlan();
+  const isCardPayment = cls => cls && cls.kind === 'card-payment'
+    && cls.householdSpending === false && cls.needsConfirmation !== true
+    && cls.categoryId == null;
+
+  // 1. Exact identity -> debt / card payment, whatever the provider label says.
+  for (const label of ['Pets', 'Shopping', 'Household', 'Groceries', 'Credit Card Payment', null]) {
+    const cls = F.classifyCurrentPeriodTransaction(
+      canTireMcTx({ id: 'tx-ctmc-' + String(label), categoryLabel: label }), plan);
+    ok(isCardPayment(cls) && cls.reason === 'debt-payment-identity',
+      'CAN TIRE MC labelled ' + JSON.stringify(label) + ' is card-payment / debt servicing',
+      JSON.stringify(cls));
+  }
+  for (const payee of ['Can Tire Mc', 'CAN TIRE MC _V', 'can tire mc']) {
+    const cls = F.classifyCurrentPeriodTransaction(
+      canTireMcTx({ id: 'tx-ctmc-' + payee, displayedPayee: payee, originalMerchant: payee }), plan);
+    ok(isCardPayment(cls), 'payee casing / TD type code ' + JSON.stringify(payee) + ' is still the CAN TIRE MC identity');
+  }
+
+  // Amount and date are not part of the rule.
+  const otherAmount = F.classifyCurrentPeriodTransaction(
+    canTireMcTx({ id: 'tx-ctmc-other-amount', amount: 5.55, date: '2026-08-29' }), plan);
+  ok(isCardPayment(otherAmount), 'CAN TIRE MC at another amount and date is the same identity');
+
+  // 4. The $271 screenshot-style fixture.
+  const fixture = F.classifyCurrentPeriodTransaction(canTireMcTx(), plan);
+  ok(near(CAN_TIRE_MC_AMT, 271) && isCardPayment(fixture),
+    'the $271 CAN TIRE MC fixture is debt servicing, not household consumption', JSON.stringify(fixture));
+  ok(F.classifyCurrentPeriodTransaction.householdBudgetSupportingSpendEligible(fixture) === false,
+    'CAN TIRE MC is not eligible for any Household Budget supporting row');
+
+  // 5. Ordinary Canadian Tire retail is NOT debt servicing.
+  const retail = F.classifyCurrentPeriodTransaction(canadianTireRetailTx(), plan);
+  ok(retail.kind !== 'card-payment' && retail.reason === 'canadian-tire-unconfirmed'
+      && retail.needsConfirmation === true,
+    'ordinary Canadian Tire retail stays canadian-tire-unconfirmed, never card-payment', JSON.stringify(retail));
+  const retailStore = F.classifyCurrentPeriodTransaction(canadianTireRetailTx({
+    id: 'tx-canadian-tire-store', displayedPayee: 'Canadian Tire Store #322',
+    originalMerchant: 'Canadian Tire Store #322', categoryLabel: 'Shopping',
+  }), plan);
+  ok(retailStore.kind !== 'card-payment' && retailStore.needsConfirmation === true,
+    'a Canadian Tire retail store labelled Shopping is not the card payment either');
+  const mastercardNote = F.classifyCurrentPeriodTransaction(canadianTireRetailTx({
+    id: 'tx-canadian-tire-note', note: 'Canadian Tire Mastercard',
+  }), plan);
+  ok(mastercardNote.kind !== 'card-payment',
+    'a Canadian Tire retail purchase with a Mastercard note is not the CAN TIRE MC identity');
+
+  const flags = F.classifyCurrentPeriodTransaction.derivedFlags(canTireMcTx());
+  ok(flags.cardPaymentIdentity === true && flags.canadianTire !== true,
+    'derived flags stamp cardPaymentIdentity on CAN TIRE MC and do not call it Canadian Tire retail',
+    JSON.stringify(flags));
+  const retailFlags = F.classifyCurrentPeriodTransaction.derivedFlags(canadianTireRetailTx());
+  ok(retailFlags.cardPaymentIdentity !== true && retailFlags.canadianTire === true,
+    'derived flags keep Canadian Tire retail as canadianTire, not cardPaymentIdentity',
+    JSON.stringify(retailFlags));
+  const stripped = F.classifyCurrentPeriodTransaction({
+    id: 'tx-ctmc-stripped', date: '2026-08-31', amount: CAN_TIRE_MC_AMT,
+    categoryLabel: 'Pets', accountRole: 'household-cash', cardPaymentIdentity: true,
+  }, plan);
+  ok(isCardPayment(stripped), 'a stripped tx carrying only cardPaymentIdentity is still card-payment');
+
+  // 2 / 3. Not Household Budget spending, absent from Other.
+  ok(near(WALMART_AMT + OTHER_AMT + CANADIAN_TIRE_RETAIL_AMT, 127.05)
+      && near(OTHER_AMT + CANADIAN_TIRE_RETAIL_AMT, 85.88),
+    'independent fixture arithmetic: Household Budget $127.05 without the $271; Other $85.88');
+  const advice = recommend(actualsPacket([
+    canTireMcTx(),
+    canadianTireRetailTx(),
+    walmartTx(),
+    otherTx(),
+  ]));
+  const active = period(advice.defaultView, 'this-pay-period');
+  const other = otherRow(active);
+  ok(active && near(householdSpent(active), 127.05),
+    'Household Budget Spent excludes the $271 CAN TIRE MC payment',
+    String(householdSpent(active)));
+  ok(!reconIds(active).includes('tx-can-tire-mc'),
+    'CAN TIRE MC appears in no Household Budget recon row');
+  ok(other && !(other.recon || []).some(r => r && r.id === 'tx-can-tire-mc')
+      && near(other.spent, 85.88),
+    'CAN TIRE MC is absent from Other spending; Other is the Gifts residual plus Canadian Tire retail',
+    JSON.stringify(other && other.recon.map(r => r.id)));
+  ok(other && (other.recon || []).some(r => r && r.id === 'tx-canadian-tire-retail'),
+    'ordinary Canadian Tire retail still sits on Other / confirmation');
+}
+
+console.log('\n=== 13. Dale 2026-09-02 PITT MEADOWS CE is Fuel, never Other; other Pitt Meadows merchants are not ===');
+{
+  const plan = syntheticPlan();
+  const isFuel = cls => cls && cls.kind === 'spend' && cls.categoryId === 'fuel'
+    && cls.householdSpending === true && cls.needsConfirmation !== true;
+
+  // 6. Identity -> Fuel regardless of the provider label.
+  for (const label of ['Sport & fitness', 'Shopping', 'Fuel', 'Groceries', null]) {
+    const cls = F.classifyCurrentPeriodTransaction(
+      pittMeadowsCeTx({ id: 'tx-pmce-' + String(label), categoryLabel: label }), plan);
+    ok(isFuel(cls) && cls.includeReason === 'fuel-merchant',
+      'PITT MEADOWS CE labelled ' + JSON.stringify(label) + ' is Fuel', JSON.stringify(cls));
+  }
+  for (const payee of ['PITTMEADOWSCE', 'Pitt Meadows CE', 'PITT MEADOWS CE _V']) {
+    const cls = F.classifyCurrentPeriodTransaction(
+      pittMeadowsCeTx({ id: 'tx-pmce-' + payee, displayedPayee: payee, originalMerchant: payee }), plan);
+    ok(isFuel(cls), 'normalized identity ' + JSON.stringify(payee) + ' is Fuel');
+  }
+  const otherAmount = F.classifyCurrentPeriodTransaction(
+    pittMeadowsCeTx({ id: 'tx-pmce-other-amount', amount: 42.10, date: '2026-08-29' }), plan);
+  ok(isFuel(otherAmount), 'PITT MEADOWS CE at another amount and date is still Fuel');
+
+  // 9. The $100 screenshot-style fixture.
+  const fixture = F.classifyCurrentPeriodTransaction(pittMeadowsCeTx(), plan);
+  ok(near(PITT_MEADOWS_CE_AMT, 100) && isFuel(fixture),
+    'the $100 PITT MEADOWS CE fixture is Fuel', JSON.stringify(fixture));
+
+  // 10. Unrelated Pitt Meadows merchants do not inherit the rule.
+  const arena = F.classifyCurrentPeriodTransaction(pittMeadowsArenaTx(), plan);
+  ok(arena.categoryId !== 'fuel' && arena.includeReason !== 'fuel-merchant',
+    'PITT MEADOWS AR does not inherit Fuel', JSON.stringify(arena));
+  const generic = F.classifyCurrentPeriodTransaction(pittMeadowsCeTx({
+    id: 'tx-pitt-meadows-generic', displayedPayee: 'Pitt Meadows Gas Bar',
+    originalMerchant: 'PITT MEADOWS GAS BAR', categoryLabel: null,
+  }), plan);
+  ok(generic.categoryId !== 'fuel' && generic.needsConfirmation === true,
+    'a generic Pitt Meadows merchant without the exact identity still fails closed', JSON.stringify(generic));
+  const centre = F.classifyCurrentPeriodTransaction(pittMeadowsCeTx({
+    id: 'tx-pitt-meadows-centre', displayedPayee: 'Pitt Meadows Central',
+    originalMerchant: 'PITT MEADOWS CENTRAL', categoryLabel: null,
+  }), plan);
+  ok(centre.categoryId !== 'fuel',
+    'a longer Pitt Meadows name is not the truncated PITT MEADOWS CE key');
+
+  // Incumbent Business exclusion still wins over the merchant identity.
+  const business = F.classifyCurrentPeriodTransaction(
+    pittMeadowsCeTx({ id: 'tx-pmce-business', categoryLabel: 'Business' }), plan);
+  ok(business.kind === 'business' && business.householdSpending === false,
+    'excluded Business PITT MEADOWS CE stays out of Household Budget');
+
+  const flags = F.classifyCurrentPeriodTransaction.derivedFlags(pittMeadowsCeTx());
+  ok(flags.confirmedFuel === true && flags.cardPaymentIdentity !== true,
+    'derived flags stamp confirmedFuel on PITT MEADOWS CE', JSON.stringify(flags));
+  const arenaFlags = F.classifyCurrentPeriodTransaction.derivedFlags(pittMeadowsArenaTx());
+  ok(arenaFlags.confirmedFuel !== true, 'derived flags do not stamp confirmedFuel on PITT MEADOWS AR');
+  const stripped = F.classifyCurrentPeriodTransaction({
+    id: 'tx-pmce-stripped', date: '2026-08-31', amount: PITT_MEADOWS_CE_AMT,
+    categoryLabel: 'Sport & fitness', accountRole: 'household-cash', confirmedFuel: true,
+  }, plan);
+  ok(isFuel(stripped), 'a stripped tx carrying only confirmedFuel is still Fuel');
+
+  // 7 / 8. Fuel Spent includes it; Other does not.
+  ok(near(PITT_MEADOWS_CE_AMT + PITT_MEADOWS_ARENA_AMT + OTHER_AMT + WALMART_AMT, 178.67)
+      && near(PITT_MEADOWS_ARENA_AMT + OTHER_AMT, 37.50),
+    'independent fixture arithmetic: Household Budget $178.67; Fuel $100.00; Other $37.50');
+  const advice = recommend(actualsPacket([
+    pittMeadowsCeTx(),
+    pittMeadowsArenaTx(),
+    walmartTx(),
+    otherTx(),
+  ]));
+  const active = period(advice.defaultView, 'this-pay-period');
+  const fuel = budgetRow(active, 'fuel');
+  const other = otherRow(active);
+  ok(fuel && near(fuel.spent, PITT_MEADOWS_CE_AMT) && near(reconSum(fuel), PITT_MEADOWS_CE_AMT)
+      && (fuel.recon || []).some(r => r && r.id === 'tx-pitt-meadows-ce'),
+    'PITT MEADOWS CE enters Fuel Spent; Fuel spent equals its recon', JSON.stringify(fuel && fuel.spent));
+  ok(fuel && near(fuel.remaining, 325 - PITT_MEADOWS_CE_AMT),
+    'Fuel remaining is the $325 payday target less the $100');
+  ok(other && !(other.recon || []).some(r => r && r.id === 'tx-pitt-meadows-ce')
+      && near(other.spent, 37.50),
+    'PITT MEADOWS CE is absent from Other; Other is the arena plus the Gifts residual',
+    JSON.stringify(other && other.recon.map(r => r.id)));
+  ok(other && (other.recon || []).some(r => r && r.id === 'tx-pitt-meadows-arena'),
+    'PITT MEADOWS AR stays on Other / confirmation in this plan');
+  ok(near(householdSpent(active), 178.67), 'Household Budget Spent totals the independent arithmetic');
+}
+
+console.log('\n=== 14. historical authority agrees; preserved rules; one bucket per transaction; sanitized overlay ===');
+{
+  const plan = syntheticPlan();
+
+  // 11. Historical merchant classification no longer says PITTMEADOWSCE = Sport & fitness.
+  const chequingSrc = sourceText(fs.readFileSync(path.join(__dirname, '..', 'scripts/categorise-chequing.js'), 'utf8'));
+  ok(/\['PITTMEADOWSCE',\s*'Fuel & transport',\s*'essential'\]/.test(chequingSrc)
+      && !/\['PITTMEADOWSCE',\s*'Sport & fitness'/.test(chequingSrc),
+    'categorise-chequing.js carries PITTMEADOWSCE as Fuel & transport, not Sport & fitness');
+  ok(/\['PITTMEADOWSAR',\s*'Sport & fitness',\s*'discretionary'\]/.test(chequingSrc),
+    'categorise-chequing.js keeps PITTMEADOWSAR as Sport & fitness (no Pitt Meadows broadening)');
+  ok(/const DEBT\s*=\s*\/[^\n]*CAN TIRE MC/.test(chequingSrc),
+    'categorise-chequing.js DEBT pattern still treats CAN TIRE MC as debt servicing (the incumbent invariant)');
+  const periodsSrc = sourceText(fs.readFileSync(path.join(__dirname, '..', 'scripts/periods.js'), 'utf8'));
+  ok(/const DEBT\s*=\s*\/[^\n]*CAN TIRE MC/.test(periodsSrc),
+    'periods.js DEBT pattern still excludes CAN TIRE MC from historical spending');
+  const libraryRows = sourceText(fs.readFileSync(path.join(__dirname, '..', 'docs/merchant-library.csv'), 'utf8'))
+    .split('\n').filter(Boolean).slice(1).map(line => line.split(','));
+  const pmce = libraryRows.filter(cols => cols[0] === 'PITTMEADOWSCE');
+  ok(pmce.length === 1 && pmce[0][1] === 'Fuel & transport' && pmce[0][2] === 'essential',
+    'merchant-library.csv has exactly one PITTMEADOWSCE row and it is Fuel & transport / essential',
+    JSON.stringify(pmce));
+  const pmar = libraryRows.filter(cols => cols[0] === 'PITTMEADOWSAR');
+  ok(pmar.length === 1 && pmar[0][1] === 'Sport & fitness',
+    'merchant-library.csv keeps PITTMEADOWSAR as Sport & fitness');
+  ok(!libraryRows.some(cols => /^PITTMEADOWS/.test(cols[0]) && cols[1] === 'Fuel & transport' && cols[0] !== 'PITTMEADOWSCE'),
+    'no other Pitt Meadows library pattern became Fuel');
+  const archSrc = sourceText(fs.readFileSync(path.join(__dirname, '..', 'ARCHITECTURE.md'), 'utf8'));
+  ok(/CAN TIRE MC[^\n]*Canadian Tire Mastercard payment/.test(archSrc)
+      && /PITT MEADOWS CE[^|]*is Fuel/.test(archSrc)
+      && !/Iron Butcher is not confirmed Groceries/.test(archSrc),
+    'ARCHITECTURE.md Plan-surface row states both standing identities and no longer contradicts the Iron Butcher rule');
+  const dataDoc = load('data.json');
+  const fuelCat = dataDoc.plan.budget.categories.find(c => c.id === 'fuel');
+  ok(fuelCat && /PITT MEADOWS CE/.test(fuelCat.why || '') && /2026-09-02/.test(fuelCat.why || ''),
+    'data.json fuel owner target records the Dale 2026-09-02 PITT MEADOWS CE rule');
+
+  // 12–15. Preserved standing rules and fail-closed unresolved merchants.
+  const iron = F.classifyCurrentPeriodTransaction(ironButcherTx(), plan);
+  ok(iron.kind === 'spend' && iron.categoryId === 'groceries' && iron.needsConfirmation !== true,
+    'Iron Butcher is still Groceries');
+  const cursor = F.classifyCurrentPeriodTransaction(cursorTx(), plan);
+  ok(cursor.kind === 'spend' && cursor.categoryId === 'dale-guilt-free',
+    'Cursor is still Dale guilt-free');
+  const surrey = F.classifyCurrentPeriodTransaction(surreyMeatTx(), plan);
+  ok(surrey.kind === 'spend' && surrey.categoryId === 'pets' && surrey.includeReason === 'dog-food-merchant',
+    'Surrey Meat is still Dog food, never Groceries');
+  const meridian = F.classifyCurrentPeriodTransaction(meridianTx(), plan);
+  ok(meridian.kind === 'spend' && meridian.categoryId === 'groceries', 'Meridian Farm is still Groceries');
+  const unresolved = F.classifyCurrentPeriodTransaction(otherTx(), plan);
+  ok(unresolved.needsConfirmation === true && unresolved.kind === 'unclassified',
+    'an unresolved merchant still fails closed to confirmation / Other');
+  const noMerchantFuel = F.classifyCurrentPeriodTransaction({
+    id: 'tx-fuel-no-merchant', date: '2026-08-31', amount: 40, categoryLabel: 'Fuel',
+    accountRole: 'household-cash',
+  }, plan);
+  ok(noMerchantFuel.reason === 'fuel-merchant-missing' && noMerchantFuel.needsConfirmation === true,
+    'a Fuel-labelled tx with no merchant identity still fails closed; the identity rule did not loosen Fuel');
+
+  // 16. One transaction cannot sit in its correct bucket and Other at once.
+  const packet = actualsPacket([
+    canTireMcTx(),
+    canadianTireRetailTx(),
+    pittMeadowsCeTx(),
+    pittMeadowsArenaTx(),
+    ironButcherTx(),
+    cursorTx(),
+    surreyMeatTx(),
+    meridianTx(),
+    otherTx(),
+  ]);
+  const expectedSpent = roundCent(
+    CANADIAN_TIRE_RETAIL_AMT + PITT_MEADOWS_CE_AMT + PITT_MEADOWS_ARENA_AMT
+    + IRON_BUTCHER_AMT + CURSOR_AMT + SURREY_MEAT_AMT + MERIDIAN_AMT + OTHER_AMT);
+  // 78.38 + 100.00 + 30.00 + 18.40 + 20.00 + 45.00 + 19.44 + 7.50 = 318.72
+  ok(near(expectedSpent, 318.72),
+    'independent fixture arithmetic: eligible Household Budget total $318.72 excludes the $271');
+  const advice = recommend(packet);
+  const active = period(advice.defaultView, 'this-pay-period');
+  const rows = allReconRows(active);
+  const seen = new Map();
+  for (const { rowId, tx } of rows) {
+    if (!tx || !tx.id) continue;
+    seen.set(tx.id, (seen.get(tx.id) || []).concat(rowId));
+  }
+  const dup = [...seen.entries()].filter(([, ids]) => ids.length > 1);
+  ok(dup.length === 0, 'no transaction id appears in more than one Household Budget row', JSON.stringify(dup));
+  const bucketOf = id => (seen.get(id) || [])[0] || null;
+  ok(bucketOf('tx-can-tire-mc') == null, 'CAN TIRE MC is in no row at all');
+  ok(bucketOf('tx-pitt-meadows-ce') === 'fuel', 'PITT MEADOWS CE is in Fuel only');
+  ok(bucketOf('tx-iron-butcher') === 'groceries', 'Iron Butcher is in Groceries only');
+  ok(bucketOf('tx-meridian') === 'groceries', 'Meridian Farm is in Groceries only');
+  ok(bucketOf('tx-cursor') === 'dale-guilt-free', 'Cursor is in Dale guilt-free only');
+  ok(bucketOf('tx-surrey-meat') === 'pets', 'Surrey Meat is in Dog food only');
+  ok(bucketOf('tx-canadian-tire-retail') === 'other-spending', 'Canadian Tire retail is Other only');
+  ok(bucketOf('tx-pitt-meadows-arena') === 'other-spending', 'PITT MEADOWS AR is Other only');
+  ok(bucketOf('tx-other') === 'other-spending', 'the Gifts residual is Other only');
+  const other = otherRow(active);
+  ok(other && near(other.spent, roundCent(CANADIAN_TIRE_RETAIL_AMT + PITT_MEADOWS_ARENA_AMT + OTHER_AMT)),
+    'Other spending is exactly the three fail-closed rows', String(other && other.spent));
+  ok(near(householdSpent(active), expectedSpent),
+    'Household Budget Spent equals the independent eligible total', String(householdSpent(active)));
+
+  // End-to-end: the rules survive the sanitized live-overlay path.
+  const map = {
+    schema: 'atlas-provider-account-map/v1',
+    mappings: [
+      { providerAccountId: '1001', canonical: { collection: 'cash', id: 'chequing-a' }, atlasRole: 'household-cash' },
+      { providerAccountId: '3006', canonical: { collection: 'debts', id: 'travelvisa' }, atlasRole: 'revolving-credit' },
+    ],
+  };
+  const overlay = O.sanitizedCurrentPeriodActuals({
+    fetchedAt: '2026-09-02T18:13:00.000Z',
+    transactionWindow: { startDate: '2026-08-28', endDate: '2026-09-02', complete: true },
+    pendingCoverage: {
+      complete: true, basis: O.PENDING_COVERAGE_BASIS, hasMore: false, truncated: false,
+    },
+    tags: [{ id: 77, name: 'Amanda' }],
+    collapsedTransactions: [
+      {
+        date: '2026-08-31', amount: CAN_TIRE_MC_AMT, pending: false, categoryLabel: 'Pets',
+        payee: 'CAN TIRE MC', originalName: 'CAN TIRE MC', notes: 'Canadian Tire Mastercard payment',
+        providerAccountId: '1001', providerTransactionId: 'ctmc-1',
+      },
+      {
+        date: '2026-08-31', amount: CANADIAN_TIRE_RETAIL_AMT, pending: false, categoryLabel: 'Household',
+        payee: 'Canadian Tire', originalName: 'CANADIAN TIRE #322',
+        providerAccountId: '1001', providerTransactionId: 'ct-retail-1',
+      },
+      {
+        date: '2026-08-31', amount: PITT_MEADOWS_CE_AMT, pending: false, categoryLabel: 'Sport & fitness',
+        payee: 'PITT MEADOWS CE', originalName: 'PITT MEADOWS CE',
+        providerAccountId: '1001', providerTransactionId: 'pmce-1',
+      },
+      {
+        date: '2026-08-31', amount: PITT_MEADOWS_ARENA_AMT, pending: false, categoryLabel: 'Sport & fitness',
+        payee: 'PITT MEADOWS AR', originalName: 'PITT MEADOWS AR',
+        providerAccountId: '1001', providerTransactionId: 'pmar-1',
+      },
+      {
+        date: '2026-08-31', amount: IRON_BUTCHER_AMT, pending: false, categoryLabel: 'Groceries',
+        payee: 'Iron Butcher', originalName: 'Iron Butcher',
+        providerAccountId: '1001', providerTransactionId: 'iron-1',
+      },
+      {
+        date: '2026-08-31', amount: CURSOR_AMT, pending: false, categoryLabel: 'Shopping',
+        payee: 'Cursor', originalName: 'Cursor', tags: [{ name: 'Amanda' }],
+        providerAccountId: '3006', providerTransactionId: 'cursor-1',
+      },
+      {
+        date: '2026-08-31', amount: SURREY_MEAT_AMT, pending: false, categoryLabel: 'Groceries',
+        payee: 'Surrey Meat', originalName: 'SURREY MEAT MARKET',
+        providerAccountId: '1001', providerTransactionId: 'surrey-1',
+      },
+      {
+        date: '2026-08-31', amount: MERIDIAN_AMT, pending: false, categoryLabel: 'Groceries',
+        payee: 'Meridian Farm', originalName: 'Meridian Farm',
+        providerAccountId: '1001', providerTransactionId: 'meridian-1',
+      },
+      {
+        date: '2026-08-31', amount: OTHER_AMT, pending: false, categoryLabel: 'Gifts',
+        payee: 'Gift Shop', originalName: 'Gift Shop',
+        providerAccountId: '1001', providerTransactionId: 'gift-1',
+      },
+    ],
+    representedEventCandidates: [],
+  }, { asOf: AS_OF, plan, accountMap: map });
+  const overlayBlob = JSON.stringify(overlay);
+  ok(O.currentPeriodActualsLooksSanitized(overlay)
+      && !/"payee"\s*:/.test(overlayBlob) && !/"notes"\s*:/.test(overlayBlob)
+      && !/"tags"\s*:/.test(overlayBlob) && !/providerTransactionId/.test(overlayBlob),
+    'identity overlay packet keeps no raw payee, notes, tags, or provider ids');
+  ok(!/CAN TIRE MC/.test(overlayBlob),
+    'the card-payment payee text does not travel on the served packet; only the derived flag does');
+  const byAmt = amt => (overlay.transactions || []).find(tx => tx && near(tx.amount, amt));
+  const ctmcPub = byAmt(CAN_TIRE_MC_AMT);
+  ok(ctmcPub && ctmcPub.cardPaymentIdentity === true && ctmcPub.canadianTire !== true
+      && !Object.prototype.hasOwnProperty.call(ctmcPub, 'displayedPayee')
+      && !Object.prototype.hasOwnProperty.call(ctmcPub, 'originalMerchant'),
+    'overlay stamps cardPaymentIdentity on CAN TIRE MC before strip and drops its merchant text',
+    JSON.stringify(ctmcPub));
+  const ctmcPubCls = F.classifyCurrentPeriodTransaction(ctmcPub, plan);
+  ok(ctmcPubCls.kind === 'card-payment' && ctmcPubCls.householdSpending === false,
+    'stripped CAN TIRE MC packet still classifies card-payment');
+  const retailPub = byAmt(CANADIAN_TIRE_RETAIL_AMT);
+  ok(retailPub && retailPub.cardPaymentIdentity !== true && retailPub.canadianTire === true,
+    'overlay does not stamp cardPaymentIdentity on Canadian Tire retail');
+  const pmcePub = byAmt(PITT_MEADOWS_CE_AMT);
+  ok(pmcePub && pmcePub.confirmedFuel === true,
+    'overlay stamps confirmedFuel on PITT MEADOWS CE before strip', JSON.stringify(pmcePub));
+  const pmcePubCls = F.classifyCurrentPeriodTransaction(pmcePub, plan);
+  ok(pmcePubCls.kind === 'spend' && pmcePubCls.categoryId === 'fuel',
+    'stripped PITT MEADOWS CE packet still classifies Fuel');
+  const pmarPub = byAmt(PITT_MEADOWS_ARENA_AMT);
+  ok(pmarPub && pmarPub.confirmedFuel !== true, 'overlay does not stamp confirmedFuel on PITT MEADOWS AR');
+  const withoutFlags = Object.assign({}, ctmcPub, { cardPaymentIdentity: false });
+  ok(F.classifyCurrentPeriodTransaction(withoutFlags, plan).kind !== 'card-payment',
+    'control: without the derived flag the stripped CAN TIRE MC row would not be recognised, so the flag is load-bearing');
+
+  const overlayAdvice = recommend(overlay);
+  const overlayActive = period(overlayAdvice.defaultView, 'this-pay-period');
+  const overlayFuel = budgetRow(overlayActive, 'fuel');
+  const overlayOther = otherRow(overlayActive);
+  const overlayGroceries = budgetRow(overlayActive, 'groceries');
+  const overlayDale = budgetRow(overlayActive, 'dale-guilt-free');
+  const overlayPets = budgetRow(overlayActive, 'pets');
+  ok(overlayActive && near(householdSpent(overlayActive), expectedSpent),
+    'served overlay Household Budget Spent equals the independent eligible total (no $271)',
+    String(householdSpent(overlayActive)));
+  ok(overlayFuel && near(overlayFuel.spent, PITT_MEADOWS_CE_AMT),
+    'served overlay Fuel Spent is the $100 PITT MEADOWS CE');
+  ok(overlayOther && near(overlayOther.spent, roundCent(CANADIAN_TIRE_RETAIL_AMT + PITT_MEADOWS_ARENA_AMT + OTHER_AMT)),
+    'served overlay Other is Canadian Tire retail + PITT MEADOWS AR + Gifts only',
+    String(overlayOther && overlayOther.spent));
+  ok(overlayGroceries && near(overlayGroceries.spent, roundCent(IRON_BUTCHER_AMT + MERIDIAN_AMT))
+      && overlayDale && near(overlayDale.spent, CURSOR_AMT)
+      && overlayPets && near(overlayPets.spent, SURREY_MEAT_AMT),
+    'served overlay keeps Iron Butcher Groceries, Cursor Dale, Surrey Meat Dog food');
+  const overlayIds = allReconRows(overlayActive).map(r => r.tx && r.tx.id);
+  ok(overlayIds.length === new Set(overlayIds).size,
+    'served overlay: each transaction appears in at most one Household Budget row');
 }
 
 if (failures) {

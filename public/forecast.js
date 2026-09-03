@@ -2371,8 +2371,35 @@
     return key === 'CURSOR' || key.startsWith('CURSOR ');
   }
 
+  // Owner-confirmed Fuel identity. Exact merchant key PITT MEADOWS CE /
+  // PITTMEADOWSCE only (Dale 2026-09-02; the same identity the historical
+  // chequing library carries as Fuel & transport). Not a generic Pitt
+  // Meadows rule: PITT MEADOWS AR and other Pitt Meadows merchants do not
+  // inherit it. Incumbent plan.budget.excluded / Business still wins.
+  function isConfirmedFuelMerchant(tx) {
+    if (tx && tx.confirmedFuel === true) return true;
+    const key = normalizeMerchantKey(txMerchantExact(tx));
+    if (!key) return false;
+    return key === 'PITT MEADOWS CE' || key === 'PITTMEADOWSCE'
+      || key.startsWith('PITT MEADOWS CE ');
+  }
+
+  // Canadian Tire Mastercard payment identity. The exact TD payee
+  // CAN TIRE MC is debt servicing (Dale 2026-09-02), the same identity the
+  // historical chequing DEBT pattern already excludes from spending. It is
+  // never household consumption. Ordinary Canadian Tire retail
+  // (CANADIAN TIRE ...) is not this identity and stays on
+  // isCanadianTireMerchant. Amount and date are not part of the rule.
+  function isCanadianTireMastercardPayment(tx) {
+    if (tx && tx.cardPaymentIdentity === true) return true;
+    const key = normalizeMerchantKey(txMerchantExact(tx));
+    if (!key) return false;
+    return key === 'CAN TIRE MC' || key.startsWith('CAN TIRE MC ');
+  }
+
   function isCanadianTireMerchant(tx) {
     if (tx && tx.canadianTire === true) return true;
+    if (isCanadianTireMastercardPayment(tx)) return false;
     return CANADIAN_TIRE_RE.test(txTextBlob(tx));
   }
 
@@ -2422,10 +2449,12 @@
   // grocery merchant override: Walmart, Meridian Farm, and Iron Butcher
   // (Dale 2026-09-02) are Groceries only when otherwise eligible household
   // spending. Cursor (Dale 2026-09-02) is Dale guilt-free, never Amanda,
-  // never Other. Eating out is Restaurants + Fast Food + Food Delivery.
-  // Canadian Tire is not Household. 7-Eleven is not confirmed Fuel without
-  // tx-level fuel evidence. Uncertain txs go to confirmation, not a named
-  // household-budget row.
+  // never Other. PITT MEADOWS CE (Dale 2026-09-02) is Fuel. CAN TIRE MC
+  // (Dale 2026-09-02) is the Canadian Tire Mastercard payment: card-payment,
+  // never Household Budget, never Other. Eating out is Restaurants + Fast
+  // Food + Food Delivery. Ordinary Canadian Tire retail is not Household.
+  // 7-Eleven is not confirmed Fuel without tx-level fuel evidence.
+  // Uncertain txs go to confirmation, not a named household-budget row.
   function classifyCurrentPeriodTransaction(tx, plan, opts) {
     if (!tx) {
       return { kind: 'unclassified', categoryId: null, householdSpending: false, reason: 'missing' };
@@ -2456,6 +2485,14 @@
     }
     if (hint === 'transfer' || hint === 'internal-transfer') {
       return { kind: 'transfer', categoryId: null, householdSpending: false, reason: 'kind-hint' };
+    }
+    // Dale 2026-09-02: CAN TIRE MC is the Canadian Tire Mastercard payment.
+    // The provider label (Pets, Shopping, Household, none) does not decide.
+    if (isCanadianTireMastercardPayment(tx)) {
+      return {
+        kind: 'card-payment', categoryId: null, householdSpending: false,
+        reason: 'debt-payment-identity', includeReason: 'debt-payment-identity',
+      };
     }
     const label = normalizeCategoryLabel(tx.categoryLabel);
     if (REFUND_LABELS.has(label)) {
@@ -2502,6 +2539,16 @@
         }
       }
       return spendResult('groceries', 'grocery-merchant');
+    }
+    if (isConfirmedFuelMerchant(tx)) {
+      const excluded = ((plan && plan.budget && plan.budget.excluded) || []);
+      for (const row of excluded) {
+        const from = normalizeCategoryLabel(row && (row.from || row.label));
+        if (from && from === label) {
+          return { kind: 'business', categoryId: null, householdSpending: false, reason: 'excluded' };
+        }
+      }
+      return spendResult('fuel', 'fuel-merchant');
     }
     if (isCanadianTireMerchant(tx)) {
       return confirmationResult('canadian-tire-unconfirmed', 'canadian-tire-unconfirmed');
@@ -4222,7 +4269,9 @@
       merchantKnown: false,
       fuelEvidence: false,
       confirmedGrocery: false,
+      confirmedFuel: false,
       daleGuiltFreeMerchant: false,
+      cardPaymentIdentity: false,
       personalOwner: null,
     };
     if (!tx) return empty;
@@ -4237,7 +4286,9 @@
       merchantKnown: txHasMerchantIdentity(tx),
       fuelEvidence: hasExplicitFuelEvidence(tx),
       confirmedGrocery,
+      confirmedFuel: isConfirmedFuelMerchant(tx),
       daleGuiltFreeMerchant,
+      cardPaymentIdentity: isCanadianTireMastercardPayment(tx),
       personalOwner: daleGuiltFreeMerchant ? 'dale' : personalSpendOwner(tx),
     };
   }
