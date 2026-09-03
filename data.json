@@ -722,7 +722,7 @@
                     "plannedMonthly": null,
                     "ownerLine": "Groceries",
                     "targetSource": "owner-stated-2026-08-31",
-                    "why": "OWNER TARGET WINS. Locked 2026-08-31, restated 2026-08-31: $450 per week = $900 per 14-day Seaspan payday cycle. Print $450/week. Do not use calendar-day proration. Household Budget spent uses the same Seaspan payday-to-payday window as the operating Pay Period, not the superseded 1st–15th / 16th–month-end calendar halves."
+                    "why": "OWNER TARGET WINS. Locked 2026-08-31, restated 2026-08-31: $450 per week = $900 per 14-day Seaspan payday cycle. Print $450/week. Do not use calendar-day proration. Household Budget spent uses the same Seaspan payday-to-payday window as the operating Pay Period, not the superseded 1st–15th / 16th–month-end calendar halves. Owner-stated 2026-09-02: every future tx whose established merchant identity is Iron Butcher is Groceries, never Dog food, never Other, and does not require confirmation. Not a generic butcher or meat-store rule. Surrey Meat remains the separate owner-confirmed Dog food merchant."
                 },
                 {
                     "id": "fuel",
@@ -850,7 +850,7 @@
                     "plannedMonthly": null,
                     "ownerLine": "Dale guilt-free spending",
                     "targetSource": "owner-stated-2026-08-31",
-                    "why": "OWNER TARGET WINS. Locked 2026-08-31: $150 per 14-day Seaspan payday cycle. Cadence authority is plannedPayday so the master-plan monthly equivalent is that payday amount annualized over the calendar year, not 24 half-months. Spent is Lunch Money personal/shopping txs in the selected pay period with Dale evidence on account, payee, note, or tag. Chequing B / WEEKLY SPENDING is not Dale evidence."
+                    "why": "OWNER TARGET WINS. Locked 2026-08-31: $150 per 14-day Seaspan payday cycle. Cadence authority is plannedPayday so the master-plan monthly equivalent is that payday amount annualized over the calendar year, not 24 half-months. Spent is Lunch Money personal/shopping txs in the selected pay period with Dale evidence on account, payee, note, or tag. Owner-stated 2026-09-02: every future tx whose established merchant identity is Cursor is Dale guilt-free, never Amanda, never Other, and does not require confirmation. Not a generic software, subscription, developer-tool, or AI-service rule. Chequing B / WEEKLY SPENDING is not Dale evidence."
                 },
                 {
                     "id": "amanda-guilt-free",

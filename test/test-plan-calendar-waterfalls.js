@@ -1092,11 +1092,13 @@ console.log('\n=== 13c. classification: Surrey Meat, eating out, Canadian Tire, 
     originalMerchant: 'Meridian Farm', displayedPayee: 'Meridian Farm',
   }, syntheticPlan()).categoryId === 'groceries',
     'Meridian Farm is Groceries even when labelled Pets');
-  ok(F.classifyCurrentPeriodTransaction({
+  const iron = F.classifyCurrentPeriodTransaction({
     date: '2026-08-28', amount: 10, categoryLabel: 'Groceries',
     originalMerchant: 'Iron Butcher', displayedPayee: 'Iron Butcher',
-  }, syntheticPlan()).needsConfirmation,
-    'Iron Butcher is not Dog food and is not confirmed Groceries');
+  }, syntheticPlan());
+  ok(iron.kind === 'spend' && iron.categoryId === 'groceries'
+      && iron.needsConfirmation !== true && iron.categoryId !== 'pets',
+    'Iron Butcher is Groceries, not Dog food, and does not need confirmation');
   const eat = ['Restaurants', 'Fast Food', 'Food Delivery'].map(label =>
     F.classifyCurrentPeriodTransaction({
       date: '2026-08-28', amount: 10, categoryLabel: label, accountRole: 'household-cash',

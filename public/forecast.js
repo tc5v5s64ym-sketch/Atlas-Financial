@@ -2187,7 +2187,6 @@
   const CONVENIENCE_STORE_RE =
     /7[\s-]*eleven|\b7-11\b|\b7eleven\b|circle\s*k|mac'?s\s*(convenience)?|on\s*the\s*run/i;
   const FUEL_EVIDENCE_RE = /\b(fuel|gas|petrol|gasoline)\b/i;
-  const GROCERY_UNCERTAIN_MERCHANT_RE = /iron\s*butcher/i;
   const CANADIAN_TIRE_RE = /canadian\s*tire/i;
   const EATING_OUT_LABELS = new Set(['restaurants', 'fast food', 'food delivery']);
   const BILL_BUDGET_IDS = new Set(['subscriptions', 'insurance', 'telecom']);
@@ -2258,8 +2257,9 @@
   }
 
   function isUncertainGroceryMerchant(tx) {
-    if (tx && tx.groceryUncertain === true) return true;
-    return GROCERY_UNCERTAIN_MERCHANT_RE.test(txTextBlob(tx));
+    // Dale 2026-09-02: Iron Butcher is owner-confirmed Groceries, not this
+    // fail-closed. No other merchant is grocery-uncertain by regex.
+    return !!(tx && tx.groceryUncertain === true);
   }
 
   function hasGroceryMixedEvidence(tx) {
@@ -2341,18 +2341,34 @@
   }
 
   // Owner-confirmed grocery identity. Exact merchant keys only: WALMART /
-  // WALMARTCA and MERIDIAN FARM. Not a generic "Farm" rule and not a
-  // second categorizer. Surrey Meat stays Dog food via isDogFoodMerchant.
-  // Incumbent plan.budget.excluded / Business still wins: this helper
-  // identifies the merchant only.
+  // WALMARTCA, MERIDIAN FARM, and IRON BUTCHER (Dale 2026-09-02). Not a
+  // generic "Farm" / butcher / meat rule and not a second categorizer.
+  // Surrey Meat stays Dog food via isDogFoodMerchant. Incumbent
+  // plan.budget.excluded / Business still wins: this helper identifies
+  // the merchant only.
   function isConfirmedGroceryMerchant(tx) {
+    if (tx && tx.confirmedGrocery === true) return true;
     const key = normalizeMerchantKey(txMerchantExact(tx));
     if (!key) return false;
     if (key === 'WALMART' || key === 'WALMARTCA' || key.startsWith('WALMART ')) {
       return true;
     }
+    if (key === 'IRON BUTCHER' || key === 'IRONBUTCHER'
+      || key.startsWith('IRON BUTCHER ')) {
+      return true;
+    }
     return key === 'MERIDIAN FARM' || key === 'MERIDIANFARM'
       || key.startsWith('MERIDIAN FARM ');
+  }
+
+  // Owner-confirmed Dale guilt-free identity. Exact merchant key CURSOR
+  // only (Dale 2026-09-02). Not software, subscriptions, developer tools,
+  // or AI services in general.
+  function isDaleGuiltFreeMerchant(tx) {
+    if (tx && tx.daleGuiltFreeMerchant === true) return true;
+    const key = normalizeMerchantKey(txMerchantExact(tx));
+    if (!key) return false;
+    return key === 'CURSOR' || key.startsWith('CURSOR ');
   }
 
   function isCanadianTireMerchant(tx) {
@@ -2400,12 +2416,13 @@
     };
   }
 
-  // Provider-neutral classification, then merchant-aware fail-closed
-  // overrides. Surrey Meat is Dog food, never Groceries. The incumbent
+  // Provider-neutral classification, then merchant-aware overrides.
+  // Surrey Meat is Dog food, never Groceries. The incumbent
   // plan.budget.excluded / Business boundary stays ahead of the confirmed
-  // grocery merchant override: Walmart and Meridian Farm are Groceries
-  // only when otherwise eligible household spending. Iron Butcher stays
-  // unconfirmed. Eating out is Restaurants + Fast Food + Food Delivery.
+  // grocery merchant override: Walmart, Meridian Farm, and Iron Butcher
+  // (Dale 2026-09-02) are Groceries only when otherwise eligible household
+  // spending. Cursor (Dale 2026-09-02) is Dale guilt-free, never Amanda,
+  // never Other. Eating out is Restaurants + Fast Food + Food Delivery.
   // Canadian Tire is not Household. 7-Eleven is not confirmed Fuel without
   // tx-level fuel evidence. Uncertain txs go to confirmation, not a named
   // household-budget row.
@@ -2456,6 +2473,16 @@
         kind: 'bill', categoryId: null, householdSpending: false,
         reason: 'represented-bill', includeReason: 'represented-bill',
       };
+    }
+    if (isDaleGuiltFreeMerchant(tx)) {
+      const excluded = ((plan && plan.budget && plan.budget.excluded) || []);
+      for (const row of excluded) {
+        const from = normalizeCategoryLabel(row && (row.from || row.label));
+        if (from && from === label) {
+          return { kind: 'business', categoryId: null, householdSpending: false, reason: 'excluded' };
+        }
+      }
+      return spendResult('dale-guilt-free', 'dale-guilt-free-merchant');
     }
     if (BILL_CATEGORY_LABELS.has(label)) {
       return {
@@ -4148,12 +4175,14 @@
   }
 
   // Map a personal/shopping tx to Dale or Amanda only with account, payee,
-  // note, or tag evidence. Chequing B / WEEKLY SPENDING is not Dale.
-  // TENNIS INCOME / amanda-debt-payments is not guilt-free spending.
-  // Merchant + card is not owner evidence. No evidence, or both names,
-  // fails closed to unassigned.
+  // note, or tag evidence, or the Dale 2026-09-02 Cursor merchant identity.
+  // Chequing B / WEEKLY SPENDING is not Dale. TENNIS INCOME /
+  // amanda-debt-payments is not guilt-free spending. Merchant + card is
+  // not owner evidence except that exact Cursor rule. No evidence, or
+  // both names, fails closed to unassigned. Cursor is never Amanda.
   function personalSpendOwner(tx) {
     if (!tx) return null;
+    if (isDaleGuiltFreeMerchant(tx)) return 'dale';
     if (tx.personalOwner === 'dale' || tx.personalOwner === 'amanda'
       || tx.personalOwner === 'excluded') {
       return tx.personalOwner;
@@ -4192,18 +4221,24 @@
       groceryMixed: false,
       merchantKnown: false,
       fuelEvidence: false,
+      confirmedGrocery: false,
+      daleGuiltFreeMerchant: false,
       personalOwner: null,
     };
     if (!tx) return empty;
+    const daleGuiltFreeMerchant = isDaleGuiltFreeMerchant(tx);
+    const confirmedGrocery = isConfirmedGroceryMerchant(tx);
     return {
       dogFood: isDogFoodMerchant(tx),
       convenienceStore: isConvenienceStoreMerchant(tx),
       canadianTire: isCanadianTireMerchant(tx),
-      groceryUncertain: isUncertainGroceryMerchant(tx),
+      groceryUncertain: !confirmedGrocery && isUncertainGroceryMerchant(tx),
       groceryMixed: hasGroceryMixedEvidence(tx),
       merchantKnown: txHasMerchantIdentity(tx),
       fuelEvidence: hasExplicitFuelEvidence(tx),
-      personalOwner: personalSpendOwner(tx),
+      confirmedGrocery,
+      daleGuiltFreeMerchant,
+      personalOwner: daleGuiltFreeMerchant ? 'dale' : personalSpendOwner(tx),
     };
   }
 
