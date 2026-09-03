@@ -148,7 +148,11 @@ const EXTRA = [
   ['SQBCSIXESLA', 'Sport & fitness', 'discretionary'], ['SQLOADINGLAC', 'Sport & fitness', 'discretionary'],
   ['USLACROSS', 'Sport & fitness', 'discretionary'], ['SQRIDGEMEADO', 'Sport & fitness', 'discretionary'],
   ['SPPADDLEGEAR', 'Sport & fitness', 'discretionary'], ['SQRGFACILITI', 'Sport & fitness', 'discretionary'],
-  ['2PEAKSNUTRITI', 'Sport & fitness', 'discretionary'], ['PITTMEADOWSCE', 'Sport & fitness', 'discretionary'],
+  ['2PEAKSNUTRITI', 'Sport & fitness', 'discretionary'],
+  // PITT MEADOWS CE is owner-confirmed Fuel (Dale 2026-09-02). It was wrongly
+  // filed with the youth-sport merchants above. PITTMEADOWSAR (the arena)
+  // stays Sport & fitness; this is one merchant, not a Pitt Meadows rule.
+  ['PITTMEADOWSCE', 'Fuel & transport', 'essential'],
 
   ['NAMASTEBEAUTY', 'Health', 'discretionary'], ['VNNAILSSPA', 'Health', 'discretionary'],
   ['TIFFANYNAILBA', 'Health', 'discretionary'], ['GREATCLIPS', 'Health', 'discretionary'],
