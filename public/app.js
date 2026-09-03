@@ -14,6 +14,8 @@ const money2 = n => (n < 0 ? '−$' : '$') + Math.abs(Number(n)).toLocaleString(
 const pct = n => n.toFixed(2) + '%';
 const fmtDate = iso => new Date(iso + 'T00:00:00').toLocaleDateString('en-CA', { day: 'numeric', month: 'short' });
 const fmtDateLong = iso => new Date(iso + 'T00:00:00').toLocaleDateString('en-CA', { day: 'numeric', month: 'long' });
+// With the year: for a due date or horizon that may sit in the next calendar year.
+const fmtDateFull = iso => new Date(iso + 'T00:00:00').toLocaleDateString('en-CA', { day: 'numeric', month: 'long', year: 'numeric' });
 
 /* ------------------------------------------------------------------ tooltip */
 const tip = $('tip');
