@@ -50,6 +50,7 @@ const suites = [
   ['workbook evidence cannot overwrite owner policy', 'test-workbook-authority.js'],
   ['spending classification reconciliation', 'test-classification.js'],
   ['Lunch Money historical actuals authority (AF-OPERATE-01)', 'test-periods-lunchmoney.js'],
+  ['read-only recurring card-charge audit', 'test-recurring-audit.js'],
   ['decision-first payday operating surface (AF-OPERATE-02)', 'test-operating-surface.js'],
   ['plain-language household homepage', 'test-household-view.js'],
   ['Plan homepage decision desk', 'test-plan-decision-desk.js'],

@@ -21,6 +21,12 @@ Shopify, card interest, and repeating shopping were **not** added to
 `plan.bills`. Candidate promotion is a later owner-confirmed one-outcome
 PR, not a silent follow-on from this filing.
 
+**Owner-instructed recurring card-charge audit** (2026-09-03). Discovery
+only: `scripts/recurring-audit.js` inspects mapped revolving-credit Lunch
+Money history and reports repeating merchants. It does not create or
+promote Forecast bills. Phoenix / Amazon household conclusions require a
+live GET-only run; synthetic tests are not household evidence.
+
 **Follow-ups from the 2026-08-16 evidence pack** (not mixed into that
 facts PR; each needs its own independently provable outcome):
 
