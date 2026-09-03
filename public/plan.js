@@ -902,7 +902,7 @@ function applyPaydayHeading(action) {
   heading.textContent = 'Payday plan';
 }
 
-const OPERATING_SURFACE_LEDE = 'Current Balance, bills this pay period, household budget, extra debt and big purchases — and what is left after each step.';
+const OPERATING_SURFACE_LEDE = 'Current Balance, bills this pay period and household budget — and what is left after each step.';
 
 function applyUnavailableOperatingChrome(unavailable, asOf, liveOverlay, doc) {
   doc = doc || (typeof document !== 'undefined' ? document : null);
@@ -1963,20 +1963,23 @@ function extraRepaymentHtml(period) {
   </div>`;
 }
 
+// The Plan print stops at Balance after household budget. Forecast still
+// computes the extra-debt / big-purchase chain and the projected ending on
+// each period (the next period opens from it); those rows are not part of the
+// household Plan surface.
 function calendarWaterfallHtml(period, liveOverlay, alloc) {
   if (!period) return '';
   const planUnavailable = period.operatingPlanUnavailable === true;
   const openingPrompt = period.role === 'active' ? 'Current Balance'
     : 'Opening balance';
-  const endingPrompt = 'Projected ending balance';
   // Every opening branch below already prints period.cashNote once (as the
   // glance note or as the lead), so it is not appended a second time.
   const projectedNote = period.projected
     ? '<p class="operating-note">Projected.</p>' : '';
   const lookbackNote = period.lookback
     ? '<p class="operating-note">Lookback.</p>' : '';
-  // `kind` is a presentation hint only (opening / balance / ending) so the
-  // running-balance thread and the end state can be styled as one sequence.
+  // `kind` is a presentation hint only (opening / balance) so the
+  // running-balance thread can be styled as one sequence.
   const q = (number, prompt, answer, kind) => `
     <div class="operating-question${kind ? ` operating-${kind}` : ''}" data-operating-question="${number}" data-operating-prompt="${prompt}">
       <div class="operating-number">${number}</div>
@@ -2021,13 +2024,6 @@ function calendarWaterfallHtml(period, liveOverlay, alloc) {
     ${q('05', 'Balance after remaining bills', planUnavailable ? unavailable : runningLeftoverHtml(period.afterRemainingBills), 'balance')}
     ${q('06', 'Household budget', planUnavailable ? unavailable : calendarBudgetHtml(period))}
     ${q('07', 'Balance after household budget', planUnavailable ? unavailable : runningLeftoverHtml(period.afterHouseholdBudget), 'balance')}
-    ${q('08', 'Extra credit-card repayment', planUnavailable ? unavailable : (firstCardHtml(period)
-      + (period.otherCards && period.otherCards.length
-        ? '<div class="payday-group payday-subgroup">Other credit cards</div>' : '')
-      + otherCardsHtml(period)))}
-    ${q('09', 'Balance after debt repayment', planUnavailable ? unavailable : runningLeftoverHtml(period.afterDebtRepayment), 'balance')}
-    ${q('10', 'Big-purchase savings', planUnavailable ? unavailable : bigPurchasesHtml(period))}
-    ${q('11', endingPrompt, planUnavailable ? unavailable : runningLeftoverHtml(period.projectedEnding), 'ending')}
   </section>`;
 }
 

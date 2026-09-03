@@ -279,6 +279,25 @@ Inferred personal from its transactions, not verified.
 
 Owner instruction 2026-08-24: expose one secure, read-only, sanitized assistant data surface backed by the incumbent live Atlas/Forecast authorities. First slice earned: `GET /assistant/current` via `scripts/assistant-packet.js`, dedicated `ATLAS_ASSISTANT_TOKEN` Bearer secret. Owner decision 2026-08-29 authorises the OAuth infrastructure specifically required for ChatGPT. Current slice: `POST /assistant/mcp` exposes that same packet as exactly one read-only MCP tool (`get_atlas_current`) behind OAuth issuer/JWKS, exact-resource, expiry, and `atlas.current.read` validation. Atlas is only the resource server; the external authorization server owns login, consent, PKCE, client registration, token issue, and refresh. Browser, static-assistant, and OAuth credentials remain separate. Not a ChatGPT financial planner, not a second Forecast, not a transaction store, and no writes. Deployment-provider configuration and ChatGPT installation are owner-operated configuration of this boundary, not another Atlas financial capability.
 
+**B98 · Lookahead ten-block still prints debt and big-purchase rows** · **READY** · *Plan presentation only; found 2026-09-03*
+
+The household Plan waterfall now ends at Balance after household budget (owner
+instruction 2026-09-03). The week / next-period lookahead ten-block behind
+"More views" in `public/plan.js` still prints Credit card to pay off first,
+Other credit cards, Balance after debt repayment, Big purchases on the horizon
+and Balance after big purchase allocation. Those rows are $0 extra / no
+set-aside on lookahead spans by Forecast design. Decide with the Credit and
+Planning content PRs whether that view also stops at the household-budget
+boundary. Not a Forecast change.
+
+**B99 · Modellers / Deep Dive / Records still carry the legacy four-link nav** · **READY** · *presentation only; found 2026-09-03*
+
+The household nav is Plan | Credit | Planning. `modellers.html`, `deepdive.html`
+and `records.html` remain routable but their own header still links Plan |
+Modellers | Deep Dive | Records. Their future (household nav, a diagnostics
+nav, or retirement) is owner direction; do not delete them on an agent's
+initiative.
+
 **Dated 2026-08-09 BNPL reviews still combine Affirm and Flexiti** · **READY** · *docs only; not live current truth*
 
 Dated 2026-08-09 reviews still print `Affirm / Flexiti` as one unknown BNPL line:

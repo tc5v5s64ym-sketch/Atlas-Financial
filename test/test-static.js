@@ -46,6 +46,8 @@ const pages = [
   ['deepdive.html', ['deepdive.js']],
   ['records.html', ['records.js']],
   ['modellers.html', ['modellers.js']],
+  ['credit.html', ['credit.js']],
+  ['planning.html', ['planning.js']],
 ];
 for (const [html, jsFiles] of pages) {
   const markup = read('public/' + html);

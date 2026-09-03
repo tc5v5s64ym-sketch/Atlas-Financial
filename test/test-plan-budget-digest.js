@@ -373,8 +373,8 @@ console.log('\n=== 5. page prints spent $X of $Y; does not subtract; no invented
       && (eatingCal.spent == null
         || (/<dt>Spent<\/dt>/.test(html) && html.includes(composer.money2(eatingCal.spent)))),
     'this-period waterfall prints planned and spent from the payday cycle');
-  ok((html.match(/data-operating-question=/g) || []).length === 11,
-    'the default calendar waterfall has eleven questions, not a digest after a ten-block');
+  ok((html.match(/data-operating-question=/g) || []).length === 7,
+    'the default calendar waterfall has seven questions, not a digest after a ten-block');
   ok(glance.indexOf('Household budget') >= 0
       && glance.indexOf('Spent against the budget') < 0,
     'this-period budget lives inside the waterfall, not a leftover digest');

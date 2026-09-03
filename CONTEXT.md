@@ -255,12 +255,16 @@ has to read it and its HTML has to have somewhere to put it. Six keys once sat
 in `data.json` unrendered — including the entire income section — because that
 step was skipped.
 
-The site is four pages, each with its own script; `public/app.js` is the
-shared core (helpers, charts, theme, boot) loaded by all of them:
+The site is six pages, each with its own script; `public/app.js` is the
+shared core (helpers, charts, theme, boot) loaded by all of them. The
+household nav is **Plan | Credit | Planning**; the other three pages remain
+routable at their URLs but are no longer linked from that nav:
 
 | Page | HTML | Script | What it shows |
 |---|---|---|---|
-| Plan (homepage) | `index.html` | `plan.js` + `forecast.js` | The 90-day forecast, budget, next actions |
+| Plan (homepage) | `index.html` | `plan.js` + `forecast.js` | The payday waterfall through Balance after household budget; forecast diagnostics below |
+| Credit | `credit.html` | `credit.js` | Routable shell on the incumbent header — not yet populated |
+| Planning | `planning.html` | `planning.js` | Routable shell on the incumbent header — not yet populated |
 | Modellers | `modellers.html` | `modellers.js` + `forecast.js` | Payoff and renewal modelling |
 | Deep Dive | `deepdive.html` | `deepdive.js` | Debt, HELOC, flows, lacrosse, questions |
 | Records | `records.html` | `records.js` | Balance sheet, coverage, assumptions |
