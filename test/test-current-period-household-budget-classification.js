@@ -1,7 +1,8 @@
 'use strict';
 /* Current-period Household Budget classification: represented bills are
- * bills only, and owner-confirmed Walmart / Meridian Farm purchases are
- * Groceries. Synthetic fixtures and independent arithmetic (L-002 / L-006).
+ * bills only, and owner-confirmed Walmart / Meridian Farm / Iron Butcher
+ * purchases are Groceries. Cursor is Dale guilt-free (Dale 2026-09-02).
+ * Synthetic fixtures and independent arithmetic (L-002 / L-006).
  *
  * `node test/test-current-period-household-budget-classification.js`
  */
@@ -30,7 +31,12 @@ const BANK_FEE_AMT = 8.5;
 const AMAZON_AMT = 14;
 const BUSINESS_WALMART_AMT = 22.11;
 const BUSINESS_MERIDIAN_AMT = 14.07;
+const IRON_BUTCHER_AMT = 18.40;
+const OTHER_MEAT_AMT = 11.25;
+const CURSOR_AMT = 20.00;
+const OTHER_AI_AMT = 16.00;
 const GROCERY_INDEPENDENT = roundCent(WALMART_AMT + MERIDIAN_AMT);
+const GROCERY_WITH_IRON = roundCent(GROCERY_INDEPENDENT + IRON_BUTCHER_AMT);
 const EXCLUDED_BUSINESS_INDEPENDENT = roundCent(BUSINESS_WALMART_AMT + BUSINESS_MERIDIAN_AMT);
 const SPENT_WITH_BILL = roundCent(GROCERY_INDEPENDENT + OTHER_AMT + GOOGLE_AMT);
 const SPENT_WITHOUT_BILL = roundCent(GROCERY_INDEPENDENT + OTHER_AMT);
@@ -209,6 +215,54 @@ function amazonTx(extra) {
     accountRole: 'revolving-credit',
     displayedPayee: 'Amazon',
     originalMerchant: 'Amazon',
+  }, extra || {});
+}
+function ironButcherTx(extra) {
+  return Object.assign({
+    id: 'tx-iron-butcher',
+    date: '2026-08-31',
+    amount: IRON_BUTCHER_AMT,
+    pending: false,
+    categoryLabel: 'Groceries',
+    accountRole: 'household-cash',
+    displayedPayee: 'Iron Butcher',
+    originalMerchant: 'Iron Butcher',
+  }, extra || {});
+}
+function otherMeatTx(extra) {
+  return Object.assign({
+    id: 'tx-other-meat',
+    date: '2026-08-31',
+    amount: OTHER_MEAT_AMT,
+    pending: false,
+    categoryLabel: 'Pets',
+    accountRole: 'household-cash',
+    displayedPayee: 'Local Butcher',
+    originalMerchant: 'Local Butcher',
+  }, extra || {});
+}
+function cursorTx(extra) {
+  return Object.assign({
+    id: 'tx-cursor',
+    date: '2026-08-31',
+    amount: CURSOR_AMT,
+    pending: false,
+    categoryLabel: 'Shopping',
+    accountRole: 'revolving-credit',
+    displayedPayee: 'Cursor',
+    originalMerchant: 'Cursor',
+  }, extra || {});
+}
+function otherAiTx(extra) {
+  return Object.assign({
+    id: 'tx-other-ai',
+    date: '2026-08-31',
+    amount: OTHER_AI_AMT,
+    pending: false,
+    categoryLabel: 'Shopping',
+    accountRole: 'revolving-credit',
+    displayedPayee: 'OpenAI',
+    originalMerchant: 'OpenAI',
   }, extra || {});
 }
 function amazonPrimeTx(extra) {
@@ -623,22 +677,79 @@ console.log('\n=== 7. provider identity uniquely links Google storage; amount is
     'Chequing B Google without original SERVICE _V does not settle the bill');
 }
 
-console.log('\n=== 8. Iron Butcher and Surrey Meat policy is unchanged ===');
+console.log('\n=== 8. Dale 2026-09-02 Iron Butcher groceries; Surrey Meat stays Dog food ===');
 {
   const plan = syntheticPlan();
-  const iron = F.classifyCurrentPeriodTransaction({
-    date: '2026-08-31', amount: 10, categoryLabel: 'Groceries',
-    originalMerchant: 'Iron Butcher', displayedPayee: 'Iron Butcher',
-  }, plan);
-  ok(iron.needsConfirmation === true && iron.categoryId !== 'groceries'
+  const iron = F.classifyCurrentPeriodTransaction(ironButcherTx(), plan);
+  ok(iron.kind === 'spend' && iron.categoryId === 'groceries'
+      && iron.needsConfirmation !== true && iron.householdSpending === true
       && iron.categoryId !== 'pets',
-    'Iron Butcher remains unconfirmed, not Groceries, not Dog food');
+    'Iron Butcher classifies Groceries, not uncertain, not Dog food, no confirmation',
+    JSON.stringify(iron));
+  const ironPets = F.classifyCurrentPeriodTransaction(
+    ironButcherTx({ categoryLabel: 'Pets' }), plan);
+  ok(ironPets.kind === 'spend' && ironPets.categoryId === 'groceries'
+      && ironPets.needsConfirmation !== true && ironPets.categoryId !== 'pets',
+    'Iron Butcher labelled Pets is still Groceries, never Dog food',
+    JSON.stringify(ironPets));
+  const ironOther = F.classifyCurrentPeriodTransaction(
+    ironButcherTx({ categoryLabel: 'Gifts', id: 'tx-iron-gifts' }), plan);
+  ok(ironOther.kind === 'spend' && ironOther.categoryId === 'groceries'
+      && ironOther.needsConfirmation !== true,
+    'Iron Butcher labelled Gifts is Groceries, not Other',
+    JSON.stringify(ironOther));
+  const ironFlags = F.classifyCurrentPeriodTransaction.derivedFlags(ironButcherTx());
+  ok(ironFlags.confirmedGrocery === true && ironFlags.groceryUncertain !== true
+      && ironFlags.dogFood !== true,
+    'Iron Butcher derived flags are confirmed grocery, not uncertain, not dog food',
+    JSON.stringify(ironFlags));
+  const localMeatPets = F.classifyCurrentPeriodTransaction(otherMeatTx(), plan);
+  ok(localMeatPets.needsConfirmation === true && localMeatPets.reason === 'pets-not-dog-food'
+      && localMeatPets.categoryId !== 'groceries',
+    'Local Butcher is not the Iron Butcher rule; Pets stays confirmation, not Groceries',
+    JSON.stringify(localMeatPets));
+  const localMeatGroc = F.classifyCurrentPeriodTransaction(
+    otherMeatTx({ categoryLabel: 'Groceries', id: 'tx-other-meat-groc' }), plan);
+  ok(localMeatGroc.kind === 'spend' && localMeatGroc.categoryId === 'groceries'
+      && localMeatGroc.includeReason === 'groceries-category',
+    'Local Butcher labelled Groceries still uses the category path, not Iron Butcher identity',
+    JSON.stringify(localMeatGroc));
+  const meridian = F.classifyCurrentPeriodTransaction(meridianTx(), plan);
+  ok(meridian.kind === 'spend' && meridian.categoryId === 'groceries'
+      && meridian.needsConfirmation !== true,
+    'Meridian Farm stays confirmed Groceries; Iron Butcher rule does not replace it');
   const surrey = F.classifyCurrentPeriodTransaction({
     date: '2026-08-31', amount: 12, categoryLabel: 'Groceries',
     originalMerchant: 'SURREY MEAT PKR _F', displayedPayee: 'SURREY MEAT PKR _F',
   }, plan);
   ok(surrey.kind === 'spend' && surrey.categoryId === 'pets',
     'Surrey Meat remains Dog food, never Groceries');
+
+  ok(near(WALMART_AMT + MERIDIAN_AMT + IRON_BUTCHER_AMT, GROCERY_WITH_IRON)
+      && near(GROCERY_WITH_IRON, 79.01),
+    'independent fixture arithmetic: Groceries $41.17+$19.44+$18.40=$79.01');
+  const packet = actualsPacket([
+    walmartTx(),
+    meridianTx(),
+    ironButcherTx(),
+    otherMeatTx(),
+    otherTx(),
+  ]);
+  const advice = recommend(packet);
+  const active = period(advice.defaultView, 'this-pay-period');
+  const groceries = budgetRow(active, 'groceries');
+  const pets = budgetRow(active, 'pets');
+  const other = otherRow(active);
+  const ids = reconIds(active);
+  ok(groceries && near(groceries.spent, GROCERY_WITH_IRON)
+      && near(reconSum(groceries), GROCERY_WITH_IRON)
+      && (groceries.recon || []).some(row => row && row.id === 'tx-iron-butcher'),
+    'Iron Butcher enters Groceries Spent with Walmart + Meridian Farm');
+  ok(!(pets && (pets.recon || []).some(row => row && row.id === 'tx-iron-butcher'))
+      && !(other && (other.recon || []).some(row => row && row.id === 'tx-iron-butcher')),
+    'Iron Butcher is in neither Dog food nor Other spending');
+  ok(ids.includes('tx-other-meat') && !((groceries.recon || []).some(row => row && row.id === 'tx-other-meat')),
+    'Local Butcher Pets confirmation does not enter Groceries');
 }
 
 console.log('\n=== 9. excluded Business Walmart / Meridian Farm stay out of Household Budget ===');
@@ -1390,6 +1501,147 @@ console.log('\n=== 10. Natural Gas / Other bank fees are bills; Amazon/Prime fai
       && otherPetsCls.householdSpending === true,
     'other Pets txs stay pets-not-dog-food; no Pets mapping was invented',
     JSON.stringify(otherPetsCls));
+}
+
+console.log('\n=== 11. Dale 2026-09-02 Cursor is Dale guilt-free; other AI is not ===');
+{
+  const plan = syntheticPlan();
+  const cursor = F.classifyCurrentPeriodTransaction(cursorTx(), plan);
+  ok(cursor.kind === 'spend' && cursor.categoryId === 'dale-guilt-free'
+      && cursor.needsConfirmation !== true && cursor.householdSpending === true
+      && cursor.categoryId !== 'amanda-guilt-free',
+    'Cursor classifies Dale guilt-free, not Other, not Amanda, no confirmation',
+    JSON.stringify(cursor));
+  const cursorGifts = F.classifyCurrentPeriodTransaction(
+    cursorTx({ categoryLabel: 'Gifts', id: 'tx-cursor-gifts' }), plan);
+  ok(cursorGifts.kind === 'spend' && cursorGifts.categoryId === 'dale-guilt-free'
+      && cursorGifts.needsConfirmation !== true,
+    'Cursor labelled Gifts is still Dale guilt-free, not Other',
+    JSON.stringify(cursorGifts));
+  const cursorAmanda = F.classifyCurrentPeriodTransaction(
+    cursorTx({
+      id: 'tx-cursor-amanda-tag',
+      personalOwner: 'amanda',
+      tags: [{ name: 'Amanda' }],
+      note: 'Amanda',
+    }), plan);
+  ok(cursorAmanda.kind === 'spend' && cursorAmanda.categoryId === 'dale-guilt-free'
+      && cursorAmanda.categoryId !== 'amanda-guilt-free',
+    'Cursor merchant wins over Amanda tag/note; never Amanda',
+    JSON.stringify(cursorAmanda));
+  const cursorFlags = F.classifyCurrentPeriodTransaction.derivedFlags(cursorTx());
+  ok(cursorFlags.daleGuiltFreeMerchant === true && cursorFlags.personalOwner === 'dale',
+    'Cursor derived flags stamp daleGuiltFreeMerchant and personalOwner dale',
+    JSON.stringify(cursorFlags));
+  const openai = F.classifyCurrentPeriodTransaction(otherAiTx(), plan);
+  const openaiFlags = F.classifyCurrentPeriodTransaction.derivedFlags(otherAiTx());
+  ok(openai.reason === 'personal-unassigned' && openai.needsConfirmation === true
+      && openai.categoryId !== 'dale-guilt-free' && openai.categoryId !== 'amanda-guilt-free'
+      && openaiFlags.personalOwner == null && openaiFlags.daleGuiltFreeMerchant !== true,
+    'OpenAI does not gain Dale from the Cursor rule',
+    JSON.stringify({ openai, openaiFlags }));
+  const chatgpt = F.classifyCurrentPeriodTransaction({
+    id: 'tx-chatgpt',
+    date: '2026-08-31', amount: OTHER_AI_AMT, categoryLabel: 'Shopping',
+    accountRole: 'revolving-credit',
+    displayedPayee: 'ChatGPT', originalMerchant: 'ChatGPT',
+  }, plan);
+  ok(chatgpt.reason === 'personal-unassigned' && chatgpt.categoryId !== 'dale-guilt-free',
+    'ChatGPT merchant is not the Cursor rule');
+
+  ok(near(CURSOR_AMT, 20) && near(OTHER_AMT, 7.50)
+      && near(CURSOR_AMT + OTHER_AMT, 27.50),
+    'independent fixture arithmetic: Cursor $20.00; Other residual $7.50');
+  const packet = actualsPacket([
+    cursorTx(),
+    otherAiTx(),
+    otherTx(),
+  ]);
+  const advice = recommend(packet);
+  const active = period(advice.defaultView, 'this-pay-period');
+  const dale = budgetRow(active, 'dale-guilt-free');
+  const amanda = budgetRow(active, 'amanda-guilt-free');
+  const other = otherRow(active);
+  ok(dale && near(dale.spent, CURSOR_AMT) && near(reconSum(dale), CURSOR_AMT)
+      && (dale.recon || []).some(row => row && row.id === 'tx-cursor'),
+    'Cursor enters Dale guilt-free Spent');
+  ok(!(amanda && (amanda.recon || []).some(row => row && row.id === 'tx-cursor')),
+    'Cursor is absent from Amanda guilt-free');
+  ok(!(other && (other.recon || []).some(row => row && row.id === 'tx-cursor')),
+    'Cursor is excluded from Other spending');
+  ok(other && (other.recon || []).some(row => row && row.id === 'tx-other-ai')
+      && (other.recon || []).some(row => row && row.id === 'tx-other'),
+    'OpenAI and the Gifts residual remain Other / unassigned, not Dale');
+
+  const map = {
+    schema: 'atlas-provider-account-map/v1',
+    mappings: [
+      {
+        providerAccountId: '3006',
+        canonical: { collection: 'debts', id: 'travelvisa' },
+        atlasRole: 'revolving-credit',
+      },
+      {
+        providerAccountId: '1001',
+        canonical: { collection: 'cash', id: 'chequing-a' },
+        atlasRole: 'household-cash',
+      },
+    ],
+  };
+  const overlay = O.sanitizedCurrentPeriodActuals({
+    fetchedAt: '2026-09-02T18:13:00.000Z',
+    transactionWindow: { startDate: '2026-08-28', endDate: '2026-09-02', complete: true },
+    pendingCoverage: {
+      complete: true, basis: O.PENDING_COVERAGE_BASIS, hasMore: false, truncated: false,
+    },
+    tags: [{ id: 77, name: 'Amanda' }],
+    collapsedTransactions: [
+      {
+        date: '2026-08-31', amount: IRON_BUTCHER_AMT, pending: false, categoryLabel: 'Groceries',
+        payee: 'Iron Butcher', originalName: 'Iron Butcher',
+        providerAccountId: '1001', providerTransactionId: 'iron-1',
+      },
+      {
+        date: '2026-08-31', amount: CURSOR_AMT, pending: false, categoryLabel: 'Shopping',
+        payee: 'Cursor', originalName: 'Cursor',
+        tags: [{ name: 'Amanda' }],
+        providerAccountId: '3006', providerTransactionId: 'cursor-1',
+      },
+      {
+        date: '2026-08-31', amount: OTHER_AI_AMT, pending: false, categoryLabel: 'Shopping',
+        payee: 'OpenAI', originalName: 'OpenAI',
+        providerAccountId: '3006', providerTransactionId: 'openai-1',
+      },
+    ],
+    representedEventCandidates: [],
+  }, { asOf: AS_OF, plan, accountMap: map });
+  const overlayBlob = JSON.stringify(overlay);
+  ok(O.currentPeriodActualsLooksSanitized(overlay)
+      && !/"payee"\s*:/.test(overlayBlob) && !/"notes"\s*:/.test(overlayBlob)
+      && !/"tags"\s*:/.test(overlayBlob),
+    'owner-rule overlay packet keeps no raw payee, notes, or tags');
+  const byAmt = amt => (overlay.transactions || []).find(tx => tx && near(tx.amount, amt));
+  const ironPub = byAmt(IRON_BUTCHER_AMT);
+  const cursorPub = byAmt(CURSOR_AMT);
+  const openaiPub = byAmt(OTHER_AI_AMT);
+  ok(ironPub && ironPub.confirmedGrocery === true && ironPub.groceryUncertain !== true
+      && ironPub.dogFood !== true,
+    'overlay stamps Iron Butcher confirmedGrocery before strip; not uncertain');
+  const ironPubCls = F.classifyCurrentPeriodTransaction(ironPub, plan);
+  ok(ironPubCls.kind === 'spend' && ironPubCls.categoryId === 'groceries'
+      && ironPubCls.needsConfirmation !== true,
+    'stripped Iron Butcher packet still classifies Groceries');
+  ok(cursorPub && cursorPub.personalOwner === 'dale'
+      && cursorPub.daleGuiltFreeMerchant === true
+      && !Object.prototype.hasOwnProperty.call(cursorPub, 'tags'),
+    'overlay stamps Cursor personalOwner dale before Amanda tags are stripped');
+  const cursorPubCls = F.classifyCurrentPeriodTransaction(cursorPub, plan);
+  ok(cursorPubCls.kind === 'spend' && cursorPubCls.categoryId === 'dale-guilt-free'
+      && cursorPubCls.categoryId !== 'amanda-guilt-free',
+    'stripped Cursor packet still classifies Dale guilt-free');
+  ok(openaiPub && openaiPub.personalOwner == null
+      && openaiPub.daleGuiltFreeMerchant !== true,
+    'overlay does not stamp Dale onto OpenAI');
 }
 
 if (failures) {

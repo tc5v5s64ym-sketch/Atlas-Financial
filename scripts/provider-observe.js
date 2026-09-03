@@ -2763,7 +2763,11 @@ function sanitizedCurrentPeriodActuals(report, opts) {
     };
     const explicitOwner = explicitPersonalOwnerFromTagsNotes(derivedInput);
     const flags = Forecast.classifyCurrentPeriodTransaction.derivedFlags(derivedInput);
-    const personalOwner = explicitOwner || flags.personalOwner;
+    // Dale 2026-09-02: Cursor merchant is Dale. Stamp before overlay strip
+    // so an Amanda tag cannot reassign it after payee/tags are removed.
+    const personalOwner = flags.daleGuiltFreeMerchant
+      ? 'dale'
+      : (explicitOwner || flags.personalOwner);
     const localId = localIdFor(tx.providerTransactionId);
     txs.push({
       id: localId,
@@ -2788,6 +2792,8 @@ function sanitizedCurrentPeriodActuals(report, opts) {
       groceryMixed: flags.groceryMixed,
       merchantKnown: flags.merchantKnown,
       fuelEvidence: flags.fuelEvidence,
+      confirmedGrocery: flags.confirmedGrocery,
+      daleGuiltFreeMerchant: flags.daleGuiltFreeMerchant,
       personalOwner,
       isGroup: tx.isGroup === true,
       parentId: localIdFor(tx.parentId),
