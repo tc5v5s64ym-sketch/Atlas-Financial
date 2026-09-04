@@ -928,8 +928,11 @@ console.log('\n=== 10. Natural Gas / Other bank fees are bills; Amazon + travelv
     'Forecast source names Amazon merchant identity and the Amazon+travelvisa standing rule');
   ok(!/isAmazonPrimeMerchant|amazon-prime-bill|amazon-owner-card/.test(forecastSrc),
     'Forecast source does not invent Prime-as-bill or all-Amazon / all-card ownership');
-  ok(!/skipPendingPostedDuplicate|spendIdentityKey|skipDuplicatePending|pendingPostedDuplicatePending/.test(forecastSrc),
-    'Forecast source does not collapse or uncount pending+posted by date/account/amount/merchant');
+  ok(!/spendIdentityKey|skipDuplicatePending|pendingPostedDuplicatePending/.test(forecastSrc),
+    'Forecast source does not restore a general pending+posted identity key');
+  ok(/function isPossibleReplacementPending\(/.test(forecastSrc)
+      && /function confirmedHouseholdAmount\(/.test(forecastSrc),
+    'Forecast names the incumbent possible-replacement pending spend treatment');
 
   const PRIME_AMT = 9.99;
   const SHOPIFY_AMT = 54.88;
@@ -1133,10 +1136,12 @@ console.log('\n=== 10. Natural Gas / Other bank fees are bills; Amazon + travelv
       && distinctIds.includes('tx-shopify-posted') && distinctIds.includes('tx-other')
       && shopifyDupRows.length === 2
       && shopifyDupRows.every(row => row.pendingPostedDuplicate === true)
-      && near(distinctOther.spent, roundCent(DISTINCT_SAME_DAY + OTHER_AMT))
+      && shopifyDupRows.some(row => row.pending === true)
+      && shopifyDupRows.some(row => row.pending === false)
+      && near(distinctOther.spent, SHOPIFY_ONCE_PLUS_OTHER)
       && near(reconSum(distinctOther), roundCent(DISTINCT_SAME_DAY + OTHER_AMT))
-      && !near(distinctOther.spent, SHOPIFY_ONCE_PLUS_OTHER),
-    'Forecast-only pending+posted 4-tuple keeps both rows, flags possible duplicate, and still counts both in Spent');
+      && !near(distinctOther.spent, roundCent(DISTINCT_SAME_DAY + OTHER_AMT)),
+    'Forecast-only pending+posted 4-tuple keeps both rows, flags possible replacement, and counts posted only in Spent');
 
   const map = {
     schema: 'atlas-provider-account-map/v1',
@@ -1491,9 +1496,11 @@ console.log('\n=== 10. Natural Gas / Other bank fees are bills; Amazon + travelv
     .filter(row => row && near(row.amount, 19.14));
   ok(digitRecon.length === 2
       && digitRecon.every(row => row.pendingPostedDuplicate === true)
-      && digitOther && near(digitOther.spent, 38.28)
-      && near(reconSum(digitOther), 38.28),
-    'digit-bearing same 4-tuple is possible-duplicate only; Spent still counts both $19.14 rows');
+      && digitRecon.some(row => row.pending === true)
+      && digitOther && near(digitOther.spent, 19.14)
+      && near(reconSum(digitOther), 38.28)
+      && !near(digitOther.spent, 38.28),
+    'digit-bearing same 4-tuple stays both visible; confirmed Spent is the posted $19.14 only');
 
   const genericTwin = O.sanitizedCurrentPeriodActuals({
     fetchedAt: '2026-09-02T18:13:00.000Z',
@@ -1533,11 +1540,11 @@ console.log('\n=== 10. Natural Gas / Other bank fees are bills; Amazon + travelv
       && genericRecon.every(row => row.pendingPostedDuplicate === true)
       && genericRecon.some(row => row.pending === true)
       && genericRecon.some(row => row.pending === false)
-      && genericAmanda && near(genericAmanda.spent, 38.28)
+      && genericAmanda && near(genericAmanda.spent, 19.14)
       && near(reconSum(genericAmanda), 38.28)
-      && !near(genericAmanda.spent, 19.14)
+      && !near(genericAmanda.spent, 38.28)
       && !(genericOther && (genericOther.recon || []).some(row => near(row.amount, 19.14))),
-    'posted $19.14 + pending $19.14 Amazon Travel Visa stay visible on Amanda, flagged possible duplicate, and Spent remains $38.28');
+    'posted $19.14 + pending $19.14 Amazon Travel Visa stay visible on Amanda, flagged possible replacement, and confirmed Spent is $19.14');
 
   const PLAID_PENDING_AMT = 100.00;
   const PLAID_POSTED_AMT = 97.50;

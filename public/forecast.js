@@ -2325,11 +2325,13 @@
     return [tx.date, String(account), Number(amt).toFixed(2), merchant].join('|');
   }
 
-  // Surface a pending+posted twin as a possible duplicate only. Do not drop
-  // a row and do not change Household Budget Spent. Date/account/amount/
-  // merchant is not financial identity: a legitimate second purchase can
-  // share those four fields. Only a directed pendingTransactionId or an
-  // owner-confirmed named pair may collapse/count once.
+  // Surface a 1:1 pending+posted twin as unresolved possible replacement.
+  // Date/account/amount/merchant is not financial identity: a legitimate
+  // second purchase can share those four fields. Do not drop a row. Only a
+  // directed pendingTransactionId or an owner-confirmed named pair may
+  // collapse to one transaction. Confirmed household spend counts the
+  // posted side once; the still-visible pending stays recon/pending
+  // exposure and is not a second confirmed spend.
   function pendingPostedDuplicateIdSet(packet) {
     const flagged = new Set();
     const txs = packet && Array.isArray(packet.transactions) ? packet.transactions : [];
@@ -2355,6 +2357,18 @@
       }
     }
     return flagged;
+  }
+
+  function isPossibleReplacementPending(tx, duplicateIds) {
+    if (!tx || transactionPendingState(tx) !== 'pending') return false;
+    if (tx.id == null || !duplicateIds) return false;
+    return duplicateIds.has(String(tx.id));
+  }
+
+  function confirmedHouseholdAmount(tx, duplicateIds) {
+    if (isPossibleReplacementPending(tx, duplicateIds)) return 0;
+    const amt = Number(tx && tx.amount);
+    return isFinite(amt) ? amt : 0;
   }
 
   function isDogFoodMerchant(tx) {
@@ -2925,6 +2939,7 @@
     const packet = currentPeriodActualsPacket(opts);
     if (!packet || !Array.isArray(packet.transactions)) return out;
     const classifyOpts = Object.assign({}, opts || {}, { packet, currentPeriodActuals: packet });
+    const duplicateIds = pendingPostedDuplicateIdSet(packet);
     const add = (row, state, amt) => {
       if (state === 'pending') row.pending = roundCent(row.pending + amt);
       else row.posted = roundCent(row.posted + amt);
@@ -2934,6 +2949,7 @@
       if (periodStart && tx.date < periodStart) continue;
       if (asOf && tx.date > asOf) continue;
       if (skipSplitParent(tx, packet)) continue;
+      if (isPossibleReplacementPending(tx, duplicateIds)) continue;
       const amt = Number(tx.amount);
       if (!isFinite(amt) || amt === 0) {
         const clsZero = classifyCurrentPeriodTransaction(tx, plan, classifyOpts);
@@ -4469,7 +4485,9 @@
         const row = reconTxFrom(tx, cls, { pendingPostedDuplicate: isDuplicate });
         if (cls.needsConfirmation || cls.kind === 'unclassified') {
           confirmationRecon.push(row);
-          confirmationSpent = roundCent(confirmationSpent + amt);
+          confirmationSpent = roundCent(
+            confirmationSpent + confirmedHouseholdAmount(tx, duplicateIds)
+          );
           continue;
         }
         const catId = cls.atlasRow || cls.categoryId;
@@ -4480,6 +4498,7 @@
       }
     }
     const spentFromRecon = list => roundCent((list || []).reduce((s, r) => {
+      if (r && r.pendingPostedDuplicate === true && r.pending === true) return s;
       return s + (Number(r && r.amount) || 0);
     }, 0));
     const byId = new Map();
@@ -4518,7 +4537,11 @@
     // (named non-calendar ids such as health/sport stay omitted).
     // Not an allowance, not a hold, not a second waterfall subtraction.
     // Classifier reasons stay on recon.includeReason.
-    if (actualsReady && confirmationSpent > EPSILON) {
+    // Visibility follows unresolved confirmation recon, not confirmed-spend
+    // dollars: a pending possible-replacement twin can remain unclassified
+    // after its posted mate classifies into a named row. That pending stays
+    // recon-visible at $0 confirmed spent rather than disappearing.
+    if (actualsReady && confirmationRecon.length > 0) {
       items.push({
         id: OTHER_SPENDING_ID,
         label: 'Other spending',

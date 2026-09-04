@@ -2939,8 +2939,12 @@ function collapsePendingPostedBySettlementIdentity(transactions, asOf, opts) {
 function pendingPostedSurfaceKey(tx, opts) {
   const accountId = settlementAccountId(tx, opts);
   const amount = lunchMoneyDebitAmount(tx && tx.amount);
-  const merchant = [tx && tx.originalMerchant, tx && tx.originalName, tx && tx.original_name]
-    .find(v => v != null && String(v).trim() !== '');
+  const merchant = [
+    tx && tx.originalMerchant,
+    tx && tx.originalName,
+    tx && tx.original_name,
+    tx && tx.payee,
+  ].find(v => v != null && String(v).trim() !== '');
   if (!tx || !tx.date || accountId == null || accountId === '' || amount == null || !merchant) {
     return null;
   }
