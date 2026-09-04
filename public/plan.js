@@ -923,7 +923,7 @@ function applyPaydayHeading(action) {
   heading.textContent = 'Payday plan';
 }
 
-const OPERATING_SURFACE_LEDE = 'Current Balance, bills this pay period and household budget — and what is left after each step.';
+const OPERATING_SURFACE_LEDE = 'Live Current Balance, then this payday’s income, bills and household budget.';
 
 function applyUnavailableOperatingChrome(unavailable, asOf, liveOverlay, doc) {
   doc = doc || (typeof document !== 'undefined' ? document : null);
@@ -1596,6 +1596,37 @@ function cashGlanceHtml(alloc, liveOverlay, cashNote) {
   </div>`;
 }
 
+function liveCurrentBalanceHtml(view, liveOverlay, alloc) {
+  const amount = view && view.liveCurrentBalance != null
+    ? view.liveCurrentBalance
+    : (alloc && alloc.liveCurrentBalance != null ? alloc.liveCurrentBalance : null);
+  const liveAlloc = {
+    available: amount,
+    cashBasis: alloc && alloc.cashBasis,
+    asOf: (alloc && alloc.cashBasis && alloc.cashBasis.asOf)
+      || (alloc && alloc.asOf)
+      || (view && view.asOf)
+      || null,
+  };
+  const providerDate = providerBalanceDate(liveOverlay);
+  const glanceNote = glanceUpdatedNote(liveAlloc.asOf, liveOverlay);
+  let dateLine = '';
+  if (providerDate) {
+    dateLine = `as of ${fmtDateLong(providerDate)}`;
+  } else if (/As of /.test(glanceNote)) {
+    dateLine = glanceNote.replace(/^Current Balance\. Not credit\.\s*/i, '')
+      .replace(/^As of /i, 'as of ');
+  } else if (/Updated /.test(glanceNote)) {
+    dateLine = glanceNote.replace(/^Current Balance\. Not credit\.\s*/i, '');
+  }
+  const printed = amount != null ? money2(amount) : '—';
+  return `<div class="live-current-balance" data-live-current-balance>
+    <p class="live-current-balance-label">Current Balance</p>
+    <p class="live-current-balance-amount" data-live-current-balance-amount>${printed}</p>
+    ${dateLine ? `<p class="live-current-balance-date">${dateLine}</p>` : ''}
+  </div>`;
+}
+
 function postedThisPeriodHtml(action) {
   return alreadyPaidRowsHtml(action);
 }
@@ -1998,18 +2029,15 @@ function extraRepaymentHtml(period) {
 function calendarWaterfallHtml(period, liveOverlay, alloc) {
   if (!period) return '';
   const planUnavailable = period.operatingPlanUnavailable === true;
-  const providerDate = period.role === 'active' && period.openingKnown && !planUnavailable
-    ? providerBalanceDate(liveOverlay)
-    : null;
-  const openingPrompt = period.role === 'active'
-    ? (providerDate ? `Current balance as of ${fmtDateLong(providerDate)}` : 'Current Balance')
-    : 'Opening balance';
+  const showSnapshotOpening = period.role !== 'active';
   // Every opening branch below already prints period.cashNote once (as the
   // glance note or as the lead), so it is not appended a second time.
   const projectedNote = period.projected
     ? '<p class="operating-note">Projected.</p>' : '';
   const lookbackNote = period.lookback
     ? '<p class="operating-note">Lookback.</p>' : '';
+  const openingUnknownNote = period.role === 'active' && !period.openingKnown && period.cashNote
+    ? `<p class="operating-note">${period.cashNote}</p>` : '';
   // `kind` is a presentation hint only (opening / balance) so the
   // running-balance thread can be styled as one sequence.
   const q = (number, prompt, answer, kind) => `
@@ -2019,37 +2047,27 @@ function calendarWaterfallHtml(period, liveOverlay, alloc) {
       <div class="operating-answer">${answer}</div>
     </div>`;
   const unavailable = planUnavailable ? calendarCurrentUnavailableHtml(period) : null;
-  let opening;
-  if (period.role === 'active' && period.openingKnown) {
-    const openingAlloc = {
-      available: period.currentBalance,
-      cashBasis: alloc && alloc.cashBasis,
-      asOf: (alloc && alloc.cashBasis && alloc.cashBasis.asOf)
-        || (alloc && alloc.asOf) || period.start,
-    };
-    opening = cashGlanceHtml(
-      openingAlloc,
-      planUnavailable ? null : liveOverlay,
-      planUnavailable
-        ? (period.cashNote || liveOperatingPlanNote(null, liveOverlay))
-        : null
-    );
-  } else if (period.openingKnown) {
-    const openingAlloc = {
-      available: period.currentBalance,
-      cashBasis: null,
-      asOf: period.start,
-    };
-    opening = cashGlanceHtml(openingAlloc, null, period.cashNote);
-  } else {
-    opening = `<div class="payday-cash" data-payday-cash>
-        <p class="operating-lead">${period.cashNote || 'Opening is not today\'s balance.'}</p>
-      </div>`;
+  let opening = '';
+  if (showSnapshotOpening) {
+    if (period.openingKnown) {
+      const openingAlloc = {
+        available: period.opening != null ? period.opening : period.currentBalance,
+        cashBasis: null,
+        asOf: period.start,
+      };
+      opening = q('01', 'Opening balance',
+        cashGlanceHtml(openingAlloc, null, period.cashNote), 'opening');
+    } else {
+      opening = q('01', 'Opening balance',
+        `<div class="payday-cash" data-payday-cash>
+          <p class="operating-lead">${period.cashNote || 'Opening is not today\'s balance.'}</p>
+        </div>`, 'opening');
+    }
   }
   return `<section class="calendar-waterfall" data-calendar-waterfall="${period.id || ''}" data-calendar-role="${period.role || ''}"${planUnavailable ? ' data-operating-plan="unavailable"' : ''}>
     <div class="payday-group calendar-waterfall-head">${period.label}${period.rangeLabel ? ` · ${period.rangeLabel}` : ''}</div>
-    ${lookbackNote}${projectedNote}
-    ${q('01', openingPrompt, opening, 'opening')}
+    ${lookbackNote}${projectedNote}${openingUnknownNote}
+    ${opening}
     ${q('02', 'Income', planUnavailable ? unavailable : calendarIncomeHtml(period))}
     ${q('03', 'Balance after payday', planUnavailable ? unavailable : runningLeftoverHtml(period.available), 'balance')}
     ${q('04', 'Bills', planUnavailable ? unavailable : calendarPeriodBillsHtml(period))}
@@ -2101,6 +2119,7 @@ function calendarWaterfallsHtml(view, show, liveOverlay, alloc, extraControls) {
       </div>`
     : '';
   return `<div class="calendar-waterfalls" data-calendar-waterfalls>
+    ${liveCurrentBalanceHtml(view, liveOverlay, alloc)}
     ${calendarPickerHtml(view, pick, extraControls)}
     ${shown.map(period => calendarWaterfallHtml(period, liveOverlay, alloc)).join('')}
     ${undatedBlock}

@@ -3912,6 +3912,104 @@
     return asOf;
   }
 
+  // Live overlay advanced as-of past the dated opening. That later cash is
+  // today's live Current Balance, not a reconstructed payday-morning opening.
+  function liveOpeningAdvanced(plan, asOf) {
+    const opening = plan && plan.opening;
+    return !!(opening && opening.asOf === asOf && opening.priorAsOf && opening.priorAsOf < asOf);
+  }
+
+  // Optional payday-morning snapshot on the incumbent opening. periodStart
+  // and asOf must be that payday; a mid-period cash figure is not accepted.
+  function paydaySnapshotRecord(plan, opts, periodStart) {
+    const snap = (opts && opts.paydaySnapshot)
+      || (plan && plan.opening && plan.opening.paydaySnapshot)
+      || null;
+    if (!snap || !periodStart) return null;
+    if (String(snap.periodStart) !== String(periodStart)) return null;
+    if (String(snap.asOf) !== String(periodStart)) return null;
+    if (!Number.isFinite(Number(snap.opening))) return null;
+    return {
+      periodStart: String(snap.periodStart),
+      asOf: String(snap.asOf),
+      opening: roundCent(snap.opening),
+    };
+  }
+
+  // Income already inside the payday-opening cash, not income already
+  // inside today's live bank balance. Received-vs-live is settlement
+  // status; it must not erase a pay-period income row from the snapshot.
+  function incomeAlreadyInPaydayOpening(row, openingAsOf, plan, opts) {
+    if (!row || !openingAsOf) return false;
+    if (row.notReliedUpon === true || row.settlement === 'not-relied-upon') return false;
+    if (row.date && row.date < openingAsOf) return true;
+    if (row.date === openingAsOf) {
+      const represented = representedKeySet(plan, opts, openingAsOf);
+      const key = (row.id || '') + '@' + row.date;
+      if (row.id && represented.has(key)) return true;
+      if (recurringInsideOpening(plan, { id: row.id, date: row.date }, openingAsOf)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // Payday-snapshot opening. Distinct from live Current Balance
+  // (startingCashAmount / paydayAllocation.opening). Fail closed rather
+  // than invent a historical payday-morning cash Atlas never recorded.
+  function resolvePaydayPeriodOpening(plan, asOf, window, opts, previousEnding, sim) {
+    const role = window && window.role;
+    if (role === 'future') {
+      if (previousEnding != null && Number.isFinite(Number(previousEnding))) {
+        return {
+          opening: roundCent(previousEnding),
+          openingKnown: true,
+          openingAsOf: window.start,
+          source: 'carry-forward',
+        };
+      }
+      const projected = startOfDayCash(sim, window.start);
+      if (projected != null && Number.isFinite(Number(projected))) {
+        return {
+          opening: roundCent(projected),
+          openingKnown: true,
+          openingAsOf: window.start,
+          source: 'cutover-walk',
+        };
+      }
+      return { opening: null, openingKnown: false, openingAsOf: null, source: null };
+    }
+    if (role !== 'active') {
+      return { opening: null, openingKnown: false, openingAsOf: null, source: null };
+    }
+    if (asOf === window.start) {
+      return {
+        opening: roundCent(startingCashAmount(plan)),
+        openingKnown: true,
+        openingAsOf: asOf,
+        source: 'payday-morning',
+      };
+    }
+    const snap = paydaySnapshotRecord(plan, opts, window.start);
+    if (snap) {
+      return {
+        opening: snap.opening,
+        openingKnown: true,
+        openingAsOf: snap.asOf,
+        source: 'snapshot',
+      };
+    }
+    if (!liveOpeningAdvanced(plan, asOf) && plan && plan.opening && plan.opening.asOf === asOf) {
+      return {
+        opening: roundCent(startingCashAmount(plan)),
+        openingKnown: true,
+        openingAsOf: asOf,
+        source: 'cutover-opening',
+      };
+    }
+    return { opening: null, openingKnown: false, openingAsOf: null, source: null };
+  }
+
   function rowIsOnceItem(plan, id) {
     if (!id) return false;
     const bill = ((plan && plan.bills) || []).find(b => b && b.id === id);
@@ -4647,13 +4745,16 @@
   // Two payday-cycle waterfalls: this Seaspan payday through the day
   // before the next, then the next payday through the day before the
   // following one. Leftover is this printout's chain: it does not replace
-  // paydayAllocation, and it does not rewrite current cash. The active
-  // period opens from posted / starting cash (paydayAllocation.opening),
-  // not from paydayAllocation.available, which already includes same-day
-  // income. Balance after payday is that opening plus arriving period
-  // income. The next period opens from this period's projected ending,
-  // then adds that next cycle's income once. Household Budget uses the
-  // same spendingCycle window.
+  // paydayAllocation, and it does not rewrite live Current Balance.
+  // The active period opens from the payday snapshot (payday-morning
+  // cash, a recorded paydaySnapshot, or a non-live cutover opening),
+  // never from today's live posted cash merely because that cash moved.
+  // Balance after payday is that frozen opening plus period income not
+  // already inside that opening. Received-vs-live is settlement status
+  // and does not drop an income row from the snapshot. The next period
+  // opens from this period's projected ending, or from the walk's
+  // start-of-day cash on that payday when this period has no recorded
+  // opening. Household Budget uses the same spendingCycle window.
   function calendarPeriodWaterfalls(plan, asOf, alloc, plans, debts, opts) {
     opts = opts || {};
     const windows = opts.periodWindows || operatingPayPeriodWindows(plan, asOf);
@@ -4661,8 +4762,11 @@
     const calendarOpts = Object.assign({}, opts, { periodWindows: windows });
     const calendar = calendarBillSections(plan, asOf, calendarOpts);
     const incomeByWindow = calendarIncomeSections(plan, asOf, windows, opts);
-    const postedOpening = alloc && alloc.opening != null
-      ? roundCent(alloc.opening) : roundCent(startingCashAmount(plan));
+    const liveCurrentBalance = alloc && alloc.liveCurrentBalance != null
+      ? roundCent(alloc.liveCurrentBalance)
+      : (alloc && alloc.opening != null
+        ? roundCent(alloc.opening)
+        : roundCent(startingCashAmount(plan)));
     const buffer = opts.targetBuffer != null ? opts.targetBuffer
       : ((plan.defaults && plan.defaults.targetBuffer) || 0);
     const priority = debtPriority(plan, debts || []);
@@ -4737,16 +4841,14 @@
           plan, asOf, window.start, window.end, role, budgetOpts);
       const spendingCycleLabel = (role === 'active' && budget.spendingCycle && !planUnavailable)
         ? budget.spendingCycle.label : null;
-      let opening = null;
-      let openingKnown = false;
-      if (role === 'active') {
-        opening = postedOpening;
-        openingKnown = true;
-      } else if (role === 'future' && previousEnding != null) {
-        opening = roundCent(previousEnding);
-        openingKnown = true;
-      }
-      const liveOpening = role === 'active';
+      const snapshot = planUnavailable
+        ? { opening: null, openingKnown: false, openingAsOf: null, source: null }
+        : resolvePaydayPeriodOpening(
+          plan, asOf, window, opts, previousEnding, opts.sim);
+      const opening = snapshot.opening;
+      const openingKnown = snapshot.openingKnown === true;
+      const openingAsOf = snapshot.openingAsOf || null;
+      const openingSource = snapshot.source || null;
       let incomeAdded = 0;
       for (const row of income) {
         if (row && (row.notReliedUpon === true || row.settlement === 'not-relied-upon')) {
@@ -4758,14 +4860,14 @@
         if (role === 'future') {
           row.alreadyInCash = false;
           incomeAdded += Number(row.amount) || 0;
-        } else if (liveOpening && !row.alreadyInCash) {
-          incomeAdded += Number(row.remaining != null ? row.remaining : row.amount) || 0;
+        } else if (openingKnown && !incomeAlreadyInPaydayOpening(row, openingAsOf, plan, opts)) {
+          incomeAdded += Number(row.amount) || 0;
         }
       }
       // Dated opening cash is not today's operating plan. Do not add
       // later-dated income as arriving-to-spend, and do not publish a
       // leftover chain from that mix.
-      incomeAdded = planUnavailable ? null : roundCent(incomeAdded);
+      incomeAdded = planUnavailable || !openingKnown ? null : roundCent(incomeAdded);
       const available = planUnavailable || !openingKnown
         ? null : roundCent(opening + incomeAdded);
       const afterRemainingBills = available != null
@@ -4828,6 +4930,9 @@
         lookback,
         openingKnown,
         opening,
+        openingAsOf,
+        openingSource,
+        liveCurrentBalance: role === 'active' ? liveCurrentBalance : null,
         currentBalance: opening,
         income: planUnavailable ? [] : income,
         incomeAdded,
@@ -4862,9 +4967,11 @@
           : (planUnavailable
             ? (opts.operatingPlanNote
               || 'Current plan unavailable. The dated opening is stale.')
-            : (projected
-              ? 'Projected opening. Not today\'s balance.'
-              : null)),
+            : (!openingKnown
+              ? 'Payday opening is not recorded for this period. Live Current Balance is not this payday\'s opening.'
+              : (projected
+                ? 'Projected opening. Not today\'s balance.'
+                : null))),
       });
     }
     const active = periods.find(p => p.role === 'active') || periods[0] || null;
@@ -4911,6 +5018,9 @@
     const calendar = calendarBillSections(plan, asOf, calendarOpts);
     const waterfalls = calendarPeriodWaterfalls(plan, asOf, alloc, plans, debts, calendarOpts);
     const cards = revolvingCardsGlance(plan, debts, alloc && alloc.extraDebt);
+    const liveCurrentBalance = alloc && alloc.liveCurrentBalance != null
+      ? roundCent(alloc.liveCurrentBalance)
+      : roundCent(startingCashAmount(plan));
     return {
       asOf: (alloc && alloc.cashBasis && alloc.cashBasis.asOf) || asOf,
       span: 'pay-period',
@@ -4918,6 +5028,7 @@
       billsHeading: 'Bills',
       extraLabel: 'Extra this payday',
       cashNote: null,
+      liveCurrentBalance,
       periodStart,
       periodEnd: cycleEnd,
       currentBalance: leftover.currentBalance,
@@ -5755,6 +5866,7 @@
       periodDays,
       available,
       opening,
+      liveCurrentBalance: opening,
       todayIncome: roundCent(todayIncome),
       buffer,
       cashBasis: {
@@ -6251,7 +6363,9 @@
         paydayAllocation: alloc,
         currentPeriodAction: action,
         defaultView: planDefaultView(plan, asOf, alloc, action, plans,
-          paydayOpts.debts || base.debts, paydayOpts),
+          paydayOpts.debts || base.debts, Object.assign({}, paydayOpts, {
+            sim: knowledgeSim,
+          })),
         nextPeriodView: planNextPeriodView(plan, asOf, action, plans,
           paydayOpts.debts || base.debts, viewSim, paydayOpts),
         weekViews: planWeekViews(plan, asOf, plans,

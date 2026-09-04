@@ -404,6 +404,20 @@ footer strong { color:var(--text-secondary); font-weight:600; }
 /* Pay-period switch: two planning windows, the current one obvious, the
    dates on the button rather than in a caption. */
 .calendar-waterfalls { display:flex; flex-direction:column; gap:14px; }
+.live-current-balance {
+  padding:4px 4px 8px;
+}
+.live-current-balance-label {
+  margin:0; font-size:.72rem; font-weight:700; letter-spacing:.08em;
+  text-transform:uppercase; color:var(--text-secondary);
+}
+.live-current-balance-amount {
+  margin:4px 0 0; font-size:2.4rem; font-weight:750; letter-spacing:-.03em;
+  line-height:1.1; color:var(--text-primary);
+}
+.live-current-balance-date {
+  margin:6px 0 0; font-size:.88rem; color:var(--text-secondary);
+}
 .calendar-period-picker { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; padding:0; }
 .calendar-period-label {
   position:absolute; width:1px; height:1px; margin:-1px; padding:0; overflow:hidden;
