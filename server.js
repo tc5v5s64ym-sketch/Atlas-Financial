@@ -19,6 +19,7 @@ const fs = require('fs');
 const path = require('path');
 const SnapshotBalances = require('./scripts/snapshot-balances.js');
 const LivePlan = require('./scripts/live-plan.js');
+const LunchMoneyCategoryWrite = require('./scripts/lunchmoney-category-write.js');
 const Assistant = require('./scripts/assistant-packet.js');
 const AssistantMcp = require('./scripts/assistant-mcp.js');
 const AssistantOAuth = require('./scripts/assistant-oauth.js');
@@ -329,10 +330,60 @@ app.use((req, res, next) => {
     return res.status(401).json({ error: 'not authenticated' });
   }
   if (authed(req)) return next();
-  if (req.path === '/data.json' || req.path === '/balance-history.json') {
+  if (req.path === '/data.json' || req.path === '/balance-history.json' || req.path.startsWith('/api/')) {
     return res.status(401).json({ error: 'not authenticated' });
   }
   return res.redirect('/login');
+});
+
+// ---------------------------------------------------------------- bounded Lunch Money category write
+// This route exists only after the browser-session gate. It cannot move money,
+// edit a bank account, change Atlas canonical state, or write any Lunch Money
+// field except category_id on a fresh server-resolved Other Spending transaction.
+const categoryWriteJson = express.json({ limit: '4kb', type: 'application/json' });
+app.get('/api/other-spending/categories', async (_req, res) => {
+  try {
+    const payload = await LunchMoneyCategoryWrite.listEditable({
+      data: loadCanonicalData(),
+      env: process.env,
+      secret: SECRET,
+      now: new Date().toISOString(),
+    });
+    res.json(payload);
+  } catch (err) {
+    const out = LunchMoneyCategoryWrite.publicError(err);
+    console.error('other spending category list failed:', out.body.error);
+    res.status(out.status).json(out.body);
+  }
+});
+app.post('/api/other-spending/category', (req, res, next) => {
+  categoryWriteJson(req, res, err => {
+    if (!err) return next();
+    return res.status(400).json({
+      error: 'invalid-category-request',
+      message: 'Choose a current Other Spending transaction and category.',
+    });
+  });
+}, async (req, res) => {
+  try {
+    const payload = await LunchMoneyCategoryWrite.applyCategory({
+      data: loadCanonicalData(),
+      env: process.env,
+      secret: SECRET,
+      now: new Date().toISOString(),
+      transactionHandle: req.body && req.body.transactionHandle,
+      categoryHandle: req.body && req.body.categoryHandle,
+    });
+    res.json(payload);
+  } catch (err) {
+    const out = LunchMoneyCategoryWrite.publicError(err);
+    console.error('other spending category write failed:', out.body.error);
+    res.status(out.status).json(out.body);
+  }
+});
+app.all('/api/other-spending/category', (_req, res) => {
+  res.set('Allow', 'POST');
+  return res.status(405).json({ error: 'method not allowed' });
 });
 
 // ---------------------------------------------------------------- data
