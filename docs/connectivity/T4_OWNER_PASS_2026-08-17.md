@@ -34,11 +34,11 @@ Atlas may continue to GET Lunch Money locally when the owner sets
 secret under `ARCHITECTURE.md`. Official Lunch Money tokens are not
 provider-scoped read-only; Atlas usage remains GET-only.
 
-Later: the 2026-09-04 addendum on
+Later: the 2026-09-04 addenda on
 [`PRODUCTION_LIVE_READONLY_OWNER_PASS_2026-08-23.md`](PRODUCTION_LIVE_READONLY_OWNER_PASS_2026-08-23.md)
-authorizes one specific `category_id` correction on one exact
-owner-identified transaction only. That grant is not a reusable write
-class. This T4 record does not itself authorize that write.
+authorize the exhausted one-transaction `category_id` correction and
+the later reusable Other Spending `category_id` class. This T4 record
+does not itself authorize those writes.
 
 ## Known evidence that must stay unresolved
 

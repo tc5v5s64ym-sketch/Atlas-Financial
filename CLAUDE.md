@@ -560,11 +560,11 @@ request is ready to merge.
 
 - **Read-only against every bank and other financial institution.** No
   transfers, payments, applications, setting changes, form submissions or
-  agreement acceptances. The 2026-09-04 Lunch Money exception in
-  [`ARCHITECTURE.md`](ARCHITECTURE.md) is not a bank action: it authorizes
-  only the one owner-granted `category_id` correction on one exact
-  owner-identified transaction. It is not a reusable write class. It does
-  not open any other provider write.
+  agreement acceptances. The 2026-09-04 Lunch Money exceptions in
+  [`ARCHITECTURE.md`](ARCHITECTURE.md) are not bank actions: they
+  authorize only the exhausted one-transaction `category_id` correction
+  and the later reusable Other Spending `category_id` class. They do not
+  open any other provider write.
 - **Never ask for or handle an institution login credential.** A bank username or
   password, a PIN, a security answer, a one-time or 2FA code — anything that logs
   in as the household — is the owner's alone. On doubt, stop.
@@ -606,9 +606,9 @@ or 2FA code, or anything else meant for logging in as the household — and neve
 automate an action against a bank or other financial-institution account. Atlas
 reads what it is given and publishes a private view. It does not move money,
 submit a form, or accept an agreement. The 2026-09-04 Lunch Money
-`category_id` grant is recorded in [`ARCHITECTURE.md`](ARCHITECTURE.md)
-as one owner-identified transaction only, not a reusable write class,
-and is not a bank action.
+`category_id` grants are recorded in [`ARCHITECTURE.md`](ARCHITECTURE.md)
+as the exhausted one-transaction correction and the later reusable Other
+Spending class. They are not bank actions.
 
 **On any doubt about a credential, stop.** If it could authenticate Atlas *as the
 household* through an institution's ordinary login path, it is prohibited.
@@ -622,11 +622,11 @@ has been exercised. T4 passed 2026-08-17 for the earned preview/approve
 writer (`scripts/canonical-refresh.js`). Automatic or unrestricted
 production **writes** and scheduled refresh remain **not** authorised.
 A production Lunch Money token is authorised for on-demand GET-only
-observation as of 2026-08-23, plus the 2026-09-04 one-transaction
-`category_id` grant [`ARCHITECTURE.md`](ARCHITECTURE.md) records. That
-grant is not a reusable write class and does not make the token a
-standing write credential. That file holds the exact gate for each
-capability. A capability is started when its gate is met
+observation as of 2026-08-23, plus the two 2026-09-04 `category_id`
+grants [`ARCHITECTURE.md`](ARCHITECTURE.md) records: the exhausted
+one-transaction correction, and the later reusable Other Spending
+class. Neither grant makes the token a general Lunch Money write
+credential. That file holds the exact gate for each capability. A capability is started when its gate is met
 and Dale says so, not when a plan reaches that line. Owner-reserved stop
 5 is unchanged. The 2026-08-17 Lunch Money feed decision is product
 direction; the later same-day T4 pass is the write-gate pass with those
