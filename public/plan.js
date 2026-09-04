@@ -475,8 +475,12 @@ function shortLabel(label) {
     .replace(/Coaching.*/i, 'Tennis transfer');
 }
 
+function isCardPaidReserve(e) {
+  return !!(e && e.cardPaid === true);
+}
+
 function isExternalObligation(e) {
-  return !!(e && e.jointCash === false);
+  return !!(e && e.jointCash === false && !isCardPaidReserve(e));
 }
 
 function externalPayerLabel(plan, event) {
@@ -505,6 +509,7 @@ function renderCalendar(sim, neededBy, plan) {
 
   const evHtml = e => {
     const est = e.confidence === 'estimated' ? '<span class="est">≈</span>' : '';
+    const cardPaid = isCardPaidReserve(e);
     const external = isExternalObligation(e);
     const cls = e.amount > 0 ? 'in'
       : e.kind === 'noncash' ? 'noncash'
@@ -512,10 +517,14 @@ function renderCalendar(sim, neededBy, plan) {
       : e.kind === 'commitment' ? 'commit'
       : 'out';
     const tie = atomic.has(groupOf[e.id]) ? '<span class="tie" title="Must be paid together, same day">⛓</span>' : '';
-    const title = external
+    const title = cardPaid
+      ? `${e.label} ${money2(Math.abs(e.amount))} — card-paid reserve; reduces projected joint cash`
+      : external
       ? `${e.label} ${money2(Math.abs(e.amount))} — household obligation, paid externally, does not reduce joint cash`
       : `${e.label} ${money2(Math.abs(e.amount))}${e.kind === 'noncash' ? ' — capitalised, not paid' : ''}`;
-    const body = external
+    const body = cardPaid
+      ? `−${money(Math.abs(e.amount)).slice(1)} ${est}${tie}${shortLabel(e.label)} — card reserve`
+      : external
       ? `${money(Math.abs(e.amount)).slice(1)} ${est}${tie}${shortLabel(e.label)} — external household obligation`
       : `${e.kind === 'noncash' ? '' : e.amount > 0 ? '+' : '−'}${money(Math.abs(e.amount)).slice(1)} ${est}${tie}${shortLabel(e.label)}`;
     return `<span class="cal-ev ${cls}" title="${title}">${body}</span>`;
@@ -3219,13 +3228,16 @@ function renderPlan(d, periods, history) {
     .filter(e => e.date >= asOf && e.date <= horizon && Math.abs(e.amount) >= 50)
     .sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : (b.amount > 0 ? 1 : 0) - (a.amount > 0 ? 1 : 0));
   $('agenda-14').innerHTML = near.length ? near.map(e => {
+    const cardPaid = isCardPaidReserve(e);
     const external = isExternalObligation(e);
     const rowClass = external ? 'external' : (e.amount > 0 ? 'in' : 'out');
     const amtClass = external ? '' : (e.amount > 0 ? 'pos' : 'neg');
     const amt = external
       ? money(Math.abs(e.amount))
       : `${e.amount > 0 ? '+' : '−'}${money(Math.abs(e.amount)).slice(1)}`;
-    const lab = external
+    const lab = cardPaid
+      ? `${e.label} — card-paid reserve<br><span class="mutedtext">reduces projected joint cash</span>`
+      : external
       ? `${e.label} — paid from ${externalPayerLabel(plan, e)}<br><span class="mutedtext">not joint-cash</span>`
       : e.label;
     return `

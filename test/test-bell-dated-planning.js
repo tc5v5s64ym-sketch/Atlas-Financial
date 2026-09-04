@@ -10,7 +10,9 @@
  */
 const fs = require('fs');
 const path = require('path');
+const vm = require('vm');
 const F = require('../public/forecast.js');
+const icsMod = require('../scripts/calendar-ics.js');
 const live = require('../data.json');
 const periods = require('../public/periods.json');
 const { sourceText } = require('./test-source-text');
@@ -303,10 +305,130 @@ ok(liveTravel && liveTravel.debtId === 'travelvisa' && liveTravel.effect === 'pa
 
 console.log('\n=== 14. page remains render-only; Forecast owns the date ===');
 const planSrc = fs.readFileSync(path.join(__dirname, '..', 'public/plan.js'), 'utf8');
+const appSrc = fs.readFileSync(path.join(__dirname, '..', 'public/app.js'), 'utf8');
+const deepSrc = fs.readFileSync(path.join(__dirname, '..', 'public/deepdive.js'), 'utf8');
 ok(!/day\s*=\s*15/.test(planSrc) && !/currentMonthly\s*=\s*121/.test(planSrc),
   'plan.js does not invent the Bell day or the $121 amount');
 ok(/function glanceLineLabel/.test(planSrc) && /row\.date/.test(planSrc),
   'plan.js still only renders Forecast-owned bill dates');
+
+console.log('\n=== 14b. card-paid reserve is not presented as external ===');
+const grab = (src, re, label) => {
+  const m = re.exec(src);
+  if (!m) throw new Error('missing ' + label);
+  return m[0];
+};
+const evHtmlBody = (/const evHtml = e => \{([\s\S]*?)\n  \};/.exec(planSrc) || [])[1];
+const agBody = (/\$\('agenda-14'\)\.innerHTML = near\.length \? near\.map\(e => \{([\s\S]*?)\}\)\.join\(''\)/.exec(planSrc) || [])[1];
+const datedBody = (/const datedRows = dated\.map\(e => \{([\s\S]*?)\}\);/.exec(deepSrc) || [])[1];
+ok(!!evHtmlBody && !!agBody && !!datedBody, 'calendar, agenda, and Deep Dive renderers are mechanically readable');
+
+const present = vm.runInNewContext([
+  grab(appSrc, /^const money = .*$/m, 'money'),
+  grab(appSrc, /^const money2 = .*$/m, 'money2'),
+  grab(appSrc, /^const fmtDate = .*$/m, 'fmtDate'),
+  grab(planSrc, /^function shortLabel\([\s\S]*?\n\}$/m, 'shortLabel'),
+  grab(planSrc, /^function isCardPaidReserve\([\s\S]*?\n\}$/m, 'isCardPaidReserve'),
+  grab(planSrc, /^function isExternalObligation\([\s\S]*?\n\}$/m, 'isExternalObligation'),
+  grab(planSrc, /^function externalPayerLabel\([\s\S]*?\n\}$/m, 'externalPayerLabel'),
+  'const atomic = { has: () => false };',
+  'const groupOf = {};',
+  'const gap = null;',
+  'const plan = {};',
+  'function evHtml(e) {' + evHtmlBody + '}',
+  'function agendaHtml(e) {' + agBody + '}',
+  '({ isCardPaidReserve, isExternalObligation, evHtml, agendaHtml })',
+].join('\n'));
+
+const reserveEv = {
+  id: 'bell',
+  label: 'Bell Mobility',
+  amount: -BELL,
+  kind: 'bill',
+  date: '2026-09-15',
+  jointCash: false,
+  cardPaid: true,
+  payingAccount: 'travelvisa',
+  confidence: 'confirmed',
+};
+const externalEv = {
+  id: 'hydro',
+  label: 'BC Hydro',
+  amount: -80,
+  kind: 'bill',
+  date: '2026-09-01',
+  jointCash: false,
+  payingAccount: 'amanda-debt-payments',
+  confidence: 'confirmed',
+};
+const cashEv = {
+  id: 'shaw',
+  label: 'Shaw',
+  amount: -130.19,
+  kind: 'bill',
+  date: '2026-09-03',
+  confidence: 'confirmed',
+};
+
+ok(present.isCardPaidReserve(reserveEv) && !present.isExternalObligation(reserveEv),
+  'card-paid + jointCash:false is a reserve, not an external obligation');
+ok(!present.isCardPaidReserve(externalEv) && present.isExternalObligation(externalEv),
+  'held-elsewhere jointCash:false remains an external obligation');
+
+const reserveCal = present.evHtml(reserveEv);
+const externalCal = present.evHtml(externalEv);
+const cashCal = present.evHtml(cashEv);
+ok(/cal-ev out/.test(reserveCal) && /card-paid reserve; reduces projected joint cash/.test(reserveCal)
+    && /card reserve/.test(reserveCal) && /−/.test(reserveCal),
+  'calendar renders the card-paid reserve as an outflow that reduces projected joint cash',
+  reserveCal);
+ok(!/does not reduce joint cash/.test(reserveCal) && !/external household obligation/.test(reserveCal)
+    && !/cal-ev external/.test(reserveCal),
+  'calendar does not reuse external copy or class for a card-paid reserve');
+ok(/cal-ev external/.test(externalCal) && /does not reduce joint cash/.test(externalCal)
+    && /external household obligation/.test(externalCal) && !/−/.test(externalCal.replace(/−\$/, '')),
+  'calendar still describes a true external obligation as not reducing joint cash');
+ok(/cal-ev out/.test(cashCal) && !/card reserve/.test(cashCal) && !/external/.test(cashCal),
+  'ordinary chequing bills stay ordinary calendar outflows');
+
+const reserveAg = present.agendaHtml(reserveEv);
+const externalAg = present.agendaHtml(externalEv);
+ok(/ag14 out/.test(reserveAg) && /card-paid reserve/.test(reserveAg)
+    && /reduces projected joint cash/.test(reserveAg) && /−/.test(reserveAg),
+  '14-day agenda renders the card-paid reserve as an outflow that reduces projected joint cash',
+  reserveAg);
+ok(!/not joint-cash/.test(reserveAg) && !/ag14 external/.test(reserveAg),
+  '14-day agenda does not call a card-paid reserve not joint-cash');
+ok(/ag14 external/.test(externalAg) && /not joint-cash/.test(externalAg)
+    && /paid from Amanda \/ TENNIS INCOME/.test(externalAg),
+  '14-day agenda still marks held-elsewhere Hydro as not joint-cash');
+
+const datedHtml = vm.runInNewContext([
+  'const fmtDate = d => d;',
+  'const daysUntil = () => 5;',
+  'const dueWord = n => "in " + n + "d";',
+  grab(appSrc, /^const money2 = .*$/m, 'money2'),
+  'const noteFor = () => "";',
+  'const externalPayerLabel = () => "Amanda / TENNIS INCOME";',
+  'const d = { plan: {} };',
+  'function datedRow(e) {' + datedBody + '}',
+  'datedRow',
+].join('\n'))(reserveEv);
+ok(/card-paid reserve/.test(datedHtml) && /reduces projected joint cash/.test(datedHtml)
+    && !/not joint-cash/.test(datedHtml) && !/chip">external</.test(datedHtml)
+    && !/mutedtext/.test(datedHtml),
+  'Deep Dive dated row names a card-paid reserve that reduces projected joint cash',
+  datedHtml);
+
+const icsBuilt = icsMod.buildHouseholdCalendar(withBell, AS_OF, '2026-10-31');
+const bellPays = icsBuilt.payments.filter(p => p.sourceId === 'bell');
+ok(bellPays.length > 0 && bellPays.every(p => /card-paid reserve/.test(p.summary)
+    && /holds this amount against projected joint cash/.test(p.description)),
+  'exported calendar publishes Bell as a card-paid reserve against projected joint cash');
+ok(!icsBuilt.reminders.some(r => r.sourceId === 'bell'),
+  'exported calendar does not emit Bell as an external reminder');
+ok(bellPays.every(p => !/not joint cash|not a joint-cash outflow/.test(p.summary + '\n' + p.description)),
+  'exported calendar does not say Bell is outside joint cash');
 
 console.log('\n=== 15–16. budget current-regime, payday print, determinism ===');
 const bd = F.budgetBreakdown(live.plan, periods, { asOf: live.meta.asOf });

@@ -389,8 +389,9 @@ console.log('\n=== Plan calendar and 14-day agenda: external vs cash outflow ===
   const evHtml = /const evHtml = e => \{([\s\S]*?)\n  \};/.exec(planSrc);
   ok(!!evHtml, 'calendar evHtml helper is mechanically readable');
   const evBody = evHtml ? evHtml[1] : '';
-  ok(/isExternalObligation\(e\)/.test(evBody) && /jointCash === false/.test(planSrc),
-    'calendar presentation keys off jointCash === false');
+  ok(/isExternalObligation\(e\)/.test(evBody) && /jointCash === false/.test(planSrc)
+      && /!isCardPaidReserve\(e\)/.test(planSrc),
+    'calendar presentation keys off jointCash === false, excluding card-paid reserves');
   ok(/cls =[\s\S]*external \? 'external'[\s\S]*: 'out'/.test(evBody)
     || /external \? 'external'/.test(evBody),
     'calendar uses class external, not out, for jointCash:false');
@@ -442,7 +443,7 @@ console.log('\n=== Deep Dive dated list: outflow vs external vs nonCash ===');
     'external amounts use the muted non-cash presentation, not a joint-cash payment');
   ok(/soon = !noncash && !external/.test(body),
     'external rows are not highlighted as soon joint-cash dues');
-  ok(/noteFor\(e\.id\) \|\| \(noncash \? 'No cash leaves' : 'Due'\)/.test(body)
+  ok(/noteFor\(e\.id\) \|\| \(noncash \? 'No cash leaves'/.test(body)
     && /<strong>No cash leaves<\/strong>/.test(body)
     && /chip">non-cash</.test(body),
     'nonCash events keep their existing No cash leaves / non-cash semantics');

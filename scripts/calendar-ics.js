@@ -6,9 +6,12 @@
 //
 // Cash-payment VEVENTs are DERIVED from the Plan via Forecast.expandEvents —
 // the same expander the Plan calendar, nextPaymentOut and nextDue already
-// use. Standing reminders (statement closes, tax deadlines, mortgage renewal)
-// are a thin overlay for look-points that are not household cash movements.
-// A reminder must never masquerade as a chequing outflow.
+// use. Joint-cash outflows and dated card-paid reserves both become payment
+// VEVENTs; the reserve description is distinct so a card charge is not
+// labelled an external obligation. Standing reminders (statement closes,
+// tax deadlines, mortgage renewal) are a thin overlay for look-points that
+// are not household cash movements. A reminder must never masquerade as a
+// chequing outflow.
 
 const fs = require('fs');
 const path = require('path');
@@ -79,6 +82,17 @@ function householdObligationDescription(plan, event, asOf) {
     `Household obligation of $${money(Math.abs(event.amount))}. Paid from ${payer} — not a joint-cash outflow.`,
     note,
     `Kind: reminder — household obligation, not a chequing outflow from the joint-cash pool. Derived from the Plan (${event.id}) on ${asOf}.`,
+  ].filter(Boolean).join('\n\n');
+}
+
+function cardPaidReserveDescription(plan, event, asOf) {
+  const item = planItem(plan, event.id);
+  const note = item && item.note ? item.note.trim() : '';
+  const payer = event.payingAccount || (item && item.payingAccount) || 'the card';
+  return [
+    `Card-paid reserve of $${money(Math.abs(event.amount))}. The Plan holds this amount against projected joint cash on ${event.date}; the charge is on ${payer}, not a second chequing withdrawal.`,
+    note,
+    `Kind: household cash reserve — not an external obligation and not a reminder. Derived from the Plan (${event.id}) on ${asOf}.`,
   ].filter(Boolean).join('\n\n');
 }
 
@@ -189,7 +203,7 @@ function buildHouseholdCalendar(plan, asOf, end) {
   const payments = [];
   const derivedReminders = [];
   for (const event of stream) {
-    if (event.kind === 'noncash' || event.jointCash === false) {
+    if (event.kind === 'noncash' || (event.jointCash === false && !event.cardPaid)) {
       const external = event.jointCash === false;
       derivedReminders.push({
         uid: `atlas-reminder-${event.id}-${dateOnly(event.date)}@household`,
@@ -208,14 +222,19 @@ function buildHouseholdCalendar(plan, asOf, end) {
       continue;
     }
     if (!(event.amount < 0)) continue;
+    const cardPaid = event.cardPaid === true;
     payments.push({
       uid: `atlas-pay-${event.id}-${dateOnly(event.date)}@household`,
-      summary: `${event.label} — $${money(-event.amount)}`,
+      summary: cardPaid
+        ? `${event.label} — $${money(Math.abs(event.amount))} (card-paid reserve)`
+        : `${event.label} — $${money(-event.amount)}`,
       start: event.date,
       kind: 'payment',
-      description: paymentDescription(plan, event, asOf),
+      description: cardPaid
+        ? cardPaidReserveDescription(plan, event, asOf)
+        : paymentDescription(plan, event, asOf),
       sourceId: event.id,
-      amount: -event.amount,
+      amount: Math.abs(event.amount),
     });
   }
 
