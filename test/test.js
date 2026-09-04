@@ -70,6 +70,7 @@ const suites = [
   ['Plan calendar waterfalls', 'test-plan-calendar-waterfalls.js'],
   ['Household Budget Other spending residual', 'test-household-budget-other-spending.js'],
   ['Household Budget Spent transaction drill-down', 'test-household-budget-spent-drilldown.js'],
+  ['Household Budget Spent possible-replacement drill-down', 'test-household-budget-spent-possible-replacement-drilldown.js'],
   ['current-period Household Budget classification', 'test-current-period-household-budget-classification.js'],
   ['unresolved pending→posted household-spend treatment', 'test-unresolved-pending-posted-spend.js'],
   ['current-period Other-residual classification contract', 'test-current-period-other-residual-contract.js'],
