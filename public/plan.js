@@ -795,29 +795,41 @@ function paydayGlanceCashNote(alloc, liveOverlay) {
   return glanceUpdatedNote(asOf, liveOverlay);
 }
 
-function glanceUpdatedNote(asOf, liveOverlay) {
+function providerBalanceDate(liveOverlay) {
   const overlayTrusted = !!(liveOverlay && liveOverlay.applied === true
     && liveOverlay.operatingPlan !== 'unavailable');
-  const instant = overlayTrusted
-    ? (liveOverlay.fetchedAt || liveOverlay.observedAt)
-    : null;
-  const tz = (typeof Forecast !== 'undefined' && Forecast.HOUSEHOLD_TIMEZONE)
-    ? Forecast.HOUSEHOLD_TIMEZONE : 'America/Vancouver';
-  if (instant) {
-    const d = new Date(instant);
-    if (!Number.isNaN(d.getTime())) {
-      const date = d.toLocaleDateString('en-CA', {
-        timeZone: tz, day: 'numeric', month: 'short',
-      });
-      // en-CA renders "2:42 p.m."; drop its own full stop so the sentence
-      // does not end "p.m..".
-      const time = d.toLocaleTimeString('en-CA', {
-        timeZone: tz, hour: 'numeric', minute: '2-digit',
-      }).replace(/\.$/, '');
-      return `Current Balance. Not credit. Updated ${date}, ${time}.`;
+  if (!overlayTrusted) return null;
+  const dates = [];
+  const accounts = liveOverlay.observedCash && liveOverlay.observedCash.accounts;
+  if (Array.isArray(accounts)) {
+    for (const row of accounts) {
+      const d = row && (row.evidenceDate || row.observedAsOf);
+      if (d && /^\d{4}-\d{2}-\d{2}$/.test(String(d))) dates.push(String(d));
     }
   }
-  if (!asOf) return 'Current Balance. Not credit.';
+  const unique = [];
+  for (const d of dates) {
+    if (unique.indexOf(d) === -1) unique.push(d);
+  }
+  if (unique.length === 1) return unique[0];
+  if (unique.length > 1) return null;
+  const overlayDate = liveOverlay.observedAsOf;
+  if (overlayDate && /^\d{4}-\d{2}-\d{2}$/.test(String(overlayDate))) {
+    return String(overlayDate);
+  }
+  return null;
+}
+
+function glanceUpdatedNote(asOf, liveOverlay) {
+  const providerDate = providerBalanceDate(liveOverlay);
+  if (providerDate) {
+    return `Current Balance. Not credit. As of ${fmtDateLong(providerDate)}.`;
+  }
+  const overlayTrusted = !!(liveOverlay && liveOverlay.applied === true
+    && liveOverlay.operatingPlan !== 'unavailable');
+  // A trusted overlay with no unique provider cash-observation date must not
+  // borrow the Forecast/as-of stamp. That would date an ambiguous balance.
+  if (overlayTrusted || !asOf) return 'Current Balance. Not credit.';
   return `Current Balance. Not credit. Updated ${fmtDate(asOf)}.`;
 }
 
@@ -1977,7 +1989,11 @@ function extraRepaymentHtml(period) {
 function calendarWaterfallHtml(period, liveOverlay, alloc) {
   if (!period) return '';
   const planUnavailable = period.operatingPlanUnavailable === true;
-  const openingPrompt = period.role === 'active' ? 'Current Balance'
+  const providerDate = period.role === 'active' && period.openingKnown && !planUnavailable
+    ? providerBalanceDate(liveOverlay)
+    : null;
+  const openingPrompt = period.role === 'active'
+    ? (providerDate ? `Current balance as of ${fmtDateLong(providerDate)}` : 'Current Balance')
     : 'Opening balance';
   // Every opening branch below already prints period.cashNote once (as the
   // glance note or as the lead), so it is not appended a second time.
@@ -2026,7 +2042,7 @@ function calendarWaterfallHtml(period, liveOverlay, alloc) {
     ${lookbackNote}${projectedNote}
     ${q('01', openingPrompt, opening, 'opening')}
     ${q('02', 'Income', planUnavailable ? unavailable : calendarIncomeHtml(period))}
-    ${q('03', 'Available balance', planUnavailable ? unavailable : runningLeftoverHtml(period.available), 'balance')}
+    ${q('03', 'Balance after payday', planUnavailable ? unavailable : runningLeftoverHtml(period.available), 'balance')}
     ${q('04', 'Bills', planUnavailable ? unavailable : calendarPeriodBillsHtml(period))}
     ${q('05', 'Balance after remaining bills', planUnavailable ? unavailable : runningLeftoverHtml(period.afterRemainingBills), 'balance')}
     ${q('06', 'Household budget', planUnavailable ? unavailable : calendarBudgetHtml(period))}

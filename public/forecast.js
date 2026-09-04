@@ -4174,7 +4174,7 @@
     }
     const paid = !!(event.id && represented.has(key));
     const inside = recurringInsideOpening(plan, event, cashAsOf);
-    const received = paid || inside || (event.date && cashAsOf && event.date <= cashAsOf);
+    const received = paid || inside || (event.date && cashAsOf && event.date < cashAsOf);
     return {
       id: event.id,
       label: event.label,
@@ -4602,9 +4602,12 @@
   // before the next, then the next payday through the day before the
   // following one. Leftover is this printout's chain: it does not replace
   // paydayAllocation, and it does not rewrite current cash. The active
-  // period opens from paydayAllocation.available. The next period opens
-  // from this period's projected ending, then adds that next payday's
-  // income once. Household Budget uses the same spendingCycle window.
+  // period opens from posted / starting cash (paydayAllocation.opening),
+  // not from paydayAllocation.available, which already includes same-day
+  // income. Balance after payday is that opening plus arriving period
+  // income. The next period opens from this period's projected ending,
+  // then adds that next cycle's income once. Household Budget uses the
+  // same spendingCycle window.
   function calendarPeriodWaterfalls(plan, asOf, alloc, plans, debts, opts) {
     opts = opts || {};
     const windows = opts.periodWindows || operatingPayPeriodWindows(plan, asOf);
@@ -4612,8 +4615,8 @@
     const calendarOpts = Object.assign({}, opts, { periodWindows: windows });
     const calendar = calendarBillSections(plan, asOf, calendarOpts);
     const incomeByWindow = calendarIncomeSections(plan, asOf, windows, opts);
-    const currentCash = alloc && alloc.available != null
-      ? roundCent(alloc.available) : roundCent(startingCashAmount(plan));
+    const postedOpening = alloc && alloc.opening != null
+      ? roundCent(alloc.opening) : roundCent(startingCashAmount(plan));
     const buffer = opts.targetBuffer != null ? opts.targetBuffer
       : ((plan.defaults && plan.defaults.targetBuffer) || 0);
     const priority = debtPriority(plan, debts || []);
@@ -4691,7 +4694,7 @@
       let opening = null;
       let openingKnown = false;
       if (role === 'active') {
-        opening = currentCash;
+        opening = postedOpening;
         openingKnown = true;
       } else if (role === 'future' && previousEnding != null) {
         opening = roundCent(previousEnding);
@@ -4703,8 +4706,6 @@
         if (row && (row.notReliedUpon === true || row.settlement === 'not-relied-upon')) {
           row.alreadyInCash = false;
           row.remaining = 0;
-        } else if (liveOpening && row.date === asOf) {
-          row.alreadyInCash = true;
         }
         if (planUnavailable) continue;
         if (row && (row.notReliedUpon === true || row.settlement === 'not-relied-upon')) continue;
