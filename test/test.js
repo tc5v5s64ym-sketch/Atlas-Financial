@@ -139,6 +139,7 @@ const suites = [
   ['current-period actuals action plan', 'test-current-period-actuals.js'],
   ['this-payday already-paid set and cancelled CMAW drop', 'test-this-payday-already-paid.js'],
   ['automatic-payment settlement reconciliation', 'test-automatic-payment-settlement.js'],
+  ['Triangle and MBNA card-minimum settlement', 'test-card-minimum-settlement.js'],
   ['final Affirm payment owner correction', 'test-affirm-final.js'],
   ['retire cancelled CMAW union-dues recurrence (AF-REFRESH-01)', 'test-refresh-01-union-dues.js'],
   ['on-demand observation receipt (AF-REFRESH-02)', 'test-refresh-02-observation-receipt.js'],

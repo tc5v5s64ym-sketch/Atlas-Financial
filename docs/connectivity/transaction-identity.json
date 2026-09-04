@@ -1,6 +1,6 @@
 {
   "schema": "atlas-provider-transaction-identity/v1",
-  "owns": "Unambiguous provider-transaction to Forecast-event identity. A match requires an explicit payee alias + mapped Atlas account + direction + an allowed scheduled/posting-date relation, or — for the named fixed Tennis BC salary streams only — a uniquely proven transfer credit into BILLS (chequing-a) that is independently paired to the TENNIS INCOME salary flow + direction + an allowed scheduled/posting-date relation. Optional payeeExcludePatterns refuse a hit that also matches a reimbursement or other excluded alias. Same-day is the default; named automatic payments may opt into weekend-to-next-business-day; a payment onto a mapped card may cover the latest due on or before posting. Amount similarity is not identity. After that identity is unique, a card extra payment may settle the min only when the observed credit is at least the scheduled due. Named fixed salary streams additionally require the exact scheduled amount as a necessary guard; that amount is not identity by itself. A generic exact-amount BILLS transfer is not salary identity. A TENNIS BC payee credit on a household account is not salary identity. A TENNIS INCOME deposit or reimbursement is not household-cash posting proof. An unrelated household transfer is not salary identity.",
+  "owns": "Unambiguous provider-transaction to Forecast-event identity. A match requires an explicit payee alias + mapped Atlas account + direction + an allowed scheduled/posting-date relation, or — for the named fixed Tennis BC salary streams only — a uniquely proven transfer credit into BILLS (chequing-a) that is independently paired to the TENNIS INCOME salary flow + direction + an allowed scheduled/posting-date relation. Optional payeeExcludePatterns refuse a hit that also matches a reimbursement or other excluded alias. Same-day is the default; named automatic payments may opt into weekend-to-next-business-day; a payment onto a mapped card may cover the latest due on or before posting. Named Triangle and MBNA card-minimum rules may instead use covers-statement-cycle-or-latest-due: after identity, a payment on or after that card's debts.statementCloseDay may settle the upcoming minimum that statement created, and a later payment may still cover the latest due on or before posting. Statement close days are not copied into this file. Amount similarity is not identity. After that identity is unique, a card extra payment may settle the min only when the observed credit is at least the scheduled due. Named fixed salary streams additionally require the exact scheduled amount as a necessary guard; that amount is not identity by itself. A generic exact-amount BILLS transfer is not salary identity. A TENNIS BC payee credit on a household account is not salary identity. A TENNIS INCOME deposit or reimbursement is not household-cash posting proof. An unrelated household transfer is not salary identity. A refund or merchant credit is not a card-minimum payment. A payment before statement creation does not settle that future minimum.",
   "does_not_own": "Permission to write plan.opening or representedEvents onto data.json, pending-to-posted proof, or a second event engine.",
   "billPaymentPayees": [
     "Bell Mobility",
@@ -80,6 +80,56 @@
       "postingDateRule": "covers-due-on-or-before-posting",
       "settlesWhen": "amount-at-least",
       "note": "Payment onto the TD personal card. Same identity class as Travel Visa. Amount is coverage after identity, not identity."
+    },
+    {
+      "eventId": "triangle",
+      "payeePattern": "CAN TIRE MC",
+      "payeePatterns": ["CAN TIRE MC"],
+      "atlasAccountId": "chequing-a",
+      "direction": "debit",
+      "postingDateRule": "covers-statement-cycle-or-latest-due",
+      "settlesWhen": "amount-at-least",
+      "note": "Observed 2026-09-02 Chequing A alias CAN TIRE MC is the Triangle Mastercard payment. Identity is that explicit alias + BILLS + debit + statement-cycle or latest-due posting. Amount is coverage after identity, not identity. The mapped Triangle card currently has no Lunch Money transaction feed; do not invent a card-side payee. A payment before debts.triangle.statementCloseDay does not settle the upcoming 7th."
+    },
+    {
+      "eventId": "mbna",
+      "payeePattern": "MBNA M/C",
+      "payeePatterns": ["MBNA M/C"],
+      "atlasAccountId": "chequing-a",
+      "direction": "debit",
+      "postingDateRule": "covers-statement-cycle-or-latest-due",
+      "settlesWhen": "amount-at-least",
+      "note": "Observed 2026-09-02 Chequing A alias MBNA M/C is the Amazon/MBNA Mastercard payment. Identity is that explicit alias + BILLS + debit + statement-cycle or latest-due posting. Amount is coverage after identity, not identity. Settles the recurring mbna minimum when that is the applicable occurrence. A payment before debts.mbna.statementCloseDay does not settle the next month-end minimum."
+    },
+    {
+      "eventId": "mbna-aug31",
+      "payeePattern": "MBNA M/C",
+      "payeePatterns": ["MBNA M/C"],
+      "atlasAccountId": "chequing-a",
+      "direction": "debit",
+      "postingDateRule": "covers-statement-cycle-or-latest-due",
+      "settlesWhen": "amount-at-least",
+      "note": "Same observed MBNA M/C identity for the reserved 2026-08-31 statement minimum. Amount is coverage after identity, not identity. An outstanding mbna-aug31 wins over an upcoming recurring mbna minimum from the same payment."
+    },
+    {
+      "eventId": "mbna",
+      "payeePattern": "payment",
+      "payeePatterns": ["payment"],
+      "atlasAccountId": "mbna",
+      "direction": "credit",
+      "postingDateRule": "covers-statement-cycle-or-latest-due",
+      "settlesWhen": "amount-at-least",
+      "note": "Observed mapped-MBNA card credit alias is the literal payee payment. Same settlement class as a chequing MBNA M/C debit. Amount is coverage after identity. A Fast Food-labelled row with this exact payee is still this payment alias, not a merchant credit. Refunds and Amazon purchases are not this alias."
+    },
+    {
+      "eventId": "mbna-aug31",
+      "payeePattern": "payment",
+      "payeePatterns": ["payment"],
+      "atlasAccountId": "mbna",
+      "direction": "credit",
+      "postingDateRule": "covers-statement-cycle-or-latest-due",
+      "settlesWhen": "amount-at-least",
+      "note": "Same observed mapped-MBNA card credit alias for the reserved 2026-08-31 minimum."
     },
     {
       "eventId": "childBenefit",

@@ -1009,6 +1009,7 @@ function payeeMatches(payee, pattern) {
 
 const WEEKEND_NEXT_BUSINESS_DAY = 'same-day-or-weekend-next-business-day';
 const COVER_DUE_ON_OR_BEFORE_POSTING = 'covers-due-on-or-before-posting';
+const COVER_STATEMENT_CYCLE_OR_LATEST_DUE = 'covers-statement-cycle-or-latest-due';
 const SETTLES_WHEN_AMOUNT_AT_LEAST = 'amount-at-least';
 const SETTLES_WHEN_EXACT_SCHEDULED_AMOUNT = 'exact-scheduled-amount';
 const COVER_DUE_LOOKBACK_DAYS = 62;
@@ -1145,11 +1146,78 @@ function ruleIdentityLabel(rule) {
   return 'payee+account+date';
 }
 
+function daysInUtcMonth(year, month) {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+function dateWithClampedDay(year, month, day) {
+  const clamped = Math.min(Number(day), daysInUtcMonth(year, month));
+  if (!isFinite(clamped) || clamped < 1) return null;
+  return `${year}-${String(month).padStart(2, '0')}-${String(clamped).padStart(2, '0')}`;
+}
+
+function statementCloseDayForEvent(plan, event) {
+  const debtId = event && event.debtId;
+  if (!debtId) return null;
+  const debt = ((plan && plan.debts) || []).find(row => row && row.id === debtId);
+  const day = debt && debt.statementCloseDay;
+  if (!isFinite(Number(day)) || Number(day) < 1 || Number(day) > 31) return null;
+  return Number(day);
+}
+
+function statementCloseDateForDue(dueDate, closeDay) {
+  const due = parseIsoDate(dueDate);
+  if (!due || !isFinite(Number(closeDay))) return null;
+  const [year, month] = due.split('-').map(Number);
+  const thisMonth = dateWithClampedDay(year, month, closeDay);
+  if (thisMonth && thisMonth < due) return thisMonth;
+  let priorYear = year;
+  let priorMonth = month - 1;
+  if (priorMonth < 1) {
+    priorMonth = 12;
+    priorYear -= 1;
+  }
+  return dateWithClampedDay(priorYear, priorMonth, closeDay);
+}
+
+function coveringStatementCycleDates(plan, rule, postingDate) {
+  const posted = parseIsoDate(postingDate);
+  if (!plan || !rule || !rule.eventId || !posted) return [];
+  const from = Forecast.addDays(posted, -COVER_DUE_LOOKBACK_DAYS);
+  const to = Forecast.addDays(posted, COVER_DUE_LOOKBACK_DAYS);
+  if (!from || !to) return [];
+  const events = scheduledEventsOnRange(plan, from, to)
+    .filter(event => event && event.id === rule.eventId);
+  const matching = [];
+  for (const event of events) {
+    const closeDay = statementCloseDayForEvent(plan, event);
+    if (closeDay == null) continue;
+    const closeDate = statementCloseDateForDue(event.date, closeDay);
+    if (!closeDate || posted < closeDate) continue;
+    matching.push(event);
+  }
+  if (!matching.length) return [];
+  const outstanding = matching.filter(event => event.date <= posted)
+    .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  if (outstanding.length) {
+    const latest = outstanding[0].date;
+    if (outstanding.filter(event => event.date === latest).length !== 1) return [];
+    return [latest];
+  }
+  const upcoming = matching.filter(event => event.date > posted)
+    .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  if (upcoming.length !== 1) return [];
+  return [upcoming[0].date];
+}
+
 function postingDateRelation(scheduledDate, postingDate, rule) {
   const scheduled = parseIsoDate(scheduledDate);
   const posted = parseIsoDate(postingDate);
   if (!scheduled || !posted) return null;
   if (scheduled === posted) return 'same-day';
+  if (rule && rule.postingDateRule === COVER_STATEMENT_CYCLE_OR_LATEST_DUE) {
+    return COVER_STATEMENT_CYCLE_OR_LATEST_DUE;
+  }
   if (rule && rule.postingDateRule === COVER_DUE_ON_OR_BEFORE_POSTING
     && scheduled < posted) {
     return COVER_DUE_ON_OR_BEFORE_POSTING;
@@ -1165,6 +1233,9 @@ function postingDateRelation(scheduledDate, postingDate, rule) {
 function coveringScheduledDates(plan, rule, postingDate) {
   const posted = parseIsoDate(postingDate);
   if (!plan || !rule || !rule.eventId || !posted) return [];
+  if (rule.postingDateRule === COVER_STATEMENT_CYCLE_OR_LATEST_DUE) {
+    return coveringStatementCycleDates(plan, rule, posted);
+  }
   if (rule.postingDateRule !== COVER_DUE_ON_OR_BEFORE_POSTING) {
     return scheduledDatesForPosting(posted, rule);
   }
@@ -1197,6 +1268,7 @@ function schedulePlan(plan) {
     bills: (plan && plan.bills) || [],
     commitments: (plan && plan.commitments) || [],
     startingCash: plan && plan.startingCash,
+    debts: (plan && plan.debts) || [],
   };
 }
 
@@ -1649,6 +1721,7 @@ function representedEventHitGroups(input) {
           amountNotUsed: true,
           observedAmount: amount,
           atlasAccountId: mapping.canonical.id,
+          settlesWhen: rule.settlesWhen || null,
         });
         eventHits.set(key, list);
       }
@@ -1657,18 +1730,29 @@ function representedEventHitGroups(input) {
   const unique = [];
   const ambiguous = [];
   for (const [key, hits] of eventHits) {
-    if (hits.length !== 1) {
-      ambiguous.push({
-        key,
-        id: hits[0] && hits[0].id,
-        date: hits[0] && hits[0].date,
-        hits,
-        reason: 'multiple-compatible-candidates',
-        candidateCount: hits.length,
-      });
+    if (hits.length === 1) {
+      unique.push(hits[0]);
       continue;
     }
-    unique.push(hits[0]);
+    const sameOccurrence = hits.every(hit => hit && hit.id === hits[0].id
+      && hit.date === hits[0].date);
+    const amountAtLeast = hits.every(hit => hit
+      && hit.settlesWhen === SETTLES_WHEN_AMOUNT_AT_LEAST);
+    if (sameOccurrence && amountAtLeast) {
+      const ordered = hits.slice().sort((a, b) =>
+        String(a.postingDate).localeCompare(String(b.postingDate))
+        || String(a.providerTransactionId).localeCompare(String(b.providerTransactionId)));
+      unique.push(ordered[0]);
+      continue;
+    }
+    ambiguous.push({
+      key,
+      id: hits[0] && hits[0].id,
+      date: hits[0] && hits[0].date,
+      hits,
+      reason: 'multiple-compatible-candidates',
+      candidateCount: hits.length,
+    });
   }
   const byTx = new Map();
   for (const hit of unique) {
@@ -1678,12 +1762,37 @@ function representedEventHitGroups(input) {
     list.push(hit);
     byTx.set(String(txId), list);
   }
-  const uniqueOnce = [];
-  const consumedTwice = new Set();
+  const preferred = [];
+  const droppedUpcoming = new Set();
+  for (const [txId, siblings] of byTx) {
+    const outstanding = siblings.filter(hit => hit && hit.date <= hit.postingDate);
+    const upcoming = siblings.filter(hit => hit && hit.date > hit.postingDate);
+    if (outstanding.length && upcoming.length) {
+      for (const hit of upcoming) {
+        droppedUpcoming.add(hit.id + '@' + hit.date + '@' + txId);
+      }
+    }
+  }
   for (const hit of unique) {
     const txId = hit && hit.providerTransactionId != null
+      ? String(hit.providerTransactionId) : '';
+    if (droppedUpcoming.has(hit.id + '@' + hit.date + '@' + txId)) continue;
+    preferred.push(hit);
+  }
+  const preferredByTx = new Map();
+  for (const hit of preferred) {
+    const txId = hit && hit.providerTransactionId;
+    if (txId == null) continue;
+    const list = preferredByTx.get(String(txId)) || [];
+    list.push(hit);
+    preferredByTx.set(String(txId), list);
+  }
+  const uniqueOnce = [];
+  const consumedTwice = new Set();
+  for (const hit of preferred) {
+    const txId = hit && hit.providerTransactionId != null
       ? String(hit.providerTransactionId) : null;
-    const siblings = txId ? byTx.get(txId) : null;
+    const siblings = txId ? preferredByTx.get(txId) : null;
     if (txId && siblings && siblings.length > 1) {
       if (!consumedTwice.has(txId)) {
         consumedTwice.add(txId);
@@ -1768,12 +1877,28 @@ function identityRulesForEvent(identity, eventId) {
     rule && rule.eventId === eventId);
 }
 
-function earliestEligiblePostingDate(occurrence, identity) {
+function occurrenceDebtId(plan, id) {
+  const row = [].concat((plan && plan.obligations) || [], (plan && plan.bills) || [])
+    .find(item => item && item.id === id);
+  return row && row.debtId ? row.debtId : null;
+}
+
+function earliestEligiblePostingDate(occurrence, identity, plan) {
   if (!occurrence || !occurrence.date) return null;
   const dates = [occurrence.date];
   for (const rule of identityRulesForEvent(identity, occurrence.id)) {
     for (const postingDate of allowedPostingDatesFor(occurrence.date, rule)) {
       if (postingDate) dates.push(postingDate);
+    }
+    if (rule && rule.postingDateRule === COVER_STATEMENT_CYCLE_OR_LATEST_DUE) {
+      const closeDay = statementCloseDayForEvent(plan, {
+        id: occurrence.id,
+        date: occurrence.date,
+        debtId: occurrence.debtId || occurrenceDebtId(plan, occurrence.id),
+      });
+      const closeDate = closeDay != null
+        ? statementCloseDateForDue(occurrence.date, closeDay) : null;
+      if (closeDate) dates.push(closeDate);
     }
   }
   dates.sort();
@@ -1801,16 +1926,43 @@ function carriedOnceJointCashOccurrences(plan, asOf) {
 // just far enough to cover that date, capped at the incumbent 120-day
 // reconcile horizon. This is settlement lookup for currently carried
 // occurrences, not a second observer and not generic historical backfill.
+function cycleSettlementOccurrences(plan, asOf, identity) {
+  const out = carriedOnceJointCashOccurrences(plan, asOf);
+  const seen = new Set(out.map(row => String(row.id) + '@' + String(row.date)));
+  const cycleIds = new Set(((identity && identity.rules) || [])
+    .filter(rule => rule && rule.postingDateRule === COVER_STATEMENT_CYCLE_OR_LATEST_DUE
+      && rule.eventId)
+    .map(rule => rule.eventId));
+  if (!cycleIds.size || !asOf) return out;
+  const until = Forecast.addDays(asOf, COVER_DUE_LOOKBACK_DAYS);
+  if (!until) return out;
+  for (const event of scheduledEventsOnRange(plan, asOf, until)) {
+    if (!event || !cycleIds.has(event.id) || event.date < asOf) continue;
+    const key = String(event.id) + '@' + String(event.date);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      id: event.id,
+      date: event.date,
+      debtId: event.debtId || occurrenceDebtId(plan, event.id),
+    });
+  }
+  return out;
+}
+
 function postedHistoryDaysForCarriedSettlement(opts) {
   const now = opts && opts.now;
   const ordinary = CURRENT_STATE_HISTORY_DAYS;
   const asOf = dateOnly(now);
   if (!asOf) return ordinary;
+  const plan = Object.assign({}, (opts && opts.plan) || {}, {
+    debts: (opts && opts.debts) || (opts && opts.plan && opts.plan.debts) || [],
+  });
   const ordinaryStart = lunchMoneyTransactionsUrl(now, ordinary).startDate;
   if (!ordinaryStart) return ordinary;
   let earliest = null;
-  for (const occurrence of carriedOnceJointCashOccurrences(opts && opts.plan, asOf)) {
-    const postingDate = earliestEligiblePostingDate(occurrence, opts && opts.identity);
+  for (const occurrence of cycleSettlementOccurrences(plan, asOf, opts && opts.identity)) {
+    const postingDate = earliestEligiblePostingDate(occurrence, opts && opts.identity, plan);
     if (!postingDate || postingDate >= ordinaryStart) continue;
     if (!earliest || postingDate < earliest) earliest = postingDate;
   }
@@ -1977,7 +2129,9 @@ function reconciliationReceipt(report, opts) {
   }
 
   const data = opts.data;
-  const plan = data && data.plan;
+  const plan = Object.assign({}, (data && data.plan) || {}, {
+    debts: (data && data.debts) || [],
+  });
   const identityRules = opts.identityRules
     || ((opts.identity && opts.identity.rules) || []);
   const mapDoc = opts.accountMap;
@@ -2365,10 +2519,13 @@ function observe(input) {
     cardInferences.push(Object.assign({ cardId }, inferredCardState(posted, null, limitByCard.get(cardId))));
   }
   const openingAsOf = openingAsOfFromData(input.data);
+  const planForIdentity = Object.assign({}, (input.data && input.data.plan) || {}, {
+    debts: (input.data && input.data.debts) || [],
+  });
   const hitGroups = representedEventHitGroups({
     transactions: collapsed.transactions,
     accountMap: mapDoc,
-    plan: input.data && input.data.plan,
+    plan: planForIdentity,
     identityRules,
     transactionWindow: normalized.transactionWindow,
   });
@@ -2944,6 +3101,7 @@ async function run(argv) {
     historyDays = postedHistoryDaysForCarriedSettlement({
       now,
       plan: data.plan,
+      debts: data.debts,
       identity,
     });
   }

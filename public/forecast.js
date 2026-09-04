@@ -577,10 +577,13 @@
   // (priorAsOf, asOf] interval when plan.opening.priorAsOf names the previous
   // opening. One narrow historical case is also valid: an exact represented
   // id+date may settle a past once joint-cash outflow that Forecast is still
-  // carrying at this start. It cannot settle income, a recurring event, a
-  // non-cash charge, or an event that is merely similar. A future represented
-  // date is ignored, not reinterpreted. This is not a date-wide skip: an
-  // unrepresented same-day event still fires.
+  // carrying at this start. It cannot settle income, a non-cash charge, a
+  // commitment, or an event that is merely similar. A future represented
+  // date is ignored for those classes. One prepaid case is also valid: an
+  // exact represented id+date may settle a future joint-cash obligation or
+  // bill occurrence when that date is a real scheduled outflow after this
+  // start. Commitments still use settledOn, not this list. This is not a
+  // date-wide skip: an unrepresented same-day event still fires.
   //
   // notReliedUponEvents is a separate live-overlay → Forecast input. It is
   // not representedEvents. An unproven or ambiguous same-day inbound must
@@ -606,6 +609,8 @@
       else if (prior && item.date > prior && item.date < start) {
         keys.add(item.id + '@' + item.date);
       } else if (carriedOnceJointCashOutflow(plan, item.id, item.date, start)) {
+        keys.add(item.id + '@' + item.date);
+      } else if (prepaidJointCashOutflow(plan, item.id, item.date, start)) {
         keys.add(item.id + '@' + item.date);
       }
     };
@@ -1055,6 +1060,23 @@
       && item.frequency === 'once' && item.date === date
       && Number(item.amount) > 0);
     return !!(bill && billAffectsJointCash(bill, plan));
+  }
+
+  // Early settlement of a still-upcoming joint-cash obligation or bill.
+  // The scheduled date is after this Forecast start, and identity has
+  // already named that exact occurrence. Commitments stay on settledOn.
+  // Recurring income is not prepaid this way.
+  function prepaidJointCashOutflow(plan, id, date, start) {
+    if (!plan || !id || !date || !start || date <= start) return false;
+    const obligation = (plan.obligations || []).find(item => item && item.id === id
+      && item.nonCash !== true && Number(item.amount) > 0);
+    if (obligation) {
+      return outflowDates(obligation, date, date).some(d => d === date);
+    }
+    const bill = (plan.bills || []).find(item => item && item.id === id
+      && Number(item.amount) > 0);
+    if (!bill || !billAffectsJointCash(bill, plan)) return false;
+    return outflowDates(bill, date, date).some(d => d === date);
   }
 
   function isJointCashOutflow(event) {
@@ -8689,7 +8711,7 @@
     };
   }
 
-  const Forecast = { HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, billIsHouseholdObligation, billAffectsJointCash, carriedOnceJointCashOutflow, expandEvents, simulate,
+  const Forecast = { HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, billIsHouseholdObligation, billAffectsJointCash, carriedOnceJointCashOutflow, prepaidJointCashOutflow, expandEvents, simulate,
     knowledgeHorizon, viewRange, commitmentNeed, fundingSequence, majorPlans, plannedDebt, debtPriority, paydayAllocation,
     classifyCurrentPeriodTransaction, paydayPeriodOrigin, currentPeriodObligationStates, currentPeriodAction,
     spendingCycle,

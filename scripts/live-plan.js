@@ -556,7 +556,8 @@ function representedCandidateAllowed(candidate, historicalOpeningAsOf, liveAsOf,
     && candidate.date > historicalOpeningAsOf
     && candidate.date <= liveAsOf);
   return inLiveWindow
-    || Forecast.carriedOnceJointCashOutflow(plan, candidate.id, candidate.date, liveAsOf);
+    || Forecast.carriedOnceJointCashOutflow(plan, candidate.id, candidate.date, liveAsOf)
+    || Forecast.prepaidJointCashOutflow(plan, candidate.id, candidate.date, liveAsOf);
 }
 
 function representedCandidatesFor(report, historicalOpeningAsOf, liveAsOf, plan) {
@@ -632,7 +633,9 @@ function applyLiveCutover(next, report, historicalOpeningAsOf) {
   const notReliedUpon = [];
   for (const candidate of candidates) {
     if (Forecast.carriedOnceJointCashOutflow(
-      next.plan, candidate.id, candidate.date, liveAsOf)) {
+      next.plan, candidate.id, candidate.date, liveAsOf)
+      || Forecast.prepaidJointCashOutflow(
+        next.plan, candidate.id, candidate.date, liveAsOf)) {
       represented.push({ id: candidate.id, date: candidate.date });
     }
   }
@@ -934,6 +937,7 @@ function livePostedHistoryDays(canonical, now, identity) {
   return O.postedHistoryDaysForCarriedSettlement({
     now,
     plan: canonical && canonical.plan,
+    debts: canonical && canonical.debts,
     identity: identity || loadIdentity(),
   });
 }
