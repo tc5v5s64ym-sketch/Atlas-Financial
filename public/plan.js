@@ -1792,8 +1792,12 @@ function periodBillLine(row) {
 function calendarCurrentUnavailableHtml(period) {
   const note = (period && period.operatingPlanNote)
     || 'Current plan unavailable. The dated opening is stale.';
+  const dated = period && period.openingKnown && period.opening != null
+    ? `<p class="operating-note">Dated balance — not current. ${money2(period.opening)}</p>`
+    : '';
   return `<div data-operating-plan="unavailable" data-current-waterfall="unavailable">
     <p class="operating-lead">${note}</p>
+    ${dated}
   </div>`;
 }
 

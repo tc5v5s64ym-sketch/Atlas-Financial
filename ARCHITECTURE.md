@@ -156,10 +156,10 @@ Routine use is:
    the current payday snapshot: dated-opening cash is not labelled
    Current Balance, and an unapplied later refresh timestamp is not
    presented as the financial as-of. Live Current Balance stays outside
-   the payday snapshot when the operating plan is available. Now write the comprehensive test and register it. This is the independent proof the owner required. Current Balance glance uses the
-   incumbent provider cash-observation date (`observedAsOf` /
-   `evidenceDate`), never Atlas `fetchedAt`, and does not stamp an
-   unapplied overlay timestamp onto dated-opening cash.
+   the payday snapshot when the operating plan is available. The live
+   Current Balance glance uses the incumbent provider cash-observation
+   date (`observedAsOf` / `evidenceDate`), never Atlas `fetchedAt`, and
+   does not stamp an unapplied overlay timestamp onto dated-opening cash.
    Freshness-qualified posted cash is still attached as
    `liveOverlay.observedCash` for current chequing availability without
    rewriting that opening. A complete trusted current-cash observation

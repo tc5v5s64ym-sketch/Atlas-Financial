@@ -4841,8 +4841,18 @@
           plan, asOf, window.start, window.end, role, budgetOpts);
       const spendingCycleLabel = (role === 'active' && budget.spendingCycle && !planUnavailable)
         ? budget.spendingCycle.label : null;
+      // Unavailable is PR #254 lookback: the active window may still
+      // publish dated posted cash as the last trusted opening. A later
+      // half whose prior ending was lost must not invent an opening.
       const snapshot = planUnavailable
-        ? { opening: null, openingKnown: false, openingAsOf: null, source: null }
+        ? (role === 'active'
+          ? {
+            opening: roundCent(startingCashAmount(plan)),
+            openingKnown: true,
+            openingAsOf: (plan && plan.opening && plan.opening.asOf) || asOf,
+            source: 'dated-opening',
+          }
+          : { opening: null, openingKnown: false, openingAsOf: null, source: null })
         : resolvePaydayPeriodOpening(
           plan, asOf, window, opts, previousEnding, opts.sim);
       const opening = snapshot.opening;

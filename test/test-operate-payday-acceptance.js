@@ -86,6 +86,7 @@ function loadComposer() {
     grab(planSrc, /^function alreadyPaidHtml\([\s\S]*?\n\}$/m, 'alreadyPaidHtml'),
     grab(planSrc, /^function stillDueItems\([\s\S]*?\n\}$/m, 'stillDueItems'),
     grab(planSrc, /^function cashGlanceHtml\([\s\S]*?\n\}$/m, 'cashGlanceHtml'),
+    grab(planSrc, /^function liveCurrentBalanceHtml\([\s\S]*?\n\}$/m, 'liveCurrentBalanceHtml'),
     grab(planSrc, /^function mustLeaveHtml\([\s\S]*?\n\}$/m, 'mustLeaveHtml'),
     grab(planSrc, /^function extraDebtGlanceHtml\([\s\S]*?\n\}$/m, 'extraDebtGlanceHtml'),
     grab(planSrc, /^function runningLeftoverHtml\([\s\S]*?\n\}$/m, 'runningLeftoverHtml'),
@@ -149,6 +150,13 @@ function independentAvailable(plan, asOf) {
 function section(html, id) {
   const match = new RegExp(`<section id="${id}"[\\s\\S]*?<\\/section>`).exec(html);
   return match ? match[0] : '';
+}
+
+function liveGlance(html) {
+  const start = html.indexOf('data-live-current-balance');
+  if (start < 0) return '';
+  const end = html.indexOf('</div>', start);
+  return html.slice(start, end < 0 ? html.length : end + 6);
 }
 
 function question(html, number) {
@@ -246,7 +254,7 @@ console.log('\n=== composed surface: cash, identity, debt, protection, limits ==
   const lineSum = (alloc.lines || []).reduce((sum, row) => sum + Number(row.amount || 0), 0);
   const extraLine = (alloc.lines || []).find(row => row && row.key === 'extra-debt');
   const requiredItems = (alloc.requiredDebtPayments && alloc.requiredDebtPayments.items) || [];
-  const q1 = question(rendered, '01');
+  const live = liveGlance(rendered);
   const q2 = question(rendered, '02');
   const q4 = question(rendered, '04');
   const q5 = question(rendered, '05');
@@ -255,8 +263,8 @@ console.log('\n=== composed surface: cash, identity, debt, protection, limits ==
 
   ok(action && action.mode === 'between-paydays',
     'the dated opening is between paydays');
-  ok(/data-payday-cash/.test(q1) && /Current Balance\. Not credit\./.test(q1),
-    'Q1 is Current Balance, not credit');
+  ok(/data-live-current-balance/.test(live) && /Current Balance/.test(live),
+    'live Current Balance sits outside the payday snapshot');
   ok(/data-payday-period-bills/.test(q4),
     'Q4 publishes bills this pay period');
   ok(/data-running-leftover/.test(q5),
@@ -272,11 +280,11 @@ console.log('\n=== composed surface: cash, identity, debt, protection, limits ==
     'available cash independently equals spendable opening plus same-day income');
   ok(creditHeadroom > 0 && alloc.available + 0.005 < independentCash + creditHeadroom,
     'available credit is not treated as household cash');
-  ok(q1.includes(composer.money2(independentCash))
-    && /Current Balance\. Not credit\./.test(q1)
-    && !/live Lunch Money overlay/.test(q1)
-    && !/Available in chequing/.test(q1),
-  'Q1 publishes that independent cash figure as Current Balance, not credit, not an available-in-chequing headline, and not live overlay');
+  ok(live.includes(composer.money2(independentCash))
+    && /Current Balance/.test(live)
+    && !/live Lunch Money overlay/.test(live)
+    && !/Available in chequing/.test(live),
+  'live Current Balance publishes that independent cash figure, not credit, not an available-in-chequing headline, and not live overlay');
   ok(near(lineSum, alloc.allocatedTotal)
     && near(lineSum + Number(alloc.remainder), alloc.available),
   'independent allocation-line sum plus remainder equals available resources');
@@ -375,12 +383,12 @@ console.log('\n=== payday mode still uses the ordered allocation sheet ===');
   const html = composer.operatingSurfaceHtml({
     advice: paydayAdvice, weekly: paydayAdvice.weekly, recommended: paydayAdvice.weekly,
   });
-  const q1 = question(html, '01');
+  const live = liveGlance(html);
   const q4 = question(html, '04');
   const q6 = question(html, '06');
   const q8 = question(html, '08');
-  ok(/data-payday-cash/.test(q1) && !/data-allocation-available/.test(q1),
-    'payday-mode Q1 stays Current Balance, not the allocation sheet');
+  ok(/data-live-current-balance/.test(live) && !/data-allocation-available/.test(live),
+    'payday-mode live Current Balance stays outside the allocation sheet');
   ok(/data-payday-period-bills/.test(q4),
     'payday-mode Q4 is bills');
   ok(/data-payday-household-budget/.test(q6) || /Household budget/.test(q6),

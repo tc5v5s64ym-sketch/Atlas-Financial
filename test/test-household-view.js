@@ -24,7 +24,7 @@ console.log('=== default homepage speaks to the household first ===');
   const html = read('public/index.html');
   ok(/<h1>This payday<\/h1>/.test(html),
     'the first surface is labelled this payday');
-  ok(/Current Balance, bills this pay period/.test(html)
+  ok(/Live Current Balance, then this payday/.test(html)
     && /household budget/.test(html),
     'the intro says what the page is for in ordinary language');
   const planAt = html.indexOf('<script src="/plan.js"></script>');

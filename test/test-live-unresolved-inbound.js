@@ -303,9 +303,11 @@ console.log('\n=== 2. August 31 proven Amanda TENNIS INCOME → BILLS transfer =
   const p2 = activePeriod(advice);
   ok(p2 && p2.role === 'active' && p2.start === '2026-08-28' && p2.end === '2026-09-10',
     'This Pay Period is active on Aug 31');
-  ok(near(p2.currentBalance, independentCash)
-      || near(p2.currentBalance, advice.paydayAllocation.available),
-    'active This Pay Period starts from current cash, not dated opening');
+  ok(near(advice.defaultView.liveCurrentBalance, independentCash)
+      && near(advice.paydayAllocation.liveCurrentBalance, independentCash),
+    'live Current Balance is observed cash, not the dated opening');
+  ok(p2.openingKnown !== true && p2.available == null,
+    'mid-period live overlay does not invent an Aug 28 payday-morning opening');
   ok(!near(advice.paydayAllocation.available, independentCash + SALARY),
     'salary is not added again on top of observed cash');
   const row = incomeRow(advice, 'amandaSalaryMonthEnd');
@@ -511,13 +513,14 @@ console.log('\n=== 8. Actual spending does not double-count ===');
     'Household Budget reserves remaining $550, not planned $900');
   ok(p2 && near(p2.budgetHold, remaining),
     'waterfall hold is remaining grocery, not the full cycle plan');
-  const afterBills = p2.afterRemainingBills;
-  ok(near(p2.afterHouseholdBudget, round2(afterBills - remaining)),
-    'waterfall uses current cash path minus remaining $550');
-  ok(!near(p2.afterHouseholdBudget, round2(afterBills - planned)),
-    'waterfall does not reserve the full $900 plan on top of current cash');
-  ok(!near(p2.afterHouseholdBudget, round2(afterBills - committed - remaining)),
-    'waterfall does not subtract the $350 actual a second time');
+  ok(p2.available == null && p2.afterHouseholdBudget == null,
+    'without a recorded payday opening, leftover does not start from live cash');
+  ok(near(advice.defaultView.liveCurrentBalance, independentCash),
+    'live Current Balance stays the observed-cash fixture');
+  ok(!near(remaining, planned) && near(groceries.hold, remaining),
+    'Household Budget still reserves remaining $550, not the full $900 plan');
+  ok(!near(groceries.spent + groceries.hold, committed + remaining + committed),
+    'spent $350 plus remaining hold $550 is not the actual counted twice');
 }
 
 console.log('\n=== 9. Paid bill does not double-count ===');
@@ -557,8 +560,9 @@ console.log('\n=== 9. Paid bill does not double-count ===');
     .reduce((s, r) => s + Math.abs(Number(r.remaining != null ? r.remaining : r.amount) || 0), 0));
   ok(near(p2.remainingBills, remainingWithoutPaid),
     'waterfall remaining bills omit the already-paid $100');
-  ok(near(p2.currentBalance, advice.paydayAllocation.available),
-    'Current Balance is still current cash, not cash minus the paid bill again');
+  ok(near(advice.defaultView.liveCurrentBalance, independentCash)
+      && near(advice.paydayAllocation.available, independentCash),
+    'live Current Balance and paydayAllocation.available stay observed cash, not cash minus the paid bill again');
 }
 
 console.log('\n=== 10. Active two-period calendar waterfall ===');
@@ -599,19 +603,20 @@ console.log('\n=== 10. Active two-period calendar waterfall ===');
   ok(nextP && nextP.start === '2026-09-11' && nextP.end === '2026-09-24',
     'Next Pay Period is Sep 11–Sep 24');
   ok(thisP.operatingPlanUnavailable !== true, 'active waterfall is not unavailable');
-  ok(near(thisP.currentBalance, advice.paydayAllocation.available),
-    'active Current Balance is live leftover from current cash');
-  ok(near(nextP.opening, thisP.projectedEnding),
-    'next period opens from this period projected ending, not a second live cash');
+  ok(near(advice.defaultView.liveCurrentBalance, independentCash),
+    'live Current Balance is observed cash');
+  ok(thisP.openingKnown !== true && thisP.available == null && thisP.projectedEnding == null,
+    'active payday snapshot fail-closes without a recorded Aug 28 opening');
+  ok(nextP.openingKnown === true && nextP.opening != null
+      && !near(nextP.opening, independentCash),
+    'next period opens from the walk, not from live mid-period cash');
   ok(thisP.remainingBills != null, 'active period shows remaining bills');
   const groceries = (thisP.householdBudget || []).find(row => row && row.id === 'groceries');
   ok(groceries && groceries.planned != null && groceries.spent != null
       && groceries.remaining != null,
     'Household Budget planned/actual/remaining are visible');
-  ok(near(thisP.afterHouseholdBudget, round2(thisP.afterRemainingBills - thisP.budgetHold)),
-    'only remaining Household Budget reduces the waterfall');
-  ok(thisP.extraDebt && thisP.extraDebt.allocated != null, 'extra debt allocation follows');
-  ok(thisP.afterBigPurchases != null, 'big-purchase allocation follows');
+  ok(thisP.afterHouseholdBudget == null,
+    'leftover chain does not start from live cash');
 }
 
 console.log('\n=== 11. Failed-cash control withholds stale Current Balance ===');

@@ -79,6 +79,7 @@ function loadComposer() {
     grab(planSrc, /^function alreadyPaidHtml\([\s\S]*?\n\}$/m, 'alreadyPaidHtml'),
     grab(planSrc, /^function stillDueItems\([\s\S]*?\n\}$/m, 'stillDueItems'),
     grab(planSrc, /^function cashGlanceHtml\([\s\S]*?\n\}$/m, 'cashGlanceHtml'),
+    grab(planSrc, /^function liveCurrentBalanceHtml\([\s\S]*?\n\}$/m, 'liveCurrentBalanceHtml'),
     grab(planSrc, /^function mustLeaveHtml\([\s\S]*?\n\}$/m, 'mustLeaveHtml'),
     grab(planSrc, /^function extraDebtGlanceHtml\([\s\S]*?\n\}$/m, 'extraDebtGlanceHtml'),
     grab(planSrc, /^function runningLeftoverHtml\([\s\S]*?\n\}$/m, 'runningLeftoverHtml'),
@@ -147,6 +148,13 @@ function bannedOnGlance(html) {
     || /(?<![A-Za-z])asOf(?![A-Za-z])/.exec(text);
 }
 
+function liveGlance(html) {
+  const start = html.indexOf('data-live-current-balance');
+  if (start < 0) return '';
+  const end = html.indexOf('</div>', start);
+  return html.slice(start, end < 0 ? html.length : end + 6);
+}
+
 function question(html, number) {
   const start = html.indexOf(`data-operating-question="${number}"`);
   if (start < 0) return '';
@@ -196,21 +204,24 @@ console.log('=== 1. one spendable cash figure, no overdraft in the number ===');
   const html = composer.operatingSurfaceHtml({
     advice, weekly: advice.weekly, recommended: advice.weekly,
   });
-  const q1 = question(html, '01');
+  const live = liveGlance(html);
   const independent = independentSpendable(plan, asOf);
+  const liveCash = advice.paydayAllocation.liveCurrentBalance != null
+    ? advice.paydayAllocation.liveCurrentBalance
+    : F.startingCashAmount(plan);
   const chequing = C.chequingAvailability(plan, data.revolvingExtra, data.liveOverlay);
   ok(near(advice.paydayAllocation.available, independent),
     'Forecast.paydayAllocation.available independently equals spendable opening plus same-day income');
-  ok(q1.includes(composer.money2(independent)),
-    'Q1 cash number is that spendable figure');
-  ok(/data-payday-cash/.test(q1) && /Current Balance\. Not credit/.test(q1),
-    'Q1 is labelled Current Balance, not credit');
+  ok(live.includes(composer.money2(liveCash)),
+    'live Current Balance is posted / starting cash');
+  ok(/data-live-current-balance/.test(live) && /Current Balance/.test(live),
+    'live cash is labelled Current Balance, not credit');
   ok(chequing.status === 'available' && !near(chequing.available, independent),
     'chequingAvailability (which includes unused overdraft) is a different number');
-  ok(!q1.includes(composer.money2(chequing.available)),
+  ok(!live.includes(composer.money2(chequing.available)),
     'Plan cash does not publish the overdraft-inclusive chequingAvailability figure');
-  ok((html.match(/data-spendable-cash-amount/g) || []).length === 1,
-    'the payday sheet publishes exactly one spendable-cash amount');
+  ok((html.match(/data-live-current-balance-amount/g) || []).length === 1,
+    'the payday sheet publishes exactly one live Current Balance amount');
   const liveHit = bannedOnGlance(html);
   ok(!liveHit, 'live default glance has no Forecast field names or settlement code words',
     liveHit && liveHit[0]);

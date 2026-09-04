@@ -80,6 +80,7 @@ function loadComposer() {
     grab(planSrc, /^function alreadyPaidHtml\([\s\S]*?\n\}$/m, 'alreadyPaidHtml'),
     grab(planSrc, /^function stillDueItems\([\s\S]*?\n\}$/m, 'stillDueItems'),
     grab(planSrc, /^function cashGlanceHtml\([\s\S]*?\n\}$/m, 'cashGlanceHtml'),
+    grab(planSrc, /^function liveCurrentBalanceHtml\([\s\S]*?\n\}$/m, 'liveCurrentBalanceHtml'),
     grab(planSrc, /^function mustLeaveHtml\([\s\S]*?\n\}$/m, 'mustLeaveHtml'),
     grab(planSrc, /^function extraDebtGlanceHtml\([\s\S]*?\n\}$/m, 'extraDebtGlanceHtml'),
     grab(planSrc, /^function runningLeftoverHtml\([\s\S]*?\n\}$/m, 'runningLeftoverHtml'),
@@ -225,13 +226,13 @@ const SUBSCRIPTION_BILLS = [
   { id: 'spotify', label: 'Spotify', day: 17, amount: 26.87, window: 'next' },
 ];
 
-function syntheticPlan() {
+function syntheticPlan(asOf) {
   return {
     defaults: { targetBuffer: 500 },
     startingCash: {
       breakdown: [{ id: 'chequing-a', label: 'BILLS ACCOUNT', value: 8000 }],
     },
-    opening: { asOf: '2026-08-30' },
+    opening: { asOf: asOf || '2026-08-30' },
     nextDollar: { policy: 'true-surplus-highest-interest', provenance: 'owner-stated' },
     income: [
       {
@@ -411,15 +412,15 @@ function defaultGlance(html) {
 
 console.log('=== 1. Period 1 projected ending flows into Period 2 opening ===');
 {
-  const plan = syntheticPlan();
+  const plan = syntheticPlan('2026-08-10');
   const advice = F.recommend(plan, '2026-08-10', { targetBuffer: 500, debts });
   const view = advice.defaultView;
   const p1 = period(view, 'this-pay-period');
   const p2 = period(view, 'next-pay-period');
   ok(p1 && p1.role === 'active' && p2 && p2.role === 'future',
     'as-of Aug 10: Period 1 is live, Period 2 is future');
-  ok(p1.openingKnown && near(p1.opening, advice.paydayAllocation.available),
-    'Period 1 opens from existing Forecast current cash');
+  ok(p1.openingKnown && near(p1.opening, F.startingCashAmount(plan)),
+    'Period 1 opens from the cutover starting-cash authority');
   ok(p2.openingKnown && near(p2.opening, p1.projectedEnding),
     'Period 2 opening equals Period 1 projected ending',
     p2 && p1 && `${p2.opening} vs ${p1.projectedEnding}`);
@@ -434,7 +435,7 @@ console.log('=== 1. Period 1 projected ending flows into Period 2 opening ===');
 
 console.log('\n=== 2. Paid bills are not deducted twice ===');
 {
-  const plan = syntheticPlan();
+  const plan = syntheticPlan('2026-08-20');
   const advice = F.recommend(plan, '2026-08-20', {
     targetBuffer: 500, debts,
     representedEvents: [{ id: 'netflix', date: '2026-08-17' }],
@@ -458,7 +459,7 @@ console.log('\n=== 2. Paid bills are not deducted twice ===');
 
 console.log('\n=== 3. Income never lands in remaining-bills ===');
 {
-  const plan = syntheticPlan();
+  const plan = syntheticPlan('2026-08-20');
   const view = F.recommend(plan, '2026-08-20', { targetBuffer: 500, debts }).defaultView;
   for (const p of view.calendarPeriods) {
     ok(!(p.bills || []).some(r => r.kind === 'income'),
@@ -531,10 +532,10 @@ console.log('\n=== 6. Current cash identity; no BILLS-minus-spend rewrite ===');
   const p1 = period(view, 'this-pay-period');
   ok(p1 && p1.role === 'active' && p2 && p2.role === 'future',
     'as-of Aug 30: This Pay Period is live, Next is future');
-  ok(near(p1.opening, advice.paydayAllocation.available)
-      && near(p1.opening, F.startingCashAmount(plan)),
-    'live This Pay Period opening matches paydayAllocation.available / starting cash',
-    p1 && `${p1.opening} vs ${advice.paydayAllocation.available}`);
+  ok(near(p1.opening, F.startingCashAmount(plan))
+      && near(advice.defaultView.liveCurrentBalance, F.startingCashAmount(plan)),
+    'cutover This Pay Period opening is starting cash; live Current Balance is the same posted fact',
+    p1 && `${p1.opening} vs ${F.startingCashAmount(plan)}`);
   ok(p2.projected && near(p2.opening, p1.projectedEnding),
     'Next Pay Period does not reuse today\'s current balance as its own opening');
   const src = read('public/forecast.js');
@@ -575,7 +576,7 @@ console.log('\n=== 7. Bell undated is visible and excluded from remaining ===');
 
 console.log('\n=== 8. Extra debt never takes leftover below the $500 floor ===');
 {
-  const plan = syntheticPlan();
+  const plan = syntheticPlan('2026-08-10');
   const advice = F.recommend(plan, '2026-08-10', { targetBuffer: 500, debts });
   for (const p of advice.defaultView.calendarPeriods) {
     if (p.afterHouseholdBudget == null) continue;
@@ -600,8 +601,10 @@ console.log('\n=== 9. Live August 30 sheet: lookback P1, live P2, card mins, HEL
   const p2 = period(view, 'next-pay-period');
   ok(p1 && p1.role === 'active' && p2 && p2.role === 'future',
     'live Aug 30: This Pay Period live, Next future');
-  ok(near(p1.opening, advice.paydayAllocation.available),
-    'live This Pay Period opening is existing Forecast current cash');
+  ok(near(advice.defaultView.liveCurrentBalance, F.startingCashAmount(live.plan)),
+    'live Current Balance is posted starting cash');
+  ok(p1.openingKnown !== true && p1.available == null,
+    'Aug 30 is mid-period with no recorded Aug 28 payday snapshot, so the frozen opening fail-closes');
   const ids = (p, id) => billsOf(p).filter(r => r.id === id);
   ok(ids(p1, 'mbna-aug31').length === 1 && ids(p1, 'mbna').length === 0,
     'live August Amazon min is the once row in the Aug 28–Sep 10 window');
@@ -689,8 +692,8 @@ console.log('\n=== 10. Household Budget uses the Seaspan payday cycle, not bill-
   ok(near(p1.budgetHold, CYCLE_PLANNED_TOTAL),
     'active hold is the unused $1,862.50 cycle reserve',
     String(p1.budgetHold));
-  ok(near(p1.opening, F.recommend(plan, asOf, { targetBuffer: 500, debts }).paydayAllocation.available),
-    'current cash stays paydayAllocation.available');
+  ok(near(p1.opening, F.startingCashAmount(plan)),
+    'payday opening stays cutover starting cash');
   const withIncome = JSON.parse(JSON.stringify(plan));
   withIncome.income.push({
     id: 'bonus16', label: 'One-off deposit 16th', frequency: 'once',
@@ -743,9 +746,9 @@ console.log('\n=== 11. Aug 28–30 live actuals are $0; bills/income/transfers e
       && !near((budgetRow(p2, 'fuel') || {}).spent, 669.01)
       && !near((budgetRow(p2, 'restaurants') || {}).spent, 445.33),
     'Aug 16–30 audit totals are not the Aug 28 cycle spent');
-  ok(near(p2.opening, advice.paydayAllocation.available)
+  ok(near(p2.opening, F.startingCashAmount(plan))
       && near(p2.afterHouseholdBudget, roundCent(p2.afterRemainingBills - p2.budgetHold)),
-    'leftover is opening minus remaining bills and unused hold; spent is not subtracted again');
+    'leftover is payday opening minus remaining bills and unused hold; spent is not subtracted again');
   ok(near(p2.budgetHold, CYCLE_PLANNED_TOTAL),
     'with $0 spent, hold is the full $1,862.50 reserve');
 }
@@ -965,8 +968,8 @@ console.log('\n=== 13. overspend remaining is negative; leftover does not take t
       && p2.budgetHold >= 0,
     'period hold never goes negative; overspend releases only that row\'s hold',
     String(p2.budgetHold));
-  ok(near(p2.opening, advice.paydayAllocation.available),
-    'current cash is still paydayAllocation.available after overspend');
+  ok(near(p2.opening, F.startingCashAmount(plan)),
+    'payday opening is still cutover starting cash after overspend');
   ok(near(p2.afterHouseholdBudget, roundCent(p2.afterRemainingBills - p2.budgetHold))
       && !near(p2.afterHouseholdBudget, roundCent(p2.afterRemainingBills - 2000))
       && !near(p2.afterHouseholdBudget, roundCent(p2.afterRemainingBills - 1100)),
@@ -1248,7 +1251,7 @@ function independentScheduleDate(plan, id, eventDate) {
 }
 
 function weekendReservePlan() {
-  const plan = syntheticPlan();
+  const plan = syntheticPlan('2026-08-20');
   plan.bills.push(
     {
       id: 'bcaa', label: 'BCAA insurance', frequency: 'monthly',
@@ -1336,8 +1339,8 @@ console.log('\n=== 15. weekend posting keeps 15 August bills in Period 1, paid =
   const p2RemainingIds = billsOf(p2).filter(r => r.status !== 'PAID').map(r => r.id);
   ok(WEEKEND_IDS.every(id => !p2RemainingIds.includes(id)),
     'BCAA / ICBC / RESP are absent from Period 2 remaining bills to pay');
-  ok(p1.role === 'active' && near(p1.opening, advice.paydayAllocation.available),
-    'This Pay Period current cash stays paydayAllocation.available');
+  ok(p1.role === 'active' && near(p1.opening, F.startingCashAmount(plan)),
+    'This Pay Period opens from cutover starting cash');
   const ifDeductedAgain = roundCent(p1.available - p1.remainingBills - three);
   ok(p1.afterRemainingBills != null
       && near(p1.afterRemainingBills, p1.available - p1.remainingBills)
