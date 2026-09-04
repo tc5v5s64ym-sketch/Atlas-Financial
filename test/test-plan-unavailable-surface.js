@@ -121,7 +121,7 @@ function independentDatedCash(plan) {
 }
 
 function independentBell(plan) {
-  return ((plan && plan.bills) || []).find(row => row && row.id === 'bell' && row.needsDate === true) || null;
+  return ((plan && plan.bills) || []).find(row => row && row.id === 'bell') || null;
 }
 
 function count(html, re) {
@@ -173,8 +173,8 @@ console.log('=== 1. incumbent dated opening is still Aug 19 / $939.62 ===');
   ok(near(DATED_CASH, 939.62),
     'independent startingCash breakdown still sums to $939.62',
     String(DATED_CASH));
-  ok(BELL && near(Number(BELL.amount), 121) && BELL.needsDate === true,
-    'independent Bell needsDate row is still about $121');
+  ok(BELL && near(Number(BELL.amount), 121) && BELL.day === 15 && BELL.needsDate !== true,
+    'independent Bell row is still $121, now dated on the 15th');
 }
 
 console.log('\n=== 2. Forecast unavailable walk keeps the dated opening ===');
@@ -190,8 +190,8 @@ console.log('\n=== 2. Forecast unavailable walk keeps the dated opening ===');
     'Forecast keeps the dated opening as-of; it does not invent a later as-of');
   ok(near(Number(advice.defaultView.currentBalance), DATED_CASH),
     'Forecast dated currentBalance is the independent opening cash');
-  ok((advice.defaultView.undatedBills || []).some(row => row && row.id === 'bell'),
-    'Forecast still publishes the independently undated Bell row');
+  ok(!(advice.defaultView.undatedBills || []).some(row => row && row.id === 'bell'),
+    'Forecast no longer publishes Bell as an undated needsDate row');
 }
 
 console.log('\n=== 3. real Plan rendering path: compact unavailable state ===');
@@ -274,8 +274,8 @@ console.log('\n=== 3. real Plan rendering path: compact unavailable state ===');
       && !/Updated Aug 31/.test(html)
       && /Later refresh observed August 31 was not applied/.test(html),
     'refresh/observation timestamp cannot be mistaken for financial as-of');
-  ok(/Bell/.test(html) && /needs confirmation/.test(html) && /\$121/.test(html),
-    'independently valid Bell needs-confirmation material remains');
+  ok(!/needs confirmation/.test(html),
+    'unavailable surface does not keep a stale Bell needs-confirmation row');
   ok(html.includes(composer.money2(DATED_CASH))
       && !html.includes('August 31 opening')
       && advice.defaultView.asOf === '2026-08-19',

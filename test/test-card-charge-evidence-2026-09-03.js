@@ -111,8 +111,9 @@ console.log('\n=== plan.bills was not extended from this discovery ===');
     'ChatGPT Plus Amanda remains $24.99 on the 14th');
 
   const bell = bills.find(b => b.id === 'bell');
-  ok(bell && bell.amount === 121 && bell.needsDate === true && bell.confidence === 'estimated',
-    'Bell remains undated estimated $121');
+  ok(bell && bell.amount === 121 && bell.day === 15 && bell.needsDate !== true
+      && bell.confidence === 'estimated' && bell.payingAccount === 'travelvisa',
+    'Bell remains estimated $121, now dated card-paid on the 15th');
   ok(/\$250/.test(bell.note) && /\$69\.15/.test(bell.note) && /settlement/i.test(bell.note),
     'Bell $250 / $69.15 stay settlement/route evidence on the existing row');
 

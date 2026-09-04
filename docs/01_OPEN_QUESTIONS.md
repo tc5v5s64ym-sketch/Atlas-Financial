@@ -203,7 +203,10 @@ main Bell account. The same Gmail handoff attached the second-account CSVs
 Ultd Shr 2GB **$15.00** + GST **$0.75** + BC PST **$1.05** =
 **$16.80/month**. That is the second-account recurring baseline. Do not use
 that account's accumulated amount-due / arrears as the run rate. Forward
-undated Bell telecom is therefore **$104.20 + $16.80 = $121.00/month**.
+dated Bell telecom is therefore **$104.20 + $16.80 = $121.00/month**,
+planned around the 15th as card-paid reserved gravity (not a chequing
+withdrawal). Timing of the normal recurring baseline is closed; Q18
+remains the settlement-state path.
 
 The Aug. 1 $356.62 bill is arrears + travel/roaming, not the baseline. A
 valid $250 Bell Mobility payment is pending on Travel Visa dated Aug. 14;

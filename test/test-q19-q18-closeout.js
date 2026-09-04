@@ -108,9 +108,11 @@ console.log('\n=== Q19 recorded ANSWERED with the four-part closeout ===');
 
 console.log('\n=== Bell $15 watch line is not a second invented bill ===');
 {
-  ok((plan.bills || []).some(b => b.id === 'bell' && b.needsDate === true && b.day == null)
+  ok((plan.bills || []).some(b => b.id === 'bell' && b.day === 15
+        && b.needsDate !== true && near(b.amount, 121)
+        && b.payingAccount === 'travelvisa' && b.jointCash === false)
       && !(plan.bills || []).some(b => /watch/i.test(b.id + b.label)),
-    'Bell is undated / needs confirmation; no invented watch cash bill');
+    'Bell is dated $121 card-paid on the 15th; no invented watch cash bill');
   ok(/^OPEN\b/.test(statusOf('Q18')),
     'Q18 stays OPEN for pending Bell posting residual',
     statusOf('Q18'));

@@ -37,7 +37,7 @@ facts PR; each needs its own independently provable outcome):
 - **Historical Telus in the telecom remainder** — **CLOSED 2026-08-18.**
   TELUS IS CLOSED. Future Telus cost is $0. Historical Telus spending remains in the record; the remainder-split planning blocker is removed.
 
-- **Bell baseline vs card-paid current bill** — **DONE.** Forward Bell is the undated current-regime $121.00/month on telecom `currentMonthly`. Q18 stays OPEN for settlement state.
+- **Bell baseline vs card-paid current bill** — **DONE.** Forward Bell is the dated $121.00/month card-paid planning row on the 15th (`plan.bills` `bell`, Travel Visa reserved gravity). Q18 stays OPEN for settlement state.
 
 - **Unresolved once cash obligations across a later Forecast start** —
   owner instruction 2026-08-18. A known unresolved cash obligation still

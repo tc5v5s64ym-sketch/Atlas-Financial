@@ -96,9 +96,12 @@ console.log('=== live rows carry the owner-confirmed cadence ===');
     'Amanda ChatGPT Plus is the confirmed iOS amount');
   ok(!(plan.bills || []).some(b => /pay period/i.test(JSON.stringify(b))),
     'no bill row names a Pay Period 1 / Pay Period 2 owner');
-  ok(/future planned payingAccount for dated bills, dated subscriptions, card minimums, HELOC cash minimum, and undated Bell is BILLS ACCOUNT/i
+  ok(/future planned payingAccount for dated bills, dated subscriptions, card minimums, and HELOC cash minimum is BILLS ACCOUNT/i
     .test(plan.billsNote),
     'bill note records the owner BILLS ACCOUNT paying-account remap');
+  ok(/Dated Bell Mobility \$121\.00 on the 15th is card-paid Travel Visa reserved gravity/i
+    .test(plan.billsNote),
+    'bill note records dated card-paid Bell, not a BILLS ACCOUNT withdrawal');
   ok(/Historical Lunch Money postings are not rewritten/i.test(plan.billsNote),
     'bill note does not rewrite historical Lunch Money postings');
   for (const id of CANCELLED) {

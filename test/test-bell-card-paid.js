@@ -218,10 +218,12 @@ const q18 = /### Q18\.[\s\S]*?\*\*Status:\*\*\s*([^\n]+)/.exec(questions);
 ok(q18 && /^OPEN\b/.test(q18[1].trim()),
   'Q18 remains OPEN for settlement state', q18 && q18[1].trim());
 const telecom = (live.plan.budget.categories || []).find(c => c.id === 'telecom');
-ok(telecom && telecom.currentMonthly === 121 && telecom.plannedMonthly == null,
-  'live currentMonthly is $121.00, the one Bell amount');
-ok((live.plan.bills || []).some(b => b.id === 'bell' && b.needsDate === true && b.day == null),
-  'live Bell is undated / needs confirmation, not a fabricated cash day');
+ok(telecom && telecom.currentMonthly == null && telecom.plannedMonthly == null,
+  'live telecom no longer holds an undated currentMonthly reserve');
+ok((live.plan.bills || []).some(b => b.id === 'bell' && b.day === 15
+    && b.needsDate !== true && near(b.amount, BELL)
+    && b.payingAccount === 'travelvisa' && b.jointCash === false),
+  'live Bell is the dated $121 card-paid planning row on the 15th');
 ok(!(live.plan.bills || []).some(b => /telus|watch/i.test(`${b.id} ${b.label}`) && b.id !== 'bell'),
   'live plan.bills has no Telus or invented watch row');
 const travel = (live.plan.obligations || []).find(o => o.id === 'travel');
@@ -236,11 +238,10 @@ ok(travelDebt && near(travelDebt.pending, 0),
 const liveAsOf = live.meta.asOf;
 const liveHorizon = F.knowledgeHorizon(live.plan, liveAsOf, {}).days;
 const liveZero = clone(live.plan);
-liveZero.budget.categories = liveZero.budget.categories.map(c =>
-  c.id === 'telecom' ? Object.assign({}, c, { currentMonthly: 0 }) : c);
+liveZero.bills = (liveZero.bills || []).filter(b => b.id !== 'bell');
 const liveMut = clone(live.plan);
-liveMut.budget.categories = liveMut.budget.categories.map(c =>
-  c.id === 'telecom' ? Object.assign({}, c, { currentMonthly: BELL + WATCH_LINE_AGAIN }) : c);
+liveMut.bills = (liveMut.bills || []).map(b =>
+  b.id === 'bell' ? Object.assign({}, b, { amount: BELL + WATCH_LINE_AGAIN }) : b);
 const liveOpts = {
   weeklyVariable: 0, targetBuffer: 0,
   horizonDays: liveHorizon, viewDays: liveHorizon,
@@ -248,9 +249,11 @@ const liveOpts = {
 const liveBell = F.simulate(live.plan, liveAsOf, liveOpts);
 const liveOff = F.simulate(liveZero, liveAsOf, liveOpts);
 const liveWatch = F.simulate(liveMut, liveAsOf, liveOpts);
-const liveIndependent = BELL * liveHorizon / DAYS_PER_MONTH;
+const liveCount = F.expandEvents(live.plan, liveAsOf, F.addDays(liveAsOf, liveHorizon - 1), {})
+  .filter(e => e.id === 'bell').length;
+const liveIndependent = BELL * liveCount;
 ok(near(liveOff.ending - liveBell.ending, liveIndependent),
-  'live plan: zeroing Bell currentMonthly lifts the knowledge-horizon walk by $121/month',
+  'live plan: removing dated Bell lifts the knowledge-horizon walk by $121 per 15th',
   money(liveOff.ending - liveBell.ending));
 ok(!near(liveOff.ending - liveWatch.ending, liveIndependent),
   'live plan: adding the $15 watch line again is not the $121 identity');
