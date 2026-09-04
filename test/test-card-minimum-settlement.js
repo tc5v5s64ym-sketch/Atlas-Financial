@@ -334,8 +334,18 @@ console.log('=== authority homes ===');
     'mbna-aug31 uses the same observed chequing identity');
   ok(mbna.some(rule => rule.atlasAccountId === 'mbna'
       && rule.direction === 'credit'
+      && rule.payeeMatchMode === 'exact'
       && (rule.payeePatterns || []).includes('payment')),
-    'MBNA card-side identity uses the observed payee payment');
+    'MBNA card-side identity exact-matches the observed payee payment');
+  ok(mbnaOnce.some(rule => rule.atlasAccountId === 'mbna'
+      && rule.direction === 'credit'
+      && rule.payeeMatchMode === 'exact'
+      && (rule.payeePatterns || []).includes('payment')),
+    'mbna-aug31 card-side identity exact-matches the observed payee payment');
+  ok(mbna.filter(rule => rule.atlasAccountId === 'chequing-a')
+      .every(rule => rule.payeeMatchMode !== 'exact'
+        && (rule.payeePatterns || []).includes('MBNA M/C')),
+    'chequing MBNA M/C identity stays substring and is not exact-only');
   ok(rulesFor('travel').every(rule => rule.postingDateRule === DUE_ON_OR_BEFORE),
     'Travel Visa keeps covers-due-on-or-before-posting');
   ok(rulesFor('cashback').every(rule => rule.postingDateRule === DUE_ON_OR_BEFORE),
@@ -521,6 +531,34 @@ console.log('\n=== observed MBNA card alias payment still settles when present =
   })]);
   ok(hasCandidate(report, 'mbna-aug31', MBNA_AUG31),
     'mapped-MBNA payee "payment" after 6 Aug close covers mbna-aug31');
+}
+
+console.log('\n=== PAYMENT REVERSAL cannot settle MBNA minima ===');
+{
+  const data = planFixture();
+  const reversal = observe(data, [tx({
+    account: MBNA_CARD,
+    date: '2026-08-20',
+    amount: -MBNA_MIN,
+    payee: 'PAYMENT REVERSAL',
+    original: 'PAYMENT REVERSAL',
+  })]);
+  ok(!hasCandidate(reversal, 'mbna', '2026-09-30')
+      && !hasCandidate(reversal, 'mbna-aug31', MBNA_AUG31),
+    'PAYMENT REVERSAL cannot settle mbna or mbna-aug31');
+  const protectionRefund = observe(data, [tx({
+    account: MBNA_CARD,
+    date: '2026-08-20',
+    amount: -MBNA_MIN,
+    payee: 'PAYMENT PROTECTION REFUND',
+    original: 'PAYMENT PROTECTION REFUND',
+  })]);
+  ok(!hasCandidate(protectionRefund, 'mbna', '2026-09-30')
+      && !hasCandidate(protectionRefund, 'mbna-aug31', MBNA_AUG31),
+    'PAYMENT PROTECTION REFUND cannot settle mbna or mbna-aug31');
+  const chequingStillSettles = observe(data, [mbnaChequing('2026-09-02', MBNA_MIN)]);
+  ok(hasCandidate(chequingStillSettles, 'mbna-aug31', MBNA_AUG31),
+    'explicit MBNA M/C chequing identity still settles mbna-aug31');
 }
 
 console.log('\n=== Travel Visa / Cash Back / TD posting rule unchanged ===');

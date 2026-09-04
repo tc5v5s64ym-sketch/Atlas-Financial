@@ -1002,9 +1002,17 @@ function pendingObservationsFromTransactions(input) {
   return out;
 }
 
-function payeeMatches(payee, pattern) {
+function payeeMatches(payee, pattern, mode) {
   if (!payee || !pattern) return false;
-  return String(payee).toLowerCase().includes(String(pattern).toLowerCase());
+  const left = String(payee).trim().toLowerCase();
+  const right = String(pattern).trim().toLowerCase();
+  if (mode === 'exact') return left === right;
+  return left.includes(right);
+}
+
+function rulePayeeMatchMode(rule) {
+  const mode = rule && String(rule.payeeMatchMode || '').trim().toLowerCase();
+  return mode === 'exact' ? 'exact' : 'includes';
 }
 
 const WEEKEND_NEXT_BUSINESS_DAY = 'same-day-or-weekend-next-business-day';
@@ -1041,15 +1049,16 @@ function identityOriginalNameFields(tx) {
   return [tx && tx.originalName, tx && tx.original_name, tx && tx.originalMerchant];
 }
 
-function anyIdentityFieldMatches(fields, pattern) {
-  return (fields || []).some(value => payeeMatches(value, pattern));
+function anyIdentityFieldMatches(fields, pattern, mode) {
+  return (fields || []).some(value => payeeMatches(value, pattern, mode));
 }
 
 function payeeMatchesRule(tx, rule) {
   if (!tx || !rule) return false;
   const payeeFields = identityPayeeFields(tx);
   const originalFields = identityOriginalNameFields(tx);
-  if (!rulePayeePatterns(rule).some(pattern => anyIdentityFieldMatches(payeeFields, pattern))) {
+  const matchMode = rulePayeeMatchMode(rule);
+  if (!rulePayeePatterns(rule).some(pattern => anyIdentityFieldMatches(payeeFields, pattern, matchMode))) {
     return false;
   }
   const originalPatterns = ruleOriginalNamePatterns(rule);
