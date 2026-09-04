@@ -2374,11 +2374,16 @@ console.log('\n=== 20. incomplete current cash still withholds a stale cycle as 
       && /calendarCurrentUnavailableHtml/.test(waterfallFn[0])
       && !/Date\.now/.test(waterfallFn[0]),
     'calendarWaterfallHtml withholds arriving / Available / leftover as current when unavailable');
+  const providerDateFn = /function providerBalanceDate\([\s\S]*?\n\}/.exec(planSrc);
   ok(glanceFn && /providerBalanceDate/.test(glanceFn[0])
-      && /observedAsOf/.test(glanceFn[0])
       && !/fetchedAt/.test(glanceFn[0])
       && !/Date\.now/.test(glanceFn[0]),
-    'glanceUpdatedNote uses provider observedAsOf, not fetchedAt or the browser clock');
+    'glanceUpdatedNote reads providerBalanceDate and does not use fetchedAt or the browser clock');
+  ok(providerDateFn && /observedAsOf/.test(providerDateFn[0])
+      && /evidenceDate/.test(providerDateFn[0])
+      && !/fetchedAt/.test(providerDateFn[0])
+      && !/Date\.now/.test(providerDateFn[0]),
+    'providerBalanceDate uses cash evidenceDate / observedAsOf, not fetchedAt');
   const fromFn = /function operatingPlanFromOverlay\([\s\S]*?\n\}/.exec(
     fs.readFileSync(path.join(ROOT, 'scripts', 'live-plan.js'), 'utf8'));
   ok(fromFn && /liveAsOf > historicalOpeningAsOf/.test(fromFn[0]) && !/Date\.now/.test(fromFn[0]),

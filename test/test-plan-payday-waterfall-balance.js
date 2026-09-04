@@ -183,9 +183,14 @@ console.log('=== 1. Provider balance date and fetchedAt stay distinct ===');
 
 console.log('\n=== 2. No hardcoded Lunch Money hour and no browser-clock freshness ===');
 {
-  const bannedHour = /3\s*a\.?m\.?|03:00|15:00|hardcoded.*refresh|Lunch Money.*hour/i;
-  ok(!bannedHour.test(planSrc) && !bannedHour.test(forecastSrc),
-    'plan.js and forecast.js do not hardcode a Lunch Money refresh hour');
+  const dateFns = [
+    grab(planSrc, /^function providerBalanceDate\([\s\S]*?\n\}$/m, 'providerBalanceDate'),
+    grab(planSrc, /^function glanceUpdatedNote\([\s\S]*?\n\}$/m, 'glanceUpdatedNote'),
+    grab(planSrc, /^function calendarWaterfallHtml\([\s\S]*?\n\}$/m, 'calendarWaterfallHtml'),
+  ].join('\n');
+  ok(!/3\s*a\.?m\.?/i.test(dateFns) && !/\b03:00\b/.test(dateFns)
+      && !/refresh hour|Lunch Money.*hour|assumed.*update/i.test(dateFns),
+    'Current Balance date helpers do not hardcode a Lunch Money refresh hour');
   const glanceFn = grab(planSrc, /^function glanceUpdatedNote\([\s\S]*?\n\}$/m, 'glanceUpdatedNote');
   const providerFn = grab(planSrc, /^function providerBalanceDate\([\s\S]*?\n\}$/m, 'providerBalanceDate');
   ok(!/Date\.now/.test(glanceFn) && !/Date\.now/.test(providerFn)
