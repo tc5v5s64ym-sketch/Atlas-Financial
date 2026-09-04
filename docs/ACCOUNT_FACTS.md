@@ -110,6 +110,10 @@ not close Q1.
 
 Statement close dates: **TD card ~23rd** · **Triangle 17th** ·
 **MBNA/Amazon 6th** · **TD Cash Back 7th** · **Travel Visa 5th**.
+Runtime settlement close-day authority is `data.json` `debts[].statementCloseDay`.
+This file remains the household record; those fields are the one runtime home.
+Do not copy 17 / 6 into observer functions. Lunch Money posted-evidence
+cadence for MBNA (8th) is not the issuer statement close.
 
 Owner-approved Lunch Money **posted-evidence cadence** is account-specific
 and is not those close dates copied as a default: Triangle is monthly

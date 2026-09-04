@@ -220,8 +220,14 @@ function incomeKey(stream) {
 ok(JSON.stringify((before.plan.income || []).map(incomeKey))
     === JSON.stringify((plan.income || []).map(incomeKey)),
   'plan.income identity, amount and cadence are unchanged');
-ok(JSON.stringify(before.debts) === JSON.stringify(data.debts),
-  'debt openings are unchanged');
+function debtOpening(row) {
+  const copy = JSON.parse(JSON.stringify(row || {}));
+  delete copy.statementCloseDay;
+  return copy;
+}
+ok(JSON.stringify((before.debts || []).map(debtOpening))
+    === JSON.stringify((data.debts || []).map(debtOpening)),
+  'debt posted openings are unchanged aside from statementCloseDay');
 function cashKey(row) {
   return JSON.stringify({
     id: row.id,

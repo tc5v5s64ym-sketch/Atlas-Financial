@@ -261,8 +261,22 @@ const helperDays = O.postedHistoryDaysForCarriedSettlement({
 ok(helperDays === 16,
   'carried settlement lookup asks for the independently computed 16-day span',
   String(helperDays));
-ok(Live.livePostedHistoryDays(historicalOpening, NOW, syntheticIdentity) === 16,
-  'live overlay uses that same carried-settlement span');
+const helperWithDebts = O.postedHistoryDaysForCarriedSettlement({
+  now: NOW,
+  plan: historicalOpening.plan,
+  debts: historicalOpening.debts,
+  identity: syntheticIdentity,
+});
+const liveDays = Live.livePostedHistoryDays(historicalOpening, NOW, syntheticIdentity);
+ok(liveDays === helperWithDebts,
+  'live overlay uses that same carried-settlement span, including debts.statementCloseDay');
+// Independent: carried mbna-aug31 due 2026-08-31, issuer close the 6th, as-of 1 Sep.
+ok(liveDays === 26,
+  'Triangle/MBNA cycle lookback independently reaches 6 Aug from 1 Sep',
+  String(liveDays));
+ok(O.lunchMoneyTransactionsUrl(NOW, liveDays).startDate === '2026-08-06'
+    && O.lunchMoneyTransactionsUrl(NOW, liveDays).startDate <= POSTED,
+  'cycle-aware live fetch still includes the 17 August PAD posting');
 const helperUrl = O.lunchMoneyTransactionsUrl(NOW, helperDays);
 ok(helperUrl.startDate === SCHEDULED && helperUrl.startDate <= POSTED,
   'repaired observation path still considers the 17 August posting');
@@ -437,8 +451,17 @@ const productionDays = O.postedHistoryDaysForCarriedSettlement({
   identity,
 });
 ok(productionDays === 16,
-  'production Aug 15 once bills also extend the 1 Sep lookup to 16 days',
+  'production Aug 15 once bills also extend the 1 Sep lookup to 16 days when close days are not attached',
   String(productionDays));
+const productionWithDebts = O.postedHistoryDaysForCarriedSettlement({
+  now: NOW,
+  plan: canonical.plan,
+  debts: canonical.debts,
+  identity,
+});
+ok(productionWithDebts === 26
+    && Live.livePostedHistoryDays(canonical, NOW, identity) === 26,
+  'production live overlay with debts.statementCloseDay independently looks back to 6 Aug');
 const ordinaryProduction = observe(Object.assign(clone(fixture), {
   fetchedAt: NOW,
   transactions: fixture.transactions.filter(tx => tx.date >= ordinaryStart),
