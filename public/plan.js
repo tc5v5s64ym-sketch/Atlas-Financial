@@ -1803,7 +1803,14 @@ function householdBudgetMetric(label, amount, opts) {
       .replace(/</g, '\u0026lt;')
       .replace(/>/g, '\u0026gt;')
       .replace(/"/g, '\u0026quot;');
-    const txs = recon.filter(tx => tx).slice().sort((a, b) => {
+    // Forecast already marks unresolved possible replacement. The page
+    // hides only a pending row with that incumbent mark. It does not
+    // infer identity from merchant, date, or amount.
+    const txs = recon.filter(tx => {
+      if (!tx) return false;
+      if (tx.pendingPostedDuplicate === true && tx.pending === true) return false;
+      return true;
+    }).slice().sort((a, b) => {
       const dateCmp = String(a.date || '').localeCompare(String(b.date || ''));
       if (dateCmp) return dateCmp;
       const aLabel = String(a.displayedPayee || a.originalMerchant || '');
@@ -1814,6 +1821,9 @@ function householdBudgetMetric(label, amount, opts) {
       if (amtCmp) return amtCmp;
       return String(a.id || '').localeCompare(String(b.id || ''));
     });
+    if (!txs.length) {
+      return `<div class="${cls}"><dt>${label}</dt><dd>${value}</dd></div>`;
+    }
     const lines = txs.map(tx => {
       const displayed = String(tx.displayedPayee || '').trim();
       const original = String(tx.originalMerchant || '').trim();
@@ -1821,15 +1831,12 @@ function householdBudgetMetric(label, amount, opts) {
       const pending = tx.pending === true
         ? '<span class="household-budget-tx-pending">Pending</span>'
         : '';
-      const duplicate = tx.pendingPostedDuplicate === true
-        ? '<span class="household-budget-tx-duplicate">Possible duplicate</span>'
-        : '';
       const dateAttr = tx.date ? ` datetime="${esc(tx.date)}"` : '';
       const dateText = tx.date ? fmtDate(tx.date) : '—';
       const idAttr = tx.id ? ` data-tx-id="${esc(tx.id)}"` : '';
       return `<li class="household-budget-tx"${idAttr} data-tx-pending="${tx.pending === true ? 'true' : 'false'}">
         <time${dateAttr}>${esc(dateText)}</time>
-        <span class="household-budget-tx-payee">${esc(payeeRaw)}${pending}${duplicate}</span>
+        <span class="household-budget-tx-payee">${esc(payeeRaw)}${pending}</span>
         <span class="household-budget-tx-amount">${money2(tx.amount)}</span>
       </li>`;
     }).join('');
