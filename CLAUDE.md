@@ -562,8 +562,9 @@ request is ready to merge.
   transfers, payments, applications, setting changes, form submissions or
   agreement acceptances. The 2026-09-04 Lunch Money exception in
   [`ARCHITECTURE.md`](ARCHITECTURE.md) is not a bank action: it authorizes
-  only a confirmed `category_id` update on one exact Lunch Money
-  transaction. It does not open any other provider write.
+  only the one owner-granted `category_id` correction on one exact
+  owner-identified transaction. It is not a reusable write class. It does
+  not open any other provider write.
 - **Never ask for or handle an institution login credential.** A bank username or
   password, a PIN, a security answer, a one-time or 2FA code — anything that logs
   in as the household — is the owner's alone. On doubt, stop.
@@ -605,7 +606,8 @@ or 2FA code, or anything else meant for logging in as the household — and neve
 automate an action against a bank or other financial-institution account. Atlas
 reads what it is given and publishes a private view. It does not move money,
 submit a form, or accept an agreement. The 2026-09-04 Lunch Money
-`category_id` exception is recorded in [`ARCHITECTURE.md`](ARCHITECTURE.md)
+`category_id` grant is recorded in [`ARCHITECTURE.md`](ARCHITECTURE.md)
+as one owner-identified transaction only, not a reusable write class,
 and is not a bank action.
 
 **On any doubt about a credential, stop.** If it could authenticate Atlas *as the
@@ -620,10 +622,11 @@ has been exercised. T4 passed 2026-08-17 for the earned preview/approve
 writer (`scripts/canonical-refresh.js`). Automatic or unrestricted
 production **writes** and scheduled refresh remain **not** authorised.
 A production Lunch Money token is authorised for on-demand GET-only
-observation as of 2026-08-23, plus the 2026-09-04 confirmed
-single-transaction `category_id` exception
-[`ARCHITECTURE.md`](ARCHITECTURE.md) records. That file holds the exact
-gate for each capability. A capability is started when its gate is met
+observation as of 2026-08-23, plus the 2026-09-04 one-transaction
+`category_id` grant [`ARCHITECTURE.md`](ARCHITECTURE.md) records. That
+grant is not a reusable write class and does not make the token a
+standing write credential. That file holds the exact gate for each
+capability. A capability is started when its gate is met
 and Dale says so, not when a plan reaches that line. Owner-reserved stop
 5 is unchanged. The 2026-08-17 Lunch Money feed decision is product
 direction; the later same-day T4 pass is the write-gate pass with those
