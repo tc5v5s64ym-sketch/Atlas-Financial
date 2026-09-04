@@ -24,6 +24,7 @@ function burrardDue(plan, asOf) {
 
 // Undated current-regime monthly cost, reconstructed from Plan inputs — not
 // from Forecast.simulate. Owner targets beat it. Calendar month is 365.25/12.
+// Dated card-paid bills are not here: they reserve on the planning day.
 function currentRegimeReservedDaily(plan) {
   const cats = (plan && plan.budget && plan.budget.categories) || [];
   let monthly = 0;
@@ -35,13 +36,29 @@ function currentRegimeReservedDaily(plan) {
   return monthly * 12 / 365.25;
 }
 
+function cardPaidReservedTotal(plan, asOf, end, occurrences) {
+  return ((plan && plan.bills) || []).reduce((s, b) => {
+    if (!F.isCardPaidBill(b, plan) || b.needsDate) return s;
+    return s + occurrences(b, asOf, end).length * Number(b.amount || 0);
+  }, 0);
+}
+
+function cardPaidReservedOnDate(plan, date, occurrences) {
+  return ((plan && plan.bills) || []).reduce((s, b) => {
+    if (!F.isCardPaidBill(b, plan) || b.needsDate) return s;
+    if (!occurrences(b, date, date).length) return s;
+    return s + Number(b.amount || 0);
+  }, 0);
+}
+
 function openingFloor(plan, asOf) {
   const cash = F.startingCashAmount(plan);
   if (!asOf) return cash - burrardDue(plan);
   const openingOut = (F.expandEvents(plan, asOf, asOf, {}) || [])
     .filter(e => e.date <= asOf && e.amount < 0 && e.kind !== 'noncash' && e.jointCash !== false)
     .reduce((s, e) => s + e.amount, 0);
-  return cash + openingOut - currentRegimeReservedDaily(plan);
+  return cash + openingOut - currentRegimeReservedDaily(plan)
+    - cardPaidReservedOnDate(plan, asOf, F.occurrences);
 }
 
 function gapAtBuffer(plan, buffer, asOf) {
@@ -77,6 +94,7 @@ function cashOnDate(plan, date, occurrences, scenario, start) {
   }
   for (const b of plan.bills || []) {
     if (b.householdObligation === false) continue;
+    if (F.isCardPaidBill(b, plan)) continue;
     if (b.payingAccount) {
       const elsewhere = ((plan.startingCash || {}).heldElsewhere || [])
         .some(r => r.id === b.payingAccount);
@@ -104,6 +122,7 @@ function streamTotal(items, asOf, end, occurrences, opts) {
     if (skipNonCash && item.nonCash) return s;
     if (item.needsDate) return s;
     if (item.householdObligation === false) return s;
+    if (opts && opts.plan && F.isCardPaidBill(item, opts.plan)) return s;
     if (opts && opts.plan && item.payingAccount) {
       const elsewhere = ((opts.plan.startingCash || {}).heldElsewhere || [])
         .some(r => r.id === item.payingAccount);
@@ -137,6 +156,8 @@ module.exports = {
   clone,
   burrardDue,
   currentRegimeReservedDaily,
+  cardPaidReservedTotal,
+  cardPaidReservedOnDate,
   openingFloor,
   gapAtBuffer,
   cashOnDate,

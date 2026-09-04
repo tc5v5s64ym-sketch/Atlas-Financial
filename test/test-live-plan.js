@@ -2095,8 +2095,8 @@ console.log('\n=== 20. incomplete current cash still withholds a stale cycle as 
       && !/Updated Aug 31/.test(surfaceHtml)
       && /Later refresh observed August 31 was not applied/.test(surfaceHtml),
     'unapplied Aug 31 observation is not presented as the financial as-of');
-  ok(/Bell/.test(surfaceHtml) && /needs confirmation/.test(surfaceHtml),
-    'independently valid Bell needs-confirmation material remains on the unavailable surface');
+  ok(/Bell/.test(surfaceHtml) && !/needs confirmation/.test(surfaceHtml),
+    'dated Bell remains on the unavailable surface without a stale needs-confirmation row');
 
   const operating = OA.fromRefreshedState(served, { mode: 'live-overlay' });
   ok(operating.provenance.operatingPlan === Live.OPERATING_PLAN_UNAVAILABLE,

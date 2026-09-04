@@ -220,7 +220,7 @@ ok(!/target\s*!=\s*null\s*\?/.test(againstSrc),
 
 console.log('\n=== mutation: the incumbent gross choice now fails ===');
 const FROM = '      const gross = target != null ? target\n'
-  + '        : current != null ? current + dated.total\n'
+  + '        : regime ? (undatedCurrent || 0) + dated.total\n'
   + '        : historical;';
 const TO = '      const gross = historical;';
 ok(FORECAST_SRC.split(FROM).length - 1 === 1,
