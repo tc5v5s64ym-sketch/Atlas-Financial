@@ -1,7 +1,7 @@
 'use strict';
-/* Independent proof that the figures-review comment states Plan-page
- * snapshot scope and does not claim the whole site is unchanged.
- * `node test/test-figures-comment.js`
+/* Independent proof that the figures-review comment states Plan, Credit,
+ * and Planning snapshot scope and does not claim the whole site is
+ * unchanged. `node test/test-figures-comment.js`
  *
  * The snapshot script's own header is the scope authority. This suite does
  * not extend that snapshot to Deep Dive, Records, or Modellers.
@@ -43,11 +43,16 @@ ok(brokenWorkflow.includes(OVERCLAIM),
 ok(/Every row below is something the household would read differently/.test(brokenWorkflow),
   '6f936052 moved comment does not name Plan-page scope');
 
-console.log('\n=== snapshot authority remains Plan page only ===');
-ok(/household could read it off the[\s\S]{0,20}Plan page/.test(snapshotSrc),
-  'figures-snapshot.js still owns Plan-page membership');
-ok(!/deepdive|records|modellers/i.test(snapshotSrc.split('Output is a flat')[0]),
-  'snapshot header does not add Deep Dive, Records, or Modellers');
+console.log('\n=== snapshot authority is Plan, Credit, and Planning ===');
+ok(/household could read it off the[\s\S]{0,40}Plan, Credit, or Planning/.test(snapshotSrc),
+  'figures-snapshot.js owns Plan, Credit, and Planning membership');
+{
+  const header = snapshotSrc.split('Output is a flat')[0];
+  ok(/Deep Dive, Records,[\s\S]{0,40}Modellers remain outside/.test(header),
+    'snapshot header names Deep Dive, Records, and Modellers only as outside');
+  ok(!/covers Deep Dive|including Deep Dive|off the Deep Dive/i.test(header),
+    'snapshot header does not claim those pages are in the snapshot');
+}
 
 console.log('\n=== workflow uses the helper; overclaim is gone ===');
 ok(/node scripts\/figures-comment\.js/.test(workflow),
@@ -56,18 +61,18 @@ ok(!workflow.includes(OVERCLAIM) && !workflow.includes(SITEWIDE),
   'the workflow file no longer contains the site-wide unchanged claim');
 ok(!helperSrc.includes(OVERCLAIM),
   'the helper no longer contains the old unchanged overclaim sentence');
-ok(/Plan-page snapshot only|Plan page/.test(helperSrc),
-  'the helper still names Plan-page scope');
+ok(/Plan, Credit, and Planning/.test(helperSrc),
+  'the helper names Plan, Credit, and Planning scope');
 ok(/formatFiguresComment\(base, head, baseRef\)/.test(helperSrc),
   'the helper still owns the posted formatter');
 
 const identical = { weekly: 920, buffer: 500, windowDays: 91 };
 const unchanged = formatFiguresComment(identical, { ...identical }, 'main');
 
-console.log('\n=== identical Plan snapshots do not claim the whole site ===');
+console.log('\n=== identical snapshots do not claim the whole site ===');
 ok(unchanged.startsWith(MARKER), 'unchanged comment keeps the marker');
-ok(/Plan page is identical on this head and on `main`/.test(unchanged),
-  'unchanged comment still names the Plan-page snapshot and both revisions');
+ok(/Plan, Credit, and Planning surfaces is identical on this head and on `main`/.test(unchanged),
+  'unchanged comment names the Plan, Credit, and Planning snapshot and both revisions');
 ok(!unchanged.includes(OVERCLAIM) && !unchanged.includes(SITEWIDE),
   'unchanged comment stops after saying what was compared');
 ok(!/Deep Dive|Records|Modellers/i.test(unchanged),
@@ -78,14 +83,14 @@ ok(!/does not change/.test(unchanged),
 const movedHead = { weekly: 900, buffer: 500, windowDays: 91 };
 const moved = formatFiguresComment(identical, movedHead, 'main');
 
-console.log('\n=== a moved Plan figure is still reported, Plan-scoped ===');
-ok(/1 published figure moved/.test(moved), 'one numeric Plan-page move is reported');
+console.log('\n=== a moved figure is still reported, scoped to the snapshot ===');
+ok(/1 published figure moved/.test(moved), 'one numeric snapshot move is reported');
 ok(/`weekly`/.test(moved) && /\$920\.00/.test(moved) && /\*\*`?\$900\.00`?\*\*/.test(moved),
   'the moved row names weekly and both values');
-ok(/Every row below is a Plan-page figure the household would read differently/.test(moved),
-  'moved comment names Plan-page scope instead of the whole site');
-ok(/2 other Plan-page figures unchanged/.test(moved),
-  'unchanged remainder is labelled as Plan-page figures');
+ok(/Every row below is a Plan, Credit, or Planning figure the household would read differently/.test(moved),
+  'moved comment names Plan, Credit, and Planning scope instead of the whole site');
+ok(/2 other Plan, Credit, and Planning figures unchanged/.test(moved),
+  'unchanged remainder is labelled as Plan, Credit, and Planning figures');
 ok(!moved.includes(SITEWIDE),
   'moved comment does not claim it covers what the household is told');
 
@@ -120,7 +125,7 @@ try {
     'main',
   ], { encoding: 'utf8' });
   ok(cliMoved === moved,
-    'CLI stdout for a moved Plan figure is exactly formatFiguresComment');
+    'CLI stdout for a moved snapshot figure is exactly formatFiguresComment');
 
   fs.writeFileSync(baseFile, 'null\n');
   fs.writeFileSync(headFile, JSON.stringify(identical));
@@ -134,6 +139,17 @@ try {
     'CLI stdout for a null base is exactly formatFiguresComment');
 } finally {
   fs.rmSync(tmpDir, { recursive: true, force: true });
+}
+
+console.log('\n=== a Credit rate is not formatted as money ===');
+{
+  const rateBase = { 'credit.triangle.rate': 21.99, weekly: 920 };
+  const rateHead = { 'credit.triangle.rate': 22.99, weekly: 920 };
+  const rateMoved = formatFiguresComment(rateBase, rateHead, 'main');
+  ok(/21\.99%/.test(rateMoved) && /22\.99%/.test(rateMoved),
+    'rate keys print as percents');
+  ok(!/\$21\.99/.test(rateMoved) && !/\$22\.99/.test(rateMoved),
+    'rate keys are not formatted as dollars');
 }
 
 console.log('\n=== privileged posting step does not execute PR JavaScript ===');

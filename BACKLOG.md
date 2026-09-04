@@ -317,16 +317,16 @@ initiative.
 
 Live Lunch Money v2 only returns `plaid_metadata` when `include_metadata=true`. Atlas was requesting `include_pending` and the unbounded `is_pending` universe without that flag, treating Lunch Money `id` as `providerTransactionId`, and matching `posted.pendingTransactionId` to the pending Lunch Money id. Plaid's contract is `posted.plaid_metadata.pending_transaction_id === pending.plaid_metadata.transaction_id`, and the posted amount may differ. Current-period household spend/remaining and revolving pending exposure can double-count one purchase. Not Amazon-specific, not merchant fuzzy matching, not a new identity system. Forecast remains the planner.
 
-**B100 · Figures snapshot does not cover the Credit and Planning surfaces** · **READY** · *governance; found 2026-09-03*
+**B100 · Figures snapshot does not cover the Credit and Planning surfaces** · **DONE 2026-09-04** · *governance; found 2026-09-03*
 
-`scripts/figures-snapshot.js` snapshots what the household can read off the
-Plan page. The Credit page now publishes per-account balances, limits,
-Forecast.utilisation headroom, next minimums and due dates, and the Planning
-page publishes `Forecast.majorPlans` verdicts, ranges and remaining amounts.
-Most of those figures already sit on Plan or are derived from Plan inputs, but
-a change to a card's published headroom or a future cost's verdict would not
-appear in the figures comment today. Add stable keys for both surfaces so the
-figures review sees them. Not a Forecast change.
+`scripts/figures-snapshot.js` now snapshots Plan, Credit, and Planning
+household-facing figures. Credit keys copy `Forecast.creditAccounts` (balance,
+pending, limit, utilisation headroom, rate, next minimum / due, HELOC
+capitalise and cash minimum). Planning keys copy the same `Forecast.recommend`
+`majorPlans` / `paydayAllocation` / `knowledge` the Planning page renders
+(verdict, remaining, point or range, timing, allocated / not-assigned). Deep
+Dive, Records, and Modellers remain outside. Not a Forecast change. Proved by
+`test/test-figures-snapshot-credit-planning.js`.
 
 **Dated 2026-08-09 BNPL reviews still combine Affirm and Flexiti** · **READY** · *docs only; not live current truth*
 
@@ -456,7 +456,7 @@ identifier since reused.
 CI now applies the trusted default-branch copy of `scripts/privacy-guard.js` to every PR head. Adding the `privacy-guard` status to required checks on `main` remains an owner repository-setting action. Proved by `test-privacy-guard.js`.
 
 **B82 · The figures comment claims a wider scope than it checks** · **DONE 2026-08-20** · *governance, small*
-The figures comment names Plan-page rows only. Extending the snapshot remains an owner scope decision. Proved by `test-figures-comment.js`.
+The figures comment names the snapshot's actual membership. B100 extended that membership to Credit and Planning; Deep Dive, Records, and Modellers remain outside. Proved by `test-figures-comment.js`.
 
 **Issue #57 remainder · Autonomous delivery loop** · *governance, not a new B-id*
 

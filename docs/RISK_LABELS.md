@@ -137,7 +137,9 @@ financial-data connectivity, or a direction change. The owner gate in
 ### Published figures review — advisory reconciliation
 
 `figures-review.yml` runs the engine on the base and head and comments with the
-figures that changed. It exists because the shipped weekly-cap defect changed a
+figures that changed. `scripts/figures-snapshot.js` covers Plan, Credit, and
+Planning household-facing figures; Deep Dive, Records, and Modellers remain
+outside. It exists because the shipped weekly-cap defect changed a
 derived answer without crashing. The workflow is advisory because moving a
 figure is often the purpose of a PR; an unexplained mismatch between the comment
 and merge card is still a correctness defect to resolve.

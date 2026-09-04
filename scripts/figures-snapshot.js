@@ -8,8 +8,9 @@
  * SEEN, and it has to match what the merge card says was intended.
  *
  * The rule for what belongs in here: if the household could read it off the
- * Plan page and do something differently because of it, it belongs. Anything
- * that is only evidence does not.
+ * Plan, Credit, or Planning surface and do something differently because of
+ * it, it belongs. Anything that is only evidence does not. Deep Dive, Records,
+ * and Modellers remain outside this snapshot.
  *
  * Output is a flat `{ "label": value }` map so the diff is trivial and stable
  * across revisions. Values are numbers where they are money, strings where
@@ -65,14 +66,12 @@
 const path = require('path');
 const ROOT = path.join(__dirname, '..');
 const F = require(path.join(ROOT, 'public', 'forecast.js'));
-const data = require(path.join(ROOT, 'data.json'));
 
-let periods = null;
-try { periods = require(path.join(ROOT, 'public', 'periods.json')); } catch { /* optional */ }
+const round = n => Math.round(n * 100) / 100;
 
+function buildFiguresSnapshot(data, periods) {
 const plan = data.plan;
 const asOf = data.meta.asOf;
-const round = n => Math.round(n * 100) / 100;
 
 const out = {};
 const put = (key, value) => {
@@ -246,4 +245,108 @@ put('action.openCount', (plan.actions || []).filter(a => a.status !== 'done').le
 const debtPriority = F.debtPriority(plan, data.debts);
 if (debtPriority.target) put('policy.nextDollarTarget', debtPriority.target.id);
 
-process.stdout.write(JSON.stringify(out, null, 2) + '\n');
+/* ---- Credit: Forecast.creditAccounts, the same composition the page renders */
+// The page formats these rows. This snapshot copies the incumbent fields a
+// household member can act on: posted balance, pending, limit, utilisation
+// headroom, rate, the next required payment, and HELOC capitalise / cash
+// minimum. It does not subtract a limit from a balance and does not pick a
+// due date of its own.
+const accounts = F.creditAccounts(plan, data.debts, asOf, {
+  extraFacilities: data.revolvingExtra,
+});
+put('credit.asOf', accounts.asOf);
+for (const row of [...(accounts.secured || []), ...(accounts.cards || [])]) {
+  const p = `credit.${row.id}`;
+  put(`${p}.balance`, row.balance);
+  put(`${p}.pendingUnknown`, row.pendingUnknown === true);
+  put(`${p}.pending`, row.pending);
+  put(`${p}.rate`, row.rate);
+  if (row.shape !== 'secured-term') {
+    put(`${p}.limit`, row.limit);
+    put(`${p}.available`, row.available);
+    put(`${p}.overLimit`, row.overLimit === true);
+    if (row.overLimit) put(`${p}.overLimitBy`, row.overLimitBy);
+  }
+  if (row.shape === 'secured-term' && row.regularPayment != null) {
+    put(`${p}.regularPayment`, row.regularPayment);
+  }
+  const next = row.nextPayment;
+  put(`${p}.minimum`, next ? next.amount : null);
+  put(`${p}.due`, next ? next.date : null);
+  if (next && next.confidence) put(`${p}.minimumConfidence`, next.confidence);
+  if (row.nextCapitalise) {
+    put(`${p}.capitalise`, row.nextCapitalise.amount);
+    put(`${p}.capitaliseDate`, row.nextCapitalise.date);
+  }
+  if (row.nextCashMinimum) {
+    put(`${p}.cashMinimum`, row.nextCashMinimum.amount);
+    put(`${p}.cashMinimumDue`, row.nextCashMinimum.date);
+    if (row.nextCashMinimum.confidence) {
+      put(`${p}.cashMinimumConfidence`, row.nextCashMinimum.confidence);
+    }
+  } else if (row.interestTreatment === 'capitalised') {
+    put(`${p}.cashMinimum`, null);
+    put(`${p}.cashMinimumDue`, null);
+  }
+}
+
+/* ---- Planning: Forecast.majorPlans on the same recommend the pages use */
+// Verdict, remaining, point/range, timing, flexibility, deferred, and any
+// paydayAllocation set-aside / projection are copied. No midpoint, no second
+// planner, no invented saved balance. When Forecast withholds the operating
+// plan the page withholds verdicts; so does this snapshot.
+if (advice.operatingPlanUnavailable === true) {
+  put('planning.operatingPlan', 'unavailable');
+} else {
+  const knowledge = advice.knowledge || {};
+  if (knowledge.end) put('planning.horizonEnd', knowledge.end);
+  if (knowledge.encumbered != null && isFinite(Number(knowledge.encumbered))) {
+    put('planning.encumbered', knowledge.encumbered);
+  }
+  const alloc = advice.paydayAllocation || {};
+  const paydayRows = [...(alloc.futureCosts || []), ...(alloc.optional || [])];
+  const unresolvedIds = new Set((alloc.unresolved || []).map(r => r && r.id).filter(Boolean));
+  for (const row of advice.majorPlans || []) {
+    const p = `planning.${row.id}`;
+    put(`${p}.verdict`, row.verdict);
+    put(`${p}.remaining`, row.remaining);
+    if (row.need != null) put(`${p}.need`, row.need);
+    if (row.amountMin != null) put(`${p}.amountMin`, row.amountMin);
+    if (row.amountMax != null) put(`${p}.amountMax`, row.amountMax);
+    if (row.when) put(`${p}.when`, row.when);
+    if (row.date) put(`${p}.date`, row.date);
+    if (row.flexibility) put(`${p}.flexibility`, row.flexibility);
+    put(`${p}.deferred`, row.deferred === true);
+    const payday = paydayRows.find(item => item && item.id === row.id);
+    if (payday && payday.projectedByDeadline != null) {
+      put(`${p}.projectedByDeadline`, payday.projectedByDeadline);
+    }
+    if (payday) {
+      put(`${p}.allocated`, payday.allocated || 0);
+    } else if (unresolvedIds.has(row.id)) {
+      put(`${p}.allocated`, 'not-assigned');
+    }
+  }
+}
+
+return out;
+}
+
+function loadCanonicalInputs() {
+  const data = require(path.join(ROOT, 'data.json'));
+  let periods = null;
+  try { periods = require(path.join(ROOT, 'public', 'periods.json')); } catch { /* optional */ }
+  return { data, periods };
+}
+
+function main() {
+  const { data, periods } = loadCanonicalInputs();
+  process.stdout.write(JSON.stringify(buildFiguresSnapshot(data, periods), null, 2) + '\n');
+}
+
+if (require.main === module) main();
+
+module.exports = {
+  buildFiguresSnapshot,
+  main,
+};
