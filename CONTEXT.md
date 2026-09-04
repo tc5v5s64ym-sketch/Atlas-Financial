@@ -27,7 +27,10 @@ failed (`B79` / `AF-STORE-01`); no store is introduced. Owner-approved
 preview/apply writes, the 2026-08-19 canonical opening, and the
 read-only live overlay are earned (`B81` / `AF-LIVE-02`). Production
 on-demand GET-only Lunch Money access is owner-authorized 2026-08-23.
-Unattended production writes are **not** approved. Owner-maintained Lunch Money account
+The 2026-09-04 owner addendum on that same pass authorizes one confirmed
+single-transaction Lunch Money `category_id` update; every other Lunch
+Money interaction remains GET-only. Unattended production writes are **not**
+approved. Owner-maintained Lunch Money account
 freshness is accepted owner policy and does not block unrelated
 automatically refreshed accounts. The household cash schedule has one
 Plan owner (`Forecast.expandEvents`, PR #37). Question OPEN / ANSWERED status

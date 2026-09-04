@@ -34,6 +34,11 @@ Atlas may continue to GET Lunch Money locally when the owner sets
 secret under `ARCHITECTURE.md`. Official Lunch Money tokens are not
 provider-scoped read-only; Atlas usage remains GET-only.
 
+Later: the 2026-09-04 addendum on
+[`PRODUCTION_LIVE_READONLY_OWNER_PASS_2026-08-23.md`](PRODUCTION_LIVE_READONLY_OWNER_PASS_2026-08-23.md)
+authorizes one confirmed single-transaction `category_id` update.
+This T4 record does not itself authorize that write.
+
 ## Known evidence that must stay unresolved
 
 - unused Chequing B $10 from B21

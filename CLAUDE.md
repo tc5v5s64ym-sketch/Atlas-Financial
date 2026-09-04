@@ -558,8 +558,12 @@ request is ready to merge.
 
 ## Absolute data safety
 
-- **Read-only against every institution.** No transfers, payments,
-  applications, setting changes, form submissions or agreement acceptances.
+- **Read-only against every bank and other financial institution.** No
+  transfers, payments, applications, setting changes, form submissions or
+  agreement acceptances. The 2026-09-04 Lunch Money exception in
+  [`ARCHITECTURE.md`](ARCHITECTURE.md) is not a bank action: it authorizes
+  only a confirmed `category_id` update on one exact Lunch Money
+  transaction. It does not open any other provider write.
 - **Never ask for or handle an institution login credential.** A bank username or
   password, a PIN, a security answer, a one-time or 2FA code — anything that logs
   in as the household — is the owner's alone. On doubt, stop.
@@ -598,8 +602,11 @@ actually reads — not only through the helper that was just written.
 **Two absolutes, no gate, no exception:** never hold an **institution login
 credential** — a bank username or password, a PIN, a security answer, a one-time
 or 2FA code, or anything else meant for logging in as the household — and never
-automate an action against an account. Atlas reads what it is given and publishes
-a private view. It does not move money, submit a form, or accept an agreement.
+automate an action against a bank or other financial-institution account. Atlas
+reads what it is given and publishes a private view. It does not move money,
+submit a form, or accept an agreement. The 2026-09-04 Lunch Money
+`category_id` exception is recorded in [`ARCHITECTURE.md`](ARCHITECTURE.md)
+and is not a bank action.
 
 **On any doubt about a credential, stop.** If it could authenticate Atlas *as the
 household* through an institution's ordinary login path, it is prohibited.
@@ -612,13 +619,15 @@ authorised. Live **read-only** Lunch Money observation already exists and
 has been exercised. T4 passed 2026-08-17 for the earned preview/approve
 writer (`scripts/canonical-refresh.js`). Automatic or unrestricted
 production **writes** and scheduled refresh remain **not** authorised.
-A production Lunch Money token is authorised only for on-demand GET-only
-observation as of 2026-08-23.
-[`ARCHITECTURE.md`](ARCHITECTURE.md) holds the exact gate for each. A capability
-is started when its gate is met and Dale says so, not when a plan reaches that
-line. Owner-reserved stop 5 is unchanged. The 2026-08-17 Lunch Money feed
-decision is product direction; the later same-day T4 pass is the write-gate
-pass with those production reservations.
+A production Lunch Money token is authorised for on-demand GET-only
+observation as of 2026-08-23, plus the 2026-09-04 confirmed
+single-transaction `category_id` exception
+[`ARCHITECTURE.md`](ARCHITECTURE.md) records. That file holds the exact
+gate for each capability. A capability is started when its gate is met
+and Dale says so, not when a plan reaches that line. Owner-reserved stop
+5 is unchanged. The 2026-08-17 Lunch Money feed decision is product
+direction; the later same-day T4 pass is the write-gate pass with those
+production reservations.
 
 **Still nothing here:** no second dashboard, and no governance system beyond this
 file. The gates that exist are the ones that caught something real. Add a gate
