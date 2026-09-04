@@ -223,9 +223,13 @@ Current evidenced active services:
   Not a joint-chequing bill.
 - **Telus** — **$0** forward.
 
-Forward undated Bell telecom is therefore **$104.20 + $16.80 = $121.00/month**.
-Forecast reserves that $121.00 as undated current-regime cash on the master
-walk. It is not a dated joint-chequing bill and does not invent a due day.
+Forward Bell telecom is therefore **$104.20 + $16.80 = $121.00/month**,
+planned on the **15th** as card-paid Travel Visa reserved gravity. That is
+the one recurring Bell baseline. It is not a dated joint-chequing /
+BILLS ACCOUNT withdrawal, not an undated `currentMonthly` smear, and not
+a second copy beside the later Travel Visa payment. The unusual August 17
+due date is not the permanent cadence. Roaming, usage, late fees, and
+catch-up payments of $250.00 / $69.15 are not the recurring amount.
 
 There is no remaining Telus planning question and no need to quantify how much
 historical Telus spending appears inside old category averages. A generic

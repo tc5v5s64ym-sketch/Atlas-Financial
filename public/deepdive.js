@@ -153,24 +153,30 @@ function renderDeepDive(d) {
   const datedRows = dated.map(e => {
     const n = daysUntil(e.date);
     const noncash = e.kind === 'noncash';
-    const external = e.jointCash === false;
+    const cardPaid = e.cardPaid === true;
+    const external = e.jointCash === false && !cardPaid;
     const soon = !noncash && !external && n >= 0 && n <= 7;
     const chip = noncash ? '<span class="chip">charged</span>'
+      : cardPaid ? '<span class="chip">card reserve</span>'
       : external ? '<span class="chip">external</span>'
       : `<span class="chip ${soon ? 'w' : 'e'}">${dueWord(n)}</span>`;
     const kind = e.kind === 'commitment' ? ' <span class="chip">commitment</span>'
       : noncash ? ' <span class="chip">non-cash</span>'
+      : cardPaid ? ' <span class="chip">card-paid reserve</span>'
       : external ? ' <span class="chip">not joint-cash</span>' : '';
     const amount = (noncash || external) ? Math.abs(e.amount) : -e.amount;
-    const note = noteFor(e.id) || (noncash ? 'No cash leaves' : 'Due');
+    const note = noteFor(e.id) || (noncash ? 'No cash leaves' : cardPaid ? 'Card-paid reserve' : 'Due');
     const payer = external ? externalPayerLabel(d.plan, e) : '';
     const status = noncash
       ? '<strong>No cash leaves</strong> — '
-      : external
+      : cardPaid
+        ? '<strong>Card-paid reserve — reduces projected joint cash</strong>'
+          + (noteFor(e.id) ? ' — ' : '')
+        : external
         ? '<strong>Household obligation — paid from ' + payer + ', not joint-cash</strong>'
           + (noteFor(e.id) ? ' — ' : '')
         : '';
-    const detail = external ? (noteFor(e.id) || '') : note;
+    const detail = (external || cardPaid) ? (noteFor(e.id) || '') : note;
     return `
     <tr class="${noncash || external ? '' : soon ? 'soon' : ''}">
       <td>${fmtDate(e.date)} ${chip}</td>

@@ -885,7 +885,7 @@
         .reduce((s, e) => s + e.amount, 0);
       copy.injections = weekEvents.filter(e => e.kind === 'injection').reduce((s, e) => s + e.amount, 0);
       copy.obligations = weekEvents.filter(e => e.kind === 'obligation').reduce((s, e) => s + -e.amount, 0);
-      copy.bills = weekEvents.filter(e => e.kind === 'bill' && e.jointCash !== false)
+      copy.bills = weekEvents.filter(e => e.kind === 'bill' && e.jointCash !== false && !e.cardPaid)
         .reduce((s, e) => s + -e.amount, 0);
       copy.noncash = weekEvents.filter(e => e.kind === 'noncash').reduce((s, e) => s + -e.amount, 0);
       copy.commitments = weekEvents.filter(e => e.kind === 'commitment').reduce((s, e) => s + -e.amount, 0);
@@ -901,9 +901,11 @@
           .reduce((n, e) => n + e.amount, 0);
         return s + Math.max(0, prev + eventNet - p.balance);
       }, 0);
-      // Residual is weekly-cap variable plus undated current-regime reserve.
-      // Keep them apart so a sliced Budget column is still the cap.
-      copy.reserved = currentRegimeMonthly(plan) * 12 / 365.25 * weekDays.length;
+      // Residual is weekly-cap variable plus reserved current-regime cash
+      // (undated daily smear and dated card-paid planning days). Keep them
+      // apart so a sliced Budget column is still the cap.
+      copy.reserved = currentRegimeMonthly(plan) * 12 / 365.25 * weekDays.length
+        + cardPaidReservedIn(weekEvents, copy.start, copy.end, walkStart);
       copy.variable = Math.max(0, residual - copy.reserved);
       const low = Math.min(copy.opening, ...weekDays.map(d => d.balance));
       copy.low = low;
@@ -926,7 +928,7 @@
         .reduce((s, e) => s + e.amount, 0),
       injections: events.filter(e => e.kind === 'injection').reduce((s, e) => s + e.amount, 0),
       obligations: events.filter(e => e.kind === 'obligation').reduce((s, e) => s + -e.amount, 0),
-      bills: events.filter(e => e.kind === 'bill' && e.jointCash !== false)
+      bills: events.filter(e => e.kind === 'bill' && e.jointCash !== false && !e.cardPaid)
         .reduce((s, e) => s + -e.amount, 0),
       noncash: events.filter(e => e.kind === 'noncash').reduce((s, e) => s + -e.amount, 0),
       commitments: events.filter(e => e.kind === 'commitment').reduce((s, e) => s + -e.amount, 0),
@@ -942,7 +944,8 @@
         .reduce((n, e) => n + e.amount, 0);
       return s + Math.max(0, prev + eventNet - p.balance);
     }, 0);
-    totals.reserved = currentRegimeMonthly(plan) * 12 / 365.25 * daily.length;
+    totals.reserved = currentRegimeMonthly(plan) * 12 / 365.25 * daily.length
+      + cardPaidReservedIn(events, start, end, walkStart);
     totals.variable = Math.max(0, residual - totals.reserved);
     totals.income = totals.confirmedIncome + totals.estimatedIncome;
     const ending = daily[daily.length - 1].balance;
@@ -976,7 +979,8 @@
         // Same retained-day identity as sliceSimulationFrom: a midweek
         // 1-day/month/payday/custom cut must not keep a full 7-day reserve.
         const weekDays = daily.filter(d => d.date >= copy.start && d.date <= copy.end);
-        copy.reserved = currentRegimeMonthly(plan) * 12 / 365.25 * weekDays.length;
+        copy.reserved = currentRegimeMonthly(plan) * 12 / 365.25 * weekDays.length
+          + cardPaidReservedIn(copy.events, copy.start, copy.end, asOf);
       }
       return copy;
     });
@@ -1032,17 +1036,45 @@
   }
 
   // Joint-cash deduction is a separate fact from household obligation.
-  // Only a payer POSITIVELY on `plan.startingCash.heldElsewhere` is known
-  // to sit outside the joint pool. No payingAccount, a breakdown payer,
-  // or an unknown/typo id fail closed and still deduct. That does not
-  // invent an account registry or treat held-elsewhere cash as spendable.
+  // Held-elsewhere payers sit outside the joint pool. A card-paid dated
+  // bill — payingAccount is a known obligation debtId, or explicit
+  // jointCash: false that is not held-elsewhere — also does not deduct
+  // chequing. No payingAccount, a breakdown payer, or an unknown/typo id
+  // fail closed and still deduct. That does not invent an account
+  // registry or treat held-elsewhere cash as spendable.
+  function billIsHeldElsewhere(bill, plan) {
+    if (!bill || !bill.payingAccount) return false;
+    const cash = (plan && plan.startingCash) || {};
+    return (cash.heldElsewhere || []).some(r => r && r.id === bill.payingAccount);
+  }
+  function billPaysFromKnownDebt(bill, plan) {
+    if (!bill || !bill.payingAccount) return false;
+    return ((plan && plan.obligations) || []).some(o => o && o.debtId === bill.payingAccount);
+  }
+  function isCardPaidBill(bill, plan) {
+    if (!bill || !billIsHouseholdObligation(bill)) return false;
+    if (billIsHeldElsewhere(bill, plan)) return false;
+    if (bill.jointCash === false) return true;
+    return billPaysFromKnownDebt(bill, plan);
+  }
   function billAffectsJointCash(bill, plan) {
     if (!billIsHouseholdObligation(bill)) return false;
+    if (isCardPaidBill(bill, plan)) return false;
     if (!bill.payingAccount) return true;
     const cash = (plan && plan.startingCash) || {};
     if ((cash.breakdown || []).some(r => r.id === bill.payingAccount)) return true;
     if ((cash.heldElsewhere || []).some(r => r.id === bill.payingAccount)) return false;
     return true;
+  }
+  function cardPaidReservedIn(events, start, end, walkStart) {
+    return (events || []).reduce((sum, e) => {
+      if (!e || !e.cardPaid) return sum;
+      const apply = cashWalkDate(e, walkStart || e.date);
+      if (start && apply < start) return sum;
+      if (end && apply > end) return sum;
+      const amt = -Number(e.amount);
+      return sum + (isFinite(amt) ? amt : 0);
+    }, 0);
   }
 
   // A later trusted posting may resolve an exact once outflow that remains
@@ -1183,12 +1215,14 @@
       if (b.needsDate) continue;
       for (const date of outflowDates(b, start, end)) {
         const jointCash = billAffectsJointCash(b, plan);
+        const cardPaid = isCardPaidBill(b, plan);
         events.push({
           date, amount: -b.amount, kind: 'bill', label: b.label, id: b.id,
           confidence: b.confidence,
           householdObligation: true,
           payingAccount: b.payingAccount || null,
           jointCash,
+          cardPaid,
         });
       }
     }
@@ -1357,6 +1391,16 @@
       const todays = byDate.get(date) || [];
       for (const e of todays) {
         if (e.kind === 'noncash') { week.noncash += -e.amount; week.events.push(e); continue; }
+        // Card-paid dated service: planning gravity on the reserved
+        // ledger for that day, not a chequing bill and not a card
+        // capitalisation. Travel Visa settlement stays a separate
+        // payment obligation.
+        if (e.cardPaid) {
+          balance += e.amount;
+          week.reserved += -e.amount;
+          week.events.push(e);
+          continue;
+        }
         // Household obligation paid outside the joint-cash pool: still on
         // the schedule (week.events) so it does not disappear, but it is
         // not deducted from joint cash and is not a week.bills cash total.
@@ -3512,7 +3556,7 @@
     let sum = 0;
     for (const e of events || []) {
       if (!e || !e.date || e.date < start || e.date > end) continue;
-      if (!isJointCashOutflow(e)) continue;
+      if (!isJointCashOutflow(e) && !e.cardPaid) continue;
       if (e.kind !== 'obligation' && e.kind !== 'bill' && e.kind !== 'commitment') continue;
       if (e.id && skipOnce.has(e.id)) continue;
       const amt = -e.amount;
@@ -3563,7 +3607,7 @@
         });
         continue;
       }
-      if (!isJointCashOutflow(e)) continue;
+      if (!isJointCashOutflow(e) && !e.cardPaid) continue;
       if (e.kind !== 'obligation' && e.kind !== 'bill' && e.kind !== 'commitment') continue;
       if (e.id && skipOnce.has(e.id)) continue;
       const amt = -e.amount;
@@ -3927,12 +3971,14 @@
       remaining,
       settlement,
       status,
+      cardPaid: event.cardPaid === true,
       glanceKind: status === 'PAID' ? 'paid' : 'still-due',
       movement: householdMovement(display, 'out'),
       confidence: event.confidence || null,
       payingAccount,
       payerLabel: plannedPayerLabel(payingAccount),
       needsDate: false,
+      cardPaid: event.cardPaid === true,
     };
   }
 
@@ -3964,7 +4010,7 @@
       if (event.kind === 'income' || event.kind === 'noncash') continue;
       if (event.kind !== 'obligation' && event.kind !== 'bill') continue;
       if (event.kind === 'obligation' && event.effect === 'capitalise') continue;
-      if (event.jointCash === false) continue;
+      if (event.jointCash === false && !event.cardPaid) continue;
       // expandEvents may carry an unpaid once row into a later window.
       // Printed payday windows use the scheduled due, not the posting-window
       // date, so a 15 August bill reserved on the 16th stays on 15 August.
@@ -5332,7 +5378,7 @@
     const periodEvents = expandEvents(plan, asOf, periodLast, opts);
     const obligationKeys = new Set();
     for (const e of periodEvents) {
-      if (!isJointCashOutflow(e)) continue;
+      if (!isJointCashOutflow(e) && !e.cardPaid) continue;
       if (e.kind === 'extra' || e.kind === 'injection' || e.kind === 'planned-debt') continue;
       if (e.kind !== 'obligation' && e.kind !== 'bill' && e.kind !== 'commitment') continue;
       const amt = -e.amount;
@@ -5347,6 +5393,7 @@
         date: e.date,
         amount: roundCent(amt),
         confidence: e.confidence || null,
+        cardPaid: e.cardPaid === true,
         // Settlement is expandEvents / representedEvents: a represented
         // occurrence is omitted above, not labelled unpaid. A past scheduled
         // date without that evidence is unverified, not confirmed unpaid.
@@ -6521,7 +6568,8 @@
   //   ESSENTIAL   normal life that has no reliable date — groceries, fuel,
   //               phones. Owner-target and historical essential remainders
   //               come out of the weekly cap FIRST. Undated current-regime
-  //               (card-paid Bell) is reserved on the cash walk instead.
+  //               is reserved daily; dated card-paid services (Bell on the
+  //               15th) are reserved on the planning day instead.
 
   //   DISCRETIONARY  dining, shopping, entertainment. What is left of the cap.
   //
@@ -6562,8 +6610,8 @@
       datedByCategory[cat].items.push({ label, amount, kind });
     };
     for (const b of plan.bills || []) {
-      if (!billAffectsJointCash(b, plan)) continue;
       if (b.needsDate) continue;
+      if (!billAffectsJointCash(b, plan) && !isCardPaidBill(b, plan)) continue;
       addDated(b.budgetCategory, billMonthly(b), b.label, 'bill');
     }
     // A dated commitment is NOT automatically a draw against the recurring
@@ -6601,14 +6649,24 @@
       const target = ownerTargetMonthly(c);
       // currentMonthly is the undated current-regime amount — services
       // already on the calendar stay in dated and are not added again.
-      // simulate() reserves that amount as daily cash, so it is accounted
-      // and does not also sit in the weekly-cap remainder. This is not a
-      // spending-intent target and not a second bill engine.
-      const current = c.currentMonthly != null ? c.currentMonthly : null;
+      // Dated card-paid bills are also current-regime: they occupy dated
+      // so historical Telus cannot re-enter the cap, and simulate()
+      // reserves them on the planning day instead of a daily smear.
+      // This is not a spending-intent target and not a second bill engine.
+      const undatedCurrent = c.currentMonthly != null ? Number(c.currentMonthly) : null;
+      const cardPaidMonthly = ((plan && plan.bills) || []).reduce((sum, b) => {
+        if (!b || b.needsDate || b.budgetCategory !== c.id) return sum;
+        if (!isCardPaidBill(b, plan)) return sum;
+        return sum + billMonthly(b);
+      }, 0);
+      const current = undatedCurrent != null ? undatedCurrent
+        : cardPaidMonthly > 0 ? cardPaidMonthly
+        : null;
+      const regime = current != null;
       const gross = target != null ? target
-        : current != null ? current + dated.total
+        : regime ? (undatedCurrent || 0) + dated.total
         : historical;
-      const reserved = target == null && current != null ? current : 0;
+      const reserved = target == null && undatedCurrent != null ? undatedCurrent : 0;
       const planned = Math.max(0, gross - dated.total - reserved);
       const sinkingHere = sinking.items.filter(s => s.category === c.id)
         .reduce((a, s) => a + s.amount, 0);
@@ -6632,7 +6690,7 @@
         // current authority and nothing extra belongs in the weekly cap.
         fullyDated: dated.total > 0 && gross - dated.total <= 0,
         source: target != null ? 'owner-target'
-          : current != null ? 'current-regime'
+          : regime ? 'current-regime'
           : 'historical-actual',
       });
     });
@@ -8735,7 +8793,7 @@
     };
   }
 
-  const Forecast = { HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, billIsHouseholdObligation, billAffectsJointCash, carriedOnceJointCashOutflow, prepaidJointCashOutflow, expandEvents, simulate,
+  const Forecast = { HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, billIsHouseholdObligation, billAffectsJointCash, isCardPaidBill, carriedOnceJointCashOutflow, prepaidJointCashOutflow, expandEvents, simulate,
     knowledgeHorizon, viewRange, commitmentNeed, fundingSequence, majorPlans, plannedDebt, debtPriority, paydayAllocation,
     classifyCurrentPeriodTransaction, paydayPeriodOrigin, currentPeriodObligationStates, currentPeriodAction,
     spendingCycle,

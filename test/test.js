@@ -133,6 +133,7 @@ const suites = [
   ['2026-09-03 card-charge evidence intake', 'test-card-charge-evidence-2026-09-03.js'],
   ['telecom current-regime closeout', 'test-telecom-current-regime.js'],
   ['Bell card-paid baseline gravity', 'test-bell-card-paid.js'],
+  ['Bell dated mid-month planning', 'test-bell-dated-planning.js'],
   ['HELOC Q19 + Bell Q18 evidence closeout', 'test-q19-q18-closeout.js'],
   ['Q1 planning policy (2026-08-29 coaching gravy)', 'test-q1-planning-policy.js'],
   ['major future costs on the master plan', 'test-major-future-costs.js'],

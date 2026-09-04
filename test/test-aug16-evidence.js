@@ -288,11 +288,13 @@ console.log('\n=== 12–13. Burrards registrations settled; ~$700 team fees rema
 
 console.log('\n=== 14–15. Bell baseline is not $356.62; pending $250 is not double-counted ===');
 {
-  ok((plan.bills || []).some(b => b.id === 'bell' && b.needsDate === true && b.day == null),
-    'Bell is undated / needs confirmation, not a dated joint-cash bill');
-  ok(!(plan.bills || []).some(b => !b.needsDate && (near(b.amount, 356.62)
-      || near(b.amount, 104.20) || near(b.amount, 16.80) || near(b.amount, 121))),
-    'neither $356.62, $104.20, $16.80, nor $121 is a dated cash bill');
+  ok((plan.bills || []).some(b => b.id === 'bell' && b.day === 15
+      && b.needsDate !== true && near(b.amount, 121)
+      && b.payingAccount === 'travelvisa' && b.jointCash === false),
+    'Bell is dated $121 card-paid on the 15th, not a joint-cash bill');
+  ok(!(plan.bills || []).some(b => near(b.amount, 356.62)
+      || near(b.amount, 104.20) || near(b.amount, 16.80)),
+    'neither $356.62, $104.20, nor $16.80 is a separate cash bill');
   const facts = fs.readFileSync(path.join(__dirname, '..', 'docs/ACCOUNT_FACTS.md'), 'utf8');
   ok(/\$356\.62/.test(facts) && /104\.20/.test(facts),
     'ACCOUNT_FACTS records the Aug bill and the June baseline separately');

@@ -4,7 +4,8 @@
 const F = require('../public/forecast.js');
 const data = require('../data.json');
 const {
-  burrardDue, currentRegimeReservedDaily, openingFloor, gapAtBuffer, cashOnDate, streamTotal,
+  burrardDue, currentRegimeReservedDaily, cardPaidReservedTotal, cardPaidReservedOnDate,
+  openingFloor, gapAtBuffer, cashOnDate, streamTotal,
 } = require('./test-helpers');
 
 let failures = 0;
@@ -179,13 +180,14 @@ const wantCommit = (plan.commitments || [])
   .reduce((s, c) => s + c.amount, 0);
 ok(near(expected.totals.commitments, wantCommit), '90-day commitments', expected.totals.commitments.toFixed(2));
 ok(expected.weeks.length === 13, '13 weeks');
-const reservedOverWindow = currentRegimeReservedDaily(plan) * expected.daily.length;
+const reservedOverWindow = currentRegimeReservedDaily(plan) * expected.daily.length
+  + cardPaidReservedTotal(plan, asOf, windowEnd, F.occurrences);
 ok(near(expected.ending,
   F.startingCashAmount(plan) + expected.totals.income - expected.totals.obligations
   - expected.totals.bills - expected.totals.commitments - reservedOverWindow),
   'ledger identity holds', expected.ending.toFixed(2));
 ok(near(expected.totals.reserved, reservedOverWindow) && near(expected.totals.variable, 0),
-  'undated current-regime is the reserved total, not the weekly-cap variable column',
+  'current-regime reserved is the reserved total, not the weekly-cap variable column',
   expected.totals.reserved.toFixed(2));
 
 // The Burrard pair is atomic: same day, same amount, all or nothing. If a
@@ -212,8 +214,9 @@ const openingNet = expected.events
   .filter(e => e.date <= asOf && e.kind !== 'noncash' && e.jointCash !== false)
   .reduce((s, e) => s + e.amount, 0);
 ok(near(expected.daily[0].balance,
-  spendableSum + openingNet - currentRegimeReservedDaily(plan)),
-  'day-0 close is opening cash plus joint-cash events that bind at this opening, minus reserved current-regime daily cash',
+  spendableSum + openingNet - currentRegimeReservedDaily(plan)
+    - cardPaidReservedOnDate(plan, asOf, F.occurrences)),
+  'day-0 close is opening cash plus joint-cash events that bind at this opening, minus reserved current-regime cash that day',
   expected.daily[0].balance.toFixed(2));
 ok(plan.income.filter(s => /tennis bc/i.test(s.label)).map(s => s.id).sort().join(',')
     === 'amandaSalary15,amandaSalaryMonthEnd',
