@@ -46,8 +46,13 @@ ok(/Every row below is something the household would read differently/.test(brok
 console.log('\n=== snapshot authority is Plan, Credit, and Planning ===');
 ok(/household could read it off the[\s\S]{0,40}Plan, Credit, or Planning/.test(snapshotSrc),
   'figures-snapshot.js owns Plan, Credit, and Planning membership');
-ok(!/deepdive|records|modellers/i.test(snapshotSrc.split('Output is a flat')[0]),
-  'snapshot header does not add Deep Dive, Records, or Modellers');
+{
+  const header = snapshotSrc.split('Output is a flat')[0];
+  ok(/Deep Dive, Records,[\s\S]{0,40}Modellers remain outside/.test(header),
+    'snapshot header names Deep Dive, Records, and Modellers only as outside');
+  ok(!/covers Deep Dive|including Deep Dive|off the Deep Dive/i.test(header),
+    'snapshot header does not claim those pages are in the snapshot');
+}
 
 console.log('\n=== workflow uses the helper; overclaim is gone ===');
 ok(/node scripts\/figures-comment\.js/.test(workflow),
@@ -122,17 +127,6 @@ try {
   ok(cliMoved === moved,
     'CLI stdout for a moved snapshot figure is exactly formatFiguresComment');
 
-console.log('\n=== a Credit rate is not formatted as money ===');
-{
-  const rateBase = { 'credit.triangle.rate': 21.99, weekly: 920 };
-  const rateHead = { 'credit.triangle.rate': 22.99, weekly: 920 };
-  const rateMoved = formatFiguresComment(rateBase, rateHead, 'main');
-  ok(/21\.99%/.test(rateMoved) && /22\.99%/.test(rateMoved),
-    'rate keys print as percents');
-  ok(!/\$21\.99/.test(rateMoved) && !/\$22\.99/.test(rateMoved),
-    'rate keys are not formatted as dollars');
-}
-
   fs.writeFileSync(baseFile, 'null\n');
   fs.writeFileSync(headFile, JSON.stringify(identical));
   const cliIntroduced = execFileSync(process.execPath, [
@@ -145,6 +139,17 @@ console.log('\n=== a Credit rate is not formatted as money ===');
     'CLI stdout for a null base is exactly formatFiguresComment');
 } finally {
   fs.rmSync(tmpDir, { recursive: true, force: true });
+}
+
+console.log('\n=== a Credit rate is not formatted as money ===');
+{
+  const rateBase = { 'credit.triangle.rate': 21.99, weekly: 920 };
+  const rateHead = { 'credit.triangle.rate': 22.99, weekly: 920 };
+  const rateMoved = formatFiguresComment(rateBase, rateHead, 'main');
+  ok(/21\.99%/.test(rateMoved) && /22\.99%/.test(rateMoved),
+    'rate keys print as percents');
+  ok(!/\$21\.99/.test(rateMoved) && !/\$22\.99/.test(rateMoved),
+    'rate keys are not formatted as dollars');
 }
 
 console.log('\n=== privileged posting step does not execute PR JavaScript ===');

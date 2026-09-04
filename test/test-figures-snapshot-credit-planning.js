@@ -155,11 +155,15 @@ function runMainSnapshot() {
     const src = execFileSync('git', ['show', `${MAIN}:scripts/figures-snapshot.js`], {
       encoding: 'utf8', cwd: ROOT,
     });
-    const script = path.join(tmp, 'figures-snapshot.js');
-    fs.writeFileSync(script, src);
-    return JSON.parse(execFileSync(process.execPath, [script], {
-      encoding: 'utf8', cwd: ROOT,
-    }));
+    fs.mkdirSync(path.join(tmp, 'scripts'));
+    fs.mkdirSync(path.join(tmp, 'public'));
+    fs.writeFileSync(path.join(tmp, 'scripts/figures-snapshot.js'), src);
+    fs.symlinkSync(path.join(ROOT, 'public/forecast.js'), path.join(tmp, 'public/forecast.js'));
+    fs.symlinkSync(path.join(ROOT, 'public/periods.json'), path.join(tmp, 'public/periods.json'));
+    fs.symlinkSync(path.join(ROOT, 'data.json'), path.join(tmp, 'data.json'));
+    return JSON.parse(execFileSync(process.execPath, [
+      path.join(tmp, 'scripts/figures-snapshot.js'),
+    ], { encoding: 'utf8', cwd: tmp }));
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
