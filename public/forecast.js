@@ -3921,6 +3921,14 @@
 
   // Optional payday-morning snapshot on the incumbent opening. periodStart
   // and asOf must be that payday; a mid-period cash figure is not accepted.
+  function finiteRecordedOpening(value) {
+    if (typeof value === 'number') return Number.isFinite(value);
+    if (typeof value === 'string' && value.trim() !== '') {
+      return Number.isFinite(Number(value));
+    }
+    return false;
+  }
+
   function paydaySnapshotRecord(plan, opts, periodStart) {
     const snap = (opts && opts.paydaySnapshot)
       || (plan && plan.opening && plan.opening.paydaySnapshot)
@@ -3928,7 +3936,8 @@
     if (!snap || !periodStart) return null;
     if (String(snap.periodStart) !== String(periodStart)) return null;
     if (String(snap.asOf) !== String(periodStart)) return null;
-    if (!Number.isFinite(Number(snap.opening))) return null;
+    // Number(null) and Number('') are 0. A missing opening is not $0.
+    if (!finiteRecordedOpening(snap.opening)) return null;
     return {
       periodStart: String(snap.periodStart),
       asOf: String(snap.asOf),
@@ -3982,14 +3991,6 @@
     if (role !== 'active') {
       return { opening: null, openingKnown: false, openingAsOf: null, source: null };
     }
-    if (asOf === window.start) {
-      return {
-        opening: roundCent(startingCashAmount(plan)),
-        openingKnown: true,
-        openingAsOf: asOf,
-        source: 'payday-morning',
-      };
-    }
     const snap = paydaySnapshotRecord(plan, opts, window.start);
     if (snap) {
       return {
@@ -3997,6 +3998,17 @@
         openingKnown: true,
         openingAsOf: snap.asOf,
         source: 'snapshot',
+      };
+    }
+    // Same calendar date is not payday-morning cash once live overlay has
+    // already advanced the opening. Prefer a recorded snapshot above; without
+    // one, fail closed rather than freezing post-event live cash.
+    if (asOf === window.start && !liveOpeningAdvanced(plan, asOf)) {
+      return {
+        opening: roundCent(startingCashAmount(plan)),
+        openingKnown: true,
+        openingAsOf: asOf,
+        source: 'payday-morning',
       };
     }
     if (!liveOpeningAdvanced(plan, asOf) && plan && plan.opening && plan.opening.asOf === asOf) {
@@ -4746,9 +4758,11 @@
   // before the next, then the next payday through the day before the
   // following one. Leftover is this printout's chain: it does not replace
   // paydayAllocation, and it does not rewrite live Current Balance.
-  // The active period opens from the payday snapshot (payday-morning
-  // cash, a recorded paydaySnapshot, or a non-live cutover opening),
-  // never from today's live posted cash merely because that cash moved.
+  // The active period opens from a recorded paydaySnapshot first, else
+  // payday-morning cash only when as-of is that payday and live overlay
+  // has not already advanced, else a non-live cutover opening — never
+  // from today's live posted cash merely because that cash moved, even
+  // when the live as-of is the payday calendar date.
   // Balance after payday is that frozen opening plus period income not
   // already inside that opening. Received-vs-live is settlement status
   // and does not drop an income row from the snapshot. The next period

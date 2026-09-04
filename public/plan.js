@@ -1829,7 +1829,7 @@ function calendarIncomeHtml(period) {
     </div>`;
   }).join('');
   const added = period && period.incomeAdded != null && Number(period.incomeAdded) > 0
-    ? `<p class="payday-qual payday-total"><span>Still arriving</span><span>${money2(period.incomeAdded)}</span></p>`
+    ? `<p class="payday-qual payday-total"><span>Assigned income</span><span>${money2(period.incomeAdded)}</span></p>`
     : '';
   return `<div class="payday-period-income" data-calendar-income>
     <div class="operating-lines">${lines}</div>

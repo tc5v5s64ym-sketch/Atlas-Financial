@@ -350,6 +350,121 @@ console.log('\n=== 6. Default Plan visually separates live cash from the payday 
     'live glance prints Forecast liveCurrentBalance and does not invent arithmetic');
 }
 
+console.log('\n=== 7. Payday-day live refresh prefers the recorded snapshot ===');
+{
+  const sameDayLive = 2750;
+  const priorOpeningDate = '2026-08-19';
+  const withSnap = basePlan({
+    startingCash: { amount: sameDayLive },
+    opening: {
+      asOf: PAYDAY,
+      priorAsOf: priorOpeningDate,
+      paydaySnapshot: { periodStart: PAYDAY, asOf: PAYDAY, opening: OPENING },
+      representedEvents: [],
+    },
+  });
+  const withAdvice = recommend(withSnap, PAYDAY);
+  const withActive = period(withAdvice.defaultView, 'this-pay-period');
+  const independentAfter = roundCent(OPENING + PERIOD_INCOME);
+  ok(near(withAdvice.defaultView.liveCurrentBalance, sameDayLive),
+    'payday-day live Current Balance follows post-event provider cash');
+  ok(withActive.openingSource === 'snapshot'
+      && near(withActive.opening, OPENING)
+      && !near(withActive.opening, sameDayLive),
+    'recorded payday snapshot wins over same-calendar-day live cash');
+  ok(near(withActive.available, independentAfter)
+      && near(withActive.available, roundCent(withActive.opening + withActive.incomeAdded)),
+    'independent opening + Dale + Amanda still equals Balance after payday');
+  ok(withActive.openingSource !== 'payday-morning',
+    'live-advanced payday cash is not labelled payday-morning');
+
+  const noSnap = basePlan({
+    startingCash: { amount: sameDayLive },
+    opening: {
+      asOf: PAYDAY,
+      priorAsOf: priorOpeningDate,
+      representedEvents: [],
+    },
+  });
+  const closed = recommend(noSnap, PAYDAY);
+  const closedActive = period(closed.defaultView, 'this-pay-period');
+  ok(near(closed.defaultView.liveCurrentBalance, sameDayLive),
+    'payday-day fail-closed still publishes live Current Balance');
+  ok(closedActive.openingKnown !== true && closedActive.opening == null
+      && closedActive.available == null && closedActive.incomeAdded == null,
+    'live-advanced payday without a snapshot fails closed instead of freezing live cash');
+}
+
+console.log('\n=== 8. Null or empty snapshot openings fail closed ===');
+{
+  const laterLive = LIVE_LATER;
+  const cases = [
+    ['null', null],
+    ['empty string', ''],
+    ['whitespace', '   '],
+    ['non-numeric', 'unknown'],
+  ];
+  for (const [label, opening] of cases) {
+    const plan = basePlan({
+      startingCash: { amount: laterLive },
+      opening: {
+        asOf: MID,
+        priorAsOf: PAYDAY,
+        paydaySnapshot: { periodStart: PAYDAY, asOf: PAYDAY, opening },
+        representedEvents: [],
+      },
+    });
+    const advice = recommend(plan, MID);
+    const active = period(advice.defaultView, 'this-pay-period');
+    ok(near(advice.defaultView.liveCurrentBalance, laterLive),
+      label + ': live Current Balance still publishes');
+    ok(active.openingKnown !== true && active.opening == null
+        && active.available == null,
+      label + ': incomplete snapshot fails closed instead of $0');
+    ok(active.opening !== 0 && !near(active.available, PERIOD_INCOME),
+      label + ': does not publish invented $0 opening or income-only Balance after payday');
+  }
+
+  const zeroSnap = basePlan({
+    startingCash: { amount: laterLive },
+    opening: {
+      asOf: MID,
+      priorAsOf: PAYDAY,
+      paydaySnapshot: { periodStart: PAYDAY, asOf: PAYDAY, opening: 0 },
+      representedEvents: [],
+    },
+  });
+  const zeroAdvice = recommend(zeroSnap, MID);
+  const zeroActive = period(zeroAdvice.defaultView, 'this-pay-period');
+  const independentZeroAfter = roundCent(0 + PERIOD_INCOME);
+  ok(zeroActive.openingKnown === true && near(zeroActive.opening, 0)
+      && near(zeroActive.available, independentZeroAfter),
+    'a recorded numeric $0 opening remains a known snapshot, not a rejected null');
+}
+
+console.log('\n=== 9. Income footer does not call received snapshot income still arriving ===');
+{
+  const laterPlan = basePlan({
+    startingCash: { amount: LIVE_LATER },
+    opening: {
+      asOf: MID,
+      priorAsOf: PAYDAY,
+      paydaySnapshot: { periodStart: PAYDAY, asOf: PAYDAY, opening: OPENING },
+      representedEvents: [],
+    },
+  });
+  const advice = recommend(laterPlan, MID);
+  const active = period(advice.defaultView, 'this-pay-period');
+  const html = composer.calendarWaterfallHtml(active, null, advice.paydayAllocation);
+  ok(near(active.incomeAdded, PERIOD_INCOME)
+      && (active.income || []).some(r => r && r.id === 'payroll' && r.alreadyInCash === true),
+    'mid-period snapshot still includes received payday income in incomeAdded');
+  ok(/Assigned income/.test(html) && html.includes(composer.money2(PERIOD_INCOME)),
+    'income footer prints assigned snapshot income, not a settlement claim');
+  ok(!/Still arriving/.test(html),
+    'received payday income in the frozen snapshot is not labelled Still arriving');
+}
+
 if (failures) {
   console.log(`\nFAILED ${failures}`);
   process.exit(1);
