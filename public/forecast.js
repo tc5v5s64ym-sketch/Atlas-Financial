@@ -3948,11 +3948,16 @@
   // Income already inside the payday-opening cash, not income already
   // inside today's live bank balance. Received-vs-live is settlement
   // status; it must not erase a pay-period income row from the snapshot.
-  function incomeAlreadyInPaydayOpening(row, openingAsOf, plan, opts) {
+  // A recorded paydaySnapshot's opening is that frozen morning figure.
+  // Live overlay representedEvents prove settlement against today's
+  // cash and must not treat snapshot-period income as already inside
+  // that recorded opening.
+  function incomeAlreadyInPaydayOpening(row, openingAsOf, plan, opts, openingSource) {
     if (!row || !openingAsOf) return false;
     if (row.notReliedUpon === true || row.settlement === 'not-relied-upon') return false;
     if (row.date && row.date < openingAsOf) return true;
     if (row.date === openingAsOf) {
+      if (openingSource === 'snapshot') return false;
       const represented = representedKeySet(plan, opts, openingAsOf);
       const key = (row.id || '') + '@' + row.date;
       if (row.id && represented.has(key)) return true;
@@ -4884,7 +4889,9 @@
         if (role === 'future') {
           row.alreadyInCash = false;
           incomeAdded += Number(row.amount) || 0;
-        } else if (openingKnown && !incomeAlreadyInPaydayOpening(row, openingAsOf, plan, opts)) {
+        } else if (openingKnown && !incomeAlreadyInPaydayOpening(
+          row, openingAsOf, plan, opts, openingSource
+        )) {
           incomeAdded += Number(row.amount) || 0;
         }
       }

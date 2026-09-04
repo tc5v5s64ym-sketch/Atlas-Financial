@@ -465,6 +465,38 @@ console.log('\n=== 9. Income footer does not call received snapshot income still
     'received payday income in the frozen snapshot is not labelled Still arriving');
 }
 
+console.log('\n=== 10. Live representedEvents do not drop snapshot income ===');
+{
+  const sameDayLive = 2750;
+  const plan = basePlan({
+    startingCash: { amount: sameDayLive },
+    opening: {
+      asOf: PAYDAY,
+      priorAsOf: '2026-08-19',
+      paydaySnapshot: { periodStart: PAYDAY, asOf: PAYDAY, opening: OPENING },
+      representedEvents: [
+        { id: 'payroll', date: PAYDAY },
+        { id: 'amandaPayday', date: PAYDAY },
+      ],
+    },
+  });
+  const advice = recommend(plan, PAYDAY);
+  const active = period(advice.defaultView, 'this-pay-period');
+  const independentAfter = roundCent(OPENING + PERIOD_INCOME);
+  ok(near(advice.defaultView.liveCurrentBalance, sameDayLive),
+    'live Current Balance is post-event cash that already contains the paycheques');
+  ok(active.openingSource === 'snapshot' && near(active.opening, OPENING),
+    'recorded payday snapshot still wins over live-advanced payday cash');
+  ok(near(active.incomeAdded, PERIOD_INCOME)
+      && (active.income || []).some(r => r && r.id === 'payroll'),
+    'live representedEvents do not erase payday income from the frozen snapshot');
+  ok(near(active.available, independentAfter)
+      && near(active.available, roundCent(active.opening + active.incomeAdded))
+      && !near(active.available, OPENING)
+      && !near(active.available, sameDayLive),
+    'Balance after payday stays opening + period income, not the pre-income snapshot alone');
+}
+
 if (failures) {
   console.log(`\nFAILED ${failures}`);
   process.exit(1);
