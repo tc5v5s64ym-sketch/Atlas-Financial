@@ -300,10 +300,11 @@ console.log('\n=== 6. Fail-closed date and dated opening stay honest ===');
     fetchedAt: '2026-09-04T18:00:00.000Z',
     observedAsOf: '2026-09-03',
   }) == null, 'untrusted overlay does not publish a provider date');
-  ok(composer.providerBalanceDate({
+  const disagreeingOverlay = {
     applied: true,
     operatingPlan: 'live',
     fetchedAt: '2026-09-04T18:00:00.000Z',
+    observedAsOf: '2026-09-04',
     observedCash: {
       complete: true,
       accounts: [
@@ -311,7 +312,35 @@ console.log('\n=== 6. Fail-closed date and dated opening stay honest ===');
         { id: 'chequing-b', evidenceDate: '2026-09-02' },
       ],
     },
-  }) == null, 'disagreeing cash evidence dates fail closed');
+  };
+  ok(composer.providerBalanceDate(disagreeingOverlay) == null,
+    'disagreeing cash evidence dates fail closed');
+  const undated = composer.glanceUpdatedNote('2026-09-04', disagreeingOverlay);
+  ok(undated === 'Current Balance. Not credit.'
+      && !/Updated/.test(undated) && !/As of/.test(undated)
+      && !/Sep/.test(undated) && !/September/.test(undated),
+    'trusted overlay with disagreeing cash dates prints Current Balance without a date');
+  const disagreeingHtml = composer.calendarWaterfallHtml({
+    id: 'this-pay-period',
+    role: 'active',
+    openingKnown: true,
+    currentBalance: OPENING_CASH,
+    available: OPENING_CASH,
+    income: [],
+    bills: [],
+    householdBudget: [],
+    cashNote: null,
+  }, disagreeingOverlay, {
+    available: OPENING_CASH,
+    cashBasis: { asOf: '2026-09-04' },
+    asOf: '2026-09-04',
+  });
+  ok(/Current Balance\. Not credit\./.test(disagreeingHtml)
+      && !/Updated Sep/.test(disagreeingHtml)
+      && !/Updated September/.test(disagreeingHtml)
+      && !/As of September/.test(disagreeingHtml)
+      && !/Current balance as of/.test(disagreeingHtml),
+    'active waterfall with disagreeing cash dates does not invent a Current Balance date');
   const dated = composer.glanceUpdatedNote('2026-08-19', null);
   ok(/Updated Aug 19/.test(dated) && !/As of/.test(dated),
     'dated opening without provider evidence keeps Updated as-of, and does not invent a live date');

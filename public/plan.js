@@ -825,7 +825,11 @@ function glanceUpdatedNote(asOf, liveOverlay) {
   if (providerDate) {
     return `Current Balance. Not credit. As of ${fmtDateLong(providerDate)}.`;
   }
-  if (!asOf) return 'Current Balance. Not credit.';
+  const overlayTrusted = !!(liveOverlay && liveOverlay.applied === true
+    && liveOverlay.operatingPlan !== 'unavailable');
+  // A trusted overlay with no unique provider cash-observation date must not
+  // borrow the Forecast/as-of stamp. That would date an ambiguous balance.
+  if (overlayTrusted || !asOf) return 'Current Balance. Not credit.';
   return `Current Balance. Not credit. Updated ${fmtDate(asOf)}.`;
 }
 
