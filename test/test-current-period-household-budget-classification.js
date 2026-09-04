@@ -1284,13 +1284,17 @@ console.log('\n=== 10. Natural Gas / Other bank fees are bills; Amazon + travelv
       {
         date: '2026-08-31', amount: SHOPIFY_AMT, pending: true, categoryLabel: 'Shopping',
         payee: 'SHOPIFY INC/578523914', originalName: 'SHOPIFY INC/578523914',
-        providerAccountId: '3006', providerTransactionId: 'shop-pend',
+        providerAccountId: '3006', providerTransactionId: 'lm-shop-pend',
+        plaidMetadata: { transaction_id: 'plaid-shop-pend' },
       },
       {
         date: '2026-08-31', amount: SHOPIFY_AMT, pending: false, categoryLabel: 'Shopping',
         payee: 'SHOPIFY INC/578523914', originalName: 'SHOPIFY INC/578523914',
-        providerAccountId: '3006', providerTransactionId: 'shop-post',
-        pendingTransactionId: 'shop-pend',
+        providerAccountId: '3006', providerTransactionId: 'lm-shop-post',
+        plaidMetadata: {
+          transaction_id: 'plaid-shop-post',
+          pending_transaction_id: 'plaid-shop-pend',
+        },
       },
       {
         date: '2026-08-31', amount: OTHER_AMT, pending: false, categoryLabel: 'Gifts',
@@ -1311,7 +1315,7 @@ console.log('\n=== 10. Natural Gas / Other bank fees are bills; Amazon + travelv
       && !shopifyTxs.some(tx => near(tx.amount, SHOPIFY_AMT) && tx.pending === true)
       && shopifyOther && near(shopifyOther.spent, roundCent(SHOPIFY_AMT + OTHER_AMT))
       && near(reconSum(shopifyOther), roundCent(SHOPIFY_AMT + OTHER_AMT)),
-    'pending→posted Shopify with explicit pendingTransactionId linkage counts once',
+    'pending→posted Shopify with directed Plaid pending_transaction_id linkage counts once',
     JSON.stringify({ shopifyIds, spent: shopifyOther && shopifyOther.spent }));
 
   const observeSrc = sourceText(fs.readFileSync(path.join(__dirname, '..', 'scripts/provider-observe.js'), 'utf8'));
@@ -1534,6 +1538,144 @@ console.log('\n=== 10. Natural Gas / Other bank fees are bills; Amazon + travelv
       && !near(genericAmanda.spent, 19.14)
       && !(genericOther && (genericOther.recon || []).some(row => near(row.amount, 19.14))),
     'posted $19.14 + pending $19.14 Amazon Travel Visa stay visible on Amanda, flagged possible duplicate, and Spent remains $38.28');
+
+  const PLAID_PENDING_AMT = 100.00;
+  const PLAID_POSTED_AMT = 97.50;
+  const PLAID_UNRELATED_AMT = 42.00;
+  const PLAID_SETTLED_TOTAL = roundCent(PLAID_POSTED_AMT + PLAID_UNRELATED_AMT);
+  ok(near(PLAID_SETTLED_TOTAL, 139.50)
+      && near(roundCent(PLAID_PENDING_AMT + PLAID_POSTED_AMT + PLAID_UNRELATED_AMT), 239.50),
+    'independent fixture arithmetic: settled Plaid pair $97.50+$42.00=$139.50; double-count would be $239.50');
+
+  const plaidLinked = O.sanitizedCurrentPeriodActuals({
+    fetchedAt: '2026-09-02T18:13:00.000Z',
+    transactionWindow: { startDate: '2026-08-28', endDate: '2026-09-02', complete: true },
+    pendingCoverage: {
+      complete: true, basis: O.PENDING_COVERAGE_BASIS, hasMore: false, truncated: false,
+    },
+    collapsedTransactions: [
+      {
+        date: '2026-08-31', amount: PLAID_PENDING_AMT, pending: true, categoryLabel: 'Shopping',
+        payee: 'AMZN Mktp CA', originalName: 'AMZN Mktp CA',
+        providerAccountId: '3006', providerTransactionId: 'lm-pending-101',
+        plaidMetadata: { transaction_id: 'plaid-pending-abc' },
+      },
+      {
+        date: '2026-08-31', amount: PLAID_POSTED_AMT, pending: false, categoryLabel: 'Shopping',
+        payee: 'AMZN Mktp CA', originalName: 'AMZN Mktp CA',
+        providerAccountId: '3006', providerTransactionId: 'lm-posted-202',
+        plaidMetadata: {
+          transaction_id: 'plaid-posted-def',
+          pending_transaction_id: 'plaid-pending-abc',
+        },
+      },
+      {
+        date: '2026-08-31', amount: PLAID_UNRELATED_AMT, pending: false, categoryLabel: 'Gifts',
+        payee: 'Gift Shop', originalName: 'Gift Shop',
+        providerAccountId: '1001', providerTransactionId: 'lm-posted-unrelated',
+      },
+    ],
+    representedEventCandidates: [],
+  }, { asOf: AS_OF, plan, accountMap: map });
+  const plaidTxs = plaidLinked.transactions || [];
+  const plaidBlob = JSON.stringify(plaidLinked);
+  const plaidPacket = actualsPacket(plaidTxs);
+  const plaidAdvice = recommend(plaidPacket);
+  const plaidPeriod = period(plaidAdvice.defaultView, 'this-pay-period');
+  const plaidAmanda = budgetRow(plaidPeriod, 'amanda-guilt-free');
+  const plaidOther = otherRow(plaidPeriod);
+  ok(plaidTxs.filter(tx => near(tx.amount, PLAID_PENDING_AMT) && tx.pending === true).length === 0
+      && plaidTxs.filter(tx => near(tx.amount, PLAID_POSTED_AMT) && tx.pending === false).length === 1
+      && plaidTxs.filter(tx => near(tx.amount, PLAID_UNRELATED_AMT) && tx.pending === false).length === 1,
+    'Plaid-directed pending $100 is replaced; posted $97.50 and unrelated $42.00 remain');
+  ok(plaidAmanda && near(plaidAmanda.spent, PLAID_POSTED_AMT)
+      && plaidOther && near(plaidOther.spent, PLAID_UNRELATED_AMT)
+      && near(householdSpent(plaidPeriod), PLAID_SETTLED_TOTAL)
+      && near(reconSum(plaidAmanda) + reconSum(plaidOther), PLAID_SETTLED_TOTAL)
+      && !near(householdSpent(plaidPeriod), 239.50),
+    'independent household total after Plaid settlement is $139.50, not $239.50');
+  ok(!/plaid-pending-abc|plaid-posted-def|plaid_metadata|plaidTransactionId|pending_transaction_id/.test(plaidBlob)
+      && !/"providerTransactionId"\s*:/.test(plaidBlob)
+      && !/lm-pending-101|lm-posted-202|lm-posted-unrelated/.test(plaidBlob),
+    'Plaid transaction ids, pending_transaction_id, plaid_metadata, and Lunch Money ids stay out of sanitized actuals');
+
+  const falseLmLink = O.sanitizedCurrentPeriodActuals({
+    fetchedAt: '2026-09-02T18:13:00.000Z',
+    transactionWindow: { startDate: '2026-08-28', endDate: '2026-09-02', complete: true },
+    pendingCoverage: {
+      complete: true, basis: O.PENDING_COVERAGE_BASIS, hasMore: false, truncated: false,
+    },
+    collapsedTransactions: [
+      {
+        date: '2026-08-31', amount: 19.14, pending: true, categoryLabel: 'Shopping',
+        payee: 'Amazon', originalName: 'Amazon',
+        providerAccountId: '3006', providerTransactionId: 'shop-pend',
+        pendingTransactionId: null,
+      },
+      {
+        date: '2026-08-31', amount: 19.14, pending: false, categoryLabel: 'Shopping',
+        payee: 'Amazon', originalName: 'Amazon',
+        providerAccountId: '3006', providerTransactionId: 'shop-post',
+        pendingTransactionId: 'shop-pend',
+      },
+    ],
+    representedEventCandidates: [],
+  }, { asOf: AS_OF, plan, accountMap: map });
+  const falseLmTwins = (falseLmLink.transactions || []).filter(tx => near(tx.amount, 19.14));
+  ok(falseLmTwins.length === 2
+      && falseLmTwins.some(tx => tx.pending === true)
+      && falseLmTwins.some(tx => tx.pending === false),
+    'posted pendingTransactionId pointing at a Lunch Money id is not Plaid identity and does not collapse');
+
+  const ambiguousPlaid = O.sanitizedCurrentPeriodActuals({
+    fetchedAt: '2026-09-02T18:13:00.000Z',
+    transactionWindow: { startDate: '2026-08-28', endDate: '2026-09-02', complete: true },
+    pendingCoverage: {
+      complete: true, basis: O.PENDING_COVERAGE_BASIS, hasMore: false, truncated: false,
+    },
+    collapsedTransactions: [
+      {
+        date: '2026-08-31', amount: PLAID_PENDING_AMT, pending: true, categoryLabel: 'Shopping',
+        payee: 'AMZN Mktp CA', originalName: 'AMZN Mktp CA',
+        providerAccountId: '3006', providerTransactionId: 'lm-amb-pend',
+        plaidMetadata: { transaction_id: 'plaid-pending-amb' },
+      },
+      {
+        date: '2026-08-31', amount: 61.00, pending: false, categoryLabel: 'Shopping',
+        payee: 'AMZN Mktp CA', originalName: 'AMZN Mktp CA',
+        providerAccountId: '3006', providerTransactionId: 'lm-amb-post-a',
+        plaidMetadata: {
+          transaction_id: 'plaid-posted-amb-a',
+          pending_transaction_id: 'plaid-pending-amb',
+        },
+      },
+      {
+        date: '2026-08-31', amount: 39.00, pending: false, categoryLabel: 'Shopping',
+        payee: 'AMZN Mktp CA', originalName: 'AMZN Mktp CA',
+        providerAccountId: '3006', providerTransactionId: 'lm-amb-post-b',
+        plaidMetadata: {
+          transaction_id: 'plaid-posted-amb-b',
+          pending_transaction_id: 'plaid-pending-amb',
+        },
+      },
+    ],
+    representedEventCandidates: [],
+  }, { asOf: AS_OF, plan, accountMap: map });
+  const ambTxs = ambiguousPlaid.transactions || [];
+  const ambPending = ambTxs.filter(tx => near(tx.amount, PLAID_PENDING_AMT) && tx.pending === true);
+  const ambPosted = ambTxs.filter(tx => tx.pending === false);
+  const ambPacket = actualsPacket(ambTxs);
+  const ambAdvice = recommend(ambPacket);
+  const ambPeriod = period(ambAdvice.defaultView, 'this-pay-period');
+  const ambAmanda = budgetRow(ambPeriod, 'amanda-guilt-free');
+  const ambIndependent = roundCent(PLAID_PENDING_AMT + 61 + 39);
+  ok(near(ambIndependent, 200),
+    'independent ambiguous total is $100+$61+$39=$200.00');
+  ok(ambPending.length === 1 && ambPosted.length === 2
+      && ambTxs.every(tx => tx.pendingPostedAmbiguous === true)
+      && ambAmanda && near(ambAmanda.spent, ambIndependent)
+      && near(reconSum(ambAmanda), ambIndependent),
+    'two posted rows claiming one pending Plaid id fail closed: pending stays and both posted amounts remain');
 
   const twoPosted = actualsPacket([
     {

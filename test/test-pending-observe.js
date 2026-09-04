@@ -424,6 +424,63 @@ console.log('\n=== B78 identity: pending→posted same providerTransactionId ===
     'both provider records are retained as evidence of the transition');
 }
 
+console.log('\n=== Plaid directed pending→posted uses Plaid ids, not Lunch Money ids ===');
+{
+  const extra = clone(payload);
+  extra.transactions.push({
+    id: 'lm-pending-101',
+    account_id: 3006,
+    date: '2026-08-15',
+    amount: 100.00,
+    payee: 'AMZN Mktp CA',
+    is_pending: true,
+    plaid_metadata: { transaction_id: 'plaid-pending-abc' },
+  });
+  extra.transactions.push({
+    id: 'lm-posted-202',
+    account_id: 3006,
+    date: '2026-08-16',
+    amount: 97.50,
+    payee: 'AMZN Mktp CA',
+    is_pending: false,
+    plaid_metadata: {
+      transaction_id: 'plaid-posted-def',
+      pending_transaction_id: 'plaid-pending-abc',
+    },
+  });
+  extra.transactions.push({
+    id: 'lm-posted-unrelated',
+    account_id: 3006,
+    date: '2026-08-16',
+    amount: 42.00,
+    payee: 'UNRELATED STORE',
+    is_pending: false,
+  });
+  const report = observeWith(extra);
+  const pending = report.observations.find(o => o.observationId === 'lm-3006-pending');
+  const independentPending = PENDING;
+  const independentPostedSpend = Math.round((97.50 + 42.00) * 100) / 100;
+  ok(near(independentPending, 250) && near(independentPostedSpend, 139.50),
+    'independent arithmetic: remaining pending is Bell $250; posted pair is $139.50');
+  ok(pending && near(pending.evidenceValue, independentPending),
+    'linked $100 pending does not remain in Travel Visa pending exposure after Plaid settlement',
+    pending && String(pending.evidenceValue));
+  ok(pending && !pending.components.some(c => c.providerTransactionId === 'lm-pending-101'
+        && c.contributesToCurrentPending),
+    'settled Plaid pending authorization is not a current pending component');
+  const actuals = report.currentPeriodActuals && report.currentPeriodActuals.transactions || [];
+  const actualBlob = JSON.stringify(report.currentPeriodActuals || {});
+  const posted975 = actuals.filter(tx => near(tx.amount, 97.50) && tx.pending !== true);
+  const posted42 = actuals.filter(tx => near(tx.amount, 42.00) && tx.pending !== true);
+  const leftoverPending100 = actuals.filter(tx => near(tx.amount, 100) && tx.pending === true);
+  ok(posted975.length === 1 && posted42.length === 1 && leftoverPending100.length === 0,
+    'sanitized actuals keep posted $97.50 and $42.00 and drop the linked pending $100');
+  ok(!/plaid-pending-abc|plaid-posted-def|plaid_metadata|plaidTransactionId|pending_transaction_id/.test(actualBlob)
+      && !/"providerTransactionId"\s*:/.test(actualBlob)
+      && !/lm-pending-101|lm-posted-202/.test(actualBlob),
+    'Plaid and Lunch Money provider ids do not reach sanitized current-period actuals');
+}
+
 console.log('\n=== B81 zero-pending proof contract ===');
 {
   const extra = clone(payload);
@@ -516,6 +573,10 @@ console.log('\n=== history window is configurable ===');
     'pending-universe query targets GET /v2/transactions');
   ok(pendingUrl.searchParams.get('is_pending') === 'true',
     'pending-universe query sets is_pending=true');
+  ok(current.searchParams.get('include_metadata') === 'true'
+      && recon.searchParams.get('include_metadata') === 'true'
+      && pendingUrl.searchParams.get('include_metadata') === 'true',
+    'bounded and unbounded transaction requests set include_metadata=true');
   ok(!pendingUrl.searchParams.has('start_date') && !pendingUrl.searchParams.has('end_date'),
     'pending-universe query has no date bound');
   ok(O.PENDING_COVERAGE_BASIS === 'is_pending-unbounded',
