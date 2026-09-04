@@ -34,9 +34,17 @@ Official: https://lunchmoney.dev/ and https://lunchmoney.dev/v2/docs
 - Official v2 (open alpha; official SDK names GET `/me`, `/plaid_accounts`,
   `/manual_accounts`, `/transactions`). Atlas implements **GET only**.
 - Transactions expose `id`. Official v2 sign: **positive = debit, negative =
-  credit**. Official docs mention `is_pending`. Same `id` pending+posted is
-  treated as one economic transaction (posted wins; no ghost pending). A
-  real household pending→posted replacement on this budget is still
+  credit**. Official docs mention `is_pending`. Atlas `providerTransactionId`
+  is that Lunch Money `id`. It is not Plaid's `transaction_id`.
+- Same Lunch Money `id` pending+posted is one economic transaction (posted
+  wins; no ghost pending). A Plaid pending→posted replacement uses a
+  **different** Lunch Money `id` and is recognized only from directed Plaid
+  identity: the posted row's `plaid_metadata.pending_transaction_id` equals
+  the pending row's `plaid_metadata.transaction_id`. Amount may change.
+  Merchant/date/amount similarity is not identity. Ambiguous or missing
+  Plaid linkage is not collapsed. Those Plaid ids stay internal evidence
+  and are not published.
+- A same-id household pending→posted replacement on this budget is still
   **UNKNOWN / MUST TEST** until Bell Mobility `2461295531` posts.
 - Live GET `/transactions` is windowed: `--mode current-state` is 14 days;
   `--mode reconcile` is 120 days so the 90-day pending-bill rule can see
@@ -47,7 +55,10 @@ Official: https://lunchmoney.dev/ and https://lunchmoney.dev/v2/docs
   window; then the same request starts at that oldest eligible date, capped
   at 120 days. Wider history is settlement lookup for currently carried
   occurrences only. Pending coverage stays the unbounded `is_pending`
-  query.
+  query. Live GET `/v2/transactions` requests that participate in
+  pending→posted reconciliation set `include_metadata=true` so Plaid
+  linkage is present (the bounded `include_pending` window and the
+  unbounded `is_pending` universe).
 - Official v2 also has `GET /transactions?is_pending=true`. That filter
   returns only pending transactions and takes precedence over
   `include_pending`. Omitting `start_date`/`end_date` and paging until

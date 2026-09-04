@@ -313,6 +313,10 @@ Modellers | Deep Dive | Records. Their future (household nav, a diagnostics
 nav, or retirement) is owner direction; do not delete them on an agent's
 initiative.
 
+**B101 · Plaid pending→posted identity is not Lunch Money `id`** · **DONE 2026-09-04** · *financial-correctness interruption; owner instruction after live Amazon authorization/settlement investigation*
+
+Live Lunch Money v2 only returns `plaid_metadata` when `include_metadata=true`. Atlas was requesting `include_pending` and the unbounded `is_pending` universe without that flag, treating Lunch Money `id` as `providerTransactionId`, and matching `posted.pendingTransactionId` to the pending Lunch Money id. Plaid's contract is `posted.plaid_metadata.pending_transaction_id === pending.plaid_metadata.transaction_id`, and the posted amount may differ. Current-period household spend/remaining and revolving pending exposure can double-count one purchase. Not Amazon-specific, not merchant fuzzy matching, not a new identity system. Forecast remains the planner.
+
 **B100 · Figures snapshot does not cover the Credit and Planning surfaces** · **READY** · *governance; found 2026-09-03*
 
 `scripts/figures-snapshot.js` snapshots what the household can read off the

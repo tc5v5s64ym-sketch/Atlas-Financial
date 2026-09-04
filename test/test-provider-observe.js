@@ -231,6 +231,8 @@ console.log('=== L. live transaction request includes pending ===');
   ok(url.pathname === '/v2/transactions', 'live request targets GET /v2/transactions');
   ok(url.searchParams.get('include_pending') === 'true',
     'live transactions URL sets include_pending=true', url.search);
+  ok(url.searchParams.get('include_metadata') === 'true',
+    'live transactions URL sets include_metadata=true', url.search);
   const boundary = O.lunchMoneyTransactionsUrl('2026-08-19T01:06:40.929Z');
   ok(boundary.searchParams.get('end_date') === '2026-08-18',
     'history window end is the household date, not the UTC date prefix',
@@ -271,11 +273,15 @@ console.log('=== L. live transaction request includes pending ===');
   ok(!!tx, 'live fetch actually GET /v2/transactions', JSON.stringify(captured));
   ok(tx && new URL(tx).searchParams.get('include_pending') === 'true',
     'live request URL contains include_pending=true', tx);
+  ok(tx && new URL(tx).searchParams.get('include_metadata') === 'true',
+    'live request URL contains include_metadata=true', tx);
   const pendingUniverse = captured.find(u => /\/v2\/transactions(?:\?|$)/.test(u) && /is_pending=true/.test(u));
   ok(!!pendingUniverse, 'live fetch also GET /v2/transactions?is_pending=true', JSON.stringify(captured));
   const pendingUrl = new URL(pendingUniverse);
   ok(pendingUrl.searchParams.get('is_pending') === 'true',
     'pending-universe live request sets is_pending=true');
+  ok(pendingUrl.searchParams.get('include_metadata') === 'true',
+    'pending-universe live request sets include_metadata=true');
   ok(!pendingUrl.searchParams.has('start_date') && !pendingUrl.searchParams.has('end_date'),
     'pending-universe live request is not date-bounded');
 }
@@ -439,6 +445,41 @@ console.log('=== M. unobserved live account IDs cannot match fixture mappings ==
   ok(/Fixture account map cannot authorize a live canonical mapping/.test(message),
     'refusal names the fixture-map live boundary');
   ok(!/Bearer\s+\S+/.test(message), 'fixture-map refusal does not print a bearer token');
+}
+
+console.log('=== N. Lunch Money normalize extracts Plaid transaction identity ===');
+{
+  const pending = O.normalizeLunchMoneyTransaction({
+    id: 'lm-pending-101',
+    account_id: 3006,
+    date: '2026-08-31',
+    amount: 100,
+    is_pending: true,
+    payee: 'AMZN Mktp CA',
+    plaid_metadata: { transaction_id: 'plaid-pending-abc' },
+  });
+  const posted = O.normalizeLunchMoneyTransaction({
+    id: 'lm-posted-202',
+    account_id: 3006,
+    date: '2026-08-31',
+    amount: 97.5,
+    is_pending: false,
+    payee: 'AMZN Mktp CA',
+    plaid_metadata: {
+      transaction_id: 'plaid-posted-def',
+      pending_transaction_id: 'plaid-pending-abc',
+    },
+  });
+  ok(pending.providerTransactionId === 'lm-pending-101'
+      && posted.providerTransactionId === 'lm-posted-202',
+    'providerTransactionId stays the Lunch Money row id');
+  ok(pending.plaidTransactionId === 'plaid-pending-abc'
+      && posted.plaidTransactionId === 'plaid-posted-def'
+      && posted.plaidPendingTransactionId === 'plaid-pending-abc',
+    'normalize reads Plaid transaction_id and pending_transaction_id from plaid_metadata');
+  ok(pending.plaidTransactionId !== pending.providerTransactionId
+      && posted.plaidPendingTransactionId !== posted.providerTransactionId,
+    'Plaid ids are not redefined as Lunch Money ids');
 }
 
 if (failures) {

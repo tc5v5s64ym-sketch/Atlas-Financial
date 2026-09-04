@@ -964,6 +964,10 @@ console.log('\n=== R3. sanitizer rejects renamed raw transaction metadata ===');
     'providerTransactionId', 'providerAccountId',
     'provider_transaction_id', 'merchant', 'merchantName',
     'displayed_payee', 'original_merchant',
+    'pending_transaction_id', 'pendingTransactionId',
+    'plaid_metadata', 'plaidMetadata',
+    'plaidTransactionId', 'plaidPendingTransactionId',
+    'transaction_id',
   ];
   for (const key of renamed) {
     const leaked = {

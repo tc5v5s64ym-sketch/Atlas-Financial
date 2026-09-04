@@ -388,6 +388,8 @@ function normalizeLunchMoneyTransaction(raw, categoriesById, tagsById) {
     pendingTransactionId: raw.pending_transaction_id || raw.pendingTransactionId || null,
     plaidId: raw.plaid_id || raw.plaidId || null,
     plaidMetadata: raw.plaid_metadata || raw.plaidMetadata || null,
+    plaidTransactionId: plaidTransactionIdFromRaw(raw),
+    plaidPendingTransactionId: plaidPendingTransactionIdFromRaw(raw),
     isGroup: raw.is_group === true || raw.is_group_parent === true
       || raw.has_children === true,
     parentId: raw.parent_id != null ? String(raw.parent_id) : null,
@@ -523,6 +525,7 @@ function lunchMoneyTransactionsUrl(now, historyDays, base) {
   txUrl.searchParams.set('start_date', start);
   txUrl.searchParams.set('end_date', end);
   txUrl.searchParams.set('include_pending', 'true');
+  txUrl.searchParams.set('include_metadata', 'true');
   txUrl.startDate = start;
   txUrl.endDate = end;
   return txUrl;
@@ -531,6 +534,7 @@ function lunchMoneyTransactionsUrl(now, historyDays, base) {
 function lunchMoneyPendingUniverseUrl(base) {
   const txUrl = new URL(`${base || LIVE_BASE}/transactions`);
   txUrl.searchParams.set('is_pending', 'true');
+  txUrl.searchParams.set('include_metadata', 'true');
   return txUrl;
 }
 
@@ -1439,6 +1443,12 @@ function identityProofLooksSanitized(proof) {
   const blob = JSON.stringify(proof == null ? {} : proof);
   return !/"providerAccountId"\s*:/.test(blob)
     && !/"providerTransactionId"\s*:/.test(blob)
+    && !/"plaidTransactionId"\s*:/.test(blob)
+    && !/"plaidPendingTransactionId"\s*:/.test(blob)
+    && !/"plaid_metadata"\s*:/.test(blob)
+    && !/"plaidMetadata"\s*:/.test(blob)
+    && !/"pending_transaction_id"\s*:/.test(blob)
+    && !/"pendingTransactionId"\s*:/.test(blob)
     && !/Bearer\s+\S+/.test(blob)
     && !/LUNCHMONEY_ACCESS_TOKEN/.test(blob);
 }
@@ -2503,6 +2513,31 @@ function observe(input) {
     || ((input.identity && input.identity.rules) || []);
   const billPaymentPayees = input.billPaymentPayees
     || ((input.identity && input.identity.billPaymentPayees) || []);
+  const settlementOpts = {
+    plan: input.data && input.data.plan,
+    billPaymentPayees,
+    accountMap: mapDoc,
+  };
+  const settlementCollapsed = collapsePendingPostedBySettlementIdentity(
+    collapsed.transactions,
+    dateOnly(normalized.fetchedAt),
+    settlementOpts
+  );
+  if (settlementCollapsed !== collapsed.transactions) {
+    const kept = new Set(settlementCollapsed);
+    for (const tx of collapsed.transactions) {
+      if (!tx || tx.pending !== true || kept.has(tx)) continue;
+      collapsed.identityEvidence.push({
+        transition: 'pending-to-posted',
+        pendingCount: 1,
+        postedCount: 1,
+        ghostPending: false,
+        doubleCounted: false,
+        linkage: 'plaid-directed',
+      });
+    }
+  }
+  collapsed.transactions = settlementCollapsed;
   const pendingObs = pendingObservationsFromTransactions({
     transactions: collapsed.transactions,
     accountMap: mapDoc,
@@ -2618,6 +2653,9 @@ const RAW_TX_METADATA_KEYS = [
   'plaidId',
   'plaid_metadata',
   'plaidMetadata',
+  'plaidTransactionId',
+  'plaidPendingTransactionId',
+  'transaction_id',
   'identity',
 ];
 const RAW_TX_METADATA_KEY_RE = new RegExp(
@@ -2724,39 +2762,83 @@ function isMbnaCardPayment(tx) {
   return /^\s*mbna\s*$/i.test(payee);
 }
 
-function plaidPendingIdFromMetadata(meta) {
+function parsePlaidMetadataObject(meta) {
   if (meta == null || meta === '') return null;
   let obj = meta;
   if (typeof meta === 'string') {
     try { obj = JSON.parse(meta); }
     catch (e) { return null; }
   }
-  if (!obj || typeof obj !== 'object') return null;
-  const id = obj.pending_transaction_id || obj.pendingTransactionId
-    || (obj.transaction && (obj.transaction.pending_transaction_id
-      || obj.transaction.pendingTransactionId));
-  return id == null || id === '' ? null : String(id);
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return null;
+  return obj;
 }
 
-function directedPendingId(posted) {
-  if (!posted) return null;
-  const direct = posted.pendingTransactionId || posted.pending_transaction_id;
-  if (direct != null && direct !== '') return String(direct);
-  return plaidPendingIdFromMetadata(posted.plaidMetadata || posted.plaid_metadata);
+function plaidFieldFromMetadata(meta, keys) {
+  const obj = parsePlaidMetadataObject(meta);
+  if (!obj) return null;
+  const sources = [obj];
+  if (obj.transaction && typeof obj.transaction === 'object' && !Array.isArray(obj.transaction)) {
+    sources.push(obj.transaction);
+  }
+  for (const source of sources) {
+    for (const key of keys) {
+      const value = source[key];
+      if (value != null && value !== '') return String(value);
+    }
+  }
+  return null;
 }
 
-function directedSettlementMate(posted, pending) {
-  const want = directedPendingId(posted);
-  if (!want) return false;
-  const ids = [
-    pending && pending.providerTransactionId,
-    pending && pending.id,
-    pending && pending.externalId,
-    pending && pending.external_id,
-    pending && pending.plaidId,
-    pending && pending.plaid_id,
-  ].filter(v => v != null && v !== '').map(String);
-  return ids.includes(want);
+function plaidPendingIdFromMetadata(meta) {
+  return plaidFieldFromMetadata(meta, ['pending_transaction_id', 'pendingTransactionId']);
+}
+
+function plaidTransactionIdFromMetadata(meta) {
+  return plaidFieldFromMetadata(meta, ['transaction_id', 'transactionId']);
+}
+
+function plaidTransactionIdFromRaw(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  if (raw.plaidTransactionId != null && raw.plaidTransactionId !== '') {
+    return String(raw.plaidTransactionId);
+  }
+  return plaidTransactionIdFromMetadata(raw.plaid_metadata || raw.plaidMetadata);
+}
+
+function plaidPendingTransactionIdFromRaw(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  if (raw.plaidPendingTransactionId != null && raw.plaidPendingTransactionId !== '') {
+    return String(raw.plaidPendingTransactionId);
+  }
+  const fromMeta = plaidPendingIdFromMetadata(raw.plaid_metadata || raw.plaidMetadata);
+  if (fromMeta) return fromMeta;
+  const direct = raw.pending_transaction_id || raw.pendingTransactionId;
+  return direct == null || direct === '' ? null : String(direct);
+}
+
+function plaidTransactionIdOf(tx) {
+  return plaidTransactionIdFromRaw(tx);
+}
+
+function plaidPendingTransactionIdOf(tx) {
+  return plaidPendingTransactionIdFromRaw(tx);
+}
+
+function directedPlaidSettlementMate(posted, pending) {
+  const want = plaidPendingTransactionIdOf(posted);
+  const have = plaidTransactionIdOf(pending);
+  if (!want || !have) return false;
+  return want === have;
+}
+
+function sameSettlementAccount(pending, posted, opts) {
+  const pendingAccount = settlementAccountId(pending, opts);
+  const postedAccount = settlementAccountId(posted, opts);
+  if (pendingAccount == null || postedAccount == null
+      || pendingAccount === '' || postedAccount === '') {
+    return true;
+  }
+  return String(pendingAccount) === String(postedAccount);
 }
 
 function settlementAccountId(tx, opts) {
@@ -2821,22 +2903,32 @@ function collapsePendingPostedBySettlementIdentity(transactions, asOf, opts) {
   }
   if (!pending.length || !posted.length) return list;
   const drop = new Set();
+  const links = [];
   for (const pend of pending) {
-    const accountId = settlementAccountId(pend, opts);
-    const amount = lunchMoneyDebitAmount(pend.amount);
-    const mate = posted.some(post => {
-      if (drop.has(post)) return false;
-      const postAccount = settlementAccountId(post, opts);
-      if (accountId != null && postAccount != null && String(accountId) !== String(postAccount)) {
-        return false;
+    for (const post of posted) {
+      if (!directedPlaidSettlementMate(post, pend)) continue;
+      if (!sameSettlementAccount(pend, post, opts)) continue;
+      links.push({ pend, post });
+    }
+  }
+  for (const pend of pending) {
+    const mates = [];
+    for (const link of links) {
+      if (link.pend === pend && !mates.includes(link.post)) mates.push(link.post);
+    }
+    if (mates.length === 1) {
+      const claimedByOtherPending = links.some(link => (
+        link.post === mates[0] && link.pend !== pend
+      ));
+      if (!claimedByOtherPending) drop.add(pend);
+      else {
+        pend.pendingPostedAmbiguous = true;
+        mates[0].pendingPostedAmbiguous = true;
       }
-      const postAmt = lunchMoneyDebitAmount(post.amount);
-      if (amount != null && postAmt != null && Number(amount).toFixed(2) !== Number(postAmt).toFixed(2)) {
-        return false;
-      }
-      return directedSettlementMate(post, pend);
-    });
-    if (mate) drop.add(pend);
+    } else if (mates.length > 1) {
+      pend.pendingPostedAmbiguous = true;
+      for (const post of mates) post.pendingPostedAmbiguous = true;
+    }
   }
   collapseOwnerConfirmedShopifySettlement(pending, posted, drop, opts);
   const remaining = drop.size ? list.filter(tx => !drop.has(tx)) : list;
@@ -2992,6 +3084,7 @@ function sanitizedCurrentPeriodActuals(report, opts) {
       isGroup: tx.isGroup === true,
       parentId: localIdFor(tx.parentId),
       pendingPostedDuplicate: tx.pendingPostedDuplicate === true,
+      pendingPostedAmbiguous: tx.pendingPostedAmbiguous === true,
     });
   }
   const representedActuals = [];
