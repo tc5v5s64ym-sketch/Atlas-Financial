@@ -1765,9 +1765,11 @@ function calendarWaterfallComposer() {
     grab(appSrc, /^const money = .*$/m, 'money'),
     grab(appSrc, /^const money2 = .*$/m, 'money2'),
     grab(appSrc, /^const fmtDate = .*$/m, 'fmtDate'),
+    grab(appSrc, /^const fmtDateLong = .*$/m, 'fmtDateLong'),
     grab(planSrc, /^function liveOperatingPlanUnavailable\([\s\S]*?\n\}$/m, 'liveOperatingPlanUnavailable'),
     grab(planSrc, /^function liveOperatingPlanNote\([\s\S]*?\n\}$/m, 'liveOperatingPlanNote'),
     grab(planSrc, /^function paydayGlanceCashNote\([\s\S]*?\n\}$/m, 'paydayGlanceCashNote'),
+    grab(planSrc, /^function providerBalanceDate\([\s\S]*?\n\}$/m, 'providerBalanceDate'),
     grab(planSrc, /^function glanceUpdatedNote\([\s\S]*?\n\}$/m, 'glanceUpdatedNote'),
     grab(planSrc, /^function cashGlanceHtml\([\s\S]*?\n\}$/m, 'cashGlanceHtml'),
     grab(planSrc, /^function glanceSignedMoney\([\s\S]*?\n\}$/m, 'glanceSignedMoney'),
@@ -1812,6 +1814,7 @@ function operatingSurfaceComposer() {
     grab(planSrc, /^function paydayActionRows\([\s\S]*?\n\}$/m, 'paydayActionRows'),
     grab(planSrc, /^function paydayCashNote\([\s\S]*?\n\}$/m, 'paydayCashNote'),
     grab(planSrc, /^function paydayGlanceCashNote\([\s\S]*?\n\}$/m, 'paydayGlanceCashNote'),
+    grab(planSrc, /^function providerBalanceDate\([\s\S]*?\n\}$/m, 'providerBalanceDate'),
     grab(planSrc, /^function glanceUpdatedNote\([\s\S]*?\n\}$/m, 'glanceUpdatedNote'),
     grab(planSrc, /^function paydayCoverageNote\([\s\S]*?\n\}$/m, 'paydayCoverageNote'),
     grab(planSrc, /^const PAYDAY_ACTION_KIND = \{[\s\S]*?^\};$/m, 'PAYDAY_ACTION_KIND'),
@@ -2347,8 +2350,8 @@ console.log('\n=== 20. incomplete current cash still withholds a stale cycle as 
     'trusted control still publishes numeric Consumer debt');
   const trustedGlance = waterfall.glanceUpdatedNote(
     trustedServed.meta.asOf, trustedServed.liveOverlay);
-  ok(/Updated Aug 31/.test(trustedGlance),
-    'trusted applied overlay still stamps Current Balance from fetchedAt');
+  ok(/As of August 31/.test(trustedGlance) && !/fetchedAt/.test(trustedGlance),
+    'trusted applied overlay stamps Current Balance from provider observedAsOf, not fetchedAt');
   const trustedWaterfallHtml = waterfall.calendarWaterfallHtml(
     trustedActive, trustedServed.liveOverlay, trustedAdvice.paydayAllocation);
   ok(!/data-current-waterfall="unavailable"/.test(trustedWaterfallHtml)
@@ -2371,10 +2374,11 @@ console.log('\n=== 20. incomplete current cash still withholds a stale cycle as 
       && /calendarCurrentUnavailableHtml/.test(waterfallFn[0])
       && !/Date\.now/.test(waterfallFn[0]),
     'calendarWaterfallHtml withholds arriving / Available / leftover as current when unavailable');
-  ok(glanceFn && /applied === true/.test(glanceFn[0])
-      && /fetchedAt/.test(glanceFn[0])
+  ok(glanceFn && /providerBalanceDate/.test(glanceFn[0])
+      && /observedAsOf/.test(glanceFn[0])
+      && !/fetchedAt/.test(glanceFn[0])
       && !/Date\.now/.test(glanceFn[0]),
-    'glanceUpdatedNote uses fetchedAt only on a trusted applied overlay');
+    'glanceUpdatedNote uses provider observedAsOf, not fetchedAt or the browser clock');
   const fromFn = /function operatingPlanFromOverlay\([\s\S]*?\n\}/.exec(
     fs.readFileSync(path.join(ROOT, 'scripts', 'live-plan.js'), 'utf8'));
   ok(fromFn && /liveAsOf > historicalOpeningAsOf/.test(fromFn[0]) && !/Date\.now/.test(fromFn[0]),
