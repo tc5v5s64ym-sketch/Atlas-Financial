@@ -296,6 +296,67 @@ console.log('\n=== 4b. unresolved pending exposure is not discarded ===');
     'sanitized actuals keep both AICHATAPP rows and flag possible replacement');
 }
 
+console.log('\n=== 4c. asymmetric classification keeps $0 Other recon visible ===');
+{
+  // Posted mate classifies into a named household row; pending twin stays
+  // unclassified. Confirmed spend is the posted amount once; the pending
+  // remains reconcilable on Other spending at $0 confirmed.
+  const ASYM_AMT = 27.41;
+  const ASYM_DOUBLE = roundCent(ASYM_AMT + ASYM_AMT);
+  ok(near(ASYM_DOUBLE, 54.82),
+    'independent asymmetric fixture is $27.41 posted + $27.41 pending = $54.82');
+  const postedCls = F.classifyCurrentPeriodTransaction(
+    twin('tx-asym-post', 'ACME CAFE', ASYM_AMT, false, { categoryLabel: 'Restaurants' }),
+    syntheticPlan()
+  );
+  const pendingCls = F.classifyCurrentPeriodTransaction(
+    twin('tx-asym-pend', 'ACME CAFE', ASYM_AMT, true),
+    syntheticPlan()
+  );
+  ok(postedCls && postedCls.atlasRow === 'restaurants' && postedCls.needsConfirmation !== true,
+    'posted mate classifies into Eating out / restaurants');
+  ok(pendingCls && (pendingCls.needsConfirmation === true || pendingCls.kind === 'unclassified')
+      && pendingCls.atlasRow == null,
+    'pending twin stays unclassified');
+
+  const txs = [
+    twin('tx-asym-post', 'ACME CAFE', ASYM_AMT, false, { categoryLabel: 'Restaurants' }),
+    twin('tx-asym-pend', 'ACME CAFE', ASYM_AMT, true),
+  ];
+  const advice = recommend(actualsPacket(txs));
+  const p = period(advice.defaultView, 'this-pay-period');
+  const eating = budgetRow(p, 'restaurants');
+  const other = otherRow(p);
+  const eatingRecon = (eating && eating.recon) || [];
+  const otherRecon = (other && other.recon) || [];
+  const pendingRecon = otherRecon.filter(r => r && r.pending === true);
+  ok(eating && eatingRecon.length === 1 && eatingRecon[0].id === 'tx-asym-post'
+      && eatingRecon[0].pending === false
+      && near(eating.spent, ASYM_AMT)
+      && !near(eating.spent, ASYM_DOUBLE),
+    'posted $27.41 is counted once on Eating out, not $54.82',
+    String(eating && eating.spent));
+  ok(other && other.otherSpending === true && other.needsConfirmation === true
+      && near(other.spent, 0)
+      && near(confirmedFromRecon(other), 0)
+      && otherRecon.length === 1
+      && pendingRecon.length === 1
+      && pendingRecon[0].id === 'tx-asym-pend'
+      && pendingRecon[0].pending === true
+      && pendingRecon[0].pendingPostedDuplicate === true
+      && near(pendingRecon[0].amount, ASYM_AMT)
+      && Array.isArray(other.pendingRecon)
+      && other.pendingRecon.some(r => r && r.id === 'tx-asym-pend'),
+    'Other spending stays visible at $0 confirmed with the unresolved pending recon row',
+    JSON.stringify({
+      spent: other && other.spent,
+      recon: otherRecon.map(r => ({ id: r.id, pending: r.pending, dup: r.pendingPostedDuplicate })),
+    }));
+  ok(near(householdSpent(p), ASYM_AMT) && !near(householdSpent(p), ASYM_DOUBLE),
+    'Household Budget Spent is the posted $27.41 only',
+    String(householdSpent(p)));
+}
+
 console.log('\n=== 5. two genuine posted Shopify $54.88 remain two transactions ===');
 {
   const txs = [

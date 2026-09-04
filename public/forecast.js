@@ -4537,7 +4537,11 @@
     // (named non-calendar ids such as health/sport stay omitted).
     // Not an allowance, not a hold, not a second waterfall subtraction.
     // Classifier reasons stay on recon.includeReason.
-    if (actualsReady && confirmationSpent > EPSILON) {
+    // Visibility follows unresolved confirmation recon, not confirmed-spend
+    // dollars: a pending possible-replacement twin can remain unclassified
+    // after its posted mate classifies into a named row. That pending stays
+    // recon-visible at $0 confirmed spent rather than disappearing.
+    if (actualsReady && confirmationRecon.length > 0) {
       items.push({
         id: OTHER_SPENDING_ID,
         label: 'Other spending',
