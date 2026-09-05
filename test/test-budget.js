@@ -156,6 +156,10 @@ const household = budget.categories.find(c => c.id === 'household');
 const noble = plan.bills.find(b => b.id === 'noble-garbage');
 ok(noble && noble.frequency === 'quarterly' && noble.budgetCategory === 'household',
   'Noble is the dated household garbage bill');
+ok(household && household.target === 0 && household.source === 'owner-target'
+    && near(household.planned, 0) && near(household.reserved || 0, 0),
+  'household explicit $0 monthly baseline contributes $0 to required essentials',
+  household && `${household.target}/${household.source}/${household.planned}`);
 ok(near(household.dated, fortis.amount + noble.amount / 3),
   'FortisBC and the quarterly Noble monthly-equivalent are subtracted from household',
   money(household.dated));
@@ -246,7 +250,7 @@ console.log('\n=== owner targets are present, and honestly sourced ===');
 ok(plan.budget.ownerTargets.status === 'partial',
   'the budget records that owner targets are incorporated but incomplete',
   plan.budget.ownerTargets.status);
-ok(budget.ownerTargetCount === 7, 'seven categories carry an owner target', String(budget.ownerTargetCount));
+ok(budget.ownerTargetCount === 7, 'seven categories carry an owner target, including Household $0', String(budget.ownerTargetCount));
 for (const c of budget.categories) {
   const expected = c.target != null ? 'owner-target'
     : c.current != null ? 'current-regime'

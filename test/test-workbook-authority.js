@@ -21,7 +21,6 @@ const ok = (cond, label, detail = '') => {
 const OWNER_SOURCE = 'owner-stated-2026-08-31';
 const OWNER_PAYDAY_TARGETS = {
   fuel: 325,
-  household: 37.5,
   restaurants: 200,
   'dale-guilt-free': 150,
   'amanda-guilt-free': 150,
@@ -83,6 +82,26 @@ for (const id of RETIRED_HOLD_IDS) {
   ok(!!c, `retired mapping category ${id} still exists`);
   ok(c && c.plannedMonthly == null, `${id} has no household-budget plannedMonthly`,
     c ? String(c.plannedMonthly) : 'missing');
+  ok(c && c.plannedPayday == null && c.plannedWeekly == null,
+    `${id} has no plannedPayday or plannedWeekly hold`,
+    c ? `${c.plannedPayday}/${c.plannedWeekly}` : 'missing');
+}
+{
+  const h = byId('household');
+  ok(h && h.plannedMonthly === 0 && h.plannedPayday == null && h.plannedWeekly == null,
+    'household explicit planning baseline is $0 monthly, not a payday hold',
+    h ? `${h.plannedMonthly}/${h.plannedPayday}/${h.plannedWeekly}` : 'missing');
+  ok(h && h.ownerLine === 'Household' && h.targetSource === 'owner-stated-2026-09-04',
+    'household $0 baseline names the 2026-09-04 owner instruction',
+    h ? `${h.ownerLine}/${h.targetSource}` : 'missing');
+  ok(h && Array.isArray(h.from) && h.from.indexOf('Household') >= 0,
+    'household still maps the Household classification label');
+  ok(h && /plannedMonthly 0/.test(h.why || '')
+      && /2026-09-04/.test(h.why || '')
+      && /2026-08-31/.test(h.why || ''),
+    'household why records the 2026-09-04 zero baseline and preserves 2026-08-31 provenance');
+  ok(h && !/2026-09-05/.test(h.why || ''),
+    'household why does not advance that removal to the UTC date 2026-09-05');
 }
 
 console.log('\n=== historical / advisory workbook values cannot overwrite that policy ===');
@@ -110,6 +129,14 @@ ok(!/still absent|never supplied|never reached this repository|still not absorbe
   'ownerTargets.note does not claim the workbooks are missing');
 ok(/classified/.test(note) && /HOUSEHOLD_BUDGET_WORKBOOKS_2026-08-16/.test(note),
   'ownerTargets.note points at the classification record');
+ok(/Household currently has no planned Household Budget payday hold/.test(note)
+    && /explicit \$0 monthly planning baseline/.test(note)
+    && /2026-09-04/.test(note)
+    && /\$1,825\.00/.test(note)
+    && /\$1,725\.00/.test(note),
+  'ownerTargets.note retires the Household $37.50 hold and records the remaining cycle totals');
+ok(!/Household \$37\.50;/.test(note) && !/2026-09-05/.test(note),
+  'ownerTargets.note does not keep Household $37.50 as a current target or use the UTC date');
 
 console.log('\n=== Forecast still reads the 2026-08-31 owner targets ===');
 const budget = F.budgetBreakdown(data.plan, periods, { paypalPerMonth: data.paypal.perMonth });
