@@ -4011,6 +4011,81 @@
     return false;
   }
 
+  // Represented occurrences before payday morning. Distinct from
+  // representedKeySet's current-opening window: this walk is dated
+  // from the last trusted opening, so later live as-of must not
+  // hide a represented pre-payday settlement.
+  function representedBeforeMorning(plan, opts, morningDate) {
+    const keys = new Set();
+    const add = item => {
+      if (!item || !item.id || !item.date) return;
+      if (String(item.date) < String(morningDate)) {
+        keys.add(String(item.id) + '@' + String(item.date));
+      }
+    };
+    for (const item of (opts && opts.representedEvents) || []) add(item);
+    for (const item of (plan && plan.opening && plan.opening.representedEvents) || []) {
+      add(item);
+    }
+    return keys;
+  }
+
+  // Scheduled joint-cash from a trusted dated opening through the
+  // morning of `morningDate`. Not live cash walked backward, not
+  // weekly-variable spend, and not the reserved-daily regime drain.
+  // Income in that window is the plan's scheduled arrivals. Outflows
+  // apply only when represented — an unpaid once-bill stays reserved
+  // and is not treated as already paid just because it was scheduled.
+  function scheduledCashAtMorning(plan, morningDate, opts) {
+    if (!plan || !morningDate) return null;
+    const openingAsOf = plan.opening && plan.opening.asOf;
+    if (!openingAsOf || openingAsOf > morningDate) return null;
+    const openingCash = startingCashAmount(plan);
+    if (!Number.isFinite(Number(openingCash))) return null;
+    if (openingAsOf === morningDate) return roundCent(openingCash);
+    const end = addDays(morningDate, -1);
+    if (!end || end < openingAsOf) return roundCent(openingCash);
+    const represented = representedBeforeMorning(plan, opts, morningDate);
+    const events = expandEvents(plan, openingAsOf, end,
+      Object.assign({}, opts, { keepRepresented: true }));
+    let balance = roundCent(openingCash);
+    for (const event of events || []) {
+      if (!event || !event.date) continue;
+      if (event.date <= openingAsOf || event.date >= morningDate) continue;
+      if (event.kind === 'noncash' || event.jointCash === false) continue;
+      const amt = Number(event.amount);
+      if (!Number.isFinite(amt)) continue;
+      if (amt < 0 && !represented.has(String(event.id) + '@' + String(event.date))) {
+        continue;
+      }
+      balance = roundCent(balance + amt);
+    }
+    return balance;
+  }
+
+  // Establish or reuse the frozen payday-morning figure. A recorded
+  // matching snapshot wins. Otherwise the last trusted dated opening
+  // whose starting cash still belongs to that opening (not a
+  // live-advanced mid-period overlay) may walk scheduled joint-cash
+  // forward to that payday morning. Live mid-period cash never
+  // substitutes. Null when Atlas has no such evidence.
+  function establishPaydaySnapshot(plan, paydayDate, opts) {
+    const existing = paydaySnapshotRecord(plan, opts, paydayDate);
+    if (existing) return existing;
+    if (!plan || !paydayDate) return null;
+    const openingAsOf = plan.opening && plan.opening.asOf;
+    if (!openingAsOf) return null;
+    if (liveOpeningAdvanced(plan, openingAsOf)) return null;
+    if (openingAsOf > paydayDate) return null;
+    const opening = scheduledCashAtMorning(plan, paydayDate, opts);
+    if (!finiteRecordedOpening(opening)) return null;
+    return {
+      periodStart: String(paydayDate),
+      asOf: String(paydayDate),
+      opening: roundCent(opening),
+    };
+  }
+
   // Payday-snapshot opening. Distinct from live Current Balance
   // (startingCashAmount / paydayAllocation.opening). Fail closed rather
   // than invent a historical payday-morning cash Atlas never recorded.
@@ -4066,6 +4141,20 @@
         openingAsOf: asOf,
         source: 'cutover-opening',
       };
+    }
+    // Dated opening still owns starting cash and predates this payday:
+    // Forecast walks scheduled joint-cash to that payday morning. Live
+    // overlay that already replaced starting cash cannot use this path.
+    if (!liveOpeningAdvanced(plan, asOf)) {
+      const established = establishPaydaySnapshot(plan, window.start, opts);
+      if (established) {
+        return {
+          opening: established.opening,
+          openingKnown: true,
+          openingAsOf: established.asOf,
+          source: 'cutover-walk',
+        };
+      }
     }
     return { opening: null, openingKnown: false, openingAsOf: null, source: null };
   }
@@ -4829,7 +4918,9 @@
   // paydayAllocation, and it does not rewrite live Current Balance.
   // The active period opens from a recorded paydaySnapshot first, else
   // payday-morning cash only when as-of is that payday and live overlay
-  // has not already advanced, else a non-live cutover opening — never
+  // has not already advanced, else a non-live cutover opening, else a
+  // Forecast scheduled-cash walk from that non-live dated opening to
+  // this payday morning (`Forecast.establishPaydaySnapshot`) — never
   // from today's live posted cash merely because that cash moved, even
   // when the live as-of is the payday calendar date.
   // Balance after payday is that frozen opening plus period income not
@@ -9002,7 +9093,7 @@
     };
   }
 
-  const Forecast = { HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, billIsHouseholdObligation, billAffectsJointCash, isCardPaidBill, carriedOnceJointCashOutflow, prepaidJointCashOutflow, expandEvents, simulate,
+  const Forecast = { HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, billIsHouseholdObligation, billAffectsJointCash, isCardPaidBill, carriedOnceJointCashOutflow, prepaidJointCashOutflow, expandEvents, simulate, establishPaydaySnapshot,
     knowledgeHorizon, viewRange, commitmentNeed, fundingSequence, majorPlans, plannedDebt, debtPriority, paydayAllocation,
     classifyCurrentPeriodTransaction, paydayPeriodOrigin, currentPeriodObligationStates, currentPeriodAction,
     spendingCycle,

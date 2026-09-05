@@ -603,8 +603,36 @@ console.log('\n=== 9. Live August 30 sheet: lookback P1, live P2, card mins, HEL
     'live Aug 30: This Pay Period live, Next future');
   ok(near(advice.defaultView.liveCurrentBalance, F.startingCashAmount(live.plan)),
     'live Current Balance is posted starting cash');
-  ok(p1.openingKnown !== true && p1.available == null,
-    'Aug 30 is mid-period with no recorded Aug 28 payday snapshot, so the frozen opening fail-closes');
+  const datedAsOf = live.plan.opening && live.plan.opening.asOf;
+  const child = (live.plan.income || []).find(s => s && s.id === 'childBenefit');
+  const travel = (live.plan.obligations || []).find(o => o && o.id === 'travel');
+  const round2 = n => Math.round(Number(n) * 100) / 100;
+  let independentMorning = F.startingCashAmount(live.plan);
+  if (child && datedAsOf && datedAsOf < '2026-08-20' && '2026-08-20' < p1.start) {
+    independentMorning = round2(independentMorning + Number(child.amount));
+  }
+  const represented = new Set(((live.plan.opening && live.plan.opening.representedEvents) || [])
+    .filter(r => r && r.date && r.date < p1.start)
+    .map(r => String(r.id) + '@' + String(r.date)));
+  if (travel && datedAsOf && datedAsOf < '2026-08-26' && '2026-08-26' < p1.start
+      && represented.has('travel@2026-08-26')) {
+    independentMorning = round2(independentMorning - Number(travel.amount));
+  }
+  const movers = F.expandEvents(live.plan, datedAsOf, F.addDays(p1.start, -1))
+    .filter(e => e && e.date > datedAsOf && e.date < p1.start
+      && e.kind !== 'noncash' && e.jointCash !== false)
+    .map(e => e.id)
+    .sort();
+  ok(movers.includes('childBenefit'),
+    'dated Aug 19→Aug 28 schedule still names child benefit');
+  ok(p1.openingKnown === true && p1.openingSource === 'cutover-walk'
+      && near(p1.opening, independentMorning)
+      && p1.available != null
+      && near(p1.available, round2(p1.opening + p1.incomeAdded)),
+    'Aug 30 dated plan walks scheduled cash to the Aug 28 payday morning');
+  ok(!near(p1.opening, F.startingCashAmount(live.plan))
+      || near(independentMorning, F.startingCashAmount(live.plan)),
+    'payday morning is not silently the Aug 19 opening unless the walk is empty');
   const ids = (p, id) => billsOf(p).filter(r => r.id === id);
   ok(ids(p1, 'mbna-aug31').length === 1 && ids(p1, 'mbna').length === 0,
     'live August Amazon min is the once row in the Aug 28–Sep 10 window');

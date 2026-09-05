@@ -306,8 +306,27 @@ console.log('\n=== 2. August 31 proven Amanda TENNIS INCOME → BILLS transfer =
   ok(near(advice.defaultView.liveCurrentBalance, independentCash)
       && near(advice.paydayAllocation.liveCurrentBalance, independentCash),
     'live Current Balance is observed cash, not the dated opening');
-  ok(p2.openingKnown !== true && p2.available == null,
-    'mid-period live overlay does not invent an Aug 28 payday-morning opening');
+  const snap = result.data.plan.opening && result.data.plan.opening.paydaySnapshot;
+  const datedAsOf = canonical.plan.opening && canonical.plan.opening.asOf;
+  const child = (canonical.plan.income || []).find(s => s && s.id === 'childBenefit');
+  const travel = (canonical.plan.obligations || []).find(o => o && o.id === 'travel');
+  let independentMorning = Forecast.startingCashAmount(canonical.plan);
+  if (child && datedAsOf && datedAsOf < '2026-08-20' && '2026-08-20' < p2.start) {
+    independentMorning = round2(independentMorning + Number(child.amount));
+  }
+  const representedKeys = new Set(((result.data.plan.opening && result.data.plan.opening.representedEvents) || [])
+    .filter(r => r && r.date && r.date < p2.start)
+    .map(r => String(r.id) + '@' + String(r.date)));
+  if (travel && datedAsOf && datedAsOf < '2026-08-26' && '2026-08-26' < p2.start
+      && representedKeys.has('travel@2026-08-26')) {
+    independentMorning = round2(independentMorning - Number(travel.amount));
+  }
+  ok(snap && snap.periodStart === p2.start && near(snap.opening, independentMorning),
+    'live overlay retains Forecast paydaySnapshot from the dated opening walk');
+  ok(p2.openingKnown === true && near(p2.opening, independentMorning)
+      && p2.available != null
+      && !near(p2.opening, independentCash),
+    'mid-period live overlay publishes the walked Aug 28 opening, not live cash');
   ok(!near(advice.paydayAllocation.available, independentCash + SALARY),
     'salary is not added again on top of observed cash');
   const row = incomeRow(advice, 'amandaSalaryMonthEnd');
@@ -605,8 +624,27 @@ console.log('\n=== 10. Active two-period calendar waterfall ===');
   ok(thisP.operatingPlanUnavailable !== true, 'active waterfall is not unavailable');
   ok(near(advice.defaultView.liveCurrentBalance, independentCash),
     'live Current Balance is observed cash');
-  ok(thisP.openingKnown !== true && thisP.available == null && thisP.projectedEnding == null,
-    'active payday snapshot fail-closes without a recorded Aug 28 opening');
+  const snap = result.data.plan.opening && result.data.plan.opening.paydaySnapshot;
+  const datedAsOf = canonical.plan.opening && canonical.plan.opening.asOf;
+  const child = (canonical.plan.income || []).find(s => s && s.id === 'childBenefit');
+  const travel = (canonical.plan.obligations || []).find(o => o && o.id === 'travel');
+  let independentMorning = Forecast.startingCashAmount(canonical.plan);
+  if (child && datedAsOf && datedAsOf < '2026-08-20' && '2026-08-20' < thisP.start) {
+    independentMorning = round2(independentMorning + Number(child.amount));
+  }
+  const representedKeys = new Set(((result.data.plan.opening && result.data.plan.opening.representedEvents) || [])
+    .filter(r => r && r.date && r.date < thisP.start)
+    .map(r => String(r.id) + '@' + String(r.date)));
+  if (travel && datedAsOf && datedAsOf < '2026-08-26' && '2026-08-26' < thisP.start
+      && representedKeys.has('travel@2026-08-26')) {
+    independentMorning = round2(independentMorning - Number(travel.amount));
+  }
+  ok(snap && snap.periodStart === thisP.start && near(snap.opening, independentMorning),
+    'overlay retains Forecast paydaySnapshot from the dated opening walk');
+  ok(thisP.openingKnown === true && near(thisP.opening, independentMorning)
+      && thisP.available != null && thisP.projectedEnding != null
+      && !near(thisP.opening, independentCash),
+    'active payday snapshot is the walked Aug 28 opening, not live cash');
   ok(nextP.openingKnown === true && nextP.opening != null
       && !near(nextP.opening, independentCash),
     'next period opens from the walk, not from live mid-period cash');
@@ -615,8 +653,9 @@ console.log('\n=== 10. Active two-period calendar waterfall ===');
   ok(groceries && groceries.planned != null && groceries.spent != null
       && groceries.remaining != null,
     'Household Budget planned/actual/remaining are visible');
-  ok(thisP.afterHouseholdBudget == null,
-    'leftover chain does not start from live cash');
+  ok(thisP.afterHouseholdBudget != null
+      && !near(thisP.afterHouseholdBudget, independentCash),
+    'leftover chain starts from the payday snapshot, not live cash');
 }
 
 console.log('\n=== 11. Failed-cash control withholds stale Current Balance ===');

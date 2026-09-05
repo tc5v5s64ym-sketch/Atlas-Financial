@@ -2,8 +2,11 @@
 /* Read-only live plan overlay.
  *
  * Lunch Money observation → reconcile → in-memory current account state
- * → Forecast. Historical openings and snapshots stay on disk. This
- * command never writes data.json, positions.csv, or snapshots/.
+ * → Forecast. Historical openings and snapshots stay on disk. When a
+ * trusted overlay advances past a Seaspan payday, the in-memory opening
+ * retains paydaySnapshot from Forecast.establishPaydaySnapshot on the
+ * pre-overlay dated plan. That is not today's live cash walked backward.
+ * This command never writes data.json, positions.csv, or snapshots/.
  *
  *   node scripts/live-plan.js --fixture <file>
  *   node scripts/live-plan.js --live
@@ -695,6 +698,53 @@ function applyLiveCutover(next, report, historicalOpeningAsOf) {
   };
 }
 
+function recordedPaydaySnapshot(snap, periodStart) {
+  if (!snap || !periodStart) return null;
+  if (String(snap.periodStart) !== String(periodStart)) return null;
+  if (String(snap.asOf) !== String(periodStart)) return null;
+  if (typeof snap.opening === 'number') {
+    return Number.isFinite(snap.opening) ? snap : null;
+  }
+  if (typeof snap.opening === 'string' && snap.opening.trim() !== '') {
+    return Number.isFinite(Number(snap.opening)) ? snap : null;
+  }
+  return null;
+}
+
+// Retain Forecast's payday-morning figure on the live clone. Walk the
+// pre-overlay dated plan, never the post-overlay live cash. An already
+// matching snapshot stays frozen.
+function retainPaydaySnapshot(next, canonicalPlan, liveAsOf) {
+  if (!next || !next.plan || !canonicalPlan || !liveAsOf) return;
+  const cycle = Forecast.spendingCycle(canonicalPlan, liveAsOf);
+  if (!cycle || !cycle.start) return;
+  const existing = recordedPaydaySnapshot(
+    next.plan.opening && next.plan.opening.paydaySnapshot, cycle.start)
+    || recordedPaydaySnapshot(
+      canonicalPlan.opening && canonicalPlan.opening.paydaySnapshot, cycle.start);
+  if (existing) {
+    next.plan.opening = Object.assign({}, next.plan.opening || {}, {
+      paydaySnapshot: {
+        periodStart: String(existing.periodStart),
+        asOf: String(existing.asOf),
+        opening: Math.round(Number(existing.opening) * 100) / 100,
+      },
+    });
+    return;
+  }
+  const snap = Forecast.establishPaydaySnapshot(canonicalPlan, cycle.start, {
+    representedEvents: (next.plan.opening && next.plan.opening.representedEvents) || [],
+  });
+  if (!snap) return;
+  next.plan.opening = Object.assign({}, next.plan.opening || {}, {
+    paydaySnapshot: {
+      periodStart: snap.periodStart,
+      asOf: snap.asOf,
+      opening: snap.opening,
+    },
+  });
+}
+
 function collectObservedCash(report, liveAsOf) {
   const accounts = [];
   if (!report || !liveAsOf) {
@@ -787,6 +837,7 @@ function overlayLiveState(input) {
   }
   const next = clone(data);
   const cutover = applyLiveCutover(next, report, historicalOpeningAsOf);
+  retainPaydaySnapshot(next, data.plan, cutover.liveAsOf || liveAsOf);
   for (const change of proposed) {
     if (change.field === 'pending') applyPendingOverlay(next, change);
     else applyPostedOverlay(next, change);
