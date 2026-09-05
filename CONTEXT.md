@@ -23,9 +23,14 @@ from `Forecast.establishPaydaySnapshot` on the pre-overlay dated plan
 only when that figure is a recorded snapshot or a completeness-proven
 household-cash walk of the opening-to-payday gap. live-plan derives
 that walk's `paydayGapCash` packet from the incumbent sanitized
-`currentPeriodActuals` evidence. A paginated-complete current-period
-window is not gap completeness; the opening is withheld unless that
-packet attests `paydayGapComplete` and the window covers the gap. That clone uses the
+`currentPeriodActuals` evidence. `scripts/provider-observe.js` earns
+`paydayGapComplete` only when the fetch-complete posted window covers
+the opening-to-payday household-cash interval, required household-cash
+identities in the opening breakdown are mapped, amounts are trusted,
+pending coverage is complete, and no pending-unproven gap cash remains.
+A paginated-complete current-period window is not gap completeness;
+live-plan withholds unless that earned attestation is present and the
+window covers the gap. That clone uses the
 observation's household financial date as Forecast start; unrepresented
 joint-cash outflows between the dated opening and that live start stay
 reserved; a complete trusted current-cash observation remains the Forecast opening when a same-day inbound is unproven (that inbound is not counted and is not labelled represented); incomplete current cash still fails closed; same-day unposted joint-cash bills stay still due. Live read-only observation

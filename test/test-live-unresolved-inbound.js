@@ -222,7 +222,7 @@ function isolateGroceries(plan) {
 }
 
 const AUG31_WINDOW = {
-  startDate: '2026-08-16', endDate: '2026-08-31',
+  startDate: '2026-08-28', endDate: '2026-08-31',
   complete: true, hasMore: false, truncated: false,
 };
 const TRANSFER_CATS = [

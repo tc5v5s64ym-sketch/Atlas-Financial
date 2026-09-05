@@ -15,8 +15,9 @@
  *     = Balance after payday
  *
  * Live mid-period cash is a separate fact. The page does not add.
- * live-plan must pass incumbent currentPeriodActuals / transactionWindow
- * evidence as paydayGapCash; a helper-only injection is not the live path.
+ * provider-observe earns paydayGapComplete from opening-to-payday
+ * household-cash coverage. live-plan consumes that earned attestation
+ * as paydayGapCash; a helper-only injection is not the live path.
  *
  * `node test/test-payday-opening-authority.js`
  */
@@ -25,6 +26,7 @@ const path = require('path');
 const vm = require('vm');
 const F = require('../public/forecast.js');
 const Live = require('../scripts/live-plan.js');
+const O = require('../scripts/provider-observe.js');
 const { sourceText } = require('./test-source-text');
 
 let failures = 0;
@@ -656,6 +658,166 @@ console.log('\n=== 8. live overlay retains a complete gap packet and withholds a
   ok(!(shortCoverage.data.plan.opening
       && shortCoverage.data.plan.opening.paydaySnapshot),
     'coverage that starts after the first gap day still withholds');
+}
+
+function observeMap() {
+  return {
+    schema: 'atlas-provider-account-map/v1',
+    owns: 'Synthetic payday-gap completeness map. Fixture IDs 1001–1003 are not live provider IDs.',
+    does_not_own: 'Financial values, permission to write data.json, Forecast, or live owner-observed IDs.',
+    provider: 'lunchmoney',
+    scope: 'fixture',
+    mappings: [
+      { providerAccountId: '1001', canonical: { collection: 'cash', id: 'chequing-a' }, atlasRole: 'household-cash' },
+      { providerAccountId: '1002', canonical: { collection: 'cash', id: 'chequing-b' }, atlasRole: 'household-cash' },
+      { providerAccountId: '1003', canonical: { collection: 'cash', id: 'savings' }, atlasRole: 'household-cash' },
+    ],
+  };
+}
+
+function observeAccounts() {
+  return [
+    { id: 1001, name: 'Fixture Chequing A', type: 'cash', balance: LIVE_A, updated_at: '2026-09-04T17:55:00.000Z' },
+    { id: 1002, name: 'Fixture Chequing B', type: 'cash', balance: LIVE_B, updated_at: '2026-09-04T17:55:00.000Z' },
+    { id: 1003, name: 'Fixture Savings', type: 'cash', balance: LIVE_SAVINGS, updated_at: '2026-09-04T17:55:00.000Z' },
+  ];
+}
+
+function observeGapTransactions() {
+  return [
+    { id: 501, account_id: 1001, date: '2026-08-20', amount: -CHILD, is_pending: false, payee: 'CHILD TAX BEN CCB' },
+    { id: 502, account_id: 1001, date: '2026-08-25', amount: GROCERY, is_pending: false, payee: 'SYNTHETIC GROCER' },
+  ];
+}
+
+function observePayload(extra) {
+  const o = extra || {};
+  return {
+    provider: 'lunchmoney',
+    fetchedAt: '2026-09-04T18:00:00.000Z',
+    pendingCoverage: Object.prototype.hasOwnProperty.call(o, 'pendingCoverage')
+      ? o.pendingCoverage
+      : {
+        complete: true,
+        basis: O.PENDING_COVERAGE_BASIS,
+        hasMore: false,
+        truncated: false,
+      },
+    transactionWindow: o.window || {
+      startDate: '2026-08-20',
+      endDate: MID,
+      complete: true,
+      hasMore: false,
+      truncated: false,
+    },
+    accounts: o.accounts || observeAccounts(),
+    transactions: o.transactions || observeGapTransactions(),
+  };
+}
+
+function observeThenOverlay(payload, map) {
+  return Live.fromObservation({
+    data: overlayCanonical(),
+    payload,
+    accountMap: map || observeMap(),
+  });
+}
+
+console.log('\n=== 9. observer earns paydayGapComplete; overlay consumes the produced packet ===');
+{
+  const observeSrc = read('scripts/provider-observe.js');
+  ok(/function paydayGapCompleteFromEvidence/.test(observeSrc)
+      && /paydayGapComplete:\s*paydayGapCompleteFromEvidence/.test(observeSrc)
+      && !/paydayGapComplete:\s*(true|opts|packet|report)/.test(
+        observeSrc.replace(/paydayGapComplete:\s*paydayGapCompleteFromEvidence[\s\S]*?\),/, '')),
+    'sanitizedCurrentPeriodActuals earns paydayGapComplete from evidence, not a caller flag');
+
+  const complete = observeThenOverlay(observePayload());
+  const completePacket = complete.report.currentPeriodActuals;
+  const completeSnap = complete.data.plan.opening
+    && complete.data.plan.opening.paydaySnapshot;
+  const completeAdvice = overlayAdvice(complete.data);
+  const completeActive = period(completeAdvice.defaultView, 'this-pay-period');
+  ok(completePacket && completePacket.paydayGapComplete === true
+      && O.currentPeriodActualsLooksSanitized(completePacket),
+    'observe earns paydayGapComplete on a fetch-complete window covering the gap');
+  ok(complete.data.liveOverlay && complete.data.liveOverlay.applied === true
+      && near(F.startingCashAmount(complete.data.plan), LIVE_SUM),
+    'complete observe→overlay path still overlays mid-period live cash');
+  ok(completeSnap && completeSnap.periodStart === PAYDAY
+      && completeSnap.asOf === PAYDAY
+      && near(completeSnap.opening, INDEPENDENT_MORNING_WITH_GROCERY)
+      && !near(completeSnap.opening, LIVE_SUM)
+      && !near(completeSnap.opening, INDEPENDENT_MORNING),
+    'produced complete packet retains the grocery-adjusted paydaySnapshot, not live cash');
+  ok(completeActive && completeActive.openingKnown === true
+      && near(completeActive.opening, INDEPENDENT_MORNING_WITH_GROCERY)
+      && near(completeActive.available,
+        roundCent(INDEPENDENT_MORNING_WITH_GROCERY + PERIOD_INCOME)),
+    'observe→overlay leftover chain follows the produced frozen opening');
+
+  const truncated = observeThenOverlay(observePayload({
+    window: {
+      startDate: '2026-08-20',
+      endDate: MID,
+      complete: false,
+      hasMore: false,
+      truncated: true,
+    },
+  }));
+  ok(truncated.report.currentPeriodActuals
+      && truncated.report.currentPeriodActuals.paydayGapComplete !== true
+      && !(truncated.data.plan.opening && truncated.data.plan.opening.paydaySnapshot),
+    'truncated posted window does not earn the attestation and withholds the opening');
+
+  const short = observeThenOverlay(observePayload({
+    window: {
+      startDate: '2026-08-21',
+      endDate: MID,
+      complete: true,
+      hasMore: false,
+      truncated: false,
+    },
+  }));
+  ok(short.report.currentPeriodActuals
+      && short.report.currentPeriodActuals.paydayGapComplete !== true
+      && !(short.data.plan.opening && short.data.plan.opening.paydaySnapshot),
+    'window that misses the first gap day does not earn the attestation');
+
+  const unmapped = observeThenOverlay(observePayload({
+    accounts: observeAccounts().concat([{
+      id: 1999, name: 'Unmapped Extra', type: 'cash', balance: 10,
+      updated_at: '2026-09-04T17:55:00.000Z',
+    }]),
+    transactions: observeGapTransactions().concat([{
+      id: 599, account_id: 1999, date: '2026-08-22', amount: 12, is_pending: false,
+      payee: 'UNMAPPED DEBIT',
+    }]),
+  }));
+  ok(unmapped.report.currentPeriodActuals
+      && unmapped.report.currentPeriodActuals.paydayGapComplete !== true
+      && !(unmapped.data.plan.opening && unmapped.data.plan.opening.paydaySnapshot),
+    'unmapped household-cash evidence does not earn the attestation');
+
+  const pending = observeThenOverlay(observePayload({
+    transactions: observeGapTransactions().concat([{
+      id: 503, account_id: 1001, date: '2026-08-26', amount: 20,
+      is_pending: true, payee: 'PENDING SHOP',
+    }]),
+  }));
+  ok(pending.report.currentPeriodActuals
+      && pending.report.currentPeriodActuals.paydayGapComplete !== true
+      && !(pending.data.plan.opening && pending.data.plan.opening.paydaySnapshot),
+    'pending-unproven gap cash does not earn the attestation');
+
+  const missingPending = observeThenOverlay(observePayload({
+    pendingCoverage: null,
+  }));
+  ok(missingPending.report.currentPeriodActuals
+      && missingPending.report.currentPeriodActuals.paydayGapComplete !== true
+      && !(missingPending.data.plan.opening
+        && missingPending.data.plan.opening.paydaySnapshot),
+    'missing pending coverage does not earn the attestation');
 }
 
 if (failures) {

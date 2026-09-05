@@ -8,11 +8,12 @@
  * pre-overlay dated plan only when that figure is a recorded snapshot
  * or a completeness-proven household-cash walk. The walk evidence is
  * the incumbent sanitized currentPeriodActuals packet, passed as
- * paydayGapCash. A paginated-complete current-period window is not
- * gap completeness. Scheduled-only reconstruction is not retained.
- * Missing, truncated, unattested, or incomplete gap coverage
- * withholds the opening. That is not today's live cash
- * walked backward.
+ * paydayGapCash. provider-observe earns paydayGapComplete from
+ * opening-to-payday household-cash coverage; a paginated-complete
+ * current-period window is not gap completeness. Scheduled-only
+ * reconstruction is not retained. Missing, truncated, unattested,
+ * or incomplete gap coverage withholds the opening. That is not
+ * today's live cash walked backward.
  * This command never writes data.json, positions.csv, or snapshots/.
  *
  *   node scripts/live-plan.js --fixture <file>
@@ -725,8 +726,8 @@ function recordedPaydaySnapshot(snap, periodStart) {
 // debit is negated here. A current-period window being paginated-complete
 // is not gap completeness: that packet's claim is the current payday
 // period, not "unscheduled pre-payday spend was zero." complete:true
-// requires an explicit gap attestation plus a fetch-complete window
-// that actually covers the gap.
+// requires the observer-earned paydayGapComplete attestation plus a
+// fetch-complete window that actually covers the gap.
 function paydayGapCashFromReport(report, canonicalPlan, paydayDate) {
   const explicit = report && report.paydayGapCash;
   if (explicit && typeof explicit === 'object' && Array.isArray(explicit.movements)) {
