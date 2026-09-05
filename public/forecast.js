@@ -3418,7 +3418,11 @@
       const amount = hold && hold.required != null
         ? hold.required
         : (monthly != null ? monthly : null);
-      if (amount == null || !(amount > 0)) continue;
+      // Null only. A fully spent Groceries / Fuel / Pets / Eating-out
+      // line still belongs on the kitchen-counter glance at $0.
+      // Household is not in DEFAULT_VIEW_BUDGET_IDS; its explicit $0
+      // monthly baseline is omitted by paydayCyclePlanned, not here.
+      if (amount == null) continue;
       items.push({
         id: cat.id,
         label: DEFAULT_VIEW_BUDGET_LABELS[cat.id] || cat.ownerLine || cat.label,

@@ -385,6 +385,11 @@ console.log('\n=== live data.json no longer reserves Household $37.50 ===');
     .some(w => ((w && w.householdBudget) || []).some(r => r && r.id === 'household' && r.amount > 0));
   ok(!weekHasHouseholdHold,
     'week / future views do not hold a Household amount');
+  const glanceIds = ((rec.defaultView && rec.defaultView.householdBudget) || [])
+    .map(r => r.id);
+  ok(glanceIds.indexOf('groceries') >= 0 && glanceIds.indexOf('fuel') >= 0
+      && glanceIds.indexOf('household') < 0,
+    'kitchen-counter glance still prints Groceries/Fuel and does not print Household');
 }
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
