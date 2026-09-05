@@ -236,6 +236,15 @@
       "atlasAccountId": "chequing-b",
       "direction": "debit",
       "note": "Owner-confirmed 2026-09-02: the current-period Google storage 100 GB debit is displayed Google / original SERVICE _V on WEEKLY (chequing-b) dated 2026-08-31. Identity is payee + mapped account + direction + allowed date. Amount is not identity. Lunch Money Pets is not this bill and is not a Pets mapping. Other Google products remain excluded aliases, not this bill."
+    },
+    {
+      "eventId": "hydro-due-sep1",
+      "payeePattern": "BC Hydro",
+      "payeePatterns": ["BC Hydro", "BCHYDRO"],
+      "atlasAccountId": "chequing-a",
+      "direction": "debit",
+      "postingDateRule": "covers-due-on-or-before-posting",
+      "note": "Observed 2026-09-04 Chequing A / BILLS ACCOUNT alias BC Hydro is the incumbent 1 September Hydro due (hydro-due-sep1). Identity is that explicit alias + BILLS + debit + covers the latest due on or before posting. Amount is not identity: the planned $237.45 stays the scheduled amount, and the observed debit is settlement evidence. A debit on WEEKLY / Chequing B is not this identity. Do not invent a second Hydro bill."
     }
   ]
 }
