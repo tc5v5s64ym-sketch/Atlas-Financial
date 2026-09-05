@@ -295,7 +295,7 @@ console.log('\n=== 2. default view order and kitchen-counter labels ===');
     'Income',
     'Balance after payday',
     'Bills',
-    'Balance after remaining bills',
+    'Balance after bills',
     'Household budget',
     'Balance after household budget',
   ];
@@ -430,8 +430,8 @@ console.log('\n=== 6. big purchases print Forecast cost and $0 saved; page does 
   });
   ok(defaultGlance(html).includes(composer.money2(
     (advice.defaultView.calendarPeriods.find(p => p.role === 'active')
-      || advice.defaultView.calendarPeriods[0]).afterRemainingBills)),
-    'balance after remaining bills prints the Forecast leftover');
+      || advice.defaultView.calendarPeriods[0]).afterBills)),
+    'balance after bills prints the Forecast leftover');
 }
 
 console.log('\n=== 7. compact freshness remains; worksheet clutter is gone from the page ===');

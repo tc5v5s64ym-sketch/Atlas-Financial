@@ -371,10 +371,20 @@ console.log('\n=== 7. Active leftover identity and represented zeros ===');
   const paid = (active.bills || []).filter(r => r.status === 'PAID');
   ok(paid.every(r => near(r.remaining, 0)),
     'represented paid bills contribute remaining $0');
-  const independentAfterBills = roundCent(active.available - active.remainingBills);
-  ok(near(active.afterRemainingBills, independentAfterBills),
-    'after remaining bills = available − remaining bills');
-  const independentAfterBudget = roundCent(active.afterRemainingBills - active.budgetHold);
+  const independentLoad = (active.bills || []).reduce((s, r) => {
+    if (!r || r.needsDate) return s;
+    if (r.settledInOpening === true || r.settlement === 'opening') return s;
+    const paid = r.status === 'PAID' || r.settlement === 'represented';
+    if (paid && active.openingAsOf && r.date && r.date < active.openingAsOf) return s;
+    const assigned = r.planned != null ? Math.abs(Number(r.planned))
+      : Math.abs(Number(r.amount) || 0);
+    return s + assigned;
+  }, 0);
+  const independentAfterBills = roundCent(active.available - independentLoad);
+  ok(near(active.afterBills, independentAfterBills)
+      && near(active.afterRemainingBills, independentAfterBills),
+    'after bills = available − assigned period load, not remaining-only');
+  const independentAfterBudget = roundCent(active.afterBills - active.budgetHold);
   ok(near(active.afterHouseholdBudget, independentAfterBudget),
     'after household budget = after bills − remaining budget hold');
   const extra = active.extraDebt && Number(active.extraDebt.allocated) || 0;
@@ -447,9 +457,9 @@ console.log('\n=== 8. Unpaid once cash before periodStart stays reserved after p
     'remaining bills independently rise by the unpaid once amount');
   ok(near(unpaidActive.available, controlActive.available),
     'Current Balance is unchanged; the once row is not reconstructed cash');
-  ok(near(unpaidActive.afterRemainingBills,
+  ok(near(unpaidActive.afterBills,
       roundCent(unpaidActive.available - unpaidActive.remainingBills)),
-    'leftover subtracts the overdue once once');
+    'unpaid overdue once is still in the assigned period load');
   ok(!near(unpaidActive.afterRemainingBills, controlActive.afterRemainingBills),
     'dropping the overdue once would overstate surplus after bills');
 

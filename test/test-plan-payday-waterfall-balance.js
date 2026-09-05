@@ -259,12 +259,13 @@ console.log('\n=== 4. Bills and Household Budget stay downstream ===');
   const afterPayday = roundCent(OPENING_CASH + DALE + AMANDA);
   ok(near(active.remainingBills, BILL),
     'the Netflix bill is remaining in This Pay Period');
-  ok(near(active.afterRemainingBills, roundCent(afterPayday - BILL)),
-    'Balance after remaining bills subtracts the bill after payday');
+  ok(near(active.afterBills, roundCent(afterPayday - BILL))
+      && near(active.afterRemainingBills, active.afterBills),
+    'Balance after bills subtracts the assigned period bill after payday');
   ok(active.budgetHold != null && active.budgetHold > 0,
     'Household Budget still publishes a hold');
-  ok(near(active.afterHouseholdBudget, roundCent(active.afterRemainingBills - active.budgetHold)),
-    'Household Budget is subtracted after remaining bills, not inside Balance after payday');
+  ok(near(active.afterHouseholdBudget, roundCent(active.afterBills - active.budgetHold)),
+    'Household Budget is subtracted after bills, not inside Balance after payday');
   ok(near(active.available, afterPayday)
       && !near(active.available, active.afterRemainingBills)
       && !near(active.available, active.afterHouseholdBudget),

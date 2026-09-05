@@ -4926,6 +4926,64 @@
     };
   }
 
+  // Assigned amount the payday plan put on a printed bill row. Settlement
+  // actuals are disclosure; they do not rewrite this planned load.
+  function billAssignedAmount(row) {
+    if (!row) return 0;
+    if (row.planned != null && isFinite(Number(row.planned))) {
+      return Math.abs(Number(row.planned));
+    }
+    if (row.amount != null && isFinite(Number(row.amount))) {
+      return Math.abs(Number(row.amount));
+    }
+    return 0;
+  }
+
+  function rowIsSettledBill(row) {
+    return !!(row && (row.status === 'PAID' || row.settlement === 'represented'));
+  }
+
+  // A represented PAID bill already inside the opening cash must not be
+  // deducted again. Morning snapshot / completeness walk / carry-forward
+  // are cash before that day's assigned bills. Mid-period posted cutover
+  // or payday-morning cash may already include a same-day settlement.
+  function paidBillAlreadyInPaydayOpening(row, openingAsOf, openingSource) {
+    if (!row || !openingAsOf || !row.date) return false;
+    if (!rowIsSettledBill(row)) return false;
+    if (row.date < openingAsOf) return true;
+    if (row.date > openingAsOf) return false;
+    if (openingSource === 'snapshot' || openingSource === 'cutover-walk'
+        || openingSource === 'carry-forward') {
+      return false;
+    }
+    return true;
+  }
+
+  function billBelongsOnPaydayWaterfall(row, openingAsOf, openingSource) {
+    if (!row || row.needsDate) return false;
+    if (row.settledInOpening === true || row.settlement === 'opening') return false;
+    if (paidBillAlreadyInPaydayOpening(row, openingAsOf, openingSource)) return false;
+    return true;
+  }
+
+  // Authoritative frozen-waterfall bill load: each assigned period
+  // occurrence once, including subsequently PAID rows that are not
+  // already inside the opening. Remaining is settlement status, not
+  // the deduction.
+  function periodWaterfallBillLoad(bills, openingAsOf, openingSource) {
+    return roundCent((bills || []).reduce((sum, row) => {
+      if (!billBelongsOnPaydayWaterfall(row, openingAsOf, openingSource)) return sum;
+      return sum + billAssignedAmount(row);
+    }, 0));
+  }
+
+  function periodPaidBillDisclosure(bills) {
+    return roundCent((bills || []).reduce((sum, row) => {
+      if (!row || row.needsDate || !rowIsSettledBill(row)) return sum;
+      return sum + billAssignedAmount(row);
+    }, 0));
+  }
+
   // Two payday-cycle waterfalls: this Seaspan payday through the day
   // before the next, then the next payday through the day before the
   // following one. Leftover is this printout's chain: it does not replace
@@ -4940,10 +4998,14 @@
   // spending was zero.
   // Balance after payday is that frozen opening plus period income not
   // already inside that opening. Received-vs-live is settlement status
-  // and does not drop an income row from the snapshot. The next period
-  // opens from this period's projected ending, or from the walk's
-  // start-of-day cash on that payday when this period has no recorded
-  // opening. Household Budget uses the same spendingCycle window.
+  // and does not drop an income row from the snapshot. The Bills step
+  // subtracts the authoritative period bill load assigned against that
+  // frozen snapshot, including subsequently PAID rows that are not
+  // already inside the opening. Paid/remaining is settlement disclosure
+  // and does not put a paid bill's cash back into Balance after payday.
+  // The next period opens from this period's projected ending, or from
+  // the walk's start-of-day cash on that payday when this period has no
+  // recorded opening. Household Budget uses the same spendingCycle window.
   function calendarPeriodWaterfalls(plan, asOf, alloc, plans, debts, opts) {
     opts = opts || {};
     const windows = opts.periodWindows || operatingPayPeriodWindows(plan, asOf);
@@ -5071,10 +5133,15 @@
       incomeAdded = planUnavailable || !openingKnown ? null : roundCent(incomeAdded);
       const available = planUnavailable || !openingKnown
         ? null : roundCent(opening + incomeAdded);
-      const afterRemainingBills = available != null
-        ? roundCent(available - remainingBills) : null;
-      const afterHouseholdBudget = afterRemainingBills != null
-        ? roundCent(afterRemainingBills - budget.hold) : null;
+      const periodBillLoad = planUnavailable
+        ? null
+        : periodWaterfallBillLoad(bills, openingAsOf, openingSource);
+      const paidBills = planUnavailable ? null : periodPaidBillDisclosure(bills);
+      const afterBills = available != null && periodBillLoad != null
+        ? roundCent(available - periodBillLoad) : null;
+      const afterRemainingBills = afterBills;
+      const afterHouseholdBudget = afterBills != null
+        ? roundCent(afterBills - budget.hold) : null;
       let extraAllocated = 0;
       let extraDebt;
       if (planUnavailable) {
@@ -5107,7 +5174,7 @@
       const cards = revolvingCardsGlance(plan, debts, extraDebt);
       const leftover = {
         currentBalance: opening,
-        afterBills: afterRemainingBills,
+        afterBills,
         afterHouseholdBudget,
         afterDebtRepayment,
         afterBigPurchases,
@@ -5140,9 +5207,11 @@
         available,
         bills: planUnavailable ? [] : bills,
         totalBillsThisPeriod: planUnavailable ? null : totalBillsThisPeriod,
+        paidBills,
         remainingBills: planUnavailable ? null : remainingBills,
+        periodBillLoad,
         afterRemainingBills,
-        afterBills: afterRemainingBills,
+        afterBills,
         householdBudget: planUnavailable ? [] : budget.items,
         budgetHold: planUnavailable ? null : budget.hold,
         spendingCycleLabel,

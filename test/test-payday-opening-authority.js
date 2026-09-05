@@ -279,8 +279,10 @@ console.log('\n=== 3. Income is counted exactly once; paid bills are not deducte
   ok(paid && paid.status === 'PAID' && near(paid.remaining, 0),
     'represented period bill stays listed as paid');
   ok(near(active.remainingBills, PRE_BILL)
-      && near(active.afterRemainingBills, roundCent(AFTER_PAYDAY - PRE_BILL)),
-    'paid period bill is not subtracted again; unpaid pre-payday once-bill stays reserved once');
+      && near(active.paidBills, PERIOD_BILL)
+      && near(active.periodBillLoad, REMAINING_UNPAID)
+      && near(active.afterBills, roundCent(AFTER_PAYDAY - REMAINING_UNPAID)),
+    'paid period bill still leaves the frozen snapshot; unpaid pre-payday once-bill stays reserved once');
 }
 
 console.log('\n=== 4. Represented pre-payday outflow is not a completeness substitute ===');
@@ -396,7 +398,7 @@ console.log('\n=== 6. Incomplete gap withholds leftovers; complete gap is Foreca
     'complete walked opening does not print the missing-snapshot warning');
   const waterfallFn = grab(planSrc, /^function calendarWaterfallHtml\([\s\S]*?\n\}$/m, 'calendarWaterfallHtml');
   ok(/period\.available/.test(waterfallFn)
-      && /period\.afterRemainingBills/.test(waterfallFn)
+      && /period\.afterBills/.test(waterfallFn)
       && /period\.afterHouseholdBudget/.test(waterfallFn)
       && !/\.opening\s*\+/.test(waterfallFn)
       && !/incomeAdded/.test(waterfallFn),
