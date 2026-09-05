@@ -4843,6 +4843,16 @@
       const recon = reconById.get(id) || [];
       const spent = actualsReady ? spentFromRecon(recon) : null;
       const remaining = spent != null ? roundCent(planned - spent) : planned;
+      const overspend = spent != null ? roundCent(Math.max(0, spent - planned)) : 0;
+      // Owner 2026-09-04: a planned category reserves at least its
+      // planned amount. Actuals fulfill that reserve up to plan;
+      // only actuals above plan increase the payday deduction.
+      // hold = max(planned, spent) = planned + overspend.
+      // Do not use remaining-only (planned − spent) and do not add
+      // planned + spent (that double-counts).
+      const hold = spent != null
+        ? roundCent(Math.max(planned, spent))
+        : roundCent(planned);
       const pendingRecon = recon.filter(r => r.pending === true);
       items.push({
         id,
@@ -4853,17 +4863,18 @@
         planned,
         spent,
         remaining,
-        hold: roundCent(Math.max(0, remaining != null ? remaining : planned)),
+        overspend,
+        hold,
         projected: role === 'future',
         recon,
         pendingRecon,
       });
     }
-    // Informational residual of the incumbent needsConfirmation /
-    // unclassified path. This is unassigned current-cycle household spend,
-    // not a total of every dollar outside the planned category rows
-    // (named non-calendar ids such as health/sport stay omitted).
-    // Not an allowance, not a hold, not a second waterfall subtraction.
+    // Incumbent needsConfirmation / unclassified residual. This is
+    // unassigned current-cycle household spend, not a total of every
+    // dollar outside the planned category rows (named non-calendar
+    // ids such as health/sport stay omitted). No planned reserve.
+    // Owner 2026-09-04: its current-period actual is deducted once.
     // Classifier reasons stay on recon.includeReason.
     // Visibility follows unresolved confirmation recon, not confirmed-spend
     // dollars: a pending possible-replacement twin can remain unclassified
@@ -4878,7 +4889,8 @@
         planned: null,
         spent: confirmationSpent,
         remaining: null,
-        hold: 0,
+        overspend: null,
+        hold: roundCent(confirmationSpent),
         needsConfirmation: true,
         otherSpending: true,
         projected: role === 'future',
@@ -5005,7 +5017,10 @@
   // and does not put a paid bill's cash back into Balance after payday.
   // The next period opens from this period's projected ending, or from
   // the walk's start-of-day cash on that payday when this period has no
-  // recorded opening. Household Budget uses the same spendingCycle window.
+  // recorded opening. Household Budget uses the same spendingCycle
+  // window. Owner 2026-09-04: that hold is Σ max(planned, actual) for
+  // planned categories plus Other Spending actual. Remaining-only
+  // leftover and planned-plus-actual are both wrong.
   function calendarPeriodWaterfalls(plan, asOf, alloc, plans, debts, opts) {
     opts = opts || {};
     const windows = opts.periodWindows || operatingPayPeriodWindows(plan, asOf);

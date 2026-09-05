@@ -345,8 +345,9 @@ console.log('\n=== 6. Current-period actuals stay inside the payday window ===')
     'only Aug 28–asOf grocery txs reduce remaining',
     groceries && `spent=${groceries.spent}`);
   ok(groceries && near(groceries.remaining, independentRemaining)
-      && near(groceries.hold, independentRemaining),
-    'remaining independently equals planned − committed');
+      && near(groceries.hold, independentPlanned)
+      && !near(groceries.hold, independentRemaining),
+    'remaining independently equals planned − committed; hold reserves the full plan');
   const reconIds = ((groceries && groceries.recon) || []).map(r => r.id);
   ok(reconIds.includes('tx-cycle') && reconIds.includes('tx-asof')
       && !reconIds.includes('tx-before') && !reconIds.includes('tx-next'),
@@ -386,7 +387,7 @@ console.log('\n=== 7. Active leftover identity and represented zeros ===');
     'after bills = available − assigned period load, not remaining-only');
   const independentAfterBudget = roundCent(active.afterBills - active.budgetHold);
   ok(near(active.afterHouseholdBudget, independentAfterBudget),
-    'after household budget = after bills − remaining budget hold');
+    'after household budget = after bills − effective Household Budget hold');
   const extra = active.extraDebt && Number(active.extraDebt.allocated) || 0;
   const purchases = (active.bigPurchases || []).reduce(
     (s, r) => s + (Number(r.allocation) || 0), 0);

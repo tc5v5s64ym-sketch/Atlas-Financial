@@ -921,9 +921,13 @@ console.log('\n=== 12c. unresolved Seaspan cycle fails closed; alreadyHeld stays
     currentPeriodActuals: actualsPacket(leakTxs, asOf),
   });
   const baseActive = period(baseline.defaultView, 'this-pay-period');
-  ok(baseActive && near(baseActive.budgetHold, independentHold)
+  const baseOther = (baseActive.householdBudget || []).find(r => r.otherSpending);
+  const independentEffective = roundCent(independentHold + 80);
+  ok(baseOther && near(baseOther.spent, 80) && near(baseOther.hold, 80),
+    'in-cycle grocery without merchant identity is Other spending actual $80');
+  ok(baseActive && near(baseActive.budgetHold, independentEffective)
       && Number(baseActive.extraDebt.allocated) > 0,
-    'resolved Aug 28 baseline holds $1,862.50 and has leftover-funded extra',
+    'resolved Aug 28 baseline holds $1,862.50 planned plus $80 Other spending',
     baseActive && `${baseActive.budgetHold} extra ${baseActive.extraDebt.allocated}`);
 
   function assertFailClosed(plan, label, opts) {
@@ -973,7 +977,7 @@ console.log('\n=== 12c. unresolved Seaspan cycle fails closed; alreadyHeld stays
   }
 }
 
-console.log('\n=== 13. overspend remaining is negative; leftover does not take the overshoot ===');
+console.log('\n=== 13. overspend remaining is negative; leftover takes the overshoot once ===');
 {
   const asOf = '2026-08-30';
   const txs = [
@@ -987,18 +991,18 @@ console.log('\n=== 13. overspend remaining is negative; leftover does not take t
   const p2 = period(advice.defaultView, 'this-pay-period');
   const groc = budgetRow(p2, 'groceries');
   ok(groc && groc.remaining < 0 && near(groc.remaining, roundCent(900 - 2000))
-      && near(groc.hold, 0) && groc.hold >= 0,
-    'grocery remaining is negative; hold is max(0, remaining) = $0');
-  ok(near(p2.budgetHold, roundCent(CYCLE_PLANNED_TOTAL - 900))
+      && near(groc.overspend, 1100) && near(groc.hold, 2000),
+    'grocery remaining is negative as overspend disclosure; hold is max(900, 2000) = $2,000');
+  ok(near(p2.budgetHold, roundCent(CYCLE_PLANNED_TOTAL - 900 + 2000))
       && p2.budgetHold >= 0,
-    'period hold never goes negative; overspend releases only that row\'s hold',
+    'period hold keeps unused other-category reserves and adds grocery overspend',
     String(p2.budgetHold));
   ok(near(p2.opening, F.startingCashAmount(plan)),
     'payday opening is still cutover starting cash after overspend');
   ok(near(p2.afterHouseholdBudget, roundCent(p2.afterRemainingBills - p2.budgetHold))
-      && !near(p2.afterHouseholdBudget, roundCent(p2.afterRemainingBills - 2000))
-      && !near(p2.afterHouseholdBudget, roundCent(p2.afterRemainingBills - 1100)),
-    'leftover does not subtract the grocery overshoot from cash again');
+      && near(p2.afterHouseholdBudget, roundCent(p2.afterRemainingBills - (CYCLE_PLANNED_TOTAL + 1100)))
+      && !near(p2.afterHouseholdBudget, roundCent(p2.afterRemainingBills - (CYCLE_PLANNED_TOTAL - 900))),
+    'leftover subtracts the grocery overshoot once via effective hold');
 }
 
 console.log('\n=== 13b. Dale/Amanda guilt-free actuals need explicit evidence inside the cycle ===');
@@ -1062,8 +1066,8 @@ console.log('\n=== 13b. Dale/Amanda guilt-free actuals need explicit evidence in
       && confirm.label === 'Other spending'
       && confirm.note === 'Not yet assigned to a budget category'
       && confirm.planned == null && confirm.remaining == null
-      && near(confirm.spent, 12 + 33) && confirm.hold === 0,
-    'unlabeled personal and WEEKLY SPENDING are Other spending, hold $0',
+      && near(confirm.spent, 12 + 33) && near(confirm.hold, 12 + 33),
+    'unlabeled personal and WEEKLY SPENDING are Other spending, deducted at actual',
     confirm && String(confirm.spent));
   ok(!near(amanda.spent, 18) && !near(dale.spent, 18),
     'TENNIS INCOME is not Dale or Amanda guilt-free spending');
@@ -1193,14 +1197,16 @@ console.log('\n=== 13c. classification: Surrey Meat, eating out, Canadian Tire, 
   ok(confirm && confirm.otherSpending === true && confirm.label === 'Other spending'
       && confirm.note === 'Not yet assigned to a budget category'
       && confirm.needsConfirmation === true
-      && near(confirm.spent, 78.38 + 96.30 + 40) && confirm.hold === 0,
-    'Canadian Tire and unconfirmed 7-Eleven sit on unassigned Other spending, not a hold',
+      && near(confirm.spent, 78.38 + 96.30 + 40)
+      && near(confirm.hold, 78.38 + 96.30 + 40),
+    'Canadian Tire and unconfirmed 7-Eleven sit on unassigned Other spending, deducted at actual',
     confirm && String(confirm.spent));
   ok(near(p2.budgetHold, roundCent(
-    Math.max(0, 900 - 0) + Math.max(0, 325 - 55) + Math.max(0, 37.50 - 0)
-    + Math.max(0, 100 - 39) + Math.max(0, 200 - 60) + 150 + 150
+    Math.max(900, 0) + Math.max(325, 55) + Math.max(37.50, 0)
+    + Math.max(100, 39) + Math.max(200, 60) + 150 + 150
+    + (78.38 + 96.30 + 40)
   )),
-    'hold is max(0, remaining) per row; never negative',
+    'hold is max(planned, spent) per planned row plus Other spending actual',
     String(p2.budgetHold));
 }
 
