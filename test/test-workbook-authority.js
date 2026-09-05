@@ -27,7 +27,7 @@ const OWNER_PAYDAY_TARGETS = {
 };
 const GROCERY_WEEKLY = 450;
 const DOG_FOOD_PAYDAY = 100;
-const RETIRED_HOLD_IDS = ['household', 'health', 'sport', 'shopping', 'subscriptions'];
+const RETIRED_HOLD_IDS = ['health', 'sport', 'shopping', 'subscriptions'];
 
 // Approximate monthly equivalents from HOME BUDGET.xlsx per-paycheque lines.
 // These are historical planning figures. They must not become plannedMonthly
@@ -88,15 +88,18 @@ for (const id of RETIRED_HOLD_IDS) {
 }
 {
   const h = byId('household');
-  ok(h && !h.ownerLine && !h.targetSource,
-    'household keeps classification identity without an owner-target line',
+  ok(h && h.plannedMonthly === 0 && h.plannedPayday == null && h.plannedWeekly == null,
+    'household explicit planning baseline is $0 monthly, not a payday hold',
+    h ? `${h.plannedMonthly}/${h.plannedPayday}/${h.plannedWeekly}` : 'missing');
+  ok(h && h.ownerLine === 'Household' && h.targetSource === 'owner-stated-2026-09-04',
+    'household $0 baseline names the 2026-09-04 owner instruction',
     h ? `${h.ownerLine}/${h.targetSource}` : 'missing');
   ok(h && Array.isArray(h.from) && h.from.indexOf('Household') >= 0,
     'household still maps the Household classification label');
-  ok(h && /no planned Household Budget target/.test(h.why || '')
+  ok(h && /plannedMonthly 0/.test(h.why || '')
       && /2026-09-04/.test(h.why || '')
       && /2026-08-31/.test(h.why || ''),
-    'household why records the 2026-09-04 removal and preserves 2026-08-31 provenance');
+    'household why records the 2026-09-04 zero baseline and preserves 2026-08-31 provenance');
   ok(h && !/2026-09-05/.test(h.why || ''),
     'household why does not advance that removal to the UTC date 2026-09-05');
 }
@@ -126,7 +129,8 @@ ok(!/still absent|never supplied|never reached this repository|still not absorbe
   'ownerTargets.note does not claim the workbooks are missing');
 ok(/classified/.test(note) && /HOUSEHOLD_BUDGET_WORKBOOKS_2026-08-16/.test(note),
   'ownerTargets.note points at the classification record');
-ok(/Household currently has no planned Household Budget target/.test(note)
+ok(/Household currently has no planned Household Budget payday hold/.test(note)
+    && /explicit \$0 monthly planning baseline/.test(note)
     && /2026-09-04/.test(note)
     && /\$1,825\.00/.test(note)
     && /\$1,725\.00/.test(note),

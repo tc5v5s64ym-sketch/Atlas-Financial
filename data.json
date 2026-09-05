@@ -697,7 +697,7 @@
             "ownerTargets": {
                 "status": "partial",
                 "source": "owner-stated-2026-08-31",
-                "note": "Owner-stated current policy, not workbook-derived. Owner-locked 2026-08-31 household budget on the Seaspan 14-day payday cycle (not Bill Period 1 / Period 2 calendar dates), restated 2026-09-04: Groceries $450/week = $900 per cycle; Fuel $325; Dog food $100 once per calendar month, assigned to the first Seaspan pay period beginning in that month (later Seaspan starts in the same YYYY-MM get $0; not prorated); Eating out $200; Dale guilt-free spending $150; Amanda guilt-free spending $150. Household currently has no planned Household Budget target (owner-instructed 2026-09-04; the 2026-08-31 $37.50 per-cycle target is retired). Cycle total $1,825.00 when that month's Dog food is assigned, else $1,725.00. Medical/health, children/sports, subscriptions, and combined Personal/shopping are not household-budget holds. Subscriptions remain itemized bills. monthly_budget_tracker_template.xlsx and HOME BUDGET.xlsx stay classified in docs/source_intake/HOUSEHOLD_BUDGET_WORKBOOKS_2026-08-16.md and do not supersede this lock. Sinking-fund amounts remain unnamed as current targets (Q20). Every category without a target below is still a historical actual and is labelled as one.",
+                "note": "Owner-stated current policy, not workbook-derived. Owner-locked 2026-08-31 household budget on the Seaspan 14-day payday cycle (not Bill Period 1 / Period 2 calendar dates), restated 2026-09-04: Groceries $450/week = $900 per cycle; Fuel $325; Dog food $100 once per calendar month, assigned to the first Seaspan pay period beginning in that month (later Seaspan starts in the same YYYY-MM get $0; not prorated); Eating out $200; Dale guilt-free spending $150; Amanda guilt-free spending $150. Household currently has no planned Household Budget payday hold (owner-instructed 2026-09-04; the 2026-08-31 $37.50 per-cycle target is retired; explicit $0 monthly planning baseline so historical Household actuals do not re-enter required essentials). Cycle total $1,825.00 when that month's Dog food is assigned, else $1,725.00. Medical/health, children/sports, subscriptions, and combined Personal/shopping are not household-budget holds. Subscriptions remain itemized bills. monthly_budget_tracker_template.xlsx and HOME BUDGET.xlsx stay classified in docs/source_intake/HOUSEHOLD_BUDGET_WORKBOOKS_2026-08-16.md and do not supersede this lock. Sinking-fund amounts remain unnamed as current targets (Q20). Every category without a target below is still a historical actual and is labelled as one.",
                 "sinkingFundsNamed": [
                     "property tax",
                     "home insurance",
@@ -745,8 +745,10 @@
                     "from": [
                         "Household"
                     ],
-                    "plannedMonthly": null,
-                    "why": "Not a household-budget hold. Owner-instructed 2026-09-04: Household currently has no planned Household Budget target. Lunch Money Household actuals still classify here so they are not dumped into Groceries, Fuel, or another planned row. The 2026-08-31 $37.50 per 14-day Seaspan payday-cycle target is retired. FortisBC and Noble Disposal stay dated bills, not this row. Superstores / Canadian Tire are not this row. The Aug. 10 $150 monthly target remains retired."
+                    "plannedMonthly": 0,
+                    "ownerLine": "Household",
+                    "targetSource": "owner-stated-2026-09-04",
+                    "why": "Not a household-budget payday hold. Owner-instructed 2026-09-04: Household currently has no planned Household Budget payday target. plannedMonthly 0 is the explicit planning baseline so Forecast does not fall back to historical Household actuals as a hidden reserve. Lunch Money Household actuals still classify here so they are not dumped into Groceries, Fuel, or another planned row. The 2026-08-31 $37.50 per 14-day Seaspan payday-cycle target is retired. FortisBC and Noble Disposal stay dated bills, not this row. Superstores / Canadian Tire are not this row. The Aug. 10 $150 monthly target remains retired."
                 },
                 {
                     "id": "health",

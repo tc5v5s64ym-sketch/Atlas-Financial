@@ -1,5 +1,6 @@
 'use strict';
-/* Household has no planned Household Budget target.
+/* Household has no planned Household Budget payday hold.
+ * Explicit plannedMonthly 0 is the planning baseline.
  *
  * Independent of Forecast helpers under change (L-002): expected
  * planned amounts are summed from the authorized remaining owner-target
@@ -103,7 +104,8 @@ function budgetCats(opts) {
     { id: 'fuel', label: 'Fuel', class: 'essential',
       plannedPayday: 325, plannedMonthly: null, ownerLine: 'Fuel' },
     { id: 'household', label: 'Household supplies & utilities', class: 'essential',
-      from: ['Household'], plannedMonthly: null },
+      from: ['Household'], plannedMonthly: 0, ownerLine: 'Household',
+      targetSource: 'owner-stated-2026-09-04' },
     { id: 'pets', label: 'Pets', class: 'essential',
       plannedPayday: 100, plannedMonthly: null, ownerLine: 'Dog food',
       paydayCadence: 'first-seaspan-of-month' },
@@ -117,7 +119,14 @@ function budgetCats(opts) {
   if (opts.withHouseholdTarget) {
     const hh = cats.find(c => c.id === 'household');
     hh.plannedPayday = 37.5;
+    hh.plannedMonthly = null;
     hh.ownerLine = 'Household';
+  }
+  if (opts.nullHousehold) {
+    const hh = cats.find(c => c.id === 'household');
+    delete hh.plannedMonthly;
+    delete hh.ownerLine;
+    delete hh.targetSource;
   }
   return cats;
 }
@@ -310,20 +319,49 @@ console.log('\n=== monthly / weekly source delta from the retired payday target 
   const hhKept = (bdKept.categories || []).find(c => c.id === 'household');
   ok(hhKept && near(hhKept.target, paydayMonthly) && hhKept.source === 'owner-target',
     'with the retired target present, master-plan monthly is payday-annualized $81.53');
-  ok(hhGone && hhGone.target == null && hhGone.source === 'historical-actual',
-    'without the planned target, Household is historical-actual, not a $0 owner target');
-  ok(near(bdKept.essentialMonthly - bdGone.essentialMonthly, paydayMonthly)
-      || near(hhKept.planned - (hhGone.planned || 0), paydayMonthly),
-    'independent $81.53 payday-annualized source is the owner-target monthly that left the hold',
-    `kept ${hhKept && hhKept.planned} gone ${hhGone && hhGone.planned}`);
+  ok(hhGone && hhGone.target === 0 && hhGone.source === 'owner-target'
+      && near(hhGone.planned, 0) && near(hhGone.reserved || 0, 0),
+    'without the payday target, Household is an explicit $0 owner-target baseline');
+  ok(near(hhKept.target, paydayMonthly) && near(hhGone.target, 0)
+      && near(hhKept.target - hhGone.target, paydayMonthly),
+    'independent $81.53 payday-annualized source is the owner-target monthly that left the hold');
+  const hxTotal = 1785.68;
+  const hxMonths = 8;
+  const independentHxMonthly = roundCent(hxTotal / hxMonths);
+  ok(near(independentHxMonthly, 223.21),
+    'independent: $1,785.68 Household actuals over 8 months is $223.21/month');
+  const periodsHx = {
+    asOf: '2026-09-11',
+    periods: { ytd: { label: 'YTD', months: hxMonths, spending: [
+      { label: 'Household', total: hxTotal },
+    ] } },
+  };
+  const bdHxZero = F.budgetBreakdown(noHold, periodsHx, {});
+  const bdHxNull = F.budgetBreakdown(syntheticPlan(LIVE_ANCHOR, { nullHousehold: true }), periodsHx, {});
+  const hhHxZero = (bdHxZero.categories || []).find(c => c.id === 'household');
+  const hhHxNull = (bdHxNull.categories || []).find(c => c.id === 'household');
+  ok(hhHxZero && near(hhHxZero.historical, independentHxMonthly)
+      && near(hhHxZero.planned, 0) && hhHxZero.source === 'owner-target',
+    'CASE required monthly: explicit $0 baseline keeps historical $223.21 out of planned essentials');
+  ok(hhHxNull && hhHxNull.source === 'historical-actual'
+      && near(hhHxNull.planned, independentHxMonthly),
+    'the same actuals would re-enter if the category had no owner target — that is the defect');
+  ok(near((hhHxZero.planned || 0) + (hhHxZero.reserved || 0), 0)
+      && near((bdHxNull.essentialMonthly || 0) - (bdHxZero.essentialMonthly || 0), independentHxMonthly),
+    'Household adds $0 to required monthly; the $223.21 historical path is the rejected fallback');
+  const weeksPerMonth = (365.25 / 12) / 7;
+  ok(near((bdHxZero.requiredWeekly || bdHxZero.essentialMonthly / weeksPerMonth)
+      - ((bdHxZero.essentialMonthly || 0) / weeksPerMonth), 0)
+      || near((hhHxZero.planned || 0) / weeksPerMonth, 0),
+    'Household adds $0 to required weekly planning figures');
 }
 
 console.log('\n=== live data.json no longer reserves Household $37.50 ===');
 {
   const live = liveData.plan.budget.categories.find(c => c.id === 'household');
   ok(live && live.plannedPayday == null && live.plannedWeekly == null
-      && live.plannedMonthly == null && !live.ownerLine,
-    'live household category has no planned target');
+      && live.plannedMonthly === 0 && live.ownerLine === 'Household',
+    'live household category is an explicit $0 monthly baseline, not a payday hold');
   const rec = F.recommend(liveData.plan, liveData.meta.asOf, {
     debts: liveData.debts || [],
   });
@@ -335,6 +373,18 @@ console.log('\n=== live data.json no longer reserves Household $37.50 ===');
     'live This Pay Period omits Household and hold is $1,825.00');
   ok(next && !budgetRow(next, 'household') && near(next.budgetHold, 1762.5 - 37.5),
     'live Next Pay Period omits Household and hold is $1,725.00');
+  const livePeriods = require('../public/periods.json');
+  const liveBd = F.budgetBreakdown(liveData.plan, livePeriods, {
+    paypalPerMonth: liveData.paypal ? liveData.paypal.perMonth : 0,
+  });
+  const liveHh = (liveBd.categories || []).find(c => c.id === 'household');
+  ok(liveHh && liveHh.target === 0 && liveHh.source === 'owner-target'
+      && near(liveHh.planned, 0) && near(liveHh.reserved || 0, 0),
+    'live Household adds $0 to required monthly planning figures');
+  const weekHasHouseholdHold = ((rec.weekViews || []).concat(rec.futureOperatingPeriods || []))
+    .some(w => ((w && w.householdBudget) || []).some(r => r && r.id === 'household' && r.amount > 0));
+  ok(!weekHasHouseholdHold,
+    'week / future views do not hold a Household amount');
 }
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);

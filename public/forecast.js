@@ -3418,7 +3418,7 @@
       const amount = hold && hold.required != null
         ? hold.required
         : (monthly != null ? monthly : null);
-      if (amount == null) continue;
+      if (amount == null || !(amount > 0)) continue;
       items.push({
         id: cat.id,
         label: DEFAULT_VIEW_BUDGET_LABELS[cat.id] || cat.ownerLine || cat.label,
@@ -3743,7 +3743,7 @@
         });
         continue;
       }
-      if (monthly == null) continue;
+      if (monthly == null || monthly === 0) continue;
       items.push({
         id: cat.id,
         label: DEFAULT_VIEW_BUDGET_LABELS[cat.id] || cat.ownerLine || cat.label,
@@ -3786,7 +3786,7 @@
         });
         continue;
       }
-      if (monthly == null) continue;
+      if (monthly == null || monthly === 0) continue;
       items.push({
         id: cat.id,
         label: DEFAULT_VIEW_BUDGET_LABELS[cat.id] || cat.ownerLine || cat.label,
@@ -4503,7 +4503,13 @@
       return payday;
     }
     if (cat.plannedMonthly != null) {
-      return roundCent(Number(cat.plannedMonthly) * 14 / CALENDAR_MONTH_DAYS);
+      const monthly = Number(cat.plannedMonthly) || 0;
+      // An explicit $0 monthly owner target is a planning baseline of
+      // zero — historical actuals do not re-enter required essentials.
+      // It is not a payday-cycle hold, so the payday sheet omits the
+      // row rather than printing $0.
+      if (monthly === 0) return null;
+      return roundCent(monthly * 14 / CALENDAR_MONTH_DAYS);
     }
     return null;
   }
