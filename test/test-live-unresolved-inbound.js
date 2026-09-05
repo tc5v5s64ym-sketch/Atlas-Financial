@@ -532,8 +532,11 @@ console.log('\n=== 8. Actual spending does not double-count ===');
     'Household Budget reserves remaining $550, not planned $900');
   ok(p2 && near(p2.budgetHold, remaining),
     'waterfall hold is remaining grocery, not the full cycle plan');
-  ok(p2.available == null && p2.afterHouseholdBudget == null,
-    'without a recorded payday opening, leftover does not start from live cash');
+  ok(p2.available != null && p2.afterHouseholdBudget != null
+      && !near(p2.available, independentCash)
+      && !near(p2.afterHouseholdBudget, independentCash)
+      && near(p2.afterHouseholdBudget, round2(p2.available - p2.remainingBills - p2.budgetHold)),
+    'leftover chain starts from the walked payday opening, not live cash');
   ok(near(advice.defaultView.liveCurrentBalance, independentCash),
     'live Current Balance stays the observed-cash fixture');
   ok(!near(remaining, planned) && near(groceries.hold, remaining),
