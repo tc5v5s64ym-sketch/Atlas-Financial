@@ -1025,6 +1025,10 @@ const COVER_STATEMENT_CYCLE_OR_LATEST_DUE = 'covers-statement-cycle-or-latest-du
 const SETTLES_WHEN_AMOUNT_AT_LEAST = 'amount-at-least';
 const SETTLES_WHEN_EXACT_SCHEDULED_AMOUNT = 'exact-scheduled-amount';
 const COVER_DUE_LOOKBACK_DAYS = 62;
+// covers-due-on-or-before-posting is a recurring "latest due" relation.
+// A once occurrence is not a series: reuse after this grace would attach a
+// later same-alias debit to an already-scheduled once bill.
+const ONCE_COVER_GRACE_DAYS = 7;
 const IDENTITY_AMOUNT_EPSILON = 0.005;
 
 function rulePayeePatterns(rule) {
@@ -1243,6 +1247,17 @@ function postingDateRelation(scheduledDate, postingDate, rule) {
   return nextBusinessDay === posted ? 'weekend-next-business-day' : null;
 }
 
+function sourceFrequency(plan, eventId) {
+  if (!plan || !eventId) return null;
+  const row = [].concat(
+    (plan.bills) || [],
+    (plan.obligations) || [],
+    (plan.income) || [],
+    (plan.commitments) || []
+  ).find(item => item && item.id === eventId);
+  return row && row.frequency != null ? String(row.frequency) : null;
+}
+
 function coveringScheduledDates(plan, rule, postingDate) {
   const posted = parseIsoDate(postingDate);
   if (!plan || !rule || !rule.eventId || !posted) return [];
@@ -1260,6 +1275,10 @@ function coveringScheduledDates(plan, rule, postingDate) {
   events.sort((a, b) => String(b.date).localeCompare(String(a.date)));
   const latest = events[0].date;
   if (events.filter(e => e.date === latest).length !== 1) return [];
+  if (sourceFrequency(plan, rule.eventId) === 'once') {
+    const lastAllowed = Forecast.addDays(latest, ONCE_COVER_GRACE_DAYS);
+    if (!lastAllowed || posted > lastAllowed) return [];
+  }
   return [latest];
 }
 
