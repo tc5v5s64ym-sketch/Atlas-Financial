@@ -72,6 +72,11 @@ for (const [id, amount] of Object.entries(OWNER_PAYDAY_TARGETS)) {
     p ? String(p.paydayCadence) : 'missing');
   ok(p && p.targetSource === OWNER_SOURCE,
     'pets targetSource remains owner-stated-2026-08-31');
+  ok(p && /cadence restated by owner 2026-09-04/.test(p.why || ''),
+    'pets why records the cadence restatement on the household-financial date 2026-09-04',
+    p ? String(p.why) : 'missing');
+  ok(p && !/cadence restated by owner 2026-09-05/.test(p.why || ''),
+    'pets why does not advance that restatement to the UTC date 2026-09-05');
 }
 for (const id of RETIRED_HOLD_IDS) {
   const c = byId(id);

@@ -794,7 +794,7 @@
                     "plannedMonthly": null,
                     "ownerLine": "Dog food",
                     "targetSource": "owner-stated-2026-08-31",
-                    "why": "OWNER TARGET WINS. Amount locked 2026-08-31 at $100; cadence restated by owner 2026-09-05: $100 once per calendar month, assigned to the first Seaspan pay period whose start falls in that YYYY-MM. Later Seaspan pay periods beginning in the same calendar month are $0. Do not prorate, split, accrue, roll, or use calendar 1st–15th / 16th–month-end halves. Spent includes only txs whose normalized original merchant contains SURREY MEAT (SURREY MEAT PKR _F, SURREY MEAT PKR, SURREY MEAT PAC _F). Never Groceries. Meridian Farm, Iron Butcher, other meat stores, and general pet merchants are not Dog food."
+                    "why": "OWNER TARGET WINS. Amount locked 2026-08-31 at $100; cadence restated by owner 2026-09-04: $100 once per calendar month, assigned to the first Seaspan pay period whose start falls in that YYYY-MM. Later Seaspan pay periods beginning in the same calendar month are $0. Do not prorate, split, accrue, roll, or use calendar 1st–15th / 16th–month-end halves. Spent includes only txs whose normalized original merchant contains SURREY MEAT (SURREY MEAT PKR _F, SURREY MEAT PKR, SURREY MEAT PAC _F). Never Groceries. Meridian Farm, Iron Butcher, other meat stores, and general pet merchants are not Dog food."
                 },
                 {
                     "id": "propertytax",
