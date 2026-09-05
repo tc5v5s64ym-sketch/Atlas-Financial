@@ -2698,6 +2698,91 @@ function currentPeriodActualsLooksSanitized(packet) {
   return true;
 }
 
+function householdCashIdsFromPlan(plan) {
+  const rows = (plan && plan.startingCash && plan.startingCash.breakdown) || [];
+  const ids = [];
+  const seen = new Set();
+  for (const row of rows) {
+    if (!row || !row.id) continue;
+    const id = String(row.id);
+    if (seen.has(id)) continue;
+    seen.add(id);
+    ids.push(id);
+  }
+  return ids;
+}
+
+function mappedHouseholdCashIds(accountMap) {
+  const ids = new Set();
+  for (const mapping of (accountMap && accountMap.mappings) || []) {
+    if (!mapping || mapping.atlasRole !== 'household-cash') continue;
+    const id = mapping.canonical && mapping.canonical.id;
+    if (id) ids.add(String(id));
+  }
+  return ids;
+}
+
+function paydayFromPlan(plan, asOf) {
+  const cycle = Forecast.spendingCycle(plan, asOf);
+  return cycle && cycle.start ? String(cycle.start) : null;
+}
+
+// Earn paydayGapComplete from incumbent observation evidence. A
+// paginated-complete current-period window is not enough: the posted
+// window must cover every household-cash day from the dated opening
+// through payday morning, required household-cash identities in the
+// opening breakdown must be mapped, amounts must be trusted, pending
+// coverage must be complete, and no pending-unproven household-cash
+// movement may sit in that gap. Caller-supplied truth flags are ignored.
+function paydayGapCompleteFromEvidence(opts) {
+  const plan = opts && opts.plan;
+  const asOf = opts && opts.asOf;
+  const window = (opts && opts.window) || {};
+  const txs = (opts && opts.transactions) || [];
+  const pendingCoverage = opts && opts.pendingCoverage;
+  const accountMap = opts && opts.accountMap;
+  if (!plan || !asOf) return false;
+  const openingAsOf = plan.opening && plan.opening.asOf;
+  if (!openingAsOf) return false;
+  const paydayDate = paydayFromPlan(plan, asOf);
+  if (!paydayDate) return false;
+  if (String(openingAsOf) === String(paydayDate)) return true;
+  const firstGapDay = Forecast.addDays(openingAsOf, 1);
+  const lastGapDay = Forecast.addDays(paydayDate, -1);
+  if (!firstGapDay || !lastGapDay) return false;
+  if (String(lastGapDay) < String(firstGapDay)) return true;
+  if (!postedWindowIsComplete(window)) return false;
+  const coverageStart = window.startDate || null;
+  const coverageThrough = window.endDate || null;
+  if (!coverageStart || !coverageThrough) return false;
+  if (String(coverageStart) > String(firstGapDay)) return false;
+  if (String(coverageThrough) < String(lastGapDay)) return false;
+  if (pendingCoverage !== 'complete') return false;
+  const needed = householdCashIdsFromPlan(plan);
+  if (needed.length) {
+    const mapped = mappedHouseholdCashIds(accountMap);
+    if (needed.some(id => !mapped.has(id))) return false;
+  }
+  for (const tx of txs) {
+    if (!tx) continue;
+    if (tx.accountRole === 'unmapped') return false;
+    const inGap = tx.date
+      && String(tx.date) > String(openingAsOf)
+      && String(tx.date) < String(paydayDate);
+    if (tx.accountRole === 'household-cash'
+      && tx.pending === true
+      && tx.pendingPostedDuplicate !== true
+      && inGap) {
+      return false;
+    }
+    if (tx.accountRole === 'household-cash' && tx.pending !== true
+      && !Number.isFinite(Number(tx.amount))) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function atlasAccountRole(mapping) {
   if (!mapping || !mapping.atlasRole) return 'unmapped';
   if (mapping.atlasRole === 'household-cash') return 'household-cash';
@@ -3153,6 +3238,14 @@ function sanitizedCurrentPeriodActuals(report, opts) {
     coverageThrough,
     pendingCoverage,
     transactionCoverage,
+    paydayGapComplete: paydayGapCompleteFromEvidence({
+      plan: opts.plan,
+      asOf,
+      window,
+      transactions: txs,
+      pendingCoverage,
+      accountMap: mapDoc,
+    }),
     representedActuals,
     transactions: txs,
   };
@@ -3166,6 +3259,7 @@ function sanitizedCurrentPeriodActuals(report, opts) {
       transactionId: row.transactionId || undefined,
     }));
     packet.transactionCoverage = 'incomplete';
+    packet.paydayGapComplete = false;
   }
   return packet;
 }
@@ -3310,6 +3404,7 @@ const api = {
   observationsFromMappedAccount,
   spendableCashFromObservations,
   sanitizedCurrentPeriodActuals,
+  paydayGapCompleteFromEvidence,
   currentPeriodActualsLooksSanitized,
   transactionLooksSanitized,
   observe,

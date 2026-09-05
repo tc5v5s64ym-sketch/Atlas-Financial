@@ -2360,8 +2360,29 @@ console.log('\n=== 20. incomplete current cash still withholds a stale cycle as 
       && trustedActive.operatingPlanUnavailable !== true
       && trustedAdvice.defaultView.liveCurrentBalance != null,
     'trusted control still publishes live Current Balance and a current (non-stale) payday card');
-  ok(trustedActive.available == null && trustedActive.openingKnown !== true,
-    'trusted mid-period overlay does not invent a payday-morning opening Atlas never recorded');
+  const snap = trustedServed.plan.opening && trustedServed.plan.opening.paydaySnapshot;
+  const datedPlan = trusted.plan;
+  const datedAsOf = datedPlan.opening && datedPlan.opening.asOf;
+  const child = (datedPlan.income || []).find(s => s && s.id === 'childBenefit');
+  const travel = (datedPlan.obligations || []).find(o => o && o.id === 'travel');
+  let independentMorning = Forecast.startingCashAmount(datedPlan);
+  if (child && datedAsOf && datedAsOf < '2026-08-20' && '2026-08-20' < trustedActive.start) {
+    independentMorning = Math.round((independentMorning + Number(child.amount)) * 100) / 100;
+  }
+  const represented = new Set(((trustedServed.plan.opening && trustedServed.plan.opening.representedEvents) || [])
+    .filter(r => r && r.date && r.date < trustedActive.start)
+    .map(r => String(r.id) + '@' + String(r.date)));
+  if (travel && datedAsOf && datedAsOf < '2026-08-26' && '2026-08-26' < trustedActive.start
+      && represented.has('travel@2026-08-26')) {
+    independentMorning = Math.round((independentMorning - Number(travel.amount)) * 100) / 100;
+  }
+  ok(!snap,
+    'trusted overlay does not retain a scheduled-only paydaySnapshot from the dated opening');
+  ok(trustedActive.openingKnown !== true && trustedActive.opening == null
+      && trustedActive.available == null
+      && trustedAdvice.defaultView.liveCurrentBalance != null
+      && !near(independentMorning, trustedAdvice.defaultView.liveCurrentBalance),
+    'trusted mid-period overlay withholds the incomplete walked opening and still publishes live Current Balance');
 
   const budgetFn = /function calendarBudgetHtml\([\s\S]*?\n\}/.exec(planSrc);
   const unavailableFn = /function calendarCurrentUnavailableHtml\([\s\S]*?\n\}/.exec(planSrc);

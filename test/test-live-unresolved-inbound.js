@@ -222,7 +222,7 @@ function isolateGroceries(plan) {
 }
 
 const AUG31_WINDOW = {
-  startDate: '2026-08-16', endDate: '2026-08-31',
+  startDate: '2026-08-28', endDate: '2026-08-31',
   complete: true, hasMore: false, truncated: false,
 };
 const TRANSFER_CATS = [
@@ -306,8 +306,26 @@ console.log('\n=== 2. August 31 proven Amanda TENNIS INCOME → BILLS transfer =
   ok(near(advice.defaultView.liveCurrentBalance, independentCash)
       && near(advice.paydayAllocation.liveCurrentBalance, independentCash),
     'live Current Balance is observed cash, not the dated opening');
-  ok(p2.openingKnown !== true && p2.available == null,
-    'mid-period live overlay does not invent an Aug 28 payday-morning opening');
+  const snap = result.data.plan.opening && result.data.plan.opening.paydaySnapshot;
+  const datedAsOf = canonical.plan.opening && canonical.plan.opening.asOf;
+  const child = (canonical.plan.income || []).find(s => s && s.id === 'childBenefit');
+  const travel = (canonical.plan.obligations || []).find(o => o && o.id === 'travel');
+  let independentMorning = Forecast.startingCashAmount(canonical.plan);
+  if (child && datedAsOf && datedAsOf < '2026-08-20' && '2026-08-20' < p2.start) {
+    independentMorning = round2(independentMorning + Number(child.amount));
+  }
+  const representedKeys = new Set(((result.data.plan.opening && result.data.plan.opening.representedEvents) || [])
+    .filter(r => r && r.date && r.date < p2.start)
+    .map(r => String(r.id) + '@' + String(r.date)));
+  if (travel && datedAsOf && datedAsOf < '2026-08-26' && '2026-08-26' < p2.start
+      && representedKeys.has('travel@2026-08-26')) {
+    independentMorning = round2(independentMorning - Number(travel.amount));
+  }
+  ok(!snap,
+    'live overlay does not retain a scheduled-only paydaySnapshot from the dated opening walk');
+  ok(p2.openingKnown !== true && p2.opening == null && p2.available == null
+      && !near(independentMorning, independentCash),
+    'mid-period live overlay withholds the incomplete walked Aug 28 opening; live cash stays a separate fact');
   ok(!near(advice.paydayAllocation.available, independentCash + SALARY),
     'salary is not added again on top of observed cash');
   const row = incomeRow(advice, 'amandaSalaryMonthEnd');
@@ -513,8 +531,9 @@ console.log('\n=== 8. Actual spending does not double-count ===');
     'Household Budget reserves remaining $550, not planned $900');
   ok(p2 && near(p2.budgetHold, remaining),
     'waterfall hold is remaining grocery, not the full cycle plan');
-  ok(p2.available == null && p2.afterHouseholdBudget == null,
-    'without a recorded payday opening, leftover does not start from live cash');
+  ok(p2.available == null && p2.afterHouseholdBudget == null
+      && p2.openingKnown !== true,
+    'incomplete gap withholds the leftover chain rather than starting it from a scheduled-only walk or live cash');
   ok(near(advice.defaultView.liveCurrentBalance, independentCash),
     'live Current Balance stays the observed-cash fixture');
   ok(!near(remaining, planned) && near(groceries.hold, remaining),
@@ -605,18 +624,36 @@ console.log('\n=== 10. Active two-period calendar waterfall ===');
   ok(thisP.operatingPlanUnavailable !== true, 'active waterfall is not unavailable');
   ok(near(advice.defaultView.liveCurrentBalance, independentCash),
     'live Current Balance is observed cash');
-  ok(thisP.openingKnown !== true && thisP.available == null && thisP.projectedEnding == null,
-    'active payday snapshot fail-closes without a recorded Aug 28 opening');
+  const snap = result.data.plan.opening && result.data.plan.opening.paydaySnapshot;
+  const datedAsOf = canonical.plan.opening && canonical.plan.opening.asOf;
+  const child = (canonical.plan.income || []).find(s => s && s.id === 'childBenefit');
+  const travel = (canonical.plan.obligations || []).find(o => o && o.id === 'travel');
+  let independentMorning = Forecast.startingCashAmount(canonical.plan);
+  if (child && datedAsOf && datedAsOf < '2026-08-20' && '2026-08-20' < thisP.start) {
+    independentMorning = round2(independentMorning + Number(child.amount));
+  }
+  const representedKeys = new Set(((result.data.plan.opening && result.data.plan.opening.representedEvents) || [])
+    .filter(r => r && r.date && r.date < thisP.start)
+    .map(r => String(r.id) + '@' + String(r.date)));
+  if (travel && datedAsOf && datedAsOf < '2026-08-26' && '2026-08-26' < thisP.start
+      && representedKeys.has('travel@2026-08-26')) {
+    independentMorning = round2(independentMorning - Number(travel.amount));
+  }
+  ok(!snap,
+    'overlay does not retain a scheduled-only paydaySnapshot from the dated opening walk');
+  ok(thisP.openingKnown !== true && thisP.opening == null && thisP.available == null
+      && !near(independentMorning, independentCash),
+    'active payday snapshot is withheld when the opening-to-payday gap is not cash-complete');
   ok(nextP.openingKnown === true && nextP.opening != null
       && !near(nextP.opening, independentCash),
-    'next period opens from the walk, not from live mid-period cash');
+    'next period opens from the already-run walk, not from live mid-period cash');
   ok(thisP.remainingBills != null, 'active period shows remaining bills');
   const groceries = (thisP.householdBudget || []).find(row => row && row.id === 'groceries');
   ok(groceries && groceries.planned != null && groceries.spent != null
       && groceries.remaining != null,
     'Household Budget planned/actual/remaining are visible');
   ok(thisP.afterHouseholdBudget == null,
-    'leftover chain does not start from live cash');
+    'incomplete gap withholds leftover after household budget rather than publishing a scheduled-only walk');
 }
 
 console.log('\n=== 11. Failed-cash control withholds stale Current Balance ===');

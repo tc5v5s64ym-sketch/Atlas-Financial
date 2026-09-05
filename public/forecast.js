@@ -4011,6 +4011,94 @@
     return false;
   }
 
+  // Explicit complete household-cash evidence for (openingAsOf, morningDate).
+  // complete:true without coverage of every gap day is not completeness.
+  // A scheduled-only plan walk is not completeness: unscheduled groceries,
+  // fuel, restaurants, or transfers in that gap would still be assumed zero.
+  function paydayGapCashPacket(opts) {
+    const packet = opts && opts.paydayGapCash;
+    return packet && typeof packet === 'object' ? packet : null;
+  }
+
+  function paydayGapCashComplete(plan, morningDate, opts) {
+    const packet = paydayGapCashPacket(opts);
+    if (!packet || packet.complete !== true) return false;
+    if (!Array.isArray(packet.movements)) return false;
+    const openingAsOf = plan && plan.opening && plan.opening.asOf;
+    if (!openingAsOf || !morningDate) return false;
+    if (String(openingAsOf) === String(morningDate)) return true;
+    const firstGapDay = addDays(openingAsOf, 1);
+    const lastGapDay = addDays(morningDate, -1);
+    if (!firstGapDay || !lastGapDay) return false;
+    if (String(lastGapDay) < String(firstGapDay)) return true;
+    const covStart = packet.coverageStart;
+    const covThrough = packet.coverageThrough;
+    if (!covStart || !covThrough) return false;
+    if (String(covStart) > String(firstGapDay)) return false;
+    if (String(covThrough) < String(lastGapDay)) return false;
+    return true;
+  }
+
+  function gapMovementAffectsJointCash(mov) {
+    if (!mov) return false;
+    if (mov.jointCash === false || mov.kind === 'noncash') return false;
+    if (mov.accountRole && String(mov.accountRole) !== 'household-cash') return false;
+    return true;
+  }
+
+  // Trusted dated opening plus every household-cash movement in the gap,
+  // only when that interval is completeness-proven. Not live cash walked
+  // backward, not weekly-variable spend, not reserved-daily drain, and
+  // not scheduled income/outflows with unscheduled spending assumed zero.
+  function completeCashAtMorning(plan, morningDate, opts) {
+    if (!plan || !morningDate) return null;
+    const openingAsOf = plan.opening && plan.opening.asOf;
+    if (!openingAsOf || openingAsOf > morningDate) return null;
+    const openingCash = startingCashAmount(plan);
+    if (!Number.isFinite(Number(openingCash))) return null;
+    if (openingAsOf === morningDate) return roundCent(openingCash);
+    if (!paydayGapCashComplete(plan, morningDate, opts)) return null;
+    const packet = paydayGapCashPacket(opts);
+    let balance = roundCent(openingCash);
+    for (const mov of packet.movements) {
+      if (!mov || !mov.date) continue;
+      if (String(mov.date) <= String(openingAsOf)
+          || String(mov.date) >= String(morningDate)) {
+        continue;
+      }
+      if (!gapMovementAffectsJointCash(mov)) continue;
+      const amt = Number(mov.amount);
+      if (!Number.isFinite(amt)) return null;
+      balance = roundCent(balance + amt);
+    }
+    return balance;
+  }
+
+  // Establish or reuse the frozen payday-morning figure. A recorded
+  // matching snapshot wins. Otherwise the last trusted dated opening
+  // whose starting cash still belongs to that opening (not a
+  // live-advanced mid-period overlay) may walk to that payday morning
+  // only when the gap is complete enough to reconcile every
+  // household-cash movement that can change that balance. Live
+  // mid-period cash never substitutes. Null when completeness cannot
+  // be proven.
+  function establishPaydaySnapshot(plan, paydayDate, opts) {
+    const existing = paydaySnapshotRecord(plan, opts, paydayDate);
+    if (existing) return existing;
+    if (!plan || !paydayDate) return null;
+    const openingAsOf = plan.opening && plan.opening.asOf;
+    if (!openingAsOf) return null;
+    if (liveOpeningAdvanced(plan, openingAsOf)) return null;
+    if (openingAsOf > paydayDate) return null;
+    const opening = completeCashAtMorning(plan, paydayDate, opts);
+    if (!finiteRecordedOpening(opening)) return null;
+    return {
+      periodStart: String(paydayDate),
+      asOf: String(paydayDate),
+      opening: roundCent(opening),
+    };
+  }
+
   // Payday-snapshot opening. Distinct from live Current Balance
   // (startingCashAmount / paydayAllocation.opening). Fail closed rather
   // than invent a historical payday-morning cash Atlas never recorded.
@@ -4066,6 +4154,21 @@
         openingAsOf: asOf,
         source: 'cutover-opening',
       };
+    }
+    // Dated opening still owns starting cash and predates this payday:
+    // Forecast walks only a completeness-proven household-cash gap.
+    // Scheduled-only reconstruction is not completeness. Live overlay
+    // that already replaced starting cash cannot use this path.
+    if (!liveOpeningAdvanced(plan, asOf)) {
+      const established = establishPaydaySnapshot(plan, window.start, opts);
+      if (established) {
+        return {
+          opening: established.opening,
+          openingKnown: true,
+          openingAsOf: established.asOf,
+          source: 'cutover-walk',
+        };
+      }
     }
     return { opening: null, openingKnown: false, openingAsOf: null, source: null };
   }
@@ -4829,9 +4932,12 @@
   // paydayAllocation, and it does not rewrite live Current Balance.
   // The active period opens from a recorded paydaySnapshot first, else
   // payday-morning cash only when as-of is that payday and live overlay
-  // has not already advanced, else a non-live cutover opening — never
-  // from today's live posted cash merely because that cash moved, even
-  // when the live as-of is the payday calendar date.
+  // has not already advanced, else a non-live cutover opening, else a
+  // completeness-proven household-cash walk from that non-live dated
+  // opening to this payday morning (`Forecast.establishPaydaySnapshot`)
+  // — never from today's live posted cash, and never from a
+  // scheduled-only reconstruction that assumes unscheduled gap
+  // spending was zero.
   // Balance after payday is that frozen opening plus period income not
   // already inside that opening. Received-vs-live is settlement status
   // and does not drop an income row from the snapshot. The next period
@@ -9002,7 +9108,7 @@
     };
   }
 
-  const Forecast = { HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, billIsHouseholdObligation, billAffectsJointCash, isCardPaidBill, carriedOnceJointCashOutflow, prepaidJointCashOutflow, expandEvents, simulate,
+  const Forecast = { HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, billIsHouseholdObligation, billAffectsJointCash, isCardPaidBill, carriedOnceJointCashOutflow, prepaidJointCashOutflow, expandEvents, simulate, establishPaydaySnapshot,
     knowledgeHorizon, viewRange, commitmentNeed, fundingSequence, majorPlans, plannedDebt, debtPriority, paydayAllocation,
     classifyCurrentPeriodTransaction, paydayPeriodOrigin, currentPeriodObligationStates, currentPeriodAction,
     spendingCycle,
