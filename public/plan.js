@@ -1994,6 +1994,9 @@ function calendarPeriodBillsHtml(period) {
   if (period && period.totalBillsThisPeriod != null) {
     totals.push(`<p class="payday-qual payday-total"><span>Total bills this period</span><span>${money2(period.totalBillsThisPeriod)}</span></p>`);
   }
+  if (period && period.paidBills != null) {
+    totals.push(`<p class="payday-qual payday-total"><span>Paid bills this period</span><span>${money2(period.paidBills)}</span></p>`);
+  }
   if (period && period.remainingBills != null) {
     totals.push(`<p class="payday-qual payday-total payday-total-strong"><span>Remaining bills to pay</span><span>${money2(period.remainingBills)}</span></p>`);
   }
@@ -2075,7 +2078,7 @@ function calendarWaterfallHtml(period, liveOverlay, alloc) {
     ${q('02', 'Income', planUnavailable ? unavailable : calendarIncomeHtml(period))}
     ${q('03', 'Balance after payday', planUnavailable ? unavailable : runningLeftoverHtml(period.available), 'balance')}
     ${q('04', 'Bills', planUnavailable ? unavailable : calendarPeriodBillsHtml(period))}
-    ${q('05', 'Balance after remaining bills', planUnavailable ? unavailable : runningLeftoverHtml(period.afterRemainingBills), 'balance')}
+    ${q('05', 'Balance after bills', planUnavailable ? unavailable : runningLeftoverHtml(period.afterBills != null ? period.afterBills : period.afterRemainingBills), 'balance')}
     ${q('06', 'Household budget', planUnavailable ? unavailable : calendarBudgetHtml(period))}
     ${q('07', 'Balance after household budget', planUnavailable ? unavailable : runningLeftoverHtml(period.afterHouseholdBudget), 'balance')}
   </section>`;

@@ -453,8 +453,9 @@ console.log('\n=== 2. Paid bills are not deducted twice ===');
   ok(near(p1.remainingBills, independentRemaining),
     'remaining-bills equals the unpaid rows only',
     `${p1.remainingBills} vs ${independentRemaining}`);
-  ok(p1.available != null && near(p1.afterRemainingBills, p1.available - p1.remainingBills),
-    'leftover after remaining bills subtracts unpaid rows once');
+  ok(p1.available != null && near(p1.afterBills, p1.available - p1.remainingBills)
+      && near(p1.afterRemainingBills, p1.afterBills),
+    'Netflix paid before this mid-period cutover is not deducted again; leftover subtracts unpaid rows once');
 }
 
 console.log('\n=== 3. Income never lands in remaining-bills ===');
@@ -1366,10 +1367,10 @@ console.log('\n=== 15. weekend posting keeps 15 August bills in Period 1, paid =
   ok(p1.role === 'active' && near(p1.opening, F.startingCashAmount(plan)),
     'This Pay Period opens from cutover starting cash');
   const ifDeductedAgain = roundCent(p1.available - p1.remainingBills - three);
-  ok(p1.afterRemainingBills != null
-      && near(p1.afterRemainingBills, p1.available - p1.remainingBills)
-      && !near(p1.afterRemainingBills, ifDeductedAgain),
-    'This Pay Period leftover does not deduct the three paid 15 August bills from current cash');
+  ok(p1.afterBills != null
+      && near(p1.afterBills, p1.available - p1.remainingBills)
+      && !near(p1.afterBills, ifDeductedAgain),
+    'Aug 20 cutover cash already includes the three paid 15 August bills; they are not deducted again');
   const live = require('../data.json');
   const liveView = F.recommend(live.plan, '2026-08-20', {
     targetBuffer: live.plan.defaults.targetBuffer, debts: live.debts,
@@ -1462,11 +1463,29 @@ console.log('\n=== 17. bills block totals: this period vs remaining to pay ===')
       `${p.label} remaining bills to pay equals still-due rows`,
       `${p.remainingBills} vs ${independentRemaining}`);
     if (p.available != null) {
-      ok(near(p.afterRemainingBills, roundCent(p.available - p.remainingBills)),
-        `${p.label} after remaining bills is available minus remaining, not total`);
-      if (!near(independentTotal, independentRemaining)) {
-        ok(!near(p.afterRemainingBills, roundCent(p.available - p.totalBillsThisPeriod)),
-          `${p.label} leftover is not available minus the paid-inclusive total`);
+      const independentLoad = roundCent(rows.reduce((s, r) => {
+        if (!r || r.needsDate) return s;
+        if (r.settledInOpening === true || r.settlement === 'opening') return s;
+        const paid = r.status === 'PAID' || r.settlement === 'represented';
+        if (paid && p.openingAsOf && r.date && r.date < p.openingAsOf) return s;
+        if (paid && p.openingAsOf && r.date === p.openingAsOf
+            && p.openingSource !== 'snapshot'
+            && p.openingSource !== 'cutover-walk'
+            && p.openingSource !== 'carry-forward') {
+          return s;
+        }
+        const assigned = r.planned != null ? Math.abs(Number(r.planned))
+          : Math.abs(Number(r.amount) || 0);
+        return s + assigned;
+      }, 0));
+      ok(near(p.periodBillLoad, independentLoad),
+        `${p.label} period bill load independently equals assigned rows that count`,
+        `${p.periodBillLoad} vs ${independentLoad}`);
+      ok(near(p.afterBills, roundCent(p.available - independentLoad)),
+        `${p.label} after bills is available minus the assigned period load`);
+      if (!near(independentLoad, independentRemaining)) {
+        ok(!near(p.afterBills, roundCent(p.available - p.remainingBills)),
+          `${p.label} leftover is not remaining-only once paid-after-opening bills exist`);
       }
     }
   }

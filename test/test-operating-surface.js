@@ -163,7 +163,7 @@ console.log('\n=== seven ordered payday-sheet questions ===');
     'Income',
     'Balance after payday',
     'Bills',
-    'Balance after remaining bills',
+    'Balance after bills',
     'Household budget',
     'Balance after household budget',
   ];

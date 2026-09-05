@@ -268,7 +268,7 @@ console.log('\n=== composed surface: cash, identity, debt, protection, limits ==
   ok(/data-payday-period-bills/.test(q4),
     'Q4 publishes bills this pay period');
   ok(/data-running-leftover/.test(q5),
-    'Q5 publishes leftover after remaining bills');
+    'Q5 publishes leftover after bills');
   ok(/data-payday-household-budget/.test(q6) || /Household budget/.test(q6),
     'Q6 publishes household budget');
   ok(!/data-payday-decision/.test(rendered) && !/See how payday is reserved/.test(rendered),
