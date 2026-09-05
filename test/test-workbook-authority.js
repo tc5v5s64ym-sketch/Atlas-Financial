@@ -67,8 +67,16 @@ for (const [id, amount] of Object.entries(OWNER_PAYDAY_TARGETS)) {
   ok(p && p.plannedPayday === DOG_FOOD_PAYDAY && p.plannedMonthly == null,
     'dog food owner target is plannedPayday 100, not plannedMonthly 55',
     p ? `${p.plannedPayday} / ${p.plannedMonthly}` : 'missing');
+  ok(p && p.paydayCadence === 'first-seaspan-of-month',
+    'dog food paydayCadence is first-seaspan-of-month',
+    p ? String(p.paydayCadence) : 'missing');
   ok(p && p.targetSource === OWNER_SOURCE,
     'pets targetSource remains owner-stated-2026-08-31');
+  ok(p && /cadence restated by owner 2026-09-04/.test(p.why || ''),
+    'pets why records the cadence restatement on the household-financial date 2026-09-04',
+    p ? String(p.why) : 'missing');
+  ok(p && !/cadence restated by owner 2026-09-05/.test(p.why || ''),
+    'pets why does not advance that restatement to the UTC date 2026-09-05');
 }
 for (const id of RETIRED_HOLD_IDS) {
   const c = byId(id);
@@ -109,9 +117,14 @@ const groceries = budget.categories.find(c => c.id === 'groceries');
 const fuel = budget.categories.find(c => c.id === 'fuel');
 const groceryMonthly = Math.round(450 * (365.25 / 12) / 7 * 100) / 100;
 const fuelMonthly = Math.round(325 * (365.25 / 12) / 14 * 100) / 100;
+const pets = budget.categories.find(c => c.id === 'pets');
+const petsSmeared = Math.round(100 * (365.25 / 12) / 14 * 100) / 100;
 ok(groceries && Math.abs(groceries.target - groceryMonthly) < 0.01
   && fuel && Math.abs(fuel.target - fuelMonthly) < 0.01 && fuel.target !== 650,
   'engine grocery target is weekly 450 converted to calendar-month monthly; fuel is payday 325 annualized');
+ok(pets && Math.abs(pets.target - 100) < 0.01 && Math.abs(pets.target - petsSmeared) > 1,
+  'engine dog-food target is $100/month, not $100 annualized over 26 Seaspan cycles',
+  pets ? String(pets.target) : 'missing');
 ok(Math.abs((groceries.planned + fuel.planned) - (groceryMonthly + fuelMonthly)) < 0.01,
   'food+fuel requirement is grocery weekly-equivalent plus payday-annualized fuel');
 ok(Math.abs(325 * (365.25 / 14) - 12 * (325 * (365.25 / 12) / 14)) < 1e-9,

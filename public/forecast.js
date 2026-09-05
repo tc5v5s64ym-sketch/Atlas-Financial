@@ -3661,17 +3661,56 @@
     return biweeklyDates(anchor, from, to);
   }
 
+  // Owner payday cadence. Absent/unknown stays every Seaspan payday — the
+  // incumbent plannedPayday meaning. first-seaspan-of-month assigns the
+  // payday amount to the earliest Seaspan pay-period start in that
+  // YYYY-MM only. Year is part of the month identity.
+  const FIRST_SEASPAN_OF_MONTH = 'first-seaspan-of-month';
+  function paydayCadence(cat) {
+    return cat && typeof cat.paydayCadence === 'string' ? cat.paydayCadence : null;
+  }
+  function isFirstSeaspanOfMonthCadence(cat) {
+    return paydayCadence(cat) === FIRST_SEASPAN_OF_MONTH;
+  }
+  function calendarMonthBounds(iso) {
+    const day = financialDate(iso);
+    if (!day) return null;
+    const [y, m] = day.split('-').map(Number);
+    if (!y || !m) return null;
+    const start = `${y}-${String(m).padStart(2, '0')}-01`;
+    const end = `${y}-${String(m).padStart(2, '0')}-${String(daysInMonth(y, m)).padStart(2, '0')}`;
+    return { start, end };
+  }
+  function firstSeaspanPaydayInCalendarMonth(plan, iso) {
+    const month = calendarMonthBounds(iso);
+    if (!month) return null;
+    const dates = seaspanPaydaysInSpan(plan, month.start, month.end);
+    return dates.length ? dates[0] : null;
+  }
+  function isFirstSeaspanPaydayOfCalendarMonth(plan, iso) {
+    const day = financialDate(iso);
+    const first = firstSeaspanPaydayInCalendarMonth(plan, day);
+    return !!(day && first && day === first);
+  }
+
   // Discrete payday targets are whole-or-not-applicable. A 7-day week
   // never receives half of $100. Missing dates on a non-14-day span
   // omit the row rather than inventing a prorated half-target.
+  // first-seaspan-of-month counts only the earliest Seaspan start in
+  // each calendar month, so a later payday week does not hold another
+  // $100 obligation.
   function paydayHoldForSpan(cat, plan, days, start, end) {
     if (!cat || cat.plannedPayday == null) return null;
     const payday = roundCent(Number(cat.plannedPayday) || 0);
     if (start && end) {
-      const n = seaspanPaydaysInSpan(plan, start, end).length;
+      const dates = seaspanPaydaysInSpan(plan, start, end);
+      const n = isFirstSeaspanOfMonthCadence(cat)
+        ? dates.filter(d => isFirstSeaspanPaydayOfCalendarMonth(plan, d)).length
+        : dates.length;
       return n > 0 ? roundCent(payday * n) : null;
     }
     const d = Math.max(0, Number(days) || 0);
+    if (isFirstSeaspanOfMonthCadence(cat)) return null;
     return d === 14 ? payday : null;
   }
 
@@ -4434,6 +4473,11 @@
       return roundCent(Number(cat.plannedWeekly) * CALENDAR_MONTH_DAYS / 7);
     }
     if (cat.plannedPayday != null) {
+      // Once-per-month payday assignment is $N per calendar month, not
+      // $N annualized over 26 Seaspan cycles.
+      if (isFirstSeaspanOfMonthCadence(cat)) {
+        return roundCent(Number(cat.plannedPayday) || 0);
+      }
       return roundCent(Number(cat.plannedPayday) * CALENDAR_MONTH_DAYS / 14);
     }
     if (cat.plannedMonthly != null) return roundCent(Number(cat.plannedMonthly) || 0);
@@ -4443,11 +4487,21 @@
   // 14-day Seaspan-cycle planned amount from the declared cadence. Monthly
   // targets use the same calendar month as ownerTargetMonthly
   // (365.25/12), not monthly/2. Halving would make $300/month × 26 =
-  // $3,900/year instead of $3,600.
-  function paydayCyclePlanned(cat) {
+  // $3,900/year instead of $3,600. first-seaspan-of-month uses the
+  // cycle start against Forecast's Seaspan payday schedule: $N on the
+  // earliest start in that YYYY-MM, else $0. Missing cycle identity
+  // fails closed at $0 rather than inventing a second monthly copy.
+  function paydayCyclePlanned(cat, cycleStart, plan) {
     if (!cat) return null;
     if (cat.plannedWeekly != null) return roundCent(Number(cat.plannedWeekly) * 2);
-    if (cat.plannedPayday != null) return roundCent(Number(cat.plannedPayday) || 0);
+    if (cat.plannedPayday != null) {
+      const payday = roundCent(Number(cat.plannedPayday) || 0);
+      if (isFirstSeaspanOfMonthCadence(cat)) {
+        if (!cycleStart || !plan) return 0;
+        return isFirstSeaspanPaydayOfCalendarMonth(plan, cycleStart) ? payday : 0;
+      }
+      return payday;
+    }
     if (cat.plannedMonthly != null) {
       return roundCent(Number(cat.plannedMonthly) * 14 / CALENDAR_MONTH_DAYS);
     }
@@ -4670,7 +4724,7 @@
     for (const id of CALENDAR_PERIOD_BUDGET_IDS) {
       const cat = byId.get(id);
       if (!cat) continue;
-      const planned = paydayCyclePlanned(cat);
+      const planned = paydayCyclePlanned(cat, windowStart, plan);
       if (planned == null) continue;
       const weekly = cat.plannedWeekly != null ? roundCent(Number(cat.plannedWeekly)) : null;
       const recon = reconById.get(id) || [];
