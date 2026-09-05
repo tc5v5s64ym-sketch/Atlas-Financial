@@ -48,7 +48,6 @@ const REMOVED_ROWS = [
   'Projected ending balance',
 ];
 const KEPT_ROWS = [
-  'Current Balance',
   'Income',
   'Balance after payday',
   'Bills',
@@ -121,6 +120,7 @@ function loadComposer() {
     grab(planSrc, /^function alreadyPaidHtml\([\s\S]*?\n\}$/m, 'alreadyPaidHtml'),
     grab(planSrc, /^function stillDueItems\([\s\S]*?\n\}$/m, 'stillDueItems'),
     grab(planSrc, /^function cashGlanceHtml\([\s\S]*?\n\}$/m, 'cashGlanceHtml'),
+    grab(planSrc, /^function liveCurrentBalanceHtml\([\s\S]*?\n\}$/m, 'liveCurrentBalanceHtml'),
     grab(planSrc, /^function mustLeaveHtml\([\s\S]*?\n\}$/m, 'mustLeaveHtml'),
     grab(planSrc, /^function extraDebtGlanceHtml\([\s\S]*?\n\}$/m, 'extraDebtGlanceHtml'),
     grab(planSrc, /^function runningLeftoverHtml\([\s\S]*?\n\}$/m, 'runningLeftoverHtml'),
@@ -240,6 +240,9 @@ console.log('\n=== 4 + 5. Plan waterfall keeps Balance after household budget an
   const active = (advice.defaultView.calendarPeriods || []).find(p => p.role === 'active')
     || advice.defaultView.calendarPeriods[0];
   ok(/data-calendar-waterfall=/.test(html), 'the default Plan renders the calendar waterfall');
+  ok(/data-live-current-balance/.test(html)
+      && html.indexOf('data-live-current-balance') < html.indexOf('data-operating-prompt="Income"'),
+    'live Current Balance prints before the payday snapshot');
   let previous = -1;
   for (const prompt of KEPT_ROWS) {
     const at = html.indexOf(`data-operating-prompt="${prompt}"`);
@@ -251,8 +254,8 @@ console.log('\n=== 4 + 5. Plan waterfall keeps Balance after household budget an
   ok(html.includes(composer.money2(active.afterHouseholdBudget)),
     'Q07 prints the Forecast afterHouseholdBudget figure');
   const questions = [...html.matchAll(/data-operating-question="(\d+)"/g)].map(m => m[1]);
-  ok(questions.length === 7 && questions.every(n => Number(n) <= 7),
-    'the waterfall has seven questions, none numbered past 07', questions.join(','));
+  ok(questions.length === 6 && questions.every(n => Number(n) <= 7) && !questions.includes('01'),
+    'the active snapshot has six questions, numbered 02–07', questions.join(','));
   for (const prompt of REMOVED_ROWS) {
     ok(!html.includes(prompt), `${prompt} is not on the Plan`);
   }
@@ -268,10 +271,16 @@ console.log('\n=== 4 + 5. Plan waterfall keeps Balance after household budget an
     liveOverlay: data.liveOverlay, planCalendarShow: 'both',
   });
   const sections = (both.match(/<section class="calendar-waterfall"/g) || []).length;
+  const activeQs = (both.match(/data-calendar-role="active"[\s\S]*?<\/section>/) || [''])[0]
+    .match(/data-operating-question=/g) || [];
+  const futureQs = (both.match(/data-calendar-role="future"[\s\S]*?<\/section>/) || [''])[0]
+    .match(/data-operating-question=/g) || [];
   ok(sections === (advice.defaultView.calendarPeriods || []).length
-      && (both.match(/data-operating-question=/g) || []).length === sections * 7
+      && activeQs.length === 6
+      && futureQs.length === 7
+      && /data-live-current-balance/.test(both)
       && !REMOVED_ROWS.some(prompt => both.includes(prompt)),
-    'Show both prints every pay period as a seven-row waterfall');
+    'Show both prints live Current Balance once, then the active snapshot without a Current Balance row and the future period with its opening');
   const planSrc = read('public/plan.js');
   const fn = /function calendarWaterfallHtml\([\s\S]*?\n\}/.exec(planSrc);
   ok(fn && !/'08'|'09'|'10'|'11'/.test(fn[0]) && !/projectedEnding|afterDebtRepayment/.test(fn[0]),
@@ -281,8 +290,8 @@ console.log('\n=== 4 + 5. Plan waterfall keeps Balance after household budget an
   'no stylesheet hides waterfall rows');
   const page = read('public/index.html');
   ok(!/extra debt and big purchases/.test(page)
-      && /Current Balance, bills this pay period and household budget — and what is left after each step\./.test(page),
-    'the Plan lede describes the shortened waterfall');
+      && /Live Current Balance, then this payday’s income, bills and household budget\./.test(page),
+    'the Plan lede describes live Current Balance then the payday snapshot');
   ok(!/extra debt and big purchases/.test(planSrc),
     'the plan.js lede constant matches');
 }

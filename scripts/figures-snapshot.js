@@ -141,9 +141,13 @@ const nextPeriod = operating.find(p => p && p.id === 'next-pay-period')
 if (thisPeriod) {
   put('operating.this.start', thisPeriod.start);
   put('operating.this.end', thisPeriod.end);
+  put('operating.this.opening', thisPeriod.opening);
   put('operating.this.available', thisPeriod.available);
   put('operating.this.incomeAdded', thisPeriod.incomeAdded);
   put('operating.this.projectedEnding', thisPeriod.projectedEnding);
+}
+if (advice.defaultView && advice.defaultView.liveCurrentBalance != null) {
+  put('operating.liveCurrentBalance', advice.defaultView.liveCurrentBalance);
 }
 if (nextPeriod) {
   put('operating.next.start', nextPeriod.start);

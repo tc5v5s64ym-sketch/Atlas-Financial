@@ -1772,6 +1772,7 @@ function calendarWaterfallComposer() {
     grab(planSrc, /^function providerBalanceDate\([\s\S]*?\n\}$/m, 'providerBalanceDate'),
     grab(planSrc, /^function glanceUpdatedNote\([\s\S]*?\n\}$/m, 'glanceUpdatedNote'),
     grab(planSrc, /^function cashGlanceHtml\([\s\S]*?\n\}$/m, 'cashGlanceHtml'),
+    grab(planSrc, /^function liveCurrentBalanceHtml\([\s\S]*?\n\}$/m, 'liveCurrentBalanceHtml'),
     grab(planSrc, /^function glanceSignedMoney\([\s\S]*?\n\}$/m, 'glanceSignedMoney'),
     grab(planSrc, /^function glanceMoney\([\s\S]*?\n\}$/m, 'glanceMoney'),
     grab(planSrc, /^function glanceLineLabel\([\s\S]*?\n\}$/m, 'glanceLineLabel'),
@@ -1848,6 +1849,7 @@ function operatingSurfaceComposer() {
     grab(planSrc, /^function alreadyPaidHtml\([\s\S]*?\n\}$/m, 'alreadyPaidHtml'),
     grab(planSrc, /^function stillDueItems\([\s\S]*?\n\}$/m, 'stillDueItems'),
     grab(planSrc, /^function cashGlanceHtml\([\s\S]*?\n\}$/m, 'cashGlanceHtml'),
+    grab(planSrc, /^function liveCurrentBalanceHtml\([\s\S]*?\n\}$/m, 'liveCurrentBalanceHtml'),
     grab(planSrc, /^function mustLeaveHtml\([\s\S]*?\n\}$/m, 'mustLeaveHtml'),
     grab(planSrc, /^function extraDebtGlanceHtml\([\s\S]*?\n\}$/m, 'extraDebtGlanceHtml'),
     grab(planSrc, /^function runningLeftoverHtml\([\s\S]*?\n\}$/m, 'runningLeftoverHtml'),
@@ -2356,8 +2358,10 @@ console.log('\n=== 20. incomplete current cash still withholds a stale cycle as 
     trustedActive, trustedServed.liveOverlay, trustedAdvice.paydayAllocation);
   ok(!/data-current-waterfall="unavailable"/.test(trustedWaterfallHtml)
       && trustedActive.operatingPlanUnavailable !== true
-      && trustedActive.available != null,
-    'trusted control still publishes a current calendar waterfall');
+      && trustedAdvice.defaultView.liveCurrentBalance != null,
+    'trusted control still publishes live Current Balance and a current (non-stale) payday card');
+  ok(trustedActive.available == null && trustedActive.openingKnown !== true,
+    'trusted mid-period overlay does not invent a payday-morning opening Atlas never recorded');
 
   const budgetFn = /function calendarBudgetHtml\([\s\S]*?\n\}/.exec(planSrc);
   const unavailableFn = /function calendarCurrentUnavailableHtml\([\s\S]*?\n\}/.exec(planSrc);

@@ -74,6 +74,7 @@ function loadComposer() {
     grab(planSrc, /^function alreadyPaidHtml\([\s\S]*?\n\}$/m, 'alreadyPaidHtml'),
     grab(planSrc, /^function stillDueItems\([\s\S]*?\n\}$/m, 'stillDueItems'),
     grab(planSrc, /^function cashGlanceHtml\([\s\S]*?\n\}$/m, 'cashGlanceHtml'),
+    grab(planSrc, /^function liveCurrentBalanceHtml\([\s\S]*?\n\}$/m, 'liveCurrentBalanceHtml'),
     grab(planSrc, /^function mustLeaveHtml\([\s\S]*?\n\}$/m, 'mustLeaveHtml'),
     grab(planSrc, /^function extraDebtGlanceHtml\([\s\S]*?\n\}$/m, 'extraDebtGlanceHtml'),
     grab(planSrc, /^function runningLeftoverHtml\([\s\S]*?\n\}$/m, 'runningLeftoverHtml'),
@@ -168,6 +169,11 @@ function syntheticPlan() {
     opening: {
       asOf: AS_OF,
       priorAsOf: '2026-08-19',
+      paydaySnapshot: {
+        periodStart: PAYDAY,
+        asOf: PAYDAY,
+        opening: 4000,
+      },
       representedEvents: [
         { id: 'payroll', date: PAYDAY },
         { id: 'mortgage', date: PAYDAY },
@@ -299,13 +305,15 @@ console.log('\n=== 2. default view order and kitchen-counter labels ===');
     ok(at > previous, `${prompt} appears on the default view in order`);
     previous = at;
   }
-  ok((html.match(/data-operating-question=/g) || []).length === 7,
-    'the default surface has the seven waterfall questions');
+  ok(/data-live-current-balance/.test(html)
+      && (html.match(/data-operating-question=/g) || []).length === 6,
+    'the default surface has live Current Balance plus the six snapshot questions');
   ok(!/Extra credit-card repayment|Balance after debt repayment|Big-purchase savings|Projected ending balance/.test(html),
     'the default surface stops at Balance after household budget');
-  ok(/Current Balance\. Not credit/.test(glance) && !/leftover cash/i.test(glance)
+  ok(/data-live-current-balance/.test(html) && /Current Balance/.test(glance)
+      && !/leftover cash/i.test(glance)
       && !/current cash flow/i.test(glance),
-    'cash is labelled Current Balance, not leftover or current cash flow');
+    'live cash is labelled Current Balance, not leftover or current cash flow');
   const banned = bannedOnGlance(html);
   ok(!banned, 'default glance has no Forecast field names or settlement code words',
     banned && banned[0]);

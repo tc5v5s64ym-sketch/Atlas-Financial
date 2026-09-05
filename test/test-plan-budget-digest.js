@@ -79,6 +79,7 @@ function loadComposer() {
     grab(planSrc, /^function alreadyPaidHtml\([\s\S]*?\n\}$/m, 'alreadyPaidHtml'),
     grab(planSrc, /^function stillDueItems\([\s\S]*?\n\}$/m, 'stillDueItems'),
     grab(planSrc, /^function cashGlanceHtml\([\s\S]*?\n\}$/m, 'cashGlanceHtml'),
+    grab(planSrc, /^function liveCurrentBalanceHtml\([\s\S]*?\n\}$/m, 'liveCurrentBalanceHtml'),
     grab(planSrc, /^function mustLeaveHtml\([\s\S]*?\n\}$/m, 'mustLeaveHtml'),
     grab(planSrc, /^function extraDebtGlanceHtml\([\s\S]*?\n\}$/m, 'extraDebtGlanceHtml'),
     grab(planSrc, /^function runningLeftoverHtml\([\s\S]*?\n\}$/m, 'runningLeftoverHtml'),
@@ -374,8 +375,9 @@ console.log('\n=== 5. page prints spent $X of $Y; does not subtract; no invented
       && (eatingCal.spent == null
         || (/<dt>Spent<\/dt>/.test(html) && html.includes(composer.money2(eatingCal.spent)))),
     'this-period waterfall prints planned and spent from the payday cycle');
-  ok((html.match(/data-operating-question=/g) || []).length === 7,
-    'the default calendar waterfall has seven questions, not a digest after a ten-block');
+  ok(/data-live-current-balance/.test(html)
+      && (html.match(/data-operating-question=/g) || []).length === 6,
+    'the default calendar waterfall has live Current Balance plus six snapshot questions, not a digest after a ten-block');
   ok(glance.indexOf('Household budget') >= 0
       && glance.indexOf('Spent against the budget') < 0,
     'this-period budget lives inside the waterfall, not a leftover digest');

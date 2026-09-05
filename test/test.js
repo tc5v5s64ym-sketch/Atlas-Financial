@@ -77,6 +77,7 @@ const suites = [
   ['salary recognition and payroll drift', 'test-salary-recognition-drift.js'],
   ['Plan payday operating periods', 'test-payday-operating-periods.js'],
   ['Plan payday waterfall balance date and post-payday identity', 'test-plan-payday-waterfall-balance.js'],
+  ['payday snapshot vs live Current Balance', 'test-payday-snapshot-live-balance.js'],
   ['Plan unavailable operating state', 'test-plan-unavailable-surface.js'],
   ['Plan next-period lookahead and week picker', 'test-plan-lookahead-week.js'],
   ['Plan actual vs budget digest', 'test-plan-budget-digest.js'],

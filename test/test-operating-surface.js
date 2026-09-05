@@ -72,6 +72,7 @@ function loadComposer() {
     grab(planSrc, /^function alreadyPaidHtml\([\s\S]*?\n\}$/m, 'alreadyPaidHtml'),
     grab(planSrc, /^function stillDueItems\([\s\S]*?\n\}$/m, 'stillDueItems'),
     grab(planSrc, /^function cashGlanceHtml\([\s\S]*?\n\}$/m, 'cashGlanceHtml'),
+    grab(planSrc, /^function liveCurrentBalanceHtml\([\s\S]*?\n\}$/m, 'liveCurrentBalanceHtml'),
     grab(planSrc, /^function mustLeaveHtml\([\s\S]*?\n\}$/m, 'mustLeaveHtml'),
     grab(planSrc, /^function extraDebtGlanceHtml\([\s\S]*?\n\}$/m, 'extraDebtGlanceHtml'),
     grab(planSrc, /^function runningLeftoverHtml\([\s\S]*?\n\}$/m, 'runningLeftoverHtml'),
@@ -172,8 +173,9 @@ console.log('\n=== seven ordered payday-sheet questions ===');
     ok(at > previous, `${prompt} appears in the required order`);
     previous = at;
   }
-  ok((rendered.match(/data-operating-question=/g) || []).length === 7,
-    'the default surface contains the seven calendar-waterfall questions');
+  ok(/data-live-current-balance/.test(rendered)
+      && (rendered.match(/data-operating-question=/g) || []).length === 6,
+    'the default surface prints live Current Balance outside the six-question payday snapshot');
   ok(!/Extra credit-card repayment|Balance after debt repayment|Big-purchase savings|Projected ending balance/.test(rendered),
     'the default surface stops at Balance after household budget');
 }

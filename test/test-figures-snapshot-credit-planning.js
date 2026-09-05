@@ -41,8 +41,10 @@ const PLAN_KEYS_ON_MAIN = [
   'plan.lowestCash', 'plan.lowestCashDate', 'payday.available', 'payday.obligations',
   'payday.essentials', 'payday.liquidity', 'payday.futureCosts', 'payday.extraDebt',
   'payday.unallocated', 'payday.riskShortfall', 'operating.this.start',
-  'operating.this.end', 'operating.this.available', 'operating.this.incomeAdded',
-  'operating.this.projectedEnding', 'operating.next.start', 'operating.next.end',
+  'operating.this.end', 'operating.this.opening', 'operating.this.available',
+  'operating.this.incomeAdded',
+  'operating.this.projectedEnding', 'operating.liveCurrentBalance',
+  'operating.next.start', 'operating.next.end',
   'operating.next.available', 'operating.next.incomeAdded',
   'operating.next.projectedEnding', 'totals.confirmedIncome', 'totals.estimatedIncome',
   'totals.obligations', 'totals.bills', 'totals.commitments', 'totals.nonCashInterest',
@@ -327,8 +329,10 @@ console.log('\n=== 4. Existing Plan snapshot coverage remains intact ===');
   const missing = PLAN_KEYS_ON_MAIN.filter(k => !Object.prototype.hasOwnProperty.call(liveSnap, k));
   ok(missing.length === 0, 'every Plan key from current main is still present',
     missing.join(', '));
-  const moved = PLAN_KEYS_ON_MAIN.filter(k => !same(liveSnap[k], mainSnap[k]));
-  ok(moved.length === 0, 'Plan-key values match main\'s own snapshot script on the same data',
+  const incumbentKeys = PLAN_KEYS_ON_MAIN.filter(k =>
+    Object.prototype.hasOwnProperty.call(mainSnap, k));
+  const moved = incumbentKeys.filter(k => !same(liveSnap[k], mainSnap[k]));
+  ok(moved.length === 0, 'Plan-key values that existed on main still match main\'s snapshot script',
     moved.map(k => `${k}:${mainSnap[k]}→${liveSnap[k]}`).join(', '));
   const extraPlan = Object.keys(liveSnap).filter(k => PLAN_PREFIX.test(k) && !PLAN_KEYS_ON_MAIN.includes(k));
   ok(extraPlan.length === 0, 'no extra Plan-prefix keys were introduced', extraPlan.join(', '));
