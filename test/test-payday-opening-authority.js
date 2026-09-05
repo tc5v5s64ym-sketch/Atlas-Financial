@@ -15,6 +15,8 @@
  *     = Balance after payday
  *
  * Live mid-period cash is a separate fact. The page does not add.
+ * live-plan must pass incumbent currentPeriodActuals / transactionWindow
+ * evidence as paydayGapCash; a helper-only injection is not the live path.
  *
  * `node test/test-payday-opening-authority.js`
  */
@@ -22,6 +24,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const F = require('../public/forecast.js');
+const Live = require('../scripts/live-plan.js');
 const { sourceText } = require('./test-source-text');
 
 let failures = 0;
@@ -453,6 +456,206 @@ console.log('\n=== 7. Unscheduled pre-payday outflow must change the opening or 
       && near(active.available, roundCent(INDEPENDENT_MORNING_WITH_GROCERY + PERIOD_INCOME))
       && !near(active.available, AFTER_PAYDAY),
     'This Payday leftover chain follows the grocery-adjusted complete opening, not the no-grocery walk');
+}
+
+const LIVE_A = 400;
+const LIVE_B = 200;
+const LIVE_SAVINGS = 50;
+const LIVE_SUM = roundCent(LIVE_A + LIVE_B + LIVE_SAVINGS);
+
+function overlayCanonical() {
+  return {
+    meta: { asOf: DATED },
+    plan: basePlan({
+      startingCash: {
+        amount: OPENING,
+        breakdown: [
+          { id: 'chequing-a', value: 600 },
+          { id: 'chequing-b', value: 300 },
+          { id: 'savings', value: 100 },
+        ],
+      },
+    }),
+    debts: [],
+  };
+}
+
+function overlayCashRow(id, canonicalValue, evidenceValue) {
+  return {
+    fact: 'posted-balance',
+    status: 'CHANGE',
+    canonicalTarget: 'cash:' + id,
+    canonicalValue,
+    evidenceValue,
+    evidenceDate: MID,
+    dateRelation: 'canonical-older',
+    unknown: false,
+  };
+}
+
+function overlayReport(opts) {
+  const o = opts || {};
+  return {
+    writesCanonicalState: false,
+    fetchedAt: '2026-09-04T18:00:00.000Z',
+    pendingCoverage: {
+      complete: true,
+      basis: 'is_pending-unbounded',
+      hasMore: false,
+      startDate: null,
+      endDate: null,
+    },
+    transactionWindow: o.window || {
+      startDate: '2026-08-20',
+      endDate: MID,
+      complete: true,
+      hasMore: false,
+      truncated: false,
+    },
+    mapped: [],
+    unmapped: [],
+    representedEventCandidates: [],
+    reconciliation: {
+      rows: [
+        overlayCashRow('chequing-a', 600, LIVE_A),
+        overlayCashRow('chequing-b', 300, LIVE_B),
+        overlayCashRow('savings', 100, LIVE_SAVINGS),
+      ],
+    },
+    currentPeriodActuals: Object.prototype.hasOwnProperty.call(o, 'actuals')
+      ? o.actuals
+      : {
+        schema: 'atlas-current-period-actuals/v1',
+        observationAsOf: MID,
+        coverageStart: (o.coverageStart != null) ? o.coverageStart : '2026-08-20',
+        coverageThrough: (o.coverageThrough != null) ? o.coverageThrough : MID,
+        pendingCoverage: 'complete',
+        transactionCoverage: o.transactionCoverage || 'complete',
+        paydayGapComplete: o.paydayGapComplete === true,
+        representedActuals: [],
+        transactions: o.transactions || [],
+      },
+  };
+}
+
+function overlayAdvice(data) {
+  return F.recommend(data.plan, MID, {
+    targetBuffer: data.plan.defaults && data.plan.defaults.targetBuffer,
+    debts: data.debts || [],
+    operatingPlan: data.liveOverlay && data.liveOverlay.operatingPlan,
+  });
+}
+
+console.log('\n=== 8. live overlay retains a complete gap packet and withholds an incomplete one ===');
+{
+  const liveSrc = read('scripts/live-plan.js');
+  ok(/paydayGapCashFromReport/.test(liveSrc)
+      && /paydayGapCash:\s*paydayGapCashFromReport/.test(liveSrc),
+    'retainPaydaySnapshot passes incumbent report evidence as paydayGapCash');
+
+  const completeTxs = [
+    { date: '2026-08-20', amount: -CHILD, accountRole: 'household-cash', pending: false },
+    { date: '2026-08-25', amount: GROCERY, accountRole: 'household-cash', pending: false },
+  ];
+  const complete = Live.overlayLiveState({
+    data: overlayCanonical(),
+    report: overlayReport({
+      transactions: completeTxs,
+      paydayGapComplete: true,
+    }),
+  });
+  const completeSnap = complete.data.plan.opening
+    && complete.data.plan.opening.paydaySnapshot;
+  const completeAdvice = overlayAdvice(complete.data);
+  const completeActive = period(completeAdvice.defaultView, 'this-pay-period');
+  const completeHtml = composer.calendarWaterfallsHtml(
+    completeAdvice.defaultView, 'this-pay-period', complete.data.liveOverlay,
+    completeAdvice.paydayAllocation);
+  ok(complete.data.liveOverlay && complete.data.liveOverlay.applied === true
+      && near(F.startingCashAmount(complete.data.plan), LIVE_SUM),
+    'complete-gap fixture still overlays mid-period live cash');
+  ok(completeSnap && completeSnap.periodStart === PAYDAY
+      && completeSnap.asOf === PAYDAY
+      && near(completeSnap.opening, INDEPENDENT_MORNING_WITH_GROCERY)
+      && !near(completeSnap.opening, LIVE_SUM)
+      && !near(completeSnap.opening, INDEPENDENT_MORNING),
+    'overlayLiveState retains the grocery-adjusted complete paydaySnapshot, not live cash or the no-grocery walk');
+  ok(completeActive && completeActive.openingKnown === true
+      && near(completeActive.opening, INDEPENDENT_MORNING_WITH_GROCERY)
+      && near(completeActive.available,
+        roundCent(INDEPENDENT_MORNING_WITH_GROCERY + PERIOD_INCOME))
+      && !near(completeActive.available, AFTER_PAYDAY)
+      && completeActive.afterRemainingBills != null
+      && completeActive.afterHouseholdBudget != null,
+    'live This Payday leftover chain follows the retained complete opening');
+  ok(completeHtml.includes(composer.money2(completeActive.available))
+      && completeHtml.includes(composer.money2(completeActive.afterRemainingBills))
+      && completeHtml.includes(composer.money2(completeActive.afterHouseholdBudget))
+      && !/PAYDAY OPENING IS NOT RECORDED/i.test(completeHtml),
+    'live This Payday waterfall renders the Forecast leftover dollars');
+
+  const incomplete = Live.overlayLiveState({
+    data: overlayCanonical(),
+    report: overlayReport({
+      transactions: completeTxs,
+      window: {
+        startDate: '2026-08-20',
+        endDate: MID,
+        complete: false,
+        hasMore: false,
+        truncated: true,
+      },
+      transactionCoverage: 'truncated',
+    }),
+  });
+  const incompleteSnap = incomplete.data.plan.opening
+    && incomplete.data.plan.opening.paydaySnapshot;
+  const incompleteAdvice = overlayAdvice(incomplete.data);
+  const incompleteActive = period(incompleteAdvice.defaultView, 'this-pay-period');
+  const incompleteHtml = composer.calendarWaterfallsHtml(
+    incompleteAdvice.defaultView, 'this-pay-period', incomplete.data.liveOverlay,
+    incompleteAdvice.paydayAllocation);
+  ok(incomplete.data.liveOverlay && incomplete.data.liveOverlay.applied === true
+      && near(F.startingCashAmount(incomplete.data.plan), LIVE_SUM),
+    'incomplete-gap fixture still overlays mid-period live cash');
+  ok(!incompleteSnap, 'truncated transaction window does not retain a paydaySnapshot');
+  ok(incompleteActive && incompleteActive.openingKnown !== true
+      && incompleteActive.opening == null
+      && incompleteActive.available == null
+      && incompleteActive.afterRemainingBills == null
+      && incompleteActive.afterHouseholdBudget == null,
+    'live path with incomplete gap evidence still withholds the leftover chain');
+  ok(/PAYDAY OPENING IS NOT RECORDED/i.test(incompleteHtml)
+      || /Opening is not recorded/i.test(incompleteHtml)
+      || /—/.test(incompleteHtml),
+    'incomplete live path does not invent leftover dollars');
+
+  const windowOnly = Live.overlayLiveState({
+    data: overlayCanonical(),
+    report: overlayReport({ transactions: completeTxs }),
+  });
+  ok(!(windowOnly.data.plan.opening
+      && windowOnly.data.plan.opening.paydaySnapshot),
+    'a paginated-complete current-period window without paydayGapComplete still withholds');
+
+  const missingActuals = Live.overlayLiveState({
+    data: overlayCanonical(),
+    report: overlayReport({ actuals: null }),
+  });
+  ok(!(missingActuals.data.plan.opening
+      && missingActuals.data.plan.opening.paydaySnapshot),
+    'overlay without currentPeriodActuals still withholds the opening');
+
+  const shortCoverage = Live.overlayLiveState({
+    data: overlayCanonical(),
+    report: overlayReport({
+      transactions: completeTxs,
+      coverageStart: '2026-08-21',
+    }),
+  });
+  ok(!(shortCoverage.data.plan.opening
+      && shortCoverage.data.plan.opening.paydaySnapshot),
+    'coverage that starts after the first gap day still withholds');
 }
 
 if (failures) {

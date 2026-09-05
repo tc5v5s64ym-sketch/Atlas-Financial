@@ -6,8 +6,12 @@
  * trusted overlay advances past a Seaspan payday, the in-memory opening
  * retains paydaySnapshot from Forecast.establishPaydaySnapshot on the
  * pre-overlay dated plan only when that figure is a recorded snapshot
- * or a completeness-proven household-cash walk. Scheduled-only
- * reconstruction is not retained. That is not today's live cash
+ * or a completeness-proven household-cash walk. The walk evidence is
+ * the incumbent sanitized currentPeriodActuals packet, passed as
+ * paydayGapCash. A paginated-complete current-period window is not
+ * gap completeness. Scheduled-only reconstruction is not retained.
+ * Missing, truncated, unattested, or incomplete gap coverage
+ * withholds the opening. That is not today's live cash
  * walked backward.
  * This command never writes data.json, positions.csv, or snapshots/.
  *
@@ -714,11 +718,96 @@ function recordedPaydaySnapshot(snap, periodStart) {
   return null;
 }
 
+// Incumbent live evidence for the opening-to-payday household-cash gap.
+// currentPeriodActuals amounts stay Lunch Money signed (positive debit /
+// outflow, negative credit / inflow). Forecast paydayGapCash movements
+// are household-cash signed (in +, out −), so each posted household-cash
+// debit is negated here. A current-period window being paginated-complete
+// is not gap completeness: that packet's claim is the current payday
+// period, not "unscheduled pre-payday spend was zero." complete:true
+// requires an explicit gap attestation plus a fetch-complete window
+// that actually covers the gap.
+function paydayGapCashFromReport(report, canonicalPlan, paydayDate) {
+  const explicit = report && report.paydayGapCash;
+  if (explicit && typeof explicit === 'object' && Array.isArray(explicit.movements)) {
+    return explicit;
+  }
+  const packet = report && report.currentPeriodActuals;
+  const window = (report && report.transactionWindow) || {};
+  const openingAsOf = canonicalPlan && canonicalPlan.opening && canonicalPlan.opening.asOf;
+  const coverageStart = (packet && packet.coverageStart) || window.startDate || null;
+  const coverageThrough = (packet && packet.coverageThrough) || window.endDate || null;
+  const empty = {
+    complete: false,
+    coverageStart,
+    coverageThrough,
+    movements: [],
+  };
+  if (!packet || !Array.isArray(packet.transactions) || !openingAsOf || !paydayDate) {
+    return empty;
+  }
+  const windowComplete = window.complete === true
+    && window.truncated !== true
+    && window.hasMore !== true;
+  const txCoverage = packet.transactionCoverage;
+  const packetComplete = txCoverage !== 'truncated'
+    && txCoverage !== 'incomplete'
+    && !(txCoverage && typeof txCoverage === 'object'
+      && (txCoverage.truncated === true || txCoverage.complete === false));
+  let coversGap = String(openingAsOf) === String(paydayDate);
+  if (!coversGap) {
+    const firstGapDay = Forecast.addDays(openingAsOf, 1);
+    const lastGapDay = Forecast.addDays(paydayDate, -1);
+    if (firstGapDay && lastGapDay && String(lastGapDay) < String(firstGapDay)) {
+      coversGap = true;
+    } else if (firstGapDay && lastGapDay && coverageStart && coverageThrough) {
+      coversGap = String(coverageStart) <= String(firstGapDay)
+        && String(coverageThrough) >= String(lastGapDay);
+    }
+  }
+  const hasUnmapped = packet.transactions.some(tx => tx && tx.accountRole === 'unmapped');
+  const movements = [];
+  let amountsTrusted = true;
+  let pendingGapUnproven = false;
+  for (const tx of packet.transactions) {
+    if (!tx || !tx.date) continue;
+    const inGap = String(tx.date) > String(openingAsOf)
+      && String(tx.date) < String(paydayDate);
+    if (tx.accountRole === 'household-cash'
+      && tx.pending === true
+      && tx.pendingPostedDuplicate !== true
+      && inGap) {
+      pendingGapUnproven = true;
+    }
+    if (tx.pending === true) continue;
+    if (tx.accountRole !== 'household-cash') continue;
+    const debit = Number(tx.amount);
+    if (!Number.isFinite(debit)) {
+      amountsTrusted = false;
+      break;
+    }
+    movements.push({
+      date: String(tx.date),
+      amount: Math.round((-debit) * 100) / 100,
+      accountRole: 'household-cash',
+    });
+  }
+  const gapAttested = packet.paydayGapComplete === true;
+  return {
+    complete: !!(gapAttested && windowComplete && packetComplete && coversGap
+      && !hasUnmapped && amountsTrusted && !pendingGapUnproven),
+    coverageStart,
+    coverageThrough,
+    movements,
+  };
+}
+
 // Retain Forecast's payday-morning figure on the live clone. Use the
 // pre-overlay dated plan, never the post-overlay live cash. An already
 // matching snapshot stays frozen. A walk is retained only when
-// Forecast can prove the opening-to-payday gap is cash-complete.
-function retainPaydaySnapshot(next, canonicalPlan, liveAsOf) {
+// Forecast can prove the opening-to-payday gap is cash-complete from
+// incumbent live actuals / transaction-window evidence.
+function retainPaydaySnapshot(next, canonicalPlan, liveAsOf, report) {
   if (!next || !next.plan || !canonicalPlan || !liveAsOf) return;
   const cycle = Forecast.spendingCycle(canonicalPlan, liveAsOf);
   if (!cycle || !cycle.start) return;
@@ -738,6 +827,7 @@ function retainPaydaySnapshot(next, canonicalPlan, liveAsOf) {
   }
   const snap = Forecast.establishPaydaySnapshot(canonicalPlan, cycle.start, {
     representedEvents: (next.plan.opening && next.plan.opening.representedEvents) || [],
+    paydayGapCash: paydayGapCashFromReport(report, canonicalPlan, cycle.start),
   });
   if (!snap) return;
   next.plan.opening = Object.assign({}, next.plan.opening || {}, {
@@ -841,7 +931,7 @@ function overlayLiveState(input) {
   }
   const next = clone(data);
   const cutover = applyLiveCutover(next, report, historicalOpeningAsOf);
-  retainPaydaySnapshot(next, data.plan, cutover.liveAsOf || liveAsOf);
+  retainPaydaySnapshot(next, data.plan, cutover.liveAsOf || liveAsOf, report);
   for (const change of proposed) {
     if (change.field === 'pending') applyPendingOverlay(next, change);
     else applyPostedOverlay(next, change);
