@@ -228,9 +228,9 @@ console.log('\n=== 2. calendar Household Budget publishes the constructed amount
   ok(other && other.id === 'other-spending' && other.label === 'Other spending'
       && other.note === 'Not yet assigned to a budget category'
       && other.planned == null && other.remaining == null
-      && other.hold === 0 && other.needsConfirmation === true
+      && near(other.hold, OTHER_TOTAL) && other.needsConfirmation === true
       && near(other.spent, OTHER_TOTAL),
-    'Other spending is the constructed $100 residual, hold $0, no planned/remaining');
+    'Other spending is the constructed $100 residual, hold equals actual, no planned/remaining');
   const namedSpent = roundCent(GROCERY + FUEL + EATING);
   ok(near(namedSpent + OTHER_TOTAL, RELEVANT_TOTAL),
     '100+50+25+100 independently equals total Household-Budget-relevant spending');
@@ -254,7 +254,7 @@ console.log('\n=== 2. calendar Household Budget publishes the constructed amount
     'Next Pay Period does not invent projected Other spending');
 }
 
-console.log('\n=== 3. waterfall figures are unchanged by displaying Other spending ===');
+console.log('\n=== 3. Other spending actual is deducted once from the waterfall ===');
 {
   const without = recommend(fixtureTxs.filter(tx => tx.id !== 'tx-other-a' && tx.id !== 'tx-other-b'));
   const withOther = recommend(fixtureTxs);
@@ -269,16 +269,16 @@ console.log('\n=== 3. waterfall figures are unchanged by displaying Other spendi
     return roundCent(s + (row && Number(row.hold) || 0));
   }, 0);
   const other = (b.householdBudget || []).find(r => r.otherSpending);
-  ok(near(a.budgetHold, holdWithout) && near(b.budgetHold, holdWithNamed)
-      && near(a.budgetHold, b.budgetHold),
-    'budgetHold is the sum of planned-category remaining/hold and ignores Other spending');
-  ok(other && near(other.hold, 0) && !near(b.budgetHold, roundCent(a.budgetHold + OTHER_TOTAL))
-      && !near(b.budgetHold, roundCent(a.budgetHold - OTHER_TOTAL)),
-    'Other spending hold is $0 and is not added to or subtracted from budgetHold');
-  ok(near(a.afterHouseholdBudget, b.afterHouseholdBudget)
-      && near(a.projectedEnding, b.projectedEnding)
-      && near(a.extraDebt.allocated, b.extraDebt.allocated),
-    'afterHouseholdBudget, projected ending, and extra-debt allocation stay put');
+  ok(near(a.budgetHold, holdWithout) && near(holdWithNamed, holdWithout),
+    'named-category holds are unchanged by Other spending');
+  ok(other && near(other.hold, OTHER_TOTAL)
+      && near(b.budgetHold, roundCent(a.budgetHold + OTHER_TOTAL)),
+    'Other spending actual is deducted once and added to budgetHold');
+  ok(near(b.afterHouseholdBudget, roundCent(a.afterHouseholdBudget - OTHER_TOTAL)),
+    'Balance after Household Budget falls by Other spending actual');
+  ok(!near(a.afterHouseholdBudget, b.afterHouseholdBudget)
+      && !near(a.projectedEnding, b.projectedEnding),
+    'downstream leftovers move with the Other spending deduction');
   ok(near(HOLD_TOTAL, 1862.50),
     'independent unused cycle reserve is still $1,862.50 before spent');
 }

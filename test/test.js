@@ -83,6 +83,7 @@ const suites = [
   ['payday snapshot vs live Current Balance', 'test-payday-snapshot-live-balance.js'],
   ['payday opening authority from dated opening', 'test-payday-opening-authority.js'],
   ['payday waterfall bill load vs remaining-only leftover', 'test-payday-waterfall-bill-load.js'],
+  ['payday Household Budget max(planned, actual) contract', 'test-household-budget-waterfall-contract.js'],
   ['Plan unavailable operating state', 'test-plan-unavailable-surface.js'],
   ['Plan next-period lookahead and week picker', 'test-plan-lookahead-week.js'],
   ['Plan actual vs budget digest', 'test-plan-budget-digest.js'],

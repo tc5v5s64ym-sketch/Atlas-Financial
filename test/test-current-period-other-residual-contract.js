@@ -410,9 +410,10 @@ console.log('\n=== 22–25 genuine residual / hold / next period ===');
   const next = period(advice.defaultView, 'next-pay-period');
   const other = otherRow(active);
   const groceries = budgetRow(active, 'groceries');
-  ok(other && other.hold === 0 && near(other.spent, roundCent(OTHER_GIFT + CONTRADICTION))
+  ok(other && near(other.hold, roundCent(OTHER_GIFT + CONTRADICTION))
+      && near(other.spent, roundCent(OTHER_GIFT + CONTRADICTION))
       && rowHas(other, 'tx-other-gift') && rowHas(other, 'tx-google-pets'),
-    '22–24. unrecognized Gifts and a merchant/category contradiction stay Other with hold $0');
+    '22–24. unrecognized Gifts and a merchant/category contradiction stay Other; hold equals actual');
   ok(!(groceries && (groceries.recon || []).length),
     '23. Google + Pets is not guessed into Dog food or Groceries');
   const namedHold = ['groceries', 'fuel', 'household', 'pets', 'restaurants',
@@ -421,8 +422,10 @@ console.log('\n=== 22–25 genuine residual / hold / next period ===');
     return roundCent(s + (row && Number(row.hold) || 0));
   }, 0);
   const expectedHold = roundCent(900 + 325 + 37.5 + 100 + 200 + 150 + 150);
-  ok(near(namedHold, expectedHold) && other.hold === 0,
-    '24. Other does not alter Household Budget planned reserve merely by existing',
+  ok(near(namedHold, expectedHold)
+      && near(other.hold, roundCent(OTHER_GIFT + CONTRADICTION))
+      && near(active.budgetHold, roundCent(expectedHold + OTHER_GIFT + CONTRADICTION)),
+    '24. Other does not alter named planned reserves; its actual is added once',
     JSON.stringify({ namedHold, expectedHold, otherHold: other.hold }));
   const nextOther = otherRow(next);
   ok(!nextOther,

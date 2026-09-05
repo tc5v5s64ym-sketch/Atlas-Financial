@@ -527,19 +527,18 @@ console.log('\n=== 8. Actual spending does not double-count ===');
   const p2 = activePeriod(advice);
   const groceries = (p2.householdBudget || []).find(row => row && row.id === 'groceries');
   ok(groceries && near(groceries.planned, planned) && near(groceries.spent, committed)
-      && near(groceries.remaining, remaining) && near(groceries.hold, remaining),
-    'Household Budget reserves remaining $550, not planned $900');
-  ok(p2 && near(p2.budgetHold, remaining),
-    'waterfall hold is remaining grocery, not the full cycle plan');
+      && near(groceries.remaining, remaining) && near(groceries.hold, planned),
+    'Household Budget still reserves the full $900 plan when spent is $350');
+  ok(p2 && near(p2.budgetHold, planned),
+    'waterfall hold is the full grocery plan, not remaining $550');
   ok(p2.available == null && p2.afterHouseholdBudget == null
       && p2.openingKnown !== true,
     'incomplete gap withholds the leftover chain rather than starting it from a scheduled-only walk or live cash');
   ok(near(advice.defaultView.liveCurrentBalance, independentCash),
     'live Current Balance stays the observed-cash fixture');
-  ok(!near(remaining, planned) && near(groceries.hold, remaining),
-    'Household Budget still reserves remaining $550, not the full $900 plan');
-  ok(!near(groceries.spent + groceries.hold, committed + remaining + committed),
-    'spent $350 plus remaining hold $550 is not the actual counted twice');
+  ok(!near(remaining, planned) && near(groceries.hold, planned)
+      && !near(groceries.hold, planned + committed),
+    'Household Budget still reserves the full $900 plan, not remaining $550 and not plan + actual');
 }
 
 console.log('\n=== 9. Paid bill does not double-count ===');
