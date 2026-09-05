@@ -697,7 +697,7 @@
             "ownerTargets": {
                 "status": "partial",
                 "source": "owner-stated-2026-08-31",
-                "note": "Owner-stated current policy, not workbook-derived. Owner-locked 2026-08-31 household budget on the Seaspan 14-day payday cycle (not Bill Period 1 / Period 2 calendar dates): Groceries $450/week = $900 per cycle; Fuel $325; Household $37.50; Dog food $100 every pay period (not prorated); Eating out $200; Dale guilt-free spending $150; Amanda guilt-free spending $150. Cycle total $1,862.50. Medical/health, children/sports, subscriptions, and combined Personal/shopping are not household-budget holds. Subscriptions remain itemized bills. monthly_budget_tracker_template.xlsx and HOME BUDGET.xlsx stay classified in docs/source_intake/HOUSEHOLD_BUDGET_WORKBOOKS_2026-08-16.md and do not supersede this lock. Sinking-fund amounts remain unnamed as current targets (Q20). Every category without a target below is still a historical actual and is labelled as one.",
+                "note": "Owner-stated current policy, not workbook-derived. Owner-locked 2026-08-31 household budget on the Seaspan 14-day payday cycle (not Bill Period 1 / Period 2 calendar dates): Groceries $450/week = $900 per cycle; Fuel $325; Household $37.50; Dog food $100 once per calendar month, assigned to the first Seaspan pay period beginning in that month (later Seaspan starts in the same YYYY-MM get $0; not prorated); Eating out $200; Dale guilt-free spending $150; Amanda guilt-free spending $150. Cycle total $1,862.50 when that month's Dog food is assigned, else $1,762.50. Medical/health, children/sports, subscriptions, and combined Personal/shopping are not household-budget holds. Subscriptions remain itemized bills. monthly_budget_tracker_template.xlsx and HOME BUDGET.xlsx stay classified in docs/source_intake/HOUSEHOLD_BUDGET_WORKBOOKS_2026-08-16.md and do not supersede this lock. Sinking-fund amounts remain unnamed as current targets (Q20). Every category without a target below is still a historical actual and is labelled as one.",
                 "sinkingFundsNamed": [
                     "property tax",
                     "home insurance",
@@ -790,10 +790,11 @@
                         "Pets"
                     ],
                     "plannedPayday": 100,
+                    "paydayCadence": "first-seaspan-of-month",
                     "plannedMonthly": null,
                     "ownerLine": "Dog food",
                     "targetSource": "owner-stated-2026-08-31",
-                    "why": "OWNER TARGET WINS. Owner-confirmed 2026-08-31: $100 every 14-day Seaspan payday cycle. Do not prorate, split, accrue, or roll. Spent includes only txs whose normalized original merchant contains SURREY MEAT (SURREY MEAT PKR _F, SURREY MEAT PKR, SURREY MEAT PAC _F). Never Groceries. Meridian Farm, Iron Butcher, other meat stores, and general pet merchants are not Dog food."
+                    "why": "OWNER TARGET WINS. Amount locked 2026-08-31 at $100; cadence restated by owner 2026-09-05: $100 once per calendar month, assigned to the first Seaspan pay period whose start falls in that YYYY-MM. Later Seaspan pay periods beginning in the same calendar month are $0. Do not prorate, split, accrue, roll, or use calendar 1st–15th / 16th–month-end halves. Spent includes only txs whose normalized original merchant contains SURREY MEAT (SURREY MEAT PKR _F, SURREY MEAT PKR, SURREY MEAT PAC _F). Never Groceries. Meridian Farm, Iron Butcher, other meat stores, and general pet merchants are not Dog food."
                 },
                 {
                     "id": "propertytax",
