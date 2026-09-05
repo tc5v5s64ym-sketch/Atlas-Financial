@@ -321,12 +321,11 @@ console.log('\n=== 2. August 31 proven Amanda TENNIS INCOME → BILLS transfer =
       && representedKeys.has('travel@2026-08-26')) {
     independentMorning = round2(independentMorning - Number(travel.amount));
   }
-  ok(snap && snap.periodStart === p2.start && near(snap.opening, independentMorning),
-    'live overlay retains Forecast paydaySnapshot from the dated opening walk');
-  ok(p2.openingKnown === true && near(p2.opening, independentMorning)
-      && p2.available != null
-      && !near(p2.opening, independentCash),
-    'mid-period live overlay publishes the walked Aug 28 opening, not live cash');
+  ok(!snap,
+    'live overlay does not retain a scheduled-only paydaySnapshot from the dated opening walk');
+  ok(p2.openingKnown !== true && p2.opening == null && p2.available == null
+      && !near(independentMorning, independentCash),
+    'mid-period live overlay withholds the incomplete walked Aug 28 opening; live cash stays a separate fact');
   ok(!near(advice.paydayAllocation.available, independentCash + SALARY),
     'salary is not added again on top of observed cash');
   const row = incomeRow(advice, 'amandaSalaryMonthEnd');
@@ -532,11 +531,9 @@ console.log('\n=== 8. Actual spending does not double-count ===');
     'Household Budget reserves remaining $550, not planned $900');
   ok(p2 && near(p2.budgetHold, remaining),
     'waterfall hold is remaining grocery, not the full cycle plan');
-  ok(p2.available != null && p2.afterHouseholdBudget != null
-      && !near(p2.available, independentCash)
-      && !near(p2.afterHouseholdBudget, independentCash)
-      && near(p2.afterHouseholdBudget, round2(p2.available - p2.remainingBills - p2.budgetHold)),
-    'leftover chain starts from the walked payday opening, not live cash');
+  ok(p2.available == null && p2.afterHouseholdBudget == null
+      && p2.openingKnown !== true,
+    'incomplete gap withholds the leftover chain rather than starting it from a scheduled-only walk or live cash');
   ok(near(advice.defaultView.liveCurrentBalance, independentCash),
     'live Current Balance stays the observed-cash fixture');
   ok(!near(remaining, planned) && near(groceries.hold, remaining),
@@ -642,23 +639,21 @@ console.log('\n=== 10. Active two-period calendar waterfall ===');
       && representedKeys.has('travel@2026-08-26')) {
     independentMorning = round2(independentMorning - Number(travel.amount));
   }
-  ok(snap && snap.periodStart === thisP.start && near(snap.opening, independentMorning),
-    'overlay retains Forecast paydaySnapshot from the dated opening walk');
-  ok(thisP.openingKnown === true && near(thisP.opening, independentMorning)
-      && thisP.available != null && thisP.projectedEnding != null
-      && !near(thisP.opening, independentCash),
-    'active payday snapshot is the walked Aug 28 opening, not live cash');
+  ok(!snap,
+    'overlay does not retain a scheduled-only paydaySnapshot from the dated opening walk');
+  ok(thisP.openingKnown !== true && thisP.opening == null && thisP.available == null
+      && !near(independentMorning, independentCash),
+    'active payday snapshot is withheld when the opening-to-payday gap is not cash-complete');
   ok(nextP.openingKnown === true && nextP.opening != null
       && !near(nextP.opening, independentCash),
-    'next period opens from the walk, not from live mid-period cash');
+    'next period opens from the already-run walk, not from live mid-period cash');
   ok(thisP.remainingBills != null, 'active period shows remaining bills');
   const groceries = (thisP.householdBudget || []).find(row => row && row.id === 'groceries');
   ok(groceries && groceries.planned != null && groceries.spent != null
       && groceries.remaining != null,
     'Household Budget planned/actual/remaining are visible');
-  ok(thisP.afterHouseholdBudget != null
-      && !near(thisP.afterHouseholdBudget, independentCash),
-    'leftover chain starts from the payday snapshot, not live cash');
+  ok(thisP.afterHouseholdBudget == null,
+    'incomplete gap withholds leftover after household budget rather than publishing a scheduled-only walk');
 }
 
 console.log('\n=== 11. Failed-cash control withholds stale Current Balance ===');

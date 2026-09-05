@@ -20,7 +20,9 @@ pending onto today's live plan in memory (`scripts/live-plan.js`) without
 rewriting historical openings or snapshots. When that overlay advances
 past a Seaspan payday, the clone retains `plan.opening.paydaySnapshot`
 from `Forecast.establishPaydaySnapshot` on the pre-overlay dated plan
-so This Payday keeps a stable period opening. That clone uses the
+only when that figure is a recorded snapshot or a completeness-proven
+household-cash walk of the opening-to-payday gap; a scheduled-only
+reconstruction is withheld rather than published as the frozen opening. That clone uses the
 observation's household financial date as Forecast start; unrepresented
 joint-cash outflows between the dated opening and that live start stay
 reserved; a complete trusted current-cash observation remains the Forecast opening when a same-day inbound is unproven (that inbound is not counted and is not labelled represented); incomplete current cash still fails closed; same-day unposted joint-cash bills stay still due. Live read-only observation

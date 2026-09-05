@@ -4011,53 +4011,64 @@
     return false;
   }
 
-  // Represented occurrences before payday morning. Distinct from
-  // representedKeySet's current-opening window: this walk is dated
-  // from the last trusted opening, so later live as-of must not
-  // hide a represented pre-payday settlement.
-  function representedBeforeMorning(plan, opts, morningDate) {
-    const keys = new Set();
-    const add = item => {
-      if (!item || !item.id || !item.date) return;
-      if (String(item.date) < String(morningDate)) {
-        keys.add(String(item.id) + '@' + String(item.date));
-      }
-    };
-    for (const item of (opts && opts.representedEvents) || []) add(item);
-    for (const item of (plan && plan.opening && plan.opening.representedEvents) || []) {
-      add(item);
-    }
-    return keys;
+  // Explicit complete household-cash evidence for (openingAsOf, morningDate).
+  // complete:true without coverage of every gap day is not completeness.
+  // A scheduled-only plan walk is not completeness: unscheduled groceries,
+  // fuel, restaurants, or transfers in that gap would still be assumed zero.
+  function paydayGapCashPacket(opts) {
+    const packet = opts && opts.paydayGapCash;
+    return packet && typeof packet === 'object' ? packet : null;
   }
 
-  // Scheduled joint-cash from a trusted dated opening through the
-  // morning of `morningDate`. Not live cash walked backward, not
-  // weekly-variable spend, and not the reserved-daily regime drain.
-  // Income in that window is the plan's scheduled arrivals. Outflows
-  // apply only when represented — an unpaid once-bill stays reserved
-  // and is not treated as already paid just because it was scheduled.
-  function scheduledCashAtMorning(plan, morningDate, opts) {
+  function paydayGapCashComplete(plan, morningDate, opts) {
+    const packet = paydayGapCashPacket(opts);
+    if (!packet || packet.complete !== true) return false;
+    if (!Array.isArray(packet.movements)) return false;
+    const openingAsOf = plan && plan.opening && plan.opening.asOf;
+    if (!openingAsOf || !morningDate) return false;
+    if (String(openingAsOf) === String(morningDate)) return true;
+    const firstGapDay = addDays(openingAsOf, 1);
+    const lastGapDay = addDays(morningDate, -1);
+    if (!firstGapDay || !lastGapDay) return false;
+    if (String(lastGapDay) < String(firstGapDay)) return true;
+    const covStart = packet.coverageStart;
+    const covThrough = packet.coverageThrough;
+    if (!covStart || !covThrough) return false;
+    if (String(covStart) > String(firstGapDay)) return false;
+    if (String(covThrough) < String(lastGapDay)) return false;
+    return true;
+  }
+
+  function gapMovementAffectsJointCash(mov) {
+    if (!mov) return false;
+    if (mov.jointCash === false || mov.kind === 'noncash') return false;
+    if (mov.accountRole && String(mov.accountRole) !== 'household-cash') return false;
+    return true;
+  }
+
+  // Trusted dated opening plus every household-cash movement in the gap,
+  // only when that interval is completeness-proven. Not live cash walked
+  // backward, not weekly-variable spend, not reserved-daily drain, and
+  // not scheduled income/outflows with unscheduled spending assumed zero.
+  function completeCashAtMorning(plan, morningDate, opts) {
     if (!plan || !morningDate) return null;
     const openingAsOf = plan.opening && plan.opening.asOf;
     if (!openingAsOf || openingAsOf > morningDate) return null;
     const openingCash = startingCashAmount(plan);
     if (!Number.isFinite(Number(openingCash))) return null;
     if (openingAsOf === morningDate) return roundCent(openingCash);
-    const end = addDays(morningDate, -1);
-    if (!end || end < openingAsOf) return roundCent(openingCash);
-    const represented = representedBeforeMorning(plan, opts, morningDate);
-    const events = expandEvents(plan, openingAsOf, end,
-      Object.assign({}, opts, { keepRepresented: true }));
+    if (!paydayGapCashComplete(plan, morningDate, opts)) return null;
+    const packet = paydayGapCashPacket(opts);
     let balance = roundCent(openingCash);
-    for (const event of events || []) {
-      if (!event || !event.date) continue;
-      if (event.date <= openingAsOf || event.date >= morningDate) continue;
-      if (event.kind === 'noncash' || event.jointCash === false) continue;
-      const amt = Number(event.amount);
-      if (!Number.isFinite(amt)) continue;
-      if (amt < 0 && !represented.has(String(event.id) + '@' + String(event.date))) {
+    for (const mov of packet.movements) {
+      if (!mov || !mov.date) continue;
+      if (String(mov.date) <= String(openingAsOf)
+          || String(mov.date) >= String(morningDate)) {
         continue;
       }
+      if (!gapMovementAffectsJointCash(mov)) continue;
+      const amt = Number(mov.amount);
+      if (!Number.isFinite(amt)) return null;
       balance = roundCent(balance + amt);
     }
     return balance;
@@ -4066,9 +4077,11 @@
   // Establish or reuse the frozen payday-morning figure. A recorded
   // matching snapshot wins. Otherwise the last trusted dated opening
   // whose starting cash still belongs to that opening (not a
-  // live-advanced mid-period overlay) may walk scheduled joint-cash
-  // forward to that payday morning. Live mid-period cash never
-  // substitutes. Null when Atlas has no such evidence.
+  // live-advanced mid-period overlay) may walk to that payday morning
+  // only when the gap is complete enough to reconcile every
+  // household-cash movement that can change that balance. Live
+  // mid-period cash never substitutes. Null when completeness cannot
+  // be proven.
   function establishPaydaySnapshot(plan, paydayDate, opts) {
     const existing = paydaySnapshotRecord(plan, opts, paydayDate);
     if (existing) return existing;
@@ -4077,7 +4090,7 @@
     if (!openingAsOf) return null;
     if (liveOpeningAdvanced(plan, openingAsOf)) return null;
     if (openingAsOf > paydayDate) return null;
-    const opening = scheduledCashAtMorning(plan, paydayDate, opts);
+    const opening = completeCashAtMorning(plan, paydayDate, opts);
     if (!finiteRecordedOpening(opening)) return null;
     return {
       periodStart: String(paydayDate),
@@ -4143,8 +4156,9 @@
       };
     }
     // Dated opening still owns starting cash and predates this payday:
-    // Forecast walks scheduled joint-cash to that payday morning. Live
-    // overlay that already replaced starting cash cannot use this path.
+    // Forecast walks only a completeness-proven household-cash gap.
+    // Scheduled-only reconstruction is not completeness. Live overlay
+    // that already replaced starting cash cannot use this path.
     if (!liveOpeningAdvanced(plan, asOf)) {
       const established = establishPaydaySnapshot(plan, window.start, opts);
       if (established) {
@@ -4919,10 +4933,11 @@
   // The active period opens from a recorded paydaySnapshot first, else
   // payday-morning cash only when as-of is that payday and live overlay
   // has not already advanced, else a non-live cutover opening, else a
-  // Forecast scheduled-cash walk from that non-live dated opening to
-  // this payday morning (`Forecast.establishPaydaySnapshot`) — never
-  // from today's live posted cash merely because that cash moved, even
-  // when the live as-of is the payday calendar date.
+  // completeness-proven household-cash walk from that non-live dated
+  // opening to this payday morning (`Forecast.establishPaydaySnapshot`)
+  // — never from today's live posted cash, and never from a
+  // scheduled-only reconstruction that assumes unscheduled gap
+  // spending was zero.
   // Balance after payday is that frozen opening plus period income not
   // already inside that opening. Received-vs-live is settlement status
   // and does not drop an income row from the snapshot. The next period

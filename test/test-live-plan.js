@@ -2376,13 +2376,13 @@ console.log('\n=== 20. incomplete current cash still withholds a stale cycle as 
       && represented.has('travel@2026-08-26')) {
     independentMorning = Math.round((independentMorning - Number(travel.amount)) * 100) / 100;
   }
-  ok(snap && snap.periodStart === trustedActive.start
-      && near(snap.opening, independentMorning),
-    'trusted overlay retains Forecast paydaySnapshot from the dated opening walk');
-  ok(trustedActive.openingKnown === true && near(trustedActive.opening, independentMorning)
-      && trustedActive.available != null
-      && !near(trustedActive.opening, trustedAdvice.defaultView.liveCurrentBalance),
-    'trusted mid-period overlay publishes the walked payday opening, not live cash');
+  ok(!snap,
+    'trusted overlay does not retain a scheduled-only paydaySnapshot from the dated opening');
+  ok(trustedActive.openingKnown !== true && trustedActive.opening == null
+      && trustedActive.available == null
+      && trustedAdvice.defaultView.liveCurrentBalance != null
+      && !near(independentMorning, trustedAdvice.defaultView.liveCurrentBalance),
+    'trusted mid-period overlay withholds the incomplete walked opening and still publishes live Current Balance');
 
   const budgetFn = /function calendarBudgetHtml\([\s\S]*?\n\}/.exec(planSrc);
   const unavailableFn = /function calendarCurrentUnavailableHtml\([\s\S]*?\n\}/.exec(planSrc);

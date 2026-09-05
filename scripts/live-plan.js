@@ -5,7 +5,10 @@
  * → Forecast. Historical openings and snapshots stay on disk. When a
  * trusted overlay advances past a Seaspan payday, the in-memory opening
  * retains paydaySnapshot from Forecast.establishPaydaySnapshot on the
- * pre-overlay dated plan. That is not today's live cash walked backward.
+ * pre-overlay dated plan only when that figure is a recorded snapshot
+ * or a completeness-proven household-cash walk. Scheduled-only
+ * reconstruction is not retained. That is not today's live cash
+ * walked backward.
  * This command never writes data.json, positions.csv, or snapshots/.
  *
  *   node scripts/live-plan.js --fixture <file>
@@ -711,9 +714,10 @@ function recordedPaydaySnapshot(snap, periodStart) {
   return null;
 }
 
-// Retain Forecast's payday-morning figure on the live clone. Walk the
+// Retain Forecast's payday-morning figure on the live clone. Use the
 // pre-overlay dated plan, never the post-overlay live cash. An already
-// matching snapshot stays frozen.
+// matching snapshot stays frozen. A walk is retained only when
+// Forecast can prove the opening-to-payday gap is cash-complete.
 function retainPaydaySnapshot(next, canonicalPlan, liveAsOf) {
   if (!next || !next.plan || !canonicalPlan || !liveAsOf) return;
   const cycle = Forecast.spendingCycle(canonicalPlan, liveAsOf);

@@ -625,14 +625,10 @@ console.log('\n=== 9. Live August 30 sheet: lookback P1, live P2, card mins, HEL
     .sort();
   ok(movers.includes('childBenefit'),
     'dated Aug 19→Aug 28 schedule still names child benefit');
-  ok(p1.openingKnown === true && p1.openingSource === 'cutover-walk'
-      && near(p1.opening, independentMorning)
-      && p1.available != null
-      && near(p1.available, round2(p1.opening + p1.incomeAdded)),
-    'Aug 30 dated plan walks scheduled cash to the Aug 28 payday morning');
-  ok(!near(p1.opening, F.startingCashAmount(live.plan))
-      || near(independentMorning, F.startingCashAmount(live.plan)),
-    'payday morning is not silently the Aug 19 opening unless the walk is empty');
+  ok(p1.openingKnown !== true && p1.opening == null && p1.available == null,
+    'Aug 30 dated plan withholds the Aug 28 opening: scheduled child benefit is not gap completeness');
+  ok(!near(independentMorning, F.startingCashAmount(live.plan)),
+    'independent scheduled reconstruction differs from Aug 19 cash and is not published as the opening');
   const ids = (p, id) => billsOf(p).filter(r => r.id === id);
   ok(ids(p1, 'mbna-aug31').length === 1 && ids(p1, 'mbna').length === 0,
     'live August Amazon min is the once row in the Aug 28–Sep 10 window');
