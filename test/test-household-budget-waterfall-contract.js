@@ -664,6 +664,12 @@ console.log('=== 13. Household Budget Total is Forecast budgetHold, not a page s
       && !/row\.planned/.test(budgetFn[0])
       && !/row\.spent/.test(budgetFn[0]),
     'calendarBudgetHtml consumes period.budgetHold and does not sum category rows');
+  const snapSrc = read('scripts/figures-snapshot.js');
+  ok(/operating\.this\.householdBudgetTotal/.test(snapSrc)
+      && /thisPeriod\.budgetHold/.test(snapSrc)
+      && /operating\.next\.householdBudgetTotal/.test(snapSrc)
+      && /nextPeriod\.budgetHold/.test(snapSrc),
+    'figures snapshot keys Household Budget Total from Forecast budgetHold');
 }
 
 console.log('=== 14. unavailable and empty sections do not invent a total ===');
