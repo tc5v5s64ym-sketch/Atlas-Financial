@@ -640,8 +640,18 @@ footer strong { color:var(--text-secondary); font-weight:600; }
 }
 
 /* Household budget: name, its weekly basis, then Planned / Spent / Remaining
-   as a key-value grid with Remaining the easiest line to find. */
+   as a key-value grid with Remaining the easiest line to find. Forecast's
+   payday deduction prints once as Household Budget Total after the rows. */
 .payday-household-budget { min-width:0; }
+.payday-household-budget > .household-budget-total {
+  margin-top:12px; padding-top:10px;
+}
+.payday-household-budget [data-household-budget-total] {
+  font-size:1.02rem; color:var(--text-primary);
+}
+.payday-household-budget [data-household-budget-total] span:last-child {
+  font-size:1.28rem; font-weight:750; letter-spacing:-.02em;
+}
 .household-budget-cycle {
   margin:0 0 6px; color:var(--text-secondary); font-size:.86rem; line-height:1.35;
   overflow-wrap:anywhere;
