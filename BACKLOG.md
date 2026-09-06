@@ -313,20 +313,26 @@ Modellers | Deep Dive | Records. Their future (household nav, a diagnostics
 nav, or retirement) is owner direction; do not delete them on an agent's
 initiative.
 
-**B102 · Current-cash treatment of pending spending outside essential target lines** · **READY** · *follow-up from the PR #262 cash-identity investigation*
+**B102 · Current-cash treatment of pending spending outside essential target lines** · **FIXED NOW in PR #263; merge pending** · *same cash-identity blocker, owner-directed repair*
 
-`Forecast.paydayAllocation` reserves incumbent positive essential target lines.
-Unclassified Other Spending, discretionary categories, and categories without
-a positive essential target do not acquire an essential reserve. A pending
-household-cash purchase in those rows has not left the posted opening;
-assess its current-cash reservation through the incumbent Forecast allocation
-authority. Example to prove: posted cash $5,000, groceries plan $900, and
-$250 pending Other Spending leaves essential need $900, with no named
-reservation for that $250. Do not silently classify Other as essential,
-invent bill occurrences or category priorities, or change the frozen calendar
-waterfall. This is separate from retaining unsettled cash on existing
-essential requirement lines; it remains open and is not repaired by that
-bounded outcome.
+The earlier safe-follow-up disposition was incorrect. Unresolved household-cash
+pending in Other Spending, discretionary categories, and essential categories
+without a positive target could reach extra debt or optional residual while
+still owed to a merchant. PR #263 now retains all admitted observed pending
+cash principal once at `Forecast.paydayAllocation`'s incumbent protected-cash /
+surplus-release boundary. Category consumption, targets, posted opening, and
+frozen calendar arithmetic remain unchanged. No category promotion or bill
+is invented; card exposure and settlement use incumbent authorities.
+
+Independent regression failed PR head `3d27740a9f65e002e8bb8a783f6272ae68e6b26a`:
+$5,000 posted cash minus $900 future essentials minus $250 pending released
+$4,100 rather than $3,850. Repair proves $3,850 in each category, whether
+pending or settled with $4,750 posted cash, through extra debt, optional,
+unallocated, and mixed destinations. Positive essential pending $600 retains
+$600 principal plus $300 future groceries, converging with $4,400 posted cash
+and $300 future groceries after settlement. The older exact-head review PASS
+is superseded; the repaired candidate requires fresh ChatGPT Atlas Contract /
+Systems Review. This is one root cause and one repair, not deferred work.
 
 **B101 · Plaid pending→posted identity is not Lunch Money `id`** · **DONE 2026-09-04** · *financial-correctness interruption; owner instruction after live Amazon authorization/settlement investigation*
 

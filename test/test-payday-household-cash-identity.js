@@ -44,13 +44,56 @@ function options(transactions, extra = {}) {
   return { debts: [], targetBuffer: 0, weeklyVariable: 0,
     currentPeriodActuals: packet(transactions), ...extra };
 }
-function check(name, cash, transactions, hold, calendarLeft, mixed = false) {
+
+// B102 is the same cash-identity defect for every spending category.
+// Merchant $250 + future groceries $900 leaves $3,850, before or after posting.
+for (const [name, category] of [
+  ['Other Spending', null],
+  ['discretionary', { id: 'dining', label: 'Dining', class: 'discretionary', from: ['Dining'], plannedPayday: 200 }],
+  ['zero-target essential', { id: 'supplies', label: 'Supplies', class: 'essential', from: ['Supplies'], plannedPayday: 0 }],
+]) {
+  for (const destination of ['debt', 'optional', 'unallocated', 'mixed']) {
+    for (const settled of [false, true]) {
+      const p = plan(settled ? 4750 : 5000);
+      if (category) p.budget.categories.push(category);
+      p.nextDollar = { policy: 'true-surplus-highest-interest', provenance: 'owner-stated' };
+      if (destination === 'optional' || destination === 'mixed') {
+        p.commitments.push({ id: 'optional', label: 'Optional purchase', flexibility: 'optional',
+          amount: destination === 'mixed' ? 1000 : 10000, date: '2026-10-01' });
+      }
+      const debts = destination === 'debt' || destination === 'mixed'
+        ? [{ id: 'debt', label: 'Debt', structure: 'Revolving', rate: 20,
+          balance: destination === 'mixed' ? 1000 : 10000, pending: 0, limit: 20000 }] : [];
+      const spending = tx(250, { id: 'b102', pending: !settled, confirmedGrocery: false,
+        categoryLabel: category ? category.label : 'Gifts' });
+      const classification = F.classifyCurrentPeriodTransaction(spending, p, options([spending]));
+      assert.equal(classification.categoryId, category ? category.id : 'uncategorised', name + ': incumbent category');
+      const a = F.paydayAllocation(p, AS_OF, options([spending], { debts }));
+      const optional = a.optional.reduce((sum, row) => sum + row.allocated, 0);
+      assert.equal(a.extraDebt.allocated, destination === 'debt' ? 3850 : destination === 'mixed' ? 1000 : 0,
+        name + ': no pending principal released to debt');
+      assert.equal(optional, destination === 'optional' ? 3850 : destination === 'mixed' ? 1000 : 0,
+        name + ': no pending principal released to optional');
+      assert.equal(a.unallocated, destination === 'unallocated' ? 3850 : destination === 'mixed' ? 1850 : 0);
+      assert.equal(a.extraDebt.allocated + optional + a.unallocated, 3850, name + ': releasable total');
+      assert.equal(a.essentials.wanted, 900, name + ': no category promotion');
+      assert.deepEqual(a.essentials.items.map(row => row.id), ['groceries'], name + ': no invented target');
+      assert.equal(a.protectedPath.allocated, settled ? 0 : 250, name + ': pending encumbered once');
+      assert.equal(a.identity, settled ? 4750 : 5000, name + ': posted cash conservation');
+      assert.equal(a.lines.reduce((sum, row) => sum + row.amount, 0) + a.unallocated,
+        settled ? 4750 : 5000, name + ': independent allocation sum');
+    }
+  }
+}
+function check(name, cash, transactions, hold, calendarLeft, mixed = false, pendingHold = 0) {
   const p = plan(cash, mixed);
   const opts = options(transactions);
   const a = F.paydayAllocation(p, AS_OF, opts);
   assert.equal(a.available, cash, name + ': posted cash is not replayed');
   assert.equal(a.essentials.wanted, hold, name + ': essential cash requirement');
   assert.equal(a.essentials.allocated, hold, name + ': funded requirement');
+  assert.equal(a.protectedPath.allocated, pendingHold, name + ': unsettled cash principal');
+  assert.equal(a.unallocated, calendarLeft, name + ': independently reconciled releasable cash');
   assert.equal(a.identity, cash, name + ': allocation conservation');
   const rec = F.recommend(p, AS_OF, opts);
   assert.equal(rec.paydayAllocation.essentials.wanted, hold, name + ': recommend integration');
@@ -86,13 +129,14 @@ check('planned essentials, discretionary category, and Other', 3450, [
 ], 125, 3325, true);
 
 const pending = tx(600, { pending: true, pendingTreatment: 'unresolved' });
+check('positive essential plus Other pending cash', 5000,
+  [pending, { ...other, pending: true }], 300, 3850, false, 850);
 // Cash has NOT left: 5000 - (600 awaiting debit + 300 future groceries) = 4100.
-// Current main instead holds only 300 and releases the pending 600.
-check('pending cash must remain reserved', 5000, [pending], 900, 4100);
-check('pending cash over plan must remain reserved', 5000, [{ ...pending, amount: 1000 }], 1000, 4000);
+check('pending cash must remain reserved', 5000, [pending], 300, 4100, false, 600);
+check('pending cash over plan must remain reserved', 5000, [{ ...pending, amount: 1000 }], 0, 4000, false, 1000);
 check('400 posted plus 600 pending cash', 4600, [
   tx(400), { ...pending, id: 'pending-second' },
-], 600, 4000);
+], 0, 4000, false, 600);
 check('same purchase after cash settlement', 4400, [tx(600)], 300, 4100);
 
 // Card purchases consume grocery capacity but do not debit chequing.
@@ -107,9 +151,62 @@ for (const state of ['pending', 'posted']) {
   ], { debts: [card] }));
   assert.equal(a.available, 5000);
   assert.equal(a.essentials.wanted, 300);
+  assert.equal(a.protectedPath.allocated, 0);
   assert.equal(card.balance + card.pending, 600);
   assert.equal(F.utilisation([card]).rows[0].used, 600);
 }
+const cardOther = F.paydayAllocation(plan(), AS_OF, options([
+  { ...other, pending: true, accountRole: 'revolving-credit', atlasAccountId: 'card' },
+], { debts: [{ id: 'card', structure: 'Revolving', balance: 0, pending: 250, rate: 20, limit: 2000 }] }));
+assert.equal(cardOther.protectedPath.allocated, 0, '$250 card Other is not cash principal');
+assert.equal(cardOther.essentials.wanted, 900);
+assert.equal(cardOther.extraDebt.allocated + cardOther.unallocated, 4100);
+
+// Same master-path floor must hold after pending settlement. $5,000 - $250
+// leaves $4,750; retaining the existing $4,500 floor allows only $250 out.
+// The $900 essentials and pending are inside the total protection, not a
+// second $4,500 subtraction. This exercises the binding master probe.
+for (const settled of [false, true]) {
+  const a = F.paydayAllocation(plan(settled ? 4750 : 5000), AS_OF, options([
+    { ...other, pending: !settled },
+  ], { targetBuffer: 4500 }));
+  assert.equal(a.unallocated, 250, 'pending and settled satisfy the same master cash floor');
+  assert.equal(a.protectedPath.allocated, settled ? 3600 : 3850);
+  assert.equal(a.identity, settled ? 4750 : 5000);
+}
+
+// A dated future requirement competes for the same current cash. By Sept 12:
+// 5000 - 250 pending + 2000 payroll - 6000 required cost leaves $750.
+for (const settled of [false, true]) {
+  const p = plan(settled ? 4750 : 5000);
+  p.commitments.push({ id: 'required', label: 'Required future cost',
+    date: '2026-09-12', amount: 6000, flexibility: 'required', confidence: 'confirmed' });
+  const a = F.paydayAllocation(p, AS_OF, options([{ ...other, pending: !settled }]));
+  assert.equal(a.unallocated, 750, 'dated future protection cannot reuse pending principal');
+  assert.equal(a.identity, settled ? 4750 : 5000);
+}
+
+// Observed pending cannot become surplus at a period boundary or merely
+// because coverage no longer earns precise category remaining.
+const prior = F.paydayAllocation(plan(), AS_OF, options([
+  { ...other, pending: true, date: '2026-08-27' },
+]));
+assert.equal(prior.essentials.wanted, 900);
+assert.equal(prior.protectedPath.allocated, 250);
+assert.equal(prior.unallocated, 3850);
+const incomplete = F.paydayAllocation(plan(), AS_OF, options([], {
+  currentPeriodActuals: packet([{ ...other, pending: true }], { transactionCoverage: 'incomplete' }),
+}));
+assert.equal(incomplete.actualsCoverage.remainingClaim, 'unavailable');
+assert.equal(incomplete.essentials.wanted, 450, 'incumbent remaining-days fallback');
+assert.equal(incomplete.protectedPath.allocated, 250);
+assert.equal(incomplete.unallocated, 4300, '5000 - 450 fallback - 250 observed');
+const scarce = F.paydayAllocation(plan(1000), AS_OF, options([{ ...other, pending: true }]));
+assert.equal(scarce.unallocated, 0);
+assert.equal(scarce.extraDebt.allocated, 0);
+assert.equal(scarce.protectedPath.wanted, 250);
+assert.equal(scarce.protectedPath.allocated, 100);
+assert.equal(scarce.identity, 1000);
 
 // Incumbent possible-replacement flags: confirmed spend counts posted once;
 // the unresolved pending twin is not new identity or a second cash hold.
@@ -139,27 +236,36 @@ assert.equal(before.transactions.length, 1);
 assert.equal(after.transactions.length, 1, 'directed link collapses the pending identity');
 assert.equal(before.transactions[0].accountRole, 'household-cash');
 assert.equal(after.transactions[0].pending, false);
-assert.equal(F.paydayAllocation(plan(), AS_OF, options([], { currentPeriodActuals: before })).essentials.wanted, 900);
-assert.equal(F.paydayAllocation(plan(4400), AS_OF, options([], { currentPeriodActuals: after })).essentials.wanted, 300);
+const beforeAllocation = F.paydayAllocation(plan(), AS_OF, options([], { currentPeriodActuals: before }));
+const afterAllocation = F.paydayAllocation(plan(4400), AS_OF, options([], { currentPeriodActuals: after }));
+assert.equal(beforeAllocation.essentials.wanted, 300);
+assert.equal(beforeAllocation.protectedPath.allocated, 600);
+assert.equal(beforeAllocation.unallocated, 4100);
+assert.equal(afterAllocation.essentials.wanted, 300);
+assert.equal(afterAllocation.protectedPath.allocated, 0);
+assert.equal(afterAllocation.unallocated, 4100);
 
 // Partial pending coverage retains every observed cash debit; it is qualified.
 const partial = F.paydayAllocation(plan(), AS_OF, options([], {
   currentPeriodActuals: packet([pending], { pendingCoverage: 'partial' }),
 }));
 assert.equal(partial.actualsCoverage.remainingClaim, 'posted-only');
-assert.equal(partial.essentials.wanted, 900);
+assert.equal(partial.essentials.wanted, 300);
+assert.equal(partial.protectedPath.allocated, 600);
+assert.equal(partial.unallocated, 4100);
 // Existing split, account, and non-consumption rules apply to cash holds too.
 check('split parent is not a second pending debit', 5000, [
   { ...pending, id: 'parent', isGroup: true },
   { ...pending, id: 'child', parentId: 'parent' },
-], 900, 4100);
+], 300, 4100, false, 600);
 for (const extra of [
   { accountRole: 'household-external' }, { kindHint: 'transfer' },
   { kindHint: 'card-payment' }, { representedBill: true },
-  { amount: -600 },
+  { amount: -600 }, { isIncome: true }, { date: '2026-09-05' },
 ]) {
   const a = F.paydayAllocation(plan(), AS_OF, options([{ ...pending, ...extra }]));
   assert.equal(a.essentials.wanted, 900, 'excluded actual cannot change essential cash');
+  assert.equal(a.protectedPath.allocated, 0, 'excluded actual cannot encumber pending cash');
 }
 // An already-settled treatment is not still-unsettled cash.
 check('incumbent confirmed-settled treatment', 4400, [
