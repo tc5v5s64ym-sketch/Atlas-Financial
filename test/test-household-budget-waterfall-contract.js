@@ -77,7 +77,7 @@ function loadComposer() {
     grab(planSrc, /^function calendarWaterfallsHtml\([\s\S]*?\n\}$/m, 'calendarWaterfallsHtml'),
   ].join('\n');
   return vm.runInNewContext(
-    `${source}\n({ calendarWaterfallsHtml, money2 });`,
+    `${source}\n({ calendarWaterfallsHtml, calendarBudgetHtml, money2 });`,
     { Forecast: F }
   );
 }
@@ -565,6 +565,11 @@ console.log('=== 11. bills do not enter Household Budget actuals ===');
     'bill dollars do not inflate the Household Budget hold');
 }
 
+function displayedHouseholdBudgetTotal(html) {
+  const match = /data-household-budget-total-amount>([^<]+)</.exec(html || '');
+  return match ? match[1] : null;
+}
+
 console.log('=== 12. Plan renders Forecast leftovers; it does not recalculate them ===');
 {
   const spent = 1000;
@@ -592,6 +597,100 @@ console.log('=== 12. Plan renders Forecast leftovers; it does not recalculate th
     'calendarWaterfallHtml prints Forecast afterHouseholdBudget and does not recompute hold');
   ok(budgetFn && !/Math\.max\s*\(\s*.*planned/.test(budgetFn[0]),
     'calendarBudgetHtml does not compute max(planned, spent)');
+}
+
+console.log('=== 13. Household Budget Total is Forecast budgetHold, not a page sum ===');
+{
+  const grocerySpent = 1000;
+  const fuelSpent = 200;
+  const eatingSpent = 250;
+  const otherSpent = 100;
+  const expectedHold = roundCent(
+    Math.max(GROCERY_PLAN, grocerySpent)
+    + Math.max(FUEL_PLAN, fuelSpent)
+    + Math.max(EATING_PLAN, eatingSpent)
+    + otherSpent
+  );
+  const expectedAfter = roundCent(AFTER_BILLS - expectedHold);
+  ok(near(expectedHold, 1675) && near(expectedAfter, 3325),
+    'independent: 1000+325+250+100 = $1,675; leftover $3,325');
+  const plan = isolatedPlan([
+    { id: 'fuel', label: 'Fuel', class: 'essential', from: ['Fuel'], plannedPayday: 325, ownerLine: 'Fuel' },
+    {
+      id: 'restaurants', label: 'Dining', class: 'discretionary',
+      from: ['Restaurants', 'Fast Food', 'Food Delivery'],
+      plannedPayday: 200, ownerLine: 'Eating out',
+    },
+  ]);
+  const advice = recommend(plan, [
+    groceryTx('tx-groc', grocerySpent),
+    fuelTx(fuelSpent),
+    eatingTx(eatingSpent),
+    otherTx('tx-other', otherSpent),
+  ]);
+  const active = period(advice.defaultView, 'this-pay-period');
+  assertAfterBills(active);
+  ok(near(active.budgetHold, expectedHold)
+      && near(active.afterHouseholdBudget, expectedAfter)
+      && near(roundCent(active.afterBills - active.budgetHold), active.afterHouseholdBudget),
+    'Forecast leftover identity: afterBills − budgetHold = afterHouseholdBudget');
+  const html = composer.calendarBudgetHtml(active);
+  const printed = displayedHouseholdBudgetTotal(html);
+  ok(/Household Budget Total/.test(html)
+      && printed === composer.money2(active.budgetHold)
+      && printed === composer.money2(expectedHold),
+    'Household Budget Total prints Forecast budgetHold $1,675.00',
+    printed);
+  ok(/data-budget-category="groceries"/.test(html)
+      && /data-budget-category="fuel"/.test(html)
+      && /data-budget-category="restaurants"/.test(html)
+      && /data-other-spending/.test(html)
+      && /<dt>Planned<\/dt>/.test(html)
+      && /<dt>Spent<\/dt>/.test(html)
+      && /<dt>Remaining<\/dt>/.test(html),
+    'category rows and drilldowns remain on the section');
+  const waterfall = composer.calendarWaterfallsHtml(advice.defaultView, 'this-pay-period');
+  ok(displayedHouseholdBudgetTotal(waterfall) === composer.money2(expectedHold)
+      && waterfall.includes(composer.money2(active.afterBills))
+      && waterfall.includes(composer.money2(active.afterHouseholdBudget)),
+    'waterfall prints afterBills, Household Budget Total, and afterHouseholdBudget from Forecast');
+  const planSrc = read('public/plan.js');
+  const budgetFn = /function calendarBudgetHtml\([\s\S]*?\n\}/.exec(planSrc);
+  ok(budgetFn && /period\.budgetHold/.test(budgetFn[0])
+      && /Household Budget Total/.test(budgetFn[0])
+      && /data-household-budget-total/.test(budgetFn[0])
+      && !/\.reduce\s*\(/.test(budgetFn[0])
+      && !/row\.hold/.test(budgetFn[0])
+      && !/row\.planned/.test(budgetFn[0])
+      && !/row\.spent/.test(budgetFn[0]),
+    'calendarBudgetHtml consumes period.budgetHold and does not sum category rows');
+}
+
+console.log('=== 14. unavailable and empty sections do not invent a total ===');
+{
+  const unavailable = composer.calendarBudgetHtml({
+    operatingPlanUnavailable: true,
+    budgetHold: 1825,
+    householdBudget: [{ id: 'groceries', label: 'Groceries', planned: 900 }],
+  });
+  ok(/data-operating-plan="unavailable"/.test(unavailable)
+      && !/Household Budget Total/.test(unavailable)
+      && !/data-household-budget-total/.test(unavailable),
+    'unavailable Household Budget section does not print a deduction total');
+  const emptyHold = composer.calendarBudgetHtml({
+    householdBudget: [],
+    budgetHold: 0,
+  });
+  ok(/No household budget lines on this plan/.test(emptyHold)
+      && displayedHouseholdBudgetTotal(emptyHold) === composer.money2(0),
+    'empty rows still print Forecast budgetHold $0.00');
+  const emptyNull = composer.calendarBudgetHtml({
+    householdBudget: [],
+    budgetHold: null,
+  });
+  ok(/No household budget lines on this plan/.test(emptyNull)
+      && !/Household Budget Total/.test(emptyNull),
+    'null budgetHold does not print Household Budget Total');
 }
 
 if (failures) {
