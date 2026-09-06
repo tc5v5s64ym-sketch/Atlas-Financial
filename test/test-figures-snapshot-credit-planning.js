@@ -17,6 +17,9 @@ const { sourceText } = require('./test-source-text');
 
 const ROOT = path.join(__dirname, '..');
 const MAIN = 'origin/main';
+// PR #264's before/after absence proof needs its immutable pre-change source;
+// current main contains the new keys as soon as that PR is merged.
+const BEFORE_HOUSEHOLD_BUDGET_TOTAL = '6626b39fd5ce8416659ee93f2ead9a85084de7ba';
 const read = file => sourceText(fs.readFileSync(path.join(ROOT, file), 'utf8'));
 const live = JSON.parse(fs.readFileSync(path.join(ROOT, 'data.json'), 'utf8'));
 const periods = JSON.parse(fs.readFileSync(path.join(ROOT, 'public/periods.json'), 'utf8'));
@@ -153,10 +156,10 @@ function runCli() {
   ], { encoding: 'utf8', cwd: ROOT }));
 }
 
-function runMainSnapshot() {
+function runReferenceSnapshot(ref) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'figures-snapshot-main-'));
   try {
-    const src = execFileSync('git', ['show', `${MAIN}:scripts/figures-snapshot.js`], {
+    const src = execFileSync('git', ['show', `${ref}:scripts/figures-snapshot.js`], {
       encoding: 'utf8', cwd: ROOT,
     });
     fs.mkdirSync(path.join(tmp, 'scripts'));
@@ -327,7 +330,7 @@ console.log('\n=== 3. Snapshot copies incumbent outputs; no second arithmetic ==
 console.log('\n=== 4. Existing Plan snapshot coverage remains intact ===');
 {
   const liveSnap = buildFiguresSnapshot(live, periods);
-  const mainSnap = runMainSnapshot();
+  const mainSnap = runReferenceSnapshot(MAIN);
   const missing = PLAN_KEYS_ON_MAIN.filter(k => !Object.prototype.hasOwnProperty.call(liveSnap, k));
   ok(missing.length === 0, 'every Plan key from current main is still present',
     missing.join(', '));
@@ -349,7 +352,7 @@ console.log('\n=== 4b. Household Budget Total is snapshotted from Forecast budge
     || periodsView.find(p => p && p.role === 'active');
   const nextPeriod = periodsView.find(p => p && p.id === 'next-pay-period')
     || periodsView.find(p => p && p.role === 'future');
-  const mainSnap = runMainSnapshot();
+  const beforeSnap = runReferenceSnapshot(BEFORE_HOUSEHOLD_BUDGET_TOTAL);
   ok(thisPeriod && thisPeriod.budgetHold != null,
     'live this-pay-period publishes Forecast budgetHold');
   ok(same(liveSnap['operating.this.householdBudgetTotal'], round(thisPeriod.budgetHold)),
@@ -363,9 +366,9 @@ console.log('\n=== 4b. Household Budget Total is snapshotted from Forecast budge
       && same(round(thisPeriod.afterBills - liveSnap['operating.this.householdBudgetTotal']),
         round(thisPeriod.afterHouseholdBudget)),
     'snapshotted Household Budget Total reconciles afterBills − total = afterHouseholdBudget');
-  ok(!Object.prototype.hasOwnProperty.call(mainSnap, 'operating.this.householdBudgetTotal')
-      && !Object.prototype.hasOwnProperty.call(mainSnap, 'operating.next.householdBudgetTotal'),
-    'main snapshot script does not key Household Budget Total — adding it is the figures-review repair');
+  ok(!Object.prototype.hasOwnProperty.call(beforeSnap, 'operating.this.householdBudgetTotal')
+      && !Object.prototype.hasOwnProperty.call(beforeSnap, 'operating.next.householdBudgetTotal'),
+    'pre-PR #264 snapshot script does not key Household Budget Total — the historical absence proof stays fixed');
   const operatingSrc = snapSrc.split('const operating =')[1]
     && snapSrc.split('const operating =')[1].split('const T =')[0];
   ok(operatingSrc && /thisPeriod\.budgetHold/.test(operatingSrc)
