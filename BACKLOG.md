@@ -313,6 +313,27 @@ Modellers | Deep Dive | Records. Their future (household nav, a diagnostics
 nav, or retirement) is owner direction; do not delete them on an agent's
 initiative.
 
+**B102 · Current-cash treatment of pending spending outside essential target lines** · **FIXED NOW in PR #263; merge pending** · *same cash-identity blocker, owner-directed repair*
+
+The earlier safe-follow-up disposition was incorrect. Unresolved household-cash
+pending in Other Spending, discretionary categories, and essential categories
+without a positive target could reach extra debt or optional residual while
+still owed to a merchant. PR #263 now retains all admitted observed pending
+cash principal once at `Forecast.paydayAllocation`'s incumbent protected-cash /
+surplus-release boundary. Category consumption, targets, posted opening, and
+frozen calendar arithmetic remain unchanged. No category promotion or bill
+is invented; card exposure and settlement use incumbent authorities.
+
+Independent regression failed PR head `3d27740a9f65e002e8bb8a783f6272ae68e6b26a`:
+$5,000 posted cash minus $900 future essentials minus $250 pending released
+$4,100 rather than $3,850. Repair proves $3,850 in each category, whether
+pending or settled with $4,750 posted cash, through extra debt, optional,
+unallocated, and mixed destinations. Positive essential pending $600 retains
+$600 principal plus $300 future groceries, converging with $4,400 posted cash
+and $300 future groceries after settlement. The older exact-head review PASS
+is superseded; the repaired candidate requires fresh ChatGPT Atlas Contract /
+Systems Review. This is one root cause and one repair, not deferred work.
+
 **B101 · Plaid pending→posted identity is not Lunch Money `id`** · **DONE 2026-09-04** · *financial-correctness interruption; owner instruction after live Amazon authorization/settlement investigation*
 
 Live Lunch Money v2 only returns `plaid_metadata` when `include_metadata=true`. Atlas was requesting `include_pending` and the unbounded `is_pending` universe without that flag, treating Lunch Money `id` as `providerTransactionId`, and matching `posted.pendingTransactionId` to the pending Lunch Money id. Plaid's contract is `posted.plaid_metadata.pending_transaction_id === pending.plaid_metadata.transaction_id`, and the posted amount may differ. Current-period household spend/remaining and revolving pending exposure can double-count one purchase. Not Amazon-specific, not merchant fuzzy matching, not a new identity system. Forecast remains the planner.

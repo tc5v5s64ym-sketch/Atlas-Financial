@@ -2950,6 +2950,7 @@
   function emptyCategoryActuals() {
     return {
       byId: new Map(),
+      pendingCash: 0,
       unclassified: { posted: 0, pending: 0, count: 0 },
       excluded: {
         transfers: 0, cardPayments: 0, income: 0, business: 0, external: 0,
@@ -3012,6 +3013,12 @@
       if (cls.kind === 'unmapped') {
         out.unclassified.count += 1;
         continue;
+      }
+      // Cash principal is independent of category capacity, including Other
+      // and categories without an essential target. Use the same admission
+      // and pending/posted identity rules as consumption above.
+      if (state === 'pending' && tx.accountRole === 'household-cash') {
+        out.pendingCash = roundCent(out.pendingCash + amt);
       }
       if (cls.needsConfirmation) {
         out.unclassified.count += 1;
@@ -5764,6 +5771,10 @@
     const categoryActuals = useActuals
       ? sumCategoryActuals(plan, asOf, origin, opts)
       : emptyCategoryActuals();
+    // Every observed unresolved debit still encumbers today's posted cash,
+    // even before this period or with incomplete category coverage. Coverage
+    // still controls category remaining; missing pending is never invented.
+    const pendingCash = sumCategoryActuals(plan, asOf, null, opts).pendingCash;
 
     const essentialNeed = essentialNeedBreakdown(plan, opts.periods, opts);
     const essentialMonthly = essentialNeed.monthly;
@@ -5858,7 +5869,9 @@
       const act = categoryCommittedActual(
         categoryActuals.byId.get(row.id), coverage.remainingClaim);
       const remainingNeed = useActuals ? roundCent(planned - act.committed) : planned;
-      const required = useActuals ? roundCent(Math.max(0, remainingNeed)) : planned;
+      // This is future consumption. Posted cash already reflects settlement;
+      // unresolved cash principal is protected below before surplus release.
+      const required = useActuals ? Math.max(0, remainingNeed) : planned;
       if (!(planned > EPSILON) && !(row.monthly > EPSILON) && !(act.committed > EPSILON)) continue;
       requiredSum = roundCent(requiredSum + required);
       essentialItems.push({
@@ -5939,10 +5952,21 @@
     }
 
     const masterOpts = paydayMasterOpts(plan, asOf, opts, weeklyCap, horizon);
+    if (pendingCash > EPSILON) {
+      // Only the payday feasibility probe reserves this observed debit. Keep
+      // the posted opening, calendar, and weekly spend authority unchanged.
+      masterOpts.plannedFlows = (masterOpts.plannedFlows || []).concat([{
+        date: asOf, amount: -pendingCash,
+        id: 'payday-pending-cash', label: 'Unresolved household cash debit',
+      }]);
+    }
     let loBound = 0;
     for (const row of protectedFuture) loBound -= Math.max(0, row.need || 0);
-    loBound -= Math.max(0, buffer) + leftoverAfterOE + 1;
-    const hiBound = leftoverAfterOE;
+    loBound -= Math.max(0, buffer) + leftoverAfterOE + pendingCash + 1;
+    // Future income cannot release cash already promised to a merchant.
+    // Both this current-cash ceiling and the master path must hold; these
+    // are constraints on the same dollars, not additive reservation buckets.
+    const hiBound = roundCent(leftoverAfterOE - pendingCash);
     const deltaAll = maxFeasiblePaydayRemoval(
       plan, asOf, masterOpts, loBound, hiBound, []);
     const movable = roundCent(Math.max(0, Math.min(leftoverAfterOE, deltaAll)));
@@ -5963,7 +5987,7 @@
       });
       currentDelta = deltaWithout;
     }
-    const pathWanted = roundCent(Math.max(0, leftoverAfterOE - Math.max(0, currentDelta)));
+    const pathWanted = roundCent(Math.max(pendingCash, leftoverAfterOE - Math.max(0, currentDelta)));
     const allocatedPath = take(pathWanted);
     const pathShortfall = Math.max(0, roundCent(pathWanted - allocatedPath));
 
@@ -5982,7 +6006,9 @@
         verdict: pathShortfall > EPSILON ? 'FUNDING GAP' : 'ON TRACK',
         reason: pathShortfall > EPSILON
           ? `Current plan implies a $${pathShortfall.toFixed(2)} funding gap.`
-          : 'Required current funding from the master Forecast is met.',
+          : (pendingCash > EPSILON
+            ? 'Observed pending household cash and required future cash remain reserved.'
+            : 'Required current funding from the master Forecast is met.'),
       });
     }
     for (const row of protectedFuture) {

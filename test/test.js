@@ -147,6 +147,7 @@ const suites = [
   ['master forecast engine (B94 / AF-PLAN-01)', 'test-master-forecast.js'],
   ['end-to-end payday proof (B96 / AF-PLAN-02)', 'test-b96-payday.js'],
   ['payday allocation waterfall', 'test-payday-allocation.js'],
+  ['payday Household Budget cash identity', 'test-payday-household-cash-identity.js'],
   ['payday reserve itemization', 'test-payday-reserve-detail.js'],
   ['current-period actuals action plan', 'test-current-period-actuals.js'],
   ['this-payday already-paid set and cancelled CMAW drop', 'test-this-payday-already-paid.js'],
