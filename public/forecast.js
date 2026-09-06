@@ -3023,6 +3023,12 @@
       const row = out.byId.get(catId);
       row.count += 1;
       add(row, state, amt);
+      // This part of observed consumption has not left posted household
+      // cash. Keep it distinguishable from card exposure and settled spend
+      // for paydayAllocation's cash hold; classification/remaining is unchanged.
+      if (state === 'pending' && tx.accountRole === 'household-cash') {
+        row.pendingCash = roundCent((row.pendingCash || 0) + amt);
+      }
       if (classificationIncompleteHouseholdSpend(cls)) {
         out.unclassified.count += 1;
         add(out.unclassified, state, amt);
@@ -5858,7 +5864,14 @@
       const act = categoryCommittedActual(
         categoryActuals.byId.get(row.id), coverage.remainingClaim);
       const remainingNeed = useActuals ? roundCent(planned - act.committed) : planned;
-      const required = useActuals ? roundCent(Math.max(0, remainingNeed)) : planned;
+      // Current posted cash already reflects settled cash purchases. Card
+      // actuals live in debt exposure. Unsettled household-cash purchases,
+      // however, still need these dollars in addition to future consumption.
+      // Do not copy the frozen calendar's max(planned, spent) deduction here.
+      const actualRow = categoryActuals.byId.get(row.id);
+      const pendingCash = actualRow ? (actualRow.pendingCash || 0) : 0;
+      const required = useActuals
+        ? roundCent(Math.max(0, remainingNeed) + pendingCash) : planned;
       if (!(planned > EPSILON) && !(row.monthly > EPSILON) && !(act.committed > EPSILON)) continue;
       requiredSum = roundCent(requiredSum + required);
       essentialItems.push({

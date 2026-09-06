@@ -313,6 +313,21 @@ Modellers | Deep Dive | Records. Their future (household nav, a diagnostics
 nav, or retirement) is owner direction; do not delete them on an agent's
 initiative.
 
+**B102 · Current-cash treatment of pending spending outside essential target lines** · **READY** · *follow-up from the PR #262 cash-identity investigation*
+
+`Forecast.paydayAllocation` reserves incumbent positive essential target lines.
+Unclassified Other Spending, discretionary categories, and categories without
+a positive essential target do not acquire an essential reserve. A pending
+household-cash purchase in those rows has not left the posted opening;
+assess its current-cash reservation through the incumbent Forecast allocation
+authority. Example to prove: posted cash $5,000, groceries plan $900, and
+$250 pending Other Spending leaves essential need $900, with no named
+reservation for that $250. Do not silently classify Other as essential,
+invent bill occurrences or category priorities, or change the frozen calendar
+waterfall. This is separate from retaining unsettled cash on existing
+essential requirement lines; it remains open and is not repaired by that
+bounded outcome.
+
 **B101 · Plaid pending→posted identity is not Lunch Money `id`** · **DONE 2026-09-04** · *financial-correctness interruption; owner instruction after live Amazon authorization/settlement investigation*
 
 Live Lunch Money v2 only returns `plaid_metadata` when `include_metadata=true`. Atlas was requesting `include_pending` and the unbounded `is_pending` universe without that flag, treating Lunch Money `id` as `providerTransactionId`, and matching `posted.pendingTransactionId` to the pending Lunch Money id. Plaid's contract is `posted.plaid_metadata.pending_transaction_id === pending.plaid_metadata.transaction_id`, and the posted amount may differ. Current-period household spend/remaining and revolving pending exposure can double-count one purchase. Not Amazon-specific, not merchant fuzzy matching, not a new identity system. Forecast remains the planner.
