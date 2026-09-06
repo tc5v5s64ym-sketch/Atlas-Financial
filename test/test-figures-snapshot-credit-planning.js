@@ -43,10 +43,12 @@ const PLAN_KEYS_ON_MAIN = [
   'payday.unallocated', 'payday.riskShortfall', 'operating.this.start',
   'operating.this.end', 'operating.this.opening', 'operating.this.available',
   'operating.this.incomeAdded',
-  'operating.this.projectedEnding', 'operating.liveCurrentBalance',
+  'operating.this.projectedEnding',
+  'operating.this.householdBudgetTotal', 'operating.liveCurrentBalance',
   'operating.next.start', 'operating.next.end',
   'operating.next.available', 'operating.next.incomeAdded',
-  'operating.next.projectedEnding', 'totals.confirmedIncome', 'totals.estimatedIncome',
+  'operating.next.projectedEnding',
+  'operating.next.householdBudgetTotal', 'totals.confirmedIncome', 'totals.estimatedIncome',
   'totals.obligations', 'totals.bills', 'totals.commitments', 'totals.nonCashInterest',
   'budget.basis', 'budget.essentialPerMonth', 'budget.requiredPerMonth',
   'budget.requiredPerWeek', 'budget.discretionaryPerMonth', 'budget.reservePerMonth',
@@ -336,6 +338,43 @@ console.log('\n=== 4. Existing Plan snapshot coverage remains intact ===');
     moved.map(k => `${k}:${mainSnap[k]}→${liveSnap[k]}`).join(', '));
   const extraPlan = Object.keys(liveSnap).filter(k => PLAN_PREFIX.test(k) && !PLAN_KEYS_ON_MAIN.includes(k));
   ok(extraPlan.length === 0, 'no extra Plan-prefix keys were introduced', extraPlan.join(', '));
+}
+
+console.log('\n=== 4b. Household Budget Total is snapshotted from Forecast budgetHold ===');
+{
+  const liveSnap = buildFiguresSnapshot(live, periods);
+  const liveAdvice = snapshotRecommend(live);
+  const periodsView = (liveAdvice.defaultView && liveAdvice.defaultView.calendarPeriods) || [];
+  const thisPeriod = periodsView.find(p => p && p.id === 'this-pay-period')
+    || periodsView.find(p => p && p.role === 'active');
+  const nextPeriod = periodsView.find(p => p && p.id === 'next-pay-period')
+    || periodsView.find(p => p && p.role === 'future');
+  const mainSnap = runMainSnapshot();
+  ok(thisPeriod && thisPeriod.budgetHold != null,
+    'live this-pay-period publishes Forecast budgetHold');
+  ok(same(liveSnap['operating.this.householdBudgetTotal'], round(thisPeriod.budgetHold)),
+    'operating.this.householdBudgetTotal is Forecast calendarPeriods[].budgetHold',
+    String(liveSnap['operating.this.householdBudgetTotal']));
+  ok(nextPeriod && Object.prototype.hasOwnProperty.call(liveSnap, 'operating.next.householdBudgetTotal')
+      && same(liveSnap['operating.next.householdBudgetTotal'],
+        nextPeriod.budgetHold == null ? null : round(nextPeriod.budgetHold)),
+    'operating.next.householdBudgetTotal is Forecast next-period budgetHold');
+  ok(thisPeriod.afterBills != null
+      && same(round(thisPeriod.afterBills - liveSnap['operating.this.householdBudgetTotal']),
+        round(thisPeriod.afterHouseholdBudget)),
+    'snapshotted Household Budget Total reconciles afterBills − total = afterHouseholdBudget');
+  ok(!Object.prototype.hasOwnProperty.call(mainSnap, 'operating.this.householdBudgetTotal')
+      && !Object.prototype.hasOwnProperty.call(mainSnap, 'operating.next.householdBudgetTotal'),
+    'main snapshot script does not key Household Budget Total — adding it is the figures-review repair');
+  const operatingSrc = snapSrc.split('const operating =')[1]
+    && snapSrc.split('const operating =')[1].split('const T =')[0];
+  ok(operatingSrc && /thisPeriod\.budgetHold/.test(operatingSrc)
+      && /nextPeriod\.budgetHold/.test(operatingSrc)
+      && /householdBudgetTotal/.test(operatingSrc)
+      && !/\.reduce\s*\(/.test(operatingSrc)
+      && !/Math\.max/.test(operatingSrc)
+      && !/row\.hold/.test(operatingSrc),
+    'snapshot copies period.budgetHold and does not recompute the Household Budget deduction');
 }
 
 console.log('\n=== 5. Output is deterministic ===');

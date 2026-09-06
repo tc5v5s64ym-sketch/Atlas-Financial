@@ -1964,16 +1964,28 @@ function calendarBudgetHtml(period) {
   const cycle = period && period.cycleUnresolved
       ? `<p class="household-budget-cycle">Spending cycle unavailable. Household Budget reserve is held.</p>`
       : (cycleText ? `<p class="household-budget-cycle">${cycleText}</p>` : '');
+  // Forecast already owns the payday deduction as period.budgetHold.
+  // Print that incumbent value. Do not sum category rows here.
+  const total = period && period.budgetHold != null
+    ? `<div class="payday-totals household-budget-total">
+      <p class="payday-qual payday-total payday-total-strong" data-household-budget-total>
+        <span>Household Budget Total</span>
+        <span data-household-budget-total-amount>${money2(period.budgetHold)}</span>
+      </p>
+    </div>`
+    : '';
   if (!rows.length) {
     return `<div class="payday-household-budget" data-payday-household-budget>
       ${cycle}
       <p class="operating-lead">No household budget lines on this plan.</p>
+      ${total}
     </div>`;
   }
   const blocks = rows.map(householdBudgetCategoryHtml).join('');
   return `<div class="payday-household-budget" data-payday-household-budget>
     ${cycle}
     <div class="household-budget-list">${blocks}</div>
+    ${total}
   </div>`;
 }
 

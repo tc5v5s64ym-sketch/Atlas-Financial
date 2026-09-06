@@ -145,6 +145,8 @@ if (thisPeriod) {
   put('operating.this.available', thisPeriod.available);
   put('operating.this.incomeAdded', thisPeriod.incomeAdded);
   put('operating.this.projectedEnding', thisPeriod.projectedEnding);
+  // Household Budget Total on the Plan is Forecast budgetHold.
+  put('operating.this.householdBudgetTotal', thisPeriod.budgetHold);
 }
 if (advice.defaultView && advice.defaultView.liveCurrentBalance != null) {
   put('operating.liveCurrentBalance', advice.defaultView.liveCurrentBalance);
@@ -155,6 +157,7 @@ if (nextPeriod) {
   put('operating.next.available', nextPeriod.available);
   put('operating.next.incomeAdded', nextPeriod.incomeAdded);
   put('operating.next.projectedEnding', nextPeriod.projectedEnding);
+  put('operating.next.householdBudgetTotal', nextPeriod.budgetHold);
 }
 
 const T = advice.sim.totals;
