@@ -289,9 +289,11 @@ console.log('\n=== 3. Snapshot copies incumbent outputs; no second arithmetic ==
 {
   const creditBlock = snapSrc.split('Credit: Forecast.creditAccounts')[1] || '';
   const billsBlock = snapSrc.split('Bills: Forecast.householdBills')[1] || '';
+  const subscriptionsBlock = snapSrc.split('Subscriptions: Forecast.householdSubscriptions')[1] || '';
   const planningBlock = snapSrc.split('Planning: Forecast.majorPlans')[1] || '';
   const creditCode = stripComments(creditBlock.split('Bills: Forecast.householdBills')[0] || '');
-  const billsCode = stripComments(billsBlock.split('Planning: Forecast.majorPlans')[0] || '');
+  const billsCode = stripComments(billsBlock.split('Subscriptions: Forecast.householdSubscriptions')[0] || '');
+  const subscriptionsCode = stripComments(subscriptionsBlock.split('Planning: Forecast.majorPlans')[0] || '');
   const planningCode = stripComments(planningBlock);
   ok(/F\.creditAccounts\(plan, data\.debts, asOf/.test(creditCode),
     'Credit keys come from Forecast.creditAccounts');
@@ -303,6 +305,10 @@ console.log('\n=== 3. Snapshot copies incumbent outputs; no second arithmetic ==
     'Bills keys come from Forecast.householdBills');
   ok(!/\*\s*26\s*\/\s*12|\/\s*3|\/\s*12/.test(billsCode),
     'Bills block does not compute a monthly equivalent');
+  ok(/F\.householdSubscriptions\(plan, asOf\)/.test(subscriptionsCode),
+    'Subscriptions keys come from Forecast.householdSubscriptions');
+  ok(!/\*\s*26\s*\/\s*12|\/\s*3|\/\s*12/.test(subscriptionsCode),
+    'Subscriptions block does not compute a monthly equivalent');
   ok(/advice\.majorPlans/.test(planningCode),
     'Planning keys come from the same recommend result as Plan');
   ok(!/F\.majorPlans\(|Forecast\.majorPlans\(/.test(planningCode),
@@ -343,6 +349,19 @@ console.log('\n=== 3. Snapshot copies incumbent outputs; no second arithmetic ==
     ok(same(liveSnap[`bills.${row.id}.monthlyEquivalent`],
       row.monthlyEquivalent == null ? null : round(row.monthlyEquivalent)),
       `live ${row.id} monthly equivalent equals Forecast.householdBills`);
+  }
+  const liveSubscriptions = F.householdSubscriptions(live.plan, live.meta.asOf);
+  ok(same(liveSnap['subscriptions.monthlyEquivalentTotal'],
+    liveSubscriptions.monthlyEquivalentTotal == null ? null : round(liveSubscriptions.monthlyEquivalentTotal)),
+    'live subscriptions total equals Forecast.householdSubscriptions, not a second formula');
+  for (const row of liveSubscriptions.subscriptions || []) {
+    ok(same(liveSnap[`subscriptions.${row.id}.amount`], row.amount == null ? null : round(row.amount)),
+      `live ${row.id} amount equals Forecast.householdSubscriptions`);
+    ok(liveSnap[`subscriptions.${row.id}.frequency`] === row.frequency,
+      `live ${row.id} frequency equals Forecast.householdSubscriptions`);
+    ok(same(liveSnap[`subscriptions.${row.id}.monthlyEquivalent`],
+      row.monthlyEquivalent == null ? null : round(row.monthlyEquivalent)),
+      `live ${row.id} monthly equivalent equals Forecast.householdSubscriptions`);
   }
 }
 

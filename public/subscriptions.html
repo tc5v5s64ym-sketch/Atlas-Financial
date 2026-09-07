@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<title>Household finances — planning</title>
+<title>Household finances — subscriptions</title>
 <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
@@ -21,26 +21,27 @@
     <nav class="sitenav" aria-label="Pages">
       <a href="/">Plan</a>
       <a href="/bills.html">Bills</a>
-      <a href="/subscriptions.html">Subscriptions</a>
+      <a href="/subscriptions.html" aria-current="page">Subscriptions</a>
       <a href="/credit.html">Credit</a>
-      <a href="/planning.html" aria-current="page">Planning</a>
+      <a href="/planning.html">Planning</a>
     </nav>
   </div>
 </header>
 
 <div class="wrap wrap-reading">
 
-  <section id="planning" data-page-shell="planning">
-    <div class="kicker">Planning</div>
-    <h1>Planning</h1>
-    <p class="sub">Known future costs Atlas is protecting and planning for. Each one is a Forecast verdict on the master plan; the payday plan itself is on <a href="/">Plan</a>.</p>
-    <p class="lede" id="planning-lede"></p>
+  <section id="subscriptions" data-page-shell="subscriptions">
+    <div class="kicker">Subscriptions</div>
+    <h1>Subscriptions</h1>
+    <p class="sub">Recurring subscriptions and memberships Atlas already knows. Amounts, cadence and next dates are Forecast. Household bills are not on this page.</p>
+    <p class="lede" id="subscriptions-lede"></p>
 
-    <div id="planning-list" class="planning-list" aria-label="Future costs">
+    <div id="subscriptions-list" class="subscriptions-list" aria-label="Household subscriptions">
       <p class="lede">Loading the served opening…</p>
     </div>
 
-    <p class="lede footnote" id="planning-note"></p>
+    <div id="subscriptions-total" class="subscriptions-total" aria-label="Total monthly equivalent"></div>
+    <p class="lede footnote" id="subscriptions-note"></p>
   </section>
 
   <footer>
@@ -51,6 +52,6 @@
 <div class="tip" id="tip"></div>
 <script src="/app.js"></script>
 <script src="/forecast.js"></script>
-<script src="/planning.js"></script>
+<script src="/subscriptions.js"></script>
 </body>
 </html>

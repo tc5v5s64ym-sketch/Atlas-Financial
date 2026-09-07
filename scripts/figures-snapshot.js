@@ -8,9 +8,9 @@
  * SEEN, and it has to match what the merge card says was intended.
  *
  * The rule for what belongs in here: if the household could read it off the
- * Plan, Bills, Credit, or Planning surface and do something differently because of
- * it, it belongs. Anything that is only evidence does not. Deep Dive, Records,
- * and Modellers remain outside this snapshot.
+ * Plan, Bills, Subscriptions, Credit, or Planning surface and do something
+ * differently because of it, it belongs. Anything that is only evidence does
+ * not. Deep Dive, Records, and Modellers remain outside this snapshot.
  *
  * Output is a flat `{ "label": value }` map so the diff is trivial and stable
  * across revisions. Values are numbers where they are money, strings where
@@ -306,6 +306,21 @@ put('bills.asOf', billsView.asOf);
 put('bills.monthlyEquivalentTotal', billsView.monthlyEquivalentTotal);
 for (const row of billsView.bills || []) {
   const p = `bills.${row.id}`;
+  put(`${p}.amount`, row.amount);
+  put(`${p}.frequency`, row.frequency);
+  put(`${p}.nextDate`, row.nextDate);
+  put(`${p}.monthlyEquivalent`, row.monthlyEquivalent);
+}
+
+/* ---- Subscriptions: Forecast.householdSubscriptions, the same roster the page renders */
+// Amount, cadence, next date, monthly-equivalent and the page total are
+// copied. The snapshot does not annualise a subscription, does not invent a
+// merchant, and does not compute a second monthly-equivalent formula.
+const subscriptionsView = F.householdSubscriptions(plan, asOf);
+put('subscriptions.asOf', subscriptionsView.asOf);
+put('subscriptions.monthlyEquivalentTotal', subscriptionsView.monthlyEquivalentTotal);
+for (const row of subscriptionsView.subscriptions || []) {
+  const p = `subscriptions.${row.id}`;
   put(`${p}.amount`, row.amount);
   put(`${p}.frequency`, row.frequency);
   put(`${p}.nextDate`, row.nextDate);

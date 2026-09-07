@@ -1,7 +1,8 @@
 'use strict';
-/* Household information architecture: nav Plan | Bills | Credit | Planning, routable
- * Bills / Credit / Planning pages on the incumbent header (content proved in
- * test-bills-page.js, test-credit-page.js and test-planning-page.js), and a Plan waterfall that
+/* Household information architecture: nav Plan | Bills | Subscriptions | Credit | Planning,
+ * routable Bills / Subscriptions / Credit / Planning pages on the incumbent
+ * header (content proved in test-bills-page.js, test-subscriptions-page.js,
+ * test-credit-page.js and test-planning-page.js), and a Plan waterfall that
  * ends at Balance after household budget.
  *
  * Presentation only. Forecast still computes the extra-debt / big-purchase
@@ -38,6 +39,7 @@ const exists = file => fs.existsSync(path.join(ROOT, file));
 const HOUSEHOLD_NAV = [
   ['/', 'Plan'],
   ['/bills.html', 'Bills'],
+  ['/subscriptions.html', 'Subscriptions'],
   ['/credit.html', 'Credit'],
   ['/planning.html', 'Planning'],
 ];
@@ -168,24 +170,24 @@ function currentAdvice() {
   });
 }
 
-console.log('=== 1. Plan household nav is Plan | Bills | Credit | Planning ===');
+console.log('=== 1. Plan household nav is Plan | Bills | Subscriptions | Credit | Planning ===');
 {
   const nav = siteNav(read('public/index.html'));
-  ok(nav && nav.length === 4, 'the Plan page has exactly four household nav links',
+  ok(nav && nav.length === 5, 'the Plan page has exactly five household nav links',
     nav ? nav.map(l => l.label).join(' | ') : 'no nav');
   ok(nav && JSON.stringify(nav.map(l => [l.href, l.label])) === JSON.stringify(HOUSEHOLD_NAV),
-    'links are Plan (/), Bills (/bills.html), Credit (/credit.html), Planning (/planning.html) in that order');
+    'links are Plan (/), Bills (/bills.html), Subscriptions (/subscriptions.html), Credit (/credit.html), Planning (/planning.html) in that order');
   ok(nav && nav.filter(l => l.current).length === 1 && nav[0].current,
     'Plan is the one aria-current page on the Plan nav');
 }
 
-console.log('\n=== 2. Bills, Credit and Planning shells share the household nav on the incumbent header ===');
-for (const [page, label, id] of [['bills.html', 'Bills', 'bills'], ['credit.html', 'Credit', 'credit'], ['planning.html', 'Planning', 'planning']]) {
+console.log('\n=== 2. Bills, Subscriptions, Credit and Planning shells share the household nav on the incumbent header ===');
+for (const [page, label, id] of [['bills.html', 'Bills', 'bills'], ['subscriptions.html', 'Subscriptions', 'subscriptions'], ['credit.html', 'Credit', 'credit'], ['planning.html', 'Planning', 'planning']]) {
   ok(exists('public/' + page), `${page} exists`);
   const html = read('public/' + page);
   const nav = siteNav(html);
   ok(nav && JSON.stringify(nav.map(l => [l.href, l.label])) === JSON.stringify(HOUSEHOLD_NAV),
-    `${page} carries the same four household nav links in the same order`);
+    `${page} carries the same five household nav links in the same order`);
   const current = nav ? nav.filter(l => l.current) : [];
   ok(current.length === 1 && current[0].label === label,
     `${page} marks ${label} as the aria-current page`);
@@ -216,7 +218,7 @@ for (const [page, label, id] of [['bills.html', 'Bills', 'bills'], ['credit.html
 
 console.log('\n=== 3. Modellers, Deep Dive, Records leave the household nav but stay routable ===');
 {
-  for (const page of ['index.html', 'bills.html', 'credit.html', 'planning.html']) {
+  for (const page of ['index.html', 'bills.html', 'subscriptions.html', 'credit.html', 'planning.html']) {
     const nav = siteNav(read('public/' + page)) || [];
     ok(!nav.some(l => RETIRED_FROM_NAV.includes(l.label))
         && !nav.some(l => /modellers|deepdive|records/.test(l.href)),
@@ -388,7 +390,7 @@ function startAtlas(env) {
   const atlas = await startAtlas(env);
   const base = `http://127.0.0.1:${port}`;
   try {
-    for (const page of ['/bills.html', '/credit.html', '/planning.html']) {
+    for (const page of ['/bills.html', '/subscriptions.html', '/credit.html', '/planning.html']) {
       const anon = await fetch(base + page, { redirect: 'manual' });
       ok(anon.status === 302 && /\/login$/.test(anon.headers.get('location') || ''),
         `${page} without a session redirects to /login`);
@@ -401,7 +403,7 @@ function startAtlas(env) {
     });
     const cookie = (login.headers.get('set-cookie') || '').split(';')[0];
     ok(login.status === 302 && /^hfd_session=/.test(cookie), 'synthetic login issues a session');
-    for (const [page, label] of [['/bills.html', 'Bills'], ['/credit.html', 'Credit'], ['/planning.html', 'Planning'], ['/', 'Plan']]) {
+    for (const [page, label] of [['/bills.html', 'Bills'], ['/subscriptions.html', 'Subscriptions'], ['/credit.html', 'Credit'], ['/planning.html', 'Planning'], ['/', 'Plan']]) {
       const res = await fetch(base + page, { headers: { cookie } });
       const body = await res.text();
       const nav = siteNav(body);
@@ -413,7 +415,7 @@ function startAtlas(env) {
           && /script-src 'self'/.test(res.headers.get('content-security-policy') || ''),
         `${page} carries the incumbent no-store and CSP headers`);
     }
-    for (const script of ['/bills.js', '/credit.js', '/planning.js']) {
+    for (const script of ['/bills.js', '/subscriptions.js', '/credit.js', '/planning.js']) {
       const res = await fetch(base + script, { headers: { cookie } });
       ok(res.status === 200, `${script} is served to a session`);
     }
