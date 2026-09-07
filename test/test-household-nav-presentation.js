@@ -164,19 +164,26 @@ console.log('\n=== 13c. iOS glass selector and cross-page sliding selection ==='
       && /view-transition-name:\s*atlas-tab-indicator/.test(glass)
       && /::view-transition-group\(atlas-tab-indicator\)/.test(glass),
     'the selected glass capsule participates in cross-document view transitions instead of popping onto the next tab');
-  ok(/\.sitenav-household::before\s*\{[\s\S]*transform:translateX\(calc\(var\(--nav-selected-index\) \* 100%\)\)/.test(glass)
-      && /transition:transform \.32s cubic-bezier/.test(glass),
-    'one shared selector capsule moves horizontally across the five tab slots');
+  ok(/\.sitenav-household::before\s*\{[\s\S]*transform:translateX\(calc\(var\(--nav-selected-index\) \* 100%\)\) scaleX\(\.91\)/.test(glass)
+      && /transition:transform \.36s cubic-bezier/.test(glass),
+    'one shared selector capsule glides horizontally and stays narrower than its tab slot');
   ok(['budget','bills','subscriptions','credit','planning'].every((name, index) =>
       new RegExp(`data-nav="${name}"\\]\\[aria-current="page"\\]\\) \\{ --nav-selected-index:${index}; \\}`).test(glass)),
     'aria-current deterministically places the glass selector on all five destinations');
   ok(/--nav-icon-budget:url\("data:image\/svg\+xml[^\n]*M3\.5 10\.5 12 3\.5/.test(glass)
       && /--nav-icon-credit:url\("data:image\/svg\+xml[^\n]*rect x='2\.75' y='5\.5'/.test(glass),
     'Budget uses a home icon while Credit keeps a distinct credit-card icon');
-  ok(/backdrop-filter:blur\(26px\) saturate\(1\.55\)/.test(glass)
-      && /border-radius:28px/.test(glass)
-      && /linear-gradient\(180deg/.test(glass),
-    'dock and selector use the intended frosted-glass depth rather than a flat white bar');
+  ok(/backdrop-filter:blur\(30px\) saturate\(1\.4\)/.test(glass)
+      && /border-radius:25px/.test(glass)
+      && /linear-gradient\(180deg/.test(glass)
+      && /top:8px;[\s\S]*bottom:8px;/.test(glass),
+    'dock and inset selector use the lighter frosted-glass proportions from live iPhone polish');
+  ok(/min-height:70px/.test(glass)
+      && /min-height:58px/.test(glass)
+      && /width:23px/.test(glass)
+      && /font-size:clamp\(\.52rem,2\.35vw,\.62rem\)/.test(glass)
+      && /white-space:nowrap/.test(glass),
+    'polished dock keeps smaller icons and single-line labels, including Subscriptions');
   ok(/prefers-reduced-motion:reduce[\s\S]*\.sitenav-household::before[\s\S]*transition:none/.test(glass),
     'glass selector motion has a reduced-motion fallback');
 }
