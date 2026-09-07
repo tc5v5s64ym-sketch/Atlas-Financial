@@ -93,20 +93,22 @@ console.log('\n=== 9–13. iPhone dock: safe area, clearance, touch targets, mot
   ok(/viewport-fit=cover/.test(read('public/index.html'))
       && HOUSEHOLD_PAGES.every(([file]) => /viewport-fit=cover/.test(read(file))),
     'every household page enables viewport-fit=cover so iOS safe-area insets apply');
-  ok(/--nav-dock-height:64px/.test(css) && /--nav-dock-lift:10px/.test(css)
-      && /--nav-dock-inset:12px/.test(css),
+  ok(/--nav-dock-height:66px/.test(css) && /--nav-dock-lift:12px/.test(css)
+      && /--nav-dock-inset:10px/.test(css),
     'shared dock tokens name height, lift above the home indicator, and side inset');
   ok(mobile.includes('env(safe-area-inset-bottom, 0px)')
       && /bottom:calc\(\s*var\(--nav-dock-lift\)\s*\+\s*env\(safe-area-inset-bottom/.test(mobile)
       && /left:calc\(\s*var\(--nav-dock-inset\)\s*\+\s*env\(safe-area-inset-left/.test(mobile)
       && /right:calc\(\s*var\(--nav-dock-inset\)\s*\+\s*env\(safe-area-inset-right/.test(mobile),
     'the floating dock is placed relative to the iOS safe area, not flush to the physical edge');
-  ok(/padding-bottom:calc\(\s*var\(--nav-dock-height\)\s*\+\s*var\(--nav-dock-lift\)\s*\+\s*16px\s*\+\s*env\(safe-area-inset-bottom/.test(mobile),
+  ok(/padding-bottom:calc\(\s*var\(--nav-dock-height\)\s*\+\s*var\(--nav-dock-lift\)\s*\+\s*18px\s*\+\s*env\(safe-area-inset-bottom/.test(mobile),
     'page content keeps clearance for dock height + lift + breathing room + safe area');
   ok(/grid-template-columns:\s*repeat\(5,minmax\(0,1fr\)\)/.test(mobile),
     'mobile dock is a five-column grid, not the retired four-column website bar');
   ok(/min-height:52px/.test(mobile) && /min-height:var\(--nav-dock-height\)/.test(mobile),
-    'dock items keep a ≥52px touch target and the dock itself is at least 64px tall');
+    'dock items keep a ≥52px touch target and the dock itself is at least 66px tall');
+  ok(/white-space:nowrap/.test(mobile) && !/overflow-wrap:anywhere/.test(mobile),
+    'mobile labels stay on one line so Subscriptions does not wrap to a stray s');
   const reduced = /@media \(max-width:640px\) and \(prefers-reduced-motion: reduce\) \{[\s\S]*?\n\}/.exec(css);
   ok(reduced && /transition:\s*none/.test(reduced[0]) && /transform:\s*none/.test(reduced[0]),
     'press-scale and color motion are disabled when the household prefers reduced motion');
