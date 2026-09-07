@@ -1,5 +1,5 @@
 'use strict';
-/* Household information architecture: nav Plan | Bills | Subscriptions | Credit | Planning,
+/* Household information architecture: nav Budget | Bills | Subscriptions | Credit | Planning,
  * routable Bills / Subscriptions / Credit / Planning pages on the incumbent
  * header (content proved in test-bills-page.js, test-subscriptions-page.js,
  * test-credit-page.js and test-planning-page.js), and a Plan waterfall that
@@ -37,7 +37,7 @@ const read = file => sourceText(fs.readFileSync(path.join(ROOT, file), 'utf8'));
 const exists = file => fs.existsSync(path.join(ROOT, file));
 
 const HOUSEHOLD_NAV = [
-  ['/', 'Plan'],
+  ['/', 'Budget'],
   ['/bills.html', 'Bills'],
   ['/subscriptions.html', 'Subscriptions'],
   ['/credit.html', 'Credit'],
@@ -62,11 +62,14 @@ const KEPT_ROWS = [
 function siteNav(html) {
   const match = /<nav class="sitenav" aria-label="Pages">([\s\S]*?)<\/nav>/.exec(html);
   if (!match) return null;
-  return [...match[1].matchAll(/<a href="([^"]+)"([^>]*)>([^<]+)<\/a>/g)].map(m => ({
-    href: m[1],
-    current: /aria-current="page"/.test(m[2]),
-    label: m[3].trim(),
-  }));
+  return [...match[1].matchAll(/<a href="([^"]+)"([^>]*)>([\s\S]*?)<\/a>/g)].map(m => {
+    const labelled = /class="sitenav-label"[^>]*>([^<]+)</.exec(m[3]);
+    return {
+      href: m[1],
+      current: /aria-current="page"/.test(m[2]),
+      label: (labelled ? labelled[1] : m[3]).replace(/<[^>]+>/g, '').trim(),
+    };
+  });
 }
 
 function loadComposer() {
@@ -170,15 +173,15 @@ function currentAdvice() {
   });
 }
 
-console.log('=== 1. Plan household nav is Plan | Bills | Subscriptions | Credit | Planning ===');
+console.log('=== 1. Plan household nav is Budget | Bills | Subscriptions | Credit | Planning ===');
 {
   const nav = siteNav(read('public/index.html'));
   ok(nav && nav.length === 5, 'the Plan page has exactly five household nav links',
     nav ? nav.map(l => l.label).join(' | ') : 'no nav');
   ok(nav && JSON.stringify(nav.map(l => [l.href, l.label])) === JSON.stringify(HOUSEHOLD_NAV),
-    'links are Plan (/), Bills (/bills.html), Subscriptions (/subscriptions.html), Credit (/credit.html), Planning (/planning.html) in that order');
+    'links are Budget (/), Bills (/bills.html), Subscriptions (/subscriptions.html), Credit (/credit.html), Planning (/planning.html) in that order');
   ok(nav && nav.filter(l => l.current).length === 1 && nav[0].current,
-    'Plan is the one aria-current page on the Plan nav');
+    'Budget is the one aria-current page on the Plan nav');
 }
 
 console.log('\n=== 2. Bills, Subscriptions, Credit and Planning shells share the household nav on the incumbent header ===');
@@ -403,7 +406,7 @@ function startAtlas(env) {
     });
     const cookie = (login.headers.get('set-cookie') || '').split(';')[0];
     ok(login.status === 302 && /^hfd_session=/.test(cookie), 'synthetic login issues a session');
-    for (const [page, label] of [['/bills.html', 'Bills'], ['/subscriptions.html', 'Subscriptions'], ['/credit.html', 'Credit'], ['/planning.html', 'Planning'], ['/', 'Plan']]) {
+    for (const [page, label] of [['/bills.html', 'Bills'], ['/subscriptions.html', 'Subscriptions'], ['/credit.html', 'Credit'], ['/planning.html', 'Planning'], ['/', 'Budget']]) {
       const res = await fetch(base + page, { headers: { cookie } });
       const body = await res.text();
       const nav = siteNav(body);
