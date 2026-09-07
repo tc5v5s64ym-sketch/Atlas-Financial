@@ -274,12 +274,14 @@ step was skipped.
 
 The site is eight pages, each with its own script; `public/app.js` is the
 shared core (helpers, charts, theme, boot) loaded by all of them. The
-household nav is **Plan | Bills | Subscriptions | Credit | Planning**; the other
-three pages remain routable at their URLs but are no longer linked from that nav:
+household nav is **Budget | Bills | Subscriptions | Credit | Planning**
+(Budget is the `/` payday-plan page; the destination label is household-facing
+only). The other three pages remain routable at their URLs but are no longer
+linked from that nav:
 
 | Page | HTML | Script | What it shows |
 |---|---|---|---|
-| Plan (homepage) | `index.html` | `plan.js` + `forecast.js` | The payday waterfall through Balance after household budget; forecast diagnostics below |
+| Budget (homepage `/`) | `index.html` | `plan.js` + `forecast.js` | The payday waterfall through Balance after household budget; forecast diagnostics below |
 | Bills | `bills.html` | `bills.js` + `forecast.js` | Recurring household bills as Credit-style fact cards: provider, amount, cadence, next date, and monthly equivalent from `Forecast.householdBills`. Subscriptions and memberships stay off this page. |
 | Subscriptions | `subscriptions.html` | `subscriptions.js` + `forecast.js` | Recurring subscriptions and memberships as Credit-style fact cards: name, amount, cadence, next date, and monthly equivalent from `Forecast.householdSubscriptions`. Household bills stay off this page. |
 | Credit | `credit.html` | `credit.js` + `forecast.js` | What the household owes: mortgage, HELOC, then every active card — balances, limits, Forecast.utilisation headroom, rates, next required payment from the Forecast schedule (`Forecast.creditAccounts`). The visual reference for the Bills and Subscriptions fact cards. |

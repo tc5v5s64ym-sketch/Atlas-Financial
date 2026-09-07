@@ -170,7 +170,7 @@ function creditPageHtml(accounts) {
     cardsLede: accounts.cards && accounts.cards.length
       ? `${accounts.cards.length} active household card${accounts.cards.length === 1 ? '' : 's'} on the ${fmtDateFull(accounts.asOf)} opening. Available credit is Forecast.utilisation and already counts known pending charges. Minimum and due date are the next Forecast schedule occurrence on or after that date.`
       : '',
-    note: `Balances and limits are the served opening as at ${fmtDateFull(accounts.asOf)}. Available credit is never household cash. Nothing here ranks debts, suggests a payment order, or permits borrowing — the payday plan is on Plan.`,
+    note: `Balances and limits are the served opening as at ${fmtDateFull(accounts.asOf)}. Available credit is never household cash. Nothing here ranks debts, suggests a payment order, or permits borrowing — the payday plan is on Budget.`,
   };
 }
 
