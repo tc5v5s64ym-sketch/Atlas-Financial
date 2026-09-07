@@ -146,6 +146,10 @@ console.log('\n=== 14–17. No new dependency; Forecast and Credit content stay 
     'Credit keeps its incumbent financial content structure');
   ok(/\.credit-account \{/.test(css) && /top:0; left:0; right:0; height:3px/.test(css),
     'Credit card visual language (white surface, top rule) is still in styles.css');
+  ok(/class="fact-card-list"/.test(read('public/bills.html'))
+      && /class="fact-card-list"/.test(read('public/subscriptions.html'))
+      && /\.fact-card, \.credit-account \{/.test(css),
+    'Bills and Subscriptions keep the merged Credit-style fact-card implementation');
 }
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
