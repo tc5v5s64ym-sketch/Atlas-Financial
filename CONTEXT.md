@@ -277,7 +277,8 @@ shared core (helpers, charts, theme, boot) loaded by all of them. The
 household nav is **Budget | Bills | Subscriptions | Credit | Planning**
 (Budget is the `/` payday-plan page; the destination label is household-facing
 only). The other three pages remain routable at their URLs but are no longer
-linked from that nav:
+linked from that nav. The mobile dock is marked `sitenav-household` so
+Modellers, Deep Dive, and Records keep their four-link text nav:
 
 | Page | HTML | Script | What it shows |
 |---|---|---|---|
