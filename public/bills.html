@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<title>Household finances — credit</title>
+<title>Household finances — bills</title>
 <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
@@ -20,8 +20,8 @@
     </div>
     <nav class="sitenav" aria-label="Pages">
       <a href="/">Plan</a>
-      <a href="/bills.html">Bills</a>
-      <a href="/credit.html" aria-current="page">Credit</a>
+      <a href="/bills.html" aria-current="page">Bills</a>
+      <a href="/credit.html">Credit</a>
       <a href="/planning.html">Planning</a>
     </nav>
   </div>
@@ -29,20 +29,18 @@
 
 <div class="wrap wrap-reading">
 
-  <section id="credit" data-page-shell="credit">
-    <div class="kicker">Credit</div>
-    <h1>Credit</h1>
-    <p class="sub">What the household owes: balances, limits, rates and the next required payment on each account. Facts, not strategy — the payday plan is on <a href="/">Plan</a>.</p>
+  <section id="bills" data-page-shell="bills">
+    <div class="kicker">Bills</div>
+    <h1>Bills</h1>
+    <p class="sub">Recurring household bills Atlas already knows: utilities, insurance, phones, internet, and similar obligations. Amounts, cadence and next dates are Forecast. Subscriptions are not on this page.</p>
+    <p class="lede" id="bills-lede"></p>
 
-    <div id="credit-secured" class="credit-list credit-list-secured" aria-label="Secured debt">
+    <div id="bills-list" class="bills-list" aria-label="Household bills">
       <p class="lede">Loading the served opening…</p>
     </div>
 
-    <h2 class="credit-section-head">Credit cards</h2>
-    <p class="lede" id="credit-cards-lede"></p>
-    <div id="credit-cards" class="credit-list credit-list-cards" aria-label="Active credit cards"></div>
-
-    <p class="lede footnote" id="credit-note"></p>
+    <div id="bills-total" class="bills-total" aria-label="Total monthly equivalent"></div>
+    <p class="lede footnote" id="bills-note"></p>
   </section>
 
   <footer>
@@ -53,6 +51,6 @@
 <div class="tip" id="tip"></div>
 <script src="/app.js"></script>
 <script src="/forecast.js"></script>
-<script src="/credit.js"></script>
+<script src="/bills.js"></script>
 </body>
 </html>

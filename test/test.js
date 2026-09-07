@@ -66,6 +66,7 @@ const suites = [
   ['household nav and Plan waterfall boundary', 'test-household-nav-plan-boundary.js'],
   ['Credit page — what do we owe (Forecast.creditAccounts)', 'test-credit-page.js'],
   ['Planning page — Forecast.majorPlans rendered', 'test-planning-page.js'],
+  ['Bills page — Forecast.householdBills rendered', 'test-bills-page.js'],
   ['Plan calendar bill sections', 'test-plan-bill-calendar-periods.js'],
   ['Plan calendar waterfalls', 'test-plan-calendar-waterfalls.js'],
   ['Dog food once-per-month payday cadence', 'test-dog-food-monthly-cadence.js'],

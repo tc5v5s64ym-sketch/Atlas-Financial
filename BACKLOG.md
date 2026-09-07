@@ -307,7 +307,7 @@ boundary. Not a Forecast change.
 
 **B99 · Modellers / Deep Dive / Records still carry the legacy four-link nav** · **READY** · *presentation only; found 2026-09-03*
 
-The household nav is Plan | Credit | Planning. `modellers.html`, `deepdive.html`
+The household nav is Plan | Bills | Credit | Planning. `modellers.html`, `deepdive.html`
 and `records.html` remain routable but their own header still links Plan |
 Modellers | Deep Dive | Records. Their future (household nav, a diagnostics
 nav, or retirement) is owner direction; do not delete them on an agent's
