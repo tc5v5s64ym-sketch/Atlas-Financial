@@ -347,6 +347,8 @@ console.log('\n=== Page contract: served data only, formatting only ===');
     'credit.html has every element credit.js writes to');
   ok(/<script src="\/forecast.js"><\/script>\s*<script src="\/credit.js">/.test(read('public/credit.html')),
     'credit.html loads forecast.js before credit.js');
+  ok(!/fact-card/.test(read('public/credit.js')) && !/fact-card/.test(read('public/credit.html')),
+    'Credit markup keeps credit-* class names; Bills/Subscriptions reuse them via CSS only');
   const el = page.render(live);
   const note = el['credit-note'].textContent;
   ok(/Available credit is never household cash/.test(note) && /Nothing here ranks debts/.test(note),

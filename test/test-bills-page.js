@@ -58,12 +58,12 @@ function loadPage(script) {
 }
 
 function rowHtml(html, id) {
-  const re = new RegExp(`<tr data-bill-id="${id}"[\\s\\S]*?<\\/tr>`);
+  const re = new RegExp(`<article class="fact-card"[^>]*data-bill-id="${id}"[\\s\\S]*?<\\/article>`);
   const m = re.exec(html);
   return m ? m[0] : null;
 }
 function fact(row, name) {
-  const re = new RegExp(`<(?:td)[^>]*data-bills-fact="${name}"[^>]*>[\\s\\S]*?<\\/td>`);
+  const re = new RegExp(`<div[^>]*data-bills-fact="${name}"[^>]*>[\\s\\S]*?<\\/div>`);
   const m = re.exec(row || '');
   return m ? m[0] : null;
 }
@@ -351,6 +351,43 @@ console.log('\n=== 6. Live plan.bills reconcile independently ===');
     'live page keeps Noble quarterly');
   ok(!/Netflix|Spotify|YouTube|ChatGPT|iCloud|Ultimate Guitar|Google storage|Fit4Less/.test(html),
     'live page does not print subscription or membership names');
+}
+
+console.log('\n=== 7. Cards use the Credit fact-card language; page code stays presentation-only ===');
+{
+  const fx = fixture();
+  const el = page.render(fx);
+  const html = el['bills-list'].innerHTML;
+  const cards = [...html.matchAll(/<article class="fact-card"/g)];
+  ok(cards.length === 9, 'fixture renders one fact-card article per household bill', String(cards.length));
+  ok(!/<table|<tr|<td/.test(html), 'Bills no longer renders a compact table');
+  const gas = rowHtml(html, 'gas');
+  ok(gas && /<div class="fact-card-head">/.test(gas) && /<h2>Utility gas<\/h2>/.test(gas)
+    && /<div class="fact-card-amount" data-bills-fact="amount">/.test(gas)
+    && /<dl class="fact-card-facts">/.test(gas)
+    && /<dt>Cadence<\/dt>/.test(gas) && /<dt>Next due<\/dt>/.test(gas)
+    && /<dt>Monthly equivalent<\/dt>/.test(gas),
+    'each bill card has heading, prominent amount, and labelled facts');
+  ok(/class="chip v">CONFIRMED/.test(gas), 'confidence chip stays on the card heading');
+  const mystery = rowHtml(html, 'mystery');
+  ok(mystery && /<span class="fact-unknown">Unknown<\/span>/.test(fact(mystery, 'cadence'))
+    && /<span class="fact-unknown">Unknown<\/span>/.test(fact(mystery, 'monthly')),
+    'Unknown facts stay the shared Unknown treatment');
+  const src = stripComments(read('public/bills.js'));
+  ok(/Forecast\.householdBills\(d\.plan, d\.meta\.asOf\)/.test(src),
+    'bills.js consumes Forecast.householdBills on the served plan');
+  ok(!/Forecast\.householdSubscriptions|Forecast\.billIsSubscription|Forecast\.creditAccounts/.test(src),
+    'bills.js does not classify subscriptions or compose Credit');
+  const creditSrc = stripComments(read('public/credit.js'));
+  ok(/Forecast\.creditAccounts\(/.test(creditSrc)
+    && /<article class="credit-account/.test(creditSrc)
+    && /class="credit-facts"/.test(creditSrc),
+    'Credit still renders Forecast.creditAccounts through credit-account cards');
+  const css = read('public/styles.css');
+  ok(/\.fact-card,\s*\.credit-account/.test(css)
+    && /\.fact-card-facts,\s*\.credit-facts/.test(css)
+    && /\.fact-unknown,\s*\.credit-unknown/.test(css),
+    'shared CSS binds the fact-card vocabulary to the incumbent Credit selectors');
 }
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);

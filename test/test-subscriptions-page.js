@@ -59,12 +59,12 @@ function loadPage(script) {
 }
 
 function rowHtml(html, id) {
-  const re = new RegExp(`<tr data-subscription-id="${id}"[\\s\\S]*?<\\/tr>`);
+  const re = new RegExp(`<article class="fact-card"[^>]*data-subscription-id="${id}"[\\s\\S]*?<\\/article>`);
   const m = re.exec(html);
   return m ? m[0] : null;
 }
 function fact(row, name) {
-  const re = new RegExp(`<(?:td)[^>]*data-subscriptions-fact="${name}"[^>]*>[\\s\\S]*?<\\/td>`);
+  const re = new RegExp(`<div[^>]*data-subscriptions-fact="${name}"[^>]*>[\\s\\S]*?<\\/div>`);
   const m = re.exec(row || '');
   return m ? m[0] : null;
 }
@@ -381,6 +381,39 @@ console.log('\n=== 6. Live plan.bills reconcile independently ===');
     'live page does not print household bill names');
   ok(!/Canva|Mailchimp|Pixieset|CMAW/.test(html),
     'live page does not resurrect cancelled or never-promoted services');
+}
+
+console.log('\n=== 7. Cards use the Credit fact-card language; page code stays presentation-only ===');
+{
+  const fx = fixture();
+  const el = page.render(fx);
+  const html = el['subscriptions-list'].innerHTML;
+  const cards = [...html.matchAll(/<article class="fact-card"/g)];
+  ok(cards.length === 6, 'fixture renders one fact-card article per subscription', String(cards.length));
+  ok(!/<table|<tr|<td/.test(html), 'Subscriptions no longer renders a compact table');
+  const stream = rowHtml(html, 'stream');
+  ok(stream && /<div class="fact-card-head">/.test(stream) && /<h2>Streaming<\/h2>/.test(stream)
+    && /<div class="fact-card-amount" data-subscriptions-fact="amount">/.test(stream)
+    && /<dl class="fact-card-facts">/.test(stream)
+    && /<dt>Cadence<\/dt>/.test(stream) && /<dt>Next charge<\/dt>/.test(stream)
+    && /<dt>Monthly equivalent<\/dt>/.test(stream),
+    'each subscription card has heading, prominent amount, and labelled facts');
+  ok(/class="chip v">CONFIRMED/.test(stream), 'confidence chip stays on the card heading');
+  const mystery = rowHtml(html, 'mystery-sub');
+  ok(mystery && /<span class="fact-unknown">Unknown<\/span>/.test(fact(mystery, 'cadence'))
+    && /<span class="fact-unknown">Unknown<\/span>/.test(fact(mystery, 'next'))
+    && /<span class="fact-unknown">Unknown<\/span>/.test(fact(mystery, 'monthly')),
+    'Unknown facts stay the shared Unknown treatment');
+  const src = stripComments(read('public/subscriptions.js'));
+  ok(/Forecast\.householdSubscriptions\(d\.plan, d\.meta\.asOf\)/.test(src),
+    'subscriptions.js consumes Forecast.householdSubscriptions on the served plan');
+  ok(!/Forecast\.householdBills|Forecast\.billIsSubscription|Forecast\.creditAccounts/.test(src),
+    'subscriptions.js does not classify bills or compose Credit');
+  const creditSrc = stripComments(read('public/credit.js'));
+  ok(/Forecast\.creditAccounts\(/.test(creditSrc)
+    && /<article class="credit-account/.test(creditSrc)
+    && !/fact-card/.test(creditSrc),
+    'Credit financial rendering stays on credit-account cards, not the Bills vocabulary');
 }
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
