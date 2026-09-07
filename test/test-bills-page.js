@@ -85,11 +85,18 @@ function isOccurrenceStub(plan, bill) {
     && rec.id !== bill.id && bill.id.startsWith(rec.id + '-'));
 }
 
+function independentSubscription(bill) {
+  if (!bill) return false;
+  if (bill.subscription === true) return true;
+  if (bill.subscription === false) return false;
+  return bill.budgetCategory === 'subscriptions';
+}
+
 function independentRoster(plan) {
   return ((plan && plan.bills) || []).filter(bill =>
     bill
     && bill.householdObligation !== false
-    && bill.budgetCategory !== 'subscriptions'
+    && !independentSubscription(bill)
     && !isOccurrenceStub(plan, bill));
 }
 
@@ -146,6 +153,8 @@ function fixture() {
           firstDue: '2026-09-18', amount: 95.85, confidence: 'confirmed', budgetCategory: 'household' },
         { id: 'gym', label: 'Gym', frequency: 'biweekly', anchor: '2026-08-14', amount: 11.54,
           confidence: 'confirmed', budgetCategory: 'sport' },
+        { id: 'club', label: 'Club membership', frequency: 'monthly', day: 10, amount: 20,
+          confidence: 'confirmed', budgetCategory: 'sport', subscription: true },
         { id: 'annual-fee', label: 'Annual club', frequency: 'yearly', month: 5, day: 8, amount: 120,
           confidence: 'confirmed', budgetCategory: 'household' },
         { id: 'stream', label: 'Streaming', frequency: 'monthly', day: 17, amount: 26.87,
@@ -171,10 +180,16 @@ console.log('=== 1. Roster is household bills, not subscriptions or occurrence s
   const expectIds = ['gas', 'power', 'net', 'phone', 'garbage', 'gym', 'annual-fee', 'once-past', 'mystery'];
   ok(expectIds.every(id => got.includes(id)), 'fixture roster includes the household bills', got.join(','));
   ok(!got.includes('stream'), 'subscription budgetCategory is not on the Bills roster');
+  ok(!got.includes('club'),
+    'explicit subscription stays off Bills even when spending category is not subscriptions');
+  ok(got.includes('gym'),
+    'a sport-category bill without subscription: true is not excluded as a membership');
   ok(!got.includes('gas-aug3-outstanding'), 'once stub of a recurring sibling is not a second bill');
   const el = page.render(fx);
   const html = el['bills-list'].innerHTML;
   ok(!/Streaming|stream/.test(html), 'page does not print the subscription');
+  ok(!/Club membership/.test(html),
+    'page does not print a membership whose spending category is sport');
   ok(!/August posting unknown/.test(html), 'page does not print the occurrence stub');
   ok(/Utility gas/.test(html) && /Utility power/.test(html) && /Garbage/.test(html),
     'page prints the household utility and quarterly rows');
@@ -263,6 +278,8 @@ console.log('\n=== 4. Monthly total is the sum of known equivalents, not page co
     'bills.js does not compute a monthly equivalent');
   ok(!/budgetCategory === ['"]subscriptions['"]/.test(src),
     'bills.js does not filter the roster; Forecast does');
+  ok(!/\.subscription\b/.test(src) && !/fit4less/i.test(src),
+    'bills.js has no subscription classifier and no Fit4Less exception');
 }
 
 console.log('\n=== 5. Page follows a mutated amount; HTML hardcodes no figure ===');
@@ -299,6 +316,8 @@ console.log('\n=== 6. Live plan.bills reconcile independently ===');
     viewIds.join(','));
   ok(!viewIds.some(id => /netflix|spotify|icloud|youtube|chatgpt|google-storage|ultimate-guitar/.test(id)),
     'live page authority excludes the subscription rows');
+  ok(!viewIds.includes('fit4less'),
+    'live Fit4Less membership stays off Bills though its spending category is sport');
   ok(!viewIds.includes('bcaa-aug15-outstanding')
     && !viewIds.includes('icbc-aug15-outstanding')
     && !viewIds.includes('resp-aug15-outstanding'),
@@ -330,8 +349,8 @@ console.log('\n=== 6. Live plan.bills reconcile independently ===');
     'live page names Hydro and keeps Dated due visible');
   ok(/Every 3 months/.test(rowHtml(html, 'noble-garbage') || ''),
     'live page keeps Noble quarterly');
-  ok(!/Netflix|Spotify|YouTube|ChatGPT|iCloud|Ultimate Guitar|Google storage/.test(html),
-    'live page does not print subscription names');
+  ok(!/Netflix|Spotify|YouTube|ChatGPT|iCloud|Ultimate Guitar|Google storage|Fit4Less/.test(html),
+    'live page does not print subscription or membership names');
 }
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);

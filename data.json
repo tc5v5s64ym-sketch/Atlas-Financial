@@ -275,6 +275,7 @@
                 "amount": 11.54,
                 "confidence": "confirmed",
                 "budgetCategory": "sport",
+                "subscription": true,
                 "note": "$11.54 every two weeks, 18 months running. The 2026-08-14 Fit4less Msp $11.54 posted on BILLS ACCOUNT and is already inside the 2026-08-19 opening. Next occurrence is 2026-08-28. An annual $21.99 fee appears each July.",
                 "payingAccount": "chequing-a"
             },

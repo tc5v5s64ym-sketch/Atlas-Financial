@@ -280,7 +280,7 @@ routable at their URLs but are no longer linked from that nav:
 | Page | HTML | Script | What it shows |
 |---|---|---|---|
 | Plan (homepage) | `index.html` | `plan.js` + `forecast.js` | The payday waterfall through Balance after household budget; forecast diagnostics below |
-| Bills | `bills.html` | `bills.js` + `forecast.js` | Recurring household bills: provider, amount, cadence, next date, and monthly equivalent from `Forecast.householdBills`. Subscriptions stay off this page. |
+| Bills | `bills.html` | `bills.js` + `forecast.js` | Recurring household bills: provider, amount, cadence, next date, and monthly equivalent from `Forecast.householdBills`. Subscriptions and memberships stay off this page. |
 | Credit | `credit.html` | `credit.js` + `forecast.js` | What the household owes: mortgage, HELOC, then every active card — balances, limits, Forecast.utilisation headroom, rates, next required payment from the Forecast schedule (`Forecast.creditAccounts`) |
 | Planning | `planning.html` | `planning.js` + `forecast.js` | Known future costs: `Forecast.majorPlans` verdicts, ranges, timing and any Forecast payday set-aside, in Forecast order |
 | Modellers | `modellers.html` | `modellers.js` + `forecast.js` | Payoff and renewal modelling |

@@ -8663,7 +8663,11 @@
   // occurrence stub. This projection does not invent a second bill engine,
   // a paid/unpaid tracker, or a subscription planner.
   //
-  // Subscriptions (`budgetCategory: subscriptions`) stay off this roster.
+  // Subscriptions and memberships stay off this roster. Spending
+  // `budgetCategory` is not that product class: a gym membership can be
+  // Sport for Lunch Money actuals and still be a subscription. The plan
+  // fact is `subscription: true` / `false`; when that flag is absent,
+  // `budgetCategory: subscriptions` remains the incumbent default.
   // A once-row whose id prefixes a recurring sibling is that sibling's
   // reserved occurrence, not a second bill. Cadence is the plan frequency;
   // a monthly-equivalent is derived only for monthly / biweekly / quarterly
@@ -8697,7 +8701,10 @@
   }
 
   function billIsSubscription(bill) {
-    return !!(bill && bill.budgetCategory === 'subscriptions');
+    if (!bill) return false;
+    if (bill.subscription === true) return true;
+    if (bill.subscription === false) return false;
+    return bill.budgetCategory === 'subscriptions';
   }
 
   function billIsOccurrenceStub(plan, bill) {
@@ -9341,7 +9348,7 @@
     nextDue, nextPaymentOut, unallocatedCash, compactSnapshot, publicationTotals, deepDive, publishedSpendType, rollupSpending, planStatus, mission, planPhases, nextMove, utilisation, creditAccounts, capitalisingCashMinimumOccurrences, renewal,
     payoffDebts, payoffModel,
     paymentForMonths, startingCashAmount, resolveFundingSources, resolveActions, EPSILON, STEP,
-    householdBills };
+    householdBills, billIsSubscription };
   if (typeof module !== 'undefined' && module.exports) module.exports = Forecast;
   else root.Forecast = Forecast;
 

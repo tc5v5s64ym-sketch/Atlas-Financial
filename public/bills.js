@@ -113,7 +113,7 @@ function billsPageHtml(view) {
       : '',
     list: billsTableHtml(view),
     total: billsTotalHtml(view),
-    note: 'Rows are Forecast.householdBills from the served plan. Subscriptions are a separate list and are not here. A dated due whose recurring cadence is not on the plan stays a dated due. A passed date is not treated as paid. Nothing here ranks bills or moves money.',
+    note: 'Rows are Forecast.householdBills from the served plan. Subscriptions and memberships are a separate list and are not here. A dated due whose recurring cadence is not on the plan stays a dated due. A passed date is not treated as paid. Nothing here ranks bills or moves money.',
   };
 }
 
