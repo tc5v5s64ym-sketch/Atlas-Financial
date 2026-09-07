@@ -1,0 +1,132 @@
+/* Household mobile dock — iOS-inspired glass treatment.
+ * Presentation only. The five destinations, routes and aria-current state
+ * stay in the incumbent HTML; this stylesheet only changes how that state is
+ * drawn and animated between household pages.
+ */
+
+@view-transition {
+  navigation: auto;
+}
+
+:root {
+  --nav-icon-budget:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.5 10.5 12 3.5l8.5 7v9a1.5 1.5 0 0 1-1.5 1.5H5a1.5 1.5 0 0 1-1.5-1.5z'/%3E%3Cpath d='M9.5 21v-6h5v6'/%3E%3C/svg%3E");
+  --nav-icon-credit:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2.75' y='5.5' width='18.5' height='13' rx='2.5'/%3E%3Cpath d='M2.75 9.5h18.5'/%3E%3Cpath d='M6.5 15h4'/%3E%3C/svg%3E");
+}
+
+@media (max-width:640px) {
+  .sitenav-household {
+    --nav-selected-index:0;
+    isolation:isolate;
+    overflow:hidden;
+    grid-template-columns:repeat(5,minmax(0,1fr));
+    gap:0;
+    min-height:74px;
+    padding:5px;
+    border-radius:28px;
+    border:1px solid color-mix(in srgb, #fff 72%, var(--border));
+    background:color-mix(in srgb, var(--surface-1) 58%, transparent);
+    box-shadow:
+      0 1px 0 rgba(255,255,255,.72) inset,
+      0 -1px 0 rgba(255,255,255,.28) inset,
+      0 14px 38px color-mix(in srgb, var(--text-primary) 14%, transparent);
+    backdrop-filter:blur(26px) saturate(1.55);
+    -webkit-backdrop-filter:blur(26px) saturate(1.55);
+  }
+
+  .sitenav-household:has(a[data-nav="budget"][aria-current="page"]) { --nav-selected-index:0; }
+  .sitenav-household:has(a[data-nav="bills"][aria-current="page"]) { --nav-selected-index:1; }
+  .sitenav-household:has(a[data-nav="subscriptions"][aria-current="page"]) { --nav-selected-index:2; }
+  .sitenav-household:has(a[data-nav="credit"][aria-current="page"]) { --nav-selected-index:3; }
+  .sitenav-household:has(a[data-nav="planning"][aria-current="page"]) { --nav-selected-index:4; }
+
+  .sitenav-household::before {
+    content:"";
+    position:absolute;
+    z-index:0;
+    top:5px;
+    bottom:5px;
+    left:5px;
+    width:calc((100% - 10px) / 5);
+    border-radius:23px;
+    transform:translateX(calc(var(--nav-selected-index) * 100%));
+    background:
+      linear-gradient(180deg,
+        color-mix(in srgb, #fff 54%, var(--s1) 8%) 0%,
+        color-mix(in srgb, var(--s1) 11%, transparent) 100%);
+    border:1px solid color-mix(in srgb, #fff 76%, var(--s1) 18%);
+    box-shadow:
+      0 1px 0 rgba(255,255,255,.88) inset,
+      0 8px 20px color-mix(in srgb, var(--s1) 13%, transparent);
+    transition:transform .32s cubic-bezier(.22,.9,.25,1);
+    view-transition-name:atlas-tab-indicator;
+    pointer-events:none;
+  }
+
+  .sitenav-household a {
+    z-index:1;
+    min-height:64px;
+    gap:4px;
+    padding:6px 1px 5px;
+    border-radius:22px;
+    color:var(--text-secondary);
+    font-size:clamp(.54rem,2.55vw,.64rem);
+    font-weight:570;
+    letter-spacing:-.025em;
+    transition:color .18s ease, transform .14s ease;
+  }
+
+  .sitenav-household a[aria-current]::before {
+    content:none;
+  }
+
+  .sitenav-household .sitenav-icon {
+    width:25px;
+    height:25px;
+    -webkit-mask-size:25px 25px;
+    mask-size:25px 25px;
+  }
+
+  .sitenav-household a[aria-current] {
+    color:var(--s1);
+    background:transparent;
+    font-weight:680;
+  }
+
+  .sitenav-household a[aria-current] .sitenav-icon {
+    background-color:currentColor;
+  }
+
+  .sitenav-household a:active {
+    transform:scale(.96);
+  }
+}
+
+@media (max-width:640px) and (prefers-color-scheme:dark) {
+  :root:where(:not([data-theme="light"])) .sitenav-household {
+    border-color:rgba(255,255,255,.16);
+    background:color-mix(in srgb, var(--surface-1) 64%, transparent);
+    box-shadow:0 1px 0 rgba(255,255,255,.12) inset, 0 16px 40px rgba(0,0,0,.42);
+  }
+  :root:where(:not([data-theme="light"])) .sitenav-household::before {
+    background:linear-gradient(180deg,rgba(255,255,255,.14),color-mix(in srgb,var(--s1) 18%,transparent));
+    border-color:rgba(255,255,255,.18);
+  }
+}
+
+@media (max-width:640px) and (prefers-reduced-motion:reduce) {
+  .sitenav-household::before,
+  .sitenav-household a {
+    transition:none;
+  }
+}
+
+::view-transition-group(atlas-tab-indicator) {
+  animation-duration:.32s;
+  animation-timing-function:cubic-bezier(.22,.9,.25,1);
+}
+
+@media (prefers-reduced-motion:reduce) {
+  ::view-transition-group(atlas-tab-indicator) {
+    animation-duration:.01ms;
+  }
+}
