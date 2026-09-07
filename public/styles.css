@@ -1367,18 +1367,21 @@ tr.wk-neg td { background:color-mix(in srgb, var(--critical) 9%, transparent); }
 /* ---------------------------------------------------------------- bills page */
 /* Compact roster, not stacked cards. The existing stackable table rules
    already turn each row into a labelled block below 640px. */
-.bills-wrap { margin:14px 0 0; }
-.bills-name { font-weight:650; margin-right:8px; }
-.bills-unknown { color:var(--muted); font-weight:600; }
-.bills-total { margin-top:16px; padding-top:14px; border-top:1px solid var(--axis); }
-.bills-total [data-bills-total] {
+.bills-wrap, .subscriptions-wrap { margin:14px 0 0; }
+.bills-name, .subscriptions-name { font-weight:650; margin-right:8px; }
+.bills-unknown, .subscriptions-unknown { color:var(--muted); font-weight:600; }
+.bills-total, .subscriptions-total { margin-top:16px; padding-top:14px; border-top:1px solid var(--axis); }
+.bills-total [data-bills-total],
+.subscriptions-total [data-subscriptions-total] {
   display:flex; justify-content:space-between; align-items:baseline; gap:12px; flex-wrap:wrap;
 }
-.bills-total [data-bills-total] span {
+.bills-total [data-bills-total] span,
+.subscriptions-total [data-subscriptions-total] span {
   font-size:.72rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--muted);
 }
-.bills-total [data-bills-total] b { font-size:1.2rem; font-variant-numeric:tabular-nums; }
-.bills-total-note { margin:6px 0 0; font-size:.82rem; color:var(--text-secondary); line-height:1.4; }
+.bills-total [data-bills-total] b,
+.subscriptions-total [data-subscriptions-total] b { font-size:1.2rem; font-variant-numeric:tabular-nums; }
+.bills-total-note, .subscriptions-total-note { margin:6px 0 0; font-size:.82rem; color:var(--text-secondary); line-height:1.4; }
 
 /* -------------------------------------------------------------- planning page */
 /* One Forecast.majorPlans row per card, in Forecast's funding order. The

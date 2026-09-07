@@ -1,7 +1,7 @@
 'use strict';
-/* Independent proof that the figures-review comment states Plan, Credit,
- * and Planning snapshot scope and does not claim the whole site is
- * unchanged. `node test/test-figures-comment.js`
+/* Independent proof that the figures-review comment states Plan, Bills,
+ * Subscriptions, Credit, and Planning snapshot scope and does not claim
+ * the whole site is unchanged. `node test/test-figures-comment.js`
  *
  * The snapshot script's own header is the scope authority. This suite does
  * not extend that snapshot to Deep Dive, Records, or Modellers.
@@ -43,9 +43,9 @@ ok(brokenWorkflow.includes(OVERCLAIM),
 ok(/Every row below is something the household would read differently/.test(brokenWorkflow),
   '6f936052 moved comment does not name Plan-page scope');
 
-console.log('\n=== snapshot authority is Plan, Bills, Credit, and Planning ===');
-ok(/household could read it off the[\s\S]{0,40}Plan, Bills, Credit, or Planning/.test(snapshotSrc),
-  'figures-snapshot.js owns Plan, Bills, Credit, and Planning membership');
+console.log('\n=== snapshot authority is Plan, Bills, Subscriptions, Credit, and Planning ===');
+ok(/household could read it off the[\s\S]{0,80}Plan, Bills, Subscriptions, Credit, or Planning/.test(snapshotSrc),
+  'figures-snapshot.js owns Plan, Bills, Subscriptions, Credit, and Planning membership');
 {
   const header = snapshotSrc.split('Output is a flat')[0];
   ok(/Deep Dive, Records,[\s\S]{0,40}Modellers remain outside/.test(header),
@@ -61,8 +61,8 @@ ok(!workflow.includes(OVERCLAIM) && !workflow.includes(SITEWIDE),
   'the workflow file no longer contains the site-wide unchanged claim');
 ok(!helperSrc.includes(OVERCLAIM),
   'the helper no longer contains the old unchanged overclaim sentence');
-ok(/Plan, Bills, Credit, and Planning/.test(helperSrc),
-  'the helper names Plan, Bills, Credit, and Planning scope');
+ok(/Plan, Bills, Subscriptions, Credit, and Planning/.test(helperSrc),
+  'the helper names Plan, Bills, Subscriptions, Credit, and Planning scope');
 ok(/formatFiguresComment\(base, head, baseRef\)/.test(helperSrc),
   'the helper still owns the posted formatter');
 
@@ -71,8 +71,8 @@ const unchanged = formatFiguresComment(identical, { ...identical }, 'main');
 
 console.log('\n=== identical snapshots do not claim the whole site ===');
 ok(unchanged.startsWith(MARKER), 'unchanged comment keeps the marker');
-ok(/Plan, Bills, Credit, and Planning surfaces is identical on this head and on `main`/.test(unchanged),
-  'unchanged comment names the Plan, Bills, Credit, and Planning snapshot and both revisions');
+ok(/Plan, Bills, Subscriptions, Credit, and Planning surfaces is identical on this head and on `main`/.test(unchanged),
+  'unchanged comment names the Plan, Bills, Subscriptions, Credit, and Planning snapshot and both revisions');
 ok(!unchanged.includes(OVERCLAIM) && !unchanged.includes(SITEWIDE),
   'unchanged comment stops after saying what was compared');
 ok(!/Deep Dive|Records|Modellers/i.test(unchanged),
@@ -87,10 +87,10 @@ console.log('\n=== a moved figure is still reported, scoped to the snapshot ==='
 ok(/1 published figure moved/.test(moved), 'one numeric snapshot move is reported');
 ok(/`weekly`/.test(moved) && /\$920\.00/.test(moved) && /\*\*`?\$900\.00`?\*\*/.test(moved),
   'the moved row names weekly and both values');
-ok(/Every row below is a Plan, Bills, Credit, or Planning figure the household would read differently/.test(moved),
-  'moved comment names Plan, Bills, Credit, and Planning scope instead of the whole site');
-ok(/2 other Plan, Bills, Credit, and Planning figures unchanged/.test(moved),
-  'unchanged remainder is labelled as Plan, Bills, Credit, and Planning figures');
+ok(/Every row below is a Plan, Bills, Subscriptions, Credit, or Planning figure the household would read differently/.test(moved),
+  'moved comment names Plan, Bills, Subscriptions, Credit, and Planning scope instead of the whole site');
+ok(/2 other Plan, Bills, Subscriptions, Credit, and Planning figures unchanged/.test(moved),
+  'unchanged remainder is labelled as Plan, Bills, Subscriptions, Credit, and Planning figures');
 ok(!moved.includes(SITEWIDE),
   'moved comment does not claim it covers what the household is told');
 

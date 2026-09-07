@@ -8720,14 +8720,11 @@
     return (dates && dates[0]) || null;
   }
 
-  function householdBills(plan, asOf, opts) {
+  function householdRecurringRoster(plan, asOf, opts, includeBill) {
     opts = opts || {};
     const horizon = knowledgeHorizon(plan, asOf, opts);
     const roster = ((plan && plan.bills) || []).filter(bill =>
-      bill
-      && billIsHouseholdObligation(bill)
-      && !billIsSubscription(bill)
-      && !billIsOccurrenceStub(plan, bill));
+      bill && includeBill(plan, bill));
     const rows = roster.map(bill => {
       const amount = bill.amount != null && isFinite(Number(bill.amount))
         ? roundCent(Number(bill.amount)) : null;
@@ -8769,10 +8766,46 @@
     return {
       asOf,
       horizonEnd: horizon.end,
-      bills: rows,
+      rows,
       monthlyEquivalentTotal,
       monthlyEquivalentIncludedCount: known.length,
       monthlyEquivalentExcludedCount: rows.length - known.length,
+    };
+  }
+
+  function householdBills(plan, asOf, opts) {
+    const view = householdRecurringRoster(plan, asOf, opts, (currentPlan, bill) =>
+      billIsHouseholdObligation(bill)
+      && !billIsSubscription(bill)
+      && !billIsOccurrenceStub(currentPlan, bill));
+    return {
+      asOf: view.asOf,
+      horizonEnd: view.horizonEnd,
+      bills: view.rows,
+      monthlyEquivalentTotal: view.monthlyEquivalentTotal,
+      monthlyEquivalentIncludedCount: view.monthlyEquivalentIncludedCount,
+      monthlyEquivalentExcludedCount: view.monthlyEquivalentExcludedCount,
+    };
+  }
+
+  // "What recurring subscriptions and memberships does the household carry?"
+  // — the complementary roster to householdBills. Same plan.bills authority,
+  // same cadence / next-date / monthly-equivalent helpers, inverted product
+  // class. Forecast.billIsSubscription remains the one membership rule.
+  // Cancelled or never-promoted services are absent from plan.bills and
+  // are not resurrected here. This is not a second subscription store.
+  function householdSubscriptions(plan, asOf, opts) {
+    const view = householdRecurringRoster(plan, asOf, opts, (currentPlan, bill) =>
+      billIsHouseholdObligation(bill)
+      && billIsSubscription(bill)
+      && !billIsOccurrenceStub(currentPlan, bill));
+    return {
+      asOf: view.asOf,
+      horizonEnd: view.horizonEnd,
+      subscriptions: view.rows,
+      monthlyEquivalentTotal: view.monthlyEquivalentTotal,
+      monthlyEquivalentIncludedCount: view.monthlyEquivalentIncludedCount,
+      monthlyEquivalentExcludedCount: view.monthlyEquivalentExcludedCount,
     };
   }
 
@@ -9348,7 +9381,7 @@
     nextDue, nextPaymentOut, unallocatedCash, compactSnapshot, publicationTotals, deepDive, publishedSpendType, rollupSpending, planStatus, mission, planPhases, nextMove, utilisation, creditAccounts, capitalisingCashMinimumOccurrences, renewal,
     payoffDebts, payoffModel,
     paymentForMonths, startingCashAmount, resolveFundingSources, resolveActions, EPSILON, STEP,
-    householdBills, billIsSubscription };
+    householdBills, householdSubscriptions, billIsSubscription };
   if (typeof module !== 'undefined' && module.exports) module.exports = Forecast;
   else root.Forecast = Forecast;
 
