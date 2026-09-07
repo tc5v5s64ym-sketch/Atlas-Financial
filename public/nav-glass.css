@@ -16,21 +16,22 @@
 @media (max-width:640px) {
   .sitenav-household {
     --nav-selected-index:0;
+    --nav-edge:6px;
     isolation:isolate;
     overflow:hidden;
     grid-template-columns:repeat(5,minmax(0,1fr));
     gap:0;
-    min-height:74px;
-    padding:5px;
-    border-radius:28px;
-    border:1px solid color-mix(in srgb, #fff 72%, var(--border));
-    background:color-mix(in srgb, var(--surface-1) 58%, transparent);
+    min-height:70px;
+    padding:var(--nav-edge);
+    border-radius:25px;
+    border:1px solid color-mix(in srgb, #fff 54%, var(--border));
+    background:color-mix(in srgb, var(--surface-1) 48%, transparent);
     box-shadow:
-      0 1px 0 rgba(255,255,255,.72) inset,
-      0 -1px 0 rgba(255,255,255,.28) inset,
-      0 14px 38px color-mix(in srgb, var(--text-primary) 14%, transparent);
-    backdrop-filter:blur(26px) saturate(1.55);
-    -webkit-backdrop-filter:blur(26px) saturate(1.55);
+      0 1px 0 rgba(255,255,255,.55) inset,
+      0 -1px 0 rgba(255,255,255,.14) inset,
+      0 12px 30px color-mix(in srgb, var(--text-primary) 11%, transparent);
+    backdrop-filter:blur(30px) saturate(1.4);
+    -webkit-backdrop-filter:blur(30px) saturate(1.4);
   }
 
   .sitenav-household:has(a[data-nav="budget"][aria-current="page"]) { --nav-selected-index:0; }
@@ -43,35 +44,36 @@
     content:"";
     position:absolute;
     z-index:0;
-    top:5px;
-    bottom:5px;
-    left:5px;
-    width:calc((100% - 10px) / 5);
-    border-radius:23px;
-    transform:translateX(calc(var(--nav-selected-index) * 100%));
-    background:
-      linear-gradient(180deg,
-        color-mix(in srgb, #fff 54%, var(--s1) 8%) 0%,
-        color-mix(in srgb, var(--s1) 11%, transparent) 100%);
-    border:1px solid color-mix(in srgb, #fff 76%, var(--s1) 18%);
+    top:8px;
+    bottom:8px;
+    left:var(--nav-edge);
+    width:calc((100% - (2 * var(--nav-edge))) / 5);
+    border-radius:19px;
+    transform:translateX(calc(var(--nav-selected-index) * 100%)) scaleX(.91);
+    background:linear-gradient(180deg,
+      color-mix(in srgb, #fff 34%, var(--s1) 5%) 0%,
+      color-mix(in srgb, var(--s1) 9%, transparent) 100%);
+    border:1px solid color-mix(in srgb, #fff 54%, var(--s1) 13%);
     box-shadow:
-      0 1px 0 rgba(255,255,255,.88) inset,
-      0 8px 20px color-mix(in srgb, var(--s1) 13%, transparent);
-    transition:transform .32s cubic-bezier(.22,.9,.25,1);
+      0 1px 0 rgba(255,255,255,.62) inset,
+      0 5px 14px color-mix(in srgb, var(--s1) 9%, transparent);
+    transition:transform .36s cubic-bezier(.2,.82,.22,1.08);
     view-transition-name:atlas-tab-indicator;
     pointer-events:none;
   }
 
   .sitenav-household a {
     z-index:1;
-    min-height:64px;
-    gap:4px;
-    padding:6px 1px 5px;
-    border-radius:22px;
+    min-height:58px;
+    gap:2px;
+    padding:5px 0 4px;
+    border-radius:18px;
     color:var(--text-secondary);
-    font-size:clamp(.54rem,2.55vw,.64rem);
-    font-weight:570;
-    letter-spacing:-.025em;
+    font-size:clamp(.52rem,2.35vw,.62rem);
+    font-weight:560;
+    line-height:1.08;
+    letter-spacing:-.03em;
+    white-space:nowrap;
     transition:color .18s ease, transform .14s ease;
   }
 
@@ -80,16 +82,16 @@
   }
 
   .sitenav-household .sitenav-icon {
-    width:25px;
-    height:25px;
-    -webkit-mask-size:25px 25px;
-    mask-size:25px 25px;
+    width:23px;
+    height:23px;
+    -webkit-mask-size:23px 23px;
+    mask-size:23px 23px;
   }
 
   .sitenav-household a[aria-current] {
     color:var(--s1);
     background:transparent;
-    font-weight:680;
+    font-weight:660;
   }
 
   .sitenav-household a[aria-current] .sitenav-icon {
@@ -97,19 +99,20 @@
   }
 
   .sitenav-household a:active {
-    transform:scale(.96);
+    transform:scale(.975);
   }
 }
 
 @media (max-width:640px) and (prefers-color-scheme:dark) {
   :root:where(:not([data-theme="light"])) .sitenav-household {
-    border-color:rgba(255,255,255,.16);
-    background:color-mix(in srgb, var(--surface-1) 64%, transparent);
-    box-shadow:0 1px 0 rgba(255,255,255,.12) inset, 0 16px 40px rgba(0,0,0,.42);
+    border-color:rgba(255,255,255,.13);
+    background:color-mix(in srgb, var(--surface-1) 54%, transparent);
+    box-shadow:0 1px 0 rgba(255,255,255,.09) inset, 0 14px 34px rgba(0,0,0,.34);
   }
   :root:where(:not([data-theme="light"])) .sitenav-household::before {
-    background:linear-gradient(180deg,rgba(255,255,255,.14),color-mix(in srgb,var(--s1) 18%,transparent));
-    border-color:rgba(255,255,255,.18);
+    background:linear-gradient(180deg,rgba(255,255,255,.105),color-mix(in srgb,var(--s1) 14%,transparent));
+    border-color:rgba(255,255,255,.14);
+    box-shadow:0 1px 0 rgba(255,255,255,.2) inset,0 5px 14px rgba(0,0,0,.16);
   }
 }
 
@@ -121,8 +124,8 @@
 }
 
 ::view-transition-group(atlas-tab-indicator) {
-  animation-duration:.32s;
-  animation-timing-function:cubic-bezier(.22,.9,.25,1);
+  animation-duration:.36s;
+  animation-timing-function:cubic-bezier(.2,.82,.22,1.08);
 }
 
 @media (prefers-reduced-motion:reduce) {
