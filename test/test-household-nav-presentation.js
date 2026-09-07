@@ -63,6 +63,8 @@ function mobileNavBlock(css) {
 }
 
 const css = read('public/styles.css');
+const glass = read('public/nav-glass.css');
+const householdView = read('public/household-view.css');
 const pkg = JSON.parse(read('package.json'));
 const mobile = mobileNavBlock(css);
 
@@ -150,6 +152,35 @@ console.log('\n=== 13b. Diagnostic pages keep the four-link text nav ===');
   }
 }
 
+console.log('\n=== 13c. iOS glass selector and cross-page sliding selection ===');
+{
+  ok(/^@import url\('\/nav-glass\.css'\);/.test(householdView),
+    'Budget loads the shared glass dock through its existing household-view stylesheet');
+  for (const file of ['public/bills.html', 'public/subscriptions.html', 'public/credit.html', 'public/planning.html']) {
+    ok(/<link rel="stylesheet" href="\/nav-glass\.css">/.test(read(file)),
+      `${file} loads the shared glass dock stylesheet`);
+  }
+  ok(/@view-transition\s*\{\s*navigation:\s*auto;\s*\}/.test(glass)
+      && /view-transition-name:\s*atlas-tab-indicator/.test(glass)
+      && /::view-transition-group\(atlas-tab-indicator\)/.test(glass),
+    'the selected glass capsule participates in cross-document view transitions instead of popping onto the next tab');
+  ok(/\.sitenav-household::before\s*\{[\s\S]*transform:translateX\(calc\(var\(--nav-selected-index\) \* 100%\)\)/.test(glass)
+      && /transition:transform \.32s cubic-bezier/.test(glass),
+    'one shared selector capsule moves horizontally across the five tab slots');
+  ok(['budget','bills','subscriptions','credit','planning'].every((name, index) =>
+      new RegExp(`data-nav="${name}"\\]\\[aria-current="page"\\]\\) \\{ --nav-selected-index:${index}; \\}`).test(glass)),
+    'aria-current deterministically places the glass selector on all five destinations');
+  ok(/--nav-icon-budget:url\("data:image\/svg\+xml[^\n]*M3\.5 10\.5 12 3\.5/.test(glass)
+      && /--nav-icon-credit:url\("data:image\/svg\+xml[^\n]*rect x='2\.75' y='5\.5'/.test(glass),
+    'Budget uses a home icon while Credit keeps a distinct credit-card icon');
+  ok(/backdrop-filter:blur\(26px\) saturate\(1\.55\)/.test(glass)
+      && /border-radius:28px/.test(glass)
+      && /linear-gradient\(180deg/.test(glass),
+    'dock and selector use the intended frosted-glass depth rather than a flat white bar');
+  ok(/prefers-reduced-motion:reduce[\s\S]*\.sitenav-household::before[\s\S]*transition:none/.test(glass),
+    'glass selector motion has a reduced-motion fallback');
+}
+
 console.log('\n=== 14–17. No new dependency; Forecast and Credit content stay put ===');
 {
   ok(!Object.keys(pkg.dependencies || {}).some(name =>
@@ -160,8 +191,8 @@ console.log('\n=== 14–17. No new dependency; Forecast and Credit content stay 
       && /--nav-icon-subscriptions:url\("data:image\/svg\+xml/.test(css)
       && /--nav-icon-credit:url\("data:image\/svg\+xml/.test(css)
       && /--nav-icon-planning:url\("data:image\/svg\+xml/.test(css),
-    'the five icons are inline SVG data URIs in the shared stylesheet');
-  ok(!/cdn\.|unpkg\.|jsdelivr|fontawesome|fonts\.google/.test(css)
+    'the five icons remain inline SVG data URIs with no external icon dependency');
+  ok(!/cdn\.|unpkg\.|jsdelivr|fontawesome|fonts\.google/.test(css + glass)
       && HOUSEHOLD_PAGES.every(([file]) => !/cdn\.|unpkg\.|jsdelivr/.test(read(file))),
     'household pages and styles load no external icon or UI host');
   const forecast = read('public/forecast.js');
