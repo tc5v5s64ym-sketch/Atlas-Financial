@@ -48,6 +48,7 @@ const pages = [
   ['modellers.html', ['modellers.js']],
   ['credit.html', ['credit.js']],
   ['planning.html', ['planning.js']],
+  ['bills.html', ['bills.js']],
 ];
 for (const [html, jsFiles] of pages) {
   const markup = read('public/' + html);

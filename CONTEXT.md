@@ -272,14 +272,15 @@ has to read it and its HTML has to have somewhere to put it. Six keys once sat
 in `data.json` unrendered — including the entire income section — because that
 step was skipped.
 
-The site is six pages, each with its own script; `public/app.js` is the
+The site is seven pages, each with its own script; `public/app.js` is the
 shared core (helpers, charts, theme, boot) loaded by all of them. The
-household nav is **Plan | Credit | Planning**; the other three pages remain
+household nav is **Plan | Bills | Credit | Planning**; the other three pages remain
 routable at their URLs but are no longer linked from that nav:
 
 | Page | HTML | Script | What it shows |
 |---|---|---|---|
 | Plan (homepage) | `index.html` | `plan.js` + `forecast.js` | The payday waterfall through Balance after household budget; forecast diagnostics below |
+| Bills | `bills.html` | `bills.js` + `forecast.js` | Recurring household bills: provider, amount, cadence, next date, and monthly equivalent from `Forecast.householdBills`. Subscriptions stay off this page. |
 | Credit | `credit.html` | `credit.js` + `forecast.js` | What the household owes: mortgage, HELOC, then every active card — balances, limits, Forecast.utilisation headroom, rates, next required payment from the Forecast schedule (`Forecast.creditAccounts`) |
 | Planning | `planning.html` | `planning.js` + `forecast.js` | Known future costs: `Forecast.majorPlans` verdicts, ranges, timing and any Forecast payday set-aside, in Forecast order |
 | Modellers | `modellers.html` | `modellers.js` + `forecast.js` | Payoff and renewal modelling |
@@ -325,7 +326,7 @@ script.** If a page needs a number that does not exist yet, add it to
 Check for orphans before pushing (scans every page script):
 
 ```bash
-node -e "const d=require('./data.json'),fs=require('fs');const a=['app','forecast','plan','credit','planning','modellers','deepdive','records'].map(f=>fs.readFileSync('public/'+f+'.js','utf8')).join('\n');for(const k of Object.keys(d))if(!new RegExp('\\\\.'+k+'\\\\b').test(a))console.log('orphaned:',k)"
+node -e "const d=require('./data.json'),fs=require('fs');const a=['app','forecast','plan','bills','credit','planning','modellers','deepdive','records'].map(f=>fs.readFileSync('public/'+f+'.js','utf8')).join('\n');for(const k of Object.keys(d))if(!new RegExp('\\\\.'+k+'\\\\b').test(a))console.log('orphaned:',k)"
 ```
 
 ### Two data files, and one of them is generated

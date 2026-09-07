@@ -2,8 +2,8 @@
 /* Format the published-figures review comment from two snapshots.
  * `node scripts/figures-comment.js <base.json> <head.json> <baseRef>`
  *
- * The snapshot in `scripts/figures-snapshot.js` covers Plan, Credit, and
- * Planning household-facing figures. This helper must not describe that
+ * The snapshot in `scripts/figures-snapshot.js` covers Plan, Bills, Credit,
+ * and Planning household-facing figures. This helper must not describe that
  * comparison as covering Deep Dive, Records, Modellers, or "what the
  * household is told".
  *
@@ -60,7 +60,7 @@ function formatFiguresComment(base, head, baseRef) {
   if (!moved.length) {
     return `${MARKER}\n### 📊 Published figures — unchanged\n\n` +
       `Every one of the ${keys.length} figures the household can read off the ` +
-      `Plan, Credit, and Planning surfaces is identical on this head and on \`${baseRef}\`.\n`;
+      `Plan, Bills, Credit, and Planning surfaces is identical on this head and on \`${baseRef}\`.\n`;
   }
 
   const rows = moved.map(k => {
@@ -82,10 +82,10 @@ function formatFiguresComment(base, head, baseRef) {
     `Computed by running the engine on \`${baseRef}\` and on this ` +
     `head, not by reading the diff — the figure that started all of this was a derived one, ` +
     `and a source diff would not have shown it.\n\n` +
-    `**Every row below is a Plan, Credit, or Planning figure the household would read differently.** ` +
+    `**Every row below is a Plan, Bills, Credit, or Planning figure the household would read differently.** ` +
     `Confirm each was intended and is stated on the merge card.\n\n` +
     `| Figure | ${baseRef} | this PR | Δ |\n|---|---|---|---|\n${rows}\n\n` +
-    `<sub>${keys.length - moved.length} other Plan, Credit, and Planning figures unchanged.</sub>\n`;
+    `<sub>${keys.length - moved.length} other Plan, Bills, Credit, and Planning figures unchanged.</sub>\n`;
 }
 
 function main(argv) {

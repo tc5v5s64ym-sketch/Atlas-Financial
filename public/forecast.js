@@ -8656,6 +8656,119 @@
     };
   }
 
+  /* ------------------------------------------------- household bills view */
+  // "What recurring household bills does the household carry?" — one roster
+  // derived from plan.bills. Forecast already owns cadence (`occurrences`),
+  // household-obligation membership, and the once-row sibling that marks an
+  // occurrence stub. This projection does not invent a second bill engine,
+  // a paid/unpaid tracker, or a subscription planner.
+  //
+  // Subscriptions (`budgetCategory: subscriptions`) stay off this roster.
+  // A once-row whose id prefixes a recurring sibling is that sibling's
+  // reserved occurrence, not a second bill. Cadence is the plan frequency;
+  // a monthly-equivalent is derived only for monthly / biweekly / quarterly
+  // / yearly using the same 26/12, /3, /12 identities budgetBreakdown uses
+  // for dated-item netting. Once and unknown cadence contribute no monthly
+  // figure and are not smeared across a window. Next date is the first
+  // occurrences date on or after as-of, or the scheduled once date even
+  // when that date is before as-of. A passed date is not settlement.
+  const BILL_FREQUENCY_LABEL = {
+    monthly: 'Monthly',
+    biweekly: 'Every 2 weeks',
+    quarterly: 'Every 3 months',
+    yearly: 'Yearly',
+    once: 'Dated due',
+  };
+
+  function billRecurringCadenceKnown(bill) {
+    return !!(bill && (bill.frequency === 'monthly' || bill.frequency === 'biweekly'
+      || bill.frequency === 'quarterly' || bill.frequency === 'yearly'));
+  }
+
+  function billMonthlyEquivalent(bill) {
+    if (!bill || !billRecurringCadenceKnown(bill)) return null;
+    if (bill.amount == null || !isFinite(Number(bill.amount))) return null;
+    const amt = Number(bill.amount);
+    if (bill.frequency === 'monthly') return roundCent(amt);
+    if (bill.frequency === 'biweekly') return roundCent(amt * 26 / 12);
+    if (bill.frequency === 'quarterly') return roundCent(amt / 3);
+    if (bill.frequency === 'yearly') return roundCent(amt / 12);
+    return null;
+  }
+
+  function billIsSubscription(bill) {
+    return !!(bill && bill.budgetCategory === 'subscriptions');
+  }
+
+  function billIsOccurrenceStub(plan, bill) {
+    return !!(bill && bill.frequency === 'once' && monthlyCadenceSibling(plan, bill));
+  }
+
+  function householdBillNextDate(bill, asOf, horizonEnd) {
+    if (!bill) return null;
+    if (bill.needsDate) return null;
+    if (bill.frequency === 'once') return bill.date || null;
+    if (!billRecurringCadenceKnown(bill)) return null;
+    const dates = occurrences(bill, asOf, horizonEnd);
+    return (dates && dates[0]) || null;
+  }
+
+  function householdBills(plan, asOf, opts) {
+    opts = opts || {};
+    const horizon = knowledgeHorizon(plan, asOf, opts);
+    const roster = ((plan && plan.bills) || []).filter(bill =>
+      bill
+      && billIsHouseholdObligation(bill)
+      && !billIsSubscription(bill)
+      && !billIsOccurrenceStub(plan, bill));
+    const rows = roster.map(bill => {
+      const amount = bill.amount != null && isFinite(Number(bill.amount))
+        ? roundCent(Number(bill.amount)) : null;
+      const frequency = BILL_FREQUENCY_LABEL[bill.frequency] ? bill.frequency : null;
+      const monthlyEquivalent = billMonthlyEquivalent(bill);
+      const nextDate = householdBillNextDate(bill, asOf, horizon.end);
+      let cadenceNote = null;
+      if (bill.frequency === 'once') {
+        cadenceNote = 'Recurring cadence is not on the plan.';
+      } else if (!frequency) {
+        cadenceNote = 'Cadence is not recorded.';
+      }
+      return {
+        id: bill.id,
+        label: bill.label,
+        amount,
+        frequency,
+        frequencyLabel: frequency ? BILL_FREQUENCY_LABEL[frequency] : null,
+        recurringCadenceKnown: billRecurringCadenceKnown(bill),
+        nextDate,
+        monthlyEquivalent,
+        confidence: bill.confidence || null,
+        cadenceNote,
+        budgetCategory: bill.budgetCategory || null,
+      };
+    });
+    rows.sort((a, b) => {
+      if (a.nextDate && b.nextDate) {
+        const byDate = String(a.nextDate).localeCompare(String(b.nextDate));
+        if (byDate) return byDate;
+      } else if (a.nextDate) return -1;
+      else if (b.nextDate) return 1;
+      return String(a.label || '').localeCompare(String(b.label || ''));
+    });
+    const known = rows.filter(r => r.monthlyEquivalent != null);
+    const monthlyEquivalentTotal = known.length
+      ? roundCent(known.reduce((s, r) => s + r.monthlyEquivalent, 0))
+      : null;
+    return {
+      asOf,
+      horizonEnd: horizon.end,
+      bills: rows,
+      monthlyEquivalentTotal,
+      monthlyEquivalentIncludedCount: known.length,
+      monthlyEquivalentExcludedCount: rows.length - known.length,
+    };
+  }
+
   /* ------------------------------------------------- credit page accounts */
   // "What do we owe?" — one debt record composed with the two incumbent
   // authorities the Credit page needs beside it: headroom from `utilisation`
@@ -9227,7 +9340,8 @@
     projectDebts,
     nextDue, nextPaymentOut, unallocatedCash, compactSnapshot, publicationTotals, deepDive, publishedSpendType, rollupSpending, planStatus, mission, planPhases, nextMove, utilisation, creditAccounts, capitalisingCashMinimumOccurrences, renewal,
     payoffDebts, payoffModel,
-    paymentForMonths, startingCashAmount, resolveFundingSources, resolveActions, EPSILON, STEP };
+    paymentForMonths, startingCashAmount, resolveFundingSources, resolveActions, EPSILON, STEP,
+    householdBills };
   if (typeof module !== 'undefined' && module.exports) module.exports = Forecast;
   else root.Forecast = Forecast;
 
