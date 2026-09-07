@@ -163,29 +163,93 @@ console.log('\n=== 13c. iOS glass selector and cross-page sliding selection ==='
   ok(/@view-transition\s*\{\s*navigation:\s*auto;\s*\}/.test(glass)
       && /view-transition-name:\s*atlas-tab-indicator/.test(glass)
       && /::view-transition-group\(atlas-tab-indicator\)/.test(glass),
-    'the selected glass capsule participates in cross-document view transitions instead of popping onto the next tab');
-  ok(/\.sitenav-household::before\s*\{[\s\S]*transform:translateX\(calc\(var\(--nav-selected-index\) \* 100%\)\) scaleX\(\.91\)/.test(glass)
-      && /transition:transform \.36s cubic-bezier/.test(glass),
-    'one shared selector capsule glides horizontally and stays narrower than its tab slot');
-  ok(['budget','bills','subscriptions','credit','planning'].every((name, index) =>
-      new RegExp(`data-nav="${name}"\\]\\[aria-current="page"\\]\\) \\{ --nav-selected-index:${index}; \\}`).test(glass)),
-    'aria-current deterministically places the glass selector on all five destinations');
+    'the selected glass lens participates in cross-document view transitions instead of popping onto the next tab');
+
+  const glassMobile = mobileNavBlock(glass);
+  const dockRule = /\.sitenav-household\s*\{([^}]*)\}/.exec(glassMobile);
+  const dock = dockRule ? dockRule[1] : '';
+  const lensRules = [...glassMobile.matchAll(/\.sitenav-household::before\s*\{([^}]*)\}/g)].map(m => m[1]);
+  const lens = lensRules.find(body => /content:\s*""/.test(body)) || '';
+  const num = (re, text) => { const m = re.exec(text); return m ? Number(m[1]) : NaN; };
+  const dockHeight = num(/--nav-dock-height:\s*([\d.]+)px/, css);
+  const edge = num(/--nav-edge:\s*([\d.]+)px/, dock);
+  const lensHeight = num(/--nav-lens-height:\s*([\d.]+)px/, dock);
+  const lensInset = num(/--nav-lens-inset:\s*([\d.]+)px/, dock);
+
+  ok(lensRules.filter(body => /content:\s*""/.test(body)).length === 1
+      && (glass.match(/view-transition-name:\s*atlas-tab-indicator/g) || []).length === 1
+      && /view-transition-name:\s*atlas-tab-indicator/.test(lens)
+      && /\.sitenav-household a\[aria-current\]::before\s*\{\s*content:none;\s*\}/.test(glassMobile),
+    'exactly one lens is drawn by the dock itself and shared by all five tabs; no per-tab capsule remains');
+
+  const columns = /grid-template-columns:\s*((?:minmax\(0,[\d.]+fr\)\s*){5});/.exec(dock);
+  const factors = columns ? [...columns[1].matchAll(/minmax\(0,([\d.]+)fr\)/g)].map(m => Number(m[1])) : [];
+  const total = factors.reduce((a, b) => a + b, 0);
+  const starts = factors.map((_, i) => factors.slice(0, i).reduce((a, b) => a + b, 0));
+  const unitDivisor = num(/--nav-unit:\s*calc\(\(100% - 2 \* var\(--nav-edge\)\) \/ ([\d.]+)\)/, dock);
+  ok(factors.length === 5 && Math.abs(unitDivisor - total) < 1e-9 && /gap:\s*0;/.test(dock),
+    'the lens unit divides the dock by the same total as the five contiguous grid columns',
+    `columns ${factors.join(' | ')} → ${total}; unit divisor ${unitDivisor}`);
+  const positions = HOUSEHOLD_NAV.map(([, , name]) => {
+    const m = new RegExp(`\\.sitenav-household:has\\(a\\[data-nav="${name}"\\]\\[aria-current="page"\\]\\)\\s*\\{([^}]*)\\}`).exec(glassMobile);
+    if (!m) return null;
+    const start = /--nav-slot-start:\s*([\d.]+)/.exec(m[1]);
+    const span = /--nav-slot-span:\s*([\d.]+)/.exec(m[1]);
+    return { start: start ? Number(start[1]) : NaN, span: span ? Number(span[1]) : 1 };
+  });
+  ok(positions.every(Boolean)
+      && positions.every((p, i) => Math.abs(p.start - starts[i]) < 1e-9 && Math.abs(p.span - factors[i]) < 1e-9)
+      && new Set(positions.map(p => p.start)).size === 5
+      && /left:calc\(var\(--nav-edge\) \+ var\(--nav-slot-start\) \* var\(--nav-unit\) \+ var\(--nav-lens-inset\)\)/.test(lens)
+      && /width:calc\(var\(--nav-slot-span\) \* var\(--nav-unit\) - 2 \* var\(--nav-lens-inset\)\)/.test(lens),
+    'aria-current alone places the lens on five deterministic slots that line up with the grid columns');
+  const label = /font-size:clamp\(([\d.]+)rem,([\d.]+)vw,([\d.]+)rem\)/.exec(glassMobile);
+  const labelAt390 = label ? Math.min(Math.max(Number(label[1]) * 16, Number(label[2]) * 3.9), Number(label[3]) * 16) : NaN;
+  ok(factors.length === 5 && factors[2] > 1 && factors[2] === Math.max(...factors)
+      && factors[0] === factors[4] && factors[1] === factors[3]
+      && /white-space:nowrap/.test(glassMobile) && !/overflow-wrap:anywhere/.test(glassMobile)
+      && label && Number(label[1]) * 16 >= 8 && labelAt390 >= 9.5 && Number(label[3]) * 16 <= 11,
+    'Subscriptions owns the widest slot in a symmetric dock, stays on one line, and labels read ≥9.5px at the 390px target',
+    `label ${label ? labelAt390.toFixed(2) : '?'}px at 390px`);
+  ok(lensInset > 0 && lensHeight > 0 && lensHeight < dockHeight - 2 * edge
+      && /top:calc\(\(var\(--nav-dock-height\) - var\(--nav-lens-height\)\) \/ 2\)/.test(lens)
+      && /height:var\(--nav-lens-height\)/.test(lens)
+      && Math.abs((dockHeight - lensHeight) / 2 - (edge + lensInset)) < 1e-9
+      && /border-radius:calc\(var\(--nav-dock-height\) \/ 2\)/.test(dock)
+      && /border-radius:calc\(var\(--nav-lens-height\) \/ 2\)/.test(lens),
+    'the lens is inset from its slot on every side and its capsule corner is concentric with the dock capsule',
+    `dock ${dockHeight}px, lens ${lensHeight}px, edge ${edge}px + inset ${lensInset}px`);
+  ok(!/(^|[^-])border:/.test(lens)
+      && /inset 0 1px 0 var\(--nav-glass-lens-rim\)/.test(lens)
+      && /var\(--nav-glass-lens-shadow\)/.test(lens)
+      && /--nav-glass-lens-fill:\s*linear-gradient\(180deg,\s*rgba\(255,255,255,\.\d+\),\s*rgba\(255,255,255,\.\d+\)\),\s*color-mix\([^;]*transparent\)/.test(glass),
+    'the lens has no hard border: a translucent top-lit fill, a rim highlight and a soft lift shadow give it its edge');
+  ok(/backdrop-filter:blur\(\d+px\)/.test(dock) && /-webkit-backdrop-filter:blur\(\d+px\)/.test(dock)
+      && /--nav-glass-dock-fill:\s*color-mix\(in srgb, var\(--surface-1\) \d+%, transparent\)/.test(glass)
+      && /border:0;/.test(dock) && /0 0 0 1px var\(--nav-glass-dock-ring\)/.test(dock),
+    'the dock is one frosted, translucent surface with a hairline ring rather than a solid bordered bar');
+  const darkTokens = ['--nav-glass-dock-fill', '--nav-glass-lens-fill', '--nav-glass-lens-rim'];
+  const prefersDark = /@media \(prefers-color-scheme:dark\) \{\s*:root:where\(:not\(\[data-theme="light"\]\)\) \{([^}]*)\}/.exec(glass);
+  const forcedDark = /:root\[data-theme="dark"\] \{([^}]*)\}/.exec(glass);
+  ok(prefersDark && forcedDark
+      && darkTokens.every(t => prefersDark[1].includes(t) && forcedDark[1].includes(t)),
+    'dark glass tokens follow both the system scheme and the explicit theme toggle');
   ok(/--nav-icon-budget:url\("data:image\/svg\+xml[^\n]*M3\.5 10\.5 12 3\.5/.test(glass)
       && /--nav-icon-credit:url\("data:image\/svg\+xml[^\n]*rect x='2\.75' y='5\.5'/.test(glass),
     'Budget uses a home icon while Credit keeps a distinct credit-card icon');
-  ok(/backdrop-filter:blur\(30px\) saturate\(1\.4\)/.test(glass)
-      && /border-radius:25px/.test(glass)
-      && /linear-gradient\(180deg/.test(glass)
-      && /top:8px;[\s\S]*bottom:8px;/.test(glass),
-    'dock and inset selector use the lighter frosted-glass proportions from live iPhone polish');
-  ok(/min-height:70px/.test(glass)
-      && /min-height:58px/.test(glass)
-      && /width:23px/.test(glass)
-      && /font-size:clamp\(\.52rem,2\.35vw,\.62rem\)/.test(glass)
-      && /white-space:nowrap/.test(glass),
-    'polished dock keeps smaller icons and single-line labels, including Subscriptions');
-  ok(/prefers-reduced-motion:reduce[\s\S]*\.sitenav-household::before[\s\S]*transition:none/.test(glass),
-    'glass selector motion has a reduced-motion fallback');
+  ok(/min-height:calc\(var\(--nav-dock-height\) - 2 \* var\(--nav-edge\)\)/.test(glassMobile)
+      && dockHeight - 2 * edge >= 44,
+    'tab targets fill the dock interior and stay at least 44px tall');
+  const group = /::view-transition-group\(atlas-tab-indicator\)\s*\{([^}]*)\}/.exec(glass);
+  const duration = group ? num(/animation-duration:\s*([\d.]+)s/, group[1]) : NaN;
+  ok(group && duration > 0 && duration <= 0.5 && /animation-timing-function:\s*cubic-bezier/.test(group[1]),
+    'the lens travels between tabs quickly with a deceleration curve', `${duration}s`);
+  const reducedGlobal = /@media \(prefers-reduced-motion:reduce\) \{\s*@view-transition \{\s*navigation: none;\s*\}[\s\S]*?::view-transition-group\(atlas-tab-indicator\) \{\s*animation-duration:\.01ms;/.test(glass);
+  const reducedMobile = /@media \(max-width:640px\) and \(prefers-reduced-motion:reduce\) \{[\s\S]*?\.sitenav-household a \{\s*transition:none;/.test(glass);
+  ok(reducedGlobal && reducedMobile,
+    'reduced motion turns off the cross-page glide and the in-dock press/colour motion');
+  ok(/@supports not selector\(:has\(a\)\) \{\s*\.sitenav-household::before \{ content:none; \}/.test(glassMobile),
+    'a browser without :has() shows the colour-only selected state rather than a lens stuck on Budget');
 }
 
 console.log('\n=== 14–17. No new dependency; Forecast and Credit content stay put ===');
