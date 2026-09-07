@@ -307,11 +307,13 @@ boundary. Not a Forecast change.
 
 **B99 · Modellers / Deep Dive / Records still carry the legacy four-link nav** · **READY** · *presentation only; found 2026-09-03*
 
-The household nav is Plan | Bills | Subscriptions | Credit | Planning. `modellers.html`, `deepdive.html`
+The household nav is Budget | Bills | Subscriptions | Credit | Planning. `modellers.html`, `deepdive.html`
 and `records.html` remain routable but their own header still links Plan |
-Modellers | Deep Dive | Records. Their future (household nav, a diagnostics
-nav, or retirement) is owner direction; do not delete them on an agent's
-initiative.
+Modellers | Deep Dive | Records. The household floating dock is scoped to
+`sitenav-household` so those diagnostic pages keep the four-link text nav;
+that CSS leak from PR #268 is not a decision about their future. Their future
+(household nav, a diagnostics nav, or retirement) is owner direction; do not
+delete them on an agent's initiative.
 
 **B102 · Current-cash treatment of pending spending outside essential target lines** · **FIXED NOW in PR #263; merge pending** · *same cash-identity blocker, owner-directed repair*
 

@@ -60,7 +60,7 @@ const KEPT_ROWS = [
 ];
 
 function siteNav(html) {
-  const match = /<nav class="sitenav" aria-label="Pages">([\s\S]*?)<\/nav>/.exec(html);
+  const match = /<nav class="sitenav(?: [^"]*)?" aria-label="Pages">([\s\S]*?)<\/nav>/.exec(html);
   if (!match) return null;
   return [...match[1].matchAll(/<a href="([^"]+)"([^>]*)>([\s\S]*?)<\/a>/g)].map(m => {
     const labelled = /class="sitenav-label"[^>]*>([^<]+)</.exec(m[3]);

@@ -34,7 +34,7 @@ const HOUSEHOLD_NAV = [
 ];
 
 function siteNav(html) {
-  const match = /<nav class="sitenav" aria-label="Pages">([\s\S]*?)<\/nav>/.exec(html);
+  const match = /<nav class="sitenav(?: [^"]*)?" aria-label="Pages">([\s\S]*?)<\/nav>/.exec(html);
   if (!match) return null;
   return [...match[1].matchAll(/<a href="([^"]+)"([^>]*)>([\s\S]*?)<\/a>/g)].map(m => {
     const labelled = /class="sitenav-label"[^>]*>([^<]+)</.exec(m[3]);
@@ -85,6 +85,8 @@ console.log('=== 1–8. Shared household destinations, routes, order, and curren
       `${file} marks exactly one destination current: ${label}`);
     ok(nav && nav.every(l => l.hasIcon && l.dataNav),
       `${file} uses the shared icon + data-nav vocabulary, not label-only links`);
+    ok(/class="sitenav sitenav-household"/.test(read(file)),
+      `${file} marks the household dock so diagnostic sitenav is not restyled`);
   }
 }
 
@@ -101,8 +103,10 @@ console.log('\n=== 9–13. iPhone dock: safe area, clearance, touch targets, mot
       && /left:calc\(\s*var\(--nav-dock-inset\)\s*\+\s*env\(safe-area-inset-left/.test(mobile)
       && /right:calc\(\s*var\(--nav-dock-inset\)\s*\+\s*env\(safe-area-inset-right/.test(mobile),
     'the floating dock is placed relative to the iOS safe area, not flush to the physical edge');
-  ok(/padding-bottom:calc\(\s*var\(--nav-dock-height\)\s*\+\s*var\(--nav-dock-lift\)\s*\+\s*18px\s*\+\s*env\(safe-area-inset-bottom/.test(mobile),
-    'page content keeps clearance for dock height + lift + breathing room + safe area');
+  ok(/body:has\(\.sitenav-household\) \{[\s\S]*padding-bottom:calc\(\s*var\(--nav-dock-height\)\s*\+\s*var\(--nav-dock-lift\)\s*\+\s*18px\s*\+\s*env\(safe-area-inset-bottom/.test(mobile)
+      && /\.sitenav-household \{/.test(mobile)
+      && !/\.sitenav:not\(\.subnav\)/.test(css),
+    'dock clearance and the five-column dock apply only to household nav, not every sitenav');
   ok(/grid-template-columns:\s*repeat\(5,minmax\(0,1fr\)\)/.test(mobile),
     'mobile dock is a five-column grid, not the retired four-column website bar');
   ok(/min-height:52px/.test(mobile) && /min-height:var\(--nav-dock-height\)/.test(mobile),
@@ -114,6 +118,36 @@ console.log('\n=== 9–13. iPhone dock: safe area, clearance, touch targets, mot
     'press-scale and color motion are disabled when the household prefers reduced motion');
   ok(/transition:color \.16s ease/.test(mobile) && /a:active \{ transform:scale\(\.96\); \}/.test(mobile),
     'active-state motion exists and stays short');
+}
+
+console.log('\n=== 13b. Diagnostic pages keep the four-link text nav ===');
+{
+  const diagnostic = [
+    ['public/modellers.html', 'Modellers'],
+    ['public/deepdive.html', 'Deep Dive'],
+    ['public/records.html', 'Records'],
+  ];
+  const expected = JSON.stringify([
+    ['/', 'Plan'],
+    ['/modellers.html', 'Modellers'],
+    ['/deepdive.html', 'Deep Dive'],
+    ['/records.html', 'Records'],
+  ]);
+  for (const [file, label] of diagnostic) {
+    const html = read(file);
+    const nav = siteNav(html);
+    ok(!/sitenav-household/.test(html),
+      `${file} is not marked as the household dock`);
+    ok(nav && nav.length === 4, `${file} still has four diagnostic destinations`,
+      nav ? nav.map(l => l.label).join(' | ') : 'no nav');
+    ok(nav && JSON.stringify(nav.map(l => [l.href, l.label])) === expected,
+      `${file} still reads Plan | Modellers | Deep Dive | Records`);
+    ok(nav && nav.every(l => !l.hasIcon && !l.dataNav),
+      `${file} stays text-only — no empty icon wells`);
+    const current = nav ? nav.filter(l => l.current) : [];
+    ok(current.length === 1 && current[0].label === label,
+      `${file} marks exactly one diagnostic destination current: ${label}`);
+  }
 }
 
 console.log('\n=== 14–17. No new dependency; Forecast and Credit content stay put ===');
