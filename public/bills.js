@@ -1,12 +1,13 @@
 'use strict';
 /* Bills — "What recurring household bills does the household carry?"
  *
- * Every row comes from Forecast.householdBills on the served /data.json the
+ * Every card comes from Forecast.householdBills on the served /data.json the
  * shared core fetched. Cadence, next date, monthly-equivalent and the page
- * total are Forecast's. This file formats those outputs. It never annualises
- * a bill, never relabels quarterly or biweekly as monthly, never invents a
- * next date from the clock, never infers paid/unpaid because a date passed,
- * and never totals page constants.
+ * total are Forecast's. This file formats those outputs into the same
+ * fact-card language Credit uses. It never annualises a bill, never relabels
+ * quarterly or biweekly as monthly, never invents a next date from the clock,
+ * never infers paid/unpaid because a date passed, and never totals page
+ * constants.
  *
  * An unknown fact stays "Unknown". It is never printed as $0 or as a monthly
  * bill merely for presentation. */
@@ -20,7 +21,7 @@ function billsConfidenceChip(confidence) {
 }
 
 function billsUnknown() {
-  return '<span class="bills-unknown">Unknown</span>';
+  return '<span class="fact-unknown">Unknown</span>';
 }
 
 function billsMoney(amount, confidence) {
@@ -29,59 +30,39 @@ function billsMoney(amount, confidence) {
   return `${estimated ? '≈ ' : ''}${money2(amount)}`;
 }
 
-function billsCadence(row) {
-  const label = row.frequencyLabel || null;
-  const note = row.cadenceNote ? `<small>${row.cadenceNote}</small>` : '';
-  if (!label) return `${billsUnknown()}${note}`;
-  return `${label}${note}`;
+function billsFact(label, value, small, attrs) {
+  return `<div class="fact-card-fact"${attrs ? ' ' + attrs : ''}><dt>${label}</dt><dd>${value}${small ? `<small>${small}</small>` : ''}</dd></div>`;
 }
 
-function billsNextDate(row) {
-  if (!row.nextDate) return billsUnknown();
-  return fmtDateFull(row.nextDate);
-}
-
-function billsMonthlyEquivalent(row) {
-  if (row.monthlyEquivalent == null || !isFinite(Number(row.monthlyEquivalent))) {
-    return billsUnknown();
-  }
-  return money2(row.monthlyEquivalent);
-}
-
-function billsRowHtml(row) {
-  return `<tr data-bill-id="${row.id}" data-bill-frequency="${row.frequency || 'unknown'}">
-    <td>
-      <span class="bills-name">${row.label}</span>
+function billsCardHtml(row) {
+  const cadence = row.frequencyLabel || billsUnknown();
+  const next = row.nextDate ? fmtDateFull(row.nextDate) : billsUnknown();
+  const monthly = row.monthlyEquivalent == null || !isFinite(Number(row.monthlyEquivalent))
+    ? billsUnknown()
+    : money2(row.monthlyEquivalent);
+  return `<article class="fact-card" data-bill-id="${row.id}" data-bill-frequency="${row.frequency || 'unknown'}">
+    <div class="fact-card-head">
+      <h2>${row.label}</h2>
       ${billsConfidenceChip(row.confidence)}
-    </td>
-    <td class="num" data-bills-fact="amount">${billsMoney(row.amount, row.confidence)}</td>
-    <td data-bills-fact="cadence">${billsCadence(row)}</td>
-    <td data-bills-fact="next">${billsNextDate(row)}</td>
-    <td class="num" data-bills-fact="monthly">${billsMonthlyEquivalent(row)}</td>
-  </tr>`;
+    </div>
+    <div class="fact-card-amount" data-bills-fact="amount">
+      <span class="lab">Amount</span>
+      <b>${billsMoney(row.amount, row.confidence)}</b>
+    </div>
+    <dl class="fact-card-facts">
+      ${billsFact('Cadence', cadence, row.cadenceNote, 'data-bills-fact="cadence"')}
+      ${billsFact('Next due', next, null, 'data-bills-fact="next"')}
+      ${billsFact('Monthly equivalent', monthly, null, 'data-bills-fact="monthly"')}
+    </dl>
+  </article>`;
 }
 
-function billsTableHtml(view) {
+function billsListHtml(view) {
   const rows = Array.isArray(view.bills) ? view.bills : [];
   if (!rows.length) {
     return '<p class="lede">No household bills are on this opening.</p>';
   }
-  return `<div class="scroll bills-wrap">
-    <table>
-      <thead>
-        <tr>
-          <th>Bill</th>
-          <th class="num">Amount</th>
-          <th>Cadence</th>
-          <th>Next</th>
-          <th class="num">Monthly equivalent</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${rows.map(billsRowHtml).join('')}
-      </tbody>
-    </table>
-  </div>`;
+  return rows.map(billsCardHtml).join('');
 }
 
 function billsTotalHtml(view) {
@@ -111,9 +92,9 @@ function billsPageHtml(view) {
     lede: rows.length
       ? `${rows.length} household bill${rows.length === 1 ? '' : 's'} on the ${asOf} opening. Cadence is the plan frequency. Monthly equivalent is only shown when Forecast can derive it from that cadence.`
       : '',
-    list: billsTableHtml(view),
+    list: billsListHtml(view),
     total: billsTotalHtml(view),
-    note: 'Rows are Forecast.householdBills from the served plan. Subscriptions and memberships are a separate list and are not here. A dated due whose recurring cadence is not on the plan stays a dated due. A passed date is not treated as paid. Nothing here ranks bills or moves money.',
+    note: 'Cards are Forecast.householdBills from the served plan. Subscriptions and memberships are a separate list and are not here. A dated due whose recurring cadence is not on the plan stays a dated due. A passed date is not treated as paid. Nothing here ranks bills or moves money.',
   };
 }
 
