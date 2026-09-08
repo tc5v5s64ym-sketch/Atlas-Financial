@@ -9,7 +9,8 @@
  * Current observed Chequing A/B win over the dated Forecast opening when
  * live-plan attached a complete freshness-qualified `observedCash` packet.
  * That packet does not rewrite startingCashAmount, paydayAllocation,
- * currentPeriodAction, LEFT OVER, or any Forecast cash walk, and grants no
+ * live Current Balance (posted household chequing cash, not this overdraft
+ * headline), currentPeriodAction, LEFT OVER, or any Forecast cash walk, and grants no
  * permission to borrow. Overdraft remains borrowed capacity, not cash.
  */
 (function init(root, factory) {

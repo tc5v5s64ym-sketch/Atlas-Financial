@@ -209,11 +209,16 @@ console.log('=== 1. one spendable cash figure, no overdraft in the number ===');
   const liveCash = advice.paydayAllocation.liveCurrentBalance != null
     ? advice.paydayAllocation.liveCurrentBalance
     : F.startingCashAmount(plan);
+  const independentChequing = Math.round(((plan.startingCash && plan.startingCash.breakdown) || [])
+    .filter(r => r && (r.id === 'chequing-a' || r.id === 'chequing-b'))
+    .reduce((s, r) => s + (Number(r.value) || 0), 0) * 100) / 100;
   const chequing = C.chequingAvailability(plan, data.revolvingExtra, data.liveOverlay);
   ok(near(advice.paydayAllocation.available, independent),
     'Forecast.paydayAllocation.available independently equals spendable opening plus same-day income');
+  ok(near(liveCash, independentChequing),
+    'live Current Balance independently equals Chequing A + Chequing B');
   ok(live.includes(composer.money2(liveCash)),
-    'live Current Balance is posted / starting cash');
+    'live Current Balance is posted household chequing cash');
   ok(/data-live-current-balance/.test(live) && /Current Balance/.test(live),
     'live cash is labelled Current Balance, not credit');
   ok(chequing.status === 'available' && !near(chequing.available, independent),

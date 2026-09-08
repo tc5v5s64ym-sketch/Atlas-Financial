@@ -191,10 +191,15 @@ console.log('\n=== every displayed financial answer traces to incumbents ===');
   });
   const independentCash = (plan.startingCash.breakdown || [])
     .reduce((sum, row) => sum + Number(row.value || 0), 0);
+  const independentChequing = (plan.startingCash.breakdown || [])
+    .reduce((sum, row) => {
+      if (!row || (row.id !== 'chequing-a' && row.id !== 'chequing-b')) return sum;
+      return sum + Number(row.value || 0);
+    }, 0);
   ok(near(advice.paydayAllocation.available, independentCash),
     'incumbent payday available reconciles to the independent spendable-account sum');
-  ok(rendered.includes(composer.money2(independentCash)),
-    'the displayed available amount is that reconciled Forecast payday amount');
+  ok(rendered.includes(composer.money2(independentChequing)),
+    'the displayed Current Balance is independently household chequing cash');
   ok(/Household budget/.test(rendered) && /Current Balance/.test(rendered)
       && /Balance after household budget/.test(rendered)
       && !/Extra credit-card repayment/.test(rendered)

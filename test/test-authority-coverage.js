@@ -60,6 +60,7 @@ const FORECAST_NON_AUTHORITY = new Set([
   'EPSILON',
   'STEP',
   'startingCashAmount',
+  'postedHouseholdChequingCash',
   'resolveFundingSources',
   'resolveActions',
 ]);

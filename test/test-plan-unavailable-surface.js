@@ -121,6 +121,14 @@ function independentDatedCash(plan) {
   return Math.round(rows.reduce((s, r) => s + (Number(r && r.value) || 0), 0) * 100) / 100;
 }
 
+function independentChequing(plan) {
+  const rows = (plan && plan.startingCash && plan.startingCash.breakdown) || [];
+  return Math.round(rows.reduce((s, r) => {
+    if (!r || (r.id !== 'chequing-a' && r.id !== 'chequing-b')) return s;
+    return s + (Number(r.value) || 0);
+  }, 0) * 100) / 100;
+}
+
 function independentBell(plan) {
   return ((plan && plan.bills) || []).find(row => row && row.id === 'bell') || null;
 }
@@ -347,8 +355,11 @@ console.log('\n=== 5. trusted control keeps the normal This payday waterfall ===
     'trusted operating plan still prints This payday / pay-period / waterfall experience');
   ok(near(Number(trusted.defaultView.currentBalance), DATED_CASH),
     'trusted control does not move current figures');
-  ok(html.includes(composer.money2(DATED_CASH)),
-    'trusted waterfall still prints the independent dated-opening cash as Current Balance');
+  const independentPostedChequing = independentChequing(liveData.plan);
+  ok(html.includes(composer.money2(independentPostedChequing))
+      && /Current Balance/.test(html)
+      && !near(independentPostedChequing, DATED_CASH),
+    'trusted waterfall prints independent household chequing cash as Current Balance, not the savings-inclusive dated opening');
 }
 
 console.log('\n=== 6. page remains a renderer; Forecast is unchanged ===');

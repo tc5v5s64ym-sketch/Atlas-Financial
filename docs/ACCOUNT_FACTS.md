@@ -32,9 +32,9 @@ Three concepts stay distinct:
 
 1. **Future salary.** Confirmed ordinary salary is dependable Forecast
    household income on its normal cadence, including before the next payday.
-2. **Current posted cash.** Current Balance is trusted balances in the
-   household cash accounts only. The TENNIS INCOME balance is not Current
-   Balance.
+2. **Current posted cash.** Current Balance is posted household chequing
+   cash only (Chequing A / BILLS ACCOUNT and Chequing B / WEEKLY SPENDING).
+   Savings and the TENNIS INCOME balance are not Current Balance.
 3. **Posting / representation proof.** When an Amanda salary occurrence has
    already transferred TENNIS INCOME → BILLS, that transfer identity proves
    the occurrence is already inside Current Balance. The transfer is not a

@@ -147,6 +147,13 @@ function independentAvailable(plan, asOf) {
   return opening + sameDayIncome;
 }
 
+function independentChequing(plan) {
+  return (plan.startingCash.breakdown || []).reduce((sum, row) => {
+    if (!row || (row.id !== 'chequing-a' && row.id !== 'chequing-b')) return sum;
+    return sum + Number(row.value || 0);
+  }, 0);
+}
+
 function section(html, id) {
   const match = new RegExp(`<section id="${id}"[\\s\\S]*?<\\/section>`).exec(html);
   return match ? match[0] : '';
@@ -247,6 +254,7 @@ console.log('\n=== composed surface: cash, identity, debt, protection, limits ==
     liveOverlay: data.liveOverlay,
   });
   const independentCash = independentAvailable(plan, asOf);
+  const independentPostedChequing = independentChequing(plan);
   const creditHeadroom = (data.revolvingExtra || []).reduce((sum, row) => {
     const limit = Number(row && row.limit);
     return sum + (isFinite(limit) ? limit : 0);
@@ -280,11 +288,11 @@ console.log('\n=== composed surface: cash, identity, debt, protection, limits ==
     'available cash independently equals spendable opening plus same-day income');
   ok(creditHeadroom > 0 && alloc.available + 0.005 < independentCash + creditHeadroom,
     'available credit is not treated as household cash');
-  ok(live.includes(composer.money2(independentCash))
+  ok(live.includes(composer.money2(independentPostedChequing))
     && /Current Balance/.test(live)
     && !/live Lunch Money overlay/.test(live)
     && !/Available in chequing/.test(live),
-  'live Current Balance publishes that independent cash figure, not credit, not an available-in-chequing headline, and not live overlay');
+  'live Current Balance publishes independent household chequing cash, not credit, not an available-in-chequing headline, and not live overlay');
   ok(near(lineSum, alloc.allocatedTotal)
     && near(lineSum + Number(alloc.remainder), alloc.available),
   'independent allocation-line sum plus remainder equals available resources');

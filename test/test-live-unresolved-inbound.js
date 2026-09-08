@@ -244,6 +244,7 @@ console.log('\n=== 1. August 30 control: live cash plus unposted same-day bill =
   const B = -538.09;
   const S = 0.58;
   const independentCash = round2(A + B + S);
+  const independentChequing = round2(A + B);
   ok(near(independentCash, 2287.54), 'independent Aug 30 cash is $2,287.54');
   const canonical = clone(liveData);
   const scheduledFees = Number((canonical.plan.bills || [])
@@ -276,6 +277,7 @@ console.log('\n=== 2. August 31 proven Amanda TENNIS INCOME → BILLS transfer =
   const B = 200.10;
   const S = 7.19;
   const independentCash = round2(A + B + S);
+  const independentChequing = round2(A + B);
   const canonical = clone(liveData);
   const extra = {
     fetchedAt: '2026-08-31T18:00:00.000Z',
@@ -303,9 +305,9 @@ console.log('\n=== 2. August 31 proven Amanda TENNIS INCOME → BILLS transfer =
   const p2 = activePeriod(advice);
   ok(p2 && p2.role === 'active' && p2.start === '2026-08-28' && p2.end === '2026-09-10',
     'This Pay Period is active on Aug 31');
-  ok(near(advice.defaultView.liveCurrentBalance, independentCash)
-      && near(advice.paydayAllocation.liveCurrentBalance, independentCash),
-    'live Current Balance is observed cash, not the dated opening');
+  ok(near(advice.defaultView.liveCurrentBalance, independentChequing)
+      && near(advice.paydayAllocation.liveCurrentBalance, independentChequing),
+    'live Current Balance is posted household chequing cash, not savings-inclusive spendable');
   const snap = result.data.plan.opening && result.data.plan.opening.paydaySnapshot;
   const datedAsOf = canonical.plan.opening && canonical.plan.opening.asOf;
   const child = (canonical.plan.income || []).find(s => s && s.id === 'childBenefit');
@@ -339,6 +341,7 @@ console.log('\n=== 3. August 31 no transfer yet — core unresolved inbound ==='
   const B = 200.10;
   const S = 7.19;
   const independentCash = round2(A + B + S);
+  const independentChequing = round2(A + B);
   const canonical = clone(liveData);
   const extra = {
     fetchedAt: '2026-08-31T18:00:00.000Z',
@@ -378,6 +381,7 @@ console.log('\n=== 4. Ambiguous TENNIS INCOME counterparts ===');
   const B = 100;
   const S = 1.5;
   const independentCash = round2(A + B + S);
+  const independentChequing = round2(A + B);
   const canonical = clone(liveData);
   const extra = {
     fetchedAt: '2026-08-31T18:00:00.000Z',
@@ -411,6 +415,7 @@ console.log('\n=== 5. Wrong source: WEEKLY SPENDING → BILLS is not salary ==='
   const B = 90.10;
   const S = 2.22;
   const independentCash = round2(A + B + S);
+  const independentChequing = round2(A + B);
   const canonical = clone(liveData);
   const extra = {
     fetchedAt: '2026-08-31T18:00:00.000Z',
@@ -441,6 +446,7 @@ console.log('\n=== 6. Wrong amount TENNIS INCOME → BILLS ===');
   const B = 40.40;
   const S = 3.03;
   const independentCash = round2(A + B + S);
+  const independentChequing = round2(A + B);
   const canonical = clone(liveData);
   const extra = {
     fetchedAt: '2026-08-31T18:00:00.000Z',
@@ -589,6 +595,7 @@ console.log('\n=== 10. Active two-period calendar waterfall ===');
   const B = 200.10;
   const S = 7.19;
   const independentCash = round2(A + B + S);
+  const independentChequing = round2(A + B);
   const canonical = clone(liveData);
   isolateGroceries(canonical.plan);
   const extra = {
@@ -621,8 +628,8 @@ console.log('\n=== 10. Active two-period calendar waterfall ===');
   ok(nextP && nextP.start === '2026-09-11' && nextP.end === '2026-09-24',
     'Next Pay Period is Sep 11–Sep 24');
   ok(thisP.operatingPlanUnavailable !== true, 'active waterfall is not unavailable');
-  ok(near(advice.defaultView.liveCurrentBalance, independentCash),
-    'live Current Balance is observed cash');
+  ok(near(advice.defaultView.liveCurrentBalance, independentChequing),
+    'live Current Balance is posted household chequing cash');
   const snap = result.data.plan.opening && result.data.plan.opening.paydaySnapshot;
   const datedAsOf = canonical.plan.opening && canonical.plan.opening.asOf;
   const child = (canonical.plan.income || []).find(s => s && s.id === 'childBenefit');
@@ -680,6 +687,7 @@ console.log('\n=== 12. Assistant / operating-answer consume Forecast, no second 
   const B = 222.22;
   const S = 3.33;
   const independentCash = round2(A + B + S);
+  const independentChequing = round2(A + B);
   const applied = overlay(clone(liveData), {
     fetchedAt: '2026-08-31T18:00:00.000Z',
     tweaks: Object.assign({
@@ -726,6 +734,7 @@ console.log('\n=== 13. Same-date refresh: opening already liveAsOf, inbound stil
   const B = 155.55;
   const S = 4.01;
   const independentCash = round2(A + B + S);
+  const independentChequing = round2(A + B);
   ok(near(independentCash, 1904), 'independent same-date cash is $1,904.00');
   const canonical = clone(liveData);
   canonical.meta = Object.assign({}, canonical.meta, { asOf: '2026-08-31' });
