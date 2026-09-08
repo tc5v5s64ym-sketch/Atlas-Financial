@@ -1806,12 +1806,15 @@ function calendarIncomeHtml(period) {
     return calendarCurrentUnavailableHtml(period);
   }
   const rows = (period && period.income) || [];
-  if (!rows.length) {
+  const named = rows.filter(row => row && row.otherIncome !== true);
+  const other = (period && period.otherIncome) || { amount: 0, items: [] };
+  const otherItems = Array.isArray(other.items) ? other.items : [];
+  if (!named.length && !otherItems.length && !(Number(other.amount) > 0)) {
     return `<div class="payday-period-income" data-calendar-income>
       <p class="operating-lead">No income in this period.</p>
     </div>`;
   }
-  const lines = rows.map(row => {
+  const line = (row, extra = '') => {
     const notRelied = row.notReliedUpon === true
       || row.settlement === 'not-relied-upon'
       || row.status === 'unresolved';
@@ -1824,16 +1827,72 @@ function calendarIncomeHtml(period) {
       : row.alreadyInCash && row.status !== 'received' ? 'already in balance'
       : status;
     const statusAttr = notRelied ? 'not-relied-upon' : status;
-    return `<div class="operating-line" data-period-income="${row.id || ''}" data-income-status="${statusAttr}">
+    return `<div class="operating-line" data-period-income="${row.id || ''}" data-income-status="${statusAttr}"${extra}>
       <span>${glanceLineLabel(row, note)}</span><span>${amount != null ? about + amount : '—'}</span>
     </div>`;
-  }).join('');
+  };
+  const namedLines = named.map(row => line(row)).join('');
+  const esc = v => String(v == null ? '' : v)
+    .replace(/&/g, '\u0026amp;')
+    .replace(/</g, '\u0026lt;')
+    .replace(/>/g, '\u0026gt;')
+    .replace(/"/g, '\u0026quot;');
+  const otherAmount = other.amount != null ? Number(other.amount) : 0;
+  let otherHtml;
+  if (!otherItems.length) {
+    otherHtml = `<div class="operating-line" data-other-income data-other-income-amount="${esc(money2(otherAmount))}">
+      <span>Other income</span><span>${money2(otherAmount)}</span>
+    </div>`;
+  } else {
+    const itemLines = otherItems.map(row => {
+      const recon = Array.isArray(row.recon) ? row.recon : [];
+      const tx = recon[0] || {};
+      const displayed = String(tx.displayedPayee || row.label || '').trim();
+      const original = String(tx.originalMerchant || '').trim();
+      const payeeRaw = displayed || original || 'Merchant unavailable';
+      const isReceived = row.status === 'received';
+      const pending = !isReceived && (tx.pending === true || row.confidence === 'estimated')
+        ? '<span class="other-income-tx-pending">Expected</span>'
+        : '';
+      const received = isReceived
+        ? '<span class="other-income-tx-received">Received</span>'
+        : '';
+      const dateAttr = row.date ? ` datetime="${esc(row.date)}"` : '';
+      const dateText = row.date ? fmtDate(row.date) : '—';
+      const idAttr = row.id ? ` data-other-income-item="${esc(row.id)}"` : '';
+      const status = isReceived ? 'received'
+        : row.alreadyInCash ? 'already in balance' : 'arriving';
+      const about = !isReceived && row.confidence === 'estimated' ? 'about ' : '';
+      return `<li class="other-income-tx"${idAttr} data-income-status="${status}">
+        <time${dateAttr}>${esc(dateText)}</time>
+        <span class="other-income-tx-payee">${esc(payeeRaw)}${received}${pending}</span>
+        <span class="other-income-tx-amount">${about}${money2(row.amount)}</span>
+      </li>`;
+    }).join('');
+    otherHtml = `<div class="other-income-openable" data-other-income>
+      <details class="other-income-detail">
+        <summary class="other-income-summary">
+          <span class="other-income-label">Other income</span>
+          <span class="other-income-amount" data-other-income-amount>${money2(otherAmount)}</span>
+        </summary>
+        <div class="other-income-breakdown" data-other-income-detail>
+          <ul class="other-income-txs">${itemLines}</ul>
+          <p class="other-income-tx-total"><span>Total</span><span data-other-income-total>${money2(otherAmount)}</span></p>
+        </div>
+      </details>
+    </div>`;
+  }
   const added = period && period.incomeAdded != null && Number(period.incomeAdded) > 0
     ? `<p class="payday-qual payday-total"><span>Assigned income</span><span>${money2(period.incomeAdded)}</span></p>`
     : '';
+  const total = period && period.incomeTotal != null
+    ? `<p class="payday-qual payday-total payday-total-strong" data-income-total>
+        <span>Total income</span><span data-income-total-amount>${money2(period.incomeTotal)}</span>
+      </p>`
+    : '';
   return `<div class="payday-period-income" data-calendar-income>
-    <div class="operating-lines">${lines}</div>
-    ${added}
+    <div class="operating-lines">${namedLines}${otherHtml}</div>
+    ${added}${total}
   </div>`;
 }
 

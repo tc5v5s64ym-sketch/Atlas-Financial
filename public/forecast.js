@@ -100,6 +100,11 @@
     return rows.find(row => row && (row.id === 'payroll' || /seaspan/i.test(row.label || '')))
       || null;
   }
+  function isDalePayrollStream(stream) {
+    if (!stream) return false;
+    if (stream.id === 'payroll') return true;
+    return /seaspan/i.test(`${stream.id || ''} ${stream.label || ''}`);
+  }
   function formatSpendingCycleRange(start, end) {
     if (!start || !end) return '';
     const [ys, ms, ds] = String(start).split('-').map(Number);
@@ -2281,6 +2286,10 @@
     'natural gas', 'other bank fees',
   ]);
   const REFUND_LABELS = new Set(['refund', 'refunds', 'reimbursement']);
+  const OTHER_INCOME_INFLOW_LABELS = new Set([
+    'income', 'gifts', 'gift', 'reimbursement', 'tax refund', 'rebate',
+    'other income',
+  ]);
 
   function txTextBlob(tx) {
     if (!tx) return '';
@@ -4529,8 +4538,9 @@
     const amt = event.amount;
     if (!(amt > EPSILON)) return null;
     const key = event.id + '@' + event.date;
+    const incomeClass = incomeClassForEvent(plan, event);
     if (event.id && notRelied && notRelied.has(key)) {
-      return {
+      return applyIncomeClass(plan, {
         id: event.id,
         label: event.label,
         kind: 'income',
@@ -4547,12 +4557,18 @@
         alreadyInCash: false,
         notReliedUpon: true,
         notReliedUponReason: notReliedUponReason(plan, opts, event.id, event.date),
-      };
+        incomeClass,
+        otherIncome: incomeClass === 'other',
+      }, event);
     }
     const paid = !!(event.id && represented.has(key));
     const inside = recurringInsideOpening(plan, event, cashAsOf);
-    const received = paid || inside || (event.date && cashAsOf && event.date < cashAsOf);
-    return {
+    const stream = ((plan && plan.income) || []).find(s => s && s.id === event.id);
+    const otherOnce = incomeClass === 'other'
+      && (!stream || stream.frequency === 'once');
+    const datePassed = !!(event.date && cashAsOf && event.date < cashAsOf);
+    const received = paid || inside || (datePassed && !otherOnce);
+    return applyIncomeClass(plan, {
       id: event.id,
       label: event.label,
       kind: 'income',
@@ -4567,7 +4583,119 @@
       movement: householdMovement(amt, 'in'),
       confidence: event.confidence || null,
       alreadyInCash: received,
-    };
+      incomeClass,
+      otherIncome: incomeClass === 'other',
+    }, event);
+  }
+
+  function incomeClassOfStream(stream) {
+    if (!stream) return 'other';
+    if (stream.incomeClass === 'other' || stream.group === 'other') return 'other';
+    if (isDalePayrollStream(stream)) return 'dale';
+    if (isAmandaSalaryStream(stream)) return 'amanda';
+    if (/^other-income:/.test(stream.id || '')) return 'other';
+    return 'named';
+  }
+
+  function incomeClassForEvent(plan, event) {
+    if (!event) return 'other';
+    if (event.otherIncome === true || event.incomeClass === 'other' || event.group === 'other') {
+      return 'other';
+    }
+    const stream = ((plan && plan.income) || []).find(s => s && s.id === event.id);
+    return incomeClassOfStream(stream || event);
+  }
+
+  function applyIncomeClass(plan, row, event) {
+    if (!row) return row;
+    const cls = incomeClassForEvent(plan, event || row);
+    row.incomeClass = cls;
+    row.otherIncome = cls === 'other';
+    return row;
+  }
+
+  function txInflowAmount(tx) {
+    const amt = Number(tx && tx.amount);
+    if (!isFinite(amt) || amt === 0) return 0;
+    if (tx.isIncome === true) return roundCent(Math.abs(amt));
+    if (amt < 0) return roundCent(-amt);
+    return 0;
+  }
+
+  function representedIncomeTransactionIds(opts) {
+    const ids = new Set();
+    const packet = currentPeriodActualsPacket(opts);
+    const rows = packet && Array.isArray(packet.representedActuals)
+      ? packet.representedActuals : [];
+    for (const row of rows) {
+      if (row && row.transactionId != null) ids.add(String(row.transactionId));
+    }
+    return ids;
+  }
+
+  function txMatchesScheduledIncome(tx, plan, opts) {
+    if (!tx) return false;
+    const linked = representedIncomeTransactionIds(opts);
+    if (tx.id != null && linked.has(String(tx.id))) return true;
+    const blob = txTextBlob(tx);
+    const account = personalAccountText(tx);
+    if (isTennisIncomeAccount(account + ' ' + blob)) return true;
+    if (/seaspan/i.test(blob)) return true;
+    if (/child tax ben|\bccb\b/i.test(blob)) return true;
+    return false;
+  }
+
+  function isGenuineOtherIncomeTransaction(tx, plan, opts) {
+    if (!tx) return false;
+    if (tx.accountRole === 'household-external' || tx.accountRole === 'unmapped') return false;
+    if (isTennisIncomeAccount(personalAccountText(tx))) return false;
+    if (!(txInflowAmount(tx) > EPSILON)) return false;
+    const packet = currentPeriodActualsPacket(opts);
+    const classifyOpts = Object.assign({}, opts || {}, {
+      packet,
+      currentPeriodActuals: packet,
+    });
+    const cls = classifyCurrentPeriodTransaction(tx, plan, classifyOpts);
+    if (cls.kind === 'transfer' || cls.kind === 'card-payment' || cls.kind === 'bill'
+        || cls.kind === 'external' || cls.kind === 'unmapped' || cls.kind === 'business') {
+      return false;
+    }
+    if (cls.kind === 'refund') {
+      const refundLabel = normalizeCategoryLabel(tx.categoryLabel);
+      if (!OTHER_INCOME_INFLOW_LABELS.has(refundLabel)
+          && !/gift|reimbursement|tax refund|rebate/i.test(txTextBlob(tx))) {
+        return false;
+      }
+    }
+    if (txMatchesScheduledIncome(tx, plan, opts)) return false;
+    if (tx.isIncome === true) return true;
+    const label = normalizeCategoryLabel(tx.categoryLabel);
+    if (OTHER_INCOME_INFLOW_LABELS.has(label)) return true;
+    const hint = normalizeCategoryLabel(tx.kindHint);
+    if (hint === 'income' || hint === 'other-income') return true;
+    if (/gift|reimbursement|tax refund|rebate/i.test(txTextBlob(tx))) return true;
+    return false;
+  }
+
+  function attachObservedOtherIncome(expectedRow, tx, asOf, cashAsOf, reason) {
+    const inflow = txInflowAmount(tx);
+    const pending = tx.pending === true;
+    const received = !pending && !!(tx.date && cashAsOf && tx.date <= cashAsOf);
+    expectedRow.settlement = pending ? (expectedRow.settlement || paydaySettlementState(tx.date, asOf)) : 'represented';
+    expectedRow.status = received ? 'received' : 'arriving';
+    expectedRow.actual = inflow;
+    expectedRow.remaining = received ? 0 : roundCent(inflow);
+    expectedRow.alreadyInCash = received;
+    expectedRow.reconciledFrom = reason;
+    expectedRow.recon = [reconTxFrom(tx, {
+      kind: 'income', reason: 'other-income', includeReason: 'other-income',
+    })];
+    if (pending) {
+      expectedRow.confidence = expectedRow.confidence || 'estimated';
+      expectedRow.alreadyInCash = false;
+      expectedRow.status = 'arriving';
+    }
+    return expectedRow;
   }
 
   function calendarIncomeSections(plan, asOf, windows, opts) {
@@ -4608,7 +4736,7 @@
         if (!window) continue;
         const amt = roundCent(Number(streamAmount(stream, opts)) || Number(stream.amount) || 0);
         if (!(amt > EPSILON)) continue;
-        push(window, {
+        push(window, applyIncomeClass(plan, {
           id: stream.id,
           label: stream.label,
           kind: 'income',
@@ -4623,8 +4751,105 @@
           movement: householdMovement(amt, 'in'),
           confidence: stream.confidence || null,
           alreadyInCash: true,
-        });
+        }, stream));
       }
+    }
+    const packet = currentPeriodActualsPacket(opts);
+    const duplicateIds = pendingPostedDuplicateIdSet(packet);
+    const linkedIds = representedIncomeTransactionIds(opts);
+    const actualCandidates = [];
+    if (packet && Array.isArray(packet.transactions)) {
+      for (const tx of packet.transactions) {
+        if (!tx || !tx.date) continue;
+        if (tx.date < span.start || tx.date > span.end) continue;
+        if (skipSplitParent(tx, packet)) continue;
+        if (tx.id != null && duplicateIds.has(String(tx.id)) && tx.pending === true) continue;
+        if (tx.id != null && linkedIds.has(String(tx.id))) continue;
+        if (!isGenuineOtherIncomeTransaction(tx, plan, opts)) continue;
+        actualCandidates.push(tx);
+      }
+    }
+    const expected = [];
+    for (const windowId of Object.keys(buckets)) {
+      for (const row of buckets[windowId] || []) {
+        if (row && row.otherIncome === true
+            && row.settlement !== 'represented'
+            && row.status !== 'received'
+            && row.notReliedUpon !== true) {
+          expected.push({ windowId, row });
+        }
+      }
+    }
+    const pairedTxIds = new Set();
+    const byDateExpected = new Map();
+    for (const item of expected) {
+      const list = byDateExpected.get(item.row.date) || [];
+      list.push(item);
+      byDateExpected.set(item.row.date, list);
+    }
+    const byDateActual = new Map();
+    for (const tx of actualCandidates) {
+      const list = byDateActual.get(tx.date) || [];
+      list.push(tx);
+      byDateActual.set(tx.date, list);
+    }
+    byDateExpected.forEach((expList, date) => {
+      const actList = (byDateActual.get(date) || [])
+        .filter(tx => !pairedTxIds.has(String(tx.id)));
+      if (expList.length === 1 && actList.length === 1) {
+        pairedTxIds.add(String(actList[0].id));
+        attachObservedOtherIncome(
+          expList[0].row, actList[0], asOf, cashAsOf, 'unique-unmatched-same-date');
+      }
+    });
+    for (let i = 0; i < (windows || []).length; i++) {
+      const window = windows[i];
+      const expLeft = expected.filter(item =>
+        item.windowId === window.id
+        && item.row.reconciledFrom == null
+        && item.row.settlement !== 'represented');
+      const actLeft = actualCandidates.filter(tx => {
+        if (tx.id != null && pairedTxIds.has(String(tx.id))) return false;
+        const containing = windowContainingDate(windows, tx.date);
+        return containing && containing.id === window.id;
+      });
+      if (expLeft.length === 1 && actLeft.length === 1) {
+        pairedTxIds.add(String(actLeft[0].id));
+        attachObservedOtherIncome(
+          expLeft[0].row, actLeft[0], asOf, cashAsOf, 'unique-unmatched-window');
+      }
+    }
+    for (const tx of actualCandidates) {
+      if (tx.id != null && pairedTxIds.has(String(tx.id))) continue;
+      const inflow = txInflowAmount(tx);
+      if (!(inflow > EPSILON)) continue;
+      const pending = tx.pending === true;
+      const received = !pending && !!(tx.date && cashAsOf && tx.date <= cashAsOf);
+      const payee = reconIdentityField(tx.displayedPayee)
+        || reconIdentityField(tx.originalMerchant)
+        || reconIdentityField(tx.payee)
+        || 'Other income';
+      push(windowContainingDate(windows, tx.date), applyIncomeClass(plan, {
+        id: 'other-income:' + (tx.id || tx.date),
+        label: payee,
+        kind: 'income',
+        date: tx.date,
+        planned: 0,
+        amount: inflow,
+        actual: inflow,
+        remaining: received ? 0 : inflow,
+        settlement: pending ? paydaySettlementState(tx.date, asOf) : 'represented',
+        status: received ? 'received' : 'arriving',
+        glanceKind: 'in',
+        movement: householdMovement(inflow, 'in'),
+        confidence: pending ? 'estimated' : 'confirmed',
+        alreadyInCash: received,
+        otherIncome: true,
+        incomeClass: 'other',
+        recon: [reconTxFrom(tx, {
+          kind: 'income', reason: 'other-income', includeReason: 'other-income',
+        })],
+      }, { otherIncome: true, incomeClass: 'other' }));
     }
     const sortRows = rows => rows.sort((a, b) =>
       String(a.date || '').localeCompare(String(b.date || ''))
@@ -5273,6 +5498,11 @@
       } else {
         previousEnding = null;
       }
+      const otherItems = (planUnavailable ? [] : income).filter(r => r && r.otherIncome === true);
+      const otherAmount = roundCent(otherItems.reduce((s, r) => s + (Number(r.amount) || 0), 0));
+      const incomeTotal = planUnavailable
+        ? null
+        : roundCent(income.reduce((s, r) => s + (Number(r.amount) || 0), 0));
       periods.push({
         id: window.id,
         label: window.label,
@@ -5290,6 +5520,10 @@
         currentBalance: opening,
         income: planUnavailable ? [] : income,
         incomeAdded,
+        incomeTotal,
+        otherIncome: planUnavailable
+          ? { amount: 0, items: [] }
+          : { amount: otherAmount, items: otherItems },
         available,
         bills: planUnavailable ? [] : bills,
         totalBillsThisPeriod: planUnavailable ? null : totalBillsThisPeriod,

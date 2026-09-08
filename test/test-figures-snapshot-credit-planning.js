@@ -46,10 +46,13 @@ const PLAN_KEYS_ON_MAIN = [
   'payday.unallocated', 'payday.riskShortfall', 'operating.this.start',
   'operating.this.end', 'operating.this.opening', 'operating.this.available',
   'operating.this.incomeAdded',
+  'operating.this.otherIncome',
+  'operating.this.incomeTotal',
   'operating.this.projectedEnding',
   'operating.this.householdBudgetTotal', 'operating.liveCurrentBalance',
   'operating.next.start', 'operating.next.end',
   'operating.next.available', 'operating.next.incomeAdded',
+  'operating.next.otherIncome', 'operating.next.incomeTotal',
   'operating.next.projectedEnding',
   'operating.next.householdBudgetTotal', 'totals.confirmedIncome', 'totals.estimatedIncome',
   'totals.obligations', 'totals.bills', 'totals.commitments', 'totals.nonCashInterest',
@@ -416,6 +419,41 @@ console.log('\n=== 4b. Household Budget Total is snapshotted from Forecast budge
       && !/Math\.max/.test(operatingSrc)
       && !/row\.hold/.test(operatingSrc),
     'snapshot copies period.budgetHold and does not recompute the Household Budget deduction');
+}
+
+console.log('\n=== 4c. Other Income and Total income are snapshotted from Forecast ===');
+{
+  const liveSnap = buildFiguresSnapshot(live, periods);
+  const liveAdvice = snapshotRecommend(live);
+  const periodsView = (liveAdvice.defaultView && liveAdvice.defaultView.calendarPeriods) || [];
+  const thisPeriod = periodsView.find(p => p && p.id === 'this-pay-period')
+    || periodsView.find(p => p && p.role === 'active');
+  const nextPeriod = periodsView.find(p => p && p.id === 'next-pay-period')
+    || periodsView.find(p => p && p.role === 'future');
+  const thisOther = thisPeriod && thisPeriod.otherIncome
+    ? round(thisPeriod.otherIncome.amount) : null;
+  const nextOther = nextPeriod && nextPeriod.otherIncome
+    ? round(nextPeriod.otherIncome.amount) : null;
+  ok(thisPeriod && Object.prototype.hasOwnProperty.call(thisPeriod, 'incomeTotal'),
+    'live this-pay-period publishes Forecast incomeTotal');
+  ok(same(liveSnap['operating.this.otherIncome'], thisOther),
+    'operating.this.otherIncome is Forecast calendarPeriods[].otherIncome.amount',
+    String(liveSnap['operating.this.otherIncome']));
+  ok(same(liveSnap['operating.this.incomeTotal'],
+    thisPeriod.incomeTotal == null ? null : round(thisPeriod.incomeTotal)),
+    'operating.this.incomeTotal is Forecast calendarPeriods[].incomeTotal');
+  ok(same(liveSnap['operating.next.otherIncome'], nextOther)
+      && same(liveSnap['operating.next.incomeTotal'],
+        nextPeriod && nextPeriod.incomeTotal == null ? null : round(nextPeriod.incomeTotal)),
+    'next-period Other Income and Total income are Forecast fields');
+  const operatingSrc = snapSrc.split('const operating =')[1]
+    && snapSrc.split('const operating =')[1].split('const T =')[0];
+  ok(operatingSrc && /thisPeriod\.otherIncome/.test(operatingSrc)
+      && /thisPeriod\.incomeTotal/.test(operatingSrc)
+      && /nextPeriod\.otherIncome/.test(operatingSrc)
+      && /nextPeriod\.incomeTotal/.test(operatingSrc)
+      && !/\.reduce\s*\(/.test(operatingSrc),
+    'snapshot copies Forecast otherIncome.amount / incomeTotal; it does not sum the rows');
 }
 
 console.log('\n=== 5. Output is deterministic ===');

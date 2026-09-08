@@ -144,6 +144,8 @@ if (thisPeriod) {
   put('operating.this.opening', thisPeriod.opening);
   put('operating.this.available', thisPeriod.available);
   put('operating.this.incomeAdded', thisPeriod.incomeAdded);
+  put('operating.this.otherIncome', thisPeriod.otherIncome && thisPeriod.otherIncome.amount);
+  put('operating.this.incomeTotal', thisPeriod.incomeTotal);
   put('operating.this.projectedEnding', thisPeriod.projectedEnding);
   // Household Budget Total on the Plan is Forecast budgetHold.
   put('operating.this.householdBudgetTotal', thisPeriod.budgetHold);
@@ -156,6 +158,8 @@ if (nextPeriod) {
   put('operating.next.end', nextPeriod.end);
   put('operating.next.available', nextPeriod.available);
   put('operating.next.incomeAdded', nextPeriod.incomeAdded);
+  put('operating.next.otherIncome', nextPeriod.otherIncome && nextPeriod.otherIncome.amount);
+  put('operating.next.incomeTotal', nextPeriod.incomeTotal);
   put('operating.next.projectedEnding', nextPeriod.projectedEnding);
   put('operating.next.householdBudgetTotal', nextPeriod.budgetHold);
 }
