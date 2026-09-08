@@ -274,9 +274,12 @@ console.log('\n=== 5. Received income is not double-counted against live cash ==
     startingCash: { amount: LIVE_LATER },
     opening: {
       asOf: MID,
-      priorAsOf: PAYDAY,
+      priorAsOf: '2026-08-19',
       paydaySnapshot: { periodStart: PAYDAY, asOf: PAYDAY, opening: OPENING },
-      representedEvents: [],
+      representedEvents: [
+        { id: 'payroll', date: PAYDAY },
+        { id: 'amandaPayday', date: PAYDAY },
+      ],
     },
   });
   const advice = recommend(laterPlan, MID);
@@ -448,9 +451,12 @@ console.log('\n=== 9. Income footer does not call received snapshot income still
     startingCash: { amount: LIVE_LATER },
     opening: {
       asOf: MID,
-      priorAsOf: PAYDAY,
+      priorAsOf: '2026-08-19',
       paydaySnapshot: { periodStart: PAYDAY, asOf: PAYDAY, opening: OPENING },
-      representedEvents: [],
+      representedEvents: [
+        { id: 'payroll', date: PAYDAY },
+        { id: 'amandaPayday', date: PAYDAY },
+      ],
     },
   });
   const advice = recommend(laterPlan, MID);

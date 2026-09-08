@@ -314,8 +314,11 @@ console.log('\n=== 4. Represented pre-payday outflow is not a completeness subst
       && (!pre || pre.status === 'PAID' || near(pre.remaining, 0)),
     'a recorded snapshot still keeps the represented Aug 26 bill inside payday morning');
   ok(near(active.remainingBills, PERIOD_BILL)
-      && near(active.afterRemainingBills, roundCent(paidMorning + PERIOD_INCOME - PERIOD_BILL)),
+      && near(active.available, paidMorning)
+      && near(active.afterRemainingBills, roundCent(paidMorning - PERIOD_BILL)),
     'only the still-unpaid period bill remains after the represented pre-payday bill');
+  ok(active.income.every(row => row.notReliedUpon === true),
+    'pre-payday bill settlement does not prove later payroll or salary receipt');
 }
 
 console.log('\n=== 5. Live-advanced cash without a walkable dated opening still fails closed ===');
@@ -586,12 +589,15 @@ console.log('\n=== 8. live overlay retains a complete gap packet and withholds a
     'overlayLiveState retains the grocery-adjusted complete paydaySnapshot, not live cash or the no-grocery walk');
   ok(completeActive && completeActive.openingKnown === true
       && near(completeActive.opening, INDEPENDENT_MORNING_WITH_GROCERY)
-      && near(completeActive.available,
-        roundCent(INDEPENDENT_MORNING_WITH_GROCERY + PERIOD_INCOME))
+      && near(completeActive.available, INDEPENDENT_MORNING_WITH_GROCERY)
       && !near(completeActive.available, AFTER_PAYDAY)
-      && completeActive.afterRemainingBills != null
-      && completeActive.afterHouseholdBudget != null,
+      && near(completeActive.afterRemainingBills,
+        INDEPENDENT_MORNING_WITH_GROCERY - REMAINING_UNPAID)
+      && near(completeActive.afterHouseholdBudget,
+        INDEPENDENT_MORNING_WITH_GROCERY - REMAINING_UNPAID - BUDGET_HOLD),
     'live This Payday leftover chain follows the retained complete opening');
+  ok(completeActive.income.every(row => row.notReliedUpon === true),
+    'complete pre-payday cash coverage does not prove later payroll or salary receipt');
   ok(completeHtml.includes(composer.money2(completeActive.available))
       && completeHtml.includes(composer.money2(completeActive.afterRemainingBills))
       && completeHtml.includes(composer.money2(completeActive.afterHouseholdBudget))
@@ -754,9 +760,14 @@ console.log('\n=== 9. observer earns paydayGapComplete; overlay consumes the pro
     'produced complete packet retains the grocery-adjusted paydaySnapshot, not live cash');
   ok(completeActive && completeActive.openingKnown === true
       && near(completeActive.opening, INDEPENDENT_MORNING_WITH_GROCERY)
-      && near(completeActive.available,
-        roundCent(INDEPENDENT_MORNING_WITH_GROCERY + PERIOD_INCOME)),
+      && near(completeActive.available, INDEPENDENT_MORNING_WITH_GROCERY)
+      && near(completeActive.afterRemainingBills,
+        INDEPENDENT_MORNING_WITH_GROCERY - REMAINING_UNPAID)
+      && near(completeActive.afterHouseholdBudget,
+        INDEPENDENT_MORNING_WITH_GROCERY - REMAINING_UNPAID - BUDGET_HOLD),
     'observe→overlay leftover chain follows the produced frozen opening');
+  ok(completeActive.income.every(row => row.notReliedUpon === true),
+    'observed gap movements do not manufacture later income settlement');
 
   const truncated = observeThenOverlay(observePayload({
     window: {
