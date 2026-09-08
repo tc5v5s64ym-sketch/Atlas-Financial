@@ -77,6 +77,7 @@ const suites = [
   ['Household Budget Spent transaction drill-down', 'test-household-budget-spent-drilldown.js'],
   ['Household Budget Spent possible-replacement drill-down', 'test-household-budget-spent-possible-replacement-drilldown.js'],
   ['current-period Household Budget classification', 'test-current-period-household-budget-classification.js'],
+  ['Lunch Money Dale/Amanda guilt-free category assignment', 'test-lunchmoney-dale-amanda-guilt-free.js'],
   ['BC Hydro Sep 4 Other-spending classification', 'test-bc-hydro-sep4-classification.js'],
   ['unresolved pending→posted household-spend treatment', 'test-unresolved-pending-posted-spend.js'],
   ['current-period Other-residual classification contract', 'test-current-period-other-residual-contract.js'],

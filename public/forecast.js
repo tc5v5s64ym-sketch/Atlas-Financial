@@ -2483,10 +2483,32 @@
 
   // Standing owner rule (Dale 2026-09-03): Amazon merchant identity AND
   // canonical travelvisa → Amanda guilt-free. Not all Amazon, not all
-  // Travel Visa, not MBNA card branding, not Prime-as-bill.
+  // Travel Visa, not MBNA card branding, not Prime-as-bill. A current
+  // Lunch Money category named Dale or Amanda is a different identity and
+  // is applied first in classifyCurrentPeriodTransaction.
   function isAmandaAmazonTravelVisa(tx) {
     if (!tx) return false;
     return isAmazonMerchant(tx) && isTravelVisaAccount(tx);
+  }
+
+  // Owner 2026-09-08: exact Lunch Money category names Dale and Amanda.
+  // Not a substring, not incidental Dale/Amanda tags, notes, or payees,
+  // and not the Atlas row labels. Additional aliases live only on the
+  // dale-guilt-free / amanda-guilt-free `from` arrays.
+  function lunchMoneyGuiltFreeCategoryOwner(label, plan) {
+    if (label === 'dale') return 'dale';
+    if (label === 'amanda') return 'amanda';
+    const cats = (plan && plan.budget && plan.budget.categories) || [];
+    let owner = null;
+    for (const c of cats) {
+      if (!c || (c.id !== 'dale-guilt-free' && c.id !== 'amanda-guilt-free')) continue;
+      const aliases = [].concat(c.from || []);
+      if (!aliases.some(a => normalizeCategoryLabel(a) === label)) continue;
+      const next = c.id === 'dale-guilt-free' ? 'dale' : 'amanda';
+      if (owner && owner !== next) return null;
+      owner = next;
+    }
+    return owner;
   }
 
   // Owner-confirmed Fuel identity. Exact merchant key PITT MEADOWS CE /
@@ -2569,26 +2591,31 @@
   //   1. account / scope (household-external, unmapped)
   //   2. non-consumption (income, refund, transfer, card/debt payment,
   //      represented bill)
-  //   3. owner-confirmed merchant / financial identity (CAN TIRE MC,
+  //   3. Lunch Money Dale / Amanda category (owner 2026-09-08): the
+  //      ingested category name assigns the corresponding guilt-free
+  //      owner-target row. Fresh categoryLabel wins over incidental
+  //      tag / note / personalOwner mapping.
+  //   4. owner-confirmed merchant / financial identity (CAN TIRE MC,
   //      Cursor, Fuel, Dog food, confirmed groceries)
-  //   4. owner account+merchant identity (Amazon + travelvisa → Amanda)
-  //   5. trusted incumbent budget-category mapping
-  //   6. contradiction / ambiguity fail-closed
-  //   7. needsConfirmation / Other
+  //   5. owner account+merchant identity (Amazon + travelvisa → Amanda)
+  //   6. trusted incumbent budget-category mapping
+  //   7. contradiction / ambiguity fail-closed
+  //   8. needsConfirmation / Other
   // Surrey Meat is Dog food, never Groceries. The incumbent
   // plan.budget.excluded / Business boundary stays ahead of the confirmed
   // grocery merchant override: Walmart, Meridian Farm, and Iron Butcher
   // (Dale 2026-09-02) are Groceries only when otherwise eligible household
-  // spending. Cursor (Dale 2026-09-02) is Dale guilt-free, never Amanda,
-  // never Other. PITT MEADOWS CE (Dale 2026-09-02) is Fuel. CAN TIRE MC
-  // (Dale 2026-09-02) is the Canadian Tire Mastercard payment: card-payment,
-  // never Household Budget, never Other. Amazon merchant + canonical
-  // travelvisa (Dale 2026-09-03) is Amanda guilt-free, never Other, never
-  // a Prime bill, and never Amanda merely because the card is MBNA.
-  // Eating out is Restaurants + Fast Food + Food Delivery. Ordinary
-  // Canadian Tire retail is not Household. 7-Eleven is not confirmed Fuel
-  // without tx-level fuel evidence. Uncertain txs go to confirmation, not
-  // a named household-budget row.
+  // spending. Cursor (Dale 2026-09-02) is Dale guilt-free, never Other,
+  // when the Lunch Money category is not Amanda. PITT MEADOWS CE
+  // (Dale 2026-09-02) is Fuel. CAN TIRE MC (Dale 2026-09-02) is the
+  // Canadian Tire Mastercard payment: card-payment, never Household
+  // Budget, never Other. Amazon merchant + canonical travelvisa
+  // (Dale 2026-09-03) is Amanda guilt-free when the Lunch Money category
+  // is not Dale, never a Prime bill, and never Amanda merely because the
+  // card is MBNA. Eating out is Restaurants + Fast Food + Food Delivery.
+  // Ordinary Canadian Tire retail is not Household. 7-Eleven is not
+  // confirmed Fuel without tx-level fuel evidence. Uncertain txs go to
+  // confirmation, not a named household-budget row.
   function classifyCurrentPeriodTransaction(tx, plan, opts) {
     if (!tx) {
       return { kind: 'unclassified', categoryId: null, householdSpending: false, reason: 'missing' };
@@ -2645,6 +2672,24 @@
         reason: 'represented-bill', includeReason: 'represented-bill',
       };
     }
+    // Owner 2026-09-08: Lunch Money category Dale / Amanda assigns the
+    // corresponding guilt-free row. Fresh ingested categoryLabel wins over
+    // incidental tag/note/personalOwner mapping and over Cursor /
+    // Amazon+travelvisa merchant ownership when the two disagree.
+    const lunchMoneyGuiltFree = lunchMoneyGuiltFreeCategoryOwner(label, plan);
+    if (lunchMoneyGuiltFree) {
+      const excluded = ((plan && plan.budget && plan.budget.excluded) || []);
+      for (const row of excluded) {
+        const from = normalizeCategoryLabel(row && (row.from || row.label));
+        if (from && from === label) {
+          return { kind: 'business', categoryId: null, householdSpending: false, reason: 'excluded' };
+        }
+      }
+      if (lunchMoneyGuiltFree === 'dale') {
+        return spendResult('dale-guilt-free', 'lunchmoney-category-dale');
+      }
+      return spendResult('amanda-guilt-free', 'lunchmoney-category-amanda');
+    }
     if (isDaleGuiltFreeMerchant(tx)) {
       const excluded = ((plan && plan.budget && plan.budget.excluded) || []);
       for (const row of excluded) {
@@ -2656,7 +2701,8 @@
       return spendResult('dale-guilt-free', 'dale-guilt-free-merchant');
     }
     // Dale 2026-09-03: Amazon + travelvisa is Amanda guilt-free. Incidental
-    // Dale/Amanda provider labels do not override it. Incumbent
+    // Dale/Amanda tags, notes, or payees do not override it. A current
+    // Lunch Money category named Dale already returned above. Incumbent
     // plan.budget.excluded / Business still wins. Not a Prime bill.
     if (isAmandaAmazonTravelVisa(tx)) {
       const excluded = ((plan && plan.budget && plan.budget.excluded) || []);
@@ -2782,14 +2828,10 @@
       return confirmationResult('personal-unassigned', 'personal-unassigned');
     }
     if (matched && matched.id === DALE_GUILT_FREE_ID) {
-      const owner = personalSpendOwner(tx);
-      if (owner === 'dale') return spendResult(DALE_GUILT_FREE_ID, 'owner-evidence-dale');
-      return confirmationResult('personal-unassigned', 'personal-unassigned');
+      return spendResult(DALE_GUILT_FREE_ID, 'lunchmoney-category-dale');
     }
     if (matched && matched.id === AMANDA_GUILT_FREE_ID) {
-      const owner = personalSpendOwner(tx);
-      if (owner === 'amanda') return spendResult(AMANDA_GUILT_FREE_ID, 'owner-evidence-amanda');
-      return confirmationResult('personal-unassigned', 'personal-unassigned');
+      return spendResult(AMANDA_GUILT_FREE_ID, 'lunchmoney-category-amanda');
     }
     if (matched) {
       return spendResult(matched.id, 'category:' + matched.id);
@@ -3097,8 +3139,9 @@
   const DEFAULT_VIEW_BUDGET_IDS = ['groceries', 'fuel', 'pets', 'restaurants'];
   // Variable owner-target lines the calendar waterfall holds. Medical,
   // children/sports, combined Personal/shopping, and subscriptions are not
-  // holds: subscriptions are itemized bills; shopping actuals map to the
-  // two guilt-free ids only with account/payee/note/tag evidence.
+  // holds: subscriptions are itemized bills; Lunch Money Dale / Amanda
+  // categories map directly to the two guilt-free ids; Shopping/Personal
+  // actuals still map there only with account/payee/note/tag evidence.
   const CALENDAR_PERIOD_BUDGET_IDS = [
     'groceries', 'fuel', 'household', 'pets', 'restaurants',
     'dale-guilt-free', 'amanda-guilt-free',
@@ -4667,11 +4710,13 @@
   // Map a personal/shopping tx to Dale or Amanda only with account, payee,
   // note, or tag evidence, the Dale 2026-09-02 Cursor merchant identity,
   // or the Dale 2026-09-03 Amazon + travelvisa standing owner rule.
-  // Chequing B / WEEKLY SPENDING is not Dale. TENNIS INCOME /
-  // amanda-debt-payments is not guilt-free spending. Merchant + card is
-  // not owner evidence except those exact standing rules. No evidence, or
-  // both names, fails closed to unassigned. Cursor is never Amanda.
-  // Amazon on MBNA or another card is not Amanda.
+  // Dedicated Lunch Money categories named Dale / Amanda are classified
+  // before this helper. Chequing B / WEEKLY SPENDING is not Dale.
+  // TENNIS INCOME / amanda-debt-payments is not guilt-free spending.
+  // Merchant + card is not owner evidence except those exact standing
+  // rules. No evidence, or both names, fails closed to unassigned.
+  // Cursor is never Amanda unless the current Lunch Money category is
+  // Amanda. Amazon on MBNA or another card is not Amanda.
   function personalSpendOwner(tx) {
     if (!tx) return null;
     if (isDaleGuiltFreeMerchant(tx)) return 'dale';
