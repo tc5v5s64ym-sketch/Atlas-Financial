@@ -840,29 +840,33 @@
                         "Personal"
                     ],
                     "plannedMonthly": null,
-                    "why": "Not a household-budget hold. Owner-locked 2026-08-31: combined Personal / shopping is removed from the printed Household Budget. Dale and Amanda guilt-free spending are the owner targets. Lunch Money Shopping/Personal actuals still classify here, then map to Dale or Amanda only with account, payee, note, or tag evidence; unassignable actuals print as needs confirmation with planned and hold $0. Chequing B / WEEKLY SPENDING is not Dale. TENNIS INCOME / amanda-debt-payments is not guilt-free spending. The Aug. 10 $600 Personal target is retired."
+                    "why": "Not a household-budget hold. Owner-locked 2026-08-31: combined Personal / shopping is removed from the printed Household Budget. Dale and Amanda guilt-free spending are the owner targets. Lunch Money Shopping/Personal actuals still classify here, then map to Dale or Amanda only with account, payee, note, or tag evidence; unassignable actuals print as needs confirmation with planned and hold $0. Dedicated Lunch Money categories named Dale and Amanda are not this row; they map directly to dale-guilt-free / amanda-guilt-free. Chequing B / WEEKLY SPENDING is not Dale. TENNIS INCOME / amanda-debt-payments is not guilt-free spending. The Aug. 10 $600 Personal target is retired."
                 },
                 {
                     "id": "dale-guilt-free",
                     "label": "Dale guilt-free spending",
                     "class": "discretionary",
-                    "from": [],
+                    "from": [
+                        "Dale"
+                    ],
                     "plannedPayday": 150,
                     "plannedMonthly": null,
                     "ownerLine": "Dale guilt-free spending",
                     "targetSource": "owner-stated-2026-08-31",
-                    "why": "OWNER TARGET WINS. Locked 2026-08-31: $150 per 14-day Seaspan payday cycle. Cadence authority is plannedPayday so the master-plan monthly equivalent is that payday amount annualized over the calendar year, not 24 half-months. Spent is Lunch Money personal/shopping txs in the selected pay period with Dale evidence on account, payee, note, or tag. Owner-stated 2026-09-02: every future tx whose established merchant identity is Cursor is Dale guilt-free, never Amanda, never Other, and does not require confirmation. Not a generic software, subscription, developer-tool, or AI-service rule. Chequing B / WEEKLY SPENDING is not Dale evidence."
+                    "why": "OWNER TARGET WINS. Locked 2026-08-31: $150 per 14-day Seaspan payday cycle. Cadence authority is plannedPayday so the master-plan monthly equivalent is that payday amount annualized over the calendar year, not 24 half-months. Spent is Lunch Money txs in the selected pay period whose category is Dale, plus Shopping/Personal actuals with Dale evidence on account, payee, note, or tag, plus the Cursor merchant identity when the Lunch Money category is not Amanda. Owner-stated 2026-09-08: the Lunch Money category Dale is sufficient assignment into this row; changing that category in Lunch Money is the reclassification input and does not need a second local ownership map. Owner-stated 2026-09-02: every future tx whose established merchant identity is Cursor is Dale guilt-free, never Other, and does not require confirmation, unless the current Lunch Money category is Amanda. Not a generic software, subscription, developer-tool, or AI-service rule. Chequing B / WEEKLY SPENDING is not Dale evidence."
                 },
                 {
                     "id": "amanda-guilt-free",
                     "label": "Amanda guilt-free spending",
                     "class": "discretionary",
-                    "from": [],
+                    "from": [
+                        "Amanda"
+                    ],
                     "plannedPayday": 150,
                     "plannedMonthly": null,
                     "ownerLine": "Amanda guilt-free spending",
                     "targetSource": "owner-stated-2026-08-31",
-                    "why": "OWNER TARGET WINS. Locked 2026-08-31: $150 per 14-day Seaspan payday cycle. Cadence authority is plannedPayday so the master-plan monthly equivalent is that payday amount annualized over the calendar year, not 24 half-months. Spent is Lunch Money personal/shopping txs in the selected pay period with Amanda evidence on account, payee, note, or tag. TENNIS INCOME / amanda-debt-payments is not guilt-free spending."
+                    "why": "OWNER TARGET WINS. Locked 2026-08-31: $150 per 14-day Seaspan payday cycle. Cadence authority is plannedPayday so the master-plan monthly equivalent is that payday amount annualized over the calendar year, not 24 half-months. Spent is Lunch Money txs in the selected pay period whose category is Amanda, plus Shopping/Personal actuals with Amanda evidence on account, payee, note, or tag, plus Amazon merchant identity on canonical travelvisa when the Lunch Money category is not Dale. Owner-stated 2026-09-08: the Lunch Money category Amanda is sufficient assignment into this row; changing that category in Lunch Money is the reclassification input and does not need a second local ownership map. TENNIS INCOME / amanda-debt-payments is not guilt-free spending."
                 },
                 {
                     "id": "travel",
