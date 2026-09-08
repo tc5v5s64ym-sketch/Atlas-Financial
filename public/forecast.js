@@ -4563,7 +4563,11 @@
     }
     const paid = !!(event.id && represented.has(key));
     const inside = recurringInsideOpening(plan, event, cashAsOf);
-    const received = paid || inside || (event.date && cashAsOf && event.date < cashAsOf);
+    const stream = ((plan && plan.income) || []).find(s => s && s.id === event.id);
+    const otherOnce = incomeClass === 'other'
+      && (!stream || stream.frequency === 'once');
+    const datePassed = !!(event.date && cashAsOf && event.date < cashAsOf);
+    const received = paid || inside || (datePassed && !otherOnce);
     return applyIncomeClass(plan, {
       id: event.id,
       label: event.label,

@@ -1850,18 +1850,19 @@ function calendarIncomeHtml(period) {
       const displayed = String(tx.displayedPayee || row.label || '').trim();
       const original = String(tx.originalMerchant || '').trim();
       const payeeRaw = displayed || original || 'Merchant unavailable';
-      const pending = tx.pending === true || row.confidence === 'estimated'
+      const isReceived = row.status === 'received';
+      const pending = !isReceived && (tx.pending === true || row.confidence === 'estimated')
         ? '<span class="other-income-tx-pending">Expected</span>'
         : '';
-      const received = row.status === 'received'
+      const received = isReceived
         ? '<span class="other-income-tx-received">Received</span>'
         : '';
       const dateAttr = row.date ? ` datetime="${esc(row.date)}"` : '';
       const dateText = row.date ? fmtDate(row.date) : '—';
       const idAttr = row.id ? ` data-other-income-item="${esc(row.id)}"` : '';
-      const status = row.status === 'received' ? 'received'
+      const status = isReceived ? 'received'
         : row.alreadyInCash ? 'already in balance' : 'arriving';
-      const about = row.confidence === 'estimated' ? 'about ' : '';
+      const about = !isReceived && row.confidence === 'estimated' ? 'about ' : '';
       return `<li class="other-income-tx"${idAttr} data-income-status="${status}">
         <time${dateAttr}>${esc(dateText)}</time>
         <span class="other-income-tx-payee">${esc(payeeRaw)}${received}${pending}</span>

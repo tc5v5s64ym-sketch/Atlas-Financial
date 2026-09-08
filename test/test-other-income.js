@@ -7,7 +7,8 @@
  * event. plan.js renders that Forecast group; it does not classify or total.
  * Independent arithmetic / membership (L-002 / L-006).
  *
- * `node test/test-other-income.js`
+ * `node test/test-other-income.js` — 8 cases, including post-date
+ * reconcile-once and received-over-estimated render.
  */
 const fs = require('fs');
 const path = require('path');
@@ -354,6 +355,66 @@ console.log('\n=== 6. Reconciling expected to observed does not double-count ===
       && expectedRows[0].status === 'received',
     'reconciled expected row is received',
     expectedRows[0] && `${expectedRows[0].reconciledFrom} / ${expectedRows[0].status}`);
+  const html = composer.calendarIncomeHtml(active);
+  const itemHtml = html.match(/data-other-income-item="expected-refund"[\s\S]*?<\/li>/);
+  ok(itemHtml && /other-income-tx-received">Received</.test(itemHtml[0])
+      && !/other-income-tx-pending">Expected</.test(itemHtml[0])
+      && !/about /.test(itemHtml[0])
+      && itemHtml[0].includes(composer.money2(EXPECTED_REFUND)),
+    'reconciled received row renders Received and an exact amount, not Expected/about');
+}
+
+console.log('\n=== 8. After cashAsOf advances, expected Other Income still counts once ===');
+{
+  const laterAsOf = '2026-09-12';
+  const expected = {
+    id: 'expected-refund',
+    label: 'Expected refund',
+    frequency: 'once',
+    date: PAYDAY,
+    amount: EXPECTED_REFUND,
+    confidence: 'estimated',
+    incomeClass: 'other',
+  };
+  const observed = {
+    id: 'tx-refund-post-date', date: PAYDAY, amount: -EXPECTED_REFUND, pending: false,
+    categoryLabel: 'Reimbursement', accountRole: 'household-cash',
+    displayedPayee: 'Tax refund', originalMerchant: 'Tax refund',
+  };
+  const plan = paydayPlan([expected]);
+  plan.opening.asOf = laterAsOf;
+  plan.opening.paydaySnapshot = {
+    periodStart: PAYDAY,
+    asOf: PAYDAY,
+    opening: OPENING_CASH,
+  };
+  const advice = F.recommend(plan, laterAsOf, {
+    targetBuffer: 0,
+    debts,
+    paydaySnapshot: plan.opening.paydaySnapshot,
+    currentPeriodActuals: actualsPacket([observed]),
+  });
+  const active = period(advice.defaultView, 'this-pay-period');
+  const items = (active.otherIncome && active.otherIncome.items) || [];
+  const expectedRows = items.filter(r => r && r.id === 'expected-refund');
+  const observedRows = items.filter(r => r && String(r.id).indexOf('tx-refund-post-date') !== -1);
+  const independentOther = EXPECTED_REFUND;
+  const independentTotal = roundCent(DALE + AMANDA + EXPECTED_REFUND);
+  const independentAfter = roundCent(OPENING_CASH + DALE + AMANDA + EXPECTED_REFUND);
+  ok(expectedRows.length === 1 && observedRows.length === 0 && items.length === 1,
+    'post-date expected refund stays eligible and reconciles to one Other Income row',
+    JSON.stringify(items.map(r => ({ id: r.id, status: r.status, alreadyInCash: r.alreadyInCash }))));
+  ok(expectedRows[0] && expectedRows[0].reconciledFrom
+      && expectedRows[0].status === 'received',
+    'post-date expected row is received by unique observed evidence, not by date passing',
+    expectedRows[0] && `${expectedRows[0].reconciledFrom} / ${expectedRows[0].status}`);
+  ok(near(active.otherIncome.amount, independentOther),
+    'Other Income counts the refund once after cashAsOf advances');
+  ok(near(active.incomeTotal, independentTotal),
+    'incomeTotal counts the refund once after cashAsOf advances');
+  ok(near(active.incomeAdded, independentTotal)
+      && near(active.available, independentAfter),
+    'Balance after payday counts the refund once after cashAsOf advances');
 }
 
 console.log('\n=== 7. Displayed Other Income total reconciles to authoritative rows ===');
