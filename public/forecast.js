@@ -4033,6 +4033,16 @@
     return asOf;
   }
 
+  function settlementOpeningDate(plan, asOf) {
+    const opening = plan && plan.opening;
+    const current = cashSnapshotDate(plan, asOf);
+    // A live cash date proves observation freshness, not settlement of every
+    // intervening schedule occurrence. Keep the original dated boundary.
+    return opening && opening.priorAsOf
+      && ISO_CALENDAR_DATE.test(String(opening.priorAsOf))
+      && opening.priorAsOf < current ? opening.priorAsOf : current;
+  }
+
   // Live overlay advanced as-of past the dated opening. That later cash is
   // today's live Current Balance, not a reconstructed payday-morning opening.
   function liveOpeningAdvanced(plan, asOf) {
@@ -4331,7 +4341,7 @@
     }
     const represented = representedKeySet(plan, opts, asOf);
     const observed = representedActualMap(opts);
-    const cashAsOf = cashSnapshotDate(plan, asOf);
+    const cashAsOf = settlementOpeningDate(plan, asOf);
     const events = expandEvents(plan, span.start, span.end,
       Object.assign({}, opts, { keepRepresented: true }));
     const seen = new Set();
@@ -4411,7 +4421,7 @@
     // cashFirstDue and is not reconstructed here.
     const openingAsOf = plan && plan.opening && plan.opening.asOf
       && ISO_CALENDAR_DATE.test(String(plan.opening.asOf))
-      ? plan.opening.asOf : null;
+      ? cashAsOf : null;
     const snapMonth = openingAsOf ? calendarMonthSpan(openingAsOf) : calendarMonthSpan(cashAsOf);
     const debtDatesPrinted = new Set();
     for (let i = 0; i < windows.length; i++) {
@@ -4539,7 +4549,14 @@
     if (!(amt > EPSILON)) return null;
     const key = event.id + '@' + event.date;
     const incomeClass = incomeClassForEvent(plan, event);
-    if (event.id && notRelied && notRelied.has(key)) {
+    const paid = !!(event.id && represented.has(key));
+    // Advancing live cash past an unproven inbound must not turn it into
+    // received income in the payday snapshot. Preserve the incumbent
+    // not-relied-upon treatment; future salary remains ordinary income.
+    // Expected Other Income retains its owner-authorized arriving semantics.
+    const elapsedUnproven = !paid && incomeClass !== 'other' && liveOpeningAdvanced(plan, asOf)
+      && event.date > cashAsOf && event.date < asOf;
+    if ((event.id && notRelied && notRelied.has(key)) || elapsedUnproven) {
       return applyIncomeClass(plan, {
         id: event.id,
         label: event.label,
@@ -4556,12 +4573,12 @@
         confidence: event.confidence || null,
         alreadyInCash: false,
         notReliedUpon: true,
-        notReliedUponReason: notReliedUponReason(plan, opts, event.id, event.date),
+        notReliedUponReason: elapsedUnproven ? 'elapsed-inbound-unproven'
+          : notReliedUponReason(plan, opts, event.id, event.date),
         incomeClass,
         otherIncome: incomeClass === 'other',
       }, event);
     }
-    const paid = !!(event.id && represented.has(key));
     const inside = recurringInsideOpening(plan, event, cashAsOf);
     const stream = ((plan && plan.income) || []).find(s => s && s.id === event.id);
     const otherOnce = incomeClass === 'other'
@@ -4705,6 +4722,7 @@
     const notRelied = notReliedUponKeySet(plan, opts, asOf);
     const observed = representedActualMap(opts);
     const cashAsOf = cashSnapshotDate(plan, asOf);
+    const settlementAsOf = settlementOpeningDate(plan, asOf);
     const events = expandEvents(plan, span.start, span.end,
       Object.assign({}, opts || {}, { keepRepresented: true }));
     const seen = new Set();
@@ -4723,7 +4741,7 @@
       if (!event || event.kind !== 'income' || !event.date) continue;
       if (event.date < span.start || event.date > span.end) continue;
       push(windowContainingDate(windows, event.date),
-        calendarIncomeRowFromEvent(plan, event, asOf, represented, observed, cashAsOf, notRelied, opts));
+        calendarIncomeRowFromEvent(plan, event, asOf, represented, observed, settlementAsOf, notRelied, opts));
     }
     for (const stream of (plan && plan.income) || []) {
       if (!stream || !stream.firstDue || stream.frequency !== 'monthly' || stream.day == null) {
@@ -4731,7 +4749,7 @@
       }
       const dates = monthlyDates(stream.day, span.start, span.end, null);
       for (const date of dates) {
-        if (date >= stream.firstDue || date > asOf) continue;
+        if (date >= stream.firstDue || date >= settlementAsOf || date > asOf) continue;
         const window = windowContainingDate(windows, date);
         if (!window) continue;
         const amt = roundCent(Number(streamAmount(stream, opts)) || Number(stream.amount) || 0);
