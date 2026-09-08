@@ -25,6 +25,14 @@ const ok = (cond, label, detail = '') => {
 const near = (a, b, eps = 0.005) => Math.abs(Number(a) - Number(b)) <= eps;
 const read = file => sourceText(fs.readFileSync(path.join(__dirname, '..', file), 'utf8'));
 
+function independentChequing(plan) {
+  const rows = ((plan && plan.startingCash && plan.startingCash.breakdown) || []);
+  return Math.round(rows.reduce((sum, item) => {
+    if (!item || (item.id !== 'chequing-a' && item.id !== 'chequing-b')) return sum;
+    return sum + (Number(item.value) || 0);
+  }, 0) * 100) / 100;
+}
+
 function grab(src, re, label) {
   const match = re.exec(src);
   if (!match) throw new Error('missing ' + label);
@@ -534,8 +542,8 @@ console.log('\n=== 6. Current cash identity; no BILLS-minus-spend rewrite ===');
   ok(p1 && p1.role === 'active' && p2 && p2.role === 'future',
     'as-of Aug 30: This Pay Period is live, Next is future');
   ok(near(p1.opening, F.startingCashAmount(plan))
-      && near(advice.defaultView.liveCurrentBalance, F.startingCashAmount(plan)),
-    'cutover This Pay Period opening is starting cash; live Current Balance is the same posted fact',
+      && near(advice.defaultView.liveCurrentBalance, independentChequing(plan)),
+    'cutover This Pay Period opening is starting cash; live Current Balance is posted chequing cash',
     p1 && `${p1.opening} vs ${F.startingCashAmount(plan)}`);
   ok(p2.projected && near(p2.opening, p1.projectedEnding),
     'Next Pay Period does not reuse today\'s current balance as its own opening');
@@ -602,8 +610,8 @@ console.log('\n=== 9. Live August 30 sheet: lookback P1, live P2, card mins, HEL
   const p2 = period(view, 'next-pay-period');
   ok(p1 && p1.role === 'active' && p2 && p2.role === 'future',
     'live Aug 30: This Pay Period live, Next future');
-  ok(near(advice.defaultView.liveCurrentBalance, F.startingCashAmount(live.plan)),
-    'live Current Balance is posted starting cash');
+  ok(near(advice.defaultView.liveCurrentBalance, independentChequing(live.plan)),
+    'live Current Balance is posted household chequing cash');
   const datedAsOf = live.plan.opening && live.plan.opening.asOf;
   const child = (live.plan.income || []).find(s => s && s.id === 'childBenefit');
   const travel = (live.plan.obligations || []).find(o => o && o.id === 'travel');

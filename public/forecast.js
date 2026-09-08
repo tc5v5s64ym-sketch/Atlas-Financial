@@ -366,6 +366,25 @@
     if (rows.length) return rows.reduce((s, b) => s + (Number(b.value) || 0), 0);
     return Number(cash.amount) || 0;
   }
+  // Live Current Balance is posted household chequing cash only. These are
+  // the same Chequing A / BILLS ACCOUNT and Chequing B / WEEKLY SPENDING
+  // identities Forecast.chequingAvailability already names. Savings,
+  // TENNIS INCOME, and every other cash-type row stay out. startingCashAmount
+  // remains the Forecast spendable pool (breakdown sum, including savings)
+  // for cash walks and payday allocation. Synthetic fixtures may still pass
+  // startingCash.amount with no cash id.
+  const HOUSEHOLD_CHEQUING_IDS = ['chequing-a', 'chequing-b'];
+  function postedHouseholdChequingCash(plan) {
+    const cash = (plan && plan.startingCash) || {};
+    const rows = cash.breakdown || [];
+    if (rows.length) {
+      return rows.reduce((s, b) => {
+        if (!b || HOUSEHOLD_CHEQUING_IDS.indexOf(b.id) === -1) return s;
+        return s + (Number(b.value) || 0);
+      }, 0);
+    }
+    return Number(cash.amount) || 0;
+  }
   function extraFacilityUsed(facility, plan) {
     if (facility && facility.cash) {
       const row = cashAccount(plan, facility.cash);
@@ -4150,8 +4169,9 @@
   }
 
   // Payday-snapshot opening. Distinct from live Current Balance
-  // (startingCashAmount / paydayAllocation.opening). Fail closed rather
-  // than invent a historical payday-morning cash Atlas never recorded.
+  // (postedHouseholdChequingCash / paydayAllocation.liveCurrentBalance).
+  // Fail closed rather than invent a historical payday-morning cash Atlas
+  // never recorded.
   function resolvePaydayPeriodOpening(plan, asOf, window, opts, previousEnding, sim) {
     const role = window && window.role;
     if (role === 'future') {
@@ -5051,7 +5071,8 @@
   // Two payday-cycle waterfalls: this Seaspan payday through the day
   // before the next, then the next payday through the day before the
   // following one. Leftover is this printout's chain: it does not replace
-  // paydayAllocation, and it does not rewrite live Current Balance.
+  // paydayAllocation, and it does not rewrite live Current Balance
+  // (posted household chequing cash).
   // The active period opens from a recorded paydaySnapshot first, else
   // payday-morning cash only when as-of is that payday and live overlay
   // has not already advanced, else a non-live cutover opening, else a
@@ -5082,9 +5103,7 @@
     const incomeByWindow = calendarIncomeSections(plan, asOf, windows, opts);
     const liveCurrentBalance = alloc && alloc.liveCurrentBalance != null
       ? roundCent(alloc.liveCurrentBalance)
-      : (alloc && alloc.opening != null
-        ? roundCent(alloc.opening)
-        : roundCent(startingCashAmount(plan)));
+      : roundCent(postedHouseholdChequingCash(plan));
     const buffer = opts.targetBuffer != null ? opts.targetBuffer
       : ((plan.defaults && plan.defaults.targetBuffer) || 0);
     const priority = debtPriority(plan, debts || []);
@@ -5357,7 +5376,7 @@
     const cards = revolvingCardsGlance(plan, debts, alloc && alloc.extraDebt);
     const liveCurrentBalance = alloc && alloc.liveCurrentBalance != null
       ? roundCent(alloc.liveCurrentBalance)
-      : roundCent(startingCashAmount(plan));
+      : roundCent(postedHouseholdChequingCash(plan));
     return {
       asOf: (alloc && alloc.cashBasis && alloc.cashBasis.asOf) || asOf,
       span: 'pay-period',
@@ -5794,6 +5813,7 @@
     }));
 
     const opening = startingCashAmount(plan);
+    const liveCurrentBalance = postedHouseholdChequingCash(plan);
     const todayEvents = expandEvents(plan, asOf, asOf, opts);
     let todayIncome = 0;
     for (const e of todayEvents) {
@@ -6222,7 +6242,7 @@
       periodDays,
       available,
       opening,
-      liveCurrentBalance: opening,
+      liveCurrentBalance: roundCent(liveCurrentBalance),
       todayIncome: roundCent(todayIncome),
       buffer,
       cashBasis: {
@@ -9425,7 +9445,7 @@
     projectDebts,
     nextDue, nextPaymentOut, unallocatedCash, compactSnapshot, publicationTotals, deepDive, publishedSpendType, rollupSpending, planStatus, mission, planPhases, nextMove, utilisation, creditAccounts, capitalisingCashMinimumOccurrences, renewal,
     payoffDebts, payoffModel,
-    paymentForMonths, startingCashAmount, resolveFundingSources, resolveActions, EPSILON, STEP,
+    paymentForMonths, startingCashAmount, postedHouseholdChequingCash, resolveFundingSources, resolveActions, EPSILON, STEP,
     householdBills, householdSubscriptions, billIsSubscription };
   if (typeof module !== 'undefined' && module.exports) module.exports = Forecast;
   else root.Forecast = Forecast;
