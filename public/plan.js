@@ -2520,13 +2520,6 @@ function operatingSurfaceHtml(ctx) {
     return unavailableOperatingSurfaceHtml(ctx);
   }
   const alloc = advice.paydayAllocation || null;
-  const action = advice.currentPeriodAction || null;
-  const capView = ctx.capView || weeklyCapView(advice, ctx.weeklyOverride);
-  const coverage = paydayCoverageNote(action);
-  const risks = (alloc && alloc.risks) || [];
-  const remainingUnavailable = (ctx.refreshTrust && ctx.refreshTrust.exactFiguresAvailable === false)
-    || !action
-    || action.remainingClaim === 'unavailable';
 
   const question = (number, prompt, answer, kind) => `
     <div class="operating-question${kind ? ` operating-${kind}` : ''}" data-operating-question="${number}" data-operating-prompt="${prompt}">
@@ -2597,49 +2590,17 @@ function operatingSurfaceHtml(ctx) {
     ${question('10', 'Balance after big purchase allocation', runningLeftoverHtml(view.afterBigPurchases), 'ending')}
     ${budgetDigestHtml(view.budgetDigest)}`;
 
-  const warningLines = [];
-  if (remainingUnavailable) {
-    warningLines.push(`<p class="operating-limit warn">${coverage}</p>`);
-  }
-  if (capView && capView.hasFeasibleCap === false && capView.reason) {
-    warningLines.push(`<p class="operating-limit warn">${capView.reason}</p>`);
-  }
-  for (let i = 0; i < risks.length; i++) {
-    const risk = risks[i];
-    if (!risk || !risk.reason) continue;
-    warningLines.push(`<p class="operating-limit warn">${risk.reason}${risk.shortfall != null
-      ? ` Gap ${money2(risk.shortfall)}.` : ''}</p>`);
-  }
-  const trust = ctx.refreshTrust;
-  if (trust && trust.displayState === 'attention-needed') {
-    const attentionLines = [];
-    const unresolved = trust.unresolvedMaterial || [];
-    for (let i = 0; i < unresolved.length; i++) {
-      const text = unresolved[i] && unresolved[i].text;
-      if (text) attentionLines.push(text);
-    }
-    if (trust.ownerQuestion && trust.ownerQuestion.text) {
-      attentionLines.push(trust.ownerQuestion.text);
-    }
-    if (trust.canonicalProposalWaiting === true) {
-      attentionLines.push('A saved update is waiting for approval. Nothing is written until then.');
-    }
-    if (!attentionLines.length && !remainingUnavailable) {
-      attentionLines.push(REFRESH_TRUST_STATE['attention-needed']);
-    }
-    for (let i = 0; i < attentionLines.length; i++) {
-      warningLines.push(`<p class="operating-limit warn" data-refresh-attention>${attentionLines[i]}</p>`);
-    }
-  }
-  const warnings = warningLines.length
-    ? `<div data-operating-warnings>${warningLines.join('')}</div>`
-    : '';
+  // The usable Plan print stops at Balance after household budget. Forecast
+  // still computes infeasible / unfunded / remaining-claim / paydayAllocation.risks
+  // and weeklyCapView still composes that copy for folded diagnostics. The
+  // large refresh-trust card remains on the fail-closed unavailable surface.
+  // Do not reintroduce an advisory block, a replacement warning, or a
+  // parallel warning authority on this sheet.
 
   // In the default view the picker rides inside the pay-period switch row;
   // the week and next-period printouts carry it at the top, held open.
   return `<div class="payday-operating-sheet" data-payday-sheet>
     ${defaultWaterfalls || `${picker}<div class="plan-sheet">${tenBlock}</div>`}
-    ${warnings}
   </div>`;
 }
 

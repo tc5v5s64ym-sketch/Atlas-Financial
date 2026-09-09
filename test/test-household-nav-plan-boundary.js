@@ -150,7 +150,7 @@ function loadComposer() {
     grab(planSrc, /^function operatingSurfaceHtml\([\s\S]*?\n\}$/m, 'operatingSurfaceHtml'),
   ].join('\n');
   return vm.runInNewContext(
-    `${source}\n({ operatingSurfaceHtml, calendarWaterfallHtml, money2 });`,
+    `${source}\n({ operatingSurfaceHtml, calendarWaterfallHtml, weeklyCapView, paydayCoverageNote, money2 });`,
     { Forecast: F }
   );
 }
@@ -291,6 +291,47 @@ console.log('\n=== 4 + 5. Plan waterfall keeps Balance after household budget an
   const fn = /function calendarWaterfallHtml\([\s\S]*?\n\}/.exec(planSrc);
   ok(fn && !/'08'|'09'|'10'|'11'/.test(fn[0]) && !/projectedEnding|afterDebtRepayment/.test(fn[0]),
     'calendarWaterfallHtml stops at Q07 in source, not by CSS');
+  const surfaceFn = /function operatingSurfaceHtml\([\s\S]*?\n\}/.exec(planSrc);
+  ok(surfaceFn && !/data-operating-warnings/.test(surfaceFn[0])
+      && !/operating-limit warn/.test(surfaceFn[0]),
+    'operatingSurfaceHtml stops emitting the advisory block in source, not by CSS');
+  ok(!/data-operating-warnings/.test(html)
+      && !/There is no feasible weekly cap/.test(html)
+      && !/stays unfunded/.test(html)
+      && !/data-refresh-attention/.test(html)
+      && !/class="operating-limit warn"/.test(html),
+    'the default Plan does not render the advisory block after Balance after household budget');
+  ok(!/There is no feasible weekly cap/.test(composer.calendarWaterfallHtml(active, data.liveOverlay, advice.paydayAllocation)),
+    'calendarWaterfallHtml itself emits no weekly-cap advisory');
+  const infeasibleAdvice = JSON.parse(JSON.stringify(advice));
+  infeasibleAdvice.mode = 'infeasible';
+  infeasibleAdvice.weekly = 0;
+  infeasibleAdvice.infeasible = {
+    label: 'Synthetic protected cost', date: '2026-10-02', shortfall: 321.11,
+  };
+  infeasibleAdvice.funding = { feasible: false, shortfall: 621.11 };
+  infeasibleAdvice.paydayAllocation.risks = [
+    { id: 'obligations', reason: 'This payday cannot cover required obligations in cash.', shortfall: 40.5 },
+  ];
+  const capCopy = composer.weeklyCapView(infeasibleAdvice);
+  ok(capCopy.hasFeasibleCap === false
+      && /There is no feasible weekly cap/.test(capCopy.reason)
+      && /Synthetic protected cost/.test(capCopy.reason)
+      && capCopy.reason.includes(composer.money2(321.11)),
+    'weeklyCapView still composes the infeasible copy for other views');
+  const infeasibleHtml = composer.operatingSurfaceHtml({
+    advice: infeasibleAdvice, weekly: 0, recommended: 0,
+  });
+  ok(/data-operating-prompt="Balance after household budget"/.test(infeasibleHtml)
+      && !/data-operating-warnings/.test(infeasibleHtml)
+      && !/There is no feasible weekly cap/.test(infeasibleHtml)
+      && !/Synthetic protected cost/.test(infeasibleHtml)
+      && !/This payday cannot cover required obligations in cash/.test(infeasibleHtml),
+    'infeasible Forecast output is not printed as an advisory after Q07');
+  const coverage = composer.paydayCoverageNote(advice.currentPeriodAction);
+  ok(typeof coverage === 'string' && coverage.length > 0
+      && (infeasibleHtml + html).indexOf(coverage) === -1,
+    'paydayCoverageNote still exists and is not dumped onto the usable Plan');
   ok(!/display:\s*none[^}]*operating-question|data-operating-question="(08|09|10|11)"[^}]*display:\s*none/
     .test(read('public/styles.css') + read('public/household-view.css')),
   'no stylesheet hides waterfall rows');
