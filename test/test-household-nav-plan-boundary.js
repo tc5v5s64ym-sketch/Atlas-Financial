@@ -259,9 +259,14 @@ console.log('\n=== 4 + 5. Plan waterfall keeps Balance after household budget an
   ok(html.includes(composer.money2(active.afterHouseholdBudget)),
     'Q07 prints the Forecast afterHouseholdBudget figure');
   const questions = [...html.matchAll(/data-operating-question="(\d+)"/g)].map(m => m[1]);
-  ok(questions.length === 5 && questions.every(n => Number(n) <= 7)
-      && !questions.includes('01') && !questions.includes('03'),
-    'the active snapshot has five questions, numbered 02 and 04–07', questions.join(','));
+  const expectedQs = active && active.openingKnown
+    ? ['01', '02', '04', '05', '06', '07']
+    : ['02', '04', '05', '06', '07'];
+  ok(questions.join(',') === expectedQs.join(',') && !questions.includes('03'),
+    active && active.openingKnown
+      ? 'the active snapshot prints known opening as Q01 then 02 and 04–07'
+      : 'the active snapshot has five questions, numbered 02 and 04–07',
+    questions.join(','));
   for (const prompt of REMOVED_ROWS) {
     ok(!html.includes(prompt), `${prompt} is not on the Plan`);
   }
@@ -277,16 +282,30 @@ console.log('\n=== 4 + 5. Plan waterfall keeps Balance after household budget an
     liveOverlay: data.liveOverlay, planCalendarShow: 'both',
   });
   const sections = (both.match(/<section class="calendar-waterfall"/g) || []).length;
-  const activeQs = (both.match(/data-calendar-role="active"[\s\S]*?<\/section>/) || [''])[0]
-    .match(/data-operating-question=/g) || [];
-  const futureQs = (both.match(/data-calendar-role="future"[\s\S]*?<\/section>/) || [''])[0]
-    .match(/data-operating-question=/g) || [];
-  ok(sections === (advice.defaultView.calendarPeriods || []).length
-      && activeQs.length === 5
-      && futureQs.length === 6
-      && /data-live-current-balance/.test(both)
-      && !REMOVED_ROWS.some(prompt => both.includes(prompt)),
-    'Show both prints live Current Balance once, then the active snapshot without a Current Balance row and the future period with its opening');
+  const activeSection = (both.match(/data-calendar-role="active"[\s\S]*?<\/section>/) || [''])[0];
+  const futureSection = (both.match(/data-calendar-role="future"[\s\S]*?<\/section>/) || [''])[0];
+  const activeQs = activeSection.match(/data-operating-question=/g) || [];
+  const futureQs = futureSection.match(/data-operating-question=/g) || [];
+  const expectedActiveCount = active && active.openingKnown ? 6 : 5;
+  ok(sections === (advice.defaultView.calendarPeriods || []).length,
+    'Show both renders every calendar period',
+    `${sections} vs ${(advice.defaultView.calendarPeriods || []).length}`);
+  ok(activeQs.length === expectedActiveCount,
+    'Show both active snapshot question count follows known opening',
+    String(activeQs.length));
+  ok(futureQs.length === 6,
+    'Show both future snapshot includes opening as the sixth question',
+    String(futureQs.length));
+  ok(/data-live-current-balance/.test(both),
+    'Show both still prints live Current Balance outside the snapshots');
+  ok(!/data-operating-prompt="Current Balance"/.test(activeSection),
+    'active snapshot does not print live Current Balance as Q01');
+  ok(!active.openingKnown || /data-operating-prompt="Opening balance"/.test(activeSection),
+    'active snapshot prints Opening balance when that opening is known');
+  ok(/data-operating-prompt="Opening balance"/.test(futureSection),
+    'future snapshot prints Opening balance');
+  ok(!REMOVED_ROWS.some(prompt => both.includes(prompt)),
+    'Show both still omits extra-debt and ending rows');
   const planSrc = read('public/plan.js');
   const fn = /function calendarWaterfallHtml\([\s\S]*?\n\}/.exec(planSrc);
   ok(fn && !/'08'|'09'|'10'|'11'/.test(fn[0]) && !/projectedEnding|afterDebtRepayment/.test(fn[0]),

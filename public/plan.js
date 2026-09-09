@@ -2105,7 +2105,7 @@ function extraRepaymentHtml(period) {
 function calendarWaterfallHtml(period, liveOverlay, alloc) {
   if (!period) return '';
   const planUnavailable = period.operatingPlanUnavailable === true;
-  const showSnapshotOpening = period.role !== 'active';
+  const showSnapshotOpening = period.openingKnown === true || period.role !== 'active';
   // Every opening branch below already prints period.cashNote once (as the
   // glance note or as the lead), so it is not appended a second time.
   const projectedNote = period.projected

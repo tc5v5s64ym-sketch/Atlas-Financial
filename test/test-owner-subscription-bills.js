@@ -24,6 +24,17 @@ const ok = (cond, label, detail = '') => {
 const near = (a, b, eps = 0.005) => Math.abs(Number(a) - Number(b)) <= eps;
 const sameDates = (got, want) => JSON.stringify(got) === JSON.stringify(want);
 const clone = x => JSON.parse(JSON.stringify(x));
+function addCalendarDays(date, n) {
+  const [y, m, d] = String(date).split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d + n));
+  const iso = (yy, mm, dd) =>
+    `${yy}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
+  return iso(dt.getUTCFullYear(), dt.getUTCMonth() + 1, dt.getUTCDate());
+}
+function seaspanWindow(payday) {
+  const next = addCalendarDays(payday, 14);
+  return { start: payday, end: addCalendarDays(next, -1), nextPayday: next };
+}
 
 const plan = data.plan;
 const asOf = data.meta.asOf;
@@ -53,16 +64,14 @@ const YOUTUBE_91 = ['2026-09-02', '2026-10-02', '2026-11-02'];
 const CHATGPT_91 = ['2026-09-14', '2026-10-14', '2026-11-14'];
 // Next May 8 after 2026-08-19 is 2027-05-08. The following year is 2028-05-08.
 const GUITAR_FORWARD = ['2027-05-08'];
-// Independent payday dates are income ≥ $1,000, not a bill-to-period map.
-// Seaspan biweekly from 2026-08-14: 14 Aug, 28 Aug, 11 Sep, 25 Sep.
-// Amanda Tennis BC: 15th monthly and month-end (day 31 clamped).
-// Child benefit $153.59 is below the $1,000 payday floor.
-const PAYDAY_AUG31 = '2026-08-31';
-const PAYDAY_SEP11 = '2026-09-11';
-const PAYDAY_SEP15 = '2026-09-15';
-const PERIOD_END_AUG31 = '2026-09-10'; // next payday 11 Sep
-const PERIOD_END_SEP11 = '2026-09-14'; // next payday 15 Sep
-const PERIOD_END_SEP15 = '2026-09-24'; // next payday 25 Sep
+// Independent payday windows are Seaspan +14 from the 2026-08-14 payroll
+// anchor (ACCOUNT_FACTS), not income ≥ $1,000 and not a bill-to-period map.
+// Amanda Tennis BC (15th and month-end) and child benefit do not start a payday.
+const SEASPAN_AUG28 = seaspanWindow('2026-08-28');
+const SEASPAN_SEP11 = seaspanWindow('2026-09-11');
+const AS_OF_AUG31 = '2026-08-31';
+const AS_OF_SEP11 = SEASPAN_SEP11.start;
+const AS_OF_SEP15 = '2026-09-15';
 const CLUSTER_14 = {
   'icloud-storage': '2026-09-14',
   'chatgpt-plus-dale': '2026-09-14',
@@ -197,7 +206,7 @@ console.log('\n=== synthetic yearly primitive (not the live May 8 list) ===');
     'firstDue filters 2027 without shifting the May 8 cadence');
 }
 
-console.log('\n=== mid-month 14th–17th cluster follows incumbent payday windows ===');
+console.log('\n=== mid-month 14th–17th cluster follows incumbent Seaspan payday windows ===');
 {
   const o = {
     debts: data.debts,
@@ -205,10 +214,10 @@ console.log('\n=== mid-month 14th–17th cluster follows incumbent payday window
     periods,
     paydayFloor: 1000,
   };
-  const on11 = F.paydayAllocation(plan, PAYDAY_SEP11, o);
-  ok(on11.mode === 'payday' && on11.periodEnd === PERIOD_END_SEP11
-      && on11.payday === PAYDAY_SEP15,
-    '11 Sep payday period ends 14 Sep because Amanda salary lands the 15th',
+  const on11 = F.paydayAllocation(plan, AS_OF_SEP11, o);
+  ok(on11.mode === 'payday' && on11.periodEnd === SEASPAN_SEP11.end
+      && on11.payday === SEASPAN_SEP11.nextPayday,
+    '11 Sep payday period is the Seaspan window through 24 Sep, next payday 25 Sep',
     `${on11.mode} end ${on11.periodEnd} next ${on11.payday}`);
   for (const [id, date] of Object.entries(CLUSTER_14)) {
     const item = (on11.obligations.items || []).find(row => row.id === id && row.date === date);
@@ -216,43 +225,43 @@ console.log('\n=== mid-month 14th–17th cluster follows incumbent payday window
       `${id} on ${date} is reserved from the 11 Sep payday`,
       item ? `${item.date} ${item.amount}` : 'missing');
   }
-  ok(!(on11.obligations.items || []).some(row => row.id === 'netflix' && row.date === '2026-09-17'),
-    'Netflix 17 Sep is after the 15 Sep income, so it is not an 11 Sep obligation');
+  ok((on11.obligations.items || []).some(row => row.id === 'netflix' && row.date === '2026-09-17'),
+    'Netflix 17 Sep stays in the 11–24 Sep Seaspan window; Amanda on the 15th does not split it');
   ok(!(on11.obligations.items || []).some(row => row.id === 'youtube-premium' && row.date === '2026-09-02'),
     'YouTube Premium 2 Sep is not an 11 Sep obligation');
   ok(!(on11.obligations.items || []).some(row => row.id === 'ultimate-guitar'),
     'annual 8 May Ultimate Guitar is not pulled into September');
 
-  const action11 = F.currentPeriodAction(plan, PAYDAY_SEP11, o);
-  ok(action11.mode === 'payday' && action11.periodEnd === PERIOD_END_SEP11,
-    'current-period action uses the same 11–14 Sep window');
+  const action11 = F.currentPeriodAction(plan, AS_OF_SEP11, o);
+  ok(action11.mode === 'payday' && action11.periodEnd === SEASPAN_SEP11.end,
+    'current-period action uses the same 11–24 Sep Seaspan window');
   ok(sameDates(idsOn(on11.obligations.items, '2026-09-14'), idsOn(action11.bills, '2026-09-14')),
     'paydayAllocation and currentPeriodAction name the same 14 Sep bills');
 
-  const on15 = F.paydayAllocation(plan, PAYDAY_SEP15, o);
-  ok(on15.mode === 'payday' && on15.periodEnd === PERIOD_END_SEP15
-      && on15.payday === '2026-09-25',
-    '15 Sep payday period is independently 15–24 Sep',
+  const on15 = F.paydayAllocation(plan, AS_OF_SEP15, o);
+  ok(on15.mode === 'between-paydays' && on15.periodEnd === SEASPAN_SEP11.end
+      && on15.payday === SEASPAN_SEP11.nextPayday,
+    '15 Sep Amanda salary does not start a payday; still the 11–24 Sep Seaspan window',
     `${on15.mode} end ${on15.periodEnd} next ${on15.payday}`);
   const netflix = (on15.obligations.items || [])
     .find(row => row.id === 'netflix' && row.date === '2026-09-17');
   const spotify = (on15.obligations.items || [])
     .find(row => row.id === 'spotify' && row.date === '2026-09-17');
   ok(netflix && near(netflix.amount, 26.87),
-    'Netflix 17 Sep is reserved from the 15 Sep payday');
+    'Netflix 17 Sep remains reserved in the 11 Sep Seaspan window on 15 Sep');
   ok(spotify && near(spotify.amount, 26.87),
-    'Spotify 17 Sep is reserved from the 15 Sep payday');
+    'Spotify 17 Sep remains reserved in the 11 Sep Seaspan window on 15 Sep');
   ok(!(on15.obligations.items || []).some(row =>
     Object.prototype.hasOwnProperty.call(CLUSTER_14, row.id) && row.date === '2026-09-14'),
-    'the 14 Sep bills are not re-reserved on 15 Sep');
-  const action15 = F.currentPeriodAction(plan, PAYDAY_SEP15, o);
+    'the 14 Sep bills are already past as-of on 15 Sep and are not re-listed as upcoming');
+  const action15 = F.currentPeriodAction(plan, AS_OF_SEP15, o);
   const actionNetflix = (action15.bills || [])
     .find(row => row.id === 'netflix' && row.date === '2026-09-17');
   ok(actionNetflix && actionNetflix.settlement === 'upcoming',
     'current-period on 15 Sep still lists Netflix 17 Sep as upcoming');
 }
 
-console.log('\n=== YouTube on the 2nd is reserved from the payday that covers 31 Aug–10 Sep ===');
+console.log('\n=== YouTube on the 2nd is reserved from the 28 Aug–10 Sep Seaspan window ===');
 {
   const o = {
     debts: data.debts,
@@ -260,25 +269,25 @@ console.log('\n=== YouTube on the 2nd is reserved from the payday that covers 31
     periods,
     paydayFloor: 1000,
   };
-  const alloc = F.paydayAllocation(plan, PAYDAY_AUG31, o);
-  ok(alloc.mode === 'payday' && alloc.periodEnd === PERIOD_END_AUG31
-      && alloc.payday === PAYDAY_SEP11,
-    '31 Aug payday period is independently 31 Aug–10 Sep',
+  const alloc = F.paydayAllocation(plan, AS_OF_AUG31, o);
+  ok(alloc.mode === 'between-paydays' && alloc.periodEnd === SEASPAN_AUG28.end
+      && alloc.payday === SEASPAN_AUG28.nextPayday,
+    '31 Aug is between Seaspan paydays in the 28 Aug–10 Sep window',
     `${alloc.mode} end ${alloc.periodEnd} next ${alloc.payday}`);
   const youtube = (alloc.obligations.items || [])
     .find(row => row.id === 'youtube-premium' && row.date === '2026-09-02');
   ok(youtube && near(youtube.amount, 17),
-    'YouTube Premium 2 Sep is an obligation of the 31 Aug payday');
+    'YouTube Premium 2 Sep is an obligation of the 28 Aug Seaspan window');
   const google = (alloc.obligations.items || [])
     .find(row => row.id === 'google-storage-100gb' && row.date === '2026-08-31');
   ok(google && near(google.amount, 3.13),
-    'Google storage month-end due is reserved from the 31 Aug payday');
+    'Google storage month-end due is reserved from the 28 Aug Seaspan window');
   ok(!(alloc.obligations.items || []).some(row =>
     (row.id === 'netflix' && row.date === '2026-09-17')
     || (Object.prototype.hasOwnProperty.call(CLUSTER_14, row.id) && row.date === '2026-09-14')),
-    'the 14th–17th cluster is not assigned to the 31 Aug payday');
+    'the 14th–17th cluster is not assigned to the 28 Aug Seaspan window');
 
-  const action = F.currentPeriodAction(plan, PAYDAY_AUG31, o);
+  const action = F.currentPeriodAction(plan, AS_OF_AUG31, o);
   const actionYt = (action.bills || [])
     .find(row => row.id === 'youtube-premium' && row.date === '2026-09-02');
   ok(actionYt && actionYt.settlement === 'upcoming',

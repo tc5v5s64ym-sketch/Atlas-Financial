@@ -85,6 +85,7 @@ const suites = [
   ['salary recognition and payroll drift', 'test-salary-recognition-drift.js'],
   ['Other Income payday waterfall', 'test-other-income.js'],
   ['Plan payday operating periods', 'test-payday-operating-periods.js'],
+  ['Sep 10 to Sep 11 payday rollover boundary', 'test-payday-rollover-boundary.js'],
   ['Plan payday waterfall balance date and post-payday identity', 'test-plan-payday-waterfall-balance.js'],
   ['owner-policy Payday balance waterfall', 'test-payday-balance-owner-policy.js'],
   ['payday snapshot vs live Current Balance', 'test-payday-snapshot-live-balance.js'],

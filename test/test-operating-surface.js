@@ -158,8 +158,11 @@ console.log('\n=== seven ordered payday-sheet questions ===');
     plan, asOf, advice, weekly: advice.weekly, recommended: advice.weekly,
     liveOverlay: data.liveOverlay,
   });
+  const active = (advice.defaultView.calendarPeriods || []).find(p => p.role === 'active')
+    || advice.defaultView.calendarPeriods[0];
   const prompts = [
     'Current Balance',
+    ...(active && active.openingKnown ? ['Opening balance'] : []),
     'Income',
     'Bills',
     'Balance after bills',
@@ -172,9 +175,12 @@ console.log('\n=== seven ordered payday-sheet questions ===');
     ok(at > previous, `${prompt} appears in the required order`);
     previous = at;
   }
+  const snapshotQs = active && active.openingKnown ? 6 : 5;
   ok(/data-live-current-balance/.test(rendered)
-      && (rendered.match(/data-operating-question=/g) || []).length === 5,
-    'the default surface prints live Current Balance outside the five-question payday snapshot');
+      && (rendered.match(/data-operating-question=/g) || []).length === snapshotQs
+      && !/data-operating-prompt="Current Balance"/.test(rendered)
+      && (!active.openingKnown || /data-operating-prompt="Opening balance"/.test(rendered)),
+    'the default surface prints live Current Balance outside the payday snapshot');
   ok(!/Extra credit-card repayment|Balance after debt repayment|Big-purchase savings|Projected ending balance/.test(rendered),
     'the default surface stops at Balance after household budget');
 }
