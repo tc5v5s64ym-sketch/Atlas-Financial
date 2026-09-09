@@ -290,8 +290,11 @@ console.log('\n=== 2. default view order and kitchen-counter labels ===');
     advice, weekly: advice.weekly, recommended: advice.weekly,
   });
   const glance = defaultGlance(html);
+  const active = (advice.defaultView.calendarPeriods || []).find(p => p.role === 'active')
+    || advice.defaultView.calendarPeriods[0];
   const prompts = [
     'Current Balance',
+    ...(active && active.openingKnown ? ['Opening balance'] : []),
     'Income',
     'Bills',
     'Balance after bills',
@@ -304,9 +307,12 @@ console.log('\n=== 2. default view order and kitchen-counter labels ===');
     ok(at > previous, `${prompt} appears on the default view in order`);
     previous = at;
   }
+  const snapshotQs = active && active.openingKnown ? 6 : 5;
   ok(/data-live-current-balance/.test(html)
-      && (html.match(/data-operating-question=/g) || []).length === 5,
-    'the default surface has live Current Balance plus the five snapshot questions');
+      && (html.match(/data-operating-question=/g) || []).length === snapshotQs
+      && !/data-operating-prompt="Current Balance"/.test(html)
+      && (!active.openingKnown || /data-operating-prompt="Opening balance"/.test(html)),
+    'the default surface has live Current Balance plus the payday snapshot questions');
   ok(!/Extra credit-card repayment|Balance after debt repayment|Big-purchase savings|Projected ending balance/.test(html),
     'the default surface stops at Balance after household budget');
   ok(/data-live-current-balance/.test(html) && /Current Balance/.test(glance)

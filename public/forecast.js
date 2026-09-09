@@ -775,7 +775,16 @@
     return { start: asOf, end: addDays(asOf, days - 1), days };
   }
 
-  function nextPaydayDate(plan, asOf, opts) {
+  function seaspanPaydayFromCycle(plan, asOf) {
+    const cycle = spendingCycle(plan, asOf);
+    const day = financialDate(asOf);
+    if (!cycle || !cycle.start || !cycle.end || !cycle.nextPayday || !day) {
+      return null;
+    }
+    return { cycle, day, todayIsPayday: cycle.start === day };
+  }
+
+  function incomeFloorNextPaydayDate(plan, asOf, opts) {
     opts = opts || {};
     const floor = opts.paydayFloor != null ? opts.paydayFloor : 1000;
     const probeEnd = addDays(asOf, Math.max(60, (plan.windowDays || 91) - 1));
@@ -784,7 +793,21 @@
     return hit ? hit.date : null;
   }
 
+  function nextPaydayDate(plan, asOf, opts) {
+    const seaspan = seaspanPaydayFromCycle(plan, asOf);
+    if (seaspan) {
+      return seaspan.todayIsPayday ? seaspan.cycle.start : seaspan.cycle.nextPayday;
+    }
+    return incomeFloorNextPaydayDate(plan, asOf, opts);
+  }
+
   function previousPaydayDate(plan, asOf, opts) {
+    const seaspan = seaspanPaydayFromCycle(plan, asOf);
+    if (seaspan) {
+      if (!seaspan.todayIsPayday) return seaspan.cycle.start;
+      const prior = spendingCycle(plan, addDays(seaspan.cycle.start, -1));
+      return (prior && prior.start) || null;
+    }
     opts = opts || {};
     const floor = opts.paydayFloor != null ? opts.paydayFloor : 1000;
     const probeStart = addDays(asOf, -Math.max(60, (plan.windowDays || 91) - 1));
@@ -798,11 +821,14 @@
     return hit;
   }
 
-  // Current payday-period start: this payday, else the previous payday.
+  // Current payday-period start: this Seaspan payday, else the previous
+  // Seaspan payday. Amanda salary and other large inflows do not reset it.
   // Distinct from periodOriginDate, which stays as-of unless a live overlay
   // named priorAsOf. Observation reconciliation uses this so a recurring
   // bill due earlier in the payday period cannot fall out of the bill list.
   function paydayPeriodOrigin(plan, asOf, opts) {
+    const seaspan = seaspanPaydayFromCycle(plan, asOf);
+    if (seaspan) return seaspan.cycle.start;
     opts = opts || {};
     const cal = opts.paydayCalendar || paydayCalendar(plan, asOf, opts);
     if (cal.todayIsPayday) return asOf;
@@ -2229,8 +2255,26 @@
     'personal loan payment',
   ]);
 
+  // Seaspan payday cycle is the operating payday. uniquePaydayDates of any
+  // income ≥ floor is only the fallback when no Seaspan stream exists:
+  // Amanda salary must not start payday mode or truncate nextPeriodView.
   function paydayCalendar(plan, asOf, opts) {
     opts = opts || {};
+    const seaspan = seaspanPaydayFromCycle(plan, asOf);
+    if (seaspan) {
+      const cycle = seaspan.cycle;
+      const todayIsPayday = seaspan.todayIsPayday;
+      return {
+        todayIsPayday,
+        mode: todayIsPayday ? 'payday' : 'between-paydays',
+        subsequent: cycle.nextPayday,
+        paydayDates: todayIsPayday
+          ? [cycle.start, cycle.nextPayday]
+          : [cycle.nextPayday],
+        periodLast: cycle.end,
+        periodEndExclusive: cycle.nextPayday,
+      };
+    }
     const payFloor = opts.paydayFloor != null ? opts.paydayFloor : 1000;
     const horizon = knowledgeHorizon(plan, asOf, opts);
     const allEvents = expandEvents(plan, asOf, horizon.end, opts);
@@ -3326,11 +3370,13 @@
     };
   }
 
-  // The payday whose cheque is in play: as-of when today is payday,
-  // otherwise the previous payday. Distinct from periodOriginDate, which
-  // may reach back through a live overlay priorAsOf so elapsed actuals
-  // still subtract from that opening.
+  // The payday whose cheque is in play: the current Seaspan cycle start.
+  // Distinct from periodOriginDate, which may reach back through a live
+  // overlay priorAsOf so elapsed actuals still subtract from that opening.
+  // Amanda salary and other income ≥ the payday floor do not become thisPayday.
   function thisPaydayDate(plan, asOf, opts, cal) {
+    const seaspan = seaspanPaydayFromCycle(plan, asOf);
+    if (seaspan) return seaspan.cycle.start;
     cal = cal || paydayCalendar(plan, asOf, opts);
     if (cal.todayIsPayday) return asOf;
     return previousPaydayDate(plan, asOf, opts) || asOf;
@@ -5666,7 +5712,9 @@
               ? 'Payday opening is not recorded for this period. Live Current Balance is not this payday\'s opening.'
               : (projected
                 ? 'Projected opening. Not today\'s balance.'
-                : null))),
+                : (role === 'active'
+                  ? 'Opening this pay period. Carried forward, not income.'
+                  : null)))),
       });
     }
     const active = periods.find(p => p.role === 'active') || periods[0] || null;

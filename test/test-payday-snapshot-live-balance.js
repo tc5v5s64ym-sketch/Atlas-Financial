@@ -334,8 +334,9 @@ console.log('\n=== 6. Default Plan visually separates live cash from the payday 
     'live glance prints Current Balance and the provider observation date');
   ok(!/data-operating-prompt="Current Balance"/.test(card)
       && !/data-operating-prompt="Current balance as of/.test(card)
-      && !/data-operating-question="01"/.test(card),
-    'active payday card does not start with Current Balance as Q01');
+      && /data-operating-prompt="Opening balance"/.test(card)
+      && /data-operating-question="01"/.test(card),
+    'active payday card Q01 is Forecast opening, not live Current Balance');
   ok(/data-operating-prompt="Income"/.test(card)
       && /Payday balance/.test(card)
       && !/data-operating-prompt="Balance after payday"/.test(card)
