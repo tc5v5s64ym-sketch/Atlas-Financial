@@ -4631,6 +4631,71 @@
     return row;
   }
 
+  // TD ledger types, not merchant guesses. Internal TFR-(TO|FR) pairs on the
+  // five-character reference ACCOUNT_FACTS already records; ATM DEP is a cash
+  // deposit into the posted account, not a TFR leg. Overlay sanitizer stamps
+  // these as flags before stripping merchant text.
+  const TD_INTERNAL_TRANSFER_RE = /\b[A-Z]{2}\d{3}\s+TFR-(TO|FR)\b/i;
+  const TD_ATM_DEPOSIT_RE = /\bATM\s*DEP\b/i;
+  const TD_CASH_WITHDRAWAL_RE = /\bATM\s*W\/D\b|\bCASH\s+WITHDRA/i;
+
+  function txTypeIdentityBlob(tx) {
+    if (!tx) return '';
+    return [txMerchantExact(tx), txTextBlob(tx)].filter(Boolean).join(' ');
+  }
+
+  function isInternalTransferIdentity(tx) {
+    if (!tx) return false;
+    if (tx.internalTransferIdentity === true) return true;
+    return TD_INTERNAL_TRANSFER_RE.test(txTypeIdentityBlob(tx));
+  }
+
+  function isCashWithdrawalIdentity(tx) {
+    if (!tx) return false;
+    if (tx.cashWithdrawalIdentity === true) return true;
+    if (isInternalTransferIdentity(tx)) return false;
+    return TD_CASH_WITHDRAWAL_RE.test(txTypeIdentityBlob(tx));
+  }
+
+  function isExternalCashDepositIdentity(tx) {
+    if (!tx) return false;
+    if (tx.externalCashDeposit === true) return !isInternalTransferIdentity(tx);
+    if (isInternalTransferIdentity(tx)) return false;
+    return TD_ATM_DEPOSIT_RE.test(txTypeIdentityBlob(tx));
+  }
+
+  function isInternalHouseholdTransfer(tx) {
+    if (!tx) return false;
+    if (isInternalTransferIdentity(tx)) return true;
+    const hint = normalizeCategoryLabel(tx.kindHint);
+    if ((hint === 'transfer' || hint === 'internal-transfer')
+        && !isExternalCashDepositIdentity(tx)) {
+      return true;
+    }
+    return false;
+  }
+
+  function hasMatchingCashWithdrawal(tx, opts) {
+    if (!tx) return false;
+    const inflow = txInflowAmount(tx);
+    if (!(inflow > EPSILON)) return false;
+    const packet = currentPeriodActualsPacket(opts);
+    const txs = packet && Array.isArray(packet.transactions) ? packet.transactions : [];
+    for (const other of txs) {
+      if (!other || other === tx) continue;
+      if (tx.id != null && other.id != null && String(other.id) === String(tx.id)) continue;
+      if (other.accountRole === 'household-external' || other.accountRole === 'unmapped') continue;
+      if (other.accountRole && other.accountRole !== 'household-cash') continue;
+      if (!isCashWithdrawalIdentity(other)) continue;
+      const out = Number(other.amount);
+      if (!isFinite(out) || !(out > EPSILON)) continue;
+      if (roundCent(out) !== roundCent(inflow)) continue;
+      if (tx.date && other.date && tx.date !== other.date) continue;
+      return true;
+    }
+    return false;
+  }
+
   function txInflowAmount(tx) {
     const amt = Number(tx && tx.amount);
     if (!isFinite(amt) || amt === 0) return 0;
@@ -4667,30 +4732,37 @@
     if (tx.accountRole === 'household-external' || tx.accountRole === 'unmapped') return false;
     if (isTennisIncomeAccount(personalAccountText(tx))) return false;
     if (!(txInflowAmount(tx) > EPSILON)) return false;
+    // Account-identity invariant: a TFR-(TO|FR) leg is not new household
+    // resources, even when Lunch Money labels it Income.
+    if (isInternalHouseholdTransfer(tx)) return false;
     const packet = currentPeriodActualsPacket(opts);
     const classifyOpts = Object.assign({}, opts || {}, {
       packet,
       currentPeriodActuals: packet,
     });
     const cls = classifyCurrentPeriodTransaction(tx, plan, classifyOpts);
-    if (cls.kind === 'transfer' || cls.kind === 'card-payment' || cls.kind === 'bill'
+    if (cls.kind === 'card-payment' || cls.kind === 'bill'
         || cls.kind === 'external' || cls.kind === 'unmapped' || cls.kind === 'business') {
       return false;
     }
-    if (cls.kind === 'refund') {
-      const refundLabel = normalizeCategoryLabel(tx.categoryLabel);
-      if (!OTHER_INCOME_INFLOW_LABELS.has(refundLabel)
-          && !/gift|reimbursement|tax refund|rebate/i.test(txTextBlob(tx))) {
+    if (cls.kind === 'transfer' && !isExternalCashDepositIdentity(tx)) return false;
+    if (txMatchesScheduledIncome(tx, plan, opts)) return false;
+    // Automatic path: TD ATM deposit into household-cash, with no same-day
+    // cash withdrawal of the same amount. A matching ATM W/D is ambiguous
+    // (own cash redeposited) and fails closed to the Lunch Money Income path.
+    if (isExternalCashDepositIdentity(tx)) {
+      if (hasMatchingCashWithdrawal(tx, classifyOpts) && tx.isIncome !== true) {
         return false;
       }
+      return true;
     }
-    if (txMatchesScheduledIncome(tx, plan, opts)) return false;
     if (tx.isIncome === true) return true;
     const label = normalizeCategoryLabel(tx.categoryLabel);
     if (OTHER_INCOME_INFLOW_LABELS.has(label)) return true;
     const hint = normalizeCategoryLabel(tx.kindHint);
     if (hint === 'income' || hint === 'other-income') return true;
     if (/gift|reimbursement|tax refund|rebate/i.test(txTextBlob(tx))) return true;
+    if (cls.kind === 'refund') return false;
     return false;
   }
 
@@ -5027,6 +5099,9 @@
       daleGuiltFreeMerchant: false,
       amazonMerchant: false,
       cardPaymentIdentity: false,
+      internalTransferIdentity: false,
+      externalCashDeposit: false,
+      cashWithdrawalIdentity: false,
       personalOwner: null,
     };
     if (!tx) return empty;
@@ -5034,6 +5109,9 @@
     const amazonMerchant = isAmazonMerchant(tx);
     const confirmedGrocery = isConfirmedGroceryMerchant(tx);
     const amandaAmazonTravelVisa = amazonMerchant && isTravelVisaAccount(tx);
+    const internalTransferIdentity = isInternalTransferIdentity(tx);
+    const cashWithdrawalIdentity = isCashWithdrawalIdentity(tx);
+    const externalCashDeposit = isExternalCashDepositIdentity(tx);
     return {
       dogFood: isDogFoodMerchant(tx),
       convenienceStore: isConvenienceStoreMerchant(tx),
@@ -5047,6 +5125,9 @@
       daleGuiltFreeMerchant,
       amazonMerchant,
       cardPaymentIdentity: isCanadianTireMastercardPayment(tx),
+      internalTransferIdentity,
+      externalCashDeposit,
+      cashWithdrawalIdentity,
       personalOwner: daleGuiltFreeMerchant ? 'dale'
         : (amandaAmazonTravelVisa ? 'amanda' : personalSpendOwner(tx)),
     };

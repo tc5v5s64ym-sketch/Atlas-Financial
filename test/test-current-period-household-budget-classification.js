@@ -2403,6 +2403,79 @@ console.log('\n=== 15. CAN TIRE MC card-payment identity reaches unmatched-house
     'receipt unmatched count is exactly the one unresolved debit');
 }
 
+console.log('\n=== overlay stamps ATM deposit / TFR identity before merchant strip ===');
+{
+  const ATM_AMT = -350;
+  const TFR_AMT = -350;
+  const TFR_OUT = 350;
+  const plan = syntheticPlan();
+  const map = {
+    schema: 'atlas-provider-account-map/v1',
+    mappings: [
+      {
+        providerAccountId: '1001',
+        canonical: { collection: 'cash', id: 'chequing-a' },
+        atlasRole: 'household-cash',
+      },
+      {
+        providerAccountId: '1002',
+        canonical: { collection: 'cash', id: 'chequing-b' },
+        atlasRole: 'household-cash',
+      },
+    ],
+  };
+  const overlay = O.sanitizedCurrentPeriodActuals({
+    fetchedAt: '2026-09-08T18:00:00.000Z',
+    transactionWindow: { startDate: '2026-08-28', endDate: '2026-09-10', complete: true },
+    pendingCoverage: {
+      complete: true, basis: O.PENDING_COVERAGE_BASIS, hasMore: false, truncated: false,
+    },
+    collapsedTransactions: [
+      {
+        date: '2026-09-08', amount: ATM_AMT, pending: false,
+        categoryLabel: 'Payment, Transfer', excludeFromTotals: true,
+        payee: 'TD ATM DEP 100001', originalName: 'TD ATM DEP 100001',
+        providerAccountId: '1002', providerTransactionId: 'atm-dep-1',
+      },
+      {
+        date: '2026-09-08', amount: TFR_OUT, pending: false,
+        categoryLabel: 'Payment, Transfer', excludeFromTotals: true, kind: 'transfer',
+        payee: 'SY001 TFR-TO BILLSA', originalName: 'SY001 TFR-TO BILLSA',
+        providerAccountId: '1002', providerTransactionId: 'tfr-to-1',
+      },
+      {
+        date: '2026-09-08', amount: TFR_AMT, pending: false,
+        categoryLabel: 'Payment, Transfer', excludeFromTotals: true, kind: 'transfer',
+        payee: 'SY001 TFR-FR CASHB', originalName: 'SY001 TFR-FR CASHB',
+        providerAccountId: '1001', providerTransactionId: 'tfr-fr-1',
+      },
+    ],
+    representedEventCandidates: [],
+  }, { asOf: '2026-09-08', plan, accountMap: map });
+  const blob = JSON.stringify(overlay);
+  ok(O.currentPeriodActualsLooksSanitized(overlay)
+      && !/"payee"\s*:/.test(blob) && !/"originalName"\s*:/.test(blob),
+    'ATM/TFR overlay packet keeps no raw payee');
+  const atm = (overlay.transactions || []).find(tx => tx && tx.atlasAccountId === 'chequing-b'
+    && near(tx.amount, ATM_AMT));
+  const tfrFr = (overlay.transactions || []).find(tx => tx && tx.atlasAccountId === 'chequing-a'
+    && near(tx.amount, TFR_AMT));
+  const tfrTo = (overlay.transactions || []).find(tx => tx && tx.atlasAccountId === 'chequing-b'
+    && near(tx.amount, TFR_OUT));
+  ok(atm && atm.externalCashDeposit === true && atm.internalTransferIdentity !== true
+      && !atm.displayedPayee && !atm.originalMerchant,
+    'ATM DEP stamps externalCashDeposit and strips merchant text',
+    JSON.stringify(atm && {
+      externalCashDeposit: atm.externalCashDeposit,
+      internalTransferIdentity: atm.internalTransferIdentity,
+      displayedPayee: atm.displayedPayee,
+      originalMerchant: atm.originalMerchant,
+    }));
+  ok(tfrFr && tfrFr.internalTransferIdentity === true && tfrFr.externalCashDeposit !== true
+      && tfrTo && tfrTo.internalTransferIdentity === true,
+    'TFR-TO/TFR-FR stamp internalTransferIdentity, not externalCashDeposit');
+}
+
 if (failures) {
   console.log('\n' + failures + ' failure(s)');
   process.exit(1);
