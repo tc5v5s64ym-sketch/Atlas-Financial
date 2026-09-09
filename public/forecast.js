@@ -6847,8 +6847,12 @@
     // than how much the debt can take, and the answer comes back $956.81 short.
     const capsFor = o => {
       if (!o.debts) return null;
+      // These caps govern the master cash walk, including dates outside the
+      // display window. A missing cap means zero payment, so measuring only
+      // the default debt view would erase later obligations and extras.
       const walked = projectDebts(plan, o.debts, asOf,
-        Object.assign({}, o, { extraAbsorbed: null, obligationAbsorbed: null }));
+        Object.assign({}, o, { debtHorizonDays: horizon.days,
+          extraAbsorbed: null, obligationAbsorbed: null }));
       return { extraAbsorbed: walked.extraAbsorbed, obligationAbsorbed: walked.obligationAbsorbed };
     };
     const applyCaps = (o, caps) => {
