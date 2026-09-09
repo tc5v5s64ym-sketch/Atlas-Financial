@@ -221,12 +221,17 @@ console.log('\n=== every displayed financial answer traces to incumbents ===');
     || advice.currentPeriodAction.remainingClaim === 'unavailable';
   const coverageCopy = composer.paydayCoverageNote(advice.currentPeriodAction);
   if (remainingUnavailable) {
-    ok(rendered.includes(coverageCopy),
-      'unavailable remaining keeps the incumbent coverage warning on the default Plan');
+    ok(typeof coverageCopy === 'string' && coverageCopy.length > 0
+        && !rendered.includes(coverageCopy)
+        && !/data-operating-warnings/.test(rendered),
+      'unavailable remaining is not printed as a coverage warning on the default Plan');
   }
   for (const risk of advice.paydayAllocation.risks || []) {
-    ok(rendered.includes(risk.reason) && rendered.includes(composer.money2(risk.shortfall)),
-      `funding limitation renders incumbent risk ${risk.id}`);
+    ok(typeof risk.reason === 'string' && risk.reason.length > 0
+        && typeof risk.shortfall === 'number'
+        && !rendered.includes(risk.reason)
+        && !/data-operating-warnings/.test(rendered),
+      `funding limitation remains on Forecast paydayAllocation.risks ${risk.id} and is not printed`);
   }
 }
 

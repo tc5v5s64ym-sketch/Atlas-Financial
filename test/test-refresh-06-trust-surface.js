@@ -186,7 +186,7 @@ function loadComposer() {
     grab(planSrc, /^function operatingSurfaceHtml\([\s\S]*?\n\}$/m, 'operatingSurfaceHtml'),
   ].join('\n');
   return vm.runInNewContext(
-    `${source}\n({ operatingSurfaceHtml, refreshTrustHtml, betweenPaydaysOperatingHtml, money2 });`,
+    `${source}\n({ operatingSurfaceHtml, refreshTrustHtml, betweenPaydaysOperatingHtml, weeklyCapView, paydayCoverageNote, money2 });`,
     { Forecast }
   );
 }
@@ -478,8 +478,12 @@ console.log('\n=== F. HTML current / stale / incomplete / ambiguous render disti
   ok(!staleHtml.includes(composer.money2(SENTINEL_USED))
     && !staleHtml.includes(composer.money2(SENTINEL_REMAINING)),
   'stale remaining cents are not presented as a precise answer');
-  ok(/Current remaining spend cannot be confirmed|current remaining amounts unavailable/.test(staleHtml),
-    'stale remaining-spend warning remains visible');
+  const staleCoverage = composer.paydayCoverageNote(staleAction);
+  ok(/Current remaining spend cannot be confirmed|current remaining amounts unavailable/.test(staleCoverage),
+    'paydayCoverageNote still describes stale remaining-spend');
+  ok(!/Current remaining spend cannot be confirmed|current remaining amounts unavailable/.test(staleHtml)
+      && !/data-operating-warnings/.test(staleHtml),
+    'stale remaining-spend copy is not printed as an advisory on the usable Plan');
 
   const incompleteHtml = composer.refreshTrustHtml(trustPacket({
     displayState: 'attention-needed',
@@ -524,15 +528,29 @@ console.log('\n=== F. HTML current / stale / incomplete / ambiguous render disti
     }),
     capView: cap,
   });
-  ok(/data-operating-warnings/.test(ambiguousPlanHtml)
-      && /data-refresh-attention/.test(ambiguousPlanHtml)
-      && ambiguousPlanHtml.includes(AMBIGUOUS_COPY)
+  ok(!/data-operating-warnings/.test(ambiguousPlanHtml)
+      && !/data-refresh-attention/.test(ambiguousPlanHtml)
+      && !ambiguousPlanHtml.includes(AMBIGUOUS_COPY)
       && !/data-refresh-trust-state=/.test(ambiguousPlanHtml)
       && !/Notes behind these numbers/.test(ambiguousPlanHtml)
       && !/waiting for approval/.test(ambiguousPlanHtml),
-    'attention-needed with exact remaining prints compact unresolved copy, not the large trust card');
+    'attention-needed with exact remaining does not print compact unresolved copy on the usable Plan');
   ok(ambiguousPlanHtml.includes(composer.money2(100)),
     'attention-needed with exact remaining still publishes Forecast available cash');
+  ok(/data-refresh-trust-state="attention-needed"/.test(composer.refreshTrustHtml(trustPacket({
+    displayState: 'attention-needed',
+    unresolvedMaterial: [{
+      kind: 'ambiguous-evidence-must-not-write',
+      text: AMBIGUOUS_COPY,
+    }],
+  }))) && composer.refreshTrustHtml(trustPacket({
+    displayState: 'attention-needed',
+    unresolvedMaterial: [{
+      kind: 'ambiguous-evidence-must-not-write',
+      text: AMBIGUOUS_COPY,
+    }],
+  })).includes(AMBIGUOUS_COPY),
+    'refreshTrustHtml still preserves the unresolved copy for the unavailable surface');
 
   const emptyAttentionHtml = composer.operatingSurfaceHtml({
     advice: {
@@ -543,10 +561,13 @@ console.log('\n=== F. HTML current / stale / incomplete / ambiguous render disti
     refreshTrust: trustPacket({ displayState: 'attention-needed' }),
     capView: cap,
   });
-  ok(/data-refresh-attention/.test(emptyAttentionHtml)
-      && />Attention needed</.test(emptyAttentionHtml)
+  ok(!/data-refresh-attention/.test(emptyAttentionHtml)
+      && !/>Attention needed</.test(emptyAttentionHtml)
+      && !/data-operating-warnings/.test(emptyAttentionHtml)
       && !/data-refresh-trust-state=/.test(emptyAttentionHtml),
-    'attention-needed with exact remaining and no extras still prints a compact Attention needed line');
+    'attention-needed with exact remaining and no extras prints no compact Attention needed line on the usable Plan');
+  ok(/>Attention needed</.test(composer.refreshTrustHtml(trustPacket({ displayState: 'attention-needed' }))),
+    'refreshTrustHtml still preserves the Attention needed label for the unavailable surface');
 
   const ownerQuestionCopy = 'Atlas still needs a household fact before treating this modeled item as settled.';
   const askedPlanHtml = composer.operatingSurfaceHtml({
@@ -565,10 +586,20 @@ console.log('\n=== F. HTML current / stale / incomplete / ambiguous render disti
     }),
     capView: cap,
   });
-  ok(/data-refresh-attention/.test(askedPlanHtml)
-      && askedPlanHtml.includes(ownerQuestionCopy)
+  ok(!/data-refresh-attention/.test(askedPlanHtml)
+      && !askedPlanHtml.includes(ownerQuestionCopy)
+      && !/data-operating-warnings/.test(askedPlanHtml)
       && !/data-refresh-trust-state=/.test(askedPlanHtml),
-    'attention-needed owner question prints as compact warning copy from the packet');
+    'attention-needed owner question is not printed as compact warning copy on the usable Plan');
+  ok(composer.refreshTrustHtml(trustPacket({
+    displayState: 'attention-needed',
+    ownerQuestion: {
+      id: 'uniondues-aug15-outstanding',
+      date: '2026-08-16',
+      text: ownerQuestionCopy,
+    },
+  })).includes(ownerQuestionCopy),
+    'refreshTrustHtml still preserves the owner-question copy for the unavailable surface');
 }
 
 console.log('\n=== G. proposal and owner question appear only when incumbent supplied them ===');

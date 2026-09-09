@@ -104,7 +104,7 @@ function loadComposer() {
     grab(planSrc, /^function operatingSurfaceHtml\([\s\S]*?\n\}$/m, 'operatingSurfaceHtml'),
   ].join('\n');
   return vm.runInNewContext(
-    `${source}\n({ operatingSurfaceHtml, mustLeaveHtml, alreadyPaidHtml, paydayAllocationSummaryHtml, futureGravityHtml, money, money2 });`,
+    `${source}\n({ operatingSurfaceHtml, mustLeaveHtml, alreadyPaidHtml, paydayAllocationSummaryHtml, futureGravityHtml, weeklyCapView, money, money2 });`,
     { Forecast: F }
   );
 }
@@ -262,9 +262,16 @@ console.log('\n=== 2. recommend weekly cap, never a fake $0/week yes ===');
     'infeasible recommend does not publish a weekly yes');
   ok(!/\$0 \/ week/.test(infeasibleHtml) && !/Spend at most \$0/.test(infeasibleHtml),
     'infeasible weekly = 0 is not a fake $0/week yes');
-  ok(/Synthetic protected cost/.test(infeasibleHtml)
-    && infeasibleHtml.includes(composer.money2(321.11)),
-    'infeasible names the failing constraint and shortfall as a compact warning');
+  const capCopy = composer.weeklyCapView(blocked);
+  ok(capCopy.hasFeasibleCap === false
+      && /Synthetic protected cost/.test(capCopy.reason)
+      && capCopy.reason.includes(composer.money2(321.11)),
+    'weeklyCapView still names the failing constraint and shortfall');
+  ok(!/data-operating-warnings/.test(infeasibleHtml)
+      && !/Synthetic protected cost/.test(infeasibleHtml)
+      && !infeasibleHtml.includes(composer.money2(321.11))
+      && !/There is no feasible weekly cap/.test(infeasibleHtml),
+    'the usable Plan does not print that infeasible copy as an advisory');
 
   const modeOnly = JSON.parse(JSON.stringify(advice));
   modeOnly.mode = 'infeasible';
@@ -273,9 +280,13 @@ console.log('\n=== 2. recommend weekly cap, never a fake $0/week yes ===');
   const modeOnlyHtml = composer.operatingSurfaceHtml({
     advice: modeOnly, weekly: 0, recommended: 0,
   });
+  const modeCopy = composer.weeklyCapView(modeOnly);
+  ok(/no safe weekly spend/i.test(modeCopy.reason),
+    'weeklyCapView still refuses a weekly yes when mode is infeasible without a fail object');
   ok(!/\$0 \/ week/.test(modeOnlyHtml)
-    && /no safe weekly spend/i.test(modeOnlyHtml),
-    'infeasible mode without a fail object still refuses a weekly yes');
+      && !/data-operating-warnings/.test(modeOnlyHtml)
+      && !/no safe weekly spend/i.test(modeOnlyHtml),
+    'infeasible mode without a fail object still refuses a weekly yes and prints no advisory');
 }
 
 console.log('\n=== 3. extra debt only from paydayAllocation surplus ===');

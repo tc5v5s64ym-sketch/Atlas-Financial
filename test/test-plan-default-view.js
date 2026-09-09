@@ -322,8 +322,12 @@ console.log('\n=== 2. default view order and kitchen-counter labels ===');
       && !/Notes behind these numbers/.test(html)
       && !/How sure is this\?/.test(html)
       && !/data-refresh-trust-state=/.test(html)
-      && !/data-refresh-attention/.test(html),
-    'default usable Plan does not render explainer, worksheet, or routine trust-card clutter');
+      && !/data-refresh-attention/.test(html)
+      && !/data-operating-warnings/.test(html)
+      && !/There is no feasible weekly cap/.test(html)
+      && !/stays unfunded/.test(html)
+      && !/class="operating-limit warn"/.test(html),
+    'default usable Plan does not render explainer, worksheet, trust-card, or advisory-block clutter');
 }
 
 console.log('\n=== 3. bills this pay period: paid stay listed, history stays off ===');

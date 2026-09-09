@@ -336,10 +336,12 @@ console.log('\n=== composed surface: cash, identity, debt, protection, limits ==
   const coverage = composer.paydayCoverageNote(action);
   const remainingUnavailable = !action || action.remainingClaim === 'unavailable';
   ok(remainingUnavailable
-      && /data-operating-warnings/.test(rendered)
-      && rendered.includes(coverage)
       && /Transaction actuals were not supplied|unavailable|through/.test(coverage),
-    'unavailable remaining keeps the incumbent coverage warning on the default Plan');
+    'Forecast remainingClaim stays unavailable on the committed opening');
+  ok(!/data-operating-warnings/.test(rendered)
+      && !rendered.includes(coverage)
+      && !/There is no feasible weekly cap/.test(rendered),
+    'unavailable remaining is not printed as an advisory on the default Plan');
   ok(!/data-operating-certainty/.test(rendered)
       && !/How sure is this\?/.test(rendered),
     'the generic certainty disclosure is not on the default Plan');

@@ -103,7 +103,7 @@ function loadComposer() {
     grab(planSrc, /^function operatingSurfaceHtml\([\s\S]*?\n\}$/m, 'operatingSurfaceHtml'),
   ].join('\n');
   return vm.runInNewContext(
-    `${source}\n({ operatingSurfaceHtml, futureGravityHtml, money, money2, fmtDateLong });`,
+    `${source}\n({ operatingSurfaceHtml, futureGravityHtml, weeklyCapView, money, money2, fmtDateLong });`,
     { Forecast: F }
   );
 }
@@ -216,14 +216,24 @@ console.log('\n=== 2. no safe spending / protected shortfall ===');
     advice, weekly: advice.weekly, recommended: advice.weekly,
   });
   const q4 = question(html, '04');
-  ok(/This payday cannot cover required obligations in cash/.test(html)
-      && /This payday cannot protect essential household spending in cash/.test(html),
-    'protected shortfall still publishes compact funding warnings');
+  const capCopy = composer.weeklyCapView(advice);
+  ok(capCopy.hasFeasibleCap === false
+      && /No safe-to-spend figure exists until that protected shortfall is solved/.test(capCopy.reason),
+    'weeklyCapView still states there is no safe amount');
+  ok(Array.isArray(advice.paydayAllocation.risks)
+      && advice.paydayAllocation.risks.length === 2
+      && advice.paydayAllocation.risks[0].shortfall === 40.5
+      && advice.paydayAllocation.risks[1].shortfall === 80.25,
+    'Forecast paydayAllocation.risks still carry the protected shortfalls');
+  ok(!/This payday cannot cover required obligations in cash/.test(html)
+      && !/This payday cannot protect essential household spending in cash/.test(html)
+      && !/data-operating-warnings/.test(html)
+      && !/No safe-to-spend figure exists until that protected shortfall is solved/.test(html),
+    'protected shortfall is not printed as compact funding warnings on the usable Plan');
   ok(!/No payment or transfer is required today/.test(html),
     'the hold instruction is not a due-date warning that also says do not pay');
-  ok(!/data-spend-decision="amount"/.test(html)
-      && /No safe-to-spend figure exists until that protected shortfall is solved/.test(html),
-    'this week\'s spend states there is no safe amount as a compact warning');
+  ok(!/data-spend-decision="amount"/.test(html),
+    'this week\'s spend is not dumped onto the default Plan as a compact warning');
   ok(!/Why\?/.test(html) && !/data-today-decision="hold"/.test(html),
     'infeasibility is not wrapped in Why? or hold-decision disclosures');
   ok(!/No action required today/.test(html) && !/No money movement needed today/.test(html)
