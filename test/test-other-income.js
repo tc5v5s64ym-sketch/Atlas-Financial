@@ -7,8 +7,9 @@
  * event. plan.js renders that Forecast group; it does not classify or total.
  * Independent arithmetic / membership (L-002 / L-006).
  *
- * `node test/test-other-income.js` — 8 cases, including post-date
- * reconcile-once and received-over-estimated render.
+ * `node test/test-other-income.js` — 13 cases, including post-date
+ * reconcile-once, received-over-estimated render, external ATM-deposit
+ * vs internal TFR identity, and the Lunch Money Income correction path.
  */
 const fs = require('fs');
 const path = require('path');
@@ -451,6 +452,208 @@ console.log('\n=== 7. Displayed Other Income total reconciles to authoritative r
   const waterfallFn = grab(planSrc, /^function calendarWaterfallHtml\([\s\S]*?\n\}$/m, 'calendarWaterfallHtml');
   ok(/period\.available/.test(waterfallFn) && !/\.opening\s*\+/.test(waterfallFn),
     'plan.js still does not compute opening + income for Balance after payday');
+}
+
+console.log('\n=== 9. External ATM deposit vs internal TFR-FR is counted once ===');
+{
+  // Lunch Money v2: negative = credit / inflow. Category Payment, Transfer
+  // is the incumbent mislabel. Synthetic ids; amount reuses GIFT.
+  const atmDep = {
+    id: 'tx-atm-dep',
+    date: PAYDAY,
+    amount: -GIFT,
+    pending: false,
+    categoryLabel: 'Payment, Transfer',
+    accountRole: 'household-cash',
+    atlasAccountId: 'chequing-b',
+    excludeFromTotals: true,
+    displayedPayee: 'TD ATM DEP 100001',
+    originalMerchant: 'TD ATM DEP 100001',
+  };
+  const tfrTo = {
+    id: 'tx-tfr-to',
+    date: PAYDAY,
+    amount: GIFT,
+    pending: false,
+    categoryLabel: 'Payment, Transfer',
+    accountRole: 'household-cash',
+    atlasAccountId: 'chequing-b',
+    excludeFromTotals: true,
+    kindHint: 'transfer',
+    displayedPayee: 'SY001 TFR-TO BILLSA',
+    originalMerchant: 'SY001 TFR-TO BILLSA',
+  };
+  const tfrFr = {
+    id: 'tx-tfr-fr',
+    date: PAYDAY,
+    amount: -GIFT,
+    pending: false,
+    categoryLabel: 'Payment, Transfer',
+    accountRole: 'household-cash',
+    atlasAccountId: 'chequing-a',
+    excludeFromTotals: true,
+    kindHint: 'transfer',
+    displayedPayee: 'SY001 TFR-FR CASHB',
+    originalMerchant: 'SY001 TFR-FR CASHB',
+  };
+  const independentOther = GIFT;
+  const independentTotal = roundCent(DALE + AMANDA + GIFT);
+  const independentAfter = roundCent(OPENING_CASH + DALE + AMANDA + GIFT);
+  const advice = recommend(paydayPlan(), [atmDep, tfrTo, tfrFr]);
+  const active = period(advice.defaultView, 'this-pay-period');
+  const items = (active.otherIncome && active.otherIncome.items) || [];
+  const atmRows = items.filter(r => r && String(r.id).indexOf('tx-atm-dep') !== -1);
+  const tfrRows = items.filter(r => r && /tx-tfr/.test(String(r.id)));
+  ok(atmRows.length === 1 && tfrRows.length === 0 && items.length === 1,
+    'ATM deposit is the one Other Income item; both TFR legs stay out',
+    JSON.stringify(items.map(r => r.id)));
+  ok(near(active.otherIncome.amount, independentOther),
+    'Other Income independently equals the ATM deposit once');
+  ok(near(active.incomeTotal, independentTotal)
+      && near(active.incomeAdded, independentTotal)
+      && near(active.available, independentAfter),
+    'Balance after payday adds the ATM deposit once and not the TFR-FR');
+}
+
+console.log('\n=== 10. Overlay-stripped ATM deposit flag still counts; TFR flag does not ===');
+{
+  const atmDep = {
+    id: 'tx-atm-flag',
+    date: PAYDAY,
+    amount: -GIFT,
+    pending: false,
+    categoryLabel: 'Payment, Transfer',
+    accountRole: 'household-cash',
+    atlasAccountId: 'chequing-b',
+    excludeFromTotals: true,
+    externalCashDeposit: true,
+  };
+  const tfrFr = {
+    id: 'tx-tfr-flag',
+    date: PAYDAY,
+    amount: -GIFT,
+    pending: false,
+    categoryLabel: 'Payment, Transfer',
+    accountRole: 'household-cash',
+    atlasAccountId: 'chequing-a',
+    excludeFromTotals: true,
+    internalTransferIdentity: true,
+  };
+  const advice = recommend(paydayPlan(), [atmDep, tfrFr]);
+  const active = period(advice.defaultView, 'this-pay-period');
+  const items = (active.otherIncome && active.otherIncome.items) || [];
+  ok(items.length === 1 && items[0].id === 'other-income:tx-atm-flag',
+    'stripped ATM deposit flag is Other Income; stripped TFR flag is not',
+    JSON.stringify(items.map(r => r.id)));
+  ok(near(active.otherIncome.amount, GIFT),
+    'flag-only ATM deposit independently equals GIFT once');
+}
+
+console.log('\n=== 11. Ambiguous credit categorized Income enters Other Income ===');
+{
+  const manual = {
+    id: 'tx-manual-income',
+    date: PAYDAY,
+    amount: -REBATE,
+    pending: false,
+    categoryLabel: 'Income',
+    accountRole: 'household-cash',
+    atlasAccountId: 'chequing-a',
+    isIncome: true,
+    displayedPayee: 'UNKNOWN CREDIT',
+    originalMerchant: 'UNKNOWN CREDIT',
+  };
+  const advice = recommend(paydayPlan(), [manual]);
+  const active = period(advice.defaultView, 'this-pay-period');
+  const items = (active.otherIncome && active.otherIncome.items) || [];
+  ok(items.length === 1 && items[0].id === 'other-income:tx-manual-income',
+    'explicit Lunch Money Income credit is one Other Income item',
+    JSON.stringify(items.map(r => r.id)));
+  ok(near(active.otherIncome.amount, REBATE)
+      && near(active.incomeTotal, roundCent(DALE + AMANDA + REBATE)),
+    'manual Income correction independently equals the credit');
+}
+
+console.log('\n=== 12. Internal transfer labeled Income is still not Other Income ===');
+{
+  const tfrFr = {
+    id: 'tx-tfr-income-label',
+    date: PAYDAY,
+    amount: -GIFT,
+    pending: false,
+    categoryLabel: 'Income',
+    accountRole: 'household-cash',
+    atlasAccountId: 'chequing-a',
+    isIncome: true,
+    excludeFromTotals: true,
+    displayedPayee: 'SY001 TFR-FR CASHB',
+    originalMerchant: 'SY001 TFR-FR CASHB',
+  };
+  const tfrTo = {
+    id: 'tx-tfr-income-out',
+    date: PAYDAY,
+    amount: GIFT,
+    pending: false,
+    categoryLabel: 'Income',
+    accountRole: 'household-cash',
+    atlasAccountId: 'chequing-b',
+    isIncome: true,
+    excludeFromTotals: true,
+    displayedPayee: 'SY001 TFR-TO BILLSA',
+    originalMerchant: 'SY001 TFR-TO BILLSA',
+  };
+  const advice = recommend(paydayPlan(), [tfrFr, tfrTo]);
+  const active = period(advice.defaultView, 'this-pay-period');
+  const items = (active.otherIncome && active.otherIncome.items) || [];
+  ok(items.length === 0 && near(active.otherIncome.amount, 0),
+    'TFR legs labeled Income do not become household resources');
+  ok(near(active.incomeAdded, roundCent(DALE + AMANDA))
+      && near(active.available, roundCent(OPENING_CASH + DALE + AMANDA)),
+    'Balance after payday is still only opening + Dale + Amanda');
+}
+
+console.log('\n=== 13. Same-day ATM withdrawal keeps automatic ATM deposit closed ===');
+{
+  const atmDep = {
+    id: 'tx-atm-redeposit',
+    date: PAYDAY,
+    amount: -GIFT,
+    pending: false,
+    categoryLabel: 'Payment, Transfer',
+    accountRole: 'household-cash',
+    atlasAccountId: 'chequing-b',
+    excludeFromTotals: true,
+    displayedPayee: 'TD ATM DEP 100001',
+    originalMerchant: 'TD ATM DEP 100001',
+  };
+  const atmWd = {
+    id: 'tx-atm-wd',
+    date: PAYDAY,
+    amount: GIFT,
+    pending: false,
+    categoryLabel: 'Payment, Transfer',
+    accountRole: 'household-cash',
+    atlasAccountId: 'chequing-b',
+    excludeFromTotals: true,
+    displayedPayee: 'ATM W/D 100001',
+    originalMerchant: 'ATM W/D 100001',
+  };
+  const autoAdvice = recommend(paydayPlan(), [atmDep, atmWd]);
+  const autoActive = period(autoAdvice.defaultView, 'this-pay-period');
+  const autoItems = (autoActive.otherIncome && autoActive.otherIncome.items) || [];
+  ok(autoItems.length === 0 && near(autoActive.otherIncome.amount, 0),
+    'same-day ATM W/D of the same amount fails the automatic deposit closed');
+  const manualDep = Object.assign({}, atmDep, {
+    id: 'tx-atm-redeposit-income',
+    categoryLabel: 'Income',
+    isIncome: true,
+  });
+  const manualAdvice = recommend(paydayPlan(), [manualDep, atmWd]);
+  const manualActive = period(manualAdvice.defaultView, 'this-pay-period');
+  const manualItems = (manualActive.otherIncome && manualActive.otherIncome.items) || [];
+  ok(manualItems.length === 1 && near(manualActive.otherIncome.amount, GIFT),
+    'Lunch Money Income still admits the deposit when the household corrects it',
+    JSON.stringify(manualItems.map(r => r.id)));
 }
 
 if (failures) {
