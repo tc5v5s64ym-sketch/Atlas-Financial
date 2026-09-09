@@ -436,9 +436,9 @@ console.log('=== 1. Period 1 projected ending flows into Period 2 opening ===');
       || near(p1.projectedEnding, advice.paydayAllocation.available),
     'Period 2 does not reuse today\'s current balance as its own opening');
   const p2Income = incomeOf(p2).reduce((s, r) => s + (Number(r.amount) || 0), 0);
-  ok(p2.available != null && near(p2.available, p2.opening + p2.incomeAdded)
-      && near(p2.incomeAdded, p2Income),
-    'future Period 2 adds all of that period\'s income after the inherited opening');
+  ok(p2.available != null && near(p2.available, p2.incomeTotal)
+      && near(p2.incomeAdded, p2Income) && near(p2.incomeTotal, p2Income),
+    'future Period 2 Payday balance equals that period\'s income, not inherited opening plus income');
 }
 
 console.log('\n=== 2. Paid bills are not deducted twice ===');
@@ -634,8 +634,10 @@ console.log('\n=== 9. Live August 30 sheet: lookback P1, live P2, card mins, HEL
     .sort();
   ok(movers.includes('childBenefit'),
     'dated Aug 19→Aug 28 schedule still names child benefit');
-  ok(p1.openingKnown !== true && p1.opening == null && p1.available == null,
+  ok(p1.openingKnown !== true && p1.opening == null,
     'Aug 30 dated plan withholds the Aug 28 opening: scheduled child benefit is not gap completeness');
+  ok(p1.available != null && near(p1.available, p1.incomeTotal),
+    'Payday balance still publishes the period income identity');
   ok(!near(independentMorning, F.startingCashAmount(live.plan)),
     'independent scheduled reconstruction differs from Aug 19 cash and is not published as the opening');
   const ids = (p, id) => billsOf(p).filter(r => r.id === id);

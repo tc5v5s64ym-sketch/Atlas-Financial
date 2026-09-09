@@ -11,8 +11,8 @@
  * Independent reconstruction when the gap packet is complete:
  *   dated opening + every household-cash movement in the gap
  *     = frozen payday opening
- *   payday opening + period income not already inside that opening
- *     = Balance after payday
+ *   Dale + Amanda + recognized Other Income = Payday balance
+ * Opening cash is not a term in the allocation waterfall.
  *
  * Live mid-period cash is a separate fact. The page does not add.
  * provider-observe earns paydayGapComplete from opening-to-payday
@@ -99,7 +99,7 @@ const PERIOD_INCOME = roundCent(DALE + AMANDA);
 const INDEPENDENT_MORNING = roundCent(OPENING + CHILD);
 const INDEPENDENT_MORNING_WITH_GROCERY = roundCent(OPENING + CHILD - GROCERY);
 const REMAINING_UNPAID = roundCent(PRE_BILL + PERIOD_BILL);
-const AFTER_PAYDAY = roundCent(INDEPENDENT_MORNING + PERIOD_INCOME);
+const AFTER_PAYDAY = PERIOD_INCOME;
 const AFTER_BILLS = roundCent(AFTER_PAYDAY - REMAINING_UNPAID);
 const AFTER_BUDGET = roundCent(AFTER_BILLS - BUDGET_HOLD);
 
@@ -186,9 +186,10 @@ console.log('=== 1. Incomplete scheduled-only gap withholds the payday opening =
   const advice = recommend(plan, MID);
   const active = period(advice.defaultView, 'this-pay-period');
   ok(active && active.start === PAYDAY && active.openingKnown !== true
-      && active.opening == null && active.available == null
-      && active.afterRemainingBills == null && active.afterHouseholdBudget == null,
-    'mid-period dated plan does not publish a plausible reconstructed leftover chain');
+      && active.opening == null,
+    'mid-period dated plan withholds the reconstructed payday opening');
+  ok(near(active.available, PERIOD_INCOME) && near(active.available, active.incomeTotal),
+    'Payday balance still publishes the income identity when opening is withheld');
   const dale = incomeRow(active, 'payroll');
   const amanda = incomeRow(active, 'amandaPayday');
   ok(dale && near(dale.amount, DALE) && amanda && near(amanda.amount, AMANDA),
@@ -220,7 +221,7 @@ console.log('\n=== 2. Mid-period live cash cannot substitute for the opening ===
   ok(near(active.available, AFTER_PAYDAY)
       && !near(active.available, roundCent(LIVE_MID + PERIOD_INCOME))
       && !near(active.available, LIVE_MID),
-    'Balance after payday is not live cash and is not live cash plus income');
+    'Payday balance is not live cash and is not live cash plus income');
 
   const laterPlan = basePlan({
     startingCash: { amount: LIVE_LATER },
@@ -243,7 +244,7 @@ console.log('\n=== 2. Mid-period live cash cannot substitute for the opening ===
   ok(near(laterActive.opening, INDEPENDENT_MORNING)
       && near(laterActive.opening, active.opening)
       && near(laterActive.available, active.available),
-    'payday opening and Balance after payday stay stable after later transactions');
+    'payday opening and Payday balance stay stable after later transactions');
 }
 
 console.log('\n=== 3. Income is counted exactly once; paid bills are not deducted again ===');
@@ -271,8 +272,8 @@ console.log('\n=== 3. Income is counted exactly once; paid bills are not deducte
     'Amanda period income stays on the snapshot');
   ok(near(active.incomeAdded, PERIOD_INCOME)
       && near(active.available, AFTER_PAYDAY)
-      && !near(active.available, roundCent(INDEPENDENT_MORNING + PERIOD_INCOME + PERIOD_INCOME)),
-    'Dale and Amanda are added to the payday opening once');
+      && !near(active.available, roundCent(INDEPENDENT_MORNING + PERIOD_INCOME)),
+    'Dale and Amanda belong to Payday balance once, not opening plus income');
   ok(!near(active.available, roundCent(LIVE_MID + PERIOD_INCOME)),
     'the same paycheques are not added on top of live cash');
   const paid = (active.bills || []).find(r => r && r.id === 'period-bill');
@@ -281,7 +282,7 @@ console.log('\n=== 3. Income is counted exactly once; paid bills are not deducte
   ok(near(active.remainingBills, PRE_BILL)
       && near(active.paidBills, PERIOD_BILL)
       && near(active.periodBillLoad, REMAINING_UNPAID)
-      && near(active.afterBills, roundCent(AFTER_PAYDAY - REMAINING_UNPAID)),
+      && near(active.afterBills, AFTER_BILLS),
     'paid period bill still leaves the frozen snapshot; unpaid pre-payday once-bill stays reserved once');
 }
 
@@ -314,9 +315,9 @@ console.log('\n=== 4. Represented pre-payday outflow is not a completeness subst
       && (!pre || pre.status === 'PAID' || near(pre.remaining, 0)),
     'a recorded snapshot still keeps the represented Aug 26 bill inside payday morning');
   ok(near(active.remainingBills, PERIOD_BILL)
-      && near(active.available, paidMorning)
-      && near(active.afterRemainingBills, roundCent(paidMorning - PERIOD_BILL)),
-    'only the still-unpaid period bill remains after the represented pre-payday bill');
+      && near(active.available, PERIOD_INCOME)
+      && near(active.afterRemainingBills, roundCent(PERIOD_INCOME - PERIOD_BILL)),
+    'Payday balance is period income; only the still-unpaid period bill remains after the represented pre-payday bill');
   ok(active.income.every(row => row.notReliedUpon === true),
     'pre-payday bill settlement does not prove later payroll or salary receipt');
 }
@@ -331,10 +332,10 @@ console.log('\n=== 5. Live-advanced cash without a walkable dated opening still 
   const active = period(closed.defaultView, 'this-pay-period');
   ok(near(closed.defaultView.liveCurrentBalance, LIVE_MID),
     'fail-closed mid-period still publishes live Current Balance');
-  ok(active.openingKnown !== true && active.opening == null
-      && active.available == null && active.afterRemainingBills == null
-      && active.afterHouseholdBudget == null,
+  ok(active.openingKnown !== true && active.opening == null,
     'live-advanced cash with no dated pre-payday opening still fails closed');
+  ok(near(active.available, PERIOD_INCOME),
+    'Payday balance still publishes the income identity');
   ok(F.establishPaydaySnapshot(orphan, PAYDAY) == null,
     'establishPaydaySnapshot refuses live-advanced starting cash');
 }
@@ -357,9 +358,11 @@ console.log('\n=== 6. Incomplete gap withholds leftovers; complete gap is Foreca
         ],
       },
     }, incomplete.paydayAllocation);
-  ok(incompleteActive.available == null && incompleteActive.afterRemainingBills == null
-      && incompleteActive.afterHouseholdBudget == null,
-    'incomplete gap does not publish leftover balances');
+  ok(incompleteActive.openingKnown !== true && incompleteActive.opening == null,
+    'incomplete gap withholds the payday opening');
+  ok(near(incompleteActive.available, PERIOD_INCOME)
+      && near(incompleteActive.available, incompleteActive.incomeTotal),
+    'Payday balance still publishes the income identity when opening is withheld');
   ok(/PAYDAY OPENING IS NOT RECORDED/i.test(incompleteHtml)
       || /Opening is not recorded/i.test(incompleteHtml)
       || /—/.test(incompleteHtml),
@@ -391,7 +394,7 @@ console.log('\n=== 6. Incomplete gap withholds leftovers; complete gap is Foreca
       && near(active.available, AFTER_PAYDAY)
       && near(active.afterRemainingBills, AFTER_BILLS)
       && near(active.afterHouseholdBudget, AFTER_BUDGET),
-    'complete gap publishes opening + Dale + Amanda, then bills, then the Forecast hold');
+    'complete gap publishes Payday balance as Dale + Amanda, then bills, then the Forecast hold');
   ok(html.includes(composer.money2(active.available))
       && html.includes(composer.money2(active.afterRemainingBills))
       && html.includes(composer.money2(active.afterHouseholdBudget)),
@@ -400,7 +403,8 @@ console.log('\n=== 6. Incomplete gap withholds leftovers; complete gap is Foreca
       && !/Opening is not recorded/i.test(html),
     'complete walked opening does not print the missing-snapshot warning');
   const waterfallFn = grab(planSrc, /^function calendarWaterfallHtml\([\s\S]*?\n\}$/m, 'calendarWaterfallHtml');
-  ok(/period\.available/.test(waterfallFn)
+  const incomeFn = grab(planSrc, /^function calendarIncomeHtml\([\s\S]*?\n\}$/m, 'calendarIncomeHtml');
+  ok(/period\.available/.test(incomeFn) && /Payday balance/i.test(incomeFn)
       && /period\.afterBills/.test(waterfallFn)
       && /period\.afterHouseholdBudget/.test(waterfallFn)
       && !/\.opening\s*\+/.test(waterfallFn)
@@ -460,9 +464,9 @@ console.log('\n=== 7. Unscheduled pre-payday outflow must change the opening or 
   const active = period(advice.defaultView, 'this-pay-period');
   ok(active.openingKnown === true
       && near(active.opening, INDEPENDENT_MORNING_WITH_GROCERY)
-      && near(active.available, roundCent(INDEPENDENT_MORNING_WITH_GROCERY + PERIOD_INCOME))
-      && !near(active.available, AFTER_PAYDAY),
-    'This Payday leftover chain follows the grocery-adjusted complete opening, not the no-grocery walk');
+      && near(active.available, PERIOD_INCOME)
+      && near(active.opening, INDEPENDENT_MORNING_WITH_GROCERY),
+    'opening follows the grocery-adjusted complete walk; Payday balance is period income');
 }
 
 const LIVE_A = 400;
@@ -589,13 +593,12 @@ console.log('\n=== 8. live overlay retains a complete gap packet and withholds a
     'overlayLiveState retains the grocery-adjusted complete paydaySnapshot, not live cash or the no-grocery walk');
   ok(completeActive && completeActive.openingKnown === true
       && near(completeActive.opening, INDEPENDENT_MORNING_WITH_GROCERY)
-      && near(completeActive.available, INDEPENDENT_MORNING_WITH_GROCERY)
-      && !near(completeActive.available, AFTER_PAYDAY)
+      && near(completeActive.available, PERIOD_INCOME)
       && near(completeActive.afterRemainingBills,
-        INDEPENDENT_MORNING_WITH_GROCERY - REMAINING_UNPAID)
+        PERIOD_INCOME - REMAINING_UNPAID)
       && near(completeActive.afterHouseholdBudget,
-        INDEPENDENT_MORNING_WITH_GROCERY - REMAINING_UNPAID - BUDGET_HOLD),
-    'live This Payday leftover chain follows the retained complete opening');
+        PERIOD_INCOME - REMAINING_UNPAID - BUDGET_HOLD),
+    'live This Payday leftover chain follows Payday balance, not the retained opening');
   ok(completeActive.income.every(row => row.notReliedUpon === true),
     'complete pre-payday cash coverage does not prove later payroll or salary receipt');
   ok(completeHtml.includes(composer.money2(completeActive.available))
@@ -631,9 +634,7 @@ console.log('\n=== 8. live overlay retains a complete gap packet and withholds a
   ok(!incompleteSnap, 'truncated transaction window does not retain a paydaySnapshot');
   ok(incompleteActive && incompleteActive.openingKnown !== true
       && incompleteActive.opening == null
-      && incompleteActive.available == null
-      && incompleteActive.afterRemainingBills == null
-      && incompleteActive.afterHouseholdBudget == null,
+      && near(incompleteActive.available, PERIOD_INCOME),
     'live path with incomplete gap evidence still withholds the leftover chain');
   ok(/PAYDAY OPENING IS NOT RECORDED/i.test(incompleteHtml)
       || /Opening is not recorded/i.test(incompleteHtml)
@@ -760,12 +761,12 @@ console.log('\n=== 9. observer earns paydayGapComplete; overlay consumes the pro
     'produced complete packet retains the grocery-adjusted paydaySnapshot, not live cash');
   ok(completeActive && completeActive.openingKnown === true
       && near(completeActive.opening, INDEPENDENT_MORNING_WITH_GROCERY)
-      && near(completeActive.available, INDEPENDENT_MORNING_WITH_GROCERY)
+      && near(completeActive.available, PERIOD_INCOME)
       && near(completeActive.afterRemainingBills,
-        INDEPENDENT_MORNING_WITH_GROCERY - REMAINING_UNPAID)
+        PERIOD_INCOME - REMAINING_UNPAID)
       && near(completeActive.afterHouseholdBudget,
-        INDEPENDENT_MORNING_WITH_GROCERY - REMAINING_UNPAID - BUDGET_HOLD),
-    'observe→overlay leftover chain follows the produced frozen opening');
+        PERIOD_INCOME - REMAINING_UNPAID - BUDGET_HOLD),
+    'observe→overlay leftover chain follows Payday balance, not the produced opening');
   ok(completeActive.income.every(row => row.notReliedUpon === true),
     'observed gap movements do not manufacture later income settlement');
 

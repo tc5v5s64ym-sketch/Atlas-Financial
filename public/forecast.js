@@ -5405,13 +5405,18 @@
   // — never from today's live posted cash, and never from a
   // scheduled-only reconstruction that assumes unscheduled gap
   // spending was zero.
-  // Balance after payday is that frozen opening plus period income not
-  // already inside that opening. Received-vs-live is settlement status
-  // and does not drop an income row from the snapshot. The Bills step
-  // subtracts the authoritative period bill load assigned against that
-  // frozen snapshot, including subsequently PAID rows that are not
+  // Payday balance is the pay-period planning income identity
+  // (Dale + Amanda + recognized Other Income). The frozen payday
+  // opening and live Current Balance stay separate facts and are not
+  // terms in this allocation waterfall. Received-vs-live and
+  // not-relied-upon are settlement status: they do not drop an income
+  // row from Payday balance. incomeAdded remains the settlement-qualified
+  // increment (income not already inside the opening and not marked
+  // not-relied-upon) and is not the published Payday balance. The Bills
+  // step subtracts the authoritative period bill load assigned against
+  // that frozen snapshot, including subsequently PAID rows that are not
   // already inside the opening. Paid/remaining is settlement disclosure
-  // and does not put a paid bill's cash back into Balance after payday.
+  // and does not put a paid bill's cash back into Payday balance.
   // The next period opens from this period's projected ending, or from
   // the walk's start-of-day cash on that payday when this period has no
   // recorded opening. Household Budget uses the same spendingCycle
@@ -5541,8 +5546,14 @@
       // later-dated income as arriving-to-spend, and do not publish a
       // leftover chain from that mix.
       incomeAdded = planUnavailable || !openingKnown ? null : roundCent(incomeAdded);
-      const available = planUnavailable || !openingKnown
-        ? null : roundCent(opening + incomeAdded);
+      const otherItems = (planUnavailable ? [] : income).filter(r => r && r.otherIncome === true);
+      const otherAmount = roundCent(otherItems.reduce((s, r) => s + (Number(r.amount) || 0), 0));
+      const incomeTotal = planUnavailable
+        ? null
+        : roundCent(income.reduce((s, r) => s + (Number(r.amount) || 0), 0));
+      // Payday balance is the income identity, including a salary that
+      // remains visibly unproven for settlement. Opening cash is not added.
+      const available = planUnavailable ? null : incomeTotal;
       const periodBillLoad = planUnavailable
         ? null
         : periodWaterfallBillLoad(bills, openingAsOf, openingSource);
@@ -5597,11 +5608,6 @@
       } else {
         previousEnding = null;
       }
-      const otherItems = (planUnavailable ? [] : income).filter(r => r && r.otherIncome === true);
-      const otherAmount = roundCent(otherItems.reduce((s, r) => s + (Number(r.amount) || 0), 0));
-      const incomeTotal = planUnavailable
-        ? null
-        : roundCent(income.reduce((s, r) => s + (Number(r.amount) || 0), 0));
       periods.push({
         id: window.id,
         label: window.label,

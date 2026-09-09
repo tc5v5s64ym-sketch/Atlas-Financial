@@ -325,9 +325,11 @@ console.log('\n=== 2. August 31 proven Amanda TENNIS INCOME → BILLS transfer =
   }
   ok(!snap,
     'live overlay does not retain a scheduled-only paydaySnapshot from the dated opening walk');
-  ok(p2.openingKnown !== true && p2.opening == null && p2.available == null
+  ok(p2.openingKnown !== true && p2.opening == null
       && !near(independentMorning, independentCash),
     'mid-period live overlay withholds the incomplete walked Aug 28 opening; live cash stays a separate fact');
+  ok(p2.available != null && near(p2.available, p2.incomeTotal),
+    'Payday balance still publishes the period income identity');
   ok(!near(advice.paydayAllocation.available, independentCash + SALARY),
     'salary is not added again on top of observed cash');
   const row = incomeRow(advice, 'amandaSalaryMonthEnd');
@@ -537,9 +539,10 @@ console.log('\n=== 8. Actual spending does not double-count ===');
     'Household Budget still reserves the full $900 plan when spent is $350');
   ok(p2 && near(p2.budgetHold, planned),
     'waterfall hold is the full grocery plan, not remaining $550');
-  ok(p2.available == null && p2.afterHouseholdBudget == null
-      && p2.openingKnown !== true,
-    'incomplete gap withholds the leftover chain rather than starting it from a scheduled-only walk or live cash');
+  ok(p2.openingKnown !== true && p2.opening == null,
+    'incomplete gap withholds the payday opening rather than starting it from a scheduled-only walk or live cash');
+  ok(p2.available != null && near(p2.available, p2.incomeTotal),
+    'Payday balance still publishes the period income identity');
   ok(near(advice.defaultView.liveCurrentBalance, independentCash),
     'live Current Balance stays the observed-cash fixture');
   ok(!near(remaining, planned) && near(groceries.hold, planned)
@@ -647,9 +650,11 @@ console.log('\n=== 10. Active two-period calendar waterfall ===');
   }
   ok(!snap,
     'overlay does not retain a scheduled-only paydaySnapshot from the dated opening walk');
-  ok(thisP.openingKnown !== true && thisP.opening == null && thisP.available == null
+  ok(thisP.openingKnown !== true && thisP.opening == null
       && !near(independentMorning, independentCash),
-    'active payday snapshot is withheld when the opening-to-payday gap is not cash-complete');
+    'active payday opening is withheld when the opening-to-payday gap is not cash-complete');
+  ok(thisP.available != null && near(thisP.available, thisP.incomeTotal),
+    'Payday balance still publishes the period income identity');
   ok(nextP.openingKnown === true && nextP.opening != null
       && !near(nextP.opening, independentCash),
     'next period opens from the already-run walk, not from live mid-period cash');
@@ -658,8 +663,8 @@ console.log('\n=== 10. Active two-period calendar waterfall ===');
   ok(groceries && groceries.planned != null && groceries.spent != null
       && groceries.remaining != null,
     'Household Budget planned/actual/remaining are visible');
-  ok(thisP.afterHouseholdBudget == null,
-    'incomplete gap withholds leftover after household budget rather than publishing a scheduled-only walk');
+  ok(thisP.afterHouseholdBudget != null,
+    'income-led leftover after household budget can publish when opening is withheld');
 }
 
 console.log('\n=== 11. Failed-cash control withholds stale Current Balance ===');

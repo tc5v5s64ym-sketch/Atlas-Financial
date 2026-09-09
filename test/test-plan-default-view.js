@@ -293,7 +293,6 @@ console.log('\n=== 2. default view order and kitchen-counter labels ===');
   const prompts = [
     'Current Balance',
     'Income',
-    'Balance after payday',
     'Bills',
     'Balance after bills',
     'Household budget',
@@ -306,8 +305,8 @@ console.log('\n=== 2. default view order and kitchen-counter labels ===');
     previous = at;
   }
   ok(/data-live-current-balance/.test(html)
-      && (html.match(/data-operating-question=/g) || []).length === 6,
-    'the default surface has live Current Balance plus the six snapshot questions');
+      && (html.match(/data-operating-question=/g) || []).length === 5,
+    'the default surface has live Current Balance plus the five snapshot questions');
   ok(!/Extra credit-card repayment|Balance after debt repayment|Big-purchase savings|Projected ending balance/.test(html),
     'the default surface stops at Balance after household budget');
   ok(/data-live-current-balance/.test(html) && /Current Balance/.test(glance)

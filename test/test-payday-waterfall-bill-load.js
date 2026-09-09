@@ -1,12 +1,13 @@
 'use strict';
 /* Frozen payday waterfall bill load (owner-observed leftover defect).
  *
- * Balance after payday is the frozen snapshot. The Bills step subtracts
+ * Payday balance is the period income identity (here $0). The frozen
+ * payday opening stays a separate snapshot fact. The Bills step subtracts
  * the assigned period bill load, including subsequently PAID rows that
  * are not already inside that opening. Remaining is settlement status.
  *
  * Independent expected leftover:
- *   afterBills = frozen Balance after payday − (Bill A + Bill B)
+ *   afterBills = Payday balance − (Bill A + Bill B)
  * Settlement must not raise that leftover. Remaining $0 must not
  * subtract $0 from the frozen snapshot.
  *
@@ -81,8 +82,9 @@ const FROZEN = 6000;
 const BILL_A = 1000;
 const BILL_B = 500;
 const LOAD = roundCent(BILL_A + BILL_B);
-const AFTER_BILLS = roundCent(FROZEN - LOAD);
-const WRONG_REMAINING_ONLY = roundCent(FROZEN - BILL_B);
+const PAYDAY_BALANCE = 0;
+const AFTER_BILLS = roundCent(PAYDAY_BALANCE - LOAD);
+const WRONG_REMAINING_ONLY = roundCent(PAYDAY_BALANCE - BILL_B);
 const BUDGET_HOLD = 200;
 const LIVE_CASH = 4123.45;
 
@@ -174,8 +176,8 @@ console.log('=== 1. Paid bill still leaves the frozen payday snapshot ===');
   const rowA = (active.bills || []).find(r => r.id === 'bill-a');
   const rowB = (active.bills || []).find(r => r.id === 'bill-b');
   ok(active && active.openingKnown === true && active.openingSource === 'snapshot'
-      && near(active.opening, FROZEN) && near(active.available, FROZEN),
-    'This Pay Period opens from the frozen payday snapshot, not live cash');
+      && near(active.opening, FROZEN) && near(active.available, PAYDAY_BALANCE),
+    'This Pay Period opens from the frozen payday snapshot; Payday balance is period income');
   ok(!near(active.available, LIVE_CASH),
     'live Current Balance is not the waterfall opening');
   ok(rowA && rowA.status === 'PAID' && near(rowA.remaining, 0)
@@ -192,7 +194,7 @@ console.log('=== 1. Paid bill still leaves the frozen payday snapshot ===');
     'authoritative period bill load is $1,500, not the $500 remaining');
   ok(near(active.afterBills, AFTER_BILLS)
       && near(active.afterRemainingBills, AFTER_BILLS),
-    'after bills is $6,000 − $1,500 = $4,500');
+    'after bills is Payday balance $0 − $1,500');
   ok(!near(active.afterBills, WRONG_REMAINING_ONLY),
     'Forecast does not return $5,500 from remaining-only arithmetic');
   ok(near(active.afterHouseholdBudget, roundCent(AFTER_BILLS - BUDGET_HOLD)),
@@ -205,8 +207,8 @@ console.log('\n=== 2. Settlement invariance: unpaid vs one bill paid ===');
   const onePaid = recommend(frozenPlan(null, [{ id: 'bill-a', date: '2026-09-01' }]));
   const stateA = period(unpaid.defaultView, 'this-pay-period');
   const stateB = period(onePaid.defaultView, 'this-pay-period');
-  ok(near(stateA.available, FROZEN) && near(stateB.available, FROZEN),
-    'both states share the same frozen Balance after payday');
+  ok(near(stateA.available, PAYDAY_BALANCE) && near(stateB.available, PAYDAY_BALANCE),
+    'both states share the same Payday balance');
   ok(near(stateA.periodBillLoad, LOAD) && near(stateB.periodBillLoad, LOAD),
     'authoritative bill load is identical before and after settlement');
   ok(near(stateA.afterBills, AFTER_BILLS) && near(stateB.afterBills, AFTER_BILLS)
@@ -228,7 +230,7 @@ console.log('\n=== 3. All-paid does not restore the $6,000 snapshot ===');
       && near(active.periodBillLoad, LOAD),
     'remaining $0, paid $1,500, load still $1,500');
   ok(near(active.afterBills, AFTER_BILLS),
-    'all-paid leftover stays $4,500');
+    'all-paid leftover stays Payday balance minus the full bill load');
   ok(!near(active.afterBills, FROZEN),
     'remaining $0 does not subtract $0 from the frozen snapshot');
 }
@@ -309,9 +311,9 @@ console.log('\n=== 5. Card-paid reserved bill is not deducted twice ===');
   ok(near(stateA.periodBillLoad, independent) && near(stateB.periodBillLoad, independent),
     'card-paid bill + card minimum + cash bill are each counted once');
   ok(near(stateA.afterBills, stateB.afterBills)
-      && near(stateA.afterBills, roundCent(FROZEN - independent)),
-    'marking Bell PAID does not change the frozen leftover or add a third hit');
-  ok(!near(stateB.afterBills, roundCent(FROZEN - independent - CARD_BILL)),
+      && near(stateA.afterBills, roundCent(PAYDAY_BALANCE - independent)),
+    'marking Bell PAID does not change the income-led leftover or add a third hit');
+  ok(!near(stateB.afterBills, roundCent(PAYDAY_BALANCE - independent - CARD_BILL)),
     'settlement does not deduct Bell a second time');
 }
 
@@ -354,9 +356,9 @@ console.log('\n=== 6. Paid-before-opening stays inside mid-period cutover cash =
     'mid-period dated opening is posted cash on as-of');
   ok(paid && paid.status === 'PAID' && near(active.remainingBills, BILL_B),
     'the earlier settlement stays listed as PAID');
-  ok(near(active.periodBillLoad, BILL_B) && near(active.afterBills, roundCent(8000 - BILL_B)),
-    'paid-before-opening is not deducted again from that posted cash');
-  ok(!near(active.afterBills, roundCent(8000 - LOAD)),
+  ok(near(active.periodBillLoad, BILL_B) && near(active.afterBills, roundCent(PAYDAY_BALANCE - BILL_B)),
+    'paid-before-opening is not deducted again from Payday balance');
+  ok(!near(active.afterBills, roundCent(PAYDAY_BALANCE - LOAD)),
     'blind total-bills subtraction would double-count the already-cleared $1,000');
 }
 
@@ -377,7 +379,7 @@ console.log('\n=== 7. Plan integration: Forecast leftover, truthful label, no pa
         accounts: [{ id: 'chequing-a', value: LIVE_CASH, evidenceDate: MID }],
       },
     }, advice.paydayAllocation);
-  ok(active.openingKnown === true && near(active.available, FROZEN)
+  ok(active.openingKnown === true && near(active.opening, FROZEN) && near(active.available, PAYDAY_BALANCE)
       && (active.bills || []).some(r => r.id === 'bill-a' && r.status === 'PAID')
       && (active.bills || []).some(r => r.id === 'bill-b' && r.status !== 'PAID'),
     'operating period earns the frozen opening and contains paid plus unpaid bills');
@@ -392,9 +394,9 @@ console.log('\n=== 7. Plan integration: Forecast leftover, truthful label, no pa
   ok(/Total bills this period/.test(html) && /Paid bills this period/.test(html)
       && /Remaining bills to pay/.test(html),
     'Bills disclosure still prints total, paid, and remaining');
-  ok(!html.includes(composer.money2(WRONG_REMAINING_ONLY))
-      || near(AFTER_BILLS, WRONG_REMAINING_ONLY),
-    'page does not publish the remaining-only leftover');
+  ok(!near(active.afterBills, WRONG_REMAINING_ONLY)
+      && html.includes(composer.money2(AFTER_BILLS)),
+    'page publishes Forecast afterBills, not remaining-only leftover');
   const planSrc = read('public/plan.js');
   const waterfallFn = grab(planSrc, /^function calendarWaterfallHtml\([\s\S]*?\n\}$/m, 'calendarWaterfallHtml');
   const billsFn = grab(planSrc, /^function calendarPeriodBillsHtml\([\s\S]*?\n\}$/m, 'calendarPeriodBillsHtml');

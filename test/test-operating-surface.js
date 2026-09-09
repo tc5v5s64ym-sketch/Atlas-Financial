@@ -161,7 +161,6 @@ console.log('\n=== seven ordered payday-sheet questions ===');
   const prompts = [
     'Current Balance',
     'Income',
-    'Balance after payday',
     'Bills',
     'Balance after bills',
     'Household budget',
@@ -174,8 +173,8 @@ console.log('\n=== seven ordered payday-sheet questions ===');
     previous = at;
   }
   ok(/data-live-current-balance/.test(rendered)
-      && (rendered.match(/data-operating-question=/g) || []).length === 6,
-    'the default surface prints live Current Balance outside the six-question payday snapshot');
+      && (rendered.match(/data-operating-question=/g) || []).length === 5,
+    'the default surface prints live Current Balance outside the five-question payday snapshot');
   ok(!/Extra credit-card repayment|Balance after debt repayment|Big-purchase savings|Projected ending balance/.test(rendered),
     'the default surface stops at Balance after household budget');
 }

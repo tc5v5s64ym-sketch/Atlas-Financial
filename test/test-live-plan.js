@@ -2379,10 +2379,11 @@ console.log('\n=== 20. incomplete current cash still withholds a stale cycle as 
   ok(!snap,
     'trusted overlay does not retain a scheduled-only paydaySnapshot from the dated opening');
   ok(trustedActive.openingKnown !== true && trustedActive.opening == null
-      && trustedActive.available == null
       && trustedAdvice.defaultView.liveCurrentBalance != null
       && !near(independentMorning, trustedAdvice.defaultView.liveCurrentBalance),
     'trusted mid-period overlay withholds the incomplete walked opening and still publishes live Current Balance');
+  ok(trustedActive.available != null && near(trustedActive.available, trustedActive.incomeTotal),
+    'Payday balance still publishes the period income identity');
 
   const budgetFn = /function calendarBudgetHtml\([\s\S]*?\n\}/.exec(planSrc);
   const unavailableFn = /function calendarCurrentUnavailableHtml\([\s\S]*?\n\}/.exec(planSrc);

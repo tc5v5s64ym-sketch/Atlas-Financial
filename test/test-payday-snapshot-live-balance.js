@@ -2,9 +2,10 @@
 /* Payday snapshot vs live Current Balance (L-002 / L-006).
  *
  * Independent reconstruction:
- *   payday opening + assigned period income = Balance after payday
+ *   Dale + Amanda + recognized Other Income = Payday balance
  *   prior period ending carry-forward = next period opening
  * Live Current Balance is a separate fact and must not mutate the snapshot.
+ * Opening cash is not a term in the allocation waterfall.
  *
  * `node test/test-payday-snapshot-live-balance.js`
  */
@@ -73,12 +74,12 @@ const OPENING = 1000;
 const DALE = 4000;
 const AMANDA = 2000;
 const PERIOD_INCOME = roundCent(DALE + AMANDA);
-const AFTER_PAYDAY = roundCent(OPENING + PERIOD_INCOME);
+const AFTER_PAYDAY = PERIOD_INCOME;
 const LIVE_LATER = 2300;
 const PERIOD1_BILL = 5600;
-const PERIOD1_END = roundCent(AFTER_PAYDAY - PERIOD1_BILL);
 const PERIOD2_INCOME = 6000;
-const PERIOD2_AFTER = roundCent(PERIOD1_END + PERIOD2_INCOME);
+const PERIOD1_END = roundCent(PERIOD2_INCOME - PERIOD1_BILL);
+const PERIOD2_AFTER = PERIOD2_INCOME;
 const BUFFER = 500;
 
 const debts = [
@@ -137,7 +138,7 @@ console.log('=== 1. Live balance changes mid-period do not mutate the snapshot =
   const paydayPlan = basePlan();
   const paydayAdvice = recommend(paydayPlan, PAYDAY);
   const paydayActive = period(paydayAdvice.defaultView, 'this-pay-period');
-  const independentAfter = roundCent(OPENING + PERIOD_INCOME);
+  const independentAfter = PERIOD_INCOME;
   ok(paydayActive && paydayActive.start === PAYDAY,
     'This Pay Period starts on the synthetic payday');
   ok(near(paydayAdvice.defaultView.liveCurrentBalance, OPENING)
@@ -147,8 +148,8 @@ console.log('=== 1. Live balance changes mid-period do not mutate the snapshot =
     'payday-morning snapshot opening is posted cash');
   ok(near(paydayActive.incomeAdded, PERIOD_INCOME)
       && near(paydayActive.available, independentAfter)
-      && near(paydayActive.available, roundCent(paydayActive.opening + paydayActive.incomeAdded)),
-    'independent opening + Dale + Amanda equals Balance after payday');
+      && near(paydayActive.available, paydayActive.incomeTotal),
+    'independent Dale + Amanda equals Payday balance');
 
   const laterPlan = basePlan({
     startingCash: { amount: LIVE_LATER },
@@ -167,7 +168,7 @@ console.log('=== 1. Live balance changes mid-period do not mutate the snapshot =
     'frozen payday opening stays $1,000 after live cash moves');
   ok(near(laterActive.available, independentAfter)
       && near(laterActive.available, paydayActive.available),
-    'Balance after payday stays $7,000 when live cash becomes $2,300');
+    'Payday balance stays Dale + Amanda when live cash becomes $2,300');
   ok(!near(laterActive.opening, LIVE_LATER)
       && !near(laterActive.available, LIVE_LATER)
       && !near(laterActive.available, roundCent(LIVE_LATER + PERIOD_INCOME)),
@@ -191,13 +192,13 @@ console.log('\n=== 2. Non-zero carry-forward becomes the next opening ===');
   const advice = recommend(plan, PAYDAY, { targetBuffer: 0, debts: [] });
   const p1 = period(advice.defaultView, 'this-pay-period');
   const p2 = period(advice.defaultView, 'next-pay-period');
-  const independentP1After = roundCent(OPENING + PERIOD2_INCOME);
+  const independentP1After = PERIOD2_INCOME;
   const independentP1End = roundCent(independentP1After - PERIOD1_BILL);
-  const independentP2After = roundCent(independentP1End + PERIOD2_INCOME);
+  const independentP2After = PERIOD2_INCOME;
   ok(p1 && p2 && p1.role === 'active' && p2.role === 'future',
     'Period 1 is active and Period 2 is future');
   ok(near(p1.opening, OPENING) && near(p1.available, independentP1After),
-    'Period 1 Balance after payday independently equals opening + period income');
+    'Period 1 Payday balance independently equals period income');
   ok(near(p1.budgetHold, 0) && near(p1.remainingBills, PERIOD1_BILL),
     'Period 1 has no household-budget hold and one known outflow');
   ok(near(p1.projectedEnding, independentP1End)
@@ -207,8 +208,8 @@ console.log('\n=== 2. Non-zero carry-forward becomes the next opening ===');
       && near(p2.opening, p1.projectedEnding),
     'Period 2 opening independently equals Period 1 ending carry-forward');
   ok(near(p2.available, independentP2After)
-      && near(p2.available, roundCent(p2.opening + p2.incomeAdded)),
-    'Period 2 Balance after payday independently equals carry-forward + period income');
+      && near(p2.available, p2.incomeTotal),
+    'Period 2 Payday balance independently equals that period\'s income');
   ok(!near(p2.opening, 0) && !near(p2.opening, BUFFER)
       && !near(p2.opening, OPENING) && !near(p2.opening, PERIOD2_INCOME),
     'Period 2 does not reset to $0, $500, live opening cash, or income-only');
@@ -233,8 +234,11 @@ console.log('\n=== 3. First period uses the real opening; otherwise fail closed 
   ok(near(closed.defaultView.liveCurrentBalance, LIVE_LATER),
     'fail-closed mid-period still publishes live Current Balance');
   ok(closedActive.openingKnown !== true && closedActive.opening == null
-      && closedActive.available == null && closedActive.incomeAdded == null,
-    'live mid-period without a payday snapshot fails closed on the snapshot');
+      && closedActive.incomeAdded == null,
+    'live mid-period without a payday snapshot fails closed on the opening');
+  ok(near(closedActive.available, PERIOD_INCOME)
+      && near(closedActive.available, closedActive.incomeTotal),
+    'Payday balance still publishes the income identity when opening is withheld');
   ok((closedActive.income || []).some(r => r && r.id === 'payroll' && near(r.amount, DALE)),
     'fail-closed snapshot still lists the period income row');
 }
@@ -244,20 +248,20 @@ console.log('\n=== 4. $500 buffer stays a safety floor and does not enter payday
   const plan = basePlan({
     bills: [{
       id: 'small-bill', label: 'Small bill', frequency: 'once',
-      date: '2026-08-29', amount: 6400, confidence: 'confirmed',
+      date: '2026-08-29', amount: 5400, confidence: 'confirmed',
     }],
   });
   const withBuf = recommend(plan, PAYDAY, { targetBuffer: BUFFER });
   const noBuf = recommend(plan, PAYDAY, { targetBuffer: 0 });
   const activeBuf = period(withBuf.defaultView, 'this-pay-period');
   const activeZero = period(noBuf.defaultView, 'this-pay-period');
-  const independentAfter = roundCent(OPENING + PERIOD_INCOME);
+  const independentAfter = PERIOD_INCOME;
   ok(near(activeBuf.opening, OPENING) && near(activeZero.opening, OPENING)
       && near(activeBuf.available, independentAfter)
       && near(activeZero.available, independentAfter)
       && !near(activeBuf.available, independentAfter - BUFFER),
-    'payday opening and Balance after payday do not subtract or substitute $500');
-  const leftoverAfterBudget = roundCent(independentAfter - 6400);
+    'payday opening and Payday balance do not subtract or substitute $500');
+  const leftoverAfterBudget = roundCent(independentAfter - 5400);
   const independentRoom = roundCent(Math.max(0, leftoverAfterBudget - BUFFER));
   ok(near(activeBuf.afterHouseholdBudget, leftoverAfterBudget)
       && near(activeBuf.extraDebt.allocated, independentRoom)
@@ -296,7 +300,7 @@ console.log('\n=== 5. Received income is not double-counted against live cash ==
     'frozen payday opening is not today\'s live balance');
   ok(near(active.incomeAdded, PERIOD_INCOME)
       && near(active.available, AFTER_PAYDAY),
-    'snapshot still adds the period income to the payday opening once');
+    'Payday balance still equals the period income identity once');
   ok(!near(active.available, roundCent(LIVE_LATER + PERIOD_INCOME))
       && !near(active.available, roundCent(LIVE_LATER + AMANDA)),
     'the same paycheque is not added on top of live cash');
@@ -333,10 +337,11 @@ console.log('\n=== 6. Default Plan visually separates live cash from the payday 
       && !/data-operating-question="01"/.test(card),
     'active payday card does not start with Current Balance as Q01');
   ok(/data-operating-prompt="Income"/.test(card)
-      && /data-operating-prompt="Balance after payday"/.test(card)
+      && /Payday balance/.test(card)
+      && !/data-operating-prompt="Balance after payday"/.test(card)
       && /data-operating-prompt="Bills"/.test(card)
       && /data-operating-prompt="Household budget"/.test(card),
-    'payday card still prints income, Balance after payday, bills, and budget');
+    'payday card still prints income, Payday balance, bills, and budget');
   const next = period(advice.defaultView, 'next-pay-period');
   const nextHtml = composer.calendarWaterfallHtml(next, null, advice.paydayAllocation);
   ok(/data-operating-prompt="Opening balance"/.test(nextHtml)
@@ -344,10 +349,12 @@ console.log('\n=== 6. Default Plan visually separates live cash from the payday 
     'future period shows carry-forward Opening balance, not live Current Balance');
   const waterfallFn = grab(planSrc, /^function calendarWaterfallHtml\([\s\S]*?\n\}$/m, 'calendarWaterfallHtml');
   const liveFn = grab(planSrc, /^function liveCurrentBalanceHtml\([\s\S]*?\n\}$/m, 'liveCurrentBalanceHtml');
-  ok(/period\.available/.test(waterfallFn)
-      && !/\.opening\s*\+/.test(waterfallFn)
-      && !/incomeAdded/.test(waterfallFn),
-    'plan.js renders Forecast available; it does not add opening + income');
+  const incomeFn = grab(planSrc, /^function calendarIncomeHtml\([\s\S]*?\n\}$/m, 'calendarIncomeHtml');
+  ok(/period\.available/.test(incomeFn)
+      && /Payday balance/i.test(incomeFn)
+      && !/\.opening\s*\+/.test(incomeFn)
+      && !/Assigned income/i.test(incomeFn),
+    'plan.js renders Forecast available as Payday balance; it does not add opening + income');
   ok(/view\.liveCurrentBalance|alloc\.liveCurrentBalance/.test(liveFn)
       && !/\+/.test(liveFn.replace(/<[^>]+>/g, '')),
     'live glance prints Forecast liveCurrentBalance and does not invent arithmetic');
@@ -368,7 +375,7 @@ console.log('\n=== 7. Payday-day live refresh prefers the recorded snapshot ==='
   });
   const withAdvice = recommend(withSnap, PAYDAY);
   const withActive = period(withAdvice.defaultView, 'this-pay-period');
-  const independentAfter = roundCent(OPENING + PERIOD_INCOME);
+  const independentAfter = PERIOD_INCOME;
   ok(near(withAdvice.defaultView.liveCurrentBalance, sameDayLive),
     'payday-day live Current Balance follows post-event provider cash');
   ok(withActive.openingSource === 'snapshot'
@@ -376,8 +383,8 @@ console.log('\n=== 7. Payday-day live refresh prefers the recorded snapshot ==='
       && !near(withActive.opening, sameDayLive),
     'recorded payday snapshot wins over same-calendar-day live cash');
   ok(near(withActive.available, independentAfter)
-      && near(withActive.available, roundCent(withActive.opening + withActive.incomeAdded)),
-    'independent opening + Dale + Amanda still equals Balance after payday');
+      && near(withActive.available, withActive.incomeTotal),
+    'independent Dale + Amanda still equals Payday balance');
   ok(withActive.openingSource !== 'payday-morning',
     'live-advanced payday cash is not labelled payday-morning');
 
@@ -394,8 +401,10 @@ console.log('\n=== 7. Payday-day live refresh prefers the recorded snapshot ==='
   ok(near(closed.defaultView.liveCurrentBalance, sameDayLive),
     'payday-day fail-closed still publishes live Current Balance');
   ok(closedActive.openingKnown !== true && closedActive.opening == null
-      && closedActive.available == null && closedActive.incomeAdded == null,
-    'live-advanced payday without a snapshot fails closed instead of freezing live cash');
+      && closedActive.incomeAdded == null,
+    'live-advanced payday without a snapshot fails closed on the opening');
+  ok(near(closedActive.available, PERIOD_INCOME),
+    'Payday balance still publishes the income identity');
 }
 
 console.log('\n=== 8. Null or empty snapshot openings fail closed ===');
@@ -422,10 +431,10 @@ console.log('\n=== 8. Null or empty snapshot openings fail closed ===');
     ok(near(advice.defaultView.liveCurrentBalance, laterLive),
       label + ': live Current Balance still publishes');
     ok(active.openingKnown !== true && active.opening == null
-        && active.available == null,
-      label + ': incomplete snapshot fails closed instead of $0');
-    ok(active.opening !== 0 && !near(active.available, PERIOD_INCOME),
-      label + ': does not publish invented $0 opening or income-only Balance after payday');
+        && active.incomeAdded == null,
+      label + ': incomplete snapshot fails closed instead of $0 opening');
+    ok(active.opening !== 0 && near(active.available, PERIOD_INCOME),
+      label + ': does not invent a $0 opening; Payday balance remains the income identity');
   }
 
   const zeroSnap = basePlan({
@@ -439,7 +448,7 @@ console.log('\n=== 8. Null or empty snapshot openings fail closed ===');
   });
   const zeroAdvice = recommend(zeroSnap, MID);
   const zeroActive = period(zeroAdvice.defaultView, 'this-pay-period');
-  const independentZeroAfter = roundCent(0 + PERIOD_INCOME);
+  const independentZeroAfter = PERIOD_INCOME;
   ok(zeroActive.openingKnown === true && near(zeroActive.opening, 0)
       && near(zeroActive.available, independentZeroAfter),
     'a recorded numeric $0 opening remains a known snapshot, not a rejected null');
@@ -465,8 +474,8 @@ console.log('\n=== 9. Income footer does not call received snapshot income still
   ok(near(active.incomeAdded, PERIOD_INCOME)
       && (active.income || []).some(r => r && r.id === 'payroll' && r.alreadyInCash === true),
     'mid-period snapshot still includes received payday income in incomeAdded');
-  ok(/Assigned income/.test(html) && html.includes(composer.money2(PERIOD_INCOME)),
-    'income footer prints assigned snapshot income, not a settlement claim');
+  ok(/Payday balance/.test(html) && html.includes(composer.money2(PERIOD_INCOME)),
+    'income footer prints Payday balance, not a settlement claim');
   ok(!/Still arriving/.test(html),
     'received payday income in the frozen snapshot is not labelled Still arriving');
 }
@@ -488,7 +497,7 @@ console.log('\n=== 10. Live representedEvents do not drop snapshot income ===');
   });
   const advice = recommend(plan, PAYDAY);
   const active = period(advice.defaultView, 'this-pay-period');
-  const independentAfter = roundCent(OPENING + PERIOD_INCOME);
+  const independentAfter = PERIOD_INCOME;
   ok(near(advice.defaultView.liveCurrentBalance, sameDayLive),
     'live Current Balance is post-event cash that already contains the paycheques');
   ok(active.openingSource === 'snapshot' && near(active.opening, OPENING),
@@ -497,10 +506,10 @@ console.log('\n=== 10. Live representedEvents do not drop snapshot income ===');
       && (active.income || []).some(r => r && r.id === 'payroll'),
     'live representedEvents do not erase payday income from the frozen snapshot');
   ok(near(active.available, independentAfter)
-      && near(active.available, roundCent(active.opening + active.incomeAdded))
+      && near(active.available, active.incomeTotal)
       && !near(active.available, OPENING)
       && !near(active.available, sameDayLive),
-    'Balance after payday stays opening + period income, not the pre-income snapshot alone');
+    'Payday balance stays period income, not the pre-income snapshot or live cash');
 }
 
 if (failures) {

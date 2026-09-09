@@ -29,7 +29,7 @@ const BILL_A = 40;
 const BILL_B = 60;
 const BUDGET = 250;
 const LOAD = BILL_A + BILL_B;
-const PROVEN_AVAILABLE = OPENING + PAYROLL + FUTURE_SALARY;
+const PROVEN_AVAILABLE = PAYROLL + PAST_SALARY + FUTURE_SALARY;
 const PROVEN_AFTER_BUDGET = PROVEN_AVAILABLE - LOAD - BUDGET;
 
 function fixture(asOf = LIVE, represented = []) {
@@ -101,11 +101,12 @@ ok(near(unverified.paidBills, 0) && near(unverified.remainingBills, LOAD),
   'no payment proof: paid $0, remaining $40 + $60 = $100');
 ok(near(unverified.periodBillLoad, LOAD), 'frozen snapshot retains the $100 bill load');
 ok(near(unverified.incomeAdded, PAYROLL + FUTURE_SALARY)
-    && near(unverified.available, PROVEN_AVAILABLE),
-  'available is $600 + represented $2,000 + future $800 = $3,400');
+    && near(unverified.available, PROVEN_AVAILABLE)
+    && near(unverified.available, unverified.incomeTotal),
+  'Payday balance is represented $2,000 + unproven $700 + future $800; opening cash is not added');
 ok(near(unverified.afterBills, PROVEN_AVAILABLE - LOAD)
     && near(unverified.afterHouseholdBudget, PROVEN_AFTER_BUDGET),
-  'after bills $3,300; after the $250 budget $3,050');
+  'after bills and after budget chain from Payday balance');
 const future = income(unverified, 'future-salary');
 ok(future && future.status === 'arriving' && future.settlement === 'upcoming'
     && future.alreadyInCash === false && near(future.remaining, FUTURE_SALARY),
@@ -141,9 +142,9 @@ ok(['bill-a', 'bill-b'].every(id => bill(represented, id).settlement === 'repres
 ok(near(represented.paidBills, LOAD) && near(represented.remainingBills, 0)
     && near(represented.periodBillLoad, LOAD),
   'all bills paid: disclosure changes, the frozen $100 bill load remains once');
-ok(near(represented.available, PROVEN_AVAILABLE + PAST_SALARY)
-    && near(represented.afterHouseholdBudget, PROVEN_AFTER_BUDGET + PAST_SALARY),
-  'new salary proof adds $700 once: available $4,100; after budget $3,750');
+ok(near(represented.available, PROVEN_AVAILABLE)
+    && near(represented.afterHouseholdBudget, PROVEN_AFTER_BUDGET),
+  'salary proof changes settlement disclosure; Payday balance already included the $700');
 
 console.log('\n=== Original dated opening remains a valid historical boundary ===');
 const historical = fixture();
@@ -156,8 +157,9 @@ ok(income(dated, 'past-salary').settlement === 'opening'
   'ordinary pre-cutover income remains inside the original non-live opening');
 ok(['bill-a', 'bill-b'].every(id => bill(dated, id).settlement === 'opening')
     && near(dated.periodBillLoad, 0), 'pre-cutover recurring bills are not replayed');
-ok(near(dated.available, 1200 + FUTURE_SALARY),
-  'dated cash $1,200 adds only future $800, with no historical income replay');
+ok(near(dated.incomeAdded, FUTURE_SALARY)
+    && near(dated.available, dated.incomeTotal),
+  'incomeAdded adds only future $800; Payday balance is the displayed income identity');
 
 console.log('\n=== firstDue reconstruction stays in the original opening month ===');
 const gapPlan = fixture();
@@ -191,7 +193,7 @@ ok(['bill-a', 'bill-b'].every(id => billsHtml.includes(`data-period-bill="${id}"
 ok(billsHtml.includes(`<span>Remaining bills to pay</span><span>${page.money2(LOAD)}</span>`),
   'page prints independently expected remaining bills $100');
 ok(page.runningLeftoverHtml(unverified.afterHouseholdBudget).includes(page.money2(PROVEN_AFTER_BUDGET)),
-  'page prints independently expected after-budget balance $3,050');
+  'page prints independently expected after-budget leftover from Payday balance');
 ok(page.calendarIncomeHtml(represented).includes('data-period-income="past-salary" data-income-status="received"')
     && page.calendarPeriodBillsHtml(represented).includes('data-period-bill="bill-a" data-bill-status="PAID"'),
   'page still prints received and PAID when exact evidence exists');
