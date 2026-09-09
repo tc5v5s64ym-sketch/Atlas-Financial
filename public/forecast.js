@@ -6847,8 +6847,12 @@
     // than how much the debt can take, and the answer comes back $956.81 short.
     const capsFor = o => {
       if (!o.debts) return null;
+      // These caps govern the master cash walk, including dates outside the
+      // display window. A missing cap means zero payment, so measuring only
+      // the default debt view would erase later obligations and extras.
       const walked = projectDebts(plan, o.debts, asOf,
-        Object.assign({}, o, { extraAbsorbed: null, obligationAbsorbed: null }));
+        Object.assign({}, o, { debtHorizonDays: horizon.days,
+          extraAbsorbed: null, obligationAbsorbed: null }));
       return { extraAbsorbed: walked.extraAbsorbed, obligationAbsorbed: walked.obligationAbsorbed };
     };
     const applyCaps = (o, caps) => {
@@ -7869,6 +7873,16 @@
           const t = targetFor(e.id);
           if (!t) continue;
           const amount = -e.amount;
+          // A named minimum is a demand against one remaining balance.
+          // After that named balance is gone, later scheduled installments
+          // — including a fixed interestByEvent / principalShare split —
+          // are not payments anyone makes. Applying the interest share
+          // first, then only capping the principal remainder, left later
+          // interest draining cash after payoff.
+          if (!(t.balance > EPSILON)) {
+            obligationAbsorbed[e.date + ':' + e.id] = 0;
+            continue;
+          }
           // An amortising payment is part interest, part principal; only the
           // principal share moves the balance. The interest share is a real
           // cost, so it is not carried on to another debt.
