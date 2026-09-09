@@ -84,7 +84,8 @@ function loadComposer() {
 
 const PAYDAY = '2026-08-28';
 const MID = '2026-09-04';
-const AFTER_BILLS = 5000;
+const FROZEN_OPENING = 5000;
+const AFTER_BILLS = 0;
 const LIVE_CASH = 4123.45;
 const GROCERY_PLAN = 900;
 const FUEL_PLAN = 325;
@@ -174,7 +175,7 @@ function isolatedPlan(extraCats) {
     startingCash: { amount: LIVE_CASH },
     opening: {
       asOf: MID,
-      paydaySnapshot: { periodStart: PAYDAY, asOf: PAYDAY, opening: AFTER_BILLS },
+      paydaySnapshot: { periodStart: PAYDAY, asOf: PAYDAY, opening: FROZEN_OPENING },
       representedEvents: [],
     },
     income: [{
@@ -231,7 +232,7 @@ const composer = loadComposer();
 function assertAfterBills(active, label) {
   ok(active && active.openingKnown === true && active.openingSource === 'snapshot'
       && near(active.afterBills, AFTER_BILLS) && !near(active.available, LIVE_CASH),
-    label || 'Balance after bills is the frozen $5,000 snapshot, not live cash');
+    label || 'Balance after bills is Payday balance with no period bills, not live cash');
 }
 
 console.log('=== 1. under plan reserves the full planned amount ===');
@@ -239,8 +240,8 @@ console.log('=== 1. under plan reserves the full planned amount ===');
   const spent = 600;
   const expectedHold = Math.max(GROCERY_PLAN, spent);
   const expectedAfter = roundCent(AFTER_BILLS - expectedHold);
-  ok(near(expectedHold, 900) && near(expectedAfter, 4100),
-    'independent: max(900, 600) = $900; $5,000 − $900 = $4,100');
+  ok(near(expectedHold, 900) && near(expectedAfter, -900),
+    'independent: max(900, 600) = $900; Payday balance $0 − $900 = −$900');
   const advice = recommend(isolatedPlan(), [groceryTx('tx-groc', spent)]);
   const active = period(advice.defaultView, 'this-pay-period');
   const groc = budgetRow(active, 'groceries');
@@ -250,7 +251,7 @@ console.log('=== 1. under plan reserves the full planned amount ===');
     'Groceries hold is $900, not remaining $300');
   ok(near(active.budgetHold, expectedHold)
       && near(active.afterHouseholdBudget, expectedAfter),
-    'Balance after Household Budget is $4,100');
+    'Balance after Household Budget is −$900');
   ok(!near(active.afterHouseholdBudget, 4700),
     'Forecast does not subtract only the $300 remaining hold');
   ok(!near(active.afterHouseholdBudget, 3500),
@@ -262,15 +263,15 @@ console.log('=== 2. exactly at plan reserves the planned amount ===');
   const spent = 900;
   const expectedHold = Math.max(GROCERY_PLAN, spent);
   const expectedAfter = roundCent(AFTER_BILLS - expectedHold);
-  ok(near(expectedHold, 900) && near(expectedAfter, 4100),
-    'independent: max(900, 900) = $900; leftover $4,100');
+  ok(near(expectedHold, 900) && near(expectedAfter, -900),
+    'independent: max(900, 900) = $900; leftover −$900');
   const advice = recommend(isolatedPlan(), [groceryTx('tx-groc', spent)]);
   const active = period(advice.defaultView, 'this-pay-period');
   const groc = budgetRow(active, 'groceries');
   assertAfterBills(active);
   ok(groc && near(groc.hold, 900) && near(groc.overspend, 0)
-      && near(active.afterHouseholdBudget, 4100),
-    'at-plan Groceries hold stays $900; leftover $4,100');
+      && near(active.afterHouseholdBudget, -900),
+    'at-plan Groceries hold stays $900; leftover −$900');
 }
 
 console.log('=== 3. overspend deducts the full actual ===');
@@ -278,17 +279,17 @@ console.log('=== 3. overspend deducts the full actual ===');
   const spent = 1000;
   const expectedHold = Math.max(GROCERY_PLAN, spent);
   const expectedAfter = roundCent(AFTER_BILLS - expectedHold);
-  ok(near(expectedHold, 1000) && near(expectedAfter, 4000),
-    'independent: max(900, 1000) = $1,000; leftover $4,000');
+  ok(near(expectedHold, 1000) && near(expectedAfter, -1000),
+    'independent: max(900, 1000) = $1,000; leftover −$1,000');
   const advice = recommend(isolatedPlan(), [groceryTx('tx-groc', spent)]);
   const active = period(advice.defaultView, 'this-pay-period');
   const groc = budgetRow(active, 'groceries');
   assertAfterBills(active);
   ok(groc && near(groc.hold, 1000) && near(groc.overspend, 100)
       && near(active.budgetHold, 1000)
-      && near(active.afterHouseholdBudget, 4000),
-    'overspend $100 reduces Balance after Household Budget to $4,000');
-  ok(!near(active.afterHouseholdBudget, 4100)
+      && near(active.afterHouseholdBudget, -1000),
+    'overspend $100 reduces Balance after Household Budget to −$1,000');
+  ok(!near(active.afterHouseholdBudget, -900)
       && !near(groc.hold, 0),
     'overspend does not floor the grocery hold at $0 and forget the $100');
   ok(!near(active.afterHouseholdBudget, 3100),
@@ -301,8 +302,8 @@ console.log('=== 4. Other Spending actual is added once ===');
   const otherSpent = 250;
   const expectedHold = roundCent(Math.max(GROCERY_PLAN, grocerySpent) + otherSpent);
   const expectedAfter = roundCent(AFTER_BILLS - expectedHold);
-  ok(near(expectedHold, 1150) && near(expectedAfter, 3850),
-    'independent: $900 + $250 Other = $1,150; leftover $3,850');
+  ok(near(expectedHold, 1150) && near(expectedAfter, -1150),
+    'independent: $900 + $250 Other = $1,150; leftover −$1,150');
   const advice = recommend(isolatedPlan(), [
     groceryTx('tx-groc', grocerySpent),
     otherTx('tx-other', otherSpent),
@@ -316,7 +317,7 @@ console.log('=== 4. Other Spending actual is added once ===');
     'Other Spending has no planned reserve; hold equals actual $250');
   ok(near(active.budgetHold, expectedHold)
       && near(active.afterHouseholdBudget, expectedAfter),
-    'Balance after Household Budget is $3,850');
+    'Balance after Household Budget is −$1,150');
 }
 
 console.log('=== 5. overspend plus Other Spending ===');
@@ -325,8 +326,8 @@ console.log('=== 5. overspend plus Other Spending ===');
   const otherSpent = 250;
   const expectedHold = roundCent(Math.max(GROCERY_PLAN, grocerySpent) + otherSpent);
   const expectedAfter = roundCent(AFTER_BILLS - expectedHold);
-  ok(near(expectedHold, 1250) && near(expectedAfter, 3750),
-    'independent: $1,000 + $250 = $1,250; leftover $3,750');
+  ok(near(expectedHold, 1250) && near(expectedAfter, -1250),
+    'independent: $1,000 + $250 = $1,250; leftover −$1,250');
   const advice = recommend(isolatedPlan(), [
     groceryTx('tx-groc', grocerySpent),
     otherTx('tx-other', otherSpent),
@@ -335,7 +336,7 @@ console.log('=== 5. overspend plus Other Spending ===');
   assertAfterBills(active);
   ok(near(active.budgetHold, expectedHold)
       && near(active.afterHouseholdBudget, expectedAfter),
-    'overspend + Other Spending leftover is $3,750');
+    'overspend + Other Spending leftover is −$1,250');
 }
 
 console.log('=== 6. multiple planned categories plus Other Spending ===');
@@ -351,8 +352,8 @@ console.log('=== 6. multiple planned categories plus Other Spending ===');
     + otherSpent
   );
   const expectedAfter = roundCent(AFTER_BILLS - expectedHold);
-  ok(near(expectedHold, 1675) && near(expectedAfter, 3325),
-    'independent: 1000+325+250+100 = $1,675; leftover $3,325');
+  ok(near(expectedHold, 1675) && near(expectedAfter, -1675),
+    'independent: 1000+325+250+100 = $1,675; leftover −$1,675');
   const plan = isolatedPlan([
     { id: 'fuel', label: 'Fuel', class: 'essential', from: ['Fuel'], plannedPayday: 325, ownerLine: 'Fuel' },
     {
@@ -438,7 +439,7 @@ console.log('=== 8. Dog food first-Seaspan-of-month cadence is unchanged ===');
     'independent cadence: Aug 14 holds $100; Aug 28 holds $0');
   const firstPlan = isolatedPlan([petsCat]);
   firstPlan.opening.paydaySnapshot = {
-    periodStart: firstStart, asOf: firstStart, opening: AFTER_BILLS,
+    periodStart: firstStart, asOf: firstStart, opening: FROZEN_OPENING,
   };
   firstPlan.opening.asOf = '2026-08-16';
   firstPlan.income[0].anchor = '2026-08-14';
@@ -612,8 +613,8 @@ console.log('=== 13. Household Budget Total is Forecast budgetHold, not a page s
     + otherSpent
   );
   const expectedAfter = roundCent(AFTER_BILLS - expectedHold);
-  ok(near(expectedHold, 1675) && near(expectedAfter, 3325),
-    'independent: 1000+325+250+100 = $1,675; leftover $3,325');
+  ok(near(expectedHold, 1675) && near(expectedAfter, -1675),
+    'independent: 1000+325+250+100 = $1,675; leftover −$1,675');
   const plan = isolatedPlan([
     { id: 'fuel', label: 'Fuel', class: 'essential', from: ['Fuel'], plannedPayday: 325, ownerLine: 'Fuel' },
     {

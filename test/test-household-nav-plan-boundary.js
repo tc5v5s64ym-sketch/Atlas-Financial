@@ -52,7 +52,6 @@ const REMOVED_ROWS = [
 ];
 const KEPT_ROWS = [
   'Income',
-  'Balance after payday',
   'Bills',
   'Balance after bills',
   'Household budget',
@@ -260,8 +259,9 @@ console.log('\n=== 4 + 5. Plan waterfall keeps Balance after household budget an
   ok(html.includes(composer.money2(active.afterHouseholdBudget)),
     'Q07 prints the Forecast afterHouseholdBudget figure');
   const questions = [...html.matchAll(/data-operating-question="(\d+)"/g)].map(m => m[1]);
-  ok(questions.length === 6 && questions.every(n => Number(n) <= 7) && !questions.includes('01'),
-    'the active snapshot has six questions, numbered 02–07', questions.join(','));
+  ok(questions.length === 5 && questions.every(n => Number(n) <= 7)
+      && !questions.includes('01') && !questions.includes('03'),
+    'the active snapshot has five questions, numbered 02 and 04–07', questions.join(','));
   for (const prompt of REMOVED_ROWS) {
     ok(!html.includes(prompt), `${prompt} is not on the Plan`);
   }
@@ -282,8 +282,8 @@ console.log('\n=== 4 + 5. Plan waterfall keeps Balance after household budget an
   const futureQs = (both.match(/data-calendar-role="future"[\s\S]*?<\/section>/) || [''])[0]
     .match(/data-operating-question=/g) || [];
   ok(sections === (advice.defaultView.calendarPeriods || []).length
-      && activeQs.length === 6
-      && futureQs.length === 7
+      && activeQs.length === 5
+      && futureQs.length === 6
       && /data-live-current-balance/.test(both)
       && !REMOVED_ROWS.some(prompt => both.includes(prompt)),
     'Show both prints live Current Balance once, then the active snapshot without a Current Balance row and the future period with its opening');

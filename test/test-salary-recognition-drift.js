@@ -265,8 +265,8 @@ console.log('\n=== 5. Represented current paycheck adds $0; later-cycle salary i
   ok(near(p1.incomeAdded, 0),
     'represented Jan 1 paycheck adds $0 again; later-cycle salaries are not added now',
     `incomeAdded=${p1.incomeAdded}`);
-  ok(near(p1.available, CURRENT_CASH),
-    'Available is current cash only');
+  ok(near(p1.available, p1.incomeTotal),
+    'Payday balance equals displayed period income, not Current Balance');
 }
 
 console.log('\n=== 6. Pay Periods do not own payroll cadence ===');

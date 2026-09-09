@@ -1882,17 +1882,14 @@ function calendarIncomeHtml(period) {
       </details>
     </div>`;
   }
-  const added = period && period.incomeAdded != null && Number(period.incomeAdded) > 0
-    ? `<p class="payday-qual payday-total"><span>Assigned income</span><span>${money2(period.incomeAdded)}</span></p>`
-    : '';
-  const total = period && period.incomeTotal != null
-    ? `<p class="payday-qual payday-total payday-total-strong" data-income-total>
-        <span>Total income</span><span data-income-total-amount>${money2(period.incomeTotal)}</span>
+  const payday = period && period.available != null
+    ? `<p class="payday-qual payday-total payday-total-strong" data-payday-balance>
+        <span>Payday balance</span><span data-payday-balance-amount>${money2(period.available)}</span>
       </p>`
     : '';
   return `<div class="payday-period-income" data-calendar-income>
     <div class="operating-lines">${namedLines}${otherHtml}</div>
-    ${added}${total}
+    ${payday}
   </div>`;
 }
 
@@ -2100,7 +2097,8 @@ function extraRepaymentHtml(period) {
   </div>`;
 }
 
-// The Plan print stops at Balance after household budget. Forecast still
+// The Plan print stops at Balance after household budget. Payday balance is
+// the Income-block total from Forecast period.available. Forecast still
 // computes the extra-debt / big-purchase chain and the projected ending on
 // each period (the next period opens from it); those rows are not part of the
 // household Plan surface.
@@ -2147,7 +2145,6 @@ function calendarWaterfallHtml(period, liveOverlay, alloc) {
     ${lookbackNote}${projectedNote}${openingUnknownNote}
     ${opening}
     ${q('02', 'Income', planUnavailable ? unavailable : calendarIncomeHtml(period))}
-    ${q('03', 'Balance after payday', planUnavailable ? unavailable : runningLeftoverHtml(period.available), 'balance')}
     ${q('04', 'Bills', planUnavailable ? unavailable : calendarPeriodBillsHtml(period))}
     ${q('05', 'Balance after bills', planUnavailable ? unavailable : runningLeftoverHtml(period.afterBills != null ? period.afterBills : period.afterRemainingBills), 'balance')}
     ${q('06', 'Household budget', planUnavailable ? unavailable : calendarBudgetHtml(period))}

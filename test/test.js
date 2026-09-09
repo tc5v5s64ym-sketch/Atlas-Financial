@@ -86,6 +86,7 @@ const suites = [
   ['Other Income payday waterfall', 'test-other-income.js'],
   ['Plan payday operating periods', 'test-payday-operating-periods.js'],
   ['Plan payday waterfall balance date and post-payday identity', 'test-plan-payday-waterfall-balance.js'],
+  ['owner-policy Payday balance waterfall', 'test-payday-balance-owner-policy.js'],
   ['payday snapshot vs live Current Balance', 'test-payday-snapshot-live-balance.js'],
   ['payday opening authority from dated opening', 'test-payday-opening-authority.js'],
   ['payday waterfall bill load vs remaining-only leftover', 'test-payday-waterfall-bill-load.js'],

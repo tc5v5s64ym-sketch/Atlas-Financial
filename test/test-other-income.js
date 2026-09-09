@@ -180,7 +180,7 @@ console.log('=== 1. A genuine irregular deposit is included once ===');
   const items = (active.otherIncome && active.otherIncome.items) || [];
   const independentOther = GIFT;
   const independentTotal = roundCent(DALE + AMANDA + GIFT);
-  const independentAfter = roundCent(OPENING_CASH + DALE + AMANDA + GIFT);
+  const independentAfter = roundCent(DALE + AMANDA + GIFT);
   ok(items.length === 1 && items[0].id === 'other-income:tx-gift',
     'gift deposit is one Other Income item', JSON.stringify(items.map(r => r.id)));
   ok(near(active.otherIncome.amount, independentOther),
@@ -191,7 +191,7 @@ console.log('=== 1. A genuine irregular deposit is included once ===');
     'period incomeTotal independently equals Dale + Amanda + gift');
   ok(near(active.incomeAdded, independentTotal)
       && near(active.available, independentAfter),
-    'Balance after payday independently equals opening + Dale + Amanda + gift');
+    'Payday balance independently equals Dale + Amanda + gift');
 }
 
 console.log('\n=== 2. Multiple Other Income items total correctly ===');
@@ -254,8 +254,8 @@ console.log('\n=== 3. An internal transfer is not income ===');
   ok(items.length === 0 && near(active.otherIncome.amount, 0),
     'transfer, card payment, grocery refund, refund-label spend reversal, and TENNIS INCOME are not Other Income');
   ok(near(active.incomeAdded, roundCent(DALE + AMANDA))
-      && near(active.available, roundCent(OPENING_CASH + DALE + AMANDA)),
-    'Balance after payday is still only opening + Dale + Amanda');
+      && near(active.available, roundCent(DALE + AMANDA)),
+    'Payday balance is still only Dale + Amanda');
 }
 
 console.log('\n=== 4. Regular salary is not duplicated into Other Income ===');
@@ -316,7 +316,7 @@ console.log('\n=== 5. Expected income is not presented as already received ===')
     row && `${row.status} / ${row.settlement} / alreadyInCash=${row.alreadyInCash}`);
   ok(near(active.otherIncome.amount, EXPECTED_REFUND)
       && near(active.incomeAdded, roundCent(DALE + AMANDA + EXPECTED_REFUND)),
-    'expected refund is planned into Balance after payday and is not treated as cash on hand');
+    'expected refund is planned into Payday balance and is not treated as cash on hand');
   const html = composer.calendarIncomeHtml(active);
   ok(/Expected refund|Other income/.test(html)
       && /arriving|Expected/.test(html)
@@ -401,7 +401,7 @@ console.log('\n=== 8. After cashAsOf advances, expected Other Income still count
   const observedRows = items.filter(r => r && String(r.id).indexOf('tx-refund-post-date') !== -1);
   const independentOther = EXPECTED_REFUND;
   const independentTotal = roundCent(DALE + AMANDA + EXPECTED_REFUND);
-  const independentAfter = roundCent(OPENING_CASH + DALE + AMANDA + EXPECTED_REFUND);
+  const independentAfter = roundCent(DALE + AMANDA + EXPECTED_REFUND);
   ok(expectedRows.length === 1 && observedRows.length === 0 && items.length === 1,
     'post-date expected refund stays eligible and reconciles to one Other Income row',
     JSON.stringify(items.map(r => ({ id: r.id, status: r.status, alreadyInCash: r.alreadyInCash }))));
@@ -415,7 +415,7 @@ console.log('\n=== 8. After cashAsOf advances, expected Other Income still count
     'incomeTotal counts the refund once after cashAsOf advances');
   ok(near(active.incomeAdded, independentTotal)
       && near(active.available, independentAfter),
-    'Balance after payday counts the refund once after cashAsOf advances');
+    'Payday balance counts the refund once after cashAsOf advances');
 }
 
 console.log('\n=== 7. Displayed Other Income total reconciles to authoritative rows ===');
@@ -443,15 +443,17 @@ console.log('\n=== 7. Displayed Other Income total reconciles to authoritative r
     'page renders Other Income as an expandable disclosure');
   ok(html.includes(composer.money2(independentOther)),
     'page prints Forecast Other Income total; it does not invent a second total');
-  ok(/data-income-total/.test(html) && html.includes(composer.money2(independentTotal)),
-    'page prints Forecast incomeTotal as Total income');
+  ok(/data-payday-balance/.test(html) && html.includes(composer.money2(independentTotal)),
+    'page prints Forecast Payday balance from period.available');
   const incomeFn = grab(planSrc, /^function calendarIncomeHtml\([\s\S]*?\n\}$/m, 'calendarIncomeHtml');
-  ok(/period\.otherIncome/.test(incomeFn) && /period\.incomeTotal/.test(incomeFn)
-      && !/otherItems\.reduce/.test(incomeFn) && !/other\.items\.reduce/.test(incomeFn),
-    'plan.js renders Forecast otherIncome / incomeTotal; it does not sum the rows');
+  ok(/period\.otherIncome/.test(incomeFn) && /period\.available/.test(incomeFn)
+      && /Payday balance/i.test(incomeFn)
+      && !/otherItems\.reduce/.test(incomeFn) && !/other\.items\.reduce/.test(incomeFn)
+      && !/Assigned income/i.test(incomeFn) && !/Total income/i.test(incomeFn),
+    'plan.js renders Forecast otherIncome / Payday balance; it does not sum the rows');
   const waterfallFn = grab(planSrc, /^function calendarWaterfallHtml\([\s\S]*?\n\}$/m, 'calendarWaterfallHtml');
-  ok(/period\.available/.test(waterfallFn) && !/\.opening\s*\+/.test(waterfallFn),
-    'plan.js still does not compute opening + income for Balance after payday');
+  ok(!/Balance after payday/i.test(waterfallFn) && !/\.opening\s*\+/.test(waterfallFn),
+    'plan.js does not publish a competing Balance after payday or compute opening + income');
 }
 
 console.log('\n=== 9. External ATM deposit vs internal TFR-FR is counted once ===');
@@ -498,7 +500,7 @@ console.log('\n=== 9. External ATM deposit vs internal TFR-FR is counted once ==
   };
   const independentOther = GIFT;
   const independentTotal = roundCent(DALE + AMANDA + GIFT);
-  const independentAfter = roundCent(OPENING_CASH + DALE + AMANDA + GIFT);
+  const independentAfter = roundCent(DALE + AMANDA + GIFT);
   const advice = recommend(paydayPlan(), [atmDep, tfrTo, tfrFr]);
   const active = period(advice.defaultView, 'this-pay-period');
   const items = (active.otherIncome && active.otherIncome.items) || [];
@@ -512,7 +514,7 @@ console.log('\n=== 9. External ATM deposit vs internal TFR-FR is counted once ==
   ok(near(active.incomeTotal, independentTotal)
       && near(active.incomeAdded, independentTotal)
       && near(active.available, independentAfter),
-    'Balance after payday adds the ATM deposit once and not the TFR-FR');
+    'Payday balance adds the ATM deposit once and not the TFR-FR');
 }
 
 console.log('\n=== 10. Overlay-stripped ATM deposit flag still counts; TFR flag does not ===');
@@ -608,8 +610,8 @@ console.log('\n=== 12. Internal transfer labeled Income is still not Other Incom
   ok(items.length === 0 && near(active.otherIncome.amount, 0),
     'TFR legs labeled Income do not become household resources');
   ok(near(active.incomeAdded, roundCent(DALE + AMANDA))
-      && near(active.available, roundCent(OPENING_CASH + DALE + AMANDA)),
-    'Balance after payday is still only opening + Dale + Amanda');
+      && near(active.available, roundCent(DALE + AMANDA)),
+    'Payday balance is still only Dale + Amanda');
 }
 
 console.log('\n=== 13. Same-day ATM withdrawal keeps automatic ATM deposit closed ===');

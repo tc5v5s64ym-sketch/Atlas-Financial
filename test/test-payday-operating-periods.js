@@ -206,10 +206,11 @@ console.log('\n=== 2. Killer September: active available is current cash only ==
   ok(near(active.incomeAdded, 0),
     'no unrepresented future income before Sep 11 is added',
     `incomeAdded=${active.incomeAdded}`);
-  ok(near(active.available, CURRENT_CASH),
-    `ACTIVE AVAILABLE BALANCE = ${CURRENT_CASH.toFixed(2)}`);
-  ok(!near(active.available, WRONG_AVAILABLE),
-    `active available is not the calendar-half ${WRONG_AVAILABLE.toFixed(2)}`);
+  ok(near(active.available, roundCent(SEASPAN_AMT + AMANDA_END_AMT))
+      && near(active.available, active.incomeTotal),
+    'Payday balance is Aug 28 Seaspan + Aug 31 Amanda, not Current Balance');
+  ok(!near(active.available, CURRENT_CASH) && !near(active.available, WRONG_AVAILABLE),
+    `active Payday balance is not Current Balance or the calendar-half ${WRONG_AVAILABLE.toFixed(2)}`);
   ok(near(WRONG_AVAILABLE, 10289.89) && near(MOVED, 6432.85),
     'the retired wrong available independently equals cash + Sep 11 + Sep 15');
 }
@@ -243,8 +244,9 @@ console.log('\n=== 3. Next period receives the moved salaries once ===');
     'next incomeAdded independently equals Sep 11 + Sep 15 + Sep 20');
   ok(near(next.opening, active.projectedEnding),
     'next opening is the previous projected ending (carryover), not payday + ending');
-  ok(near(next.available, roundCent(next.opening + next.incomeAdded)),
-    'next available independently equals carryover + next-cycle income');
+  ok(near(next.available, next.incomeTotal)
+      && near(next.available, independentIncome),
+    'next Payday balance independently equals next-cycle income, not carryover plus income');
   const youtube = (active.bills || []).find(r => r.id === 'youtube-premium');
   const netflix = (next.bills || []).find(r => r.id === 'netflix');
   const youtubeNext = (next.bills || []).find(r => r.id === 'youtube-premium');

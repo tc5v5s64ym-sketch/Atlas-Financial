@@ -1,7 +1,8 @@
 'use strict';
 /* Plan payday waterfall: Current Balance date is provider balance evidence,
- * not Atlas fetchedAt; Balance after payday is opening plus displayed
- * payday income, before bills and household budget (L-002 / L-006).
+ * not Atlas fetchedAt; Payday balance is displayed payday income,
+ * before bills and household budget (L-002 / L-006). Opening cash is
+ * not a term in that allocation waterfall.
  *
  * `node test/test-plan-payday-waterfall-balance.js`
  */
@@ -223,7 +224,7 @@ console.log('\n=== 2. No hardcoded Lunch Money hour and no browser-clock freshne
     'provider-observe still dates cash from provider timestamps, not a clock hour');
 }
 
-console.log('\n=== 3. Current-period Balance after payday = opening + Dale + Amanda ===');
+console.log('\n=== 3. Current-period Payday balance = Dale + Amanda ===');
 {
   const plan = paydayPlan();
   const advice = F.recommend(plan, PAYDAY, { targetBuffer: 0, debts });
@@ -231,7 +232,7 @@ console.log('\n=== 3. Current-period Balance after payday = opening + Dale + Ama
   const dale = incomeRow(active, 'payroll');
   const amanda = incomeRow(active, 'amandaPayday');
   const independentOpening = OPENING_CASH;
-  const independentAfterPayday = roundCent(OPENING_CASH + DALE + AMANDA);
+  const independentPayday = roundCent(DALE + AMANDA);
   ok(active && active.role === 'active' && active.start === PAYDAY,
     'This Pay Period is the Sep 11 payday window');
   ok(near(active.opening, independentOpening)
@@ -244,11 +245,13 @@ console.log('\n=== 3. Current-period Balance after payday = opening + Dale + Ama
     'Amanda payday income is printed and arriving');
   ok(near(active.incomeAdded, roundCent(DALE + AMANDA)),
     'incomeAdded independently equals Dale + Amanda');
-  ok(near(active.available, independentAfterPayday)
-      && near(active.available, roundCent(active.opening + dale.amount + amanda.amount)),
-    'Balance after payday independently equals opening + Dale + Amanda');
-  ok(!near(active.available, independentOpening),
-    'Balance after payday is not the pre-income opening');
+  ok(near(active.available, independentPayday)
+      && near(active.available, roundCent(dale.amount + amanda.amount))
+      && near(active.available, active.incomeTotal),
+    'Payday balance independently equals Dale + Amanda');
+  ok(!near(active.available, independentOpening)
+      && !near(active.available, roundCent(independentOpening + DALE + AMANDA)),
+    'Payday balance is not the opening and does not add opening cash');
 }
 
 console.log('\n=== 4. Bills and Household Budget stay downstream ===');
@@ -256,7 +259,7 @@ console.log('\n=== 4. Bills and Household Budget stay downstream ===');
   const plan = paydayPlan();
   const advice = F.recommend(plan, PAYDAY, { targetBuffer: 0, debts });
   const active = period(advice.defaultView, 'this-pay-period');
-  const afterPayday = roundCent(OPENING_CASH + DALE + AMANDA);
+  const afterPayday = roundCent(DALE + AMANDA);
   ok(near(active.remainingBills, BILL),
     'the Netflix bill is remaining in This Pay Period');
   ok(near(active.afterBills, roundCent(afterPayday - BILL))
@@ -265,11 +268,11 @@ console.log('\n=== 4. Bills and Household Budget stay downstream ===');
   ok(active.budgetHold != null && active.budgetHold > 0,
     'Household Budget still publishes a hold');
   ok(near(active.afterHouseholdBudget, roundCent(active.afterBills - active.budgetHold)),
-    'Household Budget is subtracted after bills, not inside Balance after payday');
+    'Household Budget is subtracted after bills, not inside Payday balance');
   ok(near(active.available, afterPayday)
       && !near(active.available, active.afterRemainingBills)
       && !near(active.available, active.afterHouseholdBudget),
-    'Balance after payday excludes bills and household budget');
+    'Payday balance excludes bills and household budget');
 }
 
 console.log('\n=== 5. Household-facing label and render-only page ===');
@@ -282,17 +285,19 @@ console.log('\n=== 5. Household-facing label and render-only page ===');
     advice.defaultView, 'this-pay-period', null, advice.paydayAllocation);
   ok(/data-live-current-balance/.test(html),
     'live Current Balance is rendered outside the payday card');
-  ok(/data-operating-prompt="Balance after payday"/.test(html),
-    'Q03 is labelled Balance after payday');
+  ok(/Payday balance/.test(html) && html.includes(composer.money2(active.available)),
+    'Income block prints Forecast period.available as Payday balance');
+  ok(!/data-operating-prompt="Balance after payday"/.test(html),
+    'waterfall does not publish a competing Balance after payday row');
   ok(!/data-operating-prompt="Available balance"/.test(html),
     'Available balance is no longer the payday-waterfall label');
-  ok(html.includes(composer.money2(active.available)),
-    'the page prints Forecast period.available; it does not add the paychecks itself');
-  const waterfallFn = grab(planSrc, /^function calendarWaterfallHtml\([\s\S]*?\n\}$/m, 'calendarWaterfallHtml');
-  ok(/period\.available/.test(waterfallFn)
-      && !/\.opening\s*\+/.test(waterfallFn)
-      && !/incomeAdded/.test(waterfallFn),
-    'plan.js renders Forecast available; it does not compute opening + income');
+  const incomeFn = grab(planSrc, /^function calendarIncomeHtml\([\s\S]*?\n\}$/m, 'calendarIncomeHtml');
+  ok(/period\.available/.test(incomeFn)
+      && /Payday balance/i.test(incomeFn)
+      && !/\.opening\s*\+/.test(incomeFn)
+      && !/Assigned income/i.test(incomeFn)
+      && !/Total income/i.test(incomeFn),
+    'plan.js renders Forecast available as Payday balance; it does not compute opening + income');
   const nextHtml = composer.calendarWaterfallHtml(next, {
     applied: true,
     operatingPlan: 'live',

@@ -98,8 +98,8 @@ function check(name, cash, transactions, hold, calendarLeft, mixed = false, pend
   const rec = F.recommend(p, AS_OF, opts);
   assert.equal(rec.paydayAllocation.essentials.wanted, hold, name + ': recommend integration');
   const period = rec.defaultView.calendarPeriods.find(r => r.id === 'this-pay-period');
-  assert.equal(period.available, 5000, name + ': frozen 3000 + 2000 income');
-  assert.equal(period.afterHouseholdBudget, calendarLeft, name + ': PR #262 unchanged');
+  assert.equal(period.available, 2000, name + ': Payday balance is period income');
+  assert.equal(period.afterHouseholdBudget, calendarLeft - 3000, name + ': income-led leftover excludes frozen opening');
   console.log('PASS ' + name);
   return a;
 }
