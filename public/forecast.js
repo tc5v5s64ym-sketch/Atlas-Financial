@@ -7873,6 +7873,16 @@
           const t = targetFor(e.id);
           if (!t) continue;
           const amount = -e.amount;
+          // A named minimum is a demand against one remaining balance.
+          // After that named balance is gone, later scheduled installments
+          // — including a fixed interestByEvent / principalShare split —
+          // are not payments anyone makes. Applying the interest share
+          // first, then only capping the principal remainder, left later
+          // interest draining cash after payoff.
+          if (!(t.balance > EPSILON)) {
+            obligationAbsorbed[e.date + ':' + e.id] = 0;
+            continue;
+          }
           // An amortising payment is part interest, part principal; only the
           // principal share moves the balance. The interest share is a real
           // cost, so it is not carried on to another debt.

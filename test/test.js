@@ -101,6 +101,7 @@ const suites = [
   ['HELOC Deep Dive current-opening agreement (B19)', 'test-heloc-deepdive.js'],
   ['coupled cash and debt', 'test-debt.js'],
   ['debt absorption covers the cash horizon', 'test-debt-absorption-horizon.js'],
+  ['amortising payoff stops later interest share', 'test-amortizing-payoff-horizon.js'],
   ['live recurring debt and cash horizon reconciliation', 'test-live-debt-horizon.js'],
   ['HELOC crossing-date authority', 'test-heloc-crossing-authority.js'],
   ['authority invariants', 'test-invariants.js'],
