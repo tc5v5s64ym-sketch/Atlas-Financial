@@ -6107,6 +6107,35 @@
     return views;
   }
 
+  // Chronological projection of completed-period Payday carryover. Copies
+  // the incumbent pastPeriodViews carryover fields; does not call
+  // paydayBoundaryCash, invent $0, interpolate, or treat unknown as cash.
+  // Oldest payday first so the household can see whether leftover at payday
+  // has generally risen or fallen. Not income, savings, or a second engine.
+  function planPaydayCarryoverTrend(views) {
+    const points = [];
+    for (let i = 0; i < (views || []).length; i++) {
+      const view = views[i];
+      if (!view || !view.start) continue;
+      const known = view.paydayCarryoverKnown === true
+        && view.paydayCarryover != null
+        && Number.isFinite(Number(view.paydayCarryover));
+      points.push({
+        periodStart: view.start,
+        periodEnd: view.end || null,
+        rangeLabel: view.rangeLabel || null,
+        payday: view.paydayCarryoverPayday || null,
+        known,
+        amount: known ? roundCent(Number(view.paydayCarryover)) : null,
+        asOf: known ? (view.paydayCarryoverAsOf || view.paydayCarryoverPayday || null) : null,
+        source: known ? (view.paydayCarryoverSource || null) : null,
+      });
+    }
+    points.sort((a, b) => String(a.payday || a.periodEnd || a.periodStart || '')
+      .localeCompare(String(b.payday || b.periodEnd || b.periodStart || '')));
+    return { points };
+  }
+
   // Same 10-block shape as defaultView, for the next Seaspan payday Forecast
   // already named. Current Balance is the walk's start-of-day cash plus that
   // payday's income — the paydayAllocation available identity, not a new
@@ -7424,6 +7453,10 @@
       const action = currentPeriodAction(plan, asOf, Object.assign({}, paydayOpts, {
         paydayAllocation: alloc,
       }));
+      const pastPeriodViews = planPastPeriodViews(plan, asOf, alloc, plans,
+        paydayOpts.debts || base.debts, Object.assign({}, paydayOpts, {
+          sim: knowledgeSim,
+        }));
       return withholdCurrentOperatingClaims({
         mode, weekly: weeklyCap, effectiveFrom, buffer, gap, sim: viewSim, zero: zeroSim,
         step: STEP,
@@ -7451,10 +7484,8 @@
           paydayOpts.debts || base.debts, viewSim, paydayOpts),
         weekViews: planWeekViews(plan, asOf, plans,
           paydayOpts.debts || base.debts, viewSim, paydayOpts),
-        pastPeriodViews: planPastPeriodViews(plan, asOf, alloc, plans,
-          paydayOpts.debts || base.debts, Object.assign({}, paydayOpts, {
-            sim: knowledgeSim,
-          })),
+        pastPeriodViews,
+        paydayCarryoverTrend: planPaydayCarryoverTrend(pastPeriodViews),
         // The options behind `sim`, so a caller overriding the weekly figure
         // re-simulates under the same assumptions instead of inventing its own.
         // Horizon is included so a page override still walks the master plan.

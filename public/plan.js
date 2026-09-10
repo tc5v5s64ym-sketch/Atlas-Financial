@@ -2176,6 +2176,47 @@ function paydayCarryoverHtml(period) {
   </div>`;
 }
 
+function paydayCarryoverTrendHtml(trend) {
+  const points = (trend && trend.points) || [];
+  if (!points.length) {
+    return `<section class="calendar-waterfall" data-payday-carryover-trend>
+      <div class="payday-group calendar-waterfall-head">Payday carryover</div>
+      <p class="operating-note">No completed pay periods to show.</p>
+    </section>`;
+  }
+  const knownAbs = points
+    .filter(p => p && p.known === true && p.amount != null && Number.isFinite(Number(p.amount)))
+    .map(p => Math.abs(Number(p.amount)));
+  const max = knownAbs.length ? Math.max(...knownAbs) : 0;
+  const rows = points.map(p => {
+    if (!p || !p.payday) return '';
+    const when = fmtDate(p.payday);
+    const known = p.known === true
+      && p.amount != null
+      && Number.isFinite(Number(p.amount));
+    if (!known) {
+      return `<li class="carryover-row" data-carryover-known="false" data-carryover-payday="${p.payday}">
+        <span class="carryover-when">${when}</span>
+        <span class="carryover-track carryover-track-unknown" aria-hidden="true"></span>
+        <span class="carryover-amount carryover-unknown">Unknown</span>
+      </li>`;
+    }
+    const amt = Number(p.amount);
+    const zero = amt === 0;
+    const pct = max > 0 ? Math.min(100, (Math.abs(amt) / max) * 100) : 0;
+    return `<li class="carryover-row" data-carryover-known="true"${zero ? ' data-carryover-zero="true"' : ''} data-carryover-payday="${p.payday}">
+      <span class="carryover-when">${when}</span>
+      <span class="carryover-track" aria-hidden="true"><span class="carryover-bar" style="width:${pct.toFixed(1)}%"></span></span>
+      <span class="carryover-amount" data-payday-carryover-amount>${money2(amt)}</span>
+    </li>`;
+  }).join('');
+  return `<section class="calendar-waterfall" data-payday-carryover-trend>
+    <div class="payday-group calendar-waterfall-head">Payday carryover</div>
+    <p class="operating-note">Spendable cash remaining at payday. Not savings, not income, not extra money to spend.</p>
+    <ol class="carryover-list">${rows}</ol>
+  </section>`;
+}
+
 function historicalPeriodHtml(period) {
   if (!period) return '';
   const q = (number, prompt, answer) => `
@@ -2447,6 +2488,7 @@ function paydayAllocationSummaryHtml(alloc, action) {
 function selectedPlanView(advice, look) {
   if (!advice) return null;
   if (look === 'next-period') return advice.nextPeriodView || advice.defaultView || null;
+  if (look === 'payday-carryover') return null;
   if (look && look.slice(0, 5) === 'week:') {
     const start = look.slice(5);
     const found = (advice.weekViews || []).find(row => row && row.periodStart === start);
@@ -2598,9 +2640,14 @@ function operatingSurfaceHtml(ctx) {
       : (range || 'Completed pay period');
     return option(value, label);
   }).join('');
+  const carryTrend = advice.paydayCarryoverTrend;
+  const carryOpt = (carryTrend && (carryTrend.points || []).length)
+    ? option('payday-carryover', 'Payday carryover')
+    : '';
   // The pay-period switch inside the sheet is the primary control. The week
   // picker stays available behind a quiet disclosure, and is held open while
-  // a week, next-period, or completed-period view is the one being read.
+  // a week, next-period, completed-period, or carryover-trend view is the
+  // one being read.
   const picker = `<details class="plan-look" data-plan-look-picker${look !== 'this-period' ? ' open' : ''}>
     <summary class="plan-look-summary">More views</summary>
     <label class="plan-look-field">
@@ -2612,6 +2659,7 @@ function operatingSurfaceHtml(ctx) {
           ? `Next pay period · ${fmtDate(nextPeriod.periodStart)} – ${fmtDate(nextPeriod.periodEnd)}`
           : 'Next pay period')
         : ''}
+      ${carryOpt}
       ${pastOpts}
       ${weekOpts}
       </select>
@@ -2625,6 +2673,7 @@ function operatingSurfaceHtml(ctx) {
   const cash = cashGlanceHtml(cashAlloc, view.cashNote ? null : ctx.liveOverlay, view.cashNote);
   const bills = periodBillsHtml(view);
   const pastLook = look && look.slice(0, 5) === 'past:';
+  const carryLook = look === 'payday-carryover';
   const defaultWaterfalls = look === 'this-period'
     && view.calendarPeriods && view.calendarPeriods.length
     ? calendarWaterfallsHtml(
@@ -2638,7 +2687,10 @@ function operatingSurfaceHtml(ctx) {
   const historical = pastLook && view && view.start
     ? `${picker}<div class="plan-sheet" data-historical-plan>${historicalPeriodHtml(view)}</div>`
     : '';
-  const tenBlock = defaultWaterfalls || historical ? '' : `
+  const carryoverTrend = carryLook
+    ? `${picker}<div class="plan-sheet" data-payday-carryover-trend-sheet>${paydayCarryoverTrendHtml(advice.paydayCarryoverTrend)}</div>`
+    : '';
+  const tenBlock = defaultWaterfalls || historical || carryoverTrend ? '' : `
     ${question('01', 'Current Balance', cash, 'opening')}
     ${question('02', billsHeading, bills)}
     ${question('03', 'Balance after bills', runningLeftoverHtml(view.afterBills), 'balance')}
@@ -2661,7 +2713,7 @@ function operatingSurfaceHtml(ctx) {
   // In the default view the picker rides inside the pay-period switch row;
   // the week and next-period printouts carry it at the top, held open.
   return `<div class="payday-operating-sheet" data-payday-sheet>
-    ${defaultWaterfalls || historical || `${picker}<div class="plan-sheet">${tenBlock}</div>`}
+    ${defaultWaterfalls || historical || carryoverTrend || `${picker}<div class="plan-sheet">${tenBlock}</div>`}
   </div>`;
 }
 
@@ -3767,6 +3819,10 @@ function renderPlan(d, periods, history) {
       const start = planLook.slice(5);
       const found = (advice.pastPeriodViews || []).some(row => row && row.start === start);
       if (!found) planLook = 'this-period';
+    }
+    if (planLook === 'payday-carryover') {
+      const points = advice.paydayCarryoverTrend && advice.paydayCarryoverTrend.points;
+      if (!points || !points.length) planLook = 'this-period';
     }
     const planView = selectedPlanView(advice, planLook);
     const surfaceCtx = {
