@@ -68,6 +68,10 @@ console.log('\n=== approved hierarchy and app navigation are present ===');
     'Income, Bills and Household Budget remain first-class distinct cards');
   ok(/atlas-bill-row-paid/.test(css) && /atlas-bill-row-to-pay/.test(css),
     'paid and to-pay bill rows have separate visual states');
+  ok(/\.atlas-period-summary\s*>\s*:only-child\s*\{[^}]*grid-column:\s*1\s*\/\s*-1/s.test(css),
+    'a lone Rollover or Payday summary fills the row instead of leaving a false empty card');
+  ok(/--atlas-purple:\s*color-mix\([^;]*var\(--text-primary\)[^;]*\);/.test(css),
+    'Bills accent adapts against the current theme text token instead of using a dark-only low-contrast fixed purple');
   ok(/--nav-icon-budget/.test(shared)
     && /--nav-icon-bills/.test(shared)
     && /--nav-icon-subscriptions/.test(shared)
