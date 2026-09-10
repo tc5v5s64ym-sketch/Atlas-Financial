@@ -105,6 +105,10 @@ const PAST_GIFT = 50;
 const LIVE_GIFT = 75;
 const BILL_PREV = 80;
 const BILL_EARLIER = 90;
+const BILL_RECUR_PREV = 120;
+const GROCERY_PREV = 40;
+const GROCERY_LIVE = 55;
+const GROCERY_WEEKLY = 100;
 const LIVE_CASH = 2300;
 
 const debts = [
@@ -153,10 +157,23 @@ function historyPlan() {
         id: 'bill-earlier', label: 'Synthetic earlier bill', amount: BILL_EARLIER,
         frequency: 'once', date: '2026-08-07', confidence: 'confirmed',
       },
+      {
+        id: 'bill-recur-prev', label: 'Synthetic recurring previous',
+        amount: BILL_RECUR_PREV, frequency: 'monthly', day: 21,
+        confidence: 'confirmed', payingAccount: 'chequing-a',
+      },
     ],
     obligations: [],
     commitments: [],
-    budget: { categories: [] },
+    budget: {
+      categories: [
+        {
+          id: 'groceries', label: 'Groceries', class: 'essential',
+          plannedWeekly: GROCERY_WEEKLY, ownerLine: 'Groceries',
+          from: ['Groceries'],
+        },
+      ],
+    },
   };
 }
 
@@ -186,6 +203,26 @@ function actualsPacket() {
         displayedPayee: 'Live gift',
         accountRole: 'household-cash',
       },
+      {
+        id: 'tx-grocery-prev',
+        date: '2026-08-20',
+        amount: GROCERY_PREV,
+        pending: false,
+        categoryLabel: 'Groceries',
+        accountRole: 'household-cash',
+        displayedPayee: 'Save-On-Foods',
+        originalMerchant: 'Save-On-Foods',
+      },
+      {
+        id: 'tx-grocery-live',
+        date: '2026-09-04',
+        amount: GROCERY_LIVE,
+        pending: false,
+        categoryLabel: 'Groceries',
+        accountRole: 'household-cash',
+        displayedPayee: 'Save-On-Foods',
+        originalMerchant: 'Save-On-Foods',
+      },
     ],
     representedActuals: [],
   };
@@ -205,6 +242,15 @@ function incomeIds(period) {
 }
 function billIds(period) {
   return ((period && period.bills) || []).map(r => r && r.id).filter(Boolean);
+}
+function incomeRow(period, id) {
+  return ((period && period.income) || []).find(r => r && r.id === id) || null;
+}
+function billRow(period, id) {
+  return ((period && period.bills) || []).find(r => r && r.id === id) || null;
+}
+function budgetRow(period, id) {
+  return ((period && period.householdBudget) || []).find(r => r && r.id === id) || null;
 }
 
 const composer = loadComposer();
@@ -379,6 +425,17 @@ console.log('\n=== 5. picker prints Forecast past views; page does not compute t
     'previous-period print keeps Aug 20 actuals and omits Sep 4');
   ok(/Synthetic previous bill/.test(prevHtml) && !/Synthetic earlier bill/.test(prevHtml),
     'previous-period print keeps that period\'s bill');
+  ok(/data-income-status="planned"/.test(prevHtml)
+      && /data-period-income="payroll"/.test(prevHtml),
+    'unproven previous-period payroll prints as planned, not received');
+  ok(/data-bill-status="planned"/.test(prevHtml)
+      && /Synthetic recurring previous/.test(prevHtml),
+    'unproven previous-period recurring bill prints as planned, not PAID');
+  ok(/data-payday-household-budget/.test(prevHtml)
+      && prevHtml.includes(composer.money2(GROCERY_PREV)),
+    'previous-period print shows classified grocery actuals');
+  ok(!prevHtml.includes(composer.money2(GROCERY_LIVE)),
+    'previous-period household budget omits current-period grocery spend');
   const earlyView = composer.selectedPlanView(advice, 'past:2026-07-31');
   ok(earlyView && earlyView.start === early.start && earlyView.end === early.end,
     'picker selects the Forecast earlier-period view');
@@ -450,6 +507,90 @@ console.log('\n=== 7. switching views does not mutate canonical state ===');
   ok(JSON.stringify(first.defaultView.calendarPeriods)
       === JSON.stringify(second.defaultView.calendarPeriods),
     'historical navigation does not rewrite current calendar periods');
+}
+
+console.log('\n=== 8. unproven historical schedule is planned, not received/PAID ===');
+{
+  const plan = historyPlan();
+  const advice = recommend(plan);
+  const prev = (advice.pastPeriodViews || [])[0];
+  const early = (advice.pastPeriodViews || [])[1];
+  const active = ((advice.defaultView && advice.defaultView.calendarPeriods) || [])
+    .find(p => p && p.id === 'this-pay-period');
+  const prevPayroll = incomeRow(prev, 'payroll');
+  const earlyPayroll = incomeRow(early, 'payroll');
+  const livePayroll = incomeRow(active, 'payroll');
+  const prevGift = (prev.income || []).find(r => r && /Past gift/.test(r.label));
+  const recur = billRow(prev, 'bill-recur-prev');
+  ok(prevPayroll && prevPayroll.status === 'planned' && prevPayroll.actual == null,
+    'Aug 14 Seaspan planned amount is planned, not a received fact');
+  ok(near(prevPayroll.amount, DALE) && prevPayroll.planned === DALE,
+    'unproven payroll still lists the planned amount, labelled planned');
+  ok(earlyPayroll && earlyPayroll.status === 'planned',
+    'Jul 31 Seaspan planned amount is also planned, not received');
+  ok(prevGift && prevGift.status === 'received' && near(prevGift.actual, PAST_GIFT),
+    'transaction-backed Other Income stays received at the observed amount');
+  ok(recur && recur.status === 'planned' && recur.actual == null,
+    'unproven recurring bill is planned, not PAID from today\'s cadence');
+  ok(near(recur.planned, BILL_RECUR_PREV),
+    'unproven recurring bill keeps the planned amount as planned');
+  ok(livePayroll && livePayroll.status !== 'planned',
+    'current-period payroll is not sealed as historical planned');
+  ok(!(active.bills || []).some(r => r && r.id === 'bill-recur-prev'),
+    'current period does not inherit the completed-period recurring bill');
+}
+
+console.log('\n=== 9. completed sheet publishes household-budget actuals for the window ===');
+{
+  const plan = historyPlan();
+  const advice = recommend(plan);
+  const prev = (advice.pastPeriodViews || [])[0];
+  const early = (advice.pastPeriodViews || [])[1];
+  const active = ((advice.defaultView && advice.defaultView.calendarPeriods) || [])
+    .find(p => p && p.id === 'this-pay-period');
+  const prevGroceries = budgetRow(prev, 'groceries');
+  const earlyGroceries = budgetRow(early, 'groceries');
+  const liveGroceries = budgetRow(active, 'groceries');
+  ok(prevGroceries && near(prevGroceries.spent, GROCERY_PREV),
+    'previous period Groceries spent is the Aug 20 actual',
+    String(prevGroceries && prevGroceries.spent));
+  ok(prevGroceries.remaining == null,
+    'completed-period remaining is not a live reserve');
+  ok(near(prevGroceries.hold, GROCERY_PREV)
+      && near(prev.budgetHold, GROCERY_PREV),
+    'completed-period household-budget total is observed spent, not the planned hold');
+  ok(!(prevGroceries.recon || []).some(tx => tx && tx.id === 'tx-grocery-live'),
+    'Sep 4 grocery does not leak into the completed August budget');
+  ok(earlyGroceries && earlyGroceries.spent === 0,
+    'earlier period with no grocery actuals does not invent spent');
+  ok(liveGroceries && near(liveGroceries.spent, GROCERY_LIVE),
+    'current period still classifies the Sep 4 grocery actual');
+  const prevHtml = composer.operatingSurfaceHtml({
+    advice, weekly: advice.weekly, recommended: advice.weekly,
+    planLook: 'past:2026-08-14',
+    planView: composer.selectedPlanView(advice, 'past:2026-08-14'),
+  });
+  ok(/data-operating-question="06"/.test(prevHtml)
+      && /data-payday-household-budget/.test(prevHtml),
+    'completed sheet renders Forecast householdBudget');
+  ok(/data-budget-category="groceries"/.test(prevHtml)
+      && prevHtml.includes(composer.money2(GROCERY_PREV)),
+    'completed sheet prints the window\'s grocery actual');
+  const uncovered = historyPlan();
+  const shortPacket = actualsPacket();
+  shortPacket.coverageStart = '2026-08-28';
+  const withheld = F.recommend(uncovered, AS_OF, {
+    targetBuffer: 500,
+    debts,
+    currentPeriodActuals: shortPacket,
+    paydaySnapshot: uncovered.opening.paydaySnapshot,
+  });
+  const withheldPrev = (withheld.pastPeriodViews || [])[0];
+  const withheldGroceries = budgetRow(withheldPrev, 'groceries');
+  ok(withheldGroceries && withheldGroceries.spent == null,
+    'incomplete historical coverage omits spent rather than inventing it');
+  ok(near(withheldPrev.budgetHold, 0),
+    'unproven historical spent does not become a completed-period total');
 }
 
 if (failures) {

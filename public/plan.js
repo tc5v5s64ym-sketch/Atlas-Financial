@@ -1644,7 +1644,7 @@ function glanceMoney(row, kind) {
   if (!row) return null;
   if (row.movement != null && isFinite(Number(row.movement))) return Number(row.movement);
   let raw = null;
-  if (kind === 'paid' || kind === 'in') {
+  if (kind === 'paid' || kind === 'in' || kind === 'planned') {
     if (row.actual != null) raw = row.actual;
     else if (row.planned != null) raw = row.planned;
     else if (row.amount != null) raw = row.amount;
@@ -1659,7 +1659,7 @@ function glanceMoney(row, kind) {
   if (raw == null || !isFinite(Number(raw))) return null;
   const mag = Math.abs(Number(raw));
   if (kind === 'in') return mag;
-  if (kind === 'paid' || kind === 'still-due') return -mag;
+  if (kind === 'paid' || kind === 'still-due' || kind === 'planned') return -mag;
   return Number(raw);
 }
 
@@ -1776,9 +1776,12 @@ function runningLeftoverHtml(amount) {
 
 function periodBillLine(row) {
   const kind = row.glanceKind || (row.status === 'in' ? 'in'
-    : (row.status === 'PAID' ? 'paid' : 'still-due'));
+    : (row.status === 'PAID' ? 'paid'
+      : (row.status === 'planned' || row.status === 'unknown' ? 'planned' : 'still-due')));
   const status = row.status === 'in' ? 'in'
     : row.status === 'PAID' ? 'PAID'
+    : row.status === 'planned' ? 'planned'
+    : row.status === 'unknown' ? 'unknown'
     : row.status === 'pending' ? 'pending'
     : row.status === 'needs-date' ? 'needs confirmation'
     : 'still due';
@@ -1820,6 +1823,8 @@ function calendarIncomeHtml(period) {
       || row.status === 'unresolved';
     const status = notRelied ? 'not relied upon'
       : row.status === 'received' ? 'received'
+      : row.status === 'planned' ? 'planned'
+      : row.status === 'unknown' ? 'unknown'
       : row.alreadyInCash ? 'already in balance' : 'arriving';
     const amount = glanceSignedMoney(glanceMoney(row, 'in'));
     const about = row.confidence === 'estimated' && amount != null ? 'about ' : '';
@@ -1861,6 +1866,8 @@ function calendarIncomeHtml(period) {
       const dateText = row.date ? fmtDate(row.date) : '—';
       const idAttr = row.id ? ` data-other-income-item="${esc(row.id)}"` : '';
       const status = isReceived ? 'received'
+        : row.status === 'planned' ? 'planned'
+        : row.status === 'unknown' ? 'unknown'
         : row.alreadyInCash ? 'already in balance' : 'arriving';
       const about = !isReceived && row.confidence === 'estimated' ? 'about ' : '';
       return `<li class="other-income-tx"${idAttr} data-income-status="${status}">
@@ -2182,6 +2189,7 @@ function historicalPeriodHtml(period) {
     <p class="operating-note">Completed pay period. Not today's balance.</p>
     ${q('02', 'Income', calendarIncomeHtml(period))}
     ${q('04', 'Bills', calendarPeriodBillsHtml(period))}
+    ${q('06', 'Household budget', calendarBudgetHtml(period))}
     ${paydayCarryoverHtml(period)}
   </section>`;
 }
