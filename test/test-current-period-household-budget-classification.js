@@ -43,6 +43,9 @@ const CAN_TIRE_MC_AMT = 271.00;
 const CANADIAN_TIRE_RETAIL_AMT = 78.38;
 const PITT_MEADOWS_CE_AMT = 100.00;
 const PITT_MEADOWS_ARENA_AMT = 30.00;
+// Dale 2026-09-09 Sep 8 cashback INTEREST CHARGE -PURCHASE style.
+// Amount is a regression fixture only; the identity does not read it.
+const CASHBACK_PURCHASE_INTEREST_AMT = 130.36;
 const SURREY_MEAT_AMT = 45.00;
 const GROCERY_INDEPENDENT = roundCent(WALMART_AMT + MERIDIAN_AMT);
 const GROCERY_WITH_IRON = roundCent(GROCERY_INDEPENDENT + IRON_BUTCHER_AMT);
@@ -922,6 +925,10 @@ console.log('\n=== 10. Natural Gas / Other bank fees are bills; Amazon + travelv
   ok(!/'interest charge'/.test(billSet) && !/'overdraft fees'/.test(billSet)
       && !/'google pets'/.test(billSet),
     'BILL_CATEGORY_LABELS source does not add Interest charge / Overdraft fees / Google Pets');
+  ok(/function isRevolvingCardFinanceCharge\(/.test(forecastSrc)
+      && /revolving-finance-charge/.test(forecastSrc)
+      && /INTEREST CHARGE/.test(forecastSrc),
+    'Forecast source names revolving finance-charge identity, not a bill-label fold');
   ok(/function isAmazonMerchant\(/.test(forecastSrc)
       && /function isAmandaAmazonTravelVisa\(/.test(forecastSrc)
       && /amanda-amazon-travelvisa/.test(forecastSrc),
@@ -1041,6 +1048,13 @@ console.log('\n=== 10. Natural Gas / Other bank fees are bills; Amazon + travelv
     JSON.stringify(mbnaPayCls));
 
   const interestCls = F.classifyCurrentPeriodTransaction({
+    date: '2026-09-08', amount: CASHBACK_PURCHASE_INTEREST_AMT,
+    categoryLabel: 'Interest charge',
+    displayedPayee: 'INTEREST CHARGE -PURCHASE',
+    originalMerchant: 'INTEREST CHARGE -PURCHASE',
+    atlasAccountId: 'cashback', accountRole: 'revolving-credit',
+  }, plan);
+  const chequingInterestCls = F.classifyCurrentPeriodTransaction({
     date: '2026-08-31', amount: 5, categoryLabel: 'Interest charge',
     displayedPayee: 'INTEREST CHARGE', originalMerchant: 'INTEREST CHARGE',
     atlasAccountId: 'chequing-b', accountRole: 'household-cash',
@@ -1055,12 +1069,20 @@ console.log('\n=== 10. Natural Gas / Other bank fees are bills; Amazon + travelv
     displayedPayee: 'Google', originalMerchant: 'Google',
     atlasAccountId: 'chequing-a', accountRole: 'household-cash',
   }, plan);
-  ok(interestCls.kind !== 'bill' && interestCls.reason === 'unmapped-label'
-      && interestCls.householdSpending === true,
-    'Interest charge remains unmapped-label, not a bill');
-  ok(overdraftCls.kind !== 'bill' && overdraftCls.reason === 'unmapped-label'
+  ok(interestCls.kind === 'interest' && interestCls.householdSpending === false
+      && interestCls.reason === 'revolving-finance-charge'
+      && interestCls.needsConfirmation !== true
+      && interestCls.kind !== 'bill' && interestCls.kind !== 'spend',
+    'Sep 8 cashback INTEREST CHARGE -PURCHASE is debt/interest cost, not a bill or household spend',
+    JSON.stringify(interestCls));
+  ok(chequingInterestCls.kind !== 'interest' && chequingInterestCls.kind !== 'bill'
+      && chequingInterestCls.reason === 'unmapped-label'
+      && chequingInterestCls.householdSpending === true,
+    'chequing Interest charge is not this revolving finance-charge path and is not a bill');
+  ok(overdraftCls.kind !== 'bill' && overdraftCls.kind !== 'interest'
+      && overdraftCls.reason === 'unmapped-label'
       && overdraftCls.householdSpending === true,
-    'Overdraft fees remains unmapped-label, not a bill');
+    'Overdraft fees remains unmapped-label, not a bill and not revolving finance charge');
   ok(googlePetsCls.kind !== 'bill'
       && googlePetsCls.reason === 'payee-category-contradiction'
       && googlePetsCls.needsConfirmation === true
@@ -2401,6 +2423,250 @@ console.log('\n=== 15. CAN TIRE MC card-payment identity reaches unmatched-house
   ok(receipt.counts && receipt.counts.unmatchedCashEvidence === unmatched.length
       && unmatched.length === 1,
     'receipt unmatched count is exactly the one unresolved debit');
+}
+
+function cashbackPurchaseInterestTx(extra) {
+  return Object.assign({
+    id: 'tx-cashback-purchase-interest',
+    date: '2026-09-08',
+    amount: CASHBACK_PURCHASE_INTEREST_AMT,
+    pending: false,
+    categoryLabel: 'Interest charge',
+    accountRole: 'revolving-credit',
+    atlasAccountId: 'cashback',
+    account: 'cashback',
+    displayedPayee: 'INTEREST CHARGE -PURCHASE',
+    originalMerchant: 'INTEREST CHARGE -PURCHASE',
+  }, extra || {});
+}
+
+console.log('\n=== 16. Issuer revolving finance charges are debt/interest cost once (Dale 2026-09-09) ===');
+{
+  const INTEREST_AS_OF = '2026-09-08';
+  const CHEQUING_A = 8000;
+  const CHEQUING_B = 200;
+  const INDEPENDENT_CB = roundCent(CHEQUING_A + CHEQUING_B);
+  const CASHBACK_BAL = 4800;
+  const CASHBACK_LIMIT = 5000;
+  const CASHBACK_ANNUAL_INTEREST = 1200;
+  const plan = syntheticPlan();
+  plan.startingCash.breakdown = [
+    { id: 'chequing-a', label: 'BILLS ACCOUNT', value: CHEQUING_A },
+    { id: 'chequing-b', label: 'WEEKLY SPENDING', value: CHEQUING_B },
+    { id: 'savings', label: 'EMERGENCY SAVING', value: 40.58 },
+  ];
+  const cashbackDebt = {
+    id: 'cashback', label: 'TD Cash Back Visa', secured: false,
+    structure: 'Revolving', balance: CASHBACK_BAL, limit: CASHBACK_LIMIT,
+    rate: 26.99, payment: 170, pending: 0, annualInterest: CASHBACK_ANNUAL_INTEREST,
+  };
+  const caseDebts = debts.concat([cashbackDebt]);
+  const purchase = walmartTx({
+    id: 'tx-cashback-grocery', date: '2026-09-08',
+    accountRole: 'revolving-credit', atlasAccountId: 'cashback', account: 'cashback',
+    categoryLabel: 'Groceries',
+  });
+  const cardPay = {
+    id: 'tx-cashback-payment', date: '2026-09-08', amount: 170,
+    pending: false, categoryLabel: 'Credit Card Payment',
+    accountRole: 'household-cash', atlasAccountId: 'chequing-a',
+    displayedPayee: 'PAYMENT-THANKYOU', originalMerchant: 'PAYMENT-THANKYOU',
+    excludeFromTotals: true, kindHint: 'card-payment',
+  };
+  const merchantInterestName = {
+    id: 'tx-interest-free-furniture', date: '2026-09-08', amount: 22.50,
+    pending: false, categoryLabel: 'Shopping',
+    accountRole: 'revolving-credit', atlasAccountId: 'tdcc', account: 'tdcc',
+    displayedPayee: 'Interest Free Furniture', originalMerchant: 'Interest Free Furniture',
+  };
+  const cashAdvanceInterest = {
+    id: 'tx-tdcc-cash-interest', date: '2026-09-08', amount: 18.20,
+    pending: false, categoryLabel: 'Interest charge',
+    accountRole: 'revolving-credit', atlasAccountId: 'tdcc', account: 'tdcc',
+    displayedPayee: 'INTEREST CHARGE -CASH ADVANCE',
+    originalMerchant: 'INTEREST CHARGE -CASH ADVANCE',
+  };
+  const btInterest = {
+    id: 'tx-mbna-bt-interest', date: '2026-09-08', amount: 9.11,
+    pending: false, categoryLabel: 'BT interest',
+    accountRole: 'revolving-credit', atlasAccountId: 'mbna', account: 'mbna',
+    displayedPayee: 'BT INTEREST', originalMerchant: 'BT INTEREST',
+  };
+  const annualFee = {
+    id: 'tx-tdcc-annual-fee', date: '2026-09-08', amount: 25,
+    pending: false, categoryLabel: 'Fees',
+    accountRole: 'revolving-credit', atlasAccountId: 'tdcc', account: 'tdcc',
+    displayedPayee: 'ANNUAL FEE', originalMerchant: 'ANNUAL FEE',
+  };
+  const interest = cashbackPurchaseInterestTx();
+  const cls = F.classifyCurrentPeriodTransaction(interest, plan);
+  const flags = F.classifyCurrentPeriodTransaction.derivedFlags(interest);
+  const viaFlag = F.classifyCurrentPeriodTransaction({
+    date: '2026-09-08', amount: CASHBACK_PURCHASE_INTEREST_AMT,
+    pending: false, categoryLabel: 'Shopping',
+    accountRole: 'revolving-credit', atlasAccountId: 'cashback',
+    cardFinanceChargeIdentity: true,
+  }, plan);
+  ok(cls.kind === 'interest' && cls.householdSpending === false
+      && cls.reason === 'revolving-finance-charge'
+      && !F.classifyCurrentPeriodTransaction.householdBudgetSupportingSpendEligible(cls),
+    'Sep 8 cashback purchase interest classifies as interest and is not Household Budget eligible',
+    JSON.stringify(cls));
+  ok(flags.cardFinanceChargeIdentity === true && viaFlag.kind === 'interest'
+      && viaFlag.householdSpending === false,
+    'derived cardFinanceChargeIdentity reclassifies after merchant strip');
+  ok(F.classifyCurrentPeriodTransaction(cashAdvanceInterest, plan).kind === 'interest'
+      && F.classifyCurrentPeriodTransaction(btInterest, plan).kind === 'interest',
+    'cash-advance and BT issuer interest on revolving cards are the same finance-charge path');
+  ok(F.classifyCurrentPeriodTransaction(purchase, plan).kind === 'spend'
+      && F.classifyCurrentPeriodTransaction(purchase, plan).categoryId === 'groceries'
+      && F.classifyCurrentPeriodTransaction(purchase, plan).householdSpending === true,
+    'a real cashback grocery purchase is still Groceries spend');
+  ok(F.classifyCurrentPeriodTransaction(cardPay, plan).kind === 'card-payment'
+      && F.classifyCurrentPeriodTransaction(cardPay, plan).householdSpending === false,
+    'card payments remain card-payment');
+  const furnitureCls = F.classifyCurrentPeriodTransaction(merchantInterestName, plan);
+  ok(furnitureCls.kind !== 'interest' && furnitureCls.householdSpending === true,
+    'a merchant whose name contains Interest is not a finance charge',
+    JSON.stringify(furnitureCls));
+  const feeCls = F.classifyCurrentPeriodTransaction(annualFee, plan);
+  ok(feeCls.kind !== 'interest',
+    'annual card fee is not folded into this finance-charge path',
+    JSON.stringify(feeCls));
+
+  const packet = actualsPacket([
+    interest, cashAdvanceInterest, btInterest, purchase, cardPay,
+    merchantInterestName, otherTx(),
+  ], {
+    observationAsOf: INTEREST_AS_OF,
+    coverageThrough: INTEREST_AS_OF,
+  });
+  const advice = F.recommend(plan, INTEREST_AS_OF, {
+    targetBuffer: 500,
+    debts: caseDebts,
+    currentPeriodActuals: packet,
+  });
+  const active = period(advice.defaultView, 'this-pay-period');
+  const groceries = budgetRow(active, 'groceries');
+  const other = otherRow(active);
+  const ids = reconIds(active);
+  const independentHousehold = roundCent(WALMART_AMT + OTHER_AMT + 22.50);
+  const leaked = roundCent(independentHousehold + CASHBACK_PURCHASE_INTEREST_AMT + 18.20 + 9.11);
+  ok(groceries && near(groceries.spent, WALMART_AMT)
+      && (groceries.recon || []).some(row => row && row.id === 'tx-cashback-grocery'),
+    'cashback grocery still enters Groceries recon once');
+  ok(!ids.includes('tx-cashback-purchase-interest')
+      && !ids.includes('tx-tdcc-cash-interest')
+      && !ids.includes('tx-mbna-bt-interest')
+      && !ids.includes('tx-cashback-payment'),
+    'issuer interest and the card payment appear in no Household Budget recon row');
+  ok(other && (other.recon || []).some(row => row && row.id === 'tx-other')
+      && (other.recon || []).some(row => row && row.id === 'tx-interest-free-furniture')
+      && !(other.recon || []).some(row => row && row.id === 'tx-cashback-purchase-interest'),
+    'Other keeps the residual gift and Interest Free Furniture; Sep 8 interest is not Other');
+  ok(other && near(other.spent, roundCent(OTHER_AMT + 22.50))
+      && near(other.hold, other.spent),
+    'Other Spending actual/hold is gift + Interest Free Furniture only');
+  ok(near(householdSpent(active), independentHousehold)
+      && !near(householdSpent(active), leaked),
+    'Household Budget Spent is grocery + gift + furniture only; finance charges do not leak',
+    String(householdSpent(active)));
+  ok(ids.filter(id => id === 'tx-cashback-grocery').length === 1
+      && ids.filter(id => id === 'tx-cashback-purchase-interest').length === 0,
+    'no double-count: grocery once, interest in no budget row');
+
+  const action = F.currentPeriodAction(plan, INTEREST_AS_OF, {
+    debts: caseDebts,
+    currentPeriodActuals: packet,
+  });
+  const independentInterest = roundCent(CASHBACK_PURCHASE_INTEREST_AMT + 18.20 + 9.11);
+  ok(near(action.excluded.interest, independentInterest)
+      && !(action.unclassified && action.unclassified.posted > 0
+        && near(action.unclassified.posted, CASHBACK_PURCHASE_INTEREST_AMT)),
+    'currentPeriodAction excludes finance charges as interest, not unclassified Other',
+    JSON.stringify(action.excluded));
+
+  const cbBefore = F.postedHouseholdChequingCash(plan);
+  const liveCb = advice.paydayAllocation && advice.paydayAllocation.liveCurrentBalance;
+  const viewCb = advice.defaultView && advice.defaultView.liveCurrentBalance;
+  ok(near(cbBefore, INDEPENDENT_CB) && near(liveCb, INDEPENDENT_CB) && near(viewCb, INDEPENDENT_CB),
+    'Current Balance stays Chequing A+B only and is unchanged by the interest post',
+    String(liveCb));
+
+  const util = F.utilisation(caseDebts);
+  const cashbackUtil = (util.rows || []).find(r => r && r.id === 'cashback');
+  const independentUsed = CASHBACK_BAL;
+  ok(cashbackUtil && near(cashbackUtil.used, independentUsed)
+      && near(cashbackUtil.used, cashbackDebt.balance + (cashbackDebt.pending || 0)),
+    'card debt / utilisation still uses the posted cashback opening; interest tx is not a second walk',
+    JSON.stringify(cashbackUtil));
+  const snap = F.compactSnapshot(caseDebts, []);
+  const independentAnnual = caseDebts.reduce((s, d) => s + (Number(d.annualInterest) || 0), 0);
+  ok(independentAnnual === CASHBACK_ANNUAL_INTEREST && CASHBACK_ANNUAL_INTEREST / 12 === 100,
+    'independent interest twelfth: $1,200 / 12 = $100');
+  ok(snap && snap.monthlyInterest === 100,
+    'interest reporting path still includes the cashback annual twelfth',
+    JSON.stringify({ monthlyInterest: snap.monthlyInterest }));
+}
+
+console.log('\n=== 17. Overlay stamps revolving finance-charge identity before merchant strip ===');
+{
+  const plan = syntheticPlan();
+  const map = {
+    schema: 'atlas-provider-account-map/v1',
+    mappings: [
+      {
+        providerAccountId: '3005',
+        canonical: { collection: 'debts', id: 'cashback' },
+        atlasRole: 'revolving-credit',
+      },
+      {
+        providerAccountId: '1001',
+        canonical: { collection: 'cash', id: 'chequing-a' },
+        atlasRole: 'household-cash',
+      },
+    ],
+  };
+  const overlay = O.sanitizedCurrentPeriodActuals({
+    fetchedAt: '2026-09-08T18:00:00.000Z',
+    transactionWindow: { startDate: '2026-08-28', endDate: '2026-09-10', complete: true },
+    pendingCoverage: {
+      complete: true, basis: O.PENDING_COVERAGE_BASIS, hasMore: false, truncated: false,
+    },
+    collapsedTransactions: [
+      {
+        date: '2026-09-08', amount: CASHBACK_PURCHASE_INTEREST_AMT, pending: false,
+        categoryLabel: 'Interest charge',
+        payee: 'INTEREST CHARGE -PURCHASE', originalName: 'INTEREST CHARGE -PURCHASE',
+        providerAccountId: '3005', providerTransactionId: 'cb-interest-1',
+      },
+      {
+        date: '2026-09-08', amount: WALMART_AMT, pending: false,
+        categoryLabel: 'Groceries',
+        payee: 'Walmart', originalName: 'Walmart',
+        providerAccountId: '3005', providerTransactionId: 'cb-walmart-1',
+      },
+    ],
+    representedEventCandidates: [],
+  }, { asOf: '2026-09-08', plan, accountMap: map });
+  const interestPub = (overlay.transactions || []).find(tx => tx && near(tx.amount, CASHBACK_PURCHASE_INTEREST_AMT));
+  const groceryPub = (overlay.transactions || []).find(tx => tx && near(tx.amount, WALMART_AMT));
+  ok(interestPub && interestPub.cardFinanceChargeIdentity === true
+      && !interestPub.displayedPayee && !interestPub.originalMerchant,
+    'overlay stamps cardFinanceChargeIdentity and strips issuer interest merchant text',
+    JSON.stringify(interestPub && {
+      cardFinanceChargeIdentity: interestPub.cardFinanceChargeIdentity,
+      displayedPayee: interestPub.displayedPayee,
+      categoryLabel: interestPub.categoryLabel,
+      accountRole: interestPub.accountRole,
+    }));
+  ok(groceryPub && groceryPub.cardFinanceChargeIdentity !== true
+      && groceryPub.displayedPayee,
+    'overlay keeps merchant text on a real cashback grocery');
+  const strippedCls = F.classifyCurrentPeriodTransaction(interestPub, plan);
+  ok(strippedCls.kind === 'interest' && strippedCls.householdSpending === false,
+    'sanitized overlay interest row still classifies as finance charge',
+    JSON.stringify(strippedCls));
 }
 
 console.log('\n=== overlay stamps ATM deposit / TFR identity before merchant strip ===');

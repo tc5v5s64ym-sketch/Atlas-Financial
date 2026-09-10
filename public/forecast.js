@@ -2641,6 +2641,67 @@
     return key === 'CAN TIRE MC' || key.startsWith('CAN TIRE MC ');
   }
 
+  // Canonical revolving-card identities. Display names are not a second
+  // detector: `cashback` / `CASH BACK` normalize to the same id.
+  const REVOLVING_CARD_ACCOUNT_IDS = new Set([
+    'cashback', 'tdcc', 'mbna', 'travelvisa', 'triangle',
+  ]);
+  const REVOLVING_FINANCE_CHARGE_LABELS = new Set([
+    'interest charge',
+    'purchase interest',
+    'cash advance interest',
+    'cash-advance interest',
+    'balance transfer interest',
+    'bt interest',
+    'retail interest',
+    'cash interest',
+    'finance charge',
+  ]);
+
+  function isRevolvingCardAccount(tx) {
+    if (!tx) return false;
+    if (tx.accountRole === 'revolving-credit') return true;
+    for (const value of [tx.atlasAccountId, tx.accountId, tx.account]) {
+      if (value == null || value === '') continue;
+      const norm = String(value).trim().toLowerCase().replace(/[\s_-]+/g, '');
+      if (REVOLVING_CARD_ACCOUNT_IDS.has(norm)) return true;
+    }
+    return false;
+  }
+
+  // Issuer-posted revolving finance-charge identity (Dale 2026-09-09).
+  // Lunch Money `Interest charge` and issuer payees such as
+  // INTEREST CHARGE -PURCHASE / RETAIL INTEREST / CASH INTEREST / BT
+  // interest. Exact merchant keys and closed labels only — not a
+  // substring of ordinary merchants, not overdraft, not annual fee.
+  function revolvingCardFinanceChargeEvidence(tx) {
+    if (!tx) return false;
+    const hint = normalizeCategoryLabel(tx.kindHint);
+    if (hint === 'interest' || hint === 'finance-charge' || hint === 'interest-charge') {
+      return true;
+    }
+    const label = normalizeCategoryLabel(tx.categoryLabel);
+    if (REVOLVING_FINANCE_CHARGE_LABELS.has(label)) return true;
+    const key = normalizeMerchantKey(txMerchantExact(tx));
+    if (!key) return false;
+    if (key === 'INTEREST CHARGE' || key.startsWith('INTEREST CHARGE ')) return true;
+    if (key === 'RETAIL INTEREST' || key.startsWith('RETAIL INTEREST ')) return true;
+    if (key === 'CASH INTEREST' || key.startsWith('CASH INTEREST ')) return true;
+    if (key === 'PURCHASE INTEREST' || key.startsWith('PURCHASE INTEREST ')) return true;
+    if (key === 'CASH ADVANCE INTEREST' || key.startsWith('CASH ADVANCE INTEREST ')) return true;
+    if (key === 'BALANCE TRANSFER INTEREST' || key.startsWith('BALANCE TRANSFER INTEREST ')) {
+      return true;
+    }
+    if (key === 'BT INTEREST' || key.startsWith('BT INTEREST ')) return true;
+    if (key === 'FINANCE CHARGE' || key.startsWith('FINANCE CHARGE ')) return true;
+    return key === 'INTEREST';
+  }
+
+  function isRevolvingCardFinanceCharge(tx) {
+    if (tx && tx.cardFinanceChargeIdentity === true) return true;
+    return isRevolvingCardAccount(tx) && revolvingCardFinanceChargeEvidence(tx);
+  }
+
   function isCanadianTireMerchant(tx) {
     if (tx && tx.canadianTire === true) return true;
     if (isCanadianTireMastercardPayment(tx)) return false;
@@ -2693,7 +2754,7 @@
   // after incumbent known rules:
   //   1. account / scope (household-external, unmapped)
   //   2. non-consumption (income, refund, transfer, card/debt payment,
-  //      represented bill)
+  //      issuer revolving finance charge, represented bill)
   //   3. Lunch Money Dale / Amanda category (owner 2026-09-08): the
   //      ingested category name assigns the corresponding guilt-free
   //      owner-target row. Fresh categoryLabel wins over incidental
@@ -2712,7 +2773,11 @@
   // when the Lunch Money category is not Amanda. PITT MEADOWS CE
   // (Dale 2026-09-02) is Fuel. CAN TIRE MC (Dale 2026-09-02) is the
   // Canadian Tire Mastercard payment: card-payment, never Household
-  // Budget, never Other. Amazon merchant + canonical travelvisa
+  // Budget, never Other. Issuer-posted revolving finance charges
+  // (Dale 2026-09-09: INTEREST CHARGE -PURCHASE and the Lunch Money
+  // Interest charge category on cashback / tdcc / mbna / travelvisa /
+  // triangle) are debt/interest cost, never Household Budget, Other,
+  // merchant-category spend, or payday household-spend. Amazon merchant + canonical travelvisa
   // (Dale 2026-09-03) is Amanda guilt-free when the Lunch Money category
   // is not Dale, never a Prime bill, and never Amanda merely because the
   // card is MBNA. Eating out is Restaurants + Fast Food + Food Delivery.
@@ -2756,6 +2821,15 @@
       return {
         kind: 'card-payment', categoryId: null, householdSpending: false,
         reason: 'debt-payment-identity', includeReason: 'debt-payment-identity',
+      };
+    }
+    // Dale 2026-09-09: issuer-posted revolving CC finance charges are
+    // debt/interest cost. The provider Shopping / Pets label does not
+    // decide. Chequing overdraft interest is not this identity.
+    if (isRevolvingCardFinanceCharge(tx)) {
+      return {
+        kind: 'interest', categoryId: null, householdSpending: false,
+        reason: 'revolving-finance-charge', includeReason: 'revolving-finance-charge',
       };
     }
     const label = normalizeCategoryLabel(tx.categoryLabel);
@@ -3186,7 +3260,7 @@
       unclassified: { posted: 0, pending: 0, count: 0 },
       excluded: {
         transfers: 0, cardPayments: 0, income: 0, business: 0, external: 0,
-        bills: 0, refunds: 0,
+        bills: 0, refunds: 0, interest: 0,
       },
     };
   }
@@ -3242,6 +3316,7 @@
       if (cls.kind === 'external') { out.excluded.external = roundCent(out.excluded.external + amt); continue; }
       if (cls.kind === 'bill') { out.excluded.bills = roundCent((out.excluded.bills || 0) + amt); continue; }
       if (cls.kind === 'refund') { out.excluded.refunds = roundCent((out.excluded.refunds || 0) + amt); continue; }
+      if (cls.kind === 'interest') { out.excluded.interest = roundCent((out.excluded.interest || 0) + amt); continue; }
       if (cls.kind === 'unmapped') {
         out.unclassified.count += 1;
         continue;
@@ -3344,7 +3419,7 @@
     if (!cls) return false;
     if (cls.kind === 'transfer' || cls.kind === 'card-payment' || cls.kind === 'income'
       || cls.kind === 'business' || cls.kind === 'external' || cls.kind === 'bill'
-      || cls.kind === 'refund' || cls.kind === 'unmapped') {
+      || cls.kind === 'refund' || cls.kind === 'interest' || cls.kind === 'unmapped') {
       return false;
     }
     if (cls.needsConfirmation || cls.kind === 'unclassified') return true;
@@ -4953,7 +5028,8 @@
     });
     const cls = classifyCurrentPeriodTransaction(tx, plan, classifyOpts);
     if (cls.kind === 'card-payment' || cls.kind === 'bill'
-        || cls.kind === 'external' || cls.kind === 'unmapped' || cls.kind === 'business') {
+        || cls.kind === 'external' || cls.kind === 'unmapped' || cls.kind === 'business'
+        || cls.kind === 'interest') {
       return false;
     }
     if (cls.kind === 'transfer' && !isExternalCashDepositIdentity(tx)) return false;
@@ -5310,6 +5386,7 @@
       daleGuiltFreeMerchant: false,
       amazonMerchant: false,
       cardPaymentIdentity: false,
+      cardFinanceChargeIdentity: false,
       internalTransferIdentity: false,
       externalCashDeposit: false,
       cashWithdrawalIdentity: false,
@@ -5336,6 +5413,8 @@
       daleGuiltFreeMerchant,
       amazonMerchant,
       cardPaymentIdentity: isCanadianTireMastercardPayment(tx),
+      cardFinanceChargeIdentity: isRevolvingCardAccount(tx)
+        && revolvingCardFinanceChargeEvidence(tx),
       internalTransferIdentity,
       externalCashDeposit,
       cashWithdrawalIdentity,

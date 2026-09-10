@@ -2091,9 +2091,11 @@ function unmatchedHouseholdCash(report, opts, consumedTxIds) {
       accountRole: 'household-cash',
       kindHint,
       cardPaymentIdentity: flags.cardPaymentIdentity,
+      cardFinanceChargeIdentity: flags.cardFinanceChargeIdentity,
     }, plan);
     if (cls.kind === 'transfer' || cls.kind === 'card-payment'
-      || cls.kind === 'business' || cls.kind === 'external') continue;
+      || cls.kind === 'business' || cls.kind === 'external'
+      || cls.kind === 'interest') continue;
     if (cls.kind === 'income') continue;
     unmatched.push({
       date: tx.date,
@@ -3188,6 +3190,7 @@ function sanitizedCurrentPeriodActuals(report, opts) {
       daleGuiltFreeMerchant: flags.daleGuiltFreeMerchant,
       amazonMerchant: flags.amazonMerchant,
       cardPaymentIdentity: flags.cardPaymentIdentity,
+      cardFinanceChargeIdentity: flags.cardFinanceChargeIdentity,
       internalTransferIdentity: flags.internalTransferIdentity,
       externalCashDeposit: flags.externalCashDeposit,
       cashWithdrawalIdentity: flags.cashWithdrawalIdentity,
