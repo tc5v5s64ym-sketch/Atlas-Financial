@@ -4,7 +4,8 @@
  * Independent of the trend assembler as the specification:
  * Seaspan is +14 calendar days from the 2026-08-14 ACCOUNT_FACTS anchor.
  * Each plotted amount must equal the incumbent pastPeriodViews carryover
- * for that completed period. Unknown stays unknown; genuine $0 stays $0.
+ * for that completed period. Unknown stays unknown; genuine $0 stays $0;
+ * a known negative stays negative and prints as a deficit, not leftover.
  * Synthetic leftover / salary / bills, not live household cents.
  *
  * `node test/test-payday-carryover-trend.js`
@@ -356,6 +357,101 @@ console.log('\n=== 4. presenting the trend does not mutate Forecast outputs ==='
   ok(firstPast === JSON.stringify(first.pastPeriodViews)
       && firstTrend === JSON.stringify(first.paydayCarryoverTrend),
     'rendering the trend does not mutate the first Forecast result in place');
+}
+
+console.log('\n=== 5. known negative carryover is a deficit, not leftover ===');
+{
+  const DEFICIT = -250;
+  const LEFTOVER = 400;
+  const current = independentCycle(AS_OF);
+  const previous = independentCycle(addCalendarDays(current.start, -1));
+  const earlier = independentCycle(addCalendarDays(previous.start, -1));
+  ok(previous.nextPayday === '2026-08-28' && earlier.nextPayday === '2026-08-14',
+    'independent Seaspan grid still dates the recorded snapshot at Aug 28');
+  const snap = snapshotAt(previous.nextPayday, DEFICIT);
+  const plan = trendPlan(AS_OF, snap, 2300);
+  const advice = recommendAt(plan, AS_OF, snap);
+  const deficitPoint = trendByPayday(advice, previous.nextPayday);
+  const unknownPoint = trendByPayday(advice, earlier.nextPayday);
+  const deficitPast = pastByStart(advice, previous.start);
+  ok(deficitPoint && deficitPoint.known === true && near(deficitPoint.amount, DEFICIT),
+    'recorded negative snapshot leftover stays negative on the Forecast trend',
+    String(deficitPoint && deficitPoint.amount));
+  ok(deficitPoint.amount < 0 && deficitPoint.amount !== Math.abs(DEFICIT),
+    'Forecast does not flip a known deficit to leftover');
+  ok(near(deficitPoint.amount, deficitPast.paydayCarryover),
+    'negative trend amount equals incumbent pastPeriodViews carryover');
+  ok(unknownPoint && unknownPoint.known !== true && unknownPoint.amount == null,
+    'unknown earlier payday stays unknown beside the deficit');
+
+  const forecastHtml = composer.operatingSurfaceHtml({
+    advice, weekly: advice.weekly, recommended: advice.weekly,
+    planLook: 'payday-carryover',
+    planView: composer.selectedPlanView(advice, 'payday-carryover'),
+  });
+  const forecastDeficitRow = rowHtml(forecastHtml, previous.nextPayday);
+  ok(/data-carryover-sign="negative"/.test(forecastDeficitRow),
+    'Forecast-published deficit row is marked negative');
+  ok(/carryover-bar-negative/.test(forecastDeficitRow)
+      && !/carryover-bar-positive/.test(forecastDeficitRow),
+    'Forecast-published deficit uses the deficit bar, not the leftover-direction bar');
+  ok(forecastDeficitRow.includes(composer.money2(DEFICIT)),
+    'Forecast-published deficit prints the signed dollar amount');
+
+  const unknownPayday = ANCHOR;
+  const zeroPayday = addCalendarDays(ANCHOR, 14);
+  const deficitPayday = addCalendarDays(ANCHOR, 28);
+  const leftoverPayday = addCalendarDays(ANCHOR, 42);
+  ok(unknownPayday === '2026-08-14' && zeroPayday === '2026-08-28'
+      && deficitPayday === '2026-09-11' && leftoverPayday === '2026-09-25',
+    'independent +14 grid supplies unknown / $0 / deficit / leftover paydays');
+  const fourWay = {
+    points: [
+      { payday: unknownPayday, known: false, amount: null },
+      { payday: zeroPayday, known: true, amount: 0 },
+      { payday: deficitPayday, known: true, amount: DEFICIT },
+      { payday: leftoverPayday, known: true, amount: LEFTOVER },
+    ],
+  };
+  const html = composer.paydayCarryoverTrendHtml(fourWay);
+  const unknownRow = rowHtml(html, unknownPayday);
+  const zeroRow = rowHtml(html, zeroPayday);
+  const deficitRow = rowHtml(html, deficitPayday);
+  const leftoverRow = rowHtml(html, leftoverPayday);
+  ok(/data-carryover-known="false"/.test(unknownRow) && /Unknown/.test(unknownRow),
+    'four-way unknown period still prints Unknown');
+  ok(!unknownRow.includes(composer.money2(0)) && !/carryover-bar/.test(unknownRow),
+    'unknown period has no dollar bar and does not print $0.00');
+  ok(/data-carryover-sign="zero"/.test(zeroRow) && /data-carryover-zero="true"/.test(zeroRow),
+    'genuine $0 is marked known zero');
+  ok(zeroRow.includes(composer.money2(0)) && !/carryover-bar-/.test(zeroRow),
+    'genuine $0 prints $0.00 and has no leftover or deficit bar');
+  ok(/data-carryover-sign="negative"/.test(deficitRow)
+      && /carryover-bar-negative/.test(deficitRow)
+      && !/carryover-bar-positive/.test(deficitRow),
+    'known deficit is a negative-direction bar');
+  ok(deficitRow.includes(composer.money2(DEFICIT)),
+    'deficit row prints the signed amount');
+  ok(/data-payday-carryover-amount>−\$/.test(deficitRow)
+      && !/data-payday-carryover-amount>\$250/.test(deficitRow),
+    'deficit amount is signed; it is not printed as leftover dollars');
+  ok(/data-carryover-sign="positive"/.test(leftoverRow)
+      && /carryover-bar-positive/.test(leftoverRow)
+      && !/carryover-bar-negative/.test(leftoverRow),
+    'known leftover is a positive-direction bar');
+  ok(leftoverRow.includes(composer.money2(LEFTOVER)),
+    'leftover row prints the independent leftover dollars');
+  const maxAbs = Math.max(Math.abs(DEFICIT), Math.abs(LEFTOVER), Math.abs(0));
+  const expectedDeficitWidth = ((Math.abs(DEFICIT) / maxAbs) * 50).toFixed(1);
+  const expectedLeftoverWidth = ((Math.abs(LEFTOVER) / maxAbs) * 50).toFixed(1);
+  ok(deficitRow.includes(`width:${expectedDeficitWidth}%`),
+    'deficit bar length is half-track scale from independent max-abs',
+    expectedDeficitWidth + '%');
+  ok(leftoverRow.includes(`width:${expectedLeftoverWidth}%`),
+    'leftover bar length is half-track scale from independent max-abs',
+    expectedLeftoverWidth + '%');
+  ok(Number(expectedDeficitWidth) < Number(expectedLeftoverWidth),
+    'a smaller deficit does not out-scale a larger leftover in the leftover direction');
 }
 
 if (failures) {

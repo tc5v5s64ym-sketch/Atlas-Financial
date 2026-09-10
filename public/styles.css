@@ -464,7 +464,8 @@ footer strong { color:var(--text-secondary); font-weight:600; }
 .payday-operating-sheet > .plan-look { align-self:stretch; }
 
 /* Payday carryover trend: a compact chronological list of Forecast-published
-   completed-period leftover-at-payday. Bars are display scale only. Unknown
+   completed-period leftover-at-payday. Bars are display scale only, diverging
+   from center so a known deficit grows left and leftover grows right. Unknown
    is a dashed track plus the word Unknown — never a $0 bar. */
 .carryover-list {
   list-style:none; margin:0; padding:8px 4px 14px;
@@ -480,10 +481,23 @@ footer strong { color:var(--text-secondary); font-weight:600; }
 }
 .carryover-track {
   height:10px; background:var(--grid); border-radius:999px; overflow:hidden;
-  min-width:0;
+  min-width:0; position:relative;
+}
+.carryover-spine {
+  position:absolute; left:50%; top:-1px; bottom:-1px; width:1px;
+  background:var(--text-secondary); opacity:.45; transform:translateX(-50%);
 }
 .carryover-bar {
-  display:block; height:100%; background:var(--s1); border-radius:999px;
+  position:absolute; top:0; height:100%; border-radius:999px;
+}
+.carryover-bar-positive {
+  left:50%; background:var(--s1);
+}
+.carryover-bar-negative {
+  right:50%; background:var(--critical);
+}
+.carryover-row[data-carryover-sign="negative"] .carryover-amount {
+  color:var(--critical);
 }
 .carryover-track-unknown {
   background:repeating-linear-gradient(

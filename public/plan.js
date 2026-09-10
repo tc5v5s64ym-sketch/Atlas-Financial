@@ -2203,10 +2203,17 @@ function paydayCarryoverTrendHtml(trend) {
     }
     const amt = Number(p.amount);
     const zero = amt === 0;
-    const pct = max > 0 ? Math.min(100, (Math.abs(amt) / max) * 100) : 0;
-    return `<li class="carryover-row" data-carryover-known="true"${zero ? ' data-carryover-zero="true"' : ''} data-carryover-payday="${p.payday}">
+    const sign = amt < 0 ? 'negative' : (zero ? 'zero' : 'positive');
+    // Length uses abs vs the largest known magnitude. Direction keeps the
+    // sign: leftover grows right of center, a deficit grows left. A known
+    // negative must not share the leftover-direction bar.
+    const halfPct = max > 0 ? Math.min(50, (Math.abs(amt) / max) * 50) : 0;
+    const bar = zero
+      ? ''
+      : `<span class="carryover-bar carryover-bar-${sign}" style="width:${halfPct.toFixed(1)}%"></span>`;
+    return `<li class="carryover-row" data-carryover-known="true" data-carryover-sign="${sign}"${zero ? ' data-carryover-zero="true"' : ''} data-carryover-payday="${p.payday}">
       <span class="carryover-when">${when}</span>
-      <span class="carryover-track" aria-hidden="true"><span class="carryover-bar" style="width:${pct.toFixed(1)}%"></span></span>
+      <span class="carryover-track" aria-hidden="true"><span class="carryover-spine"></span>${bar}</span>
       <span class="carryover-amount" data-payday-carryover-amount>${money2(amt)}</span>
     </li>`;
   }).join('');
