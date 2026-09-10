@@ -11,7 +11,7 @@
   --atlas-green-border: color-mix(in srgb, var(--good) 26%, var(--border));
   --atlas-red-soft: color-mix(in srgb, var(--critical) 8%, var(--surface-1));
   --atlas-red-border: color-mix(in srgb, var(--critical) 24%, var(--border));
-  --atlas-purple: #6554c0;
+  --atlas-purple: color-mix(in srgb, #6554c0 70%, var(--text-primary));
   --atlas-purple-soft: color-mix(in srgb, var(--atlas-purple) 9%, var(--surface-1));
   --atlas-purple-border: color-mix(in srgb, var(--atlas-purple) 22%, var(--border));
   --atlas-amber-soft: color-mix(in srgb, var(--warning) 9%, var(--surface-1));
@@ -60,6 +60,9 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+}
+.atlas-period-summary > :only-child {
+  grid-column: 1 / -1;
 }
 .atlas-summary-card {
   min-width: 0;
