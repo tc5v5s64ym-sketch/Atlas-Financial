@@ -164,6 +164,13 @@ if (nextPeriod) {
   put('operating.next.householdBudgetTotal', nextPeriod.budgetHold);
 }
 
+const carryTrend = (advice.paydayCarryoverTrend && advice.paydayCarryoverTrend.points) || [];
+for (let i = 0; i < carryTrend.length; i++) {
+  const point = carryTrend[i];
+  if (!point || !point.payday || point.known !== true) continue;
+  put('operating.carryover.' + point.payday, point.amount);
+}
+
 const T = advice.sim.totals;
 put('totals.confirmedIncome', T.confirmedIncome);
 put('totals.estimatedIncome', T.estimatedIncome);
