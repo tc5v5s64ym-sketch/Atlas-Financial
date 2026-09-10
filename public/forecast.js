@@ -169,6 +169,37 @@
     }
     return windows;
   }
+  // Completed Seaspan cycles before the current operating window. Dates come
+  // from spendingCycle, walking back from the day before this payday. Not
+  // mixed into defaultView.calendarPeriods. The picker prints these as
+  // pastPeriodViews. Fail closed when the cycle cannot be named.
+  function completedPayPeriodWindows(plan, asOf, count) {
+    const current = spendingCycle(plan, asOf);
+    if (!current || !current.start) return [];
+    const limit = count != null ? count : 6;
+    const windows = [];
+    let cursor = addDays(current.start, -1);
+    for (let i = 0; i < limit; i++) {
+      if (!cursor) break;
+      const cycle = spendingCycle(plan, cursor);
+      if (!cycle || !cycle.start || !cycle.end || cycle.start >= current.start) break;
+      const rangeLabel = formatSpendingCycleRange(cycle.start, cycle.end);
+      windows.push({
+        id: 'past:' + cycle.start,
+        label: i === 0 ? 'Previous Pay Period' : rangeLabel,
+        rangeLabel,
+        start: cycle.start,
+        end: cycle.end,
+        cycle,
+        role: 'lookback',
+        nextPayday: cycle.nextPayday,
+      });
+      const priorCursor = addDays(cycle.start, -1);
+      if (!priorCursor || priorCursor === cursor) break;
+      cursor = priorCursor;
+    }
+    return windows;
+  }
   function windowContainingDate(windows, date) {
     if (!date) return null;
     for (let i = 0; i < (windows || []).length; i++) {
@@ -3041,6 +3072,93 @@
     };
   }
 
+  // Completed-window coverage only. A packet that covers the lookback
+  // span may classify that window's actuals even when it is not the
+  // current operating packet. Fail closed when the window is not
+  // covered; do not invent spent.
+  function lookbackActualsCoverageState(windowStart, windowEnd, opts) {
+    const packet = currentPeriodActualsPacket(opts);
+    if (!packet) {
+      return {
+        status: 'absent',
+        remainingClaim: 'unavailable',
+        pendingStatus: 'unknown',
+        observationAsOf: null,
+        coverageStart: null,
+        coverageThrough: null,
+        reason: 'No current-period transaction actuals were supplied.',
+      };
+    }
+    const coverageStart = packet.coverageStart || null;
+    const coverageThrough = packet.coverageThrough || null;
+    const observationAsOf = packet.observationAsOf || null;
+    const pendingStatus = pendingCoverageStatus(packet);
+    if (!coverageThrough || !windowEnd || coverageThrough < windowEnd) {
+      return {
+        status: 'incomplete',
+        remainingClaim: 'unavailable',
+        pendingStatus,
+        observationAsOf,
+        coverageStart,
+        coverageThrough,
+        reason: 'Transaction actuals do not cover the completed pay period.',
+      };
+    }
+    if (coverageStart && windowStart && coverageStart > windowStart) {
+      return {
+        status: 'incomplete',
+        remainingClaim: 'unavailable',
+        pendingStatus,
+        observationAsOf,
+        coverageStart,
+        coverageThrough,
+        reason: 'Transaction coverage starts after the completed pay period.',
+      };
+    }
+    if (hasUnresolvedAccountActuals(packet)) {
+      return {
+        status: 'incomplete',
+        remainingClaim: 'unavailable',
+        pendingStatus,
+        observationAsOf,
+        coverageStart,
+        coverageThrough,
+        reason: 'Unresolved account actuals. Historical spent withheld.',
+      };
+    }
+    if (transactionCoverageStatus(packet) === 'truncated') {
+      return {
+        status: 'incomplete',
+        remainingClaim: 'unavailable',
+        pendingStatus,
+        observationAsOf,
+        coverageStart,
+        coverageThrough,
+        reason: 'Posted transaction coverage is truncated. Historical spent withheld.',
+      };
+    }
+    if (pendingStatus === 'complete') {
+      return {
+        status: 'current',
+        remainingClaim: 'precise',
+        pendingStatus,
+        observationAsOf,
+        coverageStart,
+        coverageThrough,
+        reason: null,
+      };
+    }
+    return {
+      status: 'current',
+      remainingClaim: 'posted-only',
+      pendingStatus,
+      observationAsOf,
+      coverageStart,
+      coverageThrough,
+      reason: 'Pending coverage is not complete. Observed posted actuals still classify.',
+    };
+  }
+
   // Named-category remaining precision. Provider coverage can be complete
   // while household spending is still unclassified; that must not publish a
   // precise named-remaining claim. The incumbent `uncategorised` remainder
@@ -4308,6 +4426,46 @@
     return { opening: null, openingKnown: false, openingAsOf: null, source: null };
   }
 
+  // Spendable cash at a payday morning. This is the completed period's
+  // payday carryover — cash carried into the next period — when a recorded
+  // snapshot, payday-morning cash, or completeness-proven walk names it.
+  // Not projected leftover, not today's live mid-period cash, not income.
+  function paydayBoundaryCash(plan, paydayDate, asOf, opts) {
+    if (!paydayDate) {
+      return { known: false, amount: null, asOf: null, source: null };
+    }
+    const snap = paydaySnapshotRecord(plan, opts, paydayDate);
+    if (snap) {
+      return {
+        known: true,
+        amount: snap.opening,
+        asOf: snap.asOf,
+        source: 'snapshot',
+      };
+    }
+    if (asOf === paydayDate && !liveOpeningAdvanced(plan, asOf)) {
+      const cash = startingCashAmount(plan);
+      if (finiteRecordedOpening(cash)) {
+        return {
+          known: true,
+          amount: roundCent(cash),
+          asOf: paydayDate,
+          source: 'payday-morning',
+        };
+      }
+    }
+    const established = establishPaydaySnapshot(plan, paydayDate, opts);
+    if (established && finiteRecordedOpening(established.opening)) {
+      return {
+        known: true,
+        amount: established.opening,
+        asOf: established.asOf || paydayDate,
+        source: 'cutover-walk',
+      };
+    }
+    return { known: false, amount: null, asOf: null, source: null };
+  }
+
   function rowIsOnceItem(plan, id) {
     if (!id) return false;
     const bill = ((plan && plan.bills) || []).find(b => b && b.id === id);
@@ -4426,8 +4584,15 @@
       seen.add(key);
       const row = calendarBillRowFromEvent(
         plan, event, asOf, represented, observed, cashAsOf, due);
-      if (overdueOnce) pushRow(due, row, activeWindow);
-      else pushRow(due, row);
+      // Overdue once-rows stay reserved on the current operating period.
+      // Do not dump them onto a completed lookback window.
+      if (overdueOnce) {
+        if (activeWindow && activeWindow.role === 'active') {
+          pushRow(due, row, activeWindow);
+        }
+        continue;
+      }
+      pushRow(due, row);
     }
     // Planned cash minimum for a capitalising obligation. Printed once on
     // the bills list; not a second expandEvents cash event and not a
@@ -5212,29 +5377,30 @@
 
   function calendarHouseholdBudget(plan, asOf, start, end, role, opts) {
     opts = opts || {};
-    if (role === 'lookback') {
-      return {
-        items: [], hold: 0, spentReady: false,
-        spendingCycle: null, cycleUnresolved: false,
-      };
-    }
+    const lookback = role === 'lookback';
     // Missing/malformed Seaspan must not invent a payday window or assign
     // transactions. Keep the payday-cycle planned reserve fail-closed.
+    // Lookback uses the completed window's own cycle, not today's.
     const unresolvedCycle = opts.unresolvedCycle === true;
     const cycle = unresolvedCycle
       ? null
-      : (opts.cycle || spendingCycle(plan, role === 'future' && start ? start : asOf));
+      : (opts.cycle || spendingCycle(plan, lookback ? start
+        : (role === 'future' && start ? start : asOf)));
     const cycleResolved = !!(cycle && cycle.start);
-    const useActuals = role === 'active' && cycleResolved;
+    const useActuals = (role === 'active' || lookback) && cycleResolved;
     const coverageOrigin = cycle && cycle.start && asOf && cycle.start <= asOf
       ? cycle.start : asOf;
     const coverage = useActuals
-      ? actualsCoverageState(asOf, coverageOrigin, opts)
+      ? (lookback
+        ? lookbackActualsCoverageState(cycle.start, cycle.end, opts)
+        : actualsCoverageState(asOf, coverageOrigin, opts))
       : { remainingClaim: 'unavailable' };
     const actualsReady = useActuals && (coverage.remainingClaim === 'precise'
       || coverage.remainingClaim === 'posted-only');
     const windowStart = cycle && cycle.start;
-    const through = cycle && cycle.end && asOf && asOf < cycle.end ? asOf : (cycle && cycle.end);
+    const through = lookback
+      ? (cycle && cycle.end)
+      : (cycle && cycle.end && asOf && asOf < cycle.end ? asOf : (cycle && cycle.end));
     const packet = currentPeriodActualsPacket(opts);
     const classifyOpts = Object.assign({}, opts, { packet, currentPeriodActuals: packet });
     const duplicateIds = pendingPostedDuplicateIdSet(packet);
@@ -5284,17 +5450,23 @@
       const weekly = cat.plannedWeekly != null ? roundCent(Number(cat.plannedWeekly)) : null;
       const recon = reconById.get(id) || [];
       const spent = actualsReady ? spentFromRecon(recon) : null;
-      const remaining = spent != null ? roundCent(planned - spent) : planned;
-      const overspend = spent != null ? roundCent(Math.max(0, spent - planned)) : 0;
+      const remaining = lookback ? null
+        : (spent != null ? roundCent(planned - spent) : planned);
+      const overspend = lookback ? null
+        : (spent != null ? roundCent(Math.max(0, spent - planned)) : 0);
       // Owner 2026-09-04: a planned category reserves at least its
       // planned amount. Actuals fulfill that reserve up to plan;
       // only actuals above plan increase the payday deduction.
       // hold = max(planned, spent) = planned + overspend.
       // Do not use remaining-only (planned − spent) and do not add
       // planned + spent (that double-counts).
-      const hold = spent != null
-        ? roundCent(Math.max(planned, spent))
-        : roundCent(planned);
+      // Completed lookback is disclosure, not a reserve: hold is
+      // observed spent only. Unproven spent stays omitted.
+      const hold = lookback
+        ? (spent != null ? roundCent(spent) : 0)
+        : (spent != null
+          ? roundCent(Math.max(planned, spent))
+          : roundCent(planned));
       const pendingRecon = recon.filter(r => r.pending === true);
       items.push({
         id,
@@ -5526,22 +5698,22 @@
       // current-looking / future waterfall.
       const planUnavailable = opts.operatingPlan === 'unavailable'
         && (role === 'active' || (role === 'future' && unavailableOpeningLost));
-      if (role !== 'lookback') {
-        if (planUnavailable) {
-          // Dated opening is not the current operating plan. Do not publish
-          // this as-of's spending cycle, planned payday dollars, or reserve
-          // hold as today's waterfall, and do not invent a later cycle.
+      if (role === 'lookback') {
+        if (window.cycle) budgetOpts.cycle = window.cycle;
+      } else if (planUnavailable) {
+        // Dated opening is not the current operating plan. Do not publish
+        // this as-of's spending cycle, planned payday dollars, or reserve
+        // hold as today's waterfall, and do not invent a later cycle.
+        budgetOpts.skipHold = true;
+      } else {
+        const seedAsOf = role === 'future' ? window.start : asOf;
+        const picked = uniqueSpendingCycle(plan, seedAsOf, heldCycleStarts);
+        if (picked.alreadyHeld) {
           budgetOpts.skipHold = true;
+        } else if (picked.unresolved || !picked.cycle) {
+          budgetOpts.unresolvedCycle = true;
         } else {
-          const seedAsOf = role === 'future' ? window.start : asOf;
-          const picked = uniqueSpendingCycle(plan, seedAsOf, heldCycleStarts);
-          if (picked.alreadyHeld) {
-            budgetOpts.skipHold = true;
-          } else if (picked.unresolved || !picked.cycle) {
-            budgetOpts.unresolvedCycle = true;
-          } else {
-            budgetOpts.cycle = picked.cycle;
-          }
+          budgetOpts.cycle = picked.cycle;
         }
       }
       const budget = budgetOpts.skipHold
@@ -5686,7 +5858,7 @@
         householdBudget: planUnavailable ? [] : budget.items,
         budgetHold: planUnavailable ? null : budget.hold,
         spendingCycleLabel,
-        spendingCycle: role === 'lookback' || planUnavailable ? null : budget.spendingCycle,
+        spendingCycle: planUnavailable ? null : budget.spendingCycle,
         cycleUnresolved: budget.cycleUnresolved === true,
         operatingPlanUnavailable: planUnavailable,
         operatingPlanNote: planUnavailable
@@ -5791,6 +5963,148 @@
       otherCards: cards.otherCards,
       bigPurchases: bigPurchasesGlance(plans, alloc),
     };
+  }
+
+  // Completed payday cycles behind the current operating window. Each view
+  // is one lookback waterfall from the incumbent calendar printer, with
+  // payday carryover attached only when payday-boundary cash is known.
+  // The page selects these; it does not compute them.
+  function attachPaydayCarryover(period, plan, asOf, window, opts) {
+    if (!period) return period;
+    const nextPayday = (window && window.nextPayday)
+      || (window && window.cycle && window.cycle.nextPayday)
+      || null;
+    const carry = paydayBoundaryCash(plan, nextPayday, asOf, opts);
+    period.paydayCarryoverKnown = carry.known === true;
+    period.paydayCarryover = carry.known ? carry.amount : null;
+    period.paydayCarryoverAsOf = carry.known ? (carry.asOf || nextPayday) : null;
+    period.paydayCarryoverSource = carry.known ? carry.source : null;
+    period.paydayCarryoverPayday = nextPayday;
+    period.liveCurrentBalance = null;
+    return period;
+  }
+
+  // Independent historical evidence only. Date-passed / inside-opening
+  // is not settlement on a completed sheet. Represented occurrence or
+  // an observed actual amount may stand; everything else is planned.
+  function historicalSettlementProven(row) {
+    if (!row) return false;
+    if (row.actual != null && isFinite(Number(row.actual))) return true;
+    if (row.settlement === 'represented') return true;
+    if (row.otherIncome === true && Array.isArray(row.recon) && row.recon.length) {
+      return true;
+    }
+    return false;
+  }
+
+  function applyHistoricalObservedAmount(row, direction) {
+    if (!row || row.actual == null || !isFinite(Number(row.actual))) return;
+    const amt = roundCent(Math.abs(Number(row.actual)));
+    row.amount = amt;
+    row.movement = householdMovement(amt, direction);
+  }
+
+  function sealHistoricalIncomeRow(row) {
+    if (!row) return row;
+    applyHistoricalObservedAmount(row, 'in');
+    if (row.notReliedUpon === true || row.settlement === 'not-relied-upon'
+        || row.status === 'unresolved') {
+      return row;
+    }
+    if (historicalSettlementProven(row)) {
+      if (row.actual != null && isFinite(Number(row.actual))) {
+        row.status = 'received';
+        row.alreadyInCash = true;
+        row.remaining = 0;
+      }
+      return row;
+    }
+    row.status = 'planned';
+    row.alreadyInCash = false;
+    if (row.settlement === 'opening') row.settlement = 'unverified';
+    row.remaining = row.planned != null
+      ? roundCent(Math.abs(Number(row.planned)))
+      : roundCent(Math.abs(Number(row.amount) || 0));
+    return row;
+  }
+
+  function sealHistoricalBillRow(row) {
+    if (!row) return row;
+    applyHistoricalObservedAmount(row, 'out');
+    if (row.needsDate) return row;
+    if (historicalSettlementProven(row)) {
+      if (row.actual != null && isFinite(Number(row.actual))) {
+        row.status = 'PAID';
+        row.glanceKind = 'paid';
+        row.remaining = 0;
+      }
+      return row;
+    }
+    row.status = 'planned';
+    row.glanceKind = 'planned';
+    if (row.settlement === 'opening') row.settlement = 'unverified';
+    const planned = row.planned != null
+      ? Math.abs(Number(row.planned))
+      : Math.abs(Number(row.amount) || 0);
+    row.remaining = roundCent(planned);
+    return row;
+  }
+
+  function historicalRemainingBills(bills) {
+    return roundCent((bills || []).reduce((s, r) => {
+      if (!r || r.needsDate) return s;
+      if (r.status === 'PAID' || r.status === 'planned' || r.status === 'unknown') {
+        return s;
+      }
+      const raw = r.remaining != null ? Math.abs(Number(r.remaining))
+        : Math.abs(Number(r.amount) || 0);
+      return s + raw;
+    }, 0));
+  }
+
+  function historicalDisplayedBillAbs(row) {
+    if (!row) return 0;
+    if (row.movement != null && isFinite(Number(row.movement))) {
+      return Math.abs(Number(row.movement));
+    }
+    const raw = row.actual != null ? row.actual
+      : (row.amount != null ? row.amount : row.planned);
+    return Math.abs(Number(raw) || 0);
+  }
+
+  function sealHistoricalPeriodFacts(period) {
+    if (!period) return period;
+    period.income = (period.income || []).map(sealHistoricalIncomeRow);
+    period.bills = (period.bills || []).map(sealHistoricalBillRow);
+    const otherItems = ((period.otherIncome && period.otherIncome.items) || [])
+      .map(sealHistoricalIncomeRow);
+    const otherAmount = roundCent(otherItems.reduce(
+      (s, r) => s + (Number(r && r.amount) || 0), 0));
+    period.otherIncome = { amount: otherAmount, items: otherItems };
+    period.incomeTotal = roundCent((period.income || []).reduce(
+      (s, r) => s + (Number(r && r.amount) || 0), 0));
+    period.available = period.incomeTotal;
+    period.paidBills = periodPaidBillDisclosure(period.bills);
+    period.remainingBills = historicalRemainingBills(period.bills);
+    period.totalBillsThisPeriod = roundCent((period.bills || []).reduce(
+      (s, r) => s + historicalDisplayedBillAbs(r), 0));
+    return period;
+  }
+
+  function planPastPeriodViews(plan, asOf, alloc, plans, debts, opts) {
+    opts = opts || {};
+    const windows = completedPayPeriodWindows(plan, asOf, 6);
+    const views = [];
+    for (const window of windows) {
+      const waterfalls = calendarPeriodWaterfalls(
+        plan, asOf, alloc, plans, debts,
+        Object.assign({}, opts, { periodWindows: [window] }));
+      const period = (waterfalls.calendarPeriods || [])[0];
+      if (!period) continue;
+      views.push(attachPaydayCarryover(
+        sealHistoricalPeriodFacts(period), plan, asOf, window, opts));
+    }
+    return views;
   }
 
   // Same 10-block shape as defaultView, for the next Seaspan payday Forecast
@@ -7137,6 +7451,10 @@
           paydayOpts.debts || base.debts, viewSim, paydayOpts),
         weekViews: planWeekViews(plan, asOf, plans,
           paydayOpts.debts || base.debts, viewSim, paydayOpts),
+        pastPeriodViews: planPastPeriodViews(plan, asOf, alloc, plans,
+          paydayOpts.debts || base.debts, Object.assign({}, paydayOpts, {
+            sim: knowledgeSim,
+          })),
         // The options behind `sim`, so a caller overriding the weekly figure
         // re-simulates under the same assumptions instead of inventing its own.
         // Horizon is included so a page override still walks the master plan.

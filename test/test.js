@@ -95,6 +95,7 @@ const suites = [
   ['payday Household Budget max(planned, actual) contract', 'test-household-budget-waterfall-contract.js'],
   ['Plan unavailable operating state', 'test-plan-unavailable-surface.js'],
   ['Plan next-period lookahead and week picker', 'test-plan-lookahead-week.js'],
+  ['Plan completed historical pay periods', 'test-historical-pay-periods.js'],
   ['Plan actual vs budget digest', 'test-plan-budget-digest.js'],
   ['weekly cap conversion + discretionary room', 'test-weekly-cap.js'],
   ['food and fuel monthly figures', 'test-food-fuel.js'],

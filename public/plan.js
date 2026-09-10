@@ -1644,7 +1644,7 @@ function glanceMoney(row, kind) {
   if (!row) return null;
   if (row.movement != null && isFinite(Number(row.movement))) return Number(row.movement);
   let raw = null;
-  if (kind === 'paid' || kind === 'in') {
+  if (kind === 'paid' || kind === 'in' || kind === 'planned') {
     if (row.actual != null) raw = row.actual;
     else if (row.planned != null) raw = row.planned;
     else if (row.amount != null) raw = row.amount;
@@ -1659,7 +1659,7 @@ function glanceMoney(row, kind) {
   if (raw == null || !isFinite(Number(raw))) return null;
   const mag = Math.abs(Number(raw));
   if (kind === 'in') return mag;
-  if (kind === 'paid' || kind === 'still-due') return -mag;
+  if (kind === 'paid' || kind === 'still-due' || kind === 'planned') return -mag;
   return Number(raw);
 }
 
@@ -1776,9 +1776,12 @@ function runningLeftoverHtml(amount) {
 
 function periodBillLine(row) {
   const kind = row.glanceKind || (row.status === 'in' ? 'in'
-    : (row.status === 'PAID' ? 'paid' : 'still-due'));
+    : (row.status === 'PAID' ? 'paid'
+      : (row.status === 'planned' || row.status === 'unknown' ? 'planned' : 'still-due')));
   const status = row.status === 'in' ? 'in'
     : row.status === 'PAID' ? 'PAID'
+    : row.status === 'planned' ? 'planned'
+    : row.status === 'unknown' ? 'unknown'
     : row.status === 'pending' ? 'pending'
     : row.status === 'needs-date' ? 'needs confirmation'
     : 'still due';
@@ -1820,6 +1823,8 @@ function calendarIncomeHtml(period) {
       || row.status === 'unresolved';
     const status = notRelied ? 'not relied upon'
       : row.status === 'received' ? 'received'
+      : row.status === 'planned' ? 'planned'
+      : row.status === 'unknown' ? 'unknown'
       : row.alreadyInCash ? 'already in balance' : 'arriving';
     const amount = glanceSignedMoney(glanceMoney(row, 'in'));
     const about = row.confidence === 'estimated' && amount != null ? 'about ' : '';
@@ -1861,6 +1866,8 @@ function calendarIncomeHtml(period) {
       const dateText = row.date ? fmtDate(row.date) : '—';
       const idAttr = row.id ? ` data-other-income-item="${esc(row.id)}"` : '';
       const status = isReceived ? 'received'
+        : row.status === 'planned' ? 'planned'
+        : row.status === 'unknown' ? 'unknown'
         : row.alreadyInCash ? 'already in balance' : 'arriving';
       const about = !isReceived && row.confidence === 'estimated' ? 'about ' : '';
       return `<li class="other-income-tx"${idAttr} data-income-status="${status}">
@@ -2152,6 +2159,41 @@ function calendarWaterfallHtml(period, liveOverlay, alloc) {
   </section>`;
 }
 
+function paydayCarryoverHtml(period) {
+  if (!period || period.paydayCarryoverKnown !== true || period.paydayCarryover == null) {
+    return '';
+  }
+  const asOf = period.paydayCarryoverAsOf || period.paydayCarryoverPayday;
+  const when = asOf ? `Cash carried to ${fmtDateLong(asOf)}. ` : '';
+  return `<div class="operating-question operating-ending" data-operating-question="carryover" data-payday-carryover>
+    <h2 class="operating-prompt">Payday carryover</h2>
+    <div class="operating-answer">
+      <div class="payday-cash">
+        <span class="operating-amount" data-payday-carryover-amount>${money2(period.paydayCarryover)}</span>
+        <p class="operating-note">${when}Carried forward, not income.</p>
+      </div>
+    </div>
+  </div>`;
+}
+
+function historicalPeriodHtml(period) {
+  if (!period) return '';
+  const q = (number, prompt, answer) => `
+    <div class="operating-question" data-operating-question="${number}" data-operating-prompt="${prompt}">
+      <div class="operating-number">${number}</div>
+      <h2 class="operating-prompt">${prompt}</h2>
+      <div class="operating-answer">${answer}</div>
+    </div>`;
+  return `<section class="calendar-waterfall" data-calendar-waterfall="${period.id || ''}" data-calendar-role="lookback" data-historical-period>
+    <div class="payday-group calendar-waterfall-head">${period.label || 'Completed pay period'}${period.rangeLabel ? ` · ${period.rangeLabel}` : ''}</div>
+    <p class="operating-note">Completed pay period. Not today's balance.</p>
+    ${q('02', 'Income', calendarIncomeHtml(period))}
+    ${q('04', 'Bills', calendarPeriodBillsHtml(period))}
+    ${q('06', 'Household budget', calendarBudgetHtml(period))}
+    ${paydayCarryoverHtml(period)}
+  </section>`;
+}
+
 function calendarPickerHtml(view, show, extraControls) {
   const periods = (view && view.calendarPeriods) || [];
   if (periods.length < 2) return extraControls || '';
@@ -2410,6 +2452,11 @@ function selectedPlanView(advice, look) {
     const found = (advice.weekViews || []).find(row => row && row.periodStart === start);
     return found || advice.defaultView || null;
   }
+  if (look && look.slice(0, 5) === 'past:') {
+    const start = look.slice(5);
+    const found = (advice.pastPeriodViews || []).find(row => row && row.start === start);
+    return found || advice.defaultView || null;
+  }
   return advice.defaultView || null;
 }
 
@@ -2542,9 +2589,18 @@ function operatingSurfaceHtml(ctx) {
       : `Week of ${fmtDate(row.periodStart)}`;
     return option(value, label);
   }).join('');
+  const pastOpts = (advice.pastPeriodViews || []).map((row, i) => {
+    if (!row || !row.start) return '';
+    const value = 'past:' + row.start;
+    const range = row.rangeLabel || '';
+    const label = i === 0
+      ? (range ? `Previous pay period · ${range}` : 'Previous pay period')
+      : (range || 'Completed pay period');
+    return option(value, label);
+  }).join('');
   // The pay-period switch inside the sheet is the primary control. The week
   // picker stays available behind a quiet disclosure, and is held open while
-  // a week or next-period view is the one being read.
+  // a week, next-period, or completed-period view is the one being read.
   const picker = `<details class="plan-look" data-plan-look-picker${look !== 'this-period' ? ' open' : ''}>
     <summary class="plan-look-summary">More views</summary>
     <label class="plan-look-field">
@@ -2556,6 +2612,7 @@ function operatingSurfaceHtml(ctx) {
           ? `Next pay period · ${fmtDate(nextPeriod.periodStart)} – ${fmtDate(nextPeriod.periodEnd)}`
           : 'Next pay period')
         : ''}
+      ${pastOpts}
       ${weekOpts}
       </select>
     </label>
@@ -2567,6 +2624,7 @@ function operatingSurfaceHtml(ctx) {
   };
   const cash = cashGlanceHtml(cashAlloc, view.cashNote ? null : ctx.liveOverlay, view.cashNote);
   const bills = periodBillsHtml(view);
+  const pastLook = look && look.slice(0, 5) === 'past:';
   const defaultWaterfalls = look === 'this-period'
     && view.calendarPeriods && view.calendarPeriods.length
     ? calendarWaterfallsHtml(
@@ -2577,7 +2635,10 @@ function operatingSurfaceHtml(ctx) {
       picker
     )
     : '';
-  const tenBlock = defaultWaterfalls ? '' : `
+  const historical = pastLook && view && view.start
+    ? `${picker}<div class="plan-sheet" data-historical-plan>${historicalPeriodHtml(view)}</div>`
+    : '';
+  const tenBlock = defaultWaterfalls || historical ? '' : `
     ${question('01', 'Current Balance', cash, 'opening')}
     ${question('02', billsHeading, bills)}
     ${question('03', 'Balance after bills', runningLeftoverHtml(view.afterBills), 'balance')}
@@ -2600,7 +2661,7 @@ function operatingSurfaceHtml(ctx) {
   // In the default view the picker rides inside the pay-period switch row;
   // the week and next-period printouts carry it at the top, held open.
   return `<div class="payday-operating-sheet" data-payday-sheet>
-    ${defaultWaterfalls || `${picker}<div class="plan-sheet">${tenBlock}</div>`}
+    ${defaultWaterfalls || historical || `${picker}<div class="plan-sheet">${tenBlock}</div>`}
   </div>`;
 }
 
@@ -3700,6 +3761,11 @@ function renderPlan(d, periods, history) {
     if (planLook && planLook.slice(0, 5) === 'week:') {
       const start = planLook.slice(5);
       const found = (advice.weekViews || []).some(row => row && row.periodStart === start);
+      if (!found) planLook = 'this-period';
+    }
+    if (planLook && planLook.slice(0, 5) === 'past:') {
+      const start = planLook.slice(5);
+      const found = (advice.pastPeriodViews || []).some(row => row && row.start === start);
       if (!found) planLook = 'this-period';
     }
     const planView = selectedPlanView(advice, planLook);
