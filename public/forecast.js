@@ -169,6 +169,37 @@
     }
     return windows;
   }
+  // Completed Seaspan cycles before the current operating window. Dates come
+  // from spendingCycle, walking back from the day before this payday. Not
+  // mixed into defaultView.calendarPeriods. The picker prints these as
+  // pastPeriodViews. Fail closed when the cycle cannot be named.
+  function completedPayPeriodWindows(plan, asOf, count) {
+    const current = spendingCycle(plan, asOf);
+    if (!current || !current.start) return [];
+    const limit = count != null ? count : 6;
+    const windows = [];
+    let cursor = addDays(current.start, -1);
+    for (let i = 0; i < limit; i++) {
+      if (!cursor) break;
+      const cycle = spendingCycle(plan, cursor);
+      if (!cycle || !cycle.start || !cycle.end || cycle.start >= current.start) break;
+      const rangeLabel = formatSpendingCycleRange(cycle.start, cycle.end);
+      windows.push({
+        id: 'past:' + cycle.start,
+        label: i === 0 ? 'Previous Pay Period' : rangeLabel,
+        rangeLabel,
+        start: cycle.start,
+        end: cycle.end,
+        cycle,
+        role: 'lookback',
+        nextPayday: cycle.nextPayday,
+      });
+      const priorCursor = addDays(cycle.start, -1);
+      if (!priorCursor || priorCursor === cursor) break;
+      cursor = priorCursor;
+    }
+    return windows;
+  }
   function windowContainingDate(windows, date) {
     if (!date) return null;
     for (let i = 0; i < (windows || []).length; i++) {
@@ -4308,6 +4339,46 @@
     return { opening: null, openingKnown: false, openingAsOf: null, source: null };
   }
 
+  // Spendable cash at a payday morning. This is the completed period's
+  // payday carryover — cash carried into the next period — when a recorded
+  // snapshot, payday-morning cash, or completeness-proven walk names it.
+  // Not projected leftover, not today's live mid-period cash, not income.
+  function paydayBoundaryCash(plan, paydayDate, asOf, opts) {
+    if (!paydayDate) {
+      return { known: false, amount: null, asOf: null, source: null };
+    }
+    const snap = paydaySnapshotRecord(plan, opts, paydayDate);
+    if (snap) {
+      return {
+        known: true,
+        amount: snap.opening,
+        asOf: snap.asOf,
+        source: 'snapshot',
+      };
+    }
+    if (asOf === paydayDate && !liveOpeningAdvanced(plan, asOf)) {
+      const cash = startingCashAmount(plan);
+      if (finiteRecordedOpening(cash)) {
+        return {
+          known: true,
+          amount: roundCent(cash),
+          asOf: paydayDate,
+          source: 'payday-morning',
+        };
+      }
+    }
+    const established = establishPaydaySnapshot(plan, paydayDate, opts);
+    if (established && finiteRecordedOpening(established.opening)) {
+      return {
+        known: true,
+        amount: established.opening,
+        asOf: established.asOf || paydayDate,
+        source: 'cutover-walk',
+      };
+    }
+    return { known: false, amount: null, asOf: null, source: null };
+  }
+
   function rowIsOnceItem(plan, id) {
     if (!id) return false;
     const bill = ((plan && plan.bills) || []).find(b => b && b.id === id);
@@ -4426,8 +4497,15 @@
       seen.add(key);
       const row = calendarBillRowFromEvent(
         plan, event, asOf, represented, observed, cashAsOf, due);
-      if (overdueOnce) pushRow(due, row, activeWindow);
-      else pushRow(due, row);
+      // Overdue once-rows stay reserved on the current operating period.
+      // Do not dump them onto a completed lookback window.
+      if (overdueOnce) {
+        if (activeWindow && activeWindow.role === 'active') {
+          pushRow(due, row, activeWindow);
+        }
+        continue;
+      }
+      pushRow(due, row);
     }
     // Planned cash minimum for a capitalising obligation. Printed once on
     // the bills list; not a second expandEvents cash event and not a
@@ -5793,6 +5871,40 @@
     };
   }
 
+  // Completed payday cycles behind the current operating window. Each view
+  // is one lookback waterfall from the incumbent calendar printer, with
+  // payday carryover attached only when payday-boundary cash is known.
+  // The page selects these; it does not compute them.
+  function attachPaydayCarryover(period, plan, asOf, window, opts) {
+    if (!period) return period;
+    const nextPayday = (window && window.nextPayday)
+      || (window && window.cycle && window.cycle.nextPayday)
+      || null;
+    const carry = paydayBoundaryCash(plan, nextPayday, asOf, opts);
+    period.paydayCarryoverKnown = carry.known === true;
+    period.paydayCarryover = carry.known ? carry.amount : null;
+    period.paydayCarryoverAsOf = carry.known ? (carry.asOf || nextPayday) : null;
+    period.paydayCarryoverSource = carry.known ? carry.source : null;
+    period.paydayCarryoverPayday = nextPayday;
+    period.liveCurrentBalance = null;
+    return period;
+  }
+
+  function planPastPeriodViews(plan, asOf, alloc, plans, debts, opts) {
+    opts = opts || {};
+    const windows = completedPayPeriodWindows(plan, asOf, 6);
+    const views = [];
+    for (const window of windows) {
+      const waterfalls = calendarPeriodWaterfalls(
+        plan, asOf, alloc, plans, debts,
+        Object.assign({}, opts, { periodWindows: [window] }));
+      const period = (waterfalls.calendarPeriods || [])[0];
+      if (!period) continue;
+      views.push(attachPaydayCarryover(period, plan, asOf, window, opts));
+    }
+    return views;
+  }
+
   // Same 10-block shape as defaultView, for the next Seaspan payday Forecast
   // already named. Current Balance is the walk's start-of-day cash plus that
   // payday's income — the paydayAllocation available identity, not a new
@@ -7137,6 +7249,10 @@
           paydayOpts.debts || base.debts, viewSim, paydayOpts),
         weekViews: planWeekViews(plan, asOf, plans,
           paydayOpts.debts || base.debts, viewSim, paydayOpts),
+        pastPeriodViews: planPastPeriodViews(plan, asOf, alloc, plans,
+          paydayOpts.debts || base.debts, Object.assign({}, paydayOpts, {
+            sim: knowledgeSim,
+          })),
         // The options behind `sim`, so a caller overriding the weekly figure
         // re-simulates under the same assumptions instead of inventing its own.
         // Horizon is included so a page override still walks the master plan.
