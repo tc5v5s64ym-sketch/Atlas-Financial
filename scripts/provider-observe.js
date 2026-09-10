@@ -1021,14 +1021,18 @@ function rulePayeeMatchMode(rule) {
 
 const WEEKEND_NEXT_BUSINESS_DAY = 'same-day-or-weekend-next-business-day';
 const COVER_DUE_ON_OR_BEFORE_POSTING = 'covers-due-on-or-before-posting';
+const COVER_EARLY_OR_DUE_ON_OR_BEFORE_POSTING = 'covers-early-or-due-on-or-before-posting';
 const COVER_STATEMENT_CYCLE_OR_LATEST_DUE = 'covers-statement-cycle-or-latest-due';
 const SETTLES_WHEN_AMOUNT_AT_LEAST = 'amount-at-least';
 const SETTLES_WHEN_EXACT_SCHEDULED_AMOUNT = 'exact-scheduled-amount';
+const SETTLES_WHEN_TWO_LEG_SUM = 'two-leg-sum';
+const SETTLES_WHEN_SCHEDULE_TRUST_ON_DUE = 'schedule-trust-on-due';
 const COVER_DUE_LOOKBACK_DAYS = 62;
 // covers-due-on-or-before-posting is a recurring "latest due" relation.
 // A once occurrence is not a series: reuse after this grace would attach a
 // later same-alias debit to an already-scheduled once bill.
 const ONCE_COVER_GRACE_DAYS = 7;
+const EARLY_PAY_LOOKAHEAD_DAYS = 7;
 const IDENTITY_AMOUNT_EPSILON = 0.005;
 
 function rulePayeePatterns(rule) {
@@ -1135,6 +1139,7 @@ function countTransferCounterparts(tx, rule, input, amount) {
 
 function ruleHasIdentity(rule) {
   if (!rule || !rule.eventId) return false;
+  if (rule.settlesWhen === SETTLES_WHEN_SCHEDULE_TRUST_ON_DUE) return true;
   if (rule.transactionKind === 'transfer') return !!ruleCounterpartExternalId(rule);
   return rulePayeePatterns(rule).length > 0;
 }
@@ -1235,6 +1240,11 @@ function postingDateRelation(scheduledDate, postingDate, rule) {
   if (rule && rule.postingDateRule === COVER_STATEMENT_CYCLE_OR_LATEST_DUE) {
     return COVER_STATEMENT_CYCLE_OR_LATEST_DUE;
   }
+  if (rule && rule.postingDateRule === COVER_EARLY_OR_DUE_ON_OR_BEFORE_POSTING) {
+    if (scheduled < posted) return COVER_DUE_ON_OR_BEFORE_POSTING;
+    const earliest = Forecast.addDays(scheduled, -EARLY_PAY_LOOKAHEAD_DAYS);
+    return earliest && posted >= earliest ? 'early-pay-before-due' : null;
+  }
   if (rule && rule.postingDateRule === COVER_DUE_ON_OR_BEFORE_POSTING
     && scheduled < posted) {
     return COVER_DUE_ON_OR_BEFORE_POSTING;
@@ -1258,11 +1268,51 @@ function sourceFrequency(plan, eventId) {
   return row && row.frequency != null ? String(row.frequency) : null;
 }
 
+function coveringEarlyOrDueDates(plan, rule, postingDate) {
+  const posted = parseIsoDate(postingDate);
+  if (!plan || !rule || !rule.eventId || !posted) return [];
+  const from = Forecast.addDays(posted, -COVER_DUE_LOOKBACK_DAYS);
+  const to = Forecast.addDays(posted, EARLY_PAY_LOOKAHEAD_DAYS);
+  if (!from || !to) return [];
+  const events = scheduledEventsOnRange(plan, from, to)
+    .filter(event => event && event.id === rule.eventId);
+  const scored = [];
+  for (const event of events) {
+    if (!event || !event.date) continue;
+    const dist = calendarDaysBetween(posted, event.date);
+    if (dist == null) continue;
+    const abs = Math.abs(dist);
+    if (event.date > posted && abs > EARLY_PAY_LOOKAHEAD_DAYS) continue;
+    if (sourceFrequency(plan, rule.eventId) === 'once' && event.date < posted) {
+      const lastAllowed = Forecast.addDays(event.date, ONCE_COVER_GRACE_DAYS);
+      if (!lastAllowed || posted > lastAllowed) continue;
+    }
+    scored.push({
+      date: event.date,
+      dist: abs,
+      outstanding: event.date <= posted,
+    });
+  }
+  if (!scored.length) return [];
+  scored.sort((a, b) => a.dist - b.dist || (Number(b.outstanding) - Number(a.outstanding)));
+  const nearestDist = scored[0].dist;
+  const nearest = scored.filter(row => row.dist === nearestDist);
+  const nearestDates = new Set(nearest.map(row => row.date));
+  if (nearestDates.size === 1) return [scored[0].date];
+  const outstandingNearest = nearest.filter(row => row.outstanding);
+  const outstandingDates = new Set(outstandingNearest.map(row => row.date));
+  if (outstandingDates.size === 1) return [[...outstandingDates][0]];
+  return [];
+}
+
 function coveringScheduledDates(plan, rule, postingDate) {
   const posted = parseIsoDate(postingDate);
   if (!plan || !rule || !rule.eventId || !posted) return [];
   if (rule.postingDateRule === COVER_STATEMENT_CYCLE_OR_LATEST_DUE) {
     return coveringStatementCycleDates(plan, rule, posted);
+  }
+  if (rule.postingDateRule === COVER_EARLY_OR_DUE_ON_OR_BEFORE_POSTING) {
+    return coveringEarlyOrDueDates(plan, rule, posted);
   }
   if (rule.postingDateRule !== COVER_DUE_ON_OR_BEFORE_POSTING) {
     return scheduledDatesForPosting(posted, rule);
@@ -1694,6 +1744,94 @@ function observationReceipt(report, opts) {
   };
 }
 
+function scheduleTrustCandidates(input) {
+  const asOf = parseIsoDate(input && input.asOf);
+  if (!asOf || !input || !input.plan) return [];
+  const cycle = Forecast.spendingCycle(input.plan, asOf);
+  const cycleStart = cycle && cycle.start ? parseIsoDate(cycle.start) : null;
+  const openingAsOf = input.plan.opening && input.plan.opening.asOf
+    ? parseIsoDate(input.plan.opening.asOf) : null;
+  const from = cycleStart
+    || (openingAsOf ? Forecast.addDays(openingAsOf, 1) : null)
+    || Forecast.addDays(asOf, -COVER_DUE_LOOKBACK_DAYS);
+  if (!from || from > asOf) return [];
+  const hits = [];
+  const seen = new Set();
+  for (const rule of input.identityRules || []) {
+    if (!rule || !rule.eventId || rule.settlesWhen !== SETTLES_WHEN_SCHEDULE_TRUST_ON_DUE) {
+      continue;
+    }
+    const events = scheduledEventsOnRange(input.plan, from, asOf)
+      .filter(event => event && event.id === rule.eventId
+        && event.date >= from && event.date <= asOf);
+    for (const event of events) {
+      const key = rule.eventId + '@' + event.date;
+      if (seen.has(key)) continue;
+      const amount = Math.abs(Number(event.amount));
+      if (!isFinite(amount)) continue;
+      seen.add(key);
+      hits.push({
+        id: rule.eventId,
+        date: event.date,
+        postingDate: event.date,
+        postingDateRelation: SETTLES_WHEN_SCHEDULE_TRUST_ON_DUE,
+        direction: null,
+        providerTransactionId: null,
+        providerAccountId: null,
+        payee: null,
+        identity: 'schedule-trust-on-due',
+        amountNotUsed: true,
+        observedAmount: Math.round(amount * 100) / 100,
+        atlasAccountId: null,
+        settlesWhen: SETTLES_WHEN_SCHEDULE_TRUST_ON_DUE,
+      });
+    }
+  }
+  return hits;
+}
+
+function candidateTransactionIds(candidate) {
+  const ids = [];
+  const seen = new Set();
+  const push = value => {
+    if (value == null || value === '') return;
+    const key = String(value);
+    if (seen.has(key)) return;
+    seen.add(key);
+    ids.push(value);
+  };
+  if (candidate && Array.isArray(candidate.providerTransactionIds)) {
+    for (const value of candidate.providerTransactionIds) push(value);
+  }
+  if (candidate) push(candidate.providerTransactionId);
+  return ids;
+}
+
+function combineTwoLegHits(hits) {
+  const ordered = hits.slice().sort((a, b) =>
+    String(a.postingDate).localeCompare(String(b.postingDate))
+    || String(a.providerTransactionId).localeCompare(String(b.providerTransactionId)));
+  const sum = ordered.reduce((total, hit) => total + Number(hit.observedAmount), 0);
+  const last = ordered[ordered.length - 1];
+  return {
+    id: ordered[0].id,
+    date: ordered[0].date,
+    postingDate: last && last.postingDate,
+    postingDateRelation: last && last.postingDateRelation,
+    direction: ordered[0].direction,
+    providerTransactionId: ordered[0].providerTransactionId,
+    providerTransactionIds: ordered.map(hit => hit.providerTransactionId),
+    providerAccountId: ordered[0].providerAccountId,
+    payee: ordered[0].payee,
+    identity: 'two-leg-payee+account+date',
+    amountNotUsed: true,
+    observedAmount: Math.round(sum * 100) / 100,
+    atlasAccountId: ordered[0].atlasAccountId,
+    atlasAccountIds: ordered.map(hit => hit.atlasAccountId),
+    settlesWhen: SETTLES_WHEN_TWO_LEG_SUM,
+  };
+}
+
 function representedEventHitGroups(input) {
   const empty = { unique: [], ambiguous: [] };
   if (input.transactionWindow && input.transactionWindow.complete === false) return empty;
@@ -1765,9 +1903,32 @@ function representedEventHitGroups(input) {
       }
     }
   }
+  for (const hit of scheduleTrustCandidates(input)) {
+    const key = hit.id + '@' + hit.date;
+    if (eventHits.has(key)) continue;
+    eventHits.set(key, [hit]);
+  }
   const unique = [];
   const ambiguous = [];
   for (const [key, hits] of eventHits) {
+    if (hits.length && hits.every(hit => hit && hit.settlesWhen === SETTLES_WHEN_TWO_LEG_SUM)) {
+      const accounts = new Set(hits.map(hit => hit.atlasAccountId).filter(Boolean));
+      const txIds = new Set(hits.map(hit => hit.providerTransactionId)
+        .filter(id => id != null).map(String));
+      if (hits.length === 2 && accounts.size === 2 && txIds.size === 2) {
+        unique.push(combineTwoLegHits(hits));
+      } else if (hits.length > 2) {
+        ambiguous.push({
+          key,
+          id: hits[0] && hits[0].id,
+          date: hits[0] && hits[0].date,
+          hits,
+          reason: 'multiple-compatible-candidates',
+          candidateCount: hits.length,
+        });
+      }
+      continue;
+    }
     if (hits.length === 1) {
       unique.push(hits[0]);
       continue;
@@ -1794,11 +1955,11 @@ function representedEventHitGroups(input) {
   }
   const byTx = new Map();
   for (const hit of unique) {
-    const txId = hit && hit.providerTransactionId;
-    if (txId == null) continue;
-    const list = byTx.get(String(txId)) || [];
-    list.push(hit);
-    byTx.set(String(txId), list);
+    for (const rawId of candidateTransactionIds(hit)) {
+      const list = byTx.get(String(rawId)) || [];
+      list.push(hit);
+      byTx.set(String(rawId), list);
+    }
   }
   const preferred = [];
   const droppedUpcoming = new Set();
@@ -1812,28 +1973,29 @@ function representedEventHitGroups(input) {
     }
   }
   for (const hit of unique) {
-    const txId = hit && hit.providerTransactionId != null
-      ? String(hit.providerTransactionId) : '';
-    if (droppedUpcoming.has(hit.id + '@' + hit.date + '@' + txId)) continue;
+    const txIds = candidateTransactionIds(hit).map(String);
+    if (txIds.some(txId => droppedUpcoming.has(hit.id + '@' + hit.date + '@' + txId))) {
+      continue;
+    }
     preferred.push(hit);
   }
   const preferredByTx = new Map();
   for (const hit of preferred) {
-    const txId = hit && hit.providerTransactionId;
-    if (txId == null) continue;
-    const list = preferredByTx.get(String(txId)) || [];
-    list.push(hit);
-    preferredByTx.set(String(txId), list);
+    for (const rawId of candidateTransactionIds(hit)) {
+      const list = preferredByTx.get(String(rawId)) || [];
+      list.push(hit);
+      preferredByTx.set(String(rawId), list);
+    }
   }
   const uniqueOnce = [];
   const consumedTwice = new Set();
   for (const hit of preferred) {
-    const txId = hit && hit.providerTransactionId != null
-      ? String(hit.providerTransactionId) : null;
-    const siblings = txId ? preferredByTx.get(txId) : null;
-    if (txId && siblings && siblings.length > 1) {
-      if (!consumedTwice.has(txId)) {
-        consumedTwice.add(txId);
+    const txIds = candidateTransactionIds(hit).map(String);
+    const conflictId = txIds.find(txId => (preferredByTx.get(txId) || []).length > 1);
+    if (conflictId) {
+      if (!consumedTwice.has(conflictId)) {
+        consumedTwice.add(conflictId);
+        const siblings = preferredByTx.get(conflictId) || [];
         ambiguous.push({
           key: siblings.map(s => s.id + '@' + s.date).sort().join(','),
           id: null,
@@ -1906,6 +2068,11 @@ function allowedPostingDatesFor(scheduledDate, rule) {
     const weekday = new Date(`${scheduled}T00:00:00Z`).getUTCDay();
     if (weekday === 6) dates.push(Forecast.addDays(scheduled, 2));
     if (weekday === 0) dates.push(Forecast.addDays(scheduled, 1));
+  }
+  if (rule && rule.postingDateRule === COVER_EARLY_OR_DUE_ON_OR_BEFORE_POSTING) {
+    for (let i = 1; i <= EARLY_PAY_LOOKAHEAD_DAYS; i += 1) {
+      dates.push(Forecast.addDays(scheduled, -i));
+    }
   }
   return dates.filter((date, index) => date && dates.indexOf(date) === index);
 }
@@ -2182,6 +2349,7 @@ function reconciliationReceipt(report, opts) {
     plan,
     identityRules,
     transactionWindow: report && report.transactionWindow,
+    asOf: householdDate,
   });
   const uniqueByKey = new Map();
   for (const candidate of groups.unique) {
@@ -2245,17 +2413,22 @@ function reconciliationReceipt(report, opts) {
       observedAmount = null;
     } else if (candidate) {
       settlement = 'represented';
-      evidenceFingerprint = sanitizedEvidenceFingerprint(candidate.providerTransactionId);
+      const fingerprints = candidateTransactionIds(candidate)
+        .map(id => sanitizedEvidenceFingerprint(id))
+        .filter(Boolean)
+        .sort();
+      evidenceFingerprint = fingerprints[0] || null;
+      if (fingerprints.length > 1) evidenceFingerprints = fingerprints;
       postingDateRelationValue = candidate.postingDateRelation || null;
       atlasAccountId = candidate.atlasAccountId || null;
       const amt = Number(candidate.observedAmount);
       observedAmount = isFinite(amt) ? Math.round(amt * 100) / 100 : null;
-      if (evidenceFingerprint) {
-        if (usedEvidence.has(evidenceFingerprint)) {
+      for (const fingerprint of fingerprints) {
+        if (usedEvidence.has(fingerprint)) {
           oneOccurrenceOneTransaction = false;
           noTransactionConsumedTwice = false;
         }
-        usedEvidence.add(evidenceFingerprint);
+        usedEvidence.add(fingerprint);
       }
     } else if (bill.settlement === 'upcoming') {
       settlement = 'upcoming';
@@ -2301,7 +2474,10 @@ function reconciliationReceipt(report, opts) {
     if (kind !== 'obligation' && kind !== 'bill' && kind !== 'commitment') continue;
     const planned = isFinite(-scheduled[0].amount)
       ? Math.round((-scheduled[0].amount) * 100) / 100 : null;
-    const evidenceFingerprint = sanitizedEvidenceFingerprint(candidate.providerTransactionId);
+    const fingerprints = candidateTransactionIds(candidate)
+      .map(id => sanitizedEvidenceFingerprint(id))
+      .filter(Boolean)
+      .sort();
     const amt = Number(candidate.observedAmount);
     const row = {
       id: candidate.id,
@@ -2311,13 +2487,14 @@ function reconciliationReceipt(report, opts) {
       plannedAmount: planned,
       observedAmount: isFinite(amt) ? Math.round(amt * 100) / 100 : null,
     };
-    if (evidenceFingerprint) {
-      row.evidenceFingerprint = evidenceFingerprint;
-      if (usedEvidence.has(evidenceFingerprint)) {
+    if (fingerprints[0]) row.evidenceFingerprint = fingerprints[0];
+    if (fingerprints.length > 1) row.evidenceFingerprints = fingerprints;
+    for (const fingerprint of fingerprints) {
+      if (usedEvidence.has(fingerprint)) {
         oneOccurrenceOneTransaction = false;
         noTransactionConsumedTwice = false;
       }
-      usedEvidence.add(evidenceFingerprint);
+      usedEvidence.add(fingerprint);
     }
     if (candidate.postingDateRelation) row.postingDateRelation = candidate.postingDateRelation;
     if (candidate.atlasAccountId) row.atlasAccountId = candidate.atlasAccountId;
@@ -2591,6 +2768,7 @@ function observe(input) {
     plan: planForIdentity,
     identityRules,
     transactionWindow: normalized.transactionWindow,
+    asOf: dateOnly(normalized.fetchedAt),
   });
   const represented = hitGroups.unique.map(c => classifyRepresentedCandidate(c, openingAsOf));
   // Historical transaction-identity hits are evidence, not current-opening
@@ -3210,10 +3388,18 @@ function sanitizedCurrentPeriodActuals(report, opts) {
       actual: Math.round(amt * 100) / 100,
       postedOn: candidate.postingDate || candidate.date,
     };
-    const localId = existingLocalId(candidate.providerTransactionId);
-    if (localId) {
-      row.transactionId = localId;
-      linkedLocalIds.add(localId);
+    const localIds = [];
+    const seenLocal = new Set();
+    for (const rawId of candidateTransactionIds(candidate)) {
+      const localId = existingLocalId(rawId);
+      if (!localId || seenLocal.has(localId)) continue;
+      seenLocal.add(localId);
+      localIds.push(localId);
+    }
+    if (localIds.length) {
+      row.transactionId = localIds[0];
+      if (localIds.length > 1) row.transactionIds = localIds;
+      for (const localId of localIds) linkedLocalIds.add(localId);
     }
     representedActuals.push(row);
   }

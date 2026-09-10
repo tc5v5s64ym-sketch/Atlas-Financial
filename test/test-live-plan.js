@@ -1105,8 +1105,14 @@ console.log('\n=== 17. posted payday-window mortgage and Fit4less Msp are repres
   ok(fitRule && fitRule.payeePattern === 'Fit4less Msp'
     && fitRule.atlasAccountId === 'chequing-a' && fitRule.direction === 'debit',
     'Fit4Less identity is documented Fit4less Msp + Chequing A debit');
-  ok(!(identity.rules || []).some(r => r && r.eventId === 'tdfees'),
-    'TD fees have no invented payee identity');
+  const feeRules = (identity.rules || []).filter(r => r && r.eventId === 'tdfees');
+  ok(feeRules.length === 2
+      && feeRules.every(r => r.settlesWhen === 'two-leg-sum'
+        && r.direction === 'debit'
+        && (r.payeePatterns || []).includes('MONTHLY ACCOUNT FEE'))
+      && feeRules.some(r => r.atlasAccountId === 'chequing-a')
+      && feeRules.some(r => r.atlasAccountId === 'chequing-b'),
+    'TD fees use standing two-leg MONTHLY ACCOUNT FEE identity');
   const travelRule = (identity.rules || []).find(r => r && r.eventId === 'travel');
   ok(travelRule && travelRule.atlasAccountId === 'travelvisa'
     && travelRule.direction === 'credit'
@@ -1374,8 +1380,14 @@ console.log('\n=== 18. complete live cash plus missing same-day unposted bill st
   const scheduledFees = Number((canonical.plan.bills || [])
     .find(row => row && row.id === 'tdfees').amount);
   ok(scheduledFees > 0, 'plan still names the month-end TD fees amount');
-  ok(!(identity.rules || []).some(r => r && r.eventId === 'tdfees'),
-    'TD fees have no invented payee identity');
+  const feeRules = (identity.rules || []).filter(r => r && r.eventId === 'tdfees');
+  ok(feeRules.length === 2
+      && feeRules.every(r => r.settlesWhen === 'two-leg-sum'
+        && r.direction === 'debit'
+        && (r.payeePatterns || []).includes('MONTHLY ACCOUNT FEE'))
+      && feeRules.some(r => r.atlasAccountId === 'chequing-a')
+      && feeRules.some(r => r.atlasAccountId === 'chequing-b'),
+    'TD fees use standing two-leg MONTHLY ACCOUNT FEE identity');
   const travelRule = (identity.rules || []).find(r => r && r.eventId === 'travel');
   ok(travelRule && travelRule.atlasAccountId === 'travelvisa'
     && travelRule.direction === 'credit'

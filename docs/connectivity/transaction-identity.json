@@ -1,6 +1,6 @@
 {
   "schema": "atlas-provider-transaction-identity/v1",
-  "owns": "Unambiguous provider-transaction to Forecast-event identity. A match requires an explicit payee alias + mapped Atlas account + direction + an allowed scheduled/posting-date relation, or — for the named fixed Tennis BC salary streams only — a uniquely proven transfer credit into BILLS (chequing-a) that is independently paired to the TENNIS INCOME salary flow + direction + an allowed scheduled/posting-date relation. Optional payeeExcludePatterns refuse a hit that also matches a reimbursement or other excluded alias. Same-day is the default; named automatic payments may opt into weekend-to-next-business-day; a payment onto a mapped card may cover the latest due on or before posting. A covers-due-on-or-before-posting match against a once occurrence is allowed only when the posting is on or before seven calendar days after that due; a later same-alias debit does not reuse that once occurrence. Named Triangle and MBNA card-minimum rules may instead use covers-statement-cycle-or-latest-due: after identity, a payment on or after that card's debts.statementCloseDay may settle the upcoming minimum that statement created, and a later payment may still cover the latest due on or before posting. Statement close days are not copied into this file. Amount similarity is not identity. After that identity is unique, a card extra payment may settle the min only when the observed credit is at least the scheduled due. Named fixed salary streams additionally require the exact scheduled amount as a necessary guard; that amount is not identity by itself. A generic exact-amount BILLS transfer is not salary identity. A TENNIS BC payee credit on a household account is not salary identity. A TENNIS INCOME deposit or reimbursement is not household-cash posting proof. An unrelated household transfer is not salary identity. A refund or merchant credit is not a card-minimum payment. A payment before statement creation does not settle that future minimum. Named mapped-MBNA card-credit rules that claim the literal payee payment require payeeMatchMode exact; a PAYMENT-prefixed reversal, refund, or protection alias is not that identity.",
+  "owns": "Unambiguous provider-transaction to Forecast-event identity. A match requires an explicit payee alias + mapped Atlas account + direction + an allowed scheduled/posting-date relation, or — for the named fixed Tennis BC salary streams only — a uniquely proven transfer credit into BILLS (chequing-a) that is independently paired to the TENNIS INCOME salary flow + direction + an allowed scheduled/posting-date relation, or — for named youtube-premium only — schedule-trust-on-due, which represents the occurrence from the schedule itself on or after the due date without a bank transaction. Optional payeeExcludePatterns refuse a hit that also matches a reimbursement or other excluded alias. Same-day is the default; named automatic payments may opt into weekend-to-next-business-day; a payment onto a mapped card may cover the latest due on or before posting. A covers-due-on-or-before-posting match against a once occurrence is allowed only when the posting is on or before seven calendar days after that due; a later same-alias debit does not reuse that once occurrence. Named Fortis may use covers-early-or-due-on-or-before-posting: after identity, a debit may settle the nearest due within seven calendar days after posting (early pay) or the latest due on or before posting. A nearer prior due still wins over a farther upcoming due when distances tie. Named Triangle and MBNA card-minimum rules may instead use covers-statement-cycle-or-latest-due: after identity, a payment on or after that card's debts.statementCloseDay may settle the upcoming minimum that statement created, and a later payment may still cover the latest due on or before posting. Statement close days are not copied into this file. Amount similarity is not identity. After that identity is unique, a card extra payment may settle the min only when the observed credit is at least the scheduled due. Named tdfees uses two-leg-sum: both named MONTHLY ACCOUNT FEE debit legs (chequing-a and chequing-b) must uniquely match the same occurrence before it is represented. One leg is not settlement. Named fixed salary streams additionally require the exact scheduled amount as a necessary guard; that amount is not identity by itself. A generic exact-amount BILLS transfer is not salary identity. A TENNIS BC payee credit on a household account is not salary identity. A TENNIS INCOME deposit or reimbursement is not household-cash posting proof. An unrelated household transfer is not salary identity. A refund or merchant credit is not a card-minimum payment. A payment before statement creation does not settle that future minimum. Named mapped-MBNA card-credit rules that claim the literal payee payment require payeeMatchMode exact; a PAYMENT-prefixed reversal, refund, or protection alias is not that identity. Fortis and tdfees remain identity-plus-evidence each cycle: matching confirmed-settled transactions create representedActuals and mark PAID; without matching evidence those bills stay still-due / unverified. YouTube Premium is the only schedule-trust exception. Do not invent an Apple scrape or Gmail fetch.",
   "does_not_own": "Permission to write plan.opening or representedEvents onto data.json, pending-to-posted proof, or a second event engine.",
   "billPaymentPayees": [
     "Bell Mobility",
@@ -245,6 +245,40 @@
       "direction": "debit",
       "postingDateRule": "covers-due-on-or-before-posting",
       "note": "Observed 2026-09-04 Chequing A / BILLS ACCOUNT alias BC Hydro is the incumbent 1 September Hydro due (hydro-due-sep1). Identity is that explicit alias + BILLS + debit + covers the latest due on or before posting. hydro-due-sep1 is a once occurrence, so a posting more than seven days after 2026-09-01 does not reuse it. Amount is not identity: the planned $237.45 stays the scheduled amount, and the observed debit is settlement evidence. A debit on WEEKLY / Chequing B is not this identity. Do not invent a second Hydro bill."
+    },
+    {
+      "eventId": "fortis",
+      "payeePattern": "Fortisbc Energy Bpy",
+      "payeePatterns": ["Fortisbc Energy Bpy", "FortisBC Energy BPY", "FORTISBC"],
+      "atlasAccountId": "chequing-a",
+      "direction": "debit",
+      "postingDateRule": "covers-early-or-due-on-or-before-posting",
+      "note": "Owner 2026-09-09: Fortisbc Energy Bpy / Natural Gas on BILLS is fortis, including early pay before due. Identity is that explicit alias + BILLS + debit + early-or-covers-due. Amount is not identity. Matching confirmed-settled evidence creates representedActuals and marks PAID. Without matching evidence the bill stays still-due / unverified. Do not owner-question Dale when evidence matches. Do not implement trust-without-evidence."
+    },
+    {
+      "eventId": "tdfees",
+      "payeePattern": "MONTHLY ACCOUNT FEE",
+      "payeePatterns": ["MONTHLY ACCOUNT FEE"],
+      "atlasAccountId": "chequing-a",
+      "direction": "debit",
+      "postingDateRule": "covers-due-on-or-before-posting",
+      "settlesWhen": "two-leg-sum",
+      "note": "Owner 2026-09-09: two x $17.95 MONTHLY ACCOUNT FEE on chequing-a and chequing-b settle the one $35.90 tdfees bill. Identity is that explicit alias + the named account + debit + covers-due. Amount is not identity. Both legs must match before the occurrence is represented. One leg alone stays still-due / unverified. Matching confirmed-settled evidence creates representedActuals and marks PAID. Do not owner-question Dale when both legs match. Do not implement trust-without-evidence."
+    },
+    {
+      "eventId": "tdfees",
+      "payeePattern": "MONTHLY ACCOUNT FEE",
+      "payeePatterns": ["MONTHLY ACCOUNT FEE"],
+      "atlasAccountId": "chequing-b",
+      "direction": "debit",
+      "postingDateRule": "covers-due-on-or-before-posting",
+      "settlesWhen": "two-leg-sum",
+      "note": "Second TD monthly-account-fee leg on WEEKLY (chequing-b). Same two-leg settlement shape as the BILLS leg. One account alone is not settlement."
+    },
+    {
+      "eventId": "youtube-premium",
+      "settlesWhen": "schedule-trust-on-due",
+      "note": "Owner 2026-09-09: standing schedule-trust paid on the scheduled due date via Apple Services / PayPal. Do not require an isolated YouTube bank transaction or monthly Dale proof. Do not invent Apple scrape or Gmail fetch. On or after the due date, identity/settlement emits representedActuals from the schedule itself. Before the due date the bill stays still-due."
     }
   ]
 }
