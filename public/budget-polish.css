@@ -1,0 +1,442 @@
+/* Atlas Budget — approved Option 3 + soft polish.
+ * Presentation only. Financial values and statuses are still rendered by
+ * public/plan.js from Forecast; this file changes hierarchy, spacing and
+ * visual state only.
+ */
+
+#operating-surface-body.atlas-budget-ui-ready {
+  --atlas-blue-soft: color-mix(in srgb, var(--s1) 11%, var(--surface-1));
+  --atlas-blue-border: color-mix(in srgb, var(--s1) 22%, var(--border));
+  --atlas-green-soft: color-mix(in srgb, var(--good) 10%, var(--surface-1));
+  --atlas-green-border: color-mix(in srgb, var(--good) 26%, var(--border));
+  --atlas-red-soft: color-mix(in srgb, var(--critical) 8%, var(--surface-1));
+  --atlas-red-border: color-mix(in srgb, var(--critical) 24%, var(--border));
+  --atlas-purple: color-mix(in srgb, #6554c0 70%, var(--text-primary));
+  --atlas-purple-soft: color-mix(in srgb, var(--atlas-purple) 9%, var(--surface-1));
+  --atlas-purple-border: color-mix(in srgb, var(--atlas-purple) 22%, var(--border));
+  --atlas-amber-soft: color-mix(in srgb, var(--warning) 9%, var(--surface-1));
+  --atlas-card-shadow: 0 1px 2px rgba(21,21,19,.04), 0 8px 24px rgba(21,21,19,.045);
+}
+
+/* Current Balance is the one live number above the pay-period snapshot. */
+.atlas-budget-ui-ready .atlas-current-balance-card {
+  margin: 0 0 2px;
+  padding: 18px 20px 17px;
+  border: 1px solid var(--atlas-blue-border);
+  border-radius: 20px;
+  background: var(--atlas-blue-soft);
+  box-shadow: var(--atlas-card-shadow);
+}
+.atlas-budget-ui-ready .atlas-current-balance-card .live-current-balance-label {
+  color: var(--s1);
+}
+.atlas-budget-ui-ready .atlas-current-balance-card .live-current-balance-amount {
+  margin-top: 2px;
+  font-size: clamp(2.15rem, 9vw, 2.65rem);
+}
+.atlas-budget-ui-ready .atlas-current-balance-card .live-current-balance-date {
+  margin-top: 5px;
+}
+
+/* The old white statement becomes a set of distinct app sections. */
+.atlas-budget-ui-ready .calendar-waterfall[data-atlas-budget-ui] {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.atlas-budget-ui-ready .calendar-waterfall[data-atlas-budget-ui] > .calendar-waterfall-head,
+.atlas-budget-ui-ready .calendar-waterfall[data-atlas-budget-ui] > .operating-note {
+  margin-left: 4px;
+  margin-right: 4px;
+}
+
+/* Rollover + Payday Balance are supporting facts, not replacements for Income. */
+.atlas-period-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.atlas-period-summary > :only-child {
+  grid-column: 1 / -1;
+}
+.atlas-summary-card {
+  min-width: 0;
+  padding: 15px 16px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface-1);
+  box-shadow: var(--atlas-card-shadow);
+}
+.atlas-rollover-summary {
+  background: color-mix(in srgb, var(--text-secondary) 5%, var(--surface-1));
+}
+.atlas-rollover-summary .operating-number {
+  display: none;
+}
+.atlas-rollover-summary .operating-prompt {
+  margin: 0 0 7px;
+  padding: 0;
+  border: 0;
+  color: var(--text-secondary);
+  font-size: .75rem;
+  font-weight: 700;
+  letter-spacing: .06em;
+  line-height: 1.25;
+  text-transform: uppercase;
+}
+.atlas-rollover-summary .operating-answer {
+  margin: 0;
+}
+.atlas-rollover-summary .payday-cash .operating-amount,
+.atlas-rollover-summary .operating-amount {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 1.65rem;
+  font-weight: 750;
+  letter-spacing: -.025em;
+  line-height: 1.08;
+}
+.atlas-rollover-summary .operating-note {
+  margin: 6px 0 0;
+  color: var(--text-secondary);
+  font-size: .76rem;
+  line-height: 1.35;
+}
+.atlas-payday-summary {
+  display: flex;
+  align-items: stretch;
+  background: var(--atlas-green-soft);
+  border-color: var(--atlas-green-border);
+}
+.atlas-payday-summary [data-payday-balance] {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.atlas-payday-summary [data-payday-balance] span:first-child {
+  color: var(--text-secondary);
+  font-size: .75rem;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.atlas-payday-summary [data-payday-balance] span:last-child {
+  color: var(--text-primary);
+  font-size: 1.65rem;
+  font-weight: 750;
+  letter-spacing: -.025em;
+  line-height: 1.08;
+}
+
+/* Shared section-card anatomy. */
+.atlas-budget-section {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--surface-1);
+  box-shadow: var(--atlas-card-shadow);
+}
+.atlas-budget-section > .operating-question {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.atlas-budget-section > .operating-question > .operating-number {
+  display: none;
+}
+.atlas-budget-section > .operating-question > .operating-prompt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 13px 18px;
+  border: 0;
+  font-size: .78rem;
+  font-weight: 750;
+  letter-spacing: .07em;
+  line-height: 1.25;
+  text-transform: uppercase;
+}
+.atlas-budget-section > .operating-question > .operating-prompt::before {
+  content: "";
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background-color: currentColor;
+  -webkit-mask: var(--atlas-section-icon) center / 18px 18px no-repeat;
+  mask: var(--atlas-section-icon) center / 18px 18px no-repeat;
+}
+.atlas-budget-section > .operating-question > .operating-answer {
+  margin: 0;
+  padding: 8px 18px 16px;
+}
+
+/* Income */
+.atlas-income-card {
+  --atlas-section-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='8.5'/%3E%3Cpath d='M14.8 8.8c-.7-.7-1.7-1.1-2.9-1.1-1.7 0-2.9.8-2.9 2 0 3.1 6.1 1.5 6.1 4.7 0 1.2-1.1 2.1-3 2.1-1.3 0-2.5-.4-3.3-1.2M12 5.7v12.6'/%3E%3C/svg%3E");
+}
+.atlas-income-card > .operating-question > .operating-prompt {
+  color: var(--success-text);
+  background: var(--atlas-green-soft);
+  border-bottom: 1px solid var(--atlas-green-border);
+}
+.atlas-income-card .operating-lines {
+  margin: 0;
+}
+.atlas-income-card .operating-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  min-height: 48px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--grid);
+}
+.atlas-income-card .operating-line:last-child,
+.atlas-income-card .other-income-openable:last-child {
+  border-bottom: 0;
+}
+.atlas-income-card [data-other-income] {
+  margin: 0;
+}
+
+/* Bills */
+.atlas-bills-card {
+  --atlas-section-icon: var(--nav-icon-bills);
+}
+.atlas-bills-card > [data-operating-question="04"] > .operating-prompt {
+  color: var(--atlas-purple);
+  background: var(--atlas-purple-soft);
+  border-bottom: 1px solid var(--atlas-purple-border);
+}
+.atlas-bills-card > [data-operating-question="04"] > .operating-answer {
+  padding-top: 10px;
+}
+.atlas-bills-card .payday-group {
+  margin: 10px 2px 4px;
+  padding: 0;
+  border: 0;
+  color: var(--text-secondary);
+  font-size: .68rem;
+  font-weight: 750;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+.atlas-bills-card .atlas-bill-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 9px;
+  align-items: center;
+  min-height: 50px;
+  margin: 7px 0;
+  padding: 9px 11px 9px 13px;
+  border: 1px solid transparent;
+  border-left-width: 4px;
+  border-radius: 13px;
+  color: var(--text-primary);
+}
+.atlas-bills-card .atlas-bill-row > span:first-child {
+  min-width: 0;
+  color: var(--text-primary);
+  font-weight: 560;
+  line-height: 1.35;
+}
+.atlas-bills-card .atlas-bill-row > span:last-child {
+  color: var(--text-primary);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.atlas-bills-card .atlas-bill-row-paid {
+  border-color: var(--atlas-green-border);
+  border-left-color: var(--good);
+  background: var(--atlas-green-soft);
+}
+.atlas-bills-card .atlas-bill-row-to-pay {
+  border-color: var(--atlas-red-border);
+  border-left-color: var(--critical);
+  background: var(--atlas-red-soft);
+}
+.atlas-bills-card .atlas-bill-row-pending {
+  border-color: var(--atlas-red-border);
+  border-left-color: color-mix(in srgb, var(--critical) 70%, var(--axis));
+  background: var(--atlas-red-soft);
+}
+.atlas-bills-card .atlas-bill-row-check {
+  border-color: color-mix(in srgb, var(--warning) 28%, var(--border));
+  border-left-color: var(--warning);
+  background: var(--atlas-amber-soft);
+}
+.atlas-bill-state {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 24px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: .66rem;
+  font-weight: 800;
+  letter-spacing: .04em;
+  line-height: 1;
+  white-space: nowrap;
+}
+.atlas-bill-state-paid {
+  color: var(--success-text);
+  background: color-mix(in srgb, var(--good) 15%, var(--surface-1));
+}
+.atlas-bill-state-paid::before {
+  content: "✓";
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--good);
+  color: #fff;
+  font-size: .68rem;
+  font-weight: 900;
+}
+.atlas-bill-state-to-pay,
+.atlas-bill-state-pending {
+  color: var(--critical);
+  background: color-mix(in srgb, var(--critical) 12%, var(--surface-1));
+}
+.atlas-bill-state-check {
+  color: color-mix(in srgb, var(--warning) 78%, var(--text-primary));
+  background: color-mix(in srgb, var(--warning) 12%, var(--surface-1));
+}
+
+/* Balance after Bills reads as the footer of the Bills card. */
+.atlas-bills-card > [data-operating-question="05"],
+.atlas-household-budget-card > [data-operating-question="07"] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 14px;
+  padding: 14px 18px 16px;
+  border-top: 1px solid var(--grid);
+  background: color-mix(in srgb, var(--s1) 5%, var(--surface-1));
+}
+.atlas-bills-card > [data-operating-question="05"] > .operating-prompt,
+.atlas-household-budget-card > [data-operating-question="07"] > .operating-prompt {
+  display: block;
+  margin: 0;
+  padding: 0;
+  color: var(--text-primary);
+  font-size: .84rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.atlas-bills-card > [data-operating-question="05"] > .operating-prompt::before,
+.atlas-household-budget-card > [data-operating-question="07"] > .operating-prompt::before {
+  display: none;
+}
+.atlas-bills-card > [data-operating-question="05"] > .operating-answer,
+.atlas-household-budget-card > [data-operating-question="07"] > .operating-answer {
+  margin: 0;
+  padding: 0;
+}
+.atlas-bills-card > [data-operating-question="05"] .operating-amount,
+.atlas-household-budget-card > [data-operating-question="07"] .operating-amount {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 1.25rem;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+/* Household Budget */
+.atlas-household-budget-card {
+  --atlas-section-icon: var(--nav-icon-budget);
+}
+.atlas-household-budget-card > [data-operating-question="06"] > .operating-prompt {
+  color: var(--s1);
+  background: var(--atlas-blue-soft);
+  border-bottom: 1px solid var(--atlas-blue-border);
+}
+.atlas-household-budget-card > [data-operating-question="06"] > .operating-answer {
+  padding-top: 12px;
+}
+.atlas-household-budget-card .household-budget-cycle {
+  margin-top: 0;
+}
+.atlas-household-budget-card .household-budget-category,
+.atlas-household-budget-card .household-budget-other {
+  padding-top: 13px;
+  padding-bottom: 13px;
+}
+.atlas-household-budget-card .household-budget-category + .household-budget-category,
+.atlas-household-budget-card .household-budget-category + .household-budget-other,
+.atlas-household-budget-card .household-budget-other + .household-budget-category {
+  border-top: 1px solid var(--grid);
+}
+
+/* Keep the section treatment polished on phones without crushing long names. */
+@media (max-width: 520px) {
+  .atlas-budget-ui-ready .atlas-current-balance-card {
+    padding: 16px 17px;
+    border-radius: 18px;
+  }
+  .atlas-period-summary {
+    gap: 9px;
+  }
+  .atlas-summary-card {
+    padding: 13px 14px;
+    border-radius: 16px;
+  }
+  .atlas-rollover-summary .payday-cash .operating-amount,
+  .atlas-rollover-summary .operating-amount,
+  .atlas-payday-summary [data-payday-balance] span:last-child {
+    font-size: clamp(1.28rem, 6.4vw, 1.6rem);
+  }
+  .atlas-budget-section {
+    border-radius: 18px;
+  }
+  .atlas-budget-section > .operating-question > .operating-prompt {
+    padding: 12px 14px;
+  }
+  .atlas-budget-section > .operating-question > .operating-answer {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+  .atlas-bills-card .atlas-bill-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 5px 9px;
+  }
+  .atlas-bills-card .atlas-bill-row > span:first-child {
+    grid-column: 1 / -1;
+  }
+  .atlas-bill-state {
+    justify-self: start;
+  }
+  .atlas-bills-card .atlas-bill-row > span:last-child {
+    justify-self: end;
+  }
+  .atlas-bills-card > [data-operating-question="05"],
+  .atlas-household-budget-card > [data-operating-question="07"] {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+}
+
+@media (max-width: 350px) {
+  .atlas-period-summary {
+    grid-template-columns: 1fr;
+  }
+}

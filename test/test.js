@@ -53,6 +53,7 @@ const suites = [
   ['read-only recurring card-charge audit', 'test-recurring-audit.js'],
   ['decision-first payday operating surface (AF-OPERATE-02)', 'test-operating-surface.js'],
   ['plain-language household homepage', 'test-household-view.js'],
+  ['approved Budget UI presentation', 'test-budget-ui-polish.js'],
   ['Plan homepage decision desk', 'test-plan-decision-desk.js'],
   ['cash-waterfall household homepage', 'test-cash-waterfall-view.js'],
   ['chequing availability headline', 'test-chequing-availability.js'],
