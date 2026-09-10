@@ -1645,6 +1645,32 @@ function observationFingerprintDigest(fingerprint) {
   return crypto.createHash('sha256').update(JSON.stringify(fingerprint)).digest('hex');
 }
 
+// Schedule-trust uses one provider/household financial date.
+// fetchedAt and the process clock are fetch timestamps, not as-of.
+function householdDateFromProviderEvidence(observations) {
+  const dates = [];
+  for (const id of REQUIRED_LIVE_CASH_IDS) {
+    const obs = (observations || []).find(o =>
+      o
+      && o.canonical
+      && o.canonical.collection === 'cash'
+      && String(o.canonical.id) === id
+      && o.evidenceValue != null
+      && isFinite(Number(o.evidenceValue)));
+    const day = dateOnly(obs && (obs.evidenceDate || obs.observedAsOf));
+    if (day) dates.push(day);
+  }
+  if (!dates.length) return null;
+  dates.sort();
+  return dates[0];
+}
+
+function householdFinancialDate(input, observations) {
+  const explicit = dateOnly(input && (input.asOf || input.householdDate));
+  if (explicit) return explicit;
+  return householdDateFromProviderEvidence(observations);
+}
+
 function observationReceipt(report, opts) {
   opts = opts || {};
   const fetchedAt = (report && report.fetchedAt) || null;
@@ -2343,13 +2369,14 @@ function reconciliationReceipt(report, opts) {
   const collapsed = (report && report.collapsedTransactions)
     || (report && report.transactions)
     || [];
+  const scheduleTrustAsOf = householdFinancialDate(opts, report && report.observations);
   const groups = representedEventHitGroups({
     transactions: collapsed,
     accountMap: mapDoc,
     plan,
     identityRules,
     transactionWindow: report && report.transactionWindow,
-    asOf: householdDate,
+    asOf: scheduleTrustAsOf,
   });
   const uniqueByKey = new Map();
   for (const candidate of groups.unique) {
@@ -2762,13 +2789,14 @@ function observe(input) {
   const planForIdentity = Object.assign({}, (input.data && input.data.plan) || {}, {
     debts: (input.data && input.data.debts) || [],
   });
+  const scheduleTrustAsOf = householdFinancialDate(input, observations);
   const hitGroups = representedEventHitGroups({
     transactions: collapsed.transactions,
     accountMap: mapDoc,
     plan: planForIdentity,
     identityRules,
     transactionWindow: normalized.transactionWindow,
-    asOf: dateOnly(normalized.fetchedAt),
+    asOf: scheduleTrustAsOf,
   });
   const represented = hitGroups.unique.map(c => classifyRepresentedCandidate(c, openingAsOf));
   // Historical transaction-identity hits are evidence, not current-opening
@@ -3600,6 +3628,8 @@ const api = {
   observationReceiptLooksSanitized,
   observationFingerprintFromParts,
   observationFingerprintDigest,
+  householdDateFromProviderEvidence,
+  householdFinancialDate,
   observationReceipt,
   sanitizedEvidenceFingerprint,
   reconciliationReceiptLooksSanitized,

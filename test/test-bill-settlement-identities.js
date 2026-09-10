@@ -104,6 +104,64 @@ function observeWith(identity, asOf, txs) {
   });
 }
 
+function readyMap() {
+  const map = fixtureMap();
+  map.mappings = (map.mappings || []).concat([{
+    providerAccountId: '1003',
+    canonical: { collection: 'cash', id: 'savings' },
+    atlasRole: 'household-cash',
+  }]);
+  return map;
+}
+
+function readyPayload(financialAsOf, fetchedDay, extraTxs) {
+  const body = payload(financialAsOf, extraTxs);
+  body.fetchedAt = fetchedDay + 'T18:00:00.000Z';
+  body.transactionWindow.endDate = fetchedDay;
+  body.accounts = (body.accounts || []).concat([
+    {
+      id: 1003, name: 'Fixture Savings', type: 'cash', balance: 200,
+      updated_at: financialAsOf + 'T17:55:00.000Z',
+    },
+    {
+      id: 2001, name: 'Fixture TD Visa', type: 'credit', balance: 100,
+      credit_limit: 1000, updated_at: financialAsOf + 'T17:55:00.000Z',
+    },
+    {
+      id: 2002, name: 'Fixture HELOC', type: 'loan', balance: 50,
+      updated_at: financialAsOf + 'T17:55:00.000Z',
+    },
+    {
+      id: 2003, name: 'Fixture Mortgage', type: 'loan', balance: 100,
+      updated_at: financialAsOf + 'T17:55:00.000Z',
+    },
+  ]);
+  return body;
+}
+
+function readyObserve(identity, financialAsOf, fetchedDay, txs) {
+  return O.observe({
+    provider: 'lunchmoney',
+    payload: readyPayload(financialAsOf, fetchedDay, txs),
+    accountMap: readyMap(),
+    data: liveData(),
+    identity,
+  });
+}
+
+function youtubeRepresented(report) {
+  return (report.representedEventCandidates || [])
+    .some(c => c && c.id === YOUTUBE_ID && c.date === YOUTUBE_DUE
+      && c.identity === SCHEDULE_TRUST);
+}
+
+function youtubeReconciled(report) {
+  return ((report.obligationReconciliationReceipt
+    && report.obligationReconciliationReceipt.occurrences) || [])
+    .some(row => row && row.id === YOUTUBE_ID && row.date === YOUTUBE_DUE
+      && row.settlement === 'represented');
+}
+
 function period(view, id) {
   return ((view && view.calendarPeriods) || []).find(p => p.id === id);
 }
@@ -380,6 +438,45 @@ console.log('\n=== 7. pages do not special-case these merchants ===');
   const planSrc = sourceText(fs.readFileSync(path.join(__dirname, '..', 'public', 'plan.js'), 'utf8'));
   ok(!/Fortisbc Energy|MONTHLY ACCOUNT FEE|YouTube Premium/.test(planSrc),
     'plan.js only prints; it does not special-case these identities');
+}
+
+console.log('\n=== 8. schedule-trust uses the financial as-of, never fetchedAt ===');
+{
+  const identity = identityDoc();
+  const observeSrc = sourceText(fs.readFileSync(
+    path.join(__dirname, '..', 'scripts', 'provider-observe.js'), 'utf8'));
+  ok(!/representedEventHitGroups\([\s\S]{0,500}dateOnly\(normalized\.fetchedAt\)/.test(observeSrc),
+    'representedEventHitGroups is never keyed from fetchedAt');
+  ok((observeSrc.match(/asOf:\s*scheduleTrustAsOf/g) || []).length >= 2,
+    'observe and reconciliation both pass the same schedule-trust financial as-of');
+
+  const FETCH_AFTER_DUE = '2026-09-03';
+  const stale = readyObserve(identity, YOUTUBE_BEFORE, FETCH_AFTER_DUE, []);
+  const staleReceipt = stale.observationReceipt || {};
+  ok(staleReceipt.readyForReconciliation === true,
+    'ready stale packet can run obligation reconciliation');
+  ok(O.householdFinancialDate({}, stale.observations) === YOUTUBE_BEFORE,
+    'provider cash evidence independently dates the financial as-of as Sep 1');
+  ok(!youtubeRepresented(stale) && !youtubeReconciled(stale),
+    'financial as-of before the 2nd leaves YouTube unrepresented on both surfaces');
+  ok(!((stale.currentPeriodActuals || {}).representedActuals || [])
+      .some(r => r && r.id === YOUTUBE_ID),
+    'stale fetch after the 2nd does not write YouTube representedActuals');
+  ok(billUnpaid(recommendFromReport(stale, YOUTUBE_BEFORE), YOUTUBE_ID, YOUTUBE_DUE),
+    'Budget still shows YouTube still-due when the financial date is Sep 1');
+
+  const due = readyObserve(identity, YOUTUBE_DUE, FETCH_AFTER_DUE, []);
+  const dueReceipt = due.observationReceipt || {};
+  ok(O.householdFinancialDate({}, due.observations) === YOUTUBE_DUE,
+    'provider cash evidence independently dates the financial as-of as Sep 2');
+  ok(dueReceipt.readyForReconciliation === true
+      && youtubeRepresented(due) && youtubeReconciled(due),
+    'both observe and reconciliation settle YouTube when the financial date reaches the due date');
+  ok(((due.currentPeriodActuals || {}).representedActuals || [])
+      .some(r => r && r.id === YOUTUBE_ID && r.date === YOUTUBE_DUE && !r.transactionId),
+    'representedActuals names youtube-premium@Sep 2 from schedule-trust, not a bank tx');
+  ok(billPaid(recommendFromReport(due, YOUTUBE_DUE), YOUTUBE_ID, YOUTUBE_DUE),
+    'schedule-trust on the financial due date marks YouTube PAID');
 }
 
 if (failures) {
