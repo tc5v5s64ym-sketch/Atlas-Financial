@@ -1823,15 +1823,19 @@ function calendarIncomeHtml(period) {
       || row.status === 'unresolved';
     const status = notRelied ? 'not relied upon'
       : row.status === 'received' ? 'received'
+      : row.status === 'relied-upon' ? 'relied upon'
       : row.status === 'planned' ? 'planned'
       : row.status === 'unknown' ? 'unknown'
       : row.alreadyInCash ? 'already in balance' : 'arriving';
     const amount = glanceSignedMoney(glanceMoney(row, 'in'));
     const about = row.confidence === 'estimated' && amount != null ? 'about ' : '';
     const note = notRelied ? 'not relied upon'
+      : row.status === 'relied-upon' ? 'relied upon'
       : row.alreadyInCash && row.status !== 'received' ? 'already in balance'
       : status;
-    const statusAttr = notRelied ? 'not-relied-upon' : status;
+    const statusAttr = notRelied ? 'not-relied-upon'
+      : row.status === 'relied-upon' ? 'relied-upon'
+      : status;
     return `<div class="operating-line" data-period-income="${row.id || ''}" data-income-status="${statusAttr}"${extra}>
       <span>${glanceLineLabel(row, note)}</span><span>${amount != null ? about + amount : '—'}</span>
     </div>`;

@@ -21,7 +21,7 @@ is `Forecast.financialDate`. Do not slice a UTC timestamp into a calendar
 date, and do not scatter a second timezone through observation or cutover
 code.
 
-## Household income the plan uses *(owner-stated 2026-08-29; salary recognition restated 2026-09-01)*
+## Household income the plan uses *(owner-stated 2026-08-29; salary recognition restated 2026-09-01; income-recognition policy 2026-09-11)*
 
 Forecast is the only planner. The income `plan.income` may use is Dale's
 Seaspan payroll, Amanda's two fixed Tennis BC salary deposits
@@ -43,16 +43,27 @@ Three concepts stay distinct:
 **Dale / Seaspan.** `plan.income.payroll` is **biweekly, every 14 days**,
 incumbent anchor **2026-08-14**. This is a true 14-day cadence. It is **not
 twice per month**. Payday dates drift through the calendar, so a calendar
-half may contain one Seaspan paycheck or two.
+half may contain one Seaspan paycheck or two. Owner policy **2026-09-11**:
+once the household financial date in America/Vancouver is a Seaspan
+payday, that salary is **relied upon / cleared for planning from 00:00
+PT** that day. Lunch Money lag — the deposit not yet posted or updated —
+is not a reason to leave it “not relied upon”. Forecast encodes that
+recognition. It does not invent a Lunch Money deposit and does not write
+`data.json`.
 
 **Amanda / Tennis BC.** Semi-monthly in household terms: the 15th and the
 last calendar day. The incumbent representation is two monthly Forecast
 streams (`amandaSalary15` day 15; `amandaSalaryMonthEnd` day 31, which
 clamps to the last calendar day). Do not invent a third recurrence type
 while those streams produce the right dates. Future confirmed salary
-remains Forecast income. Same-day unproven inbound is the live-overlay
-not-relied-upon case (PR #222); it does not mean “never forecast Amanda
-salary until a transfer is observed.”
+remains Forecast income on the calendar. Owner policy **2026-09-11**:
+treat Amanda salary as received **only when confirmed received**. Do not
+present it as relied-upon ahead of confirmation the way Dale’s Seaspan
+payday is recognized at midnight PT. Same-day unproven Amanda inbound
+stays unconfirmed (arriving or not-relied-upon). That is not “never
+forecast Amanda salary until a transfer is observed”; it is settlement
+status. PR #222 still describes the live-overlay not-relied-upon evidence
+path.
 
 **Operating Pay Periods** are Seaspan payday-to-payday windows, derived
 from the incumbent `plan.income.payroll` biweekly recurrence /
