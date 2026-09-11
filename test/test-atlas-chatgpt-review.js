@@ -132,28 +132,101 @@ const racedB = wake.decide(decideInput({
   comments: [],
 }));
 ok(racedA.ok && racedB.ok && racedA.code === 'ready' && racedB.code === 'ready',
-  'unsynchronized concurrent decide() calls both return ready, so YAML must serialize all wake-ups');
-const pullRequestGroup = wake.wakeupConcurrencyGroup({
+  'unsynchronized concurrent decide() calls both return ready, so YAML must serialize same-PR wake-ups');
+const otherHead = 'c'.repeat(40);
+const pr288PullRequest = {
   eventName: 'pull_request',
   pullRequestNumber: 288,
   headSha: head,
-});
-const pullRequestWorkflowGroup = wake.wakeupConcurrencyGroup({
+};
+const pr288Workflow = {
   eventName: 'workflow_run',
   workflowEvent: 'pull_request',
   workflowRunPullRequestNumber: 288,
+  workflowRunPullRequestNumbers: [288],
   headSha: head,
-});
-const pullRequestTargetGroup = wake.wakeupConcurrencyGroup({
+};
+const pr288Target = {
+  eventName: 'workflow_run',
+  workflowEvent: 'pull_request_target',
+  workflowRunPullRequestNumber: 288,
+  workflowRunPullRequestNumbers: [288],
+  headSha: oldHead,
+};
+const pr288TargetAssociated = {
   eventName: 'workflow_run',
   workflowEvent: 'pull_request_target',
   workflowRunPullRequestNumber: null,
+  workflowRunPullRequestNumbers: [],
+  associatedPullRequestNumbers: [288],
   headSha: oldHead,
-});
-ok(pullRequestGroup === wake.WAKEUP_CONCURRENCY_GROUP
-  && pullRequestGroup === pullRequestWorkflowGroup
-  && pullRequestGroup === pullRequestTargetGroup,
-  'production-shaped parallel pull_request and pull_request_target completions share one wake-up group');
+};
+const pr288TargetUnresolved = {
+  eventName: 'workflow_run',
+  workflowEvent: 'pull_request_target',
+  workflowRunPullRequestNumber: null,
+  workflowRunPullRequestNumbers: [],
+  associatedPullRequestNumbers: [],
+  headSha: oldHead,
+};
+const pr289Workflow = {
+  eventName: 'workflow_run',
+  workflowEvent: 'pull_request',
+  workflowRunPullRequestNumber: 289,
+  workflowRunPullRequestNumbers: [289],
+  headSha: otherHead,
+};
+const expected288Group = `${wake.WAKEUP_CONCURRENCY_PREFIX}-288`;
+ok(wake.resolveWakeupPrNumbers(pr288PullRequest).join() === '288'
+  && wake.resolveWakeupPrNumbers(pr288Workflow).join() === '288'
+  && wake.resolveWakeupPrNumbers(pr288Target).join() === '288'
+  && wake.resolveWakeupPrNumbers(pr288TargetAssociated).join() === '288',
+  'production-shaped pull_request and pull_request_target completions resolve to the same PR identity');
+ok(wake.wakeupConcurrencyGroup(pr288PullRequest) === expected288Group
+  && wake.wakeupConcurrencyGroup(pr288Workflow) === expected288Group
+  && wake.wakeupConcurrencyGroup(pr288Target) === expected288Group
+  && wake.wakeupConcurrencyGroup(pr288TargetAssociated) === expected288Group,
+  'overlapping pull_request and pull_request_target completions for one PR share one PR-identity group');
+ok(wake.wakeupConcurrencyGroup(pr289Workflow) === `${wake.WAKEUP_CONCURRENCY_PREFIX}-289`
+  && wake.wakeupConcurrencyGroup(pr288Workflow) !== wake.wakeupConcurrencyGroup(pr289Workflow),
+  'unrelated PRs do not share a wake-up concurrency slot');
+ok(wake.resolveWakeupPrNumbers(pr288TargetUnresolved).length === 0
+  && wake.wakeupConcurrencyGroup(pr288TargetUnresolved) === '',
+  'a PR-less pull_request_target completion fans out to nothing and occupies no shared slot');
+function pendingReplaced(running, pending, incoming) {
+  const runningGroup = wake.wakeupConcurrencyGroup(running);
+  const pendingGroup = wake.wakeupConcurrencyGroup(pending);
+  const incomingGroup = wake.wakeupConcurrencyGroup(incoming);
+  return Boolean(runningGroup && runningGroup === pendingGroup && pendingGroup === incomingGroup);
+}
+ok(!pendingReplaced(pr288Workflow, pr289Workflow, pr288TargetUnresolved),
+  'a later PR-less pull_request_target completion cannot replace an unrelated PR pending wake-up');
+ok(pendingReplaced(pr288Workflow, pr288Workflow, pr288Target)
+  && wake.resolveWakeupPrNumbers(pr288Target)[0] === 288,
+  'same-PR pending replacement still names that PR, so the eligible head is not stranded');
+const otherPr = {
+  ...basePr,
+  number: 289,
+  head: { sha: otherHead, ref: 'agent/other' },
+};
+const firstOther = wake.decide(decideInput({
+  pr: otherPr,
+  checks: productionChecks,
+  statuses: productionStatuses,
+}));
+ok(firstGate.ok && firstOther.ok,
+  'two eligible PRs can each receive a wake-up when they do not share a slot');
+ok(!wake.decide(decideInput({
+  pr: otherPr,
+  checks: productionChecks,
+  statuses: productionStatuses,
+  comments: [{
+    user: { login: wake.TRUSTED_WAKE_AUTHOR },
+    created_at: '2026-09-11T12:11:00Z',
+    body: wake.formatWakeComment(otherHead, 'd'.repeat(32)),
+  }],
+})).ok,
+  'each eligible PR/head still yields exactly one wake-up after serialization');
 
 console.log('\n=== bridge result validation ===');
 const workLogin = 'atlas-chatgpt-work[bot]';
@@ -356,14 +429,20 @@ const wakeupYml = fs.readFileSync(path.join(root, '.github/workflows/atlas-chatg
 const bridgeYml = fs.readFileSync(path.join(root, '.github/workflows/atlas-chatgpt-review-bridge.yml'), 'utf8');
 ok(/checks\.listForRef/.test(wakeupYml) && /listCommitStatusesForRef/.test(wakeupYml),
   'wake-up reads real head check-runs and incumbent commit statuses');
-const wakeupConcurrencyGroup = (wakeupYml.match(/^\s*group:\s*(.+)$/m) || [])[1] || '';
-ok(wakeupConcurrencyGroup === 'atlas-chatgpt-review-wakeup'
+ok(!/^concurrency:/m.test(wakeupYml),
+  'wake-up workflow does not use a repo-wide concurrency slot that can drop unrelated events');
+const wakeupConcurrencyGroup = (wakeupYml.match(/^\s+group:\s*(.+)$/m) || [])[1] || '';
+ok(wakeupConcurrencyGroup === 'atlas-chatgpt-review-wakeup-${{ matrix.pr }}'
   && !/workflow_run\.head_sha/.test(wakeupConcurrencyGroup)
   && !/workflow_run\.id/.test(wakeupConcurrencyGroup)
   && !/github\.run_id/.test(wakeupConcurrencyGroup),
-  'wake-up concurrency uses one shared group so pull_request_target completions cannot race');
+  'wake-up concurrency serializes by the resolved PR identity, not a SHA or run id');
 ok(/cancel-in-progress:\s*false/.test(wakeupYml),
-  'serialized wake-up jobs wait rather than cancel, so the later job can re-read comments');
+  'serialized same-PR wake-up jobs wait rather than cancel, so the later job can re-read comments');
+ok(/gate\.resolveWakeupPrNumbers\(/.test(wakeupYml)
+  && /core\.setOutput\('prs', JSON\.stringify\(prNumbers\)\)/.test(wakeupYml)
+  && /WAKE_PR_NUMBER:\s*\$\{\{ matrix\.pr \}\}/.test(wakeupYml),
+  'resolve job fans out PR identities and the wake job posts only for that PR');
 ok(/formatWakeComment\(pr\.head\.sha, gate\.generateWakeId\(\)\)/.test(wakeupYml),
   'trusted wake-up comments include a generated invocation id bound to the live head');
 ok(/card\.selectCardReview\(reviews, liveHead\)/.test(bridgeYml)

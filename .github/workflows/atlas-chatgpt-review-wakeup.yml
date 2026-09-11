@@ -23,23 +23,83 @@ permissions:
   checks: read
   statuses: read
 
-# Serialize every wake-up together. pull_request_target completions
-# (Risk label / Incumbent privacy) set workflow_run.head_sha to the
-# default-branch commit and often omit pull_requests[], so a per-SHA
-# or per-run group would not queue them with ordinary PR-head gates.
-# One repo-wide group plus cancel-in-progress: false makes the later
-# job re-read comments after the first marker exists and exit.
-concurrency:
-  group: atlas-chatgpt-review-wakeup
-  cancel-in-progress: false
-
+# Do not use workflow-level concurrency. GitHub keeps one running and one
+# pending run per group; a later unrelated gate or a pull_request_target
+# completion with no associated PR can replace an eligible pending wake-up
+# and leave a green REQUIRED head un-woken. Resolve PR identity first, then
+# serialize only that PR's wake-up. A PR-less event fans out to nothing.
 jobs:
-  wake:
+  resolve:
     if: >-
       github.event_name == 'pull_request' ||
       github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    outputs:
+      prs: ${{ steps.prs.outputs.prs }}
+    steps:
+      - name: Checkout trusted default-branch helpers
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Resolve wake-up PR identities
+        id: prs
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const helperPath = path.join(process.env.GITHUB_WORKSPACE, 'scripts/atlas-chatgpt-review-wakeup.js');
+            if (!fs.existsSync(helperPath)) {
+              core.notice('Trusted wake-up helper is not on default main yet; bootstrap PR is intentionally skipped.');
+              core.setOutput('prs', '[]');
+              return;
+            }
+            const gate = require(helperPath);
+            const { owner, repo } = context.repo;
+            let associatedPullRequestNumbers = [];
+            if (context.eventName !== 'pull_request') {
+              const fromEvent = (context.payload.workflow_run.pull_requests || [])
+                .map((pr) => Number(pr.number));
+              if (!fromEvent.length) {
+                const response = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+                  owner,
+                  repo,
+                  commit_sha: context.payload.workflow_run.head_sha,
+                  per_page: 20,
+                });
+                associatedPullRequestNumbers = (response.data || [])
+                  .map((pr) => Number(pr.number));
+              }
+            }
+            const prNumbers = gate.resolveWakeupPrNumbers({
+              eventName: context.eventName,
+              pullRequestNumber: context.eventName === 'pull_request'
+                ? context.payload.pull_request.number
+                : undefined,
+              workflowRunPullRequestNumbers: context.eventName === 'workflow_run'
+                ? (context.payload.workflow_run.pull_requests || []).map((pr) => pr.number)
+                : undefined,
+              associatedPullRequestNumbers,
+            });
+            core.info(`resolved PR identities: ${prNumbers.join(', ') || '(none)'}`);
+            core.setOutput('prs', JSON.stringify(prNumbers));
+
+  wake:
+    needs: resolve
+    if: needs.resolve.outputs.prs != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        pr: ${{ fromJson(needs.resolve.outputs.prs) }}
+    concurrency:
+      group: atlas-chatgpt-review-wakeup-${{ matrix.pr }}
+      cancel-in-progress: false
     steps:
       - name: Checkout trusted default-branch helpers
         uses: actions/checkout@v4
@@ -49,6 +109,8 @@ jobs:
 
       - name: Post one exact-head ChatGPT Work wake-up
         uses: actions/github-script@v7
+        env:
+          WAKE_PR_NUMBER: ${{ matrix.pr }}
         with:
           github-token: ${{ github.token }}
           script: |
@@ -61,72 +123,58 @@ jobs:
             }
             const gate = require(helperPath);
             const { owner, repo } = context.repo;
-
-            let prNumbers = [];
-            if (context.eventName === 'pull_request') {
-              prNumbers = [Number(context.payload.pull_request.number)];
-            } else {
-              prNumbers = (context.payload.workflow_run.pull_requests || [])
-                .map((pr) => Number(pr.number))
-                .filter((number) => Number.isInteger(number) && number > 0);
-              if (!prNumbers.length) {
-                const response = await github.rest.repos.listPullRequestsAssociatedWithCommit({
-                  owner,
-                  repo,
-                  commit_sha: context.payload.workflow_run.head_sha,
-                  per_page: 20,
-                });
-                prNumbers = (response.data || [])
-                  .map((pr) => Number(pr.number))
-                  .filter((number) => Number.isInteger(number) && number > 0);
-              }
+            const number = Number(process.env.WAKE_PR_NUMBER);
+            if (!Number.isInteger(number) || number <= 0) {
+              core.notice('Wake-up matrix PR identity is not a positive integer.');
+              return;
             }
 
-            for (const number of [...new Set(prNumbers)]) {
-              const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: number });
-              if (!pr || pr.state !== 'open' || pr.base.ref !== 'main' || pr.draft === true) continue;
-
-              const checks = await github.paginate(github.rest.checks.listForRef, {
-                owner,
-                repo,
-                ref: pr.head.sha,
-                per_page: 100,
-              });
-              const statuses = await github.paginate(github.rest.repos.listCommitStatusesForRef, {
-                owner,
-                repo,
-                ref: pr.head.sha,
-                per_page: 100,
-              });
-              const reviews = await github.paginate(github.rest.pulls.listReviews, {
-                owner,
-                repo,
-                pull_number: number,
-                per_page: 100,
-              });
-              const comments = await github.paginate(github.rest.issues.listComments, {
-                owner,
-                repo,
-                issue_number: number,
-                per_page: 100,
-              });
-
-              const decision = gate.decide({
-                pr,
-                checks,
-                statuses,
-                reviews,
-                comments,
-              });
-              core.info(`#${number}: ${decision.code} — ${decision.reason}`);
-              if (!decision.ok) continue;
-
-              const body = gate.formatWakeComment(pr.head.sha, gate.generateWakeId());
-              await github.rest.issues.createComment({
-                owner,
-                repo,
-                issue_number: number,
-                body,
-              });
-              core.info(`#${number}: posted exact-head ChatGPT Work wake-up for ${pr.head.sha}`);
+            const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: number });
+            if (!pr || pr.state !== 'open' || pr.base.ref !== 'main' || pr.draft === true) {
+              core.info(`#${number}: skipped — not an open non-draft main PR.`);
+              return;
             }
+
+            const checks = await github.paginate(github.rest.checks.listForRef, {
+              owner,
+              repo,
+              ref: pr.head.sha,
+              per_page: 100,
+            });
+            const statuses = await github.paginate(github.rest.repos.listCommitStatusesForRef, {
+              owner,
+              repo,
+              ref: pr.head.sha,
+              per_page: 100,
+            });
+            const reviews = await github.paginate(github.rest.pulls.listReviews, {
+              owner,
+              repo,
+              pull_number: number,
+              per_page: 100,
+            });
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number: number,
+              per_page: 100,
+            });
+
+            const decision = gate.decide({
+              pr,
+              checks,
+              statuses,
+              reviews,
+              comments,
+            });
+            core.info(`#${number}: ${decision.code} — ${decision.reason}`);
+            if (!decision.ok) return;
+
+            const body = gate.formatWakeComment(pr.head.sha, gate.generateWakeId());
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number: number,
+              body,
+            });
+            core.info(`#${number}: posted exact-head ChatGPT Work wake-up for ${pr.head.sha}`);

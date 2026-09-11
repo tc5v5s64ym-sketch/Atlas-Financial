@@ -6,7 +6,7 @@ const WAKE_MARKER = '<!-- atlas-chatgpt-review-request -->';
 const RESULT_MARKER = '<!-- atlas-chatgpt-review-result -->';
 const TRUSTED_REVIEWER = 'tc5v5s64ym-sketch';
 const TRUSTED_WAKE_AUTHOR = 'github-actions[bot]';
-const WAKEUP_CONCURRENCY_GROUP = 'atlas-chatgpt-review-wakeup';
+const WAKEUP_CONCURRENCY_PREFIX = 'atlas-chatgpt-review-wakeup';
 const WAKE_ID_RE = /^[0-9a-f]{32}$/i;
 const WAKE_ID_LINE_RE = /^Wake-up:\s*`([0-9a-f]{32})`\s*$/im;
 const PASS_MARKER = 'Atlas Contract / Systems Review — PASS';
@@ -132,13 +132,41 @@ function trustedWakeInvocation(comments, headSha) {
   return null;
 }
 
-function wakeupConcurrencyGroup() {
-  // pull_request_target completions (Risk label / Incumbent privacy) set
-  // workflow_run.head_sha to the default-branch commit and often omit
-  // pull_requests[]. A per-SHA or per-run group would split those from
-  // ordinary PR-head gate completions. One repo-wide group queues every
-  // wake-up, including parallel pull_request + pull_request_target runs.
-  return WAKEUP_CONCURRENCY_GROUP;
+function positivePrNumber(value) {
+  const number = Number(value);
+  return Number.isInteger(number) && number > 0 ? number : 0;
+}
+
+function uniquePrNumbers(values) {
+  const out = [];
+  for (const value of Array.isArray(values) ? values : []) {
+    const number = positivePrNumber(value);
+    if (number && !out.includes(number)) out.push(number);
+  }
+  return out;
+}
+
+function resolveWakeupPrNumbers(input) {
+  const eventName = String(input && input.eventName || '');
+  if (eventName === 'pull_request') {
+    const number = positivePrNumber(input && input.pullRequestNumber);
+    return number ? [number] : [];
+  }
+  const fromEvent = uniquePrNumbers(input && input.workflowRunPullRequestNumbers);
+  if (fromEvent.length) return fromEvent;
+  const single = positivePrNumber(input && input.workflowRunPullRequestNumber);
+  if (single) return [single];
+  return uniquePrNumbers(input && input.associatedPullRequestNumbers);
+}
+
+function wakeupConcurrencyGroup(input) {
+  // Serialize by the resolved PR identity. A repo-wide group lets GitHub
+  // keep only one running and one pending run, so a later unrelated gate
+  // or a PR-less pull_request_target completion can replace an eligible
+  // pending wake-up. Events that cannot name a PR get no group and must
+  // not occupy another PR's slot.
+  const [number] = resolveWakeupPrNumbers(input);
+  return number ? `${WAKEUP_CONCURRENCY_PREFIX}-${number}` : '';
 }
 
 function eligibility(input) {
@@ -171,7 +199,7 @@ module.exports = {
   RESULT_MARKER,
   TRUSTED_REVIEWER,
   TRUSTED_WAKE_AUTHOR,
-  WAKEUP_CONCURRENCY_GROUP,
+  WAKEUP_CONCURRENCY_PREFIX,
   PASS_MARKER,
   BLOCKING_MARKERS,
   REQUIRED_CHECK_NAMES,
@@ -185,6 +213,7 @@ module.exports = {
   extractWakeId,
   formatWakeComment,
   trustedWakeInvocation,
+  resolveWakeupPrNumbers,
   wakeupConcurrencyGroup,
   eligibility,
   decide,
