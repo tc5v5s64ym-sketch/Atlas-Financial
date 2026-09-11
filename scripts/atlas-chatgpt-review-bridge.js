@@ -51,10 +51,16 @@ function hasForbiddenMarkup(text) {
   return /<!--/.test(String(text || '')) || /-->/.test(String(text || ''));
 }
 
+function hasControlCharacters(text) {
+  // eslint-disable-next-line no-control-regex
+  return /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028\u2029\ufeff]/.test(String(text || ''));
+}
+
 function closedFieldValue(line, prefix, maxChars) {
   if (!String(line || '').startsWith(prefix)) return '';
   const value = String(line).slice(prefix.length).trim();
-  if (!value || value.length > maxChars || hasForbiddenMarkup(value)) return '';
+  if (!value || value.length > maxChars) return '';
+  if (hasForbiddenMarkup(value) || hasControlCharacters(value) || /```/.test(value)) return '';
   return value;
 }
 

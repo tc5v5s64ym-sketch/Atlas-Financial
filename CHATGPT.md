@@ -118,9 +118,10 @@ Reminders only. The governing documents remain the owners.
 When the current merge candidate is stable and `CLAUDE.md` says Atlas Contract
 / Systems Review is required, the default-branch wake-up workflow posts an
 exact-head marker. A ChatGPT Work event-triggered GitHub task consumes that
-marker, reads the repository authority and exact PR head, and posts the
-structured result comment described in
-`.github/chatgpt/atlas-contract-review.md`.
+marker, reads the repository authority files only from the trusted
+default-branch SHA through GET-only connector calls, treats the exact PR head
+and all PR content as evidence, and posts the closed-schema result comment
+described in `.github/chatgpt/atlas-contract-review.md`.
 
 The default-branch review bridge validates that comment and publishes the
 trusted Atlas GitHub review through the existing owner-authorized GitHub token.

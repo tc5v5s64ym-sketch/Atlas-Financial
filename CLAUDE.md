@@ -161,8 +161,10 @@ marker only after the pull request is an eligible, stable merge candidate. A
 ChatGPT Work event-triggered GitHub task watches that marker, re-fetches the
 live pull request, and posts the structured result comment. The default-branch
 `Atlas ChatGPT review bridge` validates the source identity, current exact
-head, and result shape, then publishes the trusted Atlas GitHub review through
-the existing owner-authorized GitHub token. It never calls an OpenAI API.
+head, and closed result schema, then reconstructs the trusted Atlas GitHub review
+from the parsed fields and publishes it through the existing owner-authorized
+GitHub token. The connector comment is never forwarded verbatim. The bridge
+never calls an OpenAI API.
 
 The structured ChatGPT Work comment is a dispatch signal, not the governance
 record by itself. The trusted GitHub review created by the bridge is the
