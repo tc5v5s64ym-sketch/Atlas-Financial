@@ -23,8 +23,11 @@ permissions:
   checks: read
   statuses: read
 
+# Serialize by the live exact head, not a per-run identifier. Parallel
+# successful gate completions for the same head must queue so the later
+# job re-reads comments after the first marker exists and exits.
 concurrency:
-  group: atlas-chatgpt-review-wakeup-${{ github.event.pull_request.number || github.event.workflow_run.id || github.run_id }}
+  group: atlas-chatgpt-review-wakeup-${{ github.event.pull_request.head.sha || github.event.workflow_run.head_sha || github.run_id }}
   cancel-in-progress: false
 
 jobs:

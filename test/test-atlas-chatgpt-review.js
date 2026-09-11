@@ -100,6 +100,41 @@ result = wake.decide(decideInput({
 }));
 ok(!result.ok && result.code === 'draft', 'draft PRs do not wake ChatGPT Work');
 
+console.log('\n=== concurrent successful gates produce one wake-up ===');
+const firstGate = wake.decide(decideInput({
+  checks: productionChecks,
+  statuses: productionStatuses,
+  comments: [],
+}));
+ok(firstGate.ok && firstGate.code === 'ready',
+  'the first successful gate completion for a green exact head may post the wake-up');
+const postedWake = [{
+  body: [
+    wake.WAKE_MARKER,
+    '',
+    `ChatGPT Work: review the Atlas Contract / Systems Review for exact head \`${head}\`.`,
+  ].join('\n'),
+}];
+const secondGate = wake.decide(decideInput({
+  checks: productionChecks,
+  statuses: productionStatuses,
+  comments: postedWake,
+}));
+ok(!secondGate.ok && secondGate.code === 'wake-already-posted',
+  'a later serialized gate completion re-reads comments and does not post a second wake-up');
+const racedA = wake.decide(decideInput({
+  checks: productionChecks,
+  statuses: productionStatuses,
+  comments: [],
+}));
+const racedB = wake.decide(decideInput({
+  checks: productionChecks,
+  statuses: productionStatuses,
+  comments: [],
+}));
+ok(racedA.ok && racedB.ok && racedA.code === 'ready' && racedB.code === 'ready',
+  'unsynchronized concurrent decide() calls both return ready, so YAML must serialize by exact head');
+
 console.log('\n=== bridge result validation ===');
 const passComment = [
   bridge.RESULT_MARKER,
@@ -222,6 +257,13 @@ const wakeupYml = fs.readFileSync(path.join(root, '.github/workflows/atlas-chatg
 const bridgeYml = fs.readFileSync(path.join(root, '.github/workflows/atlas-chatgpt-review-bridge.yml'), 'utf8');
 ok(/checks\.listForRef/.test(wakeupYml) && /listCommitStatusesForRef/.test(wakeupYml),
   'wake-up reads real head check-runs and incumbent commit statuses');
+const wakeupConcurrencyGroup = (wakeupYml.match(/^\s*group:\s*(.+)$/m) || [])[1] || '';
+ok(/atlas-chatgpt-review-wakeup-\$\{\{\s*github\.event\.pull_request\.head\.sha\s*\|\|\s*github\.event\.workflow_run\.head_sha\s*\|\|\s*github\.run_id\s*\}\}/.test(wakeupConcurrencyGroup)
+  && !/workflow_run\.id/.test(wakeupConcurrencyGroup)
+  && !/pull_request\.number/.test(wakeupConcurrencyGroup),
+  'wake-up concurrency serializes by live exact head, not workflow-run id');
+ok(/cancel-in-progress:\s*false/.test(wakeupYml),
+  'serialized wake-up jobs wait rather than cancel, so the later job can re-read comments');
 ok(/card\.selectCardReview\(reviews, liveHead\)/.test(bridgeYml)
   && !/isAtlasCardSyncCandidate/.test(bridgeYml),
   'bridge reuses exported selectCardReview instead of the unexported helper');
