@@ -649,6 +649,12 @@
   // future. Incomplete current cash remains a live-overlay fail-closed
   // condition, not this list.
   //
+  // Owner policy 2026-09-11 is Forecast recognition, not a deposit invent:
+  // on a Seaspan payday (household date in America/Vancouver), Dale's
+  // Seaspan salary is relied upon for planning from 00:00 PT that day
+  // even when this list still names it. Amanda salary is not recognized
+  // that way and stays unconfirmed until settlement evidence.
+  //
   // A future-dated commitment paid on a known date is a different fact.
   // That lives on the commitment as settledOn and is not expressed
   // through representedEvents. Settlement is opening-relative: the cash
@@ -4830,19 +4836,37 @@
     };
   }
 
+  // Owner policy 2026-09-11: Dale Seaspan salary is relied upon for
+  // planning at 00:00 America/Vancouver on that Seaspan payday. asOf is
+  // the household financial date (already converted, or an instant that
+  // financialDate maps). This is not represented settlement and does not
+  // invent a Lunch Money deposit. Amanda salary is never recognized here.
+  function isDaleSeaspanPaydayRecognition(plan, event, asOf) {
+    const day = financialDate(asOf);
+    if (!event || !day || event.date !== day) return false;
+    if (incomeClassForEvent(plan, event) !== 'dale') return false;
+    const cycle = spendingCycle(plan, day);
+    return !!(cycle && cycle.start === day);
+  }
+
   function calendarIncomeRowFromEvent(plan, event, asOf, represented, observed, cashAsOf, notRelied, opts) {
     const amt = event.amount;
     if (!(amt > EPSILON)) return null;
     const key = event.id + '@' + event.date;
     const incomeClass = incomeClassForEvent(plan, event);
     const paid = !!(event.id && represented.has(key));
+    const dalePaydayRecognized = !paid && isDaleSeaspanPaydayRecognition(plan, event, asOf);
     // Advancing live cash past an unproven inbound must not turn it into
     // received income in the payday snapshot. Preserve the incumbent
     // not-relied-upon treatment; future salary remains ordinary income.
     // Expected Other Income retains its owner-authorized arriving semantics.
-    const elapsedUnproven = !paid && incomeClass !== 'other' && liveOpeningAdvanced(plan, asOf)
+    // Dale Seaspan payday recognition (2026-09-11) is the one exception:
+    // LM lag on that payday is not a reason to leave it not-relied-upon.
+    const elapsedUnproven = !paid && !dalePaydayRecognized && incomeClass !== 'other'
+      && liveOpeningAdvanced(plan, asOf)
       && event.date > cashAsOf && event.date < asOf;
-    if ((event.id && notRelied && notRelied.has(key)) || elapsedUnproven) {
+    if (!dalePaydayRecognized
+        && ((event.id && notRelied && notRelied.has(key)) || elapsedUnproven)) {
       return applyIncomeClass(plan, {
         id: event.id,
         label: event.label,
@@ -4863,6 +4887,28 @@
           : notReliedUponReason(plan, opts, event.id, event.date),
         incomeClass,
         otherIncome: incomeClass === 'other',
+      }, event);
+    }
+    if (dalePaydayRecognized) {
+      return applyIncomeClass(plan, {
+        id: event.id,
+        label: event.label,
+        kind: 'income',
+        date: event.date,
+        planned: roundCent(amt),
+        amount: roundCent(amt),
+        actual: null,
+        remaining: 0,
+        settlement: 'relied-upon',
+        status: 'relied-upon',
+        glanceKind: 'in',
+        movement: householdMovement(amt, 'in'),
+        confidence: event.confidence || null,
+        alreadyInCash: false,
+        notReliedUpon: false,
+        incomeRecognition: 'owner-policy-2026-09-11-seaspan-payday',
+        incomeClass,
+        otherIncome: false,
       }, event);
     }
     const inside = recurringInsideOpening(plan, event, cashAsOf);
