@@ -85,6 +85,7 @@ const suites = [
   ['unresolved pending→posted household-spend treatment', 'test-unresolved-pending-posted-spend.js'],
   ['current-period Other-residual classification contract', 'test-current-period-other-residual-contract.js'],
   ['salary recognition and payroll drift', 'test-salary-recognition-drift.js'],
+  ['owner income-recognition policy 2026-09-11', 'test-income-recognition-owner-policy.js'],
   ['Other Income payday waterfall', 'test-other-income.js'],
   ['Plan payday operating periods', 'test-payday-operating-periods.js'],
   ['Sep 10 to Sep 11 payday rollover boundary', 'test-payday-rollover-boundary.js'],
