@@ -72,7 +72,7 @@ jobs:
               core.setFailed(`ATLAS_AUTOMATION_TOKEN resolved to ${reviewerLogin || '(empty)'}, not ${bridge.TRUSTED_REVIEWER}.`);
               return;
             }
-            if (reviews.some((review) => card.isAtlasCardSyncCandidate(review, liveHead))) {
+            if (card.selectCardReview(reviews, liveHead)) {
               core.info('A trusted Atlas review already exists on the live exact head.');
               return;
             }

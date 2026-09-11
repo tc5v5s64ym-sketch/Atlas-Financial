@@ -21,6 +21,7 @@ permissions:
   issues: write
   pull-requests: read
   checks: read
+  statuses: read
 
 concurrency:
   group: atlas-chatgpt-review-wakeup-${{ github.event.pull_request.number || github.event.workflow_run.id || github.run_id }}
@@ -85,6 +86,12 @@ jobs:
                 ref: pr.head.sha,
                 per_page: 100,
               });
+              const statuses = await github.paginate(github.rest.repos.listCommitStatusesForRef, {
+                owner,
+                repo,
+                ref: pr.head.sha,
+                per_page: 100,
+              });
               const reviews = await github.paginate(github.rest.pulls.listReviews, {
                 owner,
                 repo,
@@ -101,6 +108,7 @@ jobs:
               const decision = gate.decide({
                 pr,
                 checks,
+                statuses,
                 reviews,
                 comments,
               });

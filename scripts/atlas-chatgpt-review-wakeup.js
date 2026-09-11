@@ -13,8 +13,11 @@ const REQUIRED_CHECK_NAMES = Object.freeze([
   'test',
   'Merge card mechanical fields',
   'Which published figures moved',
-  'Exactly one primary risk label',
-  'Incumbent privacy guard',
+]);
+
+const REQUIRED_STATUS_CONTEXTS = Object.freeze([
+  'risk-label/primary',
+  'privacy-guard',
 ]);
 
 function clean(value) {
@@ -48,6 +51,27 @@ function checksAreGreen(checks) {
   });
 }
 
+function latestByContext(statuses) {
+  const latest = new Map();
+  for (const status of Array.isArray(statuses) ? statuses : []) {
+    const context = clean(status && status.context);
+    if (!context) continue;
+    const previous = latest.get(context);
+    const currentTime = String(status.updated_at || status.created_at || '');
+    const previousTime = String(previous && (previous.updated_at || previous.created_at) || '');
+    if (!previous || currentTime >= previousTime) latest.set(context, status);
+  }
+  return latest;
+}
+
+function statusesAreGreen(statuses) {
+  const latest = latestByContext(statuses);
+  return REQUIRED_STATUS_CONTEXTS.every((context) => {
+    const status = latest.get(context);
+    return status && status.state === 'success';
+  });
+}
+
 function isAtlasReview(review, headSha) {
   const login = String(review && review.user && review.user.login || '');
   const body = String(review && review.body || '').trim();
@@ -71,7 +95,9 @@ function decide(input) {
   if (pr.draft === true) return { ok: false, code: 'draft', reason: 'PR is still a draft.' };
   if (!/^[0-9a-f]{40}$/.test(headSha)) return { ok: false, code: 'malformed-head', reason: 'Live PR head is not a full SHA.' };
   if (!hasRequiredCard(pr.body)) return { ok: false, code: 'not-required', reason: 'Merge Card does not say Required: REQUIRED.' };
-  if (!checksAreGreen(input && input.checks)) return { ok: false, code: 'checks-not-green', reason: 'Required deterministic checks are not all green on the live head.' };
+  if (!checksAreGreen(input && input.checks) || !statusesAreGreen(input && input.statuses)) {
+    return { ok: false, code: 'checks-not-green', reason: 'Required deterministic checks are not all green on the live head.' };
+  }
   if ((Array.isArray(input && input.reviews) ? input.reviews : []).some((review) => isAtlasReview(review, headSha))) {
     return { ok: false, code: 'already-reviewed', reason: 'An Atlas review already exists on the live exact head.' };
   }
@@ -86,8 +112,10 @@ module.exports = {
   PASS_MARKER,
   BLOCKING_MARKERS,
   REQUIRED_CHECK_NAMES,
+  REQUIRED_STATUS_CONTEXTS,
   hasRequiredCard,
   checksAreGreen,
+  statusesAreGreen,
   isAtlasReview,
   hasWakeComment,
   decide,
