@@ -150,12 +150,13 @@ for (const retiredPath of retiredWorkflowPaths) {
 
 const claude = fs.readFileSync(path.join(__dirname, '..', 'CLAUDE.md'), 'utf8');
 const chatgpt = fs.readFileSync(path.join(__dirname, '..', 'CHATGPT.md'), 'utf8');
-ok(/If\s+the head moves, request review again on the new full SHA/.test(chatgpt),
-  'a moved repair head requires a new direct exact-head review request');
-ok(/any prior blocking finding that bounds a\s+re-review/.test(chatgpt),
+ok(/A changed head receives\s+a new wake-up only after/.test(chatgpt),
+  'a moved repair head requires a new exact-head review request');
+ok(/a prior `BLOCKING`\s+result bounds the follow-up/.test(chatgpt),
   'bounded re-review carries the prior blocking finding');
-ok(/A GitHub review, comment, label, or workflow run is evidence only/.test(claude),
-  'GitHub handoff artifacts remain evidence rather than dispatch authority');
+ok(/structured ChatGPT Work comment/.test(claude)
+  && /trusted Atlas GitHub review/.test(claude),
+  'the bridge promotes only a validated structured comment into the governance review');
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
 process.exit(failures === 0 ? 0 : 1);

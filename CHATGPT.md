@@ -113,21 +113,25 @@ Reminders only. The governing documents remain the owners.
 - High-risk PR review must follow the current exact-head procedure in
   repository governance (`CLAUDE.md`).
 
-## Required review handoff
+## Automated review handoff
 
 When the current merge candidate is stable and `CLAUDE.md` says Atlas Contract
-/ Systems Review is required, send the request directly to the active ChatGPT
-decision-desk session. Include the pull request number, current full head SHA,
-deterministic gate state, and any prior blocking finding that bounds a
-re-review. Do not treat a GitHub review, comment, label, or successful workflow
-as a request to ChatGPT; those artifacts cannot wake this session.
+/ Systems Review is required, the default-branch wake-up workflow posts an
+exact-head marker. A ChatGPT Work event-triggered GitHub task consumes that
+marker, reads the repository authority and exact PR head, and posts the
+structured result comment described in
+`.github/chatgpt/atlas-contract-review.md`.
 
-ChatGPT reviews that exact head independently of the active builder. After a
-`PASS`, record the exact reviewed SHA, `Reviewer: ChatGPT`, outcome, and finding
-closure in the Merge Card, then re-run the applicable deterministic gates. If
-the head moves, request review again on the new full SHA. Paid OpenAI reviewer
-workflows are retired; never wait for them and do not add API spend to perform
-this manual review.
+The default-branch review bridge validates that comment and publishes the
+trusted Atlas GitHub review through the existing owner-authorized GitHub token.
+That review is what updates the Merge Card and starts the existing Cursor repair
+path when the outcome is `BLOCKING`. The bridge does not call an OpenAI API,
+modify code, merge, or authorize owner-reserved decisions.
+
+The task and bridge both require the live full head SHA. A changed head receives
+a new wake-up only after the deterministic gates are green; a prior `BLOCKING`
+result bounds the follow-up to the repaired surface. Duplicate, stale, closed,
+draft, malformed, and non-required candidates are ignored.
 
 Standing facts are in [`docs/ACCOUNT_FACTS.md`](docs/ACCOUNT_FACTS.md).
 Questions only the household can answer are in

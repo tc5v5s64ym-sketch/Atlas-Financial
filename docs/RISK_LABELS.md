@@ -166,14 +166,21 @@ bounded re-review of that new exact head. If a repair itself introduces
 another genuine high-risk blocker, one bounded repair is reasonable. Further
 blocker-after-blocker churn stops and returns to the decision desk.
 
-### Retired paid OpenAI first-review / re-review
+### ChatGPT Work first-review / re-review
 
-The paid OpenAI first-review and re-review workflows are retired. Their parked
-versions exited successfully without performing a review, so their green runs
-could be mistaken for progress. Required Atlas Contract / Systems Review is
-requested directly in the active ChatGPT decision-desk session with the pull
-request number and exact head SHA. GitHub handoff artifacts are evidence only;
-they do not wake ChatGPT, satisfy the review, or add API spend.
+The default-branch `Atlas ChatGPT review wake-up` workflow posts an exact-head
+marker after the live PR is a stable, green required candidate. A ChatGPT Work
+event-triggered GitHub task reads that marker and posts the structured result
+comment. The default-branch `Atlas ChatGPT review bridge` validates the comment
+and publishes the trusted Atlas GitHub review through the existing
+owner-authorized GitHub token. This uses the ChatGPT Work connection and does
+not call an OpenAI API.
+
+The review remains exact-head and bounded: a `BLOCKING` result starts the
+existing Cursor repair path, and a new head receives a new wake-up only after
+the deterministic gates are green. Stale, duplicate, malformed, non-required,
+closed, draft, and retargeted candidates fail closed. The old paid OpenAI
+reviewer workflows remain retired and are not part of this path.
 
 ### Cursor repair of failed tests
 

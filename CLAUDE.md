@@ -156,11 +156,19 @@ ChatGPT reviews a candidate for merge, not the first implementation attempt.
 Optional advisory suggestions need not all be fixed. Correct-but-improvable
 work may proceed to systems review.
 
-The builder must deliver the review request directly to the active ChatGPT
-decision-desk session with the pull request number and current full head SHA.
-A GitHub review, comment, label, or workflow run is evidence only: it cannot
-wake ChatGPT and does not start or satisfy this review. Paid OpenAI reviewer
-workflows are retired. Do not wait for them.
+The default-branch `Atlas ChatGPT review wake-up` workflow emits an exact-head
+marker only after the pull request is an eligible, stable merge candidate. A
+ChatGPT Work event-triggered GitHub task watches that marker, re-fetches the
+live pull request, and posts the structured result comment. The default-branch
+`Atlas ChatGPT review bridge` validates the source identity, current exact
+head, and result shape, then publishes the trusted Atlas GitHub review through
+the existing owner-authorized GitHub token. It never calls an OpenAI API.
+
+The structured ChatGPT Work comment is a dispatch signal, not the governance
+record by itself. The trusted GitHub review created by the bridge is the
+governance record consumed by the existing exact-head card-sync and Cursor
+repair paths. Stale, duplicate, closed, draft, retargeted, and malformed
+results fail closed. Paid OpenAI reviewer workflows remain retired.
 
 #### Bounded review protocol
 

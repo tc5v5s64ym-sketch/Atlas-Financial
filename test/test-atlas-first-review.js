@@ -206,7 +206,7 @@ result = helper.evaluateFirstReviewEligibility({
 ok(!result.ok && result.action === 'fail' && result.code === 'malformed-live-head',
   'malformed live head fails closed rather than skipping as ineligible');
 
-console.log('\n=== manual systems-review handoff contract ===');
+console.log('\n=== ChatGPT Work systems-review handoff contract ===');
 const retiredWorkflowPaths = [
   '.github/workflows/atlas-first-review-dispatch.yml',
   '.github/workflows/atlas-first-review.yml',
@@ -222,24 +222,17 @@ const claude = fs.readFileSync(path.join(__dirname, '..', 'CLAUDE.md'), 'utf8');
 const chatgpt = fs.readFileSync(path.join(__dirname, '..', 'CHATGPT.md'), 'utf8');
 const riskLabels = fs.readFileSync(path.join(__dirname, '..', 'docs/RISK_LABELS.md'), 'utf8');
 
-ok(/deliver the review request directly to the active ChatGPT\s+decision-desk session/.test(claude),
-  'governance requires a direct handoff to the active ChatGPT decision desk');
-ok(/cannot\s+wake ChatGPT and does not start or satisfy this review/.test(claude),
-  'governance says GitHub artifacts cannot wake or satisfy ChatGPT review');
-ok(/Paid OpenAI reviewer\s+workflows are retired\. Do not wait for them\./.test(claude),
-  'governance retires the misleading paid reviewer wait');
-ok(/## Required review handoff/.test(chatgpt)
-  && /pull request number, current full head SHA/.test(chatgpt),
-  'the ChatGPT adapter requires PR number and exact head in the direct request');
-ok(/successful workflow\s+as a request to ChatGPT/.test(chatgpt)
-  && /cannot wake this session/.test(chatgpt),
-  'the ChatGPT adapter rejects a green workflow as a review request');
-ok(/After a\s+`PASS`[\s\S]*record the exact reviewed SHA/.test(chatgpt),
-  'the manual handoff records PASS on the exact reviewed head');
-ok(/Their parked\s+versions exited successfully without performing a review/.test(riskLabels),
-  'risk documentation records the demonstrated false-progress failure');
-ok(/do not wake ChatGPT, satisfy the review, or add API spend/.test(riskLabels),
-  'risk documentation keeps manual review required without API spend');
+ok(/Atlas ChatGPT review wake-up/.test(claude)
+  && /Atlas ChatGPT review bridge/.test(claude)
+  && /never calls an OpenAI API/.test(claude),
+  'governance names the event-triggered wake-up and no-API bridge');
+ok(/## Automated review handoff/.test(chatgpt)
+  && /event-triggered GitHub task/.test(chatgpt)
+  && /existing owner-authorized GitHub token/.test(chatgpt),
+  'the ChatGPT adapter describes the automated exact-head handoff');
+ok(/ChatGPT Work\s+event-triggered GitHub task/.test(riskLabels)
+  && /does\s+not call an OpenAI API/.test(riskLabels),
+  'risk documentation records the no-API ChatGPT Work path');
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
 process.exit(failures === 0 ? 0 : 1);
