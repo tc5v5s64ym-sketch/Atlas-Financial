@@ -61,15 +61,20 @@ household facts, or make owner-reserved decisions.
 
 Post one GitHub pull-request comment containing the exact result marker below,
 followed immediately by one of these two closed forms and nothing else.
-Include the full 40-character head SHA. Do not wrap the result marker in a
-code fence. Do not add extra lines, trailing prose, nested HTML comments,
-unlabeled fields, or overlong fields. The bridge reconstructs the trusted
-review from these parsed fields and rejects anything outside this schema.
+Include the full 40-character head SHA and the 32-character `Wake-up` id
+from the trusted `github-actions[bot]` wake-up comment for that exact head.
+Do not wrap the result marker in a code fence. Do not add extra lines,
+trailing prose, nested HTML comments, unlabeled fields, or overlong fields.
+The bridge reconstructs the trusted review from these parsed fields and
+rejects anything outside this schema. It also rejects the shared
+Codex/builder connector identity and any result that is not bound to that
+trusted wake-up on a still-REQUIRED, still-green live head.
 
 ```text
 <!-- atlas-chatgpt-review-result -->
 Atlas Contract / Systems Review — PASS
 Exact reviewed head: `<full SHA>`
+Wake-up: `<32-character wake-up id>`
 Summary: No unsafe or architecturally wrong condition remains on this exact head.
 ```
 
@@ -77,6 +82,7 @@ Summary: No unsafe or architecturally wrong condition remains on this exact head
 <!-- atlas-chatgpt-review-result -->
 Atlas Contract / Systems Review — BLOCKING
 Exact reviewed head: `<full SHA>`
+Wake-up: `<32-character wake-up id>`
 Blocker: <one concrete blocker, at most 800 characters>
 Proof needed: <targeted proof required to close it, at most 800 characters>
 ```
@@ -85,7 +91,8 @@ Proof needed: <targeted proof required to close it, at most 800 characters>
 text each: no control characters, code fences, HTML comments, links to
 instructions, or additional labeled or unlabeled fields. The bridge does not
 forward the connector comment anywhere; only the parsed fields reach the
-trusted Atlas review and any downstream Cursor repair prompt.
+trusted Atlas review and any downstream Cursor repair prompt. The `Wake-up`
+id is transport provenance only and is not copied into the trusted review.
 
 For a bounded follow-up, verify the named repairs and the high-risk surface
 changed by them. Do not reopen untouched work. If blocker-after-blocker churn

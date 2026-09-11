@@ -171,10 +171,12 @@ blocker-after-blocker churn stops and returns to the decision desk.
 The default-branch `Atlas ChatGPT review wake-up` workflow posts an exact-head
 marker after the live PR is a stable, green required candidate. A ChatGPT Work
 event-triggered GitHub task reads that marker and posts the structured result
-comment. The default-branch `Atlas ChatGPT review bridge` validates the comment
-and publishes the trusted Atlas GitHub review through the existing
-owner-authorized GitHub token. This uses the ChatGPT Work connection and does
-not call an OpenAI API.
+comment. The default-branch `Atlas ChatGPT review bridge` validates a distinct
+Work-review identity, the trusted exact-head wake-up, current
+REQUIRED/green eligibility, and the closed result schema, then publishes
+the trusted Atlas GitHub review through the existing owner-authorized
+GitHub token. The shared Codex/builder connector cannot mint that review.
+This uses the ChatGPT Work connection and does not call an OpenAI API.
 
 The review remains exact-head and bounded: a `BLOCKING` result starts the
 existing Cursor repair path, and a new head receives a new wake-up only after

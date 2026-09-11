@@ -23,11 +23,14 @@ permissions:
   checks: read
   statuses: read
 
-# Serialize by the live exact head, not a per-run identifier. Parallel
-# successful gate completions for the same head must queue so the later
-# job re-reads comments after the first marker exists and exits.
+# Serialize every wake-up together. pull_request_target completions
+# (Risk label / Incumbent privacy) set workflow_run.head_sha to the
+# default-branch commit and often omit pull_requests[], so a per-SHA
+# or per-run group would not queue them with ordinary PR-head gates.
+# One repo-wide group plus cancel-in-progress: false makes the later
+# job re-read comments after the first marker exists and exit.
 concurrency:
-  group: atlas-chatgpt-review-wakeup-${{ github.event.pull_request.head.sha || github.event.workflow_run.head_sha || github.run_id }}
+  group: atlas-chatgpt-review-wakeup
   cancel-in-progress: false
 
 jobs:
@@ -118,13 +121,7 @@ jobs:
               core.info(`#${number}: ${decision.code} — ${decision.reason}`);
               if (!decision.ok) continue;
 
-              const body = [
-                gate.WAKE_MARKER,
-                '',
-                `ChatGPT Work: review the Atlas Contract / Systems Review for exact head \`${pr.head.sha}\`.`,
-                '',
-                'The ChatGPT Work task must re-fetch the live PR and follow `.github/chatgpt/atlas-contract-review.md`.',
-              ].join('\n');
+              const body = gate.formatWakeComment(pr.head.sha, gate.generateWakeId());
               await github.rest.issues.createComment({
                 owner,
                 repo,

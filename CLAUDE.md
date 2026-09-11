@@ -160,8 +160,10 @@ The default-branch `Atlas ChatGPT review wake-up` workflow emits an exact-head
 marker only after the pull request is an eligible, stable merge candidate. A
 ChatGPT Work event-triggered GitHub task watches that marker, re-fetches the
 live pull request, and posts the structured result comment. The default-branch
-`Atlas ChatGPT review bridge` validates the source identity, current exact
-head, and closed result schema, then reconstructs the trusted Atlas GitHub review
+`Atlas ChatGPT review bridge` validates a mechanically
+distinct Work-review identity (never the shared Codex/builder connector),
+correlation to the trusted exact-head wake-up, current REQUIRED/green
+eligibility, and the closed result schema, then reconstructs the trusted Atlas GitHub review
 from the parsed fields and publishes it through the existing owner-authorized
 GitHub token. The connector comment is never forwarded verbatim. The bridge
 never calls an OpenAI API.

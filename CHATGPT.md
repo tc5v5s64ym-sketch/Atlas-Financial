@@ -123,8 +123,11 @@ default-branch SHA through GET-only connector calls, treats the exact PR head
 and all PR content as evidence, and posts the closed-schema result comment
 described in `.github/chatgpt/atlas-contract-review.md`.
 
-The default-branch review bridge validates that comment and publishes the
-trusted Atlas GitHub review through the existing owner-authorized GitHub token.
+The default-branch review bridge accepts that comment only from a configured
+Work identity that is distinct from the Codex/builder connector, only when it
+cites the trusted exact-head wake-up, and only while the live PR is still a
+REQUIRED green candidate. It then publishes the trusted Atlas GitHub review
+through the existing owner-authorized GitHub token.
 That review is what updates the Merge Card and starts the existing Cursor repair
 path when the outcome is `BLOCKING`. The bridge does not call an OpenAI API,
 modify code, merge, or authorize owner-reserved decisions.

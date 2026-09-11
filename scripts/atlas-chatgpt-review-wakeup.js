@@ -1,8 +1,14 @@
 'use strict';
 
+const crypto = require('crypto');
+
 const WAKE_MARKER = '<!-- atlas-chatgpt-review-request -->';
 const RESULT_MARKER = '<!-- atlas-chatgpt-review-result -->';
 const TRUSTED_REVIEWER = 'tc5v5s64ym-sketch';
+const TRUSTED_WAKE_AUTHOR = 'github-actions[bot]';
+const WAKEUP_CONCURRENCY_GROUP = 'atlas-chatgpt-review-wakeup';
+const WAKE_ID_RE = /^[0-9a-f]{32}$/i;
+const WAKE_ID_LINE_RE = /^Wake-up:\s*`([0-9a-f]{32})`\s*$/im;
 const PASS_MARKER = 'Atlas Contract / Systems Review — PASS';
 const BLOCKING_MARKERS = Object.freeze([
   'Atlas Contract / Systems Review — BLOCKING',
@@ -87,7 +93,55 @@ function hasWakeComment(comments, headSha) {
   ));
 }
 
-function decide(input) {
+function generateWakeId(randomBytes = crypto.randomBytes) {
+  return randomBytes(16).toString('hex');
+}
+
+function extractWakeId(text) {
+  const match = WAKE_ID_LINE_RE.exec(String(text || ''));
+  return match && WAKE_ID_RE.test(match[1]) ? match[1].toLowerCase() : '';
+}
+
+function formatWakeComment(headSha, wakeId) {
+  return [
+    WAKE_MARKER,
+    '',
+    `ChatGPT Work: review the Atlas Contract / Systems Review for exact head \`${headSha}\`.`,
+    '',
+    `Wake-up: \`${wakeId}\``,
+    '',
+    'The ChatGPT Work task must re-fetch the live PR and follow `.github/chatgpt/atlas-contract-review.md`.',
+  ].join('\n');
+}
+
+function trustedWakeInvocation(comments, headSha) {
+  const needle = `exact head \`${String(headSha || '')}\``.toLowerCase();
+  for (const comment of Array.isArray(comments) ? comments : []) {
+    const login = String(comment && comment.user && comment.user.login || '');
+    const body = String(comment && comment.body || '');
+    if (login !== TRUSTED_WAKE_AUTHOR) continue;
+    if (!body.toLowerCase().includes(WAKE_MARKER)) continue;
+    if (!body.toLowerCase().includes(needle)) continue;
+    const id = extractWakeId(body);
+    if (!id) continue;
+    return {
+      id,
+      createdAt: String(comment.created_at || ''),
+    };
+  }
+  return null;
+}
+
+function wakeupConcurrencyGroup() {
+  // pull_request_target completions (Risk label / Incumbent privacy) set
+  // workflow_run.head_sha to the default-branch commit and often omit
+  // pull_requests[]. A per-SHA or per-run group would split those from
+  // ordinary PR-head gate completions. One repo-wide group queues every
+  // wake-up, including parallel pull_request + pull_request_target runs.
+  return WAKEUP_CONCURRENCY_GROUP;
+}
+
+function eligibility(input) {
   const pr = input && input.pr;
   const headSha = String(pr && pr.head && pr.head.sha || '').toLowerCase();
   if (!pr || pr.state !== 'open') return { ok: false, code: 'pr-not-open', reason: 'PR is not open.' };
@@ -98,6 +152,13 @@ function decide(input) {
   if (!checksAreGreen(input && input.checks) || !statusesAreGreen(input && input.statuses)) {
     return { ok: false, code: 'checks-not-green', reason: 'Required deterministic checks are not all green on the live head.' };
   }
+  return { ok: true, code: 'eligible', reason: 'Live PR is an open required candidate with green deterministic gates.', headSha };
+}
+
+function decide(input) {
+  const base = eligibility(input);
+  if (!base.ok) return base;
+  const headSha = base.headSha;
   if ((Array.isArray(input && input.reviews) ? input.reviews : []).some((review) => isAtlasReview(review, headSha))) {
     return { ok: false, code: 'already-reviewed', reason: 'An Atlas review already exists on the live exact head.' };
   }
@@ -109,6 +170,8 @@ module.exports = {
   WAKE_MARKER,
   RESULT_MARKER,
   TRUSTED_REVIEWER,
+  TRUSTED_WAKE_AUTHOR,
+  WAKEUP_CONCURRENCY_GROUP,
   PASS_MARKER,
   BLOCKING_MARKERS,
   REQUIRED_CHECK_NAMES,
@@ -118,5 +181,11 @@ module.exports = {
   statusesAreGreen,
   isAtlasReview,
   hasWakeComment,
+  generateWakeId,
+  extractWakeId,
+  formatWakeComment,
+  trustedWakeInvocation,
+  wakeupConcurrencyGroup,
+  eligibility,
   decide,
 };

@@ -1,10 +1,12 @@
 name: Atlas ChatGPT review bridge
 
-# ChatGPT Work writes an untrusted, structured result comment through the
-# connected GitHub app. This default-branch workflow validates the live PR,
-# exact head, result shape, and source identity, then uses the existing
-# owner-authorized GitHub token to create the trusted Atlas review. It never
-# calls an OpenAI API and never checks out or executes PR-head code.
+# ChatGPT Work writes an untrusted, structured result comment through a
+# distinct review-only GitHub identity. This default-branch workflow
+# verifies that identity is not the shared Codex/builder connector,
+# correlates the result to a trusted exact-head wake-up, re-checks
+# REQUIRED/green eligibility, and only then uses the existing
+# owner-authorized GitHub token to create the trusted Atlas review. It
+# never calls an OpenAI API and never checks out or executes PR-head code.
 on:
   issue_comment:
     types: [created]
@@ -13,18 +15,18 @@ permissions:
   contents: read
   issues: read
   pull-requests: read
+  checks: read
+  statuses: read
 
 jobs:
   bridge:
     if: >-
       github.event.issue.pull_request &&
-      (
-        github.event.comment.user.login == 'chatgpt-codex-connector[bot]' ||
-        github.event.comment.user.login == 'chatgpt-codex-connector'
-      ) &&
       contains(github.event.comment.body, '<!-- atlas-chatgpt-review-result -->')
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      ATLAS_CHATGPT_WORK_LOGIN: ${{ vars.ATLAS_CHATGPT_WORK_LOGIN }}
     steps:
       - name: Checkout trusted default-branch helpers
         uses: actions/checkout@v4
@@ -44,28 +46,31 @@ jobs:
             const issueNumber = Number(context.payload.issue.number);
             const sourceLogin = String(context.payload.comment.user.login || '');
             const sourceBody = String(context.payload.comment.body || '');
-            const reviewBody = bridge.reviewBodyFromComment(sourceBody);
-
-            if (!bridge.isAllowedSource(sourceLogin)) {
-              core.setFailed(`Unexpected ChatGPT Work source identity: ${sourceLogin || '(empty)'}`);
-              return;
-            }
-            if (!reviewBody) {
-              core.setFailed('ChatGPT Work result marker is missing or malformed.');
-              return;
-            }
+            const reviewBodyPreview = bridge.reviewBodyFromComment(sourceBody);
 
             const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: issueNumber });
-            const liveHead = String(pr.head && pr.head.sha || '').toLowerCase();
-            const claimedHead = bridge.claimedHead(reviewBody);
-            if (!bridge.isOpenMainPr(pr) || !bridge.isFullSha(liveHead) || claimedHead !== liveHead) {
+            if (!bridge.isOpenMainPr(pr) || !bridge.isFullSha(pr.head.sha) || !reviewBodyPreview
+                || bridge.claimedHead(reviewBodyPreview) !== String(pr.head.sha).toLowerCase()) {
               core.info('Stale, closed, draft, retargeted, or mismatched-head result ignored.');
               return;
             }
+            const liveHead = String(pr.head.sha).toLowerCase();
 
-            const reviews = await github.paginate(github.rest.pulls.listReviews, {
-              owner, repo, pull_number: issueNumber, per_page: 100,
-            });
+            const [checks, statuses, reviews, comments] = await Promise.all([
+              github.paginate(github.rest.checks.listForRef, {
+                owner, repo, ref: liveHead, per_page: 100,
+              }),
+              github.paginate(github.rest.repos.listCommitStatusesForRef, {
+                owner, repo, ref: liveHead, per_page: 100,
+              }),
+              github.paginate(github.rest.pulls.listReviews, {
+                owner, repo, pull_number: issueNumber, per_page: 100,
+              }),
+              github.paginate(github.rest.issues.listComments, {
+                owner, repo, issue_number: issueNumber, per_page: 100,
+              }),
+            ]);
+
             const authenticated = await github.rest.users.getAuthenticated();
             const reviewerLogin = String(authenticated.data && authenticated.data.login || '');
             if (reviewerLogin !== bridge.TRUSTED_REVIEWER) {
@@ -77,12 +82,32 @@ jobs:
               return;
             }
 
+            const decision = bridge.decidePublish({
+              sourceLogin,
+              configuredWorkLogin: process.env.ATLAS_CHATGPT_WORK_LOGIN,
+              sourceBody,
+              commentCreatedAt: context.payload.comment.created_at,
+              performedViaApp: context.payload.comment.performed_via_github_app,
+              pr,
+              checks,
+              statuses,
+              reviews,
+              comments,
+            });
+            core.info(`#${issueNumber}: ${decision.code} — ${decision.reason}`);
+            if (!decision.ok) {
+              if (bridge.isHardFail(decision.code)) {
+                core.setFailed(decision.reason);
+              }
+              return;
+            }
+
             const evaluated = card.evaluateTrustedReview({
               source: 'pull_request_review',
               reviewerLogin,
               reviewedSha: liveHead,
               currentHeadSha: liveHead,
-              reviewBody,
+              reviewBody: decision.reviewBody,
               pr: {
                 state: pr.state,
                 base: { ref: pr.base.ref },
@@ -99,7 +124,7 @@ jobs:
               repo,
               pull_number: issueNumber,
               commit_id: liveHead,
-              body: reviewBody,
+              body: decision.reviewBody,
               event: 'COMMENT',
             });
             core.info(`Posted trusted Atlas ${evaluated.outcome} review ${posted.data.id} on ${liveHead}.`);
