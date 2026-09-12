@@ -22,6 +22,7 @@ statements-*/
 # Local machine-specific config (account numbers used by the scripts)
 scripts/local-config.json
 docs/connectivity/provider-account-map.local.json
+docs/connectivity/plaid-account-map.local.json
 
 # Secrets — production secrets live in Render; the Lunch Money GET-only
 # token may also live as a Windows DPAPI blob outside this repository.

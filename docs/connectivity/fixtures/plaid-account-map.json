@@ -1,0 +1,33 @@
+{
+  "schema": "atlas-provider-account-map/v1",
+  "owns": "Synthetic fixture-only Plaid account_id to Atlas canonical-id mapping. Display names are labels only. Not valid for live observation.",
+  "does_not_own": "Financial values, permission to write data.json, automatic account creation, Forecast, or live owner-observed IDs.",
+  "provider": "plaid",
+  "scope": "fixture",
+  "mappings": [
+    {
+      "providerAccountId": "plaid-fx-acct-chequing-a",
+      "canonical": { "collection": "cash", "id": "chequing-a" },
+      "atlasRole": "household-cash"
+    },
+    {
+      "providerAccountId": "plaid-fx-acct-chequing-b",
+      "canonical": { "collection": "cash", "id": "chequing-b" },
+      "atlasRole": "household-cash"
+    },
+    {
+      "providerAccountId": "plaid-fx-acct-savings",
+      "canonical": { "collection": "cash", "id": "savings" },
+      "atlasRole": "household-cash"
+    },
+    {
+      "providerAccountId": "plaid-fx-acct-visa",
+      "canonical": { "collection": "debts", "id": "tdcc" },
+      "atlasRole": "revolving-credit"
+    },
+    {
+      "providerAccountId": "plaid-fx-acct-external",
+      "atlasRole": "household-external"
+    }
+  ]
+}

@@ -6,6 +6,15 @@
  *   node scripts/provider-observe.js --provider lunchmoney --live --identity-proof
  *   node scripts/provider-observe.js --provider lunchmoney --fixture <file> --receipt
  *   node scripts/provider-observe.js --provider lunchmoney --fixture <file> --reconciliation-receipt
+ *   node scripts/provider-observe.js --provider plaid --fixture <file> [--receipt]
+ *   node scripts/provider-observe.js --provider plaid --live [--receipt]
+ *
+ * Plaid is a balance-only read (POST /accounts/balance/get, see
+ * scripts/plaid-balance.js). Its observations reach the same
+ * observationsFromMappedAccount / reconcile.js boundary as Lunch Money and
+ * carry no transaction or pending coverage, so a Plaid packet can never
+ * report readyForReconciliation. Lunch Money remains the incumbent live
+ * provider; live-plan.js does not consume Plaid.
  *
  * Live mode resolves a Lunch Money token from LUNCHMONEY_ACCESS_TOKEN, or
  * on Windows from the local CurrentUser DPAPI store. It never
@@ -29,11 +38,17 @@ const https = require('https');
 const crypto = require('crypto');
 const R = require('./reconcile.js');
 const Credentials = require('./local-credentials.js');
+const Plaid = require('./plaid-balance.js');
 
 const ROOT = path.join(__dirname, '..');
 const DEFAULT_MAP = path.join(ROOT, 'docs', 'connectivity', 'provider-account-map.json');
 const LOCAL_MAP = path.join(ROOT, 'docs', 'connectivity', 'provider-account-map.local.json');
 const FIXTURE_MAP = path.join(ROOT, 'docs', 'connectivity', 'fixtures', 'provider-account-map.json');
+const PLAID_LOCAL_MAP = path.join(ROOT, 'docs', 'connectivity', 'plaid-account-map.local.json');
+const PLAID_FIXTURE_MAP = path.join(ROOT, 'docs', 'connectivity', 'fixtures', 'plaid-account-map.json');
+const PLAID_MAP_JSON_ENV = 'ATLAS_PLAID_ACCOUNT_MAP_JSON';
+const PLAID_MAP_PATH_ENV = 'ATLAS_PLAID_ACCOUNT_MAP';
+const SUPPORTED_PROVIDERS = Object.freeze(['lunchmoney', 'plaid']);
 const DEFAULT_IDENTITY = path.join(ROOT, 'docs', 'connectivity', 'transaction-identity.json');
 const DEFAULT_DATA = path.join(ROOT, 'data.json');
 const LIVE_BASE = 'https://api.lunchmoney.dev/v2';
@@ -107,6 +122,13 @@ function historyDaysFromArgs(args) {
 
 function resolveMapPath(args) {
   if (args.map) return args.map;
+  if (args.provider === 'plaid') {
+    if (args.live) {
+      if (fs.existsSync(PLAID_LOCAL_MAP)) return PLAID_LOCAL_MAP;
+      fail('plaid-account-map-missing');
+    }
+    return PLAID_FIXTURE_MAP;
+  }
   if (args.live) {
     if (fs.existsSync(LOCAL_MAP)) return LOCAL_MAP;
     return DEFAULT_MAP;
@@ -156,11 +178,19 @@ function knownCanonicalIdsByCollection(data) {
   return byCollection;
 }
 
+// One mapping authority for every provider: the same
+// atlas-provider-account-map/v1 schema, keyed by stable providerAccountId,
+// with the document's `provider` naming whose IDs those are. A Plaid map
+// carries Plaid account_id values and nothing else changes.
 function assertLiveMap(mapDoc, opts) {
+  const expectedProvider = (opts && opts.provider) || 'lunchmoney';
+  if (!SUPPORTED_PROVIDERS.includes(expectedProvider)) fail(`Unsupported provider: ${expectedProvider}.`);
   if (!mapDoc || typeof mapDoc !== 'object' || Array.isArray(mapDoc)) {
     fail('live-account-map-invalid');
   }
-  if (mapDoc.provider !== 'lunchmoney') fail('Account map is missing or is not a lunchmoney map.');
+  if (mapDoc.provider !== expectedProvider) {
+    fail(`Account map is missing or is not a ${expectedProvider} map.`);
+  }
   if (mapDoc.scope === 'fixture') {
     fail('Fixture account map cannot authorize a live canonical mapping.');
   }
@@ -230,6 +260,30 @@ function loadLiveAccountMap(env, data) {
     fail('live-account-map-invalid');
   }
   assertLiveMap(mapDoc, { data });
+  return mapDoc;
+}
+
+// Plaid live mapping: ATLAS_PLAID_ACCOUNT_MAP_JSON (production), else the
+// ATLAS_PLAID_ACCOUNT_MAP path, else the gitignored owner-observed local
+// file. No committed default: a missing map fails closed before any request.
+function loadLivePlaidAccountMap(env, data) {
+  const source = env || process.env;
+  const json = source && source[PLAID_MAP_JSON_ENV];
+  if (json != null && String(json).trim() !== '') {
+    const mapDoc = parseAccountMapJson(json);
+    assertLiveMap(mapDoc, { data, provider: 'plaid' });
+    return mapDoc;
+  }
+  const mapPath = (source && source[PLAID_MAP_PATH_ENV])
+    || (fs.existsSync(PLAID_LOCAL_MAP) ? PLAID_LOCAL_MAP : null);
+  if (!mapPath) fail('plaid-account-map-missing');
+  let mapDoc;
+  try {
+    mapDoc = loadJson(mapPath);
+  } catch (e) {
+    fail('live-account-map-invalid');
+  }
+  assertLiveMap(mapDoc, { data, provider: 'plaid' });
   return mapDoc;
 }
 
@@ -1624,7 +1678,7 @@ function observationReceiptLooksSanitized(receipt) {
 function observationFingerprintFromParts(parts) {
   return {
     schema: RECEIPT_SCHEMA,
-    provider: 'lunchmoney',
+    provider: parts.provider || 'lunchmoney',
     observedAt: parts.observedAt || null,
     householdDate: parts.householdDate || null,
     writesCanonicalState: parts.writesCanonicalState === true,
@@ -1673,6 +1727,7 @@ function householdFinancialDate(input, observations) {
 
 function observationReceipt(report, opts) {
   opts = opts || {};
+  const provider = (report && report.provider) || 'lunchmoney';
   const fetchedAt = (report && report.fetchedAt) || null;
   const householdDate = dateOnly(fetchedAt);
   const pending = (report && report.pendingCoverage) || classifyPendingCoverage({});
@@ -1707,6 +1762,7 @@ function observationReceipt(report, opts) {
   if (writeClaimed) failClosedReasons.push('canonical-write-claimed');
   const ready = failClosedReasons.length === 0;
   const fingerprint = observationFingerprintFromParts({
+    provider,
     observedAt: fetchedAt,
     householdDate,
     writesCanonicalState: writeClaimed,
@@ -1722,7 +1778,7 @@ function observationReceipt(report, opts) {
   });
   return {
     schema: RECEIPT_SCHEMA,
-    provider: 'lunchmoney',
+    provider,
     observedAt: fetchedAt,
     householdDate,
     writesCanonicalState: writeClaimed,
@@ -2616,6 +2672,10 @@ function observationsFromMappedAccount(account, mapping, fetchedAt) {
     ? postedBalanceEvidenceInstant(account)
     : genericAccountEvidenceInstant(account);
   const observedAt = dated || fetchedAt;
+  // Observation ids stay provider-prefixed so a Plaid and a Lunch Money
+  // observation of the same canonical account can never collide.
+  const provider = account.provider === 'plaid' ? 'plaid' : 'lunchmoney';
+  const idPrefix = provider === 'plaid' ? 'plaid' : 'lm';
   const base = {
     provider: account.provider,
     providerAccountId: account.providerAccountId,
@@ -2623,13 +2683,13 @@ function observationsFromMappedAccount(account, mapping, fetchedAt) {
     observedAsOf: dateOnly(observedAt),
     evidenceDate: dateOnly(observedAt),
     canonical: mapping.canonical,
-    source: 'provider-observe:lunchmoney',
+    source: `provider-observe:${provider}`,
   };
   const out = [];
   if (CASH_ROLES.has(mapping.atlasRole) && account.balance != null) {
     out.push({
       ...base,
-      observationId: `lm-${account.providerAccountId}-cash`,
+      observationId: `${idPrefix}-${account.providerAccountId}-cash`,
       evidenceValue: account.balance,
     });
   }
@@ -2637,7 +2697,7 @@ function observationsFromMappedAccount(account, mapping, fetchedAt) {
     && account.balance != null) {
     out.push({
       ...base,
-      observationId: `lm-${account.providerAccountId}-debt`,
+      observationId: `${idPrefix}-${account.providerAccountId}-debt`,
       evidenceValue: account.balance,
       note: mapping.atlasRole === 'heloc'
         ? 'HELOC balance is not spendable household cash.'
@@ -2647,7 +2707,7 @@ function observationsFromMappedAccount(account, mapping, fetchedAt) {
   if (CREDIT_ROLES.has(mapping.atlasRole) && account.balance != null) {
     out.push({
       ...base,
-      observationId: `lm-${account.providerAccountId}-debt`,
+      observationId: `${idPrefix}-${account.providerAccountId}-debt`,
       fact: 'posted-balance',
       cardId: mapping.canonical && mapping.canonical.id,
       evidenceValue: account.balance,
@@ -2656,7 +2716,7 @@ function observationsFromMappedAccount(account, mapping, fetchedAt) {
   if (CREDIT_ROLES.has(mapping.atlasRole) && account.available != null) {
     out.push({
       ...base,
-      observationId: `lm-${account.providerAccountId}-available`,
+      observationId: `${idPrefix}-${account.providerAccountId}-available`,
       fact: 'available-credit',
       cardId: mapping.canonical && mapping.canonical.id,
       evidenceValue: account.available,
@@ -2666,7 +2726,7 @@ function observationsFromMappedAccount(account, mapping, fetchedAt) {
   if (CREDIT_ROLES.has(mapping.atlasRole) && account.limit != null) {
     out.push({
       ...base,
-      observationId: `lm-${account.providerAccountId}-limit`,
+      observationId: `${idPrefix}-${account.providerAccountId}-limit`,
       fact: 'limit',
       cardId: mapping.canonical && mapping.canonical.id,
       evidenceValue: account.limit,
@@ -2687,8 +2747,130 @@ function spendableCashFromObservations(observations) {
   return Math.round(cash * 100) / 100;
 }
 
+// Balance-only coverage: /accounts/balance/get carries no transactions, so
+// pending is UNKNOWN and posted coverage is unproven. This is the same
+// closed shape classifyPendingCoverage emits; it is not a new status.
+function plaidPendingCoverage() {
+  return {
+    complete: false,
+    status: 'insufficient',
+    basis: null,
+    hasMore: null,
+    startDate: null,
+    endDate: null,
+    reason: 'Plaid /accounts/balance/get carries no transaction or pending coverage. Pending is unknown, not zero.',
+    requiredEvidence: PENDING_COVERAGE_REQUIRED_EVIDENCE,
+  };
+}
+
+function sanitizedPlaidAccount(account) {
+  return {
+    providerAccountId: account.providerAccountId,
+    displayName: account.displayName,
+    type: account.type,
+    subtype: account.subtype,
+    currency: account.currency,
+    balance: account.balance,
+    available: account.available,
+    limit: account.limit,
+    balanceAsOf: account.balanceAsOf,
+  };
+}
+
+// Plaid real-time balances through the incumbent boundary: normalize →
+// map by stable account_id → observationsFromMappedAccount → reconcile.js.
+// Fails closed on a non-plaid map, a mapped household-cash account without a
+// numeric current balance or ISO currency, and a required cash identity the
+// response did not return. Never writes. Not consumed by live-plan.js.
+function observePlaidBalances(input) {
+  const fetchedAt = input.fetchedAt || new Date().toISOString();
+  const normalized = Plaid.normalizePlaidBalancePayload(input.payload, fetchedAt);
+  const mapDoc = input.accountMap;
+  if (!mapDoc || mapDoc.provider !== 'plaid') fail('Account map is missing or is not a plaid map.');
+  const mapped = [];
+  const unmapped = [];
+  const observations = [];
+  for (const account of normalized.accounts) {
+    const mapping = mappingFor(mapDoc, account.providerAccountId);
+    if (mapping && mapping.atlasRole === EXTERNAL_LIVE_ROLE) {
+      mapped.push({
+        providerAccountId: account.providerAccountId,
+        displayName: account.displayName,
+        atlasId: null,
+        collection: null,
+        atlasRole: EXTERNAL_LIVE_ROLE,
+      });
+      continue;
+    }
+    if (!mapping || !mapping.canonical || !mapping.canonical.id) {
+      unmapped.push({
+        providerAccountId: account.providerAccountId,
+        displayName: account.displayName,
+        reason: 'unmapped-provider-account',
+      });
+      continue;
+    }
+    if (CASH_ROLES.has(mapping.atlasRole)) {
+      if (account.balance == null) {
+        fail(`plaid-balance-missing: ${mapping.canonical.id} has no numeric current balance.`);
+      }
+      if (!account.currency) {
+        fail(`plaid-currency-missing: ${mapping.canonical.id} has no ISO currency code.`);
+      }
+    }
+    mapped.push({
+      providerAccountId: account.providerAccountId,
+      displayName: account.displayName,
+      atlasId: mapping.canonical.id,
+      collection: mapping.canonical.collection,
+      atlasRole: mapping.atlasRole,
+    });
+    observations.push(...observationsFromMappedAccount(account, mapping, normalized.fetchedAt));
+  }
+  const cashIds = new Set(mapped
+    .filter(m => m.collection === 'cash' && m.atlasRole === 'household-cash')
+    .map(m => String(m.atlasId)));
+  const requiredCashMissing = REQUIRED_LIVE_CASH_IDS.filter(id => !cashIds.has(id));
+  if (requiredCashMissing.length) {
+    fail(`plaid-required-cash-unobserved: ${requiredCashMissing.join(', ')}.`);
+  }
+  const compareObs = observations.filter(o => !R.CARD_FACTS.has(o.fact));
+  const cardObs = observations.filter(o => R.CARD_FACTS.has(o.fact));
+  const result = R.reconcile({
+    data: input.data,
+    map: input.balanceMap || { mappings: [] },
+    observations: compareObs,
+    cardObservations: cardObs,
+    postingObservations: [],
+  });
+  const assembled = {
+    writesCanonicalState: false,
+    provider: 'plaid',
+    environment: normalized.environment,
+    endpoint: normalized.endpoint,
+    readOnly: true,
+    liveOverlayEligible: false,
+    liveOverlayNote: 'Plaid balance observation is not wired into live-plan.js. Lunch Money remains the incumbent live provider.',
+    fetchedAt: normalized.fetchedAt,
+    pendingCoverage: plaidPendingCoverage(),
+    transactionWindow: normalized.transactionWindow,
+    accounts: normalized.accounts.map(sanitizedPlaidAccount),
+    mapped,
+    unmapped,
+    transactions: [],
+    identityEvidence: [],
+    observations,
+    spendableCash: spendableCashFromObservations(observations),
+    cardCapacityIsCash: R.householdCashFromCardCapacity(),
+    reconciliation: result,
+  };
+  assembled.observationReceipt = observationReceipt(assembled, { accountMap: mapDoc });
+  return assembled;
+}
+
 function observe(input) {
   const provider = input.provider;
+  if (provider === 'plaid') return observePlaidBalances(input);
   if (provider !== 'lunchmoney') fail(`Unsupported provider: ${provider || '(missing)'}.`);
   const fetchedAt = input.fetchedAt || new Date().toISOString();
   const normalized = normalizeLunchMoneyPayload(input.payload, fetchedAt);
@@ -3508,6 +3690,41 @@ function loadIdentity(file) {
   return loadJson(file);
 }
 
+// Plaid CLI path. Credential and map are resolved and validated before any
+// network request so a misconfiguration fails closed without contacting
+// Plaid. Prints the observation report or its receipt; never writes.
+async function runPlaid(args) {
+  if (args.identityProof || args.reconciliationReceipt) {
+    fail('--identity-proof and --reconciliation-receipt are not available for --provider plaid.');
+  }
+  if ((args.mode && args.mode !== 'current-state') || args.historyDays != null) {
+    fail('--mode and --history-days do not apply to --provider plaid.');
+  }
+  const data = loadJson(args.data);
+  let payload;
+  let accountMap;
+  if (args.live) {
+    const credential = Plaid.resolvePlaidCredential();
+    accountMap = args.map ? loadJson(args.map) : loadLivePlaidAccountMap(process.env, data);
+    assertLiveMap(accountMap, { data, provider: 'plaid' });
+    const now = new Date().toISOString();
+    payload = await Plaid.fetchPlaidBalancesLive(credential, now);
+  } else {
+    accountMap = loadJson(resolveMapPath(args));
+    payload = loadJson(args.fixture);
+  }
+  const report = observe({
+    provider: 'plaid',
+    payload,
+    accountMap,
+    data,
+    fetchedAt: payload.fetchedAt,
+  });
+  const printed = args.receipt ? report.observationReceipt : report;
+  process.stdout.write(JSON.stringify(printed, null, 2) + '\n');
+  return 0;
+}
+
 async function run(argv) {
   const args = parseArgs(argv);
   if (args.help) {
@@ -3515,15 +3732,20 @@ async function run(argv) {
       'Usage: node scripts/provider-observe.js --provider lunchmoney --fixture <file>\n'
       + '       node scripts/provider-observe.js --provider lunchmoney --live [--mode current-state|reconcile] [--history-days N]\n'
       + '       [--identity-proof | --receipt | --reconciliation-receipt]\n'
+      + '       node scripts/provider-observe.js --provider plaid --fixture <file> [--receipt]\n'
+      + '       node scripts/provider-observe.js --provider plaid --live [--receipt]\n'
     );
     return 0;
   }
-  if (args.provider !== 'lunchmoney') fail('Only --provider lunchmoney is implemented in this spike.');
+  if (!SUPPORTED_PROVIDERS.includes(args.provider)) {
+    fail('Only --provider lunchmoney and --provider plaid are implemented.');
+  }
   if (args.live && args.fixture) fail('Use either --fixture or --live, not both.');
   if (!args.live && !args.fixture) fail('Pass --fixture <file> or --live.');
   if ([args.identityProof, args.receipt, args.reconciliationReceipt].filter(Boolean).length > 1) {
     fail('Use only one of --identity-proof, --receipt, or --reconciliation-receipt.');
   }
+  if (args.provider === 'plaid') return runPlaid(args);
   if (args.mode && args.mode !== 'current-state' && args.mode !== 'reconcile') {
     fail('Mode must be current-state or reconcile.');
   }
@@ -3592,12 +3814,18 @@ const api = {
   PENDING_COVERAGE_REQUIRED_EVIDENCE,
   REQUIRED_LIVE_CASH_IDS,
   EXTERNAL_LIVE_ROLE,
+  SUPPORTED_PROVIDERS,
+  PLAID_LOCAL_MAP,
+  PLAID_FIXTURE_MAP,
+  PLAID_MAP_JSON_ENV,
+  PLAID_MAP_PATH_ENV,
   parseArgs,
   historyDaysFromArgs,
   postedHistoryDaysForCarriedSettlement,
   resolveMapPath,
   lunchMoneyApiBase,
   loadLiveAccountMap,
+  loadLivePlaidAccountMap,
   assertLiveMap,
   mappingFor,
   lunchMoneyTransactionsUrl,
@@ -3648,6 +3876,8 @@ const api = {
   paydayGapCompleteFromEvidence,
   currentPeriodActualsLooksSanitized,
   transactionLooksSanitized,
+  plaidPendingCoverage,
+  observePlaidBalances,
   observe,
   fetchLunchMoneyLive,
   resolveLiveToken,

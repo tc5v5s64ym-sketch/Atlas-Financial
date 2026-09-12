@@ -1,0 +1,109 @@
+{
+  "provider": "plaid",
+  "fetchedAt": "2026-09-11T18:00:00.000Z",
+  "environment": "sandbox",
+  "source": "synthetic Plaid /accounts/balance/get-shaped fixture for the read-only balance foundation. Not a live institution pull. Account ids, names, masks and amounts are invented.",
+  "request_id": "fixture-request-id",
+  "accounts": [
+    {
+      "account_id": "plaid-fx-acct-chequing-a",
+      "balances": {
+        "available": 1180.25,
+        "current": 1234.56,
+        "limit": null,
+        "iso_currency_code": "CAD",
+        "unofficial_currency_code": null,
+        "last_updated_datetime": null
+      },
+      "mask": "0000",
+      "name": "Synthetic Everyday Chequing",
+      "official_name": "Synthetic Plaid Chequing Account",
+      "type": "depository",
+      "subtype": "checking"
+    },
+    {
+      "account_id": "plaid-fx-acct-chequing-b",
+      "balances": {
+        "available": 210.4,
+        "current": 210.4,
+        "limit": null,
+        "iso_currency_code": "CAD",
+        "unofficial_currency_code": null,
+        "last_updated_datetime": null
+      },
+      "mask": "1111",
+      "name": "Synthetic Spending Chequing",
+      "official_name": "Synthetic Plaid Chequing Account",
+      "type": "depository",
+      "subtype": "checking"
+    },
+    {
+      "account_id": "plaid-fx-acct-savings",
+      "balances": {
+        "available": 5000,
+        "current": 5000,
+        "limit": null,
+        "iso_currency_code": "CAD",
+        "unofficial_currency_code": null,
+        "last_updated_datetime": null
+      },
+      "mask": "2222",
+      "name": "Synthetic Savings",
+      "official_name": "Synthetic Plaid Savings Account",
+      "type": "depository",
+      "subtype": "savings"
+    },
+    {
+      "account_id": "plaid-fx-acct-visa",
+      "balances": {
+        "available": 3200.5,
+        "current": 4500.11,
+        "limit": 8000,
+        "iso_currency_code": "CAD",
+        "unofficial_currency_code": null,
+        "last_updated_datetime": "2026-09-11T17:30:00.000Z"
+      },
+      "mask": "3333",
+      "name": "Synthetic Visa",
+      "official_name": "Synthetic Plaid Credit Card",
+      "type": "credit",
+      "subtype": "credit card"
+    },
+    {
+      "account_id": "plaid-fx-acct-external",
+      "balances": {
+        "available": 75,
+        "current": 75,
+        "limit": null,
+        "iso_currency_code": "CAD",
+        "unofficial_currency_code": null,
+        "last_updated_datetime": null
+      },
+      "mask": "4444",
+      "name": "Synthetic Non-Household Account",
+      "official_name": "Synthetic Plaid Chequing Account",
+      "type": "depository",
+      "subtype": "checking"
+    },
+    {
+      "account_id": "plaid-fx-acct-mystery",
+      "balances": {
+        "available": 12.34,
+        "current": 12.34,
+        "limit": null,
+        "iso_currency_code": "CAD",
+        "unofficial_currency_code": null,
+        "last_updated_datetime": null
+      },
+      "mask": "5555",
+      "name": "Synthetic Mystery Account",
+      "official_name": "Synthetic Plaid Unknown Account",
+      "type": "depository",
+      "subtype": "checking"
+    }
+  ],
+  "item": {
+    "item_id": "fixture-item-id",
+    "institution_id": "ins_fixture"
+  }
+}

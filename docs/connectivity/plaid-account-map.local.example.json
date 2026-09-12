@@ -1,0 +1,41 @@
+{
+  "schema": "atlas-provider-account-map/v1",
+  "owns": "Owner-observed Plaid account_id to Atlas canonical-id mapping for this machine only. Copy to plaid-account-map.local.json and fill the real Plaid account_id values. That local file is gitignored. In production the same document travels as the ATLAS_PLAID_ACCOUNT_MAP_JSON secret.",
+  "does_not_own": "Financial values, permission to write data.json, automatic account creation, Forecast, Lunch Money provider ids, or synthetic fixture IDs.",
+  "provider": "plaid",
+  "scope": "live",
+  "storage": "local",
+  "notes": [
+    "Identity is the stable Plaid account_id, never the display name, mask, or official_name.",
+    "Same atlas-provider-account-map/v1 schema as the Lunch Money map; only the provider and the ids differ. One mapping authority, two provider documents.",
+    "Mapping does not authorize a canonical write. Plaid balance observations are not consumed by live-plan.js; Lunch Money remains the incumbent live provider.",
+    "All three required household-cash identities (chequing-a, chequing-b, savings) must be mapped, or live observation fails closed before any request.",
+    "Map any non-household account the Item returns as atlasRole household-external rather than leaving it unmapped."
+  ],
+  "mappings": [
+    {
+      "providerAccountId": "YOUR_PLAID_BILLS_ACCOUNT_ID",
+      "canonical": { "collection": "cash", "id": "chequing-a" },
+      "atlasRole": "household-cash"
+    },
+    {
+      "providerAccountId": "YOUR_PLAID_WEEKLY_SPENDING_ID",
+      "canonical": { "collection": "cash", "id": "chequing-b" },
+      "atlasRole": "household-cash"
+    },
+    {
+      "providerAccountId": "YOUR_PLAID_EMERGENCY_SAVING_ID",
+      "canonical": { "collection": "cash", "id": "savings" },
+      "atlasRole": "household-cash"
+    },
+    {
+      "providerAccountId": "YOUR_PLAID_PERSONAL_CREDIT_CARD_ID",
+      "canonical": { "collection": "debts", "id": "tdcc" },
+      "atlasRole": "revolving-credit"
+    },
+    {
+      "providerAccountId": "YOUR_PLAID_NON_HOUSEHOLD_ACCOUNT_ID",
+      "atlasRole": "household-external"
+    }
+  ]
+}
