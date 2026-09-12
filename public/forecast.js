@@ -3992,12 +3992,36 @@
   // incumbent plannedPayday meaning. first-seaspan-of-month assigns the
   // payday amount to the earliest Seaspan pay-period start in that
   // YYYY-MM only. Year is part of the month identity.
+  // every-other-seaspan assigns the payday amount to alternating
+  // Seaspan period starts from Forecast.spendingCycle. The ON phase is
+  // the cycle that contains paydayCadenceAnchor. Periods 0, 2, 4… 14-day
+  // steps from that ON start hold; 1, 3, 5… do not. Hold cadence only —
+  // not a second payroll calendar.
   const FIRST_SEASPAN_OF_MONTH = 'first-seaspan-of-month';
+  const EVERY_OTHER_SEASPAN = 'every-other-seaspan';
   function paydayCadence(cat) {
     return cat && typeof cat.paydayCadence === 'string' ? cat.paydayCadence : null;
   }
   function isFirstSeaspanOfMonthCadence(cat) {
     return paydayCadence(cat) === FIRST_SEASPAN_OF_MONTH;
+  }
+  function isEveryOtherSeaspanCadence(cat) {
+    return paydayCadence(cat) === EVERY_OTHER_SEASPAN;
+  }
+  function everyOtherSeaspanOnStart(plan, cat) {
+    if (!isEveryOtherSeaspanCadence(cat)) return null;
+    const raw = financialDate(cat.paydayCadenceAnchor);
+    if (!raw || !plan) return null;
+    const cycle = spendingCycle(plan, raw);
+    return (cycle && cycle.start) || null;
+  }
+  function isEveryOtherSeaspanOnPayday(plan, iso, cat) {
+    const day = financialDate(iso);
+    const onStart = everyOtherSeaspanOnStart(plan, cat);
+    if (!day || !onStart) return false;
+    const delta = diffDays(onStart, day);
+    if (delta % 14 !== 0) return false;
+    return (delta / 14) % 2 === 0;
   }
   function calendarMonthBounds(iso) {
     const day = financialDate(iso);
@@ -4025,7 +4049,7 @@
   // omit the row rather than inventing a prorated half-target.
   // first-seaspan-of-month counts only the earliest Seaspan start in
   // each calendar month, so a later payday week does not hold another
-  // $100 obligation.
+  // $100 obligation. every-other-seaspan counts only ON period starts.
   function paydayHoldForSpan(cat, plan, days, start, end) {
     if (!cat || cat.plannedPayday == null) return null;
     const payday = roundCent(Number(cat.plannedPayday) || 0);
@@ -4033,11 +4057,13 @@
       const dates = seaspanPaydaysInSpan(plan, start, end);
       const n = isFirstSeaspanOfMonthCadence(cat)
         ? dates.filter(d => isFirstSeaspanPaydayOfCalendarMonth(plan, d)).length
-        : dates.length;
+        : isEveryOtherSeaspanCadence(cat)
+          ? dates.filter(d => isEveryOtherSeaspanOnPayday(plan, d, cat)).length
+          : dates.length;
       return n > 0 ? roundCent(payday * n) : null;
     }
     const d = Math.max(0, Number(days) || 0);
-    if (isFirstSeaspanOfMonthCadence(cat)) return null;
+    if (isFirstSeaspanOfMonthCadence(cat) || isEveryOtherSeaspanCadence(cat)) return null;
     return d === 14 ? payday : null;
   }
 
@@ -5299,8 +5325,10 @@
     }
     if (cat.plannedPayday != null) {
       // Once-per-month payday assignment is $N per calendar month, not
-      // $N annualized over 26 Seaspan cycles.
-      if (isFirstSeaspanOfMonthCadence(cat)) {
+      // $N annualized over 26 Seaspan cycles. every-other-seaspan is the
+      // same monthly equivalent: one $N hold about once a month, not a
+      // 14-day smear that would print $50 on an OFF cycle.
+      if (isFirstSeaspanOfMonthCadence(cat) || isEveryOtherSeaspanCadence(cat)) {
         return roundCent(Number(cat.plannedPayday) || 0);
       }
       return roundCent(Number(cat.plannedPayday) * CALENDAR_MONTH_DAYS / 14);
@@ -5314,8 +5342,10 @@
   // (365.25/12), not monthly/2. Halving would make $300/month × 26 =
   // $3,900/year instead of $3,600. first-seaspan-of-month uses the
   // cycle start against Forecast's Seaspan payday schedule: $N on the
-  // earliest start in that YYYY-MM, else $0. Missing cycle identity
-  // fails closed at $0 rather than inventing a second monthly copy.
+  // earliest start in that YYYY-MM, else $0. every-other-seaspan holds
+  // $N on the ON start and omits the row on OFF starts so Budget does
+  // not print a this-cycle hold. Missing cycle identity fails closed
+  // rather than inventing a second copy.
   function paydayCyclePlanned(cat, cycleStart, plan) {
     if (!cat) return null;
     if (cat.plannedWeekly != null) return roundCent(Number(cat.plannedWeekly) * 2);
@@ -5324,6 +5354,10 @@
       if (isFirstSeaspanOfMonthCadence(cat)) {
         if (!cycleStart || !plan) return 0;
         return isFirstSeaspanPaydayOfCalendarMonth(plan, cycleStart) ? payday : 0;
+      }
+      if (isEveryOtherSeaspanCadence(cat)) {
+        if (!cycleStart || !plan) return null;
+        return isEveryOtherSeaspanOnPayday(plan, cycleStart, cat) ? payday : null;
       }
       return payday;
     }
@@ -5337,6 +5371,18 @@
       return roundCent(monthly * 14 / CALENDAR_MONTH_DAYS);
     }
     return null;
+  }
+
+  // Essential cash reserve for every-other-seaspan must use the same
+  // discrete paydayCyclePlanned amount as Household Budget. The
+  // master-plan monthly equivalent stays on ownerTargetMonthly;
+  // smearing that equivalent across remaining days would protect cash
+  // on an owner-declared OFF cycle. Null means the caller keeps the
+  // incumbent monthly remaining-days scale.
+  function essentialCadencePeriodPlanned(plan, cat, cycleStart) {
+    if (!isEveryOtherSeaspanCadence(cat)) return null;
+    const planned = paydayCyclePlanned(cat, cycleStart, plan);
+    return planned == null ? 0 : roundCent(planned);
   }
 
   function calendarHalfThrough(asOf, end) {
@@ -6359,10 +6405,18 @@
     const essentialNeed = essentialNeedBreakdown(plan, opts.periods, opts);
     const categories = [];
     const seenCat = new Set();
+    const cycleStart = (() => {
+      const cycle = spendingCycle(plan, asOf);
+      return cycle && cycle.start;
+    })();
     const pushCategory = (row, monthly, source) => {
       if (!row || !row.id || seenCat.has(row.id)) return;
       seenCat.add(row.id);
-      const planned = roundCent(monthly * needDays / CALENDAR_MONTH_DAYS);
+      const cat = ((plan.budget && plan.budget.categories) || []).find(c => c && c.id === row.id) || row;
+      const cadencePlanned = essentialCadencePeriodPlanned(plan, cat, cycleStart);
+      const planned = cadencePlanned != null
+        ? cadencePlanned
+        : roundCent(monthly * needDays / CALENDAR_MONTH_DAYS);
       const act = categoryCommittedActual(actuals.byId.get(row.id), coverage.remainingClaim);
       const remaining = useActuals ? roundCent(planned - act.committed) : null;
       if (!(planned > EPSILON) && !(act.posted > EPSILON) && !(act.pending > EPSILON)
@@ -6371,7 +6425,9 @@
         id: row.id,
         label: row.label,
         class: row.class || null,
-        planned: useActuals || planned > EPSILON ? planned : roundCent(monthly * needDays / CALENDAR_MONTH_DAYS),
+        planned: cadencePlanned != null || useActuals || planned > EPSILON
+          ? planned
+          : roundCent(monthly * needDays / CALENDAR_MONTH_DAYS),
         posted: useActuals ? act.posted : null,
         pending: useActuals ? act.pending : null,
         committed: useActuals ? act.committed : null,
@@ -6698,7 +6754,29 @@
 
     const essentialNeed = essentialNeedBreakdown(plan, opts.periods, opts);
     const essentialMonthly = essentialNeed.monthly;
-    const essentialsWantedFull = essentialMonthly * needDays / CALENDAR_MONTH_DAYS;
+    const periodScale = needDays / CALENDAR_MONTH_DAYS;
+    const cycleStart = (() => {
+      const cycle = spendingCycle(plan, asOf);
+      return cycle && cycle.start;
+    })();
+    const budgetCatById = new Map();
+    for (const cat of (plan.budget && plan.budget.categories) || []) {
+      if (cat && cat.id) budgetCatById.set(cat.id, cat);
+    }
+    const periodPlannedForEssential = row => {
+      const cadencePlanned = essentialCadencePeriodPlanned(
+        plan, budgetCatById.get(row && row.id), cycleStart);
+      if (cadencePlanned != null) return cadencePlanned;
+      return roundCent((Number(row && row.monthly) || 0) * periodScale);
+    };
+    let essentialsWantedFull = essentialMonthly * periodScale;
+    for (const row of essentialNeed.items) {
+      const cadencePlanned = essentialCadencePeriodPlanned(
+        plan, budgetCatById.get(row && row.id), cycleStart);
+      if (cadencePlanned == null) continue;
+      essentialsWantedFull += cadencePlanned - ((Number(row.monthly) || 0) * periodScale);
+    }
+    essentialsWantedFull = roundCent(essentialsWantedFull);
 
     let obligationsWanted = 0;
     const obligationItems = [];
@@ -6782,10 +6860,9 @@
       : roundCent(requiredDebtItems.reduce((sum, item) => sum + Number(item.allocated || 0), 0));
 
     const essentialItems = [];
-    const periodScale = needDays / CALENDAR_MONTH_DAYS;
     let requiredSum = 0;
     for (const row of essentialNeed.items) {
-      const planned = roundCent(row.monthly * periodScale);
+      const planned = periodPlannedForEssential(row);
       const act = categoryCommittedActual(
         categoryActuals.byId.get(row.id), coverage.remainingClaim);
       const remainingNeed = useActuals ? roundCent(planned - act.committed) : planned;
@@ -6812,7 +6889,15 @@
     if (!useActuals) {
       const residual = roundCent(wantedRounded - requiredSum);
       if (essentialItems.length && residual !== 0) {
-        const last = essentialItems[essentialItems.length - 1];
+        let last = null;
+        for (let i = essentialItems.length - 1; i >= 0; i--) {
+          const cat = budgetCatById.get(essentialItems[i].id);
+          if (essentialCadencePeriodPlanned(plan, cat, cycleStart) == null) {
+            last = essentialItems[i];
+            break;
+          }
+        }
+        if (!last) last = essentialItems[essentialItems.length - 1];
         last.required = roundCent(last.required + residual);
         last.remaining = last.required;
         last.planned = last.required;

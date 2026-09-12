@@ -623,7 +623,8 @@ console.log('\n=== live opening observation (not a specification) ===');
     'live dated opening is labelled from as-of, not Now');
   ok((alloc.obligations.items || []).every(i => html.includes(i.label)),
     'every live obligation item is rendered');
-  ok((alloc.essentials.items || []).every(i => html.includes(i.label)),
+  ok((alloc.essentials.items || []).filter(i => Number(i.required) > 0)
+      .every(i => html.includes(i.label)),
     'every live essential requirement is rendered');
   ok(alloc.essentials.wanted >= alloc.essentials.allocated - 0.02,
     'live essential wanted is at least the funded hold');
