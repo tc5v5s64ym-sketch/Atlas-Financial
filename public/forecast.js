@@ -5373,6 +5373,18 @@
     return null;
   }
 
+  // Essential cash reserve for every-other-seaspan must use the same
+  // discrete paydayCyclePlanned amount as Household Budget. The
+  // master-plan monthly equivalent stays on ownerTargetMonthly;
+  // smearing that equivalent across remaining days would protect cash
+  // on an owner-declared OFF cycle. Null means the caller keeps the
+  // incumbent monthly remaining-days scale.
+  function essentialCadencePeriodPlanned(plan, cat, cycleStart) {
+    if (!isEveryOtherSeaspanCadence(cat)) return null;
+    const planned = paydayCyclePlanned(cat, cycleStart, plan);
+    return planned == null ? 0 : roundCent(planned);
+  }
+
   function calendarHalfThrough(asOf, end) {
     if (end && asOf) return asOf < end ? asOf : end;
     return end || asOf || null;
@@ -6393,10 +6405,18 @@
     const essentialNeed = essentialNeedBreakdown(plan, opts.periods, opts);
     const categories = [];
     const seenCat = new Set();
+    const cycleStart = (() => {
+      const cycle = spendingCycle(plan, asOf);
+      return cycle && cycle.start;
+    })();
     const pushCategory = (row, monthly, source) => {
       if (!row || !row.id || seenCat.has(row.id)) return;
       seenCat.add(row.id);
-      const planned = roundCent(monthly * needDays / CALENDAR_MONTH_DAYS);
+      const cat = ((plan.budget && plan.budget.categories) || []).find(c => c && c.id === row.id) || row;
+      const cadencePlanned = essentialCadencePeriodPlanned(plan, cat, cycleStart);
+      const planned = cadencePlanned != null
+        ? cadencePlanned
+        : roundCent(monthly * needDays / CALENDAR_MONTH_DAYS);
       const act = categoryCommittedActual(actuals.byId.get(row.id), coverage.remainingClaim);
       const remaining = useActuals ? roundCent(planned - act.committed) : null;
       if (!(planned > EPSILON) && !(act.posted > EPSILON) && !(act.pending > EPSILON)
@@ -6405,7 +6425,9 @@
         id: row.id,
         label: row.label,
         class: row.class || null,
-        planned: useActuals || planned > EPSILON ? planned : roundCent(monthly * needDays / CALENDAR_MONTH_DAYS),
+        planned: cadencePlanned != null || useActuals || planned > EPSILON
+          ? planned
+          : roundCent(monthly * needDays / CALENDAR_MONTH_DAYS),
         posted: useActuals ? act.posted : null,
         pending: useActuals ? act.pending : null,
         committed: useActuals ? act.committed : null,
@@ -6732,7 +6754,29 @@
 
     const essentialNeed = essentialNeedBreakdown(plan, opts.periods, opts);
     const essentialMonthly = essentialNeed.monthly;
-    const essentialsWantedFull = essentialMonthly * needDays / CALENDAR_MONTH_DAYS;
+    const periodScale = needDays / CALENDAR_MONTH_DAYS;
+    const cycleStart = (() => {
+      const cycle = spendingCycle(plan, asOf);
+      return cycle && cycle.start;
+    })();
+    const budgetCatById = new Map();
+    for (const cat of (plan.budget && plan.budget.categories) || []) {
+      if (cat && cat.id) budgetCatById.set(cat.id, cat);
+    }
+    const periodPlannedForEssential = row => {
+      const cadencePlanned = essentialCadencePeriodPlanned(
+        plan, budgetCatById.get(row && row.id), cycleStart);
+      if (cadencePlanned != null) return cadencePlanned;
+      return roundCent((Number(row && row.monthly) || 0) * periodScale);
+    };
+    let essentialsWantedFull = essentialMonthly * periodScale;
+    for (const row of essentialNeed.items) {
+      const cadencePlanned = essentialCadencePeriodPlanned(
+        plan, budgetCatById.get(row && row.id), cycleStart);
+      if (cadencePlanned == null) continue;
+      essentialsWantedFull += cadencePlanned - ((Number(row.monthly) || 0) * periodScale);
+    }
+    essentialsWantedFull = roundCent(essentialsWantedFull);
 
     let obligationsWanted = 0;
     const obligationItems = [];
@@ -6816,10 +6860,9 @@
       : roundCent(requiredDebtItems.reduce((sum, item) => sum + Number(item.allocated || 0), 0));
 
     const essentialItems = [];
-    const periodScale = needDays / CALENDAR_MONTH_DAYS;
     let requiredSum = 0;
     for (const row of essentialNeed.items) {
-      const planned = roundCent(row.monthly * periodScale);
+      const planned = periodPlannedForEssential(row);
       const act = categoryCommittedActual(
         categoryActuals.byId.get(row.id), coverage.remainingClaim);
       const remainingNeed = useActuals ? roundCent(planned - act.committed) : planned;
@@ -6846,7 +6889,15 @@
     if (!useActuals) {
       const residual = roundCent(wantedRounded - requiredSum);
       if (essentialItems.length && residual !== 0) {
-        const last = essentialItems[essentialItems.length - 1];
+        let last = null;
+        for (let i = essentialItems.length - 1; i >= 0; i--) {
+          const cat = budgetCatById.get(essentialItems[i].id);
+          if (essentialCadencePeriodPlanned(plan, cat, cycleStart) == null) {
+            last = essentialItems[i];
+            break;
+          }
+        }
+        if (!last) last = essentialItems[essentialItems.length - 1];
         last.required = roundCent(last.required + residual);
         last.remaining = last.required;
         last.planned = last.required;

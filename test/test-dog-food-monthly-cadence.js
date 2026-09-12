@@ -158,6 +158,22 @@ function petsHold(period) {
   };
 }
 
+const CALENDAR_MONTH_DAYS = 365.25 / 12;
+function monthlySmear(amount, days) {
+  return roundCent(amount * Math.max(0, Number(days) || 0) / CALENDAR_MONTH_DAYS);
+}
+
+function petsEssential(alloc) {
+  const row = ((((alloc || {}).essentials || {}).items) || []).find(i => i && i.id === 'pets') || null;
+  if (!row) return { shown: false, required: 0, planned: 0, monthly: 0 };
+  return {
+    shown: true,
+    required: Number(row.required) || 0,
+    planned: Number(row.planned) || 0,
+    monthly: Number(row.monthly) || 0,
+  };
+}
+
 function proveStarts(label, plan, onStart, starts) {
   console.log(`\n=== ${label} ===`);
   const expectedByStart = new Map();
@@ -196,6 +212,18 @@ function proveStarts(label, plan, onStart, starts) {
     ok(period && near(period.budgetHold, independentHold),
       `${start} Household Budget hold is independently $${independentHold.toFixed(2)}`,
       period && String(period.budgetHold));
+
+    const alloc = advice.paydayAllocation;
+    const essential = petsEssential(alloc);
+    const smear = monthlySmear(100, alloc && alloc.periodDays);
+    ok(near(essential.required, expected) && near(essential.planned, expected),
+      `${start} payday essentials Dog food is independently $${expected}`,
+      JSON.stringify(essential));
+    ok(!near(smear, expected),
+      `${start} independent hold $${expected} is not the $${smear.toFixed(2)} monthly smear`);
+    ok(!near(essential.required, smear),
+      `${start} payday essentials is not the remaining-days smear`,
+      String(essential.required));
   }
 }
 
@@ -290,6 +318,37 @@ console.log('\n=== 5–6. other targets unchanged; totals reconcile by component
   ok(on && near(on.afterHouseholdBudget,
       roundCent(on.afterRemainingBills - on.budgetHold)),
     'ON leftover is remaining-bills minus the $1,862.50 hold');
+}
+
+console.log('\n=== payday essentials matches Household Budget ON/OFF ===');
+{
+  const windows = [
+    { start: '2026-08-28', expected: 100, label: 'Aug 28–Sep 10 ON' },
+    { start: '2026-09-11', expected: 0, label: 'Sep 11–24 OFF' },
+    { start: '2026-09-25', expected: 100, label: 'Sep 25–Oct 8 ON' },
+  ];
+  for (const row of windows) {
+    const advice = recommendOn(livePlan, row.start);
+    const period = periodOn(advice, row.start);
+    const hold = petsHold(period);
+    const essential = petsEssential(advice.paydayAllocation);
+    const smear = monthlySmear(100, 14);
+    ok(independentDogFoodPlanned(ON_START, row.start) === row.expected,
+      `${row.label} independent calendar is $${row.expected}`);
+    ok(near(hold.planned, row.expected) && near(hold.hold, row.expected),
+      `${row.label} Household Budget Dog food is $${row.expected}`,
+      JSON.stringify(hold));
+    ok(near(essential.required, row.expected) && near(essential.planned, row.expected),
+      `${row.label} payday essentials Dog food is $${row.expected}`,
+      JSON.stringify(essential));
+    ok(near(hold.planned, essential.required),
+      `${row.label} Household Budget and payday essentials agree`);
+    ok(!near(smear, row.expected) && !near(essential.required, smear),
+      `${row.label} is not the $${smear.toFixed(2)} remaining-days smear`);
+    ok(near(essential.monthly, 100),
+      `${row.label} master-plan monthly equivalent stays $100`,
+      String(essential.monthly));
+  }
 }
 
 console.log('\n=== current and next period use the same standing rule ===');
@@ -430,6 +489,16 @@ console.log('\n=== live data.json uses the standing every-other-Seaspan rule ===
   ok(next && next.start === '2026-09-25'
       && petsHold(next).shown && near(petsHold(next).planned, 100),
     'live Next Pay Period still holds Dog food $100 from the standing rule');
+  const liveEssential = petsEssential(rec.paydayAllocation);
+  ok(near(liveEssential.required, 0) && near(liveEssential.planned, 0),
+    'live Sep 11–24 payday essentials Dog food is $0',
+    JSON.stringify(liveEssential));
+  const liveOn = recommendOn(liveData.plan, '2026-08-28');
+  const liveOnEssential = petsEssential(liveOn.paydayAllocation);
+  const liveNextEssential = petsEssential(recommendOn(liveData.plan, '2026-09-25').paydayAllocation);
+  ok(near(liveOnEssential.required, 100) && near(liveNextEssential.required, 100),
+    'live Aug 28 and Sep 25 payday essentials Dog food are $100',
+    `${liveOnEssential.required} / ${liveNextEssential.required}`);
 }
 
 console.log('\n=== 7. Surrey Meat classification is unchanged ===');
