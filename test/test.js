@@ -73,7 +73,7 @@ const suites = [
   ['Subscriptions page — Forecast.householdSubscriptions rendered', 'test-subscriptions-page.js'],
   ['Plan calendar bill sections', 'test-plan-bill-calendar-periods.js'],
   ['Plan calendar waterfalls', 'test-plan-calendar-waterfalls.js'],
-  ['Dog food once-per-month payday cadence', 'test-dog-food-monthly-cadence.js'],
+  ['Dog food every-other-Seaspan payday cadence', 'test-dog-food-monthly-cadence.js'],
   ['Household planned target removed', 'test-household-target-removed.js'],
   ['Household Budget Other spending residual', 'test-household-budget-other-spending.js'],
   ['Household Budget Spent transaction drill-down', 'test-household-budget-spent-drilldown.js'],

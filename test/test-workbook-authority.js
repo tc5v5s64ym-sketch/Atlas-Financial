@@ -66,16 +66,19 @@ for (const [id, amount] of Object.entries(OWNER_PAYDAY_TARGETS)) {
   ok(p && p.plannedPayday === DOG_FOOD_PAYDAY && p.plannedMonthly == null,
     'dog food owner target is plannedPayday 100, not plannedMonthly 55',
     p ? `${p.plannedPayday} / ${p.plannedMonthly}` : 'missing');
-  ok(p && p.paydayCadence === 'first-seaspan-of-month',
-    'dog food paydayCadence is first-seaspan-of-month',
+  ok(p && p.paydayCadence === 'every-other-seaspan',
+    'dog food paydayCadence is every-other-seaspan',
     p ? String(p.paydayCadence) : 'missing');
+  ok(p && p.paydayCadenceAnchor === '2026-08-28',
+    'dog food paydayCadenceAnchor is the Aug 28 ON Seaspan start',
+    p ? String(p.paydayCadenceAnchor) : 'missing');
   ok(p && p.targetSource === OWNER_SOURCE,
     'pets targetSource remains owner-stated-2026-08-31');
-  ok(p && /cadence restated by owner 2026-09-04/.test(p.why || ''),
-    'pets why records the cadence restatement on the household-financial date 2026-09-04',
+  ok(p && /every-other-Seaspan/i.test(p.why || '') && /2026-09-11/.test(p.why || ''),
+    'pets why records the standing every-other-Seaspan restatement on 2026-09-11/12',
     p ? String(p.why) : 'missing');
   ok(p && !/cadence restated by owner 2026-09-05/.test(p.why || ''),
-    'pets why does not advance that restatement to the UTC date 2026-09-05');
+    'pets why does not invent a UTC-date restatement');
 }
 for (const id of RETIRED_HOLD_IDS) {
   const c = byId(id);
