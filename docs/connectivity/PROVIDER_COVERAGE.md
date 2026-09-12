@@ -177,3 +177,43 @@ This evaluation is **complete**. It is **NOT** permission to point
 Wealthica or Flinks live. T4 later passed on 2026-08-17 for the earned
 preview/approve writer only. Unattended production writes and a Render
 token remain reserved.
+
+## J. Plaid — read-only real-time Balance (foundation, 2026-09-11)
+
+Official: https://plaid.com/docs/api/products/balance/
+
+- Owner instruction 2026-09-11 (via the Atlas Coordinator) authorizes one
+  read-only request: `POST /accounts/balance/get`. Nothing else — no
+  Transactions, Transactions Refresh, webhooks, or Plaid Link inside Atlas.
+- Auth is the Plaid application `client_id` + `secret` plus the Item's
+  `access_token`, all in the JSON request body. Env:
+  `PLAID_CLIENT_ID`, `PLAID_SECRET`, `PLAID_ACCESS_TOKEN`, `PLAID_ENV`
+  (`sandbox` | `production`; the retired `development` host is refused).
+  Missing or unsupported configuration fails closed before any request.
+  Values never appear in a URL, header, log, error, report, fixture, PR or
+  the browser. These are Plaid-issued service credentials; Atlas still
+  never holds a bank login.
+- Implementation: `scripts/plaid-balance.js` (request + normalize) feeding
+  `scripts/provider-observe.js --provider plaid` and then the incumbent
+  `scripts/reconcile.js`. Identity is the stable Plaid `account_id`, mapped on
+  the same `atlas-provider-account-map/v1` schema with `provider: plaid`
+  (`ATLAS_PLAID_ACCOUNT_MAP_JSON` in production; gitignored
+  `docs/connectivity/plaid-account-map.local.json` locally, from
+  `plaid-account-map.local.example.json`). `mask`, `official_name` and
+  display names are labels or dropped; they are never identity.
+- Semantics: `balances.current` is the posted balance (positive owed for
+  credit accounts) and becomes the cash / posted-balance observation;
+  `available` and `limit` stay their own facts; `iso_currency_code` is
+  preserved per account. `last_updated_datetime` dates the balance when
+  present; otherwise the fetch instant does. The endpoint carries no
+  transactions, so pending is UNKNOWN (not zero) and a Plaid packet is never
+  `readyForReconciliation`. `scripts/live-plan.js` does not consume it;
+  **Lunch Money remains the incumbent live provider.**
+- Proof so far: focused tests and a loopback mock of the endpoint
+  (`test/test-plaid-balance-observe.js`). **A mocked Plaid success is not
+  live TD connectivity proof.** Which TD products a real Item returns, and
+  whether Plaid `current` agrees with TD and with Lunch Money, remain
+  UNKNOWN / MUST TEST.
+- Named next (separate owner-gated outcome): owner-authenticated Plaid Link
+  onboarding, then one live TD acceptance — TD itself vs Plaid balance vs
+  Lunch Money. Live TD credentials are not needed for the foundation.

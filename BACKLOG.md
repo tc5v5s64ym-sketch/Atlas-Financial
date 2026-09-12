@@ -315,6 +315,27 @@ that CSS leak from PR #268 is not a decision about their future. Their future
 (household nav, a diagnostics nav, or retirement) is owner direction; do not
 delete them on an agent's initiative.
 
+**B103 · Read-only Plaid real-time Balance into provider observation** · **FOUNDATION LANDED (this PR); next step owner-gated** · *owner instruction 2026-09-11 via the Atlas Coordinator*
+
+Atlas can make one read-only Plaid request, `POST /accounts/balance/get`,
+and normalize the returned balances into the incumbent provider-observation
+boundary (`scripts/plaid-balance.js` → `scripts/provider-observe.js
+--provider plaid` → `scripts/reconcile.js`). Identity is the stable Plaid
+`account_id` on the same `atlas-provider-account-map/v1` schema with
+`provider: plaid`; `current` is the posted balance, `available` / `limit`
+stay their own facts, currency is preserved. Missing credentials, an
+unsupported `PLAID_ENV`, a missing or wrong-provider map, a malformed
+response, a Plaid error, or an unobserved required cash identity fail
+closed. The packet carries no pending coverage and is never
+`readyForReconciliation`; `scripts/live-plan.js` does not consume it and
+Lunch Money remains the incumbent live provider. No published figure moves.
+A mocked Plaid success is not live TD proof.
+
+**Named next (separate PR, owner-gated):** owner-authenticated Plaid Link
+onboarding, then one live TD acceptance — TD itself vs Plaid balance vs
+Lunch Money — before any Plaid figure reaches a decision surface. Not
+authorized by the foundation.
+
 **B102 · Current-cash treatment of pending spending outside essential target lines** · **FIXED NOW in PR #263; merge pending** · *same cash-identity blocker, owner-directed repair*
 
 The earlier safe-follow-up disposition was incorrect. Unresolved household-cash
