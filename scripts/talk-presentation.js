@@ -141,6 +141,13 @@ function moneySentence(template, value) {
   return { text: template.available(formatted) };
 }
 
+function closedPolicySentence(value, allowed, sentence) {
+  if (value !== allowed) {
+    return { text: 'That owner policy label is unavailable.', trust: 'unavailable' };
+  }
+  return { text: sentence, trust: 'owner-stated' };
+}
+
 const PATH_RULES = [
   {
     path: 'forecast.currentPeriodAction.essentialRemaining',
@@ -405,6 +412,101 @@ const PATH_RULES = [
       return { text: `Packet freshness is ${value}.`, trust: value };
     },
   },
+  {
+    path: 'policy.decisionPosture.posture',
+    source: null,
+    action: null,
+    present(value) {
+      return closedPolicySentence(value, 'aggressive-not-brittle',
+        'The household decision posture is aggressive, but not brittle.');
+    },
+  },
+  {
+    path: 'policy.decisionPosture.velocity',
+    source: null,
+    action: null,
+    present(value) {
+      return closedPolicySentence(value, 'fastest-to-goal',
+        'Velocity means getting to the financial goal as fast as possible.');
+    },
+  },
+  {
+    path: 'policy.decisionPosture.resilience',
+    source: null,
+    action: null,
+    present(value) {
+      return closedPolicySentence(value, 'enough-cash-flexibility-for-real-life-and-known-commitments',
+        'Resilience means enough cash and flexibility for real life and known commitments.');
+    },
+  },
+  {
+    path: 'policy.decisionPosture.breathingRoom',
+    source: null,
+    action: null,
+    present(value) {
+      return closedPolicySentence(value, 'sustainable-slack-not-waste-permission',
+        'Breathing room is enough slack to stay sustainable and reduce immediate re-borrow risk. It is not waste permission, comfort-max, avoiding hard choices, or slowing without a demonstrated resilience reason.');
+    },
+  },
+  {
+    path: 'policy.decisionPosture.knownCommitments',
+    source: null,
+    action: null,
+    present(value) {
+      return closedPolicySentence(value, 'exert-gravity',
+        'Known authorized future commitments exert gravity on household decisions.');
+    },
+  },
+  {
+    path: 'policy.decisionPosture.cheapestWhenBrittle',
+    source: null,
+    action: null,
+    present(value) {
+      return closedPolicySentence(value, 'not-best-household-decision',
+        'Mathematically cheapest is not the best household decision when that cheapest path is unacceptably brittle.');
+    },
+  },
+  {
+    path: 'policy.decisionPosture.numericThreshold',
+    source: null,
+    action: null,
+    present(value) {
+      return closedPolicySentence(value, 'none',
+        'There is no universal numeric breathing-room threshold.');
+    },
+  },
+  {
+    path: 'policy.decisionPosture.forecastApplication',
+    source: null,
+    action: null,
+    present(value) {
+      return closedPolicySentence(value, 'not-applied-this-slice',
+        'Forecast does not apply this decision-posture row in this slice.');
+    },
+  },
+  {
+    path: 'policy.decisionPosture.provenance',
+    source: null,
+    action: null,
+    present(value) {
+      return closedPolicySentence(value, 'owner-stated',
+        'This decision posture is owner-stated.');
+    },
+  },
+  {
+    path: 'policy.decisionPosture.provenanceDate',
+    source: null,
+    action: null,
+    present(value) {
+      if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        return { text: 'The decision-posture authorization date is unavailable.', trust: 'unavailable' };
+      }
+      return {
+        text: `The owner authorized this decision posture on ${value}.`,
+        trust: 'owner-stated',
+      };
+    },
+  },
 ];
 
 const PATH_RULE_INDEX = new Map(PATH_RULES.map(rule => [rule.path, rule]));
@@ -534,6 +636,7 @@ function weakestTrust(tags) {
     estimated: 3,
     'posted-only': 3,
     calculated: 4,
+    'owner-stated': 4,
     'canonical-opening': 4,
     precise: 5,
     confirmed: 5,

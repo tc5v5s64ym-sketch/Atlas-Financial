@@ -427,6 +427,17 @@ console.log('=== packet builder consumes Forecast, not a second planner ===');
     'owner questions come from 01_OPEN_QUESTIONS.md (Q20 stays OPEN)');
   ok(packet.metadata.version.gitSha === '72567904bef9f5d4341a80a211db64d1411691cd',
     'version identifier is the supplied git SHA when present');
+  const posture = packet.policy && packet.policy.decisionPosture;
+  ok(posture && posture.status === 'ok'
+      && posture.posture === 'aggressive-not-brittle'
+      && posture.numericThreshold === 'none'
+      && posture.forecastApplication === 'not-applied-this-slice'
+      && posture.provenance === 'owner-stated'
+      && posture.provenanceDate === '2026-09-14',
+    'packet projects owner decisionPosture labels without a numeric threshold');
+  ok(packet.authority.planner === 'Forecast'
+      && /not a second planner/.test(packet.authority.note),
+    'adding the policy projection does not create a second planner');
   const liveAsOf = (liveData.liveOverlay && liveData.liveOverlay.applied === true
     && liveData.liveOverlay.effectiveAsOf)
     || (liveData.plan && liveData.plan.opening && liveData.plan.opening.asOf)

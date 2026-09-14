@@ -1,7 +1,7 @@
 # Skill: forecast-runtime
 
 **Load when** changing `public/forecast.js`, `data.json` plan policy
-(`actions`, `nextDollar`, `budget`, obligations, bills, commitments,
+(`actions`, `nextDollar`, `decisionPosture`, `budget`, obligations, bills, commitments,
 opening), or a page script that currently renders a household-facing
 figure (`public/plan.js`, `bills.js`, `subscriptions.js`, `credit.js`,
 `planning.js`, `modellers.js`, `deepdive.js`, `records.js`, `app.js`).

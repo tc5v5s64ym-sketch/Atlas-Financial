@@ -6,6 +6,8 @@
  *   - scripts/live-plan.js (already-served overlay or fail-closed opening)
  *   - generated public/periods.json (historical actuals)
  *   - docs/01_OPEN_QUESTIONS.md (OPEN / ASKED / BLOCKED status)
+ *   - data.json plan.decisionPosture (owner-stated policy labels only;
+ *     Forecast does not apply that row in this slice)
  *
  * It is not a planner, not a second Forecast, not a transaction store, and
  * not a copy of household facts. If an incumbent has no answer, the packet
@@ -662,6 +664,38 @@ function uncertaintyBlock(data, periods, questionsMarkdown, advice) {
   };
 }
 
+const DECISION_POSTURE_FIELDS = [
+  'posture',
+  'velocity',
+  'resilience',
+  'breathingRoom',
+  'knownCommitments',
+  'cheapestWhenBrittle',
+  'numericThreshold',
+  'forecastApplication',
+  'provenance',
+  'provenanceDate',
+  'provenanceNote',
+  'note',
+];
+
+function projectDecisionPosture(data) {
+  const row = data && data.plan && data.plan.decisionPosture;
+  if (!row || typeof row !== 'object' || Array.isArray(row)) {
+    return unavailable('decision-posture-unavailable');
+  }
+  const projected = {
+    status: 'ok',
+    source: 'data.json plan.decisionPosture',
+  };
+  for (const key of DECISION_POSTURE_FIELDS) {
+    const value = row[key];
+    if (typeof value === 'string' && value) projected[key] = value;
+    else projected[key] = null;
+  }
+  return projected;
+}
+
 function looksSanitized(packet) {
   const blob = JSON.stringify(packet == null ? {} : packet);
   if (/"providerAccountId"\s*:/.test(blob)) return false;
@@ -711,6 +745,9 @@ function buildPacket(opts) {
       questions: 'docs/01_OPEN_QUESTIONS.md',
       note: 'This packet exposes Atlas/Forecast results. It is not a second planner.',
     },
+    policy: {
+      decisionPosture: projectDecisionPosture(data),
+    },
     metadata: metadataBlock(data, {
       now: opts.now || new Date().toISOString(),
       env: opts.env || process.env,
@@ -736,11 +773,13 @@ module.exports = {
   TOKEN_MIN_LENGTH,
   DEFAULT_PERIODS,
   DEFAULT_QUESTIONS,
+  DECISION_POSTURE_FIELDS,
   buildPacket,
   parseOpenQuestions,
   unresolvedQuestions,
   versionIdentifier,
   looksSanitized,
+  projectDecisionPosture,
   loadPeriods,
   tokenConfigured,
   clone,

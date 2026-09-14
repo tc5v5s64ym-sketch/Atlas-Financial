@@ -60,7 +60,9 @@ composed from that Forecast (`B96` / `AF-PLAN-02`). Read-only assistant
 access to Atlas is the incumbent `GET /assistant/current` packet (`B97`);
 ChatGPT reaches that same projection through the one-tool OAuth-protected
 `POST /assistant/mcp` resource. The household Talk page reaches that same
-projection through session-only `GET /talk/context` (`B103`). Session-only
+projection through session-only `GET /talk/context` (`B103`). That packet
+may include the owner-stated `plan.decisionPosture` labels so Talk can
+explain household decision policy without planning. Session-only
 `POST /talk/ask` sends that packet plus the household question to Google
 Gemini so Talk can explain incumbent Atlas state. Gemini is an explainer,
 not a planner. The server never publishes free-form model text; it
