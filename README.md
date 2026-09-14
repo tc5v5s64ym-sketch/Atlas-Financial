@@ -36,6 +36,9 @@ is still the whole financial picture of two people.
 - `GET /assistant/current` is a separate read-only consumer. It is not unlocked
   by the browser session. It requires `ATLAS_ASSISTANT_TOKEN` as
   `Authorization: Bearer`. Unset → 503. It never writes.
+- `GET /talk/context` is the household Talk consumer of that same packet. It
+  is unlocked only by the browser session cookie. The static assistant Bearer
+  and MCP OAuth do not unlock it. It never writes.
 - `POST /assistant/mcp` exposes that incumbent packet as exactly one MCP tool,
   `get_atlas_current`. It accepts only issuer-signed JWT access tokens issued
   for the exact MCP resource with scope `atlas.current.read`; the static

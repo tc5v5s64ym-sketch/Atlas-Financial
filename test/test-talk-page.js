@@ -62,8 +62,9 @@ console.log('=== 1. Talk page identity, empty state, composer, prompts ===');
   ok(/id="talk-empty"/.test(html) && /id="talk-composer"/.test(html)
       && /id="talk-input"/.test(html) && /id="talk-send"/.test(html)
       && /id="talk-seam"/.test(html) && /id="talk-cards"/.test(html)
-      && /id="talk-thread"/.test(html) && /id="talk-prompts"/.test(html),
-    'empty state, thread, reserved cards mount, composer and seam are present');
+      && /id="talk-thread"/.test(html) && /id="talk-prompts"/.test(html)
+      && /id="talk-context"/.test(html),
+    'empty state, thread, context status, reserved cards mount, composer and seam are present');
   ok(/disabled/.test(html) && /Coming soon/.test(html)
       && /not a second planner/.test(html),
     'Send is disabled in markup and the coming-soon seam is visible');
@@ -74,8 +75,9 @@ console.log('=== 1. Talk page identity, empty state, composer, prompts ===');
   ok(!/\$\d|\d\.\d\d\b|%/.test(html.replace(/<meta[^>]*>/g, '')),
     'talk.html hardcodes no dollar figure or rate');
   ok(/talk-empty/.test(css) && /talk-composer/.test(css)
-      && /talk-prompt/.test(css) && /talk-bubble/.test(css),
-    'talk.css styles the empty state, composer, prompts and future bubbles');
+      && /talk-prompt/.test(css) && /talk-bubble/.test(css)
+      && /talk-context/.test(css),
+    'talk.css styles the empty state, composer, prompts, context and future bubbles');
 }
 
 console.log('\n=== 2. talk.js is a shell — no model, no Forecast, no figures ===');
@@ -86,10 +88,12 @@ console.log('\n=== 2. talk.js is a shell — no model, no Forecast, no figures =
     'talk.js boots the shared header and names the intelligence seam');
   ok(!/Forecast|recommend\(|money2\(|money\(/.test(src),
     'talk.js does not call Forecast or format money');
-  ok(!/fetch\(|XMLHttpRequest|WebSocket|EventSource/.test(src),
-    'talk.js opens no network of its own');
+  ok(/fetch\(TALK_CONTEXT_PATH/.test(src) && /\/talk\/context/.test(src),
+    'talk.js loads context from the session Talk seam only');
+  ok(!/XMLHttpRequest|WebSocket|EventSource/.test(src),
+    'talk.js opens no other network transport');
   ok(!/assistant\/current|assistant\/mcp|openai|anthropic|chatgpt|llm|ATLAS_ASSISTANT/i.test(src + html),
-    'Talk does not call the assistant packet, MCP, or a model host');
+    'Talk does not call the assistant endpoints, MCP, or a model host');
   ok(/send\.disabled = true/.test(src) && /preventDefault/.test(src),
     'Send stays disabled and submit is swallowed');
   ok(/talk-cards/.test(html) && /hidden/.test(html),

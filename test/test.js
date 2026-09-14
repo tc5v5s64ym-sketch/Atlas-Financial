@@ -68,6 +68,7 @@ const suites = [
   ['household nav and Plan waterfall boundary', 'test-household-nav-plan-boundary.js'],
   ['household nav mobile presentation', 'test-household-nav-presentation.js'],
   ['Talk to Atlas household surface', 'test-talk-page.js'],
+  ['Talk context packet seam', 'test-talk-context.js'],
   ['Credit page — what do we owe (Forecast.creditAccounts)', 'test-credit-page.js'],
   ['Planning page — Forecast.majorPlans rendered', 'test-planning-page.js'],
   ['Bills page — Forecast.householdBills rendered', 'test-bills-page.js'],

@@ -40,6 +40,9 @@ async function main() {
   r = await fetch(`${BASE}/balance-history.json`, { redirect: 'manual' });
   ok(r.status === 401, 'GET /balance-history.json is blocked', `status ${r.status}`);
 
+  r = await fetch(`${BASE}/talk/context`, { redirect: 'manual' });
+  ok(r.status === 401, 'GET /talk/context is blocked without a session', `status ${r.status}`);
+
   r = await fetch(`${BASE}/app.js`, { redirect: 'manual' });
   ok(r.status === 302, 'GET /app.js redirects to login', `status ${r.status}`);
 
@@ -88,6 +91,12 @@ async function main() {
 
   r = await fetch(`${BASE}/balance-history.json`, { headers: { cookie } });
   ok(r.status === 200, 'GET /balance-history.json succeeds', `status ${r.status}`);
+
+  r = await fetch(`${BASE}/talk/context`, { headers: { cookie } });
+  ok(r.status === 200, 'GET /talk/context succeeds with a session', `status ${r.status}`);
+  const talkPacket = await r.json();
+  ok(talkPacket.schema === 'atlas-assistant-packet/v1',
+    'session Talk context is the incumbent assistant packet');
   const history = await r.json();
   ok(history && Array.isArray(history.snapshots), 'history has snapshots',
     history && history.snapshots ? `${history.snapshots.length} openings` : 'missing');

@@ -11,10 +11,10 @@
  * not a copy of household facts. If an incumbent has no answer, the packet
  * records unavailable/unknown. It never writes.
  *
- * HTTP consumer: GET /assistant/current (Bearer ATLAS_ASSISTANT_TOKEN).
- * POST /assistant/mcp exposes that same packet as one OAuth-protected,
- * read-only MCP tool. OAuth and MCP stay outside this projection; do not
- * import either transport or authentication logic here.
+ * HTTP consumers: GET /assistant/current (Bearer ATLAS_ASSISTANT_TOKEN);
+ * GET /talk/context (household session). POST /assistant/mcp exposes that
+ * same packet as one OAuth-protected, read-only MCP tool. Auth and transport
+ * stay outside this projection; do not import either here.
  */
 
 const fs = require('fs');
