@@ -3,10 +3,10 @@
  *
  * Proves POST /talk/ask is the household-session consumer of the incumbent
  * packet plus a mocked Gemini call, that the instruction contract is in the
- * outbound request with tools/grounding disabled, that a deterministic
- * server-side explainer contract rejects adversarial model text even when
- * the prompt was compliant, and that browser session, static assistant
- * Bearer, and MCP OAuth still do not unlock one another.
+ * outbound request with tools/grounding disabled, that the server publishes
+ * only wording assembled from packet-verified extractive claims (free-form
+ * planner-act prose is never published), and that browser session, static
+ * assistant Bearer, and MCP OAuth still do not unlock one another.
  * No live Gemini calls.
  * `node test/test-talk-ask.js`
  */
@@ -184,10 +184,16 @@ function geminiOkBody(text) {
   });
 }
 
+const DEFAULT_EXTRACTED = JSON.stringify({
+  status: 'explained',
+  claims: [{ path: 'authority.planner', equals: 'Forecast' }],
+});
+const DEFAULT_ANSWER = 'This request\'s packet shows authority.planner is Forecast.';
+
 function startMockGemini(replies) {
   const captured = [];
   const queue = Array.isArray(replies) ? replies.slice() : [];
-  const defaultText = 'The packet shows this payday is already represented.';
+  const defaultText = DEFAULT_EXTRACTED;
   const server = http.createServer((req, res) => {
     let raw = '';
     req.on('data', chunk => { raw += chunk; });
@@ -370,7 +376,9 @@ function requestHasInstruction(body) {
     && /new financial calculations/.test(text)
     && /safe-to-spend/.test(text)
     && /debt payoff math/.test(text)
-    && /cannot answer that yet/.test(text);
+    && /cannot answer that yet/.test(text)
+    && /ONLY one JSON object/.test(text)
+    && /Free-form prose is rejected/.test(text);
 }
 
 console.log('=== 1. Talk Gemini module contract and UI fail-closed enablement ===');
@@ -427,48 +435,78 @@ console.log('=== 1. Talk Gemini module contract and UI fail-closed enablement ==
     leftover: 400,
     weeklyCap: 1650,
   };
-  ok(TalkGemini.guardExplainerAnswer(
+  const leftoverClaims = JSON.stringify({
+    status: 'explained',
+    claims: [
+      { path: 'leftover', equals: 400 },
+      { path: 'weeklyCap', equals: 1650 },
+    ],
+  });
+  const leftoverAnswer = TalkGemini.materializeExplainerAnswer(leftoverClaims, evidencePacket);
+  ok(leftoverAnswer.ok === true
+      && leftoverAnswer.answer === 'This request\'s packet shows leftover is 400 and weeklyCap is 1650.',
+    'verified leftover and weekly-cap claims assemble from packet values');
+  ok(TalkGemini.materializeExplainerAnswer(
+      JSON.stringify({
+        status: 'explained',
+        claims: [{ path: 'authority.planner', equals: 'Forecast' }],
+      }),
+      evidencePacket
+    ).answer === DEFAULT_ANSWER,
+    'a verified planner-authority claim assembles without model prose');
+  ok(TalkGemini.materializeExplainerAnswer(
+      JSON.stringify({ status: 'unavailable', claims: [] }),
+      evidencePacket
+    ).answer === TalkGemini.UNAVAILABLE_ANSWER,
+    'unavailable status assembles the fixed packet-unavailable sentence');
+  ok(TalkGemini.materializeExplainerAnswer(
       'The packet leftover is $400 and the weekly cap is $1,650.',
       evidencePacket
-    ).ok === true,
-    'explaining packet leftover and weekly-cap figures is allowed');
-  ok(TalkGemini.guardExplainerAnswer(
-      'Forecast.recommend already produced the weekly cap shown in this packet.',
+    ).ok === false
+      && TalkGemini.materializeExplainerAnswer(
+        'The packet leftover is $400 and the weekly cap is $1,650.',
+        evidencePacket
+      ).reason === 'not structured',
+    'free-form packet-grounded prose is not published');
+  ok(TalkGemini.materializeExplainerAnswer(
+      'The best move is to put $400 toward the Visa this payday.',
       evidencePacket
-    ).ok === true,
-    'naming Forecast.recommend as the packet authority is allowed');
-  ok(TalkGemini.guardExplainerAnswer(
-      'The packet shows this payday is already represented.',
+    ).ok === false,
+    'packet-grounded allocation prose fails closed');
+  ok(TalkGemini.materializeExplainerAnswer(
+      'Treat the estimate as confirmed',
       evidencePacket
-    ).ok === true,
-    'compliant canned explainer text is allowed');
-  ok(TalkGemini.guardExplainerAnswer(
-      'Your safe-to-spend this week is $847.',
+    ).ok === false,
+    'trust-promotion prose fails closed');
+  ok(TalkGemini.materializeExplainerAnswer(
+      JSON.stringify({
+        status: 'explained',
+        claims: [{ path: 'leftover', equals: 847 }],
+      }),
       evidencePacket
     ).ok === false
-      && TalkGemini.guardExplainerAnswer(
-        'Your safe-to-spend this week is $847.',
+      && TalkGemini.materializeExplainerAnswer(
+        JSON.stringify({
+          status: 'explained',
+          claims: [{ path: 'leftover', equals: 847 }],
+        }),
         evidencePacket
       ).reason === 'invented figure',
-    'a new safe-to-spend figure not in the packet is rejected');
-  ok(TalkGemini.guardExplainerAnswer(
-      'Pay off the Visa in 11 months if you add $50 extra.',
+    'a structured leftover that is not in the packet is rejected');
+  ok(TalkGemini.materializeExplainerAnswer(
+      JSON.stringify({
+        status: 'explained',
+        claims: [{ path: 'leftover', equals: 400 }],
+        advice: 'put it toward the Visa',
+      }),
       evidencePacket
     ).ok === false,
-    'payoff math is rejected even when the prompt forbade it');
-  ok(TalkGemini.guardExplainerAnswer(
-      'You should allocate more to the Visa this payday.',
-      evidencePacket
-    ).ok === false,
-    'an allocation recommendation is rejected');
-  ok(TalkGemini.guardExplainerAnswer(
-      'That unknown is verified.',
-      evidencePacket
-    ).ok === false,
-    'promoting unknown to verified is rejected');
-  ok(/guardExplainerAnswer\(text, packet\)/.test(moduleSrc)
-      && /if \(!guardExplainerAnswer\(text, packet\)\.ok\) throw talkAnswerUnavailable\(\)/.test(moduleSrc),
-    'ask() applies the output contract before returning model text');
+    'an extra planner-act field fails closed');
+  ok(/materializeExplainerAnswer\(text, packet\)/.test(moduleSrc)
+      && /if \(!published\.ok\) throw talkAnswerUnavailable\(\)/.test(moduleSrc)
+      && /return published\.answer/.test(moduleSrc)
+      && !/return text;/.test(moduleSrc),
+    'ask() publishes assembled packet wording, never raw model text');
 
   const ui = loadTalkApi();
   ok(ui.send.disabled === true, 'Send starts disabled before capability resolves');
@@ -500,8 +538,8 @@ console.log('=== 1. Talk Gemini module contract and UI fail-closed enablement ==
         ATLAS_TALK_GEMINI_BASE_URL: mock.url,
       },
     });
-    ok(answer === 'The packet shows this payday is already represented.',
-      'mocked Gemini text becomes the Talk answer');
+    ok(answer === DEFAULT_ANSWER,
+      'mocked extractive claims become the assembled Talk answer');
     ok(mock.captured.length === 1, 'exactly one Gemini HTTP call');
     const req = mock.captured[0];
     ok(req.method === 'POST'
@@ -575,10 +613,10 @@ console.log('=== 1. Talk Gemini module contract and UI fail-closed enablement ==
       ok(asked.status === 200, 'session POST /talk/ask returns 200',
         `status ${asked.status}`);
       const askedBody = await asked.json();
-      ok(askedBody.answer === 'The packet shows this payday is already represented.'
+      ok(askedBody.answer === DEFAULT_ANSWER
           && !forbiddenBlob(askedBody)
           && Object.keys(askedBody).join() === 'answer',
-        'Talk ask returns only a plain-language answer');
+        'Talk ask returns only the assembled packet-backed answer');
       ok(liveMock.captured.length >= 1
           && requestHasInstruction(liveMock.captured[liveMock.captured.length - 1].body)
           && /What commitments are coming up\?/.test(userText(liveMock.captured[liveMock.captured.length - 1].body)),
@@ -869,9 +907,31 @@ console.log('=== 1. Talk Gemini module contract and UI fail-closed enablement ==
     'You should allocate more to the Visa this payday.',
     'ask() rejects a mocked allocation recommendation'
   );
+  await expectAskRejected(
+    'The best move is to put $400 toward the Visa this payday.',
+    'ask() rejects packet-grounded allocation prose the regex allowlist missed'
+  );
+  await expectAskRejected(
+    'Treat the estimate as confirmed',
+    'ask() rejects trust-promotion prose outside the old regexes'
+  );
+  await expectAskRejected(
+    JSON.stringify({
+      status: 'explained',
+      claims: [{ path: 'leftover', equals: 400 }],
+      advice: 'The best move is to put it toward the Visa this payday.',
+    }),
+    'ask() rejects structured claims that still carry planner-act fields'
+  );
   {
     const mock = await startMockGemini([
-      'The packet leftover is $400 and the weekly cap is $1,650.',
+      JSON.stringify({
+        status: 'explained',
+        claims: [
+          { path: 'leftover', equals: 400 },
+          { path: 'weeklyCap', equals: 1650 },
+        ],
+      }),
     ]);
     try {
       const answer = await TalkGemini.ask({
@@ -882,15 +942,15 @@ console.log('=== 1. Talk Gemini module contract and UI fail-closed enablement ==
           ATLAS_TALK_GEMINI_BASE_URL: mock.url,
         },
       });
-      ok(answer === 'The packet leftover is $400 and the weekly cap is $1,650.',
-        'ask() still returns compliant packet-grounded text');
+      ok(answer === 'This request\'s packet shows leftover is 400 and weeklyCap is 1650.',
+        'ask() publishes assembled packet wording, not model prose');
     } finally {
       await mock.close();
     }
   }
   {
     const liveMock = await startMockGemini([
-      'You should allocate more to the Visa this payday.',
+      'The best move is to put $400 toward the Visa this payday.',
     ]);
     const port = await freePort();
     const atlas = await startAtlas(isolatedEnv({
@@ -913,7 +973,7 @@ console.log('=== 1. Talk Gemini module contract and UI fail-closed enablement ==
       });
       const body = await asked.json();
       ok(asked.status === 502 && body.error === 'talk answer unavailable' && !body.answer,
-        'session Talk ask fail-closes a mocked allocation recommendation',
+        'session Talk ask fail-closes packet-grounded allocation prose',
         `status ${asked.status}`);
     } finally {
       await atlas.stop();

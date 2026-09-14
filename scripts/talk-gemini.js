@@ -9,11 +9,12 @@
  * Tools, grounding, Maps, URL context, File Search, code execution,
  * function calling, RAG, and fallback providers are disabled.
  *
- * Model output is fail-closed on a deterministic server-side contract
- * before it becomes a household-facing answer. The instruction prompt
- * is not the only Forecast-authority control: invented figures, payoff
- * math, and allocation recommendations are rejected even when Gemini
- * ignored the prompt.
+ * The household-facing answer is never Gemini's free-form prose. The
+ * model may return only a structured extractive claim list. The server
+ * verifies each claim against this request's packet and assembles the
+ * published sentence from those verified packet values. Invented
+ * figures, planner acts, and trust promotion cannot ride through as
+ * ordinary English around a packet-grounded amount.
  *
  * The dedicated secret is read only from the env object the server passes
  * in (`process.env.ATLAS_TALK_GEMINI_API_KEY` on the Node process). This
@@ -28,20 +29,31 @@ const TOKEN_MIN_LENGTH = 32;
 const QUESTION_MAX_LENGTH = 2000;
 const OFFICIAL_BASE_URL = 'https://generativelanguage.googleapis.com';
 const REQUEST_TIMEOUT_MS = 20000;
+const CLAIM_MAX = 8;
+const PATH_MAX_LENGTH = 120;
+const UNAVAILABLE_ANSWER = 'That is not available in this request\'s packet.';
+const PATH_RE = /^(?:[A-Za-z][A-Za-z0-9_]*)(?:\.[A-Za-z][A-Za-z0-9_]*|\[\d{1,3}\]){0,7}$/;
+const FORBIDDEN_PATH_RE = /(?:^|[.\[]|])(?:__proto__|constructor|prototype)(?:$|[.\]])/;
 
 const INSTRUCTION = [
   'You are Atlas Talk, an explainer of the incumbent Atlas household-financial picture for this one request.',
   '',
   'You are NOT a planner and you are NOT Forecast. Forecast is the sole planner. The assistant packet included in this request is the only household-financial evidence you may use.',
   '',
+  'Reply with ONLY one JSON object and no other text. The server publishes household wording from that object after verifying every claim against this request\'s packet. Free-form prose is rejected.',
+  '',
+  'Schema:',
+  '{"status":"explained"|"unavailable","claims":[{"path":"<dotted path into this request\'s packet>","equals":<exact packet primitive>}]}',
+  '',
   'You MAY:',
-  '- summarize or explain facts that are already present in this request\'s packet',
-  '- explain Forecast outputs that are already present in the packet',
-  '- explain obligations or debt already represented in the packet',
-  '- describe uncertainty, freshness, and estimated versus confirmed labels already on the packet',
-  '- say when something is unavailable in the packet',
+  '- cite facts that are already present in this request\'s packet as path/equals claims',
+  '- cite Forecast outputs that are already present in the packet',
+  '- cite obligations or debt already represented in the packet',
+  '- cite uncertainty, freshness, and estimated versus confirmed labels already on the packet',
+  '- return status "unavailable" when something is not in the packet',
   '',
   'You MUST NOT:',
+  '- return free-form prose, markdown commentary, or any key other than status and claims',
   '- perform new financial calculations',
   '- invent or compute safe-to-spend, leftover, or weekly-cap figures',
   '- perform debt payoff math',
@@ -54,7 +66,7 @@ const INSTRUCTION = [
   '- browse the web, use tools, call functions, search, follow URLs, or read files',
   '- write, change, or propose Lunch Money, canonical, or Atlas state changes',
   '',
-  'If the question cannot be answered from this request\'s packet, say so in plain language — that you cannot answer that yet — and do not improvise. Every substantive claim must be supportable by this request\'s packet.',
+  'If the question cannot be answered from this request\'s packet, say so by returning status "unavailable" with an empty claims array — that you cannot answer that yet — and do not improvise. Every claim must be supportable by this request\'s packet.',
 ].join('\n');
 
 function talkUnavailable(message) {
@@ -132,104 +144,161 @@ function extractAnswerText(response) {
     .trim();
 }
 
-const CURRENCY_AMOUNT_RE = /(?:CAD|USD|C\$|\$)\s*-?\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?/gi;
-const LABELED_FIGURE_RE = /(?:safe[\s-]?to[\s-]?spend|leftover|weekly[\s-]?cap|headroom)\s*(?:is|of|at|:)?\s*\$?\s*(-?\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?)/gi;
-const CURRENCY_ARITHMETIC_RE = /\$\s*-?[\d,]+(?:\.\d{1,2})?\s*[\+\-\*x×÷\/]|[\+\-\*x×÷\/]\s*\$\s*-?[\d,]+(?:\.\d{1,2})?|\bequals\s+\$/i;
-
-const PLANNER_FORBIDDEN = [
-  { re: /\byou should\b/i, reason: 'recommendation' },
-  { re: /\b(?:I|we) recommend\b/i, reason: 'recommendation' },
-  { re: /\brecommend(?:s|ed|ing)? that you\b/i, reason: 'recommendation' },
-  { re: /\ballocate\b/i, reason: 'allocation' },
-  { re: /\ballocating\b/i, reason: 'allocation' },
-  { re: /\bprioriti[sz]e\b/i, reason: 'priority recommendation' },
-  { re: /\byou (?:can |could )?afford\b/i, reason: 'invented affordability' },
-  { re: /\bpay(?:ing)? off\b.{0,80}\b(?:in|within)\s+\d+/i, reason: 'payoff math' },
-  { re: /\bin\s+\d+\s+(?:months?|years?|weeks?)\b.{0,80}\bpay(?:ing)? off\b/i, reason: 'payoff math' },
-  { re: /\bif you (?:pay|put|add|contribute)\b/i, reason: 'payoff math' },
-  { re: /\bextra (?:per (?:month|week|payday)|payment|toward)\b/i, reason: 'payoff math' },
-  { re: /\bmonths? to (?:pay(?:off)?|clear|zero)\b/i, reason: 'payoff math' },
-  { re: /\b(?:new|another|alternate|alternative) (?:forecast|scenario|plan)\b/i, reason: 'new forecast' },
-  { re: /\bunknown (?:is|as) verified\b/i, reason: 'trust promotion' },
-  { re: /\bestimated (?:is|as) verified\b/i, reason: 'trust promotion' },
-  { re: /\bstale (?:is|as) current\b/i, reason: 'trust promotion' },
-];
-
-function parseAmountToCents(raw) {
-  const cleaned = String(raw == null ? '' : raw).replace(/[^0-9.-]/g, '');
-  if (!cleaned || cleaned === '-' || cleaned === '.' || cleaned === '-.') return null;
-  const n = Number(cleaned);
-  if (!Number.isFinite(n)) return null;
-  return Math.round(n * 100);
+function isPrimitive(value) {
+  if (value === null) return true;
+  if (typeof value === 'string') return true;
+  if (typeof value === 'boolean') return true;
+  return typeof value === 'number' && Number.isFinite(value);
 }
 
-function collectPacketMoneyCents(packet) {
-  const cents = new Set();
-  function add(value) {
-    const parsed = parseAmountToCents(value);
-    if (parsed != null) cents.add(parsed);
-  }
-  function walk(value) {
-    if (typeof value === 'number' && Number.isFinite(value)) {
-      cents.add(Math.round(value * 100));
-      return;
-    }
-    if (typeof value === 'string') {
-      CURRENCY_AMOUNT_RE.lastIndex = 0;
-      const matches = value.match(CURRENCY_AMOUNT_RE) || [];
-      for (const match of matches) add(match);
-      return;
-    }
-    if (Array.isArray(value)) {
-      value.forEach(walk);
-      return;
-    }
-    if (value && typeof value === 'object') {
-      Object.values(value).forEach(walk);
-    }
-  }
-  walk(packet);
-  return cents;
+function samePrimitive(left, right) {
+  if (!isPrimitive(left) || !isPrimitive(right)) return false;
+  if (typeof left !== typeof right) return false;
+  return left === right;
 }
 
-function claimedAnswerCents(text) {
-  const cents = [];
+function formatClaimValue(value) {
+  if (value === null) return 'null';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'boolean') return value ? 'true' : 'false';
+  return String(value);
+}
+
+function parsePath(path) {
+  if (typeof path !== 'string' || path.length === 0 || path.length > PATH_MAX_LENGTH) {
+    return null;
+  }
+  if (!PATH_RE.test(path) || FORBIDDEN_PATH_RE.test(path)) return null;
+  const steps = [];
+  for (const piece of path.split('.')) {
+    const match = /^([A-Za-z][A-Za-z0-9_]*)((?:\[\d{1,3}\])*)$/.exec(piece);
+    if (!match) return null;
+    steps.push({ type: 'key', key: match[1] });
+    const indexes = match[2].match(/\d{1,3}/g) || [];
+    for (const index of indexes) steps.push({ type: 'index', index: Number(index) });
+  }
+  return steps;
+}
+
+function readPacketPrimitive(packet, path) {
+  const steps = parsePath(path);
+  if (!steps) return { ok: false, reason: 'invalid path' };
+  let current = packet;
+  for (const step of steps) {
+    if (current == null || typeof current !== 'object') {
+      return { ok: false, reason: 'missing path' };
+    }
+    if (step.type === 'key') {
+      if (!Object.prototype.hasOwnProperty.call(current, step.key)) {
+        return { ok: false, reason: 'missing path' };
+      }
+      current = current[step.key];
+    } else {
+      if (!Array.isArray(current) || step.index >= current.length) {
+        return { ok: false, reason: 'missing path' };
+      }
+      current = current[step.index];
+    }
+  }
+  if (!isPrimitive(current)) return { ok: false, reason: 'non-primitive' };
+  return { ok: true, value: current };
+}
+
+function extractJsonObjectText(text) {
+  if (typeof text !== 'string') return '';
+  const trimmed = text.trim();
+  if (!trimmed) return '';
+  const fence = /^```(?:json)?\s*([\s\S]*?)\s*```$/i.exec(trimmed);
+  return fence ? fence[1].trim() : trimmed;
+}
+
+function parseExtractiveOutput(text) {
+  const raw = extractJsonObjectText(text);
+  if (!raw || raw[0] !== '{') return { ok: false, reason: 'not structured' };
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { ok: false, reason: 'not structured' };
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return { ok: false, reason: 'not structured' };
+  }
+  const keys = Object.keys(parsed);
+  if (keys.length !== 2 || !keys.includes('status') || !keys.includes('claims')) {
+    return { ok: false, reason: 'unexpected fields' };
+  }
+  if (parsed.status !== 'explained' && parsed.status !== 'unavailable') {
+    return { ok: false, reason: 'invalid status' };
+  }
+  if (!Array.isArray(parsed.claims)) return { ok: false, reason: 'invalid claims' };
+  if (parsed.status === 'unavailable') {
+    if (parsed.claims.length !== 0) return { ok: false, reason: 'unavailable has claims' };
+    return { ok: true, status: 'unavailable', claims: [] };
+  }
+  if (parsed.claims.length < 1 || parsed.claims.length > CLAIM_MAX) {
+    return { ok: false, reason: 'invalid claims' };
+  }
+  const claims = [];
   const seen = new Set();
-  function push(raw) {
-    const parsed = parseAmountToCents(raw);
-    if (parsed == null || seen.has(parsed)) return;
-    seen.add(parsed);
-    cents.push(parsed);
+  for (const claim of parsed.claims) {
+    if (!claim || typeof claim !== 'object' || Array.isArray(claim)) {
+      return { ok: false, reason: 'invalid claim' };
+    }
+    const claimKeys = Object.keys(claim);
+    if (claimKeys.length !== 2 || !claimKeys.includes('path') || !claimKeys.includes('equals')) {
+      return { ok: false, reason: 'unexpected fields' };
+    }
+    if (typeof claim.path !== 'string' || seen.has(claim.path)) {
+      return { ok: false, reason: 'invalid path' };
+    }
+    if (!isPrimitive(claim.equals)) return { ok: false, reason: 'non-primitive' };
+    seen.add(claim.path);
+    claims.push({ path: claim.path, equals: claim.equals });
   }
-  CURRENCY_AMOUNT_RE.lastIndex = 0;
-  const currency = String(text || '').match(CURRENCY_AMOUNT_RE) || [];
-  for (const match of currency) push(match);
-  LABELED_FIGURE_RE.lastIndex = 0;
-  let labeled;
-  while ((labeled = LABELED_FIGURE_RE.exec(text || '')) !== null) {
-    push(labeled[1]);
-  }
-  return cents;
+  return { ok: true, status: 'explained', claims };
 }
 
-function guardExplainerAnswer(text, packet) {
+function assembleExplainerAnswer(status, claims) {
+  if (status === 'unavailable') return UNAVAILABLE_ANSWER;
+  const parts = claims.map(claim => `${claim.path} is ${formatClaimValue(claim.value)}`);
+  if (parts.length === 1) return `This request's packet shows ${parts[0]}.`;
+  const last = parts.pop();
+  return `This request's packet shows ${parts.join(', ')} and ${last}.`;
+}
+
+function materializeExplainerAnswer(text, packet) {
   if (typeof text !== 'string' || !text.trim()) {
     return { ok: false, reason: 'empty' };
   }
   if (!packet || typeof packet !== 'object') {
     return { ok: false, reason: 'missing packet' };
   }
-  for (const rule of PLANNER_FORBIDDEN) {
-    if (rule.re.test(text)) return { ok: false, reason: rule.reason };
+  const parsed = parseExtractiveOutput(text);
+  if (!parsed.ok) return { ok: false, reason: parsed.reason };
+  if (parsed.status === 'unavailable') {
+    return {
+      ok: true,
+      status: 'unavailable',
+      claims: [],
+      answer: assembleExplainerAnswer('unavailable', []),
+    };
   }
-  if (CURRENCY_ARITHMETIC_RE.test(text)) {
-    return { ok: false, reason: 'new calculation' };
+  const verified = [];
+  for (const claim of parsed.claims) {
+    const found = readPacketPrimitive(packet, claim.path);
+    if (!found.ok) return { ok: false, reason: found.reason };
+    if (!samePrimitive(found.value, claim.equals)) {
+      return { ok: false, reason: 'invented figure' };
+    }
+    verified.push({ path: claim.path, value: found.value });
   }
-  const allowed = collectPacketMoneyCents(packet);
-  for (const cents of claimedAnswerCents(text)) {
-    if (!allowed.has(cents)) return { ok: false, reason: 'invented figure' };
-  }
-  return { ok: true };
+  return {
+    ok: true,
+    status: 'explained',
+    claims: verified,
+    answer: assembleExplainerAnswer('explained', verified),
+  };
 }
 
 async function ask({ question, packet, env }) {
@@ -265,8 +334,9 @@ async function ask({ question, packet, env }) {
   });
   const text = extractAnswerText(response);
   if (!text) throw talkAnswerUnavailable();
-  if (!guardExplainerAnswer(text, packet).ok) throw talkAnswerUnavailable();
-  return text;
+  const published = materializeExplainerAnswer(text, packet);
+  if (!published.ok) throw talkAnswerUnavailable();
+  return published.answer;
 }
 
 module.exports = {
@@ -277,11 +347,12 @@ module.exports = {
   QUESTION_MAX_LENGTH,
   OFFICIAL_BASE_URL,
   INSTRUCTION,
+  UNAVAILABLE_ANSWER,
   isConfigured,
   capability,
   normalizeQuestion,
   resolveBaseUrl,
   buildUserPrompt,
-  guardExplainerAnswer,
+  materializeExplainerAnswer,
   ask,
 };

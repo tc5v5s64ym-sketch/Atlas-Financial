@@ -402,8 +402,9 @@ app.all('/talk/capability', (_req, res) => {
 
 // Talk ask — one stateless Gemini explainer turn. Session only.
 // Builds the incumbent assistant packet (same builder as /talk/context),
-// sends question + packet + the fixed instruction contract, and returns
-// { answer }. Does not persist prompts or answers. Does not write.
+// sends question + packet + the fixed instruction contract, verifies
+// extractive claims against that packet, and returns { answer } assembled
+// from those verified values. Does not persist prompts or answers. Does not write.
 const talkAskJson = express.json({ limit: '4kb', type: 'application/json' });
 app.post('/talk/ask', (req, res, next) => {
   talkAskJson(req, res, (err) => {
