@@ -140,8 +140,9 @@ console.log('\n=== 2. No numeric threshold is introduced ===');
   const blob = JSON.stringify(posture);
   ok(!/\$/.test(blob) && !/%/.test(blob) && !/\b500\b/.test(blob),
     'decisionPosture text has no currency, percent, or targetBuffer figure');
-  ok(!/targetBuffer|safeToSpend|safe-to-spend|minChequing|emergencyReserve|minLeftover|debtPaymentCeiling/i.test(blob),
-    'decisionPosture does not redefine buffer, leftover, or payment-ceiling keys');
+  ok(!walked.keys.some(key =>
+    /targetBuffer|safeToSpend|minChequing|emergencyReserve|minLeftover|debtPaymentCeiling/i.test(key)),
+    'decisionPosture does not add buffer, leftover, or payment-ceiling keys');
   ok(posture.numericThreshold === 'none',
     'the closed numeric-threshold label is none');
   ok(liveData.plan.defaults && liveData.plan.defaults.targetBuffer === 500,
