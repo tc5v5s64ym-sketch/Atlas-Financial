@@ -91,13 +91,13 @@ async function main() {
 
   r = await fetch(`${BASE}/balance-history.json`, { headers: { cookie } });
   ok(r.status === 200, 'GET /balance-history.json succeeds', `status ${r.status}`);
+  const history = await r.json();
 
   r = await fetch(`${BASE}/talk/context`, { headers: { cookie } });
   ok(r.status === 200, 'GET /talk/context succeeds with a session', `status ${r.status}`);
   const talkPacket = await r.json();
   ok(talkPacket.schema === 'atlas-assistant-packet/v1',
     'session Talk context is the incumbent assistant packet');
-  const history = await r.json();
   ok(history && Array.isArray(history.snapshots), 'history has snapshots',
     history && history.snapshots ? `${history.snapshots.length} openings` : 'missing');
   ok(history.currentStateAuthority === 'data.json',
