@@ -11,8 +11,11 @@
 //  * GET /assistant/current remains a dedicated static-Bearer consumer.
 //    POST /assistant/mcp is separate again: an OAuth-protected MCP resource
 //    exposing the same packet as one read-only tool. GET /talk/context is the
-//    household-session consumer of that same packet. Browser, static assistant,
-//    and OAuth credentials do not unlock one another.
+//    household-session consumer of that same packet. POST /talk/ask is the
+//    session-only Gemini explainer turn for Talk; GET /talk/capability says
+//    whether that path is configured. Browser, static assistant, and OAuth
+//    credentials do not unlock one another. The Talk model secret never
+//    reaches the browser.
 
 const express = require('express');
 const crypto = require('crypto');
@@ -23,10 +26,12 @@ const LivePlan = require('./scripts/live-plan.js');
 const Assistant = require('./scripts/assistant-packet.js');
 const AssistantMcp = require('./scripts/assistant-mcp.js');
 const AssistantOAuth = require('./scripts/assistant-oauth.js');
+const TalkGemini = require('./scripts/talk-gemini.js');
 
 const PASSWORD = process.env.SITE_PASSWORD;
 const SECRET = process.env.SESSION_SECRET;
 const ASSISTANT_TOKEN = process.env.ATLAS_ASSISTANT_TOKEN || '';
+const TALK_GEMINI_KEY = process.env.ATLAS_TALK_GEMINI_API_KEY || '';
 const PORT = process.env.PORT || 3000;
 const SESSION_HOURS = 24 * 14;
 const MCP_OAUTH = AssistantOAuth.readConfig(process.env);
@@ -59,6 +64,22 @@ if (ASSISTANT_TOKEN && sameSecret(ASSISTANT_TOKEN, PASSWORD)) {
 }
 if (ASSISTANT_TOKEN && sameSecret(ASSISTANT_TOKEN, SECRET)) {
   console.error('FATAL: ATLAS_ASSISTANT_TOKEN must not reuse SESSION_SECRET.');
+  process.exit(1);
+}
+if (TALK_GEMINI_KEY && TALK_GEMINI_KEY.length < TalkGemini.TOKEN_MIN_LENGTH) {
+  console.error('FATAL: ATLAS_TALK_GEMINI_API_KEY is set but shorter than 32 characters.');
+  process.exit(1);
+}
+if (TALK_GEMINI_KEY && sameSecret(TALK_GEMINI_KEY, PASSWORD)) {
+  console.error('FATAL: ATLAS_TALK_GEMINI_API_KEY must not reuse SITE_PASSWORD.');
+  process.exit(1);
+}
+if (TALK_GEMINI_KEY && sameSecret(TALK_GEMINI_KEY, SECRET)) {
+  console.error('FATAL: ATLAS_TALK_GEMINI_API_KEY must not reuse SESSION_SECRET.');
+  process.exit(1);
+}
+if (TALK_GEMINI_KEY && ASSISTANT_TOKEN && sameSecret(TALK_GEMINI_KEY, ASSISTANT_TOKEN)) {
+  console.error('FATAL: ATLAS_TALK_GEMINI_API_KEY must not reuse ATLAS_ASSISTANT_TOKEN.');
   process.exit(1);
 }
 
@@ -330,7 +351,9 @@ app.use((req, res, next) => {
     return res.status(401).json({ error: 'not authenticated' });
   }
   if (authed(req)) return next();
-  if (req.path === '/data.json' || req.path === '/balance-history.json' || req.path === '/talk/context') {
+  if (req.path === '/data.json' || req.path === '/balance-history.json'
+      || req.path === '/talk/context' || req.path === '/talk/ask'
+      || req.path === '/talk/capability') {
     return res.status(401).json({ error: 'not authenticated' });
   }
   return res.redirect('/login');
@@ -364,6 +387,67 @@ app.get('/talk/context', async (_req, res) => {
 });
 app.all('/talk/context', (_req, res) => {
   res.set('Allow', 'GET');
+  return res.status(405).json({ error: 'method not allowed' });
+});
+
+// Talk capability — session only. Reports whether the Gemini explainer
+// path is configured. Never includes the model secret or the packet.
+app.get('/talk/capability', (_req, res) => {
+  res.json(TalkGemini.capability(process.env));
+});
+app.all('/talk/capability', (_req, res) => {
+  res.set('Allow', 'GET');
+  return res.status(405).json({ error: 'method not allowed' });
+});
+
+// Talk ask — one stateless Gemini explainer turn. Session only.
+// Builds the incumbent assistant packet (same builder as /talk/context),
+// sends question + packet + the fixed instruction contract, verifies
+// extractive claims against that packet, and returns { answer } assembled
+// from those verified values. Does not persist prompts or answers. Does not write.
+const talkAskJson = express.json({ limit: '4kb', type: 'application/json' });
+app.post('/talk/ask', (req, res, next) => {
+  talkAskJson(req, res, (err) => {
+    if (err) return res.status(400).json({ error: 'malformed request' });
+    return next();
+  });
+}, async (req, res) => {
+  try {
+    if (!TalkGemini.isConfigured(process.env)) {
+      return res.status(503).json({ error: 'talk unavailable' });
+    }
+    const body = req.body;
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return res.status(400).json({ error: 'malformed request' });
+    }
+    const keys = Object.keys(body);
+    if (keys.length !== 1 || keys[0] !== 'question') {
+      return res.status(400).json({ error: 'malformed request' });
+    }
+    const parsed = TalkGemini.normalizeQuestion(body.question);
+    if (parsed.error) {
+      return res.status(400).json({ error: parsed.error });
+    }
+    const packet = await buildCurrentAssistantPacket();
+    const answer = await TalkGemini.ask({
+      question: parsed.question,
+      packet,
+      env: process.env,
+    });
+    return res.json({ answer });
+  } catch (err) {
+    if (err && err.code === 'TALK_UNAVAILABLE') {
+      return res.status(503).json({ error: 'talk unavailable' });
+    }
+    if (err && err.code === 'TALK_MALFORMED') {
+      return res.status(400).json({ error: err.message || 'malformed request' });
+    }
+    console.error('talk ask failed');
+    return res.status(502).json({ error: 'talk answer unavailable' });
+  }
+});
+app.all('/talk/ask', (_req, res) => {
+  res.set('Allow', 'POST');
   return res.status(405).json({ error: 'method not allowed' });
 });
 

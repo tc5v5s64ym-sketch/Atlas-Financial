@@ -60,8 +60,12 @@ composed from that Forecast (`B96` / `AF-PLAN-02`). Read-only assistant
 access to Atlas is the incumbent `GET /assistant/current` packet (`B97`);
 ChatGPT reaches that same projection through the one-tool OAuth-protected
 `POST /assistant/mcp` resource. The household Talk page reaches that same
-projection through session-only `GET /talk/context` (`B103`). It consumes
-Forecast and is not a second planner. The session cookie, static assistant
+projection through session-only `GET /talk/context` (`B103`). Session-only
+`POST /talk/ask` sends that packet plus the household question to Google
+Gemini so Talk can explain incumbent Atlas state. Gemini is an explainer,
+not a planner. The server never publishes free-form model text; it
+assembles the household-facing answer from packet-verified extractive
+claims. The browser never holds `ATLAS_TALK_GEMINI_API_KEY`. The session cookie, static assistant
 Bearer, and MCP OAuth do not unlock one another. Dated account-balance
 openings live in `snapshots/` (`B20` / `AF-HIST-01`); `data.json` remains
 the dated canonical opening. Today's live plan may overlay current
@@ -289,7 +293,7 @@ Modellers, Deep Dive, and Records keep their four-link text nav:
 | Subscriptions | `subscriptions.html` | `subscriptions.js` + `forecast.js` | Recurring subscriptions and memberships as Credit-style fact cards: name, amount, cadence, next date, and monthly equivalent from `Forecast.householdSubscriptions`. Household bills stay off this page. |
 | Credit | `credit.html` | `credit.js` + `forecast.js` | What the household owes: mortgage, HELOC, then every active card — balances, limits, Forecast.utilisation headroom, rates, next required payment from the Forecast schedule (`Forecast.creditAccounts`). The visual reference for the Bills and Subscriptions fact cards. |
 | Planning | `planning.html` | `planning.js` + `forecast.js` | Known future costs: `Forecast.majorPlans` verdicts, ranges, timing and any Forecast payday set-aside, in Forecast order |
-| Talk | `talk.html` | `talk.js` | Household conversation shell. Suggested prompts and a coming-soon composer. No model, no Forecast, no published figure. |
+| Talk | `talk.html` | `talk.js` | Household conversation shell. Session context metadata plus one-turn Gemini explainer when `ATLAS_TALK_GEMINI_API_KEY` is configured. Send stays disabled when that path is unavailable. Server publishes only wording assembled from packet-verified extractive claims. Not a second planner and not a published-figure owner. |
 | Modellers | `modellers.html` | `modellers.js` + `forecast.js` | Payoff and renewal modelling |
 | Deep Dive | `deepdive.html` | `deepdive.js` | Debt, HELOC, flows, lacrosse, questions |
 | Records | `records.html` | `records.js` | Balance sheet, coverage, assumptions |

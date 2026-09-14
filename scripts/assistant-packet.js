@@ -12,7 +12,8 @@
  * records unavailable/unknown. It never writes.
  *
  * HTTP consumers: GET /assistant/current (Bearer ATLAS_ASSISTANT_TOKEN);
- * GET /talk/context (household session). POST /assistant/mcp exposes that
+ * GET /talk/context (household session); POST /talk/ask (household session,
+ * same packet as Gemini explainer evidence). POST /assistant/mcp exposes that
  * same packet as one OAuth-protected, read-only MCP tool. Auth and transport
  * stay outside this projection; do not import either here.
  */
@@ -676,6 +677,7 @@ function looksSanitized(packet) {
   if (/SITE_PASSWORD/.test(blob)) return false;
   if (/SESSION_SECRET/.test(blob)) return false;
   if (/ATLAS_ASSISTANT_TOKEN/.test(blob)) return false;
+  if (/ATLAS_TALK_GEMINI_API_KEY/.test(blob)) return false;
   if (/ATLAS_PROVIDER_ACCOUNT_MAP_JSON/.test(blob)) return false;
   if (/\b\d{4}[ -]?\d{4}[ -]?\d{4}[ -]?\d{4}\b/.test(blob)) return false;
   return true;

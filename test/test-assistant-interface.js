@@ -135,6 +135,7 @@ function forbiddenBlob(value) {
     || /SITE_PASSWORD/.test(text)
     || /SESSION_SECRET/.test(text)
     || /ATLAS_ASSISTANT_TOKEN/.test(text)
+    || /ATLAS_TALK_GEMINI_API_KEY/.test(text)
     || /ATLAS_PROVIDER_ACCOUNT_MAP_JSON/.test(text)
     || /synthetic-site-password/.test(text)
     || /synthetic-session-secret/.test(text)

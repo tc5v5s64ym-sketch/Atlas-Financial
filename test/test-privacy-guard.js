@@ -79,6 +79,7 @@ ok(/const CONTENT_PATTERNS = /.test(guardSrc), 'engine declares the sole content
 ok(/LUNCHMONEY_ACCESS_TOKEN/.test(guardSrc)
   && /ATLAS_PROVIDER_ACCOUNT_MAP_JSON/.test(guardSrc)
   && /ATLAS_ASSISTANT_TOKEN/.test(guardSrc)
+  && /ATLAS_TALK_GEMINI_API_KEY/.test(guardSrc)
   && /SITE_PASSWORD/.test(guardSrc)
   && /SESSION_SECRET/.test(guardSrc),
   'engine still names the incumbent secret tokens');

@@ -43,6 +43,17 @@ async function main() {
   r = await fetch(`${BASE}/talk/context`, { redirect: 'manual' });
   ok(r.status === 401, 'GET /talk/context is blocked without a session', `status ${r.status}`);
 
+  r = await fetch(`${BASE}/talk/capability`, { redirect: 'manual' });
+  ok(r.status === 401, 'GET /talk/capability is blocked without a session', `status ${r.status}`);
+
+  r = await fetch(`${BASE}/talk/ask`, {
+    method: 'POST',
+    redirect: 'manual',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ question: 'What should I know today?' }),
+  });
+  ok(r.status === 401, 'POST /talk/ask is blocked without a session', `status ${r.status}`);
+
   r = await fetch(`${BASE}/app.js`, { redirect: 'manual' });
   ok(r.status === 302, 'GET /app.js redirects to login', `status ${r.status}`);
 
@@ -98,6 +109,12 @@ async function main() {
   const talkPacket = await r.json();
   ok(talkPacket.schema === 'atlas-assistant-packet/v1',
     'session Talk context is the incumbent assistant packet');
+
+  r = await fetch(`${BASE}/talk/capability`, { headers: { cookie } });
+  ok(r.status === 200, 'GET /talk/capability succeeds with a session', `status ${r.status}`);
+  const talkCap = await r.json();
+  ok(talkCap && typeof talkCap.available === 'boolean',
+    'session Talk capability reports available as a boolean');
   ok(history && Array.isArray(history.snapshots), 'history has snapshots',
     history && history.snapshots ? `${history.snapshots.length} openings` : 'missing');
   ok(history.currentStateAuthority === 'data.json',

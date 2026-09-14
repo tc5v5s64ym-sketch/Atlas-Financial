@@ -73,6 +73,7 @@ function forbiddenBlob(value) {
     || /SITE_PASSWORD/.test(text)
     || /SESSION_SECRET/.test(text)
     || /ATLAS_ASSISTANT_TOKEN/.test(text)
+    || /ATLAS_TALK_GEMINI_API_KEY/.test(text)
     || /ATLAS_PROVIDER_ACCOUNT_MAP_JSON/.test(text)
     || /synthetic-site-password/.test(text)
     || /synthetic-session-secret/.test(text)
@@ -227,11 +228,19 @@ function loadTalkContextStatus() {
   const src = read('public/talk.js');
   const sandbox = {
     App: { boot() {} },
+    document: {
+      querySelector() { return { textContent: '' }; },
+    },
     fetch() { return Promise.resolve({ ok: false, json: async () => ({}) }); },
     $(id) {
-      return id === 'talk-context'
-        ? { textContent: '', dataset: {}, hidden: false }
-        : null;
+      if (id === 'talk-context') return { textContent: '', dataset: {}, hidden: false };
+      if (id === 'talk-send') return { disabled: true, setAttribute() {} };
+      if (id === 'talk-input') return { value: '', setAttribute() {} };
+      if (id === 'talk-seam') return { textContent: '' };
+      if (id === 'talk-empty') return { hidden: false };
+      if (id === 'talk-thread') return { insertAdjacentHTML() {}, appendChild() {} };
+      if (id === 'talk-composer' || id === 'talk-prompts') return { addEventListener() {} };
+      return null;
     },
   };
   vm.createContext(sandbox);
@@ -264,10 +273,8 @@ console.log('=== 1. Talk UI consumes metadata only; no Forecast, no model ===');
   ok(/metadata\.effectiveAsOf|metadata\.canonicalAsOf/.test(src)
       && /freshness/.test(src) && /confidence/.test(src),
     'talk.js reads as-of and freshness/trust already on the packet');
-  ok(/send\.disabled = true/.test(src) && /INTELLIGENCE SEAM/.test(read('public/talk.js')),
-    'Send stays disabled and the intelligence seam remains named');
-  ok(!/openai|anthropic|chatgpt|llm|\/talk\/complete|\/talk\/ask|chat\/completions/i.test(src + html + serverSrc),
-    'no model or chat-completion endpoint is wired');
+  ok(/send\.disabled = true/.test(src) && /talkModelAvailable/.test(src),
+    'Send starts disabled until the Talk capability flag is true');
   ok(/app\.get\('\/talk\/context'/.test(serverSrc)
       && /buildCurrentAssistantPacket/.test(serverSrc)
       && /Assistant\.buildPacket/.test(serverSrc),
