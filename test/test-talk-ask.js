@@ -1193,6 +1193,48 @@ console.log('=== 1. Talk Gemini module contract and UI fail-closed enablement ==
         && credit.action && credit.action.href === '/credit.html',
       'known credit path formats currency and links to Credit');
 
+    const unpublishedFacility = TalkPresentation.presentVerifiedClaims({
+      status: 'explained',
+      claims: [{ path: 'current.debts.facilities[0].available', value: 800 }],
+    }, {
+      current: {
+        debts: {
+          facilities: [{
+            label: 'Cash Back',
+            available: 800,
+            pendingUnknown: true,
+            trust: 'unknown',
+          }],
+        },
+      },
+    });
+    ok(unpublishedFacility.answer === 'A credit facility available amount is unavailable.'
+        && unpublishedFacility.trust === 'unknown'
+        && unpublishedFacility.source === 'Credit'
+        && !/A credit facility has \$800\.00 available/.test(unpublishedFacility.answer)
+        && !/\$800/.test(unpublishedFacility.answer),
+      'pendingUnknown / trust unknown withholds per-facility available credit');
+
+    const trustedFacility = TalkPresentation.presentVerifiedClaims({
+      status: 'explained',
+      claims: [{ path: 'current.debts.facilities[0].available', value: 2167.84 }],
+    }, {
+      current: {
+        debts: {
+          facilities: [{
+            label: 'HELOC',
+            available: 2167.84,
+            pendingUnknown: false,
+            trust: 'calculated',
+          }],
+        },
+      },
+    });
+    ok(trustedFacility.answer === 'A credit facility has $2,167.84 available.'
+        && trustedFacility.source === 'Credit'
+        && trustedFacility.action && trustedFacility.action.href === '/credit.html',
+      'a trusted facility may still publish packet-backed available credit');
+
     const planning = TalkPresentation.presentVerifiedClaims({
       status: 'explained',
       claims: [{ path: 'forecast.upcomingModeledCommitments.items[0].remaining', value: 250 }],
@@ -1495,6 +1537,51 @@ console.log('=== 1. Talk Gemini module contract and UI fail-closed enablement ==
         && !/put \$/.test(creditMany.answer)
         && !/authority\.planner/.test(creditMany.answer),
       'over-cap credit-style claim sets keep mapped packet-backed Credit wording');
+
+    const creditTrustPacket = {
+      schema: Assistant.SCHEMA,
+      authority: { planner: 'Forecast' },
+      metadata: {
+        effectiveAsOf: '2026-09-14',
+        freshness: { confidence: 'live' },
+      },
+      current: {
+        debts: {
+          facilities: [
+            {
+              label: 'Cash Back',
+              available: 800,
+              pendingUnknown: true,
+              trust: 'unknown',
+            },
+            {
+              label: 'HELOC',
+              available: 2167.84,
+              pendingUnknown: false,
+              trust: 'calculated',
+            },
+          ],
+        },
+      },
+    };
+    const creditTrust = TalkGemini.materializeExplainerAnswer(
+      JSON.stringify({
+        status: 'explained',
+        claims: [
+          { path: 'current.debts.facilities[0].available', equals: 800 },
+          { path: 'current.debts.facilities[1].available', equals: 2167.84 },
+        ],
+      }),
+      creditTrustPacket
+    );
+    ok(creditTrust.ok === true
+        && !/A credit facility has \$800\.00 available/.test(creditTrust.answer)
+        && !/\$800/.test(creditTrust.answer)
+        && /A credit facility available amount is unavailable/.test(creditTrust.answer)
+        && /A credit facility has \$2,167\.84 available/.test(creditTrust.answer)
+        && creditTrust.presentation.trust === 'unknown'
+        && creditTrust.presentation.source === 'Credit',
+      'unknown-pending facility available is withheld; trusted facility available may still publish');
 
     const thoughtWrapped = TalkGemini.materializeExplainerAnswer(
       'Looking through the pay-period packet first.\n' + JSON.stringify({

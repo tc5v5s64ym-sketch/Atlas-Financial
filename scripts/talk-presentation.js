@@ -70,6 +70,20 @@ function remainingClaimTrust(packet) {
   return null;
 }
 
+function facilityFromAvailablePath(path, packet) {
+  const match = /^current\.debts\.facilities\[(\d{1,3})\]\.available$/.exec(path);
+  if (!match) return null;
+  const facilities = packetGet(packet, 'current.debts.facilities');
+  if (!Array.isArray(facilities)) return null;
+  const facility = facilities[Number(match[1])];
+  if (!facility || typeof facility !== 'object' || Array.isArray(facility)) return null;
+  return facility;
+}
+
+function facilityAvailableUnpublished(facility) {
+  return !!(facility && (facility.pendingUnknown === true || facility.trust === 'unknown'));
+}
+
 function spendableOpeningState(packet) {
   return {
     status: packetGet(packet, 'current.spendableHouseholdCash.status'),
@@ -430,7 +444,13 @@ function genericRuleFor(path) {
     return {
       source: 'Credit',
       action: 'credit',
-      present(value) {
+      present(value, packet) {
+        if (facilityAvailableUnpublished(facilityFromAvailablePath(path, packet))) {
+          return {
+            text: 'A credit facility available amount is unavailable.',
+            trust: 'unknown',
+          };
+        }
         return moneySentence({
           available: money => `A credit facility has ${money} available.`,
           unavailable: 'A credit facility available amount is unavailable.',
