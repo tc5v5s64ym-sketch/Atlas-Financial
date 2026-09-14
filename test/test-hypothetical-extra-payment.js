@@ -89,6 +89,23 @@ function ask(plan, debts, amount, debtId, extraInput) {
   }, extraInput || {}));
 }
 
+function householdCash(plan, debts) {
+  const advice = F.recommend(plan, START, {
+    debts,
+    scenario: (plan.defaults && plan.defaults.scenario) || 'expected',
+    extraDebtMonthly: (plan.defaults && plan.defaults.extraDebtMonthly) || 0,
+    targetBuffer: plan.defaults && plan.defaults.targetBuffer,
+    fundingSources: plan.funding && plan.funding.options,
+  });
+  const sim = F.simulate(plan, START, Object.assign({}, advice.simOptions, {
+    weeklyVariable: advice.weekly,
+  }));
+  const zeroWeekly = F.simulate(plan, START, Object.assign({}, advice.simOptions, {
+    weeklyVariable: 0,
+  }));
+  return { advice, sim, zeroWeekly };
+}
+
 console.log('=== 1. Forecast is the sole calculator ===');
 {
   const src = read('public/forecast.js');
@@ -98,11 +115,18 @@ console.log('=== 1. Forecast is the sole calculator ===');
     src.indexOf('const Forecast = {'));
   ok(/projectDebts\(/.test(body) && /simulate\(/.test(body),
     'the boundary composes projectDebts and simulate');
-  ok(!/recommend\(/.test(body) && !/counterfactuals\(/.test(body)
-      && !/paydayAllocation\(/.test(body),
-    'it does not call recommend, counterfactuals, or paydayAllocation');
+  ok(/recommend\(/.test(body) && /weeklyVariable:\s*advice\.weekly/.test(body),
+    'cash walks copy incumbent recommend simOptions and advice.weekly');
+  ok(!/weeklyVariable:\s*0/.test(body),
+    'it does not hard-code weeklyVariable: 0');
+  ok(!/counterfactuals\(/.test(body) && !/paydayAllocation\(/.test(body),
+    'it does not call counterfactuals or paydayAllocation');
   ok(!/writeFileSync|writeFile\(/.test(body),
     'it does not write files');
+  ok(/typeof input\.amount !== 'number'/.test(body)
+      && /Number\.isFinite\(input\.amount\)/.test(body)
+      && !/Number\(input\.amount\)/.test(body),
+    'amount requires typeof number and Number.isFinite; no Number() coercion');
   ok(!/decisionPosture/.test(src),
     'public/forecast.js still does not read plan.decisionPosture');
 }
@@ -120,13 +144,11 @@ console.log('\n=== 2–4. Baseline identity, scenario moves only with the hyp, r
     extraDebtMonthly: 0, extraAbsorbed: null, obligationAbsorbed: null,
     debtHorizonDays: DAYS,
   });
-  const baseSim = F.simulate(plan, START, {
-    extraDebtMonthly: 0, weeklyVariable: 0, horizonDays: DAYS, viewDays: DAYS,
-  });
+  const household = householdCash(plan, debts);
   ok(near(result.baseline.debt.ending, baseWalk.byId.low.balance),
     'baseline named-debt ending matches an independent projectDebts walk');
-  ok(near(result.baseline.cash.ending, baseSim.ending),
-    'baseline cash ending matches an independent simulate walk');
+  ok(near(result.baseline.cash.ending, household.sim.ending),
+    'baseline cash ending matches the incumbent recommend weekly walk');
   ok(near(result.baseline.debt.paid, baseWalk.byId.low.paid)
       && near(result.baseline.debt.interest, baseWalk.byId.low.interest),
     'baseline paid and interest match that same walk');
@@ -185,12 +207,13 @@ console.log('\n=== 5–7. Named-debt reduction, interest, cash — independent w
       && near(scenarioWalk.byId.high.balance, baseWalk.byId.high.balance),
     'the high-rate card is unchanged — leftover does not follow nextDollar');
 
-  const expectedCashEnd = 2000 - expectedLow.paid;
+  const household = householdCash(plan, debts);
+  const expectedCashEnd = household.sim.ending - expectedLow.paid;
   ok(near(result.scenario.cash.ending, expectedCashEnd),
-    'scenario cash ending is opening cash minus independently absorbed extra',
+    'scenario cash ending is incumbent household cash minus independently absorbed extra',
     `${result.scenario.cash.ending} vs ${expectedCashEnd}`);
   ok(near(result.delta.cash.ending, -expectedLow.paid),
-    'cash ending delta is exactly −absorbed on this empty-schedule fixture');
+    'cash ending delta is exactly −absorbed on top of the household weekly walk');
   ok(near(result.delta.cash.extra, expectedLow.paid),
     'published extra cash out equals the independent take');
 }
@@ -266,6 +289,33 @@ console.log('\n=== 8–11. Amount is not spendable; no advice; policy unused ===
     'defaults.targetBuffer does not choose the amount, target, or extra');
 }
 
+console.log('\n=== cash baseline uses incumbent weekly spend, not zero ===');
+{
+  const { plan, debts } = fixture({
+    startingCash: { amount: 8000 },
+    defaults: { targetBuffer: 0, extraDebtMonthly: 0, scenario: 'expected' },
+  });
+  const household = householdCash(plan, debts);
+  ok(household.advice.weekly > 0,
+    'the spend fixture has a non-zero incumbent weekly',
+    String(household.advice.weekly));
+  ok(Math.abs(household.sim.ending - household.zeroWeekly.ending) > 1,
+    'zero weekly overstates household cash on this fixture');
+  const result = ask(plan, debts, 100, 'low');
+  ok(result.status === 'ready', 'the spend fixture hypothetical is ready');
+  ok(near(result.baseline.cash.ending, household.sim.ending),
+    'published baseline cash matches the incumbent weekly walk');
+  ok(!near(result.baseline.cash.ending, household.zeroWeekly.ending),
+    'published baseline cash is not the zero-weekly overstatement');
+  ok(near(result.scenario.cash.ending, household.sim.ending - result.absorbed.amount),
+    'scenario cash is the same household walk minus the hyp extra');
+  ok(result.recommendation === null && result.actionPermission === 'not-granted',
+    'copying recommend settings does not publish a recommendation or permission');
+  ok(!Object.prototype.hasOwnProperty.call(result, 'weekly')
+      && !Object.prototype.hasOwnProperty.call(result, 'paydayAllocation'),
+    'the result does not publish payday or weekly-cap advice');
+}
+
 console.log('\n=== 12–13. Invalid debt and amount fail closed ===');
 {
   const { plan, debts } = fixture();
@@ -294,6 +344,11 @@ console.log('\n=== 12–13. Invalid debt and amount fail closed ===');
       'use-buffer extra field'],
     [{ amount: 100, debtId: 'low', nature: 'hypothetical', maxAfford: true },
       'max-afford extra field'],
+    [{ amount: true, debtId: 'low', nature: 'hypothetical' }, 'boolean true amount'],
+    [{ amount: false, debtId: 'low', nature: 'hypothetical' }, 'boolean false amount'],
+    [{ amount: '100', debtId: 'low', nature: 'hypothetical' }, 'string amount'],
+    [{ amount: { value: 100 }, debtId: 'low', nature: 'hypothetical' }, 'object amount'],
+    [{ amount: [100], debtId: 'low', nature: 'hypothetical' }, 'array amount'],
   ];
   for (const [input, label] of cases) {
     const result = F.hypotheticalExtraPayment(plan, debts, START, input);

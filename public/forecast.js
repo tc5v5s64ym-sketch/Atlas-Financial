@@ -1410,8 +1410,10 @@
       const hyp = opts.hypotheticalExtra;
       const date = hyp.date;
       if (date && date >= start && date <= end) {
-        const absorbed = opts.extraAbsorbed || null;
-        const amount = absorbed ? (absorbed[date] || 0) : hyp.amount;
+        // Do not share monthly extraAbsorbed[date] with this one-shot extra.
+        // A missing household cap must not zero the hypothetical.
+        const amount = opts.hypotheticalExtraAbsorbed != null
+          ? opts.hypotheticalExtraAbsorbed : hyp.amount;
         if (amount > 0) {
           events.push({
             date, amount: -amount, kind: 'extra',
@@ -8383,10 +8385,11 @@
     const ownerPolicyApplies = priority.policy === OWNER_HIGHEST_INTEREST_POLICY
       && priority.provenance === 'owner-stated';
     const honorCallerExtraTarget = !!opts.honorCallerExtraDebtTarget;
-    const extraTarget = honorCallerExtraTarget && opts.extraDebtTarget
-      ? byId[opts.extraDebtTarget]
-      : (priorityTargetId ? byId[priorityTargetId]
-        : (!ownerPolicyApplies && opts.extraDebtTarget ? byId[opts.extraDebtTarget] : null));
+    const policyExtraTarget = priorityTargetId ? byId[priorityTargetId]
+      : (!ownerPolicyApplies && opts.extraDebtTarget ? byId[opts.extraDebtTarget] : null);
+    const hypExtraTarget = honorCallerExtraTarget && opts.extraDebtTarget
+      ? byId[opts.extraDebtTarget] : null;
+    const extraTarget = hypExtraTarget || policyExtraTarget;
 
     // Where a payment goes once the debt it names is gone.
     //
@@ -8404,12 +8407,6 @@
     // the HELOC. Nothing is ever discarded, so the identity holds however
     // large the payment is.
     const chainFrom = head => {
-      // A hypothetical extra names one debt. Overflow must not silently
-      // follow owner next-dollar priority — that would substitute policy
-      // for the caller's target.
-      if (honorCallerExtraTarget) {
-        return [head].filter(Boolean);
-      }
       if (priority.status === 'ready') {
         return priority.order.map(row => byId[row.id]).filter(Boolean);
       }
@@ -8548,8 +8545,15 @@
           const left = payDown([t], principal);
           unabsorbed += left;
           obligationAbsorbed[e.date + ':' + e.id] = amount - left;
-        } else if (e.kind === 'extra' && extraTarget) {
-          const left = payDown(chainFrom(extraTarget), -e.amount);
+        } else if (e.kind === 'extra') {
+          const isHyp = e.id === 'hypothetical-extra';
+          const target = isHyp ? (hypExtraTarget || policyExtraTarget) : policyExtraTarget;
+          if (!target) continue;
+          // A hypothetical extra names one debt. Overflow must not follow
+          // owner next-dollar priority. Monthly extras keep the policy chain.
+          const chain = isHyp && honorCallerExtraTarget
+            ? [target].filter(Boolean) : chainFrom(target);
+          const left = payDown(chain, -e.amount);
           unabsorbed += left;
           // What this payment could actually land, for the cash side to match.
           extraAbsorbed[e.date] = -e.amount - left;
@@ -10495,8 +10499,11 @@
     if (input.nature !== 'hypothetical') {
       return hypotheticalUnavailable('Only an explicit hypothetical extra payment is accepted.');
     }
-    const amount = Number(input.amount);
-    if (!isFinite(amount) || amount <= 0 || amount > HYPOTHETICAL_EXTRA_MAX) {
+    if (typeof input.amount !== 'number' || !Number.isFinite(input.amount)) {
+      return hypotheticalUnavailable('The hypothetical extra amount is not a finite numeric payment Atlas can apply.');
+    }
+    const amount = input.amount;
+    if (amount <= 0 || amount > HYPOTHETICAL_EXTRA_MAX) {
       return hypotheticalUnavailable('The hypothetical extra amount is not a finite positive payment Atlas can apply.');
     }
     const cents = roundCent(amount);
@@ -10550,33 +10557,41 @@
     }
 
     const days = plan.windowDays || 91;
-    const shared = {
-      scenario: 'expected',
-      weeklyVariable: 0,
-      extraDebtMonthly: 0,
-      horizonDays: days,
-      viewDays: days,
+    const advice = recommend(plan, day, {
+      debts,
+      scenario: (plan.defaults && plan.defaults.scenario) || 'expected',
+      extraDebtMonthly: (plan.defaults && plan.defaults.extraDebtMonthly) || 0,
+      targetBuffer: plan.defaults && plan.defaults.targetBuffer,
+      fundingSources: plan.funding && plan.funding.options,
+    });
+    if (!advice || !advice.simOptions
+        || typeof advice.weekly !== 'number'
+        || !Number.isFinite(advice.weekly)
+        || advice.weekly < 0) {
+      return hypotheticalUnavailable('Forecast could not establish the household cash baseline.');
+    }
+    const householdOpts = Object.assign({}, advice.simOptions, {
+      weeklyVariable: advice.weekly,
+      debts,
       debtHorizonDays: days,
-      extraAbsorbed: null,
-      obligationAbsorbed: null,
-    };
-    const baselineOpts = Object.assign({}, shared);
-    const scenarioOpts = Object.assign({}, shared, {
+    });
+    const baselineOpts = Object.assign({}, householdOpts);
+    const scenarioOpts = Object.assign({}, householdOpts, {
       extraDebtTarget: debtId,
       honorCallerExtraDebtTarget: true,
       hypotheticalExtra: { amount: cents, date: day, debtId },
     });
 
     const firstWalk = projectDebts(plan, debts, day, scenarioOpts);
-    if (!firstWalk || firstWalk.untargetedExtra) {
+    if (!firstWalk || !firstWalk.byId || !firstWalk.byId[debtId]) {
       return hypotheticalUnavailable('Forecast could not apply the hypothetical extra to the named debt.');
     }
-    const absorbedByDate = firstWalk.extraAbsorbed || {};
-    const absorbed = roundCent(absorbedByDate[day] || 0);
+    const absorbed = roundCent((firstWalk.extraAbsorbed && firstWalk.extraAbsorbed[day]) || 0);
     const unabsorbed = roundCent(Math.max(0, cents - absorbed));
     const capped = Object.assign({}, scenarioOpts, {
-      extraAbsorbed: absorbedByDate,
-      obligationAbsorbed: firstWalk.obligationAbsorbed,
+      hypotheticalExtraAbsorbed: absorbed,
+      extraAbsorbed: baselineOpts.extraAbsorbed,
+      obligationAbsorbed: baselineOpts.obligationAbsorbed,
     });
     const baselineWalk = projectDebts(plan, debts, day, baselineOpts);
     const scenarioWalk = projectDebts(plan, debts, day, capped);
@@ -10641,6 +10656,7 @@
       provenance: {
         calculator: 'Forecast',
         primitives: ['simulate', 'projectDebts'],
+        cashBaseline: 'incumbent-simOptions-weekly',
         inputNature: 'hypothetical',
         amountIsNotSpendableCash: true,
         availableCreditIsNotCash: true,
