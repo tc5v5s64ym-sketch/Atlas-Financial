@@ -70,6 +70,7 @@ const suites = [
   ['Talk to Atlas household surface', 'test-talk-page.js'],
   ['Talk context packet seam', 'test-talk-context.js'],
   ['Talk Gemini explainer turn', 'test-talk-ask.js'],
+  ['Talk hypothetical extra adapter (Talk Slice 6B)', 'test-talk-hypothetical.js'],
   ['owner decision posture policy (Talk Slice 5)', 'test-decision-posture.js'],
   ['hypothetical extra-payment scenario (Talk Slice 6)', 'test-hypothetical-extra-payment.js'],
   ['Credit page — what do we owe (Forecast.creditAccounts)', 'test-credit-page.js'],
