@@ -996,7 +996,7 @@ console.log('=== 1. Talk Gemini module contract and UI fail-closed enablement ==
         && !/startingCashAmount|currentPeriodAction\(|recommend\(/.test(presentationSrc),
       'presentation does not import Forecast or call planner functions');
     ok(/TalkPresentation\.presentVerifiedClaims/.test(moduleSrc)
-        && /scripts\/talk-presentation/.test(moduleSrc),
+        && /require\('\.\/talk-presentation'\)/.test(moduleSrc),
       'Talk Gemini maps verified claims through the presentation module');
     ok(!/money2\(|\bmoney\(/.test(talkSrc) && !/Forecast\./.test(talkSrc),
       'talk.js still does not format money or call Forecast');
