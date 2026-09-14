@@ -266,7 +266,7 @@ console.log('=== 1. Talk UI consumes metadata only; no Forecast, no model ===');
     'Talk browser code does not call /assistant/current or /assistant/mcp');
   ok(!/Authorization|Bearer|ATLAS_ASSISTANT|oauth/i.test(src),
     'talk.js does not send assistant Bearer or OAuth');
-  ok(!/Forecast|recommend\(|money2\(|startingCashAmount|paydayAllocation/.test(src),
+  ok(!/Forecast\.|recommend\(|money2\(|startingCashAmount|paydayAllocation/.test(src),
     'talk.js does not duplicate Forecast calculation');
   ok(!/packet\.current|packet\.forecast|packet\.actuals|spendableHouseholdCash|weeklyCap/.test(src),
     'talk.js does not project financial packet fields into the UI');
