@@ -1402,6 +1402,29 @@
         events.push({ date, amount: -amount, kind: 'extra', label: 'Extra debt payment', id: 'extra', confidence: 'planned' });
       }
     }
+    // One caller-supplied hypothetical extra, on one date. Not monthly
+    // extraDebtMonthly, not a second event engine: same kind:'extra' the
+    // coupled walk already applies. Production recommend/simulate never
+    // set this option.
+    if (opts.hypotheticalExtra && opts.hypotheticalExtra.amount > 0) {
+      const hyp = opts.hypotheticalExtra;
+      const date = hyp.date;
+      if (date && date >= start && date <= end) {
+        // Do not share monthly extraAbsorbed[date] with this one-shot extra.
+        // A missing household cap must not zero the hypothetical.
+        const amount = opts.hypotheticalExtraAbsorbed != null
+          ? opts.hypotheticalExtraAbsorbed : hyp.amount;
+        if (amount > 0) {
+          events.push({
+            date, amount: -amount, kind: 'extra',
+            label: 'Hypothetical extra debt payment',
+            id: 'hypothetical-extra',
+            debtId: hyp.debtId || null,
+            confidence: 'planned',
+          });
+        }
+      }
+    }
     // Deposits land before payments due the same day — payday-timed bills are
     // arranged on exactly that assumption. Sort: date, then income first.
     events.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 :
@@ -8361,8 +8384,12 @@
       ? priority.target.id : null;
     const ownerPolicyApplies = priority.policy === OWNER_HIGHEST_INTEREST_POLICY
       && priority.provenance === 'owner-stated';
-    const extraTarget = priorityTargetId ? byId[priorityTargetId]
+    const honorCallerExtraTarget = !!opts.honorCallerExtraDebtTarget;
+    const policyExtraTarget = priorityTargetId ? byId[priorityTargetId]
       : (!ownerPolicyApplies && opts.extraDebtTarget ? byId[opts.extraDebtTarget] : null);
+    const hypExtraTarget = honorCallerExtraTarget && opts.extraDebtTarget
+      ? byId[opts.extraDebtTarget] : null;
+    const extraTarget = hypExtraTarget || policyExtraTarget;
 
     // Where a payment goes once the debt it names is gone.
     //
@@ -8518,8 +8545,15 @@
           const left = payDown([t], principal);
           unabsorbed += left;
           obligationAbsorbed[e.date + ':' + e.id] = amount - left;
-        } else if (e.kind === 'extra' && extraTarget) {
-          const left = payDown(chainFrom(extraTarget), -e.amount);
+        } else if (e.kind === 'extra') {
+          const isHyp = e.id === 'hypothetical-extra';
+          const target = isHyp ? (hypExtraTarget || policyExtraTarget) : policyExtraTarget;
+          if (!target) continue;
+          // A hypothetical extra names one debt. Overflow must not follow
+          // owner next-dollar priority. Monthly extras keep the policy chain.
+          const chain = isHyp && honorCallerExtraTarget
+            ? [target].filter(Boolean) : chainFrom(target);
+          const left = payDown(chain, -e.amount);
           unabsorbed += left;
           // What this payment could actually land, for the cash side to match.
           extraAbsorbed[e.date] = -e.amount - left;
@@ -10396,6 +10430,243 @@
     };
   }
 
+  const HYPOTHETICAL_EXTRA_INPUT_KEYS = { amount: true, debtId: true, nature: true };
+  const HYPOTHETICAL_EXTRA_MAX = 1000000;
+  const HYPOTHETICAL_REVOLVING = /^Revolving\b/i;
+
+  function hypotheticalUnavailable(reason) {
+    return {
+      status: 'unavailable',
+      reason,
+      nature: 'hypothetical',
+      calculator: 'Forecast',
+      writesCanonicalState: false,
+      productionWrite: false,
+      actionPermission: 'not-granted',
+      recommendation: null,
+    };
+  }
+
+  function hypotheticalExtraEligible(debt) {
+    if (!debt || typeof debt.id !== 'string' || !debt.id) return false;
+    if (debt.id === 'heloc') return true;
+    return !debt.secured && HYPOTHETICAL_REVOLVING.test(debt.structure || '');
+  }
+
+  function hypotheticalNamedDebt(walk, debt, opening) {
+    const state = walk && walk.byId && walk.byId[debt.id];
+    if (!state) return null;
+    const available = publishedAvailable(state.limit, state.balance, state.pendingUnknown);
+    return {
+      id: state.id,
+      label: state.label,
+      opening: roundCent(opening),
+      ending: roundCent(state.balance),
+      paid: roundCent(state.paid),
+      interest: roundCent(state.interest),
+      availableCredit: available == null ? null : roundCent(available),
+      clearedWithinWindow: state.balance <= EPSILON,
+    };
+  }
+
+  function hypotheticalCashView(sim) {
+    if (!sim) return null;
+    return {
+      ending: roundCent(sim.ending),
+      min: sim.min && isFinite(sim.min.balance)
+        ? { date: sim.min.date, balance: roundCent(sim.min.balance) }
+        : null,
+      extra: roundCent(sim.totals && sim.totals.extra || 0),
+    };
+  }
+
+  // Read-only what-if: one caller-supplied extra payment against one
+  // eligible debt. Composes simulate and projectDebts. Does not apply
+  // owner next-dollar substitution, does not infer amount or target,
+  // does not recommend, and does not write.
+  function hypotheticalExtraPayment(plan, debts, asOf, input) {
+    if (!plan || typeof plan !== 'object' || Array.isArray(plan)) {
+      return hypotheticalUnavailable('A plan baseline is required.');
+    }
+    if (!input || typeof input !== 'object' || Array.isArray(input)) {
+      return hypotheticalUnavailable('A structured hypothetical extra-payment input is required.');
+    }
+    for (const key of Object.keys(input)) {
+      if (!HYPOTHETICAL_EXTRA_INPUT_KEYS[key]) {
+        return hypotheticalUnavailable('Unsupported hypothetical extra-payment input.');
+      }
+    }
+    if (input.nature !== 'hypothetical') {
+      return hypotheticalUnavailable('Only an explicit hypothetical extra payment is accepted.');
+    }
+    if (typeof input.amount !== 'number' || !Number.isFinite(input.amount)) {
+      return hypotheticalUnavailable('The hypothetical extra amount is not a finite numeric payment Atlas can apply.');
+    }
+    const amount = input.amount;
+    if (amount <= 0 || amount > HYPOTHETICAL_EXTRA_MAX) {
+      return hypotheticalUnavailable('The hypothetical extra amount is not a finite positive payment Atlas can apply.');
+    }
+    const cents = roundCent(amount);
+    if (Math.abs(amount - cents) > 1e-9) {
+      return hypotheticalUnavailable('The hypothetical extra amount must be a whole-cent figure.');
+    }
+    const debtId = input.debtId;
+    if (typeof debtId !== 'string' || !debtId) {
+      return hypotheticalUnavailable('An explicit stable debt id is required.');
+    }
+    const day = financialDate(asOf);
+    const baselineDay = plan.opening && financialDate(plan.opening.asOf);
+    if (!day || !baselineDay) {
+      return hypotheticalUnavailable('A dated plan baseline is required.');
+    }
+    if (day !== baselineDay) {
+      return hypotheticalUnavailable('The hypothetical as-of does not match the plan baseline.');
+    }
+    const cash = plan.startingCash;
+    if (!cash || typeof cash !== 'object') {
+      return hypotheticalUnavailable('The plan baseline has no starting cash.');
+    }
+    const cashKnown = (cash.breakdown && cash.breakdown.length)
+      ? cash.breakdown.every(row => row && isFinite(Number(row.value)))
+      : isFinite(Number(cash.amount));
+    if (!cashKnown) {
+      return hypotheticalUnavailable('The plan baseline has no starting cash.');
+    }
+    if (!Array.isArray(debts) || !debts.length) {
+      return hypotheticalUnavailable('Eligible debts are required.');
+    }
+    const matches = debts.filter(d => d && d.id === debtId);
+    if (matches.length !== 1) {
+      return hypotheticalUnavailable(matches.length
+        ? 'The named debt id is ambiguous.'
+        : 'The named debt is not on this baseline.');
+    }
+    const debt = matches[0];
+    if (!hypotheticalExtraEligible(debt)) {
+      return hypotheticalUnavailable('The named debt is not eligible for a hypothetical extra payment.');
+    }
+    if (debt.balance == null || !isFinite(Number(debt.balance)) || pendingUnknown(debt)) {
+      return hypotheticalUnavailable('The named debt has an unknown or unproven balance.');
+    }
+    if (typeof debt.rate !== 'number' || !isFinite(debt.rate)) {
+      return hypotheticalUnavailable('The named debt has an unknown interest rate.');
+    }
+    const opening = openingBalance(debt);
+    if (!(opening > EPSILON)) {
+      return hypotheticalUnavailable('The named debt has no known balance to receive an extra payment.');
+    }
+
+    const days = plan.windowDays || 91;
+    const advice = recommend(plan, day, {
+      debts,
+      scenario: (plan.defaults && plan.defaults.scenario) || 'expected',
+      extraDebtMonthly: (plan.defaults && plan.defaults.extraDebtMonthly) || 0,
+      targetBuffer: plan.defaults && plan.defaults.targetBuffer,
+      fundingSources: plan.funding && plan.funding.options,
+    });
+    if (!advice || !advice.simOptions
+        || typeof advice.weekly !== 'number'
+        || !Number.isFinite(advice.weekly)
+        || advice.weekly < 0) {
+      return hypotheticalUnavailable('Forecast could not establish the household cash baseline.');
+    }
+    const householdOpts = Object.assign({}, advice.simOptions, {
+      weeklyVariable: advice.weekly,
+      debts,
+      debtHorizonDays: days,
+    });
+    const baselineOpts = Object.assign({}, householdOpts);
+    const scenarioOpts = Object.assign({}, householdOpts, {
+      extraDebtTarget: debtId,
+      honorCallerExtraDebtTarget: true,
+      hypotheticalExtra: { amount: cents, date: day, debtId },
+    });
+
+    const firstWalk = projectDebts(plan, debts, day, scenarioOpts);
+    if (!firstWalk || !firstWalk.byId || !firstWalk.byId[debtId]) {
+      return hypotheticalUnavailable('Forecast could not apply the hypothetical extra to the named debt.');
+    }
+    const absorbed = roundCent((firstWalk.extraAbsorbed && firstWalk.extraAbsorbed[day]) || 0);
+    const unabsorbed = roundCent(Math.max(0, cents - absorbed));
+    const capped = Object.assign({}, scenarioOpts, {
+      hypotheticalExtraAbsorbed: absorbed,
+      extraAbsorbed: baselineOpts.extraAbsorbed,
+      obligationAbsorbed: baselineOpts.obligationAbsorbed,
+    });
+    const baselineWalk = projectDebts(plan, debts, day, baselineOpts);
+    const scenarioWalk = projectDebts(plan, debts, day, capped);
+    const baselineSim = simulate(plan, day, baselineOpts);
+    const scenarioSim = simulate(plan, day, capped);
+    if (!baselineWalk || !scenarioWalk || !baselineSim || !scenarioSim) {
+      return hypotheticalUnavailable('Forecast could not establish baseline and scenario walks.');
+    }
+    const baselineDebt = hypotheticalNamedDebt(baselineWalk, debt, opening);
+    const scenarioDebt = hypotheticalNamedDebt(scenarioWalk, debt, opening);
+    const baselineCash = hypotheticalCashView(baselineSim);
+    const scenarioCash = hypotheticalCashView(scenarioSim);
+    if (!baselineDebt || !scenarioDebt || !baselineCash || !scenarioCash) {
+      return hypotheticalUnavailable('Forecast could not establish named-debt or cash consequences.');
+    }
+
+    const deltaDebt = {
+      ending: roundCent(scenarioDebt.ending - baselineDebt.ending),
+      paid: roundCent(scenarioDebt.paid - baselineDebt.paid),
+      interest: roundCent(scenarioDebt.interest - baselineDebt.interest),
+    };
+    if (baselineDebt.availableCredit != null && scenarioDebt.availableCredit != null) {
+      deltaDebt.availableCredit = roundCent(
+        scenarioDebt.availableCredit - baselineDebt.availableCredit);
+    }
+    const deltaCash = {
+      ending: roundCent(scenarioCash.ending - baselineCash.ending),
+      extra: roundCent(scenarioCash.extra - baselineCash.extra),
+    };
+    if (baselineCash.min && scenarioCash.min) {
+      deltaCash.min = roundCent(scenarioCash.min.balance - baselineCash.min.balance);
+    }
+    const payoff = scenarioDebt.clearedWithinWindow && !baselineDebt.clearedWithinWindow
+      ? { clearedWithinWindow: true }
+      : null;
+
+    return {
+      status: 'ready',
+      nature: 'hypothetical',
+      calculator: 'Forecast',
+      writesCanonicalState: false,
+      productionWrite: false,
+      actionPermission: 'not-granted',
+      recommendation: null,
+      input: {
+        amount: cents,
+        debtId,
+        debtLabel: debt.label || debtId,
+        asOf: day,
+        nature: 'hypothetical',
+        amountIsNotSpendableCash: true,
+        availableCreditIsNotCash: true,
+      },
+      absorbed: {
+        amount: absorbed,
+        unabsorbed,
+        date: day,
+      },
+      baseline: { asOf: day, cash: baselineCash, debt: baselineDebt },
+      scenario: { asOf: day, cash: scenarioCash, debt: scenarioDebt },
+      delta: { cash: deltaCash, debt: deltaDebt, payoff },
+      provenance: {
+        calculator: 'Forecast',
+        primitives: ['simulate', 'projectDebts'],
+        cashBaseline: 'incumbent-simOptions-weekly',
+        inputNature: 'hypothetical',
+        amountIsNotSpendableCash: true,
+        availableCreditIsNotCash: true,
+        actionPermission: 'not-granted',
+        targetSource: 'caller',
+        ownerNextDollarNotUsedForHypotheticalTarget: true,
+      },
+    };
+  }
+
   const Forecast = { HOUSEHOLD_TIMEZONE, financialDate, addDays, diffDays, occurrences, commitmentSettledOn, commitmentSettledBy, commitmentStatus, billIsHouseholdObligation, billAffectsJointCash, isCardPaidBill, carriedOnceJointCashOutflow, prepaidJointCashOutflow, expandEvents, simulate, establishPaydaySnapshot,
     knowledgeHorizon, viewRange, commitmentNeed, fundingSequence, majorPlans, plannedDebt, debtPriority, paydayAllocation,
     classifyCurrentPeriodTransaction, paydayPeriodOrigin, currentPeriodObligationStates, currentPeriodAction,
@@ -10404,7 +10675,7 @@
     budgetBreakdown, monthlyFromWeekly,
     projectDebts,
     nextDue, nextPaymentOut, unallocatedCash, compactSnapshot, publicationTotals, deepDive, publishedSpendType, rollupSpending, planStatus, mission, planPhases, nextMove, utilisation, creditAccounts, capitalisingCashMinimumOccurrences, renewal,
-    payoffDebts, payoffModel,
+    payoffDebts, payoffModel, hypotheticalExtraPayment,
     paymentForMonths, startingCashAmount, postedHouseholdChequingCash, resolveFundingSources, resolveActions, EPSILON, STEP,
     householdBills, householdSubscriptions, billIsSubscription };
   if (typeof module !== 'undefined' && module.exports) module.exports = Forecast;
