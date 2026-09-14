@@ -1193,6 +1193,48 @@ console.log('=== 1. Talk Gemini module contract and UI fail-closed enablement ==
         && credit.action && credit.action.href === '/credit.html',
       'known credit path formats currency and links to Credit');
 
+    const unpublishedFacility = TalkPresentation.presentVerifiedClaims({
+      status: 'explained',
+      claims: [{ path: 'current.debts.facilities[0].available', value: 800 }],
+    }, {
+      current: {
+        debts: {
+          facilities: [{
+            label: 'Cash Back',
+            available: 800,
+            pendingUnknown: true,
+            trust: 'unknown',
+          }],
+        },
+      },
+    });
+    ok(unpublishedFacility.answer === 'A credit facility available amount is unavailable.'
+        && unpublishedFacility.trust === 'unknown'
+        && unpublishedFacility.source === 'Credit'
+        && !/A credit facility has \$800\.00 available/.test(unpublishedFacility.answer)
+        && !/\$800/.test(unpublishedFacility.answer),
+      'pendingUnknown / trust unknown withholds per-facility available credit');
+
+    const trustedFacility = TalkPresentation.presentVerifiedClaims({
+      status: 'explained',
+      claims: [{ path: 'current.debts.facilities[0].available', value: 2167.84 }],
+    }, {
+      current: {
+        debts: {
+          facilities: [{
+            label: 'HELOC',
+            available: 2167.84,
+            pendingUnknown: false,
+            trust: 'calculated',
+          }],
+        },
+      },
+    });
+    ok(trustedFacility.answer === 'A credit facility has $2,167.84 available.'
+        && trustedFacility.source === 'Credit'
+        && trustedFacility.action && trustedFacility.action.href === '/credit.html',
+      'a trusted facility may still publish packet-backed available credit');
+
     const planning = TalkPresentation.presentVerifiedClaims({
       status: 'explained',
       claims: [{ path: 'forecast.upcomingModeledCommitments.items[0].remaining', value: 250 }],
@@ -1312,6 +1354,465 @@ console.log('=== 1. Talk Gemini module contract and UI fail-closed enablement ==
         'incumbent packet remaining stays unavailable and is not published as zero');
     }
     filesUnchanged('presentation Talk ask');
+  }
+
+  console.log('\n=== 8. Period / bills / credit claim sets assemble; planner-act stays closed ===');
+  {
+    const domainPacket = {
+      schema: Assistant.SCHEMA,
+      authority: { planner: 'Forecast' },
+      metadata: {
+        effectiveAsOf: '2026-09-14',
+        freshness: { confidence: 'live' },
+      },
+      forecast: {
+        currentPeriodAction: {
+          status: 'ok',
+          source: 'Forecast.currentPeriodAction',
+          mode: 'between-paydays',
+          periodStart: '2026-09-11',
+          periodEnd: '2026-09-24',
+          nextPayday: '2026-09-25',
+          remainingClaim: 'posted-only',
+          essentialRemaining: 1415.95,
+          weeklyCap: 225,
+        },
+      },
+      current: {
+        spendableHouseholdCash: { status: 'ok', value: 939.62, trust: 'calculated', current: true },
+        pending: { totalKnownPending: 40 },
+        debts: {
+          totalAvailableCredit: 1200.5,
+          overLimitCount: 1,
+          securedDebt: 745674.46,
+          monthlyInterest: 3045.51,
+          facilities: [{ label: 'HELOC', available: 2167.84 }],
+        },
+        nextSignificantObligations: {
+          nextDue: {
+            date: '2026-09-16',
+            label: 'Travel Visa minimum',
+            amount: 17,
+            daysUntil: 2,
+            confidence: 'estimated',
+          },
+          nextPaymentOut: {
+            date: '2026-09-16',
+            label: 'Travel Visa minimum',
+            amount: 17,
+            confidence: 'estimated',
+          },
+        },
+      },
+    };
+
+    const periodMixed = TalkGemini.materializeExplainerAnswer(
+      JSON.stringify({
+        status: 'explained',
+        claims: [
+          { path: 'forecast.currentPeriodAction.periodStart', equals: '2026-09-11' },
+          { path: 'forecast.currentPeriodAction.periodEnd', equals: '2026-09-24' },
+          { path: 'forecast.currentPeriodAction.essentialRemaining', equals: 1415.95 },
+          { path: 'forecast.currentPeriodAction.weeklyCap', equals: 225 },
+          { path: 'forecast.currentPeriodAction.remaining', equals: 1415.95 },
+        ],
+      }),
+      domainPacket
+    );
+    ok(periodMixed.ok === true
+        && /The current pay period starts on 2026-09-11/.test(periodMixed.answer)
+        && /The current pay period ends on 2026-09-24/.test(periodMixed.answer)
+        && /You have \$1,415\.95 remaining in the current pay period/.test(periodMixed.answer)
+        && /The current weekly spending cap is \$225\.00/.test(periodMixed.answer)
+        && periodMixed.presentation.source === 'Forecast'
+        && periodMixed.presentation.action && periodMixed.presentation.action.href === '/'
+        && periodMixed.presentation.trust === 'posted-only'
+        && periodMixed.presentation.asOf === '2026-09-14',
+      'period-style mixed claims drop the missing path and assemble Atlas period templates');
+
+    const periodObject = TalkGemini.materializeExplainerAnswer(
+      JSON.stringify({
+        status: 'explained',
+        claims: [{
+          path: 'forecast.currentPeriodAction',
+          equals: domainPacket.forecast.currentPeriodAction,
+        }],
+      }),
+      domainPacket
+    );
+    ok(periodObject.ok === true
+        && /You have \$1,415\.95 remaining in the current pay period/.test(periodObject.answer)
+        && /The current weekly spending cap is \$225\.00/.test(periodObject.answer)
+        && /The next payday is 2026-09-25/.test(periodObject.answer)
+        && periodObject.presentation.source === 'Forecast',
+      'a matching currentPeriodAction object expands into packet-backed period templates');
+
+    const billsObject = TalkGemini.materializeExplainerAnswer(
+      JSON.stringify({
+        status: 'explained',
+        claims: [{
+          path: 'current.nextSignificantObligations.nextDue',
+          equals: domainPacket.current.nextSignificantObligations.nextDue,
+        }],
+      }),
+      domainPacket
+    );
+    ok(billsObject.ok === true
+        && billsObject.answer === [
+          'The next due date is 2026-09-16.',
+          'The next due item is Travel Visa minimum.',
+          'The next due amount is $17.00.',
+          'The next due item is in 2 days.',
+        ].join(' ')
+        && billsObject.presentation.source === 'Bills'
+        && billsObject.presentation.trust === 'estimated'
+        && billsObject.presentation.action
+        && billsObject.presentation.action.href === '/bills.html',
+      'a matching nextDue object assembles the Bills templates and View Bills action');
+
+    const billsMixed = TalkGemini.materializeExplainerAnswer(
+      JSON.stringify({
+        status: 'explained',
+        claims: [
+          { path: 'current.nextSignificantObligations.nextDue.label', equals: 'Travel Visa minimum' },
+          { path: 'current.nextSignificantObligations.nextDue.date', equals: '2026-09-16' },
+          { path: 'current.nextSignificantObligations.nextDue.amount', equals: '17' },
+          { path: 'current.nextSignificantObligations.nextDue.what', equals: 'Travel Visa minimum' },
+        ],
+      }),
+      domainPacket
+    );
+    ok(billsMixed.ok === true
+        && /The next due item is Travel Visa minimum/.test(billsMixed.answer)
+        && /The next due amount is \$17\.00/.test(billsMixed.answer)
+        && billsMixed.presentation.source === 'Bills'
+        && !/what is/.test(billsMixed.answer),
+      'bills-style claims keep stringified packet amounts and drop the invented what path');
+
+    const creditObject = TalkGemini.materializeExplainerAnswer(
+      JSON.stringify({
+        status: 'explained',
+        claims: [{
+          path: 'current.debts',
+          equals: domainPacket.current.debts,
+        }],
+      }),
+      domainPacket
+    );
+    ok(creditObject.ok === true
+        && /Total available credit is \$1,200\.50/.test(creditObject.answer)
+        && /1 credit facility is over the limit/.test(creditObject.answer)
+        && /Secured debt totals \$745,674\.46/.test(creditObject.answer)
+        && /Monthly interest is \$3,045\.51/.test(creditObject.answer)
+        && creditObject.presentation.source === 'Credit'
+        && creditObject.presentation.action
+        && creditObject.presentation.action.href === '/credit.html',
+      'a matching debts object expands into Credit templates and View Credit');
+
+    const creditMany = TalkGemini.materializeExplainerAnswer(
+      JSON.stringify({
+        status: 'explained',
+        claims: [
+          { path: 'current.debts.totalAvailableCredit', equals: 1200.5 },
+          { path: 'current.pending.totalKnownPending', equals: 40 },
+          { path: 'current.debts.overLimitCount', equals: 1 },
+          { path: 'current.debts.securedDebt', equals: 745674.46 },
+          { path: 'current.debts.monthlyInterest', equals: 3045.51 },
+          { path: 'current.debts.facilities[0].label', equals: 'HELOC' },
+          { path: 'current.debts.facilities[0].available', equals: 2167.84 },
+          { path: 'forecast.currentPeriodAction.status', equals: 'ok' },
+          { path: 'forecast.currentPeriodAction.source', equals: 'Forecast.currentPeriodAction' },
+          { path: 'authority.planner', equals: 'Forecast' },
+        ],
+      }),
+      domainPacket
+    );
+    ok(creditMany.ok === true
+        && creditMany.claims.length <= TalkGemini.CLAIM_MAX
+        && creditMany.claims.length >= 5
+        && creditMany.claims.every(claim => TalkPresentation.ruleFor(claim.path))
+        && /Total available credit is \$1,200\.50/.test(creditMany.answer)
+        && /Known pending charges total \$40\.00/.test(creditMany.answer)
+        && creditMany.presentation.source === 'Credit'
+        && !/put \$/.test(creditMany.answer)
+        && !/authority\.planner/.test(creditMany.answer),
+      'over-cap credit-style claim sets keep mapped packet-backed Credit wording');
+
+    const creditTrustPacket = {
+      schema: Assistant.SCHEMA,
+      authority: { planner: 'Forecast' },
+      metadata: {
+        effectiveAsOf: '2026-09-14',
+        freshness: { confidence: 'live' },
+      },
+      current: {
+        debts: {
+          facilities: [
+            {
+              label: 'Cash Back',
+              available: 800,
+              pendingUnknown: true,
+              trust: 'unknown',
+            },
+            {
+              label: 'HELOC',
+              available: 2167.84,
+              pendingUnknown: false,
+              trust: 'calculated',
+            },
+          ],
+        },
+      },
+    };
+    const creditTrust = TalkGemini.materializeExplainerAnswer(
+      JSON.stringify({
+        status: 'explained',
+        claims: [
+          { path: 'current.debts.facilities[0].available', equals: 800 },
+          { path: 'current.debts.facilities[1].available', equals: 2167.84 },
+        ],
+      }),
+      creditTrustPacket
+    );
+    ok(creditTrust.ok === true
+        && !/A credit facility has \$800\.00 available/.test(creditTrust.answer)
+        && !/\$800/.test(creditTrust.answer)
+        && /A credit facility available amount is unavailable/.test(creditTrust.answer)
+        && /A credit facility has \$2,167\.84 available/.test(creditTrust.answer)
+        && creditTrust.presentation.trust === 'unknown'
+        && creditTrust.presentation.source === 'Credit',
+      'unknown-pending facility available is withheld; trusted facility available may still publish');
+
+    const thoughtWrapped = TalkGemini.materializeExplainerAnswer(
+      'Looking through the pay-period packet first.\n' + JSON.stringify({
+        status: 'explained',
+        claims: [
+          { path: 'forecast.currentPeriodAction.essentialRemaining', equals: 1415.95 },
+          { path: 'forecast.currentPeriodAction.weeklyCap', equals: 225 },
+        ],
+      }),
+      domainPacket
+    );
+    ok(thoughtWrapped.ok === true
+        && thoughtWrapped.answer === [
+          'You have $1,415.95 remaining in the current pay period.',
+          'The current weekly spending cap is $225.00.',
+        ].join(' ')
+        && !/Looking through/.test(thoughtWrapped.answer),
+      'thought-prefixed JSON still publishes only Atlas period templates');
+
+    const fencedTail = TalkGemini.materializeExplainerAnswer(
+      '```json\n' + JSON.stringify({
+        status: 'explained',
+        claims: [{ path: 'current.nextSignificantObligations.nextDue.amount', equals: 17 }],
+      }) + '\n```\nYou should pay this first.',
+      domainPacket
+    );
+    ok(fencedTail.ok === true
+        && fencedTail.answer === 'The next due amount is $17.00.'
+        && !/You should pay this first/.test(fencedTail.answer)
+        && !/pay this first/.test(fencedTail.answer),
+      'trailing planner prose around fenced claims never reaches the answer');
+
+    const extraClaimNote = TalkGemini.materializeExplainerAnswer(
+      JSON.stringify({
+        status: 'explained',
+        claims: [{
+          path: 'forecast.currentPeriodAction.weeklyCap',
+          equals: 225,
+          note: 'watch this cap',
+        }],
+      }),
+      domainPacket
+    );
+    ok(extraClaimNote.ok === true
+        && extraClaimNote.answer === 'The current weekly spending cap is $225.00.'
+        && !/watch this cap/.test(extraClaimNote.answer),
+      'an extra note on a verified claim is ignored and not published');
+
+    ok(TalkGemini.materializeExplainerAnswer(
+        'What should I do with my extra cash? Put it toward the Visa.',
+        domainPacket
+      ).ok === false,
+      'planner-act free-form extra-cash prose still fails closed');
+    ok(TalkGemini.materializeExplainerAnswer(
+        JSON.stringify({
+          status: 'explained',
+          claims: [{ path: 'forecast.currentPeriodAction.essentialRemaining', equals: 1415.95 }],
+          advice: 'Put the extra cash toward the Visa.',
+        }),
+        domainPacket
+      ).ok === false,
+      'planner-act extra field on an otherwise valid period claim set still fails closed');
+    ok(TalkGemini.materializeExplainerAnswer(
+        JSON.stringify({ status: 'unavailable', claims: [] }),
+        domainPacket
+      ).answer === TalkGemini.UNAVAILABLE_ANSWER,
+      'planner-act unavailable status stays the fixed packet-unavailable sentence');
+    ok(TalkGemini.materializeExplainerAnswer(
+        JSON.stringify({
+          status: 'explained',
+          claims: [{ path: 'forecast.currentPeriodAction.essentialRemaining', equals: 9999.99 }],
+        }),
+        domainPacket
+      ).ok === false
+        && TalkGemini.materializeExplainerAnswer(
+          JSON.stringify({
+            status: 'explained',
+            claims: [{ path: 'forecast.currentPeriodAction.essentialRemaining', equals: 9999.99 }],
+          }),
+          domainPacket
+        ).reason === 'invented figure',
+      'an invented-only remaining still fails closed');
+
+    const datedOpeningPacket = {
+      metadata: {
+        effectiveAsOf: '2026-09-14',
+        freshness: { confidence: 'canonical-opening' },
+      },
+      current: {
+        spendableHouseholdCash: {
+          status: 'dated-opening',
+          current: false,
+          value: 939.62,
+          trust: 'calculated',
+        },
+      },
+    };
+    const datedStill = TalkGemini.materializeExplainerAnswer(
+      JSON.stringify({
+        status: 'explained',
+        claims: [
+          { path: 'current.spendableHouseholdCash.value', equals: 939.62 },
+          { path: 'current.spendableHouseholdCash.missing', equals: 0 },
+        ],
+      }),
+      datedOpeningPacket
+    );
+    ok(datedStill.ok === true
+        && /not current spendable household cash/i.test(datedStill.answer)
+        && !/Spendable household cash is \$/.test(datedStill.answer)
+        && datedStill.presentation.trust === 'dated-opening',
+      'dated-opening spendable-cash non-current wording stays intact on mixed claims');
+  }
+
+  {
+    const domainPacket = {
+      metadata: {
+        effectiveAsOf: '2026-09-14',
+        freshness: { confidence: 'live' },
+      },
+      forecast: {
+        currentPeriodAction: {
+          periodStart: '2026-09-11',
+          periodEnd: '2026-09-24',
+          essentialRemaining: 1415.95,
+          weeklyCap: 225,
+          remainingClaim: 'posted-only',
+        },
+      },
+      current: {
+        nextSignificantObligations: {
+          nextDue: {
+            date: '2026-09-16',
+            label: 'Travel Visa minimum',
+            amount: 17,
+            confidence: 'estimated',
+          },
+        },
+        debts: { totalAvailableCredit: 1200.5 },
+      },
+    };
+    const mock = await startMockGemini([
+      JSON.stringify({
+        status: 'explained',
+        claims: [
+          { path: 'forecast.currentPeriodAction.essentialRemaining', equals: 1415.95 },
+          { path: 'forecast.currentPeriodAction.weeklyCap', equals: 225 },
+          { path: 'forecast.payPeriod.summary', equals: 'on track' },
+        ],
+      }),
+      JSON.stringify({
+        status: 'explained',
+        claims: [{
+          path: 'current.nextSignificantObligations.nextDue',
+          equals: domainPacket.current.nextSignificantObligations.nextDue,
+        }],
+      }),
+      JSON.stringify({
+        status: 'explained',
+        claims: [
+          { path: 'current.debts.totalAvailableCredit', equals: 1200.5 },
+          { path: 'current.debts', equals: { invented: true } },
+        ],
+      }),
+      'What should I do with my extra cash? Move it to the Visa.',
+    ]);
+    try {
+      const period = await TalkGemini.ask({
+        question: 'What should I know about this pay period?',
+        packet: domainPacket,
+        env: {
+          ATLAS_TALK_GEMINI_API_KEY: GEMINI_KEY,
+          ATLAS_TALK_GEMINI_BASE_URL: mock.url,
+        },
+      });
+      ok(period.answer === [
+        'You have $1,415.95 remaining in the current pay period.',
+        'The current weekly spending cap is $225.00.',
+      ].join(' ')
+          && period.source === 'Forecast'
+          && period.action && period.action.href === '/',
+        'ask() assembles a period-style mocked claim set into Atlas templates');
+
+      const bills = await TalkGemini.ask({
+        question: 'What commitment is coming up next?',
+        packet: domainPacket,
+        env: {
+          ATLAS_TALK_GEMINI_API_KEY: GEMINI_KEY,
+          ATLAS_TALK_GEMINI_BASE_URL: mock.url,
+        },
+      });
+      ok(bills.answer === [
+        'The next due date is 2026-09-16.',
+        'The next due item is Travel Visa minimum.',
+        'The next due amount is $17.00.',
+      ].join(' ')
+          && bills.source === 'Bills'
+          && bills.action && bills.action.href === '/bills.html',
+        'ask() assembles a bills-style mocked nextDue object into Atlas templates');
+
+      const credit = await TalkGemini.ask({
+        question: 'What is the factual credit picture?',
+        packet: domainPacket,
+        env: {
+          ATLAS_TALK_GEMINI_API_KEY: GEMINI_KEY,
+          ATLAS_TALK_GEMINI_BASE_URL: mock.url,
+        },
+      });
+      ok(credit.answer === 'Total available credit is $1,200.50.'
+          && credit.source === 'Credit'
+          && credit.action && credit.action.href === '/credit.html',
+        'ask() assembles a credit-style mocked claim set into Atlas templates');
+
+      let plannerRejected = false;
+      try {
+        await TalkGemini.ask({
+          question: 'What should I do with my extra cash?',
+          packet: domainPacket,
+          env: {
+            ATLAS_TALK_GEMINI_API_KEY: GEMINI_KEY,
+            ATLAS_TALK_GEMINI_BASE_URL: mock.url,
+          },
+        });
+      } catch (err) {
+        plannerRejected = !!(err && err.code === 'TALK_ANSWER_UNAVAILABLE');
+      }
+      ok(plannerRejected, 'ask() still fail-closes planner-act extra-cash prose');
+    } finally {
+      await mock.close();
+    }
+    filesUnchanged('period bills credit Talk repair');
   }
 
   console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
