@@ -403,8 +403,9 @@ app.all('/talk/capability', (_req, res) => {
 // Talk ask — one stateless Gemini explainer turn. Session only.
 // Builds the incumbent assistant packet (same builder as /talk/context),
 // sends question + packet + the fixed instruction contract, verifies
-// extractive claims against that packet, and returns { answer } assembled
-// from those verified values. Does not persist prompts or answers. Does not write.
+// extractive claims against that packet, maps verified claims through
+// Atlas presentation templates, and returns that household-facing
+// presentation. Does not persist prompts or answers. Does not write.
 const talkAskJson = express.json({ limit: '4kb', type: 'application/json' });
 app.post('/talk/ask', (req, res, next) => {
   talkAskJson(req, res, (err) => {
@@ -429,12 +430,22 @@ app.post('/talk/ask', (req, res, next) => {
       return res.status(400).json({ error: parsed.error });
     }
     const packet = await buildCurrentAssistantPacket();
-    const answer = await TalkGemini.ask({
+    const presented = await TalkGemini.ask({
       question: parsed.question,
       packet,
       env: process.env,
     });
-    return res.json({ answer });
+    if (!presented || typeof presented.answer !== 'string' || !presented.answer.trim()) {
+      return res.status(502).json({ error: 'talk answer unavailable' });
+    }
+    return res.json({
+      answer: presented.answer,
+      source: presented.source || null,
+      trust: presented.trust || null,
+      asOf: presented.asOf || null,
+      freshness: presented.freshness || null,
+      action: presented.action || null,
+    });
   } catch (err) {
     if (err && err.code === 'TALK_UNAVAILABLE') {
       return res.status(503).json({ error: 'talk unavailable' });

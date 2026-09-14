@@ -5,8 +5,10 @@
  * packet plus a mocked Gemini call, that the instruction contract is in the
  * outbound request with tools/grounding disabled, that the server publishes
  * only wording assembled from packet-verified extractive claims (free-form
- * planner-act prose is never published), and that browser session, static
- * assistant Bearer, and MCP OAuth still do not unlock one another.
+ * planner-act prose is never published), that those verified claims are
+ * then mapped through Atlas presentation templates, and that browser
+ * session, static assistant Bearer, and MCP OAuth still do not unlock
+ * one another.
  * No live Gemini calls.
  * `node test/test-talk-ask.js`
  */
@@ -20,6 +22,7 @@ const { spawn } = require('child_process');
 const Assistant = require('../scripts/assistant-packet.js');
 const AssistantMcp = require('../scripts/assistant-mcp.js');
 const TalkGemini = require('../scripts/talk-gemini.js');
+const TalkPresentation = require('../scripts/talk-presentation.js');
 const { sourceText } = require('./test-source-text');
 
 const ROOT = path.join(__dirname, '..');
@@ -332,7 +335,7 @@ function loadTalkApi() {
   };
   vm.createContext(sandbox);
   vm.runInContext(
-    src + '\nthis.__api = { talkEscape, renderTalkModelAvailability, talkAnswerNode, talkErrorNode };',
+    src + '\nthis.__api = { talkEscape, renderTalkModelAvailability, talkAnswerNode, talkErrorNode, talkAllowedAction, talkAnswerMetaText };',
     sandbox
   );
   return { api: sandbox.__api, send, seam, created };
@@ -504,7 +507,7 @@ console.log('=== 1. Talk Gemini module contract and UI fail-closed enablement ==
     'an extra planner-act field fails closed');
   ok(/materializeExplainerAnswer\(text, packet\)/.test(moduleSrc)
       && /if \(!published\.ok\) throw talkAnswerUnavailable\(\)/.test(moduleSrc)
-      && /return published\.answer/.test(moduleSrc)
+      && /return published\.presentation/.test(moduleSrc)
       && !/return text;/.test(moduleSrc),
     'ask() publishes assembled packet wording, never raw model text');
 
@@ -538,7 +541,7 @@ console.log('=== 1. Talk Gemini module contract and UI fail-closed enablement ==
         ATLAS_TALK_GEMINI_BASE_URL: mock.url,
       },
     });
-    ok(answer === DEFAULT_ANSWER,
+    ok(answer && answer.answer === DEFAULT_ANSWER,
       'mocked extractive claims become the assembled Talk answer');
     ok(mock.captured.length === 1, 'exactly one Gemini HTTP call');
     const req = mock.captured[0];
@@ -615,8 +618,8 @@ console.log('=== 1. Talk Gemini module contract and UI fail-closed enablement ==
       const askedBody = await asked.json();
       ok(askedBody.answer === DEFAULT_ANSWER
           && !forbiddenBlob(askedBody)
-          && Object.keys(askedBody).join() === 'answer',
-        'Talk ask returns only the assembled packet-backed answer');
+          && Object.keys(askedBody).sort().join() === 'action,answer,asOf,freshness,source,trust',
+        'Talk ask returns the presented packet-backed answer without extra payload');
       ok(liveMock.captured.length >= 1
           && requestHasInstruction(liveMock.captured[liveMock.captured.length - 1].body)
           && /What commitments are coming up\?/.test(userText(liveMock.captured[liveMock.captured.length - 1].body)),
@@ -942,7 +945,8 @@ console.log('=== 1. Talk Gemini module contract and UI fail-closed enablement ==
           ATLAS_TALK_GEMINI_BASE_URL: mock.url,
         },
       });
-      ok(answer === 'This request\'s packet shows leftover is 400 and weeklyCap is 1650.',
+      ok(answer && answer.answer === 'This request\'s packet shows leftover is 400 and weeklyCap is 1650.'
+          && answer.source === null,
         'ask() publishes assembled packet wording, not model prose');
     } finally {
       await mock.close();
@@ -980,6 +984,334 @@ console.log('=== 1. Talk Gemini module contract and UI fail-closed enablement ==
       await liveMock.close();
     }
     filesUnchanged('adversarial Talk ask');
+  }
+
+  console.log('\n=== 7. Slice 4 presentation maps verified claims only ===');
+  {
+    const presentationSrc = read('scripts/talk-presentation.js');
+    const moduleSrc = read('scripts/talk-gemini.js');
+    const talkSrc = stripComments(read('public/talk.js'));
+    ok(!/require\(['"][^'"]*forecast/i.test(presentationSrc)
+        && !/Forecast\./.test(presentationSrc)
+        && !/startingCashAmount|currentPeriodAction\(|recommend\(/.test(presentationSrc),
+      'presentation does not import Forecast or call planner functions');
+    ok(/TalkPresentation\.presentVerifiedClaims/.test(moduleSrc)
+        && /require\('\.\/talk-presentation'\)/.test(moduleSrc),
+      'Talk Gemini maps verified claims through the presentation module');
+    ok(!/money2\(|\bmoney\(/.test(talkSrc) && !/Forecast\./.test(talkSrc),
+      'talk.js still does not format money or call Forecast');
+
+    const remainingPacket = {
+      schema: Assistant.SCHEMA,
+      authority: { planner: 'Forecast' },
+      leftover: 400,
+      weeklyCap: 1650,
+      metadata: {
+        effectiveAsOf: '2026-09-14',
+        freshness: { confidence: 'live' },
+      },
+      forecast: {
+        currentPeriodAction: {
+          status: 'ok',
+          source: 'Forecast.currentPeriodAction',
+          essentialRemaining: 1415.95,
+          remainingClaim: 'posted-only',
+          weeklyCap: 225,
+        },
+      },
+      current: {
+        spendableHouseholdCash: { status: 'ok', value: 939.62, trust: 'calculated' },
+      },
+    };
+    const remainingClaims = JSON.stringify({
+      status: 'explained',
+      claims: [{ path: 'forecast.currentPeriodAction.essentialRemaining', equals: 1415.95 }],
+    });
+    const remaining = TalkGemini.materializeExplainerAnswer(remainingClaims, remainingPacket);
+    ok(remaining.ok === true
+        && remaining.answer === 'You have $1,415.95 remaining in the current pay period.',
+      'known remaining path uses the Atlas remaining sentence and currency format');
+    ok(remaining.presentation.source === 'Forecast'
+        && remaining.presentation.trust === 'posted-only'
+        && remaining.presentation.asOf === '2026-09-14'
+        && remaining.presentation.freshness === 'live'
+        && remaining.presentation.action
+        && remaining.presentation.action.href === '/'
+        && remaining.presentation.action.label === 'View Budget',
+      'remaining presentation carries Forecast provenance, packet trust, as-of, freshness, and Budget link');
+
+    const spendableOk = TalkPresentation.presentVerifiedClaims({
+      status: 'explained',
+      claims: [{ path: 'current.spendableHouseholdCash.value', value: 939.62 }],
+    }, remainingPacket);
+    ok(spendableOk.answer === 'Spendable household cash is $939.62.'
+        && spendableOk.trust === 'calculated'
+        && spendableOk.source === 'Forecast',
+      'status ok spendable cash keeps the current spendable-cash sentence');
+
+    const datedOpeningPacket = {
+      metadata: {
+        effectiveAsOf: '2026-09-14',
+        freshness: { confidence: 'canonical-opening' },
+      },
+      current: {
+        spendableHouseholdCash: {
+          status: 'dated-opening',
+          current: false,
+          value: 939.62,
+          trust: 'calculated',
+          note: 'Current plan unavailable. The dated opening is stale.',
+        },
+      },
+    };
+    const datedOpening = TalkPresentation.presentVerifiedClaims({
+      status: 'explained',
+      claims: [{ path: 'current.spendableHouseholdCash.value', value: 939.62 }],
+    }, datedOpeningPacket);
+    ok(!/Spendable household cash is \$939\.62/.test(datedOpening.answer)
+        && !/Spendable household cash is \$/.test(datedOpening.answer)
+        && /dated opening cash is \$939\.62/i.test(datedOpening.answer)
+        && /not current spendable household cash/i.test(datedOpening.answer)
+        && datedOpening.trust === 'dated-opening'
+        && datedOpening.trust !== 'calculated',
+      'dated-opening spendable cash is not presented as current spendable cash');
+
+    const datedThroughAsk = TalkGemini.materializeExplainerAnswer(
+      JSON.stringify({
+        status: 'explained',
+        claims: [{ path: 'current.spendableHouseholdCash.value', equals: 939.62 }],
+      }),
+      datedOpeningPacket
+    );
+    ok(datedThroughAsk.ok === true
+        && !/Spendable household cash is \$/.test(datedThroughAsk.answer)
+        && /not current spendable household cash/i.test(datedThroughAsk.answer)
+        && datedThroughAsk.presentation.trust === 'dated-opening',
+      'verified dated-opening spendable claims stay non-current through ask materialization');
+
+    const invented = TalkGemini.materializeExplainerAnswer(
+      JSON.stringify({
+        status: 'explained',
+        claims: [{ path: 'forecast.currentPeriodAction.essentialRemaining', equals: 9999.99 }],
+      }),
+      remainingPacket
+    );
+    ok(invented.ok === false && invented.reason === 'invented figure',
+      'only the verified packet remaining value can become answer content');
+
+    const prose = TalkGemini.materializeExplainerAnswer(
+      'You have $1,415.95 remaining in the current pay period.',
+      remainingPacket
+    );
+    ok(prose.ok === false && prose.reason === 'not structured',
+      'raw model prose never becomes the Talk answer, even when it matches a template');
+
+    const unknown = TalkPresentation.presentVerifiedClaims({
+      status: 'explained',
+      claims: [{ path: 'leftover', value: 400 }],
+    }, remainingPacket);
+    ok(unknown.answer === 'This request\'s packet shows leftover is 400.'
+        && unknown.source === null
+        && unknown.action === null
+        && !/\$400/.test(unknown.answer)
+        && !/remaining in the current pay period/.test(unknown.answer),
+      'unknown leftover path stays generic and does not invent remaining-cash meaning');
+
+    const mixed = TalkPresentation.presentVerifiedClaims({
+      status: 'explained',
+      claims: [
+        { path: 'forecast.currentPeriodAction.essentialRemaining', value: 1415.95 },
+        { path: 'leftover', value: 400 },
+      ],
+    }, remainingPacket);
+    ok(mixed.source === null && mixed.action === null
+        && /You have \$1,415\.95 remaining/.test(mixed.answer)
+        && /leftover is 400/.test(mixed.answer),
+      'an unmapped path strips Forecast provenance so the answer cannot falsely claim Forecast');
+
+    const precise = TalkPresentation.presentVerifiedClaims({
+      status: 'explained',
+      claims: [{ path: 'forecast.currentPeriodAction.essentialRemaining', value: 1415.95 }],
+    }, {
+      metadata: { effectiveAsOf: '2026-09-14', freshness: { confidence: 'live' } },
+      forecast: { currentPeriodAction: { essentialRemaining: 1415.95, remainingClaim: 'precise' } },
+    });
+    ok(precise.trust === 'precise' && precise.trust !== 'estimated',
+      'precise remaining is not weakened or relabelled estimated');
+
+    const estimated = TalkPresentation.presentVerifiedClaims({
+      status: 'explained',
+      claims: [{ path: 'forecast.currentPeriodAction.essentialRemaining', value: 1415.95 }],
+    }, {
+      metadata: { effectiveAsOf: '2026-09-14', freshness: { confidence: 'canonical-opening' } },
+      forecast: { currentPeriodAction: { essentialRemaining: 1415.95, remainingClaim: 'posted-only' } },
+    });
+    ok(estimated.trust === 'posted-only'
+        && estimated.freshness === 'canonical-opening'
+        && estimated.trust !== 'precise'
+        && estimated.trust !== 'confirmed'
+        && estimated.freshness !== 'live',
+      'posted-only remaining stays estimated-strength and does not become confirmed or live');
+
+    const unavailableMoney = TalkPresentation.presentVerifiedClaims({
+      status: 'explained',
+      claims: [{ path: 'forecast.currentPeriodAction.essentialRemaining', value: null }],
+    }, {
+      metadata: { effectiveAsOf: '2026-09-14' },
+      forecast: { currentPeriodAction: { essentialRemaining: null, remainingClaim: 'unavailable' } },
+    });
+    ok(unavailableMoney.answer === 'Current pay-period remaining is unavailable.'
+        && unavailableMoney.trust === 'unavailable'
+        && !/\$0/.test(unavailableMoney.answer)
+        && !/0\.00/.test(unavailableMoney.answer),
+      'unavailable remaining is not published as zero');
+
+    const bills = TalkPresentation.presentVerifiedClaims({
+      status: 'explained',
+      claims: [{ path: 'current.nextSignificantObligations.nextDue.amount', value: 17 }],
+    }, {
+      metadata: { effectiveAsOf: '2026-09-14' },
+      current: {
+        nextSignificantObligations: {
+          nextDue: { amount: 17, confidence: 'estimated' },
+        },
+      },
+    });
+    ok(bills.answer === 'The next due amount is $17.00.'
+        && bills.source === 'Bills'
+        && bills.trust === 'estimated'
+        && bills.action && bills.action.href === '/bills.html'
+        && bills.action.label === 'View Bills',
+      'known bills path gets a Bills label, estimated trust, and View Bills');
+
+    const credit = TalkPresentation.presentVerifiedClaims({
+      status: 'explained',
+      claims: [{ path: 'current.debts.totalAvailableCredit', value: 1200.5 }],
+    }, { current: { debts: { totalAvailableCredit: 1200.5 } } });
+    ok(credit.answer === 'Total available credit is $1,200.50.'
+        && credit.source === 'Credit'
+        && credit.action && credit.action.href === '/credit.html',
+      'known credit path formats currency and links to Credit');
+
+    const planning = TalkPresentation.presentVerifiedClaims({
+      status: 'explained',
+      claims: [{ path: 'forecast.upcomingModeledCommitments.items[0].remaining', value: 250 }],
+    }, { forecast: { upcomingModeledCommitments: { items: [{ remaining: 250 }] } } });
+    ok(planning.answer === 'A modeled commitment remaining is $250.00.'
+        && planning.source === 'Planning'
+        && planning.action && planning.action.href === '/planning.html',
+      'known planning path links to Planning and does not claim it is leftover cash');
+
+    for (const href of TalkPresentation.ALLOWED_ACTION_HREFS) {
+      ok(['/', '/bills.html', '/credit.html', '/planning.html'].includes(href),
+        `presentation allowlist keeps existing route ${href}`);
+    }
+    ok(!TalkPresentation.isAllowedActionHref('/talk.html')
+        && !TalkPresentation.isAllowedActionHref('/subscriptions.html')
+        && !TalkPresentation.isAllowedActionHref('javascript:alert(1)'),
+      'presentation rejects Talk, Subscriptions, and non-Atlas hrefs');
+
+    const ui = loadTalkApi();
+    const rendered = ui.api.talkAnswerNode({
+      answer: 'You have $1,415.95 remaining in the current pay period.',
+      source: 'Forecast',
+      trust: 'posted-only',
+      asOf: '2026-09-14',
+      freshness: 'live',
+      action: { href: '/', label: 'View Budget' },
+    });
+    ok(rendered.children[0] && rendered.children[0].textContent
+        === 'You have $1,415.95 remaining in the current pay period.',
+      'browser renders the presented answer via textContent');
+    ok(rendered.children[1]
+        && rendered.children[1].className === 'talk-answer-meta'
+        && rendered.children[1].textContent === 'Forecast · as of 2026-09-14 · posted-only · live',
+      'browser renders a subtle Forecast/trust/as-of/freshness line');
+    ok(rendered.children[2]
+        && rendered.children[2].className === 'talk-answer-action'
+        && rendered.children[2].children[0]
+        && rendered.children[2].children[0].getAttribute('href') === '/'
+        && rendered.children[2].children[0].textContent === 'View Budget',
+      'browser renders one View Budget link on the existing Budget route');
+    ok(ui.api.talkAllowedAction({ href: '/talk.html', label: 'View Talk' }) === null
+        && ui.api.talkAllowedAction({ href: 'https://evil.example', label: 'View Budget' }) === null
+        && ui.api.talkAllowedAction({ href: '/', label: 'View Budget' }).href === '/',
+      'browser drops non-Atlas action hrefs');
+    ok(!/innerHTML\s*=/.test(talkSrc),
+      'presentation render still does not assign innerHTML');
+  }
+
+  {
+    const remainingPacket = {
+      schema: Assistant.SCHEMA,
+      authority: { planner: 'Forecast' },
+      leftover: 400,
+      metadata: {
+        effectiveAsOf: '2026-09-14',
+        freshness: { confidence: 'live' },
+      },
+      forecast: {
+        currentPeriodAction: {
+          essentialRemaining: 1415.95,
+          remainingClaim: 'posted-only',
+        },
+      },
+    };
+    const mock = await startMockGemini([
+      JSON.stringify({
+        status: 'explained',
+        claims: [{ path: 'forecast.currentPeriodAction.essentialRemaining', equals: 1415.95 }],
+      }),
+    ]);
+    try {
+      const presented = await TalkGemini.ask({
+        question: 'How much is left this period?',
+        packet: remainingPacket,
+        env: {
+          ATLAS_TALK_GEMINI_API_KEY: GEMINI_KEY,
+          ATLAS_TALK_GEMINI_BASE_URL: mock.url,
+        },
+      });
+      ok(presented.answer === 'You have $1,415.95 remaining in the current pay period.'
+          && presented.source === 'Forecast'
+          && presented.action.href === '/',
+        'ask() presents the verified remaining fixture, not model prose');
+    } finally {
+      await mock.close();
+    }
+  }
+
+  {
+    const data = JSON.parse(fs.readFileSync(DATA, 'utf8'));
+    const packet = Assistant.buildPacket({ data, now: '2026-09-14T12:00:00.000Z' });
+    const weeklyCap = packet.forecast
+      && packet.forecast.currentPeriodAction
+      && packet.forecast.currentPeriodAction.weeklyCap;
+    const remaining = packet.forecast
+      && packet.forecast.currentPeriodAction
+      && packet.forecast.currentPeriodAction.essentialRemaining;
+    if (Number.isFinite(weeklyCap)) {
+      const presented = TalkPresentation.presentVerifiedClaims({
+        status: 'explained',
+        claims: [{ path: 'forecast.currentPeriodAction.weeklyCap', value: weeklyCap }],
+      }, packet);
+      ok(presented.answer === `The current weekly spending cap is ${TalkPresentation.formatCurrency(weeklyCap)}.`
+          && presented.source === 'Forecast'
+          && presented.action && presented.action.href === '/',
+        'incumbent packet weekly cap presents with Atlas currency wording and Budget link');
+    } else {
+      ok(true, 'incumbent packet weekly cap unavailable — fixture remaining covers currency');
+    }
+    if (remaining == null) {
+      const presented = TalkPresentation.presentVerifiedClaims({
+        status: 'explained',
+        claims: [{ path: 'forecast.currentPeriodAction.essentialRemaining', value: null }],
+      }, packet);
+      ok(presented.answer === 'Current pay-period remaining is unavailable.'
+          && !/\$0/.test(presented.answer),
+        'incumbent packet remaining stays unavailable and is not published as zero');
+    }
+    filesUnchanged('presentation Talk ask');
   }
 
   console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
