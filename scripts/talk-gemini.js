@@ -11,8 +11,8 @@
  *
  * The household-facing answer is never Gemini's free-form prose. The
  * model may return only a structured extractive claim list. The server
- * verifies each claim against this request's packet and assembles the
- * published sentence from those verified packet values. Invented
+ * verifies each claim against this request's packet, then maps those
+ * verified values through Atlas presentation templates. Invented
  * figures, planner acts, and trust promotion cannot ride through as
  * ordinary English around a packet-grounded amount.
  *
@@ -21,6 +21,8 @@
  * module never logs, prints, or returns that value. CI must mock Gemini
  * HTTP. A single bounded live call is a post-merge production smoke only.
  */
+
+const TalkPresentation = require('./talk-presentation');
 
 const MODEL = 'gemini-2.5-flash-lite';
 const PROVIDER = 'google-gemini';
@@ -157,13 +159,6 @@ function samePrimitive(left, right) {
   return left === right;
 }
 
-function formatClaimValue(value) {
-  if (value === null) return 'null';
-  if (typeof value === 'string') return value;
-  if (typeof value === 'boolean') return value ? 'true' : 'false';
-  return String(value);
-}
-
 function parsePath(path) {
   if (typeof path !== 'string' || path.length === 0 || path.length > PATH_MAX_LENGTH) {
     return null;
@@ -259,12 +254,8 @@ function parseExtractiveOutput(text) {
   return { ok: true, status: 'explained', claims };
 }
 
-function assembleExplainerAnswer(status, claims) {
-  if (status === 'unavailable') return UNAVAILABLE_ANSWER;
-  const parts = claims.map(claim => `${claim.path} is ${formatClaimValue(claim.value)}`);
-  if (parts.length === 1) return `This request's packet shows ${parts[0]}.`;
-  const last = parts.pop();
-  return `This request's packet shows ${parts.join(', ')} and ${last}.`;
+function assembleExplainerAnswer(status, claims, packet) {
+  return TalkPresentation.presentVerifiedClaims({ status, claims }, packet).answer;
 }
 
 function materializeExplainerAnswer(text, packet) {
@@ -281,7 +272,11 @@ function materializeExplainerAnswer(text, packet) {
       ok: true,
       status: 'unavailable',
       claims: [],
-      answer: assembleExplainerAnswer('unavailable', []),
+      presentation: TalkPresentation.presentVerifiedClaims({
+        status: 'unavailable',
+        claims: [],
+      }, packet),
+      answer: assembleExplainerAnswer('unavailable', [], packet),
     };
   }
   const verified = [];
@@ -293,11 +288,16 @@ function materializeExplainerAnswer(text, packet) {
     }
     verified.push({ path: claim.path, value: found.value });
   }
+  const presentation = TalkPresentation.presentVerifiedClaims({
+    status: 'explained',
+    claims: verified,
+  }, packet);
   return {
     ok: true,
     status: 'explained',
     claims: verified,
-    answer: assembleExplainerAnswer('explained', verified),
+    presentation,
+    answer: presentation.answer,
   };
 }
 
@@ -336,7 +336,7 @@ async function ask({ question, packet, env }) {
   if (!text) throw talkAnswerUnavailable();
   const published = materializeExplainerAnswer(text, packet);
   if (!published.ok) throw talkAnswerUnavailable();
-  return published.answer;
+  return published.presentation;
 }
 
 module.exports = {
@@ -354,5 +354,6 @@ module.exports = {
   resolveBaseUrl,
   buildUserPrompt,
   materializeExplainerAnswer,
+  presentVerifiedClaims: TalkPresentation.presentVerifiedClaims,
   ask,
 };

@@ -7,6 +7,9 @@
  * /assistant/mcp, does not send a Bearer or OAuth token, does not hold
  * the Talk model secret, does not read Forecast, and does not publish
  * a figure of its own. Model answer text is assigned via textContent.
+ * Provenance, trust, and one optional action link come from the server
+ * presentation. This file does not format money and only follows existing
+ * Atlas routes.
  *
  * Send stays disabled until capability says the model path is available.
  * When it is not, suggested prompts keep the Slice 1/2 stub. Structured
@@ -27,6 +30,12 @@ const TALK_SUB_UNAVAILABLE = 'Ask Atlas about this payday, bills, credit or plan
 const TALK_SUB_AVAILABLE = 'Ask Atlas about this payday, bills, credit or planning. Atlas explains the current picture. It does not invent numbers.';
 const TALK_EMPTY_UNAVAILABLE = 'The live picture stays on Budget, Bills, Credit and Planning. Talk will not invent an answer. Pick a starting question — Send is not connected yet.';
 const TALK_EMPTY_AVAILABLE = 'The live picture stays on Budget, Bills, Credit and Planning. Ask a question and Atlas will explain the current picture. It will not invent an answer.';
+const TALK_ACTION_HREFS = {
+  '/': 'View Budget',
+  '/bills.html': 'View Bills',
+  '/credit.html': 'View Credit',
+  '/planning.html': 'View Planning',
+};
 
 let talkModelAvailable = false;
 let talkAskInFlight = false;
@@ -166,13 +175,72 @@ function replaceTalkLoading(node) {
   }
 }
 
-function talkAnswerNode(text) {
+function talkPresentation(value) {
+  if (typeof value === 'string') {
+    return { answer: value, source: null, trust: null, asOf: null, freshness: null, action: null };
+  }
+  if (!value || typeof value !== 'object' || typeof value.answer !== 'string') {
+    return { answer: '', source: null, trust: null, asOf: null, freshness: null, action: null };
+  }
+  return value;
+}
+
+function talkAnswerMetaText(presentation) {
+  const parts = [];
+  if (presentation.source === 'Forecast'
+      || presentation.source === 'Bills'
+      || presentation.source === 'Credit'
+      || presentation.source === 'Planning') {
+    parts.push(presentation.source);
+  }
+  if (typeof presentation.asOf === 'string' && presentation.asOf) {
+    parts.push('as of ' + presentation.asOf);
+  }
+  if (typeof presentation.trust === 'string' && presentation.trust) {
+    parts.push(presentation.trust);
+  }
+  if (typeof presentation.freshness === 'string' && presentation.freshness
+      && presentation.freshness !== presentation.trust) {
+    parts.push(presentation.freshness);
+  }
+  return parts.join(' · ');
+}
+
+function talkAllowedAction(action) {
+  if (!action || typeof action !== 'object') return null;
+  const href = action.href;
+  const expected = TALK_ACTION_HREFS[href];
+  if (!expected) return null;
+  const label = typeof action.label === 'string' && action.label ? action.label : expected;
+  if (href === '/' && label === 'View Plan') return { href: href, label: 'View Plan' };
+  return { href: href, label: expected };
+}
+
+function talkAnswerNode(value) {
+  const presentation = talkPresentation(value);
   const article = document.createElement('article');
   article.className = 'talk-bubble talk-bubble-atlas talk-bubble-answer';
   article.setAttribute('data-talk-role', 'atlas-answer');
   const p = document.createElement('p');
-  p.textContent = text;
+  p.textContent = presentation.answer;
   article.appendChild(p);
+  const meta = talkAnswerMetaText(presentation);
+  if (meta) {
+    const line = document.createElement('p');
+    line.className = 'talk-answer-meta';
+    line.textContent = meta;
+    article.appendChild(line);
+  }
+  const action = talkAllowedAction(presentation.action);
+  if (action) {
+    const nav = document.createElement('p');
+    nav.className = 'talk-answer-action';
+    const link = document.createElement('a');
+    link.setAttribute('href', action.href);
+    link.textContent = action.label;
+    nav.appendChild(link);
+    article.appendChild(nav);
+  }
   return article;
 }
 
@@ -206,7 +274,14 @@ async function askTalk(question) {
   if (typeof body.answer !== 'string' || !body.answer.trim()) {
     throw new Error('error');
   }
-  return body.answer;
+  return {
+    answer: body.answer,
+    source: body.source || null,
+    trust: body.trust || null,
+    asOf: body.asOf || null,
+    freshness: body.freshness || null,
+    action: body.action || null,
+  };
 }
 
 async function submitTalkQuestion(raw) {

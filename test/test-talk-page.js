@@ -77,8 +77,10 @@ console.log('=== 1. Talk page identity, empty state, composer, prompts ===');
     'talk.html hardcodes no dollar figure or rate');
   ok(/talk-empty/.test(css) && /talk-composer/.test(css)
       && /talk-prompt/.test(css) && /talk-bubble/.test(css)
-      && /talk-context/.test(css),
-    'talk.css styles the empty state, composer, prompts, context and future bubbles');
+      && /talk-context/.test(css)
+      && /talk-answer-meta/.test(css)
+      && /talk-answer-action/.test(css),
+    'talk.css styles the empty state, composer, prompts, context, answer meta and action');
 }
 
 console.log('\n=== 2. talk.js is a shell — no Forecast, no secret, no assistant auth ===');
@@ -87,7 +89,7 @@ console.log('\n=== 2. talk.js is a shell — no Forecast, no secret, no assistan
   const html = read('public/talk.html');
   ok(/App\.boot\(\)/.test(src) && /Fail closed/.test(read('public/talk.js')),
     'talk.js boots the shared header and names the fail-closed Send gate');
-  ok(!/Forecast|recommend\(|money2\(|money\(/.test(src),
+  ok(!/recommend\(|money2\(|\bmoney\(/.test(src) && !/Forecast\./.test(src),
     'talk.js does not call Forecast or format money');
   ok(/fetch\(TALK_CONTEXT_PATH/.test(src) && /\/talk\/context/.test(src),
     'talk.js loads context from the session Talk seam');
@@ -110,6 +112,12 @@ console.log('\n=== 2. talk.js is a shell — no Forecast, no secret, no assistan
   } catch (err) {
     ok(false, 'talk.js compiles', err.message);
   }
+  ok(/TALK_ACTION_HREFS/.test(src)
+      && /'\/bills.html'/.test(src)
+      && /'\/credit.html'/.test(src)
+      && /'\/planning.html'/.test(src)
+      && !/subscriptions\.html/.test(src),
+    'talk.js allowlists only Budget, Bills, Credit and Planning action routes');
 }
 
 console.log('\n=== 3. Talk is first-class on every household dock ===');

@@ -156,6 +156,28 @@
   text-decoration: underline;
 }
 
+.talk-answer-meta {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: .82rem;
+  line-height: 1.4;
+}
+
+.talk-answer-action {
+  margin-top: 8px;
+  font-size: .92rem;
+}
+
+.talk-answer-action a {
+  color: var(--s1);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.talk-answer-action a:hover {
+  text-decoration: underline;
+}
+
 .talk-cards[hidden] {
   display: none;
 }
