@@ -305,9 +305,13 @@ set-aside on lookahead spans by Forecast design. Decide with the Credit and
 Planning content PRs whether that view also stops at the household-budget
 boundary. Not a Forecast change.
 
+**B103 · Talk to Atlas household surface** · **IN PROGRESS 2026-09-14** · *owner instruction; UI shell only*
+
+Dale authorized the first independently provable outcome on 2026-09-14 via Atlas Coordinator: an authenticated household-facing Talk page. This slice is the UI shell and the sixth household dock destination. It does not call a model, does not rebuild the assistant packet / MCP, and does not publish figures. Later intelligence, answer cards, and any model integration are separate outcomes.
+
 **B99 · Modellers / Deep Dive / Records still carry the legacy four-link nav** · **READY** · *presentation only; found 2026-09-03*
 
-The household nav is Budget | Bills | Subscriptions | Credit | Planning. `modellers.html`, `deepdive.html`
+The household nav is Budget | Bills | Subscriptions | Credit | Planning | Talk. `modellers.html`, `deepdive.html`
 and `records.html` remain routable but their own header still links Plan |
 Modellers | Deep Dive | Records. The household floating dock is scoped to
 `sitenav-household` so those diagnostic pages keep the four-link text nav;

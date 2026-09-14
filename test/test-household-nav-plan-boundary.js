@@ -1,5 +1,5 @@
 'use strict';
-/* Household information architecture: nav Budget | Bills | Subscriptions | Credit | Planning,
+/* Household information architecture: nav Budget | Bills | Subscriptions | Credit | Planning | Talk,
  * routable Bills / Subscriptions / Credit / Planning pages on the incumbent
  * header (content proved in test-bills-page.js, test-subscriptions-page.js,
  * test-credit-page.js and test-planning-page.js), and a Plan waterfall that
@@ -42,6 +42,7 @@ const HOUSEHOLD_NAV = [
   ['/subscriptions.html', 'Subscriptions'],
   ['/credit.html', 'Credit'],
   ['/planning.html', 'Planning'],
+  ['/talk.html', 'Talk'],
 ];
 const RETIRED_FROM_NAV = ['Modellers', 'Deep Dive', 'Records'];
 const REMOVED_ROWS = [
@@ -172,13 +173,13 @@ function currentAdvice() {
   });
 }
 
-console.log('=== 1. Plan household nav is Budget | Bills | Subscriptions | Credit | Planning ===');
+console.log('=== 1. Plan household nav is Budget | Bills | Subscriptions | Credit | Planning | Talk ===');
 {
   const nav = siteNav(read('public/index.html'));
-  ok(nav && nav.length === 5, 'the Plan page has exactly five household nav links',
+  ok(nav && nav.length === 6, 'the Plan page has exactly six household nav links',
     nav ? nav.map(l => l.label).join(' | ') : 'no nav');
   ok(nav && JSON.stringify(nav.map(l => [l.href, l.label])) === JSON.stringify(HOUSEHOLD_NAV),
-    'links are Budget (/), Bills (/bills.html), Subscriptions (/subscriptions.html), Credit (/credit.html), Planning (/planning.html) in that order');
+    'links are Budget (/), Bills (/bills.html), Subscriptions (/subscriptions.html), Credit (/credit.html), Planning (/planning.html), Talk (/talk.html) in that order');
   ok(nav && nav.filter(l => l.current).length === 1 && nav[0].current,
     'Budget is the one aria-current page on the Plan nav');
 }
@@ -189,7 +190,7 @@ for (const [page, label, id] of [['bills.html', 'Bills', 'bills'], ['subscriptio
   const html = read('public/' + page);
   const nav = siteNav(html);
   ok(nav && JSON.stringify(nav.map(l => [l.href, l.label])) === JSON.stringify(HOUSEHOLD_NAV),
-    `${page} carries the same five household nav links in the same order`);
+    `${page} carries the same six household nav links in the same order`);
   const current = nav ? nav.filter(l => l.current) : [];
   ok(current.length === 1 && current[0].label === label,
     `${page} marks ${label} as the aria-current page`);
@@ -218,9 +219,43 @@ for (const [page, label, id] of [['bills.html', 'Bills', 'bills'], ['subscriptio
   }
 }
 
+{
+  ok(exists('public/talk.html'), 'talk.html exists');
+  const html = read('public/talk.html');
+  const nav = siteNav(html);
+  ok(nav && JSON.stringify(nav.map(l => [l.href, l.label])) === JSON.stringify(HOUSEHOLD_NAV),
+    'talk.html carries the same six household nav links in the same order');
+  const current = nav ? nav.filter(l => l.current) : [];
+  ok(current.length === 1 && current[0].label === 'Talk',
+    'talk.html marks Talk as the aria-current page');
+  ok(/<title>Household finances — talk<\/title>/.test(html)
+      && /<h1>Talk to Atlas<\/h1>/.test(html)
+      && /data-page-shell="talk"/.test(html),
+    'talk.html identifies itself as Talk to Atlas');
+  ok(/class="brand">Household finances</.test(html) && /id="asof"/.test(html)
+      && /id="theme-btn"/.test(html) && /action="\/logout"/.test(html)
+      && /<link rel="stylesheet" href="\/styles.css">/.test(html)
+      && /<meta name="robots" content="noindex, nofollow">/.test(html),
+    'talk.html uses the incumbent header: brand, as-of chip, theme, sign out, stylesheet, noindex');
+  ok(/<script src="\/app.js"><\/script>/.test(html)
+      && /<script src="\/talk.js"><\/script>/.test(html)
+      && !/forecast\.js/.test(html)
+      && !/<script>/.test(html),
+    'talk.html loads the shared core and its own page script, not Forecast, and no inline script (CSP)');
+  const pageScript = read('public/talk.js');
+  ok(/App\.boot\(/.test(pageScript) && /INTELLIGENCE SEAM/.test(pageScript),
+    'talk.js boots the shared core and keeps the intelligence seam named');
+  ok(!/\$\d|\d\.\d\d\b|%/.test(html.replace(/<meta[^>]*>/g, '')),
+    'talk.html hardcodes no figure');
+  for (const href of [...html.matchAll(/href="(\/[^"#]*)"/g)].map(m => m[1])) {
+    const target = href === '/' ? 'public/index.html' : 'public' + href;
+    ok(exists(target), `talk.html link ${href} resolves to a file`);
+  }
+}
+
 console.log('\n=== 3. Modellers, Deep Dive, Records leave the household nav but stay routable ===');
 {
-  for (const page of ['index.html', 'bills.html', 'subscriptions.html', 'credit.html', 'planning.html']) {
+  for (const page of ['index.html', 'bills.html', 'subscriptions.html', 'credit.html', 'planning.html', 'talk.html']) {
     const nav = siteNav(read('public/' + page)) || [];
     ok(!nav.some(l => RETIRED_FROM_NAV.includes(l.label))
         && !nav.some(l => /modellers|deepdive|records/.test(l.href)),
@@ -453,7 +488,7 @@ function startAtlas(env) {
   const atlas = await startAtlas(env);
   const base = `http://127.0.0.1:${port}`;
   try {
-    for (const page of ['/bills.html', '/subscriptions.html', '/credit.html', '/planning.html']) {
+    for (const page of ['/bills.html', '/subscriptions.html', '/credit.html', '/planning.html', '/talk.html']) {
       const anon = await fetch(base + page, { redirect: 'manual' });
       ok(anon.status === 302 && /\/login$/.test(anon.headers.get('location') || ''),
         `${page} without a session redirects to /login`);
@@ -466,7 +501,7 @@ function startAtlas(env) {
     });
     const cookie = (login.headers.get('set-cookie') || '').split(';')[0];
     ok(login.status === 302 && /^hfd_session=/.test(cookie), 'synthetic login issues a session');
-    for (const [page, label] of [['/bills.html', 'Bills'], ['/subscriptions.html', 'Subscriptions'], ['/credit.html', 'Credit'], ['/planning.html', 'Planning'], ['/', 'Budget']]) {
+    for (const [page, label] of [['/bills.html', 'Bills'], ['/subscriptions.html', 'Subscriptions'], ['/credit.html', 'Credit'], ['/planning.html', 'Planning'], ['/talk.html', 'Talk'], ['/', 'Budget']]) {
       const res = await fetch(base + page, { headers: { cookie } });
       const body = await res.text();
       const nav = siteNav(body);
@@ -478,7 +513,7 @@ function startAtlas(env) {
           && /script-src 'self'/.test(res.headers.get('content-security-policy') || ''),
         `${page} carries the incumbent no-store and CSP headers`);
     }
-    for (const script of ['/bills.js', '/subscriptions.js', '/credit.js', '/planning.js']) {
+    for (const script of ['/bills.js', '/subscriptions.js', '/credit.js', '/planning.js', '/talk.js']) {
       const res = await fetch(base + script, { headers: { cookie } });
       ok(res.status === 200, `${script} is served to a session`);
     }

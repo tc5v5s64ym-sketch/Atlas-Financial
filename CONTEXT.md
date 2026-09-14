@@ -272,9 +272,9 @@ has to read it and its HTML has to have somewhere to put it. Six keys once sat
 in `data.json` unrendered — including the entire income section — because that
 step was skipped.
 
-The site is eight pages, each with its own script; `public/app.js` is the
+The site is nine pages, each with its own script; `public/app.js` is the
 shared core (helpers, charts, theme, boot) loaded by all of them. The
-household nav is **Budget | Bills | Subscriptions | Credit | Planning**
+household nav is **Budget | Bills | Subscriptions | Credit | Planning | Talk**
 (Budget is the `/` payday-plan page; the destination label is household-facing
 only). The other three pages remain routable at their URLs but are no longer
 linked from that nav. The mobile dock is marked `sitenav-household` so
@@ -287,6 +287,7 @@ Modellers, Deep Dive, and Records keep their four-link text nav:
 | Subscriptions | `subscriptions.html` | `subscriptions.js` + `forecast.js` | Recurring subscriptions and memberships as Credit-style fact cards: name, amount, cadence, next date, and monthly equivalent from `Forecast.householdSubscriptions`. Household bills stay off this page. |
 | Credit | `credit.html` | `credit.js` + `forecast.js` | What the household owes: mortgage, HELOC, then every active card — balances, limits, Forecast.utilisation headroom, rates, next required payment from the Forecast schedule (`Forecast.creditAccounts`). The visual reference for the Bills and Subscriptions fact cards. |
 | Planning | `planning.html` | `planning.js` + `forecast.js` | Known future costs: `Forecast.majorPlans` verdicts, ranges, timing and any Forecast payday set-aside, in Forecast order |
+| Talk | `talk.html` | `talk.js` | Household conversation shell. Suggested prompts and a coming-soon composer. No model, no Forecast, no published figure. |
 | Modellers | `modellers.html` | `modellers.js` + `forecast.js` | Payoff and renewal modelling |
 | Deep Dive | `deepdive.html` | `deepdive.js` | Debt, HELOC, flows, lacrosse, questions |
 | Records | `records.html` | `records.js` | Balance sheet, coverage, assumptions |

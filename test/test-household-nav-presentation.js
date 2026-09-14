@@ -1,7 +1,7 @@
 'use strict';
 /* Household mobile navigation presentation: Budget | Bills | Subscriptions |
- * Credit | Planning, shared dock treatment, iPhone safe-area clearance, and
- * no new UI dependency. Presentation only — Forecast authority is untouched.
+ * Credit | Planning | Talk, shared dock treatment, iPhone safe-area clearance,
+ * and no new UI dependency. Presentation only — Forecast authority is untouched.
  *
  * `node test/test-household-nav-presentation.js`
  */
@@ -24,6 +24,7 @@ const HOUSEHOLD_PAGES = [
   ['public/subscriptions.html', 'Subscriptions', '/subscriptions.html'],
   ['public/credit.html', 'Credit', '/credit.html'],
   ['public/planning.html', 'Planning', '/planning.html'],
+  ['public/talk.html', 'Talk', '/talk.html'],
 ];
 const HOUSEHOLD_NAV = [
   ['/', 'Budget', 'budget'],
@@ -31,6 +32,7 @@ const HOUSEHOLD_NAV = [
   ['/subscriptions.html', 'Subscriptions', 'subscriptions'],
   ['/credit.html', 'Credit', 'credit'],
   ['/planning.html', 'Planning', 'planning'],
+  ['/talk.html', 'Talk', 'talk'],
 ];
 
 function siteNav(html) {
@@ -73,15 +75,16 @@ console.log('=== 1–8. Shared household destinations, routes, order, and curren
   const expected = JSON.stringify(HOUSEHOLD_NAV.map(n => [n[0], n[1]]));
   for (const [file, label] of HOUSEHOLD_PAGES) {
     const nav = siteNav(read(file));
-    ok(nav && nav.length === 5, `${file} has exactly five household destinations`,
+    ok(nav && nav.length === 6, `${file} has exactly six household destinations`,
       nav ? nav.map(l => l.label).join(' | ') : 'no nav');
     ok(nav && JSON.stringify(nav.map(l => [l.href, l.label])) === expected,
-      `${file} reads Budget | Bills | Subscriptions | Credit | Planning`);
+      `${file} reads Budget | Bills | Subscriptions | Credit | Planning | Talk`);
     ok(nav && nav[0].href === '/' && nav[0].label === 'Budget',
       `${file} Budget still routes to /`);
     ok(nav && nav[1].href === '/bills.html' && nav[2].href === '/subscriptions.html'
-        && nav[3].href === '/credit.html' && nav[4].href === '/planning.html',
-      `${file} keeps the incumbent Bills / Subscriptions / Credit / Planning routes`);
+        && nav[3].href === '/credit.html' && nav[4].href === '/planning.html'
+        && nav[5].href === '/talk.html',
+      `${file} keeps the incumbent Bills / Subscriptions / Credit / Planning / Talk routes`);
     const current = nav ? nav.filter(l => l.current) : [];
     ok(current.length === 1 && current[0].label === label,
       `${file} marks exactly one destination current: ${label}`);
@@ -108,9 +111,9 @@ console.log('\n=== 9–13. iPhone dock: safe area, clearance, touch targets, mot
   ok(/body:has\(\.sitenav-household\) \{[\s\S]*padding-bottom:calc\(\s*var\(--nav-dock-height\)\s*\+\s*var\(--nav-dock-lift\)\s*\+\s*18px\s*\+\s*env\(safe-area-inset-bottom/.test(mobile)
       && /\.sitenav-household \{/.test(mobile)
       && !/\.sitenav:not\(\.subnav\)/.test(css),
-    'dock clearance and the five-column dock apply only to household nav, not every sitenav');
-  ok(/grid-template-columns:\s*repeat\(5,minmax\(0,1fr\)\)/.test(mobile),
-    'mobile dock is a five-column grid, not the retired four-column website bar');
+    'dock clearance and the six-column dock apply only to household nav, not every sitenav');
+  ok(/grid-template-columns:\s*repeat\(6,minmax\(0,1fr\)\)/.test(mobile),
+    'mobile dock is a six-column grid, not the retired four-column website bar');
   ok(/min-height:52px/.test(mobile) && /min-height:var\(--nav-dock-height\)/.test(mobile),
     'dock items keep a ≥52px touch target and the dock itself is at least 66px tall');
   ok(/white-space:nowrap/.test(mobile) && !/overflow-wrap:anywhere/.test(mobile),
@@ -156,7 +159,7 @@ console.log('\n=== 13c. iOS glass selector and cross-page sliding selection ==='
 {
   ok(/^@import url\('\/nav-glass\.css'\);/.test(householdView),
     'Budget loads the shared glass dock through its existing household-view stylesheet');
-  for (const file of ['public/bills.html', 'public/subscriptions.html', 'public/credit.html', 'public/planning.html']) {
+  for (const file of ['public/bills.html', 'public/subscriptions.html', 'public/credit.html', 'public/planning.html', 'public/talk.html']) {
     ok(/<link rel="stylesheet" href="\/nav-glass\.css">/.test(read(file)),
       `${file} loads the shared glass dock stylesheet`);
   }
@@ -180,15 +183,15 @@ console.log('\n=== 13c. iOS glass selector and cross-page sliding selection ==='
       && (glass.match(/view-transition-name:\s*atlas-tab-indicator/g) || []).length === 1
       && /view-transition-name:\s*atlas-tab-indicator/.test(lens)
       && /\.sitenav-household a\[aria-current\]::before\s*\{\s*content:none;\s*\}/.test(glassMobile),
-    'exactly one lens is drawn by the dock itself and shared by all five tabs; no per-tab capsule remains');
+    'exactly one lens is drawn by the dock itself and shared by all six tabs; no per-tab capsule remains');
 
-  const columns = /grid-template-columns:\s*((?:minmax\(0,[\d.]+fr\)\s*){5});/.exec(dock);
+  const columns = /grid-template-columns:\s*((?:minmax\(0,[\d.]+fr\)\s*){6});/.exec(dock);
   const factors = columns ? [...columns[1].matchAll(/minmax\(0,([\d.]+)fr\)/g)].map(m => Number(m[1])) : [];
   const total = factors.reduce((a, b) => a + b, 0);
   const starts = factors.map((_, i) => factors.slice(0, i).reduce((a, b) => a + b, 0));
   const unitDivisor = num(/--nav-unit:\s*calc\(\(100% - 2 \* var\(--nav-edge\)\) \/ ([\d.]+)\)/, dock);
-  ok(factors.length === 5 && Math.abs(unitDivisor - total) < 1e-9 && /gap:\s*0;/.test(dock),
-    'the lens unit divides the dock by the same total as the five contiguous grid columns',
+  ok(factors.length === 6 && Math.abs(unitDivisor - total) < 1e-9 && /gap:\s*0;/.test(dock),
+    'the lens unit divides the dock by the same total as the six contiguous grid columns',
     `columns ${factors.join(' | ')} → ${total}; unit divisor ${unitDivisor}`);
   const positions = HOUSEHOLD_NAV.map(([, , name]) => {
     const m = new RegExp(`\\.sitenav-household:has\\(a\\[data-nav="${name}"\\]\\[aria-current="page"\\]\\)\\s*\\{([^}]*)\\}`).exec(glassMobile);
@@ -199,17 +202,19 @@ console.log('\n=== 13c. iOS glass selector and cross-page sliding selection ==='
   });
   ok(positions.every(Boolean)
       && positions.every((p, i) => Math.abs(p.start - starts[i]) < 1e-9 && Math.abs(p.span - factors[i]) < 1e-9)
-      && new Set(positions.map(p => p.start)).size === 5
+      && new Set(positions.map(p => p.start)).size === 6
       && /left:calc\(var\(--nav-edge\) \+ var\(--nav-slot-start\) \* var\(--nav-unit\) \+ var\(--nav-lens-inset\)\)/.test(lens)
       && /width:calc\(var\(--nav-slot-span\) \* var\(--nav-unit\) - 2 \* var\(--nav-lens-inset\)\)/.test(lens),
-    'aria-current alone places the lens on five deterministic slots that line up with the grid columns');
+    'aria-current alone places the lens on six deterministic slots that line up with the grid columns');
   const label = /font-size:clamp\(([\d.]+)rem,([\d.]+)vw,([\d.]+)rem\)/.exec(glassMobile);
   const labelAt390 = label ? Math.min(Math.max(Number(label[1]) * 16, Number(label[2]) * 3.9), Number(label[3]) * 16) : NaN;
-  ok(factors.length === 5 && factors[2] > 1 && factors[2] === Math.max(...factors)
-      && factors[0] === factors[4] && factors[1] === factors[3]
+  ok(factors.length === 6 && factors[2] > 1 && factors[2] === Math.max(...factors)
+      && factors.filter(f => f === factors[2]).length === 1
+      && factors[0] === factors[1] && factors[1] === factors[3]
+      && factors[3] === factors[4] && factors[4] === factors[5]
       && /white-space:nowrap/.test(glassMobile) && !/overflow-wrap:anywhere/.test(glassMobile)
       && label && Number(label[1]) * 16 >= 8 && labelAt390 >= 9.5 && Number(label[3]) * 16 <= 11,
-    'Subscriptions owns the widest slot in a symmetric dock, stays on one line, and labels read ≥9.5px at the 390px target',
+    'Subscriptions owns the unique widest slot; the other five short labels share equal width, stay on one line, and labels read ≥9.5px at the 390px target',
     `label ${label ? labelAt390.toFixed(2) : '?'}px at 390px`);
   ok(lensInset > 0 && lensHeight > 0 && lensHeight < dockHeight - 2 * edge
       && /top:calc\(\(var\(--nav-dock-height\) - var\(--nav-lens-height\)\) \/ 2\)/.test(lens)
@@ -261,8 +266,9 @@ console.log('\n=== 14–17. No new dependency; Forecast and Credit content stay 
       && /--nav-icon-bills:url\("data:image\/svg\+xml/.test(css)
       && /--nav-icon-subscriptions:url\("data:image\/svg\+xml/.test(css)
       && /--nav-icon-credit:url\("data:image\/svg\+xml/.test(css)
-      && /--nav-icon-planning:url\("data:image\/svg\+xml/.test(css),
-    'the five icons remain inline SVG data URIs with no external icon dependency');
+      && /--nav-icon-planning:url\("data:image\/svg\+xml/.test(css)
+      && /--nav-icon-talk:url\("data:image\/svg\+xml/.test(css),
+    'the six icons remain inline SVG data URIs with no external icon dependency');
   ok(!/cdn\.|unpkg\.|jsdelivr|fontawesome|fonts\.google/.test(css + glass)
       && HOUSEHOLD_PAGES.every(([file]) => !/cdn\.|unpkg\.|jsdelivr/.test(read(file))),
     'household pages and styles load no external icon or UI host');
