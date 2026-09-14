@@ -203,6 +203,42 @@ const PATH_RULES = [
     },
   },
   {
+    path: 'current.debts.overLimitCount',
+    source: 'Credit',
+    action: 'credit',
+    present(value) {
+      if (!Number.isFinite(Number(value))) {
+        return { text: 'Over-limit credit facilities are unavailable.', trust: 'unavailable' };
+      }
+      const count = Number(value);
+      if (count === 0) return { text: 'No credit facilities are over the limit.' };
+      if (count === 1) return { text: '1 credit facility is over the limit.' };
+      return { text: `${count} credit facilities are over the limit.` };
+    },
+  },
+  {
+    path: 'current.debts.securedDebt',
+    source: 'Credit',
+    action: 'credit',
+    present(value) {
+      return moneySentence({
+        available: money => `Secured debt totals ${money}.`,
+        unavailable: 'Secured debt is unavailable.',
+      }, value);
+    },
+  },
+  {
+    path: 'current.debts.monthlyInterest',
+    source: 'Credit',
+    action: 'credit',
+    present(value) {
+      return moneySentence({
+        available: money => `Monthly interest is ${money}.`,
+        unavailable: 'Monthly interest is unavailable.',
+      }, value);
+    },
+  },
+  {
     path: 'current.nextSignificantObligations.nextDue.amount',
     source: 'Bills',
     action: 'bills',
@@ -239,6 +275,57 @@ const PATH_RULES = [
     },
   },
   {
+    path: 'current.nextSignificantObligations.nextDue.daysUntil',
+    source: 'Bills',
+    action: 'bills',
+    trust: packet => obligationConfidence(packet, 'nextDue'),
+    present(value) {
+      if (!Number.isFinite(Number(value))) {
+        return { text: 'The next due timing is unavailable.', trust: 'unavailable' };
+      }
+      const days = Number(value);
+      if (days === 0) return { text: 'The next due item is due today.' };
+      if (days === 1) return { text: 'The next due item is in 1 day.' };
+      return { text: `The next due item is in ${days} days.` };
+    },
+  },
+  {
+    path: 'current.nextSignificantObligations.nextPaymentOut.amount',
+    source: 'Bills',
+    action: 'bills',
+    trust: packet => obligationConfidence(packet, 'nextPaymentOut'),
+    present(value) {
+      return moneySentence({
+        available: money => `The next payment out is ${money}.`,
+        unavailable: 'The next payment out is unavailable.',
+      }, value);
+    },
+  },
+  {
+    path: 'current.nextSignificantObligations.nextPaymentOut.label',
+    source: 'Bills',
+    action: 'bills',
+    trust: packet => obligationConfidence(packet, 'nextPaymentOut'),
+    present(value) {
+      if (typeof value !== 'string' || !value) {
+        return { text: 'The next payment-out label is unavailable.', trust: 'unavailable' };
+      }
+      return { text: `The next payment out is ${value}.` };
+    },
+  },
+  {
+    path: 'current.nextSignificantObligations.nextPaymentOut.date',
+    source: 'Bills',
+    action: 'bills',
+    trust: packet => obligationConfidence(packet, 'nextPaymentOut'),
+    present(value) {
+      if (typeof value !== 'string' || !value) {
+        return { text: 'The next payment-out date is unavailable.', trust: 'unavailable' };
+      }
+      return { text: `The next payment out is on ${value}.` };
+    },
+  },
+  {
     path: 'forecast.currentPeriodAction.remainingClaim',
     source: 'Forecast',
     action: 'budget',
@@ -272,6 +359,17 @@ const PATH_RULES = [
     },
   },
   {
+    path: 'forecast.currentPeriodAction.nextPayday',
+    source: 'Forecast',
+    action: 'budget',
+    present(value) {
+      if (typeof value !== 'string' || !value) {
+        return { text: 'The next payday is unavailable.', trust: 'unavailable' };
+      }
+      return { text: `The next payday is ${value}.` };
+    },
+  },
+  {
     path: 'metadata.effectiveAsOf',
     source: null,
     action: null,
@@ -299,6 +397,8 @@ const PATH_RULE_INDEX = new Map(PATH_RULES.map(rule => [rule.path, rule]));
 
 const CATEGORY_REMAINING_RE = /^actuals\.currentPeriodCategories\[\d{1,3}\]\.remaining$/;
 const COMMITMENT_REMAINING_RE = /^forecast\.upcomingModeledCommitments\.items\[\d{1,3}\]\.remaining$/;
+const FACILITY_AVAILABLE_RE = /^current\.debts\.facilities\[\d{1,3}\]\.available$/;
+const FACILITY_LABEL_RE = /^current\.debts\.facilities\[\d{1,3}\]\.label$/;
 
 function genericRuleFor(path) {
   if (CATEGORY_REMAINING_RE.test(path)) {
@@ -323,6 +423,30 @@ function genericRuleFor(path) {
           available: money => `A modeled commitment remaining is ${money}.`,
           unavailable: 'A modeled commitment remaining is unavailable.',
         }, value);
+      },
+    };
+  }
+  if (FACILITY_AVAILABLE_RE.test(path)) {
+    return {
+      source: 'Credit',
+      action: 'credit',
+      present(value) {
+        return moneySentence({
+          available: money => `A credit facility has ${money} available.`,
+          unavailable: 'A credit facility available amount is unavailable.',
+        }, value);
+      },
+    };
+  }
+  if (FACILITY_LABEL_RE.test(path)) {
+    return {
+      source: 'Credit',
+      action: 'credit',
+      present(value) {
+        if (typeof value !== 'string' || !value) {
+          return { text: 'A credit facility label is unavailable.', trust: 'unavailable' };
+        }
+        return { text: `A credit facility is ${value}.` };
       },
     };
   }
