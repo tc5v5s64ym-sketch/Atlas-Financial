@@ -2080,6 +2080,11 @@ console.log('=== 1. Talk Gemini module contract and UI fail-closed enablement ==
         structure: 'Revolving — synthetic travel', secured: false, limit: 400,
       },
       {
+        id: 'tdcc', label: 'TD credit card',
+        balance: 100, pending: 0, rate: 20.99, rateConvention: 'card',
+        structure: 'Revolving — synthetic tdcc', secured: false, limit: 200,
+      },
+      {
         id: 'heloc', label: 'HELOC',
         balance: 5000, pending: 0, rate: 4.9, rateConvention: 'variable',
         structure: 'Interest-only revolving — never amortises', secured: true, limit: 6000,
@@ -2181,6 +2186,26 @@ console.log('=== 1. Talk Gemini module contract and UI fail-closed enablement ==
         intent: 'hypothetical-extra-payment',
         amount: 500,
         debtLabel: 'best debt',
+      }),
+      JSON.stringify({
+        intent: 'hypothetical-extra-payment',
+        amount: 2000,
+        debtLabel: 'High-rate card',
+      }),
+      JSON.stringify({
+        intent: 'hypothetical-extra-payment',
+        amount: 200,
+        debtLabel: 'Travel Visa (business)',
+      }),
+      JSON.stringify({
+        intent: 'hypothetical-extra-payment',
+        amount: 200,
+        debtLabel: 'credit card',
+      }),
+      JSON.stringify({
+        intent: 'hypothetical-extra-payment',
+        amount: 200,
+        debtLabel: 'TD card',
       }),
     ]);
     const periodPacket = {
@@ -2337,6 +2362,54 @@ console.log('=== 1. Talk Gemini module contract and UI fail-closed enablement ==
       });
       ok(bestExtract.answer === TalkPresentation.HYPOTHETICAL_UNAVAILABLE_ANSWER,
         'best-debt extract fails closed at resolve');
+
+      const alteredAmount = await TalkGemini.ask({
+        question: 'What if I put $200 on the High-rate card?',
+        packet: hypPacket,
+        atlas,
+        env: {
+          ATLAS_TALK_GEMINI_API_KEY: GEMINI_KEY,
+          ATLAS_TALK_GEMINI_BASE_URL: mock.url,
+        },
+      });
+      ok(alteredAmount.answer === TalkPresentation.HYPOTHETICAL_UNAVAILABLE_ANSWER,
+        'Gemini-altered $200 → $2,000 fails closed against the original question');
+
+      const alteredTarget = await TalkGemini.ask({
+        question: 'What if I put $200 on the High-rate card?',
+        packet: hypPacket,
+        atlas,
+        env: {
+          ATLAS_TALK_GEMINI_API_KEY: GEMINI_KEY,
+          ATLAS_TALK_GEMINI_BASE_URL: mock.url,
+        },
+      });
+      ok(alteredTarget.answer === TalkPresentation.HYPOTHETICAL_UNAVAILABLE_ANSWER,
+        'Gemini-substituted Travel Visa label fails closed against the original question');
+
+      const creditCard = await TalkGemini.ask({
+        question: 'What if I put $200 on the credit card?',
+        packet: hypPacket,
+        atlas,
+        env: {
+          ATLAS_TALK_GEMINI_API_KEY: GEMINI_KEY,
+          ATLAS_TALK_GEMINI_BASE_URL: mock.url,
+        },
+      });
+      ok(creditCard.answer === TalkPresentation.HYPOTHETICAL_UNAVAILABLE_ANSWER,
+        'generic credit card is unavailable');
+
+      const tdCard = await TalkGemini.ask({
+        question: 'What if I put $200 on the TD card?',
+        packet: hypPacket,
+        atlas,
+        env: {
+          ATLAS_TALK_GEMINI_API_KEY: GEMINI_KEY,
+          ATLAS_TALK_GEMINI_BASE_URL: mock.url,
+        },
+      });
+      ok(tdCard.answer === TalkPresentation.HYPOTHETICAL_UNAVAILABLE_ANSWER,
+        'generic TD card is unavailable');
     } finally {
       await mock.close();
     }

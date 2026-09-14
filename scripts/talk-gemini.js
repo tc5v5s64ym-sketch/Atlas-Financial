@@ -487,10 +487,11 @@ function materializeExplainerAnswer(text, packet) {
   };
 }
 
-function presentHypotheticalExtract(extract, packet, atlas) {
+function presentHypotheticalExtract(extract, packet, atlas, question) {
   const result = TalkHypothetical.evaluate({
     amount: extract.amount,
     debtLabel: extract.debtLabel,
+    question,
     plan: atlas && atlas.plan,
     debts: atlas && atlas.debts,
     packet,
@@ -540,7 +541,7 @@ async function ask({ question, packet, env, atlas }) {
     throw talkAnswerUnavailable();
   }
   if (model.intent === TalkHypothetical.HYPOTHETICAL_INTENT) {
-    const presented = presentHypotheticalExtract(model, packet, atlas);
+    const presented = presentHypotheticalExtract(model, packet, atlas, parsed.question);
     if (!presented || typeof presented.answer !== 'string' || !presented.answer.trim()) {
       throw talkAnswerUnavailable();
     }

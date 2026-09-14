@@ -68,6 +68,11 @@ function fixture() {
       structure: 'Revolving — synthetic travel', secured: false, limit: 400,
     },
     {
+      id: 'tdcc', label: 'TD credit card',
+      balance: 100, pending: 0, rate: 20.99, rateConvention: 'card',
+      structure: 'Revolving — synthetic tdcc', secured: false, limit: 200,
+    },
+    {
       id: 'heloc', label: 'HELOC',
       balance: 5000, pending: 0, rate: 4.9, rateConvention: 'variable',
       structure: 'Interest-only revolving — never amortises', secured: true, limit: 6000,
@@ -117,6 +122,12 @@ console.log('\n=== 2. Debt-label resolve is deterministic and fail-closed ===');
     'Cash Back Visa is a unique alias already on the debt label');
   ok(TalkHypothetical.resolveDebtLabel('Visa', debts).ok === false,
     'Visa with two matches is unavailable');
+  ok(TalkHypothetical.resolveDebtLabel('credit card', debts).ok === false,
+    'generic credit card does not resolve to TD credit card');
+  ok(TalkHypothetical.resolveDebtLabel('TD card', debts).ok === false,
+    'generic TD card does not resolve to TD credit card');
+  ok(TalkHypothetical.resolveDebtLabel('TD credit card', debts).debtId === 'tdcc',
+    'exact TD credit card label still resolves');
   ok(TalkHypothetical.resolveDebtLabel('best debt', debts).ok === false,
     'best debt does not resolve');
   ok(TalkHypothetical.resolveDebtLabel('Mortgage', debts).debtId === 'mortgage',
@@ -141,6 +152,7 @@ console.log('\n=== 3. Forecast is the sole calculator; nextDollar is not substit
   const got = TalkHypothetical.evaluate({
     amount: 200,
     debtLabel: 'High-rate card',
+    question: 'What if I put $200 on the High-rate card?',
     plan,
     debts,
   });
@@ -170,6 +182,7 @@ console.log('\n=== 4. Fail-closed planner acts and Forecast ineligibility ===');
   ok(TalkHypothetical.evaluate({
     amount: 'everything I can afford',
     debtLabel: 'HELOC',
+    question: 'Put everything I can afford on the HELOC.',
     plan,
     debts,
   }).status === 'unavailable',
@@ -177,6 +190,7 @@ console.log('\n=== 4. Fail-closed planner acts and Forecast ineligibility ===');
   ok(TalkHypothetical.evaluate({
     amount: 200,
     debtLabel: 'best debt',
+    question: 'Put $200 on the best debt.',
     plan,
     debts,
   }).status === 'unavailable',
@@ -184,6 +198,7 @@ console.log('\n=== 4. Fail-closed planner acts and Forecast ineligibility ===');
   ok(TalkHypothetical.evaluate({
     amount: 200,
     debtLabel: 'Visa',
+    question: 'What if I put $200 on Visa?',
     plan,
     debts,
   }).status === 'unavailable',
@@ -191,10 +206,43 @@ console.log('\n=== 4. Fail-closed planner acts and Forecast ineligibility ===');
   ok(TalkHypothetical.evaluate({
     amount: 200,
     debtLabel: 'Mortgage',
+    question: 'What if I put $200 on the Mortgage?',
     plan,
     debts,
   }).status === 'unavailable',
     'named mortgage is Forecast-ineligible and stays unavailable');
+  ok(TalkHypothetical.evaluate({
+    amount: 2000,
+    debtLabel: 'High-rate card',
+    question: 'What if I put $200 on the High-rate card?',
+    plan,
+    debts,
+  }).status === 'unavailable',
+    'Gemini-altered amount fails closed against the original question');
+  ok(TalkHypothetical.evaluate({
+    amount: 200,
+    debtLabel: 'Travel Visa (business)',
+    question: 'What if I put $200 on the High-rate card?',
+    plan,
+    debts,
+  }).status === 'unavailable',
+    'Gemini-substituted debt label fails closed against the original question');
+  ok(TalkHypothetical.evaluate({
+    amount: 200,
+    debtLabel: 'credit card',
+    question: 'What if I put $200 on the credit card?',
+    plan,
+    debts,
+  }).status === 'unavailable',
+    'credit card extract stays unavailable even when it is in the question');
+  ok(TalkHypothetical.evaluate({
+    amount: 200,
+    debtLabel: 'TD card',
+    question: 'What if I put $200 on the TD card?',
+    plan,
+    debts,
+  }).status === 'unavailable',
+    'TD card extract stays unavailable even when it is in the question');
   const funded = F.hypotheticalExtraPayment(plan, debts, START, {
     amount: 50, debtId: 'heloc', nature: 'hypothetical', fundFrom: 'heloc',
   });
@@ -208,6 +256,7 @@ console.log('\n=== 5. Presentation uses Forecast fields only ===');
   const result = TalkHypothetical.evaluate({
     amount: '$200',
     debtLabel: 'High-rate card',
+    question: 'What if I put $200 on the High-rate card?',
     plan,
     debts,
   });
