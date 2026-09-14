@@ -12,7 +12,8 @@
  * meaning, no Forecast/Bills/Credit/Planning provenance, no nav action.
  * Null on a known money path is unavailable, never $0.
  * Trust tags are copied from the packet; estimated is never confirmed,
- * stale is never current, unavailable is never a number.
+ * stale is never current, dated-opening spendable cash is never current
+ * spendable cash, unavailable is never a number.
  */
 
 const UNAVAILABLE_ANSWER = 'That is not available in this request\'s packet.';
@@ -69,9 +70,45 @@ function remainingClaimTrust(packet) {
   return null;
 }
 
+function spendableOpeningState(packet) {
+  return {
+    status: packetGet(packet, 'current.spendableHouseholdCash.status'),
+    current: packetGet(packet, 'current.spendableHouseholdCash.current'),
+  };
+}
+
+function spendableIsNonCurrentOpening(packet) {
+  const opening = spendableOpeningState(packet);
+  return opening.status === 'dated-opening' || opening.current === false;
+}
+
 function spendableTrust(packet) {
+  if (spendableIsNonCurrentOpening(packet)) {
+    const status = spendableOpeningState(packet).status;
+    return status === 'dated-opening' ? 'dated-opening' : 'unavailable';
+  }
   const trust = packetGet(packet, 'current.spendableHouseholdCash.trust');
   return typeof trust === 'string' && trust ? trust : null;
+}
+
+function presentSpendableHouseholdCash(value, packet) {
+  if (spendableIsNonCurrentOpening(packet)) {
+    const formatted = formatCurrency(value);
+    if (!formatted) {
+      return {
+        text: 'Spendable household cash is unavailable. This is a dated, non-current opening.',
+        trust: 'unavailable',
+      };
+    }
+    return {
+      text: `Dated opening cash is ${formatted}. This is not current spendable household cash.`,
+      trust: 'dated-opening',
+    };
+  }
+  return moneySentence({
+    available: money => `Spendable household cash is ${money}.`,
+    unavailable: 'Spendable household cash is unavailable.',
+  }, value);
 }
 
 function obligationConfidence(packet, field) {
@@ -141,12 +178,7 @@ const PATH_RULES = [
     source: 'Forecast',
     action: 'budget',
     trust: spendableTrust,
-    present(value) {
-      return moneySentence({
-        available: money => `Spendable household cash is ${money}.`,
-        unavailable: 'Spendable household cash is unavailable.',
-      }, value);
-    },
+    present: presentSpendableHouseholdCash,
   },
   {
     path: 'current.pending.totalKnownPending',
@@ -353,6 +385,7 @@ function weakestTrust(tags) {
   const rank = {
     unavailable: 0,
     unknown: 1,
+    'dated-opening': 1,
     planned: 2,
     estimated: 3,
     'posted-only': 3,

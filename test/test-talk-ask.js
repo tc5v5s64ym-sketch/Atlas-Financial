@@ -1040,6 +1040,55 @@ console.log('=== 1. Talk Gemini module contract and UI fail-closed enablement ==
         && remaining.presentation.action.label === 'View Budget',
       'remaining presentation carries Forecast provenance, packet trust, as-of, freshness, and Budget link');
 
+    const spendableOk = TalkPresentation.presentVerifiedClaims({
+      status: 'explained',
+      claims: [{ path: 'current.spendableHouseholdCash.value', value: 939.62 }],
+    }, remainingPacket);
+    ok(spendableOk.answer === 'Spendable household cash is $939.62.'
+        && spendableOk.trust === 'calculated'
+        && spendableOk.source === 'Forecast',
+      'status ok spendable cash keeps the current spendable-cash sentence');
+
+    const datedOpeningPacket = {
+      metadata: {
+        effectiveAsOf: '2026-09-14',
+        freshness: { confidence: 'canonical-opening' },
+      },
+      current: {
+        spendableHouseholdCash: {
+          status: 'dated-opening',
+          current: false,
+          value: 939.62,
+          trust: 'calculated',
+          note: 'Current plan unavailable. The dated opening is stale.',
+        },
+      },
+    };
+    const datedOpening = TalkPresentation.presentVerifiedClaims({
+      status: 'explained',
+      claims: [{ path: 'current.spendableHouseholdCash.value', value: 939.62 }],
+    }, datedOpeningPacket);
+    ok(!/Spendable household cash is \$939\.62/.test(datedOpening.answer)
+        && !/Spendable household cash is \$/.test(datedOpening.answer)
+        && /dated opening cash is \$939\.62/i.test(datedOpening.answer)
+        && /not current spendable household cash/i.test(datedOpening.answer)
+        && datedOpening.trust === 'dated-opening'
+        && datedOpening.trust !== 'calculated',
+      'dated-opening spendable cash is not presented as current spendable cash');
+
+    const datedThroughAsk = TalkGemini.materializeExplainerAnswer(
+      JSON.stringify({
+        status: 'explained',
+        claims: [{ path: 'current.spendableHouseholdCash.value', equals: 939.62 }],
+      }),
+      datedOpeningPacket
+    );
+    ok(datedThroughAsk.ok === true
+        && !/Spendable household cash is \$/.test(datedThroughAsk.answer)
+        && /not current spendable household cash/i.test(datedThroughAsk.answer)
+        && datedThroughAsk.presentation.trust === 'dated-opening',
+      'verified dated-opening spendable claims stay non-current through ask materialization');
+
     const invented = TalkGemini.materializeExplainerAnswer(
       JSON.stringify({
         status: 'explained',
