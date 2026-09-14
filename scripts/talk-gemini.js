@@ -9,6 +9,12 @@
  * Tools, grounding, Maps, URL context, File Search, code execution,
  * function calling, RAG, and fallback providers are disabled.
  *
+ * Model output is fail-closed on a deterministic server-side contract
+ * before it becomes a household-facing answer. The instruction prompt
+ * is not the only Forecast-authority control: invented figures, payoff
+ * math, and allocation recommendations are rejected even when Gemini
+ * ignored the prompt.
+ *
  * The dedicated secret is read only from the env object the server passes
  * in (`process.env.ATLAS_TALK_GEMINI_API_KEY` on the Node process). This
  * module never logs, prints, or returns that value. CI must mock Gemini
@@ -126,6 +132,106 @@ function extractAnswerText(response) {
     .trim();
 }
 
+const CURRENCY_AMOUNT_RE = /(?:CAD|USD|C\$|\$)\s*-?\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?/gi;
+const LABELED_FIGURE_RE = /(?:safe[\s-]?to[\s-]?spend|leftover|weekly[\s-]?cap|headroom)\s*(?:is|of|at|:)?\s*\$?\s*(-?\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?)/gi;
+const CURRENCY_ARITHMETIC_RE = /\$\s*-?[\d,]+(?:\.\d{1,2})?\s*[\+\-\*x×÷\/]|[\+\-\*x×÷\/]\s*\$\s*-?[\d,]+(?:\.\d{1,2})?|\bequals\s+\$/i;
+
+const PLANNER_FORBIDDEN = [
+  { re: /\byou should\b/i, reason: 'recommendation' },
+  { re: /\b(?:I|we) recommend\b/i, reason: 'recommendation' },
+  { re: /\brecommend(?:s|ed|ing)? that you\b/i, reason: 'recommendation' },
+  { re: /\ballocate\b/i, reason: 'allocation' },
+  { re: /\ballocating\b/i, reason: 'allocation' },
+  { re: /\bprioriti[sz]e\b/i, reason: 'priority recommendation' },
+  { re: /\byou (?:can |could )?afford\b/i, reason: 'invented affordability' },
+  { re: /\bpay(?:ing)? off\b.{0,80}\b(?:in|within)\s+\d+/i, reason: 'payoff math' },
+  { re: /\bin\s+\d+\s+(?:months?|years?|weeks?)\b.{0,80}\bpay(?:ing)? off\b/i, reason: 'payoff math' },
+  { re: /\bif you (?:pay|put|add|contribute)\b/i, reason: 'payoff math' },
+  { re: /\bextra (?:per (?:month|week|payday)|payment|toward)\b/i, reason: 'payoff math' },
+  { re: /\bmonths? to (?:pay(?:off)?|clear|zero)\b/i, reason: 'payoff math' },
+  { re: /\b(?:new|another|alternate|alternative) (?:forecast|scenario|plan)\b/i, reason: 'new forecast' },
+  { re: /\bunknown (?:is|as) verified\b/i, reason: 'trust promotion' },
+  { re: /\bestimated (?:is|as) verified\b/i, reason: 'trust promotion' },
+  { re: /\bstale (?:is|as) current\b/i, reason: 'trust promotion' },
+];
+
+function parseAmountToCents(raw) {
+  const cleaned = String(raw == null ? '' : raw).replace(/[^0-9.-]/g, '');
+  if (!cleaned || cleaned === '-' || cleaned === '.' || cleaned === '-.') return null;
+  const n = Number(cleaned);
+  if (!Number.isFinite(n)) return null;
+  return Math.round(n * 100);
+}
+
+function collectPacketMoneyCents(packet) {
+  const cents = new Set();
+  function add(value) {
+    const parsed = parseAmountToCents(value);
+    if (parsed != null) cents.add(parsed);
+  }
+  function walk(value) {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      cents.add(Math.round(value * 100));
+      return;
+    }
+    if (typeof value === 'string') {
+      CURRENCY_AMOUNT_RE.lastIndex = 0;
+      const matches = value.match(CURRENCY_AMOUNT_RE) || [];
+      for (const match of matches) add(match);
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach(walk);
+      return;
+    }
+    if (value && typeof value === 'object') {
+      Object.values(value).forEach(walk);
+    }
+  }
+  walk(packet);
+  return cents;
+}
+
+function claimedAnswerCents(text) {
+  const cents = [];
+  const seen = new Set();
+  function push(raw) {
+    const parsed = parseAmountToCents(raw);
+    if (parsed == null || seen.has(parsed)) return;
+    seen.add(parsed);
+    cents.push(parsed);
+  }
+  CURRENCY_AMOUNT_RE.lastIndex = 0;
+  const currency = String(text || '').match(CURRENCY_AMOUNT_RE) || [];
+  for (const match of currency) push(match);
+  LABELED_FIGURE_RE.lastIndex = 0;
+  let labeled;
+  while ((labeled = LABELED_FIGURE_RE.exec(text || '')) !== null) {
+    push(labeled[1]);
+  }
+  return cents;
+}
+
+function guardExplainerAnswer(text, packet) {
+  if (typeof text !== 'string' || !text.trim()) {
+    return { ok: false, reason: 'empty' };
+  }
+  if (!packet || typeof packet !== 'object') {
+    return { ok: false, reason: 'missing packet' };
+  }
+  for (const rule of PLANNER_FORBIDDEN) {
+    if (rule.re.test(text)) return { ok: false, reason: rule.reason };
+  }
+  if (CURRENCY_ARITHMETIC_RE.test(text)) {
+    return { ok: false, reason: 'new calculation' };
+  }
+  const allowed = collectPacketMoneyCents(packet);
+  for (const cents of claimedAnswerCents(text)) {
+    if (!allowed.has(cents)) return { ok: false, reason: 'invented figure' };
+  }
+  return { ok: true };
+}
+
 async function ask({ question, packet, env }) {
   if (!isConfigured(env)) throw talkUnavailable();
   const parsed = normalizeQuestion(question);
@@ -159,6 +265,7 @@ async function ask({ question, packet, env }) {
   });
   const text = extractAnswerText(response);
   if (!text) throw talkAnswerUnavailable();
+  if (!guardExplainerAnswer(text, packet).ok) throw talkAnswerUnavailable();
   return text;
 }
 
@@ -175,5 +282,6 @@ module.exports = {
   normalizeQuestion,
   resolveBaseUrl,
   buildUserPrompt,
+  guardExplainerAnswer,
   ask,
 };

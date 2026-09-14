@@ -422,7 +422,7 @@ owner beside Forecast.
 
 | Surface | What it is for |
 |---|---|
-| The website | visual presentation and inspection of the plan. The household Talk page consumes the same sanitized assistant packet via session-only `GET /talk/context`. Session-only `POST /talk/ask` sends that packet plus the household question to Google Gemini (`gemini-2.5-flash-lite`) so Talk can explain incumbent Atlas state. Gemini is an explainer, not a planner, and must not invent answers. The browser never holds `ATLAS_TALK_GEMINI_API_KEY`. |
+| The website | visual presentation and inspection of the plan. The household Talk page consumes the same sanitized assistant packet via session-only `GET /talk/context`. Session-only `POST /talk/ask` sends that packet plus the household question to Google Gemini (`gemini-2.5-flash-lite`) so Talk can explain incumbent Atlas state. Gemini is an explainer, not a planner, and must not invent answers. The server fail-closes model text that invents a figure, performs payoff math, or recommends an allocation; the instruction prompt is not the only Forecast-authority control. The browser never holds `ATLAS_TALK_GEMINI_API_KEY`. |
 | ChatGPT | conversational query and explanation interface. It consumes the incumbent `GET /assistant/current` packet through the OAuth-protected, read-only MCP resource `POST /assistant/mcp`. It is not a planner. |
 | Google Sheet | execution tracking of a plan Forecast already produced |
 

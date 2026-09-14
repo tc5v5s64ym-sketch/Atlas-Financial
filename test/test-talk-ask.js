@@ -3,8 +3,10 @@
  *
  * Proves POST /talk/ask is the household-session consumer of the incumbent
  * packet plus a mocked Gemini call, that the instruction contract is in the
- * outbound request with tools/grounding disabled, and that browser session,
- * static assistant Bearer, and MCP OAuth still do not unlock one another.
+ * outbound request with tools/grounding disabled, that a deterministic
+ * server-side explainer contract rejects adversarial model text even when
+ * the prompt was compliant, and that browser session, static assistant
+ * Bearer, and MCP OAuth still do not unlock one another.
  * No live Gemini calls.
  * `node test/test-talk-ask.js`
  */
@@ -182,8 +184,10 @@ function geminiOkBody(text) {
   });
 }
 
-function startMockGemini() {
+function startMockGemini(replies) {
   const captured = [];
+  const queue = Array.isArray(replies) ? replies.slice() : [];
+  const defaultText = 'The packet shows this payday is already represented.';
   const server = http.createServer((req, res) => {
     let raw = '';
     req.on('data', chunk => { raw += chunk; });
@@ -195,8 +199,9 @@ function startMockGemini() {
         raw,
         body: (() => { try { return JSON.parse(raw); } catch { return null; } })(),
       });
+      const next = queue.length > 0 ? queue.shift() : defaultText;
       res.setHeader('content-type', 'application/json');
-      res.end(geminiOkBody('The packet shows this payday is already represented.'));
+      res.end(geminiOkBody(typeof next === 'string' ? next : defaultText));
     });
   });
   return new Promise((resolve, reject) => {
@@ -415,6 +420,55 @@ console.log('=== 1. Talk Gemini module contract and UI fail-closed enablement ==
       && TalkGemini.normalizeQuestion('x'.repeat(TalkGemini.QUESTION_MAX_LENGTH + 1)).error === 'question too long'
       && TalkGemini.normalizeQuestion('  Hello  ').question === 'Hello',
     'questions are bounded and fail closed when malformed');
+
+  const evidencePacket = {
+    schema: Assistant.SCHEMA,
+    authority: { planner: 'Forecast' },
+    leftover: 400,
+    weeklyCap: 1650,
+  };
+  ok(TalkGemini.guardExplainerAnswer(
+      'The packet leftover is $400 and the weekly cap is $1,650.',
+      evidencePacket
+    ).ok === true,
+    'explaining packet leftover and weekly-cap figures is allowed');
+  ok(TalkGemini.guardExplainerAnswer(
+      'Forecast.recommend already produced the weekly cap shown in this packet.',
+      evidencePacket
+    ).ok === true,
+    'naming Forecast.recommend as the packet authority is allowed');
+  ok(TalkGemini.guardExplainerAnswer(
+      'The packet shows this payday is already represented.',
+      evidencePacket
+    ).ok === true,
+    'compliant canned explainer text is allowed');
+  ok(TalkGemini.guardExplainerAnswer(
+      'Your safe-to-spend this week is $847.',
+      evidencePacket
+    ).ok === false
+      && TalkGemini.guardExplainerAnswer(
+        'Your safe-to-spend this week is $847.',
+        evidencePacket
+      ).reason === 'invented figure',
+    'a new safe-to-spend figure not in the packet is rejected');
+  ok(TalkGemini.guardExplainerAnswer(
+      'Pay off the Visa in 11 months if you add $50 extra.',
+      evidencePacket
+    ).ok === false,
+    'payoff math is rejected even when the prompt forbade it');
+  ok(TalkGemini.guardExplainerAnswer(
+      'You should allocate more to the Visa this payday.',
+      evidencePacket
+    ).ok === false,
+    'an allocation recommendation is rejected');
+  ok(TalkGemini.guardExplainerAnswer(
+      'That unknown is verified.',
+      evidencePacket
+    ).ok === false,
+    'promoting unknown to verified is rejected');
+  ok(/guardExplainerAnswer\(text, packet\)/.test(moduleSrc)
+      && /if \(!guardExplainerAnswer\(text, packet\)\.ok\) throw talkAnswerUnavailable\(\)/.test(moduleSrc),
+    'ask() applies the output contract before returning model text');
 
   const ui = loadTalkApi();
   ok(ui.send.disabled === true, 'Send starts disabled before capability resolves');
@@ -774,6 +828,99 @@ console.log('=== 1. Talk Gemini module contract and UI fail-closed enablement ==
     /must not reuse ATLAS_ASSISTANT_TOKEN/,
     'Talk Gemini key cannot reuse ATLAS_ASSISTANT_TOKEN'
   );
+
+  console.log('\n=== 6. Server fail-closes adversarial model output ===');
+  const evidencePacket = {
+    schema: Assistant.SCHEMA,
+    authority: { planner: 'Forecast' },
+    leftover: 400,
+    weeklyCap: 1650,
+  };
+  async function expectAskRejected(modelText, label) {
+    const mock = await startMockGemini([modelText]);
+    try {
+      let rejected = false;
+      try {
+        await TalkGemini.ask({
+          question: 'What should I know today?',
+          packet: evidencePacket,
+          env: {
+            ATLAS_TALK_GEMINI_API_KEY: GEMINI_KEY,
+            ATLAS_TALK_GEMINI_BASE_URL: mock.url,
+          },
+        });
+      } catch (err) {
+        rejected = !!(err && err.code === 'TALK_ANSWER_UNAVAILABLE');
+      }
+      ok(rejected, label);
+    } finally {
+      await mock.close();
+    }
+  }
+  await expectAskRejected(
+    'Your safe-to-spend this week is $847.',
+    'ask() rejects a mocked new safe-to-spend figure'
+  );
+  await expectAskRejected(
+    'Pay off the Visa in 11 months if you add $50 extra.',
+    'ask() rejects mocked payoff math'
+  );
+  await expectAskRejected(
+    'You should allocate more to the Visa this payday.',
+    'ask() rejects a mocked allocation recommendation'
+  );
+  {
+    const mock = await startMockGemini([
+      'The packet leftover is $400 and the weekly cap is $1,650.',
+    ]);
+    try {
+      const answer = await TalkGemini.ask({
+        question: 'What should I know today?',
+        packet: evidencePacket,
+        env: {
+          ATLAS_TALK_GEMINI_API_KEY: GEMINI_KEY,
+          ATLAS_TALK_GEMINI_BASE_URL: mock.url,
+        },
+      });
+      ok(answer === 'The packet leftover is $400 and the weekly cap is $1,650.',
+        'ask() still returns compliant packet-grounded text');
+    } finally {
+      await mock.close();
+    }
+  }
+  {
+    const liveMock = await startMockGemini([
+      'You should allocate more to the Visa this payday.',
+    ]);
+    const port = await freePort();
+    const atlas = await startAtlas(isolatedEnv({
+      SITE_PASSWORD: PASS,
+      SESSION_SECRET: SECRET,
+      ATLAS_TALK_GEMINI_API_KEY: GEMINI_KEY,
+      ATLAS_TALK_GEMINI_BASE_URL: liveMock.url,
+      PORT: String(port),
+    }));
+    const base = `http://127.0.0.1:${port}`;
+    try {
+      const authed = await login(base);
+      const asked = await fetch(`${base}/talk/ask`, {
+        method: 'POST',
+        headers: {
+          cookie: authed.cookie,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ question: 'What should I know today?' }),
+      });
+      const body = await asked.json();
+      ok(asked.status === 502 && body.error === 'talk answer unavailable' && !body.answer,
+        'session Talk ask fail-closes a mocked allocation recommendation',
+        `status ${asked.status}`);
+    } finally {
+      await atlas.stop();
+      await liveMock.close();
+    }
+    filesUnchanged('adversarial Talk ask');
+  }
 
   console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
   process.exit(failures === 0 ? 0 : 1);

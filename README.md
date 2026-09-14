@@ -42,7 +42,9 @@ is still the whole financial picture of two people.
 - `POST /talk/ask` is the household Talk Gemini explainer turn. It is unlocked
   only by the browser session cookie. It loads that same packet, calls Google
   Gemini (`gemini-2.5-flash-lite`) with the fixed Atlas instruction contract,
-  and returns `{ answer }`. Unset `ATLAS_TALK_GEMINI_API_KEY` → 503 and Send
+  and returns `{ answer }` only after a deterministic server-side explainer
+  contract accepts the model text. Invented figures, payoff math, and
+  allocation recommendations fail closed. Unset `ATLAS_TALK_GEMINI_API_KEY` → 503 and Send
   stays disabled. The browser never holds that secret. It never writes and
   does not persist prompts or answers. `GET /talk/capability` reports whether
   that path is configured.
