@@ -422,7 +422,7 @@ owner beside Forecast.
 
 | Surface | What it is for |
 |---|---|
-| The website | visual presentation and inspection of the plan. The household Talk page consumes the same sanitized assistant packet via session-only `GET /talk/context`. Session-only `POST /talk/ask` sends that packet plus the household question to Google Gemini (`gemini-2.5-flash-lite`) so Talk can explain incumbent Atlas state. Gemini is an explainer, not a planner, and must not invent answers. The server never publishes free-form model text: it accepts only a structured extractive claim list, verifies each claim against this request's packet, and maps those verified packet values through deterministic Atlas presentation templates (human labels, currency, provenance, trust, and at most one existing-route link). Unknown paths stay conservative path-is-value wording and do not invent meaning or Forecast provenance. The instruction prompt is not the Forecast-authority control. The browser never holds `ATLAS_TALK_GEMINI_API_KEY`. |
+| The website | visual presentation and inspection of the plan. The household Talk page consumes the same sanitized assistant packet via session-only `GET /talk/context`. That packet may include the owner-stated `plan.decisionPosture` labels so Talk can explain household decision policy without planning. Session-only `POST /talk/ask` sends that packet plus the household question to Google Gemini (`gemini-2.5-flash-lite`) so Talk can explain incumbent Atlas state. Gemini is an explainer, not a planner, and must not invent answers. The server never publishes free-form model text: it accepts only a structured extractive claim list, verifies each claim against this request's packet, and maps those verified packet values through deterministic Atlas presentation templates (human labels, currency, provenance, trust, and at most one existing-route link). Unknown paths stay conservative path-is-value wording and do not invent meaning or Forecast provenance. The instruction prompt is not the Forecast-authority control. The browser never holds `ATLAS_TALK_GEMINI_API_KEY`. |
 | ChatGPT | conversational query and explanation interface. It consumes the incumbent `GET /assistant/current` packet through the OAuth-protected, read-only MCP resource `POST /assistant/mcp`. It is not a planner. |
 | Google Sheet | execution tracking of a plan Forecast already produced |
 
@@ -650,6 +650,7 @@ closed: `Forecast.expandEvents` is the one cash calendar.
 | The next move the household is told to make | `plan.actions` in `data.json` for owner-policy rows (what, amount, due, owner). Current-limit satisfaction on a row with `debtId` is `Forecast.resolveActions` from utilisation (unknown pending or over-limit stays `open`; otherwise `done`). `public/plan.js` renders `Forecast.resolveActions` / `Forecast.nextMove` |
 | What the next move achieves — which of five outcomes the "What happens after" line publishes, and the figures inside it | `Forecast.nextMove`, from the `recommend` result, the simulation on screen and `plan.actions[0]`. The action's amount is a fixed figure sized for the default buffer, so coverage is judged against the **current** gap on the engine's own half-cent — and restoring that gap takes coverage **and** a due date on or before it, since money arriving after the day it is needed clears nothing on that day. `public/plan.js` holds the wording only |
 | Where the next surplus dollar goes | `plan.nextDollar` in `data.json` records the owner-stated policy only. `Forecast.debtPriority` applies it to current eligible revolving-card and HELOC facts, fails closed on equal or unavailable rates and on null/missing/non-finite balances, and returns the current target, ordered cascade, and conditional next target. Unknown pending is not $0: leftover after proven posted exposure is held, not sent to a later target or optional residual. `Forecast.paydayAllocation` owns the amount; `Forecast.projectDebts` consumes the same order. Pages rank nothing |
+| Household decision posture — aggressive but not brittle | `plan.decisionPosture` in `data.json` records the owner-stated policy only. Forecast does not apply this row in this slice. The read-only assistant packet projects the closed labels onto `policy.decisionPosture`; Talk may explain those labels. This row stores no numeric breathing-room threshold, safe-to-spend, allocation, payment, or borrowing permission. It does not redefine `defaults.targetBuffer`. |
 | Payoff modelling — which debts may be modelled, what a payment does to one, and what clears it | `Forecast.payoffDebts`, `Forecast.payoffModel` and `Forecast.paymentForMonths`, from the debt records and `plan.obligations`; `public/modellers.js` holds the wording only |
 | Debt rate conventions — what a debt's quoted rate means per period, and how closely a monthly model reproduces it | `PAYOFF_RATE_BASIS` and `PAYOFF_BASIS_PRECISION` in `public/forecast.js`, from each debt record's `rateConvention`. A prime-linked facility is compounded monthly, so a monthly period is **exact**. A card charges a daily rate over the days in each statement cycle, so a monthly period is a **monthly-equivalent** average: exact over a year, and published with the cycle band for any single period. An undeclared convention throws |
 | What one debt costs the household in cash each month | `monthlyCashFor` in `public/forecast.js`, from `plan.obligations`; read by both `Forecast.renewal` and the payoff modeller |
@@ -681,7 +682,7 @@ So the rule, not the enumeration, is what binds:
 
 - **`data.json` `plan` is the authority for what the engine is told** — the
   obligations, bills, commitments, groups, funding, budget targets, `nextDollar`
-  policy and written actions. Changing what the household is *told to do* means
+  policy, `decisionPosture` policy and written actions. Changing what the household is *told to do* means
   changing `data.json`, not adding logic that decides it elsewhere.
 - **`Forecast` is the authority for what follows from that** — the schedule, the
   projection, the cap, the debt walk, headroom and the budget split. Changing what
@@ -947,6 +948,18 @@ or non-finite eligible balances also publish no target — `Number(null)` is not
 cleared facility. Unknown pending on a positive posted balance is not $0 pending:
 extra principal may use the proven posted exposure, and leftover cash is held
 rather than sent to a lower-priority target or optional residual.
+
+**`plan.decisionPosture` is owner-stated as of 2026-09-14.** Get to the financial
+goal as fast as possible without making the household so tight the plan becomes
+unrealistic or forces re-borrowing. Velocity (fastest to goal) and Resilience
+(enough cash and flexibility for real life plus known commitments) are distinct
+dimensions. The posture is aggressive, but not brittle. Breathing room is enough
+slack to stay sustainable and reduce immediate re-borrow risk — not waste
+permission, comfort-max, avoiding hard choices, or slowing without a demonstrated
+resilience reason. Known authorized future commitments exert gravity.
+Mathematically cheapest is not the best household decision when that cheapest
+path is unacceptably brittle. No universal numeric breathing-room threshold is
+recorded. Forecast does not apply this row in this slice.
 
 ---
 

@@ -332,6 +332,12 @@ console.log('=== 1. Talk UI consumes metadata only; no Forecast, no model ===');
         && talkPacket.productionWrite === false
         && talkPacket.authority && talkPacket.authority.planner === 'Forecast',
       'Talk packet preserves Forecast authority and declares no writes');
+    ok(talkPacket.policy
+        && talkPacket.policy.decisionPosture
+        && talkPacket.policy.decisionPosture.posture === 'aggressive-not-brittle'
+        && talkPacket.policy.decisionPosture.numericThreshold === 'none'
+        && talkPacket.policy.decisionPosture.forecastApplication === 'not-applied-this-slice',
+      'Talk context carries the owner decision-posture projection');
 
     const assistantRes = await fetch(`${base}/assistant/current`, {
       headers: { authorization: `Bearer ${ASSISTANT_TOKEN}` },

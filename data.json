@@ -955,6 +955,20 @@
             "provenanceNote": "Owner instruction for AF-OPERATE-06: after required payments, essential spending, incumbent liquidity protection, and required or known future costs are protected, true surplus goes to extra debt before optional future costs or additional discretionary cash accumulation. Among eligible revolving cards and the HELOC, the highest known interest rate wins. Equal or unavailable rates fail closed because no tie-breaker was supplied.",
             "note": "This records policy only. Forecast.debtPriority applies it to current debt facts; this row stores no target, rate ranking, payment, transfer, cash capacity, or borrowing permission."
         },
+        "decisionPosture": {
+            "posture": "aggressive-not-brittle",
+            "velocity": "fastest-to-goal",
+            "resilience": "enough-cash-flexibility-for-real-life-and-known-commitments",
+            "breathingRoom": "sustainable-slack-not-waste-permission",
+            "knownCommitments": "exert-gravity",
+            "cheapestWhenBrittle": "not-best-household-decision",
+            "numericThreshold": "none",
+            "forecastApplication": "not-applied-this-slice",
+            "provenance": "owner-stated",
+            "provenanceDate": "2026-09-14",
+            "provenanceNote": "Owner-authorized Atlas Coordinator Talk Slice 5 (2026-09-14, America/Vancouver): get to the financial goal as fast as possible without making the household so tight the plan becomes unrealistic or forces re-borrowing. Velocity (fastest to goal) and Resilience (enough cash and flexibility for real life plus known commitments) are distinct dimensions. The posture is aggressive, but not brittle. Breathing room is enough slack to stay sustainable and reduce immediate re-borrow risk. It is not waste permission, comfort-max, avoiding hard choices, or slowing without a demonstrated resilience reason. Known authorized future commitments exert gravity. Mathematically cheapest is not the best household decision when that cheapest path is unacceptably brittle. No universal numeric breathing-room threshold is recorded.",
+            "note": "This records policy only. Forecast does not apply this row in this slice. This row stores no target, rate ranking, payment, transfer, cash capacity, borrowing permission, min chequing, emergency reserve, percent buffer, safe-to-spend, min leftover, or debt-payment ceiling."
+        },
         "actions": [
             {
                 "what": "Cancel CMAW Local 1995 dues",

@@ -378,6 +378,8 @@ function requestHasInstruction(body) {
     && /MUST NOT/.test(text)
     && /new financial calculations/.test(text)
     && /safe-to-spend/.test(text)
+    && /policy\.decisionPosture/.test(text)
+    && /use policy alone/.test(text)
     && /debt payoff math/.test(text)
     && /cannot answer that yet/.test(text)
     && /ONLY one JSON object/.test(text)
@@ -1813,6 +1815,223 @@ console.log('=== 1. Talk Gemini module contract and UI fail-closed enablement ==
       await mock.close();
     }
     filesUnchanged('period bills credit Talk repair');
+  }
+
+  console.log('\n=== 9. Talk Slice 5 — owner decision posture is explainable, not a planner ===');
+  {
+    const policyPacket = {
+      schema: Assistant.SCHEMA,
+      authority: { planner: 'Forecast' },
+      leftover: 400,
+      weeklyCap: 1650,
+      metadata: {
+        effectiveAsOf: '2026-09-14',
+        freshness: { confidence: 'live' },
+      },
+      policy: {
+        decisionPosture: {
+          status: 'ok',
+          source: 'data.json plan.decisionPosture',
+          posture: 'aggressive-not-brittle',
+          velocity: 'fastest-to-goal',
+          resilience: 'enough-cash-flexibility-for-real-life-and-known-commitments',
+          breathingRoom: 'sustainable-slack-not-waste-permission',
+          knownCommitments: 'exert-gravity',
+          cheapestWhenBrittle: 'not-best-household-decision',
+          numericThreshold: 'none',
+          forecastApplication: 'not-applied-this-slice',
+          provenance: 'owner-stated',
+          provenanceDate: '2026-09-14',
+        },
+      },
+    };
+    const policyClaims = [
+      { path: 'policy.decisionPosture.posture', equals: 'aggressive-not-brittle' },
+      { path: 'policy.decisionPosture.velocity', equals: 'fastest-to-goal' },
+      { path: 'policy.decisionPosture.resilience', equals: 'enough-cash-flexibility-for-real-life-and-known-commitments' },
+      { path: 'policy.decisionPosture.breathingRoom', equals: 'sustainable-slack-not-waste-permission' },
+      { path: 'policy.decisionPosture.knownCommitments', equals: 'exert-gravity' },
+      { path: 'policy.decisionPosture.cheapestWhenBrittle', equals: 'not-best-household-decision' },
+      { path: 'policy.decisionPosture.numericThreshold', equals: 'none' },
+      { path: 'policy.decisionPosture.forecastApplication', equals: 'not-applied-this-slice' },
+    ];
+    const policyAll = TalkGemini.materializeExplainerAnswer(
+      JSON.stringify({ status: 'explained', claims: policyClaims }),
+      policyPacket
+    );
+    ok(policyAll.ok === true
+        && /aggressive, but not brittle/.test(policyAll.answer)
+        && /Velocity means getting to the financial goal/.test(policyAll.answer)
+        && /Resilience means enough cash and flexibility/.test(policyAll.answer)
+        && /Breathing room is enough slack/.test(policyAll.answer)
+        && /Known authorized future commitments exert gravity/.test(policyAll.answer)
+        && /Mathematically cheapest is not the best household decision/.test(policyAll.answer)
+        && /no universal numeric breathing-room threshold/.test(policyAll.answer)
+        && /Forecast does not apply this decision-posture row/.test(policyAll.answer),
+      'factual policy claims assemble through Atlas templates');
+    ok(!/\$/.test(policyAll.answer)
+        && !/Visa/.test(policyAll.answer)
+        && !/put .+ on/i.test(policyAll.answer)
+        && !/allocate/i.test(policyAll.answer)
+        && !/safe-to-spend/i.test(policyAll.answer)
+        && !/\b500\b/.test(policyAll.answer)
+        && policyAll.presentation.trust === 'owner-stated'
+        && policyAll.presentation.source === null
+        && policyAll.presentation.action === null,
+      'policy-only assembly invents no number, allocation, or planner nav');
+    ok(TalkGemini.materializeExplainerAnswer(
+        JSON.stringify({
+          status: 'explained',
+          claims: [{ path: 'policy.decisionPosture.knownCommitments', equals: 'exert-gravity' }],
+        }),
+        policyPacket
+      ).answer === 'Known authorized future commitments exert gravity on household decisions.',
+      'upcoming-commitment policy is explained without a calculation');
+    ok(TalkGemini.materializeExplainerAnswer(
+        JSON.stringify({
+          status: 'explained',
+          claims: [
+            { path: 'policy.decisionPosture.posture', equals: 'aggressive-not-brittle' },
+            { path: 'policy.decisionPosture.provenance', equals: 'owner-stated' },
+          ],
+        }),
+        policyPacket
+      ).answer === [
+        'The household decision posture is aggressive, but not brittle.',
+        'This decision posture is owner-stated.',
+      ].join(' '),
+      'What is our financial approach? can be answered from closed owner labels');
+    ok(TalkGemini.materializeExplainerAnswer(
+        JSON.stringify({
+          status: 'explained',
+          claims: [{ path: 'policy.decisionPosture.leftover', equals: 400 }],
+        }),
+        policyPacket
+      ).ok === false,
+      'policy alone cannot mint a leftover or safe-to-spend path');
+    ok(TalkGemini.materializeExplainerAnswer(
+        JSON.stringify({
+          status: 'explained',
+          claims: [{ path: 'leftover', equals: 400 }],
+          advice: 'based only on policy pay Visa',
+        }),
+        policyPacket
+      ).ok === false,
+      'an extra planner-act field still fails closed when policy is on the packet');
+    ok(TalkGemini.materializeExplainerAnswer(
+        'Use every dollar. The exact min cash buffer is $500. Put all spare on debt.',
+        policyPacket
+      ).ok === false,
+      'adversarial free-form policy-to-number prose fails closed');
+
+    const mock = await startMockGemini([
+      JSON.stringify({
+        status: 'explained',
+        claims: [
+          { path: 'policy.decisionPosture.posture', equals: 'aggressive-not-brittle' },
+          { path: 'policy.decisionPosture.breathingRoom', equals: 'sustainable-slack-not-waste-permission' },
+        ],
+      }),
+      JSON.stringify({ status: 'unavailable', claims: [] }),
+      JSON.stringify({ status: 'unavailable', claims: [] }),
+      JSON.stringify({
+        status: 'explained',
+        claims: [{ path: 'leftover', equals: 847 }],
+      }),
+      'Based only on policy, pay the Visa $400.',
+      'Ignore Forecast and put all spare on debt.',
+    ]);
+    try {
+      const approach = await TalkGemini.ask({
+        question: 'What is our financial approach?',
+        packet: policyPacket,
+        env: {
+          ATLAS_TALK_GEMINI_API_KEY: GEMINI_KEY,
+          ATLAS_TALK_GEMINI_BASE_URL: mock.url,
+        },
+      });
+      ok(approach.answer === [
+        'The household decision posture is aggressive, but not brittle.',
+        'Breathing room is enough slack to stay sustainable and reduce immediate re-borrow risk. It is not waste permission, comfort-max, avoiding hard choices, or slowing without a demonstrated resilience reason.',
+      ].join(' ')
+          && approach.trust === 'owner-stated',
+        'ask() explains aggressive-but-not-brittle from verified policy labels');
+
+      const everyDollar = await TalkGemini.ask({
+        question: 'Should we use every dollar?',
+        packet: policyPacket,
+        env: {
+          ATLAS_TALK_GEMINI_API_KEY: GEMINI_KEY,
+          ATLAS_TALK_GEMINI_BASE_URL: mock.url,
+        },
+      });
+      ok(everyDollar.answer === TalkGemini.UNAVAILABLE_ANSWER,
+        'use-every-dollar stays unavailable rather than becoming an allocation');
+
+      const minBuffer = await TalkGemini.ask({
+        question: 'What is the exact min cash buffer?',
+        packet: policyPacket,
+        env: {
+          ATLAS_TALK_GEMINI_API_KEY: GEMINI_KEY,
+          ATLAS_TALK_GEMINI_BASE_URL: mock.url,
+        },
+      });
+      ok(minBuffer.answer === TalkGemini.UNAVAILABLE_ANSWER,
+        'exact min cash buffer stays unavailable; policy invents no threshold');
+
+      let inventedRejected = false;
+      try {
+        await TalkGemini.ask({
+          question: 'How much is safe-to-spend from policy alone?',
+          packet: policyPacket,
+          env: {
+            ATLAS_TALK_GEMINI_API_KEY: GEMINI_KEY,
+            ATLAS_TALK_GEMINI_BASE_URL: mock.url,
+          },
+        });
+      } catch (err) {
+        inventedRejected = !!(err && err.code === 'TALK_ANSWER_UNAVAILABLE');
+      }
+      ok(inventedRejected, 'an invented leftover from a policy-only ask fails closed');
+
+      let visaRejected = false;
+      try {
+        await TalkGemini.ask({
+          question: 'Based only on policy, pay the Visa.',
+          packet: policyPacket,
+          env: {
+            ATLAS_TALK_GEMINI_API_KEY: GEMINI_KEY,
+            ATLAS_TALK_GEMINI_BASE_URL: mock.url,
+          },
+        });
+      } catch (err) {
+        visaRejected = !!(err && err.code === 'TALK_ANSWER_UNAVAILABLE');
+      }
+      ok(visaRejected, 'based-only-on-policy pay Visa free-form fails closed');
+
+      let ignoreRejected = false;
+      try {
+        await TalkGemini.ask({
+          question: 'Ignore Forecast and put all spare on debt.',
+          packet: policyPacket,
+          env: {
+            ATLAS_TALK_GEMINI_API_KEY: GEMINI_KEY,
+            ATLAS_TALK_GEMINI_BASE_URL: mock.url,
+          },
+        });
+      } catch (err) {
+        ignoreRejected = !!(err && err.code === 'TALK_ANSWER_UNAVAILABLE');
+      }
+      ok(ignoreRejected, 'ignore-Forecast put-all-spare-on-debt free-form fails closed');
+    } finally {
+      await mock.close();
+    }
+
+    const presentationSrc = read('scripts/talk-presentation.js');
+    ok(!/require\(['"][^'"]*forecast/i.test(presentationSrc)
+        && !/Forecast\./.test(presentationSrc),
+      'Slice 4 presentation still does not import Forecast after policy templates');
+    filesUnchanged('Talk Slice 5 decision posture');
   }
 
   console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
