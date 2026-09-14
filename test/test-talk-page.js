@@ -97,6 +97,8 @@ console.log('\n=== 2. talk.js is a shell — no Forecast, no secret, no assistan
     'talk.js opens no other network transport');
   ok(!/assistant\/current|assistant\/mcp|openai|anthropic|chatgpt|generativelanguage\.googleapis|ATLAS_ASSISTANT|ATLAS_TALK_GEMINI_API_KEY/i.test(src + html),
     'Talk does not call the assistant endpoints, MCP, or a model host, and does not name the Gemini secret');
+  ok(!/ATLAS_TALK_GEMINI_API_KEY|process\.env/.test(read('public/talk.js') + html),
+    'raw Talk browser files do not read process.env or name the Talk Gemini secret');
   ok(/send\.disabled = true/.test(src) && /preventDefault/.test(src)
       && /talkModelAvailable/.test(src),
     'Send starts disabled and submit is gated on capability');

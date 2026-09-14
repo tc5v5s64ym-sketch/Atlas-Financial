@@ -5,7 +5,7 @@
  * same-origin session cookie, and POSTs { question } to /talk/ask when
  * the model path is available. It does not call /assistant/current or
  * /assistant/mcp, does not send a Bearer or OAuth token, does not hold
- * ATLAS_TALK_GEMINI_API_KEY, does not read Forecast, and does not publish
+ * the Talk model secret, does not read Forecast, and does not publish
  * a figure of its own. Model answer text is assigned via textContent.
  *
  * Send stays disabled until capability says the model path is available.

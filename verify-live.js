@@ -30,6 +30,26 @@ async function main() {
   ok(!body.includes('546026') && !body.includes('balance') && body.length < 200,
      'no financial data in the body', `${body.length} bytes`);
 
+  console.log('\n=== Talk seams stay gated without a session ===');
+  const talkContext = await fetch(`${BASE}/talk/context`, { redirect: 'manual' });
+  ok(talkContext.status === 401, 'GET /talk/context returns 401',
+    `status ${talkContext.status}`);
+  const talkCap = await fetch(`${BASE}/talk/capability`, { redirect: 'manual' });
+  ok(talkCap.status === 401, 'GET /talk/capability returns 401',
+    `status ${talkCap.status}`);
+  const talkAsk = await fetch(`${BASE}/talk/ask`, {
+    method: 'POST',
+    redirect: 'manual',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ question: 'What should I know today?' }),
+  });
+  ok(talkAsk.status === 401, 'POST /talk/ask returns 401',
+    `status ${talkAsk.status}`);
+  const talkAskBody = await talkAsk.text();
+  ok(!/answer|ATLAS_TALK|AIza/.test(talkAskBody) && talkAskBody.length < 200,
+     'unauthenticated Talk ask returns no answer and no secret',
+     `${talkAskBody.length} bytes`);
+
   console.log('\n=== login gate ===');
   ok(root.status === 302 && (root.headers.get('location') || '').includes('/login'),
      'GET / redirects to /login', `status ${root.status}`);

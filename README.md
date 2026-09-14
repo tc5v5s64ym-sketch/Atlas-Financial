@@ -141,7 +141,10 @@ node test/test-local.js
    Render to a dedicated Gemini API key from the paid Atlas Talk project.
    Do not reuse `SITE_PASSWORD`, `SESSION_SECRET`, `ATLAS_ASSISTANT_TOKEN`,
    Lunch Money, MCP, Grok, or any other existing secret. Unset → Talk
-   answers stay unavailable and Send stays disabled.
+   answers stay unavailable and Send stays disabled. After merge, one
+   bounded live Talk smoke is permitted when that key is present. CI
+   tests stay mocked and must not make a paid Gemini call. Never commit,
+   log, or send the value to the browser.
 9. Deploy. Every push to the default branch redeploys automatically.
 
 The free plan sleeps after inactivity, so the first visit in a while takes about

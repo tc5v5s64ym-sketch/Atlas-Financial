@@ -392,6 +392,17 @@ console.log('=== 1. Talk Gemini module contract and UI fail-closed enablement ==
       && /buildCurrentAssistantPacket/.test(serverSrc)
       && /TalkGemini\.ask/.test(serverSrc),
     'POST /talk/ask uses the incumbent packet builder then TalkGemini');
+  ok(/process\.env\.ATLAS_TALK_GEMINI_API_KEY/.test(serverSrc),
+    'server reads ATLAS_TALK_GEMINI_API_KEY from process.env only');
+  ok(!/console\.\w+\([^)]*TALK_GEMINI_KEY/.test(serverSrc)
+      && !/console\.\w+\([^)]*readKey\(/.test(moduleSrc),
+    'server and Talk Gemini module do not log the key value');
+  ok(!/ATLAS_TALK_GEMINI_API_KEY|process\.env/.test(read('public/talk.js') + html),
+    'Talk browser files never name or read the Gemini secret');
+  ok(/ATLAS_TALK_GEMINI_BASE_URL/.test(moduleSrc)
+      && /127\.0\.0\.1/.test(moduleSrc)
+      && /localhost/.test(moduleSrc),
+    'Gemini URL override is loopback-only; CI does not call paid Gemini');
   ok(TalkGemini.capability({}).available === false
       && TalkGemini.capability({ ATLAS_TALK_GEMINI_API_KEY: GEMINI_KEY }).available === true,
     'capability is fail-closed unless the dedicated key is configured');

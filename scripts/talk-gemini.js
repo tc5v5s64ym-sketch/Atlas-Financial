@@ -8,6 +8,11 @@
  *
  * Tools, grounding, Maps, URL context, File Search, code execution,
  * function calling, RAG, and fallback providers are disabled.
+ *
+ * The dedicated secret is read only from the env object the server passes
+ * in (`process.env.ATLAS_TALK_GEMINI_API_KEY` on the Node process). This
+ * module never logs, prints, or returns that value. CI must mock Gemini
+ * HTTP. A single bounded live call is a post-merge production smoke only.
  */
 
 const MODEL = 'gemini-2.5-flash-lite';
