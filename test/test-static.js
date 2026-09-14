@@ -85,6 +85,7 @@ const PATTERNS = [
   [/\bLUNCHMONEY_ACCESS_TOKEN\s*=\s*['"][^'"]+['"]/, 'a literal LUNCHMONEY_ACCESS_TOKEN'],
   [/\bATLAS_PROVIDER_ACCOUNT_MAP_JSON\s*=\s*['"][^'"]+['"]/, 'a literal ATLAS_PROVIDER_ACCOUNT_MAP_JSON'],
   [/\bATLAS_ASSISTANT_TOKEN\s*=\s*['"][^'"]+['"]/, 'a literal ATLAS_ASSISTANT_TOKEN'],
+  [/\bATLAS_TALK_GEMINI_API_KEY\s*=\s*['"][^'"]+['"]/, 'a literal ATLAS_TALK_GEMINI_API_KEY'],
   [/\b\d{4}[ -]?\d{4}[ -]?\d{4}[ -]?\d{4}\b/, 'a 16-digit card number'],
   [/\b\d{3}[ -]\d{3}[ -]\d{3}\b/, 'a SIN-shaped number'],
 ];

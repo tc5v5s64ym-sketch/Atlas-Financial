@@ -2,7 +2,8 @@
 /* Talk to Atlas — household conversation shell.
  *
  * Proves the authenticated UI surface exists, sits first-class on the
- * household dock, publishes no figure, and does not call a model.
+ * household dock, publishes no figure, and does not hold a model secret.
+ * Send stays disabled in markup until capability says otherwise.
  * `node test/test-talk-page.js`
  */
 const fs = require('fs');
@@ -80,22 +81,25 @@ console.log('=== 1. Talk page identity, empty state, composer, prompts ===');
     'talk.css styles the empty state, composer, prompts, context and future bubbles');
 }
 
-console.log('\n=== 2. talk.js is a shell — no model, no Forecast, no figures ===');
+console.log('\n=== 2. talk.js is a shell — no Forecast, no secret, no assistant auth ===');
 {
   const src = stripComments(read('public/talk.js'));
   const html = read('public/talk.html');
-  ok(/App\.boot\(\)/.test(src) && /INTELLIGENCE SEAM/.test(read('public/talk.js')),
-    'talk.js boots the shared header and names the intelligence seam');
+  ok(/App\.boot\(\)/.test(src) && /Fail closed/.test(read('public/talk.js')),
+    'talk.js boots the shared header and names the fail-closed Send gate');
   ok(!/Forecast|recommend\(|money2\(|money\(/.test(src),
     'talk.js does not call Forecast or format money');
   ok(/fetch\(TALK_CONTEXT_PATH/.test(src) && /\/talk\/context/.test(src),
-    'talk.js loads context from the session Talk seam only');
+    'talk.js loads context from the session Talk seam');
+  ok(/TALK_CAPABILITY_PATH/.test(src) && /TALK_ASK_PATH/.test(src),
+    'talk.js uses session capability and ask seams when the model path is available');
   ok(!/XMLHttpRequest|WebSocket|EventSource/.test(src),
     'talk.js opens no other network transport');
-  ok(!/assistant\/current|assistant\/mcp|openai|anthropic|chatgpt|llm|ATLAS_ASSISTANT/i.test(src + html),
-    'Talk does not call the assistant endpoints, MCP, or a model host');
-  ok(/send\.disabled = true/.test(src) && /preventDefault/.test(src),
-    'Send stays disabled and submit is swallowed');
+  ok(!/assistant\/current|assistant\/mcp|openai|anthropic|chatgpt|generativelanguage\.googleapis|ATLAS_ASSISTANT|ATLAS_TALK_GEMINI_API_KEY/i.test(src + html),
+    'Talk does not call the assistant endpoints, MCP, or a model host, and does not name the Gemini secret');
+  ok(/send\.disabled = true/.test(src) && /preventDefault/.test(src)
+      && /talkModelAvailable/.test(src),
+    'Send starts disabled and submit is gated on capability');
   ok(/talk-cards/.test(html) && /hidden/.test(html),
     'structured answer cards have a reserved hidden mount');
   try {

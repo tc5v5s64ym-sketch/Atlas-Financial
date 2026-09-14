@@ -243,8 +243,9 @@ for (const [page, label, id] of [['bills.html', 'Bills', 'bills'], ['subscriptio
       && !/<script>/.test(html),
     'talk.html loads the shared core and its own page script, not Forecast, and no inline script (CSP)');
   const pageScript = read('public/talk.js');
-  ok(/App\.boot\(/.test(pageScript) && /INTELLIGENCE SEAM/.test(pageScript),
-    'talk.js boots the shared core and keeps the intelligence seam named');
+  ok(/App\.boot\(/.test(pageScript) && /talkModelAvailable/.test(pageScript)
+      && /TALK_ASK_PATH/.test(pageScript),
+    'talk.js boots the shared core and gates Send on the Talk model path');
   ok(!/\$\d|\d\.\d\d\b|%/.test(html.replace(/<meta[^>]*>/g, '')),
     'talk.html hardcodes no figure');
   for (const href of [...html.matchAll(/href="(\/[^"#]*)"/g)].map(m => m[1])) {

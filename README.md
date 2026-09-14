@@ -39,6 +39,13 @@ is still the whole financial picture of two people.
 - `GET /talk/context` is the household Talk consumer of that same packet. It
   is unlocked only by the browser session cookie. The static assistant Bearer
   and MCP OAuth do not unlock it. It never writes.
+- `POST /talk/ask` is the household Talk Gemini explainer turn. It is unlocked
+  only by the browser session cookie. It loads that same packet, calls Google
+  Gemini (`gemini-2.5-flash-lite`) with the fixed Atlas instruction contract,
+  and returns `{ answer }`. Unset `ATLAS_TALK_GEMINI_API_KEY` → 503 and Send
+  stays disabled. The browser never holds that secret. It never writes and
+  does not persist prompts or answers. `GET /talk/capability` reports whether
+  that path is configured.
 - `POST /assistant/mcp` exposes that incumbent packet as exactly one MCP tool,
   `get_atlas_current`. It accepts only issuer-signed JWT access tokens issued
   for the exact MCP resource with scope `atlas.current.read`; the static
@@ -57,10 +64,11 @@ is still the whole financial picture of two people.
 - `noindex` headers plus a `robots.txt` that disallows everything.
 - A strict Content-Security-Policy; no inline scripts, no third-party requests.
 
-**`SITE_PASSWORD`, `SESSION_SECRET`, and `ATLAS_ASSISTANT_TOKEN` live in Render
-environment variables in production, and in your own shell's environment
-variables when running locally.** Never commit them, never put them in
-`data.json`, never send them to the browser, and never write them to a log.
+**`SITE_PASSWORD`, `SESSION_SECRET`, `ATLAS_ASSISTANT_TOKEN`, and
+`ATLAS_TALK_GEMINI_API_KEY` live in Render environment variables in
+production, and in your own shell's environment variables when running
+locally.** Never commit them, never put them in `data.json`, never send
+them to the browser, and never write them to a log.
 `ATLAS_MCP_RESOURCE_URL`, `ATLAS_OAUTH_ISSUER`, and `ATLAS_OAUTH_JWKS_URI`
 are non-secret OAuth endpoint identifiers, also supplied through the deployment
 environment. OAuth access and refresh tokens are never Atlas configuration and
@@ -129,7 +137,12 @@ node test/test-local.js
    JWKS. Missing or partial OAuth configuration → MCP and its metadata
    return 503. Invalid, expired, wrong-audience, or insufficient-scope
    tokens fail closed.
-8. Deploy. Every push to the default branch redeploys automatically.
+8. To enable Talk answers, set **`ATLAS_TALK_GEMINI_API_KEY`** by hand in
+   Render to a dedicated Gemini API key from the paid Atlas Talk project.
+   Do not reuse `SITE_PASSWORD`, `SESSION_SECRET`, `ATLAS_ASSISTANT_TOKEN`,
+   Lunch Money, MCP, Grok, or any other existing secret. Unset → Talk
+   answers stay unavailable and Send stays disabled.
+9. Deploy. Every push to the default branch redeploys automatically.
 
 The free plan sleeps after inactivity, so the first visit in a while takes about
 thirty seconds to wake. For a couple of check-ins a week that is fine.
