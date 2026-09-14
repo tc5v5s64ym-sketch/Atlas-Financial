@@ -59,8 +59,10 @@ of a ≥12-month knowledge horizon. The household payday answer is
 composed from that Forecast (`B96` / `AF-PLAN-02`). Read-only assistant
 access to Atlas is the incumbent `GET /assistant/current` packet (`B97`);
 ChatGPT reaches that same projection through the one-tool OAuth-protected
-`POST /assistant/mcp` resource. It consumes Forecast and is not a second
-planner. Dated account-balance
+`POST /assistant/mcp` resource. The household Talk page reaches that same
+projection through session-only `GET /talk/context` (`B103`). It consumes
+Forecast and is not a second planner. The session cookie, static assistant
+Bearer, and MCP OAuth do not unlock one another. Dated account-balance
 openings live in `snapshots/` (`B20` / `AF-HIST-01`); `data.json` remains
 the dated canonical opening. Today's live plan may overlay current
 posted/pending in memory without rewriting that opening. Do not treat 9 August

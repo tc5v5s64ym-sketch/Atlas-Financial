@@ -27,6 +27,22 @@
   max-width: 36rem;
 }
 
+.talk-context {
+  margin: 10px 0 0;
+  max-width: 36rem;
+  color: var(--muted);
+  font-size: .88rem;
+  line-height: 1.4;
+}
+
+.talk-context[data-talk-context="available"] {
+  color: var(--text-secondary);
+}
+
+.talk-context[data-talk-context="unavailable"] {
+  color: var(--muted);
+}
+
 .talk-thread {
   display: flex;
   flex-direction: column;

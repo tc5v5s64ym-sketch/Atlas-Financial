@@ -10,7 +10,8 @@
 //    tier sleeps) does not force a re-login mid-session.
 //  * GET /assistant/current remains a dedicated static-Bearer consumer.
 //    POST /assistant/mcp is separate again: an OAuth-protected MCP resource
-//    exposing the same packet as one read-only tool. Browser, static assistant,
+//    exposing the same packet as one read-only tool. GET /talk/context is the
+//    household-session consumer of that same packet. Browser, static assistant,
 //    and OAuth credentials do not unlock one another.
 
 const express = require('express');
@@ -329,7 +330,7 @@ app.use((req, res, next) => {
     return res.status(401).json({ error: 'not authenticated' });
   }
   if (authed(req)) return next();
-  if (req.path === '/data.json' || req.path === '/balance-history.json') {
+  if (req.path === '/data.json' || req.path === '/balance-history.json' || req.path === '/talk/context') {
     return res.status(401).json({ error: 'not authenticated' });
   }
   return res.redirect('/login');
@@ -348,6 +349,22 @@ app.get('/data.json', async (_req, res) => {
     console.error('data.json could not be read:', err.message);
     res.status(500).json({ error: 'data unavailable' });
   }
+});
+
+// Talk context — same incumbent assistant packet, browser session only.
+// Does not change /assistant/current or /assistant/mcp auth semantics.
+// Browser JS must not authenticate to those assistant endpoints.
+app.get('/talk/context', async (_req, res) => {
+  try {
+    res.json(await buildCurrentAssistantPacket());
+  } catch (err) {
+    console.error('talk context packet could not be built:', err.message);
+    res.status(500).json({ error: 'talk context unavailable' });
+  }
+});
+app.all('/talk/context', (_req, res) => {
+  res.set('Allow', 'GET');
+  return res.status(405).json({ error: 'method not allowed' });
 });
 
 // Dated balance snapshots. Assembled at request time from snapshots/*.json
