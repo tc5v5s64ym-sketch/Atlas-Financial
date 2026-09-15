@@ -148,6 +148,26 @@ function money(value) {
   return round2(value);
 }
 
+// Smallest leftover projection: copy Forecast.paydayAllocation.runningLeftover
+// money fields. Talk reprints them. This is not a leftover calculator.
+function projectPaydayAllocation(advice) {
+  const leftover = advice && advice.paydayAllocation && advice.paydayAllocation.runningLeftover;
+  if (!leftover || typeof leftover !== 'object' || Array.isArray(leftover)) {
+    return unavailable('payday-leftover-unavailable');
+  }
+  return {
+    status: 'ok',
+    source: 'Forecast.paydayAllocation',
+    runningLeftover: {
+      currentBalance: money(leftover.currentBalance),
+      afterBills: money(leftover.afterBills),
+      afterHouseholdBudget: money(leftover.afterHouseholdBudget),
+      afterDebtRepayment: money(leftover.afterDebtRepayment),
+      afterBigPurchases: money(leftover.afterBigPurchases),
+    },
+  };
+}
+
 function trustFor(value) {
   if (value == null) return 'unknown';
   return 'calculated';
@@ -430,6 +450,7 @@ function forecastBlock(data, asOf, advice, debtProj, periods) {
       majorPlanFunding: unavailable(reason),
       currentPeriodAction: unavailable(reason),
       budgetCap: unavailable(reason),
+      paydayAllocation: unavailable(reason),
     };
   }
   const horizon = advice.knowledge || Forecast.knowledgeHorizon(data.plan, asOf);
@@ -525,6 +546,7 @@ function forecastBlock(data, asOf, advice, debtProj, periods) {
         currentShortfall: action.currentShortfall === true,
       }
       : unavailable('current-period-action-unavailable'),
+    paydayAllocation: projectPaydayAllocation(advice),
     budgetCap: budget && budget.cap
       ? {
         status: 'ok',

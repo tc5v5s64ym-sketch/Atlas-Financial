@@ -83,6 +83,12 @@ const INSTRUCTION = [
   '{"intent":"why","referentKey":"last-presented"|"next-due"|"debt-risk"|"pay-period"|"spendable-cash"|"decision-posture"}',
   'referentPath or referentKey only selects which already-verified published result to explain. Do not invent a cause, reason, number, policy, recommendation, ranking, or free-form financial prose. Do not return reason, cause, because, explanation, or any other causal field. The server builds the explanation from allowlisted packet fields and provenance templates.',
   '',
+  'If and only if the household question asks what this payday leaves the household with, reply with exactly:',
+  '{"intent":"payday-leftover"}',
+  'If and only if that leftover ask is a deictic follow-up about an already-shown payday leftover ("what does that leave us with?"), reply with exactly:',
+  '{"intent":"payday-leftover","referentKey":"last-presented"}',
+  'Do not return leftover, amount, equals, runningLeftover, afterBigPurchases, leftoverAmount, or any leftover figure. The server reads Forecast leftover from this request\'s packet. Gemini extracts leftover intent or referent only.',
+  '',
   'If the question is missing the amount, missing the named debt, asks for the best debt or best two cards, where to put money, wherever saves most, maximum interest save, maximum they can afford, spare cash or all extra cash, a buffer or targetBuffer policy amount, an aggressive or decisionPosture choice of options, borrowing on HELOC to pay another debt, comparing without amounts, ambiguous Visa, MBNA or HELOC without a complete amount for each named debt, ignoring commitments, or any other planner act — including when the asker says to use policy alone or ignore Forecast — return status "unavailable" with an empty claims array. An explicit comparison that also asks which of those already-named options to prefer is still the comparison extract, not unavailable and not a winner.',
   '',
   'You MAY:',
@@ -94,9 +100,11 @@ const INSTRUCTION = [
   '- extract only intent, amount, and debtLabel for an explicit hypothetical extra that already names both',
   '- extract only intent and scenarios of amount plus debtLabel for an explicit comparison that already names both on each option',
   '- extract only intent and an optional allowlisted referentPath or referentKey for a why-question about an already-published result',
+  '- extract only leftover intent, or leftover intent plus last-presented, for a payday-leftover question; never a leftover amount',
   '- return status "unavailable" when something is not in the packet',
   '',
   'For pay-period, upcoming-commitment / bills, credit-picture, and factual decision-policy questions, cite only primitive path/equals claims already in this packet. Preferred paths:',
+  '- payday leftover: forecast.paydayAllocation.runningLeftover.afterBigPurchases',
   '- pay period: forecast.currentPeriodAction.periodStart, forecast.currentPeriodAction.periodEnd, forecast.currentPeriodAction.nextPayday, forecast.currentPeriodAction.essentialRemaining, forecast.currentPeriodAction.weeklyCap, forecast.currentPeriodAction.remainingClaim, current.spendableHouseholdCash.value',
   '- next commitment / bills: current.nextSignificantObligations.nextDue.label, current.nextSignificantObligations.nextDue.date, current.nextSignificantObligations.nextDue.amount, current.nextSignificantObligations.nextDue.daysUntil',
   '- credit picture: current.debts.totalAvailableCredit, current.pending.totalKnownPending, current.debts.overLimitCount, current.debts.securedDebt, current.debts.monthlyInterest',
@@ -456,6 +464,11 @@ function parseTalkModelOutput(text) {
   if (why.reason !== 'not-why') {
     return { ok: false, kind: 'why', reason: why.reason };
   }
+  const leftover = TalkSession.parseLeftoverExtract(parsed);
+  if (leftover.ok) return leftover;
+  if (leftover.reason !== 'not-leftover') {
+    return { ok: false, kind: TalkSession.LEFTOVER_INTENT, reason: leftover.reason };
+  }
   const hyp = TalkHypothetical.parseExtract(parsed);
   if (hyp.ok) return hyp;
   if (hyp.reason !== 'not-hypothetical') {
@@ -615,6 +628,29 @@ function attachSessionTurn(presented, sessionTurn) {
   return presented;
 }
 
+function presentLeftoverExtract(extract, packet, question, priorTurn) {
+  const resolved = TalkSession.resolvePaydayLeftover({
+    question,
+    priorTurn,
+    extract,
+  });
+  if (resolved.status !== 'resolved-reference') {
+    return attachSessionTurn(
+      TalkPresentation.presentVerifiedClaims({ status: 'unavailable', claims: [] }, packet),
+      { kind: 'unavailable' }
+    );
+  }
+  const claims = TalkWhy.publishablePaths(resolved.paths, packet);
+  const presented = TalkPresentation.presentVerifiedClaims(
+    claims.length ? { status: 'explained', claims } : { status: 'unavailable', claims: [] },
+    packet
+  );
+  return attachSessionTurn(
+    presented,
+    claims.length ? TalkWhy.sessionTurnFromExplained(claims) : { kind: 'unavailable' }
+  );
+}
+
 function presentWhyExtract(extract, packet, question, priorTurn) {
   const result = TalkWhy.resolve({
     question,
@@ -664,6 +700,12 @@ async function ask({ question, packet, env, atlas, conversation, priorTurn }) {
   if (!text) throw talkAnswerUnavailable();
   const model = parseTalkModelOutput(text);
   if (!model.ok) {
+    if (model.kind === TalkSession.LEFTOVER_INTENT) {
+      return attachSessionTurn(
+        TalkPresentation.presentVerifiedClaims({ status: 'unavailable', claims: [] }, packet),
+        { kind: 'unavailable' }
+      );
+    }
     if (model.kind === 'why') {
       return attachSessionTurn(
         TalkPresentation.presentWhyExplanation({ status: 'unavailable' }, packet),
@@ -683,6 +725,13 @@ async function ask({ question, packet, env, atlas, conversation, priorTurn }) {
       );
     }
     throw talkAnswerUnavailable();
+  }
+  if (model.intent === TalkSession.LEFTOVER_INTENT) {
+    const presented = presentLeftoverExtract(model, packet, parsed.question, priorTurn);
+    if (!presented || typeof presented.answer !== 'string' || !presented.answer.trim()) {
+      throw talkAnswerUnavailable();
+    }
+    return presented;
   }
   if (model.intent === TalkWhy.WHY_INTENT) {
     const presented = presentWhyExtract(model, packet, parsed.question, priorTurn);

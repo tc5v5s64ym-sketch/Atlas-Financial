@@ -154,6 +154,14 @@ function remainingClaimTrust(packet) {
   return null;
 }
 
+function leftoverTrust(packet) {
+  const status = packetGet(packet, 'forecast.paydayAllocation.status');
+  if (status === 'unavailable') return 'unavailable';
+  const leftover = packetGet(packet, 'forecast.paydayAllocation.runningLeftover.afterBigPurchases');
+  if (leftover == null || !Number.isFinite(Number(leftover))) return 'unavailable';
+  return 'calculated';
+}
+
 function facilityFromAvailablePath(path, packet) {
   const match = /^current\.debts\.facilities\[(\d{1,3})\]\.available$/.exec(path);
   if (!match) return null;
@@ -242,6 +250,18 @@ const PATH_RULES = [
       return moneySentence({
         available: money => `You have ${money} remaining in the current pay period.`,
         unavailable: 'Current pay-period remaining is unavailable.',
+      }, value);
+    },
+  },
+  {
+    path: 'forecast.paydayAllocation.runningLeftover.afterBigPurchases',
+    source: 'Forecast',
+    action: 'budget',
+    trust: leftoverTrust,
+    present(value) {
+      return moneySentence({
+        available: money => `This payday leaves us with ${money}.`,
+        unavailable: 'Payday leftover is unavailable.',
       }, value);
     },
   },
