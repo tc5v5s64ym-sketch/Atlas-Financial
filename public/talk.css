@@ -178,6 +178,45 @@
   text-decoration: underline;
 }
 
+.talk-citations {
+  margin-top: 10px;
+}
+
+.talk-citations-title {
+  margin: 0 0 4px;
+  font-size: .72rem;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--s1);
+}
+
+.talk-citations-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.talk-citation {
+  color: var(--muted);
+  font-size: .82rem;
+  line-height: 1.4;
+}
+
+.talk-citation + .talk-citation {
+  margin-top: 4px;
+}
+
+.talk-citation-surface a {
+  color: var(--s1);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.talk-citation-surface a:hover {
+  text-decoration: underline;
+}
+
 .talk-cards[hidden] {
   display: none;
 }

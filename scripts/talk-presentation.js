@@ -9,7 +9,9 @@
  * wording; this file still does not call Forecast, does not compute
  * leftover or remaining, and does not invent a second financial schema.
  * Optional presentation.cards reprint those same trusted strings for
- * the Talk card surface. Cards do not add numbers.
+ * the Talk card surface. Cards do not add numbers. Household-facing
+ * citations are assembled here from the same source / trust / as-of /
+ * action fields. Gemini does not invent them.
  *
  * Unknown paths stay conservative: path-is-value wording, no human
  * meaning, no Forecast/Bills/Credit/Planning provenance, no nav action.
@@ -32,6 +34,30 @@ const ALLOWED_ACTIONS = Object.freeze({
 
 const ALLOWED_ACTION_HREFS = Object.freeze(['/', '/bills.html', '/credit.html', '/planning.html']);
 const ALLOWED_SOURCES = Object.freeze(['Forecast', 'Bills', 'Credit', 'Planning']);
+const SURFACE_LABELS = Object.freeze({
+  '/': 'Budget',
+  '/bills.html': 'Bills',
+  '/credit.html': 'Credit',
+  '/planning.html': 'Planning',
+});
+const CITATION_KINDS = Object.freeze({
+  surface: true,
+  provenance: true,
+});
+const CITATION_TRUST = Object.freeze({
+  unavailable: true,
+  unknown: true,
+  'dated-opening': true,
+  planned: true,
+  estimated: true,
+  'posted-only': true,
+  calculated: true,
+  'owner-stated': true,
+  'canonical-opening': true,
+  precise: true,
+  confirmed: true,
+  live: true,
+});
 const CARD_VERSION = 1;
 const CARD_KINDS = Object.freeze({
   answer: true,
@@ -705,6 +731,108 @@ function provenanceText(fields) {
   return parts.length ? parts.join(' · ') : null;
 }
 
+function publicCitationTrust(trust) {
+  if (typeof trust !== 'string' || !trust) return null;
+  if (trust === 'verified' || trust === 'current') return null;
+  return CITATION_TRUST[trust] ? trust : null;
+}
+
+function publicAsOf(value) {
+  if (typeof value !== 'string' || !value || value.length > 40) return null;
+  if (/[\\/]/.test(value) || /\.env\b|raw|derived|secret/i.test(value)) return null;
+  return value;
+}
+
+function looksLikePrivateCitation(raw) {
+  if (!raw || typeof raw !== 'object') return true;
+  const blob = [raw.href, raw.label, raw.source, raw.asOf, raw.file, raw.url, raw.path]
+    .filter(value => typeof value === 'string')
+    .join('\n');
+  return /(?:^|[\\/])(?:raw|derived)[\\/]|\.env\b|scripts[\\/]|public[\\/]forecast\.js|account[_\s-]?number|ATLAS_TALK|SESSION_SECRET|SITE_PASSWORD/i.test(blob);
+}
+
+function sanitizeCitations(citations) {
+  if (!Array.isArray(citations) || !citations.length) return null;
+  const items = [];
+  for (const raw of citations) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    if (!CITATION_KINDS[raw.kind]) return null;
+    if (raw.trust === 'verified' || raw.source === 'verified') return null;
+    if (looksLikePrivateCitation(raw)) return null;
+    if (raw.kind === 'surface') {
+      const action = publicAction({ href: raw.href, label: raw.label });
+      const source = ALLOWED_SOURCES.includes(raw.source) ? raw.source : null;
+      const label = action ? SURFACE_LABELS[action.href] : null;
+      if (!action || !source || !label || raw.label !== label) return null;
+      items.push({
+        kind: 'surface',
+        source,
+        href: action.href,
+        label,
+      });
+      continue;
+    }
+    const source = ALLOWED_SOURCES.includes(raw.source) ? raw.source : null;
+    const trust = publicCitationTrust(raw.trust);
+    const asOf = publicAsOf(raw.asOf);
+    const freshnessRaw = publicCitationTrust(raw.freshness);
+    const freshness = freshnessRaw && freshnessRaw !== trust ? freshnessRaw : null;
+    if (raw.trust != null && raw.trust !== '' && !trust) return null;
+    if (raw.source != null && raw.source !== '' && !source) return null;
+    if (raw.asOf != null && raw.asOf !== '' && !asOf) return null;
+    const label = provenanceText({ source, asOf, trust, freshness });
+    if (!label || (typeof raw.label === 'string' && raw.label && raw.label !== label)) {
+      return null;
+    }
+    items.push({
+      kind: 'provenance',
+      source,
+      asOf,
+      trust,
+      freshness,
+      label,
+    });
+  }
+  return items.length ? items : null;
+}
+
+function assembleCitations(fields) {
+  if (!fields || typeof fields !== 'object' || Array.isArray(fields)) return null;
+  const source = ALLOWED_SOURCES.includes(fields.source) ? fields.source : null;
+  const action = publicAction(fields.action);
+  const trust = publicCitationTrust(fields.trust);
+  const asOf = publicAsOf(fields.asOf);
+  const freshnessRaw = publicCitationTrust(fields.freshness);
+  const freshness = freshnessRaw && freshnessRaw !== trust ? freshnessRaw : null;
+  const items = [];
+  if (source && action) {
+    const label = SURFACE_LABELS[action.href];
+    if (label) {
+      items.push({
+        kind: 'surface',
+        source,
+        href: action.href,
+        label,
+      });
+    }
+  }
+  if (!source && trust === 'unavailable') {
+    return sanitizeCitations(items);
+  }
+  const label = provenanceText({ source, asOf, trust, freshness });
+  if (label) {
+    items.push({
+      kind: 'provenance',
+      source,
+      asOf,
+      trust,
+      freshness,
+      label,
+    });
+  }
+  return sanitizeCitations(items);
+}
+
 function sanitizePresentationCards(cards) {
   if (!cards || typeof cards !== 'object' || Array.isArray(cards)) return null;
   if (cards.version !== CARD_VERSION) return null;
@@ -761,6 +889,7 @@ function finishPresentation(presentation, extras) {
     version: CARD_VERSION,
     items: leading.concat(trailingMetaCards(presentation)),
   });
+  presentation.citations = assembleCitations(presentation);
   return presentation;
 }
 
@@ -1069,9 +1198,15 @@ module.exports = {
   ALLOWED_ACTIONS,
   ALLOWED_ACTION_HREFS,
   ALLOWED_SOURCES,
+  SURFACE_LABELS,
+  CITATION_KINDS,
+  CITATION_TRUST,
   CARD_VERSION,
   CARD_KINDS,
   sanitizePresentationCards,
+  sanitizeCitations,
+  assembleCitations,
+  publicCitationTrust,
   formatCurrency,
   formatClaimValue,
   isPrimitive,

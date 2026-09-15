@@ -82,8 +82,9 @@ console.log('=== 1. Talk page identity, empty state, composer, prompts ===');
       && /talk-answer-action/.test(css)
       && /talk-card-title/.test(css)
       && /talk-card-body/.test(css)
-      && /talk-card-judgment/.test(css),
-    'talk.css styles the empty state, composer, prompts, context, answer meta, action and cards');
+      && /talk-card-judgment/.test(css)
+      && /talk-citations/.test(css),
+    'talk.css styles the empty state, composer, prompts, context, answer meta, action, cards and citations');
 }
 
 console.log('\n=== 2. talk.js is a shell — no Forecast, no secret, no assistant auth ===');

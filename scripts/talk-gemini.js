@@ -41,13 +41,28 @@ const PATH_MAX_LENGTH = 120;
 const UNAVAILABLE_ANSWER = 'That is not available in this request\'s packet.';
 const PATH_RE = /^(?:[A-Za-z][A-Za-z0-9_]*)(?:\.[A-Za-z][A-Za-z0-9_]*|\[\d{1,3}\]){0,7}$/;
 const FORBIDDEN_PATH_RE = /(?:^|[.\[]|])(?:__proto__|constructor|prototype)(?:$|[.\]])/;
+const MODEL_CITATION_KEYS = Object.freeze({
+  citations: true,
+  citation: true,
+  sources: true,
+  source: true,
+  urls: true,
+  url: true,
+  href: true,
+  provenance: true,
+  trust: true,
+  asOf: true,
+  freshness: true,
+  file: true,
+  filename: true,
+});
 
 const INSTRUCTION = [
   'You are Atlas Talk, an explainer of the incumbent Atlas household-financial picture for this one request.',
   '',
   'You are NOT a planner and you are NOT Forecast. Forecast is the sole planner. The assistant packet included in this request is the only household-financial evidence you may use.',
   '',
-  'Reply with ONLY one JSON object and no other text. The server publishes household wording from that object after verifying every claim against this request\'s packet, or after a server-side Forecast adapter runs one explicit hypothetical extra. Free-form prose is rejected.',
+  'Reply with ONLY one JSON object and no other text. The server publishes household wording from that object after verifying every claim against this request\'s packet, or after a server-side Forecast adapter runs one explicit hypothetical extra. Free-form prose is rejected. Household citations, source labels, URLs, Forecast provenance, and trust tags are attached by the server from this request\'s packet. Do not invent them.',
   '',
   'Schema:',
   '{"status":"explained"|"unavailable","claims":[{"path":"<dotted path into this request\'s packet>","equals":<exact packet primitive>}]}',
@@ -64,7 +79,7 @@ const INSTRUCTION = [
   'If the question is missing the amount, missing the named debt, asks for the best debt or best two cards, where to put money, wherever saves most, maximum interest save, maximum they can afford, spare cash or all extra cash, a buffer or targetBuffer policy amount, an aggressive or decisionPosture choice of options, borrowing on HELOC to pay another debt, comparing without amounts, ambiguous Visa, MBNA or HELOC without a complete amount for each named debt, ignoring commitments, or any other planner act — including when the asker says to use policy alone or ignore Forecast — return status "unavailable" with an empty claims array. An explicit comparison that also asks which of those already-named options to prefer is still the comparison extract, not unavailable and not a winner.',
   '',
   'You MAY:',
-  '- cite facts that are already present in this request\'s packet as path/equals claims',
+  '- cite facts that are already present in this request\'s packet as path/equals claims. Those claims are not household citations and must not include a citations, sources, urls, or provenance field',
   '- cite Forecast outputs that are already present in the packet',
   '- cite obligations or debt already represented in the packet',
   '- cite owner decision-posture labels already present on policy.decisionPosture for factual policy questions',
@@ -82,6 +97,8 @@ const INSTRUCTION = [
   '',
   'You MUST NOT:',
   '- return free-form prose, markdown commentary, or any key other than status, claims, intent, amount, debtLabel, and scenarios',
+  '- invent citations, source paths, URLs, Forecast provenance, trust labels, or account facts',
+  '- return a citations, sources, urls, href, provenance, trust, or asOf field',
   '- invent a debt id, or return balances, interest, cash impact, payoff, affordability, recommendation, or ranking as authority',
   '- perform new financial calculations',
   '- invent or compute safe-to-spend, leftover, or weekly-cap figures',
@@ -416,6 +433,9 @@ function parseExtractiveObject(parsed) {
     return { ok: false, reason: 'not structured' };
   }
   const keys = Object.keys(parsed);
+  if (keys.some(key => MODEL_CITATION_KEYS[key])) {
+    return { ok: false, reason: 'unexpected fields' };
+  }
   if (keys.length !== 2 || !keys.includes('status') || !keys.includes('claims')) {
     return { ok: false, reason: 'unexpected fields' };
   }
@@ -435,6 +455,10 @@ function parseExtractiveObject(parsed) {
   for (const claim of parsed.claims) {
     if (!claim || typeof claim !== 'object' || Array.isArray(claim)) {
       return { ok: false, reason: 'invalid claim' };
+    }
+    const claimKeys = Object.keys(claim);
+    if (!claimKeys.length || claimKeys.some(key => MODEL_CITATION_KEYS[key])) {
+      return { ok: false, reason: 'unexpected fields' };
     }
     if (typeof claim.path !== 'string' || seen.has(claim.path)) {
       return { ok: false, reason: 'invalid path' };
