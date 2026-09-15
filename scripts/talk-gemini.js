@@ -77,6 +77,10 @@ const INSTRUCTION = [
   'Preserve each caller amount with the debt the caller paired it to. Different amounts are allowed only when the caller stated them. Do not omit, add, or swap options. Do not invent a debt id. Do not return balances, interest, cash, ranking, a winner, a recommendation, affordability, policy, permission, or free-form financial prose as authority.',
   'If that same explicit comparison also asks which of those already-named options to prefer, or which is better for interest given the same cash, still reply with only that comparison extract. Do not return a winner, ranking, recommendation, or preference field. The server applies any authorized preference from Forecast comparison figures only.',
   '',
+  'If and only if the household question is a bare Which one? about an already-shown two-option comparison, reply with exactly:',
+  '{"intent":"hypothetical-extra-payment-comparison","referentKey":"last-presented"}',
+  'Do not return scenarios, amounts, debt labels, a winner, ranking, recommendation, preference, or preferred field. History may resolve the referent only. The server applies any authorized preference from Forecast comparison figures only. Gemini does not choose or change the winner.',
+  '',
   'If and only if the household question asks why Atlas published an already-shown figure, bill, debt-risk picture, or last answer, reply with exactly one of:',
   '{"intent":"why"}',
   '{"intent":"why","referentPath":"<one allowlisted dotted path already in this request\'s packet>"}',
@@ -118,6 +122,7 @@ const INSTRUCTION = [
   '- extract only leftover intent, or leftover intent plus last-presented, for a payday-leftover question; never a leftover amount',
   '- extract only payday-picture intent for a what-this-payday-looks-like question; never a payday amount',
   '- extract only remaining-bills intent, or covered / last-presented referent, or caller-named billLabel, for a payday remaining-bills question; never an amount or settlement status',
+  '- extract only comparison intent plus last-presented for a bare Which one? about an already-shown two-option comparison; never a winner, ranking, preference, scenarios, amount, or debtLabel',
   '- return status "unavailable" when something is not in the packet',
   '',
   'For pay-period, upcoming-commitment / bills, credit-picture, and factual decision-policy questions, cite only primitive path/equals claims already in this packet. Preferred paths:',
@@ -631,7 +636,34 @@ function presentHypotheticalExtract(extract, packet, atlas, question) {
   );
 }
 
-function presentComparisonExtract(extract, packet, atlas, question) {
+function presentComparisonExtract(extract, packet, atlas, question, priorTurn, priorTurns) {
+  if (extract && extract.referentKey === 'last-presented') {
+    const follow = TalkSession.resolveFollowup({
+      question,
+      priorTurn,
+      priorTurns,
+      debts: atlas && atlas.debts,
+      packet,
+    });
+    if (follow.status !== 'resolved-preference') {
+      return attachSessionTurn(
+        TalkPresentation.presentHypotheticalComparison({ status: 'unavailable' }, packet),
+        { kind: 'unavailable' }
+      );
+    }
+    const result = TalkHypothetical.evaluateComparisonResolved({
+      scenarios: follow.scenarios,
+      plan: atlas && atlas.plan,
+      debts: atlas && atlas.debts,
+      packet,
+    });
+    const preference = TalkHypothetical.judgeComparisonPreference(result);
+    const presented = TalkPresentation.presentHypotheticalComparison(result, packet, preference);
+    return attachSessionTurn(
+      presented,
+      TalkSession.sessionTurnFromComparison(result, presented)
+    );
+  }
   const result = TalkHypothetical.evaluateComparison({
     scenarios: extract.scenarios,
     question,
@@ -737,7 +769,7 @@ function presentWhyExtract(extract, packet, question, priorTurn) {
   );
 }
 
-async function ask({ question, packet, env, atlas, conversation, priorTurn }) {
+async function ask({ question, packet, env, atlas, conversation, priorTurn, priorTurns }) {
   if (!isConfigured(env)) throw talkUnavailable();
   const parsed = normalizeQuestion(question);
   if (parsed.error) {
@@ -843,7 +875,9 @@ async function ask({ question, packet, env, atlas, conversation, priorTurn }) {
     );
   }
   if (model.intent === TalkHypothetical.COMPARISON_INTENT) {
-    const presented = presentComparisonExtract(model, packet, atlas, parsed.question);
+    const presented = presentComparisonExtract(
+      model, packet, atlas, parsed.question, priorTurn, priorTurns
+    );
     if (!presented || typeof presented.answer !== 'string' || !presented.answer.trim()) {
       throw talkAnswerUnavailable();
     }
