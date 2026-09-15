@@ -3,7 +3,11 @@
  *
  * This file fetches GET /talk/context and GET /talk/capability with the
  * same-origin session cookie, and POSTs { question } only to /talk/ask
- * when the model path is available. It does not send prior turns; the
+ * when the model path is available. It asks for text/event-stream so
+ * the server can emit allowlisted progress phases, then the same
+ * verified JSON body. It never renders a stream event as household
+ * copy unless the phase is locally allowlisted or the final payload
+ * has the incumbent answer shape. It does not send prior turns; the
  * server holds ephemeral session context. It does not call
  * /assistant/current or /assistant/mcp, does not send a Bearer or OAuth
  * token, does not hold the Talk model secret, does not read Forecast,
@@ -21,6 +25,12 @@
 
 const TALK_STUB_COPY = 'Talk is not connected yet. It will not invent an answer.';
 const TALK_LOADING_COPY = 'Atlas is reading the current picture…';
+const TALK_STREAM_PHASES = {
+  understanding: 'Understanding your question…',
+  'checking-atlas-context': 'Checking the current Atlas picture…',
+  'running-forecast': 'Running Forecast…',
+  'preparing-verified-answer': 'Preparing a verified answer…',
+};
 const TALK_ERROR_COPY = 'Atlas could not answer just now. Try again, or see Budget, Bills, Credit or Planning.';
 const TALK_CONTEXT_PATH = '/talk/context';
 const TALK_CAPABILITY_PATH = '/talk/capability';
@@ -54,6 +64,7 @@ const TALK_CITATION_SOURCES = {
 
 let talkModelAvailable = false;
 let talkAskInFlight = false;
+let talkAskAbort = null;
 
 function talkEscape(text) {
   return String(text)
@@ -188,6 +199,148 @@ function replaceTalkLoading(node) {
     const thread = talkThread();
     if (thread) thread.appendChild(node);
   }
+}
+
+function talkStreamStatusText(phase) {
+  if (typeof phase !== 'string') return null;
+  return Object.prototype.hasOwnProperty.call(TALK_STREAM_PHASES, phase)
+    ? TALK_STREAM_PHASES[phase]
+    : null;
+}
+
+function updateTalkLoading(text) {
+  if (typeof text !== 'string' || !text) return;
+  const loading = document.querySelector('[data-talk-role="atlas-loading"]');
+  if (!loading) return;
+  const p = loading.querySelector ? loading.querySelector('p') : null;
+  if (p) p.textContent = text;
+}
+
+function parseTalkSse(buffer) {
+  const events = [];
+  let rest = String(buffer || '');
+  for (;;) {
+    const split = rest.indexOf('\n\n');
+    if (split < 0) break;
+    const raw = rest.slice(0, split);
+    rest = rest.slice(split + 2);
+    let event = 'message';
+    const dataLines = [];
+    const lines = raw.split('\n');
+    for (let i = 0; i < lines.length; i += 1) {
+      const line = lines[i];
+      if (!line || line.charAt(0) === ':') continue;
+      if (line.indexOf('event:') === 0) {
+        event = line.slice(6).trim();
+      } else if (line.indexOf('data:') === 0) {
+        const payload = line.slice(5);
+        dataLines.push(payload.charAt(0) === ' ' ? payload.slice(1) : payload);
+      }
+    }
+    if (!dataLines.length) continue;
+    events.push({ event, data: dataLines.join('\n') });
+  }
+  return { events, rest };
+}
+
+function interpretTalkStreamEvent(raw) {
+  if (!raw || (raw.event !== 'status' && raw.event !== 'result' && raw.event !== 'error')) {
+    return { type: 'ignore' };
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw.data);
+  } catch {
+    return { type: 'ignore' };
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return { type: 'ignore' };
+  }
+  if (raw.event === 'status') {
+    const text = talkStreamStatusText(parsed.phase);
+    if (!text) return { type: 'ignore' };
+    return { type: 'status', phase: parsed.phase, text };
+  }
+  if (raw.event === 'error') {
+    if (typeof parsed.error !== 'string' || !parsed.error) return { type: 'ignore' };
+    return { type: 'error', error: parsed.error };
+  }
+  if (typeof parsed.answer !== 'string' || !parsed.answer.trim()) {
+    return { type: 'ignore' };
+  }
+  return {
+    type: 'result',
+    payload: {
+      answer: parsed.answer,
+      source: parsed.source || null,
+      trust: parsed.trust || null,
+      asOf: parsed.asOf || null,
+      freshness: parsed.freshness || null,
+      action: parsed.action || null,
+      cards: parsed.cards || null,
+      citations: parsed.citations || null,
+    },
+  };
+}
+
+function applyTalkStreamEvents(events, onStatus) {
+  let result = null;
+  let error = null;
+  if (!Array.isArray(events)) return { result, error };
+  for (let i = 0; i < events.length; i += 1) {
+    const item = interpretTalkStreamEvent(events[i]);
+    if (item.type === 'status') {
+      if (typeof onStatus === 'function') onStatus(item.text);
+    } else if (item.type === 'error' && !result) {
+      error = item.error;
+    } else if (item.type === 'result') {
+      result = item.payload;
+      error = null;
+    }
+  }
+  return { result, error };
+}
+
+async function readTalkAskStream(res, onStatus, signal) {
+  if (!res || !res.body || typeof res.body.getReader !== 'function') {
+    throw new Error('error');
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let result = null;
+  let streamError = null;
+  try {
+    while (true) {
+      if (signal && signal.aborted) {
+        const abortErr = new Error('aborted');
+        abortErr.name = 'AbortError';
+        throw abortErr;
+      }
+      const read = await reader.read();
+      if (read.done) break;
+      buffer += decoder.decode(read.value, { stream: true });
+      const parsed = parseTalkSse(buffer);
+      buffer = parsed.rest;
+      const applied = applyTalkStreamEvents(parsed.events, onStatus);
+      if (applied.result) {
+        result = applied.result;
+        streamError = null;
+        break;
+      }
+      if (applied.error) {
+        streamError = applied.error;
+        break;
+      }
+    }
+  } finally {
+    try { reader.cancel(); } catch (e) { /* already closed */ }
+  }
+  if (streamError) {
+    throw new Error(streamError === 'talk unavailable' ? 'unavailable' : 'error');
+  }
+  if (!result) throw new Error('error');
+  return result;
 }
 
 function talkPresentation(value) {
@@ -446,13 +599,26 @@ function talkErrorNode(text) {
   return article;
 }
 
-async function askTalk(question) {
+async function askTalk(question, signal) {
   const res = await fetch(TALK_ASK_PATH, {
     method: 'POST',
     credentials: 'same-origin',
-    headers: { 'content-type': 'application/json' },
+    headers: {
+      'content-type': 'application/json',
+      accept: 'text/event-stream',
+    },
     body: JSON.stringify({ question }),
+    signal,
   });
+  const contentType = String(res.headers && res.headers.get
+    ? res.headers.get('content-type')
+    : '').toLowerCase();
+  if (contentType.indexOf('text/event-stream') !== -1) {
+    if (!res.ok) {
+      throw new Error('error');
+    }
+    return readTalkAskStream(res, updateTalkLoading, signal);
+  }
   let body = {};
   try {
     body = await res.json();
@@ -492,12 +658,19 @@ async function submitTalkQuestion(raw) {
   }
   talkAskInFlight = true;
   setTalkSendEnabled(false);
+  if (talkAskAbort && typeof talkAskAbort.abort === 'function') {
+    try { talkAskAbort.abort(); } catch (e) { /* already ended */ }
+  }
+  const controller = typeof AbortController === 'function' ? new AbortController() : null;
+  talkAskAbort = controller;
   appendTalkBubble('atlas-loading', 'talk-bubble-atlas talk-bubble-loading', TALK_LOADING_COPY);
   try {
-    const answer = await askTalk(question);
+    const answer = await askTalk(question, controller ? controller.signal : undefined);
     replaceTalkLoading(talkAnswerNode(answer));
   } catch (err) {
-    if (err && err.message === 'unavailable') {
+    if (err && err.name === 'AbortError') {
+      replaceTalkLoading(talkErrorNode(TALK_ERROR_COPY));
+    } else if (err && err.message === 'unavailable') {
       replaceTalkLoading(null);
       const thread = talkThread();
       if (thread) thread.insertAdjacentHTML('beforeend', talkStubHtml());
@@ -505,6 +678,7 @@ async function submitTalkQuestion(raw) {
       replaceTalkLoading(talkErrorNode(TALK_ERROR_COPY));
     }
   } finally {
+    if (talkAskAbort === controller) talkAskAbort = null;
     talkAskInFlight = false;
     setTalkSendEnabled(talkModelAvailable);
   }

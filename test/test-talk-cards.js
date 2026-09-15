@@ -150,7 +150,8 @@ console.log('=== 1. Reserved mount, no browser money math, no Forecast ===');
   ok(!/split\(|match\(|RegExp/.test(src.split('talkValidCards')[1] || ''),
     'card validation does not parse answer text into claims');
   ok(!/innerHTML\s*=/.test(src), 'card render does not assign innerHTML');
-  ok(/cards: presented\.cards \|\| null/.test(serverSrc),
+  ok(/cards: presented\.cards \|\| null/.test(read('scripts/talk-stream.js'))
+      && /TalkStream\.publicAskBody/.test(serverSrc),
     'POST /talk/ask forwards already-built presentation cards');
   ok(/sanitizePresentationCards/.test(presentationSrc)
       && /kind: 'option'/.test(presentationSrc)

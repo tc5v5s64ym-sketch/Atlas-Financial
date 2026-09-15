@@ -54,6 +54,17 @@ async function main() {
   });
   ok(r.status === 401, 'POST /talk/ask is blocked without a session', `status ${r.status}`);
 
+  r = await fetch(`${BASE}/talk/ask`, {
+    method: 'POST',
+    redirect: 'manual',
+    headers: {
+      'content-type': 'application/json',
+      accept: 'text/event-stream',
+    },
+    body: JSON.stringify({ question: 'What should I know today?' }),
+  });
+  ok(r.status === 401, 'POST /talk/ask stream is blocked without a session', `status ${r.status}`);
+
   r = await fetch(`${BASE}/app.js`, { redirect: 'manual' });
   ok(r.status === 302, 'GET /app.js redirects to login', `status ${r.status}`);
 

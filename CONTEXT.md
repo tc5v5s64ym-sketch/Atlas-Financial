@@ -72,7 +72,9 @@ and named debts are filled only when the server can resolve them
 deterministically; ambiguity is unavailable. Gemini is an explainer,
 not a planner. The server never publishes free-form model text; it
 verifies extractive claims against this request's packet, then maps
-those verified values through Atlas presentation templates. The server,
+those verified values through Atlas presentation templates. Progressive
+Talk updates are allowlisted status phases only; the verified payload is
+published once, identical to the non-stream JSON body. The server,
 not Gemini, attaches household-facing citations from allowlisted Atlas
 surfaces and the same trusted source, trust, and as-of fields; invented
 model citations fail closed. The Talk
@@ -307,7 +309,7 @@ Modellers, Deep Dive, and Records keep their four-link text nav:
 | Subscriptions | `subscriptions.html` | `subscriptions.js` + `forecast.js` | Recurring subscriptions and memberships as Credit-style fact cards: name, amount, cadence, next date, and monthly equivalent from `Forecast.householdSubscriptions`. Household bills stay off this page. |
 | Credit | `credit.html` | `credit.js` + `forecast.js` | What the household owes: mortgage, HELOC, then every active card — balances, limits, Forecast.utilisation headroom, rates, next required payment from the Forecast schedule (`Forecast.creditAccounts`). The visual reference for the Bills and Subscriptions fact cards. |
 | Planning | `planning.html` | `planning.js` + `forecast.js` | Known future costs: `Forecast.majorPlans` verdicts, ranges, timing and any Forecast payday set-aside, in Forecast order |
-| Talk | `talk.html` | `talk.js` | Household conversation shell. Session context metadata plus session-scoped Gemini explainer when `ATLAS_TALK_GEMINI_API_KEY` is configured. Prior turns stay on the server as ephemeral conversational context only; the browser still POSTs `{ question }` only. Send stays disabled when that path is unavailable. Server publishes only wording assembled from packet-verified extractive claims, plus deterministic citations from allowlisted Atlas surfaces and existing provenance. Not a second planner and not a published-figure owner. |
+| Talk | `talk.html` | `talk.js` | Household conversation shell. Session context metadata plus session-scoped Gemini explainer when `ATLAS_TALK_GEMINI_API_KEY` is configured. Prior turns stay on the server as ephemeral conversational context only; the browser still POSTs `{ question }` only. Send stays disabled when that path is unavailable. Server publishes only wording assembled from packet-verified extractive claims, plus deterministic citations from allowlisted Atlas surfaces and existing provenance. Progressive status is allowlisted server phase ids; the final streamed body equals the non-stream JSON. Not a second planner and not a published-figure owner. |
 | Modellers | `modellers.html` | `modellers.js` + `forecast.js` | Payoff and renewal modelling |
 | Deep Dive | `deepdive.html` | `deepdive.js` | Debt, HELOC, flows, lacrosse, questions |
 | Records | `records.html` | `records.js` | Balance sheet, coverage, assumptions |

@@ -144,7 +144,8 @@ console.log('=== 1. Contract: server owns citations; Gemini cannot invent them =
   ok(!/require\(['"][^'"]*forecast/i.test(presentationSrc)
       && !/require\(['"][^'"]*forecast/i.test(geminiSrc),
     'citation assembly still does not import Forecast');
-  ok(/citations: presented\.citations \|\| null/.test(serverSrc),
+  ok(/citations: presented\.citations \|\| null/.test(read('scripts/talk-stream.js'))
+      && /TalkStream\.publicAskBody/.test(serverSrc),
     'POST /talk/ask forwards server-assembled citations');
   ok(/invent citations/.test(TalkGemini.INSTRUCTION)
       && /return a citations/.test(TalkGemini.INSTRUCTION)
