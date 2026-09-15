@@ -290,11 +290,17 @@ console.log('\n=== 5. Hypo / compare / preference cards match Forecast fields ==
   });
   const interest = TalkPresentation.formatCurrency(forecastHypo.delta.debt.interest);
   const cash = TalkPresentation.formatCurrency(forecastHypo.delta.cash.ending);
+  const hypoContentKinds = { answer: true, result: true, option: true, judgment: true, note: true };
   ok(forecastHypo.status === 'ready'
       && presentedHypo.answer.indexOf(interest) !== -1
       && presentedHypo.cards.items.some(item => item.kind === 'result' && item.body.indexOf(interest) !== -1)
       && presentedHypo.cards.items.some(item => item.kind === 'result' && item.body.indexOf(cash) !== -1)
-      && presentedHypo.cards.items.every(item => presentedHypo.answer.indexOf(item.body) !== -1),
+      && presentedHypo.cards.items
+        .filter(item => hypoContentKinds[item.kind])
+        .every(item => presentedHypo.answer.indexOf(item.body) !== -1)
+      && presentedHypo.cards.items.some(item => (
+        item.kind === 'provenance' && item.body.indexOf(START) !== -1 && item.body.indexOf('Forecast') !== -1
+      )),
     'hypothetical result cards reprint independently formatted Forecast deltas already in the answer');
 
   const compare = TalkHypothetical.evaluateComparison({
@@ -339,7 +345,9 @@ console.log('\n=== 5. Hypo / compare / preference cards match Forecast fields ==
       && presentedPrefer.cards.items.some(item => item.kind === 'option' && item.body.indexOf(interestB) !== -1)
       && presentedPrefer.cards.items.some(item => item.kind === 'judgment'
         && (item.body.indexOf('PREFER') !== -1 || item.body.indexOf('NOT YET / INDETERMINATE') !== -1))
-      && presentedPrefer.cards.items.every(item => presentedPrefer.answer.indexOf(item.body) !== -1),
+      && presentedPrefer.cards.items
+        .filter(item => hypoContentKinds[item.kind])
+        .every(item => presentedPrefer.answer.indexOf(item.body) !== -1),
     'preference cards reprint the same option figures and the server PREFER / NOT YET sentence');
 
   const ui = loadTalkApi();
