@@ -488,7 +488,7 @@ async function presentTalkAskTurn(parsed, sessionKey, onPhase) {
       packet,
     });
     presented = TalkPresentation.presentHypotheticalExtra(result, packet);
-    presented.sessionTurn = TalkSession.sessionTurnFromHypothetical(result);
+    presented.sessionTurn = TalkSession.sessionTurnFromHypothetical(result, presented);
   } else if (follow.status === 'resolved-comparison'
       || follow.status === 'resolved-preference') {
     phase('running-forecast');
@@ -503,7 +503,7 @@ async function presentTalkAskTurn(parsed, sessionKey, onPhase) {
       ? TalkHypothetical.judgeComparisonPreference(result)
       : null;
     presented = TalkPresentation.presentHypotheticalComparison(result, packet, preference);
-    presented.sessionTurn = TalkSession.sessionTurnFromComparison(result);
+    presented.sessionTurn = TalkSession.sessionTurnFromComparison(result, presented);
   } else if (TalkWhy.questionAsksWhy(parsed.question)) {
     const why = TalkWhy.resolve({
       question: parsed.question,
@@ -512,7 +512,7 @@ async function presentTalkAskTurn(parsed, sessionKey, onPhase) {
     });
     if (why.status === 'ready' || why.reason === 'planner-act'
         || why.reason === 'no-referent' || why.reason === 'no-risk'
-        || why.reason === 'missing packet') {
+        || why.reason === 'missing packet' || why.reason === 'stale-baseline') {
       presented = TalkPresentation.presentWhyExplanation(why, packet);
       presented.sessionTurn = TalkWhy.sessionTurnFromWhy(why);
     } else {

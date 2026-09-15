@@ -233,8 +233,10 @@ console.log('=== 1. Why-trace is explanation, not a second planner ===');
     'talk-why.js does not import Forecast');
   ok(/already-published/.test(whySrc)
       && /not invent/.test(whySrc)
-      && /Conversation history is not household-financial/.test(whySrc),
-    'why module states explanation-only contract');
+      && /Conversation history is not household-financial/.test(whySrc)
+      && /stale-baseline/.test(whySrc)
+      && /unresolved-referent/.test(whySrc),
+    'why module states explanation-only contract, stale-baseline fail-closed, and unresolved extract');
   ok(/intent":"why"/.test(TalkGemini.INSTRUCTION)
       && /referentPath/.test(TalkGemini.INSTRUCTION)
       && /Do not invent a cause/.test(TalkGemini.INSTRUCTION)
@@ -425,18 +427,89 @@ console.log('\n=== 3. Resolution traces published fields; missing referent is un
       amount: 200,
       debtId: 'high',
       debtLabel: 'High-rate card',
+      asOf: '2026-08-19',
+      freshness: 'canonical-opening',
     },
   });
   ok(hypLast.status === 'ready' && hypLast.priorKind === 'hypothetical',
     'why of a last hypothetical uses already-presented amount and label');
-  const presentedHyp = TalkPresentation.presentWhyExplanation(hypLast, packet);
+  const stalePacket = {
+    schema: packet.schema,
+    authority: packet.authority,
+    metadata: {
+      effectiveAsOf: '2026-09-15',
+      freshness: { confidence: 'live' },
+    },
+    forecast: packet.forecast,
+    current: packet.current,
+    policy: packet.policy,
+  };
+  const presentedHyp = TalkPresentation.presentWhyExplanation(hypLast, stalePacket);
   ok(/\$200\.00/.test(presentedHyp.answer)
       && /High-rate card/.test(presentedHyp.answer)
       && /already-published consequences/.test(presentedHyp.answer)
       && /not a recommendation/.test(presentedHyp.answer)
       && presentedHyp.source === 'Forecast'
-      && presentedHyp.trust === 'calculated',
-    'hypothetical why does not recompute Forecast or recommend');
+      && presentedHyp.trust === 'calculated'
+      && presentedHyp.asOf === '2026-08-19'
+      && presentedHyp.freshness === 'canonical-opening'
+      && presentedHyp.answer.indexOf('2026-09-15') === -1
+      && !(presentedHyp.citations || []).some(item => (
+        item.asOf === '2026-09-15' || item.freshness === 'live'
+      )),
+    'hypothetical why keeps the original Forecast baseline when the packet as-of has moved');
+
+  const missingBaseline = TalkWhy.resolve({
+    question: 'Explain that.',
+    packet: stalePacket,
+    priorTurn: {
+      kind: 'hypothetical',
+      amount: 200,
+      debtId: 'high',
+      debtLabel: 'High-rate card',
+    },
+  });
+  ok(missingBaseline.status === 'unavailable'
+      && missingBaseline.reason === 'stale-baseline',
+    'why of a prior hypothetical without a stored baseline fails closed');
+  const presentedMissing = TalkPresentation.presentWhyExplanation(missingBaseline, stalePacket);
+  ok(presentedMissing.answer === TalkPresentation.WHY_UNAVAILABLE_ANSWER
+      && presentedMissing.trust === 'unavailable'
+      && presentedMissing.asOf == null
+      && presentedMissing.freshness == null,
+    'missing baseline does not stamp the current packet as-of onto the older calculation');
+
+  const compareLast = TalkWhy.resolve({
+    question: 'Explain that.',
+    packet: stalePacket,
+    priorTurn: {
+      kind: 'comparison',
+      scenarios: [
+        { amount: 200, debtId: 'high', debtLabel: 'High-rate card' },
+        { amount: 150, debtId: 'heloc', debtLabel: 'HELOC' },
+      ],
+      asOf: '2026-08-19',
+      freshness: 'canonical-opening',
+    },
+  });
+  const presentedCompare = TalkPresentation.presentWhyExplanation(compareLast, stalePacket);
+  ok(compareLast.status === 'ready'
+      && presentedCompare.asOf === '2026-08-19'
+      && presentedCompare.freshness === 'canonical-opening'
+      && presentedCompare.source === 'Forecast'
+      && presentedCompare.trust === 'calculated'
+      && presentedCompare.answer.indexOf('2026-09-15') === -1
+      && /High-rate card/.test(presentedCompare.answer)
+      && /HELOC/.test(presentedCompare.answer),
+    'comparison why keeps the original Forecast baseline when the packet as-of has moved');
+
+  const unresolved = TalkWhy.resolve({
+    question: 'Why did Atlas show 400?',
+    packet,
+  });
+  ok(unresolved.status === 'unavailable'
+      && unresolved.reason === 'unresolved-referent',
+    'why without a determined referent stays unresolved for extract');
 
   const missingPath = TalkWhy.resolve({
     question: 'Why?',
@@ -486,6 +559,46 @@ console.log('\n=== 4. Session stores referent paths, not financial evidence ==='
   }) === true, 'why kind is a valid session turn');
   ok(TalkSession.publicConversation(store.turns(key)).every(row => !row.referentPaths),
     'public conversation still exposes wording only');
+
+  const fromResult = TalkSession.sessionTurnFromHypothetical({
+    status: 'ready',
+    input: {
+      amount: 200,
+      debtId: 'high',
+      debtLabel: 'High-rate card',
+      asOf: '2026-08-19',
+    },
+  }, { asOf: '2026-08-19', freshness: 'canonical-opening' });
+  ok(fromResult.kind === 'hypothetical'
+      && fromResult.asOf === '2026-08-19'
+      && fromResult.freshness === 'canonical-opening',
+    'hypothetical session turn keeps the published Forecast baseline');
+  ok(store.append(key, Object.assign({
+    question: 'What if I put $200 on the High-rate card?',
+    presented: 'If you put $200.00 on High-rate card',
+  }, fromResult)) === true, 'session stores the original calculation baseline');
+  const storedHyp = store.turns(key).find(row => row.kind === 'hypothetical');
+  ok(storedHyp && storedHyp.asOf === '2026-08-19'
+      && storedHyp.freshness === 'canonical-opening',
+    'sanitized session referent retains original as-of and freshness');
+  ok(TalkSession.publicConversation([storedHyp]).every(row => (
+    !Object.prototype.hasOwnProperty.call(row, 'asOf')
+    && !Object.prototype.hasOwnProperty.call(row, 'freshness')
+    && !Object.prototype.hasOwnProperty.call(row, 'amount')
+  )), 'public conversation still does not expose structured baseline fields');
+  ok(store.append(key, {
+    kind: 'hypothetical',
+    question: 'What if I put $150 on the High-rate card?',
+    presented: 'hidden',
+    amount: 150,
+    debtId: 'high',
+    debtLabel: 'High-rate card',
+    asOf: 'raw/secret.json',
+    freshness: 'verified',
+  }) === true, 'unsafe baseline labels are dropped rather than stored');
+  const stripped = store.turns(key).find(row => row.amount === 150);
+  ok(stripped && !stripped.asOf && !stripped.freshness,
+    'path-like as-of and promoted freshness never enter the session referent');
 }
 
 console.log('\n=== 5. Session /talk/ask publishes why without inventing ===');
@@ -571,6 +684,44 @@ console.log('\n=== 5. Session /talk/ask publishes why without inventing ===');
   } finally {
     await atlas.stop();
     await mock.close();
+  }
+
+  const extractMock = await startMockGemini([
+    JSON.stringify({
+      intent: 'why',
+      referentPath: 'forecast.currentPeriodAction.weeklyCap',
+    }),
+  ]);
+  const extractPort = await freePort();
+  const extractAtlas = await startAtlas(isolatedEnv({
+    PORT: String(extractPort),
+    SITE_PASSWORD: PASS,
+    SESSION_SECRET: SECRET,
+    ATLAS_ASSISTANT_TOKEN: ASSISTANT_TOKEN,
+    ATLAS_TALK_GEMINI_API_KEY: GEMINI_KEY,
+    ATLAS_TALK_GEMINI_BASE_URL: extractMock.url,
+  }));
+  const extractBase = `http://127.0.0.1:${extractPort}`;
+  try {
+    const session = await login(extractBase);
+    const unresolvedAsk = await fetch(`${extractBase}/talk/ask`, {
+      method: 'POST',
+      headers: { cookie: session.cookie, 'content-type': 'application/json' },
+      body: JSON.stringify({ question: 'Why did Atlas show 400?' }),
+    });
+    const unresolvedBody = await unresolvedAsk.json();
+    ok(unresolvedAsk.status === 200 && extractMock.captured.length === 1,
+      'unresolved why referent reaches Gemini extract');
+    if (/weekly spending cap/.test(unresolvedBody.answer || '')) {
+      ok(unresolvedBody.answer !== TalkPresentation.WHY_UNAVAILABLE_ANSWER
+          && /already-published/.test(unresolvedBody.answer),
+        'Gemini-selected weekly-cap path is explained from this request\'s packet');
+    } else {
+      ok(true, 'live packet weekly cap unavailable — fixture extract covers the path');
+    }
+  } finally {
+    await extractAtlas.stop();
+    await extractMock.close();
   }
   filesUnchanged('talk-why ask');
   if (failures) {

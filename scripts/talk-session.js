@@ -18,7 +18,11 @@
  * deixis/extra skeleton with no leftover wording. An explainer
  * blacklist is not the gate. Ambiguity returns unavailable. Gemini
  * never fills a missing amount or target from chat text. Current Atlas
- * state and Forecast remain the only financial authorities.
+ * state and Forecast remain the only financial authorities. A
+ * hypothetical or comparison turn may keep the already-published
+ * Forecast as-of / freshness so a later Why? can label that same
+ * calculation. Those fields are provenance of a published result, not
+ * household-financial evidence and not a later packet substitute.
  */
 
 const crypto = require('crypto');
@@ -31,6 +35,21 @@ const QUESTION_MAX = 2000;
 const PRESENTED_MAX = 400;
 const LABEL_MAX = 80;
 const SCENARIO_MAX = 6;
+const ASOF_MAX = 40;
+const FRESHNESS_TAGS = Object.freeze({
+  unavailable: true,
+  unknown: true,
+  'dated-opening': true,
+  planned: true,
+  estimated: true,
+  'posted-only': true,
+  calculated: true,
+  'owner-stated': true,
+  'canonical-opening': true,
+  precise: true,
+  confirmed: true,
+  live: true,
+});
 const FOLLOWUP_DEIXIS_RE = /\b(?:what about|how about|and(?:\s+what)?|instead|also|same(?:\s+amount)?|that)\b/i;
 const EXTRA_LANGUAGE_RE = /\b(?:extra|put(?:ting)?|toward|towards|instead)\b/i;
 const COMPARISON_FOLLOWUP_RE = /\b(?:compare(?:d)?|versus|vs\.?|against)\b/i;
@@ -79,6 +98,26 @@ function sanitizeReferentPaths(raw) {
     if (out.length >= 8) break;
   }
   return out;
+}
+
+function sanitizeAsOf(value) {
+  if (typeof value !== 'string' || !value || value.length > ASOF_MAX) return '';
+  if (/[\\/]/.test(value) || /\.env\b|raw|derived|secret/i.test(value)) return '';
+  return value;
+}
+
+function sanitizeFreshness(value) {
+  if (typeof value !== 'string' || !value) return '';
+  if (value === 'verified' || value === 'current') return '';
+  return FRESHNESS_TAGS[value] ? value : '';
+}
+
+function attachTurnProvenance(turn, raw) {
+  const asOf = sanitizeAsOf(raw && raw.asOf);
+  if (asOf) turn.asOf = asOf;
+  const freshness = sanitizeFreshness(raw && raw.freshness);
+  if (freshness) turn.freshness = freshness;
+  return turn;
 }
 
 function sanitizeScenario(row) {
@@ -131,7 +170,7 @@ function sanitizeTurn(raw) {
     }
     turn.scenarios = scenarios;
   }
-  return turn;
+  return attachTurnProvenance(turn, raw);
 }
 
 function publicConversation(turns) {
@@ -338,7 +377,7 @@ function findLabelForDebt(debtId, debts, packet) {
   return debtId;
 }
 
-function sessionTurnFromHypothetical(result) {
+function sessionTurnFromHypothetical(result, provenance) {
   if (!result || result.status !== 'ready' || !result.input) {
     return { kind: 'unavailable' };
   }
@@ -346,10 +385,14 @@ function sessionTurnFromHypothetical(result) {
   const debtId = clipText(result.input.debtId, LABEL_MAX);
   const debtLabel = clipText(result.input.debtLabel, LABEL_MAX);
   if (!finiteAmount(amount) || !debtId || !debtLabel) return { kind: 'unavailable' };
-  return { kind: 'hypothetical', amount, debtId, debtLabel };
+  const fromResult = result.input && result.input.asOf;
+  return attachTurnProvenance({ kind: 'hypothetical', amount, debtId, debtLabel }, {
+    asOf: (provenance && provenance.asOf) || fromResult,
+    freshness: provenance && provenance.freshness,
+  });
 }
 
-function sessionTurnFromComparison(result) {
+function sessionTurnFromComparison(result, provenance) {
   if (!result || result.status !== 'ready' || !Array.isArray(result.scenarios)) {
     return { kind: 'unavailable' };
   }
@@ -360,7 +403,11 @@ function sessionTurnFromComparison(result) {
     scenarios.push(clean);
   }
   if (scenarios.length < 2) return { kind: 'unavailable' };
-  return { kind: 'comparison', scenarios };
+  const fromResult = result.baseline && result.baseline.asOf;
+  return attachTurnProvenance({ kind: 'comparison', scenarios }, {
+    asOf: (provenance && provenance.asOf) || fromResult,
+    freshness: provenance && provenance.freshness,
+  });
 }
 
 function createSessionContext(options) {

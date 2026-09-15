@@ -82,7 +82,13 @@ or Forecast result through a deterministic why-trace: Gemini may extract
 only why-intent plus an optional allowlisted referentPath or referentKey;
 the server assembles the explanation from existing packet fields and
 provenance templates. Gemini must not invent causes, numbers, or policy.
-A why-ask without a publishable referent is unavailable. The Talk
+A why-ask without a publishable referent is unavailable. A Why? of a
+prior hypothetical or comparison keeps that Forecast calculation's
+published as-of / freshness; missing baseline fails closed instead of
+stamping the current packet onto an unrecomputed result. A why-ask
+whose referent is not yet determined may extract an allowlisted path;
+last-presented, planner-act, and missing-baseline failures stay
+unavailable without calling Gemini. The Talk
 page may organize that already-trusted presentation into structured
 answer cards and fails closed to the plain answer bubble when card data
 is missing or malformed. Unknown paths stay conservative path-is-value

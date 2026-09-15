@@ -582,9 +582,10 @@ function presentHypotheticalExtract(extract, packet, atlas, question) {
     debts: atlas && atlas.debts,
     packet,
   });
+  const presented = TalkPresentation.presentHypotheticalExtra(result, packet);
   return attachSessionTurn(
-    TalkPresentation.presentHypotheticalExtra(result, packet),
-    TalkSession.sessionTurnFromHypothetical(result)
+    presented,
+    TalkSession.sessionTurnFromHypothetical(result, presented)
   );
 }
 
@@ -599,9 +600,10 @@ function presentComparisonExtract(extract, packet, atlas, question) {
   const preference = TalkHypothetical.questionAsksAuthorizedPreference(question)
     ? TalkHypothetical.judgeComparisonPreference(result)
     : null;
+  const presented = TalkPresentation.presentHypotheticalComparison(result, packet, preference);
   return attachSessionTurn(
-    TalkPresentation.presentHypotheticalComparison(result, packet, preference),
-    TalkSession.sessionTurnFromComparison(result)
+    presented,
+    TalkSession.sessionTurnFromComparison(result, presented)
   );
 }
 

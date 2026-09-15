@@ -8,8 +8,11 @@
  * numbers, or policy. Unexpected model fields — including free-form
  * causal prose — fail closed. A why-ask without a publishable referent
  * is unavailable. Conversation history is not household-financial
- * evidence. This module does not call Forecast, does not rank, and does
- * not introduce a second dependency graph.
+ * evidence. A Why? of a prior hypothetical or comparison keeps that
+ * published Forecast as-of / freshness; missing baseline fails closed
+ * instead of stamping the current packet onto an unrecomputed result.
+ * This module does not call Forecast, does not rank, and does not
+ * introduce a second dependency graph.
  */
 
 const TalkPresentation = require('./talk-presentation');
@@ -228,14 +231,16 @@ function lastPresentedFromTurn(priorTurn) {
       priorAmount: priorTurn.amount,
       priorDebtId: priorTurn.debtId,
       priorDebtLabel: priorTurn.debtLabel,
-      paths: Array.isArray(priorTurn.referentPaths) ? priorTurn.referentPaths.slice() : [],
+      asOf: priorTurn.asOf,
+      freshness: priorTurn.freshness,
     };
   }
   if (priorTurn.kind === 'comparison') {
     return {
       priorKind: 'comparison',
       priorScenarios: Array.isArray(priorTurn.scenarios) ? priorTurn.scenarios.slice() : [],
-      paths: Array.isArray(priorTurn.referentPaths) ? priorTurn.referentPaths.slice() : [],
+      asOf: priorTurn.asOf,
+      freshness: priorTurn.freshness,
     };
   }
   if (priorTurn.kind === 'explained' || priorTurn.kind === 'why') {
@@ -247,14 +252,16 @@ function lastPresentedFromTurn(priorTurn) {
         priorAmount: priorTurn.amount,
         priorDebtId: priorTurn.debtId,
         priorDebtLabel: priorTurn.debtLabel,
-        paths: Array.isArray(priorTurn.referentPaths) ? priorTurn.referentPaths.slice() : [],
+        asOf: priorTurn.asOf,
+        freshness: priorTurn.freshness,
       };
     }
     if (priorTurn.priorKind === 'comparison' && Array.isArray(priorTurn.scenarios)) {
       return {
         priorKind: 'comparison',
         priorScenarios: priorTurn.scenarios.slice(),
-        paths: Array.isArray(priorTurn.referentPaths) ? priorTurn.referentPaths.slice() : [],
+        asOf: priorTurn.asOf,
+        freshness: priorTurn.freshness,
       };
     }
     if (Array.isArray(priorTurn.referentPaths) && priorTurn.referentPaths.length) {
@@ -284,7 +291,7 @@ function readyFromClaims(claims, extras) {
   if (!claims.length && extras.priorKind !== 'hypothetical' && extras.priorKind !== 'comparison') {
     return unavailable(extras.reason || 'no-referent');
   }
-  return Object.assign({
+  const ready = {
     status: 'ready',
     claims,
     paths: claims.map(row => row.path),
@@ -294,7 +301,11 @@ function readyFromClaims(claims, extras) {
     priorDebtId: extras.priorDebtId || null,
     priorDebtLabel: extras.priorDebtLabel || null,
     priorScenarios: extras.priorScenarios || null,
-  }, extras.lead ? { lead: extras.lead } : {});
+  };
+  if (typeof extras.asOf === 'string' && extras.asOf) ready.asOf = extras.asOf;
+  if (typeof extras.freshness === 'string' && extras.freshness) ready.freshness = extras.freshness;
+  if (extras.lead) ready.lead = extras.lead;
+  return ready;
 }
 
 function resolveKey(referentKey, packet, priorTurn) {
@@ -302,8 +313,10 @@ function resolveKey(referentKey, packet, priorTurn) {
     const last = lastPresentedFromTurn(priorTurn);
     if (!last) return unavailable('no-referent');
     if (last.priorKind === 'hypothetical' || last.priorKind === 'comparison') {
-      const claims = publishablePaths(last.paths, packet);
-      return readyFromClaims(claims, last);
+      if (typeof last.asOf !== 'string' || !last.asOf) {
+        return unavailable('stale-baseline');
+      }
+      return readyFromClaims([], last);
     }
     const claims = publishablePaths(last.paths, packet);
     return readyFromClaims(claims, { referentKey, priorKind: last.priorKind });
@@ -344,7 +357,7 @@ function resolve({ question, packet, priorTurn, extract }) {
   }
 
   if (questionAsksWhy(question)) {
-    return unavailable('no-referent');
+    return unavailable('unresolved-referent');
   }
   return unavailable('not-why');
 }
@@ -363,11 +376,19 @@ function sessionTurnFromWhy(result) {
     turn.amount = result.priorAmount;
     turn.debtId = typeof result.priorDebtId === 'string' ? result.priorDebtId : '';
     turn.debtLabel = result.priorDebtLabel;
+    if (typeof result.asOf === 'string' && result.asOf) turn.asOf = result.asOf;
+    if (typeof result.freshness === 'string' && result.freshness) {
+      turn.freshness = result.freshness;
+    }
   }
   if (result.priorKind === 'comparison' && Array.isArray(result.priorScenarios)
       && result.priorScenarios.length >= 2) {
     turn.priorKind = 'comparison';
     turn.scenarios = result.priorScenarios;
+    if (typeof result.asOf === 'string' && result.asOf) turn.asOf = result.asOf;
+    if (typeof result.freshness === 'string' && result.freshness) {
+      turn.freshness = result.freshness;
+    }
   }
   return turn;
 }

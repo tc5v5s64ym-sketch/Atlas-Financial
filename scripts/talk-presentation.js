@@ -8,7 +8,10 @@
  * also maps an already-computed Forecast hypothetical result into
  * wording. Why-explanations map already-published packet fields and
  * last-presented Talk result identifiers through provenance templates;
- * they do not invent causes. This file still does not call Forecast,
+ * they do not invent causes. A Why? of a prior hypothetical or
+ * comparison reprints that already-published Forecast as-of /
+ * freshness; it does not attach a later packet as-of to an unrecomputed
+ * result. This file still does not call Forecast,
  * does not compute leftover or remaining, and does not invent a second
  * financial schema.
  * Optional presentation.cards reprint those same trusted strings for
@@ -31,6 +34,7 @@ const WHY_UNAVAILABLE_ANSWER = 'That explanation is not available from this requ
 const WHY_LEAD = 'Atlas is showing that from already-published household fields, not a new calculation.';
 const WHY_NOTE = 'This is an explanation of an already-published Atlas result. It is not a recommendation, a new Forecast calculation, or permission to act.';
 const WHY_HISTORY_NOTE = 'Conversation history is not household-financial evidence. This request\'s packet is.';
+const WHY_BASELINE_NOTE = 'Conversation history is not household-financial evidence. This explanation uses the already-published Forecast baseline, not a later packet as-of.';
 
 const ALLOWED_ACTIONS = Object.freeze({
   budget: Object.freeze({ href: '/', label: 'View Budget' }),
@@ -1280,16 +1284,50 @@ function whyComparisonSentence(result) {
   return `Atlas published a Forecast hypothetical comparison of ${parts.join(' versus ')}. Forecast computed those already-published consequences.`;
 }
 
+function whyCalculationBaseline(result) {
+  if (!result || (result.priorKind !== 'hypothetical' && result.priorKind !== 'comparison')) {
+    return null;
+  }
+  const asOf = typeof result.asOf === 'string' && result.asOf ? result.asOf : null;
+  if (!asOf) return null;
+  const freshness = typeof result.freshness === 'string' && result.freshness
+    ? result.freshness
+    : null;
+  return { asOf, freshness };
+}
+
 function presentWhyExplanation(result, packet) {
-  const asOf = readAsOf(packet);
-  const freshness = readFreshness(packet);
+  const packetAsOf = readAsOf(packet);
+  const packetFreshness = readFreshness(packet);
+  const storedBaseline = whyCalculationBaseline(result);
   if (!result || result.status !== 'ready') {
+    if (result && result.reason === 'stale-baseline') {
+      return emptyPresentation(WHY_UNAVAILABLE_ANSWER, {
+        source: 'Forecast',
+        trust: 'unavailable',
+        asOf: null,
+        freshness: null,
+      });
+    }
     return emptyPresentation(WHY_UNAVAILABLE_ANSWER, {
       trust: 'unavailable',
-      asOf,
-      freshness,
+      asOf: packetAsOf,
+      freshness: packetFreshness,
     });
   }
+
+  if ((result.priorKind === 'hypothetical' || result.priorKind === 'comparison')
+      && !storedBaseline) {
+    return emptyPresentation(WHY_UNAVAILABLE_ANSWER, {
+      source: 'Forecast',
+      trust: 'unavailable',
+      asOf: null,
+      freshness: null,
+    });
+  }
+
+  const asOf = storedBaseline ? storedBaseline.asOf : packetAsOf;
+  const freshness = storedBaseline ? storedBaseline.freshness : packetFreshness;
 
   const sentences = [];
   const items = [];
@@ -1304,8 +1342,8 @@ function presentWhyExplanation(result, packet) {
       return emptyPresentation(WHY_UNAVAILABLE_ANSWER, {
         source: 'Forecast',
         trust: 'unavailable',
-        asOf,
-        freshness,
+        asOf: storedBaseline.asOf,
+        freshness: storedBaseline.freshness,
       });
     }
     sentences.push(body);
@@ -1316,8 +1354,8 @@ function presentWhyExplanation(result, packet) {
       return emptyPresentation(WHY_UNAVAILABLE_ANSWER, {
         source: 'Forecast',
         trust: 'unavailable',
-        asOf,
-        freshness,
+        asOf: storedBaseline.asOf,
+        freshness: storedBaseline.freshness,
       });
     }
     sentences.push(body);
@@ -1347,7 +1385,10 @@ function presentWhyExplanation(result, packet) {
 
   sentences.push(WHY_NOTE);
   items.push({ kind: 'note', title: 'Note', body: WHY_NOTE });
-  if (result.priorKind) {
+  if (storedBaseline) {
+    sentences.push(WHY_BASELINE_NOTE);
+    items.push({ kind: 'note', title: 'Note', body: WHY_BASELINE_NOTE });
+  } else if (result.priorKind) {
     sentences.push(WHY_HISTORY_NOTE);
     items.push({ kind: 'note', title: 'Note', body: WHY_HISTORY_NOTE });
   }
@@ -1427,6 +1468,7 @@ module.exports = {
   WHY_LEAD,
   WHY_NOTE,
   WHY_HISTORY_NOTE,
+  WHY_BASELINE_NOTE,
   ALLOWED_ACTIONS,
   ALLOWED_ACTION_HREFS,
   ALLOWED_SOURCES,
